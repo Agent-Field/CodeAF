@@ -866,10 +866,9 @@ func (h *Handler) stop(w http.ResponseWriter, r *http.Request, it factory.Item) 
 			return
 		}
 		err = h.config.Store.Update(it.ID, func(cur *factory.Item) error {
+			// The stop's own write took down the approval and the publish
+			// error and recorded the stop; this keeps only what Undo puts back.
 			cur.StopUndo = &factory.StopUndo{By: handle, Until: h.clock().Add(factory.ApprovalUndo), Failure: it.Failure, State: it.State, Question: it.Question, QKind: it.QKind, Stream: prior}
-			cur.Approval = nil
-			cur.Failure = nil
-			cur.PublishError = ""
 			return nil
 		})
 		h.finish(w, err)

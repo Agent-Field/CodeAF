@@ -349,8 +349,13 @@ func TestUntilCleanWithMaxTwoLoopsTwiceThenAsks(t *testing.T) {
 		t.Fatal(err)
 	}
 	it = g.waitState(id, factory.StateNew)
-	if it.Question != "" || it.Failure != nil || !logHas(it, "stopped · branch kept") {
+	// A NO TO A STEP OUT OF ROUNDS IS THE PERSON'S STOP, and the job and the
+	// step it cut say so.
+	if it.Question != "" || it.Failure == nil || it.Failure.Code != factory.CodeStopped || it.Failure.Step != "review" || !logHas(it, "stopped · branch kept") {
 		t.Fatalf("cancel = %+v failure %+v", it.Stream, it.Failure)
+	}
+	if ph := it.Stream.Phases[0]; ph.State != factory.PhaseFailed || ph.Failure == nil || ph.Failure.Code != factory.CodeStopped {
+		t.Fatalf("the cancelled step = %+v", ph)
 	}
 }
 
@@ -511,10 +516,11 @@ func TestThePlanEditIsAppliedUnderAdaptAndAskedUnderAsk(t *testing.T) {
 
 func TestStopMidRound(t *testing.T) {
 	cut := make(chan struct{})
+	var once sync.Once
 	g := newRig(t, map[factory.StageKind]Executor{
 		factory.StageChat: ExecutorFunc(func(ctx context.Context, job Job) (factory.StageResult, error) {
 			<-ctx.Done()
-			close(cut)
+			once.Do(func() { close(cut) })
 			return factory.StageResult{}, ctx.Err()
 		}),
 	}, nil)
@@ -537,13 +543,107 @@ func TestStopMidRound(t *testing.T) {
 	if it.Stream == nil || it.Stream.Phases[0].State != factory.PhaseFailed || !logHas(it, "stopped · branch kept") {
 		t.Fatalf("stopped stream = %+v", it.Stream)
 	}
+	assertStoppedByYou(t, it, "write")
 	if err := g.r.Stop(id); err == nil || err.Error() != "#1 is not running" {
 		t.Fatalf("a second stop = %v", err)
 	}
 	// The stream is kept for the log, and the item launches again from new.
 	time.Sleep(20 * time.Millisecond)
-	if again, _ := g.st.Get(id); again.State != factory.StateNew {
-		t.Fatalf("a stopped round wrote after the stop: %s", again.State)
+	if again, _ := g.st.Get(id); again.State != factory.StateNew || again.Failure == nil {
+		t.Fatalf("a stopped round wrote after the stop: %s %+v", again.State, again.Failure)
+	}
+	// A START TAKES THE STOP DOWN: the run begins again at its first step.
+	if err := g.r.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	again, _ := g.st.Get(id)
+	if again.Failure != nil || again.Stream == nil || again.Stream.Phases[0].State == factory.PhaseFailed || again.Stream.Phases[0].Failure != nil {
+		t.Fatalf("a start kept the stop: %+v %+v", again.Failure, again.Stream)
+	}
+	if err := g.r.Stop(id); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A STOP OF A JOB NO RUNNER HERE HOLDS IS THE SAME FACT AS THE LOOP'S OWN: a
+// process that died mid-round left the job running, and the stop marks the
+// step it cut and the job exactly as a stop of a live run does.
+func TestStopWithNoRunMarksTheJobAndTheStepItCut(t *testing.T) {
+	g := newRig(t, map[factory.StageKind]Executor{}, nil)
+	id := g.add("one", chat("plan"), chat("write"), chat("review"))
+	now := time.Date(2026, 10, 19, 9, 0, 0, 0, time.UTC)
+	if err := g.st.Update(id, func(it *factory.Item) error {
+		it.State = factory.StateRunning
+		it.Stream = &factory.Stream{Cur: 1, Spent: 0.75, Started: now, Phases: []factory.Phase{
+			{Name: "plan", Kind: factory.StageChat, State: factory.PhaseDone},
+			{Name: "write", Kind: factory.StageChat, State: factory.PhaseRunning, Round: 2},
+			{Name: "review", Kind: factory.StageChat, State: factory.PhasePending},
+		}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.r.Stop(id); err != nil {
+		t.Fatal(err)
+	}
+	it, _ := g.st.Get(id)
+	if it.State != factory.StateNew || it.Stream.Phases[0].State != factory.PhaseDone || it.Stream.Phases[2].State != factory.PhasePending || it.Stream.Spent != 0.75 || !logHas(it, "stopped · branch kept") {
+		t.Fatalf("stopped = %s %+v", it.State, it.Stream)
+	}
+	assertStoppedByYou(t, it, "write")
+	if it.Failure.Attempts != 2 {
+		t.Fatalf("the stop forgot the step's rounds: %+v", it.Failure)
+	}
+	if err := g.r.Stop(id); err == nil || err.Error() != "#1 is not running" {
+		t.Fatalf("a second stop = %v", err)
+	}
+}
+
+// A STOP THAT CUT NO STEP LEAVES NO MARK: a queued job whose steps had not
+// begun is simply back in the backlog, with nothing failed.
+func TestStopBeforeAnyStepBeganIsBacklog(t *testing.T) {
+	g := newRig(t, map[factory.StageKind]Executor{}, nil)
+	id := g.add("one", chat("plan"), chat("write"))
+	now := time.Date(2026, 10, 19, 9, 0, 0, 0, time.UTC)
+	if err := g.st.Update(id, func(it *factory.Item) error {
+		it.State = factory.StateQueued
+		it.Stream = &factory.Stream{Started: now, Phases: loopPhases(*it)}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.r.Stop(id); err != nil {
+		t.Fatal(err)
+	}
+	it, _ := g.st.Get(id)
+	if it.State != factory.StateNew || it.Failure != nil || factory.JobState(it) != "backlog" || factory.RunEnded(it) || !logHas(it, "stopped · branch kept") {
+		t.Fatalf("stopped before any step = %s %+v", factory.JobState(it), it.Failure)
+	}
+	for _, ph := range it.Stream.Phases {
+		if ph.State != factory.PhasePending || ph.Failure != nil {
+			t.Fatalf("a step that never began reads %+v", ph)
+		}
+	}
+}
+
+// assertStoppedByYou is the one shape a person's stop leaves: the job is new,
+// carries the stop as its failure, and the step it cut is failed with the same
+// stop, so no step reads running.
+func assertStoppedByYou(t *testing.T, it factory.Item, step string) {
+	t.Helper()
+	if f := it.Failure; it.State != factory.StateNew || f == nil || f.Code != factory.CodeStopped || f.Next != factory.FailureStopped || f.Step != step || f.Detail != "Stopped by you" {
+		t.Fatalf("the job does not say it was stopped: %s %+v", it.State, it.Failure)
+	}
+	for _, ph := range it.Stream.Phases {
+		if ph.State == factory.PhaseRunning || ph.State == factory.PhaseWaiting {
+			t.Fatalf("step %s still reads %s after the stop", ph.Name, ph.State)
+		}
+		if ph.Name == step && (ph.State != factory.PhaseFailed || ph.Failure == nil || ph.Failure.Code != factory.CodeStopped) {
+			t.Fatalf("the cut step = %+v", ph)
+		}
+	}
+	if factory.JobState(it) != "needs_you" || !factory.RunEnded(it) {
+		t.Fatalf("a stopped job reads %s", factory.JobState(it))
 	}
 }
 

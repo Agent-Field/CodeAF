@@ -99,6 +99,16 @@ One check, in code, decides every merge; no model does, and no tool on any belt 
 
 **Auto-merge** is off unless the repository's `.codeaf/factory.yaml` says `merge: {auto: on}` (`method: merge`, `squash` or `rebase`; omitted lets the repository's settings choose). A personal `~/.codeaf/factory.yaml` may only turn it off. The setting is fixed on a job when its proof is approved. An auto-merge also needs every claim proven and at least one passing check, and until then it waits quietly. A merge that failed is the person's to look at, says why, and is never tried again on its own.
 
+## stop a job and start it again — Stop, Undo a stop, stopped by you, what a stopped job keeps
+
+**Stop** ends a running, queued or waiting job at once. When it cut a step that was running or waiting, the job says so and waits for you: `Step stopped`, `Stopped by you`. That step reads failed with the same words, so no step reads running, and what the run spent stays on the job. A job stopped before any step began, or after its last step ended, lost nothing: it simply goes back to Backlog with no mark, ready to start. Either way the job's log says `stopped · branch kept`. A no to a step that ran out of rounds, to the budget, or to an approve step with nothing before it is the same stop. A job whose run already ended on a failure or a stop has nothing to stop and refuses with `#12 is not running`.
+
+**Undo**, for five seconds after your own Stop, puts the run back exactly as it stood: the same step, its conversation, what it spent and the question it was asking.
+
+Starting a stopped job again begins a new run at the first step. What the stopped run's steps reported is not carried over, and the job's spend starts again from nothing; its budget stays what it was. What is kept is the job's worktree and branch on the runner that ran it: the new run works in that same folder, on that branch, with every commit and every unsaved edit the stopped run left there. A different runner that picks the job up makes a fresh branch from the repository's default branch (a pull request's job from its head), because a job's branch leaves its machine only when the pull request is opened. Your notes on the job are kept, and every step's brief still carries them.
+
+To go on from a step that was cut instead, keeping the steps before it and the money spent, run that step again (try again) rather than starting the job.
+
 ## drop a job and bring it back — Drop, Bring back, undo a drop, deleted branch
 
 **Drop** finishes a job for good: a running one is stopped, the job reads done, and nothing on GitHub brings it back by itself (a changed issue does not revive a dropped job). Only the job's assignee, or anyone while it has none, may drop it. The job's branch is kept for seven days and then deleted.

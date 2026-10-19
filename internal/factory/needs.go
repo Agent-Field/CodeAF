@@ -36,8 +36,11 @@ const (
 	CodeProviderError     = "provider_error"
 	CodeCrash             = "crash"
 	CodeMachineLost       = "machine_lost"
-	FailureRequeued       = "requeued"
-	FailureStopped        = "stopped"
+	// CodeStopped is a person's stop that cut a step, by the step's own Stop
+	// or the whole job's: the job and that step both say it was stopped.
+	CodeStopped     = "stopped"
+	FailureRequeued = "requeued"
+	FailureStopped  = "stopped"
 	// RoundLinesMost is how many per-round lines one step keeps. A loop's
 	// own max is the bound when it is smaller. The list cannot grow with a
 	// report that names a huge round.

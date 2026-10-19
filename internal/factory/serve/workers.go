@@ -448,7 +448,10 @@ func (h *Handler) reportWorker(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		after := it.Failure
-		if after == nil || failureKey(after) == before || h.config.Record == nil {
+		// A PERSON'S STOP IS NOT A STEP THAT ERRORED: a worker whose run
+		// stopped on a person's no reports the cut step with the stop on it,
+		// and the person's answer is already on the record.
+		if after == nil || after.Code == factory.CodeStopped || failureKey(after) == before || h.config.Record == nil {
 			return nil
 		}
 		_, _ = h.config.Record.Append(r.Context(), record.Event{

@@ -44,9 +44,11 @@ func QueueItem(it *factory.Item, now time.Time) error {
 }
 
 // StopItem is a stop with no run to cancel here: the job is new again. A job
-// that is not under way refuses, in the Runner's words.
+// that is not under way refuses, in the Runner's words, and so does one whose
+// run already ended on a failure or a stop ([factory.RunEnded]), exactly as
+// [Runner.Stop] does.
 func StopItem(it *factory.Item, now time.Time) error {
-	if (it.State == factory.StateShipped && factory.JobState(*it) == "running") || (it.State == factory.StateNew && it.Failure != nil) {
+	if it.State == factory.StateShipped && factory.JobState(*it) == "running" {
 		stopStored(it, now)
 		return nil
 	}

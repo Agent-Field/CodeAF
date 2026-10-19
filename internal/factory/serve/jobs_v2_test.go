@@ -109,9 +109,11 @@ func TestV2RunStopUndoAndStartNow(t *testing.T) {
 	if j := f.read(t, it); j.State != "queued" || j.Budget != 4 {
 		t.Fatalf("run %+v", j)
 	}
+	// A QUEUED JOB HAD NO STEP TO CUT: its stop takes it out of the queue and
+	// back to Backlog, with no stop mark, where Start picks it up.
 	f.post(t, it, "stop", "", 200)
-	if j := f.read(t, it); j.State != "backlog" {
-		t.Fatal(j.State)
+	if j := f.read(t, it); j.State != "backlog" || j.Failure != nil || j.NeedsYou != nil || j.StatePresentation.Title != "Backlog" || !j.Can.Run || !j.Can.Undo || j.Can.Stop {
+		t.Fatalf("stop %+v", j)
 	}
 	f.post(t, it, "undo", "", 200)
 	if j := f.read(t, it); j.State != "queued" {
@@ -122,7 +124,7 @@ func TestV2RunStopUndoAndStartNow(t *testing.T) {
 	f.post(t, it, "undo", "", 409)
 	f.post(t, it, "start_now", "", 200)
 	cur, _ := f.st.Get(it.ID)
-	if !cur.Marked || cur.State != factory.StateQueued {
+	if !cur.Marked || cur.State != factory.StateQueued || cur.Failure != nil {
 		t.Fatalf("start now %+v", cur)
 	}
 }
