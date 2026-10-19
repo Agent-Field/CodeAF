@@ -47,7 +47,10 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 		// AND UNDER `--one-model` ONE MODEL IS EVERY SEAT, the probe and the
 		// check's environment rung included ([Seats.One]).
 		One: spec.OneModel,
-	}, spec.Memory, spec.CompleterFor, spec.Sources)
+	}, spec.Memory, false, spec.CompleterFor, spec.Sources)
+	// A `/task` run from interactive chat is never spend-preauthorized: `--yes-spend`
+	// is a headless `codeaf do` flag, so a chat run is held to the daily ceiling
+	// like every interactive turn (crew.go's CrewFactory, #1546).
 	if spec.Delegate != nil {
 		// A DELEGATED RUN SEATS THE PROGRAM ON ITS ROOT and has no review
 		// round: a check seat is a bash-belt worker, which the belt switch may
