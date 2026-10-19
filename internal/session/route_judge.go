@@ -283,7 +283,7 @@ type routeVerdict struct {
 // is a condition nobody can check (see [routeVerdict.Acceptance]).
 const routeJudgeBrief = `You judge ONE turn of a coding assistant, after the fact. The assistant answered the person in WORDS ALONE — it called no tool. You decide one thing: should that turn have been WORK?
 
-WORDS are a question, a discussion, advice, an opinion, a fact, an explanation, a plan somebody asked to read. SMALL WORK is words too, for this purpose: a few tool calls, one obvious edit, a file read and an answer. Handing small work off is slower than doing it, so it is not work.
+WORDS include questions about feasibility, discussion, advice, opinions, facts, explanations and plans somebody asked to read. A polite question that clearly asks you to act now can still authorize work, as the work rule below explains. SMALL WORK is words too, for this purpose: a few tool calls, one obvious edit, a file read and an answer. Handing small work off is slower than doing it, so it is not work.
 
 WORK is research across several sources, changes across several files, a goal with several independent parts, or anything the person would otherwise watch a spinner for.
 
@@ -309,11 +309,18 @@ or
 
   {"work": true, "wide": true, "goal": "...", "acceptance": "...", "checks": ["..."], "why": "..."}
 
-  work   true only when the person gave a direct instruction to do work, in a
-         non-question. Every question is false, including "can we..." and
-         "could you...". Product direction, suggestions, goals and plans are
-         false unless the person directly instructs you to act on them. Judge
-         authorization before effort: a useful or lengthy job is not permission.
+  work   true only when the person clearly asks codeaf to do work now. This can
+         be an imperative or a polite question whose intended action is clear:
+         "Could you fix the failing tests?" and "Can you implement headless
+         screenshots and add tests?" both authorize work. A question about
+         feasibility or explanation, such as "How would headless screenshots
+         work?", does not. "Can we get screenshots without a display?" is
+         ambiguous without context, so answer or clarify; do not start work.
+         "We should support screenshots eventually" is future direction, not
+         authorization. Judge intended action and timing, not grammar. Product
+         direction, suggestions, goals and plans do not authorize work unless
+         the person clearly asks you to act now. Judge authorization before
+         effort: a useful or lengthy job is not permission.
   wide   true when the work is BROAD — many files, many sources, several
          independent parts — so the one worker that starts on it is allowed to
          hand the parts out once it has opened the material. Leave it out for
@@ -799,7 +806,7 @@ func routeJudgeQuestion(asked, answered string) string {
 // to surface features is a keyword rule with a bill attached.
 const routeAheadBrief = `You judge ONE message a person has just typed to a coding assistant, BEFORE it is answered. Nothing has been done yet: you are reading the REQUEST, not a reply. You decide one thing: is this WORK?
 
-WORDS are a question, a discussion, advice, an opinion, a fact, an explanation, a plan somebody asked to read. SMALL WORK is words too, for this purpose: a few tool calls, one obvious edit, a file read and an answer. Handing small work off is slower than doing it, so it is not work.
+WORDS include questions about feasibility, discussion, advice, opinions, facts, explanations and plans somebody asked to read. A polite question that clearly asks you to act now can still authorize work, as the work rule below explains. SMALL WORK is words too, for this purpose: a few tool calls, one obvious edit, a file read and an answer. Handing small work off is slower than doing it, so it is not work.
 
 WORK is research across several sources, changes across several files, a goal with several independent parts, or anything the person would otherwise watch a spinner for. Three shapes of request are almost always work: one message that asks for SEVERAL INDEPENDENT DELIVERABLES, a SWEEP across many files or many sources, and anything whose answer is MINUTES OF TOOL CALLS the person can only sit and watch.
 

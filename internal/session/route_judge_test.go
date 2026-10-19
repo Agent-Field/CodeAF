@@ -1902,22 +1902,53 @@ func TestBothBriefsAskForOneObjectAndOnlyOneOfThemMentionsAnAnswer(t *testing.T)
 	}
 }
 
-func TestRouteJudgesRequireDirectNonQuestionWorkOrders(t *testing.T) {
+func TestRouteJudgesDistinguishWorkOrdersFromQuestions(t *testing.T) {
 	contract := strings.Join(strings.Fields(routeVerdictContract), " ")
+	for _, example := range routeIntentExamples {
+		text := strings.Join(strings.Fields(example.request), " ")
+		if got := strings.Contains(example.rule, "authorize work"); got != example.wantWork {
+			t.Fatalf("evaluation case %s has rule %q for work=%t", example.request, example.rule, example.wantWork)
+		}
+		if !strings.Contains(contract, text) {
+			t.Errorf("the shared route contract omits %s", example.request)
+		}
+		if !strings.Contains(contract, example.rule) {
+			t.Errorf("the shared route contract does not explain why %s is work=%t: missing %q", example.request, example.wantWork, example.rule)
+		}
+		for name, brief := range map[string]string{"pre-turn": routeAheadBrief, "post-turn": routeJudgeBrief} {
+			brief = strings.Join(strings.Fields(brief), " ")
+			if !strings.Contains(brief, text) || !strings.Contains(brief, example.rule) {
+				t.Errorf("the %s route prompt does not carry the %s classification", name, example.request)
+			}
+		}
+	}
 	for _, want := range []string{
-		"direct instruction to do work",
-		"in a non-question",
-		"Every question is false",
-		"Product direction, suggestions, goals and plans are false",
+		"clearly asks codeaf to do work now",
+		"Judge intended action and timing, not grammar",
 		"authorization before effort",
 	} {
 		if !strings.Contains(contract, strings.Join(strings.Fields(want), " ")) {
-			t.Errorf("the shared route contract does not require %q", want)
+			t.Errorf("the shared route contract does not state %q", want)
 		}
 	}
 	if !strings.Contains(routeAheadBrief, routeVerdictContract) || !strings.Contains(routeJudgeBrief, routeVerdictContract) {
 		t.Fatal("one route judge can start work without the authorization rule")
 	}
+}
+
+// routeIntentExamples is the small, reviewable evaluation set for the prompt
+// change. The production judge remains model-backed; these labels are the
+// expected contract that both independent readers must follow.
+var routeIntentExamples = []struct {
+	request  string
+	wantWork bool
+	rule     string
+}{
+	{`"Could you fix the failing tests?"`, true, "both authorize work"},
+	{`"Can you implement headless screenshots and add tests?"`, true, "both authorize work"},
+	{`"How would headless screenshots work?"`, false, "does not"},
+	{`"Can we get screenshots without a display?"`, false, "ambiguous without context"},
+	{`"We should support screenshots eventually"`, false, "future direction, not authorization"},
 }
 
 func TestAStoppedTaskResultCannotAutoStartItsRequestAgain(t *testing.T) {
