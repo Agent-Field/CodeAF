@@ -462,6 +462,26 @@ by quit". Automations are not touched by a quit and fire again once the app is
 open. A conversation the app joined in a terminal window is that window's, and
 quitting the app only lets go of it.
 
+## When the desktop app closes unexpectedly — a reply stuck working, carrying on after it closed
+
+If the desktop app closes unexpectedly in the middle of a reply, opening it
+again carries the reply and its running tasks on from where their records
+stand. "Resumed after the app closed" appears before that reply. Finished
+steps are not repeated; a step that was still running may not have finished,
+so the agent checks its result before relying on it. Another window still
+working on the conversation is left alone. An idle conversation stays idle.
+
+A conversation carries on automatically at most twice in a row. A reply that
+finishes normally, or a message, correction, queued message or answer from you,
+lets it carry on automatically again. If this is the third time within ten
+minutes that opening the app finds an unfinished reply, none of those replies
+carry on automatically on that opening. A reply last active more than an hour
+before opening is also left for you to choose.
+
+When work is left for you, its chat says "The app closed while this was working · send a message to carry on".
+Send a message to continue. These lines, and "Resumed after quit" after a normal
+quit, stay in the conversation when you close and reopen the app.
+
 ## The desktop app's clocks — a proposed task, and a choice with a suggestion
 
 In the desktop app a proposed task waits on a clock (twelve seconds unless you
