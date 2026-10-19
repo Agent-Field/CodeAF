@@ -312,7 +312,10 @@ The app hands them to `codeaf app` at every launch and that process holds them i
 only: while it runs, a key never reaches the profile's `config.json`, and a provider the
 app disconnected is not quietly reconnected from a key in the profile or the shell. A
 rejected key is reported in the provider's own words and status code. Which providers the
-app connects, and how, is *Connecting a provider from the app* below.
+app connects, and how, is *Connecting a provider from the app* below. The GitHub token
+pasted while setting up the app's factory is kept the same way and handed back at every
+launch, so the factory stays connected after a restart; choosing gh's own login keeps only
+that choice, and gh keeps its token.
 
 The app's day cap is the profile's daily limit, the same one `/budget day` sets: setup,
 Settings and the terminal all read and change that one figure, and a cap an older app

@@ -76,10 +76,11 @@ package main
 // WHAT IS PRIVATE STAYS HERE. The bearer, the factory folder, the profile and
 // the app's home are never answered. A folder the person chose is refused if
 // it lies inside any of them, and is answered only as "~/…". GitHub custody is
-// the factory's and the app's, unchanged: a pasted token reaches
-// config.AppCredentials (or the profile when there is no app) exactly as the
-// terminal's setup does it, and is registered with the redactors before it is
-// sent.
+// the factory's and the app's: a pasted token reaches config.AppCredentials
+// (or the profile when there is no app) exactly as the terminal's setup does
+// it, and is registered with the redactors before it is sent. The app keeps it
+// in its keychain and hands it back with keys.set at every launch; a yes to gh
+// is kept in the factory's profile instead, because gh keeps its own token.
 
 import (
 	"context"
