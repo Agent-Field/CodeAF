@@ -400,6 +400,7 @@ func TestAppQuickCaptureFailureLeavesTheFileUntouched(t *testing.T) {
 	}
 }
 
+// Contract C4.a and C4.c: a stopped quick task keeps its captures and Undo.
 func TestAppQuickStoppedTaskCanUndoItsCapturedWrites(t *testing.T) {
 	agent, node, dir := appNodeFixture(t, true)
 	call := appWriteCall("stopped.txt", "ours")
@@ -411,7 +412,7 @@ func TestAppQuickStoppedTaskCanUndoItsCapturedWrites(t *testing.T) {
 	node.stopped = true
 	node.graph.mu.Unlock()
 	rows, _ := agent.AppQuickTasks()
-	if rows[0].State != "done" {
+	if rows[0].State != "stopped" || len(rows[0].Files) != 1 {
 		t.Fatal(rows)
 	}
 	undone, changed, err := agent.UndoQuickTask(1)

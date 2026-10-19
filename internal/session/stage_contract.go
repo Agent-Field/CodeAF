@@ -45,4 +45,4 @@ type StageDoor interface {
 // this conversation is a factory stage. It is the belt's predicate, asked of
 // one field, and A CONVERSATION THAT IS NOT A STAGE NEVER HAS EITHER VERB: a
 // model told it can report a stage would report one to nobody.
-func (c Config) mayStage() bool { return c.Stage != nil }
+func (c Config) mayStage() bool { return !c.readingTask() && c.Stage != nil }

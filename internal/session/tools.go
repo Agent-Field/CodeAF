@@ -175,6 +175,18 @@ func (a *Agent) belt() []bare.Tool {
 			tools[index] = a.deliverableWrite(a.appendableWrite(tool))
 		}
 	}
+	// A chat-owned reading carries only the readers that armed its hand-off.
+	// Filter this belt after its ordinary wrappers, so there is still one road
+	// that builds a read and no shelf that can put a writing hand back on it.
+	if a.config.readingTask() {
+		readers := tools[:0]
+		for _, tool := range tools {
+			if earlyTools[tool.Name] {
+				readers = append(readers, tool)
+			}
+		}
+		return readers
+	}
 	// AND THE THREE HANDS THAT CAN BE AIMED AT A FOLDER THIS CONVERSATION ONLY
 	// REFERS TO are wrapped once more, OUTERMOST (standingbelt.go): where you
 	// stand you write, and where you refer the work is kept in a copy until

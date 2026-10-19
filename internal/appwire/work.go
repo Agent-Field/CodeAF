@@ -28,6 +28,7 @@ const (
 const (
 	QuickRunning  = "running"
 	QuickDone     = "done"
+	QuickStopped  = "stopped"
 	QuickUndone   = "undone"
 	QuickGrew     = "grew"
 	QuickConflict = "conflict"

@@ -154,8 +154,9 @@ func (a *Agent) handoffReadSweep(ctx context.Context, ep *episode, hub *eventHub
 		}
 	}
 	id, _, refusal := a.admitQuick(quickAsk{
-		line:  sweepBrief(user, sweep.glosses, readers),
-		title: sweepTitle(user),
+		line:    sweepBrief(user, sweep.glosses, readers),
+		title:   sweepTitle(user),
+		reading: true,
 	})
 	if refusal.said != "" {
 		return nil
@@ -288,12 +289,12 @@ func (a *Agent) handoffReadSweep(ctx context.Context, ep *episode, hub *eventHub
 // AND A MOVE ENDS THE WAIT: moving answers true when the person asked for the
 // reply to move to a task while it waited.
 func (a *Agent) awaitQuickAnswer(ctx context.Context, id uint64) (answer string, ok, moving bool) {
-	timer := time.NewTimer(readSweepWait)
-	defer timer.Stop()
-	startTimer := time.NewTimer(readSweepStartWait)
-	defer startTimer.Stop()
-	look := time.NewTicker(readSweepMoveLook)
-	defer look.Stop()
+	timer, stop := a.taskClockTimer(readSweepWait)
+	defer stop()
+	startTimer, stopStart := a.taskClockTimer(readSweepStartWait)
+	defer stopStart()
+	look, stopLook := a.taskClockTimer(readSweepMoveLook)
+	defer func() { stopLook() }()
 	for {
 		node := a.graph().node(id)
 		if node == nil {
@@ -313,15 +314,17 @@ func (a *Agent) awaitQuickAnswer(ctx context.Context, id uint64) (answer string,
 			// is a reason to look at the state again, never a verdict.
 		case <-ctx.Done():
 			return "", false, false
-		case <-look.C:
+		case <-look:
 			if a.moveAsked.Load() {
 				return "", false, true
 			}
-		case <-startTimer.C:
+			stopLook()
+			look, stopLook = a.taskClockTimer(readSweepMoveLook)
+		case <-startTimer:
 			if node.stateNow() == TaskQueued {
 				return "", false, false
 			}
-		case <-timer.C:
+		case <-timer:
 			return "", false, false
 		}
 	}
