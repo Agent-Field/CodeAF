@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: The desktop app carries on replies after an unexpected close and bounds automatic attempts
-pr: 0
+pr: 1879
 surface: [engine, chat, remote]
 invalidates:
   - "The desktop app only resumed replies recorded by a graceful quit, and a dead window could stay working forever. The engine now expires stale working claims and carries recent replies and their running tasks on after an unexpected close."
