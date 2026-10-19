@@ -213,6 +213,9 @@ func appFiles(paths []string) []appwire.FileChange {
 // appTaskOf is one task notice on the wire. proposal says it arrived as a
 // proposal: a task that has not started and is waiting for the person.
 func appTaskOf(agent string, notice *session.TaskNotice, proposal bool, phase string, now time.Time) (appwire.Task, bool) {
+	if notice.Kind == session.TaskKindQuick {
+		return appwire.Task{}, false
+	}
 	raw := string(notice.State)
 	if strings.TrimSpace(raw) == "" {
 		raw = string(session.TaskQueued)
