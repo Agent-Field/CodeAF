@@ -2455,9 +2455,11 @@ Feature `factory.job_actions` is present only when the engine implements `Factor
 | `factory.job_request_changes` | words | `…/request_changes` |
 | `factory.job_retry_publish` | | `…/retry_publish` (assignee only; only after a failed publish) |
 | `factory.job_step_stop` | step | `…/steps/{step}/stop` (assignee only) |
-| `factory.job_step_rerun` | step | `…/steps/{step}/rerun` (assignee only) |
+| `factory.job_step_rerun` | step, words? (what to do differently; kept on the job's notes) | `…/steps/{step}/rerun` (assignee only) |
 | `factory.job_merge` | commit? (the pull request's head the person saw) | `…/merge` (assignee only; the factory's merge gate decides) |
 | `factory.job_create` | factory, repo (owner/name), title, text?, assignee?, start? (`backlog`\|`now`) | `POST /v1/jobs` |
+
+**A stuck step.** A job waiting with `needs_you.kind` `out_of_rounds` is a step that stopped short (it never reported, ran out of time, or its until did not hold); `needs_you.question.text` says so in the factory's words and `state_presentation.title` is `Stuck`. Its recovery is `factory.job_step_rerun`: on the stuck step to try again, or on `needs_you.back_to`, the finished step before it, to send the work back (left out when there is none, as for the first step); `words` are kept on the job's notes, which every step's brief carries. Stopping is `factory.job_stop`. The question's own answers are not carried.
 
 **Result.** `FactoryJobActed {factory, action, job, approval?, undo_until?, event?, current?}`. `current` is the job as the factory shows it after the action (one extra GET, never a retry); when it is absent the action still happened. The next write on the job carries `current.version`.
 

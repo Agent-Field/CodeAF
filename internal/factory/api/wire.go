@@ -337,7 +337,9 @@ type NeedsYou struct {
 	// BackTo is, on an approve_plan wait, the finished step a plan sent back
 	// runs again (factory.PlanSendsBack). It is left out when there is none,
 	// and also when an old document's step carries no name; can.reject_plan,
-	// never this field, says whether the revision is possible.
+	// never this field, says whether the revision is possible. On an
+	// out_of_rounds wait it is the finished step before the stuck one, which a
+	// step rerun from it sends the work back to.
 	BackTo string `json:"back_to,omitempty"`
 }
 

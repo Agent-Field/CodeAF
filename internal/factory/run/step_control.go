@@ -1,6 +1,7 @@
 package run
 
 import (
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -13,7 +14,10 @@ func (e StepControlRefusal) Error() string { return string(e) }
 
 // StepControl changes only a recorded run. A rerun keeps completed earlier
 // steps and the money already spent; publishing and final jobs cannot rewind.
-func StepControl(it *factory.Item, name string, rerun bool, now time.Time) error {
+// words, on a rerun, are the person's for it: kept on the item's notes, which
+// every step's brief carries, so trying again or sending work back says what to
+// do differently. A stop takes none.
+func StepControl(it *factory.Item, name string, rerun bool, words string, now time.Time) error {
 	if factory.JobState(*it) == "done" || it.Publishing {
 		return StepControlRefusal("finished or publishing jobs cannot change steps")
 	}
@@ -61,7 +65,12 @@ func StepControl(it *factory.Item, name string, rerun bool, now time.Time) error
 	s.Cur, s.Paused = index, false
 	it.Question, it.QKind, it.Asking = "", "", nil
 	it.Approval, it.StopUndo = nil, nil
-	loopSay(it, now, "said", map[bool]string{true: "Rerun from " + name, false: "Stopped step " + name}[rerun])
+	said := map[bool]string{true: "Rerun from " + name, false: "Stopped step " + name}[rerun]
+	if words = strings.TrimSpace(words); rerun && words != "" {
+		it.Notes = append(it.Notes, words)
+		said += ": " + oneLine(words)
+	}
+	loopSay(it, now, "said", said)
 	return nil
 }
 

@@ -21,7 +21,7 @@ func (h *Handler) jobScreens() {
 	h.postJob("assignee", h.config.Store != nil, h.changeAssignee)
 	h.postJob("sync", true, h.guarded("sync", h.onlyOwner(h.syncJob)))
 	for _, verb := range []string{"stop", "rerun"} {
-		h.postJob("steps/{sid}/"+verb, h.config.Store != nil, h.guarded("step_"+verb, h.onlyOwner(h.stepControl(verb == "rerun"))))
+		h.postJob("steps/{sid}/"+verb, h.config.Store != nil, h.stepControl(verb == "rerun"))
 	}
 	h.route("/v1/jobs/{id}/step-edits", map[string]http.HandlerFunc{
 		http.MethodGet: h.readStepEdits, http.MethodPost: h.editSteps,
@@ -32,7 +32,30 @@ func (h *Handler) jobScreens() {
 	h.route("/v1/issues", map[string]http.HandlerFunc{http.MethodGet: h.searchIssues, http.MethodPost: h.createIssueJob})
 }
 
+// stepControl is a step's stop or rerun, guarded as every job write is. A
+// rerun may carry the person's words for it; a stop is refused any.
 func (h *Handler) stepControl(rerun bool) jobAction {
+	verb := "step_stop"
+	if rerun {
+		verb = "step_rerun"
+	}
+	return func(w http.ResponseWriter, r *http.Request, it factory.Item) {
+		var body struct {
+			Expect *api.Expect `json:"expect,omitempty"`
+			Words  string      `json:"words,omitempty"`
+		}
+		if !h.decode(w, r, &body, true) || !h.fresh(w, r, it, verb, body.Expect) {
+			return
+		}
+		if !rerun && strings.TrimSpace(body.Words) != "" {
+			h.fail(w, http.StatusUnprocessableEntity, "only a rerun takes words")
+			return
+		}
+		h.onlyOwner(h.stepAct(rerun, body.Words))(w, r, it)
+	}
+}
+
+func (h *Handler) stepAct(rerun bool, words string) jobAction {
 	return func(w http.ResponseWriter, r *http.Request, it factory.Item) {
 		if !h.workerReady(w) {
 			return
@@ -55,7 +78,7 @@ func (h *Handler) stepControl(rerun bool) jobAction {
 		if rerun {
 			verb = record.StepRerun
 		}
-		h.finish(w, h.recordAction(r, it, verb, name, func() error { return lease.NewDoors(h.workers.desk).StepControl(it.ID, name, rerun) }))
+		h.finish(w, h.recordAction(r, it, verb, name, func() error { return lease.NewDoors(h.workers.desk).StepControl(it.ID, name, rerun, words) }))
 	}
 }
 

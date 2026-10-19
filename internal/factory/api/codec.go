@@ -165,10 +165,26 @@ func needsYou(it factory.Item) *NeedsYou {
 	if kind == factory.NeedsQuestion || kind == factory.NeedsOutOfAttempts || kind == factory.NeedsRunnerOffline {
 		ny.Question = needsQuestion(it)
 	}
-	if kind == factory.NeedsApprovePlan {
+	switch kind {
+	case factory.NeedsApprovePlan:
 		ny.BackTo, _ = factory.PlanSendsBack(it)
+	case factory.NeedsOutOfAttempts:
+		ny.BackTo = stuckBackTo(it)
 	}
 	return ny
+}
+
+// stuckBackTo is, on a step that stopped short, the finished step before it
+// that could take the work back ([factory.PreviousWork]), "" when there is none:
+// the step a person's "send it back" reruns.
+func stuckBackTo(it factory.Item) string {
+	if it.Stream == nil || it.Stream.Cur < 0 || it.Stream.Cur >= len(it.Stream.Phases) {
+		return ""
+	}
+	if prev := factory.PreviousWork(it.Stream.Phases, it.Stream.Cur); prev >= 0 {
+		return it.Stream.Phases[prev].Name
+	}
+	return ""
 }
 
 func needsQuestion(it factory.Item) *NeedsQuestion {

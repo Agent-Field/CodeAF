@@ -25,7 +25,7 @@ func TestStepRerunExecutesTailAndKeepsSpend(t *testing.T) {
 					{Name: "plan", Kind: factory.StageChat, State: factory.PhaseDone, Result: &factory.StageResult{Done: true, Output: "previous plan", Notes: []string{"keep this note"}}},
 					{Name: "write", Kind: factory.StageChat, State: factory.PhaseFailed},
 				}}
-				if err := StepControl(it, target, true, clock); err != nil {
+				if err := StepControl(it, target, true, "", clock); err != nil {
 					return err
 				}
 				// A pulled worker revives any begun stream through Hold(false).

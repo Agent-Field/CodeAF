@@ -167,6 +167,9 @@ type FactoryJobStepParams struct {
 	Job     int         `json:"job"`
 	Step    string      `json:"step"`
 	Expect  *api.Expect `json:"expect"`
+	// Words are the person's for a rerun (optional): what to do differently,
+	// kept on the job's notes. A step stop takes none.
+	Words string `json:"words,omitempty"`
 }
 
 // FactoryJobCreateParams makes a job. WITHOUT Start THE JOB IS ONLY ADDED TO
@@ -427,7 +430,24 @@ func prepChanges(p *FactoryJobChangesParams) error {
 	return err
 }
 
+// prepStepRerun is [prepStep] with the rerun's optional words.
+func prepStepRerun(p *FactoryJobStepParams) error {
+	words, err := words("words", p.Words, MaxFactoryJobWords, false)
+	if err != nil {
+		return err
+	}
+	p.Words = ""
+	if err := prepStep(p); err != nil {
+		return err
+	}
+	p.Words = words
+	return nil
+}
+
 func prepStep(p *FactoryJobStepParams) error {
+	if strings.TrimSpace(p.Words) != "" {
+		return Errorf(CodeBadParams, "only a rerun takes words")
+	}
 	if err := checkJob(&p.Factory, p.Job, p.Expect); err != nil {
 		return err
 	}
@@ -494,7 +514,7 @@ func init() {
 		"factory.job_retry_publish":   factoryAction("factory.job_retry_publish", prepAction, FactoryActor.FactoryJobRetryPublish),
 		"factory.job_create":          factoryAction("factory.job_create", prepCreate, FactoryActor.FactoryJobCreate),
 		"factory.job_step_stop":       factoryAction("factory.job_step_stop", prepStep, FactoryActor.FactoryJobStepStop),
-		"factory.job_step_rerun":      factoryAction("factory.job_step_rerun", prepStep, FactoryActor.FactoryJobStepRerun),
+		"factory.job_step_rerun":      factoryAction("factory.job_step_rerun", prepStepRerun, FactoryActor.FactoryJobStepRerun),
 		"factory.job_merge":           factoryAction("factory.job_merge", prepMerge, FactoryActor.FactoryJobMerge),
 	} {
 		methods[name] = m
