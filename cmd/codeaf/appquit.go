@@ -125,8 +125,20 @@ func (b *appBackend) resumeAfterQuit() {
 // and every task it had running: a task the quit left with nothing driving it
 // is picked up where its record stands.
 func (b *appBackend) resumeOne(id string, reply bool, tasks []string) {
-	_, live, err := b.heldLive(id)
+	b.resumeOneWith(id, reply, tasks, appwire.FooterResumedAfterQuit, appResumedWord, "quit-"+b.now().UTC().Format("20060102T150405.000000000Z"))
+}
+
+// resumeOneWith shares the held conversation, task continuation and private
+// wake, while preserving the quit road's own notice and model instruction.
+func (b *appBackend) resumeOneWith(id string, reply bool, tasks []string, kind, words, key string) {
+	if b.isClosing() {
+		return
+	}
+	a, live, err := b.heldLive(id)
 	if err != nil {
+		return
+	}
+	if kind == appwire.FooterResumedAfterClose && !live.conn.Assembled {
 		return
 	}
 	for _, task := range tasks {
@@ -134,17 +146,32 @@ func (b *appBackend) resumeOne(id string, reply bool, tasks []string) {
 			_ = live.conn.Conv.AppTaskAction(session.AppTaskIntent{ID: local, Action: "continue"})
 		}
 	}
-	door, ok := live.conn.Conv.(appResumer)
-	if !ok || !reply {
+	if !reply {
 		return
 	}
-	// THE APP IS TOLD BY A MARKER, and the sentence the model is told to carry
-	// on with is the model's alone: it is a line the session wrote to its model
-	// and is never one of the conversation's entries.
-	live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appFooter(
-		"resumed-"+b.now().Format("20060102T150405"), id, 0, appwire.FooterResumedAfterQuit, appResumedWord, b.now(),
-	)})
-	_, _ = door.ResumeAfterQuit()
+	var resume func() (bool, error)
+	if kind == appwire.FooterResumedAfterClose {
+		door, ok := live.conn.Conv.(interface{ ResumeAfterClose() (bool, error) })
+		if !ok {
+			return
+		}
+		resume = door.ResumeAfterClose
+	} else {
+		door, ok := live.conn.Conv.(appResumer)
+		if !ok {
+			return
+		}
+		resume = door.ResumeAfterQuit
+	}
+	// A NOTICE NEVER COSTS THE PERSON THE REPLY. The close road kept its footer
+	// before it counted the attempt; a footer the disk will not take here is
+	// said live instead, and the reply carries on as the quit road always did.
+	if err := b.keepAppFooter(a, key, kind, words); err != nil {
+		live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appFooter(key, id, 0, kind, words, b.now())})
+	} else {
+		b.emitAppFooter(a, key)
+	}
+	_, _ = resume()
 }
 
 // quitStopped lays the last quit's stopped processes over an agent's list:

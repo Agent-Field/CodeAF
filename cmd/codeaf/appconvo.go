@@ -150,6 +150,7 @@ func appKeepsQueuedMarks(conv appConversation) bool {
 }
 
 func (b *appBackend) steer(agent, text, clientID string, shown *appSending) error {
+	b.resetCloseResumes(agent)
 	a, err := b.find(agent)
 	if err != nil {
 		return err
@@ -273,6 +274,7 @@ func (b *appBackend) adoptTurn(a *appAgent, live *appLive, text, clientID string
 // Queue keeps a message for when the running turn ends, or sends it now when
 // nothing is running.
 func (b *appBackend) Queue(agent, text, clientID string) ([]appwire.Queued, error) {
+	b.resetCloseResumes(agent)
 	return b.queue(agent, text, clientID, appStated(text, appNoTeam()))
 }
 
@@ -280,6 +282,7 @@ func (b *appBackend) Queue(agent, text, clientID string) ([]appwire.Queued, erro
 // text was written from. The queue keeps all three and shows the person's
 // words; the message, once sent, is an ordinary one carrying them.
 func (b *appBackend) QueueMessage(agent string, message appwire.AgentMessage) ([]appwire.Queued, error) {
+	b.resetCloseResumes(agent)
 	shown, err := appMarkOf(message, "a queued message")
 	if err != nil {
 		return nil, err
@@ -593,6 +596,7 @@ func (b *appBackend) restateBatch(live *appLive, q session.Question) {
 // them, one call of a batch or all of them, putting it aside for later, or
 // handing the choice back to the agent's own suggestion.
 func (b *appBackend) AnswerAskWith(agent, id string, answer appwire.AskAnswer) error {
+	b.resetCloseResumes(agent)
 	if handled, err := b.answerOrderAsk(id, answer.Option); handled {
 		return err
 	}
@@ -1295,6 +1299,7 @@ func (b *appBackend) sendMessage(agent string, message appwire.AgentMessage) (ui
 // sendMessageFor is [appBackend.sendMessage] stating creation, the context the
 // accepting door knows, on the submission it builds. It is never inferred.
 func (b *appBackend) sendMessageFor(agent string, message appwire.AgentMessage, creation *session.CreationContext) (uint64, *appSending, error) {
+	b.resetCloseResumes(agent)
 	ids := message.Attachments
 	if err := appwire.CheckAttachIDs(ids); err != nil {
 		return 0, nil, err

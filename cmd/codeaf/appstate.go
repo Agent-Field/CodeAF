@@ -76,6 +76,11 @@ type appStateFile struct {
 	QuitReplies     []string          `json:"quit_replies,omitempty"`
 	QuitTasks       []string          `json:"quit_tasks,omitempty"`
 	QuitStopped     []appwire.Process `json:"quit_stopped,omitempty"`
+	// CloseResumes and CloseStarts bound automatic work across process deaths.
+	// CloseHandled keeps only the newest handled stamp per existing agent.
+	CloseResumes map[string]int       `json:"close_resumes,omitempty"`
+	CloseStarts  []time.Time          `json:"close_starts,omitempty"`
+	CloseHandled map[string]time.Time `json:"close_handled,omitempty"`
 	// Closed and Archived are when the person moved each agent to Closed or
 	// put it away (apptidy.go).
 	Closed   map[string]time.Time `json:"closed,omitempty"`
@@ -207,6 +212,15 @@ func (f appStateFile) clone() appStateFile {
 	out.QuitReplies = append([]string(nil), f.QuitReplies...)
 	out.QuitTasks = append([]string(nil), f.QuitTasks...)
 	out.QuitStopped = append([]appwire.Process(nil), f.QuitStopped...)
+	out.CloseStarts = append([]time.Time(nil), f.CloseStarts...)
+	out.CloseResumes = make(map[string]int, len(f.CloseResumes))
+	for k, v := range f.CloseResumes {
+		out.CloseResumes[k] = v
+	}
+	out.CloseHandled = make(map[string]time.Time, len(f.CloseHandled))
+	for k, v := range f.CloseHandled {
+		out.CloseHandled[k] = v
+	}
 	out.PinnedModels = append([]string(nil), f.PinnedModels...)
 	return out
 }
