@@ -1013,11 +1013,20 @@ func appQuickOf(agent string, view session.AppQuickTaskView, conflict []string) 
 		quick.State = appwire.QuickRunning
 	case "undone":
 		quick.State = appwire.QuickUndone
+	case "done":
+		quick.State = appwire.QuickDone
+	case "promoted":
+		// A quick task that became a full task has always gone out as done: the
+		// full task is where its work now shows, and the app has no other word
+		// for the row it left behind. Kept so this change moves no other row.
+		quick.State = appwire.QuickDone
+	case "stopped":
+		quick.State = appwire.QuickStopped
 	case "grew":
 		quick.State = appwire.QuickGrew
 		quick.Grew = &appwire.QuickGrowth{Files: len(view.Files), Reason: view.Grew}
 	default:
-		quick.State = appwire.QuickDone
+		quick.State = view.State
 	}
 	if len(conflict) > 0 && quick.State == appwire.QuickDone {
 		quick.State = appwire.QuickConflict

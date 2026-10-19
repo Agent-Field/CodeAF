@@ -185,18 +185,14 @@ func (a *Agent) proposeQuickPromotion(ctx context.Context, node *TaskNode, call 
 	}
 	wait, err := owner.openTask(ctx, id, spec, "")
 	if err != nil {
-		clearErr := graph.writeAppControl(func() (func(), error) {
-			old := node.spec.quick.promotion
-			node.spec.quick.promotion = 0
-			return func() { node.spec.quick.promotion = old }, nil
-		})
+		clearErr := node.clearQuickPromotion()
 		return errors.Join(err, clearErr).Error(), true, nil
 	}
 	answer, err := wait.answer()
-	if err != nil {
-		return err.Error(), true, nil
-	}
-	if !answer.Approved {
+	if err != nil || !answer.Approved {
+		if clearErr := node.clearQuickPromotion(); err != nil || clearErr != nil {
+			return errors.Join(err, clearErr).Error(), true, nil
+		}
 		return reason + " · promotion declined; nothing ran", true, nil
 	}
 	if answer.Redirect != "" {
@@ -219,6 +215,17 @@ func (a *Agent) proposeQuickPromotion(ctx context.Context, node *TaskNode, call 
 		cancel()
 	}
 	return "Promoted to a task; the blocked action will run there", true, nil
+}
+
+// A declined or withdrawn question no longer holds the worker. Clear its
+// pending mark as well, so a running row cannot offer a dead promotion.
+func (n *TaskNode) clearQuickPromotion() error {
+	return n.graph.writeAppControl(func() (func(), error) {
+		quick := n.spec.quick
+		old, reason := quick.promotion, quick.grew
+		quick.promotion, quick.grew = 0, ""
+		return func() { quick.promotion, quick.grew = old, reason }, nil
+	})
 }
 
 // Undo validates every after hash before changing any file. A mismatch changes
