@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/processgroup"
+	"github.com/Agent-Field/codeaf/internal/shell"
 )
 
 // strictPreamble is prefixed to every command this package runs. A pipeline
@@ -134,7 +135,7 @@ func RunReading(
 	if strategy.Empty() {
 		return Result{}, false
 	}
-	shell, err := exec.LookPath(readingShell)
+	bash, err := shell.Reading()
 	if err != nil {
 		return Result{}, false
 	}
@@ -142,7 +143,7 @@ func RunReading(
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	command := exec.CommandContext(ctx, shell, "-c", strictPreamble+strategy.Command)
+	command := exec.CommandContext(ctx, bash, "-c", strictPreamble+strategy.Command)
 	command.Dir = filepath.Join(workspace, strategy.Workdir)
 	// A suite spawns children — a test server, a browser, a compiler — and
 	// killing only the shell leaves them holding the pipe this reading is being

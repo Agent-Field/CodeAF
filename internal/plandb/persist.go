@@ -219,7 +219,7 @@ func openDatabase(path string) (*sql.DB, error) {
 			return nil, fmt.Errorf("create plan store directory: %w", err)
 		}
 	}
-	dsn := "file:" + filepath.ToSlash(path) + "?_txlock=immediate&_pragma=busy_timeout(5000)"
+	dsn := StoreURI(path, "_txlock=immediate&_pragma=busy_timeout(5000)")
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
@@ -248,7 +248,7 @@ func openDatabase(path string) (*sql.DB, error) {
 // for it. The write handle is always opened first, so the schema this one
 // reads already exists.
 func openReadDatabase(path string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(path)+"?_pragma=busy_timeout(5000)")
+	db, err := sql.Open("sqlite", StoreURI(path, "_pragma=busy_timeout(5000)"))
 	if err != nil {
 		return nil, err
 	}

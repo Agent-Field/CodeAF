@@ -8,17 +8,18 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/processgroup"
+	"github.com/Agent-Field/codeaf/internal/shell"
 )
 
 // CheckOptions tunes the check executor. The zero value is the defaults.
 type CheckOptions struct {
 	// Timeout bounds one command; 0 is ten minutes.
 	Timeout time.Duration
-	// Shell runs the command as `<Shell> -c <command>`; "" is bash.
+	// Shell runs the command as `<Shell> -c <command>`; "" chooses this OS's bash.
 	Shell string
 }
 
@@ -40,9 +41,6 @@ const checkTailLines = 50
 func NewCheckExecutor(opts CheckOptions) Executor {
 	if opts.Timeout <= 0 {
 		opts.Timeout = 10 * time.Minute
-	}
-	if opts.Shell == "" {
-		opts.Shell = "bash"
 	}
 	return ExecutorFunc(func(ctx context.Context, job Job) (factory.StageResult, error) {
 		return runCheck(ctx, opts, job)
@@ -71,6 +69,14 @@ func runCheck(ctx context.Context, opts CheckOptions, job Job) (factory.StageRes
 		}, nil
 	}
 
+	if opts.Shell == "" {
+		var err error
+		opts.Shell, err = shell.Bash()
+		if err != nil {
+			return factory.StageResult{Output: err.Error(), Exit: 127, Findings: 1}, nil
+		}
+	}
+
 	log("check: " + command)
 	start := time.Now()
 
@@ -82,13 +88,14 @@ func runCheck(ctx context.Context, opts CheckOptions, job Job) (factory.StageRes
 	cmd.Env = checkEnv(os.Environ())
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	processgroup.Configure(cmd)
 	cmd.Cancel = func() error {
-		// The group, not the shell alone: a test's children die with it.
+		// The group, not the shell alone: a test's children die with it. On Windows
+		// processgroup kills the tree with taskkill, since there is no group signal.
 		if cmd.Process == nil {
 			return nil
 		}
-		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		return processgroup.Kill(cmd.Process.Pid)
 	}
 	// A child that escaped the group may hold the pipe open; do not wait on it.
 	cmd.WaitDelay = 2 * time.Second

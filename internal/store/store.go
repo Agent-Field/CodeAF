@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cas"
+	"github.com/Agent-Field/codeaf/internal/sqlitefile"
 	_ "modernc.org/sqlite"
 )
 
@@ -697,8 +698,7 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("could not open %s: %w", storePathForPerson(absolute), pathReason(err))
 	}
 
-	u := url.URL{Scheme: "file", Path: absolute}
-	query := u.Query()
+	query := make(url.Values)
 	// busy_timeout is SQLite's own patience and nothing else's: no caller waits
 	// it out any more, because every write goes through [Store.beginWrite] and
 	// gives up on its own clock first (writelock.go).
@@ -706,9 +706,8 @@ func Open(path string) (*Store, error) {
 	query.Add("_pragma", "foreign_keys(1)")
 	query.Add("_pragma", "synchronous(NORMAL)")
 	query.Set("_txlock", "immediate")
-	u.RawQuery = query.Encode()
 
-	db, err := sql.Open("sqlite", u.String())
+	db, err := sql.Open("sqlite", sqlitefile.URI(absolute, query.Encode()))
 	if err != nil {
 		return nil, openFailure(absolute, err)
 	}
