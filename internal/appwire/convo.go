@@ -41,6 +41,9 @@ const (
 	// FooterResumedAfterQuit is in front of a reply that carries on after the
 	// app was quit in the middle of it.
 	FooterResumedAfterQuit = "resumed_after_quit"
+	// These notices explain work left unfinished by an unexpected app close.
+	FooterResumedAfterClose = "resumed_after_close"
+	FooterStoppedByClose    = "stopped_by_close"
 )
 
 // CodeSent refuses an edit to a queued message that has already been sent.

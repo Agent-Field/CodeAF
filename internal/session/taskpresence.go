@@ -127,6 +127,8 @@ const (
 	// heartbeats, so a session has to miss three in a row before another window
 	// gives up on it. Two would call a session dead over one slow disk.
 	presenceWindow = 3 * presenceHeartbeat
+	// PresenceWindow lets a watcher expire claims on the writer's own clock.
+	PresenceWindow = presenceWindow
 	// presenceCloseGrace bounds how long [Agent.Close] waits for the heartbeat
 	// to remove the file. Past it the quit goes on and the file is left to go
 	// stale, which the law above already covers — a person's quit must never
