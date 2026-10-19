@@ -12,13 +12,14 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
+	"github.com/Agent-Field/codeaf/internal/shell"
 )
 
 // CheckOptions tunes the check executor. The zero value is the defaults.
 type CheckOptions struct {
 	// Timeout bounds one command; 0 is ten minutes.
 	Timeout time.Duration
-	// Shell runs the command as `<Shell> -c <command>`; "" is bash.
+	// Shell runs the command as `<Shell> -c <command>`; "" chooses this OS's bash.
 	Shell string
 }
 
@@ -40,9 +41,6 @@ const checkTailLines = 50
 func NewCheckExecutor(opts CheckOptions) Executor {
 	if opts.Timeout <= 0 {
 		opts.Timeout = 10 * time.Minute
-	}
-	if opts.Shell == "" {
-		opts.Shell = "bash"
 	}
 	return ExecutorFunc(func(ctx context.Context, job Job) (factory.StageResult, error) {
 		return runCheck(ctx, opts, job)
@@ -69,6 +67,14 @@ func runCheck(ctx context.Context, opts CheckOptions, job Job) (factory.StageRes
 			Output: fmt.Sprintf("codeaf does not know where %s is checked out", job.Item.Repo),
 			Exit:   1, Findings: 1,
 		}, nil
+	}
+
+	if opts.Shell == "" {
+		var err error
+		opts.Shell, err = shell.Bash()
+		if err != nil {
+			return factory.StageResult{Output: err.Error(), Exit: 127, Findings: 1}, nil
+		}
 	}
 
 	log("check: " + command)

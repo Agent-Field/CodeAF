@@ -67,6 +67,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
+	"github.com/Agent-Field/codeaf/internal/shell"
 )
 
 const (
@@ -1142,6 +1143,10 @@ func (r *jobRegistry) startInUnder(ctx context.Context, command, want string) (*
 	if r.runningProcesses() >= jobProcessCap {
 		return nil, errJobProcessCap
 	}
+	program, shellArgs, shellErr := bare.StreamingShell(command)
+	if shellErr != nil {
+		return nil, shellErr
+	}
 	started, err := r.newJobIn(command, jobKindBash, want)
 	if err != nil {
 		return nil, err
@@ -1153,8 +1158,7 @@ func (r *jobRegistry) startInUnder(ctx context.Context, command, want string) (*
 	// stays empty until exit is a job that looks dead for as long as it runs —
 	// and this used to be a hand-copied three-line shell choice with no
 	// buffering fix in it at all.
-	shell, shellArgs := bare.StreamingShell(command)
-	process := exec.Command(shell, shellArgs...)
+	process := exec.Command(program, shellArgs...)
 	process.Dir = started.dir
 	process.Env = bare.StreamingEnv()
 	// Setsid puts the job and everything it spawns in one process group, so a
@@ -2180,24 +2184,16 @@ func (s *jobSink) lastNonEmptyLine() string {
 
 // ── process plumbing ────────────────────────────────────────────────────────
 
-// jobShell mirrors bare's shell preference (/bin/bash, bash on PATH, sh). It is
-// a copy rather than a call because bare's is unexported and this slice wraps
-// that package rather than editing it; the order is three lines and it is the
-// same three lines.
+// jobShell shares bare's shell preference through internal/shell: Unix keeps
+// /bin/bash, bash on PATH, sh, and Windows uses the engine's native bash.
 //
 // IT IS NOT FOR ANYTHING WHOSE OUTPUT SOMEBODY READS WHILE IT RUNS. A bash job
 // goes through [bare.StreamingShell] instead, which is this choice plus the
 // line-buffering that keeps a long command's log from being empty until it
 // exits. What is left on this one is a watch's tick and an automation's look
 // — commands that are short by construction and read only after they end.
-func jobShell() (string, []string) {
-	if _, err := os.Stat("/bin/bash"); err == nil {
-		return "/bin/bash", []string{"-c"}
-	}
-	if bash, err := exec.LookPath("bash"); err == nil {
-		return bash, []string{"-c"}
-	}
-	return "sh", []string{"-c"}
+func jobShell() (string, []string, error) {
+	return shell.Preferred()
 }
 
 // waitExitCode extracts an exit code from cmd.Wait's error, -1 when the process
