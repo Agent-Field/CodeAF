@@ -1,10 +1,6 @@
 package plandb
 
-import (
-	"database/sql"
-
-	"github.com/Agent-Field/codeaf/internal/sqlitefile"
-)
+import "database/sql"
 
 // ReadOnly is the committed tasks of an existing store, in the store's order,
 // and the id of its root.
@@ -20,7 +16,7 @@ type ReadOnly struct {
 // able to change them. A store it cannot read is an error, and says nothing
 // about the tasks in it.
 func ReadTasks(path string) (ReadOnly, error) {
-	db, err := sql.Open("sqlite", sqlitefile.URI(path, "mode=ro&_pragma=busy_timeout(2000)"))
+	db, err := sql.Open("sqlite", StoreURI(path, "mode=ro&_pragma=busy_timeout(2000)"))
 	if err != nil {
 		return ReadOnly{}, err
 	}

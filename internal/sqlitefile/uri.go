@@ -1,5 +1,7 @@
-// Package sqlitefile gives every engine store the same native-path URI spelling
-// without importing any store or the SQLite driver itself.
+// Package sqlitefile gives the graph, workspace and automation stores the same
+// native-path URI spelling without importing any store or the SQLite driver.
+// Plan stores retain their raw writer spelling through plandb.StoreURI so a
+// reader still reaches files created before filename escaping was introduced.
 //
 // On 2026-10-19 the native Windows store tests failed every open with "SQL logic
 // error: out of memory (1)": url.URL had rendered C:\Users\… as file:C:%5CUsers….
