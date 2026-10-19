@@ -2762,6 +2762,16 @@ Setup after a restart. Saved setup progress is not proof of a live GitHub creden
 
 Available when hello includes `memory.applies`; other engines answer `unknown_method`. This reads the memory scope applicable to an existing agent.
 
+## Factory: naming a factory in the app (`factory.rename`)
+
+Feature `factory.rename` is present only when the engine implements `FactoryRenamer` on top of the factory interface. Other engines answer `unknown_method`.
+
+| method | params | answers |
+|---|---|---|
+| `factory.rename` | `{factory, name}` | `{}` |
+
+`name` (at most 60 characters; inner runs of space folded) is the person's own name for the connection. It is kept on the app's record of it (`<home>/app/factories.json`), never sent to the factory, and `factory.list` answers it as the connection's `name` over the factory's own. An empty `name` goes back to the default: the factory's own name, or for the factory on this Mac `<login>'s factory` once it knows whose GitHub it is (`Your factory` before). A factory that is not listed is `not_found`.
+
 ## Factory: a job's conversations (`factory.job_chats`)
 
 Feature `factory.job_chats` is present only when the engine implements `FactoryJobChatter` on top of the factory interface. Other engines answer `unknown_method`.

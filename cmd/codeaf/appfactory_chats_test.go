@@ -46,3 +46,39 @@ func TestAJobsChatsAreItsAgentMadeOnceAndItsStepsThatRan(t *testing.T) {
 	}
 	s.mustFail("factory.job_chats", map[string]any{"factory": "f-elsewhere", "job": it.ID}, appwire.CodeNotFound)
 }
+
+// THE FACTORY ON THIS MAC IS NAMED FOR WHOSE IT IS, AND A PERSON MAY RENAME IT.
+// Once it knows whose GitHub it is the list says `<login>'s factory`; a name
+// the person gives it wins and is kept across a relaunch; an empty name goes
+// back to the default; an unknown factory is not found.
+func TestThisMacsFactoryIsNamedForItsPersonAndCanBeRenamed(t *testing.T) {
+	s := newLocalSetup(t)
+	st := s.start()
+	name := func(w *factoryWire) string {
+		var list appwire.FactoryList
+		w.must("factory.list", struct{}{}, &list)
+		for _, f := range list.Factories {
+			if f.ID == st.Factory {
+				return f.Name
+			}
+		}
+		return ""
+	}
+	if got := name(s.factoryWire); got != "owner's factory" {
+		t.Fatalf("default name = %q", got)
+	}
+	s.must("factory.rename", map[string]any{"factory": st.Factory, "name": "  Ada's   desk "}, &struct{}{})
+	if got := name(s.factoryWire); got != "Ada's desk" {
+		t.Fatalf("renamed = %q", got)
+	}
+	s.backend.Close()
+	w, _ := reopened(t, s.backend.factoryHub())
+	if got := name(w); got != "Ada's desk" {
+		t.Fatalf("after a relaunch = %q", got)
+	}
+	w.must("factory.rename", map[string]any{"factory": st.Factory, "name": ""}, &struct{}{})
+	if got := name(w); got == "Ada's desk" || got == "" {
+		t.Fatalf("back to the default = %q", got)
+	}
+	w.mustFail("factory.rename", map[string]any{"factory": "f-nowhere", "name": "x"}, appwire.CodeNotFound)
+}
