@@ -118,6 +118,14 @@ var fanoutPrompt string
 //go:embed prompts/quick.md
 var quickPrompt string
 
+// readingPrompt is the role of a chat-owned reading. Its tools come from the
+// same set that arms the hand-off, so the page cannot promise another hand.
+//
+//go:embed prompts/reading.md
+var readingPrompt string
+
+const readingToolsToken = "READING_TOOLS"
+
 // landingAnswerPrompt is the short role page for the one answer an owed root landing opens.
 //
 //go:embed prompts/landing-answer.md
@@ -275,7 +283,9 @@ func (c Config) isWorker() bool { return c.InTask && c.taskID != 0 }
 // there is an agent: a worker handed no graph — an orchestrate run's node — has
 // no assignment road to move, and the page that teaches the verb must come off
 // with it.
-func (c Config) mayRevise() bool { return c.InTask && c.tasker != nil && c.taskID != 0 }
+func (c Config) mayRevise() bool {
+	return !c.readingTask() && c.InTask && c.tasker != nil && c.taskID != 0
+}
 
 // renderSystem builds the final system prompt as of right now.
 func renderSystem(config Config) string { return renderSystemAt(config, time.Now()) }
@@ -331,11 +341,10 @@ func renderSystemAt(config Config, now time.Time) string {
 	}
 	out.WriteString(page)
 
-	// EVERY WORKER IS TOLD WHAT IT IS, floor of the tree included. The role page
-	// names no conditional verb, so the one predicate under it is whether this
-	// agent is a task node at all ([Config.isWorker]) — a hand is not one, and
-	// opens on a page of its own.
-	if config.isWorker() {
+	// Every ordinary worker is told what it is, floor of the tree included. A
+	// reading already has its own role page without the file-changing guidance;
+	// the other task nodes ([Config.isWorker]) read the ordinary worker's page.
+	if config.isWorker() && !config.readingTask() {
 		out.WriteString("\n\n")
 		out.WriteString(strings.TrimRight(workerPrompt, "\n"))
 	}

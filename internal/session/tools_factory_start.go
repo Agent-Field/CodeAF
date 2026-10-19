@@ -36,7 +36,7 @@ type RunManagerDoor interface {
 // mayStart says whether `factory_start` belongs on this belt.
 func (c Config) mayStart() bool {
 	_, ok := c.FactoryRun.(RunStarter)
-	return ok
+	return !c.readingTask() && ok
 }
 
 const factoryStartDescription = "Start the run of the ONE factory item this conversation manages, when the person asks you to start, run, go, resume or continue. " +

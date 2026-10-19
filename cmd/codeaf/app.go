@@ -3353,9 +3353,13 @@ func (b *appBackend) ListTasks(id string) ([]appwire.Task, error) {
 	var transcript string
 	var fallback time.Time
 	var heard map[string]appwire.Task
+	quickIDs := map[string]bool{}
 	b.locked(func() {
 		transcript, fallback = a.transcript, a.view.UpdatedAt
 		if a.live != nil {
+			for id := range a.live.quicks {
+				quickIDs[id] = true
+			}
 			heard = make(map[string]appwire.Task, len(a.live.tasks))
 			for k, v := range a.live.tasks {
 				heard[k] = v
@@ -3373,6 +3377,7 @@ func (b *appBackend) ListTasks(id string) ([]appwire.Task, error) {
 	}
 	for _, notice := range session.ReadSessionTasks(transcript) {
 		if notice.Kind == session.TaskKindQuick {
+			quickIDs[appTaskID(id, notice.ID)] = true
 			continue
 		}
 		// A TASK THE CONVERSATION LEFT RUNNING WHEN IT CLOSED is interrupted:
@@ -3401,6 +3406,10 @@ func (b *appBackend) ListTasks(id string) ([]appwire.Task, error) {
 			if row.SessionID != id {
 				continue
 			}
+			if row.Kind == session.TaskKindQuick {
+				quickIDs[appIndexTaskID(id, row.ID)] = true
+				continue
+			}
 			state := appTaskState(row.Status)
 			if state == "" {
 				continue
@@ -3424,6 +3433,9 @@ func (b *appBackend) ListTasks(id string) ([]appwire.Task, error) {
 		}
 	}
 	for taskID, task := range heard {
+		if quickIDs[taskID] {
+			continue
+		}
 		if i, ok := index[taskID]; ok {
 			if task.Title == "" {
 				task.Title = tasks[i].Title

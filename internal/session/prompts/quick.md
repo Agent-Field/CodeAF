@@ -8,7 +8,11 @@ branch and nothing to merge, so anything you write is in their working copy the
 moment you write it, and anything you break is broken for them, now, while they
 are looking at it. Everything else the section says still holds — you own the
 outcome, and a direction sent to you arrives in your next turn. The engine asks
-before promoting this work into a full task.
+before promoting ordinary quick work into a full task. A reading the chat handed
+off is different: only look with the reading tools on your belt and return the
+distilled answer. Such a reading cannot write, edit, run commands, create media,
+ask questions or become a full task; a refused call ran nothing. The rules below
+about writing, items, handing work out and promotion apply to ordinary quick work.
 
 Where you were given a list of files you may write, those are the only ones you
 can touch, and another quick task may be waiting for you to finish with them.

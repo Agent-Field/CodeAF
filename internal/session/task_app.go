@@ -708,17 +708,17 @@ func (a *Agent) AppQuickTasks() ([]AppQuickTaskView, error) {
 		}
 		quick := node.spec.quick
 		state := "running"
-		if node.state.settled() {
-			state = "done"
-		}
-		if quick.promotion != 0 && !quick.promoted && quick.grew != "" {
-			state = "grew"
-		}
-		if quick.promoted {
-			state = "promoted"
-		}
-		if quick.undone {
+		switch {
+		case quick.undone:
 			state = "undone"
+		case quick.promoted:
+			state = "promoted"
+		case node.state == TaskDone:
+			state = "done"
+		case node.state.settled():
+			state = "stopped"
+		case quick.promotion != 0 && quick.grew != "":
+			state = "grew"
 		}
 		view := AppQuickTaskView{ID: strconv.FormatUint(id, 10), Title: node.spec.title, State: state, Grew: quick.grew, Version: node.app.Version + 1, Files: []AppQuickFile{}}
 		for _, c := range quick.captures {

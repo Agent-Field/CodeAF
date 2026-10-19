@@ -3638,6 +3638,11 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 
 // dispatchTool is the dispatch itself: find the hand, ask the doors, run it.
 func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall, rendered string) toolResult {
+	// A reading cannot ask, including through consent or an off-belt call.
+	// Refuse before pre-action can open a question or capture a file.
+	if refusal := a.readingToolRefusal(call.Function.Name); refusal != "" {
+		return a.finishToolResult(ep, call, toolResult{text: refusal, isError: true, harness: true})
+	}
 	for _, tool := range a.beltTools() {
 		if tool.Name != call.Function.Name {
 			continue

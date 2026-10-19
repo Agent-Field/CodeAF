@@ -59,12 +59,14 @@ const (
 // prompt is built before the agent exists (agent.go's newAgent). The belt
 // functions read these SAME predicates, which is what makes it impossible for
 // the two to disagree about a tool.
+// A chat-owned reading carries only earlyTools, so predicates for every other
+// capability answer false even when the config still holds its ordinary doors.
 
 // maySeeSettings says whether the settings pair belongs on this belt
 // (tools_settings.go). It comes off inside a task for the sharpest reason on
 // the belt: a node runs in a worktree with nobody watching, so a permanent
 // change to the person's machine made there is one they never saw made.
-func (c Config) maySeeSettings() bool { return !c.InTask }
+func (c Config) maySeeSettings() bool { return !c.readingTask() && !c.InTask }
 
 // shelvesCapabilities says whether this shape holds its rarely-reached tools
 // back on a named shelf, one `load_capability` call away, rather than carrying
@@ -73,12 +75,12 @@ func (c Config) maySeeSettings() bool { return !c.InTask }
 // telling the model to load cannot be rendered for a shape whose belt carries
 // the tools directly — which a worker or a task node does, because the saving
 // is only worth having on a prefix re-sent every turn.
-func (c Config) shelvesCapabilities() bool { return !c.InTask }
+func (c Config) shelvesCapabilities() bool { return !c.readingTask() && !c.InTask }
 
 // mayWatch says whether `watch` belongs on this belt (tools.go). It comes off
 // inside a task because its whole delivery mechanism is a note arriving in a
 // conversation, and a node has none.
-func (c Config) mayWatch() bool { return !c.InTask }
+func (c Config) mayWatch() bool { return !c.readingTask() && !c.InTask }
 
 // mayAsk says whether `ask` belongs on this belt. It is unconditional on the
 // conversation's belt — only the shelf changes whether the schema is carried now
@@ -86,14 +88,16 @@ func (c Config) mayWatch() bool { return !c.InTask }
 // the person through the plan CLI and never through a consent gate (bashbelt.go
 // builds that belt; this is the same fact asked of a config before there is an
 // agent, so the belt and the page cannot disagree about the verb).
-func (c Config) mayAsk() bool { return !c.mayBashBelt() }
+func (c Config) mayAsk() bool { return !c.readingTask() && !c.mayBashBelt() }
 
 // mayProposeTask says whether the task pair — `propose_task` and the `tasks`
 // window onto what it started — belongs on this belt: always in a conversation,
 // and in a node only when it was handed the conversation's graph and is not
 // standing on the floor of the tree ([Agent.mayProposeTask] is this asked of a
 // live agent, and task.go states the fan-out law it comes from).
-func (c Config) mayProposeTask() bool { return !c.InTask || (c.mayFanOut() && !c.bashBelt) }
+func (c Config) mayProposeTask() bool {
+	return !c.readingTask() && (!c.InTask || (c.mayFanOut() && !c.bashBelt))
+}
 
 // mayQuickTask says whether `quick_task` belongs on this belt, and it is
 // [Config.mayProposeTask] and not a second reading of it (task_quick.go).
@@ -128,19 +132,18 @@ func (c Config) oneTaskRoad() bool {
 	return !c.InTask && bashBeltAsked() && chatRunEngine != nil
 }
 
-// mayTickItems says whether `items` belongs on this belt (task_quick.go), and
-// it is the presence of the node's own list door and nothing else: a quick
-// task's worker has one, and every other agent this package builds has none.
-func (c Config) mayTickItems() bool { return c.quickItems != nil }
+// mayTickItems says whether `items` belongs on this belt (task_quick.go): an
+// ordinary quick worker has its own list door, while a reading only looks.
+func (c Config) mayTickItems() bool { return !c.readingTask() && c.quickItems != nil }
 
 // hasConnect says whether the accounts pair belongs on this belt
-// (tools_connect.go). It is written as the hub CONSTRUCTOR'S OWN ANSWER rather
-// than as a second reading of the two fields, so that a door that starts
+// (tools_connect.go). Outside a reading it is the hub CONSTRUCTOR'S OWN ANSWER
+// rather than a second reading of the two fields, so that a door that starts
 // handing over a hub some other way cannot make the prompt and the belt
 // disagree: [newConnectHub] is what agent.go calls at construction, and
 // a.connect is never reassigned afterwards, so this is settled for the life of
 // the agent at the moment the prompt is rendered.
-func (c Config) hasConnect() bool { return newConnectHub(c) != nil }
+func (c Config) hasConnect() bool { return !c.readingTask() && newConnectHub(c) != nil }
 
 // mayAutomate says whether `automation` belongs on this belt, and it is the ONE
 // reading of that availability, which [Agent.automationTools] builds the tool
@@ -153,17 +156,18 @@ func (c Config) hasConnect() bool { return newConnectHub(c) != nil }
 // behind will plan a whole reply around one — and it is the predicate the page's
 // automation paragraph is composed from.
 func (c Config) mayAutomate() bool {
-	return c.automationStore() != nil && c.AutomationRun == nil && !c.InTask
+	return !c.readingTask() && c.automationStore() != nil && c.AutomationRun == nil && !c.InTask
 }
 
-// signsGitWork says whether the attribution law belongs on this belt, and the
-// answer is always yes. It used to be the person's `attribution` row, and that
-// row is gone (2026-09-23): codeaf signs every commit it writes. It used to
+// signsGitWork says whether the attribution law belongs on this belt. A reading
+// cannot make a commit, so it has no signing instructions. It used to be the
+// person's `attribution` row, which is gone (2026-09-23): codeaf signs every
+// commit it writes. It used to
 // carry a second half too — a fork's hand was told nothing because its `bash`
-// was rebuilt read-only — and that half went with `fork` itself: every shape
-// this package still builds carries a `bash` that could make a commit. It stays
-// a predicate because the belt-fact table is written in predicates.
-func (c Config) signsGitWork() bool { return true }
+// was rebuilt read-only — and that half went with `fork` itself. Every ordinary
+// shape still carries a `bash` that could make a commit. It stays a predicate
+// because the belt-fact table is written in predicates.
+func (c Config) signsGitWork() bool { return !c.readingTask() }
 
 // assistedByModel is the model this belt's `Assisted-by` line names: the model
 // the page is rendered for, or nothing when the person turned the model's name
@@ -261,7 +265,7 @@ func (a *Agent) signsGitWork() gitSignature {
 // written, and somebody watching who can answer the card. A design nobody can
 // approve is two model calls spent on a page that will be dropped.
 func (c Config) mayDesignHarness() bool {
-	return c.HarnessStore != nil && c.RunHarness != nil && c.AskConsent
+	return !c.readingTask() && c.HarnessStore != nil && c.RunHarness != nil && c.AskConsent
 }
 
 // mayProposeSubharness says whether the saved-programs pair belongs on this
@@ -275,7 +279,7 @@ func (c Config) mayDesignHarness() bool {
 // verb and no sentence: a model handed a propose verb over an empty list would
 // offer programs it invented.
 func (c Config) mayProposeSubharness() bool {
-	return c.AskConsent && c.HarnessCards && len(c.subharnessRows()) > 0
+	return !c.readingTask() && c.AskConsent && c.HarnessCards && len(c.subharnessRows()) > 0
 }
 
 // mayBashBelt says whether this agent's belt is the experiment's bash belt
@@ -285,7 +289,7 @@ func (c Config) mayProposeSubharness() bool {
 // flag is asked ONLY here — the one-reading law every belt verb follows —
 // so the prompt and the belt cannot disagree about which belt a worker is
 // on.
-func (c Config) mayBashBelt() bool { return c.InTask && c.bashBelt }
+func (c Config) mayBashBelt() bool { return c.InTask && c.bashBelt && !c.readingTask() }
 
 // ── the facts ───────────────────────────────────────────────────────────────
 
@@ -486,7 +490,7 @@ var beltFacts = []beltFact{{
 	// a landing writes is not the model's and carries the same two lines without
 	// being told (task_run.go's [commitTaskWorkAs]).
 	//
-	// IT HAS NO ABSENT CASE, because signing has no off. The law's own commit
+	// A reading needs no absent wording because it cannot commit. The law's commit
 	// sentence spells both trailer lines in their order, with the `Assisted-by`
 	// one left as a slot the render fills from the model this page is for
 	// ([Config.assistedByModel]) — so the law is the one place both lines are
@@ -824,6 +828,12 @@ func renderBeltFacts(config Config, facts []beltFact, join string) string {
 // whole of the fixed prefix that depends on the shape, which is why
 // prefixbudget_test.go weighs this and not [systemPrompt].
 func promptWithBeltFacts(config Config) string {
+	// A reading has a page about looking and returning its answer. The ordinary
+	// page teaches file changes and questions even without its conditional facts.
+	if config.readingTask() {
+		return strings.ReplaceAll(strings.TrimRight(readingPrompt, "\n"), readingToolsToken,
+			"`"+strings.Join(readingToolNames(), "`, `")+"`")
+	}
 	page := systemPrompt
 	for _, section := range promptSections {
 		page = strings.Replace(page, section.token, renderBeltFacts(config, section.facts, section.join), 1)

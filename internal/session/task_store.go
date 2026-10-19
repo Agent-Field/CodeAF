@@ -603,6 +603,7 @@ type taskRecord struct {
 //
 // Done is parallel to Items, one tick per item, exactly as it is in memory.
 type quickRecord struct {
+	Reading   bool               `json:"reading,omitempty"`
 	Captures  []QuickFileCapture `json:"captures,omitempty"`
 	Promotion uint64             `json:"promotion,omitempty"`
 	Promoted  bool               `json:"promoted,omitempty"`
@@ -621,6 +622,7 @@ func quickRecordLocked(spec *quickTaskSpec) *quickRecord {
 		return nil
 	}
 	return &quickRecord{
+		Reading:   spec.reading,
 		Line:      spec.line,
 		Captures:  cloneQuickCaptures(spec.captures),
 		Promotion: spec.promotion, Promoted: spec.promoted, Undone: spec.undone,
@@ -640,6 +642,7 @@ func (r *quickRecord) body() *quickTaskSpec {
 		return nil
 	}
 	spec := newQuickTaskSpec(r.Line, append([]string(nil), r.Items...), append([]string(nil), r.Files...))
+	spec.reading = r.Reading
 	spec.captures = cloneQuickCaptures(r.Captures)
 	spec.promotion, spec.promoted, spec.undone = r.Promotion, r.Promoted, r.Undone
 	for index := range spec.done {
@@ -1956,6 +1959,14 @@ func highestTaskOnDisk(dirs ...string) uint64 {
 }
 
 func (r *taskRecovery) reconcile(record taskRecord, workspace string) taskRecord {
+	// A reading belonged to a turn that is over. Keep its ending, including an
+	// interruption, without counting it as work the conversation must report.
+	if record.Quick != nil && record.Quick.Reading {
+		if nothingIsComingBackForIt(record) {
+			record, _ = interrupt(record, workspace)
+		}
+		return record
+	}
 	if !nothingIsComingBackForIt(record) {
 		r.countSettled(&record)
 		return record
@@ -2160,6 +2171,11 @@ func (g *TaskGraph) owedNotes(unannounced []*TaskNode, settle TaskSettle, addres
 		deliveries []durableDelivery
 	)
 	for _, node := range unannounced {
+		// A reading's answer belonged to the read that waited for it. There is
+		// no waiting turn after a restart and no second answer to deliver.
+		if node.spec.quick != nil && node.spec.quick.reading {
+			continue
+		}
 		claim, claimed := node.claimNote(node.attemptNow())
 		if !claimed {
 			continue
