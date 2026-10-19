@@ -78,9 +78,17 @@ type appStateFile struct {
 	QuitStopped     []appwire.Process `json:"quit_stopped,omitempty"`
 	// CloseResumes and CloseStarts bound automatic work across process deaths.
 	// CloseHandled keeps only the newest handled stamp per existing agent.
-	CloseResumes map[string]int       `json:"close_resumes,omitempty"`
-	CloseStarts  []time.Time          `json:"close_starts,omitempty"`
-	CloseHandled map[string]time.Time `json:"close_handled,omitempty"`
+	// These guards rely on one app engine per home: the desktop shell enforces
+	// single instance with tauri-plugin-single-instance, and its supervisor runs
+	// exactly one engine, as the other app state fields already assume.
+	CloseResumes   map[string]int       `json:"close_resumes,omitempty"`
+	CloseResumedAt map[string]time.Time `json:"close_resumed_at,omitempty"`
+	CloseStarts    []time.Time          `json:"close_starts,omitempty"`
+	CloseHandled   map[string]time.Time `json:"close_handled,omitempty"`
+	// ClosePending is a continuation owed until its wake is accepted and a turn
+	// starts here. Its original time bounds retries even if no busy claim remains.
+	ClosePending   map[string]string    `json:"close_pending,omitempty"`
+	ClosePendingAt map[string]time.Time `json:"close_pending_at,omitempty"`
 	// Closed and Archived are when the person moved each agent to Closed or
 	// put it away (apptidy.go).
 	Closed   map[string]time.Time `json:"closed,omitempty"`
@@ -220,6 +228,18 @@ func (f appStateFile) clone() appStateFile {
 	out.CloseHandled = make(map[string]time.Time, len(f.CloseHandled))
 	for k, v := range f.CloseHandled {
 		out.CloseHandled[k] = v
+	}
+	out.CloseResumedAt = make(map[string]time.Time, len(f.CloseResumedAt))
+	for k, v := range f.CloseResumedAt {
+		out.CloseResumedAt[k] = v
+	}
+	out.ClosePending = make(map[string]string, len(f.ClosePending))
+	for k, v := range f.ClosePending {
+		out.ClosePending[k] = v
+	}
+	out.ClosePendingAt = make(map[string]time.Time, len(f.ClosePendingAt))
+	for k, v := range f.ClosePendingAt {
+		out.ClosePendingAt[k] = v
 	}
 	out.PinnedModels = append([]string(nil), f.PinnedModels...)
 	return out

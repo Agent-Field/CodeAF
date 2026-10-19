@@ -5,6 +5,7 @@ package main
 // another holder. The journal's own lock remains the final ownership check.
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"sync"
@@ -34,19 +35,27 @@ type appCloseClaim struct {
 	stop     func()
 }
 
+type appClosePending struct {
+	id, dir, key string
+	at           time.Time
+}
+
 // appCloseRecovery separates the timer registry from work that may open a
 // conversation. No registry lock is held while calling an opener or emitter.
 type appCloseRecovery struct {
-	mu        sync.Mutex
-	work      sync.Mutex
-	started   time.Time
-	claims    map[string]*appCloseClaim
-	quit      map[string]bool
-	corrected map[string]time.Time
-	watching  bool
-	stopped   bool
-	counted   bool
-	breaker   bool
+	mu          sync.Mutex
+	work        sync.Mutex
+	started     time.Time
+	claims      map[string]*appCloseClaim
+	quit        map[string]bool
+	corrected   map[string]time.Time
+	watching    bool
+	stopped     bool
+	counted     bool
+	breaker     bool
+	attempted   map[string]bool
+	pending     []appClosePending
+	stopPending []func()
 }
 
 // snapshotCloseClaims is synchronous: crews and quit resumes must not get the
@@ -59,7 +68,9 @@ func (b *appBackend) snapshotCloseClaims() {
 	r.claims = map[string]*appCloseClaim{}
 	r.quit = map[string]bool{}
 	r.corrected = map[string]time.Time{}
+	r.attempted = map[string]bool{}
 	existing := map[string]bool{}
+	paths := map[string]string{}
 	buckets, _ := os.ReadDir(session.PlacesRoot())
 	for _, bucket := range buckets {
 		if !bucket.IsDir() {
@@ -72,6 +83,7 @@ func (b *appBackend) snapshotCloseClaims() {
 			}
 			existing[dir.Name()] = true
 			path := filepath.Join(session.PlacesRoot(), bucket.Name(), dir.Name())
+			paths[dir.Name()] = path
 			if p, ok := session.ReadSessionPresenceAnyAge(path); ok && appBusyClaim(p) {
 				r.claims[path] = &appCloseClaim{presence: p}
 			}
@@ -87,6 +99,11 @@ func (b *appBackend) snapshotCloseClaims() {
 		for path, c := range r.claims {
 			if r.quit[filepath.Base(path)] {
 				f.CloseHandled[filepath.Base(path)] = c.presence.UpdatedAt
+			}
+		}
+		for id, key := range f.ClosePending {
+			if _, busy := r.claims[paths[id]]; !busy && !r.quit[id] {
+				r.pending = append(r.pending, appClosePending{id: id, dir: paths[id], key: key, at: f.ClosePendingAt[id]})
 			}
 		}
 		return nil
@@ -117,6 +134,22 @@ func (f *appStateFile) pruneCloseHistory(existing map[string]bool, now time.Time
 			delete(f.CloseHandled, id)
 		}
 	}
+	for id := range f.CloseResumedAt {
+		if !existing[id] {
+			delete(f.CloseResumedAt, id)
+		}
+	}
+	for id := range f.ClosePending {
+		if !existing[id] {
+			delete(f.ClosePending, id)
+			delete(f.ClosePendingAt, id)
+		}
+	}
+	for id := range f.ClosePendingAt {
+		if !existing[id] {
+			delete(f.ClosePendingAt, id)
+		}
+	}
 }
 
 func appBusyClaim(p session.SessionPresence) bool {
@@ -135,6 +168,19 @@ func (b *appBackend) startCloseWatch() {
 	for path, c := range r.claims {
 		b.scheduleCloseLocked(path, c)
 	}
+	for _, pending := range r.pending {
+		// An idle heartbeat can be what the opener wrote before dying. Wait
+		// out its claim too, so a live foreign holder is never driven.
+		delay := time.Duration(0)
+		if p, ok := session.ReadSessionPresenceAnyAge(pending.dir); ok && p.PID != os.Getpid() {
+			delay = max(delay, p.UpdatedAt.Add(session.PresenceWindow+appClosePresenceMargin).Sub(b.now()))
+		}
+		r.stopPending = append(r.stopPending, b.after(delay, func() {
+			defer guard.Recover("app/close-pending")
+			b.replayClosePending(pending)
+		}))
+	}
+	r.pending = nil
 }
 
 // watchCloseClaim also observes holders first seen after startup, so a death
@@ -157,6 +203,7 @@ func (b *appBackend) watchCloseClaim(dir string) {
 		r.claims = map[string]*appCloseClaim{}
 		r.quit = map[string]bool{}
 		r.corrected = map[string]time.Time{}
+		r.attempted = map[string]bool{}
 		r.started, r.watching = b.now(), true
 	}
 	if _, exists := r.claims[dir]; exists {
@@ -221,12 +268,12 @@ func (b *appBackend) checkCloseClaim(path string, c *appCloseClaim) {
 		return
 	}
 	if !dead {
-		// Correct a cached view without enrolling the replacement holder as this
-		// snapshot's work. A later client read can observe that holder separately.
+		// A new busy claim needs its own expiry watch even when the heartbeat
+		// read above was idle. No subsequent client read is guaranteed.
 		var a *appAgent
 		b.locked(func() { a = b.agents[filepath.Base(path)] })
 		if a != nil {
-			b.refreshElsewhereWith(a, false)
+			b.refreshElsewhereWith(a, true)
 		}
 		return
 	}
@@ -328,32 +375,127 @@ func (r *appCloseRecovery) locked(fn func()) {
 	fn()
 }
 
+// appCloseWork keeps a pending replay's original key and age, independently of
+// whatever idle heartbeat the interrupted opener may have left behind.
+type appCloseWork struct {
+	presence session.SessionPresence
+	key      string
+	at       time.Time
+	replay   bool
+}
+
 func (b *appBackend) carryAfterClose(a *appAgent, p session.SessionPresence) {
 	id := filepath.Base(p.Dir)
-	handled := false
-	if err := b.state.read(func(f *appStateFile) { handled = !f.CloseHandled[id].Before(p.UpdatedAt) }); err != nil || handled {
+	var handled bool
+	var pending appClosePending
+	if err := b.state.read(func(f *appStateFile) {
+		handled = !f.CloseHandled[id].Before(p.UpdatedAt)
+		pending = appClosePending{id: id, dir: p.Dir, key: f.ClosePending[id], at: f.ClosePendingAt[id]}
+	}); err != nil {
 		return
 	}
-	// Settle the profile before any paid-capable opener or task continuation.
-	// A failed migration keeps the claim unhandled so a later start can try it.
+	if handled {
+		if pending.key != "" {
+			b.carryCloseWork(a, appPendingCloseWork(pending))
+		}
+		return
+	}
+	b.carryCloseWork(a, appCloseWork{presence: p, key: "close-" + p.UpdatedAt.UTC().Format("20060102T150405.000000000Z"), at: p.UpdatedAt})
+}
+
+func appPendingCloseWork(p appClosePending) appCloseWork {
+	return appCloseWork{presence: session.SessionPresence{Dir: p.dir}, key: p.key, at: p.at, replay: true}
+}
+
+func (b *appBackend) replayClosePending(p appClosePending) {
+	r := &b.closeRecovery
+	r.work.Lock()
+	defer r.work.Unlock()
+	if b.isClosing() {
+		return
+	}
+	current := false
+	_ = b.state.read(func(f *appStateFile) { current = f.ClosePending[p.id] == p.key })
+	if !current {
+		return
+	}
+	if a, err := b.find(p.id); err == nil {
+		b.carryCloseWork(a, appPendingCloseWork(p))
+	}
+}
+
+// carryCloseWork admits both roads before an opener can restart checkpointed
+// tasks. The work lock serializes admission, including rollback on a lost hold.
+func (b *appBackend) carryCloseWork(a *appAgent, work appCloseWork) {
+	id := filepath.Base(work.presence.Dir)
+	r := &b.closeRecovery
+	attempt := id + "/" + work.key
+	if r.attempted[attempt] || (work.replay && r.attempted["pending/"+id]) || b.abandonCloseToHolder(a) {
+		return
+	}
+	// A failed migration keeps the work owed for a later start.
 	if err := b.settleDayLimit(); err != nil {
 		return
 	}
-	r := &b.closeRecovery
-	resume := r.started.Sub(p.UpdatedAt) <= appCloseResumeWithin
-	count := 0
-	if err := b.state.read(func(f *appStateFile) { count = f.CloseResumes[id] }); err != nil {
+	b.resetCloseAfterPerson(a)
+	resume, undo, err := b.admitCloseWork(id, work)
+	if err != nil {
 		return
 	}
-	// Count affected starts at this start's timestamp, not at the delayed
-	// expiry callback: waiting out a fresh claim must not evade the breaker.
-	// Once tripped it stays tripped for this entire start, even as stamps age.
+	r.attempted[attempt] = true
+	alreadyHandled := r.attempted["pending/"+id]
+	r.attempted["pending/"+id] = true
+	tasks := b.closeRunningTasks(a, work.presence)
+	if resume {
+		_, _, err = b.ensure(a)
+		live := b.liveOf(a)
+		if appCloseOwnershipConflict(err) || (live != nil && !live.conn.Assembled) {
+			undo()
+			delete(r.attempted, attempt)
+			r.attempted["pending/"+id] = alreadyHandled
+			b.abandonCloseToHolder(a)
+			return
+		}
+		resume = err == nil && live != nil
+	}
+	if b.abandonCloseToHolder(a) {
+		undo()
+		delete(r.attempted, attempt)
+		r.attempted["pending/"+id] = alreadyHandled
+		return
+	}
+	if resume {
+		if err := b.keepAppFooter(a, work.key, appwire.FooterResumedAfterClose, appCloseResumedWord); err != nil {
+			return
+		}
+		b.resumeOneWith(id, true, tasks, appwire.FooterResumedAfterClose, appCloseResumedWord, work.key)
+		return
+	}
+	// Only a person's explicit agents.open opens a refused conversation; the
+	// app never opens it by itself. That action retains the existing paused
+	// conversation behaviour: opening it resumes its checkpointed tasks.
+	if b.keepCloseStopped(a, work) {
+		undo()
+		delete(r.attempted, attempt)
+		r.attempted["pending/"+id] = alreadyHandled
+	}
+}
+
+// admitCloseWork writes the attempt, handled claim and pending continuation in
+// ONE transaction before opening anything that can run a task or a reply.
+func (b *appBackend) admitCloseWork(id string, work appCloseWork) (bool, func(), error) {
+	r := &b.closeRecovery
+	resume := !work.at.IsZero() && r.started.Sub(work.at) <= appCloseResumeWithin
+	wasCounted, wasBreaker := r.counted, r.breaker
 	breaker := r.breaker
-	if err := b.state.write(func(f *appStateFile) error {
+	var previous appStateFile
+	at := b.now()
+	err := b.state.write(func(f *appStateFile) error {
+		previous = f.clone()
 		if !r.counted {
 			starts := 1
-			for _, at := range f.CloseStarts {
-				if !at.Before(r.started.Add(-appCloseBreakerWithin)) {
+			for _, stamp := range f.CloseStarts {
+				if !stamp.Before(r.started.Add(-appCloseBreakerWithin)) {
 					starts++
 				}
 			}
@@ -361,59 +503,152 @@ func (b *appBackend) carryAfterClose(a *appAgent, p session.SessionPresence) {
 			f.CloseStarts = append(f.CloseStarts, r.started)
 		}
 		stamps := f.CloseStarts[:0]
-		for _, at := range f.CloseStarts {
-			if !at.Before(b.now().Add(-appCloseBreakerWithin)) {
-				stamps = append(stamps, at)
+		for _, stamp := range f.CloseStarts {
+			if !stamp.Before(at.Add(-appCloseBreakerWithin)) {
+				stamps = append(stamps, stamp)
 			}
 		}
 		f.CloseStarts = stamps
-		return nil
-	}); err != nil {
-		return
-	}
-	r.counted, r.breaker = true, breaker
-
-	resume = resume && count < appCloseResumeLimit && !r.breaker
-	kind, words := appwire.FooterStoppedByClose, appCloseStoppedWord
-	if resume {
-		kind, words = appwire.FooterResumedAfterClose, appCloseResumedWord
-	}
-	tasks := b.closeRunningTasks(a, p)
-	if resume {
-		_, _, err := b.ensure(a)
-		live := b.liveOf(a)
-		if err != nil || live == nil {
-			resume = false
-			kind, words = appwire.FooterStoppedByClose, appCloseStoppedWord
-		} else if !live.conn.Assembled {
-			return
-		}
-	}
-	// Keep the notice before the handled stamp. Its deterministic id makes a
-	// death between these two writes idempotent; no turn starts before both.
-	key := "close-" + p.UpdatedAt.UTC().Format("20060102T150405.000000000Z")
-	if err := b.keepAppFooter(a, key, kind, words); err != nil {
-		return
-	}
-	if err := b.state.write(func(f *appStateFile) error {
-		if f.CloseHandled == nil {
-			f.CloseHandled = map[string]time.Time{}
-		}
-		if f.CloseResumes == nil {
-			f.CloseResumes = map[string]int{}
-		}
-		f.CloseHandled[id] = p.UpdatedAt
+		resume = resume && f.CloseResumes[id] < appCloseResumeLimit && !breaker
 		if resume {
 			f.CloseResumes[id]++
+			f.CloseResumedAt[id] = at
+			f.ClosePending[id] = work.key
+			if work.replay && f.ClosePendingAt[id].IsZero() {
+				f.ClosePendingAt[id] = work.at
+			}
+			if !work.replay {
+				f.ClosePendingAt[id] = at
+				f.CloseHandled[id] = work.presence.UpdatedAt
+			}
 		}
 		return nil
-	}); err != nil {
+	})
+	if err != nil {
+		return false, nil, err
+	}
+	r.counted, r.breaker = true, breaker
+	undo := func() {
+		if err := b.state.write(func(f *appStateFile) error {
+			// A person may have acted while open was waiting. Preserve that
+			// reset rather than restoring a streak they already broke.
+			if f.ClosePending[id] == work.key && f.CloseResumedAt[id].Equal(at) {
+				appRestoreCloseAgent(f, previous, id)
+			}
+			// A person's reset clears pending but deliberately keeps handled
+			// claims. A lost hold must undo this admission's stamp either way.
+			if !work.replay && f.CloseHandled[id].Equal(work.presence.UpdatedAt) {
+				delete(f.CloseHandled, id)
+				if stamp, ok := previous.CloseHandled[id]; ok {
+					f.CloseHandled[id] = stamp
+				}
+			}
+			if !wasCounted {
+				f.CloseStarts = previous.CloseStarts
+			}
+			return nil
+		}); err == nil {
+			r.counted, r.breaker = wasCounted, wasBreaker
+		}
+	}
+	return resume, undo, nil
+}
+
+// appRestoreCloseAgent restores only this admission, leaving other agents and
+// unrelated settings untouched while a slow opener was in flight.
+func appRestoreCloseAgent(f *appStateFile, old appStateFile, id string) {
+	delete(f.CloseResumes, id)
+	delete(f.CloseResumedAt, id)
+	delete(f.CloseHandled, id)
+	delete(f.ClosePending, id)
+	delete(f.ClosePendingAt, id)
+	if v, ok := old.CloseResumes[id]; ok {
+		f.CloseResumes[id] = v
+	}
+	if v, ok := old.CloseResumedAt[id]; ok {
+		f.CloseResumedAt[id] = v
+	}
+	if v, ok := old.CloseHandled[id]; ok {
+		f.CloseHandled[id] = v
+	}
+	if v, ok := old.ClosePending[id]; ok {
+		f.ClosePending[id] = v
+	}
+	if v, ok := old.ClosePendingAt[id]; ok {
+		f.ClosePendingAt[id] = v
+	}
+}
+
+func appCloseOwnershipConflict(err error) bool {
+	var wire *appwire.Error
+	return errors.Is(err, session.ErrSessionLocked) || (errors.As(err, &wire) && wire.Code == appwire.CodeConflict)
+}
+
+// abandonCloseToHolder rechecks ownership before either outcome is published.
+// Freshness alone decides, including an idle holder; no pid liveness is used.
+func (b *appBackend) abandonCloseToHolder(a *appAgent) bool {
+	var transcript string
+	b.locked(func() { transcript = a.transcript })
+	p, fresh := session.ReadSessionPresence(filepath.Dir(transcript), b.now())
+	if !fresh || p.PID == os.Getpid() {
+		return false
+	}
+	state := appwire.StateIdle
+	switch p.State {
+	case session.PresenceWorking:
+		state = appwire.StateWorking
+	case session.PresenceWaiting:
+		state = appwire.StateNeedsYou
+	}
+	var view appwire.Agent
+	changed := false
+	b.locked(func() {
+		changed = a.view.State != state
+		a.view.State = state
+		view = a.view
+	})
+	if changed {
+		b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+	}
+	b.watchCloseClaim(filepath.Dir(transcript))
+	return true
+}
+
+func (b *appBackend) keepCloseStopped(a *appAgent, work appCloseWork) (abandoned bool) {
+	if b.abandonCloseToHolder(a) {
+		return true
+	}
+	key := work.key + "-stopped"
+	if err := b.keepAppFooter(a, key, appwire.FooterStoppedByClose, appCloseStoppedWord); err != nil {
+		return false
+	}
+	if !work.replay {
+		if err := b.state.write(func(f *appStateFile) error {
+			f.CloseHandled[filepath.Base(work.presence.Dir)] = work.presence.UpdatedAt
+			return nil
+		}); err != nil {
+			return false
+		}
+	}
+	b.emitAppFooter(a, key)
+	return false
+}
+
+// resetCloseAfterPerson also sees directions written while this backend was
+// absent. The session's own notes shape as aside, never as person-role user.
+func (b *appBackend) resetCloseAfterPerson(a *appAgent) {
+	var id, transcript string
+	b.locked(func() { id, transcript = a.view.ID, a.transcript })
+	var last time.Time
+	_ = b.state.read(func(f *appStateFile) { last = f.CloseResumedAt[id] })
+	if last.IsZero() {
 		return
 	}
-	if resume {
-		b.resumeOneWith(id, true, tasks, appwire.FooterResumedAfterClose, appCloseResumedWord, key)
-	} else {
-		b.emitAppFooter(a, key)
+	for _, entry := range appRecordItems(session.ReadTranscript(transcript)) {
+		if entry.Role == "user" && !entry.ForModel && entry.At.After(last) {
+			b.resetCloseResumes(id)
+			return
+		}
 	}
 }
 
@@ -444,11 +679,19 @@ func (b *appBackend) closeRunningTasks(a *appAgent, p session.SessionPresence) [
 }
 
 func (b *appBackend) resetCloseResumes(id string) {
-	hasCount := false
-	if err := b.state.read(func(f *appStateFile) { hasCount = f.CloseResumes[id] != 0 }); err != nil || !hasCount {
+	hasWork := false
+	if err := b.state.read(func(f *appStateFile) {
+		hasWork = f.CloseResumes[id] != 0 || f.ClosePending[id] != "" || !f.CloseResumedAt[id].IsZero()
+	}); err != nil || !hasWork {
 		return
 	}
-	_ = b.state.write(func(f *appStateFile) error { delete(f.CloseResumes, id); return nil })
+	_ = b.state.write(func(f *appStateFile) error {
+		delete(f.CloseResumes, id)
+		delete(f.CloseResumedAt, id)
+		delete(f.ClosePending, id)
+		delete(f.ClosePendingAt, id)
+		return nil
+	})
 }
 
 func (b *appBackend) stopCloseWatch() {
@@ -461,7 +704,97 @@ func (b *appBackend) stopCloseWatch() {
 			}
 		}
 		r.claims = nil
+		for _, stop := range r.stopPending {
+			stop()
+		}
+		r.stopPending = nil
 	})
 	r.work.Lock()
 	defer r.work.Unlock()
+}
+
+// appCloseWake is process-local evidence for clearing a durable pending marker.
+// Queueing alone is insufficient: a death before turn-start must leave it owed.
+type appCloseWake struct {
+	key               string
+	accepted, started bool
+}
+
+func (b *appBackend) closeWakeAccepted(id string, live *appLive, wake *appCloseWake, accepted bool) {
+	key := ""
+	b.locked(func() {
+		if live.closeWake != wake {
+			return
+		}
+		if !accepted {
+			live.closeWake = nil
+			return
+		}
+		wake.accepted = true
+		if wake.started {
+			key, live.closeWake = wake.key, nil
+		}
+	})
+	b.completeClosePending(id, key)
+}
+
+func (b *appBackend) closeWakeStarted(id string, live *appLive) {
+	key := ""
+	b.locked(func() {
+		if wake := live.closeWake; wake != nil {
+			wake.started = true
+			if wake.accepted {
+				key, live.closeWake = wake.key, nil
+			}
+		}
+	})
+	b.completeClosePending(id, key)
+}
+
+func (b *appBackend) completeClosePending(id, key string) {
+	if key == "" {
+		return
+	}
+	_ = b.state.write(func(f *appStateFile) error {
+		if f.ClosePending[id] == key {
+			delete(f.ClosePending, id)
+			delete(f.ClosePendingAt, id)
+		}
+		return nil
+	})
+}
+
+// A checkpoint can precede the heartbeat that names its newly started task.
+// Absence proves interruption only after the writer had a heartbeat to see it.
+func appTaskWasInterrupted(p session.SessionPresence, fresh bool, id string, started time.Time) bool {
+	if !fresh {
+		return true
+	}
+	return !p.Holds(id) && p.UpdatedAt.Sub(started) >= session.PresenceHeartbeat
+}
+
+// heldTaskViews reads after the disk so a start arriving during the listing
+// wins. Locally owned tasks come from the engine, even ahead of its event lane.
+func (b *appBackend) heldTaskViews(a *appAgent) map[string]appwire.Task {
+	heard := map[string]appwire.Task{}
+	var live *appLive
+	var id string
+	b.locked(func() {
+		live, id = a.live, a.view.ID
+		if live != nil {
+			for key, task := range live.tasks {
+				heard[key] = task
+			}
+		}
+	})
+	if live != nil && live.conn.Assembled {
+		if tasks, err := live.conn.Conv.AppTasks(); err == nil {
+			for _, view := range tasks {
+				task := appTaskOfView(id, view)
+				task.UpdatedAt = heard[task.ID].UpdatedAt
+				heard[task.ID] = task
+			}
+		}
+	}
+	return heard
 }

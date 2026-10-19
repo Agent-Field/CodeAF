@@ -123,6 +123,9 @@ const (
 	// somebody killed leaves a surface within a glance and long enough that an
 	// idle session costs a two-hundred-byte write every few seconds.
 	presenceHeartbeat = 5 * time.Second
+	// PresenceHeartbeat lets readers distinguish a missing task from a task
+	// started after the writer's preceding heartbeat.
+	PresenceHeartbeat = presenceHeartbeat
 	// presenceWindow is how old a file may be and still be believed: three
 	// heartbeats, so a session has to miss three in a row before another window
 	// gives up on it. Two would call a session dead over one slow disk.

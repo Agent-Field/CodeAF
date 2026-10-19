@@ -67,6 +67,7 @@ type closeConversation struct {
 	resumed, quit int
 	beforeResume  func()
 	continued     []string
+	resumeErr     error
 }
 
 func (c *closeConversation) ResumeAfterClose() (bool, error) {
@@ -76,7 +77,7 @@ func (c *closeConversation) ResumeAfterClose() (bool, error) {
 	c.muClose.Lock()
 	defer c.muClose.Unlock()
 	c.resumed++
-	return true, nil
+	return c.resumeErr == nil, c.resumeErr
 }
 func (c *closeConversation) ResumeAfterQuit() (bool, error) {
 	c.muClose.Lock()
@@ -516,7 +517,13 @@ func TestAppCloseC6PersonDirectionsResetCount(t *testing.T) {
 					r.b.locked(func() { live.questions["ask:7"] = session.Question{ID: 7, Kind: session.QuestionAsk} })
 				}
 			}
-			if err := r.b.state.write(func(f *appStateFile) error { f.CloseResumes = map[string]int{r.id: 2}; return nil }); err != nil {
+			if err := r.b.state.write(func(f *appStateFile) error {
+				f.CloseResumes = map[string]int{r.id: 2}
+				f.CloseResumedAt = map[string]time.Time{r.id: r.clock.now()}
+				f.ClosePending = map[string]string{r.id: "owed"}
+				f.ClosePendingAt = map[string]time.Time{r.id: r.clock.now()}
+				return nil
+			}); err != nil {
 				t.Fatal(err)
 			}
 			var err error
@@ -545,8 +552,8 @@ func TestAppCloseC6PersonDirectionsResetCount(t *testing.T) {
 			}
 			disk := &appState{path: r.b.state.where()}
 			_ = disk.read(func(f *appStateFile) {
-				if f.CloseResumes[r.id] != 0 {
-					t.Errorf("%s kept count=%d", door, f.CloseResumes[r.id])
+				if f.CloseResumes[r.id] != 0 || f.ClosePending[r.id] != "" || !f.CloseResumedAt[r.id].IsZero() || !f.ClosePendingAt[r.id].IsZero() {
+					t.Errorf("%s kept automatic work=%+v", door, f)
 				}
 			})
 			// A fake running flag has no turn to stop; don't make Close wait for one.
@@ -742,6 +749,15 @@ func TestAppCloseC10SameClaimHandledOnce(t *testing.T) {
 			r.start()
 			r.clock.advance(t, 0)
 			first, _ := r.conv.counts()
+			if !stopped {
+				// The accepted fake wake must start a turn, as the real session
+				// does. An unstarted wake deliberately remains pending for F3.
+				a := r.b.agent(r.id)
+				events := make(chan session.Event, 1)
+				events <- session.Event{Kind: session.EventError, Text: "unfinished test turn"}
+				close(events)
+				r.b.wokenTurn(a, r.b.liveOf(a), appTurnElsewhere{events: events})
+			}
 			_ = r.b.Close()
 			r.backend(t)
 			r.start()
@@ -829,11 +845,14 @@ func TestAppCloseC13PruningAndWriteFailure(t *testing.T) {
 		f.CloseStarts = []time.Time{r.clock.now().Add(-11 * time.Minute)}
 		f.CloseResumes = map[string]int{"deleted": 2}
 		f.CloseHandled = map[string]time.Time{"deleted": r.clock.now()}
+		f.CloseResumedAt = map[string]time.Time{"deleted": r.clock.now()}
+		f.ClosePending = map[string]string{"deleted": "owed"}
+		f.ClosePendingAt = map[string]time.Time{"deleted": r.clock.now()}
 		return nil
 	})
 	r.b.snapshotCloseClaims()
 	_ = r.b.state.read(func(f *appStateFile) {
-		if len(f.CloseStarts) != 0 || len(f.CloseResumes) != 0 || len(f.CloseHandled) != 0 {
+		if len(f.CloseStarts) != 0 || len(f.CloseResumes) != 0 || len(f.CloseHandled) != 0 || len(f.CloseResumedAt) != 0 || len(f.ClosePending) != 0 || len(f.ClosePendingAt) != 0 {
 			t.Errorf("unpruned history=%+v", f)
 		}
 	})

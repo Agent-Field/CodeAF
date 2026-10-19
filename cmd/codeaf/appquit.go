@@ -163,15 +163,23 @@ func (b *appBackend) resumeOneWith(id string, reply bool, tasks []string, kind, 
 		}
 		resume = door.ResumeAfterQuit
 	}
-	// A NOTICE NEVER COSTS THE PERSON THE REPLY. The close road kept its footer
-	// before it counted the attempt; a footer the disk will not take here is
+	// A NOTICE NEVER COSTS THE PERSON THE REPLY. The close road recorded its
+	// pending attempt before opening; a footer the disk will not take here is
 	// said live instead, and the reply carries on as the quit road always did.
 	if err := b.keepAppFooter(a, key, kind, words); err != nil {
 		live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appFooter(key, id, 0, kind, words, b.now())})
 	} else {
 		b.emitAppFooter(a, key)
 	}
-	_, _ = resume()
+	var wake *appCloseWake
+	if kind == appwire.FooterResumedAfterClose {
+		wake = &appCloseWake{key: key}
+		b.locked(func() { live.closeWake = wake })
+	}
+	accepted, err := resume()
+	if wake != nil {
+		b.closeWakeAccepted(id, live, wake, accepted && err == nil)
+	}
 }
 
 // quitStopped lays the last quit's stopped processes over an agent's list:
