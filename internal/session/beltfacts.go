@@ -285,7 +285,7 @@ func (c Config) mayProposeSubharness() bool {
 // flag is asked ONLY here — the one-reading law every belt verb follows —
 // so the prompt and the belt cannot disagree about which belt a worker is
 // on.
-func (c Config) mayBashBelt() bool { return c.InTask && c.bashBelt }
+func (c Config) mayBashBelt() bool { return c.InTask && c.bashBelt && !c.readingTask() }
 
 // ── the facts ───────────────────────────────────────────────────────────────
 

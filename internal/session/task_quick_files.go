@@ -67,6 +67,9 @@ func quickRead(path string) ([]byte, bool, os.FileMode, error) {
 // executeTaskTool surrounds the actual execution, so a batch cannot overwrite a
 // first capture or mistake a later external edit for its own after bytes.
 func (a *Agent) executeTaskTool(ctx context.Context, tool bare.Tool, call ai.ToolCall, args json.RawMessage) (string, bool, error) {
+	if refusal := a.readingToolRefusal(tool.Name); refusal != "" {
+		return refusal, true, nil
+	}
 	node := a.config.taskControl
 	if node == nil {
 		return tool.Execute(ctx, args)
@@ -100,6 +103,28 @@ func (a *Agent) executeTaskTool(ctx context.Context, tool bare.Tool, call ai.Too
 		return tool.Execute(ctx, args)
 	}
 	return a.executeQuickFileTool(ctx, node, tool, call, args, path)
+}
+
+// readingToolRefusal also guards calls named off the belt. The names come from
+// the same set that arms the hand-off, so its promise cannot drift from it.
+func (a *Agent) readingToolRefusal(name string) string {
+	if !a.config.readingTask() || earlyTools[name] {
+		return ""
+	}
+	names := make([]string, 0, len(earlyTools))
+	for name, allowed := range earlyTools {
+		if allowed {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return "this reading can only look — use " + strings.Join(names, ", ") + "; nothing ran"
+}
+
+// readingTask is the admission mark, never a guess from the worker's title.
+func (c Config) readingTask() bool {
+	node := c.taskControl
+	return node != nil && node.spec.quick != nil && node.spec.quick.reading
 }
 
 // A known-path mutation keeps both measurements inside one serialized action.
