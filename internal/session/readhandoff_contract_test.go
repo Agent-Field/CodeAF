@@ -60,6 +60,7 @@ func assertNoReadingNews(t *testing.T, agent *Agent, model *quickLanes) {
 
 // Contract C1.a, C1.b, C1.c and C2.a: a real hand-off refuses every non-reader,
 // keeps going on the same turn, and delivers only the first reader's answer.
+// Landing subscribers receive its record once without another note to the chat.
 func TestReadHandoffRefusesActionsAndReturnsItsAnswerWithoutAsking(t *testing.T) {
 	forbidden := []ai.ToolCall{
 		readCall("bash", `{"command":"printf changed > one.txt"}`),
@@ -106,6 +107,8 @@ func TestReadHandoffRefusesActionsAndReturnsItsAnswerWithoutAsking(t *testing.T)
 		},
 	)
 	agent, graph, workspace := readingAgent(t, model, filepath.Join(t.TempDir(), "transcript.jsonl"))
+	landings := make(chan TaskLanding, 4)
+	agent.config.TaskLanded = func(landing TaskLanding) { landings <- landing }
 	asks, stop := agent.WatchQuestions()
 	defer stop()
 	updates, stopUpdates := agent.WatchTaskUpdates()
@@ -115,6 +118,19 @@ func TestReadHandoffRefusesActionsAndReturnsItsAnswerWithoutAsking(t *testing.T)
 	waitDoneNode(t, node)
 	if node.stateNow() != TaskDone || !node.spec.quick.reading {
 		t.Fatalf("reading landed as %+v", node.notice())
+	}
+	select {
+	case landing := <-landings:
+		if landing.ID != node.id || landing.State != TaskDone {
+			t.Fatalf("reading's landing hook received %+v", landing)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("reading never reached the TaskLanded hook")
+	}
+	select {
+	case landing := <-landings:
+		t.Fatalf("reading reached the TaskLanded hook twice: %+v", landing)
+	default:
 	}
 	first, covered := 0, 0
 	for _, request := range model.asksOf("") {
@@ -203,6 +219,53 @@ func TestReadHandoffExecutionGuardAndBeltUseTheReadingTools(t *testing.T) {
 	}
 }
 
+// Contract C1.a: a real quick worker's composed prompt promises only the
+// reading tools, while an ordinary quick worker still learns how to fan out.
+func TestReadHandoffPromptPromisesOnlyItsReadingTools(t *testing.T) {
+	for _, reading := range []bool{true, false} {
+		name := "ordinary"
+		if reading {
+			name = "reading"
+		}
+		t.Run(name, func(t *testing.T) {
+			agent, node, workspace := appNodeFixture(t, true)
+			node.spec.quick.reading = reading
+			worker, err := agent.newTaskAgent(context.Background(), workspace, node, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = worker.Close() })
+			page := systemTextOf(worker)
+			if !reading {
+				if !strings.Contains(page, fanoutPage(worker.config)) {
+					t.Fatal("ordinary quick worker lost its fan-out page")
+				}
+				return
+			}
+			for tool := range namesIn(page) {
+				if !earlyTools[tool] {
+					t.Errorf("reading prompt names unavailable tool %q", tool)
+				}
+			}
+			for tool := range earlyTools {
+				if !strings.Contains(page, "`"+tool+"`") {
+					t.Errorf("reading prompt omits its tool %q", tool)
+				}
+			}
+			for _, tool := range []string{"propose_task", "quick_task", "tasks", "bash", "write", "edit", "ask"} {
+				if strings.Contains(page, "`"+tool+"`") {
+					t.Errorf("reading prompt promises %s", tool)
+				}
+			}
+			for _, fact := range allBeltFacts() {
+				if fact.holds(worker.config) {
+					t.Errorf("reading holds a belt fact for unavailable tools %v", fact.tools)
+				}
+			}
+		})
+	}
+}
+
 // Contract C1.a and C1.b: choosing the shell worker's belt cannot force an
 // engine-owned reading to use shell or reject its permitted read calls.
 func TestReadHandoffStillReadsWhenTheShellWorkerBeltIsSelected(t *testing.T) {
@@ -229,9 +292,9 @@ func TestReadHandoffStillReadsWhenTheShellWorkerBeltIsSelected(t *testing.T) {
 	assertNoReadingNews(t, agent, model)
 }
 
-// Contract C1.d and C4.b: an ordinary quick worker still asks and waits, and a
-// declined promotion stops offering grew while that worker carries on.
-func TestOrdinaryQuickStillWaitsForPromotionAndClearsADeclinedAsk(t *testing.T) {
+// Contract C1.d: an ordinary quick worker still proposes, waits for the answer,
+// and carries on with the declined tool result when the person says no.
+func TestOrdinaryQuickStillWaitsForPromotionAndCarriesOnAfterDecline(t *testing.T) {
 	continued, release := make(chan struct{}), make(chan struct{})
 	defer close(release)
 	model := newQuickLanes([]step{quickCall("quick", "ordinary reading", "ORDINARY-CONTRACT read a file", nil, nil), finalText("started")})
@@ -239,7 +302,11 @@ func TestOrdinaryQuickStillWaitsForPromotionAndClearsADeclinedAsk(t *testing.T) 
 		func(context.Context, []ai.Message) (*ai.Response, error) {
 			return toolResponse("shell", "bash", `{"command":"cat one.txt"}`), nil
 		},
-		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+		func(ctx context.Context, messages []ai.Message) (*ai.Response, error) {
+			result := messages[len(messages)-1]
+			if result.Role != "tool" || result.ToolCallID != "shell" || messageText(result) != "This needs a full task before running a command or creating media · promotion declined; nothing ran" {
+				t.Errorf("decline returned %+v", result)
+			}
 			close(continued)
 			select {
 			case <-release:
@@ -278,9 +345,8 @@ func TestOrdinaryQuickStillWaitsForPromotionAndClearsADeclinedAsk(t *testing.T) 
 	case <-time.After(10 * time.Second):
 		t.Fatal("decline did not release the worker")
 	}
-	rows, _ = agent.AppQuickTasks()
-	if rows[0].State != "running" || quickNodeSaying(t, graph, "ORDINARY-CONTRACT").spec.quick.reading {
-		t.Fatalf("ordinary quick after decline = %+v", rows)
+	if quickNodeSaying(t, graph, "ORDINARY-CONTRACT").spec.quick.reading {
+		t.Fatal("ordinary quick work was marked as a hand-off reading")
 	}
 }
 
@@ -434,8 +500,8 @@ func TestReadHandoffMoveHasNoLandingNote(t *testing.T) {
 	assertNoReadingNews(t, agent, model)
 }
 
-// Contract C1.e, C2.a and C4.d: reopening the actual conversation checkpoint
-// preserves the reading mark and ending without re-telling its landing.
+// Contract C1.e, C2.a and C4.d: a resumed turn sees the ordinary landing owed
+// beside finished and interrupted readings, with no reading landing or replay.
 func TestReadHandoffMarkAndQuietEndingSurviveAReopen(t *testing.T) {
 	model := newQuickLanes([]step{readingBatch, finalText("answered")})
 	model.lane("REOPEN-CONTRACT", finalText("distilled answer"))
@@ -444,23 +510,87 @@ func TestReadHandoffMarkAndQuietEndingSurviveAReopen(t *testing.T) {
 	collect(t, mustSubmit(t, agent, "REOPEN-CONTRACT compare files"))
 	node := quickNodeSaying(t, graph, "REOPEN-CONTRACT")
 	waitDoneNode(t, node)
-	graph.checkpoint()
 	before, _ := agent.AppQuickTasks()
 	if err := agent.Close(); err != nil {
 		t.Fatal(err)
 	}
-	fresh, _ := newTestAgent(t, model, func(c *Config) { c.SessionFile, c.Workspace = path, workspace })
+	checkpoint := taskCheckpointPath(path)
+	document := readCheckpoint(t, checkpoint)
+	finished := recordOf(t, document, node.id)
+	if finished.Quick == nil || !finished.Quick.Reading || finished.State != TaskDone {
+		t.Fatalf("finished reading was not checkpointed: %+v", finished)
+	}
+	// The saved node is real. Add the other two records a crash can leave:
+	// a reading still running, and ordinary work whose landing nobody read.
+	running := taskRecord{
+		ID: document.Seq + 1, Kind: TaskKindQuick, State: TaskRunning,
+		Title: "Read the remaining files", Brief: "INTERRUPTED-READING compare files",
+		Ground: workspace, Mode: TaskModeInPlace, Model: finished.Model,
+		Quick: &quickRecord{Reading: true, Line: "INTERRUPTED-READING compare files"},
+	}
+	ordinary := taskRecord{
+		ID: running.ID + 1, Kind: TaskKindQuick, State: TaskDone,
+		Title: "Collect the ordinary findings", Brief: "ORDINARY-OWED collect findings",
+		Ground: workspace, Mode: TaskModeInPlace, Model: finished.Model,
+		Quick: &quickRecord{Line: "ORDINARY-OWED collect findings"}, Report: "ORDINARY-LANDING-OWED",
+	}
+	document.Nodes = append(document.Nodes, running, ordinary)
+	document.Seq = ordinary.ID
+	writeCheckpoint(t, checkpoint, document)
+
+	reopenedModel := newQuickLanes([]step{finalText("carried on after reopening")})
+	for _, mark := range []string{"REOPEN-CONTRACT", "INTERRUPTED-READING"} {
+		reopenedModel.lane(mark, func(context.Context, []ai.Message) (*ai.Response, error) {
+			t.Error("a reading executed again after reopening")
+			return textResponse("replayed reading"), nil
+		})
+	}
+	fresh, _ := newTestAgent(t, reopenedModel, func(c *Config) { c.SessionFile, c.Workspace = path, workspace })
 	after, _ := fresh.AppQuickTasks()
-	if !reflect.DeepEqual(before, after) {
-		t.Fatalf("quick state changed on reopen: %+v -> %+v", before, after)
+	if len(before) != 1 || len(after) != 3 || !reflect.DeepEqual(before[0], after[0]) || after[1].State != "stopped" || after[2].State != "done" {
+		t.Fatalf("quick state on reopen: %+v -> %+v", before, after)
 	}
 	restored := fresh.graph().node(node.id)
 	if restored == nil || !restored.spec.quick.reading {
 		t.Fatal("checkpoint lost the reading mark")
 	}
+	interrupted := fresh.graph().node(running.ID)
+	if interrupted == nil || !interrupted.spec.quick.reading || interrupted.stateNow() != TaskFailed {
+		t.Fatal("checkpoint lost the interrupted reading's mark or ending")
+	}
+	collect(t, mustSubmit(t, fresh, "carry on"))
+	requests := reopenedModel.asksOf("")
+	if len(requests) != 1 {
+		t.Fatalf("reopen submitted %d conversation requests, want one", len(requests))
+	}
+	recoveries := 0
+	for _, message := range requests[0] {
+		text := messageText(message)
+		if _, recovery, found := strings.Cut(text, "recovered task graph: "); found {
+			recoveries++
+			if count := strings.SplitN(recovery, "\n", 2)[0]; count != "1 done" {
+				t.Errorf("model received reading recovery counts: %q", count)
+			}
+			if !strings.Contains(recovery, "ORDINARY-LANDING-OWED") || strings.Count(recovery, "work you handed off landed") != 1 {
+				t.Errorf("model did not receive exactly the ordinary landing: %s", recovery)
+			}
+			for _, reading := range []taskRecord{finished, running} {
+				if strings.Contains(recovery, reading.Title) || strings.Contains(recovery, reading.Quick.Line) || strings.Contains(recovery, reading.Report) && reading.Report != "" {
+					t.Errorf("model received a reading landing: %s", recovery)
+				}
+			}
+		}
+	}
+	if recoveries != 1 {
+		t.Fatalf("model received %d recovery notes, want the ordinary work's note", recoveries)
+	}
+	for _, mark := range []string{"REOPEN-CONTRACT", "INTERRUPTED-READING"} {
+		if requests := reopenedModel.asksOf(mark); len(requests) != 0 {
+			t.Errorf("reading %s executed again: %d requests", mark, len(requests))
+		}
+	}
 	fresh.config.taskControl = restored
 	if fresh.readingToolRefusal("write") == "" {
 		t.Fatal("reopened reading may now write")
 	}
-	assertNoReadingNews(t, fresh, model)
 }

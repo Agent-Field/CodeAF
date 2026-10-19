@@ -633,7 +633,7 @@ func (a *Agent) mayProposeTask() bool { return a.config.mayProposeTask() }
 // at construction, and the belt and the prompt must not disagree about whether
 // it can.
 func (c Config) mayFanOut() bool {
-	return c.InTask && c.tasker != nil && fansOutAt(c.taskDepth)
+	return !c.readingTask() && c.InTask && c.tasker != nil && fansOutAt(c.taskDepth)
 }
 
 // fansOutAt says whether a worker standing this many tasks deep may hand work

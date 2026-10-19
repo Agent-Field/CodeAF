@@ -4053,13 +4053,13 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 		return
 	}
 	a.recordTaskIndex(node)
+	a.tellTaskLanded(node)
 	// A reading returns its answer through the waiting read, even on success.
 	// Its record stays intact, but a landing note would report the answer twice
 	// or blame a reading the chat already replaced with an inline read.
 	if node.spec.quick != nil && node.spec.quick.reading {
 		return
 	}
-	a.tellTaskLanded(node)
 	transcript := taskURI(node.journalPath())
 	note := landingNoteLead(notice) + taskNote(notice, transcript, a.settlePolicy(), a.addressLanding(notice))
 	// WHETHER IT IS WORTH A TURN OF ITS OWN depends on whether anybody is waiting

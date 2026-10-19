@@ -5850,9 +5850,9 @@ the chat abandoned sends a separate landing message.
 
 Quick work has its own app surface, separate from the task list and task search.
 A quick task that ended without finishing says `stopped`, keeps the files it
-changed and can still be undone. It says `done` only when it finished. These
-endings survive restarting the engine; a settled quick task never offers a
-promotion it is no longer waiting for.
+changed and can still be undone. It says `done` when it finished or became a
+full task. These endings survive restarting the engine; a settled quick task
+never offers a promotion it is no longer waiting for.
 
 ## A reply running long in the app, and moving it to a task
 

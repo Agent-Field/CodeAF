@@ -111,6 +111,11 @@ func (a *Agent) readingToolRefusal(name string) string {
 	if !a.config.readingTask() || earlyTools[name] {
 		return ""
 	}
+	return "this reading can only look — use " + strings.Join(readingToolNames(), ", ") + "; nothing ran"
+}
+
+// readingToolNames keeps the prompt and refusals on the hand-off's one tool set.
+func readingToolNames() []string {
 	names := make([]string, 0, len(earlyTools))
 	for name, allowed := range earlyTools {
 		if allowed {
@@ -118,7 +123,7 @@ func (a *Agent) readingToolRefusal(name string) string {
 		}
 	}
 	sort.Strings(names)
-	return "this reading can only look — use " + strings.Join(names, ", ") + "; nothing ran"
+	return names
 }
 
 // readingTask is the admission mark, never a guess from the worker's title.
@@ -210,14 +215,18 @@ func (a *Agent) proposeQuickPromotion(ctx context.Context, node *TaskNode, call 
 	}
 	wait, err := owner.openTask(ctx, id, spec, "")
 	if err != nil {
-		clearErr := node.clearQuickPromotion()
+		clearErr := graph.writeAppControl(func() (func(), error) {
+			old := node.spec.quick.promotion
+			node.spec.quick.promotion = 0
+			return func() { node.spec.quick.promotion = old }, nil
+		})
 		return errors.Join(err, clearErr).Error(), true, nil
 	}
 	answer, err := wait.answer()
-	if err != nil || !answer.Approved {
-		if clearErr := node.clearQuickPromotion(); err != nil || clearErr != nil {
-			return errors.Join(err, clearErr).Error(), true, nil
-		}
+	if err != nil {
+		return err.Error(), true, nil
+	}
+	if !answer.Approved {
 		return reason + " · promotion declined; nothing ran", true, nil
 	}
 	if answer.Redirect != "" {
@@ -240,17 +249,6 @@ func (a *Agent) proposeQuickPromotion(ctx context.Context, node *TaskNode, call 
 		cancel()
 	}
 	return "Promoted to a task; the blocked action will run there", true, nil
-}
-
-// A declined or withdrawn question no longer holds the worker. Clear its
-// pending mark as well, so a running row cannot offer a dead promotion.
-func (n *TaskNode) clearQuickPromotion() error {
-	return n.graph.writeAppControl(func() (func(), error) {
-		quick := n.spec.quick
-		old, reason := quick.promotion, quick.grew
-		quick.promotion, quick.grew = 0, ""
-		return func() { quick.promotion, quick.grew = old, reason }, nil
-	})
 }
 
 // Undo validates every after hash before changing any file. A mismatch changes
