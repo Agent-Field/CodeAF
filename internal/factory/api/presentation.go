@@ -9,7 +9,7 @@ func PresentJob(j *Job) {
 	switch {
 	case j.Failure != nil:
 		p.Kind, p.Title, p.Detail = "failed", "Step failed", j.Failure.Detail
-		if j.Failure.Code == "stopped" {
+		if j.Failure.Code == factory.CodeStopped {
 			p.Title = "Step stopped"
 		}
 	case j.NeedsYou != nil && j.NeedsYou.Kind == factory.NeedsOutOfAttempts:

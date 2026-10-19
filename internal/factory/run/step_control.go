@@ -57,7 +57,7 @@ func StepControl(it *factory.Item, name string, rerun bool, words string, now ti
 		s.Ended = time.Time{}
 	} else {
 		it.State = factory.StateNew
-		failure := &factory.Failure{Step: name, Code: "stopped", Detail: "Stopped by you", Attempts: s.Phases[index].Round, Next: factory.FailureStopped, At: now}
+		failure := stoppedByYou(name, s.Phases[index].Round, now)
 		it.Failure = failure
 		s.Phases[index].State, s.Phases[index].Failure, s.Phases[index].At = factory.PhaseFailed, failure, now
 		s.Ended = now

@@ -1401,19 +1401,12 @@ func (lp *floorLoop) stop(c *loopCtl) {
 	if first {
 		now := lp.r.now()
 		err := lp.r.opts.Store.Update(c.id, func(it *factory.Item) error {
-			it.State = factory.StateNew
-			it.Question, it.QKind = "", ""
-			if s := it.Stream; s != nil {
-				if s.Cur < len(s.Phases) {
-					switch s.Phases[s.Cur].State {
-					case factory.PhaseRunning, factory.PhaseWaiting:
-						setPhaseState(&s.Phases[s.Cur], factory.PhaseFailed, now)
-					}
-				}
-				s.Ended = now
-				s.Paused = false
-				loopSay(it, now, "fail", "stopped · branch kept")
-			}
+			// A FAILURE ALREADY ON A RUNNING JOB IS THE STEP'S OWN: failStop
+			// wrote it the moment before it stopped the run, it is why the run
+			// stopped, and it stays. Every other stop the loop makes is a
+			// person's, the Stop door or a no to an approve step, to a step out
+			// of rounds or to the budget, and endRun records it as theirs.
+			endRun(it, now, it.Failure)
 			return nil
 		})
 		if err == nil {
@@ -1455,20 +1448,58 @@ func (r *Runner) Stop(id int) error {
 	return fmt.Errorf("%s is not running", it.Ref())
 }
 
-// stopStored is a stop with no run to cancel: the item is new again and its
-// stream says so.
-func stopStored(it *factory.Item, now time.Time) {
-	it.Failure = nil
+// stopStored is a person's stop with no run to cancel. A failure the job
+// already carried, a runner that went offline mid-step among them, is replaced
+// by the stop, the newer fact.
+func stopStored(it *factory.Item, now time.Time) { endRun(it, now, nil) }
+
+// endRun is the one write every stop makes, with a run to cancel or without:
+// the job is new again and the stream ends with its branch kept. why is the
+// failure that ended the run; nil is a person's stop. A STOP IS ONE FACT ON
+// BOTH PATHS: the loop's own stop and a stop of a job no runner here holds
+// write exactly this.
+//
+// A PERSON'S STOP IS MARKED ONLY WHERE IT CUT A STEP. A step under way
+// (running or waiting) is failed with [stoppedByYou], and the job carries the
+// same stop, so it never reads as a fresh job with a step still running, and
+// running that step again carries on from it. A job stopped before any step
+// began (queued) or after the last one ended (landed) lost nothing: it is
+// simply back in the backlog with no failure, where a start picks it up.
+func endRun(it *factory.Item, now time.Time, why *factory.Failure) {
+	it.Failure = why
 	it.Approval = nil
 	it.PublishError = ""
 	it.Publishing = false
 	it.State = factory.StateNew
 	it.Question, it.QKind = "", ""
-	if it.Stream != nil {
-		it.Stream.Ended = now
-		it.Stream.Paused = false
-		loopSay(it, now, "fail", "stopped · branch kept")
+	s := it.Stream
+	if s == nil {
+		return
 	}
+	if s.Cur >= 0 && s.Cur < len(s.Phases) {
+		ph := &s.Phases[s.Cur]
+		if ph.State == factory.PhaseRunning || ph.State == factory.PhaseWaiting {
+			if why == nil {
+				why = stoppedByYou(ph.Name, ph.Round, now)
+				it.Failure = why
+			}
+			setPhaseState(ph, factory.PhaseFailed, now)
+			if why.Step == ph.Name {
+				step := *why
+				ph.Failure = &step
+			}
+		}
+	}
+	s.Ended = now
+	s.Paused = false
+	loopSay(it, now, "fail", "stopped · branch kept")
+}
+
+// stoppedByYou is the failure a person's stop leaves on the step it cut and
+// on the job. A step's own Stop and the job's Stop write the same one, so
+// whoever reads the job reads one fact for both.
+func stoppedByYou(step string, round int, now time.Time) *factory.Failure {
+	return &factory.Failure{Step: step, Code: factory.CodeStopped, Detail: "Stopped by you", Attempts: round, Next: factory.FailureStopped, At: now}
 }
 
 // Pause stops the item's step now, keeping its chat; calling it again (or

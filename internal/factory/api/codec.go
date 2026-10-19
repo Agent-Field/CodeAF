@@ -261,7 +261,9 @@ func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
 	approval := factory.JobApproval(it)
 	approve := approval != nil && approval.State == "waiting" && person != "" && person == factory.NormalizeHandle(caller)
 	state := factory.JobState(it)
-	active := state == StateRunning || state == StateQueued || state == StateNeedsYou
+	// A RUN THAT ALREADY ENDED HAS NOTHING TO STOP, so a failed or stopped
+	// job offers no Stop beside its Run again.
+	active := (state == StateRunning || state == StateQueued || state == StateNeedsYou) && !factory.RunEnded(it)
 	return Can{
 		Run: owner && state == StateBacklog, StartNow: owner && state == StateBacklog,
 		Stop: owner && active, Dismiss: factory.NormalizeHandle(caller) != "", Drop: owner && state != StateDone,

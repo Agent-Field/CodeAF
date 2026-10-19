@@ -196,6 +196,11 @@ func JobState(it Item) string {
 	}
 }
 
+// RunEnded says the job's last run is over and says why, a step's failure or
+// a person's stop, and nothing has started it again. Such a job has nothing
+// to stop: it waits for a person to start it, run it again or drop it.
+func RunEnded(it Item) bool { return it.State == StateNew && it.Failure != nil }
+
 func JobDoneHow(it Item) string {
 	if it.DoneHow != "" {
 		return it.DoneHow

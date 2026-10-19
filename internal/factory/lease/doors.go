@@ -105,8 +105,13 @@ func (d *Doors) stop(id int, caller *string, receipt bool) error {
 		return err
 	}
 	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
-		if err := run.StopItem(it, now); err != nil {
-			return false, err
+		// A RESET OF A RUN THAT ALREADY ENDED CHANGES NOTHING: a failed or
+		// stopped job is reassigned or dropped as it stands, and why it ended
+		// stays. Only a person's Stop of it is refused, as not running.
+		if receipt || !factory.RunEnded(*it) {
+			if err := run.StopItem(it, now); err != nil {
+				return false, err
+			}
 		}
 		// THE PERSON'S STOP WINS: keep it durable while the job is locked,
 		// before intake can see the job back in the backlog.

@@ -32,6 +32,60 @@ func recordedRun() *factory.Stream {
 	}}
 }
 
+// A STOPPED JOB SAYS SO: the job's Stop leaves the same fact a step's Stop
+// does, so it never reads as a fresh backlog job with a step still running.
+// Undo puts back the run exactly as it stood, and a start takes the stop down
+// and begins the run again at its first step with nothing spent.
+func TestJobScreensAStoppedJobSaysSoUntilUndoOrStart(t *testing.T) {
+	f := newV2Jobs(t)
+	stages := []factory.Stage{
+		{Name: "plan", Kind: factory.StageChat, Ask: "plan it", On: true},
+		{Name: "write", Kind: factory.StageChat, Ask: "write it", On: true},
+		{Name: "proof", Kind: factory.StageChat, Ask: "prove it", On: true},
+	}
+	it := f.create(t, factory.Item{State: factory.StateRunning, Assignee: "sam", Stages: stages, Stream: recordedRun()})
+	f.post(t, it, "stop", "{}", 200)
+	j := f.read(t, it)
+	if j.State != "needs_you" || j.Failure == nil || j.Failure.Code != factory.CodeStopped || j.Failure.Next != factory.FailureStopped || j.Failure.Step != "write" || j.Failure.Detail != "Stopped by you" {
+		t.Fatalf("the stopped job does not say so: %s %+v", j.State, j.Failure)
+	}
+	if j.StatePresentation.Kind != "failed" || j.StatePresentation.Title != "Step stopped" || j.Cost != 1.25 {
+		t.Fatalf("stopped presentation: %+v cost %v", j.StatePresentation, j.Cost)
+	}
+	// NOTHING IS LEFT TO STOP, and the stop is the person's to take back.
+	if j.Can.Stop || j.Controls.StopStep || j.Can.Run || !j.Can.RunAgain || !j.Can.Undo {
+		t.Fatalf("stopped doors: %+v %+v", j.Can, j.Controls)
+	}
+	for _, s := range j.Steps {
+		if s.State == api.StepRunning || s.State == api.StepWaiting {
+			t.Fatalf("step %s still reads %s", s.Name, s.State)
+		}
+	}
+	if s := j.Steps[1]; s.State != api.StepFailed || s.Failure == nil || s.Failure.Code != factory.CodeStopped {
+		t.Fatalf("the cut step = %+v", s)
+	}
+	f.post(t, it, "stop", "{}", 409)
+
+	f.post(t, it, "undo", "{}", 200)
+	cur, _ := f.st.Get(it.ID)
+	if cur.State != factory.StateQueued || cur.Failure != nil || cur.Stream.Phases[1].State != factory.PhaseRunning || cur.Stream.Phases[1].Failure != nil || cur.Stream.Phases[1].Chat != "old-chat" || !cur.Stream.Ended.IsZero() || cur.Stream.Spent != 1.25 {
+		t.Fatalf("undo did not put the run back: %s %+v %+v", cur.State, cur.Failure, cur.Stream)
+	}
+
+	f.post(t, it, "stop", "{}", 200)
+	f.clock.Add(int64(factory.ApprovalUndo))
+	f.post(t, it, "run_again", "{}", 200)
+	j = f.read(t, it)
+	if j.State != "queued" || j.Failure != nil || j.Cost != 0 || len(j.Steps) != 3 || j.StatePresentation.Title != "Waiting to start" {
+		t.Fatalf("start after the stop: %s %+v cost %v", j.State, j.Failure, j.Cost)
+	}
+	for _, s := range j.Steps {
+		if s.State != api.StepPending || s.Failure != nil {
+			t.Fatalf("the started run kept the stopped step: %+v", s)
+		}
+	}
+}
+
 func TestJobScreensStopRerunKeepsEarlierWorkAndRevokesLease(t *testing.T) {
 	f := newV2Jobs(t)
 	it := f.create(t, factory.Item{State: factory.StateQueued, Assignee: "sam", Stream: recordedRun()})
