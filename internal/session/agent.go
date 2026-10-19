@@ -2857,6 +2857,10 @@ func (a *Agent) landVolatileLocked() {
 	// read made before this request ([Agent.teamBoundary]) rather than beside
 	// the work, so it is never a step late (team.go's [teamRoleNoteOpening]).
 	a.landTeamRoleLocked()
+	// AND, ONCE, IN A CONVERSATION IN NO TEAM THAT HAS GONE ON, leave to
+	// suggest /helpers (helpersnote.go). After the role, which is what says
+	// whether there is a team.
+	a.landHelpersNoteLocked()
 	a.landNoteLocked(volatileNoteOpening, a.volatileBlockLocked())
 	// AND A MANAGER'S TEAM, in a note of its own: a team moves whenever a member
 	// does, and riding the card's note
@@ -2926,7 +2930,8 @@ func isVolatileNote(text string) bool {
 	return strings.HasPrefix(text, volatileNoteOpening) ||
 		strings.HasPrefix(text, bashBeltFrameOpening) ||
 		strings.HasPrefix(text, teamNoteOpening) ||
-		strings.HasPrefix(text, teamRoleNoteOpening)
+		strings.HasPrefix(text, teamRoleNoteOpening) ||
+		strings.HasPrefix(text, helpersNoteOpening)
 }
 
 // mayBashBelt is [Config.mayBashBelt] asked of a live agent, so that the

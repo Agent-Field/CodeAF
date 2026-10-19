@@ -110,6 +110,21 @@ the strip goes back, the reason is said, and nothing is sent. If you leave the
 conversation before the save finishes, the team stands and the message is not sent:
 `made the team lab · its manager is the conversation you left; ask it for helpers there`.
 
+## Why the chat suggested bringing in helpers or /helpers
+
+A conversation that has gone on may end a reply with one sentence like "This could be
+split up and worked on in parallel by a small team. Want to bring in some helpers? Type
+/helpers and I'll suggest who." That is codeaf letting it say so: after your fourth message,
+a conversation in no team is told, once, that it may suggest a team when the work is long
+and has parts a few helpers could work on at once. It is told to say it at most
+once, never for small or quick work, never instead of what you asked, and never again
+after you pass on it. Reopening a long conversation tells it once more, and it can see in
+its history that it already asked.
+
+It cannot make the team itself; only you can, with `/helpers` or `+ New from this session`
+in the Teams dropdown. Ignore it, or say no, and nothing changes. A conversation already in
+a team, a task's worker, an automation's run and home's `ask here` are never told this.
+
 ## Cancel a team nobody joined — team_dissolve
 
 Say no to the proposed helpers, or "cancel", and the manager calls `team_dissolve`. The

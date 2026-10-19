@@ -4130,6 +4130,8 @@ func TestHelpersQuestionsReachTheirSections(t *testing.T) {
 		{"why is + New from this session missing when a team is selected", "conversations-and-teams", "the Teams dropdown and + New from this session"},
 		{"why is /helpers not offered here", "team-manager", "When /helpers is not offered"},
 		{"/helpers says open one first", "team-manager", "When /helpers is not offered"},
+		{"why did the chat suggest bringing in helpers", "team-manager", "Why the chat suggested bringing in helpers"},
+		{"the model asked if I want a small team working in parallel", "team-manager", "Why the chat suggested bringing in helpers"},
 		{"I said no to the helpers, how do I cancel the team", "team-manager", "Cancel a team nobody joined"},
 		{"what does team_dissolve do", "team-manager", "Cancel a team nobody joined"},
 	} {
