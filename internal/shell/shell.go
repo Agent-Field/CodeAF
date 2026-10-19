@@ -13,6 +13,7 @@
 package shell
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -22,6 +23,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/env"
 )
@@ -44,6 +46,9 @@ type Lookup struct {
 	Env      func(string) string
 	Exists   func(string) bool
 	LookPath func(string) (string, error)
+	// GitExecPath follows a package-manager shim only when its location says
+	// nothing about the installation. Failures leave the remaining rules usable.
+	GitExecPath func(git string) (string, error)
 	// Abs binds an explicit relative file to this process's filesystem instead of
 	// letting exec search PATH again. Pure fixtures may omit it for absolute paths.
 	Abs func(string) (string, error)
@@ -124,12 +129,31 @@ func ResolveWindows(l Lookup) (string, error) {
 	if git, err := l.LookPath("git.exe"); err == nil {
 		git = windowsClean(git)
 		lower := strings.ToLower(git)
+		knownLayout := false
 		for _, suffix := range []string{`\mingw64\bin\git.exe`, `\cmd\git.exe`, `\bin\git.exe`} {
 			if strings.HasSuffix(lower, suffix) {
+				knownLayout = true
 				if bash := gitBash(git[:len(git)-len(suffix)]); bash != "" {
 					return bash, nil
 				}
 				break
+			}
+		}
+		if !knownLayout && l.GitExecPath != nil {
+			if execPath, err := l.GitExecPath(git); err == nil && strings.TrimSpace(execPath) != "" {
+				root := windowsClean(strings.TrimSpace(execPath))
+				// Git's usual mingw64/libexec/git-core is three parents below
+				// its root. Bound the search so an unrelated shim stays cheap.
+				for level := 0; level <= 4; level++ {
+					if bash := gitBash(root); bash != "" {
+						return bash, nil
+					}
+					parent := windowsClean(root + `\..`)
+					if parent == root {
+						break
+					}
+					root = parent
+				}
 			}
 		}
 	}
@@ -172,6 +196,16 @@ func Bash() (string, error) {
 		key.WriteString(values[name])
 		key.WriteByte(0)
 	}
+	// A relative override belongs to this directory. An absolute choice never
+	// depends on cwd and must not repeat discovery when the engine changes it.
+	if explicit := values["CODEAF_BASH"]; explicit != "" && !filepath.IsAbs(explicit) {
+		cwd, err := os.Getwd()
+		key.WriteString(cwd)
+		if err != nil {
+			key.WriteString(err.Error())
+		}
+		key.WriteByte(0)
+	}
 	bashCache.Lock()
 	defer bashCache.Unlock()
 	if !bashCache.ready || bashCache.key != key.String() {
@@ -180,6 +214,16 @@ func Bash() (string, error) {
 			Exists:   func(name string) bool { info, err := os.Stat(name); return err == nil && info.Mode().IsRegular() },
 			LookPath: exec.LookPath,
 			Abs:      filepath.Abs,
+			GitExecPath: func(git string) (string, error) {
+				// The result lives in the resolution cache, not in the command
+				// path. A broken shim cannot hold up the first command forever.
+				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				defer cancel()
+				cmd := exec.CommandContext(ctx, git, "--exec-path")
+				cmd.WaitDelay = 100 * time.Millisecond
+				output, err := cmd.Output()
+				return strings.TrimSpace(string(output)), err
+			},
 		})
 		bashCache.key, bashCache.ready = key.String(), true
 	}
@@ -219,16 +263,25 @@ func Reading() (string, error) {
 
 // ListPath converts only paths bash interprets itself. Values passed to native
 // programs, such as PLANDB_DB, must keep their native Windows spelling.
-func ListPath(native string) string { return listPath(runtime.GOOS, native) }
+func ListPath(native string) string { return listPath(runtime.GOOS, native, filepath.Abs) }
 
-func listPath(goos, native string) string {
+func listPath(goos, native string, abs func(string) (string, error)) string {
 	if goos != "windows" {
 		return native
 	}
-	if strings.HasPrefix(native, "/") {
+	if native == "" || strings.HasPrefix(native, "/") {
 		return native
 	}
 	slash := strings.ReplaceAll(native, `\`, "/")
+	// Drive-relative and root-relative names need Windows' own drive/cwd rules
+	// before MSYS conversion; replacing separators alone sends bash elsewhere.
+	if !strings.HasPrefix(slash, "//") && !(len(slash) >= 3 && slash[1] == ':' && slash[2] == '/') {
+		absolute, err := abs(native)
+		if err != nil {
+			return native
+		}
+		slash = strings.ReplaceAll(absolute, `\`, "/")
+	}
 	if len(slash) >= 3 && slash[1] == ':' && slash[2] == '/' && ((slash[0] >= 'A' && slash[0] <= 'Z') || (slash[0] >= 'a' && slash[0] <= 'z')) {
 		return "/" + strings.ToLower(slash[:1]) + slash[2:]
 	}

@@ -138,11 +138,11 @@ func TestWindowsListPath(t *testing.T) {
 		{`C:\a\b`, `/c/a/b`}, {`D:/a/b`, `/d/a/b`}, {`z:\Program Files (x86)\héllo ✓`, `/z/Program Files (x86)/héllo ✓`},
 		{`\\server\share\x`, `//server/share/x`}, {`/c/a/b`, `/c/a/b`}, {`//server/share/x`, `//server/share/x`}, {`/usr/bin`, `/usr/bin`}, {"", ""},
 	} {
-		if got := listPath("windows", tc.native); got != tc.want {
+		if got := listPath("windows", tc.native, filepath.Abs); got != tc.want {
 			t.Errorf("%q => %q, want %q", tc.native, got, tc.want)
 		}
 		for _, goos := range []string{"linux", "darwin"} {
-			if got := listPath(goos, tc.native); got != tc.native {
+			if got := listPath(goos, tc.native, filepath.Abs); got != tc.native {
 				t.Errorf("%s changed %q to %q", goos, tc.native, got)
 			}
 		}

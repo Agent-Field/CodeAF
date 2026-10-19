@@ -5,11 +5,11 @@
 On Windows, codeaf runs commands in Git for Windows' bash (or another MSYS2-family bash). It looks in this order:
 
 1. `CODEAF_BASH`, an explicit path to a bash.exe. A missing file or a WSL launcher stops the command and names the variable and path.
-2. Git found through `git.exe` on PATH, in `cmd`, `bin`, or `mingw64\bin`.
+2. Git found through `git.exe` on PATH, in `cmd`, `bin`, or `mingw64\bin`. If it is a package-manager shim elsewhere, codeaf asks `git --exec-path` (with a three-second timeout) and looks up at most four parent folders for Git Bash. A failed lookup falls through to the next step.
 3. Git under `%ProgramW6432%`, `%ProgramFiles%`, `%ProgramFiles(x86)%`, then `%LOCALAPPDATA%\Programs\Git` and `%USERPROFILE%\scoop\apps\git\current`.
 4. `bash.exe` on PATH, unless it is a WSL launcher.
 
-For each Git installation, `bin\bash.exe` wins over `usr\bin\bash.exe`. Set `CODEAF_BASH` to choose a Git for Windows or MSYS2 bash.exe yourself; unset it to restore this search.
+For each Git installation, `bin\bash.exe` wins over `usr\bin\bash.exe`. Set `CODEAF_BASH` to choose a Git for Windows or MSYS2 bash.exe yourself; a relative choice is resolved from the current working folder. Unset it to restore this search.
 
 ## Can codeaf use WSL to run commands?
 
@@ -37,7 +37,7 @@ The WSL-launcher answer is:
 
 ## How do I write Windows drive paths in Git Bash?
 
-Git Bash uses `/c/…`, `/d/…` for Windows drives, for example `/c/Users/me/project`. codeaf converts paths it places in shell PATH lists and command targets to this form. Values read by native Windows programs keep their Windows form. The worker's project facts name its selected shell and the drive path form. Cygwin's `/cygdrive/` prefix is not supported.
+Git Bash uses `/c/…`, `/d/…` for Windows drives, for example `/c/Users/me/project`. codeaf converts paths it places in shell PATH lists and command targets to this form. Relative Windows paths such as `C:skills\bin`, `\tools\bin` and `skills\bin` are first made absolute using Windows' current drive and folder. Already POSIX-shaped paths beginning with `/` stay as written. Values read by native Windows programs keep their Windows form. The worker's project facts name its selected shell and the drive path form. Cygwin's `/cygdrive/` prefix is not supported.
 
 When Git Bash starts a Windows program, it normally converts arguments beginning with `/` into Windows paths. That is how `/c/Users/me` reaches a native Windows tool as a drive path.
 
