@@ -103,6 +103,10 @@ type teamRole struct {
 	// manager is the global manager, and its other members are the top-level
 	// teams' managers.
 	root bool
+	// dissolvable says this conversation manages the team and the team has
+	// never held anyone but it ([teams.File.Dissolvable]), which is when its
+	// manager is given team_dissolve (team_dissolve.go).
+	dissolvable bool
 	// key is the conversation key this conversation is stored under in the
 	// team, the one spelling of [Agent.teamKeysLocked] the file holds. An event
 	// this conversation writes names it ([teams.Entry.Member]).
@@ -402,6 +406,7 @@ func rolesFor(file *teams.File, keys []string, d teams.Defaults) []teamRole {
 			derived:     member.HandleDerived(),
 			joinedAt:    member.JoinedAt,
 		}
+		role.dissolvable = role.manager && file.Dissolvable(team.ID)
 		if hasHome {
 			role.questionsUp = file.Effective(home.Team, d).QuestionsUp
 		}
@@ -511,15 +516,19 @@ func (a *Agent) teamBoundary() string {
 // armTeamTools puts the verbs these roles give onto the belt.
 func (a *Agent) armTeamTools(roles []teamRole) {
 	var arriving []bare.Tool
-	manager, member := false, false
+	manager, member, dissolvable := false, false, false
 	for _, role := range roles {
 		manager = manager || role.manager
 		member = member || (!role.manager && role.managed)
+		dissolvable = dissolvable || role.dissolvable
 	}
 	if manager {
 		arriving = append(arriving, a.managerTools()...)
 		arriving = append(arriving, a.packetTools()...)
 		arriving = append(arriving, a.wrapUpTools()...)
+	}
+	if dissolvable {
+		arriving = append(arriving, a.dissolveTools()...)
 	}
 	if member {
 		arriving = append(arriving, a.memberTools()...)
@@ -580,6 +589,11 @@ func (a *Agent) retireTeamTools(allowed map[string]bool) {
 		a.teamRetired[tool.Name] = teamRetiredMember
 		if teamManagerToolName(tool.Name) {
 			a.teamRetired[tool.Name] = teamRetiredManager
+		}
+		// team_dissolve leaves a conversation that still manages its team
+		// when the team was used, and that is a different sentence.
+		if tool.Name == teamDissolveToolName && allowed[teamStatusToolName] {
+			a.teamRetired[tool.Name] = teamRetiredDissolve
 		}
 	}
 	a.tools = kept

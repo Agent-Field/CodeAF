@@ -55,6 +55,9 @@ its tab strip and never scrolls away:
 - **Choose AI manager** on Teams assigns an existing member. To use a new conversation,
   first use Add chat, then Choose AI manager. The Chats dropdown and conversation grid
   offer no manager-assignment controls.
+- **`/helpers`**, or **`+ Make team`** in the right-hand column, in the conversation you are
+  working in: a new team is made with that conversation as its manager, and it proposes
+  helpers (see **Turn this conversation into a team**).
 
 The manager's place reads **`◆ Manager`**. Its tile in the team-agnostic grid keeps its ordinary title and position. The tab's hint names its team and title. `alt+m` goes to the
 manager from any conversation in the team.
@@ -65,6 +68,60 @@ the team's name, for example `@second` for Second. The manager over `All teams` 
 If the handle is already taken in that team, a number is added. Another manager can use
 `team_send` before its first turn. Once its title is made, the ordinary title-based
 handle choice may replace that fallback.
+
+## Turn this conversation into a team — /helpers, the + Make team button, convert a chat, bring in helpers
+
+You are working in a conversation, the work has grown, and you want helpers with this
+conversation in charge. Type `/helpers`, or `/helpers <what you want help with>`, or press
+**`+ Make team`** beside `Tasks` at the top of the right-hand column. Two things happen:
+
+1. A new top-level team is made with **this conversation as its manager** and only member,
+   in one save. It is named after the conversation's folder, or a word such as `harbor`
+   when a team already has that name, and takes the next free colour. The strip narrows to
+   it, the tab reads `◆ Manager`, and the column turns to the team's Traffic. The rules of
+   every team apply: a name no other team has, and one conversation manages one team and
+   its subteams. Rename it or change its colour in Teams, under `Settings`.
+2. Once the team is saved, the conversation is sent one message, shown as `/helpers`: it
+   proposes two or three helpers — a handle, the part of the work, and the brief — and asks
+   you to accept them, change the list, or cancel. It starts nobody until you agree.
+
+The receipt reads `made the team lab · this conversation is its manager`. Reply in your own
+words; there is no card. Yes, and it starts each helper with `team_start`, under your
+approval posture like any start. A different list, and it proposes again. Cancel, and it
+takes the team back with `team_dissolve` (see **Cancel a team nobody joined**). Nothing is
+copied: the manager keeps this conversation, its history and its tasks.
+
+## When /helpers is not offered, and what it says
+
+`+ Make team` is drawn only in a chat in no team, where it can work and where it fits; a
+narrow column drops it first. `/helpers` always answers:
+
+- On home, or any page: `/helpers makes a team of the conversation you are in · open one first`.
+- On the welcome screen of a new chat: `/helpers makes a team of a conversation you have started · say what you are working on first`.
+- In a conversation that already manages a team: `this conversation already manages harbor · ask it for helpers`, and the strip shows that team.
+- On a connection that holds one conversation at a time: `helpers open beside this conversation, and a connection holds one conversation at a time`.
+- Over `--host` to an engine without teams: `managers are not available over --host yet`.
+- While the first one is still being saved: `the team is still being saved`.
+
+If the save is refused — another window made this conversation another team's manager —
+the strip goes back, the reason is said, and nothing is sent. If you leave the
+conversation before the save finishes, the team stands and the message is not sent:
+`made the team lab · its manager is the conversation you left; ask it for helpers there`.
+
+## Cancel a team nobody joined — team_dissolve
+
+Say no to the proposed helpers, or "cancel", and the manager calls `team_dissolve`. The
+team is forgotten as if it had never been made: no row under `Show closed`, nothing
+stopped, and the conversation, its history and its tasks stay. The strip goes back to all
+your chats and the column to `Tasks`, with `+ Make team` again.
+
+A manager has `team_dissolve` only while its team has never held anyone but it: no
+member, no former member, no subteam, and nothing in its Traffic. The rule is the same for
+every team, however it was made. It does not ask first, because it can only remove a team
+nothing happened in. Once anyone joins, it leaves at the manager's next step, and a
+remembered call says `team_dissolve is no longer one of your tools: the team has held
+members or exchanged messages, so only the person can disband it, from Teams.` A team
+that was used ends with `Disband` on Teams, which keeps its history.
 
 ## The manager's screen
 
@@ -283,6 +340,7 @@ on one waits for you.
 | `team_decide` | answers a decision packet waiting on the manager, most often a member's question: an option, or its own words | no |
 | `team_escalate` | sends a packet waiting on the manager up, to its own manager or to you, with the reason it is not the manager's to decide | no |
 | `team_close_report` | brings you the team's closing report (done, left, where the files are) after you asked it to wrap up | no |
+| `team_dissolve` | takes back a team that has never held anyone but its manager, when you decline it; the team is forgotten and the conversation goes on alone. Only offered while the team is that empty (see **Cancel a team nobody joined**) | no |
 | `team_raise` | raises a conflict to the manager above every party (see **Conflicts between members and teams**); members have it too | no |
 
 ## Adding existing sessions and removing members through the manager
@@ -312,8 +370,9 @@ Like any tool, each can be set to ask or allow in `/settings` under the tool app
 ## What happens when a conversation stops being the manager
 
 At its next step, a conversation removed as manager loses `team_status`, `team_read`,
-`team_send`, `team_stop`, `team_start`, `team_add`, `team_remove`, `team_decide`, `team_escalate` and
-`team_close_report`. If it is still a member of a managed team, it keeps `team_post` and
+`team_send`, `team_stop`, `team_start`, `team_add`, `team_remove`, `team_decide`, `team_escalate`,
+`team_close_report`, and `team_dissolve` if it had it. A team it dissolved with
+`team_dissolve` takes them all the same way. If it is still a member of a managed team, it keeps `team_post` and
 `team_raise`; outside a team it loses those too. A remembered call to a removed manager
 tool says `team_send is no longer one of your tools: this conversation no longer manages a
 team.` A removed member tool says `team_post is no longer one of your tools: this

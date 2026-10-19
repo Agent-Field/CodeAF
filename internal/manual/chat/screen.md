@@ -31,7 +31,8 @@ row is not there and the box sits straight under the gap.
 Beside the conversation, on the right, the column (the right-hand bar, sidebar, task
 panel, whatever you call it) takes a quarter of the frame, 28 to 40 columns (30 at 120),
 from the session's first keystroke, before any tasks exist. It is the same column in every
-chat, and its header is `Tasks N`, or `Tasks N · Traffic N new` in a chat in a team. An untouched empty
+chat, and its header is `Tasks N`, or `Tasks N · Traffic N new` in a chat in a team; a chat in
+no team also has `+ Make team` there (`/helpers`, on the team manager page). An untouched empty
 conversation opens without it: no column, no doors, no rule, no telemetry, just the
 centred greeting with the message box inside it (see *The empty screen* page); the
 column stands the moment you type, or at once if a task is already here. Under the
@@ -3327,7 +3328,9 @@ Sections are one blank line apart; the band's rule is the one rule in the column
 
 The top of the right-hand column, above the sections under its list:
 
-- **The header** is `Tasks N`, and in a chat in a team `Tasks N · Traffic N new`. The word
+- **The header** is `Tasks N`, and in a chat in a team `Tasks N · Traffic N new`. In a chat
+  in no team, where it fits, `Tasks N · + Make team`: pressing it is `/helpers`, which makes
+  this conversation a new team's manager and asks it to propose helpers. The word
   in front is bold ink and the other dim; each is a button with a hover ground and a hint,
   and the other word keeps its count, so what arrives on the Traffic while you read the
   tasks still says `2 new`. Which word is in front is remembered for the session per kind

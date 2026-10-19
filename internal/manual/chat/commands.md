@@ -323,6 +323,7 @@ command).
 | `/spend` | none | none | opens the spend place, what this machine has cost, by the day (also `alt+5`) |
 | `/wall` | | | every saved conversation at once, with live or saved previews and card-based team creation (also `alt+v`, or `▦` under the box) |
 | `/teams` | | | the teams page: your teams as a tree, what waits on you, member previews and the selected team's interaction table (also `alt+2`, or `teams` on the tab bar) |
+| `/helpers` | | `<what to help with>` | makes this conversation a new team's manager, which proposes helpers for you to accept, change or cancel (also `+ Make team` beside `Tasks` in the right-hand column); on home it says to open a conversation first |
 | `/cost` | `/usage`, `/tokens` | — | prints what this conversation has spent, and on what |
 | `/effort` | `/think`, `/thinking` | — | opens this conversation's thinking levels; says it is unavailable when the session has no dial |
 | `/effort` | `/think`, `/thinking` | `<rung>` | sets this conversation's thinking level; an unknown rung lists the accepted levels and changes nothing |

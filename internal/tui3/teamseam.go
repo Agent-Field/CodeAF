@@ -401,7 +401,9 @@ func (a *app) teamsWrite() tea.Cmd {
 			}
 			return func(bool) tea.Cmd {
 				a.teamsTake(teamsWrote{teams: teams, stamp: stamp, err: err, covers: covers, seqs: seqs, refused: refusedBy})
-				return nil
+				// A /helpers whose team this write carried is asked for its
+				// helpers now, and not before (helpers.go).
+				return a.helpersAsked()
 			}
 		}))
 	}

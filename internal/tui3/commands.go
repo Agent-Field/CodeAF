@@ -155,6 +155,12 @@ var commands = []command{
 	// conversations big, and this is the team-level view, every member open or
 	// not, the manager's conversation and what waits on you (place_teams.go).
 	{name: "teams", desc: "your teams, their managers and what waits on you · " + placeChord(pageTeams)},
+	// AND THE ONE DOOR THAT STARTS FROM THE CONVERSATION RATHER THAN FROM THE
+	// TEAM, under the page it fills (helpers.go): this conversation becomes a
+	// new team's manager and proposes helpers. Two rows, the way /manual has
+	// two, because the words after it go to the manager as what to help with.
+	{name: "helpers", desc: "makes this conversation a new team's manager, which proposes helpers for you to accept, change or cancel"},
+	{name: "helpers", args: "<what to help with>", desc: "…the same, with what you want help with"},
 	{name: "spend", desc: "what this machine has cost, by the day · " + placeChord(pageSpend)},
 	// It sits AFTER /compact and before /help because those two are the pair a
 	// person reads together when a conversation has gone wrong: compacting is

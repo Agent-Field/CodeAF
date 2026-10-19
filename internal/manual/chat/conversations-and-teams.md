@@ -239,7 +239,9 @@ it does not select an overlay.
 
 A **manager** is a conversation that runs the team: you talk to it, it sends work to members
 and reports progress. Teams offers **Choose AI manager** for existing members and **+ Manager**
-when a team has none. Add a new member first when you need a new conversation to replace
+when a team has none. In the conversation you are working in, **`/helpers`** (or `+ Make
+team` in the right-hand column) makes a new team with that conversation as its manager,
+which then proposes helpers for you to accept, change or cancel. Add a new member first when you need a new conversation to replace
 an existing manager. All teams has a dedicated Global manager card. `+ Global manager` creates its optional
 conversation. Its reports are the managers of open top-level teams; subteam managers
 report to their parent. Its card's `x` deletes the global-manager conversation with the

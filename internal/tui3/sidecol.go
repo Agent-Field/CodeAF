@@ -154,6 +154,9 @@ const (
 	sideActHide
 	// sideActTeams opens the teams page, where a packet is answered.
 	sideActTeams
+	// sideActHelpers makes the chat in front a new team's manager and asks
+	// it for helpers: /helpers, pressed (helpers.go).
+	sideActHelpers
 )
 
 // sideAct is what a press does.
@@ -370,6 +373,26 @@ func (a *app) sideHeadRow(width int) (string, *sideRow) {
 		trafficAct = sideAct{kind: sideActView, view: sideTraffic}
 	}
 	word(sideTasksWord, itoa(len(a.taskOrder)), false, view == sideTasks, tasksAct, "Show this chat's tasks"+hintSegment+"click")
+	// A CHAT IN NO TEAM IS OFFERED ONE where the Traffic word would stand: the
+	// door /helpers is (helpers.go), drawn dim like the other word, and only
+	// where it can work and where it fits beside the key that hides the
+	// column, which keeps its cell of air. A narrow column loses it first;
+	// /helpers is always there.
+	if !team && a.helpersOffered() {
+		need := ansi.StringWidth(sideWordSep+helpersDoorWord) + 1 + ansi.StringWidth(a.chords.say(sideHideKey))
+		if used+need <= width {
+			b.WriteString(a.pal.dim(sideWordSep))
+			used += ansi.StringWidth(sideWordSep)
+			w := ansi.StringWidth(helpersDoorWord)
+			painted := a.pal.dim(helpersDoorWord)
+			if hot == len(row.doors) {
+				painted = a.pal.cursor(a.pal.ink(helpersDoorWord), 0)
+			}
+			row.doors = append(row.doors, sideDoor{span: hudSpan{from: used, to: used + w}, hint: helpersDoorHint + hintSegment + "click", act: sideAct{kind: sideActHelpers}})
+			b.WriteString(painted)
+			used += w
+		}
+	}
 	if team {
 		n, fresh := a.sideTrafficCount(t, kind, handle)
 		// WITH THE TRAFFIC IN FRONT NOTHING IN IT IS NEW TO THE WORD: the `new`
@@ -837,6 +860,9 @@ func (a *app) sideDo(act sideAct) tea.Cmd {
 	case sideActTeams:
 		a.railTake(false)
 		return a.showPage(pageTeams)
+	case sideActHelpers:
+		a.railTake(false)
+		return a.runHelpersCommand("")
 	}
 	return nil
 }
