@@ -464,26 +464,27 @@ quitting the app only lets go of it.
 
 ## When the desktop app closes unexpectedly — a reply stuck working, carrying on after it closed
 
-If the desktop app closes unexpectedly in the middle of a reply, opening it
-again carries the reply and its running tasks on from where their records
-stand. "Resumed after the app closed" appears before that reply. Finished
-steps are not repeated; a step that was still running may not have finished,
-so the agent checks its result before relying on it. Another window still
-working on the conversation is left alone. An idle conversation stays idle.
-If the app closed again before its promised reply began, opening it again
-tries that reply with the same notice, even if it had already read idle.
+If the desktop app closes unexpectedly during a reply, opening it again carries
+the reply and its running tasks on from where their records stand.
+"Resumed after the app closed" appears before that reply. Finished steps are
+not repeated; the agent checks the result of an unfinished step before relying
+on it. Another window still working on the conversation is left alone. An idle
+conversation without a promised reply stays idle.
+
+If the app closes again before its promised reply begins, opening it again
+tries that reply with the same notice. Newer task activity keeps that promise's
+original notice and age. Another reply starting does not cancel
+that promise. A message, correction, queued message or answer from you cancels
+that promise, including a message sent in another window while the app was
+closed. A deleted conversation never carries on.
 
 A conversation carries on automatically at most twice in a row. A reply that
-finishes normally, or a message, correction, queued message or answer from you,
-lets it carry on automatically again. A message sent in another window while
-the app was closed also resets that limit; the agent's own continuation notes
-do not. Retrying a promised reply that never began uses an automatic attempt
-too. If this is the third time within ten
-minutes that opening the app finds an unfinished reply, none of those replies
-carry on automatically on that opening. A reply last active more than an hour
-before opening is also left for you to choose.
-For a promised reply that never began, the hour starts when that promise was
-saved, rather than when the app next opens.
+finishes normally, or a direction from you, resets that limit; the agent's own
+notes do not. Retrying a promised reply uses an attempt too. On the third
+opening within ten minutes that finds unfinished replies, none carry on
+automatically. A reply last active more than an hour before opening is left
+for you to choose. For a promised reply that never began, the hour starts when
+that promise was first saved, even if its tasks worked again afterwards.
 
 When work is left for you, its chat says "The app closed while this was working · send a message to carry on".
 Send a message to continue. These lines, and "Resumed after quit" after a normal

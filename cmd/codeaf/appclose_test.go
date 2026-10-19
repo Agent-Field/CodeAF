@@ -70,7 +70,7 @@ type closeConversation struct {
 	resumeErr     error
 }
 
-func (c *closeConversation) ResumeAfterClose() (bool, error) {
+func (c *closeConversation) ResumeAfterCloseKey(key string) (bool, error) {
 	if c.beforeResume != nil {
 		c.beforeResume()
 	}
@@ -373,8 +373,8 @@ func TestAppCloseC3RealSessionCarriesOnOnce(t *testing.T) {
 	}
 	// C6: a normally completed real turn clears the persisted consecutive count.
 	_ = r.b.state.read(func(f *appStateFile) {
-		if f.CloseResumes[r.id] != 0 {
-			t.Errorf("normal completion kept count %d", f.CloseResumes[r.id])
+		if f.CloseResumes[r.id] != 0 || f.ClosePending[r.id] != "" || !f.ClosePendingAt[r.id].IsZero() {
+			t.Errorf("own continuation did not acknowledge its pending key or reset its count: %+v", f)
 		}
 	})
 }
@@ -478,6 +478,7 @@ func TestAppCloseC6TwoAttemptsAcrossRestarts(t *testing.T) {
 			t.Fatal(err)
 		}
 		if attempt < 3 {
+			closeConsumeTurn(t, r, closeDisk(t, r).ClosePending[r.id], false)
 			_ = r.b.Close()
 			r.clock.advance(t, 11*time.Minute)
 			r.p.UpdatedAt = r.clock.now().Add(-time.Minute)
@@ -753,7 +754,8 @@ func TestAppCloseC10SameClaimHandledOnce(t *testing.T) {
 				// The accepted fake wake must start a turn, as the real session
 				// does. An unstarted wake deliberately remains pending for F3.
 				a := r.b.agent(r.id)
-				events := make(chan session.Event, 1)
+				events := make(chan session.Event, 2)
+				events <- session.Event{Kind: session.EventCloseContinued, Text: closeDisk(t, r).ClosePending[r.id]}
 				events <- session.Event{Kind: session.EventError, Text: "unfinished test turn"}
 				close(events)
 				r.b.wokenTurn(a, r.b.liveOf(a), appTurnElsewhere{events: events})

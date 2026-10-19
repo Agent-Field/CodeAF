@@ -85,8 +85,8 @@ type appStateFile struct {
 	CloseResumedAt map[string]time.Time `json:"close_resumed_at,omitempty"`
 	CloseStarts    []time.Time          `json:"close_starts,omitempty"`
 	CloseHandled   map[string]time.Time `json:"close_handled,omitempty"`
-	// ClosePending is a continuation owed until its wake is accepted and a turn
-	// starts here. Its original time bounds retries even if no busy claim remains.
+	// ClosePending is owed until a started turn consumes its own keyed note.
+	// Its original time bounds retries even if no busy claim remains.
 	ClosePending   map[string]string    `json:"close_pending,omitempty"`
 	ClosePendingAt map[string]time.Time `json:"close_pending_at,omitempty"`
 	// Closed and Archived are when the person moved each agent to Closed or

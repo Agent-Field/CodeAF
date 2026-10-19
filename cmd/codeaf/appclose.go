@@ -14,6 +14,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
 const (
@@ -81,8 +82,11 @@ func (b *appBackend) snapshotCloseClaims() {
 			if !dir.IsDir() {
 				continue
 			}
-			existing[dir.Name()] = true
 			path := filepath.Join(session.PlacesRoot(), bucket.Name(), dir.Name())
+			if !appCloseConversationExists(path) {
+				continue
+			}
+			existing[dir.Name()] = true
 			paths[dir.Name()] = path
 			if p, ok := session.ReadSessionPresenceAnyAge(path); ok && appBusyClaim(p) {
 				r.claims[path] = &appCloseClaim{presence: p}
@@ -394,17 +398,24 @@ func (b *appBackend) carryAfterClose(a *appAgent, p session.SessionPresence) {
 	}); err != nil {
 		return
 	}
+	if pending.key != "" {
+		work := appPendingCloseWork(pending)
+		work.presence = p
+		b.carryCloseWork(a, work)
+		return
+	}
 	if handled {
-		if pending.key != "" {
-			b.carryCloseWork(a, appPendingCloseWork(pending))
-		}
 		return
 	}
 	b.carryCloseWork(a, appCloseWork{presence: p, key: "close-" + p.UpdatedAt.UTC().Format("20060102T150405.000000000Z"), at: p.UpdatedAt})
 }
 
 func appPendingCloseWork(p appClosePending) appCloseWork {
-	return appCloseWork{presence: session.SessionPresence{Dir: p.dir}, key: p.key, at: p.at, replay: true}
+	claim := session.SessionPresence{Dir: p.dir}
+	if current, ok := session.ReadSessionPresenceAnyAge(p.dir); ok && appBusyClaim(current) {
+		claim = current
+	}
+	return appCloseWork{presence: claim, key: p.key, at: p.at, replay: true}
 }
 
 func (b *appBackend) replayClosePending(p appClosePending) {
@@ -437,7 +448,10 @@ func (b *appBackend) carryCloseWork(a *appAgent, work appCloseWork) {
 	if err := b.settleDayLimit(); err != nil {
 		return
 	}
-	b.resetCloseAfterPerson(a)
+	reset, err := b.resetCloseAfterPerson(a)
+	if err != nil || (reset && work.replay) {
+		return
+	}
 	resume, undo, err := b.admitCloseWork(id, work)
 	if err != nil {
 		return
@@ -491,6 +505,13 @@ func (b *appBackend) admitCloseWork(id string, work appCloseWork) (bool, func(),
 	var previous appStateFile
 	at := b.now()
 	err := b.state.write(func(f *appStateFile) error {
+		// Selection is only a hint. Person actions and deletion can invalidate
+		// it while the day limit or journal read is in progress.
+		if !appCloseConversationExists(work.presence.Dir) ||
+			(work.replay && f.ClosePending[id] != work.key) ||
+			(!work.replay && f.ClosePending[id] != "") {
+			return errAppCloseCancelled
+		}
 		previous = f.clone()
 		if !r.counted {
 			starts := 1
@@ -519,8 +540,12 @@ func (b *appBackend) admitCloseWork(id string, work appCloseWork) (bool, func(),
 			}
 			if !work.replay {
 				f.ClosePendingAt[id] = at
-				f.CloseHandled[id] = work.presence.UpdatedAt
 			}
+		}
+		// The outstanding promise consumes a newer claim without acquiring a
+		// new identity or age. A delayed claim callback then owes no other work.
+		if (resume || work.replay) && work.presence.UpdatedAt.After(f.CloseHandled[id]) {
+			f.CloseHandled[id] = work.presence.UpdatedAt
 		}
 		return nil
 	})
@@ -537,7 +562,7 @@ func (b *appBackend) admitCloseWork(id string, work appCloseWork) (bool, func(),
 			}
 			// A person's reset clears pending but deliberately keeps handled
 			// claims. A lost hold must undo this admission's stamp either way.
-			if !work.replay && f.CloseHandled[id].Equal(work.presence.UpdatedAt) {
+			if f.CloseHandled[id].Equal(work.presence.UpdatedAt) {
 				delete(f.CloseHandled, id)
 				if stamp, ok := previous.CloseHandled[id]; ok {
 					f.CloseHandled[id] = stamp
@@ -636,20 +661,30 @@ func (b *appBackend) keepCloseStopped(a *appAgent, work appCloseWork) (abandoned
 
 // resetCloseAfterPerson also sees directions written while this backend was
 // absent. The session's own notes shape as aside, never as person-role user.
-func (b *appBackend) resetCloseAfterPerson(a *appAgent) {
+func (b *appBackend) resetCloseAfterPerson(a *appAgent) (bool, error) {
 	var id, transcript string
 	b.locked(func() { id, transcript = a.view.ID, a.transcript })
 	var last time.Time
-	_ = b.state.read(func(f *appStateFile) { last = f.CloseResumedAt[id] })
-	if last.IsZero() {
-		return
-	}
-	for _, entry := range appRecordItems(session.ReadTranscript(transcript)) {
-		if entry.Role == "user" && !entry.ForModel && entry.At.After(last) {
-			b.resetCloseResumes(id)
-			return
+	if err := b.state.read(func(f *appStateFile) {
+		last = f.CloseResumedAt[id]
+		if pending := f.ClosePendingAt[id]; !pending.IsZero() {
+			last = pending
 		}
+	}); err != nil {
+		return false, err
 	}
+	if last.IsZero() {
+		return false, nil
+	}
+	at, found, err := session.LatestPersonMessageAt(transcript)
+	if err != nil {
+		return false, err
+	}
+	if found && at.After(last) {
+		b.resetCloseResumes(id)
+		return true, nil
+	}
+	return false, nil
 }
 
 func (b *appBackend) closeRunningTasks(a *appAgent, p session.SessionPresence) []string {
@@ -738,10 +773,10 @@ func (b *appBackend) closeWakeAccepted(id string, live *appLive, wake *appCloseW
 	b.completeClosePending(id, key)
 }
 
-func (b *appBackend) closeWakeStarted(id string, live *appLive) {
+func (b *appBackend) closeWakeStarted(id string, live *appLive, consumed string) {
 	key := ""
 	b.locked(func() {
-		if wake := live.closeWake; wake != nil {
+		if wake := live.closeWake; wake != nil && wake.key == consumed {
 			wake.started = true
 			if wake.accepted {
 				key, live.closeWake = wake.key, nil
@@ -797,4 +832,26 @@ func (b *appBackend) heldTaskViews(a *appAgent) map[string]appwire.Task {
 		}
 	}
 	return heard
+}
+
+// Deleted journals keep their directory for deliverables. Only their lifetime
+// marker, not directory existence alone, can establish that work is still owed.
+func appCloseConversationExists(dir string) bool {
+	if _, err := os.Stat(filepath.Join(dir, teams.ConversationDeletedFile)); !os.IsNotExist(err) {
+		return false
+	}
+	info, err := os.Stat(dir)
+	return err == nil && info.IsDir()
+}
+
+var errAppCloseCancelled = errors.New("close continuation no longer owed")
+
+// A completed reply breaks the streak but cannot acknowledge a different
+// queued continuation. Only keyed consumption or a person's action clears it.
+func (b *appBackend) resetCloseAfterReply(id string) {
+	_ = b.state.write(func(f *appStateFile) error {
+		delete(f.CloseResumes, id)
+		delete(f.CloseResumedAt, id)
+		return nil
+	})
 }

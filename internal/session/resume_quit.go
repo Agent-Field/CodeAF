@@ -25,7 +25,14 @@ const ResumeAfterCloseNote = "The app closed unexpectedly while you were in the 
 // ResumeAfterClose starts the same private wake as ResumeAfterQuit, with the
 // additional instruction needed when no shutdown could finish the last step.
 func (a *Agent) ResumeAfterClose() bool {
+	return a.ResumeAfterCloseKey("")
+}
+
+// ResumeAfterCloseKey correlates only the turn that takes this private note.
+// A running turn is left alone: recovery must never credit older work.
+func (a *Agent) ResumeAfterCloseKey(key string) bool {
 	note := wakeNote(ResumeAfterCloseNote)
+	note.closeKey = key
 	note.batch = false
 	return a.enqueueNote(note)
 }
@@ -37,4 +44,17 @@ func (a *Agent) ResumeAfterQuit() bool {
 	note := wakeNote(ResumeAfterQuitNote)
 	note.batch = false
 	return a.enqueueNote(note)
+}
+
+// consumeCloseNotesLocked runs only at the request drain, never at turn-end.
+// Merely adopting a buffered turn or queueing behind a spending rail pays nothing.
+func (a *Agent) consumeCloseNotesLocked(hub *eventHub, consumed []userMessage) {
+	if hub == nil || !a.running {
+		return
+	}
+	for _, note := range consumed {
+		if note.closeKey != "" {
+			hub.send(Event{Kind: EventCloseContinued, Text: note.closeKey})
+		}
+	}
 }

@@ -163,6 +163,7 @@ func TestAppClosePendingAdmission(t *testing.T) {
 			at := r.clock.now().Add(-time.Minute)
 			if reason == "age" {
 				at = r.clock.now().Add(-appCloseResumeWithin - time.Second)
+				writeCloseJSON(t, r.file, map[string]any{"type": "message", "role": "user", "content": "finish the work", "timestamp": at.Add(-time.Minute)})
 			}
 			if err := r.b.state.write(func(f *appStateFile) error {
 				f.ClosePending = map[string]string{r.id: "owed"}
@@ -209,7 +210,8 @@ func TestAppClosePendingNeedsAcceptanceAndTurnStart(t *testing.T) {
 			var started <-chan struct{}
 			var events chan session.Event
 			startTurn := func() {
-				events = make(chan session.Event)
+				events = make(chan session.Event, 1)
+				events <- session.Event{Kind: session.EventCloseContinued, Text: closeDisk(t, r).ClosePending[r.id]}
 				done := make(chan struct{})
 				started = done
 				a := r.b.agent(r.id)
@@ -233,16 +235,16 @@ func TestAppClosePendingNeedsAcceptanceAndTurnStart(t *testing.T) {
 				}
 				startTurn()
 			}
-			f := closeDisk(t, r)
-			if f.ClosePending[r.id] != "" || !f.ClosePendingAt[r.id].IsZero() || f.CloseResumes[r.id] != 1 {
-				t.Errorf("turn admission=%+v", f)
-			}
 			events <- session.Event{Kind: session.EventError, Text: "test unfinished turn"}
 			close(events)
 			select {
 			case <-started:
 			case <-time.After(time.Second):
 				t.Fatal("turn did not finish")
+			}
+			f := closeDisk(t, r)
+			if f.ClosePending[r.id] != "" || !f.ClosePendingAt[r.id].IsZero() || f.CloseResumes[r.id] != 1 {
+				t.Errorf("turn admission=%+v", f)
 			}
 		})
 	}
@@ -457,15 +459,21 @@ func TestAppClosePersonInAnyWindowResetsStreak(t *testing.T) {
 				appendCloseMessage(t, r.file, map[string]any{"type": "message", "role": "user", "content": session.ResumeAfterCloseNote, "note": note, "timestamp": last.Add(time.Second)})
 				r.start()
 				r.clock.advance(t, 0)
-				want := 1
-				if note {
-					want = 0
+				want := 0
+				if !note && !pending {
+					want = 1
 				}
 				if n, _ := r.conv.counts(); n != want {
 					t.Fatalf("resumes=%d want %d", n, want)
 				}
-				if !note && closeDisk(t, r).CloseResumes[r.id] != 1 {
+				if !note && !pending && closeDisk(t, r).CloseResumes[r.id] != 1 {
 					t.Fatal("new person input did not reset before admission")
+				}
+				if pending && !note {
+					f := closeDisk(t, r)
+					if f.ClosePending[r.id] != "" || f.CloseResumes[r.id] != 0 || len(f.CloseStarts) != 0 || len(closeFooters(r.entries(t))) != 0 {
+						t.Fatal("person's newer message did not cancel the promise")
+					}
 				}
 			})
 		}

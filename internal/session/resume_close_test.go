@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -97,6 +98,84 @@ func TestResumeAfterCloseC8AnyAgeDoesNotLoosenFreshReader(t *testing.T) {
 		}
 		if _, ok := ReadSessionPresence(dir, now); ok {
 			t.Fatal("the live reader believed stale evidence")
+		}
+	}
+}
+
+// C3, C13 (G1): a buffered failed wake carries no credit for a subsequently
+// queued close note whose own wake is refused by the spending rail. Only the
+// later turn that actually consumes that note reports its matching key.
+func TestResumeAfterCloseKeyBelongsOnlyToConsumingTurn(t *testing.T) {
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return nil, fmt.Errorf("unrelated wake failed")
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("carried on"), nil },
+	}}
+	agent, _ := newTestAgent(t, completer, func(c *Config) { c.SpendRailUSD = 1 })
+	wakes, stop := agent.WatchWakes()
+	defer stop()
+	if !agent.enqueueNote(wakeNote("unrelated news")) {
+		t.Fatal("fixture wake refused")
+	}
+	first := collect(t, <-wakes)
+	spend(agent, 2)
+	if !agent.ResumeAfterCloseKey("owed-key") {
+		t.Fatal("close note was not queued")
+	}
+	select {
+	case <-wakes:
+		t.Fatal("spending rail allowed the close wake")
+	default:
+	}
+	for _, e := range first {
+		if e.Kind == EventCloseContinued {
+			t.Fatal("unrelated buffered turn credited close note")
+		}
+	}
+	spend(agent, 0)
+	agent.mu.Lock()
+	started := agent.wakeLocked()
+	agent.mu.Unlock()
+	if !started {
+		t.Fatal("own continuation did not start")
+	}
+	events := collect(t, <-wakes)
+	seen := 0
+	for _, e := range events {
+		if e.Kind == EventCloseContinued {
+			seen++
+			if e.Text != "owed-key" {
+				t.Fatalf("key=%q", e.Text)
+			}
+		}
+	}
+	if seen != 1 {
+		t.Fatalf("consumption acknowledgements=%d", seen)
+	}
+}
+
+// C3, C13 (G1): recovery refuses to attach a new close promise to a turn that
+// was already answering before that promise was offered.
+func TestResumeAfterCloseKeyRefusesAlreadyStartedTurn(t *testing.T) {
+	entered, release := make(chan struct{}), make(chan struct{})
+	completer := &scriptedCompleter{steps: []step{func(context.Context, []ai.Message) (*ai.Response, error) {
+		close(entered)
+		<-release
+		return textResponse("done"), nil
+	}}}
+	agent, _ := newTestAgent(t, completer, nil)
+	events := mustSubmit(t, agent, "newer request")
+	<-entered
+	accepted := agent.ResumeAfterCloseKey("old-promise")
+	close(release)
+	collected := collect(t, events)
+	if accepted {
+		t.Fatal("close note joined a preexisting turn")
+	}
+	for _, e := range collected {
+		if e.Kind == EventCloseContinued {
+			t.Fatal("old turn completed new pending marker")
 		}
 	}
 }

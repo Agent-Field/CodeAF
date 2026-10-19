@@ -53,6 +53,10 @@ import (
 
 const sessionFileVersion = 1
 
+// journalLineMax bounds both full replay and bounded person-activity queries.
+// A larger record is refused instead of allowing its payload to grow memory.
+const journalLineMax = 8 << 20
+
 // ErrSessionLocked is what a second open of a live session file returns. Match
 // it with errors.Is; the *SessionLockedError it wraps carries the path.
 var ErrSessionLocked = errors.New("session file is open in another codeaf")
@@ -1924,7 +1928,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 	scanner := bufio.NewScanner(reader)
 	// A tool result can be tens of kilobytes; the default 64KiB token limit
 	// would end the replay at the first big one.
-	scanner.Buffer(make([]byte, 0, 64<<10), 8<<20)
+	scanner.Buffer(make([]byte, 0, 64<<10), journalLineMax)
 	for scanner.Scan() {
 		// scanner.Bytes() is the scanner's own buffer and is only valid until the
 		// next Scan. Every reader of it in this loop is one of the two unmarshals

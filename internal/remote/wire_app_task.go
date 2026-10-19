@@ -88,7 +88,10 @@ type AppRenameArgs struct {
 type appQuitDoor interface{ ResumeAfterQuit() bool }
 
 // appCloseDoor is deliberately separate so older engines keep their quit door.
-type appCloseDoor interface{ ResumeAfterClose() bool }
+type appCloseDoor interface{ ResumeAfterCloseKey(string) bool }
+
+// appCloseArgs carries the private continuation identity through the engine.
+type appCloseArgs struct{ Key string }
 
 type appTaskPageResult struct {
 	Task  session.AppTaskView
@@ -176,7 +179,11 @@ func dispatchAppTask(agent any, call Frame) (json.RawMessage, error) {
 		if !ok {
 			return nil, errors.New("engine: this conversation cannot carry on by itself")
 		}
-		return json.Marshal(closed.ResumeAfterClose())
+		args, err := arg[appCloseArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(closed.ResumeAfterCloseKey(args.Key))
 	case MethodAppMoveToTask:
 		return nil, door.MoveTurnToTask()
 	case MethodAppTasks:
@@ -415,7 +422,12 @@ func (a *Agent) ResumeAfterQuit() (bool, error) {
 
 // ResumeAfterClose asks for the private wake after an unexpected app close.
 func (a *Agent) ResumeAfterClose() (bool, error) {
-	raw, err := a.c.call(nil, MethodAppResumeAfterClose, nil)
+	return a.ResumeAfterCloseKey("")
+}
+
+// ResumeAfterCloseKey keeps the pending key attached to its own private note.
+func (a *Agent) ResumeAfterCloseKey(key string) (bool, error) {
+	raw, err := a.c.call(nil, MethodAppResumeAfterClose, appCloseArgs{Key: key})
 	if err != nil {
 		return false, err
 	}

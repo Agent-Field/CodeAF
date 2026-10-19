@@ -55,6 +55,18 @@ path/theme/geometry invalidation, viewport equivalence and keyboard reveal;
 Timing is diagnostic; regression gates assert reuse and rendered geometry,
 rather than a machine-dependent time limit.
 
+## Unexpected-close person activity reads
+
+`session.LatestPersonMessageAt` scans journal records backwards and stops at
+its first surviving person-authored user message. It keeps one **32 KiB** read
+block and one line, capped at the journal reader's **8 MiB** accepted line size;
+it never reconstructs or caches a display transcript. Scratch capacity is bounded
+independently of journal length, and oversized lines refuse recovery. Rewind,
+placed compaction history and display authorship rules still apply.
+`TestLatestPersonLongJournalBoundsBytesAndStopsAtPerson` checks visited records
+and retained scratch BYTES on a long journal; the authorship, rewind/compaction
+and oversized-line regressions defend correctness and refusal.
+
 ## Context recovery bounds
 
 Conversation request admission sums the existing encoded messages and tool schemas;

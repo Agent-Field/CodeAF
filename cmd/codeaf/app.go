@@ -611,7 +611,7 @@ type appLive struct {
 	stopTitles func()
 	titlesDone chan struct{}
 	running    bool
-	// closeWake joins the wake's acceptance with the turn this backend observes;
+	// closeWake joins acceptance with the session consuming this keyed note;
 	// either can arrive first over the loopback connection.
 	closeWake *appCloseWake
 	lastUse   time.Time
@@ -2077,6 +2077,8 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 	titles := map[string]string{}
 	for event := range events {
 		switch event.Kind {
+		case session.EventCloseContinued:
+			b.closeWakeStarted(id, live, event.Text)
 		case session.EventTextDelta:
 			if reply.Len() == 0 {
 				replyRun = event.RunID
@@ -2263,7 +2265,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 		entry(appwire.Entry{ID: appErrorEntryID(n), Kind: appwire.EntryError, Text: failure, ErrorKind: kind, Status: status})
 	}
 	if ok {
-		b.resetCloseResumes(id)
+		b.resetCloseAfterReply(id)
 	}
 	live.box.Event(appwire.EventTurnDone, appwire.TurnDone{Agent: id, Turn: turn, OK: ok, Error: failure, ErrorKind: kind, Status: status})
 	held := false

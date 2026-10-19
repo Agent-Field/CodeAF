@@ -151,11 +151,11 @@ func (b *appBackend) resumeOneWith(id string, reply bool, tasks []string, kind, 
 	}
 	var resume func() (bool, error)
 	if kind == appwire.FooterResumedAfterClose {
-		door, ok := live.conn.Conv.(interface{ ResumeAfterClose() (bool, error) })
+		door, ok := live.conn.Conv.(interface{ ResumeAfterCloseKey(string) (bool, error) })
 		if !ok {
 			return
 		}
-		resume = door.ResumeAfterClose
+		resume = func() (bool, error) { return door.ResumeAfterCloseKey(key) }
 	} else {
 		door, ok := live.conn.Conv.(appResumer)
 		if !ok {
