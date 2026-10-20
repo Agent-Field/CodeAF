@@ -1346,7 +1346,8 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// Whether this conversation can carry skills put in front of it by
 		// hand, asked of the agent it has open — for [Welcome.Skills]'s stated
 		// reason (skills.go).
-		Skills: skillsKnown(sess.agent),
+		Skills:       skillsKnown(sess.agent),
+		SkillFolders: skillsKnown(sess.agent),
 		// Whether this engine answers the automations doors, and the zone a
 		// rhythm typed over the connection is read in. Both are about the
 		// MACHINE and not the conversation, so they are asked of the engine and
@@ -2962,6 +2963,9 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		agent.SetReasoningFor(args.Model, args.Level)
 		s.session.announce()
 		return nil, nil
+
+	case MethodSkillFolders:
+		return serveSkillFolders(s.session.engine.Workspace)
 
 	case MethodAttachSkills, MethodDetachSkill, MethodAttachedSkills, MethodClearSkills, MethodSkillShelf:
 		payload, err := serveSkills(agent, call)
