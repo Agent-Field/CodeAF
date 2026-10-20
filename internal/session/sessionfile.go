@@ -3015,6 +3015,11 @@ func (s *sessionFile) appendCompaction(pass compactionPass, tokensBefore int, wi
 		Window:    len(window),
 		Timestamp: passStamp(pass.at),
 	})
+	s.appendWindow(window, sidecars...)
+}
+
+// appendWindow re-journals original messages with their provenance after a shape edit.
+func (s *sessionFile) appendWindow(window []ai.Message, sidecars ...[]provider.MessageReasoning) {
 	for index, message := range window {
 		// Marks belong to the original message, before projecting a fresh
 		// journal copy. The live window still carries the model's context.

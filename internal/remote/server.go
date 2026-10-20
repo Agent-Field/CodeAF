@@ -2182,6 +2182,10 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		}
 	}
 
+	if out, handled, err := invokeConversation(sess.engine, agent, call.Method, call.Payload); handled {
+		return out, err
+	}
+
 	switch call.Method {
 	case MethodProcessList, MethodProcessRerun, MethodProcessPage, MethodProcessRecord,
 		MethodProcessActions, MethodProcessRerunAt, MethodProcessStopAt, MethodProcessStopAll:

@@ -2321,15 +2321,53 @@ transcript read or watcher.
 - **Bounds.** At most 128 commands, 16 forms and 8 aliases per command, 64-byte names and 512-byte text;
   `limits` repeats them. A program row over a bound is skipped, never cut.
 
+Rewind, delete, debug and manual have typed conversation actions below; a slash line sent as text
+still does not invoke them.
+
 A client that sees no `slash.catalog` feature in `hello` has no catalogue to read and must not guess one.
+
+## Conversation actions
+
+| method | params | reply |
+|---|---|---|
+| `agents.rewind.points` | `{id}` | `{points: [{point, at, words, turns_after}]}` — authored turn boundaries, newest first |
+| `agents.rewind` | `{id, point}` | `{token}` — set aside the selected turn and everything after it |
+| `agents.rewind.undo` | `{id, token}` | `{}` — restore the set-aside turns |
+| `agents.delete` | `{id}` | `{}` — permanently delete the saved conversation |
+| `agents.debug` | `{id}` | `{path, message}` — keep the full record, naming its folder |
+| `agents.manual` | `{id, question?, client_id?}` | `{turn}` — same reply and turn events as `agents.send` |
+
+Each method advertises its exact name in `hello.features`. These methods use the conversation's
+own engine, including across `--host`; older hosts refuse unsupported methods.
+
+Rewind uses the terminal's legal cut boundaries and append-only journal: files and commands are
+unaffected, and old turns remain in the record. Points includes at most the newest 1000 turns;
+`words` is at most 12 words and 512 UTF-8 bytes. `turns_after` excludes the selected turn. `at`
+is the recorded timestamp (zero where unknown). Refresh points after any conversation edit.
+Only one undo is retained by the owning engine, in memory; a new turn, another rewind, a changed
+retained transcript or restarting the engine makes it unavailable. The token is bound to that
+conversation and must be nonempty and at most 128 bytes. A running turn or compaction refuses a
+rewind or undo; interrupt first. A stale token returns a clear error and restores nothing.
+Re-read `agents.messages` after a rewind or undo; the reply does not stream transcript replacements.
+
+Delete uses the terminal's permanent deletion producer and manager guard: replace an ordinary
+team's manager in Teams first; optional global leadership can be cleared. Active work is stopped
+through that producer. The client confirms before calling; a successful deletion disappears from
+conversation lists. There is no undo.
+
+Debug is one-way for this conversation's run, from now on. Repeating returns its folder and says
+it is already on. Manual uses exactly the terminal's instruction to answer from the `manual` tool
+and name the page; the visible authored line is `/manual <question>` (bare `/manual` requests a
+tour). It spends and refuses busy as an ordinary send does. `question` is at most 32768 bytes,
+`client_id` at most 128 bytes; the latter carries ordinary send correlation semantics.
 
 ## Session actions
 
 `session.act` is the typed door for three things the terminal does with `/task <brief>`, `/<program> <brief>`
 and `/remember <text>`. It is **not** a command interpreter: the actions are named for what they do
 (`task.start`, `program.start`, `memory.remember`), and `agents.send` with a slash line is still a message to
-the model. Everything else in the slash catalogue (rewind, export, delete, land, cache, skills, …) has no verb
-here and says so by having none.
+the model. Conversation actions above serve rewind, delete, debug and manual. Other catalogue actions such as
+export, land, cache and skills still have no verb here.
 
 - **The producers are the terminal's own** (`StartTask`/`StartTaskEffort`, `StartDelegate`, `Remember`/
   `RememberAlways`), called through the open conversation's engine handle, so over `--host` they run on the far

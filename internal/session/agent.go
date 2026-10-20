@@ -1804,6 +1804,12 @@ func (u userMessage) journaled() ai.Message {
 // it is about is already on the steering queue, and the loop's first drain
 // writes it (see [Agent.wakeLocked]).
 func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *eventStream, extra ...*eventStream) <-chan Event {
+	// A new turn depends on the shortened conversation and ends its undo.
+	a.rewindUndo = nil
+	if a.debugRun == "" {
+		a.debugRun = trace.ConversationRun(ctx)
+	}
+	ctx = trace.WithRun(ctx, a.debugRun)
 	// The person speaking is what resets a team's loop breaker (team_wakewatch.go).
 	a.notePersonTurn(user)
 	a.rebindClientLocked(a.model)
