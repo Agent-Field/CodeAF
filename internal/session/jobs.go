@@ -4,7 +4,7 @@ package session
 //
 // A session is a conversation, and a conversation cannot wait ten minutes for
 // `npm run dev` to exit — the command never exits, that is the point of it. So
-// bash grows one optional argument (background:true, tools.go) and the process
+// bash can fork a command (background:true, tools_jobs.go), and the process
 // it starts becomes a JOB: started, registered, watched, and reported on when
 // it ends. The model gets an id back in the same beat it made the call.
 //
@@ -262,6 +262,8 @@ type job struct {
 	// commands somebody is still standing over, which is what a task worker parks
 	// on (task_job_park.go).
 	owed bool
+	// notify keeps an explicitly requested completion on the waking lane.
+	notify bool
 }
 
 // jobInfo is a job's status copied out from under its lock, so rendering never
@@ -614,6 +616,9 @@ type jobRegistry struct {
 	// whether anybody has to answer; it does not reshape the news first
 	// ([jobNote] states the law).
 	notify func(string)
+	// notifyQuiet carries successful process endings to the next turn without
+	// waking the agent. Tasks and renders still use notify through finish.
+	notifyQuiet func(string)
 	// notifyWatch carries a watch's news, and the bool is WHICH KIND OF NEWS IT
 	// IS: false for a periodic tick, true for the tick that ENDED the watch —
 	// `until` matched, the output went quiet, the command failed its way out
@@ -1136,7 +1141,7 @@ func (r *jobRegistry) startIn(command, want string) (*job, error) {
 
 // startInUnder admits a stamped request only while its caller still waits.
 // Once started, the background job keeps its existing independent lifetime.
-func (r *jobRegistry) startInUnder(ctx context.Context, command, want string) (*job, error) {
+func (r *jobRegistry) startInUnder(ctx context.Context, command, want string, notify ...bool) (*job, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -1151,6 +1156,9 @@ func (r *jobRegistry) startInUnder(ctx context.Context, command, want string) (*
 	if err != nil {
 		return nil, err
 	}
+
+	// Record the request before the reaper can observe even an immediate exit.
+	started.notify = len(notify) > 0 && notify[0]
 
 	// THE SAME STREAMING SHELL A FOREGROUND CALL GETS (internal/exec/bare's
 	// streaming.go). A background job is the one place where block-buffered
@@ -1344,7 +1352,8 @@ func (r *jobRegistry) releaseParked() {
 }
 
 // finish settles a job whose middle was a goroutine rather than a process, and
-// drops its one note on the steering queue.
+// drops its one note on the steering queue. Tasks and renders keep this waking
+// path: plain processes end through settleExit instead.
 //
 // It is [jobRegistry.reap] for the kinds that have nothing to wait on: the same
 // two rules hold, which are that a death this session ASKED for says nothing —
@@ -1451,7 +1460,7 @@ func (r *jobRegistry) reap(watched *job) {
 
 // settleExit is what happens the moment a process's exit code is known, however
 // it became known: the job is made final, and unless the death was asked for a
-// note goes on the steering queue.
+// note goes to the waking lane or waits silently for the next turn.
 func (r *jobRegistry) settleExit(watched *job, code int) {
 	requested := r.settled(watched, code)
 
@@ -1494,7 +1503,12 @@ func (r *jobRegistry) settleExit(watched *job, code int) {
 	// The answer is kept because a registry with no notify lane still has to
 	// release the park itself below.
 	owed := watched.payOwed()
-	if r.notify != nil {
+	quiet := code == 0 && !owed && !watched.notify
+	notify := r.notify
+	if quiet {
+		notify = r.notifyQuiet
+	}
+	if notify != nil {
 		note := fmt.Sprintf("job %d exited %d", watched.id, code)
 		if last := watched.sink.lastNonEmptyLine(); last != "" {
 			note += ": " + clip(last, jobExitNoteLimit)
@@ -1503,7 +1517,9 @@ func (r *jobRegistry) settleExit(watched *job, code int) {
 		// steering lane and arrives as a user-role message, which read cold is
 		// indistinguishable from somebody typing "job 3 exited 0" — and a model
 		// reading it that way runs the command again to see what they meant.
-		note += "\n" + jobExitNewsRule
+		if !quiet {
+			note += "\n" + jobExitNewsRule
+		}
 		// AND THE OUTPUT COMES WITH IT. A watch's note is its own sentence and
 		// needs none of this; a bash job's ending is the moment its output finally
 		// means something, and a note that withheld it would be an invitation to
@@ -1518,7 +1534,7 @@ func (r *jobRegistry) settleExit(watched *job, code int) {
 					strconv.Itoa(jobExitTailLines) + " lines · " + watched.sink.completionFooter(watched.logPath) + "]"
 			}
 		}
-		r.notify(note)
+		notify(note)
 		return
 	}
 	// A REGISTRY WITH NO LANE TO REPORT INTO HAS NO NOTE FOR THE RELEASE TO RIDE
