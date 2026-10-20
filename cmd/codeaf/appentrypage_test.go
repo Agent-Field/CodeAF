@@ -41,7 +41,7 @@ func appPageRecord(turns int, compacted bool) session.Record {
 // page-first: every call's facts, then the slice. It is the oracle.
 func appWholePage(id string, record session.Record, at time.Time, marks map[int]appTurnMark, before string, limit int, facts func(session.DisplayEntry) appwire.ToolFacts) ([]appwire.Entry, bool, error) {
 	items := appRecordItems(record)
-	all := appEntriesOf(id, items, at, marks)
+	all, from := appEntryShapes(id, items, at, marks)
 	calls := map[string]session.DisplayEntry{}
 	for _, item := range items {
 		if item.Role == "tool" && item.CallID != "" {
@@ -49,7 +49,11 @@ func appWholePage(id string, record session.Record, at time.Time, marks map[int]
 		}
 	}
 	for i := range all {
+		appDressTool(&all[i], items[from[i]])
 		if item, ok := calls[all[i].Call]; ok && all[i].Kind == appwire.EntryTool {
+			// E5 keeps every existing fact's last same-id source. E4 gives
+			// only the new process identity its own result occurrence.
+			item.ToolProcess = items[from[i]].ToolProcess
 			all[i].ToolFacts = facts(item)
 		}
 	}

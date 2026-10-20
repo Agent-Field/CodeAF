@@ -83,6 +83,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
@@ -154,6 +155,7 @@ func callIDFrom(ctx context.Context) string {
 type bashPromotion struct {
 	agent  *Agent
 	callID string
+	result *atomic.Pointer[ToolProcess]
 }
 
 // Started arms the session clock, registers the running call as promotable, and
@@ -161,13 +163,20 @@ type bashPromotion struct {
 // possible at all: a key pressed on a row has to find a process, and the process
 // is only reachable while the call is in flight.
 func (p bashPromotion) Started(call *bare.BashCall) func() {
+	// Register the result before arming a clock that may fire immediately.
+	// Adoption fills it inside bare's claim, before the waiting call can end.
+	p.agent.inFlightBash.holdResult(call, p.result)
 	var timer *time.Timer
 	if seconds := p.agent.config.BashBackgroundAfterSeconds; seconds > 0 {
 		wait := time.Duration(seconds)*time.Second - call.RunningFor()
 		if wait < 0 {
 			wait = 0
 		}
-		timer = time.AfterFunc(wait, func() {
+		after := time.AfterFunc
+		if p.agent.config.bashAfter != nil {
+			after = p.agent.config.bashAfter
+		}
+		timer = after(wait, func() {
 			// THE CLAIM IS QUIET. The process and job id become one fact under
 			// bare's adoption lock; the person-visible row is announced only
 			// after that lock is released, exactly as the steer door does.
@@ -187,7 +196,7 @@ func (p bashPromotion) Started(call *bare.BashCall) func() {
 	if p.callID != "" {
 		p.agent.holdPromotable(p.callID, call)
 	}
-	if timer == nil && p.callID == "" {
+	if timer == nil && p.callID == "" && p.result == nil {
 		return nil
 	}
 	return func() {
@@ -197,6 +206,7 @@ func (p bashPromotion) Started(call *bare.BashCall) func() {
 		if p.callID != "" {
 			p.agent.releasePromotable(p.callID)
 		}
+		p.agent.inFlightBash.releaseResult(call)
 	}
 }
 
@@ -211,7 +221,7 @@ func (p bashPromotion) TimedOut(call *bare.BashCall) bool {
 // promotable returns ctx carrying the door, for the FOREGROUND branch of bash
 // and nowhere else.
 func (a *Agent) promotable(ctx context.Context) context.Context {
-	return bare.WithBashPromoter(ctx, bashPromotion{agent: a, callID: callIDFrom(ctx)})
+	return bare.WithBashPromoter(ctx, bashPromotion{agent: a, callID: callIDFrom(ctx), result: toolProcessFrom(ctx)})
 }
 
 // ── the in-flight calls a keypress can reach ────────────────────────────────
@@ -226,6 +236,32 @@ func (a *Agent) promotable(ctx context.Context) context.Context {
 type promotableCalls struct {
 	mu    sync.Mutex
 	calls map[string]*bare.BashCall
+	// Results are keyed by the running call, never its reusable provider id.
+	results map[*bare.BashCall]*atomic.Pointer[ToolProcess]
+}
+
+func (p *promotableCalls) holdResult(call *bare.BashCall, result *atomic.Pointer[ToolProcess]) {
+	if result == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.results == nil {
+		p.results = map[*bare.BashCall]*atomic.Pointer[ToolProcess]{}
+	}
+	p.results[call] = result
+}
+
+func (p *promotableCalls) releaseResult(call *bare.BashCall) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	delete(p.results, call)
+}
+
+func (p *promotableCalls) recordResult(call *bare.BashCall, started *job) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	markToolJob(p.results[call], started)
 }
 
 func (p *promotableCalls) hold(id string, call *bare.BashCall) {
@@ -307,6 +343,7 @@ func (a *Agent) adoptRunningBashAs(call *bare.BashCall, answerFor func(*job) str
 			return "", false, false
 		}
 		answer := answerFor(started)
+		a.inFlightBash.recordResult(call, started)
 		return answer, false, true
 	})
 	if !adopted {
