@@ -353,6 +353,11 @@ func v3LegacyFolder(workspace string) (v3Folder, string, bool) {
 		spoken, _ := v3ScanBucket(bucket)
 		for _, folder := range spoken {
 			recorded := strings.TrimSpace(folder.meta.Workspace)
+			// Owned work/ is private to the conversation. Its launch citation
+			// names the project bucket the older build chose for HOME or temp.
+			if folder.meta.Owned {
+				recorded = strings.TrimSpace(folder.meta.LaunchDir)
+			}
 			if recorded == "" {
 				continue
 			}
