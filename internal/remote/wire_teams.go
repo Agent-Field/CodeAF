@@ -119,9 +119,15 @@ const (
 // TeamNameArgs is the titles a group is named from, and how long the wall
 // will wait. Zero Budget uses the engine's ceiling; a negative Budget has
 // already expired and never starts a model call.
+//
+// Words is the most words the name may have, zero for the group's three. It
+// is optional on the wire both ways: an engine from before it reads a request
+// without it and answers up to three words, which the surface cuts to what it
+// asked for (internal/tui3's helpers.go).
 type TeamNameArgs struct {
 	Titles []string      `json:"titles"`
 	Budget time.Duration `json:"budget,omitempty"`
+	Words  int           `json:"words,omitempty"`
 }
 
 // TeamProposeArgs is everything one Organize ask is about, and how long the

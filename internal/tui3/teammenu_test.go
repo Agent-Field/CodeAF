@@ -193,8 +193,21 @@ func TestTeamMenuOffersOnlyOverlayChoices(t *testing.T) {
 			t.Fatalf("management action %q remains in overlay picker", word)
 		}
 	}
+	// With a team selected its rows are the open teams and nothing else.
 	if len(a.teamMenuRows()) != len(a.teamsOpenTree()) {
 		t.Fatal("picker has extra rows")
+	}
+	// With none selected they end, under a rule, with `+ New from this
+	// session`, which puts /helpers in the box and edits no team (helpers.go).
+	spend(t, a, a.teamOverlayChoose(""))
+	rows := a.teamMenuRows()
+	if len(rows) != len(a.teamsOpenTree())+2 || !rows[len(rows)-2].rule || rows[len(rows)-1].code != wallPopHelpers {
+		t.Fatalf("with no team selected the rows are %+v", rows)
+	}
+	for _, r := range rows[:len(rows)-2] {
+		if r.code != wallPopTeam {
+			t.Fatalf("picker has a row that is not a team: %+v", r)
+		}
 	}
 }
 
@@ -246,13 +259,16 @@ func TestTeamMenuChoosesOverlayFromGridWithoutFilteringIt(t *testing.T) {
 	}
 }
 
-// WITH NO TEAM SHOWN THE CHIP IS A QUIET `Teams ▾` while there are teams, and
-// is not there at all while there are none.
+// WITH NO TEAM SHOWN THE CHIP IS A QUIET `Teams ▾`, with teams and without:
+// with none, its one row is `+ New from this session` (helpers.go).
 func TestTeamMenuQuietChipWithNoTeamShown(t *testing.T) {
 	a, _, _ := tabApp(t)
 	a.teamsEnsure()
-	if row := plain(a.tabsRow(a.width)); strings.Contains(row, "▾") {
-		t.Fatalf("a chip with no teams: %q", row)
+	if row := plain(a.tabsRow(a.width)); !strings.Contains(row, " Teams ▾ ") {
+		t.Fatalf("no chip with no teams: %q", row)
+	}
+	if rows := a.teamMenuRows(); len(rows) != 1 || rows[0].code != wallPopHelpers {
+		t.Fatalf("with no teams the switcher's rows are %+v", rows)
 	}
 	a, _, _ = menuApp(t)
 	a.teamActivate("")
@@ -296,13 +312,17 @@ func TestTeamMenuWithoutAvailableTeamsHasNoPlaceholderChoice(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.teamOverlayChoose("")
-	row := plain(a.tabsRow(a.width))
-	if len(a.teamMenuRows()) != 0 || a.wall.chip.pressable() || strings.Contains(row, "Teams ▾") {
-		t.Fatal("retained teams or an absent global manager left a placeholder picker")
+	// No disbanded team and no absent global manager is a choice; the one
+	// row left is `+ New from this session`, which is not a placeholder but
+	// the way to make a team from here (helpers.go).
+	rows := a.teamMenuRows()
+	if len(rows) != 1 || rows[0].code != wallPopHelpers {
+		t.Fatalf("retained teams or an absent global manager left a placeholder choice: %+v", rows)
 	}
 	a.openTeamMenu()
-	if a.teamMenu.on || len(a.teamMenuCard(a.width, a.height).rows) != 0 {
-		t.Fatal("empty overlay picker opens or draws a placeholder choice")
+	card := a.teamMenuCard(a.width, a.height)
+	if !a.teamMenu.on || len(card.hits) != 1 || card.hits[0].arg != wallPopHelpers {
+		t.Fatalf("the picker with no team to choose draws %+v", card.hits)
 	}
 }
 
@@ -330,9 +350,14 @@ func TestTeamMenuDismissesWhenRefreshRemovesItsLastChoice(t *testing.T) {
 				a.teamAdopt(nil)
 			}
 			a.Update(nil)
-			if a.teamMenu.on || len(a.teamMenu.hits) != 0 {
-				t.Fatal("refresh left an invisible picker owning keyboard input")
+			// THE PICKER NEVER OWNS THE KEYBOARD INVISIBLY. Its last team
+			// choice gone, it still has `+ New from this session`, so it
+			// stays up and draws that row; esc gives the keys back.
+			menuFrame(t, a)
+			if a.teamMenu.on && (len(a.teamMenu.hits) != 1 || a.teamMenu.hits[0].arg != wallPopHelpers) {
+				t.Fatalf("refresh left a picker drawing %+v", a.teamMenu.hits)
 			}
+			a.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 			a.Update(tea.KeyPressMsg{Code: 'z', Text: "z"})
 			if !strings.Contains(a.input.String(), "z") {
 				t.Fatal("typing did not return to the ordinary conversation")

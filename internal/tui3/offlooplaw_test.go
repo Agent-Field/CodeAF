@@ -440,6 +440,7 @@ var doorsBesideTheLine = map[string]string{
 	"Delegates":         "reads the programs the engine machine's build carries to generate their command rows at the launch and on a switch (delegate.go); nobody pressed for it",
 	"NameTeam":          "asks a model for a suggested team name under a budget of seconds; it changes nothing on the engine, typing overrides it, and a message sent while it thinks must not wait behind it",
 	"ProposeTeams":      "asks a model for Organize's proposals under a budget of seconds; it changes nothing on the engine (Apply writes through the teams store), and nothing after it depends on the engine having seen it",
+	"NameTeamWords":     "asks a model for the name of a team the Teams row just made, under a budget of seconds; it changes nothing on the engine (the rename is a teams-store edit, and only while the team keeps its first name), and the /helpers sent right after the click must not wait behind it",
 }
 
 func TestOnlyReadsNobodyPressedForAreAskedBesideTheLine(t *testing.T) {

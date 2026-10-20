@@ -245,6 +245,7 @@ const (
 	wallPopConfirm = -3 // Delete, confirmed
 	wallPopKeep    = -4 // Keep, the delete undone
 	wallPopManager = -6 // Make manager, or Remove manager, in the team shown
+	wallPopHelpers = -7 // + New from this session: /helpers in the box (helpers.go)
 )
 
 // wallPopKind is which popover is up.

@@ -753,6 +753,7 @@ func TestEveryRetireEventIsProvedByItsGesture(t *testing.T) {
 		eventSubharnessOpened: func(t *testing.T, a *app) { a.slash("/subharness") },
 		eventConnectOpened:    func(t *testing.T, a *app) { a.slash("/connect") },
 		eventAutonomyAsked:    func(t *testing.T, a *app) { a.slash("/autonomy") },
+		eventHelpersUsed:      func(t *testing.T, a *app) { a.slash("/helpers") },
 		eventHomeGesture: func(t *testing.T, a *app) {
 			// A door that can open a conversation is what opens home at all
 			// ([app.homeDoorOpen]); the bare test app has none.

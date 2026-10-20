@@ -68,7 +68,7 @@ const teamGroup = "team"
 
 var teamToolNames = []string{
 	teamStatusToolName, teamReadToolName, teamSendToolName, teamStopToolName, teamStartToolName,
-	teamDecideToolName, teamEscalateToolName, teamCloseReportToolName,
+	teamDecideToolName, teamEscalateToolName, teamCloseReportToolName, teamDissolveToolName,
 	teamPostToolName, teamRaiseToolName, teamAddToolName, teamRemoveToolName,
 }
 

@@ -20,3 +20,20 @@ func TestCleanTeamName(t *testing.T) {
 		}
 	}
 }
+
+// A NAME FOR ONE PIECE OF WORK IS ONE OR TWO WORDS (internal/tui3's helpers.go):
+// the same cleaning, cut at two, and an echo of the short ask is nothing.
+func TestCleanTeamNameForOnePieceOfWorkKeepsTwoWords(t *testing.T) {
+	for raw, want := range map[string]string{
+		"fizzbuzz":                  "fizzbuzz",
+		"Guitar Pickups":            "guitar pickups",
+		"the relay audit follow-up": "the relay",
+		"\"flaky tests\".":          "flaky tests",
+		"Give this work one short":  "",
+		"":                          "",
+	} {
+		if got := cleanTeamNameIn(raw, 2, teamNameAskShort); got != want {
+			t.Errorf("cleanTeamNameIn(%q, 2) = %q, want %q", raw, got, want)
+		}
+	}
+}
