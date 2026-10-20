@@ -26,6 +26,47 @@ func legacyHostDir(t *testing.T, workspace string) string {
 	return dir
 }
 
+// A host drops its listener before it finishes flushing journals. The old
+// directory's lock must keep replacement waiting throughout that interval.
+func TestLegacyRetirementWaitsForTheLegacyLock(t *testing.T) {
+	shortHome(t)
+	target := t.TempDir()
+	link := filepath.Join(t.TempDir(), "linkedrepo")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	dir := legacyHostDir(t, link)
+	if err := os.WriteFile(filepath.Join(dir, placeName), []byte(link), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("unix", filepath.Join(dir, socketName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lock, err := takeLock(filepath.Join(dir, lockName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = releaseLock(lock) }()
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, workspace := range []string{target, link} {
+		if err := waitForGone(workspace, 0); err == nil {
+			t.Errorf("retirement through %s completed while the legacy host still held its lock", workspace)
+		}
+	}
+	if err := releaseLock(lock); err != nil {
+		t.Fatal(err)
+	}
+	lock = nil
+	for _, workspace := range []string{target, link} {
+		if err := waitForGone(workspace, 0); err != nil {
+			t.Errorf("retirement through %s did not finish after the legacy lock was released: %v", workspace, err)
+		}
+	}
+}
+
 // THE HOST AN OLDER BUILD WROTE FOR THIS FOLDER IS STILL THIS FOLDER'S HOST.
 // The upgrade regression for the resolved workspace key: a host directory named
 // by the raw spelling an older build was handed — a link, the way a terminal

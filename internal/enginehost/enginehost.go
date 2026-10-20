@@ -447,14 +447,31 @@ func waitForGone(workspace string, within time.Duration) error {
 	if err != nil {
 		return err
 	}
+	// A host reached through the upgrade lookup holds its OLD directory's
+	// lock until its journals have closed. The canonical lock alone is free
+	// throughout that shutdown, so it cannot prove the workspace is free.
+	dirs := []string{dir}
+	for _, socket := range legacySockets(workspace) {
+		dirs = append(dirs, filepath.Dir(socket))
+	}
 	deadline := time.Now().Add(within)
 	for {
 		conn, err := Dial(workspace)
 		if err == nil {
 			_ = conn.Close()
-		} else if held, err := takeLock(filepath.Join(dir, lockName)); err == nil {
-			_ = releaseLock(held)
-			return nil
+		} else {
+			free := true
+			for _, dir := range dirs {
+				held, err := takeLock(filepath.Join(dir, lockName))
+				if err != nil {
+					free = false
+					break
+				}
+				_ = releaseLock(held)
+			}
+			if free {
+				return nil
+			}
 		}
 		if time.Now().After(deadline) {
 			return errors.New("engine host: the host is still holding this workspace")

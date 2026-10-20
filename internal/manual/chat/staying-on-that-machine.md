@@ -441,6 +441,18 @@ cold on the next connection rather than staying warm.
 If what you are actually chasing is a reply that stopped and said so on screen, this is
 not the page — *Models and cost* has the sentence you read and what each of them means.
 
+## Symlink aliases and engines started before an upgrade
+
+A folder and a symlink pointing to it reach the same engine, including when your home
+directory is a symlink and you omit `--workspace`. An engine started by an older build
+under the alias stays reachable through either spelling: `--status`, `--stop`,
+`--status-all` and `--stop-all` can still find it. Launching a newer build can replace
+that engine when it is idle; work in flight keeps running. A replacement waits for the
+old engine to finish closing its journals as well as closing its socket.
+
+Compatibility lookup needs the recorded alias to still resolve to the folder. A deleted
+or broken symlink cannot identify its old engine through the resolved folder.
+
 ## Which engine is holding my folder — codeaf engine --status, what process, which binary, which build
 
 ```

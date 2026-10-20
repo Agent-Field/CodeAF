@@ -35,3 +35,8 @@ no spoken conversation resumes the newest folder in another bucket whose
 `meta.workspace` citation resolves to it. No migration, no merge — the old
 records are read where they live, and the canonical key takes over from there.
 
+Retiring an alias-keyed host also waits for its original lock, not just the new
+canonical lock: the listener can disappear while the old engine is still flushing
+its journals. Upgrade regressions exercise status, stop, sweeps and idle/busy
+takeover through both spellings.
+
