@@ -824,28 +824,8 @@ func modelArg(rest string) (modelIntent, string) {
 // on for everything this codeaf is doing" is a different fact from "it is on
 // for you", and a person reading a folder later needs to know which.
 func (a *app) runDebugCommand() {
-	folder := trace.Dir(trace.RunFrom(a.ctx))
-	if folder == "" {
-		// No run to record — a surface opened by something that did not begin
-		// one. Saying so is better than turning on a record that goes nowhere.
-		a.note("this conversation has no run to record.")
-		return
-	}
-	if trace.Enabled() {
-		a.note("the record is already on for every conversation this codeaf holds · this one goes to " + folder)
-		return
-	}
-	if trace.EnabledRun(a.ctx) {
-		a.note("the record is already on · it goes to " + folder)
-		return
-	}
-	if trace.EnableRun(a.ctx) == "" {
-		// The run id reached this surface on nothing but the process's own
-		// fallback, so there is no run on the context to switch on by itself.
-		a.note("this conversation has no run to record.")
-		return
-	}
-	a.note("recording this conversation · it goes to " + folder)
+	_, message := trace.KeepConversation(a.ctx)
+	a.note(message)
 }
 
 // ── `?` — THE KEY A PERSON PRESSES WHEN THEY ARE LOST ───────────────────────
