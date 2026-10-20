@@ -199,10 +199,10 @@ func takeTakeover(sessionDir string) bool {
 // told is told once, because the announcement is taken off the lane and a
 // second copy would ask a surface to leave a conversation it has already left.
 func (a *Agent) drainTakeover() {
-	if a.config.InTask {
+	dir := a.requestDir()
+	if dir == "" {
 		return
 	}
-	dir := a.config.Place.Dir
 	asked, waiting := takeoverAsked(dir, time.Now())
 	if !waiting {
 		return

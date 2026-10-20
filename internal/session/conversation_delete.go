@@ -321,10 +321,11 @@ func claimDeletionJournal(journal *os.File, dir string) error {
 // The presence beat hands closing to a separate goroutine because Close waits
 // for that beat to leave. A stale request cannot stop work after its asker left.
 func (a *Agent) drainConversationDeletion() {
-	if a.config.InTask || a.config.Place.Dir == "" {
+	dir := a.requestDir()
+	if dir == "" {
 		return
 	}
-	path := filepath.Join(a.config.Place.Dir, conversationDeleteRequest)
+	path := filepath.Join(dir, conversationDeleteRequest)
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return
