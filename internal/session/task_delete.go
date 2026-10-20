@@ -380,10 +380,11 @@ func requestTaskDeletion(file, id string) error {
 }
 
 func (a *Agent) drainTaskDeletion() {
-	if a.config.InTask || a.config.Place.Dir == "" {
+	dir := a.requestDir()
+	if dir == "" {
 		return
 	}
-	paths, _ := filepath.Glob(filepath.Join(a.config.Place.Dir, ".task-delete-request-*"))
+	paths, _ := filepath.Glob(filepath.Join(dir, ".task-delete-request-*"))
 	for _, path := range paths {
 		raw, err := os.ReadFile(path)
 		if err != nil {

@@ -798,6 +798,19 @@ func (d *presenceDesk) beat() {
 	}
 }
 
+// requestDir is the folder the doorstep requests land in, or "" for a
+// conversation running inside a task, which has no doorstep. IT IS READ UNDER
+// THE LOCK because anchoring rewrites config.Place while the shared doorstep
+// watch drains from its own goroutine.
+func (a *Agent) requestDir() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.config.InTask {
+		return ""
+	}
+	return a.config.Place.Dir
+}
+
 // drainRequests keeps request application outside the agent's nudge lock.
 func (d *presenceDesk) drainRequests() {
 	d.agent.drainConversationDeletion()
