@@ -60,6 +60,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/factory"
 )
 
 // Record is one session file read for display: the conversation the model still
@@ -87,6 +89,14 @@ type Record struct {
 	// Passes is every compaction pass the record holds, oldest first, each
 	// placed in `Earlier` followed by `Entries[Floor:]` ([CompactionFact.Entry]).
 	Passes []CompactionFact
+	// Progress is the mark of each factory runner's line that reports one
+	// step's round ([factory.StepProgress]), by the line's place in `Earlier`
+	// followed by `Entries[Floor:]`, the place a pass is counted in; nil when
+	// none has one. It sits beside the entries rather than on them because
+	// nearly no entry has one and an entry is paid for on every line. The mark
+	// is journaled on the line itself (its presentation's `step`), so every
+	// reading of the file, after a restart or a compaction, finds it again.
+	Progress map[int]factory.StepProgress
 	// Unreadable is what a page must SAY about this reading, and "" for a record
 	// read whole — which is nearly all of them.
 	//
@@ -240,14 +250,37 @@ func transcriptFrom(replayed replayedSession, err error) Record {
 	if overlap > len(replayed.messages) {
 		overlap = len(replayed.messages)
 	}
+	entries, entrySteps := shapeWithSteps(replayed.messages, journal)
+	earlier, earlierSteps := shapeWithSteps(replayed.earlier, journal)
+	floor := len(shapeEntries(replayed.messages[:overlap], journal))
 	return Record{
-		Entries:    shapeEntries(replayed.messages, journal),
-		Earlier:    shapeEntries(replayed.earlier, journal),
-		Floor:      len(shapeEntries(replayed.messages[:overlap], journal)),
+		Entries:    entries,
+		Earlier:    earlier,
+		Floor:      floor,
 		Passes:     replayed.passes,
+		Progress:   placedSteps(earlierSteps, len(earlier), entrySteps, floor),
 		Unreadable: unreadPastLine(replayed.unread),
 		Requests:   replayed.requests,
 	}
+}
+
+// placedSteps is the step marks of `Earlier` and of `Entries` at their places
+// in `Earlier` followed by `Entries[floor:]`: the entries under the floor are
+// the earlier region's own lines again, and are counted there.
+func placedSteps(earlier map[int]factory.StepProgress, told int, entries map[int]factory.StepProgress, floor int) map[int]factory.StepProgress {
+	if len(earlier) == 0 && len(entries) == 0 {
+		return nil
+	}
+	out := make(map[int]factory.StepProgress, len(earlier)+len(entries))
+	for at, step := range earlier {
+		out[at] = step
+	}
+	for at, step := range entries {
+		if at >= floor {
+			out[told+at-floor] = step
+		}
+	}
+	return out
 }
 
 // ── WHAT A SHORT READING SAYS ───────────────────────────────────────────────

@@ -21,6 +21,11 @@ import (
 // Reading makes the job's agent when the job has none yet (no model call, no
 // job started), and holds every answered conversation open so the app can draw
 // it at once. A step that has not run yet has no chat and is not listed.
+//
+// A STEP THAT RAN MORE THAN ONE ROUND names each finished round's chat too, so
+// the app can draw and open an earlier round as it does the latest. The job's
+// read never carries those ids (a chat's id there is a path on the machine
+// that ran it, and is withheld); this is where they are answered as agents.
 
 // FeatureFactoryJobChats is announced in hello when the engine serves
 // factory.job_chats.
@@ -42,9 +47,20 @@ type FactoryJobChats struct {
 	Steps   []FactoryJobStepChat `json:"steps"`
 }
 
-// FactoryJobStepChat is one step's latest chat.
+// FactoryJobStepChat is one step's latest chat, and the chat of each of its
+// finished rounds, oldest first, matched to the job's steps[].rounds by round.
+// A round recorded before its chat was, a round of a step that is not a
+// conversation, and a round whose chat cannot be opened are left out; a step
+// with no such round has no rounds.
 type FactoryJobStepChat struct {
-	Step  string `json:"step"`
+	Step   string                `json:"step"`
+	Agent  string                `json:"agent"`
+	Rounds []FactoryJobRoundChat `json:"rounds,omitempty"`
+}
+
+// FactoryJobRoundChat is one finished round's chat.
+type FactoryJobRoundChat struct {
+	Round int    `json:"round"`
 	Agent string `json:"agent"`
 }
 

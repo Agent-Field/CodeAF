@@ -5,13 +5,14 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/factory"
 )
 
 // ── A JOB'S CONVERSATIONS, ON THE JOB'S OWN PAGE ───────────────────────────
 //
 // The app shows a factory job's conversations where the job is: the job's
-// agent (the item's own conversation, [talkMaker]) and the latest chat of each
-// step that ran. They are read from the factory's own record of the job on the
+// agent (the item's own conversation, [talkMaker]), the latest chat of each
+// step that ran, and the chat of each of that step's finished rounds. They are read from the factory's own record of the job on the
 // floor this engine serves, never guessed from a team's names, and each is held
 // open the way a crew's members are, so the page draws it at once. A running
 // step is lent, as it is to any window (app_lend.go).
@@ -56,11 +57,28 @@ func (b *appBackend) FactoryJobChats(ctx context.Context, p appwire.FactoryJobCh
 			// A STEP WHOSE CHAT CANNOT BE OPENED IS LEFT OUT, never answered as one
 			// the page would then fail to draw.
 			if id := appAgentID(chat); b.holdJobChat(id) == nil {
-				out.Steps = append(out.Steps, appwire.FactoryJobStepChat{Step: ph.Name, Agent: id})
+				out.Steps = append(out.Steps, appwire.FactoryJobStepChat{Step: ph.Name, Agent: id, Rounds: b.roundChats(ph.Rounds)})
 			}
 		}
 	}
 	return out, nil
+}
+
+// roundChats is each finished round's chat that can be opened, held open as
+// the step's own is. The same rule leaves a round out as a step: one whose chat
+// cannot be opened is never answered.
+func (b *appBackend) roundChats(rounds []factory.RoundLine) []appwire.FactoryJobRoundChat {
+	var out []appwire.FactoryJobRoundChat
+	for _, r := range rounds {
+		chat := strings.TrimSpace(r.Chat)
+		if chat == "" {
+			continue
+		}
+		if id := appAgentID(chat); b.holdJobChat(id) == nil {
+			out = append(out, appwire.FactoryJobRoundChat{Round: r.Round, Agent: id})
+		}
+	}
+	return out
 }
 
 // holdJobChat holds one of a job's conversations open, and tells the app when

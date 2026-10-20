@@ -10,7 +10,10 @@ package run
 //
 //   - IT REPORTS. One line per event goes into the conversation as the
 //     manager's own message ([Talk.Say]), in the order the events happened. The
-//     lines are the table below and nowhere else, in the floor's words.
+//     lines are the table below and nowhere else, in the floor's words. A line
+//     that reports one step's round (it started, finished, waits on you, or
+//     the run stopped under it) carries that step and round beside its words
+//     ([factory.StepProgress]).
 //   - IT LISTENS. What the person types there is read off the conversation's
 //     own file ([Talk.Heard]) after the last thing the runner took
 //     ([factory.Item.Heard]): before a run it becomes the item's notes, which
@@ -84,9 +87,11 @@ var ErrTalkGone = errors.New("the item's conversation is gone")
 // [session.LastSaid]); this package imports none of the engine.
 type Talk interface {
 	// Say appends one line to the conversation as the manager's own message.
-	// An error leaves the line owed: the runner says it again later, in order.
-	// [ErrTalkGone] drops it.
-	Say(transcript, line string) error
+	// step is the step the line reports on, nil for a line about the job as a
+	// whole ([factory.StepProgress]); it is kept beside the words, never in
+	// them. An error leaves the line owed: the runner says it again later, in
+	// order. [ErrTalkGone] drops it.
+	Say(transcript, line string, step *factory.StepProgress) error
 	// Heard is what the person typed into the conversation after the instant
 	// after, oldest first.
 	Heard(transcript string, after time.Time) ([]Heard, error)
@@ -100,15 +105,22 @@ type Heard struct {
 	Words string
 }
 
-// owedLine is a line said to a conversation that could not take it yet.
+// owedLine is a line said to a conversation that could not take it yet, with
+// the step it reports on.
 type owedLine struct {
 	transcript string
 	line       string
+	step       *factory.StepProgress
 }
 
-// tell says line into the item's manager conversation, after every line the
-// item still owes it.
-func (lp *floorLoop) tell(id int, line string) {
+// tell says line, about the job as a whole, into the item's manager
+// conversation, after every line the item still owes it.
+func (lp *floorLoop) tell(id int, line string) { lp.tellStep(id, line, nil) }
+
+// tellStep is [floorLoop.tell] for a line that reports one step's round: the
+// line carries step beside its words, so a surface can fold it into that
+// round's frame. A nil step is a line about the job.
+func (lp *floorLoop) tellStep(id int, line string, step *factory.StepProgress) {
 	talk := lp.r.opts.Talk
 	if talk == nil || strings.TrimSpace(line) == "" {
 		return
@@ -118,7 +130,7 @@ func (lp *floorLoop) tell(id int, line string) {
 		return
 	}
 	lp.sayMu.Lock()
-	q := append(lp.owed[id], owedLine{transcript: it.Talk, line: line})
+	q := append(lp.owed[id], owedLine{transcript: it.Talk, line: line, step: step})
 	if over := len(q) - talkOwedMost; over > 0 {
 		q = q[over:]
 	}
@@ -135,7 +147,7 @@ func (lp *floorLoop) flushTalk(id int) {
 	defer lp.sayMu.Unlock()
 	for len(lp.owed[id]) > 0 {
 		o := lp.owed[id][0]
-		err := talk.Say(o.transcript, o.line)
+		err := talk.Say(o.transcript, o.line, o.step)
 		if errors.Is(err, ErrTalkGone) {
 			delete(lp.owed, id)
 			return

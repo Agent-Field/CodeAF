@@ -128,6 +128,10 @@ as the manager's own message and marked as the run's (a surface may draw them as
 - `steer: <words>`, `changes requested: <words>`;
 - `landed · proof sheet ready · your approval`, `shipped`, `stopped`, `paused`, `resumed`.
 
+A line about one step's round (`started`, `done`, an `asking you:` it waits on, the `stopped`
+that cut it) also names that step and round beside its words, so a surface that draws each round
+as a frame can fold the line into it; the words are the same either way.
+
 A line is never written into the middle of the manager's own turn: while it is answering you,
 or while another codeaf has the chat open, the line waits and is written afterwards, in order.
 

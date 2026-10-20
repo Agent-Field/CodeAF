@@ -33,26 +33,50 @@ func withholdTalk(j *api.Job) {
 	j.Desk = &d
 }
 
-// withholdChats drops each step's conversation id. A chat stage's id is the
-// session FILE PATH on the machine that ran it (stageConversation.ID), so it
-// names a runner's home directory to whoever reads the job, and a path on one
-// machine means nothing on another. ONLY THE WORKER holding the lease needs it,
-// to resume the same conversation after a pause, and it receives the job from
-// pulled, which does not call this. The slice is cloned so nothing is written
-// through into a shared backing array.
+// withholdChats drops each step's conversation id, and each of its finished
+// rounds'. A chat stage's id is the session FILE PATH on the machine that ran
+// it (stageConversation.ID), so it names a runner's home directory to whoever
+// reads the job, and a path on one machine means nothing on another. ONLY THE
+// WORKER holding the lease needs it, to resume the same conversation after a
+// pause, and it receives the job from pulled, which does not call this. The
+// app on the machine that ran the job opens a step's chat, and a round's, by
+// factory.job_chats, which answers agent ids. The slices are cloned so nothing
+// is written through into a shared backing array.
 func withholdChats(j *api.Job) {
 	for i := range j.Steps {
-		if j.Steps[i].Chat == "" {
+		if !stepNamesChat(j.Steps[i]) {
 			continue
 		}
 		steps := make([]api.Step, len(j.Steps))
 		copy(steps, j.Steps)
 		for k := i; k < len(steps); k++ {
 			steps[k].Chat = ""
+			if len(steps[k].Rounds) == 0 {
+				continue
+			}
+			rounds := make([]api.RoundLine, len(steps[k].Rounds))
+			copy(rounds, steps[k].Rounds)
+			for r := range rounds {
+				rounds[r].Chat = ""
+			}
+			steps[k].Rounds = rounds
 		}
 		j.Steps = steps
 		return
 	}
+}
+
+// stepNamesChat says a step carries a conversation id: its own, or a round's.
+func stepNamesChat(s api.Step) bool {
+	if s.Chat != "" {
+		return true
+	}
+	for _, r := range s.Rounds {
+		if r.Chat != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // presentWorkerJob runs after solo permissions and presence have narrowed the

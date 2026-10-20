@@ -860,18 +860,43 @@ func runStep(s Step, p factory.Phase) Step {
 	if r := p.Result; r != nil {
 		s.Result, s.Cost, s.Tests, s.Model = r.Output, r.Spent, r.Tests, r.Model
 	}
-	if !p.At.IsZero() {
-		at := p.At
-		s.At = &at
-	}
+	s.At, s.StartedAt = timeOrNil(p.At), timeOrNil(p.Started)
 	s.Failure = failureWireOrNil(p.Failure)
-	if len(p.Rounds) > 0 {
-		s.Rounds = make([]RoundLine, len(p.Rounds))
-		for i, line := range p.Rounds {
-			s.Rounds[i] = RoundLine{Round: line.Round, Summary: line.Summary, At: line.At}
-		}
-	}
+	s.Rounds = roundsWire(p.Rounds)
 	return s
+}
+
+// timeOrNil is an instant on the wire: absent when it is unknown.
+func timeOrNil(t time.Time) *time.Time {
+	if t.IsZero() {
+		return nil
+	}
+	return &t
+}
+
+// roundsWire is a step's finished tries in the wire's words, nil for none.
+// [roundsItem] reads them back.
+func roundsWire(lines []factory.RoundLine) []RoundLine {
+	if len(lines) == 0 {
+		return nil
+	}
+	out := make([]RoundLine, len(lines))
+	for i, line := range lines {
+		out[i] = RoundLine{Round: line.Round, Summary: line.Summary, At: line.At, StartedAt: line.Started, Chat: line.Chat}
+	}
+	return out
+}
+
+// roundsItem is the wire's finished tries as the item keeps them.
+func roundsItem(lines []RoundLine) []factory.RoundLine {
+	if len(lines) == 0 {
+		return nil
+	}
+	out := make([]factory.RoundLine, len(lines))
+	for i, line := range lines {
+		out[i] = factory.RoundLine{Round: line.Round, Summary: line.Summary, At: line.At, Started: line.StartedAt, Chat: line.Chat}
+	}
+	return out
 }
 
 func failureWireOrNil(f *factory.Failure) *Failure {
@@ -919,13 +944,11 @@ func toPhase(s Step) factory.Phase {
 	if s.At != nil {
 		p.At = *s.At
 	}
-	p.Failure = failureItem(s.Failure)
-	if len(s.Rounds) > 0 {
-		p.Rounds = make([]factory.RoundLine, len(s.Rounds))
-		for i, line := range s.Rounds {
-			p.Rounds[i] = factory.RoundLine{Round: line.Round, Summary: line.Summary, At: line.At}
-		}
+	if s.StartedAt != nil {
+		p.Started = *s.StartedAt
 	}
+	p.Failure = failureItem(s.Failure)
+	p.Rounds = roundsItem(s.Rounds)
 	return p
 }
 

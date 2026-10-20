@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
@@ -94,5 +95,45 @@ func TestNoReaderIsHandedARunnersManagerTalkPath(t *testing.T) {
 	stored, err := c.st.Get(job.ID)
 	if err != nil || stored.Talk != deskTalkPath {
 		t.Fatalf("stored talk changed: %q, %v", stored.Talk, err)
+	}
+}
+
+// An earlier round's conversation id is the same kind of path as its step's,
+// and is withheld from every reader the same way; when the round began is not
+// a path and stays. The worker holding the lease keeps each round's chat.
+const roundChatPath = "/home/raj-secret/.codeaf/sessions/stage-7-round-1.jsonl"
+
+func TestNoReaderIsHandedARoundsConversationPathButEveryoneReadsWhenItBegan(t *testing.T) {
+	c := capacitySetup(t)
+	raj := c.attach(t, c.raj, "raj", "mbp", 0)
+	t0 := time.Date(2026, 10, 19, 9, 0, 0, 0, time.UTC)
+	job, err := c.st.Create(factory.Item{Title: "review it twice", Repo: "acme/api", State: factory.StateQueued, Assignee: "raj",
+		Stream: &factory.Stream{Cur: 0, Phases: []factory.Phase{{Name: "code", State: factory.PhaseRunning, Round: 2,
+			Started: t0.Add(5 * time.Minute), Chat: stepChatPath,
+			Rounds: []factory.RoundLine{{Round: 1, Summary: "2 findings", Started: t0, At: t0.Add(4 * time.Minute), Chat: roundChatPath}}}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := strconv.Itoa(job.ID)
+	for _, who := range []struct{ name, token string }{{"priya", c.priya}, {"raj", c.raj}, {"operator", "operator-secret"}} {
+		for _, path := range []string{"/v1/jobs/" + id, "/v1/queue"} {
+			var out map[string]any
+			body := c.request(t, "GET", path, who.token, nil, 200, &out)
+			if strings.Contains(body, "raj-secret") || strings.Contains(body, `"chat"`) {
+				t.Fatalf("%s reads a conversation path from %s: %s", who.name, path, body)
+			}
+			if path == "/v1/jobs/"+id && (!strings.Contains(body, `"started_at":"2026-10-19T09:05:00Z"`) || !strings.Contains(body, `"started_at":"2026-10-19T09:00:00Z"`)) {
+				t.Fatalf("%s lost when the step or its earlier round began: %s", who.name, body)
+			}
+		}
+	}
+	var pull api.RunnerPull
+	c.request(t, "GET", "/v1/runners/pull", raj.Credential, nil, 200, &pull)
+	if pull.Job.ID != job.ID || len(pull.Job.Steps) == 0 || len(pull.Job.Steps[0].Rounds) != 1 || pull.Job.Steps[0].Rounds[0].Chat != roundChatPath {
+		t.Fatalf("the worker lost its round's chat: %+v", pull.Job.Steps)
+	}
+	stored, err := c.st.Get(job.ID)
+	if err != nil || stored.Stream.Phases[0].Rounds[0].Chat != roundChatPath {
+		t.Fatalf("stored round chat changed: %+v, %v", stored.Stream, err)
 	}
 }

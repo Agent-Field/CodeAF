@@ -404,11 +404,17 @@ type Failure struct {
 	At       time.Time `json:"at"`
 }
 
-// RoundLine is one finished try of a loop step.
+// RoundLine is one finished try of a loop step. started_at is when the try
+// began, absent on a try recorded before it was. chat is the conversation it
+// ran in, the same kind of id step.chat is, and like step.chat it reaches only
+// the worker holding the job: every reader's job has it withheld (serve's
+// withholdChats), and the app opens a round's chat through factory.job_chats.
 type RoundLine struct {
-	Round   int       `json:"round"`
-	Summary string    `json:"summary,omitempty"`
-	At      time.Time `json:"at"`
+	Round     int       `json:"round"`
+	Summary   string    `json:"summary,omitempty"`
+	At        time.Time `json:"at"`
+	StartedAt time.Time `json:"started_at,omitzero"`
+	Chat      string    `json:"chat,omitempty"`
 }
 
 // Can is which verbs this caller may use on this job. It follows the
@@ -565,6 +571,11 @@ type Step struct {
 	Tasks   int         `json:"tasks,omitempty"`   // desk
 	LeftMS  int64       `json:"left_ms,omitempty"` // desk
 	Chat    string      `json:"chat,omitempty"`    // desk
+	// StartedAt is when the step's latest round began: absent while the step
+	// has not started, and on a step recorded before it was kept. With at it
+	// bounds the round the step is in or last ran; each earlier round has its
+	// own in rounds.
+	StartedAt *time.Time `json:"started_at,omitempty"`
 	// Model is the model the step's conversation ran on, once it ran.
 	Model      string `json:"model,omitempty"`
 	Handle     string `json:"handle,omitempty"` // desk

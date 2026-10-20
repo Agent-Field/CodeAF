@@ -144,9 +144,9 @@ func unlanded(lines []factory.LogLine) []factory.LogLine {
 	return kept
 }
 
-// stepsMoved is each phase whose state, round or result changed. An approve
-// step is never reported: its question puts it waiting, and the person's
-// answer on the server passes it or sends it back.
+// stepsMoved is each phase whose state, round, start or result changed. An
+// approve step is never reported: its question puts it waiting, and the
+// person's answer on the server passes it or sends it back.
 func stepsMoved(prev, cur []factory.Phase) []factory.StageReport {
 	was := map[string]factory.Phase{}
 	for _, ph := range prev {
@@ -155,13 +155,13 @@ func stepsMoved(prev, cur []factory.Phase) []factory.StageReport {
 	var out []factory.StageReport
 	for _, ph := range cur {
 		old, seen := was[ph.Name]
-		if seen && old.State == ph.State && old.Round == ph.Round && reflect.DeepEqual(old.Result, ph.Result) && reflect.DeepEqual(old.Rounds, ph.Rounds) && reflect.DeepEqual(old.Failure, ph.Failure) {
+		if seen && old.State == ph.State && old.Round == ph.Round && old.Started.Equal(ph.Started) && reflect.DeepEqual(old.Result, ph.Result) && reflect.DeepEqual(old.Rounds, ph.Rounds) && reflect.DeepEqual(old.Failure, ph.Failure) {
 			continue
 		}
 		if ph.Kind == factory.StageGate {
 			continue
 		}
-		step := factory.StageReport{Name: ph.Name, State: ph.State, Round: ph.Round}
+		step := factory.StageReport{Name: ph.Name, State: ph.State, Round: ph.Round, Started: ph.Started}
 		if ph.Result != nil && (!seen || !reflect.DeepEqual(old.Result, ph.Result)) {
 			res := *ph.Result
 			res.Edit = nil

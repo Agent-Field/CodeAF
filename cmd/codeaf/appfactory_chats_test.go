@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -81,4 +82,46 @@ func TestThisMacsFactoryIsNamedForItsPersonAndCanBeRenamed(t *testing.T) {
 		t.Fatalf("back to the default = %q", got)
 	}
 	w.mustFail("factory.rename", map[string]any{"factory": "f-nowhere", "name": "x"}, appwire.CodeNotFound)
+}
+
+// A STEP THAT RAN MORE THAN ONE ROUND NAMES EACH FINISHED ROUND'S CHAT, as an
+// agent the app opens like the step's own, held open for it; a round with no
+// chat (a check's) or one whose chat cannot be opened is left out, as a step's
+// would be. The job's read never names them (serve's withholdChats).
+func TestAJobsChatsNameEachFinishedRoundsChat(t *testing.T) {
+	s := newLocalSetup(t)
+	s.backend.open = func(ask appOpenAsk) (*appConn, error) {
+		return &appConn{Conv: &fakeConversation{}, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
+	}
+	st := s.start()
+	first, firstID := jobConversation(t)
+	latest, latestID := jobConversation(t)
+	t0 := time.Date(2026, 10, 19, 9, 0, 0, 0, time.UTC)
+	floor := s.backend.local.host.floor
+	it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 8, Title: "Review it", Kind: factory.KindIssue, State: factory.StateRunning,
+		Stream: &factory.Stream{Phases: []factory.Phase{
+			{Name: "review", Kind: factory.StageChat, State: factory.PhaseDone, Round: 3, Chat: latest, Started: t0.Add(9 * time.Minute), At: t0.Add(12 * time.Minute),
+				Rounds: []factory.RoundLine{
+					{Round: 1, Started: t0, At: t0.Add(4 * time.Minute), Chat: first},
+					{Round: 2, Started: t0.Add(5 * time.Minute), At: t0.Add(8 * time.Minute), Chat: "/nowhere/gone-round/transcript.jsonl"},
+					{Round: 3, Started: t0.Add(9 * time.Minute), At: t0.Add(12 * time.Minute), Chat: latest},
+				}},
+			{Name: "test", Kind: factory.StageCheck, State: factory.PhaseRunning, Round: 1, Started: t0.Add(13 * time.Minute),
+				Rounds: []factory.RoundLine{{Round: 1, Started: t0.Add(13 * time.Minute), At: t0.Add(14 * time.Minute)}}},
+		}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var chats appwire.FactoryJobChats
+	s.must("factory.job_chats", map[string]any{"factory": st.Factory, "job": it.ID}, &chats)
+	if len(chats.Steps) != 1 || chats.Steps[0].Step != "review" || chats.Steps[0].Agent != latestID {
+		t.Fatalf("the job's steps read %+v", chats.Steps)
+	}
+	want := []appwire.FactoryJobRoundChat{{Round: 1, Agent: firstID}, {Round: 3, Agent: latestID}}
+	if got := chats.Steps[0].Rounds; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("the review's rounds read %+v, want %+v", got, want)
+	}
+	if !s.backend.isHeld(firstID) {
+		t.Fatal("an earlier round's chat is not held open for the app")
+	}
 }

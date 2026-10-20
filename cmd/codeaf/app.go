@@ -398,8 +398,10 @@ type appBackend struct {
 	// orderStore is the automations store standing orders are kept in
 	// (apporders.go); nil is standing orders off.
 	orderStore appOrderStore
-	// stopPhases puts the engine's phase news back the way it was.
-	stopPhases func()
+	// stopPhases puts the engine's phase news back the way it was, and
+	// stopProgress the factory runner's progress news (appfactory_progress.go).
+	stopPhases   func()
+	stopProgress func()
 	// factories is the attached-factory registry (appfactory.go), made by the
 	// first factory.* call.
 	factories   *appFactoryHub
@@ -653,6 +655,10 @@ type appLive struct {
 	consents map[uint64]appConsentCall
 	// stopping says the person stopped the running turn.
 	stopping bool
+	// progressSaid is the ids of the factory runner's lines this conversation
+	// last said live, newest last, at most [appProgressLook]
+	// (appfactory_progress.go).
+	progressSaid []string
 	// money are the open budget asks this process raised itself, by ask id;
 	// budgetAsked is the last budget level asked about, so it is asked once;
 	// lastAnswer is the agent's last words, which a budget ask quotes.
@@ -755,6 +761,7 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 	}
 	b.emit = b.newAppInbox(emit)
 	b.stopPhases = b.listenPhases()
+	b.stopProgress = b.listenProgress()
 	guard.Go("app/sweep", b.sweep)
 	return b
 }
@@ -2343,19 +2350,44 @@ const appSummaryRole = "summary"
 // compaction, the live transcript beneath the last one's floor, and a mark
 // for each pass at its own place, carrying the pass ([appRecordPass]).
 func appRecordItems(record session.Record) []session.DisplayEntry {
-	if len(record.Earlier) == 0 && len(record.Passes) == 0 {
-		return record.Entries
-	}
+	items, _ := appRecordPlaced(record)
+	return items
+}
+
+// appRecordPlaced is [appRecordItems] with each item's place in the record's
+// own count, `Earlier` followed by `Entries[Floor:]` (where a pass and a step
+// mark are placed), and -1 for a pass's mark, which is no line of the record.
+func appRecordPlaced(record session.Record) ([]session.DisplayEntry, []int) {
 	floor := min(max(record.Floor, 0), len(record.Entries))
+	if len(record.Earlier) == 0 && len(record.Passes) == 0 {
+		places := make([]int, len(record.Entries))
+		for i := range places {
+			places[i] = max(i-floor, -1)
+		}
+		return record.Entries, places
+	}
 	if len(record.Passes) == 0 {
 		// A region with no pass facts — a record told by an engine from
 		// before they existed — is marked once, where the region ends.
 		items := append([]session.DisplayEntry(nil), record.Earlier...)
 		items = append(items, session.DisplayEntry{Role: appSummaryRole})
-		return append(items, record.Entries[floor:]...)
+		items = append(items, record.Entries[floor:]...)
+		places := make([]int, len(items))
+		for i := range places {
+			switch {
+			case i < len(record.Earlier):
+				places[i] = i
+			case i == len(record.Earlier):
+				places[i] = -1
+			default:
+				places[i] = i - 1
+			}
+		}
+		return items, places
 	}
 	told := len(record.Earlier) + len(record.Entries) - floor
 	items := make([]session.DisplayEntry, 0, told+len(record.Passes))
+	places := make([]int, 0, told+len(record.Passes))
 	// In place order; a pass's sequence breaks a tie, so two passes at one
 	// place stand in the order they were made.
 	passes := slices.Clone(record.Passes)
@@ -2368,6 +2400,7 @@ func appRecordItems(record session.Record) []session.DisplayEntry {
 				continue
 			}
 			items = append(items, session.DisplayEntry{Role: appSummaryRole, Pass: &pass})
+			places = append(places, -1)
 		}
 	}
 	position := 0
@@ -2375,11 +2408,12 @@ func appRecordItems(record session.Record) []session.DisplayEntry {
 		for _, item := range part {
 			mark(position)
 			items = append(items, item)
+			places = append(places, position)
 			position++
 		}
 	}
 	mark(told)
-	return items
+	return items, places
 }
 
 // appDetailLimit bounds a tool's short result line.
@@ -2780,8 +2814,9 @@ func appEntryPageWith(id string, record session.Record, at time.Time, marks map[
 // however long the record is, and a notice's id is a cursor like any other
 // entry's.
 func appEntryPageOf(id string, record session.Record, at time.Time, marks map[int]appTurnMark, notes func() (*appNoticeReader, error), before string, limit int, facts func(session.DisplayEntry) appwire.ToolFacts, formed []appwire.Entry, kept ...[]appKeptFooter) ([]appwire.Entry, bool, error) {
-	items := appRecordItems(record)
+	items, places := appRecordPlaced(record)
 	all, from := appEntryShapes(id, items, at, marks)
+	appMarkProgress(all, from, places, record.Progress)
 	if len(kept) > 0 {
 		all, from = appInsertFooters(all, from, kept[0], items)
 	}
@@ -3592,6 +3627,9 @@ func (b *appBackend) Close() error {
 	<-b.sweepDone
 	if b.stopPhases != nil {
 		b.stopPhases()
+	}
+	if b.stopProgress != nil {
+		b.stopProgress()
 	}
 	if warmed != nil {
 		<-warmed

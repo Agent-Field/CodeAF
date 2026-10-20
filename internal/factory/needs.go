@@ -108,10 +108,17 @@ type Failure struct {
 
 // RoundLine is one finished try of a loop step. The step keeps one line per
 // round, bounded by RoundCap, so out of attempts can show what each try did.
+//
+// Started and Chat are when that try began and the conversation it ran in, so
+// a surface can draw and open an earlier round as it does the latest. A line
+// written before they were recorded has neither, and Chat is empty for a step
+// that is not a conversation (a check).
 type RoundLine struct {
 	Round   int       `json:",omitempty"`
 	Summary string    `json:",omitempty"`
 	At      time.Time `json:",omitempty"`
+	Started time.Time `json:",omitempty"`
+	Chat    string    `json:",omitempty"`
 }
 
 // Acts is who may use each verb on this job. It is computed for one caller.

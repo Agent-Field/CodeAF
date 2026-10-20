@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
@@ -5134,6 +5135,21 @@ func displayEntries(messages []ai.Message) []DisplayEntry {
 // call's id. One pass to index, one pass to shape, so a batch of ten calls costs
 // one walk rather than ten.
 func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*presentationIndex) []DisplayEntry {
+	return shapeInto(messages, journal, nil, indexes...)
+}
+
+// shapeWithSteps is [shapeEntries] with each factory step line's mark
+// (its presentation's FactoryStep) by the index of its entry; nil when no line
+// has one. A record keeps the marks there ([Record.Progress]).
+func shapeWithSteps(messages []ai.Message, journal *sessionFile) ([]DisplayEntry, map[int]factory.StepProgress) {
+	var steps map[int]factory.StepProgress
+	entries := shapeInto(messages, journal, &steps)
+	return entries, steps
+}
+
+// shapeInto is the shaping, putting each step line's mark into steps when it
+// is given.
+func shapeInto(messages []ai.Message, journal *sessionFile, steps *map[int]factory.StepProgress, indexes ...*presentationIndex) []DisplayEntry {
 	var presentation *presentationIndex
 	if journal != nil {
 		presentation = journal.presentation
@@ -5175,10 +5191,14 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			}
 		}
 		interrupted, explicitlyHuman, progress := false, false, false
+		var step *factory.StepProgress
 		run := ""
 		if mark := presentation.of(msg); role == "assistant" && mark != nil {
 			run = mark.RunID
 			progress = mark.Kind == FactoryProgressKind
+			if progress {
+				step = mark.FactoryStep
+			}
 			interrupted = mark.Interrupted
 			explicitlyHuman = mark.Audience == "human"
 			if mark.Audience == "operational" {
@@ -5221,6 +5241,14 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			At:              journal.written(msg),
 			FactoryProgress: progress,
 		})
+		// A STEP LINE'S MARK GOES BESIDE THE ENTRY, never on it: nearly no
+		// entry has one, and an entry is paid for on every line of every record.
+		if step != nil && steps != nil {
+			if *steps == nil {
+				*steps = map[int]factory.StepProgress{}
+			}
+			(*steps)[len(entries)-1] = *step
+		}
 		var rejectionCounts map[string]int
 		for callIndex := range msg.ToolCalls {
 			call := &msg.ToolCalls[callIndex]
