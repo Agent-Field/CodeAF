@@ -178,7 +178,8 @@ saves remain useful even after a test failure. Hosted scheduling, cache hits
 and archive sizes still need an actual workflow run to confirm.
 
 This is pull-request parity, not the full-tree ritual. `make check` remains for
-Spark, staging, or an intentional full laptop run; it runs the whole test tree,
+staging, the owner's Spark box (a private machine; nobody else is expected to
+reach it), or an intentional full laptop run; it runs the whole test tree,
 builds the shipped binary and enforces its size budget.
 
 ## What the full gate checks
