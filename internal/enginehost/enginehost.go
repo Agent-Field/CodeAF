@@ -193,48 +193,55 @@ func Dial(workspace string) (net.Conn, error) {
 	return nil, dialErr
 }
 
-// legacySockets names the live sockets of host directories an older build wrote
-// for this workspace — directories whose recorded workspace resolves to the
-// same folder — and none when there are no such directories or the workspace
-// itself does not resolve. It reads the state root and follows links, and makes
-// nothing.
-func legacySockets(workspace string) []string {
-	workspace = strings.TrimSpace(workspace)
-	if workspace == "" {
-		return nil
-	}
-	resolved, err := filepath.EvalSymlinks(filepath.Clean(workspace))
-	if err != nil {
-		return nil
-	}
-	root := home.Join("v3", "hosts")
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return nil
-	}
+// hostDirs is the shared lock and socket inventory. The incoming spelling is
+// proof of its old key even before a citation was written. Other old keys need
+// a live workspace citation; a socket need not exist yet.
+func hostDirs(workspace string) []string {
 	canonical, err := where(workspace)
 	if err != nil {
 		return nil
 	}
-	var sockets []string
+	dirs := []string{canonical}
+	seen := map[string]bool{canonical: true}
+	add := func(dir string) {
+		if info, err := os.Lstat(dir); err == nil && info.IsDir() && !seen[dir] {
+			dirs = append(dirs, dir)
+			seen[dir] = true
+		}
+	}
+	raw := sha256.Sum256([]byte(filepath.Clean(strings.TrimSpace(workspace))))
+	add(home.Join("v3", "hosts", hex.EncodeToString(raw[:8])))
+	resolved, err := filepath.EvalSymlinks(filepath.Clean(workspace))
+	if err != nil {
+		return dirs
+	}
+	root := home.Join("v3", "hosts")
+	entries, _ := os.ReadDir(root)
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
 		dir := filepath.Join(root, entry.Name())
-		if dir == canonical {
+		if seen[dir] {
 			continue
 		}
 		name, err := os.ReadFile(filepath.Join(dir, placeName))
-		if err != nil {
+		if err != nil || strings.TrimSpace(string(name)) == "" {
 			continue
 		}
-		recorded := strings.TrimSpace(string(name))
-		if recorded == "" {
-			continue
+		recorded, err := filepath.EvalSymlinks(filepath.Clean(strings.TrimSpace(string(name))))
+		if err == nil && recorded == resolved {
+			add(dir)
 		}
-		resolvedRecorded, err := filepath.EvalSymlinks(filepath.Clean(recorded))
-		if err != nil || resolvedRecorded != resolved {
+	}
+	return dirs
+}
+
+func legacySockets(workspace string) []string {
+	dirs := hostDirs(workspace)
+	var sockets []string
+	for i, dir := range dirs {
+		if i == 0 {
 			continue
 		}
 		socket := filepath.Join(dir, socketName)
@@ -243,6 +250,48 @@ func legacySockets(workspace string) []string {
 		}
 	}
 	return sockets
+}
+
+// takeWorkspaceLocks serializes acquisition on the canonical key, then holds
+// every proven legacy lock together. Re-enumerating under that lock closes the
+// preflight/acquisition gap between new builds. Run keeps the complete set for
+// its lifetime, so an older build cannot start on a known old key during it.
+func takeWorkspaceLocks(workspace string) ([]*os.File, error) {
+	dir, err := Dir(workspace)
+	if err != nil {
+		return nil, err
+	}
+	first, err := takeLock(filepath.Join(dir, lockName))
+	if err != nil {
+		return nil, err
+	}
+	locks := []*os.File{first}
+	held := map[string]bool{dir: true}
+	for {
+		added := false
+		for _, legacy := range hostDirs(workspace) {
+			if held[legacy] {
+				continue
+			}
+			lock, err := takeLock(filepath.Join(legacy, lockName))
+			if err != nil {
+				releaseWorkspaceLocks(locks)
+				return nil, err
+			}
+			locks = append(locks, lock)
+			held[legacy] = true
+			added = true
+		}
+		if !added {
+			return locks, nil
+		}
+	}
+}
+
+func releaseWorkspaceLocks(locks []*os.File) {
+	for i := len(locks) - 1; i >= 0; i-- {
+		_ = releaseLock(locks[i])
+	}
 }
 
 // dialTimeout is how long one connect attempt may take. A unix socket connects
@@ -284,19 +333,18 @@ func Attach(workspace string, spawn func() error) (net.Conn, error) {
 	if spawn == nil {
 		return nil, errors.New("engine host: nothing to start a host with")
 	}
-	dir, err := Dir(workspace)
-	if err != nil {
+	if _, err := Dir(workspace); err != nil {
 		return nil, err
 	}
-	// A lock that is BUSY is an answer and not a failure: somebody else is
-	// already the host or is starting one, and waiting for their socket is all
-	// this connection has left to do.
-	if held, err := takeLock(filepath.Join(dir, lockName)); err == nil {
-		// The lock is released BEFORE the spawn rather than after it, because
-		// the host we are about to start wants this very lock for its own life.
-		// The window that opens is the one described above, and it costs at
-		// most a second process that finds the lock taken and exits.
-		_ = releaseLock(held)
+	// A successful probe holds the SAME inventory Run will acquire again.
+	// Run's atomic reacquisition is the handoff: if an older host takes a legacy
+	// lock after this release, the child refuses it before opening any socket.
+	if locks, err := takeWorkspaceLocks(workspace); err == nil {
+		if conn, err := Dial(workspace); err == nil {
+			releaseWorkspaceLocks(locks)
+			return conn, nil
+		}
+		releaseWorkspaceLocks(locks)
 		if err := spawn(); err != nil {
 			return nil, err
 		}
@@ -443,35 +491,23 @@ func retire(workspace string, ask remote.WhoIs) error {
 // moment, and a caller that spawned into that moment would watch its new host
 // find the lock busy and exit without a word.
 func waitForGone(workspace string, within time.Duration) error {
-	dir, err := Dir(workspace)
-	if err != nil {
+	if _, err := Dir(workspace); err != nil {
 		return err
-	}
-	// A host reached through the upgrade lookup holds its OLD directory's
-	// lock until its journals have closed. The canonical lock alone is free
-	// throughout that shutdown, so it cannot prove the workspace is free.
-	dirs := []string{dir}
-	for _, socket := range legacySockets(workspace) {
-		dirs = append(dirs, filepath.Dir(socket))
 	}
 	deadline := time.Now().Add(within)
 	for {
 		conn, err := Dial(workspace)
 		if err == nil {
 			_ = conn.Close()
-		} else {
-			free := true
-			for _, dir := range dirs {
-				held, err := takeLock(filepath.Join(dir, lockName))
-				if err != nil {
-					free = false
-					break
-				}
-				_ = releaseLock(held)
-			}
-			if free {
+		} else if locks, err := takeWorkspaceLocks(workspace); err == nil {
+			// Recheck while all lifetime locks are held; no ready or starting host can
+			// enter between a successful preflight and this answer.
+			conn, err := Dial(workspace)
+			releaseWorkspaceLocks(locks)
+			if err != nil {
 				return nil
 			}
+			_ = conn.Close()
 		}
 		if time.Now().After(deadline) {
 			return errors.New("engine host: the host is still holding this workspace")
