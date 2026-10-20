@@ -156,6 +156,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withRunHarnessFeature(hello, engine)
 	hello = withConversationFeatures(hello, engine)
 	hello = withCrewsOverviewFeature(hello, engine)
+	hello = withCrewsOrganizeFeature(hello, engine)
 	hello = withProcessFeatures(hello, engine)
 	hello = withProcessActionFeature(hello, engine)
 	hello = withMemoryAppliesFeature(hello, engine)

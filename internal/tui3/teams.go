@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -56,7 +57,7 @@ const (
 )
 
 // teamNameCells is the widest a suggested name may be, in cells.
-const teamNameCells = 16
+const teamNameCells = session.OrganizeNameCells
 
 // newTeamID is a fresh random id ([teamstore.NewID]).
 func newTeamID() string { return teamstore.NewID() }

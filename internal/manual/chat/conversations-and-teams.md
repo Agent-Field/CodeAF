@@ -198,16 +198,16 @@ conversations. Nothing changes until Apply. Suggestions come from two sources:
 
 - **Folders:** two or more conversations sharing a project folder become a suggestion
   named for it. An existing team of that name receives only missing conversations.
-  A folder already covered by one team is left alone. This pass is free.
+  A folder already held together by one team needs no suggestion. This pass is free.
 - **The naming model:** one request uses conversation titles, folders and current teams
   for other groupings or additions. Folders win disagreements. It has ten seconds;
-  `thinking…` shows while it works, and a known estimated price appears below.
+  `thinking…` shows while it works, and its reported usage cost appears below when known.
 
+The terminal uses the conversation’s model when no naming role is set.
 If the model is unavailable, the card shows `suggestions from folders only`. With no
 suggestions it says `Everything is organized` beside Close. Rows start selected.
 Arrows move; space or a press toggles; enter or Apply takes the selected suggestions.
-Escape, Cancel or a press outside leaves everything unchanged. Suggestions can include
-one conversation in several teams. New teams use the offered names and colours.
+Escape, Cancel or a press outside leaves everything unchanged. New teams use the offered names and colours.
 
 After Apply, All teams shows **Organized** and offers **Undo** briefly. Undo removes the
 new groups and membership additions from that organization pass. The card may also offer
