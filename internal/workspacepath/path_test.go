@@ -11,7 +11,10 @@ import (
 
 func TestAliasesRequireLiveEquivalentCitations(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
-	target := t.TempDir()
+	target, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	alias := filepath.Join(t.TempDir(), "project")
 	if err := os.Symlink(target, alias); err != nil {
 		t.Fatal(err)
@@ -40,7 +43,10 @@ func TestAliasesRequireLiveEquivalentCitations(t *testing.T) {
 
 func TestAliasLookupDoesNotFollowStateDirectoryLinks(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
-	target := t.TempDir()
+	target, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	alias := filepath.Join(t.TempDir(), "project")
 	if err := os.Symlink(target, alias); err != nil {
 		t.Fatal(err)
