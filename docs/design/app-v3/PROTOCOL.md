@@ -2446,6 +2446,7 @@ Feature `factory.job_actions` is present only when the engine implements `Factor
 | `factory.job_dismiss` | | `…/dismiss` (personal) |
 | `factory.job_drop` | words? | `…/drop` (assignee only; the branch is kept) |
 | `factory.job_restore` | | `…/restore` (Bring back: assignee only; only a dropped job, `can.restore`; back to Backlog, nothing starts, the branch deletion is called off) |
+| `factory.job_run_again` | | `…/run_again` (Run again: assignee only; only a job carrying a failure, a person's stop that cut a step among them (`failure.code` `stopped`), or whose pull request was closed unmerged; the failure is cleared and a new run starts at the first step, in the worktree and branch the job's runner kept) |
 | `factory.job_unassign` | | `…/unassign` (assignee only) |
 | `factory.job_assign_to_me` | | `…/assign_to_me` (only an unassigned job) |
 | `factory.job_change_assignee` | assignee (login, `@` optional) | `…/change_assignee` (assignee only) |
@@ -2465,7 +2466,7 @@ Feature `factory.job_actions` is present only when the engine implements `Factor
 
 **Result.** `FactoryJobActed {factory, action, job, approval?, undo_until?, event?, current?}`. `current` is the job as the factory shows it after the action (one extra GET, never a retry); when it is absent the action still happened. The next write on the job carries `current.version`.
 
-**Guards.** `expect.version` is required on every job write (`bad_params` without it); `expect.state` and `expect.step` are passed through. The factory refuses a mismatch, and the engine does not resend. `job_approve` carries `commit`, which the factory compares with the job's head: another head is `stale` (`detail.reason` `changed_since_opened`, `detail.head_commit`). Only the job's assignee (anyone while it has none) approves, publishes, starts, drops, brings back a dropped job, raises the budget and stops or reruns a step; the factory answers anyone else `forbidden`.
+**Guards.** `expect.version` is required on every job write (`bad_params` without it); `expect.state` and `expect.step` are passed through. The factory refuses a mismatch, and the engine does not resend. `job_approve` carries `commit`, which the factory compares with the job's head: another head is `stale` (`detail.reason` `changed_since_opened`, `detail.head_commit`). Only the job's assignee (anyone while it has none) approves, publishes, starts, runs again, drops, brings back a dropped job, raises the budget and stops or reruns a step; the factory answers anyone else `forbidden`.
 
 **Undo.** `job_approve` does not act at once. The factory holds the decision for 5 s (`approval.state` `approving`, `undo_until`) and acts when the window ends. `job_undo` by the same person inside the window withdraws it (or a stop, restoring the run); after the window, or by another person, it is `conflict`. Approval is per job: there is no bulk approve.
 

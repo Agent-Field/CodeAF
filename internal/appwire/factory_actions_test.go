@@ -68,6 +68,9 @@ func (a *actorEngine) FactoryJobMerge(_ context.Context, p FactoryJobMergeParams
 func (a *actorEngine) FactoryJobRestore(_ context.Context, p FactoryJobActionParams) (FactoryJobActed, error) {
 	return a.did("restore", p)
 }
+func (a *actorEngine) FactoryJobRunAgain(_ context.Context, p FactoryJobActionParams) (FactoryJobActed, error) {
+	return a.did("run_again", p)
+}
 func (a *actorEngine) FactoryJobSetModel(_ context.Context, p FactoryJobSetModelParams) (FactoryJobActed, error) {
 	return a.did("set_model", p)
 }
@@ -90,6 +93,7 @@ var factoryActionGood = map[string]string{
 	"factory.job_dismiss":         `{"factory":"f","job":1,` + guard + `}`,
 	"factory.job_drop":            `{"factory":"f","job":1,"words":"dup",` + guard + `}`,
 	"factory.job_restore":         `{"factory":"f","job":1,` + guard + `}`,
+	"factory.job_run_again":       `{"factory":"f","job":1,` + guard + `}`,
 	"factory.job_unassign":        `{"factory":"f","job":1,` + guard + `}`,
 	"factory.job_assign_to_me":    `{"factory":"f","job":1,` + guard + `}`,
 	"factory.job_change_assignee": `{"factory":"f","job":1,"assignee":"@bob",` + guard + `}`,
@@ -172,6 +176,11 @@ func TestFactoryActionsRefuseBadRequestsBeforeTheEngine(t *testing.T) {
 		// Bring back carries the version read like every write, and no words.
 		{"factory.job_restore", `{"factory":"f","job":1}`},
 		{"factory.job_restore", `{"factory":"f","job":1,"words":"why",` + guard + `}`},
+		// Run again carries the version read too: a stop the person never saw
+		// is not one they start over from. It takes no step and no words.
+		{"factory.job_run_again", `{"factory":"f","job":1}`},
+		{"factory.job_run_again", `{"factory":"f","job":1,"expect":{"version":0}}`},
+		{"factory.job_run_again", `{"factory":"f","job":1,"step":"build",` + guard + `}`},
 		{"factory.job_create", `{"factory":"f","repo":"norepo","title":"x"}`},
 		{"factory.job_create", `{"factory":"f","repo":"o/r","title":" "}`},
 		{"factory.job_create", `{"factory":"f","repo":"o/r","title":"x","start":"queued"}`},

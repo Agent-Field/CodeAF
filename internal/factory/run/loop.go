@@ -43,6 +43,11 @@ const (
 	activitySignedEdit = "signed off with changes"
 )
 
+// DroppedRefusal is the end of the sentence a start of a dropped job is
+// refused with, after the job's reference. The factory's HTTP door reads it
+// to answer that refusal as a conflict, so it is spelled once, here.
+const DroppedRefusal = "was dropped · Bring back returns it to Backlog"
+
 // errLoopStopped is a write refused because the item was stopped under it.
 var errLoopStopped = errors.New("factory run: the item was stopped")
 
@@ -263,9 +268,14 @@ func strangerWrites(it factory.Item) error {
 
 // launchable says whether an item may be launched from where it stands: new,
 // dismissed, or never put anywhere yet.
+//
+// A DROPPED JOB IS REFUSED WITH ITS WAY BACK. Bring back is the one door out
+// of a drop, so the refusal names it rather than calling the drop final: an
+// agent that relays this sentence to a person must not tell them the job can
+// never run again.
 func launchable(it factory.Item) error {
 	if it.DoneHow == "dropped" {
-		return fmt.Errorf("%s was dropped for good", it.Ref())
+		return fmt.Errorf("%s %s", it.Ref(), DroppedRefusal)
 	}
 	if it.State == factory.StateNeedsYou && it.QKind == factory.QKindAskFirst {
 		return nil
