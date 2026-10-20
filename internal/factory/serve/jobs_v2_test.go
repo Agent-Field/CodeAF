@@ -31,6 +31,29 @@ type v2Jobs struct {
 	clock   atomic.Int64
 	person  string
 	folders *fakeFolders
+	chats   *fakeChats
+}
+
+// fakeChats stands in for this machine's conversations: a delete that may
+// fail, and the jobs, as they stood, whose conversations it was asked to
+// delete.
+type fakeChats struct {
+	mu      sync.Mutex
+	refuse  error
+	deleted []factory.Item
+}
+
+func (c *fakeChats) Delete(it factory.Item) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.deleted = append(c.deleted, it)
+	return c.refuse
+}
+
+func (c *fakeChats) asked() []factory.Item {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]factory.Item(nil), c.deleted...)
 }
 
 // fakeFolders stands in for this machine's job folders: the work a drop
@@ -72,7 +95,7 @@ func (f *fakeFolders) deleted() []int {
 
 func newV2Jobs(t *testing.T) *v2Jobs {
 	t.Helper()
-	f := &v2Jobs{person: "sam", folders: &fakeFolders{work: map[int]run.Work{}}}
+	f := &v2Jobs{person: "sam", folders: &fakeFolders{work: map[int]run.Work{}}, chats: &fakeChats{}}
 	f.clock.Store(now.UnixNano())
 	var err error
 	f.st, err = store.Open(t.TempDir())
@@ -103,7 +126,8 @@ func newV2Jobs(t *testing.T) *v2Jobs {
 			p.DefaultBudget = 4
 			return p, nil
 		},
-		Folders: f.folders,
+		Folders:     f.folders,
+		DeleteChats: f.chats.Delete,
 	}
 	f.h = serve.New(f.seam, f.cfg)
 	t.Cleanup(func() { f.h.Close() })
@@ -339,22 +363,29 @@ func TestV2RestoreBringsADroppedJobBackToBacklog(t *testing.T) {
 }
 
 // A JOB BROUGHT BACK IS A FRESH JOB, AS IF IT HAD NEVER RUN: no steps run, $0
-// spent, no failure, change, commits, runner or pull request. What the job is
-// stays: its issue, assignee, priority, budget, notes and activity. The
-// earlier pull request is forgotten, never closed, and the receipt names it.
+// spent, no failure, change, commits, runner or pull request, and nothing said
+// about it before: no conversation, nothing heard, no notes, no crew, and its
+// steps are the repository's recipe again. What the job is stays: its issue,
+// assignee, priority, budget, model and activity. The earlier pull request is
+// forgotten, never closed, and the receipt names it. The job's conversations
+// are deleted by the job as it stood, so the delete reaches exactly the ones
+// it recorded.
 func TestV2RestoreGivesAFreshBacklogJob(t *testing.T) {
 	f := newV2Jobs(t)
 	stages := []factory.Stage{
 		{Name: "plan", Kind: factory.StageChat, Ask: "plan it", On: true},
-		{Name: "write", Kind: factory.StageChat, Ask: "write it", On: true},
+		{Name: "write", Kind: factory.StageChat, Ask: "write it, and keep the ledger", On: true, By: factory.ByYou},
 		{Name: "proof", Kind: factory.StageChat, Ask: "prove it", On: true},
 	}
 	pr := "https://github.com/acme/api/pull/90"
+	run := recordedRun()
+	run.Room = "0a1b2c3d4e5f"
 	it := f.create(t, factory.Item{
 		Num: 41, Origin: factory.OriginForge, Title: "Total double-counts", Body: "the issue's words",
-		State: factory.StateDismissed, DoneHow: "dropped", DoneAt: now, Assignee: "sam", Cap: 4,
+		State: factory.StateDismissed, DoneHow: "dropped", DoneAt: now, Assignee: "sam", Cap: 4, Model: "acme/model-1",
 		Priority: &factory.JobPriority{Value: "high", SetBy: "sam"}, Notes: []string{"use the ledger"},
-		Stages: stages, Stream: recordedRun(),
+		Stages: stages, Adapted: []string{"you set write: keep the ledger"}, Stream: run,
+		Talk: "/places/job-41/transcript.jsonl", Heard: now, Thread: []factory.Message{{Text: "use the ledger"}},
 		Failure:         &factory.Failure{Code: factory.CodeStopped, Step: "write"},
 		Change:          &factory.Change{Branch: "factory/41-total-double-counts"},
 		ChangeBase:      "0123456789abcdef0123456789abcdef01234567",
@@ -369,11 +400,12 @@ func TestV2RestoreGivesAFreshBacklogJob(t *testing.T) {
 	if j.State != "backlog" || j.Cost != 0 || j.Failure != nil || j.Change != nil || j.HeadCommit != "" || j.Runner != "" || j.PR != nil || len(j.Claims) != 0 || j.DoneHow != "" {
 		t.Fatalf("not fresh: state %s cost %v failure %+v change %+v head %q runner %q pr %+v claims %+v", j.State, j.Cost, j.Failure, j.Change, j.HeadCommit, j.Runner, j.PR, j.Claims)
 	}
-	if len(j.Steps) != 3 {
-		t.Fatalf("steps %+v", j.Steps)
+	recipe := pipeline.Defaults().Recipe().For(factory.KindIssue)
+	if len(j.Steps) != len(recipe) {
+		t.Fatalf("steps %+v, want the recipe's %+v", j.Steps, recipe)
 	}
-	for _, s := range j.Steps {
-		if s.State != api.StepPending {
+	for i, s := range j.Steps {
+		if s.InRun || (s.State != api.StepPending && s.State != api.StepSkipped) || s.Name != recipe[i].Name {
 			t.Fatalf("a step of the old run survived: %+v", s)
 		}
 	}
@@ -381,12 +413,63 @@ func TestV2RestoreGivesAFreshBacklogJob(t *testing.T) {
 		t.Fatalf("the job's own facts were lost: %+v", j)
 	}
 	cur, err := f.st.Get(it.ID)
-	if err != nil || cur.Stream != nil || cur.ChangeBase != "" || cur.Body != "the issue's words" || len(cur.Notes) != 1 || len(cur.Activity) == 0 || cur.Activity[0].What != factory.EventArrived {
+	if err != nil || cur.Stream != nil || cur.ChangeBase != "" || cur.Body != "the issue's words" || cur.Model != "acme/model-1" || len(cur.Activity) == 0 || cur.Activity[0].What != factory.EventArrived {
 		t.Fatalf("stored %+v %v", cur, err)
+	}
+	if cur.Talk != "" || !cur.Heard.IsZero() || len(cur.Thread) != 0 || len(cur.Notes) != 0 || len(cur.Adapted) != 0 {
+		t.Fatalf("something said before survived: talk %q heard %v thread %+v notes %+v adapted %+v", cur.Talk, cur.Heard, cur.Thread, cur.Notes, cur.Adapted)
+	}
+	for i, s := range cur.Stages {
+		if s.Name != recipe[i].Name || s.Ask != recipe[i].Ask || s.By != recipe[i].By {
+			t.Fatalf("stage %d is not the recipe's: %+v", i, s)
+		}
+	}
+	asked := f.chats.asked()
+	if len(asked) != 1 || asked[0].ID != it.ID || asked[0].Talk != it.Talk || asked[0].Stream == nil || asked[0].Stream.Room != "0a1b2c3d4e5f" || asked[0].Stream.Phases[1].Chat != "old-chat" {
+		t.Fatalf("the conversations deleted were not the job's own: %+v", asked)
+	}
+	for _, ev := range cur.Activity {
+		if strings.HasPrefix(ev.What, "brought back · ") {
+			t.Fatalf("a delete that worked left a note: %+v", cur.Activity)
+		}
 	}
 	events, _ := f.rec.Since(context.Background(), time.Time{})
 	if len(events) != 1 || events[0].Kind != record.Restored || events[0].Detail != "earlier pr · "+pr {
 		t.Fatalf("events %+v", events)
+	}
+}
+
+// A DELETE THAT FAILS NEVER FAILS BRING BACK. The job is back, fresh, and no
+// longer names its old conversation or crew, so neither can leak into its next
+// run; its activity says what was kept. A job that was not dropped is refused
+// before anything is deleted.
+func TestV2RestoreWhoseChatDeleteFailsStillRestores(t *testing.T) {
+	f := newV2Jobs(t)
+	live := f.create(t, factory.Item{Num: 9, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam", Talk: "/places/job-9/transcript.jsonl"})
+	f.post(t, live, "restore", "", 409)
+	if asked := f.chats.asked(); len(asked) != 0 {
+		t.Fatalf("a refused Bring back deleted conversations: %+v", asked)
+	}
+	run := recordedRun()
+	run.Room = "0a1b2c3d4e5f"
+	it := f.create(t, factory.Item{
+		Num: 44, Origin: factory.OriginForge, State: factory.StateDismissed, DoneHow: "dropped", DoneAt: now, Assignee: "sam",
+		Talk: "/places/job-44/transcript.jsonl", Notes: []string{"use the ledger"}, Stream: run,
+	})
+	f.chats.refuse = fmt.Errorf("job-44: the conversation's owner could not finish stopping")
+	f.post(t, it, "restore", "", 200)
+	cur, err := f.st.Get(it.ID)
+	if err != nil || cur.DoneHow != "" || cur.State != factory.StateNew {
+		t.Fatalf("not brought back: %+v %v", cur, err)
+	}
+	if cur.Stream != nil || cur.Talk != "" || len(cur.Notes) != 0 {
+		t.Fatalf("the old room or conversation is still linked: stream %+v talk %q notes %+v", cur.Stream, cur.Talk, cur.Notes)
+	}
+	if n := len(cur.Activity); n == 0 || cur.Activity[n-1].What != "brought back · its earlier conversations were not all deleted: job-44: the conversation's owner could not finish stopping" {
+		t.Fatalf("activity %+v", cur.Activity)
+	}
+	if j := f.read(t, it); j.State != "backlog" {
+		t.Fatalf("restored %+v", j)
 	}
 }
 

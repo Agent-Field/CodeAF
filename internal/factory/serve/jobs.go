@@ -111,21 +111,15 @@ func (h *Handler) ensureBudget(r *http.Request, it factory.Item) error {
 	if it.Cap > 0 {
 		return nil
 	}
-	budget := factory.DefaultJobBudget
-	if h.config.Pipeline != nil {
-		f, err := h.config.Pipeline(r.Context(), itemRepo(it), "")
-		if err != nil {
-			return err
-		}
-		budget = f.DefaultBudget
-	} else if h.seam.RecipeAt != nil {
-		recipe, _, _, err := h.seam.RecipeAt(itemRepo(it))
-		if err != nil {
-			return err
-		}
-		if recipe.DefaultBudget > 0 {
-			budget = recipe.DefaultBudget
-		}
+	recipe, err := h.recipeOf(r, it)
+	if err != nil {
+		return err
+	}
+	// A PIPELINE FILE'S BUDGET IS TAKEN AS IT SAYS, and one that says none is
+	// refused below; a recipe read any other way falls back to the default.
+	budget := recipe.DefaultBudget
+	if h.config.Pipeline == nil && budget <= 0 {
+		budget = factory.DefaultJobBudget
 	}
 	if budget <= 0 {
 		return errors.New("pipeline default_budget must be positive")
@@ -136,6 +130,23 @@ func (h *Handler) ensureBudget(r *http.Request, it factory.Item) error {
 		}
 		return nil
 	})
+}
+
+// recipeOf is the job's repository's recipe as it reads now: the host's
+// pipeline reader when it has one, else the floor's, else the built-in recipe.
+func (h *Handler) recipeOf(r *http.Request, it factory.Item) (factory.Recipe, error) {
+	if h.config.Pipeline != nil {
+		f, err := h.config.Pipeline(r.Context(), itemRepo(it), "")
+		if err != nil {
+			return factory.Recipe{}, err
+		}
+		return f.Recipe(), nil
+	}
+	if h.seam.RecipeAt != nil {
+		recipe, _, _, err := h.seam.RecipeAt(itemRepo(it))
+		return recipe, err
+	}
+	return factory.DefaultRecipe(), nil
 }
 
 func (h *Handler) runAgain(w http.ResponseWriter, r *http.Request, it factory.Item) {
@@ -162,9 +173,22 @@ func (h *Handler) runAgain(w http.ResponseWriter, r *http.Request, it factory.It
 // drop. The job goes back to Backlog AS IF IT HAD NEVER RUN, and nothing
 // starts; starting it is the person's own start. The drop deleted its local
 // branch and folder, so its next run begins on a fresh branch, from the first
-// step, with nothing spent. What the job is stays: its identity, the issue's
-// own words, who it is assigned to, its priority and budget, the person's notes
-// and conversation, and its activity, the history of what happened to it.
+// step, with nothing spent.
+//
+// FRESH MEANS FRESH (the owner's decision of 2026-10-19): no earlier
+// conversation reaches the job again. Its agent's conversation, what the
+// person said there and what the runner took from it, the person's notes to
+// the steps, and every change made to its steps go, and the steps are the
+// repository's recipe again. Its conversations and its crew on this machine
+// are deleted ([Config.DeleteChats]), so neither the job's page nor a new
+// run's agents can read them, and a new run makes a crew of its own. What the
+// job is stays: its identity, the issue's own words, who it is assigned to,
+// its priority, budget and model, and its activity, the history of what
+// happened to it.
+//
+// THE JOB COMES BACK EVEN WHEN A DELETE FAILS. It no longer names its old
+// conversations or crew by then, so nothing of them leaks into its fresh run;
+// what was kept is said on its activity.
 //
 // THE EARLIER PULL REQUEST IS FORGOTTEN, NOT CLOSED: nothing on GitHub is
 // touched. Kept, the poll would go on writing that pull request's state onto
@@ -179,23 +203,44 @@ func (h *Handler) restoreJob(w http.ResponseWriter, r *http.Request, it factory.
 		h.refuse(w, http.StatusConflict, "only a dropped job can be brought back", "conflict", "", nil, factory.JobState(it))
 		return
 	}
+	// The recipe is read before anything changes, so a pipeline file that
+	// cannot be read refuses the whole Bring back and the job stays dropped.
+	recipe, err := h.recipeOf(r, it)
+	if h.failed(w, err) {
+		return
+	}
 	detail := ""
 	if pr := it.PullRequest; pr != nil && pr.URL != "" {
 		detail = "earlier pr · " + pr.URL
 	}
-	h.finish(w, h.recordAction(r, it, record.Restored, detail, func() error {
-		return h.config.Store.Update(it.ID, func(cur *factory.Item) error {
-			forgetRun(cur)
+	var before factory.Item
+	restored := false
+	err = h.recordAction(r, it, record.Restored, detail, func() error {
+		err := h.config.Store.Update(it.ID, func(cur *factory.Item) error {
+			before = *cur
+			forgetRun(cur, recipe)
 			return nil
 		})
-	}))
+		restored = err == nil
+		return err
+	})
+	// The conversations deleted are the ones the job named the moment it was
+	// brought back, and they are deleted once it is back even when its receipt
+	// could not be written: by then nothing names them any more.
+	if restored && h.config.DeleteChats != nil {
+		h.deleteChats(before)
+	}
+	h.finish(w, err)
 }
 
 // forgetRun takes every trace of a run off the job: its state and ending, its
 // steps and what they spent, its question, failure, approval and stop, its
 // proof, its change and the commits and machine it was made on, and what it
-// published. Everything else on the job is the job's own and stays.
-func forgetRun(it *factory.Item) {
+// published; and every trace of what was said about it: its agent's
+// conversation, what the runner heard there, the notes for its steps, and the
+// changes made to its steps, which are the recipe's for its kind again.
+// Everything else on the job is the job's own and stays.
+func forgetRun(it *factory.Item, recipe factory.Recipe) {
 	it.State = factory.StateNew
 	it.DoneHow, it.DoneAt = "", time.Time{}
 	it.Stream = nil
@@ -210,6 +255,24 @@ func forgetRun(it *factory.Item) {
 	it.Publish, it.Publishing, it.PublishStatus, it.PublishError = "", false, nil, ""
 	it.PullRequest, it.CommentURL = nil, ""
 	it.MergePolicy, it.Merging = nil, nil
+	it.Talk, it.Thread, it.Heard = "", nil, time.Time{}
+	it.Notes = nil
+	it.Stages, it.Adapted = factory.CopyStages(recipe.For(it.Kind)), nil
+}
+
+// deleteChats deletes the conversations and crew a job brought back named
+// before. A delete that fails leaves the job brought back and says on its
+// activity what was kept.
+func (h *Handler) deleteChats(before factory.Item) {
+	err := h.config.DeleteChats(before)
+	if err == nil {
+		return
+	}
+	at := h.clock().UTC()
+	_ = h.config.Store.Update(before.ID, func(cur *factory.Item) error {
+		cur.Note(at, "brought back · its earlier conversations were not all deleted: "+err.Error())
+		return nil
+	})
 }
 
 func (h *Handler) dismissJob(w http.ResponseWriter, r *http.Request, it factory.Item) {

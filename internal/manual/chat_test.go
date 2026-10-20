@@ -3312,6 +3312,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"undo a stop of a factory job", "factory"},
 		{"run again a stopped factory job", "factory"},
 		{"the factory says my job was dropped, can it be restarted", "factory"},
+		// BRING BACK IS A FRESH START: the earlier conversation is deleted.
+		{"I brought back a dropped factory job and the old conversation is still there", "factory"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

@@ -64,6 +64,13 @@ type Config struct {
 	// reads before it deletes it. Nil is a factory that keeps no job folders
 	// of its own, whose drop deletes nothing.
 	Folders JobFolders
+	// DeleteChats deletes a job's conversations on this factory's own
+	// machine: the crew the factory made for it and every conversation the
+	// factory recorded for it, its agent's and each step's. Bring back calls
+	// it with the job as it stood before, once the job no longer names them.
+	// Nil is a factory that keeps no conversations of its own, whose Bring
+	// back deletes none.
+	DeleteChats func(factory.Item) error
 
 	// PersonProfile reads cached public GitHub identity, including outside authors.
 	// It may wait on GitHub, so only the card about one person uses it.
