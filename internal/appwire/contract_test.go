@@ -155,6 +155,13 @@ func TestTheSchemaIsGeneratedForTheWholeWire(t *testing.T) {
 			}
 		}
 	}
+	// E1 and E6: both live and saved tool facts expose the same process id
+	// as a string in the schema the desktop consumes.
+	for _, name := range []string{"TurnTool", "Entry"} {
+		if got := doc.Defs[name].Properties["process"]["type"]; got != "string" {
+			t.Fatalf("%s.process schema type=%v", name, got)
+		}
+	}
 	if got := doc.Defs["Settings"].Properties["dock_badge"]["type"]; got != "boolean" {
 		t.Fatalf("settings.dock_badge is %v in the schema", got)
 	}

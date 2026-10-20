@@ -380,6 +380,10 @@ func (b *appBackend) callFinished(a *appAgent, event session.Event) {
 // callEnded records a call's end and answers its row.
 func (b *appBackend) callEnded(a *appAgent, agent string, turn uint64, event session.Event, title, summary, detail string, ok bool) appwire.TurnTool {
 	log := b.callLog(a)
+	process := ""
+	if ok && !event.HarnessMade && !event.Refused && !event.RejectedBeforeRun {
+		process = b.appToolProcessID(agent, event.ToolProcess)
+	}
 	var row appwire.TurnTool
 	log.locked(func() {
 		c := log.calls[event.CallID]
@@ -402,6 +406,7 @@ func (b *appBackend) callEnded(a *appAgent, agent string, turn uint64, event ses
 		c.facts.Invoked = event.ToolInvoked
 		c.facts.RejectedBeforeRun = event.RejectedBeforeRun
 		c.facts.MediaAttempt = event.MediaAttempt
+		c.facts.Process = process
 		c.facts.HarnessMade, c.facts.Refused = event.HarnessMade, event.Refused
 		if c.facts.EndedAt == nil {
 			at := b.now()
@@ -583,6 +588,9 @@ func appLinesOf(r io.Reader, from, limit int) ([]string, int) {
 func (b *appBackend) appEntryFacts(a *appAgent, item session.DisplayEntry) appwire.ToolFacts {
 	log := b.callLog(a)
 	var facts appwire.ToolFacts
+	var agent string
+	b.locked(func() { agent = a.view.ID })
+	process := b.appToolProcessID(agent, item.ToolProcess)
 	known := false
 	log.locked(func() {
 		if c := log.calls[item.CallID]; c != nil && item.CallID != "" {
@@ -591,6 +599,7 @@ func (b *appBackend) appEntryFacts(a *appAgent, item session.DisplayEntry) appwi
 	})
 	if known {
 		// Call IDs may repeat: only the actual history occurrence owns this fact.
+		facts.Process = process
 		facts.Invoked = item.ToolResult.Invoked()
 		facts.RejectedBeforeRun = item.ToolResult.RejectedBeforeRun()
 		facts.HarnessMade, facts.Refused = item.ToolResult.HarnessMade(), item.ToolResult.Refused()
@@ -601,6 +610,7 @@ func (b *appBackend) appEntryFacts(a *appAgent, item session.DisplayEntry) appwi
 		return facts
 	}
 	facts.Handoff = appHandoff(item.Tool, item.Args, item.Output)
+	facts.Process = process
 	facts.Invoked = item.ToolResult.Invoked()
 	facts.RejectedBeforeRun = item.ToolResult.RejectedBeforeRun()
 	facts.HarnessMade, facts.Refused = item.ToolResult.HarnessMade(), item.ToolResult.Refused()
@@ -632,6 +642,27 @@ func (b *appBackend) appEntryFacts(a *appAgent, item session.DisplayEntry) appwi
 		facts.Tail = lines[max(0, len(lines)-appTailEnd):]
 	}
 	return facts
+}
+
+// appToolProcessID uses the same owners as the process list. A kept service
+// is named only while this backend actually publishes its supervisor's row;
+// a session reached through a peer with no such row leaves the fact absent.
+func (b *appBackend) appToolProcessID(agent string, process *session.ToolProcess) string {
+	if process == nil {
+		return ""
+	}
+	if process.Service != "" {
+		if svc, err := b.servicesOf(); err == nil {
+			if row, err := svc.sup.Get(agent, process.Service); err == nil {
+				return appServiceProcessBase(row, false).ID
+			}
+		}
+		return ""
+	}
+	if process.Job <= 0 || process.Started.IsZero() {
+		return ""
+	}
+	return appProcessID(agent, session.JobNotice{ID: process.Job, Started: process.Started})
 }
 
 // appExitRe is the status line a shell result ends with when its command

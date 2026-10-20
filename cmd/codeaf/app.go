@@ -2892,29 +2892,13 @@ func appDressedPage(items []session.DisplayEntry, all []appwire.Entry, from []in
 	page := append([]appwire.Entry{}, all[start:end]...)
 	for i := range page {
 		if start+i < len(from) && from[start+i] >= 0 {
-			appDressTool(&page[i], items[from[start+i]])
-		}
-	}
-	// A tool entry carries its call's facts, as its row did live. The call a
-	// page names is the LAST item to carry its id, as it always was.
-	wanted := map[string]bool{}
-	for _, entry := range page {
-		if entry.Kind == appwire.EntryTool && entry.Call != "" {
-			wanted[entry.Call] = true
-		}
-	}
-	if len(wanted) == 0 {
-		return page, nil
-	}
-	calls := make(map[string]session.DisplayEntry, len(wanted))
-	for _, item := range items {
-		if item.Role == "tool" && wanted[item.CallID] {
-			calls[item.CallID] = item
-		}
-	}
-	for i := range page {
-		if item, ok := calls[page[i].Call]; ok && page[i].Kind == appwire.EntryTool {
-			page[i].ToolFacts = facts(item)
+			item := items[from[start+i]]
+			appDressTool(&page[i], item)
+			if page[i].Kind == appwire.EntryTool && page[i].Call != "" {
+				// The result occurrence owns its facts. Provider ids may repeat
+				// in this page, so the last same-id call cannot stand in for it.
+				page[i].ToolFacts = facts(item)
+			}
 		}
 	}
 	return page, nil

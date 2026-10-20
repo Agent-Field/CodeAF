@@ -41,16 +41,13 @@ func appPageRecord(turns int, compacted bool) session.Record {
 // page-first: every call's facts, then the slice. It is the oracle.
 func appWholePage(id string, record session.Record, at time.Time, marks map[int]appTurnMark, before string, limit int, facts func(session.DisplayEntry) appwire.ToolFacts) ([]appwire.Entry, bool, error) {
 	items := appRecordItems(record)
-	all := appEntriesOf(id, items, at, marks)
-	calls := map[string]session.DisplayEntry{}
-	for _, item := range items {
-		if item.Role == "tool" && item.CallID != "" {
-			calls[item.CallID] = item
-		}
-	}
+	all, from := appEntryShapes(id, items, at, marks)
 	for i := range all {
-		if item, ok := calls[all[i].Call]; ok && all[i].Kind == appwire.EntryTool {
-			all[i].ToolFacts = facts(item)
+		appDressTool(&all[i], items[from[i]])
+		if all[i].Kind == appwire.EntryTool && all[i].Call != "" {
+			// E4: the full-record oracle also reads the result occurrence,
+			// since provider ids can repeat across the history it is paging.
+			all[i].ToolFacts = facts(items[from[i]])
 		}
 	}
 	if words := strings.TrimSpace(record.Unreadable); words != "" {

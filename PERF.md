@@ -6,6 +6,16 @@ two thirds off the embedded corpora. This file is what keeps it. Every win below
 is defended by something that goes red locally, in `go test` or in `make check`,
 with a message that says what happened.
 
+## Tool process identity in history
+
+`DisplayEntry` is bounded at **304 bytes** on a 64-bit machine, up from 296:
+one optional pointer carries the job's registry number and start, or the kept
+service's id, from the exact tool-result occurrence. Ordinary entries allocate
+no process identity. This pays eight bytes per entry so history can name the
+same process as the live tool end without parsing output or guessing from a
+clock that excludes approval waits. The existing layout guards in
+`internal/session/submission_test.go` and `media_attempt_test.go` pin the bound.
+
 ## Teams overview reading bounds
 
 Visible teams’ member previews and latest-message times are read once per conversation

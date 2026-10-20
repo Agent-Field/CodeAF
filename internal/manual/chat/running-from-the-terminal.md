@@ -305,6 +305,21 @@ closes. Neither draws anything or reads a key. **`codeaf tick`** and **`codeaf w
 kept out of it as well, because they do nothing any more (see *codeaf wake and codeaf
 tick* below).
 
+## The desktop app's command became a background process — its work log link
+
+When a command becomes a job, the desktop backend names that process on the
+command's finished work-log row and on the same row read back from history.
+This includes `background:true`, a foreground command kept past its session
+clock or timeout, a command kept by a steer, and a declined `keep_running`
+request run as a job for that turn. Waiting for approval does not break the link.
+A kept service is linked only where the backend publishes its process row.
+
+The link comes from the engine's job or service registry. A normal foreground
+completion, failed call, refusal, argument rejection or interrupted command
+gets no process link, however often its output mentions a job. Older records
+without the fact leave the link absent; the backend does not guess from words
+or from the call's clock.
+
 ## The desktop app's keys, day cap and budget asks — what codeaf app keeps
 
 Keys pasted into the codeaf desktop app are kept in the Mac's keychain, not by codeaf.

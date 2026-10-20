@@ -52,7 +52,7 @@ const (
 // presentation append/replay/compaction keeps this mark with the actual bytes;
 // no additional history index or call-ID keyed state is introduced.
 func (a *Agent) recordToolResult(message ai.Message, result toolResult) {
-	if !result.rejected && !result.harness && !result.invoked && !result.attempt {
+	if !result.rejected && !result.harness && !result.invoked && !result.attempt && result.process == nil {
 		a.record(message)
 		return
 	}
@@ -62,7 +62,7 @@ func (a *Agent) recordToolResult(message ai.Message, result toolResult) {
 		a.presentation = &presentationIndex{}
 	}
 	message.Content = append([]ai.ContentPart(nil), message.Content...)
-	a.presentation.remember(message, &messagePresentation{Audience: "tool", ToolInvoked: result.invoked, RejectedBeforeRun: result.rejected, HarnessMade: result.harness, Refused: result.harness && result.refusedBy != "", MediaAttempt: result.attempt})
+	a.presentation.remember(message, &messagePresentation{Audience: "tool", ToolInvoked: result.invoked, RejectedBeforeRun: result.rejected, HarnessMade: result.harness, Refused: result.harness && result.refusedBy != "", MediaAttempt: result.attempt, ToolProcess: result.process})
 	a.recordLocked(message)
 }
 
@@ -73,6 +73,7 @@ type toolResultFacts struct {
 	refused  bool
 	invoked  bool
 	attempt  bool
+	process  *ToolProcess
 }
 
 func toolResultsWithFacts(messages []ai.Message, presentation *presentationIndex) map[*ai.ToolCall]toolResultFacts {
@@ -85,6 +86,7 @@ func toolResultsWithFacts(messages []ai.Message, presentation *presentationIndex
 		facts := toolResultFacts{text: messageContentText(message), rejected: rejected}
 		if message.Role == "tool" && mark != nil && mark.Audience == "tool" {
 			facts.harness, facts.refused, facts.invoked, facts.attempt = mark.HarnessMade, mark.Refused, mark.ToolInvoked, mark.MediaAttempt
+			facts.process = mark.ToolProcess
 		}
 		results[call] = facts
 	}

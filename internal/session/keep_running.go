@@ -306,7 +306,8 @@ func (a *Agent) keepRunning(ctx context.Context, command string, args keepRunnin
 		repairing = row
 	}
 	if policy, ok := a.config.Services.Approved(spec); ok {
-		text, isError, _ := a.keepStarted(spec, policy, from, true, repairing.ID)
+		text, isError, row := a.keepStarted(spec, policy, from, true, repairing.ID)
+		markToolService(ctx, row.ID, isError)
 		return text, isError, nil
 	}
 
@@ -327,6 +328,7 @@ func (a *Agent) keepRunning(ctx context.Context, command string, args keepRunnin
 			policy, decided = service.PolicyNever, KeepAllowedNever
 		}
 		text, isError, row := a.keepStarted(spec, policy, from, false, repairing.ID)
+		markToolService(ctx, row.ID, isError)
 		if row.ID != "" {
 			notice.Service = &row
 		}
@@ -344,6 +346,7 @@ func (a *Agent) keepRunning(ctx context.Context, command string, args keepRunnin
 		}
 		a.turnJobs[started.id] = a.turnSeq
 		a.mu.Unlock()
+		markToolJob(toolProcessFrom(ctx), started)
 		notice.Job = started.id
 		a.keepReceipt(notice, KeepDenied)
 		unchanged := ""
