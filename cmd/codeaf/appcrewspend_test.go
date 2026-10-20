@@ -38,8 +38,11 @@ func TestAppQuietCrewSpendDoesNotEmitChangedSnapshots(t *testing.T) {
 	}
 	run := &appCrewRun{prints: map[string]string{}, members: map[string]string{}, cursors: map[string]string{}, acted: map[string]bool{}, packets: map[string]teamstore.Packet{}, asks: map[string]appwire.Ask{}, held: map[string][]string{}, opening: map[string]bool{}}
 	backend.crewTick(run, true)
+	backend.crewRefresh(run)
 	for i := 0; i < 256; i++ {
-		backend.crewTick(run, false)
+		if backend.crewRefresh(run) {
+			t.Fatal("unchanged inputs rebuilt the crew view")
+		}
 	}
 	rec.mu.Lock()
 	defer rec.mu.Unlock()

@@ -2529,6 +2529,9 @@ func (a *Agent) Close() error {
 		return nil
 	}
 	a.closed = true
+	if a.closedSignal != nil {
+		close(a.closedSignal)
+	}
 	// Nothing armed by a steer outlives the session that armed it
 	// (steer_grace.go), and nor does a clock armed on a question (asklane.go).
 	a.stopSteerGraceLocked()
@@ -5076,6 +5079,32 @@ func (a *Agent) Transcript() []DisplayEntry {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return shapeEntries(a.messages, a.file, a.presentation)
+}
+
+// UserMessageCount counts the person's visible messages in the replay already
+// held by the agent. The earlier region replaces the live prefix after a
+// compaction, just as it does when a surface draws the conversation.
+func (a *Agent) UserMessageCount() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	users, floor := 0, 0
+	for _, entry := range a.earlier {
+		if entry.Role == "user" {
+			users++
+		}
+	}
+	if len(a.earlier) > 0 {
+		floor = a.earlierFloor
+	}
+	offset := 0
+	for _, message := range a.messages {
+		rows := entryRows(message)
+		if rows > 0 && offset >= floor && displayMessageRole(message, a.file.isNote(message)) == "user" {
+			users++
+		}
+		offset += rows
+	}
+	return users
 }
 
 // EarlierHistory is the conversation a compaction pass edited away, and where

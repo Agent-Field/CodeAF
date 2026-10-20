@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"github.com/Agent-Field/codeaf/internal/filememo"
 	"io"
+	"maps"
 	"math"
 	"os"
 	"sort"
@@ -323,26 +325,23 @@ const (
 	crewTailBytes = 8 << 20
 )
 
-// ReadCrewLog reads the crew rows out of the log's tail. now decides which
-// day is today, in the local time zone the person lives in.
-func ReadCrewLog(dir string, now time.Time) CrewLog {
-	out := CrewLog{Offsets: map[string]int{}, ProviderUSD: map[string]float64{}}
-	path, err := statePath(dir, "router-events.jsonl")
-	if err != nil {
-		return out
+// crewRows holds learned totals and each day separately, so midnight and route
+// expiry still take effect when nobody has appended to the diary.
+var crewRows = filememo.Source(func(path string, now os.FileInfo) (crewReading, error) {
+	if now == nil {
+		return crewReading{}, nil
 	}
 	file, err := os.Open(path)
 	if err != nil {
-		return out
+		return crewReading{}, err
 	}
 	defer file.Close()
 	if info, err := file.Stat(); err == nil && info.Size() > crewTailBytes {
 		if _, err := file.Seek(info.Size()-crewTailBytes, io.SeekStart); err != nil {
-			return out
+			return crewReading{}, err
 		}
 	}
-	tasks := map[string]*CrewTask{}
-	var order []string
+	var rows []Event
 	needle := []byte(`"class":"` + CrewClass + `"`)
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 64<<10), 4<<20)
@@ -352,21 +351,96 @@ func ReadCrewLog(dir string, now time.Time) CrewLog {
 			continue
 		}
 		var row Event
-		if json.Unmarshal(line, &row) != nil || row.Class != CrewClass || row.Crew == nil {
-			continue
+		if json.Unmarshal(line, &row) == nil && row.Class == CrewClass && row.Crew != nil {
+			rows = append(rows, row)
 		}
+	}
+	// Preserve the diary's best-effort reading of complete rows before a bad tail.
+	return foldCrewRows(rows), nil
+})
+
+// cloneCrewRecord keeps callers' edits out of the parsed diary held in memory.
+func cloneCrewRecord(r CrewRecord) CrewRecord {
+	r.Seats = maps.Clone(r.Seats)
+	r.Providers = maps.Clone(r.Providers)
+	r.Kinds = maps.Clone(r.Kinds)
+	r.Failed = maps.Clone(r.Failed)
+	r.Started = maps.Clone(r.Started)
+	r.Learned = maps.Clone(r.Learned)
+	r.Pinned = append([]string(nil), r.Pinned...)
+	r.Top = maps.Clone(r.Top)
+	for seat, scores := range r.Top {
+		r.Top[seat] = append([]CrewScore(nil), scores...)
+	}
+	return r
+}
+
+// ReadCrewLog reads the crew rows out of the log's tail. now decides which
+// day is today, in the local time zone the person lives in.
+type crewDay struct {
+	spent                float64
+	tasks, onPlan, local int
+	providers            map[string]float64
+}
+type crewReading struct {
+	log  CrewLog
+	days map[string]*crewDay
+}
+
+func ReadCrewLog(dir string, now time.Time) CrewLog {
+	empty := CrewLog{Offsets: map[string]int{}, ProviderUSD: map[string]float64{}}
+	path, err := statePath(dir, "router-events.jsonl")
+	if err != nil {
+		return empty
+	}
+	held, err := crewRows.Read(path)
+	if err != nil || held.days == nil {
+		return empty
+	}
+	out := held.log
+	out.Offsets = maps.Clone(out.Offsets)
+	out.Quality = maps.Clone(out.Quality)
+	out.CostFactor = maps.Clone(out.CostFactor)
+	out.ProviderUSD = map[string]float64{}
+	if day := held.days[now.Local().Format("2006-01-02")]; day != nil {
+		out.SpentUSD, out.Tasks, out.OnPlan, out.Local = day.spent, day.tasks, day.onPlan, day.local
+		out.ProviderUSD = maps.Clone(day.providers)
+	}
+	if out.LastGood != nil {
+		record := cloneCrewRecord(*out.LastGood)
+		out.LastGood = &record
+	}
+	out.Recent = append([]CrewTask(nil), out.Recent...)
+	for i := range out.Recent {
+		out.Recent[i].Record = cloneCrewRecord(out.Recent[i].Record)
+	}
+	out.Routes = nil
+	for _, route := range held.log.Routes {
+		if now.Sub(route.At) < crewOutcomesFor {
+			out.Routes = append(out.Routes, route)
+		}
+	}
+	return out
+}
+
+// foldCrewRows pays for learning and day totals once per file stamp. Reads
+// still select the caller's day and expire routes against the caller's clock.
+func foldCrewRows(rows []Event) crewReading {
+	out := CrewLog{Offsets: map[string]int{}}
+	days := map[string]*crewDay{}
+	tasks := map[string]*CrewTask{}
+	var order []string
+	for _, row := range rows {
 		if len(row.Crew.Failed) > 0 || len(row.Crew.Started) > 0 {
 			// A ROUTE OUTCOME is a lesson about a route, not a new state of the
 			// task: the task's own rows stay as they were.
-			if now.Sub(row.At) < crewOutcomesFor {
-				for seat, send := range row.Crew.Failed {
-					out.Routes = append(out.Routes, CrewRouteOutcome{At: row.At, Seat: seat, Send: send,
-						Provider: row.Crew.FailRoute, Kind: row.Crew.FailKind, Until: row.Crew.FailUntil, Cred: row.Crew.FailCred})
-				}
-				for seat, send := range row.Crew.Started {
-					out.Routes = append(out.Routes, CrewRouteOutcome{At: row.At, Seat: seat, Send: send,
-						Provider: row.Crew.Providers[seat], Paid: row.Crew.StartedPaid})
-				}
+			for seat, send := range row.Crew.Failed {
+				out.Routes = append(out.Routes, CrewRouteOutcome{At: row.At, Seat: seat, Send: send,
+					Provider: row.Crew.FailRoute, Kind: row.Crew.FailKind, Until: row.Crew.FailUntil, Cred: row.Crew.FailCred})
+			}
+			for seat, send := range row.Crew.Started {
+				out.Routes = append(out.Routes, CrewRouteOutcome{At: row.At, Seat: seat, Send: send,
+					Provider: row.Crew.Providers[seat], Paid: row.Crew.StartedPaid})
 			}
 			continue
 		}
@@ -385,7 +459,6 @@ func ReadCrewLog(dir string, now time.Time) CrewLog {
 	sort.SliceStable(order, func(i, j int) bool { return tasks[order[i]].At.Before(tasks[order[j]].At) })
 	out.CostFactor = costFactors(order, tasks)
 	out.Quality = learnedQuality(order, tasks)
-	year, month, day := now.Local().Date()
 	accepted := map[string]int{}
 	for _, call := range order {
 		task := tasks[call]
@@ -410,18 +483,22 @@ func ReadCrewLog(dir string, now time.Time) CrewLog {
 				accepted[key] = 0
 			}
 		}
-		if y, m, d := task.At.Local().Date(); y == year && m == month && d == day {
-			out.Tasks++
-			out.SpentUSD += task.CostUSD
-			for provider, share := range crewProviderShares(task.Record, task.CostUSD) {
-				out.ProviderUSD[provider] += share
-			}
-			switch task.Record.Kinds["worker"] {
-			case "plan":
-				out.OnPlan++
-			case "local":
-				out.Local++
-			}
+		dayKey := task.At.Local().Format("2006-01-02")
+		day := days[dayKey]
+		if day == nil {
+			day = &crewDay{providers: map[string]float64{}}
+			days[dayKey] = day
+		}
+		day.tasks++
+		day.spent += task.CostUSD
+		for provider, share := range crewProviderShares(task.Record, task.CostUSD) {
+			day.providers[provider] += share
+		}
+		switch task.Record.Kinds["worker"] {
+		case "plan":
+			day.onPlan++
+		case "local":
+			day.local++
 		}
 	}
 	for key, offset := range out.Offsets {
@@ -432,7 +509,7 @@ func ReadCrewLog(dir string, now time.Time) CrewLog {
 	for i := len(order) - 1; i >= 0 && len(out.Recent) < crewRecent; i-- {
 		out.Recent = append(out.Recent, *tasks[order[i]])
 	}
-	return out
+	return crewReading{log: out, days: days}
 }
 
 // crewProviderShares is one task's cost laid on the providers that carried it.

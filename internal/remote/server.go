@@ -1273,7 +1273,13 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		}
 		note += newer
 	}
+	var users *int
+	if counter, ok := sess.agent.(interface{ UserMessageCount() int }); ok {
+		count := counter.UserMessageCount()
+		users = &count
+	}
 	return Welcome{
+		UserMessages:               users,
 		MessageMarks:               messageMarksKnown(sess.agent),
 		ComposedMessages:           composedKnown(sess.agent),
 		MessageReceipts:            composedKnown(sess.agent),

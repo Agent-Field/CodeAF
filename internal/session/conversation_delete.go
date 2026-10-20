@@ -296,7 +296,7 @@ func claimDeletionJournal(journal *os.File, dir string) error {
 		return err
 	}
 	request := filepath.Join(dir, conversationDeleteRequest)
-	if err := os.WriteFile(request, []byte(time.Now().UTC().Format(time.RFC3339Nano)), 0o600); err != nil {
+	if err := writePresenceRequest(request, []byte(time.Now().UTC().Format(time.RFC3339Nano))); err != nil {
 		return err
 	}
 	defer os.Remove(request)

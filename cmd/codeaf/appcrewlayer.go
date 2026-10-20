@@ -72,6 +72,7 @@ type appCrewLayer struct {
 	mu     sync.Mutex
 	path   string
 	loaded bool
+	stamp  string
 	file   appCrewLayerFile
 }
 
@@ -83,9 +84,11 @@ func appMemberKey(crew, agent string) string { return crew + "/" + agent }
 func appPendingKey(crew, handle string) string { return crew + "/@" + handle }
 
 func (l *appCrewLayer) loadLocked() error {
-	if l.loaded {
+	stamp := appInputStamp(l.path)
+	if l.loaded && l.stamp == stamp {
 		return nil
 	}
+	l.file = appCrewLayerFile{}
 	raw, err := os.ReadFile(l.path)
 	switch {
 	case errors.Is(err, os.ErrNotExist):
@@ -96,7 +99,7 @@ func (l *appCrewLayer) loadLocked() error {
 			return err
 		}
 	}
-	l.loaded = true
+	l.loaded, l.stamp = true, stamp
 	return nil
 }
 
@@ -144,7 +147,9 @@ func (l *appCrewLayer) write(fn func(*appCrewLayerFile) error) error {
 	if err := os.Rename(temp, l.path); err != nil {
 		return err
 	}
-	l.file = next
+	// The next read rechecks disk, including a replacement immediately after
+	// our rename; an external writer must never be cached as our own copy.
+	l.file, l.loaded = next, false
 	return nil
 }
 

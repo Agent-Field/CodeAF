@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// THE IMPORT PASS RUNS ON EVERY LAUNCH, AND A LAUNCH MUST NOT READ EVERY BYTE
+// A CHANGED IMPORT SOURCE MUST NOT REQUIRE READING EVERY BYTE
 // OF EVERY FOREIGN SKILL TO LEARN THAT NOTHING CHANGED. [contentDigest] is the
 // digest of record and stays the only thing that makes one; this file only
 // decides when its answer for a folder is still the answer, by walking the
@@ -33,8 +33,8 @@ import (
 //
 // THE CACHE IS BOUNDED: [digestCacheMax] folders, least recently used out
 // first. It is keyed by resolved folder and holds a signature and a digest,
-// nothing about workspaces, so one workspace's launch can never change what
-// another one's pass concludes — the alive set is rebuilt from disk every pass.
+// nothing about workspaces. Import snapshots separately remember each shelf's
+// dependencies; a changed source rebuilds that workspace's alive set from disk.
 const (
 	digestCacheMax   = 512
 	digestRacyWindow = 2 * time.Second
@@ -47,11 +47,12 @@ type cachedDigest struct {
 }
 
 type digestCache struct {
-	mu   sync.Mutex
-	now  func() time.Time
-	max  int
-	tick uint64
-	m    map[string]*cachedDigest
+	imports importMemory
+	mu      sync.Mutex
+	now     func() time.Time
+	max     int
+	tick    uint64
+	m       map[string]*cachedDigest
 	// reading holds one channel per folder being read right now, closed when
 	// that read ends. It is bounded by the reads in progress and is the whole
 	// of the coalescing: other folders never wait on it.

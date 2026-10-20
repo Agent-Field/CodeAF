@@ -336,6 +336,12 @@ func (t Team) member(key string) int {
 func (t Team) Clone() Team {
 	t.Members = append([]Member(nil), t.Members...)
 	t.FormerMembers = append([]Member(nil), t.FormerMembers...)
+	for i := range t.Members {
+		t.Members[i].Briefs = append([]BriefRevision(nil), t.Members[i].Briefs...)
+	}
+	for i := range t.FormerMembers {
+		t.FormerMembers[i].Briefs = append([]BriefRevision(nil), t.FormerMembers[i].Briefs...)
+	}
 	t.Settings = t.Settings.clone()
 	if t.Wrap != nil {
 		w := *t.Wrap

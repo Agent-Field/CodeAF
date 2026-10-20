@@ -19,6 +19,7 @@ package main
 // which the app says as order.missed.
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -583,10 +584,10 @@ func (b *appBackend) orderAsksOf(agent string) []appwire.Ask {
 
 // sayOrderAsks opens an ask for every run newly waiting on the person and
 // closes the ask of every run that stopped waiting, against what was open.
-func (b *appBackend) sayOrderAsks(store *automation.Store, open map[int64]appwire.Ask) {
+func (b *appBackend) sayOrderAsks(store *automation.Store, open map[int64]appwire.Ask) bool {
 	runs, err := store.Asking()
 	if err != nil {
-		return
+		return false
 	}
 	now := b.now()
 	waiting := map[int64]bool{}
@@ -614,6 +615,7 @@ func (b *appBackend) sayOrderAsks(store *automation.Store, open map[int64]appwir
 		}
 		b.emit.Emit(appwire.EventAskClosed, closed)
 	}
+	return true
 }
 
 // sayOrderResult puts a finished run's line in the chat it answers in.
@@ -644,6 +646,7 @@ func (b *appBackend) watchOrders(stop <-chan struct{}) {
 	if store == nil {
 		return
 	}
+	stamp := appOrdersStamp(store) + "|" + b.now().Format("2006-01-02")
 	cursor, err := store.Cursor()
 	if err != nil {
 		return
@@ -651,7 +654,7 @@ func (b *appBackend) watchOrders(stop <-chan struct{}) {
 	seen := map[string]string{}
 	if all, err := store.List(); err == nil {
 		for _, a := range all {
-			seen[a.ID] = orderPrint(a)
+			seen[a.ID] = orderPrint(orderView(store, a, b.now()))
 		}
 	}
 	// THE RUNS ALREADY WAITING ARE SAID AT ONCE, so the Inbox holds them from
@@ -666,59 +669,63 @@ func (b *appBackend) watchOrders(stop <-chan struct{}) {
 			return
 		case <-ticker.C:
 		}
-		cursor = b.ordersOnce(store, cursor, seen)
-		b.sayOrderAsks(store, open)
+		cursor, _ = b.ordersRefresh(store, &stamp, cursor, seen, open)
 	}
 }
 
 // orderPrint is what makes an order different enough to say again.
-func orderPrint(a automation.Automation) string {
-	last := int64(0)
-	if a.Last != nil {
-		last = a.Last.ID
-	}
-	return fmt.Sprintf("%d|%s|%d|%d", a.Revision, a.Status, a.Next.UnixMilli(), last)
+func orderPrint(view appwire.Order) string {
+	raw, _ := json.Marshal(view)
+	return string(raw)
 }
 
 // ordersOnce is one look at the store.
 func (b *appBackend) ordersOnce(store *automation.Store, cursor int64, seen map[string]string) int64 {
+	next, _ := b.ordersRead(store, cursor, seen)
+	return next
+}
+
+// ordersRead leaves the input stamp unconsumed after a transient database error.
+func (b *appBackend) ordersRead(store *automation.Store, cursor int64, seen map[string]string) (int64, bool) {
 	now := b.now()
 	runs, next, err := store.Changes(cursor)
-	if err == nil {
-		for _, run := range runs {
-			a, err := store.Get(run.AutomationID)
-			if err != nil {
-				continue
-			}
-			view := orderView(store, a, now)
-			fired := appwire.OrderFired{Order: view, Run: orderRunView(run)}
-			switch run.Phase {
-			case automation.PhaseAsking:
-				b.emit.Emit(appwire.EventOrderAsking, fired)
-			case automation.PhaseRunning:
-				b.emit.Emit(appwire.EventOrderFired, fired)
-				if run.Why == automation.WhyLate {
-					b.emit.Emit(appwire.EventOrderMissed, appwire.OrderChanged{Order: view})
-				}
-			case automation.PhaseOver:
-				b.sayOrderResult(view, run)
-			}
-		}
-		cursor = next
+	if err != nil {
+		return cursor, false
 	}
 	all, err := store.List()
 	if err != nil {
-		return cursor
+		return cursor, false
 	}
+	for _, run := range runs {
+		a, err := store.Get(run.AutomationID)
+		if err != nil {
+			continue
+		}
+		view := orderView(store, a, now)
+		fired := appwire.OrderFired{Order: view, Run: orderRunView(run)}
+		switch run.Phase {
+		case automation.PhaseAsking:
+			b.emit.Emit(appwire.EventOrderAsking, fired)
+		case automation.PhaseRunning:
+			b.emit.Emit(appwire.EventOrderFired, fired)
+			if run.Why == automation.WhyLate {
+				b.emit.Emit(appwire.EventOrderMissed, appwire.OrderChanged{Order: view})
+			}
+		case automation.PhaseOver:
+			b.sayOrderResult(view, run)
+		}
+	}
+	cursor = next
 	present := map[string]bool{}
 	for _, a := range all {
 		present[a.ID] = true
-		print := orderPrint(a)
+		view := orderView(store, a, now)
+		print := orderPrint(view)
 		if seen[a.ID] == print {
 			continue
 		}
 		seen[a.ID] = print
-		b.emit.Emit(appwire.EventOrderChanged, appwire.OrderChanged{Order: orderView(store, a, now)})
+		b.emit.Emit(appwire.EventOrderChanged, appwire.OrderChanged{Order: view})
 	}
 	for id := range seen {
 		if !present[id] {
@@ -726,5 +733,5 @@ func (b *appBackend) ordersOnce(store *automation.Store, cursor int64, seen map[
 			b.emit.Emit(appwire.EventOrderRemoved, appwire.OrderRemoved{ID: id})
 		}
 	}
-	return cursor
+	return cursor, true
 }

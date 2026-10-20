@@ -332,3 +332,17 @@ const carryOnLead = "[carry on] "
 func CarryOn(text string) string { return carryOnLead + strings.TrimSpace(text) }
 
 func isCarryOn(text string) bool { return strings.HasPrefix(text, carryOnLead) }
+
+// ClosedSignal closes as soon as Close refuses further work. A view subscribes
+// under the same lock as Close, so even a previously closed agent is observed.
+func (a *Agent) ClosedSignal() <-chan struct{} {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closedSignal == nil {
+		a.closedSignal = make(chan struct{})
+		if a.closed {
+			close(a.closedSignal)
+		}
+	}
+	return a.closedSignal
+}

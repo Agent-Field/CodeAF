@@ -665,9 +665,22 @@ func reconcileImportedSkillsWith(st *store.Store, projectDir, homeDir string, di
 
 // importPass is one uncoalesced pass. Discovery skips folder
 // sizing (nothing here reads it) and each folder's digest goes through the
-// cache, so an unchanged shelf costs one stat walk per folder and no reads.
+// cache. Remembered dependencies are statted before discovery, so an unchanged
+// shelf needs neither directory listings nor content reads.
 func importPass(st *store.Store, projectDir, homeDir string, digests *digestCache) {
-	runImportPass(st, projectDir, homeDir, digests.digest, true)
+	key := importKey{shelf: st, project: projectDir, home: homeDir}
+	importPasses.publish(st, func() {
+		if digests.imports.unchanged(key) {
+			return
+		}
+		stamps, valid := importStamps(key)
+		digests.imports.mu.Lock()
+		digests.imports.scans++
+		digests.imports.mu.Unlock()
+		if scanAndPublishImport(st, projectDir, homeDir, digests.digest, true) && valid {
+			digests.imports.remember(key, stamps)
+		}
+	})
 }
 
 // importScan is what the disk said, gathered without touching the shelf.
@@ -690,10 +703,10 @@ func runImportPass(st *store.Store, projectDir, homeDir string, digest func(stri
 	})
 }
 
-func scanAndPublishImport(st *store.Store, projectDir, homeDir string, digest func(string) (string, error), omitSize bool) {
+func scanAndPublishImport(st *store.Store, projectDir, homeDir string, digest func(string) (string, error), omitSize bool) bool {
 	discovered, err := skills.Discover(skills.Options{ProjectDir: projectDir, HomeDir: homeDir, OmitSize: omitSize})
 	if err != nil {
-		return
+		return false
 	}
 	// alive is every directory this scan still endorses — shadowed ones
 	// included, because a folder another root outranks has not gone away, and
@@ -702,6 +715,7 @@ func scanAndPublishImport(st *store.Store, projectDir, homeDir string, digest fu
 	// folder even when it carries a soft warning — a name that does not match
 	// its folder is still a working skill, per the spec's client guide — while
 	// a skipped one (no name, no description, unparseable) endorses nothing.
+	complete := true
 	scan := importScan{alive: make(map[string]bool)}
 	for _, skill := range discovered {
 		if skill.Name == "" || skill.Description == "" {
@@ -723,12 +737,13 @@ func scanAndPublishImport(st *store.Store, projectDir, homeDir string, digest fu
 		}
 		sum, err := digest(digestDir)
 		if err != nil {
+			complete = false
 			continue
 		}
 		scan.ready = append(scan.ready, importReady{dir: dir, scope: importedSkillScope(skill, projectDir),
 			body: clipFactBody(skill.Description), digest: sum})
 	}
-	publishImport(st, projectDir, homeDir, scan)
+	return publishImport(st, projectDir, homeDir, scan) && complete
 }
 
 // ownsImported limits retirement to the scope this scan actually inspected.
@@ -742,10 +757,10 @@ func ownsImported(fact store.Fact, projectDir, homeDir string) bool {
 	return strings.HasPrefix(fact.Scope, "harness:")
 }
 
-func publishImport(st *store.Store, projectDir, homeDir string, scan importScan) {
+func publishImport(st *store.Store, projectDir, homeDir string, scan importScan) bool {
 	active, err := st.SkillFacts(store.FactActive, skillCandidateScanLimit)
 	if err != nil {
-		return
+		return false
 	}
 	// Match and repair imported facts by their folder across the whole shelf.
 	// Ownership limits retirement below, never identity. The map is keyed by
@@ -756,6 +771,7 @@ func publishImport(st *store.Store, projectDir, homeDir string, scan importScan)
 	// crash landed between one import's activation and the supersede it was
 	// about to journal, and it retires here so the shelf keeps its
 	// one-active-fact-per-folder shape.
+	complete := true
 	imported := make(map[string]store.Fact)
 	for _, fact := range active {
 		if fact.Trust != importedSkillTrust {
@@ -766,7 +782,9 @@ func publishImport(st *store.Store, projectDir, homeDir string, scan importScan)
 			continue
 		}
 		if existing, seen := imported[dir]; seen {
-			_ = st.SupersedeFactWithReason(fact.Seq, existing.Seq, "duplicate import record")
+			if err := st.SupersedeFactWithReason(fact.Seq, existing.Seq, "duplicate import record"); err != nil {
+				complete = false
+			}
 			continue
 		}
 		imported[dir] = fact
@@ -778,14 +796,18 @@ func publishImport(st *store.Store, projectDir, homeDir string, scan importScan)
 		candidate, err := st.RecordSkillCandidateFrom(store.FactWriterOther, store.RootID,
 			skill.scope, skill.body, skill.dir, importedSkillTrust)
 		if err != nil {
+			complete = false
 			continue
 		}
 		if err := st.ActivateSkill(candidate.Seq, skill.dir, skill.digest); err != nil {
+			complete = false
 			continue
 		}
 		if existing, ok := imported[skill.dir]; ok {
-			_ = st.SupersedeFactWithReason(existing.Seq, candidate.Seq,
-				"imported skill changed on disk")
+			if err := st.SupersedeFactWithReason(existing.Seq, candidate.Seq,
+				"imported skill changed on disk"); err != nil {
+				complete = false
+			}
 		}
 	}
 
@@ -801,9 +823,12 @@ func publishImport(st *store.Store, projectDir, homeDir string, scan importScan)
 	}
 	sort.Strings(gone)
 	for _, dir := range gone {
-		_ = st.SupersedeFactWithReason(imported[dir].Seq, 0,
-			"skill folder no longer holds a readable SKILL.md")
+		if err := st.SupersedeFactWithReason(imported[dir].Seq, 0,
+			"skill folder no longer holds a readable SKILL.md"); err != nil {
+			complete = false
+		}
 	}
+	return complete
 }
 
 // importedSkillScope names where a discovered skill came from, in the tree's

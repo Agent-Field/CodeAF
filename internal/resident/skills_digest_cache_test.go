@@ -209,7 +209,7 @@ func TestImportPassUsesTheCacheAndStillTracksTheDisk(t *testing.T) {
 		t.Fatal("skill not imported")
 	}
 	importPass(graph, projectDir, homeDir, c)
-	if c.reads.Load() != 1 || c.hits.Load() != 1 {
+	if c.reads.Load() != 1 || c.hits.Load() != 0 || c.imports.scans != 1 {
 		t.Fatalf("unchanged rescan: reads=%d hits=%d", c.reads.Load(), c.hits.Load())
 	}
 	if again, _ := importedFactByArtifact(t, graph, pdf); again.Seq != first.Seq {

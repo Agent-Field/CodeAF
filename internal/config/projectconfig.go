@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/filememo"
 	"os"
 	"path/filepath"
 	"sort"
@@ -146,32 +147,36 @@ func LoadProjectConfig(cwd string) (ProjectConfig, error) {
 	if path == "" {
 		return ProjectConfig{}, nil
 	}
-	raw, err := os.ReadFile(path)
+	project, err := projectConfigMemo.Read(path)
 	if os.IsNotExist(err) {
 		legacy := filepath.Join(strings.TrimSpace(cwd), legacyProjectConfigDir, ProjectConfigFile)
-		path = legacy
-		raw, err = os.ReadFile(legacy)
+		project, err = projectConfigMemo.Read(legacy)
 		if os.IsNotExist(err) {
-			return ProjectConfig{path: ProjectConfigPath(cwd)}, nil
+			return ProjectConfig{path: path}, nil
 		}
 	}
 	if err != nil {
 		return ProjectConfig{}, fmt.Errorf("read project settings %s: %w", path, err)
+	}
+	return project, nil
+}
+
+var projectConfigMemo = filememo.New(func(path string, raw []byte, missing bool) (ProjectConfig, error) {
+	if missing {
+		return ProjectConfig{}, os.ErrNotExist
 	}
 	var values map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &values); err != nil {
 		return ProjectConfig{}, fmt.Errorf("read project settings %s: %w", path, err)
 	}
 	if values == nil {
-		// A literal `null` parses without complaint and means the same as an
-		// empty object here: a file that says nothing.
 		values = map[string]json.RawMessage{}
 	}
 	if err := refuseNestedRows(path, values); err != nil {
 		return ProjectConfig{}, err
 	}
 	return ProjectConfig{path: path, values: values}, nil
-}
+})
 
 // Path is the file this layer came from, empty when there is no workspace.
 func (p ProjectConfig) Path() string { return p.path }

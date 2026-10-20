@@ -3,6 +3,7 @@ package teams
 import (
 	"bufio"
 	"encoding/json"
+	"github.com/Agent-Field/codeaf/internal/filememo"
 	"io"
 	"os"
 	"path/filepath"
@@ -72,6 +73,10 @@ func TeamSpend(profileDir, teamID, day string) (Spend, error) {
 
 // TeamSpendIn is [TeamSpend] against the ledger at ledger.
 func TeamSpendIn(profileDir, ledger, teamID, day string) (Spend, error) {
+	return teamSpendResults.read(profileDir, ledger, teamID, day)
+}
+
+func readTeamSpend(profileDir, ledger, teamID, day string) (Spend, error) {
 	f, err := Load(profileDir)
 	if err != nil {
 		return Spend{}, err
@@ -184,6 +189,7 @@ type spendSum struct {
 
 // ledgerFold is one ledger as read so far.
 type ledgerFold struct {
+	info   os.FileInfo
 	stamp  string
 	offset int64
 	days   map[string]map[spendPair]spendSum
@@ -233,19 +239,22 @@ func (m *spendMemory) day(path, day string) (map[spendPair]spendSum, error) {
 func (m *spendMemory) refresh(path string) (*ledgerFold, error) {
 	stamp := stampOf(path)
 	f := m.ledgers[path]
-	if f != nil && f.stamp == stamp {
+	info, statErr := os.Stat(path)
+	if statErr != nil && !os.IsNotExist(statErr) {
+		return nil, statErr
+	}
+	if f != nil && f.stamp == stamp && (info == nil && f.info == nil || info != nil && f.info != nil && os.SameFile(f.info, info)) {
 		return f, nil
 	}
 	if stamp == MissingStamp {
 		f = &ledgerFold{stamp: stamp, days: map[string]map[spendPair]spendSum{}}
-		m.ledgers[path] = f
+		m.keep(path, f)
 		return f, nil
 	}
-	info, err := os.Stat(path)
-	if err != nil {
-		return nil, err
+	if statErr != nil {
+		return nil, statErr
 	}
-	if f == nil || info.Size() < f.offset {
+	if f == nil || f.info == nil || !os.SameFile(f.info, info) || info.Size() < f.offset || info.Size() <= f.info.Size() {
 		f = &ledgerFold{days: map[string]map[spendPair]spendSum{}}
 	}
 	file, err := os.Open(path)
@@ -256,7 +265,7 @@ func (m *spendMemory) refresh(path string) (*ledgerFold, error) {
 	if _, err := file.Seek(f.offset, io.SeekStart); err != nil {
 		return nil, err
 	}
-	r := bufio.NewReaderSize(file, 32<<10)
+	r := bufio.NewReaderSize(io.LimitReader(file, max(int64(0), info.Size()-f.offset)), 32<<10)
 	for {
 		raw, err := r.ReadBytes('\n')
 		if len(raw) > 0 && raw[len(raw)-1] == '\n' {
@@ -291,7 +300,19 @@ func (m *spendMemory) refresh(path string) (*ledgerFold, error) {
 			return nil, err
 		}
 	}
+	f.info = info
 	f.stamp = stamp
-	m.ledgers[path] = f
+	m.keep(path, f)
 	return f, nil
+}
+
+// keep bounds ledger histories when several profiles are inspected in one process.
+func (m *spendMemory) keep(path string, f *ledgerFold) {
+	if _, ok := m.ledgers[path]; !ok && len(m.ledgers) >= filememo.MaxEntries {
+		for key := range m.ledgers {
+			delete(m.ledgers, key)
+			break
+		}
+	}
+	m.ledgers[path] = f
 }

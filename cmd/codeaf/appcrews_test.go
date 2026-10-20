@@ -458,11 +458,9 @@ func TestAppCrewUpdateClearHuePersistsAndConflictsAreRefused(t *testing.T) {
 	}
 }
 
-// AN OPEN CREW'S MEMBER IS NEVER READ CLOSED FOR AGE, AND IS SAID ONCE WHEN THE
-// CREW OPENS IT. A member nobody spoke to for longer than the idle-close
-// setting lists as closed only while no open crew keeps it; the crew's own look
-// opens it, and the app is told with one agent.changed, as heldLive tells it.
-func TestAppAgedCrewMemberIsKeptOpenAndSaidOnceWhenHeld(t *testing.T) {
+// An open crew keeps its aged member visible, but only visiting the idle
+// member opens it. The first visit announces one agent.changed.
+func TestAppAgedCrewMemberIsLightUntilViewedAndSaidOnceWhenHeld(t *testing.T) {
 	t.Setenv("CODEAF_HOME", filepath.Join(t.TempDir(), "state"))
 	bucket, err := v3ProjectDir(t.TempDir())
 	if err != nil {
@@ -507,6 +505,12 @@ func TestAppAgedCrewMemberIsKeptOpenAndSaidOnceWhenHeld(t *testing.T) {
 		t.Fatal("an open crew's aged member listed closed")
 	}
 	close(gate)
+	if backend.isHeld(id) {
+		t.Fatal("idle crew member opened before a view")
+	}
+	if _, err := backend.OpenAgent(id); err != nil {
+		t.Fatal(err)
+	}
 	rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
 		c, ok := data.(appwire.AgentChanged)
 		return ok && c.Agent.ID == id && c.Agent.State != appwire.StateClosed

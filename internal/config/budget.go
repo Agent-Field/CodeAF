@@ -38,8 +38,8 @@ import (
 // [SettingsGeneration] is folded in beside it so a value this process persisted
 // can never be served back stale, whatever a filesystem's timestamp resolution
 // is. What the memo does not see is what the counter below already documents it
-// cannot: a config.json edited by hand in another process, which has always
-// landed on the next launch.
+// cannot: a same-inode write that restores both size and modification time.
+// Ordinary external edits and atomic replacements are seen on the next read.
 var profileConfigMemo = filememo.Stamped(SettingsGeneration,
 	func(_ string, data []byte, missing bool) (map[string]json.RawMessage, error) {
 		// A file that is not there yet is an empty object, not an error.

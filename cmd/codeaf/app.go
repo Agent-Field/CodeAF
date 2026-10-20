@@ -21,11 +21,11 @@ package main
 // new conversation records the workspace the app asked for as where the person
 // stood, since the process's own directory is wherever the app was started.
 //
-// AND IT IS LAZY BY LAW. Starting up reads nothing but the flags, so the hello
-// line leaves before anything is opened; listing agents, tasks and crews reads
-// the disk; only agents.create, agents.open and agents.send build a
-// conversation, and one left alone for [appAgentIdle] is let go again and
-// rebuilt transparently by the next send.
+// AND IT IS LAZY BY LAW. Startup opens agents with work or recovery to settle;
+// idle conversations stay as indexed records, crew members included. Viewing,
+// sending or waking opens one through the same per-agent gate. Listing agents,
+// tasks and crews reads the disk, and a conversation left alone for
+// [appAgentIdle] is let go and rebuilt transparently on demand.
 
 import (
 	"cmp"
@@ -232,6 +232,8 @@ type appConversation interface {
 // new one in a workspace. Minted is a folder this process minted a moment ago
 // for agents.create: nobody else can be holding it, so it is never joined.
 type appOpenAsk struct {
+	TeamListeningSince time.Time
+
 	Workspace  string
 	Transcript string
 	Model      string
@@ -244,6 +246,9 @@ type appOpenAsk struct {
 
 // appConn is an opened conversation and the one way to give it back.
 type appConn struct {
+	// UserMessages comes from the opener's replay, including compacted history.
+	UserMessages int
+
 	Conv       appConversation
 	Workspace  string
 	Transcript string
@@ -277,7 +282,7 @@ const appHostDialTimeout = 500 * time.Millisecond
 // journal. Everything else is built in this process.
 func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 	clock := ask.ClockS
-	launch := &remote.LaunchShape{Interactive: true, IntentNames: true, HandOverOnAsk: true, ProposalClockS: &clock, ChoiceClockS: clock, QuitGraceS: appQuitGraceS, LiveToolOutput: true, StandingOrders: true, QuickTasks: true}
+	launch := &remote.LaunchShape{TeamListeningSince: ask.TeamListeningSince, Interactive: true, IntentNames: true, HandOverOnAsk: true, ProposalClockS: &clock, ChoiceClockS: clock, QuitGraceS: appQuitGraceS, LiveToolOutput: true, StandingOrders: true, QuickTasks: true}
 	if ask.Transcript != "" && !ask.Minted {
 		// A JOIN CARRIES THE APP'S LAUNCH, and the engine applies what of it a
 		// conversation another window opened can carry (engine.go's JoinedWith).
@@ -374,7 +379,20 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 
 func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 	welcome := client.Welcome()
-	return &appConn{Conv: client.Agent(), Workspace: welcome.Workspace, Transcript: welcome.SessionFile, Release: release, Follow: client.Follow, Passes: client.Passes, Assembled: assembled}
+	users := 0
+	if welcome.UserMessages != nil {
+		users = *welcome.UserMessages
+	} else {
+		// An older holder can still answer from its replay rather than making
+		// this process parse a second copy of its journal.
+		history := client.Agent().EarlierHistory()
+		for _, entry := range appRecordItems(session.Record{Earlier: history.Entries, Floor: history.Floor, Entries: client.Agent().Transcript()}) {
+			if entry.Role == "user" {
+				users++
+			}
+		}
+	}
+	return &appConn{UserMessages: users, Conv: client.Agent(), Workspace: welcome.Workspace, Transcript: welcome.SessionFile, Release: release, Follow: client.Follow, Passes: client.Passes, Assembled: assembled}
 }
 
 // appBackend is the [appwire.Engine] over this process's conversations.
@@ -522,6 +540,12 @@ type appBackend struct {
 // appAgent is every agent this process has heard of: listed off the disk,
 // created or opened. live is nil while no conversation is held for it.
 type appAgent struct {
+	// crewHeld keeps an established crew hold due after its engine closes.
+	crewHeld bool
+
+	// listening is when this light record began watching crew traffic.
+	listening time.Time
+
 	// gate serializes opening and letting go of this one agent, so two sends
 	// racing for a closed conversation open it once.
 	gate       sync.Mutex
@@ -1012,6 +1036,9 @@ type appCreatePrep struct {
 // prepareCreate is everything agents.create can refuse, checked with nothing
 // made: the workspace, shutdown, and every attachment read whole.
 func (b *appBackend) prepareCreate(ask appwire.CreateAsk) (appCreatePrep, error) {
+	if err := (session.Submission{ClientID: ask.ClientID}).Check(); err != nil {
+		return appCreatePrep{}, appEngineError(err)
+	}
 	// No workspace is the work folder the person chose, or their home folder.
 	workspace := ask.Workspace
 	if strings.TrimSpace(workspace) == "" {
@@ -1279,6 +1306,7 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 		return appwire.Agent{}, false, appwire.Errorf(appwire.CodeClosed, "codeaf is shutting down")
 	}
 	ask := appOpenAsk{Workspace: workspace, Transcript: transcript, ClockS: appProposedClockS}
+	b.locked(func() { ask.TeamListeningSince = a.listening })
 	_ = b.state.read(func(f *appStateFile) { ask.ClockS = f.clock() })
 	if boot != nil {
 		ask.Model, ask.Minted = boot.model, true
@@ -1337,12 +1365,8 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 			title = b.memberNames()[id]
 		}
 	}
-	var counted bool
-	b.locked(func() { counted = a.counted })
-	users := 0
-	if !counted && conn.Transcript != "" {
-		users = appUserCount(conn.Transcript)
-	}
+	users := conn.UserMessages
+	crewHeld := b.crewKeeps(a.view.ID)
 	var view appwire.Agent
 	b.locked(func() {
 		if !a.counted {
@@ -1368,6 +1392,7 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 			a.view.UpdatedAt = b.now()
 		}
 		a.live = live
+		a.crewHeld = a.crewHeld || crewHeld
 		view = a.view
 	})
 	startTitles()
@@ -1749,6 +1774,11 @@ func (b *appBackend) send(id, text, clientID string, shown *appSending) (uint64,
 // sendLocked opens a's conversation if it is not held and starts one turn on
 // it. The caller holds a.gate.
 func (b *appBackend) sendLocked(a *appAgent, text, clientID string, shown *appSending) (uint64, error) {
+	// Opening can wake saved crew work, so reject an invalid identity before
+	// the opener can start any model work on this message's behalf.
+	if err := (session.Submission{ClientID: clientID}).Check(); err != nil {
+		return 0, appEngineError(err)
+	}
 	view, opened, err := b.ensureLocked(a)
 	if err != nil {
 		return 0, err
@@ -2483,7 +2513,7 @@ func (b *appBackend) workEvent(id string, live *appLive, event session.Event) {
 // Stop interrupts the running turn. An agent with nothing held has nothing
 // running in this process, which is answered as done.
 func (b *appBackend) Stop(id string) error {
-	a, err := b.find(id)
+	a, err := b.findCrewOwner(id)
 	if err != nil {
 		return err
 	}
@@ -2582,7 +2612,7 @@ func (b *appBackend) finish(live *appLive) {
 // ListAsks answers the agent's open asks. An agent with no conversation held
 // has none this process can answer.
 func (b *appBackend) ListAsks(id string) ([]appwire.Ask, error) {
-	a, err := b.find(id)
+	a, err := b.findCrewOwner(id)
 	if err != nil {
 		return nil, err
 	}
@@ -2610,7 +2640,7 @@ func (b *appBackend) AnswerAsk(id, askID, option, text string) error {
 	if handled, err := b.answerCrewAsk(id, askID, option, text, ""); handled {
 		return err
 	}
-	a, err := b.find(id)
+	a, err := b.findCrewOwner(id)
 	if err != nil {
 		return err
 	}
@@ -3419,7 +3449,7 @@ func (b *appBackend) spendMoved(after func(appwire.Spend)) {
 // checkpoint does not name — and lays over them what a held conversation has
 // said since.
 func (b *appBackend) ListTasks(id string) ([]appwire.Task, error) {
-	a, err := b.find(id)
+	a, err := b.findCrewOwner(id)
 	if err != nil {
 		return nil, err
 	}

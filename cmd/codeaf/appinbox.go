@@ -421,7 +421,7 @@ func (b *appBackend) LaterInbox(id string, later bool) error {
 	if service, err := b.laterServiceItem(id, askID, later); service {
 		return err
 	}
-	a, err := b.find(agent)
+	a, err := b.findCrewOwner(agent)
 	if err != nil {
 		return err
 	}

@@ -271,6 +271,7 @@ func (b *appBackend) checkCloseClaim(path string, c *appCloseClaim) {
 	if !refresh || b.isClosing() {
 		return
 	}
+	defer b.allowLazyOpen(filepath.Base(path))
 	if !dead {
 		// A new busy claim needs its own expiry watch even when the heartbeat
 		// read above was idle. No subsequent client read is guaranteed.
@@ -419,6 +420,7 @@ func appPendingCloseWork(p appClosePending) appCloseWork {
 }
 
 func (b *appBackend) replayClosePending(p appClosePending) {
+	defer b.allowLazyOpen(p.id)
 	r := &b.closeRecovery
 	r.work.Lock()
 	defer r.work.Unlock()
