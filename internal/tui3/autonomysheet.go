@@ -57,7 +57,7 @@ const (
 	// door. An earlier draft put `· change` on every row, which is a word with
 	// no key behind it — furniture that tells somebody a thing is changeable
 	// without telling them how.
-	autonomyUsageWord = "/autonomy <kind> ask · recommend [duration] · decide"
+	autonomyUsageWord = session.AutonomyUsage
 	// autonomyNoProjectWord is the refusal for a conversation with no project to
 	// store rules in. It says what is missing rather than that something failed.
 	autonomyNoProjectWord = "this conversation has no project to keep question rules in"
@@ -68,11 +68,7 @@ const (
 
 // autonomyKinds is every shape a rule can be written for, in the kind table's
 // own order (docs/design/questions/DESIGN.md), which is [questionShapeOrder]'s.
-var autonomyKinds = []session.AskKind{
-	session.AskPermission, session.AskChoice, session.AskJudgement,
-	session.AskClarification, session.AskConfirmation, session.AskLanding,
-	session.AskAssumption, session.AskRatify,
-}
+var autonomyKinds = session.AutonomyKinds()
 
 // autonomyAgent is the autonomy half of the agent under this surface, when it
 // has one. It is an optional assertion for [questionAgent]'s reason exactly: an
@@ -203,56 +199,11 @@ func (a *app) changeAutonomy(words string) tea.Cmd {
 // takes, and says what is wrong with a line it cannot read. IT IS THE ONE
 // READING: the refusals and the write below read the same words the same way.
 func autonomyLineOf(words string) (session.AskKind, session.Policy, string) {
-	parts := strings.Fields(words)
-	if len(parts) < 2 {
-		return "", session.Policy{}, autonomyUsageWord
-	}
-	kind := autonomyKindNamed(parts[0])
-	if kind == "" {
-		return "", session.Policy{}, "there is no question kind called " + parts[0] + " · " + autonomyUsageWord
-	}
-	// THE TWO REFUSALS ARE THE ENGINE'S AND ARE NOT RE-SPELLED HERE. Its door
-	// turns down a rule over a confirmation and over a clarification, in its own
-	// words, and this command prints them; a copy of the test on this side would
-	// be a second definition of a law that has one (ONE SOURCE OF TRUTH).
-	rule := session.Policy{Kind: session.PolicyAsk}
-	switch parts[1] {
-	case "ask":
-	case "decide":
-		rule.Kind = session.PolicyDecide
-	case "recommend":
-		// A LENGTH IS OPTIONAL. `recommend` on its own takes the engine's own
-		// default, which is the one derivation of that figure (session's
-		// [autonomyClock]); naming a duration is how somebody who wants a
-		// different one says so.
-		rule.Kind = session.PolicyRecommendThenAuto
-		if len(parts) == 3 {
-			after, err := time.ParseDuration(parts[2])
-			if err != nil || after <= 0 {
-				return "", session.Policy{}, "that duration is not understood: " + parts[2]
-			}
-			rule.After = after
-		} else if len(parts) != 2 {
-			return "", session.Policy{}, autonomyUsageWord
-		}
-	default:
-		return "", session.Policy{}, "choose ask, recommend [duration], or decide"
-	}
-	return kind, rule, ""
+	return session.ParseAutonomyLine(words)
 }
 
-// autonomyKindNamed reads one word as a question kind, by the engine's own
-// spelling for it and by the words the sheet prints for it — somebody changing
-// a row types what they just read, and `/autonomy asking permission ask` is not
-// a thing anybody would type, but `/autonomy permission ask` is.
 func autonomyKindNamed(word string) session.AskKind {
-	word = strings.TrimSpace(strings.ToLower(word))
-	for _, kind := range autonomyKinds {
-		if word == string(kind) {
-			return kind
-		}
-	}
-	return ""
+	return session.AutonomyKindNamed(word)
 }
 
 // ── the rule a question is answered under ───────────────────────────────────
