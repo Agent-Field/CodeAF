@@ -143,8 +143,8 @@ type Agent struct {
 	Title     string `json:"title"`
 	Workspace string `json:"workspace"`
 	Model     string `json:"model,omitempty"`
-	// Effort is how hard the model is asked to think: low, medium or high,
-	// and empty when the conversation runs on the model's own default.
+	// Effort is the conversation override: low, medium, high, xhigh or max.
+	// It is omitted when unset (auto); other effort scopes can still apply.
 	Effort    string    `json:"effort,omitempty"`
 	State     string    `json:"state" enum:"idle,working,needs_you,stopped,closed,archived"`
 	UpdatedAt time.Time `json:"updated_at,omitzero"`
@@ -523,7 +523,10 @@ type Model struct {
 	Default bool `json:"default,omitempty"`
 }
 
-// The three efforts agents.set_effort takes.
+// FeatureAgentEffortRungs announces the terminal's full conversation effort dial.
+const FeatureAgentEffortRungs = "agents.set_effort.rungs"
+
+// These original effort spellings remain available to existing callers.
 const (
 	EffortLow    = "low"
 	EffortMedium = "medium"
