@@ -108,7 +108,7 @@ Ask    { id, agent, kind, subkind?, title, detail?, options?: [{id, label}], irr
 | `agents.entries` | `{id, before?, limit?}` | `{entries: Entry[], more: bool}` (oldest first; works for agents not held) |
 | `agents.set_model` | `{id, model}` | `{agent: Agent}` |
 | `agents.retry` | `{id}` | `{turn}` (re-run the last failed turn) |
-| `agents.open` | `{id}` | `{agent: Agent}` (attach an engine to a saved conversation) |
+| `agents.open` | `{id}` | `{agent: Agent}` (attach an engine to a saved conversation; idempotent, one concurrent open per agent; call on chat display or hover to prefetch) |
 | `agents.send` | `{id, text}` | `{turn: <u64>}`; output arrives as events |
 | `agents.stop` | `{id}` | `{}` (interrupt the running turn) |
 | `agents.close` | `{id}` | `{}` (detach and stop its engine; conversation stays on disk) |

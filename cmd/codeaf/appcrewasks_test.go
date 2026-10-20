@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -71,6 +72,11 @@ func newAppMemberCrewWithRefusals(t *testing.T, refuse, noKey bool) *appMemberCr
 	}
 	dir := writeV3Session(t, bucket, "00000000000000c1", "check the findings", time.Now())
 	transcript := session.Place{Dir: dir}.Transcript()
+	// The member has parked work, so startup must hold its question lane even
+	// though idle members of the same crew are now left as light records.
+	if err := os.WriteFile(filepath.Join(dir, "tasks.json"), []byte(`{"type":"tasks","version":1,"seq":1,"nodes":[{"id":1,"title":"parked work","brief":"carry on","kind":"quick","state":"queued"}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	c := &appMemberCrew{conv: &fakeConversation{}, turns: make(chan remote.Following, 1)}
 	c.refuse.Store(refuse)
@@ -117,7 +123,7 @@ func newAppMemberCrewWithRefusals(t *testing.T, refuse, noKey bool) *appMemberCr
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The crew's first look holds every member; the member's conversation opens
+	// The crew's first look holds members with work; this conversation opens
 	// behind it.
 	c.run = c.backend.crews()
 	return c

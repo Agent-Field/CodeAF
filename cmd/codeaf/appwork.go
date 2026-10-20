@@ -1245,7 +1245,7 @@ func (b *appBackend) processMoved(agent string, live *appLive, job *session.JobN
 // processRows is an agent's processes: the live registry's while its
 // conversation is held, its record on disk otherwise.
 func (b *appBackend) processRows(agent string) ([]session.JobNotice, *appLive, error) {
-	a, err := b.find(agent)
+	a, err := b.findCrewOwner(agent)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1500,7 +1500,7 @@ func (b *appBackend) watchLong(id string, live *appLive, turn uint64, started ti
 // so, and the task arrives on its own as task.changed with the move's notice.
 // A reply that ends before it could move leaves a notice saying so.
 func (b *appBackend) MoveToTask(agent string, turn uint64) (appwire.MoveResult, error) {
-	a, err := b.find(agent)
+	a, err := b.findCrewOwner(agent)
 	if err != nil {
 		return appwire.MoveResult{}, err
 	}

@@ -1,5 +1,7 @@
 package session
 
+import "context"
+
 // ReadSessionTasks is every task one conversation's checkpoint holds — running,
 // waiting and finished — as the notices a surface draws, read off the disk
 // without opening the conversation. A desktop app listing a conversation it is
@@ -36,4 +38,52 @@ func ReadSessionTasks(sessionFile string) []TaskNotice {
 		}
 	}
 	return out
+}
+
+// NeedsTaskRecovery reports work an opener must settle or present. It reads the
+// checkpoint, never the transcript; a completed and already announced task is
+// history and needs no live agent.
+func NeedsTaskRecovery(sessionFile string) bool {
+	document, ok := loadTaskCheckpoint(taskCheckpointPath(sessionFile))
+	if !ok {
+		return false
+	}
+	for _, node := range document.Nodes {
+		if taskNeedsAttention(node.State) || !node.Noted || node.NotedState != "" && node.NotedState != node.State {
+			return true
+		}
+	}
+	for _, run := range document.Runs {
+		if run.Park != nil || taskNeedsAttention(runRowNotice(run).State) {
+			return true
+		}
+	}
+	return false
+}
+
+// NeedsProcessRecovery finds saved running jobs even when the last presence
+// was removed. Paging reads process records alone, never the conversation.
+func NeedsProcessRecovery(sessionFile string) bool {
+	ask := ProcessPageAsk{Limit: ProcessPageMax}
+	for {
+		page, err := ReadProcessPage(context.Background(), sessionFile, ask)
+		if err != nil || page.Incomplete {
+			return true
+		}
+		for _, row := range page.Rows {
+			if row.State == JobRunning {
+				return true
+			}
+		}
+		if page.Next == "" {
+			return false
+		}
+		ask.Cursor = page.Next
+	}
+}
+
+// taskNeedsAttention includes a finished task whose decision still belongs to
+// the person or model. Announcing that landing does not answer its question.
+func taskNeedsAttention(state TaskState) bool {
+	return !state.settled() || state == TaskUnverified
 }

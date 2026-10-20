@@ -11,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/filememo"
 )
 
 // The file's name inside the profile directory, and the first build's.
@@ -104,12 +105,23 @@ func load(profileDir string, colour bool, reserved []float64) (*File, error) {
 	return f, nil
 }
 
+var teamFiles = filememo.New(func(path string, raw []byte, missing bool) (disk, error) {
+	if missing {
+		return disk{}, os.ErrNotExist
+	}
+	var d disk
+	if err := json.Unmarshal(raw, &d); err != nil {
+		return disk{}, fmt.Errorf("teams: %s is unreadable: %w", filepath.Base(path), err)
+	}
+	return d, nil
+})
+
 // read is the file as it is on disk, with no repair: nil for no file at all,
 // legacy when it came from spaces.json, stale when it is an older version.
 func read(profileDir string) (f *File, legacy, stale bool, err error) {
-	raw, err := os.ReadFile(Path(profileDir))
+	d, err := teamFiles.Read(Path(profileDir))
 	if errors.Is(err, os.ErrNotExist) {
-		raw, err = os.ReadFile(legacyPath(profileDir))
+		d, err = teamFiles.Read(legacyPath(profileDir))
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, false, false, nil
 		}
@@ -118,15 +130,11 @@ func read(profileDir string) (f *File, legacy, stale bool, err error) {
 	if err != nil {
 		return nil, false, false, err
 	}
-	var d disk
-	if err := json.Unmarshal(raw, &d); err != nil {
-		name := FileName
-		if legacy {
-			name = LegacyFileName
-		}
-		return nil, false, false, fmt.Errorf("teams: %s is unreadable: %w", name, err)
+	held := d.list(legacy)
+	teams := make([]Team, len(held))
+	for i, team := range held {
+		teams[i] = team.Clone()
 	}
-	teams := d.list(legacy)
 	return &File{Version: Version, Teams: teams, localIdentities: true}, legacy, !legacy && d.Version < Version, nil
 }
 

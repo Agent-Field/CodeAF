@@ -25,6 +25,8 @@
 //   - The file appearing where there was none, or disappearing. Absence is a
 //     value like any other and is held like one, so a profile with no config.json
 //     — the ordinary state of a fresh install — is answered without a read too.
+//   - The file identity differs, including a rename that preserves size and
+//     modification time.
 //   - A caller-supplied stamp moving ([Memo.Stamped]). It is how a package whose
 //     own writer runs in this process says "that was me": config's every
 //     persisted write bumps a counter, and reading that counter into the
@@ -48,6 +50,7 @@
 package filememo
 
 import (
+	"errors"
 	"os"
 	"sync"
 	"time"
@@ -68,10 +71,14 @@ type Derive[T any] func(path string, data []byte, missing bool) (T, error)
 //
 // It is safe for concurrent use. The lock is held across the read, so two
 // callers arriving on a cold memo at once perform one read rather than two;
-// that is the right trade for files this small and this hot.
+// that is the right trade for files this small and this hot. At most 64 paths
+// are retained, with the least recently used path evicted first.
 type Memo[T any] struct {
 	derive Derive[T]
 	stamp  func() uint64
+	source func(string, os.FileInfo) (T, error)
+	tick   uint64
+	reads  uint64
 
 	mu   sync.Mutex
 	held map[string]reading[T]
@@ -79,6 +86,8 @@ type Memo[T any] struct {
 
 // reading is one file as it was when its value was derived.
 type reading[T any] struct {
+	info    os.FileInfo
+	used    uint64
 	value   T
 	err     error
 	size    int64
@@ -110,33 +119,51 @@ func Stamped[T any](stamp func() uint64, derive Derive[T]) *Memo[T] {
 // every call would be a read per call for a file that is broken until somebody
 // fixes it, which is the exact cost this type exists to remove.
 func (m *Memo[T]) Read(path string) (T, error) {
-	now, missing := os.Stat(path)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	now, statErr := os.Stat(path)
+	if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
+		var zero T
+		return zero, statErr
+	}
 	var size int64
 	var modTime time.Time
-	if missing == nil {
+	if now != nil {
 		size, modTime = now.Size(), now.ModTime()
 	}
-	absent := missing != nil
+	absent := now == nil
 	stamp := uint64(0)
 	if m.stamp != nil {
 		stamp = m.stamp()
 	}
-
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if held, known := m.held[path]; known && held.fresh(size, modTime, absent, stamp) {
+	held, known := m.held[path]
+	m.tick++
+	if known && held.fresh(size, modTime, absent, stamp) && (absent || os.SameFile(held.info, now)) {
+		held.used = m.tick
+		m.held[path] = held
 		return held.value, held.err
 	}
-
+	if m.source != nil {
+		if now != nil {
+			m.reads++
+		}
+		value, err := m.source(path, now)
+		if err == nil {
+			m.keep(path, reading[T]{value: value, info: now, size: size, modTime: modTime, missing: absent, stamp: stamp})
+		}
+		return value, err
+	}
 	var data []byte
 	if !absent {
+		m.reads++
 		bytes, err := os.ReadFile(path)
 		if err != nil {
-			// The file went away between the stat and the read, or became
-			// unreadable. NOTHING IS HELD FOR IT: the reading this memo would
-			// key on is the one that just turned out to be a lie, so the next
-			// call stats again and finds whatever is true then.
-			return m.derive(path, nil, true)
+			// A failed read is never content, even when its stat succeeded.
+			if errors.Is(err, os.ErrNotExist) {
+				return m.derive(path, nil, true)
+			}
+			var zero T
+			return zero, err
 		}
 		data = bytes
 	}
@@ -144,10 +171,10 @@ func (m *Memo[T]) Read(path string) (T, error) {
 	if m.held == nil {
 		m.held = make(map[string]reading[T], 4)
 	}
-	m.held[path] = reading[T]{
+	m.keep(path, reading[T]{
 		value: value, err: err,
-		size: size, modTime: modTime, missing: absent, stamp: stamp,
-	}
+		info: now, size: size, modTime: modTime, missing: absent, stamp: stamp,
+	})
 	return value, err
 }
 
@@ -168,4 +195,43 @@ func (r reading[T]) fresh(size int64, modTime time.Time, missing bool, stamp uin
 		return true
 	}
 	return r.size == size && r.modTime.Equal(modTime)
+}
+
+// Source binds a memo to a reader that derives its value without loading the
+// whole file. info is nil for absence. Values belong to the memo and callers
+// must treat them as immutable.
+func Source[T any](read func(path string, info os.FileInfo) (T, error)) *Memo[T] {
+	return &Memo[T]{source: read}
+}
+
+// MaxEntries bounds each process cache of file state, including readers that
+// retain offsets or import dependencies rather than a single derived value.
+const MaxEntries = 64
+
+// keep bounds retained paths. Reads in progress hold the same mutex, so an
+// eviction cannot start a second reader for a path still being published.
+func (m *Memo[T]) keep(path string, value reading[T]) {
+	if m.held == nil {
+		m.held = make(map[string]reading[T])
+	}
+	if _, found := m.held[path]; !found && len(m.held) >= MaxEntries {
+		var oldest string
+		least := ^uint64(0)
+		for key, entry := range m.held {
+			if entry.used < least {
+				oldest, least = key, entry.used
+			}
+		}
+		delete(m.held, oldest)
+	}
+	value.used = m.tick
+	m.held[path] = value
+}
+
+// Reads reports content reads admitted by this memo, for cost diagnostics.
+// A source invocation counts as one read; missing files cost no content read.
+func (m *Memo[T]) Reads() uint64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.reads
 }

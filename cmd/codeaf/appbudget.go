@@ -118,7 +118,7 @@ func (b *appBackend) stampAgentBudget(a *appAgent) appwire.Agent {
 
 // AgentBudget answers agents.budget.get.
 func (b *appBackend) AgentBudget(id string) (appwire.AgentBudget, error) {
-	a, err := b.find(id)
+	a, err := b.findCrewOwner(id)
 	if err != nil {
 		return appwire.AgentBudget{}, err
 	}
@@ -132,7 +132,7 @@ func (b *appBackend) SetAgentBudget(set appwire.AgentBudgetSet) (appwire.AgentBu
 	if set.USD != nil && (*set.USD <= 0 || math.IsNaN(*set.USD) || math.IsInf(*set.USD, 0)) {
 		return appwire.AgentBudget{}, appwire.Errorf(appwire.CodeBadParams, "usd must be a positive amount, or null for none")
 	}
-	a, err := b.find(set.ID)
+	a, err := b.findCrewOwner(set.ID)
 	if err != nil {
 		return appwire.AgentBudget{}, err
 	}

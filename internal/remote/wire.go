@@ -834,6 +834,8 @@ type LaunchShape struct {
 	// HandOverOnAsk keeps a running reply in the conversation until the person
 	// moves it to a task ([session.Config.HandOverOnAsk]); the desktop app sets it.
 	HandOverOnAsk bool `json:"handOverOnAsk,omitempty"`
+	// TeamListeningSince carries the app's subscribe-before-check boundary.
+	TeamListeningSince time.Time `json:"teamListeningSince,omitzero"`
 	// ProposalClockS, when set, is how many seconds a proposed task waits before
 	// it starts on its own ([session.Config.TaskAutoApproveSeconds]).
 	ProposalClockS *int `json:"proposalClockS,omitempty"`
@@ -1058,6 +1060,10 @@ type StreamCursor struct {
 // Welcome is the server's answer ("welcome"): the facts a surface needs before
 // its first frame, which are the same facts newApp reads off a local agent.
 type Welcome struct {
+	// UserMessages is counted from the engine's replay, so an attaching app
+	// need not parse the journal again just to allocate visible message IDs.
+	UserMessages *int `json:"userMessages,omitempty"`
+
 	// MessageMarks says this engine records a submission's authored words,
 	// attachments and reference-read facts together. Absence is an older
 	// engine: a marked submission must be refused before any words are sent.

@@ -337,7 +337,7 @@ func requestTaskDeletion(file, id string) error {
 	pending := filepath.Join(dir, ".task-delete-request-"+req.Token)
 	running := filepath.Join(dir, ".task-delete-running-"+req.Token)
 	result := filepath.Join(dir, ".task-delete-result-"+req.Token)
-	if err := os.WriteFile(pending, raw, 0600); err != nil {
+	if err := writePresenceRequest(pending, raw); err != nil {
 		return err
 	}
 	defer os.Remove(pending)

@@ -368,7 +368,7 @@ var trafficWindow int64 = 64 << 10
 func tailTraffic(files []string, limit int) ([]Entry, error) {
 	var out []Entry
 	for index := len(files) - 1; index >= 0 && len(out) < limit; index-- {
-		got, err := tailTrafficFile(files[index], limit-len(out))
+		got, err := trafficCache.read(trafficQuery{path: files[index], limit: limit - len(out)})
 		if err != nil {
 			return nil, err
 		}
@@ -433,7 +433,7 @@ func forwardTraffic(files []string, after string, limit int) ([]Entry, error) {
 		if len(out) >= limit {
 			break
 		}
-		got, err := forwardTrafficFile(path, after, limit-len(out))
+		got, err := trafficCache.read(trafficQuery{path: path, after: after, limit: limit - len(out)})
 		if err != nil {
 			return nil, err
 		}
@@ -585,30 +585,7 @@ func parseTrafficLine(line []byte) (Entry, bool) {
 // readTrafficFile is every entry in one file that parses; a missing file is
 // none.
 func readTrafficFile(path string) ([]Entry, error) {
-	file, err := os.Open(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	var out []Entry
-	r := bufio.NewReader(file)
-	for {
-		line, err := r.ReadBytes('\n')
-		if len(line) > 0 && line[len(line)-1] == '\n' {
-			if e, ok := parseTrafficLine(line); ok {
-				out = append(out, e)
-			}
-		}
-		if err == io.EOF {
-			return out, nil
-		}
-		if err != nil {
-			return nil, err
-		}
-	}
+	return trafficCache.read(trafficQuery{path: path})
 }
 
 // lastTrafficID is the highest id in the log, 0 for an empty one. It reads the

@@ -858,7 +858,8 @@ func (b *appBackend) crewVisit(ctx context.Context, o crewOwner, n int) (*appwir
 // crewOwnerPage is the real visit: the engine that holds the conversation is
 // asked when one does; otherwise the conversation is read from the exact stored
 // transcript location, through a descriptor pinned below the places root.
-// Nothing is opened, woken, created or cached, and no directory is listed.
+// Open crews restore their owner before asking it; other stored conversations
+// stay closed. No directory is listed.
 func (b *appBackend) crewOwnerPage(ctx context.Context, o crewOwner, n int) (*appwire.ProcessPageResult, error) {
 	if o.bucket == "" || o.id == "" {
 		return nil, errCrewOwnerMissing
@@ -875,6 +876,17 @@ func (b *appBackend) crewOwnerPage(ctx context.Context, o crewOwner, n int) (*ap
 	// its live engine's own transcript path is the stored file, byte for byte.
 	// A same-named conversation at another path is not this member, and is not
 	// asked; this member is then read as saved, which says unknown, not running.
+	var a *appAgent
+	b.locked(func() {
+		if candidate := b.agents[o.id]; candidate != nil && candidate.transcript == o.file {
+			a = candidate
+		}
+	})
+	if a != nil && b.crewKeeps(o.id) {
+		if _, _, err := b.heldLive(o.id); err != nil {
+			return nil, err
+		}
+	}
 	var live *appLive
 	convDir := ""
 	b.locked(func() {

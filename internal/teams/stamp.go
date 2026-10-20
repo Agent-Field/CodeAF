@@ -49,7 +49,7 @@ func stampOf(path string) string {
 	if err != nil {
 		return MissingStamp
 	}
-	return strconv.FormatInt(info.Size(), 10) + "." + strconv.FormatInt(info.ModTime().UnixNano(), 10)
+	return strconv.FormatInt(info.Size(), 10) + "." + strconv.FormatInt(info.ModTime().UnixNano(), 10) + stampIdentity(info)
 }
 
 // advance sets path's modification time one microsecond past before when the

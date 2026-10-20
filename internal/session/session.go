@@ -1376,6 +1376,10 @@ type TaskLanding struct {
 }
 
 type Config struct {
+	// TeamListeningSince preserves the traffic subscription boundary when an
+	// app opens a light record after the event that needs it.
+	TeamListeningSince time.Time
+
 	// DeterministicNames preserves the legacy no-model naming request.
 	// When both naming flags are set this free rule takes precedence.
 	DeterministicNames bool
@@ -3429,7 +3433,8 @@ type Agent struct {
 	// (issue #381). It is made under the same lock that sets `closed`, so a
 	// caller that loses the race is guaranteed to find a channel to wait on
 	// rather than a nil one.
-	closeDone chan struct{}
+	closeDone    chan struct{}
+	closedSignal chan struct{}
 	// takenOver says another window has asked for this conversation and this
 	// process has not let go of it yet (takeover.go). Set once, never cleared:
 	// the only way out is the close the ask is for.

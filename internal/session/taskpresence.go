@@ -20,17 +20,17 @@ package session
 //
 //   - IT IS A CLAIM ABOUT A LIVE PROCESS, NEVER A RECORD. Nothing here is
 //     history and nothing here is ever appended to. The file is rewritten whole
-//     on every refresh and describes only this instant; the past is
+//     when its content changes and describes only this instant; the past is
 //     task_index.go's, and a reader that wants to know what happened must go
 //     there.
 //
 //   - IT IS ONLY TRUE WHILE IT IS FRESH. A process that is killed, panics or
 //     loses its machine writes no farewell, so a file left behind would claim a
 //     session that is gone. THE ONLY THING THAT MAKES A PRESENCE FILE TRUE IS
-//     ITS AGE: [presenceHeartbeat] refreshes it while the session lives, and a
+//     ITS AGE: the file clock is touched while the session lives, and a
 //     reader takes it as live only inside [presenceWindow], which is three
-//     heartbeats. Past that the session is gone and every "running" it claims is
-//     void. That is why there is no cleanup daemon and no pid liveness check —
+//     maintenance beats. Past that the session is gone and every "running"
+//     it claims is void. That is why there is no cleanup daemon and no pid liveness check —
 //     staleness IS the cleanup, and it costs nothing and cannot go wrong.
 //
 //   - A WRITE THAT FAILS IS DROPPED IN SILENCE. This is a courtesy to other
@@ -77,6 +77,7 @@ package session
 // mailbox.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -118,18 +119,20 @@ const presenceSchema = 1
 // writer promises is exactly the drift that makes a liveness signal lie, first
 // by hiding live sessions and later by keeping dead ones on a surface.
 const (
-	// presenceHeartbeat is how often a live session refreshes its file even
-	// when nothing about it has changed. It is short enough that a window
-	// somebody killed leaves a surface within a glance and long enough that an
-	// idle session costs a two-hundred-byte write every few seconds.
+	// presenceHeartbeat is the shared maintenance cadence for answers, request
+	// safety scans and active work.
 	presenceHeartbeat = 5 * time.Second
 	// PresenceHeartbeat lets readers distinguish a missing task from a task
 	// started after the writer's preceding heartbeat.
 	PresenceHeartbeat = presenceHeartbeat
 	// presenceWindow is how old a file may be and still be believed: three
-	// heartbeats, so a session has to miss three in a row before another window
-	// gives up on it. Two would call a session dead over one slow disk.
+	// maintenance beats, leaving room for a missed JSON refresh before another
+	// window gives up on the session.
 	presenceWindow = 3 * presenceHeartbeat
+	// presenceRefresh leaves one second of slack after a missed refresh: two
+	// seven-second intervals fit inside the fifteen-second presenceWindow,
+	// keeping older readers alive through the JSON updatedAt clock alone.
+	presenceRefresh = (presenceWindow - time.Second) / 2
 	// PresenceWindow lets a watcher expire claims on the writer's own clock.
 	PresenceWindow = presenceWindow
 	// presenceCloseGrace bounds how long [Agent.Close] waits for the heartbeat
@@ -495,8 +498,13 @@ func (p SessionPresence) Fresh(now time.Time) bool {
 // keep asking questions of it while its own lock is held (see
 // [Agent.nudgePresence]).
 type presenceDesk struct {
-	agent *Agent
-	path  string
+	agent     *Agent
+	path      string
+	last      []byte
+	refreshed time.Time
+	active    bool
+	// ticks substitutes the shared maintenance clock in deterministic tests.
+	ticks <-chan time.Time
 	// stop is closed once by [Agent.stopPresence]; done is closed by the
 	// heartbeat when it has removed the file and gone.
 	stop chan struct{}
@@ -506,11 +514,6 @@ type presenceDesk struct {
 	// sent to without blocking, because its senders hold the agent's lock and
 	// a presence file must never be able to stall a turn.
 	nudge chan struct{}
-	// every is how often the heartbeat writes, and 0 is [presenceHeartbeat]. It
-	// is a field for the tests, on [TaskGraph.pollEvery]'s own terms: five real
-	// seconds is the right cadence for a machine and the wrong one for a test
-	// suite. Nothing outside a test ever sets it.
-	every time.Duration
 
 	// mu guards the reasons below and NOTHING else. It is the desk's own lock
 	// and is never held across a write or across the agent's lock.
@@ -761,46 +764,18 @@ func (a *Agent) presenceRestateQuestion(q Question) {
 	}
 }
 
-// beat is the heartbeat: one write now, one on every nudge, one on every tick,
-// and a removal on the way out.
-//
-// AND ON EVERY TICK IT LOOKS AT THE DOORSTEP. An answer another window left for
-// a question this session is stopped on arrives as a file beside the presence
-// one, and this is the beat that picks it up (answers.go). It is done on the
-// TICK and not on the nudge: a nudge is this session saying something about
-// itself, and it fires while the agent's own lock is held by the lane that sent
-// it — the last place to be applying an answer to a question that lane is in the
-// middle of raising.
-//
-// ── AND ONE DOORSTEP IS LOOKED AT FASTER THAN THE OTHERS ────────────────────
-//
-// A TAKEOVER REQUEST RODE THE HEARTBEAT AND A PERSON WAS WATCHING IT. Every
-// other thing this loop does is a courtesy to a reader that is not standing
-// there — a presence refresh nobody has asked for, an answer typed in another
-// window minutes ago. A takeover request is the opposite: somebody pressed
-// enter one room away and is looking at a line that says the conversation is
-// coming. On the five-second heartbeat an IDLE window took up to five seconds
-// to so much as notice the request, which is the whole of why moving a
-// conversation felt slow when there was nothing at all to wait for.
-//
-// So the request has a beat of its own ([takeoverDoorstep]) and the heartbeat
-// keeps everything else. Answers deliberately stay on the slow beat: draining
-// them is a directory walk and a parse per look, where a takeover look is one
-// open of a path that is almost always absent — and nobody is watching a line
-// for an answer they left in another window.
+// beat subscribes before checking the doorstep, so a request cannot fall
+// between opening the session and installing its watch. The process shares one
+// maintenance and refresh clocks; idle agents own no ticker.
 func (d *presenceDesk) beat() {
 	defer close(d.done)
-	every := d.every
-	if every <= 0 {
-		every = presenceHeartbeat
+	requests, beats, refreshes, cancel := presenceDoors.subscribe(filepath.Dir(d.path))
+	defer cancel()
+	if d.ticks != nil {
+		beats = d.ticks
 	}
-	ticker := time.NewTicker(every)
-	defer ticker.Stop()
-	doorstep := time.NewTicker(takeoverDoorstep)
-	defer doorstep.Stop()
-	// The first write happens before the first tick so a session announces
-	// itself the moment it opens rather than a heartbeat later.
 	d.write()
+	d.drainRequests()
 	for {
 		select {
 		case <-d.stop:
@@ -808,34 +783,50 @@ func (d *presenceDesk) beat() {
 			return
 		case <-d.nudge:
 			d.write()
-		case <-doorstep.C:
-			// NOTHING IS WRITTEN HERE. This beat exists to pick a request up
-			// quickly and nothing else; a presence refresh four times a second
-			// would be this fix paying for itself in the one cost the heartbeat
-			// was tuned to avoid.
-			d.agent.drainConversationDeletion()
-			d.agent.drainTaskDeletion()
-			d.agent.drainTakeover()
-		case <-ticker.C:
+		case <-requests:
+			d.drainRequests()
+		case now := <-refreshes:
+			d.refresh(now)
+		case <-beats:
 			d.agent.drainAnswers()
-			d.agent.drainConversationDeletion()
-			d.agent.drainTaskDeletion()
-			d.agent.drainTakeover()
-			// AND A QUESTION WHOSE SUBJECT WENT AWAY IS TAKEN BACK, with a
-			// reason (question.go's [Agent.sweepQuestions]). It is on this beat
-			// and not on the nudge for [Agent.drainAnswers]'s reason exactly: a
-			// nudge fires while the agent's own lock is held by the lane that
-			// sent it, and the sweep reads every lane there is.
+			d.drainRequests()
 			d.agent.sweepQuestions()
-			d.write()
+			if d.active {
+				d.write()
+			}
 		}
+	}
+}
+
+// drainRequests keeps request application outside the agent's nudge lock.
+func (d *presenceDesk) drainRequests() {
+	d.agent.drainConversationDeletion()
+	d.agent.drainTaskDeletion()
+	d.agent.drainTakeover()
+}
+
+// refresh advances the JSON clock even when the session's state is unchanged.
+func (d *presenceDesk) refresh(now time.Time) {
+	if now.After(d.refreshed) {
+		d.writeAt(now, true)
 	}
 }
 
 // write puts this instant on disk, whole. Every failure is silence — see the
 // third law in this file's header.
 func (d *presenceDesk) write() {
-	raw, err := json.Marshal(d.agent.presenceSnapshot(time.Now()))
+	d.writeAt(time.Now(), false)
+}
+
+func (d *presenceDesk) writeAt(now time.Time, refresh bool) {
+	snapshot := d.agent.presenceSnapshot(time.Time{})
+	d.active = snapshot.State != PresenceIdle || len(snapshot.RunningTasks) > 0 || len(snapshot.Jobs) > 0
+	content, err := json.Marshal(snapshot)
+	if err != nil || (!refresh && bytes.Equal(content, d.last)) {
+		return
+	}
+	snapshot.UpdatedAt = now
+	raw, err := json.Marshal(snapshot)
 	if err != nil {
 		return
 	}
@@ -863,7 +854,9 @@ func (d *presenceDesk) write() {
 	}
 	if err := os.Rename(name, d.path); err != nil {
 		os.Remove(name)
+		return
 	}
+	d.last, d.refreshed = content, now
 }
 
 // remove takes the file away on a clean close. Like every other write here the
@@ -1359,15 +1352,8 @@ func ReadSessionPresence(dir string, now time.Time) (SessionPresence, bool) {
 	if dir == "" {
 		return SessionPresence{}, false
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, presenceName))
-	if err != nil {
-		return SessionPresence{}, false
-	}
-	var presence SessionPresence
-	if json.Unmarshal(raw, &presence) != nil {
-		return SessionPresence{}, false
-	}
-	if presence.Schema != presenceSchema {
+	presence, ok := readPresenceAnyAge(dir)
+	if !ok {
 		return SessionPresence{}, false
 	}
 	if strings.TrimSpace(presence.SessionID) == "" {
@@ -1518,12 +1504,8 @@ func SweepStaleBuilds(projectsDir, currentRev string, now time.Time) (rows []Sta
 		return nil
 	}
 	for _, path := range paths {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			continue
-		}
-		var row SessionPresence
-		if err := json.Unmarshal(data, &row); err != nil {
+		row, ok := readPresenceAnyAge(filepath.Dir(path))
+		if !ok {
 			continue
 		}
 		if !row.Fresh(now) {

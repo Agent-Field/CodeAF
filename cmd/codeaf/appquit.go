@@ -125,6 +125,7 @@ func (b *appBackend) resumeAfterQuit() {
 // and every task it had running: a task the quit left with nothing driving it
 // is picked up where its record stands.
 func (b *appBackend) resumeOne(id string, reply bool, tasks []string) {
+	defer b.allowLazyOpen(id)
 	b.resumeOneWith(id, reply, tasks, appwire.FooterResumedAfterQuit, appResumedWord, "quit-"+b.now().UTC().Format("20060102T150405.000000000Z"))
 }
 
