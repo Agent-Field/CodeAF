@@ -1207,6 +1207,7 @@ var tuiWords = map[string]tuiWord{
 	},
 	"autonomyUsageWord": {
 		screen: "/autonomy <kind> ask · recommend [duration] · decide",
+		pkg:    "internal/session",
 		why: "the sheet's foot and the only place it names a door. An earlier draft put `· change` on " +
 			"every row, which is a word with no key behind it",
 	},

@@ -2230,3 +2230,22 @@ tabs included, and opening a row brings the tab and its draft back too.
 notification and press `delete` to dismiss just that notification. Pending
 `your call` decisions stay visible. Dismissal does not stop work, accept a
 result, delete a task, or remove its output from Sessions.
+
+## Desktop engine methods for cache, autonomy and harnesses
+
+Desktop clients can read the machine build cache through `cache.status` and clean
+it through `cache.clean {confirm: true}` after asking you first. Cleaning uses the
+same directory and safeguards as `/cache clean now`; builds start cold afterwards.
+Conversations and settings are not removed.
+
+`autonomy.get {agent}` lists the terminal's eight question kinds and their saved
+rules. `autonomy.set {agent, kind, rule}` accepts ask, decide or recommend with an
+optional duration. Confirmation and clarification always ask. These rules belong
+to the conversation's project and follow its engine connection to another machine.
+
+`harness.list` lists the latest saved shapes with descriptions and run history.
+Choosing a shape belongs to the client's draft tray: there is no `harness.use`
+engine method. The terminal panel's selection shows a card; its picker sets a chip.
+
+Cache and saved harnesses are machine-local; a client using `--host` must change
+those on that machine.
