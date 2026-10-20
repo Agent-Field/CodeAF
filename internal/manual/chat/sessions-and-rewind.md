@@ -906,6 +906,9 @@ conversation or disbands a team. Tasks inside manager conversations can still be
 independently. The optional global-manager conversation can be deleted without a replacement;
 its teams and their managers remain. `+ Global manager` on All teams creates it again.
 
+Kept-running services are stopped before the conversation is removed. If a service cannot
+be stopped, deletion fails with the reason and keeps the conversation available.
+
 The dialog disappears while deletion runs; a failure restores it with the reason.
 Deletion removes all team memberships and the conversation's tasks and transcripts.
 Earlier team exchanges and decisions remain in team history. Links to a deleted conversation

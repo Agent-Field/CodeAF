@@ -37,3 +37,13 @@ func TestRowsEmptyAndShelfOnly(t *testing.T) {
 		t.Fatalf("origins: %+v", rows)
 	}
 }
+
+func TestMergedProjectShelfKeepsProjectPriority(t *testing.T) {
+	rows := Rows(nil, []Entry{{Name: "z-project", Description: "shelf words"}}, []skills.Skill{
+		{Name: "z-project", Scope: skills.ScopeProject, Root: ".claude/skills"},
+		{Name: "a-user", Scope: skills.ScopeUser, Root: ".codex/skills"},
+	}, true)
+	if len(rows) != 2 || rows[0].Name != "z-project" || rows[0].From != skills.ScopeProject || rows[0].Description != "shelf words" {
+		t.Fatalf("project first with shelf description: %+v", rows)
+	}
+}

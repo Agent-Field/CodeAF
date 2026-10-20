@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"github.com/Agent-Field/codeaf/internal/service"
 	"sync"
 	"testing"
 	"time"
@@ -11,11 +13,12 @@ import (
 
 type actionConversation struct {
 	*fakeConversation
-	entries  []session.DisplayEntry
-	points   []session.RewindPoint
-	cut      int
-	restored string
-	deleted  bool
+	entries      []session.DisplayEntry
+	points       []session.RewindPoint
+	cut          int
+	restored     string
+	deleted      bool
+	beforeDelete func()
 }
 
 func (c *actionConversation) Transcript() []session.DisplayEntry  { return c.entries }
@@ -25,7 +28,13 @@ func (c *actionConversation) UndoRewind(token string) error       { c.restored =
 func (c *actionConversation) DebugConversation() (string, string, error) {
 	return "/record", "recording", nil
 }
-func (c *actionConversation) DeleteOwnConversation() error { c.deleted = true; return nil }
+func (c *actionConversation) DeleteOwnConversation() error {
+	if c.beforeDelete != nil {
+		c.beforeDelete()
+	}
+	c.deleted = true
+	return nil
+}
 
 func TestConversationBackendUsesOwningMethods(t *testing.T) {
 	at := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
@@ -88,5 +97,45 @@ func TestConversationManualSendsTerminalInstruction(t *testing.T) {
 	defer c.mu.Unlock()
 	if len(c.texts) != 1 || c.texts[0] != session.ManualQuestionLead+"how do I rewind?" {
 		t.Fatalf("sent: %v", c.texts)
+	}
+}
+
+func TestConversationDeleteStopsAndFencesServicesBeforeProducer(t *testing.T) {
+	for _, refuses := range []bool{false, true} {
+		t.Run(map[bool]string{false: "stopped", true: "refused"}[refuses], func(t *testing.T) {
+			w := newSvcWorld(t)
+			row := w.keep(t, w.agent.ID, service.PolicyAlways)
+			a, err := w.backend.find(w.agent.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			c := &actionConversation{fakeConversation: &fakeConversation{}}
+			c.beforeDelete = func() {
+				if got, _ := w.sup.Get(w.agent.ID, row.ID); got.Running {
+					t.Errorf("producer reached before stop: %+v", got)
+				}
+				if _, err := w.sup.Start(w.agent.ID, row.ID); !errors.Is(err, service.ErrClosing) {
+					t.Errorf("producer not fenced: %v", err)
+				}
+			}
+			w.backend.locked(func() { a.live.conn.Conv = c })
+			w.rt.Refusing(refuses)
+			err = tidyUntil(t, w, func() error { return w.backend.DeleteAgent(w.agent.ID) }, nil)
+			if refuses {
+				if err == nil || c.deleted {
+					t.Fatalf("deleted over refused stop: %v, deleted=%v", err, c.deleted)
+				}
+				if _, err := w.backend.find(w.agent.ID); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if err != nil || !c.deleted {
+					t.Fatalf("delete: %v, deleted=%v", err, c.deleted)
+				}
+				if got, _ := w.sup.Get(w.agent.ID, row.ID); got.Running {
+					t.Fatalf("orphan: %+v", got)
+				}
+			}
+		})
 	}
 }

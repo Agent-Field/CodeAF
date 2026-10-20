@@ -97,7 +97,13 @@ func init() {
 		}
 		return done(c.UndoConversationRewind(p.ID, p.Token))
 	})
-	methods["agents.delete"] = typed(func(e Engine, p IDParams) (*Empty, error) {
+	methods["agents.delete"] = typed(func(e Engine, p struct {
+		ID      string `json:"id"`
+		Confirm bool   `json:"confirm"`
+	}) (*Empty, error) {
+		if !p.Confirm {
+			return nil, Errorf(CodeBadParams, "agents.delete needs confirm: true")
+		}
 		if err := needID("agents.delete", p.ID); err != nil {
 			return nil, err
 		}
