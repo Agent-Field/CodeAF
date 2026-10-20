@@ -380,6 +380,7 @@ result or an event, `?` marks a field that may be absent.
 | `render.changed` | `{agent, render}` |
 | `media.changed` | `{agent, source, run?, call?}`; a successful immutable source-index append, with its actual source ID and known producer IDs. No path permission is granted. |
 | `deliverable.changed` | `{agent, id, reason}`; reason `created`, `kept`, `removed` or `snapshot`, after the index row was successfully appended. `created` follows a creation row the conversation itself wrote (the `write` tool making a new document or diagram, or a media tool); it is said once per deliverable, carries no path, and never follows an edit or a failed append. A new document a task worker writes is announced on the conversation that owns the task. Files shells create are not announced because they are not recorded. Descriptors still come from `deliverables.get`. |
+| `skills.changed` | `{agent, names: [name…]}` — attachment names in conflict order; emitted after `skills.set` |
 | `settings.changed` | `{settings, task_models?}` |
 | `spend.changed` | `{spend}` |
 | `task.changed` | `{task}` |
@@ -1296,6 +1297,8 @@ naming it, and refuses a field it does not know.
 | `spend.ledger.export` | `{from, to, filters…, destination, overwrite?}` | `{path, rows, bytes, totals, skipped}` the same rows as CSV, written whole at `destination` |
 | `spend.report` | `{from, to, filters…}` | `{from, to, totals, cells, models, gaps, not_recorded, limits}` — the ledger added up by local day, model and subject; see Spending report below |
 | `slash.catalog` | – | `{commands: [{name, aliases?, forms: [{args?, description}], source: "table"\|"program", door?, brief_optional?, lands?, host}], skipped?, limits}` — the words the terminal chat answers to; see Slash catalogue below. An engine that does not serve it answers `unknown_method` (check `hello.features` for `slash.catalog`) |
+| `skills.list` | `{agent}` | `[{name, description, source, on}]` — this conversation's skill shelf, attached first; requires the `skills.list` hello feature |
+| `skills.set` | `{agent, name, on}` | `{name, on}` — attach or detach through the terminal's own skill doors; requires the `skills.set` hello feature |
 | `session.actions` | `{agent}` | `{agent, actions: [{action, available, why?, programs?, scopes?, efforts?}]}` — what the conversation's own engine can be shown to do of `task.start`, `program.start`, `memory.remember`; see Session actions below. `unknown_method` without the `session.actions` feature |
 | `session.act` | `{action, agent, client_id, task? \| program? \| memory?}` | `{action, agent, client_id, digest, state: "done"\|"uncertain"\|"in_progress", replayed?, at, task?, memory?, producer_error?, note?}` — runs ONE of the three through the producer the terminal uses, once per `client_id`; unknown params fields are `bad_params` |
 | `session.action.get` | `{agent, client_id}` | the persisted receipt of that `client_id`; `not_found` is not proof nothing was sent |
@@ -2323,13 +2326,42 @@ transcript read or watcher.
 
 A client that sees no `slash.catalog` feature in `hello` has no catalogue to read and must not guess one.
 
+## Conversation skills
+
+`skills.list {agent}` is the shelf `/skill` shows, using the terminal's shared merge:
+attached names first in attachment order, then project folders before other entries,
+with names ordering each group. Names merge case-insensitively. Descriptions come
+from active shelf entries (at most 50), supplemented by discovery. `source` names
+the original root (`.codeaf/skills`, `.claude/skills`, `.codex/skills`, another
+root, or `shelf` when no folder is known). Attached names remain visible even
+when their folder is absent. An empty shelf is `[]`.
+
+`skills.set` requires a boolean `on` and a nonblank name of at most 256 UTF-8
+bytes without control characters. Missing fields, invalid values and unknown
+set fields are `bad_params`. Setting an existing state is harmless; attachment
+order is preserved. Unknown names can be attached, exactly as in the terminal;
+resolution occurs when the next message carries them. The answer is the state
+read back from the conversation. Attachment lasts for the open conversation;
+this method does not write a new persistent preference.
+
+Both methods open the named conversation if needed. Unsupported engines answer
+`unknown_method`; shelf reads and changes that cannot be confirmed answer `engine`.
+Shelf reads share the session-action read gate (`busy` when full). Over a hosted
+connection the shelf, folder discovery and attachment doors run on the session host;
+local folders are not added to a far shelf. An older host without the `skill_folders`
+welcome capability supplies its active shelf and attachments alone. Every successful
+set emits `skills.changed {agent, names: [name…]}` in attachment order, so another
+view can refresh its shelf.
+Clients check the two hello features before offering these methods.
+
 ## Session actions
 
 `session.act` is the typed door for three things the terminal does with `/task <brief>`, `/<program> <brief>`
 and `/remember <text>`. It is **not** a command interpreter: the actions are named for what they do
 (`task.start`, `program.start`, `memory.remember`), and `agents.send` with a slash line is still a message to
-the model. Everything else in the slash catalogue (rewind, export, delete, land, cache, skills, …) has no verb
-here and says so by having none.
+the model. Skills have `skills.list` and `skills.set` (Conversation skills above).
+Everything else in the slash catalogue (rewind, export, delete, land, cache, …)
+has no verb here and says so by having none.
 
 - **The producers are the terminal's own** (`StartTask`/`StartTaskEffort`, `StartDelegate`, `Remember`/
   `RememberAlways`), called through the open conversation's engine handle, so over `--host` they run on the far
