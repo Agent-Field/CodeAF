@@ -4152,3 +4152,22 @@ func TestHelpersQuestionsReachTheirSections(t *testing.T) {
 		}
 	}
 }
+
+// A rule beyond the section cap is absent from the answer a model actually reads,
+// even when searching finds the correct page. Stopped-result handling therefore
+// needs its own searchable section and both halves of the rule in the context.
+func TestTheChatManualExplainsStoppedResultRouting(t *testing.T) {
+	text := strings.Join(strings.Fields(Chat().Context("can a stopped task's result start the same request again", DefaultResults)), " ")
+	for _, want := range []string{
+		"answering that result does not start the same request again",
+		"A new instruction you type is a fresh request and can be judged normally",
+		"every result is known to be stopped for the current request",
+		"no fresh human message was consumed",
+		"Recovery notices without result provenance follow normal routing",
+		"These cases have no extra protection against restarting stopped work",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the retrieved stopped-result answer omits %q", want)
+		}
+	}
+}

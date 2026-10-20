@@ -2,8 +2,10 @@ package plandb
 
 import (
 	"database/sql"
-	"net/url"
+	"path/filepath"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/sqliteuri"
 )
 
 // RootPreview is the original request behind a saved run. Listing a conversation
@@ -18,7 +20,12 @@ type RootPreview struct {
 // creates a database, migrates its schema or settles a task left running by a
 // process that exited, so a conversation picker can safely read live work too.
 func ReadRootPreview(path string) (RootPreview, error) {
-	uri := url.URL{Scheme: "file", Path: path, RawQuery: "mode=ro"}
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return RootPreview{}, err
+	}
+	uri := sqliteuri.File(absolute)
+	uri.RawQuery = "mode=ro"
 	db, err := sql.Open("sqlite", uri.String())
 	if err != nil {
 		return RootPreview{}, err
