@@ -207,6 +207,39 @@ type ItemDoor interface {
 	Apply(ctx context.Context, item int, change ItemChange) (factory.Item, error)
 }
 
+// JobChatDoor is how a factory job's own conversation (its manager, the
+// item's Talk) spends from the job's budget. EVERYTHING DONE FOR THE JOB
+// SPENDS FROM ITS ONE BUDGET (the owner's ruling of 2026-10-20): its steps'
+// rounds always did, and its chat's calls do through this door.
+type JobChatDoor interface {
+	// Chat is the job transcript is the own conversation of, or nil when it
+	// is no job's.
+	Chat(transcript string) JobChat
+}
+
+// JobChat is one job's chat's half of the job's money.
+type JobChat interface {
+	// Spend adds usd, one call's dollars, to the job's spend. THE CALL IS
+	// COUNTED ONCE MORE ONLY ON THE JOB: its ledger row stays the person's own
+	// record, and nothing adds the job's figure to the ledger.
+	Spend(usd float64)
+	// Refusal is the sentence a turn is refused with once the job's budget is
+	// spent, and "" while the turn may start.
+	Refusal() string
+}
+
+// jobChatOf is the job this conversation is the own chat of, asked of the
+// door ONCE PER AGENT: a conversation is made a job's before anything opens
+// it, and is never made another job's while it is open.
+func (a *Agent) jobChatOf() JobChat {
+	a.jobChatOnce.Do(func() {
+		if door, file := a.config.JobChat, strings.TrimSpace(a.config.SessionFile); door != nil && file != "" {
+			a.jobChat = door.Chat(file)
+		}
+	})
+	return a.jobChat
+}
+
 // mayItem says whether `factory_item` belongs on this belt: there is a door
 // behind it. It is the belt's predicate, asked of one field.
 func (c Config) mayItem() bool { return !c.readingTask() && c.FactoryItem != nil }

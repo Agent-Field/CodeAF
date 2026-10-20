@@ -204,7 +204,15 @@ func appFactoryActionFailure(r appFactoryReply) error {
 	case r.status == http.StatusNotImplemented:
 		return appwire.Errorf(appwire.CodeEngine, "this factory does not provide that action")
 	case r.status >= 500:
-		return appwire.Errorf(appwire.CodeUncertain, "the factory failed while acting; the action may have happened, so read the job before trying again")
+		// STILL UNCERTAIN, BUT IN THE FACTORY'S OWN WORDS: a 5xx may have
+		// half-happened, so the code stays uncertain, and the sentence the
+		// factory gave for it (a clone that failed, a store that could not be
+		// written) goes in front of the warning instead of being dropped.
+		const maybe = "the action may have happened, so read the job before trying again"
+		if words != "" {
+			return appwire.Errorf(appwire.CodeUncertain, "%s · %s", words, maybe)
+		}
+		return appwire.Errorf(appwire.CodeUncertain, "the factory failed while acting; %s", maybe)
 	}
 	return appFactoryFailure(r)
 }

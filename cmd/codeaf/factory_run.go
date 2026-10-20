@@ -222,9 +222,10 @@ func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string,
 		Rail:       money.Rail,
 		SpentToday: money.SpentToday,
 		RepoDir:    dirs,
-		Workdir: func(it factory.Item) (string, error) {
-			return workdirs.For(it, dirs(it.Repo))
-		},
+		// AND A REPOSITORY WITH NO CHECKOUT HERE IS CLONED FIRST, into this
+		// machine's factory folder, over the token the push uses
+		// (factory_clone.go).
+		Workdir:   factoryRunWorkdir(floor, dirs, workdirs, factoryTokenOf(profileDir)),
 		Recipe:    recipe,
 		Source:    source,
 		Publisher: factoryPublisher(profileDir),

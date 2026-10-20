@@ -34,6 +34,7 @@ func TestTheManagersBriefIsTheFiveBlocksThenTheFacts(t *testing.T) {
 		"You are the manager of #12 in acme/web.",
 		"You know: the issue and its comments, what codeaf read of it, the repository's recipe, policy and habits, the checkout, and what the person has said here.",
 		talkBlockDo,
+		talkBlockBrief,
 		"Shape the run with factory_run: stages are one lowercase word each, at most nine. Each stage has an ask that says what done looks like, a loop (until, rounds, fanout) and one line of why. Keep the recipe's stages unless the item says otherwise; change asks before adding stages; add a stage only for work no existing stage covers. Never drop proof. An approve step is where the run holds until the person says continue: keep the recipe's, add one (named approve) after a stage the person wants to read first, and skip one only when the person asks. Nothing posts outward before an approve step.",
 		talkBlockInbox,
 		"Say what you set in three lines at most, then stop. Do not narrate.",
@@ -148,7 +149,7 @@ func TestTheRunDoorEditsTheItemThisConversationManages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	door := runDoor(st, web)
+	door := runDoor(st, web, "")
 	if door == nil {
 		t.Fatal("no run door over a store")
 	}
@@ -166,7 +167,7 @@ func TestTheRunDoorEditsTheItemThisConversationManages(t *testing.T) {
 	if _, _, err := door.EditRun(context.Background(), filepath.Join(t.TempDir(), "other.jsonl"), factory.RunEdit{Skip: []string{"review"}}); !errors.Is(err, errNotAManager) {
 		t.Fatalf("another conversation edited the item: %v", err)
 	}
-	if runDoor(nil, web) != nil {
+	if runDoor(nil, web, "") != nil {
 		t.Fatal("a nil store has a run door")
 	}
 }

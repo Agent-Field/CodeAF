@@ -37,25 +37,95 @@ func (h *Handler) jobVerbs() {
 	h.postJob("undo", stored, h.undoJob)
 }
 
+// startJob is start_now and run: every refusal, then one write, then the
+// launch.
+//
+// EVERY REFUSAL COMES BEFORE ANY WRITE. A start that is refused leaves the job
+// exactly as the person read it, its version included, so the app shows the
+// refusal's own sentence instead of reading the job again, finding it moved,
+// and saying the job changed (the owner's run of 2026-10-20, where every Start
+// of a private repository's job wrote its mark and its budget, was then
+// refused for having no checkout, and answered as a crash). The repository
+// being off is refused by postJob before this; then the question the job
+// waits on, GitHub's own word that it ended ([Handler.endedOnGitHub], whose
+// refusal records that ending on purpose), the checkout ([Handler.needsCheckout])
+// and the recipe the budget comes from. Only then is the mark and the budget
+// written, in one write, and only when either is missing. A launch that still
+// refuses takes the mark back, so the queue does not keep a start that never
+// happened at its top.
 func (h *Handler) startJob(w http.ResponseWriter, r *http.Request, it factory.Item) {
+	if h.startRefused(w, r, it) {
+		return
+	}
+	h.launchJob(w, r, it, nil)
+}
+
+// startRefused answers every refusal a start makes before it writes, and true
+// when it refused.
+func (h *Handler) startRefused(w http.ResponseWriter, r *http.Request, it factory.Item) bool {
 	if it.QKind == factory.QKindAskFirst {
 		h.refuse(w, 409, "Approval needed: start", "conflict", "", nil, factory.JobState(it))
-		return
+		return true
 	}
-	if h.endedOnGitHub(w, r, it) {
-		return
-	}
-	if strings.HasSuffix(r.URL.Path, "/start_now") && h.config.Store != nil {
-		if h.failed(w, h.config.Store.Update(it.ID, func(cur *factory.Item) error { cur.Marked = true; return nil })) {
+	return h.endedOnGitHub(w, r, it) || h.needsCheckout(w, r, it.Repo, factory.JobState(it))
+}
+
+// launchJob is the start's one write and its launch, for a job startRefused
+// has passed. also is what else the start changes on the job in that same
+// write (run_again's clearing of the run before it), nil for nothing.
+func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.Item, also func(*factory.Item)) {
+	mark := false
+	if st := h.config.Store; st != nil {
+		cur, err := st.Get(it.ID)
+		if h.failed(w, err) {
 			return
 		}
-	}
-	if h.config.Store != nil {
-		if h.failed(w, h.ensureBudget(r, it)) {
+		mark = strings.HasSuffix(r.URL.Path, "/start_now") && !cur.Marked
+		budget, err := h.startBudget(r, cur)
+		if h.failed(w, err) {
 			return
 		}
+		if mark || budget > 0 || also != nil {
+			err := st.Update(it.ID, func(cur *factory.Item) error {
+				if also != nil {
+					also(cur)
+				}
+				cur.Marked = cur.Marked || mark
+				if cur.Cap <= 0 {
+					cur.Cap = budget
+				}
+				return nil
+			})
+			if h.failed(w, err) {
+				return
+			}
+		}
 	}
-	h.finish(w, h.recordAction(r, it, record.Started, "", func() error { return h.seam.Launch(it.ID) }))
+	h.finish(w, h.recordAction(r, it, record.Started, "", func() error {
+		err := h.seam.Launch(it.ID)
+		if err != nil && mark {
+			_ = h.config.Store.Update(it.ID, func(cur *factory.Item) error { cur.Marked = false; return nil })
+		}
+		return err
+	}))
+}
+
+// needsCheckout answers 409 needs_checkout and true when repo has no
+// checkout on this factory's machine and cannot be cloned there
+// ([factory.Seam.CheckoutOf]). A repository that is checked out, or that the
+// runner will clone on the first step, passes; so does every repository on a
+// factory whose seam does not know its machine's checkouts. state is the
+// job's state for now_state, "" when there is no job yet.
+func (h *Handler) needsCheckout(w http.ResponseWriter, r *http.Request, repo, state string) bool {
+	if h.seam.CheckoutOf == nil {
+		return false
+	}
+	if _, err := h.seam.CheckoutOf(r.Context(), repo); err != nil {
+		status, reason := classify(err)
+		h.refuse(w, status, err.Error(), reason, "", nil, state)
+		return true
+	}
+	return false
 }
 
 // recheckWait bounds the one GitHub read a person's start makes. It is short
@@ -108,12 +178,27 @@ func (h *Handler) endedOnGitHub(w http.ResponseWriter, r *http.Request, it facto
 
 // ensureBudget takes the pipeline's own default, not a global task spending cap.
 func (h *Handler) ensureBudget(r *http.Request, it factory.Item) error {
-	if it.Cap > 0 {
+	budget, err := h.startBudget(r, it)
+	if err != nil || budget <= 0 {
+		return err
+	}
+	return h.config.Store.Update(it.ID, func(cur *factory.Item) error {
+		if cur.Cap <= 0 {
+			cur.Cap = budget
+		}
 		return nil
+	})
+}
+
+// startBudget is the budget a start gives a job that has none, read from its
+// repository's recipe without writing it; 0 when the job already has one.
+func (h *Handler) startBudget(r *http.Request, it factory.Item) (float64, error) {
+	if it.Cap > 0 {
+		return 0, nil
 	}
 	recipe, err := h.recipeOf(r, it)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	// A PIPELINE FILE'S BUDGET IS TAKEN AS IT SAYS, and one that says none is
 	// refused below; a recipe read any other way falls back to the default.
@@ -122,14 +207,9 @@ func (h *Handler) ensureBudget(r *http.Request, it factory.Item) error {
 		budget = factory.DefaultJobBudget
 	}
 	if budget <= 0 {
-		return errors.New("pipeline default_budget must be positive")
+		return 0, errors.New("pipeline default_budget must be positive")
 	}
-	return h.config.Store.Update(it.ID, func(cur *factory.Item) error {
-		if cur.Cap <= 0 {
-			cur.Cap = budget
-		}
-		return nil
-	})
+	return budget, nil
 }
 
 // recipeOf is the job's repository's recipe as it reads now: the host's
@@ -154,19 +234,20 @@ func (h *Handler) runAgain(w http.ResponseWriter, r *http.Request, it factory.It
 		h.refuse(w, 409, "Run again requires failed work or a PR closed without merge", "conflict", "", nil, factory.JobState(it))
 		return
 	}
-	err := h.config.Store.Update(it.ID, func(cur *factory.Item) error {
+	// The start's refusals come before the run is cleared too, and the
+	// clearing is the start's one write, so a run again that cannot start
+	// leaves the failed job as the person read it.
+	if h.startRefused(w, r, it) {
+		return
+	}
+	h.launchJob(w, r, it, func(cur *factory.Item) {
 		cur.State = factory.StateNew
 		cur.DoneHow = ""
 		cur.DoneAt = time.Time{}
 		cur.PullRequest = nil
 		cur.Approval = nil
 		cur.Failure = nil
-		return nil
 	})
-	if h.failed(w, err) {
-		return
-	}
-	h.startJob(w, r, it)
 }
 
 // restoreJob is POST /v1/jobs/{id}/restore, Bring back: the one way out of a
@@ -238,6 +319,8 @@ func forgetRun(it *factory.Item, recipe factory.Recipe) {
 	it.State = factory.StateNew
 	it.DoneHow, it.DoneAt = "", time.Time{}
 	it.Stream = nil
+	// What the job's chat spent before an earlier start goes with that run: a fresh job has spent nothing.
+	it.ChatSpent = 0
 	it.Failure = nil
 	it.Approval, it.StopUndo = nil, nil
 	it.Question, it.QKind = "", ""
@@ -500,12 +583,19 @@ const jobModelMost = 200
 // factory's default) and tells the worker running it, whose next step opens on
 // it and whose running step switches at its next turn. A finished job has no
 // step left to run on it.
+//
+// A MODEL PICK IS NEVER STALE. The body's expect is accepted and not checked:
+// a model is a preference, not a decision on content the person reviewed, and
+// it commutes with every other write on the job. Checking it failed the first
+// pick on every job whose chat had just been opened, because opening the chat
+// keeps the conversation on the item and moves its version under the page that
+// had just read it. The one guard that stays is the job's state: Done refuses.
 func (h *Handler) setModel(w http.ResponseWriter, r *http.Request, it factory.Item) {
 	var body struct {
 		Model  string      `json:"model"`
 		Expect *api.Expect `json:"expect,omitempty"`
 	}
-	if !h.decode(w, r, &body, false) || !h.fresh(w, r, it, "model", body.Expect) {
+	if !h.decode(w, r, &body, false) {
 		return
 	}
 	model := strings.TrimSpace(body.Model)

@@ -4321,6 +4321,14 @@ func (a *Agent) bank(call bankedCall) {
 	if call.ledger {
 		a.recordUsageLine(call)
 	}
+	// AND THE FACTORY JOB'S SPEND, when this conversation is a job's own chat:
+	// every dollar the session's meter takes, the job's budget takes too, a
+	// call it made and a child's fold alike ([JobChat.Spend]).
+	if call.used.CostUSD > 0 {
+		if chat := a.jobChatOf(); chat != nil {
+			chat.Spend(call.used.CostUSD)
+		}
+	}
 }
 
 // reconciled receives the one late answer for a call whose stream ended before

@@ -1,6 +1,7 @@
 package run
 
 import (
+	"fmt"
 	"strconv"
 	"sync"
 	"time"
@@ -127,6 +128,54 @@ func bump(a []int, hours int) []int {
 		out[ActivityHours-1]++
 	}
 	return out
+}
+
+// freshStream is the stream a new run starts on, with the job's phases and
+// WHAT THE JOB SPENT THAT NO STEP OF A RUN DID: its chat's spend before any
+// run (Item.ChatSpent, carried and zeroed here) and the spend of a stream none
+// of whose steps began, which can only be its chat's — a run that was queued
+// and stopped, or the run the factory queued and the worker that pulled it is
+// starting. A run whose steps began starts its own spend from nothing, as a
+// new run always has.
+func freshStream(it *factory.Item, now time.Time) *factory.Stream {
+	spent := it.ChatSpent
+	if s := it.Stream; s != nil && !begun(s) {
+		spent += s.Spent
+	}
+	it.ChatSpent = 0
+	return &factory.Stream{Started: now, Phases: loopPhases(*it), Spent: spent}
+}
+
+// begun says whether any step of the stream has started a round.
+func begun(s *factory.Stream) bool {
+	for _, ph := range s.Phases {
+		if ph.Round > 0 || ph.State != factory.PhasePending {
+			return true
+		}
+	}
+	return false
+}
+
+// ChatBudgetReached is the sentence a job's own conversation refuses a turn
+// with once the job's budget is spent: the figure, the budget and the door,
+// in the shape of the conversation limit's own line. The manual quotes it
+// (internal/manual/chat/factory-stage-conversations.md).
+const ChatBudgetReached = "job budget reached · %s spent of %s · raise the job's budget to go on"
+
+// ChatRefusal is why the job's own conversation may not start another turn,
+// "" while it may: the job has a budget and has spent it. A JOB WAITING ON ITS
+// BUDGET QUESTION IS NEVER REFUSED, because a yes typed into its chat is how
+// the person answers it (manager.go), and a refused turn journals nothing for
+// the runner to hear.
+func ChatRefusal(it factory.Item) string {
+	if it.QKind == "cap" {
+		return ""
+	}
+	spent := factory.JobSpent(it)
+	if it.Cap <= 0 || spent < it.Cap {
+		return ""
+	}
+	return fmt.Sprintf(ChatBudgetReached, dollars(spent), dollars(it.Cap))
 }
 
 // CapReached is whether the item has spent what its cap allows. No cap (0) is

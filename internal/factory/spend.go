@@ -33,6 +33,30 @@ func DaySpend(items []Item, paid map[int]float64, now time.Time) float64 {
 	return sum
 }
 
+// JobSpent is what the job has spent, in dollars: its run's spend while it
+// has a stream, which holds what its steps and its chat spent on the run, and
+// what its chat spent before any run otherwise ([Item.ChatSpent]).
+func JobSpent(it Item) float64 {
+	if it.Stream != nil {
+		return it.Stream.Spent
+	}
+	return it.ChatSpent
+}
+
+// AddChatSpend books usd that the job's own conversation spent where the
+// job's money is: on its stream while it has one, and as ChatSpent while it
+// has none. A cost of nothing, or less, is not booked.
+func AddChatSpend(it *Item, usd float64) {
+	if it == nil || usd <= 0 {
+		return
+	}
+	if it.Stream != nil {
+		it.Stream.Spent += usd
+		return
+	}
+	it.ChatSpent += usd
+}
+
 // shiftSince is the handover a real floor can fill from its items. Spent is
 // only streams that started after the window opened. SpentToday is [DaySpend]
 // with no process ledger, so a stream that started earlier still counts today

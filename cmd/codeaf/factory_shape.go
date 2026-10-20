@@ -282,7 +282,7 @@ func openManagerTurn(parent session.Config, workspace, profileDir string, it fac
 // runDoor is `factory_run`'s door for a conversation the person talks to: the
 // floor's edit door over st, for the one item whose manager the asking
 // conversation is. A NIL STORE IS A NIL DOOR, for [factoryDoor]'s reason.
-func runDoor(st *store.Store, workspace string) session.RunDoor {
+func runDoor(st *store.Store, workspace, profileDir string) session.RunDoor {
 	if st == nil {
 		return nil
 	}
@@ -290,7 +290,7 @@ func runDoor(st *store.Store, workspace string) session.RunDoor {
 	if seam.Edit == nil {
 		return nil
 	}
-	return seamRunDoor{st: st, workspace: workspace, edit: seam.Edit}
+	return seamRunDoor{st: st, workspace: workspace, profileDir: profileDir, edit: seam.Edit}
 }
 
 // seamRunDoor finds the item a conversation manages and edits it through the
@@ -298,7 +298,10 @@ func runDoor(st *store.Store, workspace string) session.RunDoor {
 type seamRunDoor struct {
 	st        *store.Store
 	workspace string
-	edit      func(ctx context.Context, id int, e factory.RunEdit) (factory.Item, []string, error)
+	// profileDir is the profile whose GitHub token a start's checkout door
+	// reads, the one this machine's runner clones with.
+	profileDir string
+	edit       func(ctx context.Context, id int, e factory.RunEdit) (factory.Item, []string, error)
 }
 
 // errNotAManager is `factory_run` asked by a conversation that manages no item.

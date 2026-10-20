@@ -133,6 +133,14 @@ The factory reads GitHub on its own about once a minute, but those reads list op
 
 **Check GitHub now** asks the factory to read GitHub at once instead of on its next tick. It answers straight away and does not wait for the read; what the read finds arrives the way every read does. While it reads the factory says so, and afterwards it says when GitHub was last read without a failure, or what went wrong (`token refused`, `not reachable`). A factory whose poll is not running (no token, nothing watched) says nothing about GitHub at all.
 
+## a job's repository isn't checked out — clone, cloning, private repository, Start refused, not checked out on this machine
+
+**The factory gets the repository itself.** When a job's repository has no checkout on the computer that runs it (codeaf was never opened in its folder), the run's first step clones it into the factory's own folder, `~/.codeaf/v3/factory/repos/<owner>/<name>`, and the job's log says `cloning acme/api…` while it does. The clone goes over https with the same GitHub connection the factory reads and pushes with, never over ssh, so a private repository clones too. From then on it is that repository's checkout for every job: it is never cloned twice, and two jobs started together share the one clone. Every job still works in its own worktree and branch, never in the checkout itself.
+
+**A start is refused only when nothing can be cloned**, and before anything about the job changes: `acme/api isn't checked out on this machine · connect GitHub so the factory can clone it.` when GitHub is not connected, and `notes isn't checked out on this machine · watch it in Repos so the factory can clone it, or open codeaf in its folder.` for a repository the factory cannot find on GitHub. Start, the chat's `factory_start` and a new job started at once all refuse in the same words. A job's page can tell in advance: its repository is checked out, will be cloned on the first step, or cannot be.
+
+**A clone that fails** (a repository that was renamed or deleted, a token that cannot read it) fails the job's first step with git's reason, such as `could not clone acme/api · repository not found`, and leaves nothing half-made behind; Run again tries the clone again.
+
 ## turn a repository off — Off, stop watching a repo, pause a repository, where did its jobs go, turn it back on
 
 **Off means the factory stops working on that repository entirely.** Its jobs leave the queue, in every state. GitHub is not read for it and its pull requests are not followed. No job of it is started or asked about by its labels, or read by a model. Starting, running, running a step again, publishing or merging one of its jobs is refused with `acme/api is off · turn it on in Repos to run its jobs.`, and so is a new job on it. A job page already open still shows the job and says its repository is off. Stop, Drop, priority and who a job is for still work.
