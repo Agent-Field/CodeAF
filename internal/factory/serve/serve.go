@@ -26,9 +26,21 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
+	"github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/factory/tokens"
 )
+
+// JobFolders is a drop's reach into this machine: the job's local branch and
+// its worktree folder, as the runner made them (internal/factory/run's
+// Workdirs). Nothing it does reaches GitHub.
+type JobFolders interface {
+	// Work is what deleting the job's local branch and folder would lose. An
+	// error is work that could not be read, which a drop treats as work.
+	Work(factory.Item) (run.Work, error)
+	// Discard deletes them once nothing on this machine still runs the job.
+	Discard(factory.Item) error
+}
 
 // Config is supplied by the host so the handler never reads a person's home
 // or guesses the published address from a client-controlled Host header.
@@ -48,8 +60,10 @@ type Config struct {
 	OperatorLogin string
 	// ChangeAssignee mirrors a person's decision to GitHub before storing it.
 	ChangeAssignee func(context.Context, factory.Item, string) error
-	// DeleteBranch removes only a dropped job's branch after retention expires.
-	DeleteBranch func(context.Context, factory.Item) error
+	// Folders is the job work on this factory's own machine, which a drop
+	// reads before it deletes it. Nil is a factory that keeps no job folders
+	// of its own, whose drop deletes nothing.
+	Folders JobFolders
 
 	// PersonProfile reads cached public GitHub identity, including outside authors.
 	// It may wait on GitHub, so only the card about one person uses it.

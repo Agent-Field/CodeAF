@@ -98,11 +98,13 @@ type FactoryJobActionParams struct {
 	Expect  *api.Expect `json:"expect"`
 }
 
-// FactoryJobDropParams drops a job. Words are optional and kept on the record.
+// FactoryJobDropParams drops a job, which deletes its local branch and folder.
+// Discard is the person's yes to deleting work they hold; without it a job with
+// work is refused with [CodeHasWork]. A drop takes no words.
 type FactoryJobDropParams struct {
 	Factory string      `json:"factory"`
 	Job     int         `json:"job"`
-	Words   string      `json:"words,omitempty"`
+	Discard bool        `json:"discard,omitempty"`
 	Expect  *api.Expect `json:"expect"`
 }
 
@@ -376,14 +378,7 @@ func factoryAction[P any](name string, prep func(*P) error, call func(FactoryAct
 
 func prepAction(p *FactoryJobActionParams) error { return checkJob(&p.Factory, p.Job, p.Expect) }
 
-func prepDrop(p *FactoryJobDropParams) error {
-	if err := checkJob(&p.Factory, p.Job, p.Expect); err != nil {
-		return err
-	}
-	var err error
-	p.Words, err = words("words", p.Words, MaxFactoryJobWords, false)
-	return err
-}
+func prepDrop(p *FactoryJobDropParams) error { return checkJob(&p.Factory, p.Job, p.Expect) }
 
 func prepAssignee(p *FactoryJobAssigneeParams) error {
 	if err := checkJob(&p.Factory, p.Job, p.Expect); err != nil {

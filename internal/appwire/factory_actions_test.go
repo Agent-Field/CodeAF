@@ -91,7 +91,7 @@ var factoryActionGood = map[string]string{
 	"factory.job_start":           `{"factory":"f","job":1,` + guard + `}`,
 	"factory.job_stop":            `{"factory":"f","job":1,` + guard + `}`,
 	"factory.job_dismiss":         `{"factory":"f","job":1,` + guard + `}`,
-	"factory.job_drop":            `{"factory":"f","job":1,"words":"dup",` + guard + `}`,
+	"factory.job_drop":            `{"factory":"f","job":1,"discard":true,` + guard + `}`,
 	"factory.job_restore":         `{"factory":"f","job":1,` + guard + `}`,
 	"factory.job_run_again":       `{"factory":"f","job":1,` + guard + `}`,
 	"factory.job_unassign":        `{"factory":"f","job":1,` + guard + `}`,
@@ -173,6 +173,9 @@ func TestFactoryActionsRefuseBadRequestsBeforeTheEngine(t *testing.T) {
 		// A stop takes no words; only a rerun says what to do differently.
 		{"factory.job_step_stop", `{"factory":"f","job":1,"step":"build","words":"why",` + guard + `}`},
 		{"factory.job_set_model", `{"factory":"f","job":1,"model":"two words",` + guard + `}`},
+		// A drop takes no words: discard is its one argument.
+		{"factory.job_drop", `{"factory":"f","job":1,"words":"dup",` + guard + `}`},
+		{"factory.job_drop", `{"factory":"f","job":1,"discard":"yes",` + guard + `}`},
 		// Bring back carries the version read like every write, and no words.
 		{"factory.job_restore", `{"factory":"f","job":1}`},
 		{"factory.job_restore", `{"factory":"f","job":1,"words":"why",` + guard + `}`},
@@ -223,6 +226,8 @@ func TestFactoryActionsPassTrimmedTypedArguments(t *testing.T) {
 	call("factory.job_approve", `{"factory":"f","job":4,"commit":" ABC1234 ","words":" ok ","edited":true,"expect":{"version":9}}`)
 	call("factory.job_create", `{"factory":"f","repo":" o/r ","title":" Fix ","assignee":" @alice "}`)
 	call("factory.job_create", `{"factory":"f","repo":"o/r","title":"Fix","assignee":""}`)
+	call("factory.job_drop", `{"factory":"f","job":4,"discard":true,"expect":{"version":9}}`)
+	call("factory.job_drop", `{"factory":"f","job":4,"expect":{"version":9}}`)
 	a := eng.got[0].(FactoryJobAssigneeParams)
 	if a.Factory != "f" || a.Assignee != "Bob" || *a.Expect.Version != 9 || a.Expect.State != "running" {
 		t.Fatalf("assignee params %+v", a)
@@ -237,6 +242,12 @@ func TestFactoryActionsPassTrimmedTypedArguments(t *testing.T) {
 	}
 	if n := eng.got[3].(FactoryJobCreateParams); n.Assignee == nil || *n.Assignee != "" {
 		t.Fatalf("an empty assignee must stay set: %+v", n)
+	}
+	if d := eng.got[4].(FactoryJobDropParams); !d.Discard || d.Job != 4 || *d.Expect.Version != 9 {
+		t.Fatalf("a drop's yes to discarding was lost: %+v", d)
+	}
+	if d := eng.got[5].(FactoryJobDropParams); d.Discard {
+		t.Fatalf("a drop discards without the person's yes: %+v", d)
 	}
 }
 

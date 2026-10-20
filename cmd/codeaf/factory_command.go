@@ -248,7 +248,6 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 	}
 	public := secure.publicURL(listener.Addr().String())
 	jobWrites := factorygithub.JobWrites{Token: func(ctx context.Context) string { t, _ := factorygithub.TokenAt(ctx, home.Dir()); return t }}
-	workdirs := factoryWorkdirs(st, st)
 	handlerConfig := serve.Config{
 		GitHubToken: jobWrites.Token,
 
@@ -257,12 +256,9 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 		// A read, not a write: a person's start checks the one item is still
 		// open on GitHub, so the team server keeps it too.
 		Recheck: factorygithub.Rechecker(jobWrites.Token),
-		DeleteBranch: func(ctx context.Context, it factory.Item) error {
-			if err := jobWrites.DeleteDroppedBranch(ctx, it, workdirs.DroppedBranch(it), time.Now()); err != nil {
-				return err
-			}
-			return workdirs.DeleteDropped(it, st.CheckoutDir(it.Repo), time.Now())
-		}, Mode: mode, OperatorLogin: host.OperatorLogin, TrustedProxies: secure.proxies, Name: host.Name, GitHubClientID: host.GitHubClientID, Team: host.Team, Address: public, AccessToken: token, TokensPath: tokensPath, Store: st, Root: st.Root(), Record: history,
+		// A drop deletes the job's local branch and folder on this machine,
+		// never anything on GitHub, so the team server does it too.
+		Folders: newFactoryJobFolders(st), Mode: mode, OperatorLogin: host.OperatorLogin, TrustedProxies: secure.proxies, Name: host.Name, GitHubClientID: host.GitHubClientID, Team: host.Team, Address: public, AccessToken: token, TokensPath: tokensPath, Store: st, Root: st.Root(), Record: history,
 		ServedBy: servedBy, PollingEvery: poll,
 		PersonProfile: factoryPeople().Profile, PersonKnown: factoryPeople().Known, CodeOwners: factoryPeople().Owners,
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {
@@ -272,7 +268,6 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 	if servedBy == "factory" && mode == api.FactoryTeam {
 		// THE TEAM SERVER NEVER WRITES TO GITHUB, even with a host override.
 		handlerConfig.ChangeAssignee = nil
-		handlerConfig.DeleteBranch = nil
 	}
 	handler := serve.New(seam, handlerConfig)
 	var operatorLink api.AccessLink

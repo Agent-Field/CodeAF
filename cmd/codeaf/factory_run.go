@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -17,6 +18,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	factoryworker "github.com/Agent-Field/codeaf/internal/factory/worker"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -260,6 +262,70 @@ func factoryWorkdirs(items, floor *store.Store) *factoryrun.Workdirs {
 	w := factoryrun.NewWorkdirs(filepath.Join(floor.Root(), "work"), factoryrun.ExecGit{})
 	w.Log = factoryrun.StoreLog(items, time.Now)
 	return w
+}
+
+// factoryJobFolders is a drop's reach on this machine (serve's JobFolders):
+// the job's worktree under this factory folder's `work`, exactly where the
+// runner made it, and its local branch, in the checkout the factory knows for
+// the job's repository. A job that ran on another machine has neither here,
+// so a drop finds nothing to read or delete for it.
+type factoryJobFolders struct {
+	floor *store.Store
+	work  *factoryrun.Workdirs
+}
+
+func newFactoryJobFolders(floor *store.Store) factoryJobFolders {
+	return factoryJobFolders{floor: floor, work: factoryWorkdirs(floor, floor)}
+}
+
+func (f factoryJobFolders) Work(it factory.Item) (factoryrun.Work, error) {
+	return f.work.Work(it, f.floor.CheckoutDir(it.Repo))
+}
+
+// Discard deletes the job's local work once nothing on this machine runs it.
+// THE FOLDER IS NEVER DELETED UNDER A RUNNING STEP: a drop takes the job's
+// lease away, and the worker holding it learns that at its next heartbeat and
+// stops its runner, so the delete waits for that worker to let go. A worker
+// still holding it when the wait ends keeps the folder, and the drop says so.
+func (f factoryJobFolders) Discard(it factory.Item) error {
+	if !factoryRunnerLetGo(f.floor.Root(), it.ID, factoryLetGoWait) {
+		return fmt.Errorf("%s was still running on this machine", it.Ref())
+	}
+	return f.work.Discard(it, f.floor.CheckoutDir(it.Repo))
+}
+
+// factoryLetGoWait bounds that wait: the worker hears the stop at its next
+// heartbeat and then gives its runner [factoryworker.StopWait] to stop.
+const factoryLetGoWait = lease.HeartbeatEvery + factoryworker.StopWait + time.Second
+
+// factoryRunnerLetGo waits, at most wait, until no worker on this machine
+// holds job id, and answers whether none does.
+func factoryRunnerLetGo(root string, id int, wait time.Duration) bool {
+	deadline := time.Now().Add(wait)
+	for factoryMirrorHolds(root, id) {
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return true
+}
+
+// factoryMirrorHolds says whether a live worker process keeps job id in its
+// mirror, `<floor>/workers/<pid>/<factory>/<id>.json`: a worker writes it when
+// it takes the job and removes it only after its runner has stopped. Every
+// factory's mirror is read, because a worker of this machine's factory dials
+// whatever address it was given; another factory's job with the same number
+// only makes the wait longer, never the delete earlier.
+func factoryMirrorHolds(root string, id int) bool {
+	held, _ := filepath.Glob(filepath.Join(root, "workers", "*", "*", strconv.Itoa(id)+".json"))
+	for _, path := range held {
+		pid, err := strconv.Atoi(filepath.Base(filepath.Dir(filepath.Dir(path))))
+		if err == nil && pid > 0 && processgroup.ProcessAlive(pid) {
+			return true
+		}
+	}
+	return false
 }
 
 // factoryBenches is how many items this worker asks to run at once before the

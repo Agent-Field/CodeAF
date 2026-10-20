@@ -160,7 +160,9 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 		},
 		ChangeAssignee: factorygithub.JobWrites{Token: func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }}.Assign,
 		// A person's start reads the one item again first (serve's endedOnGitHub).
-		Recheck:       factorygithub.Rechecker(func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }),
+		Recheck: factorygithub.Rechecker(func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }),
+		// A drop deletes the job's local branch and folder on this machine.
+		Folders:       newFactoryJobFolders(h.floor),
 		PersonProfile: factoryPeople().Profile, PersonKnown: factoryPeople().Known, CodeOwners: factoryPeople().Owners})
 	closeDiscovery, err := serveAppFactoryDiscovery(h.floor.Root(), factoryTarget{h.address, h.token})
 	if err != nil {

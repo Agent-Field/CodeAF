@@ -13,9 +13,6 @@ const DefaultJobBudget = 3.0
 // ApprovalUndo is the interval during which consent has no outward effect.
 const ApprovalUndo = 5 * time.Second
 
-// DroppedBranchRetention is how long a dropped job keeps its branch.
-const DroppedBranchRetention = 7 * 24 * time.Hour
-
 // JobPriority records a person's choice; defaults are derived from labels.
 type JobPriority struct {
 	Value string `json:"value"`

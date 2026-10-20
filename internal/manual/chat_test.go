@@ -3300,8 +3300,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what has each model proven with checks", "running-from-the-terminal"},
 		{"where are my cleared drafts", "commands"},
 		{"what does /workspace path do", "commands"},
-		// A DROP IS NOT A DELETE, and a start checks the one issue on GitHub.
+		// A DROP DELETES THE JOB'S LOCAL WORK, asking first when there is some,
+		// and a start checks the one issue on GitHub.
 		{"bring back a dropped factory job", "factory"},
+		{"does dropping a factory job delete its branch", "factory"},
+		{"drop a factory job that has uncommitted changes", "factory"},
 		{"the factory says my issue was closed on GitHub so it wasn't started", "factory"},
 		{"check GitHub now in the factory", "factory"},
 		// A STOP IS A FACT ON THE JOB, and a start after it begins again.

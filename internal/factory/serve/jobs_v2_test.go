@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
+	"github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
@@ -28,12 +30,49 @@ type v2Jobs struct {
 	cfg     serve.Config
 	clock   atomic.Int64
 	person  string
-	deletes atomic.Int64
+	folders *fakeFolders
+}
+
+// fakeFolders stands in for this machine's job folders: the work a drop
+// would read there, a delete that may fail, and the jobs it deleted.
+type fakeFolders struct {
+	mu        sync.Mutex
+	work      map[int]run.Work
+	unread    error
+	refuse    error
+	discarded []factory.Item
+}
+
+func (f *fakeFolders) Work(it factory.Item) (run.Work, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.work[it.ID], f.unread
+}
+
+func (f *fakeFolders) Discard(it factory.Item) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.refuse != nil {
+		return f.refuse
+	}
+	f.discarded = append(f.discarded, it)
+	delete(f.work, it.ID)
+	return nil
+}
+
+func (f *fakeFolders) deleted() []int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var ids []int
+	for _, it := range f.discarded {
+		ids = append(ids, it.ID)
+	}
+	return ids
 }
 
 func newV2Jobs(t *testing.T) *v2Jobs {
 	t.Helper()
-	f := &v2Jobs{person: "sam"}
+	f := &v2Jobs{person: "sam", folders: &fakeFolders{work: map[int]run.Work{}}}
 	f.clock.Store(now.UnixNano())
 	var err error
 	f.st, err = store.Open(t.TempDir())
@@ -64,7 +103,7 @@ func newV2Jobs(t *testing.T) *v2Jobs {
 			p.DefaultBudget = 4
 			return p, nil
 		},
-		DeleteBranch: func(context.Context, factory.Item) error { f.deletes.Add(1); return nil },
+		Folders: f.folders,
 	}
 	f.h = serve.New(f.seam, f.cfg)
 	t.Cleanup(func() { f.h.Close() })
@@ -151,14 +190,19 @@ func TestV2DismissIsPersonalAndGitHubClearsIt(t *testing.T) {
 	}
 }
 
-// A DROP ENDS THE JOB UNTIL A PERSON BRINGS IT BACK: a start is refused with
-// the way back named, never as final, and GitHub does not revive it.
-func TestV2DropEndsTheJobAndDeletesOnlyAfterSevenDays(t *testing.T) {
+// A DROP ENDS THE JOB UNTIL A PERSON BRINGS IT BACK: a running job is
+// stopped, its local branch and folder are deleted at once when they hold
+// nothing to lose, a start is refused with the way back named, never as
+// final, and GitHub does not revive it.
+func TestV2DropEndsTheJobAndDeletesItsLocalWork(t *testing.T) {
 	f := newV2Jobs(t)
 	it := f.create(t, factory.Item{Num: 7, Origin: factory.OriginForge, State: factory.StateRunning, Assignee: "sam"})
-	f.post(t, it, "drop", `{"words":"not this one"}`, 200)
-	if j := f.read(t, it); j.State != "done" || j.DoneHow != "dropped" || j.BranchDeleteAt.Sub(j.DoneAt) != factory.DroppedBranchRetention {
+	f.post(t, it, "drop", "", 200)
+	if j := f.read(t, it); j.State != "done" || j.DoneHow != "dropped" {
 		t.Fatalf("drop %+v", j)
+	}
+	if got := f.folders.deleted(); len(got) != 1 || got[0] != it.ID {
+		t.Fatalf("deleted %v, want the dropped job's local work", got)
 	}
 	w := f.post(t, it, "run", "", 409)
 	var refusal struct {
@@ -176,20 +220,74 @@ func TestV2DropEndsTheJobAndDeletesOnlyAfterSevenDays(t *testing.T) {
 	if f.read(t, it).DoneHow != "dropped" {
 		t.Fatal("GitHub revived Drop")
 	}
-	f.clock.Add(int64(factory.DroppedBranchRetention - time.Nanosecond))
-	f.read(t, it)
-	if f.deletes.Load() != 0 {
-		t.Fatal("early delete")
+	events, _ := f.rec.Since(context.Background(), time.Time{})
+	if len(events) != 1 || events[0].Kind != record.Dropped || events[0].Detail != "" {
+		t.Fatalf("events %+v", events)
 	}
-	f.clock.Add(1)
-	f.read(t, it)
-	f.read(t, it)
-	if f.deletes.Load() != 1 {
-		t.Fatal("delete repeated or missing")
+	// Drop takes no words any more: a body that sends them is refused whole.
+	other := f.create(t, factory.Item{State: factory.StateNew, Assignee: "sam"})
+	f.post(t, other, "drop", `{"words":"not this one"}`, 422)
+}
+
+// A DROP NEVER LOSES WORK UNASKED. Commits on the job's branch or changes in
+// its folder refuse the drop with has_work and a sentence that names them,
+// and nothing is stopped or deleted; the same drop with discard is the yes,
+// and its receipt says what was thrown away. Work that could not be read is
+// treated as work.
+func TestV2DropWithWorkAsksFirst(t *testing.T) {
+	f := newV2Jobs(t)
+	it := f.create(t, factory.Item{Num: 1844, Origin: factory.OriginForge, State: factory.StateRunning, Assignee: "sam"})
+	f.folders.work[it.ID] = run.Work{Commits: 3, Uncommitted: true}
+	w := f.post(t, it, "drop", `{}`, 409)
+	var refusal struct {
+		Error    string `json:"error"`
+		Reason   string `json:"reason"`
+		NowState string `json:"now_state"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &refusal); err != nil {
+		t.Fatal(err)
+	}
+	if refusal.Reason != api.ReasonHasWork || refusal.Error != "api#1844's branch has 3 commits and uncommitted changes." || refusal.NowState != "running" {
+		t.Fatalf("refusal %+v", refusal)
+	}
+	if j := f.read(t, it); j.State != "running" || j.DoneHow != "" || len(f.folders.deleted()) != 0 {
+		t.Fatalf("a refused drop changed the job: %+v deleted %v", j, f.folders.deleted())
+	}
+	f.post(t, it, "drop", `{"discard":true}`, 200)
+	if j := f.read(t, it); j.State != "done" || j.DoneHow != "dropped" || len(f.folders.deleted()) != 1 {
+		t.Fatalf("discard %+v deleted %v", j, f.folders.deleted())
 	}
 	events, _ := f.rec.Since(context.Background(), time.Time{})
-	if len(events) != 2 || events[0].Kind != record.Dropped || events[1].Kind != record.BranchDeleted {
+	if len(events) != 1 || events[0].Kind != record.Dropped || events[0].Detail != "discarded: api#1844's branch has 3 commits and uncommitted changes." {
 		t.Fatalf("events %+v", events)
+	}
+
+	unread := f.create(t, factory.Item{Num: 12, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam"})
+	f.folders.unread = fmt.Errorf("git: not a repository")
+	w = f.post(t, unread, "drop", "", 409)
+	_ = json.Unmarshal(w.Body.Bytes(), &refusal)
+	if refusal.Reason != api.ReasonHasWork || refusal.Error != "api#12's branch could not be read, so what it holds is unknown." {
+		t.Fatalf("unread refusal %+v", refusal)
+	}
+	f.post(t, unread, "drop", `{"discard":true}`, 200)
+	if got := f.folders.deleted(); len(got) != 2 || got[1] != unread.ID {
+		t.Fatalf("deleted %v", got)
+	}
+}
+
+// A DELETE THAT FAILS IS NOT A FAILED DROP: the job is dropped all the same,
+// and its activity says the local branch and folder were kept and why.
+func TestV2DropWhoseDeleteFailsStillDrops(t *testing.T) {
+	f := newV2Jobs(t)
+	it := f.create(t, factory.Item{Num: 30, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam"})
+	f.folders.refuse = fmt.Errorf("could not delete the folder of #30: permission denied")
+	f.post(t, it, "drop", "", 200)
+	cur, err := f.st.Get(it.ID)
+	if err != nil || cur.DoneHow != "dropped" {
+		t.Fatalf("not dropped: %+v %v", cur, err)
+	}
+	if n := len(cur.Activity); n == 0 || cur.Activity[n-1].What != "dropped · the local branch and folder were kept: could not delete the folder of #30: permission denied" {
+		t.Fatalf("activity %+v", cur.Activity)
 	}
 }
 
@@ -214,7 +312,7 @@ func TestV2RestoreBringsADroppedJobBackToBacklog(t *testing.T) {
 	f.person = "sam"
 	f.post(t, it, "restore", "", 200)
 	j := f.read(t, it)
-	if j.State != "backlog" || j.DoneHow != "" || !j.DoneAt.IsZero() || !j.BranchDeleteAt.IsZero() || j.Can.Restore {
+	if j.State != "backlog" || j.DoneHow != "" || !j.DoneAt.IsZero() || j.Can.Restore {
 		t.Fatalf("restored %+v", j)
 	}
 	f.post(t, it, "restore", "", 409)
@@ -225,12 +323,6 @@ func TestV2RestoreBringsADroppedJobBackToBacklog(t *testing.T) {
 	}
 	if j := f.read(t, it); j.State != "backlog" || j.Title != "changed on GitHub" {
 		t.Fatalf("the poll does not treat a restored job normally: %+v", j)
-	}
-	// The drop's branch deadline went with it: nothing is deleted later.
-	f.clock.Add(int64(factory.DroppedBranchRetention + time.Minute))
-	f.read(t, it)
-	if f.deletes.Load() != 0 {
-		t.Fatal("a restored job's branch was deleted")
 	}
 	f.post(t, it, "run", "", 200)
 	if f.read(t, it).State != "queued" {
@@ -246,26 +338,55 @@ func TestV2RestoreBringsADroppedJobBackToBacklog(t *testing.T) {
 	}
 }
 
-// A JOB WHOSE BRANCH WAS ALREADY DELETED STILL COMES BACK; its next run makes
-// a fresh branch, and a later drop deletes that one in its turn.
-func TestV2RestoreAfterTheBranchWasDeleted(t *testing.T) {
+// A JOB BROUGHT BACK IS A FRESH JOB, AS IF IT HAD NEVER RUN: no steps run, $0
+// spent, no failure, change, commits, runner or pull request. What the job is
+// stays: its issue, assignee, priority, budget, notes and activity. The
+// earlier pull request is forgotten, never closed, and the receipt names it.
+func TestV2RestoreGivesAFreshBacklogJob(t *testing.T) {
 	f := newV2Jobs(t)
-	it := f.create(t, factory.Item{Num: 9, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam"})
-	f.post(t, it, "drop", "", 200)
-	f.clock.Add(int64(factory.DroppedBranchRetention))
-	f.read(t, it)
-	if f.deletes.Load() != 1 {
-		t.Fatal("the branch was not deleted")
+	stages := []factory.Stage{
+		{Name: "plan", Kind: factory.StageChat, Ask: "plan it", On: true},
+		{Name: "write", Kind: factory.StageChat, Ask: "write it", On: true},
+		{Name: "proof", Kind: factory.StageChat, Ask: "prove it", On: true},
 	}
+	pr := "https://github.com/acme/api/pull/90"
+	it := f.create(t, factory.Item{
+		Num: 41, Origin: factory.OriginForge, Title: "Total double-counts", Body: "the issue's words",
+		State: factory.StateDismissed, DoneHow: "dropped", DoneAt: now, Assignee: "sam", Cap: 4,
+		Priority: &factory.JobPriority{Value: "high", SetBy: "sam"}, Notes: []string{"use the ledger"},
+		Stages: stages, Stream: recordedRun(),
+		Failure:         &factory.Failure{Code: factory.CodeStopped, Step: "write"},
+		Change:          &factory.Change{Branch: "factory/41-total-double-counts"},
+		ChangeBase:      "0123456789abcdef0123456789abcdef01234567",
+		HeadCommit:      "89abcdef0123456789abcdef0123456789abcdef",
+		Proof:           []factory.Claim{{Text: "totals once", OK: true}},
+		PullRequest:     &factory.PullRequest{Number: 90, URL: pr, State: factory.PROpen},
+		Activity:        []factory.Event{{At: now, What: factory.EventArrived}},
+		WorktreeMachine: "mac-1",
+	})
 	f.post(t, it, "restore", "", 200)
-	if j := f.read(t, it); j.State != "backlog" || !j.BranchDeletedAt.IsZero() {
-		t.Fatalf("restored %+v", j)
+	j := f.read(t, it)
+	if j.State != "backlog" || j.Cost != 0 || j.Failure != nil || j.Change != nil || j.HeadCommit != "" || j.Runner != "" || j.PR != nil || len(j.Claims) != 0 || j.DoneHow != "" {
+		t.Fatalf("not fresh: state %s cost %v failure %+v change %+v head %q runner %q pr %+v claims %+v", j.State, j.Cost, j.Failure, j.Change, j.HeadCommit, j.Runner, j.PR, j.Claims)
 	}
-	f.post(t, it, "drop", "", 200)
-	f.clock.Add(int64(factory.DroppedBranchRetention))
-	f.read(t, it)
-	if f.deletes.Load() != 2 {
-		t.Fatal("a second drop does not delete the new branch")
+	if len(j.Steps) != 3 {
+		t.Fatalf("steps %+v", j.Steps)
+	}
+	for _, s := range j.Steps {
+		if s.State != api.StepPending {
+			t.Fatalf("a step of the old run survived: %+v", s)
+		}
+	}
+	if j.Assignee != "sam" || j.Budget != 4 || j.Priority == nil || j.Priority.Value != "high" || j.Title != "Total double-counts" {
+		t.Fatalf("the job's own facts were lost: %+v", j)
+	}
+	cur, err := f.st.Get(it.ID)
+	if err != nil || cur.Stream != nil || cur.ChangeBase != "" || cur.Body != "the issue's words" || len(cur.Notes) != 1 || len(cur.Activity) == 0 || cur.Activity[0].What != factory.EventArrived {
+		t.Fatalf("stored %+v %v", cur, err)
+	}
+	events, _ := f.rec.Since(context.Background(), time.Time{})
+	if len(events) != 1 || events[0].Kind != record.Restored || events[0].Detail != "earlier pr · "+pr {
+		t.Fatalf("events %+v", events)
 	}
 }
 

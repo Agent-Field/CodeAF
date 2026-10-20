@@ -60,6 +60,12 @@ const (
 	// (already approved, already taken) is CodeConflict.
 	CodeForbidden = "forbidden"
 	CodeStale     = "stale"
+	// CodeHasWork refuses a factory.job_drop whose job holds work on this
+	// machine that the drop would delete: commits on its local branch or
+	// changes in its folder. The message is the factory's sentence naming
+	// them, and Detail a FactoryRefusal. The same drop with discard is the
+	// person's yes; nothing sends it on anyone's behalf.
+	CodeHasWork = "has_work"
 )
 
 // The states an agent can be in, as the app draws them.
