@@ -4281,7 +4281,7 @@ tree's 3/20 bounds do not apply to that run.
 same time.
 
 The setting `task.parallel` exists for anyone who wants a number anyway — settings panel
-(`ctrl+,` or `/settings`), category "spending". Blank means no limit. A cap is a queue and
+(`ctrl+,` or `/settings`), under Tasks as `tasks at once`. Blank means no limit. A cap is a queue and
 never a refusal: work past the cap waits and starts when a slot frees, and while it waits
 its roster row says `waiting · slot` on its hint line, and it sits under `Queued`, which
 starts folded to its heading.

@@ -932,6 +932,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"my cursor jumped to another task while I was reading", "tasks"},
 		{"why is the finished piece at the bottom of the family", "tasks"},
 		{"can codeaf parallelize my task", "tasks"},
+		{"where is the tasks at once setting", "tasks"},
+		{"what section is task.parallel under", "tasks"},
 		{"how do I open my tasks on a phone", "tasks"},
 		{"how do I get back from a task on my phone", "tasks"},
 		{"do tasks touch my working copy", "how-tasks-run"},
