@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/effort"
 )
 
 // writerQueue is how many frames may wait for stdout before a sender waits.
@@ -143,6 +145,7 @@ type request struct {
 // before it returns.
 func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine Engine) error {
 	hello.Contract = Contract
+	hello = withFeature(hello, FeatureAgentEffortRungs)
 	hello = withCollectionsFeature(hello, engine)
 	hello = withMessageReadsFeature(hello, engine)
 	hello = withWorkGraphFeature(hello, engine)
@@ -349,18 +352,16 @@ var methods = map[string]method{
 	}),
 	"agents.set_effort": typed(func(e Engine, p struct {
 		ID     string `json:"id"`
-		Effort string `json:"effort" enum:"low,medium,high"`
+		Effort string `json:"effort" enum:"auto,low,medium,high,xhigh,max"`
 	}) (*agentResult, error) {
-		effort := strings.ToLower(strings.TrimSpace(p.Effort))
+		rung, ok := effort.Parse(p.Effort)
 		if strings.TrimSpace(p.ID) == "" {
 			return nil, Errorf(CodeBadParams, "agents.set_effort needs an id")
 		}
-		switch effort {
-		case EffortLow, EffortMedium, EffortHigh:
-		default:
+		if !ok {
 			return nil, Errorf(CodeBadParams, "effort is low, medium or high")
 		}
-		agent, err := e.SetEffort(p.ID, effort)
+		agent, err := e.SetEffort(p.ID, rung.String())
 		if err != nil {
 			return nil, err
 		}
