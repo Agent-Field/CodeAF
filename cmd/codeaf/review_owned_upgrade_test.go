@@ -11,13 +11,24 @@ import (
 )
 
 func TestReviewExistingOwnedHomeConversationResumes(t *testing.T) {
+	for _, kind := range []string{"home", "temp"} {
+		t.Run(kind, func(t *testing.T) { reviewOwnedConversation(t, kind) })
+	}
+}
+
+func reviewOwnedConversation(t *testing.T, kind string) {
 	t.Setenv("CODEAF_HOME", filepath.Join(t.TempDir(), "state"))
 	target := t.TempDir()
 	alias := filepath.Join(t.TempDir(), "home")
 	if err := os.Symlink(target, alias); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("HOME", alias)
+	if kind == "home" {
+		t.Setenv("HOME", alias)
+		t.Setenv("USERPROFILE", alias)
+	} else {
+		t.Setenv("HOME", t.TempDir())
+	}
 	oldBucket := home.Join("v3", "projects", encodeWorkspace(alias))
 	old := writeV3Session(t, oldBucket, "00000000000000f1", "Remember the draft we wrote at home", time.Now())
 	meta, err := session.LoadMeta(old)

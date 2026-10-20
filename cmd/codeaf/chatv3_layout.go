@@ -318,7 +318,8 @@ func v3ResolveSession(explicit, workspace, launchDir string, owned bool) (v3Sess
 
 // v3LegacyFolder searches the project buckets OTHER than this workspace's own
 // for the newest conversation somebody has spoken in whose recorded workspace
-// ([session.Meta.Workspace]) resolves to the same folder, and answers it with
+// ([session.Meta.Workspace], or LaunchDir for owned sessions) resolves to the
+// same folder, and answers it with
 // the bucket it lives in. It is the upgrade road for buckets minted before the
 // project key was resolved (#1761): the bucket name is a spelling's encoding and
 // cannot be reversed, but every folder cites its own workspace, and a citation
@@ -352,17 +353,25 @@ func v3LegacyFolder(workspace string) (v3Folder, string, bool) {
 		}
 		spoken, _ := v3ScanBucket(bucket)
 		for _, folder := range spoken {
-			recorded := strings.TrimSpace(folder.meta.Workspace)
-			// Owned work/ is private to the conversation. Its launch citation
+			citations := []string{folder.meta.Workspace}
+			// Owned work/ is private to the conversation. Its launch citation also
 			// names the project bucket the older build chose for HOME or temp.
 			if folder.meta.Owned {
-				recorded = strings.TrimSpace(folder.meta.LaunchDir)
+				citations = append(citations, folder.meta.LaunchDir)
 			}
-			if recorded == "" {
-				continue
+			matched := false
+			for _, recorded := range citations {
+				recorded = strings.TrimSpace(recorded)
+				if recorded == "" {
+					continue
+				}
+				resolvedRecorded, err := filepath.EvalSymlinks(filepath.Clean(recorded))
+				if err == nil && resolvedRecorded == resolved {
+					matched = true
+					break
+				}
 			}
-			resolvedRecorded, err := filepath.EvalSymlinks(filepath.Clean(recorded))
-			if err != nil || resolvedRecorded != resolved {
+			if !matched {
 				continue
 			}
 			if newestBucket == "" || folder.at.After(newest.at) {
