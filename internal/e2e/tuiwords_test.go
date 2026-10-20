@@ -161,7 +161,7 @@ var tuiWords = map[string]tuiWord{
 	"skillNoShelfWord": {
 		screen: "this conversation has no skill shelf",
 		pkg:    "internal/skillpick",
-		why:"the picker row's tail when there is no shelf to attach against. It must be ABSENT on the " +
+		why: "the picker row's tail when there is no shelf to attach against. It must be ABSENT on the " +
 			"ordinary launch with memory on and off: it once read `memory is off` on every machine",
 	},
 	"skillCannotCarryWord": {
