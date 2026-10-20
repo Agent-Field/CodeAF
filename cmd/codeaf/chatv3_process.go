@@ -47,6 +47,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/subharness"
 	"github.com/Agent-Field/codeaf/internal/tui3"
+	"github.com/Agent-Field/codeaf/internal/workspacepath"
 )
 
 // v3Process is everything a launch may borrow but must not build twice.
@@ -946,6 +947,7 @@ func (s *v3Seam) bundle(agent v3Live, launch *v3Launch, cfg session.Config,
 		Notice:          notice,
 		ContextWindow:   cfg.ContextWindow,
 		DraftFile:       draft,
+		DraftAliases:    workspacepath.Aliases(workspace, s.proc.LaunchDir, s.seed.Workspace),
 		History:         recall,
 		// This project's conversations, walked on the keystroke that asks for
 		// them and never at boot — and this PROJECT's, which is what makes the

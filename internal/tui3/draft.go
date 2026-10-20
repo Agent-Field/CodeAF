@@ -482,5 +482,5 @@ func (a *app) draftWorkspaces() []string {
 	if a.host != "" {
 		return []string{a.workspace}
 	}
-	return workspacepath.Aliases(a.workspace)
+	return workspacepath.Aliases(a.workspace, a.draftAliases...)
 }

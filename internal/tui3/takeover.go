@@ -595,6 +595,7 @@ func (a *app) takeOver() tea.Cmd {
 		// Cleared so the close below leaves the files where they are; the
 		// conversation arriving brings its own draft file with it.
 		a.draftFile = ""
+		a.draftAliases = nil
 	}
 	cmd, moved := a.closeFrontFor(session.StopByTakeover)
 	if !moved {
@@ -806,6 +807,7 @@ func (a *app) movedAway(word string) tea.Cmd {
 		// The whole composer, exactly as the takeover road hands it over.
 		a.writeDraftsNow(a.leavingDraft())
 		a.draftFile = ""
+		a.draftAliases = nil
 	}
 	cmd, landed := a.stepBackFront()
 	if !landed {

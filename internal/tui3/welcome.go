@@ -538,7 +538,7 @@ func (a *app) openSession(chosen Session) (tea.Cmd, string) {
 		// ([app.takeUp] states this). The surface keeps what it was holding.
 		conv = Conversation{Agent: conv.Agent, SessionFile: conv.SessionFile,
 			Workspace: a.workspace, Place: a.place, Owned: a.owned,
-			ContextWindow: a.ctxWindow, DraftFile: a.draftFile, History: a.history,
+			ContextWindow: a.ctxWindow, DraftFile: a.draftFile, DraftAliases: a.draftAliases, History: a.history,
 			RecentSessions: a.recentSessions, SaveApproval: a.saveApproval,
 			SaveBashApproval: a.saveBashApproval, ApplyApprovals: a.applyApprovals}
 	}

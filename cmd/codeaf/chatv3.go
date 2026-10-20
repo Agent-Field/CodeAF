@@ -37,6 +37,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/trace"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
+	"github.com/Agent-Field/codeaf/internal/workspacepath"
 )
 
 // runChatV3 is the v3 door: one session agent over this directory, and the
@@ -675,6 +676,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		ContextWindow: cfg.ContextWindow,
 		History:       recall,
 		DraftFile:     draft,
+		DraftAliases:  workspacepath.Aliases(workspace, proc.LaunchDir, seed.Workspace),
 		// The consent card's "always", written down AND handed to the gate this
 		// session is running on (chatv3_approval.go). The second half is why a
 		// banked rule answers the very next call instead of the next launch.

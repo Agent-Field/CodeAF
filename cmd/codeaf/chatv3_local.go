@@ -377,6 +377,7 @@ func openChatV3Local(launch localLaunch) error {
 	// hide their own unsent words from them.
 	if dir, err := v3Dir(); err == nil {
 		options.DraftFile = tui3.DraftFile(dir, welcome.Workspace)
+		options.DraftAliases = workspacepath.Aliases(welcome.Workspace, v3LaunchDir())
 	}
 	// THIS IS A WINDOW ON THIS MACHINE, whose automations it shows: it holds
 	// its own presence here rather than asking the engine to, because the
