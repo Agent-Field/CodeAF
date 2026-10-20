@@ -571,3 +571,16 @@ drops out and something confirmed this morning rises. A suggestion that fails on
 the same error is counted against itself. There is no command or panel for it,
 it is not on the Memories tab, and the noticing setting does not turn it off: the
 one line on a failed row is the whole of what it says.
+
+## Project memories after a symlink workspace upgrade
+
+A folder and a symlink pointing to it have one project identity. In a folder without
+an origin remote, older builds kept project memories under a hash of the path spelling.
+Those lines remain visible to the project and its workers when codeaf can prove the
+old spelling still names the same folder: from the launch path or a saved conversation
+or engine workspace citation. This also covers Git repositories without an origin.
+
+Existing rows keep their owners until you deliberately change them. New project memories
+use the resolved folder's owner; a correction supersedes the old line under that owner.
+There is no bulk move or deletion of old memories. Remote-based Git identities keep the
+same keys. A removed or broken alias cannot prove that an old path owner belongs here.

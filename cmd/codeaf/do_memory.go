@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/Agent-Field/codeaf/internal/gitidentity"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
@@ -20,5 +21,5 @@ func doMemory(workspace string) string {
 		return ""
 	}
 	defer brain.Close()
-	return session.MemoryWorld(brain, session.MemoryOwners(v3ProjectKey(workspace)))
+	return session.MemoryWorld(brain, session.MemoryOwners(v3ProjectKey(workspace), gitidentity.ProjectKeys(workspace)...))
 }

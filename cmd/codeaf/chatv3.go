@@ -1050,8 +1050,9 @@ func v3ConfigFor(proc *v3Process, opts v3Options, workspace string, place sessio
 		// owner a memory really belongs to. Empty (an error, or a workspace
 		// that could not be resolved) quarantines project writes rather than
 		// guessing.
-		MemoryProjectKey:  v3ProjectKey(workspace),
-		MemoryProjectName: gitidentity.ProjectName(workspace),
+		MemoryProjectKey:     v3ProjectKey(workspace),
+		MemoryProjectAliases: gitidentity.ProjectKeys(workspace, proc.LaunchDir, opts.Workspace),
+		MemoryProjectName:    gitidentity.ProjectName(workspace),
 		// AND THE SKILL SHELF, which is the line above, and a shelf of the skill
 		// folders alone when the memory store would not open ([v3SkillShelf]):
 		// the skills a person installed for another harness are not memory, and

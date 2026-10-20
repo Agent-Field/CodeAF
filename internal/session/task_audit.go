@@ -3179,8 +3179,9 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor, on str
 		// AND THE CONVERSATION'S MEMORY, LENT READ-ONLY: a judge that must not
 		// gain the writable store still reads the same owner's lines the node
 		// worked under ([TaskGraph.memoryWorld]).
-		bindingStore:     parent.bindingBrain(),
-		MemoryProjectKey: parent.MemoryProjectKey,
+		bindingStore:         parent.bindingBrain(),
+		MemoryProjectKey:     parent.MemoryProjectKey,
+		MemoryProjectAliases: parent.MemoryProjectAliases,
 		// The auditor reads rather than writes, but reading is what makes a
 		// dropping: a long file it looks at is stubbed on its way out of the live
 		// context (stub.go), and with nothing here those bytes landed in the

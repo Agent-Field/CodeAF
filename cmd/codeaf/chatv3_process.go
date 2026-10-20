@@ -973,6 +973,7 @@ func (s *v3Seam) anchor(agent interface {
 	// on the scratch folder would scope every later launch's project reads and
 	// writes to a project this conversation is no longer in.
 	s.boot.Config.MemoryProjectKey = v3ProjectKey(resolved)
+	s.boot.Config.MemoryProjectAliases = gitidentity.ProjectKeys(resolved, path)
 	s.boot.Config.MemoryProjectName = gitidentity.ProjectName(resolved)
 	s.boot.Place = s.boot.Config.Place
 	if bucket, bucketErr := v3ProjectDir(resolved); bucketErr == nil {

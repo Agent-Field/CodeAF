@@ -499,6 +499,8 @@ func v3PlaceOf(transcript, workspace string) session.Place {
 // with it. It is the ONE place a config changes conversations, so /new, a
 // contended resume and the picker cannot drift apart.
 func v3PointAt(cfg session.Config, place session.Place) (session.Config, error) {
+	previousWorkspace := cfg.Workspace
+	previousKey, previousAliases := cfg.MemoryProjectKey, cfg.MemoryProjectAliases
 	cfg.Place = place
 	cfg.SessionFile = place.Transcript()
 	if !place.Owned {
@@ -510,6 +512,10 @@ func v3PointAt(cfg session.Config, place session.Place) (session.Config, error) 
 			cfg.Workspace = workspace
 		}
 		cfg.MemoryProjectKey = v3ProjectKey(cfg.Workspace)
+		cfg.MemoryProjectAliases = gitidentity.ProjectKeys(cfg.Workspace, previousWorkspace, v3LaunchDir())
+		if cfg.MemoryProjectKey == previousKey {
+			cfg.MemoryProjectAliases = append(cfg.MemoryProjectAliases, previousAliases...)
+		}
 		cfg.MemoryProjectName = gitidentity.ProjectName(cfg.Workspace)
 		return cfg, nil
 	}
@@ -525,6 +531,10 @@ func v3PointAt(cfg session.Config, place session.Place) (session.Config, error) 
 	// every door through this function agrees about whose project this is —
 	// and the name moves with it, so a line kept here says where it holds.
 	cfg.MemoryProjectKey = v3ProjectKey(cfg.Workspace)
+	cfg.MemoryProjectAliases = gitidentity.ProjectKeys(cfg.Workspace, previousWorkspace, v3LaunchDir())
+	if cfg.MemoryProjectKey == previousKey {
+		cfg.MemoryProjectAliases = append(cfg.MemoryProjectAliases, previousAliases...)
+	}
 	cfg.MemoryProjectName = gitidentity.ProjectName(cfg.Workspace)
 	return cfg, nil
 }
