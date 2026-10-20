@@ -5248,6 +5248,12 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 					result.process = nil
 				}
 			}
+			// A display reader owns its process snapshot, just as it owns the
+			// person's descriptors; editing it cannot reach the presentation.
+			if result.process != nil {
+				process := *result.process
+				result.process = &process
+			}
 			// The step's own title, off the journal's `caption` line, keyed by
 			// the anchor the narration was recorded against. Every call that is
 			// not a batch anchor answers empty and carries nothing.

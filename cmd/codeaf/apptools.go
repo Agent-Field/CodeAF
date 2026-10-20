@@ -204,7 +204,17 @@ func (b *appBackend) callBegan(a *appAgent, agent string, turn uint64, event ses
 	var row appwire.TurnTool
 	log.locked(func() {
 		c := log.calls[event.CallID]
-		if c == nil || event.CallID == "" {
+		if c == nil || c.ended || event.CallID == "" {
+			// An ended provider id may name a new call. Replace its place in
+			// the retention order so an old slot cannot forget the new call.
+			if c != nil {
+				for i, id := range log.order {
+					if id == event.CallID {
+						log.order = append(log.order[:i], log.order[i+1:]...)
+						break
+					}
+				}
+			}
 			c = &appCall{id: event.CallID}
 			if event.CallID != "" {
 				log.calls[event.CallID] = c

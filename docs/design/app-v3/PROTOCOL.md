@@ -723,6 +723,9 @@ process?: string                 the processes.list / process.changed id of the 
                                  The engine carries the registry number and start (or service id) as
                                  typed result metadata and keeps it in the journal; never inferred from
                                  output text or ended_at. Older engines and records omit it = unknown.
+                                 A later begin reusing an ended call id starts fresh and has no process.
+                                 In history, only process takes its exact source occurrence; existing
+                                 facts retain their last same-id source selection for compatibility.
 retried_of?                      call id this one re-runs (a later pass of the same command)
 files?: [{path, add, del}]       edit
 connector?                       e.g. "GitHub" (connector kind)

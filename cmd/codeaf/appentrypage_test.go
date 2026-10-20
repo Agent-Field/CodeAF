@@ -42,12 +42,19 @@ func appPageRecord(turns int, compacted bool) session.Record {
 func appWholePage(id string, record session.Record, at time.Time, marks map[int]appTurnMark, before string, limit int, facts func(session.DisplayEntry) appwire.ToolFacts) ([]appwire.Entry, bool, error) {
 	items := appRecordItems(record)
 	all, from := appEntryShapes(id, items, at, marks)
+	calls := map[string]session.DisplayEntry{}
+	for _, item := range items {
+		if item.Role == "tool" && item.CallID != "" {
+			calls[item.CallID] = item
+		}
+	}
 	for i := range all {
 		appDressTool(&all[i], items[from[i]])
-		if all[i].Kind == appwire.EntryTool && all[i].Call != "" {
-			// E4: the full-record oracle also reads the result occurrence,
-			// since provider ids can repeat across the history it is paging.
-			all[i].ToolFacts = facts(items[from[i]])
+		if item, ok := calls[all[i].Call]; ok && all[i].Kind == appwire.EntryTool {
+			// E5 keeps every existing fact's last same-id source. E4 gives
+			// only the new process identity its own result occurrence.
+			item.ToolProcess = items[from[i]].ToolProcess
+			all[i].ToolFacts = facts(item)
 		}
 	}
 	if words := strings.TrimSpace(record.Unreadable); words != "" {

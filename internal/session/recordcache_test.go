@@ -11,6 +11,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unsafe"
 )
 
 // recordJournal is a journal of turns, each a question, a call, its result and
@@ -486,6 +487,51 @@ func TestCloneAndCostCoverEveryFieldOfAnEntry(t *testing.T) {
 	}
 	if got, want := entriesCost(record.Entries), deepCost(reflect.ValueOf(record.Entries)); got != want {
 		t.Fatalf("entriesCost = %d, the fields hold %d", got, want)
+	}
+}
+
+// R1: neither the first callback nor a cache hit may edit the kept process.
+func TestRecordCacheToolProcessIsOwnedByEachCallback(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "node.jsonl")
+	writeRecord(t, path, `{"type":"session","version":1,"id":"process-cache","cwd":"."}
+{"type":"message","role":"user","content":"start the command"}
+{"type":"message","role":"assistant","toolCalls":[{"id":"cached","function":{"name":"bash","arguments":"{\"command\":\"worker\"}"}}]}
+{"type":"message","role":"tool","toolCallId":"cached","content":"running","presentation":{"audience":"tool","invoked":true,"tool_process":{"job":3,"started":"2026-10-20T09:00:00Z"}}}
+`)
+	want := ToolProcess{Job: 3, Started: time.Date(2026, 10, 20, 9, 0, 0, 0, time.UTC)}
+	cache := settledCache(RecordCacheLimits{})
+	for range 2 {
+		if err := cache.WithRecord(path, func(record Record) error {
+			process := toolEntryFor(t, record.Entries, "cached").ToolProcess
+			if process == nil || !reflect.DeepEqual(*process, want) {
+				t.Fatalf("a callback inherited another callback's process: %+v", process)
+			}
+			process.Job = 99
+			process.Started = time.Time{}
+			process.Service = "edited-service"
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if stats := cache.Stats(); stats.Parses != 1 || stats.Hits != 1 || stats.Entries != 1 {
+		t.Fatalf("the second callback did not read a kept record: %+v", stats)
+	}
+}
+
+// R1: copied process objects need a reservation in both history regions;
+// their immutable service strings are retained once rather than copied.
+func TestRecordVectorsReserveToolProcessCopies(t *testing.T) {
+	bare := Record{Entries: []DisplayEntry{{}, {}}, Earlier: []DisplayEntry{{}}}
+	record := cloneRecord(bare)
+	record.Entries[1].ToolProcess = &ToolProcess{Job: 3}
+	record.Earlier[0].ToolProcess = &ToolProcess{Service: "kept-service"}
+	objects := 2 * int64(unsafe.Sizeof(ToolProcess{}))
+	if got := recordVectors(record) - recordVectors(bare); got != objects {
+		t.Fatalf("process copy reservation = %d, want %d", got, objects)
+	}
+	if got, want := recordCost(record)-recordCost(bare), objects+int64(len("kept-service")); got != want {
+		t.Fatalf("retained process cost = %d, want %d", got, want)
 	}
 }
 

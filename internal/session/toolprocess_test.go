@@ -13,6 +13,36 @@ import (
 	"github.com/Agent-Field/codeaf/internal/approval"
 )
 
+// R1: a display snapshot must not let its caller rewrite the live journal's
+// presentation, for jobs and services alike.
+func TestToolProcessDisplaySnapshotsDoNotAliasPresentation(t *testing.T) {
+	for name, want := range map[string]ToolProcess{
+		"job":     {Job: 3, Started: time.Date(2026, 10, 20, 9, 0, 0, 0, time.UTC)},
+		"service": {Service: "kept-service"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			process := want
+			result := ai.Message{Role: "tool", ToolCallID: "snapshot", Content: []ai.ContentPart{{Type: "text", Text: "running"}}}
+			presentation := &presentationIndex{}
+			presentation.remember(result, &messagePresentation{Audience: "tool", ToolInvoked: true, ToolProcess: &process})
+			messages := []ai.Message{
+				{Role: "assistant", ToolCalls: []ai.ToolCall{{ID: "snapshot", Function: ai.ToolCallFunction{Name: "bash", Arguments: `{"command":"worker"}`}}}},
+				result,
+			}
+			journal := &sessionFile{presentation: presentation}
+			for range 2 {
+				got := toolEntryFor(t, shapeEntries(messages, journal), "snapshot").ToolProcess
+				if got == nil || got.Job != want.Job || !got.Started.Equal(want.Started) || got.Service != want.Service {
+					t.Fatalf("display snapshot changed the presentation's process: %+v, want %+v", got, want)
+				}
+				got.Job = 99
+				got.Started = time.Time{}
+				got.Service = "edited-service"
+			}
+		})
+	}
+}
+
 // processHeldCommand stays alive until its owner closes the session. The
 // one-millisecond yield keeps promotion independent of a guessed process age.
 func processHeldCommand(t *testing.T) string {

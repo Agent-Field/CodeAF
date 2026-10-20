@@ -14,3 +14,9 @@ Foreground completions, failures, refusals, rejections and interruptions omit it
 older records remain unknown. History keeps the identity on its result occurrence
 even when provider call ids repeat. The optional history pointer raises the
 64-bit display-entry bound from 296 to 304 bytes, recorded in PERF.md.
+
+Record-cache callbacks and display snapshots own copies of the process fact;
+the cache counts its object and service string and reserves each copied object.
+A live begin reusing an ended provider id starts fresh, while repeated begins
+of the running call keep its state. Existing history facts keep their previous
+last-same-id selection; only the new process link comes from its own occurrence.

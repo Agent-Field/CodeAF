@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -227,6 +228,78 @@ func TestAppToolProcessE3NonJobsAndE5OlderRecordsOmitProcess(t *testing.T) {
 	}
 }
 
+// R2, E2 and E5: the real pump must start fresh when a later turn reuses an
+// ended provider id. Repeated begins of the still-running call keep its tail.
+func TestAppToolProcessReusedIDStartsFreshAcrossPumpTurns(t *testing.T) {
+	for _, nextJob := range []bool{false, true} {
+		name := "foreground"
+		if nextJob {
+			name = "new_job"
+		}
+		t.Run(name, func(t *testing.T) {
+			base := time.Date(2026, 10, 20, 9, 0, 0, 0, time.UTC)
+			first := &session.ToolProcess{Job: 3, Started: base}
+			conv := &fakeConversation{script: []session.Event{
+				{Kind: session.EventToolBegin, CallID: "same", Tool: "bash", Args: `{"command":"first-command"}`},
+				{Kind: session.EventToolOutput, CallID: "same", Text: "first output\n"},
+				{Kind: session.EventToolEnd, CallID: "same", Tool: "bash", ToolInvoked: true, ToolProcess: first},
+				{Kind: session.EventTurnDone},
+			}}
+			backend, rec, agent := workBackend(t, conv)
+			backend.now = func() time.Time { return base }
+			turn, err := backend.Send(agent.ID, "first", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			appTurnDoneFor(t, rec, turn)
+			end := toolRow(rec, t, func(row appwire.TurnTool) bool { return row.Turn == turn && row.Phase == appwire.PhaseEnd })
+			if end.Process != appProcessID(agent.ID, session.JobNotice{ID: first.Job, Started: first.Started}) {
+				t.Fatalf("the first turn never became its job: %+v", end)
+			}
+			var second *session.ToolProcess
+			if nextJob {
+				second = &session.ToolProcess{Job: 4, Started: base.Add(time.Minute)}
+			}
+			conv.mu.Lock()
+			conv.script = []session.Event{
+				{Kind: session.EventToolBegin, CallID: "same", Tool: "bash", Args: `{"command":"second-command"}`},
+				{Kind: session.EventToolOutput, CallID: "same", Text: "second output\n"},
+				{Kind: session.EventToolBegin, CallID: "same", Tool: "bash", Args: `{"command":"second-command"}`},
+				{Kind: session.EventToolEnd, CallID: "same", Tool: "bash", ToolInvoked: true, ToolProcess: second},
+				{Kind: session.EventTurnDone},
+			}
+			conv.mu.Unlock()
+			turn = appSendWithWhenIdle(t, backend, agent.ID, "second", "", nil)
+			begin := toolRow(rec, t, func(row appwire.TurnTool) bool { return row.Turn == turn && row.Call == "same" })
+			if begin.Phase != appwire.PhaseBegin || begin.Process != "" || begin.OK != nil || begin.EndedAt != nil || begin.ExitCode != nil || len(begin.Tail) != 0 || begin.Lines != nil {
+				t.Fatalf("the second turn inherited the ended call: %+v", begin)
+			}
+			appTurnDoneFor(t, rec, turn)
+			end = toolRow(rec, t, func(row appwire.TurnTool) bool { return row.Turn == turn && row.Phase == appwire.PhaseEnd })
+			want := ""
+			if second != nil {
+				want = appProcessID(agent.ID, session.JobNotice{ID: second.Job, Started: second.Started})
+			}
+			if end.Process != want || len(end.Tail) != 1 || end.Tail[0] != "second output" || end.Lines == nil || *end.Lines != 1 {
+				t.Fatalf("the second end did not keep only its own facts: %+v, want process %q", end, want)
+			}
+			repeated := toolRow(rec, t, func(row appwire.TurnTool) bool {
+				return row.Turn == turn && row.Phase == appwire.PhaseBegin && len(row.Tail) == 1
+			})
+			if repeated.Process != "" || repeated.Tail[0] != "second output" || repeated.StartedAt == nil || begin.StartedAt == nil || !repeated.StartedAt.Equal(*begin.StartedAt) {
+				t.Fatalf("a repeated live begin discarded its own call: %+v", repeated)
+			}
+			a, _ := backend.find(agent.ID)
+			log := backend.callLog(a)
+			log.locked(func() {
+				if len(log.order) != 1 || log.order[0] != "same" {
+					t.Errorf("reusing a call duplicated its retention slot: %v", log.order)
+				}
+			})
+		})
+	}
+}
+
 // E4: the cache's last provider id never lends its process to another result
 // occurrence, whether both occurrences are on one page or paged separately.
 func TestAppToolProcessE4ReusedCallIDsDoNotLendProcessesAcrossHistory(t *testing.T) {
@@ -263,6 +336,77 @@ func TestAppToolProcessE4ReusedCallIDsDoNotLendProcessesAcrossHistory(t *testing
 		if len(tools) != 2 || tools[0].Process == "" || tools[1].Process != "" {
 			t.Fatalf("limit=%d same-id facts = %+v", limit, tools)
 		}
+	}
+}
+
+// R3 and E5: paging keeps every existing fact from the last same-id item;
+// only Process is overlaid from each row's own source occurrence.
+func TestAppToolProcessPagingPreservesLegacyFactsForReusedIDs(t *testing.T) {
+	backend, _, agent := workBackend(t, &fakeConversation{})
+	a, _ := backend.find(agent.ID)
+	job := &session.ToolProcess{Job: 3, Started: time.Date(2026, 10, 20, 9, 0, 0, 0, time.UTC)}
+	for _, linked := range []bool{false, true} {
+		name := "legacy"
+		if linked {
+			name = "with_process"
+		}
+		t.Run(name, func(t *testing.T) {
+			record := session.Record{Entries: []session.DisplayEntry{
+				{Role: "user", Text: "first"},
+				{Role: "tool", Tool: "bash", CallID: "same", Answered: true, Args: `{"command":"first-command","timeout":12}`, Output: "first output\nCommand exited with code 1", ToolResult: session.ToolResultInvoked},
+				{Role: "user", Text: "second"},
+				{Role: "tool", Tool: "bash", CallID: "same", Answered: true, Args: `{"command":"last-command","timeout":34}`, Output: "last output\nCommand exited with code 7", ToolResult: session.ToolResultRejectedBeforeRun | session.ToolResultHarnessMade | session.ToolResultRefused | session.ToolResultMediaAttempt},
+			}}
+			if linked {
+				record.Entries[1].ToolProcess = job
+			}
+			legacy := backend.appEntryFacts(a, record.Entries[3])
+			if legacy.ExitCode == nil || *legacy.ExitCode != 7 || legacy.Input == nil || legacy.Input.Text != "last-command" || len(legacy.Tail) != 2 || legacy.Tail[0] != "last output" || legacy.Invoked || !legacy.RejectedBeforeRun || !legacy.HarnessMade || !legacy.Refused || !legacy.MediaAttempt {
+				t.Fatalf("the legacy source does not distinguish the occurrences: %+v", legacy)
+			}
+			for _, limit := range []int{appwire.MaxEntries, 2} {
+				var got []appwire.Entry
+				before := ""
+				for {
+					count := 0
+					facts := func(item session.DisplayEntry) appwire.ToolFacts {
+						count++
+						return backend.appEntryFacts(a, item)
+					}
+					page, more, err := appEntryPage(agent.ID, record, time.Time{}, nil, before, limit, facts)
+					if err != nil {
+						t.Fatal(err)
+					}
+					tools := 0
+					for _, entry := range page {
+						if entry.Kind == appwire.EntryTool {
+							tools++
+							kept := entry.ToolFacts
+							kept.Process = ""
+							if !reflect.DeepEqual(kept, legacy) {
+								t.Fatalf("limit=%d existing facts changed: got %+v, want %+v", limit, kept, legacy)
+							}
+						}
+					}
+					if count != tools {
+						t.Fatalf("read %d facts for %d visible calls", count, tools)
+					}
+					got = append(page, got...)
+					if !more {
+						break
+					}
+					before = page[0].ID
+				}
+				want := appEntriesOf(agent.ID, record.Entries, time.Time{}, nil)
+				want[1].ToolFacts, want[3].ToolFacts = legacy, legacy
+				if linked {
+					want[1].Process = appProcessID(agent.ID, session.JobNotice{ID: job.Job, Started: job.Started})
+				}
+				if !reflect.DeepEqual(got, want) {
+					t.Fatalf("limit=%d paging changed legacy rows or borrowed a process: got %+v, want %+v", limit, got, want)
+				}
+			}
+		})
 	}
 }
 

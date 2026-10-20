@@ -313,6 +313,8 @@ This includes `background:true`, a foreground command kept past its session
 clock or timeout, a command kept by a steer, and a declined `keep_running`
 request run as a job for that turn. Waiting for approval does not break the link.
 A kept service is linked only where the backend publishes its process row.
+Each command keeps its own link; starting another command does not carry an
+earlier command's link.
 
 The link comes from the engine's job or service registry. A normal foreground
 completion, failed call, refusal, argument rejection or interrupted command
