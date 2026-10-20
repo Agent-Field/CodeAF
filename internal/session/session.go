@@ -664,6 +664,11 @@ type TaskReplyTag struct {
 	// neither and is read exactly as it always was.
 	Obligation string `json:"obligation,omitempty"`
 	Revision   uint64 `json:"revision,omitempty"`
+	// State and Stopped belong to the result's own attempt. A delayed
+	// delivery must not borrow a re-armed node's new cancellation state. Empty
+	// State identifies older tags without positive stop provenance.
+	State   TaskState `json:"state,omitempty"`
+	Stopped bool      `json:"stopped,omitempty"`
 }
 
 // Event is one observable thing in a turn. A Submit returns a channel of
@@ -2308,6 +2313,26 @@ type Config struct {
 	// SpendRailUSD remains a separate, adjustable conversation spending limit.
 	Budget Budget
 
+	// DailyBudgetUSD is the machine-wide daily ceiling resolved by a parent
+	// and carried into a worker without lending it the profile's settings door.
+	// It is read only when DailyBudgetResolved is true; zero then means unlimited.
+	DailyBudgetUSD float64
+
+	// DailyBudgetResolved says the daily ceiling was deliberately carried into
+	// this agent. Roots leave it false and read their profile and environment live,
+	// including the ordinary default profile whose ProfileDir is empty. A separate
+	// bit preserves a selected zero limit without mistaking an unset root for an
+	// unlimited worker.
+	DailyBudgetResolved bool
+
+	// SpendPreauthorized is the person's `--yes-spend` / `CODEAF_PREAUTHORIZE_SPEND=1`
+	// standing permission to spend past the daily ceiling, resolved at the door
+	// and carried into workers the same way [DailyBudgetUSD] is. When it is set
+	// the daily check in [Agent.railBlockLocked] is lifted - exactly the
+	// authority `doSpendGuard` already lifts from the crew guard (cmd/codeaf's
+	// do.go) - while a separate per-task or per-conversation limit stays in force.
+	SpendPreauthorized bool
+
 	// newerBuild is the cheap process-local reading that says this running
 	// codeaf has been replaced on disk. It is private because the session owns
 	// when the reading reaches a turn; tests replace only the reading itself.
@@ -2807,6 +2832,11 @@ type Agent struct {
 	// [Agent.deliveringOwnedResult]), and that question has to survive a result
 	// whose words were empty.
 	turnResults []uint64
+	// turnResultTags keeps cancellation provenance for the stopped-only guard.
+	// It retains every arrival, so mixed attempts cannot look stopped-only.
+	// turnNonTaskNews marks arrivals without exclusive task-result provenance.
+	turnResultTags  []TaskReplyTag
+	turnNonTaskNews bool
 	// personTurns is the same answer for the turns BEFORE the newest one, kept
 	// for the same reason and bounded (admission_compile.go). personAsk answers
 	// "what is the current ask"; this answers "what else have they told us",

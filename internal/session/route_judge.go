@@ -283,7 +283,7 @@ type routeVerdict struct {
 // is a condition nobody can check (see [routeVerdict.Acceptance]).
 const routeJudgeBrief = `You judge ONE turn of a coding assistant, after the fact. The assistant answered the person in WORDS ALONE — it called no tool. You decide one thing: should that turn have been WORK?
 
-WORDS are a question, a discussion, advice, an opinion, a fact, an explanation, a plan somebody asked to read. SMALL WORK is words too, for this purpose: a few tool calls, one obvious edit, a file read and an answer. Handing small work off is slower than doing it, so it is not work.
+WORDS include questions about feasibility, discussion, advice, opinions, facts, explanations and plans somebody asked to read. A polite question that clearly asks you to act now can still authorize work, as the work rule below explains. SMALL WORK is words too, for this purpose: a few tool calls, one obvious edit, a file read and an answer. Handing small work off is slower than doing it, so it is not work.
 
 WORK is research across several sources, changes across several files, a goal with several independent parts, or anything the person would otherwise watch a spinner for.
 
@@ -309,6 +309,19 @@ or
 
   {"work": true, "wide": true, "goal": "...", "acceptance": "...", "checks": ["..."], "why": "..."}
 
+  work   true only when the person clearly asks codeaf to do work now. This can
+         be an imperative or a polite question whose intended action is clear:
+         "Could you fix the failing tests?" and "Can you implement headless
+         screenshots and add tests?" both authorize work. A feasibility question,
+         such as "Is headless screenshot capture possible on CI?", or an
+         explanation request, such as "How would headless screenshots work?",
+         does not authorize work. "Can we get screenshots without a display?" is
+         ambiguous without context, so answer or clarify; do not start work.
+         "We should support screenshots eventually" is future direction, not
+         authorization. Judge intended action and timing, not grammar. Product
+         direction, suggestions, goals and plans do not authorize work unless
+         the person clearly asks you to act now. Judge authorization before
+         effort: a useful or lengthy job is not permission.
   wide   true when the work is BROAD — many files, many sources, several
          independent parts — so the one worker that starts on it is allowed to
          hand the parts out once it has opened the material. Leave it out for
@@ -379,6 +392,7 @@ func (a *Agent) readRouteJudge(ctx context.Context, user userMessage, usedTools 
 	a.mu.Lock()
 	turn, offered := a.routeTurns, a.routeOffered
 	model, closed := a.model, a.closed
+	freshPerson := a.personHeard != 0 && a.personHeard == a.turnSeq
 	a.mu.Unlock()
 	if closed || usedTools {
 		return judgeRuling{}
@@ -430,6 +444,11 @@ func (a *Agent) readRouteJudge(ctx context.Context, user userMessage, usedTools 
 	if offered > 0 && turn-offered < routeJudgeGap {
 		return judgeRuling{}
 	}
+	// Only an exclusively stopped-result wake is report-only. Every other
+	// turn keeps the ordinary ask, floors and readings, including human steering.
+	if user.wake && !user.answersPerson && !freshPerson && a.onlyStoppedResults(asked) {
+		return judgeRuling{}
+	}
 	// The judge is a ROLE, so an install with no tiers configured resolves it to
 	// the conversation's own model rather than refusing — and an install with
 	// nothing anywhere gets no judge at all, which is this feature absent rather
@@ -467,6 +486,26 @@ func (a *Agent) readRouteJudge(ctx context.Context, user userMessage, usedTools 
 
 	started = true
 	return judgeRuling{start: true, verdict: verdict, turn: turn, ahead: ahead}
+}
+
+// onlyStoppedResults requires positive provenance for every arrival. Missing
+// metadata, other news and repeated task identities leave normal routing alone;
+// in particular, two attempts of one task are not a stopped-only batch.
+func (a *Agent) onlyStoppedResults(asked string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.turnNonTaskNews || len(a.turnResultTags) == 0 {
+		return false
+	}
+	seen := make(map[uint64]bool, len(a.turnResultTags))
+	for _, tag := range a.turnResultTags {
+		if tag.ID == 0 || seen[tag.ID] || !tag.State.settled() || !tag.Stopped ||
+			strings.TrimSpace(tag.Request) != strings.TrimSpace(asked) {
+			return false
+		}
+		seen[tag.ID] = true
+	}
+	return true
 }
 
 // applyRouteJudge is the other half of [Agent.readRouteJudge]: the decision,
@@ -766,7 +805,7 @@ func routeJudgeQuestion(asked, answered string) string {
 // to surface features is a keyword rule with a bill attached.
 const routeAheadBrief = `You judge ONE message a person has just typed to a coding assistant, BEFORE it is answered. Nothing has been done yet: you are reading the REQUEST, not a reply. You decide one thing: is this WORK?
 
-WORDS are a question, a discussion, advice, an opinion, a fact, an explanation, a plan somebody asked to read. SMALL WORK is words too, for this purpose: a few tool calls, one obvious edit, a file read and an answer. Handing small work off is slower than doing it, so it is not work.
+WORDS include questions about feasibility, discussion, advice, opinions, facts, explanations and plans somebody asked to read. A polite question that clearly asks you to act now can still authorize work, as the work rule below explains. SMALL WORK is words too, for this purpose: a few tool calls, one obvious edit, a file read and an answer. Handing small work off is slower than doing it, so it is not work.
 
 WORK is research across several sources, changes across several files, a goal with several independent parts, or anything the person would otherwise watch a spinner for. Three shapes of request are almost always work: one message that asks for SEVERAL INDEPENDENT DELIVERABLES, a SWEEP across many files or many sources, and anything whose answer is MINUTES OF TOOL CALLS the person can only sit and watch.
 

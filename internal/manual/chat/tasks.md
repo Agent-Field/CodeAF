@@ -616,9 +616,28 @@ partial block disappears because that attempt's half-arrived call was discarded;
 proposal fragment starts a new block. If the call is refused before it ever becomes a
 question, it settles as `not started · the call was refused` instead of moving forever.
 
+## Will a polite request start a task — feasibility, explanation, suggestions and future direction
+
+**Automatic task routing needs a clear request to do work now.** An imperative or a
+polite question can authorize work: "Could you fix the failing tests?" and "Can you
+implement headless screenshots and add tests?" both ask codeaf to act. They remain
+eligible for normal routing; a small job that takes only a few tool calls stays here.
+
+A feasibility question, such as "Is headless screenshot capture possible on CI?", or an
+explanation request, such as "How would headless screenshots work?", stays in chat.
+"Can we get screenshots without a display?" is ambiguous without context, so codeaf
+answers or asks what you mean before starting. "We should support screenshots eventually"
+is future direction, not authorization. Suggestions, goals and plans remain discussion
+until you clearly ask codeaf to act now. The intended action and timing matter, not
+whether the sentence ends in a question mark.
+
+Both route readings follow this rule: the one alongside your message and the one after
+a reply in words alone. Both also require the work to be worth handing off, a substantial
+message of at least six words, and two models agreeing. Ambiguous messages stay in chat.
+
 ## Why a task started on its own — codeaf started work I did not ask for, this looked like work, so task N started
 
-**Sometimes work starts without you asking for it, and you are told after.** After a turn
+**Sometimes codeaf starts a task without you explicitly asking for a task, and tells you after.** After a turn
 that answered a substantial message in **words alone** — no tool call — a cheap model reads
 what you asked and the first two lines of the reply, and decides one thing: should that have
 been work? The same judge also starts reading your message **the moment you send it**,
@@ -627,7 +646,8 @@ alongside the reply rather than in front of it, which is its own section below.
 **A yes is asked twice.** The cheap model only screens — it reads every substantial message
 and every wordy turn, which is why it is cheap — and it cannot start anything on its own. Before a task exists, the same
 question is put once more to your **planner** model, in the same words, with none of the
-first answer in front of it. Only if both say yes does the work start, and then one dim line
+first answer in front of it. Both must recognize a clear request to do work now, and both
+must agree the work belongs on a task. Only then does the work start, and one dim line
 goes into the transcript:
 
 ```
@@ -686,6 +706,25 @@ type disarms it for the session. What bounds it is the list above, and the stop.
 Nodes cut by an adaptive run also appear as rows under the run's own row — see *Adaptive
 runs*, which explains what those rows can and cannot do.
 
+## Can a stopped task start again — a result wake and a fresh human request
+
+When a conversation wakes exclusively to report task results, every result is known to
+be stopped for the current request, and no fresh human message was consumed in that turn,
+answering that result does not start the same request again. Neither route reading runs.
+This includes a stopped task restored from a saved session when its delivered result carries
+that provenance. Recovery notices without result provenance follow normal routing.
+
+A new instruction you type is a fresh request and can be judged normally. That includes
+a new request that repeats the same words, or a message consumed while the stopped result
+is being answered. Mixed stopped and non-stopped results, different requests, multiple
+attempts of the same task, other background news and uncertain provenance also follow
+normal routing. These cases have no extra protection against restarting stopped work.
+
+The usual routing inputs and limits still apply. An unattended session uses its original
+goal as the routing request, including when a human message arrives during a result wake.
+Work must be worth handing off, with at least six words, two models agreeing, and at most
+one start every three turns.
+
 ## A message that reads like work makes codeaf look sooner — nothing else happens
 
 **The judge that starts work on its own looks at two moments.** One is after a turn that
@@ -710,11 +749,11 @@ four jobs, and reading the request cannot tell them apart. The answer doing the 
 this moment now only decides **how soon the answer is told what it has run up**, and the
 answer decides for itself from there.
 
-**What the judge is looking for is a request whose fastest correct answer is not a
-conversation:** several independent deliverables in one message, a sweep over many files or
-many sources, or an answer you would otherwise sit and watch a spinner for. A question, a
-discussion, one obvious edit and a few tool calls are all answered here, however large the
-subject sounds.
+**The judge needs both authorization and work worth handing off.** The fastest correct answer
+must not be a conversation: several independent deliverables in one message, a sweep over many
+files or sources, or an answer you would otherwise sit and watch a spinner for. Feasibility
+questions, discussion, suggestions and product direction are answered here, however large the
+subject sounds. A clear request whose fastest answer takes only a few tool calls stays here too.
 
 **Everything that bounds the auto-start above bounds this too** — one start every three
 turns across both moments, six words, two models agreeing, silence when either cannot
