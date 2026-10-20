@@ -651,6 +651,7 @@ const (
 	MethodDetachSkill    = "DetachSkill"    // string → bool (whether it was on)
 	MethodAttachedSkills = "AttachedSkills" // nothing → []string
 	MethodClearSkills    = "ClearSkills"    // nothing → int (how many were on)
+	MethodSkillFolders   = "SkillFolders"   // no args → []skills.Skill from this engine’s folders
 	MethodSkillShelf     = "SkillShelf"     // SkillShelfArgs → []store.Fact
 
 	// The conversation's own posture on the tool gate (internal/session's
@@ -1418,6 +1419,8 @@ type Welcome struct {
 	// false keeps the picker's own sentence for a conversation that cannot
 	// carry attached skills rather than a list whose every choice goes nowhere.
 	Skills bool `json:"skills,omitempty"`
+	// SkillFolders says discovery runs on this engine rather than the client.
+	SkillFolders bool `json:"skill_folders,omitempty"`
 
 	// ── version 21 ──────────────────────────────────────────────────────────
 
