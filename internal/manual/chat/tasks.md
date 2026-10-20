@@ -720,6 +720,7 @@ that instruction reaches the conversation, its own words can be judged normally 
 If the same wake also reports an independent task that was not stopped, that task's
 remaining work can still be judged normally, even when both tasks came from the same
 original request. The stopped task stays excluded from that work.
+This stop protection also applies to stopped tasks restored from a saved session.
 
 ## A message that reads like work makes codeaf look sooner — nothing else happens
 

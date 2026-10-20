@@ -20,6 +20,7 @@ A fresh human instruction remains eligible even when it arrives while the stoppe
 result is being answered.
 An independent non-stopped result in the same wake also remains eligible; sharing
 the original request with a stopped task does not cancel the sibling's work.
+Restoring a saved task preserves whether it was stopped by a person.
 
 The authorization and stopped-result rules each have their own searchable manual
 section, so retrieval returns the rule instead of truncating it inside a longer topic.
