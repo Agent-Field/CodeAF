@@ -717,6 +717,10 @@ every three turns.
 You can also type a new instruction while codeaf is answering the stopped result. Once
 that instruction reaches the conversation, its own words can be judged normally in that turn.
 
+If the same wake also reports an independent task that was not stopped, that task's
+remaining work can still be judged normally, even when both tasks came from the same
+original request. The stopped task stays excluded from that work.
+
 ## A message that reads like work makes codeaf look sooner — nothing else happens
 
 **The judge that starts work on its own looks at two moments.** One is after a turn that

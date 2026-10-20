@@ -122,6 +122,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -437,11 +438,6 @@ func (a *Agent) readRouteJudge(ctx context.Context, user userMessage, usedTools 
 		}
 		asked = steward.Ask()
 	}
-	// A stopped task's result wakes a turn so the session can report what
-	// happened. That reply is not a fresh instruction to start the same work.
-	if user.wake && !freshPerson && a.stoppedTaskResultFor(asked) {
-		return judgeRuling{}
-	}
 	// THE FLOOR IS THE ASK, and it is cheaper than a model call. A commit,
 	// an undo, a one-line edit or a single read is answered here; paying a
 	// judge to be told it is work is how F26's commit became a task.
@@ -453,6 +449,15 @@ func (a *Agent) readRouteJudge(ctx context.Context, user userMessage, usedTools 
 	}
 	if offered > 0 && turn-offered < routeJudgeGap {
 		return judgeRuling{}
+	}
+	// A stopped task's result is news to report, not a fresh instruction.
+	// Independent results in the same wake retain only their own work.
+	if user.wake && !freshPerson {
+		var blocked bool
+		asked, blocked = a.routeResultAsk(asked)
+		if blocked {
+			return judgeRuling{}
+		}
 	}
 	// The judge is a ROLE, so an install with no tiers configured resolves it to
 	// the conversation's own model rather than refusing — and an install with
@@ -493,27 +498,59 @@ func (a *Agent) readRouteJudge(ctx context.Context, user userMessage, usedTools 
 	return judgeRuling{start: true, verdict: verdict, turn: turn, ahead: ahead}
 }
 
-// stoppedTaskResultFor reports whether this turn is answering the result of a
-// stopped task that was started from the same request. A new message from the
-// person is a new instruction and remains eligible for the ordinary judge.
-func (a *Agent) stoppedTaskResultFor(asked string) bool {
+// routeResultAsk excludes cancelled work without vetoing an independent result
+// that inherited the same original request. Only a result-only wake uses this;
+// the person's fresh instructions take precedence in readRouteJudge.
+func (a *Agent) routeResultAsk(asked string) (string, bool) {
 	a.mu.Lock()
 	results := append([]uint64(nil), a.turnResults...)
+	tags := append([]TaskReplyTag(nil), a.turnResultTags...)
 	a.mu.Unlock()
 	if len(results) == 0 {
-		return false
+		return asked, false
 	}
 	graph := a.tasker()
-	if graph == nil {
-		return false
-	}
-	for _, id := range results {
-		node := graph.node(id)
-		if node != nil && node.wasStopped() && strings.TrimSpace(node.request()) == strings.TrimSpace(asked) {
-			return true
+	// Older callers carry only ids, and older persisted tags have no state.
+	// Current deliveries use their frozen snapshots, never the live attempt.
+	if len(tags) == 0 {
+		for _, id := range results {
+			tags = append(tags, TaskReplyTag{ID: id})
 		}
 	}
-	return false
+	var eligible, cancelled []TaskReplyTag
+	stopped := false
+	for _, tag := range tags {
+		if tag.State == "" && graph != nil {
+			if node := graph.node(tag.ID); node != nil {
+				tag = node.resultTag()
+			}
+		}
+		if tag.Stopped {
+			cancelled = append(cancelled, tag)
+			if strings.TrimSpace(tag.Request) == strings.TrimSpace(asked) {
+				stopped = true
+			}
+		} else if tag.State != "" && strings.TrimSpace(tag.owed()) != "" {
+			eligible = append(eligible, tag)
+		}
+	}
+	if !stopped {
+		return asked, false
+	}
+	if len(eligible) == 0 {
+		return "", true
+	}
+	// The shared request is context for each part, not authority to revive the
+	// cancelled sibling. Both readers receive the same restricted question.
+	var out strings.Builder
+	out.WriteString("Only the non-stopped task results below remain eligible for work. Do not restart stopped tasks or repeat the whole original request.\n")
+	for _, tag := range eligible {
+		fmt.Fprintf(&out, "\nTask %d (attempt %d), %s\nIts own target: %s\n", tag.ID, tag.Attempt, tag.Title, tag.owed())
+	}
+	for _, tag := range cancelled {
+		fmt.Fprintf(&out, "\nStopped task %d, report only: %s\n", tag.ID, tag.Title)
+	}
+	return out.String(), false
 }
 
 // applyRouteJudge is the other half of [Agent.readRouteJudge]: the decision,
