@@ -644,3 +644,59 @@ func TestTheVolatileNoteIsNeverTakenForSomethingThePersonSaid(t *testing.T) {
 		t.Fatalf("the last turn started at %q, want the person's own sentence", said)
 	}
 }
+
+func TestRewindKeepUndoRestoresAndRefusesNewWork(t *testing.T) {
+	a, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	collect(t, mustSubmit(t, a, "first"))
+	collect(t, mustSubmit(t, a, "second"))
+	before := a.Transcript()
+	points := a.RewindPoints()
+	token, err := a.RewindKeep(points[0].Index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(a.Transcript()) >= len(before) {
+		t.Fatal("rewind did not set aside the tail")
+	}
+	if err := a.UndoRewind("wrong"); err == nil {
+		t.Fatal("accepted another token")
+	}
+	if err := a.UndoRewind(token); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.Transcript(); len(got) != len(before) {
+		t.Fatalf("restored %d entries, want %d", len(got), len(before))
+	}
+	token, err = a.RewindKeep(points[0].Index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	collect(t, mustSubmit(t, a, "replacement"))
+	if err := a.UndoRewind(token); err == nil || !strings.Contains(err.Error(), "newer work") {
+		t.Fatalf("new work undo: %v", err)
+	}
+}
+
+func TestRewindKeepUndoSurvivesResume(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	a, workspace := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.SessionFile = path })
+	collect(t, mustSubmit(t, a, "keep these words"))
+	token, err := a.RewindKeep(a.RewindPoints()[0].Index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.UndoRewind(token); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
+	resumed, err := newAgent(Config{Workspace: workspace, Model: "test/model", System: "SYSTEM", SessionFile: path}, &scriptedCompleter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resumed.Close()
+	if countMessages(resumed, "keep these words") != 1 {
+		t.Fatal("restored message was not replayed exactly once")
+	}
+}
