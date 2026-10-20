@@ -19,13 +19,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/sqliteuri"
 	_ "modernc.org/sqlite"
 )
 
@@ -79,7 +79,7 @@ func Open(root string) (*Store, error) {
 	} else if err := f.Close(); err != nil {
 		return nil, fmt.Errorf("automations: %w", err)
 	}
-	u := url.URL{Scheme: "file", Path: path}
+	u := sqliteuri.File(path)
 	q := u.Query()
 	q.Set("mode", "rw")
 	q.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", busyTimeout.Milliseconds()))
