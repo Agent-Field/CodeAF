@@ -38,7 +38,7 @@ func TestConversationMethodsBoundsAndFeatures(t *testing.T) {
 		{"agents.rewind.points", `{"id":"a"}`},
 		{"agents.rewind", `{"id":"a","point":3}`},
 		{"agents.rewind.undo", `{"id":"a","token":"kept"}`},
-		{"agents.delete", `{"id":"a"}`},
+		{"agents.delete", `{"id":"a","confirm":true}`},
 		{"agents.debug", `{"id":"a"}`},
 		{"agents.manual", `{"id":"a","question":"how?"}`},
 	}
@@ -64,6 +64,15 @@ func TestConversationMethodsBoundsAndFeatures(t *testing.T) {
 	for _, params := range []string{`{"id":"a"}`, `{"id":"a","point":0}`, `{"id":"a","point":-1}`} {
 		if _, err := methods["agents.rewind"].call(e, json.RawMessage(params)); codeOf(err) != CodeBadParams {
 			t.Fatalf("point %s: %v", params, err)
+		}
+	}
+}
+
+func TestDeleteRequiresConfirmationBeforeProducer(t *testing.T) {
+	for _, params := range []string{`{"id":"a"}`, `{"id":"a","confirm":false}`, `{"id":"a","confirm":null}`} {
+		e := &conversationEngine{}
+		if _, err := methods["agents.delete"].call(e, json.RawMessage(params)); codeOf(err) != CodeBadParams || e.called != "" {
+			t.Fatalf("%s: err=%v producer=%q", params, err, e.called)
 		}
 	}
 }

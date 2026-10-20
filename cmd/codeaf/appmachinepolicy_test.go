@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -223,5 +224,60 @@ func machineSavedPage(name string) subharness.Harness {
 			{Id: "look", Kind: subharness.KindAgentLoop, Fields: subharness.Fields{"brief": "look", "tools": "read"}},
 			{Id: "land", Kind: subharness.KindHumanGate, Fields: subharness.Fields{"ask": "land it?"}},
 		}, Edges: []subharness.Edge{{"look", "land"}}}, Whitelist: []string{"read"},
+	}
+}
+
+func TestHarnessListAdmitsBeforeReadingDisk(t *testing.T) {
+	h := newMachineHarness(t)
+	var releases []func()
+	for i := 0; i < appActionReads; i++ {
+		release, ok := h.b.actions.reading()
+		if !ok {
+			t.Fatal("read admission")
+		}
+		releases = append(releases, release)
+	}
+	defer func() {
+		for _, release := range releases {
+			release()
+		}
+	}()
+	if _, err := h.b.SavedHarnesses(); wireCode(err) != appwire.CodeBusy {
+		t.Fatalf("unadmitted read: %v", err)
+	}
+}
+
+func TestHarnessListRefusesOversizeInputFiles(t *testing.T) {
+	for _, trace := range []bool{false, true} {
+		t.Run(map[bool]string{false: "page", true: "trace"}[trace], func(t *testing.T) {
+			h := newMachineHarness(t)
+			store := subharness.Default()
+			page, err := store.Save(machineSavedPage("bounded"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(store.Dir(), "bounded", "v1.json")
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if trace {
+				path, err = store.SaveRun(subharness.Trace{Id: page.Id})
+				if err != nil {
+					t.Fatal(err)
+				}
+				data, err = os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			data = append(data, []byte(strings.Repeat(" ", (1<<20)+1))...)
+			if err := os.WriteFile(path, data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := h.b.SavedHarnesses(); wireCode(err) != appwire.CodeTooLarge {
+				t.Fatalf("oversize input: %v", err)
+			}
+		})
 	}
 }

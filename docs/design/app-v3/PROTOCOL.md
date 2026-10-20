@@ -2344,7 +2344,7 @@ A client that sees no `slash.catalog` feature in `hello` has no catalogue to rea
 | `agents.rewind.points` | `{id}` | `{points: [{point, at, words, turns_after}]}` — authored turn boundaries, newest first |
 | `agents.rewind` | `{id, point}` | `{token}` — set aside the selected turn and everything after it |
 | `agents.rewind.undo` | `{id, token}` | `{}` — restore the set-aside turns |
-| `agents.delete` | `{id}` | `{}` — permanently delete the saved conversation |
+| `agents.delete` | `{id, confirm: true}` | `{}` — permanently delete the saved conversation |
 | `agents.debug` | `{id}` | `{path, message}` — keep the full record, naming its folder |
 | `agents.manual` | `{id, question?, client_id?}` | `{turn}` — same reply and turn events as `agents.send` |
 
@@ -2363,7 +2363,10 @@ Re-read `agents.messages` after a rewind or undo; the reply does not stream tran
 
 Delete uses the terminal's permanent deletion producer and manager guard: replace an ordinary
 team's manager in Teams first; optional global leadership can be cleared. Active work is stopped
-through that producer. The client confirms before calling; a successful deletion disappears from
+through that producer. Kept-running services are fenced and stopped before the record is removed;
+a stop failure leaves the conversation available. The client confirms before calling and sends
+literal `confirm: true`; missing or false confirmation is `bad_params` before any producer runs.
+A successful deletion disappears from
 conversation lists. There is no undo.
 
 Debug is one-way for this conversation's run, from now on. Repeating returns its folder and says
@@ -2395,7 +2398,8 @@ Both methods open the named conversation if needed. Unsupported engines answer
 Shelf reads share the session-action read gate (`busy` when full). Over a hosted
 connection the shelf, folder discovery and attachment doors run on the session host;
 local folders are not added to a far shelf. An older host without the `skill_folders`
-welcome capability supplies its active shelf and attachments alone. Every successful
+welcome capability supplies its active shelf and attachments alone. A capable host whose
+folder discovery fails returns `engine`, never a partial shelf. Every successful
 set emits `skills.changed {agent, names: [name…]}` in attachment order, so another
 view can refresh its shelf.
 Clients check the two hello features before offering these methods.
@@ -2424,9 +2428,12 @@ It reads the terminal sheet's explicit rows (unset is ask), with confirmation an
 The shared parser and `SetAutonomy` enforce the terminal's duration rules, project requirement and safety floors.
 Agent is a single-line id of at most 256 bytes; kind is at most 32 bytes; rule at most 64. A failed host read is an error, never invented ask rows.
 
-Harness listing shares the terminal panel's head-page and history reader; unreadable pages are omitted,
-unreadable history leaves the page without a last run. More than 128 visible pages or 512 KiB of reply
-answers `too_large`, never a partial list. Picking a harness only changes the terminal's draft chip
+Harness listing reads the terminal panel's current head pages and latest histories; unreadable pages
+are omitted, unreadable history leaves the page without a last run. Reads share the session-action
+read gate (`busy` when full). Before loading, each request enforces 128 rows, 1 MiB per page or
+latest trace, 16 MiB total file bytes and 32768 directory entries across the registry, version
+folders and run histories. More than these bounds or 512 KiB of reply answers `too_large`,
+never a partial list. Picking a harness only changes the terminal's draft chip
 (`harnChip`); browsing a panel row shows its card. Neither sets engine state, so there is no `harness.use`.
 
 Crew word forms map as follows:
