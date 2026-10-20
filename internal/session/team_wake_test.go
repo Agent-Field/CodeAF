@@ -78,7 +78,12 @@ func TestAStartedMemberWakesOnItsOwnWithTheBriefOnce(t *testing.T) {
 // the start alone.
 func TestAStartedMemberWhoseJoinWasStampedStillWakesWithItsBrief(t *testing.T) {
 	fixture := newWakingTeamFixture(t)
-	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: "lexer", Text: "Rewrite the lexer."})
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: "lexer", Text: "An unrelated older brief."})
+	startID, err := teams.AppendTrafficID(fixture.profile, fixture.teamID, teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: "lexer", Text: "Rewrite the lexer."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: "lexer", Text: "An unrelated newer brief."})
 	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindDirective, From: teams.FromManager, To: "lexer", Text: "Also delete the parser."})
 	dir := filepath.Join(filepath.Dir(filepath.Dir(fixture.parser)), "lexer")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -94,7 +99,7 @@ func TestAStartedMemberWhoseJoinWasStampedStillWakesWithItsBrief(t *testing.T) {
 	teamAgent(t, fixture, transcript, completer, nil)
 	time.Sleep(10 * time.Millisecond)
 	if err := teams.Update(fixture.profile, func(file *teams.File) error {
-		return file.AddMember(fixture.teamID, teams.Member{Key: convKeyOf(t, transcript), File: transcript, Handle: "lexer", JoinedAt: time.Now()})
+		return file.AddMember(fixture.teamID, teams.Member{Key: convKeyOf(t, transcript), File: transcript, Handle: "lexer", JoinedAt: time.Now(), StartID: startID})
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +114,7 @@ func TestAStartedMemberWhoseJoinWasStampedStillWakesWithItsBrief(t *testing.T) {
 	if !briefIn(first, "Rewrite the lexer.") {
 		t.Fatalf("the first request did not carry the brief:\n%s", first)
 	}
-	if strings.Contains(first, "Also delete the parser.") {
+	if strings.Contains(first, "Also delete the parser.") || strings.Contains(first, "An unrelated") {
 		t.Fatalf("a directive from before the join was handed over:\n%s", first)
 	}
 }

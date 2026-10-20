@@ -149,7 +149,7 @@ your chats and the column to `Tasks`.
 A manager has `team_dissolve` only while its team has never held anyone but it: no
 member, no former member, no subteam, and nothing in its Traffic. The rule is the same for
 every team, however it was made. It does not ask first, because it can only remove a team
-nothing happened in. Once anyone joins, it leaves at the manager's next step, and a
+nothing happened in. Once anyone joins or Traffic is written, it leaves at the manager's next step, and a
 remembered call says `team_dissolve is no longer one of your tools: the team has held
 members or exchanged messages, so only the person can disband it, from Teams.` A team
 that was used ends with `Disband` on Teams, which keeps its history.
@@ -553,7 +553,9 @@ it. The traffic says so.
 
 A member busy in one long command reads a message when that command returns, which is what
 `team_stop` is for. Nothing is delivered twice, and a conversation that joins a team is not
-handed the team's earlier history. A conversation reopened later is handed what was said to it
+handed the team's earlier history. A new member receives only the start that created its
+membership from before it joined; reusing a removed member's handle does not bring back that
+member's brief. A conversation reopened later is handed what was said to it
 while it was closed.
 
 The traffic itself is kept in the profile of the machine the conversations run on, in

@@ -62,7 +62,7 @@ func Dissolve(profileDir, id, manager string) error {
 		if t.Manager != manager {
 			return errors.New("this conversation no longer manages that team")
 		}
-		if !f.Dissolvable(id) || trafficSaid(profileDir, id) {
+		if !f.Dissolvable(id) || HasTraffic(profileDir, id) {
 			return ErrNotDissolvable
 		}
 		kept := f.Teams[:0:0]
@@ -86,9 +86,9 @@ func Dissolve(profileDir, id, manager string) error {
 	return nil
 }
 
-// trafficSaid reports whether team id's Traffic has anything in it, either
+// HasTraffic reports whether team id's Traffic has anything in it, either
 // file of it. An unreadable log counts as said, so a doubt keeps the team.
-func trafficSaid(profileDir, id string) bool {
+func HasTraffic(profileDir, id string) bool {
 	path := TrafficPath(profileDir, id)
 	for _, file := range []string{path, trafficRotated(path)} {
 		info, err := os.Stat(file)

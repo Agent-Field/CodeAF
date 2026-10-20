@@ -130,6 +130,7 @@ type teamRole struct {
 	// chooses again once (handlepick.go).
 	derived  bool
 	joinedAt time.Time
+	startID  string
 }
 
 // fileStamp is what a stat says about a file, and the whole of how this file
@@ -405,6 +406,7 @@ func rolesFor(file *teams.File, keys []string, d teams.Defaults) []teamRole {
 			questionsUp: effective.QuestionsUp,
 			derived:     member.HandleDerived(),
 			joinedAt:    member.JoinedAt,
+			startID:     member.StartID,
 		}
 		role.dissolvable = role.manager && file.Dissolvable(team.ID)
 		if hasHome {
@@ -520,7 +522,9 @@ func (a *Agent) armTeamTools(roles []teamRole) {
 	for _, role := range roles {
 		manager = manager || role.manager
 		member = member || (!role.manager && role.managed)
-		dissolvable = dissolvable || role.dissolvable
+		// Traffic can change without teams.json changing, so the cached role
+		// alone cannot say whether this verb can still work at this boundary.
+		dissolvable = dissolvable || (role.dissolvable && !teams.HasTraffic(a.config.teamProfile(), role.id))
 	}
 	if manager {
 		arriving = append(arriving, a.managerTools()...)
@@ -702,27 +706,11 @@ func (a *Agent) teamNewsLocked(profile string, roles []teamRole) string {
 	return strings.Join(groups, "\n\n")
 }
 
-// firstTeamCursor is where a conversation starts reading a team it has no
-// cursor for.
-//
-// A FRESH CONVERSATION DOES NOT REPLAY THE TEAM'S HISTORY. It starts at the last
-// entry written before this process began, so what it is handed is what was said
-// while it was listening, and a member added to a team with a month of Traffic
-// is not handed the month.
-//
-// THE ONE EXCEPTION IS ITS OWN START. A member the manager started with
-// `team_start` is opened by the interface after the start is written, and the
-// manager may have said something to it in between; so a start addressed to
-// this conversation's handle, written shortly before this process began, is
-// where it starts reading instead. It starts reading AT the start and not after
-// it, because the start carries the brief, and the brief is handed to the new
-// member here, marked as the manager's, on its first request ([teamBriefLine]).
-// The person never typed it, so it must not arrive as the person's message.
 // teamOwnStart reports whether entry is the start that made this
-// conversation: a manager's start addressed to its handle in the team, inside
-// [teamStartGrace] of when this process began. It is the one line a member is
-// owed from before it joined, the line [Agent.firstTeamCursor] reaches back
-// for, and the join bound in [Agent.teamNewsLocked] must let it through.
+// conversation: the manager's start admitted for this membership, inside
+// [teamStartGrace] of when this process began. Only that brief crosses the
+// join boundary. Legacy memberships with no join boundary retain the old
+// handle-based startup path; a stamped join needs the exact start identity.
 //
 // THE JOIN IS ALWAYS AFTER THE START. The manager writes the start, the
 // interface opens the conversation on reading it, and only then makes it a
@@ -731,10 +719,14 @@ func (a *Agent) teamNewsLocked(profile string, roles []teamRole) string {
 // too handed every started member nothing, so none of them ever woke
 // (team_wake.go), and a manager reported helpers running that were idle.
 func (a *Agent) teamOwnStart(role teamRole, entry teams.Entry) bool {
-	return !role.manager && role.handle != "" && entry.Kind == teams.KindStart && entry.To == role.handle &&
-		!entry.At.Before(a.startedAt.Add(-teamStartGrace))
+	return !role.manager && role.handle != "" && entry.Kind == teams.KindStart && entry.From == teams.FromManager &&
+		entry.To == role.handle && !entry.At.Before(a.startedAt.Add(-teamStartGrace)) &&
+		((role.startID != "" && entry.ID == role.startID) || (role.startID == "" && role.joinedAt.IsZero()))
 }
 
+// firstTeamCursor is where a conversation starts reading a team it has no
+// cursor for. A fresh conversation skips the team's earlier history except
+// its own start, whose brief is handed over as the manager's words.
 func (a *Agent) firstTeamCursor(profile string, role teamRole) string {
 	tail, err := teams.ReadTraffic(profile, role.id, "", teamFirstLook)
 	if err != nil {
@@ -747,8 +739,7 @@ func (a *Agent) firstTeamCursor(profile string, role teamRole) string {
 		if !entry.At.After(born) {
 			cursor = entry.ID
 		}
-		if role.handle != "" && entry.Kind == teams.KindStart && entry.To == role.handle &&
-			!entry.At.Before(born.Add(-teamStartGrace)) {
+		if a.teamOwnStart(role, entry) {
 			started = entry.ID
 		}
 		// AND THE DIRECTIVE IT WAS OPENED FOR. A member nobody had open is

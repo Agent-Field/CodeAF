@@ -13,7 +13,8 @@ package session
 // THE VERB IS ON THE BELT ONLY WHILE IT CAN WORK. It is armed at a boundary that
 // finds this conversation managing a team that has never held anyone but it
 // ([teams.File.Dissolvable]), and it leaves at the first boundary after anyone
-// else joins, with the reason said to a model that calls it from memory. A
+// else joins or Traffic is written, with the reason said to a model that calls
+// it from memory. A
 // capability that cannot work is absent, not broken. The call itself checks
 // again, under the store's lock, and also refuses a team whose Traffic has
 // anything in it ([teams.Dissolve]), because a start already written there is a
