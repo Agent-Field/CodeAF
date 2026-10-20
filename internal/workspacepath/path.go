@@ -98,3 +98,25 @@ func Aliases(workspace string, candidates ...string) []string {
 	}
 	return result
 }
+
+// Temporary classifies the path and roots using the same resolved spelling.
+// TMPDIR may itself be a link, including /var -> /private/var on macOS.
+func Temporary(path string) bool {
+	if strings.TrimSpace(path) == "" {
+		return false
+	}
+	path = Canonical(strings.TrimSpace(path))
+	for _, root := range []string{os.TempDir(), "/tmp"} {
+		if strings.TrimSpace(root) == "" {
+			continue
+		}
+		root = Canonical(strings.TrimSpace(root))
+		if root == string(filepath.Separator) {
+			continue
+		}
+		if path == root || strings.HasPrefix(path, root+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
+}

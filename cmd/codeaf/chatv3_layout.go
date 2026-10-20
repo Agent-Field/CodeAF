@@ -36,6 +36,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/workspacepath"
 )
 
 // v3Dir is ~/.codeaf/v3: the directory this surface keeps its own files in —
@@ -124,17 +125,10 @@ func v3CanonicalPlace(dir string) string {
 // starts a process that was never about a place at all. Those own a workspace,
 // and a session whose workspace was temporary is litter the sweep may reap.
 func v3NoProjectPlace(dir string) bool {
-	dir = filepath.Clean(dir)
-	if home, err := os.UserHomeDir(); err == nil && filepath.Clean(home) == dir {
+	if userHome, err := os.UserHomeDir(); err == nil && workspacepath.Canonical(userHome) == workspacepath.Canonical(dir) {
 		return true
 	}
-	for _, temporary := range []string{os.TempDir(), "/tmp"} {
-		temporary = filepath.Clean(temporary)
-		if dir == temporary || strings.HasPrefix(dir, temporary+string(filepath.Separator)) {
-			return true
-		}
-	}
-	return false
+	return v3TempPath(dir)
 }
 
 // v3GitRootTimeout bounds the one subprocess this answer costs.
@@ -683,21 +677,7 @@ func v3StampLaunchDir(launchDir, workspace string) string {
 // typed it. The pair is pinned by a test; if the sweep's rule ever widens, this
 // one widens with it or a conversation gets reaped under somebody.
 func v3TempPath(path string) bool {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return false
-	}
-	path = filepath.Clean(path)
-	for _, temporary := range []string{os.TempDir(), "/tmp"} {
-		temporary = filepath.Clean(strings.TrimSpace(temporary))
-		if temporary == "" || temporary == string(filepath.Separator) {
-			continue
-		}
-		if path == temporary || strings.HasPrefix(path, temporary+string(filepath.Separator)) {
-			return true
-		}
-	}
-	return false
+	return workspacepath.Temporary(path)
 }
 
 // ── the bucket, read and groomed ────────────────────────────────────────────
