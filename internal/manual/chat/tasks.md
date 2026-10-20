@@ -4275,7 +4275,7 @@ The plan store allows up to 256 tasks in one added batch and 1024 tasks in one r
 A composite worker can wake at most four times to integrate its children. The node
 tree's 3/20 bounds do not apply to that run.
 
-## How many tasks run at once — can I have it do two things at the same time, can you work on several parts of my answer at once
+## How many tasks run at once, where is task.parallel, where is the tasks at once setting, can I have it do two things at the same time, can you work on several parts of my answer at once
 
 **There is no limit by default.** codeaf does not cap the number of tasks running at the
 same time.

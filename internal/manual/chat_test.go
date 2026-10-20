@@ -3525,6 +3525,29 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 	}
 }
 
+// #1454: task.parallel is on the Tasks tab as `tasks at once`, not under
+// Spending. This checks the retrieved section's answer rather than only its
+// page, so restoring the former category cannot leave the retrieval gate green.
+func TestTaskParallelQuestionReachesItsCorrectedSettingsLocation(t *testing.T) {
+	const (
+		question = "where is task.parallel"
+		title    = "How many tasks run at once"
+	)
+	for _, section := range Chat().Search(question, DefaultResults) {
+		if section.Page != "tasks" || !strings.Contains(section.Title, title) {
+			continue
+		}
+		if !strings.Contains(section.Body, "under Tasks as `tasks at once`") {
+			t.Errorf("task.parallel answer omits its visible settings location: %s", section.Body)
+		}
+		if strings.Contains(section.Body, `category "spending"`) {
+			t.Errorf("task.parallel answer still names the former category: %s", section.Body)
+		}
+		return
+	}
+	t.Fatalf("%q did not reach tasks · %q", question, title)
+}
+
 // #1469: home listed waiting standing orders without their due time, and a person
 // asking when one goes off there had to be sent to the standing place for it.
 // Standing orders are automations now (automations.md), and home's `automations`
