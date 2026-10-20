@@ -40,3 +40,8 @@ canonical lock: the listener can disappear while the old engine is still flushin
 its journals. Upgrade regressions exercise status, stop, sweeps and idle/busy
 takeover through both spellings.
 
+
+A spoken alias-keyed conversation also outranks an abandoned empty canonical
+folder during hello discovery, matching boot's resume order. Otherwise two plain
+hellos could boot two agents onto the same legacy journal. A real-socket regression
+asserts both hellos open that journal with one boot.

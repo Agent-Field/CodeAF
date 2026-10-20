@@ -408,13 +408,17 @@ func v3LatestTranscript(workspace string) string {
 		return ""
 	}
 	spoken, empty := v3ScanBucket(bucket)
-	folder, _, found := v3PickFolder(spoken, empty, false)
-	if !found {
+	folder, resumed, found := v3PickFolder(spoken, empty, false)
+	if !resumed {
 		// A CONVERSATION AN OLDER BUILD FILED UNDER ANOTHER SPELLING IS STILL
-		// THIS WORKSPACE'S CONVERSATION ([v3LegacyFolder]).
+		// THIS WORKSPACE'S CONVERSATION ([v3LegacyFolder]). Boot prefers those
+		// words to an abandoned empty canonical folder, so hello must too or it
+		// would boot a second agent onto the legacy journal the host holds.
 		if legacy, _, found := v3LegacyFolder(workspace); found {
 			return session.Place{Dir: legacy.dir}.Transcript()
 		}
+	}
+	if !found {
 		return ""
 	}
 	return session.Place{Dir: folder.dir}.Transcript()

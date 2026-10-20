@@ -362,8 +362,8 @@ at.
 
 ## Picking up where you left off
 
-Launching with no arguments resumes **this directory's most recently written conversation**,
-chosen by file modification time. A directory that has never held one gets a fresh file.
+Launching with no arguments resumes **this directory's conversation you last spoke in**,
+chosen by its last user message time. A directory that has never held one gets a fresh file.
 
 It opens showing the last **40** blocks of that conversation rather than all of it, which is
 what keeps the first frame quick. Everything older is still there and still reachable:
@@ -936,3 +936,17 @@ rather than taking over an empty conversation that could acquire membership duri
 
 `Conversation unavailable` on a team card means its saved transcript is missing. A missing
 file is not recreated silently; add a new conversation and choose it as manager explicitly.
+
+## Symlink folders and resuming conversations from before an upgrade
+
+A folder and a symlink pointing to it are one project. If an older build saved your
+conversation under the alias, launching from either spelling can still resume it where
+it lives. When the resolved folder has no conversation you have spoken in, codeaf looks
+for the most recently spoken conversation whose recorded workspace still resolves to
+that folder. An abandoned empty conversation in the new location does not hide it, and
+another window joins the same conversation the engine is already holding.
+
+Existing spoken history in the resolved folder takes priority. This does not combine or
+move historical folders. A broken or removed alias cannot identify an old conversation
+through the resolved folder; `codeaf chat --session <path>` still opens a transcript you
+name explicitly.
