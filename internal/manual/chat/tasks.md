@@ -4350,13 +4350,13 @@ The plan store allows up to 256 tasks in one added batch and 1024 tasks in one r
 A composite worker can wake at most four times to integrate its children. The node
 tree's 3/20 bounds do not apply to that run.
 
-## How many tasks run at once — can I have it do two things at the same time, can you work on several parts of my answer at once
+## How many tasks run at once, where is task.parallel, where is the tasks at once setting, can I have it do two things at the same time, can you work on several parts of my answer at once
 
 **There is no limit by default.** codeaf does not cap the number of tasks running at the
 same time.
 
 The setting `task.parallel` exists for anyone who wants a number anyway — settings panel
-(`ctrl+,` or `/settings`), category "spending". Blank means no limit. A cap is a queue and
+(`ctrl+,` or `/settings`), under Tasks as `tasks at once`. Blank means no limit. A cap is a queue and
 never a refusal: work past the cap waits and starts when a slot frees, and while it waits
 its roster row says `waiting · slot` on its hint line, and it sits under `Queued`, which
 starts folded to its heading.
