@@ -55,6 +55,9 @@ func TestReviewFreshHumanRepeatDuringStoppedWake(t *testing.T) {
 			t.Error(err)
 			return
 		}
+		// Finish the production boundary drain before this scripted answer
+		// returns, so the steer is consumed in this turn deterministically.
+		a.drainSteering(nil)
 		go func() {
 			for range ch {
 			}
@@ -86,6 +89,9 @@ func TestFreshHumanSteeringKeepsDevRouteAsk(t *testing.T) {
 			t.Error(err)
 			return
 		}
+		// Finish the production boundary drain before this scripted answer
+		// returns, so the steer is consumed in this turn deterministically.
+		a.drainSteering(nil)
 		go func() {
 			for range ch {
 			}
