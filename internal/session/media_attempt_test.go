@@ -72,8 +72,8 @@ func TestMediaAttemptCostsDisplayEntryNoBytes(t *testing.T) {
 	if unsafe.Sizeof(ToolResultFlags(0)) != 1 || ToolResultMediaAttempt != 1<<4 {
 		t.Fatalf("flags grew: size %d bit %d", unsafe.Sizeof(ToolResultFlags(0)), ToolResultMediaAttempt)
 	}
-	if size := unsafe.Sizeof(DisplayEntry{}); size > 296 {
-		t.Fatalf("DisplayEntry is %d bytes; budget is 296", size)
+	if size := unsafe.Sizeof(DisplayEntry{}); size > 304 {
+		t.Fatalf("DisplayEntry is %d bytes; budget is 304 including the tool process pointer", size)
 	}
 }
 

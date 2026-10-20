@@ -2917,8 +2917,8 @@ func appDressedPage(items []session.DisplayEntry, all []appwire.Entry, from []in
 			appDressTool(&page[i], items[from[start+i]])
 		}
 	}
-	// A tool entry carries its call's facts, as its row did live. The call a
-	// page names is the LAST item to carry its id, as it always was.
+	// Existing facts keep their last same-id source, as older pages did. Only
+	// the new process identity belongs to the exact result occurrence.
 	wanted := map[string]bool{}
 	for _, entry := range page {
 		if entry.Kind == appwire.EntryTool && entry.Call != "" {
@@ -2936,6 +2936,10 @@ func appDressedPage(items []session.DisplayEntry, all []appwire.Entry, from []in
 	}
 	for i := range page {
 		if item, ok := calls[page[i].Call]; ok && page[i].Kind == appwire.EntryTool {
+			item.ToolProcess = nil
+			if start+i < len(from) && from[start+i] >= 0 {
+				item.ToolProcess = items[from[start+i]].ToolProcess
+			}
 			page[i].ToolFacts = facts(item)
 		}
 	}
