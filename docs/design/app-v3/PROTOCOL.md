@@ -442,6 +442,19 @@ result or an event, `?` marks a field that may be absent.
   is known (the next tool call or the turn's end).
 - Entry ids are stable: the id sent live in `entry.added` equals the id returned
   later by `agents.entries` for the same item.
+- A factory job's agent (`factory.job_chats`'s `agent`) holds the run's own
+  progress lines, written between turns as `answer` entries: `review started`,
+  `review done · 4m · …`, `asking you: …`, `stopped`, `landed · …`. Each arrives
+  live as `entry.added` the moment it is written, while the app holds that
+  conversation, with the id, words and facts `agents.entries` answers for it
+  afterwards. A line that reports one step's round carries
+  `progress: {step, round?, event}`, where `event` is `started` or `done` (the
+  round began or finished), `waiting` (the step waits on a question put to the
+  person), or `failed` or `stopped` (the run ended under the step, on its error
+  or on a person's stop or no); `round` is absent for an approve step. Lines about
+  the job as a whole (`landed`, `answered: …`, a steer, a stop that cut no step)
+  have no `progress`. It is the runner's own fact, never read out of `text`,
+  which keeps the line's words.
 - `turn.tool` and tool entries carry `title`: the same one-line label the TUI
   shows for that call (e.g. `read src/auth/session.ts`, `bash pnpm test`), and
   `detail?` (short result line). Never just the bare tool name.
@@ -2434,6 +2447,8 @@ Feature `factory.remote` is present only when the engine serves the typed factor
 
 `factory.me` never returns session identifiers, machines, runners or checkout paths. Its `github_signed_in` comes only from the serving factory's explicit attestation of a GitHub-verified caller profile; a credential ID, handle or operator flag cannot imply it. An older factory omitting the attestation yields no GitHub claim without changing the connection's actual authentication state. `can_sign_out` separately indicates a caller session that the session endpoint can end: a verified legacy access grant can identify a person without supporting that action. Desktops offer Sign out only with both explicit flags. `github_sign_in_available` and `invite_available` are the serving factory's own statement of its configuration (a GitHub client id is set; and, for the second, a tokens file exists to keep invitations in); they are never inferred from a role, an id or a mode, and an older factory omits them, which reads as `false`.
 
+**Step times.** Each of `job.steps[]` says when its latest round began, `started_at` (RFC 3339), beside `at`, when it ended: a running step has `started_at` once its round has begun, and no `at`, a finished one both, a pending one (including one sent back to run again) neither. A round that carries on in the chat a pause cut short keeps the start it had; a round in a fresh chat starts afresh. Each finished round in `steps[].rounds` (`{round, summary?, at}`) also carries its own `started_at`, so a surface can place every round of a step from the job alone. A job, step or round recorded before these were kept simply has no `started_at`. A round's conversation id (`rounds[].chat`, like `steps[].chat`) is a path on the machine that ran it and is withheld from every reader of the job; the app opens a round's chat through `factory.job_chats`, whose `steps[].rounds` names it as an agent.
+
 **Job size.** `job.size` is the size LABEL alone (`S`, `M`, `L`, `XS`, `XL`) and is the only size a start reads. `job.read_size` `{value: "S"|"M"|"L", from: "read"|"diff"}` is additive and display only: it is present only when `job.size` is absent and the engine has a size to show, the completed read's guess (`read`) or a pull request's measured lines (`diff`). Never both on one job; neither for a chat guess, an item with no recorded source, or a read the text has since outdated. A client that ignores `read_size` stays correct. `triage.size_from` (`read`, `diff`, `chat`, absent = unknown) carries the provenance between machines.
 
 Runner and activity reads optionally carry `people`, keyed by the normalized GitHub handles referenced in their returned rows. Names and photos come from recorded GitHub sign-ins; unknown handles have no invented profile. The activity limit also limits this profile map. Join previews optionally carry `factory.operator_name` and `factory.operator_avatar_url` after the access link matches.
@@ -2799,9 +2814,9 @@ Feature `factory.job_chats` is present only when the engine implements `FactoryJ
 
 | method | params | answers |
 |---|---|---|
-| `factory.job_chats` | `{factory, job}` | `FactoryJobChats {factory, job, agent, steps: [{step, agent}]}` |
+| `factory.job_chats` | `{factory, job}` | `FactoryJobChats {factory, job, agent, steps: [{step, agent, rounds?: [{round, agent}]}]}` |
 
-`agent` is the job's agent: the item's own conversation, which the run reports into and which reads what the person types as the brief before a run and the steer during one (and the answer while the job waits on a question). It is made when the job has none yet; that makes a conversation and its team on this machine, asks no model and starts no job. `steps` is the latest chat of each step that ran, in the run's order; a step that has not run, or whose chat cannot be opened, is left out. Each `agent` is an ordinary agent id: the engine holds it open before answering (a running step is lent, as to any window), so the app opens and messages it as it does any conversation, and a message to a step's chat goes to that step directly. The chats are read from the factory's own record of the job, never from a team's names.
+`agent` is the job's agent: the item's own conversation, which the run reports into and which reads what the person types as the brief before a run and the steer during one (and the answer while the job waits on a question). It is made when the job has none yet; that makes a conversation and its team on this machine, asks no model and starts no job. `steps` is the latest chat of each step that ran, in the run's order; a step that has not run, or whose chat cannot be opened, is left out. A step's `rounds` names the chat of each of its finished rounds, oldest first, matched to `job.steps[].rounds` by `round` (the latest finished round's is usually the step's own `agent`); a round with no chat (a check step's), one recorded before round chats were kept, or one whose chat cannot be opened is left out, and a step with none has no `rounds`. Each `agent` is an ordinary agent id: the engine holds it open before answering (a running step is lent, as to any window), so the app opens and messages it as it does any conversation, and a message to a step's chat goes to that step directly. The chats are read from the factory's own record of the job, never from a team's names.
 
 Only the factory this engine serves (`factory_local`) is answered; any other is `not_found` ("this factory's chats are on the machine that runs its jobs"). A job with a model of its own (`job.model`) puts its agent on that model, and `factory.job_set_model` moves the agent with the job, so every chat of one job reads one model.
 

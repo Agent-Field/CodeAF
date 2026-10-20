@@ -18,16 +18,17 @@ import (
 type fakeTalk struct {
 	mu     sync.Mutex
 	said   map[string][]string
+	steps  map[string][]*factory.StepProgress // the step beside each said line, nil for none
 	person map[string][]Heard
 	last   map[string]string
 	refuse int // how many Says to refuse before taking them
 }
 
 func newFakeTalk() *fakeTalk {
-	return &fakeTalk{said: map[string][]string{}, person: map[string][]Heard{}, last: map[string]string{}}
+	return &fakeTalk{said: map[string][]string{}, steps: map[string][]*factory.StepProgress{}, person: map[string][]Heard{}, last: map[string]string{}}
 }
 
-func (f *fakeTalk) Say(transcript, line string) error {
+func (f *fakeTalk) Say(transcript, line string, step *factory.StepProgress) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.refuse > 0 {
@@ -35,7 +36,22 @@ func (f *fakeTalk) Say(transcript, line string) error {
 		return errors.New("the conversation is in the middle of a turn")
 	}
 	f.said[transcript] = append(f.said[transcript], line)
+	f.steps[transcript] = append(f.steps[transcript], step)
 	return nil
+}
+
+// stepOf is the step said beside the first line that begins with line, and
+// whether such a line was said at all. A prefix, because a done line's time
+// depends on the clock it ran under.
+func (f *fakeTalk) stepOf(transcript, line string) (*factory.StepProgress, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i, said := range f.said[transcript] {
+		if strings.HasPrefix(said, line) {
+			return f.steps[transcript][i], true
+		}
+	}
+	return nil, false
 }
 
 func (f *fakeTalk) Heard(transcript string, after time.Time) ([]Heard, error) {

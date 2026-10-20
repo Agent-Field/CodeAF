@@ -537,13 +537,13 @@ func (lp *floorLoop) askIn(ctx context.Context, c *loopCtl, i int, pending, qkin
 	c.pending = pending
 	lp.mu.Unlock()
 	now := lp.r.now()
-	name := ""
+	name, round := "", 0
 	err := lp.write(c, func(it *factory.Item) error {
 		it.State = factory.StateNeedsYou
 		it.Question, it.QKind = question, qkind
 		if i >= 0 && i < len(it.Stream.Phases) {
 			ph := &it.Stream.Phases[i]
-			name = ph.Name
+			name, round = ph.Name, ph.Round
 			setPhaseState(ph, state, now)
 			if qkind == factory.QKindApprove {
 				// The question belongs to the approve step itself, so the report
@@ -573,7 +573,17 @@ func (lp *floorLoop) askIn(ctx context.Context, c *loopCtl, i int, pending, qkin
 	if said == "" {
 		said = askLine("", question)
 	}
-	lp.tell(c.id, said)
+	// THE QUESTION IS THE STEP'S when it names one: the step waits on it (or
+	// failed into it), and the line says which.
+	var step *factory.StepProgress
+	if name != "" {
+		event := factory.ProgressWaiting
+		if state == factory.PhaseFailed {
+			event = factory.ProgressFailed
+		}
+		step = &factory.StepProgress{Step: name, Round: round, Event: event}
+	}
+	lp.tellStep(c.id, said, step)
 	var a loopAnswer
 	select {
 	case a = <-c.answers:
@@ -708,6 +718,7 @@ func (lp *floorLoop) addNote(id int, words string) {
 // finish marks phase i done, with an event.
 func (lp *floorLoop) finish(c *loopCtl, i int, name, note string) bool {
 	spent := 0.0
+	round := 0
 	now := lp.r.now()
 	err := lp.move(c, name, EventDone, note, func(it *factory.Item) error {
 		if i < len(it.Stream.Phases) {
@@ -716,6 +727,7 @@ func (lp *floorLoop) finish(c *loopCtl, i int, name, note string) bool {
 			if note != "" {
 				it.Stream.Phases[i].Note = note
 			}
+			round = it.Stream.Phases[i].Round
 		}
 		spent = it.Stream.Spent
 		return nil
@@ -734,7 +746,7 @@ func (lp *floorLoop) finish(c *loopCtl, i int, name, note string) bool {
 	lp.mu.Lock()
 	res := lp.results[c.id][i]
 	lp.mu.Unlock()
-	lp.tell(c.id, doneLine(name, took, cost, lp.summary(res)))
+	lp.tellStep(c.id, doneLine(name, took, cost, lp.summary(res)), &factory.StepProgress{Step: name, Round: round, Event: factory.ProgressDone})
 	return true
 }
 
@@ -811,6 +823,12 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			ph := &it.Stream.Phases[i]
 			setPhaseState(ph, factory.PhaseRunning, now)
 			ph.Round = round
+			// A ROUND BEGINS WHERE ITS CHAT DOES: a fresh chat is a fresh start,
+			// and a round carrying on in the chat a pause cut short keeps the
+			// start it had (one that never recorded one takes this one).
+			if resume == "" || ph.Started.IsZero() {
+				ph.Started = now
+			}
 			// A step that is running again is no longer the failed step.
 			// The record keeps the earlier incident.
 			ph.Failure = nil
@@ -836,7 +854,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			if cur, err := lp.r.opts.Store.Get(c.id); err == nil && cur.Stream != nil {
 				c.phaseSpent = cur.Stream.Spent
 			}
-			lp.tell(c.id, fmt.Sprintf(sayStarted, name))
+			lp.tellStep(c.id, fmt.Sprintf(sayStarted, name), &factory.StepProgress{Step: name, Round: round, Event: factory.ProgressStarted})
 		}
 		job := lp.job(c, st, index, i, round)
 		job.Resume, job.Opened, job.CarryOn = resume, lp.opened(c, i), carried
@@ -1410,19 +1428,20 @@ func (lp *floorLoop) stop(c *loopCtl) {
 	c.cancel()
 	if first {
 		now := lp.r.now()
+		var cut *factory.StepProgress
 		err := lp.r.opts.Store.Update(c.id, func(it *factory.Item) error {
 			// A FAILURE ALREADY ON A RUNNING JOB IS THE STEP'S OWN: failStop
 			// wrote it the moment before it stopped the run, it is why the run
 			// stopped, and it stays. Every other stop the loop makes is a
 			// person's, the Stop door or a no to an approve step, to a step out
 			// of rounds or to the budget, and endRun records it as theirs.
-			endRun(it, now, it.Failure)
+			cut = endRun(it, now, it.Failure)
 			return nil
 		})
 		if err == nil {
 			lp.emit(c.id, "", EventStopped, "stopped")
 		}
-		defer lp.tell(c.id, sayStopped)
+		defer lp.tellStep(c.id, sayStopped, cut)
 	}
 	c.wmu.Unlock()
 	lp.release(c)
@@ -1445,14 +1464,15 @@ func (r *Runner) Stop(id int) error {
 		// says: a process that died mid-round left it so, and stop puts it
 		// back where a person can launch it again.
 		now := r.now()
+		var cut *factory.StepProgress
 		if err := r.opts.Store.Update(id, func(it *factory.Item) error {
-			stopStored(it, now)
+			cut = endRun(it, now, nil)
 			return nil
 		}); err != nil {
 			return err
 		}
 		lp.emit(id, "", EventStopped, "stopped")
-		lp.tell(id, sayStopped)
+		lp.tellStep(id, sayStopped, cut)
 		return nil
 	}
 	return fmt.Errorf("%s is not running", it.Ref())
@@ -1475,7 +1495,16 @@ func stopStored(it *factory.Item, now time.Time) { endRun(it, now, nil) }
 // running that step again carries on from it. A job stopped before any step
 // began (queued) or after the last one ended (landed) lost nothing: it is
 // simply back in the backlog with no failure, where a start picks it up.
-func endRun(it *factory.Item, now time.Time, why *factory.Failure) {
+//
+// It answers the step the stop cut, for the manager's `stopped` line: failed
+// when why is the step's own error, stopped when it is a person's; nil when it
+// cut none, and the line is then about the job.
+func endRun(it *factory.Item, now time.Time, why *factory.Failure) *factory.StepProgress {
+	event := factory.ProgressStopped
+	if why != nil {
+		event = factory.ProgressFailed
+	}
+	var cut *factory.StepProgress
 	it.Failure = why
 	it.Approval = nil
 	it.PublishError = ""
@@ -1484,7 +1513,7 @@ func endRun(it *factory.Item, now time.Time, why *factory.Failure) {
 	it.Question, it.QKind = "", ""
 	s := it.Stream
 	if s == nil {
-		return
+		return nil
 	}
 	if s.Cur >= 0 && s.Cur < len(s.Phases) {
 		ph := &s.Phases[s.Cur]
@@ -1498,11 +1527,13 @@ func endRun(it *factory.Item, now time.Time, why *factory.Failure) {
 				step := *why
 				ph.Failure = &step
 			}
+			cut = &factory.StepProgress{Step: ph.Name, Round: ph.Round, Event: event}
 		}
 	}
 	s.Ended = now
 	s.Paused = false
 	loopSay(it, now, "fail", "stopped · branch kept")
+	return cut
 }
 
 // stoppedByYou is the failure a person's stop leaves on the step it cut and

@@ -275,6 +275,12 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 	if step.State != "" {
 		setPhaseState(ph, step.State, now)
 	}
+	// WHEN THE ROUND BEGAN IS THE WORKER'S CLOCK, not this report's arrival:
+	// the report comes after the round has run a while. It lands before the
+	// result, so the round line folded below carries it.
+	if !step.Started.IsZero() {
+		ph.Started = step.Started
+	}
 	if step.Round > 0 {
 		ph.Round = step.Round
 	}
@@ -326,7 +332,7 @@ func foldResult(it *factory.Item, st factory.Stage, i int, res factory.StageResu
 		round = 1
 	}
 	factory.NoteRound(ph, factory.RoundCap(st.Max, round), factory.RoundLine{
-		Round: round, Summary: factory.RoundSummary(kept), At: now,
+		Round: round, Summary: factory.RoundSummary(kept), At: now, Started: ph.Started, Chat: res.Chat,
 	})
 	it.Stream.Findings = res.Findings
 	sheet := makesSheet(st)
@@ -366,14 +372,20 @@ func foldResult(it *factory.Item, st factory.Stage, i int, res factory.StageResu
 // setPhaseState moves a phase and stamps its finish. Done and failed are the
 // ends the brief's clock reads (step.at). Pending and running clear a stamp,
 // so a step sent back does not keep the time it ended before. Waiting leaves
-// the stamp alone: a question is not an ending.
+// the stamp alone: a question is not an ending. Pending also clears when the
+// step began (step.started_at): a step sent back has not started again until
+// its next round does, and running leaves it to the round that sets it
+// ([floorLoop.runPhase]), since an answer that puts a step running again is
+// not a new round.
 func setPhaseState(ph *factory.Phase, state factory.PhaseState, now time.Time) {
 	ph.State = state
 	switch state {
 	case factory.PhaseDone, factory.PhaseFailed:
 		ph.At = now
-	case factory.PhasePending, factory.PhaseRunning:
+	case factory.PhaseRunning:
 		ph.At = time.Time{}
+	case factory.PhasePending:
+		ph.At, ph.Started = time.Time{}, time.Time{}
 	}
 }
 

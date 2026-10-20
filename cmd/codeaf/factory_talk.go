@@ -149,13 +149,14 @@ func managerMaker(st *store.Store, workspace, profileDir string) func(context.Co
 
 // sessionTalk is the runner's [factoryrun.Talk] over internal/session's
 // journal doors: a line goes in as the manager's own message, marked
-// factory-progress, and what the person typed comes out by its instant.
+// factory-progress with the step it reports on, and what the person typed
+// comes out by its instant.
 type sessionTalk struct{}
 
 // Say appends one line; a conversation that is not there any more is
 // [factoryrun.ErrTalkGone], so the runner stops owing it lines.
-func (sessionTalk) Say(transcript, line string) error {
-	err := session.AppendProgress(transcript, line)
+func (sessionTalk) Say(transcript, line string, step *factory.StepProgress) error {
+	err := session.AppendProgress(transcript, line, step)
 	if errors.Is(err, os.ErrNotExist) {
 		return factoryrun.ErrTalkGone
 	}

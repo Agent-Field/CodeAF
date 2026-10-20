@@ -86,12 +86,15 @@ type WorkerMerge struct {
 // StepReport carries the last round's full result without exposing Go names.
 // rounds is every finished try. failure is set when this step errored.
 type StepReport struct {
-	Name    string      `json:"name"`
-	State   string      `json:"state,omitempty"`
-	Round   int         `json:"round,omitempty"`
-	Result  *StepResult `json:"result,omitempty"`
-	Rounds  []RoundLine `json:"rounds,omitempty"`
-	Failure *Failure    `json:"failure,omitempty"`
+	Name  string `json:"name"`
+	State string `json:"state,omitempty"`
+	Round int    `json:"round,omitempty"`
+	// StartedAt is when the step's latest round began on the worker; absent
+	// leaves the factory's as it is.
+	StartedAt *time.Time  `json:"started_at,omitempty"`
+	Result    *StepResult `json:"result,omitempty"`
+	Rounds    []RoundLine `json:"rounds,omitempty"`
+	Failure   *Failure    `json:"failure,omitempty"`
 }
 
 // StepResult preserves the evidence that later steps need after a restart.
@@ -122,12 +125,9 @@ func ToWorkerReport(r WorkerReport) factory.RunReport {
 		out.Pipeline = &factory.PipelineChange{Stages: stages, Phases: stream.Phases}
 	}
 	for _, s := range r.Steps {
-		stage := factory.StageReport{Name: s.Name, State: factory.PhaseState(s.State), Round: s.Round, Failure: failureItem(s.Failure)}
-		if len(s.Rounds) > 0 {
-			stage.Rounds = make([]factory.RoundLine, len(s.Rounds))
-			for i, line := range s.Rounds {
-				stage.Rounds[i] = factory.RoundLine{Round: line.Round, Summary: line.Summary, At: line.At}
-			}
+		stage := factory.StageReport{Name: s.Name, State: factory.PhaseState(s.State), Round: s.Round, Failure: failureItem(s.Failure), Rounds: roundsItem(s.Rounds)}
+		if s.StartedAt != nil {
+			stage.Started = *s.StartedAt
 		}
 		if res := s.Result; res != nil {
 			stage.Result = &factory.StageResult{Tests: res.Tests, Done: res.Done, Findings: res.Findings, Claims: mapList(res.Claims, toClaim), Output: res.Output, Exit: res.Exit, Notes: res.Notes, Spent: res.Cost, Chat: res.Chat}
@@ -157,13 +157,7 @@ func FromRunReport(r factory.RunReport) WorkerReport {
 		out.Pipeline = steps(factory.Item{Stages: p.Stages, Stream: &factory.Stream{Phases: p.Phases}})
 	}
 	for _, s := range r.Stages {
-		step := StepReport{Name: s.Name, State: string(s.State), Round: s.Round, Failure: failureWireOrNil(s.Failure)}
-		if len(s.Rounds) > 0 {
-			step.Rounds = make([]RoundLine, len(s.Rounds))
-			for i, line := range s.Rounds {
-				step.Rounds[i] = RoundLine{Round: line.Round, Summary: line.Summary, At: line.At}
-			}
-		}
+		step := StepReport{Name: s.Name, State: string(s.State), Round: s.Round, StartedAt: timeOrNil(s.Started), Failure: failureWireOrNil(s.Failure), Rounds: roundsWire(s.Rounds)}
 		if res := s.Result; res != nil {
 			step.Result = &StepResult{Tests: res.Tests, Done: res.Done, Findings: res.Findings, Claims: mapList(res.Claims, fromClaim),
 				Output: res.Output, Exit: res.Exit, Notes: res.Notes, Cost: res.Spent, Chat: res.Chat}

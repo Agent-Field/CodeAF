@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
@@ -24,7 +25,9 @@ import (
 // own journal, so the file stays one valid conversation whoever wrote a line:
 //
 //   - [AppendProgress] writes one runner line as an assistant message, marked
-//     `{"audience":"human","kind":"factory-progress"}`;
+//     `{"audience":"human","kind":"factory-progress"}`, with the step the line
+//     reports on beside it when it reports on one (`"step":{"step":"review",
+//     "round":1,"event":"done"}`), and tells [OnProgress]'s reader it did;
 //   - [PersonLines] reads what the person typed, oldest first, after a moment;
 //   - [LastSaid] reads the last sentence a conversation's model said, which is
 //     how a stage's one-line summary is found when it left no notes.
@@ -136,10 +139,11 @@ func forgetLiveJournal(a *Agent) {
 	})
 }
 
-// progressMessage is the line as the journal and the model keep it.
-func progressMessage(line string) progressLine {
+// progressMessage is the line as the journal and the model keep it, with the
+// step it reports on, nil for a line about the job.
+func progressMessage(line string, step *factory.StepProgress) progressLine {
 	text := strings.Join(strings.Fields(line), " ")
-	return progressLine{text: text, mark: &messagePresentation{Audience: "human", Kind: FactoryProgressKind}}
+	return progressLine{text: text, mark: &messagePresentation{Audience: "human", Kind: FactoryProgressKind, FactoryStep: step}}
 }
 
 // progressLine is one runner line and its mark.
@@ -149,12 +153,13 @@ type progressLine struct {
 }
 
 // AppendProgress writes line into the conversation at path as an assistant
-// message marked [FactoryProgressKind]. A conversation open in this process
-// takes it through its agent, between turns; one nobody holds is opened,
-// written and let go; one held elsewhere, or mid-turn, refuses and the caller
-// says it again later.
-func AppendProgress(path, line string) error {
-	p := progressMessage(line)
+// message marked [FactoryProgressKind], with step beside it when the line
+// reports on one step's round. A conversation open in this process takes it
+// through its agent, between turns; one nobody holds is opened, written and let
+// go; one held elsewhere, or mid-turn, refuses and the caller says it again
+// later. A line written is told to [OnProgress]'s reader, after it is on disk.
+func AppendProgress(path, line string, step *factory.StepProgress) error {
+	p := progressMessage(line, step)
 	if p.text == "" {
 		return nil
 	}
@@ -173,8 +178,12 @@ func AppendProgress(path, line string) error {
 	if v, ok := liveJournals.Load(key); ok {
 		if a, _ := v.(*Agent); a != nil {
 			done, err := a.recordIdleProgress(p)
-			if done || err != nil {
+			if err != nil {
 				return err
+			}
+			if done {
+				tellProgress(ProgressNews{Path: path, Text: p.text, Step: step})
+				return nil
 			}
 		}
 	}
@@ -182,11 +191,66 @@ func AppendProgress(path, line string) error {
 	if err != nil {
 		return err
 	}
-	defer journal.Close()
 	message := textMessage("assistant", p.text)
 	journal.presentation.remember(message, p.mark)
 	journal.appendReasonedMessage(message, provider.MessageReasoning{})
+	// The journal is let go before the line is told, so a reader that reads
+	// the conversation back finds it free and the line in it.
+	journal.Close()
+	tellProgress(ProgressNews{Path: path, Text: p.text, Step: step})
 	return nil
+}
+
+// ── TOLD AS IT LANDS ────────────────────────────────────────────────────────
+//
+// A progress line lands in a conversation outside any turn, so no turn's
+// stream carries it to a surface showing that conversation. [OnProgress] is
+// how one hears it: the app reads it back and says it as the entry it is
+// (internal/appwire's entry.added), so the job's page shows each step's line
+// as it is written rather than at its next reading.
+
+// ProgressNews is one line [AppendProgress] wrote: the conversation's journal
+// as the runner named it, the words as the journal keeps them, and the step
+// the line reports on, nil for a line about the job.
+type ProgressNews struct {
+	Path string
+	Text string
+	Step *factory.StepProgress
+}
+
+var (
+	progressMu     sync.RWMutex
+	progressReader func(ProgressNews)
+)
+
+// progressDesk is where a written line is left for the reader (sidecar.go's
+// desk): THE RUNNER LEAVES THE NEWS AND WALKS AWAY. The reader reads the
+// conversation back before it says anything, and the runner's next line, and
+// the step after it, never wait on that.
+var progressDesk desk
+
+// OnProgress registers the reader every written progress line is told to and
+// hands back the one that was there, which a reader that is not the last word
+// calls on in turn ([OnPhaseNews] is the same shape). A nil function
+// unregisters. The reader is told from a desk, never on the writer's
+// goroutine, in the order the lines were written, each once it is on disk.
+func OnProgress(fn func(ProgressNews)) (previous func(ProgressNews)) {
+	progressMu.Lock()
+	defer progressMu.Unlock()
+	previous, progressReader = progressReader, fn
+	return previous
+}
+
+// tellProgress leaves one written line on the desk for the registered reader,
+// if there is one.
+func tellProgress(news ProgressNews) {
+	progressMu.RLock()
+	reader := progressReader
+	progressMu.RUnlock()
+	if reader == nil {
+		return
+	}
+	progressDesk.tell(func() { reader(news) })
 }
 
 // recordIdleProgress records the line through a live agent. done is false

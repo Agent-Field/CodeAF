@@ -448,6 +448,12 @@ type Entry struct {
 	// Op is a durable fact the conversation's record keeps beside its
 	// messages, said as the fact and never as words: the app words it.
 	Op *EntryOp `json:"op,omitempty"`
+	// Progress is, on an answer the factory runner wrote into a job's own
+	// conversation, the step round that line reports on and what happened to
+	// it. It is the runner's word, never read out of Text, which keeps the
+	// line's words for a surface that shows them; absent on every other entry,
+	// and on the runner's lines about the job as a whole.
+	Progress *EntryProgress `json:"progress,omitempty"`
 	// Compaction is a summary entry's pass, as facts (compaction.go).
 	Compaction *Compaction `json:"compaction,omitempty"`
 	// Team is, on a notice that is a crew's delivery, its lines as facts: who
@@ -457,6 +463,18 @@ type Entry struct {
 	// A tool entry carries the facts of its call (worklog.go); a note entry
 	// names its task there too.
 	ToolFacts
+}
+
+// EntryProgress is the step a factory runner's line in a job's conversation
+// reports on: its name as the job's steps spell it, the round (absent for a
+// step with no rounds, an approve step), and what the line says happened.
+// started and done are the round beginning and ending; failed and stopped are
+// the run ending under it, on the step's error or a person's stop; waiting is
+// the step waiting on a question put to the person.
+type EntryProgress struct {
+	Step  string `json:"step"`
+	Round int    `json:"round,omitempty"`
+	Event string `json:"event" enum:"started,done,failed,stopped,waiting"`
 }
 
 // TeamLine is one line of a crew's delivery to a member. From is "manager",

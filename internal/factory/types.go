@@ -289,6 +289,12 @@ type Phase struct {
 	// ended, and again once it is sent back to run. The wire's step.at is
 	// this instant.
 	At time.Time `json:",omitempty"`
+	// Started is when the phase's latest round began: set as a round starts
+	// in a fresh chat, kept when a round carries on in the chat a pause cut
+	// short, and zero again once the phase is pending. The wire's
+	// step.started_at is this instant; a phase recorded before it existed has
+	// none.
+	Started time.Time `json:",omitempty"`
 	// Rounds is one line per finished try, oldest first, bounded to the
 	// step's max. The last Result stays; these lines are what each try did.
 	Rounds []RoundLine `json:",omitempty"`

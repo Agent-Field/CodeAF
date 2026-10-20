@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
@@ -35,6 +36,11 @@ type messagePresentation struct {
 	// conversation (talk_progress.go), which a surface may draw as the run's
 	// timeline rather than as something the model said. "" is the model.
 	Kind string `json:"kind,omitempty"`
+	// FactoryStep is, on a [FactoryProgressKind] line, the step and round the
+	// line reports on and what happened to it, as the runner said it
+	// (talk_progress.go); nil on every other line, and on a progress line about
+	// the job as a whole.
+	FactoryStep *factory.StepProgress `json:"step,omitempty"`
 	// RejectedBeforeRun belongs to this exact tool-result occurrence, never a provider ID.
 	RejectedBeforeRun bool `json:"rejected_before_run,omitempty"`
 	ToolInvoked       bool `json:"invoked,omitempty"`
