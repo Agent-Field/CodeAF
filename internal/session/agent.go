@@ -1191,6 +1191,9 @@ type userMessage struct {
 	// otherResults preserves untagged background outcomes when a batch also
 	// carries task results. Their reply obligation must not be lost in folding.
 	otherResults bool
+	// nonTaskNews preserves untagged news inside a batch for the conservative
+	// stopped-result routing guard, without changing the turn's owed asks.
+	nonTaskNews bool
 
 	// wake marks a note the model OWES AN ANSWER FOR: a task's completion
 	// (task_run.go's reportTaskNode), a background job's exit (jobs.go's reap),
@@ -3378,12 +3381,14 @@ func batchSessionNotes(notes []userMessage) userMessage {
 	var (
 		wake         bool
 		otherResults bool
+		nonTaskNews  bool
 		tags         []TaskReplyTag
 		delivered    []durableDelivery
 	)
 	for _, note := range notes {
 		wake = wake || note.wake
 		otherResults = otherResults || note.otherResults
+		nonTaskNews = nonTaskNews || note.nonTaskNews || len(note.replyTags) == 0
 		tags = append(tags, note.replyTags...)
 		// The batch is the record these notes end up in, so it carries what
 		// settles each of them ([durableDelivery]); dropped here, every landing in
@@ -3428,6 +3433,7 @@ func batchSessionNotes(notes []userMessage) userMessage {
 		message:      textMessage("user", text),
 		replyTags:    tags,
 		otherResults: otherResults,
+		nonTaskNews:  nonTaskNews,
 		delivered:    delivered,
 		wake:         wake,
 		authored:     true,
