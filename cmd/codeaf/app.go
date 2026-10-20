@@ -1808,6 +1808,14 @@ func appRetryShown(again appSending, text string) *appSending {
 // shown, when set, is what the person's entry shows instead of text: their
 // own words and the attachments the text was written from.
 func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appSending) (uint64, error) {
+	return b.startTurnLocked(a, text, clientID, shown, nil)
+}
+
+// appTurnStarter replaces only submission; admission, correlation and events
+// remain the ordinary send's so a picked harness is still one conversation turn.
+type appTurnStarter func(*appLive, string) (<-chan session.Event, error)
+
+func (b *appBackend) startTurnLocked(a *appAgent, text, clientID string, shown *appSending, start appTurnStarter) (uint64, error) {
 	var id string
 	var live *appLive
 	var refused error
@@ -1930,7 +1938,9 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 	var events <-chan session.Event
 	var err error
 	var composedMark *session.ComposedMark
-	if composer != nil {
+	if start != nil {
+		events, err = start(live, keptID)
+	} else if composer != nil {
 		var receipt session.SubmissionReceipt
 		message := appSubmission(text, shown)
 		message.ClientID = keptID
@@ -1953,7 +1963,15 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 		events, err = live.conn.Conv.Submit(context.Background(), text)
 	}
 	if err != nil {
-		b.locked(func() { live.running = false })
+		b.locked(func() {
+			live.running = false
+			if start != nil {
+				delete(a.marks, n)
+			}
+		})
+		if start != nil {
+			return 0, appEngineError(err)
+		}
 		// The words were handed over: whether the host took them is not known.
 		return 0, &appUnsureSend{err: appEngineError(err)}
 	}

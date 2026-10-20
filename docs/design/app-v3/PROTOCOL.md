@@ -396,7 +396,7 @@ result or an event, `?` marks a field that may be absent.
 
 ## Identity and de-duplication (rev 2)
 
-- `agents.create` and `agents.send` accept `client_id` (string chosen by the app).
+- `agents.create`, `agents.send` and `agents.run_harness` accept `client_id` (string chosen by the app).
   The engine echoes it on the user `Entry` (`client_id`) so the app replaces its
   optimistic bubble instead of adding a second one.
 - Where the conversation's engine keeps it (the remote welcome's
@@ -2313,7 +2313,8 @@ menu from the engine's words. It **lists words and runs nothing**: the terminal'
 dispatcher, not an engine call, and nothing on the wire interprets a command line — `agents.send` with `/cost`
 sends a message. Where a typed method already does what a command stands for, the client calls it; where none
 does, the action is the client's own. Cache, autonomy and crew policy use the typed methods below;
-harness selection is a client draft choice after `harness.list`. `slash.catalog` is read-only and takes no model call, file walk,
+harness selection is a client draft choice after `harness.list`, consumed by `agents.run_harness`
+on the next message. `slash.catalog` is read-only and takes no model call, file walk,
 transcript read or watcher.
 
 - **One table.** `commands` with `source: "table"` are `internal/slashcat`'s rows — the same rows the terminal
@@ -2409,13 +2410,14 @@ Clients check the two hello features before offering these methods.
 | `autonomy.get` | `{agent}` | `{agent, kinds: [{kind, rule, after?}]}` — eight kinds in terminal order; rule is ask, recommend or decide; after is a duration string |
 | `autonomy.set` | `{agent, kind, rule}` | same as autonomy.get; rule is `ask`, `decide`, or `recommend [duration]` |
 | `harness.list` | `{}` | `{harnesses: [{name, description, version, runs, last_run?: {at?, finished}}]}` — current saved pages in registry name order |
+| `agents.run_harness` | `{id, name, text, client_id?}` | `{turn}` — run the named saved harness with text as its input; output arrives as ordinary turn events |
 | `settings.crew.get` | `{}` | `{models, cap_usd}` — canonical allowed-model rule and crew daily cap (0 means off) |
 | `settings.crew.set` | `{models?: string, cap?: string}` | same as settings.crew.get; exactly one field per call |
 
 Each method advertises its own name in `hello.features`; absent capability answers `unknown_method`.
 Unknown fields are `bad_params`. Cache clean needs literal `confirm: true`: the client asks first,
 explaining the size, path and cold builds; only shared build caches are removed, never conversations or settings.
-Cache, harness and crew policy address the app machine/profile only. As in the terminal, a client connected
+Cache, harness listing and crew policy address the app machine/profile only. As in the terminal, a client connected
 with `--host` disables those commands with "change it on that machine"; these methods do not accept a host
 or agent selector and never forward machine operations to a joined conversation's host.
 
@@ -2428,6 +2430,16 @@ Harness listing shares the terminal panel's head-page and history reader; unread
 unreadable history leaves the page without a last run. More than 128 visible pages or 512 KiB of reply
 answers `too_large`, never a partial list. Picking a harness only changes the terminal's draft chip
 (`harnChip`); browsing a panel row shows its card. Neither sets engine state, so there is no `harness.use`.
+
+`agents.run_harness` (hello feature `agents.run_harness`) consumes that draft choice on the next
+message: required nonblank `id`, `name` and `text`, optional `client_id`. It calls the terminal's
+shared `RunHarnessRequest` producer with no model override, bypassing detection and offers.
+The reply and turn events are the same as `agents.send`; a running turn refuses `busy`.
+An unknown name refuses before any turn or user entry is emitted. An engine handle without
+the door refuses with "harnesses are unavailable here", including an older host; supported
+hosts run it on the conversation's machine. `client_id` has exactly `agents.send`'s correlation
+semantics and never deduplicates a run. Attachments never travel: only the four named params
+are accepted, and staged files remain for the next ordinary message.
 
 Crew word forms map as follows:
 
@@ -2450,7 +2462,7 @@ Crew word forms map as follows:
 and `/remember <text>`. It is **not** a command interpreter: the actions are named for what they do
 (`task.start`, `program.start`, `memory.remember`), and `agents.send` with a slash line is still a message to
 the model. Typed methods now serve rewind, delete, debug and manual (Conversation actions above), `/skill`
-(`skills.list`, `skills.set`), cache, autonomy and crew policy (their methods above), saved harnesses (a list only)
+(`skills.list`, `skills.set`), cache, autonomy and crew policy (their methods above), saved harnesses (`harness.list`, `agents.run_harness`)
 and every `/effort` rung (`agents.set_effort`). Other catalogue actions, such as export and land, still have no verb
 here and say so by having none.
 
