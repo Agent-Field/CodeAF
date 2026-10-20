@@ -1,6 +1,6 @@
 package session
 
-// The background half of the belt: bash with one extra argument, and the jobs
+// The background half of the belt: bash with background and notify arguments, and the jobs
 // tool that looks at what it started.
 //
 // This file is the WINDOW onto jobs.go's registry. The split is deliberate:
@@ -175,7 +175,7 @@ func withTimeoutLaw(args json.RawMessage) json.RawMessage {
 // everything handed off, and is not a third copy of it here.
 const backgroundProperty = `{"type":"boolean","description":"Spawn the command and return a job id at once (default: false: wait and return the output)"}`
 
-// backgroundBash wraps bare's bash: the same tool, with one optional argument.
+// backgroundBash wraps bare's bash with optional background and notify arguments.
 //
 // Without background, the call is handed to bare verbatim — same timeout, same
 // truncation, same wire text. bare's parser ignores fields it does not know, so
@@ -191,6 +191,7 @@ func (a *Agent) backgroundBash(inner bare.Tool) bare.Tool {
 			var parsed struct {
 				Command     string           `json:"command"`
 				Background  bool             `json:"background"`
+				Notify      bool             `json:"notify"`
 				KeepRunning *keepRunningArgs `json:"keep_running"`
 			}
 			// A command to keep running is its own road: a person is asked
@@ -221,7 +222,7 @@ func (a *Agent) backgroundBash(inner bare.Tool) bare.Tool {
 			if _, _, bad := shellOutputsArgs(args); bad != nil && a.mayPublishShellOutputs() {
 				return rejectToolArguments(ctx, "Invalid arguments: "+bad.Error()), true, nil
 			}
-			started, err := a.jobs.start(a.planCommand(parsed.Command))
+			started, err := a.jobs.startInUnder(context.Background(), a.planCommand(parsed.Command), "", parsed.Notify)
 			if err != nil {
 				return "Could not start the background job: " + err.Error(), true, nil
 			}
@@ -239,8 +240,8 @@ func (a *Agent) backgroundBash(inner bare.Tool) bare.Tool {
 	}
 }
 
-// schemaWithBackground returns pi's bash schema with one boolean property
-// added.
+// schemaWithBackground adds the background and notify boolean properties to
+// pi's bash schema.
 //
 // It DERIVES rather than restating the schema as a literal: bare's bytes are
 // pinned to pi's source and may move with it, and a copied literal here would
@@ -258,6 +259,7 @@ func schemaWithBackground(schema json.RawMessage) json.RawMessage {
 		return schema
 	}
 	properties["background"] = json.RawMessage(backgroundProperty)
+	properties["notify"] = json.RawMessage(`{"type":"boolean","description":"Set it when the person asked to be told when this ends."}`)
 	encodedProperties, err := json.Marshal(properties)
 	if err != nil {
 		return schema

@@ -331,8 +331,12 @@ BUILD OK
 [job 3 · last 50 lines · full log: <path>]
 ```
 
-If codeaf is mid-turn the note lands at the next step; if the turn had already
-ended, the note starts a new one, exactly as a finished task does. Several
+A plain background process that exits 0 waits silently for the next turn; it
+never starts a reply. Set `notify: true` beside `background: true` in `bash` when
+the person asked to be told when it ends. Failures, explicitly requested
+notifications, and commands whose call or task worker is still waiting keep the
+waking path: their note lands at the next step or starts a turn if idle. Task
+and video or music render endings still wake as before. Several
 session notes waiting at that boundary are one `while you worked:` message, not
 several synthetic user messages between tool calls.
 
@@ -596,8 +600,10 @@ Nothing further ever comes from that watch: it is over, which is exactly why its
 last note is the one worth waking for. `jobs list` no longer shows it running,
 and its whole tick history stays at `jobs output <id>`.
 
-A background command exiting and a video or music render landing wake a reply the
-same way. The tasks page has the rest of it under
+A background command failing, one started with `notify: true`, or a command
+whose call or worker is waiting wakes a reply, as does a video or music render
+landing. A plain background process exiting 0 waits silently for the next turn.
+The tasks page has the rest of it under
 *Waiting on something, and the limit on carrying on*.
 
 ## Can you tell me when something has finished — how do I know it went quiet or stopped changing?

@@ -177,16 +177,15 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// The registry is built before the belt because the belt closes over it:
 	// bash's background path and the jobs tool are both views onto this one
 	// object, and it is the agent's own steering queue they report into.
-	// The registry gets both note lanes. A job's exit is work the model started
-	// and is waiting to hear finish, so it remains owed at the next step
-	// boundary. A watch's deltas are ambient telemetry: they stay live in the
-	// job row and log, but wait for a turn boundary before entering the model's
-	// context (see [Agent.enqueueJobNote] and [Agent.enqueueWatchNote]).
+	// Successful processes wait silently for the next turn unless somebody is
+	// owed their ending or asked to be told. Failures, tasks and renders wake;
+	// watch deltas stay ambient (see [Agent.enqueueWatchNote]).
 	// The registry is handed the DROPPINGS home rather than the Place, and the
 	// two differ for every agent that is not a session: a worker's job log
 	// belongs beside the transcript of the conversation that commissioned it, not
 	// in the repository it borrowed to work in (landing.go).
 	agent.jobs = newJobRegistry(config.Workspace, config.droppingsPlace(), agent.enqueueJobNote, agent.enqueueWatchNote)
+	agent.jobs.notifyQuiet = agent.enqueueJobNoteQuiet
 	// And the registry gets the ROSTER lane as well as the waking one. A job is
 	// work this conversation started, so it shows on the right the way every
 	// other kind of work does — a quiet row while it runs, settled when it ends
@@ -3700,9 +3699,9 @@ func (a *Agent) takeReplyTags() []TaskReplyTag {
 // comparison is at ~/oauth.md; the short version is…"), and a model that is never
 // asked never writes one. So a note that lands on an idle session starts a turn.
 //
-// THAT IS TRUE OF A BACKGROUND JOB'S ENDING, through [Agent.enqueueJobNote].
-// The model started the job and was explicitly told not to poll because the
-// ending would come back, so the exit remains owed. IT IS TRUE OF A WATCH'S
+// THAT IS TRUE OF A JOB'S FAILURE OR REQUESTED NOTIFICATION, and of a command
+// whose call or worker is still waiting, through [Agent.enqueueJobNote]. A plain
+// successful process instead waits on [Agent.enqueueJobNoteQuiet]. IT IS TRUE OF A WATCH'S
 // FIRING FOR THE SAME REASON: a watch that matched, went quiet or failed its way
 // out has answered what it was started for and will never speak again, so that
 // last note is owed and [Agent.enqueueWatchNote] queues it here. Only a watch's
@@ -3743,6 +3742,12 @@ func (a *Agent) enqueueSettleSteering(text string, ceiling int) {
 // through `jobs output` for anything past the tail.
 func (a *Agent) enqueueJobNote(text string) {
 	a.enqueueNote(jobNote(text))
+}
+
+// enqueueJobNoteQuiet keeps each successful process ending intact until the
+// next turn. There is no batch key: separate jobs must keep separate endings.
+func (a *Agent) enqueueJobNoteQuiet(text string) {
+	a.enqueueAmbient(userMessage{message: textMessage("user", text), batch: true})
 }
 
 // enqueueWatchNote is the registry's watch lane, and it is TWO lanes chosen by
@@ -3787,7 +3792,7 @@ func (a *Agent) enqueueAmbientNote(text string) {
 	a.enqueueNote(userText(text))
 }
 
-// enqueueAmbient is the periodic-watch queue's one door. It mirrors
+// enqueueAmbient is the boundary-held context queue's one door. It mirrors
 // enqueueNote's authorship and closed-session laws without putting telemetry
 // where a mid-turn step drain can take it by accident.
 func (a *Agent) enqueueAmbient(note userMessage) bool {
