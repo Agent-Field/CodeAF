@@ -316,10 +316,25 @@ func offLoopSpans(file *ast.File) (allowed, folds []*ast.FuncLit) {
 			return true
 		}
 		sel, ok := call.Fun.(*ast.SelectorExpr)
-		if !ok || (sel.Sel.Name != "offLoop" && sel.Sel.Name != "besideLine") || len(call.Args) != 1 {
+		if !ok || len(call.Args) == 0 {
 			return true
 		}
-		lit, ok := call.Args[0].(*ast.FuncLit)
+		// A START handed to [app.submitting] or [app.submittingShown] is its
+		// last argument, and those two call it only inside the tea.Cmd they
+		// return (app.go), so it is as far from the loop as an offLoop body.
+		var arg ast.Expr
+		switch sel.Sel.Name {
+		case "offLoop", "besideLine":
+			if len(call.Args) != 1 {
+				return true
+			}
+			arg = call.Args[0]
+		case "submitting", "submittingShown":
+			arg = call.Args[len(call.Args)-1]
+		default:
+			return true
+		}
+		lit, ok := arg.(*ast.FuncLit)
 		if !ok {
 			return true
 		}

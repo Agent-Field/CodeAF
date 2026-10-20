@@ -1278,6 +1278,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		ComposedMessages:           composedKnown(sess.agent),
 		MessageReceipts:            composedKnown(sess.agent),
 		MessageClientIDs:           messageMarksKnown(sess.agent),
+		HarnessRequests:            harnessRequestsKnown(sess.agent),
 		AttachmentSources:          messageMarksKnown(sess.agent),
 		SteerMarks:                 steerMarksKnown(sess.agent),
 		FollowUpMarks:              followUpMarksKnown(sess.agent),
@@ -2175,7 +2176,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	// card, switching a model, interrupting a turn — stays open to every surface
 	// in the room: a watcher is a person watching their own work, not a guest.
 	switch call.Method {
-	case MethodSubmitBash, MethodSubmit, MethodFollowUp, MethodUnqueueFollowUp, MethodSteer, MethodQuestionReplace, MethodSubmitImage, MethodSubmitFiles,
+	case MethodRunHarness, MethodSubmitBash, MethodSubmit, MethodFollowUp, MethodUnqueueFollowUp, MethodSteer, MethodQuestionReplace, MethodSubmitImage, MethodSubmitFiles,
 		MethodTaskSteer, MethodTaskStop, MethodTaskRetry, MethodProcessRerun, MethodProcessRerunAt, MethodProcessStopAt, MethodProcessStopAll, MethodRenderCancel, MethodAppTaskAction, MethodAppQuickTaskAction, MethodAppMoveToTask, MethodAppResumeAfterQuit, MethodAppResumeAfterClose, MethodAppRename,
 		MethodAppTaskRoutingAct:
 		if err := s.mayDrive(); err != nil {
@@ -2644,6 +2645,23 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			door.Typing()
 		}
 		return nil, nil
+
+	case MethodRunHarness:
+		args, err := arg[RunHarnessArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(harnessRequestDoor)
+		if !ok {
+			return nil, errors.New("harnesses are unavailable here")
+		}
+		var events <-chan session.Event
+		if marked, ok := agent.(harnessClientDoor); ok && args.ClientID != "" {
+			events, err = marked.RunHarnessRequestWithClientID(context.Background(), args.Name, args.Text, args.Model, args.ClientID)
+		} else {
+			events, err = door.RunHarnessRequest(context.Background(), args.Name, args.Text, args.Model)
+		}
+		return s.stream(MethodRunHarness, args.Text, events, err)
 
 	case MethodSubmitBash:
 		args, err := arg[SubmitArgs](call)

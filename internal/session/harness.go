@@ -357,6 +357,16 @@ func harnessNamed(entries []subharness.Entry, name string) bool {
 // place, or empty for whatever the runner is built on. A word that resolves to
 // nothing runs the default rather than refusing, which is the offer's law too.
 func (a *Agent) RunHarnessRequest(ctx context.Context, name, text, model string) (<-chan Event, error) {
+	return a.RunHarnessRequestWithClientID(ctx, name, text, model, "")
+}
+
+// RunHarnessRequestWithClientID is the same picked-harness turn with the
+// caller's correlation id kept on its accepted message, as SubmitMessage does.
+func (a *Agent) RunHarnessRequestWithClientID(ctx context.Context, name, text, model, clientID string) (<-chan Event, error) {
+	person, err := (Submission{ClientID: clientID}).mark()
+	if err != nil {
+		return nil, err
+	}
 	name = strings.TrimSpace(name)
 	text = strings.TrimSpace(text)
 	switch {
@@ -403,7 +413,9 @@ func (a *Agent) RunHarnessRequest(ctx context.Context, name, text, model string)
 		Turn:  subharness.Turn{Text: text},
 		Model: model,
 	}
-	return a.startTurnLocked(ctx, userText(text), nil), nil
+	user := userText(text)
+	user.person = person
+	return a.startTurnLocked(ctx, user, nil), nil
 }
 
 // takeHarnessPick is the turn collecting what [Agent.RunHarnessRequest] left

@@ -1079,6 +1079,8 @@ type Welcome struct {
 	// engine, which would drop the field unread: a call carrying one is refused
 	// before it is sent rather than run without the correlation it asked for.
 	MessageClientIDs bool `json:"messageClientIds,omitempty"`
+	// HarnessRequests says this engine exposes the picked-harness turn door.
+	HarnessRequests bool `json:"harnessRequests,omitempty"`
 	// AttachmentSources says this engine keeps [session.MessageAttachment.Source],
 	// the recorded audio or video span a file attachment was kept for. Absence is
 	// an older engine, which would drop it unread: a call carrying one is refused
