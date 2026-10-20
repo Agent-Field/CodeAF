@@ -4892,6 +4892,9 @@ type DisplayEntry struct {
 	// ToolResult packs occurrence-owned producer facts into existing alignment.
 	// Zero is unknown, including legacy and ambiguous provider IDs.
 	ToolResult ToolResultFlags
+	// ToolProcess is the registry's identity for this result occurrence, absent
+	// on older records and calls that did not become a job or kept service.
+	ToolProcess *ToolProcess `json:"ToolProcess,omitempty"`
 
 	Text string
 	Tool string // set when the entry is one call in a batch
@@ -5233,7 +5236,7 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			// Duplicate IDs inside one provider batch cannot identify a result.
 			// Keep the new classification unknown instead of lending one call
 			// another call's rejection. Ordinary batches pay no map allocation.
-			if (result.rejected || result.harness || result.refused || result.invoked || result.attempt) && len(msg.ToolCalls) > 1 {
+			if (result.rejected || result.harness || result.refused || result.invoked || result.attempt || result.process != nil) && len(msg.ToolCalls) > 1 {
 				if rejectionCounts == nil {
 					rejectionCounts = make(map[string]int, len(msg.ToolCalls))
 					for _, sibling := range msg.ToolCalls {
@@ -5242,7 +5245,14 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 				}
 				if rejectionCounts[call.ID] != 1 {
 					result.rejected, result.harness, result.refused, result.invoked, result.attempt = false, false, false, false, false
+					result.process = nil
 				}
+			}
+			// A display reader owns its process snapshot, just as it owns the
+			// person's descriptors; editing it cannot reach the presentation.
+			if result.process != nil {
+				process := *result.process
+				result.process = &process
 			}
 			// The step's own title, off the journal's `caption` line, keyed by
 			// the anchor the narration was recorded against. Every call that is
@@ -5269,8 +5279,9 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 				// open. Zero when the file never recorded one.
 				Took: journal.took(call.ID),
 
-				ToolResult: result.flags(),
-				At:         journal.written(msg),
+				ToolResult:  result.flags(),
+				ToolProcess: result.process,
+				At:          journal.written(msg),
 			})
 		}
 	}

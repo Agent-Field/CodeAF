@@ -167,6 +167,20 @@ func TestTheSameCommandIsAskedOnceAndThePersonsPolicyStands(t *testing.T) {
 	if rt.Starts() != 2 || len(rows) != 1 || !rows[0].Running || rows[0].Policy != service.PolicyNever {
 		t.Fatalf("the agent's always replaced the person's never: %+v", rows)
 	}
+	// E2: the remembered approval road carries the same typed service as a
+	// fresh keep card, live and on this result's own journal occurrence.
+	var became *ToolProcess
+	for _, event := range collected {
+		if event.Kind == EventToolEnd && event.CallID == "k2" {
+			became = event.ToolProcess
+		}
+	}
+	if became == nil || became.Service != rows[0].ID || became.Job != 0 {
+		t.Fatalf("the remembered service's end = %+v, rows = %+v", became, rows)
+	}
+	if got := toolEntryFor(t, ReadTranscript(agent.config.SessionFile).Entries, "k2").ToolProcess; got == nil || got.Service != became.Service {
+		t.Fatalf("the remembered service's history = %+v, live = %+v", got, became)
+	}
 }
 
 // TestDenyRunsAnOrdinaryJobThatEndsWithTheTurn.

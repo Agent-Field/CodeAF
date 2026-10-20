@@ -128,7 +128,7 @@ Ask    { id, agent, kind, subkind?, title, detail?, options?: [{id, label}], irr
 | `agent.changed` | `{agent: Agent}` |
 | `turn.started` | `{agent, turn}` |
 | `turn.delta` | `{agent, turn, kind: "text" \| "thinking", text}` |
-| `turn.tool` | `{agent, turn, run_id?, call, name, phase: "begin" \| "end", ok?, summary?}` |
+| `turn.tool` | `{agent, turn, run_id?, call, name, phase: "begin" \| "end", ok?, summary?, process?}` |
 | `turn.done` | `{agent, turn, ok, error?, error_kind?: "provider" \| "budget" \| "stopped" \| "uncertain" \| "other", status?}` (provider: the provider failed 3 times in a row; message is the provider's own words. uncertain: a created agent's first message was handed to its conversation and no answer came back — it MAY have been sent, so `agents.retry` is not armed for it) |
 | `ask.opened` | `{ask: Ask}` (agent state becomes `needs_you`) |
 | `ask.closed` | `{agent, id, by: "app" \| "elsewhere" \| "stopped", option?, at}`; a receipt Entry follows as `entry.added` |
@@ -391,7 +391,7 @@ result or an event, `?` marks a field that may be absent.
 | `turn.started` | `{agent, turn}` |
 | `turn.thinking` | `{agent, text, turn}` |
 | `turn.thinking_done` | `{agent, seconds, turn}` |
-| `turn.tool` | `{agent, ask?, batch?, call, connector?, detail?, ended_at?, exit_code?, files?, input?, lines?, name, ok?, phase, invoked?, harness_made?, media_attempt?, refused?, rejected_before_run?, retried_of?, started_at?, summary?, tail?, task?, title?, tool_kind?, turn}` |
+| `turn.tool` | `{agent, ask?, batch?, call, connector?, detail?, ended_at?, exit_code?, files?, input?, lines?, name, ok?, phase, process?, invoked?, harness_made?, media_attempt?, refused?, rejected_before_run?, retried_of?, started_at?, summary?, tail?, task?, title?, tool_kind?, turn}` |
 
 ## Identity and de-duplication (rev 2)
 
@@ -713,6 +713,19 @@ media_attempt?: true             this exact call made at least one render record
                                  code that wrote the record, never from the tool name or output. True-only,
                                  kept per occurrence (a reused provider call id never lends it); absent =
                                  unknown, including every row older than the field.
+process?: string                 the processes.list / process.changed id of the job THIS command
+                                 became, identical on the live turn.tool end and its history tool Entry.
+                                 Set for background:true, session-clock/timeout/steer promotion, and a
+                                 declined keep_running command run as a turn-scoped job, including after
+                                 an approval wait. A kept service carries its service Process id only
+                                 when this backend publishes that row. Absent on begin, ordinary
+                                 foreground completion, failure, refusal, rejection and interruption.
+                                 The engine carries the registry number and start (or service id) as
+                                 typed result metadata and keeps it in the journal; never inferred from
+                                 output text or ended_at. Older engines and records omit it = unknown.
+                                 A later begin reusing an ended call id starts fresh and has no process.
+                                 In history, only process takes its exact source occurrence; existing
+                                 facts retain their last same-id source selection for compatibility.
 retried_of?                      call id this one re-runs (a later pass of the same command)
 files?: [{path, add, del}]       edit
 connector?                       e.g. "GitHub" (connector kind)

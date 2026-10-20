@@ -77,6 +77,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -3094,6 +3095,9 @@ type toolResult struct {
 	// the handler only after the record exists, never read from text or from
 	// the tool's name. It rides out on [Event.MediaAttempt].
 	attempt bool
+	// process is the registry's identity for the command this call became.
+	// It is absent on failures and interruptions, whatever their output says.
+	process *ToolProcess
 }
 
 // ── the early-start law ─────────────────────────────────────────────────────
@@ -3558,6 +3562,7 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 			Kind:         EventToolEnd,
 			ToolInvoked:  results[index].invoked,
 			MediaAttempt: results[index].attempt,
+			ToolProcess:  results[index].process,
 			Tool:         call.Function.Name,
 			Args:         rendered[index],
 			Output:       capOutput(results[index].text),
@@ -3685,6 +3690,12 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 		// planted here so it lives and dies with this one call.
 		callCtx, rejection := withToolRejection(callCtx)
 		callCtx, attempt := withMediaAttempt(callCtx)
+		// Only bash can become a registry command or kept service, so other
+		// tools pay no allocation for a fact they cannot produce.
+		var process *atomic.Pointer[ToolProcess]
+		if call.Function.Name == "bash" {
+			callCtx, process = withToolProcess(callCtx)
+		}
 		observedTool, invocation := observeToolInvocation(tool)
 		text, isError, err := a.executeTaskTool(callCtx, observedTool, running, args)
 		// THE ROW'S CLOCK IS THIS CALL'S OWN CLOCK. The result cannot be sent
@@ -3726,7 +3737,11 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 		// observer of results would otherwise belong: runTurn writes each result
 		// into the transcript BEFORE that seam runs, so a line added there would
 		// be a line no model was ever sent.
-		result := a.finishToolResult(ep, call, toolResult{text: text, isError: isError, invoked: invocation.Load(), rejected: isError && rejection.RejectedBeforeRun(), attempt: attempt.Load()})
+		var became *ToolProcess
+		if process != nil && !isError && ctx.Err() == nil {
+			became = process.Load()
+		}
+		result := a.finishToolResult(ep, call, toolResult{text: text, isError: isError, invoked: invocation.Load(), rejected: isError && rejection.RejectedBeforeRun(), attempt: attempt.Load(), process: became})
 		// The held-range ledger records on the FINISHED text — exactly the bytes
 		// the transcript will carry — and only on a result that ran (heldreads.go).
 		a.heldNote(call.Function.Name, args, result.text, isError)
