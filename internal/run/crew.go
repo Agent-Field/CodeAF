@@ -124,7 +124,7 @@ type Seats struct {
 // for a tier key the profile has never held and only a row CLEARED on purpose
 // reads empty, so a fallback means somebody emptied a row rather than that the
 // profile is old.
-func CrewFactory(store *plandb.Store, workspace, profileDir string, seats Seats, always string, completerFor func(model string) session.Completer, sourceSets ...modelsource.Set) WorkerFactory {
+func CrewFactory(store *plandb.Store, workspace, profileDir string, seats Seats, always string, preauthorized bool, completerFor func(model string) session.Completer, sourceSets ...modelsource.Set) WorkerFactory {
 	// The admitted source set explains the refused account without resolving
 	// worker requests a second time. The completer still owns every route.
 	var sources modelsource.Set
@@ -133,8 +133,16 @@ func CrewFactory(store *plandb.Store, workspace, profileDir string, seats Seats,
 	} else {
 		sources = config.ResolveSources(profileDir, config.APIKeyAt(profileDir), config.DefaultBaseURL)
 	}
+	// The run's daily ceiling, resolved ONCE from the run's profile: a worker's
+	// own session is handed no ProfileDir, so it cannot read the limit the person
+	// selected and would otherwise fall back to the default (#1546). Zero when
+	// there is none. The person's `--yes-spend` rides beside it, lifting that one
+	// limit in the worker exactly as it does in the crew guard.
+	dailyBudgetUSD, _ := config.DailyBudgetUSDAt(profileDir)
 	workerFor := func(model string, completer session.Completer) *BashWorker {
 		worker := NewBashWorker(store, workspace, model, completer)
+		worker.dailyBudgetUSD = dailyBudgetUSD
+		worker.spendPreauthorized = preauthorized
 		// The memory section rides on every worker this run seats, read once by
 		// the door that built the factory.
 		worker.always = always

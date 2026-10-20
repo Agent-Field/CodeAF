@@ -4190,7 +4190,10 @@ estimated cost. Other conversations' completed usage receipts are read on each
 check, and completed spending resets at the local date boundary. Calls already
 in flight may finish; this is not an atomic reservation across processes.
 Use `/budget` to change the limit. Per-conversation and per-task limits still
-apply separately.
+apply separately. The default profile and home errands follow the saved
+or environment daily limit too; `/budget day` changes apply on the next turn.
+Task checks use the same selected daily limit and spending permission as the work
+they check.
 
 ## Which budget takes precedence — daily or per conversation, and why my budget command doesn't work while the conversation is still blocked
 

@@ -7621,6 +7621,15 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// else, and a rollup over the family then found half of it
 		// (usage_ledger.go).
 		usageLedger: parent.usageLedger,
+		// AND THE DAILY CEILING IT SPENDS UNDER, resolved by the root door and
+		// carried because a worker is handed no ProfileDir to read it from
+		// (session.go's [Config.DailyBudgetUSD], rail.go's [Agent.dailyCeilingUSD]).
+		// Without this a worker read the DEFAULT profile's limit, refusing under a
+		// higher selected one and spending past a lower one. The person's standing
+		// `--yes-spend` travels with it, lifting that one limit and no other.
+		DailyBudgetUSD:      a.dailyCeilingUSD(),
+		DailyBudgetResolved: true,
+		SpendPreauthorized:  a.config.SpendPreauthorized,
 		// AND WHOSE MONEY IT IS. Every line this worker records names the
 		// conversation the work is rooted in, however deep the family goes.
 		rootSession: root,
