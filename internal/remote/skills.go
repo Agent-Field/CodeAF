@@ -179,6 +179,9 @@ func serveSkills(agent any, call Frame) (json.RawMessage, error) {
 	}
 }
 
+// SkillFoldersSupported distinguishes an older host from a failed discovery read.
+func (a *Agent) SkillFoldersSupported() bool { return a.c.Welcome().SkillFolders }
+
 // SkillFolders reads discovery where the conversation runs. A client must not
 // add its own home folders to a shelf on another machine.
 func (a *Agent) SkillFolders() ([]skills.Skill, error) {

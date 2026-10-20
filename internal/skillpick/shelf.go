@@ -49,7 +49,7 @@ func Rows(attached []string, shelf []Entry, disk []skills.Skill, readable bool) 
 		}
 		key := strings.ToLower(skill.Name)
 		if row, exists := available[key]; exists {
-			row.Source = skill.Root
+			row.Source, row.From = skill.Root, skill.Scope
 			available[key] = row
 			continue
 		}

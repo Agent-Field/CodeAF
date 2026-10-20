@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -89,14 +90,20 @@ func (b *appBackend) SetAutonomy(p appwire.AutonomySetParams) (appwire.AutonomyR
 // output. Oversize registries refuse whole rather than pretend a partial list
 // is everything saved on this machine.
 func (b *appBackend) SavedHarnesses() (appwire.HarnessListResult, error) {
-	saved, err := subharness.Default().Saved()
+	release, ok := b.actions.reading()
+	if !ok {
+		return appwire.HarnessListResult{}, appActionReadsBusy()
+	}
+	defer release()
+	saved, err := subharness.Default().SavedBounded()
+	if errors.Is(err, subharness.ErrSavedListTooLarge) {
+		return appwire.HarnessListResult{}, appwire.Errorf(appwire.CodeTooLarge, "%s", err)
+	}
 	if err != nil {
 		return appwire.HarnessListResult{}, err
 	}
 	out := appwire.HarnessListResult{Harnesses: []appwire.HarnessListRow{}}
-	if len(saved) > 128 {
-		return out, appwire.Errorf(appwire.CodeTooLarge, "harness.list holds at most 128 saved harnesses")
-	}
+
 	for _, item := range saved {
 		id := item.Harness.Id
 		row := appwire.HarnessListRow{Name: id.Name, Description: id.Desc, Version: id.Version, Runs: item.Runs}

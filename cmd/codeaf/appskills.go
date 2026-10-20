@@ -47,6 +47,9 @@ func (b *appBackend) ListSkills(agent string) ([]skillpick.Row, error) {
 		return nil, err
 	}
 	facts, readErr := door.SkillFacts(store.FactActive, skillpick.ListLimit)
+	if readErr != nil {
+		return nil, appEngineError(readErr)
+	}
 	entries := make([]skillpick.Entry, 0, len(facts))
 	for _, fact := range facts {
 		entries = append(entries, skillpick.Entry{Name: fact.SkillName(), Description: strings.TrimSpace(fact.Body), Artifact: fact.Artifact})
@@ -57,13 +60,15 @@ func (b *appBackend) ListSkills(agent string) ([]skillpick.Row, error) {
 	if far, ok := live.conn.Conv.(interface {
 		SkillFolders() ([]skills.Skill, error)
 	}); ok {
-		disk, _ = far.SkillFolders()
+		if capability, ok := live.conn.Conv.(interface{ SkillFoldersSupported() bool }); !ok || capability.SkillFoldersSupported() {
+			disk, err = far.SkillFolders()
+		}
 	} else if _, far := live.conn.Conv.(interface{ SkillsSupported() bool }); !far {
 		homeDir, _ := home.Login()
-		disk, _ = skills.Discover(skills.Options{ProjectDir: live.conn.Workspace, HomeDir: homeDir, OmitSize: true})
+		disk, err = skills.Discover(skills.Options{ProjectDir: live.conn.Workspace, HomeDir: homeDir, OmitSize: true})
 	}
-	if readErr != nil {
-		return nil, appEngineError(readErr)
+	if err != nil {
+		return nil, appEngineError(err)
 	}
 	return skillpick.Rows(door.AttachedSkills(), entries, disk, true), nil
 }
