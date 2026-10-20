@@ -4395,3 +4395,12 @@ checks the updated limit. A raise for today lasts until the next local midnight.
 The Agent panel shows a recorded or observed individual cap, never the current global default
 as a guess. If an older conversation has no saved individual limit and is not open, its cap
 can remain unknown until its engine answers. Changing the default is a separate Settings action.
+
+## Desktop engine methods for crew model rules and the crew daily cap
+
+Crew pins and unpins use `settings.models.set`; task caps use `settings.set`.
+`settings.crew.get/set` reads or changes the persistent allowed-model rule and
+crew daily cap, including open models, price rules and incremental +model/-model
+forms. The crew daily cap is separate from the machine spending limit and member
+conversation budgets. Crew settings are machine-local; a client using `--host`
+must change those on that machine.
