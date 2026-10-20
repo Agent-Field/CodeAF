@@ -943,10 +943,24 @@ A folder and a symlink pointing to it are one project. If an older build saved y
 conversation under the alias, launching from either spelling can still resume it where
 it lives. When the resolved folder has no conversation you have spoken in, codeaf looks
 for the most recently spoken conversation whose recorded workspace still resolves to
-that folder. An abandoned empty conversation in the new location does not hide it, and
+that folder. An owned conversation opened at home or in a temporary folder can also
+match its recorded launch directory; it keeps its own private workspace. An abandoned empty conversation in the new location does not hide it, and
 another window joins the same conversation the engine is already holding.
 
 Existing spoken history in the resolved folder takes priority. This does not combine or
 move historical folders. A broken or removed alias cannot identify an old conversation
 through the resolved folder; `codeaf chat --session <path>` still opens a transcript you
 name explicitly.
+
+
+## Saved drafts after a symlink workspace upgrade
+
+Unsent text saved under an older path spelling is still offered when that spelling
+provably names this folder, from the launch path or saved workspace citations. The newest
+orphaned draft is adopted; a draft held by a live window stays with that window.
+
+A structured draft restores its caret, pasted documents, attachment tray and task-page
+text only to the same conversation on the same machine. Alias spellings of its workspace
+and transcript are accepted when both still resolve to the same files. A newer record
+that says the composer was cleared still wins over older unsent text. Restored content is
+saved under the current key before the old record is pruned; unrelated slots stay on disk.

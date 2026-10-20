@@ -4,7 +4,7 @@ title: a folder reached through a symlink is one project and one engine, not two
 pr: 1798
 surface: [engine, chat]
 invalidates:
-  - "A folder reached through a symlink became two projects, two conversation histories and two engines. `codeaf engine --status --workspace <link>` missed the engine holding `<dir>`, and home's projects panel listed the folder once per spelling. The key-minting doors stopped at filepath.Clean, so each spelling hashed to its own key. Every door that turns a path into a key now resolves symlinks first (filepath.EvalSymlinks, with the original spelling kept when the path does not resolve): engineWorkspace (the engine commands and the host's workspace name, including the default home), enginehost.where (the host directory every lookup, dial, spawn, lock and status is keyed by), v3Workspace (the session bucket and tools root), gitidentity's path fallback (the memory project key), and the typed /project pin. Both spellings of one folder reach one project, one conversation history and one engine."
+  - "A folder reached through a symlink became two projects, two conversation histories and two engines. `codeaf engine --status --workspace <link>` missed the engine holding `<dir>`, and home's projects panel listed the folder once per spelling. The key-minting doors stopped at filepath.Clean, so each spelling hashed to its own key. Every door that turns a path into a key now resolves symlinks first (filepath.EvalSymlinks, with the original spelling kept when the path does not resolve): engineWorkspace (the engine commands and the host's workspace name, including the default home), enginehost.where (the host directory every lookup, dial, spawn, lock and status is keyed by), v3Workspace (the session bucket and tools root), gitidentity's path fallback (the memory project key), and the typed /project pin. Both spellings share new workspace keys; existing records remain accessible through proven aliases, without merging historical buckets."
 ---
 
 Found in the v0.7.1 happy-path pass on macOS, where `/tmp` is a link to
@@ -25,23 +25,33 @@ lookup, dial, spawn, lock and status cannot disagree; the default home in
 the typed `/project` pin in `internal/tui3`. A regression test drives a symlink
 through each layer and asserts both spellings land on one key.
 
-THE UPGRADE KEEPS WHAT THE OLD KEY WROTE. A host directory and a conversation
-bucket an older build named by the raw spelling are still this folder's: a
-`Dial` that misses the canonical key looks for host directories whose recorded
-workspace (`internal/enginehost`'s place file) resolves to the same folder, so
-`--status`, `--stop`, `--status-all`, `--stop-all` and the takeover rule reach
-an engine the upgrade did not start; and a launch whose canonical bucket holds
-no spoken conversation resumes the newest folder in another bucket whose
-`meta.workspace` citation resolves to it. No migration, no merge — the old
-records are read where they live, and the canonical key takes over from there.
+THE UPGRADE READS PROVEN OLD KEYS. Reads accept the canonical key, the incoming
+raw spelling, and old spellings whose recorded workspace citations still resolve
+to this folder. A launch whose canonical bucket has no spoken conversation can
+resume a conversation in its old bucket. Owned conversations can also match their
+recorded launch directory, preserving HOME and temporary-launch resumption and
+owned posture. Hello follows the same order as boot; canonical spoken history
+still wins, and historical conversation buckets are not combined or moved.
 
-Retiring an alias-keyed host also waits for its original lock, not just the new
-canonical lock: the listener can disappear while the old engine is still flushing
-its journals. Upgrade regressions exercise status, stop, sweeps and idle/busy
-takeover through both spellings.
+Path-owned project memories remain visible and editable through their historical
+owners, including non-Git folders and repositories without an origin. New rows
+use the canonical owner. Opening a project does not silently re-own its rows;
+explicit moves and corrections remain deliberate memory operations. Workers,
+resumed conversations, anchoring and headless runs carry the same read aliases.
+Remote-derived Git identity is unchanged.
 
+Plain and structured drafts are discovered across proven alias prefixes. A
+structured owner must still name the same machine and conversation; task text,
+pasted documents and attachments come back with it. Live windows are excluded,
+and the newest matching record wins even when it records a cleared composer.
 
-A spoken alias-keyed conversation also outranks an abandoned empty canonical
-folder during hello discovery, matching boot's resume order. Otherwise two plain
-hellos could boot two agents onto the same legacy journal. A real-socket regression
-asserts both hellos open that journal with one boot.
+Attach, Run, startup probing and retirement share the host-directory inventory.
+A held old lifetime lock excludes startup even before Listen or after the socket
+closes. Canonical acquisition serializes the lock inventory, and Run reacquires
+and holds every proven old lock throughout its life, including the spawn handoff.
+Status, stop, sweeps and idle/busy takeover still reach ready old hosts.
+
+Temporary roots and paths resolve consistently when classifying launches and
+sweeping abandoned sessions, so a TMPDIR link outside /tmp retains provenance.
+Compatibility requires a valid incoming spelling or a live equivalent citation;
+a missing or broken alias cannot recover a historical hash from its name alone.

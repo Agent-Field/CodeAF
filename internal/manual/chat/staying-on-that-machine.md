@@ -448,7 +448,9 @@ directory is a symlink and you omit `--workspace`. An engine started by an older
 under the alias stays reachable through either spelling: `--status`, `--stop`,
 `--status-all` and `--stop-all` can still find it. Launching a newer build can replace
 that engine when it is idle; work in flight keeps running. A replacement waits for the
-old engine to finish closing its journals as well as closing its socket.
+old engine to finish closing its journals as well as closing its socket. A held old
+lifetime lock also blocks startup before a socket exists. The replacement acquires the
+canonical lock and all proven old locks together and holds them for its lifetime.
 
 Compatibility lookup needs the recorded alias to still resolve to the folder. A deleted
 or broken symlink cannot identify its old engine through the resolved folder.
