@@ -401,9 +401,9 @@ func (a *app) teamsWrite() tea.Cmd {
 			}
 			return func(bool) tea.Cmd {
 				a.teamsTake(teamsWrote{teams: teams, stamp: stamp, err: err, covers: covers, seqs: seqs, refused: refusedBy})
-				// A /helpers whose team this write carried is asked for its
-				// helpers now, and not before (helpers.go).
-				return a.helpersAsked()
+				// A team the Teams row made is said made, and a /helpers held for it
+				// sent, now that this write carried it (helpers.go).
+				return a.helpersSettled()
 			}
 		}))
 	}

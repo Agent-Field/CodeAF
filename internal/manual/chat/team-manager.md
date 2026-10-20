@@ -55,9 +55,9 @@ its tab strip and never scrolls away:
 - **Choose AI manager** on Teams assigns an existing member. To use a new conversation,
   first use Add chat, then Choose AI manager. The Chats dropdown and conversation grid
   offer no manager-assignment controls.
-- **`/helpers`**, or **`+ New from this session`** last in the Teams dropdown, in the
-  conversation you are working in: a new team is made with that conversation as its
-  manager, and it proposes helpers (see **Turn this conversation into a team**).
+- **`+ New from this session`**, last in the Teams dropdown, in the conversation you are
+  working in: a new team is made at once with that conversation as its manager, and
+  `/helpers` then asks it for helpers (see **Turn this conversation into a team**).
 
 The manager's place reads **`◆ Manager`**. Its tile in the team-agnostic grid keeps its ordinary title and position. The tab's hint names its team and title. `alt+m` goes to the
 manager from any conversation in the team.
@@ -69,61 +69,59 @@ If the handle is already taken in that team, a number is added. Another manager 
 `team_send` before its first turn. Once its title is made, the ordinary title-based
 handle choice may replace that fallback.
 
-## Turn this conversation into a team — /helpers, + New from this session, convert a chat, bring in helpers
+## Turn this conversation into a team — + New from this session, /helpers, convert a chat, bring in helpers
 
 You are working in a conversation, the work has grown, and you want helpers with this
 conversation in charge. With no team selected, open the **Teams ▾** dropdown at the left of
-the tab strip and choose its last row, **`+ New from this session`**. It puts this in the message box, in place of
-what was there, and sends nothing:
+the tab strip and choose its last row, **`+ New from this session`**. On the spot:
 
-`/helpers Suggest two or three helpers for what we're working on here. For each, say what it would take on and the brief you'd give it. I'll answer yes, ask for changes, or cancel.`
+- A new top-level team is made with **this conversation as its manager** and only member,
+  named after the conversation's folder (or a word such as `harbor` when that name is
+  taken), in the next free colour. The strip narrows to it and reads `◆ Manager`, and the
+  column turns to the team's Traffic. Every team's rules apply; rename it in Teams, under
+  `Settings`. Once it is saved: `made the team lab · this conversation is its manager`.
+- The message box is given this, in place of what was there (kept in `/drafts`):
+  `/helpers Suggest two or three helpers for this work, and I'll say yes, change them, or cancel.`
 
-Edit the words into the team you want, then press enter; typing `/helpers` yourself does
-the same, and a bare `/helpers` sends exactly that default. Two things happen:
+Edit it and press enter. **`/helpers`** asks the team this conversation manages for helpers:
+it sends your words after it, exactly as the transcript shows them, and a bare `/helpers`
+sends that default. It makes no team. Reply to the proposal in your own words. Yes, and it
+starts each helper with `team_start`, under your approval posture; each opens as a tab on
+this team's strip and starts working at once, while you stay in front of the manager. A
+different list, and it proposes again. Cancel, and it takes the team back with
+`team_dissolve`. Changed your mind before sending anything? `Disband` the team on Teams.
 
-1. A new top-level team is made with **this conversation as its manager** and only member,
-   in one save, named after the conversation's folder (or a word such as `harbor` when that
-   name is taken), in the next free colour. The strip narrows to it and reads `◆ Manager`.
-   Every team's rules apply; rename it in Teams, under `Settings`.
-2. Once it is saved, your words after `/helpers` are sent as your message, exactly as the
-   transcript shows them. The conversation now knows it is the team's manager.
+## When + New from this session or /helpers says no
 
-The receipt reads `made the team lab · this conversation is its manager`. Reply in your own
-words. Yes, and it starts each helper with `team_start`, under your approval posture; each
-opens as a tab on this team's strip, while you stay in front of the manager. A different
-list, and it proposes again. Cancel, and it takes the team back with `team_dissolve`.
+They change nothing and say why:
 
-## When /helpers is not offered, and what it says
-
-`/helpers`, and `+ New from this session`, answer with a sentence and change nothing:
-
-- On home, or any page: `/helpers makes a team of the conversation you are in · open one first`.
-- On the welcome screen of a new chat: `/helpers makes a team of a conversation you have started · say what you are working on first`.
-- In a conversation that already manages a team: `this conversation already manages harbor · ask it for helpers`, and the strip shows that team.
-- With a team selected on the strip: `/helpers works with no team selected · clear harbor with × first, or use + Add subteam on Teams for a team inside it`. The dropdown has no `+ New from this session` row then: the team it makes is always top-level.
+- `/helpers` in a conversation that manages no team: `/helpers asks this conversation's team for helpers, and it has none yet · make one with + New from this session in the Teams menu`.
+- On home, or any page: `/helpers asks the team a conversation manages for helpers · open that conversation first`.
+- The row on the welcome screen of a new chat: `+ New from this session makes a team of a conversation you have started · say what you are working on first`.
+- The row in a conversation that already manages a team: `this conversation already manages harbor · ask it with /helpers`, and the strip shows that team.
+- With a team selected on the strip the dropdown has no `+ New from this session` row: the team it makes is always top-level, and a team inside a team is `+ Add subteam` on Teams.
 - On a connection that holds one conversation at a time: `helpers open beside this conversation, and a connection holds one conversation at a time`.
 - Over `--host` to an engine without teams: `managers are not available over --host yet`.
-- While the first one is still being saved: `the team is still being saved`.
+- The row chosen again while its team is being saved: `the team is still being saved`.
 
 If the save is refused — another window made this conversation another team's manager —
-the strip goes back, the reason is said, and nothing is sent. If you leave the
-conversation before the save finishes, the team stands and the message is not sent:
-`made the team lab · its manager is the conversation you left; ask it for helpers there`.
+the strip goes back, the box is emptied, and the reason is said. A `/helpers` sent before
+the save finished is held and sent once it is saved.
 
-## Why the chat suggested bringing in helpers or /helpers
+## Why the chat suggested bringing in helpers
 
 A conversation that has gone on may end a reply with one sentence like "This could be
-split up and worked on in parallel by a small team. Want to bring in some helpers? Type
-/helpers and I'll suggest who." That is codeaf letting it say so: after your fourth message,
-a conversation in no team is told, once, that it may suggest a team when the work is long
-and has parts a few helpers could work on at once. It is told to say it at most
-once, never for small or quick work, never instead of what you asked, and never again
-after you pass on it. Reopening a long conversation tells it once more, and it can see in
-its history that it already asked.
+split up and worked on in parallel by a small team. Want to bring in some helpers? Choose
++ New from this session in the Teams menu and I'll suggest who." That is codeaf letting it
+say so: after your fourth message, a conversation in no team is told, once, that it may
+suggest a team when the work is long and has parts a few helpers could work on at once. It
+is told to say it at most once, never for small or quick work, never instead of what you
+asked, and never again after you pass on it. Reopening a long conversation tells it once
+more, and it can see in its history that it already asked.
 
-It cannot make the team itself; only you can, with `/helpers` or `+ New from this session`
-in the Teams dropdown. Ignore it, or say no, and nothing changes. A conversation already in
-a team, a task's worker, an automation's run and home's `ask here` are never told this.
+It cannot make the team itself; only you can, with `+ New from this session` in the Teams
+dropdown. Ignore it, or say no, and nothing changes. A conversation already in a team, a
+task's worker, an automation's run and home's `ask here` are never told this.
 
 ## Cancel a team nobody joined — team_dissolve
 

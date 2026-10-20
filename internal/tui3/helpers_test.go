@@ -69,144 +69,220 @@ func helpersMenuRow(t *testing.T, a *app) (teamMenuRow, bool) {
 	return teamMenuRow{}, false
 }
 
-// /helpers MAKES A TEAM WITH THIS CONVERSATION AS ITS MANAGER, and only then
-// sends the person's words. The team is on disk with the conversation as
-// manager and only member; the strip is narrowed to it; the column is the
-// manager's; and the model is handed exactly the words the transcript shows
-// after `/helpers`, and nothing else.
-func TestHelpersMakesThisConversationTheManagerAndSendsWhatWasTyped(t *testing.T) {
+// helpersMakeTeam chooses `+ New from this session` and lets the store take
+// the team, as a person's click and the loop after it do. It hands back the
+// team as the store holds it.
+func helpersMakeTeam(t *testing.T, a *app) team {
+	t.Helper()
+	row, _ := helpersMenuRow(t, a)
+	spend(t, a, a.teamMenuDo(row))
+	teamsFlush(t, a)
+	front := a.frontTabKey()
+	for _, made := range helpersDisk(t, a) {
+		if made.Manager == front {
+			return made
+		}
+	}
+	t.Fatalf("the row made no team this conversation manages: %+v", helpersDisk(t, a))
+	return team{}
+}
+
+// `+ New from this session` MAKES THE TEAM WHEN IT IS CHOSEN. On the same frame,
+// before the store has answered, the strip is the new team's, the column is
+// the manager's and the box holds `/helpers` and the default ask, with what was
+// there kept on the drafts ring; nothing is sent. Once the store has it, the
+// team is on disk with this conversation as manager and only member, and the
+// receipt says so. Enter then sends the ask, exactly as it reads.
+func TestNewFromThisSessionMakesTheTeamAtOnce(t *testing.T) {
 	a, fake := helpersApp(t)
 	front := a.frontTabKey()
-	before := len(fake.sent)
-	typeLine(t, a, "/helpers suggest one helper for the flaky tests")
-	teamsFlush(t, a)
-
-	disk := helpersDisk(t, a)
-	if len(disk) != 1 {
-		t.Fatalf("/helpers left %d teams on disk: %+v", len(disk), disk)
+	a.input.insert("half a thought")
+	a.openTeamMenu()
+	for range teamMenuPicks(a.teamMenuRows()) {
+		drive(t, a, key("down"))
 	}
-	made := disk[0]
-	if made.Manager != front || len(made.Members) != 1 || made.Members[0].Key != front {
-		t.Fatalf("the team is not this conversation alone, as manager: %+v", made)
+	drive(t, a, key("enter"))
+	if a.teamMenu.on {
+		t.Fatal("the dropdown stayed up after its row was chosen")
 	}
-	if made.Name != "lab" || made.Parent != "" {
-		t.Fatalf("the team was named %q under %q, want the folder's name at the top level", made.Name, made.Parent)
-	}
-	if active, ok := a.teamActive(); !ok || active.ID != made.ID {
-		t.Fatal("the strip was not narrowed to the new team")
-	}
-	if a.sideKind() != sideKindManager {
-		t.Fatal("the column does not read this conversation as the team's manager")
+	active, ok := a.teamActive()
+	if !ok || active.Manager != front || a.sideKind() != sideKindManager {
+		t.Fatal("choosing the row did not show the new team, with this conversation as its manager, at once")
 	}
 	if hint := a.trafficHint(); !strings.Contains(hint, "manager of lab") {
 		t.Fatalf("the composer says %q, not that it talks to the manager", hint)
 	}
-	if len(fake.sent) != before+1 {
-		t.Fatalf("/helpers sent %d messages, want one", len(fake.sent)-before)
+	if got := a.input.String(); got != "/helpers "+helpersPrompt {
+		t.Fatalf("the box holds %q", got)
 	}
-	if sent := fake.sent[before]; sent != "suggest one helper for the flaky tests" {
-		t.Fatalf("the model was handed %q, not the words that were typed", sent)
+	if len(a.drafts.entries) == 0 || string(a.drafts.entries[0].text) != "half a thought" {
+		t.Fatal("what was in the box was not kept on the drafts ring")
 	}
-	if shown := lastPersonLine(t, a); shown != "/helpers suggest one helper for the flaky tests" {
-		t.Fatalf("the transcript says %q, not what was typed", shown)
+	if len(fake.sent) != 0 {
+		t.Fatalf("choosing the row sent %q", fake.sent)
+	}
+
+	teamsFlush(t, a)
+	disk := helpersDisk(t, a)
+	if len(disk) != 1 {
+		t.Fatalf("the row left %d teams on disk: %+v", len(disk), disk)
+	}
+	made := disk[0]
+	if made.Manager != front || len(made.Members) != 1 || made.Members[0].Key != front || made.Name != "lab" || made.Parent != "" {
+		t.Fatalf("the team is not this conversation alone, as manager, at the top level: %+v", made)
 	}
 	if !transcriptSays(a, fmt.Sprintf(helpersMadeWord, "lab")) {
 		t.Fatal("no receipt says the team was made")
 	}
-}
+	if len(fake.sent) != 0 {
+		t.Fatalf("the store's answer sent %q before enter", fake.sent)
+	}
 
-// A BARE /helpers SAYS ITS ASK OUT LOUD. The model is handed [helpersPrompt],
-// and the transcript shows that same sentence after the command, so nothing was
-// asked that the person cannot read. The sentence is the person's own kind of
-// words: it names no tool and none of codeaf's machinery.
-func TestABareHelpersShowsTheAskItSends(t *testing.T) {
-	a, fake := helpersApp(t)
-	typeLine(t, a, "/helpers")
-	teamsFlush(t, a)
+	drive(t, a, key("enter"))
 	if len(fake.sent) != 1 || fake.sent[0] != helpersPrompt {
-		t.Fatalf("a bare /helpers sent %q", fake.sent)
+		t.Fatalf("enter sent %q", fake.sent)
 	}
 	if shown := lastPersonLine(t, a); shown != "/helpers "+helpersPrompt {
-		t.Fatalf("the transcript says %q, not the ask that was sent", shown)
+		t.Fatalf("the transcript says %q", shown)
 	}
-	for _, internal := range []string{"team_", "tool", "manager", "codeaf", "handle"} {
+	if n := len(helpersDisk(t, a)); n != 1 {
+		t.Fatalf("/helpers made another team: %d", n)
+	}
+}
+
+// /helpers IN A MANAGER SENDS EXACTLY ITS WORDS. The model is handed what the
+// transcript shows after the command and nothing else, and no team is made.
+func TestHelpersSendsTheManagerExactlyItsWords(t *testing.T) {
+	a, fake := helpersApp(t)
+	helpersMakeTeam(t, a)
+	a.input.reset()
+	typeLine(t, a, "/helpers suggest one helper for the flaky tests")
+	teamsFlush(t, a)
+	if len(fake.sent) != 1 || fake.sent[0] != "suggest one helper for the flaky tests" {
+		t.Fatalf("the model was handed %q", fake.sent)
+	}
+	if shown := lastPersonLine(t, a); shown != "/helpers suggest one helper for the flaky tests" {
+		t.Fatalf("the transcript says %q", shown)
+	}
+	if n := len(helpersDisk(t, a)); n != 1 {
+		t.Fatalf("/helpers made a team: %d on disk", n)
+	}
+}
+
+// THE DEFAULT ASK IS ONE SENTENCE IN THE PERSON'S WORDS. It names no tool and
+// none of codeaf's machinery, and it says what happens next rather than laying
+// down a rule a memory could keep.
+func TestTheDefaultHelpersAskIsOneSentenceInThePersonsWords(t *testing.T) {
+	if strings.Count(helpersPrompt, ".") != 1 || !strings.HasSuffix(helpersPrompt, ".") {
+		t.Fatalf("the default ask is not one sentence: %q", helpersPrompt)
+	}
+	for _, internal := range []string{"team_", "tool", "manager", "codeaf", "handle", "don't", "until"} {
 		if strings.Contains(strings.ToLower(helpersPrompt), internal) {
-			t.Errorf("the default ask says %q, which is codeaf's word and not the person's: %q", internal, helpersPrompt)
+			t.Errorf("the default ask says %q: %q", internal, helpersPrompt)
 		}
 	}
-	for _, want := range []string{"two or three helpers", "I'll answer yes", "cancel"} {
+	for _, want := range []string{"two or three helpers", "yes", "cancel"} {
 		if !strings.Contains(helpersPrompt, want) {
 			t.Errorf("the default ask does not say %q: %q", want, helpersPrompt)
 		}
 	}
 }
 
-// THE ASK WAITS FOR THE STORE. Until the write that carries the team is back
-// the model is sent nothing, so its first step cannot run as anything but the
-// manager; a second /helpers meanwhile makes no second team.
-func TestHelpersAsksOnlyOnceTheStoreHasTheTeam(t *testing.T) {
+// /helpers BEFORE THE STORE HAS THE TEAM IS HELD, NOT LOST. The ask waits for
+// the write that carries the team, so the model's first step finds the
+// conversation already a manager; it is sent once, after the receipt. (The
+// command is run directly: the loop that carries a key also carries the write,
+// in the same message.)
+func TestHelpersBeforeTheStoreHasTheTeamIsHeld(t *testing.T) {
 	a, fake := helpersApp(t)
-	before := len(fake.sent)
+	row, _ := helpersMenuRow(t, a)
+	spend(t, a, a.teamMenuDo(row))
 	spend(t, a, a.runHelpersCommand(""))
-	if len(fake.sent) != before {
+	if len(fake.sent) != 0 {
 		t.Fatal("the ask went out before the store took the team")
 	}
-	spend(t, a, a.runHelpersCommand(""))
-	if !transcriptSays(a, helpersPendingWord) {
-		t.Fatal("a second /helpers while the first was saving did not say so")
-	}
 	teamsFlush(t, a)
-	if len(helpersDisk(t, a)) != 1 {
-		t.Fatalf("two /helpers made %d teams", len(helpersDisk(t, a)))
+	if len(fake.sent) != 1 || fake.sent[0] != helpersPrompt {
+		t.Fatalf("the store's answer sent %q", fake.sent)
 	}
-	if len(fake.sent) != before+1 {
-		t.Fatalf("the store's answer sent %d asks, want one", len(fake.sent)-before)
+	if shown := lastPersonLine(t, a); shown != "/helpers "+helpersPrompt {
+		t.Fatalf("the transcript says %q", shown)
+	}
+	if n := len(helpersDisk(t, a)); n != 1 {
+		t.Fatalf("%d teams on disk", n)
 	}
 }
 
-// A TEAM MADE THIS WAY OBEYS THE RULES OF EVERY TEAM. A name already taken is
-// not reused; a conversation that already manages a team is not made a second
-// team's manager — it is shown its team, and nothing is sent.
-func TestHelpersKeepsTheRulesEveryTeamKeeps(t *testing.T) {
+// /helpers MAKES NO TEAM. In a conversation that manages none — with no team
+// selected, or seen as an ordinary member of the team selected — it changes
+// nothing, sends nothing, and says where the team is made. On home it answers
+// the same way.
+func TestHelpersInAConversationThatManagesNoTeamSaysWhereTheTeamIsMade(t *testing.T) {
+	if got := homeFate("helpers", ""); got != fateAnswers {
+		t.Fatalf("the drop-up says /helpers %q on home", got)
+	}
 	a, fake := helpersApp(t)
+	typeLine(t, a, "/helpers")
+	teamsFlush(t, a)
+	if !transcriptSays(a, helpersNotManagerWord) || len(helpersDisk(t, a)) != 0 || len(fake.sent) != 0 {
+		t.Fatal("/helpers in a conversation in no team made a team or sent something")
+	}
+
+	harbor, err := a.teamMake("harbor", a.tabList())
+	if err != nil {
+		t.Fatal(err)
+	}
+	teamsFlush(t, a)
+	spend(t, a, a.teamActivate(harbor))
+	a.entries = nil
+	typeLine(t, a, "/helpers")
+	teamsFlush(t, a)
+	if !transcriptSays(a, helpersNotManagerWord) || len(fake.sent) != 0 {
+		t.Fatal("/helpers in a member of the selected team, not its manager, did not refuse")
+	}
+	if got := mustTeam(t, a, harbor); got.Manager != "" {
+		t.Fatalf("/helpers gave the selected team a manager: %q", got.Manager)
+	}
+}
+
+// THE ROW KEEPS THE RULES EVERY TEAM KEEPS. A name already taken is not reused;
+// in a conversation that already manages a team it makes no second one,
+// shows the one it manages, and leaves the box alone.
+func TestNewFromThisSessionKeepsTheRulesEveryTeamKeeps(t *testing.T) {
+	a, _ := helpersApp(t)
 	if _, err := a.teamMake("lab", nil); err != nil {
 		t.Fatal(err)
 	}
 	teamsFlush(t, a)
-	typeLine(t, a, "/helpers")
-	teamsFlush(t, a)
-	var made team
-	for _, t := range helpersDisk(t, a) {
-		if t.Manager != "" {
-			made = t
-		}
-	}
-	if made.ID == "" || strings.EqualFold(made.Name, "lab") {
+	made := helpersMakeTeam(t, a)
+	if strings.EqualFold(made.Name, "lab") {
 		t.Fatalf("the new team took a name another team has: %+v", helpersDisk(t, a))
 	}
 
-	sent := len(fake.sent)
-	typeLine(t, a, "/helpers")
+	spend(t, a, a.teamOverlayChoose(""))
+	a.input.setText("keep this")
+	row, _ := helpersMenuRow(t, a)
+	spend(t, a, a.teamMenuDo(row))
 	teamsFlush(t, a)
 	if n := len(helpersDisk(t, a)); n != 2 {
-		t.Fatalf("a manager's /helpers made another team: %d teams", n)
+		t.Fatalf("the row in a manager made another team: %d teams", n)
 	}
 	if !transcriptSays(a, fmt.Sprintf(helpersManagesWord, made.Name)) {
-		t.Fatal("a manager's /helpers did not say which team it manages")
+		t.Fatal("the row did not say which team this conversation manages")
 	}
-	if len(fake.sent) != sent {
-		t.Fatal("a manager's /helpers sent the ask again")
+	if got := a.input.String(); got != "keep this" {
+		t.Fatalf("the row replaced the box in a manager: %q", got)
 	}
 	if active, ok := a.teamActive(); !ok || active.ID != made.ID {
-		t.Fatal("a manager's /helpers did not show the team it manages")
+		t.Fatal("the row in a manager did not show the team it manages")
 	}
 }
 
 // THE STORE'S REFUSAL IS FINAL. Another window made this conversation another
 // team's manager after this one loaded: the window's own check passes, the
 // store refuses with the one-manager rule, the window takes the store's teams
-// back, closes the overlay, and the model is asked nothing.
-func TestHelpersRefusedByTheStoreAsksNothing(t *testing.T) {
+// back, closes the overlay, gives the box back, and the model is asked nothing.
+func TestNewFromThisSessionRefusedByTheStorePutsTheWindowBack(t *testing.T) {
 	a, fake := helpersApp(t)
 	front := a.frontTabKey()
 	elsewhere := teamstore.NewID()
@@ -219,42 +295,43 @@ func TestHelpersRefusedByTheStoreAsksNothing(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	before := len(fake.sent)
-	spend(t, a, a.runHelpersCommand(""))
+	row, _ := helpersMenuRow(t, a)
+	spend(t, a, a.teamMenuDo(row))
 	teamsFlush(t, a)
-	if len(fake.sent) != before {
-		t.Fatal("a refused team still asked the model for helpers")
+	if len(fake.sent) != 0 {
+		t.Fatal("a refused team still sent something")
 	}
 	disk := helpersDisk(t, a)
 	if len(disk) != 1 || disk[0].ID != elsewhere {
 		t.Fatalf("the store holds %+v, want only the other window's team", disk)
 	}
-	if _, ok := a.teamActive(); ok {
+	if active, ok := a.teamActive(); ok && active.ID != elsewhere {
 		t.Fatal("the overlay stayed on a team the store refused")
+	}
+	if got := a.input.String(); got != "" {
+		t.Fatalf("the box still holds the refused team's ask: %q", got)
 	}
 	if !transcriptSays(a, "a conversation can manage one team and its descendants") {
 		t.Fatal("the refusal was not said in the store's words")
 	}
 }
 
-// WHERE IT CANNOT WORK IT SAYS SO AND MAKES NOTHING: home, which has no
-// conversation in front; a connection that holds one conversation at a time,
-// where a helper could not open beside its manager; and the welcome screen.
-func TestHelpersRefusesWhereItCannotWork(t *testing.T) {
-	if got := homeFate("helpers", ""); got != fateAnswers {
-		t.Fatalf("the drop-up says /helpers %q on home", got)
-	}
-
+// WHERE THE ROW CANNOT WORK IT SAYS SO AND MAKES NOTHING: a connection that
+// holds one conversation at a time, where a helper could not open beside its
+// manager, and the welcome screen.
+func TestNewFromThisSessionRefusesWhereItCannotWork(t *testing.T) {
 	a, fake := helpersApp(t)
 	a.shared = true
-	spend(t, a, a.runHelpersCommand(""))
+	row, _ := helpersMenuRow(t, a)
+	spend(t, a, a.teamMenuDo(row))
 	if !transcriptSays(a, helpersShared) || len(helpersDisk(t, a)) != 0 || len(fake.sent) != 0 {
 		t.Fatal("a one-conversation connection made a team")
 	}
 
 	a, fake = helpersApp(t)
 	a.welcome.open, a.welcome.start = true, true
-	spend(t, a, a.runHelpersCommand(""))
+	row, _ = helpersMenuRow(t, a)
+	spend(t, a, a.teamMenuDo(row))
 	if !transcriptSays(a, helpersFreshWord) || len(helpersDisk(t, a)) != 0 || len(fake.sent) != 0 {
 		t.Fatal("the welcome screen made a team")
 	}
@@ -297,69 +374,12 @@ func TestTheTeamsDropdownIsThereWithNoTeamsAndEndsWithNewFromThisSession(t *test
 	}
 }
 
-// `+ New from this session` IS /helpers ONE STEP EARLIER. Chosen by the
-// keyboard, it puts `/helpers ` and the default ask in the box in place of
-// what was there (which goes onto the drafts ring), makes nothing and sends
-// nothing; enter then does exactly what typing it would.
-func TestNewFromThisSessionPutsHelpersInTheBoxAndEnterSendsIt(t *testing.T) {
-	a, fake := helpersApp(t)
-	a.input.insert("half a thought")
-	a.openTeamMenu()
-	picks := teamMenuPicks(a.teamMenuRows())
-	for range picks {
-		drive(t, a, key("down"))
-	}
-	drive(t, a, key("enter"))
-	if a.teamMenu.on {
-		t.Fatal("the dropdown stayed up after its row was chosen")
-	}
-	if got := a.input.String(); got != "/helpers "+helpersPrompt {
-		t.Fatalf("the box holds %q", got)
-	}
-	if len(a.drafts.entries) == 0 || string(a.drafts.entries[len(a.drafts.entries)-1].text) != "half a thought" {
-		t.Fatal("what was in the box was not kept on the drafts ring")
-	}
-	teamsFlush(t, a)
-	if len(helpersDisk(t, a)) != 0 || len(fake.sent) != 0 {
-		t.Fatal("choosing the row made a team or sent something before enter")
-	}
-
-	drive(t, a, key("enter"))
-	teamsFlush(t, a)
-	if len(helpersDisk(t, a)) != 1 || len(fake.sent) != 1 || fake.sent[0] != helpersPrompt {
-		t.Fatalf("enter did not do what /helpers does: teams %d, sent %q", len(helpersDisk(t, a)), fake.sent)
-	}
-	if shown := lastPersonLine(t, a); shown != "/helpers "+helpersPrompt {
-		t.Fatalf("the transcript says %q", shown)
-	}
-}
-
-// WHERE /helpers WOULD REFUSE, THE ROW SAYS SO AND LEAVES THE BOX ALONE: in a
-// conversation that already manages a team, choosing it shows that team.
-func TestNewFromThisSessionInAManagerSaysWhichTeamAndLeavesTheBox(t *testing.T) {
-	a, _ := helpersApp(t)
-	typeLine(t, a, "/helpers")
-	teamsFlush(t, a)
-	made := helpersDisk(t, a)[0]
-	spend(t, a, a.teamOverlayChoose(""))
-	a.input.insert("keep this")
-	row, _ := helpersMenuRow(t, a)
-	spend(t, a, a.teamMenuDo(row))
-	if got := a.input.String(); got != "keep this" {
-		t.Fatalf("the row replaced the box in a manager: %q", got)
-	}
-	if !transcriptSays(a, fmt.Sprintf(helpersManagesWord, made.Name)) {
-		t.Fatal("the row did not say which team this conversation manages")
-	}
-}
-
-// WITH A TEAM SELECTED THERE IS NO `+ New from this session`, and /helpers
-// refuses: the team it makes is a top-level team, and made from inside another
-// team's overlay it would read as nesting. Nesting is `+ Add subteam` on Teams.
-// Nothing is made, nothing is sent, the box is untouched; clearing the
+// WITH A TEAM SELECTED THERE IS NO `+ New from this session`: the team it
+// makes is a top-level team, and made from inside another team's overlay it
+// would read as nesting. Nesting is `+ Add subteam` on Teams. Clearing the
 // selection brings the row back.
 func TestWithATeamSelectedThereIsNoNewFromThisSession(t *testing.T) {
-	a, fake := helpersApp(t)
+	a, _ := helpersApp(t)
 	harbor, err := a.teamMake("harbor", a.tabList())
 	if err != nil {
 		t.Fatal(err)
@@ -376,17 +396,6 @@ func TestWithATeamSelectedThereIsNoNewFromThisSession(t *testing.T) {
 		t.Fatalf("with a team selected the dropdown draws %q:\n%s", helpersRowWord, frame)
 	}
 	a.closeTeamMenu()
-
-	a.input.insert("/helpers")
-	drive(t, a, key("enter"))
-	teamsFlush(t, a)
-	if !transcriptSays(a, fmt.Sprintf(helpersSelectedWord, "harbor")) {
-		t.Fatal("/helpers with a team selected did not say why it refused")
-	}
-	if n := len(helpersDisk(t, a)); n != 1 || len(fake.sent) != 0 {
-		t.Fatalf("/helpers with a team selected made %d teams and sent %q", n, fake.sent)
-	}
-
 	spend(t, a, a.teamOverlayChoose(""))
 	if _, last := helpersMenuRow(t, a); !last {
 		t.Fatal("clearing the selection did not bring the row back last")
@@ -400,9 +409,7 @@ func TestWithATeamSelectedThereIsNoNewFromThisSession(t *testing.T) {
 // stays in front of the manager, with what they were typing.
 func TestHelpersStartedOpenAsTabsInTheTeamsOverlay(t *testing.T) {
 	a, _ := helpersApp(t)
-	typeLine(t, a, "/helpers")
-	teamsFlush(t, a)
-	made := helpersDisk(t, a)[0]
+	made := helpersMakeTeam(t, a)
 	front := a.frontTabKey()
 	spend(t, a, a.teamOverlayChoose(""))
 	if _, ok := a.teamActive(); ok {
@@ -413,7 +420,7 @@ func TestHelpersStartedOpenAsTabsInTheTeamsOverlay(t *testing.T) {
 		n++
 		return Conversation{Agent: &fakeAgent{model: "m"}, SessionFile: fmt.Sprintf("/tmp/lab/helper-%d.jsonl", n), Workspace: workspace}, nil
 	}
-	a.input.insert("half a reply")
+	a.input.setText("half a reply")
 	for _, handle := range []string{"tests", "docs"} {
 		trafficAppend(t, a, made.ID, teamstore.Entry{Kind: teamstore.KindStart, From: teamstore.FromManager, To: handle, Text: "take the " + handle})
 	}
@@ -448,9 +455,7 @@ func TestHelpersStartedOpenAsTabsInTheTeamsOverlay(t *testing.T) {
 func TestADissolvedTeamLeavesThePlainChat(t *testing.T) {
 	a, _ := helpersApp(t)
 	front := a.frontTabKey()
-	typeLine(t, a, "/helpers")
-	teamsFlush(t, a)
-	made := helpersDisk(t, a)[0]
+	made := helpersMakeTeam(t, a)
 	tabs := len(a.tabList())
 	if err := teamstore.Dissolve(a.profileDir, made.ID, front); err != nil {
 		t.Fatal(err)
@@ -473,19 +478,19 @@ func TestADissolvedTeamLeavesThePlainChat(t *testing.T) {
 	}
 }
 
-// THE 💡 TIP IS SAID WHERE /helpers WOULD ACT, AND ONLY THERE: after the first
+// THE 💡 TIP IS SAID WHERE THE ROW WOULD ACT, AND ONLY THERE: after the first
 // exchange, with no team selected, in a conversation that manages none; never
 // before a word was said, never with a team on the strip, never in a manager.
-// Using the command retires it for good.
-func TestTheHelpersTipIsArmedWhereHelpersWouldAct(t *testing.T) {
+// Choosing the row retires it for good.
+func TestTheHelpersTipIsArmedWhereTheRowWouldAct(t *testing.T) {
 	var row notice
 	for _, n := range notices {
 		if n.id == "helpers-team" {
 			row = n
 		}
 	}
-	if row.id == "" || row.text != "/helpers makes this conversation the manager of a new team" || row.retire != eventHelpersUsed {
-		t.Fatalf("the /helpers tip is %+v", row)
+	if row.id == "" || !strings.HasPrefix(row.text, helpersRowWord) || row.retire != eventHelpersUsed {
+		t.Fatalf("the tip is %+v", row)
 	}
 	a, _ := helpersApp(t)
 	a.turn = 0
@@ -509,10 +514,9 @@ func TestTheHelpersTipIsArmedWhereHelpersWouldAct(t *testing.T) {
 	if !row.armed(a) {
 		t.Fatal("clearing the team did not arm the tip again")
 	}
-	typeLine(t, a, "/helpers")
-	teamsFlush(t, a)
+	helpersMakeTeam(t, a)
 	if !a.notices.retired(row.id) {
-		t.Fatal("using /helpers did not retire its tip")
+		t.Fatal("choosing the row did not retire its tip")
 	}
 	spend(t, a, a.teamOverlayChoose(""))
 	if row.armed(a) {

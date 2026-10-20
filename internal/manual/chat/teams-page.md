@@ -439,7 +439,7 @@ cancels. No internal IDs are shown. A duplicate name or invalid parent is refuse
 
 You may create an empty team and add members afterward. Creation never assigns a manager or
 opens its members. To make a team from the conversation you are working in, with that
-conversation as its manager, use `/helpers` there (the team manager page has it). Both routes land on the new team overview. A failed save is reported there.
+conversation as its manager, choose `+ New from this session` in the Teams dropdown there (the team manager page has it). Both routes land on the new team overview. A failed save is reported there.
 Chats also offers `+ New AI team` in its full saved-conversation grid: select cards, then name
 and create. The full conversation grid itself lives only in Chats.
 

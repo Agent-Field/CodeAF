@@ -70,7 +70,7 @@ func TestTheHelpersNoteLandsOnceAfterTheConversationHasGoneOn(t *testing.T) {
 	if !isVolatileNote(note) {
 		t.Fatal("the note would be drawn as something the person typed")
 	}
-	for _, want := range []string{"/helpers", "Only the person can make the team", "once", "Not for small or quick work"} {
+	for _, want := range []string{"+ New from this session in the Teams menu", "Only the person can make the team", "once", "Not for small or quick work"} {
 		if !strings.Contains(note, want) {
 			t.Errorf("the note does not say %q:\n%s", want, note)
 		}

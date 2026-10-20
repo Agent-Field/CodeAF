@@ -427,15 +427,17 @@ var notices = []notice{
 	},
 	{
 		// THE BIGGER HALF OF HANDING WORK OUT, at the owner's word on
-		// 2026-10-19: /task sends one piece of the work away, and /helpers
-		// keeps this conversation and makes it the manager of a team for the
-		// rest (helpers.go). It is armed only where /helpers would act: a
-		// conversation that has been spoken to, no team selected on the strip,
-		// and not already a manager ([helpersTipArmed]). It retires the first
-		// time /helpers is typed or the Teams dropdown's row is chosen.
+		// 2026-10-19: /task sends one piece of the work away, and the Teams
+		// dropdown's `+ New from this session` keeps this conversation and makes
+		// it the manager of a team for the rest (helpers.go). It names the row
+		// and not /helpers, because /helpers asks a team that already exists. It
+		// is armed only where the row would act: a conversation that has been
+		// spoken to, no team selected on the strip, and not already a manager
+		// ([helpersTipArmed]). It retires the first time the row is chosen or
+		// /helpers is typed.
 		id: "helpers-team", slot: slotHint,
 		armed:  helpersTipArmed,
-		text:   "/helpers makes this conversation the manager of a new team",
+		text:   "+ New from this session in the Teams menu makes this chat a team's manager",
 		retire: eventHelpersUsed,
 	},
 	{

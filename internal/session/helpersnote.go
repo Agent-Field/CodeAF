@@ -1,11 +1,12 @@
 package session
 
-// THE ONE NOTE THAT LETS A CONVERSATION SUGGEST /helpers.
+// THE ONE NOTE THAT LETS A CONVERSATION SUGGEST BRINGING IN HELPERS.
 //
 // A person deep in a piece of work can turn it into a team effort with the
-// conversation in charge: the chat's `/helpers` makes a new team with this
-// conversation as its manager (internal/tui3's helpers.go). Nobody finds a
-// command they have never heard of in the middle of their work, and the model,
+// conversation in charge: the chat's Teams menu has `+ New from this session`,
+// which makes a new team with this conversation as its manager, and `/helpers`
+// then asks it for helpers (internal/tui3's helpers.go). Nobody finds a menu
+// row they have never heard of in the middle of their work, and the model,
 // which can see the work growing, is the one placed to mention it. So a
 // conversation is told, once, that it may.
 //
@@ -42,8 +43,8 @@ const helpersNoteAfter = 4
 const helpersNoteBody = "If the work here has grown long, with parts that could be worked on at once by a few helpers, " +
 	"you may suggest a team once, briefly, at the end of a reply, in words like: " +
 	"\"This could be split up and worked on in parallel by a small team. Want to bring in some helpers? " +
-	"Type /helpers and I'll suggest who.\" " +
-	"Only the person can make the team, with /helpers; this conversation then becomes its manager. " +
+	"Choose + New from this session in the Teams menu and I'll suggest who.\" " +
+	"Only the person can make the team, with that menu row; this conversation then becomes its manager. " +
 	"Not for small or quick work, never instead of doing what was asked, and never again once you have suggested it or they passed."
 
 // mayOfferHelpers says whether this conversation may be told it can suggest

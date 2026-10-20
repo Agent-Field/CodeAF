@@ -18,8 +18,9 @@ import (
 // footer: a list of rows under a chip is read and worked the way every list is.
 //
 // WITH NO TEAM SELECTED ITS LAST ROW IS `+ New from this session`, under a
-// rule, which makes a team of the conversation in front by putting `/helpers`
-// in the box (helpers.go). Because that row is there whenever no team is, the
+// rule, which makes a team of the conversation in front when it is chosen, shows
+// it, and puts `/helpers` in the box to ask it for helpers (helpers.go).
+// Because that row is there whenever no team is, the
 // chip is there too with no team yet: `Teams ▾` is how a person with none finds
 // how to make one from what they are doing. With a team selected the row is
 // gone ([app.teamMenuHelpers] says why). Over --host to an engine without the
@@ -72,10 +73,10 @@ func (a *app) teamMenuRows() []teamMenuRow {
 //
 // WITH A TEAM SELECTED THE ROW IS NOT THERE AT ALL. A new team made from a
 // conversation seen through a team's overlay reads as one made inside that
-// team, and it is not: /helpers always makes a top-level team. Nesting has its
+// team, and it is not: the row always makes a top-level team. Nesting has its
 // own doors, `+ Add subteam` on Teams and a manager's own sub-team start, with
-// their own rules, and this row must not look like a third. Where /helpers
-// would refuse for the conversation in front for another reason, the row is
+// their own rules, and this row must not look like a third. Where the row
+// cannot make a team of the conversation in front for another reason, it is
 // still there and says why when chosen.
 func (a *app) teamMenuHelpers() bool {
 	if a.teamsOff() {
@@ -157,7 +158,7 @@ func (a *app) teamMenuDo(r teamMenuRow) tea.Cmd {
 	case r.rule:
 		return nil
 	case r.code == wallPopHelpers:
-		return a.helpersFill()
+		return a.helpersNewTeam()
 	case r.code == wallPopTeam:
 		return a.teamOverlayChoose(r.id)
 	}

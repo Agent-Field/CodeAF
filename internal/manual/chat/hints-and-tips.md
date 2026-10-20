@@ -150,10 +150,10 @@ build if the two disagree), so a tip you saw is on it word for word.
   it. It is the first tip a conversation says, ahead of `/task`.
 - `/task starts a single-shot task on the side` — after the first exchange. Retired when
   `/task` is typed, bare or with a brief.
-- `/helpers makes this conversation the manager of a new team` — after the first exchange,
-  in a conversation with no team selected on the strip that does not already manage a team;
-  never on home. Retired the first time `/helpers` is typed or the Teams dropdown's
-  `+ New from this session` is chosen.
+- `+ New from this session in the Teams menu makes this chat a team's manager` — after the
+  first exchange, in a conversation with no team selected on the strip that does not already
+  manage a team; never on home. Retired the first time that row is chosen or `/helpers` is
+  typed.
 - `/automations add sets one up exactly · or just say when, like every Monday at 9` — from
   the first minute on home and after the first exchange in a conversation. It is the other
   half of the `/automations` row above — the place lists them, and this is how one is made,

@@ -155,12 +155,12 @@ var commands = []command{
 	// conversations big, and this is the team-level view, every member open or
 	// not, the manager's conversation and what waits on you (place_teams.go).
 	{name: "teams", desc: "your teams, their managers and what waits on you · " + placeChord(pageTeams)},
-	// AND THE ONE DOOR THAT STARTS FROM THE CONVERSATION RATHER THAN FROM THE
-	// TEAM, under the page it fills (helpers.go): this conversation becomes a
-	// new team's manager and is sent the words after the command. Two rows,
-	// the way /manual has two, because bare it sends a default ask, written
-	// out in the transcript, and with words it sends those instead.
-	{name: "helpers", desc: "makes this conversation a new team's manager and asks it to suggest helpers, for you to accept, change or cancel"},
+	// AND THE ASK A MANAGER IS GIVEN FOR HELPERS, under the page its team is on
+	// (helpers.go): the team is made by the Teams menu's `+ New from this
+	// session`, and this sends the manager the words after the command. Two
+	// rows, the way /manual has two, because bare it sends a default ask,
+	// written out in the transcript, and with words it sends those instead.
+	{name: "helpers", desc: "asks the team this conversation manages to suggest helpers · make the team with + New from this session in the Teams menu"},
 	{name: "helpers", args: "<what to ask the manager>", desc: "…the same, sending your own words instead of the default ask"},
 	{name: "spend", desc: "what this machine has cost, by the day · " + placeChord(pageSpend)},
 	// It sits AFTER /compact and before /help because those two are the pair a
