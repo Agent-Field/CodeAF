@@ -12,8 +12,8 @@ invalidates:
 ---
 
 The owner's decision: Stop keeps the work, Drop throws the job's local work
-away, Bring back starts it fresh, and nothing on GitHub is ever touched by
-either. A drop never loses work silently, so the factory reads the branch and
+away, its conversations with it (0-factory-drop-deletes-conversations.md),
+Bring back starts it fresh, and nothing on GitHub is ever touched by either. A drop never loses work silently, so the factory reads the branch and
 the folder first and asks.
 
 A team factory's job that ran on another runner keeps its folder and branch on

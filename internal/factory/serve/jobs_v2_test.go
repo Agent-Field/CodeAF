@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -57,13 +58,16 @@ func (c *fakeChats) asked() []factory.Item {
 }
 
 // fakeFolders stands in for this machine's job folders: the work a drop
-// would read there, a delete that may fail, and the jobs it deleted.
+// would read there, a delete that may fail, and the jobs it deleted. during,
+// when set, is called with the job each delete is asked for, before it is
+// done, as a request racing the delete would arrive.
 type fakeFolders struct {
 	mu        sync.Mutex
 	work      map[int]run.Work
 	unread    error
 	refuse    error
 	discarded []factory.Item
+	during    func(factory.Item)
 }
 
 func (f *fakeFolders) Work(it factory.Item) (run.Work, error) {
@@ -73,6 +77,12 @@ func (f *fakeFolders) Work(it factory.Item) (run.Work, error) {
 }
 
 func (f *fakeFolders) Discard(it factory.Item) error {
+	f.mu.Lock()
+	during := f.during
+	f.mu.Unlock()
+	if during != nil {
+		during(it)
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.refuse != nil {
@@ -315,6 +325,180 @@ func TestV2DropWhoseDeleteFailsStillDrops(t *testing.T) {
 	}
 }
 
+// A DROP THROWS THE JOB'S CONVERSATIONS AWAY WITH ITS FOLDER: once the job is
+// dropped and its folder deleted, the job stops naming its agent, its thread,
+// what was heard there, its crew and every step's and round's chat, and those
+// are deleted by the job as it stood, so the delete reaches exactly the ones
+// it recorded. Another job's are never asked for. What the run did stays on
+// the dropped job: its steps, its spend, its notes and its step edits, until
+// Bring back.
+func TestV2DropDeletesTheJobsConversationsAndForgetsThem(t *testing.T) {
+	f := newV2Jobs(t)
+	stream := recordedRun()
+	stream.Room = "0a1b2c3d4e5f"
+	stream.Phases[0].Chat, stream.Phases[0].Handle = "plan-chat", "plan"
+	stream.Phases[0].Rounds = []factory.RoundLine{{Round: 1, Summary: "first plan", Chat: "plan-round-1"}}
+	it := f.create(t, factory.Item{Num: 51, Origin: factory.OriginForge, State: factory.StateRunning, Assignee: "sam",
+		Talk: "/places/job-51/transcript.jsonl", Heard: now, Thread: []factory.Message{{Text: "use the ledger"}},
+		Notes: []string{"use the ledger"}, Adapted: []string{"you set write: keep the ledger"}, Stream: stream})
+	other := f.create(t, factory.Item{Num: 52, Origin: factory.OriginForge, State: factory.StateRunning, Assignee: "sam",
+		Talk: "/places/job-52/transcript.jsonl", Stream: &factory.Stream{Room: "5f4e3d2c1b0a"}})
+	f.post(t, it, "drop", "", 200)
+
+	asked := f.chats.asked()
+	if len(asked) != 1 {
+		t.Fatalf("asked to delete %d jobs' conversations, want the dropped one's: %+v", len(asked), asked)
+	}
+	was := asked[0]
+	if was.ID != it.ID || was.DoneHow != "dropped" || was.Talk != it.Talk || was.Stream == nil || was.Stream.Room != "0a1b2c3d4e5f" ||
+		was.Stream.Phases[0].Chat != "plan-chat" || was.Stream.Phases[0].Rounds[0].Chat != "plan-round-1" || was.Stream.Phases[1].Chat != "old-chat" {
+		t.Fatalf("the conversations deleted were not the dropped job's own as it stood: %+v", was)
+	}
+	if got := f.folders.deleted(); len(got) != 1 || got[0] != it.ID {
+		t.Fatalf("folders deleted %v, want the dropped job's", got)
+	}
+	cur, err := f.st.Get(it.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cur.Talk != "" || len(cur.Thread) != 0 || !cur.Heard.IsZero() || cur.Stream == nil || cur.Stream.Room != "" {
+		t.Fatalf("the dropped job still names a conversation: talk %q thread %+v heard %v stream %+v", cur.Talk, cur.Thread, cur.Heard, cur.Stream)
+	}
+	for _, ph := range cur.Stream.Phases {
+		if ph.Chat != "" || ph.Handle != "" {
+			t.Fatalf("step %s still names its chat: %+v", ph.Name, ph)
+		}
+		for _, r := range ph.Rounds {
+			if r.Chat != "" {
+				t.Fatalf("a round of %s still names its chat: %+v", ph.Name, r)
+			}
+		}
+	}
+	if len(cur.Stream.Phases) != 3 || cur.Stream.Spent != 1.25 || cur.Stream.Phases[0].Rounds[0].Summary != "first plan" || len(cur.Notes) != 1 || len(cur.Adapted) != 1 {
+		t.Fatalf("the dropped job lost what its run did: %+v notes %v adapted %v", cur.Stream, cur.Notes, cur.Adapted)
+	}
+	for _, ev := range cur.Activity {
+		if strings.HasPrefix(ev.What, "dropped · ") {
+			t.Fatalf("a delete that worked left a note: %+v", cur.Activity)
+		}
+	}
+	kept, err := f.st.Get(other.ID)
+	if err != nil || kept.Talk != other.Talk || kept.Stream == nil || kept.Stream.Room != "5f4e3d2c1b0a" || kept.DoneHow != "" {
+		t.Fatalf("another job was touched: %+v %v", kept, err)
+	}
+}
+
+// A CONVERSATION DELETE THAT FAILS IS NOT A FAILED DROP: the job is dropped,
+// no longer names any of its conversations, so nothing points at one half
+// gone, and its activity says they were not all deleted and why.
+func TestV2DropWhoseChatDeleteFailsStillDropsAndSaysSo(t *testing.T) {
+	f := newV2Jobs(t)
+	stream := recordedRun()
+	stream.Room = "0a1b2c3d4e5f"
+	it := f.create(t, factory.Item{Num: 53, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam",
+		Talk: "/places/job-53/transcript.jsonl", Stream: stream})
+	f.chats.refuse = fmt.Errorf("job-53: the conversation's owner could not finish stopping")
+	f.post(t, it, "drop", "", 200)
+	cur, err := f.st.Get(it.ID)
+	if err != nil || cur.DoneHow != "dropped" {
+		t.Fatalf("not dropped: %+v %v", cur, err)
+	}
+	if cur.Talk != "" || cur.Stream.Room != "" || cur.Stream.Phases[1].Chat != "" {
+		t.Fatalf("the dropped job still names a conversation: talk %q stream %+v", cur.Talk, cur.Stream)
+	}
+	if n := len(cur.Activity); n == 0 || cur.Activity[n-1].What != "dropped · its conversations were not all deleted: job-53: the conversation's owner could not finish stopping" {
+		t.Fatalf("activity %+v", cur.Activity)
+	}
+	if j := f.read(t, it); j.State != "done" || j.DoneHow != "dropped" {
+		t.Fatalf("drop %+v", j)
+	}
+}
+
+// BRING BACK DELETES WHAT A DROP DID NOT: a job dropped before drops deleted
+// conversations still names its agent and crew, and Bring back deletes them
+// by the job as it stood. A job dropped since names none, so Bring back asks
+// for none of them again.
+func TestV2BringBackDeletesTheChatsOfAJobDroppedBefore(t *testing.T) {
+	f := newV2Jobs(t)
+	stream := recordedRun()
+	stream.Room = "0a1b2c3d4e5f"
+	old := f.create(t, factory.Item{Num: 61, Origin: factory.OriginForge, State: factory.StateDismissed, DoneHow: "dropped", DoneAt: now, Assignee: "sam",
+		Talk: "/places/job-61/transcript.jsonl", Stream: stream})
+	f.post(t, old, "restore", "", 200)
+	asked := f.chats.asked()
+	if len(asked) != 1 || asked[0].ID != old.ID || asked[0].Talk != old.Talk || asked[0].Stream == nil || asked[0].Stream.Room != "0a1b2c3d4e5f" || asked[0].Stream.Phases[1].Chat != "old-chat" {
+		t.Fatalf("an old dropped job's conversations were not deleted by its own record: %+v", asked)
+	}
+	if asked[0].DoneHow != "dropped" {
+		t.Fatalf("the conversations were deleted after the job was reset: %+v", asked[0])
+	}
+	if cur, err := f.st.Get(old.ID); err != nil || cur.Talk != "" || cur.Stream != nil || cur.State != factory.StateNew {
+		t.Fatalf("not brought back fresh: %+v %v", cur, err)
+	}
+
+	fresh := f.create(t, factory.Item{Num: 62, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam", Talk: "/places/job-62/transcript.jsonl"})
+	f.post(t, fresh, "drop", "", 200)
+	f.post(t, fresh, "restore", "", 200)
+	asked = f.chats.asked()
+	if len(asked) != 3 || asked[1].Talk != fresh.Talk || asked[2].ID != fresh.ID || asked[2].Talk != "" || asked[2].Stream != nil {
+		t.Fatalf("Bring back asked again for what the drop deleted: %+v", asked)
+	}
+}
+
+// BRING BACK DELETES AGAIN WHAT CAME BACK SINCE THE DROP, FIRST: a folder or
+// branch an agent's write or a shell made after the drop is deleted by the
+// job's own record, before the job is reset, so the change and branch the run
+// recorded still name it. While that delete runs the job is still dropped,
+// so a start racing the Bring back is refused and never launches a fresh run
+// whose new folder the delete would take.
+func TestV2BringBackDiscardsWhatCameBackFirst(t *testing.T) {
+	f := newV2Jobs(t)
+	it := f.create(t, factory.Item{Num: 63, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam",
+		Change: &factory.Change{Branch: "factory/63-test-job"}})
+	f.post(t, it, "drop", "", 200)
+	var raced []int
+	f.folders.mu.Lock()
+	f.folders.during = func(during factory.Item) {
+		w := verbRequest(f.h, "POST", fmt.Sprintf("/v1/jobs/%d/run", during.ID), "")
+		raced = append(raced, w.Code)
+	}
+	f.folders.mu.Unlock()
+	f.post(t, it, "restore", "", 200)
+	f.folders.mu.Lock()
+	discarded := append([]factory.Item(nil), f.folders.discarded...)
+	f.folders.mu.Unlock()
+	if len(discarded) != 2 || discarded[0].ID != it.ID || discarded[1].ID != it.ID {
+		t.Fatalf("discarded %+v, want the job's folder deleted by the drop and again by Bring back", discarded)
+	}
+	again := discarded[1]
+	if again.DoneHow != "dropped" || again.Change == nil || again.Change.Branch != "factory/63-test-job" {
+		t.Fatalf("Bring back deleted the folder after resetting the job, without its recorded branch: %+v", again)
+	}
+	if len(raced) != 1 || raced[0] != 409 {
+		t.Fatalf("a start racing Bring back answered %v, want refused while the job is still dropped", raced)
+	}
+	cur, err := f.st.Get(it.ID)
+	if err != nil || cur.State != factory.StateNew || cur.Change != nil || cur.DoneHow != "" {
+		t.Fatalf("not brought back fresh: %+v %v", cur, err)
+	}
+	f.folders.mu.Lock()
+	f.folders.during, f.folders.refuse = nil, fmt.Errorf("could not delete the folder of #63: permission denied")
+	f.folders.mu.Unlock()
+	f.post(t, it, "drop", "", 200)
+	f.post(t, it, "restore", "", 200)
+	cur, _ = f.st.Get(it.ID)
+	if cur.State != factory.StateNew {
+		t.Fatalf("a folder that could not be deleted stopped Bring back: %+v", cur)
+	}
+	notes := []string{}
+	for _, ev := range cur.Activity {
+		notes = append(notes, ev.What)
+	}
+	if !slices.Contains(notes, "brought back · the local branch and folder were kept: could not delete the folder of #63: permission denied") {
+		t.Fatalf("activity %v", notes)
+	}
+}
+
 // BRING BACK IS THE ONE WAY OUT OF A DROP: the job is in Backlog again with
 // no drop left on it, a start works, and the poll treats it as any other item.
 func TestV2RestoreBringsADroppedJobBackToBacklog(t *testing.T) {
@@ -465,7 +649,7 @@ func TestV2RestoreWhoseChatDeleteFailsStillRestores(t *testing.T) {
 	if cur.Stream != nil || cur.Talk != "" || len(cur.Notes) != 0 {
 		t.Fatalf("the old room or conversation is still linked: stream %+v talk %q notes %+v", cur.Stream, cur.Talk, cur.Notes)
 	}
-	if n := len(cur.Activity); n == 0 || cur.Activity[n-1].What != "brought back · its earlier conversations were not all deleted: job-44: the conversation's owner could not finish stopping" {
+	if n := len(cur.Activity); n == 0 || cur.Activity[n-1].What != "brought back · its conversations were not all deleted: job-44: the conversation's owner could not finish stopping" {
 		t.Fatalf("activity %+v", cur.Activity)
 	}
 	if j := f.read(t, it); j.State != "backlog" {

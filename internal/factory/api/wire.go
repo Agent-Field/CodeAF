@@ -44,6 +44,19 @@ const ReasonNoVisibleRepos = "no_visible_repos"
 // with `"discard": true` is the person's yes to deleting it.
 const ReasonHasWork = "has_work"
 
+// ReasonHasRunning is the reason on the 409 that refuses to turn a repository
+// off (`PUT /v1/repos/{owner}/{repo}` or `PUT /v1/repos`) while any of its
+// jobs is running, queued or waiting on a person; the error names them. The
+// same write with `"stop": true` is the person's yes to stopping them first.
+// It is also the reason when one of those stops failed: the repository is
+// still on, and the error names the job.
+const ReasonHasRunning = "has_running"
+
+// ReasonRepoOff is the reason on the 409 that refuses a door that would work
+// on a job of a repository that is off; the error is
+// [factory.RepoOffWords].
+const ReasonRepoOff = "repo_off"
+
 // Queue is `GET /v1/queue`: the whole floor as one person sees it.
 type Queue struct {
 	Mode     string                           `json:"mode,omitempty"`
@@ -147,9 +160,12 @@ type Source struct {
 	Items   int    `json:"items,omitempty"`
 }
 
-// Repo is a watched repository and the pipeline it runs.
+// Repo is a repository the queue's jobs are on and the pipeline it runs. The
+// queue lists only repositories that are on (a repository that is off takes
+// its jobs out of the queue with it), so a listed repository's Watched is true
+// unless the factory keeps no watched list at all, whose poll reads nothing.
+// There is no separate on: listed is on.
 type Repo struct {
-	On       bool      `json:"on"`
 	Name     string    `json:"name"`
 	Watched  bool      `json:"watched"`
 	Checkout string    `json:"checkout,omitempty"`
@@ -268,7 +284,13 @@ type JobReadSize struct {
 
 // Job is one unit of work on the floor (code: [factory.Item]).
 type Job struct {
-	SetupHeld         bool                 `json:"setup_held,omitempty"`
+	SetupHeld bool `json:"setup_held,omitempty"`
+	// RepoOff says the job's repository is switched off: the factory does not
+	// work on it, so the job is not on the queue, and its run, start, rerun,
+	// publish and merge are absent from can and controls. Only the job's own
+	// read (`GET /v1/jobs/{id}`) says it, so an open page can show why;
+	// turning the repository on in Repos brings the job back as it was.
+	RepoOff           bool                 `json:"repo_off,omitempty"`
 	Display           JobDisplay           `json:"display"`
 	StatePresentation StatePresentation    `json:"state_presentation"`
 	Controls          JobControls          `json:"controls"`

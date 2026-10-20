@@ -14,15 +14,21 @@ import (
 // of the list and of what could be added) is unchanged and is how a caller
 // learns the state after any outcome that was not a plain yes.
 //
-// THE PARAMS ARE EXACTLY {factory, repo, on}. There is no method that names a
-// route, a verb or a body, no path to a folder, and no way to ask for anything
-// but the one switch; an unknown field is bad_params and never believed to have
-// been honoured. "on" has no default: a request that leaves it out is refused
-// rather than read as "off".
+// THE PARAMS ARE EXACTLY {factory, repo, on, stop?}. There is no method that
+// names a route, a verb or a body, no path to a folder, and no way to ask for
+// anything but the one switch; an unknown field is bad_params and never
+// believed to have been honoured. "on" has no default: a request that leaves it
+// out is refused rather than read as "off". "stop" is only for turning off.
 //
-// TURNING A REPOSITORY OFF STOPS WATCHING IT AND NOTHING ELSE. Its jobs, its
-// checkouts and the folders on any machine are left as they are; no method here
-// deletes, moves or cleans up anything, and nothing is written to GitHub.
+// TURNING A REPOSITORY OFF STOPS THE FACTORY WORKING ON IT ENTIRELY: its jobs
+// leave the queue, and nothing starts, runs, publishes or merges one until it
+// is turned on again, which brings every job back as it was. While any of its
+// jobs is running, queued or waiting on a person, turning it off is refused
+// with [CodeHasRunning] and the factory's sentence naming them; the same switch
+// with stop is the person's yes to stopping each of them first, the way the
+// job's own Stop does (the work is kept). Its checkouts and the folders on any
+// machine are left as they are; no method here deletes, moves or cleans up
+// anything, and nothing is written to GitHub.
 //
 // A WRITE IS SENT ONCE. It is never retried, replayed or tried by a second
 // route when the first said no. An outcome the engine cannot confirm (a dropped
@@ -52,11 +58,14 @@ var (
 )
 
 // FactoryRepoSetParams is the whole request. On is a pointer so that an
-// omitted value is refused instead of being taken as false.
+// omitted value is refused instead of being taken as false. Stop, with on
+// false, stops the repository's jobs that are under way before it is turned
+// off; without it, such jobs refuse the switch ([CodeHasRunning]).
 type FactoryRepoSetParams struct {
 	Factory string `json:"factory"`
 	Repo    string `json:"repo"`
 	On      *bool  `json:"on"`
+	Stop    bool   `json:"stop,omitempty"`
 }
 
 // FactoryRepoSetDone is what the factory confirmed: the same connection,
@@ -100,6 +109,9 @@ func CheckRepoSwitch(p FactoryRepoSetParams) (FactoryRepoSetParams, error) {
 	p.Repo = owner + "/" + name
 	if p.On == nil {
 		return p, Errorf(CodeBadParams, "on must be true or false")
+	}
+	if *p.On && p.Stop {
+		return p, Errorf(CodeBadParams, "stop is only for turning a repository off")
 	}
 	return p, nil
 }

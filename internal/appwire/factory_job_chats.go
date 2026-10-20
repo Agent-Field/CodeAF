@@ -20,7 +20,9 @@ import (
 //
 // Reading makes the job's agent when the job has none yet (no model call, no
 // job started), and holds every answered conversation open so the app can draw
-// it at once. A step that has not run yet has no chat and is not listed.
+// it at once. A step that has not run yet has no chat and is not listed. A
+// DROPPED JOB HAS NONE AND IS GIVEN NONE: the drop deleted them, and the read
+// is refused with the factory's dropped sentence.
 //
 // A STEP THAT RAN MORE THAN ONE ROUND names each finished round's chat too, so
 // the app can draw and open an earlier round as it does the latest. The job's

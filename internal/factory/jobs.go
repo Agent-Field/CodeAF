@@ -193,6 +193,28 @@ func JobState(it Item) string {
 	}
 }
 
+// DroppedRefusal is the end of the sentence every door that would start or
+// change a dropped job is refused with, after the job's reference. The
+// factory's HTTP door reads it to answer that refusal as a conflict, so it is
+// spelled once, here.
+const DroppedRefusal = "was dropped · Bring back returns it to Backlog"
+
+// RefuseDropped is that refusal for a dropped job, and nil for any other.
+//
+// A DROPPED JOB IS REFUSED WITH ITS WAY BACK. Bring back is the one door out
+// of a drop, so the refusal names it rather than calling the drop final: an
+// agent that relays this sentence to a person must not tell them the job can
+// never run again. AND NO DOOR CLAIMS A CHANGE THAT CANNOT TAKE EFFECT: the
+// drop deleted the job's conversations, nothing of it runs, and Bring back
+// starts it again from its repository's recipe, so a step edit, a note or a
+// budget let through here would be a change nobody ever reads.
+func RefuseDropped(it Item) error {
+	if it.DoneHow != "dropped" {
+		return nil
+	}
+	return fmt.Errorf("%s %s", it.Ref(), DroppedRefusal)
+}
+
 // RunEnded says the job's last run is over and says why, a step's failure or
 // a person's stop, and nothing has started it again. Such a job has nothing
 // to stop: it waits for a person to start it, run it again or drop it.

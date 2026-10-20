@@ -249,6 +249,11 @@ type Repo struct {
 	Recipe Recipe
 	CIRed  bool
 	Hue    int
+	// Watched says the repository is on the watched list the floor keeps
+	// ([RepoSwitch]): the poll reads it and the factory works on its jobs.
+	// The factory's queue stamps it; a floor read straight off the items
+	// does not know it and leaves it false.
+	Watched bool
 }
 
 // PhaseState is a stage's state inside a running stream.

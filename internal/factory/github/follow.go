@@ -165,12 +165,19 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 	if err != nil || len(items) == 0 {
 		return err
 	}
+	// A REPOSITORY THAT IS OFF HAS ITS PULL REQUESTS LEFT ALONE
+	// ([factory.RepoSwitch]): nothing reads them or writes their state onto
+	// the job, and turning it back on follows them from where they stand.
+	sw, err := st.RepoSwitch()
+	if err != nil {
+		return err
+	}
 	var rec *record.Record
 	if opened, err := record.Open(st, record.Options{}); err == nil {
 		rec = opened
 	}
 	for _, it := range items {
-		if it.PullRequest == nil || it.PullRequest.Number <= 0 {
+		if it.PullRequest == nil || it.PullRequest.Number <= 0 || sw.OffJob(it) {
 			continue
 		}
 		owner, name, ok := pullRepo(it)
