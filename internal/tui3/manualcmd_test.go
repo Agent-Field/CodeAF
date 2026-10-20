@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"github.com/Agent-Field/codeaf/internal/session"
 	"strings"
 	"testing"
 )
@@ -31,7 +32,7 @@ func TestManualCommandPutsTheQuestionToTheModelWithTheManualOpen(t *testing.T) {
 	fake := &fakeAgent{model: "m"}
 	a := newTestApp(fake)
 	sent, shown := manualSent(t, a, fake, "/manual how do I change the effort level")
-	if sent != manualQuestionLead+"how do I change the effort level" {
+	if sent != session.ManualQuestionLead+"how do I change the effort level" {
 		t.Fatalf("the model was handed %q", sent)
 	}
 	if !strings.Contains(sent, "manual tool") || !strings.Contains(sent, "which page") {
@@ -51,7 +52,7 @@ func TestABareManualAsksTheModelForTheTour(t *testing.T) {
 	fake := &fakeAgent{model: "m"}
 	a := newTestApp(fake)
 	sent, shown := manualSent(t, a, fake, "/manual")
-	if sent != manualTourAsk {
+	if sent != session.ManualTourAsk {
 		t.Fatalf("the model was handed %q", sent)
 	}
 	if shown != "/manual" {
@@ -86,7 +87,7 @@ func TestManualOnHomeOpensAConversationAndAsksThere(t *testing.T) {
 	default:
 		t.Fatalf("the conversation that opened runs on a %T", a.agent)
 	}
-	if len(fake.sent) == 0 || fake.sent[len(fake.sent)-1] != manualQuestionLead+"how do I change the effort level" {
+	if len(fake.sent) == 0 || fake.sent[len(fake.sent)-1] != session.ManualQuestionLead+"how do I change the effort level" {
 		t.Fatalf("the new conversation was handed %q", fake.sent)
 	}
 	said := ""
