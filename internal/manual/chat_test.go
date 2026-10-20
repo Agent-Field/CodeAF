@@ -3307,6 +3307,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// A STOP IS A FACT ON THE JOB, and a start after it begins again.
 		{"I stopped a factory job, what happens when I start it again", "factory"},
 		{"undo a stop of a factory job", "factory"},
+		{"run again a stopped factory job", "factory"},
+		{"the factory says my job was dropped, can it be restarted", "factory"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

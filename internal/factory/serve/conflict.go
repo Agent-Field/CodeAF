@@ -326,7 +326,7 @@ func classify(err error) (int, string) {
 
 func conflictSentence(msg string) bool {
 	for _, part := range []string{
-		"was dropped for good",
+		run.DroppedRefusal,
 		"is not running",
 		"is not paused",
 		"is not waiting",

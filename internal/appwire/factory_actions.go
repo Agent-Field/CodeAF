@@ -72,6 +72,7 @@ const (
 	JobActDismiss        = "dismiss"
 	JobActDrop           = "drop"
 	JobActRestore        = "restore"
+	JobActRunAgain       = "run_again"
 	JobActUnassign       = "unassign"
 	JobActAssignToMe     = "assign_to_me"
 	JobActChangeAssignee = "change_assignee"
@@ -89,7 +90,7 @@ const (
 )
 
 // FactoryJobActionParams names the job and the read it was acted on from. It
-// is the whole request of start, stop, dismiss, restore, unassign,
+// is the whole request of start, stop, dismiss, restore, run_again, unassign,
 // assign_to_me, undo and retry_publish.
 type FactoryJobActionParams struct {
 	Factory string      `json:"factory"`
@@ -271,6 +272,10 @@ type FactoryActor interface {
 	FactoryJobDrop(ctx context.Context, p FactoryJobDropParams) (FactoryJobActed, error)
 	// FactoryJobRestore is Bring back: a dropped job returns to Backlog.
 	FactoryJobRestore(ctx context.Context, p FactoryJobActionParams) (FactoryJobActed, error)
+	// FactoryJobRunAgain is Run again: a job whose run ended on a failure,
+	// a person's stop that cut a step among them, or whose pull request was
+	// closed unmerged, starts over at its first step.
+	FactoryJobRunAgain(ctx context.Context, p FactoryJobActionParams) (FactoryJobActed, error)
 	FactoryJobUnassign(ctx context.Context, p FactoryJobActionParams) (FactoryJobActed, error)
 	FactoryJobAssignToMe(ctx context.Context, p FactoryJobActionParams) (FactoryJobActed, error)
 	FactoryJobChangeAssignee(ctx context.Context, p FactoryJobAssigneeParams) (FactoryJobActed, error)
@@ -534,6 +539,7 @@ func init() {
 		"factory.job_dismiss":         factoryAction("factory.job_dismiss", prepAction, FactoryActor.FactoryJobDismiss),
 		"factory.job_drop":            factoryAction("factory.job_drop", prepDrop, FactoryActor.FactoryJobDrop),
 		"factory.job_restore":         factoryAction("factory.job_restore", prepAction, FactoryActor.FactoryJobRestore),
+		"factory.job_run_again":       factoryAction("factory.job_run_again", prepAction, FactoryActor.FactoryJobRunAgain),
 		"factory.job_unassign":        factoryAction("factory.job_unassign", prepAction, FactoryActor.FactoryJobUnassign),
 		"factory.job_assign_to_me":    factoryAction("factory.job_assign_to_me", prepAction, FactoryActor.FactoryJobAssignToMe),
 		"factory.job_change_assignee": factoryAction("factory.job_change_assignee", prepAssignee, FactoryActor.FactoryJobChangeAssignee),

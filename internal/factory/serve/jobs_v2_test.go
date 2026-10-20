@@ -151,14 +151,23 @@ func TestV2DismissIsPersonalAndGitHubClearsIt(t *testing.T) {
 	}
 }
 
-func TestV2DropIsFinalAndDeletesOnlyAfterSevenDays(t *testing.T) {
+// A DROP ENDS THE JOB UNTIL A PERSON BRINGS IT BACK: a start is refused with
+// the way back named, never as final, and GitHub does not revive it.
+func TestV2DropEndsTheJobAndDeletesOnlyAfterSevenDays(t *testing.T) {
 	f := newV2Jobs(t)
 	it := f.create(t, factory.Item{Num: 7, Origin: factory.OriginForge, State: factory.StateRunning, Assignee: "sam"})
 	f.post(t, it, "drop", `{"words":"not this one"}`, 200)
 	if j := f.read(t, it); j.State != "done" || j.DoneHow != "dropped" || j.BranchDeleteAt.Sub(j.DoneAt) != factory.DroppedBranchRetention {
 		t.Fatalf("drop %+v", j)
 	}
-	f.post(t, it, "run", "", 409)
+	w := f.post(t, it, "run", "", 409)
+	var refusal struct {
+		Error string `json:"error"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &refusal)
+	if !strings.HasSuffix(refusal.Error, "#7 was dropped · Bring back returns it to Backlog") {
+		t.Fatalf("a start of a dropped job is refused with %q", refusal.Error)
+	}
 	fresh := it
 	fresh.Labels = []string{"bug"}
 	if err := github.Merge(f.st, "github", []factory.Item{fresh}); err != nil {

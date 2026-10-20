@@ -51,6 +51,7 @@ const (
 	factoryVerbDismiss       = "dismiss"
 	factoryVerbDrop          = "drop"
 	factoryVerbRestore       = "restore"
+	factoryVerbRunAgain      = "run_again"
 	factoryVerbUnassign      = "unassign"
 	factoryVerbAssignToMe    = "assign_to_me"
 	factoryVerbAssignee      = "change_assignee"
@@ -264,6 +265,13 @@ func (b *appBackend) FactoryJobDrop(ctx context.Context, p appwire.FactoryJobDro
 // dropped, and only the job's person may bring it back.
 func (b *appBackend) FactoryJobRestore(ctx context.Context, p appwire.FactoryJobActionParams) (appwire.FactoryJobActed, error) {
 	return b.jobWrite(ctx, p.Factory, appwire.JobActRestore, p.Job, factoryVerbRestore, guardBody{p.Expect})
+}
+
+// FactoryJobRunAgain is Run again. The factory refuses a job that carries no
+// failure (a person's stop that cut a step is one) and whose pull request was
+// not closed unmerged, and only the job's person may run it again.
+func (b *appBackend) FactoryJobRunAgain(ctx context.Context, p appwire.FactoryJobActionParams) (appwire.FactoryJobActed, error) {
+	return b.jobWrite(ctx, p.Factory, appwire.JobActRunAgain, p.Job, factoryVerbRunAgain, guardBody{p.Expect})
 }
 
 func (b *appBackend) FactoryJobUnassign(ctx context.Context, p appwire.FactoryJobActionParams) (appwire.FactoryJobActed, error) {

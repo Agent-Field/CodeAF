@@ -616,6 +616,7 @@ func TestAppFactoryJobActionsSpeakOnlyTheFactorysRoutes(t *testing.T) {
 	b.FactoryJobStart(ctx, appwire.FactoryJobActionParams{Factory: f, Job: 4, Expect: v})
 	b.FactoryJobDrop(ctx, appwire.FactoryJobDropParams{Factory: f, Job: 4, Words: "dup", Expect: v})
 	b.FactoryJobRestore(ctx, appwire.FactoryJobActionParams{Factory: f, Job: 4, Expect: v})
+	b.FactoryJobRunAgain(ctx, appwire.FactoryJobActionParams{Factory: f, Job: 4, Expect: v})
 	b.FactoryJobChangeAssignee(ctx, appwire.FactoryJobAssigneeParams{Factory: f, Job: 4, Assignee: "bob", Expect: v})
 	b.FactoryJobSetPriority(ctx, appwire.FactoryJobPriorityParams{Factory: f, Job: 4, Priority: "low", Expect: v})
 	b.FactoryJobSetBudget(ctx, appwire.FactoryJobBudgetParams{Factory: f, Job: 4, Budget: 20, Expect: v})
@@ -641,6 +642,7 @@ func TestAppFactoryJobActionsSpeakOnlyTheFactorysRoutes(t *testing.T) {
 		`POST /v1/jobs/4/start_now {"expect":{"version":7}} Bearer ` + actionTestCredential,
 		`POST /v1/jobs/4/drop {"expect":{"version":7},"words":"dup"} Bearer ` + actionTestCredential,
 		`POST /v1/jobs/4/restore {"expect":{"version":7}} Bearer ` + actionTestCredential,
+		`POST /v1/jobs/4/run_again {"expect":{"version":7}} Bearer ` + actionTestCredential,
 		`POST /v1/jobs/4/change_assignee {"assignee":"bob","expect":{"version":7}} Bearer ` + actionTestCredential,
 		`POST /v1/jobs/4/priority {"expect":{"version":7},"priority":"low"} Bearer ` + actionTestCredential,
 		`POST /v1/jobs/4/raise_budget {"budget":20,"expect":{"version":7}} Bearer ` + actionTestCredential,
