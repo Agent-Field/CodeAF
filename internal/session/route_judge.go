@@ -392,6 +392,8 @@ func (a *Agent) readRouteJudge(ctx context.Context, user userMessage, usedTools 
 	a.mu.Lock()
 	turn, offered := a.routeTurns, a.routeOffered
 	model, closed := a.model, a.closed
+	freshPerson := a.personHeard != 0 && a.personHeard == a.turnSeq
+	personAsk := a.personAsk
 	a.mu.Unlock()
 	if closed || usedTools {
 		return judgeRuling{}
@@ -424,7 +426,11 @@ func (a *Agent) readRouteJudge(ctx context.Context, user userMessage, usedTools 
 	// floor, the gap, the cheap screen, the mastermind confirm, and both of them
 	// having to say yes.
 	asked := user.text()
-	if user.empty() || user.wake || user.authored {
+	if user.wake && freshPerson {
+		// The opening note stays a wake after steering is consumed. Judge the
+		// person's new words, even when they repeat the cancelled request.
+		asked = personAsk
+	} else if user.empty() || user.wake || user.authored {
 		steward := a.steward()
 		if steward == nil {
 			return judgeRuling{}
@@ -433,7 +439,7 @@ func (a *Agent) readRouteJudge(ctx context.Context, user userMessage, usedTools 
 	}
 	// A stopped task's result wakes a turn so the session can report what
 	// happened. That reply is not a fresh instruction to start the same work.
-	if user.wake && a.stoppedTaskResultFor(asked) {
+	if user.wake && !freshPerson && a.stoppedTaskResultFor(asked) {
 		return judgeRuling{}
 	}
 	// THE FLOOR IS THE ASK, and it is cheaper than a model call. A commit,

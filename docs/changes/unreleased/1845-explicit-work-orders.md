@@ -16,5 +16,8 @@ about feasibility, ambiguous questions and future direction stay in the
 conversation. A stopped task's result can be reported without starting the same
 request again.
 
+A fresh human instruction remains eligible even when it arrives while the stopped
+result is being answered.
+
 The authorization and stopped-result rules each have their own searchable manual
 section, so retrieval returns the rule instead of truncating it inside a longer topic.

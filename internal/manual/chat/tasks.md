@@ -714,6 +714,9 @@ That includes a new request that repeats the same words. The normal task rules s
 apply: work worth handing off, at least six words, two models agreeing, and at most one start
 every three turns.
 
+You can also type a new instruction while codeaf is answering the stopped result. Once
+that instruction reaches the conversation, its own words can be judged normally in that turn.
+
 ## A message that reads like work makes codeaf look sooner — nothing else happens
 
 **The judge that starts work on its own looks at two moments.** One is after a turn that
