@@ -137,15 +137,7 @@ func (a *app) crewAllowedModels(rest string) int {
 		a.noteFacts("allowed models · "+config.CrewAllowedAt(a.profileDir).String(), config.CrewAllowedAt(a.profileDir).String())
 		return -1
 	}
-	var err error
-	switch {
-	case strings.HasPrefix(rest, "+") && !strings.Contains(rest, " "):
-		err = config.ModifyCrewAllowed(a.profileDir, true, strings.TrimPrefix(rest, "+"))
-	case strings.HasPrefix(rest, "-") && !strings.Contains(rest, " "):
-		err = config.ModifyCrewAllowed(a.profileDir, false, strings.TrimPrefix(rest, "-"))
-	default:
-		err = config.SetCrewAllowed(a.profileDir, rest)
-	}
+	err := config.ApplyCrewModels(a.profileDir, rest)
 	if err != nil {
 		a.note("could not set the allowed models · " + err.Error())
 		return -1

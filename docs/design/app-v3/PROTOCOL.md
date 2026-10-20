@@ -2302,7 +2302,8 @@ checkout is on, whichever it is.
 menu from the engine's words. It **lists words and runs nothing**: the terminal's `app.slash` is a Bubble Tea
 dispatcher, not an engine call, and nothing on the wire interprets a command line — `agents.send` with `/cost`
 sends a message. Where a typed method already does what a command stands for, the client calls it; where none
-does, the action is the client's own. `slash.catalog` is read-only and takes no model call, file walk,
+does, the action is the client's own. Cache, autonomy and crew policy use the typed methods below;
+harness selection is a client draft choice after `harness.list`. `slash.catalog` is read-only and takes no model call, file walk,
 transcript read or watcher.
 
 - **One table.** `commands` with `source: "table"` are `internal/slashcat`'s rows — the same rows the terminal
@@ -2323,13 +2324,57 @@ transcript read or watcher.
 
 A client that sees no `slash.catalog` feature in `hello` has no catalogue to read and must not guess one.
 
+## Machine cache, project autonomy and saved harnesses
+
+| method | params | result |
+|---|---|---|
+| `cache.status` | `{}` | `{path, bytes, human}` — shared build cache size and absolute path on the app machine |
+| `cache.clean` | `{confirm: true}` | `{freed_bytes}` — the terminal's `cachedir.Clean`, including its read-only module directory handling |
+| `autonomy.get` | `{agent}` | `{agent, kinds: [{kind, rule, after?}]}` — eight kinds in terminal order; rule is ask, recommend or decide; after is a duration string |
+| `autonomy.set` | `{agent, kind, rule}` | same as autonomy.get; rule is `ask`, `decide`, or `recommend [duration]` |
+| `harness.list` | `{}` | `{harnesses: [{name, description, version, runs, last_run?: {at?, finished}}]}` — current saved pages in registry name order |
+| `settings.crew.get` | `{}` | `{models, cap_usd}` — canonical allowed-model rule and crew daily cap (0 means off) |
+| `settings.crew.set` | `{models?: string, cap?: string}` | same as settings.crew.get; exactly one field per call |
+
+Each method advertises its own name in `hello.features`; absent capability answers `unknown_method`.
+Unknown fields are `bad_params`. Cache clean needs literal `confirm: true`: the client asks first,
+explaining the size, path and cold builds; only shared build caches are removed, never conversations or settings.
+Cache, harness and crew policy address the app machine/profile only. As in the terminal, a client connected
+with `--host` disables those commands with "change it on that machine"; these methods do not accept a host
+or agent selector and never forward machine operations to a joined conversation's host.
+
+Autonomy uses the selected agent's engine handle, forwarding over its host connection when present.
+It reads the terminal sheet's explicit rows (unset is ask), with confirmation and clarification always ask.
+The shared parser and `SetAutonomy` enforce the terminal's duration rules, project requirement and safety floors.
+Agent is a single-line id of at most 256 bytes; kind is at most 32 bytes; rule at most 64. A failed host read is an error, never invented ask rows.
+
+Harness listing shares the terminal panel's head-page and history reader; unreadable pages are omitted,
+unreadable history leaves the page without a last run. More than 128 visible pages or 512 KiB of reply
+answers `too_large`, never a partial list. Picking a harness only changes the terminal's draft chip
+(`harnChip`); browsing a panel row shows its card. Neither sets engine state, so there is no `harness.use`.
+
+Crew word forms map as follows:
+
+| terminal word form | existing or added door |
+|---|---|
+| `/crew pin <seat> <model[@provider]>` | `settings.models.set {pins: {<seat>: {id, provider?}}}` |
+| `/crew unpin <seat\|all>` | `settings.models.set {pins: {<seat>: null}}`; all clears all three role keys |
+| `/crew models` / `/crew models <rule>` | `settings.crew.get` / `settings.crew.set {models: rule}` for persistent all, open, price, list and +/- forms; per-provider ticks remain `settings.models.list/set` |
+| `/crew cap <dollars\|off>` | `settings.crew.get/set {cap: "<dollars\|off>"}` for the crew daily cap |
+| `/crew cap task <dollars>` | `settings.get/set {task_cap_usd}` for the existing per-task limit |
+
+`models` is 1–16384 bytes and uses the terminal's shared `ApplyCrewModels` writer; `cap` is at most
+64 bytes and uses `SetCrewCap`. Each write returns the saved policy. These apply to future task admissions.
+`members.cap` is a member conversation budget, `settings.set {day_cap_usd}` is the machine spending limit,
+`crews.*` manages teams and `tasks.routing.*` changes one task; none substitutes for the crew policy rows.
+
 ## Session actions
 
 `session.act` is the typed door for three things the terminal does with `/task <brief>`, `/<program> <brief>`
 and `/remember <text>`. It is **not** a command interpreter: the actions are named for what they do
 (`task.start`, `program.start`, `memory.remember`), and `agents.send` with a slash line is still a message to
-the model. Everything else in the slash catalogue (rewind, export, delete, land, cache, skills, …) has no verb
-here and says so by having none.
+the model. Cache, autonomy and crew policy have the separate typed methods above; saved harnesses have a list only.
+Other slash actions (rewind, export, delete, land, skills, …) have no verb here and say so by having none.
 
 - **The producers are the terminal's own** (`StartTask`/`StartTaskEffort`, `StartDelegate`, `Remember`/
   `RememberAlways`), called through the open conversation's engine handle, so over `--host` they run on the far
