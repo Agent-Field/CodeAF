@@ -1460,6 +1460,14 @@ conversation's own rung, a task's rung and the **thinking** default — see *Mak
 think harder, deeper, or less*. This is the same walk the task control and the settings row
 use, and all five rungs are reachable here.
 
+## Desktop effort rungs and clearing the conversation choice
+
+The desktop's `agents.set_effort` uses the same conversation dial as `/effort`. Engines advertising
+`agents.set_effort.rungs` accept `auto`, `low`, `medium`, `high`, `xhigh` and `max`;
+`auto` clears the saved conversation choice. Older engines accept only low, medium
+and high. The reported `effort` is omitted when the conversation choice is unset;
+another scope can still supply the effort actually used.
+
 ## Making the model think harder, deeper, or less — the effort ladder from low to max
 
 How hard the model thinks is one dial with five rungs, cheapest first: `low`, `medium`,

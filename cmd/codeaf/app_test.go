@@ -24,6 +24,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
+	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -154,6 +155,7 @@ type fakeConversation struct {
 	answers      []session.Answer
 	model        string
 	effort       string
+	dialEffort   string
 	rail         float64
 	remembered   []session.ConsentScope
 	texts        []string
@@ -270,6 +272,21 @@ func (f *fakeConversation) SetReasoningFor(model, level string) {
 	f.mu.Lock()
 	f.effort = level
 	f.mu.Unlock()
+}
+func (f *fakeConversation) ConversationEffort() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.dialEffort
+}
+func (f *fakeConversation) SetConversationEffort(word string) bool {
+	rung, ok := effort.Parse(word)
+	if !ok {
+		return false
+	}
+	f.mu.Lock()
+	f.dialEffort = rung.String()
+	f.mu.Unlock()
+	return true
 }
 func (f *fakeConversation) SetSpendRail(usd float64) error {
 	f.mu.Lock()
@@ -1680,6 +1697,43 @@ func TestAppNoticesAreQuietAndEffortMoves(t *testing.T) {
 	moved, err := backend.SetEffort(agent.ID, appwire.EffortHigh)
 	if err != nil || moved.Effort != appwire.EffortHigh {
 		t.Fatalf("set_effort = %+v, %v", moved, err)
+	}
+}
+
+// The app and terminal use the conversation dial, including its clearing path.
+func TestAppEffortUsesConversationDial(t *testing.T) {
+	conv := &fakeConversation{}
+	var mu sync.Mutex
+	var opens, releases int
+	rec := newAppRecorder()
+	backend := newFakeBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
+	defer backend.Close()
+	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, word := range []string{"low", "medium", "high", "xhigh", "max", "auto"} {
+		t.Run(word, func(t *testing.T) {
+			moved, err := backend.SetEffort(agent.ID, word)
+			want := word
+			if word == "auto" {
+				want = ""
+			}
+			if err != nil || moved.Effort != want || conv.ConversationEffort() != want {
+				t.Fatalf("set %q = %+v, %v; dial %q", word, moved, err, conv.ConversationEffort())
+			}
+			opened, err := backend.OpenAgent(agent.ID)
+			if err != nil || opened.Effort != want {
+				t.Fatalf("open = %+v, %v", opened, err)
+			}
+			if got := conv.ReasoningFor(conv.Model()); got != "" {
+				t.Fatalf("changed model override to %q", got)
+			}
+		})
+	}
+	backend.SetEffort(agent.ID, "max")
+	if _, err := backend.SetEffort(agent.ID, "sideways"); wireCode(err) != appwire.CodeBadParams || conv.ConversationEffort() != "max" {
+		t.Fatalf("unknown effort changed dial: %q, %v", conv.ConversationEffort(), err)
 	}
 }
 

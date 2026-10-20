@@ -50,6 +50,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/clipboard"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -1323,6 +1324,9 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 	startTitles := b.prepareTitles(a, live)
 	title, model := conn.Conv.Title(), conn.Conv.Model()
 	effort := conn.Conv.ReasoningFor(model)
+	if dial, ok := conn.Conv.(interface{ ConversationEffort() string }); ok {
+		effort = dial.ConversationEffort()
+	}
 	// A CONVERSATION WITH NO NAME OF ITS OWN THAT A CREW KNOWS goes by the
 	// word its crew calls it, which for a member a manager started is its
 	// brief's first words: held again after a relaunch, nothing else names it.
@@ -3119,9 +3123,13 @@ func (b *appBackend) SetModel(id, model string) (appwire.Agent, error) {
 }
 
 // SetEffort sets how hard the agent's model is asked to think, opening its
-// conversation first if none is held. The level is the conversation's own,
-// kept per model the way the terminal's ctrl+t keeps it.
-func (b *appBackend) SetEffort(id, effort string) (appwire.Agent, error) {
+// conversation first if none is held. The terminal's /effort uses this same
+// conversation dial, so auto clears the stored override on either surface.
+func (b *appBackend) SetEffort(id, word string) (appwire.Agent, error) {
+	rung, ok := effort.Parse(word)
+	if !ok {
+		return appwire.Agent{}, appwire.Errorf(appwire.CodeBadParams, "effort is low, medium or high")
+	}
 	a, err := b.find(id)
 	if err != nil {
 		return appwire.Agent{}, err
@@ -3136,14 +3144,17 @@ func (b *appBackend) SetEffort(id, effort string) (appwire.Agent, error) {
 		live = a.live
 		live.lastUse = b.now()
 	})
-	model := live.conn.Conv.Model()
-	live.conn.Conv.SetReasoningFor(model, effort)
-	if now := live.conn.Conv.ReasoningFor(model); now != "" {
-		effort = now
+	dial, ok := live.conn.Conv.(interface {
+		SetConversationEffort(string) bool
+		ConversationEffort() string
+	})
+	if !ok || !dial.SetConversationEffort(rung.String()) {
+		return appwire.Agent{}, appwire.Errorf(appwire.CodeEngine, "this conversation has no thinking dial; update the engine and reconnect")
 	}
+	chosen := dial.ConversationEffort()
 	var view appwire.Agent
 	b.locked(func() {
-		a.view.Effort = effort
+		a.view.Effort = chosen
 		view = a.view
 	})
 	b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})

@@ -503,18 +503,36 @@ func TestOutboxKeepsMessagesApart(t *testing.T) {
 	}
 }
 
-// agents.set_effort takes low, medium or high and nothing else.
-func TestSetEffortTakesThreeWords(t *testing.T) {
+// Every terminal rung crosses the wire; auto is absence, never a stored word.
+func TestSetEffortTakesTerminalRungs(t *testing.T) {
 	w := startWire(t, &fakeEngine{})
-	w.next()
-	w.send(`{"id":1,"method":"agents.set_effort","params":{"id":"a1","effort":"High"}}`)
-	got := w.next()
-	if agent := got["result"].(map[string]any)["agent"].(map[string]any); agent["effort"] != "high" {
-		t.Fatalf("set_effort = %v", got)
+	hello := w.next()
+	payload, _ := json.Marshal(hello)
+	if !strings.Contains(string(payload), `"`+FeatureAgentEffortRungs+`"`) {
+		t.Fatalf("hello has no effort rungs feature: %s", payload)
 	}
-	w.send(`{"id":2,"method":"agents.set_effort","params":{"id":"a1","effort":"max"}}`)
-	if got := w.next(); got["error"].(map[string]any)["code"] != CodeBadParams {
-		t.Fatalf("set_effort max = %v", got)
+	for _, word := range []string{"low", "medium", "high", "xhigh", "max", "auto", " High ", "sideways"} {
+		t.Run(word, func(t *testing.T) {
+			request, _ := json.Marshal(map[string]any{"id": 1, "method": "agents.set_effort", "params": map[string]string{"id": "a1", "effort": word}})
+			w.send(string(request))
+			got := w.next()
+			if word == "sideways" {
+				failure := got["error"].(map[string]any)
+				if failure["code"] != CodeBadParams || failure["message"] != "effort is low, medium or high" {
+					t.Fatalf("unknown effort = %v", got)
+				}
+				return
+			}
+			agent := got["result"].(map[string]any)["agent"].(map[string]any)
+			want := strings.ToLower(strings.TrimSpace(word))
+			if word == "auto" {
+				if _, exists := agent["effort"]; exists {
+					t.Fatalf("auto was not omitted: %v", got)
+				}
+			} else if agent["effort"] != want {
+				t.Fatalf("effort = %v, want %q", got, want)
+			}
+		})
 	}
 }
 

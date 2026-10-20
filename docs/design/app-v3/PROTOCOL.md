@@ -53,7 +53,7 @@ state again first. An app that does not know the word treats it as a failure.
 ## Types
 
 ```
-Agent  { id, title, workspace, model?, state, updated_at?, crews?, line? }
+Agent  { id, title, workspace, model?, effort?, state, updated_at?, crews?, line? }
        id: stable string (the conversation's session file id/path key)
        state: "idle" | "working" | "needs_you" | "stopped" | "closed"
        "working" whenever a turn runs, on every agent.changed and every list, whichever window
@@ -173,7 +173,7 @@ result or an event, `?` marks a field that may be absent.
 | `agents.reopen` | `{id}` | `{agent}` |
 | `agents.retry` | `{id}` | `{turn}` |
 | `agents.send` | `{attachments, client_id, id, reads, said, text}` | `{turn}` |
-| `agents.set_effort` | `{effort, id}` | `{agent}` |
+| `agents.set_effort` | `{effort, id}` — `auto`, `low`, `medium`, `high`, `xhigh`, `max` | `{agent}` |
 | `agents.set_model` | `{id, model}` | `{agent}` |
 | `agents.since` | `{after, id}` | `{at?, entries, files?, first?, found, last_at?, turns}` |
 | `agents.steer` | `{attachments, client_id, id, reads, said, text}` | `{}` |
@@ -456,8 +456,15 @@ result or an event, `?` marks a field that may be absent.
   `{id, name, provider, default?: bool}`; never empty when a turn can run, and
   empty (`{models: []}`, not an error) when no provider is connected, by the
   same rule `providers.list` answers `signed_in` with.
-- `agents.set_effort {id, effort: "low"|"medium"|"high"}` and Agent gains
-  `effort?`.
+- `agents.set_effort {id, effort: "auto"|"low"|"medium"|"high"|"xhigh"|"max"}`
+  uses the terminal's `/effort` conversation dial, including over a host connection.
+  Check `hello.features` for `agents.set_effort.rungs` before sending the wider set;
+  older engines accept only low, medium and high. Words are trimmed and lower-cased
+  by the shared effort parser; `auto` clears the override (`""` and `off` also clear).
+  Agent's `effort?` reports the stored conversation override, including xhigh/max,
+  and is omitted when unset. Other scopes (such as a per-model override or install
+  default) can still determine the resolved effort. Unknown words remain `bad_params`
+  with `effort is low, medium or high` and change nothing.
 
 ## Wave 2: setup, keys, settings, money
 
@@ -2442,15 +2449,10 @@ Crew word forms map as follows:
 `session.act` is the typed door for three things the terminal does with `/task <brief>`, `/<program> <brief>`
 and `/remember <text>`. It is **not** a command interpreter: the actions are named for what they do
 (`task.start`, `program.start`, `memory.remember`), and `agents.send` with a slash line is still a message to
-the model. Conversation actions above serve rewind, delete, debug and manual. Other catalogue actions such as
-export, land, cache and skills still have no verb here.
-
-the model. Skills have `skills.list` and `skills.set` (Conversation skills above).
-Everything else in the slash catalogue (rewind, export, delete, land, cache, …)
-has no verb here and says so by having none.
-
-the model. Cache, autonomy and crew policy have the separate typed methods above; saved harnesses have a list only.
-Other slash actions (rewind, export, delete, land, skills, …) have no verb here and say so by having none.
+the model. Typed methods now serve rewind, delete, debug and manual (Conversation actions above), `/skill`
+(`skills.list`, `skills.set`), cache, autonomy and crew policy (their methods above), saved harnesses (a list only)
+and every `/effort` rung (`agents.set_effort`). Other catalogue actions, such as export and land, still have no verb
+here and say so by having none.
 
 - **The producers are the terminal's own** (`StartTask`/`StartTaskEffort`, `StartDelegate`, `Remember`/
   `RememberAlways`), called through the open conversation's engine handle, so over `--host` they run on the far
