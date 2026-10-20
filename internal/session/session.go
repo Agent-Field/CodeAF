@@ -664,6 +664,11 @@ type TaskReplyTag struct {
 	// neither and is read exactly as it always was.
 	Obligation string `json:"obligation,omitempty"`
 	Revision   uint64 `json:"revision,omitempty"`
+	// State and Stopped belong to the result's own attempt. A delayed
+	// delivery must not borrow a re-armed node's new cancellation state. Empty
+	// State identifies older tags without positive stop provenance.
+	State   TaskState `json:"state,omitempty"`
+	Stopped bool      `json:"stopped,omitempty"`
 }
 
 // Event is one observable thing in a turn. A Submit returns a channel of
@@ -2830,6 +2835,11 @@ type Agent struct {
 	// [Agent.deliveringOwnedResult]), and that question has to survive a result
 	// whose words were empty.
 	turnResults []uint64
+	// turnResultTags keeps cancellation provenance for the stopped-only guard.
+	// It retains every arrival, so mixed attempts cannot look stopped-only.
+	// turnNonTaskNews marks arrivals without exclusive task-result provenance.
+	turnResultTags  []TaskReplyTag
+	turnNonTaskNews bool
 	// personTurns is the same answer for the turns BEFORE the newest one, kept
 	// for the same reason and bounded (admission_compile.go). personAsk answers
 	// "what is the current ask"; this answers "what else have they told us",
