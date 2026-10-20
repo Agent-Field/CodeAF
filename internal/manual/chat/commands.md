@@ -2246,6 +2246,13 @@ to the conversation's project and follow its engine connection to another machin
 `harness.list` lists the latest saved shapes with descriptions and run history.
 Choosing a shape belongs to the client's draft tray: there is no `harness.use`
 engine method. The terminal panel's selection shows a card; its picker sets a chip.
+`agents.run_harness {id, name, text, client_id?}` runs that saved shape with your
+next message as its input, through the same runner as the terminal picker.
+It returns a turn and ordinary reply events. A running turn refuses as busy;
+an unknown name refuses before a turn starts. An engine without the door says
+`harnesses are unavailable here`. Attachments stay for an ordinary message.
+The optional `client_id` correlates the user entry, as with `agents.send`;
+sending it twice still starts two runs when the conversation is free.
 
-Cache and saved harnesses are machine-local; a client using `--host` must change
-those on that machine.
+Cache and saved-harness listing are machine-local. Running a saved harness uses
+the conversation's engine connection when that engine supports it.
