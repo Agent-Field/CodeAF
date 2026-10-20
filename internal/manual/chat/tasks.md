@@ -700,14 +700,19 @@ which works at once when it is the only running task, and needs `alt+t` to walk 
 first when there are others — or `Stop` on the pointer. Nothing about it is special from the
 moment it exists.
 
-If a stopped task's result wakes the conversation, answering that result does not start the
-same request again. A new instruction you type is a fresh request and can be judged normally.
-
 **There is no setting that turns this off.** No `/settings` row switches it, and nothing you
 type disarms it for the session. What bounds it is the list above, and the stop.
 
 Nodes cut by an adaptive run also appear as rows under the run's own row — see *Adaptive
 runs*, which explains what those rows can and cannot do.
+
+## Can a stopped task start again — a result wake and a fresh human request
+
+If a stopped task's result wakes the conversation, answering that result does not start the
+same request again. A new instruction you type is a fresh request and can be judged normally.
+That includes a new request that repeats the same words. The normal task rules still
+apply: work worth handing off, at least six words, two models agreeing, and at most one start
+every three turns.
 
 ## A message that reads like work makes codeaf look sooner — nothing else happens
 
