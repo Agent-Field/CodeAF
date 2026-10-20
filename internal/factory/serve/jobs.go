@@ -5,11 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/Agent-Field/codeaf/internal/filelock"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -162,30 +159,57 @@ func (h *Handler) runAgain(w http.ResponseWriter, r *http.Request, it factory.It
 }
 
 // restoreJob is POST /v1/jobs/{id}/restore, Bring back: the one way out of a
-// drop. The job goes back to Backlog as if it had never been dropped, and
-// nothing starts; starting it again is the person's own start. A DROP IS NOT A
-// DELETE, so the branch-deletion deadline the drop set is taken off. When that
-// deadline already passed and the branch is gone, the job still comes back:
-// its next run starts from a fresh branch, which is why BranchDeletedAt is
-// cleared too, so a later drop deletes the branch that run makes.
+// drop. The job goes back to Backlog AS IF IT HAD NEVER RUN, and nothing
+// starts; starting it is the person's own start. The drop deleted its local
+// branch and folder, so its next run begins on a fresh branch, from the first
+// step, with nothing spent. What the job is stays: its identity, the issue's
+// own words, who it is assigned to, its priority and budget, the person's notes
+// and conversation, and its activity, the history of what happened to it.
+//
+// THE EARLIER PULL REQUEST IS FORGOTTEN, NOT CLOSED: nothing on GitHub is
+// touched. Kept, the poll would go on writing that pull request's state onto
+// a Backlog job and the job would be judged by a pull request its fresh run
+// never made, while that run's branch no longer holds what the pull request
+// shows. Forgotten, a fresh run cannot open a second pull request beside it by
+// accident either: its push to the same branch name is refused while the old
+// branch is still on GitHub, because a push never forces. The receipt names
+// the earlier pull request, so it is not lost from the record.
 func (h *Handler) restoreJob(w http.ResponseWriter, r *http.Request, it factory.Item) {
 	if factory.JobDoneHow(it) != "dropped" {
 		h.refuse(w, http.StatusConflict, "only a dropped job can be brought back", "conflict", "", nil, factory.JobState(it))
 		return
 	}
-	h.finish(w, h.recordAction(r, it, record.Restored, "", func() error {
+	detail := ""
+	if pr := it.PullRequest; pr != nil && pr.URL != "" {
+		detail = "earlier pr · " + pr.URL
+	}
+	h.finish(w, h.recordAction(r, it, record.Restored, detail, func() error {
 		return h.config.Store.Update(it.ID, func(cur *factory.Item) error {
-			cur.State = factory.StateNew
-			cur.DoneHow = ""
-			cur.DoneAt = time.Time{}
-			cur.BranchDeleteAt = time.Time{}
-			cur.BranchDeletedAt = time.Time{}
+			forgetRun(cur)
 			return nil
 		})
 	}))
-	// The drop's branch deadline was one of the job timers; the next one is
-	// worked out again without it.
-	h.scheduleJobTimer()
+}
+
+// forgetRun takes every trace of a run off the job: its state and ending, its
+// steps and what they spent, its question, failure, approval and stop, its
+// proof, its change and the commits and machine it was made on, and what it
+// published. Everything else on the job is the job's own and stays.
+func forgetRun(it *factory.Item) {
+	it.State = factory.StateNew
+	it.DoneHow, it.DoneAt = "", time.Time{}
+	it.Stream = nil
+	it.Failure = nil
+	it.Approval, it.StopUndo = nil, nil
+	it.Question, it.QKind = "", ""
+	it.Asking, it.AnsweredQuestions = nil, nil
+	it.Proof, it.Policy = nil, nil
+	it.PlannedFiles = nil
+	it.Change, it.ChangeBase, it.HeadCommit = nil, "", ""
+	it.WorktreeMachine = ""
+	it.Publish, it.Publishing, it.PublishStatus, it.PublishError = "", false, nil, ""
+	it.PullRequest, it.CommentURL = nil, ""
+	it.MergePolicy, it.Merging = nil, nil
 }
 
 func (h *Handler) dismissJob(w http.ResponseWriter, r *http.Request, it factory.Item) {
@@ -561,9 +585,6 @@ func (h *Handler) settleJobs(approvalsOnly ...bool) {
 		return
 	}
 	sweep := len(approvalsOnly) == 0 || !approvalsOnly[0]
-	if sweep {
-		h.pruneDropped(pending)
-	}
 	h.settleMerges(sweep, pending)
 	due := false
 	for _, it := range pending {
@@ -623,12 +644,6 @@ func (h *Handler) scheduleJobTimer() {
 	}
 	var next time.Time
 	for _, it := range items {
-		if h.config.DeleteBranch != nil && it.DoneHow == "dropped" && it.BranchDeletedAt.IsZero() && !it.BranchDeleteAt.IsZero() && (next.IsZero() || it.BranchDeleteAt.Before(next)) {
-			next = it.BranchDeleteAt
-			if !next.After(h.clock()) {
-				next = h.clock().Add(time.Minute)
-			}
-		}
 		if a := it.Approval; a != nil && a.State == "approving" && (next.IsZero() || a.UndoUntil.Before(next)) {
 			next = a.UndoUntil
 		}
@@ -672,67 +687,4 @@ func (h *Handler) questionCollision(w http.ResponseWriter, r *http.Request, it f
 	elapsed := max(0, int(h.clock().Sub(q.Answer.At).Seconds()))
 	h.refuse(w, 409, fmt.Sprintf("@%s answered this %ds ago. Your answer wasn't sent.", q.Answer.By, elapsed), "already_answered", "@"+q.Answer.By, &q.Answer.At, factory.JobState(it))
 	return true
-}
-
-// pruneDropped uses its own per-job lock. A slow GitHub cleanup must never
-// hold the consent lock or consume another person's five-second Undo window.
-func (h *Handler) pruneDropped(items []factory.Item) {
-	if h.config.DeleteBranch == nil || h.config.Record == nil {
-		return
-	}
-	for _, it := range items {
-		if it.DoneHow != "dropped" || !it.BranchDeletedAt.IsZero() || it.BranchDeleteAt.IsZero() || h.clock().Before(it.BranchDeleteAt) {
-			continue
-		}
-		h.pruneBranch(it.ID)
-	}
-}
-
-func (h *Handler) pruneBranch(id int) {
-	f, err := os.OpenFile(filepath.Join(h.config.Store.Root(), "retention-"+strconv.Itoa(id)+".lock"), os.O_CREATE|os.O_RDWR, 0600)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-	if err := filelock.Lock(f, true, true); err != nil {
-		return
-	}
-	defer filelock.Unlock(f)
-	it, err := h.config.Store.Get(id)
-	if err != nil || it.DoneHow != "dropped" || !it.BranchDeletedAt.IsZero() {
-		return
-	}
-	events, err := h.config.Record.Since(context.Background(), time.Time{})
-	if err != nil {
-		return
-	}
-	// A DELETE ALREADY RECORDED FOR THIS DROP is not sent again. Only one
-	// after the job's last drop counts: a job brought back and dropped again
-	// has a new branch, and the first drop's delete says nothing about it.
-	var deleted time.Time
-	for _, e := range events {
-		if e.Job != id {
-			continue
-		}
-		switch e.Kind {
-		case record.Dropped:
-			deleted = time.Time{}
-		case record.BranchDeleted:
-			deleted = e.At
-		}
-	}
-	if deleted.IsZero() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		err := h.config.DeleteBranch(ctx, it)
-		cancel()
-		if err != nil {
-			return
-		}
-		e, err := h.config.Record.Append(context.Background(), record.Event{Kind: record.BranchDeleted, Job: id, Detail: factory.JobRef(it)})
-		if err != nil {
-			return
-		}
-		deleted = e.At
-	}
-	_ = h.config.Store.Update(id, func(cur *factory.Item) error { cur.BranchDeletedAt = deleted; return nil })
 }

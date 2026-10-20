@@ -571,12 +571,18 @@ func (j *job) converse(ctx context.Context) {
 	}
 }
 
+// StopWait is how long a worker waits for its runner to stop a job the
+// factory took back before it lets the job go. A drop on this machine waits
+// at least this long, after the worker's next heartbeat, before it deletes
+// the job's folder.
+const StopWait = 5 * time.Second
+
 // drop lets the job go here: the factory stopped it, or this process is
 // ending and the lease will expire into the queue for another worker.
 func (j *job) drop() {
 	j.keepLocal(api.WorkerLease{Job: j.id})
 	_ = j.o.Runner.Stop(j.id)
-	for deadline := time.Now().Add(5 * time.Second); j.o.Runner.Running(j.id) && time.Now().Before(deadline); {
+	for deadline := time.Now().Add(StopWait); j.o.Runner.Running(j.id) && time.Now().Before(deadline); {
 		time.Sleep(20 * time.Millisecond)
 	}
 }

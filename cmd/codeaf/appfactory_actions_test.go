@@ -614,7 +614,7 @@ func TestAppFactoryJobActionsSpeakOnlyTheFactorysRoutes(t *testing.T) {
 	v := &api.Expect{Version: ptr(7)}
 	f := conn.ID
 	b.FactoryJobStart(ctx, appwire.FactoryJobActionParams{Factory: f, Job: 4, Expect: v})
-	b.FactoryJobDrop(ctx, appwire.FactoryJobDropParams{Factory: f, Job: 4, Words: "dup", Expect: v})
+	b.FactoryJobDrop(ctx, appwire.FactoryJobDropParams{Factory: f, Job: 4, Discard: true, Expect: v})
 	b.FactoryJobRestore(ctx, appwire.FactoryJobActionParams{Factory: f, Job: 4, Expect: v})
 	b.FactoryJobRunAgain(ctx, appwire.FactoryJobActionParams{Factory: f, Job: 4, Expect: v})
 	b.FactoryJobChangeAssignee(ctx, appwire.FactoryJobAssigneeParams{Factory: f, Job: 4, Assignee: "bob", Expect: v})
@@ -640,7 +640,7 @@ func TestAppFactoryJobActionsSpeakOnlyTheFactorysRoutes(t *testing.T) {
 	mu.Unlock()
 	want := []string{
 		`POST /v1/jobs/4/start_now {"expect":{"version":7}} Bearer ` + actionTestCredential,
-		`POST /v1/jobs/4/drop {"expect":{"version":7},"words":"dup"} Bearer ` + actionTestCredential,
+		`POST /v1/jobs/4/drop {"discard":true,"expect":{"version":7}} Bearer ` + actionTestCredential,
 		`POST /v1/jobs/4/restore {"expect":{"version":7}} Bearer ` + actionTestCredential,
 		`POST /v1/jobs/4/run_again {"expect":{"version":7}} Bearer ` + actionTestCredential,
 		`POST /v1/jobs/4/change_assignee {"assignee":"bob","expect":{"version":7}} Bearer ` + actionTestCredential,
@@ -654,6 +654,20 @@ func TestAppFactoryJobActionsSpeakOnlyTheFactorysRoutes(t *testing.T) {
 	}
 	if strings.Join(posts, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("requests:\n%s\nwant:\n%s", strings.Join(posts, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+// A DROP THAT WOULD DELETE WORK reaches the app as has_work, carrying the
+// factory's own sentence naming the work and the refusal's detail, so the app
+// can ask the person and send the same drop again with discard.
+func TestAppFactoryDropWithWorkIsHasWork(t *testing.T) {
+	err := appFactoryActionFailure(appFactoryReply{status: http.StatusConflict, body: []byte(`{"error":"codeaf#1844's branch has 3 commits and uncommitted changes.","reason":"has_work","now_state":"running"}`)})
+	var wire *appwire.Error
+	if !errors.As(err, &wire) || wire.Code != appwire.CodeHasWork || wire.Message != "codeaf#1844's branch has 3 commits and uncommitted changes." {
+		t.Fatalf("has_work refusal = %#v", err)
+	}
+	if d, ok := wire.Detail.(*appwire.FactoryRefusal); !ok || d.Reason != api.ReasonHasWork || d.NowState != "running" {
+		t.Fatalf("has_work detail = %#v", wire.Detail)
 	}
 }
 

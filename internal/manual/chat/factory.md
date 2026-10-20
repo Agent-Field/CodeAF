@@ -109,11 +109,13 @@ One check, in code, decides every merge; no model does, and no tool on any belt 
 
 To go on from a step that was cut instead, keeping the steps before it and the money spent, run that step again (try again) rather than starting the job.
 
-## drop a job and bring it back — Drop, Bring back, undo a drop, restart a dropped job, deleted branch
+## drop a job and bring it back — Drop, Bring back, undo a drop, delete a job's branch, uncommitted work, restart a dropped job
 
-**Drop** finishes a job: a running one is stopped, the job reads done, and nothing on GitHub brings it back by itself (a changed issue does not revive a dropped job). Only the job's assignee, or anyone while it has none, may drop it. The job's branch is kept for seven days and then deleted. A drop is not final: starting a dropped job is refused with `#12 was dropped · Bring back returns it to Backlog`, and Bring back is the way to run it again.
+**Drop** takes a job off the list and throws away its local work: a running job is stopped first, then its worktree folder and its local branch (`factory/<number>-<title>`) are deleted on this machine, and the job reads done. Nothing on GitHub is touched: a branch already pushed and a pull request already opened stay where they are, and a changed issue does not revive a dropped job. A pull request's job keeps its branch, because that is the pull request's own work; only its folder goes. Only the job's assignee, or anyone while it has none, may drop it.
 
-**Bring back** is the one way out of a drop. Only a dropped job offers it, and only to the person who may act on the job. The job returns to Backlog as if it had never been dropped: nothing starts, the branch deletion is called off, and starting it is your own start. If the seven days had already passed and the branch is gone, the job still comes back; its next run starts on a fresh branch. A job that was not dropped is refused with `only a dropped job can be brought back`.
+**Drop asks first when there is work to lose**: commits on the job's branch, or changes in its folder that were never committed. It is refused with a sentence naming them, such as `codeaf#1844's branch has 3 commits and uncommitted changes.`, and nothing is stopped or deleted; dropping it again and saying yes to discarding that work deletes it. A branch that could not be read counts as work. If the delete itself fails, the job is dropped anyway and its activity says what was kept. A job that ran on another computer of a team factory keeps its folder there.
+
+**Bring back** is the one way out of a drop. Only a dropped job offers it, and only to the person who may act on the job. The job returns to Backlog as a fresh job, as if it had never run: no steps run, nothing spent, no failure, no pull request. Its issue, assignee, priority, budget, notes and activity stay. Nothing starts; your start runs it from the first step on a new branch. A pull request it had opened stays on GitHub, no longer linked to the job. Starting a dropped job is refused with `#12 was dropped · Bring back returns it to Backlog`, and a job that was not dropped with `only a dropped job can be brought back`.
 
 ## starting a job checks GitHub first — closed issue, wasn't started, Check GitHub now, last checked
 

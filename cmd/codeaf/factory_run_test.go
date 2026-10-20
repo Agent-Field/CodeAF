@@ -337,3 +337,41 @@ func TestEveryWindowHangsTheLeaseDoors(t *testing.T) {
 		t.Error("no store still bound runner doors")
 	}
 }
+
+// A DROP NEVER DELETES A FOLDER A RUNNER ON THIS MACHINE STILL WORKS IN. A
+// live worker's mirror of the job holds the delete back until it is gone; a
+// mirror left by a process that died does not.
+func TestFactoryDropWaitsForThisMachinesRunner(t *testing.T) {
+	root := t.TempDir()
+	mirror := func(pid string) string {
+		dir := filepath.Join(root, "workers", pid, "0123abcd")
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(dir, "7.json")
+		if err := os.WriteFile(path, []byte("{}"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	if factoryMirrorHolds(root, 7) || !factoryRunnerLetGo(root, 7, 0) {
+		t.Fatal("a job no worker holds is held")
+	}
+	mirror("2147483646")
+	if factoryMirrorHolds(root, 7) {
+		t.Fatal("a dead worker's mirror holds the job")
+	}
+	live := mirror(strconv.Itoa(os.Getpid()))
+	if !factoryMirrorHolds(root, 7) || factoryRunnerLetGo(root, 7, 0) {
+		t.Fatal("a live worker's mirror does not hold the job")
+	}
+	if factoryMirrorHolds(root, 8) {
+		t.Fatal("another job is held by this one's mirror")
+	}
+	if err := os.Remove(live); err != nil {
+		t.Fatal(err)
+	}
+	if !factoryRunnerLetGo(root, 7, 0) {
+		t.Fatal("the job is still held after its worker let go")
+	}
+}

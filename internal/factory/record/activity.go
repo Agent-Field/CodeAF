@@ -54,6 +54,9 @@ func enrich(e *Event) {
 		case "budget_raised":
 			e.Verb = "raised budget"
 		case "branch_deleted":
+			// Older receipts only: the seven-day deletion of a dropped job's
+			// branch that wrote them is gone, and a drop now deletes the job's
+			// local work at once, inside the drop's own receipt.
 			e.Verb = "deleted branch"
 		case Took:
 			e.Verb = "assigned"

@@ -471,53 +471,110 @@ func (h *Handler) notWaiting(w http.ResponseWriter, r *http.Request, it factory.
 	h.refuse(w, http.StatusConflict, "job is not waiting for approval", "conflict", "", nil, job.State)
 }
 
-// drop records optional words and tells a holding worker to stop. The branch
-// is kept: nothing here deletes it.
+// drop is POST /v1/jobs/{id}/drop: the job is stopped, taken off the list,
+// and its LOCAL work deleted: the worktree folder and the local branch the
+// runner made for it on this machine ([JobFolders]). NOTHING ON GITHUB IS
+// TOUCHED: a pushed branch and an opened pull request stay where they are.
+//
+// A DROP NEVER LOSES WORK UNASKED. When the branch has commits of its own, or
+// the folder holds uncommitted changes, the drop is refused with 409 has_work
+// and a sentence naming them; the same drop with `"discard": true` is the
+// person's yes. Work that could not be read counts as work.
+//
+// THE JOB IS DROPPED EVEN WHEN THE DELETE FAILS: what was not deleted is said
+// on the job's activity, and the drop answers as done.
 func (h *Handler) drop(w http.ResponseWriter, r *http.Request, it factory.Item) {
 	var body struct {
-		Words  string      `json:"words"`
-		Expect *api.Expect `json:"expect,omitempty"`
+		Discard bool        `json:"discard,omitempty"`
+		Expect  *api.Expect `json:"expect,omitempty"`
 	}
 	if !h.decode(w, r, &body, true) || !h.fresh(w, r, it, "drop", body.Expect) {
 		return
 	}
-	words := strings.TrimSpace(body.Words)
-	if h.config.Store != nil {
-		if factory.JobState(it) == "done" {
-			h.refuse(w, 409, "job is already Done", "conflict", "", nil, "done")
-			return
-		}
-		now := h.clock().UTC()
-		if factory.JobState(it) == "running" || factory.JobState(it) == "queued" || factory.JobState(it) == "needs_you" {
-			if h.failed(w, h.stopForChange(it.ID)) {
-				return
-			}
-		}
-		h.finish(w, h.recordAction(r, it, record.Dropped, words, func() error {
-			return h.config.Store.Update(it.ID, func(cur *factory.Item) error {
-				cur.State = factory.StateDismissed
-				cur.DoneHow = "dropped"
-				cur.DoneAt = now
-				cur.BranchDeleteAt = now.Add(factory.DroppedBranchRetention)
-				cur.Approval = nil
-				cur.StopUndo = nil
-				cur.Question = ""
-				cur.QKind = ""
-				cur.Failure = nil
-				cur.PublishError = ""
-				cur.Publishing = false
-				return nil
-			})
-		}))
-		h.scheduleJobTimer()
+	if h.config.Store != nil && factory.JobState(it) == "done" {
+		h.refuse(w, 409, "job is already Done", "conflict", "", nil, "done")
 		return
 	}
-	if h.workers != nil && h.workers.desk != nil {
-		if _, err := h.workers.desk.SignalIfHeld(it.ID, lease.Signal{Verb: lease.SignalStop, Words: words}); h.failed(w, err) {
+	detail := ""
+	if folders := h.config.Folders; folders != nil {
+		work, err := folders.Work(it)
+		lost := ""
+		switch {
+		case err != nil:
+			lost = factory.JobRef(it) + "'s branch could not be read, so what it holds is unknown."
+		case work.Any():
+			lost = factory.JobRef(it) + "'s branch has " + work.String() + "."
+		}
+		if lost != "" && !body.Discard {
+			h.refuse(w, http.StatusConflict, lost, api.ReasonHasWork, "", nil, factory.JobState(it))
 			return
 		}
+		if lost != "" {
+			detail = "discarded: " + lost
+		}
 	}
-	h.finish(w, h.recordAction(r, it, record.Dropped, words, func() error { return h.seam.Dismiss(it.ID) }))
+	err := h.dropJob(r, it, detail)
+	if err == nil && h.config.Folders != nil {
+		h.discard(it)
+	}
+	h.finish(w, err)
+}
+
+// dropJob stops the job where it runs and marks it dropped, with its receipt.
+// A RUNNING JOB IS STOPPED FIRST, so the folder it works in is let go of
+// before [Handler.discard] deletes it.
+func (h *Handler) dropJob(r *http.Request, it factory.Item, detail string) error {
+	if h.config.Store == nil {
+		if h.workers != nil && h.workers.desk != nil {
+			if _, err := h.workers.desk.SignalIfHeld(it.ID, lease.Signal{Verb: lease.SignalStop}); err != nil {
+				return err
+			}
+		}
+		return h.recordAction(r, it, record.Dropped, detail, func() error { return h.seam.Dismiss(it.ID) })
+	}
+	now := h.clock().UTC()
+	switch factory.JobState(it) {
+	case "running", "queued", "needs_you":
+		if err := h.stopForChange(it.ID); err != nil {
+			return err
+		}
+	}
+	return h.recordAction(r, it, record.Dropped, detail, func() error {
+		return h.config.Store.Update(it.ID, func(cur *factory.Item) error {
+			cur.State = factory.StateDismissed
+			cur.DoneHow = "dropped"
+			cur.DoneAt = now
+			cur.Approval = nil
+			cur.StopUndo = nil
+			cur.Question = ""
+			cur.QKind = ""
+			cur.Failure = nil
+			cur.PublishError = ""
+			cur.Publishing = false
+			return nil
+		})
+	})
+}
+
+// discard deletes the dropped job's local branch and folder. It reads the job
+// again first, so the branch the run recorded since the drop was asked for is
+// the one deleted. A delete that fails leaves the drop standing and says on
+// the job's activity what was kept.
+func (h *Handler) discard(it factory.Item) {
+	if h.config.Store != nil {
+		if cur, err := h.config.Store.Get(it.ID); err == nil {
+			it = cur
+		}
+	}
+	err := h.config.Folders.Discard(it)
+	if err == nil || h.config.Store == nil {
+		return
+	}
+	at := h.clock().UTC()
+	_ = h.config.Store.Update(it.ID, func(cur *factory.Item) error {
+		cur.Note(at, "dropped · the local branch and folder were kept: "+err.Error())
+		return nil
+	})
 }
 
 func (h *Handler) prioritize(w http.ResponseWriter, r *http.Request, it factory.Item) {

@@ -395,14 +395,12 @@ type Item struct {
 	// SetupHeld keeps first-run imports in Backlog until a person starts them.
 	SetupHeld bool `json:",omitempty"`
 	// Job decisions belong to the binary; presentation derives from these facts.
-	Priority        *JobPriority `json:",omitempty"`
-	DismissedBy     []string     `json:",omitempty"`
-	DoneHow         string       `json:",omitempty"`
-	DoneAt          time.Time    `json:",omitempty"`
-	BranchDeleteAt  time.Time    `json:",omitempty"`
-	BranchDeletedAt time.Time    `json:",omitempty"`
-	Approval        *Approval    `json:",omitempty"`
-	StopUndo        *StopUndo    `json:",omitempty"`
+	Priority    *JobPriority `json:",omitempty"`
+	DismissedBy []string     `json:",omitempty"`
+	DoneHow     string       `json:",omitempty"`
+	DoneAt      time.Time    `json:",omitempty"`
+	Approval    *Approval    `json:",omitempty"`
+	StopUndo    *StopUndo    `json:",omitempty"`
 	// MergePolicy is the pipeline's merge settings as they stood when the
 	// proof was approved: approving publishes, and the approval says whether
 	// the pull request it opens may merge on its own. nil is auto-merge off.

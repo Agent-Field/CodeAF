@@ -195,6 +195,10 @@ func appFactoryActionFailure(r appFactoryReply) error {
 		return refused(appwire.CodeForbidden, "the factory does not let you do that")
 	case r.status == http.StatusConflict && (detail.Reason == "stale" || detail.Reason == "changed_since_opened"):
 		return refused(appwire.CodeStale, "the job changed while you looked")
+	case r.status == http.StatusConflict && detail.Reason == api.ReasonHasWork:
+		// A drop that would delete work: the factory's sentence names it, and
+		// the person's yes is the same drop with discard.
+		return refused(appwire.CodeHasWork, "the job has work that dropping would delete")
 	case r.status == http.StatusConflict:
 		return refused(appwire.CodeConflict, "the job is not in a state for that")
 	case r.status == http.StatusNotImplemented:
@@ -254,11 +258,13 @@ func (b *appBackend) FactoryJobDismiss(ctx context.Context, p appwire.FactoryJob
 	return b.jobWrite(ctx, p.Factory, appwire.JobActDismiss, p.Job, factoryVerbDismiss, guardBody{p.Expect})
 }
 
+// FactoryJobDrop is Drop. The factory deletes the job's local branch and
+// folder, and refuses one whose work would be lost unless Discard says yes.
 func (b *appBackend) FactoryJobDrop(ctx context.Context, p appwire.FactoryJobDropParams) (appwire.FactoryJobActed, error) {
 	return b.jobWrite(ctx, p.Factory, appwire.JobActDrop, p.Job, factoryVerbDrop, struct {
-		Words  string      `json:"words,omitempty"`
-		Expect *api.Expect `json:"expect,omitempty"`
-	}{p.Words, p.Expect})
+		Discard bool        `json:"discard,omitempty"`
+		Expect  *api.Expect `json:"expect,omitempty"`
+	}{p.Discard, p.Expect})
 }
 
 // FactoryJobRestore is Bring back. The factory refuses a job that was not

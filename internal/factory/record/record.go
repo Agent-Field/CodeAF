@@ -33,7 +33,6 @@ const (
 	Nudged          = "nudged"
 	PriorityChanged = "priority_changed"
 	BudgetRaised    = "budget_raised"
-	BranchDeleted   = "branch_deleted"
 	Undone          = "undone"
 	Started         = "started"
 	Stopped         = "stopped"
@@ -189,7 +188,7 @@ func (r *Record) Append(ctx context.Context, event Event) (Event, error) {
 
 func validate(e Event) error {
 	switch e.Kind {
-	case StepEdited, StepStopped, StepRerun, HandOffNotNow, Dismissed, Assigned, Unassigned, Nudged, PriorityChanged, BudgetRaised, BranchDeleted, Undone, Started, Stopped, AutoStarted, AskedFirst, Approved, Answered, Posted, Took, Dropped, Restored, Released, RequestChanges, PRMerged, PRClosed, SourceClosed, MergeAsked, MergeQueued, MergeRefused, StepFailed, RunnerAdded, RunnerChanged, ReposChanged, LinkCreated, LinkRevoked, SessionsRevoked, OperatorClaimed, GitHubGranted:
+	case StepEdited, StepStopped, StepRerun, HandOffNotNow, Dismissed, Assigned, Unassigned, Nudged, PriorityChanged, BudgetRaised, Undone, Started, Stopped, AutoStarted, AskedFirst, Approved, Answered, Posted, Took, Dropped, Restored, Released, RequestChanges, PRMerged, PRClosed, SourceClosed, MergeAsked, MergeQueued, MergeRefused, StepFailed, RunnerAdded, RunnerChanged, ReposChanged, LinkCreated, LinkRevoked, SessionsRevoked, OperatorClaimed, GitHubGranted:
 	default:
 		return fmt.Errorf("factory record: unknown event kind %q", e.Kind)
 	}
@@ -199,7 +198,7 @@ func validate(e Event) error {
 		return errors.New("factory record: actor must be person, agent or factory")
 	}
 	switch e.Verb {
-	case "edited steps", "reran step", "put away hand-off", "started", "stopped", "asked", "approved", "answered", "published", "assigned", "dropped", "brought back", "unassigned", "requested changes", "merged", "closed", "pressed merge", "sent merge", "refused merge", "failed", "added runner", "changed runner", "connected repo", "disconnected repo", "created access link", "revoked access link", "revoked sessions", "dismissed", "nudged", "changed priority", "raised budget", "deleted branch", "undone", "claimed factory", "granted GitHub read access":
+	case "edited steps", "reran step", "put away hand-off", "started", "stopped", "asked", "approved", "answered", "published", "assigned", "dropped", "brought back", "unassigned", "requested changes", "merged", "closed", "pressed merge", "sent merge", "refused merge", "failed", "added runner", "changed runner", "connected repo", "disconnected repo", "created access link", "revoked access link", "revoked sessions", "dismissed", "nudged", "changed priority", "raised budget", "undone", "claimed factory", "granted GitHub read access":
 	default:
 		return errors.New("factory record: unknown Activity verb")
 	}

@@ -39,6 +39,11 @@ type Factory struct {
 // read none of this factory's repositories. The HTTP status stays 200.
 const ReasonNoVisibleRepos = "no_visible_repos"
 
+// ReasonHasWork is the reason on Drop's 409 when the job's local branch or
+// folder holds work a drop would delete; the error names it. The same drop
+// with `"discard": true` is the person's yes to deleting it.
+const ReasonHasWork = "has_work"
+
 // Queue is `GET /v1/queue`: the whole floor as one person sees it.
 type Queue struct {
 	Mode     string                           `json:"mode,omitempty"`
@@ -280,17 +285,15 @@ type Job struct {
 	// Model is the model a person chose for this job's steps; absent, they
 	// run on the factory's default (Queue.Model). Set with POST
 	// /v1/jobs/{id}/model.
-	Model           string            `json:"model,omitempty"`
-	Reason          string            `json:"reason,omitempty"`
-	DoneHow         string            `json:"done_how,omitempty"`
-	DoneAt          time.Time         `json:"done_at"`
-	Dismissed       bool              `json:"dismissed"`
-	DismissedBy     []string          `json:"dismissed_by,omitempty"`
-	WaitingFor      string            `json:"waiting_for,omitempty"`
-	Overlap         []string          `json:"overlap,omitempty"`
-	Approval        *factory.Approval `json:"approval,omitempty"`
-	BranchDeleteAt  time.Time         `json:"branch_delete_at"`
-	BranchDeletedAt time.Time         `json:"branch_deleted_at"`
+	Model       string            `json:"model,omitempty"`
+	Reason      string            `json:"reason,omitempty"`
+	DoneHow     string            `json:"done_how,omitempty"`
+	DoneAt      time.Time         `json:"done_at"`
+	Dismissed   bool              `json:"dismissed"`
+	DismissedBy []string          `json:"dismissed_by,omitempty"`
+	WaitingFor  string            `json:"waiting_for,omitempty"`
+	Overlap     []string          `json:"overlap,omitempty"`
+	Approval    *factory.Approval `json:"approval,omitempty"`
 
 	Owners []string        `json:"owners,omitempty"`
 	Change *factory.Change `json:"change,omitempty"`
