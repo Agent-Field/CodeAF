@@ -440,6 +440,7 @@ var doorsBesideTheLine = map[string]string{
 	"Delegates":         "reads the programs the engine machine's build carries to generate their command rows at the launch and on a switch (delegate.go); nobody pressed for it",
 	"NameTeam":          "asks a model for a suggested team name under a budget of seconds; it changes nothing on the engine, typing overrides it, and a message sent while it thinks must not wait behind it",
 	"ProposeTeams":      "asks a model for Organize's proposals under a budget of seconds; it changes nothing on the engine (Apply writes through the teams store), and nothing after it depends on the engine having seen it",
+	"SkillFolders":      "scans the far engine's skill folders for the /skill list, the same read as the local disk scan (skillpick.go readSkillDisk); it changes nothing, and the list opens on what is known before it answers",
 }
 
 func TestOnlyReadsNobodyPressedForAreAskedBesideTheLine(t *testing.T) {
