@@ -299,6 +299,13 @@ func classify(err error) (int, string) {
 	if errors.As(err, &stale) {
 		return http.StatusConflict, "stale"
 	}
+	// A start whose repository cannot be checked out here is a refusal with
+	// its own reason wherever it surfaces (startJob asks first; a Launch
+	// another door reaches says the same).
+	var needs factory.NeedsCheckout
+	if errors.As(err, &needs) {
+		return http.StatusConflict, api.ReasonNeedsCheckout
+	}
 	switch {
 	case errors.Is(err, fs.ErrNotExist), errors.Is(err, store.ErrNotFound):
 		return http.StatusNotFound, "not_found"

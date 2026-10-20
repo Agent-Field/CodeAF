@@ -60,6 +60,7 @@ var TUIOnly = map[string]string{
 
 	// Doors on this machine's disk.
 	"Clone":        "checks a repository out on this machine",
+	"CheckoutOf":   "says whether this machine has a repository's checkout or can clone one; the job read carries it as checkout",
 	"RecipeAt":     "reads the repository rules from the forge with an offline checkout fallback",
 	"SaveRecipe":   "writes the recipe file in this machine's checkout",
 	"RecipeOffer":  "asks whether this machine's checkout has a recipe file",

@@ -173,4 +173,31 @@ Each line is taken once. The chat's model still answers you; it shapes the run's
 `factory_run` and changes the budget, thinking and notes through `factory_item`'s card.
 During a run the chat's own turn on each line may reshape the stages not yet started; the
 runner gives it no second turn on the same words. Say `start` and the manager starts the run
-with `factory_start`.
+with `factory_start`; it starts the job only when you ask. It never clones the repository
+itself: the runner clones it when the job starts.
+
+## the job's chat is its manager — where it works, and its spend counts toward the job's budget
+
+A job's own chat (`T` on the floor, or the job's chat on its page) is the job's manager. What
+you say there before Start is the brief, it starts the job when you ask, and its turns spend
+from the job's budget like the job's steps: everything done for the job spends from one budget.
+
+- **Before Start** the job's cost is what its chat has spent, and Start carries that into the
+  run, so a step's budget question counts it.
+- **During a run** each of the chat's calls adds to the run's spend as it is made, and the
+  budget is checked after every round as before. A new run after one whose steps ran starts its
+  spend from nothing, the chat's share of the old run included.
+- **Counted once.** The spend page still lists every call once, under the chat. The job's
+  figure is the same dollars read a second time, never added to the day's total.
+- **At the budget** the chat refuses its next turn with
+  `job budget reached · $5.02 spent of $5 · raise the job's budget to go on`, and your message
+  stays where you typed it. A turn already running finishes. While the job waits on its budget
+  question (`budget of $5 reached · asking you`), the chat still takes your `yes` or `no`.
+
+A job on another computer's factory that is not running here has no record on this computer:
+its chat's spend is on the spend page only.
+
+**Where the chat works.** In the repository's checkout when one is known; else in the
+factory's own clone, `~/.codeaf/v3/factory/repos/<owner>/<name>`, once the runner has made one;
+else in an empty folder of the job's own, `~/.codeaf/v3/factory/chats/<id>`. Never in the
+folder the window or the app was opened in.

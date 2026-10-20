@@ -113,6 +113,7 @@ var Lost = map[string]string{
 	"Phase.Result":      "only Output (step result) and Spent (step cost) cross; the rest is the runner's revival state",
 	"Phase.Kind":        "an empty phase kind under a stage with a kind comes back as the stage's",
 	"Phase.Left":        "crosses in whole milliseconds",
+	"Item.ChatSpent":    "crosses as the job's cost while it has no run; a start carries it into the run's spend before any worker pulls the job",
 }
 
 // FromItem is one item as a job.
@@ -151,8 +152,10 @@ func FromItem(it factory.Item) Job {
 		at := a.At
 		j.WaitingSince = &at
 	}
+	// THE JOB'S COST IS EVERYTHING DONE FOR IT: its run's, or before any run
+	// what its chat spent ([factory.JobSpent]).
+	j.Cost = factory.JobSpent(it)
 	if st := it.Stream; st != nil {
-		j.Cost = st.Spent
 		j.Step = &StepAt{Index: st.Cur, Count: len(st.Phases)}
 		if st.Cur >= 0 && st.Cur < len(st.Phases) {
 			j.Step.Name = st.Phases[st.Cur].Name
@@ -551,7 +554,7 @@ func toSource(s Source) factory.SourceInfo {
 func fromRepos(rs []factory.Repo, checkouts map[string]string) []Repo {
 	return mapList(rs, func(r factory.Repo) Repo {
 		p := FromRecipe(r.Recipe)
-		return Repo{Name: r.Name, Watched: r.Watched, Checkout: checkouts[r.Name], Pipeline: &p,
+		return Repo{Name: r.Name, Watched: r.Watched, Checkout: checkouts[r.Name], CheckedOut: checkouts[r.Name] != "", Pipeline: &p,
 			Team: r.Team, Areas: r.Areas, Habits: r.Habits, Hue: r.Hue, CIRed: r.CIRed}
 	})
 }

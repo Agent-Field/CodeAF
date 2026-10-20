@@ -671,4 +671,39 @@ func TestAppFactoryDropWithWorkIsHasWork(t *testing.T) {
 	}
 }
 
+// A 5XX STAYS UNCERTAIN BUT KEEPS THE FACTORY'S WORDS: the action may have
+// half-happened, so the person is still told to read the job first, after the
+// sentence the factory gave for the failure; a 5xx with no sentence of its own
+// says the general warning alone.
+func TestAppFactory5xxKeepsTheFactorysWords(t *testing.T) {
+	const maybe = "the action may have happened, so read the job before trying again"
+	for _, c := range []struct {
+		body, want string
+	}{
+		{`{"error":"could not clone acme/api · repository not found"}`, "could not clone acme/api · repository not found · " + maybe},
+		{`<html>bad gateway</html>`, "the factory failed while acting; " + maybe},
+		{`{"error":"  "}`, "the factory failed while acting; " + maybe},
+	} {
+		err := appFactoryActionFailure(appFactoryReply{status: http.StatusInternalServerError, body: []byte(c.body)})
+		var wire *appwire.Error
+		if !errors.As(err, &wire) || wire.Code != appwire.CodeUncertain || wire.Message != c.want {
+			t.Fatalf("a 5xx with %s = %#v, want uncertain %q", c.body, err, c.want)
+		}
+	}
+}
+
+// A START THAT CANNOT GET A CHECKOUT reaches the app as a conflict in the
+// factory's own sentence, with reason needs_checkout, never as uncertain.
+func TestAppFactoryNeedsCheckoutIsAConflictInTheFactorysWords(t *testing.T) {
+	words := "acme/api isn't checked out on this machine · " + factory.CheckoutNeedsGitHub
+	err := appFactoryActionFailure(appFactoryReply{status: http.StatusConflict, body: []byte(`{"error":"` + words + `","reason":"needs_checkout","now_state":"backlog"}`)})
+	var wire *appwire.Error
+	if !errors.As(err, &wire) || wire.Code != appwire.CodeConflict || wire.Message != words {
+		t.Fatalf("needs_checkout refusal = %#v", err)
+	}
+	if d, ok := wire.Detail.(*appwire.FactoryRefusal); !ok || d.Reason != api.ReasonNeedsCheckout {
+		t.Fatalf("needs_checkout detail = %#v", wire.Detail)
+	}
+}
+
 func ptr[T any](v T) *T { return &v }

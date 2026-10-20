@@ -175,11 +175,21 @@ type Seam struct {
 	// short name the floor shows, when only one watched repository has it),
 	// into the factory's own folder, and records the folder as the
 	// repository's checkout, so the next Load's [Snapshot.Checkouts] and every
-	// run read it. dir is the folder. It may take a minute; the surface asks
-	// it off the loop, and only when a person said yes to it. A REPOSITORY
+	// run read it. dir is the folder. It may take a minute, so it is asked
+	// off the loop; the runner clones through the same door on the first step
+	// of a run that has no checkout, so no start waits on it. A REPOSITORY
 	// THIS MACHINE ALREADY KNOWS A FOLDER FOR IS NEVER CLONED AGAIN: the door
 	// answers that folder.
 	Clone func(ctx context.Context, repo string) (dir string, err error)
+	// CheckoutOf says how a run of repo gets its checkout on this machine
+	// (checkout.go): [CheckoutHere], [CheckoutWillClone] (the runner clones
+	// it on the first step), or [CheckoutMissing] with the [NeedsCheckout]
+	// that says why it cannot be cloned; the error is non-nil only then. An
+	// empty repo answers "" and nil: there is nothing to check out. Every
+	// start asks it before it writes anything, and Launch refuses a missing
+	// one whatever asked. NIL IS A SEAM THAT DOES NOT KNOW (a remote factory's,
+	// whose runners keep their own checkouts), which refuses nothing.
+	CheckoutOf func(ctx context.Context, repo string) (CheckoutState, error)
 
 	// THE FIRST OFFER OF A RECIPE FILE: a repository with no
 	// `.codeaf/factory.yaml` is asked once, when its first item lands, whether
@@ -289,6 +299,8 @@ func (s Seam) Has(door string) bool {
 		return s.Open != nil
 	case "clone":
 		return s.Clone != nil
+	case "checkoutof":
+		return s.CheckoutOf != nil
 	case "recipeoffer":
 		return s.RecipeOffer != nil
 	case "writerecipe":

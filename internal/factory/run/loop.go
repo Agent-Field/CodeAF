@@ -233,7 +233,7 @@ func (r *Runner) Launch(id int) error {
 		it.PublishError = ""
 		it.Question, it.QKind = "", ""
 		it.Proof, it.Policy = nil, nil
-		it.Stream = &factory.Stream{Started: now, Phases: loopPhases(*it)}
+		it.Stream = freshStream(it, now)
 		loopSay(it, now, "said", "queued")
 		loopSay(it, now, "fail", unmade)
 		return nil

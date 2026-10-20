@@ -57,6 +57,12 @@ const ReasonHasRunning = "has_running"
 // [factory.RepoOffWords].
 const ReasonRepoOff = "repo_off"
 
+// ReasonNeedsCheckout is the reason on the 409 that refuses a start whose
+// repository has no checkout on the factory's machine and cannot be cloned
+// there; the error is [factory.NeedsCheckout]'s sentence, naming why. It is
+// answered before anything is written, so the job's version has not moved.
+const ReasonNeedsCheckout = "needs_checkout"
+
 // Queue is `GET /v1/queue`: the whole floor as one person sees it.
 type Queue struct {
 	Mode     string                           `json:"mode,omitempty"`
@@ -166,15 +172,19 @@ type Source struct {
 // unless the factory keeps no watched list at all, whose poll reads nothing.
 // There is no separate on: listed is on.
 type Repo struct {
-	Name     string    `json:"name"`
-	Watched  bool      `json:"watched"`
-	Checkout string    `json:"checkout,omitempty"`
-	Pipeline *Pipeline `json:"pipeline,omitempty"`
-	Team     string    `json:"team,omitempty"`   // desk
-	Areas    []string  `json:"areas,omitempty"`  // desk
-	Habits   []string  `json:"habits,omitempty"` // desk
-	Hue      int       `json:"hue,omitempty"`    // desk
-	CIRed    bool      `json:"ci_red,omitempty"` // desk
+	Name     string `json:"name"`
+	Watched  bool   `json:"watched"`
+	Checkout string `json:"checkout,omitempty"`
+	// CheckedOut says the factory's machine knows a checkout of the
+	// repository; false is none known, whose jobs are cloned on their first
+	// step or refused (the job's own `checkout` says which).
+	CheckedOut bool      `json:"checked_out,omitempty"`
+	Pipeline   *Pipeline `json:"pipeline,omitempty"`
+	Team       string    `json:"team,omitempty"`   // desk
+	Areas      []string  `json:"areas,omitempty"`  // desk
+	Habits     []string  `json:"habits,omitempty"` // desk
+	Hue        int       `json:"hue,omitempty"`    // desk
+	CIRed      bool      `json:"ci_red,omitempty"` // desk
 }
 
 // Pipeline is a repository's steps in order, per kind of job, and the policy
@@ -290,7 +300,16 @@ type Job struct {
 	// publish and merge are absent from can and controls. Only the job's own
 	// read (`GET /v1/jobs/{id}`) says it, so an open page can show why;
 	// turning the repository on in Repos brings the job back as it was.
-	RepoOff           bool                 `json:"repo_off,omitempty"`
+	RepoOff bool `json:"repo_off,omitempty"`
+	// Checkout is how a run of the job's repository gets its folder on the
+	// factory's machine ([factory.CheckoutState]): `here` (a checkout is
+	// known), `will_clone` (the runner clones it on the first step) or
+	// `missing` (it cannot be cloned, and a start is refused 409
+	// needs_checkout). It names no path. Only the job's own read says it,
+	// and only a factory that knows its machine's checkouts; absent is
+	// nothing to say (no repository, or a factory whose runners keep their
+	// own).
+	Checkout          string               `json:"checkout,omitempty" jsonschema:"enum=here,enum=will_clone,enum=missing"`
 	Display           JobDisplay           `json:"display"`
 	StatePresentation StatePresentation    `json:"state_presentation"`
 	Controls          JobControls          `json:"controls"`

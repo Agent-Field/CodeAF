@@ -221,10 +221,7 @@ func factorySeam(st *store.Store, workspace, profileDir string) factory.Seam {
 	// machine, so its door is hung only here, where the floor is this
 	// machine's: --once and --host never build this seam.
 	dirs := factoryRepoDirs(st, workspace)
-	token := func(ctx context.Context) string {
-		t, _ := factorygithub.TokenAt(ctx, profileDir)
-		return t
-	}
+	token := factoryTokenOf(profileDir)
 	local := factory.LocalSeam(st, time.Now(),
 		// THE RUNNER'S DOORS ARE HUNG IN EVERY WINDOW (factory_run.go): they
 		// are the lease's, which queue a job for a worker and signal its
@@ -246,11 +243,11 @@ func factorySeam(st *store.Store, workspace, profileDir string) factory.Seam {
 	// AND THE FOREMAN (`m`, factory_foreman.go), on the Talk door's law.
 	local = withForeman(local, st, workspace, profileDir)
 	seam := nudgeOnWatch(factorygithub.Connect(factorygithub.Facts(local, st, nil), profileDir), st)
-	// A RUN NEVER STARTS WITHOUT A CHECKOUT (factory_clone.go): the Clone door
-	// gets one into the factory's own folder over the same token the forge
-	// reads with, and Launch refuses an item whose repository has none.
+	// A RUN NEVER STARTS WITHOUT A CHECKOUT (factory_clone.go): the runner
+	// clones one into the factory's own folder over the same token the forge
+	// reads with, and Launch refuses only a repository that cannot be cloned.
 	seam.Clone = factoryCloneDoor(st, token)
-	return factoryNeedsCheckout(seam, st, dirs)
+	return factoryCheckouts(seam, st, dirs, token)
 }
 
 // nudgeOnWatch wraps the picker's save so that, once repos.json is written,

@@ -507,6 +507,13 @@ func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
 	if _, _, err := h.applyPresence(jobs); h.failed(w, err) {
 		return
 	}
+	// HOW A RUN GETS ITS CHECKOUT is said before anyone presses Start, in the
+	// words the start itself would act on ([factory.Seam.CheckoutOf]), and
+	// never as a path.
+	if h.seam.CheckoutOf != nil {
+		state, _ := h.seam.CheckoutOf(r.Context(), it.Repo)
+		jobs[0].Checkout = string(state)
+	}
 	h.presentJob(r, &jobs[0])
 	// A job of a repository that is off stays readable, so a page already
 	// open on it can say why it left the queue (repo_off.go).

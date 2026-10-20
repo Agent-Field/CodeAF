@@ -1010,7 +1010,11 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 		cfg.Recipe = recipeDoor(floorStore, workspace)
 		cfg.FactoryItem = itemDoor(floorStore, workspace)
 		// And `factory_run`'s, the manager's pen, on the same law.
-		cfg.FactoryRun = runDoor(floorStore, workspace)
+		cfg.FactoryRun = runDoor(floorStore, workspace, proc.ProfileDir)
+		// And the door a job's own conversation spends from the job's
+		// budget through (factory_chatspend.go): every conversation opened
+		// from this config asks it once whether it is a job's chat.
+		cfg.JobChat = jobChatDoorOf(floorStore)
 		// AND THE FLOOR'S WORKER LOOP, which on the ordinary launch is this
 		// process's: it outlives the window, so a job keeps running when the
 		// terminal closes (factory_run.go). Every stage conversation is opened

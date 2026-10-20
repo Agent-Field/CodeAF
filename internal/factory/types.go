@@ -521,6 +521,13 @@ type Item struct {
 	// opens on the floor ([Seam.Talk]). "" IS NONE, which is every item until
 	// a person asks for one — the conversation is never made by default.
 	Talk string
+	// ChatSpent is what Talk spent while the job had no run: the job's chat
+	// before its first Start, in dollars. A JOB'S CHAT SPENDS FROM THE JOB'S
+	// BUDGET (the owner's ruling of 2026-10-20), and with no run there is no
+	// Stream to hold it; the next start carries it into the run's Spent and
+	// zeroes it (run's freshStream). A job with a stream books its chat's
+	// spend there instead ([AddChatSpend]), so [JobSpent] reads one figure.
+	ChatSpent float64 `json:",omitempty"`
 	// Thread is replicated from the worker so every machine reads the same
 	// conversation. AnsweredQuestions keeps asks after the open gate clears.
 	Thread            []Message  `json:",omitempty"`
@@ -754,8 +761,9 @@ type Snapshot struct {
 	Marked []int
 	// Checkouts is where this machine has each of the floor's repositories
 	// checked out, by the name the floor shows, for the repositories it knows
-	// a folder for; a repository not in it has no checkout here, and a run of
-	// its items waits for one ([Seam.Clone]). NIL IS A SEAM THAT DOES NOT SAY,
+	// a folder for; a repository not in it has no checkout here, and the
+	// first step of a run of its items clones one ([Seam.CheckoutOf] says
+	// whether it can). NIL IS A SEAM THAT DOES NOT SAY,
 	// which the surface reads as nothing to check; a seam that knows where
 	// repositories are checked out answers a map, empty when it knows none.
 	Checkouts map[string]string

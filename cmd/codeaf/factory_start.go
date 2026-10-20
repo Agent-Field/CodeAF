@@ -42,10 +42,14 @@ const (
 	sayStartQueued    = "%s is queued · it starts when a bench frees"
 )
 
-// startItem starts, resumes or continues the run of item it on st.
-func startItem(st *store.Store, workspace string, it factory.Item) (string, error) {
+// startItem starts, resumes or continues the run of item it on st. ITS LAUNCH
+// IS THE HEADER'S: the same checkout door over the same token
+// ([factoryCheckouts]), so a job the runner will clone starts from the chat as
+// it does from the button, and one that cannot be cloned is refused in the
+// same sentence.
+func startItem(st *store.Store, workspace, profileDir string, it factory.Item) (string, error) {
 	dirs := factoryRepoDirs(st, workspace)
-	seam := factoryNeedsCheckout(factory.LocalSeam(st, time.Now(), factoryRunnerDoors(st), factoryPipelineOption(), factory.WithRepoDirs(dirs)), st, dirs)
+	seam := factoryCheckouts(factory.LocalSeam(st, time.Now(), factoryRunnerDoors(st), factoryPipelineOption(), factory.WithRepoDirs(dirs)), st, dirs, factoryTokenOf(factoryProfile(profileDir)))
 	ref := it.Ref()
 	switch it.State {
 	case factory.StateLanded:
@@ -111,7 +115,7 @@ func (d seamRunDoor) StartRun(_ context.Context, conversation string) (string, e
 	if err != nil {
 		return "", err
 	}
-	return startItem(d.st, d.workspace, it)
+	return startItem(d.st, d.workspace, d.profileDir, it)
 }
 
 // Manages says whether conversation is the manager of an item on the floor.

@@ -2398,6 +2398,13 @@ type Config struct {
 	// item's manager to shape its run.
 	FactoryRun RunDoor
 
+	// JobChat is the door a factory job's own conversation spends from the
+	// job's budget through (factory_contract.go). NIL IS NO DOOR, and every
+	// conversation spends as it always has. It is set where FactoryItem is,
+	// kept on the turn the runner gives a job's manager, and taken off a
+	// stage's conversation, whose round's spend the runner already counts.
+	JobChat JobChatDoor
+
 	// Stage is the door a factory stage's own conversation reports through
 	// (stage_contract.go). NIL IS NO DOOR: `stage_result` and `plan_edit` are off
 	// the belt. Only the factory's runner sets it, on a stage round it opened.
@@ -2632,6 +2639,10 @@ type Agent struct {
 	// that lock. Atomic publication keeps both roads on the same figure.
 	liveSpendRail    atomic.Uint64
 	liveSpendRailSet atomic.Bool
+	// jobChat is the factory job this conversation is the own chat of, asked
+	// of Config.JobChat once ([Agent.jobChatOf]); nil is no job's.
+	jobChatOnce sync.Once
+	jobChat     JobChat
 	// moveAsked is the person's ask to move the running reply to a task, taken
 	// at the next step boundary ([Agent.MoveTurnToTask]).
 	moveAsked atomic.Bool

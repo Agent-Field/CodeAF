@@ -3314,6 +3314,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"the factory says my job was dropped, can it be restarted", "factory"},
 		// BRING BACK IS A FRESH START: the earlier conversation is deleted.
 		{"I brought back a dropped factory job and the old conversation is still there", "factory"},
+		// A RUN CLONES A REPOSITORY IT HAS NO CHECKOUT OF, and a start is
+		// refused only when it cannot.
+		{"the factory says my repository isn't checked out on this machine", "factory"},
+		{"does the factory clone a private repository it has no checkout of", "factory"},
+		{"factory start refused, not checked out, connect GitHub so the factory can clone it", "factory"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

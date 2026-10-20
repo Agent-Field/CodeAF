@@ -737,6 +737,12 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 	if body.Autostart && !h.requireVerb(w, h.seam.Launch != nil) {
 		return
 	}
+	// NOR IS ONE MADE TO START THAT COULD NOT: a new job started at once on a
+	// repository with no checkout that cannot be cloned is refused before it
+	// exists, as its own Start would be ([Handler.needsCheckout]).
+	if body.Autostart && h.needsCheckout(w, r, body.Repo, "") {
+		return
+	}
 	var selected []factory.Stage
 	if body.Pipeline != "" && body.Pipeline != "default" {
 		if !h.requireVerb(w, h.config.Store != nil && h.seam.RecipeAt != nil) {

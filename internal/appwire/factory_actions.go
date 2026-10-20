@@ -148,7 +148,10 @@ type FactoryJobMergeParams struct {
 
 // FactoryJobSetModelParams chooses the model ONE job's steps run on. Model
 // is a model id; "" goes back to the factory's default. The next step opens on
-// it, and a step already running switches at its next turn.
+// it, and a step already running switches at its next turn. Expect is carried
+// like every job write's, and the factory accepts it without checking it: a
+// model is a preference that commutes with every other write, so a pick is
+// never refused as stale. Only a Done job refuses one.
 type FactoryJobSetModelParams struct {
 	Factory string      `json:"factory"`
 	Job     int         `json:"job"`

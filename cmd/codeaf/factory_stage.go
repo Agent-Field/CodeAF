@@ -123,6 +123,10 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	cfg.Factory, cfg.Recipe, cfg.FactoryItem, cfg.Floor = nil, nil, nil, nil
 	// AND NO STAGE SHAPES THE RUN: `factory_run` is the manager's.
 	cfg.FactoryRun = nil
+	// AND A STAGE'S SPEND IS ITS ROUND'S, which the runner books on the job
+	// from the round's result, so its conversation spends through no door of
+	// its own.
+	cfg.JobChat = nil
 	gate := stageApprovalGate{rows: v3ApprovalGate{workspace: where, profileDir: m.profileDir, headless: true}, posture: factoryStagePosture()}
 	cfg.ApprovalGate = gate
 	cfg.ApprovalPosture = gate.posture
