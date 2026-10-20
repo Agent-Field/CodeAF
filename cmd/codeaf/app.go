@@ -283,42 +283,10 @@ const appHostDialTimeout = 500 * time.Millisecond
 func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 	clock := ask.ClockS
 	launch := &remote.LaunchShape{TeamListeningSince: ask.TeamListeningSince, Interactive: true, IntentNames: true, HandOverOnAsk: true, ProposalClockS: &clock, ChoiceClockS: clock, QuitGraceS: appQuitGraceS, LiveToolOutput: true, StandingOrders: true, QuickTasks: true}
-	if ask.Transcript != "" && !ask.Minted {
-		// A JOIN CARRIES THE APP'S LAUNCH, and the engine applies what of it a
-		// conversation another window opened can carry (engine.go's JoinedWith).
-		hello := remote.Hello{Workspace: ask.Workspace, Session: ask.Transcript, Join: true, Launch: launch}
-		// A CONVERSATION THIS PROCESS ALREADY HOLDS IS LENT, NEVER REOPENED:
-		// the factory worker's running stage is the app's own, not another
-		// window's (app_lend.go). Only a factory stage is lent.
-		if agent, ok := liveStageFor(ask.Transcript); ok {
-			return appLendLive(agent, ask, hello)
-		}
-		if socket, err := enginehost.DialStartingHost(ask.Workspace); err == nil {
-			client, err := remote.Dial(socket, "", hello)
-			if err == nil {
-				return appConnOf(client, func() { _ = client.Close() }, false), nil
-			}
-			_ = socket.Close()
-		}
-		// HELD, BUT NOT BY THIS WORKSPACE'S HOST: a crew member a manager
-		// started lives in its manager's host. Every host is asked, and the
-		// one holding it answers; opening it here as well would be refused by
-		// its journal's lock, and is never tried while somebody holds it.
-		if session.InUse(ask.Transcript) {
-			for _, path := range enginehost.Sockets() {
-				socket, err := net.DialTimeout("unix", path, appHostDialTimeout)
-				if err != nil {
-					continue
-				}
-				client, err := remote.Dial(socket, "", hello)
-				if err == nil {
-					return appConnOf(client, func() { _ = client.Close() }, false), nil
-				}
-				_ = socket.Close()
-			}
-			return nil, appwire.Errorf(appwire.CodeConflict, "this conversation is open in another codeaf window that the app cannot reach; close it there, or open it in that window")
-		}
+	if conn, err := appJoinExisting(ask, launch); conn != nil || err != nil {
+		return conn, err
 	}
+
 	workspace := ask.Workspace
 	transcript := ask.Transcript
 	hello := remote.Hello{
@@ -377,6 +345,48 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 	return appConnOf(loop.Client, release, true), nil
 }
 
+// appJoinExisting joins only a conversation an engine already holds.
+// A nil launch leaves that engine's launch policy untouched for a naming ask.
+func appJoinExisting(ask appOpenAsk, launch *remote.LaunchShape) (*appConn, error) {
+	if ask.Transcript != "" && !ask.Minted {
+		// A JOIN CARRIES THE APP'S LAUNCH, and the engine applies what of it a
+		// conversation another window opened can carry (engine.go's JoinedWith).
+		hello := remote.Hello{Workspace: ask.Workspace, Session: ask.Transcript, Join: true, Launch: launch}
+		// A CONVERSATION THIS PROCESS ALREADY HOLDS IS LENT, NEVER REOPENED:
+		// the factory worker's running stage is the app's own, not another
+		// window's (app_lend.go). Only a factory stage is lent.
+		if agent, ok := liveStageFor(ask.Transcript); ok {
+			return appLendLive(agent, ask, hello)
+		}
+		if socket, err := enginehost.DialStartingHost(ask.Workspace); err == nil {
+			client, err := remote.Dial(socket, "", hello)
+			if err == nil {
+				return appConnOf(client, func() { _ = client.Close() }, false), nil
+			}
+			_ = socket.Close()
+		}
+		// HELD, BUT NOT BY THIS WORKSPACE'S HOST: a crew member a manager
+		// started lives in its manager's host. Every host is asked, and the
+		// one holding it answers; opening it here as well would be refused by
+		// its journal's lock, and is never tried while somebody holds it.
+		if session.InUse(ask.Transcript) {
+			for _, path := range enginehost.Sockets() {
+				socket, err := net.DialTimeout("unix", path, appHostDialTimeout)
+				if err != nil {
+					continue
+				}
+				client, err := remote.Dial(socket, "", hello)
+				if err == nil {
+					return appConnOf(client, func() { _ = client.Close() }, false), nil
+				}
+				_ = socket.Close()
+			}
+			return nil, appwire.Errorf(appwire.CodeConflict, "this conversation is open in another codeaf window that the app cannot reach; close it there, or open it in that window")
+		}
+	}
+	return nil, nil
+}
+
 func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 	welcome := client.Welcome()
 	users := 0
@@ -397,6 +407,9 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 
 // appBackend is the [appwire.Engine] over this process's conversations.
 type appBackend struct {
+	// organizeProposer supplies a naming door when the backend is embedded without held conversations.
+	organizeProposer session.TeamProposer
+
 	// factoryRooms runs this connection's one-time stamp of teams the factory made before the
 	// stamp was kept (factoryStampStoredRooms).
 	factoryRooms sync.Once

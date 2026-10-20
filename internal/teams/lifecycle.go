@@ -278,6 +278,23 @@ const QuietAfter = 7 * 24 * time.Hour
 // packet fold per team and stats each member's transcript, so it is asked off
 // the loop, when Organize is.
 func Quiet(profileDir string, f *File, now time.Time, idle time.Duration) ([]string, error) {
+	rows, err := QuietDetails(profileDir, f, now, idle)
+	var ids []string
+	for _, row := range rows {
+		ids = append(ids, row.Crew)
+	}
+	return ids, err
+}
+
+// QuietCrew is a proposed closure's activity age and direct member count.
+type QuietCrew struct {
+	Crew     string `json:"crew"`
+	IdleDays int    `json:"idle_days"`
+	Agents   int    `json:"agents"`
+}
+
+// QuietDetails reads the same quiet evidence as Quiet and exposes its measured age.
+func QuietDetails(profileDir string, f *File, now time.Time, idle time.Duration) ([]QuietCrew, error) {
 	waiting := map[string]bool{}
 	open, _, err := OpenPackets(profileDir, ScopeAll)
 	if err != nil {
@@ -287,15 +304,22 @@ func Quiet(profileDir string, f *File, now time.Time, idle time.Duration) ([]str
 		waiting[p.Team], waiting[p.Origin] = true, true
 	}
 	cut := now.Add(-idle)
-	var out []string
+	var out []QuietCrew
 	for _, t := range f.Teams {
 		if t.Closed() || t.Root || waiting[t.ID] {
 			continue
 		}
-		if last := lastActivity(profileDir, t); last.After(cut) {
+		last := lastActivity(profileDir, t)
+		if last.After(cut) {
 			continue
 		}
-		out = append(out, t.ID)
+		seen := map[string]bool{}
+		for _, m := range t.Members {
+			if m.Key != "" {
+				seen[m.Key] = true
+			}
+		}
+		out = append(out, QuietCrew{Crew: t.ID, IdleDays: int(now.Sub(last) / (24 * time.Hour)), Agents: len(seen)})
 	}
 	return out, nil
 }

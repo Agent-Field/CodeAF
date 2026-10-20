@@ -205,6 +205,7 @@ result or an event, `?` marks a field that may be absent.
 | `crews.message` | `{attachments, client_id, crew, reads, said, text, to}` | `{entry}` |
 | `crews.move` | `{ids, parent}` | `{}` |
 | `crews.propose` | `{agent}` | `{}` |
+| `crews.organize` | `{pass: "folders" or "model"}` | folders: `{agents_unassigned, crews_open, new: [{name, folder, agents: [id], why}], additions: [], quiet: [{crew, idle_days, agents}]}`; model: `{new: [{name, agents: [id], why}], additions: [{crew, agents: [id], why}], cost_usd?, model?}` |
 | `crews.reopen` | `{id}` | `{crew}` |
 | `crews.root.start` | `{model, workspace}` | `{crew, manager, root_created, manager_created}` |
 | `crews.set_default` | `{key, value}` | `{defaults}` |
@@ -1143,8 +1144,41 @@ field below is marked **app** on the wire's Crew/Member; everything else is **te
 | `crews.message` to a member, "@manager sees it" | app + Traffic | the words go into the member's conversation; the app also appends one Traffic `you` line (`kind: "you", from: "you", to: <handle>`) so the manager reads "you told @web: …" in its team digest at its next step; it does not wake the manager |
 | `members.start {crew, handle, brief, role?, model?}` | app | a new conversation in the crew's folder whose first message is the brief, as the person's own words; added to the crew under the handle |
 | `crews.propose {agent}` and the Bring in helpers card (`Proposal`) | app | the app asks the agent's own model for a crew proposal as one JSON block `{name, helpers: [{handle, role, brief, model?}]}` **beside its chat, never in it**: a side ask (the engine's `Conversation.SideAsk`) that reads the conversation as text, runs no turn and writes nothing into the conversation, so no `turn.*` event, no `entry.added` and no `agents.entries` row ever carries the question or the JSON, and the model's later turns never see either. The answer becomes an Ask (`subkind: "crew_proposal"`) with options `create`, `edit`, `keep` ("Keep it one agent"), carrying the whole proposal as `ask.proposal: Proposal {id, agent, name, hue?, helpers: [{handle, role, brief, model?}], existing?, cap_usd_day?, goal?, ends_at?, at}`. The proposal is kept in `<home>/app/crews.json` until it is answered, so after a restart its ask is opened again (`ask.opened`) and listed by `asks.list`. `crews.propose` answers `{}` at once; one ask runs per agent at a time (a second press while it is out is answered by the first's card); a press that brings no card adds exactly one quiet notice whose id opens `crewprop-none-` — "No crew proposal came back in a form the app can read" for an answer that is not a proposal, "No crew proposal came back · <reason>" for an ask that failed, and "No crew proposal came back · Day cap reached · $X of $Y" at the day cap, where the day cap's ask also opens — so a window waiting on the press is told it is over either way. Answering `keep` leaves the receipt "Kept as one agent · you · HH:MM"; `create` leaves only the crew's formation receipt (`op: crew.formed`, id `rcrew:<crew>`) |
+| `crews.organize {pass}` | engine | hello feature `crews.organize`. The desktop requests `folders` and `model` in parallel. Both are suggestions only and never save or repair `teams.json`; Apply uses the existing create, membership and wrap-up methods. |
 | `Proposal {id, agent, name, hue, helpers: [{handle, role, brief, model?}], existing?: [agent], cap_usd_day?, goal?, ends_at?}` → `crews.create {from: "proposal", proposal, edits?}` | app → teams | create = a team with the agent as manager; each helper is a manager's start (`start` line from `manager`, its brief the manager's own words from the proposal) which the app performs; `existing` agents are added |
 | Crew `plan?` | not kept | needs engine work: the manager keeps no plan text the app can read |
+
+`crews.organize` rules:
+
+The engine discovers an existing conversation owner before checking naming availability.
+An unopened local conversation uses a naming-only caller with no journal or lifecycle
+watches. Desktop naming policy travels with the proposal input (`RequireNaming`); terminal
+requests leave it unset and retain their conversation-model fallback.
+
+1. `pass` is required: `folders` or `model`; any other value is `bad_params`.
+   The folder pass makes no model call. Two or more unassigned agents sharing a
+   cleaned project folder suggest its lowercase basename (at most 16 display cells).
+   Folder names already used by an open crew remain folder rows; Apply joins the
+   existing crew by name. `agents_unassigned` excludes members of open non-root
+   crews; `crews_open` excludes the root and finished crews. Quiet rows are open
+   non-root crews idle at least seven days, with no decision waiting, using the
+   terminal's Traffic, decision and member-transcript activity detector.
+2. The model pass invokes `ProposeTeams` once on the naming role, with unassigned
+   agents' titles and folder basenames plus existing open non-root crews. It has
+   ten seconds. Existing proposal bounds apply (60 conversations, 24 crews,
+   80 characters per title/folder, eight new crews). Folder names and members
+   win; model-only rows never repeat a folder member, and an agent appears in
+   at most one suggestion across both passes. Rows already displayed can stay
+   in place. No suggestion creates a manager.
+3. `cost_usd`, when present, is the reported usage charge, including rejected
+   replies during the naming role's existing fall-through; no catalogue estimate.
+   It is absent when usage did not publish a cost. `model` names the model that
+   answered and is absent if no unassigned agents needed a call.
+   No naming role answers `no_naming_model`; timeout, cancellation and provider
+   failures answer `engine` with the failure's message. An engine lacking
+   the method answers `unknown_method`. Over a hosted conversation the existing
+   `Teams.Propose` door carries the same input, usage charge and deadline budget.
+
 
 ### Starting a crew with its own manager, and the global manager (`crews.start`)
 
