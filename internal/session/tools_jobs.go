@@ -226,6 +226,7 @@ func (a *Agent) backgroundBash(inner bare.Tool) bare.Tool {
 			if err != nil {
 				return "Could not start the background job: " + err.Error(), true, nil
 			}
+			markToolJob(toolProcessFrom(ctx), started)
 			// The id and the path, and nothing else. There is no output yet by
 			// construction, and the two things the model needs next — how to ask
 			// about it, where to read it — are both here.

@@ -48,12 +48,17 @@ type ToolFacts struct {
 	// MediaAttempt is true only when this exact call made at least one render
 	// record with its own run and call id; render.list finds it by that pair.
 	// Absent is unknown, never "no record".
-	MediaAttempt bool         `json:"media_attempt,omitempty"`
-	Files        []FileChange `json:"files,omitempty"`
-	Connector    string       `json:"connector,omitempty"`
-	Task         string       `json:"task,omitempty"`
-	Ask          string       `json:"ask,omitempty"`
-	Input        *ToolInput   `json:"input,omitempty"`
+	MediaAttempt bool `json:"media_attempt,omitempty"`
+	// Process is the processes.list / process.changed id of the job this
+	// call became, or its published kept service. Absent means the engine
+	// did not make this call a job, or does not know; never inferred from
+	// text a model wrote. It is set only on the end row and its tool entry.
+	Process   string       `json:"process,omitempty"`
+	Files     []FileChange `json:"files,omitempty"`
+	Connector string       `json:"connector,omitempty"`
+	Task      string       `json:"task,omitempty"`
+	Ask       string       `json:"ask,omitempty"`
+	Input     *ToolInput   `json:"input,omitempty"`
 	// Tail is the last lines of the call's output: three while it runs, up
 	// to twelve once it has ended. Lines is how many it wrote in all.
 	Tail  []string `json:"tail,omitempty"`

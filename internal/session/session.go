@@ -959,6 +959,11 @@ type Event struct {
 	// unknown, as on every older peer and every older journal line.
 	MediaAttempt bool `json:"MediaAttempt,omitempty"`
 
+	// ToolProcess names the job or kept service this successful call became,
+	// on EventToolEnd only. It comes from the registry's adoption or start,
+	// never from the output, and is nil on foreground calls and older peers.
+	ToolProcess *ToolProcess `json:"ToolProcess,omitempty"`
+
 	// ID names one EventConsentRequest, and is the token a surface hands back
 	// to [Agent.ResolveConsent]. It is zero on every other kind but
 	// EventHarnessOffer, whose own id goes back through
@@ -1623,6 +1628,9 @@ type Config struct {
 	// other. The other caller today is the trail that records a request's own
 	// length (task_calltrail.go).
 	clock func() time.Time
+	// bashAfter lets tests fire the real promotion callback after the command
+	// starts. Production leaves it nil and arms time.AfterFunc as before.
+	bashAfter func(time.Duration, func()) *time.Timer
 	// teamWatchManual leaves traffic-clock advances to tests calling
 	// teamWatchTick. Production leaves it false and starts the real ticker.
 	teamWatchManual bool
