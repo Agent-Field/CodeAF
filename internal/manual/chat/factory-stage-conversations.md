@@ -16,14 +16,17 @@ comments; where its work tree stands (a pull request's is at its head, and the b
 `git diff origin/<base>...HEAD` that shows the change, so the step never goes to the web for
 it); the run's stages in order
 with this one named (`stages: plan › write › … · this is plan: do this stage's part, and leave
-the rest to the stages after it`), your notes, one line for
-each stage that ran before it (`write: done · 3 claims`), the stage's settings in words
-(`until clean · max 2 · fanout per-finding`), a line saying a question it cannot settle goes to
+the rest to the stages after it`), your notes, what the steps before it reported (the plan
+whole, a line and the words of each step, every claim so far: see what a step is handed by the
+steps before it), the stage's settings in words
+(`until clean · max 3`), for a stage that runs until clean the sentence
+that findings count only what is still wrong once its own fixes are in (until proven: that every
+claim needs its evidence), a line saying a question it cannot settle goes to
 the item's manager through `ask` and it waits for the answer, and the sentence
-`End by calling stage_result once.`
+`End by calling stage_result with your final result.`
 
 Inside, it works like any conversation: it reads, changes, runs, and can hand parts that do
-not need each other to tasks. It runs on your default model, or on the job's own model when one
+not need each other to tasks, but never to a quick task. It runs on your default model, or on the job's own model when one
 was chosen for the job (the desktop app's model chip on the job); a model chosen while a step
 runs is picked up at that step's next turn. Your words while it runs reach it, and what it is doing shows in
 the item's stream.
@@ -31,46 +34,138 @@ the item's stream.
 It is given two tools that no other conversation has:
 
 - `stage_result` ends the stage's work: done or not, how many findings are still open, its
-  claims with their evidence, notes for the stages after it, and a few lines on what it did.
-  It answers `reported · the stage ends when you stop`. Once only: a second report is refused.
+  claims with their evidence, notes for the stages after it, and what it did and found (a plan
+  step writes its whole plan there, for the steps after it).
+  It answers `reported · the last report you send before you stop is the one the factory
+  reads`, and may be called again when the result changes (see a step that reports again).
 - `plan_edit` proposes adding, skipping or switching on stages. It answers
   `proposed · the runner applies it within the recipe's bounds`; nothing changes from the
   call itself, and proof and your gates are never skipped.
 
-**What ends a stage** is code, not the conversation's say-so. `until clean` means it reported
-zero findings; `until done` means it reported at all (see a step stopped without reporting).
-
 **Nothing posts.** Neither tool writes to GitHub or anywhere else, and neither raises a card.
 
-## a second round — the review found the same thing again, fix then check
+## how a step is judged — until done, clean, proven, green, what findings count, claims need evidence
 
-A second round fixes what the first found, then checks again. When review (or anything that
-runs until clean, green or proven) goes round again, round 2's brief adds `round 2 of review.
-The last round found: … Fix those in the checkout first, run the tests, then review again and
-report only what remains.`, carrying what the last round said and the claims it could not show
-(the first 1,500 characters), so a round never just looks at the same unchanged checkout
-again. Nothing is added on a run until done, and a check just runs its command again. When
-the rounds run out, it asks you, for instance
-`review is not clean after 2 rounds: 1 finding · try again, send it back, or stop the job?`.
+Whether a factory step is finished is decided by code, not by the step's conversation, from
+the `stage_result` it reported, and only a report that says done can pass:
 
-## a step stopped without reporting — what ends a step, out of rounds, try again
+- `until done`: the report says done (see a step stopped without reporting).
+- `until clean`: done with zero findings. Findings count only what is still wrong after the
+  round's own fixes, so a review that found three problems and fixed them reports zero.
+- `until proven`: done, at least one claim, and every claim `ok` with its evidence filled in.
+  Every claim needs `evidence` (what shows it: the command and its result, the file, the
+  screenshot); a claim whose evidence is blank is not proven.
+- `until green`: done, and a check step's command exited 0. A conversation step has no exit
+  code of its own, so for it green is the same as done: it reports done once the tests pass.
 
-A step's conversation ends its work by calling `stage_result`, and nothing else ends it:
-nothing inside it decides the step is finished, and its reads are never handed off to a quick
-task. A conversation that stops without reporting is told once, as codeaf, to report (the
-item's log says `stopped without reporting · asked once for the report`); the report it then
-makes counts. If it stops again, or a round runs for two hours, the step has not reported, and
-the job waits for you with the step and what happened in plain words:
+A step that falls short of its until goes round again while it has rounds left (see a second
+round).
 
-- `plan stopped without reporting · try again, or stop the job?`
+A report that contradicts its own step's rule is refused the moment it is made and the report
+before it stands, so the step fixes it in the same turn: a review that says done with findings
+open is answered
+`not reported: you reported 2 findings still open: fix them and report again, or report done: false`,
+a claim marked ok with blank evidence, done or not,
+`not reported: claim 2 has no evidence: add what shows it, or set ok: false`,
+and a proof that says done with no claims
+`not reported: you reported done with no claims: add each claim with what shows it, or report done: false`;
+an honest shortfall, `done: false` or a claim marked not ok, is never refused.
+
+## a second round — the review found the same thing again, fix then check, how many rounds
+
+A step that falls short goes round again, in a fresh conversation, until its rounds run out.
+The shipped steps have room for that: plan, write and the other steps that do the work get 2
+rounds, and test, review, proof and security, which are judged on what they leave, get 3 (see
+the default steps). A repository's `.codeaf/factory.yaml` sets its own with `max:`.
+
+Every round after the first opens with what the round before reported: `round 2 of review.
+The last round reported:` followed by what it said, `1 finding still open`, and each claim it
+could not show as `not shown: <claim> (<its evidence>)`, the first 4,000 characters of it.
+Its notes are already among the brief's notes. A stage that runs until clean, green or proven
+is then told `Fix what it left in the checkout first, run the tests, then review again and
+report only what is still wrong.`; one that runs until done is told `It did not finish. Carry
+on from what it left in the checkout, and report done once the ask is carried out.` So a round
+never just looks at the same unchanged checkout again. A check just runs its command again.
+
+Only when the last round falls short does it ask you, for instance
+`review is not clean after 3 rounds: 1 finding · try again, send it back, or stop the job?`.
+
+## a step stopped without reporting — what ends a step, the out of rounds state, my job stopped and waits, try again
+
+A step's conversation ends its work by calling `stage_result`; nothing inside it decides the
+step is finished. A step never hands work to a quick task (it has no `quick_task`, its reads
+are never handed off) and its reply is never moved to a task. When it stops without
+reporting, codeaf gets the report, as codeaf and never as you, each way only if the one before
+brought nothing:
+
+1. A turn that ended on an error (the provider refused, a timeout) is tried once more:
+   `the turn stopped on an error · trying it again: <why>`.
+2. Three reminders, `stopped without reporting · reminded, 1 of 3` to `3 of 3`. The second
+   repeats the step's ask; the third, `3 of 3, on a turn that must report`, requires
+   `stage_result` through the provider's `tool_choice`, so a model that honours it cannot
+   answer in words.
+3. codeaf makes the report: one short call reads the step's brief, its last message and its
+   checkout's change (`git diff --stat` and the diff, the first 4,000 characters) and must call
+   `stage_result`. The log says `reported for the step · from its brief, its last message and
+   its change`, the round's Timeline line starts `reported for the step ·`, and it is judged
+   like any other report.
+
+A spending limit is a stop, not a missing report: a turn today's limit refused stops the job
+with `today's spend limit stopped this step` (another limit: `a spend limit stopped this step:
+<its words>`), with no reminder and nothing asked. Only when all three came back empty, or a
+round ran for two hours, does the job wait for you, in plain words:
+
+- `plan stopped without reporting · try again, or stop the job?`, with why after a colon when
+  codeaf could not make the report;
 - `write ran out of time without reporting · …`
 - `plan did not finish: <what it said> · …` when it reported that it could not;
 - `test is not proven: 1 of 2 claims shown · …` for a step that runs once;
-- `review is not clean after 2 rounds: 1 finding · …` only for a step that loops.
+- `review is not clean after 3 rounds: 1 finding · …` only for a step that loops.
 
 Rounds are named only for a step that loops. `send it back` is offered only when a finished
 step before this one can take the work back; plan, the first step, never offers it. Try again
 runs the step once more with the words you add; stop the job is the job's own Stop.
+
+## a step that reports again — the latest report stands, updated, not cut off after reporting
+
+`stage_result` may be called more than once in a round. Each call replaces the one before, so
+a step that reports `done: false` because a test fails, fixes the test and reports `done: true`
+is judged on the second. The round ends when the step stops (its turn over and nothing it
+handed out still running), not at a fixed time after its first report: a step that reports
+and keeps working is never cut off, and one that reports and goes quiet ends at once. The
+two-hour wall still ends a step that never stops, and its last report stands.
+
+The Timeline shows the final report only, with `· updated 1 time` or `· updated 2 times` when
+the step changed it, so you can see it corrected itself.
+
+## what a step is handed by the steps before it — does write see the plan, the whole plan, earlier claims, planned files
+
+Every factory step's brief carries what the steps before it reported, so write works from the
+plan and not from the issue alone:
+
+- **The plan, whole.** Every step after plan has a paragraph `the plan (from the plan step):`
+  with the plan step's output, up to 6,000 characters; a longer plan is cut there and its
+  heading says so. The plan step itself is told `Write the plan in output: what you'll change,
+  in which files, and how you'll know it works.`
+- **The files the plan names.** Once the plan finished, write's brief lists
+  `files the plan names:`, the same list the job shows as the plan's files (up to 20).
+- **Each earlier step.** `before this stage:` has a line per step, `- write: done · 3 claims`,
+  with up to 1,000 characters of what it said under it; plan's line says `its plan is above`.
+- **Every claim so far.** `claims made so far:` lists each earlier claim with its step, `ok` or
+  `not ok`, and its evidence. Proof's brief asks it to confirm or correct each in its own
+  claims rather than invent new ones.
+- **Notes** stay in `notes:`, whole.
+- **Where the changes are.** Once a step has run, the work-tree line adds that `git log` and
+  `git diff` on the branch show what earlier steps changed: the work tree, not the brief, is
+  the source of truth.
+
+All of it is held to about 12,000 characters. Over that, the oldest steps' words go first
+(their line says `what it said is cut to fit this brief`), then the oldest claims; the plan is
+never cut.
+
+A job that moves to another machine, because its worker went away, keeps all of it: the
+runner there is handed each earlier step's whole report (done, findings, claims, notes), not
+only what it said.
 
 ## where a stage's conversation opens — watch a running stage, open it afterwards
 

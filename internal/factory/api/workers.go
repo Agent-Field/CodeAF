@@ -110,6 +110,58 @@ type StepResult struct {
 	Chat     string              `json:"chat,omitempty"`
 }
 
+// stepResultWire is one step's report in the wire's words, both ways a
+// report crosses: a worker's report of a round ([FromRunReport]) and the
+// pull that hands a job to a worker ([WorkerJob]). [stageResultItem] reads it
+// back. The model rides on the step itself. A plan's edit never crosses (the
+// runner applies it as the round ends, and the kept result drops it), nor do
+// Reports and Inferred: they are folded into the round's summary line where
+// the round ran, and that line crosses (steps[].rounds). A field added here is
+// one a factory older than it refuses a worker's whole report for.
+func stepResultWire(r factory.StageResult) *StepResult {
+	return &StepResult{Tests: r.Tests, Done: r.Done, Findings: r.Findings, Claims: mapList(r.Claims, fromClaim),
+		Output: r.Output, Exit: r.Exit, Notes: r.Notes, Cost: r.Spent, Chat: r.Chat}
+}
+
+// stageResultItem is [stepResultWire] read back.
+func stageResultItem(r StepResult) factory.StageResult {
+	return factory.StageResult{Tests: r.Tests, Done: r.Done, Findings: r.Findings, Claims: mapList(r.Claims, toClaim),
+		Output: r.Output, Exit: r.Exit, Notes: r.Notes, Spent: r.Cost, Chat: r.Chat}
+}
+
+// WorkerJob is the job as the worker holding its lease pulls it: [FromItem],
+// with each step that ran carrying its whole last report.
+//
+// A RUNNER THAT TAKES A JOB ON MUST KNOW WHAT CAME BEFORE. A job moves to
+// another machine when its worker goes away, and the runner there rebuilds
+// every earlier step from the pulled job (internal/factory/run's revive). With only
+// a step's result line it rebuilt a plan that said nothing of being done, no
+// notes and no claims, so the steps after it were briefed that every earlier
+// step was incomplete. The report is the pull's alone: a reader's job stays as
+// it was, and the report's chat names a path on the runner's machine, which
+// only the lease holder may read (serve's withholdChats).
+func WorkerJob(it factory.Item) Job {
+	j := FromItem(it)
+	if it.Stream == nil {
+		return j
+	}
+	// The run's steps are its phases in order ([steps]), so the k-th step
+	// in the run is the k-th phase; [unsteps] reads them back the same way.
+	k := 0
+	for i := range j.Steps {
+		if !j.Steps[i].InRun {
+			continue
+		}
+		if k < len(it.Stream.Phases) {
+			if r := it.Stream.Phases[k].Result; r != nil {
+				j.Steps[i].Report = stepResultWire(*r)
+			}
+		}
+		k++
+	}
+	return j
+}
+
 // WorkerDone names the final product state; ready distinguishes proof that
 // still needs a person from another open question.
 type WorkerDone struct {
@@ -130,7 +182,8 @@ func ToWorkerReport(r WorkerReport) factory.RunReport {
 			stage.Started = *s.StartedAt
 		}
 		if res := s.Result; res != nil {
-			stage.Result = &factory.StageResult{Tests: res.Tests, Done: res.Done, Findings: res.Findings, Claims: mapList(res.Claims, toClaim), Output: res.Output, Exit: res.Exit, Notes: res.Notes, Spent: res.Cost, Chat: res.Chat}
+			item := stageResultItem(*res)
+			stage.Result = &item
 		}
 		out.Stages = append(out.Stages, stage)
 	}
@@ -159,8 +212,7 @@ func FromRunReport(r factory.RunReport) WorkerReport {
 	for _, s := range r.Stages {
 		step := StepReport{Name: s.Name, State: string(s.State), Round: s.Round, StartedAt: timeOrNil(s.Started), Failure: failureWireOrNil(s.Failure), Rounds: roundsWire(s.Rounds)}
 		if res := s.Result; res != nil {
-			step.Result = &StepResult{Tests: res.Tests, Done: res.Done, Findings: res.Findings, Claims: mapList(res.Claims, fromClaim),
-				Output: res.Output, Exit: res.Exit, Notes: res.Notes, Cost: res.Spent, Chat: res.Chat}
+			step.Result = stepResultWire(*res)
 		}
 		out.Steps = append(out.Steps, step)
 	}

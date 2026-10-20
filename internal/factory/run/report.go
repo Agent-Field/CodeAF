@@ -353,7 +353,13 @@ func foldResult(it *factory.Item, st factory.Stage, i int, res factory.StageResu
 		if kindOf(st) == factory.StageCheck {
 			tone = "test"
 		}
-		loopSay(it, now, tone, st.Name+": "+line)
+		// A REPORT THE FACTORY MADE IS NEVER READ AS THE STEP'S OWN WORDS
+		// (stagereport.go).
+		who := st.Name
+		if res.Inferred {
+			who += " (" + factory.ReportedForTheStep + ")"
+		}
+		loopSay(it, now, tone, who+": "+line)
 	}
 	if !factory.Met(st, res) && res.Done {
 		ph.Note = shortfall(res)

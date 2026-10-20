@@ -107,11 +107,11 @@ func TestEmptyFileIsTheDefaults(t *testing.T) {
 	if len(f.Start.Labels) != 0 || f.Start.MaxCost != pipeline.DefaultMaxCost || f.Start.MaxSize != pipeline.DefaultMaxSize {
 		t.Fatalf("start = %+v", f.Start)
 	}
-	if strings.Join(f.Pipeline[factory.KindCI], ",") != "read,write,test,proof" {
+	if strings.Join(f.Pipeline[factory.KindCI], ",") != "bisect,fix,test,proof,approve" {
 		t.Fatalf("ci = %v", f.Pipeline[factory.KindCI])
 	}
-	if f.Steps["plan"].Prompt == "" || f.Steps["read"].Until != "summarised" {
-		t.Fatalf("builtins = plan %q read until %q", f.Steps["plan"].Prompt, f.Steps["read"].Until)
+	if f.Steps["plan"].Prompt == "" || f.Steps["read"].Until != factory.UntilDone || f.Steps["review"].Max != 3 {
+		t.Fatalf("builtins = plan %q read until %q review max %d", f.Steps["plan"].Prompt, f.Steps["read"].Until, f.Steps["review"].Max)
 	}
 	d := f.Decide(pipeline.Job{ID: 1, Kind: factory.KindIssue, Labels: []string{"agent-ready"}, Size: "S"})
 	if d.Start || d.Ask {
@@ -211,7 +211,11 @@ func TestExplicitEmptyFixedClearsTheDefault(t *testing.T) {
 }
 
 func TestRecipeCarriesFreeUntilsInTheAsk(t *testing.T) {
-	r := pipeline.Defaults().Recipe()
+	f, err := pipeline.Parse("steps:\n  plan:\n    until: the plan names its files\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := f.Recipe()
 	plan := r.Stages[0]
 	if plan.Name != "plan" || plan.Until != factory.UntilDone || !strings.Contains(plan.Ask, "Stop when: the plan names its files") {
 		t.Fatalf("plan = %+v", plan)
@@ -229,7 +233,7 @@ func TestRecipeCarriesFreeUntilsInTheAsk(t *testing.T) {
 		t.Fatalf("proof = %+v", proof)
 	}
 	// A hyphenated step has to become one word the runner accepts.
-	f, err := pipeline.Parse("pipeline:\n  issue: [migrate-check]\nsteps:\n  migrate-check: run the migration\n")
+	f, err = pipeline.Parse("pipeline:\n  issue: [migrate-check]\nsteps:\n  migrate-check: run the migration\n")
 	if err != nil {
 		t.Fatal(err)
 	}

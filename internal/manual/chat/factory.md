@@ -51,6 +51,23 @@ Banking a recipe never writes into a folder held by a running program. A separat
 
 The conversation that manages an item also has `factory_run` (shape its run), `factory_start` (start, resume or continue it when you ask) and `factory_answer` (reply to a question a step asked; send it to you when it turns on taste, scope, risk, money or access). The foreman conversation has `factory_floor` (read the whole floor and select items for you to run). These are absent from every other conversation, from `--once` runs and from windows over `--host` or `--at`.
 
+## the default steps — what a job runs with no factory.yaml, how many rounds, security pass
+
+A repository without `.codeaf/factory.yaml` runs the shipped steps, and so does every job on it, whether a person started it or a start rule did: the same steps, asks and rounds. `codeaf factory steps` prints each one with its prompt, its until and its rounds.
+
+- **issue**: plan › approve › write › test › review › proof.
+- **pull request**: read › checks › review › proof › approve.
+- **red main (ci)**: bisect › fix › test › proof › approve.
+
+| Step | Until | Rounds |
+| --- | --- | --- |
+| plan, write, read, checks, bisect, fix | done | 2 |
+| test | green | 3 |
+| review, security | clean | 3 |
+| proof | proven | 3 |
+
+A step that falls short goes round again until its rounds run out, and only then asks you what to do. approve is a person, and approve and proof are fixed: an edit cannot reword or skip them. security is shipped but in no list: a job typed with the word `security` (`fix the login, security`) gains it after review, and a pipeline file names it to run it. A pipeline file's `max:` replaces a shipped step's rounds; a step of the file's own, under a name codeaf does not ship, runs once unless it says `max:`.
+
 ## change one job's steps — landed, proof has started, add after proof, switch on a step
 
 An edit changes one job's steps, not the repository's pipeline. A step that has already run cannot be changed. The recipe's fixed steps cannot be reworded or skipped; proof cannot be skipped.

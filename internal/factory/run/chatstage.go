@@ -15,15 +15,16 @@ package run
 //     hands back what the conversation reported and nothing more. Whether the
 //     stage met its `until` is the loop's [factory.Met], asked of this result.
 //
-//   - A ROUND ENDS BY REPORTING, AND ONLY BY REPORTING. Nothing in the
+//   - A ROUND ENDS WHEN THE STEP STOPS, WITH ITS LAST REPORT. Nothing in the
 //     conversation decides the stage is finished: it has no goal owner
-//     (internal/session's newPrincipalFor), so it works until it calls
-//     `stage_result` or stops talking. One that stops without reporting is
-//     asked for its report ONCE ([stageReminder]), because a model that
-//     forgot the closing call has usually done the work; one that stops again
-//     comes back Done:false with [stageNoReport] as its output, which meets no
-//     until, so the loop asks the person rather than passing a stage that said
-//     nothing. [StageWall] bounds the whole round the same way.
+//     (internal/session's newPrincipalFor), so it works until it is idle. Every
+//     `stage_result` it calls replaces the one before, so a step that reported
+//     early and went on working is judged on what it said last. One that stops
+//     without reporting is asked again, then made to report, and in the end
+//     reported for (stagereport.go), because a model that forgot the closing
+//     call has almost always done the work. Only when all of that comes back
+//     empty is the round Done:false with [stageNoReport] as its output, which
+//     meets no until. [StageWall] bounds the whole round.
 //
 //   - A CANCELLED CTX IS A STOP OR A PAUSE, and the round returns no result:
 //     the conversation is closed, which interrupts a turn still in flight.
@@ -126,22 +127,16 @@ type modeler interface {
 }
 
 // The sentences this file writes. stageNoReport is the output of a round
-// that ended without `stage_result`; the brief's last line is briefClosing.
+// that ended without `stage_result` however it was asked (stagereport.go);
+// the brief's last line is briefClosing.
 const (
 	stageNoReport   = "the stage ended without reporting"
-	briefClosing    = "End by calling stage_result once."
+	briefClosing    = "End by calling stage_result with your final result."
 	briefNoTeamPost = "You have no team_post tool; report through stage_result only."
 	briefAsk        = "A question the brief and the checkout do not settle goes to the item's manager through ask, and you wait for its answer; ask only what you cannot settle yourself."
 	stageNoMaker    = "codeaf cannot open a conversation for a stage here"
-	// stageReminder is what a conversation that stopped without reporting is
-	// told, once; stageReminded is the line the item's log keeps of it, and
-	// stageWalled the output of a round [StageWall] ended.
-	stageReminder = "You stopped without calling stage_result, so the factory has nothing from this step yet. " +
-		"If the work is finished, call stage_result now with what you found. If it is not, carry on and call stage_result when it is, " +
-		"or with done false and why, if it cannot be finished."
-	stageReminded     = "stopped without reporting · asked once for the report"
+	// stageWalled is the output of a round [StageWall] ended before it reported.
 	stageWalled       = "the step ran for its whole allowance without reporting"
-	stageSecondReport = "this stage already reported, and its first report stands"
 	steerNotDelivered = "your words did not reach the stage: "
 	// stageCarryOn is the note a paused stage is carried on with; the maker
 	// puts the carry-on lead on it so the chat shows it as codeaf's, not the
@@ -173,14 +168,10 @@ func carryOnBrief(lines []string) string {
 // at the end of its body reach the step.
 const briefBodyMost = 6000
 
-// briefLastMost is how much of the last round's findings a fix-then-check
-// round's brief carries, in characters.
-const briefLastMost = 1500
-
-// handFold is how long a run of `read handed to quick task N` captions is
-// held for more of the same before it is logged as one line. A variable so
-// tests do not wait it out.
-var handFold = 400 * time.Millisecond
+// briefLastMost is how much of the last round's report a later round's brief
+// carries, in characters. It was 1,500 until 2026-10-20, which cut a review's
+// list of what it found partway through the first few findings.
+const briefLastMost = 4000
 
 // StageWall is the most one round of a chat stage runs for. The runner owns it
 // because nothing inside the conversation does: a stage has no goal owner to
@@ -190,12 +181,6 @@ const StageWall = 2 * time.Hour
 
 // stageWall is [StageWall], a variable so tests do not wait it out.
 var stageWall = StageWall
-
-// reportGrace is how long the executor waits for a turn to end after the
-// conversation reported. The tool tells the model the stage ends when it
-// stops; one that reports and keeps going is closed when this runs out, and
-// its report stands. A variable so tests do not wait it out.
-var reportGrace = 2 * time.Minute
 
 // NewChatExecutor is the executor for [factory.StageChat] stages, opening each
 // round's conversation through maker.
@@ -208,13 +193,13 @@ type chatExecutor struct {
 }
 
 // Run opens the round's conversation, forwards steering and captions while it
-// works, and answers what it reported.
+// works, and answers the last thing it reported, or the report made for it.
 func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, error) {
 	if e.maker == nil {
 		return factory.StageResult{}, errors.New(stageNoMaker)
 	}
 	door := newStageDoor()
-	door.ask = job.Ask
+	door.ask, door.stage = job.Ask, job.Stage
 	log := job.Log
 	if log == nil {
 		log = func(string) {}
@@ -258,49 +243,15 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 	idle := make(chan error, 1)
 	go func() { idle <- conv.Wait(ctx) }()
 
-	// ONE BATCHED READ IS ONE LINE. A conversation that hands several reads
-	// to a quick task at once captions each of them, and the 2026-10-08 hand
-	// run logged `read handed to quick task 1` four times in a row; a run of
-	// such captions for one quick task is held briefly and logged folded.
-	var hand handRun
-	var handTimer *time.Timer
-	var handDue <-chan time.Time
-	defer func() {
-		if handTimer != nil {
-			handTimer.Stop()
-		}
-	}()
-	flush := func() {
-		if line := hand.line(); line != "" {
+	caption := func(line string) {
+		if line = oneLine(line); line != "" {
 			log(line)
 		}
-		hand = handRun{}
-		handDue = nil
-	}
-	caption := func(line string) {
-		if line = oneLine(line); line == "" {
-			return
-		}
-		if tool, task, ok := handedCaption(line); ok {
-			if !hand.add(tool, task) {
-				flush()
-				hand.add(tool, task)
-			}
-			if handTimer == nil {
-				handTimer = time.NewTimer(handFold)
-			} else {
-				handTimer.Reset(handFold)
-			}
-			handDue = handTimer.C
-			return
-		}
-		flush()
-		log(line)
 	}
 
-	var grace <-chan time.Time
 	var waitErr error
-	reminded, walled := false, false
+	asker := stageAsker{job: job}
+	walled := false
 	wall := time.NewTimer(stageWall)
 	defer wall.Stop()
 loop:
@@ -333,34 +284,28 @@ loop:
 				continue
 			}
 			caption(line)
-		case <-handDue:
-			flush()
-		case <-door.reported:
-			// THE REPORT IS IN AND THE TURN IS OWED ITS END. The door's channel
-			// is closed, so it is taken out of the select and a timer stands in.
-			door.reported = nil
-			timer := time.NewTimer(reportGrace)
-			defer timer.Stop()
-			grace = timer.C
-		case <-grace:
-			break loop
 		case <-wall.C:
 			walled = true
 			break loop
 		case waitErr = <-idle:
-			// ASKED ONCE, NEVER TWICE. A conversation that stopped cleanly with
-			// nothing reported is told so and waited on again; a turn that failed
-			// is not a forgotten report, and a second silence is the answer.
-			if waitErr == nil && door.empty() && !reminded && ctx.Err() == nil {
-				reminded = true
-				if err := conv.Note(ctx, stageReminder); err == nil {
-					flush()
-					log(stageReminded)
-					go func() { idle <- conv.Wait(ctx) }()
-					continue
-				}
+			// THE ROUND ENDS WHEN THE STEP STOPS, NOT WHEN IT FIRST REPORTS. A step
+			// that reported and went on working is waited on until it is idle,
+			// however long that takes inside the wall, and its last report stands;
+			// one that is idle with nothing reported is asked again (stagereport.go)
+			// until there is nothing left to ask. A spending limit is never asked
+			// past: the turn it would start is refused before it begins.
+			if !door.empty() || ctx.Err() != nil {
+				break loop
 			}
-			break loop
+			if _, stopped := spendStopOf(waitErr); stopped {
+				break loop
+			}
+			line, ok := asker.next(ctx, conv, waitErr)
+			if !ok {
+				break loop
+			}
+			log(line)
+			go func() { idle <- conv.Wait(ctx) }()
 		}
 	}
 	if ctx.Err() != nil {
@@ -380,15 +325,17 @@ loop:
 			drained = true
 		}
 	}
-	flush()
 	res := door.result()
-	if !res.Done && door.empty() {
-		res.Output = stageNoReport
-		if walled {
-			res.Output = stageWalled
-		} else if waitErr != nil {
-			res.Output += ": " + oneLine(waitErr.Error())
+	if door.empty() {
+		made, line := unreported(ctx, conv, job, spec.Brief, waitErr, walled)
+		if ctx.Err() != nil {
+			return factory.StageResult{}, ctx.Err()
 		}
+		if line != "" {
+			log(line)
+		}
+		made.Edit = res.Edit
+		res = made
 	}
 	res.Chat = conv.ID()
 	if s, ok := conv.(spender); ok {
@@ -454,6 +401,16 @@ func stageHandle(job Job) string {
 // HandleMax), spelled here so this package does not import the teams store.
 const stageHandleMost = 12
 
+// stageAsk is the brief's first line, the stage's name and its ask: `review:
+// read it as a stranger would`. A reminder says it again (stagereport.go).
+func stageAsk(job Job) string {
+	ask := stageLabel(job.Stage)
+	if a := oneLine(job.Stage.Ask); a != "" {
+		ask += ": " + a
+	}
+	return ask
+}
+
 // stageLabel is a stage's name, or its ask's first words when it has none.
 func stageLabel(s factory.Stage) string {
 	if name := oneLine(s.Name); name != "" {
@@ -465,7 +422,9 @@ func stageLabel(s factory.Stage) string {
 // stageBrief is the conversation's opening: the ask in one line, the step's
 // role, the item as the step needs it (brief.go: its facts, files, checks,
 // comments and where the change is in the work tree), the stages and which
-// one this is, the notes, what came before, the stage's knobs in words, and
+// one this is (and, for the plan, where its plan goes), the notes, what the
+// steps before it handed on (handover.go: the plan whole, the files it names,
+// each step's report, the claims so far), the stage's knobs in words, and
 // the sentences that say where questions go and how it ends.
 //
 // EVERY PART IS LEFT OUT WHEN THERE IS NOTHING TO SAY (the emptiness law),
@@ -487,16 +446,13 @@ func stageBrief(job Job) string {
 		}
 		b.WriteString(strings.Join(kept, "\n"))
 	}
-	ask := stageLabel(job.Stage)
-	if a := oneLine(job.Stage.Ask); a != "" {
-		ask += ": " + a
-	}
-	para(ask)
+	para(stageAsk(job))
 	para(stageRole(job))
 	for _, p := range itemContext(job) {
 		para(p...)
 	}
 	para(stagePlace(job))
+	para(planBrief(job))
 	var notes []string
 	for _, n := range job.Notes {
 		if n = oneLine(n); n != "" {
@@ -506,133 +462,106 @@ func stageBrief(job Job) string {
 	if len(notes) > 0 {
 		para(append([]string{"notes:"}, notes...)...)
 	}
-	if prior := priorLines(job); len(prior) > 0 {
-		para(append([]string{"before this stage:"}, prior...)...)
+	for _, p := range handover(job) {
+		para(p...)
 	}
 	para(fixThenCheck(job))
 	para(stageKnobs(job))
+	para(untilSays(job))
 	para(briefNoTeamPost)
 	para(briefAsk)
 	para(briefClosing)
 	return b.String()
 }
 
-// fixThenCheck is the paragraph that makes a round after the first a fix
-// before it is a look: `round 2 of review. The last round found: … Fix those
-// in the checkout first, run the tests, then review again and report only
-// what remains.` "" on round 1, for a stage whose until is done, and when the
-// last round left nothing to name.
+// fixThenCheck is the paragraph that opens every round after the first with
+// what the round before it reported, and what to do with it:
+//
+//	round 2 of review. The last round reported:
+//	the refund is counted twice in Export
+//	1 finding still open
+//	not shown: refunds count once
+//	Fix what it left in the checkout first, run the tests, then review again and report only what is still wrong.
+//
+// A stage that runs until done is told it did not finish and to carry on from
+// what is in the checkout instead. "" on round 1 and when nothing came back.
 //
 // A ROUND THAT ONLY LOOKS AGAIN FINDS THE SAME THING AGAIN. On the 2026-10-08
 // hand run review found one finding, the person said one more round, and round
 // 2 reviewed the same unchanged tree and found it again; until clean never
 // converged, because no round was ever asked to change anything.
+//
+// EVERY ROUND IS A FRESH CONVERSATION, SO THIS IS ALL IT KNOWS OF THE LAST.
+// Until 2026-10-20 only a stage that runs until clean, green or proven was told,
+// and only the first line of what it said: a plan or a write that went round
+// again started from nothing, and a review lost the findings it had listed.
 func fixThenCheck(job Job) string {
 	if job.Round < 2 || job.Last == nil {
 		return ""
 	}
+	name := stageLabel(job.Stage)
+	head := "round " + strconv.Itoa(job.Round) + " of " + name + "."
+	if found := lastFound(*job.Last); found != "" {
+		head += " The last round reported:\n" + found
+	}
 	switch strings.TrimSpace(job.Stage.Until) {
 	case factory.UntilClean, factory.UntilGreen, factory.UntilProven:
-	default:
-		return ""
+		return head + "\nFix what it left in the checkout first, run the tests, then " + name + " again and report only what is still wrong."
 	}
-	found := lastFound(*job.Last)
-	if found == "" {
-		return ""
-	}
-	name := stageLabel(job.Stage)
-	return "round " + strconv.Itoa(job.Round) + " of " + name + ". The last round found: " + found +
-		" Fix those in the checkout first, run the tests, then " + name + " again and report only what remains."
+	return head + "\nIt did not finish. Carry on from what it left in the checkout, and report done once the ask is carried out."
 }
 
-// lastFound is what a round found, in words: its output, then each claim it
-// could not show, cut to [briefLastMost] characters and closed with a full
-// stop so the next sentence reads as one.
-func lastFound(r factory.StageResult) string {
-	var parts []string
-	if out := strings.TrimSpace(r.Output); out != "" {
-		parts = append(parts, oneLine(out))
+// untilSays is the sentence a stage judged on what it leaves reads about how
+// it is judged: what findings count for one that runs until clean, what a
+// claim needs for one that runs until proven, "" for any other stage. IT IS
+// SAID HERE, ONCE PER STEP, NOT IN `stage_result`'s DESCRIPTION, which every
+// call of every stage pays for.
+//
+// A REVIEW THAT FIXED WHAT IT FOUND IS CLEAN. Until 2026-10-20 nothing said
+// whether findings counted what a round found or what it left, and a reviewer
+// that found three problems, fixed them, and honestly reported three failed.
+// A proof claim with blank evidence was never proven, and nothing said so.
+func untilSays(job Job) string {
+	switch strings.TrimSpace(job.Stage.Until) {
+	case factory.UntilClean:
+		return "findings counts only what is still wrong once this round's own fixes are in: a problem you found and fixed is not a finding, and " + stageLabel(job.Stage) + " is clean at zero."
+	case factory.UntilProven:
+		return "every claim needs its evidence, what shows it (the command and its result, the file, the screenshot): a claim with none is not proven."
 	}
-	var bad []string
-	for _, cl := range r.Claims {
-		if !cl.OK {
-			if t := oneLine(cl.Text); t != "" {
-				bad = append(bad, t)
-			}
+	return ""
+}
+
+// lastFound is a round's report as the next round reads it, one part to a
+// line: what it said, how many findings it left open, and each claim it could
+// not show with its evidence. It is cut to [briefLastMost] characters and
+// marked where it was cut. ITS NOTES ARE NOT REPEATED HERE: every round's notes
+// are folded into the job's ([floorLoop.fold]) and open the brief already.
+func lastFound(r factory.StageResult) string {
+	var lines []string
+	for _, l := range strings.Split(strings.TrimSpace(r.Output), "\n") {
+		if l = oneLine(l); l != "" {
+			lines = append(lines, l)
 		}
 	}
-	if len(bad) > 0 {
-		parts = append(parts, "not shown: "+strings.Join(bad, "; "))
+	if r.Findings > 0 {
+		lines = append(lines, plural(r.Findings, "finding")+" still open")
 	}
-	found := strings.Join(parts, " · ")
+	for _, cl := range r.Claims {
+		if cl.OK {
+			continue
+		}
+		if t := oneLine(cl.Text); t != "" {
+			if ev := oneLine(cl.Evidence); ev != "" {
+				t += " (" + ev + ")"
+			}
+			lines = append(lines, "not shown: "+t)
+		}
+	}
+	found := strings.Join(lines, "\n")
 	if r := []rune(found); len(r) > briefLastMost {
 		found = strings.TrimSpace(string(r[:briefLastMost])) + " …"
 	}
-	if found != "" && !strings.HasSuffix(found, ".") {
-		found += "."
-	}
 	return found
-}
-
-// handedSuffix is how a caption says a call went to a quick task:
-// `read handed to quick task 1` (internal/session's readhandoff.go hint).
-const handedSuffix = " handed to quick task "
-
-// handedCaption reads `read handed to quick task 1` as the tool and the task.
-func handedCaption(line string) (tool, task string, ok bool) {
-	i := strings.Index(line, handedSuffix)
-	if i <= 0 {
-		return "", "", false
-	}
-	tool, task = line[:i], line[i+len(handedSuffix):]
-	if strings.ContainsAny(tool, " ") || task == "" {
-		return "", "", false
-	}
-	if _, err := strconv.Atoi(task); err != nil {
-		return "", "", false
-	}
-	return tool, task, true
-}
-
-// handRun is a run of calls handed to one quick task, each tool counted in
-// the order it first came.
-type handRun struct {
-	task  string
-	tools []string
-	count map[string]int
-}
-
-// add counts one call, and answers false when it went to another task.
-func (h *handRun) add(tool, task string) bool {
-	if h.task != "" && h.task != task {
-		return false
-	}
-	if h.count == nil {
-		h.count = map[string]int{}
-	}
-	h.task = task
-	if h.count[tool] == 0 {
-		h.tools = append(h.tools, tool)
-	}
-	h.count[tool]++
-	return true
-}
-
-// line is the run as one line: `read ×4 · find handed to quick task 1`, and
-// the caption as it came when there was one call.
-func (h *handRun) line() string {
-	if h.task == "" {
-		return ""
-	}
-	words := make([]string, 0, len(h.tools))
-	for _, t := range h.tools {
-		if n := h.count[t]; n > 1 {
-			words = append(words, t+" ×"+strconv.Itoa(n))
-		} else {
-			words = append(words, t)
-		}
-	}
-	return strings.Join(words, " · ") + handedSuffix + h.task
 }
 
 // stagePlace is the run's stages in order and which one this is, with the
@@ -669,46 +598,11 @@ func stagePlace(job Job) string {
 
 // cutBody is the item's body, at most [briefBodyMost] characters, cut at a
 // rune and marked when cut.
-func cutBody(body string) string {
-	body = strings.TrimSpace(body)
-	r := []rune(body)
-	if len(r) <= briefBodyMost {
-		return body
-	}
-	return strings.TrimSpace(string(r[:briefBodyMost])) + " …"
-}
+func cutBody(body string) string { return cutAt(body, briefBodyMost) }
 
-// priorLines is one line per stage that ran before this one: `write: done ·
-// 3 claims · what it said`. The names come from the item's stages that are on
-// and before this one, when they line up with Prior one for one; otherwise
-// each is named by its place.
-func priorLines(job Job) []string {
-	if len(job.Prior) == 0 {
-		return nil
-	}
-	before := job.Item.Stages
-	if job.Index >= 0 && job.Index < len(before) {
-		before = before[:job.Index]
-	}
-	var names []string
-	for _, s := range before {
-		if s.On {
-			names = append(names, stageLabel(s))
-		}
-	}
-	lines := make([]string, 0, len(job.Prior))
-	for i, r := range job.Prior {
-		name := "stage " + strconv.Itoa(i+1)
-		if len(names) == len(job.Prior) && names[i] != "" {
-			name = names[i]
-		}
-		lines = append(lines, name+": "+resultWords(r))
-	}
-	return lines
-}
-
-// resultWords is one result in a row: done or incomplete, then only the counts
-// that are not zero, then the first line of what it said.
+// resultWords is one result's head in a row: done or incomplete, then only
+// the counts that are not zero, `done · 2 findings · 3 claims · exit 1`. What
+// it said and what it claimed are carried under it (handover.go).
 func resultWords(r factory.StageResult) string {
 	parts := []string{"incomplete"}
 	if r.Done {
@@ -722,9 +616,6 @@ func resultWords(r factory.StageResult) string {
 	}
 	if r.Exit != 0 {
 		parts = append(parts, "exit "+strconv.Itoa(r.Exit))
-	}
-	if out := firstLine(r.Output); out != "" {
-		parts = append(parts, out)
 	}
 	return strings.Join(parts, " · ")
 }
@@ -775,14 +666,19 @@ func firstLine(s string) string {
 
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
 
-// stageDoor is the door one round hands its conversation. It keeps the first
-// report and every proposal, merged in the order they came.
+// stageDoor is the door one round hands its conversation. It keeps the last
+// report, how many there were, and every proposal, merged in the order they
+// came.
 type stageDoor struct {
-	mu       sync.Mutex
-	report   *factory.StageResult
-	edit     factory.PlanEdit
-	edited   bool
-	reported chan struct{}
+	mu      sync.Mutex
+	report  *factory.StageResult
+	reports int
+	edit    factory.PlanEdit
+	edited  bool
+	// stage is the step the round runs, whose until a report is checked
+	// against before it is held ([factory.ReportFault]). The zero stage runs
+	// until done, which no report contradicts.
+	stage factory.Stage
 	// ask is the round's road to the manager (Job.Ask), nil for none.
 	ask func(ctx context.Context, q factory.Asked) (string, error)
 }
@@ -800,22 +696,39 @@ func (d *stageDoor) Ask(ctx context.Context, q factory.Asked) (string, error) {
 	return d.ask(ctx, q)
 }
 
-func newStageDoor() *stageDoor { return &stageDoor{reported: make(chan struct{})} }
+func newStageDoor() *stageDoor { return &stageDoor{} }
 
-// Report keeps the round's result. A SECOND REPORT IS REFUSED, in words the
-// model reads, because the brief and the tool both say once and a stage that
-// changed its account would leave two answers for one round.
+// Report keeps the round's result. EVERY REPORT IS TAKEN AND THE LAST ONE
+// STANDS: a careful step reports `done: false, the test fails`, fixes the
+// test, and says so again, and until 2026-10-20 its first report was final and
+// a correct step was judged a failed one.
+//
+// THIS IS THE ONE PLACE A REPORT IS ACCEPTED. An error returned here reaches
+// the model as `not reported: <why>` in the same turn (internal/session's
+// tools_stage.go) and the report held before it stands, so a check of a
+// report against its step's rule belongs here and nowhere else: the step puts
+// it right and calls again.
+//
+// A REPORT THAT CONTRADICTS ITS STEP'S RULE IS NOT HELD. A review that says
+// done with findings still open, or a proof claim marked ok with nothing
+// showing it, is answered with the fix ([factory.ReportFault], the judge's own
+// rules) and the earlier report stands. Until 2026-10-20 such a report was
+// held and failed by the judge after the round, so a whole round was spent to
+// learn what the call itself gave away. An honest shortfall, done: false or a
+// claim marked ok: false, is held like any report and judged into another
+// round. A refused call is not counted in Reports: nothing was reported.
 func (d *stageDoor) Report(_ context.Context, result factory.StageResult) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if d.report != nil {
-		return errors.New(stageSecondReport)
+	if why := factory.ReportFault(d.stage, result); why != "" {
+		return errors.New(why)
 	}
 	r := result
 	r.Claims = append([]factory.Claim(nil), result.Claims...)
 	r.Notes = append([]string(nil), result.Notes...)
+	r.Reports, r.Inferred = 0, false
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	d.report = &r
-	close(d.reported)
+	d.reports++
 	return nil
 }
 
@@ -837,14 +750,15 @@ func (d *stageDoor) Edit(_ context.Context, edit factory.PlanEdit) error {
 	return nil
 }
 
-// result is the report, or a zero result when there was none, with the
-// round's merged proposal on it either way.
+// result is the last report and how many there were, or a zero result when
+// there was none, with the round's merged proposal on it either way.
 func (d *stageDoor) result() factory.StageResult {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	var r factory.StageResult
 	if d.report != nil {
 		r = *d.report
+		r.Reports = d.reports
 	}
 	if d.edited {
 		e := d.edit
@@ -872,6 +786,10 @@ type FakeMaker struct {
 	// a conversation starts a next turn on a message that arrives while it is
 	// idle. Nil is a turn that ends at once without reporting.
 	FollowUp func(ctx context.Context, c *FakeConversation, words string)
+	// Infer, when set, is the report the factory makes for a conversation that
+	// never reported, from the ask it is handed ([inferrer]). Nil is a
+	// conversation that cannot make one.
+	Infer func(ctx context.Context, c *FakeConversation, ask string) (factory.StageResult, error)
 	// Fail, when set, is what Open answers instead of a conversation.
 	Fail error
 
@@ -909,7 +827,26 @@ func (m *FakeMaker) Open(ctx context.Context, spec ConversationSpec) (Conversati
 			m.Script(turn, c)
 		}
 	}()
+	if m.Infer != nil {
+		return inferringFake{c}, nil
+	}
 	return c, nil
+}
+
+// inferringFake is a [FakeConversation] that can make its step's report,
+// which a fake opened by a maker with Infer is.
+type inferringFake struct{ *FakeConversation }
+
+// Infer keeps the ask and answers the maker's Infer.
+func (f inferringFake) Infer(ctx context.Context, ask string) (factory.StageResult, error) {
+	f.keepInferred(ask)
+	return f.maker.Infer(ctx, f.FakeConversation, ask)
+}
+
+func (c *FakeConversation) keepInferred(ask string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.inferred = append(c.inferred, ask)
 }
 
 // Opened is every conversation opened so far, in order.
@@ -936,6 +873,13 @@ type FakeConversation struct {
 	noted    []string
 	model    string
 	isClosed bool
+	// required is the tool the current turn must call, "" for none;
+	// failure is what its Wait answers; last is what the model last said;
+	// inferred is every ask the factory's own report was made from.
+	required string
+	failure  error
+	last     string
+	inferred []string
 }
 
 // Model is the model the fake is on: the spec's, then the last SetModel.
@@ -958,15 +902,21 @@ func (c *FakeConversation) SetModel(model string) {
 // Send records the words and hands them to the script through Heard while
 // its turn runs, or starts the maker's FollowUp turn on them when it has ended.
 func (c *FakeConversation) Send(_ context.Context, words string) error {
-	return c.deliver(words, false)
+	return c.deliver(words, false, "")
 }
 
 // Note is Send for codeaf's own words, kept apart in Noted.
 func (c *FakeConversation) Note(_ context.Context, words string) error {
-	return c.deliver(words, true)
+	return c.deliver(words, true, "")
 }
 
-func (c *FakeConversation) deliver(words string, note bool) error {
+// NoteRequiring is Note for a turn that must call tool first ([requirer]); the
+// FollowUp turn reads it with Required, as a model reads `tool_choice`.
+func (c *FakeConversation) NoteRequiring(_ context.Context, words, tool string) error {
+	return c.deliver(words, true, tool)
+}
+
+func (c *FakeConversation) deliver(words string, note bool, required string) error {
 	c.mu.Lock()
 	if note {
 		c.noted = append(c.noted, words)
@@ -988,7 +938,7 @@ func (c *FakeConversation) deliver(words string, note bool) error {
 		return nil
 	}
 	done := make(chan struct{})
-	c.done = done
+	c.done, c.required, c.failure = done, required, nil
 	c.mu.Unlock()
 	go func() {
 		defer close(done)
@@ -999,17 +949,56 @@ func (c *FakeConversation) deliver(words string, note bool) error {
 	return nil
 }
 
-// Wait returns when the current turn does, or when ctx ends.
+// Wait returns when the current turn does, with what Fail said of it, or
+// when ctx ends.
 func (c *FakeConversation) Wait(ctx context.Context) error {
 	c.mu.Lock()
 	done := c.done
 	c.mu.Unlock()
 	select {
 	case <-done:
-		return nil
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		return c.failure
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+// Fail ends the script's current turn with err, as a provider's refusal or a
+// spending limit ends a real one; the next turn starts clean.
+func (c *FakeConversation) Fail(err error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.failure = err
+}
+
+// Required is the tool the current turn must call, "" for none.
+func (c *FakeConversation) Required() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.required
+}
+
+// Answer is the script saying words, which LastWords then answers.
+func (c *FakeConversation) Answer(words string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.last = words
+}
+
+// LastWords is what the script last said with Answer.
+func (c *FakeConversation) LastWords() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.last
+}
+
+// Inferred is every ask the factory's own report was made from, in order.
+func (c *FakeConversation) Inferred() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]string(nil), c.inferred...)
 }
 
 // Captions is what Say sends.

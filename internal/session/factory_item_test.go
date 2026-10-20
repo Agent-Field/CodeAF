@@ -20,6 +20,29 @@ import (
 	"github.com/Agent-Field/codeaf/internal/manual"
 )
 
+// itemRecipe is the recipe these tests hold the card to: plan › approve ›
+// write › test › review › an off security stage › proof, nothing fixed. IT IS
+// SPELLED HERE, NOT READ OFF factory.DefaultRecipe: these tests pin how the
+// card previews, applies and refuses a change, and an off stage is the one
+// shape where think strong reaches a stage that does not run. The shipped
+// default has neither an off stage nor unfixed approve and proof since
+// 2026-10-20, and the card's mechanics do not move with it.
+func itemRecipe() factory.Recipe {
+	return factory.Recipe{
+		DefaultBudget: factory.DefaultJobBudget,
+		Stages: []factory.Stage{
+			{Name: "plan", Ask: "read the issue and say how", Until: "done", On: true},
+			{Name: factory.ApproveName, Kind: factory.StageGate, On: true},
+			{Name: "write", Ask: "make the change in the checkout", Fanout: "per-file", Until: "done", On: true},
+			{Name: "test", Ask: "run what the change implies", Until: "green", Max: 2, On: true},
+			{Name: "review", Ask: "read it as a stranger would", Fanout: "per-finding", Until: "clean", Max: 1, On: true},
+			{Name: "security", Ask: "secrets, injection and authz", Until: "clean", On: false},
+			{Name: "proof", Ask: "show each claim in its own medium", Until: "proven", On: true},
+		},
+		ByKind: map[factory.Kind][]factory.Stage{},
+	}
+}
+
 // fakeItemDoor holds one item, #1, under a recipe, and previews and applies
 // through [ApplyItemChange] exactly as the store's door does. It records every
 // change it applied.
@@ -34,7 +57,7 @@ type fakeItemDoor struct {
 func newFakeItemDoor() *fakeItemDoor {
 	return &fakeItemDoor{
 		item:   factory.Item{ID: 1, Repo: "factory-demo", Kind: factory.KindIssue, Title: "Total double-counts an entry added twice", State: factory.StateNew, Cap: 5},
-		recipe: factory.DefaultRecipe(),
+		recipe: itemRecipe(),
 	}
 }
 
@@ -254,7 +277,7 @@ func TestFactoryItemHeadAndRowsForEachChange(t *testing.T) {
 // the conversation stages that have not run, and a fixed recipe refusing a
 // stage change WHOLE — no chip changes either.
 func TestFactoryItemChangeAppliesEachFieldAndRefusesUnderFixed(t *testing.T) {
-	recipe := factory.DefaultRecipe()
+	recipe := itemRecipe()
 	it := factory.Item{ID: 1, Kind: factory.KindIssue, Cap: 5, Notes: []string{"first"},
 		Stream: &factory.Stream{Phases: []factory.Phase{{Name: "plan", State: factory.PhaseDone}}}}
 	next, err := ApplyItemChange(it, ItemChange{Edit: factory.PlanEdit{Skip: []string{"review"}}, Cap: 8, Effort: "strong", Note: "second"}, recipe)
@@ -314,7 +337,7 @@ func TestFactoryItemChangeAppliesEachFieldAndRefusesUnderFixed(t *testing.T) {
 // nothing of it runs, so a card would offer a change nobody ever reads. The
 // job comes back exactly as it went in.
 func TestFactoryItemChangeRefusesADroppedJob(t *testing.T) {
-	recipe := factory.DefaultRecipe()
+	recipe := itemRecipe()
 	it := factory.Item{ID: 1, Num: 12, Kind: factory.KindIssue, Cap: 5, State: factory.StateDismissed, DoneHow: "dropped"}
 	want := "#12 " + factory.DroppedRefusal
 	for _, change := range []ItemChange{
@@ -592,7 +615,7 @@ func TestFactoryItemCardUsesTheFloorsWords(t *testing.T) {
 	}
 }
 
-// itemWithPhases is a default-recipe item whose stream holds exactly the phases given.
+// itemWithPhases is an [itemRecipe] item whose stream holds exactly the phases given.
 func itemWithPhases(phases ...factory.Phase) factory.Item {
 	return factory.Item{ID: 1, Kind: factory.KindIssue, Cap: 5, Notes: []string{"first"}, Stream: &factory.Stream{Phases: phases}}
 }
@@ -600,7 +623,7 @@ func itemWithPhases(phases ...factory.Phase) factory.Item {
 // THINKING IS THE SHARED EDIT'S, SO ITS REFUSALS HOLD: a refused change comes
 // back as it went in, the cap and the note included.
 func TestItemThinkingRefusalLeavesTheItemAsItWas(t *testing.T) {
-	recipe := factory.DefaultRecipe()
+	recipe := itemRecipe()
 	landed := itemWithPhases()
 	landed.State = factory.StateLanded
 	proofRan := itemWithPhases(
@@ -630,7 +653,7 @@ func TestItemThinkingRefusalLeavesTheItemAsItWas(t *testing.T) {
 
 // A change that moves no thinking stays a no-op even on a landed job.
 func TestItemThinkingNoOpStaysANoOpWhenLanded(t *testing.T) {
-	recipe := factory.DefaultRecipe()
+	recipe := itemRecipe()
 	it := itemWithPhases()
 	it.State = factory.StateLanded
 	got, err := ApplyItemChange(it, ItemChange{Effort: "default"}, recipe)
@@ -644,7 +667,7 @@ func TestItemThinkingNoOpStaysANoOpWhenLanded(t *testing.T) {
 
 // A fixed stage keeps its own thinking; the rest of the card goes through.
 func TestItemThinkingLeavesAFixedStageAlone(t *testing.T) {
-	recipe := factory.DefaultRecipe()
+	recipe := itemRecipe()
 	it := ItemStaged(itemWithPhases(), recipe)
 	it.Stages = factory.CopyStages(it.Stages)
 	i := factory.StageIndex(it.Stages, "review")
@@ -666,7 +689,7 @@ func TestItemThinkingLeavesAFixedStageAlone(t *testing.T) {
 
 // A phase a rerun rewound to pending has still begun, as the shared Edit counts it.
 func TestItemThinkingSkipsAPendingPhaseWithARound(t *testing.T) {
-	recipe := factory.DefaultRecipe()
+	recipe := itemRecipe()
 	it := itemWithPhases(factory.Phase{Name: "plan", State: factory.PhaseDone},
 		factory.Phase{Name: "write", State: factory.PhasePending, Round: 1})
 	next, err := ApplyItemChange(it, ItemChange{Effort: "strong"}, recipe)
@@ -686,7 +709,7 @@ func TestItemThinkingSkipsAPendingPhaseWithARound(t *testing.T) {
 
 // A bad level is refused before the edit, the cap or the note is looked at.
 func TestItemThinkingBadLevelRefusesWholeChange(t *testing.T) {
-	recipe := factory.DefaultRecipe()
+	recipe := itemRecipe()
 	it := itemWithPhases()
 	got, err := ApplyItemChange(it, ItemChange{Edit: factory.PlanEdit{Skip: []string{"review"}}, Effort: "wild", Cap: 9, Note: "x"}, recipe)
 	if err == nil || !strings.Contains(err.Error(), "not a thinking level") {
@@ -824,7 +847,7 @@ func TestFactoryItemCapOrNoteOnlyReceiptNeverSpeaksOfThinking(t *testing.T) {
 // A stage after proof refuses the whole card through the shared edit; the item
 // keeps its cap and note.
 func TestItemThinkingAConversationStageAfterProofRefusesTheWholeCard(t *testing.T) {
-	recipe := factory.DefaultRecipe()
+	recipe := itemRecipe()
 	it := ItemStaged(itemWithPhases(), recipe)
 	it.Stages = append(factory.CopyStages(it.Stages), factory.ParseStage("announce"))
 	got, err := ApplyItemChange(it, ItemChange{Effort: "strong", Cap: 9, Note: "x"}, recipe)
@@ -1118,7 +1141,7 @@ func legacyNamedItem(t *testing.T, names ...string) factory.Item {
 // A LEGACY `Tidy` SURVIVES THE STORE AND TAKES THE PERSON'S THINKING, under its
 // own spelling: the name lookup is without case, the stored bytes are not touched.
 func TestItemThinkingReachesALegacyCasedStage(t *testing.T) {
-	recipe := factory.DefaultRecipe()
+	recipe := itemRecipe()
 	it := legacyNamedItem(t, "plan", "Tidy")
 	if it.Stages[1].Name != "Tidy" {
 		t.Fatalf("the store renamed the stage: %+v", it.Stages)
@@ -1141,7 +1164,7 @@ func TestItemThinkingReachesALegacyCasedStage(t *testing.T) {
 // TWO STAGES OF ONE NAME REFUSE THE WHOLE CARD, cap and note included, for every
 // mix of efforts and spellings, rather than setting one and saying all.
 func TestItemThinkingRefusesAnAmbiguousStageNameWholly(t *testing.T) {
-	recipe := factory.DefaultRecipe()
+	recipe := itemRecipe()
 	for _, names := range [][]string{{"tidy", "tidy"}, {"Tidy", "tidy"}} {
 		for _, efforts := range [][2]string{{"", ""}, {"cheap", "strong"}, {"strong", "strong"}} {
 			it := legacyNamedItem(t, append([]string{"plan"}, names...)...)
@@ -1168,7 +1191,7 @@ func TestItemThinkingRefusesAnAmbiguousStageNameWholly(t *testing.T) {
 // The shared edit's own verbs refuse the same ambiguity, and a legacy name keeps
 // every bound the lowercase name has.
 func TestItemThinkingKeepsEveryBoundOnALegacyName(t *testing.T) {
-	recipe := factory.DefaultRecipe()
+	recipe := itemRecipe()
 	dup := legacyNamedItem(t, "plan", "Tidy", "tidy")
 	for kind, edit := range map[string]factory.PlanEdit{
 		"skip": {Skip: []string{"tidy"}}, "on": {On: []string{"Tidy"}},
@@ -1208,7 +1231,7 @@ func TestItemThinkingKeepsEveryBoundOnALegacyName(t *testing.T) {
 // leaves a fixed `Review` at its own thinking and moves the rest, and the shared
 // edit's verbs refuse it with the fixed sentence.
 func TestItemThinkingKeepsARecipeFixedStageUnderALegacyName(t *testing.T) {
-	recipe := factory.DefaultRecipe()
+	recipe := itemRecipe()
 	for i := range recipe.Stages {
 		if recipe.Stages[i].Name == "review" {
 			recipe.Stages[i].Fixed = true

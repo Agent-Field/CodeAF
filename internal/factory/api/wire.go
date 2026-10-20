@@ -623,6 +623,13 @@ type Step struct {
 	RunKind    string `json:"run_kind,omitempty"`
 	InPipeline bool   `json:"in_pipeline"`
 	InRun      bool   `json:"in_run"`
+	// Report is the step's whole last report (done, findings, claims, notes,
+	// output, exit), in the words a worker reports one with. ONLY THE WORKER'S
+	// PULL CARRIES IT ([WorkerJob]): the runner that takes a job on hands the
+	// steps after it everything the steps before them found, and a reader has
+	// result, cost, tests and model already. A step without it (a pull from a
+	// factory older than the field) is read from result as before.
+	Report *StepResult `json:"report,omitempty"`
 }
 
 // Claim is one row of a proof sheet.

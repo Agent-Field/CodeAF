@@ -110,7 +110,7 @@ var Lost = map[string]string{
 	"Stage.OldGate":     "read into approve steps on load and never in memory",
 	"Stage.OldGateWhen": "read into approve steps on load and never in memory",
 	"Phase.Carry":       "the runner's own inbox for a resumed step; no surface reads it",
-	"Phase.Result":      "only Output (step result) and Spent (step cost) cross; the rest is the runner's revival state",
+	"Phase.Result":      "a reader's job carries Output (step result), Spent (step cost), Tests and Model; the rest is the runner's revival state, which only the worker's pull carries (WorkerJob)",
 	"Phase.Kind":        "an empty phase kind under a stage with a kind comes back as the stage's",
 	"Phase.Left":        "crosses in whole milliseconds",
 	"Item.ChatSpent":    "crosses as the job's cost while it has no run; a start carries it into the run's spend before any worker pulls the job",
@@ -944,7 +944,14 @@ func toPhase(s Step) factory.Phase {
 	}
 	p := factory.Phase{Name: s.Name, Kind: factory.StageKind(kind), State: factory.PhaseState(s.State), Note: s.Note,
 		Round: s.Round, Tasks: s.Tasks, Left: time.Duration(s.LeftMS) * time.Millisecond, Chat: s.Chat, Handle: s.Handle}
-	if s.Result != "" || s.Cost != 0 || s.Tests != nil || s.Model != "" {
+	// THE WHOLE REPORT WINS WHEN IT CAME. A worker's pull carries it; a
+	// reader's job, and a pull from an older factory, carry only the step's
+	// result line, which is read as it always was (no done, no notes, no claims).
+	if r := s.Report; r != nil {
+		res := stageResultItem(*r)
+		res.Model = s.Model
+		p.Result = &res
+	} else if s.Result != "" || s.Cost != 0 || s.Tests != nil || s.Model != "" {
 		p.Result = &factory.StageResult{Output: s.Result, Spent: s.Cost, Tests: s.Tests, Model: s.Model}
 	}
 	if s.At != nil {

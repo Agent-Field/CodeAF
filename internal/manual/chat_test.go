@@ -3319,6 +3319,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"the factory says my repository isn't checked out on this machine", "factory"},
 		{"does the factory clone a private repository it has no checkout of", "factory"},
 		{"factory start refused, not checked out, connect GitHub so the factory can clone it", "factory"},
+		// WHAT A STEP FOUND REACHES THE STEPS AFTER IT: the plan whole, the
+		// files it names, every claim so far.
+		{"does the factory write step see the whole plan", "factory-stage-conversations"},
+		{"does the proof step know what earlier steps claimed", "factory-stage-conversations"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

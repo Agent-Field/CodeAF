@@ -225,7 +225,7 @@ func TestAChatStageIsAConversationThatReportsThroughStageResult(t *testing.T) {
 			t.Errorf("the stage's belt carries %s, which waits on a card nobody answers", verb)
 		}
 	}
-	if !strings.Contains(model.briefs[0], "End by calling stage_result once.") {
+	if !strings.Contains(model.briefs[0], "End by calling stage_result with your final result.") {
 		t.Error("the first turn did not carry the stage's brief")
 	}
 }

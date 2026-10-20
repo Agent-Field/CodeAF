@@ -104,7 +104,7 @@ func TestStageResultHandsTheDoorWhatTheModelReported(t *testing.T) {
 	out, isErr := callStageTool(t, tool, `{"done":true,"findings":1,
 		"claims":[{"text":"  refunds   count once ","ok":true,"evidence":"TestRefund passes","medium":" Test "}],
 		"notes":["the export changed",""],"output":"  one finding left  "}`)
-	if isErr || out != "reported · the stage ends when you stop" {
+	if isErr || out != "reported · the last report you send before you stop is the one the factory reads" {
 		t.Fatalf("result = %q (error %v)", out, isErr)
 	}
 	want := factory.StageResult{Done: true, Findings: 1, Notes: []string{"the export changed"}, Output: "one finding left",
@@ -131,8 +131,8 @@ func TestStageResultSaysWhatIsMissing(t *testing.T) {
 	if len(door.reports) != 0 {
 		t.Fatal("an invalid call reached the door")
 	}
-	door.refuse = errors.New("this stage already reported, and its first report stands")
-	if out, isErr := callStageTool(t, tool, `{"done":false}`); !isErr || out != "not reported: this stage already reported, and its first report stands" {
+	door.refuse = errors.New("claim 1 has no evidence: add what shows it, or set ok: false")
+	if out, isErr := callStageTool(t, tool, `{"done":false}`); !isErr || out != "not reported: claim 1 has no evidence: add what shows it, or set ok: false" {
 		t.Fatalf("a refusal answered %q", out)
 	}
 }
@@ -164,7 +164,7 @@ func TestPlanEditHandsTheDoorAProposalAndChangesNothing(t *testing.T) {
 // THE DESCRIPTIONS SAY WHAT A STAGE IS, because the model has nothing else to
 // learn it from: no sentence on the page names these verbs.
 func TestTheStageDescriptionsSayWhatAStageIsAndHowItEnds(t *testing.T) {
-	for _, want := range []string{"IS one stage of a factory item", "its brief", "tasks", "ONCE", "until clean needs zero", "Nothing is posted anywhere", "ends when you stop"} {
+	for _, want := range []string{"IS one stage of a factory item", "its brief", "tasks", "Report this step's result. Call it again if your result changes; the last call before you stop is the one that counts.", "until clean needs zero", "Nothing is posted anywhere"} {
 		if !strings.Contains(stageResultDescription, want) {
 			t.Errorf("stage_result's description lacks %q", want)
 		}
@@ -204,11 +204,20 @@ func TestTheStageVerbsCostOnlyTheStageAndStayUnderTheirBudget(t *testing.T) {
 	if total > stageBeltBudget {
 		t.Fatalf("the stage verbs are %d bytes, over their %d", total, stageBeltBudget)
 	}
+	// BEING A STAGE CHANGES ONE PARAGRAPH OF THE PAGE AND NOTHING ELSE: the
+	// hand-off paragraph names no quick task it does not carry
+	// (stage_turn_test.go). Every other conversation's page is untouched.
 	plain := Config{Workspace: "/w"}
 	stage := plain
 	stage.Stage = &fakeStageDoor{}
-	if promptWithBeltFacts(plain) != promptWithBeltFacts(stage) {
-		t.Fatal("being a stage changed the page: the page is paid for by every conversation")
+	plainPage, stagePage := promptWithBeltFacts(plain), promptWithBeltFacts(stage)
+	for _, page := range []string{plainPage, stagePage} {
+		if strings.Contains(page, "stage_result") || strings.Contains(page, "plan_edit") {
+			t.Fatal("the page names a stage verb: the page is paid for by every conversation")
+		}
+	}
+	if strings.Contains(stagePage, "`"+quickTaskToolName+"`") || !strings.Contains(plainPage, "`"+quickTaskToolName+"`") {
+		t.Fatal("the hand-off paragraph is not the one each belt carries")
 	}
 }
 

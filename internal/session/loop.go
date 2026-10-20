@@ -2043,8 +2043,10 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		})
 		attemptCtx, generation := a.beginGeneration(attemptCtx, reached)
 		inputMessages := a.preparedMediaInputs(messages)
-		response, err := a.completeWithModel(attemptCtx, purpose, messages, model,
-			ai.WithTools(a.beltDefinitions()))
+		// THE BELT, AND THE ONE TOOL THIS ANSWER MUST CALL WHEN THE TURN OWES ONE
+		// (tools_stage.go): it is spent by an answer, never by an attempt.
+		belt, must := a.turnBelt()
+		response, err := a.completeWithModel(attemptCtx, purpose, messages, model, belt...)
 		cause := a.endGeneration(generation)
 		if errors.Is(cause, errSteerCut) {
 			return response, model, errSteerCut
@@ -2056,6 +2058,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// it is deliberate: a person typing into a turn has said they want the
 		// boundary whatever else happened.
 		if err == nil {
+			a.spendMustCall(must)
 			publishMediaInputs(ctx, inputMessages)
 			return response, model, nil
 		}

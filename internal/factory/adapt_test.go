@@ -465,13 +465,14 @@ func TestNineStagesAtMost(t *testing.T) {
 	}
 }
 
-// PROOF IS NEVER SKIPPED, by anyone, in either mode.
+// PROOF IS NEVER SKIPPED, by anyone, in either mode, even under a recipe that
+// does not fix it (the shipped default does, and refuses in the fixed words).
 func TestEditNeverSkipsProof(t *testing.T) {
 	it := adaptItem()
 	it.Stream = nil
 	for _, by := range []string{factory.ByManager, factory.ByPlan, factory.ByYou} {
 		for _, mode := range []factory.EditMode{factory.EditBeforeRun, factory.EditInRun} {
-			if _, _, err := factory.Edit(it, factory.RunEdit{By: by, Skip: []string{"proof"}}, factory.DefaultRecipe(), mode); err == nil || err.Error() != by+" may not skip proof" {
+			if _, _, err := factory.Edit(it, factory.RunEdit{By: by, Skip: []string{"proof"}}, factory.Recipe{}, mode); err == nil || err.Error() != by+" may not skip proof" {
 				t.Fatalf("%s %s skipped proof: %v", by, mode, err)
 			}
 		}

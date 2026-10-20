@@ -564,7 +564,7 @@ func localLoad(st ItemStore, started, now time.Time, recipe func(repo string) Re
 // (a cap, a gate word, a round count, an effort, a security pass) and what is left,
 // tidied, is the title. The stages are the repo's recipe for an issue, with
 // the chips written onto them: rounds onto review, the effort onto write,
-// security switched on.
+// security switched on or added.
 func localNew(st ItemStore, repo, words string, now time.Time, recipe Recipe) (int, error) {
 	repo = strings.TrimSpace(repo)
 	if repo == "" {
@@ -613,8 +613,14 @@ func localNew(st ItemStore, repo, words string, now time.Time, recipe Recipe) (i
 		}
 		it.Stages[i].Max = c.Rounds
 	}
-	if i := StageIndex(it.Stages, "security"); security && i >= 0 {
-		it.Stages[i].On = true
+	// SECURITY IS IN NO DEFAULT LIST ([DefaultRecipe]): the chip switches on a
+	// recipe's own security stage, or lays the shipped one after review.
+	if security {
+		if i := StageIndex(it.Stages, "security"); i >= 0 {
+			it.Stages[i].On = true
+		} else if sec, ok := ShippedStage("security"); ok {
+			it.Stages = PlaceStage(it.Stages, sec, "after review")
+		}
 	}
 	if i := StageIndex(it.Stages, "write"); c.Effort != "" && i >= 0 {
 		if c.Effort != it.Stages[i].Effort && StageFixed(it.Stages, i, recipe, KindIssue) {

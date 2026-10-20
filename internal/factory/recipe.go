@@ -14,6 +14,14 @@ import (
 // main is bisected and fixed. Every call answers fresh slices, so a caller may
 // toggle its copy without reaching anybody else's.
 //
+// THIS IS THE ONE PLACE THE DEFAULT STAGES ARE SPELLED. The local seam, a job
+// as it arrives, and a repository with no pipeline file
+// (internal/factory/pipeline's Defaults, built from this) all start from it, so
+// a job a person starts and one a start rule starts run the same steps, asks
+// and rounds. Until 2026-10-20 the pipeline package kept a second default of
+// its own, with other asks, no rounds and other steps for a pull request and a
+// red main, and a rule-started job was quietly re-stamped with it.
+//
 // WRITE WORKS IN THE CHECKOUT. Its ask said `do it in a worktree` until the
 // 2026-10-08 run on factory-demo, where the stage obeyed it, was refused
 // `git worktree` by the session's own guard (a stage may not move its copy
@@ -26,40 +34,74 @@ import (
 // plan, and end on one instead, which is their landing: what `ask me at
 // pull request` said before approve steps did.
 //
-// SECURITY IS BANKED OFF and switched on per item, so an item that asks for a
-// security pass gains the stage without the recipe changing. THIS IS THE ONE
-// PLACE THE DEFAULT STAGES ARE SPELLED: the local seam starts from it, so no
-// floor can disagree with another about what a fresh repo runs.
+// SECURITY IS SHIPPED BUT IN NO LIST ([ShippedStage]): an item that asks for a
+// security pass gains the stage after review, and a pipeline file names it to
+// run it everywhere.
 func DefaultRecipe() Recipe {
-	return Recipe{
-		DefaultBudget: DefaultJobBudget,
-		Stages: []Stage{
-			{Name: "plan", Ask: "read the issue and say how", Until: "done", On: true},
-			{Name: ApproveName, Kind: StageGate, On: true},
-			{Name: "write", Ask: "make the change in the checkout", Fanout: "per-file", Until: "done", On: true},
-			{Name: "test", Ask: "run what the change implies", Until: "green", Max: 2, On: true},
-			{Name: "review", Ask: "read it as a stranger would", Fanout: "per-finding", Until: "clean", Max: 1, On: true},
-			{Name: "security", Ask: "secrets, injection and authz", Until: "clean", On: false},
-			{Name: "proof", Ask: "show each claim in its own medium", Until: "proven", On: true},
-		},
-		ByKind: map[Kind][]Stage{
-			KindPR: {
-				{Name: "read", Ask: "the diff and its claims", Until: "done", On: true},
-				{Name: "checks", Ask: "run what the claims imply", Fanout: "per-claim", Until: "done", On: true},
-				{Name: "review", Ask: "findings as a comment", Fanout: "per-finding", Until: "clean", Max: 1, On: true},
-				{Name: "security", Ask: "secrets, injection and authz", Until: "clean", On: false},
-				{Name: "proof", Ask: "the sheet", Until: "proven", On: true},
-				{Name: ApproveName, Kind: StageGate, On: true},
-			},
-			KindCI: {
-				{Name: "bisect", Ask: "the three red runs", Until: "done", On: true},
-				{Name: "fix", Ask: "the smallest change that turns them green", Until: "done", On: true},
-				{Name: "test", Ask: "the red test and its neighbours", Until: "green", Max: 2, On: true},
-				{Name: "proof", Ask: "the sheet", Until: "proven", On: true},
-				{Name: ApproveName, Kind: StageGate, On: true},
-			},
-		},
+	r := Recipe{DefaultBudget: DefaultJobBudget, ByKind: map[Kind][]Stage{}}
+	for kind, names := range defaultLists {
+		stages := make([]Stage, 0, len(names))
+		for _, name := range names {
+			st, _ := ShippedStage(name)
+			stages = append(stages, st)
+		}
+		if kind == KindIssue {
+			r.Stages = stages
+		} else {
+			r.ByKind[kind] = stages
+		}
 	}
+	return r
+}
+
+// defaultLists is which shipped stages each kind runs, in order. A kind not
+// named here runs the issue's.
+var defaultLists = map[Kind][]string{
+	KindIssue: {"plan", ApproveName, "write", "test", "review", "proof"},
+	KindPR:    {"read", "checks", "review", "proof", ApproveName},
+	KindCI:    {"bisect", "fix", "test", "proof", ApproveName},
+}
+
+// shippedStages is every stage codeaf ships, in the order `codeaf factory
+// steps` prints them. ONE NAME IS ONE STAGE: every kind that runs review runs
+// this review, the same way one name is one step in a pipeline file, so the
+// two can be one definition.
+//
+// ROUNDS LEAVE ROOM TO FIX WHAT A ROUND FOUND. A stage that does the work gets
+// two, and one that is judged on what it leaves (until green, clean or proven)
+// gets three. Until 2026-10-20 most stages had one, so a review that honestly
+// found one problem, or a proof with one claim not yet shown, stopped the job
+// at a question instead of trying again. A pipeline file still sets its own.
+//
+// APPROVE AND PROOF ARE FIXED: an edit during a run may not move, skip or
+// reword them ([StageFixed]).
+//
+// NO SHIPPED STAGE CARRIES A FANOUT. The word reaches the brief and nothing
+// else, and a pipeline file that set only a shipped step's `max:` would drop
+// it without a word, since a file's step carries its own runtime words.
+var shippedStages = []Stage{
+	{Name: "plan", Kind: StageChat, Ask: "read the issue and the code it names; write a plan and the list of files it will touch", Until: UntilDone, Max: 2, On: true},
+	{Name: ApproveName, Kind: StageGate, On: true, Fixed: true},
+	{Name: "write", Kind: StageChat, Ask: "make the change in the checkout", Until: UntilDone, Max: 2, On: true},
+	{Name: "test", Kind: StageChat, Ask: "run the tests the change implies; fix what fails", Until: UntilGreen, Max: 3, On: true},
+	{Name: "review", Kind: StageChat, Ask: "review the diff as a careful colleague; fix what you find", Until: UntilClean, Max: 3, On: true},
+	{Name: "security", Kind: StageChat, Ask: "review for injection, authz, secrets handling", Until: UntilClean, Max: 3, On: true},
+	{Name: "proof", Kind: StageChat, Ask: "show each claim in its own medium", Until: UntilProven, Max: 3, On: true, Fixed: true},
+	{Name: "read", Kind: StageChat, Ask: "read the change at its head and the thread; say what it does and what it risks", Until: UntilDone, Max: 2, On: true},
+	{Name: "checks", Kind: StageChat, Ask: "run what the claims imply", Until: UntilDone, Max: 2, On: true},
+	{Name: "bisect", Kind: StageChat, Ask: "find the change the red runs started at", Until: UntilDone, Max: 2, On: true},
+	{Name: "fix", Kind: StageChat, Ask: "make the smallest change that turns the red runs green", Until: UntilDone, Max: 2, On: true},
+}
+
+// ShippedStages is every stage codeaf ships, in order, each a fresh copy.
+func ShippedStages() []Stage { return CopyStages(shippedStages) }
+
+// ShippedStage is the shipped stage under that exact name, a fresh copy.
+func ShippedStage(name string) (Stage, bool) {
+	if i := StageIndex(shippedStages, name); i >= 0 {
+		return CopyStages(shippedStages[i : i+1])[0], true
+	}
+	return Stage{}, false
 }
 
 // CopyStages is a stage list a caller may change without reaching the one it
@@ -340,6 +382,15 @@ type StageResult struct {
 	// Model is the model the stage's conversation was on when the round
 	// ended, "" for a stage that was not a conversation.
 	Model string `json:",omitempty"`
+	// Reports is how many times a conversation step called `stage_result` in
+	// the round, 0 for one that never did and for a step that is not a
+	// conversation. THE LAST CALL IS THE ONE THIS RESULT HOLDS: a step that
+	// reported early and kept working said so again (run/chatstage.go).
+	Reports int `json:",omitempty"`
+	// Inferred marks a report the factory made for a step that stopped without
+	// one, from its brief, its last message and its change. It is judged like
+	// any other, and [RoundSummary] says whose words it is.
+	Inferred bool `json:",omitempty"`
 }
 
 // Met says whether a round's result meets the stage's until. An empty until
@@ -347,26 +398,75 @@ type StageResult struct {
 // the vocabulary is never met, so the runner stops at its rounds and asks
 // rather than passing a stage on a word it cannot check.
 func Met(s Stage, r StageResult) bool {
-	if !r.Done {
-		return false
-	}
+	met, _ := judge(s, r)
+	return met
+}
+
+// ReportFault is what is wrong with a report as its step's own rule reads it,
+// said as the fix the step can make, or "" for a report the judge may take as
+// it stands. A conversation step's report is checked with it the moment it is
+// made (run/chatstage.go's stageDoor), so the step puts it right in the same
+// turn instead of spending a whole round to learn it.
+//
+// ONLY A REPORT THAT CONTRADICTS ITSELF IS AT FAULT. An honest shortfall —
+// done: false, or a claim marked ok: false — is a report like any other, and
+// the judge fails it into another round. At fault is a report the judge would
+// fail for a reason the report itself gives away: done with findings it says
+// are still open, a claim marked ok with nothing showing it, a proof done with
+// nothing claimed.
+//
+// THE FAULTS ARE THE JUDGE'S OWN RULES, read by the one [judge] that answers
+// [Met], so the check at the door cannot refuse a report the judge would
+// pass, and there is no second copy of the rules to drift from the first.
+func ReportFault(s Stage, r StageResult) string {
+	_, fault := judge(s, r)
+	return fault
+}
+
+// The sentences [ReportFault] answers. Each names the fix, not the rule: the
+// rule is already in the step's brief, and the sentence is read back to the
+// model as `not reported: <sentence>` on every refused call.
+const (
+	faultOpenFindings = "you reported %s still open: fix %s and report again, or report done: false"
+	faultNoEvidence   = "claim %d has no evidence: add what shows it, or set ok: false"
+	faultNoClaims     = "you reported done with no claims: add each claim with what shows it, or report done: false"
+)
+
+// judge reads a result against its stage's until once, for both readers:
+// whether the result meets it ([Met]), and what in it contradicts itself
+// under that rule ([ReportFault]), "" for nothing.
+func judge(s Stage, r StageResult) (met bool, fault string) {
 	switch strings.TrimSpace(s.Until) {
 	case "", UntilDone:
-		return true
+		return r.Done, ""
 	case UntilClean:
-		return r.Findings == 0
-	case UntilGreen:
-		return r.Exit == 0
-	case UntilProven:
-		if len(r.Claims) == 0 {
-			return false
+		if r.Done && r.Findings > 0 {
+			them := "them"
+			if r.Findings == 1 {
+				them = "it"
+			}
+			return false, fmt.Sprintf(faultOpenFindings, plural(r.Findings, "finding", "findings"), them)
 		}
-		for _, c := range r.Claims {
-			if !c.OK || strings.TrimSpace(c.Evidence) == "" {
-				return false
+		return r.Done && r.Findings == 0, ""
+	case UntilGreen:
+		return r.Done && r.Exit == 0, ""
+	case UntilProven:
+		// A CLAIM MARKED OK WITH NOTHING SHOWING IT is at fault whatever done
+		// says: it is the one claim that reads as shown and is not, and the
+		// rounds and steps after this one read it as written.
+		met = r.Done && len(r.Claims) > 0
+		for i, c := range r.Claims {
+			if c.OK && strings.TrimSpace(c.Evidence) == "" {
+				return false, fmt.Sprintf(faultNoEvidence, i+1)
+			}
+			if !c.OK {
+				met = false
 			}
 		}
-		return true
+		if r.Done && len(r.Claims) == 0 {
+			return false, faultNoClaims
+		}
+		return met, ""
 	}
-	return false
+	return false, ""
 }

@@ -167,6 +167,15 @@ var beltShapes = []beltShape{{
 		config.ContextWindow = leanWindow
 	},
 }, {
+	// A FACTORY STAGE (stage_contract.go): a conversation with the runner's
+	// door, unattended, whose belt carries `propose_task` and no `quick_task`,
+	// so its hand-off paragraph is its own (beltfacts.go's [beltFact.stage]).
+	name: "a factory stage",
+	build: func(t *testing.T, config *Config) {
+		config.Stage = &fakeStageDoor{}
+		config.Unattended = true
+	},
+}, {
 	// An automation's run (automation_run.go): the person's own assembly with
 	// nobody there to ask, InTask, no store to arm another automation in, and
 	// the run's own report door.

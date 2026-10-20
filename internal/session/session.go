@@ -3320,6 +3320,11 @@ type Agent struct {
 	// session that has never opened an episode.
 	writes  *writeMeter
 	running bool
+	// mustCall is the one tool the running turn's next answered request must
+	// call, "" for none ([Agent.FollowUpRequiring]): set from the message that
+	// opens the turn and spent by the first request that is answered
+	// (tools_stage.go's [Agent.turnBelt]).
+	mustCall string
 	// turnFloor is where the running turn's WORK begins in a.messages: the
 	// index just past the message that opened the turn, stamped by
 	// [Agent.startTurnLocked] and meaningful only while running is true. It is

@@ -95,7 +95,8 @@ func TestInspectReadsTheFileNotTheDefaults(t *testing.T) {
 	if by["write"].Max != 3 || by["plan"].Prompt != "plan it well" || !by["lint-pass"].InFile {
 		t.Fatalf("steps %+v", by)
 	}
-	if len(src.Steps) != 8 {
+	// issue's six, pr's read and review, and the shipped ci's bisect and fix.
+	if len(src.Steps) != 10 {
 		t.Fatalf("a step is listed once however many pipelines name it: %d", len(src.Steps))
 	}
 }
@@ -142,6 +143,13 @@ func TestEditAStepChangesOnlyThatStep(t *testing.T) {
 				t.Fatalf("write %+v", a)
 			}
 			continue
+		}
+		// A SHIPPED STEP THE FILE DID NOT SPELL IS WRITTEN OUT WHOLE by the
+		// encoder (Encode writes every step), so it is in the file afterwards;
+		// what it runs is what must not move. ci is the shipped default here,
+		// and two of its steps (bisect, fix) are ones editBase never defines.
+		if !b.InFile {
+			b.InFile = a.InFile
 		}
 		if a != b {
 			t.Fatalf("an unrelated step moved: %+v -> %+v", b, a)
@@ -229,12 +237,13 @@ func TestAChangedPreviewSaysWhatItRewrites(t *testing.T) {
 
 func TestASparseFileIsEditedWithoutInventingTheDefaultsAsItsOwn(t *testing.T) {
 	base := "pipeline:\n  issue: [plan, approve, write]\n"
-	got := mustApply(t, base, EditOp{Op: OpSetStep, Name: "write", Max: i(2)})
+	// Not the shipped write's own 2 rounds, which would be no change at all.
+	got := mustApply(t, base, EditOp{Op: OpSetStep, Name: "write", Max: i(4)})
 	if !got.Changed || !got.FormatRewritten || got.CommentsDropped {
 		t.Fatalf("%+v", got)
 	}
 	src, _, ok := Inspect(got.Text)
-	if !ok || src.Steps[2].Name != "write" || src.Steps[2].Max != 2 {
+	if !ok || src.Steps[2].Name != "write" || src.Steps[2].Max != 4 {
 		t.Fatalf("%+v", src)
 	}
 }
