@@ -36,7 +36,7 @@ func TestASteerLandsWhenAYoungBashCrossesTheGrace(t *testing.T) {
 	reached := make(chan struct{})
 	completer := &scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return bashCall("grace-bash", command)(context.Background(), nil)
+			return bashCall("grace-bash", command+"; exit 3")(context.Background(), nil)
 		},
 		func(context.Context, []ai.Message) (*ai.Response, error) {
 			close(reached)
@@ -99,7 +99,7 @@ func TestASteerLandsWhenAYoungBashCrossesTheGrace(t *testing.T) {
 	release()
 	waitFor(t, "the adopted job's exit note", func() bool { return notesContain(agent, "grace-bash-finished") })
 	waitFor(t, "the owed exit request", func() bool { return completer.requests() >= 3 })
-	if got := strings.Join(userLines(completer.request(2)), "\n"); !strings.Contains(got, "job 1 exited 0") {
+	if got := strings.Join(userLines(completer.request(2)), "\n"); !strings.Contains(got, "job 1 exited 3") {
 		t.Fatalf("later request has no owed exit note: %q", got)
 	}
 	if agent.jobs.find(2) != nil {
