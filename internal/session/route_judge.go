@@ -122,7 +122,6 @@ package session
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -394,7 +393,6 @@ func (a *Agent) readRouteJudge(ctx context.Context, user userMessage, usedTools 
 	turn, offered := a.routeTurns, a.routeOffered
 	model, closed := a.model, a.closed
 	freshPerson := a.personHeard != 0 && a.personHeard == a.turnSeq
-	personAsk := a.personAsk
 	a.mu.Unlock()
 	if closed || usedTools {
 		return judgeRuling{}
@@ -427,11 +425,7 @@ func (a *Agent) readRouteJudge(ctx context.Context, user userMessage, usedTools 
 	// floor, the gap, the cheap screen, the mastermind confirm, and both of them
 	// having to say yes.
 	asked := user.text()
-	if user.wake && freshPerson {
-		// The opening note stays a wake after steering is consumed. Judge the
-		// person's new words, even when they repeat the cancelled request.
-		asked = personAsk
-	} else if user.empty() || user.wake || user.authored {
+	if user.empty() || user.wake || user.authored {
 		steward := a.steward()
 		if steward == nil {
 			return judgeRuling{}
@@ -450,14 +444,10 @@ func (a *Agent) readRouteJudge(ctx context.Context, user userMessage, usedTools 
 	if offered > 0 && turn-offered < routeJudgeGap {
 		return judgeRuling{}
 	}
-	// A stopped task's result is news to report, not a fresh instruction.
-	// Independent results in the same wake retain only their own work.
-	if user.wake && !freshPerson {
-		var blocked bool
-		asked, blocked = a.routeResultAsk(asked)
-		if blocked {
-			return judgeRuling{}
-		}
+	// Only an exclusively stopped-result wake is report-only. Every other
+	// turn keeps the ordinary ask, floors and readings, including human steering.
+	if user.wake && !user.answersPerson && !freshPerson && a.onlyStoppedResults(asked) {
+		return judgeRuling{}
 	}
 	// The judge is a ROLE, so an install with no tiers configured resolves it to
 	// the conversation's own model rather than refusing — and an install with
@@ -498,59 +488,24 @@ func (a *Agent) readRouteJudge(ctx context.Context, user userMessage, usedTools 
 	return judgeRuling{start: true, verdict: verdict, turn: turn, ahead: ahead}
 }
 
-// routeResultAsk excludes cancelled work without vetoing an independent result
-// that inherited the same original request. Only a result-only wake uses this;
-// the person's fresh instructions take precedence in readRouteJudge.
-func (a *Agent) routeResultAsk(asked string) (string, bool) {
+// onlyStoppedResults requires positive provenance for every arrival. Missing
+// metadata, other news and repeated task identities leave normal routing alone;
+// in particular, two attempts of one task are not a stopped-only batch.
+func (a *Agent) onlyStoppedResults(asked string) bool {
 	a.mu.Lock()
-	results := append([]uint64(nil), a.turnResults...)
-	tags := append([]TaskReplyTag(nil), a.turnResultTags...)
-	a.mu.Unlock()
-	if len(results) == 0 {
-		return asked, false
+	defer a.mu.Unlock()
+	if a.turnNonTaskNews || len(a.turnResultTags) == 0 {
+		return false
 	}
-	graph := a.tasker()
-	// Older callers carry only ids, and older persisted tags have no state.
-	// Current deliveries use their frozen snapshots, never the live attempt.
-	if len(tags) == 0 {
-		for _, id := range results {
-			tags = append(tags, TaskReplyTag{ID: id})
+	seen := make(map[uint64]bool, len(a.turnResultTags))
+	for _, tag := range a.turnResultTags {
+		if tag.ID == 0 || seen[tag.ID] || !tag.State.settled() || !tag.Stopped ||
+			strings.TrimSpace(tag.Request) != strings.TrimSpace(asked) {
+			return false
 		}
+		seen[tag.ID] = true
 	}
-	var eligible, cancelled []TaskReplyTag
-	stopped := false
-	for _, tag := range tags {
-		if tag.State == "" && graph != nil {
-			if node := graph.node(tag.ID); node != nil {
-				tag = node.resultTag()
-			}
-		}
-		if tag.Stopped {
-			cancelled = append(cancelled, tag)
-			if strings.TrimSpace(tag.Request) == strings.TrimSpace(asked) {
-				stopped = true
-			}
-		} else if tag.State != "" && strings.TrimSpace(tag.owed()) != "" {
-			eligible = append(eligible, tag)
-		}
-	}
-	if !stopped {
-		return asked, false
-	}
-	if len(eligible) == 0 {
-		return "", true
-	}
-	// The shared request is context for each part, not authority to revive the
-	// cancelled sibling. Both readers receive the same restricted question.
-	var out strings.Builder
-	out.WriteString("Only the non-stopped task results below remain eligible for work. Do not restart stopped tasks or repeat the whole original request.\n")
-	for _, tag := range eligible {
-		fmt.Fprintf(&out, "\nTask %d (attempt %d), %s\nIts own target: %s\n", tag.ID, tag.Attempt, tag.Title, tag.owed())
-	}
-	for _, tag := range cancelled {
-		fmt.Fprintf(&out, "\nStopped task %d, report only: %s\n", tag.ID, tag.Title)
-	}
-	return out.String(), false
+	return true
 }
 
 // applyRouteJudge is the other half of [Agent.readRouteJudge]: the decision,

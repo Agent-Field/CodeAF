@@ -2,7 +2,7 @@ package session
 
 import (
 	"context"
-	"strings"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -68,12 +68,10 @@ func TestReviewFreshHumanRepeatDuringStoppedWake(t *testing.T) {
 	if heard != turn {
 		t.Fatal("fixture did not consume the human message in the result turn")
 	}
-	if c.asked() == 0 {
-		t.Fatal("fresh human repeat was consumed but the stopped-result guard suppressed routing")
-	}
+	assertDevRouteReadings(t, c, 2)
 }
 
-func TestFreshHumanSteeringSuppliesTheRouteAsk(t *testing.T) {
+func TestFreshHumanSteeringKeepsDevRouteAsk(t *testing.T) {
 	c := &routeCompleter{answer: "I will implement the screenshots now.", verdict: routeYes}
 	a, _, _ := routeAgent(t, c)
 	a.principal = NewSteward(routeAsk, Budget{Wall: time.Hour}, nil)
@@ -94,12 +92,24 @@ func TestFreshHumanSteeringSuppliesTheRouteAsk(t *testing.T) {
 		}()
 	}
 	reviewWake(t, a, []TaskReplyTag{stopped.resultTag()})
-	c.mu.Lock()
-	question, confirm := c.question, c.confirmQ
-	c.mu.Unlock()
-	for _, got := range []string{question, confirm} {
-		if !strings.Contains(got, fresh) || strings.Contains(got, routeAsk) {
-			t.Fatalf("routing did not read the new human instruction: %q", got)
-		}
+	assertDevRouteReadings(t, c, 2)
+}
+
+func TestStoppedOnlyResultWakeAdmitsNothing(t *testing.T) {
+	for _, multiple := range []bool{false, true} {
+		t.Run(fmt.Sprint(multiple), func(t *testing.T) {
+			c := &routeCompleter{answer: "The audit was stopped.", verdict: routeYes}
+			a, _, _ := routeAgent(t, c)
+			a.principal = NewSteward(routeAsk, Budget{Wall: time.Hour}, nil)
+			stopped := reviewResultNode(t, a, true, "stopped audit")
+			tags := []TaskReplyTag{stopped.resultTag()}
+			if multiple {
+				tags = append(tags, reviewResultNode(t, a, true, "another stopped audit").resultTag())
+			}
+			reviewWake(t, a, tags)
+			if c.asked() != 0 || c.confirms() != 0 || admitted(a.graph()) != len(tags) {
+				t.Fatalf("stopped-only wake: screen=%d confirm=%d admitted=%d", c.asked(), c.confirms(), admitted(a.graph()))
+			}
+		})
 	}
 }

@@ -4125,6 +4125,10 @@ func TestTheChatManualExplainsStoppedResultRouting(t *testing.T) {
 	for _, want := range []string{
 		"answering that result does not start the same request again",
 		"A new instruction you type is a fresh request and can be judged normally",
+		"every result is known to be stopped for the current request",
+		"no fresh human message was consumed",
+		"Recovery notices without result provenance follow normal routing",
+		"These cases have no extra protection against restarting stopped work",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the retrieved stopped-result answer omits %q", want)

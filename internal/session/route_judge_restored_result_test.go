@@ -22,7 +22,7 @@ func TestReviewRestoredStoppedResultCannotRestart(t *testing.T) {
 	g.mu.Unlock()
 	t.Logf("checkpoint ending=%q, restored stopped=%t", record.Ending, restored.wasStopped())
 	reviewWake(t, a, []TaskReplyTag{restored.resultTag()})
-	if c.asked() != 0 {
+	if c.asked() != 0 || c.confirms() != 0 || admitted(g) != 1 {
 		t.Fatal("a restored stopped result reached the classifier and can restart the stopped request")
 	}
 }

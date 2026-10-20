@@ -3,7 +3,6 @@ package session
 import (
 	"context"
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 )
@@ -26,17 +25,7 @@ func TestReviewMixedResultsKeepIndependentRepairEligible(t *testing.T) {
 	if c.asked() == 0 {
 		t.Fatal("a different failed task's repair was suppressed by the stopped sibling's inherited request")
 	}
-	c.mu.Lock()
-	question, confirm := c.question, c.confirmQ
-	c.mu.Unlock()
-	if question != confirm {
-		t.Fatalf("screen and confirm read different obligations:\n%s\n%s", question, confirm)
-	}
-	for _, want := range []string{"Only the non-stopped task results", "Do not restart stopped tasks", "Task 2 (attempt 0), failed pricing storage audit", "Stopped task 1, report only: cancelled pricing UI audit"} {
-		if !strings.Contains(question, want) {
-			t.Errorf("the mixed-result question omits %q:\n%s", want, question)
-		}
-	}
+	assertDevRouteReadings(t, c, 2)
 }
 
 func TestStoppedResultRoutingUsesTheDeliveredAttempt(t *testing.T) {
@@ -83,7 +72,7 @@ func TestStoppedResultRoutingUsesTheDeliveredAttempt(t *testing.T) {
 	}
 }
 
-func TestMixedResultRoutingRetainsEachTasksEffectiveTarget(t *testing.T) {
+func TestMixedResultRoutingKeepsDevAskWithRevisedTargets(t *testing.T) {
 	for _, reverse := range []bool{false, true} {
 		t.Run(fmt.Sprintf("reversed_%t", reverse), func(t *testing.T) {
 			c := &routeCompleter{answer: "Only the storage audit needs work.", verdict: routeYes}
@@ -108,12 +97,7 @@ func TestMixedResultRoutingRetainsEachTasksEffectiveTarget(t *testing.T) {
 			if !ruling.start {
 				t.Fatal("the independent result was suppressed")
 			}
-			c.mu.Lock()
-			question, confirm := c.question, c.confirmQ
-			c.mu.Unlock()
-			if question != confirm || !strings.Contains(question, target) || strings.Contains(question, "Its own target: "+routeAsk) {
-				t.Fatalf("routing lost the eligible task's own effective target:\n%s\n%s", question, confirm)
-			}
+			assertDevRouteReadings(t, c, 1)
 		})
 	}
 }

@@ -1977,12 +1977,17 @@ func TestAStoppedTaskResultCannotAutoStartItsRequestAgain(t *testing.T) {
 			id := graph.reserve()
 			graph.admit(id, taskSpec{title: "the requested audit", request: tc.request, brief: "audit", acceptance: "done"})
 			if tc.stopped {
+				graph.mu.Lock()
+				graph.nodes[id].state = TaskFailed
+				graph.mu.Unlock()
 				graph.node(id).markStopped()
 			}
 			agent.principal = NewSteward(routeAsk, Budget{Wall: time.Hour}, nil)
 			if tc.arrived {
 				agent.mu.Lock()
-				agent.turnResults = []uint64{id}
+				note := wakeNote("the task result arrived")
+				note.replyTags = []TaskReplyTag{graph.node(id).resultTag()}
+				agent.rememberOwedLocked(note)
 				agent.mu.Unlock()
 			}
 			user := userText(routeAsk)

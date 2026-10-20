@@ -708,19 +708,22 @@ runs*, which explains what those rows can and cannot do.
 
 ## Can a stopped task start again — a result wake and a fresh human request
 
-If a stopped task's result wakes the conversation, answering that result does not start the
-same request again. A new instruction you type is a fresh request and can be judged normally.
-That includes a new request that repeats the same words. The normal task rules still
-apply: work worth handing off, at least six words, two models agreeing, and at most one start
-every three turns.
+When a conversation wakes exclusively to report task results, every result is known to
+be stopped for the current request, and no fresh human message was consumed in that turn,
+answering that result does not start the same request again. Neither route reading runs.
+This includes a stopped task restored from a saved session when its delivered result carries
+that provenance. Recovery notices without result provenance follow normal routing.
 
-You can also type a new instruction while codeaf is answering the stopped result. Once
-that instruction reaches the conversation, its own words can be judged normally in that turn.
+A new instruction you type is a fresh request and can be judged normally. That includes
+a new request that repeats the same words, or a message consumed while the stopped result
+is being answered. Mixed stopped and non-stopped results, different requests, multiple
+attempts of the same task, other background news and uncertain provenance also follow
+normal routing. These cases have no extra protection against restarting stopped work.
 
-If the same wake also reports an independent task that was not stopped, that task's
-remaining work can still be judged normally, even when both tasks came from the same
-original request. The stopped task stays excluded from that work.
-This stop protection also applies to stopped tasks restored from a saved session.
+The usual routing inputs and limits still apply. An unattended session uses its original
+goal as the routing request, including when a human message arrives during a result wake.
+Work must be worth handing off, with at least six words, two models agreeing, and at most
+one start every three turns.
 
 ## A message that reads like work makes codeaf look sooner — nothing else happens
 

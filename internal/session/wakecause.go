@@ -71,6 +71,9 @@ const (
 // places a message reaches the transcript — the turn's opening and the steering
 // drain — so a landing that arrives mid-turn is owed by the turn it lands in.
 func (a *Agent) rememberOwedLocked(user userMessage) {
+	// Untagged news cannot establish a stopped-only wake. The empty opening
+	// envelope contributes no news; its actual notes arrive in the first drain.
+	a.turnNonTaskNews = a.turnNonTaskNews || user.nonTaskNews || user.otherResults || len(user.replyTags) == 0 && !user.empty()
 	a.rememberProgramOutcomeLocked(user)
 	if question := strings.TrimSpace(user.landingQuestion); question != "" {
 		a.oweLocked(owedAsk{text: question, from: owedByPerson})
@@ -102,19 +105,8 @@ func (a *Agent) rememberOwedLocked(user userMessage) {
 		// text and the write seam needs the node rather than the sentence
 		// (writeseam.go's [Agent.deliveringOwnedResult]).
 		a.arrivedLocked(tag.ID)
-		a.rememberResultTagLocked(tag)
+		a.turnResultTags = append(a.turnResultTags, tag)
 	}
-}
-
-// rememberResultTagLocked retains the first snapshot of each delivered attempt,
-// even when another task inherited the same request. The caller holds a.mu.
-func (a *Agent) rememberResultTagLocked(tag TaskReplyTag) {
-	for _, already := range a.turnResultTags {
-		if already.ID == tag.ID && already.Attempt == tag.Attempt {
-			return
-		}
-	}
-	a.turnResultTags = append(a.turnResultTags, tag)
 }
 
 // arrivedLocked records one result that landed in this turn, once. The caller
@@ -165,6 +157,7 @@ func (a *Agent) oweLocked(ask owedAsk) {
 func (a *Agent) forgetOwedLocked() {
 	a.owedAsks, a.landingOutcomes, a.turnResults, a.programOutcomeNow, a.personCardAnswers = nil, nil, nil, nil, nil
 	a.turnResultTags = nil
+	a.turnNonTaskNews = false
 }
 
 // turnAsk is the ask this turn's endings are read against.
@@ -249,7 +242,7 @@ func (n *TaskNode) resultTagLocked() TaskReplyTag {
 	return TaskReplyTag{
 		ID: n.id, Title: n.spec.title, Request: n.spec.request,
 		Obligation: obligation, Revision: revision,
-		State: n.state, Stopped: n.stopped, Attempt: n.attempt,
+		State: n.state, Stopped: n.stopped,
 	}
 }
 
