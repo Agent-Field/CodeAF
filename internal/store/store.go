@@ -12,13 +12,13 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cas"
+	"github.com/Agent-Field/codeaf/internal/sqliteuri"
 	_ "modernc.org/sqlite"
 )
 
@@ -697,7 +697,7 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("could not open %s: %w", storePathForPerson(absolute), pathReason(err))
 	}
 
-	u := url.URL{Scheme: "file", Path: absolute}
+	u := sqliteuri.File(absolute)
 	query := u.Query()
 	// busy_timeout is SQLite's own patience and nothing else's: no caller waits
 	// it out any more, because every write goes through [Store.beginWrite] and
