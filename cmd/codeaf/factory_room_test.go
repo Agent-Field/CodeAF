@@ -132,8 +132,9 @@ func TestARecordedRoomNeverAdoptsACollidingLocalCrew(t *testing.T) {
 	}
 }
 
-// bringBackFixture is one machine's saved conversations and teams for Bring
-// back: a places root, a profile, and a maker of saved conversations under it.
+// bringBackFixture is one machine's saved conversations and teams for a
+// drop's delete: a places root, a profile, and a maker of saved conversations
+// under it.
 func bringBackFixture(t *testing.T) (places, profile string, conversation func(id string) string) {
 	t.Helper()
 	root, err := filepath.EvalSymlinks(t.TempDir())
@@ -168,19 +169,20 @@ func conversationKept(t *testing.T, file string) bool {
 	return err == nil
 }
 
-// BRING BACK DELETES THE JOB'S OWN CREW AND CONVERSATIONS AND NOTHING ELSE:
-// the job's agent, the step chat it recorded, an earlier round's step the
-// factory stamped in its crew, and the crew itself go; a conversation a person
-// put in that crew loses the crew and is kept; another job's crew and
-// conversations, a person's own crew and the one `factory` team are untouched.
-// A FRESH RUN THEN MAKES A ROOM OF ITS OWN, even though it would have found the
-// old one by its name.
-func TestBringBackDeletesOnlyTheJobsOwnCrewAndConversations(t *testing.T) {
+// A DROP DELETES THE JOB'S OWN CREW AND CONVERSATIONS AND NOTHING ELSE: the
+// job's agent, the step chat it recorded, an earlier round's chat it recorded
+// on the step, an earlier round's step the factory stamped in its crew, and the
+// crew itself go; a conversation a person put in that crew loses the crew and
+// is kept; another job's crew and conversations, a person's own crew and the
+// one `factory` team are untouched. A FRESH RUN THEN MAKES A ROOM OF ITS OWN,
+// even though it would have found the old one by its name.
+func TestADropDeletesOnlyTheJobsOwnCrewAndConversations(t *testing.T) {
 	places, profile, conversation := bringBackFixture(t)
 	talk, stage, earlier, mine := conversation("job-talk"), conversation("job-stage"), conversation("job-stage-round-1"), conversation("mine")
+	round := conversation("job-write-round-1")
 	otherTalk, otherStage, lead := conversation("other-talk"), conversation("other-stage"), conversation("my-lead")
 	job := factory.Item{ID: 41, Num: 41, Repo: "acme/api", Title: "Total double-counts", Talk: talk,
-		Stream: &factory.Stream{Room: teams.NewID(), Phases: []factory.Phase{{Name: "write", Chat: stage}}}}
+		Stream: &factory.Stream{Room: teams.NewID(), Phases: []factory.Phase{{Name: "write", Chat: stage, Rounds: []factory.RoundLine{{Round: 1, Chat: round}}}}}}
 	other := factory.Item{ID: 42, Num: 42, Repo: "acme/api", Title: "Another job", Talk: otherTalk,
 		Stream: &factory.Stream{Room: teams.NewID(), Phases: []factory.Phase{{Name: "write", Chat: otherStage}}}}
 	parent, crew := teams.NewID(), teams.NewID()
@@ -203,7 +205,7 @@ func TestBringBackDeletesOnlyTheJobsOwnCrewAndConversations(t *testing.T) {
 	if err := deleteJobChats(profile, places, job, nil); err != nil {
 		t.Fatal(err)
 	}
-	for _, gone := range []string{talk, stage, earlier} {
+	for _, gone := range []string{talk, stage, earlier, round} {
 		if conversationKept(t, gone) {
 			t.Fatalf("the job's conversation %s was kept", gone)
 		}
@@ -232,7 +234,7 @@ func TestBringBackDeletesOnlyTheJobsOwnCrewAndConversations(t *testing.T) {
 	if p, ok := f.Team(parent); !ok || p.Closed() {
 		t.Fatal("the factory team was touched")
 	}
-	// The job as Bring back leaves it: no room, no conversation, a new run.
+	// The job as a drop leaves it: no room, no conversation, a new run.
 	fresh := job
 	fresh.Talk, fresh.Stream = "", &factory.Stream{}
 	room, err := factoryItemTeam(profile, fresh)
@@ -245,9 +247,9 @@ func TestBringBackDeletesOnlyTheJobsOwnCrewAndConversations(t *testing.T) {
 }
 
 // A JOB THAT NEVER RAN still has its agent's conversation, in the crew the
-// factory made for it by its name: Bring back finds that crew by the
-// conversation the job recorded, and deletes both.
-func TestBringBackFindsTheCrewOfAJobThatNeverRan(t *testing.T) {
+// factory made for it by its name: a drop finds that crew by the conversation
+// the job recorded, and deletes both.
+func TestADropFindsTheCrewOfAJobThatNeverRan(t *testing.T) {
 	places, profile, conversation := bringBackFixture(t)
 	talk, lead := conversation("job-talk"), conversation("my-lead")
 	job := factory.Item{ID: 7, Num: 7, Repo: "acme/api", Title: "Never ran", Talk: talk}
@@ -277,7 +279,7 @@ func TestBringBackFindsTheCrewOfAJobThatNeverRan(t *testing.T) {
 // A CREW THAT CANNOT BE DELETED IS CLOSED, and the delete says so: the job's
 // conversations still go, and a fresh run never joins the closed crew by its
 // name, so the job still starts in a room of its own.
-func TestBringBackClosesACrewItCannotDelete(t *testing.T) {
+func TestADropClosesACrewItCannotDelete(t *testing.T) {
 	places, profile, conversation := bringBackFixture(t)
 	talk, helper := conversation("job-talk"), conversation("helper")
 	job := factory.Item{ID: 41, Num: 41, Repo: "acme/api", Title: "Total double-counts", Talk: talk, Stream: &factory.Stream{Room: teams.NewID()}}

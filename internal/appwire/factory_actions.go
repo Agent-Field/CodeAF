@@ -98,7 +98,8 @@ type FactoryJobActionParams struct {
 	Expect  *api.Expect `json:"expect"`
 }
 
-// FactoryJobDropParams drops a job, which deletes its local branch and folder.
+// FactoryJobDropParams drops a job, which deletes its local branch and folder
+// and its conversations and crew on the factory's machine.
 // Discard is the person's yes to deleting work they hold; without it a job with
 // work is refused with [CodeHasWork]. A drop takes no words.
 type FactoryJobDropParams struct {

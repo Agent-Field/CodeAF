@@ -64,20 +64,22 @@ func factoryEnsureRoom(profile string, it factory.Item, room string) (string, er
 	return owned, err
 }
 
-// ── BRING BACK DELETES THE JOB'S CONVERSATIONS ─────────────────────────────
+// ── A DROP DELETES THE JOB'S CONVERSATIONS ─────────────────────────────────
 //
-// A job brought back is a fresh job (internal/factory/serve's restoreJob), so
-// what was said about its earlier run goes with the run: the crew the factory
-// made for it and the conversations the factory recorded for it, on this
-// machine. EXACTLY THOSE AND NOTHING FOUND BY A NAME OR A PATTERN:
+// A drop throws the job's work away (internal/factory/serve's drop), and what
+// was said about it goes with it: the crew the factory made for it and the
+// conversations the factory recorded for it, on this machine. Bring back then
+// brings the job back fresh, and deletes again whatever a job dropped before
+// this still names. EXACTLY THOSE AND NOTHING FOUND BY A NAME OR A PATTERN:
 //
 //   - the crew is the job's recorded Stream.Room when it is the factory's own
 //     here ([factoryRoomOwned], or stamped before), else the factory-made item
 //     team that holds the job's recorded conversation ([talkPutAway]'s rule);
 //     the root, the one `factory` team and a person's crew are never it;
 //   - the conversations are the job's agent (Item.Talk), each step's latest
-//     chat (Phase.Chat), and every member of that crew the factory stamped as
-//     a step when it joined (Member.FactoryStage), which is every round's.
+//     chat (Phase.Chat) and each of its finished rounds' (RoundLine.Chat),
+//     and every member of that crew the factory stamped as a step when it
+//     joined (Member.FactoryStage), which is every round's.
 //
 // A conversation a person put in that crew themselves is not the job's: it
 // loses the crew and keeps everything else. Another job's crew and
@@ -161,7 +163,8 @@ func jobRoomIn(f *teams.File, it factory.Item) string {
 }
 
 // jobChatsIn is every conversation the factory recorded for job it, each once:
-// its agent, its steps' latest chats, and the steps stamped in its crew.
+// its agent, its steps' latest chats and their rounds', and the steps stamped
+// in its crew.
 func jobChatsIn(f *teams.File, it factory.Item, room string) []string {
 	var out []string
 	seen := map[string]bool{}
@@ -175,6 +178,9 @@ func jobChatsIn(f *teams.File, it factory.Item, room string) []string {
 	if it.Stream != nil {
 		for _, ph := range it.Stream.Phases {
 			add(ph.Chat)
+			for _, round := range ph.Rounds {
+				add(round.Chat)
+			}
 		}
 	}
 	if t, ok := f.Team(room); ok && room != "" {

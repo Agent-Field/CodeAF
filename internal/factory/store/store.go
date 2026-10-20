@@ -155,6 +155,16 @@ func (st *Store) Add(ctx context.Context, it factory.Item) (int, error) {
 	if strings.TrimSpace(it.Title) == "" {
 		return 0, errors.New("factory store: an item needs a title")
 	}
+	// A JOB IS NEVER MADE ON A REPOSITORY THAT IS OFF ([factory.RepoSwitch]),
+	// as the factory's own new-job door refuses it: it would leave the queue
+	// the moment it was made.
+	sw, err := st.RepoSwitch()
+	if err != nil {
+		return 0, err
+	}
+	if repo := factory.RepoOf(it); sw.Off(repo) {
+		return 0, errors.New(factory.RepoOffWords(repo))
+	}
 	if it.Origin == "" {
 		it.Origin = factory.OriginChat
 	}

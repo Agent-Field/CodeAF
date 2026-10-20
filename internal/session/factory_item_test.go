@@ -309,6 +309,30 @@ func TestFactoryItemChangeAppliesEachFieldAndRefusesUnderFixed(t *testing.T) {
 	}
 }
 
+// A DROPPED JOB REFUSES EVERY CHANGE, ITS CHIPS AND NOTES AS MUCH AS ITS
+// STAGES, with the start's own sentence: its conversations are gone and
+// nothing of it runs, so a card would offer a change nobody ever reads. The
+// job comes back exactly as it went in.
+func TestFactoryItemChangeRefusesADroppedJob(t *testing.T) {
+	recipe := factory.DefaultRecipe()
+	it := factory.Item{ID: 1, Num: 12, Kind: factory.KindIssue, Cap: 5, State: factory.StateDismissed, DoneHow: "dropped"}
+	want := "#12 " + factory.DroppedRefusal
+	for _, change := range []ItemChange{
+		{Edit: factory.PlanEdit{Skip: []string{"review"}}},
+		{Effort: "strong"},
+		{Cap: 8},
+		{Note: "the fixture is flaky"},
+	} {
+		got, err := ApplyItemChange(it, change, recipe)
+		if err == nil || err.Error() != want {
+			t.Errorf("%+v on a dropped job = %v, want %q", change, err, want)
+		}
+		if got.Cap != 5 || len(got.Notes) != 0 || len(got.Stages) != 0 {
+			t.Errorf("%+v changed the dropped job: %+v", change, got)
+		}
+	}
+}
+
 func TestFactoryItemCardAsksWithItsHeadAndTwoAnswers(t *testing.T) {
 	door := newFakeItemDoor()
 	agent := newItemAgent(t, door, 0)

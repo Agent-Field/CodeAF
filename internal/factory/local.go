@@ -432,6 +432,12 @@ func localTalk(ctx context.Context, st ItemStore, id int, maker func(context.Con
 	if chat := strings.TrimSpace(it.Talk); chat != "" {
 		return chat, nil
 	}
+	// A DROPPED JOB HAS NO CONVERSATION AND IS NEVER GIVEN ONE: the drop
+	// deleted its agent, and one made now would be an agent nothing runs for,
+	// deleted again by Bring back ([RefuseDropped]).
+	if err := RefuseDropped(it); err != nil {
+		return "", err
+	}
 	chat, err := maker(ctx, it)
 	if err != nil {
 		return "", err

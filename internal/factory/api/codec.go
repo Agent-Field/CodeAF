@@ -261,8 +261,8 @@ func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
 	approve := approval != nil && approval.State == "waiting" && person != "" && person == factory.NormalizeHandle(caller)
 	state := factory.JobState(it)
 	// A RUN THAT ALREADY ENDED HAS NOTHING TO STOP, so a failed or stopped
-	// job offers no Stop beside its Run again.
-	active := (state == StateRunning || state == StateQueued || state == StateNeedsYou) && !factory.RunEnded(it)
+	// job offers no Stop beside its Run again ([factory.UnderWay]).
+	active := factory.UnderWay(it)
 	return Can{
 		Run: owner && state == StateBacklog, StartNow: owner && state == StateBacklog,
 		Stop: owner && active, Dismiss: factory.NormalizeHandle(caller) != "", Drop: owner && state != StateDone,
@@ -545,10 +545,13 @@ func toSource(s Source) factory.SourceInfo {
 	return factory.SourceInfo{Name: s.Name, Writes: s.Writes, Repos: s.Repos, Polled: s.Polled, Trouble: s.Trouble, Polling: s.Polling, Reading: s.Reading, Read: s.Read, Of: s.Of, Items: s.Items}
 }
 
+// fromRepos carries each repository's watched fact as the floor stamped it
+// ([factory.Repo.Watched]), never a constant: a queue lists only the
+// repositories that are on, and a floor that keeps no list watches none.
 func fromRepos(rs []factory.Repo, checkouts map[string]string) []Repo {
 	return mapList(rs, func(r factory.Repo) Repo {
 		p := FromRecipe(r.Recipe)
-		return Repo{Name: r.Name, Watched: true, On: true, Checkout: checkouts[r.Name], Pipeline: &p,
+		return Repo{Name: r.Name, Watched: r.Watched, Checkout: checkouts[r.Name], Pipeline: &p,
 			Team: r.Team, Areas: r.Areas, Habits: r.Habits, Hue: r.Hue, CIRed: r.CIRed}
 	})
 }
@@ -557,7 +560,7 @@ func fromRepos(rs []factory.Repo, checkouts map[string]string) []Repo {
 // desk's one map, never per repository, so there is one source for them.
 func toRepos(rs []Repo) []factory.Repo {
 	return mapList(rs, func(r Repo) factory.Repo {
-		out := factory.Repo{Name: r.Name, Team: r.Team, Areas: r.Areas, Habits: r.Habits, Hue: r.Hue, CIRed: r.CIRed}
+		out := factory.Repo{Name: r.Name, Watched: r.Watched, Team: r.Team, Areas: r.Areas, Habits: r.Habits, Hue: r.Hue, CIRed: r.CIRed}
 		if r.Pipeline != nil {
 			out.Recipe = toRecipe(*r.Pipeline)
 		}

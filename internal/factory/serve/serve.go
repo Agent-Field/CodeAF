@@ -66,10 +66,11 @@ type Config struct {
 	Folders JobFolders
 	// DeleteChats deletes a job's conversations on this factory's own
 	// machine: the crew the factory made for it and every conversation the
-	// factory recorded for it, its agent's and each step's. Bring back calls
-	// it with the job as it stood before, once the job no longer names them.
-	// Nil is a factory that keeps no conversations of its own, whose Bring
-	// back deletes none.
+	// factory recorded for it, its agent's and each step's of every round.
+	// Drop calls it, and Bring back again for whatever is still named, with
+	// the job as it stood, once the job no longer names them; a job naming
+	// none deletes nothing. Nil is a factory that keeps no conversations of
+	// its own, whose drop deletes none.
 	DeleteChats func(factory.Item) error
 
 	// PersonProfile reads cached public GitHub identity, including outside authors.
@@ -406,6 +407,13 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s, reason, whole := h.forViewer(r, s)
+	// A REPOSITORY THAT IS OFF TAKES ITS JOBS OUT OF THE QUEUE, in every
+	// state, and comes back with them when it is turned on (repo_off.go).
+	sw, err := h.repoSwitch()
+	if h.failed(w, err) {
+		return
+	}
+	s = onlyOn(s, sw)
 	s, _ = h.withPeople(r, s)
 	if h.authFailed(w, r) {
 		return
@@ -500,6 +508,15 @@ func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.presentJob(r, &jobs[0])
+	// A job of a repository that is off stays readable, so a page already
+	// open on it can say why it left the queue (repo_off.go).
+	sw, err := h.repoSwitch()
+	if h.failed(w, err) {
+		return
+	}
+	if sw.OffJob(it) {
+		offJob(&jobs[0])
+	}
 	h.write(w, http.StatusOK, struct {
 		Factory api.Factory `json:"factory"`
 		api.Job

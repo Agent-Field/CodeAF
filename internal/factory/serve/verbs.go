@@ -57,9 +57,17 @@ func (h *Handler) postJob(verb string, exists bool, action jobAction) {
 			if !h.requireVerb(w, exists) {
 				return
 			}
-			if it, ok := h.findJob(w, r); ok {
-				action(w, r, it)
+			it, ok := h.findJob(w, r)
+			if !ok {
+				return
 			}
+			// THE ONE PLACE A PERSON'S DOOR MEETS A REPOSITORY THAT IS OFF:
+			// every door that would work on the job is refused here, before
+			// the door reads its body or writes anything (repo_off.go).
+			if offVerbs[verb] && h.refuseOff(w, factory.RepoOf(it), factory.JobState(it)) {
+				return
+			}
+			action(w, r, it)
 		},
 	})
 }
@@ -472,17 +480,23 @@ func (h *Handler) notWaiting(w http.ResponseWriter, r *http.Request, it factory.
 }
 
 // drop is POST /v1/jobs/{id}/drop: the job is stopped, taken off the list,
-// and its LOCAL work deleted: the worktree folder and the local branch the
-// runner made for it on this machine ([JobFolders]). NOTHING ON GITHUB IS
+// and EVERYTHING OF ITS WORK ON THIS MACHINE IS THROWN AWAY: the worktree
+// folder and the local branch the runner made for it ([JobFolders]), and its
+// conversations, its agent's and every step's of every round, with the crew
+// the factory made for it ([Config.DeleteChats]). NOTHING ON GITHUB IS
 // TOUCHED: a pushed branch and an opened pull request stay where they are.
+// Bring back is then simply the job in Backlog again, fresh.
 //
 // A DROP NEVER LOSES WORK UNASKED. When the branch has commits of its own, or
 // the folder holds uncommitted changes, the drop is refused with 409 has_work
 // and a sentence naming them; the same drop with `"discard": true` is the
-// person's yes. Work that could not be read counts as work.
+// person's yes. Work that could not be read counts as work. What was said in
+// the job's conversations is not asked about: dropping the job is dropping
+// what was said about it.
 //
-// THE JOB IS DROPPED EVEN WHEN THE DELETE FAILS: what was not deleted is said
-// on the job's activity, and the drop answers as done.
+// THE JOB IS DROPPED EVEN WHEN A DELETE FAILS: what was not deleted is said
+// on the job's activity, and the drop answers as done. The answer waits for
+// the deletes, which wait for a step still running here to stop.
 func (h *Handler) drop(w http.ResponseWriter, r *http.Request, it factory.Item) {
 	var body struct {
 		Discard bool        `json:"discard,omitempty"`
@@ -514,15 +528,16 @@ func (h *Handler) drop(w http.ResponseWriter, r *http.Request, it factory.Item) 
 		}
 	}
 	err := h.dropJob(r, it, detail)
-	if err == nil && h.config.Folders != nil {
-		h.discard(it)
+	if err == nil {
+		h.throwAway(it, "dropped")
 	}
 	h.finish(w, err)
 }
 
 // dropJob stops the job where it runs and marks it dropped, with its receipt.
-// A RUNNING JOB IS STOPPED FIRST, so the folder it works in is let go of
-// before [Handler.discard] deletes it.
+// A RUNNING JOB IS STOPPED FIRST, so the folder it works in and the
+// conversations it runs in are let go of before [Handler.throwAway] deletes
+// them.
 func (h *Handler) dropJob(r *http.Request, it factory.Item, detail string) error {
 	if h.config.Store == nil {
 		if h.workers != nil && h.workers.desk != nil {
@@ -556,23 +571,67 @@ func (h *Handler) dropJob(r *http.Request, it factory.Item, detail string) error
 	})
 }
 
-// discard deletes the dropped job's local branch and folder. It reads the job
-// again first, so the branch the run recorded since the drop was asked for is
-// the one deleted. A delete that fails leaves the drop standing and says on
-// the job's activity what was kept.
-func (h *Handler) discard(it factory.Item) {
-	if h.config.Store != nil {
-		if cur, err := h.config.Store.Get(it.ID); err == nil {
-			it = cur
+// throwAway deletes a dropped job's work on this machine: first its local
+// branch and folder, then its conversations and its crew. Drop calls it once
+// the job is dropped, and Bring back again before the job is reset, for
+// whatever came back since and for a job dropped before a drop deleted
+// conversations. EXACTLY THE JOB'S OWN, BY WHAT THE FACTORY RECORDED FOR THIS
+// ONE JOB: its branch and folder by its change and number, its conversations
+// and crew by the links on it. Both deletes find nothing to do the second
+// time, so calling it again is safe.
+//
+// THE FOLDER GOES FIRST because its delete waits for this machine's runner to
+// let go of the job; once it has, no step records another conversation on
+// the job, so the links read next are the last ones. Both are read from the
+// job again, so what the run recorded since the drop was asked for is
+// deleted too.
+//
+// THE LINKS GO BEFORE THE CONVERSATIONS, in the one write that reads them
+// ([forgetChats]), and the conversations are deleted by the job as it stood.
+// So a delete that fails leaves nothing pointing at a conversation half gone,
+// and nothing of it reaches a fresh run; what was kept is said on the job's
+// activity after lead ("dropped", "brought back"), and the drop or the Bring
+// back stands.
+func (h *Handler) throwAway(it factory.Item, lead string) {
+	if h.config.Folders != nil {
+		if h.config.Store != nil {
+			if cur, err := h.config.Store.Get(it.ID); err == nil {
+				it = cur
+			}
+		}
+		if err := h.config.Folders.Discard(it); err != nil {
+			h.noteKept(it.ID, lead+" · the local branch and folder were kept: "+err.Error())
 		}
 	}
-	err := h.config.Folders.Discard(it)
-	if err == nil || h.config.Store == nil {
+	if h.config.DeleteChats == nil || h.config.Store == nil {
+		return
+	}
+	var before factory.Item
+	err := h.config.Store.Update(it.ID, func(cur *factory.Item) error {
+		before = *cur
+		forgetChats(cur)
+		return nil
+	})
+	if err != nil {
+		// The job still names its conversations, so they are kept for a
+		// later Bring back to delete rather than deleted under a link.
+		h.noteKept(it.ID, lead+" · its conversations were not deleted: "+err.Error())
+		return
+	}
+	if err := h.config.DeleteChats(before); err != nil {
+		h.noteKept(it.ID, lead+" · its conversations were not all deleted: "+err.Error())
+	}
+}
+
+// noteKept says on the job's activity what a delete kept. A factory with no
+// store of its own has no activity to say it on.
+func (h *Handler) noteKept(id int, what string) {
+	if h.config.Store == nil {
 		return
 	}
 	at := h.clock().UTC()
-	_ = h.config.Store.Update(it.ID, func(cur *factory.Item) error {
-		cur.Note(at, "dropped · the local branch and folder were kept: "+err.Error())
+	_ = h.config.Store.Update(id, func(cur *factory.Item) error {
+		cur.Note(at, what)
 		return nil
 	})
 }
@@ -667,6 +726,12 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 	}
 	if !visible {
 		h.fail(w, http.StatusNotFound, "repository not found")
+		return
+	}
+	// A JOB IS NEVER MADE ON A REPOSITORY THAT IS OFF: it would leave the
+	// queue the moment it was made, and its start would be refused after
+	// the job was already there (repo_off.go).
+	if h.refuseOff(w, body.Repo, "") {
 		return
 	}
 	if body.Autostart && !h.requireVerb(w, h.seam.Launch != nil) {
@@ -793,32 +858,6 @@ func approvalEventID(trailer string) string {
 	return fields[1]
 }
 
-func (h *Handler) setRepos(w http.ResponseWriter, r *http.Request) {
-	if !h.requireVerb(w, h.seam.SetRepos != nil) {
-		return
-	}
-	if !h.requireOperator(w, r) {
-		return
-	}
-	var body struct {
-		Watched *[]string `json:"watched"`
-	}
-	if !h.decode(w, r, &body, false) {
-		return
-	}
-	if body.Watched == nil {
-		h.fail(w, http.StatusUnprocessableEntity, "watched must be an array of repository names")
-		return
-	}
-	h.reposMu.Lock()
-	err := h.seam.SetRepos(*body.Watched)
-	h.reposMu.Unlock()
-	if h.failed(w, err) {
-		return
-	}
-	h.finish(w, h.operatorEvent(r, record.ReposChanged, "factory", strings.Join(*body.Watched, ", ")))
-}
-
 func (h *Handler) connectGitHub(w http.ResponseWriter, r *http.Request) {
 	if !h.requireVerb(w, h.seam.ConnectGitHub != nil) {
 		return
@@ -909,6 +948,14 @@ func (h *Handler) stop(w http.ResponseWriter, r *http.Request, it factory.Item) 
 	if h.failed(w, err) {
 		return
 	}
+	h.finish(w, h.stopAs(r, it, handle))
+}
+
+// stopAs is a person's Stop of one job, by handle: the run ends with its work
+// kept, the stop is recorded, and Undo can put the job back. It is the job's
+// own Stop and the stop a repository turned off with "stop" makes of each job
+// under way on it (repos_v2.go), so the two are one stop.
+func (h *Handler) stopAs(r *http.Request, it factory.Item, handle string) error {
 	if h.config.Store != nil {
 		raw, _ := json.Marshal(it.Stream)
 		var prior *factory.Stream
@@ -919,21 +966,18 @@ func (h *Handler) stop(w http.ResponseWriter, r *http.Request, it factory.Item) 
 		} else {
 			err = h.stopForChange(it.ID)
 		}
-		if h.failed(w, err) {
-			return
+		if err != nil {
+			return err
 		}
-		err = h.config.Store.Update(it.ID, func(cur *factory.Item) error {
+		return h.config.Store.Update(it.ID, func(cur *factory.Item) error {
 			// The stop's own write took down the approval and the publish
 			// error and recorded the stop; this keeps only what Undo puts back.
 			cur.StopUndo = &factory.StopUndo{By: handle, Until: h.clock().Add(factory.ApprovalUndo), Failure: it.Failure, State: it.State, Question: it.Question, QKind: it.QKind, Stream: prior}
 			return nil
 		})
-		h.finish(w, err)
-		return
 	}
 	if h.workers != nil && h.workers.desk != nil {
-		h.finish(w, lease.NewDoors(h.workers.desk).StopAs(it.ID, handle))
-		return
+		return lease.NewDoors(h.workers.desk).StopAs(it.ID, handle)
 	}
-	h.finish(w, h.recordAction(r, it, record.Stopped, "", func() error { return h.seam.Stop(it.ID) }))
+	return h.recordAction(r, it, record.Stopped, "", func() error { return h.seam.Stop(it.ID) })
 }

@@ -307,3 +307,45 @@ func TestSeamHasCloneAndLoadCarriesCheckouts(t *testing.T) {
 		t.Fatalf("checkouts = %v (%v), want only acme/api", snap.Checkouts, err)
 	}
 }
+
+// A DROPPED JOB REFUSES EVERY MANAGER DOOR WITH ITS WAY BACK: `factory_run`'s
+// edit door changes none of its steps, and the Talk door gives it no new
+// agent, because the drop deleted its conversations and nothing of it runs.
+// Each refusal is the start's own sentence, and the job is left as it was.
+func TestADroppedJobRefusesTheEditAndTalkDoors(t *testing.T) {
+	_, st := openLocal(t)
+	recipe := factory.DefaultRecipe()
+	it, err := st.Create(factory.Item{Num: 12, Repo: "acme/api", Title: "dropped", Kind: factory.KindIssue,
+		State: factory.StateDismissed, DoneHow: "dropped", Stages: factory.CopyStages(recipe.For(factory.KindIssue))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	made := false
+	seam := factory.LocalSeam(st, time.Now(), factory.WithTalk(func(context.Context, factory.Item) (string, error) {
+		made = true
+		return "/places/new/transcript.jsonl", nil
+	}))
+	want := "#12 " + factory.DroppedRefusal
+	_, lines, err := seam.Edit(context.Background(), it.ID, factory.RunEdit{By: factory.ByManager, Skip: []string{"review"}, Why: "not needed"})
+	var refusal factory.EditRefusal
+	if err == nil || err.Error() != want || !errors.As(err, &refusal) || len(lines) != 0 {
+		t.Fatalf("an edit of a dropped job = %v %v, want the refusal %q", lines, err, want)
+	}
+	if _, err := seam.Talk(context.Background(), it.ID); err == nil || err.Error() != want || made {
+		t.Fatalf("the Talk door on a dropped job = %v (made %v), want the refusal %q", err, made, want)
+	}
+	cur, err := st.Get(it.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cur.Talk != "" || len(cur.Adapted) != 0 || !cur.Stages[factory.StageIndex(cur.Stages, "review")].On {
+		t.Fatalf("a refused door changed the dropped job: talk %q adapted %v stages %+v", cur.Talk, cur.Adapted, cur.Stages)
+	}
+	// The same job brought back is edited as any other.
+	if err := st.Update(it.ID, func(cur *factory.Item) error { cur.State, cur.DoneHow = factory.StateNew, ""; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if _, lines, err := seam.Edit(context.Background(), it.ID, factory.RunEdit{By: factory.ByManager, Skip: []string{"review"}}); err != nil || len(lines) == 0 {
+		t.Fatalf("an edit of a job in Backlog = %v %v", lines, err)
+	}
+}

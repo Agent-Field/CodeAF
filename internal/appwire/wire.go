@@ -66,6 +66,14 @@ const (
 	// them, and Detail a FactoryRefusal. The same drop with discard is the
 	// person's yes; nothing sends it on anyone's behalf.
 	CodeHasWork = "has_work"
+	// CodeHasRunning refuses a factory.repo_set that would turn a repository
+	// off while any of its jobs is running, queued or waiting on a person.
+	// The message is the factory's sentence naming them; the repository is
+	// still on. The same switch with stop is the person's yes to stopping
+	// them first; nothing sends it on anyone's behalf. It also answers a stop
+	// that failed on the way: the message names the job, and the repository
+	// is still on.
+	CodeHasRunning = "has_running"
 )
 
 // The states an agent can be in, as the app draws them.

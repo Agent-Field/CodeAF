@@ -173,7 +173,15 @@ func ItemStaged(it factory.Item, recipe factory.Recipe) factory.Item {
 // not an edit and asks nothing of those bounds. The cap is checked here
 // against the floor's own words, and the note is appended to
 // [factory.Item.Notes].
+//
+// A DROPPED JOB REFUSES EVERY CHANGE, a budget or a note as much as its
+// stages ([factory.RefuseDropped]): its conversations are gone, nothing of it
+// runs, and Bring back starts it again fresh, so a yes would change nothing
+// anyone reads. The refusal comes before any card, as every other does.
 func ApplyItemChange(it factory.Item, change ItemChange, recipe factory.Recipe) (factory.Item, error) {
+	if err := factory.RefuseDropped(it); err != nil {
+		return it, err
+	}
 	it = ItemStaged(it, recipe)
 	effort := strings.TrimSpace(change.Effort)
 	if effort != "" && !oneOf(effort, itemEfforts) {
