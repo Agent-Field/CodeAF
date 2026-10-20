@@ -543,13 +543,6 @@ func (a *Agent) keepLine(text, scope, origin string, replaced *store.Memory, unb
 		// that said "this corrects line 3" and named a different scope word has
 		// still named line 3.
 		owner, widened = replaced.Owner, false
-		key, _, _ := a.projectKey()
-		for _, allowed := range a.memoryOwners()[2:] {
-			if replaced.Owner == allowed {
-				owner = store.OwnerProject(key)
-				break
-			}
-		}
 	}
 	_, projectName, _ := a.projectKey()
 	reach := memoryReach(owner, widened)

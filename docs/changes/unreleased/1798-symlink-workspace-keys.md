@@ -34,8 +34,8 @@ owned posture. Hello follows the same order as boot; canonical spoken history
 still wins, and historical conversation buckets are not combined or moved.
 
 Path-owned project memories remain visible and editable through their historical
-owners, including non-Git folders and repositories without an origin. New rows
-use the canonical owner. Opening a project does not silently re-own its rows;
+owners, including non-Git folders and repositories without an origin. Newly
+remembered lines use the canonical owner; edits preserve their historical owner. Opening a project does not silently re-own its rows;
 explicit moves and corrections remain deliberate memory operations. Workers,
 resumed conversations, anchoring and headless runs carry the same read aliases.
 Remote-derived Git identity is unchanged.

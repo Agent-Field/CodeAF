@@ -581,6 +581,6 @@ old spelling still names the same folder: from the launch path or a saved conver
 or engine workspace citation. This also covers Git repositories without an origin.
 
 Existing rows keep their owners until you deliberately change them. New project memories
-use the resolved folder's owner; a correction supersedes the old line under that owner.
+use the resolved folder's owner. Editing an existing line preserves its historical owner.
 There is no bulk move or deletion of old memories. Remote-based Git identities keep the
 same keys. A removed or broken alias cannot prove that an old path owner belongs here.

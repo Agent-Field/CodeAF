@@ -58,6 +58,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/workspacepath"
 )
 
 // A session agent is what the wire serves, and this is where the two are held
@@ -1274,6 +1275,12 @@ func engineLaunchOptions(hello remote.Hello, workspace, sessionFlag string) v3Op
 		Interactive: !hello.Headless,
 		Model:       strings.TrimSpace(hello.Model),
 		Session:     firstEngineWord(hello.Session, sessionFlag),
+	}
+	// Keep the incoming spelling as read provenance. openV3Launch still resolves
+	// its write key, while memory can include the pre-upgrade path owner even
+	// when a flat transcript left no workspace citation.
+	if workspacepath.Same(hello.Workspace, workspace) {
+		opts.Workspace = hello.Workspace
 	}
 	// A HELLO MINTING ITS OWN CONVERSATION NAMES NO TRANSCRIPT, and the host's
 	// --session flag is not an answer for it either: that flag says which

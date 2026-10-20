@@ -39,11 +39,27 @@ func TestReviewPathMemoryAliasesPermitScopedEdits(t *testing.T) {
 	if !strings.Contains(block, saved.Memory.Text) || strings.Contains(block, "unrelated") {
 		t.Fatalf("project memory block: %q", block)
 	}
-	// A correction creates its replacement under today's write key. The old row
-	// is superseded through the owner's permission list, never silently moved.
+	// Editing a historical line retains its owner, preserving the store graph.
+	// A new independently remembered line uses today's canonical write key.
 	fresh, _, _, err := agent.keepLine("Use the current client contract", "project", store.OriginPerson, &saved.Memory, false)
-	if err != nil || fresh.Owner != store.OwnerProject(key) {
+	if err != nil || fresh.Owner != oldOwner {
 		t.Fatalf("scoped correction: %+v (%v)", fresh, err)
+	}
+	if _, err := agent.Remember("Keep fresh project notes"); err != nil {
+		t.Fatal(err)
+	}
+	current, err := brain.MemoriesFor([]string{store.OwnerProject(key)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, row := range current {
+		if row.Text == "Keep fresh project notes" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("new line was not kept under the canonical owner")
 	}
 	if receipt, err := agent.forgetLine("current client contract"); err != nil || !strings.HasPrefix(receipt, "forgot") {
 		t.Fatalf("scoped forget: %s (%v)", receipt, err)

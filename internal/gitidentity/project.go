@@ -58,6 +58,7 @@ func ProjectKey(workspace string) (string, error) {
 // ProjectKeys names the canonical write key followed by proven historical path
 // owners. Remote identities have never depended on a spelling and need no aliases.
 func ProjectKeys(workspace string, candidates ...string) []string {
+	workspace = strings.TrimSpace(workspace)
 	key, _ := ProjectKey(workspace)
 	if key == "" {
 		return nil

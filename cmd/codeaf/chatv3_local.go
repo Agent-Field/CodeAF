@@ -36,6 +36,7 @@ import (
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
+	"github.com/Agent-Field/codeaf/internal/workspacepath"
 )
 
 // localLaunch is one launch that goes through this machine's own session host.
@@ -197,6 +198,11 @@ func openChatV3Local(launch localLaunch) error {
 		Model:     launch.model,
 		Level:     launch.level,
 		Launch:    launch.shape,
+	}
+	// The host is dialed by the canonical key; the existing hello workspace
+	// field can retain a proven raw launch spelling for project-memory reads.
+	if raw := v3LaunchDir(); workspacepath.Same(raw, launch.workspace) {
+		hello.Workspace = raw
 	}
 	client, err := remote.Roam("", hello, remote.Roaming{Dial: link.dial})
 	// A HOST REFUSAL NEVER PUSHES THE WINDOW IN-PROCESS. The engine answered,
@@ -671,7 +677,11 @@ func v3MachineIsSetUp() bool {
 
 // localBesideHello carries the ordinary terminal's settings to a sibling chat.
 func localBesideHello(ask engineAsk, launch localLaunch) remote.Hello {
-	return remote.Hello{Workspace: ask.workspace, Session: ask.session, New: ask.mint, Model: launch.model, Level: launch.level, Launch: launch.shape}
+	workspace := ask.workspace
+	if raw := v3LaunchDir(); workspacepath.Same(raw, workspace) {
+		workspace = raw
+	}
+	return remote.Hello{Workspace: workspace, Session: ask.session, New: ask.mint, Model: launch.model, Level: launch.level, Launch: launch.shape}
 }
 
 // localErrandDoor is [tui3.Options.Errand] on the engine road: home's `ask here`,
