@@ -10,6 +10,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/manual"
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/splitgate"
 )
@@ -1904,10 +1905,11 @@ func TestBothBriefsAskForOneObjectAndOnlyOneOfThemMentionsAnAnswer(t *testing.T)
 
 func TestRouteJudgesDistinguishWorkOrdersFromQuestions(t *testing.T) {
 	contract := strings.Join(strings.Fields(routeVerdictContract), " ")
+	page := strings.Join(strings.Fields(manual.Chat().Context("will a polite request start a task", manual.DefaultResults)), " ")
 	for _, example := range routeIntentExamples {
 		text := strings.Join(strings.Fields(example.request), " ")
-		if got := strings.Contains(example.rule, "authorize work"); got != example.wantWork {
-			t.Fatalf("evaluation case %s has rule %q for work=%t", example.request, example.rule, example.wantWork)
+		if !strings.Contains(page, text) {
+			t.Errorf("the retrieved task-routing manual omits %s", example.request)
 		}
 		if !strings.Contains(contract, text) {
 			t.Errorf("the shared route contract omits %s", example.request)
@@ -1936,48 +1938,83 @@ func TestRouteJudgesDistinguishWorkOrdersFromQuestions(t *testing.T) {
 	}
 }
 
-// routeIntentExamples is the small, reviewable evaluation set for the prompt
-// change. The production judge remains model-backed; these labels are the
-// expected contract that both independent readers must follow.
+// routeIntentExamples pins each example together with its classification in
+// both prompts. This is a prompt-text regression, not a model evaluation: there
+// is no deterministic intent parser whose semantic accuracy it could assert.
 var routeIntentExamples = []struct {
 	request  string
 	wantWork bool
 	rule     string
 }{
-	{`"Could you fix the failing tests?"`, true, "both authorize work"},
-	{`"Can you implement headless screenshots and add tests?"`, true, "both authorize work"},
-	{`"How would headless screenshots work?"`, false, "does not"},
-	{`"Can we get screenshots without a display?"`, false, "ambiguous without context"},
-	{`"We should support screenshots eventually"`, false, "future direction, not authorization"},
+	{`"Could you fix the failing tests?"`, true, `"Could you fix the failing tests?" and "Can you implement headless screenshots and add tests?" both authorize work.`},
+	{`"Can you implement headless screenshots and add tests?"`, true, `"Could you fix the failing tests?" and "Can you implement headless screenshots and add tests?" both authorize work.`},
+	{`"Is headless screenshot capture possible on CI?"`, false, `A feasibility question, such as "Is headless screenshot capture possible on CI?", or an explanation request, such as "How would headless screenshots work?", does not authorize work.`},
+	{`"How would headless screenshots work?"`, false, `A feasibility question, such as "Is headless screenshot capture possible on CI?", or an explanation request, such as "How would headless screenshots work?", does not authorize work.`},
+	{`"Can we get screenshots without a display?"`, false, `"Can we get screenshots without a display?" is ambiguous without context, so answer or clarify; do not start work.`},
+	{`"We should support screenshots eventually"`, false, `"We should support screenshots eventually" is future direction, not authorization.`},
 }
 
 func TestAStoppedTaskResultCannotAutoStartItsRequestAgain(t *testing.T) {
-	completer := &routeCompleter{answer: "I can report what happened.", verdict: routeYes}
-	agent, _, _ := routeAgent(t, completer)
-	graph := agent.graph()
-	id := graph.reserve()
-	graph.admit(id, taskSpec{title: "the requested audit", request: routeAsk, brief: "audit", acceptance: "done"})
-	node := graph.node(id)
-	node.markStopped()
-	agent.principal = NewSteward(routeAsk, Budget{Wall: time.Hour}, nil)
-	agent.mu.Lock()
-	agent.turnResults = []uint64{id}
-	agent.mu.Unlock()
-
-	ruling := agent.readRouteJudge(context.Background(), userMessage{wake: true}, false, completer.answer)
-	if ruling.start {
-		t.Fatal("a stopped task result started the same request again")
+	for _, tc := range []struct {
+		name    string
+		request string
+		stopped bool
+		arrived bool
+		wake    bool
+		want    bool
+	}{
+		{"stopped result", routeAsk, true, true, true, false},
+		{"stopped result with surrounding whitespace", "  " + routeAsk + "\n", true, true, true, false},
+		{"fresh human request", routeAsk, true, true, false, true},
+		{"failed result can still start a repair", routeAsk, false, true, true, true},
+		{"unrelated stopped result", "implement headless screenshots across the app and add tests", true, true, true, true},
+		{"stopped task did not arrive this turn", routeAsk, true, false, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			completer := &routeCompleter{answer: "I can report what happened.", verdict: routeYes}
+			agent, _, nodes := routeAgent(t, completer)
+			graph := agent.graph()
+			id := graph.reserve()
+			graph.admit(id, taskSpec{title: "the requested audit", request: tc.request, brief: "audit", acceptance: "done"})
+			if tc.stopped {
+				graph.node(id).markStopped()
+			}
+			agent.principal = NewSteward(routeAsk, Budget{Wall: time.Hour}, nil)
+			if tc.arrived {
+				agent.mu.Lock()
+				agent.turnResults = []uint64{id}
+				agent.mu.Unlock()
+			}
+			user := userText(routeAsk)
+			if tc.wake {
+				user = userMessage{wake: true}
+			}
+			ruling := agent.readRouteJudge(context.Background(), user, false, completer.answer)
+			defer ruling.release()
+			if ruling.start != tc.want {
+				t.Fatalf("start = %t, want %t", ruling.start, tc.want)
+			}
+			wantCalls := 0
+			if tc.want {
+				wantCalls = 1
+			}
+			if completer.asked() != wantCalls || completer.confirms() != wantCalls {
+				t.Fatalf("screen calls = %d, confirms = %d, want %d each", completer.asked(), completer.confirms(), wantCalls)
+			}
+			if !tc.want {
+				agent.applyRouteJudge(newEventHub(), ruling)
+				if nodes.count() != 0 || admitted(graph) != 1 {
+					t.Fatal("reporting a stopped result admitted or ran another task")
+				}
+				// A person can repeat the same request after the stopped wake.
+				fresh := agent.readRouteJudge(context.Background(), userText(routeAsk), false, completer.answer)
+				defer fresh.release()
+				if !fresh.start || completer.asked() != 1 || completer.confirms() != 1 {
+					t.Fatal("a fresh human request was suppressed after the stopped result")
+				}
+			}
+		})
 	}
-	if completer.asked() != 0 || completer.confirms() != 0 {
-		t.Fatalf("the route judge spent %d screen calls and %d confirms on a stopped result", completer.asked(), completer.confirms())
-	}
-
-	// The same words in a new human turn are a fresh instruction.
-	ruling = agent.readRouteJudge(context.Background(), userText(routeAsk), false, completer.answer)
-	if !ruling.start {
-		t.Fatal("a new human instruction was suppressed by an earlier stopped result")
-	}
-	ruling.release()
 }
 
 // ── the order of the two readers at a turn's end ────────────────────────────

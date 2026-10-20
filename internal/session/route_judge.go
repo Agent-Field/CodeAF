@@ -312,9 +312,10 @@ or
   work   true only when the person clearly asks codeaf to do work now. This can
          be an imperative or a polite question whose intended action is clear:
          "Could you fix the failing tests?" and "Can you implement headless
-         screenshots and add tests?" both authorize work. A question about
-         feasibility or explanation, such as "How would headless screenshots
-         work?", does not. "Can we get screenshots without a display?" is
+         screenshots and add tests?" both authorize work. A feasibility question,
+         such as "Is headless screenshot capture possible on CI?", or an
+         explanation request, such as "How would headless screenshots work?",
+         does not authorize work. "Can we get screenshots without a display?" is
          ambiguous without context, so answer or clarify; do not start work.
          "We should support screenshots eventually" is future direction, not
          authorization. Judge intended action and timing, not grammar. Product

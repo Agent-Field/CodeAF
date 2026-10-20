@@ -616,21 +616,32 @@ partial block disappears because that attempt's half-arrived call was discarded;
 proposal fragment starts a new block. If the call is refused before it ever becomes a
 question, it settles as `not started · the call was refused` instead of moving forever.
 
+## Will a polite request start a task — feasibility, explanation, suggestions and future direction
+
+**Automatic task routing needs a clear request to do work now.** An imperative or a
+polite question can authorize work: "Could you fix the failing tests?" and "Can you
+implement headless screenshots and add tests?" both ask codeaf to act. They remain
+eligible for normal routing; a small job that takes only a few tool calls stays here.
+
+A feasibility question, such as "Is headless screenshot capture possible on CI?", or an
+explanation request, such as "How would headless screenshots work?", stays in chat.
+"Can we get screenshots without a display?" is ambiguous without context, so codeaf
+answers or asks what you mean before starting. "We should support screenshots eventually"
+is future direction, not authorization. Suggestions, goals and plans remain discussion
+until you clearly ask codeaf to act now. The intended action and timing matter, not
+whether the sentence ends in a question mark.
+
+Both route readings follow this rule: the one alongside your message and the one after
+a reply in words alone. Both also require the work to be worth handing off, a substantial
+message of at least six words, and two models agreeing. Ambiguous messages stay in chat.
+
 ## Why a task started on its own — codeaf started work I did not ask for, this looked like work, so task N started
 
-**Sometimes work starts without you asking for it, and you are told after.** After a turn
+**Sometimes codeaf starts a task without you explicitly asking for a task, and tells you after.** After a turn
 that answered a substantial message in **words alone** — no tool call — a cheap model reads
 what you asked and the first two lines of the reply, and decides one thing: should that have
 been work? The same judge also starts reading your message **the moment you send it**,
 alongside the reply rather than in front of it, which is its own section below.
-
-**A task starts only when you clearly ask codeaf to do work now.** That can be an imperative
-or a polite question whose requested action is clear: "Could you fix the failing tests?" and
-"Can you implement headless screenshots and add tests?" both ask for work. A question about
-feasibility, like "How would headless screenshots work?", stays in the conversation. "Can we
-get screenshots without a display?" is ambiguous without context, so codeaf answers or asks
-what you mean before starting. Suggestions and future direction, like "we should support
-screenshots eventually", are discussion until you ask codeaf to act.
 
 **A yes is asked twice.** The cheap model only screens — it reads every substantial message
 and every wordy turn, which is why it is cheap — and it cannot start anything on its own. Before a task exists, the same

@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: automatic task starts distinguish requests from questions
+title: automatic task starts require a clear request to act now
 pr: 1845
 surface: [chat, engine]
 invalidates:
