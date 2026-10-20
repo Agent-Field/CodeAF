@@ -150,7 +150,7 @@ func seatTopManagers(teams []Team, rootID string) bool {
 		if !ok {
 			continue
 		}
-		m.Home, m.Started = false, false
+		m.Home, m.Started, m.StartID = false, false, ""
 		if m.Handle != "" && handleProblem(teams[r], m.Key, m.Handle) != nil {
 			m.Handle = ""
 		}

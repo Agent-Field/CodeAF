@@ -2108,6 +2108,12 @@ func v3BuiltinApprovals() map[string]any {
 		// A conflict raised to the manager above the parties: a packet and a
 		// line of Traffic, and nothing spent or started.
 		"team_raise": "allow",
+		// A manager taking back a team that never held anyone, which the
+		// person declined in its own conversation: one record nobody used is
+		// forgotten, and nothing is started, stopped or spent. A team that
+		// was used is refused by the store ([teams.Dissolve]), whatever this
+		// row says.
+		"team_dissolve": "allow",
 	}
 }
 

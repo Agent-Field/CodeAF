@@ -10,11 +10,22 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-// The strip's switcher chooses only a team overlay. The chip's separate clear
+// The strip's switcher chooses a team overlay. The chip's separate clear
 // action restores ordinary Chats; selecting a team restores its last conversation and strip position.
 // Management belongs to Teams, so this menu cannot change a membership or manager.
 // It is modal: arrows choose a row, enter activates it, and escape or a press
-// outside closes the menu without changing the view.
+// outside closes the menu without changing the view. It says none of that in a
+// footer: a list of rows under a chip is read and worked the way every list is.
+//
+// WITH NO TEAM SELECTED ITS LAST ROW IS `+ New from this session`, under a
+// rule, which makes a team of the conversation in front when it is chosen, shows
+// it, and puts `/helpers` in the box to ask it for helpers (helpers.go).
+// Because that row is there whenever no team is, the
+// chip is there too with no team yet: `Teams ▾` is how a person with none finds
+// how to make one from what they are doing. With a team selected the row is
+// gone ([app.teamMenuHelpers] says why). Over --host to an engine without the
+// teams doors nothing here can work, and the row, and with no teams the chip,
+// are absent.
 
 // teamMenu is the switcher's state: whether it is up, the row the keyboard is
 // on, the row the pointer is on, and where the last frame drew it and its rows,
@@ -48,7 +59,31 @@ func (a *app) teamMenuRows() []teamMenuRow {
 	for _, r := range a.teamsOpenTree() {
 		rows = append(rows, teamMenuRow{code: wallPopTeam, id: r.id, depth: r.depth})
 	}
+	if a.teamMenuHelpers() {
+		if len(rows) > 0 {
+			rows = append(rows, teamMenuRow{rule: true})
+		}
+		rows = append(rows, teamMenuRow{code: wallPopHelpers})
+	}
 	return rows
+}
+
+// teamMenuHelpers reports whether the switcher carries `+ New from this
+// session`: only while NO team is selected, wherever a team can be kept.
+//
+// WITH A TEAM SELECTED THE ROW IS NOT THERE AT ALL. A new team made from a
+// conversation seen through a team's overlay reads as one made inside that
+// team, and it is not: the row always makes a top-level team. Nesting has its
+// own doors, `+ Add subteam` on Teams and a manager's own sub-team start, with
+// their own rules, and this row must not look like a third. Where the row
+// cannot make a team of the conversation in front for another reason, it is
+// still there and says why when chosen.
+func (a *app) teamMenuHelpers() bool {
+	if a.teamsOff() {
+		return false
+	}
+	_, selected := a.teamActive()
+	return !selected
 }
 
 // A picker with no available overlay is absent, including retained teams and
@@ -58,6 +93,9 @@ func (a *app) teamMenuOffers(t team) bool {
 }
 
 func (a *app) teamMenuAvailable() bool {
+	if a.teamMenuHelpers() {
+		return true
+	}
 	for _, t := range a.wall.teams {
 		if a.teamMenuOffers(t) {
 			return true
@@ -87,7 +125,9 @@ func (a *app) openTeamMenu() {
 	}
 	a.teamMenu = teamMenu{on: true}
 	for i, r := range picks {
-		if r.id == a.wall.activeID {
+		// Only a team's row is the team shown: `+ New from this session` has
+		// no id, and with no team shown would otherwise match the empty one.
+		if r.code == wallPopTeam && r.id == a.wall.activeID {
 			a.teamMenu.cursor = i
 			break
 		}
@@ -114,10 +154,15 @@ func (a *app) teamMenuFront() chatTab {
 
 // teamMenuDo is one row chosen, by the keyboard or the pointer.
 func (a *app) teamMenuDo(r teamMenuRow) tea.Cmd {
-	if r.code != wallPopTeam {
+	switch {
+	case r.rule:
 		return nil
+	case r.code == wallPopHelpers:
+		return a.helpersNewTeam()
+	case r.code == wallPopTeam:
+		return a.teamOverlayChoose(r.id)
 	}
-	return a.teamOverlayChoose(r.id)
+	return nil
 }
 
 // The chip's clear action and menu selections share the same transition, so
@@ -276,7 +321,14 @@ func (a *app) teamMenuCard(width, height int) wallCard {
 	var lines []line
 	for _, r := range rows {
 		ln := line{row: r}
+		if r.rule {
+			lines = append(lines, ln)
+			continue
+		}
 		switch r.code {
+		case wallPopHelpers:
+			ln.left = pal.ink(helpersRowWord)
+			ln.leftW = ansi.StringWidth(helpersRowWord)
 		case wallPopTeam:
 			t, _ := a.teamByID(r.id)
 			radio := off
@@ -320,19 +372,28 @@ func (a *app) teamMenuCard(width, height int) wallCard {
 	}
 	w := inner + 2 + 2*padX
 	top := tabStripRow + 1
-	footer := teamFooter(pal, inner, teamHint("up/down", "move"), teamHint("enter", "choose"), teamHint("esc", "cancel"))
-	capacity := height - top - 2 - len(footer)
+	capacity := height - top - 2
 	if w > width-2 || capacity < 1 {
 		return wallCard{}
 	}
 	m := &a.teamMenu
-	m.cursor = min(max(m.cursor, 0), len(lines)-1)
-	m.top = min(max(m.top, 0), max(len(lines)-capacity, 0))
-	if m.cursor < m.top {
-		m.top = m.cursor
+	m.cursor = min(max(m.cursor, 0), len(picks)-1)
+	// THE CURSOR COUNTS PICKS AND THE WINDOW COUNTS LINES, and the rule above
+	// the last row is a line that is not a pick; the window is kept on the
+	// line the cursor's pick is drawn on.
+	at := 0
+	for i, ln := range lines {
+		if !ln.row.rule && ln.row.code == picks[m.cursor].code && ln.row.id == picks[m.cursor].id {
+			at = i
+			break
+		}
 	}
-	if m.cursor >= m.top+capacity {
-		m.top = m.cursor - capacity + 1
+	m.top = min(max(m.top, 0), max(len(lines)-capacity, 0))
+	if at < m.top {
+		m.top = at
+	}
+	if at >= m.top+capacity {
+		m.top = at - capacity + 1
 	}
 	end := min(m.top+capacity, len(lines))
 	title := "Teams"
@@ -360,6 +421,5 @@ func (a *app) teamMenuCard(width, height int) wallCard {
 			hits: []wallHit{{x0: 0, y0: 0, x1: inner, y1: 1, kind: wallHitPopRow, arg: ln.row.code, id: ln.row.id}},
 		})
 	}
-	cardLines = append(cardLines, footer...)
 	return wallCardBuild(pal, ansi.Truncate(title, w-5, g.more), cardLines, x, top, w, padX, 0)
 }

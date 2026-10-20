@@ -194,18 +194,24 @@ func TestTeamMenuLongTreeScrollsAndTinyResizeCannotChoose(t *testing.T) {
 	if !a.teamMenu.card.holds(a.teamMenu.card.x0, a.teamMenu.card.y0) || len(a.teamMenu.hits) >= len(a.teamMenuRows()) {
 		t.Fatal("long picker was not bounded")
 	}
-	for range 37 {
+	// The cursor counts the rows it can land on. With harbor selected there
+	// is no `+ New from this session` (teammenu.go), so the last is a team.
+	picks := teamMenuPicks(a.teamMenuRows())
+	for range len(picks) {
 		drive(t, a, key("down"))
 		menuFrame(t, a)
 	}
-	chosen := a.teamMenuRows()[a.teamMenu.cursor]
+	chosen := picks[a.teamMenu.cursor]
+	if chosen.code != wallPopTeam || a.teamMenu.cursor != len(picks)-1 {
+		t.Fatalf("the last row the cursor reaches is %+v", chosen)
+	}
 	hit := menuHit(t, a, chosen.code, chosen.id)
 	if !a.teamMenu.card.holds(hit.x0, hit.y0) || a.teamMenu.top == 0 {
 		t.Fatal("selected last row is offscreen")
 	}
 	drive(t, a, tea.MouseWheelMsg{X: hit.x0, Y: hit.y0, Button: tea.MouseWheelUp})
 	menuFrame(t, a)
-	if !a.teamMenu.on || a.teamMenu.cursor >= 37 || a.wall.activeID != harbor {
+	if !a.teamMenu.on || a.teamMenu.cursor >= len(picks) || a.wall.activeID != harbor {
 		t.Fatal("wheel escaped the picker or selected a team")
 	}
 	for width := 22; width <= 80; width++ {

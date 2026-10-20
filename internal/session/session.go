@@ -2978,6 +2978,9 @@ type Agent struct {
 	// [teamRoleBlock]), set at every step boundary before the request and
 	// landed in a note of its own ahead of the others.
 	teamRoleText string
+	// helpersNoted says the one note that lets this conversation suggest
+	// /helpers has landed in this process (helpersnote.go).
+	helpersNoted bool
 	// team is this conversation's account of its teams: its key, its roles and
 	// its Traffic cursors (team.go). It has its own lock and is never read
 	// under mu.

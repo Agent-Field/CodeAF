@@ -197,6 +197,9 @@ const (
 	// are doors a person already knows, and the tip is about the one they
 	// cannot see.
 	eventHomeGesture = "home-gesture"
+	// eventHelpersUsed is /helpers reaching its command, bare or with words,
+	// or the Teams dropdown's `+ New from this session` chosen (helpers.go).
+	eventHelpersUsed = "helpers-used"
 )
 
 // noticeEvents is every event there is, in one list, so the table check can
@@ -211,7 +214,7 @@ var noticeEvents = []string{
 	eventConversationBudgetShown,
 	eventSpendOpened, eventSteered, eventQueued, eventChatStarted,
 	eventPlaceJumped, eventRemembered, eventSubharnessOpened,
-	eventConnectOpened, eventAutonomyAsked, eventHomeGesture,
+	eventConnectOpened, eventAutonomyAsked, eventHomeGesture, eventHelpersUsed,
 }
 
 // notice is one thing the surface may tell a person, and the whole of the rule
@@ -421,6 +424,21 @@ var notices = []notice{
 		armed:  spoken,
 		text:   "/task starts a single-shot task on the side",
 		retire: eventTaskTyped,
+	},
+	{
+		// THE BIGGER HALF OF HANDING WORK OUT, at the owner's word on
+		// 2026-10-19: /task sends one piece of the work away, and the Teams
+		// dropdown's `+ New from this session` keeps this conversation and makes
+		// it the manager of a team for the rest (helpers.go). It names the row
+		// and not /helpers, because /helpers asks a team that already exists. It
+		// is armed only where the row would act: a conversation that has been
+		// spoken to, no team selected on the strip, and not already a manager
+		// ([helpersTipArmed]). It retires the first time the row is chosen or
+		// /helpers is typed.
+		id: "helpers-team", slot: slotHint,
+		armed:  helpersTipArmed,
+		text:   "+ New from this session in the Teams menu makes this chat a team's manager",
+		retire: eventHelpersUsed,
 	},
 	{
 		// THE OTHER HALF OF THE SAME LESSON: an automation is made by typing it

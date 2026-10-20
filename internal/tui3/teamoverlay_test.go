@@ -382,7 +382,8 @@ func TestTeamOverlayRootUsesCurrentManagersAndProtectsAutomaticMemberships(t *te
 	a.teamViewSet(root)
 	a.teamOverlaySync()
 	for _, row := range a.teamMenuRows() {
-		if row.code != wallPopTeam {
+		// The rule and `+ New from this session` edit no membership.
+		if !row.rule && row.code != wallPopTeam && row.code != wallPopHelpers {
 			t.Fatal("root offers ordinary membership editing")
 		}
 	}

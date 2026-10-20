@@ -391,7 +391,7 @@ func TestTrafficStopAndStartAreDoneOnceAndNeverReplayed(t *testing.T) {
 	}
 	teamsFlush(t, a)
 	disk, _ := loadTeams(a.profileDir, nil)
-	if got, ok := disk[0].ByHandle("lexer"); !ok || got.Key != m.Key {
+	if got, ok := disk[0].ByHandle("lexer"); !ok || got.Key != m.Key || got.StartID != a.traffic.rows[harbor][1].ID || got.StartID == "" {
 		t.Fatalf("the new member did not reach the disk: %+v", disk[0].Members)
 	}
 	// The column says what the stop and the start were for, under General.
