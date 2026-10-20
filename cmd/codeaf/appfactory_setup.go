@@ -52,8 +52,11 @@ package main
 // reads for it.
 //
 // QUITTING ENDS THE SERVICE, NOT THE CHOICE. [appBackend.closeLocalFactory] runs
-// with the engine's Close: the runner is told to stop and waited for a bounded
-// while ([appLocalStopWait]), then the listener, the service, serve.json, the
+// FIRST in the engine's Close, whichever way the engine leaves (a quit, the
+// app's pipe closing, the app's process ending, a signal: appleave.go), so no
+// wait on a conversation can keep this machine's factory from the next engine.
+// The runner is told to stop and waited for a bounded while
+// ([appLocalStopWait]), then the listener, the service, serve.json, the
 // discovery socket and serve.lock all go, and the held bearer with them. A job
 // the runner held goes back to the queue when its lease expires, as it does
 // when any worker is killed. The registry row stays, joined service or served:
@@ -69,9 +72,11 @@ package main
 // It serves the same floor again on a new port, under the same id, with a new
 // bearer, and its runner and poll come back with it; no job, triage or model
 // call starts. A profile with no Resume row stays unstarted; detaching the
-// row ends the choice; and another codeaf that holds the election is never joined or
-// duplicated by a resume. A profile whose release predates the row's Resume
-// mark keeps nothing to resume from, and starts again with factory.local_start.
+// row ends the choice; and another codeaf that holds the election is never
+// joined or duplicated by a resume: the list says so ([appLocalHeldElsewhere])
+// and the first list after it lets go serves the factory here. A profile whose
+// release predates the row's Resume mark keeps nothing to resume from, and
+// starts again with factory.local_start.
 //
 // WHAT IS PRIVATE STAYS HERE. The bearer, the factory folder, the profile and
 // the app's home are never answered. A folder the person chose is refused if
@@ -209,8 +214,10 @@ func (b *appBackend) localRunnerOn() bool {
 // it cannot come back. Resuming serves the same floor under the same connection
 // id, on whatever port is free, with its runner and poll ([ensureLocalRunner]);
 // no job, triage or model call starts. It never joins another codeaf's
-// service: if one holds the election, the row stays as saved and unreachable
-// until the person starts again, deliberately.
+// service: if one holds the election, the row stays as saved and unreachable,
+// deliberately, and the list says why ([appLocalHeldElsewhere]). Every list
+// asks again, so once that holder lets go (it closes its service, or its
+// process is gone and its receipt names a dead pid) the next list serves it.
 func (b *appBackend) resumeLocal(ctx context.Context) {
 	if b.resumeLocalServe(ctx) {
 		b.ensureLocalRunner(ctx)
@@ -235,6 +242,18 @@ func (b *appBackend) resumeLocalServe(ctx context.Context) bool {
 		}
 	}
 	return false
+}
+
+// appLocalHeldElsewhere is the reason factory.list gives the local row while
+// a resume is refused because another live codeaf holds the election. The
+// commonest such holder is an earlier engine of this same app still leaving.
+const appLocalHeldElsewhere = "Another codeaf on this machine is still running this factory. It comes back here once that one stops."
+
+// localHeldElsewhere says whether a live process other than this one holds
+// this machine's factory election.
+func localHeldElsewhere() bool {
+	holder, ok := factoryServeHolder()
+	return ok && holder.PID != os.Getpid()
 }
 
 // ensureLocalRunner starts the runner of the factory this engine serves once

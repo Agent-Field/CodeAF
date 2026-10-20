@@ -144,16 +144,27 @@ func readFactoryAttachment() (factoryAttachment, bool) {
 // alive. It is loopback, so a second is generous, and a launch waits on it.
 const factoryProbeWait = time.Second
 
+// factoryServeHolder is the receipt serve.json holds, when the process it
+// names is alive: who holds this machine's factory election, whether or not
+// its service answers. A receipt a killed process left behind is no holder.
+func factoryServeHolder() (factoryDiscovery, bool) {
+	body, err := os.ReadFile(filepath.Join(v3FactoryRoot(), "serve.json"))
+	if err != nil {
+		return factoryDiscovery{}, false
+	}
+	var d factoryDiscovery
+	if json.Unmarshal(body, &d) != nil || d.PID <= 0 || !processgroup.ProcessAlive(d.PID) {
+		return factoryDiscovery{}, false
+	}
+	return d, true
+}
+
 // liveFactoryDiscovery is the factory serve.json names, when its process is
 // alive and it answers GET /v1/queue. A receipt a killed process left behind
 // is neither, and is ignored rather than trusted.
 func liveFactoryDiscovery() (factoryTarget, bool) {
-	body, err := os.ReadFile(filepath.Join(v3FactoryRoot(), "serve.json"))
-	if err != nil {
-		return factoryTarget{}, false
-	}
-	var d factoryDiscovery
-	if json.Unmarshal(body, &d) != nil || d.PID <= 0 || !processgroup.ProcessAlive(d.PID) {
+	d, ok := factoryServeHolder()
+	if !ok {
 		return factoryTarget{}, false
 	}
 	if d.App {

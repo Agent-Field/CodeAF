@@ -494,6 +494,23 @@ When work is left for you, its chat says "The app closed while this was working 
 Send a message to continue. These lines, and "Resumed after quit" after a normal
 quit, stay in the conversation when you close and reopen the app.
 
+## Reopening the app while the last one is still leaving — your factory isn't answering, another codeaf is still running this factory
+
+When the app closes, or its window is killed, the codeaf behind it leaves by
+itself: it never keeps working without the app. It lets go of this machine's
+factory first (a running job stops the way a quit stops it and goes back to the
+queue), then stops its replies and processes, which carry on when the app opens
+again. Leaving takes at most 30 seconds, and a second SIGTERM or SIGINT ends it
+at once.
+
+If the app is opened again before the last one has let go, the factory on this
+machine is listed as not answering with the words "Another codeaf on this
+machine is still running this factory. It comes back here once that one
+stops." The next look at the factory list after that serves it here again,
+with nothing to set up. The same words appear while a terminal's
+`codeaf factory serve` holds this machine's factory; stop that one, or start
+the factory in the app to use it through that codeaf.
+
 ## The desktop app's clocks — a proposed task, and a choice with a suggestion
 
 In the desktop app a proposed task waits on a clock (twelve seconds unless you

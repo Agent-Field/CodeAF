@@ -139,6 +139,11 @@ type FactoryConnection struct {
 	Operator bool       `json:"operator"`
 	State    string     `json:"state" enum:"ok,unreachable,signed_out,github_expired"`
 	LastSeen *time.Time `json:"last_seen,omitempty"`
+	// Reason is a sentence for a person saying why a connection that is not
+	// ok is so, when the engine knows; it is absent when it does not. Today it
+	// is set only on this machine's own factory while another live codeaf
+	// holds its election, so it cannot be served here yet.
+	Reason string `json:"reason,omitempty"`
 }
 
 // FactoryList is factory.list's answer.
