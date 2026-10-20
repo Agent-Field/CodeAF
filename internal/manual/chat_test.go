@@ -4131,6 +4131,8 @@ func TestHelpersQuestionsReachTheirSections(t *testing.T) {
 		{"why does /helpers say this conversation has no team", "team-manager", "When + New from this session or /helpers says no"},
 		{"/helpers says open that conversation first", "team-manager", "When + New from this session or /helpers says no"},
 		{"what does /helpers do in a manager", "team-manager", "Turn this conversation into a team"},
+		{"how is the team from + New from this session named", "team-manager", "How a team made from a conversation is named"},
+		{"why did my new team's name change", "team-manager", "How a team made from a conversation is named"},
 		{"why did the chat suggest bringing in helpers", "team-manager", "Why the chat suggested bringing in helpers"},
 		{"the model asked if I want a small team working in parallel", "team-manager", "Why the chat suggested bringing in helpers"},
 		{"I said no to the helpers, how do I cancel the team", "team-manager", "Cancel a team nobody joined"},

@@ -76,10 +76,10 @@ conversation in charge. With no team selected, open the **Teams ▾** dropdown a
 the tab strip and choose its last row, **`+ New from this session`**. On the spot:
 
 - A new top-level team is made with **this conversation as its manager** and only member,
-  named after the conversation's folder (or a word such as `harbor` when that name is
-  taken), in the next free colour. The strip narrows to it and reads `◆ Manager`, and the
-  column turns to the team's Traffic. Every team's rules apply; rename it in Teams, under
-  `Settings`. Once it is saved: `made the team lab · this conversation is its manager`.
+  in the next free colour, and a moment later named after this conversation (see **How a
+  team made from a conversation is named**). The strip narrows to it and reads `◆ Manager`,
+  and the column turns to the team's Traffic. Every team's rules apply. Once it is saved:
+  `made the team guitar pickups · this conversation is its manager`.
 - The message box is given this, in place of what was there (kept in `/drafts`):
   `/helpers Suggest two or three helpers for this work, and I'll say yes, change them, or cancel.`
 
@@ -90,6 +90,22 @@ starts each helper with `team_start`, under your approval posture; each opens as
 this team's strip and starts working at once, while you stay in front of the manager. A
 different list, and it proposes again. Cancel, and it takes the team back with
 `team_dissolve`. Changed your mind before sending anything? `Disband` the team on Teams.
+
+## How a team made from a conversation is named — + New from this session's team name, rename it
+
+`+ New from this session` names the team twice. On the click it takes the conversation's
+folder name, lowercased (`codeaf` for `~/Code/CodeAF`), or, when a team already has that
+name, a word such as `harbor`, so the strip can change at once. At the same time the
+model that names your conversations is asked, once, for one or two words naming the work,
+from the conversation's title or its opening words; it waits at most five seconds. When
+the answer comes the team takes it, and the chip changes to it. If it came after the
+receipt, a line says `named the team guitar pickups`.
+
+The first name stays when there is no naming model or no answer in time, when the answer
+is not a name, when another team already has that name, or when the team was renamed or
+disbanded first, here or in another window. A suggested name never replaces one you chose.
+Rename the team any time in Teams, under `Settings`. It costs one short call on the naming
+model.
 
 ## When + New from this session or /helpers says no
 

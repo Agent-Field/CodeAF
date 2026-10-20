@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -521,5 +522,155 @@ func TestTheHelpersTipIsArmedWhereTheRowWouldAct(t *testing.T) {
 	spend(t, a, a.teamOverlayChoose(""))
 	if row.armed(a) {
 		t.Fatal("the tip is armed in a conversation that already manages a team")
+	}
+}
+
+// wordNamingAgent is the fake conversation with the naming ask: it answers name
+// (or err), and keeps what it was asked.
+type wordNamingAgent struct {
+	*fakeAgent
+	name   string
+	err    error
+	titles []string
+	words  int
+}
+
+func (n *wordNamingAgent) NameTeamWords(_ context.Context, titles []string, words int) (string, error) {
+	n.titles, n.words = append([]string(nil), titles...), words
+	return n.name, n.err
+}
+
+// groupNamingAgent has only the group's ask, as an engine from before the word
+// limit does: up to three words, which the surface cuts to two.
+type groupNamingAgent struct {
+	*fakeAgent
+	name string
+}
+
+func (n *groupNamingAgent) NameTeam(context.Context, []string) (string, error) { return n.name, nil }
+
+// THE TEAM IS NAMED AFTER THE CONVERSATION. The click makes it under the
+// folder's name at once; the naming role is asked for two words over this
+// conversation's title, and the team takes the answer, cleaned — on disk, on
+// the strip, and in the receipt, which says the final name once.
+func TestNewFromThisSessionNamesTheTeamAfterTheConversation(t *testing.T) {
+	a, fake := helpersApp(t)
+	namer := &wordNamingAgent{fakeAgent: fake, name: "Parser Port"}
+	a.agent = namer
+	made := helpersMakeTeam(t, a)
+	if len(namer.titles) != 1 || namer.titles[0] != "Shipping the parser" || namer.words != helpersNameWords {
+		t.Fatalf("the namer was asked %q for %d words", namer.titles, namer.words)
+	}
+	if made.Name != "parser port" {
+		t.Fatalf("the team on disk is called %q, want the conversation's name", made.Name)
+	}
+	if active, ok := a.teamActive(); !ok || active.Name != "parser port" {
+		t.Fatal("the strip does not show the team's new name")
+	}
+	if !transcriptSays(a, fmt.Sprintf(helpersMadeWord, "parser port")) {
+		t.Fatal("the receipt does not name the team by its final name")
+	}
+	if transcriptSays(a, fmt.Sprintf(helpersNamedWord, "parser port")) {
+		t.Fatal("the name was said twice")
+	}
+}
+
+// AN OLDER ENGINE'S THREE WORDS ARE CUT TO TWO.
+func TestAGroupNamersAnswerIsCutToTwoWords(t *testing.T) {
+	a, fake := helpersApp(t)
+	a.agent = &groupNamingAgent{fakeAgent: fake, name: "guitar pickup history"}
+	if made := helpersMakeTeam(t, a); made.Name != "guitar pickup" {
+		t.Fatalf("the team is called %q", made.Name)
+	}
+}
+
+// A NAME THAT ARRIVES AFTER THE RECEIPT IS SAID ON ITS OWN LINE.
+func TestALateNameIsSaid(t *testing.T) {
+	a, _ := helpersApp(t)
+	made := helpersMakeTeam(t, a)
+	a.helpersNamed(a.helpersName.gen, "guitar pickups", nil)
+	teamsFlush(t, a)
+	if got := mustTeam(t, a, made.ID).Name; got != "guitar pickups" {
+		t.Fatalf("the team is called %q", got)
+	}
+	if disk := helpersDisk(t, a); disk[0].Name != "guitar pickups" {
+		t.Fatalf("the name did not reach the disk: %q", disk[0].Name)
+	}
+	if !transcriptSays(a, fmt.Sprintf(helpersNamedWord, "guitar pickups")) {
+		t.Fatal("a late name was not said")
+	}
+}
+
+// THE ANSWER NEVER OVERWRITES A CHOICE OR TAKES A NAME. The team keeps the
+// name it has when the person renamed it here, another window renamed it in
+// the store, another team has the suggested name, the ask failed, the answer
+// is not a name, or a newer ask replaced it; a team that is gone stays gone.
+func TestTheSuggestedNameNeverOverwritesAChoice(t *testing.T) {
+	cases := []struct {
+		name  string
+		setup func(t *testing.T, a *app, id string) (gen int, answer string, err error)
+		want  string
+	}{
+		{"renamed here", func(t *testing.T, a *app, id string) (int, string, error) {
+			if err := a.teamRename(id, "mine"); err != nil {
+				t.Fatal(err)
+			}
+			teamsFlush(t, a)
+			return a.helpersName.gen, "guitar pickups", nil
+		}, "mine"},
+		{"renamed in another window", func(t *testing.T, a *app, id string) (int, string, error) {
+			if err := teamstore.Update(a.profileDir, func(f *teamstore.File) error {
+				f.Teams[teamIndex(f.Teams, id)].Name = "theirs"
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			return a.helpersName.gen, "guitar pickups", nil
+		}, "theirs"},
+		{"name taken", func(t *testing.T, a *app, id string) (int, string, error) {
+			if _, err := a.teamMake("guitar pickups", nil); err != nil {
+				t.Fatal(err)
+			}
+			teamsFlush(t, a)
+			return a.helpersName.gen, "Guitar Pickups", nil
+		}, "lab"},
+		{"ask failed", func(t *testing.T, a *app, id string) (int, string, error) {
+			return a.helpersName.gen, "guitar pickups", fmt.Errorf("no model")
+		}, "lab"},
+		{"not a name", func(t *testing.T, a *app, id string) (int, string, error) {
+			return a.helpersName.gen, "   ", nil
+		}, "lab"},
+		{"an older ask", func(t *testing.T, a *app, id string) (int, string, error) {
+			return a.helpersName.gen - 1, "guitar pickups", nil
+		}, "lab"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			a, _ := helpersApp(t)
+			made := helpersMakeTeam(t, a)
+			gen, answer, err := c.setup(t, a, made.ID)
+			a.helpersNamed(gen, answer, err)
+			teamsFlush(t, a)
+			for _, team := range helpersDisk(t, a) {
+				if team.ID == made.ID && team.Name != c.want {
+					t.Fatalf("the team is called %q on disk, want %q", team.Name, c.want)
+				}
+			}
+			if got := mustTeam(t, a, made.ID).Name; got != c.want {
+				t.Fatalf("the window calls the team %q, want %q", got, c.want)
+			}
+		})
+	}
+
+	a, _ := helpersApp(t)
+	made := helpersMakeTeam(t, a)
+	if err := teamstore.Dissolve(a.profileDir, made.ID, made.Manager); err != nil {
+		t.Fatal(err)
+	}
+	trafficReadNow(t, a)
+	a.helpersNamed(a.helpersName.gen, "guitar pickups", nil)
+	teamsFlush(t, a)
+	if len(helpersDisk(t, a)) != 0 {
+		t.Fatal("naming a team that was gone brought it back")
 	}
 }

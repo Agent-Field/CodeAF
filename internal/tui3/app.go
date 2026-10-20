@@ -1465,6 +1465,9 @@ type app struct {
 	// helpers is a `/helpers` waiting for the store to take its team before
 	// the conversation is asked for its helpers (helpers.go).
 	helpers helpersPending
+	// helpersName is the one name asked for a team the Teams row made
+	// (helpers.go).
+	helpersName helpersNaming
 	// tp is the teams page's own state: its selection, its reading of the
 	// store and the targets it drew (teamspage.go).
 	tp teamsPage

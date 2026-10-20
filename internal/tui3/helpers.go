@@ -56,11 +56,15 @@ package tui3
 // team_dissolve.go). Disband on Teams ends it too, and keeps it as history.
 
 import (
+	"context"
 	"fmt"
 	"math/rand/v2"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
+
+	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
 // helpersPrompt is what a bare /helpers asks, and what the dropdown's row puts
@@ -110,17 +114,145 @@ var helpersShared = "helpers open beside this conversation, and " + oneConversat
 
 // helpersPending is one team the row made, between its edit and the store's
 // answer: the edit's notice tie, the conversation it made a manager, the
-// team's name, the line it put in the box, and a /helpers pressed meanwhile
-// (ask and shown), held until the store has the team. due says the answer is
-// in and [app.helpersSettled] has not acted on it yet.
+// team's id and the name it was made with, the line it put in the box, and a
+// /helpers pressed meanwhile (ask and shown), held until the store has the
+// team. due says the answer is in and [app.helpersSettled] has not acted on
+// it yet.
 type helpersPending struct {
 	said  teamWriteSaid
 	key   string
+	id    string
 	name  string
 	box   string
 	ask   string
 	shown string
 	due   bool
+}
+
+// ── THE TEAM'S NAME, FROM THE CONVERSATION ──────────────────────────────────
+//
+// THE ROW NAMES THE TEAM TWICE, and the first name is only a placeholder. A
+// click has to answer on its frame, and no model answers on a frame, so the
+// team is made at once under its folder's name ([teamFreshName], the same word
+// the conversation grid offers). Beside the loop, the naming role is asked —
+// once, bounded by [teamNameWait], on the cheap model conversations name
+// themselves with — for one or two words naming the work in this
+// conversation, read off its title or its opening words. When that answer
+// comes, the team takes it.
+//
+// THE ANSWER NEVER OVERWRITES A CHOICE. It is applied inside the store's own
+// edit, and only while the team still has the name it was made with: a team
+// the person has renamed meanwhile, a team that is gone, and a name another
+// team already has all leave the team exactly as it is, and so does a failure,
+// a timeout or an answer that is not a name. Nothing is said for any of them;
+// the folder's name was a real name all along.
+
+// helpersNameWords is the most words a team made from one conversation is
+// named with: the work's name, not a description of it.
+const helpersNameWords = 2
+
+// helpersNamedWord is said in the manager's conversation when the team takes
+// its name from the conversation.
+const helpersNamedWord = "named the team %s"
+
+// helpersNamer is the naming ask with a word limit (internal/session's
+// teamname.go, and over the wire internal/remote's teamask.go). An agent that
+// only has the group's ask ([teamNamer]) is asked that, and its answer is cut
+// to [helpersNameWords].
+type helpersNamer interface {
+	NameTeamWords(ctx context.Context, titles []string, words int) (string, error)
+}
+
+// helpersNaming is the one name being asked for: which ask it is (gen), and
+// the team, the name it was made with, and its manager.
+type helpersNaming struct {
+	gen  int
+	id   string
+	from string
+	key  string
+}
+
+// helpersAskName asks for team id's name, beside the loop, from title: the
+// conversation in front, which the row has just made the team's manager.
+func (a *app) helpersAskName(id, from, key, title string) tea.Cmd {
+	a.helpersName.gen++
+	a.helpersName = helpersNaming{gen: a.helpersName.gen, id: id, from: from, key: key}
+	title = strings.TrimSpace(title)
+	if title == "" || a.agent == nil {
+		return nil
+	}
+	worded, hasWords := a.agent.(helpersNamer)
+	grouped, hasGroup := a.agent.(teamNamer)
+	if !hasWords && !hasGroup {
+		return nil
+	}
+	gen := a.helpersName.gen
+	return a.besideLine(func() func(bool) tea.Cmd {
+		ctx, cancel := context.WithTimeout(context.Background(), teamNameWait)
+		defer cancel()
+		var name string
+		var err error
+		if hasWords {
+			name, err = worded.NameTeamWords(ctx, []string{title}, helpersNameWords)
+		} else {
+			name, err = grouped.NameTeam(ctx, []string{title})
+		}
+		return func(bool) tea.Cmd {
+			a.helpersNamed(gen, name, err)
+			return a.wake()
+		}
+	})
+}
+
+// helpersNamed takes answer gen as the team's name, when it is a name and the
+// team will still take it (see above). The edit itself checks again under the
+// store's lock, so a rename made in another window is not undone either.
+func (a *app) helpersNamed(gen int, name string, err error) {
+	n := a.helpersName
+	if gen != n.gen || err != nil {
+		return
+	}
+	words := strings.Fields(strings.ToLower(strings.TrimSpace(name)))
+	if len(words) > helpersNameWords {
+		words = words[:helpersNameWords]
+	}
+	name = ansi.Truncate(strings.Join(words, " "), teamNameCells, "")
+	if name == "" || strings.EqualFold(name, n.from) {
+		return
+	}
+	t, ok := a.teamByID(n.id)
+	if !ok || t.Closed() || t.Name != n.from {
+		return
+	}
+	for _, other := range a.wall.teams {
+		if other.ID != n.id && strings.EqualFold(other.Name, name) {
+			return
+		}
+	}
+	id, from := n.id, n.from
+	if a.teamEdit(func(f *teamstore.File) error {
+		i := teamIndex(f.Teams, id)
+		if i < 0 || f.Teams[i].Closed() || f.Teams[i].Name != from {
+			return nil
+		}
+		for j, other := range f.Teams {
+			if j != i && strings.EqualFold(other.Name, name) {
+				return nil
+			}
+		}
+		f.Teams[i].Name = name
+		return nil
+	}) != nil {
+		return
+	}
+	// THE RECEIPT SAYS THE NAME ONCE. A name in before the store has taken
+	// the team is in the receipt that follows ([app.helpersSettled] reads the
+	// team's name as it is then); one after it is said on its own line.
+	waiting := a.helpers.id == n.id && a.helpers.said.pending
+	if a.frontTabKey() == n.key && !waiting {
+		a.note(fmt.Sprintf(helpersNamedWord, name))
+	}
+	a.touch()
 }
 
 // helpersTab is the conversation in front as a strip tab, and false when there
@@ -233,9 +365,9 @@ func (a *app) helpersNewTeam() tea.Cmd {
 		a.drafts.push([]rune(live))
 	}
 	a.input.setText(line)
-	a.helpers = helpersPending{said: a.teamWriteWatch(nil), key: tab.key, name: name, box: line}
+	a.helpers = helpersPending{said: a.teamWriteWatch(nil), key: tab.key, id: id, name: name, box: line}
 	a.touch()
-	return tea.Batch(a.teamActivate(id), a.syncLists())
+	return tea.Batch(a.teamActivate(id), a.syncLists(), a.helpersAskName(id, name, tab.key, tab.word))
 }
 
 // runHelpersCommand is /helpers: the person's words, or [helpersPrompt], sent
@@ -297,13 +429,17 @@ func (a *app) helpersSettled() tea.Cmd {
 		}
 		return nil
 	}
+	name := p.name
+	if t, ok := a.teamByID(p.id); ok {
+		name = t.Name
+	}
 	if a.frontTabKey() != p.key {
 		if p.ask != "" {
-			a.note(fmt.Sprintf(helpersAwayWord, p.name))
+			a.note(fmt.Sprintf(helpersAwayWord, name))
 		}
 		return nil
 	}
-	a.note(fmt.Sprintf(helpersMadeWord, p.name))
+	a.note(fmt.Sprintf(helpersMadeWord, name))
 	if p.ask == "" {
 		return nil
 	}
