@@ -9,8 +9,9 @@ package session
 // that somebody is waiting on its answer in code. The runner
 // (internal/factory/run's chat executor) opens it with the stage's brief, and
 // the round is over when the conversation has called `stage_result` and
-// stopped, or has stopped without calling it, which the runner records as a
-// stage that did not report.
+// stopped, or has stopped without calling it and every way the runner has of
+// getting a report (its reminders, a turn that must report, a report it makes
+// itself) has come back empty.
 //
 // THE MODEL FILLS THE RESULT AND CODE DECIDES WHAT IT MEANS. Whether `until
 // clean` was met is [factory.Met] asked of what was reported, never the
@@ -27,8 +28,9 @@ import (
 // StageDoor is what one stage conversation reports through. The runner sets
 // it on the conversation it opens for a stage round, and on nothing else.
 //
-//   - Report hands the round's result back. The runner keeps the first one and
-//     refuses a second with a sentence the model reads.
+//   - Report hands the round's result back. The runner keeps the last one, so
+//     a stage that reported early and went on working reports again; a report
+//     it refuses is refused with a sentence the model reads, in the same turn.
 //   - Edit hands the runner a proposal to change the item's stages. Nothing is
 //     applied here: the runner applies it, within the recipe's bounds, once
 //     the round is over.

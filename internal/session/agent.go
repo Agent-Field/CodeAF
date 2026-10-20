@@ -1301,6 +1301,11 @@ type userMessage struct {
 	// 2026-10-09 every such turn arrived with a list of unrelated skills.
 	noSkills bool
 
+	// mustCall is the one tool the turn this message opens must call on its
+	// first answer, "" on every message but a factory stage's last reminder
+	// ([Agent.FollowUpRequiring]). [Agent.startTurnLocked] hands it to the turn.
+	mustCall string
+
 	// skills is the ordered shelf names this message's block carried
 	// (skillturn.go), set by [Agent.attachTurnSkillsLocked] and read by
 	// [Agent.startTurnLocked] to report them as one notice. Empty on every
@@ -1812,6 +1817,9 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	a.teamTurnAt = time.Now()
 	a.teamTurnSerial++
 	a.lastTurnTruncated = false
+	// WHAT THE TURN MUST CALL IS THE OPENING MESSAGE'S, and a turn opened on any
+	// other message owes nothing: a requirement never outlives its turn.
+	a.mustCall = user.mustCall
 	// AND ANOTHER WINDOW HEARS ABOUT IT NOW rather than at the next heartbeat
 	// (taskpresence.go). The nudge never blocks and never takes a lock, which is
 	// what lets it sit under a.mu here.
@@ -2101,7 +2109,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 // turn end coming to drain it, and a message that sat in a queue until the
 // person happened to ask something else would be a silent hold.
 func (a *Agent) FollowUp(text string) (<-chan Event, error) {
-	return a.followUpMarked(text, nil)
+	return a.followUpMarked(text, nil, "")
 }
 
 // FollowUpMessage is [Agent.FollowUp] for a door that knows more about the
@@ -2115,11 +2123,13 @@ func (a *Agent) FollowUpMessage(message Submission) (<-chan Event, error) {
 	if err != nil {
 		return nil, err
 	}
-	return a.followUpMarked(message.Text, mark)
+	return a.followUpMarked(message.Text, mark, "")
 }
 
-// followUpMarked is FollowUp's body with the person's mark beside the words.
-func (a *Agent) followUpMarked(text string, person *messagePresentation) (<-chan Event, error) {
+// followUpMarked is FollowUp's body with the person's mark beside the words,
+// and the one tool the turn must call first when it owes one
+// ([Agent.FollowUpRequiring]).
+func (a *Agent) followUpMarked(text string, person *messagePresentation, mustCall string) (<-chan Event, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil, errors.New("session: empty message")
@@ -2136,6 +2146,7 @@ func (a *Agent) followUpMarked(text string, person *messagePresentation) (<-chan
 	stream := newEventStream()
 	user := userText(text)
 	user.person = person
+	user.mustCall = mustCall
 	if a.running {
 		a.followups = append(a.followups, followUp{message: user, stream: stream})
 		return stream.out, nil

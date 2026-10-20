@@ -226,7 +226,13 @@ func itemComments(it factory.Item) []string {
 // to read the change in it. A pull request's worktree is cut at its head
 // (workdir.go), so the change is a `git diff` against its base; an issue's
 // is the default branch on a branch of the item's own, with nothing of the
-// work in it yet. "" for a round with no folder.
+// work in it until a step puts it there. "" for a round with no folder.
+//
+// THE WORK TREE IS THE SOURCE OF TRUTH FOR WHAT EARLIER STEPS DID. A brief
+// carries what they said; the branch holds what they changed, committed or
+// not, and a step that reads it there needs neither their words nor the
+// network. So once a step has run before this one, the sentence says where
+// that is ([earlierInTree]).
 func workTree(job Job) string {
 	if strings.TrimSpace(job.Dir) == "" {
 		return ""
@@ -235,8 +241,34 @@ func workTree(job Job) string {
 	if isPull(it) {
 		base := PullBase(it)
 		return "your work tree is checked out at this pull request's head. `git diff " + base + "...HEAD` is the whole change, `git diff --stat " + base +
-			"...HEAD` its files and `git log " + base + "..HEAD` its commits; read the files there. You need neither the network nor the forge to see what you are working on."
+			"...HEAD` its files and `git log " + base + "..HEAD` its commits; read the files there. You need neither the network nor the forge to see what you are working on." +
+			earlierInTree(job)
 	}
-	return "your work tree is the repository on the item's own branch, " + itemBranch(it) +
-		", cut from the default branch; what earlier steps changed is in it, and `git diff HEAD` and `git log` show it."
+	return "your work tree is the repository on the item's own branch, " + itemBranch(it) + ", cut from the default branch." + earlierInTree(job)
 }
+
+// earlierInTree is the sentence after the work tree's that points at what the
+// steps before this one changed: ` The work tree, not this brief, is the
+// source of truth for what earlier steps changed: `git log 3f2a9c1b7d0e..HEAD`
+// and `git diff 3f2a9c1b7d0e` on your branch show it.` An issue's commands
+// start at the commit the run began from (Item.ChangeBase), so they show the
+// run's own work, committed and not; a pull request's branch holds its
+// author's change as well as the run's, and the sentence before already names
+// its base, so they are named bare. "" before any step has run.
+func earlierInTree(job Job) string {
+	if len(job.Prior) == 0 {
+		return ""
+	}
+	logs, diff := "`git log`", "`git diff`"
+	if base := strings.TrimSpace(job.Item.ChangeBase); base != "" && !isPull(job.Item) {
+		if len(base) > changeBaseShown {
+			base = base[:changeBaseShown]
+		}
+		logs, diff = "`git log "+base+"..HEAD`", "`git diff "+base+"`"
+	}
+	return " The work tree, not this brief, is the source of truth for what earlier steps changed: " + logs + " and " + diff + " on your branch show it."
+}
+
+// changeBaseShown is how much of the run's starting commit the brief spells:
+// enough for git to find it, short enough to read.
+const changeBaseShown = 12

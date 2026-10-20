@@ -377,8 +377,30 @@ func firstLine(s string) string {
 	return s
 }
 
-// RoundSummary is the one line a finished round leaves on the step.
+// RoundSummary is the one line a finished round leaves on the step, which is
+// what the Timeline shows of it: `reported for the step · …` when the factory
+// made the report ([StageResult.Inferred]), and `… · updated 2 times` when the
+// step reported again after its first report, so a person can see that the
+// step corrected itself and that what they read is its last word.
 func RoundSummary(res StageResult) string {
+	line := roundWords(res)
+	switch {
+	case res.Inferred:
+		return ReportedForTheStep + " · " + line
+	case res.Reports == 2:
+		return line + " · updated 1 time"
+	case res.Reports > 2:
+		return line + " · updated " + strconv.Itoa(res.Reports-1) + " times"
+	}
+	return line
+}
+
+// ReportedForTheStep is how a report the factory made for a step is marked
+// wherever a person reads it.
+const ReportedForTheStep = "reported for the step"
+
+// roundWords is what a round said, in one line.
+func roundWords(res StageResult) string {
 	if line := firstLine(res.Output); line != "" {
 		return line
 	}

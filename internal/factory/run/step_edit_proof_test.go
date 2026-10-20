@@ -154,7 +154,9 @@ func TestEditsBeforeProofStillWork(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			it := proofItem(factory.Item{State: factory.StateRunning}, factory.PhasePending, 0)
 			it.Stream.Phases[1].State = factory.PhaseRunning
-			lines, err := EditStepsItem(&it, e, factory.DefaultRecipe())
+			// A recipe that fixes nothing: the shipped default fixes proof, and
+			// this pins what the proof boundary alone allows.
+			lines, err := EditStepsItem(&it, e, factory.Recipe{})
 			if err != nil || len(lines) == 0 {
 				t.Fatalf("refused: %v %v", lines, err)
 			}

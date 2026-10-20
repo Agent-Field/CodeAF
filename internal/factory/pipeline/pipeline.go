@@ -111,7 +111,8 @@ type Size struct {
 	Issue   string
 }
 
-// Step is one prompt. Max of 0 is one round. Until is the sentence the step
+// Step is one prompt. Max of 0 is one round; a shipped step carries its own
+// ([factory.DefaultRecipe]), which a file's max replaces. Until is the sentence the step
 // stops on; the four words the runner checks are done, clean, green and proven,
 // and any other sentence is carried in the prompt.
 //
@@ -235,9 +236,30 @@ type presence struct {
 }
 
 // Defaults is the file a repository with nothing of its own runs.
+//
+// ITS STEPS ARE [factory.DefaultRecipe], read back as a file: each kind's list
+// is that recipe's stages by name, every shipped stage is a built-in step, and
+// fixed is the shipped stages that are fixed. So Defaults().Recipe() is the
+// default recipe, stage for stage, and a job a start rule starts on a repository
+// with no file runs exactly what one a person starts runs.
 func Defaults() File {
+	recipe := factory.DefaultRecipe()
+	pipeline := map[factory.Kind][]string{}
+	for _, kind := range []factory.Kind{factory.KindIssue, factory.KindPR, factory.KindCI} {
+		names := []string{}
+		for _, st := range recipe.For(kind) {
+			names = append(names, st.Name)
+		}
+		pipeline[kind] = names
+	}
+	fixed := []string{}
+	for _, st := range factory.ShippedStages() {
+		if st.Fixed {
+			fixed = append(fixed, st.Name)
+		}
+	}
 	return File{
-		DefaultBudget: factory.DefaultJobBudget,
+		DefaultBudget: recipe.DefaultBudget,
 		Start: Start{
 			Labels:   []string{},
 			MaxSize:  DefaultMaxSize,
@@ -249,29 +271,37 @@ func Defaults() File {
 			PRLines: [2]int{DefaultPRSmall, DefaultPRMedium},
 			Issue:   DefaultIssueMode,
 		},
-		Pipeline: map[factory.Kind][]string{
-			factory.KindIssue: {"plan", "approve", "write", "test", "review", "proof"},
-			factory.KindPR:    {"read", "review", "proof"},
-			factory.KindCI:    {"read", "write", "test", "proof"},
-		},
-		Steps: Builtins(),
-		Fixed: []string{"approve", "proof"},
-		Rules: []string{},
+		Pipeline: pipeline,
+		Steps:    Builtins(),
+		Fixed:    fixed,
+		Rules:    []string{},
 	}
 }
 
-// builtinOrder is the order [FormatSteps] prints. The map is the prompts.
-var builtinOrder = []string{"plan", "approve", "write", "test", "review", "security", "proof", "read"}
+// builtinOrder is the order [FormatSteps] prints, the shipped stages' own.
+// builtinTable is each one as a step.
+var builtinOrder, builtinTable = builtinSteps()
 
-var builtinTable = map[string]Step{
-	"plan":     {Prompt: "read the issue and the code it names; write a plan and the list of files it will touch", Until: "the plan names its files"},
-	"approve":  {Until: "you"},
-	"write":    {Prompt: "carry out the plan in this worktree", Until: "the plan is done"},
-	"test":     {Prompt: "find and run the repo's tests; fix what fails", Until: "green"},
-	"review":   {Prompt: "review the diff as a careful colleague; fix what you find", Until: "clean"},
-	"security": {Prompt: "review for injection, authz, secrets handling", Until: "no findings"},
-	"proof":    {Prompt: "show each claim in its own medium", Until: "every claim has evidence"},
-	"read":     {Prompt: "read the change at its head and the thread; say what it does and what it risks", Until: "summarised"},
+// builtinSteps reads [factory.ShippedStages] as steps: the ask is the prompt,
+// the until is the runner's own word, and the rounds and fanout travel as they
+// are. Approve is a person, written the way a markdown approve step is read.
+func builtinSteps() ([]string, map[string]Step) {
+	stages := factory.ShippedStages()
+	order := make([]string, 0, len(stages))
+	table := make(map[string]Step, len(stages))
+	for _, st := range stages {
+		order = append(order, st.Name)
+		if factory.IsApprove(st) {
+			table[st.Name] = Step{Until: "you"}
+			continue
+		}
+		kind := string(st.Kind)
+		if st.Kind == factory.StageChat {
+			kind = ""
+		}
+		table[st.Name] = Step{Prompt: st.Ask, Kind: kind, When: st.When, Effort: st.Effort, Fanout: st.Fanout, Until: st.Until, Max: st.Max}
+	}
+	return order, table
 }
 
 // Builtins are the prompts codeaf ships. A pipeline names them; a file overrides

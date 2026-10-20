@@ -38,10 +38,12 @@ import (
 //   - it is UNATTENDED: nobody is at its keyboard, so a card it raises takes
 //     its default and a task's landing takes the check road's accept. It has
 //     NO GOAL OWNER, because its runner already judges what it reports
-//     (internal/session's newPrincipalFor): it works until it calls
-//     `stage_result`, and the runner asks once for a report it forgot. The
-//     budget's wall, [factoryStageWall], bounds what it hands out to tasks,
-//     and the runner bounds the round with the same figure;
+//     (internal/session's newPrincipalFor): it works until it stops, its last
+//     `stage_result` standing, and the runner asks for a report it forgot,
+//     then makes it report on a turn that must ([stageConversation.NoteRequiring]),
+//     then makes one for it ([stageConversation.Infer]). The budget's wall,
+//     [factoryStageWall], bounds what it hands out to tasks, and the runner
+//     bounds the round with the same figure;
 //   - it runs at the ALLOW POSTURE, what --yolo gives, behind the headless
 //     gate ([stageApprovalGate]): a stage that writes must be able to edit and
 //     run things in its checkout, and nothing it does may wait on a person who
@@ -364,9 +366,16 @@ func (c *stageConversation) drain(events <-chan session.Event) {
 }
 
 // fail keeps a turn's failure, in words when it came with none.
+//
+// A TURN A SPENDING LIMIT REFUSED IS HANDED ON AS A STOP ([factoryrun.SpendStop]),
+// told apart by what refused it and never by its words, so the round ends on
+// the limit rather than trying a turn that would be refused again.
 func (c *stageConversation) fail(err error) {
 	if err == nil {
 		err = errors.New("the turn failed without a reason")
+	}
+	if errors.Is(err, session.ErrSpendRail) || errors.Is(err, session.ErrSpendUnverified) {
+		err = factoryrun.SpendStop{Daily: session.IsDailyLimit(err), Said: err.Error()}
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -398,11 +407,40 @@ func (c *stageConversation) Note(_ context.Context, words string) error {
 	return c.deliver(session.CarryOn(words))
 }
 
+// NoteRequiring is Note on a turn of its own whose first answer must call
+// tool (internal/session's FollowUpRequiring): never steered into a running
+// turn, which owes nothing, but queued behind it when one is running.
+func (c *stageConversation) NoteRequiring(_ context.Context, words, tool string) error {
+	return c.deliverWith(session.CarryOn(words), func(text string) (<-chan session.Event, error) {
+		return c.agent.FollowUpRequiring(text, tool)
+	})
+}
+
+// LastWords is the last thing the conversation's model said in words.
+func (c *stageConversation) LastWords() string { return c.agent.LastWords() }
+
+// Infer makes the step's report in one short call apart from the
+// conversation's turns (internal/session's InferStageResult).
+func (c *stageConversation) Infer(ctx context.Context, ask string) (factory.StageResult, error) {
+	return c.agent.InferStageResult(ctx, ask)
+}
+
 // deliver steers the running turn, or starts the next one. A conversation that
 // had already gone idle is followed again from that turn, so [Wait] answers
 // when it is idle once more rather than at once.
 func (c *stageConversation) deliver(words string) error {
-	events, done, idle, err := c.startTurn(words)
+	return c.deliverWith(words, func(text string) (<-chan session.Event, error) {
+		events, err := c.agent.Steer(text)
+		if errors.Is(err, session.ErrNothingToSteer) {
+			events, err = c.agent.FollowUp(text)
+		}
+		return events, err
+	})
+}
+
+// deliverWith is deliver with the way the words reach the agent given.
+func (c *stageConversation) deliverWith(words string, start func(string) (<-chan session.Event, error)) error {
+	events, done, idle, err := c.startTurn(words, start)
 	if err != nil {
 		return err
 	}
@@ -414,16 +452,13 @@ func (c *stageConversation) deliver(words string) error {
 	return nil
 }
 
-// startTurn steers the running turn or starts the next one, under the lock
+// startTurn hands the words to the agent through start, under the lock
 // [stageConversation.settle] closes done under, and answers whether the
 // conversation had gone idle (so done is a new one, to follow again).
-func (c *stageConversation) startTurn(words string) (<-chan session.Event, chan struct{}, bool, error) {
+func (c *stageConversation) startTurn(words string, start func(string) (<-chan session.Event, error)) (<-chan session.Event, chan struct{}, bool, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	events, err := c.agent.Steer(words)
-	if errors.Is(err, session.ErrNothingToSteer) {
-		events, err = c.agent.FollowUp(words)
-	}
+	events, err := start(words)
 	if err != nil {
 		return nil, nil, false, err
 	}

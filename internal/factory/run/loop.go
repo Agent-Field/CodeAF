@@ -868,6 +868,13 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		if !lp.capCheck(c, i, name) {
 			return false
 		}
+		// A SPENDING LIMIT IS A STOP, NOT A SHORTFALL (stagereport.go's
+		// [SpendStop]): another round would be refused before it began, so the
+		// job stops on the limit's own words and nothing is asked.
+		if spendStopped(res) {
+			lp.failStop(c, name, errors.New(res.Output))
+			return false
+		}
 		// WHERE THE PERSON READS A STEP BEFORE THE RUN GOES ON IS AN APPROVE
 		// STEP after it, never a question the step asks of itself.
 		if factory.Met(st, res) {
@@ -922,7 +929,8 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 // until holding: the note the step keeps, and why, "" when the note says it.
 //
 //   - `plan stopped without reporting` — the conversation never called
-//     `stage_result`, even when asked once (chatstage.go);
+//     `stage_result`, however it was asked, and no report could be made for
+//     it (stagereport.go);
 //   - `plan did not finish: <what it said>` — a one-try step that reported it
 //     could not;
 //   - `test is not proven: 1 of 2 claims shown` — a one-try step whose until
@@ -1076,10 +1084,19 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 	// conversation opens every stage's brief, and what earlier stages left
 	// follows it in order.
 	notes := append(append([]string(nil), it.Notes...), lp.notes[c.id]...)
+	// EACH EARLIER RESULT IS NAMED BY ITS OWN STEP, read off the run's phase
+	// it came from, so the brief says whose report it is even when an approve
+	// step between them reported nothing.
 	var prior []factory.StageResult
+	var priorNames []string
 	for k := 0; k < i; k++ {
 		if res, ok := lp.results[c.id][k]; ok {
 			prior = append(prior, res)
+			name := ""
+			if it.Stream != nil && k < len(it.Stream.Phases) {
+				name = it.Stream.Phases[k].Name
+			}
+			priorNames = append(priorNames, name)
 		}
 	}
 	// A ROUND AFTER THE FIRST READS WHAT THE ROUND BEFORE IT FOUND. The
@@ -1101,19 +1118,20 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 		}
 	}
 	return Job{
-		Item:   it,
-		Stage:  st,
-		Index:  index,
-		Round:  round,
-		Notes:  notes,
-		Prior:  prior,
-		Last:   last,
-		Dir:    dir,
-		dirErr: dirErr,
-		Steer:  c.steer,
-		Models: c.models,
-		Log:    func(line string) { lp.say(c, "thought", line) },
-		Spend:  lp.spender(c),
+		Item:       it,
+		Stage:      st,
+		Index:      index,
+		Round:      round,
+		Notes:      notes,
+		Prior:      prior,
+		PriorNames: priorNames,
+		Last:       last,
+		Dir:        dir,
+		dirErr:     dirErr,
+		Steer:      c.steer,
+		Models:     c.models,
+		Log:        func(line string) { lp.say(c, "thought", line) },
+		Spend:      lp.spender(c),
 		Ask: func(ctx context.Context, q factory.Asked) (string, error) {
 			return lp.inbox(ctx, c, i, stageLabel(st), q)
 		},

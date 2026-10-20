@@ -51,7 +51,7 @@ func TestTheManagersBriefIsTheFiveBlocksThenTheFacts(t *testing.T) {
 		}
 	}
 	for _, fact := range []string{"budget $5 · thinking strong", "refunds count twice", "codeaf read it: a small fix in the ledger",
-		"stages:", "3. write · chat · make the change in the checkout · until done · fanout per file", "policy:\n- tests pass before anything posts",
+		"stages:", "3. write · chat · make the change in the checkout · until done · max 2", "policy:\n- tests pass before anything posts",
 		"habits:\n- keep the changelog", "Its item field is 12"} {
 		if !strings.Contains(brief, fact) {
 			t.Errorf("the facts lack %q:\n%s", fact, brief)
@@ -342,7 +342,11 @@ func TestTheManagersBriefSaysThinkingPerStepAndNeverOneForAMixedJob(t *testing.T
 		{"uniform beside an off step", map[string]string{"plan": "strong", "write": "strong", "test": "strong", "review": "strong", "proof": "strong", "security": "cheap"}, nil,
 			"budget $5 · thinking strong", "effort cheap · off"},
 	} {
-		it := factory.Item{ID: 12, Repo: "acme/web", Title: "fix the ledger", Cap: 5, Stages: factory.CopyStages(recipe.For(factory.KindIssue))}
+		// AN OFF STEP IS LAID ON BY HAND: the shipped default has none since
+		// 2026-10-20, and this is the shape whose thinking must not count.
+		stages := factory.CopyStages(recipe.For(factory.KindIssue))
+		stages = factory.PlaceStage(stages, factory.Stage{Name: "security", Kind: factory.StageChat, Ask: "secrets", Until: factory.UntilClean, On: false}, "after review")
+		it := factory.Item{ID: 12, Repo: "acme/web", Title: "fix the ledger", Cap: 5, Stages: stages}
 		for i, st := range it.Stages {
 			it.Stages[i].Effort = c.think[st.Name]
 		}

@@ -56,25 +56,27 @@ func TestParseTheOwnersRecipe(t *testing.T) {
 		t.Fatalf("approve = %+v", a)
 	}
 	is = append(is[:1:1], is[2:]...)
-	// A line with no ask copies the default's stage and lays its knobs over.
-	if w := is[1]; w.Ask != "make the change in the checkout" || w.Fanout != "3" || w.Until != "done" {
+	// A line with no ask copies the shipped stage and lays its knobs over.
+	if w := is[1]; w.Ask != "make the change in the checkout" || w.Fanout != "3" || w.Until != "done" || w.Max != 2 {
 		t.Fatalf("write = %+v", w)
 	}
 	if ts := is[2]; ts.Kind != factory.StageCheck || ts.Ask != "go test ./..." || ts.Until != "clean" || ts.Max != 2 {
 		t.Fatalf("test = %+v", ts)
 	}
-	// Security is off in the default; a line that names it runs it.
-	if s := is[4]; s.When != "touches auth" || !s.On || s.Ask != "secrets, injection and authz" {
+	// Security is in no default list; a line that names it runs the shipped one.
+	if s := is[4]; s.When != "touches auth" || !s.On || s.Ask != "review for injection, authz, secrets handling" {
 		t.Fatalf("security = %+v", s)
 	}
 	pr := r.For(factory.KindPR)
 	if len(pr) != 4 || pr[1].Kind != factory.StageCheck || pr[1].Ask != "ci" {
 		t.Fatalf("pr = %+v", pr)
 	}
-	if rv := pr[2]; rv.Ask != "findings as a comment" || rv.Fanout != "per-finding" || rv.Max != 2 {
+	// ONE NAME IS ONE SHIPPED STAGE: a pull request's review is the issue's.
+	if rv := pr[2]; rv.Ask != "review the diff as a careful colleague; fix what you find" || rv.Fanout != "per-finding" || rv.Max != 2 {
 		t.Fatalf("pr review = %+v", rv)
 	}
-	if pf := pr[3]; pf.Name != "proof" || pf.Ask != "the sheet" || pf.Until != "proven" {
+	// The copy is never fixed: only the line's own `fixed` fixes it.
+	if pf := pr[3]; pf.Name != "proof" || pf.Ask != "show each claim in its own medium" || pf.Until != "proven" || pf.Max != 3 || pf.Fixed {
 		t.Fatalf("pr proof shorthand = %+v", pf)
 	}
 	// The missing ci section is the default's.
@@ -164,7 +166,7 @@ func TestFormatRoundTripsTheDefault(t *testing.T) {
 	if again := factory.Format(r); again != first {
 		t.Fatalf("not byte-stable:\n%s\n---\n%s", first, again)
 	}
-	if !strings.Contains(first, "6. security · chat · secrets, injection and authz · until clean · off") {
+	if !strings.Contains(first, "5. review · chat · review the diff as a careful colleague; fix what you find · until clean · max 3\n6. proof · chat · show each claim in its own medium · until proven · max 3 · fixed") {
 		t.Fatalf("default file =\n%s", first)
 	}
 	// The owner's file comes back in the same shape it went in.
@@ -228,6 +230,55 @@ func TestMetReadsTheUntilWords(t *testing.T) {
 	for _, c := range cases {
 		if got := factory.Met(st(c.until), c.r); got != c.want {
 			t.Errorf("Met(until %q, %+v) = %v, want %v", c.until, c.r, got, c.want)
+		}
+	}
+}
+
+// A REPORT THAT CONTRADICTS ITS OWN RULE IS AT FAULT, AND NOTHING ELSE IS. The
+// fault is the fix in the step's words; an honest shortfall has none, and a
+// report with a fault never meets its until, because the fault is the judge's
+// own rule read early.
+func TestReportFaultIsTheJudgesRuleReadEarly(t *testing.T) {
+	st := func(u string) factory.Stage { return factory.Stage{Until: u} }
+	shown := factory.Claim{Text: "a", OK: true, Evidence: "go test ./ledger passes"}
+	cases := []struct {
+		until string
+		r     factory.StageResult
+		want  string
+	}{
+		// until clean: done with findings it says are open.
+		{factory.UntilClean, factory.StageResult{Done: true, Findings: 2},
+			"you reported 2 findings still open: fix them and report again, or report done: false"},
+		{factory.UntilClean, factory.StageResult{Done: true, Findings: 1},
+			"you reported 1 finding still open: fix it and report again, or report done: false"},
+		{factory.UntilClean, factory.StageResult{Done: false, Findings: 2}, ""},
+		{factory.UntilClean, factory.StageResult{Done: true}, ""},
+		// until proven: a claim marked ok that shows nothing, done or not.
+		{factory.UntilProven, factory.StageResult{Done: true, Claims: []factory.Claim{shown, {Text: "b", OK: true, Evidence: "  "}}},
+			"claim 2 has no evidence: add what shows it, or set ok: false"},
+		{factory.UntilProven, factory.StageResult{Done: false, Claims: []factory.Claim{{Text: "a", OK: true}}},
+			"claim 1 has no evidence: add what shows it, or set ok: false"},
+		{factory.UntilProven, factory.StageResult{Done: true},
+			"you reported done with no claims: add each claim with what shows it, or report done: false"},
+		// An honest shortfall is no fault: a claim not shown, with or without
+		// what was seen, and a proof that is not done.
+		{factory.UntilProven, factory.StageResult{Done: true, Claims: []factory.Claim{shown, {Text: "b", OK: false, Evidence: "TestRefund fails"}}}, ""},
+		{factory.UntilProven, factory.StageResult{Done: true, Claims: []factory.Claim{{Text: "b", OK: false}}}, ""},
+		{factory.UntilProven, factory.StageResult{Done: false}, ""},
+		{factory.UntilProven, factory.StageResult{Done: true, Claims: []factory.Claim{shown}}, ""},
+		// The rules the judge does not read are not read here either.
+		{factory.UntilDone, factory.StageResult{Done: true, Findings: 3, Claims: []factory.Claim{{Text: "a", OK: true}}}, ""},
+		{"", factory.StageResult{Done: true, Findings: 3}, ""},
+		{factory.UntilGreen, factory.StageResult{Done: true, Findings: 3}, ""},
+		{"until whenever", factory.StageResult{Done: true, Findings: 3}, ""},
+	}
+	for _, c := range cases {
+		got := factory.ReportFault(st(c.until), c.r)
+		if got != c.want {
+			t.Errorf("ReportFault(until %q, %+v) = %q, want %q", c.until, c.r, got, c.want)
+		}
+		if got != "" && factory.Met(st(c.until), c.r) {
+			t.Errorf("until %q: a report at fault (%q) met its until", c.until, got)
 		}
 	}
 }

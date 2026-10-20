@@ -56,6 +56,12 @@ type Job struct {
 	// stage order, so a review reads what write produced and a post reads
 	// whether the checks were green.
 	Prior []factory.StageResult
+	// PriorNames names each of Prior's results by its step, one for one, so a
+	// brief can say whose report it carries; a name missing here is read as
+	// the result's place (`stage 2`). The hand-over lane added it, additively:
+	// the item's stages could not name them, because an approve step reports
+	// nothing and every name after it slid by one.
+	PriorNames []string
 	// Last is this same stage's result from the round before, nil on round 1.
 	// A chat stage that loops on `until clean`, `green` or `proven` reads it
 	// to fix what that round found before it looks again. The rounds lane

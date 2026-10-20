@@ -164,9 +164,9 @@ func TestFactoryItemDoorAppliesEachFieldAndRefusesUnderFixed(t *testing.T) {
 	}
 	// THE SAVED VALUES ARE EACH STEP'S OWN: review is off and thinks strong too,
 	// the approve step is a person's and has none, and proof is the recipe's
-	// (fixed), so it keeps its own.
+	// (fixed), so it keeps its own. The default has no security step to think.
 	saved := session.ItemFactsOf(it).Thinking
-	for name, want := range map[string]string{"plan": "strong", "write": "strong", "test": "strong", "review": "strong", "security": "strong", "proof": ""} {
+	for name, want := range map[string]string{"plan": "strong", "write": "strong", "test": "strong", "review": "strong", "security": "", "proof": ""} {
 		if saved[name] != want {
 			t.Fatalf("%s saved as %q, want %q (all: %v)", name, saved[name], want, saved)
 		}
