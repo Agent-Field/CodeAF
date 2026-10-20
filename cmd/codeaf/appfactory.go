@@ -777,6 +777,11 @@ func (b *appBackend) FactoryList(ctx context.Context) (appwire.FactoryList, erro
 		})
 	}
 	wg.Wait()
+	for i, row := range rows {
+		if row.Local && row.Resume && out[i].State == appwire.FactoryUnreachable && localHeldElsewhere() {
+			out[i].Reason = appLocalHeldElsewhere
+		}
+	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return appwire.FactoryList{Factories: out}, nil
 }

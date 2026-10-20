@@ -36,7 +36,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -44,7 +43,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -53,6 +51,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/leave"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/redact"
@@ -117,13 +116,20 @@ func runApp(args []string) error {
 	os.Stdout = os.Stderr
 	defer func() { os.Stdout = wire }()
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
+	// THE ONE ROAD OUT (internal/leave): a first SIGTERM, SIGINT or SIGHUP
+	// starts the quit's careful wrap-up, and a second ends the process at once.
+	// The app's process ending is the app leaving too, even while something
+	// else still holds its pipe open, and leaving is bounded (appleave.go).
+	ctx, leaving := context.WithCancel(context.Background())
+	defer leaving()
+	defer leave.On(leaving, nil)()
+	guard.Go("app/parent", func() { watchAppParent(ctx, os.Getppid, appParentPoll, leaving) })
 	// THE APP'S KEYS LIVE IN THIS PROCESS'S MEMORY, installed before anything
 	// can read a key, and no profile write may put one on disk while they are.
 	defer config.UseAppCredentials(config.NewAppCredentials())()
 	server := appwire.NewServer(wire)
 	backend := newAppBackend(server, appOpenInProcess)
+	guard.Go("app/leave", func() { leaveWithin(ctx, backend.left, appLeaveWait, appLeaveNow) })
 	// Capture the previous holders before crews, quit resumes or client calls
 	// can open a journal and overwrite the evidence with this process's claim.
 	backend.snapshotCloseClaims()
@@ -437,6 +443,10 @@ type appBackend struct {
 
 	sweepStop chan struct{}
 	sweepDone chan struct{}
+	// left closes when Close begins, whatever started the leaving: the app's
+	// pipe closing, its shutdown request, a signal or the app's process ending.
+	// runApp bounds the leaving from that moment (appleave.go).
+	left chan struct{}
 	// spent is the last figure spend.changed said, so it is said on a change.
 	spent float64
 	// mint makes a new conversation's folder and answers its transcript path:
@@ -740,6 +750,7 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 		agents:    map[string]*appAgent{},
 		sweepStop: make(chan struct{}),
 		sweepDone: make(chan struct{}),
+		left:      make(chan struct{}),
 		mint:      appMint,
 	}
 	b.emit = b.newAppInbox(emit)
@@ -3537,6 +3548,9 @@ func (b *appBackend) Close() error {
 			return
 		}
 		b.closing = true
+		if b.left != nil {
+			close(b.left)
+		}
 		if b.reportCancel != nil {
 			b.reportCancel()
 		}
@@ -3560,11 +3574,16 @@ func (b *appBackend) Close() error {
 	if already {
 		return nil
 	}
+	// THIS MACHINE'S FACTORY IS LET GO BEFORE ANYTHING THAT WAITS ON A
+	// CONVERSATION. Stopping the close watch waits for a carry-on that may be
+	// opening a conversation, and nothing below it is the factory's business;
+	// the next engine cannot serve the factory until this one has let it go.
+	// Its runner stops here the way a quit has always stopped it.
+	b.closeLocalFactory()
 	b.stopCloseWatch()
 	if balances != nil {
 		balances.stop()
 	}
-	b.closeLocalFactory()
 	b.closeFactories()
 	// What was mid-reply and what was running is written down before anything
 	// stops, so the next start can carry on (appquit.go).

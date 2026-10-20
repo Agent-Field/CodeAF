@@ -38,8 +38,13 @@ state again first. An app that does not know the word treats it as a failure.
    The app refuses a `contract` it does not know and kills the child.
 3. Requests and events flow.
 4. codeaf exits cleanly (closing every agent engine it started) when its stdin
-   reaches EOF, on SIGTERM/SIGINT, or on request `shutdown`. The app closes
-   stdin to stop it, then kills after 8 s.
+   reaches EOF, when the process that started it ends (even while something
+   else still holds its pipes), on SIGTERM/SIGINT/SIGHUP, or on request
+   `shutdown`. The app closes stdin to stop it, then kills after 8 s. Leaving
+   lets go of this machine's factory first (its runner stopped as a quit stops
+   it, then its service, `serve.json` and `serve.lock`), so the next codeaf can
+   serve it. Leaving is bounded: a codeaf still wrapping up 30 s after it began
+   leaving ends anyway, and a second SIGTERM/SIGINT/SIGHUP ends it at once.
 5. QUIT PAUSES, REOPEN RESUMES. Before anything stops, codeaf writes down every
    agent in the middle of a reply and every task it had running. A reply is
    stopped where it stands; at the next start codeaf opens that agent, sends
@@ -2408,7 +2413,7 @@ Feature `factory.remote` is present only when the engine serves the typed factor
 | method | params | result |
 |---|---|---|
 | `factory.capabilities` | none | FactoryCapabilities |
-| `factory.list` | none | FactoryList (state: ok, unreachable, signed_out, github_expired) |
+| `factory.list` | none | FactoryList (state: ok, unreachable, signed_out, github_expired; reason?) |
 | `factory.attach` | url, token? | FactoryConnection |
 | `factory.detach` | factory | empty |
 | `factory.me` | factory | FactoryMe (public identity, github_signed_in, can_sign_out, github_sign_in_available, invite_available) |
@@ -2726,7 +2731,7 @@ This machine's factory starts nothing by itself and asks no model by itself. Onc
 
 The list marks the engine's own row (`local` in `<home>/app/factories.json`) and gives it the fixed id `factory_local`. The id is not derived from the address (the port is new at every launch), so a saved tab keeps naming it. A service the engine itself served on an explicit `factory.local_start` also marks the row `resume`: the person's standing choice, holding no credential. The row stays at quit whether or not it is marked `resume`, and `factory.detach` is the one thing that removes it; `factory.detach` of `factory_local` also ends the choice, and an explicit `factory.local_start` makes it again.
 
-Resume. When the app opens again, the first `factory.list`, `factory.local_status` or read of `factory_local` serves the same floor again, on a new port with a new bearer, with its runner and GitHub poll (no job, triage or model call), and the row's url is refreshed before the answer. A profile with no `resume` row stays unstarted. A resume never joins or duplicates another codeaf's service: while one holds the election the row stays unreachable until the person starts again, which joins it as `other_codeaf` and neither sets nor clears `resume`. A row left by an earlier release, or one made by joining another codeaf, has no `resume` and is not resumed (it stays listed, unreachable until a start). A profile whose rows are already gone has nothing to resume: start again with `factory.local_start`; no old remote id is mapped to it.
+Resume. When the app opens again, the first `factory.list`, `factory.local_status` or read of `factory_local` serves the same floor again, on a new port with a new bearer, with its runner and GitHub poll (no job, triage or model call), and the row's url is refreshed before the answer. A profile with no `resume` row stays unstarted. A resume never joins or duplicates another codeaf's service: while one holds the election the row stays unreachable, and a `resume` row says why in its `reason`: "Another codeaf on this machine is still running this factory. It comes back here once that one stops." Every `factory.list` tries the resume again, so the first list after that codeaf lets go (its service closes, or its process is gone) serves the factory here. A person may instead start again, which joins it as `other_codeaf` and neither sets nor clears `resume`. A row left by an earlier release, or one made by joining another codeaf, has no `resume` and is not resumed (it stays listed, unreachable until a start). A profile whose rows are already gone has nothing to resume: start again with `factory.local_start`; no old remote id is mapped to it.
 
 One row per connected factory. `factory.attach`, an access link or `factory.local_adopt` for an address already listed (the live local service's included) resolves to that row's id and adds none. The local row is answered without a second probe. Attaching by address leaves `resume` and the engine's own bearer as they were: it keeps the bearer it holds. Only a completed explicit sign-in through an access link installs the verified caller grant, replacing that bearer for the row.
 
