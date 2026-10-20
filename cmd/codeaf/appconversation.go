@@ -127,6 +127,12 @@ func (b *appBackend) DeleteAgent(id string) error {
 	if !ok {
 		return appwire.Errorf(appwire.CodeUnknownMethod, "this engine does not offer permanent deletion")
 	}
+	// Deletion holds the same service fence as Close until the record and
+	// its live handle are gone. A failed stop leaves the record available.
+	defer b.fenceAgentServices(id)()
+	if err := b.stopAgentServices(id); err != nil {
+		return err
+	}
 	if err := c.DeleteOwnConversation(); err != nil {
 		return err
 	}

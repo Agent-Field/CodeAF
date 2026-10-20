@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 
@@ -74,5 +75,46 @@ func TestAppSkillsShareAttachmentDoorsAndEmitState(t *testing.T) {
 	}
 	if count != 4 || last.Agent != agent.ID || !reflect.DeepEqual(last.Names, []string{"unknown"}) {
 		t.Fatalf("events: %d %+v", count, last)
+	}
+}
+
+type failingSkillFolders struct{ *appSkillConv }
+
+func (c *failingSkillFolders) SkillFolders() ([]skills.Skill, error) {
+	return nil, errors.New("folder discovery failed")
+}
+
+func TestAppSkillsRefusesPartialShelfWhenDiscoveryFails(t *testing.T) {
+	conv := &failingSkillFolders{&appSkillConv{fakeConversation: &fakeConversation{}, skills: &session.Agent{}}}
+	b := newAppBackend(newAppRecorder(), func(ask appOpenAsk) (*appConn, error) {
+		return &appConn{Conv: conv, Workspace: ask.Workspace, Transcript: appFakeTranscript, Release: func() {}}, nil
+	})
+	defer b.Close()
+	a, err := mustCreate(t, b, appwire.CreateAsk{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows, err := b.ListSkills(a.ID); err == nil || rows != nil {
+		t.Fatalf("partial shelf returned: %+v, %v", rows, err)
+	}
+}
+
+// An older host exposes the remote handle's methods but never advertised discovery.
+type olderSkillFolders struct{ *failingSkillFolders }
+
+func (c *olderSkillFolders) SkillFoldersSupported() bool { return false }
+
+func TestAppSkillsOlderHostUsesShelfWithoutDiscovery(t *testing.T) {
+	conv := &olderSkillFolders{&failingSkillFolders{&appSkillConv{fakeConversation: &fakeConversation{}, skills: &session.Agent{}}}}
+	b := newAppBackend(newAppRecorder(), func(ask appOpenAsk) (*appConn, error) {
+		return &appConn{Conv: conv, Workspace: ask.Workspace, Transcript: appFakeTranscript, Release: func() {}}, nil
+	})
+	defer b.Close()
+	a, err := mustCreate(t, b, appwire.CreateAsk{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows, err := b.ListSkills(a.ID); err != nil || len(rows) != 1 || rows[0].Name != "reviewer" {
+		t.Fatalf("older host shelf: %+v, %v", rows, err)
 	}
 }

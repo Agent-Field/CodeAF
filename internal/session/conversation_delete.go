@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/service"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -26,6 +28,18 @@ func (a *Agent) CloseForDeletion() error {
 }
 
 func (a *Agent) closeForDeletion(grace time.Duration) error {
+	// A KEPT SERVICE OUTLIVES AN ORDINARY CLOSE. Permanent deletion fences
+	// new starts until the owner has stopped and its journal lock is released.
+	if sup := a.config.Services; sup != nil {
+		owner := a.keepOwner()
+		defer sup.Fence(owner)()
+		ctx, cancel := context.WithTimeout(context.Background(), service.StopGrace+5*time.Second)
+		defer cancel()
+		if _, err := sup.StopOwnerWait(ctx, owner, "agent closed"); err != nil {
+			return err
+		}
+	}
+
 	a.InterruptFor(StopByPerson)
 	a.mu.Lock()
 	a.deleting = true
