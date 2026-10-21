@@ -24,6 +24,9 @@ type Approver struct {
 	SyncURL  string
 	Replaces []string
 	Now      func() time.Time
+	// BeforeApprove publishes the approving computer before the grant becomes
+	// visible, so Paired. cannot precede its device record on the joiner's list.
+	BeforeApprove func(context.Context) error
 }
 
 // Asking is one device waiting to be let in, as the approving person sees it.
@@ -83,6 +86,11 @@ func (a Approver) Approve(ctx context.Context, as Asking) error {
 	body, err := a.approval(as)
 	if err != nil {
 		return err
+	}
+	if a.BeforeApprove != nil {
+		if err := a.BeforeApprove(ctx); err != nil {
+			return err
+		}
 	}
 	return phraseDecision(a.Dir.ApproveRequest(ctx, as.Ref.Code, body))
 }

@@ -83,6 +83,9 @@ func ownDeviceRecord(ctx context.Context, dir string, route pair.Mailbox) error 
 // pairing itself succeeded, so a record that did not land is one line on the
 // screen and a clean exit — the next chat start writes the record anyway.
 func (d pairDoor) recordOwnDeviceOrSay(ctx context.Context, route pair.Mailbox) {
+	if d.ownRecord == nil {
+		return
+	}
 	if err := d.ownRecord(ctx, route); err != nil {
 		d.term.say(pair.RecordUnsaidLine(err))
 	}
@@ -169,9 +172,9 @@ func (d pairDoor) dispatch(ctx context.Context, args []string, relay string, rep
 	case len(args) == 1 && args[0] == "approve":
 		return wrongCall(approveUsage)
 	case len(args) == 2 && args[0] == "approve" && !code && !replace:
-		return d.approve(ctx, relay, args[1])
+		return d.withApprovalRecord().approve(ctx, relay, args[1])
 	case len(args) == 1 && !code && pair.IsLinkText(args[0]):
-		return d.approve(ctx, relay, args[0])
+		return d.withApprovalRecord().approve(ctx, relay, args[0])
 	case len(args) == 1 && !code:
 		return d.join(ctx, relay, args[0], replace)
 	}

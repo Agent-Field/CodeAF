@@ -63,7 +63,11 @@ func (d *approvalsDoor) who() (pair.Approver, error) {
 	if err != nil {
 		return pair.Approver{}, err
 	}
-	return d.approver(route)
+	who, err := d.approver(route)
+	if err == nil {
+		who.BeforeApprove = func(ctx context.Context) error { return ownDeviceRecord(ctx, d.dir, route) }
+	}
+	return who, err
 }
 
 func (d *approvalsDoor) Pending(ctx context.Context, typed string) (tui3.PendingDevice, error) {
