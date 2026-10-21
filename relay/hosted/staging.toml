@@ -48,4 +48,4 @@ LEASE_POLICY = "amended"
 # identities is lifted for staging only; production keeps the default (see src/limits.js).
 # Staging trusts X-Forwarded-For so callers can name their own network; production does not.
 TRUST_PROXY = "1"
-CAF_LIMITS = '{"newIdentitiesPerIpPerDay":1000000}'
+CAF_LIMITS = '{"newIdentitiesPerIpPerDay":1000000,"pairTtlMs":4000,"minGraceMs":2000,"sweepPageSize":2,"requestsPerMinute":100000,"requestsPerMinutePerDevice":100000}'
