@@ -1,7 +1,7 @@
 // Package cellstore seals a cell: at every tool-call boundary it turns what the
 // call did into a Receipt, snapshots the cell's folder through the embedded
-// engine, and records the result as a Turn (docs/ARCHITECTURE.md 3.1, 4.3;
-// docs/SCHEMAS.md 1, 5, 6).
+// engine, and records the result as a Turn. The persisted shapes are in
+// types.go; turn.go owns their construction and engine.go owns the snapshot.
 //
 // The seam is [Store]; [Engine] implements it. Engine composes the harness's
 // files and hands the engine's verbs to a [Transport]: [Spawn] runs the engine
@@ -21,8 +21,8 @@
 //     completion is INCOMPLETE and is only ever surfaced, never re-run (L9).
 //   - Recorder (recorder.go) is the one hook: an executor.Executor decorator
 //     that logs intent, runs the call, logs completion, and seals. It exists
-//     unless CODEAF_CELLS=0 ([Wrap]); off, the executor is returned
-//     untouched.
+//     when cells are enabled ([Wrap]); otherwise the executor is returned
+//     untouched, so callers do not need to know the channel default.
 //   - Engine (engine.go) is the Store over the engine, one data directory per
 //     cell so writers never share a catalog lock. A seal is one turn-end verb
 //     (`hook turn-end --turn <receipt id>` on the command line), which attaches

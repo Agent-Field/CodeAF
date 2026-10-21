@@ -135,6 +135,8 @@ That second sentence belongs to a device somebody deliberately stopped. A machin
 cannot write the pairing down does not say it held: it refuses the pairing instead, and
 what you get is the sentence below for a code that did not work.
 
+## How long a remote-access code lasts — one attempt and a wrong code
+
 **A code is good for 10 minutes and for 1 attempt, whichever runs out first.** Any attempt
 spends the code, right or wrong, and the machine shows a fresh one at once — you do not
 press a key. A wrong code says:

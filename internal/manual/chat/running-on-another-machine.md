@@ -149,7 +149,7 @@ Either way the fix is one command: update codeaf on the machine that is behind. 
 negotiated down — two builds that might disagree about a frame must not find that out three
 turns into a conversation.
 
-## I updated codeaf on that machine and it still says the versions differ
+## I rebuilt codeaf on my dev box and --host still refuses — updated codeaf but the versions differ
 
 The next connection checks the running build as well as protocol compatibility. An idle old copy is replaced automatically; a busy one is left running and the connection explains how to retire it.
 
@@ -180,6 +180,8 @@ as another build. Four things can be true:
 - **It is a newer build.** Your window joins it. If its wire is one this binary cannot
   speak, the connection is refused, naming this binary as the older one and
   `codeaf engine --status` as the way to see which is newer.
+
+## The older engine refusal — stop it with the exact --workspace
 
 An older engine on another wire, or one too old to be asked at all, is refused, in these
 words:

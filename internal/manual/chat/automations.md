@@ -643,7 +643,7 @@ and a short summary: that summary is the line you read, and a run that never cal
 The `automation` tool is not there inside a task, inside an automation's own run, or where
 nothing can keep automations — so an automation can never set up another one.
 
-## Where did standing orders go — what happened to /standing, the standing orders page, keeping an eye, and turning off background checks
+## How do I force it to be standing — where did standing orders go, what happened to /standing, what does the standing orders page show, keeping an eye, and turning off background checks
 
 **Standing orders are gone, and automations replaced them.** `/standing` and `/orders` are
 not commands any more — they answer `there is no command called /standing · / lists them`

@@ -34,9 +34,9 @@ The code is good for 10 minutes. It works once.
 usage: codeaf pair [--name <name>] | codeaf pair approve <link-or-code> | codeaf pair <code> [--replace] [--name <name>] | codeaf pair --code
 ```
 
-Press ctrl+c in the terminal to take a shown code back. In the chat, Esc stops it.
+Press ctrl+c in the terminal to take a shown code back. In the chat, `c` copies the displayed code, a mouse drag selects and copies text, and Esc stops it. The hint is `c copy code · esc stop`.
 
-A computer that has no relay cannot pair. See "The relay" below. A chat that runs over `--host` or `--at` cannot pair: it says `pairing is not available on this connection`. Pair from a chat that runs on the computer itself.
+A computer that has no relay cannot pair. See "The relay" below. A chat that runs over `--host` or `--at` cannot pair: it says `pairing is not available here`. Pair from a chat that runs on the computer itself.
 
 ## The three words — the check on the computer that has your chats
 
@@ -182,7 +182,7 @@ already paired; nothing changed
 
 The new computer now has your chats. If both computers are on the same relay, chats sync between them. Read *Sync your chats between machines* in the terminal page for the sync settings.
 
-There is no phone app in this stage. You cannot pair a phone, and there is no page you can open in a phone browser. You can pair only a computer that runs codeaf in a terminal.
+There is no phone app for continuing chats. A phone browser can open the `/p/` pairing-link page, but that page only shows the approval command and a link for a computer with codeaf installed; it does not turn the browser into a paired device. Use a supported desktop or server build to pair and continue chats.
 
 ## Devices and revoking — what you can stop, and what you cannot
 
@@ -237,7 +237,9 @@ Keep the file and the passphrase safe. Anybody who has both has your chats.
 
 ## Is my code sent anywhere before I pair — quiet first launch
 
-No. The first launch makes your identity on this machine and does nothing on the network: no request, no connection and no device record reaches the relay. That state is **quiet**. It ends when you pair another device (`/pair`, `codeaf pair` or `codeaf pair approve`), open the `+ Add another device` card with `alt+d`, or already have more than one device. Until then your chats stay here, and home shows no devices row.
+A home that has never completed a pairing and never offered a code sends nothing to any relay — opening the add-device card or reading its instructions does not change that. The first launch makes an identity locally; no device record reaches the relay. Reading instructions, including `alt+d`, does not publish a device record, open a relay connection or send your chats.
+
+Explicitly starting pairing is different: showing a code or requesting a link contacts the chosen relay so the other computer can answer. After pairing, your computers can sync. Until you start that, your chats stay here and home shows no devices row.
 
 If something reaches for the relay while quiet, it gets the word `sync is waiting until another machine is added`. That is not a fault.
 
@@ -301,7 +303,9 @@ After the pairing, the other computer saves that relay and syncs through it; whe
 sync is off (CODEAF_SYNC_URL=off); pairing needs a sync address
 ```
 
-Other things the relay can say:
+## The pairing relay does not answer, is full or is too old
+
+Other things the relay can say while you pair:
 
 The relay does not answer. The name is the host you used:
 
@@ -342,6 +346,7 @@ Moving chats defaults on for dev, staging and source builds, and off for rc and 
 When off, `codeaf pair`, `codeaf identity`, `codeaf cell`, `/pair` (also `/sync`,
 `/link` and `/laptop`), `/devices`, `alt+d` and a requested move say
 `moving chats is off in this build; CODEAF_CELLS=1 turns it on` before doing anything.
+`CODEAF_SYNC_URL=off` separately stops relay traffic even with cells on.
 
 Native Windows has no furrow engine. Pairing a shared chat identity, devices that hold
 chats, sync, continue/take and identity rotation are absent. The pairing and devices slash

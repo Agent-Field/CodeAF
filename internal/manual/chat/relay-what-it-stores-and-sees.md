@@ -33,4 +33,4 @@ No. Turns, tool output and files are sealed on your computer before they are sen
 
 Your saved keys are sealed too, as said above.
 
-What sync does not do: it does not send the files of your working folder. The chat follows you; the files stay on the machine they are on. See "Sync my folder to the other machine" for that.
+Continuing a chat on another computer brings its saved workspace files with its conversation, tool output and task journals. Rebuildable install folders and withheld files are listed on the arrival card. Secret files travel separately in the sealed vault between paired devices. See *Continuing a chat that one of your machines holds* and "What comes with a continued chat" on *Home*. It does not keep two arbitrary project folders mirrored while you edit them.

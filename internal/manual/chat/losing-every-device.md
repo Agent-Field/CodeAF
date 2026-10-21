@@ -13,6 +13,6 @@ Only two things can save you before that day:
 
 ## Can I change my identity — identity rotate
 
-**`codeaf identity rotate` is not built.** There is no way yet to make a new identity for all your computers. So revoking a stolen or lost computer cuts it off from the relay only. It does not make your chats unreadable to the person who has that computer. See "Devices and revoking" on the pairing page.
+If one trusted computer remains, **`codeaf identity rotate` works now**. It makes a replacement identity, seals your chats and saved keys under it, and retires the relay's old copy after the grace period. Pair the computers you keep again from that replacement. Read *Locking out a lost computer for good* for the steps and limits.
 
-Until it is built, treat every chat on a lost computer as exposed, and do not pair new computers you do not trust.
+Rotation needs the old identity on a surviving computer. It cannot recover an identity when every copy, including any exported identity file and its passphrase, is lost. Revoking or rotating cannot take back chats and keys already downloaded by a lost computer; change exposed provider keys at their providers.

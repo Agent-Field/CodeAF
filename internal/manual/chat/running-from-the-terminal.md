@@ -314,15 +314,15 @@ when moving chats is available (dev, staging and source default on; rc and stabl
 
 The atlas draws a picture of the parts behind the two-computer work — the
 pairing, the devices, the chats that move, the sync and the furrow engine — as
-boxes and arrows, with flows you can step through. It opens no conversation, reads no
-key and spends nothing; it is a map of the code, not a control. The old
+boxes and arrows, with flows you can step through. It opens no conversation, makes no
+model request and spends nothing; it is a map of the code, not a control. The old
 Bun + OpenTUI version that lived in `tools/atlas` is gone: everything goes
 through Go, from the one model and one registry of maps inside the binary.
 
 Maps are named. **`codeaf atlas pairing`** opens the pairing map — codeaf on
 two computers, pairing with a link and continuing a chat on the other — and
 **`/atlas pairing`** opens the same map inside the chat, over the conversation
-you are typing in, on the same terms: nothing is read, nothing is spent, and
+you are typing in, on the same terms: no model request is made, nothing is spent, and
 `esc` or `q` closes it and gives the conversation back exactly as it was, with
 the transcript, the draft and everything you had open untouched. A box you
 dragged stays where you put it the next time you open the map.
@@ -334,6 +334,8 @@ shell, or back to the chat. `tab` completes map names after `/atlas`, the way
 other commands with arguments complete theirs. A name that is not a map exits
 the CLI non-zero with `no map "<name>" — available maps: …`; in the chat the
 same line lands in the transcript like any other slash error.
+
+## Architecture map keys — moving boxes and stepping through a flow
 
 Once a map is open:
 
@@ -348,6 +350,17 @@ Once a map is open:
 
 It is meant for a terminal of 120×35 or larger and still works at 80×24.
 `codeaf atlas --help` answers with its usage like every other command.
+
+The map uses the same Display `step icons` choice as the chat. Rich, plain and
+linear glyphs are resolved from one shared vocabulary; changing that choice changes
+the map's marks too.
+
+## Where the architecture map's engine source lives
+
+The engine's authoritative source is Agent-Field/furrow. The Rust engine boxes
+point to this build's local pin and Go callers rather than a vendored engine tree.
+Other boxes name files inside this repository. The pin is the source of the engine
+version; the map does not keep a second version number.
 
 ## The cell verbs — list a cell's turns and rewind it, and when CODEAF_CELLS=0 stops them
 
@@ -430,12 +443,11 @@ no file content it can read. Requests are signed by this machine's own device ke
 relay can tell your machines apart. `codeaf cell list --all` and the sessions panel on home
 show your chats on the other machines once both machines share an identity and this setting.
 
-## When another machine continues your chat — the window that only shows it, the turns kept as a branch, and "your computer's clock is off"
+## Why did my tool call not run after I continued the chat on my laptop — the view-only window, kept branch and clock warning
 
 With sync on, the chat you are typing in sends each saved turn to your relay, and holds the chat
 for this machine while it is open. Closing the chat sends what is left and lets go of it, so your
-other machine can pick it up at once. If this machine sleeps or loses its connection, the hold runs
-out after about ninety seconds and the chat's row on your other machines then says `<device> offline`.
+other machine can pick it up at once. If this machine sleeps or loses its connection, presence stops answering; the other computers mark it offline after 25 seconds of silence, within 30 seconds. The lease itself expires after about ninety seconds, and an explicit continue can take it sooner.
 You do not have to wait for that: press enter on a chat that says `running on <device>` on another
 machine and continue it there, and it is taken at once (see "Continue a chat here that another
 machine left" in home).
@@ -933,28 +945,6 @@ continue it with: codeaf do --continue 3f81c2
 record kept at ~/.codeaf/runs/codeaf-do-3f81c2
 ```
 
-`codeaf do --continue <id>` carries a kept run on: the id is the part of the folder name after
-`codeaf-do-`, an unambiguous start of it is enough, and the folder's own path works too. Words
-after it are this round's finding (`codeaf do --continue 3f81c2 "also add a test"`). The new run
-is handed the original assignment unchanged, how the last run ended and what its plan reached,
-and it works in `--dir` (the current directory unless you say otherwise), where the last run's
-edits already are. It is a new run with its own record and its own id, and continuing a
-continuation still names the first request once. Only a kept record can be continued: a run that
-finished cleanly keeps none unless you passed `--keep`. An id nothing matches, or matches twice,
-is refused in words. Only the run engine keeps this record, so `--continue` is refused when
-`CODEAF_TASK_BELT` selects the older engine.
-
-With cells on, which is the default, `codeaf do` runs inside a cell, the same kind of folder a chat is, and
-the tool calls the run's workers make are sealed as turns, one turn for each set of calls the
-model asked for together, taken after the calls' results are written down, and the end of
-a worker's turn is sealed after its answer: `codeaf cell log` lists the turns,
-and the kept record holds a `cell` file naming the cell. `codeaf do --continue <id>` then goes
-on in that same cell from its last sealed turn: its files stand as that turn left them, and the
-new run is told how many turns were sealed. A call that began and never finished (the run was
-killed in the middle of it) is listed in the new run's brief and is never run again, so the new
-run looks at what it left before relying on it. A run's cell is host-bound, so every call it
-seals counts as external. A record from a run made without the flag has no cell and continues
-from the record alone, as before. With the flag off nothing about `do` changes.
 
 That directory holds a `graph.db`, and that is what to point the reader at:
 
@@ -972,6 +962,34 @@ file` from `why`, `open notebook: …`, `open competence map: …`, `open store:
 **A conversation's tasks are somewhere else entirely.** A task commissioned in the chat
 writes its transcript to a file beside the conversation, not into this store, and its room
 in the chat replays it. `why` is the reader for headless work.
+
+## Continue a kept headless run — codeaf do --continue
+
+`codeaf do --continue <id>` carries a kept run on: the id is the part of the folder name after
+`codeaf-do-`, an unambiguous start of it is enough, and the folder's own path works too. Words
+after it are this round's finding (`codeaf do --continue 3f81c2 "also add a test"`). The new run
+is handed the original assignment unchanged, how the last run ended and what its plan reached,
+and it works in `--dir` (the current directory unless you say otherwise), where the last run's
+edits already are. It is a new run with its own record and its own id, and continuing a
+continuation still names the first request once. Only a kept record can be continued: a run that
+finished cleanly keeps none unless you passed `--keep`. An id nothing matches, or matches twice,
+is refused in words. Only the run engine keeps this record, so `--continue` is refused when
+`CODEAF_TASK_BELT` selects the older engine.
+
+## Continuing a sealed headless run — its cell and incomplete calls
+
+With cells on (the default for dev, staging and source builds), `codeaf do` runs inside a cell, the same kind of folder a chat is, and
+the tool calls the run's workers make are sealed as turns, one turn for each set of calls the
+model asked for together, taken after the calls' results are written down, and the end of
+a worker's turn is sealed after its answer: `codeaf cell log` lists the turns,
+and the kept record holds a `cell` file naming the cell. `codeaf do --continue <id>` then goes
+on in that same cell from its last sealed turn: its files stand as that turn left them, and the
+new run is told how many turns were sealed. A call that began and never finished (the run was
+killed in the middle of it) is listed in the new run's brief and is never run again, so the new
+run looks at what it left before relying on it. A run's cell is host-bound, so every call it
+seals counts as external. A record from a run made without cells has no cell and continues
+from the record alone, as before. With cells off, `do` continues from its kept record as before.
+
 
 ## What have I spent today — the receipts, with codeaf why self
 

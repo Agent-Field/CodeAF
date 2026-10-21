@@ -43,9 +43,10 @@ this task's transcript is not here any more
 this task has finished — say it to main
 ```
 
-That line means the file itself is gone: a session folder you deleted, or work that
-happened on another machine. It is a fact about the disk, not a fault in the task. A room
-with even one block in it never shows the line.
+That line means the journal is absent on this computer: a session folder you deleted,
+or work on another machine whose chat has not been brought here. Continuing a chat
+carries its task journals too, so a normal move alone is not a reason for a missing
+transcript. A room with even one block in it never shows the line.
 
 ## Nothing on this page yet: a queued or newly started task
 
