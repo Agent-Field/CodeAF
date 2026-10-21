@@ -4,6 +4,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"path/filepath"
+	"time"
 )
 
 // v3Gate is the one method of a running session these seams reach for: the door
@@ -173,7 +175,7 @@ func saveBashApproval(profileDir, command string) error {
 // the same rows would already have refused to start on.
 func bankToolApproval(agent v3Gate, workspace, profileDir string, yolo bool) func(string) error {
 	return func(tool string) error {
-		if err := saveToolApproval(profileDir, tool); err != nil {
+		if err := config.RememberToolApproval(profileDir, tool, "allow", approvalOrigin(agent, workspace)); err != nil {
 			return err
 		}
 		refreshV3Policy(agent, workspace, profileDir, yolo)
@@ -183,7 +185,7 @@ func bankToolApproval(agent v3Gate, workspace, profileDir string, yolo bool) fun
 
 func bankBashApproval(agent v3Gate, workspace, profileDir string, yolo bool) func(string) error {
 	return func(command string) error {
-		if err := saveBashApproval(profileDir, command); err != nil {
+		if err := config.RememberBashApproval(profileDir, command, approvalOrigin(agent, workspace)); err != nil {
 			return err
 		}
 		refreshV3Policy(agent, workspace, profileDir, yolo)
@@ -258,4 +260,17 @@ func refreshV3Policy(agent v3Gate, workspace, profileDir string, yolo bool) {
 		return
 	}
 	agent.SetApprovalPolicy(policy)
+}
+
+// approvalOrigin reads the current name when Always is pressed, because the
+// first turn may have named a conversation after its surface was assembled.
+func approvalOrigin(agent any, workspace string) config.RuleOrigin {
+	origin := config.RuleOrigin{Place: filepath.Base(workspace), At: time.Now()}
+	if workspace == "" {
+		origin.Place = ""
+	}
+	if named, ok := agent.(interface{ ShortTitle() string }); ok {
+		origin.Agent = named.ShortTitle()
+	}
+	return origin
 }

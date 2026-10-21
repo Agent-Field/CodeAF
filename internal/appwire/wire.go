@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/workgraph"
 )
 
@@ -382,8 +383,9 @@ type EntryLink struct {
 }
 
 type Entry struct {
-	Link *EntryLink `json:"link,omitempty"`
-	Why  string     `json:"why,omitempty"`
+	Link *EntryLink          `json:"link,omitempty"`
+	Why  string              `json:"why,omitempty"`
+	Rule *config.RuleReceipt `json:"rule,omitempty"`
 
 	RunID string    `json:"run_id,omitempty"`
 	ID    string    `json:"id"`

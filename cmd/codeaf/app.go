@@ -407,6 +407,9 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 
 // appBackend is the [appwire.Engine] over this process's conversations.
 type appBackend struct {
+	ruleGate     sync.Mutex
+	removedRules map[string]appRemovedRule
+
 	// organizeProposer supplies a naming door when the backend is embedded without held conversations.
 	organizeProposer session.TeamProposer
 
@@ -2273,6 +2276,10 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			receipt := appwire.Entry{ID: "ra" + event.CallID, Agent: id, Turn: turn, At: b.now(), Kind: appwire.EntryReceipt,
 				Text: "Allowed automatically · " + tui3.ToolTitle(event.Tool, event.Args, "") + " · you always allow " + event.Rule,
 				Why:  "Matches your rule " + event.Rule + " in Settings › Permissions"}
+			receipt.Rule = event.ApprovalRule
+			if receipt.Rule != nil {
+				receipt.Why = appRuleWhy(receipt.Why, receipt.Rule)
+			}
 			_ = b.keepAppEntry(a, receipt, event.CallID)
 			live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: receipt})
 		case session.EventConsentRequest:
@@ -2729,7 +2736,7 @@ func (b *appBackend) answerAskScope(id, askID, option, text, scope string) error
 		return refused
 	}
 	if q.Kind == session.QuestionConsent && option == appwire.OptionAlways {
-		if !b.rememberAlways(b.consentCall(live, q.ID), scope) {
+		if !b.rememberAlways(b.consentCall(live, q.ID), scope, b.ruleOrigin(a)) {
 			b.locked(func() { delete(live.answered, askID) })
 			return appwire.Errorf(appwire.CodeEngine, "the permission rule could not be saved")
 		}
@@ -2781,10 +2788,12 @@ func (b *appBackend) consentCall(live *appLive, id uint64) appConsentCall {
 }
 
 // rememberAlways uses the terminal's persistence path with the chosen scope.
-func (b *appBackend) rememberAlways(call appConsentCall, scope string) bool {
+func (b *appBackend) rememberAlways(call appConsentCall, scope string, origin config.RuleOrigin) bool {
 	_, saved := config.SaveApproval(call.Tool, scope,
-		func(shape string) error { return config.RememberBashApproval(config.ProfileDir(), shape) },
-		func(tool string) error { return config.RememberToolApproval(config.ProfileDir(), tool, "allow") })
+		func(shape string) error { return config.RememberBashApproval(config.ProfileDir(), shape, origin) },
+		func(tool string) error {
+			return config.RememberToolApproval(config.ProfileDir(), tool, "allow", origin)
+		})
 	return saved
 }
 

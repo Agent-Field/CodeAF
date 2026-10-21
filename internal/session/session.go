@@ -1151,6 +1151,8 @@ type Event struct {
 	// same rule instead of deriving one.
 	Rule string
 
+	ApprovalRule *config.RuleReceipt
+
 	// Wait is how silence is held on EventConsentRequest: ConsentWaiting means
 	// the question stays up. A surface clock that recorded "denied" after a
 	// few seconds was F41, and this field is how the engine says that is not

@@ -31,6 +31,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/offpath"
 )
 
@@ -97,6 +98,7 @@ func (a *Agent) modelStamp() *stampWriter {
 
 func (a *Agent) stampModel() {
 	a.modelStamp().Owe(func() {
+		_ = config.FlushRuleUsage(a.config.ProfileDir)
 		a.metaStamp().settle()
 		a.stampMeta()
 	})
@@ -123,6 +125,7 @@ func (a *Agent) SettleWrites() {
 	if a == nil {
 		return
 	}
+	_ = config.FlushRuleUsage(a.config.ProfileDir)
 	a.metaStamp().settle()
 	a.modelStamp().settle()
 	a.toldStamp().settle()

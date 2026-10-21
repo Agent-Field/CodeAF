@@ -660,6 +660,7 @@ const (
 	// doors (approval.go). The set answers the refusal as a sentence rather than
 	// a bool because the local door answers an error and the surface prints it.
 	MethodResolvedApproval = "ResolvedApproval" // nothing → string (the posture in force)
+	MethodRefreshApprovals = "RefreshApprovals" // nil → nil; re-read saved approval rows.
 	MethodSetApproval      = "SetApproval"      // string → string ("" took, else the refusal)
 
 	// MethodAnswerLaneOffer answers the one question the phase seam can raise:

@@ -187,7 +187,7 @@ func splitOutsideQuotes(raw string) []string {
 // answers tools.approval, its row replaces the person's whole at launch
 // (projectconfig.go, law 2), so a preference written here takes effect
 // everywhere except inside that repository.
-func RememberToolApproval(profileDir, tool, action string) error {
+func RememberToolApproval(profileDir, tool, action string, origin ...RuleOrigin) error {
 	tool = strings.TrimSpace(tool)
 	action = strings.ToLower(strings.TrimSpace(action))
 	if tool == "" {
@@ -207,16 +207,16 @@ func RememberToolApproval(profileDir, tool, action string) error {
 		if current == action {
 			return nil
 		}
-		return writeToolApprovals(profileDir, replacePair(raw, tool, action))
+		return saveRuleOrigin(profileDir, "tool:"+tool, writeToolApprovals(profileDir, replacePair(raw, tool, action)), origin)
 	}
 	entry := tool + ":" + action
 	if strings.TrimSpace(raw) == "" {
-		return writeToolApprovals(profileDir, entry)
+		return saveRuleOrigin(profileDir, "tool:"+tool, writeToolApprovals(profileDir, entry), origin)
 	}
 	// APPENDING KEEPS THE PERSON'S OWN TEXT. The row is stored as they typed it
 	// (writeToolApprovals says why), and a merge that rebuilt it from the parsed
 	// map would reorder and re-space a line they can read today.
-	return writeToolApprovals(profileDir, strings.TrimRight(raw, " ,\n")+", "+entry)
+	return saveRuleOrigin(profileDir, "tool:"+tool, writeToolApprovals(profileDir, strings.TrimRight(raw, " ,\n")+", "+entry), origin)
 }
 
 // replacePair swaps one entry's value and leaves the order alone. It is the
@@ -275,7 +275,7 @@ func replacePair(raw, name, value string) string {
 // line the person saw and approved, it stays bounded to a single non-compound
 // command, and the critical-command table still asks about the shapes that
 // destroy a disk whatever this row says.
-func RememberBashApproval(profileDir, match string) error {
+func RememberBashApproval(profileDir, match string, origin ...RuleOrigin) error {
 	match = strings.TrimSpace(match)
 	if match == "" {
 		return fmt.Errorf("no command to remember")
@@ -300,7 +300,7 @@ func RememberBashApproval(profileDir, match string) error {
 			KeyBashApprovals, rule.Action, rule.Match)
 	}
 	rules = append(rules, BashRule{Match: match, Action: string(approval.ActionAllow)})
-	return writeBashApprovals(profileDir, FormatBashApprovals(rules))
+	return saveRuleOrigin(profileDir, "bash:"+match, writeBashApprovals(profileDir, FormatBashApprovals(rules)), origin)
 }
 
 // asApprovalRules is the one conversion between the row's rules and the policy's.

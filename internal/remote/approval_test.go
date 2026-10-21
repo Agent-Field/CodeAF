@@ -97,3 +97,26 @@ func TestAnEngineWithoutThePostureDoorAdvertisesNoneAndTakesNothing(t *testing.T
 
 // The actual engine, rather than only a fixture, must expose the door.
 var _ approvalDoor = (*session.Agent)(nil)
+
+func TestSavedRuleRefreshCrossesConnectionWithoutMovingPosture(t *testing.T) {
+	far := &postureAgent{fakeAgent: &fakeAgent{}, stored: session.PostureAuto, standing: session.PostureAsk, gate: true}
+	refreshed := make(chan struct{}, 1)
+	loop, err := Loopback(Hello{Version: Version}, Options{Boot: func(Hello) (*Engine, error) {
+		return &Engine{Agent: far, SessionFile: "/srv/session.jsonl", RefreshApprovals: func() { refreshed <- struct{}{} }}, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
+	if err := loop.Client.Agent().RebuildApprovalGate(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-refreshed:
+	default:
+		t.Fatal("saved rows were not read")
+	}
+	if far.stored != session.PostureAuto {
+		t.Fatalf("refresh changed posture to %s", far.stored)
+	}
+}

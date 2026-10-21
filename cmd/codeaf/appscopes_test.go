@@ -133,7 +133,7 @@ func TestAppPermissionScopesOnTheWire(t *testing.T) {
 func TestAppScopeAcceptanceOnTheWire(t *testing.T) {
 	root := resolvedTempDir(t)
 	_, workspace := wakeEnvironment(t, root)
-	model := consentSequenceSource(t, []string{"git status --short", "git status --porcelain", "git push origin main"})
+	model := consentSequenceSource(t, []string{"git status --short", "git status --porcelain", "git push origin main", "git status --short", "git status --porcelain"})
 	t.Cleanup(model.Close)
 	t.Setenv("CODEAF_BASE_URL", model.URL)
 	state := filepath.Join(root, "state")
@@ -203,7 +203,7 @@ func TestAppScopeAcceptanceOnTheWire(t *testing.T) {
 	second := send()
 	rec.waitFor(t, 30*time.Second, func(_ string, data any) bool {
 		r, ok := data.(appwire.EntryAdded)
-		return ok && r.Entry.Turn == second && r.Entry.Text == "Allowed automatically · bash git status --porcelain · you always allow git status*" && r.Entry.Why == "Matches your rule git status* in Settings › Permissions"
+		return ok && r.Entry.Turn == second && r.Entry.Text == "Allowed automatically · bash git status --porcelain · you always allow git status*" && strings.HasPrefix(r.Entry.Why, "Matches your rule git status* in Settings › Permissions · used 1 time") && r.Entry.Rule != nil && r.Entry.Rule.ID == "bash:git status*" && r.Entry.Rule.Uses == 1 && !r.Entry.Rule.Origin.At.IsZero() && r.Entry.Rule.Scope == "every agent"
 	})
 	done(second)
 	third := send()
@@ -222,6 +222,31 @@ func TestAppScopeAcceptanceOnTheWire(t *testing.T) {
 		t.Fatal(e)
 	}
 	done(third)
+	// Removing a rule reaches the real, already-open hosted gate.
+	if _, e := w.call("rules.remove", map[string]any{"id": "bash:git status*"}); e != nil {
+		t.Fatal(e)
+	}
+	fourth := send()
+	k := rec.waitFor(t, 30*time.Second, func(_ string, data any) bool {
+		opened, ok := data.(appwire.AskOpened)
+		return ok && opened.Ask.ID != ask.ID && opened.Ask.ID != outside.ID
+	})
+	rec.mu.Lock()
+	again := rec.data[k].(appwire.AskOpened).Ask
+	rec.mu.Unlock()
+	if _, e := w.call("asks.answer", map[string]any{"agent": agent.ID, "id": again.ID, "option": "deny"}); e != nil {
+		t.Fatal(e)
+	}
+	done(fourth)
+	if _, e := w.call("rules.restore", map[string]any{"id": "bash:git status*"}); e != nil {
+		t.Fatal(e)
+	}
+	fifth := send()
+	rec.waitFor(t, 30*time.Second, func(_ string, data any) bool {
+		r, ok := data.(appwire.EntryAdded)
+		return ok && r.Entry.Turn == fifth && r.Entry.Rule != nil && r.Entry.Rule.ID == "bash:git status*" && r.Entry.Rule.Uses == 2
+	})
+	done(fifth)
 	// A new backend has only the saved conversation, not the emitted entries.
 	if err := backend.Close(); err != nil {
 		t.Fatal(err)
@@ -490,4 +515,36 @@ type inboxScopeConversation struct {
 func (c *inboxScopeConversation) ResolveConsentRemember(id uint64, allow bool, scope session.ConsentScope) {
 	c.fakeConversation.ResolveConsentRemember(id, allow, scope)
 	close(c.done)
+}
+
+func TestAppRulesMetadataOnTheWire(t *testing.T) {
+	root := resolvedTempDir(t)
+	wakeEnvironment(t, root)
+	_, w, _ := newScopeWire(t)
+	origin := config.RuleOrigin{Agent: "api-docs", Place: "api", At: time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC)}
+	if err := config.RememberToolApproval(config.ProfileDir(), "read", "allow", origin); err != nil {
+		t.Fatal(err)
+	}
+	raw, e := w.call("rules.list", map[string]any{})
+	if e != nil {
+		t.Fatal(e)
+	}
+	var result struct {
+		Rules []appwire.Rule `json:"rules"`
+	}
+	if err := json.Unmarshal(raw, &result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Rules) != 1 || result.Rules[0].Origin != origin || result.Rules[0].Text != "Always allow read" || result.Rules[0].Uses != 0 {
+		t.Fatalf("rules = %s", raw)
+	}
+	for _, method := range []string{"rules.remove", "rules.restore"} {
+		if raw, e = w.call(method, map[string]any{"id": "tool:read"}); e != nil || string(raw) != "{}" {
+			t.Fatalf("%s = %s, %v", method, raw, e)
+		}
+	}
+	raw, e = w.call("rules.list", map[string]any{})
+	if e != nil || !strings.Contains(string(raw), `"agent":"api-docs"`) {
+		t.Fatalf("restored = %s, %v", raw, e)
+	}
 }

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -109,3 +110,96 @@ func TestAppSpendExportWritesTheRange(t *testing.T) {
 		t.Fatalf("the export:\n%s", text)
 	}
 }
+
+func TestAppRulesMetadataRestoreAndExpiry(t *testing.T) {
+	b := settingsBackend(t)
+	now := time.Date(2026, 10, 12, 14, 2, 0, 0, time.UTC)
+	b.now = func() time.Time { return now }
+	profile := config.ProfileDir()
+	origin := config.RuleOrigin{Agent: "api-docs", Place: "api", At: now.Add(-time.Hour)}
+	if err := config.RememberBashApproval(profile, "git status*", origin); err != nil {
+		t.Fatal(err)
+	}
+	if err := config.RememberToolApproval(profile, "read", "allow"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := config.UseApprovalRule(profile, "bash:git status*", now); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = config.FlushRuleUsage(profile) })
+	rules, err := b.Rules()
+	if err != nil || len(rules) != 2 || rules[0].ID != "bash:git status*" || rules[0].Origin != origin || rules[0].Uses != 1 || !rules[0].LastUsed.Equal(now) || rules[0].Text == "" {
+		t.Fatalf("metadata = %+v, %v", rules, err)
+	}
+	if err := b.RemoveRule(rules[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := b.Rules(); len(got) != 1 {
+		t.Fatalf("removed = %+v", got)
+	}
+	now = now.Add(4 * time.Second)
+	if err := b.RestoreRule(rules[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := b.Rules()
+	if err != nil || len(got) != 2 || got[0] != rules[0] {
+		t.Fatalf("restored = %+v, %v", got, err)
+	}
+	if err := b.RemoveRule(rules[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(5 * time.Second)
+	if err := b.RestoreRule(rules[0].ID); err == nil {
+		t.Fatal("expired Undo restored a rule")
+	}
+}
+
+func TestAppRuleRestoreKeepsPriorityAndRejectsReplacement(t *testing.T) {
+	b := settingsBackend(t)
+	profile := config.ProfileDir()
+	raw := "deny git push*, allow git *, prompt go test*"
+	if err := applyRow(profile, config.KeyBashApprovals, raw); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.RemoveRule("bash:git *"); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.RestoreRule("bash:git *"); err != nil {
+		t.Fatal(err)
+	}
+	if got := config.BashApprovalsAt(profile); got != raw {
+		t.Fatalf("priority changed: %s", got)
+	}
+	if err := b.RemoveRule("bash:git *"); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyRow(profile, config.KeyBashApprovals, "deny git *"); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.RestoreRule("bash:git *"); err == nil {
+		t.Fatal("Undo overwrote a new rule")
+	}
+}
+
+// A terminal answer uses the same metadata writer as the desktop answer.
+func TestTerminalAlwaysRecordsConversationAndFolder(t *testing.T) {
+	profile := t.TempDir()
+	agent := &namedRuleGate{title: "api-docs"}
+	if err := bankToolApproval(agent, "/work/acme/api", profile, false)("edit"); err != nil {
+		t.Fatal(err)
+	}
+	if err := bankBashApproval(agent, "/work/acme/api", profile, false)("go test*"); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"tool:edit", "bash:go test*"} {
+		got, err := config.RuleMetadataAt(profile, id)
+		if err != nil || got.Origin.Agent != "api-docs" || got.Origin.Place != "api" || got.Origin.At.IsZero() {
+			t.Fatalf("terminal %s = %+v, %v", id, got, err)
+		}
+	}
+}
+
+type namedRuleGate struct{ title string }
+
+func (g *namedRuleGate) ShortTitle() string                 { return g.title }
+func (g *namedRuleGate) SetApprovalPolicy(*approval.Policy) {}

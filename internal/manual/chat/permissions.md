@@ -1218,7 +1218,8 @@ Choosing a scope saves exactly that rule in your profile settings, shared by
 agents on this machine. The receipt says `Always allowed · <scope> · you · <HH:MM>`
 and links to Settings › Permissions. A later matching call leaves
 `Allowed automatically · <call> · you always allow <scope>`; its explanation is
-`Matches your rule <scope> in Settings › Permissions`.
+`Matches your rule <scope> in Settings › Permissions`, followed by the use count
+and the saved origin where known.
 Both receipts stay in the conversation after reopening, with the same placement,
 settings link and explanation. Choosing Always for one item in a batch saves
 that item's scope and releases only that call. Inbox Always answers use the same
@@ -1229,3 +1230,26 @@ still asks, with the closest saved rule it falls outside (the longest rule for
 the same program). Non-shell calls and commands with no same-program rule have
 no outside-rule explanation. If saving fails, the question stays open and the desktop gets an
 error. Nothing is silently widened to all bash commands.
+
+
+## Your rules, where an Always answer came from, usage counts and Undo
+
+Always saves your rule together with the conversation name, folder label and
+date you answered, in both the app and terminal. Settings › Permissions can show
+that origin and how many later calls your rule allowed automatically, sorted
+last used first. Older rules still work: their origin stays unknown and their
+count starts at zero. An Always answer itself does not count as an automatic
+use; defaults and guardian approvals do not count either.
+
+The automatic receipt keeps its command text. Its Why details carry the readable
+rule, saved origin, count including this use, and scope: every agent, across
+folders on this machine. The receipt retains those details after reopening.
+Remove rule takes the saved permission away; the next call follows the ordinary
+approval policy and asks again where that policy asks. Calls already allowed
+continue. Undo restores the rule with its metadata within five seconds of
+removal; after five seconds or an app backend restart, Undo is unavailable.
+Rules do not acquire a repository scope from their origin folder.
+
+Usage is saved in one-second batches and flushed when the session settles or
+closes. Restarting normally keeps it; killing the process can lose the last
+pending batch. A rule from older settings has no invented conversation or date.

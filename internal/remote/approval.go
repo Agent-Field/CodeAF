@@ -102,3 +102,10 @@ func (a *Agent) farResolvedApproval() string {
 	_ = json.Unmarshal(payload, &posture)
 	return posture
 }
+
+// RebuildApprovalGate refreshes saved rules without changing this conversation's
+// posture. Removing a rule in Settings must reach an already-open engine.
+func (a *Agent) RebuildApprovalGate() error {
+	_, err := a.c.call(nil, MethodRefreshApprovals, nil)
+	return err
+}

@@ -3,6 +3,8 @@ package appwire
 import (
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // Wave 8: the Settings window (PROTOCOL.md). settings.get and settings.set
@@ -26,11 +28,15 @@ const PinnedModelsMax = 3
 // Rule is one always-allow rule: a tool's standing answer, or a command
 // pattern's.
 type Rule struct {
-	ID     string `json:"id"`
-	Kind   string `json:"kind"`
-	Tool   string `json:"tool,omitempty"`
-	Match  string `json:"match,omitempty"`
-	Action string `json:"action"`
+	ID       string            `json:"id"`
+	Text     string            `json:"text"`
+	Origin   config.RuleOrigin `json:"origin"`
+	Uses     uint64            `json:"uses"`
+	LastUsed time.Time         `json:"last_used,omitzero"`
+	Kind     string            `json:"kind"`
+	Tool     string            `json:"tool,omitempty"`
+	Match    string            `json:"match,omitempty"`
+	Action   string            `json:"action"`
 }
 
 // The kinds of a rule.
@@ -108,6 +114,16 @@ var settingsMethods = map[string]method{
 			return nil, err
 		}
 		return done(s.RemoveRule(p.ID))
+	}),
+	"rules.restore": typed(func(e Engine, p crewID) (*Empty, error) {
+		if err := needID("rules.restore", p.ID); err != nil {
+			return nil, err
+		}
+		s, ok := e.(interface{ RestoreRule(string) error })
+		if !ok {
+			return nil, Errorf(CodeUnknownMethod, "this engine does not serve rules.restore")
+		}
+		return done(s.RestoreRule(p.ID))
 	}),
 	"memory.list": settleCall("memory.list", func(s Settler, p struct {
 		Limit int `json:"limit"`

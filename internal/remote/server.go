@@ -3051,6 +3051,13 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		}
 		return json.Marshal(refusal)
 
+	case MethodRefreshApprovals:
+		if refresh := sess.engine.RefreshApprovals; refresh != nil {
+			refresh()
+			return nil, nil
+		}
+		return nil, errors.New("engine: this conversation cannot refresh saved rules")
+
 	case MethodConsent:
 		args, err := arg[ConsentArgs](call)
 		if err != nil {

@@ -146,8 +146,7 @@ func (b *appBackend) PinModels(ids []string) (appwire.Settings, error) {
 	return settings, nil
 }
 
-// Rules is every always-allow rule: each tool's standing answer, then the
-// command patterns in the order they are matched.
+// Rules sorts the settings list by use without changing policy match order.
 func (b *appBackend) Rules() ([]appwire.Rule, error) {
 	profile := config.ProfileDir()
 	tools, err := config.ParseToolApprovals(config.ToolApprovalsAt(profile))
@@ -170,11 +169,26 @@ func (b *appBackend) Rules() ([]appwire.Rule, error) {
 	for _, rule := range bash {
 		rules = append(rules, appwire.Rule{ID: appwire.RuleBash + ":" + rule.Match, Kind: appwire.RuleBash, Tool: "bash", Match: rule.Match, Action: rule.Action})
 	}
+	metadataRows, err := config.RuleMetadataAllAt(profile)
+	if err != nil {
+		return nil, appEngineError(err)
+	}
+	for i := range rules {
+		rule := &rules[i]
+		scope := rule.Tool
+		if rule.Kind == appwire.RuleBash {
+			scope = rule.Match
+		}
+		rule.Text = config.ApprovalRuleText(scope, rule.Action)
+		metadata := metadataRows[rule.ID]
+		rule.Origin, rule.Uses, rule.LastUsed = metadata.Origin, metadata.Uses, metadata.LastUsed
+	}
+	sort.SliceStable(rules, func(i, j int) bool { return rules[i].LastUsed.After(rules[j].LastUsed) })
 	return rules, nil
 }
 
-// RemoveRule takes one rule out of its row, leaving the rest as written.
-func (b *appBackend) RemoveRule(id string) error {
+// removeRule takes one rule out of its row, leaving the other rules in place.
+func (b *appBackend) removeRule(id string) error {
 	profile := config.ProfileDir()
 	kind, name, ok := strings.Cut(id, ":")
 	if !ok || name == "" {
@@ -295,4 +309,163 @@ func (b *appBackend) ExportSpend(from, to time.Time) (string, error) {
 		return "", appEngineError(err)
 	}
 	return path, nil
+}
+
+// appRemovedRule keeps only the five-second Undo window, not a trash history.
+type appRemovedRule struct {
+	rule  appwire.Rule
+	index int
+	until time.Time
+}
+
+const appRuleUndoWindow = 5 * time.Second
+
+func (b *appBackend) ruleOrigin(a *appAgent) config.RuleOrigin {
+	var origin config.RuleOrigin
+	b.locked(func() {
+		origin = config.RuleOrigin{Agent: a.view.Title, Place: filepath.Base(a.view.Workspace), At: b.now()}
+	})
+	return origin
+}
+
+// RemoveRule retains the removed row only for the surface's short Undo window.
+func (b *appBackend) RemoveRule(id string) error {
+	kind, name, valid := strings.Cut(id, ":")
+	if !valid || name == "" || (kind != appwire.RuleTool && kind != appwire.RuleBash) {
+		return appwire.Errorf(appwire.CodeBadParams, "%s is not a rule id", id)
+	}
+	b.ruleGate.Lock()
+	defer b.ruleGate.Unlock()
+	rules, err := b.Rules()
+	if err != nil {
+		return err
+	}
+	var removed *appwire.Rule
+	for i := range rules {
+		if rules[i].ID == id {
+			removed = &rules[i]
+			break
+		}
+	}
+	if removed == nil {
+		return appwire.Errorf(appwire.CodeNotFound, "there is no rule %s", id)
+	}
+	index := 0
+	if removed.Kind == appwire.RuleBash {
+		bash, err := config.ParseBashApprovals(config.BashApprovalsAt(config.ProfileDir()))
+		if err != nil {
+			return appEngineError(err)
+		}
+		for i, rule := range bash {
+			if rule.Match == removed.Match {
+				index = i
+				break
+			}
+		}
+	}
+	if err = b.removeRule(id); err != nil {
+		return err
+	}
+	if b.removedRules == nil {
+		b.removedRules = map[string]appRemovedRule{}
+	}
+	now := b.now()
+	for key, row := range b.removedRules {
+		if !now.Before(row.until) {
+			delete(b.removedRules, key)
+		}
+	}
+	b.removedRules[id] = appRemovedRule{rule: *removed, index: index, until: now.Add(appRuleUndoWindow)}
+	if err := b.refreshRuleGates(); err != nil {
+		return appEngineError(err)
+	}
+	return nil
+}
+
+// RestoreRule puts back the removed row at its previous priority. A rule
+// written meanwhile is never overwritten by a late Undo.
+func (b *appBackend) RestoreRule(id string) error {
+	b.ruleGate.Lock()
+	defer b.ruleGate.Unlock()
+	removed, ok := b.removedRules[id]
+	if !ok || !b.now().Before(removed.until) {
+		delete(b.removedRules, id)
+		return appwire.Errorf(appwire.CodeNotFound, "the rule's Undo time has ended")
+	}
+	profile := config.ProfileDir()
+	rule := removed.rule
+	var err error
+	if rule.Kind == appwire.RuleTool {
+		tools, parseErr := config.ParseToolApprovals(config.ToolApprovalsAt(profile))
+		if parseErr != nil {
+			return appEngineError(parseErr)
+		}
+		if _, exists := tools[rule.Tool]; exists {
+			return appwire.Errorf(appwire.CodeConflict, "the rule has changed")
+		}
+		err = config.RememberToolApproval(profile, rule.Tool, rule.Action)
+	} else {
+		rules, parseErr := config.ParseBashApprovals(config.BashApprovalsAt(profile))
+		if parseErr != nil {
+			return appEngineError(parseErr)
+		}
+		for _, row := range rules {
+			if row.Match == rule.Match {
+				return appwire.Errorf(appwire.CodeConflict, "the rule has changed")
+			}
+		}
+		index := min(removed.index, len(rules))
+		rules = append(rules, config.BashRule{})
+		copy(rules[index+1:], rules[index:])
+		rules[index] = config.BashRule{Match: rule.Match, Action: rule.Action}
+		err = applyRow(profile, config.KeyBashApprovals, config.FormatBashApprovals(rules))
+	}
+	if err != nil {
+		return appEngineError(err)
+	}
+	delete(b.removedRules, id)
+	if err := b.refreshRuleGates(); err != nil {
+		return appEngineError(err)
+	}
+	return nil
+}
+
+// refreshRuleGates reaches hosted conversations through the same explicit
+// refresh used after Always. In-flight calls keep the decision already made.
+func (b *appBackend) refreshRuleGates() error {
+	var refreshers []interface{ RebuildApprovalGate() error }
+	b.locked(func() {
+		for _, a := range b.agents {
+			if a.live != nil {
+				if door, ok := a.live.conn.Conv.(interface{ RebuildApprovalGate() error }); ok {
+					refreshers = append(refreshers, door)
+				}
+			}
+		}
+	})
+	var first error
+	for _, door := range refreshers {
+		if err := door.RebuildApprovalGate(); err != nil && first == nil {
+			first = err
+		}
+	}
+	return first
+}
+
+func appRuleWhy(why string, rule *config.RuleReceipt) string {
+	uses := strconv.FormatUint(rule.Uses, 10) + " times"
+	if rule.Uses == 1 {
+		uses = "1 time"
+	}
+	why += " · used " + uses
+	if rule.Origin.Agent != "" {
+		why += " · From your answer in " + rule.Origin.Agent
+	}
+	if rule.Origin.Place != "" {
+		why += " · " + rule.Origin.Place
+	}
+	if !rule.Origin.At.IsZero() {
+		why += " · " + rule.Origin.At.Format("2 Jan")
+	}
+	return why
 }
