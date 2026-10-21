@@ -346,6 +346,7 @@ type FileStat struct {
 // AskAnswer is the whole of an asks.answer: the option, the words, a reason,
 // which call of a batch, or putting it aside or handing it back.
 type AskAnswer struct {
+	Scope     string
 	Option    string
 	Text      string
 	Why       string

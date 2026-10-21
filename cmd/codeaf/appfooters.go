@@ -1,8 +1,8 @@
 package main
 
 // App lifecycle footers belong to the conversation, but never to its model's
-// transcript. This sidecar keeps the three close/quit receipts together and
-// anchors each before the next turn even when timestamps are identical.
+// transcript. This sidecar keeps close/quit and permission receipts together
+// and anchors each even when timestamps are identical.
 
 import (
 	"crypto/sha256"
@@ -50,6 +50,15 @@ func appReadFooters(transcript string) ([]appKeptFooter, error) {
 // keepAppFooter saves before emitting or starting work. A deterministic key
 // lets a retry after a failed state-file write reuse the same receipt.
 func (b *appBackend) keepAppFooter(a *appAgent, key, kind, words string) error {
+	var id string
+	b.locked(func() { id = a.view.ID })
+	return b.keepAppEntry(a, appFooter(key, id, 0, kind, words, b.now()), "")
+}
+
+// keepAppEntry uses the same sidecar for permission receipts, including their
+// links and explanations. A call anchors its receipt after its tool row, even
+// when the event consumer is behind the journal writer.
+func (b *appBackend) keepAppEntry(a *appAgent, entry appwire.Entry, afterCall string) error {
 	var transcript, id string
 	b.locked(func() { transcript, id = a.transcript, a.view.ID })
 	b.footerMu.Lock()
@@ -59,7 +68,7 @@ func (b *appBackend) keepAppFooter(a *appAgent, key, kind, words string) error {
 		return err
 	}
 	for _, f := range kept {
-		if f.Entry.ID == key {
+		if f.Entry.ID == entry.ID {
 			return nil
 		}
 	}
@@ -67,16 +76,18 @@ func (b *appBackend) keepAppFooter(a *appAgent, key, kind, words string) error {
 	if err := appRecords.WithRecord(transcript, func(record session.Record) error {
 		items := appRecordItems(record)
 		shapes, from := appEntryShapes(id, items, b.now(), nil)
-		if len(shapes) > 0 {
-			last := len(shapes) - 1
-			afterID = shapes[last].ID
-			afterHash = appFooterAnchor(items[from[last]])
+		for i, shape := range shapes {
+			afterID = shape.ID
+			afterHash = appFooterAnchor(items[from[i]])
+			if afterCall != "" && shape.Kind == appwire.EntryTool && shape.Call == afterCall {
+				break
+			}
 		}
 		return nil
 	}); err != nil {
 		return err
 	}
-	kept = append(kept, appKeptFooter{AfterID: &afterID, AfterHash: afterHash, Entry: appFooter(key, id, 0, kind, words, b.now())})
+	kept = append(kept, appKeptFooter{AfterID: &afterID, AfterHash: afterHash, Entry: entry})
 	raw, err := json.Marshal(kept)
 	if err != nil {
 		return err

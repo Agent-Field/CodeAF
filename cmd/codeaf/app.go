@@ -678,7 +678,8 @@ type appLive struct {
 	answered map[string]string
 	// consents are the approvals' calls as the turn announced them, by the
 	// engine's question id: what an always is written down from.
-	consents map[uint64]appConsentCall
+	consents    map[uint64]appConsentCall
+	savedScopes map[string]string
 	// stopping says the person stopped the running turn.
 	stopping bool
 	// money are the open budget asks this process raised itself, by ask id;
@@ -1447,12 +1448,16 @@ func appAskOf(agent string, q session.Question) appwire.Ask {
 	if q.Kind == session.QuestionConsent {
 		ask.Kind, ask.Subkind = appwire.AskApproval, appwire.SubkindPermission
 		ask.Irreversible = q.Stakes == session.StakesIrreversible
+		ask.Scopes, ask.AlwaysAsk, ask.Outside = q.ConsentScopes, q.AlwaysAsk, q.Outside
 	}
 	if q.Kind == session.QuestionKeep {
 		ask.Kind, ask.Subkind = appwire.AskApproval, appwire.SubkindKeepRunning
 		ask.KeepRunning = appKeepFacts(q)
 	}
 	for _, option := range appOptionsOf(q) {
+		if option.id == appwire.OptionAlways && q.Kind == session.QuestionConsent && len(ask.Scopes) == 0 {
+			continue
+		}
 		ask.Options = append(ask.Options, appwire.AskOption{ID: option.id, Label: option.label})
 	}
 	ask.Subject = appAskSubject(agent, q.Subject)
@@ -1586,6 +1591,17 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 		return
 	}
 	q := *event.Question
+	if q.Kind == session.QuestionConsent && q.ConsentScopes == nil && q.AlwaysAsk == "" {
+		var call appConsentCall
+		b.locked(func() { call = live.consents[q.ID] })
+		if call.Tool == "" {
+			call.Tool = q.Subject.Name
+		}
+		q.ConsentScopes, q.AlwaysAsk = config.ApprovalScopes(call.Tool, json.RawMessage(call.Args))
+		if q.Stakes == session.StakesIrreversible && q.AlwaysAsk == "" {
+			q.ConsentScopes, q.AlwaysAsk = nil, "critical"
+		}
+	}
 	askID := appAskID(q)
 	switch event.Kind {
 	case session.EventQuestion:
@@ -1626,6 +1642,7 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 		open, moved := false, false
 		by, option := appwire.ClosedByElsewhere, ""
 		var answer *session.Answer
+		var scope string
 		var view appwire.Agent
 		b.locked(func() {
 			if _, open = live.questions[askID]; !open {
@@ -1644,6 +1661,8 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 					answer = &session.Answer{}
 				}
 			}
+			scope = live.savedScopes[askID]
+			delete(live.savedScopes, askID)
 			b.dropAskLocked(live, askID)
 			view, moved = b.restateLocked(a, live)
 		})
@@ -1672,9 +1691,13 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 			}
 		}
 		live.box.Event(appwire.EventAskClosed, appwire.AskClosed{Agent: id, ID: askID, By: by, Option: option, At: at})
-		live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
-			ID: appReceiptEntryID(askID), Agent: id, Kind: appwire.EntryReceipt, At: at, Text: words,
-		}})
+		receipt := appwire.Entry{ID: appReceiptEntryID(askID), Agent: id, Kind: appwire.EntryReceipt, At: at, Text: words}
+		if scope != "" {
+			receipt.Text = "Always allowed · " + scope + " · you · " + at.Local().Format("15:04")
+			receipt.Link = &appwire.EntryLink{Label: "Settings › Permissions", Target: "settings:permissions"}
+			_ = b.keepAppEntry(a, receipt, q.Subject.CallID)
+		}
+		live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: receipt})
 		if moved {
 			live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 		}
@@ -1686,6 +1709,7 @@ func (b *appBackend) dropAskLocked(live *appLive, askID string) {
 	if q, ok := live.questions[askID]; ok && q.Kind == session.QuestionConsent {
 		delete(live.consents, q.ID)
 	}
+	delete(live.savedScopes, askID)
 	delete(live.money, askID)
 	delete(live.questions, askID)
 	delete(live.answered, askID)
@@ -2245,6 +2269,12 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			if !succeeded && strings.Contains(event.Output+summary, "processes are running for this agent.") {
 				entry(appFooter("pl"+event.CallID, id, turn, appwire.FooterProcessLimit, strings.TrimSpace(summary), b.now()))
 			}
+		case session.EventConsentAllowed:
+			receipt := appwire.Entry{ID: "ra" + event.CallID, Agent: id, Turn: turn, At: b.now(), Kind: appwire.EntryReceipt,
+				Text: "Allowed automatically · " + tui3.ToolTitle(event.Tool, event.Args, "") + " · you always allow " + event.Rule,
+				Why:  "Matches your rule " + event.Rule + " in Settings › Permissions"}
+			_ = b.keepAppEntry(a, receipt, event.CallID)
+			live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: receipt})
 		case session.EventConsentRequest:
 			call := appConsentCall{Tool: event.Tool, Args: event.Args}
 			b.locked(func() { live.consents[event.ID] = call })
@@ -2646,6 +2676,11 @@ const appAnsweredMark = "app:"
 // AnswerAsk answers one open ask through the engine's own answer door, the one
 // the chat's question page uses. Its closing arrives on the question lane.
 func (b *appBackend) AnswerAsk(id, askID, option, text string) error {
+	return b.answerAskScope(id, askID, option, text, "")
+}
+
+// answerAskScope validates the chosen rule before writing or resolving anything.
+func (b *appBackend) answerAskScope(id, askID, option, text, scope string) error {
 	b.resetCloseResumes(id)
 	if handled, err := b.answerOrderAsk(askID, option); handled {
 		return err
@@ -2682,16 +2717,28 @@ func (b *appBackend) AnswerAsk(id, askID, option, text string) error {
 			}
 			key = picked.key
 		}
+		if q.Kind == session.QuestionConsent && option == appwire.OptionAlways {
+			if refused = appValidateScope(option, scope, q.ConsentScopes); refused != nil {
+				return
+			}
+		}
 		live.answered[askID] = appAnsweredMark + option
 		live.lastUse = b.now()
 	})
 	if refused != nil {
 		return refused
 	}
-	if q.Kind == session.QuestionConsent && option == appwire.OptionAlways && b.rememberAlways(b.consentCall(live, q.ID)) {
-		// THE RULE IS WRITTEN FIRST and the answer says so, and the engine
-		// reads the rules again before it lets the call go: the next call
-		// like this one is answered by the person's own settings.
+	if q.Kind == session.QuestionConsent && option == appwire.OptionAlways {
+		if !b.rememberAlways(b.consentCall(live, q.ID), scope) {
+			b.locked(func() { delete(live.answered, askID) })
+			return appwire.Errorf(appwire.CodeEngine, "the permission rule could not be saved")
+		}
+		b.locked(func() {
+			if live.savedScopes == nil {
+				live.savedScopes = map[string]string{}
+			}
+			live.savedScopes[askID] = scope
+		})
 		live.conn.Conv.ResolveConsentRemember(q.ID, true, session.ConsentRule)
 		return nil
 	}
@@ -2702,6 +2749,14 @@ func (b *appBackend) AnswerAsk(id, askID, option, text string) error {
 	if err := live.conn.Conv.ResolveQuestion(answer); err != nil {
 		b.locked(func() { delete(live.answered, askID) })
 		return appEngineError(err)
+	}
+	return nil
+}
+
+// appValidateScope keeps both answer doors on the permission's offered rules.
+func appValidateScope(option, scope string, scopes []string) error {
+	if option == appwire.OptionAlways && (scope == "" || !slices.Contains(scopes, scope)) {
+		return appwire.Errorf(appwire.CodeBadScope, "choose one of this ask's scopes")
 	}
 	return nil
 }
@@ -2725,27 +2780,12 @@ func (b *appBackend) consentCall(live *appLive, id uint64) appConsentCall {
 	}
 }
 
-// rememberAlways writes an always down as a rule in the person's own profile:
-// the one command line for a shell call, the tool for any other. It reports
-// whether the rule is written; when it is not (a compound command, a settings
-// row that already answers otherwise, a call the turn never announced) the
-// always is the engine's own, for the rest of this conversation.
-func (b *appBackend) rememberAlways(call appConsentCall) bool {
-	tool := strings.TrimSpace(call.Tool)
-	if tool == "" {
-		return false
-	}
-	profile := config.ProfileDir()
-	if tool == "bash" {
-		var args struct {
-			Command string `json:"command"`
-		}
-		if err := json.Unmarshal([]byte(call.Args), &args); err != nil || strings.TrimSpace(args.Command) == "" {
-			return false
-		}
-		return config.RememberBashApproval(profile, args.Command) == nil
-	}
-	return config.RememberToolApproval(profile, tool, "allow") == nil
+// rememberAlways uses the terminal's persistence path with the chosen scope.
+func (b *appBackend) rememberAlways(call appConsentCall, scope string) bool {
+	_, saved := config.SaveApproval(call.Tool, scope,
+		func(shape string) error { return config.RememberBashApproval(config.ProfileDir(), shape) },
+		func(tool string) error { return config.RememberToolApproval(config.ProfileDir(), tool, "allow") })
+	return saved
 }
 
 // appRecords keeps the readings of journals that have not changed, so paging

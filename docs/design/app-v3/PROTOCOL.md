@@ -90,7 +90,7 @@ Ask    { id, agent, kind, subkind?, title, detail?, options?: [{id, label}], irr
          AlwaysAsks: bash's critical-command table, e.g. a recursive forced delete, or a call that acts in the
          person's name); then "always" is not offered
        subkind (approval): "permission" | "budget"; options carry the engine's ids,
-       e.g. permission: allow_once · deny · always (absent when irreversible)
+       e.g. permission: allow_once · deny · always (present only when scopes exist)
        kind: "approval" (a tool call waiting for allow/deny) | "question" (the agent asks the person)
        approval options are the engine's own choices (e.g. allow once / always / deny);
        a question may have options, free text, or both
@@ -113,7 +113,7 @@ Ask    { id, agent, kind, subkind?, title, detail?, options?: [{id, label}], irr
 | `agents.stop` | `{id}` | `{}` (interrupt the running turn) |
 | `agents.close` | `{id}` | `{}` (detach and stop its engine; conversation stays on disk) |
 | `asks.list` | `{agent}` | `{asks: Ask[]}` (open asks only) |
-| `asks.answer` | `{agent, id, option?, text?}` | `{}`; `not_found` if already answered elsewhere |
+| `asks.answer` | `{agent, id, option?, text?, scope?}` | `{}`; `not_found` if already answered elsewhere |
 | `tasks.list` | `{agent}` | `{tasks: Task[]}` |
 | `models.list` | – | `{models: Model[]}` (what the configured keys can use; `[]` with no provider connected) |
 | `settings.get` | – | `{settings: Settings}` |
@@ -178,7 +178,7 @@ result or an event, `?` marks a field that may be absent.
 | `agents.since` | `{after, id}` | `{at?, entries, files?, first?, found, last_at?, turns}` |
 | `agents.steer` | `{attachments, client_id, id, reads, said, text}` | `{}` |
 | `agents.stop` | `{id}` | `{}` |
-| `asks.answer` | `{agent, batch_item, id, later, option, text, why, you_decide}` | `{}` |
+| `asks.answer` | `{agent, batch_item, id, later, option, scope, text, why, you_decide}` | `{}` |
 | `asks.defer` | `{agent, id}` | `{ask?}` |
 | `asks.hold` | `{agent, id}` | `{}` |
 | `asks.list` | `{agent}` | `{asks}` |
@@ -217,7 +217,7 @@ result or an event, `?` marks a field that may be absent.
 | `files.find` | `{agent, limit, query}` | `{groups}` |
 | `files.read` | `{agent, limit, offset, path}` | `{file}` |
 | `files.stat` | `{agent, paths}` | `{files}` |
-| `inbox.answer` | `{id, option, text, why}` | `{undo_until}` |
+| `inbox.answer` | `{id, option, text, why, scope?}` | `{undo_until}` |
 | `inbox.back` | `{id}` | `{}` |
 | `inbox.later` | `{id}` | `{}` |
 | `inbox.list` | `{list, query}` | `{counts, items}` |
@@ -967,7 +967,7 @@ InboxItem { id, ask: Ask, where: {agent, crew?, task?, path: string[]}, at,
 | method | params | result |
 |---|---|---|
 | `inbox.list` | `{list, query?}` | `{items: InboxItem[], counts: {waiting, later, done_today}}` |
-| `inbox.answer` | `{id, option?, text?, why?}` | `{undo_until}` the answer is held 5 s ("Approving… Undo") then sent |
+| `inbox.answer` | `{id, option?, text?, why?, scope?}` | `{undo_until}` the answer is held 5 s ("Approving… Undo") then sent |
 | `inbox.undo` | `{id}` | `{}` within the 5 s window: nothing is sent, item returns to Waiting |
 | `inbox.later` · `inbox.back` | `{id}` | `{}` Later / back to Waiting |
 | `inbox.open` | `{id}` | `{agent, task?}` where to navigate |
@@ -2958,3 +2958,45 @@ Feature `factory.runner_manage` is distinct from every other factory feature and
 **The write.** One `PUT /v1/runners/{runner}` with `{slots, require_live_capacity:true}` and no checkouts, never retried. The factory re-checks `live_capacity` of the machine's newest attach under the lock that writes, so a worker that restarted onto an older binary since the read is refused with 409 and nothing changes. Only a 4xx or 501 carrying `X-Codeaf-Phase: pre-mutation` is a definite refusal (fixed words); the marker is cleared immediately before the first change. A dropped connection, a timeout, a redirect, a 5xx, an unmarked refusal, or an unexpected success such as 202 is `uncertain`: read `factory.runners` for what is granted. If the sign-in changes during a wait, no computer or number is revealed; after the write the answer is a neutral `uncertain`.
 
 **Directory fields.** `factory.runners` now may carry `slots_policy {min, max, requires_live}` (only from a factory that enforces the guard) and per runner `live_capacity`, which is the NEWEST attach's attestation (attaches that cannot be ordered must all attest).
+
+## Permission scopes in the decision dock (V68b)
+
+| method | params | result |
+| --- | --- | --- |
+| `asks.answer` (adds) | `{…, scope?: string}` with `option:"always"` | `{}`; `bad_scope` if scope is absent or is not one of this permission ask's scopes |
+| `inbox.answer` (adds) | `{…, scope?: string}` with `option:"always"` | `{undo_until}`; the same `bad_scope` validation before the hold; only this Inbox item is answered |
+
+Permission `Ask` adds `scopes?: string[]` in engine order: bash uses
+`config.BashShapes(command)` (at most three, exact line last); another tool
+has one scope, its name. `always` is offered only when scopes exist.
+When scopes are absent, `always_ask` says `acts_as_you`, `critical` or `compound`.
+The first two use approval's existing floor; compound bash lines cannot become
+saved allow rules. Other kinds of ask carry neither field.
+
+An always answer saves exactly the selected scope in the profile's
+`tools.bashPatterns` (bash) or `tools.approval` (another tool), through the same
+persistence path the terminal uses. A failed save returns `engine` and keeps the
+ask open; it never silently grants the whole tool for this session. Each scope
+answer applies to the named permission, rather than approving a batch of other
+calls with different scopes. When `batch_item` is present, that item supplies
+the offered scopes and is the only permission answered.
+
+The existing receipt entry kind adds optional `link: {label, target}` and
+`why: string`. A successful always leaves
+`Always allowed · <scope> · you · <HH:MM>` with
+`link: {label:"Settings › Permissions", target:"settings:permissions"}`.
+A later call allowed by an explicit saved rule adds a new receipt:
+`Allowed automatically · <call> · you always allow <scope>` and
+`why:"Matches your rule <scope> in Settings › Permissions"`.
+Both receipts are kept in the conversation's app sidecar and restored by
+`agents.entries` at their call's position, including the settings link and
+explanation that each originally carried.
+Default, read-only and guardian allows do not claim to match a saved rule.
+A call outside the rule goes through the ordinary gate and asks again.
+
+Permission `Ask` also adds `outside?: string`: the longest saved
+`tools.bashPatterns` rule with the same program (first word) that does not cover
+the call. Equal lengths keep settings order. Absent with no such rule, and for
+non-bash calls or other kinds of ask. This explains an ask without changing
+approval: the desktop can show `Waiting on you: <call> · outside <outside>, so it asks`
+with code spans around the call and rule.

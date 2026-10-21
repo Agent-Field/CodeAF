@@ -616,6 +616,9 @@ type jobRegistry struct {
 	// whether anybody has to answer; it does not reshape the news first
 	// ([jobNote] states the law).
 	notify func(string)
+	// notifyUnowed preserves the absence of a parked caller for the wake scheduler.
+	// Registries without that scheduler keep the ordinary notification lane.
+	notifyUnowed func(string)
 	// notifyQuiet carries successful process endings to the next turn without
 	// waking the agent. Tasks and renders still use notify through finish.
 	notifyQuiet func(string)
@@ -1507,6 +1510,8 @@ func (r *jobRegistry) settleExit(watched *job, code int) {
 	notify := r.notify
 	if quiet {
 		notify = r.notifyQuiet
+	} else if !owed && r.notifyUnowed != nil {
+		notify = r.notifyUnowed
 	}
 	if notify != nil {
 		note := fmt.Sprintf("job %d exited %d", watched.id, code)

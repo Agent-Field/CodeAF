@@ -661,12 +661,16 @@ func (b *appBackend) AnswerAskWith(agent, id string, answer appwire.AskAnswer) e
 	targets := []string{id}
 	if answer.BatchItem != "" {
 		targets = []string{answer.BatchItem}
-	} else if open {
+	} else if open && answer.Option != appwire.OptionAlways {
 		b.locked(func() {
 			if _, siblings := b.batchLocked(live, q); len(siblings) > 1 {
 				targets = siblings
 			}
 		})
+	}
+	// A saved scope answers the selected call alone; siblings have their own scopes.
+	if answer.Option == appwire.OptionAlways {
+		return b.answerAskScope(agent, targets[0], answer.Option, text, answer.Scope)
 	}
 	for _, target := range targets {
 		var sibling session.Question
@@ -676,7 +680,7 @@ func (b *appBackend) AnswerAskWith(agent, id string, answer appwire.AskAnswer) e
 			call := live.consents[sibling.ID]
 			callText = redact.Secrets(tui3.ToolTitle(call.Tool, call.Args, ""))
 		})
-		if err := b.AnswerAsk(agent, target, answer.Option, text); err != nil {
+		if err := b.answerAskScope(agent, target, answer.Option, text, answer.Scope); err != nil {
 			return err
 		}
 		if sibling.Batch != "" {
