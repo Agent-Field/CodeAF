@@ -330,6 +330,9 @@ func rank(b bool) int {
 func (c chatsKind) table(time.Time) (string, error) {
 	rows, err := c.rows()
 	if err != nil {
+		if errors.Is(err, directory.ErrRevoked) {
+			return "", err
+		}
 		// The other kind is still worth showing when the relay is not answering.
 		fmt.Fprintln(os.Stderr, "your devices cannot be listed now:", err)
 		return "", nil
@@ -386,7 +389,7 @@ func (c chatsKind) revoke(row chatsRow) (string, error) {
 func (c chatsKind) explain(err error) error {
 	switch {
 	case errors.Is(err, directory.ErrRevoked):
-		return errors.New("this device was removed by another of your devices, so it can no longer reach your chats — run `codeaf pair` to bring it back")
+		return toldLine{line: "this device was removed by another of your devices, so it can no longer reach your chats — run `codeaf pair` to bring it back", err: err}
 	case errors.Is(err, wireauth.ErrSkew):
 		return errors.New(chatlist.ClockOff)
 	case errors.Is(err, directory.ErrUnreachable):
