@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/telemetry"
 )
 
@@ -152,7 +153,7 @@ func (c *Client) usageDimensions(facts recordFacts, attemptID, model string) tel
 	base := facts.baseFor(c.config.BaseURL)
 	id := attemptID
 	if facts.response != nil && facts.response.ID != "" {
-		id = "generation:" + base + ":" + facts.response.ID
+		id = usageReceiptID(base, facts.response.ID, attemptID)
 	}
 	d := telemetry.UsageDimensions{RoutingProvider: c.usageRoutingProvider(base), ModelFamily: telemetry.ModelFamily(model), AccountingSource: "provider", ReceiptID: id}
 	o := usageObservation{}
@@ -212,6 +213,13 @@ func (c *Client) usageDimensions(facts recordFacts, attemptID, model string) tel
 	return d
 }
 
+// usageReceiptID pairs an observation with its later receipt, while retaining
+// the physical attempt's identity. Compatible servers can reuse generation ids
+// for different answers, so the provider's id alone cannot identify a receipt.
+func usageReceiptID(base, generation, attempt string) string {
+	return attempt + ":generation:" + base + ":" + generation
+}
+
 // usageEndpoint follows the actual attempt when a billing road changed.
 func (c *Client) usageEndpoint(knobs callKnobs) string {
 	if knobs.trace != nil && knobs.trace.attemptBase != "" {
@@ -221,7 +229,17 @@ func (c *Client) usageEndpoint(knobs callKnobs) string {
 }
 
 func (c *Client) streamUsageSupported(knobs callKnobs) bool {
-	_, refused := c.streamUsageUnsupported.Load(c.usageEndpoint(knobs))
+	base := c.usageEndpoint(knobs)
+	direct := c.config.Direct
+	if base != c.config.BaseURL {
+		direct = telemetry.RoutingProvider(base) != modelsource.DefaultID
+	}
+	// The router already receives usage.include. Only a connected service
+	// needs the compatible API's opt-in, including after a billing-road move.
+	if !direct {
+		return false
+	}
+	_, refused := c.streamUsageUnsupported.Load(base)
 	return !refused
 }
 

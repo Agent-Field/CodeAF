@@ -174,3 +174,11 @@ limitations, privacy fields, receipt-aware PostHog query and deployment order.
 A later provider receipt supersedes its earlier estimate by `usage_receipt`;
 raw estimates and recovered measurements must not be added together. Estimates
 never change billing, response usage or token limits.
+The receipt key includes the physical attempt's identity so separate answers
+stay separate even when a compatible service reuses a generation id.
+
+Connected services request streaming usage with `stream_options.include_usage`.
+An explicit unsupported-option response on HTTP 400 or 422 retries once without
+that option; later calls to that endpoint omit it. Unrelated errors do not turn
+the option off. The default router road keeps its existing `usage.include`
+request and sends no `stream_options`.

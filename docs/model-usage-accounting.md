@@ -4,7 +4,7 @@ Token usage is collected at the provider attempt boundary for every compatible e
 
 ## Measurements and estimates
 
-- Request `stream_options.include_usage` on streamed chat completions. An explicit unsupported-field 400 retries without that option and remembers the refusal for that endpoint. Other validation errors do not disable usage.
+- Connected services request `stream_options.include_usage` on streamed chat completions. An explicit unsupported-field 400 or 422 retries without that option and remembers the refusal for that endpoint. Other validation errors do not disable usage or earn a new repair. The default router road keeps its existing `usage.include` opt-in and sends no `stream_options`.
 - Keep provider-reported counts, including explicit zero. Normalize input/output aliases and native cache input without adding cache tokens twice.
 - Keep a provider's total-only measurement without inventing its input/output split.
 - Estimate only absent components, using `utf8_bytes_4_v1`: round observed UTF-8 bytes up at four bytes per token. Input includes the encoded messages and tool definitions after shaping. Output includes observed content, tool arguments and visible textual reasoning.
@@ -18,7 +18,7 @@ Token usage is collected at the provider attempt boundary for every compatible e
 
 `usage_status` is `reported`, `total_only`, `mixed`, `estimated`, `partial` or `missing`. `estimate_method` and `estimate_scope` label estimates; scopes are `text_only`, `observed_partial`, `multimodal_input` or `unknown`.
 
-`usage_receipt` is a SHA-256 hash scoped to the run and physical receipt. When a generation id exists, its actual endpoint and id participate only locally in that hash. No prompt, response, endpoint, model slug, generation id, API key or other new raw identity is sent. Existing opt-out gates apply to estimates too.
+`usage_receipt` is a SHA-256 hash scoped to the run and physical attempt. When a generation id exists, its actual endpoint and id participate only locally in that hash alongside the attempt identity. Providers that reuse generation ids cannot collapse separate answers into one receipt. Recovery keeps the original attempt identity. No prompt, response, endpoint, model slug, generation id, API key or other new raw identity is sent. Existing opt-out gates apply to estimates too.
 
 ## Recovered receipts and dashboards
 

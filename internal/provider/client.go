@@ -833,7 +833,9 @@ func (c *Client) sendRepaired(ctx context.Context, request *ai.Request, knobs ca
 		}
 		response.Body = rewound(peek, response.Body)
 	}
-	if err != nil || !endpointRefusalStatus(response.StatusCode) {
+	streamUsage := stream && c.streamUsageSupported(knobs)
+	usageRefusalStatus := response != nil && (response.StatusCode == http.StatusBadRequest || response.StatusCode == http.StatusUnprocessableEntity)
+	if err != nil || (!endpointRefusalStatus(response.StatusCode) && !(streamUsage && usageRefusalStatus)) {
 		return response, err
 	}
 	model := c.modelFor(request)
@@ -843,10 +845,11 @@ func (c *Client) sendRepaired(ctx context.Context, request *ai.Request, knobs ca
 	// carried from a model the person has since switched away from — it is
 	// true of this conversation, not of the model, so it is fixed for this
 	// request and remembered nowhere.
-	foreign := len(knobs.reasoning) > 0
-	streamUsage := stream && c.streamUsageSupported(knobs)
-	repairable := response.StatusCode == http.StatusBadRequest && (streamUsage || c.repairable(model, knobs))
-	if !foreign && !repairable {
+	foreign := endpointRefusalStatus(response.StatusCode) && len(knobs.reasoning) > 0
+	// The compatible usage option earns only its own repair. Peeking at an
+	// unrelated refusal must not admit it to the older learning road.
+	repairable := response.StatusCode == http.StatusBadRequest && c.repairable(model, knobs)
+	if !foreign && !repairable && !(streamUsage && usageRefusalStatus) {
 		return response, nil
 	}
 	peek, readErr := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
@@ -869,7 +872,7 @@ func (c *Client) sendRepaired(ctx context.Context, request *ai.Request, knobs ca
 		})
 		knobs.reasoning = nil
 		return c.resend(ctx, request, knobs, stream, response)
-	case streamUsage && response.StatusCode == http.StatusBadRequest && refusesStreamUsage(peek):
+	case streamUsage && usageRefusalStatus && refusesStreamUsage(peek):
 		c.record(recordFacts{ctx: ctx, request: request, knobs: knobs, stream: stream,
 			attempt: c.attemptsSoFar(knobs), began: began, status: response.StatusCode,
 			err: apiError(response.StatusCode, peek), responseBody: peek})

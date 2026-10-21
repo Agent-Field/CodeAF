@@ -1127,6 +1127,20 @@ The relay is `https://agentfield.ai/api/oss/codeaf/telemetry`;
 The product prints no notice. With `model_pool` on, one scored row per crew seat also
 leaves for the Model Pool after a task lands (*Model Pool* above).
 
+## Missing streaming token counts — connected services and refused usage options
+
+Connected services ask for streaming token counts with `stream_options.include_usage`.
+If a service explicitly refuses that option with HTTP 400 or 422, codeaf retries
+once without it and omits it on later calls to that endpoint. An unrelated error
+does not turn usage reporting off. The default router uses its existing usage
+request without the extra option.
+
+Missing text counts may have separately labelled estimates in anonymous usage
+events. Estimates never change spending, prices or token limits. An interrupted
+answer estimates only what arrived. Provider-reported counts, including explicit
+zeroes, remain measurements. Separate answers keep separate hashed receipts even
+if a connected service repeats its own answer id.
+
 ## How to turn telemetry off now — /settings stops sending immediately
 
 On the *display* tab of `/settings`, turn the `telemetry` switch off. It writes
