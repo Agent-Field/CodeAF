@@ -21,6 +21,7 @@ func Run() error {
 // RunMap opens one map in this terminal and blocks until the person leaves it.
 func RunMap(mp *Map) error {
 	m := New(mp, 0, 0)
+	m.SetGlyphSet(terminalGlyphs())
 	_, err := tea.NewProgram(m).Run()
 	if err != nil {
 		return fmt.Errorf("atlas: %w", err)
