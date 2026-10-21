@@ -237,6 +237,12 @@ func (c *Client) bill(ctx context.Context, model string, response *ai.Response) 
 // and billed the ordinary way — which banks nothing for it — otherwise.
 func (c *Client) billAnswered(ctx context.Context, model string, response *ai.Response, answerBytes int, traces ...*callTrace) {
 	if response != nil && response.Usage == nil && unmeteredReceiptsFrom(ctx) {
+		// A direct client's receipt bearer belongs to its original service.
+		// Preserve the whole-answer boundary until recovery can carry the
+		// overflow attempt's own credential to its different host.
+		if c.config.Direct {
+			return
+		}
 		c.settle(ctx, model, response, receiptUnmeteredReason, answerBytes, traces...)
 		return
 	}

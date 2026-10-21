@@ -242,7 +242,7 @@ func TestK9MissingUsageEstimatesDoNotEnterBillingOrCallLogCounts(t *testing.T) {
 	}
 }
 
-func TestK7AnUnobservedOutputComponentStaysPartial(t *testing.T) {
+func TestK7FinishedEmptyOutputIsObservedAsZero(t *testing.T) {
 	t.Setenv(home.EnvVar, t.TempDir())
 	telemetry.EnableForTest(t, true)
 	telemetry.VersionForTest(t, "v0.7.0")
@@ -275,7 +275,7 @@ func TestK7AnUnobservedOutputComponentStaysPartial(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := event.Props
-	if p["usage_status"] != "partial" || p["input_tokens"] != float64(10) || p["total_tokens"] != float64(10) || p["output_tokens"] != nil || p["estimated_total_tokens"] != nil {
+	if p["usage_status"] != "mixed" || p["input_tokens"] != float64(10) || p["total_tokens"] != float64(10) || p["output_tokens"] != nil || p["estimated_output_tokens"] != float64(0) {
 		t.Fatalf("usage=%+v", p)
 	}
 }

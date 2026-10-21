@@ -123,6 +123,9 @@ type callTrace struct {
 	attemptID string
 	// Usage observations contain counts only, never retained prompt or reply text.
 	usageObservation usageObservation
+	// repairs survives physical attempts so relaxation cannot repeat a repair
+	// already used by this call's earlier request shape.
+	repairs map[string]bool
 	// attemptBase is the address this attempt actually used, including an
 	// explicitly authorized plan overflow. It never leaves the process.
 	attemptBase string

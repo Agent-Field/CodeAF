@@ -814,86 +814,115 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 // The retry costs nothing: a 400 generated no tokens, and the answer is
 // remembered so only the first call on a model pays for the discovery.
 func (c *Client) sendRepaired(ctx context.Context, request *ai.Request, knobs callKnobs, stream bool) (*http.Response, error) {
+	repaired := make(map[string]bool)
+	if knobs.trace != nil {
+		if knobs.trace.repairs == nil {
+			knobs.trace.repairs = repaired
+		} else {
+			repaired = knobs.trace.repairs
+		}
+	}
 	body, err := c.encodeRequest(request, knobs)
 	if err != nil {
 		return nil, encodeFailure(err)
 	}
 	began := logNow()
 	response, err := c.send(ctx, request, knobs, body, stream)
-	if err == nil && response.StatusCode == http.StatusPaymentRequired && knobs.affordable == 0 {
-		peek, readErr := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
-		if readErr == nil {
-			if affordable := affordableTokens(peek); affordable > 0 {
-				c.record(recordFacts{ctx: ctx, request: request, knobs: knobs, stream: stream,
-					attempt: c.attemptsSoFar(knobs), began: began, status: response.StatusCode,
-					err: apiError(response.StatusCode, peek), responseBody: peek})
-				knobs.affordable = affordable
-				return c.resend(ctx, request, knobs, stream, response)
+	// Each repair returns here so the next refusal can name a different field.
+	for {
+		if err == nil && response.StatusCode == http.StatusPaymentRequired && knobs.affordable == 0 && !repaired["affordable"] {
+			peek, readErr := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
+			if readErr == nil {
+				if affordable := affordableTokens(peek); affordable > 0 {
+					c.record(recordFacts{ctx: ctx, request: request, knobs: knobs, stream: stream,
+						attempt: c.attemptsSoFar(knobs), began: began, status: response.StatusCode,
+						err: apiError(response.StatusCode, peek), responseBody: peek})
+					knobs.affordable = affordable
+					repaired["affordable"] = true
+					began = logNow()
+					response, err = c.resend(ctx, request, knobs, stream, response)
+					continue
+				}
 			}
+			response.Body = rewound(peek, response.Body)
 		}
-		response.Body = rewound(peek, response.Body)
-	}
-	streamUsage := stream && c.streamUsageSupported(knobs)
-	usageRefusalStatus := response != nil && (response.StatusCode == http.StatusBadRequest || response.StatusCode == http.StatusUnprocessableEntity)
-	if err != nil || (!endpointRefusalStatus(response.StatusCode) && !(streamUsage && usageRefusalStatus)) {
-		return response, err
-	}
-	model := c.modelFor(request)
-	// Two repairs read the body, and they are told apart by what they cost the
-	// memo. A learned quirk is a 400 about a knob this adapter chose. Foreign
-	// reasoning is a 404 (OpenRouter's spelling) about content the transcript
-	// carried from a model the person has since switched away from — it is
-	// true of this conversation, not of the model, so it is fixed for this
-	// request and remembered nowhere.
-	foreign := endpointRefusalStatus(response.StatusCode) && len(knobs.reasoning) > 0
-	// The compatible usage option earns only its own repair. Peeking at an
-	// unrelated refusal must not admit it to the older learning road.
-	repairable := response.StatusCode == http.StatusBadRequest && c.repairable(model, knobs)
-	if !foreign && !repairable && !(streamUsage && usageRefusalStatus) {
-		return response, nil
-	}
-	peek, readErr := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
-	switch {
-	case readErr != nil:
-	case foreign && refusesForeignReasoning(peek):
-		// THE WORDS STILL GO; ONLY THE OTHER MODEL'S THINKING STAYS HOME. A
-		// sidecar tagged with its model never gets here (reasoning.go's
-		// producedElsewhere); this is the journal written before the tag.
-		//
-		// The refused shape gets its own row before the repair, because "the
-		// call that went out first was refused and the one that came back was a
-		// different request" is precisely the fact a log with only the answer
-		// on it cannot tell anybody (calllog.go).
-		c.record(recordFacts{
-			ctx: ctx, request: request, knobs: knobs, stream: stream,
-			attempt: c.attemptsSoFar(knobs), began: began,
-			status: response.StatusCode, err: apiError(response.StatusCode, peek),
-			responseBody: peek,
-		})
-		knobs.reasoning = nil
-		return c.resend(ctx, request, knobs, stream, response)
-	case streamUsage && usageRefusalStatus && refusesStreamUsage(peek):
-		c.record(recordFacts{ctx: ctx, request: request, knobs: knobs, stream: stream,
-			attempt: c.attemptsSoFar(knobs), began: began, status: response.StatusCode,
-			err: apiError(response.StatusCode, peek), responseBody: peek})
-		c.streamUsageUnsupported.Store(c.usageEndpoint(knobs), true)
-		return c.resend(ctx, request, knobs, stream, response)
-	case repairable:
-		if learned := c.learn(model, knobs, peek); len(learned) > 0 {
-			knobs.trace.note(learned...)
+		streamUsage := stream && c.streamUsageSupported(knobs)
+		usageRefusalStatus := response != nil && (response.StatusCode == http.StatusBadRequest || response.StatusCode == http.StatusUnprocessableEntity)
+		if err != nil || (!endpointRefusalStatus(response.StatusCode) && !(streamUsage && usageRefusalStatus)) {
+			return response, err
+		}
+		model := c.modelFor(request)
+		// Two repairs read the body, and they are told apart by what they cost the
+		// memo. A learned quirk is a 400 about a knob this adapter chose. Foreign
+		// reasoning is a 404 (OpenRouter's spelling) about content the transcript
+		// carried from a model the person has since switched away from — it is
+		// true of this conversation, not of the model, so it is fixed for this
+		// request and remembered nowhere.
+		foreign := endpointRefusalStatus(response.StatusCode) && len(knobs.reasoning) > 0
+		// The compatible usage option earns only its own repair. Peeking at an
+		// unrelated refusal must not admit it to the older learning road.
+		repairable := response.StatusCode == http.StatusBadRequest && c.repairable(model, knobs)
+		if !foreign && !repairable && !(streamUsage && usageRefusalStatus) {
+			return response, nil
+		}
+		peek, readErr := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
+		switch {
+		case readErr != nil:
+		case foreign && !repaired["foreign_reasoning"] && refusesForeignReasoning(peek):
+			// THE WORDS STILL GO; ONLY THE OTHER MODEL'S THINKING STAYS HOME. A
+			// sidecar tagged with its model never gets here (reasoning.go's
+			// producedElsewhere); this is the journal written before the tag.
+			//
+			// The refused shape gets its own row before the repair, because "the
+			// call that went out first was refused and the one that came back was a
+			// different request" is precisely the fact a log with only the answer
+			// on it cannot tell anybody (calllog.go).
 			c.record(recordFacts{
 				ctx: ctx, request: request, knobs: knobs, stream: stream,
 				attempt: c.attemptsSoFar(knobs), began: began,
 				status: response.StatusCode, err: apiError(response.StatusCode, peek),
-				learned: learned, responseBody: peek,
+				responseBody: peek,
 			})
-			return c.resend(ctx, request, knobs, stream, response)
+			knobs.reasoning = nil
+			repaired["foreign_reasoning"] = true
+			began = logNow()
+			response, err = c.resend(ctx, request, knobs, stream, response)
+			continue
+		case streamUsage && usageRefusalStatus && !repaired["stream_usage"] && refusesStreamUsage(peek):
+			c.record(recordFacts{ctx: ctx, request: request, knobs: knobs, stream: stream,
+				attempt: c.attemptsSoFar(knobs), began: began, status: response.StatusCode,
+				err: apiError(response.StatusCode, peek), responseBody: peek})
+			c.streamUsageUnsupported.Store(c.usageEndpoint(knobs), true)
+			repaired["stream_usage"] = true
+			began = logNow()
+			response, err = c.resend(ctx, request, knobs, stream, response)
+			continue
+		case repairable:
+			var learned []string
+			for _, repair := range c.learn(model, knobs, peek) {
+				if !repaired[repair] {
+					repaired[repair] = true
+					learned = append(learned, repair)
+				}
+			}
+			if len(learned) > 0 {
+				knobs.trace.note(learned...)
+				c.record(recordFacts{
+					ctx: ctx, request: request, knobs: knobs, stream: stream,
+					attempt: c.attemptsSoFar(knobs), began: began,
+					status: response.StatusCode, err: apiError(response.StatusCode, peek),
+					learned: learned, responseBody: peek,
+				})
+				began = logNow()
+				response, err = c.resend(ctx, request, knobs, stream, response)
+				continue
+			}
 		}
+		// Not ours to fix. The body is handed back whole — the caller still has
+		// to read the provider's own words to build the error it reports.
+		response.Body = rewound(peek, response.Body)
+		return response, nil
 	}
-	// Not ours to fix. The body is handed back whole — the caller still has
-	// to read the provider's own words to build the error it reports.
-	response.Body = rewound(peek, response.Body)
-	return response, nil
 }
 
 // resend closes a refused answer and sends the request again as the knobs now
@@ -2196,6 +2225,7 @@ func (c *Client) completeWithMessagesStreaming(
 		c.settle(ctx, c.modelFor(request), response, receiptRefusalReason, content.Len(), knobs.trace)
 		return nil, false, err
 	}
+	knobs.trace.usageObservation.outputObserved = true
 	// The last call has no successor to close it, so the clean end of the stream
 	// does. This runs only past the decode loop's error returns: a stream that
 	// died mid-call announces nothing, because the fragment it stopped on may be
@@ -2448,7 +2478,11 @@ func (c *Client) StreamComplete(ctx context.Context, prompt string, options ...a
 		began := logNow()
 		var terminalErr error
 		finished := false
+		failedFinish := false
 		defer func() {
+			if finished && terminalErr == nil && !failedFinish {
+				rawKnobs.trace.usageObservation.outputObserved = true
+			}
 			c.record(recordFacts{ctx: ctx, request: request, knobs: rawKnobs, stream: true,
 				began: began, status: httpResponse.StatusCode, response: response, err: terminalErr})
 			if finished {
@@ -2483,6 +2517,7 @@ func (c *Client) StreamComplete(ctx context.Context, prompt string, options ...a
 				rawKnobs.trace.usageObservation.observeDelta(choice.Delta)
 				if choice.FinishReason != nil {
 					finished = true
+					failedFinish = failedFinish || strings.EqualFold(strings.TrimSpace(*choice.FinishReason), "error")
 				}
 				chunk.Choices = append(chunk.Choices, ai.StreamDelta{Index: choice.Index,
 					Delta: ai.MessageDelta{Role: choice.Delta.Role, Content: choice.Delta.Content}, FinishReason: choice.FinishReason})

@@ -2,6 +2,7 @@ package provider
 
 import (
 	"encoding/json"
+	"regexp"
 	"strings"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -9,7 +10,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/telemetry"
 )
 
-// usageObservation retains scalar observations for one attempt. Estimates never
+// usageObservation retains counts and tool-name presence for one attempt. Estimates never
 // enter the billing ledger, model response, price limits, or provider totals.
 type usageObservation struct {
 	inputBytes     int
@@ -20,6 +21,8 @@ type usageObservation struct {
 	inputReported  bool
 	outputReported bool
 	totalReported  bool
+	toolOrder      []int
+	toolNames      map[int]bool
 }
 
 // UnmarshalJSON preserves absent versus explicit zero counts. Cost-only usage
@@ -83,6 +86,19 @@ func usageInputBytes(messages, tools []json.RawMessage, source []ai.Message) (in
 	}
 	size := 0
 	for _, message := range messages {
+		var fields map[string]json.RawMessage
+		if json.Unmarshal(message, &fields) != nil {
+			return 0, false
+		}
+		// Opaque sidecars do not reveal how much input the provider consumed.
+		// Decline the component rather than count ciphertext as textual work.
+		for field := range fields {
+			switch field {
+			case "role", "content", "name", "tool_call_id", "tool_calls", "reasoning", "reasoning_content", "reasoning_text":
+			default:
+				return 0, false
+			}
+		}
 		size += len(message)
 	}
 	for _, tool := range tools {
@@ -92,20 +108,35 @@ func usageInputBytes(messages, tools []json.RawMessage, source []ai.Message) (in
 }
 
 func (o *usageObservation) observeDelta(delta streamDelta) {
-	o.outputObserved = true
+	before := o.outputBytes
 	o.outputBytes += len(delta.Content)
 	// Some gateways duplicate the same thought in multiple aliases. Use one
 	// textual channel, not the JSON wrapper or opaque encrypted signatures.
 	o.outputBytes += max(len(delta.Reasoning), len(delta.ReasoningContent), len(delta.ReasoningText))
 	for _, call := range delta.ToolCalls {
-		o.outputBytes += len(call.Function.Name) + len(call.Function.Arguments)
+		index := toolCallIndex(call, o.toolOrder)
+		if o.toolNames == nil {
+			o.toolNames = make(map[int]bool)
+		}
+		if _, known := o.toolNames[index]; !known {
+			o.toolOrder = append(o.toolOrder, index)
+		}
+		if !o.toolNames[index] && call.Function.Name != "" {
+			o.outputBytes += len(call.Function.Name)
+			o.toolNames[index] = true
+		} else if _, known := o.toolNames[index]; !known {
+			o.toolNames[index] = false
+		}
+		o.outputBytes += len(call.Function.Arguments)
 	}
+	o.outputObserved = o.outputObserved || o.outputBytes > before
 }
 
 func (o *usageObservation) observeWhole(payload []byte) {
 	var wire struct {
 		Choices []struct {
-			Message json.RawMessage `json:"message"`
+			Message      json.RawMessage `json:"message"`
+			FinishReason *string         `json:"finish_reason"`
 		} `json:"choices"`
 	}
 	if json.Unmarshal(payload, &wire) != nil {
@@ -116,7 +147,7 @@ func (o *usageObservation) observeWhole(payload []byte) {
 		if json.Unmarshal(choice.Message, &message) != nil {
 			continue
 		}
-		o.outputObserved = true
+		before := o.outputBytes
 		for _, part := range message.Content {
 			if part.Type == "text" {
 				o.outputBytes += len(part.Text)
@@ -135,6 +166,8 @@ func (o *usageObservation) observeWhole(payload []byte) {
 		if json.Unmarshal(choice.Message, &thought) == nil {
 			o.outputBytes += max(len(thought.Reasoning), len(thought.Content), len(thought.Text))
 		}
+		finished := choice.FinishReason != nil && strings.TrimSpace(*choice.FinishReason) != "" && !strings.EqualFold(strings.TrimSpace(*choice.FinishReason), "error")
+		o.outputObserved = o.outputObserved || o.outputBytes > before || finished
 	}
 }
 
@@ -151,10 +184,11 @@ func approximateUsageTokens(size int) int {
 
 func (c *Client) usageDimensions(facts recordFacts, attemptID, model string) telemetry.UsageDimensions {
 	base := facts.baseFor(c.config.BaseURL)
-	id := attemptID
-	if facts.response != nil && facts.response.ID != "" {
-		id = usageReceiptID(base, facts.response.ID, attemptID)
+	generation := ""
+	if facts.response != nil {
+		generation = facts.response.ID
 	}
+	id := usageReceiptID(base, generation, attemptID)
 	d := telemetry.UsageDimensions{RoutingProvider: c.usageRoutingProvider(base), ModelFamily: telemetry.ModelFamily(model), AccountingSource: "provider", ReceiptID: id}
 	o := usageObservation{}
 	if facts.knobs.trace != nil {
@@ -217,7 +251,15 @@ func (c *Client) usageDimensions(facts recordFacts, attemptID, model string) tel
 // the physical attempt's identity. Compatible servers can reuse generation ids
 // for different answers, so the provider's id alone cannot identify a receipt.
 func usageReceiptID(base, generation, attempt string) string {
+	generation = canonicalGenerationID(generation)
+	if generation == "" {
+		return attempt
+	}
 	return attempt + ":generation:" + base + ":" + generation
+}
+
+func canonicalGenerationID(generation string) string {
+	return strings.TrimSpace(generation)
 }
 
 // usageEndpoint follows the actual attempt when a billing road changed.
@@ -246,14 +288,44 @@ func (c *Client) streamUsageSupported(knobs callKnobs) bool {
 // Only a refusal naming the option itself permits this repair. An unrelated
 // validation error must not silently turn off accounting or duplicate work.
 func refusesStreamUsage(body []byte) bool {
-	text := strings.ToLower(string(body))
-	if !strings.Contains(text, "stream_options") && !strings.Contains(text, "include_usage") {
+	var payload any
+	if json.Unmarshal(body, &payload) != nil {
+		return streamUsageRefusal.MatchString(strings.ToLower(string(body)))
+	}
+	var refused func(any) bool
+	refused = func(value any) bool {
+		switch value := value.(type) {
+		case string:
+			return streamUsageRefusal.MatchString(strings.ToLower(value))
+		case []any:
+			for _, item := range value {
+				if refused(item) {
+					return true
+				}
+			}
+		case map[string]any:
+			// Pydantic puts the rejected field and its explanation in the same
+			// detail object. A sibling error's location must not qualify it.
+			if loc, ok := value["loc"].([]any); ok {
+				for _, field := range loc {
+					if field == "stream_options" || field == "include_usage" {
+						if msg, ok := value["msg"].(string); ok && strings.EqualFold(msg, "Extra inputs are not permitted") {
+							return true
+						}
+					}
+				}
+			}
+			for _, key := range []string{"error", "message", "detail", "msg"} {
+				if refused(value[key]) {
+					return true
+				}
+			}
+		}
 		return false
 	}
-	for _, phrase := range []string{"unsupported", "not supported", "unrecognized", "unknown", "not permitted", "extra inputs", "extra field", "unexpected"} {
-		if strings.Contains(text, phrase) {
-			return true
-		}
-	}
-	return false
+	return refused(payload)
 }
+
+// The refusal must qualify the option directly; unrelated clauses cannot
+// turn a supported option off merely by mentioning another unknown field.
+var streamUsageRefusal = regexp.MustCompile(`(?:\b(?:unsupported|unrecognized|unknown|unexpected)(?: (?:request|body|parameter|argument|field|keyword|option|input|supplied)s?)*[\s:='"` + "`" + `]+(?:stream_options|include_usage)\b|\b(?:stream_options|include_usage)['"` + "`" + `]*(?: (?:is|are|was))? (?:not supported|unsupported|not permitted|unrecognized|unknown|unexpected)\b|\bextra (?:inputs|fields) (?:are |is )?not permitted[\s:='"` + "`" + `]+(?:stream_options|include_usage)\b)`)
