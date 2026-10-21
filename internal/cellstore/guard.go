@@ -11,8 +11,10 @@ import (
 	"github.com/Agent-Field/codeaf/internal/keys"
 )
 
-// Guard is law L3: a secret never enters a sealed tree. Before each seal it
-// scans what the seal will capture. A file that holds a secret goes out of the
+// Guard is law L3 for working files: a withheld secret file never enters the
+// working-tree capture. Git history travels intact, sealed between paired
+// devices, even if a commit holds a secret. Before each seal the guard scans
+// the working files it will capture. A file that holds a secret goes out of the
 // tree with one notice, and the vault carries it to the other machines whole
 // (internal/vaultsync Files); the variables of an environment file also go to
 // the vault one by one, which is what a tool's environment is made from. "Out of the tree" is the engine's own exclude policy (withheld.go),

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,9 +46,9 @@ type twoHomes struct {
 	link   string // the project path A's session record names; a link to A's folder, removed while B has the chat
 }
 
-func newTwoHomes(t *testing.T) *twoHomes {
+func newTwoHomes(t *testing.T, wrap ...func(http.Handler) http.Handler) *twoHomes {
 	t.Helper()
-	r := newDriveRig(t)
+	r := newDriveRig(t, wrap...)
 	h := &twoHomes{driveRig: r, rootsB: t.TempDir(), wall: &noticeLog{}}
 	h.block = &blocker{Store: r.a.Store}
 	r.a.Store = h.block

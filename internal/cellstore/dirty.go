@@ -29,6 +29,9 @@ func (o planOp) Args() []string { return []string{"--json", "rewind", o.Snapshot
 // The daemon does not serve the plan, so this asks a spawned engine, which is
 // always correct and runs once per takeover.
 func (e Engine) Dirty(ctx context.Context, c cell.Cell) (bool, error) {
+	if err := e.screenCapture(ctx, c); err != nil {
+		return false, err
+	}
 	target := Target{Tree: e.tree(c), DataDir: e.LocalDir(c), CellDir: e.cellDir(c)}
 	out, err := Spawn{Binary: e.Binary}.Do(ctx, target, planOp{Snapshot: "head"})
 	if err != nil {

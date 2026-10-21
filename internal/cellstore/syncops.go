@@ -167,6 +167,9 @@ type SyncEngine struct {
 	// Outbox is where a cell's frames are written; nil means a directory
 	// beside the cell's store.
 	Outbox func(c cell.Cell) string
+	// MaterializeWith screens the folder before the engine's automatic undo
+	// snapshot; nil keeps the bare transport seam used by independent clients.
+	MaterializeWith func(context.Context, cell.Cell, Op) ([]byte, error)
 }
 
 // Export implements the sync seam.
@@ -280,7 +283,13 @@ func (e SyncEngine) outbox(c cell.Cell) string {
 // ask runs one verb and decodes its ok object into out (nil ignores it). Every
 // error names the verb and the cell, because a person is told which chat failed.
 func (e SyncEngine) ask(ctx context.Context, c cell.Cell, op Op, out any) error {
-	raw, err := e.Transport.Do(ctx, e.targetFor(c, op), op)
+	var raw []byte
+	var err error
+	if op.Verb() == "materialize" && e.MaterializeWith != nil {
+		raw, err = e.MaterializeWith(ctx, c, op)
+	} else {
+		raw, err = e.Transport.Do(ctx, e.targetFor(c, op), op)
+	}
 	if err != nil {
 		return fmt.Errorf("sync %s of cell %s: %w", op.Verb(), c.ID, err)
 	}
@@ -305,5 +314,11 @@ func (e Engine) Sync(keys SyncKeys, ledger string) SyncEngine {
 			return Target{Tree: e.tree(c), DataDir: e.LocalDir(c), CellDir: e.cellDir(c)}
 		},
 		Inbox: func(c cell.Cell) string { return e.LocalDir(c) + ".inbox" },
+		MaterializeWith: func(ctx context.Context, c cell.Cell, op Op) ([]byte, error) {
+			if err := e.screenCapture(ctx, c); err != nil {
+				return nil, err
+			}
+			return e.do(ctx, c, e.cellDir(c), op)
+		},
 	}
 }

@@ -349,7 +349,10 @@ question takes the whole screen, with the sentence wrapped.
 
 Continuing a chat brings all of it: the whole conversation, and every file the chat worked
 on, byte for byte: text and binary files, files that were never in a git repository, the
-executable bit, links. Rebuildable install folders such as `node_modules` and withheld files stay out of the workspace copy and are listed on the arrival card (see "What a moved chat left behind"). Nothing is fetched from git and no git login or remote is needed on
+executable bit, links. Git history, branches and settings travel too, sealed to your paired
+devices even when an old commit holds a key. A working file the guard withholds travels
+through the vault instead. Rebuildable install folders such as `node_modules` stay out of the
+workspace copy and are listed on the arrival card (see "What a moved chat left behind"). Nothing is fetched from git and no git login or remote is needed on
 the machine that continues; everything comes from your relay. The copy lives in a folder of
 its own under this machine's chats, and the chat works in a `work` folder inside it. Your
 project folder on the other machine is not touched. If this machine already has the chat and
@@ -359,9 +362,9 @@ the other machine's work.
 
 ## Do secret files and .env come with a continued chat
 
-**Secrets do not travel in the files.** A `.env`, at any depth, and any other file that holds a
-secret is kept out of the saved history and kept whole in your key vault instead, and the vault
-travels between your paired computers. When you continue, each of those files is put back at the same
+**Secret working files travel through the vault.** A `.env`, at any depth, and any other working file the guard recognises as holding a
+secret is kept out of the chat's file capture and kept whole in your key vault instead, and the vault
+travels with your chats. When you continue, each of those files is put back at the same
 path in the chat's work folder, with the same bytes and the same permissions: comments, order
 and quoting are as you wrote them. Each file is carried on its own, so two machines that edited
 different files keep both. When both edited the same file, the one saved last wins as a whole
@@ -395,6 +398,12 @@ your other machines.
 If you continue a chat on a machine that already has it, the chat as it was left replaces
 what is there. Anything you had changed and never saved is kept first, as a branch, saying `your unsaved edits here were kept as <K> turns from <device>`; nothing is thrown away. If another machine takes the
 chat while you are still fetching it, this machine keeps exactly what it had.
+
+## Is my git history sent — secrets in my repo, .git, committed keys, branches
+
+Yes. When you continue a chat on your own paired device, the repository's `.git` travels as it is, including its history, branches, settings and any keys in old commits. Task commits travel too. Git history is sealed end to end between your devices; the relay sees only ciphertext. codeaf does not screen, remove or rewrite committed secrets.
+
+The working-tree guard is separate: a `.env` or source file it recognises as holding a secret is excluded from the chat's file capture and sent only through the encrypted vault. The scanner reads the whole file, including keys past its first MiB. If the secret was committed, its Git copy still travels with the history. An untracked secret file with no committed copy arrives only through the vault.
 
 ## What a move carries and what it leaves behind — job logs, task history, kept branches, do spend and usage numbers sync between computers, memory, withheld folders
 
