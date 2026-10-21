@@ -4865,6 +4865,9 @@ func (s *eventStream) pump() {
 // from this display shape even though the journal keeps it for model continuity;
 // nothing about the wire itself is shown to the person.
 type DisplayEntry struct {
+	// JournalLine is the physical origin of a replayed entry; zero means unknown.
+	JournalLine int
+
 	// RunID is the immutable producing turn, absent on legacy records.
 	RunID string
 	// Role is "user" | "assistant" | "tool" | "note" | "aside".
@@ -5289,6 +5292,7 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			Team:            team,
 			ForModel:        forModel,
 			At:              journal.written(msg),
+			JournalLine:     journal.journalLine(msg),
 			FactoryProgress: progress,
 		})
 		var rejectionCounts map[string]int

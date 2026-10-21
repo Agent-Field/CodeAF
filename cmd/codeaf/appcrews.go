@@ -1381,7 +1381,7 @@ func appApplySettings(s *teamstore.Settings, given appwire.CrewSettings) {
 
 // crewExtraOnCreate keeps a new crew's goal, end date and the manager's tasks
 // as they stood.
-func (b *appBackend) crewExtraOnCreate(id, manager, goal string, ends *time.Time) {
+func (b *appBackend) crewExtraOnCreate(id, manager, goal string, ends *time.Time, origin ...appStartClaim) {
 	var history []string
 	if manager != "" {
 		if tasks, err := b.ListTasks(manager); err == nil {
@@ -1396,6 +1396,9 @@ func (b *appBackend) crewExtraOnCreate(id, manager, goal string, ends *time.Time
 	_ = b.crewLayer().write(func(f *appCrewLayerFile) error {
 		extra := f.crew(id)
 		extra.Goal, extra.EndsAt, extra.History = strings.TrimSpace(goal), ends, history
+		if len(origin) > 0 {
+			extra.GoalAgent, extra.GoalClientID = origin[0].Manager, origin[0].ClientID
+		}
 		if len(history) > 0 {
 			extra.HistoryOwner = manager
 		}
@@ -1582,6 +1585,7 @@ func (b *appBackend) CrewUpdate(ask appwire.CrewUpdate) (appwire.Crew, error) {
 			extra := f.crew(ask.ID)
 			if ask.Goal != nil {
 				extra.Goal = strings.TrimSpace(*ask.Goal)
+				extra.GoalAgent, extra.GoalClientID = "", ""
 			}
 			if ask.EndsAt != nil {
 				ends := *ask.EndsAt

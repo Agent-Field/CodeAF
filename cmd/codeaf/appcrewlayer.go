@@ -32,9 +32,12 @@ const appCrewLayerName = "crews.json"
 
 // appCrewExtra is what the layer keeps for one crew.
 type appCrewExtra struct {
-	Goal    string     `json:"goal,omitempty"`
-	EndsAt  *time.Time `json:"ends_at,omitempty"`
-	History []string   `json:"history,omitempty"`
+	// GoalAgent and GoalClientID bind the goal to its submission, never its text.
+	GoalAgent    string     `json:"goal_agent,omitempty"`
+	GoalClientID string     `json:"goal_client_id,omitempty"`
+	Goal         string     `json:"goal,omitempty"`
+	EndsAt       *time.Time `json:"ends_at,omitempty"`
+	History      []string   `json:"history,omitempty"`
 	// HistoryOwner is the agent that held History's tasks when the crew was made.
 	HistoryOwner string             `json:"history_owner,omitempty"`
 	Items        []appwire.CrewItem `json:"items,omitempty"`

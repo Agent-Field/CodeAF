@@ -107,14 +107,18 @@ type graphOwner struct{ id, dir string }
 
 // graphPlan is what a request resolves to before anything is read.
 type graphPlan struct {
-	scope   workgraph.GraphScope
-	about   workgraph.ScopeFacts
-	root    string
-	owners  []graphOwner
-	missing []workgraph.OwnerIssue
-	crews   []workgraph.CrewInput
-	members []workgraph.MemberInput
-	crewSig string
+	scope       workgraph.GraphScope
+	about       workgraph.ScopeFacts
+	root        string
+	owners      []graphOwner
+	missing     []workgraph.OwnerIssue
+	crews       []workgraph.CrewInput
+	members     []workgraph.MemberInput
+	crewSig     string
+	briefAgent  string
+	briefText   string
+	briefClient string
+	originSig   string
 }
 
 var _ appwire.WorkGrapher = (*appBackend)(nil)
@@ -125,6 +129,9 @@ func (b *appBackend) WorkGraph(ctx context.Context, req workgraph.GraphRequest) 
 	g.init()
 	plan, err := b.graphPlan(req.Scope)
 	if err != nil {
+		return nil, err
+	}
+	if err := b.graphBriefPlan(&plan); err != nil {
 		return nil, err
 	}
 	need := g.requestWeight(plan)
@@ -144,7 +151,16 @@ func (b *appBackend) WorkGraph(ctx context.Context, req workgraph.GraphRequest) 
 	if errors.As(err, &tooLarge) {
 		return nil, narrower(plan, tooLarge)
 	}
-	return res, err
+	if err != nil {
+		return nil, err
+	}
+	if res.Unchanged {
+		return res, nil
+	}
+	if err := b.graphOrigins(res, plan); err != nil {
+		return nil, err
+	}
+	return res, nil
 }
 
 // narrower says which smaller scope is worth asking for instead.
@@ -527,9 +543,16 @@ func (l *graphLoaded) revision(plan graphPlan) string {
 			h.Write([]byte{0})
 		}
 	}
-	put("work.graph/1", string(plan.scope.Kind), plan.scope.ID, plan.root, plan.crewSig)
+	put("work.graph/1", string(plan.scope.Kind), plan.scope.ID, plan.root, plan.crewSig, plan.originSig)
+	origins := map[string]bool{}
 	for _, o := range l.owners {
 		put("o", o.Owner, o.Stamp)
+		for _, f := range o.Facts {
+			if a := f.Node.OriginAnchor; a != nil && !origins[a.Agent] {
+				origins[a.Agent] = true
+				put("origin", a.Agent, a.Machine, graphJournalStamp(a.Agent))
+			}
+		}
 	}
 	for _, o := range l.external {
 		put("x", o.id, o.stamp)
