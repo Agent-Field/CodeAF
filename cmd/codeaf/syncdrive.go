@@ -41,6 +41,9 @@ func (b *driveBook) driveOf(c cell.Cell, engine cellstore.Engine, report func(er
 	if b == nil {
 		return nil
 	}
+	if syncsetup.Resolve(home.Dir()).Off || !cell.Available() {
+		return nil
+	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if d := b.drive[c.ID]; d != nil && !d.superseded() {
