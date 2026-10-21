@@ -247,7 +247,7 @@ func TestLinkShapes(t *testing.T) {
 			t.Errorf("%q is not link text", text)
 		}
 	}
-	for _, text := range []string{"42-715-302", "715 302", "42715302", "715302", "", "k7m2q9x", "https://example.com/p/k7m2q9xd#" + key, "https://codeaf.link/p/k7m2q9xd#" + key, "k7m2q9xd.short"} {
+	for _, text := range []string{"42-715-302", "715 302", "42715302", "715302", "", "k7m2q9x", "https://example.com/not-a-page/k7m2q9xd#" + key, "ftp://codeaf.link/p/k7m2q9xd#" + key, "k7m2q9xd.short"} {
 		if IsLinkText(text) {
 			t.Errorf("%q was taken for link text", text)
 		}

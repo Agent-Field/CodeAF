@@ -76,8 +76,14 @@ type Invite struct {
 func InviteLines(in Invite) string {
 	var b strings.Builder
 	b.WriteString("Approve this device from one you already use.\n\n")
-	b.WriteString("Open this link there:\n")
-	fmt.Fprintf(&b, "  %s\n\n", in.Ref.URL())
+	link := in.Ref.URL()
+	if in.Via != "" {
+		link = in.Ref.URLAt(in.Via)
+	}
+	if link != "" {
+		b.WriteString("Open this link there:\n")
+		fmt.Fprintf(&b, "  %s\n\n", link)
+	}
 	b.WriteString("Or, on a computer with codeaf, run:\n")
 	fmt.Fprintf(&b, "  %s\n\n", ApproveCommand(in.Ref, in.Via))
 	fmt.Fprintf(&b, "Check number: %s \u2014 the other device shows the same number.\n", in.Check)
