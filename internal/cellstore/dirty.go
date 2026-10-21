@@ -32,6 +32,15 @@ func (e Engine) Dirty(ctx context.Context, c cell.Cell) (bool, error) {
 	if err := e.screenCapture(ctx, c); err != nil {
 		return false, err
 	}
+	// The plan deliberately ignores harness bookkeeping under .cell, but a
+	// reply already written to its journal is work even before the next seal.
+	head, err := Head(c)
+	if err != nil {
+		return false, err
+	}
+	if head != nil && sizeOf(rel(c, cell.TranscriptPath)) != head.Receipt.Transcript.End {
+		return true, nil
+	}
 	target := Target{Tree: e.tree(c), DataDir: e.LocalDir(c), CellDir: e.cellDir(c)}
 	out, err := Spawn{Binary: e.Binary}.Do(ctx, target, planOp{Snapshot: "head"})
 	if err != nil {

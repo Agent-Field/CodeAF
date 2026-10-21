@@ -25,6 +25,11 @@ func TestTwoHomesThirdTakeAfterTakeBack(t *testing.T) {
 	}
 
 	// A seals a change so B's next take is warm, and B takes it in place.
+	// C6 requires continuing B's newer history before A can write again; a
+	// plain stale reopen is deliberately view-only now.
+	if _, err := h.continuerA().Take(ctx, h.cell.ID); err != nil {
+		t.Fatal(err)
+	}
 	a := h.openA()
 	a.mustSay("a three")
 	h.durable(h.cell.ID, h.cell)
