@@ -77,9 +77,13 @@ Each line is left out when it has nothing to say.
 
 On the set-up card, `set up` runs only the commands the card lists, and `not now` leaves it and says `/setup does this later`.
 
-**The project label.** If the folder the chat was left in is not on this device, the chat works in a copy of it that came along, and the label at the right of the keys row says so: `project: proj-a (copy from another machine)`, with the folder's name. If this device does not know the folder, the label shows the chat's name instead.
+## Why does the project label say copy from another machine
 
-**If nothing happens when you press Continue here**, the cause is one of these:
+If the folder the chat was left in is not on this device, the chat works in a copy of it that came along, and the label at the right of the keys row says so: `project: proj-a (copy from another machine)`, with the folder's name. If this device does not know the folder, the label shows the chat's name instead.
+
+## Continue here did nothing — another device continued first or the relay is unreachable
+
+If nothing happens when you press `Continue here`, the cause is one of these:
 
 - `another device continued this chat first`: another device was faster. The row goes back to `running on <device>`. Nothing changed.
 - `other machines unreachable`: this device cannot reach the service. Nothing can be moved until it can.
@@ -88,13 +92,15 @@ On the set-up card, `set up` runs only the commands the card lists, and `not now
 
 ## Taking a chat back, and two computers racing for the same chat — who wins, and what the loser sees
 
-A chat has one holder at a time. To take a chat back from the computer that took it, continue it there the same way: press enter on its row on that computer and choose `continue here`. Nothing has to be returned or switched off first. A computer with the chat open when another takes it says `<device> continued this chat; this window now only shows it`, stops taking new turns, and keeps what it had not yet sent as a branch (`<K> turns from <device>: merge / discard`). A tool call the model tries there answers with that same line. Taking the chat back leaves a `node_modules` or other install folder that computer already has alone.
+A chat has one holder at a time. To take a chat back from the computer that took it, continue it there the same way: press enter on its row on that computer and choose `continue here`. Nothing has to be returned or switched off first. A computer with the chat open when another takes it says `<device> continued this chat; this window now only shows it`, stops taking new turns, and keeps what it had not yet sent as a branch (`<K> turns from <device>: discard`). A tool call the model tries there answers with that same line. Taking the chat back leaves a `node_modules` or other install folder that computer already has alone.
 
-If two computers press `continue here` for the same chat together, only one of them gets it. The slower one sees `another device continued this chat first`, nothing is changed on it, and its row goes back to `running on <device>`. No turn is lost on either side: whatever the earlier holder had not sent is kept for you as the branch above. Pressing `2` (`leave it there`) on the question, or `esc`, changes nothing and leaves the chat where it is.
+If two computers press `continue here` for the same chat together, only one of them gets it. The slower one sees `another device continued this chat first`, nothing is changed on it, and its row goes back to `running on <device>`. No turn is lost on either side: whatever the earlier holder had not sent is kept for you as the branch above. This build offers discard, which archives a branch, and opening the branch as a separate chat; merging it into the original chat is unavailable. Pressing `2` (`leave it there`) on the question, or `esc`, changes nothing and leaves the chat where it is.
+
+## The chat is arriving on this computer — why it waits to open
 
 While a chat is moving onto this computer, pressing enter on its row says `this chat is arriving on this computer; it opens by itself in a moment`. Nothing is wrong and nothing needs doing: the move takes a second or two, and the chat opens by itself when it ends, with the other computer's latest turns in it. Opening it earlier is refused on purpose, because a window opened halfway would show the chat as it was before the move and could not save your turns.
 
-When the holder is off (its lid is shut), the row reads `<device> offline` and you can still continue the chat here: the card says `last saved turn <N> ago; up to <K> turns may still be on <device>`. Turns that never left that computer are not in the copy you get; when it comes back online it sees the chat was continued elsewhere and keeps those turns as a branch for you to merge or discard.
+When the holder is off (its lid is shut), the row reads `<device> offline` and you can still continue the chat here: the card says `last saved turn <N> ago; up to <K> turns may still be on <device>`. Turns that never left that computer are not in the copy you get; when it comes back online it sees the chat was continued elsewhere and keeps those turns as a branch as a separate chat, or to discard. Merging into the original chat is unavailable.
 
 ## Can the chat on the other computer still open the job logs it mentions — logs, saved tool output, task journals and the task history after a move
 

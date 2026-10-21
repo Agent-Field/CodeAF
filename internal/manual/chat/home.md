@@ -297,7 +297,7 @@ happened. The row says where the chat is only where that tells you something:
 | --- | --- |
 | running on another machine | `running on <device>` |
 | on a machine that went off or to sleep without letting go | `<device> offline` |
-| a branch left by a takeover | `<K> turns from <device>: merge / discard`, or `: discard` alone where merge is not offered |
+| a branch left by a takeover | `<K> turns from <device>: discard` (this build has no merge) |
 | held by this machine, or let go by everyone | nothing |
 
 Read the two words apart: `running on build-box` says that computer is working on the chat now, and `build-box offline` says that computer has not answered for 25 seconds (it is switched off, asleep, frozen or offline; the word appears within 30 seconds, and goes at once when it answers again) and has not let the chat go, so the chat's last saved turns are what you would get. The name is only the device's. A chat on a computer that is `offline` can still be continued here; the card says how many turns may still be there. A count of one reads `1 turn`, never `1 turns`. The device is the name you gave that machine. A chat whose name will not open shows
@@ -307,10 +307,12 @@ even that will not fit the sentence gives way whole before the chat's name is cu
 row may show only the name and its age. These rows are stops for the cursor: enter runs
 what the row offers, described in the next two sections.
 
+## How fast do chats on other machines update — live changes and polling
+
 When the relay offers a live connection, home keeps one open and a change made on
 another machine shows on home within a second or two. The list is also fetched once a
 minute as a safety net, and at once when you open home or come back to the window. When the
-relay does not offer a live connection (an older or self-hosted relay), or the connection is
+relay does not offer a live connection (an older relay), or the connection is
 down, home asks for the list instead. It asks only while home is on screen and the terminal
 has your attention (its focus, or a key pressed in the last ten minutes). It asks every few
 seconds while the list is changing and about once a minute while it is not. Each row's age is
@@ -327,12 +329,12 @@ Press enter on a row that says `<device> offline` or `running on <device>` and h
 with the cursor on `continue here`, because pressing enter on the row already said you want it; `esc` or `2` leaves it there.
 The card says how fresh the copy is: `last saved turn <N> ago; up to <K> turns may still
 be on <device>`. The `up to` clause is left out when nothing is waiting there. On a
-`running on <device>` row the card starts with that: `running on <device>; last durable turn
-<N>s ago`. When that device is not online, the card leaves `running on` out and says `last saved turn <N> ago`. Press enter to continue: the chat is fetched, this machine takes it
+`running on <device>` row the card starts with that: `running on <device>; last saved turn
+<N> ago`. When that device is not online, the card leaves `running on` out and says `last saved turn <N> ago`. Press enter to continue: the chat is fetched, this machine takes it
 over at once and it opens. You do not wait for the other machine to go quiet: a chat that is
 running there stops taking new turns there the moment you take it, and its window says
 `<device> continued this chat; this window now only shows it`. Anything it had not yet sent
-is kept as a branch, `<K> turns from <device>: merge / discard`. On a narrow frame the same
+is kept as a branch, `<K> turns from <device>: discard`; opening it continues it separately, and discard archives it. On a narrow frame the same
 question takes the whole screen, with the sentence wrapped.
 
 - If you had unsaved edits to that chat here, they are not overwritten. They are kept as a
@@ -347,8 +349,7 @@ question takes the whole screen, with the sentence wrapped.
 
 Continuing a chat brings all of it: the whole conversation, and every file the chat worked
 on, byte for byte: text and binary files, files that were never in a git repository, the
-executable bit, links. The one exception is an install folder a lockfile rebuilds, such as
-`node_modules` (see "What a moved chat left behind"). Nothing is fetched from git and no git login or remote is needed on
+executable bit, links. Rebuildable install folders such as `node_modules` and withheld files stay out of the workspace copy and are listed on the arrival card (see "What a moved chat left behind"). Nothing is fetched from git and no git login or remote is needed on
 the machine that continues; everything comes from your relay. The copy lives in a folder of
 its own under this machine's chats, and the chat works in a `work` folder inside it. Your
 project folder on the other machine is not touched. If this machine already has the chat and
@@ -356,14 +357,18 @@ it works in one of your project folders, the chat is restored into that very fol
 never renamed or replaced, so an editor or git that holds it open keeps working, and it shows
 the other machine's work.
 
+## Do secret files and .env come with a continued chat
+
 **Secrets do not travel in the files.** A `.env`, at any depth, and any other file that holds a
 secret is kept out of the saved history and kept whole in your key vault instead, and the vault
-travels with your chats. When you continue, each of those files is put back at the same
+travels between your paired computers. When you continue, each of those files is put back at the same
 path in the chat's work folder, with the same bytes and the same permissions: comments, order
 and quoting are as you wrote them. Each file is carried on its own, so two machines that edited
 different files keep both. When both edited the same file, the one saved last wins as a whole
 file, never line by line. A file you delete on one machine is deleted on the other. With no
 identity on this machine, no secrets are fetched and no file is written.
+
+## Do saved provider keys and credentials follow me to another computer
 
 **Your keys travel too, through the same encrypted vault.** Two things are sealed in the
 vault with your identity key and sent when they change, so a machine you continue on does not
@@ -377,15 +382,18 @@ one machine removes it on the other. A key that comes from an environment variab
 sent and never replaces a good copy; when a good `credentials.json` arrives, the damaged file
 is kept beside it as `credentials.json.damaged`.
 
+## Do budgets, settings and model choices move between computers
+
 **Budgets stay per machine.** Only the key fields of `config.json` travel. Your budgets and
 limits, model picks and every other setting are not sent, and a key arriving never changes them,
 so a limit you set here is not applied to your other machine. A service's key lands only on a
 machine that already has that service listed, and a machine without it never removes it for
 your other machines.
 
+## Unsaved local edits when continuing a chat here — the kept branch
+
 If you continue a chat on a machine that already has it, the chat as it was left replaces
-what is there. Anything you had changed and never saved is kept first, as a branch, with the
-sentence above; nothing is thrown away. If another machine takes the
+what is there. Anything you had changed and never saved is kept first, as a branch, saying `your unsaved edits here were kept as <K> turns from <device>`; nothing is thrown away. If another machine takes the
 chat while you are still fetching it, this machine keeps exactly what it had.
 
 ## What a move carries and what it leaves behind — job logs, task history, kept branches, do spend and usage numbers sync between computers, memory, withheld folders
@@ -418,12 +426,15 @@ packages, and a `node_modules` made on a Mac holds Mac programs that would be wr
 A copy of the folder that a machine already has is never deleted: taking a chat back, or
 rewinding, leaves it alone.
 
-Taking such a chat raises one card, **Set this machine up like <device> had it?**, with
+## Does set up run npm ci without asking again — the arrival card and not now
+
+Continuing a chat that needs setup raises one card, **Set this machine up like <device> had it?**, with
 `set up` and `not now` (the cursor starts on `not now`). It lists `not brought along:` the
 folders, each with the command that brings it back, `was running there:` the commands that
 were running (a dev server, with its port), and `also needed:` the tools this machine lacks.
-A line is left out when it has nothing to say, and a machine that has everything, such as
-the one taking its own chat back, gets no card.
+A line is left out when it has nothing to say. When there is only an arrival summary,
+the card says `Moved from <device>. Here is where it stands.` and offers `got it`,
+which runs nothing. With no arrival facts to show, there is no card.
 
 `set up` starts the same setup turn as `/setup now`, opened with exactly those facts, and is
 consent for exactly the commands the card lists: the agent runs them without asking again,

@@ -28,6 +28,8 @@ line above the message box* below, and *The thinking chip above the message box*
 keys page). The tray is drawn only when it has something on it: with nothing attached, the
 row is not there and the box sits straight under the gap.
 
+## The right-hand task column — when it appears and alt+l
+
 Beside the conversation, on the right, the column (the right-hand bar, sidebar, task
 panel, whatever you call it) takes a quarter of the frame, 28 to 40 columns (30 at 120),
 from the session's first keystroke, before any tasks exist. It is the same column in every
@@ -46,6 +48,8 @@ right: `alt+l`. `ctrl+g` does the same while no foreground command can be kept. 
 column closed the conversation is laid out at the full width of the terminal, running work
 still draws the strip along the top, and the keys row under the box reads `alt+l tasks`
 once the session has tasks to come back to and no running-turn line owns that row.
+
+## Which places take the whole frame — the tab bar, rewind and architecture map
 
 **Seven places take the whole frame instead of sharing it**, at every width: home, AI
 teams, activity, automations, memory, spend and settings. All seven are on the tab bar with
@@ -66,8 +70,10 @@ leaves and gives the chat back exactly as it was.
 While any of them is up nothing else is drawn — no conversation, no box, no status line —
 and `esc` gives the frame back. **Only one is ever up:** opening any one closes the rest.
 
+## Full-page navigation and the home message box
+
 Every place is drawn in one frame, top to bottom: the top line (the `codeaf` wordmark, the
-six places with the one you stand in lit, and the machine's own signs on the far end), the
+place names with the one you stand in lit, and the machine's own signs on the far end), the
 tab strip of your chats, a dim rule, the place's body, a rule carrying the place's own count
 or note, and the hint line last. See the **Places** page.
 
@@ -292,6 +298,8 @@ shortcut needs a terminal that distinguishes Ctrl+Shift+T from Ctrl+T.
 every door — the ordinary socket, `--host`, `--at` and `--no-host` alike. Selecting the
 next tab replaces nothing: that chat has its own connection and carries on. Closing the
 last tab to Home leaves its connection in place.
+
+## Closing a tab versus quitting codeaf — /quit and ctrl+c
 
 **Quitting is a different act from closing a tab.** `ctrl+w` and `×` take a view off the
 row, and a working one is answered by the card below. `/quit` and `ctrl+c` end the whole
@@ -3835,7 +3843,7 @@ and then a slow answer is simply waited out — the status line still says what 
 and how long it has been, and draws no countdown, because nothing is going to happen at
 the end of one.
 
-## Why did the reply restart, what does "trying again" mean, and where did the text that was on screen go — the text it was writing disappeared
+## It says trying again — why did the reply restart, what does "trying again" mean, and where did the text that was on screen go — the text it was writing disappeared
 
 Sometimes the wait line stops naming a model and reads this instead:
 
@@ -3868,6 +3876,8 @@ One more row reads the same way and is not a cut request: `the reply stopped whe
 conversation moved — asking again` is a whole turn being asked again, in the window a
 conversation was moved to, because the turn it left behind had said nothing at all.
 
+
+## Does trying again change my model — the endpoint and fallback
 
 The model is **not** named on `trying again`. The name was on the line that was just cut,
 and the retry still asks that same model. When the router identified an endpoint that went

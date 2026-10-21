@@ -39,7 +39,9 @@ a computer you lost still holds everything it had: your chats up to now and ever
 change these at their providers: OPENROUTER_API_KEY
 ```
 
-If the command stops half way, because the network dropped or the computer went to sleep, run it again. It finds what it had done and finishes. It never makes a second new identity. While a rotation is unfinished, the computer does not sync, and says `a rotation is unfinished on this computer; run codeaf identity rotate to finish it`.
+## The rotation stopped half way — resume it or abandon it
+
+If `codeaf identity rotate` stops half way, because the network dropped or the computer went to sleep, run it again. It finds what it had done and finishes. It never makes a second new identity. While a rotation is unfinished, the computer does not sync, and says `a rotation is unfinished on this computer; run codeaf identity rotate to finish it`.
 
 To stop a rotation before step 7, run `codeaf identity rotate --abandon`. The old identity opens again and nothing has changed. After step 7 the only way is forward: it says `already switched to the new identity`.
 
@@ -89,7 +91,7 @@ A way to prove you are the owner with a written recovery phrase is not built.
 
 ## What it costs — every chat goes up again
 
-A rotation uploads everything your chats hold, once, because the new identity starts empty. The plan it shows before you answer gives the number. A chat of 200 MB goes up as 200 MB. The relay charges little for it: a few cents for the biggest chats on a hosted relay. The time is your network.
+A rotation uploads everything your chats hold, once, because the new identity starts empty. The plan it shows before you answer gives the number. A chat of 200 MB goes up as 200 MB. The transfer takes your network bandwidth and uses relay storage; the old and new copies count towards its limits during the grace period. There is no fixed price or duration promised by the command.
 
 While the old identity is kept for the grace period, the relay holds both copies.
 
