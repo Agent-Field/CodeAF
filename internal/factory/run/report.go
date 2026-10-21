@@ -346,7 +346,7 @@ func foldResult(it *factory.Item, st factory.Stage, i int, res factory.StageResu
 		round = 1
 	}
 	factory.NoteRound(ph, factory.RoundCap(st.Max, round), factory.RoundLine{
-		Round: round, Summary: factory.RoundSummary(kept), At: now, Started: ph.Started, Chat: res.Chat,
+		Rejected: !factory.Met(st, res), Round: round, Summary: factory.RoundSummary(kept), At: now, Started: ph.Started, Chat: res.Chat,
 	})
 	it.Stream.Findings = res.Findings
 	sheet := makesSheet(st)

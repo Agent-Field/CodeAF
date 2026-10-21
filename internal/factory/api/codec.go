@@ -902,7 +902,7 @@ func roundsWire(lines []factory.RoundLine) []RoundLine {
 	}
 	out := make([]RoundLine, len(lines))
 	for i, line := range lines {
-		out[i] = RoundLine{Round: line.Round, Summary: line.Summary, At: line.At, StartedAt: line.Started, Chat: line.Chat}
+		out[i] = RoundLine{Rejected: line.Rejected, Round: line.Round, Summary: line.Summary, At: line.At, StartedAt: line.Started, Chat: line.Chat}
 	}
 	return out
 }
@@ -914,7 +914,7 @@ func roundsItem(lines []RoundLine) []factory.RoundLine {
 	}
 	out := make([]factory.RoundLine, len(lines))
 	for i, line := range lines {
-		out[i] = factory.RoundLine{Round: line.Round, Summary: line.Summary, At: line.At, Started: line.StartedAt, Chat: line.Chat}
+		out[i] = factory.RoundLine{Rejected: line.Rejected, Round: line.Round, Summary: line.Summary, At: line.At, Started: line.StartedAt, Chat: line.Chat}
 	}
 	return out
 }

@@ -114,11 +114,14 @@ type Failure struct {
 // written before they were recorded has neither, and Chat is empty for a step
 // that is not a conversation (a check).
 type RoundLine struct {
-	Round   int       `json:",omitempty"`
-	Summary string    `json:",omitempty"`
-	At      time.Time `json:",omitempty"`
-	Started time.Time `json:",omitempty"`
-	Chat    string    `json:",omitempty"`
+	// Rejected means the round ended without meeting its completion rule.
+	// Absent on older records, whose outcome must not be inferred from prose.
+	Rejected bool      `json:",omitempty"`
+	Round    int       `json:",omitempty"`
+	Summary  string    `json:",omitempty"`
+	At       time.Time `json:",omitempty"`
+	Started  time.Time `json:",omitempty"`
+	Chat     string    `json:",omitempty"`
 }
 
 // Acts is who may use each verb on this job. It is computed for one caller.

@@ -456,6 +456,7 @@ type Failure struct {
 // the worker holding the job: every reader's job has it withheld (serve's
 // withholdChats), and the app opens a round's chat through factory.job_chats.
 type RoundLine struct {
+	Rejected  bool      `json:"rejected,omitempty"`
 	Round     int       `json:"round"`
 	Summary   string    `json:"summary,omitempty"`
 	At        time.Time `json:"at"`

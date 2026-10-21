@@ -815,7 +815,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		var carried []string
 		if err := lp.move(c, name, kind, text, func(it *factory.Item) error {
 			it.State = factory.StateRunning
-			if it.FollowUp != nil && (it.FollowUp.State == "queued" || it.FollowUp.State == "running") {
+			if it.FollowUp != nil && (it.FollowUp.State == "queued" || it.FollowUp.State == "running" || factory.IsCIRepairStage(st)) {
 				f := *it.FollowUp
 				f.State = "running"
 				it.FollowUp = &f
@@ -915,6 +915,25 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		// STEP after it, never a question the step asks of itself.
 		if factory.Met(st, res) {
 			return lp.finish(c, i, name, "")
+		}
+		if reason := verificationReason(res); reason != "" {
+			retry := fmt.Sprintf("Verification blocked: %s. Retrying round %d of %d.", reason, round+1, limit)
+			if round >= limit {
+				retry = "Verification blocked: " + reason + ". Automatic rounds exhausted; waiting for your decision."
+			}
+			_ = lp.write(c, func(it *factory.Item) error {
+				it.Stream.Phases[i].Note = retry
+				if it.FollowUp != nil {
+					f := *it.FollowUp
+					f.Reason = retry
+					if round >= limit {
+						f.State = "needs_you"
+					}
+					it.FollowUp = &f
+				}
+				return nil
+			})
+			lp.tellStep(c.id, name+": "+retry, &factory.StepProgress{Step: name, Round: round, Event: factory.ProgressFailed})
 		}
 		if round >= limit {
 			back := false
@@ -1019,6 +1038,9 @@ func roundsWord(n int) string {
 
 // shortfall says in a few words why a round did not meet its until.
 func shortfall(res factory.StageResult) string {
+	if reason := verificationReason(res); reason != "" {
+		return "verification blocked: " + reason
+	}
 	switch {
 	case !res.Done:
 		return "no result"

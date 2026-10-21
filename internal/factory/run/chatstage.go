@@ -45,6 +45,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/verification"
 )
 
 // StageDoor is what a stage conversation reports through. It is spelled
@@ -346,12 +347,10 @@ loop:
 		notes, tests := receipts.ExecutionNotes()
 		res.Notes = append(res.Notes, notes...)
 		if job.Stage.Name == "proof" || job.Stage.Name == "test" || factory.IsCIRepairStage(job.Stage) {
-			for _, note := range notes {
-				if strings.HasPrefix(note, "Unresolved verification command failed:") {
-					res.Done = false
-					res.Exit = 1
-					res.Output += "\n" + note + ". Re-run this command successfully after the repair, or report what remains blocked."
-				}
+			if reason := verificationReason(res); reason != "" {
+				res.Done = false
+				res.Exit = 1
+				res.Output = "Verification blocked: " + reason + ". Re-run the relevant check successfully after the repair, or report what remains blocked.\n" + res.Output
 			}
 		}
 		if tests != nil {
@@ -1074,4 +1073,17 @@ func fakeID(spec ConversationSpec, n int) string {
 		return spec.Resume
 	}
 	return fmt.Sprintf("fake-%d", n)
+}
+
+// A concrete rejection survives the round's summary and next retry. It must
+// never be reduced to "no result" when the model did report a result that the
+// factory could not verify.
+func verificationReason(res factory.StageResult) string {
+	var reasons []string
+	for _, note := range res.Notes {
+		if strings.HasPrefix(note, verification.FailurePrefix) {
+			reasons = append(reasons, strings.TrimSpace(strings.TrimPrefix(note, verification.FailurePrefix)))
+		}
+	}
+	return strings.Join(reasons, "; ")
 }

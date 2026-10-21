@@ -66,6 +66,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/factory/verification"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/shell"
 )
@@ -317,7 +318,7 @@ func (j *job) info() jobInfo {
 		elapsed = j.ended.Sub(j.started)
 	}
 	return jobInfo{
-		id: j.id, command: j.command, kind: j.kind, label: j.label, detail: j.detail, outputTruncated: truncated, url: url,
+		id: j.id, command: verification.OriginalCommand(j.command), kind: j.kind, label: j.label, detail: j.detail, outputTruncated: truncated, url: url,
 		name:    j.name,
 		logPath: j.logPath,
 		dir:     j.dir,
