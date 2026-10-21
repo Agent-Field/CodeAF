@@ -9,6 +9,12 @@ import (
 )
 
 func (b *appBackend) FactoryJobControl(ctx context.Context, p appwire.FactoryJobControlParams) (appwire.FactoryJobActed, error) {
+	if p.Mode == factory.AutonomyAuto || p.Mode == factory.AutonomyManual {
+		return b.jobWrite(ctx, p.Factory, "set_"+p.Mode, p.Job, "control", struct {
+			Mode   string      `json:"mode"`
+			Expect *api.Expect `json:"expect"`
+		}{p.Mode, p.Expect})
+	}
 	host, err := b.localHostOf(p.Factory)
 	if err != nil {
 		return appwire.FactoryJobActed{}, err

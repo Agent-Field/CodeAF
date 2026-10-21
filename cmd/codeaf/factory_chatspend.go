@@ -88,6 +88,23 @@ func (d jobChatDoor) Chat(transcript string) session.JobChat {
 
 type ownedStageBudget struct{ session.JobChat }
 
+func (c ownedStageBudget) FactoryAuto() bool {
+	if p, ok := c.JobChat.(interface{ FactoryAuto() bool }); ok {
+		return p.FactoryAuto()
+	}
+	return false
+}
+
+func (c *jobChat) FactoryAuto() bool {
+	for _, st := range c.holders() {
+		it, err := st.Get(c.id)
+		if err == nil && (c.talk.is(it.Talk) || ownsStageChat(it, c.talk)) {
+			return factory.Automatic(it)
+		}
+	}
+	return false
+}
+
 // jobChat is one job's chat's money, found again on every call, because the
 // store that holds it moves when a worker takes the job and when it lets go.
 type jobChat struct {

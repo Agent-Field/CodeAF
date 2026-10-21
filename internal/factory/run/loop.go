@@ -635,6 +635,8 @@ func (lp *floorLoop) approve(c *loopCtl, i int, name string) bool {
 			break
 		}
 	}
+	// Even Auto gates wait for the service's recorded decision. A worker's
+	// cached mode cannot bypass a Manual switch committed on the factory.
 	if last {
 		now := lp.r.now()
 		return lp.write(c, func(it *factory.Item) error {
@@ -646,7 +648,14 @@ func (lp *floorLoop) approve(c *loopCtl, i int, name string) bool {
 	if prev >= 0 {
 		prevName = ph[prev].Name
 	}
-	a, ok := lp.ask(c, i, "approve", factory.QKindApprove, factory.ApproveQuestion(prevName), factory.PhaseWaiting, "", "")
+	said := ""
+	if factory.Automatic(it) {
+		st, _ := lp.stageAt(it, i)
+		if !st.Fixed {
+			said = "Auto is checking routine approval to continue after " + prevName + "."
+		}
+	}
+	a, ok := lp.ask(c, i, "approve", factory.QKindApprove, factory.ApproveQuestion(prevName), factory.PhaseWaiting, "", said)
 	if !ok {
 		return false
 	}
@@ -1554,20 +1563,18 @@ func (lp *floorLoop) land(c *loopCtl) {
 		lp.emit(c.id, "", EventShipped, "shipped")
 		lp.tell(c.id, sayShipped)
 	} else if err == nil {
-		if it, e := lp.r.opts.Store.Get(c.id); e == nil && it.FollowUp != nil && it.FollowUp.State == "waiting_approval" && followupAuthorized(it, it.FollowUp.PublishConsent) && clean(it) && len(it.Proof) > 0 {
-			_ = lp.write(c, func(saved *factory.Item) error {
-				saved.State = factory.StateRunning
-				saved.MarkPublishing("pushing", "", "", lp.r.now())
-				return nil
-			})
-			lp.tell(c.id, "Follow PR verified the repair. Updating the existing PR under your initial publish authorization.")
-			lp.publishRun(c, it.FollowUp.PublishConsent)
-			return
-		}
 		if it, e := lp.r.opts.Store.Get(c.id); e == nil && it.FollowUp != nil && it.FollowUp.State == "waiting_approval" {
+			if factory.Automatic(it) {
+				lp.tell(c.id, "Follow PR repair and proof are complete. Auto is preparing the recorded update to the existing PR; merge remains your decision.")
+				return
+			}
 			lp.tell(c.id, fmt.Sprintf("CI repair and proof are complete. Approval needed: push the verified commit to existing PR #%d. Press Approve to update it.", it.PullRequest.Number))
 		} else {
-			lp.tell(c.id, sayLanded)
+			if it, e := lp.r.opts.Store.Get(c.id); e == nil && factory.Automatic(it) {
+				lp.tell(c.id, sayAutoLanded)
+			} else {
+				lp.tell(c.id, sayLanded)
+			}
 		}
 	}
 }

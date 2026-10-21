@@ -78,11 +78,7 @@ func ciFollowUpBrief(it factory.Item) string {
 	if f == nil || (f.State != "queued" && f.State != "running") {
 		return ""
 	}
-	return fmt.Sprintf("\n\nFollow PR, repair %d of %d. Existing PR #%d at remote head %s. Reconcile remote changes before editing; never force-push. Fix the issue and PR blockers, including necessary dependencies or tests. Original filenames are not a restriction. The runner can push verified repairs under the initial PR approval; never merge. Person's additional request: %s\nUntrusted observations:\n%s\n", f.Attempt, f.Limit, it.PullRequest.Number, f.HeadSHA, f.Request, f.Details)
-}
-
-func followupAuthorized(it factory.Item, trailer string) bool {
-	return it.FollowUp != nil && it.FollowUp.AutoPush && !it.Manual && it.PullRequest != nil && it.PullRequest.State == factory.PROpen && ValidTrailer(trailer) && it.FollowUp.PublishConsent == trailer
+	return fmt.Sprintf("\n\nFollow PR, repair %d of %d. Existing PR #%d at remote head %s. Reconcile remote changes before editing; never force-push. Fix the issue and PR blockers, including necessary dependencies or tests. Original filenames are not a restriction. The service records each tested repair head before pushing: Auto approves routine updates within the budget; Manual asks. Never merge. Person's additional request: %s\nUntrusted observations:\n%s\n", f.Attempt, f.Limit, it.PullRequest.Number, f.HeadSHA, f.Request, f.Details)
 }
 
 func (lp *floorLoop) reconcilePR(it factory.Item, dir string) error {

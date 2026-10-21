@@ -183,6 +183,9 @@ func (st *Store) Add(ctx context.Context, it factory.Item) (int, error) {
 	if it.Repo != "" && len(it.Places) == 0 {
 		it.Places = []string{it.Repo}
 	}
+	if it.Autonomy == "" {
+		it.Autonomy = factory.AutonomyAuto
+	}
 	it.State = factory.StateNew
 	it.ID = 0
 	made, err := st.Create(it)

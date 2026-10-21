@@ -219,8 +219,13 @@ func (g *capRig) job(t *testing.T) int {
 	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	id, err := g.st.Add(context.Background(), factory.Item{Title: "hold a slot", Repo: "api", Tier: factory.TierOwner, Stages: []factory.Stage{{Name: "test", Kind: factory.StageCheck, Ask: "cat " + fifo + " >/dev/null", On: true}}})
+	id, err := g.st.Add(context.Background(), factory.Item{Autonomy: factory.AutonomyManual, Title: "hold a slot", Repo: "api", Tier: factory.TierOwner, Stages: []factory.Stage{{Name: "test", Kind: factory.StageCheck, Ask: "cat " + fifo + " >/dev/null", On: true}}})
 	if err != nil {
+		t.Fatal(err)
+	}
+	// Existing protocol fixtures predate the persisted approval modes.
+	// Explicit-mode publication behavior has its own real service fixtures.
+	if err := g.st.Update(id, func(it *factory.Item) error { it.Autonomy = ""; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	g.jobs[id] = fifo

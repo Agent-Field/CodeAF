@@ -250,6 +250,9 @@ var oldShipDefault = []string{"plan", "write", "test", "review", "security", "pr
 // NeedsPublishApproval keeps publication separate from an internal gate being skipped.
 // Removing all gates from a recipe still explicitly selects the existing self-publish mode.
 func NeedsPublishApproval(it Item) bool {
+	if it.Autonomy == AutonomyAuto || it.Autonomy == AutonomyManual {
+		return true
+	}
 	for _, s := range it.Stages {
 		if IsApprove(s) {
 			return true

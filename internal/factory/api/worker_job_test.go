@@ -69,9 +69,11 @@ func TestTheWorkerPullCarriesEveryStepsWholeReport(t *testing.T) {
 // (steps[].rounds). They cannot simply be added to StepResult: that shape is
 // also a worker's report, which a factory older than a field refuses whole.
 var stayBehind = map[string]string{
-	"Edit":     "a plan's proposal is applied as its round ends, and the kept result drops it",
-	"Reports":  "how many times the step reported is folded into the round line (`· updated 2 times`) where it ran",
-	"Inferred": "a report the factory made is folded into the round line (`reported for the step · …`) where it ran",
+	"SpendRecorded":    "the originating runner already charged direct provider receipts; it must not replay them on a different worker",
+	"JobBudgetStopped": "the originating round uses this only to preserve its retry on a cap stop; it is not a worker-supplied result field",
+	"Edit":             "a plan's proposal is applied as its round ends, and the kept result drops it",
+	"Reports":          "how many times the step reported is folded into the round line (`· updated 2 times`) where it ran",
+	"Inferred":         "a report the factory made is folded into the round line (`reported for the step · …`) where it ran",
 }
 
 // A READER'S JOB IS AS IT WAS: no step carries a report, so the queue and a

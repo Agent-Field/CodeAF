@@ -19,7 +19,7 @@ import (
 const (
 	// SignalHold carries Seam.Hold: Yes is on (pause), false goes on.
 	SignalHold = "hold"
-	// SignalBudget carries the exact raised limit to the assignee's runner.
+	// SignalBudget carries the exact selected limit to the assignee's runner.
 	SignalBudget = "budget"
 	// SignalAnswer carries the person's answer to the question the run waits on.
 	SignalAnswer = "answer"
@@ -44,7 +44,8 @@ const (
 	// SignalModel carries the model a person chose for the job (Words, ""
 	// for the default) to the worker running it, whose next step opens on it
 	// and whose running step switches at its next turn.
-	SignalModel = "model"
+	SignalModel    = "model"
+	SignalAutonomy = "autonomy"
 )
 
 // Signal is one verb a person asked of a job, with the door's own arguments.

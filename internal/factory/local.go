@@ -578,19 +578,20 @@ func localNew(st ItemStore, repo, words string, now time.Time, recipe Recipe) (i
 		return 0, errors.New("say what the work is, not only how")
 	}
 	it := Item{
-		Repo:    repo,
-		Places:  []string{repo},
-		Kind:    KindIssue,
-		Title:   title,
-		Tier:    TierOwner,
-		Origin:  OriginTerminal,
-		State:   StateNew,
-		Created: now,
-		Changed: now,
-		Cap:     c.Cap,
-		Ask:     &JobAsk{Text: title, At: now, Source: AskTUI},
-		Triage:  Triage{Type: GuessType(title)},
-		Stages:  CopyStages(recipe.For(KindIssue)),
+		Autonomy: AutonomyAuto,
+		Repo:     repo,
+		Places:   []string{repo},
+		Kind:     KindIssue,
+		Title:    title,
+		Tier:     TierOwner,
+		Origin:   OriginTerminal,
+		State:    StateNew,
+		Created:  now,
+		Changed:  now,
+		Cap:      c.Cap,
+		Ask:      &JobAsk{Text: title, At: now, Source: AskTUI},
+		Triage:   Triage{Type: GuessType(title)},
+		Stages:   CopyStages(recipe.For(KindIssue)),
 	}
 	// THE GATE WORDS PLACE APPROVE STEPS ([ApproveForGate]): `plan first`
 	// one after plan, `ship it` one before the result, `self-ship` none, so

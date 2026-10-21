@@ -9,8 +9,8 @@ import (
 	"time"
 )
 
-func TestFollowPRVerifiesAndUpdatesExistingPRUnderInitialConsent(t *testing.T) {
-	g := newPublishRig(t, factory.Item{Num: 12, Kind: factory.KindIssue, Repo: "acme/api", Title: "Repair behavior", Cap: 3})
+func TestFollowPRVerifiesThenWaitsForServiceRecordedUpdate(t *testing.T) {
+	g := newPublishRig(t, factory.Item{Autonomy: factory.AutonomyAuto, Num: 12, Kind: factory.KindIssue, Repo: "acme/api", Title: "Repair behavior", Cap: 3})
 	mustGit(t, g.dir, "add", "ledger.go")
 	mustGit(t, g.dir, "commit", "-qm", "initial issue fix")
 	head := mustGit(t, g.dir, "rev-parse", "HEAD")
@@ -45,7 +45,7 @@ func TestFollowPRVerifiesAndUpdatesExistingPRUnderInitialConsent(t *testing.T) {
 		t.Fatal(err)
 	}
 	it := g.settle(t)
-	if it.State != factory.StateShipped || it.FollowUp.State != "watching" || pushed != 1 || len(g.src.got) != 0 || it.PullRequest.Number != 7 || it.HeadCommit == head {
+	if it.State != factory.StateLanded || it.FollowUp.State != "waiting_approval" || pushed != 0 || len(g.src.got) != 0 || it.PullRequest.Number != 7 || it.HeadCommit == head {
 		t.Fatalf("followup=%+v state=%s pushes=%d source writes=%d", it.FollowUp, it.State, pushed, len(g.src.got))
 	}
 	if !it.PullRequest.Draft {

@@ -510,6 +510,10 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 			_ = r.Steer(j.id, s.Words)
 		case lease.SignalModel:
 			_ = r.SetModel(j.id, s.Words)
+		case lease.SignalAutonomy:
+			if err := j.o.Mirror.Update(j.id, func(it *factory.Item) error { it.Autonomy = s.Words; return nil }); err != nil {
+				return false
+			}
 		case lease.SignalStop:
 			// Drop asked this machine to stop. Stop keeps the branch.
 			_ = r.Stop(j.id)

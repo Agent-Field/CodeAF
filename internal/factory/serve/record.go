@@ -107,6 +107,9 @@ func (h *Handler) recordApproval(r *http.Request, it factory.Item, edited bool) 
 			detail = "start · " + it.AskedFirstReason
 		}
 	}
+	if it.Approval != nil && it.Approval.Automatic {
+		detail += " · Auto mode"
+	}
 	if edited {
 		detail += " · edited"
 	}
