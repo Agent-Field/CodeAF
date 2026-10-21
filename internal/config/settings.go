@@ -2359,7 +2359,7 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyCellBudget, Category: CategoryTasks, Kind: SettingText,
 			Label: "cell disk budget", Unit: "GB", Env: "CODEAF_CELL_BUDGET_GB",
-			Hint: "how much disk the working files of all cells may use together — 20 by " +
+			Hint: "how much disk the working files of all cells may use together — " + formatNumber(DefaultCellBudgetGB) + " by " +
 				"default, and a fraction such as 0.5 is fine. Over it, `codeaf cell gc` evicts " +
 				"the cells opened longest ago and leaves any a session still holds. 0 stops " +
 				"watching the disk.",

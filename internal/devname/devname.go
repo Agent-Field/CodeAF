@@ -15,6 +15,7 @@ package devname
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,7 +32,7 @@ const fileName = "device-name"
 // The reasons a typed name is refused, each a sentence a person can act on.
 var (
 	ErrEmpty   = errors.New("a device name needs at least one visible character")
-	ErrTooLong = errors.New("a device name is at most 32 characters")
+	ErrTooLong = fmt.Errorf("a device name is at most %d characters", Most)
 	ErrControl = errors.New("a device name cannot hold control characters or line breaks")
 )
 
