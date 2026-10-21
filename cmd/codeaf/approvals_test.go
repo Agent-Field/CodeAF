@@ -29,6 +29,9 @@ func (r *pairRig) approvalsAt(home string) *approvalsDoor {
 // enrol writes the first computer's own record, as its first sync does.
 func (r *pairRig) enrol(t *testing.T, door *approvalsDoor, name string) {
 	t.Helper()
+	if _, err := devname.Set(door.dir, name); err != nil {
+		t.Fatal(err)
+	}
 	client, id, self, err := door.home()
 	if err != nil {
 		t.Fatal(err)
