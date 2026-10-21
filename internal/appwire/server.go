@@ -507,6 +507,7 @@ var methods = map[string]method{
 		return &AsksResult{nonNil(asks)}, nil
 	}),
 	"asks.answer": typed(func(e Engine, p struct {
+		Scope     string `json:"scope"`
 		Agent     string `json:"agent"`
 		ID        string `json:"id"`
 		Option    string `json:"option"`
@@ -524,10 +525,10 @@ var methods = map[string]method{
 		}
 		if t, ok := e.(Talker); ok {
 			return done(t.AnswerAskWith(p.Agent, p.ID, AskAnswer{
-				Option: strings.TrimSpace(p.Option), Text: p.Text, Why: p.Why, BatchItem: p.BatchItem, Later: p.Later, YouDecide: p.YouDecide,
+				Scope: p.Scope, Option: strings.TrimSpace(p.Option), Text: p.Text, Why: p.Why, BatchItem: p.BatchItem, Later: p.Later, YouDecide: p.YouDecide,
 			}))
 		}
-		if p.Later || p.YouDecide || p.BatchItem != "" || p.Why != "" {
+		if p.Scope != "" || p.Later || p.YouDecide || p.BatchItem != "" || p.Why != "" {
 			return nil, Errorf(CodeBadParams, "this engine answers with an option and words only")
 		}
 		return done(e.AnswerAsk(p.Agent, p.ID, strings.TrimSpace(p.Option), p.Text))

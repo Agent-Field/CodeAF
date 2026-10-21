@@ -78,7 +78,7 @@ type Inboxer interface {
 	ListInbox(list, query string) ([]InboxItem, InboxCounts, error)
 	// AnswerInbox holds an answer for a few seconds, which UndoInbox takes
 	// back, and answers when the hold ends.
-	AnswerInbox(id, option, text, why string) (time.Time, error)
+	AnswerInbox(id, option, text, why, scope string) (time.Time, error)
 	UndoInbox(id string) error
 	LaterInbox(id string, later bool) error
 	OpenInbox(id string) (agent, task string, err error)
@@ -143,6 +143,7 @@ var inboxMethods = map[string]method{
 		Option string `json:"option"`
 		Text   string `json:"text"`
 		Why    string `json:"why"`
+		Scope  string `json:"scope"`
 	}) (*UndoUntilResult, error) {
 		i, err := inboxer(e, "inbox.answer")
 		if err != nil {
@@ -151,7 +152,7 @@ var inboxMethods = map[string]method{
 		if strings.TrimSpace(p.ID) == "" || (strings.TrimSpace(p.Option) == "" && strings.TrimSpace(p.Text) == "") {
 			return nil, Errorf(CodeBadParams, "inbox.answer needs an id and an option, some text, or both")
 		}
-		until, err := i.AnswerInbox(p.ID, strings.TrimSpace(p.Option), p.Text, p.Why)
+		until, err := i.AnswerInbox(p.ID, strings.TrimSpace(p.Option), p.Text, p.Why, p.Scope)
 		if err != nil {
 			return nil, err
 		}

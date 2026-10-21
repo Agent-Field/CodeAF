@@ -32,6 +32,7 @@ const Contract = 1
 const (
 	CodeUnknownMethod = "unknown_method"
 	CodeBadParams     = "bad_params"
+	CodeBadScope      = "bad_scope"
 	CodeNotFound      = "not_found"
 	CodeBusy          = "busy"
 	CodeEngine        = "engine"
@@ -278,7 +279,10 @@ type Ask struct {
 	Title   string `json:"title"`
 	Detail  string `json:"detail,omitempty"`
 	// Options carry the engine's own ids; for a permission they are
-	// allow_once, deny and, unless the call is irreversible, always.
+	// allow_once, deny and, only when Scopes is non-empty, always.
+	Scopes       []string    `json:"scopes,omitempty"`
+	Outside      string      `json:"outside,omitempty"`
+	AlwaysAsk    string      `json:"always_ask,omitempty" enum:"acts_as_you,critical,compound"`
 	Options      []AskOption `json:"options,omitempty"`
 	Irreversible bool        `json:"irreversible,omitempty"`
 	// The decision dock's facts (V68): where the ask comes from, why now and
@@ -371,7 +375,16 @@ const (
 
 // Entry is one item of a conversation's transcript, in order. Which of the
 // optional fields are set depends on Kind.
+// EntryLink points from a receipt to the setting that controls its rule.
+type EntryLink struct {
+	Label  string `json:"label"`
+	Target string `json:"target"`
+}
+
 type Entry struct {
+	Link *EntryLink `json:"link,omitempty"`
+	Why  string     `json:"why,omitempty"`
+
 	RunID string    `json:"run_id,omitempty"`
 	ID    string    `json:"id"`
 	Agent string    `json:"agent"`

@@ -1,6 +1,9 @@
 package approval
 
-import "strings"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // ── the bash matching law ───────────────────────────────────────────────────
 //
@@ -56,6 +59,37 @@ func ruleMatches(rule Rule, whole string, segments []string, compound bool) bool
 func (p Policy) MatchRule(command string) (Rule, bool) {
 	segments, compound := splitSegments(command)
 	return matchRule(p.BashPatterns, strings.TrimSpace(command), segments, compound)
+}
+
+// OutsideRule names the closest saved bash rule that does not cover this call.
+// The longest same-program pattern wins; equal lengths keep settings order.
+// This is explanation only and never changes the gate's answer.
+func (p Policy) OutsideRule(tool string, args []byte) string {
+	if tool != ToolBash {
+		return ""
+	}
+	var call struct {
+		Command string `json:"command"`
+	}
+	if json.Unmarshal(args, &call) != nil {
+		return ""
+	}
+	words := strings.Fields(call.Command)
+	if len(words) == 0 {
+		return ""
+	}
+	segments, compound := splitSegments(call.Command)
+	closest := ""
+	for _, rule := range p.BashPatterns {
+		pattern := strings.Fields(rule.Match)
+		if len(pattern) == 0 || pattern[0] != words[0] || !rule.Action.valid() || ruleMatches(rule, strings.TrimSpace(call.Command), segments, compound) {
+			continue
+		}
+		if len(rule.Match) > len(closest) {
+			closest = rule.Match
+		}
+	}
+	return closest
 }
 
 // matchRule is the first-match-wins walk, shared by the decision path and by

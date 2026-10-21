@@ -720,6 +720,8 @@ const (
 	// EventCloseContinued carries the pending key only when a started turn
 	// consumes that close note before its model request. It is private telemetry.
 	EventCloseContinued = EventItemChanged + 1
+	// EventConsentAllowed records a call allowed by an explicit saved rule.
+	EventConsentAllowed = EventCloseContinued + 1
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -1143,7 +1145,8 @@ type Event struct {
 
 	// Rule is the approval policy's own phrasing of why a call is being asked
 	// about — `bash pattern "rm -rf *"`, `tool "edit"`, `default`. It is set on
-	// EventConsentRequest and empty elsewhere. The wording is the policy's
+	// EventConsentRequest; on EventConsentAllowed it is the matched scope.
+	// It is empty elsewhere. The wording is the policy's
 	// (internal/approval) so that every surface says the same sentence about the
 	// same rule instead of deriving one.
 	Rule string
@@ -3294,6 +3297,12 @@ type Agent struct {
 	// quiet one. The product reads nothing off this context that it would not
 	// read off the background.
 	wokenTurnBase func() context.Context
+	// Pending notes belong to the queue, independently of whether their wake
+	// clock is still armed. All three fields are guarded by mu; the private
+	// clock lets fixtures advance the window without sleeping.
+	jobWakePending bool
+	jobWake        *jobWakeWindow
+	jobWakeAfter   func(time.Duration, func()) func()
 	// wallStop ends the one reader that waits independently for this session's
 	// wall, and is nil when the session has no unattended wall (wallclock.go).
 	// wallEndingTaken is the once-only mark on the ending that reader writes.

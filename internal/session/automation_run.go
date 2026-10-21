@@ -391,6 +391,7 @@ func (r *automationRunner) lookTool(ctx context.Context, item automation.Automat
 	agent := &Agent{config: cfg, model: cfg.Model, id: NewSessionID()}
 	agent.jobs = newJobRegistry(cfg.Workspace, cfg.droppingsPlace(), agent.enqueueJobNote, agent.enqueueWatchNote)
 	agent.jobs.notifyQuiet = agent.enqueueJobNoteQuiet
+	agent.jobs.notifyUnowed = agent.enqueueJobNoteUnowed
 	agent.jobs.renderNotify = agent.emitRenderUpdate
 	agent.connect = newConnectHub(cfg)
 	agent.tools = agent.belt()

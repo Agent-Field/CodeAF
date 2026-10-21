@@ -186,6 +186,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// in the repository it borrowed to work in (landing.go).
 	agent.jobs = newJobRegistry(config.Workspace, config.droppingsPlace(), agent.enqueueJobNote, agent.enqueueWatchNote)
 	agent.jobs.notifyQuiet = agent.enqueueJobNoteQuiet
+	agent.jobs.notifyUnowed = agent.enqueueJobNoteUnowed
 	// And the registry gets the ROSTER lane as well as the waking one. A job is
 	// work this conversation started, so it shows on the right the way every
 	// other kind of work does — a quiet row while it runs, settled when it ends
@@ -1349,6 +1350,9 @@ type userMessage struct {
 	// pass of a loop — while an ending that failed to wake the one worker waiting
 	// for it costs that worker its whole allowance.
 	ending bool
+	// deferJobWake marks a process ending nobody was parked waiting on. Only
+	// its idle wake waits; the note and the worker release still arrive at once.
+	deferJobWake bool
 
 	// settle marks THE WAKE OF A LANDING THAT HANDS THE MODEL THE DECISION: under
 	// `task.settle = auto` (and after somebody pressed "let codeaf decide") the
@@ -1812,6 +1816,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// The person speaking is what resets a team's loop breaker (team_wakewatch.go).
 	a.notePersonTurn(user)
 	a.rebindClientLocked(a.model)
+	a.stopJobWakeLocked()
 	a.running = true
 	a.teamTurnAt = time.Now()
 	a.teamTurnSerial++
@@ -2536,6 +2541,12 @@ func (a *Agent) Close() error {
 	// (steer_grace.go), and nor does a clock armed on a question (asklane.go).
 	a.stopSteerGraceLocked()
 	a.stopAskClocksLocked()
+	// PENDING NEWS BELONGS IN THE JOURNAL EVEN AFTER ITS CLOCK FIRED. A wake
+	// may have been refused, and none may start after admission has closed.
+	if a.jobWakePending {
+		a.drainQueueLocked(nil, true)
+	}
+	a.stopJobWakeLocked()
 	if a.closeDone == nil {
 		a.closeDone = make(chan struct{})
 	}
@@ -3484,6 +3495,10 @@ type queueDrain struct {
 // become one authored user-role message; control guidance and a person's steer
 // remain their own messages.
 func (a *Agent) drainQueueLocked(hub *eventHub, includeAmbient bool) queueDrain {
+	// Every steering drain records the pending endings. The clock can be
+	// withdrawn here without losing the drain's separate answer obligation.
+	a.jobWakePending = false
+	a.stopJobWakeLocked()
 	for _, message := range a.discussionHistory {
 		a.recordLocked(message)
 	}
@@ -3747,6 +3762,14 @@ func (a *Agent) enqueueJobNote(text string) {
 	a.enqueueNote(jobNote(text))
 }
 
+// enqueueJobNoteUnowed carries the registry's unowed process ending to the
+// same queue, retaining the one fact the idle wake scheduler needs.
+func (a *Agent) enqueueJobNoteUnowed(text string) {
+	note := jobNote(text)
+	note.deferJobWake = true
+	a.enqueueNote(note)
+}
+
 // enqueueJobNoteQuiet keeps each successful process ending intact until the
 // next turn. There is no batch key: separate jobs must keep separate endings.
 func (a *Agent) enqueueJobNoteQuiet(text string) {
@@ -3872,7 +3895,11 @@ func (a *Agent) enqueueNote(note userMessage) bool {
 		// A turn already running is the coalescing case and needs nothing done:
 		// wakeLocked declines, and the note lands in that turn at its next step
 		// boundary exactly as a person's steering does.
-		a.wakeLocked()
+		if note.deferJobWake && !a.running {
+			a.deferJobWakeLocked()
+		} else {
+			a.wakeLocked()
+		}
 	}
 	return true
 }
