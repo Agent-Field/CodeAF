@@ -85,7 +85,7 @@ On the set-up card, `set up` runs only the commands the card lists, and `not now
 
 A chat arriving here for the first time works in its own copy. It is filed under the folder it came from, apart from conversations in this computer's own folder of the same name. Home and the keys-row label say `proj-a (copy from another machine)`. This remains a copy even if a folder with the original path happens to exist on this computer. Taking back a chat that already works in your own project restores that project in place. An unknown origin is left unnamed.
 
-## Continue here did nothing — another device continued first or the relay is unreachable
+## Continue here did nothing — another device continued first or the sync service is unreachable
 
 If nothing happens when you press `Continue here`, the cause is one of these:
 
@@ -122,7 +122,7 @@ Two things are made again on the other computer and are not carried: the project
 
 ## What moves with a chat — is my git history sent, branches, secrets in my repo
 
-Your repository's `.git`, including its history, branches and settings, moves with the chat to your own paired devices. A task's commits travel too, and its working-copy bookkeeping is rebuilt on arrival. A key in an old commit remains in that history: codeaf does not remove or rewrite it. Git history travels sealed end to end; the relay sees ciphertext, including when the history contains keys.
+Your repository's `.git`, including its history, branches and settings, moves with the chat to your own paired devices. A task's commits travel too, and its working-copy bookkeeping is rebuilt on arrival. A key in an old commit remains in that history: codeaf does not remove or rewrite it. Git history travels sealed end to end; the sync service sees only ciphertext, including when the history contains keys.
 
 The current working files are checked separately. A `.env` or source file that the guard recognises as holding a key is left out of the chat's file capture and carried through the encrypted vault. If you committed that secret earlier, its historical Git copy still moves with the repository. An untracked `.env` with no committed copy arrives only through the vault.
 

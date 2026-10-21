@@ -6,9 +6,9 @@ import "testing"
 // never submit it as an ordinary message to a model.
 func TestC10SelfHostedPairLinkIsIntercepted(t *testing.T) {
 	for _, link := range []string{
-		"http://127.0.0.1:8787/p/k7m2q9xd#AAAAAAAAAAAAAAAAAAAAAA",
-		"https://sync.example/fabric/p/k7m2q9xd#AAAAAAAAAAAAAAAAAAAAAA",
-		"codeaf://pair?code=k7m2q9xd&via=http://127.0.0.1:8787#AAAAAAAAAAAAAAAAAAAAAA",
+		"http://127.0.0.1:8787/p/k7m2q9xd#tFb4-NWlBk4QMXbocWY7FA",
+		"https://sync.example/fabric/p/k7m2q9xd#tFb4-NWlBk4QMXbocWY7FA",
+		"codeaf://pair?code=k7m2q9xd&via=http://127.0.0.1:8787#tFb4-NWlBk4QMXbocWY7FA",
 	} {
 		if !isPairLink(link) {
 			t.Errorf("custom pairing link would reach the model: %s", link)
