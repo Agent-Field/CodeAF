@@ -37,4 +37,3 @@ test('the signed uri is the client path, prefix included', () => {
   assert.equal(signedUri({ BASE_PATH: '/fabric' }, url), '/fabric/v1/dir/list?a=b');
   assert.equal(signedUri({}, url), '/v1/dir/list?a=b');
 });
-
