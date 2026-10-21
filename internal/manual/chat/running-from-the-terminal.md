@@ -308,7 +308,9 @@ when moving chats is available (dev, staging and source default on; rc and stabl
 
 ## codeaf pair — show a code, or use one, from the terminal
 
-**`codeaf pair`** on a new computer asks to join your devices and shows a link to approve from a computer that is already in (`codeaf pair approve <link>`); **`codeaf pair --code`** shows a code that gives your chats to another computer. **`codeaf pair <code>`** uses a code that another computer showed, for example `codeaf pair 42-715-302`. `--via <url>` names the sync address to go through, and `--replace` lets this computer drop chats of its own for the ones it is given. The page *Pairing your chats with a second computer* has the whole story.
+**`codeaf pair approve <link>`** compares the four-digit check number and asks `a / d`: only `a` approves, and `d`, Esc, Enter or anything else decline. Code pairing keeps its `y / n` question.
+
+**`codeaf pair`** on a new computer asks to join your devices and shows a link to approve from a computer that is already in (`codeaf pair approve <link>`); **`codeaf pair --code`** shows a code that gives your chats to another computer. **`codeaf pair <code>`** uses a code that another computer showed, for example `codeaf pair 42-715-302`. `CODEAF_SYNC_URL=<url>` or `--via <url>` keeps the invitation on that service's own pairing page and includes `--via` in the token command; it never prints the hosted page link for a self-hosted invitation. `--via <url>` names the sync address to go through, and `--replace` lets this computer drop chats of its own for the ones it is given. The page *Pairing your chats with a second computer* has the whole story.
 
 ## The architecture map — codeaf atlas [map], /atlas [map], what talks to what, how two computers pair and continue a chat
 
@@ -417,6 +419,10 @@ long ago its last saved turn was. It needs no terminal UI, so it works over ssh.
 set but no identity on this machine it prints
 `this machine has no identity yet: codeaf identity import` and lists nothing, and when the
 other machines cannot be reached it starts with `other machines unreachable`.
+
+## A different sync setting on an existing engine
+
+The engine keeps its sync setting from startup. Changing `CODEAF_SYNC_URL` to another address or `off` retires an idle engine before opening a chat and says `the engine restarted to pick up this terminal's sync setting`. If another window or work still uses it, the new window refuses to attach: `the engine for this folder started with a different environment than this terminal and is still in use — close its other windows or let its work finish, or run codeaf engine --stop --workspace <folder>`. The command names the exact folder. Let that work finish or stop the engine explicitly before reopening with the new setting.
 
 ## Sync your chats between machines — CODEAF_SYNC_URL and CODEAF_SYNC_INTERVAL_MS
 

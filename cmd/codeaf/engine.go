@@ -307,6 +307,17 @@ func clearStaleEngineHostAs(workspace string, me engineBuild) (string, error) {
 		return "", nil
 	}
 	host := held.Self
+	// A relay choice governs every session the host serves. Joining busy work
+	// with the old choice would ignore this terminal's off switch or address.
+	if held.Answered && host.Version == remote.Version && enginehost.SyncDiffers(workspace) {
+		if err := enginehost.Retire(workspace, false); err != nil {
+			if errors.Is(err, enginehost.ErrHostBusy) {
+				return "", &staleHost{reason: differentEngineEnvironmentSentence(hostWorkspace(host, workspace))}
+			}
+			return "", err
+		}
+		return "the engine restarted to pick up this terminal's sync setting", nil
+	}
 	if held.Answered && sameEngineBuild(host, me) {
 		if !enginehost.EnvironmentDiffers(workspace) {
 			return settleCellsMode(workspace, host, me)
