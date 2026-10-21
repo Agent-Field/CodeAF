@@ -12,7 +12,7 @@ import (
 )
 
 // journeyRun walks the steps in the order a person meets them.
-func journeyRun(j *journey, env []string, homeA, homeB, wsA, wsB string) {
+func journeyRun(j *journey, env []string, homeA, homeB, wsA, wsB string, online bool) {
 	t := j.t
 	var a, b *rig
 	var link string
@@ -86,7 +86,7 @@ func journeyRun(j *journey, env []string, homeA, homeB, wsA, wsB string) {
 		a.keys("a")
 		screen, ok := waitPlain(b, 20*time.Second, "Paired")
 		j.require(ok, "B never printed Paired")
-		j.check(regexp.MustCompile(`Paired - \d+ workspaces? available`).MatchString(screen), "B's line is not 'Paired - N workspaces available'")
+		j.check(regexp.MustCompile(`(?m)^Paired\.(?: [1-9]\d* workspaces? available\.)?\s*$`).MatchString(screen), "B's line is not 'Paired.' or the available-workspace sentence")
 		j.see(b)
 		toast, ok := waitPlain(a, 6*time.Second, "is now paired")
 		j.check(ok, "A showed no 'is now paired' news")
@@ -134,7 +134,20 @@ func journeyRun(j *journey, env []string, homeA, homeB, wsA, wsB string) {
 		a.keys("Escape")
 	})
 
-	j.step("5a stop B; reopen A; continue prompt", true, func() {
+	step5 := "5a stop B; reopen A; continue prompt"
+	if online {
+		step5 = "5a A: alt+m brings B's online chat here"
+	}
+	j.step(step5, true, func() {
+		if online {
+			a.lit("/home")
+			a.keys("Enter")
+			a.keys("M-m")
+			_, ok := waitPlain(a, 8*time.Second, "Continue this chat here?")
+			j.require(ok, "alt+m offered no continuation for the online holder")
+			j.see(a)
+			return
+		}
 		b2.loseLid()
 		time.Sleep(3 * time.Second)
 		a.lit("/quit")
@@ -157,8 +170,10 @@ func journeyRun(j *journey, env []string, homeA, homeB, wsA, wsB string) {
 
 	moved := false
 	j.step("6a A: Continue here on B's chat", false, func() {
-		a.keys("Up")
-		a.keys("Enter")
+		if !online {
+			a.keys("Up")
+			a.keys("Enter")
+		}
 		screen, ok := waitPlain(a, 8*time.Second, "Continue this chat here?")
 		j.require(ok, "no takeover question for B's chat")
 		j.see(a)
@@ -195,7 +210,7 @@ func journeyRun(j *journey, env []string, homeA, homeB, wsA, wsB string) {
 		a.keys("r")
 		time.Sleep(3 * time.Second)
 		after := plain(a)
-		j.check(strings.Contains(after, "was revoked"), "A did not confirm the revoke")
+		j.check(strings.Contains(after, "was removed"), "A did not confirm the removal")
 		j.see(a)
 		bAgain := startCommand(t, env, "b3", homeB, wsB)
 		time.Sleep(12 * time.Second)
