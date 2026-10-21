@@ -47,7 +47,7 @@ func grepTree(t *testing.T) string {
 }
 
 func TestGrepWithoutRipgrepFindsWhatRipgrepWouldFind(t *testing.T) {
-	root := grepTree(t)
+	root := grepCanonical(grepTree(t))
 	matches, limitHit, err := grepByWalking(context.Background(), "startTheBelt", root, "", false, false, 100)
 	if err != nil {
 		t.Fatalf("the walking engine failed: %v", err)

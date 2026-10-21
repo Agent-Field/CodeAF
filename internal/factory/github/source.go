@@ -1,5 +1,5 @@
-// Package github is the factory's GitHub source: the open issues and pull
-// requests of the repositories a person chose to watch, read as floor items,
+// Package github is the factory's GitHub source: open issues from watched
+// repositories, read as work items,
 // and the four outward moves a post stage may one day make on them. A pull
 // request this factory opened is read again on each poll, including once
 // GitHub has merged or closed it, because the open list no longer carries it.
@@ -46,8 +46,8 @@ const CommentsMost = 3
 const commentLimit = 1000
 
 // commentBudget is how many requests one Read may spend on the per-item reads
-// the lists leave out: an issue's or pull request's comments (one request) and
-// a pull request's line counts and files (two). PAST IT THE ITEMS ARE FOLDED
+// the issue list leaves out: comments (one request per issue).
+// PAST IT THE ITEMS ARE FOLDED
 // WITHOUT THEM and owed to the next Read, so a first read of a repository
 // with three hundred open items lands its rows in seconds and fills their
 // comments in over the next minutes, forty requests a tick, instead of
@@ -92,14 +92,8 @@ type Source struct {
 	// owner and may write is the floor's owner.
 	me     string
 	meDone bool
-	// issueTags and pullTags are the last ETag of each repository's lists.
+	// issueTags holds each repository's last issue-list ETag.
 	issueTags map[string]string
-	pullTags  map[string]string
-	// pulls is each repository's last open-pull list with the line counts read
-	// into it, which is what a 304 on the list answers with.
-	pulls map[string][]forge.Pull
-	// checks is what the head of each pull request added up to last time.
-	checks map[string]seenChecks
 	// tiers is each repository and login's standing, for the process.
 	tiers map[string]factory.Tier
 	// comments is each item's last comments and the count they were read at.
@@ -107,9 +101,6 @@ type Source struct {
 	// how many an issue has, so an item whose count is the one this process
 	// last read at costs no request, and an item with none costs none ever.
 	comments map[string]seenComments
-	// files is each pull request's changed files, read with its line counts,
-	// once per change.
-	files map[string][]factory.FileChange
 	// progress, when set, is told before each repository is read which one
 	// and how many of how many are done, and again as each of its lists is
 	// in with how many items the read has listed so far
@@ -125,22 +116,11 @@ type Source struct {
 	// read on a later Read even though a list asked since the cursor will
 	// not carry them again.
 	owed map[string]map[int]forge.Issue
-	// undetailed is the pull requests whose line counts and files the budget
-	// did not reach, and pullOwed the ones whose comments it did not; each
-	// is read on a later Read and its item handed over again then.
-	undetailed map[string]bool
-	pullOwed   map[string]bool
 }
 
 type seenComments struct {
 	count int
 	list  []factory.Comment
-}
-
-type seenChecks struct {
-	sha   string
-	state forge.CheckState
-	runs  []factory.CheckRun
 }
 
 var _ factory.Source = (*Source)(nil)
@@ -153,11 +133,10 @@ func New(api API, repos []string, now func() time.Time) *Source {
 	}
 	return &Source{
 		api: api, now: now, repos: append([]string(nil), repos...),
-		issueTags: map[string]string{}, pullTags: map[string]string{},
-		pulls: map[string][]forge.Pull{}, checks: map[string]seenChecks{},
-		tiers: map[string]factory.Tier{}, comments: map[string]seenComments{},
-		files: map[string][]factory.FileChange{}, budget: commentBudget,
-		owed: map[string]map[int]forge.Issue{}, undetailed: map[string]bool{}, pullOwed: map[string]bool{},
+		issueTags: map[string]string{},
+		tiers:     map[string]factory.Tier{}, comments: map[string]seenComments{},
+		budget: commentBudget,
+		owed:   map[string]map[int]forge.Issue{},
 	}
 }
 
@@ -185,8 +164,8 @@ func (s *Source) SetProgress(fn func(full string, done, of int)) {
 	s.SetProgressItems(func(full string, done, of, _ int) { fn(full, done, of) })
 }
 
-// SetProgressItems is [Source.SetProgress] with how many issues and pull
-// requests this Read has listed so far, across every repository, so a big
+// SetProgressItems is [Source.SetProgress] with how many issues this Read
+// has listed so far, across every repository, so a big
 // repository's read says `200 items so far` rather than go quiet. nil takes
 // it off.
 func (s *Source) SetProgressItems(fn func(full string, done, of, items int)) {
@@ -197,7 +176,7 @@ func (s *Source) SetProgressItems(fn func(full string, done, of, items int)) {
 
 // SetSink hands the source a function a Read gives each batch of items to the
 // moment it has them: a repository's issues as soon as their list is in
-// (before any comment is read), and its pull requests once theirs are. The
+// (before any comment is read). The
 // poll folds each batch into the store at once ([PollOnce]), so THE FLOOR
 // FILLS AS THE READ GOES. Read still answers every item at the end; a batch
 // handed early is handed again there, which [Merge] skips when nothing moved.
@@ -286,8 +265,8 @@ func (r *readRun) tell(full string) {
 // answer and its mark left where it was, so the next Read asks it again from
 // the same place; the other repositories' items still come back. Items the
 // per-read budget did not reach come back without their comments (nil, not
-// read yet) or a pull request without its line counts and files (Files nil),
-// and are read on a later Read.
+// read yet), and are read on a later Read. Pull requests are not work items;
+// an issue's published PR is tracked separately by followOpened.
 func (s *Source) Read(ctx context.Context, since string) ([]factory.Item, string, error) {
 	marks, all := parseCursor(since)
 	s.mu.Lock()
@@ -346,9 +325,8 @@ func (s *Source) whoAmI(ctx context.Context) {
 	s.mu.Unlock()
 }
 
-// readRepo reads one repository: its issues list, handed to the sink at once;
-// their comments within the budget; its pull requests with their line counts,
-// files and checks, handed to the sink once they are in. THE LISTS' ETAGS ARE
+// readRepo imports only issues and their comments. PRs are read separately
+// through the issue job's published receipt, never imported as work items. THE LISTS' ETAGS ARE
 // KEPT ONLY WHEN THE WHOLE REPOSITORY READ WELL, so a repository that fails
 // halfway is listed in full again next time rather than answered with a 304
 // that would hide what this read never finished.
@@ -357,7 +335,7 @@ func (s *Source) readRepo(ctx context.Context, run *readRun, owner, name, full s
 	newest := mark
 
 	s.mu.Lock()
-	issueTag, pullTag := s.issueTags[full], s.pullTags[full]
+	issueTag := s.issueTags[full]
 	s.mu.Unlock()
 
 	issues, newIssueTag, err := s.api.ListIssues(ctx, owner, name, mark, issueTag)
@@ -434,129 +412,9 @@ func (s *Source) readRepo(ctx context.Context, run *readRun, owner, name, full s
 		items = append(items, it)
 	}
 
-	pulls, newPullTag, err := s.api.ListPulls(ctx, owner, name, pullTag)
-	switch {
-	case errors.Is(err, forge.ErrNotModified):
-		s.mu.Lock()
-		pulls = append([]forge.Pull(nil), s.pulls[full]...)
-		s.mu.Unlock()
-		newPullTag = pullTag
-	case err != nil:
-		return nil, mark, err
-	}
-	run.items += len(pulls)
-	run.tell(full)
 	s.mu.Lock()
-	known := map[int]forge.Pull{}
-	for _, p := range s.pulls[full] {
-		known[p.Number] = p
-	}
-	s.mu.Unlock()
-	kept := make([]forge.Pull, 0, len(pulls))
-	var pullItems []factory.Item
-	for _, p := range pulls {
-		if p.Updated.After(newest) {
-			newest = p.Updated
-		}
-		// GitHub's since is inclusive, so the mark itself is a change this source
-		// has already seen, and only a later one is a move.
-		moved := mark.IsZero() || p.Updated.After(mark)
-		key := fmt.Sprintf("%s#%d", full, p.Number)
-		s.mu.Lock()
-		undetailed, owedComments := s.undetailed[key], s.pullOwed[key]
-		s.mu.Unlock()
-		// THE LINE COUNTS ARE READ ONCE PER CHANGE. The list leaves them out, so
-		// a pull request read before and unchanged since keeps the counts it
-		// had, and only one that moved costs a second request. One the budget
-		// did not reach keeps the list's zero counts and is marked undetailed,
-		// so its counts are read on a later Read.
-		detailed := false
-		if old, ok := known[p.Number]; ok && old.Updated.Equal(p.Updated) && !undetailed {
-			p.Additions, p.Deletions, p.Files, p.Comments = old.Additions, old.Deletions, old.Files, old.Comments
-		} else if !run.take(2) {
-			undetailed = true
-		} else if whole, err := s.api.Pull(ctx, owner, name, p.Number); err == nil {
-			p.Additions, p.Deletions, p.Files, p.Comments = whole.Additions, whole.Deletions, whole.Files, whole.Comments
-			if whole.HeadSHA != "" {
-				p.HeadSHA = whole.HeadSHA
-			}
-			// THE FILES ARE READ WITH THE LINE COUNTS, once per change, for
-			// the same reason: the list carries neither.
-			changed, err := s.api.PullFiles(ctx, owner, name, p.Number)
-			if err != nil {
-				return nil, mark, err
-			}
-			detailed, undetailed = true, false
-			s.mu.Lock()
-			s.files[key] = fileChanges(changed)
-			s.mu.Unlock()
-		} else {
-			return nil, mark, err
-		}
-		s.mu.Lock()
-		if undetailed {
-			s.undetailed[key] = true
-		} else {
-			delete(s.undetailed, key)
-		}
-		s.mu.Unlock()
-		kept = append(kept, p)
-		// THE CHECKS ARE ASKED AGAIN WHILE THEY RUN. A head that went green
-		// does not change the pull request's own updated time, so one whose
-		// checks were still running is asked again every Read until they end.
-		s.mu.Lock()
-		seen, had := s.checks[key]
-		s.mu.Unlock()
-		state, runs := seen.state, seen.runs
-		if !had || seen.sha != p.HeadSHA || seen.state == forge.ChecksRunning || moved {
-			var got []forge.CheckRun
-			state, got, err = s.api.CheckRuns(ctx, owner, name, p.HeadSHA)
-			if err != nil {
-				return nil, mark, err
-			}
-			runs = checkRuns(got)
-			s.mu.Lock()
-			s.checks[key] = seenChecks{sha: p.HeadSHA, state: state, runs: runs}
-			s.mu.Unlock()
-		}
-		if moved || !had || seen.state != state || seen.sha != p.HeadSHA || detailed || owedComments {
-			it := s.pullItem(ctx, owner, name, p, state)
-			it.CheckRuns = runs
-			if undetailed {
-				// Not read yet: no files, no line counts, no comment count.
-				it.Diff, it.Files, it.Comments = "", nil, nil
-				s.mu.Lock()
-				s.pullOwed[key] = true
-				s.mu.Unlock()
-			} else {
-				s.mu.Lock()
-				it.Files = s.files[key]
-				s.mu.Unlock()
-				list, ok, err := s.commentsWithin(ctx, run, owner, name, p.Number, p.Comments)
-				if err != nil {
-					return nil, mark, err
-				}
-				s.mu.Lock()
-				if ok {
-					it.Comments = list
-					delete(s.pullOwed, key)
-				} else {
-					s.pullOwed[key] = true
-				}
-				s.mu.Unlock()
-			}
-			pullItems = append(pullItems, it)
-		}
-	}
-	run.hand(pullItems)
-	items = append(items, pullItems...)
-	s.mu.Lock()
-	s.pulls[full] = kept
 	if newIssueTag != "" {
 		s.issueTags[full] = newIssueTag
-	}
-	if newPullTag != "" {
-		s.pullTags[full] = newPullTag
 	}
 	s.mu.Unlock()
 	return items, newest, nil
@@ -776,13 +634,6 @@ func (s *Source) Refetch(ctx context.Context, it factory.Item) (factory.Item, er
 	if err != nil {
 		return factory.Item{}, err
 	}
-	key := fmt.Sprintf("%s/%s#%d", owner, name, p.Number)
-	s.mu.Lock()
-	s.files[key] = fileChanges(changed)
-	s.checks[key] = seenChecks{sha: p.HeadSHA, state: state, runs: checkRuns(runs)}
-	delete(s.undetailed, key)
-	delete(s.pullOwed, key)
-	s.mu.Unlock()
 	out := s.pullItem(ctx, owner, name, p, state)
 	out.Files, out.CheckRuns = fileChanges(changed), checkRuns(runs)
 	if out.Comments, err = s.lastComments(ctx, owner, name, p.Number, p.Comments, true); err != nil {
@@ -970,4 +821,15 @@ func (s *Source) watching(full string) bool {
 		}
 	}
 	return false
+}
+
+// UpdatePRBody updates exactly the issue job's linked PR. It never falls back
+// to creating another PR and never changes draft/ready state.
+func (s *Source) UpdatePRBody(ctx context.Context, it factory.Item, body string) error {
+	owner, repo, ok := pullRepo(it)
+	if !ok || it.PullRequest == nil || it.PullRequest.Number <= 0 {
+		return errors.New("no linked PR to update")
+	}
+	_, err := s.api.UpdatePullRequest(ctx, owner, repo, it.PullRequest.Number, it.Title, body)
+	return err
 }

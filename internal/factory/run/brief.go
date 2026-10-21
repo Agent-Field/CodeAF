@@ -244,7 +244,7 @@ func workTree(job Job) string {
 			"...HEAD` its files and `git log " + base + "..HEAD` its commits; read the files there. You need neither the network nor the forge to see what you are working on." +
 			earlierInTree(job)
 	}
-	return "your work tree is the repository on the item's own branch, " + itemBranch(it) + ", cut from the default branch." + earlierInTree(job)
+	return "your work tree is the repository on the item's own branch, " + branchFor(it) + ", cut from the default branch." + earlierInTree(job)
 }
 
 // earlierInTree is the sentence after the work tree's that points at what the

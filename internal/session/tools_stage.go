@@ -42,7 +42,7 @@ const stageResultToolName = "stage_result"
 // The sentences the model reads back. The manual quotes them
 // (internal/manual/chat/factory-stage-conversations.md).
 const (
-	stageReported      = "reported · the last report you send before you stop is the one the factory reads"
+	stageReported      = "reported"
 	stageNotReported   = "not reported: "
 	planProposed       = "proposed · the runner applies it within the recipe's bounds"
 	planNotProposed    = "not proposed: "
@@ -52,29 +52,22 @@ const (
 	planNeedsChange    = "Invalid arguments: plan_edit needs at least one of add, skip or on."
 )
 
-const stageResultDescription = "This conversation IS one stage of a factory item, and the ask you were given is its brief. " +
-	"Work as in any conversation, handing independent parts to tasks. " +
-	"Report this step's result. Call it again if your result changes; the last call before you stop is the one that counts. " +
-	"done says whether the ask was carried out; findings counts the problems still open, and a stage that runs until clean needs zero; " +
-	"claims are what you say is now true, each with ok, its evidence and the medium that shows it (test, screenshot, transcript, benchmark, policy); " +
-	"notes are sentences for the stages after this one; output is what you did and found, which they read. " +
-	"Nothing is posted anywhere, by this or by anything in the stage."
-
-const planEditDescription = "Propose a change to this factory item's stages, from inside one of them. " +
-	"add is new stage sentences, a place word first when it matters (\"after test, read it for auth holes\"); skip and on are stage names the item already has. " +
-	"Nothing changes by calling this: the runner applies it once this stage ends, within the recipe's bounds, and refuses what crosses them; proof and a person's gate are never skipped. " +
-	"It never posts anywhere."
+const stageResultDescription = "This IS one stage of a factory item. Follow its brief; independent parts may go to tasks. Report this step's result. Successful done ends the step immediately; use final false for an intermediate report. Findings count unresolved problems; until clean needs zero. Claims need evidence in their stated medium. Nothing is posted anywhere."
+const planEditDescription = "Propose stage changes: add sentences, skip or on named stages. Nothing changes by calling this: the runner applies it within the recipe's bounds; proof and a person's gate are never skipped. It never posts anywhere."
 
 func stageResultSchemaJSON() string {
 	return `{"type":"object","properties":{` +
-		`"done":{"type":"boolean","description":"True when the ask was carried out."},` +
-		`"findings":{"type":"integer","minimum":0,"description":"Problems still wrong after your fixes."},` +
+		`"final":{"type":"boolean","description":"Defaults to done; false keeps working."},` +
+		`"done":{"type":"boolean","description":"Ask completed."},` +
+		`"findings":{"type":"integer","minimum":0,"description":"Unresolved problems."},` +
 		`"claims":{"type":"array","items":{"type":"object","properties":{` +
 		`"text":{"type":"string"},"ok":{"type":"boolean"},"evidence":{"type":"string"},` +
 		`"medium":{"type":"string","description":"test, screenshot, transcript, benchmark or policy."}` +
 		`},"required":["text","ok","evidence"],"additionalProperties":false},"description":"What is now true, each with its evidence."},` +
+		`"publish_summary":{"type":"array","maxItems":3,"items":{"type":"string","maxLength":600},"description":"Final PR-ready change bullets; accurate names and complete sentences."},` +
 		`"notes":{"type":"array","items":{"type":"string"},"description":"Sentences for the stages after this one."},` +
-		`"output":{"type":"string","description":"What you did and found."}` +
+		`"repair":{"type":"object","properties":{"decision":{"type":"string","enum":["fixed","no_change","needs_you"]},"reason":{"type":"string"}},"required":["decision","reason"],"additionalProperties":false,"description":"Follow PR outcome; dependencies and new files are allowed."},` +
+		`"output":{"type":"string","description":"What changed and what was verified; omit guessed test totals."}` +
 		`},"required":["done"],"additionalProperties":false}`
 }
 
@@ -114,11 +107,14 @@ type stageClaim struct {
 // stageResultArgs is `stage_result`'s arguments. Done is a pointer so a call
 // that never said it is told so, rather than read as a stage that failed.
 type stageResultArgs struct {
-	Done     *bool        `json:"done"`
-	Findings int          `json:"findings"`
-	Claims   []stageClaim `json:"claims"`
-	Notes    []string     `json:"notes"`
-	Output   string       `json:"output"`
+	PublishSummary []string                `json:"publish_summary"`
+	Done           *bool                   `json:"done"`
+	Final          *bool                   `json:"final"`
+	Findings       int                     `json:"findings"`
+	Claims         []stageClaim            `json:"claims"`
+	Notes          []string                `json:"notes"`
+	Output         string                  `json:"output"`
+	Repair         *factory.CIRepairResult `json:"repair"`
 }
 
 // parseStageResult reads the arguments into the result the door is handed,
@@ -137,6 +133,7 @@ func parseStageResult(args json.RawMessage) (factory.StageResult, string) {
 		return factory.StageResult{}, stageNeedsFindings
 	}
 	result := factory.StageResult{
+		Repair: parsed.Repair, PublishSummary: cleanNames(parsed.PublishSummary),
 		Done:     *parsed.Done,
 		Findings: parsed.Findings,
 		Notes:    cleanNames(parsed.Notes),
@@ -362,4 +359,26 @@ func (a *Agent) LastWords() string {
 		}
 	}
 	return ""
+}
+
+// stageBatchFinal ends a submitted final report after its tool receipt is saved.
+// Intermediate reports remain replaceable, and refused reports never end work.
+func (a *Agent) stageBatchFinal(calls []ai.ToolCall, results []toolResult) bool {
+	if !a.config.mayStage() {
+		return false
+	}
+	for i, call := range calls {
+		if call.Function.Name != stageResultToolName || i >= len(results) || results[i].isError {
+			continue
+		}
+		var args stageResultArgs
+		if json.Unmarshal([]byte(call.Function.Arguments), &args) != nil {
+			continue
+		}
+		if args.Final != nil {
+			return *args.Final
+		}
+		return args.Done != nil && *args.Done
+	}
+	return false
 }

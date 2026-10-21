@@ -82,10 +82,10 @@ func TestPipelineEditSourceIsTheRawFilePinnedAtTheDefaultBranchTip(t *testing.T)
 		out.Path != ".codeaf/factory.yaml" || out.BaseSHA != prTip || out.DefaultBranch != "main" || !out.CanPush {
 		t.Fatalf("%+v", out)
 	}
-	if out.DefaultBudget != 4 || !out.BudgetInFile || strings.Join(out.Fixed, ",") != "approve,proof" {
+	if out.DefaultBudget != 4 || !out.BudgetInFile || strings.Join(out.Fixed, ",") != "proof" {
 		t.Fatalf("%+v", out)
 	}
-	if len(out.Pipelines) != 3 || out.Pipelines[0].Kind != "issue" || !out.Pipelines[0].InFile || out.Pipelines[1].InFile || out.Pipelines[2].InFile {
+	if len(out.Pipelines) != 1 || out.Pipelines[0].Kind != "issue" || !out.Pipelines[0].InFile {
 		t.Fatalf("a kind the file does not list is not the file's: %+v", out.Pipelines)
 	}
 	byName := map[string]api.PipelineEditStep{}

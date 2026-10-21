@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
@@ -31,15 +32,19 @@ func (s *Source) FollowPR(ctx context.Context, owner, repo string, number int) (
 		Number: p.Number, URL: p.URL, Draft: p.Draft,
 		Conflict: p.Mergeable != nil && !*p.Mergeable,
 		State:    pullFollowState(p), MergedBy: p.MergedBy, MergedAt: p.MergedAt,
-		HeadSHA: p.HeadSHA, Mergeable: mergeableWord(p.Mergeable),
+		BaseSHA: p.BaseSHA, HeadSHA: p.HeadSHA, Mergeable: mergeableWord(p.Mergeable),
 	}
 	if p.HeadSHA != "" {
 		state, runs, err := s.api.CheckRuns(ctx, owner, repo, p.HeadSHA)
 		if err != nil {
+			if out.State != factory.PROpen {
+				return out, nil
+			}
 			return factory.PullRequest{}, err
 		}
 		out.CI = ChecksWords(state)
 		out.Checks = summarizeChecks(runs)
+		out.CheckRuns = checkRuns(runs)
 		out.ChecksRead = true
 	}
 	if extra, ok := s.api.(followExtra); ok {
@@ -54,6 +59,14 @@ func (s *Source) FollowPR(ctx context.Context, owner, repo string, number int) (
 		}
 		out.ReviewDecision = reviewDecision(out.Reviews, out.Required)
 		out.ReviewsRead = true
+	}
+	if feedback, ok := s.api.(interface {
+		PullFeedback(context.Context, string, string, int) (string, error)
+	}); ok && out.State == factory.PROpen {
+		out.Feedback, err = feedback.PullFeedback(ctx, owner, repo, number)
+		if err != nil {
+			return factory.PullRequest{}, err
+		}
 	}
 	return out, nil
 }
@@ -108,7 +121,7 @@ func factoryReviews(in []forge.Review) []factory.PRReview {
 	}
 	out := make([]factory.PRReview, 0, len(in))
 	for _, r := range in {
-		out = append(out, factory.PRReview{By: r.User, State: strings.ToLower(r.State), At: r.At})
+		out = append(out, factory.PRReview{By: r.User, State: strings.ToLower(r.State), At: r.At, Body: r.Body, URL: r.URL})
 	}
 	return out
 }
@@ -172,12 +185,20 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 	if err != nil {
 		return err
 	}
+	held := map[int]bool{}
+	if desk, e := lease.Open(st, lease.Options{}); e == nil {
+		if live, e := desk.Live(); e == nil {
+			for _, l := range live {
+				held[l.Job] = true
+			}
+		}
+	}
 	var rec *record.Record
 	if opened, err := record.Open(st, record.Options{}); err == nil {
 		rec = opened
 	}
 	for _, it := range items {
-		if it.PullRequest == nil || it.PullRequest.Number <= 0 || sw.OffJob(it) {
+		if !factory.IsIssueJob(it) || it.PullRequest == nil || it.PullRequest.Number <= 0 || sw.OffJob(it) {
 			continue
 		}
 		owner, name, ok := pullRepo(it)
@@ -194,18 +215,50 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 		if fresh.URL == "" {
 			fresh.URL = it.PullRequest.URL
 		}
-		if reflect.DeepEqual(*it.PullRequest, fresh) {
+		probe := it
+		probe.PullRequest = &fresh
+		initialWatch := probe.FollowUp == nil && probe.State == factory.StateShipped && probe.Publish == "pr" && probe.HeadCommit != ""
+		if initialWatch {
+			factory.WatchPublishedPR(&probe)
+		}
+		followChanged := false
+		if !held[it.ID] || fresh.State == factory.PRMerged || fresh.State == factory.PRClosed {
+			followChanged = factory.QueueCIFollowUp(&probe, f.now())
+		}
+		followChanged = followChanged || initialWatch
+		if reflect.DeepEqual(*it.PullRequest, fresh) && !followChanged {
 			continue
+		}
+		details := ""
+		if followChanged && probe.FollowUp != nil && probe.FollowUp.State == "queued" {
+			details = f.ciFailureDetails(ctx, it, fresh, owner, name)
 		}
 		prev := it.PullRequest.State
 		next := fresh
 		applied := false
-		if err := st.Annotate(it.ID, func(item *factory.Item) error {
+		write := st.Annotate
+		if followChanged {
+			write = st.Update
+		}
+		if err := write(it.ID, func(item *factory.Item) error {
 			if item.PullRequest == nil {
 				return nil
 			}
 			cp := next
+			if cp.ChecksRead && item.Stream != nil && (item.PullRequest.Checks != cp.Checks || !item.PullRequest.ChecksRead) {
+				words := []string{}
+				for _, check := range cp.CheckRuns {
+					words = append(words, check.Name+": "+check.State)
+				}
+				item.Stream.Log = append(item.Stream.Log, factory.LogLine{At: time.Now().UTC(), Tone: "said", Text: "GitHub checks · " + strings.Join(words, " · ")})
+			}
 			item.PullRequest = &cp
+			if initialWatch && item.FollowUp == nil {
+				factory.WatchPublishedPR(item)
+			}
+			if (!held[it.ID] || cp.State == factory.PRMerged || cp.State == factory.PRClosed) && factory.QueueCIFollowUp(item, f.now()) && item.FollowUp != nil && item.FollowUp.State == "queued" {
+				item.FollowUp.Details = details
+			}
 			item.DismissedBy = nil
 			if (cp.State == factory.PRMerged || cp.State == factory.PRClosed) && item.DoneAt.IsZero() {
 				item.DoneAt = time.Now().UTC()

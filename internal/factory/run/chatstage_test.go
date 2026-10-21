@@ -601,3 +601,19 @@ func TestAChatThatCannotBeReopenedStartsAgainAndSaysSo(t *testing.T) {
 		t.Fatalf("log = %v", lines)
 	}
 }
+
+func TestJobModelAndEffortReachEveryConversationSpec(t *testing.T) {
+	maker := &FakeMaker{Script: func(ctx context.Context, c *FakeConversation) {
+		_ = c.Spec.Stage.Report(ctx, factory.StageResult{Done: true})
+	}}
+	job := reviewJob()
+	job.Item.Model = "open-weight/pro"
+	job.Item.Effort = "high"
+	if _, err := NewChatExecutor(maker).Run(context.Background(), job); err != nil {
+		t.Fatal(err)
+	}
+	spec := maker.Opened()[0].Spec
+	if spec.Model != "open-weight/pro" || spec.Effort != "high" {
+		t.Fatalf("job settings lost: %s %s", spec.Model, spec.Effort)
+	}
+}

@@ -194,6 +194,7 @@ func TestFactoryItemRefusesBeforeAnyCard(t *testing.T) {
 		{`{"item":1,"effort":"huge"}`, "effort is one of cheap, strong, default"},
 		{`{"item":1,"cap":-3}`, "cap is a number of dollars"},
 		{`{"item":1,"skip":["proof"]}`, "nothing changed: plan may not skip proof"},
+		{`{"item":1,"skip":["approve"]}`, "only you may choose automatic approval for approve"},
 	} {
 		out, isErr, err := tool.Execute(context.Background(), json.RawMessage(c.args))
 		if err != nil || !isErr || !strings.Contains(out, c.want) {
@@ -253,8 +254,6 @@ func TestFactoryItemHeadAndRowsForEachChange(t *testing.T) {
 		// skipped like any stage.
 		{"approve", ItemChange{Edit: factory.PlanEdit{Add: []factory.Stage{{Ask: "after test, approve"}}}}, "", "#1 · add an approve step?",
 			[]string{"now: plan · approve · write · test · review · proof", "after: plan · approve · write · test · +approve2 · review · proof"}},
-		{"no approve", ItemChange{Edit: factory.PlanEdit{Skip: []string{"approve"}}}, "", "#1 · skip the approve step?",
-			[]string{"now: plan · approve · write · test · review · proof", "after: plan · write · test · review · proof"}},
 		{"cap up", ItemChange{Cap: 12.5}, "", "#1 · raise the budget to $12.50?", []string{"budget  $5 → $12.50"}},
 		{"cap down", ItemChange{Cap: 3}, "", "#1 · lower the budget to $3?", []string{"budget  $5 → $3"}},
 		{"effort", ItemChange{Effort: "strong"}, "", "#1 · think strong?", []string{"thinking  plan — → strong · write — → strong · test — → strong · review — → strong · proof — → strong · security(off) — → strong"}},

@@ -63,7 +63,7 @@ func newPrincipalFor(a *Agent) Principal {
 	if a.config.InTask || a.config.Errand {
 		return NewPerson()
 	}
-	// AND A FACTORY STAGE HAS ONE JUDGE ALREADY, WHICH IS ITS RUNNER.
+	// AND A FACTORY STAGE OR MANAGER HAS ONE OWNER ALREADY, ITS RUNNER.
 	//
 	// A stage conversation ends by calling `stage_result`, and whether that
 	// result met the stage is [factory.Met], asked by code. A goal owner beside
@@ -75,7 +75,7 @@ func newPrincipalFor(a *Agent) Principal {
 	// handovers ([Agent.checkpoints] reads no goal owner on a screenless
 	// session): the conversation works until it reports, and the runner says
 	// what happens when it does not (internal/factory/run's chatstage.go).
-	if a.config.mayStage() {
+	if a.config.mayStage() || a.jobChatOf() != nil {
 		return NewPerson()
 	}
 	// AND A CONVERSATION SOMEBODY IS STEERING WORKS FOR THE PERSON STEERING

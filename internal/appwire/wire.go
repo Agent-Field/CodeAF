@@ -153,10 +153,11 @@ type Hello struct {
 // the first century; the emptiness law says
 // an unknown draws nothing, so UpdatedAt and LastActiveAt carry omitzero.
 type Agent struct {
-	ID        string `json:"id"`
-	Title     string `json:"title"`
-	Workspace string `json:"workspace"`
-	Model     string `json:"model,omitempty"`
+	FactoryOwned bool   `json:"factory_owned,omitempty"`
+	ID           string `json:"id"`
+	Title        string `json:"title"`
+	Workspace    string `json:"workspace"`
+	Model        string `json:"model,omitempty"`
 	// Effort is how hard the model is asked to think: low, medium or high,
 	// and empty when the conversation runs on the model's own default.
 	Effort    string    `json:"effort,omitempty"`

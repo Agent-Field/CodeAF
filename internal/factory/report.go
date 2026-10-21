@@ -5,6 +5,7 @@ import "time"
 // RunReport is a worker's incremental write, not a replacement item. Keeping the
 // identity and pipeline out of it preserves changes a person made meanwhile.
 type RunReport struct {
+	FollowUp   *PRFollowUp
 	Change     *Change
 	ChangeBase string
 	HeadCommit string
@@ -49,6 +50,7 @@ type PipelineChange struct {
 // new step or depend on an index that a person changed between reports.
 type StageReport struct {
 	Name  string
+	Chat  string
 	State PhaseState
 	Round int
 	// Started is when the step's latest round began on the worker

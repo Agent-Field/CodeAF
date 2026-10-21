@@ -2481,6 +2481,7 @@ Feature `factory.job_actions` is present only when the engine implements `Factor
 | `factory.job_step_stop` | step | `…/steps/{step}/stop` (assignee only) |
 | `factory.job_step_rerun` | step, words? (what to do differently; kept on the job's notes) | `…/steps/{step}/rerun` (assignee only) |
 | `factory.job_merge` | commit? (the pull request's head the person saw) | `…/merge` (assignee only; the factory's merge gate decides) |
+| `factory.job_control` | mode (`take_over` or `resume_pipeline`), optional words | `…/control`; normal job action receipt |
 | `factory.job_set_model` | model (a model id; empty for the factory's default) | `…/model` (assignee only; the next step opens on it and a running step switches at its next turn; `expect` is accepted and not checked, so a pick is never `stale`; a Done job is `conflict`) |
 | `factory.job_create` | factory, repo (owner/name), title, text?, assignee?, start? (`backlog`\|`now`) | `POST /v1/jobs` |
 
@@ -2841,3 +2842,7 @@ Feature `factory.runner_manage` is distinct from every other factory feature and
 **The write.** One `PUT /v1/runners/{runner}` with `{slots, require_live_capacity:true}` and no checkouts, never retried. The factory re-checks `live_capacity` of the machine's newest attach under the lock that writes, so a worker that restarted onto an older binary since the read is refused with 409 and nothing changes. Only a 4xx or 501 carrying `X-Codeaf-Phase: pre-mutation` is a definite refusal (fixed words); the marker is cleared immediately before the first change. A dropped connection, a timeout, a redirect, a 5xx, an unmarked refusal, or an unexpected success such as 202 is `uncertain`: read `factory.runners` for what is granted. If the sign-in changes during a wait, no computer or number is revealed; after the write the answer is a neutral `uncertain`.
 
 **Directory fields.** `factory.runners` now may carry `slots_policy {min, max, requires_live}` (only from a factory that enforces the guard) and per runner `live_capacity`, which is the NEWEST attach's attestation (attaches that cannot be ordered must all attest).
+
+### factory.job_control
+
+Optional feature `factory.job_control`. Parameters: `factory`, `job`, `expect.version`, `mode` (`take_over` or `resume_pipeline`), optional `words`. Takes manual control or resumes verification in the existing worktree. Returns the normal factory job action receipt. It does not approve initial publication or merge.

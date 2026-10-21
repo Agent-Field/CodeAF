@@ -192,7 +192,7 @@ func newCapRig(t *testing.T, slots int, desired bool) *capRig {
 		cancel()
 		// Open every fifo so no check is left blocking the shutdown.
 		for id := range g.jobs {
-			g.release(t, id)
+			g.releaseNow(id)
 		}
 		<-done
 	})
@@ -233,12 +233,23 @@ func (g *capRig) job(t *testing.T) int {
 // release lets the job's check finish.
 func (g *capRig) release(t *testing.T, id int) {
 	t.Helper()
-	// Non-blocking: with no reader there is nothing to release.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if g.releaseNow(id) {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("the pulled check never opened its FIFO")
+}
+
+func (g *capRig) releaseNow(id int) bool {
 	f, err := os.OpenFile(g.jobs[id], os.O_WRONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
-		return
+		return false
 	}
 	f.Close()
+	return true
 }
 
 // next is the next lease event.

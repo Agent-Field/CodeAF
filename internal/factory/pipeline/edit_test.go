@@ -20,6 +20,7 @@ size:
 pipeline:
   issue: [plan, approve, write, test, lint-pass, proof]
   pr: [read, review, proof]
+  ci: [bisect, fix, test, proof, approve]
 steps:
   plan:
     prompt: plan it well # keep this
@@ -79,7 +80,7 @@ func TestInspectReadsTheFileNotTheDefaults(t *testing.T) {
 	if len(src.Kinds) != 3 || src.Kinds[0].Kind != "issue" || src.Kinds[1].Kind != "pr" || src.Kinds[2].Kind != "ci" {
 		t.Fatalf("kinds %+v", src.Kinds)
 	}
-	if !src.Kinds[0].InFile || !src.Kinds[1].InFile || src.Kinds[2].InFile {
+	if !src.Kinds[0].InFile || !src.Kinds[1].InFile || !src.Kinds[2].InFile {
 		t.Fatalf("a kind the file does not list is the shipped default: %+v", src.Kinds)
 	}
 	if got := strings.Join(src.Kinds[0].Steps, ","); got != "plan,approve,write,test,lint-pass,proof" {

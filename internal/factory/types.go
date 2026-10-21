@@ -357,6 +357,8 @@ const (
 
 // PRReview is one review on a pull request the factory opened.
 type PRReview struct {
+	Body  string
+	URL   string
 	By    string
 	State string
 	At    time.Time
@@ -375,6 +377,9 @@ type PRChecks struct {
 // State, the merge, the reviews and the check summary are filled when a
 // later poll reads the pull request again.
 type PullRequest struct {
+	BaseSHA        string     `json:",omitempty"`
+	Feedback       string     `json:",omitempty"`
+	CheckRuns      []CheckRun `json:",omitempty"`
 	Conflict       bool
 	Draft          bool
 	Number         int
@@ -403,6 +408,9 @@ type PullRequest struct {
 const QKindAskFirst = "ask_first"
 
 type Item struct {
+	Manual   bool        `json:",omitempty"`
+	Effort   string      `json:",omitempty"`
+	FollowUp *PRFollowUp `json:",omitempty"`
 	// SetupHeld keeps first-run imports in Backlog until a person starts them.
 	SetupHeld bool `json:",omitempty"`
 	// Job decisions belong to the binary; presentation derives from these facts.

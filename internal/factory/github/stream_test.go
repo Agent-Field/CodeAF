@@ -194,10 +194,10 @@ func TestTheFirstReadFoldsRepositoryByRepository(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "acme/two") {
 		t.Fatalf("the down repository was not named: %v", err)
 	}
-	if atTwo["acme/one"] != 4 {
+	if atTwo["acme/one"] != 3 {
 		t.Fatalf("the first repository was not on the floor before the second was read: %v", atTwo)
 	}
-	if got := floorByRepo(t, st); got["acme/one"] != 4 || got["acme/two"] != 0 || got["acme/three"] != 2 {
+	if got := floorByRepo(t, st); got["acme/one"] != 3 || got["acme/two"] != 0 || got["acme/three"] != 2 {
 		t.Fatalf("floor after the failed tick: %v", got)
 	}
 	if strings.Contains(cursor, "acme/two") || !strings.Contains(cursor, "acme/one") {
@@ -209,7 +209,7 @@ func TestTheFirstReadFoldsRepositoryByRepository(t *testing.T) {
 	if _, err := PollOnce(context.Background(), src, st, cursor, time.Now); err != nil {
 		t.Fatal(err)
 	}
-	if got := floorByRepo(t, st); got["acme/one"] != 4 || got["acme/two"] != 2 || got["acme/three"] != 2 {
+	if got := floorByRepo(t, st); got["acme/one"] != 3 || got["acme/two"] != 2 || got["acme/three"] != 2 {
 		t.Fatalf("floor after the next tick: %v", got)
 	}
 }
@@ -234,8 +234,8 @@ func TestCommentsPastTheBudgetAreReadOnLaterTicks(t *testing.T) {
 		t.Fatal(err)
 	}
 	items, _ := st.List()
-	if len(items) != 7 {
-		t.Fatalf("the first tick folded %d items, want 7", len(items))
+	if len(items) != 5 {
+		t.Fatalf("the first tick folded %d items, want 5", len(items))
 	}
 	read, unread := 0, 0
 	for _, it := range items {
@@ -269,39 +269,45 @@ func TestCommentsPastTheBudgetAreReadOnLaterTicks(t *testing.T) {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.comments != 7 || m.details != 2 {
-		t.Fatalf("comments read %d times (want 7), details %d (want 2)", m.comments, m.details)
+	if m.comments != 5 || m.details != 0 {
+		t.Fatalf("comments read %d times (want 5), PR details %d (want 0)", m.comments, m.details)
 	}
 }
 
 // WHAT WAS NOT READ YET IS NOT A CHANGE: an item handed over without its
 // comments keeps the floor's, and a pull request without its files keeps
 // its files and diff; an empty list does say there are none.
-func TestMergeKeepsWhatWasNotReadYet(t *testing.T) {
+func TestMergeIssueCommentsPreservesItsLinkedPR(t *testing.T) {
 	st := openStore(t)
-	said := []factory.Comment{{Author: "carol", Body: "first"}}
-	full := factory.Item{Product: "acme", Repo: "api", Num: 9, Kind: factory.KindPR, Title: "t", Origin: factory.OriginForge,
-		Diff: "+1 −1", Files: []factory.FileChange{{Path: "a.go", Added: 1, Removed: 1}}, Comments: said}
+	full := factory.Item{Product: "acme", Repo: "api", Num: 9, Kind: factory.KindIssue, Title: "t", Origin: factory.OriginForge, Comments: []factory.Comment{{Author: "carol", Body: "first"}}}
 	if err := Merge(st, Name, []factory.Item{full}); err != nil {
 		t.Fatal(err)
 	}
+	items, _ := st.List()
+	id := items[0].ID
+	if err := st.Update(id, func(it *factory.Item) error {
+		it.PullRequest = &factory.PullRequest{Number: 65, State: factory.PROpen, URL: "https://github.com/acme/api/pull/65"}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 	bare := full
-	bare.Diff, bare.Files, bare.Comments = "", nil, nil
+	bare.Comments = nil
 	if err := Merge(st, Name, []factory.Item{bare}); err != nil {
 		t.Fatal(err)
 	}
-	items, _ := st.List()
-	if len(items) != 1 || items[0].Diff != "+1 −1" || len(items[0].Files) != 1 || len(items[0].Comments) != 1 {
-		t.Fatalf("an unread pull request wiped what the floor had: %+v", items)
+	got, _ := st.Get(id)
+	if len(got.Comments) != 1 || got.PullRequest == nil || got.PullRequest.Number != 65 {
+		t.Fatalf("unread issue data wiped recorded state: %+v", got)
 	}
 	none := full
 	none.Comments = []factory.Comment{}
 	if err := Merge(st, Name, []factory.Item{none}); err != nil {
 		t.Fatal(err)
 	}
-	items, _ = st.List()
-	if items[0].Comments == nil || len(items[0].Comments) != 0 {
-		t.Fatalf("read and nothing said did not land as an empty list: %#v", items[0].Comments)
+	got, _ = st.Get(id)
+	if got.Comments == nil || len(got.Comments) != 0 || got.PullRequest.Number != 65 {
+		t.Fatal("empty comments or linked PR were lost")
 	}
 }
 
@@ -343,7 +349,7 @@ func TestProgressCountsTheItemsSoFar(t *testing.T) {
 	for _, s := range w.seen {
 		got = append(got, fmt.Sprintf("%s %d/%d %d", s.Reading, s.Read, s.Of, s.Items))
 	}
-	want := []string{"acme/one 0/2 0", "acme/one 0/2 3", "acme/one 0/2 5", "acme/two 1/2 5", "acme/two 1/2 9", "acme/two 1/2 9"}
+	want := []string{"acme/one 0/2 0", "acme/one 0/2 3", "acme/two 1/2 3", "acme/two 1/2 7"}
 	if strings.Join(got, ", ") != strings.Join(want, ", ") {
 		t.Fatalf("progress\n got %v\nwant %v", got, want)
 	}

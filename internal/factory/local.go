@@ -527,6 +527,7 @@ func localLoad(st ItemStore, started, now time.Time, recipe func(repo string) Re
 	if err != nil {
 		return Snapshot{}, err
 	}
+	items = IssueJobs(items)
 	snap := Snapshot{
 		Now:   now,
 		Items: items,

@@ -19,7 +19,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/teams"
-	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
 // ── A STAGE IS A CONVERSATION: THE MAKER ───────────────────────────────────
@@ -54,6 +53,7 @@ import (
 
 // stageMaker opens stage conversations from parent, the launch's own config.
 type stageMaker struct {
+	floor      *store.Store
 	parent     session.Config
 	current    func() session.Config
 	refusal    func() error
@@ -62,14 +62,14 @@ type stageMaker struct {
 }
 
 // factoryStageMaker is this process's maker.
-func factoryStageMaker(_ *store.Store, workspace, profileDir string, parent session.Config) factoryrun.ConversationMaker {
-	return stageMaker{parent: parent, workspace: workspace, profileDir: profileDir}
+func factoryStageMaker(floor *store.Store, workspace, profileDir string, parent session.Config) factoryrun.ConversationMaker {
+	return stageMaker{floor: floor, parent: parent, workspace: workspace, profileDir: profileDir}
 }
 
 // factoryStageMakerFrom reads the worker's current launch for each round,
 // including a resumed round whose journal predates the one-model launch.
-func factoryStageMakerFrom(_ *store.Store, workspace, profileDir string, current func() session.Config) stageMaker {
-	return stageMaker{current: current, workspace: workspace, profileDir: profileDir}
+func factoryStageMakerFrom(floor *store.Store, workspace, profileDir string, current func() session.Config) stageMaker {
+	return stageMaker{floor: floor, current: current, workspace: workspace, profileDir: profileDir}
 }
 
 // withRefusal gives the maker the reason its parent was last refused.
@@ -112,6 +112,9 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	if err != nil {
 		return nil, err
 	}
+	if err := markFactoryStageChat(m.floor, spec.Item, cfg.SessionFile); err != nil {
+		return nil, err
+	}
 	cfg.Workspace = where
 	// THE JOB'S OWN MODEL, WHEN A PERSON CHOSE ONE, over the launch's default.
 	if model := strings.TrimSpace(spec.Model); model != "" {
@@ -146,6 +149,9 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	// known from the moment its journal is open (a crew tick landing between the
 	// open and a later register would find a live, unregistered agent and read
 	// it as another window's) to Close or to a failed start (app_lend.go).
+	if spec.Effort != "" {
+		agent.SetReasoningFor(agent.Model(), spec.Effort)
+	}
 	rememberStageAgent(agent)
 	if team := strings.TrimSpace(spec.Team); team != "" && !resumed {
 		if err := stageJoinTeam(m.profileDir, team, cfg.SessionFile, where, spec.Name, spec.Handle, spec.Brief); err != nil {
@@ -157,6 +163,7 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	c := &stageConversation{
 		agent:    agent,
 		file:     cfg.SessionFile,
+		dir:      where,
 		captions: make(chan string, 256),
 		done:     make(chan struct{}),
 	}
@@ -277,6 +284,7 @@ var stageSettle = unattendedRunSettleTick
 type stageConversation struct {
 	agent     *session.Agent
 	file      string
+	dir       string
 	captions  chan string
 	wakes     <-chan (<-chan session.Event)
 	stopWakes func()
@@ -345,7 +353,12 @@ func (c *stageConversation) drain(events <-chan session.Event) {
 	for event := range events {
 		switch event.Kind {
 		case session.EventToolBegin:
-			c.say(tui3.ToolGloss(event.Tool, event.Hint))
+			hint := c.relativeHint(event.Hint)
+			if hint != "" {
+				c.say(event.Tool + " " + hint)
+			} else {
+				c.say(event.Tool)
+			}
 		case session.EventToolFailed:
 			reason := event.Hint
 			if reason == "" && event.Err != nil {
@@ -731,4 +744,13 @@ func factoryItemTeam(profileDir string, it factory.Item) (string, error) {
 		return nil
 	})
 	return id, err
+}
+
+// relativeHint spends the visible log on the filename and command, not a home path.
+func (c *stageConversation) relativeHint(s string) string {
+	if c.dir == "" {
+		return s
+	}
+	s = strings.ReplaceAll(s, c.dir+string(os.PathSeparator), "")
+	return strings.ReplaceAll(s, c.dir, ".")
 }

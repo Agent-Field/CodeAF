@@ -91,6 +91,7 @@ type Pull struct {
 	// Base is the branch the pull request asks to merge into, Head the
 	// branch it comes from, and HeadRepo the repository Head lives in
 	// (`owner/name`), which differs from the base repository for a fork.
+	BaseSHA   string
 	Base      string
 	Head      string
 	HeadRepo  string
@@ -114,6 +115,8 @@ type Pull struct {
 
 // Review is one submitted review on a pull request.
 type Review struct {
+	Body  string
+	URL   string
 	User  string
 	State string
 	At    time.Time
@@ -189,6 +192,7 @@ type pullJSON struct {
 		Repo *pullRepoJSON `json:"repo"`
 	} `json:"head"`
 	Base struct {
+		SHA string `json:"sha"`
 		Ref string `json:"ref"`
 	} `json:"base"`
 	Additions    int         `json:"additions"`
@@ -245,7 +249,7 @@ func (p pullJSON) pull() Pull {
 		headRepo = p.Head.Repo.FullName
 	}
 	out := Pull{
-		Base: p.Base.Ref, Head: p.Head.Ref, HeadRepo: headRepo,
+		Base: p.Base.Ref, BaseSHA: p.Base.SHA, Head: p.Head.Ref, HeadRepo: headRepo,
 		Number: p.Number, Title: p.Title, Body: deref(p.Body), User: p.User.Login,
 		Labels: labelNames(p.Labels), Created: p.CreatedAt, Updated: p.UpdatedAt,
 		URL: p.HTMLURL, HeadSHA: p.Head.SHA, Draft: p.Draft,
@@ -467,6 +471,8 @@ func (c *client) Reviews(ctx context.Context, owner, repo string, number int) ([
 		User        userJSON  `json:"user"`
 		State       string    `json:"state"`
 		SubmittedAt time.Time `json:"submitted_at"`
+		Body        string    `json:"body"`
+		URL         string    `json:"html_url"`
 	}
 	if err := json.Unmarshal(body, &rows); err != nil {
 		return nil, err
@@ -476,7 +482,7 @@ func (c *client) Reviews(ctx context.Context, owner, repo string, number int) ([
 		if r.User.Login == "" && r.State == "" {
 			continue
 		}
-		out = append(out, Review{User: r.User.Login, State: r.State, At: r.SubmittedAt})
+		out = append(out, Review{User: r.User.Login, State: r.State, At: r.SubmittedAt, Body: r.Body, URL: r.URL})
 	}
 	return out, nil
 }

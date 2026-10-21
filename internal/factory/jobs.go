@@ -155,8 +155,14 @@ func IsDismissed(it Item, person string) bool {
 
 // JobState projects historical engine states into the five canvas states.
 func JobState(it Item) string {
+	if it.PullRequest != nil && (it.PullRequest.State == PRMerged || it.PullRequest.State == PRClosed) {
+		return "done"
+	}
 	if it.DoneHow != "" || it.State == StateDismissed {
 		return "done"
+	}
+	if it.FollowUp != nil && it.FollowUp.State == "needs_you" && it.PullRequest != nil && it.PullRequest.State == PROpen {
+		return "needs_you"
 	}
 	if it.PublishError != "" || it.Failure != nil || (it.PublishStatus != nil && it.PublishStatus.State == "failed") {
 		return "needs_you"
@@ -170,6 +176,9 @@ func JobState(it Item) string {
 		if pr := it.PullRequest; pr != nil {
 			if pr.State == PRMerged || pr.State == PRClosed {
 				return "done"
+			}
+			if it.FollowUp != nil && (it.FollowUp.State == "watching" || it.FollowUp.State == "healthy") {
+				return "running"
 			}
 			if pr.ReviewDecision == "changes_requested" || pr.Conflict {
 				return "needs_you"

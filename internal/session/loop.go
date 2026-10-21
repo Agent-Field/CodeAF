@@ -1430,6 +1430,10 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			}, results[index])
 		}
 
+		if a.stageBatchFinal(calls, results) {
+			return true
+		}
+
 		// `post-feedback` (hooks.go): the step boundary, where the turn's ledger
 		// reads what the batch changed and the detector says whether the turn is
 		// going in circles (recovery.go, looped.go). The batch is recorded, the

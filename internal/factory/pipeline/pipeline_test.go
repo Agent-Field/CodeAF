@@ -107,7 +107,7 @@ func TestEmptyFileIsTheDefaults(t *testing.T) {
 	if len(f.Start.Labels) != 0 || f.Start.MaxCost != pipeline.DefaultMaxCost || f.Start.MaxSize != pipeline.DefaultMaxSize {
 		t.Fatalf("start = %+v", f.Start)
 	}
-	if strings.Join(f.Pipeline[factory.KindCI], ",") != "bisect,fix,test,proof,approve" {
+	if len(f.Pipeline) != 1 || len(f.Pipeline[factory.KindCI]) != 0 {
 		t.Fatalf("ci = %v", f.Pipeline[factory.KindCI])
 	}
 	if f.Steps["plan"].Prompt == "" || f.Steps["read"].Until != factory.UntilDone || f.Steps["review"].Max != 3 {
@@ -221,7 +221,7 @@ func TestRecipeCarriesFreeUntilsInTheAsk(t *testing.T) {
 		t.Fatalf("plan = %+v", plan)
 	}
 	approve := r.Stages[1]
-	if approve.Name != factory.ApproveName || approve.Kind != factory.StageGate || !approve.Fixed {
+	if approve.Name != factory.ApproveName || approve.Kind != factory.StageGate || approve.Fixed {
 		t.Fatalf("approve = %+v", approve)
 	}
 	test := r.Stages[3]

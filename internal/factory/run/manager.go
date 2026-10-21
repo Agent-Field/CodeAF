@@ -49,15 +49,15 @@ import (
 // (internal/manual/chat/factory-stage-conversations.md); a line respelled here
 // is respelled there in the same change.
 const (
-	sayStarted   = "%s started"                                 // plan started
-	sayDone      = "%s done"                                    // plan done · 2m · $0.04 · what it said
-	sayAsking    = "asking you: %s"                             // asking you: plan is ready · go, or change it?
-	sayFailedAsk = "%s · asking you: %s"                        // a lead, then the question
-	sayCapAsk    = "budget of %s reached · asking you"          // budget of $5 reached · asking you
-	sayAnswered  = "answered: %s"                               // answered: yes · answered: no · answered: <words>
-	sayChanges   = "changes requested: %s"                      // the person's request changes
-	sayLanded    = "landed · proof sheet ready · your approval" // every stage done
-	sayShipped   = "shipped"                                    // approved, or shipped itself as a habit
+	sayStarted   = "%s started"                                                                                                                                                                                                                                                                                                 // plan started
+	sayDone      = "%s done"                                                                                                                                                                                                                                                                                                    // plan done · 2m · $0.04 · what it said
+	sayAsking    = "asking you: %s"                                                                                                                                                                                                                                                                                             // asking you: plan is ready · go, or change it?
+	sayFailedAsk = "%s · asking you: %s"                                                                                                                                                                                                                                                                                        // a lead, then the question
+	sayCapAsk    = "budget of %s reached · asking you"                                                                                                                                                                                                                                                                          // budget of $5 reached · asking you
+	sayAnswered  = "answered: %s"                                                                                                                                                                                                                                                                                               // answered: yes · answered: no · answered: <words>
+	sayChanges   = "changes requested: %s"                                                                                                                                                                                                                                                                                      // the person's request changes
+	sayLanded    = "Implementation, tests, review and proof are complete. The changes are committed locally. Approval needed: push the branch to the remote and create a draft pull request. Press Approve to publish and authorize verified maintenance pushes to this PR within the job budget. Merge remains your decision." // every stage done
+	sayShipped   = "Published · the result is available on GitHub; this does not mean it has been merged."                                                                                                                                                                                                                      // approved, or shipped itself as a habit
 	sayStopped   = "stopped"
 	sayPaused    = "paused"
 	sayResumed   = "resumed"

@@ -245,7 +245,7 @@ type presence struct {
 func Defaults() File {
 	recipe := factory.DefaultRecipe()
 	pipeline := map[factory.Kind][]string{}
-	for _, kind := range []factory.Kind{factory.KindIssue, factory.KindPR, factory.KindCI} {
+	for _, kind := range []factory.Kind{factory.KindIssue} {
 		names := []string{}
 		for _, st := range recipe.For(kind) {
 			names = append(names, st.Name)

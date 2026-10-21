@@ -178,7 +178,7 @@ type Repo struct {
 	// CheckedOut says the factory's machine knows a checkout of the
 	// repository; false is none known, whose jobs are cloned on their first
 	// step or refused (the job's own `checkout` says which).
-	CheckedOut bool      `json:"checked_out,omitempty"`
+	CheckedOut bool      `json:"checked_out"`
 	Pipeline   *Pipeline `json:"pipeline,omitempty"`
 	Team       string    `json:"team,omitempty"`   // desk
 	Areas      []string  `json:"areas,omitempty"`  // desk
@@ -294,7 +294,12 @@ type JobReadSize struct {
 
 // Job is one unit of work on the floor (code: [factory.Item]).
 type Job struct {
-	SetupHeld bool `json:"setup_held,omitempty"`
+	FollowPR       bool                `json:"follow_pr,omitempty"`
+	PublishPreview string              `json:"publish_preview,omitempty"`
+	Manual         bool                `json:"manual,omitempty"`
+	Effort         string              `json:"effort,omitempty"`
+	FollowUp       *factory.PRFollowUp `json:"follow_up,omitempty"`
+	SetupHeld      bool                `json:"setup_held,omitempty"`
 	// RepoOff says the job's repository is switched off: the factory does not
 	// work on it, so the job is not on the queue, and its run, start, rerun,
 	// publish and merge are absent from can and controls. Only the job's own
@@ -673,6 +678,9 @@ type Answer = factory.Answer
 // The job's state stays done; this field is how a reader tells PR open from
 // Merged. Contract stays 2.
 type PR struct {
+	BaseSHA         string     `json:"base_sha,omitempty"`
+	Feedback        string     `json:"feedback,omitempty"`
+	CheckRuns       []CheckRun `json:"check_runs,omitempty"`
 	Conflict        bool       `json:"conflict,omitempty"`
 	Draft           bool       `json:"draft"`
 	Number          int        `json:"number"`
@@ -719,6 +727,8 @@ type JobMergeRun struct {
 
 // PRReview is one review on a pull request the factory opened.
 type PRReview struct {
+	Body  string    `json:"body,omitempty"`
+	URL   string    `json:"url,omitempty"`
 	By    string    `json:"by"`
 	State string    `json:"state"`
 	At    time.Time `json:"at"`

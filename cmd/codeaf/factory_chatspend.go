@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
@@ -57,7 +60,7 @@ func (d jobChatDoor) Chat(transcript string) session.JobChat {
 	}
 	if items, err := d.floor.List(); err == nil {
 		for _, it := range items {
-			if talk.is(it.Talk) {
+			if talk.is(it.Talk) || (it.Manual && ownsManualChat(it, talk)) {
 				return &jobChat{floor: d.floor, id: it.ID, talk: talk}
 			}
 		}
@@ -68,7 +71,7 @@ func (d jobChatDoor) Chat(transcript string) session.JobChat {
 			continue
 		}
 		for _, it := range items {
-			if talk.is(it.Talk) {
+			if talk.is(it.Talk) || (it.Manual && ownsManualChat(it, talk)) {
 				return &jobChat{floor: d.floor, id: it.ID, talk: talk}
 			}
 		}
@@ -88,7 +91,7 @@ type jobChat struct {
 func (c *jobChat) Spend(usd float64) {
 	for _, st := range c.holders() {
 		err := st.Annotate(c.id, func(it *factory.Item) error {
-			if !c.talk.is(it.Talk) {
+			if !c.talk.is(it.Talk) && !(it.Manual && ownsManualChat(*it, c.talk)) {
 				return errNotThisChat
 			}
 			factory.AddChatSpend(it, usd)
@@ -104,7 +107,7 @@ func (c *jobChat) Spend(usd float64) {
 func (c *jobChat) Refusal() string {
 	for _, st := range c.holders() {
 		it, err := st.Get(c.id)
-		if err != nil || !c.talk.is(it.Talk) {
+		if err != nil || (!c.talk.is(it.Talk) && !(it.Manual && ownsManualChat(it, c.talk))) {
 			continue
 		}
 		return factoryrun.ChatRefusal(it)
@@ -186,4 +189,68 @@ func (k talkKey) is(talk string) bool {
 	}
 	real, err := filepath.EvalSymlinks(other)
 	return err == nil && filepath.Clean(real) == k.real
+}
+
+// Only the manager's own persistent job association exposes this door.
+func (c *jobChat) MaintainPR(ctx context.Context, words string) (string, error) {
+	history, err := record.Open(c.floor, record.Options{})
+	if err != nil {
+		return "", err
+	}
+	trailer, err := history.Trailer(ctx, c.id)
+	if err != nil {
+		return "", err
+	}
+	err = c.floor.Update(c.id, func(it *factory.Item) error {
+		if !c.talk.is(it.Talk) && !(it.Manual && ownsManualChat(*it, c.talk)) {
+			return errNotThisChat
+		}
+		if it.Manual {
+			return errors.New("Manual control is active. Finish the working chat and use Resume pipeline.")
+		}
+		if it.PullRequest == nil || it.PullRequest.State != factory.PROpen {
+			return errors.New("There is no open PR to maintain.")
+		}
+		if it.State == factory.StateRunning || it.State == factory.StateQueued {
+			return errors.New("The pipeline is already working. Your request is steering for its next step.")
+		}
+		if !factoryrun.ValidTrailer(trailer) {
+			return errors.New("Publish the initial PR with approval before authorizing maintenance.")
+		}
+		if it.FollowUp == nil {
+			factory.WatchPublishedPR(it)
+		}
+		f := it.FollowUp
+		f.PublishConsent = trailer
+		f.AutoPush = true
+		f.Request = words
+		f.State = "watching"
+		f.EventKey = ""
+		f.Attempt = 0
+		it.Notes = append(it.Notes, words)
+		it.State = factory.StateShipped
+		factory.QueueCIFollowUp(it, time.Now().UTC())
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	return "Follow PR resumed with your request. Verified repairs will update the existing PR; merge remains yours.", nil
+}
+
+func ownsManualChat(it factory.Item, talk talkKey) bool {
+	if it.Stream == nil {
+		return false
+	}
+	for _, ph := range it.Stream.Phases {
+		if talk.is(ph.Chat) {
+			return true
+		}
+		for _, r := range ph.Rounds {
+			if talk.is(r.Chat) {
+				return true
+			}
+		}
+	}
+	return false
 }

@@ -23,14 +23,12 @@ func TestTheDefaultRecipeLeavesRoomToFix(t *testing.T) {
 	}
 	lists := map[factory.Kind]string{
 		factory.KindIssue: "plan approve write test review proof",
-		factory.KindPR:    "read checks review proof approve",
-		factory.KindCI:    "bisect fix test proof approve",
 	}
 	for kind, want := range lists {
 		var names []string
 		for _, st := range r.For(kind) {
 			names = append(names, st.Name)
-			if st.Fixed != (st.Name == factory.ApproveName || st.Name == "proof") {
+			if st.Fixed != (st.Name == "proof") {
 				t.Errorf("%s %s fixed = %v", kind, st.Name, st.Fixed)
 			}
 			if !st.On {

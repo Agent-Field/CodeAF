@@ -49,15 +49,13 @@ On a machine with a factory set up, a conversation can hand work over. Every one
 
 Banking a recipe never writes into a folder held by a running program. A separate change worktree can still be written when it is outside that hold. If the change has to be saved in the held checkout, nothing is written: wait for that run to end, or stop it, then bank the line again. A Git error and your confirmation do not bypass this check.
 
-The conversation that manages an item also has `factory_run` (shape its run), `factory_start` (start, resume or continue it when you ask) and `factory_answer` (reply to a question a step asked; send it to you when it turns on taste, scope, risk, money or access). The foreman conversation has `factory_floor` (read the whole floor and select items for you to run). These are absent from every other conversation, from `--once` runs and from windows over `--host` or `--at`.
+The conversation that manages an item also has `factory_run` (shape its run), `factory_start` (start, resume or continue it when you ask), `factory_follow_pr` (request maintenance of the same open PR after publication approval) and `factory_answer` (reply to a question a step asked; send it to you when it turns on taste, scope, risk, money or access). The foreman conversation has `factory_floor` (read the whole floor and select items for you to run). These are absent from every other conversation, from `--once` runs and from windows over `--host` or `--at`.
 
 ## the default steps — what a job runs with no factory.yaml, how many rounds, security pass
 
 A repository without `.codeaf/factory.yaml` runs the shipped steps, and so does every job on it, whether a person started it or a start rule did: the same steps, asks and rounds. `codeaf factory steps` prints each one with its prompt, its until and its rounds.
 
 - **issue**: plan › approve › write › test › review › proof.
-- **pull request**: read › checks › review › proof › approve.
-- **red main (ci)**: bisect › fix › test › proof › approve.
 
 | Step | Until | Rounds |
 | --- | --- | --- |
@@ -66,7 +64,13 @@ A repository without `.codeaf/factory.yaml` runs the shipped steps, and so does 
 | review, security | clean | 3 |
 | proof | proven | 3 |
 
-A step that falls short goes round again until its rounds run out, and only then asks you what to do. approve is a person, and approve and proof are fixed: an edit cannot reword or skip them. security is shipped but in no list: a job typed with the word `security` (`fix the login, security`) gains it after review, and a pipeline file names it to run it. A pipeline file's `max:` replaces a shipped step's rounds; a step of the file's own, under a name codeaf does not ship, runs once unless it says `max:`.
+A step that falls short goes round again until its rounds run out, and only then asks you what to do. approve is an optional internal approval; you may skip it to continue automatically, while publishing still needs approval. proof is fixed: an edit cannot reword or skip it. A repository can explicitly fix an approval too. security is shipped but in no list: a job typed with the word `security` (`fix the login, security`) gains it after review, and a pipeline file names it to run it. A pipeline file's `max:` replaces a shipped step's rounds; a step of the file's own, under a name codeaf does not ship, runs once unless it says `max:`.
+
+## issues only — pull requests are outcomes, old PR jobs removed
+
+Issues are the factory's only work items, including briefs handed over from chat. GitHub imports issues only; pull requests never become queue rows or review jobs. New jobs cannot select a PR or standalone CI pipeline.
+
+An issue keeps the PR it opens, its checks, reviews and merge status. One final Follow PR step handles bounded CI, requested-review and conflict repairs until merge or closure. Initial publication approval permits checked maintenance pushes to the same PR within budget; merge remains your decision. Take over pauses automation for an ordinary working conversation; Resume pipeline checks that work and continues. On upgrade, the factory permanently removes old standalone PR jobs, their factory-owned conversations, local worktrees, generated local branches and activity records, including worker copies. No archive of those jobs is kept. Issue jobs and their linked PR information remain. Nothing on GitHub is deleted or changed by this cleanup.
 
 ## change one job's steps — landed, proof has started, add after proof, switch on a step
 
@@ -122,13 +126,13 @@ One check, in code, decides every merge; no model does, and no tool on any belt 
 
 **Undo**, for five seconds after your own Stop, puts the run back exactly as it stood: the same step, its conversation, what it spent and the question it was asking.
 
-**Run again** starts a job that says `Step stopped` over, taking the stop mark off; a job stopped with no mark has **Start** instead. It begins a new run at the first step. What the stopped run's steps reported is not carried over, and the job's spend starts again from nothing; its budget stays what it was. What is kept is the job's worktree and branch on the runner that ran it: the new run works in that same folder, on that branch, with every commit and every unsaved edit the stopped run left there. A different runner that picks the job up makes a fresh branch from the repository's default branch (a pull request's job from its head), because a job's branch leaves its machine only when the pull request is opened. Your notes on the job are kept, and every step's brief still carries them.
+**Run again** starts a job that says `Step stopped` over, taking the stop mark off; a job stopped with no mark has **Start** instead. It begins a new run at the first step. What the stopped run's steps reported is not carried over, and the job's spend starts again from nothing; its budget stays what it was. What is kept is the job's worktree and branch on the runner that ran it: the new run works in that same folder, on that branch, with every commit and every unsaved edit the stopped run left there. A different runner that picks the job up makes a fresh branch from the repository's default branch, because a job's branch leaves its machine only when the pull request is opened. Your notes on the job are kept, and every step's brief still carries them.
 
 To go on from a step that was cut instead, keeping the steps before it and the money spent, run that step again (try again) rather than starting the job.
 
 ## drop a job — Drop, delete a job's branch, uncommitted work, throw away a job's work and its conversations
 
-**Drop** takes a job off the list and throws away everything of its work on this machine: a running job is stopped first, then its worktree folder, its local branch (`factory/<number>-<title>`), its own conversation, every step's conversation from every round, and the team the factory made for it (`#12 · <title>`, under the `factory` team) are deleted, and the job reads done. Nothing on GitHub is touched: a branch already pushed and a pull request already opened stay where they are, and a changed issue does not revive a dropped job. A pull request's job keeps its branch; only its folder goes. A conversation you put in the job's team yourself is not deleted; it only leaves the team. Only the job's assignee, or anyone while it has none, may drop it.
+**Drop** takes a job off the list and throws away everything of its work on this machine: a running job is stopped first, then its worktree folder, its local branch (`factory/<number>-<title>`), its own conversation, every step's conversation from every round, and the team the factory made for it (`#12 · <title>`, under the `factory` team) are deleted, and the job reads done. Nothing on GitHub is touched: a branch already pushed and a pull request already opened stay where they are, and a changed issue does not revive a dropped job. A conversation you put in the job's team yourself is not deleted; it only leaves the team. Only the job's assignee, or anyone while it has none, may drop it.
 
 **Drop asks first when there is work to lose**: commits on the job's branch, or changes in its folder that were never committed. It is refused with a sentence naming them, such as `codeaf#1844's branch has 3 commits and uncommitted changes.`, and nothing is stopped or deleted; dropping it again and saying yes to discarding that work deletes it. A branch that could not be read counts as work. What was said in its conversations is not asked about: dropping a job drops what was said about it. Dropping a running job waits for its step to stop.
 
@@ -146,7 +150,7 @@ A dropped job cannot be changed: opening its chat, and `factory_item` or `factor
 
 ## starting a job checks GitHub first — closed issue, wasn't started, Check GitHub now, last checked
 
-The factory reads GitHub on its own about once a minute, but those reads list open issues and pull requests only, so a job never learns from them that its issue was closed. So when a person starts a job that came from GitHub (start, run or run again), the factory reads that one issue or pull request again first, in one request. If it was closed or merged on GitHub, the job is not started: it is marked done (closed or merged) and the answer is one sentence, such as `#12 was closed on GitHub, so it wasn't started.` If GitHub cannot be reached, the job starts anyway on what the factory already knows.
+The factory reads GitHub on its own about once a minute, but those reads list open issues only, so a job never learns from them that its issue was closed. So when a person starts a job that came from GitHub (start, run or run again), the factory reads that one issue again first, in one request. If it was closed on GitHub, the job is not started: it is marked done (closed) and the answer is one sentence, such as `#12 was closed on GitHub, so it wasn't started.` If GitHub cannot be reached, the job starts anyway on what the factory already knows.
 
 **Check GitHub now** asks the factory to read GitHub at once instead of on its next tick. It answers straight away and does not wait for the read; what the read finds arrives the way every read does. While it reads the factory says so, and afterwards it says when GitHub was last read without a failure, or what went wrong (`token refused`, `not reachable`). A factory whose poll is not running (no token, nothing watched) says nothing about GitHub at all.
 
@@ -173,14 +177,13 @@ A factory that was never given repositories to watch has no switch, so nothing o
 A job's size comes from the first of these that exists, and nothing else is a size:
 
 1. **A size label** on the item (`size:S`, `size/s`, XS to XL). It wins.
-2. **A pull request's measured changed lines** (S for 50 or fewer, M for 400 or fewer, L beyond), shown as `size M (diff)`.
-3. **The completed read**, shown as `read says M`.
+2. **The completed issue read**, shown as `read says M`.
 
-The length of an issue's body is not a size, and neither is the guess on a chat card. An item with none of the three shows no size, as nothing at all. `size:s` finds only items whose shown size is S; `risky` matches when the read named a risk or the shown size is L. Editing an item's title or body drops the read's size until the next read.
+The length of an issue's body is not a size, and neither is the guess on a chat card. An item with neither shows no size, as nothing at all. `size:s` finds only items whose shown size is S; `risky` matches when the read named a risk or the shown size is L. Editing an item's title or body drops the read's size until the next read.
 
-Only a size label decides whether a job starts on its own. A size from a diff or a read never starts, holds or orders a job; with no label the factory asks instead, saying "no size label".
+Only a size label decides whether a job starts on its own. A size from a read never starts, holds or orders a job; with no label the factory asks instead, saying "no size label".
 
-Limits: items read before this change show no size until their text changes or someone labels them. A pull request that has not changed since stays blank until the forge reports a change, and one with zero changed lines has no size. Older items are not reread just to fill this gap; editing the title or body allows one fresh read through the normal worker. There is no "read again" action yet.
+Limits: items read before this change show no size until their text changes or someone labels them. Older items are not reread just to fill this gap; editing the title or body allows one fresh read through the normal worker. There is no "read again" action yet.
 
 ## which model runs factory jobs — Task models and one model
 

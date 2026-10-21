@@ -159,3 +159,20 @@ func TestAWorkerReportCarriesWhenItsRoundBeganAndItsChat(t *testing.T) {
 		t.Fatalf("a step that has not begun came back begun: %+v", back.Stages[1])
 	}
 }
+
+// The actual model is execution evidence, independent of a later job-model change.
+func TestWorkerReportKeepsTheExecutedModel(t *testing.T) {
+	report := factory.RunReport{Stages: []factory.StageReport{{Name: "plan", Result: &factory.StageResult{Output: "planned", Model: "vendor/strong"}}}}
+	raw, err := json.Marshal(FromRunReport(report))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire WorkerReport
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		t.Fatal(err)
+	}
+	got := ToWorkerReport(wire)
+	if len(got.Stages) != 1 || got.Stages[0].Result == nil || got.Stages[0].Result.Model != "vendor/strong" {
+		t.Fatalf("lost executed model: %s", raw)
+	}
+}

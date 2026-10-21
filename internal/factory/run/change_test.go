@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -42,6 +43,10 @@ func TestChangeIncludesCommittedStagedUnstagedAndUntrackedFiles(t *testing.T) {
 		{Path: "ledger.go", Added: 1, Status: "modified"},
 		{Path: "staged.go", Added: 1, Status: "added"},
 	}}
+	if !strings.Contains(change.Patch, "// unstaged") || !strings.Contains(change.Patch, "committed.go") {
+		t.Fatal("patch preview lost changes")
+	}
+	want.Patch = change.Patch
 	if !reflect.DeepEqual(change, want) {
 		t.Fatalf("change = %+v, files = %+v; want %+v", change, change.Files, want)
 	}

@@ -190,7 +190,6 @@ func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string,
 	workdirs := factoryWorkdirs(items, floor)
 	// A PUSH GOES AS THE PERSON: git is handed the profile's GitHub token,
 	// the one the source writes with, never in its arguments.
-	git := factoryrun.ExecGit{}
 	pushGit := factoryrun.ExecGit{Token: func() string {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -233,7 +232,7 @@ func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string,
 		// worktree is committed with git, its branch pushed as the person,
 		// and the pull request opened through source.
 		Push: factoryrun.GitPush(pushGit),
-		Git:  git,
+		Git:  pushGit,
 		// EVENTS ARE DROPPED. The loop writes every move to the store before
 		// it would send one, and the worker reports what it wrote, so nothing
 		// is waiting to hear them.
@@ -262,6 +261,7 @@ func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string,
 func factoryWorkdirs(items, floor *store.Store) *factoryrun.Workdirs {
 	w := factoryrun.NewWorkdirs(filepath.Join(floor.Root(), "work"), factoryrun.ExecGit{})
 	w.Log = factoryrun.StoreLog(items, time.Now)
+	w.Prefix = func(it factory.Item) string { return factory.NormalizeHandle(it.Person()) }
 	return w
 }
 

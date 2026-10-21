@@ -152,6 +152,17 @@ var pageReads = []string{
 func TestEveryFieldRoundTrips(t *testing.T) {
 	var want factory.Snapshot
 	fill(reflect.ValueOf(&want).Elem(), "Snapshot", 0)
+	for i := range want.Items {
+		want.Items[i].Kind = factory.KindIssue
+	}
+	for i := range want.Repos {
+		old := want.Repos[i].Recipe.ByKind
+		want.Repos[i].Recipe.ByKind = nil
+		for _, st := range old {
+			want.Repos[i].Recipe.ByKind = map[factory.Kind][]factory.Stage{factory.KindIssue: st}
+			break
+		}
+	}
 	got := wire(t, want)
 	for _, d := range diff(reflect.ValueOf(want), reflect.ValueOf(got), "Snapshot") {
 		t.Error(d)

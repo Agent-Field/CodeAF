@@ -9,8 +9,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
 // gitRig is a real checkout with one commit on main, made with the git on
@@ -405,5 +407,88 @@ func TestDiscardLeavesTheRemoteBranch(t *testing.T) {
 	}
 	if got := mustGit(t, checkout, "ls-remote", "--heads", "origin"); !strings.Contains(got, w.Branch(it)) {
 		t.Fatalf("the remote lost the branch: %q", got)
+	}
+}
+
+// A named namespace is pinned by the created branch record, even if the job
+// is reassigned before it is dropped.
+func TestWorktreeUsesItsPersonsNamespaceAndKeepsItsRecordedBranch(t *testing.T) {
+	checkout := gitRig(t)
+	w := NewWorkdirs(filepath.Join(t.TempDir(), "work"), ExecGit{})
+	w.Prefix = func(it factory.Item) string { return it.Assignee }
+	it := wdItem()
+	it.Assignee = "owner"
+	var made string
+	w.Log = func(_ factory.Item, line string) { made = strings.TrimPrefix(line, "branch: ") }
+	dir, err := w.For(it, checkout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := mustGit(t, dir, "branch", "--show-current"); got != "owner/1-total-double-counts" {
+		t.Fatal(got)
+	}
+	it.Change = &factory.Change{Branch: made}
+	it.Stream = &factory.Stream{Log: []factory.LogLine{{Text: "branch: " + made}}}
+	it.Assignee = "someone-else"
+	it.Title = "Renamed issue"
+	if !strings.Contains(workTree(Job{Item: it, Dir: dir}), made) {
+		t.Fatal("brief lost recorded branch")
+	}
+	mustGit(t, checkout, "worktree", "remove", dir)
+	if _, err := w.For(it, checkout); err != nil {
+		t.Fatal(err)
+	}
+	if got := mustGit(t, dir, "branch", "--show-current"); got != made {
+		t.Fatal("recovery changed branch: " + got)
+	}
+	if w.ownBranch(it) != made {
+		t.Fatal("lost recorded branch")
+	}
+	if err := w.Discard(it, checkout); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.git.Run(checkout, "show-ref", "--verify", "refs/heads/"+made); err == nil {
+		t.Fatal("branch was not discarded")
+	}
+}
+
+// The first brief reads the branch recorded while preparing its worktree.
+func TestFirstBriefNamesTheCreatedBranch(t *testing.T) {
+	checkout := gitRig(t)
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := wdItem()
+	original.ID = 0
+	original.Assignee = "owner"
+	original.Stream = &factory.Stream{}
+	it, err := st.Create(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := NewWorkdirs(filepath.Join(st.Root(), "work"), ExecGit{})
+	w.Prefix = func(it factory.Item) string { return it.Person() }
+	w.Log = StoreLog(st, time.Now)
+	r := New(Options{Store: st, Workdir: func(it factory.Item) (string, error) { return w.For(it, checkout) }})
+	lp := &floorLoop{r: r}
+	job := lp.job(&loopCtl{id: it.ID, ctx: context.Background()}, factory.Stage{Name: "plan"}, 0, 0, 1)
+	if !strings.Contains(workTree(job), "owner/1-total-double-counts") {
+		t.Fatalf("first brief: %s", workTree(job))
+	}
+}
+
+func TestBranchRecordsCannotNameUnrelatedLocalWork(t *testing.T) {
+	w := NewWorkdirs(t.TempDir(), ExecGit{})
+	w.Prefix = func(factory.Item) string { return "owner" }
+	it := wdItem()
+	it.Stream = &factory.Stream{Log: []factory.LogLine{{Text: "branch: main"}, {Text: "branch: owner/2-other-job"}}}
+	if got := w.ownBranch(it); got != "owner/1-total-double-counts" {
+		t.Fatalf("unrelated branch: %s", got)
+	}
+	it.Stream.Log = append(it.Stream.Log, factory.LogLine{Text: "branch: previous-owner/1-original"})
+	it.Change = &factory.Change{Branch: "factory/1-old-record"}
+	if got := w.ownBranch(it); got != "previous-owner/1-original" {
+		t.Fatalf("ignored current record: %s", got)
 	}
 }

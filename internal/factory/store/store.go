@@ -174,6 +174,9 @@ func (st *Store) Add(ctx context.Context, it factory.Item) (int, error) {
 	if it.Kind == "" {
 		it.Kind = factory.KindIssue
 	}
+	if err := factory.RequireIssueJob(it); err != nil {
+		return 0, err
+	}
 	if len(it.Stages) == 0 {
 		it.Stages = factory.CopyStages(factory.DefaultRecipe().For(it.Kind))
 	}
@@ -487,6 +490,15 @@ func (st *Store) highestID() (int, error) {
 		return 0, err
 	}
 	highest := 0
+	if data, e := os.ReadFile(filepath.Join(st.root, "mint-high-water")); e == nil {
+		n, e := strconv.Atoi(strings.TrimSpace(string(data)))
+		if e != nil || n < 0 {
+			return 0, errors.New("factory store: invalid mint high-water mark")
+		}
+		highest = n
+	} else if !os.IsNotExist(e) {
+		return 0, e
+	}
 	for _, entry := range entries {
 		name, ok := strings.CutSuffix(entry.Name(), ".json")
 		if !ok || entry.IsDir() {

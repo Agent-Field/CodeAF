@@ -246,3 +246,14 @@ func RepairShipDefault(it *Item) bool {
 // READ OFF [DefaultRecipe]: the default has moved since (security left its
 // list on 2026-10-20), and an item written then still carries what was written.
 var oldShipDefault = []string{"plan", "write", "test", "review", "security", "proof"}
+
+// NeedsPublishApproval keeps publication separate from an internal gate being skipped.
+// Removing all gates from a recipe still explicitly selects the existing self-publish mode.
+func NeedsPublishApproval(it Item) bool {
+	for _, s := range it.Stages {
+		if IsApprove(s) {
+			return true
+		}
+	}
+	return false
+}

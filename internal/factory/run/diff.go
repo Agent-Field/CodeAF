@@ -22,6 +22,9 @@ import (
 func Diff(prev, cur factory.Item) (factory.RunReport, bool) {
 	ps, cs := streamOf(prev), streamOf(cur)
 	var r factory.RunReport
+	if !reflect.DeepEqual(prev.FollowUp, cur.FollowUp) {
+		r.FollowUp = cur.FollowUp
+	}
 	if pipelineMoved(prev, cur) {
 		r.Pipeline = &factory.PipelineChange{Stages: cur.Stages, Phases: cs.Phases}
 	}
@@ -155,13 +158,13 @@ func stepsMoved(prev, cur []factory.Phase) []factory.StageReport {
 	var out []factory.StageReport
 	for _, ph := range cur {
 		old, seen := was[ph.Name]
-		if seen && old.State == ph.State && old.Round == ph.Round && old.Started.Equal(ph.Started) && reflect.DeepEqual(old.Result, ph.Result) && reflect.DeepEqual(old.Rounds, ph.Rounds) && reflect.DeepEqual(old.Failure, ph.Failure) {
+		if seen && old.Chat == ph.Chat && old.State == ph.State && old.Round == ph.Round && old.Started.Equal(ph.Started) && reflect.DeepEqual(old.Result, ph.Result) && reflect.DeepEqual(old.Rounds, ph.Rounds) && reflect.DeepEqual(old.Failure, ph.Failure) {
 			continue
 		}
 		if ph.Kind == factory.StageGate {
 			continue
 		}
-		step := factory.StageReport{Name: ph.Name, State: ph.State, Round: ph.Round, Started: ph.Started}
+		step := factory.StageReport{Name: ph.Name, Chat: ph.Chat, State: ph.State, Round: ph.Round, Started: ph.Started}
 		if ph.Result != nil && (!seen || !reflect.DeepEqual(old.Result, ph.Result)) {
 			res := *ph.Result
 			res.Edit = nil

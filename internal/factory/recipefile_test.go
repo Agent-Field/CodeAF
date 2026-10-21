@@ -79,8 +79,8 @@ func TestParseTheOwnersRecipe(t *testing.T) {
 	if pf := pr[3]; pf.Name != "proof" || pf.Ask != "show each claim in its own medium" || pf.Until != "proven" || pf.Max != 3 || pf.Fixed {
 		t.Fatalf("pr proof shorthand = %+v", pf)
 	}
-	// The missing ci section is the default's.
-	if !reflect.DeepEqual(r.For(factory.KindCI)[0].Name, "bisect") {
+	// An unspecified legacy kind falls back to the issue sequence; it cannot run.
+	if !reflect.DeepEqual(r.For(factory.KindCI)[0].Name, "plan") {
 		t.Fatalf("ci = %+v", r.For(factory.KindCI))
 	}
 	if len(r.Policy) != 2 || r.Policy[1] != "a stranger's PR never runs write" {

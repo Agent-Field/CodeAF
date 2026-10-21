@@ -3236,7 +3236,8 @@ func (a *Agent) checkpointSettle(ctx context.Context, hub *eventHub, turn *Usage
 // stands in front of the meter and therefore in front of every call this file
 // makes.
 func (a *Agent) checkpoints(ctx context.Context, user userMessage) bool {
-	if a.config.InTask {
+	// The factory runner owns background completion, including its manager chat.
+	if a.config.InTask || a.jobChatOf() != nil {
 		return false
 	}
 	// A SCREENLESS SESSION WITH NOBODY LEFT IN CHARGE HAS NO ONE TO READ THE

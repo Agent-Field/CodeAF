@@ -144,6 +144,8 @@ func TestFactoryRecipeRefusesWhatTheFileCannotRead(t *testing.T) {
 	for _, c := range []struct{ args, want string }{
 		{`{"repo":"web","kind":"issue","stage":"security · chat · when sometimes"}`, "when is one of"},
 		{`{"repo":"web","stage":"security · chat"}`, "a stage needs kind"},
+		{`{"repo":"web","kind":"pr","stage":"review · chat"}`, "a stage needs kind"},
+		{`{"repo":"web","kind":"ci","stage":"fix · chat"}`, "a stage needs kind"},
 		{`{"repo":"web","kind":"issue","stage":"x · chat","policy":"no"}`, "exactly one of"},
 		{`{"repo":"web"}`, "exactly one of"},
 		{`{"kind":"issue","stage":"security"}`, "needs the repo"},
