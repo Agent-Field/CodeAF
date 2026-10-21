@@ -187,7 +187,9 @@ func (r *rig) paste(text string) {
 	time.Sleep(300 * time.Millisecond)
 }
 
-var linkShape = regexp.MustCompile(`https://codeaf\.agentfield\.ai/p/\S+`)
+// linkShape is a pairing link on whichever relay the journey runs against: the
+// hosted page, or the self-hosted relay's own page (the journey uses a Go relay).
+var linkShape = regexp.MustCompile(`https?://\S+/p/[A-Za-z0-9]+#\S+`)
 
 // TestPairJourney proves C1, C3, C4 and C5 through the terminal doors,
 // including the online and offline routes into the same arrival screen.
@@ -250,6 +252,13 @@ func (j *journey) write(path string) {
 		}
 	}
 	j.t.Logf("whole journey: %s (budget %s)", total.Round(time.Millisecond), journeyBudget)
+	// A STEP THAT FAILED FAILS THE JOURNEY. The verdicts used to be written down
+	// and the test reported green anyway, so a broken journey read as a pass.
+	for _, s := range j.steps {
+		if s.Status == "fail" || s.Status == "blocked" {
+			j.t.Errorf("step %q is %s", s.Name, s.Status)
+		}
+	}
 }
 
 // loseLid ends the machine the way a closed lid does: no goodbye, nothing
