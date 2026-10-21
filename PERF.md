@@ -3019,3 +3019,14 @@ and `SavedListEntries` (32768 directory entries across all scanned folders) befo
 loading. Directories are scanned in batches of 128; bytes are stat-checked and read
 through a limit to cover file growth. The reply remains capped at 512 KiB. An exceeded
 budget refuses the entire request with `too_large`; admission refuses with `busy`.
+
+## Factory Follow PR progress relay bounds
+
+Follow PR reuses the worker's existing assistant stream, with no heartbeat model
+calls or extra GitHub polls. Per stream, provisional prose capture is bounded at
+4 KiB until a committed assistant/tool boundary. The relay uses the existing
+400-character stage-summary limit and admits one distinct message per 30 seconds
+per round; a round's initial trigger can be reported immediately. Stop, takeover
+and round replacement invalidate callbacks. Service outcome messages retain their
+existing path and are not throttled by model narration. Focused progress tests
+cover bounds, retries, hidden reasoning, cancellation and callback invalidation.

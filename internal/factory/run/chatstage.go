@@ -88,6 +88,8 @@ type ConversationSpec struct {
 	// reach. The maker sets it as the conversation's session door
 	// (session.Config.Stage) and on nothing else.
 	Stage StageDoor
+	// Progress receives committed model prose, not tool captions or reasoning.
+	Progress func(line string)
 }
 
 // Conversation is one open stage conversation.
@@ -213,9 +215,10 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 		Name:   stageChatName(job),
 		Handle: stageHandle(job),
 		Dir:    job.Dir,
-		Brief:  stageBrief(job) + ciFollowUpBrief(job.Item),
+		Brief:  stageBrief(job) + ciFollowUpBrief(job.Item) + followProgressBrief(job),
 		Model:  strings.TrimSpace(job.Item.Model), Effort: job.Item.Effort,
-		Stage: door,
+		Stage:    door,
+		Progress: job.Progress,
 	}
 	var conv Conversation
 	var err error
@@ -224,7 +227,7 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 	// rather than failing a round the person only paused.
 	if job.Resume != "" {
 		resume := spec
-		resume.Resume, resume.Brief = job.Resume, carryOnBrief(job.CarryOn)
+		resume.Resume, resume.Brief = job.Resume, carryOnBrief(job.CarryOn)+followProgressBrief(job)
 		if conv, err = e.maker.Open(ctx, resume); err != nil {
 			if ctx.Err() != nil {
 				return factory.StageResult{}, ctx.Err()
