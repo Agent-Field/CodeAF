@@ -129,9 +129,16 @@ func homeTick(gen int) tea.Cmd {
 // clock.
 func (a *app) homeBeat(gen int) tea.Cmd {
 	if !a.at(pageHome) {
-		// Home is not showing, so nobody needs the change socket (machinewatch.go).
-		a.tendWatch(a.devicesCardOpen())
-		return nil
+		if !a.watchesConversation() {
+			return a.tendWatch(a.devicesCardOpen())
+		}
+		// Closing home advances its generation once. Its one outstanding tick
+		// now belongs to the open conversation; older visits cannot start a
+		// second chain, and the directory keeps its adaptive polling pace.
+		if gen != a.homeGen && gen+1 != a.homeGen {
+			return nil
+		}
+		return tea.Batch(a.pollMachines(a.now()), homeTick(a.homeGen))
 	}
 	if gen != a.homeGen {
 		return nil
@@ -3747,6 +3754,9 @@ func (a *app) homeHeldNow(row session.SessionRow) bool {
 // homeWhere is the project a row belongs to, in the words a person would type:
 // the project's own path, and its bucket name when nothing recorded one.
 func homeWhere(line homeLine) string {
+	if line.row.Owned && strings.TrimSpace(line.row.Workspace) != "" {
+		return line.row.Workspace
+	}
 	if path := strings.TrimSpace(line.row.ProjectDir); path != "" {
 		return path
 	}

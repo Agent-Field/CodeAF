@@ -1458,6 +1458,12 @@ func (a *app) enter() tea.Cmd { return a.enterLine() }
 // handed over. A pair link typed where a message would go opens the
 // approval screen instead (pairlink.go).
 func (a *app) enterLine() tea.Cmd {
+	return a.enterCheckedLine(false)
+}
+
+// enterCheckedLine keeps the send road whole after its off-loop ownership read.
+// Re-entering with the same draft preserves every attachment and local gate.
+func (a *app) enterCheckedLine(ownershipRead bool) tea.Cmd {
 	if a.tmemberStart.key == a.frontTabKey() && a.tmemberStart.said.pending {
 		a.note("The member is still being added")
 		return nil
@@ -1513,6 +1519,17 @@ func (a *app) enterLine() tea.Cmd {
 	if _, bash := session.BashCommand(a.pastesUnfolded(line)); bash {
 		return a.enterBash(line)
 	}
+	// Continuing is a local choice, so a displaced window offers it before
+	// asking for a provider connection or a model. The move may bring the
+	// saved connection this computer needs along with the chat.
+	if !strings.HasPrefix(line, "/") && (line != "" || held) {
+		if door, shown := a.heldElsewhereDoor(); shown {
+			return door
+		}
+		if !ownershipRead && a.watchesConversation() {
+			return a.checkBeforeSend()
+		}
+	}
 	// A MODEL MESSAGE THAT STILL NEEDS THE DEFAULT PROVIDER OPENS ITS CONNECTION
 	// BEFORE THE DRAFT IS CLEARED. This is the returning half of the key gate: a
 	// person who pressed esc to read an existing conversation can still type
@@ -1532,11 +1549,6 @@ func (a *app) enterLine() tea.Cmd {
 		a.note(noAvailableModelWord)
 		a.openPicker()
 		return nil
-	}
-	if !strings.HasPrefix(line, "/") && (line != "" || held) {
-		if door, shown := a.heldElsewhereDoor(); shown {
-			return door
-		}
 	}
 	// A TAG IS READ BEFORE THE DRAFT IS CLEARED. More than one cannot choose a
 	// winner safely: falling back to an ordinary send is precisely the failure

@@ -69,6 +69,9 @@ type Superseded struct {
 	// Branch is the new cell that holds this device's orphaned turns; empty
 	// when there were none and the chat simply becomes a viewer.
 	Branch string
+	// Turns is the number of local turns kept in Branch, known by the batcher
+	// that made it rather than read back through another directory request.
+	Turns uint32
 	// By is the device that took the chat, from the directory's lease holder;
 	// empty when the directory could not be asked.
 	By string
@@ -98,6 +101,10 @@ func (p *Publishing) Seal(ctx context.Context, c cell.Cell, info cellstore.TurnI
 // longer pending.
 func (b *Batcher) Note(t cellstore.Turn) {
 	b.mu.Lock()
+	if t.ID == b.Driving.Head {
+		b.mu.Unlock()
+		return
+	}
 	if n := len(b.noted); n == 0 || b.noted[n-1] != t.ID {
 		b.noted = append(b.noted, t.ID)
 	}
@@ -479,7 +486,7 @@ func (b *Batcher) resolve(ctx context.Context) error {
 	}
 	b.durable(head)
 	b.clearStale()
-	b.superseded(Superseded{Branch: id, By: by})
+	b.superseded(Superseded{Branch: id, By: by, Turns: uint32(n)})
 	return nil
 }
 

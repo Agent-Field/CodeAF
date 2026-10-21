@@ -178,9 +178,12 @@ func TestADroppedSocketGoesBackToTheFastPaceAtOnce(t *testing.T) {
 	}
 }
 
-func TestTheFeedIsLetGoWhenHomeStopsBeingLookedAt(t *testing.T) {
+// TestTheFeedIsLetGoWithoutAConversationWhenHomeCloses preserves C5's quiet
+// case; a paired conversation keeps following its holder on its own screen.
+func TestTheFeedIsLetGoWithoutAConversationWhenHomeCloses(t *testing.T) {
 	a, src, now := watchHome(t, true)
 	a.page = pageChats
+	a.file = ""
 	beat(t, a, now, homeEvery)
 	if !src.feed.closed || a.dirFeed != nil {
 		t.Fatal("the feed was held after home closed")

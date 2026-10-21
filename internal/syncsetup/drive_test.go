@@ -276,6 +276,7 @@ func countFiles(t *testing.T, dir string) (n int) {
 // TestDriveSideSupersededStopsTools is L7 and L12 end to end: B takes the lease
 // once A's has run out, A's next publish is refused, A says so in the frozen
 // words, its unpublished turn becomes a branch, and its tool calls stop.
+// C5 also requires the kept work to be announced rather than silently forked.
 func TestDriveSideSupersededStopsTools(t *testing.T) {
 	r := newDriveRig(t)
 	ctx := context.Background()
@@ -304,6 +305,9 @@ func TestDriveSideSupersededStopsTools(t *testing.T) {
 		t.Fatalf("line = %q, want %q", line, want)
 	}
 	waitFor(t, "the superseded line to be shown", func() bool { return notices.last() == want })
+	if kept := chatlist.KeptEdits(1, "spark"); !notices.has(kept) {
+		t.Fatalf("the displaced window silently kept a branch; notices = %v, want %q", notices.all(), kept)
+	}
 
 	v, err := r.a.Dir.Cell(ctx, r.cell.ID)
 	if err != nil || v.Cell.Head != durable {

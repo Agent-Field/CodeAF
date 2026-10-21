@@ -143,6 +143,6 @@ func (a *app) devicesCardOpen() bool {
 // closed; home keeps its own hold on it.
 func (a *app) letGoOffHome() {
 	if !a.at(pageHome) {
-		a.tendWatch(false)
+		a.tendWatch(a.watchesConversation() && a.attended(a.now()))
 	}
 }

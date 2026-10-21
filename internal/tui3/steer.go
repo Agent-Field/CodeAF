@@ -248,7 +248,14 @@ func (a *app) steerParkOffered() bool {
 // tool row opened, nothing at all ([app.bargeIn] reads the same signal for the
 // same reason).
 func (a *app) steerIn() tea.Cmd {
+	return a.steerInChecked(false)
+}
+
+func (a *app) steerInChecked(ownershipRead bool) tea.Cmd {
 	if !a.steerAvailable() {
+		if ownershipRead {
+			return a.enterCheckedLine(true)
+		}
 		// THE KEY IS ABSENT WHEREVER IT CANNOT WORK, and absent means it does
 		// nothing at all rather than saying it cannot (spellout.go's [app.spellKey]
 		// states it). Swallowing is safe because this chord carries no text —
@@ -256,13 +263,16 @@ func (a *app) steerIn() tea.Cmd {
 		// bottom of input.go's router would have done nothing with it anyway.
 		return nil
 	}
+	if !ownershipRead && a.needsOwnershipRead() {
+		return a.checkBeforeSendWith(func() tea.Cmd { return a.steerInChecked(true) })
+	}
 	a.noticeEvent(eventSteered)
 	waiting := len(a.parks)
 	// The mark is deliberately not passed, for [app.bargeIn]'s reason: ctrl+enter
 	// is the gesture that means "queue it for after this turn" and this one means
 	// "and also this" — a chord that did both would be one keystroke making two
 	// decisions (followup.go).
-	cmd := a.enterLine()
+	cmd := a.enterCheckedLine(ownershipRead)
 	if len(a.parks) == waiting {
 		// The road did something other than park. The turn is left alone and the
 		// words went wherever that road sends them, which is the guard above said

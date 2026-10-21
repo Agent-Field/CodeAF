@@ -58,11 +58,12 @@ func TestPollsPerOpenHour(t *testing.T) {
 	}
 }
 
-// TestHiddenListNeverPolls: with home not showing, a beat that is due, in a
-// window a person is at, still asks nothing.
-func TestHiddenListNeverPolls(t *testing.T) {
+// TestHiddenListWithoutAConversationNeverPolls preserves C5's quiet case: a
+// window without a conversation has no holder to follow away from home.
+func TestHiddenListWithoutAConversationNeverPolls(t *testing.T) {
 	a, src, now := pollHome(t)
 	a.page = pageChats
+	a.file = ""
 	for i := 0; i < 100; i++ {
 		*now = now.Add(machinesCap)
 		drain(t, a, a.pollMachines(*now))
