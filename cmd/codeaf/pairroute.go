@@ -27,6 +27,9 @@ const pairPollTimeout = pairbox.MaxWait + 10*time.Second
 // relay this computer syncs through. A relay named by flag is the one the other
 // device is told to pass, so it is `Shown`; the default needs no telling.
 func pairMailbox(relayFlag string) (pair.Mailbox, error) {
+	if syncsetup.Resolve(home.Dir()).Off {
+		return pair.Mailbox{}, pair.ErrSyncOff
+	}
 	flag := strings.TrimSpace(relayFlag)
 	base := flag
 	if flag == "" {

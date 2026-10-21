@@ -72,6 +72,7 @@ func TestRunInCellSealsItsCallsAndContinuesFromThem(t *testing.T) {
 	}
 }
 
+// TestRunWithCellsOffMakesNoCell proves C10 at codeaf do's real tool-call door.
 func TestRunWithCellsOffMakesNoCell(t *testing.T) {
 	beltRunEnv(t)
 	t.Setenv(cell.EnvVar, "0")
@@ -86,6 +87,9 @@ func TestRunWithCellsOffMakesNoCell(t *testing.T) {
 	}
 	if _, err := os.Stat(home.Join("v3", "projects")); !os.IsNotExist(err) {
 		t.Fatalf("a project bucket was made: %v", err)
+	}
+	if _, err := os.Stat(home.Join("v3", "stores")); !os.IsNotExist(err) {
+		t.Fatalf("a cell store was written with cells off: %v", err)
 	}
 }
 

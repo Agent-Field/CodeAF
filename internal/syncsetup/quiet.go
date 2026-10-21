@@ -2,8 +2,8 @@ package syncsetup
 
 // A MACHINE THAT HAS NOT ASKED FOR SYNC IS QUIET. The first launch makes an
 // identity (a fleet of one) and nothing else: no request, no socket, no device
-// record reaches the sync service until the person pairs, opens the
-// add-machine card, or already has a fleet. The identity says so itself (identity.Solo); whatever
+// record reaches the sync service until the person pairs, offers a pairing
+// code, or already has a fleet. The identity says so itself (identity.Solo); whatever
 // starts a fleet ends it.
 //
 // ONE GATE, AT THE WIRE. Every client built here sends through [quietWire],
@@ -24,8 +24,11 @@ import (
 var ErrQuiet = errors.New("sync is waiting until another machine is added")
 
 // MayTalk is the one question every path asks before it reaches the sync
-// service: the machine has an identity, and that identity is not solo.
+// service: sync is on, the machine has an identity, and that identity is not solo.
 func MayTalk(home string) bool {
+	if !Resolve(home).On() {
+		return false
+	}
 	_, err := identity.Load(home)
 	return err == nil && !identity.Solo(home)
 }
