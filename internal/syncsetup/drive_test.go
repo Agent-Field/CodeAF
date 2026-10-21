@@ -57,7 +57,7 @@ type driveRig struct {
 	work   string
 }
 
-func newDriveRig(t *testing.T) *driveRig {
+func newDriveRig(t *testing.T, wrap ...func(http.Handler) http.Handler) *driveRig {
 	t.Helper()
 	bin, err := furrow.ResolveOwned()
 	if err != nil {
@@ -67,7 +67,11 @@ func newDriveRig(t *testing.T) *driveRig {
 	storeDir := t.TempDir()
 	svc := relayserve.New(relayserve.Config{Store: storeDir, Now: clock.Now, Grace: directory.GraceBounds{Min: time.Second, Max: time.Hour, Default: 10 * time.Second}})
 	t.Cleanup(func() { _ = svc.Close() })
-	srv := httptestServer(t, svc.Handler)
+	handler := svc.Handler
+	for _, one := range wrap {
+		handler = one(handler)
+	}
+	srv := httptestServer(t, handler)
 	t.Setenv(home.EnvVar, t.TempDir())
 	homeA := machine(t, srv.URL)
 	t.Setenv(IntervalVar, "50")

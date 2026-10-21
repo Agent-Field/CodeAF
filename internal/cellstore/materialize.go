@@ -12,6 +12,9 @@ import (
 // takes one just before it removes a working tree, so nothing the tree held
 // since the last seal is lost.
 func (e Engine) Capture(ctx context.Context, c cell.Cell) (string, error) {
+	if err := e.screenCapture(ctx, c); err != nil {
+		return "", err
+	}
 	out, err := e.do(ctx, c, e.cellDir(c), snapOp{Message: "materialization capture"})
 	if err != nil {
 		return "", fmt.Errorf("capture: %w", err)
@@ -28,8 +31,21 @@ func (e Engine) Restore(ctx context.Context, c cell.Cell, snapshot string, paths
 }
 
 func (e Engine) restore(ctx context.Context, c cell.Cell, snapshot string, paths []string, cellDir string) error {
+	if err := e.screenCapture(ctx, c); err != nil {
+		return err
+	}
 	if _, err := e.do(ctx, c, cellDir, restoreOp{Snapshot: snapshot, Paths: paths}); err != nil {
 		return fmt.Errorf("restore: %w", err)
 	}
 	return nil
+}
+
+// screenCapture applies the seal's guard before any other operation that may
+// snapshot the current folder, including the engine's automatic undo snapshot.
+func (e Engine) screenCapture(ctx context.Context, c cell.Cell) error {
+	s, err := e.Guard.Look(c, e.tree(c), e.policyDir(c), nil, knownLocks(c))
+	if err != nil {
+		return err
+	}
+	return noteLeftOut(c, e.tree(c), s, nil)
 }

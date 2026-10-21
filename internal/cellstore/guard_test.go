@@ -167,9 +167,11 @@ func TestScopeIsTheNormalizedRemoteElseTheCell(t *testing.T) {
 	}
 }
 
-// TestL3_SecretsNeverEnterTheStore is the law: a key in .env and a key in a
-// source file are in no object of the engine's store after sealing, and the
-// .env value is still there for the next tool call.
+// TestL3_SecretsNeverEnterTheStore proves C9's working-tree law as amended by
+// Abir on 2026-10-21: committed history travels sealed, so this fixture commits
+// only non-secret files. The secrets remain untracked rather than ignored to
+// prove the guard, independently of Git's ignore rules. After two seals no
+// store object holds the key, and the next tool call still gets the .env value.
 func TestL3_SecretsNeverEnterTheStore(t *testing.T) {
 	forEachTransport(t, func(t *testing.T) {
 		e := realEngine(t)
@@ -178,19 +180,22 @@ func TestL3_SecretsNeverEnterTheStore(t *testing.T) {
 		r.write(".env", "OPENROUTER_API_KEY="+fakeKey+"\n")
 		r.write("src/config.py", "API = '"+fakeKey+"'\n")
 		r.write("src/main.py", "MARKER_KEPT = 1\n")
-		commitAll(t, r.tree)
+		commitPaths(t, r.tree, "src/main.py")
 
 		if _, err := e.Seal(context.Background(), r.cell, TurnInfo{}); err != nil {
 			t.Fatal(err)
 		}
 		r.write("src/main.py", "MARKER_KEPT = 2\n")
-		commitAll(t, r.tree)
+		commitPaths(t, r.tree, "src/main.py")
 		if _, err := e.Seal(context.Background(), r.cell, TurnInfo{Changed: []string{"src/main.py"}}); err != nil {
 			t.Fatal(err)
 		}
 
-		if out := gitStatus(t, r.tree); out != "" {
-			t.Fatalf("the workspace has files we put there:\n%s", out)
+		if out, err := gitIn(r.tree, "status", "--porcelain", "--untracked-files=no"); err != nil || out != "" {
+			t.Fatalf("the tracked workspace changed: %q, %v", out, err)
+		}
+		if out := gitStatus(t, r.tree); out != "?? .env\n?? src/config.py" {
+			t.Fatalf("the working-tree secrets must remain untracked: %q", out)
 		}
 		if hits := grepStore(t, e.LocalDir(r.cell), fakeKey); len(hits) != 0 {
 			t.Fatalf("the secret is in the store: %v", hits)
@@ -200,6 +205,10 @@ func TestL3_SecretsNeverEnterTheStore(t *testing.T) {
 		}
 		if got := r.guard.Env(r.cell); len(got) != 1 || got[0] != "OPENROUTER_API_KEY="+fakeKey {
 			t.Fatalf("next tool call env %v", got)
+		}
+		_, withheld, err := e.Withheld(r.cell)
+		if err != nil || len(withheld) != 2 {
+			t.Fatalf("withheld files = %v, %v; want the environment and source file", withheld, err)
 		}
 	})
 }
@@ -267,6 +276,73 @@ func TestScreenWithLedgerStillCatchesAnEditedFile(t *testing.T) {
 	r.screen()
 	if got := r.policy().withheld; len(got) != 1 || got[0] != "a.py" {
 		t.Fatalf("withheld %v: an edited file must be read again", got)
+	}
+}
+
+// TestC9SecretAtTheEndOfALargeSourceFileIsWithheld proves C9 beyond the
+// scanner's former first-MiB limit and across the streaming read boundary.
+func TestC9SecretAtTheEndOfALargeSourceFileIsWithheld(t *testing.T) {
+	forEachTransport(t, func(t *testing.T) {
+		e, r := realEngine(t), newRig(t)
+		e.Workspace, e.Guard = r.tree, r.guard
+		r.write("large.py", strings.Repeat("# padding\n", 120000)+"KEY = '"+fakeKey+"'\n")
+		r.write("boundary.py", strings.Repeat(" ", (64<<10)-8)+"KEY = '"+fakeKey+"'\n")
+		if _, err := e.Seal(context.Background(), r.cell, TurnInfo{}); err != nil {
+			t.Fatal(err)
+		}
+		if hits := grepStore(t, e.LocalDir(r.cell), fakeKey); len(hits) != 0 {
+			t.Fatalf("secret in local store: %v", hits)
+		}
+		if _, held, err := e.Withheld(r.cell); err != nil || len(held) != 2 {
+			t.Fatalf("large or boundary source was not withheld: %v, %v", held, err)
+		}
+	})
+}
+
+// TestC9CaptureAndRewindKeepWorkingTreeSecretsOut proves C9 when capture,
+// comparison and rewind can save an automatic undo snapshot between seals.
+func TestC9CaptureAndRewindKeepWorkingTreeSecretsOut(t *testing.T) {
+	forEachTransport(t, func(t *testing.T) {
+		e, r := realEngine(t), newRig(t)
+		e.Workspace, e.Guard = r.tree, r.guard
+		r.write("note.txt", "first")
+		commitPaths(t, r.tree, "note.txt")
+		first, err := e.Seal(context.Background(), r.cell, TurnInfo{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.write(".env", "KEY="+fakeKey+"\n")
+		r.write("config.py", "KEY = '"+fakeKey+"'\n")
+		r.write("note.txt", "second")
+		if dirty, err := e.Dirty(context.Background(), r.cell); err != nil || !dirty {
+			t.Fatalf("edited workspace: dirty %v, %v", dirty, err)
+		}
+		if _, err := e.Capture(context.Background(), r.cell); err != nil {
+			t.Fatal(err)
+		}
+		if err := e.Restore(context.Background(), r.cell, first.Turn.ID, nil); err != nil {
+			t.Fatal(err)
+		}
+		if raw, err := os.ReadFile(filepath.Join(r.tree, "note.txt")); err != nil || string(raw) != "first" {
+			t.Fatalf("restored note %q, %v", raw, err)
+		}
+		for _, path := range []string{".env", "config.py"} {
+			if raw, err := os.ReadFile(filepath.Join(r.tree, path)); err != nil || !bytes.Contains(raw, []byte(fakeKey)) {
+				t.Fatalf("the local secret %s was lost: %q, %v", path, raw, err)
+			}
+		}
+		if hits := grepStore(t, e.LocalDir(r.cell), fakeKey); len(hits) != 0 {
+			t.Fatalf("secret in local store: %v", hits)
+		}
+	})
+}
+
+func commitPaths(t *testing.T, dir string, paths ...string) {
+	t.Helper()
+	for _, args := range [][]string{{"init", "-q"}, append([]string{"add", "--"}, paths...), {"-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "commit", "-qm", "safe files"}} {
+		if out, err := gitIn(dir, args...); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
 	}
 }
 

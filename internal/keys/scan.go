@@ -45,7 +45,7 @@ func nameRule(name string, globs ...string) rule {
 	}}
 }
 
-// contentRule matches a pattern in a file's head. lead is a literal every
+// contentRule matches a pattern in file content. lead is a literal every
 // match contains; a file without it is rejected by a byte search before the
 // regular expression runs, which keeps a scan of many clean files cheap.
 func contentRule(name, lead, pattern string) rule {
@@ -161,11 +161,11 @@ func firstHit(rel, abs string) (string, bool) {
 			return name, true
 		}
 	}
-	head, err := readHead(abs)
-	if errors.Is(err, fs.ErrPermission) {
+	name, err := contentInFile(abs)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return RuleUnreadable, true
 	}
-	return firstRule(contentRules, rel, head)
+	return name, name != ""
 }
 
 // isTemplate is a committed placeholder (.env.example): its name says nothing
@@ -189,15 +189,31 @@ func firstRule(list []rule, rel string, content []byte) (string, bool) {
 	return "", false
 }
 
-// readHead returns at most the first MiB of the file; secrets sit near the top.
-// An open that fails is told to the caller; a file that vanished mid-scan has
-// no head and no error worth a finding.
-func readHead(abs string) ([]byte, error) {
+// contentInFile screens the whole file with bounded memory. A source file can
+// acquire a key at its end, so limiting the read to its first MiB would let that
+// key enter a seal. The overlap keeps every recognised key prefix and minimum
+// match together when a value crosses a read boundary.
+func contentInFile(abs string) (string, error) {
 	f, err := os.Open(abs)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	defer f.Close()
-	buf, _ := io.ReadAll(io.LimitReader(f, 1<<20))
-	return buf, nil
+	const overlap, readSize = 128, 64 << 10
+	buf := make([]byte, readSize+overlap)
+	kept := 0
+	for {
+		n, err := f.Read(buf[kept : kept+readSize])
+		end := kept + n
+		if name, hit := firstRule(contentRules, "", buf[:end]); hit {
+			return name, nil
+		}
+		if errors.Is(err, io.EOF) {
+			return "", nil
+		}
+		if err != nil {
+			return "", err
+		}
+		kept = copy(buf, buf[max(0, end-overlap):end])
+	}
 }
