@@ -47,11 +47,13 @@ log "product sha $SHA dirty=$DIRTY; out $OUT"
 # ---- build: product, probe (linux, and darwin for the second machine), relay image -------------
 if [ -z "$SKIPBUILD" ] || [ ! -x "$BUILD/benchmove-linux" ]; then
   log "make build in $SRC"; make -C "$SRC" build >&2
-  rsync -a --delete --exclude .git --exclude engine/target "$SRC"/ "$BUILD/src"/
+  rsync -a --delete --exclude .git --exclude .cargo-target "$SRC"/ "$BUILD/src"/
   mkdir -p "$BUILD/src/cmd/benchmove"; cp "$PROTO/scripts/measure/benchmove/main.go.txt" "$BUILD/src/cmd/benchmove/main.go"
   (cd "$BUILD/src" && go vet ./cmd/benchmove && go build -o "$BUILD/benchmove-linux" ./cmd/benchmove &&
     GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -o "$BUILD/benchmove-darwin" ./cmd/benchmove)
-  cp "$SRC/engine/target/release/furrow" "$BUILD/furrow-linux"
+  # Extract the engine staged by make, whether pinned or explicitly supplied.
+  gzip -dc "$SRC/internal/furrowbin/cache/furrow-linux-$(go env GOARCH).gz" > "$BUILD/furrow-linux"
+  chmod +x "$BUILD/furrow-linux"
   cp "$SRC/bin/codeaf" "$BUILD/codeaf-linux"
 fi
 
@@ -89,7 +91,8 @@ if needs_second; then
   ssh -o BatchMode=yes "$SECOND" "mkdir -p $SECOND_ROOT/engine-src $SECOND_ROOT/bin $SECOND_ROOT/run"
   if [ -z "$SKIPBUILD" ]; then
     log "second machine: building the engine"
-    rsync -a --delete --exclude target -e "ssh -o BatchMode=yes" "$SRC/engine/" "$SECOND:$SECOND_ROOT/engine-src/"
+    : "${FURROW_SOURCE:?set FURROW_SOURCE to a checkout of Agent-Field/furrow for the second machine}"
+    rsync -a --delete --exclude target --exclude .git -e "ssh -o BatchMode=yes" "$FURROW_SOURCE/" "$SECOND:$SECOND_ROOT/engine-src/"
     ssh -o BatchMode=yes "$SECOND" "export PATH=/opt/homebrew/bin:\$HOME/.cargo/bin:\$PATH; cd $SECOND_ROOT/engine-src && cargo build --release --locked -p furrow-cli >/dev/null 2>&1 && cp target/release/furrow ../bin/furrow"
     scp -q -o BatchMode=yes "$BUILD/benchmove-darwin" "$SECOND:$SECOND_ROOT/bin/benchmove"
   fi

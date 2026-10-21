@@ -26,7 +26,7 @@ mkdir -p "$runs"
 echo "${BILL_TITLE:-$label}" >"$runs/$label.title"
 
 cd "$root"
-make furrow FURROW_FROM=source >/dev/null
+make furrow >/dev/null
 go test -tags relaybill ./internal/tui3 -run TestRelayBill -count=1 -timeout 120m -v \
 	-args -bill-url "$url" -bill-out "$runs/$label.run.json" -bill-idle "${idle}m"
 python3 "$cost/billed.py" --manifest "$runs/$label.run.json" --out "$runs/$label.billed.json"

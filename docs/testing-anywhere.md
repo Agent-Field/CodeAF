@@ -4,8 +4,9 @@ This page says how to test every path a chat takes between two computers, from t
 fastest check to a walk by hand. Run the sections in order. Each one costs more than the
 one before it and proves more.
 
-Moving chats is on by default, so no test or rig sets a cell variable. Only a test of
-the off path sets `CODEAF_CELLS=0`.
+Moving chats defaults on for dev, staging and source builds, and off for rc and stable.
+`CODEAF_CELLS=1` or `0` overrides the channel. It needs a compatible configured or embedded
+furrow engine and Unix; Windows users run codeaf in WSL.
 
 Settings. Every script that names a machine, a folder or a relay reads it from an
 environment variable (through `scripts/measure/rigenv.py`) and stops with a message that
@@ -112,12 +113,15 @@ engine on both machines from the same commit (`make build`; on the Mac, `export
 PATH=/opt/homebrew/bin:$PATH` first). A copied binary is killed by macOS until it is signed:
 `codesign -s - -f <binary>`.
 
-To build the Linux binary on the Mac instead, build furrow for Linux from `engine/` first (in a
-Linux container: `cargo build --release --locked -p furrow-cli`) and hand it to the build:
-`GOOS=linux GOARCH=arm64 make build BINARY=bin/codeaf-linux-arm64 FURROW_FROM=source
-FURROW_BIN=<that furrow>`. A plain cross-build embeds the pinned furrow release, which is too old
-for cells: that Linux machine can neither take a chat nor publish one, and its rewind says the
-engine "does not support --cell-dir".
+Furrow source lives in [Agent-Field/furrow](https://github.com/Agent-Field/furrow).
+Normal builds fetch the release pinned in `internal/furrowbin/pin.json`.
+For an unreleased engine, use `make build FURROW_SOURCE=/path/to/furrow`.
+For a cross-build, build furrow for the destination platform in that external checkout
+first (for Linux, in a Linux container), then pass its binary as
+`GOOS=linux GOARCH=arm64 make build FURROW_ARTIFACT=/path/to/furrow-linux-arm64`.
+The source and artifact roads deliberately override the pin. Runtime checks the actual
+exchange verbs and changed-path sealing flags once; an older engine leaves chat movement
+absent and says `moving chats needs a newer furrow engine than this build carries`.
 
 Export the settings above first; each script's docstring says which of them it reads and the
 layout it expects under the roots. Run `--help` on any of them to see the options.

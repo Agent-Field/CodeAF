@@ -2,7 +2,7 @@
 # anywhere else — so a stale copy can't shadow a fresh one.
 BINARY := bin/codeaf
 
-.PHONY: all build build-check build-cross debug demo-home clean-run embed manual-pack-law furrow furrow-fetch furrow-source test test-focus test-report test-quick test-tooling test-touched test-touched-preflight pr-ready test-laws test-carried-help test-belt-pages fmt-check test-packed-manual manual-gates test-remote test-e2e test-e2e-tui vet check size clean \
+.PHONY: all build build-check build-cross debug demo-home clean-run embed manual-pack-law furrow test test-focus test-report test-quick test-tooling test-touched test-touched-preflight pr-ready test-laws test-carried-help test-belt-pages fmt-check test-packed-manual manual-gates test-remote test-e2e test-e2e-tui vet check size clean \
         changelog changelog-new changelog-check changelog-preview
 
 # What the shipped binary is allowed to weigh, in bytes, checked in beside the
@@ -46,8 +46,9 @@ embed: manual-pack-law
 
 # ── the furrow that rides inside ────────────────────────────────────────────
 #
-# EVERY codeaf IS A codeaf WITH FURROW, so the build fetches furrow before it
-# can produce one. This step downloads the release pinned in
+# Unix builds carry furrow, so the build fetches it before producing codeaf.
+# Windows omits the Unix-only engine and uses WSL for chat movement.
+# This step downloads the release pinned in
 # internal/furrowbin/pin.json for whatever platform is being built for, checks
 # it against the sha256 the pin names, keeps it in a gitignored third_party/
 # cache, and stages it gzipped where go:embed picks it up. Six megabytes of
@@ -60,7 +61,7 @@ embed: manual-pack-law
 # build that produced a codeaf without furrow inside it.
 #
 # On a machine with no network, point it at an artifact already on disk — the
-# sha256 is checked either way, so this is an offline road and not a looser one:
+# explicit artifact is a developer override; the normal fetch checks the pin:
 #
 #   make furrow FURROW_ARTIFACT=~/.agentfield/bin/furrow
 #
@@ -72,27 +73,24 @@ embed: manual-pack-law
 FURROW_GOOS := $(shell go env GOOS)
 FURROW_GOARCH := $(shell go env GOARCH)
 
-# WHERE THE FURROW COMES FROM. engine/ is furrow's source, so a machine with
-# cargo builds it and embeds exactly that. The pinned release is the road for
-# everyone else: a machine without cargo, a cross-compile (cargo here builds for
-# the host only), or an explicit FURROW_ARTIFACT. Force it with FURROW_FROM=fetch
-# or FURROW_FROM=source.
-FURROW_HOST := $(shell go env GOHOSTOS)-$(shell go env GOHOSTARCH)
-FURROW_NATIVE := $(and $(shell command -v cargo),$(filter $(FURROW_HOST),$(FURROW_GOOS)-$(FURROW_GOARCH)),$(if $(FURROW_ARTIFACT),,yes))
-FURROW_FROM ?= $(if $(FURROW_NATIVE),source,fetch)
-FURROW_BIN := engine/target/release/furrow
+# Normal builds fetch the pinned release. Explicit artifacts and external source
+# checkouts are deliberate developer overrides, staged through the same door.
+FURROW_SOURCE ?=
+FURROW_SOURCE_TARGET = $(if $(CARGO_TARGET_DIR),$(CARGO_TARGET_DIR),$(FURROW_SOURCE)/target)
 
-furrow: furrow-$(FURROW_FROM)
-
-furrow-fetch:
+furrow:
+ifeq ($(FURROW_GOOS),windows)
+	@env -u GOOS -u GOARCH go run ./internal/furrowbin/cmd/fetch -omit
+else ifneq ($(strip $(FURROW_SOURCE)),)
+	cd "$(FURROW_SOURCE)" && cargo build --release --locked -p furrow-cli
 	@env -u GOOS -u GOARCH go run ./internal/furrowbin/cmd/fetch \
 		-goos=$(FURROW_GOOS) -goarch=$(FURROW_GOARCH) \
-		$(if $(FURROW_ARTIFACT),-from "$(FURROW_ARTIFACT)")
-
-furrow-source:
-	cd engine && cargo build --release --locked -p furrow-cli
+		-built "$(FURROW_SOURCE_TARGET)/release/furrow"
+else
 	@env -u GOOS -u GOARCH go run ./internal/furrowbin/cmd/fetch \
-		-goos=$(FURROW_GOOS) -goarch=$(FURROW_GOARCH) -built $(FURROW_BIN)
+		-goos=$(FURROW_GOOS) -goarch=$(FURROW_GOARCH) \
+		$(if $(FURROW_ARTIFACT),-built "$(FURROW_ARTIFACT)")
+endif
 
 # The symbol table and DWARF are a third of the shipped binary and nothing at
 # runtime reads them. Stripping costs symbolized panic traces, which is exactly
