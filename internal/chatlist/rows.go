@@ -32,6 +32,8 @@ type Row struct {
 	DurableAgo                            time.Duration // Listing.Now - DurableAt, directory clock only
 	DurableAt                             int64         // directory ms of the last durable turn: the fact DurableAgo is read from
 	Pending, OrphanTurns                  uint32
+	// Fence binds the continuation card to the holder the person saw.
+	Fence uint64
 	// Mine says this device was the chat's last holder, so a lapsed lease is
 	// this device's own to pick up and not another device's work gone quiet.
 	Mine bool
@@ -113,6 +115,7 @@ func rowOf(id string, c directory.Cell, l directory.Listing, self string, open O
 		Title:       nameOr(open, c.Title, untitled),
 		Device:      deviceName(l.Devices, c.Lease.Device, open),
 		DeviceID:    c.Lease.Device,
+		Fence:       c.Lease.Fence,
 		Parent:      c.ParentCell,
 		Status:      heldStatus(c, l, self),
 		Mine:        c.Lease.Device == self,

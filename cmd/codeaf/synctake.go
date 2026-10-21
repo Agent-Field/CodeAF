@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -46,6 +45,7 @@ func wireSync(o *tui3.Options) {
 		o.Takeover = takeover{s.Continuer(cellstore.EngineFor(""), syncsetup.TakeOptions{
 			DeviceName: deviceName(),
 			RootFor:    takeRootFor,
+			BucketFor:  takeCopyBucket,
 			Notify:     surfaceNotices.Say,
 		})}
 	}
@@ -125,8 +125,14 @@ type takeover struct{ c *syncsetup.Continuer }
 var _ tui3.Taker = takeover{}
 
 func (t takeover) Take(ctx context.Context, id string) (tui3.Taken, error) {
+	return t.TakeSeen(ctx, id, nil)
+}
+
+// TakeSeen carries the card's observed holder through the wire's conditional
+// acquire, so its consent cannot displace a holder that arrived meanwhile.
+func (t takeover) TakeSeen(ctx context.Context, id string, seen *directory.LeaseExpectation) (tui3.Taken, error) {
 	began := time.Now()
-	got, err := t.c.Take(ctx, id)
+	got, err := t.c.TakeSeen(ctx, id, seen)
 	elapsed := time.Since(began)
 	if err != nil {
 		return tui3.Taken{}, err
@@ -142,8 +148,13 @@ func takeRootFor(id string) string {
 	if c, err := openCellByID(id); err == nil {
 		return c.Root
 	}
-	here, _ := os.UserHomeDir()
-	return filepath.Join(home.Join("v3", "projects", encodeWorkspace(here)), id)
+	return filepath.Join(home.Join("v3", "projects", "copies"), id)
+}
+
+// takeCopyBucket files each copy under the folder it came from, apart from
+// conversations that work in this computer's own folder of the same name.
+func takeCopyBucket(origin string) string {
+	return home.Join("v3", "projects", "copy-"+encodeWorkspace(origin))
 }
 
 // deviceName is what this machine is called in a sentence about it: the name a

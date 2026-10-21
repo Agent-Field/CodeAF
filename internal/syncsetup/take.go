@@ -31,6 +31,9 @@ type TakeOptions struct {
 	// RootFor is where this machine keeps the chat with an id: the folder it
 	// already has, or the one a new copy gets.
 	RootFor func(id string) string
+	// BucketFor files an arriving copy under its origin once the sealed
+	// inventory has arrived. Nil keeps the root the caller supplied.
+	BucketFor func(origin string) string
 	// Notify hears the one sentence the vault hook says about what it left alone.
 	Notify func(string)
 }
@@ -95,18 +98,51 @@ func (c *Continuer) taker(sc *Scope) handoff.Taker {
 // Take continues chat id here. Everything the surface says about it comes back
 // with it.
 func (c *Continuer) Take(ctx context.Context, id string) (Continued, error) {
+	return c.TakeSeen(ctx, id, nil)
+}
+
+// TakeSeen preserves the holder and fence the continuation card displayed,
+// rather than silently consenting to displace a different device.
+func (c *Continuer) TakeSeen(ctx context.Context, id string, seen *directory.LeaseExpectation) (Continued, error) {
 	defer handoff.Arrive(c.opt.RootFor(id))()
 	from := c.holderName(ctx, id)
 	c.retireHolder(ctx, id)
 	sc := c.sync.scope(id)
 	defer sc.Settle()
-	taken, err := c.taker(sc).Take(ctx, id)
+	taker := c.taker(sc)
+	if project, here := projectOf(c.opt.RootFor(id)); here {
+		// Ownership of this computer's project folder is local. A snapshot
+		// arriving from an owned copy must not turn an in-place return into
+		// tools pointed at a different, empty work/ directory.
+		taker.After = append([]func(context.Context, cell.Cell) error{func(_ context.Context, at cell.Cell) error {
+			meta, err := session.LoadMeta(at.Root)
+			if err != nil {
+				return err
+			}
+			meta.Workspace, meta.Owned, meta.Origin = project, false, ""
+			return session.SaveMeta(at.Root, meta)
+		}}, taker.After...)
+	}
+	taken, err := taker.TakeSeen(ctx, id, seen)
 	if err != nil {
 		return Continued{}, err
 	}
 	if err := cellstore.AdoptedFrom(taken.Cell, from); err != nil {
 		return Continued{}, err
 	}
+	if err := cellstore.NotePublished(taken.Cell, taken.Driving.Head); err != nil {
+		return Continued{}, err
+	}
+	var filed func()
+	defer func() {
+		if filed != nil {
+			filed()
+		}
+	}()
+	if taken.Cell, filed, err = c.fileCopy(ctx, taken.Cell); err != nil {
+		return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
+	}
+	taken.Driving.Cell = taken.Cell
 	out := Continued{Taken: taken, Device: c.opt.DeviceName, TaskCopies: c.restoreCopies(taken.Cell), Resume: c.arrive(taken.Cell, from)}
 	if taken.Kept != "" {
 		out.KeptTurns = c.orphanTurns(ctx, taken.Kept)
@@ -219,6 +255,10 @@ func (l landing) Want(ctx context.Context, c cell.Cell, head string) ([]string, 
 // the engine says differs from the newest turn, and a seal of it.
 type engineLocal struct{ eng cellstore.Engine }
 
+func (l engineLocal) Unpublished(c cell.Cell, remoteHead string) (string, uint32, error) {
+	return cellstore.Unpublished(c, remoteHead)
+}
+
 func (l engineLocal) Dirty(ctx context.Context, c cell.Cell) (bool, error) {
 	return l.eng.Dirty(ctx, c)
 }
@@ -279,15 +319,55 @@ func recordOrigin(_ context.Context, c cell.Cell) error {
 		return err
 	}
 	origin := store.Snapshot().Workspace
-	if origin == "" || origin == workspaceOf(c.Root) {
-		return nil
-	}
 	m, err := session.LoadMeta(c.Root)
 	if err != nil || m.ID == "" {
 		return err
 	}
-	m.Origin = origin
+	if origin != "" && origin != workspaceOf(c.Root) {
+		m.Origin = origin
+	}
+	m.Owned = true
+	m.Workspace = session.Place{Dir: c.Root, Owned: true}.Work()
 	return session.SaveMeta(c.Root, m)
+}
+
+// fileCopy uses the origin from the sealed inventory rather than this
+// computer's home directory. A first arrival stays a copy even if an unrelated
+// folder with the origin's path exists here; an existing borrowed project is
+// kept in place by the takeover's ordinary in-place road.
+func (c *Continuer) fileCopy(ctx context.Context, at cell.Cell) (cell.Cell, func(), error) {
+	m, err := session.LoadMeta(at.Root)
+	if err != nil || c.opt.BucketFor == nil || !m.Owned || m.Origin == "" {
+		return at, nil, err
+	}
+	dest := filepath.Join(c.opt.BucketFor(m.Origin), at.ID)
+	if filepath.Clean(dest) == filepath.Clean(at.Root) {
+		return at, nil, nil
+	}
+	if _, err := os.Stat(dest); !errors.Is(err, os.ErrNotExist) {
+		if err == nil {
+			err = errors.New("a copy of this chat is already filed here")
+		}
+		return at, nil, err
+	}
+	// The destination becomes discoverable at rename. Keep that root fenced
+	// through the caller's remaining arrival work, as the incoming root was.
+	filed := handoff.Arrive(dest)
+	if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
+		return at, filed, err
+	}
+	if err := os.Rename(at.Root, dest); err != nil {
+		return at, filed, err
+	}
+	landed := cell.Cell{ID: at.ID, Root: dest}
+	if err := session.RebaseOwnedCopy(dest); err != nil {
+		return landed, filed, err
+	}
+	if err := c.eng.Follow(ctx, at, landed); err != nil {
+		return landed, filed, err
+	}
+	opened, err := cell.OpenAt(dest, at.ID)
+	return opened, filed, err
 }
 
 func titleOf(root string) string {

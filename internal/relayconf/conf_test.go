@@ -46,6 +46,20 @@ func TestDirectoryConformance(t *testing.T) {
 	})
 }
 
+// TestC7ConditionalContinuation proves C7 on either configured relay, including
+// the real acquire wire and compatibility for omitted expectations.
+func TestC7ConditionalContinuation(t *testing.T) {
+	base := baseURL(t)
+	directorytest.RunConditionalTakes(t, func(t *testing.T) directorytest.Rig {
+		acct := newAccount(t)
+		return directorytest.Rig{Clock: relayClock{t, base}, ID: acct.deviceID,
+			Devices: func(name string) directory.Client {
+				return directory.NewHTTP(base, acct.sign(name, wall), httpClient)
+			},
+		}
+	})
+}
+
 // One identity's objects and cells are invisible to another, and answered as if
 // they never existed.
 func TestNamespaceIsolation(t *testing.T) {

@@ -52,6 +52,16 @@ type AcquireOpts struct {
 	// continue a chat where it runs now: waiting out the holder's lease would
 	// make them sit through the time a dead holder's row takes to go off.
 	Force bool `json:"force,omitempty"`
+	// Expect is the holder and fence the person chose to displace. Omitting it
+	// preserves the acquire behavior of clients predating conditional takes.
+	Expect *LeaseExpectation `json:"expect,omitempty"`
+}
+
+// LeaseExpectation binds a continuation to the lease the taking device read,
+// so another continuation during its fetch wins rather than being displaced.
+type LeaseExpectation struct {
+	Device string `json:"device"`
+	Fence  uint64 `json:"fence"`
 }
 
 // Directory is one identity's shared directory; For gives each device its own

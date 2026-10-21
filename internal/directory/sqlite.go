@@ -475,7 +475,7 @@ func (c *sqliteClient) Create(ctx context.Context, id string, in CellInit) (v Ce
 
 func (c *sqliteClient) Acquire(ctx context.Context, id string, o AcquireOpts) (CellView, error) {
 	return c.change(ctx, id, func(cell Cell, now int64) (Cell, error) {
-		return Acquire(c.s.feed.Lifted(id, cell), c.device, now, o.Force)
+		return Acquire(c.s.feed.Lifted(id, cell), c.device, now, o.Force, o.Expect)
 	})
 }
 

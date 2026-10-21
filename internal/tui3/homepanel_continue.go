@@ -60,6 +60,12 @@ type Taker interface {
 	Take(ctx context.Context, cell string) (Taken, error)
 }
 
+// conditionalTaker accepts the lease displayed on the card. A surface backed
+// by an older taker can still use the original Take seam.
+type conditionalTaker interface {
+	TakeSeen(context.Context, string, *directory.LeaseExpectation) (Taken, error)
+}
+
 // BranchActions is what a branch row can do. A nil verb is not offered.
 type BranchActions struct {
 	Merge   func(ctx context.Context, branch string) error
@@ -249,6 +255,10 @@ func (a *app) takeRemote(row chatlist.Row) tea.Cmd {
 	a.home.say(continuing, "")
 	taker, ctx := a.taker, a.ctx
 	return func() tea.Msg {
+		if conditional, ok := taker.(conditionalTaker); ok && row.DeviceID != "" {
+			taken, err := conditional.TakeSeen(ctx, row.Cell, &directory.LeaseExpectation{Device: row.DeviceID, Fence: row.Fence})
+			return homeTakenMsg{row: row, taken: taken, err: err}
+		}
 		taken, err := taker.Take(ctx, row.Cell)
 		return homeTakenMsg{row: row, taken: taken, err: err}
 	}
@@ -320,13 +330,30 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 		return a.askMachines()
 	}
 	a.homeTakenSaid = func() tea.Cmd {
+		// A local session of this same chat was retired before replacement.
+		// Its old handle cannot remain a selectable copy behind the new one.
+		key := a.convKey(line.row.Transcript)
+		if held := a.behind[key]; held != nil {
+			if held.watch != nil {
+				held.watch.stop()
+			}
+			delete(a.behind, key)
+			a.forget(key)
+		}
 		a.note(joinSaid(moved, kept))
 		if a.file == line.row.Transcript {
 			a.offerSetup(msg.taken.Resume)
 		}
 		return nil
 	}
-	cmd := a.homeOpenLine(line)
+	var cmd tea.Cmd
+	if msg.taken.Transcript != "" && a.holding(line.row.Transcript) {
+		// The transcript was replaced by the handoff. Reattach through the
+		// real door instead of bringing the superseded in-memory session back.
+		cmd = a.homeOpenLater(line, false)
+	} else {
+		cmd = a.homeOpenLine(line)
+	}
 	switch {
 	case cmd == nil && a.at(pageHome):
 		// THE OPEN REFUSED and home still stands: the sentence has no
@@ -350,10 +377,18 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 // lists, else one built from where the takeover put it, so the chat opens
 // whether or not home lists its folder.
 func (a *app) takenLine(msg homeTakenMsg) (homeLine, bool) {
+	t := msg.taken
 	if line, ok := a.homeLineOf(msg.row.Cell); ok {
+		// A derived row may still name the old workspace or its bucket.
+		// The completed handoff knows where the transcript and tools landed.
+		if t.Transcript != "" {
+			line.row.Transcript = t.Transcript
+		}
+		if t.Resume.Now != "" {
+			line.row.ProjectDir, line.row.Workspace = t.Resume.Now, t.Resume.Now
+		}
 		return line, true
 	}
-	t := msg.taken
 	if t.Transcript == "" {
 		return homeLine{}, false
 	}
