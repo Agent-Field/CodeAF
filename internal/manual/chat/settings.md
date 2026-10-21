@@ -139,5 +139,12 @@ and **shared model recommendations** (formerly Model Pool). Recommendations can
 control is not a promise that all the others are disabled. Search accepts old
 labels as well as the new organization.
 
+Anonymous token usage includes local models when their API returns token counts.
+Streaming requests ask for those counts. A connected Ollama service is labeled
+`ollama`; other local APIs are `other`. Missing text counts use a separately labeled byte-based estimate; media and unseen
+output remain unknown. Opaque reasoning in the input also leaves its input estimate
+unknown. Estimates do not enter billing or provider-reported totals. Provider
+receipts replace estimates only for the token components they actually report.
+
 Resident-only practice controls remain in resident configuration. They do not
 appear in chat settings, and `/budget practice` cannot edit them from chat.
