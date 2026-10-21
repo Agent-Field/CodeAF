@@ -323,6 +323,8 @@ type fakeLocal struct {
 
 func (l *fakeLocal) Dirty(context.Context, cell.Cell) (bool, error) { return l.dirty, nil }
 
+func (l *fakeLocal) Unpublished(cell.Cell, string) (string, uint32, error) { return "", 0, nil }
+
 func (l *fakeLocal) Follow(_ context.Context, from, to cell.Cell) error {
 	l.followed = append(l.followed, from.Root+" -> "+to.Root)
 	return nil
