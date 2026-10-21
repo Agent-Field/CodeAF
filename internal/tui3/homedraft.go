@@ -241,7 +241,7 @@ func (a *app) targetProject() string {
 			// homeGone is the reading the world scan already took, and not a
 			// stat of the frame's own: a frame that read the disk to name a
 			// project is the frame that must not exist (render_test.go).
-			if row := line.row; row.Origin != "" && a.homeGone(row.Workspace) {
+			if row := line.row; row.Origin != "" && (row.Owned || a.homeGone(row.Workspace)) {
 				return filepath.Base(row.Origin) + session.MovedCopyWord
 			}
 		}
