@@ -161,8 +161,14 @@ func (l Local) check(req ExecRequest) (string, error) {
 	if len(req.Argv) == 0 {
 		return "", errors.New("executor: empty argv")
 	}
-	if arg, hit := cellArg(req.Argv); hit {
-		return "", fmt.Errorf("executor: argument %q reaches into the harness-owned .cell directory", arg)
+	// Host work has no sealed state to protect, and ordinary shell text may
+	// name .cell. Only a cell workspace keeps that directory out of tools.
+	if req.Class != HostBound {
+		if info, err := os.Stat(filepath.Join(l.Root, ".cell")); err == nil && info.IsDir() {
+			if arg, hit := cellArg(req.Argv); hit {
+				return "", fmt.Errorf("executor: argument %q reaches into the harness-owned .cell directory", arg)
+			}
+		}
 	}
 	return resolve(l.Root, req.Dir)
 }
