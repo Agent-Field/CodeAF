@@ -594,8 +594,9 @@ func (placeHome) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return tea.Batch(cmd, a.syncHomeCompletion(true)), true
 	}
 	// AND THE ADD-MACHINE CARD'S CHORD, which is the router's to swallow unless
-	// it is claimed here, and is claimed only where the card is drawn.
-	if msg.String() == addMachineKey && a.addMachineWanted() {
+	// it is claimed here: where the card is drawn, or to explain why moving
+	// chats is unavailable before the router quietly swallows the chord.
+	if msg.String() == addMachineKey && (a.addMachineWanted() || a.cellsUnavailable != "") {
 		return a.toggleAddMachine(), true
 	}
 	if cmd, took := a.resumeKeyHandler(msg.String()); took {

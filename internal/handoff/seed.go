@@ -4,9 +4,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"time"
-
-	"golang.org/x/sys/unix"
 )
 
 // identityDir is the engine's own bookkeeping folder at the top of a tree. It
@@ -111,11 +108,6 @@ func linkSymlink(from, to string) bool {
 	}
 	info, err := os.Lstat(from)
 	return err == nil && setSymlinkTime(to, info.ModTime())
-}
-
-func setSymlinkTime(path string, at time.Time) bool {
-	ts := unix.NsecToTimespec(at.UnixNano())
-	return unix.UtimesNanoAt(unix.AT_FDCWD, path, []unix.Timespec{ts, ts}, unix.AT_SYMLINK_NOFOLLOW) == nil
 }
 
 // settleDirs gives each seeded folder the mode and time of its original. It

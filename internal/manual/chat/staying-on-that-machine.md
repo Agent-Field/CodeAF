@@ -475,7 +475,7 @@ your home directory.
 ## Cells on for this chat but the engine runs with cells off (CODEAF_CELLS=0) — what happens
 
 An engine reads `CODEAF_CELLS` once, at launch, and serves every later chat in that
-mode. So a chat opened with cells on (the default) next to an engine started with `CODEAF_CELLS=0`
+mode. So a chat opened with cells on (the default for dev, staging and source builds) next to an engine started with `CODEAF_CELLS=0`
 would never migrate. It does not attach in silence. **An idle engine in the other mode
 is restarted**, with one line saying so (`restarted the idle engine because it ran with cells
 off; it runs with cells on now`). **An engine that is still working is left alone** and the

@@ -8,6 +8,16 @@ import (
 	"testing"
 )
 
+// stat reads a file of the device's root, failing the test when it is absent.
+func stat(t *testing.T, path string) os.FileInfo {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return info
+}
+
 // The tests of the hard-link seed run on every platform, so they pin the tier
 // they test: a platform that clones would otherwise skip it.
 func init() { cloneTree = refuseClone }

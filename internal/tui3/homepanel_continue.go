@@ -187,6 +187,9 @@ func (a *app) askContinue(row chatlist.Row) tea.Cmd {
 }
 
 func (a *app) raiseContinue(row chatlist.Row, at int) tea.Cmd {
+	if a.sayCellsUnavailable() {
+		return nil
+	}
 	if a.taker == nil {
 		return a.sayOffer(row, chatlist.Offer{Line: chatlist.StatusLine(row)})
 	}

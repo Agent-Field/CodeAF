@@ -427,6 +427,9 @@ type CodexFlow interface {
 
 // Options configures one surface.
 type Options struct {
+	// CellsUnavailable is resolved before the surface starts, so paint never
+	// probes an engine and unsupported capabilities have no live doors.
+	CellsUnavailable string
 	// Machines lists this person's chats on their other machines. Nil is a
 	// machine that syncs nothing, and home then draws nothing extra: the
 	// sessions panel is exactly what it was (homepanel_machines.go).

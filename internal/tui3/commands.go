@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"fmt"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -772,6 +773,9 @@ func (m *menu) rank(needle string) {
 	}
 	m.hits = m.hits[:0]
 	for i, c := range commands {
+		if !commandOnPlatform(c) {
+			continue
+		}
 		at, ok := c.matchAt(needle)
 		if !ok {
 			continue
@@ -1016,6 +1020,9 @@ const helpKeyColumn = 15
 func helpText(file string, chords chordSpelling) string {
 	width := 0
 	for _, c := range commands {
+		if !commandOnPlatform(c) {
+			continue
+		}
 		if n := len(c.typed()); n > width {
 			width = n
 		}
@@ -1026,6 +1033,9 @@ func helpText(file string, chords chordSpelling) string {
 	// already in (styles.go's [product]).
 	lines = append(lines, product, "")
 	for _, c := range commands {
+		if !commandOnPlatform(c) {
+			continue
+		}
 		// The aliases are printed here as they are on the row, and nothing is cut:
 		// /help is prose in the transcript, which wraps, rather than a list drawn
 		// into a fixed block (see [command.menuNote]).
@@ -1373,3 +1383,9 @@ const unknownCommandLead = "there is no command called"
 // refusal for a DROPPED path is written from the same two halves (dropkeys.go)
 // and a door spelled twice is a door that gets moved once.
 const unknownCommandDoorWord = "/ lists them"
+
+// commandOnPlatform keeps unsupported move-only rows out of help and completion.
+// A fully typed command still reaches its one-sentence refusal.
+func commandOnPlatform(c command) bool {
+	return runtime.GOOS != "windows" || (c.name != "pair" && c.name != "devices" && c.name != "atlas")
+}

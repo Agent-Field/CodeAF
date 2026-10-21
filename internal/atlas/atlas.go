@@ -12,6 +12,9 @@ import (
 // catches, restores the terminal for and reports as [tea.ErrProgramPanic] (the
 // one exit every command shares turns that into the plain fault sentence).
 func Run() error {
+	if len(Maps) == 0 {
+		return nil
+	}
 	return RunMap(Maps[0])
 }
 

@@ -51,6 +51,9 @@ type atlasState struct {
 // the picker, one row per registered map, because guessing a map is guessing
 // at a picture the registry already names.
 func (a *app) runAtlas(rest string) tea.Cmd {
+	if a.sayCellsUnavailable() {
+		return nil
+	}
 	if name := strings.TrimSpace(rest); name != "" {
 		mp, ok := atlas.ByName(name)
 		if !ok {

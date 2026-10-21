@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/Agent-Field/codeaf/internal/atlas"
+	"github.com/Agent-Field/codeaf/internal/cell"
 )
 
 // runAtlas opens the architecture map: the two-computer work — pairing,
@@ -17,6 +18,9 @@ import (
 // is on. A name that is not in the registry refuses with the registry's own
 // sentence, which names what was available instead.
 func runAtlas(args []string) error {
+	if len(atlas.Maps) == 0 {
+		return fmt.Errorf("%s", cell.WindowsReason)
+	}
 	flags := commandFlags("atlas")
 	if err := parseCommandFlags(flags, args); err != nil {
 		return err

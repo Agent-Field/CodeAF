@@ -432,6 +432,9 @@ func (a *app) revoke(c *deviceCard) tea.Cmd {
 
 // openDevices is /devices.
 func (a *app) openDevices() tea.Cmd {
+	if a.sayCellsUnavailable() {
+		return nil
+	}
 	if a.approvals == nil {
 		a.note(pairUnavailableWord)
 		return nil

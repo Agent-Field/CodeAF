@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/config"
 	internalenv "github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -57,9 +58,12 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 		restart = &codeupdate.Plan{}
 		options.Restart = restart
 	}
-	wireSync(&options)
-	options.Pairing = chatPairDoor{}
-	options.Approvals = newApprovalsDoor(home.Dir())
+	options.CellsUnavailable = cell.UnavailableReason()
+	if options.CellsUnavailable == "" {
+		wireSync(&options)
+		options.Pairing = chatPairDoor{}
+		options.Approvals = newApprovalsDoor(home.Dir())
+	}
 	options.UpdateRunning = revision
 	options.UpdateCurl = curl
 	options.UpdateArgs = surfaceArguments()

@@ -304,7 +304,7 @@ kept out of it as well, because they do nothing any more (see *codeaf wake and c
 tick* below).
 
 A third, **`codeaf cell`**, is typed by hand but is not in the help text: it works
-unless `CODEAF_CELLS=0` turns cells off. Its verbs are described under "The cell verbs" below.
+when moving chats is available (dev, staging and source default on; rc and stable default off; `CODEAF_CELLS=1`/`0` overrides). Its verbs are described under "The cell verbs" below.
 
 ## codeaf pair — show a code, or use one, from the terminal
 
@@ -351,7 +351,7 @@ It is meant for a terminal of 120×35 or larger and still works at 80×24.
 
 ## The cell verbs — list a cell's turns and rewind it, and when CODEAF_CELLS=0 stops them
 
-Cells are on by default, so a paired computer moves chats with no setting. `codeaf cell` is hidden from the
+Cells default on for dev, staging and source builds, and off for rc and stable; `CODEAF_CELLS=1` or `0` overrides. They need Unix and a compatible furrow engine. `codeaf cell` is hidden from the
 help text, and `CODEAF_CELLS=0` turns cells off and stops it. With cells on, **`codeaf cell log [<cell>]`** lists a cell's
 turns, newest first, one line each (turn, parent, time, trigger, tools, receipt; a setup turn says `Setup` and its calls are marked `[external]`), and
 **`codeaf cell rewind <turn> [<cell>]`** puts the cell's files and transcript back to that
@@ -364,7 +364,7 @@ both use the cell the current folder is in.
 Your identity is the one root secret codeaf keeps for you on a machine: a signing key, a
 secret for deduplicating file content, and the key your saved secrets are sealed under. It
 lives in `identity.json` in the codeaf home, readable by you only. There is no account.
-These verbs are hidden from the help text and refuse to run only when `CODEAF_CELLS=0` turns cells off.
+These verbs are hidden from the help text and follow the same platform, channel and engine rules as moving chats. When off they say `moving chats is off in this build; CODEAF_CELLS=1 turns it on`. Native Windows says `moving chats is not available on Windows because furrow needs Unix; run codeaf in WSL`. An older engine says `moving chats needs a newer furrow engine than this build carries`.
 
 **`codeaf identity show`** prints your public id, a short fingerprint you can compare by
 eye between two machines, the cell key id, and this machine's device id. It makes the identity the first time it runs.
@@ -469,7 +469,7 @@ when you continue it here, and what a publish that failed had already sent. Send
 a conversation is counted apart, in `v3/sync/stats/vault.jsonl`, because it serves every conversation. A line holds
 counts only: no time, no file names, no titles and no content. The file never leaves the machine on its own.
 
-**`codeaf cell report [<cell>]`** (cells are on by default) prints one row per flush and a total row for the
+**`codeaf cell report [<cell>]`** (when cells are available) prints one row per flush and a total row for the
 cell, or for the cell the current folder is in, then a `vault` row for what carrying your secrets cost on this
 machine. The vault row is never added into the cell's total. Every request this machine made to the relay is
 in exactly one row, so the rows of all conversations plus the vault add up to what the relay counted for
@@ -482,7 +482,7 @@ type `--export`, so a report on its own writes no file and sends nothing.
 
 ## Free disk from old conversations — codeaf cell gc and the cell disk budget
 
-**`codeaf cell gc [--dry-run]`** (cells are on by default) frees disk from finished
+**`codeaf cell gc [--dry-run]`** (when cells are available) frees disk from finished
 conversations. A conversation that codeaf keeps its own working folder for has files that
 can always be written back from what codeaf sealed. `gc` removes those working files of
 finished conversations, least recently opened first, until the cells fit the disk budget:

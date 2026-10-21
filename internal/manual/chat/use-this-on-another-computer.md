@@ -231,7 +231,7 @@ You can move your identity by file. This needs no relay. It is the way to use wh
 - `codeaf identity export` on the first computer asks for a passphrase and writes your identity under it.
 - `codeaf identity import` on the other computer reads that file with the same passphrase.
 
-The `identity` verb needs no setting: cells, and so moving chats, are on by default. It is not in the help text. If you set `CODEAF_CELLS=0` to turn cells off, it stops with `codeaf identity needs cells, and CODEAF_CELLS=0 turned them off`. The full description is under "Your identity" on the terminal page.
+The `identity` verb follows the same availability rules as moving chats. It is not in the help text. When cells are off it says `moving chats is off in this build; CODEAF_CELLS=1 turns it on`. The full description is under "Your identity" on the terminal page.
 
 Keep the file and the passphrase safe. Anybody who has both has your chats.
 
@@ -333,3 +333,32 @@ that sync service is too old for pairing
 - **Work on one machine from the other, with no ssh:** `codeaf serve` on the machine that has the work, and `codeaf chat --at <name>` on the other. Read *Reaching a machine with a pairing code*.
 - **Work on one machine from the other, with ssh:** `codeaf chat --host <machine>`. Read *Running on another machine*.
 - **A phone:** there is no phone client in this stage.
+
+
+## Moving chats on Windows, WSL, dev, staging, rc and stable builds
+
+Moving chats defaults on for dev, staging and source builds, and off for rc and stable.
+`CODEAF_CELLS=1` turns it on and `CODEAF_CELLS=0` turns it off on every channel.
+When off, `codeaf pair`, `codeaf identity`, `codeaf cell`, `/pair` (also `/sync`,
+`/link` and `/laptop`), `/devices`, `alt+d` and a requested move say
+`moving chats is off in this build; CODEAF_CELLS=1 turns it on` before doing anything.
+
+Native Windows has no furrow engine. Pairing a shared chat identity, devices that hold
+chats, sync, continue/take and identity rotation are absent. The pairing and devices slash
+rows, home device rows, add-device key hint, move cards and pairing atlas are omitted.
+An explicitly typed command or pressed add-device chord says
+`moving chats is not available on Windows because furrow needs Unix; run codeaf in WSL`.
+The override cannot supply a Windows engine.
+
+Existing remote access still works: `codeaf serve`, `chat --at`, `--host`, six-digit
+machine pairing and `codeaf devices` for listing or revoking remote access. The
+self-hosted `codeaf relay` server also remains available.
+
+## Moving chats needs a newer furrow engine than this build carries
+
+Chat movement needs the configured or embedded furrow's exchange verbs, daemon and
+changed-path sealing. codeaf checks these capabilities once at startup, without using a
+version string. If they are missing, it leaves movement and identity pairing absent and
+says `moving chats needs a newer furrow engine than this build carries`. Ordinary chat
+and existing remote access still work. Use a build carrying the newer engine, or point
+`CODEAF_FURROW` at one and restart; `CODEAF_CELLS=1` alone cannot add missing engine verbs.
