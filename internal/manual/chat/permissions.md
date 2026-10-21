@@ -1206,3 +1206,26 @@ repository's file; both write to your profile only.
 
 Session memos — "stop asking me about this tool for now" — are held in memory
 and written nowhere at all.
+
+## Desktop Always allow scopes and automatic permission receipts
+
+In the desktop permission dock, Always offers the shell command's shapes in the
+same order as the terminal: for `git status --short`, `git status*`, `git *`,
+then `git status --short`. Other tools offer their tool name. There is no Always
+for a compound shell command, a critical command, or a call that acts as you.
+
+Choosing a scope saves exactly that rule in your profile settings, shared by
+agents on this machine. The receipt says `Always allowed · <scope> · you · <HH:MM>`
+and links to Settings › Permissions. A later matching call leaves
+`Allowed automatically · <call> · you always allow <scope>`; its explanation is
+`Matches your rule <scope> in Settings › Permissions`.
+Both receipts stay in the conversation after reopening, with the same placement,
+settings link and explanation. Choosing Always for one item in a batch saves
+that item's scope and releases only that call. Inbox Always answers use the same
+offered scopes and saving path after the undo hold. A missing or unoffered scope
+returns `bad_scope` before the hold starts, leaving the item waiting.
+Saving `git status*` allows `git status --porcelain` automatically; `git push`
+still asks, with the closest saved rule it falls outside (the longest rule for
+the same program). Non-shell calls and commands with no same-program rule have
+no outside-rule explanation. If saving fails, the question stays open and the desktop gets an
+error. Nothing is silently widened to all bash commands.

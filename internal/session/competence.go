@@ -184,7 +184,7 @@ func planOneWorkModel(path string, ids []string) (string, bool) {
 	if len(ids) == 0 {
 		return "", false
 	}
-	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro")
+	db, err := sql.Open("sqlite", plandb.StoreURI(path, "mode=ro"))
 	if err != nil {
 		return "", false
 	}

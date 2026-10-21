@@ -1273,11 +1273,18 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		}
 		note += newer
 	}
+	var users *int
+	if counter, ok := sess.agent.(interface{ UserMessageCount() int }); ok {
+		count := counter.UserMessageCount()
+		users = &count
+	}
 	return Welcome{
+		UserMessages:               users,
 		MessageMarks:               messageMarksKnown(sess.agent),
 		ComposedMessages:           composedKnown(sess.agent),
 		MessageReceipts:            composedKnown(sess.agent),
 		MessageClientIDs:           messageMarksKnown(sess.agent),
+		HarnessRequests:            harnessRequestsKnown(sess.agent),
 		AttachmentSources:          messageMarksKnown(sess.agent),
 		SteerMarks:                 steerMarksKnown(sess.agent),
 		FollowUpMarks:              followUpMarksKnown(sess.agent),
@@ -1346,7 +1353,8 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// Whether this conversation can carry skills put in front of it by
 		// hand, asked of the agent it has open — for [Welcome.Skills]'s stated
 		// reason (skills.go).
-		Skills: skillsKnown(sess.agent),
+		Skills:       skillsKnown(sess.agent),
+		SkillFolders: skillsKnown(sess.agent),
 		// Whether this engine answers the automations doors, and the zone a
 		// rhythm typed over the connection is read in. Both are about the
 		// MACHINE and not the conversation, so they are asked of the engine and
@@ -2174,12 +2182,16 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	// card, switching a model, interrupting a turn — stays open to every surface
 	// in the room: a watcher is a person watching their own work, not a guest.
 	switch call.Method {
-	case MethodSubmitBash, MethodSubmit, MethodFollowUp, MethodUnqueueFollowUp, MethodSteer, MethodQuestionReplace, MethodSubmitImage, MethodSubmitFiles,
+	case MethodRunHarness, MethodSubmitBash, MethodSubmit, MethodFollowUp, MethodUnqueueFollowUp, MethodSteer, MethodQuestionReplace, MethodSubmitImage, MethodSubmitFiles,
 		MethodTaskSteer, MethodTaskStop, MethodTaskRetry, MethodProcessRerun, MethodProcessRerunAt, MethodProcessStopAt, MethodProcessStopAll, MethodRenderCancel, MethodAppTaskAction, MethodAppQuickTaskAction, MethodAppMoveToTask, MethodAppResumeAfterQuit, MethodAppResumeAfterClose, MethodAppRename,
 		MethodAppTaskRoutingAct:
 		if err := s.mayDrive(); err != nil {
 			return nil, err
 		}
+	}
+
+	if out, handled, err := invokeConversation(sess.engine, agent, call.Method, call.Payload); handled {
+		return out, err
 	}
 
 	switch call.Method {
@@ -2640,6 +2652,23 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		}
 		return nil, nil
 
+	case MethodRunHarness:
+		args, err := arg[RunHarnessArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(harnessRequestDoor)
+		if !ok {
+			return nil, errors.New("harnesses are unavailable here")
+		}
+		var events <-chan session.Event
+		if marked, ok := agent.(harnessClientDoor); ok && args.ClientID != "" {
+			events, err = marked.RunHarnessRequestWithClientID(context.Background(), args.Name, args.Text, args.Model, args.ClientID)
+		} else {
+			events, err = door.RunHarnessRequest(context.Background(), args.Name, args.Text, args.Model)
+		}
+		return s.stream(MethodRunHarness, args.Text, events, err)
+
 	case MethodSubmitBash:
 		args, err := arg[SubmitArgs](call)
 		if err != nil {
@@ -2958,6 +2987,9 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		agent.SetReasoningFor(args.Model, args.Level)
 		s.session.announce()
 		return nil, nil
+
+	case MethodSkillFolders:
+		return serveSkillFolders(s.session.engine.Workspace)
 
 	case MethodAttachSkills, MethodDetachSkill, MethodAttachedSkills, MethodClearSkills, MethodSkillShelf:
 		payload, err := serveSkills(agent, call)

@@ -86,6 +86,11 @@ func TestPlainLaunchReadsClosedTeamReportFromEngineProfile(t *testing.T) {
 // consentSource is an OpenAI-shaped fake whose turn always asks for the same
 // harmless bash command and then finishes after the tool result comes back.
 func consentSource(t *testing.T, command string) *httptest.Server {
+	return consentSequenceSource(t, []string{command})
+}
+
+// consentSequenceSource gives successive turns distinct calls without a live model.
+func consentSequenceSource(t *testing.T, commands []string) *httptest.Server {
 	t.Helper()
 	var call int
 	return httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -105,6 +110,7 @@ func consentSource(t *testing.T, command string) *httptest.Server {
 		finish := "stop"
 		if toolTurn {
 			call++
+			command := commands[min(call-1, len(commands)-1)]
 			arguments, _ := json.Marshal(map[string]string{"command": command})
 			content = `"tool_calls":[{"index":0,"id":"call-` + strconv.Itoa(call) + `","type":"function","function":{"name":"bash","arguments":` + strconv.Quote(string(arguments)) + `}}]`
 			finish = "tool_calls"

@@ -150,7 +150,7 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	// open and a later register would find a live, unregistered agent and read
 	// it as another window's) to Close or to a failed start (app_lend.go).
 	if spec.Effort != "" {
-		agent.SetReasoningFor(agent.Model(), spec.Effort)
+		agent.SetConversationEffort(spec.Effort)
 	}
 	rememberStageAgent(agent)
 	if team := strings.TrimSpace(spec.Team); team != "" && !resumed {

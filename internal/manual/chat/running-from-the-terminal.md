@@ -305,6 +305,23 @@ closes. Neither draws anything or reads a key. **`codeaf tick`** and **`codeaf w
 kept out of it as well, because they do nothing any more (see *codeaf wake and codeaf
 tick* below).
 
+## The desktop app's command became a background process — its work log link
+
+When a command becomes a job, the desktop backend names that process on the
+command's finished work-log row and on the same row read back from history.
+This includes `background:true`, a foreground command kept past its session
+clock or timeout, a command kept by a steer, and a declined `keep_running`
+request run as a job for that turn. Waiting for approval does not break the link.
+A kept service is linked only where the backend publishes its process row.
+Each command keeps its own link; starting another command does not carry an
+earlier command's link.
+
+The link comes from the engine's job or service registry. A normal foreground
+completion, failed call, refusal, argument rejection or interrupted command
+gets no process link, however often its output mentions a job. Older records
+without the fact leave the link absent; the backend does not guess from words
+or from the call's clock.
+
 ## The desktop app's keys, day cap and budget asks — what codeaf app keeps
 
 Keys pasted into the codeaf desktop app are kept in the Mac's keychain, not by codeaf.
@@ -411,8 +428,12 @@ manager, sub-teams, daily caps, team log and decisions you see in the Teams
 page, under another name. A crew made in the app is a team in the terminal,
 and the other way round. While the app is open it does for a crew what a
 terminal window does for a team it holds: it opens the member a manager starts
-with `team_start` and stops the one a manager stops, and it keeps every member
-of an open crew open, so a member woken by its manager is seen working.
+with `team_start` and stops the one a manager stops. Members with live work,
+questions, running factory stages, processes or work awaiting recovery are opened
+at startup. Once opened, a crew member stays held across its engine closing or a
+factory stage resuming, so its questions still reach you. Idle
+members stay as saved records until you open their chat, send them a message,
+or crew traffic wakes them; a member woken by its manager is seen working.
 When the app and a terminal both hold one manager, the first to claim a start
 opens the member and the other does nothing, so one `team_start` makes one
 member. Each member's row shows the step it is on, or the question it waits on.
@@ -1620,3 +1641,11 @@ its final totals. With no receipt outstanding, it adds no receipt wait to the
 ending. Otherwise it waits at most the provider's existing receipt deadline and keeps
 the figures already received when a receipt cannot be settled. An incomplete
 receipt therefore reports the work's paid calls as well as its failure reason.
+
+## Desktop messages with an invalid client id
+
+The desktop app refuses a message with an invalid `client_id` as `bad_params`
+before opening its conversation or starting a turn. This applies to creating an
+agent, sending, queueing and steering. An id must be valid UTF-8, at most 256
+bytes, with no control characters. Client ids correlate entries with messages;
+they are not idempotency keys, and repeated ids are allowed.

@@ -6,7 +6,6 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 
@@ -194,5 +193,3 @@ func TestCheckIgnoresSteer(t *testing.T) {
 		t.Fatalf("%+v", res)
 	}
 }
-
-func killZero(pid int) error { return syscall.Kill(pid, 0) }

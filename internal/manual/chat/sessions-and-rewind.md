@@ -906,6 +906,9 @@ conversation or disbands a team. Tasks inside manager conversations can still be
 independently. The optional global-manager conversation can be deleted without a replacement;
 its teams and their managers remain. `+ Global manager` on All teams creates it again.
 
+Kept-running services are stopped before the conversation is removed. If a service cannot
+be stopped, deletion fails with the reason and keeps the conversation available.
+
 The dialog disappears while deletion runs; a failure restores it with the reason.
 Deletion removes all team memberships and the conversation's tasks and transcripts.
 Earlier team exchanges and decisions remain in team history. Links to a deleted conversation
@@ -936,3 +939,20 @@ rather than taking over an empty conversation that could acquire membership duri
 
 `Conversation unavailable` on a team card means its saved transcript is missing. A missing
 file is not recreated silently; add a new conversation and choose it as manager explicitly.
+
+## Desktop rewind undo and conversation commands
+
+The desktop can list your newest turns and rewind to one with `agents.rewind.points` and
+`agents.rewind`. The selected turn and everything after it are set aside in the record;
+files and commands already run stay as they are. `agents.rewind.undo` restores that tail
+while nothing newer depends on the shortened conversation. Another turn or rewind, a
+changed transcript, or restarting the owning engine ends Undo. Interrupt running work
+before rewinding. The list carries up to the newest 1000 turns.
+
+`agents.delete` permanently deletes the conversation through the same guarded operation
+as the terminal. A team manager needs a replacement first; optional global leadership
+can be cleared. The desktop asks for confirmation before calling it.
+
+`agents.debug` keeps this conversation's full record from now on and names its folder.
+It cannot be switched off. `agents.manual` sends the same manual question as `/manual`,
+answered by the model from the manual with the page named; it is an ordinary paid turn.

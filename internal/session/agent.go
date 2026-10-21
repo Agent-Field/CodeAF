@@ -178,16 +178,16 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// The registry is built before the belt because the belt closes over it:
 	// bash's background path and the jobs tool are both views onto this one
 	// object, and it is the agent's own steering queue they report into.
-	// The registry gets both note lanes. A job's exit is work the model started
-	// and is waiting to hear finish, so it remains owed at the next step
-	// boundary. A watch's deltas are ambient telemetry: they stay live in the
-	// job row and log, but wait for a turn boundary before entering the model's
-	// context (see [Agent.enqueueJobNote] and [Agent.enqueueWatchNote]).
+	// Successful processes wait silently for the next turn unless somebody is
+	// owed their ending or asked to be told. Failures, tasks and renders wake;
+	// watch deltas stay ambient (see [Agent.enqueueWatchNote]).
 	// The registry is handed the DROPPINGS home rather than the Place, and the
 	// two differ for every agent that is not a session: a worker's job log
 	// belongs beside the transcript of the conversation that commissioned it, not
 	// in the repository it borrowed to work in (landing.go).
 	agent.jobs = newJobRegistry(config.Workspace, config.droppingsPlace(), agent.enqueueJobNote, agent.enqueueWatchNote)
+	agent.jobs.notifyQuiet = agent.enqueueJobNoteQuiet
+	agent.jobs.notifyUnowed = agent.enqueueJobNoteUnowed
 	// And the registry gets the ROSTER lane as well as the waking one. A job is
 	// work this conversation started, so it shows on the right the way every
 	// other kind of work does — a quiet row while it runs, settled when it ends
@@ -1356,6 +1356,9 @@ type userMessage struct {
 	// pass of a loop — while an ending that failed to wake the one worker waiting
 	// for it costs that worker its whole allowance.
 	ending bool
+	// deferJobWake marks a process ending nobody was parked waiting on. Only
+	// its idle wake waits; the note and the worker release still arrive at once.
+	deferJobWake bool
 
 	// settle marks THE WAKE OF A LANDING THAT HANDS THE MODEL THE DECISION: under
 	// `task.settle = auto` (and after somebody pressed "let codeaf decide") the
@@ -1810,9 +1813,16 @@ func (u userMessage) journaled() ai.Message {
 // it is about is already on the steering queue, and the loop's first drain
 // writes it (see [Agent.wakeLocked]).
 func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *eventStream, extra ...*eventStream) <-chan Event {
+	// A new turn depends on the shortened conversation and ends its undo.
+	a.rewindUndo = nil
+	if a.debugRun == "" {
+		a.debugRun = trace.ConversationRun(ctx)
+	}
+	ctx = trace.WithRun(ctx, a.debugRun)
 	// The person speaking is what resets a team's loop breaker (team_wakewatch.go).
 	a.notePersonTurn(user)
 	a.rebindClientLocked(a.model)
+	a.stopJobWakeLocked()
 	a.running = true
 	a.teamTurnAt = time.Now()
 	a.teamTurnSerial++
@@ -2536,10 +2546,19 @@ func (a *Agent) Close() error {
 		return nil
 	}
 	a.closed = true
+	if a.closedSignal != nil {
+		close(a.closedSignal)
+	}
 	// Nothing armed by a steer outlives the session that armed it
 	// (steer_grace.go), and nor does a clock armed on a question (asklane.go).
 	a.stopSteerGraceLocked()
 	a.stopAskClocksLocked()
+	// PENDING NEWS BELONGS IN THE JOURNAL EVEN AFTER ITS CLOCK FIRED. A wake
+	// may have been refused, and none may start after admission has closed.
+	if a.jobWakePending {
+		a.drainQueueLocked(nil, true)
+	}
+	a.stopJobWakeLocked()
 	if a.closeDone == nil {
 		a.closeDone = make(chan struct{})
 	}
@@ -3488,6 +3507,10 @@ type queueDrain struct {
 // become one authored user-role message; control guidance and a person's steer
 // remain their own messages.
 func (a *Agent) drainQueueLocked(hub *eventHub, includeAmbient bool) queueDrain {
+	// Every steering drain records the pending endings. The clock can be
+	// withdrawn here without losing the drain's separate answer obligation.
+	a.jobWakePending = false
+	a.stopJobWakeLocked()
 	for _, message := range a.discussionHistory {
 		a.recordLocked(message)
 	}
@@ -3706,9 +3729,9 @@ func (a *Agent) takeReplyTags() []TaskReplyTag {
 // comparison is at ~/oauth.md; the short version is…"), and a model that is never
 // asked never writes one. So a note that lands on an idle session starts a turn.
 //
-// THAT IS TRUE OF A BACKGROUND JOB'S ENDING, through [Agent.enqueueJobNote].
-// The model started the job and was explicitly told not to poll because the
-// ending would come back, so the exit remains owed. IT IS TRUE OF A WATCH'S
+// THAT IS TRUE OF A JOB'S FAILURE OR REQUESTED NOTIFICATION, and of a command
+// whose call or worker is still waiting, through [Agent.enqueueJobNote]. A plain
+// successful process instead waits on [Agent.enqueueJobNoteQuiet]. IT IS TRUE OF A WATCH'S
 // FIRING FOR THE SAME REASON: a watch that matched, went quiet or failed its way
 // out has answered what it was started for and will never speak again, so that
 // last note is owed and [Agent.enqueueWatchNote] queues it here. Only a watch's
@@ -3749,6 +3772,20 @@ func (a *Agent) enqueueSettleSteering(text string, ceiling int) {
 // through `jobs output` for anything past the tail.
 func (a *Agent) enqueueJobNote(text string) {
 	a.enqueueNote(jobNote(text))
+}
+
+// enqueueJobNoteUnowed carries the registry's unowed process ending to the
+// same queue, retaining the one fact the idle wake scheduler needs.
+func (a *Agent) enqueueJobNoteUnowed(text string) {
+	note := jobNote(text)
+	note.deferJobWake = true
+	a.enqueueNote(note)
+}
+
+// enqueueJobNoteQuiet keeps each successful process ending intact until the
+// next turn. There is no batch key: separate jobs must keep separate endings.
+func (a *Agent) enqueueJobNoteQuiet(text string) {
+	a.enqueueAmbient(userMessage{message: textMessage("user", text), batch: true})
 }
 
 // enqueueWatchNote is the registry's watch lane, and it is TWO lanes chosen by
@@ -3793,7 +3830,7 @@ func (a *Agent) enqueueAmbientNote(text string) {
 	a.enqueueNote(userText(text))
 }
 
-// enqueueAmbient is the periodic-watch queue's one door. It mirrors
+// enqueueAmbient is the boundary-held context queue's one door. It mirrors
 // enqueueNote's authorship and closed-session laws without putting telemetry
 // where a mid-turn step drain can take it by accident.
 func (a *Agent) enqueueAmbient(note userMessage) bool {
@@ -3870,7 +3907,11 @@ func (a *Agent) enqueueNote(note userMessage) bool {
 		// A turn already running is the coalescing case and needs nothing done:
 		// wakeLocked declines, and the note lands in that turn at its next step
 		// boundary exactly as a person's steering does.
-		a.wakeLocked()
+		if note.deferJobWake && !a.running {
+			a.deferJobWakeLocked()
+		} else {
+			a.wakeLocked()
+		}
 	}
 	return true
 }
@@ -4899,6 +4940,9 @@ type DisplayEntry struct {
 	// ToolResult packs occurrence-owned producer facts into existing alignment.
 	// Zero is unknown, including legacy and ambiguous provider IDs.
 	ToolResult ToolResultFlags
+	// ToolProcess is the registry's identity for this result occurrence, absent
+	// on older records and calls that did not become a job or kept service.
+	ToolProcess *ToolProcess `json:"ToolProcess,omitempty"`
 
 	Text string
 	Tool string // set when the entry is one call in a batch
@@ -5074,6 +5118,32 @@ func (a *Agent) Transcript() []DisplayEntry {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return shapeEntries(a.messages, a.file, a.presentation)
+}
+
+// UserMessageCount counts the person's visible messages in the replay already
+// held by the agent. The earlier region replaces the live prefix after a
+// compaction, just as it does when a surface draws the conversation.
+func (a *Agent) UserMessageCount() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	users, floor := 0, 0
+	for _, entry := range a.earlier {
+		if entry.Role == "user" {
+			users++
+		}
+	}
+	if len(a.earlier) > 0 {
+		floor = a.earlierFloor
+	}
+	offset := 0
+	for _, message := range a.messages {
+		rows := entryRows(message)
+		if rows > 0 && offset >= floor && displayMessageRole(message, a.file.isNote(message)) == "user" {
+			users++
+		}
+		offset += rows
+	}
+	return users
 }
 
 // EarlierHistory is the conversation a compaction pass edited away, and where
@@ -5267,7 +5337,7 @@ func shapeInto(messages []ai.Message, journal *sessionFile, steps *map[int]facto
 			// Duplicate IDs inside one provider batch cannot identify a result.
 			// Keep the new classification unknown instead of lending one call
 			// another call's rejection. Ordinary batches pay no map allocation.
-			if (result.rejected || result.harness || result.refused || result.invoked || result.attempt) && len(msg.ToolCalls) > 1 {
+			if (result.rejected || result.harness || result.refused || result.invoked || result.attempt || result.process != nil) && len(msg.ToolCalls) > 1 {
 				if rejectionCounts == nil {
 					rejectionCounts = make(map[string]int, len(msg.ToolCalls))
 					for _, sibling := range msg.ToolCalls {
@@ -5276,7 +5346,14 @@ func shapeInto(messages []ai.Message, journal *sessionFile, steps *map[int]facto
 				}
 				if rejectionCounts[call.ID] != 1 {
 					result.rejected, result.harness, result.refused, result.invoked, result.attempt = false, false, false, false, false
+					result.process = nil
 				}
+			}
+			// A display reader owns its process snapshot, just as it owns the
+			// person's descriptors; editing it cannot reach the presentation.
+			if result.process != nil {
+				process := *result.process
+				result.process = &process
 			}
 			// The step's own title, off the journal's `caption` line, keyed by
 			// the anchor the narration was recorded against. Every call that is
@@ -5303,8 +5380,9 @@ func shapeInto(messages []ai.Message, journal *sessionFile, steps *map[int]facto
 				// open. Zero when the file never recorded one.
 				Took: journal.took(call.ID),
 
-				ToolResult: result.flags(),
-				At:         journal.written(msg),
+				ToolResult:  result.flags(),
+				ToolProcess: result.process,
+				At:          journal.written(msg),
 			})
 		}
 	}

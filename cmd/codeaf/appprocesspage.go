@@ -67,7 +67,7 @@ func (b *appBackend) PageProcesses(ctx context.Context, ask appwire.ProcessPageA
 	if err != nil {
 		return nil, err
 	}
-	a, err := b.find(ask.Agent)
+	a, err := b.findCrewOwner(ask.Agent)
 	if err != nil {
 		return nil, err
 	}
@@ -464,7 +464,7 @@ func (b *appBackend) processRecord(ctx context.Context, id string, legacyList bo
 	if !ok {
 		return session.JobNotice{}, "", appwire.Errorf(appwire.CodeBadParams, "%s is not a process id", id)
 	}
-	a, err := b.find(agent)
+	a, err := b.findCrewOwner(agent)
 	if err != nil {
 		return session.JobNotice{}, "", err
 	}

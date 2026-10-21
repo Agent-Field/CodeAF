@@ -1460,6 +1460,14 @@ conversation's own rung, a task's rung and the **thinking** default — see *Mak
 think harder, deeper, or less*. This is the same walk the task control and the settings row
 use, and all five rungs are reachable here.
 
+## Desktop effort rungs and clearing the conversation choice
+
+The desktop's `agents.set_effort` uses the same conversation dial as `/effort`. Engines advertising
+`agents.set_effort.rungs` accept `auto`, `low`, `medium`, `high`, `xhigh` and `max`;
+`auto` clears the saved conversation choice. Older engines accept only low, medium
+and high. The reported `effort` is omitted when the conversation choice is unset;
+another scope can still supply the effort actually used.
+
 ## Making the model think harder, deeper, or less — the effort ladder from low to max
 
 How hard the model thinks is one dial with five rungs, cheapest first: `low`, `medium`,
@@ -4395,3 +4403,12 @@ checks the updated limit. A raise for today lasts until the next local midnight.
 The Agent panel shows a recorded or observed individual cap, never the current global default
 as a guess. If an older conversation has no saved individual limit and is not open, its cap
 can remain unknown until its engine answers. Changing the default is a separate Settings action.
+
+## Desktop engine methods for crew model rules and the crew daily cap
+
+Crew pins and unpins use `settings.models.set`; task caps use `settings.set`.
+`settings.crew.get/set` reads or changes the persistent allowed-model rule and
+crew daily cap, including open models, price rules and incremental +model/-model
+forms. The crew daily cap is separate from the machine spending limit and member
+conversation budgets. Crew settings are machine-local; a client using `--host`
+must change those on that machine.

@@ -168,7 +168,10 @@ func (r *automationRunner) Look(ctx context.Context, item automation.Automation)
 // it replaces did not do. A failing command is evidence, not an error: "is CI
 // red" is often answered by an exit status.
 func automationLookCommand(ctx context.Context, workspace, command string) (automation.Sight, error) {
-	shell, args := jobShell()
+	shell, args, shellErr := jobShell()
+	if shellErr != nil {
+		return automation.Sight{}, shellErr
+	}
 	process := exec.CommandContext(ctx, shell, append(args, command)...)
 	process.Dir = workspace
 	process.Env = bare.StreamingEnv()
@@ -387,6 +390,8 @@ func (r *automationRunner) lookTool(ctx context.Context, item automation.Automat
 	cfg.automationID = item.ID
 	agent := &Agent{config: cfg, model: cfg.Model, id: NewSessionID()}
 	agent.jobs = newJobRegistry(cfg.Workspace, cfg.droppingsPlace(), agent.enqueueJobNote, agent.enqueueWatchNote)
+	agent.jobs.notifyQuiet = agent.enqueueJobNoteQuiet
+	agent.jobs.notifyUnowed = agent.enqueueJobNoteUnowed
 	agent.jobs.renderNotify = agent.emitRenderUpdate
 	agent.connect = newConnectHub(cfg)
 	agent.tools = agent.belt()

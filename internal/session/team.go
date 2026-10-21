@@ -724,6 +724,9 @@ func (a *Agent) firstTeamCursor(profile string, role teamRole) string {
 		return teamLogStart
 	}
 	born := a.startedAt
+	if since := a.config.TeamListeningSince; !since.IsZero() && since.Before(born) {
+		born = since
+	}
 	cursor := teamLogStart
 	started := ""
 	for _, entry := range tail {

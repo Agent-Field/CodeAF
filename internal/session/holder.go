@@ -18,7 +18,7 @@ package session
 //	                  doing and when it last said so.
 //	takeover.json     the request, `{"at": <RFC 3339 time>}`, written by the
 //	                  window that wants the conversation (takeover.go). Every
-//	                  holder since 2026-08-31 looks for it four times a second,
+//	                  holder watches for it (older builds poll four times a second),
 //	                  lets go — stopping a turn where it is and keeping its
 //	                  partial reply — and says so in its own window.
 //

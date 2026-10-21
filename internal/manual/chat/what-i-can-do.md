@@ -331,8 +331,19 @@ BUILD OK
 [job 3 · last 50 lines · full log: <path>]
 ```
 
-If codeaf is mid-turn the note lands at the next step; if the turn had already
-ended, the note starts a new one, exactly as a finished task does. Several
+A plain background process that exits 0 waits silently for the next turn; it
+never starts a reply. Set `notify: true` beside `background: true` in `bash` when
+the person asked to be told when it ends. Failures, explicitly requested
+notifications, and commands whose call or task worker is still waiting keep the
+waking path: their note lands at the next step while a turn is running. When
+idle, failures and requested notifications whose call or task worker is not
+waiting gather for two seconds from the first ending, then start one turn with
+all their notes. An image answered by the vision fallback does not read that
+news; after it finishes, an ordinary turn answers the pending notes. Closing
+saves pending endings even if their wake was blocked by stopping work.
+A command whose call or worker is still waiting releases it
+immediately; that turn also reads any notes already gathering. Task and video
+or music render endings still wake as before. Several
 session notes waiting at that boundary are one `while you worked:` message, not
 several synthetic user messages between tool calls.
 
@@ -342,10 +353,13 @@ note names its path, so a recent older line is one `jobs output` call away and
 the ending itself never is. When output has been discarded, the note says so
 instead of calling what remains full.
 
-So you should never see codeaf running `sleep 30 && tail …` to wait for
+## Why is it running sleep and tail over and over?
+
+You should never see codeaf running `sleep 30 && tail …` to wait for
 something. That loop was real — it cost one benchmark worker two thirds of its
 wall clock, waiting on a log that was empty because of buffering — and the two
-mechanisms above are what replaced it. `jobs output` is still there for an
+mechanisms that replaced it are automatic job-status lines and ending notes.
+`jobs output` is still there for an
 intermediate look at a job you asked about; it is not how waiting is done.
 
 ## Can I send a running command to the background myself?
@@ -596,8 +610,10 @@ Nothing further ever comes from that watch: it is over, which is exactly why its
 last note is the one worth waking for. `jobs list` no longer shows it running,
 and its whole tick history stays at `jobs output <id>`.
 
-A background command exiting and a video or music render landing wake a reply the
-same way. The tasks page has the rest of it under
+A background command failing, one started with `notify: true`, or a command
+whose call or worker is waiting wakes a reply, as does a video or music render
+landing. A plain background process exiting 0 waits silently for the next turn.
+The tasks page has the rest of it under
 *Waiting on something, and the limit on carrying on*.
 
 ## Can you tell me when something has finished — how do I know it went quiet or stopped changing?

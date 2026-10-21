@@ -6,13 +6,13 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-// This read never opens a conversation. Only its already-held handle can prove
-// its live configured scope; a closed conversation needs the next-open resolver.
+// An open crew restores its owner before reading live configured scope. Other
+// closed conversations need the next-open resolver and stay closed here.
 func (b *appBackend) ApplicableMemory(ctx context.Context, id string) (session.MemoryScopeSnapshot, error) {
 	if err := ctx.Err(); err != nil {
 		return session.MemoryScopeSnapshot{}, err
 	}
-	a, err := b.find(id)
+	a, err := b.findCrewOwner(id)
 	if err != nil {
 		return session.MemoryScopeSnapshot{}, err
 	}

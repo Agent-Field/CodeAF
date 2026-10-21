@@ -83,9 +83,12 @@ import (
 // write the window's length, where the region cannot be placed and is dropped
 // rather than drawn twice ([replayedSession.earlier]).
 type Record struct {
-	Entries []DisplayEntry
-	Earlier []DisplayEntry
-	Floor   int
+	// userLines is immutable, sparse provenance shared by record copies. Entry
+	// vectors and live folds carry no physical addresses or graph-only bytes.
+	userLines []recordUserLine
+	Entries   []DisplayEntry
+	Earlier   []DisplayEntry
+	Floor     int
 	// Passes is every compaction pass the record holds, oldest first, each
 	// placed in `Earlier` followed by `Entries[Floor:]` ([CompactionFact.Entry]).
 	Passes []CompactionFact
@@ -254,6 +257,7 @@ func transcriptFrom(replayed replayedSession, err error) Record {
 	earlier, earlierSteps := shapeWithSteps(replayed.earlier, journal)
 	floor := len(shapeEntries(replayed.messages[:overlap], journal))
 	return Record{
+		userLines:  recordUserLines(replayed),
 		Entries:    entries,
 		Earlier:    earlier,
 		Floor:      floor,

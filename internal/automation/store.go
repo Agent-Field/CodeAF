@@ -26,6 +26,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/sqlitefile"
 	_ "modernc.org/sqlite"
 )
 
@@ -79,8 +80,7 @@ func Open(root string) (*Store, error) {
 	} else if err := f.Close(); err != nil {
 		return nil, fmt.Errorf("automations: %w", err)
 	}
-	u := url.URL{Scheme: "file", Path: path}
-	q := u.Query()
+	q := make(url.Values)
 	q.Set("mode", "rw")
 	q.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", busyTimeout.Milliseconds()))
 	// WAL lets every window read while the clock writes; FULL keeps a run that
@@ -88,8 +88,7 @@ func Open(root string) (*Store, error) {
 	q.Add("_pragma", "journal_mode(WAL)")
 	q.Add("_pragma", "synchronous(FULL)")
 	q.Set("_txlock", "immediate")
-	u.RawQuery = q.Encode()
-	db, err := sql.Open("sqlite", u.String())
+	db, err := sql.Open("sqlite", sqlitefile.URI(path, q.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("automations: %w", err)
 	}

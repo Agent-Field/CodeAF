@@ -736,3 +736,18 @@ Click any row there to open that task's room. The trail at the top of the room r
 `<conversation> ▸ <parent title> ▸ <this task>`, and a click on the parent's name in it
 opens the parent's room again. `esc` returns to the conversation. This opens a room
 rather than changing the rail's fold.
+
+## Where the app map's brief came from — original request, removed conversation, offline origin
+
+The app graph carries an exact message address for a task when its record kept
+`origin_journal` and `origin_line`. Editing the task's instructions does not change
+that address. The agent map's brief comes from its first user request; a crew
+started with a goal points to the message that submitted that goal to its manager.
+A goal edited in settings has no chat message to open.
+
+The graph explicitly distinguishes no origin recorded, a conversation whose
+journal was removed, and an explicitly hosted origin this local reader cannot
+reach. It keeps the brief's own text when the journal is gone. Older absolute
+paths contain no machine identity and cannot establish that another machine is
+offline. It never finds an origin by matching the task's words. This is an app
+map response; it does not add a map command to the terminal.

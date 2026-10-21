@@ -86,33 +86,16 @@ func TestPresenceWritesAWholeFileAnotherWindowCanRead(t *testing.T) {
 }
 
 func TestPresenceHeartbeatMovesTheStamp(t *testing.T) {
-	// A desk of the test's own, on a fast cadence — the agent's real one beats
-	// every five seconds, which is right for a machine and wrong here.
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 	dir := t.TempDir()
-	desk := &presenceDesk{
-		agent: agent,
-		path:  filepath.Join(dir, presenceName),
-		stop:  make(chan struct{}),
-		done:  make(chan struct{}),
-		nudge: make(chan struct{}, 1),
-		every: 10 * time.Millisecond,
-	}
-	go desk.beat()
-
+	desk := &presenceDesk{agent: agent, path: filepath.Join(dir, presenceName)}
+	desk.write()
 	first := waitForPresence(t, dir)
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		if later, ok := ReadSessionPresence(dir, time.Now()); ok && later.UpdatedAt.After(first.UpdatedAt) {
-			close(desk.stop)
-			<-desk.done
-			return
-		}
-		time.Sleep(5 * time.Millisecond)
+	desk.refresh(desk.refreshed.Add(presenceRefresh))
+	later, ok := ReadSessionPresence(dir, first.UpdatedAt.Add(presenceWindow))
+	if !ok || !later.UpdatedAt.After(first.UpdatedAt) {
+		t.Fatal("a JSON heartbeat did not preserve presence freshness")
 	}
-	close(desk.stop)
-	<-desk.done
-	t.Fatal("the heartbeat never moved the stamp, so age cannot be a liveness clock")
 }
 
 func TestAStalePresenceFileIsNotALiveSession(t *testing.T) {

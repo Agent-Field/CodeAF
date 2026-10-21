@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/sqlitefile"
 	sqlite "modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 )
@@ -102,8 +103,7 @@ func Open(path string) (*Store, error) {
 			return nil, collectionsOpenFailure(absolute, err)
 		}
 	}
-	u := url.URL{Scheme: "file", Path: absolute}
-	q := u.Query()
+	q := make(url.Values)
 	// The private file was created above. SQLite must not create another file
 	// with its default permissions if the path is a dangling link or disappears.
 	q.Set("mode", "rw")
@@ -111,8 +111,7 @@ func Open(path string) (*Store, error) {
 	q.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", busyTimeout.Milliseconds()))
 	q.Add("_pragma", "synchronous(FULL)")
 	q.Set("_txlock", "immediate")
-	u.RawQuery = q.Encode()
-	db, err := sql.Open("sqlite", u.String())
+	db, err := sql.Open("sqlite", sqlitefile.URI(absolute, q.Encode()))
 	if err != nil {
 		return nil, collectionsOpenFailure(absolute, err)
 	}

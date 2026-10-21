@@ -24,12 +24,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/plandb"
+	"github.com/Agent-Field/codeaf/internal/shell"
 )
 
 // planState is one run's plan: where the store lives, and whether the bin
@@ -721,7 +723,11 @@ func (p *planState) armShim() error {
 		return err
 	}
 	words := make([]string, 0, len(argv)+1)
-	for _, word := range argv {
+	for i, word := range argv {
+		// Only the exec target is a shell path; native CLI arguments keep their bytes.
+		if i == 0 {
+			word = shell.ListPath(word)
+		}
 		words = append(words, quoteShWord(word))
 	}
 	if err := writeShim(filepath.Join(bin, planShimFilename), "#!/bin/sh\nexec "+strings.Join(words, " ")+" \"$@\"\n"); err != nil {
@@ -795,7 +801,7 @@ func (g *TaskGraph) planBashPrefix() string {
 	if bin == "" {
 		return ""
 	}
-	prefix := "export PATH=" + quoteShWord(bin) + ":$PATH PLANDB_DB=" + quoteShWord(plan.path)
+	prefix := "export PATH=" + quoteShWord(shell.ListPath(bin)) + ":$PATH PLANDB_DB=" + quoteShWord(plan.path)
 	// AND THE RUN IS BOUND, NOT ONLY THE PATH. A path says where the run's store
 	// was when the run opened it; a later request can set that store aside and
 	// seed another at the same path, and a worker bound by the path alone then
@@ -839,7 +845,7 @@ func codeafShimScript() string {
 	if runningCLI == "" {
 		return "#!/bin/sh\necho " + quoteShWord(codeafShimRefusal) + " >&2\nexit 127\n"
 	}
-	return "#!/bin/sh\nexec " + quoteShWord(runningCLI) + " \"$@\"\n"
+	return "#!/bin/sh\nexec " + quoteShWord(shell.ListPath(runningCLI)) + " \"$@\"\n"
 }
 
 // planCLIBinEnv is the resolver's one override: it names a binary that
@@ -930,7 +936,9 @@ func fileExecutable(path string) bool {
 // line. A path with a space in it is ordinary on this machine and the shim
 // is read by /bin/sh, which splits on spaces without this.
 func quoteShWord(word string) string {
-	if !strings.ContainsAny(word, " \t\"'$`\\") {
+	// Drive conversion removes backslashes that used to force quoting. Windows
+	// shim words stay quoted even when their only punctuation is a parenthesis.
+	if runtime.GOOS != "windows" && !strings.ContainsAny(word, " \t\"'$`\\") {
 		return word
 	}
 	return "'" + strings.ReplaceAll(word, "'", "'\\''") + "'"

@@ -148,6 +148,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/shell"
 )
 
 const (
@@ -713,7 +714,7 @@ func checkCommand(ground, check string) string {
 			// The second word is the one [fileChecksIn] resolved, so the file it
 			// found is the file this command is about — and a wildcard the work
 			// wrote takes its first match, for the reason stated just below.
-			return fields[0] + " " + shellQuoted(files[0].path)
+			return fields[0] + " " + shellQuoted(checkFileArgument(fields[0], files[0].path))
 		}
 		// A WILDCARD THE WORK WROTE RESOLVES TO WHATEVER IT MATCHES, and the
 		// first match that can be started is the check. The alternative —
@@ -722,9 +723,9 @@ func checkCommand(ground, check string) string {
 		for _, file := range files {
 			switch {
 			case file.runnable:
-				return shellQuoted(file.path)
+				return shellQuoted(shell.ListPath(file.path))
 			case file.interpreter != "":
-				return file.interpreter + " " + shellQuoted(file.path)
+				return file.interpreter + " " + shellQuoted(checkFileArgument(file.interpreter, file.path))
 			}
 		}
 		return ""
@@ -733,6 +734,17 @@ func checkCommand(ground, check string) string {
 		return check
 	}
 	return ""
+}
+
+// checkFileArgument converts filenames read by a shell interpreter, while a
+// native interpreter keeps its own Windows filename rather than an MSYS path.
+func checkFileArgument(interpreter, filename string) string {
+	switch strings.ToLower(filepath.Base(interpreter)) {
+	case "bash", "sh", "bash.exe", "sh.exe":
+		return shell.ListPath(filename)
+	default:
+		return filename
+	}
 }
 
 // shellQuoted wraps one path so that a shell reads it as ONE WORD, whatever is

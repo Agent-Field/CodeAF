@@ -651,6 +651,7 @@ const (
 	MethodDetachSkill    = "DetachSkill"    // string → bool (whether it was on)
 	MethodAttachedSkills = "AttachedSkills" // nothing → []string
 	MethodClearSkills    = "ClearSkills"    // nothing → int (how many were on)
+	MethodSkillFolders   = "SkillFolders"   // no args → []skills.Skill from this engine’s folders
 	MethodSkillShelf     = "SkillShelf"     // SkillShelfArgs → []store.Fact
 
 	// The conversation's own posture on the tool gate (internal/session's
@@ -833,6 +834,8 @@ type LaunchShape struct {
 	// HandOverOnAsk keeps a running reply in the conversation until the person
 	// moves it to a task ([session.Config.HandOverOnAsk]); the desktop app sets it.
 	HandOverOnAsk bool `json:"handOverOnAsk,omitempty"`
+	// TeamListeningSince carries the app's subscribe-before-check boundary.
+	TeamListeningSince time.Time `json:"teamListeningSince,omitzero"`
 	// ProposalClockS, when set, is how many seconds a proposed task waits before
 	// it starts on its own ([session.Config.TaskAutoApproveSeconds]).
 	ProposalClockS *int `json:"proposalClockS,omitempty"`
@@ -1057,6 +1060,10 @@ type StreamCursor struct {
 // Welcome is the server's answer ("welcome"): the facts a surface needs before
 // its first frame, which are the same facts newApp reads off a local agent.
 type Welcome struct {
+	// UserMessages is counted from the engine's replay, so an attaching app
+	// need not parse the journal again just to allocate visible message IDs.
+	UserMessages *int `json:"userMessages,omitempty"`
+
 	// MessageMarks says this engine records a submission's authored words,
 	// attachments and reference-read facts together. Absence is an older
 	// engine: a marked submission must be refused before any words are sent.
@@ -1078,6 +1085,8 @@ type Welcome struct {
 	// engine, which would drop the field unread: a call carrying one is refused
 	// before it is sent rather than run without the correlation it asked for.
 	MessageClientIDs bool `json:"messageClientIds,omitempty"`
+	// HarnessRequests says this engine exposes the picked-harness turn door.
+	HarnessRequests bool `json:"harnessRequests,omitempty"`
 	// AttachmentSources says this engine keeps [session.MessageAttachment.Source],
 	// the recorded audio or video span a file attachment was kept for. Absence is
 	// an older engine, which would drop it unread: a call carrying one is refused
@@ -1418,6 +1427,8 @@ type Welcome struct {
 	// false keeps the picker's own sentence for a conversation that cannot
 	// carry attached skills rather than a list whose every choice goes nowhere.
 	Skills bool `json:"skills,omitempty"`
+	// SkillFolders says discovery runs on this engine rather than the client.
+	SkillFolders bool `json:"skill_folders,omitempty"`
 
 	// ── version 21 ──────────────────────────────────────────────────────────
 

@@ -82,7 +82,7 @@ func (b *appBackend) ProcessActions(ctx context.Context, id string) (*appwire.Pr
 	if err != nil {
 		return nil, err
 	}
-	a, err := b.find(agent)
+	a, err := b.findCrewOwner(agent)
 	if err != nil {
 		return nil, err
 	}
@@ -271,7 +271,7 @@ func (b *appBackend) StopAllProcesses(ctx context.Context, ask appwire.ProcessSt
 		return nil, err
 	}
 	agent := ask.Agent
-	a, err := b.find(agent)
+	a, err := b.findCrewOwner(agent)
 	if err != nil {
 		return nil, err
 	}
