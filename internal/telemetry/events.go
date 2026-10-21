@@ -376,7 +376,7 @@ var propDocs = map[string]map[string]string{
 		"mode":                    "chat or task",
 		"input_tokens":            "provider-reported input tokens since the preceding usage event",
 		"output_tokens":           "provider-reported output tokens since the preceding usage event",
-		"total_tokens":            "the sum of this event's input and output tokens",
+		"total_tokens":            "the sum of this event's measured components, or the provider total with no split for total_only",
 		"routing_provider":        "openrouter, openai, anthropic, google, bedrock, azure, ollama, other, or unknown",
 		"model_family":            "deepseek, claude, gpt, gemini, llama, qwen, kimi, glm, other, or unknown",
 		"usage_status":            "reported, total_only, mixed, estimated, partial, or missing",

@@ -50,7 +50,7 @@ any of the three drift apart.
 | usage_delta | mode | chat or task |
 | usage_delta | input_tokens | provider-reported input tokens since the preceding usage event |
 | usage_delta | output_tokens | provider-reported output tokens since the preceding usage event |
-| usage_delta | total_tokens | the sum of this event's input and output tokens |
+| usage_delta | total_tokens | the sum of this event's measured components, or the provider total with no split for total_only |
 | usage_delta | routing_provider | openrouter, openai, anthropic, google, bedrock, azure, ollama, other, or unknown |
 | usage_delta | model_family | deepseek, claude, gpt, gemini, llama, qwen, kimi, glm, other, or unknown |
 | usage_delta | usage_status | reported, total_only, mixed, estimated, partial, or missing |
@@ -171,14 +171,28 @@ The release-download workflow fails visibly when its production PostHog key or G
 
 See [Model usage accounting](model-usage-accounting.md) for the estimator,
 limitations, privacy fields, receipt-aware PostHog query and deployment order.
-A later provider receipt supersedes its earlier estimate by `usage_receipt`;
+A later provider receipt supersedes each measured component's earlier estimate by `usage_receipt`;
 raw estimates and recovered measurements must not be added together. Estimates
 never change billing, response usage or token limits.
 The receipt key includes the physical attempt's identity so separate answers
 stay separate even when a compatible service reuses a generation id.
+Generation ids are trimmed before both observations and recovery. A one-sided
+recovery leaves the other component unknown; a cost-only receipt adds no token
+event. Invalid or unsafe counts and sums are omitted, and estimates require a
+receipt identity. The final status describes the components actually emitted.
+
+Native `input_tokens`/`output_tokens` aliases now supply measured counts where
+they previously stayed zero. Native cache reads and writes are included in
+prompt tokens, matching the canonical cache-inclusive prompt convention.
+Provider cost is banked unchanged; the provider billing boundary does not
+calculate a token price when cost is absent. Estimates never supply a price.
+Unmetered answers from a direct service retain the prior no-lookup behavior,
+including overflow answers; their telemetry still follows the actual attempt.
 
 Connected services request streaming usage with `stream_options.include_usage`.
 An explicit unsupported-option response on HTTP 400 or 422 retries once without
 that option; later calls to that endpoint omit it. Unrelated errors do not turn
 the option off. The default router road keeps its existing `usage.include`
 request and sends no `stream_options`.
+Independent reasoning or parameter repairs can compose with this fallback;
+each distinct repair is used at most once in the repair chain.

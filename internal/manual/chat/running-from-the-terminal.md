@@ -1117,7 +1117,9 @@ call used. Never prompts, code, file names, paths, repo names, keys, email, IP o
 machine name, and no model names. Each completed provider call queues a `usage_delta`
 with provider-reported token counts when available and separate estimates for missing
 text counts. A hashed receipt key pairs an estimate with a later provider receipt,
-so analytics select reported counts instead of adding both. No text is sent. The queue is sent every 30 seconds while
+so analytics select reported counts per component instead of adding both. A recovered
+receipt with just one token count leaves the other component's estimate available;
+a cost-only receipt adds no token measurement. No text is sent. The queue is sent every 30 seconds while
 the session stays open and once more when it ends; `session_ended` carries the outcome
 and bucketed counts without repeating those tokens.
 
@@ -1134,12 +1136,17 @@ If a service explicitly refuses that option with HTTP 400 or 422, codeaf retries
 once without it and omits it on later calls to that endpoint. An unrelated error
 does not turn usage reporting off. The default router uses its existing usage
 request without the extra option.
+The usage-option repair can follow or precede an independent reasoning repair;
+each distinct repair is used once in that chain.
 
 Missing text counts may have separately labelled estimates in anonymous usage
 events. Estimates never change spending, prices or token limits. An interrupted
 answer estimates only what arrived. Provider-reported counts, including explicit
 zeroes, remain measurements. Separate answers keep separate hashed receipts even
 if a connected service repeats its own answer id.
+Opaque reasoning replay in the input leaves its input estimate unknown. Role or
+metadata frames alone do not establish output on a cut stream; a normally
+finished empty answer can honestly estimate zero output.
 
 ## How to turn telemetry off now — /settings stops sending immediately
 
