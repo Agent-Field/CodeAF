@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/verification"
 )
 
 // ExecutionNotes carries exact command context and observed outcomes to later stages.
@@ -14,7 +16,7 @@ import (
 func (c *stageConversation) ExecutionNotes() ([]string, *factory.TestCounts) {
 	f, err := os.Open(c.file)
 	if err != nil {
-		return nil, nil
+		return []string{verification.FailurePrefix + " command journal could not be read: " + err.Error()}, nil
 	}
 	defer f.Close()
 	dec := json.NewDecoder(f)
@@ -22,6 +24,28 @@ func (c *stageConversation) ExecutionNotes() ([]string, *factory.TestCounts) {
 	var notes []string
 	var tests *factory.TestCounts
 	lastOutcome := map[string]string{}
+	setupFailures := map[string]string{}
+	var journalErr error
+	checks, checkErr := verification.Read(c.file)
+	observed := map[string]bool{}
+	latest := map[string]verification.Check{}
+	for _, check := range checks {
+		observed[check.Command] = true
+		latest[check.Key()] = check
+	}
+	corrected := map[string]bool{}
+	for _, check := range latest {
+		if !verification.PresentationOnly(check.Command) {
+			continue
+		}
+		identity := verificationCommand(check.Command)
+		if _, seen := corrected[identity]; !seen {
+			corrected[identity] = true
+		}
+		if check.Exit == nil || *check.Exit != 0 {
+			corrected[identity] = false
+		}
+	}
 	for {
 		var row struct {
 			Role       string `json:"role"`
@@ -39,7 +63,8 @@ func (c *stageConversation) ExecutionNotes() ([]string, *factory.TestCounts) {
 			if err == io.EOF {
 				break
 			}
-			return notes, tests
+			journalErr = err
+			break
 		}
 		for _, call := range row.Calls {
 			if call.Function.Name != "bash" {
@@ -56,6 +81,13 @@ func (c *stageConversation) ExecutionNotes() ([]string, *factory.TestCounts) {
 		if row.Role != "tool" || cmd == "" {
 			continue
 		}
+		// Setup refusal happens before the shell runs and has no exit receipt.
+		// Keep it even for commands outside the legacy check-name vocabulary.
+		if strings.HasPrefix(row.Content, verification.SetupFailurePrefix) {
+			setupFailures[cmd] = row.Content
+			continue
+		}
+		delete(setupFailures, cmd)
 		if !strings.Contains(cmd, "go test") && !strings.Contains(cmd, "go vet") && !strings.Contains(cmd, "pytest") && !strings.Contains(cmd, "npm test") {
 			continue
 		}
@@ -66,7 +98,13 @@ func (c *stageConversation) ExecutionNotes() ([]string, *factory.TestCounts) {
 		} else if passed {
 			receipt["outcome"] = "passed"
 		}
-		lastOutcome[cmd] = receipt["outcome"].(string)
+		if observed[cmd] && verification.PresentationOnly(cmd) {
+			// The pipeline may have failed while its check passed. Keep the
+			// shell receipt honest; only the observed check decides the guard.
+			receipt["scope"] = "shell presentation; check exits recorded separately"
+		} else {
+			lastOutcome[cmd] = receipt["outcome"].(string)
+		}
 		if strings.Contains(cmd, "go test") {
 			counts := &factory.TestCounts{}
 			for _, line := range strings.Split(row.Content, "\n") {
@@ -96,10 +134,91 @@ func (c *stageConversation) ExecutionNotes() ([]string, *factory.TestCounts) {
 			notes = notes[len(notes)-12:]
 		}
 	}
+	// Exact argv, directory and target context identify a check. A later
+	// corrected presentation of THAT check can clear an earlier failure; a
+	// passing subset, other directory or target cannot.
+	var pending []string
+	for command, failure := range setupFailures {
+		pending = append(pending, command+" · "+failure)
+	}
+	if journalErr != nil {
+		pending = append(pending, "command journal could not be decoded: "+journalErr.Error())
+	}
 	for command, outcome := range lastOutcome {
-		if outcome == "failed" {
-			notes = append(notes, "Unresolved verification command failed: "+command)
+		if outcome == "failed" && !(verification.PresentationOnly(command) && corrected[verificationCommand(command)]) {
+			pending = append(pending, command)
 		}
 	}
+	keys := make([]string, 0, len(latest))
+	for key := range latest {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		check := latest[key]
+		outcome := "unknown"
+		if check.Exit != nil {
+			if *check.Exit == 0 {
+				outcome = "passed"
+			} else {
+				outcome = "failed"
+			}
+		}
+		raw, _ := json.Marshal(map[string]any{"command": check.Command, "check": check.Args, "cwd": check.Cwd, "exit": check.Exit, "outcome": outcome})
+		notes = append(notes, "Check receipt: "+string(raw))
+		if outcome != "passed" {
+			pending = append(pending, check.Label()+" · "+outcome)
+		}
+	}
+	if len(notes) > 12 {
+		notes = notes[len(notes)-12:]
+	}
+	if checkErr != nil {
+		pending = append(pending, "check receipts could not be read: "+checkErr.Error())
+	}
+	sort.Strings(pending)
+	for _, command := range pending {
+		notes = append(notes, verification.FailurePrefix+" "+command)
+	}
 	return notes, tests
+}
+
+// Old transcripts have only a pipeline's exit. Match a newly observed rerun
+// conservatively to the identical command before its presentation pipe. Shell
+// substitutions and compound alternatives stay exact rather than guessing at
+// what they executed. Changed flags, environment and cd prefixes stay distinct.
+func verificationCommand(command string) string {
+	quote := byte(0)
+	escaped := false
+	for i := 0; i < len(command); i++ {
+		ch := command[i]
+		if escaped {
+			escaped = false
+			continue
+		}
+		if ch == '\\' && quote != '\'' {
+			escaped = true
+			continue
+		}
+		if quote != 0 {
+			if ch == quote {
+				quote = 0
+			}
+			continue
+		}
+		if ch == '\'' || ch == '"' {
+			quote = ch
+			continue
+		}
+		if ch == '`' || ch == '(' || ch == ';' || ch == '\n' {
+			return command
+		}
+		if ch == '|' {
+			if i+1 < len(command) && command[i+1] == '|' {
+				return command
+			}
+			return strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(command[:i]), "2>&1"))
+		}
+	}
+	return strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(command), "2>&1"))
 }

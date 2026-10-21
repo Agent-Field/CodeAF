@@ -176,3 +176,23 @@ func TestWorkerReportKeepsTheExecutedModel(t *testing.T) {
 		t.Fatalf("lost executed model: %s", raw)
 	}
 }
+
+func TestRejectedRoundSurvivesWireAndStoreRoundTrip(t *testing.T) {
+	it := factory.Item{ID: 7, Stages: []factory.Stage{{Name: "followpr", On: true}}, Stream: &factory.Stream{Phases: []factory.Phase{{Name: "followpr", Round: 2, Rounds: []factory.RoundLine{{Round: 1, Rejected: true, Summary: "Verification blocked: go test"}, {Round: 2, Summary: "verified"}}}}}}
+	wire := FromItem(it)
+	raw, err := json.Marshal(wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded Job
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if len(decoded.Steps) != 1 || len(decoded.Steps[0].Rounds) != 2 || !decoded.Steps[0].Rounds[0].Rejected || decoded.Steps[0].Rounds[1].Rejected {
+		t.Fatalf("wire lost rejected outcome: %s", raw)
+	}
+	roundTrip := roundsItem(decoded.Steps[0].Rounds)
+	if !roundTrip[0].Rejected || roundTrip[1].Rejected {
+		t.Fatal("store lost rejection")
+	}
+}

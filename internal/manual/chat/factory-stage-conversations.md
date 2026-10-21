@@ -392,3 +392,29 @@ and a publication already underway cannot change control.
 The manager's `factory_follow_pr` tool turns an explicit request such as “fix it anyway”
 into another maintenance investigation. It needs an open linked PR and the original
 publication approval; it refuses manual mode or work already running. It does not merge.
+
+## why verification can reject a completed report — test exit versus output counting
+
+A factory test, proof or Follow PR round is accepted only when its observed checks
+have no unresolved failure. Shell `pipefail` still preserves pipeline failures.
+The factory additionally records the actual exits of ordinary `go test`, `go vet`,
+`pytest`, `python -m pytest`, `python3 -m pytest`, `npm test` and `npm run test`
+invocations independently of the commands formatting their output. A `grep -c`
+that prints zero and exits 1 does not turn a passing test into a failed test.
+A failed or interrupted check still blocks, even if a later `tail` or `true`
+reports success. Commands outside these observed forms retain conservative
+whole-command handling; the factory does not pretend to understand arbitrary shell
+programs. A passing test does not excuse a failed build later in a compound command.
+
+A corrected rerun can resolve the same check without repeating its broken output
+filter. Directory, arguments and recorded target/runtime settings distinguish
+checks, so a passing subset or another target cannot erase the original failure.
+Receipts live beside the stage's transcript and are deleted with that owned chat.
+An unreadable receipt or journal is a verification block, never a passing check.
+
+When verification rejects a model's completed report, the conversation and job
+status name the check and show whether another round is running or the automatic
+round limit needs a decision. Rejected rounds are marked failed in their history;
+old rounds without an outcome field keep their historical appearance. No repair
+is pushed on the strength of a rejected report. Initial publishing consent,
+spend/attempt limits and human merge authority continue to apply.
