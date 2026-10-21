@@ -860,6 +860,9 @@ func (h *Handler) scheduleJobTimer() {
 }
 
 func approvalWords(it factory.Item) string {
+	if factory.ReadinessPending(it) {
+		return "Mark the existing draft PR ready for review; continue monitoring. Merge remains my decision."
+	}
 	if it.Approval != nil && it.Approval.Words != "" {
 		return it.Approval.Words
 	}

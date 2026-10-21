@@ -682,6 +682,7 @@ type Answer = factory.Answer
 // The job's state stays done; this field is how a reader tells PR open from
 // Merged. Contract stays 2.
 type PR struct {
+	ReadinessKey    string     `json:"readiness_key,omitempty"`
 	BaseSHA         string     `json:"base_sha,omitempty"`
 	Feedback        string     `json:"feedback,omitempty"`
 	CheckRuns       []CheckRun `json:"check_runs,omitempty"`

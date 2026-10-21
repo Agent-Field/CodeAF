@@ -421,11 +421,15 @@ func Met(s Stage, r StageResult) bool {
 // pass, and there is no second copy of the rules to drift from the first.
 func ReportFault(s Stage, r StageResult) string {
 	if IsCIRepairStage(s) {
-		if r.Repair == nil || (r.Repair.Decision != "fixed" && r.Repair.Decision != "no_change" && r.Repair.Decision != "needs_you") || strings.TrimSpace(r.Repair.Reason) == "" {
-			return "CI repair needs repair: {decision: fixed or needs_you, reason: evidence and what is needed}"
+		if r.Repair == nil || (r.Repair.Decision != "fixed" && r.Repair.Decision != "no_change" && r.Repair.Decision != "needs_repair" && r.Repair.Decision != "needs_you") || strings.TrimSpace(r.Repair.Reason) == "" {
+			return "Follow PR needs repair: {decision: fixed, no_change, needs_repair or needs_you; reason: evidence and what is needed}"
 		}
 	}
-	if IsCIRepairStage(s) && r.Repair != nil && (r.Repair.Decision == "needs_you" || r.Repair.Decision == "no_change") {
+	if IsCIRepairStage(s) && r.Repair != nil && r.Repair.Readiness != nil && r.Repair.Decision == "no_change" {
+		_, fault := judge(s, r)
+		return fault
+	}
+	if IsCIRepairStage(s) && r.Repair != nil && (r.Repair.Decision == "needs_you" || r.Repair.Decision == "needs_repair" || r.Repair.Decision == "no_change") {
 		return ""
 	}
 	_, fault := judge(s, r)
@@ -445,6 +449,14 @@ const (
 // whether the result meets it ([Met]), and what in it contradicts itself
 // under that rule ([ReportFault]), "" for nothing.
 func judge(s Stage, r StageResult) (met bool, fault string) {
+	if IsCIRepairStage(s) && r.Repair != nil && r.Repair.Readiness != nil && r.Repair.Decision == "no_change" {
+		a := r.Repair.Readiness
+		if r.Done && r.Exit == 0 && r.Findings == 0 && strings.TrimSpace(r.Repair.Reason) != "" && a.Head != "" && a.DiffReviewed && a.DescriptionMatches && a.FeedbackAddressed && a.NoUnfinishedWork {
+			return true, ""
+		}
+		return false, "final readiness review is incomplete"
+	}
+
 	switch strings.TrimSpace(s.Until) {
 	case "", UntilDone:
 		return r.Done, ""

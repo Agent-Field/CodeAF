@@ -377,21 +377,23 @@ type PRChecks struct {
 // State, the merge, the reviews and the check summary are filled when a
 // later poll reads the pull request again.
 type PullRequest struct {
-	BaseSHA        string     `json:",omitempty"`
-	Feedback       string     `json:",omitempty"`
-	CheckRuns      []CheckRun `json:",omitempty"`
-	Conflict       bool
-	Draft          bool
-	Number         int
-	URL            string
-	CI             string
-	State          string
-	MergedBy       string
-	MergedAt       time.Time
-	ReviewDecision string
-	Reviews        []PRReview
-	Required       int
-	Checks         PRChecks
+	ReadinessKey     string     `json:",omitempty"`
+	ReadinessContext string     `json:",omitempty"`
+	BaseSHA          string     `json:",omitempty"`
+	Feedback         string     `json:",omitempty"`
+	CheckRuns        []CheckRun `json:",omitempty"`
+	Conflict         bool
+	Draft            bool
+	Number           int
+	URL              string
+	CI               string
+	State            string
+	MergedBy         string
+	MergedAt         time.Time
+	ReviewDecision   string
+	Reviews          []PRReview
+	Required         int
+	Checks           PRChecks
 	// HeadSHA is the commit the pull request's branch points at, Mergeable
 	// whether the forge says it can merge ([MergeableYes], [MergeableNo], or
 	// "" while it has not worked that out), and ChecksRead and ReviewsRead
@@ -673,6 +675,7 @@ type FileChange struct {
 // run's conclusion when it finished, otherwise its status: `success`,
 // `failure`, `in_progress`, `queued`), and its page.
 type CheckRun struct {
+	AppID int `json:",omitempty"`
 	Name  string
 	State string
 	URL   string

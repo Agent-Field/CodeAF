@@ -101,6 +101,9 @@ func (h *Handler) recordApproval(r *http.Request, it factory.Item, edited bool) 
 		return "", err
 	}
 	detail := "proof"
+	if factory.ReadinessPending(it) {
+		detail = "ready_for_review · mark the reviewed draft ready; no push or merge"
+	}
 	if it.State != factory.StateLanded {
 		detail = "plan"
 		if it.QKind == factory.QKindAskFirst {

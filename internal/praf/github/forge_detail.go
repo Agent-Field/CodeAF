@@ -8,6 +8,7 @@ package github
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"sort"
 	"strconv"
@@ -31,6 +32,7 @@ type FileChange struct {
 // CheckRun is one check run on a commit: its name, its status (`queued`,
 // `in_progress`, `completed`), its conclusion once completed, and its page.
 type CheckRun struct {
+	AppID      int
 	Name       string
 	Status     string
 	Conclusion string
@@ -145,12 +147,18 @@ func (c *client) CheckRuns(ctx context.Context, owner, repo, sha string) (CheckS
 	}
 	var combined struct {
 		State    string `json:"state"`
+		Total    int    `json:"total_count"`
 		Statuses []struct {
-			State string `json:"state"`
+			Context string `json:"context"`
+			URL     string `json:"target_url"`
+			State   string `json:"state"`
 		} `json:"statuses"`
 	}
 	if err := json.Unmarshal(body, &combined); err != nil {
 		return ChecksNone, nil, err
+	}
+	if combined.Total > len(combined.Statuses) {
+		return ChecksNone, nil, fmt.Errorf("commit statuses are incomplete; cannot assert current-head CI passed")
 	}
 	failed, running, passed := false, false, false
 	for _, s := range combined.Statuses {
@@ -168,7 +176,11 @@ func (c *client) CheckRuns(ctx context.Context, owner, repo, sha string) (CheckS
 		return ChecksNone, nil, err
 	}
 	var runs struct {
+		Total     int `json:"total_count"`
 		CheckRuns []struct {
+			App struct {
+				ID int `json:"id"`
+			} `json:"app"`
 			Name       string `json:"name"`
 			Status     string `json:"status"`
 			Conclusion string `json:"conclusion"`
@@ -178,9 +190,24 @@ func (c *client) CheckRuns(ctx context.Context, owner, repo, sha string) (CheckS
 	if err := json.Unmarshal(body, &runs); err != nil {
 		return ChecksNone, nil, err
 	}
+	if runs.Total > len(runs.CheckRuns) {
+		return ChecksNone, nil, fmt.Errorf("check runs are incomplete; cannot assert current-head CI passed")
+	}
 	var out []CheckRun
+	for _, s := range combined.Statuses {
+		conclusion := s.State
+		status := "completed"
+		if s.State == "pending" {
+			status = "in_progress"
+			conclusion = ""
+		}
+		if s.State == "error" {
+			conclusion = "failure"
+		}
+		out = append(out, CheckRun{Name: s.Context, Status: status, Conclusion: conclusion, URL: s.URL})
+	}
 	for _, r := range runs.CheckRuns {
-		out = append(out, CheckRun{Name: r.Name, Status: r.Status, Conclusion: r.Conclusion, URL: r.HTMLURL})
+		out = append(out, CheckRun{AppID: r.App.ID, Name: r.Name, Status: r.Status, Conclusion: r.Conclusion, URL: r.HTMLURL})
 		if r.Status != "completed" {
 			running = true
 			continue

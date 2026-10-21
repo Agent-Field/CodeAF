@@ -132,7 +132,7 @@ func (f *fixture) handle(w http.ResponseWriter, r *http.Request) {
 	case key == "GET /repos/acme/api/collaborators/santosh/permission":
 		js(map[string]any{"permission": "admin"})
 	case key == "GET /repos/acme/api/commits/abc/status":
-		js(map[string]any{"state": "success", "statuses": []map[string]any{{"state": "success"}}})
+		js(map[string]any{"state": "success", "statuses": []map[string]any{{"state": "success", "context": "legacy CI"}}})
 	case key == "GET /repos/acme/api/commits/abc/check-runs":
 		run := map[string]any{"name": "build", "status": "completed", "conclusion": "success", "html_url": "https://github.com/acme/api/runs/1"}
 		if f.checksRun {

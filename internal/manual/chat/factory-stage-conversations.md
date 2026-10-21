@@ -497,3 +497,38 @@ Start records Run started; Bring back records a fresh Backlog boundary while old
 audit history remains. An automatic approval request is recorded in the past tense;
 the current job state says whether approval is still pending or the run advanced.
 A historical request is not a claim that approval is still being checked.
+
+
+## When a draft PR becomes ready for review
+
+Follow PR first waits for current-head CI to pass, with no pending or failed
+checks, readable review feedback and known conflict-free mergeability. It then
+runs a brief read-only final review of the actual GitHub PR description and
+complete diff against the issue and verified result. The diff is bounded to
+192 KiB and combined title, description, diff and feedback to 384 KiB; exceeding
+either limit is an explicit incomplete-read reason, never silent truncation. It explicitly checks that
+feedback is addressed and no unfinished work remains. Ordinary fixable findings
+return through bounded repair and verification in Follow PR (repair.decision
+needs_repair); critical decisions still ask you. No new pipeline step,
+code commit or push is needed for this review, and it uses the job budget and
+bounded Follow PR attempts.
+
+The review records the exact PR head and a fingerprint of its base, diff,
+description, checks, required check policy and feedback. Unknown/truncated
+material never means ready. A new push, description edit, comment or changed
+check invalidates the pending decision. In Auto, the existing service approval
+system records permission to mark the draft ready. In Manual, the conversation
+says: "Approval needed: mark the existing draft PR ready for review. This will
+notify reviewers; it does not push code or merge. Press Approve to continue."
+The generic Approve button uses that same recorded door and GitHub identity;
+a separate generic GitHub connector is not required.
+
+Immediately before changing draft status, the runner re-reads and revalidates
+the live head, description, checks and feedback. GitHub's ready mutation has no
+expected-head compare-and-swap field, so the runner also verifies the returned
+and observed head after the write. It sends the mutation once; if its outcome
+is uncertain, a retry first observes GitHub and does not repeat a successful
+transition. Access/refusal/read errors keep a specific recoverable reason.
+A PR marked ready externally is recognized too. Overview and the conversation
+show the ready milestone and reviewed head. Follow PR keeps watching afterward;
+ready is not job completion and Auto never grants merge authority.
