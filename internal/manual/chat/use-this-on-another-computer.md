@@ -237,13 +237,13 @@ Keep the file and the passphrase safe. Anybody who has both has your chats.
 
 ## Is my code sent anywhere before I pair — quiet first launch
 
-A home that has never completed a pairing and never offered a code sends nothing to any relay — opening the add-device card or reading its instructions does not change that. The first launch makes an identity locally; no device record reaches the relay. Reading instructions, including `alt+d`, does not publish a device record, open a relay connection or send your chats.
+On a new home, no device record reaches the relay, and no relay request, connection or chat upload is sent, until this home completes a pairing or starts offering a pairing code. Showing a code needs the relay even if nobody joins. A new device's `codeaf pair` also contacts the relay to offer its link; its chats start syncing only after approval. Opening or closing `+ Add another device` with `alt+d`, reading its instructions, listing `/devices` or `codeaf devices`, and ordinary local chats leave a new home **quiet**.
 
-Explicitly starting pairing is different: showing a code or requesting a link contacts the chosen relay so the other computer can answer. After pairing, your computers can sync. Until you start that, your chats stay here and home shows no devices row.
+An identity made by an older build without the quiet marker keeps its earlier sync behavior. That local identity does not say whether it was paired, so codeaf preserves existing pairings rather than silently stopping them. Set `CODEAF_SYNC_URL=off` to stop relay requests on that home too.
 
 If something reaches for the relay while quiet, it gets the word `sync is waiting until another machine is added`. That is not a fault.
 
-The first-run line about the hosted relay is said once, when chats are first copied, which is after pairing. `CODEAF_SYNC_URL=off` keeps even a paired machine from sending anything.
+The first-run line about the hosted relay is said once, when chats are first copied, after pairing or offering a code. `CODEAF_SYNC_URL=off` keeps even a paired machine from contacting a relay, including pairing with `--via`.
 
 ## Where your chats are stored — the hosted relay, turning it off, your own relay, is my code private
 

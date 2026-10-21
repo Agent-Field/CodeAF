@@ -59,6 +59,9 @@ type Drive struct {
 // another device is driving right now starts as a viewer. Any directory error
 // is returned before anything runs, so the caller can carry on unsynced.
 func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt DriveOptions) (*Drive, error) {
+	if Quiet(s.Home) {
+		return nil, ErrQuiet
+	}
 	files, err := s.files(eng, c)
 	if err != nil {
 		return nil, err

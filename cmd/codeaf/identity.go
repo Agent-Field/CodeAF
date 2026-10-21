@@ -62,7 +62,7 @@ func identityShow(d identityDoor, args []string) error {
 	if len(args) != 0 {
 		return errors.New(identityUsage)
 	}
-	id, err := identity.Ensure(d.home)
+	id, err := identity.EnsureSolo(d.home)
 	if err != nil {
 		return err
 	}
@@ -79,7 +79,7 @@ func identityExport(d identityDoor, args []string) error {
 	if len(args) > 1 {
 		return errors.New(identityUsage)
 	}
-	id, err := identity.Ensure(d.home)
+	id, err := identity.EnsureSolo(d.home)
 	if err != nil {
 		return err
 	}

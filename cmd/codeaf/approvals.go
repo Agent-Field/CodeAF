@@ -7,7 +7,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"sort"
 	"strings"
 	"sync"
@@ -18,6 +17,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
+	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
@@ -108,7 +108,10 @@ func (d *approvalsDoor) recall(p tui3.PendingDevice) (pair.Asking, error) {
 
 func (d *approvalsDoor) Approve(ctx context.Context, p tui3.PendingDevice) error {
 	return d.answer(p, func(who pair.Approver, as pair.Asking) error {
-		return errors.Join(who.Approve(ctx, as), identity.EndSolo(d.dir))
+		if err := who.Approve(ctx, as); err != nil {
+			return err
+		}
+		return identity.EndSolo(d.dir)
 	})
 }
 
@@ -154,6 +157,9 @@ func (d *approvalsDoor) home() (directory.Client, identity.Identity, string, err
 }
 
 func (d *approvalsDoor) Devices(ctx context.Context) ([]tui3.DeviceRow, error) {
+	if syncsetup.Quiet(d.dir) {
+		return nil, nil
+	}
 	client, id, self, err := d.home()
 	if err != nil {
 		return nil, err
