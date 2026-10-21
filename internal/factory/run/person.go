@@ -40,6 +40,7 @@ func QueueItem(it *factory.Item, now time.Time) error {
 	it.Question, it.QKind = "", ""
 	it.Proof, it.Policy = nil, nil
 	it.Stream = freshStream(it, now)
+	it.Note(now, "Run started")
 	loopSay(it, now, "said", "queued")
 	return nil
 }

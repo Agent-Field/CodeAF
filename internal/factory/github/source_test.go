@@ -571,3 +571,27 @@ func TestPollDoesNotImportStandalonePRJobs(t *testing.T) {
 		t.Fatal("legacy source bypassed issue-only import")
 	}
 }
+
+func TestPublicExportGuardsActualGitHubPayload(t *testing.T) {
+	f := newFixture()
+	_, api := f.serve(t)
+	src := New(api, []string{"acme/api"}, time.Now)
+	item := factory.Item{Repo: "api", Product: "acme", Num: 7, Title: "Fix /home/private-person/problem", Origin: factory.OriginForge}
+	for _, verb := range []string{"comment", "pr"} {
+		_, err := src.Write(context.Background(), factory.Action{Verb: verb, Item: item, Branch: "feature", Draft: true, Body: "Passed: cd /home/private-person/.codeaf/v3/factory/work/job/go && go test ./..."})
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.mu.Lock()
+		last := f.posted[len(f.posted)-1]
+		f.mu.Unlock()
+		for _, key := range []string{"body", "title"} {
+			if text, ok := last[key].(string); ok && strings.Contains(text, "private-person") {
+				t.Fatal("private identity in outgoing " + key)
+			}
+		}
+		if !strings.Contains(last["body"].(string), "cd ./go && go test ./...") {
+			t.Fatal("lost check command")
+		}
+	}
+}

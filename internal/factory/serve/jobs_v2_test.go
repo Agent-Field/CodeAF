@@ -649,7 +649,13 @@ func TestV2RestoreWhoseChatDeleteFailsStillRestores(t *testing.T) {
 	if cur.Stream != nil || cur.Talk != "" || len(cur.Notes) != 0 {
 		t.Fatalf("the old room or conversation is still linked: stream %+v talk %q notes %+v", cur.Stream, cur.Talk, cur.Notes)
 	}
-	if n := len(cur.Activity); n == 0 || cur.Activity[n-1].What != "brought back · its conversations were not all deleted: job-44: the conversation's owner could not finish stopping" {
+	warning := false
+	for _, event := range cur.Activity {
+		if event.What == "brought back · its conversations were not all deleted: job-44: the conversation's owner could not finish stopping" {
+			warning = true
+		}
+	}
+	if !warning {
 		t.Fatalf("activity %+v", cur.Activity)
 	}
 	if j := f.read(t, it); j.State != "backlog" {
