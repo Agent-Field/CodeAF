@@ -426,6 +426,10 @@ packages, and a `node_modules` made on a Mac holds Mac programs that would be wr
 A copy of the folder that a machine already has is never deleted: taking a chat back, or
 rewinding, leaves it alone.
 
+A command that was running on the other machine, such as a dev server, is not running here.
+The arrival card lists `was running there:` the commands that were running, with a server's
+port, so you can start them again; codeaf never restarts one by itself.
+
 ## Does set up run npm ci without asking again — the arrival card and not now
 
 Continuing a chat that needs setup raises one card, **Set this machine up like <device> had it?**, with
