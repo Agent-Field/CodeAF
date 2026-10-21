@@ -307,14 +307,38 @@ Without fd it skips .git, node_modules and vendor, does not follow directory
 symlinks, and does not apply .gitignore. Its description states those limits.
 
 
-## automatic plan approvals and a separate publishing approval
+## Auto and Manual: automatic approvals, retries and publishing
 
-Default approval steps are optional. Before Start, switch an optional approval step off to
-continue automatically after its preceding step. Only you can choose that setting; a stage or
-the manager cannot skip your approval. A repository can still fix a gate in its pipeline.
-The step list shows the setting and the Timeline keeps the change. Skipping an internal gate
-keeps the separate publishing approval: green proof does not silently publish your branch.
-A recipe deliberately containing no approval stages retains its existing self-publish mode.
+New issue jobs default to **Auto**. The job header's Auto / Manual switch is next to
+Actions. Auto uses the shared yellow switch; Manual is grey. The saved mode follows
+the job across views and restarts. Older jobs with no saved mode stay Manual until
+you explicitly enable Auto; upgrading cannot publish an already waiting job.
+
+Auto passes optional routine plan gates, keeps bounded stage retries, and publishes
+passing proof as a draft PR through the same recorded, exact-commit approval door.
+It repairs and updates that same PR within the job's budget and retry limits. The
+service records each approved publication; a worker cannot manufacture consent.
+Neither explicit Auto nor Manual grants automatic merging, even when a recipe permits it. **Merge remains
+your decision.** Manual asks at enabled plan gates and before publication or repair
+pushes. Optional per-step skips remain available; neither mode resets retry limits.
+
+## Auto exceptions and critical approvals
+
+The conversation shows the engine's concrete Auto exception immediately, including
+the needed budget, proof or repository approval. It does not promise publication
+while those checks are blocking it.
+
+Critical unanswered decisions, fixed repository approval gates, missing access,
+failed publication and budget/attempt exhaustion still stop for a concrete next
+step. Auto lets the manager decide ordinary engineering choices within the issue;
+it does not supply credentials, expand money limits or override explicit tool
+denials, shell permission rules or external account permissions. Only named
+internal factory controls and reads inherit its routine permission grant.
+
+The mode switch is separate from **Take over**. Enabling Auto never resumes a
+manually paused working session. **Resume pipeline** remains explicit. Switching
+Manual applies at the next approval boundary and cannot undo an already started
+push. A failed automatic publication stays visible instead of retrying forever.
 
 ## command receipts, live progress and GitHub checks after publishing
 
@@ -325,7 +349,8 @@ Completed stage results carry command receipts in their notes: the command, star
 outcome and explicit test outcomes when the output has them. A final PASS summary is not a test.
 Later steps receive these receipts instead of rediscovering the working directory and flags.
 
-Approve at the final gate pushes the approved commit and creates a draft PR. Its description
+In Manual, Approve at the final gate pushes the approved commit and creates a draft PR.
+Auto records and carries out that routine approval automatically. Its description
 summarizes the implementation and validation, linking the issue instead of copying its body
 and attribution. The app shows GitHub check totals and failed check names separately from local
 proof, records check changes in Timeline, and offers Open PR and View GitHub checks. A draft
@@ -370,12 +395,12 @@ checks reset the attempt count. Missing access or an unresolved decision can als
 
 ## Approve publication and subsequent repair pushes
 
-Initial publication approval explains that it pushes the branch, creates a draft PR and
-authorizes checked maintenance pushes to that same PR within the job budget. The server
-checks that consent against the original approval record. Before each push it rereads
-the PR; a closed PR or an unexpected head refuses the push. Maintenance never creates
-a replacement PR, rewrites remote history, marks a draft ready or merges. A job without recorded
-publication consent still asks before pushing its repair. Merge remains your decision.
+Publication pushes the branch and creates a draft PR. Auto records approval of
+the current tested commit before initial publication and each checked maintenance
+update. Manual asks you before those pushes. The server checks the recorded head;
+the worker rereads the PR before updating it. A closed PR or an unexpected head
+refuses the push. Maintenance never creates a replacement PR, rewrites remote
+history, marks a draft ready or merges. Merge remains your decision.
 Drop and turning the repository off stop the watch.
 
 ## Take over and Resume pipeline

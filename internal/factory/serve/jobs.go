@@ -715,6 +715,8 @@ func (h *Handler) approve(w http.ResponseWriter, r *http.Request, it factory.Ite
 		h.fail(w, 422, "approval requires an assignee")
 		return
 	}
+	a.Automatic = false
+	a.Error = ""
 	a.State = "approving"
 	a.DecidedBy = who
 	a.At = h.clock().UTC()
@@ -759,6 +761,7 @@ func (h *Handler) settleJobs(approvalsOnly ...bool) {
 	if err != nil {
 		return
 	}
+	pending = h.prepareAutomaticApprovals(pending)
 	sweep := len(approvalsOnly) == 0 || !approvalsOnly[0]
 	h.settleMerges(sweep, pending)
 	due := false
@@ -783,6 +786,9 @@ func (h *Handler) settleJobs(approvalsOnly ...bool) {
 	for _, it := range items {
 		a := it.Approval
 		if a == nil || a.State != "approving" || h.clock().Before(a.UndoUntil) {
+			continue
+		}
+		if a.Automatic && !h.automaticApprovalAllowed(it) {
 			continue
 		}
 		raw, _ := json.Marshal(api.Approve{Commit: a.Commit, Edited: a.Edited, Words: a.Words})

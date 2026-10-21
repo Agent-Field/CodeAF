@@ -120,7 +120,7 @@ var Lost = map[string]string{
 // FromItem is one item as a job.
 func FromItem(it factory.Item) Job {
 	j := Job{
-		FollowUp: it.FollowUp, Manual: it.Manual, Effort: it.Effort,
+		Autonomy: it.Autonomy, AutonomyWhy: factory.AutonomyBlockReason(it), FollowUp: it.FollowUp, Manual: it.Manual, Effort: it.Effort,
 		SetupHeld: it.SetupHeld,
 		Owners:    append([]string(nil), it.Owners...),
 		ID:        it.ID, Repo: it.Repo, Num: it.Num, Kind: string(it.Kind), Title: it.Title, URL: it.URL,
@@ -386,7 +386,7 @@ func ToItem(j Job) factory.Item {
 		d = &JobDesk{}
 	}
 	it := factory.Item{
-		FollowUp: j.FollowUp, Manual: j.Manual, Effort: j.Effort,
+		Autonomy: j.Autonomy, FollowUp: j.FollowUp, Manual: j.Manual, Effort: j.Effort,
 		SetupHeld: j.SetupHeld,
 		Owners:    append([]string(nil), j.Owners...),
 		ID:        j.ID, Repo: j.Repo, Num: j.Num, Kind: factory.Kind(j.Kind), Title: j.Title, URL: j.URL, Model: j.Model,

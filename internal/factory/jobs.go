@@ -21,6 +21,7 @@ type JobPriority struct {
 
 // Approval preserves consent across server restarts without storing credentials.
 type Approval struct {
+	Automatic bool      `json:"automatic,omitempty"`
 	Kind      string    `json:"kind"`
 	State     string    `json:"state"`
 	Matched   string    `json:"matched,omitempty"`

@@ -60,8 +60,13 @@ func (g *rig) add(title string, stages ...factory.Stage) int {
 	for i := range stages {
 		stages[i].On = true
 	}
-	id, err := g.st.Add(context.Background(), factory.Item{Title: title, Repo: "acme/api", Stages: stages})
+	id, err := g.st.Add(context.Background(), factory.Item{Autonomy: factory.AutonomyManual, Title: title, Repo: "acme/api", Stages: stages})
 	if err != nil {
+		g.t.Fatal(err)
+	}
+	// Existing protocol fixtures predate the persisted approval modes.
+	// Explicit-mode publication behavior has its own real service fixtures.
+	if err := g.st.Update(id, func(it *factory.Item) error { it.Autonomy = ""; return nil }); err != nil {
 		g.t.Fatal(err)
 	}
 	return id

@@ -19,6 +19,14 @@ func (h *Handler) controlJob(w http.ResponseWriter, r *http.Request, it factory.
 	if !h.decode(w, r, &body, false) || !h.fresh(w, r, it, "control", body.Expect) || !h.owns(w, r, it) {
 		return
 	}
+	if body.Mode == factory.AutonomyAuto || body.Mode == factory.AutonomyManual {
+		if strings.TrimSpace(body.Words) != "" {
+			h.fail(w, 422, "Auto/Manual mode changes do not accept instructions")
+			return
+		}
+		h.setAutonomy(w, r, it, body.Mode)
+		return
+	}
 	if factory.JobState(it) == api.StateDone || it.Publishing {
 		h.fail(w, 409, "Finished or publishing jobs cannot change control.")
 		return

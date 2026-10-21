@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"strings"
 )
 
 const FeatureFactoryJobControl = "factory.job_control"
+const FeatureFactoryJobAutonomy = "factory.job_autonomy"
 
 type FactoryJobControlParams struct {
 	Factory string      `json:"factory"`
@@ -32,8 +34,11 @@ func init() {
 		if err := checkJob(&p.Factory, p.Job, p.Expect); err != nil {
 			return nil, err
 		}
-		if p.Mode != "take_over" && p.Mode != "resume_pipeline" {
+		if p.Mode != "take_over" && p.Mode != "resume_pipeline" && p.Mode != "auto" && p.Mode != "manual" {
 			return nil, Errorf(CodeBadParams, "unknown control mode")
+		}
+		if (p.Mode == "auto" || p.Mode == "manual") && strings.TrimSpace(p.Words) != "" {
+			return nil, Errorf(CodeBadParams, "Auto/Manual mode changes do not accept instructions")
 		}
 		if len([]rune(p.Words)) > MaxFactoryJobWords {
 			return nil, Errorf(CodeBadParams, "words exceed limit")

@@ -408,6 +408,8 @@ type PullRequest struct {
 const QKindAskFirst = "ask_first"
 
 type Item struct {
+	// Autonomy is explicit on new jobs. Missing on older jobs means manual.
+	Autonomy string      `json:",omitempty"`
 	Manual   bool        `json:",omitempty"`
 	Effort   string      `json:",omitempty"`
 	FollowUp *PRFollowUp `json:",omitempty"`

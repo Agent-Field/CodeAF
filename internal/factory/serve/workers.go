@@ -549,13 +549,6 @@ func (h *Handler) doneWorker(w http.ResponseWriter, r *http.Request) {
 		if h.config.Record != nil {
 			trailer, _ = h.config.Record.TrailerFor(r.Context(), it.ID, it.HeadCommit)
 		}
-		if trailer == "" && it.FollowUp != nil && it.FollowUp.AutoPush && h.config.Record != nil {
-			original := it.FollowUp.PublishConsent
-			recorded, _ := h.config.Record.TrailerFor(r.Context(), it.ID, run.TrailerCommit(original))
-			if run.ValidTrailer(original) && recorded == original {
-				trailer = original
-			}
-		}
 		if trailer == "" || (it.PullRequest == nil && it.CommentURL == "") {
 			return run.FinishReport(it, state, now)
 		}

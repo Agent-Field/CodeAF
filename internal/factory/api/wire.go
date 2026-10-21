@@ -294,6 +294,8 @@ type JobReadSize struct {
 
 // Job is one unit of work on the floor (code: [factory.Item]).
 type Job struct {
+	AutonomyWhy    string              `json:"autonomy_why,omitempty"`
+	Autonomy       string              `json:"autonomy,omitempty"`
 	FollowPR       bool                `json:"follow_pr,omitempty"`
 	PublishPreview string              `json:"publish_preview,omitempty"`
 	Manual         bool                `json:"manual,omitempty"`

@@ -226,7 +226,7 @@ func (h *appFactoryHub) acted(ctx context.Context, id, action string, job int, a
 		out.Job = a.ID
 	}
 	if ap := a.Approval; ap != nil {
-		out.Approval = &appwire.FactoryApprovalReceipt{Kind: ap.Kind, State: ap.State, DecidedBy: ap.DecidedBy, At: ap.At, UndoUntil: ap.UndoUntil, Commit: ap.Commit, Edited: ap.Edited}
+		out.Approval = &appwire.FactoryApprovalReceipt{Automatic: ap.Automatic, Kind: ap.Kind, State: ap.State, DecidedBy: ap.DecidedBy, At: ap.At, UndoUntil: ap.UndoUntil, Commit: ap.Commit, Edited: ap.Edited}
 		if out.UndoUntil == nil && !ap.UndoUntil.IsZero() {
 			u := ap.UndoUntil
 			out.UndoUntil = &u

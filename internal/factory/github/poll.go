@@ -305,6 +305,9 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 			continue
 		}
 		in.ID = 0
+		if in.Autonomy == "" {
+			in.Autonomy = factory.AutonomyAuto
+		}
 		in.State = factory.StateNew
 		if len(in.Stages) == 0 {
 			in.Stages = factory.CopyStages(factory.DefaultRecipe().For(in.Kind))

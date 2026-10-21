@@ -180,6 +180,9 @@ func (h *Handler) sendMerge(doors *lease.Doors, it factory.Item, now time.Time) 
 // on the job when its proof is approved. A pipeline that cannot be read pins
 // nothing, which is auto-merge off.
 func (h *Handler) pinnedMerge(r *http.Request, it factory.Item) *factory.MergePolicy {
+	if it.Autonomy == factory.AutonomyAuto || it.Autonomy == factory.AutonomyManual {
+		return nil
+	}
 	if h.seam.RecipeAt == nil {
 		return nil
 	}

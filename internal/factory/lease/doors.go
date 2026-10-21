@@ -186,6 +186,11 @@ func (d *Doors) Answer(id int, yes bool, words string) error {
 // a job no worker holds is answered on the document, and a held job has its
 // question taken down and hears the answer through its lease.
 func answerLocked(doc *document, held *Lease, id int, it *factory.Item, yes bool, words string, now time.Time) (bool, error) {
+	if yes {
+		if err := factory.CheckAutomaticApproval(*it); err != nil {
+			return false, err
+		}
+	}
 	if held == nil {
 		return false, run.AnswerUnheld(it, yes, words, now)
 	}
@@ -270,6 +275,12 @@ func (d *Doors) SignOff(id int, edited bool) (bool, error) {
 	}
 	var repo string
 	err = d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+		if it.Cap > 0 && factory.JobSpent(*it) >= it.Cap {
+			return false, fmt.Errorf("job budget reached; raise Budget before publishing")
+		}
+		if err := factory.CheckAutomaticApproval(*it); err != nil {
+			return false, err
+		}
 		if run.TrailerCommit(trailer) != it.HeadCommit {
 			return false, publish.ErrCommitChanged
 		}

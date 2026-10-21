@@ -210,7 +210,11 @@ func (lp *floorLoop) publishRun(c *loopCtl, trailer string) {
 	}) == nil {
 		lp.emit(c.id, "", EventShipped, "shipped")
 		if receipt.pr != nil {
-			lp.tell(c.id, "PR available: "+receipt.pr.URL+". Follow PR watches CI, reviews and conflicts and automatically pushes verified repairs within this job’s budget. Merge remains your decision.")
+			mode := "Manual asks before pushing repairs; enable Auto for automatic checked updates within the job budget."
+			if factory.Automatic(it) {
+				mode = "Auto records and pushes checked repairs within the job budget."
+			}
+			lp.tell(c.id, "PR available: "+receipt.pr.URL+". Follow PR watches CI, reviews and conflicts. "+mode+" Merge remains your decision.")
 		} else {
 			lp.tell(c.id, "Published issue comment: "+receipt.comment)
 		}
@@ -289,9 +293,6 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 			return published{}, publish.Wrap(err, "worktree")
 		}
 		approvedHead := TrailerCommit(trailer)
-		if followupAuthorized(it, trailer) {
-			approvedHead = it.HeadCommit
-		}
 		if strings.TrimSpace(head) != approvedHead || strings.TrimSpace(status) != "" {
 			if strings.TrimSpace(head) != it.HeadCommit {
 				if err := r.opts.Store.Update(it.ID, func(saved *factory.Item) error { saved.HeadCommit = strings.TrimSpace(head); return nil }); err != nil {
@@ -403,9 +404,6 @@ func commitApproved(git Git, dir string, it factory.Item, trailer string) error 
 // claim, and the trailer as the last line.
 func PublishBody(it factory.Item, trailer string) string {
 	body := factory.PublishBody(it, trailer)
-	if followupAuthorized(it, trailer) && TrailerCommit(trailer) != it.HeadCommit {
-		body = strings.Replace(body, "\nby codeaf factory", "\nAutomatic maintenance under the initial PR publish authorization.\n\nby codeaf factory", 1)
-	}
 	return portablePublishText(body)
 }
 

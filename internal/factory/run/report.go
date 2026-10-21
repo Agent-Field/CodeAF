@@ -461,6 +461,10 @@ func landItem(it *factory.Item, now time.Time) bool {
 		loopSay(it, now, "ok", logShippedHabit)
 		return true
 	}
-	loopSay(it, now, "said", sayLanded)
+	if factory.Automatic(*it) {
+		loopSay(it, now, "said", sayAutoLanded)
+	} else {
+		loopSay(it, now, "said", sayLanded)
+	}
 	return false
 }

@@ -20,6 +20,14 @@ type stageBudget struct {
 	reached bool
 }
 
+func (b *stageBudget) FactoryAuto() bool {
+	if b.floor == nil {
+		return false
+	}
+	it, err := b.floor.Get(b.item.ID)
+	return err == nil && factory.Automatic(it)
+}
+
 func (b *stageBudget) Spend(usd float64) {
 	if usd <= 0 {
 		return

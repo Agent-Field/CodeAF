@@ -150,8 +150,13 @@ func TestWorkerLocalReceiptFollowsPullHeartbeatAndRelease(t *testing.T) {
 
 func (g rig) add(t *testing.T, stages ...factory.Stage) int {
 	t.Helper()
-	id, err := g.st.Add(context.Background(), factory.Item{Title: "prove it builds", Repo: "api", Tier: factory.TierOwner, Stages: stages})
+	id, err := g.st.Add(context.Background(), factory.Item{Autonomy: factory.AutonomyManual, Title: "prove it builds", Repo: "api", Tier: factory.TierOwner, Stages: stages})
 	if err != nil {
+		t.Fatal(err)
+	}
+	// Existing protocol fixtures predate the persisted approval modes.
+	// Explicit-mode publication behavior has its own real service fixtures.
+	if err := g.st.Update(id, func(it *factory.Item) error { it.Autonomy = ""; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	return id

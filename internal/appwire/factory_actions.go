@@ -46,7 +46,7 @@ import (
 const FeatureFactoryJobActions = "factory.job_actions"
 
 // FactoryBudgetSteps are the limits factory.job_set_budget accepts, in US
-// dollars. The factory raises a job's limit to one of these and never lowers it.
+// dollars. The job owner can choose either direction, never below recorded spending.
 var FactoryBudgetSteps = []float64{5, 10, 20, 30}
 
 // The priorities factory.job_set_priority takes, as the factory spells them.
@@ -213,6 +213,7 @@ type FactoryJobCreateParams struct {
 // approval waits UndoUntil before it is acted on: until then the same person's
 // factory.job_undo withdraws it, and after it the factory publishes.
 type FactoryApprovalReceipt struct {
+	Automatic bool      `json:"automatic,omitempty"`
 	Kind      string    `json:"kind,omitempty"`
 	State     string    `json:"state"`
 	DecidedBy string    `json:"decided_by,omitempty"`
@@ -306,6 +307,7 @@ func withFactoryActorFeature(hello Hello, e Engine) Hello {
 		hello = withFeature(hello, FeatureFactoryJobActions)
 		if _, ok := e.(FactoryJobController); ok {
 			hello = withFeature(hello, FeatureFactoryJobControl)
+			hello = withFeature(hello, FeatureFactoryJobAutonomy)
 		}
 	}
 	return hello
