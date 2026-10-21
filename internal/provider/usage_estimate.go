@@ -104,14 +104,36 @@ func (o *usageObservation) observeDelta(delta streamDelta) {
 func (o *usageObservation) observeWhole(payload []byte) {
 	var wire struct {
 		Choices []struct {
-			Message streamDelta `json:"message"`
+			Message json.RawMessage `json:"message"`
 		} `json:"choices"`
 	}
 	if json.Unmarshal(payload, &wire) != nil {
 		return
 	}
 	for _, choice := range wire.Choices {
-		o.observeDelta(choice.Message)
+		var message ai.Message
+		if json.Unmarshal(choice.Message, &message) != nil {
+			continue
+		}
+		o.outputObserved = true
+		for _, part := range message.Content {
+			if part.Type == "text" {
+				o.outputBytes += len(part.Text)
+			}
+		}
+		for _, call := range message.ToolCalls {
+			o.outputBytes += len(call.Function.Name) + len(call.Function.Arguments)
+		}
+		// Decode reasoning separately so a valid array of text parts in content
+		// does not prevent its visible reasoning channel from being counted.
+		var thought struct {
+			Reasoning string `json:"reasoning"`
+			Content   string `json:"reasoning_content"`
+			Text      string `json:"reasoning_text"`
+		}
+		if json.Unmarshal(choice.Message, &thought) == nil {
+			o.outputBytes += max(len(thought.Reasoning), len(thought.Content), len(thought.Text))
+		}
 	}
 }
 

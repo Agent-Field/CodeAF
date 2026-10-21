@@ -293,3 +293,11 @@ func TestUsageTotalOnlyReceiptIsKeptWithoutInventingASplit(t *testing.T) {
 		}
 	}
 }
+
+func TestUsageWholeResponseCountsTextPartsWithoutCountingMedia(t *testing.T) {
+	o := usageObservation{}
+	o.observeWhole([]byte(`{"choices":[{"message":{"role":"assistant","content":[{"type":"text","text":"hello"},{"type":"image_url","image_url":{"url":"data:image/png;base64,not-tokens"}}],"reasoning":"thought","tool_calls":[{"id":"call","type":"function","function":{"name":"read","arguments":"{}"}}]}}]}`))
+	if !o.outputObserved || o.outputBytes != 5+7+4+2 {
+		t.Fatalf("observation=%+v", o)
+	}
+}
