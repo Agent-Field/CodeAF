@@ -115,12 +115,12 @@ func TestJobScreensStopRerunKeepsEarlierWorkAndRevokesLease(t *testing.T) {
 	f.post(t, it, "steps/proof/rerun", "{}", 409)
 	f.post(t, it, "steps/write/rerun", "{}", 200)
 	cur, _ := f.st.Get(it.ID)
-	if cur.State != factory.StateQueued || cur.Stream.Phases[0].Result.Output != "keep this plan" || cur.Stream.Phases[1].Chat != "" || cur.Stream.Phases[1].Round != 0 || cur.Stream.Spent != 1.25 || cur.Failure != nil {
+	if cur.State != factory.StateQueued || cur.Stream.Phases[0].Result.Output != "keep this plan" || cur.Stream.Phases[1].Chat != "" || cur.Stream.Phases[1].Round != recordedRun().Phases[1].Round+1 || cur.Stream.Spent != 1.25 || cur.Failure != nil {
 		t.Fatalf("rerun: %+v", cur)
 	}
 	f.post(t, it, "steps/plan/rerun", `{"words":"  use the other file  "}`, 200)
 	cur, _ = f.st.Get(it.ID)
-	if cur.Stream.Cur != 0 || cur.Stream.Phases[0].State != factory.PhaseRunning || cur.Stream.Spent != 1.25 {
+	if cur.Stream.Cur != 0 || (cur.Stream.Phases[0].State != factory.PhasePending || cur.Stream.Phases[0].Round < 1) || cur.Stream.Spent != 1.25 {
 		t.Fatalf("first step rerun lost revival state: %+v", cur.Stream)
 	}
 	// THE WORDS ARE KEPT WHERE EVERY STEP READS THEM, and a stop takes none.

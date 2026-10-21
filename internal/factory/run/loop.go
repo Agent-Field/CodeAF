@@ -830,6 +830,9 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			if it.FollowUp != nil && (it.FollowUp.State == "queued" || it.FollowUp.State == "running" || factory.IsCIRepairStage(st)) {
 				f := *it.FollowUp
 				f.State = "running"
+				if strings.HasPrefix(f.Reason, "Waiting for a runner to retry ") {
+					f.Reason = "Retrying Follow PR: inspecting CI, review feedback and conflicts."
+				}
 				it.FollowUp = &f
 			}
 			it.Stream.Cur = i
@@ -1681,6 +1684,7 @@ func endRun(it *factory.Item, now time.Time, why *factory.Failure) *factory.Step
 	}
 	var cut *factory.StepProgress
 	it.Failure = why
+	it.Recovery = nil
 	it.Approval = nil
 	it.PublishError = ""
 	it.Publishing = false

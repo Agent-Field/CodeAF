@@ -761,6 +761,7 @@ func (h *Handler) settleJobs(approvalsOnly ...bool) {
 	if err != nil {
 		return
 	}
+	pending = h.prepareStepRecoveries(pending)
 	pending = h.prepareAutomaticApprovals(pending)
 	sweep := len(approvalsOnly) == 0 || !approvalsOnly[0]
 	h.settleMerges(sweep, pending)
@@ -825,6 +826,18 @@ func (h *Handler) scheduleJobTimer() {
 	}
 	var next time.Time
 	for _, it := range items {
+		if rec := it.Recovery; rec != nil && (rec.State == "waiting" || rec.State == "queued") {
+			at := rec.Deadline
+			if rec.State == "waiting" {
+				at = rec.NextAt
+			}
+			if !at.After(h.clock()) {
+				at = h.clock().Add(2 * time.Second)
+			}
+			if next.IsZero() || at.Before(next) {
+				next = at
+			}
+		}
 		if a := it.Approval; a != nil && a.State == "approving" && (next.IsZero() || a.UndoUntil.Before(next)) {
 			next = a.UndoUntil
 		}
@@ -841,7 +854,7 @@ func (h *Handler) scheduleJobTimer() {
 		h.jobsTimer.Stop()
 	}
 	if !next.IsZero() {
-		h.jobsTimer = time.AfterFunc(max(next.Sub(h.clock()), time.Millisecond), func() { h.settleJobs(); h.scheduleJobTimer() })
+		h.jobsTimer = time.AfterFunc(max(next.Sub(h.clock()), time.Millisecond), h.runJobTimer)
 	}
 }
 
@@ -868,4 +881,19 @@ func (h *Handler) questionCollision(w http.ResponseWriter, r *http.Request, it f
 	elapsed := max(0, int(h.clock().Sub(q.Answer.At).Seconds()))
 	h.refuse(w, 409, fmt.Sprintf("@%s answered this %ds ago. Your answer wasn't sent.", q.Answer.By, elapsed), "already_answered", "@"+q.Answer.By, &q.Answer.At, factory.JobState(it))
 	return true
+}
+
+// Closing waits for an already fired deadline to finish. A stopped timer alone
+// cannot prevent its callback from writing after the service has shut down.
+func (h *Handler) runJobTimer() {
+	h.jobsMu.Lock()
+	if h.jobsClosed {
+		h.jobsMu.Unlock()
+		return
+	}
+	h.jobsBusy.Add(1)
+	h.jobsMu.Unlock()
+	defer h.jobsBusy.Done()
+	h.settleJobs()
+	h.scheduleJobTimer()
 }

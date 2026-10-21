@@ -154,6 +154,8 @@ type Hello struct {
 // the first century; the emptiness law says
 // an unknown draws nothing, so UpdatedAt and LastActiveAt carry omitzero.
 type Agent struct {
+	// Retryable means this backend retained the failed message for agents.retry.
+	Retryable    bool   `json:"retryable"`
 	FactoryOwned bool   `json:"factory_owned,omitempty"`
 	ID           string `json:"id"`
 	Title        string `json:"title"`

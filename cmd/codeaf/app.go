@@ -879,6 +879,7 @@ func (b *appBackend) remember(row session.SessionRow) appwire.Agent {
 		a.transcript = row.Transcript
 	}
 	disk := appRowView(row)
+	disk.Retryable = a.failed != "" && a.live == nil
 	busyElsewhere := a.live == nil && (disk.State == appwire.StateWorking || disk.State == appwire.StateNeedsYou)
 	if !busyElsewhere && (a.live != nil || a.view.State == appwire.StateClosed || a.view.State == appwire.StateStopped) {
 		view := a.view
@@ -1187,6 +1188,7 @@ func (b *appBackend) createAgentHeld(prep appCreatePrep, minted string) (appwire
 		a.view.State = appwire.StateIdle
 		if first.words != "" {
 			a.view.State = appwire.StateWorking
+			a.view.Retryable = false
 		}
 		a.view.UpdatedAt = b.now()
 		a.boot = &appBoot{model: model, budget: ask.BudgetUSD}
@@ -1255,6 +1257,7 @@ func (b *appBackend) bootFailed(a *appAgent, first appFirst, err error) {
 	b.locked(func() {
 		if text != "" && !unsure {
 			a.failed, a.failedKind, a.failedShown, a.failedClient = text, appwire.ErrorOther, first.shown, first.clientID
+			a.view.Retryable = true
 		}
 		a.boot = nil
 		if a.live == nil {
@@ -1872,6 +1875,7 @@ func (b *appBackend) Retry(id string) (uint64, error) {
 		b.locked(func() {
 			if a.failed == text {
 				a.failed, a.failedKind, a.failedShown, a.failedClient = "", "", nil, ""
+				a.view.Retryable = false
 			}
 		})
 		return 0, appwire.Errorf(appwire.CodeUncertain, "%s", appUnsureWords)
@@ -2066,6 +2070,7 @@ func (b *appBackend) startTurnLocked(a *appAgent, text, clientID string, shown *
 	b.locked(func() {
 		a.users = n + 1
 		a.view.State = appwire.StateWorking
+		a.view.Retryable = false
 		if live.needsYou() {
 			a.view.State = appwire.StateNeedsYou
 		}
@@ -2356,8 +2361,10 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			ok, kind, status = false, appwire.ErrorStopped, 0
 		}
 		a.failed, a.failedKind, a.failedShown, a.failedClient = "", "", nil, ""
+		a.view.Retryable = false
 		if !ok {
 			a.failed, a.failedKind, a.failedShown = text, kind, shown
+			a.view.Retryable = text != ""
 		}
 	})
 	switch {

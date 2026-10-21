@@ -262,6 +262,12 @@ func (d *Desk) reserve(doc *document, worker Worker, taken Lease) error {
 			it.WorktreeMachine = taken.Machine
 		}
 		if !taken.ThreadOnly {
+			if it.Recovery != nil && it.Recovery.State == "queued" {
+				cp := *it.Recovery
+				cp.State = "running"
+				cp.Reason = fmt.Sprintf("Automatic retry %d of %d is running.", cp.Attempts, cp.Limit)
+				it.Recovery = &cp
+			}
 			it.State = factory.StateRunning
 		}
 		return nil
@@ -324,6 +330,12 @@ func (d *Desk) Requeue(id int, worker string) error {
 }
 
 func eligible(it factory.Item, worker Worker) bool {
+	if it.Recovery != nil && it.Recovery.State == "waiting" {
+		return false
+	}
+	if it.Recovery != nil && it.Recovery.State == "queued" && factory.RecoveryBlockReason(it) != "" {
+		return false
+	}
 	if !factory.IsIssueJob(it) {
 		return false
 	}
@@ -417,6 +429,11 @@ func (d *Desk) queueJob(id int, lost time.Time, machine string) error {
 		it.Question = "Runner went offline mid-step"
 		failed = factory.NewFailure(step, factory.CodeMachineLost, "Runner went offline mid-step", machine, factory.FailureStopped, attempts, lost)
 		factory.StampFailure(it, failed)
+		if it.FollowUp != nil {
+			cp := *it.FollowUp
+			cp.State, cp.Reason = "needs_you", failed.Detail
+			it.FollowUp = &cp
+		}
 		return nil
 	})
 	if errors.Is(err, store.ErrNotFound) || errors.Is(err, unchanged) {

@@ -372,15 +372,16 @@ type Job struct {
 	// named, so the brief can say how many it planned against how many the
 	// change touched. Unknown is omitted: no declaration, an ambiguous one, or
 	// a plan not finished.
-	PlannedFiles  []string       `json:"planned_files,omitempty"`
-	Questions     []Question     `json:"questions,omitempty"`
-	NeedsYou      *NeedsYou      `json:"needs_you,omitempty"`
-	SpendingLimit *SpendingLimit `json:"spending_limit,omitempty"`
-	Failure       *Failure       `json:"failure,omitempty"`
-	Ask           *JobAsk        `json:"ask,omitempty"`
-	PublishError  string         `json:"publish_error,omitempty"`
-	Cost          float64        `json:"cost"`
-	CreatedAt     time.Time      `json:"created_at"`
+	PlannedFiles  []string              `json:"planned_files,omitempty"`
+	Questions     []Question            `json:"questions,omitempty"`
+	NeedsYou      *NeedsYou             `json:"needs_you,omitempty"`
+	SpendingLimit *SpendingLimit        `json:"spending_limit,omitempty"`
+	Failure       *Failure              `json:"failure,omitempty"`
+	Recovery      *factory.StepRecovery `json:"recovery,omitempty"`
+	Ask           *JobAsk               `json:"ask,omitempty"`
+	PublishError  string                `json:"publish_error,omitempty"`
+	Cost          float64               `json:"cost"`
+	CreatedAt     time.Time             `json:"created_at"`
 	// HeldBy is the hold on this job now. The machine and heartbeat in it are
 	// set only for the caller's own machine: ALL PEER MACHINE INFORMATION IS
 	// FORBIDDEN, the operator included, so another person's hold keeps who
