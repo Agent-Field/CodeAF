@@ -207,6 +207,25 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 		}
 		fresh, err := f.FollowPR(ctx, owner, name, it.PullRequest.Number)
 		if err != nil {
+			// A failed feedback read must not leave an old all-clear on screen.
+			// Do not replace an active repair or facts for a newer head.
+			reason := "Could not refresh PR checks/review feedback: " + err.Error() + ". Will retry on the next poll."
+			if len(reason) > 700 {
+				reason = reason[:700]
+			}
+			if it.FollowUp != nil && (it.FollowUp.State == "healthy" || it.FollowUp.State == "watching") && (it.FollowUp.Reason != reason || it.PullRequest.ChecksRead) {
+				_ = st.Update(it.ID, func(cur *factory.Item) error {
+					if cur.PullRequest == nil || cur.PullRequest.HeadSHA != it.PullRequest.HeadSHA || cur.FollowUp == nil || (cur.FollowUp.State != "healthy" && cur.FollowUp.State != "watching") {
+						return nil
+					}
+					pr := *cur.PullRequest
+					pr.ChecksRead, pr.ReviewsRead, pr.CI = false, false, ""
+					follow := *cur.FollowUp
+					follow.State, follow.Reason = "watching", reason
+					cur.PullRequest, cur.FollowUp = &pr, &follow
+					return nil
+				})
+			}
 			continue
 		}
 		if fresh.Number <= 0 {

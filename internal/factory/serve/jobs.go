@@ -310,6 +310,7 @@ func (h *Handler) restoreJob(w http.ResponseWriter, r *http.Request, it factory.
 	h.finish(w, h.recordAction(r, it, record.Restored, detail, func() error {
 		return h.config.Store.Update(it.ID, func(cur *factory.Item) error {
 			forgetRun(cur, recipe)
+			cur.Note(h.clock(), "Brought back to Backlog; earlier run cleared")
 			return nil
 		})
 	}))

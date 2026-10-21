@@ -463,3 +463,37 @@ round limit needs a decision. Rejected rounds are marked failed in their history
 old rounds without an outcome field keep their historical appearance. No repair
 is pushed on the strength of a rejected report. Initial publishing consent,
 spend/attempt limits and human merge authority continue to apply.
+
+
+## public PR descriptions and private command receipts
+
+Factory publication renders known local factory checkout prefixes as repo-relative
+paths, and other local home prefixes as `[local home]`. The preview and final
+GitHub write both apply this privacy boundary to descriptions, titles and comments,
+including repair updates. Original execution receipts stay private and unchanged;
+redacted placeholders are not executable paths. Public HTTP links and check flags
+are retained. Review the proposed description before a Manual publication.
+
+## ordinary PR conversation comments count as review feedback
+
+Follow PR reads top-level PR conversation comments as well as formal reviews and
+current inline feedback. Comment IDs, links, authors and edit times travel with the
+review evidence. Unchanged evidence is not retried after a restart or merely because
+a new head was pushed; edited or new feedback can trigger another bounded repair.
+Empty messages, whole-message acknowledgements and known factory publication
+receipts do not trigger repair. Longer comments remain evidence even when they start
+with thanks or LGTM; external bot reviews are included. Review text never grants
+permissions or bypasses budget, mode, publication or merge guards.
+
+Reads cover up to 2000 comments per endpoint and 192 KiB of feedback. Incomplete,
+oversized or failed reads do not establish an all-clear. A previously healthy job
+shows the failed refresh and retries on its next poll; successful reads restore its
+current PR state. The worker decides what substantive feedback requires against the
+current head, within existing attempts and budget.
+
+## fresh run history and automatic approval requests
+
+Start records Run started; Bring back records a fresh Backlog boundary while older
+audit history remains. An automatic approval request is recorded in the past tense;
+the current job state says whether approval is still pending or the run advanced.
+A historical request is not a claim that approval is still being checked.

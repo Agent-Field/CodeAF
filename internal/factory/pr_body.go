@@ -133,5 +133,5 @@ func PublishBody(it Item, trailer string) string {
 	if trailer != "" {
 		b.WriteString("\n\n" + trailer)
 	}
-	return b.String()
+	return PublicText(b.String())
 }

@@ -652,7 +652,7 @@ func (lp *floorLoop) approve(c *loopCtl, i int, name string) bool {
 	if factory.Automatic(it) {
 		st, _ := lp.stageAt(it, i)
 		if !st.Fixed {
-			said = "Auto is checking routine approval to continue after " + prevName + "."
+			said = "Auto requested routine approval to continue after " + prevName + "."
 		}
 	}
 	a, ok := lp.ask(c, i, "approve", factory.QKindApprove, factory.ApproveQuestion(prevName), factory.PhaseWaiting, "", said)

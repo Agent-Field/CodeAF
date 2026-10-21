@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -185,5 +186,48 @@ func TestMergeableWordKeepsUnknownApartFromNo(t *testing.T) {
 	yes, no := true, false
 	if mergeableWord(nil) != "" || mergeableWord(&yes) != factory.MergeableYes || mergeableWord(&no) != factory.MergeableNo {
 		t.Fatal("mergeable words")
+	}
+}
+
+type unavailableFeedback struct {
+	*memAPI
+	fail bool
+}
+
+func (m *unavailableFeedback) PullFeedback(context.Context, string, string, int) (string, error) {
+	if m.fail {
+		return "", fmt.Errorf("review API unavailable")
+	}
+	return "", nil
+}
+func TestConversationReviewReadFailureCannotLeaveHealthyStatus(t *testing.T) {
+	now := time.Now()
+	m := &unavailableFeedback{memAPI: newMemAPI(now), fail: true}
+	m.followed = map[string]forge.Pull{"acme/api#70": {Number: 70, State: "open", HeadSHA: "head", Base: "main"}}
+	m.runs = map[string][]forge.CheckRun{"head": {{Name: "tests", Status: "completed", Conclusion: "success"}}}
+	st := openStore(t)
+	st.SetRepos([]string{"acme/api"})
+	it := factory.Item{Kind: factory.KindIssue, Repo: "api", Product: "acme", Num: 59, State: factory.StateShipped, Publish: "pr", HeadCommit: "head", Cap: 10, PullRequest: &factory.PullRequest{Number: 70, State: factory.PROpen, HeadSHA: "head", ChecksRead: true, Checks: factory.PRChecks{Passed: 1}}, Stream: &factory.Stream{Phases: []factory.Phase{{Name: "proof", State: factory.PhaseDone}}}}
+	factory.WatchPublishedPR(&it)
+	factory.QueueCIFollowUp(&it, now)
+	saved, err := st.Create(it)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := New(m, []string{"acme/api"}, func() time.Time { return now })
+	if err := followOpened(context.Background(), src, st); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := st.Get(saved.ID)
+	if got.PullRequest.ChecksRead || got.FollowUp.State == "healthy" || !strings.Contains(got.FollowUp.Reason, "review API unavailable") {
+		t.Fatalf("false all-clear: %+v", got.FollowUp)
+	}
+	m.fail = false
+	if err := followOpened(context.Background(), src, st); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = st.Get(saved.ID)
+	if !got.PullRequest.ChecksRead || got.FollowUp.State != "healthy" {
+		t.Fatalf("did not recover: %+v", got.FollowUp)
 	}
 }
