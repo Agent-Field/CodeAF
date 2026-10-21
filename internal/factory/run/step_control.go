@@ -38,22 +38,39 @@ func StepControl(it *factory.Item, name string, rerun bool, words string, now ti
 	if !rerun && (index != s.Cur || (it.State != factory.StateRunning && it.State != factory.StateNeedsYou && it.State != factory.StateQueued)) {
 		return StepControlRefusal("only the current running step can stop")
 	}
-	if rerun && s.Phases[index].State == factory.PhasePending {
+	failedClaim := it.Failure != nil && it.Failure.Step == name && it.Failure.Next == factory.FailureStopped
+	if rerun && s.Phases[index].State == factory.PhasePending && !failedClaim {
 		return StepControlRefusal("step has not run yet")
 	}
+	if rerun && it.Cap > 0 && factory.JobSpent(*it) >= it.Cap {
+		return StepControlRefusal("job budget reached; raise Budget before trying again")
+	}
 	if rerun {
+		it.Recovery = nil
+		previous := s.Phases[index]
 		for i := index; i < len(s.Phases); i++ {
 			p := s.Phases[i]
 			s.Phases[i] = factory.Phase{Name: p.Name, Kind: p.Kind, Note: p.Note, State: factory.PhasePending}
 		}
-		// The queued target is marked begun so a worker revives this stream,
-		// including a rerun from the first step, instead of erasing its spend.
-		s.Phases[index].State = factory.PhaseRunning
+		// A fresh round retains this step's history and identity. Its nonzero
+		// round marks the stream begun, even when retrying the first step, so
+		// worker admission revives it without erasing spend or earlier results.
+		target := &s.Phases[index]
+		target.Round = max(previous.Round+1, 1)
+		target.Rounds = append([]factory.RoundLine(nil), previous.Rounds...)
+		if previous.Failure != nil && previous.Round > 0 {
+			factory.NoteRound(target, factory.RoundLinesMost, factory.RoundLine{Round: previous.Round, Summary: previous.Failure.Detail, Rejected: true, At: previous.Failure.At, Started: previous.Started})
+		}
 		it.State = factory.StateQueued
 		it.Failure = nil
 		it.Proof, it.Policy = nil, nil
 		it.PublishError = ""
 		it.PublishStatus = nil
+		if it.FollowUp != nil {
+			f := *it.FollowUp
+			f.State, f.Reason = "queued", "Waiting for a runner to retry "+name
+			it.FollowUp = &f
+		}
 		s.Ended = time.Time{}
 	} else {
 		it.State = factory.StateNew

@@ -1187,6 +1187,9 @@ func TestAppSortsAProviderFailureAndRetriesIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if agent.Retryable {
+		t.Fatal("new agent advertises a nonexistent failed message")
+	}
 	var wire *appwire.Error
 	if _, err := backend.Retry(agent.ID); !errors.As(err, &wire) || wire.Code != appwire.CodeNotFound {
 		t.Fatalf("retry with nothing failed = %v", err)
@@ -1208,7 +1211,7 @@ func TestAppSortsAProviderFailureAndRetriesIt(t *testing.T) {
 	// The next try goes through.
 	rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
 		c, ok := data.(appwire.AgentChanged)
-		return ok && c.Agent.State == appwire.StateIdle
+		return ok && c.Agent.State == appwire.StateIdle && c.Agent.Retryable
 	})
 	conv.mu.Lock()
 	conv.script = []session.Event{{Kind: session.EventTurnDone}}

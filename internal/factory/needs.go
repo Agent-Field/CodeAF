@@ -36,6 +36,7 @@ const (
 	CodeProviderError     = "provider_error"
 	CodeCrash             = "crash"
 	CodeMachineLost       = "machine_lost"
+	CodeTransportError    = "transport_error"
 	// CodeStopped is a person's stop that cut a step, by the step's own Stop
 	// or the whole job's: the job and that step both say it was stopped.
 	CodeStopped     = "stopped"
@@ -366,6 +367,8 @@ func ClassifyFailure(msg string) (code, detail string) {
 		code = CodeCrash
 	case strings.Contains(low, "provider") || strings.Contains(low, "rate limit"):
 		code = CodeProviderError
+	case ConnectionFailure(msg):
+		code = CodeTransportError
 	default:
 		code = CodeToolError
 	}

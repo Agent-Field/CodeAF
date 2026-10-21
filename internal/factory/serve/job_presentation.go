@@ -94,13 +94,15 @@ func (h *Handler) presentWorkerJob(r *http.Request, j *api.Job) {
 		for _, s := range j.Steps {
 			if s.Name == j.Step.Name && s.InRun {
 				step = true
-				stoppable = s.State == api.StepRunning || s.State == api.StepWaiting
-				rerunnable = s.State != api.StepPending
+				stopped := j.Failure != nil && j.Failure.Step == s.Name && j.Failure.Next == factory.FailureStopped
+				stoppable = (s.State == api.StepRunning || s.State == api.StepWaiting) && !stopped
+				rerunnable = s.State != api.StepPending || stopped
 				break
 			}
 		}
 	}
-	mutable := j.State != api.StateDone && j.Publishing == nil
+	publishing := j.Publishing != nil && (j.Publishing.State == "queued" || j.Publishing.State == "pushing")
+	mutable := j.State != api.StateDone && !publishing
 	j.Controls.StopStep = owner && active && stoppable && mutable && h.workers != nil && h.workers.desk != nil
 	j.Controls.RerunStep = owner && step && rerunnable && mutable && h.workers != nil && h.workers.desk != nil
 	j.Controls.EditSteps = owner && mutable && !j.Ready && h.seam.Edit != nil

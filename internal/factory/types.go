@@ -495,6 +495,8 @@ type Item struct {
 	// Failure is a step that errored. Nil means the job has not failed.
 	// It is not a question.
 	Failure *Failure `json:",omitempty"`
+	// Recovery is the service-owned, bounded retry of an interrupted step.
+	Recovery *StepRecovery `json:",omitempty"`
 	// PublishError is the first line of a publish that failed. The job stays
 	// landed so the approval already recorded can retry. Empty means none.
 	PublishError string `json:",omitempty"`

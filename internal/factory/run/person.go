@@ -28,6 +28,7 @@ func QueueItem(it *factory.Item, now time.Time) error {
 	}
 	it.State = factory.StateQueued
 	it.Failure = nil
+	it.Recovery = nil
 	it.DoneHow = ""
 	it.DoneAt = time.Time{}
 	if it.Approval == nil || it.Approval.State != "approving" {

@@ -322,6 +322,29 @@ Neither explicit Auto nor Manual grants automatic merging, even when a recipe pe
 your decision.** Manual asks at enabled plan gates and before publication or repair
 pushes. Optional per-step skips remain available; neither mode resets retry limits.
 
+## Retry a failed step or a failed message
+
+A failed pipeline step has **Try again** in the job's current conversation status.
+It reruns that step and its unfinished tail, keeping earlier completed steps,
+the working branch, linked PR, retry history and total spend. **Take over** remains
+available through its normal ownership and budget gates. A cap must be raised before
+another attempt can spend. Completed publication status does not disable step retry.
+
+In Auto, a lost runner or a recognised transient model connection failure gets at
+most three automatic retries, after 2, 5 and 15 seconds, within a two-minute recovery
+window. The service persists the attempt count and deadline, including waiting for
+the runner, and resumes them after a restart without an open job tab. The job shows
+the reason, next retry and limit; **Try again now** can skip the wait. A still-held
+worker is never silently replaced. After the limit, **Try again** makes a new manual
+attempt. Manual, Take over, repository-off, spending limits and terminal jobs stop
+automatic admission. A successful step ends that recovery window.
+
+A message has **Retry message** only when the backend retained the failed message.
+An old error in a cold or factory-owned conversation does not imply that capability.
+Message retry and step retry are different actions. Unknown failures, authentication
+and permission denials require attention. Interrupted publication and merge are not
+blindly replayed: their recorded outcomes and commit authority must be reconciled.
+
 ## Auto exceptions and critical approvals
 
 The conversation shows the engine's concrete Auto exception immediately, including

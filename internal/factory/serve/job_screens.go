@@ -51,11 +51,15 @@ func (h *Handler) stepControl(rerun bool) jobAction {
 			h.fail(w, http.StatusUnprocessableEntity, "only a rerun takes words")
 			return
 		}
-		h.onlyOwner(h.stepAct(rerun, body.Words))(w, r, it)
+		var revision *int
+		if body.Expect != nil {
+			revision = body.Expect.Version
+		}
+		h.onlyOwner(h.stepAct(rerun, body.Words, revision))(w, r, it)
 	}
 }
 
-func (h *Handler) stepAct(rerun bool, words string) jobAction {
+func (h *Handler) stepAct(rerun bool, words string, revision *int) jobAction {
 	return func(w http.ResponseWriter, r *http.Request, it factory.Item) {
 		if !h.workerReady(w) {
 			return
@@ -78,7 +82,9 @@ func (h *Handler) stepAct(rerun bool, words string) jobAction {
 		if rerun {
 			verb = record.StepRerun
 		}
-		h.finish(w, h.recordAction(r, it, verb, name, func() error { return lease.NewDoors(h.workers.desk).StepControl(it.ID, name, rerun, words) }))
+		h.finish(w, h.recordAction(r, it, verb, name, func() error {
+			return lease.NewDoors(h.workers.desk).StepControlExpected(it.ID, name, rerun, words, revision)
+		}))
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -17,6 +18,15 @@ import (
 // Real service, lease, worker, shell checks, Git commit and local bare push;
 // only the GitHub source is fake. No model, live job or external write exists.
 func TestAutoPipelinePassesPlanGateAndPublishesWithoutUserApproval(t *testing.T) {
+	testAutoPipeline(t, false)
+}
+
+func TestRecoveryAutoPipelineRepairsTransientFailureAndUpdatesTheSamePR(t *testing.T) {
+	testAutoPipeline(t, true)
+}
+
+func testAutoPipeline(t *testing.T, disconnectFirst bool) {
+	var repairCalls atomic.Int32
 	checkout := filepath.Join(t.TempDir(), "api")
 	git(t, "", "init", "-q", "-b", "main", checkout)
 	if err := os.WriteFile(filepath.Join(checkout, "ledger.go"), []byte("package ledger\n"), 0600); err != nil {
@@ -34,6 +44,10 @@ func TestAutoPipelinePassesPlanGateAndPublishesWithoutUserApproval(t *testing.T)
 		o.Workdir = func(it factory.Item) (string, error) { return dirs.For(it, checkout) }
 		o.Push = run.GitPush(run.ExecGit{})
 		o.Exec[factory.StageChat] = run.ExecutorFunc(func(_ context.Context, j run.Job) (factory.StageResult, error) {
+			call := repairCalls.Add(1)
+			if disconnectFirst && call == 1 {
+				return factory.StageResult{}, fmt.Errorf("connection reset by peer")
+			}
 			if err := os.WriteFile(filepath.Join(j.Dir, "dependency.go"), []byte("package ledger\n// checked repair\n"), 0600); err != nil {
 				return factory.StageResult{}, err
 			}
@@ -120,6 +134,20 @@ func TestAutoPipelinePassesPlanGateAndPublishesWithoutUserApproval(t *testing.T)
 	}
 	if newestProof != 1 {
 		t.Fatal("repair did not receive exactly one fresh exact-head Auto approval")
+	}
+	if disconnectFirst {
+		retries := 0
+		for _, e := range events {
+			if e.Kind == record.StepRerun && strings.Contains(e.Detail, "Automatic retry") {
+				retries++
+			}
+		}
+		if repairCalls.Load() != 2 || retries != 1 {
+			t.Fatalf("repair calls=%d recovery events=%d", repairCalls.Load(), retries)
+		}
+		if phase(repaired, "plan").Round != phase(it, "plan").Round {
+			t.Fatal("recovery reran the completed plan")
+		}
 	}
 }
 

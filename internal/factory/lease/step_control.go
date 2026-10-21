@@ -10,7 +10,13 @@ import (
 // StepControl rewinds under the desk lock and revokes the old lease in the
 // same operation. A late heartbeat or report cannot restore the previous run.
 func (d *Doors) StepControl(id int, name string, rerun bool, words string) error {
-	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+	return d.StepControlExpected(id, name, rerun, words, nil)
+}
+
+// StepControlExpected compares a human decision inside the item lock; a read
+// followed by a later write must not rewind a step that has already moved on.
+func (d *Doors) StepControlExpected(id int, name string, rerun bool, words string, revision *int) error {
+	return d.updateAt(id, revision, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
 		if err := run.StepControl(it, name, rerun, words, now); err != nil {
 			return false, err
 		}

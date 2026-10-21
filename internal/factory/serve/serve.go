@@ -159,6 +159,7 @@ type Handler struct {
 	jobsMu     sync.Mutex
 	jobsTimer  *time.Timer
 	jobsClosed bool
+	jobsBusy   sync.WaitGroup
 
 	seam    factory.Seam
 	config  Config
@@ -281,6 +282,7 @@ func (h *Handler) Close() {
 			h.jobsTimer.Stop()
 		}
 		h.jobsMu.Unlock()
+		h.jobsBusy.Wait()
 	}
 
 	if h != nil {
