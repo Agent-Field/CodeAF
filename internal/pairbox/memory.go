@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
+	"encoding/hex"
 	"fmt"
 	"math/big"
 	"sync"
@@ -35,10 +36,11 @@ func NewMemory(limits Limits, now func() time.Time) *Memory {
 // mailbox is one pairing: two sides, each claimed by its first write and owned
 // by the digest of the key given with it.
 type mailbox struct {
-	expires time.Time
-	digest  [2][32]byte
-	claimed [2]bool
-	msgs    [2][][]byte
+	generation string
+	expires    time.Time
+	digest     [2][32]byte
+	claimed    [2]bool
+	msgs       [2][][]byte
 	// changed is closed and replaced whenever something a poll waits on moves.
 	changed chan struct{}
 }
@@ -106,6 +108,14 @@ func (m *Memory) Create(ctx context.Context, key Key) (Created, error) {
 		return Created{}, err
 	}
 	box := newMailbox(m.now().Add(m.limits.TTL))
+	generation, err := NewKey()
+	if err != nil {
+		return Created{}, err
+	}
+	box.generation = hex.EncodeToString(generation[:])
+	if state, _ := ctx.Value(generationKey{}).(*generationState); state != nil {
+		state.tell(box.generation)
+	}
 	box.claim(SideA.index(), key)
 	m.boxes[plate] = box
 	return Created{Nameplate: plate, ExpiresIn: m.limits.TTL}, nil
@@ -118,7 +128,7 @@ func (m *Memory) Post(ctx context.Context, plate string, side Side, key Key, msg
 	if err := m.budget(ctx).allowWrite(m.now(), m.limits); err != nil {
 		return 0, err
 	}
-	box, err := m.live(plate)
+	box, err := m.fenced(ctx, plate)
 	if err != nil {
 		return 0, err
 	}
@@ -159,7 +169,7 @@ func (m *Memory) Poll(ctx context.Context, plate string, side Side, after int, w
 	timer := time.NewTimer(min(wait, MaxWait))
 	defer timer.Stop()
 	for {
-		batch, changed, err := m.read(plate, side, after)
+		batch, changed, err := m.read(ctx, plate, side, after)
 		if err != nil || len(batch.Msgs) > 0 {
 			return batch, err
 		}
@@ -174,10 +184,10 @@ func (m *Memory) Poll(ctx context.Context, plate string, side Side, after int, w
 }
 
 // read is one look at a side, with the channel that says when to look again.
-func (m *Memory) read(plate string, side Side, after int) (Batch, <-chan struct{}, error) {
+func (m *Memory) read(ctx context.Context, plate string, side Side, after int) (Batch, <-chan struct{}, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	box, err := m.live(plate)
+	box, err := m.fenced(ctx, plate)
 	if err != nil {
 		return Batch{}, nil, err
 	}
@@ -193,10 +203,10 @@ func (m *Memory) read(plate string, side Side, after int) (Batch, <-chan struct{
 }
 
 // Delete removes a mailbox for the holder of either side's key.
-func (m *Memory) Delete(_ context.Context, plate string, key Key) error {
+func (m *Memory) Delete(ctx context.Context, plate string, key Key) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	box, err := m.live(plate)
+	box, err := m.fenced(ctx, plate)
 	if err != nil {
 		return err
 	}
@@ -205,6 +215,18 @@ func (m *Memory) Delete(_ context.Context, plate string, key Key) error {
 	}
 	m.drop(plate)
 	return nil
+}
+
+// fenced checks the requested opening while the same lock protects the use.
+func (m *Memory) fenced(ctx context.Context, plate string) (*mailbox, error) {
+	box, err := m.live(plate)
+	if err != nil {
+		return nil, err
+	}
+	if err := fence(ctx, box); err != nil {
+		return nil, err
+	}
+	return box, nil
 }
 
 // live is the mailbox under a nameplate, or ErrGone once it has expired. An

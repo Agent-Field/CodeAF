@@ -49,7 +49,14 @@ func Handler(box Box, peer PeerFunc) http.Handler {
 	// Anything else, a listing included, is simply not there.
 	mux.HandleFunc(Path, http.NotFound)
 	mux.HandleFunc(Path+"/", http.NotFound)
-	return mux
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, known := r.Header[http.CanonicalHeaderKey(GenHeader)]
+		state := &generationState{expected: r.Header.Get(GenHeader), known: known, tell: func(gen string) { w.Header().Set(GenHeader, gen) }}
+		inner := r.WithContext(context.WithValue(r.Context(), generationKey{}, state))
+		mux.ServeHTTP(w, inner)
+		// The relay logger reads the matched route after this wrapper returns.
+		r.Pattern = inner.Pattern
+	})
 }
 
 type handler struct {
