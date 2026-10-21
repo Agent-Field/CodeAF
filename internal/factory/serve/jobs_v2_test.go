@@ -1031,3 +1031,18 @@ func TestStandalonePRAndCIJobCreationIsRefusedBeforeOpeningAnIssue(t *testing.T)
 		t.Fatalf("unsupported job was saved: %v %v", after, err)
 	}
 }
+
+func TestJobBudgetCanBeLoweredButNotBelowRecordedSpend(t *testing.T) {
+	f := newV2Jobs(t)
+	it := f.create(t, factory.Item{State: factory.StateNew, Cap: 5, ChatSpent: 4})
+	f.post(t, it, "raise_budget", `{"budget":10}`, 200)
+	f.post(t, it, "raise_budget", `{"budget":5}`, 200)
+	if j := f.read(t, it); j.Budget != 5 {
+		t.Fatalf("budget %v", j.Budget)
+	}
+	_ = f.st.Annotate(it.ID, func(cur *factory.Item) error { cur.ChatSpent = 5.01; return nil })
+	f.post(t, it, "raise_budget", `{"budget":5}`, 422)
+	f.post(t, it, "raise_budget", `{"budget":10}`, 200)
+	_ = f.st.Annotate(it.ID, func(cur *factory.Item) error { cur.ChatSpent = 5; return nil })
+	f.post(t, it, "raise_budget", `{"budget":5}`, 200)
+}

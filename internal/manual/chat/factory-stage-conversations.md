@@ -278,23 +278,20 @@ from the job's budget like the job's steps: everything done for the job spends f
 
 - **Before Start** the job's cost is what its chat has spent, and Start carries that into the
   run, so a step's budget question counts it.
-- **During a run** each of the chat's calls adds to the run's spend as it is made, and the
-  budget is checked after every round as before. A new run after one whose steps ran starts its
-  spend from nothing, the chat's share of the old run included.
-- **Counted once.** The spend page still lists every call once, under the chat. The job's
-  figure is the same dollars read a second time, never added to the day's total.
-- **At the budget** the chat refuses its next turn with
-  `job budget reached · $5.02 spent of $5 · raise the job's budget to go on`, and your message
-  stays where you typed it. A turn already running finishes. While the job waits on its budget
-  question (`budget of $5 reached · asking you`), the chat still takes your `yes` or `no`.
-
-A job on another computer's factory that is not running here has no record on this computer:
-its chat's spend is on the spend page only.
-
-**Where the chat works.** In the repository's checkout when one is known; else in the
-factory's own clone, `~/.codeaf/v3/factory/repos/<owner>/<name>`, once the runner has made one;
-else in an empty folder of the job's own, `~/.codeaf/v3/factory/chats/<id>`. Never in the
-folder the window or the app was opened in.
+- **During a run** the manager, stages and their delegated workers record priced calls
+  immediately against the same job. Child totals folded back into a parent are not charged again.
+- **Counted once.** The spend page still lists every call once. The job's figure reads the
+  same dollars; it is not an additional charge.
+- **At the budget** new model calls and tools are refused. The job's owned agent families
+  stop promptly, including delegated tasks, background commands and adaptive runs. This
+  applies while the manager is idle too. Calls already sent can still report charges afterward;
+  stopping work cannot reverse a provider charge already incurred.
+- **Change Budget** by clicking its sidebar value or through Actions. Both menus offer $5,
+  $10, $20 and $30 and share the confirmed value. Decreasing $10 back to $5 is allowed when
+  recorded spend is at most $5. The server rechecks spend while writing the new cap. At exact
+  equality the cap is valid but no more paid work may begin. Choose a higher cap to continue;
+  a budget question never exempts the manager from the limit. Start is a single-word button;
+  the Budget field shows its ceiling.
 
 ## Which model and branch does a factory step use?
 

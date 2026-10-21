@@ -556,15 +556,20 @@ func (h *Handler) raiseBudget(w http.ResponseWriter, r *http.Request, it factory
 	if !h.decode(w, r, &body, false) || !h.fresh(w, r, it, "raise_budget", body.Expect) {
 		return
 	}
-	if !slices.Contains([]float64{5, 10, 20, 30}, body.Budget) || body.Budget <= it.Cap {
-		h.fail(w, 422, "raise budget to a higher limit: 5, 10, 20 or 30 USD")
+	if !slices.Contains([]float64{5, 10, 20, 30}, body.Budget) {
+		h.fail(w, 422, "choose a budget: 5, 10, 20 or 30 USD")
 		return
 	}
 	_, held := h.holdOf(it.ID)
-	err := h.recordAction(r, it, record.BudgetRaised, fmt.Sprintf("$%.2f", body.Budget), func() error {
+	var budgetRefused error
+	err := h.recordAction(r, it, record.BudgetChanged, fmt.Sprintf("$%.2f", body.Budget), func() error {
 		return h.config.Store.Update(it.ID, func(cur *factory.Item) error {
+			if body.Budget < factory.JobSpent(*cur) {
+				budgetRefused = fmt.Errorf("already spent $%.2f; choose a budget at least that high", factory.JobSpent(*cur))
+				return budgetRefused
+			}
 			cur.Cap = body.Budget
-			if cur.QKind == "cap" {
+			if cur.QKind == "cap" && body.Budget > factory.JobSpent(*cur) {
 				cur.State = factory.StateQueued
 				if held {
 					cur.State = factory.StateRunning
@@ -575,11 +580,15 @@ func (h *Handler) raiseBudget(w http.ResponseWriter, r *http.Request, it factory
 			return nil
 		})
 	})
+	if budgetRefused != nil {
+		h.fail(w, 422, budgetRefused.Error())
+		return
+	}
 	if h.failed(w, err) {
 		return
 	}
 	if h.workers != nil && h.workers.desk != nil {
-		_, err = h.workers.desk.SignalIfHeld(it.ID, lease.Signal{Verb: lease.SignalBudget, Budget: body.Budget, Yes: it.QKind == "cap"})
+		_, err = h.workers.desk.SignalIfHeld(it.ID, lease.Signal{Verb: lease.SignalBudget, Budget: body.Budget, Yes: it.QKind == "cap" && body.Budget > factory.JobSpent(it)})
 	}
 	h.finish(w, err)
 }

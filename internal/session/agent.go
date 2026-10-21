@@ -88,6 +88,7 @@ func New(config Config) (*Agent, error) {
 // parent's account-keyed pool and resolve their own model before their first
 // request, rather than inheriting whichever adapter the parent last used.
 func (a *Agent) newChildAgent(config Config) (*Agent, error) {
+	config.JobBudget = a.jobBudgetOf()
 	client, account, pool, managed, err := a.childClient(config)
 	if err != nil {
 		return nil, err
@@ -445,6 +446,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// the frontier, but no ending or notice may run before the caller can hold
 	// the agent and a surface can subscribe to its standing lane.
 	agent.armWallClock()
+	agent.watchJobBudget()
 	// AND A CONVERSATION A TEAM'S MANAGER STARTED TAKES ITS FIRST TURN ON ITS
 	// OWN, once the interface has made it a member (team_wake.go).
 	agent.watchTeamStart()

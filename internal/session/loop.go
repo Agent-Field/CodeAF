@@ -1811,6 +1811,9 @@ func (a *Agent) completeWithRetry(ctx context.Context, hub *eventHub, model stri
 }
 
 func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, model string, rung effort.Rung, partial *partialBuffer, reached *reachedThePerson, reasoning *reasoningBuffer, warm *warmBatch, forming *formingBatch, frozenToolHistory int) (*ai.Response, string, error) {
+	if err := a.admitJobCall(ctx); err != nil {
+		return nil, model, err
+	}
 	if node := a.config.taskControl; node != nil {
 		if err := node.appBoundary(ctx); err != nil {
 			return nil, model, err
@@ -1936,6 +1939,9 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 	}
 	attempt := 0
 	for ; ; attempt++ {
+		if err := a.admitJobCall(ctx); err != nil {
+			return nil, model, err
+		}
 		// AND IT IS ASKED AT THE TOP, because it is the only thing that ends this
 		// ladder. A failure below has its own reading — the boundary is told the
 		// deadline is gone and answers hop-or-end through the one classifier —
@@ -3650,6 +3656,9 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 
 // dispatchTool is the dispatch itself: find the hand, ask the doors, run it.
 func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall, rendered string) toolResult {
+	if err := a.jobBudgetBlock(); err != nil {
+		return a.finishToolResult(ep, call, toolResult{text: err.Error(), isError: true, harness: true})
+	}
 	// A reading cannot ask, including through consent or an off-belt call.
 	// Refuse before pre-action can open a question or capture a file.
 	if refusal := a.readingToolRefusal(call.Function.Name); refusal != "" {
@@ -4344,11 +4353,11 @@ func (a *Agent) bank(call bankedCall) {
 		a.recordUsageLine(call)
 	}
 	// AND THE FACTORY JOB'S SPEND, when this conversation is a job's own chat:
-	// every dollar the session's meter takes, the job's budget takes too, a
-	// call it made and a child's fold alike ([JobChat.Spend]).
+	// each direct call charges the shared family meter immediately. Children
+	// charge at their own call boundary; their later folded totals do not.
 	if call.used.CostUSD > 0 {
-		if chat := a.jobChatOf(); chat != nil {
-			chat.Spend(call.used.CostUSD)
+		if budget := a.jobBudgetOf(); budget != nil && call.ledger {
+			budget.Spend(call.used.CostUSD)
 		}
 	}
 }

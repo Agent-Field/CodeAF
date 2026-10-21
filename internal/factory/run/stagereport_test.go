@@ -321,3 +321,88 @@ func TestTheTimelineSaysWhoseReportItIsAndHowOftenItChanged(t *testing.T) {
 		t.Fatal("a step that reported reads as a spend stop")
 	}
 }
+
+func TestJobBudgetStopRejectsAnEarlyCompletionReport(t *testing.T) {
+	maker := &FakeMaker{Script: func(ctx context.Context, c *FakeConversation) {
+		_ = c.Spec.Stage.Report(ctx, factory.StageResult{Done: true, Output: "early report"})
+		c.Fail(SpendStop{Job: true, Said: "job budget reached"})
+	}}
+	res, err := NewChatExecutor(maker).Run(context.Background(), reviewJob())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Done || !res.JobBudgetStopped || !spendStopped(res) {
+		t.Fatalf("interrupted report %+v", res)
+	}
+}
+func TestJobBudgetResumeKeepsChatAndDoesNotDoubleChargeLiveSpend(t *testing.T) {
+	var calls int
+	g := newRig(t, nil, nil)
+	g.r.opts.Exec = map[factory.StageKind]Executor{factory.StageChat: ExecutorFunc(func(ctx context.Context, job Job) (factory.StageResult, error) {
+		calls++
+		if calls == 1 {
+			_ = g.st.Annotate(job.Item.ID, func(it *factory.Item) error { factory.AddChatSpend(it, 1); return nil })
+			return factory.StageResult{JobBudgetStopped: true, SpendRecorded: true, Spent: 1, Chat: "held-chat", Output: (SpendStop{Job: true, Said: "budget"}).Error()}, nil
+		}
+		if job.Resume != "held-chat" || job.Round != 1 {
+			t.Errorf("resume %q round %v", job.Resume, job.Round)
+		}
+		return factory.StageResult{Done: true, SpendRecorded: true, Chat: "held-chat"}, nil
+	})}
+	id := g.add("budget live", chat("write"))
+	_ = g.st.Update(id, func(it *factory.Item) error { it.Cap = 1; return nil })
+	if err := g.r.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	it := g.asked(id, "budget of $1 reached · $1 more, or stop?")
+	if it.Stream.Spent != 1 {
+		t.Fatalf("double charged %v", it.Stream.Spent)
+	}
+	if err := g.r.Answer(id, true, ""); err != nil {
+		t.Fatal(err)
+	}
+	it = g.waitState(id, factory.StateLanded)
+	if calls != 2 || it.Stream.Spent != 1 || it.Cap != 2 {
+		t.Fatalf("calls %v spent %v cap %v", calls, it.Stream.Spent, it.Cap)
+	}
+}
+
+func TestJobBudgetCancelsNonChatExecutorWhenManagerSpends(t *testing.T) {
+	started, cut := make(chan struct{}), make(chan struct{})
+	var calls int
+	g := newRig(t, nil, nil)
+	g.r.opts.Exec = map[factory.StageKind]Executor{factory.StageCheck: ExecutorFunc(func(ctx context.Context, job Job) (factory.StageResult, error) {
+		calls++
+		if calls == 1 {
+			close(started)
+			<-ctx.Done()
+			close(cut)
+			return factory.StageResult{}, ctx.Err()
+		}
+		return done("finished after budget change"), nil
+	})}
+	id := g.add("shared budget", factory.Stage{Name: "check", Kind: factory.StageCheck, On: true, Until: factory.UntilDone, Max: 1})
+	_ = g.st.Update(id, func(it *factory.Item) error { it.Cap = 1; return nil })
+	if err := g.r.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("executor did not start")
+	}
+	_ = g.st.Annotate(id, func(it *factory.Item) error { factory.AddChatSpend(it, 1); return nil })
+	select {
+	case <-cut:
+	case <-time.After(2 * time.Second):
+		t.Fatal("shared cap did not cancel executor")
+	}
+	g.asked(id, "budget of $1 reached · $1 more, or stop?")
+	if err := g.r.Answer(id, true, ""); err != nil {
+		t.Fatal(err)
+	}
+	it := g.waitState(id, factory.StateLanded)
+	if calls != 2 || it.Stream.Spent != 1 {
+		t.Fatalf("calls %v spent %v", calls, it.Stream.Spent)
+	}
+}

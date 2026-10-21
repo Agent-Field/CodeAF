@@ -373,6 +373,10 @@ type StageResult struct {
 	Edit *PlanEdit
 	// Spent is what the round cost in dollars, 0 when nothing was priced.
 	Spent float64
+	// SpendRecorded means the live meter already booked each provider receipt.
+	SpendRecorded bool `json:"-"`
+	// JobBudgetStopped resumes this interrupted round after an explicit cap change.
+	JobBudgetStopped bool `json:"-"`
 	// Chat names the stage's conversation when the stage ran as one, so the
 	// phase strip can open it.
 	Chat string

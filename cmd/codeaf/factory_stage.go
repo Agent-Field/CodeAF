@@ -128,10 +128,11 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	cfg.Factory, cfg.Recipe, cfg.FactoryItem, cfg.Floor = nil, nil, nil, nil
 	// AND NO STAGE SHAPES THE RUN: `factory_run` is the manager's.
 	cfg.FactoryRun = nil
-	// AND A STAGE'S SPEND IS ITS ROUND'S, which the runner books on the job
-	// from the round's result, so its conversation spends through no door of
-	// its own.
+	// Stages carry no manager tool authority. Their separate live meter charges
+	// the same job before round completion, including delegated provider calls.
 	cfg.JobChat = nil
+	budget := &stageBudget{floor: m.floor, item: spec.Item}
+	cfg.JobBudget = budget
 	gate := stageApprovalGate{rows: v3ApprovalGate{workspace: where, profileDir: m.profileDir, headless: true}, posture: factoryStagePosture()}
 	cfg.ApprovalGate = gate
 	cfg.ApprovalPosture = gate.posture
@@ -162,6 +163,7 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	}
 	c := &stageConversation{
 		agent:    agent,
+		budget:   budget,
 		file:     cfg.SessionFile,
 		dir:      where,
 		captions: make(chan string, 256),
@@ -282,6 +284,7 @@ var stageSettle = unattendedRunSettleTick
 
 // stageConversation is one open stage conversation.
 type stageConversation struct {
+	budget    *stageBudget
 	agent     *session.Agent
 	file      string
 	dir       string
@@ -499,6 +502,11 @@ func (c *stageConversation) Wait(ctx context.Context) error {
 	case <-done:
 		c.mu.Lock()
 		defer c.mu.Unlock()
+		if c.budget != nil {
+			if why := c.budget.Refusal(); why != "" {
+				return factoryrun.SpendStop{Job: c.budget.reachedCap(), Said: why}
+			}
+		}
 		return c.failure
 	case <-ctx.Done():
 		return ctx.Err()
@@ -512,7 +520,13 @@ func (c *stageConversation) Captions(context.Context) <-chan string { return c.c
 func (c *stageConversation) ID() string { return c.file }
 
 // Spent is what the conversation has cost, its tasks folded in.
-func (c *stageConversation) Spent() float64 { return c.agent.Usage().CostUSD }
+func (c *stageConversation) Spent() float64 {
+	if c.budget != nil {
+		return c.budget.total()
+	}
+	return c.agent.Usage().CostUSD
+}
+func (c *stageConversation) SpendRecorded() bool { return c.budget != nil }
 
 // Model is the model the conversation is on now.
 func (c *stageConversation) Model() string { return c.agent.Model() }

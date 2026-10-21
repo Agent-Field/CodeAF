@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -60,8 +61,11 @@ func (d jobChatDoor) Chat(transcript string) session.JobChat {
 	}
 	if items, err := d.floor.List(); err == nil {
 		for _, it := range items {
-			if talk.is(it.Talk) || (it.Manual && ownsManualChat(it, talk)) {
+			if talk.is(it.Talk) {
 				return &jobChat{floor: d.floor, id: it.ID, talk: talk}
+			}
+			if ownsStageChat(it, talk) {
+				return ownedStageBudget{&jobChat{floor: d.floor, id: it.ID, talk: talk}}
 			}
 		}
 	}
@@ -71,27 +75,33 @@ func (d jobChatDoor) Chat(transcript string) session.JobChat {
 			continue
 		}
 		for _, it := range items {
-			if talk.is(it.Talk) || (it.Manual && ownsManualChat(it, talk)) {
+			if talk.is(it.Talk) {
 				return &jobChat{floor: d.floor, id: it.ID, talk: talk}
+			}
+			if ownsStageChat(it, talk) {
+				return ownedStageBudget{&jobChat{floor: d.floor, id: it.ID, talk: talk}}
 			}
 		}
 	}
 	return nil
 }
 
+type ownedStageBudget struct{ session.JobChat }
+
 // jobChat is one job's chat's money, found again on every call, because the
 // store that holds it moves when a worker takes the job and when it lets go.
 type jobChat struct {
-	floor *store.Store
-	id    int
-	talk  talkKey
+	floor  *store.Store
+	id     int
+	talk   talkKey
+	failed atomic.Bool
 }
 
 // Spend books usd on the job where its budget is checked now.
 func (c *jobChat) Spend(usd float64) {
 	for _, st := range c.holders() {
 		err := st.Annotate(c.id, func(it *factory.Item) error {
-			if !c.talk.is(it.Talk) && !(it.Manual && ownsManualChat(*it, c.talk)) {
+			if !c.talk.is(it.Talk) && !ownsStageChat(*it, c.talk) {
 				return errNotThisChat
 			}
 			factory.AddChatSpend(it, usd)
@@ -101,18 +111,22 @@ func (c *jobChat) Spend(usd float64) {
 			return
 		}
 	}
+	c.failed.Store(true)
 }
 
 // Refusal is the job's budget line once it is spent, read where it is checked.
 func (c *jobChat) Refusal() string {
+	if c.failed.Load() {
+		return "job spending could not be recorded; work stopped"
+	}
 	for _, st := range c.holders() {
 		it, err := st.Get(c.id)
-		if err != nil || (!c.talk.is(it.Talk) && !(it.Manual && ownsManualChat(it, c.talk))) {
+		if err != nil || (!c.talk.is(it.Talk) && !ownsStageChat(it, c.talk)) {
 			continue
 		}
 		return factoryrun.ChatRefusal(it)
 	}
-	return ""
+	return "job budget could not be read; work stopped"
 }
 
 // holders is where the job's money may be, in the order it is looked for: the
@@ -202,7 +216,7 @@ func (c *jobChat) MaintainPR(ctx context.Context, words string) (string, error) 
 		return "", err
 	}
 	err = c.floor.Update(c.id, func(it *factory.Item) error {
-		if !c.talk.is(it.Talk) && !(it.Manual && ownsManualChat(*it, c.talk)) {
+		if !c.talk.is(it.Talk) {
 			return errNotThisChat
 		}
 		if it.Manual {
@@ -238,7 +252,7 @@ func (c *jobChat) MaintainPR(ctx context.Context, words string) (string, error) 
 	return "Follow PR resumed with your request. Verified repairs will update the existing PR; merge remains yours.", nil
 }
 
-func ownsManualChat(it factory.Item, talk talkKey) bool {
+func ownsStageChat(it factory.Item, talk talkKey) bool {
 	if it.Stream == nil {
 		return false
 	}
