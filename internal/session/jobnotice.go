@@ -159,6 +159,10 @@ type JobNotice struct {
 	// ExitCode is meaningful only when State is [JobDone] or [JobFailed]. A
 	// stopped job never reached one and a running job has not yet.
 	ExitCode int
+	// ExitCodeUnknown distinguishes older rows from an observed zero exit.
+	ExitCodeUnknown bool `json:",omitempty"`
+	// ToolCallID is the call that handed this process to the registry.
+	ToolCallID string `json:",omitempty"`
 	// Ticks counts a watch's completed runs of its command, and is zero for
 	// everything else.
 	Ticks int
@@ -166,8 +170,8 @@ type JobNotice struct {
 	// fork. It is empty on a record written before it was kept.
 	Dir string `json:",omitempty"`
 	// Ended is when the registry settled the job. It is zero while the job runs
-	// and on any record whose ending nobody saw; a reader must never stand
-	// Started+Elapsed in for it, because a running row's Elapsed is a snapshot.
+	// and on any record whose ending nobody saw. Only a settled row may use
+	// Started+Elapsed as a fallback; a running row's Elapsed is a snapshot.
 	Ended time.Time `json:",omitzero"`
 	// StartedBy and Task say who started the job, and ONLY the agent that
 	// started it may say so, from its own construction: [JobStartedByChat] for
@@ -212,6 +216,7 @@ func (n JobNotice) Label() string {
 func noticeOf(info jobInfo) JobNotice {
 	return JobNotice{
 		ID:              info.id,
+		ToolCallID:      info.callID,
 		OutputTruncated: info.outputTruncated,
 		URL:             info.url,
 		Name:            jobNameOf(info),
@@ -298,16 +303,21 @@ func jobNoticeFromRow(row TaskNotice) (JobNotice, bool) {
 	}
 	notice := JobNotice{
 		ID:      int(row.ID),
-		Name:    row.Title,
-		Kind:    JobKindCommand,
-		State:   jobStateFromRow(row),
-		Elapsed: row.Elapsed,
+		Command: row.JobCommand, ToolCallID: row.JobCallID,
+		Started: row.StartedAt, Ended: row.EndedAt,
+		ExitCodeUnknown: row.JobExitCode == nil,
+		Name:            row.Title,
+		Kind:            JobKindCommand,
+		State:           jobStateFromRow(row),
+		Elapsed:         row.Elapsed,
+	}
+	if row.JobExitCode != nil {
+		notice.ExitCode = *row.JobExitCode
 	}
 	handle, path, cut := strings.Cut(row.Report, jobRowLogSep)
-	if !cut {
-		return notice, true
+	if cut {
+		notice.LogPath = strings.TrimSpace(path)
 	}
-	notice.LogPath = strings.TrimSpace(path)
 	if id, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(handle, "job "))); err == nil && id > 0 {
 		notice.ID = id
 	}

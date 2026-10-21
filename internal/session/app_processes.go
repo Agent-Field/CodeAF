@@ -125,7 +125,22 @@ func ReadProcessNotices(file string) ([]JobNotice, error) {
 	if file == "" {
 		return []JobNotice{}, nil
 	}
-	return legacyListOf(processStore{dir: filepath.Dir(file)}, nil, nil, false)
+	rows, err := legacyListOf(processStore{dir: filepath.Dir(file)}, nil, nil, false)
+	if err != nil {
+		return nil, err
+	}
+	document, _ := loadTaskCheckpoint(taskCheckpointPath(file))
+	var kept []JobNotice
+	for _, record := range document.Runs {
+		if n, ok := jobNoticeFromRow(runRowNotice(record)); ok {
+			kept = append(kept, n)
+		}
+	}
+	rows = mergeKeptJobs(rows, kept)
+	if len(rows) > processLegacyListMax {
+		return nil, ErrProcessListPartial
+	}
+	return rows, nil
 }
 
 // legacyListOf walks the whole history into the legacy list's shape, or
@@ -209,7 +224,24 @@ func (a *Agent) JobNotices() ([]JobNotice, error) {
 	if owner {
 		vouch = func(id int) (JobNotice, bool) { n, ok := live[id]; return n, ok }
 	}
-	return legacyListOf(processStore{dir: dir}, liveRowsOf(live), vouch, owner)
+	rows, err := legacyListOf(processStore{dir: dir}, liveRowsOf(live), vouch, owner)
+	if err != nil {
+		return nil, err
+	}
+	graph := a.graph()
+	graph.mu.Lock()
+	var kept []JobNotice
+	for _, row := range graph.runRowsLocked() {
+		if n, ok := jobNoticeFromRow(row); ok {
+			kept = append(kept, n)
+		}
+	}
+	graph.mu.Unlock()
+	rows = mergeKeptJobs(rows, kept)
+	if len(rows) > processLegacyListMax+len(liveRowsOf(live)) {
+		return nil, ErrProcessListPartial
+	}
+	return rows, nil
 }
 
 // ownLiveJobNotices is this agent's own registry's jobs with its owner words on.
@@ -363,4 +395,21 @@ func (a *Agent) finishProcessRecords() {
 		}
 		_, _ = processStore{dir: dir}.put(root, &head, n, true)
 	}
+}
+
+// mergeKeptJobs fills gaps left by engines that kept jobs only in the roster.
+// The process shelf owns any job it already knows, including a reused number.
+func mergeKeptJobs(rows, kept []JobNotice) []JobNotice {
+	seen := make(map[int]bool, len(rows))
+	for _, n := range rows {
+		seen[n.ID] = true
+	}
+	for _, n := range kept {
+		if !seen[n.ID] {
+			rows = append(rows, n)
+			seen[n.ID] = true
+		}
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].ID > rows[j].ID })
+	return rows
 }
