@@ -283,10 +283,25 @@ func TestAllowlistedPropsMatchTheConstructors(t *testing.T) {
 		for _, name := range AllowlistedProps(event.Name) {
 			allowed[name] = true
 		}
-		if len(event.Props) != len(allowed) {
-			t.Errorf("%s: the constructor emits %d props, the allowlist names %d", event.Name, len(event.Props), len(allowed))
-		}
+		emitted := map[string]bool{}
 		for key := range event.Props {
+			emitted[key] = true
+		}
+		if event.Name == "usage_delta" {
+			estimate := 3
+			optional := UsageReceipt(ModeChat, 10, 0, "session-1", testNow, UsageDimensions{UsageStatus: "mixed", MissingOutput: true, EstimatedOutput: &estimate, EstimateScope: "text_only", ReceiptID: "receipt"})
+			for key := range optional.Props {
+				emitted[key] = true
+			}
+			optional = UsageReceipt(ModeChat, 0, 0, "session-1", testNow, UsageDimensions{UsageStatus: "estimated", EstimatedInput: &estimate, EstimateScope: "text_only", ReceiptID: "receipt"})
+			for key := range optional.Props {
+				emitted[key] = true
+			}
+		}
+		if len(emitted) != len(allowed) {
+			t.Errorf("%s: the constructor emits %d props, the allowlist names %d", event.Name, len(emitted), len(allowed))
+		}
+		for key := range emitted {
 			if !allowed[key] {
 				t.Errorf("%s: prop %q is not on the allowlist", event.Name, key)
 			}

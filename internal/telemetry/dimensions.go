@@ -16,6 +16,12 @@ type UsageDimensions struct {
 	UsageStatus      string
 	AccountingSource string
 	ReceiptID        string
+	MissingInput     bool
+	MissingOutput    bool
+	EstimatedInput   *int
+	EstimatedOutput  *int
+	EstimateScope    string
+	ReportedTotal    *int
 }
 
 // category refuses arbitrary caller strings even when a caller bypasses the
@@ -84,23 +90,89 @@ func UsageReceipt(mode Mode, input, output int, sessionID string, now time.Time,
 	event := UsageDelta(mode, input, output, sessionID, now)
 	event.Props["routing_provider"] = category(dimensions.RoutingProvider, "openrouter openai anthropic google bedrock azure ollama other unknown")
 	event.Props["model_family"] = category(dimensions.ModelFamily, "deepseek claude gpt gemini llama qwen kimi glm other unknown")
-	status := dimensions.UsageStatus
-	if status != "missing" {
-		status = "reported"
-	}
-	event.Props["usage_status"] = status
 	source := dimensions.AccountingSource
 	if source != "provider" {
 		source = "engine"
 	}
 	event.Props["accounting_source"] = source
-	if status == "missing" {
-		delete(event.Props, "input_tokens")
-		delete(event.Props, "output_tokens")
-		delete(event.Props, "total_tokens")
+	// Status can describe absence for older callers, but the final status is
+	// derived from the safe components that actually survive serialization.
+	missingInput := dimensions.MissingInput || dimensions.UsageStatus == "missing" || dimensions.UsageStatus == "estimated"
+	missingOutput := dimensions.MissingOutput || dimensions.UsageStatus == "missing" || dimensions.UsageStatus == "estimated"
+	for _, key := range []string{"input_tokens", "output_tokens", "total_tokens"} {
+		delete(event.Props, key)
+	}
+	measured := [2]*int{}
+	if !missingInput && safeUsageCount(input) {
+		measured[0] = &input
+	}
+	if !missingOutput && safeUsageCount(output) {
+		measured[1] = &output
+	}
+	estimated := [2]*int{}
+	if dimensions.ReceiptID != "" {
+		for i, value := range [2]*int{dimensions.EstimatedInput, dimensions.EstimatedOutput} {
+			if measured[i] == nil && value != nil && safeUsageCount(*value) {
+				estimated[i] = value
+			}
+		}
+	}
+	// A pair whose sum is unsafe cannot be sent with a relay-valid total.
+	// Leave that group unknown rather than clamp either component to fiction.
+	measuredCount := emitUsageComponents(event.Props, "", measured)
+	estimatedCount := emitUsageComponents(event.Props, "estimated_", estimated)
+	status := "missing"
+	switch {
+	case measuredCount > 0 && estimatedCount > 0:
+		status = "mixed"
+	case measuredCount == 2:
+		status = "reported"
+	case measuredCount == 1:
+		status = "partial"
+	case estimatedCount > 0:
+		status = "estimated"
+	case dimensions.ReportedTotal != nil && safeUsageCount(*dimensions.ReportedTotal):
+		event.Props["total_tokens"] = *dimensions.ReportedTotal
+		status = "total_only"
+	}
+	event.Props["usage_status"] = status
+	if estimatedCount > 0 {
+		event.Props["estimate_method"] = "utf8_bytes_4_v1"
+		event.Props["estimate_scope"] = category(dimensions.EstimateScope, "text_only observed_partial multimodal_input")
 	}
 	if dimensions.ReceiptID != "" {
-		event.ID = hashHex("usage_delta|" + sessionID + "|" + dimensions.ReceiptID)[:32]
+		receipt := hashHex("usage_receipt|" + sessionID + "|" + dimensions.ReceiptID)
+		event.Props["usage_receipt"] = receipt
+		// An estimate and its later provider receipt are different events about
+		// one receipt. PostHog groups this hash and prefers measured components.
+		event.ID = hashHex("usage_delta|" + receipt + "|" + status)[:32]
 	}
 	return event
+}
+
+// safeUsageCount matches the relay's nonnegative JavaScript safe integers.
+func safeUsageCount(value int) bool {
+	return value >= 0 && uint64(value) <= 1<<53-1
+}
+
+func emitUsageComponents(props map[string]any, prefix string, values [2]*int) int {
+	total, count := 0, 0
+	for _, value := range values {
+		if value != nil {
+			if uint64(total)+uint64(*value) > 1<<53-1 {
+				return 0
+			}
+			total += *value
+			count++
+		}
+	}
+	if count > 0 {
+		for i, key := range []string{"input_tokens", "output_tokens"} {
+			if values[i] != nil {
+				props[prefix+key] = *values[i]
+			}
+		}
+		props[prefix+"total_tokens"] = total
+	}
+	return count
 }
