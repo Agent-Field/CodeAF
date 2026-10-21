@@ -3,9 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test test/*.test.js",
-    "e2e": "sh test/e2e.sh",
-    "dev": "wrangler dev --local --var TRUST_PROXY:1 --var 'CAF_LIMITS:{\"newIdentitiesPerIpPerDay\":1000000,\"pairTtlMs\":4000}'"
+    "test": "sh test/local.sh node --test --test-concurrency=2 test/*.test.js",
+    "e2e": "sh test/local.sh sh test/e2e.sh",
+    "dev": "sh test/local.sh wrangler dev --local --var TRUST_PROXY:1 --var 'CAF_LIMITS:{\"newIdentitiesPerIpPerDay\":1000000,\"pairTtlMs\":4000}'"
   },
   "devDependencies": {
     "wrangler": "^4.144.0"

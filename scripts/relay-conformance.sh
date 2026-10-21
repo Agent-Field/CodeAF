@@ -6,15 +6,15 @@
 #
 # Two relays, the Go one and the Worker, are run through the same suites: in process for the Go relay,
 # as a live process for both. The Worker runs under `wrangler dev --local` on free ports and never
-# against staging, so a billing window stays clean. Three tracks run side by side, each against its
-# own relays; the suites of one track run one after another, because the watch suite's thousand
+# against staging, so a billing window stays clean. Tracks run sequentially on the shared box;
+# CONFORMANCE_PARALLEL=1 opts into separate concurrent tracks. Their suites run one after another, because the watch suite's thousand
 # sockets would otherwise stall a Worker that a lease case is waiting on. The exit status is 0 only
 # when no row failed and no suite ran zero cases.
 set -uo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 hosted=$root/relay/hosted
-work=$root/.lane/conformance
+work=${CONFORMANCE_WORK:-$root/.lane/conformance}
 rm -rf "$work"; mkdir -p "$work/rows"
 cd "$root"
 
@@ -64,7 +64,7 @@ PY
 gotest() {
 	local relay=$1 suite=$2 pkg=$3 pat=$4; shift 4
 	local log=$work/$relay.$suite.json t0=$SECONDS
-	go test -json -count=1 -timeout 25m "$pkg" -run "$pat" "$@" >"$log" 2>"$log.err"
+	go test -p=2 -json -count=1 -timeout 25m "$pkg" -run "$pat" "$@" >"$log" 2>"$log.err"
 	local code=$? counts note=""
 	counts=$(tally "$log")
 	read -r p s f <<<"$counts"
@@ -93,17 +93,24 @@ conf_live() { # relay, url, small-url or ""
 
 # Track 1: the Go relay in process, then as a live process.
 track_go() {
+	if [[ -z ${CONFORMANCE_LIVE_ONLY:-} ]]; then
 	gotest go-inproc store ./internal/blobstore '.'
 	gotest go-inproc directory ./internal/relayserve '^TestRelayPassesDirectoryConformance$'
 	gotest go-inproc pairing ./internal/relayserve '^TestPairing'
 	gotest go-inproc rotation ./internal/relayserve 'Rotated|Frozen|Retire|Sweep'
 	gotest go-inproc watch ./internal/relayserve '^TestWatch'
 	gotest go-inproc lease ./internal/relayserve '^TestLease'
-	go build -o "$work/relay" ./cmd/relay || { row go-live build 0 0 1 0 "relay did not build"; return; }
+	fi
+	local relay_bin=${CONFORMANCE_CODEAF:-$root/bin/codeaf}
+	# An explicit candidate avoids rebuilding a binary the caller has already prepared with make build.
+	if [[ -z ${CONFORMANCE_CODEAF:-} ]]; then
+		make build ${FURROW_ARTIFACT:+FURROW_ARTIFACT="$FURROW_ARTIFACT"} >"$work/build.log" 2>&1 || { row go-live build 0 0 1 0 "codeaf did not build; see $work/build.log"; return; }
+	fi
+	[[ -x $relay_bin ]] || { row go-live build 0 0 1 0 "candidate is not executable: $relay_bin"; return; }
 	local port; port=$(free_port)
 	# Two seconds of shortest grace and a one-second sweep let the deletion case run in seconds.
 	start_relay "http://127.0.0.1:$port/status" "$work/go-live.log" \
-		"$work/relay" --listen "127.0.0.1:$port" --store "$work/go-store" --quiet --trust-proxy --min-grace 2s --sweep-every 1s || { row go-live start 0 0 1 0 "relay did not start"; return; }
+		"$relay_bin" relay --listen "127.0.0.1:$port" --store "$work/go-store" --quiet --trust-proxy --min-grace 2s --sweep-every 1s || { row go-live start 0 0 1 0 "relay did not start"; return; }
 	conf_live go-live "http://127.0.0.1:$port" ""
 	kill "$started" 2>/dev/null
 }
@@ -114,7 +121,7 @@ OPEN='{"newIdentitiesPerIpPerDay":1000000,"pairTtlMs":4000,"minGraceMs":2000,"sw
 SMALL='{"newIdentitiesPerIpPerDay":1000000,"pairMaxBoxes":2}'
 wrangler() { # port, persist dir, limits json
 	start_relay "http://127.0.0.1:$1/" "$work/worker-$1.log" \
-		"$hosted/node_modules/.bin/wrangler" dev --local --ip 127.0.0.1 --port "$1" --persist-to "$2" \
+		sh "$hosted/test/local.sh" "$hosted/node_modules/.bin/wrangler" dev --local -c "${CONFORMANCE_WORKER_CONFIG:-$hosted/wrangler.toml}" --name "codeaf-conformance-$1" --inspector-port 0 --ip 127.0.0.1 --port "$1" --persist-to "$2" \
 		--var "CAF_LIMITS:$3" --var TRUST_PROXY:1
 }
 
@@ -150,7 +157,11 @@ track_hosted() {
 
 # Each track is a subshell with its own exit trap, so an interrupted run stops the relays it started.
 tracks=()
-for t in go worker hosted; do
+for t in ${CONFORMANCE_TRACKS:-go worker hosted}; do
+	if [[ ${CONFORMANCE_PARALLEL:-0} != 1 || ${CONFORMANCE_SERIAL:-0} == 1 ]]; then
+		( ROWFILE=$t; pids=(); trap stop EXIT; "track_$t" )
+		continue
+	fi
 	( ROWFILE=$t; pids=(); trap stop EXIT; "track_$t" ) &
 	tracks+=($!)
 done
