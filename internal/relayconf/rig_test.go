@@ -88,4 +88,14 @@ func (a *account) sign(name string, now func() time.Time) wireauth.Sign {
 func (a *account) deviceID(name string) string { return a.device(name).dev.ID() }
 
 // httpClient bounds every call, so a hung relay fails a case instead of the run.
-var httpClient = &http.Client{Timeout: 30 * time.Second}
+var httpClient = conformanceClient()
+
+func conformanceClient() *http.Client {
+	transport := conformanceTransport()
+	if _, local := transport.(*workerTransport); local {
+		// The canonical WebSocket dialler uses the default client. Sharing
+		// this transport bounds upgrades and signed HTTP calls together.
+		http.DefaultClient.Transport = transport
+	}
+	return &http.Client{Timeout: 30 * time.Second, Transport: transport}
+}
