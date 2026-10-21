@@ -83,8 +83,13 @@ func TestL13OnlyTheInventoryPackageNamesTheFile(t *testing.T) {
 	}
 }
 
+// C18 keeps the cell-state refusal on real cell workspaces while ordinary
+// host work, which owns no .cell directory, keeps its existing shell behavior.
 func TestL13ExecutorRefusesCallsIntoTheCellDirectory(t *testing.T) {
 	ex := executor.Local{Root: t.TempDir()}
+	if err := os.MkdirAll(filepath.Join(ex.Root, ".cell", "env"), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	for _, req := range []executor.ExecRequest{
 		{Argv: []string{"true"}, Dir: ".cell/env"},
 		{Argv: []string{"tee", ".cell/env/" + inventoryFile}},
