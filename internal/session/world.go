@@ -842,6 +842,9 @@ func rollUp(rows []TaskIndexEntry, held SessionRow) TaskRollup {
 // names the session and not the project — so the launch directory, which is
 // where the person was actually standing, is the one that answers for it.
 func projectPath(row SessionRow) string {
+	if row.Owned && row.Origin != "" {
+		return ""
+	}
 	if !row.Owned && row.Workspace != "" {
 		return row.Workspace
 	}
@@ -921,7 +924,7 @@ func sortSessions(rows []SessionRow) {
 // whose project was merely deleted (no note was ever written, because the
 // chat never moved).
 func movedCopy(row SessionRow) bool {
-	return row.Origin != "" && !dirThere(row.Workspace)
+	return row.Origin != "" && (row.Owned || !dirThere(row.Workspace))
 }
 
 // dirThere is whether a recorded folder is on this machine's disk.
