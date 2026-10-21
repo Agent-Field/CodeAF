@@ -153,7 +153,7 @@ func (b *appBackend) CrewStart(ask appwire.CrewCreate) (appwire.CrewStartResult,
 			return appwire.CrewStartResult{}, err
 		}
 	}
-	b.crewExtraOnCreate(claim.Crew, "", ask.Goal, ask.EndsAt)
+	b.crewExtraOnCreate(claim.Crew, "", ask.Goal, ask.EndsAt, claim)
 	// FROM HERE THE TEAM EXISTS: a failure is reported as that, never as
 	// nothing, and the goal is handed over only once the claim says it may be.
 	if words {

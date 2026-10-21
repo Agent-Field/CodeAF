@@ -19,6 +19,7 @@ package session
 // hold; [WorkExcluded] says so.
 
 import (
+	"net/url"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -164,6 +165,7 @@ func wgID(owner string, id uint64) string { return wgRef(owner, id).ID() }
 // person's edit, then what it was admitted with, then the person's own message.
 func wgInstructions(r taskRecord) *workgraph.GraphText {
 	if t := wgText("task_brief", r.App.Brief, workgraph.MaxTextRunes); t != nil {
+		t.Anchor = wgAnchor(r.OriginJournal, r.OriginLine)
 		return t
 	}
 	if t := wgText("admitted_brief", r.Brief, workgraph.MaxTextRunes); t != nil {
@@ -181,6 +183,13 @@ func wgInstructions(r taskRecord) *workgraph.GraphText {
 // conversation whose journal it names and the line. A pointer with no line, or
 // to a journal that is not some conversation's own, is not an anchor.
 func wgAnchor(journal string, line int) *workgraph.TextAnchor {
+	machine := ""
+	if u, err := url.Parse(journal); err == nil && u.Scheme == "file" {
+		machine, journal = u.Host, u.Path
+		if machine == "localhost" {
+			machine = ""
+		}
+	}
 	if line <= 0 || filepath.Base(journal) != placeTranscript {
 		return nil
 	}
@@ -188,7 +197,7 @@ func wgAnchor(journal string, line int) *workgraph.TextAnchor {
 	if !workgraph.ValidOwner(agent) {
 		return nil
 	}
-	return &workgraph.TextAnchor{Agent: agent, Line: line}
+	return &workgraph.TextAnchor{Agent: agent, Line: line, Machine: machine}
 }
 
 // wgRoute is the crew a run row was accepted onto, role by role.
@@ -253,6 +262,7 @@ func nodeFact(owner string, r taskRecord) workgraph.Fact {
 			AdmittedAt: workgraph.Stamp(r.AdmittedAt), StartedAt: workgraph.Stamp(r.StartedAt),
 			StateAt: workgraph.Stamp(r.StateAt), EndedAt: workgraph.Stamp(r.EndedAt),
 		},
+		OriginAnchor: wgAnchor(r.OriginJournal, r.OriginLine),
 		Instructions: wgInstructions(r), Model: wgTitle(r.Model),
 		Landing: wgLanding(r.Merge, r.EndedAt), Files: wgFiles(r.Changed, r.Wrote),
 		Spend: wgSpend(r.CostUSD, wgTokens(r)), Links: "recorded",

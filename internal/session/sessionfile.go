@@ -1986,6 +1986,9 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			}
 			presentation.remember(message, mark)
 			stamps.remember(message, lineInstant(entry.Timestamp))
+			if entry.Role == "user" && !entry.Note {
+				stamps.rememberLine(message, scanned)
+			}
 			rememberParts(images, message, entry.Parts)
 			if entry.Note {
 				rememberNote(notes, message)

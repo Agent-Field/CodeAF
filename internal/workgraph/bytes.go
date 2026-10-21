@@ -50,7 +50,7 @@ func textBytes(t *GraphText) int64 {
 	}
 	n := int64(unsafe.Sizeof(*t)) + strBytes(t.Source) + strBytes(t.Text)
 	if t.Anchor != nil {
-		n += int64(unsafe.Sizeof(*t.Anchor)) + strBytes(t.Anchor.Agent)
+		n += int64(unsafe.Sizeof(*t.Anchor)) + strBytes(t.Anchor.Agent) + strBytes(t.Anchor.Machine)
 	}
 	return n
 }
@@ -73,6 +73,9 @@ func nodeBytes(n *GraphNode) int64 {
 	}
 	for _, t := range []*time.Time{n.Clock.AdmittedAt, n.Clock.StartedAt, n.Clock.StateAt, n.Clock.EndedAt} {
 		b += timeBytes(t)
+	}
+	if n.OriginAnchor != nil {
+		b += int64(unsafe.Sizeof(*n.OriginAnchor)) + strBytes(n.OriginAnchor.Agent) + strBytes(n.OriginAnchor.Machine)
 	}
 	b += textBytes(n.Instructions)
 	if n.Source != nil {

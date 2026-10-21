@@ -1901,7 +1901,7 @@ Ledger display names are optional and limited to 4096 UTF-8 bytes. An oversized 
 For task report cells without a recorded `root`, optional `session` preserves the recorded session identity; these tasks are never merged solely because their numeric task IDs match. An absent root remains absent.
 
 The optional `agent` filter in `spend.ledger`, `spend.ledger.export`, and `spend.report` matches the recorded `root`, falling back to recorded `session` only when root is absent. It includes that conversation and its recorded task charges without joining current crew membership. Report cells preserve this identity as optional `agent`. Existing queries without this field retain their cursor fingerprint.
-## Work graph (V87, V88)
+## Work graph (V87, V87b, V88)
 
 `work.graph {scope, view?, cluster?, focus?, cursor?, limit?, if_revision?}` answers the facts of work that
 waits on other work. It is GENERAL: tasks, who owns them, which waits on which, what state each is in and since
@@ -1978,6 +1978,57 @@ schema is generated from them, and the call is read-only. An engine that does no
 * **Errors.** `bad_params` (scope, view, limit, cursor, focus), `not_found` (unknown agent, crew or task), `busy`
   and `closed` as elsewhere (`busy` also when the engine is already building as many scopes as it admits), `too_large` (additive; see Memory),
   `engine` (cancelled, or longer than 10 s).
+
+### Map origins and external endpoints (V87b)
+
+Every app graph response adds `about.brief_fact`:
+
+```json
+{"about":{"brief_fact":{"text":"Make the parser accept trailing commas.","source":{"agent":"conversation-id","anchor":"u0","at":"2026-10-20T13:40:00Z"}}},"nodes":[{"id":"conversation-id:1","origin_source":{"agent":"conversation-id","anchor":"u0","at":"2026-10-20T13:40:00Z"}}]}
+```
+
+The desk maps `about.brief_fact` directly to `BriefFact`; map each node's
+`origin_source` to its navigation source. `anchor` is an exact `agents.entries`
+ID, not a journal line. `at` is the message's RFC3339 timestamp, omitted when
+unrecorded; render it in the person's timezone. Text is bounded to 1000 runes,
+with `cut: true` when shortened. Existing `about.brief.source`,
+`nodes[].source` and `instructions.source` keep their existing meanings.
+
+Crew briefs use the submitted goal's manager and client identity, persisted as
+`goal_agent` and `goal_client_id` in the app crew layer. When the creation caller
+omits a client ID, that door explicitly identifies the new manager's first
+message as its goal. An edit to the goal in settings clears the chat binding;
+there is no invented message. Agent briefs use that conversation's first user
+request. Task briefs use the root task's own instructions and recorded
+`origin_journal` / `origin_line`, even after the instructions are edited.
+`nodes[].origin_anchor` preserves that raw address, including an explicit
+`machine` for hosted `file://host/...` addresses. Local journal paths are
+resolved by conversation identity under the current home, not opened as arbitrary
+stored paths. Compaction overlap aliases require a durable client identity;
+rewritten words and position are never used to guess a source.
+
+Unavailable briefs have no `source` and carry an explicit `origin`:
+`"none"` (no recorded or resolvable message), `"removed"` (the conversation
+or journal is gone), or `"offline"` (an explicit hosted address which this local
+reader cannot reach). Nodes carry the same `origin` and omit `origin_source`.
+The brief's own text remains in the response, including after journal removal.
+An absolute path alone carries no machine identity; it cannot establish offline
+availability. Read and permission errors remain errors. Journal and crew-layer
+stamps participate in the revision, so removal or restoration invalidates an
+unchanged response. Origins are read once per conversation per response through
+the bounded record cache; only requested addresses survive the read lease.
+
+`external[]` names every distinct edge endpoint absent from this page:
+
+```json
+{"external":[{"ref":{"owner":"backend-agent","task":"7"},"status":"outside","where":"Backend"},{"ref":{"owner":"this-agent","task":"8"},"status":"removed"},{"ref":{"owner":"this-agent","task":"9"},"status":"paged"}]}
+```
+
+`outside` names another level (`where` is the owning agent's display name when
+known), `removed` is a confirmed missing task, and `paged`
+is a task in this scope which this page does not hold. Unknown or bounded-out
+external owners remain outside with unknown state; absence from a page never
+means removal. Edges retain their original task reference and are never dropped.
 
 A wait on a task of another conversation is recorded with `Agent.WaitOnTask` (there is no wire verb that writes
 one). The task must be queued; the link is stored in its record (`waits_external`) and the engine's frontier
