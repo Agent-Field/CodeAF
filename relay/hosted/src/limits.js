@@ -36,6 +36,9 @@ export const DEFAULTS = {
   sweepPageSize: 1_000, // R2 objects deleted per alarm turn (R2's own limit per list and per delete)
   // The whole relay, by caller IP: how many identities one address may bring in (contract 6: no accounts).
   newIdentitiesPerIpPerDay: 200,
+  // Deployment-wide brakes remain effective when a caller spreads across networks.
+  globalNewIdentitiesPerDay: 10_000,
+  globalStoreBytes: 1024 * GiB,
   // The pairing mailbox (contract 18.4), for callers that have no identity yet.
   pairTtlMs: 10 * 60_000,
   pairMaxMsg: 4 << 10,

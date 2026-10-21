@@ -61,7 +61,7 @@ export class R2Store {
     return this.#writes.run(async () => {
       if (this.#indexed(frame.id)) return false;
       await this.#refuseConflicts(frame.objects);
-      admit();
+      await admit();
       await this.bucket.put(this.prefix + frame.id, frame.bytes);
       this.#index(frame);
       return true;

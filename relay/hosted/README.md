@@ -1,7 +1,8 @@
 # Hosted relay
 
 The relay of `internal/relayserve` (contract sections 3, 4.4, 6 and 18) as a Cloudflare Worker.
-A client cannot tell the two apart: `internal/relayconf` is the judge, and this Worker passes it.
+The Go client holds both implementations to `internal/relayconf`; run the local matrix below
+before claiming conformance for a build.
 The relay sees only ciphertext and keeps no account table: an identity is the hash of its key.
 
 ## How it is built
@@ -90,7 +91,7 @@ verify, lease rules) are ported to JavaScript and pinned to Go by vectors that G
 
 ```sh
 cd relay/hosted
-npm install
+npm ci
 npm run dev                       # http://127.0.0.1:8787, R2 and Durable Objects simulated in workerd
 ```
 
@@ -109,8 +110,12 @@ skipped unless a second relay capped at two mailboxes is given with `-relay-smal
 
 ## Tests
 
+The repository's `scripts/relay-conformance.sh` runs its tracks sequentially on a shared
+machine. `CONFORMANCE_PARALLEL=1` is an opt-in for isolated runners; concurrent package
+builds and disk-heavy tests can otherwise consume a local Worker's request deadlines.
+
 ```sh
-npm test            # unit: the vectors, the rules, quotas, the store on a real R2 simulator, body caps
+npm test            # hermetic unit: the vectors, the rules, quotas, the store on a real R2 simulator, body caps
 npm run e2e         # starts two local relays (default limits, short limits), runs every wire end to end
 CONF=1 npm run e2e  # the same, plus the Go relayconf suite against the default relay
 ```
@@ -144,7 +149,7 @@ canonical names, so the stricter side is the safe one.
 | `TRUST_PROXY` | var, optional | `1` takes the caller's network from the first `X-Forwarded-For` address (the self-hosted relay's `--trust-proxy`); for test rigs only, never production, where `CF-Connecting-IP` is the one truth |
 
 `wrangler.toml` declares all of them and the migration `v1` that creates the four classes as
-SQLite-backed. The relay needs Workers Paid: the Free plan allows 10 ms of CPU a request and 100,000
+SQLite-backed; migration `v2` adds the link classes. The relay needs Workers Paid: the Free plan allows 10 ms of CPU a request and 100,000
 requests a day.
 
 ## Base path
@@ -167,64 +172,15 @@ signed it), or serve the relay on a host of its own.
 
 ## Deploy
 
-Nothing here deploys by itself. To put it on an account (staging first):
+[DEPLOY.md](DEPLOY.md) is the staging-first operator runbook and its local proof.
+Nothing deploys by itself. `staging.toml` names `caf-relay-staging` and
+`caf-relay-staging-frames` on workers.dev. `production.toml` names `caf-fabric` and
+`caf-fabric-frames`, with two routes on the shared host: `/fabric*` for the wire and
+`/p/*` for the pairing page. The wire stays beneath `BASE_PATH=/fabric`; the page
+lives outside that prefix. Observability is off in production.
 
-```sh
-cd relay/hosted
-npx wrangler r2 bucket create <bucket>
-# in a copy of wrangler.toml (or `-c staging.toml`): set `name`, and `bucket_name = "<bucket>"`
-npx wrangler deploy
-```
-
-No route or domain is set: it answers on `<name>.<account>.workers.dev` until one is added. The
-deployment runs the amended lease law (`LEASE_POLICY = "amended"`: 90 s, a publish renews), which is
-what the client and the Go relay implement; `stage1` is the frozen 30 s law, kept as a named policy
-only. Setting it back would make a takeover wait 30 s where the client expects 90 s of grace, so a
-deployment never does. The conformance suite waits out the 90 s in real time (about 92 s in all,
-its cases run in parallel); there is no short-TTL knob on either relay. The deployment keeps no
-request log and enables no observability.
-
-### Production runbook (not run by anyone until the owner says go)
-
-Run from `relay/hosted`, logged in to the Cloudflare account that holds the `agentfield.ai` zone
-(`npx wrangler whoami` names it). `production.toml` owns the Worker `caf-fabric`, the bucket
-`caf-fabric-frames`, its own Durable Object namespaces and the one route
-`codeaf.agentfield.ai/fabric*`; it changes nothing else on the hostname, whose proxied DNS record
-already exists.
-
-```sh
-npm ci && npm test
-npx wrangler r2 bucket create caf-fabric-frames
-npx wrangler deploy -c production.toml --dry-run          # check the bindings and the route first
-npx wrangler deploy -c production.toml
-```
-
-Smoke, from any machine (the first two need no key; every answer carries `Codeaf-Now`):
-
-```sh
-curl -si https://codeaf.agentfield.ai/fabric/v1/pair/limits        # 200, ttl_ms 600000
-curl -si https://codeaf.agentfield.ai/fabric/v1/store/stats        # 401, the route exists and wants a signature
-curl -si https://codeaf.agentfield.ai/v1/pair/limits               # not served by this Worker: outside /fabric
-curl -si https://codeaf.agentfield.ai/fabricx/v1/pair/limits       # not served by this Worker either
-```
-
-Then the conformance suite, which makes real identities, from the repository root:
-
-```sh
-go test -count=1 -tags relayurl ./internal/relayconf/ -relay-url=https://codeaf.agentfield.ai/fabric
-```
-
-The suites need a short pairing time and a lifted per-address identity cap, which production
-deliberately lacks, so `ExpiryDeletes` skips and a long run may meet `too_many_identities`; run the
-whole suite against staging for that, and only the cases that need neither against production.
-
-Roll back by deleting the route (`npx wrangler deploy` of an earlier commit, or removing the route in
-the dashboard); the hostname then answers as it did before. Never delete the R2 bucket or the
-namespaces: they hold people's synced data.
-
-`staging.toml` already carries what the conformance suites need (a 4 s pairing TTL, `TRUST_PROXY`, a lifted
-per-IP identity cap); production sets none of them. The pairing wire words are those of
-`internal/pairbox` (`forbidden`, `gone`, `full`, `too big`, `slow down`).
+The rollback keeps the bucket and Durable Object namespaces. Removing a route is
+not a data rollback, and deleting storage is never part of rolling back code.
 
 ## Limits (`src/limits.js`, one table)
 
@@ -280,3 +236,47 @@ The R2-only directory (a Worker with no Durable Object) was built and measured i
 spike and is kept in git history, not in this tree: `git log wip/layout-v0-hspike -- relay/hosted/src/r2dir.js`.
 It costs 1.3 to 2.3 times as much and a directory write takes tens of times longer, and it cannot
 keep the in-flight-put rule by identity.
+
+## Deployment-wide cost brakes and data erasure
+
+`CAF_LIMITS` also accepts `globalNewIdentitiesPerDay` (default 10,000) and
+`globalStoreBytes` (default 1 TiB, 1,099,511,627,776 bytes). Set either to `0` to close
+that door. For example, merge this JSON into the chosen config's existing `CAF_LIMITS`
+value, retaining staging's short test timings:
+
+```toml
+CAF_LIMITS = '{"globalNewIdentitiesPerDay":1000,"globalStoreBytes":107374182400}'
+```
+
+A new identity over the global daily admission ceiling gets `429 relay_admission_full`
+and `Retry-After` in seconds. Its rolling day starts with the first successful admission;
+per-network admission still applies. An identity already admitted is never charged again.
+New identities at the storage ceiling, and new frames that would exceed it, get
+`507 relay_storage_full`. Existing data remains readable, a held frame can be retried,
+and freeze/retire erasure remains available. These are deployment settings; the operator
+can change them without editing code. Apply changed vars with the owner's normal
+staging-first deployment procedure.
+
+The existing `NewcomerGate` keeps the global budget in SQLite. Its first use inventories
+all existing R2 objects, page by page, before allowing new writes, so an upgrade includes
+old stored bytes. Interrupted inventories repeat safely. A new frame reserves its bytes
+before R2 is written, and retries share that reservation. A failed or interrupted write
+may retain a conservative reservation; the owner's completed identity erasure returns
+all its capacity. The extra budget rows are metadata; the byte ceiling measures R2 frame
+bytes, not total Cloudflare spend. Existing per-identity, mailbox and link caps still apply.
+Monitor request, database and storage charges as described in DEPLOY.md.
+
+Every frame is under an identity prefix. Its owner can retire the identity through the
+signed rotation route (normally `codeaf identity rotate`); after the grace period, an
+alarm writes a tombstone, deletes the prefix a page at a time, releases its global capacity,
+and drops its tables. Pairing and link data have bounded TTLs. There is no automatic
+inactive-identity erasure: it is off, with no retention knob in this version. A device's
+hibernating socket can stay live without requests, so a request-only last-seen timer would
+be unsafe. If all identity keys are lost, owner erasure cannot be authenticated; the
+operator's documented admission/storage brakes still bound new stored data.
+
+`npm test` runs through `test/local.sh`: temporary config, cache, registry and log paths,
+metrics and update prompts off, no dependency on a writable home. Use that wrapper around
+local Wrangler commands too. The project `.npmrc` keeps npm's own installation cache and
+logs below the ignored `.wrangler/npm-cache` directory, so `npm ci && npm test` also
+works with a read-only home. `npm ci` installs only the lockfile's dependencies.
