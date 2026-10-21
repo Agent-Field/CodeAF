@@ -877,6 +877,9 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		}
 		job := lp.job(c, st, index, i, round)
 		job.Resume, job.Opened, job.CarryOn = resume, lp.opened(c, i), carried
+		if job.Progress != nil {
+			job.Progress(followProgressStart(job))
+		}
 		res, again, err := lp.round(c, exec, job)
 		if c.ctx.Err() != nil {
 			return false
@@ -1326,6 +1329,7 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 		Steer:      c.steer,
 		Models:     c.models,
 		Log:        func(line string) { lp.say(c, "thought", line) },
+		Progress:   lp.followProgress(c, st, i, round),
 		Spend:      lp.spender(c),
 		Ask: func(ctx context.Context, q factory.Asked) (string, error) {
 			return lp.inbox(ctx, c, i, stageLabel(st), q)

@@ -167,6 +167,7 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 		file:     cfg.SessionFile,
 		dir:      where,
 		captions: make(chan string, 256),
+		progress: spec.Progress,
 		done:     make(chan struct{}),
 	}
 	brief := spec.Brief
@@ -289,6 +290,7 @@ type stageConversation struct {
 	file      string
 	dir       string
 	captions  chan string
+	progress  func(string)
 	wakes     <-chan (<-chan session.Event)
 	stopWakes func()
 	done      chan struct{}
@@ -353,9 +355,31 @@ func (c *stageConversation) settle(done chan struct{}) bool {
 
 // drain reads one turn's events into captions and keeps its failure.
 func (c *stageConversation) drain(events <-chan session.Event) {
+	// Streamed text is provisional until a journal boundary. Never relay
+	// reasoning, failed/retried fragments, raw tool output or partial responses.
+	var prose strings.Builder
+	flush := func() {
+		if c.progress != nil && prose.Len() > 0 {
+			c.progress(prose.String())
+		}
+		prose.Reset()
+	}
 	for event := range events {
 		switch event.Kind {
+		case session.EventTextDelta:
+			if c.progress != nil && prose.Len() < 4*1024 {
+				text := event.Text
+				if len(text) > 4*1024-prose.Len() {
+					text = text[:4*1024-prose.Len()]
+				}
+				prose.WriteString(text)
+			}
+		case session.EventAssistantDone:
+			flush()
+		case session.EventRetrying:
+			prose.Reset()
 		case session.EventToolBegin:
+			flush()
 			hint := c.relativeHint(event.Hint)
 			if hint != "" {
 				c.say(event.Tool + " " + hint)
@@ -376,6 +400,7 @@ func (c *stageConversation) drain(events <-chan session.Event) {
 				c.say(event.Text)
 			}
 		case session.EventError:
+			prose.Reset()
 			c.fail(event.Err)
 		}
 	}

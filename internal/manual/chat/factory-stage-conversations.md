@@ -532,3 +532,27 @@ transition. Access/refusal/read errors keep a specific recoverable reason.
 A PR marked ready externally is recognized too. Overview and the conversation
 show the ready milestone and reviewed head. Follow PR keeps watching afterward;
 ready is not job completion and Auto never grants merge authority.
+
+## Follow PR explains its current work in the job conversation
+
+Each Follow PR round posts a brief ordinary assistant message naming its observed
+trigger: failing CI checks, review feedback, conflicts, or the final readiness
+review. The worker is asked to give one or two sentences when its investigation,
+repair approach or verification changes, roughly once a minute during lengthy
+work. Complete model messages are relayed at journal boundaries; reasoning, tool
+output, abandoned streams and partial replies are not relayed.
+
+The same job conversation receives these messages below the running Follow PR
+frame, without another card or requiring the person to open the worker chat.
+Only the first paragraph is relayed, capped at the existing 400-character stage
+summary size; the complete text remains in the worker chat. Duplicate updates
+are suppressed, and model updates are at least 30 seconds apart per round. This
+adds no periodic model calls and does not promise a timed heartbeat when a model
+is silent or a command is still running. Stopped, replaced or manually controlled
+rounds cannot keep reporting progress. Updates are explanations, not proof or
+permission: actual publication and ready-state outcomes still come from the
+service's confirmed receipts, and all existing budget and approval rules remain.
+
+After a confirmed repair publication, the conversation says `PR updated:` and
+explains that fresh GitHub CI is still pending. Initial publication still says
+`PR available:`. A model progress message never substitutes for either receipt.

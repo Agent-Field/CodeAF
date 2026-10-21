@@ -168,7 +168,7 @@ func (lp *floorLoop) publishRun(c *loopCtl, trailer string) {
 	receipt, err := lp.r.publish(c.ctx, it, trailer)
 	now := lp.r.now()
 	if err != nil {
-		_ = lp.write(c, func(it *factory.Item) error {
+		writeErr := lp.write(c, func(it *factory.Item) error {
 			it.State = factory.StateLanded
 			detail := loopFirstLine(err.Error())
 			if detail == "" {
@@ -179,6 +179,9 @@ func (lp *floorLoop) publishRun(c *loopCtl, trailer string) {
 			loopSay(it, now, "fail", "could not publish: "+detail)
 			return nil
 		})
+		if writeErr == nil && it.PullRequest != nil {
+			lp.tell(c.id, "PR update was not confirmed: "+loopFirstLine(err.Error())+". Follow PR has paused publication; review the recorded error before retrying.")
+		}
 		return
 	}
 	if lp.write(c, func(it *factory.Item) error {
@@ -225,7 +228,11 @@ func (lp *floorLoop) publishRun(c *loopCtl, trailer string) {
 			if factory.Automatic(it) {
 				mode = "Auto records and pushes checked repairs within the job budget."
 			}
-			lp.tell(c.id, "PR available: "+receipt.pr.URL+". Follow PR watches CI, reviews and conflicts. "+mode+" Merge remains your decision.")
+			if it.PullRequest != nil && it.PullRequest.Number == receipt.pr.Number {
+				lp.tell(c.id, "PR updated: "+receipt.pr.URL+". The verified local repair was pushed. Waiting for GitHub CI on the updated PR; Follow PR continues watching review feedback and conflicts.")
+			} else {
+				lp.tell(c.id, "PR available: "+receipt.pr.URL+". Follow PR watches CI, reviews and conflicts. "+mode+" Merge remains your decision.")
+			}
 		} else {
 			lp.tell(c.id, "Published issue comment: "+receipt.comment)
 		}
