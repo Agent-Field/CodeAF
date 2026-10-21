@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
-	"syscall"
 	"testing"
 	"time"
 
@@ -118,11 +117,11 @@ func TestKeepTransfersOwnershipAndLeafTeardownCountsOnlyKilledJobs(t *testing.T)
 	if killed := tools.Close(); killed != 1 {
 		t.Fatalf("leaf teardown killed %d jobs, want only the unpromoted job", killed)
 	}
-	if err := syscall.Kill(requests[0].PID, 0); err != nil {
+	if err := testProcessSignal(requests[0].PID, 0); err != nil {
 		t.Fatalf("requested service did not survive leaf teardown: %v", err)
 	}
 	requests[0].Stop()
-	if err := syscall.Kill(requests[0].PID, 0); err == nil {
+	if err := testProcessSignal(requests[0].PID, 0); err == nil {
 		t.Fatal("declined service process still alive")
 	}
 }
@@ -253,10 +252,10 @@ func TestJobKillTerminatesTheWholeProcessGroup(t *testing.T) {
 		t.Fatalf("kill result = %+v", result)
 	}
 	deadline := time.Now().Add(slack(3 * time.Second))
-	for time.Now().Before(deadline) && syscall.Kill(childPID, 0) == nil {
+	for time.Now().Before(deadline) && testProcessSignal(childPID, 0) == nil {
 		time.Sleep(20 * time.Millisecond)
 	}
-	if err := syscall.Kill(childPID, 0); err == nil {
+	if err := testProcessSignal(childPID, 0); err == nil {
 		t.Fatalf("grandchild %d survived process-group kill", childPID)
 	}
 }
@@ -273,7 +272,7 @@ func TestExitedBackgroundShellDoesNotLeaveDetachedChildren(t *testing.T) {
 		t.Fatalf("child pid %q: %v", pidText, err)
 	}
 	waitForJobDone(t, tools, 1, 5*time.Second)
-	if err := syscall.Kill(childPID, 0); err == nil {
+	if err := testProcessSignal(childPID, 0); err == nil {
 		t.Fatalf("detached child %d survived its background shell", childPID)
 	}
 }
@@ -482,7 +481,7 @@ func TestSchedulerAbandonmentTearsDownLeafJobs(t *testing.T) {
 		t.Fatalf("abandoned process did not start: %v; log=%q", err, logBody)
 	}
 	pid, _ := strconv.Atoi(strings.TrimSpace(string(pidBody)))
-	if err := syscall.Kill(pid, 0); err == nil {
+	if err := testProcessSignal(pid, 0); err == nil {
 		t.Fatalf("process %d survived scheduler abandonment", pid)
 	}
 }

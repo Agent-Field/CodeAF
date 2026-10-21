@@ -6,6 +6,16 @@ two thirds off the embedded corpora. This file is what keeps it. Every win below
 is defended by something that goes red locally, in `go test` or in `make check`,
 with a message that says what happened.
 
+## Tool process identity in history
+
+`DisplayEntry` is bounded at **304 bytes** on a 64-bit machine, up from 296:
+one optional pointer carries the job's registry number and start, or the kept
+service's id, from the exact tool-result occurrence. Ordinary entries allocate
+no process identity. This pays eight bytes per entry so history can name the
+same process as the live tool end without parsing output or guessing from a
+clock that excludes approval waits. The existing layout guards in
+`internal/session/submission_test.go` and `media_attempt_test.go` pin the bound.
+
 ## Teams overview reading bounds
 
 Visible teams’ member previews and latest-message times are read once per conversation
@@ -2999,3 +3009,13 @@ A change to any of them changes this section in the same commit.
 | `service.LogCapBytes` | 2 MiB | A service's live log, cut back only while a codeaf runs. It is stated as `cap_bytes`. |
 
 The services of a stop-all are the agent's own (`StopOwnerWait`). They are bounded by the supervisor's 64-service store, and they wait out each service's 5 s stop grace under the 10 s ceiling. `processes.actions` and `processes.log_target` share `processes.page`'s 4-read admission and its 2 s deadline.
+
+## Saved harness list reads
+
+The desktop `harness.list` shares the session-action read admission (`appActionReads`).
+`subharness.SavedBounded` enforces `SavedListRows` (128 rows), `SavedListFileBytes`
+(1 MiB per head page or latest trace), `SavedListReadBytes` (16 MiB read in total),
+and `SavedListEntries` (32768 directory entries across all scanned folders) before
+loading. Directories are scanned in batches of 128; bytes are stat-checked and read
+through a limit to cover file growth. The reply remains capped at 512 KiB. An exceeded
+budget refuses the entire request with `too_large`; admission refuses with `busy`.

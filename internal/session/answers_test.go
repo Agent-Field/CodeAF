@@ -221,17 +221,16 @@ func TestAnAnswerToAQuestionNobodyIsWaitingOnIsDropped(t *testing.T) {
 // looks for the answer.
 func TestTheHeartbeatPicksTheAnswerUpOnItsOwn(t *testing.T) {
 	agent, dir := questionSession(t, "eeee1111eeee2222", nil)
-	// The agent's own desk beats every five seconds, which is right for a
-	// machine and wrong here ([TestPresenceHeartbeatMovesTheStamp] makes the
-	// same trade).
+	// The shared maintenance clock is injected so delivery needs no real wait.
 	agent.stopPresence()
+	ticks := make(chan time.Time, 1)
 	desk := &presenceDesk{
 		agent: agent,
 		path:  filepath.Join(dir, presenceName),
 		stop:  make(chan struct{}),
 		done:  make(chan struct{}),
 		nudge: make(chan struct{}, 1),
-		every: 10 * time.Millisecond,
+		ticks: ticks,
 	}
 	agent.presence = desk
 	go desk.beat()
@@ -258,6 +257,7 @@ func TestTheHeartbeatPicksTheAnswerUpOnItsOwn(t *testing.T) {
 	if err := WriteAnswer(dir, QuestionConsent, request.ID, "3"); err != nil {
 		t.Fatalf("leaving the answer: %v", err)
 	}
+	ticks <- time.Now()
 	select {
 	case answer := <-allowed:
 		if answer {

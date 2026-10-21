@@ -42,6 +42,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/connect"
 )
 
@@ -224,6 +225,9 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 		return refusal(off), false
 	}
 	decision, governed := a.decide(call)
+	if governed && decision.Action == approval.ActionAllow && decision.Scope != "" && hub != nil {
+		hub.send(Event{Kind: EventConsentAllowed, Tool: call.Function.Name, Args: argsText(call), CallID: call.ID, Hint: a.gloss(call), Rule: decision.Scope})
+	}
 	if !governed || decision.Action == approval.ActionAllow {
 		return toolResult{}, true
 	}
@@ -570,6 +574,11 @@ func withoutWidening(options []AnswerOption) []AnswerOption {
 // repository's generic-and-meta law: internal/approval says which shapes are
 // grave, and this lane carries the grade.
 func (a *Agent) consentAsk(id uint64, call ai.ToolCall, decision approval.Decision) Question {
+	scopes, alwaysAsk := config.ApprovalScopes(call.Function.Name, json.RawMessage(call.Function.Arguments))
+	outside := ""
+	if policy := a.approvalGate(); policy != nil {
+		outside = policy.OutsideRule(call.Function.Name, []byte(call.Function.Arguments))
+	}
 	irreversible := approval.AlwaysAsks(call.Function.Name, json.RawMessage(call.Function.Arguments))
 	stakes := StakesCostly
 	options := AnswerOptions(QuestionConsent)
@@ -586,14 +595,17 @@ func (a *Agent) consentAsk(id uint64, call ai.ToolCall, decision approval.Decisi
 		scope = []AnswerScope{ScopeOnce}
 	}
 	return Question{
-		ID:      id,
-		Kind:    QuestionConsent,
-		Ask:     AskPermission,
-		Form:    FormLine,
-		Asker:   Asker{Kind: AskerEngine},
-		Head:    ConsentHead(call.Function.Name, call.Function.Arguments),
-		Reason:  consentReason(call, decision),
-		Subject: SubjectRef{Kind: SubjectCall, CallID: call.ID, Name: call.Function.Name},
+		ID:            id,
+		Outside:       outside,
+		ConsentScopes: scopes,
+		AlwaysAsk:     alwaysAsk,
+		Kind:          QuestionConsent,
+		Ask:           AskPermission,
+		Form:          FormLine,
+		Asker:         Asker{Kind: AskerEngine},
+		Head:          ConsentHead(call.Function.Name, call.Function.Arguments),
+		Reason:        consentReason(call, decision),
+		Subject:       SubjectRef{Kind: SubjectCall, CallID: call.ID, Name: call.Function.Name},
 		// AND WHICH STEP ASKED, so that three approvals raised by one tool batch
 		// are drawn and answered as the one thing they are (question.go's
 		// [Question.Batch]).

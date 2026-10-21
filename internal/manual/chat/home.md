@@ -1712,7 +1712,8 @@ A session that gave no words for what it is waiting on shows no line at all rath
 placeholder.
 
 This is read out of a small file each live session keeps in its own folder, refreshed
-every five seconds and believed for fifteen. So a window that was killed, or a laptop that
+when its contents change, touched every ten seconds while unchanged, and believed for
+fifteen seconds after its last write or touch. So a window that was killed, or a laptop that
 closed, stops claiming to need you within a glance.
 
 `enter` on the row opens it. **For the ordinary questions you do not have to go at all** —

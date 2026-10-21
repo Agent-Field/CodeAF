@@ -2230,3 +2230,29 @@ tabs included, and opening a row brings the tab and its draft back too.
 notification and press `delete` to dismiss just that notification. Pending
 `your call` decisions stay visible. Dismissal does not stop work, accept a
 result, delete a task, or remove its output from Sessions.
+
+## Desktop engine methods for cache, autonomy and harnesses
+
+Desktop clients can read the machine build cache through `cache.status` and clean
+it through `cache.clean {confirm: true}` after asking you first. Cleaning uses the
+same directory and safeguards as `/cache clean now`; builds start cold afterwards.
+Conversations and settings are not removed.
+
+`autonomy.get {agent}` lists the terminal's eight question kinds and their saved
+rules. `autonomy.set {agent, kind, rule}` accepts ask, decide or recommend with an
+optional duration. Confirmation and clarification always ask. These rules belong
+to the conversation's project and follow its engine connection to another machine.
+
+`harness.list` lists the latest saved shapes with descriptions and run history.
+Choosing a shape belongs to the client's draft tray: there is no `harness.use`
+engine method. The terminal panel's selection shows a card; its picker sets a chip.
+`agents.run_harness {id, name, text, client_id?}` runs that saved shape with your
+next message as its input, through the same runner as the terminal picker.
+It returns a turn and ordinary reply events. A running turn refuses as busy;
+an unknown name refuses before a turn starts. An engine without the door says
+`harnesses are unavailable here`. Attachments stay for an ordinary message.
+The optional `client_id` correlates the user entry, as with `agents.send`;
+sending it twice still starts two runs when the conversation is free.
+
+Cache and saved-harness listing are machine-local. Running a saved harness uses
+the conversation's engine connection when that engine supports it.

@@ -503,8 +503,6 @@ func (r *lendRig) askTitled(t *testing.T, want string) appwire.Ask {
 // hold, and lend the NEW agent a resume of the same transcript opens, so that
 // agent's card reaches the person.
 func TestTheOwnersClosingALentStageEndsTheAppViewAndAResumedStageIsLentAgain(t *testing.T) {
-	prev := lendClosedPoll.Swap(int64(5 * time.Millisecond))
-	t.Cleanup(func() { lendClosedPoll.Store(prev) })
 	r := newLendRig(t, "read the ledger again")
 	r.askTitled(t, "read the ledger")
 	if lendWatchers() == 0 {

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
@@ -51,6 +52,8 @@ type TeamProposalTeam struct {
 
 // TeamProposalInput is everything one ask is about.
 type TeamProposalInput struct {
+	// RequireNaming is the desktop policy; terminal requests retain model fallback.
+	RequireNaming bool `json:",omitempty"`
 	Conversations []TeamProposalConversation
 	Teams         []TeamProposalTeam
 }
@@ -68,16 +71,40 @@ type ProposedTeam struct {
 type ProposedAddition struct {
 	TeamID  string
 	Members []string
+	Reason  string
 }
 
-// TeamProposal is one validated answer. Model is the model that answered and
-// PromptChars the size of what it was asked, so the surface can say about what
-// the ask cost.
+// TeamProposal is one validated answer. CostUSD is the charge reported by
+// usage, absent when the provider did not report it; PromptChars remains for
+// older remote clients.
 type TeamProposal struct {
 	New         []ProposedTeam
 	Additions   []ProposedAddition
 	Model       string
 	PromptChars int
+	CostUSD     *float64
+}
+
+// TeamProposerConfig carries only naming's provider settings, never a session's
+// task policy, journal or tool capabilities.
+type TeamProposerConfig struct {
+	Model, APIKey, BaseURL, ProfileDir string
+	Sources                            modelsource.Set
+	RolesSource                        func(string) (string, bool)
+}
+
+// NewTeamProposer builds only the model-call state. It owns no conversation,
+// journal, tools or lifecycle watches, so asking for suggestions cannot repair teams.
+func NewTeamProposer(settings TeamProposerConfig) (TeamProposer, error) {
+	config := Config{Model: settings.Model, APIKey: settings.APIKey, BaseURL: settings.BaseURL, ProfileDir: settings.ProfileDir, Sources: settings.Sources, RolesSource: settings.RolesSource}
+	client, err := newProviderClient(config, config.Model)
+	if err != nil {
+		return nil, err
+	}
+	a := &Agent{config: config, model: config.Model}
+	a.installSessionClient(client, config)
+	a.manageClient(config)
+	return a, nil
 }
 
 // teamProposeSystem and teamProposeAsk are the instruction. The shape of the
@@ -85,9 +112,9 @@ type TeamProposal struct {
 // than a description.
 const (
 	teamProposeSystem = "You sort a person's coding conversations into teams."
-	teamProposeAsk    = `Suggest teams that group these conversations by shared project or topic, and existing teams that more conversations belong in. A conversation may be in several teams. Only use the refs above. Never rename or remove anything. Suggest nothing you are unsure of; empty lists are fine.
+	teamProposeAsk    = `Suggest teams that group these conversations by shared project or topic, and existing teams that more conversations belong in. A conversation may appear in at most one suggestion. Only use the refs above. Never rename or remove anything. Suggest nothing you are unsure of; empty lists are fine.
 Answer with JSON only, in this shape:
-{"new":[{"name":"one to three lowercase words","members":["c1","c2"],"reason":"a few words"}],"add":[{"team":"t1","members":["c3"]}]}`
+{"new":[{"name":"one to three lowercase words","members":["c1","c2"],"reason":"a few words"}],"add":[{"team":"t1","members":["c3"],"reason":"a few words"}]}`
 )
 
 // The bounds on one ask: how much of each title is sent, how many
@@ -108,14 +135,37 @@ const (
 // empty proposal; an empty proposal is an answer.
 func (a *Agent) ProposeTeams(ctx context.Context, in TeamProposalInput) (TeamProposal, error) {
 	ask, refs := teamProposePrompt(in)
-	if len(refs.convs) < 2 {
+	if !in.RequireNaming {
+		ask = strings.Replace(ask, "A conversation may appear in at most one suggestion.", "A conversation may be in several teams.", 1)
+	}
+	if !in.RequireNaming && len(refs.convs) < 2 {
 		return TeamProposal{}, errors.New("fewer than two conversations to organize")
+	}
+	if len(refs.convs) == 0 {
+		return TeamProposal{}, errors.New("no conversations to organize")
 	}
 	a.mu.Lock()
 	model, closed := a.model, a.closed
+	source, oneModel := a.config.RolesSource, a.config.OneModel
 	a.mu.Unlock()
 	if closed {
 		return TeamProposal{}, errors.New("the conversation is closed")
+	}
+	// Only a desktop ask requires an explicit naming role. Terminal asks keep
+	// the conversation floor, and one-model mode explicitly chooses that floor.
+	if in.RequireNaming && !oneModel {
+		if _, err := roles.Resolve(source, roles.RoleTitle, ""); err != nil {
+			return TeamProposal{}, ErrNoNamingModel
+		}
+	}
+	var cost float64
+	known := true
+	charge := func(response *ai.Response) {
+		if response == nil || response.Usage == nil || response.Usage.Cost == nil {
+			known = false
+			return
+		}
+		cost += *response.Usage.Cost
 	}
 	response, named, err := a.callRoleChecked(withDetachedUsage(ctx), roles.RoleTitle, model,
 		[]ai.Message{textMessage("system", teamProposeSystem), textMessage("user", ask)},
@@ -123,6 +173,7 @@ func (a *Agent) ProposeTeams(ctx context.Context, in TeamProposalInput) (TeamPro
 			if _, ok := parseTeamProposal(response.Text(), in, refs); ok {
 				return true
 			}
+			charge(response)
 			a.addDetachedUsageAs(response, named, 1, auxRoleTitle)
 			return false
 		})
@@ -132,10 +183,14 @@ func (a *Agent) ProposeTeams(ctx context.Context, in TeamProposalInput) (TeamPro
 	if response == nil {
 		return TeamProposal{}, errEmptyAnswer
 	}
+	charge(response)
 	a.addDetachedUsageAs(response, named, 1, auxRoleTitle)
 	out, ok := parseTeamProposal(response.Text(), in, refs)
 	if !ok {
 		return TeamProposal{}, errors.New("the answer was not a proposal")
+	}
+	if known {
+		out.CostUSD = &cost
 	}
 	out.Model = named
 	out.PromptChars = len(teamProposeSystem) + len(ask)
@@ -203,6 +258,7 @@ type teamProposeWire struct {
 		Reason  string   `json:"reason"`
 	} `json:"new"`
 	Add []struct {
+		Reason  string   `json:"reason"`
 		Team    string   `json:"team"`
 		Members []string `json:"members"`
 	} `json:"add"`
@@ -250,6 +306,7 @@ func parseTeamProposal(raw string, in TeamProposalInput, refs teamProposeRefs) (
 	var out TeamProposal
 	adds := map[string][]string{}
 	var addOrder []string
+	reasons := map[string]string{}
 	add := func(id string, members []string) {
 		t := byID[id]
 		for _, key := range members {
@@ -271,6 +328,7 @@ func parseTeamProposal(raw string, in TeamProposalInput, refs teamProposeRefs) (
 		}
 		if id, ok := byName[name]; ok {
 			add(id, members)
+			reasons[id] = clip(oneLine(n.Reason), teamProposeReason)
 			continue
 		}
 		if i, ok := newAt[name]; ok {
@@ -297,9 +355,10 @@ func parseTeamProposal(raw string, in TeamProposalInput, refs teamProposeRefs) (
 			continue
 		}
 		add(id, keys(n.Members))
+		reasons[id] = clip(oneLine(n.Reason), teamProposeReason)
 	}
 	for _, id := range addOrder {
-		out.Additions = append(out.Additions, ProposedAddition{TeamID: id, Members: adds[id]})
+		out.Additions = append(out.Additions, ProposedAddition{TeamID: id, Members: adds[id], Reason: reasons[id]})
 	}
 	return out, true
 }

@@ -50,7 +50,7 @@ func (b *appBackend) ShowAsk(agent, id string) (*appwire.Ask, error) {
 }
 
 func (b *appBackend) clockAsk(agent, id string, start bool) (*appwire.Ask, error) {
-	a, err := b.find(agent)
+	a, err := b.findCrewOwner(agent)
 	if err != nil {
 		return nil, err
 	}

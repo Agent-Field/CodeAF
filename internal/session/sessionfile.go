@@ -1897,6 +1897,9 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 	presentation := &presentationIndex{}
 	// And when each message was written, off the same line (entrytime.go).
 	stamps := &stampIndex{}
+	// Physical origins belong only to display records. A resumed agent must not
+	// retain graph navigation metadata in its per-turn working set.
+	var userLines map[any]int
 	notes := make(map[string]bool)
 	// And the caption index, for the notes' reason exactly: a `caption` line is
 	// news about a batch that is not carried by any message, so this pass is the
@@ -1986,6 +1989,14 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			}
 			presentation.remember(message, mark)
 			stamps.remember(message, lineInstant(entry.Timestamp))
+			if !rebuild && entry.Role == "user" && !entry.Note {
+				if key := stampKey(message); key != nil {
+					if userLines == nil {
+						userLines = make(map[any]int)
+					}
+					userLines[key] = scanned
+				}
+			}
 			rememberParts(images, message, entry.Parts)
 			if entry.Note {
 				rememberNote(notes, message)
@@ -2302,6 +2313,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 		notes:          notes,
 		presentation:   presentation,
 		stamps:         stamps,
+		userLines:      userLines,
 		replyTags:      replyTags,
 		delivered:      delivered,
 		noteDeliveries: noteDeliveries,
@@ -2447,7 +2459,9 @@ func legacyCompactionNote(summary string) string {
 // the name arrived here after the other two — and a reader of a call site
 // should not have to count positions to know which bool is which.
 type replayedSession struct {
-	messages []ai.Message
+	// userLines is read-only physical provenance for display reads, nil on resume.
+	userLines map[any]int
+	messages  []ai.Message
 	// requests is what the file's request lines said, read beside the rebuild
 	// for a page watching the work with no lane to it ([RequestBooks]).
 	requests RequestBooks
@@ -3015,6 +3029,11 @@ func (s *sessionFile) appendCompaction(pass compactionPass, tokensBefore int, wi
 		Window:    len(window),
 		Timestamp: passStamp(pass.at),
 	})
+	s.appendWindow(window, sidecars...)
+}
+
+// appendWindow re-journals original messages with their provenance after a shape edit.
+func (s *sessionFile) appendWindow(window []ai.Message, sidecars ...[]provider.MessageReasoning) {
 	for index, message := range window {
 		// Marks belong to the original message, before projecting a fresh
 		// journal copy. The live window still carries the model's context.

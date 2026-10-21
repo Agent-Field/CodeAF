@@ -13,9 +13,9 @@ package main
 // conversation it opens in the crew's folder and adds under the manager's
 // handle, and a manager's `stop` line is the member's own stop. It acts only on
 // lines that arrive while it watches, never on history, and only while it
-// holds the manager. Every member of an open crew stays held while the crew is
-// open, so a member woken by its manager is a turn on the wire
-// (appwakes.go) and never a conversation nobody is watching.
+// holds the manager. Idle members remain light records until traffic needs
+// them; the shared watch subscribes before checking pending wakes, so a turn
+// on an unopened member still reaches the wire (appwakes.go).
 //
 // A decision packet waiting on the person is also an ask on the manager that
 // brought it to them, so it reaches the dock and the Inbox like any question;
@@ -39,6 +39,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/fsnotify/fsnotify"
 )
 
 // The ids a crew's asks carry: a decision packet, and an agent's proposal.
@@ -90,6 +91,20 @@ func appTintHue(name string) (float64, bool) {
 // where it is in each log, the packets waiting on the person, the asks they
 // are, and which agents an open crew keeps held.
 type appCrewRun struct {
+	// ready publishes the initial subscription and check to concurrent callers.
+	ready chan struct{}
+
+	tick       sync.Mutex
+	watcher    *fsnotify.Watcher
+	since      time.Time
+	wakeStamps map[string]string
+	// recovering is true during startup admission and false once settled. A
+	// settled recovery is revisited for new traffic, never for its old claim.
+	recovering map[string]bool
+
+	read    appCrewRead
+	inputs  string
+	teams   []teamstore.Team
 	mu      sync.Mutex
 	stop    chan struct{}
 	done    chan struct{}
@@ -132,7 +147,8 @@ func (b *appBackend) crews() *appCrewRun {
 	b.locked(func() {
 		if b.crewRun == nil && !b.closing {
 			b.crewRun = &appCrewRun{
-				stop: make(chan struct{}), done: make(chan struct{}),
+				ready: make(chan struct{}),
+				stop:  make(chan struct{}), done: make(chan struct{}),
 				prints: map[string]string{}, members: map[string]string{}, cursors: map[string]string{},
 				acted: map[string]bool{}, packets: map[string]teamstore.Packet{}, asks: map[string]appwire.Ask{},
 				held: map[string][]string{}, opening: map[string]bool{},
@@ -142,9 +158,13 @@ func (b *appBackend) crews() *appCrewRun {
 		run = b.crewRun
 	})
 	if start {
+		b.subscribeCrewTraffic(run)
 		b.crewTick(run, true)
 		b.reopenProposals(run)
 		guard.Go("app/crews", func() { b.crewLoop(run) })
+		close(run.ready)
+	} else if run != nil && run.ready != nil {
+		<-run.ready
 	}
 	return run
 }
@@ -172,14 +192,34 @@ func (b *appBackend) reopenProposals(run *appCrewRun) {
 // crewLoop looks at the crews every beat until the app closes.
 func (b *appBackend) crewLoop(run *appCrewRun) {
 	defer close(run.done)
+	var events <-chan fsnotify.Event
+	var errors <-chan error
+	if run.watcher != nil {
+		events, errors = run.watcher.Events, run.watcher.Errors
+		defer run.watcher.Close()
+	}
 	ticker := time.NewTicker(appCrewPoll)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-run.stop:
 			return
-		case <-ticker.C:
+		case event, ok := <-events:
+			if !ok {
+				events = nil
+				continue
+			}
+			if crewTrafficEvent(event) {
+				b.crewTick(run, false)
+			}
+		case _, ok := <-errors:
+			if !ok {
+				errors = nil
+				continue
+			}
 			b.crewTick(run, false)
+		case <-ticker.C:
+			b.crewRefresh(run)
 		}
 	}
 }
@@ -220,11 +260,20 @@ func (b *appBackend) crewRead() (appCrewRead, error) {
 // crewTick is one look: every crew said again where it changed, every new log
 // line said and acted on, every packet on the person made an ask or closed,
 // and every member of an open crew held.
-func (b *appBackend) crewTick(run *appCrewRun, first bool) {
+func (b *appBackend) crewTick(run *appCrewRun, first bool) bool {
+	run.tick.Lock()
+	defer run.tick.Unlock()
+	return b.crewTickLocked(run, first)
+}
+
+// crewTickLocked rebuilds the view while the caller holds the tick gate.
+func (b *appBackend) crewTickLocked(run *appCrewRun, first bool) bool {
 	read, err := b.crewRead()
 	if err != nil {
-		return
+		return false
 	}
+	run.read = read
+	run.locked(func() { run.teams = read.file.Teams })
 	views := map[string]appwire.Crew{}
 	held := map[string][]string{}
 	for _, t := range read.file.Teams {
@@ -296,12 +345,13 @@ func (b *appBackend) crewTick(run *appCrewRun, first bool) {
 		}
 	}
 	b.crewPackets(run, read, first)
-	b.holdMembers(run, held)
+	b.holdMembers(run, b.neededMembers(run, read, first))
 	// What a hold that failed or came back has to say is said on a later
 	// look than the first, which runs before the app's hello is on the wire.
 	if !first {
 		b.sayHolds(run)
 	}
+	return true
 }
 
 // appMembershipMoved is every agent whose open crews differ between two looks.
@@ -868,8 +918,8 @@ func (b *appBackend) agentMember(agent string) (teamstore.Member, error) {
 	return teamstore.Member{Key: key, File: transcript, Where: where, Word: title, JoinedAt: b.now()}, nil
 }
 
-// holdMembers keeps every member of an open crew held, opening one that is
-// not, one at a time. A member that cannot be opened is said, once, and tried
+// holdMembers opens only the members with work selected by neededMembers,
+// one at a time. A member that cannot be opened is said, once, and tried
 // again later (appcrewhold.go): a member nobody holds is a member whose
 // questions reach nobody.
 func (b *appBackend) holdMembers(run *appCrewRun, held map[string][]string) {
@@ -1331,7 +1381,7 @@ func appApplySettings(s *teamstore.Settings, given appwire.CrewSettings) {
 
 // crewExtraOnCreate keeps a new crew's goal, end date and the manager's tasks
 // as they stood.
-func (b *appBackend) crewExtraOnCreate(id, manager, goal string, ends *time.Time) {
+func (b *appBackend) crewExtraOnCreate(id, manager, goal string, ends *time.Time, origin ...appStartClaim) {
 	var history []string
 	if manager != "" {
 		if tasks, err := b.ListTasks(manager); err == nil {
@@ -1346,6 +1396,9 @@ func (b *appBackend) crewExtraOnCreate(id, manager, goal string, ends *time.Time
 	_ = b.crewLayer().write(func(f *appCrewLayerFile) error {
 		extra := f.crew(id)
 		extra.Goal, extra.EndsAt, extra.History = strings.TrimSpace(goal), ends, history
+		if len(origin) > 0 {
+			extra.GoalAgent, extra.GoalClientID = origin[0].Manager, origin[0].ClientID
+		}
 		if len(history) > 0 {
 			extra.HistoryOwner = manager
 		}
@@ -1532,6 +1585,7 @@ func (b *appBackend) CrewUpdate(ask appwire.CrewUpdate) (appwire.Crew, error) {
 			extra := f.crew(ask.ID)
 			if ask.Goal != nil {
 				extra.Goal = strings.TrimSpace(*ask.Goal)
+				extra.GoalAgent, extra.GoalClientID = "", ""
 			}
 			if ask.EndsAt != nil {
 				ends := *ask.EndsAt

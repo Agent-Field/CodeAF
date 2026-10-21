@@ -56,6 +56,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/shell"
 	"github.com/Agent-Field/codeaf/internal/verify"
 )
 
@@ -248,7 +249,11 @@ func runOneCheck(ctx context.Context, tree, check string, windows ...time.Durati
 	}
 	ctx, done := context.WithTimeout(ctx, window)
 	defer done()
-	command := exec.CommandContext(ctx, "bash", "-c", check)
+	bash, err := shell.Bash()
+	if err != nil {
+		return CheckRun{Command: check, Tail: err.Error()}
+	}
+	command := exec.CommandContext(ctx, bash, "-c", check)
 	command.Dir = tree
 	output, err := command.CombinedOutput()
 	// A COMMAND THAT RAN AND A COMMAND THAT COULD NOT BE RUN ARE DIFFERENT NEWS.

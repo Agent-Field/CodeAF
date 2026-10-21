@@ -712,6 +712,12 @@ const (
 // forms are internal/tui3's, and two of them drawing the same value differently
 // is a surface question rather than a contract one.
 type Question struct {
+	// Outside names a saved rule that does not cover this permission call.
+	Outside string `json:"outside,omitempty"`
+	// ConsentScopes and AlwaysAsk carry the gate's offered persistent rules.
+	ConsentScopes []string `json:"consentScopes,omitempty"`
+	AlwaysAsk     string   `json:"alwaysAsk,omitempty"`
+
 	// ClarificationDepth orders prerequisites ahead of the question they explain.
 	ClarificationDepth int `json:"clarificationDepth,omitempty"`
 

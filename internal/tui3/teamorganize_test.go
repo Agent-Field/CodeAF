@@ -346,6 +346,7 @@ func TestOrganizeModelFailureFallsBackToFolders(t *testing.T) {
 		New:         []session.ProposedTeam{{Name: "scrapers", Members: []string{lab, leadgen}, Reason: "both scrape"}},
 		Model:       "some/unpriced-model",
 		PromptChars: 4000,
+		CostUSD:     func() *float64 { v := 0.0123; return &v }(),
 	}
 	cmd = a.wallOrganizeOpen()
 	spend(t, a, cmd)
@@ -357,7 +358,7 @@ func TestOrganizeModelFailureFallsBackToFolders(t *testing.T) {
 		t.Fatal("two new teams were offered one colour")
 	}
 	frame := orgFrame(a)
-	if !strings.Contains(frame, "about 1.3k tokens") || strings.Contains(frame, "folders only") {
+	if !strings.Contains(frame, dollars(0.0123)) || strings.Contains(frame, "folders only") {
 		t.Fatalf("the priced card:\n%s", frame)
 	}
 	if p.calls != 2 {

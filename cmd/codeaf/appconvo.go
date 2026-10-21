@@ -150,8 +150,11 @@ func appKeepsQueuedMarks(conv appConversation) bool {
 }
 
 func (b *appBackend) steer(agent, text, clientID string, shown *appSending) error {
+	if err := (session.Submission{ClientID: clientID}).Check(); err != nil {
+		return appEngineError(err)
+	}
 	b.resetCloseResumes(agent)
-	a, err := b.find(agent)
+	a, err := b.findCrewOwner(agent)
 	if err != nil {
 		return err
 	}
@@ -296,7 +299,10 @@ func (b *appBackend) QueueMessage(agent string, message appwire.AgentMessage) ([
 }
 
 func (b *appBackend) queue(agent, text, clientID string, shown *appSending) ([]appwire.Queued, error) {
-	a, err := b.find(agent)
+	if err := (session.Submission{ClientID: clientID}).Check(); err != nil {
+		return nil, appEngineError(err)
+	}
+	a, err := b.findCrewOwner(agent)
 	if err != nil {
 		return nil, err
 	}
@@ -603,7 +609,7 @@ func (b *appBackend) AnswerAskWith(agent, id string, answer appwire.AskAnswer) e
 	if handled, err := b.answerCrewAsk(agent, id, answer.Option, answer.Text, answer.Why); handled {
 		return err
 	}
-	a, err := b.find(agent)
+	a, err := b.findCrewOwner(agent)
 	if err != nil {
 		return err
 	}
@@ -655,12 +661,16 @@ func (b *appBackend) AnswerAskWith(agent, id string, answer appwire.AskAnswer) e
 	targets := []string{id}
 	if answer.BatchItem != "" {
 		targets = []string{answer.BatchItem}
-	} else if open {
+	} else if open && answer.Option != appwire.OptionAlways {
 		b.locked(func() {
 			if _, siblings := b.batchLocked(live, q); len(siblings) > 1 {
 				targets = siblings
 			}
 		})
+	}
+	// A saved scope answers the selected call alone; siblings have their own scopes.
+	if answer.Option == appwire.OptionAlways {
+		return b.answerAskScope(agent, targets[0], answer.Option, text, answer.Scope)
 	}
 	for _, target := range targets {
 		var sibling session.Question
@@ -670,7 +680,7 @@ func (b *appBackend) AnswerAskWith(agent, id string, answer appwire.AskAnswer) e
 			call := live.consents[sibling.ID]
 			callText = redact.Secrets(tui3.ToolTitle(call.Tool, call.Args, ""))
 		})
-		if err := b.AnswerAsk(agent, target, answer.Option, text); err != nil {
+		if err := b.answerAskScope(agent, target, answer.Option, text, answer.Scope); err != nil {
 			return err
 		}
 		if sibling.Batch != "" {
@@ -698,7 +708,7 @@ const appDecideMark = "decide:"
 // HoldAsk stops an ask's clock. Only a proposed task has one: its hold is the
 // task's own.
 func (b *appBackend) HoldAsk(agent, id string) error {
-	a, err := b.find(agent)
+	a, err := b.findCrewOwner(agent)
 	if err != nil {
 		return err
 	}

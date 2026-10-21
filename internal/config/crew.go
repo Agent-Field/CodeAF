@@ -1629,3 +1629,16 @@ func quoted(words []string) []string {
 	}
 	return out
 }
+
+// ApplyCrewModels applies the terminal's whole rule and incremental model forms.
+// Keeping the reading here makes desktop policy edits preserve open and price rules.
+func ApplyCrewModels(profileDir, raw string) error {
+	switch {
+	case strings.HasPrefix(raw, "+") && !strings.Contains(raw, " "):
+		return ModifyCrewAllowed(profileDir, true, strings.TrimPrefix(raw, "+"))
+	case strings.HasPrefix(raw, "-") && !strings.Contains(raw, " "):
+		return ModifyCrewAllowed(profileDir, false, strings.TrimPrefix(raw, "-"))
+	default:
+		return SetCrewAllowed(profileDir, raw)
+	}
+}

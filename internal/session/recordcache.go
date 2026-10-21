@@ -443,7 +443,7 @@ func sameStamp(info os.FileInfo, stamp recordStamp) bool {
 
 // recordReserve is what a journal of size bytes is expected to cost once read.
 // The record keeps the display text of each line, capped, plus a fixed shape
-// of 296 bytes per entry on 64-bit hosts. Short journal lines can expand
+// of 304 bytes per entry on 64-bit hosts. Short journal lines can expand
 // beyond four times the file, before their strings and nested metadata are
 // counted. Reserve five times the file plus room for small records. This is
 // still an estimate: a record that comes out larger is read but not kept.
@@ -480,6 +480,9 @@ func recordVectors(record Record) int64 {
 			if entry.Steer != nil {
 				cost += int64(unsafe.Sizeof(SteerMark{}))
 			}
+			if entry.ToolProcess != nil {
+				cost += int64(unsafe.Sizeof(ToolProcess{}))
+			}
 		}
 	}
 	return cost
@@ -491,6 +494,9 @@ func recordVectors(record Record) int64 {
 func recordCost(record Record) int64 {
 	cost := int64(unsafe.Sizeof(record))
 	cost += entriesCost(record.Entries) + entriesCost(record.Earlier)
+	// The private origin vector is immutable and shared by leases, but its
+	// retained allocation is still charged here, including spare capacity.
+	cost += int64(cap(record.userLines)) * int64(unsafe.Sizeof(recordUserLine{}))
 	cost += int64(len(record.Unreadable))
 	cost += int64(cap(record.Requests.Recent)) * int64(unsafe.Sizeof(RequestLine{}))
 	// A pass's summary is the one long string it carries; the journal holds
@@ -531,6 +537,9 @@ func entriesCost(entries []DisplayEntry) int64 {
 		}
 		if entry.Pass != nil {
 			cost += int64(unsafe.Sizeof(CompactionFact{})) + int64(len(entry.Pass.Summary)+len(entry.Pass.Model)+len(entry.Pass.Failed))
+		}
+		if entry.ToolProcess != nil {
+			cost += int64(unsafe.Sizeof(ToolProcess{})) + int64(len(entry.ToolProcess.Service))
 		}
 		cost += int64(cap(entry.Team)) * int64(unsafe.Sizeof(TeamLine{}))
 		for _, line := range entry.Team {
@@ -610,6 +619,10 @@ func cloneEntries(entries []DisplayEntry) []DisplayEntry {
 		if entry.Pass != nil {
 			pass := *entry.Pass
 			entry.Pass = &pass
+		}
+		if entry.ToolProcess != nil {
+			process := *entry.ToolProcess
+			entry.ToolProcess = &process
 		}
 	}
 	return out

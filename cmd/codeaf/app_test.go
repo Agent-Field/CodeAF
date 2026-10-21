@@ -24,6 +24,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
+	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -154,6 +155,7 @@ type fakeConversation struct {
 	answers      []session.Answer
 	model        string
 	effort       string
+	dialEffort   string
 	rail         float64
 	remembered   []session.ConsentScope
 	texts        []string
@@ -184,6 +186,8 @@ type fakeConversation struct {
 	retried []uint64
 	// onAnswer, when set, is what the engine does with an answer.
 	onAnswer func(session.Answer)
+
+	rememberedIDs []uint64
 }
 
 func (f *fakeConversation) WatchTaskRoom(uint64) (<-chan session.Event, func(), error) {
@@ -271,6 +275,21 @@ func (f *fakeConversation) SetReasoningFor(model, level string) {
 	f.effort = level
 	f.mu.Unlock()
 }
+func (f *fakeConversation) ConversationEffort() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.dialEffort
+}
+func (f *fakeConversation) SetConversationEffort(word string) bool {
+	rung, ok := effort.Parse(word)
+	if !ok {
+		return false
+	}
+	f.mu.Lock()
+	f.dialEffort = rung.String()
+	f.mu.Unlock()
+	return true
+}
 func (f *fakeConversation) SetSpendRail(usd float64) error {
 	f.mu.Lock()
 	f.rail = usd
@@ -280,6 +299,7 @@ func (f *fakeConversation) SetSpendRail(usd float64) error {
 func (f *fakeConversation) ResolveConsentRemember(id uint64, allow bool, scope session.ConsentScope) {
 	f.mu.Lock()
 	f.remembered = append(f.remembered, scope)
+	f.rememberedIDs = append(f.rememberedIDs, id)
 	f.mu.Unlock()
 }
 func (f *fakeConversation) AppTasks() ([]session.AppTaskView, error) {
@@ -884,7 +904,7 @@ func TestAppAsksOpenAnswerAndCloseThroughTheQuestionLane(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	approval := session.Question{ID: 4, Kind: session.QuestionConsent, Head: "bash rm -rf build", Reason: "bash asks first", Options: session.AnswerOptions(session.QuestionConsent)}
+	approval := session.Question{ConsentScopes: []string{"bash"}, ID: 4, Kind: session.QuestionConsent, Head: "bash rm -rf build", Reason: "bash asks first", Options: session.AnswerOptions(session.QuestionConsent)}
 	conv.raise(session.Event{Kind: session.EventQuestion, Question: &approval})
 	i := rec.waitFor(t, 5*time.Second, appAskEvent(appwire.EventAskOpened))
 	rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
@@ -1294,7 +1314,7 @@ func TestAppAlwaysWritesABashRule(t *testing.T) {
 	q := session.Question{ID: 4, Kind: session.QuestionConsent, Head: "bash go test ./internal/lexer/", Options: session.AnswerOptions(session.QuestionConsent)}
 	conv.raise(session.Event{Kind: session.EventQuestion, Question: &q})
 	rec.waitFor(t, 5*time.Second, appAskEvent(appwire.EventAskOpened))
-	if err := backend.AnswerAsk(agent.ID, "consent:4", appwire.OptionAlways, ""); err != nil {
+	if err := backend.AnswerAskWith(agent.ID, "consent:4", appwire.AskAnswer{Option: appwire.OptionAlways, Scope: "go test ./internal/lexer/"}); err != nil {
 		t.Fatal(err)
 	}
 	conv.mu.Lock()
@@ -1310,7 +1330,7 @@ func TestAppAlwaysWritesABashRule(t *testing.T) {
 	conv.raise(session.Event{Kind: session.EventQuestionWithdrawn, Question: &q})
 	rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
 		e, ok := data.(appwire.EntryAdded)
-		return ok && e.Entry.Kind == appwire.EntryReceipt && strings.HasPrefix(e.Entry.Text, "Always allowed · you · ")
+		return ok && e.Entry.Kind == appwire.EntryReceipt && strings.HasPrefix(e.Entry.Text, "Always allowed · go test ./internal/lexer/ · you · ")
 	})
 
 	final := session.Question{ID: 5, Kind: session.QuestionConsent, Head: "bash rm -rf dist", Stakes: session.StakesIrreversible, Options: session.AnswerOptions(session.QuestionConsent)}
@@ -1461,7 +1481,7 @@ func TestAppARealAlwaysIsHonouredOnTheNextCall(t *testing.T) {
 	if ask.Subkind != appwire.SubkindPermission || len(ask.Options) != 3 || ask.Options[2].ID != appwire.OptionAlways {
 		t.Fatalf("ask = %+v", ask)
 	}
-	if err := backend.AnswerAsk(agent.ID, ask.ID, appwire.OptionAlways, ""); err != nil {
+	if err := backend.AnswerAskWith(agent.ID, ask.ID, appwire.AskAnswer{Option: appwire.OptionAlways, Scope: "printf app-always-probe"}); err != nil {
 		t.Fatalf("answer = %v", err)
 	}
 	rec.waitFor(t, 30*time.Second, func(event string, data any) bool {
@@ -1680,6 +1700,43 @@ func TestAppNoticesAreQuietAndEffortMoves(t *testing.T) {
 	moved, err := backend.SetEffort(agent.ID, appwire.EffortHigh)
 	if err != nil || moved.Effort != appwire.EffortHigh {
 		t.Fatalf("set_effort = %+v, %v", moved, err)
+	}
+}
+
+// The app and terminal use the conversation dial, including its clearing path.
+func TestAppEffortUsesConversationDial(t *testing.T) {
+	conv := &fakeConversation{}
+	var mu sync.Mutex
+	var opens, releases int
+	rec := newAppRecorder()
+	backend := newFakeBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
+	defer backend.Close()
+	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, word := range []string{"low", "medium", "high", "xhigh", "max", "auto"} {
+		t.Run(word, func(t *testing.T) {
+			moved, err := backend.SetEffort(agent.ID, word)
+			want := word
+			if word == "auto" {
+				want = ""
+			}
+			if err != nil || moved.Effort != want || conv.ConversationEffort() != want {
+				t.Fatalf("set %q = %+v, %v; dial %q", word, moved, err, conv.ConversationEffort())
+			}
+			opened, err := backend.OpenAgent(agent.ID)
+			if err != nil || opened.Effort != want {
+				t.Fatalf("open = %+v, %v", opened, err)
+			}
+			if got := conv.ReasoningFor(conv.Model()); got != "" {
+				t.Fatalf("changed model override to %q", got)
+			}
+		})
+	}
+	backend.SetEffort(agent.ID, "max")
+	if _, err := backend.SetEffort(agent.ID, "sideways"); wireCode(err) != appwire.CodeBadParams || conv.ConversationEffort() != "max" {
+		t.Fatalf("unknown effort changed dial: %q, %v", conv.ConversationEffort(), err)
 	}
 }
 

@@ -2,7 +2,6 @@ package plandb
 
 import (
 	"database/sql"
-	"net/url"
 	"time"
 )
 
@@ -18,8 +17,7 @@ type RootPreview struct {
 // creates a database, migrates its schema or settles a task left running by a
 // process that exited, so a conversation picker can safely read live work too.
 func ReadRootPreview(path string) (RootPreview, error) {
-	uri := url.URL{Scheme: "file", Path: path, RawQuery: "mode=ro"}
-	db, err := sql.Open("sqlite", uri.String())
+	db, err := sql.Open("sqlite", StoreURI(path, "mode=ro"))
 	if err != nil {
 		return RootPreview{}, err
 	}

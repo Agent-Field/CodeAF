@@ -21,11 +21,11 @@ package main
 // new conversation records the workspace the app asked for as where the person
 // stood, since the process's own directory is wherever the app was started.
 //
-// AND IT IS LAZY BY LAW. Starting up reads nothing but the flags, so the hello
-// line leaves before anything is opened; listing agents, tasks and crews reads
-// the disk; only agents.create, agents.open and agents.send build a
-// conversation, and one left alone for [appAgentIdle] is let go again and
-// rebuilt transparently by the next send.
+// AND IT IS LAZY BY LAW. Startup opens agents with work or recovery to settle;
+// idle conversations stay as indexed records, crew members included. Viewing,
+// sending or waking opens one through the same per-agent gate. Listing agents,
+// tasks and crews reads the disk, and a conversation left alone for
+// [appAgentIdle] is let go and rebuilt transparently on demand.
 
 import (
 	"cmp"
@@ -48,6 +48,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/clipboard"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -237,6 +238,8 @@ type appConversation interface {
 // new one in a workspace. Minted is a folder this process minted a moment ago
 // for agents.create: nobody else can be holding it, so it is never joined.
 type appOpenAsk struct {
+	TeamListeningSince time.Time
+
 	Workspace  string
 	Transcript string
 	Model      string
@@ -249,6 +252,9 @@ type appOpenAsk struct {
 
 // appConn is an opened conversation and the one way to give it back.
 type appConn struct {
+	// UserMessages comes from the opener's replay, including compacted history.
+	UserMessages int
+
 	Conv       appConversation
 	Workspace  string
 	Transcript string
@@ -282,43 +288,11 @@ const appHostDialTimeout = 500 * time.Millisecond
 // journal. Everything else is built in this process.
 func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 	clock := ask.ClockS
-	launch := &remote.LaunchShape{Interactive: true, IntentNames: true, HandOverOnAsk: true, ProposalClockS: &clock, ChoiceClockS: clock, QuitGraceS: appQuitGraceS, LiveToolOutput: true, StandingOrders: true, QuickTasks: true}
-	if ask.Transcript != "" && !ask.Minted {
-		// A JOIN CARRIES THE APP'S LAUNCH, and the engine applies what of it a
-		// conversation another window opened can carry (engine.go's JoinedWith).
-		hello := remote.Hello{Workspace: ask.Workspace, Session: ask.Transcript, Join: true, Launch: launch}
-		// A CONVERSATION THIS PROCESS ALREADY HOLDS IS LENT, NEVER REOPENED:
-		// the factory worker's running stage is the app's own, not another
-		// window's (app_lend.go). Only a factory stage is lent.
-		if agent, ok := liveStageFor(ask.Transcript); ok {
-			return appLendLive(agent, ask, hello)
-		}
-		if socket, err := enginehost.DialStartingHost(ask.Workspace); err == nil {
-			client, err := remote.Dial(socket, "", hello)
-			if err == nil {
-				return appConnOf(client, func() { _ = client.Close() }, false), nil
-			}
-			_ = socket.Close()
-		}
-		// HELD, BUT NOT BY THIS WORKSPACE'S HOST: a crew member a manager
-		// started lives in its manager's host. Every host is asked, and the
-		// one holding it answers; opening it here as well would be refused by
-		// its journal's lock, and is never tried while somebody holds it.
-		if session.InUse(ask.Transcript) {
-			for _, path := range enginehost.Sockets() {
-				socket, err := net.DialTimeout("unix", path, appHostDialTimeout)
-				if err != nil {
-					continue
-				}
-				client, err := remote.Dial(socket, "", hello)
-				if err == nil {
-					return appConnOf(client, func() { _ = client.Close() }, false), nil
-				}
-				_ = socket.Close()
-			}
-			return nil, appwire.Errorf(appwire.CodeConflict, "this conversation is open in another codeaf window that the app cannot reach; close it there, or open it in that window")
-		}
+	launch := &remote.LaunchShape{TeamListeningSince: ask.TeamListeningSince, Interactive: true, IntentNames: true, HandOverOnAsk: true, ProposalClockS: &clock, ChoiceClockS: clock, QuitGraceS: appQuitGraceS, LiveToolOutput: true, StandingOrders: true, QuickTasks: true}
+	if conn, err := appJoinExisting(ask, launch); conn != nil || err != nil {
+		return conn, err
 	}
+
 	workspace := ask.Workspace
 	transcript := ask.Transcript
 	hello := remote.Hello{
@@ -377,13 +351,71 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 	return appConnOf(loop.Client, release, true), nil
 }
 
+// appJoinExisting joins only a conversation an engine already holds.
+// A nil launch leaves that engine's launch policy untouched for a naming ask.
+func appJoinExisting(ask appOpenAsk, launch *remote.LaunchShape) (*appConn, error) {
+	if ask.Transcript != "" && !ask.Minted {
+		// A JOIN CARRIES THE APP'S LAUNCH, and the engine applies what of it a
+		// conversation another window opened can carry (engine.go's JoinedWith).
+		hello := remote.Hello{Workspace: ask.Workspace, Session: ask.Transcript, Join: true, Launch: launch}
+		// A CONVERSATION THIS PROCESS ALREADY HOLDS IS LENT, NEVER REOPENED:
+		// the factory worker's running stage is the app's own, not another
+		// window's (app_lend.go). Only a factory stage is lent.
+		if agent, ok := liveStageFor(ask.Transcript); ok {
+			return appLendLive(agent, ask, hello)
+		}
+		if socket, err := enginehost.DialStartingHost(ask.Workspace); err == nil {
+			client, err := remote.Dial(socket, "", hello)
+			if err == nil {
+				return appConnOf(client, func() { _ = client.Close() }, false), nil
+			}
+			_ = socket.Close()
+		}
+		// HELD, BUT NOT BY THIS WORKSPACE'S HOST: a crew member a manager
+		// started lives in its manager's host. Every host is asked, and the
+		// one holding it answers; opening it here as well would be refused by
+		// its journal's lock, and is never tried while somebody holds it.
+		if session.InUse(ask.Transcript) {
+			for _, path := range enginehost.Sockets() {
+				socket, err := net.DialTimeout("unix", path, appHostDialTimeout)
+				if err != nil {
+					continue
+				}
+				client, err := remote.Dial(socket, "", hello)
+				if err == nil {
+					return appConnOf(client, func() { _ = client.Close() }, false), nil
+				}
+				_ = socket.Close()
+			}
+			return nil, appwire.Errorf(appwire.CodeConflict, "this conversation is open in another codeaf window that the app cannot reach; close it there, or open it in that window")
+		}
+	}
+	return nil, nil
+}
+
 func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 	welcome := client.Welcome()
-	return &appConn{Conv: client.Agent(), Workspace: welcome.Workspace, Transcript: welcome.SessionFile, Release: release, Follow: client.Follow, Passes: client.Passes, Assembled: assembled}
+	users := 0
+	if welcome.UserMessages != nil {
+		users = *welcome.UserMessages
+	} else {
+		// An older holder can still answer from its replay rather than making
+		// this process parse a second copy of its journal.
+		history := client.Agent().EarlierHistory()
+		for _, entry := range appRecordItems(session.Record{Earlier: history.Entries, Floor: history.Floor, Entries: client.Agent().Transcript()}) {
+			if entry.Role == "user" {
+				users++
+			}
+		}
+	}
+	return &appConn{UserMessages: users, Conv: client.Agent(), Workspace: welcome.Workspace, Transcript: welcome.SessionFile, Release: release, Follow: client.Follow, Passes: client.Passes, Assembled: assembled}
 }
 
 // appBackend is the [appwire.Engine] over this process's conversations.
 type appBackend struct {
+	// organizeProposer supplies a naming door when the backend is embedded without held conversations.
+	organizeProposer session.TeamProposer
+
 	// factoryRooms runs this connection's one-time stamp of teams the factory made before the
 	// stamp was kept (factoryStampStoredRooms).
 	factoryRooms sync.Once
@@ -533,6 +565,12 @@ type appBackend struct {
 // appAgent is every agent this process has heard of: listed off the disk,
 // created or opened. live is nil while no conversation is held for it.
 type appAgent struct {
+	// crewHeld keeps an established crew hold due after its engine closes.
+	crewHeld bool
+
+	// listening is when this light record began watching crew traffic.
+	listening time.Time
+
 	// gate serializes opening and letting go of this one agent, so two sends
 	// racing for a closed conversation open it once.
 	gate       sync.Mutex
@@ -652,7 +690,8 @@ type appLive struct {
 	answered map[string]string
 	// consents are the approvals' calls as the turn announced them, by the
 	// engine's question id: what an always is written down from.
-	consents map[uint64]appConsentCall
+	consents    map[uint64]appConsentCall
+	savedScopes map[string]string
 	// stopping says the person stopped the running turn.
 	stopping bool
 	// progressSaid is the ids of the factory runner's lines this conversation
@@ -1029,6 +1068,9 @@ type appCreatePrep struct {
 // prepareCreate is everything agents.create can refuse, checked with nothing
 // made: the workspace, shutdown, and every attachment read whole.
 func (b *appBackend) prepareCreate(ask appwire.CreateAsk) (appCreatePrep, error) {
+	if err := (session.Submission{ClientID: ask.ClientID}).Check(); err != nil {
+		return appCreatePrep{}, appEngineError(err)
+	}
 	// No workspace is the work folder the person chose, or their home folder.
 	workspace := ask.Workspace
 	if strings.TrimSpace(workspace) == "" {
@@ -1298,6 +1340,7 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 	// A stored conversation carries its model even before another turn.
 	// Opening without it would replace the saved choice with the profile default.
 	ask := appOpenAsk{Workspace: workspace, Transcript: transcript, Model: view.Model, ClockS: appProposedClockS}
+	b.locked(func() { ask.TeamListeningSince = a.listening })
 	_ = b.state.read(func(f *appStateFile) { ask.ClockS = f.clock() })
 	if boot != nil {
 		ask.Model, ask.Minted = boot.model, true
@@ -1343,6 +1386,9 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 	startTitles := b.prepareTitles(a, live)
 	title, model := conn.Conv.Title(), conn.Conv.Model()
 	effort := conn.Conv.ReasoningFor(model)
+	if dial, ok := conn.Conv.(interface{ ConversationEffort() string }); ok {
+		effort = dial.ConversationEffort()
+	}
 	// A CONVERSATION WITH NO NAME OF ITS OWN THAT A CREW KNOWS goes by the
 	// word its crew calls it, which for a member a manager started is its
 	// brief's first words: held again after a relaunch, nothing else names it.
@@ -1353,12 +1399,8 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 			title = b.memberNames()[id]
 		}
 	}
-	var counted bool
-	b.locked(func() { counted = a.counted })
-	users := 0
-	if !counted && conn.Transcript != "" {
-		users = appUserCount(conn.Transcript)
-	}
+	users := conn.UserMessages
+	crewHeld := b.crewKeeps(a.view.ID)
 	var view appwire.Agent
 	b.locked(func() {
 		if !a.counted {
@@ -1384,6 +1426,7 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 			a.view.UpdatedAt = b.now()
 		}
 		a.live = live
+		a.crewHeld = a.crewHeld || crewHeld
 		view = a.view
 	})
 	startTitles()
@@ -1425,12 +1468,16 @@ func appAskOf(agent string, q session.Question) appwire.Ask {
 	if q.Kind == session.QuestionConsent {
 		ask.Kind, ask.Subkind = appwire.AskApproval, appwire.SubkindPermission
 		ask.Irreversible = q.Stakes == session.StakesIrreversible
+		ask.Scopes, ask.AlwaysAsk, ask.Outside = q.ConsentScopes, q.AlwaysAsk, q.Outside
 	}
 	if q.Kind == session.QuestionKeep {
 		ask.Kind, ask.Subkind = appwire.AskApproval, appwire.SubkindKeepRunning
 		ask.KeepRunning = appKeepFacts(q)
 	}
 	for _, option := range appOptionsOf(q) {
+		if option.id == appwire.OptionAlways && q.Kind == session.QuestionConsent && len(ask.Scopes) == 0 {
+			continue
+		}
 		ask.Options = append(ask.Options, appwire.AskOption{ID: option.id, Label: option.label})
 	}
 	ask.Subject = appAskSubject(agent, q.Subject)
@@ -1564,6 +1611,17 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 		return
 	}
 	q := *event.Question
+	if q.Kind == session.QuestionConsent && q.ConsentScopes == nil && q.AlwaysAsk == "" {
+		var call appConsentCall
+		b.locked(func() { call = live.consents[q.ID] })
+		if call.Tool == "" {
+			call.Tool = q.Subject.Name
+		}
+		q.ConsentScopes, q.AlwaysAsk = config.ApprovalScopes(call.Tool, json.RawMessage(call.Args))
+		if q.Stakes == session.StakesIrreversible && q.AlwaysAsk == "" {
+			q.ConsentScopes, q.AlwaysAsk = nil, "critical"
+		}
+	}
 	askID := appAskID(q)
 	switch event.Kind {
 	case session.EventQuestion:
@@ -1604,6 +1662,7 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 		open, moved := false, false
 		by, option := appwire.ClosedByElsewhere, ""
 		var answer *session.Answer
+		var scope string
 		var view appwire.Agent
 		b.locked(func() {
 			if _, open = live.questions[askID]; !open {
@@ -1622,6 +1681,8 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 					answer = &session.Answer{}
 				}
 			}
+			scope = live.savedScopes[askID]
+			delete(live.savedScopes, askID)
 			b.dropAskLocked(live, askID)
 			view, moved = b.restateLocked(a, live)
 		})
@@ -1650,9 +1711,13 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 			}
 		}
 		live.box.Event(appwire.EventAskClosed, appwire.AskClosed{Agent: id, ID: askID, By: by, Option: option, At: at})
-		live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
-			ID: appReceiptEntryID(askID), Agent: id, Kind: appwire.EntryReceipt, At: at, Text: words,
-		}})
+		receipt := appwire.Entry{ID: appReceiptEntryID(askID), Agent: id, Kind: appwire.EntryReceipt, At: at, Text: words}
+		if scope != "" {
+			receipt.Text = "Always allowed · " + scope + " · you · " + at.Local().Format("15:04")
+			receipt.Link = &appwire.EntryLink{Label: "Settings › Permissions", Target: "settings:permissions"}
+			_ = b.keepAppEntry(a, receipt, q.Subject.CallID)
+		}
+		live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: receipt})
 		if moved {
 			live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 		}
@@ -1664,6 +1729,7 @@ func (b *appBackend) dropAskLocked(live *appLive, askID string) {
 	if q, ok := live.questions[askID]; ok && q.Kind == session.QuestionConsent {
 		delete(live.consents, q.ID)
 	}
+	delete(live.savedScopes, askID)
 	delete(live.money, askID)
 	delete(live.questions, askID)
 	delete(live.answered, askID)
@@ -1765,6 +1831,11 @@ func (b *appBackend) send(id, text, clientID string, shown *appSending) (uint64,
 // sendLocked opens a's conversation if it is not held and starts one turn on
 // it. The caller holds a.gate.
 func (b *appBackend) sendLocked(a *appAgent, text, clientID string, shown *appSending) (uint64, error) {
+	// Opening can wake saved crew work, so reject an invalid identity before
+	// the opener can start any model work on this message's behalf.
+	if err := (session.Submission{ClientID: clientID}).Check(); err != nil {
+		return 0, appEngineError(err)
+	}
 	view, opened, err := b.ensureLocked(a)
 	if err != nil {
 		return 0, err
@@ -1824,6 +1895,14 @@ func appRetryShown(again appSending, text string) *appSending {
 // shown, when set, is what the person's entry shows instead of text: their
 // own words and the attachments the text was written from.
 func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appSending) (uint64, error) {
+	return b.startTurnLocked(a, text, clientID, shown, nil)
+}
+
+// appTurnStarter replaces only submission; admission, correlation and events
+// remain the ordinary send's so a picked harness is still one conversation turn.
+type appTurnStarter func(*appLive, string) (<-chan session.Event, error)
+
+func (b *appBackend) startTurnLocked(a *appAgent, text, clientID string, shown *appSending, start appTurnStarter) (uint64, error) {
 	var id string
 	var live *appLive
 	var refused error
@@ -1946,7 +2025,9 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 	var events <-chan session.Event
 	var err error
 	var composedMark *session.ComposedMark
-	if composer != nil {
+	if start != nil {
+		events, err = start(live, keptID)
+	} else if composer != nil {
 		var receipt session.SubmissionReceipt
 		message := appSubmission(text, shown)
 		message.ClientID = keptID
@@ -1969,7 +2050,15 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 		events, err = live.conn.Conv.Submit(context.Background(), text)
 	}
 	if err != nil {
-		b.locked(func() { live.running = false })
+		b.locked(func() {
+			live.running = false
+			if start != nil {
+				delete(a.marks, n)
+			}
+		})
+		if start != nil {
+			return 0, appEngineError(err)
+		}
 		// The words were handed over: whether the host took them is not known.
 		return 0, &appUnsureSend{err: appEngineError(err)}
 	}
@@ -2200,6 +2289,12 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			if !succeeded && strings.Contains(event.Output+summary, "processes are running for this agent.") {
 				entry(appFooter("pl"+event.CallID, id, turn, appwire.FooterProcessLimit, strings.TrimSpace(summary), b.now()))
 			}
+		case session.EventConsentAllowed:
+			receipt := appwire.Entry{ID: "ra" + event.CallID, Agent: id, Turn: turn, At: b.now(), Kind: appwire.EntryReceipt,
+				Text: "Allowed automatically · " + tui3.ToolTitle(event.Tool, event.Args, "") + " · you always allow " + event.Rule,
+				Why:  "Matches your rule " + event.Rule + " in Settings › Permissions"}
+			_ = b.keepAppEntry(a, receipt, event.CallID)
+			live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: receipt})
 		case session.EventConsentRequest:
 			call := appConsentCall{Tool: event.Tool, Args: event.Args}
 			b.locked(func() { live.consents[event.ID] = call })
@@ -2508,7 +2603,7 @@ func (b *appBackend) workEvent(id string, live *appLive, event session.Event) {
 // Stop interrupts the running turn. An agent with nothing held has nothing
 // running in this process, which is answered as done.
 func (b *appBackend) Stop(id string) error {
-	a, err := b.find(id)
+	a, err := b.findCrewOwner(id)
 	if err != nil {
 		return err
 	}
@@ -2607,7 +2702,7 @@ func (b *appBackend) finish(live *appLive) {
 // ListAsks answers the agent's open asks. An agent with no conversation held
 // has none this process can answer.
 func (b *appBackend) ListAsks(id string) ([]appwire.Ask, error) {
-	a, err := b.find(id)
+	a, err := b.findCrewOwner(id)
 	if err != nil {
 		return nil, err
 	}
@@ -2628,6 +2723,11 @@ const appAnsweredMark = "app:"
 // AnswerAsk answers one open ask through the engine's own answer door, the one
 // the chat's question page uses. Its closing arrives on the question lane.
 func (b *appBackend) AnswerAsk(id, askID, option, text string) error {
+	return b.answerAskScope(id, askID, option, text, "")
+}
+
+// answerAskScope validates the chosen rule before writing or resolving anything.
+func (b *appBackend) answerAskScope(id, askID, option, text, scope string) error {
 	b.resetCloseResumes(id)
 	if handled, err := b.answerOrderAsk(askID, option); handled {
 		return err
@@ -2635,7 +2735,7 @@ func (b *appBackend) AnswerAsk(id, askID, option, text string) error {
 	if handled, err := b.answerCrewAsk(id, askID, option, text, ""); handled {
 		return err
 	}
-	a, err := b.find(id)
+	a, err := b.findCrewOwner(id)
 	if err != nil {
 		return err
 	}
@@ -2664,16 +2764,28 @@ func (b *appBackend) AnswerAsk(id, askID, option, text string) error {
 			}
 			key = picked.key
 		}
+		if q.Kind == session.QuestionConsent && option == appwire.OptionAlways {
+			if refused = appValidateScope(option, scope, q.ConsentScopes); refused != nil {
+				return
+			}
+		}
 		live.answered[askID] = appAnsweredMark + option
 		live.lastUse = b.now()
 	})
 	if refused != nil {
 		return refused
 	}
-	if q.Kind == session.QuestionConsent && option == appwire.OptionAlways && b.rememberAlways(b.consentCall(live, q.ID)) {
-		// THE RULE IS WRITTEN FIRST and the answer says so, and the engine
-		// reads the rules again before it lets the call go: the next call
-		// like this one is answered by the person's own settings.
+	if q.Kind == session.QuestionConsent && option == appwire.OptionAlways {
+		if !b.rememberAlways(b.consentCall(live, q.ID), scope) {
+			b.locked(func() { delete(live.answered, askID) })
+			return appwire.Errorf(appwire.CodeEngine, "the permission rule could not be saved")
+		}
+		b.locked(func() {
+			if live.savedScopes == nil {
+				live.savedScopes = map[string]string{}
+			}
+			live.savedScopes[askID] = scope
+		})
 		live.conn.Conv.ResolveConsentRemember(q.ID, true, session.ConsentRule)
 		return nil
 	}
@@ -2684,6 +2796,14 @@ func (b *appBackend) AnswerAsk(id, askID, option, text string) error {
 	if err := live.conn.Conv.ResolveQuestion(answer); err != nil {
 		b.locked(func() { delete(live.answered, askID) })
 		return appEngineError(err)
+	}
+	return nil
+}
+
+// appValidateScope keeps both answer doors on the permission's offered rules.
+func appValidateScope(option, scope string, scopes []string) error {
+	if option == appwire.OptionAlways && (scope == "" || !slices.Contains(scopes, scope)) {
+		return appwire.Errorf(appwire.CodeBadScope, "choose one of this ask's scopes")
 	}
 	return nil
 }
@@ -2707,27 +2827,12 @@ func (b *appBackend) consentCall(live *appLive, id uint64) appConsentCall {
 	}
 }
 
-// rememberAlways writes an always down as a rule in the person's own profile:
-// the one command line for a shell call, the tool for any other. It reports
-// whether the rule is written; when it is not (a compound command, a settings
-// row that already answers otherwise, a call the turn never announced) the
-// always is the engine's own, for the rest of this conversation.
-func (b *appBackend) rememberAlways(call appConsentCall) bool {
-	tool := strings.TrimSpace(call.Tool)
-	if tool == "" {
-		return false
-	}
-	profile := config.ProfileDir()
-	if tool == "bash" {
-		var args struct {
-			Command string `json:"command"`
-		}
-		if err := json.Unmarshal([]byte(call.Args), &args); err != nil || strings.TrimSpace(args.Command) == "" {
-			return false
-		}
-		return config.RememberBashApproval(profile, args.Command) == nil
-	}
-	return config.RememberToolApproval(profile, tool, "allow") == nil
+// rememberAlways uses the terminal's persistence path with the chosen scope.
+func (b *appBackend) rememberAlways(call appConsentCall, scope string) bool {
+	_, saved := config.SaveApproval(call.Tool, scope,
+		func(shape string) error { return config.RememberBashApproval(config.ProfileDir(), shape) },
+		func(tool string) error { return config.RememberToolApproval(config.ProfileDir(), tool, "allow") })
+	return saved
 }
 
 // appRecords keeps the readings of journals that have not changed, so paging
@@ -2943,8 +3048,8 @@ func appDressedPage(items []session.DisplayEntry, all []appwire.Entry, from []in
 			appDressTool(&page[i], items[from[start+i]])
 		}
 	}
-	// A tool entry carries its call's facts, as its row did live. The call a
-	// page names is the LAST item to carry its id, as it always was.
+	// Existing facts keep their last same-id source, as older pages did. Only
+	// the new process identity belongs to the exact result occurrence.
 	wanted := map[string]bool{}
 	for _, entry := range page {
 		if entry.Kind == appwire.EntryTool && entry.Call != "" {
@@ -2962,6 +3067,10 @@ func appDressedPage(items []session.DisplayEntry, all []appwire.Entry, from []in
 	}
 	for i := range page {
 		if item, ok := calls[page[i].Call]; ok && page[i].Kind == appwire.EntryTool {
+			item.ToolProcess = nil
+			if start+i < len(from) && from[start+i] >= 0 {
+				item.ToolProcess = items[from[start+i]].ToolProcess
+			}
 			page[i].ToolFacts = facts(item)
 		}
 	}
@@ -3167,9 +3276,13 @@ func (b *appBackend) SetModel(id, model string) (appwire.Agent, error) {
 }
 
 // SetEffort sets how hard the agent's model is asked to think, opening its
-// conversation first if none is held. The level is the conversation's own,
-// kept per model the way the terminal's ctrl+t keeps it.
-func (b *appBackend) SetEffort(id, effort string) (appwire.Agent, error) {
+// conversation first if none is held. The terminal's /effort uses this same
+// conversation dial, so auto clears the stored override on either surface.
+func (b *appBackend) SetEffort(id, word string) (appwire.Agent, error) {
+	rung, ok := effort.Parse(word)
+	if !ok {
+		return appwire.Agent{}, appwire.Errorf(appwire.CodeBadParams, "effort is low, medium or high")
+	}
 	a, err := b.find(id)
 	if err != nil {
 		return appwire.Agent{}, err
@@ -3184,17 +3297,20 @@ func (b *appBackend) SetEffort(id, effort string) (appwire.Agent, error) {
 		live = a.live
 		live.lastUse = b.now()
 	})
-	model := live.conn.Conv.Model()
-	live.conn.Conv.SetReasoningFor(model, effort)
-	if now := live.conn.Conv.ReasoningFor(model); now != "" {
-		effort = now
+	dial, ok := live.conn.Conv.(interface {
+		SetConversationEffort(string) bool
+		ConversationEffort() string
+	})
+	if !ok || !dial.SetConversationEffort(rung.String()) {
+		return appwire.Agent{}, appwire.Errorf(appwire.CodeEngine, "this conversation has no thinking dial; update the engine and reconnect")
 	}
-	if err := b.saveJobEffort(a.transcript, effort); err != nil {
+	chosen := dial.ConversationEffort()
+	if err := b.saveJobEffort(a.transcript, chosen); err != nil {
 		return appwire.Agent{}, err
 	}
 	var view appwire.Agent
 	b.locked(func() {
-		a.view.Effort = effort
+		a.view.Effort = chosen
 		view = a.view
 	})
 	b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
@@ -3437,7 +3553,7 @@ func (b *appBackend) spendMoved(after func(appwire.Spend)) {
 // checkpoint does not name — and lays over them what a held conversation has
 // said since.
 func (b *appBackend) ListTasks(id string) ([]appwire.Task, error) {
-	a, err := b.find(id)
+	a, err := b.findCrewOwner(id)
 	if err != nil {
 		return nil, err
 	}

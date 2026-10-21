@@ -149,3 +149,24 @@ func TestProposeTeamsRefusesProseAfterOneFallThrough(t *testing.T) {
 		t.Fatalf("%d requests, want at most %d", n, roleFallThroughs+1)
 	}
 }
+
+func TestProposeTeamsReportsUsageCostAndTerminalModelFallback(t *testing.T) {
+	usd := 0.0123
+	client := &scriptedCompleter{steps: []step{func(context.Context, []ai.Message) (*ai.Response, error) {
+		response := textResponse(`{"new":[],"add":[]}`)
+		response.Usage = &ai.Usage{Cost: &usd}
+		return response, nil
+	}}}
+	agent, _ := newTestAgent(t, client, func(c *Config) { c.RolesSource = nameSettings() })
+	got, err := agent.ProposeTeams(context.Background(), proposeInput())
+	if err != nil || got.CostUSD == nil || *got.CostUSD != usd {
+		t.Fatalf("cost %+v (%v)", got, err)
+	}
+	noModel := &scriptedCompleter{steps: []step{func(context.Context, []ai.Message) (*ai.Response, error) {
+		return textResponse(`{"new":[{"name":"topic","members":["c1","c2"]}],"add":[]}`), nil
+	}}}
+	unnamed, _ := newTestAgent(t, noModel, func(c *Config) { c.RolesSource = nil })
+	if got, err := unnamed.ProposeTeams(context.Background(), proposeInput()); err != nil || noModel.requests() != 1 || len(got.New) != 1 || got.Model != unnamed.Model() {
+		t.Fatalf("missing naming model: %v, requests %d", err, noModel.requests())
+	}
+}

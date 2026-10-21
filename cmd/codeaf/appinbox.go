@@ -347,7 +347,7 @@ func (b *appBackend) ListInbox(list, query string) ([]appwire.InboxItem, appwire
 
 // AnswerInbox holds an answer for five seconds, then sends it through the
 // conversation's own answer door.
-func (b *appBackend) AnswerInbox(id, option, text, why string) (time.Time, error) {
+func (b *appBackend) AnswerInbox(id, option, text, why, scope string) (time.Time, error) {
 	agent, ask, ok := appInboxSplit(id)
 	if !ok {
 		return time.Time{}, appwire.Errorf(appwire.CodeBadParams, "%s is not an Inbox item", id)
@@ -362,6 +362,11 @@ func (b *appBackend) AnswerInbox(id, option, text, why string) (time.Time, error
 		case in.held[id] != nil:
 			refused = appwire.Errorf(appwire.CodeBusy, "the Inbox item %s is already being answered", id)
 		default:
+			if item := in.items[id]; item.Ask.Subkind == appwire.SubkindPermission {
+				if refused = appValidateScope(option, scope, item.Ask.Scopes); refused != nil {
+					return
+				}
+			}
 			until = b.now().Add(appInboxHold)
 			held := &appInboxHeld{until: until}
 			held.timer = time.AfterFunc(appInboxHold, func() {
@@ -378,7 +383,7 @@ func (b *appBackend) AnswerInbox(id, option, text, why string) (time.Time, error
 				}
 				// ONE INBOX ITEM IS ONE QUESTION: an ask that came in a batch is
 				// answered alone here, and its siblings stay in the Inbox.
-				if err := b.answerInboxItem(id, agent, ask, appwire.AskAnswer{Option: option, Text: text, Why: why, BatchItem: ask}); err != nil {
+				if err := b.answerInboxItem(id, agent, ask, appwire.AskAnswer{Option: option, Text: text, Why: why, Scope: scope, BatchItem: ask}); err != nil {
 					in.locked(func() {
 						delete(in.held, id)
 						delete(in.from, id)
@@ -421,7 +426,7 @@ func (b *appBackend) LaterInbox(id string, later bool) error {
 	if service, err := b.laterServiceItem(id, askID, later); service {
 		return err
 	}
-	a, err := b.find(agent)
+	a, err := b.findCrewOwner(agent)
 	if err != nil {
 		return err
 	}

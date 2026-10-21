@@ -720,6 +720,8 @@ const (
 	// EventCloseContinued carries the pending key only when a started turn
 	// consumes that close note before its model request. It is private telemetry.
 	EventCloseContinued = EventItemChanged + 1
+	// EventConsentAllowed records a call allowed by an explicit saved rule.
+	EventConsentAllowed = EventCloseContinued + 1
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -959,6 +961,11 @@ type Event struct {
 	// unknown, as on every older peer and every older journal line.
 	MediaAttempt bool `json:"MediaAttempt,omitempty"`
 
+	// ToolProcess names the job or kept service this successful call became,
+	// on EventToolEnd only. It comes from the registry's adoption or start,
+	// never from the output, and is nil on foreground calls and older peers.
+	ToolProcess *ToolProcess `json:"ToolProcess,omitempty"`
+
 	// ID names one EventConsentRequest, and is the token a surface hands back
 	// to [Agent.ResolveConsent]. It is zero on every other kind but
 	// EventHarnessOffer, whose own id goes back through
@@ -1138,7 +1145,8 @@ type Event struct {
 
 	// Rule is the approval policy's own phrasing of why a call is being asked
 	// about — `bash pattern "rm -rf *"`, `tool "edit"`, `default`. It is set on
-	// EventConsentRequest and empty elsewhere. The wording is the policy's
+	// EventConsentRequest; on EventConsentAllowed it is the matched scope.
+	// It is empty elsewhere. The wording is the policy's
 	// (internal/approval) so that every surface says the same sentence about the
 	// same rule instead of deriving one.
 	Rule string
@@ -1371,6 +1379,10 @@ type TaskLanding struct {
 }
 
 type Config struct {
+	// TeamListeningSince preserves the traffic subscription boundary when an
+	// app opens a light record after the event that needs it.
+	TeamListeningSince time.Time
+
 	// DeterministicNames preserves the legacy no-model naming request.
 	// When both naming flags are set this free rule takes precedence.
 	DeterministicNames bool
@@ -1623,6 +1635,9 @@ type Config struct {
 	// other. The other caller today is the trail that records a request's own
 	// length (task_calltrail.go).
 	clock func() time.Time
+	// bashAfter lets tests fire the real promotion callback after the command
+	// starts. Production leaves it nil and arms time.AfterFunc as before.
+	bashAfter func(time.Duration, func()) *time.Timer
 	// teamWatchManual leaves traffic-clock advances to tests calling
 	// teamWatchTick. Production leaves it false and starts the real ticker.
 	teamWatchManual bool
@@ -2607,6 +2622,10 @@ type Config struct {
 // events — every Submit streams, whether it started the turn or steered it.
 // The methods live in agent.go; the loop they drive lives in loop.go.
 type Agent struct {
+	// rewindUndo keeps one reversible cut; a new cut replaces it.
+	rewindUndo *rewindUndo
+	debugRun   string
+
 	// toolsInFlight and toolsStarted count this agent's tool calls
 	// ([Agent.executeTool]). A shell output is only vouched for as made by its
 	// own command when no other tool call overlapped it (shell_outputs.go).
@@ -3289,6 +3308,12 @@ type Agent struct {
 	// quiet one. The product reads nothing off this context that it would not
 	// read off the background.
 	wokenTurnBase func() context.Context
+	// Pending notes belong to the queue, independently of whether their wake
+	// clock is still armed. All three fields are guarded by mu; the private
+	// clock lets fixtures advance the window without sleeping.
+	jobWakePending bool
+	jobWake        *jobWakeWindow
+	jobWakeAfter   func(time.Duration, func()) func()
 	// wallStop ends the one reader that waits independently for this session's
 	// wall, and is nil when the session has no unattended wall (wallclock.go).
 	// wallEndingTaken is the once-only mark on the ending that reader writes.
@@ -3433,7 +3458,8 @@ type Agent struct {
 	// (issue #381). It is made under the same lock that sets `closed`, so a
 	// caller that loses the race is guaranteed to find a channel to wait on
 	// rather than a nil one.
-	closeDone chan struct{}
+	closeDone    chan struct{}
+	closedSignal chan struct{}
 	// takenOver says another window has asked for this conversation and this
 	// process has not let go of it yet (takeover.go). Set once, never cleared:
 	// the only way out is the close the ask is for.

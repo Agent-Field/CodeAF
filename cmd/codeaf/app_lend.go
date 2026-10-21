@@ -2,8 +2,6 @@ package main
 
 import (
 	"sync"
-	"sync/atomic"
-	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -162,41 +160,18 @@ func (l lentAgent) InterruptNamed(door session.StopDoor, name string) {
 	l.Agent.InterruptNamed(door, name)
 }
 
-// lendClosedPoll is how often a lent view asks whether its owner closed the
-// agent, in nanoseconds. Atomic so a test can tighten it while an earlier
-// view's watch is still reading it; the cost of a slow answer is a dead
-// view lingering for one tick, never a wrong one.
-var lendClosedPoll = func() *atomic.Int64 {
-	var n atomic.Int64
-	n.Store(int64(250 * time.Millisecond))
-	return &n
-}()
+// closedAgent exposes the owner's close signal without a polling clock.
+type closedAgent interface{ ClosedSignal() <-chan struct{} }
 
-// closedAgent is the one question the close watch asks of an agent.
-type closedAgent interface{ Closed() bool }
-
-// watchAgentClosed calls release once agent reports itself closed. The agent has
-// no close signal and internal/session is not this change's to extend, so the
-// watch polls [session.Agent.Closed] on a slow tick. It ends the moment stop is
-// closed (the connection was released first) or the agent closes, whichever is
-// first, so no goroutine outlives the connection. It never closes the agent: it
-// only learns that somebody did. release must be idempotent and must not join
-// this goroutine.
+// watchAgentClosed releases the view when its owner closes. release must be
+// idempotent and must not join this goroutine.
 func watchAgentClosed(agent closedAgent, stop <-chan struct{}, release func()) {
-	poll := time.Duration(lendClosedPoll.Load())
+	closed := agent.ClosedSignal()
 	guard.Go("app/agent-close-watch", func() {
-		tick := time.NewTicker(poll)
-		defer tick.Stop()
-		for {
-			select {
-			case <-stop:
-				return
-			case <-tick.C:
-				if agent.Closed() {
-					release()
-					return
-				}
-			}
+		select {
+		case <-stop:
+		case <-closed:
+			release()
 		}
 	})
 }

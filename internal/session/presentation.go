@@ -47,9 +47,11 @@ type messagePresentation struct {
 	HarnessMade       bool `json:"harness_made,omitempty"`
 	Refused           bool `json:"refused,omitempty"`
 	// MediaAttempt: this result's call made a render record (media_attempt.go).
-	MediaAttempt bool                `json:"media_attempt,omitempty"`
-	Attachments  []MessageAttachment `json:"attachments,omitempty"`
-	Reads        []MessageRead       `json:"reads,omitempty"`
+	MediaAttempt bool `json:"media_attempt,omitempty"`
+	// ToolProcess stays with this result occurrence through journal replay.
+	ToolProcess *ToolProcess        `json:"tool_process,omitempty"`
+	Attachments []MessageAttachment `json:"attachments,omitempty"`
+	Reads       []MessageRead       `json:"reads,omitempty"`
 	// Composed is what a composed submission added to a person's line: its
 	// durable id, its pictures as measured, its annotation and how the pictures
 	// reached a model ([Agent.SubmitComposed]).

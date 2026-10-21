@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/processgroup"
+	commandshell "github.com/Agent-Field/codeaf/internal/shell"
 )
 
 const (
@@ -60,11 +61,15 @@ func ProcessIdentityMatches(pid int, startedAt time.Time) (bool, error) {
 // StartDetachedService uses the same shell, log, session/process-group shape
 // as background jobs. No pipe or resident goroutine is created.
 func StartDetachedService(command, dir, logPath string) (int, time.Time, error) {
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	bash, err := commandshell.Bash()
 	if err != nil {
 		return 0, time.Time{}, err
 	}
-	cmd := exec.Command("bash", "-o", "pipefail", "-lc", command)
+	logFile, err := commandshell.OpenLog(logPath, 0o644)
+	if err != nil {
+		return 0, time.Time{}, err
+	}
+	cmd := exec.Command(bash, "-o", "pipefail", "-lc", command)
 	configureDetachedCommand(cmd, dir, logFile)
 	if err := cmd.Start(); err != nil {
 		_ = logFile.Close()

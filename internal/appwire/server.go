@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/effort"
 )
 
 // writerQueue is how many frames may wait for stdout before a sender waits.
@@ -143,12 +145,18 @@ type request struct {
 // before it returns.
 func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine Engine) error {
 	hello.Contract = Contract
+	hello = withFeature(hello, FeatureAgentEffortRungs)
 	hello = withCollectionsFeature(hello, engine)
 	hello = withMessageReadsFeature(hello, engine)
 	hello = withWorkGraphFeature(hello, engine)
 	hello = withSlashCatalogFeature(hello, engine)
+	hello = withSkillsFeatures(hello, engine)
+	hello = withMachinePolicyFeatures(hello, engine)
 	hello = withSessionActionsFeature(hello, engine)
+	hello = withRunHarnessFeature(hello, engine)
+	hello = withConversationFeatures(hello, engine)
 	hello = withCrewsOverviewFeature(hello, engine)
+	hello = withCrewsOrganizeFeature(hello, engine)
 	hello = withProcessFeatures(hello, engine)
 	hello = withProcessActionFeature(hello, engine)
 	hello = withMemoryAppliesFeature(hello, engine)
@@ -349,18 +357,16 @@ var methods = map[string]method{
 	}),
 	"agents.set_effort": typed(func(e Engine, p struct {
 		ID     string `json:"id"`
-		Effort string `json:"effort" enum:"low,medium,high"`
+		Effort string `json:"effort" enum:"auto,low,medium,high,xhigh,max"`
 	}) (*agentResult, error) {
-		effort := strings.ToLower(strings.TrimSpace(p.Effort))
+		rung, ok := effort.Parse(p.Effort)
 		if strings.TrimSpace(p.ID) == "" {
 			return nil, Errorf(CodeBadParams, "agents.set_effort needs an id")
 		}
-		switch effort {
-		case EffortLow, EffortMedium, EffortHigh:
-		default:
+		if !ok {
 			return nil, Errorf(CodeBadParams, "effort is low, medium or high")
 		}
-		agent, err := e.SetEffort(p.ID, effort)
+		agent, err := e.SetEffort(p.ID, rung.String())
 		if err != nil {
 			return nil, err
 		}
@@ -504,6 +510,7 @@ var methods = map[string]method{
 		return &AsksResult{nonNil(asks)}, nil
 	}),
 	"asks.answer": typed(func(e Engine, p struct {
+		Scope     string `json:"scope"`
 		Agent     string `json:"agent"`
 		ID        string `json:"id"`
 		Option    string `json:"option"`
@@ -521,10 +528,10 @@ var methods = map[string]method{
 		}
 		if t, ok := e.(Talker); ok {
 			return done(t.AnswerAskWith(p.Agent, p.ID, AskAnswer{
-				Option: strings.TrimSpace(p.Option), Text: p.Text, Why: p.Why, BatchItem: p.BatchItem, Later: p.Later, YouDecide: p.YouDecide,
+				Scope: p.Scope, Option: strings.TrimSpace(p.Option), Text: p.Text, Why: p.Why, BatchItem: p.BatchItem, Later: p.Later, YouDecide: p.YouDecide,
 			}))
 		}
-		if p.Later || p.YouDecide || p.BatchItem != "" || p.Why != "" {
+		if p.Scope != "" || p.Later || p.YouDecide || p.BatchItem != "" || p.Why != "" {
 			return nil, Errorf(CodeBadParams, "this engine answers with an option and words only")
 		}
 		return done(e.AnswerAsk(p.Agent, p.ID, strings.TrimSpace(p.Option), p.Text))

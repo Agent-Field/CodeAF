@@ -58,7 +58,7 @@ state again first. An app that does not know the word treats it as a failure.
 ## Types
 
 ```
-Agent  { id, title, workspace, model?, state, updated_at?, crews?, line? }
+Agent  { id, title, workspace, model?, effort?, state, updated_at?, crews?, line? }
        id: stable string (the conversation's session file id/path key)
        state: "idle" | "working" | "needs_you" | "stopped" | "closed"
        "working" whenever a turn runs, on every agent.changed and every list, whichever window
@@ -95,7 +95,7 @@ Ask    { id, agent, kind, subkind?, title, detail?, options?: [{id, label}], irr
          AlwaysAsks: bash's critical-command table, e.g. a recursive forced delete, or a call that acts in the
          person's name); then "always" is not offered
        subkind (approval): "permission" | "budget"; options carry the engine's ids,
-       e.g. permission: allow_once · deny · always (absent when irreversible)
+       e.g. permission: allow_once · deny · always (present only when scopes exist)
        kind: "approval" (a tool call waiting for allow/deny) | "question" (the agent asks the person)
        approval options are the engine's own choices (e.g. allow once / always / deny);
        a question may have options, free text, or both
@@ -113,12 +113,12 @@ Ask    { id, agent, kind, subkind?, title, detail?, options?: [{id, label}], irr
 | `agents.entries` | `{id, before?, limit?}` | `{entries: Entry[], more: bool}` (oldest first; works for agents not held) |
 | `agents.set_model` | `{id, model}` | `{agent: Agent}` |
 | `agents.retry` | `{id}` | `{turn}` (re-run the last failed turn) |
-| `agents.open` | `{id}` | `{agent: Agent}` (attach an engine to a saved conversation) |
+| `agents.open` | `{id}` | `{agent: Agent}` (attach an engine to a saved conversation; idempotent, one concurrent open per agent; call on chat display or hover to prefetch) |
 | `agents.send` | `{id, text}` | `{turn: <u64>}`; output arrives as events |
 | `agents.stop` | `{id}` | `{}` (interrupt the running turn) |
 | `agents.close` | `{id}` | `{}` (detach and stop its engine; conversation stays on disk) |
 | `asks.list` | `{agent}` | `{asks: Ask[]}` (open asks only) |
-| `asks.answer` | `{agent, id, option?, text?}` | `{}`; `not_found` if already answered elsewhere |
+| `asks.answer` | `{agent, id, option?, text?, scope?}` | `{}`; `not_found` if already answered elsewhere |
 | `tasks.list` | `{agent}` | `{tasks: Task[]}` |
 | `models.list` | – | `{models: Model[]}` (what the configured keys can use; `[]` with no provider connected) |
 | `settings.get` | – | `{settings: Settings}` |
@@ -133,7 +133,7 @@ Ask    { id, agent, kind, subkind?, title, detail?, options?: [{id, label}], irr
 | `agent.changed` | `{agent: Agent}` |
 | `turn.started` | `{agent, turn}` |
 | `turn.delta` | `{agent, turn, kind: "text" \| "thinking", text}` |
-| `turn.tool` | `{agent, turn, run_id?, call, name, phase: "begin" \| "end", ok?, summary?}` |
+| `turn.tool` | `{agent, turn, run_id?, call, name, phase: "begin" \| "end", ok?, summary?, process?}` |
 | `turn.done` | `{agent, turn, ok, error?, error_kind?: "provider" \| "budget" \| "stopped" \| "uncertain" \| "other", status?}` (provider: the provider failed 3 times in a row; message is the provider's own words. uncertain: a created agent's first message was handed to its conversation and no answer came back — it MAY have been sent, so `agents.retry` is not armed for it) |
 | `ask.opened` | `{ask: Ask}` (agent state becomes `needs_you`) |
 | `ask.closed` | `{agent, id, by: "app" \| "elsewhere" \| "stopped", option?, at}`; a receipt Entry follows as `entry.added` |
@@ -178,12 +178,12 @@ result or an event, `?` marks a field that may be absent.
 | `agents.reopen` | `{id}` | `{agent}` |
 | `agents.retry` | `{id}` | `{turn}` |
 | `agents.send` | `{attachments, client_id, id, reads, said, text}` | `{turn}` |
-| `agents.set_effort` | `{effort, id}` | `{agent}` |
+| `agents.set_effort` | `{effort, id}` — `auto`, `low`, `medium`, `high`, `xhigh`, `max` | `{agent}` |
 | `agents.set_model` | `{id, model}` | `{agent}` |
 | `agents.since` | `{after, id}` | `{at?, entries, files?, first?, found, last_at?, turns}` |
 | `agents.steer` | `{attachments, client_id, id, reads, said, text}` | `{}` |
 | `agents.stop` | `{id}` | `{}` |
-| `asks.answer` | `{agent, batch_item, id, later, option, text, why, you_decide}` | `{}` |
+| `asks.answer` | `{agent, batch_item, id, later, option, scope, text, why, you_decide}` | `{}` |
 | `asks.defer` | `{agent, id}` | `{ask?}` |
 | `asks.hold` | `{agent, id}` | `{}` |
 | `asks.list` | `{agent}` | `{asks}` |
@@ -210,6 +210,7 @@ result or an event, `?` marks a field that may be absent.
 | `crews.message` | `{attachments, client_id, crew, reads, said, text, to}` | `{entry}` |
 | `crews.move` | `{ids, parent}` | `{}` |
 | `crews.propose` | `{agent}` | `{}` |
+| `crews.organize` | `{pass: "folders" or "model"}` | folders: `{agents_unassigned, crews_open, new: [{name, folder, agents: [id], why}], additions: [], quiet: [{crew, idle_days, agents}]}`; model: `{new: [{name, agents: [id], why}], additions: [{crew, agents: [id], why}], cost_usd?, model?}` |
 | `crews.reopen` | `{id}` | `{crew}` |
 | `crews.root.start` | `{model, workspace}` | `{crew, manager, root_created, manager_created}` |
 | `crews.set_default` | `{key, value}` | `{defaults}` |
@@ -221,7 +222,7 @@ result or an event, `?` marks a field that may be absent.
 | `files.find` | `{agent, limit, query}` | `{groups}` |
 | `files.read` | `{agent, limit, offset, path}` | `{file}` |
 | `files.stat` | `{agent, paths}` | `{files}` |
-| `inbox.answer` | `{id, option, text, why}` | `{undo_until}` |
+| `inbox.answer` | `{id, option, text, why, scope?}` | `{undo_until}` |
 | `inbox.back` | `{id}` | `{}` |
 | `inbox.later` | `{id}` | `{}` |
 | `inbox.list` | `{list, query}` | `{counts, items}` |
@@ -385,6 +386,7 @@ result or an event, `?` marks a field that may be absent.
 | `render.changed` | `{agent, render}` |
 | `media.changed` | `{agent, source, run?, call?}`; a successful immutable source-index append, with its actual source ID and known producer IDs. No path permission is granted. |
 | `deliverable.changed` | `{agent, id, reason}`; reason `created`, `kept`, `removed` or `snapshot`, after the index row was successfully appended. `created` follows a creation row the conversation itself wrote (the `write` tool making a new document or diagram, or a media tool); it is said once per deliverable, carries no path, and never follows an edit or a failed append. A new document a task worker writes is announced on the conversation that owns the task. Files shells create are not announced because they are not recorded. Descriptors still come from `deliverables.get`. |
+| `skills.changed` | `{agent, names: [name…]}` — attachment names in conflict order; emitted after `skills.set` |
 | `settings.changed` | `{settings, task_models?}` |
 | `spend.changed` | `{spend}` |
 | `task.changed` | `{task}` |
@@ -396,11 +398,11 @@ result or an event, `?` marks a field that may be absent.
 | `turn.started` | `{agent, turn}` |
 | `turn.thinking` | `{agent, text, turn}` |
 | `turn.thinking_done` | `{agent, seconds, turn}` |
-| `turn.tool` | `{agent, ask?, batch?, call, connector?, detail?, ended_at?, exit_code?, files?, input?, lines?, name, ok?, phase, invoked?, harness_made?, media_attempt?, refused?, rejected_before_run?, retried_of?, started_at?, summary?, tail?, task?, title?, tool_kind?, turn}` |
+| `turn.tool` | `{agent, ask?, batch?, call, connector?, detail?, ended_at?, exit_code?, files?, input?, lines?, name, ok?, phase, process?, invoked?, harness_made?, media_attempt?, refused?, rejected_before_run?, retried_of?, started_at?, summary?, tail?, task?, title?, tool_kind?, turn}` |
 
 ## Identity and de-duplication (rev 2)
 
-- `agents.create` and `agents.send` accept `client_id` (string chosen by the app).
+- `agents.create`, `agents.send` and `agents.run_harness` accept `client_id` (string chosen by the app).
   The engine echoes it on the user `Entry` (`client_id`) so the app replaces its
   optimistic bubble instead of adding a second one.
 - Where the conversation's engine keeps it (the remote welcome's
@@ -473,8 +475,15 @@ result or an event, `?` marks a field that may be absent.
   `{id, name, provider, default?: bool}`; never empty when a turn can run, and
   empty (`{models: []}`, not an error) when no provider is connected, by the
   same rule `providers.list` answers `signed_in` with.
-- `agents.set_effort {id, effort: "low"|"medium"|"high"}` and Agent gains
-  `effort?`.
+- `agents.set_effort {id, effort: "auto"|"low"|"medium"|"high"|"xhigh"|"max"}`
+  uses the terminal's `/effort` conversation dial, including over a host connection.
+  Check `hello.features` for `agents.set_effort.rungs` before sending the wider set;
+  older engines accept only low, medium and high. Words are trimmed and lower-cased
+  by the shared effort parser; `auto` clears the override (`""` and `off` also clear).
+  Agent's `effort?` reports the stored conversation override, including xhigh/max,
+  and is omitted when unset. Other scopes (such as a per-model override or install
+  default) can still determine the resolved effort. Unknown words remain `bad_params`
+  with `effort is low, medium or high` and change nothing.
 
 ## Wave 2: setup, keys, settings, money
 
@@ -731,6 +740,19 @@ media_attempt?: true             this exact call made at least one render record
                                  code that wrote the record, never from the tool name or output. True-only,
                                  kept per occurrence (a reused provider call id never lends it); absent =
                                  unknown, including every row older than the field.
+process?: string                 the processes.list / process.changed id of the job THIS command
+                                 became, identical on the live turn.tool end and its history tool Entry.
+                                 Set for background:true, session-clock/timeout/steer promotion, and a
+                                 declined keep_running command run as a turn-scoped job, including after
+                                 an approval wait. A kept service carries its service Process id only
+                                 when this backend publishes that row. Absent on begin, ordinary
+                                 foreground completion, failure, refusal, rejection and interruption.
+                                 The engine carries the registry number and start (or service id) as
+                                 typed result metadata and keeps it in the journal; never inferred from
+                                 output text or ended_at. Older engines and records omit it = unknown.
+                                 A later begin reusing an ended call id starts fresh and has no process.
+                                 In history, only process takes its exact source occurrence; existing
+                                 facts retain their last same-id source selection for compatibility.
 retried_of?                      call id this one re-runs (a later pass of the same command)
 files?: [{path, add, del}]       edit
 connector?                       e.g. "GitHub" (connector kind)
@@ -963,7 +985,7 @@ InboxItem { id, ask: Ask, where: {agent, crew?, task?, path: string[]}, at,
 | method | params | result |
 |---|---|---|
 | `inbox.list` | `{list, query?}` | `{items: InboxItem[], counts: {waiting, later, done_today}}` |
-| `inbox.answer` | `{id, option?, text?, why?}` | `{undo_until}` the answer is held 5 s ("Approving… Undo") then sent |
+| `inbox.answer` | `{id, option?, text?, why?, scope?}` | `{undo_until}` the answer is held 5 s ("Approving… Undo") then sent |
 | `inbox.undo` | `{id}` | `{}` within the 5 s window: nothing is sent, item returns to Waiting |
 | `inbox.later` · `inbox.back` | `{id}` | `{}` Later / back to Waiting |
 | `inbox.open` | `{id}` | `{agent, task?}` where to navigate |
@@ -1140,8 +1162,41 @@ field below is marked **app** on the wire's Crew/Member; everything else is **te
 | `crews.message` to a member, "@manager sees it" | app + Traffic | the words go into the member's conversation; the app also appends one Traffic `you` line (`kind: "you", from: "you", to: <handle>`) so the manager reads "you told @web: …" in its team digest at its next step; it does not wake the manager |
 | `members.start {crew, handle, brief, role?, model?}` | app | a new conversation in the crew's folder whose first message is the brief, as the person's own words; added to the crew under the handle |
 | `crews.propose {agent}` and the Bring in helpers card (`Proposal`) | app | the app asks the agent's own model for a crew proposal as one JSON block `{name, helpers: [{handle, role, brief, model?}]}` **beside its chat, never in it**: a side ask (the engine's `Conversation.SideAsk`) that reads the conversation as text, runs no turn and writes nothing into the conversation, so no `turn.*` event, no `entry.added` and no `agents.entries` row ever carries the question or the JSON, and the model's later turns never see either. The answer becomes an Ask (`subkind: "crew_proposal"`) with options `create`, `edit`, `keep` ("Keep it one agent"), carrying the whole proposal as `ask.proposal: Proposal {id, agent, name, hue?, helpers: [{handle, role, brief, model?}], existing?, cap_usd_day?, goal?, ends_at?, at}`. The proposal is kept in `<home>/app/crews.json` until it is answered, so after a restart its ask is opened again (`ask.opened`) and listed by `asks.list`. `crews.propose` answers `{}` at once; one ask runs per agent at a time (a second press while it is out is answered by the first's card); a press that brings no card adds exactly one quiet notice whose id opens `crewprop-none-` — "No crew proposal came back in a form the app can read" for an answer that is not a proposal, "No crew proposal came back · <reason>" for an ask that failed, and "No crew proposal came back · Day cap reached · $X of $Y" at the day cap, where the day cap's ask also opens — so a window waiting on the press is told it is over either way. Answering `keep` leaves the receipt "Kept as one agent · you · HH:MM"; `create` leaves only the crew's formation receipt (`op: crew.formed`, id `rcrew:<crew>`) |
+| `crews.organize {pass}` | engine | hello feature `crews.organize`. The desktop requests `folders` and `model` in parallel. Both are suggestions only and never save or repair `teams.json`; Apply uses the existing create, membership and wrap-up methods. |
 | `Proposal {id, agent, name, hue, helpers: [{handle, role, brief, model?}], existing?: [agent], cap_usd_day?, goal?, ends_at?}` → `crews.create {from: "proposal", proposal, edits?}` | app → teams | create = a team with the agent as manager; each helper is a manager's start (`start` line from `manager`, its brief the manager's own words from the proposal) which the app performs; `existing` agents are added |
 | Crew `plan?` | not kept | needs engine work: the manager keeps no plan text the app can read |
+
+`crews.organize` rules:
+
+The engine discovers an existing conversation owner before checking naming availability.
+An unopened local conversation uses a naming-only caller with no journal or lifecycle
+watches. Desktop naming policy travels with the proposal input (`RequireNaming`); terminal
+requests leave it unset and retain their conversation-model fallback.
+
+1. `pass` is required: `folders` or `model`; any other value is `bad_params`.
+   The folder pass makes no model call. Two or more unassigned agents sharing a
+   cleaned project folder suggest its lowercase basename (at most 16 display cells).
+   Folder names already used by an open crew remain folder rows; Apply joins the
+   existing crew by name. `agents_unassigned` excludes members of open non-root
+   crews; `crews_open` excludes the root and finished crews. Quiet rows are open
+   non-root crews idle at least seven days, with no decision waiting, using the
+   terminal's Traffic, decision and member-transcript activity detector.
+2. The model pass invokes `ProposeTeams` once on the naming role, with unassigned
+   agents' titles and folder basenames plus existing open non-root crews. It has
+   ten seconds. Existing proposal bounds apply (60 conversations, 24 crews,
+   80 characters per title/folder, eight new crews). Folder names and members
+   win; model-only rows never repeat a folder member, and an agent appears in
+   at most one suggestion across both passes. Rows already displayed can stay
+   in place. No suggestion creates a manager.
+3. `cost_usd`, when present, is the reported usage charge, including rejected
+   replies during the naming role's existing fall-through; no catalogue estimate.
+   It is absent when usage did not publish a cost. `model` names the model that
+   answered and is absent if no unassigned agents needed a call.
+   No naming role answers `no_naming_model`; timeout, cancellation and provider
+   failures answer `engine` with the failure's message. An engine lacking
+   the method answers `unknown_method`. Over a hosted conversation the existing
+   `Teams.Propose` door carries the same input, usage charge and deadline budget.
+
 
 ### Starting a crew with its own manager, and the global manager (`crews.start`)
 
@@ -1314,6 +1369,8 @@ naming it, and refuses a field it does not know.
 | `spend.ledger.export` | `{from, to, filters…, destination, overwrite?}` | `{path, rows, bytes, totals, skipped}` the same rows as CSV, written whole at `destination` |
 | `spend.report` | `{from, to, filters…}` | `{from, to, totals, cells, models, gaps, not_recorded, limits}` — the ledger added up by local day, model and subject; see Spending report below |
 | `slash.catalog` | – | `{commands: [{name, aliases?, forms: [{args?, description}], source: "table"\|"program", door?, brief_optional?, lands?, host}], skipped?, limits}` — the words the terminal chat answers to; see Slash catalogue below. An engine that does not serve it answers `unknown_method` (check `hello.features` for `slash.catalog`) |
+| `skills.list` | `{agent}` | `[{name, description, source, on}]` — this conversation's skill shelf, attached first; requires the `skills.list` hello feature |
+| `skills.set` | `{agent, name, on}` | `{name, on}` — attach or detach through the terminal's own skill doors; requires the `skills.set` hello feature |
 | `session.actions` | `{agent}` | `{agent, actions: [{action, available, why?, programs?, scopes?, efforts?}]}` — what the conversation's own engine can be shown to do of `task.start`, `program.start`, `memory.remember`; see Session actions below. `unknown_method` without the `session.actions` feature |
 | `session.act` | `{action, agent, client_id, task? \| program? \| memory?}` | `{action, agent, client_id, digest, state: "done"\|"uncertain"\|"in_progress", replayed?, at, task?, memory?, producer_error?, note?}` — runs ONE of the three through the producer the terminal uses, once per `client_id`; unknown params fields are `bad_params` |
 | `session.action.get` | `{agent, client_id}` | the persisted receipt of that `client_id`; `not_found` is not proof nothing was sent |
@@ -1862,7 +1919,7 @@ Ledger display names are optional and limited to 4096 UTF-8 bytes. An oversized 
 For task report cells without a recorded `root`, optional `session` preserves the recorded session identity; these tasks are never merged solely because their numeric task IDs match. An absent root remains absent.
 
 The optional `agent` filter in `spend.ledger`, `spend.ledger.export`, and `spend.report` matches the recorded `root`, falling back to recorded `session` only when root is absent. It includes that conversation and its recorded task charges without joining current crew membership. Report cells preserve this identity as optional `agent`. Existing queries without this field retain their cursor fingerprint.
-## Work graph (V87, V88)
+## Work graph (V87, V87b, V88)
 
 `work.graph {scope, view?, cluster?, focus?, cursor?, limit?, if_revision?}` answers the facts of work that
 waits on other work. It is GENERAL: tasks, who owns them, which waits on which, what state each is in and since
@@ -1939,6 +1996,57 @@ schema is generated from them, and the call is read-only. An engine that does no
 * **Errors.** `bad_params` (scope, view, limit, cursor, focus), `not_found` (unknown agent, crew or task), `busy`
   and `closed` as elsewhere (`busy` also when the engine is already building as many scopes as it admits), `too_large` (additive; see Memory),
   `engine` (cancelled, or longer than 10 s).
+
+### Map origins and external endpoints (V87b)
+
+Every app graph response adds `about.brief_fact`:
+
+```json
+{"about":{"brief_fact":{"text":"Make the parser accept trailing commas.","source":{"agent":"conversation-id","anchor":"u0","at":"2026-10-20T13:40:00Z"}}},"nodes":[{"id":"conversation-id:1","origin_source":{"agent":"conversation-id","anchor":"u0","at":"2026-10-20T13:40:00Z"}}]}
+```
+
+The desk maps `about.brief_fact` directly to `BriefFact`; map each node's
+`origin_source` to its navigation source. `anchor` is an exact `agents.entries`
+ID, not a journal line. `at` is the message's RFC3339 timestamp, omitted when
+unrecorded; render it in the person's timezone. Text is bounded to 1000 runes,
+with `cut: true` when shortened. Existing `about.brief.source`,
+`nodes[].source` and `instructions.source` keep their existing meanings.
+
+Crew briefs use the submitted goal's manager and client identity, persisted as
+`goal_agent` and `goal_client_id` in the app crew layer. When the creation caller
+omits a client ID, that door explicitly identifies the new manager's first
+message as its goal. An edit to the goal in settings clears the chat binding;
+there is no invented message. Agent briefs use that conversation's first user
+request. Task briefs use the root task's own instructions and recorded
+`origin_journal` / `origin_line`, even after the instructions are edited.
+`nodes[].origin_anchor` preserves that raw address, including an explicit
+`machine` for hosted `file://host/...` addresses. Local journal paths are
+resolved by conversation identity under the current home, not opened as arbitrary
+stored paths. Compaction overlap aliases require a durable client identity;
+rewritten words and position are never used to guess a source.
+
+Unavailable briefs have no `source` and carry an explicit `origin`:
+`"none"` (no recorded or resolvable message), `"removed"` (the conversation
+or journal is gone), or `"offline"` (an explicit hosted address which this local
+reader cannot reach). Nodes carry the same `origin` and omit `origin_source`.
+The brief's own text remains in the response, including after journal removal.
+An absolute path alone carries no machine identity; it cannot establish offline
+availability. Read and permission errors remain errors. Journal and crew-layer
+stamps participate in the revision, so removal or restoration invalidates an
+unchanged response. Origins are read once per conversation per response through
+the bounded record cache; only requested addresses survive the read lease.
+
+`external[]` names every distinct edge endpoint absent from this page:
+
+```json
+{"external":[{"ref":{"owner":"backend-agent","task":"7"},"status":"outside","where":"Backend"},{"ref":{"owner":"this-agent","task":"8"},"status":"removed"},{"ref":{"owner":"this-agent","task":"9"},"status":"paged"}]}
+```
+
+`outside` names another level (`where` is the owning agent's display name when
+known), `removed` is a confirmed missing task, and `paged`
+is a task in this scope which this page does not hold. Unknown or bounded-out
+external owners remain outside with unknown state; absence from a page never
+means removal. Edges retain their original task reference and are never dropped.
 
 A wait on a task of another conversation is recorded with `Agent.WaitOnTask` (there is no wire verb that writes
 one). The task must be queued; the link is stored in its record (`waits_external`) and the engine's frontier
@@ -2320,7 +2428,9 @@ checkout is on, whichever it is.
 menu from the engine's words. It **lists words and runs nothing**: the terminal's `app.slash` is a Bubble Tea
 dispatcher, not an engine call, and nothing on the wire interprets a command line — `agents.send` with `/cost`
 sends a message. Where a typed method already does what a command stands for, the client calls it; where none
-does, the action is the client's own. `slash.catalog` is read-only and takes no model call, file walk,
+does, the action is the client's own. Cache, autonomy and crew policy use the typed methods below;
+harness selection is a client draft choice after `harness.list`, consumed by `agents.run_harness`
+on the next message. `slash.catalog` is read-only and takes no model call, file walk,
 transcript read or watcher.
 
 - **One table.** `commands` with `source: "table"` are `internal/slashcat`'s rows — the same rows the terminal
@@ -2339,15 +2449,145 @@ transcript read or watcher.
 - **Bounds.** At most 128 commands, 16 forms and 8 aliases per command, 64-byte names and 512-byte text;
   `limits` repeats them. A program row over a bound is skipped, never cut.
 
+Rewind, delete, debug and manual have typed conversation actions below; a slash line sent as text
+still does not invoke them.
+
 A client that sees no `slash.catalog` feature in `hello` has no catalogue to read and must not guess one.
+
+## Conversation actions
+
+| method | params | reply |
+|---|---|---|
+| `agents.rewind.points` | `{id}` | `{points: [{point, at, words, turns_after}]}` — authored turn boundaries, newest first |
+| `agents.rewind` | `{id, point}` | `{token}` — set aside the selected turn and everything after it |
+| `agents.rewind.undo` | `{id, token}` | `{}` — restore the set-aside turns |
+| `agents.delete` | `{id, confirm: true}` | `{}` — permanently delete the saved conversation |
+| `agents.debug` | `{id}` | `{path, message}` — keep the full record, naming its folder |
+| `agents.manual` | `{id, question?, client_id?}` | `{turn}` — same reply and turn events as `agents.send` |
+
+Each method advertises its exact name in `hello.features`. These methods use the conversation's
+own engine, including across `--host`; older hosts refuse unsupported methods.
+
+Rewind uses the terminal's legal cut boundaries and append-only journal: files and commands are
+unaffected, and old turns remain in the record. Points includes at most the newest 1000 turns;
+`words` is at most 12 words and 512 UTF-8 bytes. `turns_after` excludes the selected turn. `at`
+is the recorded timestamp (zero where unknown). Refresh points after any conversation edit.
+Only one undo is retained by the owning engine, in memory; a new turn, another rewind, a changed
+retained transcript or restarting the engine makes it unavailable. The token is bound to that
+conversation and must be nonempty and at most 128 bytes. A running turn or compaction refuses a
+rewind or undo; interrupt first. A stale token returns a clear error and restores nothing.
+Re-read `agents.messages` after a rewind or undo; the reply does not stream transcript replacements.
+
+Delete uses the terminal's permanent deletion producer and manager guard: replace an ordinary
+team's manager in Teams first; optional global leadership can be cleared. Active work is stopped
+through that producer. Kept-running services are fenced and stopped before the record is removed;
+a stop failure leaves the conversation available. The client confirms before calling and sends
+literal `confirm: true`; missing or false confirmation is `bad_params` before any producer runs.
+A successful deletion disappears from
+conversation lists. There is no undo.
+
+Debug is one-way for this conversation's run, from now on. Repeating returns its folder and says
+it is already on. Manual uses exactly the terminal's instruction to answer from the `manual` tool
+and name the page; the visible authored line is `/manual <question>` (bare `/manual` requests a
+tour). It spends and refuses busy as an ordinary send does. `question` is at most 32768 bytes,
+`client_id` at most 128 bytes; the latter carries ordinary send correlation semantics.
+
+## Conversation skills
+
+`skills.list {agent}` is the shelf `/skill` shows, using the terminal's shared merge:
+attached names first in attachment order, then project folders before other entries,
+with names ordering each group. Names merge case-insensitively. Descriptions come
+from active shelf entries (at most 50), supplemented by discovery. `source` names
+the original root (`.codeaf/skills`, `.claude/skills`, `.codex/skills`, another
+root, or `shelf` when no folder is known). Attached names remain visible even
+when their folder is absent. An empty shelf is `[]`.
+
+`skills.set` requires a boolean `on` and a nonblank name of at most 256 UTF-8
+bytes without control characters. Missing fields, invalid values and unknown
+set fields are `bad_params`. Setting an existing state is harmless; attachment
+order is preserved. Unknown names can be attached, exactly as in the terminal;
+resolution occurs when the next message carries them. The answer is the state
+read back from the conversation. Attachment lasts for the open conversation;
+this method does not write a new persistent preference.
+
+Both methods open the named conversation if needed. Unsupported engines answer
+`unknown_method`; shelf reads and changes that cannot be confirmed answer `engine`.
+Shelf reads share the session-action read gate (`busy` when full). Over a hosted
+connection the shelf, folder discovery and attachment doors run on the session host;
+local folders are not added to a far shelf. An older host without the `skill_folders`
+welcome capability supplies its active shelf and attachments alone. A capable host whose
+folder discovery fails returns `engine`, never a partial shelf. Every successful
+set emits `skills.changed {agent, names: [name…]}` in attachment order, so another
+view can refresh its shelf.
+Clients check the two hello features before offering these methods.
+
+## Machine cache, project autonomy and saved harnesses
+
+| method | params | result |
+|---|---|---|
+| `cache.status` | `{}` | `{path, bytes, human}` — shared build cache size and absolute path on the app machine |
+| `cache.clean` | `{confirm: true}` | `{freed_bytes}` — the terminal's `cachedir.Clean`, including its read-only module directory handling |
+| `autonomy.get` | `{agent}` | `{agent, kinds: [{kind, rule, after?}]}` — eight kinds in terminal order; rule is ask, recommend or decide; after is a duration string |
+| `autonomy.set` | `{agent, kind, rule}` | same as autonomy.get; rule is `ask`, `decide`, or `recommend [duration]` |
+| `harness.list` | `{}` | `{harnesses: [{name, description, version, runs, last_run?: {at?, finished}}]}` — current saved pages in registry name order |
+| `agents.run_harness` | `{id, name, text, client_id?}` | `{turn}` — run the named saved harness with text as its input; output arrives as ordinary turn events |
+| `settings.crew.get` | `{}` | `{models, cap_usd}` — canonical allowed-model rule and crew daily cap (0 means off) |
+| `settings.crew.set` | `{models?: string, cap?: string}` | same as settings.crew.get; exactly one field per call |
+
+Each method advertises its own name in `hello.features`; absent capability answers `unknown_method`.
+Unknown fields are `bad_params`. Cache clean needs literal `confirm: true`: the client asks first,
+explaining the size, path and cold builds; only shared build caches are removed, never conversations or settings.
+Cache, harness listing and crew policy address the app machine/profile only. As in the terminal, a client connected
+with `--host` disables those commands with "change it on that machine"; these methods do not accept a host
+or agent selector and never forward machine operations to a joined conversation's host.
+
+Autonomy uses the selected agent's engine handle, forwarding over its host connection when present.
+It reads the terminal sheet's explicit rows (unset is ask), with confirmation and clarification always ask.
+The shared parser and `SetAutonomy` enforce the terminal's duration rules, project requirement and safety floors.
+Agent is a single-line id of at most 256 bytes; kind is at most 32 bytes; rule at most 64. A failed host read is an error, never invented ask rows.
+
+Harness listing reads the terminal panel's current head pages and latest histories; unreadable pages
+are omitted, unreadable history leaves the page without a last run. Reads share the session-action
+read gate (`busy` when full). Before loading, each request enforces 128 rows, 1 MiB per page or
+latest trace, 16 MiB total file bytes and 32768 directory entries across the registry, version
+folders and run histories. More than these bounds or 512 KiB of reply answers `too_large`,
+never a partial list. Picking a harness only changes the terminal's draft chip
+(`harnChip`); browsing a panel row shows its card. Neither sets engine state, so there is no `harness.use`.
+
+`agents.run_harness` (hello feature `agents.run_harness`) consumes that draft choice on the next
+message: required nonblank `id`, `name` and `text`, optional `client_id`. It calls the terminal's
+shared `RunHarnessRequest` producer with no model override, bypassing detection and offers.
+The reply and turn events are the same as `agents.send`; a running turn refuses `busy`.
+An unknown name refuses before any turn or user entry is emitted. An engine handle without
+the door refuses with "harnesses are unavailable here", including an older host; supported
+hosts run it on the conversation's machine. `client_id` has exactly `agents.send`'s correlation
+semantics and never deduplicates a run. Attachments never travel: only the four named params
+are accepted, and staged files remain for the next ordinary message.
+
+Crew word forms map as follows:
+
+| terminal word form | existing or added door |
+|---|---|
+| `/crew pin <seat> <model[@provider]>` | `settings.models.set {pins: {<seat>: {id, provider?}}}` |
+| `/crew unpin <seat\|all>` | `settings.models.set {pins: {<seat>: null}}`; all clears all three role keys |
+| `/crew models` / `/crew models <rule>` | `settings.crew.get` / `settings.crew.set {models: rule}` for persistent all, open, price, list and +/- forms; per-provider ticks remain `settings.models.list/set` |
+| `/crew cap <dollars\|off>` | `settings.crew.get/set {cap: "<dollars\|off>"}` for the crew daily cap |
+| `/crew cap task <dollars>` | `settings.get/set {task_cap_usd}` for the existing per-task limit |
+
+`models` is 1–16384 bytes and uses the terminal's shared `ApplyCrewModels` writer; `cap` is at most
+64 bytes and uses `SetCrewCap`. Each write returns the saved policy. These apply to future task admissions.
+`members.cap` is a member conversation budget, `settings.set {day_cap_usd}` is the machine spending limit,
+`crews.*` manages teams and `tasks.routing.*` changes one task; none substitutes for the crew policy rows.
 
 ## Session actions
 
 `session.act` is the typed door for three things the terminal does with `/task <brief>`, `/<program> <brief>`
 and `/remember <text>`. It is **not** a command interpreter: the actions are named for what they do
 (`task.start`, `program.start`, `memory.remember`), and `agents.send` with a slash line is still a message to
-the model. Everything else in the slash catalogue (rewind, export, delete, land, cache, skills, …) has no verb
-here and says so by having none.
+the model. Typed methods now serve rewind, delete, debug and manual (Conversation actions above), `/skill`
+(`skills.list`, `skills.set`), cache, autonomy and crew policy (their methods above), saved harnesses (`harness.list`, `agents.run_harness`)
+and every `/effort` rung (`agents.set_effort`). Other catalogue actions, such as export and land, still have no verb
+here and say so by having none.
 
 - **The producers are the terminal's own** (`StartTask`/`StartTaskEffort`, `StartDelegate`, `Remember`/
   `RememberAlways`), called through the open conversation's engine handle, so over `--host` they run on the far
@@ -2846,3 +3086,45 @@ Feature `factory.runner_manage` is distinct from every other factory feature and
 ### factory.job_control
 
 Optional feature `factory.job_control`. Parameters: `factory`, `job`, `expect.version`, `mode` (`take_over` or `resume_pipeline`), optional `words`. Takes manual control or resumes verification in the existing worktree. Returns the normal factory job action receipt. It does not approve initial publication or merge.
+
+## Permission scopes in the decision dock (V68b)
+
+| method | params | result |
+| --- | --- | --- |
+| `asks.answer` (adds) | `{…, scope?: string}` with `option:"always"` | `{}`; `bad_scope` if scope is absent or is not one of this permission ask's scopes |
+| `inbox.answer` (adds) | `{…, scope?: string}` with `option:"always"` | `{undo_until}`; the same `bad_scope` validation before the hold; only this Inbox item is answered |
+
+Permission `Ask` adds `scopes?: string[]` in engine order: bash uses
+`config.BashShapes(command)` (at most three, exact line last); another tool
+has one scope, its name. `always` is offered only when scopes exist.
+When scopes are absent, `always_ask` says `acts_as_you`, `critical` or `compound`.
+The first two use approval's existing floor; compound bash lines cannot become
+saved allow rules. Other kinds of ask carry neither field.
+
+An always answer saves exactly the selected scope in the profile's
+`tools.bashPatterns` (bash) or `tools.approval` (another tool), through the same
+persistence path the terminal uses. A failed save returns `engine` and keeps the
+ask open; it never silently grants the whole tool for this session. Each scope
+answer applies to the named permission, rather than approving a batch of other
+calls with different scopes. When `batch_item` is present, that item supplies
+the offered scopes and is the only permission answered.
+
+The existing receipt entry kind adds optional `link: {label, target}` and
+`why: string`. A successful always leaves
+`Always allowed · <scope> · you · <HH:MM>` with
+`link: {label:"Settings › Permissions", target:"settings:permissions"}`.
+A later call allowed by an explicit saved rule adds a new receipt:
+`Allowed automatically · <call> · you always allow <scope>` and
+`why:"Matches your rule <scope> in Settings › Permissions"`.
+Both receipts are kept in the conversation's app sidecar and restored by
+`agents.entries` at their call's position, including the settings link and
+explanation that each originally carried.
+Default, read-only and guardian allows do not claim to match a saved rule.
+A call outside the rule goes through the ordinary gate and asks again.
+
+Permission `Ask` also adds `outside?: string`: the longest saved
+`tools.bashPatterns` rule with the same program (first word) that does not cover
+the call. Equal lengths keep settings order. Absent with no such rule, and for
+non-bash calls or other kinds of ask. This explains an ask without changing
+approval: the desktop can show `Waiting on you: <call> · outside <outside>, so it asks`
+with code spans around the call and rule.

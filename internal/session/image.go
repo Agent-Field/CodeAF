@@ -441,7 +441,7 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 			// "this turn shape cannot be steered" is a fact the person is owed on
 			// their own stream, not a reason to swallow their words.
 			a.liftSteersLocked(hub)
-			a.drainSteeringLocked(hub)
+			drained := a.drainQueueLocked(hub, true)
 			a.running = false
 			a.cancel = nil
 			a.hub = nil
@@ -451,6 +451,10 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 				// An ordinary turn, on the chat model: the follow-up is words,
 				// and words are what that model can read.
 				a.startTurnLocked(context.Background(), next.message, next.stream)
+			} else if completed && drained.owed {
+				// Vision reads only the image message. News recorded at its end
+				// still needs an ordinary turn, even if its wake clock fired.
+				a.wakeAnsweringLocked(drained.heard, drained.only)
 			}
 			a.mu.Unlock()
 		}()

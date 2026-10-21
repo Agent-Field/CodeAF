@@ -280,6 +280,7 @@ type GraphResult struct {
 	Totals   GraphTotals `json:"totals"`
 	Coverage Coverage    `json:"coverage"`
 
+	External []ExternalTask `json:"external,omitempty"`
 	Nodes    []GraphNode    `json:"nodes,omitempty"`
 	Edges    []GraphEdge    `json:"edges,omitempty"`
 	Clusters []GraphCluster `json:"clusters,omitempty"`
@@ -309,7 +310,8 @@ type ScopeFacts struct {
 	// Brief is what the scope was asked to do, with where the words came from:
 	// a task's instructions, a crew's goal, an agent's first request. Absent
 	// when the producer has none.
-	Brief *GraphText `json:"brief,omitempty"`
+	Brief     *GraphText `json:"brief,omitempty"`
+	BriefFact *BriefFact `json:"brief_fact,omitempty"`
 }
 
 // GraphText is words cut to a bound and the place they were read from.
@@ -326,10 +328,36 @@ type GraphText struct {
 	Anchor *TextAnchor `json:"anchor,omitempty"`
 }
 
+// MessageSource names one entry exactly as agents.entries names it.
+type MessageSource struct {
+	Agent  string     `json:"agent"`
+	Anchor string     `json:"anchor"`
+	At     *time.Time `json:"at,omitempty"`
+}
+
+// BriefFact is the brief's own words and its explicit navigation availability.
+// A reachable origin has Source and no Origin; unavailable origins have no Source.
+type BriefFact struct {
+	Cut    bool           `json:"cut,omitempty"`
+	Text   string         `json:"text"`
+	Source *MessageSource `json:"source,omitempty"`
+	Origin string         `json:"origin,omitempty" enum:"none,removed,offline"`
+}
+
+// ExternalTask is the endpoint of a link whose card is outside this page.
+// Paged endpoints exist in this scope; removed endpoints have no record.
+type ExternalTask struct {
+	Ref    TaskRef `json:"ref"`
+	Where  string  `json:"where,omitempty"`
+	Status string  `json:"status" enum:"outside,removed,paged"`
+}
+
 // TextAnchor points at a line of a conversation's journal.
 type TextAnchor struct {
-	Agent string `json:"agent"`
-	Line  int    `json:"line"`
+	// Machine is set only by an explicitly hosted journal address.
+	Machine string `json:"machine,omitempty"`
+	Agent   string `json:"agent"`
+	Line    int    `json:"line"`
 }
 
 // RouteSeat is one role of the crew a task was accepted to run on, as the record
@@ -480,6 +508,11 @@ type TaskSource struct {
 
 // GraphNode is one task.
 type GraphNode struct {
+	// OriginSource is the exact user entry behind this task, independent of edited instructions.
+	OriginAnchor *TextAnchor    `json:"origin_anchor,omitempty"`
+	OriginSource *MessageSource `json:"origin_source,omitempty"`
+	Origin       string         `json:"origin,omitempty" enum:"none,removed,offline"`
+
 	// ID is the task's wire id, Ref its identity and Seq its owner's admission
 	// number (the order the owner made its tasks in).
 	ID  string  `json:"id"`

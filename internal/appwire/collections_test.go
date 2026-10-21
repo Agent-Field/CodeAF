@@ -106,7 +106,7 @@ func features(hello map[string]any) []any {
 // engine without collections answers its methods unknown_method.
 func TestCollectionsFeatureFollowsTheEngine(t *testing.T) {
 	w, _ := startCollectorWire(t)
-	if got := features(w.next()); len(got) != 2 || got[0] != "x" || got[1] != FeatureCollections {
+	if got := features(w.next()); len(got) != 3 || got[0] != "x" || got[1] != FeatureAgentEffortRungs || got[2] != FeatureCollections {
 		t.Fatalf("features = %v", got)
 	}
 	plain := startWire(t, &fakeEngine{})
