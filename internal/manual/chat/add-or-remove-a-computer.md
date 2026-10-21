@@ -112,9 +112,9 @@ Under the row, `alt+m bring work here` brings the newest chat of an online devic
 
 Yes, on both sides. When a pairing finishes — a six-digit code on both screens, a link
 typed into `codeaf pair approve`, either end of it — the computer it finished on writes
-its own device record then and there, the same record every chat start writes. `codeaf
+its own device record then and there, the same record every chat start writes. For a link approved from the chat card or `codeaf pair approve`, the approving computer writes its record before the new device can receive `Paired.`; if that write fails, approval can be tried again and the request has not been granted. `codeaf
 devices` and `/devices` show both computers at once, on each computer, with no chat
-opened first. If that record did not land, the pairing still stands and the terminal
+opened first. With the six-digit-code route, if that record did not land, the pairing still stands and the terminal
 says one line about it, `paired, but this device could not write its own record: … — it
 is written at the next chat start.`, and the pairing ends cleanly.
 
@@ -147,7 +147,7 @@ Another of your devices removed this one. The chat says:
 this device was removed by another of your devices, so this chat stays here only — run `codeaf pair` to bring it back
 ```
 
-`/devices` on the removed computer says the same line in place of the list. It appears the moment the other device removes this one, even if codeaf has been open for days, in the open chat and on the home screen alike, and once only. Your chats on this device are safe and stay on it. They no longer follow your other devices. To bring the device back, run `codeaf pair` here, then approve the link it shows from a device that is still in (the steps above). If you did not mean to remove it, that is the whole fix.
+`/devices` on the removed computer says the same line in place of the list. The terminal command `codeaf devices` gives its removal explanation once, without following it with `nothing is paired yet`. It appears the moment the other device removes this one, even if codeaf has been open for days, in the open chat and on the home screen alike, and once only. Your chats on this device are safe and stay on it. They no longer follow your other devices. To bring the device back, run `codeaf pair` here, then approve the link it shows from a device that is still in (the steps above). If you did not mean to remove it, that is the whole fix.
 
 ## The link did not work — a pairing link or token that ran out, was declined or was answered already
 

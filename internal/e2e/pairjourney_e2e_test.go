@@ -189,12 +189,25 @@ func (r *rig) paste(text string) {
 
 var linkShape = regexp.MustCompile(`https://codeaf\.agentfield\.ai/p/\S+`)
 
+// TestPairJourney proves C1, C3, C4 and C5 through the terminal doors,
+// including the online and offline routes into the same arrival screen.
 func TestPairJourney(t *testing.T) {
 	key := requireTmuxAndKey(t)
+	for _, online := range []bool{false, true} {
+		name := "offline"
+		if online {
+			name = "online"
+		}
+		t.Run(name, func(t *testing.T) { runPairJourney(t, key, name, online) })
+	}
+}
+
+func runPairJourney(t *testing.T, key, mode string, online bool) {
 	out := os.Getenv("UX_EVIDENCE")
 	if out == "" {
 		out = filepath.Join(os.Getenv("HOME"), "ux-evidence")
 	}
+	out = filepath.Join(out, mode)
 	if err := os.MkdirAll(filepath.Join(out, "screens"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +222,7 @@ func TestPairJourney(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(wsB, "Makefile"), []byte("test:\n\t@echo 3 passed\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	journeyRun(j, env, homeA, homeB, wsA, wsB)
+	journeyRun(j, env, homeA, homeB, wsA, wsB, online)
 }
 
 // freeze fixes the journey's length; probes that follow are not part of it.
