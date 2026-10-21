@@ -517,7 +517,7 @@ func TestAnUnqualifiedIdResolvesExactlyAsItDidBefore(t *testing.T) {
 		for _, model := range models {
 			configured := Config{APIKey: "default-key", BaseURL: base, Model: model}.ClientConfig(model)
 			assertComparableProviderConfig(t, configured, provider.Config{
-				APIKey: "default-key", BaseURL: base, Model: model, Effort: provider.EffortNone,
+				SourceID: modelsource.DefaultID, APIKey: "default-key", BaseURL: base, Model: model, Effort: provider.EffortNone,
 			})
 		}
 	}
@@ -546,7 +546,7 @@ func TestAnUnqualifiedIdResolvesExactlyAsItDidBefore(t *testing.T) {
 		for _, model := range models {
 			configured := loaded.ClientConfig(model)
 			assertComparableProviderConfig(t, configured, provider.Config{
-				APIKey: "sk-profile-captured-1234567890", BaseURL: wantBase,
+				SourceID: modelsource.DefaultID, APIKey: "sk-profile-captured-1234567890", BaseURL: wantBase,
 				Model: model, Effort: provider.EffortNone, Timeout: DefaultTimeout,
 			})
 		}
@@ -663,5 +663,16 @@ func TestOnlyAnExplicitlyKeyOptionalServiceAcceptsBlank(t *testing.T) {
 	}, ollama, nil)
 	if err != nil || outcome.Kind != modelsource.OutcomeConnected {
 		t.Fatalf("explicitly optional key = %+v, %v", outcome, err)
+	}
+}
+
+func TestOllamaClientConfigPreservesServiceIdentity(t *testing.T) {
+	sources := modelsource.NewSet(modelsource.Connected{
+		Source:  modelsource.Source{ID: "ollama", Written: "local-models", KeyOptional: true},
+		Address: "http://private-runner.example:9000/v1",
+	})
+	configured := ClientConfigFor(sources, "local-models/qwen3")
+	if configured.SourceID != "ollama" || configured.BaseURL != "http://private-runner.example:9000/v1" || !configured.KeyOptional || !configured.Direct {
+		t.Fatalf("Ollama identity was lost: %+v", configured)
 	}
 }

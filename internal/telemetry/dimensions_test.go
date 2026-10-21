@@ -2,8 +2,11 @@ package telemetry
 
 import (
 	"encoding/json"
+	"os"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestUsageReceiptMissingDoesNotInventZeroTokens(t *testing.T) {
@@ -100,5 +103,94 @@ func TestLateUsageReceiptKeepsOriginalSessionAndCountsOnce(t *testing.T) {
 	}
 	if row.SessionIDHash != hashHex("original") || row.Props["mode"] != "task" || row.Props["total_tokens"] != float64(12) {
 		t.Fatal(row)
+	}
+}
+
+func TestUsageEstimateAndRecoveredReceiptShareIdentity(t *testing.T) {
+	testHome(t)
+	estimate := 25
+	initial := UsageReceipt(ModeChat, 0, 0, "session", testNow, UsageDimensions{UsageStatus: "estimated", EstimatedOutput: &estimate, EstimateScope: "observed_partial", ReceiptID: "generation:private"})
+	recovered := UsageReceipt(ModeChat, 10, 3, "session", testNow, UsageDimensions{UsageStatus: "reported", ReceiptID: "generation:private"})
+	if initial.Props["usage_receipt"] != recovered.Props["usage_receipt"] || initial.ID == recovered.ID {
+		t.Fatal("estimate and recovery cannot be reconciled")
+	}
+	if initial.Props["total_tokens"] != nil || initial.Props["estimated_total_tokens"] != 25 {
+		t.Fatal(initial.Props)
+	}
+}
+
+func TestUsageRelayFixtureMatchesClientConstructors(t *testing.T) {
+	testHome(t)
+	data, err := os.ReadFile("testdata/usage-accounting.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct {
+		Events []jsonEvent `json:"events"`
+	}
+	if err := json.Unmarshal(data, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	estimateIn, estimateOut := 100, 25
+	dimensions := []UsageDimensions{
+		{UsageStatus: "estimated", EstimatedInput: &estimateIn, EstimatedOutput: &estimateOut, EstimateScope: "text_only"},
+		{UsageStatus: "reported"},
+		{UsageStatus: "mixed", MissingOutput: true, EstimatedOutput: &estimateOut, EstimateScope: "text_only"},
+		{UsageStatus: "partial", MissingOutput: true},
+		{UsageStatus: "missing"},
+	}
+	counts := [][2]int{{0, 0}, {90, 20}, {90, 0}, {90, 0}, {0, 0}}
+	for i, d := range dimensions {
+		want := fixture.Events[i]
+		d.ReceiptID = "generation:contract"
+		d.RoutingProvider = "other"
+		d.ModelFamily = "qwen"
+		d.AccountingSource = "provider"
+		at, err := time.Parse(time.RFC3339, want.EventTime)
+		if err != nil {
+			t.Fatal(err)
+		}
+		event := UsageReceipt(ModeChat, counts[i][0], counts[i][1], "contract", at, d)
+		event.InstallHash = want.InstallIDHash
+		for _, key := range commonPropNames {
+			event.Props[key] = want.Props[key]
+		}
+		actual, err := json.Marshal(event)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got map[string]any
+		var expected map[string]any
+		if err := json.Unmarshal(actual, &got); err != nil {
+			t.Fatal(err)
+		}
+		raw, err := json.Marshal(want)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(raw, &expected); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, expected) {
+			t.Fatalf("%s: got %s, want %s", d.UsageStatus, actual, raw)
+		}
+	}
+}
+
+func TestUsageEnrichedBatchFitsRelayBodyLimit(t *testing.T) {
+	testHome(t)
+	estimate := int(1<<53 - 1)
+	event := UsageReceipt(ModeChat, estimate, 0, "contract", testNow, UsageDimensions{UsageStatus: "mixed", MissingOutput: true, EstimatedOutput: &estimate, EstimateScope: "observed_partial", ReceiptID: "generation:contract", RoutingProvider: "anthropic", ModelFamily: "deepseek", AccountingSource: "provider"})
+	event.Props["codeaf_version"] = strings.Repeat("v", 64)
+	events := make([]Event, MaxEventsPerPOST)
+	for i := range events {
+		events[i] = event
+	}
+	body, err := json.Marshal(map[string]any{"schema_version": 1, "events": events})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(body) > 64*1024 {
+		t.Fatalf("enriched batch %d bytes exceeds relay cap", len(body))
 	}
 }
