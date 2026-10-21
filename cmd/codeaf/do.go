@@ -3756,7 +3756,7 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 	// under a short --timeout the open alone could spend the whole deadline
 	// before a single node had started.
 	memorySection := doMemory(workspace)
-	signalled, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	signalled, stopSignals := signal.NotifyContext(hostSeated(context.Background()), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
 	ctx, cancel := context.WithTimeout(signalled, request.timeout)
 	defer cancel()
