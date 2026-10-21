@@ -32,6 +32,9 @@ var wireErrors = []struct {
 	{"rotated", http.StatusGone, wireauth.ErrRotated},
 	{"gone", http.StatusGone, wireauth.ErrGone},
 	{"unauthorized", http.StatusUnauthorized, wireauth.ErrUnauthorized},
+	// Hosted deployment brakes reuse the client's existing retry and full handling.
+	{"relay_admission_full", http.StatusTooManyRequests, wireauth.ErrRateLimited},
+	{"relay_storage_full", http.StatusInsufficientStorage, ErrFull},
 }
 
 // codeOf finds the row for err; ok is false for an error the wire has no name for.

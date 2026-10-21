@@ -44,6 +44,9 @@ var wireErrors = []wireError{
 	{ErrAlreadyDecided, "already_decided", http.StatusConflict},
 	{ErrTooBig, "too_big", http.StatusRequestEntityTooLarge},
 	{ErrFull, "full", http.StatusServiceUnavailable},
+	// Hosted deployment brakes leave existing identities readable and erasable.
+	{wireauth.ErrRateLimited, "relay_admission_full", http.StatusTooManyRequests},
+	{ErrFull, "relay_storage_full", http.StatusInsufficientStorage},
 }
 
 // Codes that have no sentinel a Client returns: the wire's own refusals.

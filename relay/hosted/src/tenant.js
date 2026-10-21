@@ -22,8 +22,9 @@ const MANY_KEY_ID = '0'.repeat(32);
 const servedOf = (range, size) => (range ? Math.min(range.length ?? Infinity, size - range.offset) : size);
 
 export class Tenant {
-  constructor({ identity, sql, bucket, clock, policy, limits, flight, arm, watchers }) {
+  constructor({ identity, sql, bucket, clock, policy, limits, flight, arm, watchers, reserve = async () => {} }) {
     this.identity = identity;
+    this.reserve = reserve;
     this.clock = clock;
     this.limits = limits;
     this.arm = arm;
@@ -44,7 +45,10 @@ export class Tenant {
     this.stats.add({ puts: 1, bytes_in: bytes.length });
     const frame = await sealFrame(bytes);
     const cost = { size: frame.size, objects: frame.objects.length };
-    const stored = await this.store.put(frame, () => this.quota.admit(cost, this.clock()));
+    const stored = await this.store.put(frame, async () => {
+      this.quota.admit(cost, this.clock());
+      await this.reserve(this.identity, frame.id, frame.size);
+    });
     if (stored) this.quota.record(cost, this.clock());
     return { frame: frame.id, objects: cost.objects };
   }

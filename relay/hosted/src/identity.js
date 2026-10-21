@@ -111,6 +111,7 @@ export class IdentityDO extends DurableObject {
       flight: this.flight,
       arm: (at) => this.ctx.waitUntil(this.#arm(at)),
       watchers: this.watchers,
+      reserve: async (owner, frame, bytes) => unwrap(await this.#global().reserve(owner, frame, bytes)),
     });
     return this.#tenant;
   }
@@ -169,6 +170,7 @@ export class IdentityDO extends DurableObject {
     this.#gone = true;
     this.#tenant = null;
     if (await erasePage(this.env.FRAMES, `${identity}/`, this.limits.sweepPageSize)) return this.#arm(Date.now());
+    unwrap(await this.#global().forget(identity));
     dropTables(this.ctx.storage.sql);
     await this.ctx.storage.delete(['identity', 'admitted']);
   }
@@ -191,8 +193,13 @@ export class IdentityDO extends DurableObject {
   // identity, whatever address it comes from.
   async #admitNewcomer(ip) {
     if (await this.ctx.storage.get('admitted')) return;
-    const gate = this.env.NEWCOMERS;
-    unwrap(await gate.get(gate.idFromName('gate')).admit(ip));
+    unwrap(await this.#global().admit(ip));
     await this.ctx.storage.put('admitted', true);
+  }
+
+  // Every identity reaches the same durable budget; the namespace is already deployed.
+  #global() {
+    const gate = this.env.NEWCOMERS;
+    return gate.get(gate.idFromName('gate'));
   }
 }
