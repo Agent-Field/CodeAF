@@ -3586,6 +3586,10 @@ func (a *app) Init() tea.Cmd {
 		if a.homeAnimating() {
 			standing = append(standing, a.wake())
 		}
+	} else if a.watchesConversation() {
+		// Ownership can move while a conversation is on screen. Join the same
+		// directory feed and clock home uses, off the first-paint path.
+		standing = append(standing, homeTick(a.homeGen), a.hurryMachines())
 	}
 	// THE PROGRAM ROWS ARE ASKED FOR AT THE LAUNCH, off the loop, so the picker
 	// and /help list them from the first answer rather than the first keystroke
@@ -5353,6 +5357,8 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// THE OTHER MACHINES' CHATS, COMING BACK, off the update loop for the
 		// reason the repository's reading is (homepanel_machines.go).
 		return a, a.tookMachines(msg)
+	case ownershipReadMsg:
+		return a, a.afterOwnershipRead(msg)
 
 	case dirWatchMsg:
 		// THE DIRECTORY'S CHANGE SOCKET HAS SOMETHING TO SAY (machinewatch.go).

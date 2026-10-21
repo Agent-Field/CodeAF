@@ -83,8 +83,12 @@ func (a *app) askChats() tea.Cmd {
 // tookMachines files the answer. An error keeps the last rows and only marks
 // them stale.
 func (a *app) tookMachines(msg homeMachinesMsg) tea.Cmd {
+	before, wasElsewhere := a.heldElsewhere()
 	a.machinesAsking = false
 	a.fileMachines(msg)
+	if row, elsewhere := a.heldElsewhere(); msg.err == nil && elsewhere && (!wasElsewhere || before.DeviceID != row.DeviceID || before.Device != row.Device) {
+		a.note(chatlist.Superseded(row.Device))
+	}
 	a.machineRead.down = msg.err != nil
 	a.machineRead.merge = a.branches.Merge != nil
 	a.considerResume()

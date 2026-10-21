@@ -138,7 +138,14 @@ func (a *app) bargeOffered() bool {
 // turn on its way to opening a fold would be the worst kind of surprise: an
 // irreversible act as a side effect of a navigational one.
 func (a *app) bargeIn() tea.Cmd {
+	return a.bargeInChecked(false)
+}
+
+func (a *app) bargeInChecked(ownershipRead bool) tea.Cmd {
 	if !a.bargeOffered() {
+		if ownershipRead {
+			return a.enterCheckedLine(true)
+		}
 		// THE KEY IS ABSENT WHEREVER IT CANNOT WORK, and absent means it does
 		// nothing at all rather than saying it cannot (spellout.go's [app.spellKey]
 		// states it). It is safe to swallow rather than fall through because
@@ -147,12 +154,15 @@ func (a *app) bargeIn() tea.Cmd {
 		// bottom of input.go's router would have done nothing with it anyway.
 		return nil
 	}
+	if !ownershipRead && a.needsOwnershipRead() {
+		return a.checkBeforeSendWith(func() tea.Cmd { return a.bargeInChecked(true) })
+	}
 	waiting := len(a.parks)
 	// The mark is deliberately not passed. ctrl+enter is the gesture that means
 	// "queue it for after this turn" and this one means "instead of that" — a
 	// chord that did both would be one keystroke making two decisions
 	// (followup.go).
-	cmd := a.enterLine()
+	cmd := a.enterCheckedLine(ownershipRead)
 	if len(a.parks) == waiting {
 		// The road did something other than park: a command ran, a door took the
 		// words, a refusal was noted, or there was nothing to say. The turn is

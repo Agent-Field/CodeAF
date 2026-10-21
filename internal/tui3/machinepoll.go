@@ -15,10 +15,9 @@ import (
 // seconds because that is free; the directory is not, so it gets its own pace
 // and its own permission to ask, decided here and nowhere else.
 //
-// IT ASKS ONLY WHILE SOMEBODY IS LOOKING. The list is drawn on home, so away
-// from home nothing asks; and on home it asks only while the window is
-// attended, which is the terminal's own focus report where there is one and
-// otherwise a key pressed lately.
+// IT ASKS ONLY WHILE SOMEBODY IS LOOKING. Home and a paired conversation
+// follow changes while attended: a conversation needs to learn that another
+// device took it. Focus reports, or otherwise a recent key, decide attendance.
 //
 // IT SLOWS DOWN WHILE NOTHING CHANGES. A list that answers the same twice is a
 // list nobody is editing, so the wait doubles from the fast pace up to a
@@ -99,12 +98,19 @@ func (a *app) attended(now time.Time) bool {
 // pollMachines asks the directory if, and only if, the schedule allows: home is
 // showing, somebody is at the window, and the wait is over.
 func (a *app) pollMachines(now time.Time) tea.Cmd {
-	wanted := a.at(pageHome) && a.attended(now)
+	wanted := (a.at(pageHome) || a.watchesConversation()) && a.attended(now)
 	followed := a.tendWatch(wanted)
 	if !wanted || !a.machinePoll.ready(now) {
 		return followed
 	}
 	return tea.Batch(followed, a.askMachines())
+}
+
+// watchesConversation keeps an attended window informed when another device
+// takes its chat, even while home is closed. A window without a sync source
+// or without a conversation has no directory work to do.
+func (a *app) watchesConversation() bool {
+	return a.machines != nil && a.file != "" && !a.hosted()
 }
 
 // hurryMachines asks now, for a person who has just arrived.
