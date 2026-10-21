@@ -2,6 +2,7 @@
 # C22 exercises the operator's smoke checks locally; C20 exercises the cost brakes on a fresh Worker.
 set -eu
 cd "$(dirname "$0")/.."
+. ./test/proxy-env.sh
 proof_root=$(mktemp -d "${TMPDIR:-/tmp}/codeaf-relay-proof.XXXXXX")
 proof_pid=
 cleanup() {
@@ -38,10 +39,15 @@ status=$(curl -sS -o "$proof_root/missing.json" -w '%{http_code}' "http://127.0.
 test "$status" = 404
 python3 -c 'import json,sys; assert json.load(open(sys.argv[1])) == {"err":"not_found"}' "$proof_root/missing.json"
 echo 'C22: production routes, pairing page and 404 JSON pass locally'
+page_retries=$(grep -Fc 'codeaf local proxy transport retry: Network connection lost.' "$proof_root/caf-production-local-$port.log" || true)
+echo "C22: local proxy transport retries: $page_retries"
 stop
 
 start staging.toml "caf-brakes-local-$port" --var 'CAF_LIMITS:{"globalNewIdentitiesPerDay":2,"globalStoreBytes":512,"minGraceMs":2000}'
-RELAY="http://127.0.0.1:$port" node test/global.e2e.mjs
+RELAY="http://127.0.0.1:$port" node test/global.e2e.mjs >"$proof_root/global.log" 2>&1 || { cat "$proof_root/global.log"; exit 1; }
+cat "$proof_root/global.log"
+global_retries=$(grep -Fc 'codeaf local proxy transport retry: Network connection lost.' "$proof_root/caf-brakes-local-$port.log" || true)
+echo "C20: local proxy transport retries: $global_retries"
 stop
 
 # The canonical runner gives each suite its own report and covers the two-mailbox case too.
