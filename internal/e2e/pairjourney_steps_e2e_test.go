@@ -38,6 +38,11 @@ func journeyRun(j *journey, env []string, homeA, homeB, wsA, wsB string, online 
 
 	j.step("2 B: codeaf pair prints link and waits", true, func() {
 		b = startCommand(t, env, "b", homeB, wsB, "pair")
+		// A computer that was never named asks for a name first, filled in with
+		// the host name; a person keeps it with Enter.
+		if _, asked := waitPlain(b, 10*time.Second, "Press Enter to keep that"); asked {
+			b.keys("Enter")
+		}
 		screen, ok := waitPlain(b, 15*time.Second, "/p/", "Check number")
 		j.require(ok, "B never printed a link and a check number")
 		link = linkShape.FindString(screen)
