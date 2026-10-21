@@ -53,8 +53,14 @@ any of the three drift apart.
 | usage_delta | total_tokens | the sum of this event's input and output tokens |
 | usage_delta | routing_provider | openrouter, openai, anthropic, google, bedrock, azure, ollama, other, or unknown |
 | usage_delta | model_family | deepseek, claude, gpt, gemini, llama, qwen, kimi, glm, other, or unknown |
-| usage_delta | usage_status | reported or missing |
+| usage_delta | usage_status | reported, total_only, mixed, estimated, partial, or missing |
 | usage_delta | accounting_source | provider or engine |
+| usage_delta | estimated_input_tokens | estimated input tokens for a missing provider count |
+| usage_delta | estimated_output_tokens | estimated observed output tokens for a missing provider count |
+| usage_delta | estimated_total_tokens | the sum of this event's estimated input and output tokens |
+| usage_delta | estimate_method | utf8_bytes_4_v1 |
+| usage_delta | estimate_scope | text_only, observed_partial, multimodal_input, or unknown |
+| usage_delta | usage_receipt | sha256 of the session and local receipt identity; groups estimates with later provider receipts |
 | session_ended | mode | chat or task |
 | session_ended | duration | a band: under 1m, 1-5m, 5-30m, 30m-2h, 2h or more |
 | session_ended | turns | a count band |
@@ -71,8 +77,14 @@ any of the three drift apart.
 
 Count bands are 0, 1, 2-5, 6-20, 21-100 and 100+. Dollar bands are 0, under
 0.01, 0.01-0.1, 0.1-1, 1-10 and 10+.
+Streaming requests ask compatible APIs for token usage with `stream_options.include_usage`.
+Connected Ollama services are classified as `ollama`, including remote runners;
+other local or custom APIs remain `other`. Counts depend on the API returning
+a usage block. Missing counts may carry separately labeled byte-based estimates;
+these never replace provider-reported fields or enter billing.
+
 Each provider usage receipt is appended locally before provider accounting returns, including
-tokens read from cache once. Missing provider receipts produce a `usage_status = missing` event without token fields; a missing receipt never invents a zero total. Routing categories follow the actual attempt, including an explicitly authorized billing-door switch and any later generation receipt. Bounded routing and model-family categories describe reported usage without sending exact model names or endpoint addresses. Hosted engines currently report aggregate turn deltas with unknown routing and family, labelled `accounting_source = engine`; those aggregates are not per-call receipts and can be lost before a turn ends. Deltas, rather
+tokens read from cache once. Missing token components carry `estimated_*` fields when text observations permit an estimate, otherwise remain absent. `usage_status` distinguishes reported, total-only, mixed, estimated, partial, and missing. A missing receipt never invents a measured zero total. Routing categories follow the actual attempt, including an explicitly authorized billing-door switch and any later generation receipt. Bounded routing and model-family categories describe reported usage without sending exact model names or endpoint addresses. Hosted engines currently report aggregate turn deltas with unknown routing and family, labelled `accounting_source = engine`; those aggregates are not per-call receipts and can be lost before a turn ends. Deltas, rather
 than repeated session totals, make the stream safe to sum while a run is open.
 
 first_run carries only the every-event properties and is sent once per
@@ -154,3 +166,11 @@ the count GitHub already shows on the release page. Sidecar files such as
 batch it would send.
 
 The release-download workflow fails visibly when its production PostHog key or GitHub token is missing; dry-run still works without a PostHog key.
+
+## Estimates and recovered receipts
+
+See [Model usage accounting](model-usage-accounting.md) for the estimator,
+limitations, privacy fields, receipt-aware PostHog query and deployment order.
+A later provider receipt supersedes its earlier estimate by `usage_receipt`;
+raw estimates and recovered measurements must not be added together. Estimates
+never change billing, response usage or token limits.

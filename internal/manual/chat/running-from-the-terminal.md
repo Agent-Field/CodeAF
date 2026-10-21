@@ -1115,7 +1115,9 @@ codeaf sends anonymous usage counts to AgentField, **on by default**: version, O
 mode (chat or task), session counts and errors in bands, and the tokens each provider
 call used. Never prompts, code, file names, paths, repo names, keys, email, IP or
 machine name, and no model names. Each completed provider call queues a `usage_delta`
-with exact input, output and total tokens. The queue is sent every 30 seconds while
+with provider-reported token counts when available and separate estimates for missing
+text counts. A hashed receipt key pairs an estimate with a later provider receipt,
+so analytics select reported counts instead of adding both. No text is sent. The queue is sent every 30 seconds while
 the session stays open and once more when it ends; `session_ended` carries the outcome
 and bucketed counts without repeating those tokens.
 

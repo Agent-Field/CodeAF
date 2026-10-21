@@ -202,9 +202,9 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 		return
 	}
 	work := receiptWork{result: result, sink: sink, base: base, usage: telemetry.CaptureUsageRecorder(telemetry.UsageDimensions{
-		RoutingProvider: telemetry.RoutingProvider(base),
+		RoutingProvider: c.usageRoutingProvider(base),
 		ModelFamily:     telemetry.ModelFamily(result.Model), UsageStatus: "reported",
-		AccountingSource: "provider", ReceiptID: "generation:" + result.Ref,
+		AccountingSource: "provider", ReceiptID: "generation:" + base + ":" + result.Ref,
 	})}
 	// THE WORK IS TOLD A RECEIPT IS OWED BEFORE IT IS QUEUED, and told it was
 	// answered only after the sink has banked it, so a caller waiting for its

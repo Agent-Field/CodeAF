@@ -32,9 +32,13 @@ import (
 // as is a constant (attribution.go), and a config field for it is exactly how a
 // caller ends up sending a different app — or none.
 type Config struct {
-	APIKey  string
-	BaseURL string
-	Model   string
+	// SourceID identifies the configured service for usage classification when
+	// its address alone cannot identify it, such as a remote Ollama runner.
+	// It stays local; only a bounded routing category reaches telemetry.
+	SourceID string
+	APIKey   string
+	BaseURL  string
+	Model    string
 	// Direct says this account is a connected service with one road rather than
 	// a router with a set of serving lanes. It suppresses every lane preference,
 	// sheet and probe at the transport boundary; a direct service must never be
@@ -125,8 +129,10 @@ type Config struct {
 // TextStreamer interfaces structurally, so nothing above it knows a wire
 // format, and it owns the only outbound provider path in the process.
 type Client struct {
-	config Config
-	http   *http.Client
+	// Unsupported stream-usage options are remembered per endpoint, never per model.
+	streamUsageUnsupported sync.Map
+	config                 Config
+	http                   *http.Client
 	// stream is the same client with the total deadline removed. A streamed
 	// answer is bounded by silence, not by duration — see send.
 	stream *http.Client
@@ -838,7 +844,8 @@ func (c *Client) sendRepaired(ctx context.Context, request *ai.Request, knobs ca
 	// true of this conversation, not of the model, so it is fixed for this
 	// request and remembered nowhere.
 	foreign := len(knobs.reasoning) > 0
-	repairable := response.StatusCode == http.StatusBadRequest && c.repairable(model, knobs)
+	streamUsage := stream && c.streamUsageSupported(knobs)
+	repairable := response.StatusCode == http.StatusBadRequest && (streamUsage || c.repairable(model, knobs))
 	if !foreign && !repairable {
 		return response, nil
 	}
@@ -861,6 +868,12 @@ func (c *Client) sendRepaired(ctx context.Context, request *ai.Request, knobs ca
 			responseBody: peek,
 		})
 		knobs.reasoning = nil
+		return c.resend(ctx, request, knobs, stream, response)
+	case streamUsage && response.StatusCode == http.StatusBadRequest && refusesStreamUsage(peek):
+		c.record(recordFacts{ctx: ctx, request: request, knobs: knobs, stream: stream,
+			attempt: c.attemptsSoFar(knobs), began: began, status: response.StatusCode,
+			err: apiError(response.StatusCode, peek), responseBody: peek})
+		c.streamUsageUnsupported.Store(c.usageEndpoint(knobs), true)
 		return c.resend(ctx, request, knobs, stream, response)
 	case repairable:
 		if learned := c.learn(model, knobs, peek); len(learned) > 0 {
@@ -1109,6 +1122,10 @@ func (c *Client) completionInOnePiece(
 	// has never heard of.
 	var reasoningTokens int
 	response.Usage, reasoningTokens = decoded.Usage.mergeInto(response.Usage, 0)
+	if knobs.trace != nil {
+		knobs.trace.usageObservation.observeUsage(decoded.Usage)
+		knobs.trace.usageObservation.observeWhole(payload)
+	}
 	served := servedProvider(decoded.Provider)
 	if err := c.terminalResponseError(ctx, request, knobs, &response, served); err != nil {
 		c.record(recordFacts{
@@ -1170,7 +1187,7 @@ func (c *Client) completionInOnePiece(
 		// for it an answer with no usage block is priced by its receipt
 		// ([Client.billAnswered]). The bare door banks nothing without usage, so
 		// that charge reached no book at all.
-		c.billAnswered(ctx, c.modelFor(request), &response, len(responseText(&response)))
+		c.billAnswered(ctx, c.modelFor(request), &response, len(responseText(&response)), knobs.trace)
 		return nil, false, cut
 	}
 	reasonWord, servedWell := answerOutcome(&response)
@@ -1193,7 +1210,7 @@ func (c *Client) completionInOnePiece(
 	})
 	// The money, banked at the same instant the log row is written and for the
 	// same reason: this is where the fact is known. See billing.go.
-	c.billAnswered(ctx, c.modelFor(request), &response, len(responseText(&response)))
+	c.billAnswered(ctx, c.modelFor(request), &response, len(responseText(&response)), knobs.trace)
 	return &response, len(relearned) > 0, nil
 }
 
@@ -1241,6 +1258,9 @@ type servedResponse struct {
 // into "the thinking pass spent the whole ceiling", which is the bug that made
 // the model-call log worth building.
 type usageWire struct {
+	inputReported  bool
+	outputReported bool
+	totalReported  bool
 	ai.Usage
 	CompletionTokensDetails struct {
 		ReasoningTokens int `json:"reasoning_tokens"`
@@ -1942,10 +1962,16 @@ func (c *Client) completeWithMessagesStreaming(
 			// [usageWire.mergeInto], which both transports read a usage frame
 			// through).
 			response.Usage, reasoningTokens = chunk.Usage.mergeInto(response.Usage, reasoningTokens)
+			if knobs.trace != nil {
+				knobs.trace.usageObservation.observeUsage(chunk.Usage)
+			}
 		}
 		for _, choice := range chunk.Choices {
 			if choice.Index != 0 {
 				continue
+			}
+			if knobs.trace != nil {
+				knobs.trace.usageObservation.observeDelta(choice.Delta)
 			}
 			// THE SPLIT IS TAKEN FIRST AND ONCE (answer.go), because every line
 			// below wants its answer rather than the channel the bytes came in
@@ -2250,7 +2276,7 @@ func (c *Client) completeWithMessagesStreaming(
 			ttft: firstTokenAfter(began, firstToken),
 		})
 		// Through the answered door, for the reason the whole-body twin gives.
-		c.billAnswered(ctx, c.modelFor(request), response, content.Len())
+		c.billAnswered(ctx, c.modelFor(request), response, content.Len(), knobs.trace)
 		return nil, false, cut
 	}
 	// A RESCUE IS NOT THE TURN UNTIL IT READS AS LANGUAGE. The hedge used
@@ -2266,7 +2292,7 @@ func (c *Client) completeWithMessagesStreaming(
 		})
 		// A rescue that is not language was still paid for, so it goes through
 		// the answered door too.
-		c.billAnswered(ctx, c.modelFor(request), response, content.Len())
+		c.billAnswered(ctx, c.modelFor(request), response, content.Len(), knobs.trace)
 		return nil, false, cut
 	}
 	// PAST EVERY GUARD, SO THIS LANE SERVED — the recovery half of the quality
@@ -2296,7 +2322,7 @@ func (c *Client) completeWithMessagesStreaming(
 	// Both paths or neither, exactly as the learning above: a streamed answer
 	// is billed by the provider the same way a whole-body one is, and a ledger
 	// blind to one of the two transports is a ledger nobody can reconcile.
-	c.billAnswered(ctx, c.modelFor(request), response, content.Len())
+	c.billAnswered(ctx, c.modelFor(request), response, content.Len(), knobs.trace)
 	finished = true
 	observer(StreamEvent{Kind: StreamFinished, Session: session})
 	return response, relearned, nil
@@ -2415,17 +2441,53 @@ func (c *Client) StreamComplete(ctx context.Context, prompt string, options ...a
 		}
 
 		decoder := newSSEDecoder(httpResponse.Body)
+		response := &ai.Response{}
+		began := logNow()
+		var terminalErr error
+		finished := false
+		defer func() {
+			c.record(recordFacts{ctx: ctx, request: request, knobs: rawKnobs, stream: true,
+				began: began, status: httpResponse.StatusCode, response: response, err: terminalErr})
+			if finished {
+				c.billAnswered(ctx, c.modelFor(request), response, rawKnobs.trace.usageObservation.outputBytes, rawKnobs.trace)
+			} else {
+				c.settle(ctx, c.modelFor(request), response, receiptTornReason, rawKnobs.trace.usageObservation.outputBytes, rawKnobs.trace)
+			}
+		}()
 		for {
-			chunk, err := decoder.Decode()
+			wire, err := decoder.DecodeChunk()
 			if err != nil {
-				if !errors.Is(err, io.EOF) {
-					errs <- fmt.Errorf("decode stream: %w", err)
+				if errors.Is(err, io.EOF) && (decoder.done || finished) {
+					finished = true
+				} else {
+					terminalErr = err
+					if errors.Is(err, io.EOF) {
+						terminalErr = io.ErrUnexpectedEOF
+					}
+					errs <- fmt.Errorf("decode stream: %w", terminalErr)
 				}
 				return
 			}
+			if response.ID == "" {
+				response.ID = wire.ID
+			}
+			rawKnobs.trace.usageObservation.observeUsage(wire.Usage)
+			if wire.Usage != nil {
+				response.Usage, _ = wire.Usage.mergeInto(response.Usage, 0)
+			}
+			chunk := ai.StreamChunk{ID: wire.ID, Object: wire.Object, Created: wire.Created, Model: wire.Model, Usage: wire.Usage.usage()}
+			for _, choice := range wire.Choices {
+				rawKnobs.trace.usageObservation.observeDelta(choice.Delta)
+				if choice.FinishReason != nil {
+					finished = true
+				}
+				chunk.Choices = append(chunk.Choices, ai.StreamDelta{Index: choice.Index,
+					Delta: ai.MessageDelta{Role: choice.Delta.Role, Content: choice.Delta.Content}, FinishReason: choice.FinishReason})
+			}
 			select {
 			case <-ctx.Done():
-				errs <- ctx.Err()
+				terminalErr = ctx.Err()
+				errs <- terminalErr
 				return
 			case chunks <- chunk:
 			}

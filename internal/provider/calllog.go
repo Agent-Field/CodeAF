@@ -121,6 +121,8 @@ type callTrace struct {
 	// row written after the transport returned always names the attempt that
 	// actually produced the answer.
 	attemptID string
+	// Usage observations contain counts only, never retained prompt or reply text.
+	usageObservation usageObservation
 	// attemptBase is the address this attempt actually used, including an
 	// explicitly authorized plan overflow. It never leaves the process.
 	attemptBase string
@@ -280,6 +282,7 @@ func (t *callTrace) begin() {
 	}
 	t.attempts++
 	t.attemptID = calllog.NewID()
+	t.usageObservation = usageObservation{inputBytes: t.usageObservation.inputBytes, inputTextOnly: t.usageObservation.inputTextOnly}
 }
 
 func (t *callTrace) note(learned ...string) {
@@ -555,15 +558,8 @@ func (c *Client) record(facts recordFacts) {
 	// sentence is the failure verdict and its cost the spend, 0 when absent.
 	if record.Phase != calllog.PhaseStart {
 		telemetry.CountModelCall(record.Error == "", record.Cost)
-		status := "missing"
-		if facts.response != nil && facts.response.Usage != nil {
-			status = "reported"
-		}
-		telemetry.CountUsage(record.PromptTokens, record.CompletionTokens, telemetry.UsageDimensions{
-			RoutingProvider: telemetry.RoutingProvider(facts.baseFor(c.config.BaseURL)),
-			ModelFamily:     telemetry.ModelFamily(model), UsageStatus: status,
-			AccountingSource: "provider", ReceiptID: record.ID,
-		})
+		dimensions := c.usageDimensions(facts, record.ID, model)
+		telemetry.CountUsage(record.PromptTokens, record.CompletionTokens, dimensions)
 	}
 	c.recordBodies(facts, record, model)
 }

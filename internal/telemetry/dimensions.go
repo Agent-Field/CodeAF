@@ -16,6 +16,12 @@ type UsageDimensions struct {
 	UsageStatus      string
 	AccountingSource string
 	ReceiptID        string
+	MissingInput     bool
+	MissingOutput    bool
+	EstimatedInput   *int
+	EstimatedOutput  *int
+	EstimateScope    string
+	ReportedTotal    *int
 }
 
 // category refuses arbitrary caller strings even when a caller bypasses the
@@ -84,8 +90,8 @@ func UsageReceipt(mode Mode, input, output int, sessionID string, now time.Time,
 	event := UsageDelta(mode, input, output, sessionID, now)
 	event.Props["routing_provider"] = category(dimensions.RoutingProvider, "openrouter openai anthropic google bedrock azure ollama other unknown")
 	event.Props["model_family"] = category(dimensions.ModelFamily, "deepseek claude gpt gemini llama qwen kimi glm other unknown")
-	status := dimensions.UsageStatus
-	if status != "missing" {
+	status := category(dimensions.UsageStatus, "reported mixed estimated partial missing total_only")
+	if status == "unknown" {
 		status = "reported"
 	}
 	event.Props["usage_status"] = status
@@ -94,13 +100,54 @@ func UsageReceipt(mode Mode, input, output int, sessionID string, now time.Time,
 		source = "engine"
 	}
 	event.Props["accounting_source"] = source
-	if status == "missing" {
+	missingInput := dimensions.MissingInput || status == "missing" || status == "estimated"
+	missingOutput := dimensions.MissingOutput || status == "missing" || status == "estimated"
+	if missingInput {
 		delete(event.Props, "input_tokens")
+	}
+	if missingOutput {
 		delete(event.Props, "output_tokens")
+	}
+	if missingInput && missingOutput {
 		delete(event.Props, "total_tokens")
+		if dimensions.ReportedTotal != nil && status == "total_only" {
+			event.Props["total_tokens"] = max(0, *dimensions.ReportedTotal)
+		}
+	} else {
+		measured := 0
+		if !missingInput {
+			measured += max(0, input)
+		}
+		if !missingOutput {
+			measured += max(0, output)
+		}
+		event.Props["total_tokens"] = measured
+	}
+	estimated := 0
+	hasEstimate := false
+	if dimensions.EstimatedInput != nil && missingInput {
+		value := max(0, *dimensions.EstimatedInput)
+		event.Props["estimated_input_tokens"] = value
+		estimated += value
+		hasEstimate = true
+	}
+	if dimensions.EstimatedOutput != nil && missingOutput {
+		value := max(0, *dimensions.EstimatedOutput)
+		event.Props["estimated_output_tokens"] = value
+		estimated += value
+		hasEstimate = true
+	}
+	if hasEstimate {
+		event.Props["estimated_total_tokens"] = estimated
+		event.Props["estimate_method"] = "utf8_bytes_4_v1"
+		event.Props["estimate_scope"] = category(dimensions.EstimateScope, "text_only observed_partial multimodal_input")
 	}
 	if dimensions.ReceiptID != "" {
-		event.ID = hashHex("usage_delta|" + sessionID + "|" + dimensions.ReceiptID)[:32]
+		receipt := hashHex("usage_receipt|" + sessionID + "|" + dimensions.ReceiptID)
+		event.Props["usage_receipt"] = receipt
+		// An estimate and its later provider receipt are different events about
+		// one receipt. PostHog groups this hash and prefers measured components.
+		event.ID = hashHex("usage_delta|" + receipt + "|" + status)[:32]
 	}
 	return event
 }

@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "events": [
+    {
+      "event_name": "usage_delta",
+      "event_id": "854f13d5b621faef5441bddd81104162",
+      "install_id_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "session_id_hash": "cc8321d6375c494d043fdd0260f21bc0ec51dacc9f6abb7f909cdcd3041b78bf",
+      "event_time": "2026-10-21T12:00:00Z",
+      "props": {
+        "codeaf_version": "v0.7.0",
+        "channel": "stable",
+        "os": "linux",
+        "arch": "amd64",
+        "usage_context": "local",
+        "install_method": "script",
+        "mode": "chat",
+        "routing_provider": "other",
+        "model_family": "qwen",
+        "usage_status": "estimated",
+        "accounting_source": "provider",
+        "usage_receipt": "ad9607bf6c6da3d5f760a755c629ce6f5b906f5d60bab2a6bc90abaab0abd8f7",
+        "estimated_input_tokens": 100,
+        "estimated_output_tokens": 25,
+        "estimated_total_tokens": 125,
+        "estimate_method": "utf8_bytes_4_v1",
+        "estimate_scope": "text_only"
+      }
+    },
+    {
+      "event_name": "usage_delta",
+      "event_id": "3e6deae5146ab1328a8653f5f7ab78fb",
+      "install_id_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "session_id_hash": "cc8321d6375c494d043fdd0260f21bc0ec51dacc9f6abb7f909cdcd3041b78bf",
+      "event_time": "2026-10-21T12:00:00Z",
+      "props": {
+        "codeaf_version": "v0.7.0",
+        "channel": "stable",
+        "os": "linux",
+        "arch": "amd64",
+        "usage_context": "local",
+        "install_method": "script",
+        "mode": "chat",
+        "routing_provider": "other",
+        "model_family": "qwen",
+        "usage_status": "reported",
+        "accounting_source": "provider",
+        "usage_receipt": "ad9607bf6c6da3d5f760a755c629ce6f5b906f5d60bab2a6bc90abaab0abd8f7",
+        "input_tokens": 90,
+        "output_tokens": 20,
+        "total_tokens": 110
+      }
+    },
+    {
+      "event_name": "usage_delta",
+      "event_id": "684797b3e1faaa72d6119d46a18e3b17",
+      "install_id_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "session_id_hash": "cc8321d6375c494d043fdd0260f21bc0ec51dacc9f6abb7f909cdcd3041b78bf",
+      "event_time": "2026-10-21T12:00:00Z",
+      "props": {
+        "codeaf_version": "v0.7.0",
+        "channel": "stable",
+        "os": "linux",
+        "arch": "amd64",
+        "usage_context": "local",
+        "install_method": "script",
+        "mode": "chat",
+        "routing_provider": "other",
+        "model_family": "qwen",
+        "usage_status": "mixed",
+        "accounting_source": "provider",
+        "usage_receipt": "ad9607bf6c6da3d5f760a755c629ce6f5b906f5d60bab2a6bc90abaab0abd8f7",
+        "input_tokens": 90,
+        "total_tokens": 90,
+        "estimated_output_tokens": 25,
+        "estimated_total_tokens": 25,
+        "estimate_method": "utf8_bytes_4_v1",
+        "estimate_scope": "text_only"
+      }
+    },
+    {
+      "event_name": "usage_delta",
+      "event_id": "cc04eea9220a21bc379d252644c0538b",
+      "install_id_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "session_id_hash": "cc8321d6375c494d043fdd0260f21bc0ec51dacc9f6abb7f909cdcd3041b78bf",
+      "event_time": "2026-10-21T12:00:00Z",
+      "props": {
+        "codeaf_version": "v0.7.0",
+        "channel": "stable",
+        "os": "linux",
+        "arch": "amd64",
+        "usage_context": "local",
+        "install_method": "script",
+        "mode": "chat",
+        "routing_provider": "other",
+        "model_family": "qwen",
+        "usage_status": "partial",
+        "accounting_source": "provider",
+        "usage_receipt": "ad9607bf6c6da3d5f760a755c629ce6f5b906f5d60bab2a6bc90abaab0abd8f7",
+        "input_tokens": 90,
+        "total_tokens": 90
+      }
+    },
+    {
+      "event_name": "usage_delta",
+      "event_id": "4e30a1f1bde1dc4afd4c3e6f0043fa0d",
+      "install_id_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "session_id_hash": "cc8321d6375c494d043fdd0260f21bc0ec51dacc9f6abb7f909cdcd3041b78bf",
+      "event_time": "2026-10-21T12:00:00Z",
+      "props": {
+        "codeaf_version": "v0.7.0",
+        "channel": "stable",
+        "os": "linux",
+        "arch": "amd64",
+        "usage_context": "local",
+        "install_method": "script",
+        "mode": "chat",
+        "routing_provider": "other",
+        "model_family": "qwen",
+        "usage_status": "missing",
+        "accounting_source": "provider",
+        "usage_receipt": "ad9607bf6c6da3d5f760a755c629ce6f5b906f5d60bab2a6bc90abaab0abd8f7"
+      }
+    }
+  ]
+}

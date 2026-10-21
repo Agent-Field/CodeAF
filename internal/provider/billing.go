@@ -235,9 +235,9 @@ func (c *Client) bill(ctx context.Context, model string, response *ai.Response) 
 // billAnswered bills an answer that arrived whole. One with no usage block is
 // settled like a cut one when the work asked for that ([WithUnmeteredReceipts]),
 // and billed the ordinary way — which banks nothing for it — otherwise.
-func (c *Client) billAnswered(ctx context.Context, model string, response *ai.Response, answerBytes int) {
+func (c *Client) billAnswered(ctx context.Context, model string, response *ai.Response, answerBytes int, traces ...*callTrace) {
 	if response != nil && response.Usage == nil && unmeteredReceiptsFrom(ctx) {
-		c.settle(ctx, model, response, receiptUnmeteredReason, answerBytes)
+		c.settle(ctx, model, response, receiptUnmeteredReason, answerBytes, traces...)
 		return
 	}
 	c.bill(ctx, model, response)

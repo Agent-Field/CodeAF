@@ -144,5 +144,10 @@ and **shared model recommendations** (formerly Model Pool). Recommendations can
 control is not a promise that all the others are disabled. Search accepts old
 labels as well as the new organization.
 
+Anonymous token usage includes local models when their API returns token counts.
+Streaming requests ask for those counts. A connected Ollama service is labeled
+`ollama`; other local APIs are `other`. Missing text counts use a separately labeled byte-based estimate; media and unseen
+output remain unknown. Estimates do not enter billing or provider-reported totals.
+
 There is no practice limit any more: codeaf no longer practises on its own, and
 `/budget practice` answers with exactly that.

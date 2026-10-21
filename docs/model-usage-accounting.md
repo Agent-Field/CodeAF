@@ -1,0 +1,65 @@
+# Model usage accounting
+
+Token usage is collected at the provider attempt boundary for every compatible endpoint, including OpenRouter, Ollama, vLLM, LM Studio, llama.cpp and custom or hosted APIs. The fallback does not depend on a provider name.
+
+## Measurements and estimates
+
+- Request `stream_options.include_usage` on streamed chat completions. An explicit unsupported-field 400 retries without that option and remembers the refusal for that endpoint. Other validation errors do not disable usage.
+- Keep provider-reported counts, including explicit zero. Normalize input/output aliases and native cache input without adding cache tokens twice.
+- Keep a provider's total-only measurement without inventing its input/output split.
+- Estimate only absent components, using `utf8_bytes_4_v1`: round observed UTF-8 bytes up at four bytes per token. Input includes the encoded messages and tool definitions after shaping. Output includes observed content, tool arguments and visible textual reasoning.
+- Do not estimate media from URL or base64 length. Non-text input stays unknown; output text can still be estimated. Unseen output, encrypted reasoning, hidden thinking and work inside opaque hosted engines cannot be reconstructed.
+- Mark interrupted-stream estimates `observed_partial`, never extrapolate to a completed answer. Failed or refused requests without an accepted response do not imply consumption.
+- Estimates are approximate, particularly for non-English text, tokenizers and provider chat templates. They are suitable for usage visibility, not billing, token-limit enforcement, benchmark comparisons or exact cost attribution. They never modify response usage or the spend ledger.
+
+## Wire contract
+
+`input_tokens`, `output_tokens` and `total_tokens` remain measurements. `estimated_input_tokens`, `estimated_output_tokens` and `estimated_total_tokens` are separate, optional numeric fields, emitted only for unknown measured components. Each total sums only its own present components. Missing is distinct from an explicitly reported or estimated zero.
+
+`usage_status` is `reported`, `total_only`, `mixed`, `estimated`, `partial` or `missing`. `estimate_method` and `estimate_scope` label estimates; scopes are `text_only`, `observed_partial`, `multimodal_input` or `unknown`.
+
+`usage_receipt` is a SHA-256 hash scoped to the run and physical receipt. When a generation id exists, its actual endpoint and id participate only locally in that hash. No prompt, response, endpoint, model slug, generation id, API key or other new raw identity is sent. Existing opt-out gates apply to estimates too.
+
+## Recovered receipts and dashboards
+
+An initial estimate and a later recovered provider receipt carry the same `usage_receipt`, but different event UUIDs. For each component, prefer a reported count, even if it is zero; retain an estimate only while no measurement exists. A measured total-only receipt supersedes both component estimates. Do not add raw estimates and later measured receipts together.
+
+The existing measured-only series still sums `total_tokens`. The new PostHog view groups by installation, event and receipt hash (falling back to the event UUID for older builds), then selects the best available components. Legacy session-end totals remain separate. Receipt time uses the earliest observation, with a one-day lookback margin around the displayed 14-day range. The query also exposes records with unknown input/output components. This is coverage of recorded receipts, not proof that every model call or anonymous installation reported.
+
+The saved line chart is [Model usage · reported and estimated](https://us.posthog.com/project/356517/insights/hcf8GG3M). Its estimated series starts only after rollout; historical missing receipts cannot be reconstructed. Project 356517 is the active destination that currently receives `codeaf:usage_delta`, rather than the empty separately named project.
+
+## Deployment order
+
+1. Merge and deploy the companion change in `Agent-Field/website-open-infra`, `site/src/app/api/oss/codeaf/telemetry/`. The previous relay drops unknown status values and strips new properties.
+2. Merge the client PR into `dev`, then promote releases normally.
+3. Confirm new numeric fields arrive in PostHog. No synthetic events are sent to the production relay by the tests.
+
+The client and relay carry identical `usage-accounting.json` fixtures. Client constructors are checked against that payload and the actual relay handler is checked through a mocked PostHog capture call, including estimates, measured zeroes, partial receipts, privacy stripping, safe integer totals and late-receipt identity. A full 50-event enriched batch is checked against the relay's 64 KiB body cap.
+
+## Receipt-aware PostHog query
+
+```sql
+WITH receipts AS (
+ SELECT event, distinct_id,
+ coalesce(nullIf(toString(properties.usage_receipt), ''), toString(uuid)) AS receipt_key,
+ min(timestamp) AS receipt_time,
+ max(toFloat(properties.total_tokens)) AS measured_total,
+ max(toFloat(properties.input_tokens)) AS measured_input,
+ max(toFloat(properties.output_tokens)) AS measured_output,
+ max(toFloat(properties.estimated_input_tokens)) AS estimated_input,
+ max(toFloat(properties.estimated_output_tokens)) AS estimated_output
+ FROM events
+ WHERE event IN ('codeaf:usage_delta', 'codeaf:session_ended')
+ AND properties.channel='stable' AND coalesce(properties.usage_context,'')!='ci'
+ AND timestamp >= today()-INTERVAL 15 DAY
+ GROUP BY event, distinct_id, receipt_key
+)
+SELECT toDate(receipt_time) AS day,
+ sumIf(coalesce(measured_total,0), event='codeaf:session_ended') AS legacy_reported_tokens,
+ sumIf(if(isNull(measured_input) AND isNull(measured_output),coalesce(measured_total,0),coalesce(measured_input,0)+coalesce(measured_output,0)), event='codeaf:usage_delta') AS reported_tokens,
+ sumIf(if(isNotNull(measured_total) AND isNull(measured_input) AND isNull(measured_output),0,if(isNull(measured_input),coalesce(estimated_input,0),0)+if(isNull(measured_output),coalesce(estimated_output,0),0)),event='codeaf:usage_delta') AS estimated_tokens,
+ countIf(event='codeaf:usage_delta' AND ((isNull(measured_input) AND isNull(estimated_input)) OR (isNull(measured_output) AND isNull(estimated_output)))) AS records_with_unknown_components
+FROM receipts WHERE receipt_time >= today()-INTERVAL 14 DAY
+GROUP BY day ORDER BY day
+```
+

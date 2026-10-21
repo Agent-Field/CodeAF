@@ -331,7 +331,7 @@ var allowedProps = map[string]map[string]bool{
 		"tool_calls", "tool_calls_failed", "cost_usd", "stop_reason", "exit_code",
 	})),
 	"usage_delta": merge(set(commonPropNames), set([]string{
-		"mode", "input_tokens", "output_tokens", "total_tokens", "routing_provider", "model_family", "usage_status", "accounting_source",
+		"mode", "input_tokens", "output_tokens", "total_tokens", "routing_provider", "model_family", "usage_status", "accounting_source", "estimated_input_tokens", "estimated_output_tokens", "estimated_total_tokens", "estimate_method", "estimate_scope", "usage_receipt",
 	})),
 	"fault": merge(set(commonPropNames), set([]string{"mode", "scope", "fingerprint"})),
 }
@@ -373,14 +373,20 @@ var propDocs = map[string]map[string]string{
 		"exit_code":          "0 to 5",
 	},
 	"usage_delta": {
-		"mode":              "chat or task",
-		"input_tokens":      "provider-reported input tokens since the preceding usage event",
-		"output_tokens":     "provider-reported output tokens since the preceding usage event",
-		"total_tokens":      "the sum of this event's input and output tokens",
-		"routing_provider":  "openrouter, openai, anthropic, google, bedrock, azure, ollama, other, or unknown",
-		"model_family":      "deepseek, claude, gpt, gemini, llama, qwen, kimi, glm, other, or unknown",
-		"usage_status":      "reported or missing",
-		"accounting_source": "provider or engine",
+		"mode":                    "chat or task",
+		"input_tokens":            "provider-reported input tokens since the preceding usage event",
+		"output_tokens":           "provider-reported output tokens since the preceding usage event",
+		"total_tokens":            "the sum of this event's input and output tokens",
+		"routing_provider":        "openrouter, openai, anthropic, google, bedrock, azure, ollama, other, or unknown",
+		"model_family":            "deepseek, claude, gpt, gemini, llama, qwen, kimi, glm, other, or unknown",
+		"usage_status":            "reported, total_only, mixed, estimated, partial, or missing",
+		"accounting_source":       "provider or engine",
+		"estimated_input_tokens":  "estimated input tokens for a missing provider count",
+		"estimated_output_tokens": "estimated observed output tokens for a missing provider count",
+		"estimated_total_tokens":  "the sum of this event's estimated input and output tokens",
+		"estimate_method":         "utf8_bytes_4_v1",
+		"estimate_scope":          "text_only, observed_partial, multimodal_input, or unknown",
+		"usage_receipt":           "sha256 of the session and local receipt identity; groups estimates with later provider receipts",
 	},
 	"fault": {
 		"mode":        "chat, task, or other",
@@ -403,7 +409,7 @@ func EventPropNames(event string) []string {
 		return []string{"mode", "duration", "turns", "model_calls", "model_calls_failed",
 			"tool_calls", "tool_calls_failed", "cost_usd", "stop_reason", "exit_code"}
 	case "usage_delta":
-		return []string{"mode", "input_tokens", "output_tokens", "total_tokens", "routing_provider", "model_family", "usage_status", "accounting_source"}
+		return []string{"mode", "input_tokens", "output_tokens", "total_tokens", "routing_provider", "model_family", "usage_status", "accounting_source", "estimated_input_tokens", "estimated_output_tokens", "estimated_total_tokens", "estimate_method", "estimate_scope", "usage_receipt"}
 	case "fault":
 		return []string{"mode", "scope", "fingerprint"}
 	}
@@ -455,14 +461,20 @@ var exampleProps = map[string]map[string]string{
 		"exit_code":          "0",
 	},
 	"usage_delta": {
-		"mode":              string(ModeChat),
-		"input_tokens":      "10000",
-		"output_tokens":     "2500",
-		"total_tokens":      "12500",
-		"routing_provider":  modelsource.DefaultID,
-		"model_family":      "deepseek",
-		"usage_status":      "reported",
-		"accounting_source": "provider",
+		"mode":                    string(ModeChat),
+		"input_tokens":            "10000",
+		"output_tokens":           "2500",
+		"total_tokens":            "12500",
+		"routing_provider":        modelsource.DefaultID,
+		"model_family":            "deepseek",
+		"usage_status":            "reported",
+		"accounting_source":       "provider",
+		"estimated_input_tokens":  "100",
+		"estimated_output_tokens": "25",
+		"estimated_total_tokens":  "125",
+		"estimate_method":         "utf8_bytes_4_v1",
+		"estimate_scope":          "text_only",
+		"usage_receipt":           "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 	},
 	"fault": {
 		"mode":        string(ModeChat),
