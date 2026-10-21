@@ -3,15 +3,16 @@
 // It is the build's half of the no-variance ruling: codeaf ships furrow inside
 // it, so a build has to have furrow before it can produce a codeaf, and this
 // is the step that either gets it or stops. It never half-succeeds. Either the
-// staged archive is a furrow whose sha256 is the one internal/furrowbin/pin.json
-// names, or the command exits non-zero with the sentence that says what to run.
+// normal fetched archive matches internal/furrowbin/pin.json, or the command
+// exits non-zero with the sentence that says what to run. Explicit developer
+// artifacts bypass the pin; Windows deliberately clears staged engines.
 //
 //	go run ./internal/furrowbin/cmd/fetch
 //	go run ./internal/furrowbin/cmd/fetch -from ~/.agentfield/bin/furrow
-//	go run ./internal/furrowbin/cmd/fetch -built engine/target/release/furrow
+//	go run ./internal/furrowbin/cmd/fetch -built /path/to/furrow/target/release/furrow
 //
-// -built stages a furrow compiled from engine/ in this tree. The tree is its
-// own provenance, so nothing is checked against the pin.
+// -built stages an explicitly selected artifact or an engine from an external
+// furrow checkout. These developer overrides do not consult the release pin.
 //
 // A build machine with no network is the case worth spelling out: -from takes
 // the artifact off local disk and checks it against the same pin, so an air
@@ -44,12 +45,21 @@ func main() {
 	var (
 		cache = flag.String("cache", filepath.Join("third_party", "furrow"), "where verified artifacts are kept between builds")
 		stage = flag.String("stage", filepath.Join("internal", "furrowbin", "cache"), "the embedded folder to stage this platform's furrow into")
-		built = flag.String("built", "", "stage this furrow, compiled from engine/ in this tree, without consulting the pin")
+		omit  = flag.Bool("omit", false, "clear staged engines for a platform without native furrow")
+		built = flag.String("built", "", "stage an explicitly selected furrow without consulting the release pin")
 		from  = flag.String("from", "", "read the artifact from this local file instead of downloading it")
 		goos  = flag.String("goos", envOr("GOOS", runtime.GOOS), "the platform being built for")
 		arch  = flag.String("goarch", envOr("GOARCH", runtime.GOARCH), "the architecture being built for")
 	)
 	flag.Parse()
+
+	if *omit {
+		if err := clearStaged(*stage, ""); err != nil {
+			fmt.Fprintln(os.Stderr, "omit the native furrow:", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	platform := furrowbin.Platform(*goos, *arch)
 	if *built != "" {
@@ -118,7 +128,7 @@ func fetch(pin furrowbin.Pin, platform, cache, stage, from string) error {
 	return stageInto(stage, platform, binary)
 }
 
-// stageBuilt stages a furrow compiled from this tree's engine/.
+// stageBuilt stages an explicitly selected furrow from outside this repository.
 func stageBuilt(stage, platform, path string) error {
 	binary, err := os.ReadFile(path)
 	if err != nil {
@@ -137,18 +147,9 @@ func stageInto(stage, platform string, binary []byte) error {
 	if err := os.MkdirAll(stage, 0o755); err != nil {
 		return fmt.Errorf("make room in %s: %w", stage, err)
 	}
-	leftovers, err := filepath.Glob(filepath.Join(stage, "furrow-*.gz"))
-	if err != nil {
-		return err
-	}
 	keep := filepath.Join(stage, furrowbin.StagedFileName(platform))
-	for _, leftover := range leftovers {
-		if leftover == keep {
-			continue
-		}
-		if err := os.Remove(leftover); err != nil {
-			return fmt.Errorf("clear %s: %w", leftover, err)
-		}
+	if err := clearStaged(stage, keep); err != nil {
+		return err
 	}
 
 	archive, err := furrowbin.Compress(binary)
@@ -166,6 +167,23 @@ func stageInto(stage, platform string, binary []byte) error {
 		return nil
 	}
 	return writeFile(keep, archive, 0o644)
+}
+
+// clearStaged prevents another platform's engine from riding in this build.
+// An empty keep is the deliberate no-native-engine road used by Windows.
+func clearStaged(stage, keep string) error {
+	leftovers, err := filepath.Glob(filepath.Join(stage, "furrow-*.gz"))
+	if err != nil {
+		return err
+	}
+	for _, leftover := range leftovers {
+		if leftover != keep {
+			if err := os.Remove(leftover); err != nil {
+				return fmt.Errorf("clear %s: %w", leftover, err)
+			}
+		}
+	}
+	return nil
 }
 
 // writeFile writes bytes to a path through a temporary file in the same

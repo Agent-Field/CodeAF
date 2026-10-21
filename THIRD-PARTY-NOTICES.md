@@ -2,6 +2,8 @@
 
 This file covers every third-party Go module compiled into the codeaf binary, plus the two copied components carried in this repository's own tree. It ships beside the binaries in every release. Regenerate it with `go run ./cmd/codeaf-notices generate`.
 
+The embedded furrow engine is a separate Apache-2.0 project from [Agent-Field/furrow](https://github.com/Agent-Field/furrow), copyright 2026 furrow contributors. Its source is maintained upstream; codeaf records its release and artifact hashes in `internal/furrowbin/pin.json`. See [furrow's licence](https://github.com/Agent-Field/furrow/blob/main/LICENSE). Explicit developer artifacts and `FURROW_SOURCE` checkouts replace that pinned engine. Native Windows builds omit it.
+
 ## charm.land/bubbletea/v2
 
 - Version: v2.0.8
