@@ -6,6 +6,7 @@ package main
 // otherwise), and refuses a turn once the budget is spent.
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -124,5 +125,31 @@ func TestAJobOfAnotherFactoryIsFoundOnTheMirrorRunningIt(t *testing.T) {
 	chat.Spend(0.1)
 	if got, _ := mirror.Get(41); got.Stream.Spent != 0.1 {
 		t.Fatalf("mirror $%v, want $0.10", got.Stream.Spent)
+	}
+}
+
+func TestEveryOwnedStageChatSharesBudgetWithoutManagerAuthority(t *testing.T) {
+	st, talk := chatSpendFloor(t)
+	stage, old := filepath.Join(filepath.Dir(talk), "stage.jsonl"), filepath.Join(filepath.Dir(talk), "old-stage.jsonl")
+	it, err := st.Create(factory.Item{Repo: "acme/api", Cap: 5, Talk: talk, Stream: &factory.Stream{Spent: 4, Phases: []factory.Phase{{Name: "write", Chat: stage, Rounds: []factory.RoundLine{{Round: 1, Chat: old}}}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	door := jobChatDoorOf(st)
+	for _, transcript := range []string{stage, old} {
+		budget := door.Chat(transcript)
+		if budget == nil {
+			t.Fatal("owned historical stage has no budget")
+		}
+		if _, manager := budget.(interface {
+			MaintainPR(context.Context, string) (string, error)
+		}); manager {
+			t.Fatal("stage gained manager authority")
+		}
+		budget.Spend(0.5)
+	}
+	got, _ := st.Get(it.ID)
+	if factory.JobSpent(got) != 5 || door.Chat(stage).Refusal() == "" {
+		t.Fatal("stage views bypassed job budget")
 	}
 }

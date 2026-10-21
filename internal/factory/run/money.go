@@ -30,7 +30,8 @@ const activityTop = 7
 // THE CAP CONTRACT. The loop calls [Money.CapReached] after EVERY round, and
 // when it is true it parks the item as needing the person with
 // [Money.CapQuestion] as Item.Question and QKind `cap` (a stored key; the sentence says `budget`). Money never stops a
-// round itself: a round already paid for is kept.
+// round itself: chat-family meters and check-context watchers stop owned work
+// as the shared cap is reached, and each already-paid receipt is retained.
 //
 // MONEY IS WRITTEN THROUGH Annotate. A model's cost is not the item moving, so
 // the row's age is left alone.
@@ -163,14 +164,9 @@ func begun(s *factory.Stream) bool {
 const ChatBudgetReached = "job budget reached · %s spent of %s · raise the job's budget to go on"
 
 // ChatRefusal is why the job's own conversation may not start another turn,
-// "" while it may: the job has a budget and has spent it. A JOB WAITING ON ITS
-// BUDGET QUESTION IS NEVER REFUSED, because a yes typed into its chat is how
-// the person answers it (manager.go), and a refused turn journals nothing for
-// the runner to hear.
+// "" while it may. A budget question does not exempt owned calls from this
+// limit; raising the cap through the job controls permits work again.
 func ChatRefusal(it factory.Item) string {
-	if it.QKind == "cap" {
-		return ""
-	}
 	spent := factory.JobSpent(it)
 	if it.Cap <= 0 || spent < it.Cap {
 		return ""

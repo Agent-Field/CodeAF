@@ -190,6 +190,9 @@ func ApplyItemChange(it factory.Item, change ItemChange, recipe factory.Recipe) 
 	if change.Cap < 0 {
 		return it, errors.New("a budget is never below nothing")
 	}
+	if change.Cap > 0 && change.Cap < factory.JobSpent(it) {
+		return it, fmt.Errorf("already spent $%.2f; choose a budget at least that high", factory.JobSpent(it))
+	}
 	next, _, err := factory.Adapt(it, change.Edit, recipe)
 	if err != nil {
 		return it, err

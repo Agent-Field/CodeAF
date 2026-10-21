@@ -795,6 +795,9 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		if !lp.held(c) {
 			return false
 		}
+		if !lp.capCheck(c, i, name) {
+			return false
+		}
 		// WHAT THE PERSON TOLD THE MANAGER SINCE THE LAST ROUND IS THIS
 		// ROUND'S STEER, read at the boundary so the brief carries it.
 		lp.hear(c)
@@ -874,12 +877,20 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			lp.failStop(c, name, err)
 			return false
 		}
-		if res.Spent > 0 {
+		if res.Spent > 0 && !res.SpendRecorded {
 			job.Spend(res.Spent)
 		}
 		lp.fold(c, it, st, i, res)
 		if !lp.capCheck(c, i, name) {
 			return false
+		}
+		if res.JobBudgetStopped {
+			// capCheck returned only after the person gave this job more room.
+			// Resume the interrupted chat, without spending an automatic retry.
+			lp.mu.Lock()
+			c.carry = res.Chat
+			lp.mu.Unlock()
+			continue
 		}
 		// A SPENDING LIMIT IS A STOP, NOT A SHORTFALL (stagereport.go's
 		// [SpendStop]): another round would be refused before it began, so the
@@ -1094,13 +1105,67 @@ func (lp *floorLoop) round(c *loopCtl, exec Executor, job Job) (res factory.Stag
 	}
 	c.roundCancel = cancel
 	lp.mu.Unlock()
+	// The manager can spend while a shell/check stage is running too. Every
+	// check executor owns this context. Chat agents use their live family meter
+	// so cancellation still returns the round's precise cost and chat identity.
+	watchDone, watchExit := make(chan struct{}), make(chan struct{})
+	budgetStop := make(chan string, 1)
+	var accountingErr error // read only after watchExit closes
+	go func() {
+		defer close(watchExit)
+		if kindOf(job.Stage) != factory.StageCheck {
+			return
+		}
+		tick := time.NewTicker(100 * time.Millisecond)
+		defer tick.Stop()
+		for {
+			select {
+			case <-watchDone:
+				return
+			case <-rctx.Done():
+				return
+			case <-tick.C:
+				it, readErr := lp.r.opts.Store.Get(c.id)
+				if readErr != nil {
+					accountingErr = fmt.Errorf("job budget could not be read: %w", readErr)
+					cancel()
+					return
+				}
+				if it.Cap > 0 && factory.JobSpent(it) >= it.Cap {
+					budgetStop <- fmt.Sprintf(ChatBudgetReached, loopUSD(factory.JobSpent(it)), loopUSD(it.Cap))
+					cancel()
+					return
+				}
+			}
+		}
+	}()
 	res, err = runIn(rctx, exec, job)
+	close(watchDone)
+	<-watchExit
+	capped := accountingErr != nil
+	if accountingErr != nil {
+		err = accountingErr
+	}
+	select {
+	case why := <-budgetStop:
+		capped = true
+		lp.mu.Lock()
+		chat := c.opened
+		lp.mu.Unlock()
+		res.JobBudgetStopped, res.Done, res.Exit = true, false, 1
+		res.Output = (SpendStop{Job: true, Said: why}).Error()
+		if chat != "" {
+			res.Chat = chat
+		}
+		err = nil
+	default:
+	}
 	if rctx.Err() == nil && job.dirErr == nil {
 		lp.recordChange(c, job, res)
 	}
 	lp.mu.Lock()
 	c.roundCancel = nil
-	cut := rctx.Err() != nil
+	cut := rctx.Err() != nil && !capped
 	if cut {
 		// THE CUT ROUND'S CHAT IS KEPT, or the one it was carrying on.
 		c.carry = c.opened

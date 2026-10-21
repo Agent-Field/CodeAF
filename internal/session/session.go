@@ -2420,6 +2420,10 @@ type Config struct {
 	// stage's conversation, whose round's spend the runner already counts.
 	JobChat JobChatDoor
 
+	// JobBudget is the shared live meter of a factory-owned agent family.
+	// Children inherit it without inheriting manager or stage authority.
+	JobBudget JobChat
+
 	// Stage is the door a factory stage's own conversation reports through
 	// (stage_contract.go). NIL IS NO DOOR: `stage_result` and `plan_edit` are off
 	// the belt. Only the factory's runner sets it, on a stage round it opened.

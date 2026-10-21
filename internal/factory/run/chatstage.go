@@ -341,6 +341,11 @@ loop:
 		made.Edit = res.Edit
 		res = made
 	}
+	if stop, ok := spendStopOf(waitErr); ok {
+		res.JobBudgetStopped = stop.Job
+		res.Reports, res.Inferred = 0, false
+		res.Done, res.Exit, res.Output = false, 1, stop.Error()
+	}
 	if receipts, ok := conv.(interface {
 		ExecutionNotes() ([]string, *factory.TestCounts)
 	}); ok {
@@ -361,6 +366,9 @@ loop:
 	res.Chat = conv.ID()
 	if s, ok := conv.(spender); ok {
 		res.Spent = s.Spent()
+		if live, ok := conv.(interface{ SpendRecorded() bool }); ok {
+			res.SpendRecorded = live.SpendRecorded()
+		}
 	}
 	if m, ok := conv.(modeler); ok {
 		res.Model = m.Model()

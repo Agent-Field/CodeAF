@@ -95,7 +95,7 @@ func (a *Agent) railBlockLocked() error {
 	// A FACTORY JOB'S OWN CONVERSATION STOPS AT THE JOB'S BUDGET, the way a
 	// step does: the job's figure is everything done for it, this chat's
 	// turns included, and its line names the door that raises it.
-	if chat := a.jobChatOf(); chat != nil {
+	if chat := a.jobBudgetOf(); chat != nil {
 		if said := chat.Refusal(); said != "" {
 			return spendRailReached{said: said}
 		}

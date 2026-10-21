@@ -77,7 +77,7 @@ func TestTheChatRefusesAtTheJobsBudget(t *testing.T) {
 		{"under it", factory.Item{Cap: 5, ChatSpent: 4.99}, ""},
 		{"spent before a run", factory.Item{Cap: 5, ChatSpent: 5}, fmt.Sprintf(ChatBudgetReached, "$5", "$5")},
 		{"spent on the run", factory.Item{Cap: 5, Stream: &factory.Stream{Spent: 5.02}}, fmt.Sprintf(ChatBudgetReached, "$5.02", "$5")},
-		{"asking about it", factory.Item{Cap: 5, QKind: "cap", Stream: &factory.Stream{Spent: 5.02}}, ""},
+		{"asking about it", factory.Item{Cap: 5, QKind: "cap", Stream: &factory.Stream{Spent: 5.02}}, fmt.Sprintf(ChatBudgetReached, "$5.02", "$5")},
 	}
 	for _, c := range cases {
 		if got := ChatRefusal(c.it); got != c.want {
