@@ -1462,6 +1462,12 @@ type app struct {
 	deletedSessionRows map[tasksKey]bool
 	deleteTask         func(file, id string) error
 	tmemberStart       teamMemberStart
+	// helpers is a `/helpers` waiting for the store to take its team before
+	// the conversation is asked for its helpers (helpers.go).
+	helpers helpersPending
+	// helpersName is the one name asked for a team the Teams row made
+	// (helpers.go).
+	helpersName helpersNaming
 	// tp is the teams page's own state: its selection, its reading of the
 	// store and the targets it drew (teamspage.go).
 	tp teamsPage
@@ -7971,6 +7977,10 @@ func (a *app) slash(line string) tea.Cmd {
 	case "teams":
 		// THE TEAM-LEVEL VIEW, which is a place (place_teams.go).
 		return a.showPage(pageTeams)
+
+	case "helpers":
+		// THIS CONVERSATION AS A TEAM'S MANAGER, asked for helpers (helpers.go).
+		return a.runHelpersCommand(rest)
 
 	case "spend":
 		// AND THE WHOLE MACHINE'S BILL, which is a place and not a note. This word

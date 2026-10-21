@@ -55,6 +55,9 @@ its tab strip and never scrolls away:
 - **Choose AI manager** on Teams assigns an existing member. To use a new conversation,
   first use Add chat, then Choose AI manager. The Chats dropdown and conversation grid
   offer no manager-assignment controls.
+- **`+ New from this session`**, last in the Teams dropdown, in the conversation you are
+  working in: a new team is made at once with that conversation as its manager, and
+  `/helpers` then asks it for helpers (see **Turn this conversation into a team**).
 
 The manager's place reads **`◆ Manager`**. Its tile in the team-agnostic grid keeps its ordinary title and position. The tab's hint names its team and title. `alt+m` goes to the
 manager from any conversation in the team.
@@ -65,6 +68,91 @@ the team's name, for example `@second` for Second. The manager over `All teams` 
 If the handle is already taken in that team, a number is added. Another manager can use
 `team_send` before its first turn. Once its title is made, the ordinary title-based
 handle choice may replace that fallback.
+
+## Turn this conversation into a team — + New from this session, /helpers, convert a chat, bring in helpers
+
+You are working in a conversation, the work has grown, and you want helpers with this
+conversation in charge. With no team selected, open the **Teams ▾** dropdown at the left of
+the tab strip and choose its last row, **`+ New from this session`**. On the spot:
+
+- A new top-level team is made with **this conversation as its manager** and only member,
+  in the next free colour, and a moment later named after this conversation (see **How a
+  team made from a conversation is named**). The strip narrows to it and reads `◆ Manager`,
+  and the column turns to the team's Traffic. Every team's rules apply. Once it is saved:
+  `made the team guitar pickups · this conversation is its manager`.
+- The message box is given this, in place of what was there (kept in `/drafts`):
+  `/helpers Suggest two or three helpers for this work, and I'll say yes, change them, or cancel.`
+
+Edit it and press enter. **`/helpers`** asks the team this conversation manages for helpers:
+it sends your words after it, exactly as the transcript shows them, and a bare `/helpers`
+sends that default. It makes no team. Reply to the proposal in your own words. Yes, and it
+starts each helper with `team_start`, under your approval posture; each opens as a tab on
+this team's strip and starts working at once, while you stay in front of the manager. A
+different list, and it proposes again. Cancel, and it takes the team back with
+`team_dissolve`. Changed your mind before sending anything? `Disband` the team on Teams.
+
+## How a team made from a conversation is named — + New from this session's team name, rename it
+
+`+ New from this session` names the team twice. On the click it takes the conversation's
+folder name, lowercased (`codeaf` for `~/Code/CodeAF`), or, when a team already has that
+name, a word such as `harbor`, so the strip can change at once. At the same time the
+model that names your conversations is asked, once, for one or two words naming the work,
+from the conversation's title or its opening words; it waits at most five seconds. When
+the answer comes the team takes it, and the chip changes to it. If it came after the
+receipt, a line says `named the team guitar pickups`.
+
+The first name stays when there is no naming model or no answer in time, when the answer
+is not a name, when another team already has that name, or when the team was renamed or
+disbanded first, here or in another window. A suggested name never replaces one you chose.
+Rename the team any time in Teams, under `Settings`. It costs one short call on the naming
+model.
+
+## When + New from this session or /helpers says no
+
+They change nothing and say why:
+
+- `/helpers` in a conversation that manages no team: `/helpers asks this conversation's team for helpers, and it has none yet · make one with + New from this session in the Teams menu`.
+- On home, or any page: `/helpers asks the team a conversation manages for helpers · open that conversation first`.
+- The row on the welcome screen of a new chat: `+ New from this session makes a team of a conversation you have started · say what you are working on first`.
+- The row in a conversation that already manages a team: `this conversation already manages harbor · ask it with /helpers`, and the strip shows that team.
+- With a team selected on the strip the dropdown has no `+ New from this session` row: the team it makes is always top-level, and a team inside a team is `+ Add subteam` on Teams.
+- On a connection that holds one conversation at a time: `helpers open beside this conversation, and a connection holds one conversation at a time`.
+- Over `--host` to an engine without teams: `managers are not available over --host yet`.
+- The row chosen again while its team is being saved: `the team is still being saved`.
+
+If the save is refused — another window made this conversation another team's manager —
+the strip goes back, the box is emptied, and the reason is said. A `/helpers` sent before
+the save finished is held and sent once it is saved.
+
+## Why the chat suggested bringing in helpers
+
+A conversation that has gone on may end a reply with one sentence like "This could be
+split up and worked on in parallel by a small team. Want to bring in some helpers? Choose
++ New from this session in the Teams menu and I'll suggest who." That is codeaf letting it
+say so: after your fourth message, a conversation in no team is told, once, that it may
+suggest a team when the work is long and has parts a few helpers could work on at once. It
+is told to say it at most once, never for small or quick work, never instead of what you
+asked, and never again after you pass on it. Reopening a long conversation tells it once
+more, and it can see in its history that it already asked.
+
+It cannot make the team itself; only you can, with `+ New from this session` in the Teams
+dropdown. Ignore it, or say no, and nothing changes. A conversation already in a team, a
+task's worker, an automation's run and home's `ask here` are never told this.
+
+## Cancel a team nobody joined — team_dissolve
+
+Say no to the proposed helpers, or "cancel", and the manager calls `team_dissolve`. The
+team is forgotten as if it had never been made: no row under `Show closed`, nothing
+stopped, and the conversation, its history and its tasks stay. The strip goes back to all
+your chats and the column to `Tasks`.
+
+A manager has `team_dissolve` only while its team has never held anyone but it: no
+member, no former member, no subteam, and nothing in its Traffic. The rule is the same for
+every team, however it was made. It does not ask first, because it can only remove a team
+nothing happened in. Once anyone joins or Traffic is written, it leaves at the manager's next step, and a
+remembered call says `team_dissolve is no longer one of your tools: the team has held
+members or exchanged messages, so only the person can disband it, from Teams.` A team
+that was used ends with `Disband` on Teams, which keeps its history.
 
 ## The manager's screen
 
@@ -283,6 +371,7 @@ on one waits for you.
 | `team_decide` | answers a decision packet waiting on the manager, most often a member's question: an option, or its own words | no |
 | `team_escalate` | sends a packet waiting on the manager up, to its own manager or to you, with the reason it is not the manager's to decide | no |
 | `team_close_report` | brings you the team's closing report (done, left, where the files are) after you asked it to wrap up | no |
+| `team_dissolve` | takes back a team that has never held anyone but its manager, when you decline it; the team is forgotten and the conversation goes on alone. Only offered while the team is that empty (see **Cancel a team nobody joined**) | no |
 | `team_raise` | raises a conflict to the manager above every party (see **Conflicts between members and teams**); members have it too | no |
 
 ## Adding existing sessions and removing members through the manager
@@ -312,8 +401,9 @@ Like any tool, each can be set to ask or allow in `/settings` under the tool app
 ## What happens when a conversation stops being the manager
 
 At its next step, a conversation removed as manager loses `team_status`, `team_read`,
-`team_send`, `team_stop`, `team_start`, `team_add`, `team_remove`, `team_decide`, `team_escalate` and
-`team_close_report`. If it is still a member of a managed team, it keeps `team_post` and
+`team_send`, `team_stop`, `team_start`, `team_add`, `team_remove`, `team_decide`, `team_escalate`,
+`team_close_report`, and `team_dissolve` if it had it. A team it dissolved with
+`team_dissolve` takes them all the same way. If it is still a member of a managed team, it keeps `team_post` and
 `team_raise`; outside a team it loses those too. A remembered call to a removed manager
 tool says `team_send is no longer one of your tools: this conversation no longer manages a
 team.` A removed member tool says `team_post is no longer one of your tools: this
@@ -463,7 +553,9 @@ it. The traffic says so.
 
 A member busy in one long command reads a message when that command returns, which is what
 `team_stop` is for. Nothing is delivered twice, and a conversation that joins a team is not
-handed the team's earlier history. A conversation reopened later is handed what was said to it
+handed the team's earlier history. A new member receives only the start that created its
+membership from before it joined; reusing a removed member's handle does not bring back that
+member's brief. A conversation reopened later is handed what was said to it
 while it was closed.
 
 The traffic itself is kept in the profile of the machine the conversations run on, in

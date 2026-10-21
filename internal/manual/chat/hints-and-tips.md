@@ -44,7 +44,7 @@ screen you pass through, so the tip worth saying differs: a conversation gets th
 urgent thing that is true right now, and home gets everything in turn. Home's row does not
 wait for quiet; a conversation's waits 15 seconds.
 
-Both rows draw from **one list** of twenty-four tips (below), and using a gesture on
+Both rows draw from **one list** of twenty-five tips (below), and using a gesture on
 either retires it on both.
 
 **A conversation's tip has moved several times.** It was the keys row's lowest rung until
@@ -121,7 +121,7 @@ later when the ring comes round. It jumps once and then takes its turn like the 
 
 ## Every hint codeaf can show, and what makes each one go away
 
-There are twenty-four, one list for both boxes. Each one says the moment it first appears
+There are twenty-five, one list for both boxes. Each one says the moment it first appears
 and the gesture that retires it. The list is the program's own table (the surface refuses to
 build if the two disagree), so a tip you saw is on it word for word.
 
@@ -150,6 +150,10 @@ build if the two disagree), so a tip you saw is on it word for word.
   it. It is the first tip a conversation says, ahead of `/task`.
 - `/task starts a single-shot task on the side` — after the first exchange. Retired when
   `/task` is typed, bare or with a brief.
+- `+ New from this session in the Teams menu makes this chat a team's manager` — after the
+  first exchange, in a conversation with no team selected on the strip that does not already
+  manage a team; never on home. Retired the first time that row is chosen or `/helpers` is
+  typed.
 - `/automations add sets one up exactly · or just say when, like every Monday at 9` — from
   the first minute on home and after the first exchange in a conversation. It is the other
   half of the `/automations` row above — the place lists them, and this is how one is made,

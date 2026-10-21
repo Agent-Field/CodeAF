@@ -139,7 +139,7 @@ func TestTeamMembershipDeliveryBoundaryUsesTheEngineClock(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := time.Now()
-	wrote, err := loop.Client.TeamsUpdate(initial.Stamp, []teamstore.Team{{ID: "abcdefabcdef", Name: "Clock test", Members: []teamstore.Member{{Key: "/srv/member.jsonl", JoinedAt: before.Add(time.Hour)}}}})
+	wrote, err := loop.Client.TeamsUpdate(initial.Stamp, []teamstore.Team{{ID: "abcdefabcdef", Name: "Clock test", Members: []teamstore.Member{{Key: "/srv/member.jsonl", JoinedAt: before.Add(time.Hour), StartID: "000000000042"}}}})
 	after := time.Now()
 	if err != nil {
 		t.Fatal(err)
@@ -148,8 +148,9 @@ func TestTeamMembershipDeliveryBoundaryUsesTheEngineClock(t *testing.T) {
 	if joined.Before(before) || joined.After(after) {
 		t.Fatalf("delivery boundary borrowed the client's clock: %v", joined)
 	}
+	wrote.Teams[0].Members[0].StartID = "000000000099"
 	again, err := loop.Client.TeamsUpdate(wrote.Stamp, wrote.Teams)
-	if err != nil || !again.Teams[0].Members[0].JoinedAt.Equal(joined) {
+	if err != nil || !again.Teams[0].Members[0].JoinedAt.Equal(joined) || again.Teams[0].Members[0].StartID != "000000000042" {
 		t.Fatal("unrelated write changed membership delivery boundary")
 	}
 }
