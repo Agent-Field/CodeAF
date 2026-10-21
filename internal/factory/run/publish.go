@@ -202,6 +202,13 @@ func (lp *floorLoop) publishRun(c *loopCtl, trailer string) {
 				it.FollowUp.PublishConsent = trailer
 				it.FollowUp.AutoPush = true
 			}
+			if factory.ReadinessPending(*it) && !receipt.pr.Draft {
+				a := *it.FollowUp.Readiness
+				a.State, a.At = "ready", now
+				it.FollowUp.Readiness = &a
+				it.Note(now, "PR marked ready for review · head "+a.Head+" · "+a.Summary)
+				loopSay(it, now, "ok", fmt.Sprintf("PR #%d marked ready for review · reviewed head %s · %s", receipt.pr.Number, a.Head, a.Summary))
+			}
 			factory.WatchPublishedPR(it)
 		}
 		it.MarkPublishing("opened", "", "", now)
@@ -210,6 +217,10 @@ func (lp *floorLoop) publishRun(c *loopCtl, trailer string) {
 	}) == nil {
 		lp.emit(c.id, "", EventShipped, "shipped")
 		if receipt.pr != nil {
+			if factory.ReadinessPending(it) && !receipt.pr.Draft {
+				lp.tell(c.id, fmt.Sprintf("PR #%d is ready for review. Final review passed on head %s. Follow PR continues monitoring CI, feedback and conflicts; merge remains your decision.", receipt.pr.Number, it.HeadCommit))
+				return
+			}
 			mode := "Manual asks before pushing repairs; enable Auto for automatic checked updates within the job budget."
 			if factory.Automatic(it) {
 				mode = "Auto records and pushes checked repairs within the job budget."
@@ -242,6 +253,25 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 	}
 	if src == nil {
 		return published{}, fmt.Errorf("%s is not on a source codeaf can post to", it.Ref())
+	}
+	if it.FollowUp != nil && it.FollowUp.Kind == "readiness" {
+		if !factory.ReadinessPending(it) {
+			return published{}, errors.New("final readiness review is incomplete; it cannot publish code or change draft status")
+		}
+		if TrailerCommit(trailer) != it.FollowUp.Readiness.Head {
+			return published{}, publish.ErrCommitChanged
+		}
+		ready, ok := src.(interface {
+			Ready(context.Context, factory.Item) (factory.PullRequest, error)
+		})
+		if !ok {
+			return published{}, errors.New("this factory source does not support ready for review")
+		}
+		pr, e := ready.Ready(ctx, it)
+		if e != nil {
+			return published{}, e
+		}
+		return published{pr: &pr}, nil
 	}
 	var existingPR *factory.PullRequest
 	if it.FollowUp != nil && it.FollowUp.State == "waiting_approval" {

@@ -459,32 +459,35 @@ func (c *client) Pull(ctx context.Context, owner, repo string, number int) (Pull
 	return p.pull(), nil
 }
 
-// Reviews lists the submitted reviews on one pull request, oldest first, one
-// page. A pull request with more than a hundred reviews keeps the first
-// hundred GitHub returns.
+// Reviews reads every submitted review, bounded at 2000; an incomplete
+// list cannot authorize readiness or assert that no changes are requested.
 func (c *client) Reviews(ctx context.Context, owner, repo string, number int) ([]Review, error) {
-	body, _, err := c.read(ctx, c.repoURL(owner, repo, "/pulls/"+strconv.Itoa(number)+"/reviews?per_page=100"), "")
-	if err != nil {
-		return nil, err
-	}
-	var rows []struct {
-		User        userJSON  `json:"user"`
-		State       string    `json:"state"`
-		SubmittedAt time.Time `json:"submitted_at"`
-		Body        string    `json:"body"`
-		URL         string    `json:"html_url"`
-	}
-	if err := json.Unmarshal(body, &rows); err != nil {
-		return nil, err
-	}
-	out := make([]Review, 0, len(rows))
-	for _, r := range rows {
-		if r.User.Login == "" && r.State == "" {
-			continue
+	var out []Review
+	for page := 1; page <= 20; page++ {
+		body, _, err := c.read(ctx, c.repoURL(owner, repo, "/pulls/"+strconv.Itoa(number)+"/reviews?per_page=100&page="+strconv.Itoa(page)), "")
+		if err != nil {
+			return nil, err
 		}
-		out = append(out, Review{User: r.User.Login, State: r.State, At: r.SubmittedAt, Body: r.Body, URL: r.URL})
+		var rows []struct {
+			User        userJSON  `json:"user"`
+			State       string    `json:"state"`
+			SubmittedAt time.Time `json:"submitted_at"`
+			Body        string    `json:"body"`
+			URL         string    `json:"html_url"`
+		}
+		if err = json.Unmarshal(body, &rows); err != nil {
+			return nil, err
+		}
+		for _, r := range rows {
+			if r.User.Login != "" || r.State != "" {
+				out = append(out, Review{User: r.User.Login, State: r.State, At: r.SubmittedAt, Body: r.Body, URL: r.URL})
+			}
+		}
+		if len(rows) < 100 {
+			return out, nil
+		}
 	}
-	return out, nil
+	return nil, fmt.Errorf("PR reviews exceed 2000; full review state could not be read")
 }
 
 // RequiredReviews is how many approving reviews the branch asks for. A branch

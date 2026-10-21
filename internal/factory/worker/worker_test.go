@@ -43,7 +43,7 @@ func newRig(t *testing.T, localLease ...func(string, api.WorkerLease)) rig {
 }
 
 // newRigWith is newRig whose worker's runner options tune may change.
-func newRigWith(t *testing.T, keepLocal func(string, api.WorkerLease), tune func(*run.Options)) rig {
+func newRigWith(t *testing.T, keepLocal func(string, api.WorkerLease), tune func(*run.Options), identity ...string) rig {
 	t.Helper()
 	st, err := store.Open(t.TempDir())
 	if err != nil {
@@ -54,6 +54,9 @@ func newRigWith(t *testing.T, keepLocal func(string, api.WorkerLease), tune func
 		t.Fatal(err)
 	}
 	seam := factory.LocalSeam(st, time.Now(), factory.WithRunner(lease.NewDoors(desk)))
+	if len(identity) > 0 {
+		seam.GitHub = func(context.Context) (factory.GitHubLink, error) { return factory.GitHubLink{Login: identity[0]}, nil }
+	}
 	history, err := record.Open(st, record.Options{})
 	if err != nil {
 		t.Fatal(err)

@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"strings"
 	"time"
@@ -68,6 +69,9 @@ func (s *Source) FollowPR(ctx context.Context, owner, repo string, number int) (
 			return factory.PullRequest{}, err
 		}
 	}
+	if err = s.readinessMaterial(ctx, owner, repo, p, &out); err != nil {
+		return factory.PullRequest{}, err
+	}
 	return out, nil
 }
 
@@ -133,7 +137,7 @@ func reviewDecision(reviews []factory.PRReview, required int) string {
 	latest := map[string]factory.PRReview{}
 	for _, r := range reviews {
 		by := strings.ToLower(strings.TrimSpace(r.By))
-		if by == "" {
+		if by == "" || (strings.EqualFold(r.State, "commented") || strings.EqualFold(r.State, "pending")) {
 			continue
 		}
 		prev, ok := latest[by]
@@ -271,12 +275,20 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 				}
 				item.Stream.Log = append(item.Stream.Log, factory.LogLine{At: time.Now().UTC(), Tone: "said", Text: "GitHub checks · " + strings.Join(words, " · ")})
 			}
+			if item.PullRequest.Draft && !cp.Draft && cp.State == factory.PROpen && item.Stream != nil {
+				if !item.Publishing {
+					item.Note(f.now(), fmt.Sprintf("PR #%d observed ready for review on GitHub · head %s", cp.Number, cp.HeadSHA))
+				}
+				item.Stream.Log = append(item.Stream.Log, factory.LogLine{At: f.now(), Tone: "ok", Text: fmt.Sprintf("PR #%d observed ready for review on GitHub · head %s", cp.Number, cp.HeadSHA)})
+			}
 			item.PullRequest = &cp
 			if initialWatch && item.FollowUp == nil {
 				factory.WatchPublishedPR(item)
 			}
 			if (!held[it.ID] || cp.State == factory.PRMerged || cp.State == factory.PRClosed) && factory.QueueCIFollowUp(item, f.now()) && item.FollowUp != nil && item.FollowUp.State == "queued" {
-				item.FollowUp.Details = details
+				if item.FollowUp.Kind != "readiness" {
+					item.FollowUp.Details = details
+				}
 			}
 			item.DismissedBy = nil
 			if (cp.State == factory.PRMerged || cp.State == factory.PRClosed) && item.DoneAt.IsZero() {

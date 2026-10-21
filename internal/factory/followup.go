@@ -14,23 +14,25 @@ const DefaultPRRepairAttempts = 3
 // PRFollowUp keeps the publication record and the PR maintenance cursor.
 // Every later tested head receives its own service-side publication approval.
 type PRFollowUp struct {
-	ReviewKey      string   `json:"review_key,omitempty"`
-	Kind           string   `json:"kind"`
-	State          string   `json:"state"`
-	HeadSHA        string   `json:"head_sha,omitempty"`
-	Attempt        int      `json:"attempt"`
-	Limit          int      `json:"limit"`
-	Reason         string   `json:"reason"`
-	AllowedPaths   []string `json:"allowed_paths,omitempty"` // legacy context, not a restriction
-	Details        string   `json:"details,omitempty"`
-	EventKey       string   `json:"event_key,omitempty"`
-	Request        string   `json:"request,omitempty"`
-	AutoPush       bool     `json:"auto_push,omitempty"`
-	PublishConsent string   `json:"publish_consent,omitempty"`
+	Readiness      *PRReadiness `json:"readiness,omitempty"`
+	ReviewKey      string       `json:"review_key,omitempty"`
+	Kind           string       `json:"kind"`
+	State          string       `json:"state"`
+	HeadSHA        string       `json:"head_sha,omitempty"`
+	Attempt        int          `json:"attempt"`
+	Limit          int          `json:"limit"`
+	Reason         string       `json:"reason"`
+	AllowedPaths   []string     `json:"allowed_paths,omitempty"` // legacy context, not a restriction
+	Details        string       `json:"details,omitempty"`
+	EventKey       string       `json:"event_key,omitempty"`
+	Request        string       `json:"request,omitempty"`
+	AutoPush       bool         `json:"auto_push,omitempty"`
+	PublishConsent string       `json:"publish_consent,omitempty"`
 }
 type CIRepairResult struct {
-	Decision string `json:"decision"`
-	Reason   string `json:"reason"`
+	Decision  string           `json:"decision"`
+	Reason    string           `json:"reason"`
+	Readiness *ReadinessReview `json:"readiness,omitempty"`
 }
 
 func legacyFollowStep(name string) bool {
@@ -103,6 +105,9 @@ func WatchPublishedPR(it *Item) {
 	f := *it.FollowUp
 	f.Request = ""
 	f.State, f.Reason = "watching", "Watching CI, reviews and merge conflicts automatically. Merge remains your decision."
+	if !it.PullRequest.Draft {
+		f.Reason = "PR is ready for review. Watching CI, feedback and conflicts; merge remains your decision."
+	}
 	it.FollowUp = &f
 	i := EnsureFollowPR(it)
 	it.Stream.Phases[i].State = PhaseWaiting
@@ -118,7 +123,7 @@ func followEvent(pr *PullRequest, request string) string {
 	for _, r := range pr.Reviews {
 		fmt.Fprintf(&b, "|%s:%s:%s:%s", r.By, r.State, r.At.Format(time.RFC3339Nano), r.Body)
 	}
-	fmt.Fprintf(&b, "|%s", pr.Feedback)
+	fmt.Fprintf(&b, "|%s|%s", pr.Feedback, pr.ReadinessKey)
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(b.String())))
 }
 
@@ -147,6 +152,38 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 		it.Stream.Ended = now
 		return true
 	}
+	if ReadinessPending(*it) && !it.Publishing && !it.Manual {
+		a := f.Readiness
+		if !pr.Draft && pr.State == PROpen {
+			a.State, a.At = "ready", now
+			f.State, f.Reason = "healthy", "PR is ready for review. Watching CI, feedback and conflicts; merge remains your decision."
+			it.State = StateShipped
+			it.Approval = nil
+			it.PublishError = ""
+			if it.PublishStatus != nil {
+				it.MarkPublishing("opened", "", "", now)
+			}
+			it.Question, it.QKind = "", ""
+			if it.Stream != nil {
+				it.Stream.Log = append(it.Stream.Log, LogLine{At: now, Tone: "ok", Text: "PR observed ready for review on GitHub"})
+			}
+			return true
+		}
+		if pr.ReadinessKey != a.Key || pr.HeadSHA != a.Head || ReadinessGate(*it) != nil {
+			f.Readiness = nil
+			f.Kind = "pr"
+			f.State = "watching"
+			f.EventKey = ""
+			f.Reason = "Readiness facts changed; checking the current PR again."
+			it.State = StateShipped
+			it.Approval = nil
+			it.PublishError = ""
+			it.PublishStatus = nil
+			it.Question, it.QKind = "", ""
+			QueueCIFollowUp(it, now)
+			return true
+		}
+	}
 	if it.Manual || pr.State != PROpen || it.State != StateShipped || (it.Merging != nil && it.Merging.State != MergeFailed) {
 		return false
 	}
@@ -161,6 +198,7 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 		return false
 	}
 	reviewPR := *pr
+	reviewPR.ReadinessKey = ""
 	reviewPR.HeadSHA = ""
 	reviewPR.BaseSHA = ""
 	reviewPR.CheckRuns = nil
@@ -173,6 +211,21 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 		return false
 	}
 	needs = needs || pr.Checks.Failed > 0
+	readinessQueued := false
+	if !needs && pr.Draft && pr.ReadinessKey != "" && ReadinessGate(*it) == nil && (f.Readiness == nil || f.Readiness.Key != pr.ReadinessKey) {
+		if f.Limit < 1 {
+			f.Limit = DefaultPRRepairAttempts
+		}
+		if f.Attempt >= f.Limit {
+			f.State, f.Reason = "needs_you", "Final readiness review reached its attempt limit. Retry Follow PR or take over."
+			return true
+		}
+		readinessQueued = true
+		f.Kind = "readiness"
+		f.Readiness = &PRReadiness{Key: pr.ReadinessKey, Head: pr.HeadSHA, State: "reviewing"}
+		f.Details = pr.ReadinessContext
+		needs = true
+	}
 	if !needs {
 		if f.State == "healthy" {
 			return false
@@ -193,9 +246,15 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 	}
 	f.HeadSHA, f.EventKey, f.Attempt = pr.HeadSHA, key, f.Attempt+1
 	f.ReviewKey = reviewKey
-	f.Kind, f.State, f.Reason = "pr", "queued", "Inspecting CI, review feedback and conflicts. Manual will ask before pushing checked fixes to this PR."
+	if !readinessQueued {
+		f.Kind = "pr"
+	}
+	f.State, f.Reason = "queued", "Inspecting CI, review feedback and conflicts. Manual will ask before pushing checked fixes to this PR."
 	if Automatic(*it) {
 		f.Reason = "Inspecting CI, review feedback and conflicts. Auto will record and push checked fixes within this job budget."
+	}
+	if f.Kind == "readiness" {
+		f.Reason = "Final review: checking the current PR diff, description and outstanding feedback before marking it ready for review."
 	}
 	i := EnsureFollowPR(it)
 	ph := &it.Stream.Phases[i]
@@ -211,7 +270,9 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 	it.State = StateQueued
 	it.Question, it.QKind = "", ""
 	it.Asking, it.Failure, it.Approval = nil, nil, nil
-	it.Proof, it.Policy = nil, nil
+	if !readinessQueued {
+		it.Proof, it.Policy = nil, nil
+	}
 	it.Stream.Log = append(it.Stream.Log, LogLine{At: now, Tone: "said", Text: fmt.Sprintf("Follow PR queued · repair %d · PR #%d", f.Attempt, pr.Number)})
 	return true
 }

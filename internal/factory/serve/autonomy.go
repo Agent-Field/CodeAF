@@ -24,6 +24,11 @@ func (h *Handler) setAutonomy(w http.ResponseWriter, r *http.Request, it factory
 			return fmt.Errorf("job finished or publishing began before the mode changed")
 		}
 		cur.Autonomy = mode
+		if factory.ReadinessPending(*cur) {
+			f := *cur.FollowUp
+			f.Reason = factory.ReadinessApprovalWords(*cur)
+			cur.FollowUp = &f
+		}
 		// Manual withdraws an automatic approval, never a person's explicit one.
 		if mode == factory.AutonomyManual && cur.Approval != nil && cur.Approval.Automatic && cur.Approval.State == "approving" {
 			cur.Approval = nil

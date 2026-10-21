@@ -588,7 +588,7 @@ func checkRuns(in []forge.CheckRun) []factory.CheckRun {
 		if r.Status != "completed" || state == "" {
 			state = r.Status
 		}
-		out = append(out, factory.CheckRun{Name: r.Name, State: state, URL: r.URL})
+		out = append(out, factory.CheckRun{AppID: r.AppID, Name: r.Name, State: state, URL: r.URL})
 	}
 	return out
 }

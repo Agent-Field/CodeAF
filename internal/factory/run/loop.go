@@ -911,6 +911,31 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			lp.parkCI(c, i, res.Repair.Reason)
 			return false
 		}
+		if factory.IsCIRepairStage(st) && job.Item.FollowUp != nil && job.Item.FollowUp.Kind == "readiness" {
+			if res.Repair != nil && res.Repair.Decision == "needs_repair" && strings.TrimSpace(res.Repair.Reason) != "" {
+				if !lp.capCheck(c, i, name) {
+					return false
+				}
+				if e := lp.write(c, func(cur *factory.Item) error {
+					f := *cur.FollowUp
+					f.Kind = "pr"
+					f.Readiness = nil
+					f.State = "running"
+					f.Request = "Final readiness review found fixable blockers: " + res.Repair.Reason
+					f.Reason = "Repairing blockers found by the final readiness review."
+					cur.FollowUp = &f
+					return nil
+				}); e != nil {
+					return false
+				}
+				lp.tell(c.id, "Final readiness review found blockers. Follow PR will repair and verify them: "+res.Repair.Reason)
+				round++
+				limit = max(limit, round)
+				continue
+			}
+			lp.finishReadiness(c, i, res)
+			return false
+		}
 		if factory.IsCIRepairStage(st) && res.Repair != nil && res.Repair.Decision == "no_change" {
 			fresh, _ := lp.r.opts.Store.Get(c.id)
 			if fresh.PullRequest == nil || fresh.PullRequest.Checks.Failed > 0 || fresh.PullRequest.Conflict {
@@ -1249,6 +1274,29 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 	if dirErr == nil && factory.IsCIRepairStage(st) {
 		dirErr = lp.reconcilePR(it, dir)
 	}
+	if dirErr == nil && it.FollowUp != nil && it.FollowUp.Kind == "readiness" && it.FollowUp.Readiness != nil {
+		g := lp.r.opts.Git
+		if g == nil {
+			g = ExecGit{}
+		}
+		head, e := g.Run(dir, "rev-parse", "HEAD")
+		dirErr = e
+		if dirErr == nil && strings.TrimSpace(head) != it.FollowUp.Readiness.Head {
+			dirErr = errors.New("the readiness checkout diverged from the captured remote head")
+		}
+		if dirErr == nil {
+			status, e := g.Run(dir, "status", "--porcelain")
+			dirErr = e
+			if dirErr == nil && strings.TrimSpace(status) != "" {
+				dirErr = errors.New("the readiness checkout has unfinished local changes")
+			}
+		}
+		if dirErr == nil && it.HeadCommit != strings.TrimSpace(head) {
+			it.HeadCommit = strings.TrimSpace(head)
+			dirErr = lp.write(c, func(cur *factory.Item) error { cur.HeadCommit = it.HeadCommit; return nil })
+		}
+	}
+
 	// Creating the worktree records its branch. Read that record before the
 	// first brief, which otherwise still describes the old default name.
 	if dirErr == nil && dir != "" {
@@ -2045,6 +2093,20 @@ func ApprovalRefused(it *factory.Item, edited bool) error {
 	if it.State != factory.StateLanded {
 		return fmt.Errorf("%s has not landed", it.Ref())
 	}
+	if it.FollowUp != nil && it.FollowUp.Kind == "readiness" && !factory.ReadinessPending(*it) {
+		return errors.New("final readiness review is incomplete")
+	}
+	if factory.ReadinessPending(*it) {
+		if edited {
+			return errors.New("changed work needs another readiness review")
+		}
+		if err := factory.ReadinessGate(*it); err != nil {
+			return err
+		}
+		if it.FollowUp.Readiness.Head != it.HeadCommit {
+			return errors.New("readiness head changed")
+		}
+	}
 	if edited {
 		return nil
 	}
@@ -2071,7 +2133,9 @@ func approveStored(it *factory.Item, edited bool, now time.Time) error {
 		return err
 	}
 	it.Question, it.QKind = "", ""
-	if edited {
+	if factory.ReadinessPending(*it) {
+		it.Note(now, "Ready-for-review transition approved · head "+it.HeadCommit)
+	} else if edited {
 		it.Note(now, activitySignedEdit)
 	} else {
 		it.Note(now, activitySigned)

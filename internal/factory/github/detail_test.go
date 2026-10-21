@@ -47,7 +47,7 @@ func TestReadCarriesThePageCommentsFilesAndChecks(t *testing.T) {
 	if !reflect.DeepEqual(pr.Files, wantFiles) {
 		t.Fatalf("files %+v, want %+v", pr.Files, wantFiles)
 	}
-	wantRuns := []factory.CheckRun{{Name: "build", State: "in_progress", URL: "https://github.com/acme/api/runs/1"}}
+	wantRuns := []factory.CheckRun{{Name: "legacy CI", State: "success"}, {Name: "build", State: "in_progress", URL: "https://github.com/acme/api/runs/1"}}
 	if !reflect.DeepEqual(pr.CheckRuns, wantRuns) || pr.Checks != "ci running" {
 		t.Fatalf("check runs %+v (%q), want %+v", pr.CheckRuns, pr.Checks, wantRuns)
 	}

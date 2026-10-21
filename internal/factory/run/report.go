@@ -60,6 +60,58 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 		}
 		f := *it.FollowUp
 		f.State, f.Reason = report.FollowUp.State, report.FollowUp.Reason
+		if f.Kind == "readiness" && report.FollowUp.Kind == "pr" && report.FollowUp.Readiness == nil {
+			f.Kind = "pr"
+			f.Readiness = nil
+			f.Request = report.FollowUp.Request
+		}
+
+		if report.FollowUp.Readiness != nil {
+			a := report.FollowUp.Readiness
+			if a.State != "reviewing" && a.State != "reviewed" && a.State != "ready" {
+				return fmt.Errorf("unknown readiness state")
+			}
+			if a.State == "ready" && (f.Readiness == nil || f.Readiness.State != "reviewed" || !it.Publishing) {
+				return fmt.Errorf("ready requires the recorded publication transition")
+			}
+
+			if f.Readiness == nil || a.Key != f.Readiness.Key || a.Head != f.Readiness.Head {
+				return fmt.Errorf("readiness snapshot changed")
+			}
+			if a.State == "reviewed" && f.Readiness.State != "reviewed" {
+				found := false
+				for _, step := range report.Stages {
+					if step.Name == factory.FollowPRStep && step.Result != nil {
+						if e := factory.ValidateReadinessReview(*it, *step.Result); e != nil {
+							return e
+						}
+						found = true
+					}
+				}
+				if !found && it.Stream != nil {
+					for _, ph := range it.Stream.Phases {
+						if ph.Name == factory.FollowPRStep && ph.Result != nil {
+							if e := factory.ValidateReadinessReview(*it, *ph.Result); e != nil {
+								return e
+							}
+							found = true
+						}
+					}
+				}
+				if !found {
+					return fmt.Errorf("readiness requires the final review report")
+				}
+			}
+			if f.Readiness.State != a.State && (a.State == "reviewed" || a.State == "ready") {
+				word := "Final readiness review passed"
+				if a.State == "ready" {
+					word = "PR marked ready for review"
+				}
+				it.Note(now, word+" · head "+a.Head+" · "+a.Summary)
+			}
+			cp := *a
+			f.Readiness = &cp
+		}
 		it.FollowUp = &f
 	}
 	ensureStream(it, now)
@@ -444,6 +496,9 @@ func landItem(it *factory.Item, now time.Time) bool {
 	if it.FollowUp != nil && (it.FollowUp.State == "queued" || it.FollowUp.State == "running") {
 		f := *it.FollowUp
 		f.State, f.Reason = "waiting_approval", "Repair and proof passed locally; updating the existing PR."
+		if factory.ReadinessPending(*it) {
+			f.State, f.Reason = "ready_approval", factory.ReadinessApprovalWords(*it)
+		}
 		it.FollowUp = &f
 	}
 	it.Question, it.QKind = "", ""
@@ -460,6 +515,10 @@ func landItem(it *factory.Item, now time.Time) bool {
 		it.State = factory.StateShipped
 		loopSay(it, now, "ok", logShippedHabit)
 		return true
+	}
+	if factory.ReadinessPending(*it) {
+		loopSay(it, now, "said", factory.ReadinessApprovalWords(*it))
+		return false
 	}
 	if factory.Automatic(*it) {
 		loopSay(it, now, "said", sayAutoLanded)
