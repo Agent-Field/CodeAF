@@ -99,8 +99,8 @@ export class Directory {
     });
   }
 
-  acquire(id, device, force = false) {
-    return this.change(id, (c, now) => this.rules.acquire(this.#lift(id, c), device, now, force));
+  acquire(id, device, force = false, expect = undefined) {
+    return this.change(id, (c, now) => this.rules.acquire(this.#lift(id, c), device, now, force, expect));
   }
 
   heartbeat(id, device, beat) {

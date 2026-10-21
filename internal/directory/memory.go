@@ -278,7 +278,7 @@ func (c *memoryClient) Create(_ context.Context, id string, in CellInit) (v Cell
 
 func (c *memoryClient) Acquire(_ context.Context, id string, o AcquireOpts) (CellView, error) {
 	return c.changed(id, func(cell Cell, now int64) (Cell, error) {
-		return Acquire(c.m.feed.Lifted(id, cell), c.device, now, o.Force)
+		return Acquire(c.m.feed.Lifted(id, cell), c.device, now, o.Force, o.Expect)
 	})
 }
 

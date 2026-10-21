@@ -31,6 +31,9 @@ type Fetch interface {
 type Local interface {
 	// Dirty says whether the tree differs from the local head.
 	Dirty(ctx context.Context, c cell.Cell) (bool, error)
+	// Unpublished returns the local head and count of sealed turns that have
+	// not reached the directory, even when the working tree is clean.
+	Unpublished(c cell.Cell, remoteHead string) (head string, turns uint32, err error)
 	// Seal seals the tree as a local turn.
 	Seal(ctx context.Context, c cell.Cell) (head string, turns uint32, err error)
 	// Follow says the tree restored at from was moved to be the tree of to. The
@@ -82,9 +85,18 @@ type Taken struct {
 // a chat that was running elsewhere has chosen to displace its holder, so that
 // lease is taken by force; a holder that appears meanwhile is a lost race.
 func (t Taker) Take(ctx context.Context, id string) (Taken, error) {
+	return t.TakeSeen(ctx, id, nil)
+}
+
+// TakeSeen continues the lease the person saw on the card. Older callers
+// without that reading still bind the claim to the record read before fetch.
+func (t Taker) TakeSeen(ctx context.Context, id string, seen *directory.LeaseExpectation) (Taken, error) {
 	view, err := t.Dir.Cell(ctx, id)
 	if err != nil {
 		return Taken{}, fmt.Errorf("handoff: read chat %s: %w", id, err)
+	}
+	if seen != nil && (view.Cell.Lease.Device != seen.Device || view.Cell.Lease.Fence != seen.Fence) {
+		return Taken{}, directory.ErrLeaseHeld
 	}
 	c := cell.Cell{ID: id, Root: t.RootFor(id)}
 	kept, err := t.keepLocal(ctx, c, view.Cell.Head, view.Cell.Frames)
@@ -109,7 +121,10 @@ func (t Taker) Take(ctx context.Context, id string) (Taken, error) {
 // lease held by a live holder, so they may take it from that holder, and only
 // from that one.
 func displacing(v directory.CellView) directory.AcquireOpts {
-	return directory.AcquireOpts{Force: v.Cell.Lease.Expires > v.Now}
+	return directory.AcquireOpts{
+		Force:  v.Cell.Lease.Expires > v.Now,
+		Expect: &directory.LeaseExpectation{Device: v.Cell.Lease.Device, Fence: v.Cell.Lease.Fence},
+	}
 }
 
 // keepLocal seals unsealed local work onto a branch before any fetch. It
@@ -121,13 +136,23 @@ func (t Taker) keepLocal(ctx context.Context, c cell.Cell, parentHead string, pl
 	if !exists(c.Root) {
 		return "", nil
 	}
-	dirty, err := t.Local.Dirty(ctx, c)
-	if err != nil || !dirty {
+	head, turns, err := t.Local.Unpublished(c, parentHead)
+	if err != nil {
 		return "", err
 	}
-	head, turns, err := t.Local.Seal(ctx, c)
+	dirty, err := t.Local.Dirty(ctx, c)
 	if err != nil {
-		return "", fmt.Errorf("handoff: seal local edits of %s: %w", c.ID, err)
+		return "", err
+	}
+	if dirty {
+		sealed, added, err := t.Local.Seal(ctx, c)
+		if err != nil {
+			return "", fmt.Errorf("handoff: seal local edits of %s: %w", c.ID, err)
+		}
+		head, turns = sealed, turns+added
+	}
+	if head == "" {
+		return "", nil
 	}
 	from := &cellsync.Driving{Cell: c, Head: parentHead, Frames: plan}
 	kept, err := t.Branch(ctx, from, head, turns)

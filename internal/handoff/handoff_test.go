@@ -208,7 +208,20 @@ func TestTakeRefetchesMovedHead(t *testing.T) {
 	w, a, b := backFromB(t)
 	stale := w.cellRec(chatID).Head
 	var moved string
-	a.onFetc = func() { moved = b.work(map[string]string{"b.txt": "moved"}) }
+	a.onFetc = func() {
+		// C5 permits a newer head from the same holder while fetching. Keep
+		// its fence unchanged: reacquiring here would be the C7 losing race,
+		// rather than the head-only change this test has always asserted.
+		rec := w.cellRec(chatID)
+		cl := b.cell(chatID)
+		moved = b.eng.Seal(cl, w.withMeta(map[string]string{"b.txt": "moved"}))
+		drv := cellsync.Driving{Cell: cl, Head: rec.Head, Fence: rec.Lease.Fence}
+		pub := &cellsync.Publisher{Engine: b.eng, Store: b.store, Dir: b.dir.Client}
+		if err := pub.Publish(context.Background(), &drv, moved, cellsync.PublishInfo{Class: "chat"}); err != nil {
+			t.Fatal(err)
+		}
+		b.release(drv)
+	}
 	tk := a.taker()
 
 	taken, err := tk.Take(context.Background(), chatID)

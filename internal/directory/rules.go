@@ -22,7 +22,13 @@ func Lifted(c Cell, vouchedUntil int64) Cell {
 // same device may re-take its own live lease; the fence still goes up. A forced
 // acquire is a person's choice to displace a live holder: it skips the refusal,
 // and the fence still goes up, so the old holder's next write fails as stale.
-func Acquire(c Cell, device string, now int64, force bool) (Cell, error) {
+func Acquire(c Cell, device string, now int64, force bool, expected ...*LeaseExpectation) (Cell, error) {
+	if len(expected) > 0 && expected[0] != nil {
+		seen := expected[0]
+		if c.Lease.Device != seen.Device || c.Lease.Fence != seen.Fence {
+			return c, ErrLeaseHeld
+		}
+	}
 	if !force && c.Lease.Expires > now && c.Lease.Device != device {
 		return c, ErrLeaseHeld
 	}

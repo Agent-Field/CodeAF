@@ -121,7 +121,10 @@ const ROUTES = [
     return empty();
   }],
   ['POST', /^\/v1\/dir\/cells\/([^/]+)$/, DIR_WRITE, (c, [id]) => json(c.tenant.dir.create(id, object(c.body), c.device))],
-  ['POST', /^\/v1\/dir\/cells\/([^/]+)\/acquire$/, DIR_WRITE, (c, [id]) => json(c.tenant.dir.acquire(id, c.device, object(c.body).force === true))],
+  ['POST', /^\/v1\/dir\/cells\/([^/]+)\/acquire$/, DIR_WRITE, (c, [id]) => {
+    const { force, expect } = object(c.body);
+    return json(c.tenant.dir.acquire(id, c.device, force === true, expect));
+  }],
   ['POST', /^\/v1\/dir\/cells\/([^/]+)\/heartbeat$/, DIR_WRITE, (c, [id]) => json(c.tenant.dir.heartbeat(id, c.device, object(c.body)))],
   ['POST', /^\/v1\/dir\/cells\/([^/]+)\/publish$/, DIR_WRITE, (c, [id]) => json(c.tenant.dir.publish(id, c.device, object(c.body)))],
   ['POST', /^\/v1\/dir\/cells\/([^/]+)\/release$/, DIR_WRITE, (c, [id]) => (c.tenant.dir.release(id, c.device, object(c.body).fence), empty())],
