@@ -26,7 +26,7 @@ An initial estimate and a later recovered provider receipt carry the same `usage
 
 The existing measured-only series still sums `total_tokens`. The new PostHog view groups by installation, event and receipt hash (falling back to the event UUID for older builds), then selects the best available components. Legacy session-end totals remain separate. Receipt time uses the earliest observation, with a one-day lookback margin around the displayed 14-day range. The query also exposes records with unknown input/output components. This is coverage of recorded receipts, not proof that every model call or anonymous installation reported.
 
-The saved line chart is [Model usage · reported and estimated](https://us.posthog.com/project/356517/insights/hcf8GG3M). Its estimated series starts only after rollout; historical missing receipts cannot be reconstructed. Project 356517 is the active destination that currently receives `codeaf:usage_delta`, rather than the empty separately named project.
+The estimate-aware line chart is configured separately in PostHog. Its estimated series starts only after rollout; historical missing receipts cannot be reconstructed. Verify the actual project receiving `codeaf:usage_delta` before installing a query.
 
 ## Deployment order
 
