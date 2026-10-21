@@ -4,7 +4,7 @@ package main
 // that is already in approves it with `codeaf pair approve <link>`.
 //
 //	new$   codeaf pair                       shows a link and waits
-//	old$   codeaf pair approve k7m2q9xd.Qm9v  shows who is asking, asks y or n
+//	old$   codeaf pair approve k7m2q9xd.Qm9v  shows who is asking, asks a or d
 //
 // Both doors run internal/pair's JoinByLink and Approver. The app's approve
 // screen calls the same Approver, so the two cannot disagree.
@@ -92,7 +92,7 @@ func fleetOf(l directory.Listing) pair.Fleet {
 func linkJoining(dir string) func(pair.Mailbox, bool) pair.LinkJoining {
 	return func(route pair.Mailbox, replace bool) pair.LinkJoining {
 		return pair.LinkJoining{
-			Joining: pairJoiningAt(dir)(replace), Platform: runtime.GOOS, Host: route.Host, Via: route.Shown,
+			Joining: pairJoiningAt(dir)(replace), Platform: runtime.GOOS, Host: route.Host, Via: syncsetup.Named(route.URL),
 			Pull: pullFleet(dir, route),
 		}
 	}
@@ -123,11 +123,14 @@ func (d pairDoor) askToJoin(ctx context.Context, relay string, replace bool) err
 }
 
 // approve is a device that is in: it reads the request, shows who is asking and
-// the check number, and lets them in on a yes. Anything but a yes turns them down.
+// the check number, and lets them in on a. Anything else turns them down.
 func (d pairDoor) approve(ctx context.Context, relay, typed string) error {
 	ref, err := pair.ReadLink(typed)
 	if err != nil {
 		return err
+	}
+	if relay == "" {
+		relay = pair.LinkRelay(typed)
 	}
 	route, err := d.mailbox(relay)
 	if err != nil {
@@ -142,7 +145,7 @@ func (d pairDoor) approve(ctx context.Context, relay, typed string) error {
 		return err
 	}
 	d.term.say(pair.WantsToJoinLine(asking.Name, asking.Platform))
-	if !d.term.confirm(ctx, pair.CheckQuestion(asking.Check)) {
+	if !d.term.approveLink(ctx, pair.CheckQuestion(asking.Check)) {
 		return d.decline(ctx, who, asking)
 	}
 	if err := who.Approve(ctx, asking); err != nil {

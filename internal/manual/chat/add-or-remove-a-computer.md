@@ -55,10 +55,12 @@ usage: codeaf pair [--name <name>] | codeaf pair approve <link-or-code> | codeaf
 ```
 
 - `codeaf pair` with nothing after it is for the NEW device. It asks to join and shows a link.
-- `codeaf pair approve <link-or-code>` is for a device that is already in. It shows who is asking and asks `y / n`. Pasting the link into the chat, or typing `/pair <link>`, does the same thing on a screen.
+- `codeaf pair approve <link-or-code>` is for a device that is already in. It shows who is asking and asks `a / d`. Only `a` approves; `d`, Esc, Enter and anything else decline. Pasting the link into the chat, or typing `/pair <link>`, does the same thing on a screen.
 - `codeaf pair --code` shows a six-digit code that gives your chats to another device, the older way. It is told in the page *Pairing your chats with a second device*.
 - `--name <name>` is what your devices call this computer. See the page *Naming a device*.
 - `--via <address>` names the address of the service to go through when it is not the one this device already uses. Pass it to both `codeaf pair` and `codeaf pair approve`. The new device prints the full approve line with `--via` in it when one is needed.
+
+With a self-hosted address (`CODEAF_SYNC_URL=<url>` or `--via <address>`), the link opens that service's own `/p/<code>` page, and the terminal approval token includes `--via <address>`. It never prints a hosted page link for that invitation. The page shows the token command and an app link that keep the same address; the key stays after `#`. An address without a web page uses only the terminal token. Pasting a self-hosted link into a chat configured for another address sends no request and says `this pairing link uses another sync address — approve it in a terminal with the command shown on the new device`.
 
 A link is good for 10 minutes and one approval. If it ran out, run `codeaf pair` on the new device again. Ctrl+c while it waits ends with `Cancelled. Nothing was paired.`
 
@@ -66,7 +68,7 @@ A link is good for 10 minutes and one approval. If it ran out, run `codeaf pair`
 
 The new device shows a check number of four digits. The device that approves shows the same four digits. Look at both screens. Approve only when they match. If they do not match, decline: somebody else may have used the link.
 
-On the approving screen the number reads `Check number 4821. Approve only if the new device shows the same number.` In a terminal the question reads the same and you answer `y` or `n`.
+On the approving screen the number reads `Check number 4821. Approve only if the new device shows the same number.` In a terminal the question reads the same: `a / d`. Only `a` approves; `d`, Esc, Enter and anything else decline. Code pairing keeps its `y / n` question.
 
 ## Approve a new device — the approve screen, a and d, and decline
 
