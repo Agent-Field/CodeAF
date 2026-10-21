@@ -212,8 +212,9 @@ type job struct {
 	// (jobname.go) and answers, when it answers, well after the job started
 	// saying things. It is empty for a job that has a label already, and for one
 	// whose namer never came back.
-	name  string
-	state jobState
+	callID string
+	name   string
+	state  jobState
 	// exitCode is meaningful only in jobExited.
 	exitCode int
 	ended    time.Time
@@ -269,6 +270,7 @@ type job struct {
 // jobInfo is a job's status copied out from under its lock, so rendering never
 // holds it.
 type jobInfo struct {
+	callID          string
 	outputTruncated bool
 	url             string
 	id              int
@@ -319,6 +321,7 @@ func (j *job) info() jobInfo {
 	return jobInfo{
 		id: j.id, command: j.command, kind: j.kind, label: j.label, detail: j.detail, outputTruncated: truncated, url: url,
 		name:    j.name,
+		callID:  j.callID,
 		logPath: j.logPath,
 		dir:     j.dir,
 		state:   j.state, code: j.exitCode, ticks: j.ticks,
@@ -1162,6 +1165,7 @@ func (r *jobRegistry) startInUnder(ctx context.Context, command, want string, no
 
 	// Record the request before the reaper can observe even an immediate exit.
 	started.notify = len(notify) > 0 && notify[0]
+	started.callID = callIDFrom(ctx)
 
 	// THE SAME STREAMING SHELL A FOREGROUND CALL GETS (internal/exec/bare's
 	// streaming.go). A background job is the one place where block-buffered
@@ -1386,6 +1390,7 @@ func (r *jobRegistry) finish(done *job, code int, note string) {
 // a clock, a timeout, a person's key or a person's steer all take the same
 // process into the same registry and mean different things by it.
 type adoption struct {
+	callID string
 	// quiet leaves the person-visible row to the caller, to be published after
 	// the claim: the process and the job id become one fact under bare's adoption
 	// lock, and the row goes out once that lock is released.
@@ -1433,6 +1438,7 @@ func (r *jobRegistry) adopt(taken *bare.BashCall, how adoption) (*job, error) {
 	// The provenance is written before the job joins the registry, which is the
 	// last instant this goroutine is the only one that can see it.
 	started.owed = how.owed
+	started.callID = how.callID
 	// THE JOIN COMES BEFORE THE ATTACH, so that a refused adoption never points
 	// bash's streams at a sink this registry has just closed and a log it has
 	// just removed. A quiet adoption takes the same door — it only declines the

@@ -166,6 +166,9 @@ func (p bashPromotion) Started(call *bare.BashCall) func() {
 	// Register the result before arming a clock that may fire immediately.
 	// Adoption fills it inside bare's claim, before the waiting call can end.
 	p.agent.inFlightBash.holdResult(call, p.result)
+	if p.callID != "" {
+		p.agent.holdPromotable(p.callID, call)
+	}
 	var timer *time.Timer
 	if seconds := p.agent.config.BashBackgroundAfterSeconds; seconds > 0 {
 		wait := time.Duration(seconds)*time.Second - call.RunningFor()
@@ -192,9 +195,6 @@ func (p bashPromotion) Started(call *bare.BashCall) func() {
 				p.agent.jobs.announceRow(started)
 			}
 		})
-	}
-	if p.callID != "" {
-		p.agent.holdPromotable(p.callID, call)
 	}
 	if timer == nil && p.callID == "" && p.result == nil {
 		return nil
@@ -336,6 +336,14 @@ func (a *Agent) adoptRunningBash(call *bare.BashCall) (string, bool) {
 // the caller knows about the road it came down and this claim does not.
 func (a *Agent) adoptRunningBashAs(call *bare.BashCall, answerFor func(*job) string, how adoption) (*job, bool) {
 	var started *job
+	a.inFlightBash.mu.Lock()
+	for id, held := range a.inFlightBash.calls {
+		if held == call {
+			how.callID = id
+			break
+		}
+	}
+	a.inFlightBash.mu.Unlock()
 	adopted := call.Adopt(func() (string, bool, bool) {
 		var err error
 		started, err = a.jobs.adopt(call, how)

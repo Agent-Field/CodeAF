@@ -451,6 +451,12 @@ func settleOrAsk(word string) TaskSettle {
 // the top half, an update the bottom, and no surface reads a field its kind
 // did not set.
 type TaskNotice struct {
+	// JobCommand, JobCallID and JobExitCode keep facts a job's title cannot carry.
+	// A nil code means the ending was never observed.
+	JobCommand  string `json:"job_command,omitempty"`
+	JobCallID   string `json:"job_call_id,omitempty"`
+	JobExitCode *int   `json:"job_exit_code,omitempty"`
+
 	// Retryable says this producer supports a fresh attempt; admission is checked when requested.
 	Retryable bool
 

@@ -335,7 +335,7 @@ func (a *Agent) keepRunning(ctx context.Context, command string, args keepRunnin
 		a.keepReceipt(notice, decided)
 		return text, isError, nil
 	default:
-		started, err := a.jobs.start(command)
+		started, err := a.jobs.startInUnder(withCallID(context.Background(), callIDFrom(ctx)), command, "")
 		if err != nil {
 			a.keepReceipt(notice, KeepDenied)
 			return "The person chose not to keep it running, and it could not be started as an ordinary job: " + err.Error(), true, nil

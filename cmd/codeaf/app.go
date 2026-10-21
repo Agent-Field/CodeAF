@@ -643,6 +643,9 @@ type appFirst struct {
 
 // appLive is one conversation the process holds.
 type appLive struct {
+	// replayJobs holds history facts recovered once, before the standing lane opens.
+	replayJobs map[int]session.JobNotice
+
 	conn       *appConn
 	box        *appwire.Outbox
 	stopTasks  func()
@@ -1363,6 +1366,11 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 		processes: map[string]appwire.Process{}, logs: map[string]string{},
 		said: map[string]string{}, calls: map[string]string{}, pilots: map[string]func(){},
 	}
+	replayTranscript := conn.Transcript
+	if replayTranscript == "" {
+		b.locked(func() { replayTranscript = a.transcript })
+	}
+	live.replayJobs = appReplayJobs(replayTranscript)
 	startTitles := b.prepareTitles(a, live)
 	title, model := conn.Conv.Title(), conn.Conv.Model()
 	effort := conn.Conv.ReasoningFor(model)
@@ -2821,6 +2829,14 @@ func (b *appBackend) Entries(id, before string, limit int) ([]appwire.Entry, boo
 			return err
 		}
 		notes := func() (*appNoticeReader, error) { return b.noticeLog().Reader(id) }
+		rows, _ := session.ReadProcessNotices(transcript)
+		jobs := make(map[int]session.JobNotice, len(rows))
+		for _, row := range rows {
+			jobs[row.ID] = row
+		}
+		appFillJobHistory(jobs, appRecordItems(record))
+		record.Earlier = appLinkJobHistory(record.Earlier, jobs)
+		record.Entries = appLinkJobHistory(record.Entries, jobs)
 		page, more, err = appEntryPageOf(id, record, at, marks, notes, before, limit, func(item session.DisplayEntry) appwire.ToolFacts {
 			return b.appEntryFacts(a, item)
 		}, b.crewFormedEntries(id), footers)

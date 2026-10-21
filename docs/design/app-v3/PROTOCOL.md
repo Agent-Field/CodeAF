@@ -638,8 +638,16 @@ Quick    { id, agent, title, files: [{path, add, del}], state: "running"|"done"|
            undone > promoted > settled (stopped or done) > running (grew only while awaiting promotion).
            A quick task promoted to a full task is sent as done. conflict is derived only from done,
            never from stopped; a state the engine adds later is sent as itself, never as done.
-Process  { id, agent, title, command, state: "running"|"ended"|"failed"|"stopped",
-           started_at, ended_at?, exit_code?, last_line?, reason? }
+Process  { id, agent, title, command?, state: "running"|"ended"|"failed"|"stopped",
+           started_at?, ended_at?, exit_code?, last_line?, reason? }
+           Replay and live updates use the same id and title = the job's Label().
+           Old records without a start use "<agent>:p<n>"; no timestamp is guessed.
+           command is "" and started_at the zero time when unknown (both always sent). ended_at is the recorded ending,
+           or start + saved elapsed for a settled job when both are known; never for a running job.
+           exit_code is absent when unknown, including failed old rows; failed remains failed.
+           Opening replays kept job rows even when the process shelf is empty; processes.list
+           includes those same rows. Old bash results naming job N supply that job's full
+           command and tool link from history once on open; without a matching call the command stays "".
            reason: why a stopped process stopped when a person did not stop it: "stopped by quit"
            id: "<agent>:p<n>.<start>" — the job's number and when it started, so a process stopped by
            a quit and one started after the restart never share an id; an id naming a process the
@@ -730,8 +738,10 @@ process?: string                 the processes.list / process.changed id of the 
                                  when this backend publishes that row. Absent on begin, ordinary
                                  foreground completion, failure, refusal, rejection and interruption.
                                  The engine carries the registry number and start (or service id) as
-                                 typed result metadata and keeps it in the journal; never inferred from
-                                 output text or ended_at. Older engines and records omit it = unknown.
+                                 typed result metadata and keeps it in the journal. For older records only,
+                                 a bash result beginning "still running as job N" or "job N" links that
+                                 occurrence to the kept job; its arguments supply the full command.
+                                 No matching result means unknown. Never infer a start from ended_at.
                                  A later begin reusing an ended call id starts fresh and has no process.
                                  In history, only process takes its exact source occurrence; existing
                                  facts retain their last same-id source selection for compatibility.
