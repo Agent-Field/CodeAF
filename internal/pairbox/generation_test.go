@@ -104,8 +104,8 @@ func TestJoinerLearnsTheOpeningFromItsFirstAnswer(t *testing.T) {
 	}
 }
 
-// A relay that never names an opening, as the self-hosted one does not, is
-// served as before: the client sends no header and nothing is fenced.
+// C19 keeps older relays usable: one that never names an opening is served
+// as before, and the client sends no header and fences nothing.
 func TestRelayWithoutOpeningsIsServedAsBefore(t *testing.T) {
 	var mu sync.Mutex
 	var carried []string
@@ -114,7 +114,15 @@ func TestRelayWithoutOpeningsIsServedAsBefore(t *testing.T) {
 		mu.Lock()
 		carried = append(carried, r.Header.Get(GenHeader))
 		mu.Unlock()
-		inner.ServeHTTP(w, r)
+		older := httptest.NewRecorder()
+		inner.ServeHTTP(older, r)
+		for name, values := range older.Header() {
+			if name != http.CanonicalHeaderKey(GenHeader) {
+				w.Header()[name] = values
+			}
+		}
+		w.WriteHeader(older.Code)
+		_, _ = w.Write(older.Body.Bytes())
 	}))
 	defer srv.Close()
 	h, ctx := NewHTTP(srv.URL, srv.Client()), context.Background()
