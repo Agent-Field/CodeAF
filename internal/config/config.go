@@ -1012,6 +1012,7 @@ func ClientConfigFor(sources modelsource.Set, model string) provider.Config {
 	effort, _ := provider.ParseEffort(level)
 	service, bare := sources.For(model)
 	configured := provider.Config{
+		SourceID:    service.Source.ID,
 		APIKey:      service.Key,
 		BaseURL:     service.Address,
 		Model:       bare,
