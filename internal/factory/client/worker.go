@@ -98,7 +98,50 @@ func (w *WorkerClient) Heartbeat(ctx context.Context, lease string) (api.WorkerH
 
 // Report sends what the runner wrote since the last report.
 func (w *WorkerClient) Report(ctx context.Context, lease string, report api.WorkerReport) error {
-	_, err := w.send(ctx, http.MethodPost, leasePath(lease, "report"), w.credential, report, nil)
+	// Keep new model evidence out of the JSON older factories decode strictly.
+	// Copy the steps: callers may reuse their report after this send.
+	// Check names are read-side detail; older strict factories accept the original PR shape.
+	if report.PR != nil {
+		cp := *report.PR
+		cp.CheckRuns = nil
+		report.PR = &cp
+	}
+	if report.Merge != nil && report.Merge.PR != nil {
+		merge := *report.Merge
+		pr := *merge.PR
+		pr.CheckRuns = nil
+		merge.PR = &pr
+		report.Merge = &merge
+	}
+	models := map[string]string{}
+	chats := map[string]string{}
+	report.Steps = append([]api.StepReport(nil), report.Steps...)
+	for i := range report.Steps {
+		if chat := report.Steps[i].Chat; chat != "" {
+			chats[report.Steps[i].Name] = chat
+			report.Steps[i].Chat = ""
+		}
+		if model := report.Steps[i].Model; model != "" {
+			models[report.Steps[i].Name] = model
+			report.Steps[i].Model = ""
+		}
+	}
+	extra := http.Header{}
+	if len(chats) > 0 {
+		raw, err := json.Marshal(chats)
+		if err != nil {
+			return err
+		}
+		extra.Set(api.StepChatsHeader, string(raw))
+	}
+	if len(models) > 0 {
+		raw, err := json.Marshal(models)
+		if err != nil {
+			return err
+		}
+		extra.Set(api.StepModelsHeader, string(raw))
+	}
+	_, err := w.sendWith(ctx, http.MethodPost, leasePath(lease, "report"), w.credential, extra, report, nil)
 	return err
 }
 

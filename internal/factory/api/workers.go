@@ -15,6 +15,13 @@ const LiveCapacityHeader = "X-Codeaf-Live-Capacity"
 // LiveCapacityHeaderValue is the only value that attests; anything else is silence.
 const LiveCapacityHeaderValue = "1"
 
+// StepModelsHeader carries execution models beside a report, so older strict
+// factories still receive its results and costs without an unknown JSON field.
+const StepModelsHeader = "X-Codeaf-Step-Models"
+
+// StepChatsHeader publishes live chat identities without breaking older strict servers.
+const StepChatsHeader = "X-Codeaf-Step-Chats"
+
 // WorkerAttach names the machine and its person; consent to unassigned work
 // is explicit and applies only to each named repository.
 type WorkerAttach struct {
@@ -51,6 +58,7 @@ type WorkerAttached struct {
 // WorkerReport carries incremental results. Cost is newly incurred dollars,
 // so a result's own cost is descriptive and is not added a second time.
 type WorkerReport struct {
+	FollowUp   *factory.PRFollowUp `json:"follow_up,omitempty"`
 	Change     *factory.Change     `json:"change,omitempty"`
 	ChangeBase string              `json:"change_base,omitempty"`
 	HeadCommit string              `json:"head_commit,omitempty"`
@@ -86,7 +94,9 @@ type WorkerMerge struct {
 // StepReport carries the last round's full result without exposing Go names.
 // rounds is every finished try. failure is set when this step errored.
 type StepReport struct {
+	Chat  string `json:"chat,omitempty"`
 	Name  string `json:"name"`
+	Model string `json:"model,omitempty"`
 	State string `json:"state,omitempty"`
 	Round int    `json:"round,omitempty"`
 	// StartedAt is when the step's latest round began on the worker; absent
@@ -99,33 +109,36 @@ type StepReport struct {
 
 // StepResult preserves the evidence that later steps need after a restart.
 type StepResult struct {
-	Tests    *factory.TestCounts `json:"tests,omitempty"`
-	Done     bool                `json:"done"`
-	Findings int                 `json:"findings,omitempty"`
-	Claims   []Claim             `json:"claims,omitempty"`
-	Output   string              `json:"output,omitempty"`
-	Exit     int                 `json:"exit,omitempty"`
-	Notes    []string            `json:"notes,omitempty"`
-	Cost     float64             `json:"cost,omitempty"`
-	Chat     string              `json:"chat,omitempty"`
+	PublishSummary []string                `json:"publish_summary,omitempty"`
+	Repair         *factory.CIRepairResult `json:"repair,omitempty"`
+	Tests          *factory.TestCounts     `json:"tests,omitempty"`
+	Done           bool                    `json:"done"`
+	Findings       int                     `json:"findings,omitempty"`
+	Claims         []Claim                 `json:"claims,omitempty"`
+	Output         string                  `json:"output,omitempty"`
+	Exit           int                     `json:"exit,omitempty"`
+	Notes          []string                `json:"notes,omitempty"`
+	Cost           float64                 `json:"cost,omitempty"`
+	Chat           string                  `json:"chat,omitempty"`
 }
 
 // stepResultWire is one step's report in the wire's words, both ways a
 // report crosses: a worker's report of a round ([FromRunReport]) and the
 // pull that hands a job to a worker ([WorkerJob]). [stageResultItem] reads it
-// back. The model rides on the step itself. A plan's edit never crosses (the
+// back. The model rides on the step itself (Step.Model on a pull,
+// StepReport.Model on a worker report). A plan's edit never crosses (the
 // runner applies it as the round ends, and the kept result drops it), nor do
 // Reports and Inferred: they are folded into the round's summary line where
 // the round ran, and that line crosses (steps[].rounds). A field added here is
 // one a factory older than it refuses a worker's whole report for.
 func stepResultWire(r factory.StageResult) *StepResult {
-	return &StepResult{Tests: r.Tests, Done: r.Done, Findings: r.Findings, Claims: mapList(r.Claims, fromClaim),
+	return &StepResult{Repair: r.Repair, PublishSummary: r.PublishSummary, Tests: r.Tests, Done: r.Done, Findings: r.Findings, Claims: mapList(r.Claims, fromClaim),
 		Output: r.Output, Exit: r.Exit, Notes: r.Notes, Cost: r.Spent, Chat: r.Chat}
 }
 
 // stageResultItem is [stepResultWire] read back.
 func stageResultItem(r StepResult) factory.StageResult {
-	return factory.StageResult{Tests: r.Tests, Done: r.Done, Findings: r.Findings, Claims: mapList(r.Claims, toClaim),
+	return factory.StageResult{Repair: r.Repair, PublishSummary: r.PublishSummary, Tests: r.Tests, Done: r.Done, Findings: r.Findings, Claims: mapList(r.Claims, toClaim),
 		Output: r.Output, Exit: r.Exit, Notes: r.Notes, Spent: r.Cost, Chat: r.Chat}
 }
 
@@ -171,18 +184,19 @@ type WorkerDone struct {
 
 // ToWorkerReport is the single vocabulary boundary for worker writes.
 func ToWorkerReport(r WorkerReport) factory.RunReport {
-	out := factory.RunReport{HeadCommit: r.HeadCommit, Publishing: r.Publishing, Change: r.Change, ChangeBase: r.ChangeBase, Thread: r.Thread, Delivered: r.Delivered, Cost: r.Cost, Claims: mapList(r.Claims, toClaim), Talk: r.Talk, Notes: r.Notes, Publish: r.Publish, CommentURL: r.CommentURL, Room: r.Room}
+	out := factory.RunReport{FollowUp: r.FollowUp, HeadCommit: r.HeadCommit, Publishing: r.Publishing, Change: r.Change, ChangeBase: r.ChangeBase, Thread: r.Thread, Delivered: r.Delivered, Cost: r.Cost, Claims: mapList(r.Claims, toClaim), Talk: r.Talk, Notes: r.Notes, Publish: r.Publish, CommentURL: r.CommentURL, Room: r.Room}
 	if r.Pipeline != nil {
 		stages, stream := unsteps(Job{Steps: r.Pipeline, Desk: &JobDesk{Run: &Run{}}})
 		out.Pipeline = &factory.PipelineChange{Stages: stages, Phases: stream.Phases}
 	}
 	for _, s := range r.Steps {
-		stage := factory.StageReport{Name: s.Name, State: factory.PhaseState(s.State), Round: s.Round, Failure: failureItem(s.Failure), Rounds: roundsItem(s.Rounds)}
+		stage := factory.StageReport{Name: s.Name, Chat: s.Chat, State: factory.PhaseState(s.State), Round: s.Round, Failure: failureItem(s.Failure), Rounds: roundsItem(s.Rounds)}
 		if s.StartedAt != nil {
 			stage.Started = *s.StartedAt
 		}
 		if res := s.Result; res != nil {
 			item := stageResultItem(*res)
+			item.Model = s.Model
 			stage.Result = &item
 		}
 		out.Stages = append(out.Stages, stage)
@@ -204,15 +218,16 @@ func ToWorkerReport(r WorkerReport) factory.RunReport {
 // FromRunReport is the worker's half of the same boundary: what its runner
 // wrote, in the wire's words. [ToWorkerReport] reads it back.
 func FromRunReport(r factory.RunReport) WorkerReport {
-	out := WorkerReport{HeadCommit: r.HeadCommit, Publishing: r.Publishing, Change: r.Change, ChangeBase: r.ChangeBase, Thread: r.Thread, Delivered: r.Delivered, Cost: r.Cost, Claims: mapList(r.Claims, fromClaim), Talk: r.Talk, Notes: r.Notes,
+	out := WorkerReport{FollowUp: r.FollowUp, HeadCommit: r.HeadCommit, Publishing: r.Publishing, Change: r.Change, ChangeBase: r.ChangeBase, Thread: r.Thread, Delivered: r.Delivered, Cost: r.Cost, Claims: mapList(r.Claims, fromClaim), Talk: r.Talk, Notes: r.Notes,
 		Log: mapList(r.Log, fromLog), Publish: r.Publish, CommentURL: r.CommentURL, Room: r.Room}
 	if p := r.Pipeline; p != nil {
 		out.Pipeline = steps(factory.Item{Stages: p.Stages, Stream: &factory.Stream{Phases: p.Phases}})
 	}
 	for _, s := range r.Stages {
-		step := StepReport{Name: s.Name, State: string(s.State), Round: s.Round, StartedAt: timeOrNil(s.Started), Failure: failureWireOrNil(s.Failure), Rounds: roundsWire(s.Rounds)}
+		step := StepReport{Name: s.Name, Chat: s.Chat, State: string(s.State), Round: s.Round, StartedAt: timeOrNil(s.Started), Failure: failureWireOrNil(s.Failure), Rounds: roundsWire(s.Rounds)}
 		if res := s.Result; res != nil {
 			step.Result = stepResultWire(*res)
+			step.Model = res.Model
 		}
 		out.Steps = append(out.Steps, step)
 	}

@@ -692,11 +692,10 @@ func TestV2StartRechecksTheItemOnGitHub(t *testing.T) {
 		t.Fatal("a job that was not started is marked to start")
 	}
 
-	merged := f.create(t, factory.Item{Num: 13, Kind: factory.KindPR, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam"})
-	standing[13] = github.StandingMerged
-	f.post(t, merged, "run", "", 409)
-	if j := f.read(t, merged); j.DoneHow != "merged" {
-		t.Fatalf("merged job %+v", j)
+	legacy := f.create(t, factory.Item{Num: 13, Kind: factory.KindPR, State: factory.StateNew, Assignee: "sam"})
+	f.post(t, legacy, "run", "", 404)
+	if cur, _ := f.st.Get(legacy.ID); cur.State != factory.StateNew {
+		t.Fatal("unsupported PR job changed")
 	}
 
 	open := f.create(t, factory.Item{Num: 14, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam"})
@@ -713,7 +712,7 @@ func TestV2StartRechecksTheItemOnGitHub(t *testing.T) {
 
 	typed := f.create(t, factory.Item{Origin: factory.OriginTerminal, State: factory.StateNew, Assignee: "sam"})
 	f.post(t, typed, "run", "", 200)
-	if reads[0] != 0 || reads[12] != 1 || reads[13] != 1 || reads[14] != 1 || reads[404] != 1 {
+	if reads[0] != 0 || reads[12] != 1 || reads[13] != 0 || reads[14] != 1 || reads[404] != 1 {
 		t.Fatalf("reads %v", reads)
 	}
 	events, _ := f.rec.Since(context.Background(), time.Time{})
@@ -723,7 +722,7 @@ func TestV2StartRechecksTheItemOnGitHub(t *testing.T) {
 			got = append(got, fmt.Sprintf("%d %s %s", e.Job, e.Verb, e.Actor.Kind))
 		}
 	}
-	if want := []string{fmt.Sprintf("%d closed factory", closed.ID), fmt.Sprintf("%d merged factory", merged.ID)}; strings.Join(got, "|") != strings.Join(want, "|") {
+	if want := []string{fmt.Sprintf("%d closed factory", closed.ID)}; strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Fatalf("recorded %v, want %v", got, want)
 	}
 }
@@ -995,5 +994,40 @@ func TestV2AJobsModelIsItsPersonsToChoose(t *testing.T) {
 	}
 	if len(signals) != 1 || signals[0].Verb != lease.SignalModel || signals[0].Words != "vendor/model-c" {
 		t.Fatalf("signals = %+v", signals)
+	}
+}
+
+func TestSoloStartRecordsBranchOwnerWithoutAssignment(t *testing.T) {
+	f := newV2Jobs(t)
+	it := f.create(t, factory.Item{State: factory.StateNew})
+	f.post(t, it, "start_now", "", 200)
+	saved, err := f.st.Get(it.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Starter != "sam" || saved.Person() != "sam" {
+		t.Fatalf("solo start lost caller: starter=%q person=%q", saved.Starter, saved.Person())
+	}
+}
+
+func TestStandalonePRAndCIJobCreationIsRefusedBeforeOpeningAnIssue(t *testing.T) {
+	f := newV2Jobs(t)
+	f.seam.New = func(string, string) (int, error) { t.Fatal("unsupported job reached creation"); return 0, nil }
+	f.h.Close()
+	f.h = serve.New(f.seam, f.cfg)
+	before, err := f.st.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"pr", "ci"} {
+		body := fmt.Sprintf(`{"repo":"acme/api","title":"unsupported","pipeline":%q,"issue":true}`, name)
+		w := verbRequest(f.h, "POST", "/v1/jobs", body)
+		if w.Code != 422 || !strings.Contains(w.Body.String(), "issue pipeline only") {
+			t.Fatalf("%s job creation: %d %s", name, w.Code, w.Body)
+		}
+	}
+	after, err := f.st.List()
+	if err != nil || len(after) != len(before) {
+		t.Fatalf("unsupported job was saved: %v %v", after, err)
 	}
 }

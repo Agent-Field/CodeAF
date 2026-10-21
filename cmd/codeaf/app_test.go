@@ -1897,3 +1897,31 @@ func TestAppNoticeEntriesCarryOnlyTheEnginesTypedKinds(t *testing.T) {
 		}
 	}
 }
+
+// Reopening a completed stage or any saved conversation keeps its own choice.
+func TestAppReopenKeepsTheSavedModel(t *testing.T) {
+	rec := newAppRecorder()
+	backend := newFakeBackend(rec, func(ask appOpenAsk) (*appConn, error) {
+		model := ask.Model
+		if model == "" {
+			model = "profile/default"
+		}
+		return &appConn{Conv: &fakeConversation{model: model}, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
+	})
+	defer backend.Close()
+	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: t.TempDir(), Model: "vendor/strong"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := backend.find(agent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.gate.Lock()
+	backend.release(a)
+	a.gate.Unlock()
+	reopened, _, err := backend.ensure(a)
+	if err != nil || reopened.Model != "vendor/strong" {
+		t.Fatalf("reopened=%+v, err=%v", reopened, err)
+	}
+}

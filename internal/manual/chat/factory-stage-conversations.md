@@ -8,13 +8,10 @@ made in the item's own team, where it joins as the item and the stage: `#12 · r
 titles itself from its work, and that title is what its tab shows). Its handle in the team is
 the step's own name, `@review`, or `@review2` for a second round's conversation, and it is never
 renamed. It opens with a brief: the
-stage's ask, one line saying it is that step of a run on the pull request or issue, the item's
-title and body (the first 6,000 characters), who opened it and its labels, and for a pull
-request its base and head (`into main from alice:feature`), its line counts, each check with its
-state, the issue it closes (`linked: #3`) and its changed files with their counts; the last
-comments; where its work tree stands (a pull request's is at its head, and the brief names the
-`git diff origin/<base>...HEAD` that shows the change, so the step never goes to the web for
-it); the run's stages in order
+stage's ask, one line saying it is that step of a run on the issue, the item's
+title and body (the first 6,000 characters), who opened it and its labels; the last
+comments; where its worktree stands and the diff command that shows the change;
+the run's stages in order
 with this one named (`stages: plan › write › … · this is plan: do this stage's part, and leave
 the rest to the stages after it`), your notes, what the steps before it reported (the plan
 whole, a line and the words of each step, every claim so far: see what a step is handed by the
@@ -36,8 +33,8 @@ It is given two tools that no other conversation has:
 - `stage_result` ends the stage's work: done or not, how many findings are still open, its
   claims with their evidence, notes for the stages after it, and what it did and found (a plan
   step writes its whole plan there, for the steps after it).
-  It answers `reported · the last report you send before you stop is the one the factory
-  reads`, and may be called again when the result changes (see a step that reports again).
+  It answers `reported`. A successful done report ends the step immediately, without another model reply.
+  Use `final: false` for an intermediate report that can change (see a step that reports again).
 - `plan_edit` proposes adding, skipping or switching on stages. It answers
   `proposed · the runner applies it within the recipe's bounds`; nothing changes from the
   call itself, and proof and your gates are never skipped.
@@ -128,12 +125,12 @@ runs the step once more with the words you add; stop the job is the job's own St
 
 ## a step that reports again — the latest report stands, updated, not cut off after reporting
 
-`stage_result` may be called more than once in a round. Each call replaces the one before, so
-a step that reports `done: false` because a test fails, fixes the test and reports `done: true`
-is judged on the second. The round ends when the step stops (its turn over and nothing it
-handed out still running), not at a fixed time after its first report: a step that reports
-and keeps working is never cut off, and one that reports and goes quiet ends at once. The
-two-hour wall still ends a step that never stops, and its last report stands.
+`stage_result` may be called more than once in a round. Intermediate reports use `final: false`;
+Each call replaces the one before until the final report. `done: true` is final by default and ends the model turn
+immediately after the tool receipt is saved. `final: true` can also finish an incomplete step.
+An intermediate report is never cut off merely because it reported. The runner judges a final
+report against the step's rule. It never needs an extra model reply to
+accept a final report. The two-hour wall still bounds a step that never finishes.
 
 The Timeline shows the final report only, with `· updated 1 time` or `· updated 2 times` when
 the step changed it, so you can see it corrected itself.
@@ -221,7 +218,9 @@ as the manager's own message and marked as the run's (a surface may draw them as
   `plan asks you: <question> · <why>` (see a stage asks a question, on the factory page);
 - `answered: yes`, `answered: no` or `answered: <your words>`, however you answered;
 - `steer: <words>`, `changes requested: <words>`;
-- `landed · proof sheet ready · your approval`, `shipped`, `stopped`, `paused`, `resumed`.
+- the final approval message explains pushing the branch and creating a draft pull request;
+- the publication receipt links the draft PR or issue comment; publication does not mean merged;
+- `stopped`, `paused`, `resumed`.
 
 A line about one step's round (`started`, `done`, an `asking you:` it waits on, the `stopped`
 that cut it) also names that step and round beside its words, so a surface that draws each round
@@ -296,3 +295,100 @@ its chat's spend is on the spend page only.
 factory's own clone, `~/.codeaf/v3/factory/repos/<owner>/<name>`, once the runner has made one;
 else in an empty folder of the job's own, `~/.codeaf/v3/factory/chats/<id>`. Never in the
 folder the window or the app was opened in.
+
+## Which model and branch does a factory step use?
+
+A step opens on the model selected for its job. A finished step's chat shows
+the model recorded for that step when it is reopened, rather than the current
+profile default. New branches made by the app use the job person's GitHub
+login as their namespace; existing jobs keep their recorded branches.
+
+## What happens when fd is missing?
+
+The find tool searches with its built-in file walker. It downloads nothing.
+Without fd it skips .git, node_modules and vendor, does not follow directory
+symlinks, and does not apply .gitignore. Its description states those limits.
+
+
+## automatic plan approvals and a separate publishing approval
+
+Default approval steps are optional. Before Start, switch an optional approval step off to
+continue automatically after its preceding step. Only you can choose that setting; a stage or
+the manager cannot skip your approval. A repository can still fix a gate in its pipeline.
+The step list shows the setting and the Timeline keeps the change. Skipping an internal gate
+keeps the separate publishing approval: green proof does not silently publish your branch.
+A recipe deliberately containing no approval stages retains its existing self-publish mode.
+
+## command receipts, live progress and GitHub checks after publishing
+
+A running step publishes its chat identity immediately, so the desktop can show actions and
+open that conversation while it works. Provider turn errors are recovery events; only the
+runner announces the final stage outcome. Progress uses paths relative to the checkout.
+Completed stage results carry command receipts in their notes: the command, starting folder,
+outcome and explicit test outcomes when the output has them. A final PASS summary is not a test.
+Later steps receive these receipts instead of rediscovering the working directory and flags.
+
+Approve at the final gate pushes the approved commit and creates a draft PR. Its description
+summarizes the implementation and validation, linking the issue instead of copying its body
+and attribution. The app shows GitHub check totals and failed check names separately from local
+proof, records check changes in Timeline, and offers Open PR and View GitHub checks. A draft
+needs to be marked ready on GitHub before merging; failing checks still block Merge.
+
+
+## the factory manager does not poll or judge background completion
+
+The factory runner owns the whole pipeline as well as its stages. A manager conversation
+has no second goal owner or completion-check loop. It answers your words and stage questions,
+while recorded runner progress and the next-action receipt explain what is happening.
+A provider timeout inside a stage is not a terminal pipeline failure. Once a final report has
+been accepted, another model reply is not required to finish the stage.
+
+
+## factory chats belong to their job
+
+Open the manager and step conversations from the job. They do not appear in Agents.
+Every round keeps durable job ownership, including earlier rounds after a restart.
+Drop deletes the job's local conversations, attachments and team records together with
+its run data. Ordinary conversations in the same workspace are preserved. Generated
+stage chats from older versions are recognized by their factory worktree and opening brief.
+A step conversation has a visible Back to job conversation button. Completed results
+retain their full Markdown; a waiting approval does not display a preparing animation.
+
+## Follow PR — CI repair, requested changes and merge conflicts
+
+After publication, one final **Follow PR** step watches the issue's open PR on the
+factory's normal GitHub poll. Failed checks, requested review changes, current inline
+review feedback and merge conflicts can queue another round in that same step.
+Repeated observations do not start duplicate repairs. Healthy checks leave the job
+watching until GitHub reports merge or closure. General PR discussion comments are
+not a repair trigger. Closing the app pauses local polling and workers.
+
+The original changed-file list is context, not a publish restriction. Necessary
+dependency and test changes are allowed within the issue objective. The repair receives
+check names and log evidence, with truncation called out when complete logs do not fit.
+It reconciles remote changes, runs checks and reports its outcome. Failed checks block
+completion; passing local checks do not claim that GitHub CI passed. Repairs have a
+spending cap and at most three consecutive attempts before asking you; successful
+checks reset the attempt count. Missing access or an unresolved decision can also pause.
+
+## Approve publication and subsequent repair pushes
+
+Initial publication approval explains that it pushes the branch, creates a draft PR and
+authorizes checked maintenance pushes to that same PR within the job budget. The server
+checks that consent against the original approval record. Before each push it rereads
+the PR; a closed PR or an unexpected head refuses the push. Maintenance never creates
+a replacement PR, rewrites remote history, marks a draft ready or merges. A job without recorded
+publication consent still asks before pushing its repair. Merge remains your decision.
+Drop and turning the repository off stop the watch.
+
+## Take over and Resume pipeline
+
+**Take over** pauses automation and opens the working conversation with its existing
+worktree and context. Its spend still counts toward the job budget. Working chats stay
+inside the job and out of Agents. Stop any active manual turn before **Resume pipeline**;
+resuming checks the current work and continues on the same issue and PR. Finished jobs
+and a publication already underway cannot change control.
+
+The manager's `factory_follow_pr` tool turns an explicit request such as “fix it anyway”
+into another maintenance investigation. It needs an open linked PR and the original
+publication approval; it refuses manual mode or work already running. It does not merge.

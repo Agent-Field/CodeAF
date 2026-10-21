@@ -394,3 +394,38 @@ func stringify(v reflect.Value) string {
 }
 
 func fmtSprint(v reflect.Value) string { return v.String() }
+
+// New evidence must not cause an old strict factory to lose the report's cost.
+func TestWorkerModelsLeaveTheLegacyReportBodyUnchanged(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		var body api.WorkerReport
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+			w.WriteHeader(400)
+			return
+		}
+		if len(body.Steps) != 1 || body.Steps[0].Model != "" || body.Steps[0].Chat != "" || body.Cost != .25 {
+			t.Errorf("legacy body: %+v", body)
+		}
+		var chats map[string]string
+		if err := json.Unmarshal([]byte(r.Header.Get(api.StepChatsHeader)), &chats); err != nil || chats["proof"] != "/worker/proof.jsonl" {
+			t.Errorf("chat header: %v %v", chats, err)
+		}
+		var models map[string]string
+		if err := json.Unmarshal([]byte(r.Header.Get(api.StepModelsHeader)), &models); err != nil || models["proof"] != "vendor/strong" {
+			t.Errorf("model header: %v %v", models, err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	cli := client.Open(srv.URL, "")
+	report := api.WorkerReport{Cost: .25, Steps: []api.StepReport{{Name: "proof", Model: "vendor/strong", Chat: "/worker/proof.jsonl", Result: &api.StepResult{Done: true}}}}
+	if err := cli.Worker("credential").Report(context.Background(), "lease", report); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 || report.Steps[0].Model != "vendor/strong" {
+		t.Fatalf("calls=%d, mutated report=%+v", calls, report)
+	}
+}

@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -104,7 +105,7 @@ func TestStageResultHandsTheDoorWhatTheModelReported(t *testing.T) {
 	out, isErr := callStageTool(t, tool, `{"done":true,"findings":1,
 		"claims":[{"text":"  refunds   count once ","ok":true,"evidence":"TestRefund passes","medium":" Test "}],
 		"notes":["the export changed",""],"output":"  one finding left  "}`)
-	if isErr || out != "reported · the last report you send before you stop is the one the factory reads" {
+	if isErr || out != "reported" {
 		t.Fatalf("result = %q (error %v)", out, isErr)
 	}
 	want := factory.StageResult{Done: true, Findings: 1, Notes: []string{"the export changed"}, Output: "one finding left",
@@ -164,7 +165,7 @@ func TestPlanEditHandsTheDoorAProposalAndChangesNothing(t *testing.T) {
 // THE DESCRIPTIONS SAY WHAT A STAGE IS, because the model has nothing else to
 // learn it from: no sentence on the page names these verbs.
 func TestTheStageDescriptionsSayWhatAStageIsAndHowItEnds(t *testing.T) {
-	for _, want := range []string{"IS one stage of a factory item", "its brief", "tasks", "Report this step's result. Call it again if your result changes; the last call before you stop is the one that counts.", "until clean needs zero", "Nothing is posted anywhere"} {
+	for _, want := range []string{"IS one stage of a factory item", "its brief", "tasks", "Successful done ends the step immediately; use final false for an intermediate report.", "until clean needs zero", "Nothing is posted anywhere"} {
 		if !strings.Contains(stageResultDescription, want) {
 			t.Errorf("stage_result's description lacks %q", want)
 		}
@@ -267,5 +268,23 @@ func TestAStageConversationHasNoGoalOwnerAndIsStillAskedIfItIsGoing(t *testing.T
 	})
 	if plain.steward() == nil {
 		t.Fatal("an unattended run under a wall lost its goal owner")
+	}
+}
+
+func TestFactoryManagerDoesNotOwnOrPollPipelineCompletion(t *testing.T) {
+	talk := filepath.Join(t.TempDir(), "manager.jsonl")
+	door := &jobChatStub{talk: talk}
+	manager, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.SessionFile = talk
+		c.JobChat = door
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+		c.AskConsent = true
+	})
+	if manager.steward() != nil {
+		t.Fatal("factory manager has a second completion owner")
+	}
+	if manager.checkpoints(context.Background(), userMessage{wake: true}) {
+		t.Fatal("manager completion checker polls the runner")
 	}
 }

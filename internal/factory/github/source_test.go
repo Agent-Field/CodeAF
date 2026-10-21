@@ -191,8 +191,8 @@ func TestReadMapsEveryField(t *testing.T) {
 		t.Fatalf("read: %v", err)
 	}
 	got := byNum(items)
-	if len(items) != 2 {
-		t.Fatalf("read %d items, want the issue and the pull request once each: %+v", len(items), items)
+	if len(items) != 1 {
+		t.Fatalf("read %d items, want only the issue: %+v", len(items), items)
 	}
 	is := got[7]
 	if is.Kind != factory.KindIssue || is.Repo != "api" || is.Product != "acme" || is.Title != "fix the ledger double count" ||
@@ -204,7 +204,10 @@ func TestReadMapsEveryField(t *testing.T) {
 	if n := len([]rune(is.Body)); n != bodyLimit {
 		t.Fatalf("the issue body kept %d characters, want %d", n, bodyLimit)
 	}
-	pr := got[9]
+	pr, err := src.Refetch(context.Background(), factory.Item{Kind: factory.KindPR, Origin: factory.OriginForge, Repo: "api", Product: "acme", Num: 9})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if pr.Kind != factory.KindPR || pr.Tier != factory.TierOwner || pr.Checks != "ci running" || pr.Diff != "+30 −25" ||
 		pr.Triage.Size != "M" || pr.Triage.SizeFrom != factory.SizeFromDiff || pr.Author != "santosh" || pr.Labels[0] != "ui" {
 		t.Fatalf("the pull request is mapped wrong: %+v", pr)
@@ -228,42 +231,23 @@ func TestReadUsesTheCursorAndTheETags(t *testing.T) {
 		t.Fatal(err)
 	}
 	items, next2, err := src.Read(ctx, next)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(items) != 0 {
-		t.Fatalf("an unchanged repository read %d items: %+v", len(items), items)
-	}
-	if next2 != next {
-		t.Fatalf("the cursor moved on nothing: %q then %q", next, next2)
+	if err != nil || len(items) != 0 || next2 != next {
+		t.Fatalf("unchanged issue list: %+v %q %v", items, next2, err)
 	}
 	if got := f.sinces[len(f.sinces)-1]; got != f.t0.Add(2*time.Hour).Format(time.RFC3339) {
-		t.Fatalf("the second read asked since %q", got)
-	}
-	if n := f.hit("GET /repos/acme/api/pulls/9"); n != 1 {
-		t.Fatalf("an unchanged pull request's line counts were read %d times", n)
-	}
-	if n := f.hit("GET /repos/acme/api/collaborators/bob/permission"); n != 1 {
-		t.Fatalf("a standing was asked %d times; it is kept for the process", n)
+		t.Fatal(got)
 	}
 	f.mu.Lock()
 	f.checksRun = false
 	f.mu.Unlock()
 	items, _, err = src.Read(ctx, next2)
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || len(items) != 0 {
+		t.Fatalf("unrelated PR checks generated work: %+v %v", items, err)
 	}
-	if len(items) != 1 || items[0].Num != 9 || items[0].Checks != "ci ✓" {
-		t.Fatalf("finished checks did not bring the pull request back green: %+v", items)
-	}
-	items, _, _ = src.Read(ctx, next2)
-	if len(items) != 0 {
-		t.Fatalf("green checks were reported again: %+v", items)
-	}
-	runs := f.hit("GET /repos/acme/api/commits/abc/check-runs")
-	_, _, _ = src.Read(ctx, next2)
-	if f.hit("GET /repos/acme/api/commits/abc/check-runs") != runs {
-		t.Fatal("finished checks on an unchanged head were asked again")
+	for _, path := range []string{"GET /repos/acme/api/pulls", "GET /repos/acme/api/pulls/9", "GET /repos/acme/api/commits/abc/check-runs"} {
+		if f.hit(path) != 0 {
+			t.Fatalf("issue import fetched unrelated PR data: %s", path)
+		}
 	}
 }
 
@@ -277,7 +261,7 @@ func TestReadKeepsGoingPastABrokenRepository(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "acme/gone") {
 		t.Fatalf("a missing repository was not named: %v", err)
 	}
-	if len(items) != 2 {
+	if len(items) != 1 {
 		t.Fatalf("the good repository's items were lost: %d", len(items))
 	}
 	if strings.Contains(next, "acme/gone") {
@@ -322,7 +306,7 @@ func TestPollCreatesThenUpdatesWithoutClobbering(t *testing.T) {
 		t.Fatal(err)
 	}
 	items, _ := st.List()
-	if len(items) != 2 {
+	if len(items) != 1 {
 		t.Fatalf("the first poll made %d items", len(items))
 	}
 	issue := byNum(items)[7]
@@ -354,7 +338,7 @@ func TestPollCreatesThenUpdatesWithoutClobbering(t *testing.T) {
 		t.Fatal(err)
 	}
 	items, _ = st.List()
-	if len(items) != 2 {
+	if len(items) != 1 {
 		t.Fatalf("an update made a second copy: %d items", len(items))
 	}
 	got := byNum(items)[7]
@@ -563,40 +547,27 @@ func TestPullHeadNamesAForksOwner(t *testing.T) {
 
 // Draft transitions must reach an existing job without replacing its local
 // change facts, including the transition back to a ready PR.
-func TestPollRetainsDraftFlagAndLocalChangeFacts(t *testing.T) {
+func TestPollDoesNotImportStandalonePRJobs(t *testing.T) {
 	f := newFixture()
 	_, api := f.serve(t)
 	st := openStore(t)
-	if err := st.SetRepos([]string{"acme/api"}); err != nil {
-		t.Fatal(err)
-	}
+	st.SetRepos([]string{"acme/api"})
 	src := New(api, nil, nil)
-	ctx := context.Background()
-	now := func() time.Time { return f.t0 }
-	if _, err := PollOnce(ctx, src, st, "", now); err != nil {
+	if _, err := PollOnce(context.Background(), src, st, "", time.Now); err != nil {
 		t.Fatal(err)
 	}
-	items, _ := st.List()
-	pr := byNum(items)[9]
-	change := &factory.Change{Branch: "factory/pr-9"}
-	if err := st.Update(pr.ID, func(it *factory.Item) error { it.Change = change; return nil }); err != nil {
+	items, err := st.List()
+	if err != nil || len(items) != 1 || items[0].Kind != factory.KindIssue {
+		t.Fatalf("PR job imported: %+v %v", items, err)
+	}
+	if f.hit("GET /repos/acme/api/pulls") != 0 {
+		t.Fatal("PR import API still called")
+	}
+	if err := Merge(st, Name, []factory.Item{{Repo: "api", Product: "acme", Num: 9, Kind: factory.KindPR, Title: "legacy source"}}); err != nil {
 		t.Fatal(err)
 	}
-	for _, draft := range []bool{true, false} {
-		f.mu.Lock()
-		f.pullDraft = draft
-		if draft {
-			f.pullTag = `"draft"`
-		} else {
-			f.pullTag = `"ready"`
-		}
-		f.mu.Unlock()
-		if _, err := PollOnce(ctx, src, st, "", now); err != nil {
-			t.Fatal(err)
-		}
-		got, err := st.Get(pr.ID)
-		if err != nil || got.Draft != draft || got.Change == nil || got.Change.Branch != change.Branch {
-			t.Fatalf("draft transition = %+v, %v", got, err)
-		}
+	items, _ = st.List()
+	if len(items) != 1 {
+		t.Fatal("legacy source bypassed issue-only import")
 	}
 }

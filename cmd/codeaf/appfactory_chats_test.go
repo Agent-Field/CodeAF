@@ -34,6 +34,15 @@ func TestAJobsChatsAreItsAgentMadeOnceAndItsStepsThatRan(t *testing.T) {
 	if err != nil || strings.TrimSpace(kept.Talk) == "" || appAgentID(kept.Talk) != first.Agent {
 		t.Fatalf("the job does not keep its agent: %+v %v", kept.Talk, err)
 	}
+	listed, err := s.backend.ListAgents("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range listed {
+		if a.ID == first.Agent {
+			t.Fatal("job manager leaked into Agents")
+		}
+	}
 	if !s.backend.isHeld(first.Agent) {
 		t.Fatal("the job's agent is not held open for the app")
 	}
@@ -123,5 +132,29 @@ func TestAJobsChatsNameEachFinishedRoundsChat(t *testing.T) {
 	}
 	if !s.backend.isHeld(firstID) {
 		t.Fatal("an earlier round's chat is not held open for the app")
+	}
+}
+
+func TestFinishedStageChatKeepsItsExecutionModel(t *testing.T) {
+	s := newLocalSetup(t)
+	s.backend.open = func(ask appOpenAsk) (*appConn, error) {
+		return &appConn{Conv: &fakeConversation{model: "profile/default"}, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
+	}
+	st := s.start()
+	transcript, id := jobConversation(t)
+	it, err := s.backend.local.host.floor.Create(factory.Item{Repo: "acme/api", Num: 9, Title: "Fix it", Kind: factory.KindIssue, State: factory.StateNeedsYou,
+		Stream: &factory.Stream{Phases: []factory.Phase{{Name: "plan", Kind: factory.StageChat, State: factory.PhaseDone, Chat: transcript, Result: &factory.StageResult{Model: "vendor/strong"}}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var chats appwire.FactoryJobChats
+	s.must("factory.job_chats", map[string]any{"factory": st.Factory, "job": it.ID}, &chats)
+	a, err := s.backend.find(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, _, err := s.backend.ensure(a)
+	if err != nil || view.Model != "vendor/strong" {
+		t.Fatalf("model=%s err=%v", view.Model, err)
 	}
 }

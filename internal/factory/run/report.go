@@ -13,6 +13,9 @@ import (
 // ApplyReport runs inside the store's existing Update path. The same fold,
 // claim merge and bounded log writes serve both local rounds and HTTP reports.
 func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) error {
+	if it.Manual {
+		return fmt.Errorf("automatic worker no longer owns this job; manual control is active")
+	}
 	if math.IsNaN(report.Cost) || math.IsInf(report.Cost, 0) || report.Cost < 0 {
 		return fmt.Errorf("cost must be a finite nonnegative dollar amount")
 	}
@@ -50,6 +53,14 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 			return fmt.Errorf("failed publishing requires a code")
 		}
 		it.PublishStatus = p
+	}
+	if report.FollowUp != nil {
+		if it.FollowUp == nil || report.FollowUp.HeadSHA != it.FollowUp.HeadSHA || report.FollowUp.Attempt != it.FollowUp.Attempt {
+			return fmt.Errorf("follow-up identity changed")
+		}
+		f := *it.FollowUp
+		f.State, f.Reason = report.FollowUp.State, report.FollowUp.Reason
+		it.FollowUp = &f
 	}
 	ensureStream(it, now)
 	if err := reportRoom(it, report.Room); err != nil {
@@ -272,6 +283,9 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 		return fmt.Errorf("step round must not be negative")
 	}
 	ph := &it.Stream.Phases[i]
+	if step.Chat != "" {
+		ph.Chat = step.Chat
+	}
 	if step.State != "" {
 		setPhaseState(ph, step.State, now)
 	}
@@ -338,7 +352,7 @@ func foldResult(it *factory.Item, st factory.Stage, i int, res factory.StageResu
 	sheet := makesSheet(st)
 	for _, cl := range res.Claims {
 		switch {
-		case cl.Medium == "policy":
+		case cl.Medium == "policy" && sheet:
 			it.Policy = mergeClaim(it.Policy, cl)
 		case sheet:
 			it.Proof = mergeClaim(it.Proof, cl)
@@ -403,7 +417,7 @@ func FinishReport(it *factory.Item, state factory.State, now time.Time) error {
 	case "", factory.StateLanded:
 		landItem(it, now)
 	case factory.StateShipped:
-		if factory.HasApprove(*it) || len(it.Proof) == 0 || !clean(*it) {
+		if factory.NeedsPublishApproval(*it) || len(it.Proof) == 0 || !clean(*it) {
 			return fmt.Errorf("job requires proof approval")
 		}
 		landItem(it, now)
@@ -427,14 +441,22 @@ const logShippedHabit = "shipped · habit · proof all green"
 
 func landItem(it *factory.Item, now time.Time) bool {
 	it.State = factory.StateLanded
+	if it.FollowUp != nil && (it.FollowUp.State == "queued" || it.FollowUp.State == "running") {
+		f := *it.FollowUp
+		f.State, f.Reason = "waiting_approval", "Repair and proof passed locally; updating the existing PR."
+		it.FollowUp = &f
+	}
 	it.Question, it.QKind = "", ""
 	it.Asking = nil
 	it.Stream.Ended = now
 	it.Stream.Paused = false
 	if n := len(it.Stream.Phases); n > 0 {
 		it.Stream.Cur = n - 1
+		if it.PullRequest == nil && it.Stream.Phases[n-1].Name == factory.FollowPRStep && n > 1 {
+			it.Stream.Cur = n - 2
+		}
 	}
-	if !factory.HasApprove(*it) && len(it.Proof) > 0 && clean(*it) {
+	if it.FollowUp == nil && !factory.NeedsPublishApproval(*it) && len(it.Proof) > 0 && clean(*it) {
 		it.State = factory.StateShipped
 		loopSay(it, now, "ok", logShippedHabit)
 		return true

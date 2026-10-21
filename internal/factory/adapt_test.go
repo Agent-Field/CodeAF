@@ -301,7 +301,10 @@ func TestEditAddsAndSkipsApproveSteps(t *testing.T) {
 	if err != nil || got.Stages[1].Name != "approve2" || got.Stages[1].Kind != factory.StageGate {
 		t.Fatalf("second approve = %+v, %v", got.Stages, err)
 	}
-	got, lines, err = factory.Edit(got, factory.RunEdit{By: factory.ByManager, Skip: []string{"approve2", "sign"}}, factory.DefaultRecipe(), factory.EditBeforeRun)
+	if _, _, err := factory.Edit(got, factory.RunEdit{By: factory.ByManager, Skip: []string{"approve2"}}, factory.DefaultRecipe(), factory.EditBeforeRun); err == nil {
+		t.Fatal("manager skipped a person's approval")
+	}
+	got, lines, err = factory.Edit(got, factory.RunEdit{By: factory.ByYou, Skip: []string{"approve2", "sign"}}, factory.DefaultRecipe(), factory.EditBeforeRun)
 	if err != nil || len(lines) != 2 || got.Stages[1].On || got.Stages[factory.StageIndex(got.Stages, "sign")].On {
 		t.Fatalf("skip = %q %+v %v", lines, got.Stages, err)
 	}

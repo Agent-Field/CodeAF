@@ -376,3 +376,18 @@ func TestADeliveryReadsBackLineByLine(t *testing.T) {
 		t.Error("an ordinary aside was read as a delivery")
 	}
 }
+
+func TestStageTurnErrorsDoNotAnnouncePipelineFailure(t *testing.T) {
+	fixture := newTeamFixture(t, true)
+	web := teamAgent(t, fixture, fixture.web, nil, nil)
+	web.config.Stage = &fakeStageDoor{}
+	web.teamBoundary()
+	before := len(teamEvents(t, fixture))
+	hub := &eventHub{}
+	hub.send(Event{Kind: EventError, Err: errors.New("provider timed out")})
+	web.teamTurnEnded(context.Background(), hub)
+	web.settleTeamEvents()
+	if after := len(teamEvents(t, fixture)); after != before {
+		t.Fatalf("stage error announced terminal outcome: %d -> %d", before, after)
+	}
+}

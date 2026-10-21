@@ -34,6 +34,7 @@ func (h *Handler) jobVerbs() {
 	h.postJob("priority", stored, h.setPriority)
 	h.postJob("raise_budget", stored, h.onlyOwner(h.raiseBudget))
 	h.postJob("model", stored, h.onlyOwner(h.setModel))
+	h.postJob("control", stored, h.onlyOwner(h.controlJob))
 	h.postJob("undo", stored, h.undoJob)
 }
 
@@ -80,17 +81,24 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 		if h.failed(w, err) {
 			return
 		}
+		who, err := h.callerHandle(r)
+		if h.failed(w, err) {
+			return
+		}
 		mark = strings.HasSuffix(r.URL.Path, "/start_now") && !cur.Marked
 		budget, err := h.startBudget(r, cur)
 		if h.failed(w, err) {
 			return
 		}
-		if mark || budget > 0 || also != nil {
+		if mark || budget > 0 || also != nil || (cur.Starter == "" && who != "") {
 			err := st.Update(it.ID, func(cur *factory.Item) error {
 				if also != nil {
 					also(cur)
 				}
 				cur.Marked = cur.Marked || mark
+				if cur.Starter == "" {
+					cur.Starter = factory.NormalizeHandle(who)
+				}
 				if cur.Cap <= 0 {
 					cur.Cap = budget
 				}
@@ -330,7 +338,7 @@ func forgetRun(it *factory.Item, recipe factory.Recipe) {
 	it.Change, it.ChangeBase, it.HeadCommit = nil, "", ""
 	it.WorktreeMachine = ""
 	it.Publish, it.Publishing, it.PublishStatus, it.PublishError = "", false, nil, ""
-	it.PullRequest, it.CommentURL = nil, ""
+	it.PullRequest, it.CommentURL, it.FollowUp = nil, "", nil
 	it.MergePolicy, it.Merging = nil, nil
 	it.Notes = nil
 	it.Stages, it.Adapted = factory.CopyStages(recipe.For(it.Kind)), nil

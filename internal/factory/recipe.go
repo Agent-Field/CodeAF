@@ -8,11 +8,9 @@ import (
 	"unicode"
 )
 
-// DefaultRecipe is the recipe a repo starts from before anybody banks one of
-// its own: stages for an issue, and the fixed shapes for the two kinds an
-// issue's stages do not describe. A pull request is read and checked; a red
-// main is bisected and fixed. Every call answers fresh slices, so a caller may
-// toggle its copy without reaching anybody else's.
+// DefaultRecipe is the issue pipeline a repository starts from. Pull requests
+// are tracked as outcomes of issue jobs, not as independent work items.
+// Every call answers fresh slices so callers can edit their own copy.
 //
 // THIS IS THE ONE PLACE THE DEFAULT STAGES ARE SPELLED. The local seam, a job
 // as it arrives, and a repository with no pipeline file
@@ -30,9 +28,8 @@ import (
 // means to follow is a sentence that makes the report untrue.
 //
 // AN APPROVE STEP SITS BETWEEN PLAN AND WRITE (approve.go): the person reads
-// the plan before any code is written. A pull request and a red main have no
-// plan, and end on one instead, which is their landing: what `ask me at
-// pull request` said before approve steps did.
+// the plan before any code is written. Publishing the resulting PR has a
+// separate approval after proof.
 //
 // SECURITY IS SHIPPED BUT IN NO LIST ([ShippedStage]): an item that asks for a
 // security pass gains the stage after review, and a pipeline file names it to
@@ -58,8 +55,6 @@ func DefaultRecipe() Recipe {
 // named here runs the issue's.
 var defaultLists = map[Kind][]string{
 	KindIssue: {"plan", ApproveName, "write", "test", "review", "proof"},
-	KindPR:    {"read", "checks", "review", "proof", ApproveName},
-	KindCI:    {"bisect", "fix", "test", "proof", ApproveName},
 }
 
 // shippedStages is every stage codeaf ships, in the order `codeaf factory
@@ -73,15 +68,15 @@ var defaultLists = map[Kind][]string{
 // found one problem, or a proof with one claim not yet shown, stopped the job
 // at a question instead of trying again. A pipeline file still sets its own.
 //
-// APPROVE AND PROOF ARE FIXED: an edit during a run may not move, skip or
-// reword them ([StageFixed]).
+// PROOF IS FIXED. The person may skip an optional internal approval without
+// approving publication; a repository may explicitly fix its approval stages.
 //
 // NO SHIPPED STAGE CARRIES A FANOUT. The word reaches the brief and nothing
 // else, and a pipeline file that set only a shipped step's `max:` would drop
 // it without a word, since a file's step carries its own runtime words.
 var shippedStages = []Stage{
 	{Name: "plan", Kind: StageChat, Ask: "read the issue and the code it names; write a plan and the list of files it will touch", Until: UntilDone, Max: 2, On: true},
-	{Name: ApproveName, Kind: StageGate, On: true, Fixed: true},
+	{Name: ApproveName, Kind: StageGate, On: true},
 	{Name: "write", Kind: StageChat, Ask: "make the change in the checkout", Until: UntilDone, Max: 2, On: true},
 	{Name: "test", Kind: StageChat, Ask: "run the tests the change implies; fix what fails", Until: UntilGreen, Max: 3, On: true},
 	{Name: "review", Kind: StageChat, Ask: "review the diff as a careful colleague; fix what you find", Until: UntilClean, Max: 3, On: true},
@@ -361,6 +356,8 @@ var untilWords = []string{UntilDone, UntilClean, UntilProven, UntilGreen}
 // a findings count of 0 on a round that never reported would otherwise read
 // exactly like green and clean.
 type StageResult struct {
+	PublishSummary []string        `json:",omitempty"`
+	Repair         *CIRepairResult `json:",omitempty"`
 	// Tests is absent when the command did not report individual outcomes.
 	Tests    *TestCounts `json:",omitempty"`
 	Done     bool
@@ -419,6 +416,14 @@ func Met(s Stage, r StageResult) bool {
 // [Met], so the check at the door cannot refuse a report the judge would
 // pass, and there is no second copy of the rules to drift from the first.
 func ReportFault(s Stage, r StageResult) string {
+	if IsCIRepairStage(s) {
+		if r.Repair == nil || (r.Repair.Decision != "fixed" && r.Repair.Decision != "no_change" && r.Repair.Decision != "needs_you") || strings.TrimSpace(r.Repair.Reason) == "" {
+			return "CI repair needs repair: {decision: fixed or needs_you, reason: evidence and what is needed}"
+		}
+	}
+	if IsCIRepairStage(s) && r.Repair != nil && (r.Repair.Decision == "needs_you" || r.Repair.Decision == "no_change") {
+		return ""
+	}
 	_, fault := judge(s, r)
 	return fault
 }
@@ -454,7 +459,7 @@ func judge(s Stage, r StageResult) (met bool, fault string) {
 		// A CLAIM MARKED OK WITH NOTHING SHOWING IT is at fault whatever done
 		// says: it is the one claim that reads as shown and is not, and the
 		// rounds and steps after this one read it as written.
-		met = r.Done && len(r.Claims) > 0
+		met = r.Done && r.Exit == 0 && len(r.Claims) > 0
 		for i, c := range r.Claims {
 			if c.OK && strings.TrimSpace(c.Evidence) == "" {
 				return false, fmt.Sprintf(faultNoEvidence, i+1)

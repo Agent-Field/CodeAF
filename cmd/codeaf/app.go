@@ -823,7 +823,7 @@ func appRowView(row session.SessionRow) appwire.Agent {
 			state = appwire.StateWorking
 		}
 	}
-	return appwire.Agent{ID: row.ID, Title: row.Title, Workspace: row.Workspace, Model: row.Model, State: state, UpdatedAt: at}
+	return appwire.Agent{FactoryOwned: factoryOwnedConversation(row.Transcript), ID: row.ID, Title: row.Title, Workspace: row.Workspace, Model: row.Model, State: state, UpdatedAt: at}
 }
 
 // remember files what the disk said about an agent, without touching one this
@@ -946,7 +946,7 @@ func (b *appBackend) ListAgents(workspace string) ([]appwire.Agent, error) {
 	seen := map[string]bool{}
 	var agents []appwire.Agent
 	for _, row := range session.ReadWorld(session.PlacesRoot()).Sessions() {
-		if row.DeletionPending || !matches(row.Workspace, row.ProjectDir) {
+		if row.DeletionPending || factoryOwnedConversation(row.Transcript) || !matches(row.Workspace, row.ProjectDir) {
 			continue
 		}
 		seen[row.ID] = true
@@ -972,7 +972,7 @@ func (b *appBackend) ListAgents(workspace string) ([]appwire.Agent, error) {
 	var beyond []beyondWalk
 	b.locked(func() {
 		for id, a := range b.agents {
-			if !seen[id] && (a.live != nil || a.opening) && matches(a.view.Workspace) {
+			if !seen[id] && !a.view.FactoryOwned && !factoryOwnedConversation(a.transcript) && (a.live != nil || a.opening) && matches(a.view.Workspace) {
 				beyond = append(beyond, beyondWalk{view: a.view, transcript: a.transcript, said: a.saidLocked()})
 			}
 		}
@@ -1295,7 +1295,9 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 	if b.isClosing() {
 		return appwire.Agent{}, false, appwire.Errorf(appwire.CodeClosed, "codeaf is shutting down")
 	}
-	ask := appOpenAsk{Workspace: workspace, Transcript: transcript, ClockS: appProposedClockS}
+	// A stored conversation carries its model even before another turn.
+	// Opening without it would replace the saved choice with the profile default.
+	ask := appOpenAsk{Workspace: workspace, Transcript: transcript, Model: view.Model, ClockS: appProposedClockS}
 	_ = b.state.read(func(f *appStateFile) { ask.ClockS = f.clock() })
 	if boot != nil {
 		ask.Model, ask.Minted = boot.model, true
@@ -3186,6 +3188,9 @@ func (b *appBackend) SetEffort(id, effort string) (appwire.Agent, error) {
 	live.conn.Conv.SetReasoningFor(model, effort)
 	if now := live.conn.Conv.ReasoningFor(model); now != "" {
 		effort = now
+	}
+	if err := b.saveJobEffort(a.transcript, effort); err != nil {
+		return appwire.Agent{}, err
 	}
 	var view appwire.Agent
 	b.locked(func() {

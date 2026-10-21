@@ -123,6 +123,9 @@ func serveFactory(ctx context.Context, configPath, listen string, out io.Writer,
 	if err != nil {
 		return err
 	}
+	if err := forgetFactoryPRJobs(ctx, st, config.ProfileDir()); err != nil {
+		return err
+	}
 	cfg, err := factoryHostConfigAt(configPath, false)
 	if err != nil {
 		return err
@@ -259,7 +262,7 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 		// A drop deletes the job's local branch and folder on this machine,
 		// and the conversations and crew kept on this machine, never anything
 		// on GitHub, so the team server does it too.
-		Folders: newFactoryJobFolders(st), DeleteChats: factoryDeleteJobChats(config.ProfileDir()), Mode: mode, OperatorLogin: host.OperatorLogin, TrustedProxies: secure.proxies, Name: host.Name, GitHubClientID: host.GitHubClientID, Team: host.Team, Address: public, AccessToken: token, TokensPath: tokensPath, Store: st, Root: st.Root(), Record: history,
+		Folders: newFactoryJobFolders(st), DeleteChats: factoryDeleteJobChats(config.ProfileDir(), st), Mode: mode, OperatorLogin: host.OperatorLogin, TrustedProxies: secure.proxies, Name: host.Name, GitHubClientID: host.GitHubClientID, Team: host.Team, Address: public, AccessToken: token, TokensPath: tokensPath, Store: st, Root: st.Root(), Record: history,
 		ServedBy: servedBy, PollingEvery: poll,
 		PersonProfile: factoryPeople().Profile, PersonKnown: factoryPeople().Known, CodeOwners: factoryPeople().Owners,
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {

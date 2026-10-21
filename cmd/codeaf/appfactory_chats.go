@@ -33,6 +33,10 @@ func (b *appBackend) FactoryJobChats(ctx context.Context, p appwire.FactoryJobCh
 	if host.seam.Talk == nil {
 		return appwire.FactoryJobChats{}, appwire.Errorf(appwire.CodeEngine, "this factory cannot make a job's conversation here")
 	}
+	item, err := host.floor.Get(p.Job)
+	if err != nil || !factory.IsIssueJob(item) {
+		return appwire.FactoryJobChats{}, appwire.Errorf(appwire.CodeNotFound, "issue job not found")
+	}
 	talk, err := host.seam.Talk(ctx, p.Job)
 	if err != nil {
 		return appwire.FactoryJobChats{}, appwire.Errorf(appwire.CodeNotFound, "the job's conversation could not be opened: %s", err.Error())
@@ -48,6 +52,9 @@ func (b *appBackend) FactoryJobChats(ctx context.Context, p appwire.FactoryJobCh
 	if model := strings.TrimSpace(it.Model); model != "" {
 		_, _ = b.SetModel(out.Agent, model)
 	}
+	if it.Effort != "" {
+		_, _ = b.SetEffort(out.Agent, it.Effort)
+	}
 	if it.Stream != nil {
 		for _, ph := range it.Stream.Phases {
 			chat := strings.TrimSpace(ph.Chat)
@@ -57,6 +64,11 @@ func (b *appBackend) FactoryJobChats(ctx context.Context, p appwire.FactoryJobCh
 			// A STEP WHOSE CHAT CANNOT BE OPENED IS LEFT OUT, never answered as one
 			// the page would then fail to draw.
 			if id := appAgentID(chat); b.holdJobChat(id) == nil {
+				// A finished stage is reopened as an ordinary conversation. Restore
+				// the recorded execution model instead of showing the profile default.
+				if ph.Result != nil && ph.Result.Model != "" && ph.State != factory.PhaseRunning {
+					_, _ = b.SetModel(id, ph.Result.Model)
+				}
 				out.Steps = append(out.Steps, appwire.FactoryJobStepChat{Step: ph.Name, Agent: id, Rounds: b.roundChats(ph.Rounds)})
 			}
 		}
@@ -91,6 +103,7 @@ func (b *appBackend) holdJobChat(id string) error {
 	if a == nil {
 		return appwire.Errorf(appwire.CodeNotFound, "there is no conversation with id %s", id)
 	}
+	b.locked(func() { a.view.FactoryOwned = true })
 	view, opened, err := b.ensure(a)
 	if err != nil {
 		return err

@@ -43,7 +43,7 @@ func publishGit(t *testing.T, dir string, args ...string) string {
 // and the runner watches no repositories, in both team and solo mode.
 func TestFactoryAssigneesRunnerPublishesTeamAndSolo(t *testing.T) {
 	for _, mode := range []string{api.FactoryTeam, api.FactorySolo} {
-		for _, action := range []string{"new_pr", "existing_pr", "no_diff", "review", "forbidden"} {
+		for _, action := range []string{"new_pr", "existing_pr", "no_diff", "forbidden"} {
 			t.Run(mode+"/"+action, func(t *testing.T) {
 				keys := config.NewAppCredentials()
 				keys.Set("github", "assignee-token")

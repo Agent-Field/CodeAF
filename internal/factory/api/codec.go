@@ -11,6 +11,7 @@ import (
 
 // FromSnapshot is the floor as `GET /v1/queue` says it to me.
 func FromSnapshot(s factory.Snapshot, me string, clocks ...time.Time) Queue {
+	s.Items = factory.IssueJobs(s.Items)
 	now := s.Now
 	if len(clocks) > 0 {
 		now = clocks[0]
@@ -119,6 +120,7 @@ var Lost = map[string]string{
 // FromItem is one item as a job.
 func FromItem(it factory.Item) Job {
 	j := Job{
+		FollowUp: it.FollowUp, Manual: it.Manual, Effort: it.Effort,
 		SetupHeld: it.SetupHeld,
 		Owners:    append([]string(nil), it.Owners...),
 		ID:        it.ID, Repo: it.Repo, Num: it.Num, Kind: string(it.Kind), Title: it.Title, URL: it.URL,
@@ -167,6 +169,12 @@ func FromItem(it factory.Item) Job {
 	j.Ask = jobAsk(it)
 	j.PublishError = it.PublishError
 	PresentJob(&j)
+	if it.State == factory.StateLanded {
+		j.PublishPreview = factory.PublishBody(it, "")
+	}
+
+	j.FollowPR = factory.IsIssueJob(it) && it.DoneHow != "dropped"
+
 	return j
 }
 
@@ -378,6 +386,7 @@ func ToItem(j Job) factory.Item {
 		d = &JobDesk{}
 	}
 	it := factory.Item{
+		FollowUp: j.FollowUp, Manual: j.Manual, Effort: j.Effort,
 		SetupHeld: j.SetupHeld,
 		Owners:    append([]string(nil), j.Owners...),
 		ID:        j.ID, Repo: j.Repo, Num: j.Num, Kind: factory.Kind(j.Kind), Title: j.Title, URL: j.URL, Model: j.Model,
@@ -501,10 +510,11 @@ func fromPR(pr *factory.PullRequest) *PR {
 		return nil
 	}
 	out := &PR{
+		BaseSHA: pr.BaseSHA, Feedback: pr.Feedback, CheckRuns: mapList(pr.CheckRuns, fromCheckRun),
 		Conflict: pr.Conflict, Draft: pr.Draft, Number: pr.Number, URL: pr.URL, CI: pr.CI, State: pr.State,
 		MergedBy: pr.MergedBy, ReviewDecision: pr.ReviewDecision, RequiredReviews: pr.Required,
 		Reviews: mapList(pr.Reviews, func(r factory.PRReview) PRReview {
-			return PRReview{By: r.By, State: r.State, At: r.At}
+			return PRReview{By: r.By, State: r.State, At: r.At, Body: r.Body, URL: r.URL}
 		}),
 		HeadSHA: pr.HeadSHA, Mergeable: pr.Mergeable, ChecksRead: pr.ChecksRead, ReviewsRead: pr.ReviewsRead,
 	}
@@ -524,10 +534,11 @@ func toPR(pr *PR) *factory.PullRequest {
 		return nil
 	}
 	out := &factory.PullRequest{
+		BaseSHA: pr.BaseSHA, Feedback: pr.Feedback, CheckRuns: mapList(pr.CheckRuns, toCheckRun),
 		Conflict: pr.Conflict, Draft: pr.Draft, Number: pr.Number, URL: pr.URL, CI: pr.CI, State: pr.State,
 		MergedBy: pr.MergedBy, ReviewDecision: pr.ReviewDecision, Required: pr.RequiredReviews,
 		Reviews: mapList(pr.Reviews, func(r PRReview) factory.PRReview {
-			return factory.PRReview{By: r.By, State: r.State, At: r.At}
+			return factory.PRReview{By: r.By, State: r.State, At: r.At, Body: r.Body, URL: r.URL}
 		}),
 		HeadSHA: pr.HeadSHA, Mergeable: pr.Mergeable, ChecksRead: pr.ChecksRead, ReviewsRead: pr.ReviewsRead,
 	}
@@ -581,6 +592,9 @@ func FromRecipe(r factory.Recipe) Pipeline {
 	if r.ByKind != nil {
 		p.ByKind = make(map[string][]StepDef, len(r.ByKind))
 		for k, st := range r.ByKind {
+			if k == factory.KindPR || k == factory.KindCI {
+				continue
+			}
 			p.ByKind[string(k)] = mapList(st, fromStage)
 		}
 	}

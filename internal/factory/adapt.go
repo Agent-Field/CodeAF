@@ -422,6 +422,8 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 			errs = append(errs, FixedRefusal(st.Name))
 		case IsProofStage(st):
 			refuse("%s may not skip proof", who)
+		case IsApprove(st) && who != ByYou:
+			refuse("only you may choose automatic approval for %s", st.Name)
 		case policyNames(recipe.Policy, st.Name):
 			refuse("%s may not skip %s; the policy names it", who, st.Name)
 		case started[st.Name]:

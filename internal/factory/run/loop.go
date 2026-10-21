@@ -265,6 +265,9 @@ func strangerWrites(it factory.Item) error {
 // dismissed, or never put anywhere yet. A dropped job is refused with its way
 // back ([factory.RefuseDropped]).
 func launchable(it factory.Item) error {
+	if err := factory.RequireIssueJob(it); err != nil {
+		return err
+	}
 	if err := factory.RefuseDropped(it); err != nil {
 		return err
 	}
@@ -469,6 +472,11 @@ func (lp *floorLoop) drive(c *loopCtl) {
 			return
 		}
 		i := nextPhase(it.Stream.Phases)
+		if i >= 0 && it.Stream.Phases[i].Name == factory.FollowPRStep && it.PullRequest == nil {
+			lp.land(c)
+			return
+		}
+
 		if i < 0 {
 			lp.land(c)
 			return
@@ -807,6 +815,11 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		var carried []string
 		if err := lp.move(c, name, kind, text, func(it *factory.Item) error {
 			it.State = factory.StateRunning
+			if it.FollowUp != nil && (it.FollowUp.State == "queued" || it.FollowUp.State == "running") {
+				f := *it.FollowUp
+				f.State = "running"
+				it.FollowUp = &f
+			}
 			it.Stream.Cur = i
 			// A QUESTION THE ROUND BEFORE ASKED AND NOBODY ANSWERED went with
 			// that round (a pause cut it): the step asks again if it must.
@@ -871,6 +884,29 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		// A SPENDING LIMIT IS A STOP, NOT A SHORTFALL (stagereport.go's
 		// [SpendStop]): another round would be refused before it began, so the
 		// job stops on the limit's own words and nothing is asked.
+		if factory.IsCIRepairStage(st) && res.Repair != nil && res.Repair.Decision == "needs_you" {
+			lp.parkCI(c, i, res.Repair.Reason)
+			return false
+		}
+		if factory.IsCIRepairStage(st) && res.Repair != nil && res.Repair.Decision == "no_change" {
+			fresh, _ := lp.r.opts.Store.Get(c.id)
+			if fresh.PullRequest == nil || fresh.PullRequest.Checks.Failed > 0 || fresh.PullRequest.Conflict {
+				lp.parkCI(c, i, "The PR still has failing checks or conflicts and no repair was verified. "+res.Repair.Reason)
+			} else {
+				_ = lp.move(c, "", EventShipped, "Following PR", func(it *factory.Item) error {
+					it.State = factory.StateShipped
+					it.Question, it.QKind = "", ""
+					it.Asking = nil
+					it.FollowUp.State, it.FollowUp.Reason, it.FollowUp.Request = "healthy", "No code change needed. "+res.Repair.Reason+" Watching for new feedback; merge remains yours.", ""
+					it.Stream.Phases[i].State = factory.PhaseWaiting
+					it.Stream.Phases[i].Note = it.FollowUp.Reason
+					it.Stream.Ended = lp.r.now()
+					return nil
+				})
+				lp.tell(c.id, "Follow PR: no code change needed. "+res.Repair.Reason+" Watching for new feedback; merge remains yours.")
+			}
+			return false
+		}
 		if spendStopped(res) {
 			lp.failStop(c, name, errors.New(res.Output))
 			return false
@@ -1111,6 +1147,18 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 	// (workdir.go), else in the repository's checkout; a worktree that could
 	// not be made fails the round rather than running in the person's tree.
 	dir, dirErr := lp.jobDir(it)
+	if dirErr == nil && factory.IsCIRepairStage(st) {
+		dirErr = lp.reconcilePR(it, dir)
+	}
+	// Creating the worktree records its branch. Read that record before the
+	// first brief, which otherwise still describes the old default name.
+	if dirErr == nil && dir != "" {
+		if fresh, err := lp.r.opts.Store.Get(c.id); err == nil && fresh.Stream != nil && it.Stream != nil {
+			stream := *it.Stream
+			stream.Log = fresh.Stream.Log
+			it.Stream = &stream
+		}
+	}
 	if dirErr == nil && dir != "" && it.ChangeBase == "" {
 		if base := changeBase(dir, it); base != "" {
 			it.ChangeBase = base
@@ -1370,6 +1418,10 @@ func loopFirstLine(s string) string {
 func (lp *floorLoop) land(c *loopCtl) {
 	mode := ""
 	if it, err := lp.r.opts.Store.Get(c.id); err == nil {
+		if err := lp.checkCIScope(it); err != nil {
+			lp.parkCI(c, it.Stream.Cur, err.Error())
+			return
+		}
 		// Commit before opening proof so approval names the work being shown.
 		if lp.r.opts.Workdir != nil {
 			if dir, err := lp.r.opts.Workdir(it); err == nil {
@@ -1388,7 +1440,13 @@ func (lp *floorLoop) land(c *loopCtl) {
 					}
 				}
 				if head, err := git.Run(dir, "rev-parse", "HEAD"); err == nil {
-					_ = lp.write(c, func(saved *factory.Item) error { saved.HeadCommit = strings.TrimSpace(head); return nil })
+					_ = lp.write(c, func(saved *factory.Item) error {
+						saved.HeadCommit = strings.TrimSpace(head)
+						if change, e := readChange(dir, saved.ChangeBase); e == nil {
+							saved.Change = change
+						}
+						return nil
+					})
 				}
 			}
 		}
@@ -1409,7 +1467,21 @@ func (lp *floorLoop) land(c *loopCtl) {
 		lp.emit(c.id, "", EventShipped, "shipped")
 		lp.tell(c.id, sayShipped)
 	} else if err == nil {
-		lp.tell(c.id, sayLanded)
+		if it, e := lp.r.opts.Store.Get(c.id); e == nil && it.FollowUp != nil && it.FollowUp.State == "waiting_approval" && followupAuthorized(it, it.FollowUp.PublishConsent) && clean(it) && len(it.Proof) > 0 {
+			_ = lp.write(c, func(saved *factory.Item) error {
+				saved.State = factory.StateRunning
+				saved.MarkPublishing("pushing", "", "", lp.r.now())
+				return nil
+			})
+			lp.tell(c.id, "Follow PR verified the repair. Updating the existing PR under your initial publish authorization.")
+			lp.publishRun(c, it.FollowUp.PublishConsent)
+			return
+		}
+		if it, e := lp.r.opts.Store.Get(c.id); e == nil && it.FollowUp != nil && it.FollowUp.State == "waiting_approval" {
+			lp.tell(c.id, fmt.Sprintf("CI repair and proof are complete. Approval needed: push the verified commit to existing PR #%d. Press Approve to update it.", it.PullRequest.Number))
+		} else {
+			lp.tell(c.id, sayLanded)
+		}
 	}
 }
 
@@ -1586,6 +1658,9 @@ func (r *Runner) Hold(id int, on bool) error {
 	c := lp.ctl(id)
 	it, err := r.opts.Store.Get(id)
 	if err != nil {
+		return err
+	}
+	if err := factory.RequireIssueJob(it); err != nil {
 		return err
 	}
 	if c == nil || c.reverify {
@@ -2042,10 +2117,29 @@ func (r *Runner) notLanded(id int) error {
 // show on its sheet. It takes no bench: a check is a command, not a crew.
 func (r *Runner) Reverify(id int) error {
 	lp := r.loop()
-	lp.mu.Lock()
-	if lp.ctls[id] != nil {
+	for {
+		lp.mu.Lock()
+		previous := lp.ctls[id]
+		if previous == nil {
+			break
+		}
+		finishing := previous.finishing
 		lp.mu.Unlock()
-		return r.notLanded(id)
+		if !finishing {
+			return r.notLanded(id)
+		}
+		previous.wmu.Lock()
+		it, err := r.opts.Store.Get(id)
+		if err != nil {
+			previous.wmu.Unlock()
+			return err
+		}
+		if it.State != factory.StateLanded {
+			previous.wmu.Unlock()
+			return r.notLanded(id)
+		}
+		lp.release(previous)
+		previous.wmu.Unlock()
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), models: make(chan string, 4), answers: make(chan loopAnswer, 1), reverify: true, phase: -1}

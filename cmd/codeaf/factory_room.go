@@ -10,6 +10,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
@@ -89,10 +90,16 @@ func factoryEnsureRoom(profile string, it factory.Item, room string) (string, er
 // factoryDeleteJobChats is serve's DeleteChats on this machine: the teams of
 // profileDir, the conversations under this machine's places root, and an owner
 // this process holds stopped first.
-func factoryDeleteJobChats(profileDir string) func(factory.Item) error {
+func factoryDeleteJobChats(profileDir string, floors ...*store.Store) func(factory.Item) error {
 	profileDir = factoryProfile(profileDir)
 	return func(it factory.Item) error {
-		return deleteJobChats(profileDir, session.PlacesRoot(), it, stopHeldConversation)
+		var roots []string
+		for _, f := range floors {
+			if f != nil {
+				roots = append(roots, f.Root())
+			}
+		}
+		return deleteJobChats(profileDir, session.PlacesRoot(), it, stopHeldConversation, roots...)
 	}
 }
 
@@ -112,13 +119,15 @@ func stopHeldConversation(file string) error {
 // THE CREW GOES FIRST, so the job's agent leads nothing when it is deleted,
 // and a conversation that cannot be deleted leaves no crew a fresh run could
 // find. Every failure is joined into the one error, and the rest still go.
-func deleteJobChats(profileDir, root string, it factory.Item, stop func(string) error) error {
+func deleteJobChats(profileDir, root string, it factory.Item, stop func(string) error, ownerRoots ...string) error {
 	f, err := teams.Snapshot(profileDir)
 	if err != nil {
 		return err
 	}
 	room := jobRoomIn(f, it)
 	chats := jobChatsIn(f, it, room)
+	chats = append(chats, ownedJobChats(root, it, ownerRoots)...)
+	unique := map[string]bool{}
 	var failures []error
 	if room != "" {
 		if err := deleteJobRoom(profileDir, f, room); err != nil {
@@ -126,6 +135,14 @@ func deleteJobChats(profileDir, root string, it factory.Item, stop func(string) 
 		}
 	}
 	for _, chat := range chats {
+		key := chatKey(chat)
+		if unique[key] {
+			continue
+		}
+		unique[key] = true
+		if _, err := os.Stat(chat); os.IsNotExist(err) {
+			continue
+		}
 		err := session.DeleteConversationUnder(root, profileDir, chat, nil, stop)
 		// A conversation already gone is what was asked for.
 		if err != nil && !errors.Is(err, os.ErrNotExist) {

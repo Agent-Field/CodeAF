@@ -11,7 +11,7 @@ import (
 
 // The queue's repositories say whether the factory's machine knows a checkout
 // of each, as `checked_out`, from the one map of checkouts the floor answers;
-// one with none says nothing, which reads as false.
+// one with none explicitly says false, so absence remains unknown to clients.
 func TestQueueRepositoriesSayWhetherTheyAreCheckedOut(t *testing.T) {
 	q := FromSnapshot(factory.Snapshot{
 		Repos:     []factory.Repo{{Name: "acme/api", Watched: true}, {Name: "acme/web", Watched: true}},
@@ -22,7 +22,7 @@ func TestQueueRepositoriesSayWhetherTheyAreCheckedOut(t *testing.T) {
 	}
 	on, _ := json.Marshal(q.Repos[0])
 	off, _ := json.Marshal(q.Repos[1])
-	if !strings.Contains(string(on), `"checked_out":true`) || strings.Contains(string(off), `"checked_out"`) {
+	if !strings.Contains(string(on), `"checked_out":true`) || !strings.Contains(string(off), `"checked_out":false`) {
 		t.Fatalf("repositories on the wire = %s and %s", on, off)
 	}
 }

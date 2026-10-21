@@ -158,7 +158,7 @@ func TestLaunchRunsStagesInOrderAndLands(t *testing.T) {
 	if s.Bench != 1 || s.Started.IsZero() || s.Ended.IsZero() {
 		t.Fatalf("stream = bench %d, started %v, ended %v", s.Bench, s.Started, s.Ended)
 	}
-	if !logHas(it, "write: write went fine") || !logHas(it, "landed · proof sheet ready · your approval") {
+	if !logHas(it, "write: write went fine") || !logHas(it, sayLanded) {
 		t.Fatalf("log = %+v", s.Log)
 	}
 	if err := g.r.Launch(id); err == nil || !strings.Contains(err.Error(), "has landed") {

@@ -57,6 +57,7 @@ type StageDoor interface {
 
 // ConversationSpec is everything the maker needs to open one stage round.
 type ConversationSpec struct {
+	Item factory.Item
 	// Team is the item's team id (its Stream's Room), "" when the item has none
 	// yet; the maker makes it then, under the one `factory` team, the way the
 	// talk lane does.
@@ -75,7 +76,8 @@ type ConversationSpec struct {
 	Brief string
 	// Model is the model the conversation opens on: the job's own
 	// (Item.Model), "" for the default the maker's launch already carries.
-	Model string
+	Model  string
+	Effort string
 	// Resume is the transcript of a conversation to reopen instead of making
 	// one, "" for a new one. The maker then continues it with Brief as a
 	// carry-on note (internal/session's CarryOn), joins no team (it is a
@@ -205,13 +207,14 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 		log = func(string) {}
 	}
 	spec := ConversationSpec{
+		Item:   job.Item,
 		Team:   itemTeam(job.Item),
 		Name:   stageChatName(job),
 		Handle: stageHandle(job),
 		Dir:    job.Dir,
-		Brief:  stageBrief(job),
-		Model:  strings.TrimSpace(job.Item.Model),
-		Stage:  door,
+		Brief:  stageBrief(job) + ciFollowUpBrief(job.Item),
+		Model:  strings.TrimSpace(job.Item.Model), Effort: job.Item.Effort,
+		Stage: door,
 	}
 	var conv Conversation
 	var err error
@@ -337,6 +340,25 @@ loop:
 		made.Edit = res.Edit
 		res = made
 	}
+	if receipts, ok := conv.(interface {
+		ExecutionNotes() ([]string, *factory.TestCounts)
+	}); ok {
+		notes, tests := receipts.ExecutionNotes()
+		res.Notes = append(res.Notes, notes...)
+		if job.Stage.Name == "proof" || job.Stage.Name == "test" || factory.IsCIRepairStage(job.Stage) {
+			for _, note := range notes {
+				if strings.HasPrefix(note, "Unresolved verification command failed:") {
+					res.Done = false
+					res.Exit = 1
+					res.Output += "\n" + note + ". Re-run this command successfully after the repair, or report what remains blocked."
+				}
+			}
+		}
+		if tests != nil {
+			res.Tests = tests
+		}
+	}
+	res = measuredTestEvidence(res)
 	res.Chat = conv.ID()
 	if s, ok := conv.(spender); ok {
 		res.Spent = s.Spent()
@@ -470,7 +492,9 @@ func stageBrief(job Job) string {
 	para(untilSays(job))
 	para(briefNoTeamPost)
 	para(briefAsk)
+	para("\nEvidence rules: test claims must cite commands that exercise that exact behavior. Code inspection is inspection evidence, not a passing test. Preserve command exit codes; do not hide failures behind a pipe or a printed exit marker. Numeric totals come from command receipts, not guesses. Before a final proof or Follow PR result, supply publish_summary: up to three complete PR-ready change bullets describing the final implementation including review fixes, with accurate names and no personal names.\n")
 	para(briefClosing)
+
 	return b.String()
 }
 

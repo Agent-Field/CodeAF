@@ -743,6 +743,10 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 	if body.Autostart && h.needsCheckout(w, r, body.Repo, "") {
 		return
 	}
+	if body.Pipeline == "pr" || body.Pipeline == "ci" {
+		h.fail(w, 422, "factory jobs support the issue pipeline only")
+		return
+	}
 	var selected []factory.Stage
 	if body.Pipeline != "" && body.Pipeline != "default" {
 		if !h.requireVerb(w, h.config.Store != nil && h.seam.RecipeAt != nil) {
@@ -760,6 +764,9 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 			recipe = f.Recipe()
 		}
 		selected = recipe.ByKind[factory.Kind(body.Pipeline)]
+		if body.Pipeline == "issue" {
+			selected = recipe.For(factory.KindIssue)
+		}
 		if len(selected) == 0 {
 			h.fail(w, 422, "pipeline not found")
 			return

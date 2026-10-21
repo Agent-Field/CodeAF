@@ -546,7 +546,7 @@ func (h *Handler) findJob(w http.ResponseWriter, r *http.Request) (factory.Item,
 		return factory.Item{}, false
 	}
 	for _, it := range s.Items {
-		if it.ID == id || factory.JobRef(it) == r.PathValue("id") {
+		if factory.IsIssueJob(it) && (it.ID == id || factory.JobRef(it) == r.PathValue("id")) {
 			// A hidden job is the same answer as a missing one, so the
 			// caller cannot tell which repositories exist.
 			visible := h.repoVisible(r, itemRepo(it))

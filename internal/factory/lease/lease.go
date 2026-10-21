@@ -324,6 +324,9 @@ func (d *Desk) Requeue(id int, worker string) error {
 }
 
 func eligible(it factory.Item, worker Worker) bool {
+	if !factory.IsIssueJob(it) {
+		return false
+	}
 	if (it.State != factory.StateQueued || paused(it)) && !pendingReply(it) || (it.WorktreeMachine != "" && it.WorktreeMachine != worker.Machine) {
 		return false
 	}

@@ -75,7 +75,7 @@ func (in *Intake) Once(ctx context.Context) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if it.SetupHeld || it.State != factory.StateNew || len(it.Labels) == 0 || it.AskedFirstReason != "" || sw.OffJob(it) {
+		if !factory.IsIssueJob(it) || it.SetupHeld || it.State != factory.StateNew || len(it.Labels) == 0 || it.AskedFirstReason != "" || sw.OffJob(it) {
 			continue
 		}
 		if err := in.decide(ctx, it); err != nil {

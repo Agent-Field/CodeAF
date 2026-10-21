@@ -141,6 +141,10 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 		}
 		return appFactoryProxy(target), nil
 	}
+	if err := forgetFactoryPRJobs(h.ctx, h.floor, h.profile); err != nil {
+		release()
+		return nil, err
+	}
 	history, err := record.Open(h.floor, record.Options{})
 	if err != nil {
 		release()
@@ -163,7 +167,7 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 		Recheck: factorygithub.Rechecker(func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }),
 		// A drop deletes the job's local branch and folder on this machine,
 		// and its conversations and crew.
-		Folders: newFactoryJobFolders(h.floor), DeleteChats: factoryDeleteJobChats(h.profile),
+		Folders: newFactoryJobFolders(h.floor), DeleteChats: factoryDeleteJobChats(h.profile, h.floor),
 		PersonProfile: factoryPeople().Profile, PersonKnown: factoryPeople().Known, CodeOwners: factoryPeople().Owners})
 	closeDiscovery, err := serveAppFactoryDiscovery(h.floor.Root(), factoryTarget{h.address, h.token})
 	if err != nil {

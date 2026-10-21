@@ -124,16 +124,16 @@ func TestProgressIsWrittenPerRepositoryAndClearedAtTheEnd(t *testing.T) {
 	_, _ = PollOnce(context.Background(), w, st, "", time.Now)
 	// acme/api at its start, its issues in, its pull requests in; acme/gone
 	// at its start, where its read fails.
-	if len(w.seen) != 4 {
-		t.Fatalf("progress written %d times, want 4: %+v", len(w.seen), w.seen)
+	if len(w.seen) != 3 {
+		t.Fatalf("progress written %d times, want 3: %+v", len(w.seen), w.seen)
 	}
 	if m := w.seen[0]; !m.Polling || m.Reading != "acme/api" || m.Read != 0 || m.Of != 2 {
 		t.Fatalf("first repository: %+v", m)
 	}
-	if m := w.seen[2]; m.Reading != "acme/api" || m.Items != 2 {
+	if m := w.seen[1]; m.Reading != "acme/api" || m.Items != 1 {
 		t.Fatalf("first repository's lists in: %+v", m)
 	}
-	if m := w.seen[3]; !m.Polling || m.Reading != "acme/gone" || m.Read != 1 || m.Of != 2 {
+	if m := w.seen[2]; !m.Polling || m.Reading != "acme/gone" || m.Read != 1 || m.Of != 2 {
 		t.Fatalf("second repository: %+v", m)
 	}
 	m, _ := st.SourceMeta(Name)

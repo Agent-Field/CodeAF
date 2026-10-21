@@ -768,10 +768,10 @@ func exitCodeFromWait(err error) int {
 // and args (["-c"]).
 func getShellConfig() (string, []string) {
 	if _, err := os.Stat("/bin/bash"); err == nil {
-		return "/bin/bash", []string{"-c"}
+		return "/bin/bash", []string{"-o", "pipefail", "-c"}
 	}
 	if bash, err := exec.LookPath("bash"); err == nil {
-		return bash, []string{"-c"}
+		return bash, []string{"-o", "pipefail", "-c"}
 	}
 	return "sh", []string{"-c"}
 }

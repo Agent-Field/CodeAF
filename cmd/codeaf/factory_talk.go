@@ -64,7 +64,7 @@ const factoryTeamName = "factory"
 const (
 	talkBlockWho   = "You are the manager of %s in %s."
 	talkBlockKnow  = "You know: the issue and its comments, what codeaf read of it, the repository's recipe, policy and habits, the checkout, and what the person has said here."
-	talkBlockDo    = "You do: shape the run, start it with factory_start when the person asks (nothing to look up first), report each stage here, answer the person, and hold at each approve step until the person says continue, saying what you wait on. The runner runs the steps: read a step to report on it, and never send one work, stop it or start one yourself."
+	talkBlockDo    = "You do: shape the run, start it with factory_start when the person asks (nothing to look up first), report each stage here from the runner’s recorded state, answer the person, and hold at each approve step until the person says continue, saying what you wait on. The runner runs the steps: read a step to report on it, and never send one work, stop it or start one yourself."
 	talkBlockShape = "Shape the run with factory_run: stages are one lowercase word each, at most nine. Each stage has an ask that says what done looks like, a loop (until, rounds, fanout) and one line of why. Keep the recipe's stages unless the item says otherwise; change asks before adding stages; add a stage only for work no existing stage covers. Never drop proof. An approve step is where the run holds until the person says continue: keep the recipe's, add one (named approve) after a stage the person wants to read first, and skip one only when the person asks. Nothing posts outward before an approve step."
 	talkBlockSay   = "Say what you set in three lines at most, then stop. Do not narrate."
 )
@@ -81,7 +81,7 @@ const talkBlockBrief = "Before the job starts, what the person says here is the 
 // manager conversation is the item's one inbox, and this is when it answers a
 // step's question itself and when it sends it to the person
 // (factory_inbox.go). The manual quotes it (internal/manual/chat/factory.md).
-const talkBlockInbox = "You are the inbox: every question a stage asks comes to you first, and you reply with factory_answer. Answer it yourself when the issue, the recipe, the stages, the notes or what the person said here settle it. Send it to the person (ask_person, one line of why) when it turns on taste, scope, risk, credentials or access, money, or anything those do not settle; the stage waits, and the person answers here."
+const talkBlockInbox = "A model turn timing out is not a step failure: the runner retries it. Never declare a job complete or failed from a team turn ending. The runner owns those outcomes. Do not poll team_status or team_read to wait for a stage; wait for the runner’s next event. You are the inbox: every question a stage asks comes to you first, and you reply with factory_answer. Answer it yourself when the issue, the recipe, the stages, the notes or what the person said here settle it. Send it to the person (ask_person, one line of why) when it turns on taste, scope, risk, credentials or access, money, or anything those do not settle; the stage waits, and the person answers here."
 
 // talkBlocks is the manager's blocks for one item, the ref and the
 // repository filled in.
@@ -118,6 +118,9 @@ func talkMaker(st *store.Store, workspace, profileDir string) func(context.Conte
 			return "", err
 		}
 		transcript := place.Transcript()
+		if err := markFactoryChat(st, it, transcript); err != nil {
+			return "", err
+		}
 		name := talkTeamName(it)
 		if err := session.SeedConversation(transcript, where, name, talkBrief(it, factoryItemRecipe(dirs, it))); err != nil {
 			return "", err
@@ -145,6 +148,9 @@ func managerMaker(st *store.Store, workspace, profileDir string) func(context.Co
 		factoryReconcileOnce(profileDir, st)
 		where, err := talkFolder(st, dirs, it)
 		if err != nil {
+			return "", err
+		}
+		if err := markFactoryChat(st, it, chat); err != nil {
 			return "", err
 		}
 		if err := talkJoinTeam(profileDir, it, chat, where, talkTeamName(it)); err != nil {

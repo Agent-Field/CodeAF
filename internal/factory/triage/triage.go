@@ -220,7 +220,7 @@ func Apply(it *factory.Item, t factory.Triage) {
 // Wants says whether an item is still waiting for its read: on the floor,
 // with no read written and never triaged.
 func Wants(it factory.Item) bool {
-	return it.State != factory.StateDismissed &&
+	return factory.IsIssueJob(it) && it.State != factory.StateDismissed &&
 		strings.TrimSpace(it.Triage.Read) == "" &&
 		it.Triage.TriagedAt.IsZero()
 }
@@ -490,7 +490,7 @@ func (w *worker) once(ctx context.Context) tick {
 	var it factory.Item
 	found := false
 	for _, x := range items {
-		if Wants(x) && !sw.OffJob(x) {
+		if factory.IsIssueJob(x) && Wants(x) && !sw.OffJob(x) {
 			it, found = x, true
 			break
 		}

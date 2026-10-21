@@ -198,7 +198,7 @@ func (a *Agent) settleTeamEvents() {
 // by the turn's own cleanup (agent.go) after the questions the turn raised are
 // retired, so a wait the turn ended inside is closed before the ending is said.
 func (a *Agent) teamTurnEnded(ctx context.Context, hub *eventHub) {
-	if !a.team.events.member.Load() {
+	if !a.team.events.member.Load() || a.config.Stage != nil {
 		return
 	}
 	a.dropOwedResume()

@@ -39,9 +39,6 @@ func newBigFloor(tb testing.TB, n int, profile func(context.Context, string) (fa
 	}
 	for i := 1; i <= n; i++ {
 		kind, url := factory.KindIssue, fmt.Sprintf("https://github.com/acme/api/issues/%d", i)
-		if i%3 == 0 {
-			kind, url = factory.KindPR, fmt.Sprintf("https://github.com/acme/api/pull/%d", i)
-		}
 		it := factory.Item{Repo: "acme/api", Num: i, URL: url, Kind: kind, Origin: factory.OriginForge, Synced: true,
 			Title: fmt.Sprintf("a reported problem number %d with a title of ordinary length", i),
 			Body:  "Steps to reproduce: open the thing, press the key, watch it go wrong. Expected it to go right.",

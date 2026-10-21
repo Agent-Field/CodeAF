@@ -134,6 +134,9 @@ func MergeGate(it Item, ask MergeAsk) MergeVerdict {
 	} else if NormalizeHandle(ask.By) == "" {
 		return refuseMerge("a merge needs the person who pressed it")
 	}
+	if it.FollowUp != nil && (it.FollowUp.State == "queued" || it.FollowUp.State == "running" || it.FollowUp.State == "waiting_approval" || it.FollowUp.State == "needs_you") {
+		return refuseMerge("CI follow-up must finish and its verified changes must be approved")
+	}
 	approved := strings.TrimSpace(it.HeadCommit)
 	head := strings.TrimSpace(pr.HeadSHA)
 	switch {

@@ -285,6 +285,11 @@ func (d *Doors) SignOff(id int, edited bool) (bool, error) {
 			// and keeps this signal, which queues the job again.
 			it.State = factory.StateLanded
 		}
+		if it.FollowUp == nil {
+			it.FollowUp = &factory.PRFollowUp{Kind: "pr", Limit: factory.DefaultPRRepairAttempts}
+		}
+		it.FollowUp.AutoPush = true
+		it.FollowUp.PublishConsent = trailer
 		it.Publishing = true
 		repo = it.Repo
 		signal(doc, id, Signal{Verb: SignalPublish, Words: trailer})

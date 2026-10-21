@@ -25,7 +25,7 @@ import (
 // two items running at once would have written over each other. So an item
 // never works in the person's checkout. It works in a git worktree of its
 // own, `<store>/work/<repo>-<number>`, on a branch of its own,
-// `factory/<number>-<slug>`, made from the checkout the first time a round
+// `<person>/<number>-<slug>` (factory by default), made from the checkout the first time a round
 // needs a folder and reused by every round after.
 //
 // THE PERSON'S CHECKOUT IS NEVER TOUCHED. `git worktree add` writes only the
@@ -110,6 +110,9 @@ func lastLine(s string) string {
 type Workdirs struct {
 	root string
 	git  Git
+	// Prefix chooses the namespace for new branches. Existing worktrees and
+	// recorded branches keep their names through reassignment and recovery.
+	Prefix func(factory.Item) string
 	// Log, when set, is told the line `branch: <name>` once, when an item's
 	// worktree is made: that line is how the post stage's `pr` knows which
 	// branch to push. The wire sets it to [StoreLog].
@@ -140,9 +143,44 @@ func (w *Workdirs) Dir(it factory.Item) string {
 	return filepath.Join(w.root, repo+"-"+itemDigits(it))
 }
 
-// Branch is the branch its work goes on: `factory/<number>-<slug>`, the slug
-// from the title, at most forty characters.
-func (w *Workdirs) Branch(it factory.Item) string { return itemBranch(it) }
+// Branch keeps the recorded branch, or chooses Prefix/<number>-<slug> for
+// new work (factory when no prefix is supplied).
+func (w *Workdirs) Branch(it factory.Item) string {
+	if branch := recordedWorkBranch(it); branch != "" {
+		return branch
+	}
+	branch := itemBranch(it)
+	if w.Prefix != nil {
+		prefix := strings.Trim(w.Prefix(it), "/ ")
+		if prefix != "" {
+			return prefix + "/" + strings.TrimPrefix(branch, "factory/")
+		}
+	}
+	return branch
+}
+
+// A log line cannot authorize deleting an unrelated branch. Only the shape
+// made for this job is a worktree record, including an earlier person's prefix.
+func recordedWorkBranch(it factory.Item) string {
+	if it.Stream == nil {
+		return ""
+	}
+	digits := itemDigits(it)
+	for i := len(it.Stream.Log) - 1; i >= 0; i-- {
+		branch, ok := strings.CutPrefix(it.Stream.Log[i].Text, "branch: ")
+		if !ok {
+			continue
+		}
+		prefix, tail, ok := strings.Cut(branch, "/")
+		if !ok || prefix == "" || strings.IndexFunc(prefix, func(r rune) bool { return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-') }) >= 0 {
+			continue
+		}
+		if tail == digits || strings.HasPrefix(tail, digits+"-") {
+			return branch
+		}
+	}
+	return ""
+}
 
 // For answers its worktree, making it from checkout the first time. A
 // worktree git already lists at that folder is used as it is, on whatever
@@ -157,6 +195,16 @@ func (w *Workdirs) For(it factory.Item, checkout string) (string, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.listed(checkout, dir) {
+		// A new run can have a fresh stream but still reuse this worktree.
+		// Restore its actual branch record before briefs or publishing use it.
+		if w.Log != nil {
+			if branch, err := w.git.Run(dir, "branch", "--show-current"); err == nil {
+				branch = strings.TrimSpace(branch)
+				if branch != "" && branch != branchFor(it) {
+					w.Log(it, "branch: "+branch)
+				}
+			}
+		}
 		if isPull(it) {
 			w.toHead(it, checkout, dir)
 		}
@@ -567,6 +615,9 @@ func (w *Workdirs) repoOf(it factory.Item, checkout string) string {
 // ownBranch is the branch the runner actually made, which the job's change
 // names, rather than one spelled from a title renamed since.
 func (w *Workdirs) ownBranch(it factory.Item) string {
+	if branch := recordedWorkBranch(it); branch != "" {
+		return branch
+	}
 	if it.Change != nil && strings.HasPrefix(it.Change.Branch, "factory/"+itemDigits(it)+"-") {
 		return it.Change.Branch
 	}
