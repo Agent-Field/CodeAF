@@ -272,6 +272,9 @@ type chatsKind struct {
 // off, or no identity yet. Both are the emptiness law, not an error, so the
 // heading is simply absent.
 func openChatsKind() (chatsKind, bool) {
+	if syncsetup.Quiet(home.Dir()) {
+		return chatsKind{}, false
+	}
 	s, ok, err := syncsetup.Open(home.Dir())
 	if err != nil || !ok {
 		return chatsKind{}, false

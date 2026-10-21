@@ -247,6 +247,7 @@ func TestOpenFirstWithNoRelayTouchesNothing(t *testing.T) {
 	}
 }
 
+// TestFirstLaunchIsQuietUntilWoken proves C8: only offering or completing pairing ends solo.
 func TestFirstLaunchIsQuietUntilWoken(t *testing.T) {
 	hits := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hits++ }))
@@ -270,9 +271,11 @@ func TestFirstLaunchIsQuietUntilWoken(t *testing.T) {
 	if hits != 0 {
 		t.Fatalf("a quiet machine sent %d requests", hits)
 	}
-	s.Engage()
+	if err := identity.EndSolo(home); err != nil {
+		t.Fatal(err)
+	}
 	if Quiet(home) {
-		t.Fatal("Engage left the machine quiet")
+		t.Fatal("offering a code left the machine quiet")
 	}
 	if _, err := s.FleetSize(ctx); hits == 0 {
 		t.Fatalf("an engaged machine sent nothing (err %v)", err)
