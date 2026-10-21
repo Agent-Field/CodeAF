@@ -17,6 +17,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/connect"
@@ -2198,7 +2199,9 @@ func v3Memory(profileDir string) *store.Store {
 		fmt.Fprintln(os.Stderr, "memory is unavailable in this session: "+err.Error())
 		return nil
 	}
-	brain.SetMemoryLedger(session.CellMemories)
+	if cell.Available() {
+		brain.SetMemoryLedger(session.CellMemories)
+	}
 	return brain
 }
 

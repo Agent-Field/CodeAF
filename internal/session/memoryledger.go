@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -162,9 +163,9 @@ func writeMemoryLedger(path string, events []store.LedgerMemoryEvent) error {
 }
 
 // bindMemoryLedger points the process ledger at this conversation's folder. A
-// session with no folder (the zero Place) has none to seal into.
+// session without an enabled cell keeps its memories in the legacy store only.
 func bindMemoryLedger(p Place, wrote func()) {
-	if p.Dir != "" {
+	if p.Dir != "" && cell.Enabled() && (cellLayout{}).holds(p.Dir) {
 		CellMemories.Bind(p.ID(), p.Dir, wrote)
 	}
 }
