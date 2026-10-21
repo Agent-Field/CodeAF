@@ -198,7 +198,7 @@ func runGraph(name string, args []string) error {
 	// The ruler stays keyed to the work model even when a different model
 	// plans: the anchors measure the executor.
 	installMeasuredRulers(settings, settings.Model)
-	ctx := settings.Context(context.Background(), graph.Goal)
+	ctx := settings.Context(hostSeated(context.Background()), graph.Goal)
 	// Discovery started before the clients are built, because an adapter reads
 	// the catalog to decide which knobs a model will accept. It is started, not
 	// waited for: every question it answers here is asked later than the first

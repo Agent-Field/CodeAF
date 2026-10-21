@@ -93,6 +93,7 @@ func (s *Store) Write(req WriteRequest) (WriteResult, error) {
 		return WriteResult{}, fmt.Errorf("write memory: %w", err)
 	}
 	result := WriteResult{Outcome: WriteOutcomeAdded}
+	var addedAt time.Time
 	if existing != nil {
 		if _, _, err := appendEvent(tx, "memory", EventMemorySkipped, map[string]any{"owner": owner, "text": payload.Text, "kept": existing.ID}); err != nil {
 			return WriteResult{}, fmt.Errorf("write memory: %w", err)
@@ -104,7 +105,8 @@ func (s *Store) Write(req WriteRequest) (WriteResult, error) {
 				return WriteResult{}, fmt.Errorf("write memory: %w", err)
 			}
 		}
-		seq, _, err := appendEvent(tx, payload.ID, EventMemoryAdd, payload)
+		seq, at, err := appendEvent(tx, payload.ID, EventMemoryAdd, payload)
+		addedAt = at
 		if err != nil {
 			return WriteResult{}, fmt.Errorf("write memory: %w", err)
 		}
@@ -119,6 +121,11 @@ func (s *Store) Write(req WriteRequest) (WriteResult, error) {
 	}
 	if err := tx.Commit(); err != nil {
 		return WriteResult{}, fmt.Errorf("write memory: %w", err)
+	}
+	if result.Outcome == WriteOutcomeAdded {
+		if err := s.seal(payload.ID, EventMemoryAdd, addedAt, payload); err != nil {
+			return result, fmt.Errorf("write memory: %w", err)
+		}
 	}
 	return result, nil
 }

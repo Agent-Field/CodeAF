@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"io"
 	"os"
 	"path/filepath"
@@ -82,6 +83,7 @@ func TestMain(m *testing.M) {
 	// "bash" for itself and wins.
 	os.Setenv("CODEAF_TASK_BELT", "node")
 	code := m.Run()
+	cellstore.StopSpawned() // no engine daemon outlives the run
 	restore()
 	os.Exit(code)
 }

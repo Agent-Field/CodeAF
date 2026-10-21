@@ -185,7 +185,7 @@ This is the "hosted proxy on the codeaf website" idea, done with the relay **bli
 ```
 big-machine$ codeaf serve
   this machine is reachable as  otter-lamp-42
-  pair a new device with code   715 302   (valid 10 minutes)
+  let a device use this machine with code   42-715-302   (valid 10 minutes)
 
 laptop$ codeaf chat --at otter-lamp-42
   pairing with otter-lamp-42 — enter the code shown there: ______

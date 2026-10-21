@@ -57,7 +57,11 @@ by position on the bar, so memories, the fifth word, is `alt+8`, and automations
 each has commands of its own (`/home`, `/teams`, `/history`,
 `/automations`, `/memory`, `/settings`). The rewind timeline (`/rewind`) takes the frame the same way and is
 deliberately not one of the seven: it is something you do to this conversation rather than
-a room in the machine.
+a room in the machine. The architecture map (`/atlas`, or `codeaf atlas` from the shell)
+takes the frame the same way and is not one of the seven either: it is a map you read, and
+`esc` or `q` gives the frame back. Bare `/atlas` opens a picker first — every map with its
+name and its one-line description; `enter` opens the one the cursor is on, `esc` or `q`
+leaves and gives the chat back exactly as it was.
 
 While any of them is up nothing else is drawn — no conversation, no box, no status line —
 and `esc` gives the frame back. **Only one is ever up:** opening any one closes the rest.
@@ -265,7 +269,7 @@ words supply the name until the generated title arrives. The project is a separa
 
 Answers to questions, including credential prompts, never supply a draft tab title.
 
-## Closing a tab — the × on a tab, Ctrl+W, where do I go next
+## How do I stop just this chat without touching the others — closing one tab with Ctrl+W or ×
 
 **`×` or `ctrl+w` closes the tab in front.** Closing another tab leaves the
 current chat selected. Closing the current tab selects the most recently used
@@ -1167,6 +1171,23 @@ redial the existing sentence — `reconnecting to devbox — trying for up to 5 
 takes the segment. `/status` spells the healthy fact out as `the round trip to devbox is
 about 3ms` under `connection`.
 
+## Why does the status line say not sealed — calls that rewind cannot reach
+
+While a conversation's calls are being sealed and the last seal failed, the status line
+carries `✗ not sealed` beside the state word. It is drawn for as long as it is true and it
+goes the moment a seal holds; a conversation whose calls are sealing normally, or whose
+folder is not sealed at all, draws nothing. Each conversation shows its own: another chat's failure never appears on this one. It shows on every launch, including the ordinary one where the conversation runs in a separate engine process, because the engine states the fact to the screen. A failed seal never fails the call or stops
+the conversation, so this segment is the only sign that rewind cannot reach what came
+after the failure.
+
+Three changes are also said once in the conversation: sealing starting to fail, with the
+cause; its cause changing while it is still failing; and sealing working again. The same
+failure repeating says nothing more, because the segment already does. The calls made
+while sealing was down are not lost: they ride the next seal that holds, and `codeaf cell
+log` lists them as `unsealed  <n> call(s) since <time>` until then, including after the
+conversation has closed. `/status` prints the segment under `sealing`. A narrow terminal
+drops it only after the connection and before the question chip.
+
 ## Why the numbers on the status line fade
 
 The telemetry cluster on the right of the status line is painted by how recently each
@@ -1349,7 +1370,7 @@ The **state word, the `YOLO` badge and the connection are not in that list**. On
 you are looking at the line, the second is why you should be, and the third is the reason
 none of the numbers beside it are moving. On the rule they still have to fit beside the
 conversation's name, so once every figure above is gone they go too, in this order —
-the connection, the badge, the question chip — and the state word is the last thing
+the connection, the badge, the `not sealed` mark, the question chip — and the state word is the last thing
 standing. The name and the model are cut or dropped only when not even the state word fits
 beside them whole.
 

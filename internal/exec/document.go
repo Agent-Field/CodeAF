@@ -14,6 +14,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
@@ -343,6 +344,19 @@ func documentMediaType(path string) (string, bool) {
 	}
 }
 
+// documentCommand runs a document tool and answers its combined output, with
+// the error a failed run reports (a start failure, or the exit status).
+func documentCommand(ctx context.Context, binary string, args ...string) ([]byte, error) {
+	res, err := executor.For(ctx).In("").Exec(ctx, executor.ExecRequest{
+		Argv:  append([]string{binary}, args...),
+		Group: executor.GroupInherit, Combined: true,
+	}, nil)
+	if err != nil {
+		return res.Stdout, err
+	}
+	return res.Stdout, res.Failure()
+}
+
 func extractLocalPDF(ctx context.Context, path string, pages documentPageRange) (string, bool, error) {
 	binary, err := osexec.LookPath("pdftotext")
 	if err != nil {
@@ -355,7 +369,7 @@ func extractLocalPDF(ctx context.Context, path string, pages documentPageRange) 
 	args = append(args, path, "-")
 	commandCtx, cancel := context.WithTimeout(ctx, documentCommandTimeout)
 	defer cancel()
-	output, err := osexec.CommandContext(commandCtx, binary, args...).CombinedOutput()
+	output, err := documentCommand(commandCtx, binary, args...)
 	if commandCtx.Err() != nil {
 		return "", true, commandCtx.Err()
 	}
@@ -392,7 +406,7 @@ func usableDocumentText(text string, pages int) bool {
 func estimatePDFPages(ctx context.Context, path string, size int64) int {
 	if binary, err := osexec.LookPath("pdfinfo"); err == nil {
 		commandCtx, cancel := context.WithTimeout(ctx, documentCommandTimeout)
-		output, commandErr := osexec.CommandContext(commandCtx, binary, path).CombinedOutput()
+		output, commandErr := documentCommand(commandCtx, binary, path)
 		cancel()
 		if commandErr == nil {
 			matched := pdfInfoPagesPattern.FindStringSubmatch(string(output))

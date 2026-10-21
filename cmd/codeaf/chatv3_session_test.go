@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -87,9 +88,14 @@ func TestASecondWindowOnALockedSessionIsRefusedAndNamesTheWayOut(t *testing.T) {
 	}
 }
 
-// sessionBucket is the project directory above one session folder.
+// sessionBucket is the project directory above one session folder. A cell keeps
+// its journal one level deeper, in .cell/, so the folder is found past that.
 func sessionBucket(transcript string) string {
-	return filepath.Dir(filepath.Dir(transcript))
+	folder := filepath.Dir(transcript)
+	if filepath.Base(folder) == cell.StateDir {
+		folder = filepath.Dir(folder)
+	}
+	return filepath.Dir(folder)
 }
 
 // An error that is NOT the lock is still an error: the fallback is for one

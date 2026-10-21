@@ -406,7 +406,7 @@ codeaf serve                               # on the engine machine
 
 ```
   this machine is reachable as  otter-lamp-42
-  pair a new device with code   715 302   (valid 10 minutes)
+  let a device use this machine with code   42-715-302   (valid 10 minutes)
 ```
 
 Then from the other machine, `codeaf chat --at otter-lamp-42` walks the pairing:

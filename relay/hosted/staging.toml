@@ -1,0 +1,51 @@
+# Staging deployment, on workers.dev only: no route, no domain, no observability.
+# BASE_PATH is empty here: staging owns its whole workers.dev hostname.
+# Run from a machine logged in to the account: `wrangler r2 bucket create caf-relay-staging-frames`
+# once, then `wrangler deploy -c staging.toml`. It owns only what is named here.
+name = "caf-relay-staging"
+main = "src/worker.js"
+compatibility_date = "2026-09-01"
+
+[[r2_buckets]]
+binding = "FRAMES"
+bucket_name = "caf-relay-staging-frames"
+
+[[durable_objects.bindings]]
+name = "IDENTITY"
+class_name = "IdentityDO"
+
+[[durable_objects.bindings]]
+name = "PAIR_GATE"
+class_name = "PairGate"
+
+[[durable_objects.bindings]]
+name = "NEWCOMERS"
+class_name = "NewcomerGate"
+
+[[durable_objects.bindings]]
+name = "MAILBOX"
+class_name = "Mailbox"
+
+[[durable_objects.bindings]]
+name = "LINK_GATE"
+class_name = "LinkGate"
+
+[[durable_objects.bindings]]
+name = "LINK_REQUEST"
+class_name = "LinkRequest"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["IdentityDO", "PairGate", "Mailbox", "NewcomerGate"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["LinkGate", "LinkRequest"]
+
+[vars]
+LEASE_POLICY = "amended"
+# The conformance suite makes one identity per case, all from one address, so the per-IP cap on new
+# identities is lifted for staging only; production keeps the default (see src/limits.js).
+# Staging trusts X-Forwarded-For so callers can name their own network; production does not.
+TRUST_PROXY = "1"
+CAF_LIMITS = '{"newIdentitiesPerIpPerDay":1000000}'

@@ -103,6 +103,16 @@ type Facts struct {
 	// after every toggle. It moves once per deliberate act and is a few short
 	// names. Nil is nothing attached, which is nearly every conversation.
 	Skills []string `json:"skills,omitempty"`
+	// Unsealed is whether the last seal of this conversation's calls failed
+	// ([Agent.SealFailing]).
+	//
+	// IT RIDES THE PHOTOGRAPH BECAUSE THE `not sealed` SEGMENT IS DRAWN ON A
+	// FRAME, and because the seal watch lives with the seat in the engine's
+	// process, which is not the screen's on the ordinary launch. It is a flag
+	// that is present only while true: a conversation that is sealing well, one
+	// that is not sealed at all and an engine that predates the field all state
+	// nothing, and the emptiness law draws nothing for each.
+	Unsealed bool `json:"unsealed,omitempty"`
 }
 
 // LevelFor is the reasoning level held for one model id, and "" for a model
@@ -189,6 +199,10 @@ func FactsOf(source FactSource) Facts {
 		if held := door.AttachedSkills(); len(held) > 0 {
 			facts.Skills = held
 		}
+	}
+	// AND WHETHER THE LAST SEAL FAILED, on the same terms.
+	if door, ok := source.(interface{ SealFailing() bool }); ok {
+		facts.Unsealed = door.SealFailing()
 	}
 	return facts
 }

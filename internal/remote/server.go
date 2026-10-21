@@ -1278,6 +1278,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// survive every swap (wire_automations.go).
 		Automations:     sess.engine.Automations.on(),
 		AutomationsZone: sess.engine.Automations.zone(),
+		Setup:           setupKnown(sess.agent),
 	}
 }
 
@@ -2075,7 +2076,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	// card, switching a model, interrupting a turn — stays open to every surface
 	// in the room: a watcher is a person watching their own work, not a guest.
 	switch call.Method {
-	case MethodSubmitBash, MethodSubmit, MethodFollowUp, MethodUnqueueFollowUp, MethodSteer, MethodQuestionReplace, MethodSubmitImage, MethodSubmitFiles,
+	case MethodSubmitBash, MethodSubmitSetup, MethodSubmit, MethodFollowUp, MethodUnqueueFollowUp, MethodSteer, MethodQuestionReplace, MethodSubmitImage, MethodSubmitFiles,
 		MethodTaskSteer, MethodTaskStop, MethodTaskRetry:
 		if err := s.mayDrive(); err != nil {
 			return nil, err
@@ -2516,6 +2517,13 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		}
 		events, err := door.SubmitBash(context.Background(), args.Text)
 		return s.stream(MethodSubmitBash, args.Text, events, err)
+
+	case MethodSetupPlan:
+		return serveSetupPlan(agent)
+
+	case MethodSubmitSetup:
+		events, err := submitSetup(agent)
+		return s.stream(MethodSubmitSetup, setupSaid, events, err)
 
 	case MethodSubmit:
 		args, err := arg[SubmitArgs](call)

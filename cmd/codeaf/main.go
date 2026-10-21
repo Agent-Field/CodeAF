@@ -36,6 +36,7 @@ import (
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/plan"
 	"github.com/Agent-Field/codeaf/internal/plandb"
+	"github.com/Agent-Field/codeaf/internal/relayserve"
 	"github.com/Agent-Field/codeaf/internal/router"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/telemetry"
@@ -306,6 +307,17 @@ func run() error {
 		// is a command a person runs and watches — which is why it is in the
 		// usage text and `engine` is not (chatv3_at.go).
 		return runServe(os.Args[2:])
+	case "pair":
+		// Share this computer's chats with another one: one side shows a code,
+		// the other types it (pair.go). It is a command a person runs and
+		// watches, so it is in the usage text.
+		return runPair(os.Args[2:])
+	case "relay":
+		// The relay program itself, the same relayserve.Main that cmd/relay
+		// builds: `codeaf relay --listen :8787 --store <dir>`. It is run by
+		// whoever hosts the relay and not typed in a conversation, so like
+		// `engine` it is absent from the usage text.
+		return relayserve.Main(os.Args[2:])
 	case "devices":
 		// Who is allowed to open a conversation here, and the door for taking
 		// that back. REVOKING IS THIS MACHINE'S DECISION AND ONLY THIS
@@ -364,6 +376,16 @@ func run() error {
 		// the usage text below for the same reason `engine` is: nobody types
 		// it, and the one thing it must never do is exit 1.
 		return runWake(os.Args[2:])
+	case "cell":
+		// The turn chain of a cell (cell.go): its log and its rewind. Machinery
+		// with cells on by default, DELIBERATELY ABSENT from the
+		// usage text below, like `engine` and `tick`.
+		return runCell(os.Args[2:])
+	case "identity":
+		// The person's one root secret and its passphrase-wrapped export
+		// (identity.go). Machinery, so
+		// DELIBERATELY ABSENT from the usage text below, like `cell`.
+		return runIdentity(os.Args[2:])
 	case "tick":
 		// THE OLD TIMER'S VERB, KEPT SO IT ENDS QUIETLY. An operating-system
 		// timer installed by an older build still runs `codeaf tick` until this
@@ -385,6 +407,12 @@ func run() error {
 		return runRebuild(os.Args[2:])
 	case "why":
 		return runWhy(os.Args[2:])
+	case "atlas":
+		// The architecture map of the two-computer work — pair, continue,
+		// furrow — drawn as boxes and arrows a person can drag and open
+		// (internal/atlas). It is a surface a person sits in front of with no
+		// key and nothing spent, so it is in the usage text.
+		return runAtlas(os.Args[2:])
 	case "manual":
 		// Everything codeaf knows about itself, read straight (manual.go). It
 		// is the same corpus the chat's manual tool reads, printed as it is
@@ -522,10 +550,11 @@ Hand it work — nobody is watching, the answer is on stdout
 ` + handWorkFooter + `
 
 Look at what happened — read-only, no key, nothing spent
-  codeaf why self [--db path]
-      show today's self-spend receipts
-  codeaf why <task-id> [--db path]
-      what one piece of work did — its turns, tools, arguments, how it ended
+  codeaf why self | <task-id> [--db path]
+      today's self-spend receipts, or what one piece of work did
+  codeaf atlas [map]
+      an architecture map — pairing and the rest — drag boxes, step flows;
+      bare codeaf atlas shows the picker, an unknown name lists what there is
   codeaf logs [--tail 40] [--follow] [--path] [--json] [--run id]
               [--call id] [--tag t] [--model m] [--node n] [--body id]
       every model call codeaf made — what was asked, which lane answered, what
@@ -559,12 +588,16 @@ Housekeeping — changes state on disk or on the network
       delete the build cache; you type "` + cacheCleanWord + `" to confirm, --yes skips it
   codeaf rebuild [--db path] [--yes]
       discard everything codeaf worked out from the journal and replay it
-  codeaf serve [--workspace path] [--relay url]
+  codeaf pair [--via url] [--name name]
+      add this device to yours: shows a link to approve from one you use
+  codeaf pair approve <link-or-code> | <code> [--replace] | --code
+      approve a new device; or use or show a six-digit code for your chats
+  codeaf serve [--workspace path] [--via url]
       be reachable from your other devices without ssh, with a pairing code
   codeaf devices
-      list the devices paired with this machine
-  codeaf devices revoke <name> [--all]
-      stop one device opening a conversation here, --all every device of it
+      list your devices and the ones that can use this machine
+  codeaf devices revoke <name> [--all] | rename <name>
+      remove one (cannot undo what a device holds), or name this one
   codeaf notebook [--db path]
       what it has learned, and what it has been corrected on
   codeaf notebook retract|restore <seq> [--db path]

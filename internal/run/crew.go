@@ -125,6 +125,16 @@ type Seats struct {
 // reads empty, so a fallback means somebody emptied a row rather than that the
 // profile is old.
 func CrewFactory(store *plandb.Store, workspace, profileDir string, seats Seats, always string, preauthorized bool, completerFor func(model string) session.Completer, sourceSets ...modelsource.Set) WorkerFactory {
+	return crewFactory(store, workspace, profileDir, seats, always, preauthorized, completerFor, nil, sourceSets)
+}
+
+// CrewFactoryWithWorkers carries execution options into workers while retaining
+// the run's resolved memory and daily spending permission.
+func CrewFactoryWithWorkers(store *plandb.Store, workspace, profileDir string, seats Seats, always string, preauthorized bool, completerFor func(model string) session.Completer, workerOpts []WorkerOption, sourceSets ...modelsource.Set) WorkerFactory {
+	return crewFactory(store, workspace, profileDir, seats, always, preauthorized, completerFor, workerOpts, sourceSets)
+}
+
+func crewFactory(store *plandb.Store, workspace, profileDir string, seats Seats, always string, preauthorized bool, completerFor func(model string) session.Completer, workerOpts []WorkerOption, sourceSets []modelsource.Set) WorkerFactory {
 	// The admitted source set explains the refused account without resolving
 	// worker requests a second time. The completer still owns every route.
 	var sources modelsource.Set
@@ -140,7 +150,7 @@ func CrewFactory(store *plandb.Store, workspace, profileDir string, seats Seats,
 	// limit in the worker exactly as it does in the crew guard.
 	dailyBudgetUSD, _ := config.DailyBudgetUSDAt(profileDir)
 	workerFor := func(model string, completer session.Completer) *BashWorker {
-		worker := NewBashWorker(store, workspace, model, completer)
+		worker := NewBashWorker(store, workspace, model, completer, workerOpts...)
 		worker.dailyBudgetUSD = dailyBudgetUSD
 		worker.spendPreauthorized = preauthorized
 		// The memory section rides on every worker this run seats, read once by

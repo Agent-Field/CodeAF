@@ -1,0 +1,271 @@
+package cellsync
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sync"
+
+	"github.com/Agent-Field/codeaf/internal/blobstore"
+	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/directory"
+)
+
+// FetchWindow is the most frame fetches a take has in flight at once
+// (contract §22.6).
+const FetchWindow = 8
+
+// ImportEvery is how many frames land between two partial imports (contract
+// §22.12): each import walks what is stored so far, so asking after every
+// frame would pay the walk many times for little new work.
+const ImportEvery = 4
+
+// Fetcher brings a head and everything it needs from the store onto this device.
+type Fetcher struct {
+	Engine Engine
+	Store  blobstore.Store
+	// Dir reads the cell's record for the plan (contract §22.2). Nil means no
+	// priming: the fetch is exactly the want loop (rotation uses it that way).
+	Dir        directory.Client
+	Inbox      func(c cell.Cell) string
+	OnProgress func(have, want int) // optional; want grows as the graph is learned
+}
+
+// Fetch completes head in the store and then materializes it. A rid the
+// store does not hold is an error that names it.
+func (f *Fetcher) Fetch(ctx context.Context, c cell.Cell, head string) error {
+	if err := f.Complete(ctx, c, head); err != nil {
+		return err
+	}
+	return f.Engine.Materialize(ctx, c, head)
+}
+
+// Complete is Fetch without the restore: everything head needs is in the
+// device's store afterwards and the folder the person works in is not touched.
+// It is how a device holds a chat's objects without taking the chat over.
+func (f *Fetcher) Complete(ctx context.Context, c cell.Cell, head string) error {
+	inbox := f.Inbox(c)
+	if err := os.MkdirAll(inbox, 0o700); err != nil {
+		return err
+	}
+	// Priming works in an inbox of its own beside the shared one: a device's
+	// daemon fetches a head it watches through the same inbox the take uses,
+	// and a primed import deletes what no pass wanted — in a shared inbox that
+	// is another fetcher's file, read one moment and gone the next. Each
+	// priming owns its own files and the strict loop never sees them.
+	if err := f.prime(ctx, c, head, inbox+".prime"); err != nil {
+		return err
+	}
+	have, known := 0, 0
+	for {
+		want, err := f.Engine.Want(ctx, c, head)
+		if err != nil {
+			return err
+		}
+		if len(want) == 0 {
+			return nil
+		}
+		known += len(want)
+		n, err := f.round(ctx, c, head, inbox, want)
+		if err != nil {
+			return err
+		}
+		have += n
+		f.progress(have, known)
+	}
+}
+
+// round gets every wanted rid and imports them. An import that takes nothing
+// would repeat forever, so it is an error.
+func (f *Fetcher) round(ctx context.Context, c cell.Cell, head, inbox string, want []string) (int, error) {
+	if err := f.gather(ctx, inbox, want); err != nil {
+		return 0, err
+	}
+	n, err := f.Engine.Import(ctx, c, head, inbox)
+	if err == nil && n == 0 {
+		err = errors.New("cellsync: import took none of the wanted objects")
+	}
+	return n, err
+}
+
+// gather brings every wanted object into the inbox, a frame's worth per request:
+// the store answers a prefix of what is asked, and the rest is asked again. An
+// object the store does not hold is an error that names it.
+func (f *Fetcher) gather(ctx context.Context, inbox string, want []string) error {
+	for len(want) > 0 {
+		batch := want[:min(len(want), blobstore.MaxGetMany)]
+		objects, err := f.Store.GetMany(ctx, batch)
+		if err != nil {
+			return fmt.Errorf("cellsync: fetch object %s: %w", batch[0], err)
+		}
+		if len(objects) == 0 {
+			return fmt.Errorf("cellsync: the store answered no object for %s", batch[0])
+		}
+		if err := keep(inbox, objects); err != nil {
+			return err
+		}
+		want = want[len(objects):]
+	}
+	return nil
+}
+
+// prime reads the plan the record holds for the cell and fetches the frames
+// it names, then runs one ImportPrimed over what they carried (contract §22.5).
+// It is an optimisation only: a record that names no frames, a frame that is
+// absent or undecodable, a store that cannot be asked, and even an import
+// that refuses what priming delivered all degrade into the want loop, which
+// is the completeness proof of every take. Only a local failure — the inbox —
+// is an error. A refusing import is a degrade, not an error, because the loop
+// fetches objects by rid through the index and may be served from a frame
+// priming never named; the files priming wrote are removed first, so the
+// strict import of the loop never sees them.
+func (f *Fetcher) prime(ctx context.Context, c cell.Cell, head, inbox string) error {
+	if f.Dir == nil {
+		return nil // no directory, no plan: exactly today's want loop
+	}
+	if err := os.MkdirAll(inbox, 0o700); err != nil {
+		return err
+	}
+	defer os.RemoveAll(inbox)
+	// A device that already exchanged objects with this relay holds most of the
+	// chat: the plan names its whole upload history, so priming it would
+	// download what it has to learn about a one-file change. The want loop
+	// fetches a warm take's delta by rid.
+	if f.Engine.Holds(c) {
+		return nil
+	}
+	// A device that already holds the head wants nothing, and needs no frames.
+	want, err := f.Engine.Want(ctx, c, head)
+	if err != nil || len(want) == 0 {
+		return nil
+	}
+	view, err := f.Dir.Cell(ctx, c.ID)
+	if err != nil || len(view.Cell.Frames) == 0 {
+		return nil
+	}
+	lap := startOverlap(ctx, f.Engine, c, head, inbox)
+	err = f.fetchFrames(ctx, inbox, view.Cell.Frames, lap.landed)
+	lap.finish()
+	if err != nil {
+		return err
+	}
+	if _, err := f.Engine.ImportPrimed(ctx, c, head, inbox); err != nil {
+		clearInbox(inbox)
+		return nil
+	}
+	return nil
+}
+
+// clearInbox removes what priming left in it: the loop's own import refuses
+// files no survey wanted, and a degraded priming must not poison it.
+func clearInbox(inbox string) {
+	entries, err := os.ReadDir(inbox)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		_ = os.Remove(filepath.Join(inbox, e.Name()))
+	}
+}
+
+// fetchFrames writes the objects of every frame the store holds to the inbox,
+// FetchWindow fetches in flight at once. A frame the store does not hold, or
+// one that fails Decode, is skipped: the want loop asks for what it carried.
+// Downloads race each other but writes go through sink: two frames can carry
+// the same object, and one rid is written once, by one goroutine.
+func (f *Fetcher) fetchFrames(ctx context.Context, inbox string, frames []string, landed func()) error {
+	sink := &frameSink{written: map[string]bool{}}
+	window := make(chan struct{}, FetchWindow)
+	var wg sync.WaitGroup
+	for _, id := range frames {
+		if sink.failed() {
+			break // the inbox already refused a write; the rest is wasted work
+		}
+		select {
+		case window <- struct{}{}:
+		case <-ctx.Done():
+			wg.Wait()
+			return ctx.Err()
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() { <-window }()
+			frame, err := f.Store.GetFrame(ctx, id)
+			if err != nil {
+				return
+			}
+			_, objects, err := blobstore.Decode(frame)
+			if err != nil {
+				return
+			}
+			sink.keep(inbox, objects)
+			landed()
+		}()
+	}
+	wg.Wait()
+	return sink.err
+}
+
+// frameSink serializes priming writes: one rid lands once, and the first local
+// failure is kept for the caller.
+type frameSink struct {
+	mu      sync.Mutex
+	written map[string]bool
+	err     error
+}
+
+func (s *frameSink) keep(inbox string, objects []blobstore.Object) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.err != nil {
+		return
+	}
+	for _, o := range objects {
+		if s.written[o.RID] {
+			continue
+		}
+		if err := writeWhole(inbox, o); err != nil {
+			s.err = err
+			return
+		}
+		s.written[o.RID] = true
+	}
+}
+
+// writeWhole puts an object in the inbox under its rid only once every byte is
+// there: a partial import may list the inbox while frames still land, and it
+// skips dot names, so the file is written under one and renamed.
+func writeWhole(inbox string, o blobstore.Object) error {
+	tmp := filepath.Join(inbox, "."+o.RID)
+	if err := os.WriteFile(tmp, o.Bytes, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, filepath.Join(inbox, o.RID))
+}
+
+// failed reports whether a write has already been refused, so the spawn
+// loop can stop asking for frames the inbox can no longer take.
+func (s *frameSink) failed() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.err != nil
+}
+
+// keep writes each object to the inbox under its remote id, the name Import reads it by.
+func keep(inbox string, objects []blobstore.Object) error {
+	for _, o := range objects {
+		if err := os.WriteFile(filepath.Join(inbox, o.RID), o.Bytes, 0o600); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (f *Fetcher) progress(have, want int) {
+	if f.OnProgress != nil {
+		f.OnProgress(have, want)
+	}
+}

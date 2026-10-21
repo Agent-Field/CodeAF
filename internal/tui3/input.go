@@ -381,6 +381,13 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	if a.wall.on && !door {
 		return a.wallKey(msg)
 	}
+	// AND THE MAP, on the same terms: /atlas's sheet takes the whole keyboard
+	// while it is up, esc and q hand it back, and ctrl+c keeps its meaning
+	// (atlascmd.go). It reads above the first-run setup because it cannot be
+	// open at the same time as anything else that owns the frame.
+	if a.atlas.on && !door {
+		return a.atlasKey(msg)
+	}
 	if !door && wallOpenPressed(msg) {
 		return a.openWall()
 	}
@@ -615,6 +622,13 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	if a.permPanel.open && msg.String() != "ctrl+c" {
 		return a.permPanelKey(msg)
+	}
+
+	// And the pairing panel, on the same terms (pair.go): opened by a command,
+	// nothing typed under it, and while it asks a question the only keys it reads
+	// are the answer and esc.
+	if a.pair.open && msg.String() != "ctrl+c" {
+		return a.pairKey(msg)
 	}
 
 	// And /subharness, which is those panels' twin in every respect that matters
@@ -1441,11 +1455,15 @@ func (a *app) enter() tea.Cmd { return a.enterLine() }
 // (followup.go), and the marked reading went with standing orders; everything a
 // message does to this surface — the transcript line, the turn number, the
 // recall history, the draft file — is the same whichever way the sentence was
-// handed over.
+// handed over. A pair link typed where a message would go opens the
+// approval screen instead (pairlink.go).
 func (a *app) enterLine() tea.Cmd {
 	if a.tmemberStart.key == a.frontTabKey() && a.tmemberStart.said.pending {
 		a.note("The member is still being added")
 		return nil
+	}
+	if cmd, took := a.takePairLink(); took {
+		return cmd
 	}
 	if a.startingChat() {
 		return a.startChatEnter()
@@ -1514,6 +1532,11 @@ func (a *app) enterLine() tea.Cmd {
 		a.note(noAvailableModelWord)
 		a.openPicker()
 		return nil
+	}
+	if !strings.HasPrefix(line, "/") && (line != "" || held) {
+		if door, shown := a.heldElsewhereDoor(); shown {
+			return door
+		}
 	}
 	// A TAG IS READ BEFORE THE DRAFT IS CLEARED. More than one cannot choose a
 	// winner safely: falling back to an ordinary send is precisely the failure
@@ -1623,6 +1646,11 @@ func (a *app) completePath() tea.Cmd {
 		return nil
 	}
 	a.touch()
+	if a.comp.words != nil {
+		// A word argument's catalog was named at the door: there is no walk to
+		// wait for, and the list is already on the screen.
+		return nil
+	}
 	return a.loadFiles()
 }
 

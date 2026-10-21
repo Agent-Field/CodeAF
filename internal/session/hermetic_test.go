@@ -36,6 +36,7 @@ package session
 
 import (
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"os"
 	"path/filepath"
 	"sort"
@@ -127,6 +128,7 @@ func runTests(m *testing.M) int {
 	programCopyRoot = func() string { return filepath.Join(root, "worktrees") }
 
 	code := m.Run()
+	cellstore.StopSpawned() // no engine daemon outlives the run
 
 	if moved := tree.moved(); moved != "" {
 		fmt.Fprintf(os.Stderr, "\n%s\n", moved)

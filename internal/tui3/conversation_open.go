@@ -184,7 +184,14 @@ func (a *app) homeOpenLater(line homeLine, takeover bool) tea.Cmd {
 	return a.conversationLater(ask, say, func(conv Conversation) tea.Cmd {
 		opened := a.takeBeside(conv)
 		a.closeHome()
-		return tea.Batch(opened, a.homeLandOnTask(line))
+		// AND THE CALLER'S OWN LANDING WORK ([app.homeTakenSaid]) — the
+		// takeover's sentence and its setup card — is spent here, in the
+		// conversation the person is arriving in.
+		var said tea.Cmd
+		if a.homeTakenSaid != nil {
+			said, a.homeTakenSaid = a.homeTakenSaid(), nil
+		}
+		return tea.Batch(opened, a.homeLandOnTask(line), said)
 	}, func(err error) tea.Cmd {
 		if errors.Is(err, session.ErrSessionLocked) || err.Error() == sessionBusyWord {
 			if takeover {

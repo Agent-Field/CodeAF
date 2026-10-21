@@ -1,6 +1,6 @@
 # A task's room after a restart
 
-## See what a task did after restarting — a finished task's room shows its whole transcript
+## Inside a task I cannot see the chat session or the output — see its whole transcript after restarting
 
 Close codeaf, open the same conversation again, and walk into a task that finished in the
 earlier life of it — `enter` on its roster row, a click on its strip chip, a `task 7`
@@ -12,7 +12,9 @@ and where the task was spawned under another task it names that too:
 `this task has finished — say it to main, or open its parent, Ship the port`.
 
 That works because the task's transcript is a real file on disk, kept beside the
-conversation that commissioned it — `<session folder>/tasks/<YYYYMMDD-HHMMSS>_<task id>.jsonl`
+conversation that commissioned it — `<session folder>/.cell/tasks/<YYYYMMDD-HHMMSS>_<task id>.jsonl`
+for a cell, or `<session folder>/tasks/<YYYYMMDD-HHMMSS>_<task id>.jsonl` for a
+conversation that has not migrated
 — and the conversation's task checkpoint remembers which file is which. A checkpoint
 written by an older codeaf that did not remember is no worse off: the file is named with
 the task's id, so the room finds it by that id in the same directory, and remembers it from
