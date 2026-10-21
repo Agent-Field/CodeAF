@@ -490,6 +490,9 @@ func recordVectors(record Record) int64 {
 func recordCost(record Record) int64 {
 	cost := int64(unsafe.Sizeof(record))
 	cost += entriesCost(record.Entries) + entriesCost(record.Earlier)
+	// The private origin vector is immutable and shared by leases, but its
+	// retained allocation is still charged here, including spare capacity.
+	cost += int64(cap(record.userLines)) * int64(unsafe.Sizeof(recordUserLine{}))
 	cost += int64(len(record.Unreadable))
 	cost += int64(cap(record.Requests.Recent)) * int64(unsafe.Sizeof(RequestLine{}))
 	// A pass's summary is the one long string it carries; the journal holds

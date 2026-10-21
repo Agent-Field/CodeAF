@@ -20,9 +20,8 @@ import (
 
 // stampIndex is when each message's line was written.
 type stampIndex struct {
-	mu    sync.Mutex
-	at    map[any]time.Time
-	lines map[any]int
+	mu sync.Mutex
+	at map[any]time.Time
 }
 
 // stampKey is the message's identity for the index: its first part, or its
@@ -82,33 +81,4 @@ func (s *sessionFile) written(message ai.Message) time.Time {
 	stamps := s.stamps
 	s.mu.Unlock()
 	return stamps.of(message)
-}
-
-// rememberLine keeps a physical address beside the rebuilt message, so a
-// consumer can resolve a recorded origin without matching the person's words.
-func (s *stampIndex) rememberLine(message ai.Message, line int) {
-	key := stampKey(message)
-	if key == nil {
-		return
-	}
-	if s.lines == nil {
-		s.lines = make(map[any]int)
-	}
-	s.lines[key] = line
-}
-
-// journalLine is the physical line read for this message, absent on live entries.
-func (s *sessionFile) journalLine(message ai.Message) int {
-	if s == nil {
-		return 0
-	}
-	s.mu.Lock()
-	stamps := s.stamps
-	s.mu.Unlock()
-	if stamps == nil {
-		return 0
-	}
-	stamps.mu.Lock()
-	defer stamps.mu.Unlock()
-	return stamps.lines[stampKey(message)]
 }

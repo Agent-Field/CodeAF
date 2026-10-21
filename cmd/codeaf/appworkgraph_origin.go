@@ -67,16 +67,18 @@ func graphConversationSelect(agent string, record session.Record, wanted map[int
 	n := 0
 	floor := min(max(record.Floor, 0), len(record.Entries))
 	clients := map[string]bool{client: true}
-	for _, item := range record.Entries[:floor] {
-		if (wanted == nil || wanted[item.JournalLine]) && item.Person != nil {
+	for index, item := range record.Entries[:floor] {
+		line := record.JournalLine(false, index)
+		if (wanted == nil || wanted[line]) && item.Person != nil {
 			clients[item.Person.ClientID] = true
 		}
 	}
-	add := func(items []session.DisplayEntry) {
-		for _, item := range items {
+	add := func(items []session.DisplayEntry, earlier bool, offset int) {
+		for index, item := range items {
 			if item.Role != "user" {
 				continue
 			}
+			line := record.JournalLine(earlier, offset+index)
 			message := graphMessage{source: workgraph.MessageSource{Agent: agent, Anchor: appUserEntryID(n), At: workgraph.Stamp(item.At)}}
 			if out.first == nil {
 				first := message
@@ -85,8 +87,8 @@ func graphConversationSelect(agent string, record session.Record, wanted map[int
 				first.text = strings.Clone(text)
 				out.first = &first
 			}
-			if item.JournalLine > 0 && (wanted == nil || wanted[item.JournalLine]) {
-				out.lines[item.JournalLine] = message
+			if line > 0 && (wanted == nil || wanted[line]) {
+				out.lines[line] = message
 			}
 			if item.Person != nil && item.Person.ClientID != "" && (wanted == nil || clients[item.Person.ClientID]) {
 				out.clients[item.Person.ClientID] = message
@@ -94,14 +96,15 @@ func graphConversationSelect(agent string, record session.Record, wanted map[int
 			n++
 		}
 	}
-	add(record.Earlier)
-	add(record.Entries[floor:])
+	add(record.Earlier, true, 0)
+	add(record.Entries[floor:], false, floor)
 	// A rewritten overlap can point back only through a durable message identity.
 	// Its position or words are not evidence that it is the person's request.
-	for _, item := range record.Entries[:floor] {
+	for index, item := range record.Entries[:floor] {
+		line := record.JournalLine(false, index)
 		if item.Role == "user" && item.Person != nil {
 			if message, ok := out.clients[item.Person.ClientID]; ok {
-				out.lines[item.JournalLine] = message
+				out.lines[line] = message
 			}
 		}
 	}
