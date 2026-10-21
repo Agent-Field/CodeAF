@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"net/http"
+	"regexp"
 	"runtime"
 	"testing"
 	"time"
@@ -54,7 +55,7 @@ func TestApprovalsDoorApprovesListsAndRevokes(t *testing.T) {
 		t.Fatal(err)
 	}
 	screen, done := rig.asking(t)
-	link := screen.waitFor(t, `https://codeaf\.agentfield\.ai/p/\S+#\S+`)[0]
+	link := screen.waitFor(t, regexp.QuoteMeta(rig.url)+`/p/\S+#\S+`)[0]
 	door := rig.approvalsAt(rig.homeA)
 	ctx := context.Background()
 	rig.enrol(t, door, "this computer")
@@ -106,7 +107,7 @@ func TestApprovalsDoorApprovesListsAndRevokes(t *testing.T) {
 func TestApprovalsDoorDeny(t *testing.T) {
 	rig := newPairRig(t)
 	screen, done := rig.asking(t)
-	link := screen.waitFor(t, `https://codeaf\.agentfield\.ai/p/\S+#\S+`)[0]
+	link := screen.waitFor(t, regexp.QuoteMeta(rig.url)+`/p/\S+#\S+`)[0]
 	door := rig.approvalsAt(rig.homeA)
 	p, err := door.Pending(context.Background(), link)
 	if err != nil {
@@ -135,7 +136,7 @@ func TestApprovalsDoorRefusesAWrongLink(t *testing.T) {
 func TestApprovalsDoorTellsAStoppedComputerItWasStopped(t *testing.T) {
 	rig := newPairRig(t)
 	screen, done := rig.asking(t)
-	link := screen.waitFor(t, `https://codeaf\.agentfield\.ai/p/\S+#\S+`)[0]
+	link := screen.waitFor(t, regexp.QuoteMeta(rig.url)+`/p/\S+#\S+`)[0]
 	door := rig.approvalsAt(rig.homeA)
 	ctx := context.Background()
 	rig.enrol(t, door, "this computer")

@@ -130,7 +130,9 @@ func (a *app) takePairLink() (tea.Cmd, bool) {
 	return a.openApprove(line), true
 }
 
-func isLinkShape(typed string) bool { return linkShape.MatchString(strings.TrimSpace(typed)) }
+func isLinkShape(typed string) bool {
+	return linkShape.MatchString(strings.TrimSpace(typed)) || pair.IsLinkText(typed)
+}
 
 // platformInfo is the icon and word a platform is shown as. A platform not
 // listed reads as `other`, so a new one needs a row here and no code.

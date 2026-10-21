@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"strings"
 	"sync"
@@ -75,7 +76,16 @@ func (d *approvalsDoor) Pending(ctx context.Context, typed string) (tui3.Pending
 	if err != nil {
 		return tui3.PendingDevice{}, err
 	}
-	who, err := d.who()
+	route, err := d.mailbox("")
+	if err != nil {
+		return tui3.PendingDevice{}, err
+	}
+	// A pasted self-hosted link must never send its code to the current
+	// service when the two differ. The terminal's printed command names it.
+	if via := pair.LinkRelay(typed); via != "" && strings.TrimRight(via, "/") != strings.TrimRight(route.URL, "/") {
+		return tui3.PendingDevice{}, errors.New("this pairing link uses another sync address — approve it in a terminal with the command shown on the new device")
+	}
+	who, err := d.approver(route)
 	if err != nil {
 		return tui3.PendingDevice{}, err
 	}

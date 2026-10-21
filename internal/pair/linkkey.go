@@ -22,9 +22,6 @@ import (
 // installed app, or shows what to run.
 const LinkOrigin = "https://codeaf.agentfield.ai"
 
-// linkHost is the one host a pairing link may name; any other host is not a codeaf link.
-const linkHost = "codeaf.agentfield.ai"
-
 // linkKeySize is the secret in the link's fragment, which no server ever sees.
 const linkKeySize = 16
 
@@ -55,6 +52,46 @@ func NewLinkKey() ([]byte, error) {
 // URL is the short link for this reference.
 func (r LinkRef) URL() string {
 	return LinkOrigin + "/p/" + r.Code + "#" + b64u.EncodeToString(r.Key)
+}
+
+// URLAt keeps a self-hosted invitation on the service the person chose. A
+// relay without a web address has no browser door, so only its token is shown.
+func (r LinkRef) URLAt(relay string) string {
+	base, err := url.Parse(relay)
+	if err != nil || !webRelay(base) {
+		return ""
+	}
+	base.Path = strings.TrimRight(base.Path, "/") + "/p/" + r.Code
+	base.Fragment = b64u.EncodeToString(r.Key)
+	return base.String()
+}
+
+func webRelay(u *url.URL) bool {
+	return (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" && u.User == nil && u.RawQuery == ""
+}
+
+// LinkRelay is the service a self-hosted page names. The hosted page keeps
+// using this computer's configured service, as it did before custom pages.
+func LinkRelay(typed string) string {
+	u, err := url.Parse(strings.TrimSpace(typed))
+	if err != nil {
+		return ""
+	}
+	if u.Scheme == "codeaf" {
+		return u.Query().Get("via")
+	}
+	if !webRelay(u) {
+		return ""
+	}
+	base, _, ok := strings.Cut(u.Path, "/p/")
+	if !ok {
+		return ""
+	}
+	if u.Scheme+"://"+u.Host == LinkOrigin && base == "" {
+		return ""
+	}
+	u.Path, u.RawPath, u.Fragment = base, "", ""
+	return u.String()
 }
 
 // Token is the typed form, `<code>.<key>`.
@@ -100,13 +137,14 @@ func splitLink(text string) (code, key string) {
 	return text, ""
 }
 
-// fromURL reads https://codeaf.agentfield.ai/p/<code>#<key> and codeaf://pair?code=<code>#<key>.
+// fromURL reads a hosted or self-hosted /p/<code>#<key> page and the app link
+// codeaf://pair?code=<code>#<key>. Neither shape puts the key in a query.
 func fromURL(u *url.URL) (code, key string) {
 	if u.Scheme == "codeaf" {
 		return u.Query().Get("code"), u.Fragment
 	}
-	if rest, ok := strings.CutPrefix(u.Path, "/p/"); ok && u.Host == linkHost {
-		return strings.Trim(rest, "/"), u.Fragment
+	if _, rest, ok := strings.Cut(u.Path, "/p/"); ok && webRelay(u) {
+		return rest, u.Fragment
 	}
 	return "", ""
 }

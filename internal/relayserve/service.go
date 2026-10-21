@@ -103,6 +103,7 @@ func New(cfg Config) *Service {
 	}
 	mux := pipeMux(&relay.Server{Note: cfg.Note}, cfg.Status)
 	mountPairing(mux, cfg, now)
+	mux.HandleFunc("/p/", servePairPage)
 	svc := &Service{Handler: stamped(now, mux)}
 	if cfg.Store == "" {
 		return svc
