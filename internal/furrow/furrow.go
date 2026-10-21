@@ -277,6 +277,20 @@ var embedded = furrowbin.Ensure
 // road not taken, and if none of them answer the seam is absent exactly as it
 // always was.
 func lookBinary() (string, error) {
+	binary, err := lookOwned()
+	if errors.Is(err, errNoOwnedEngine) {
+		return exec.LookPath(Binary)
+	}
+	return binary, err
+}
+
+// errNoOwnedEngine says neither CODEAF_FURROW nor the embedded copy answered.
+var errNoOwnedEngine = errors.New("no engine of codeaf's own")
+
+// lookOwned is the first two roads of [lookBinary] and never PATH: the engine
+// somebody named or the one this codeaf carries. A caller that depends on what
+// the engine can do, and not merely on there being one, asks for this.
+func lookOwned() (string, error) {
 	if configured := strings.TrimSpace(env.Get(BinaryEnvVar)); configured != "" {
 		info, err := os.Stat(configured)
 		if err != nil {
@@ -287,11 +301,21 @@ func lookBinary() (string, error) {
 		}
 		return configured, nil
 	}
-	if carried, err := embedded(); err == nil {
-		return carried, nil
+	carried, err := embedded()
+	if err != nil {
+		return "", fmt.Errorf("%w: %v", errNoOwnedEngine, err)
 	}
-	return exec.LookPath(Binary)
+	return carried, nil
 }
+
+// ResolveBinary is the furrow program this codeaf would run, chosen by the same
+// order as every other caller here, PATH included.
+func ResolveBinary() (string, error) { return lookBinary() }
+
+// ResolveOwned is the furrow program that is codeaf's to vouch for: the
+// configured one or the embedded one, never whatever PATH holds. It is the seam
+// for packages that drive the engine themselves (internal/cellstore).
+func ResolveOwned() (string, error) { return lookOwned() }
 
 // Workspace is one attached folder, and the receiver every operation in this
 // package hangs off. Holding it is a claim that furrow was here and this folder

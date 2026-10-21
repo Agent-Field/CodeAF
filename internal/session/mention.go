@@ -186,11 +186,7 @@ func mentionBucket(c Config) string {
 	if file == "" {
 		return ""
 	}
-	dir := filepath.Dir(file)
-	if filepath.Base(file) == placeTranscript {
-		return filepath.Dir(dir)
-	}
-	return dir
+	return BucketOf(file)
 }
 
 func mentionTokens(text string) (teamSlugs, chatTokens []string) {

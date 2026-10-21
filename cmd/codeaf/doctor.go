@@ -41,6 +41,9 @@ type doctorSnapshot struct {
 	// worth changing: the command exists to tell somebody why nothing works,
 	// and a missing key is the most common answer there is.
 	Key keyReport
+	// Cells is what the cells' working files hold against the disk budget, "" when
+	// they hold nothing.
+	Cells string
 }
 
 // fallbackKeyEnv is the compatibility variable [config.Load] accepts for an
@@ -124,6 +127,7 @@ func runDoctorWith(args []string, output io.Writer, dailyBudget float64) error {
 	// The key is read from the same profile, and for the same reason: `--db`
 	// moves the store and moves nothing about who this machine can talk to.
 	snapshot.Key = readKeyReport(strings.TrimSpace(env.Get(config.ProfileDirEnv)))
+	snapshot.Cells = cellsUsage()
 	_, err = io.WriteString(output, formatDoctor(snapshot))
 	return err
 }
@@ -240,6 +244,9 @@ func formatDoctor(snapshot doctorSnapshot) string {
 		"store", brain,
 		"resident", snapshot.Resident,
 		"spend", spend)
+	if snapshot.Cells != "" {
+		block += fmt.Sprintf("%-16s %s\n", "cells", snapshot.Cells)
+	}
 	if line := formatCallLog(snapshot.CallLog); line != "" {
 		block += fmt.Sprintf("%-16s %s\n", "model calls", line)
 	}

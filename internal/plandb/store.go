@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"math/rand"
 	"os"
 	"path"
@@ -180,8 +181,24 @@ func (s *Store) Path() string {
 // roads derive it from — the session seat reads it off the store path it was
 // given, the run off the store it drives — and a second spelling of the
 // layout would be two answers to where a task's record is.
+//
+// THE FOLDER IS TRUTH, SO A CELL KEEPS IT IN .cell/. The chat's node journals
+// already sit in .cell/tasks (internal/session/layout.go), and a task's own
+// record is the same kind of thing, so the one `tasks/` directory is inside
+// .cell/ whenever the chat is a cell and it travels with the cell when the
+// chat moves. A legacy folder keeps it at its top until it migrates.
 func TaskDir(storeDir, id string) string {
-	return path.Join(storeDir, "tasks", id)
+	return path.Join(journalRoot(storeDir), "tasks", id)
+}
+
+// journalRoot is the directory the folder's `tasks/` lives in: the cell's state
+// directory when storeDir is a cell, the folder itself otherwise.
+func journalRoot(storeDir string) string {
+	state := path.Join(storeDir, cell.StateDir)
+	if info, err := os.Stat(state); err == nil && info.IsDir() {
+		return state
+	}
+	return storeDir
 }
 
 func (s *Store) Project() string {

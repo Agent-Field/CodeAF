@@ -182,7 +182,7 @@ func ElsewhereOf(transcript string, now time.Time) Elsewhere {
 	if transcript == "" {
 		return Elsewhere{Read: now}
 	}
-	dir := filepath.Dir(transcript)
+	dir := DirOf(transcript)
 	bucket := filepath.Dir(dir)
 	if dir == "." || bucket == "" || bucket == "." || bucket == dir {
 		return Elsewhere{Read: now}

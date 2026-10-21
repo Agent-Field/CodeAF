@@ -368,14 +368,10 @@ func (s *Store) AddMemory(m Memory) (Memory, error) {
 	if exists != 0 {
 		return Memory{}, fmt.Errorf("add memory: %w: %q already exists", ErrInvalid, payload.ID)
 	}
-	seq, _, err := appendEvent(tx, payload.ID, EventMemoryAdd, payload)
+	seq, err := s.commitMemoryEvent(tx, payload.ID, EventMemoryAdd, payload, func(seq int64) error {
+		return applyMemoryAdd(tx, payload, seq)
+	})
 	if err != nil {
-		return Memory{}, fmt.Errorf("add memory: %w", err)
-	}
-	if err := applyMemoryAdd(tx, payload, seq); err != nil {
-		return Memory{}, fmt.Errorf("add memory: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
 		return Memory{}, fmt.Errorf("add memory: %w", err)
 	}
 	return memoryFromPayload(payload, seq), nil
@@ -398,6 +394,16 @@ func memoryFromPayload(payload memoryPayload, seq int64) Memory {
 // oversight: its one caller is the person's own memory place, which may manage
 // any row it is showing.
 func (s *Store) UpdateMemory(id, text string) error {
+	return s.updateMemory(id, text, "")
+}
+
+// UpdateMemoryFromSession attributes the same checked wording change to the
+// conversation that supplied it, so its sealed ledger can carry the edit.
+func (s *Store) UpdateMemoryFromSession(id, text, sourceSession string) error {
+	return s.updateMemory(id, text, sourceSession)
+}
+
+func (s *Store) updateMemory(id, text, sourceSession string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return fmt.Errorf("update memory: %w: id is required", ErrInvalid)
@@ -430,15 +436,11 @@ func (s *Store) UpdateMemory(id, text string) error {
 	if err := memoryRoomOn(tx, owner, text, id); err != nil {
 		return fmt.Errorf("update memory: %w", err)
 	}
-	payload := memoryUpdatePayload{ID: id, Title: title, Text: text, Tags: tags}
-	seq, _, err := appendEvent(tx, id, EventMemoryUpdate, payload)
+	payload := memoryUpdatePayload{ID: id, Title: title, Text: text, Tags: tags, SourceSession: strings.TrimSpace(sourceSession)}
+	_, err = s.commitMemoryEvent(tx, id, EventMemoryUpdate, payload, func(seq int64) error {
+		return applyMemoryUpdate(tx, payload, seq)
+	})
 	if err != nil {
-		return fmt.Errorf("update memory: %w", err)
-	}
-	if err := applyMemoryUpdate(tx, payload, seq); err != nil {
-		return fmt.Errorf("update memory: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("update memory: %w", err)
 	}
 	return nil
@@ -473,7 +475,8 @@ func (s *Store) SupersedeMemoryForOwners(owners []string, oldID string, m Memory
 	}
 	if kept != "" {
 		// The words are already kept there: the old line goes, that one stands.
-		if err := forgetOn(tx, oldID, fresh.Owner, fresh.SourceSession); err != nil {
+		at, err := forgetOn(tx, oldID, fresh.Owner, fresh.SourceSession)
+		if err != nil {
 			return Memory{}, false, fmt.Errorf("supersede memory: %w", err)
 		}
 		found, err := queryMemoriesOn(tx, "WHERE id = ?", []any{kept}, "", 1)
@@ -483,19 +486,18 @@ func (s *Store) SupersedeMemoryForOwners(owners []string, oldID string, m Memory
 		if err != nil {
 			return Memory{}, false, fmt.Errorf("supersede memory: %w", err)
 		}
+		if err := s.seal(oldID, EventMemoryForget, at, memoryForgetPayload{ID: oldID, Owner: fresh.Owner, SourceSession: fresh.SourceSession}); err != nil {
+			return Memory{}, false, fmt.Errorf("supersede memory: %w", err)
+		}
 		return found[0], false, nil
 	}
 	if err := memoryRoomOn(tx, fresh.Owner, fresh.Text, oldID); err != nil {
 		return Memory{}, false, fmt.Errorf("supersede memory: %w", err)
 	}
 	payload := memorySupersedePayload{OldID: oldID, New: fresh, SourceSession: fresh.SourceSession}
-	seq, _, err := appendEvent(tx, fresh.ID, EventMemorySupersede, payload)
-	if err == nil {
-		err = applyMemorySupersede(tx, payload, seq)
-	}
-	if err == nil {
-		err = tx.Commit()
-	}
+	seq, err := s.commitMemoryEvent(tx, fresh.ID, EventMemorySupersede, payload, func(seq int64) error {
+		return applyMemorySupersede(tx, payload, seq)
+	})
 	if err != nil {
 		return Memory{}, false, fmt.Errorf("supersede memory: %w", err)
 	}
@@ -547,13 +549,13 @@ func supersedeTargetOn(tx *sql.Tx, owners []string, oldID, freshOwner string) er
 // forgetOn lets one line go inside a caller's own transaction — the doors that
 // find the words they were about to make active already kept, and let the
 // duplicate go rather than keep it twice.
-func forgetOn(tx *sql.Tx, id, owner, sourceSession string) error {
+func forgetOn(tx *sql.Tx, id, owner, sourceSession string) (time.Time, error) {
 	payload := memoryForgetPayload{ID: id, Owner: owner, SourceSession: sourceSession}
-	seq, _, err := appendEvent(tx, id, EventMemoryForget, payload)
+	seq, at, err := appendEvent(tx, id, EventMemoryForget, payload)
 	if err != nil {
-		return err
+		return time.Time{}, err
 	}
-	return applyMemoryForget(tx, payload, seq)
+	return at, applyMemoryForget(tx, payload, seq)
 }
 
 // ForgetMemory tombstones a memory by id. It refuses a memory that is already
@@ -594,7 +596,7 @@ func (s *Store) forgetMemory(owners []string, id, sourceSession string) error {
 		return fmt.Errorf("forget memory: %w", err)
 	}
 	payload := memoryForgetPayload{ID: id, Owner: rowOwner, SourceSession: strings.TrimSpace(sourceSession)}
-	seq, _, err := appendEvent(tx, id, EventMemoryForget, payload)
+	seq, at, err := appendEvent(tx, id, EventMemoryForget, payload)
 	if err != nil {
 		return fmt.Errorf("forget memory: %w", err)
 	}
@@ -604,7 +606,7 @@ func (s *Store) forgetMemory(owners []string, id, sourceSession string) error {
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("forget memory: %w", err)
 	}
-	return nil
+	return s.seal(id, EventMemoryForget, at, payload)
 }
 
 // RestoreMemory puts a forgotten or replaced memory back in the active view.
@@ -665,14 +667,10 @@ func (s *Store) restoreMemory(owners []string, id string) error {
 		return fmt.Errorf("restore memory: %w", err)
 	}
 	payload := memoryRestorePayload{ID: id}
-	seq, _, err := appendEvent(tx, id, EventMemoryRestore, payload)
+	_, err = s.commitMemoryEvent(tx, id, EventMemoryRestore, payload, func(seq int64) error {
+		return applyMemoryRestore(tx, payload, seq)
+	})
 	if err != nil {
-		return fmt.Errorf("restore memory: %w", err)
-	}
-	if err := applyMemoryRestore(tx, payload, seq); err != nil {
-		return fmt.Errorf("restore memory: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("restore memory: %w", err)
 	}
 	return nil
@@ -729,7 +727,8 @@ func moveMemoryOn(tx *sql.Tx, id, owner, projectName string) (bool, error) {
 		return false, err
 	}
 	if kept != "" {
-		return true, forgetOn(tx, id, oldOwner, "")
+		_, err := forgetOn(tx, id, oldOwner, "")
+		return true, err
 	}
 	if err := memoryRoomOn(tx, owner, text, id); err != nil {
 		return false, err

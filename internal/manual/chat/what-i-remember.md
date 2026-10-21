@@ -383,8 +383,8 @@ them: a line for one project is only ever put in front of that project's
 conversations.
 
 `CODEAF_HOME` moves the whole folder. Copy the file to another machine and your
-memories go with it; delete it and they are gone, because nothing keeps a second
-copy. A line kept for **this machine** travels in the file too, so check that
+memories go with it. Deleting it loses lines that no chat kept in its sealed
+ledger; a continued chat rebuilds the lines its ledger holds. A line kept for **this machine** travels in the file too, so check that
 group after copying.
 
 
@@ -571,3 +571,9 @@ drops out and something confirmed this morning rises. A suggestion that fails on
 the same error is counted against itself. There is no command or panel for it,
 it is not on the Memories tab, and the noticing setting does not turn it off: the
 one line on a failed row is the whole of what it says.
+
+## Does /remember work on my other computer — memory across computers, memory missing on the new laptop, and what travels with a chat
+
+A memory is kept in the file `~/.codeaf/graph.db` of the computer that made it, and that file is never copied to the relay on its own. What does travel is the memories a **chat** wrote, with that chat. When you `/remember` a line in a conversation (or the model remembers one), the line is also written into that conversation's own ledger, which is sealed and moved with the chat. When you continue the chat on another computer, that computer reads the ledger back and has those lines in its own memory.
+
+So: a line remembered in a chat reaches your other computer **when that chat is continued there**, not before, and not for chats you never move. A memory that belongs to no chat, such as a line you edited by hand in the memory place, stays on the computer where you wrote it. Pairing a second computer does not merge two memories into one. To carry everything to a new computer at once, copy `graph.db` as described under "Where is everything you remember kept", or continue the chats you care about there.

@@ -671,6 +671,11 @@ func (p *v3Process) closeAll() {
 	}
 	waiting.Wait()
 
+	// THE DRIVE SIDE OF EACH CHAT ENDS AFTER ITS CONVERSATION DID, so the last
+	// seal is already noted when the final publish runs, and every lease is
+	// given back on this one road out.
+	syncDrives.closeAll()
+
 	// The ledger's background writer is drained AFTER the agents have closed,
 	// because closing an agent can seal a last turn and a seal records a line.
 	// It is the same bargain the recall store's Close makes one line below: a
@@ -943,7 +948,8 @@ func (s *v3Seam) bundle(agent v3Live, launch *v3Launch, cfg session.Config,
 		Owned:           cfg.Place.Owned,
 		AnchorWorkspace: anchor,
 		Resumed:         resumed,
-		Notice:          notice,
+		Seal:            sealSeamOf(agent, cfg.Seals),
+		Notice:          v3Interrupted(cfg, notice),
 		ContextWindow:   cfg.ContextWindow,
 		DraftFile:       draft,
 		History:         recall,

@@ -1,6 +1,6 @@
 # Running on another machine
 
-## What --host is — running this on my dev box, over ssh
+## Can I run it on another computer — what --host is, running this on my dev box over ssh
 
 `--host` runs the chat surface on the machine you are sitting at, and runs the
 conversation on another machine, over ssh.

@@ -426,6 +426,11 @@ const (
 	// because the page cache has the rest. 0 turns the check off.
 	KeyTaskMinFreeMB = "task.min_free_mb"
 
+	// KeyCellBudget is the disk the working files of all cells may use
+	// together, in gibibytes (internal/cellbudget). Over it, `codeaf cell gc`
+	// evicts the cells opened longest ago. 0 means no limit.
+	KeyCellBudget = "cell.budget_gb"
+
 	// KeyTaskModel is the model a task runs on when the conversation does not
 	// name one for it (internal/session's taskmodel.go). It is named under
 	// `task.` beside the countdown rather than among the `models.` rows because
@@ -1041,6 +1046,10 @@ var OperatorEnvPins = []string{
 	// CODEAF_FURROW names a furrow to use instead of the one codeaf carries
 	// (internal/furrow). A path to a program is plumbing.
 	"CODEAF_FURROW",
+	// CODEAF_ENGINE_DAEMON=0 makes every engine verb spawn the engine instead
+	// of asking its long-lived daemon (internal/cellstore). It is an escape
+	// hatch that changes speed and never results, so it is plumbing.
+	"CODEAF_ENGINE_DAEMON",
 	// The three site-attribution pins — a URL, an app name, a category list —
 	// used to sit here, and they are gone rather than moved: the OpenRouter app
 	// this binary reports as is decided in internal/provider from the binary's
@@ -1332,6 +1341,18 @@ var OperatorEnvPins = []string{
 	// make convenient, it is a decision somebody makes on purpose, in a shell,
 	// for one run that genuinely needs it.
 	"CODEAF_ALLOW_PROVIDER_KEYS_IN_SHELL",
+	// CODEAF_CELLS=0 switches cells off (internal/cell); on is the default, so a
+	// paired install moves chats with no setting. It is an escape hatch and so
+	// plumbing, never a row: a persisted row would turn cells off on a machine
+	// where the variable is nowhere in sight.
+	"CODEAF_CELLS",
+	// CODEAF_SYNC_URL names the relay that syncs cells between this person's
+	// machines (internal/syncsetup), and CODEAF_SYNC_INTERVAL_MS is how often
+	// unsaved turns are flushed to it. Like CODEAF_CELLS they are plumbing, never
+	// a row: unset, sync is off and nothing changes. A persisted row would point
+	// a machine at a relay it was never told about.
+	"CODEAF_SYNC_URL",
+	"CODEAF_SYNC_INTERVAL_MS",
 }
 
 // Defaults the registry owns beyond the ones config.go already declares.
@@ -1446,6 +1467,10 @@ const (
 	// task that was too many — it is whichever process was largest, which on a
 	// developer's machine is usually theirs.
 	DefaultTaskMinFreeMB = 1536
+
+	// DefaultCellBudgetGB is what internal/cellbudget assumes when nothing
+	// says otherwise: room for a handful of ordinary checkouts.
+	DefaultCellBudgetGB = 20
 
 	// DefaultConsentTimeout is ten seconds of reminder, and it is a different
 	// number from the one above because it is a different KIND of clock. The
@@ -2330,6 +2355,16 @@ func (s *Settings) build() []Setting {
 				"0 stops watching memory.",
 			read:  func() string { return strconv.Itoa(TaskMinFreeMBAt(dir)) },
 			write: func(raw string) error { return writeProfileCount(dir, KeyTaskMinFreeMB, raw) },
+		},
+		Setting{
+			Key: KeyCellBudget, Category: CategoryTasks, Kind: SettingText,
+			Label: "cell disk budget", Unit: "GB", Env: "CODEAF_CELL_BUDGET_GB",
+			Hint: "how much disk the working files of all cells may use together — 20 by " +
+				"default, and a fraction such as 0.5 is fine. Over it, `codeaf cell gc` evicts " +
+				"the cells opened longest ago and leaves any a session still holds. 0 stops " +
+				"watching the disk.",
+			read:  func() string { return formatNumber(CellBudgetGBAt(dir)) },
+			write: func(raw string) error { return writeProfileNumber(dir, KeyCellBudget, raw) },
 		},
 		// Which model the work that LEAVES a conversation runs on. It sits with
 		// the countdown and the audit rather than among the model rows for the
@@ -4175,6 +4210,23 @@ func TaskMaxLoadAt(profileDir string) float64 {
 func TaskMinFreeMBAt(profileDir string) int {
 	_, minFreeMB := TaskAdmissionLimitsAt(profileDir, DefaultTaskMaxLoad, DefaultTaskMinFreeMB)
 	return minFreeMB
+}
+
+// CellBudgetGBAt resolves the cells' disk budget in gibibytes, fractions
+// allowed (0.5 is half a gibibyte): the environment pin, then the persisted row,
+// then the default. An unreadable pin is the default rather than an error, so a
+// typo cannot lift the budget. 0 is no limit.
+func CellBudgetGBAt(profileDir string) float64 {
+	if raw := strings.TrimSpace(env.Get("CODEAF_CELL_BUDGET_GB")); raw != "" {
+		if value, err := parseNumber(raw); err == nil {
+			return value
+		}
+		return DefaultCellBudgetGB
+	}
+	if value, ok := persistedFloat(profileDir, KeyCellBudget); ok && value >= 0 {
+		return value
+	}
+	return DefaultCellBudgetGB
 }
 
 // TaskAdmissionLimitsAt overlays current persisted ceilings on the caller's
