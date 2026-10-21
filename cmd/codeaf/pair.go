@@ -100,7 +100,10 @@ func runPair(args []string) error {
 }
 
 func (d pairDoor) run(ctx context.Context, args []string) error {
-	if reason := cell.UnavailableReason(); reason != "" {
+	// ASKING FOR HELP IS ANSWERED WHERE PAIRING CANNOT RUN. `pair` is on the help
+	// page, so a build with moving chats off, or an engine that cannot run here,
+	// still explains the command; only the pairing itself is refused.
+	if reason := cell.UnavailableReason(); reason != "" && !asksForHelp(args) {
 		return errors.New(reason)
 	}
 	flags := commandFlags("pair")
@@ -233,4 +236,16 @@ func (d pairDoor) endedByPerson(ctx context.Context, err error) error {
 		return nil
 	}
 	return err
+}
+
+// asksForHelp reports whether args ask a command for its help page, in any of
+// the spellings the flag package answers with its usage.
+func asksForHelp(args []string) bool {
+	for _, arg := range args {
+		switch arg {
+		case "-h", "-help", "--help":
+			return true
+		}
+	}
+	return false
 }
