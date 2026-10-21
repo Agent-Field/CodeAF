@@ -1,7 +1,7 @@
 ---
 kind: added
 title: paired computers continue the same chat with its workspace and history
-pr: 0
+pr: 1888
 surface: [chat, engine, remote, build, docs]
 invalidates:
   - "Reopening a stale released chat could publish an older tree over newer history, and sealed turns that never uploaded could disappear during take-back. Reopening now stays view-only until normal continuation reconciles it; take-back preserves both sealed unpublished turns and workspace edits as a kept branch."
