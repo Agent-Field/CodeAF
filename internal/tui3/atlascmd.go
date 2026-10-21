@@ -6,6 +6,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/atlas"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // THE ARCHITECTURE MAP, INSIDE THE CONVERSATION (/atlascmd.go).
@@ -201,6 +202,10 @@ func (a *app) atlasReleased(msg tea.MouseReleaseMsg) {
 func (a *app) atlasFrame(width, height int) []string {
 	if a.atlas.picking {
 		return a.atlasPickerFrame(width, height)
+	}
+	a.atlas.model.SetGlyphSet(a.iconSet())
+	if a.linear {
+		a.atlas.model.SetGlyphSet(tokens.ASCII)
 	}
 	a.atlas.model.Update(tea.WindowSizeMsg{Width: width, Height: height})
 	return strings.Split(a.atlas.model.Frame(), "\n")

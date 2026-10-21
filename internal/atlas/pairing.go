@@ -131,7 +131,7 @@ var Pairing = &Map{
 				{Path: "internal/cellstore/rewind.go", Symbols: []string{"Engine.Rewind"}},
 				{Path: "internal/furrow/furrow.go", Symbols: []string{"ResolveOwned"}},
 			}},
-		// ── furrow (Rust) ─────────────────────────────────────────────────
+		// The engine lives upstream, so these nodes link to its pin and local callers.
 		{ID: "furrowDaemon", Label: "furrow-daemon", Short: "unix socket", Kind: KindEngine, X: 0.2, Y: 0.9,
 			Summary: "A long-lived engine process. It reads one JSON request per line on a unix socket, uses one writer thread per store, and handles 9 verbs: seal, snap, restore, log, export, published, want, import, materialize.",
 			Details: []string{"Source: https://github.com/Agent-Field/furrow/tree/main/furrow-daemon. The files below are codeaf's local integration and release pin."},

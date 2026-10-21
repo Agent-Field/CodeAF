@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -18,7 +19,7 @@ import (
 // dim telemetry, no borders, one cursor mark and nothing else.
 
 // pickCursor is the marker on the row the cursor sits on.
-const pickCursor = "›"
+var pickCursor = tokens.Plain.Glyph(tokens.GPromptChat)
 
 // PickRow is one picker row, drawn the same by `codeaf atlas` and `/atlas`:
 // the cursor mark, the map's name in bold (accent on the cursor row) padded

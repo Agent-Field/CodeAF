@@ -7,11 +7,11 @@ a mark.
 
 **Scope: every surface package.** `internal/tui3` (the live chat),
 `internal/tui` (v1, and the visual north star), `internal/head` and
-`internal/resident` (the resident). It landed covering `internal/tui3` alone,
+`internal/resident` (the resident), and `internal/atlas` (the architecture map). It landed covering `internal/tui3` alone,
 which left the other three free to spell marks for themselves — and v1 did, with
 its own dotted circle for work waiting on a sibling, its own cross for failure,
 and its own flag for work waiting on a PERSON, which is the character this table
-keeps for the other kind of waiting. `internal/iconlaw` walks all four on one
+keeps for the other kind of waiting. `internal/iconlaw` walks these surfaces on one
 list now, and a fifth surface joins the law by being added to that list.
 
 ## The law
@@ -64,6 +64,7 @@ list now, and a fifth surface joins the law by being added to that list.
    | --- | --- | --- | --- |
    | `internal/tui3` | `app.iconSet` | `palette.glyph`, `app.icon` | `newApp` |
    | `internal/tui` | `Model.iconSet` (icons.go) | `Model.icon` | `RunWithCommander` |
+   | `internal/atlas` | enclosing chat's tier, or `terminalGlyphs` standalone | `Model.icon` / `Model.mark` | `RunMap` for a standalone terminal |
 
    v3's ASCII tier is `palette.ascii`'s answer, set by the linear screen-reader
    option; v1 has no linear option, so it resolves `Plain` or `NerdFont` and the
@@ -187,6 +188,16 @@ The rest of the vocabulary — disclosure, prompts, the place line, the status
 line, the spawn tree, the gauges, the prose slots — is in
 `internal/tui2/tokens/nerdfont.go`, one binding each, with its argument at its
 own binding.
+
+The atlas resolves its title, flow steps, playback marks, navigation and edge
+arrowheads through that vocabulary too. `GMapLeft`, `GMapUp` and `GMapDown`
+complete the existing right-caret slot (`GQueuePill`): their plain spellings are
+`◀`, `▲`, `▼`, their rich spellings are Font Awesome 4 caret-left/up/down, and
+their ASCII spellings are `<`, `^`, `v`. The shared rounded frame supplies its
+boxes and turns; selection changes weight. `/atlas` uses the chat's Display and
+linear choices; standalone `codeaf atlas` folds the Display choice over the same
+terminal detection. `internal/iconlaw` includes the atlas and rejects its own
+spellings of semantic slots, including the diamond, circles and arrowheads.
 
 The prompt family is four slots: the questions wave
 (`docs/design/questions/DESIGN.md`) made it three, because an exchange has two voices in

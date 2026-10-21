@@ -4,14 +4,16 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // Model is the whole atlas state. It is a pointer used as a tea.Model, so
 // Update hands the same model back and the tests can drive one directly
 // without a program.
 type Model struct {
-	data *Map
-	W, H int
+	icons tokens.GlyphSet
+	data  *Map
+	W, H  int
 
 	// pos is each box's centre as fractions of the map area; a drag edits it.
 	pos map[string][2]float64

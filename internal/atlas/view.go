@@ -1,6 +1,9 @@
 package atlas
 
-import "strings"
+import (
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
+	"strings"
+)
 
 // drawFrame lays out, paints and composes the whole screen: the header, the
 // arrows under the boxes, the boxes, and then the panels that sit on top —
@@ -36,7 +39,7 @@ func (m *Model) drawFrame() string {
 // drawHeader draws the title, the subtitle when the terminal is wide enough,
 // and one clickable tab per flow.
 func (m *Model) drawHeader(c *canvas, g geom) {
-	head := "◆ " + m.data.Title
+	head := m.icon(tokens.GActionPlan) + " " + m.data.Title
 	c.text(0, 0, head, colAccent, true)
 	x := cw(head) + 2
 	if g.W >= 110 && m.data.Description != "" {
@@ -92,7 +95,7 @@ func (m *Model) drawEdges(c *canvas, g geom) []*edgeLabel {
 			}
 		}
 		showLabel := !inFlow && (touches || !g.compact)
-		labels = append(labels, drawEdge(c, m.rects[e.From], m.rects[e.To], offs[i][0], offs[i][1], e.Label, color, showLabel))
+		labels = append(labels, m.drawEdge(c, m.rects[e.From], m.rects[e.To], offs[i][0], offs[i][1], e.Label, color, showLabel))
 	}
 	if !inFlow {
 		return labels
@@ -114,7 +117,7 @@ func (m *Model) drawEdges(c *canvas, g geom) []*edgeLabel {
 		}
 	}
 	// The active step's label goes first, so it wins the best spot.
-	active := drawEdge(c, m.rects[step.From], m.rects[step.To], offA, offB,
+	active := m.drawEdge(c, m.rects[step.From], m.rects[step.To], offA, offB,
 		itoa(m.step+1)+". "+step.Message, colAccent, true)
 	return append([]*edgeLabel{active}, labels...)
 }
@@ -146,27 +149,22 @@ func (m *Model) drawNodes(c *canvas, g geom) {
 	}
 }
 
-// drawBox draws one border: single and quiet, or double when the box is the
-// one the person is reading.
+// drawBox keeps the shared rounded frame and adds weight to the box being read.
 func (m *Model) drawBox(c *canvas, r Rect, color string, selected bool) {
-	corners := [4]rune{'┌', '┐', '└', '┘'}
-	horiz, vert := '─', '│'
-	if selected {
-		corners = [4]rune{'╔', '╗', '╚', '╝'}
-		horiz, vert = '═', '║'
-	}
+	corners := [4]rune{m.mark(tokens.GFrameTopLeft), m.mark(tokens.GFrameTopRight), m.mark(tokens.GFrameBottomLeft), m.mark(tokens.GFrameBottomRight)}
+	horiz, vert := m.mark(tokens.GFrameEdge), m.mark(tokens.GFrameSide)
 	if r.W < 2 || r.H < 2 {
 		return
 	}
-	c.put(r.X, r.Y, corners[0], color, false)
-	c.put(r.X+r.W-1, r.Y, corners[1], color, false)
-	c.put(r.X, r.Y+r.H-1, corners[2], color, false)
-	c.put(r.X+r.W-1, r.Y+r.H-1, corners[3], color, false)
-	c.hline(r.Y, r.X+1, r.X+r.W-2, horiz, color, false)
-	c.hline(r.Y+r.H-1, r.X+1, r.X+r.W-2, horiz, color, false)
+	c.put(r.X, r.Y, corners[0], color, selected)
+	c.put(r.X+r.W-1, r.Y, corners[1], color, selected)
+	c.put(r.X, r.Y+r.H-1, corners[2], color, selected)
+	c.put(r.X+r.W-1, r.Y+r.H-1, corners[3], color, selected)
+	c.hline(r.Y, r.X+1, r.X+r.W-2, horiz, color, selected)
+	c.hline(r.Y+r.H-1, r.X+1, r.X+r.W-2, horiz, color, selected)
 	for y := r.Y + 1; y < r.Y+r.H-1; y++ {
-		c.put(r.X, y, vert, color, false)
-		c.put(r.X+r.W-1, y, vert, color, false)
+		c.put(r.X, y, vert, color, selected)
+		c.put(r.X+r.W-1, y, vert, color, selected)
 	}
 }
 
@@ -189,12 +187,12 @@ func (m *Model) drawFlowPanel(c *canvas, g geom) {
 	s := f.Steps[m.step]
 	top := g.H - 1 - g.flowH
 	c.fill(Rect{X: 0, Y: top, W: g.W, H: g.flowH})
-	c.hline(top, 0, g.W-1, '─', colAccent, false)
+	c.hline(top, 0, g.W-1, m.mark(tokens.GFrameEdge), colAccent, false)
 	row := top + 1
-	prev := "◀ prev"
+	prev := m.icon(tokens.GMapLeft) + " prev"
 	c.text(1, row, prev, colAccent, false)
 	m.hits = append(m.hits, hit{rect: Rect{X: 1, Y: row, W: cw(prev), H: 1}, kind: hitPrev})
-	next := "next ▶"
+	next := "next " + m.icon(tokens.GQueuePill)
 	c.text(g.W-1-cw(next), row, next, colAccent, false)
 	m.hits = append(m.hits, hit{rect: Rect{X: g.W - 1 - cw(next), Y: row, W: cw(next), H: 1}, kind: hitNext})
 
@@ -215,21 +213,21 @@ func (m *Model) drawFlowPanel(c *canvas, g geom) {
 	for i := range f.Steps {
 		switch {
 		case i == m.step:
-			dots[i] = "●"
+			dots[i] = m.icon(tokens.GStepDone)
 		case i < m.step:
-			dots[i] = "•"
+			dots[i] = m.icon(tokens.GSettled)
 		default:
-			dots[i] = "·"
+			dots[i] = m.icon(tokens.GStepPending)
 		}
 	}
 	put(strings.Join(dots, ""), colAccent, false)
 	if m.playing {
-		put("  ▶ playing", kindColor[KindGo], false)
+		put("  "+m.icon(tokens.GQueuePill)+" playing", kindColor[KindGo], false)
 	}
 
 	// Then what this step sends, wrapped, and why — when there is room.
 	width := g.W - 2
-	body := m.nodeLabel(s.From) + " → " + m.nodeLabel(s.To) + ": " + s.Message
+	body := m.nodeLabel(s.From) + " " + m.icon(tokens.GTarget) + " " + m.nodeLabel(s.To) + ": " + s.Message
 	lines := wrapText(body, width)
 	line := row + 2
 	for i, l := range lines {
@@ -237,7 +235,7 @@ func (m *Model) drawFlowPanel(c *canvas, g geom) {
 			break
 		}
 		if i == 0 {
-			prefix := m.nodeLabel(s.From) + " → " + m.nodeLabel(s.To) + ": "
+			prefix := m.nodeLabel(s.From) + " " + m.icon(tokens.GTarget) + " " + m.nodeLabel(s.To) + ": "
 			c.text(1, line+i, prefix, colFg, true)
 			c.text(1+len(prefix), line+i, strings.TrimPrefix(l, prefix), colFg, false)
 			continue
@@ -296,7 +294,7 @@ func (m *Model) drawDetail(c *canvas, g geom) {
 		return
 	}
 	for _, d := range n.Details {
-		if !lines("• "+d, colFg, false) {
+		if !lines(m.icon(tokens.GProseBullet)+" "+d, colFg, false) {
 			return
 		}
 	}
@@ -331,12 +329,12 @@ func (m *Model) drawDetail(c *canvas, g geom) {
 		return lines(text, colFg, false)
 	}
 	for _, e := range out {
-		if !talk("→", e.To, e) {
+		if !talk(m.icon(tokens.GTarget), e.To, e) {
 			return
 		}
 	}
 	for _, e := range in {
-		if !talk("←", e.From, e) {
+		if !talk(m.icon(tokens.GMapLeft), e.From, e) {
 			return
 		}
 	}
@@ -354,7 +352,7 @@ func (m *Model) drawHelp(c *canvas, g geom) {
 	r := Rect{X: max(0, (g.W-w)/2), Y: max(0, (g.H-h)/2), W: w, H: h}
 	c.fill(r)
 	m.drawBox(c, r, colAccent, false)
-	title := " help · legend "
+	title := " help " + m.icon(tokens.GSeparator) + " legend "
 	c.text(r.X+(r.W-cw(title))/2, r.Y, title, colAccent, false)
 	foot := " ? or esc closes "
 	c.text(r.X+(r.W-cw(foot))/2, r.Y+r.H-1, foot, colMuted, false)
@@ -394,22 +392,23 @@ func (m *Model) drawHelp(c *canvas, g geom) {
 		return
 	}
 	for _, k := range []Kind{KindMachine, KindGo, KindService, KindEngine, KindSpec} {
-		if !line("■ "+kindName[k], kindColor[k], false) {
+		if !line(m.icon(tokens.GActionWork)+" "+kindName[k], kindColor[k], false) {
 			return
 		}
 	}
-	line("─▶ active flow step", colAccent, false)
-	line("─▶ edges of the selected box", colEdgeHi, false)
+	line(m.icon(tokens.GFrameEdge)+m.icon(tokens.GQueuePill)+" active flow step", colAccent, false)
+	line(m.icon(tokens.GFrameEdge)+m.icon(tokens.GQueuePill)+" edges of the selected box", colEdgeHi, false)
 }
 
 // drawStatus draws the one hint line at the bottom.
 func (m *Model) drawStatus(c *canvas, g geom) {
-	hints := "drag boxes · click/enter details · tab select · 1-" + itoa(len(m.data.Flows)) + " flows · ? help · q quit"
+	separator := " " + m.icon(tokens.GSeparator) + " "
+	hints := strings.Join([]string{"drag boxes", "click/enter details", "tab select", "1-" + itoa(len(m.data.Flows)) + " flows", "? help", "q quit"}, separator)
 	if m.flow >= 0 {
-		hints = "←/→ step · p play · 0 overview · tab select · ? help · q quit"
+		hints = strings.Join([]string{"←/→ step", "p play", "0 overview", "tab select", "? help", "q quit"}, separator)
 	}
 	if g.W < cw(hints)+2 {
-		hints = hints[:max(0, g.W-3)] + "…"
+		hints = fitRune(hints, max(0, g.W-3)) + m.icon(tokens.GEllipsis)
 	}
 	c.text(0, g.H-1, hints, colMuted, false)
 }

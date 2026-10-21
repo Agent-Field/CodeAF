@@ -4,6 +4,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -445,15 +446,13 @@ func portOffsets(data *Map, rects map[string]Rect) [][2]int {
 
 // The line characters an edge draws with: one glyph per direction of travel,
 // the four arrowheads, and the eight corners a Z-route can turn through.
-var (
-	lineCh = map[dir]rune{dirR: '─', dirL: '─', dirU: '│', dirD: '│'}
-	headCh = map[dir]rune{dirR: '▶', dirL: '◀', dirU: '▲', dirD: '▼'}
-)
+var lineSlots = map[dir]tokens.GlyphID{dirR: tokens.GFrameEdge, dirL: tokens.GFrameEdge, dirU: tokens.GFrameSide, dirD: tokens.GFrameSide}
+var headSlots = map[dir]tokens.GlyphID{dirR: tokens.GQueuePill, dirL: tokens.GMapLeft, dirU: tokens.GMapUp, dirD: tokens.GMapDown}
 
-// cornerCh names a turn by the direction it came from and the one it leaves in.
-var cornerCh = map[string]rune{
-	"rd": '┐', "ru": '┘', "ld": '┌', "lu": '└',
-	"dr": '└', "dl": '┘', "ur": '┌', "ul": '┐',
+// The same rounded corners join a connection and close the frame it meets.
+var cornerSlots = map[string]tokens.GlyphID{
+	"rd": tokens.GFrameTopRight, "ru": tokens.GFrameBottomRight, "ld": tokens.GFrameTopLeft, "lu": tokens.GFrameBottomLeft,
+	"dr": tokens.GFrameBottomLeft, "dl": tokens.GFrameBottomRight, "ur": tokens.GFrameTopLeft, "ul": tokens.GFrameTopRight,
 }
 
 // edgeCells is the path of one arrow, drawn or not — the tests read it to
@@ -472,7 +471,7 @@ type edgeLabel struct {
 
 // drawEdge paints one arrow and answers its label, when showLabel, for
 // placeLabels to put down once the boxes are drawn.
-func drawEdge(c *canvas, a, b Rect, offA, offB int, label, color string, showLabel bool) *edgeLabel {
+func (m *Model) drawEdge(c *canvas, a, b Rect, offA, offB int, label, color string, showLabel bool) *edgeLabel {
 	cells := edgeCells(a, b, offA, offB)
 	for i, cell := range cells {
 		var ch rune
@@ -485,14 +484,15 @@ func drawEdge(c *canvas, a, b Rect, offA, offB int, label, color string, showLab
 		}
 		switch {
 		case dout == 0:
-			ch = headCh[din]
+			ch = m.mark(headSlots[din])
 		case din == 0 || din == dout:
-			ch = lineCh[dout]
+			ch = m.mark(lineSlots[dout])
 		default:
-			ch = cornerCh[string(rune(din))+string(rune(dout))]
-			if ch == 0 {
-				ch = '┼'
+			slot, ok := cornerSlots[string(rune(din))+string(rune(dout))]
+			if !ok {
+				slot = tokens.GFrameTeeDown
 			}
+			ch = m.mark(slot)
 		}
 		c.put(cell.X, cell.Y, ch, color, false)
 	}
@@ -505,7 +505,7 @@ func drawEdge(c *canvas, a, b Rect, offA, offB int, label, color string, showLab
 	}
 	text := " " + label + " "
 	if cw(text) > maxLen {
-		text = string([]rune(text)[:maxLen-1]) + "…"
+		text = string([]rune(text)[:maxLen-1]) + m.icon(tokens.GEllipsis)
 	}
 	return &edgeLabel{cells: cells, text: text, color: color}
 }
