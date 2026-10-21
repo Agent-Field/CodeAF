@@ -208,10 +208,14 @@ func journeyRun(j *journey, env []string, homeA, homeB, wsA, wsB string, online 
 		a.keys("Escape")
 		a.lit("/devices")
 		a.keys("Enter")
-		list, ok := waitPlain(a, 8*time.Second, "r remove")
+		// The sheet opens on this device's own row, which cannot be removed, so
+		// `r remove` is offered only once the cursor is on the other computer.
+		list, ok := waitPlain(a, 8*time.Second, "esc close", "this device")
 		j.require(ok, "no device list on A")
 		t.Logf("devices before revoke:\n%s", list)
 		a.keys(downToOtherDevice(list)...)
+		_, offered := waitPlain(a, 3*time.Second, "r remove")
+		j.check(offered, "the other computer's row does not offer r remove")
 		a.keys("r")
 		time.Sleep(3 * time.Second)
 		after := plain(a)
