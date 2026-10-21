@@ -1,6 +1,6 @@
 package main
 
-// The terminal's half of a pairing: the questions a person answers with y or n,
+// The terminal's half of pairing: explicit a approval for links, y or n for codes,
 // and the lines both doors of `codeaf pair` print. The sentences themselves are
 // internal/pair's (lines.go), so the terminal and the chat screen cannot drift.
 
@@ -103,6 +103,18 @@ func saidYes(typed string) bool {
 		return true
 	}
 	return false
+}
+
+// approveLink uses the same deliberate approval key as the chat card. Code
+// pairing keeps its own yes/no question because its comparison is different.
+func (t *terminal) approveLink(ctx context.Context, question string) bool {
+	fmt.Fprint(t.out, question+"  a / d ")
+	typed, ok := t.lines.next(ctx)
+	if !ok {
+		fmt.Fprintln(t.out)
+		return false
+	}
+	return strings.TrimSpace(typed) == "a"
 }
 
 // offerScreen is the device that shows the code, as a terminal.

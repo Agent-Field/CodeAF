@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -32,24 +33,24 @@ func (r *pairRig) approveWith(t *testing.T, args []string, answer string) (*pair
 }
 
 // The headless path end to end: the new computer prints a link and a typed form,
-// the first one is shown who asks and the check number and types y, and the new
+// the first one is shown who asks and the check number and types a, and the new
 // one says it is paired.
 func TestPairByLinkEndToEnd(t *testing.T) {
 	rig := newPairRig(t)
 	screen, done := rig.asking(t)
 	typed := screen.waitFor(t, `codeaf pair approve (\S+)`)[1]
-	link := screen.waitFor(t, `https://codeaf\.agentfield\.ai/p/\S+#\S+`)[0]
+	link := screen.waitFor(t, regexp.QuoteMeta(rig.url)+`/p/\S+#\S+`)[0]
 	check := screen.waitFor(t, `Check number: (\d{4})`)[1]
 	if !strings.Contains(link, typed[:8]) {
 		t.Fatalf("the link %s and the typed form %s name different requests", link, typed)
 	}
 
-	out, err := rig.approveWith(t, []string{"approve", typed}, "y\n")
+	out, err := rig.approveWith(t, []string{"approve", typed}, "a\n")
 	if err != nil {
 		t.Fatal(err)
 	}
 	// The asking computer names its own operating system, so on a Mac it says Mac.
-	want := pair.WantsToJoinLine("laptop", runtime.GOOS) + "\n" + pair.CheckQuestion(check) + "  y / n "
+	want := pair.WantsToJoinLine("laptop", runtime.GOOS) + "\n" + pair.CheckQuestion(check) + "  a / d "
 	if !strings.HasPrefix(out.String(), want) || !strings.Contains(out.String(), pair.ApprovedLine("laptop")) {
 		t.Fatalf("the approving terminal printed:\n%s\nwant it to start:\n%s", out.String(), want)
 	}
@@ -80,8 +81,8 @@ func TestDevicesAfterALinkPairingShowTheApprover(t *testing.T) {
 	}
 
 	screen, done := rig.asking(t)
-	link := screen.waitFor(t, `https://codeaf\.agentfield\.ai/p/\S+#\S+`)[0]
-	out, err := rig.approveWith(t, []string{link}, "y\n")
+	link := screen.waitFor(t, regexp.QuoteMeta(rig.url)+`/p/\S+#\S+`)[0]
+	out, err := rig.approveWith(t, []string{link}, "a\n")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,8 +122,8 @@ func TestDevicesAfterALinkPairingShowTheApprover(t *testing.T) {
 func TestPairLinkShapeApproves(t *testing.T) {
 	rig := newPairRig(t)
 	screen, done := rig.asking(t)
-	link := screen.waitFor(t, `https://codeaf\.agentfield\.ai/p/\S+#\S+`)[0]
-	if _, err := rig.approveWith(t, []string{link}, "y\n"); err != nil {
+	link := screen.waitFor(t, regexp.QuoteMeta(rig.url)+`/p/\S+#\S+`)[0]
+	if _, err := rig.approveWith(t, []string{link}, "a\n"); err != nil {
 		t.Fatal(err)
 	}
 	if err := <-done; err != nil {
@@ -130,7 +131,7 @@ func TestPairLinkShapeApproves(t *testing.T) {
 	}
 }
 
-// Anything but y turns the new computer down, and it is told so.
+// Anything but a turns the new computer down, and it is told so.
 func TestPairApproveNoDeclines(t *testing.T) {
 	rig := newPairRig(t)
 	screen, done := rig.asking(t)
@@ -149,7 +150,7 @@ func TestPairApproveNoDeclines(t *testing.T) {
 func TestPairApproveRefusals(t *testing.T) {
 	rig := newPairRig(t)
 	out := &pairScreenText{}
-	err := rig.door(rig.homeB, strings.NewReader("y\n"), out).run(context.Background(), []string{"approve", "k7m2q9xd.AAAAAAAAAAAAAAAAAAAAAA"})
+	err := rig.door(rig.homeB, strings.NewReader("a\n"), out).run(context.Background(), []string{"approve", "k7m2q9xd.AAAAAAAAAAAAAAAAAAAAAA"})
 	if !errors.Is(err, pair.ErrNotJoined) {
 		t.Fatalf("an unpaired computer approving ended with %v", err)
 	}
