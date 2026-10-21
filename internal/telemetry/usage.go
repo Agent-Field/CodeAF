@@ -106,17 +106,28 @@ func StartPeriodicFlush(interval time.Duration) func() {
 // looking up the active session then would attribute its tokens to the wrong
 // work. This callback records at most once and still honors current opt-out.
 func CaptureUsageRecorder(dimensions UsageDimensions) func(int, int) {
+	record := CaptureUsageRecorderWithPresence(dimensions)
+	if record == nil {
+		return nil
+	}
+	return func(input, output int) { record(input, output, true, true) }
+}
+
+// CaptureUsageRecorderWithPresence retains unknown components during recovery.
+// A cost-only receipt updates money without replacing estimates with zeroes.
+func CaptureUsageRecorderWithPresence(dimensions UsageDimensions) func(int, int, bool, bool) {
 	session := activeUsageSession.Load()
 	if session == nil || !enabledFor() {
 		return nil
 	}
 	mode, id := session.mode, session.id
 	var once sync.Once
-	return func(input, output int) {
+	return func(input, output int, inputKnown, outputKnown bool) {
 		once.Do(func() {
-			if !enabledFor() {
+			if !enabledFor() || (!inputKnown && !outputKnown) {
 				return
 			}
+			dimensions.MissingInput, dimensions.MissingOutput = !inputKnown, !outputKnown
 			event := UsageReceipt(mode, input, output, id, time.Now(), dimensions)
 			if err := SpoolSync(event); err != nil {
 				oneWarning("codeaf: usage counts could not be saved locally")
