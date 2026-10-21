@@ -3030,3 +3030,12 @@ per round; a round's initial trigger can be reported immediately. Stop, takeover
 and round replacement invalidate callbacks. Service outcome messages retain their
 existing path and are not throttled by model narration. Focused progress tests
 cover bounds, retries, hidden reasoning, cancellation and callback invalidation.
+
+## Partial factory PR reads
+
+A PR refresh retains at most one diagnostic for each independent failing read
+(checks, reviews/review policy, feedback, readiness). Each diagnostic detail is
+bounded to 2000 bytes. This adds no model call, polling timer or unbounded retry:
+the existing GitHub read retry and factory poll remain the only retry owners.
+Policy capability failures are not cached, so subsequent polls observe plan or
+permission changes. Readiness keys are issued only for complete snapshots.

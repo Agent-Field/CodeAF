@@ -682,22 +682,23 @@ type Answer = factory.Answer
 // The job's state stays done; this field is how a reader tells PR open from
 // Merged. Contract stays 2.
 type PR struct {
-	ReadinessKey    string     `json:"readiness_key,omitempty"`
-	BaseSHA         string     `json:"base_sha,omitempty"`
-	Feedback        string     `json:"feedback,omitempty"`
-	CheckRuns       []CheckRun `json:"check_runs,omitempty"`
-	Conflict        bool       `json:"conflict,omitempty"`
-	Draft           bool       `json:"draft"`
-	Number          int        `json:"number"`
-	URL             string     `json:"url"`
-	CI              string     `json:"ci,omitempty"`
-	State           string     `json:"state,omitempty"`
-	MergedBy        string     `json:"merged_by,omitempty"`
-	MergedAt        *time.Time `json:"merged_at,omitempty"`
-	ReviewDecision  string     `json:"review_decision,omitempty"`
-	Reviews         []PRReview `json:"reviews,omitempty"`
-	RequiredReviews int        `json:"required_reviews,omitempty"`
-	Checks          *PRChecks  `json:"checks,omitempty"`
+	Problems        []factory.PRReadProblem `json:"problems,omitempty"`
+	ReadinessKey    string                  `json:"readiness_key,omitempty"`
+	BaseSHA         string                  `json:"base_sha,omitempty"`
+	Feedback        string                  `json:"feedback,omitempty"`
+	CheckRuns       []CheckRun              `json:"check_runs,omitempty"`
+	Conflict        bool                    `json:"conflict,omitempty"`
+	Draft           bool                    `json:"draft"`
+	Number          int                     `json:"number"`
+	URL             string                  `json:"url"`
+	CI              string                  `json:"ci,omitempty"`
+	State           string                  `json:"state,omitempty"`
+	MergedBy        string                  `json:"merged_by,omitempty"`
+	MergedAt        *time.Time              `json:"merged_at,omitempty"`
+	ReviewDecision  string                  `json:"review_decision,omitempty"`
+	Reviews         []PRReview              `json:"reviews,omitempty"`
+	RequiredReviews int                     `json:"required_reviews,omitempty"`
+	Checks          *PRChecks               `json:"checks,omitempty"`
 	// HeadSHA, Mergeable ("yes", "no", "" unknown), ChecksRead and ReviewsRead
 	// are the facts the merge gate reads; see factory.MergeGate.
 	HeadSHA     string `json:"head_sha,omitempty"`

@@ -2,7 +2,9 @@ package github
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
 	"reflect"
 	"strings"
 	"time"
@@ -35,44 +37,74 @@ func (s *Source) FollowPR(ctx context.Context, owner, repo string, number int) (
 		State:    pullFollowState(p), MergedBy: p.MergedBy, MergedAt: p.MergedAt,
 		BaseSHA: p.BaseSHA, HeadSHA: p.HeadSHA, Mergeable: mergeableWord(p.Mergeable),
 	}
+	// Terminal metadata is authoritative even when optional APIs are unavailable.
+	if out.State != factory.PROpen {
+		return out, nil
+	}
 	if p.HeadSHA != "" {
-		state, runs, err := s.api.CheckRuns(ctx, owner, repo, p.HeadSHA)
-		if err != nil {
-			if out.State != factory.PROpen {
-				return out, nil
-			}
-			return factory.PullRequest{}, err
+		state, runs, e := s.api.CheckRuns(ctx, owner, repo, p.HeadSHA)
+		if e != nil {
+			out.Problems = append(out.Problems, readProblem("checks", e))
+		} else {
+			out.CI, out.Checks, out.CheckRuns, out.ChecksRead = ChecksWords(state), summarizeChecks(runs), checkRuns(runs), true
 		}
-		out.CI = ChecksWords(state)
-		out.Checks = summarizeChecks(runs)
-		out.CheckRuns = checkRuns(runs)
-		out.ChecksRead = true
 	}
 	if extra, ok := s.api.(followExtra); ok {
-		reviews, err := extra.Reviews(ctx, owner, repo, number)
-		if err != nil {
-			return factory.PullRequest{}, err
+		reviews, e := extra.Reviews(ctx, owner, repo, number)
+		if e != nil {
+			out.Problems = append(out.Problems, readProblem("reviews", e))
+		} else {
+			out.Reviews = factoryReviews(reviews)
+			out.Required, e = extra.RequiredReviews(ctx, owner, repo, p.Base)
+			out.ReviewDecision = reviewDecision(out.Reviews, out.Required)
+			if e != nil {
+				out.Problems = append(out.Problems, readProblem("review policy", e))
+			} else {
+				out.ReviewsRead = true
+			}
 		}
-		out.Reviews = factoryReviews(reviews)
-		out.Required, err = extra.RequiredReviews(ctx, owner, repo, p.Base)
-		if err != nil {
-			return factory.PullRequest{}, err
-		}
-		out.ReviewDecision = reviewDecision(out.Reviews, out.Required)
-		out.ReviewsRead = true
 	}
 	if feedback, ok := s.api.(interface {
 		PullFeedback(context.Context, string, string, int) (string, error)
-	}); ok && out.State == factory.PROpen {
+	}); ok {
 		out.Feedback, err = feedback.PullFeedback(ctx, owner, repo, number)
 		if err != nil {
-			return factory.PullRequest{}, err
+			out.ReviewsRead = false
+			out.Problems = append(out.Problems, readProblem("feedback", err))
 		}
 	}
-	if err = s.readinessMaterial(ctx, owner, repo, p, &out); err != nil {
-		return factory.PullRequest{}, err
+	if len(out.Problems) == 0 {
+		if err = s.readinessMaterial(ctx, owner, repo, p, &out); err != nil {
+			out.Problems = append(out.Problems, readProblem("readiness", err))
+		}
 	}
+
 	return out, nil
+}
+
+func readProblem(area string, err error) factory.PRReadProblem {
+	p := factory.PRReadProblem{Area: area, Code: "incomplete", Summary: "PR " + area + " could not be verified.", Detail: err.Error()}
+	if len(p.Detail) > 2000 {
+		p.Detail = p.Detail[:2000]
+	}
+	var ae *forge.APIError
+	var ne net.Error
+	switch {
+	case errors.As(err, &ae):
+		switch {
+		case ae.StatusCode == 401:
+			p.Code, p.Summary = "authentication", "GitHub authentication must be restored to read PR "+area+"."
+		case ae.StatusCode == 429 || ae.StatusCode >= 500 || (ae.StatusCode == 403 && (ae.RetryAfter > 0 || strings.Contains(strings.ToLower(ae.Body), "rate limit"))):
+			p.Code, p.Retryable, p.Summary = "transient", true, "GitHub temporarily could not provide PR "+area+"; monitoring will retry."
+		case ae.StatusCode == 403:
+			p.Code, p.Summary = "access_denied", "GitHub denied access to PR "+area+"; check repository permissions."
+		case ae.StatusCode == 404:
+			p.Code, p.Summary = "unavailable", "GitHub did not expose PR "+area+"; access or capability needs checking."
+		}
+	case errors.As(err, &ne), errors.Is(err, context.DeadlineExceeded):
+		p.Code, p.Retryable, p.Summary = "transient", true, "Network interrupted the PR "+area+" read; monitoring will retry."
+	}
+	return p
 }
 
 // mergeableWord is GitHub's three-valued mergeable as the merge gate reads

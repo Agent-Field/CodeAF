@@ -82,9 +82,7 @@ func TestPollFollowsPullRequestsTheFactoryOpened(t *testing.T) {
 	mrg := got(merged.ID)
 	if mrg.State != factory.StateShipped || mrg.PullRequest == nil || mrg.PullRequest.State != factory.PRMerged ||
 		mrg.PullRequest.MergedBy != "mei" || !mrg.PullRequest.MergedAt.Equal(when) ||
-		mrg.PullRequest.ReviewDecision != "approved" || mrg.PullRequest.Required != 1 ||
-		mrg.PullRequest.CI != "ci ✓" || mrg.PullRequest.Checks != (factory.PRChecks{Passed: 1}) ||
-		len(mrg.PullRequest.Reviews) != 1 || mrg.PullRequest.Reviews[0].By != "mei" || mrg.PullRequest.Reviews[0].State != "approved" {
+		mrg.PullRequest.ChecksRead || mrg.PullRequest.ReviewsRead {
 		t.Fatalf("merged pull request: state %s pr %+v", mrg.State, mrg.PullRequest)
 	}
 	cld := got(closed.ID)
@@ -170,14 +168,12 @@ func TestFollowPRReadsTheForge(t *testing.T) {
 	}
 	wantAt := time.Date(2026, 10, 11, 9, 41, 0, 0, time.UTC)
 	if got.State != factory.PRMerged || got.MergedBy != "mei" || !got.MergedAt.Equal(wantAt) || got.Number != 40 ||
-		got.ReviewDecision != "approved" || got.Required != 1 || got.CI != "ci ✕" ||
-		got.Checks != (factory.PRChecks{Passed: 1, Failed: 1}) ||
-		len(got.Reviews) != 1 || got.Reviews[0].By != "mei" || got.Reviews[0].State != "approved" {
+		got.ChecksRead || got.ReviewsRead {
 		t.Fatalf("followed %+v", got)
 	}
-	// The merge gate's facts: the head it would merge, and that checks and
-	// reviews were read. GitHub left mergeable out, which is "not yet known".
-	if got.HeadSHA != "abc" || !got.ChecksRead || !got.ReviewsRead || got.Mergeable != "" {
+	// Terminal state and its head are authoritative without optional reads.
+	// GitHub left mergeable out, which remains unknown.
+	if got.HeadSHA != "abc" || got.ChecksRead || got.ReviewsRead || got.Mergeable != "" {
 		t.Fatalf("gate facts %+v", got)
 	}
 }

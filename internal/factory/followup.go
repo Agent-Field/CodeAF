@@ -194,9 +194,7 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 		return false
 	}
 	key := followEvent(pr, f.Request)
-	if f.EventKey == key {
-		return false
-	}
+
 	reviewPR := *pr
 	reviewPR.ReadinessKey = ""
 	reviewPR.HeadSHA = ""
@@ -207,10 +205,29 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 	reviewKey := followEvent(&reviewPR, "")
 	needsReview := (pr.ReviewDecision == "changes_requested" || pr.Feedback != "") && reviewKey != f.ReviewKey
 	needs := pr.Conflict || needsReview || f.Request != ""
+	// A failed policy/material read must not discard current CI or prevent a
+	// separate, known repair. Do not label incomplete monitoring as healthy.
+	if !needs && pr.Checks.Failed == 0 && len(pr.Problems) > 0 {
+		reason := pr.Problems[0].Summary
+		if pr.Draft {
+			reason = "Ready for review blocked: " + reason
+		}
+		if f.State == "watching" && f.Reason == reason {
+			return false
+		}
+		f.State, f.Reason = "watching", reason
+		i := EnsureFollowPR(it)
+		it.Stream.Phases[i].State, it.Stream.Phases[i].Note = PhaseWaiting, reason
+		return true
+	}
 	if !needs && (!pr.ChecksRead || pr.Checks.Pending > 0) {
 		return false
 	}
 	needs = needs || pr.Checks.Failed > 0
+	// Monitoring failures and recoveries are independent of repair deduplication.
+	if needs && f.EventKey == key {
+		return false
+	}
 	readinessQueued := false
 	if !needs && pr.Draft && pr.ReadinessKey != "" && ReadinessGate(*it) == nil && (f.Readiness == nil || f.Readiness.Key != pr.ReadinessKey) {
 		if f.Limit < 1 {
