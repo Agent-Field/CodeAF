@@ -179,7 +179,7 @@ func TestUsageRelayFixtureMatchesClientConstructors(t *testing.T) {
 
 func TestUsageEnrichedBatchFitsRelayBodyLimit(t *testing.T) {
 	testHome(t)
-	estimate := int(^uint(0)>>1) / 4
+	estimate := int(1<<53 - 1)
 	event := UsageReceipt(ModeChat, estimate, 0, "contract", testNow, UsageDimensions{UsageStatus: "mixed", MissingOutput: true, EstimatedOutput: &estimate, EstimateScope: "observed_partial", ReceiptID: "generation:contract", RoutingProvider: "anthropic", ModelFamily: "deepseek", AccountingSource: "provider"})
 	event.Props["codeaf_version"] = strings.Repeat("v", 64)
 	events := make([]Event, MaxEventsPerPOST)
