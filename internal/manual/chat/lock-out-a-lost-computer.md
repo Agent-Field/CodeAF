@@ -12,7 +12,7 @@ Run it on a computer you keep, as soon as you know a computer is lost:
 codeaf identity rotate
 ```
 
-It is hidden from the help text and, like the other `codeaf identity` verbs, needs no setting; only `CODEAF_CELLS=0` stops it. It needs a relay. With sync off it says `a rotation needs a relay`.
+It is hidden from the help text and, like the other `codeaf identity` verbs, follows the moving-chat platform, channel and engine rules: dev, staging and source builds default on, rc and stable off, and `CODEAF_CELLS=1`/`0` overrides. It needs Unix and a compatible furrow engine. It needs a relay. With sync off it says `a rotation needs a relay`.
 
 ```
 usage: codeaf identity rotate [--grace 7d] [--yes] [--abandon]

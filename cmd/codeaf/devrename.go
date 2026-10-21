@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/pair"
@@ -59,6 +60,9 @@ func tellFleet(ctx context.Context, dir, name string) error {
 // runDevicesRename is `codeaf devices rename <name>`. The name may be several
 // words, typed with or without quotes.
 func runDevicesRename(args []string) error {
+	if reason := cell.UnavailableReason(); reason != "" {
+		return errors.New(reason)
+	}
 	// Its own usage entry names the command; it takes no flags of its own.
 	flags := commandFlags("devices rename")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {

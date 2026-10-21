@@ -2,14 +2,21 @@ package atlas
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 )
 
 // Maps is the ordered registry of every atlas map. Every entry point —
 // `codeaf atlas`, the /atlas slash command and their pickers — reads this list
 // and nothing else; adding a map here is all it takes to publish one.
-var Maps = []*Map{
-	Pairing,
+var Maps = platformMaps()
+
+// platformMaps omits the move-only picture where the capability cannot run.
+func platformMaps() []*Map {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	return []*Map{Pairing}
 }
 
 // ByName answers the map a person named, in the order it was registered.

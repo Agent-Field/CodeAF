@@ -1,3 +1,5 @@
+//go:build !windows
+
 package handoff
 
 import (
@@ -12,16 +14,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/directory"
 )
-
-// stat reads a file of the device's root, failing the test when it is absent.
-func stat(t *testing.T, path string) os.FileInfo {
-	t.Helper()
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return info
-}
 
 // TestWarmTakeWritesOnlyTheChangedFile: a device that holds the chat at an
 // older head keeps every file the new head did not change as the very same

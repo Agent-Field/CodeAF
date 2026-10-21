@@ -43,6 +43,9 @@ var cellVerbs = map[string]cellVerb{
 // runCell is the stage 0 door onto a cell's turn chain. Like `engine` it is
 // machinery, not on the help page, until cells are the default.
 func runCell(args []string) error {
+	if reason := cell.UnavailableReason(); reason != "" {
+		return errors.New(reason)
+	}
 	cwd, _ := os.Getwd()
 	return runCellIn(args, os.Stdout, cwd)
 }

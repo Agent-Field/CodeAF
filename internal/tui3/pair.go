@@ -321,6 +321,9 @@ func (p *pairPanel) hint() string {
 // and not started twice: the process-wide guard in internal/pair would refuse
 // the second, but the person's answer should be the panel they already had.
 func (a *app) runPair(typed string) tea.Cmd {
+	if a.sayCellsUnavailable() {
+		return nil
+	}
 	// THE IN-CHAT REPLACE IS TYPED, AND IT IS TYPED WHOLE: the flag rides the
 	// command the way the terminal's does (cmd/codeaf/pair.go), never a stray
 	// keystroke. `--replace` is the primary spelling and the only one.

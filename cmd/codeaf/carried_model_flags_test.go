@@ -3,9 +3,7 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -13,42 +11,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Agent-Field/agentfield/sdk/go/ai"
-	"github.com/Agent-Field/codeaf/internal/agentsession"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/delegate/builtin"
 )
-
-// A real child asks both declared model flags, so resolving only the main
-// flag cannot hide behind a passing parent parser or a tolerant provider.
-func fakeModelFlagsProgram() delegate.Delegate {
-	return delegate.Delegate{Name: "fake-model-flags", Summary: "tests model resolution", Guide: "Tests the shell's model flags.", Page: "delegates", Default: "run", ModelFlag: "model", AuxiliaryModelFlags: []string{"light"}, Commands: []delegate.Command{{Name: "run", Usage: "[flags] -- <brief>", Summary: "asks both models", Bind: func(fs *flag.FlagSet) delegate.Body {
-		model := fs.String("model", "", "the working model")
-		light := fs.String("light", "", "the light model")
-		return func(ctx context.Context, host delegate.Host, _ []string) error {
-			client, err := agentsession.NewClient(host.Models(), 0)
-			if err != nil {
-				return err
-			}
-			for _, selected := range []string{*model, *light} {
-				if selected == "" {
-					selected = *model
-				}
-				reply, err := client.Complete(ctx, agentsession.Request{Model: selected, Messages: []ai.Message{{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: "answer"}}}}})
-				if err != nil {
-					host.Terminal(delegate.Ending{Status: delegate.StatusFail, Message: err.Error()})
-					return nil
-				}
-				if reply.Text() != "done" {
-					return fmt.Errorf("unexpected answer")
-				}
-			}
-			host.Terminal(delegate.Ending{Status: delegate.StatusPass, Message: "both models answered"})
-			return nil
-		}
-	}}}}
-}
 
 func TestShellResolvesAuxiliaryModelsBeforeARealChildCallsTheProvider(t *testing.T) {
 	for _, tc := range []struct {

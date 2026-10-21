@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -118,9 +119,13 @@ func TestIDsSortByTime(t *testing.T) {
 	}
 }
 
+// TestEnabled proves C11 and C21: the local switch cannot supply Windows with a Unix engine.
 func TestEnabled(t *testing.T) {
 	for v, want := range map[string]bool{"": true, "0": false, "1": true} {
 		t.Setenv(EnvVar, v)
+		if runtime.GOOS == "windows" {
+			want = false
+		}
 		if Enabled() != want {
 			t.Errorf("%q: want %v", v, want)
 		}

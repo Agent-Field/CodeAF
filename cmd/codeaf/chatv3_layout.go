@@ -482,10 +482,10 @@ func v3MintSessionAs(class cell.Class, bucket, workspace, launchDir string, owne
 }
 
 // v3NewFolder makes the empty folder a new session lives in and answers its id
-// and path: a cell unless CODEAF_CELLS=0 (the session package finds its
+// and path: a cell while the platform, channel and engine allow it (the session package finds its
 // transcript in .cell/ by the folder's shape), a plain folder otherwise.
 func v3NewFolder(bucket string, class cell.Class) (id, dir string, err error) {
-	if cell.Enabled() {
+	if cell.Available() {
 		c, err := cell.CreateIn(bucket, cell.Options{Class: class})
 		if err != nil {
 			return "", "", fmt.Errorf("create session directory: %w", err)
@@ -744,7 +744,7 @@ func v3ReapEmpty(empty []v3Folder, keep string) {
 // A failed migration is not a failed open: every state it can stop in opens
 // (cell.MigrateLegacy), and the path is read back from the disk either way.
 func v3Migrated(cfg session.Config) session.Config {
-	if !cell.Enabled() || cfg.Place.Dir == "" {
+	if !cell.Available() || cfg.Place.Dir == "" {
 		return cfg
 	}
 	_ = cell.MigrateLegacy(cfg.Place.Dir, session.TruthCarriers()...)
@@ -792,7 +792,7 @@ func v3SeatOf(place session.Place, say func(string)) (executor.Seat, *preflight.
 // the chat its tool calls are refused. A nil book, or sync off, is the seat
 // exactly as it was.
 func v3SeatWith(place session.Place, say func(string), drives *driveBook) (executor.Seat, *preflight.Machine, *cellstore.SealWatch) {
-	if !cell.Enabled() || place.Dir == "" || place.Workspace == "" {
+	if !cell.Available() || place.Dir == "" || place.Workspace == "" {
 		return nil, nil, nil
 	}
 	c, err := cell.OpenAt(place.Dir, filepath.Base(place.Dir))

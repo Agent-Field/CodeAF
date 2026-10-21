@@ -118,6 +118,9 @@ func (a *app) tookFleet(msg fleetMsg) tea.Cmd {
 
 // toggleAddMachine is the chord. It does nothing where the card is not drawn.
 func (a *app) toggleAddMachine() tea.Cmd {
+	if a.sayCellsUnavailable() {
+		return nil
+	}
 	m := &a.addMachine
 	if !a.addMachineWanted() {
 		return nil

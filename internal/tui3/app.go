@@ -2682,8 +2682,9 @@ type app struct {
 	// pairing is the door onto pairing this computer with another, and pair the
 	// panel /pair opens over it (pair.go). Nil pairing is a connection that
 	// cannot; closed, the panel costs the frame nothing.
-	pairing Pairing
-	pair    pairPanel
+	cellsUnavailable string
+	pairing          Pairing
+	pair             pairPanel
 
 	// approvals answers a new device's request and revokes devices, and
 	// approve remembers what its screens have said (approve.go).
@@ -2991,6 +2992,7 @@ func (a *app) noteKilled() {
 const landingKeysWord = "esc interrupts · ctrl+c quits · ? for help"
 
 func newApp(ctx context.Context, opts Options) *app {
+	prepareCells(&opts)
 	// THE ENVIRONMENT IS READ THROUGH THE SEAM AND NOWHERE ELSE, so the four
 	// facts below that come from the shell all come from the same table when a
 	// test hands one in ([Options.Env] says why a test must).
@@ -3020,6 +3022,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		machines:            opts.Machines,
 		taker:               opts.Takeover,
 		pairing:             opts.Pairing,
+		cellsUnavailable:    opts.CellsUnavailable,
 		approvals:           opts.Approvals,
 		fleet:               opts.Fleet,
 		branches:            opts.Branches,

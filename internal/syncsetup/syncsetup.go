@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
@@ -69,6 +70,9 @@ type Sync struct {
 // disk in that case. A relay with no identity here, or a URL that is not a web
 // address, is an error of one sentence.
 func Open(home string) (*Sync, bool, error) {
+	if !cell.Available() {
+		return nil, false, nil
+	}
 	if rotate.Pending(home) {
 		return nil, false, ErrRotating
 	}
@@ -80,6 +84,9 @@ func Open(home string) (*Sync, bool, error) {
 // identity (a fleet of one, solo and quiet: see quiet.go) instead of failing. The headless verbs keep Open,
 // which tells a machine without an identity so.
 func OpenFirst(home string) (*Sync, bool, error) {
+	if !cell.Available() {
+		return nil, false, nil
+	}
 	if rotate.Pending(home) {
 		return nil, false, ErrRotating
 	}

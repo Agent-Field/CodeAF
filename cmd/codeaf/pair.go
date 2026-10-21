@@ -11,6 +11,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -95,6 +97,9 @@ func runPair(args []string) error {
 }
 
 func (d pairDoor) run(ctx context.Context, args []string) error {
+	if reason := cell.UnavailableReason(); reason != "" {
+		return errors.New(reason)
+	}
 	flags := commandFlags("pair")
 	via := flags.String("via", "", "the sync address to pair through; empty is the one this device already uses")
 	renamedFlag(flags, "relay", "via")

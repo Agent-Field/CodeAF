@@ -47,8 +47,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/codeaf/internal/env"
-
 	"github.com/Agent-Field/codeaf/internal/furrowbin"
 )
 
@@ -59,7 +57,7 @@ import (
 // [lookBinary] has the order and the reason for it.
 const (
 	Binary       = "furrow"
-	BinaryEnvVar = "CODEAF_FURROW"
+	BinaryEnvVar = furrowbin.BinaryEnvVar
 )
 
 // detectTimeout bounds the two cheap calls [Detect] makes. Detection sits in
@@ -291,15 +289,8 @@ var errNoOwnedEngine = errors.New("no engine of codeaf's own")
 // somebody named or the one this codeaf carries. A caller that depends on what
 // the engine can do, and not merely on there being one, asks for this.
 func lookOwned() (string, error) {
-	if configured := strings.TrimSpace(env.Get(BinaryEnvVar)); configured != "" {
-		info, err := os.Stat(configured)
-		if err != nil {
-			return "", err
-		}
-		if info.IsDir() {
-			return "", fmt.Errorf("%s names a directory: %s", BinaryEnvVar, configured)
-		}
-		return configured, nil
+	if binary, configured, err := furrowbin.ConfiguredBinary(); configured {
+		return binary, err
 	}
 	carried, err := embedded()
 	if err != nil {

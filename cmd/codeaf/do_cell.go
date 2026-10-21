@@ -41,7 +41,7 @@ type errandCell struct {
 // continuation follows a record that has one, a new one otherwise. Flag off, it
 // answers the zero value and touches nothing.
 func openErrandCell(workspace, resume string) (errandCell, error) {
-	if !cell.Enabled() {
+	if !cell.Available() {
 		return errandCell{}, nil
 	}
 	place, err := errandPlace(workspace, resume)

@@ -10,6 +10,8 @@
 // the reader's, and the pages that described it had to hedge every sentence. So
 // the binary rides along, and the only thing that still varies is whether a
 // particular folder has been attached with `furrow watch`.
+// Native Windows deliberately omits this Unix-only engine; chat movement is
+// available there through WSL instead.
 //
 // The bytes get here in three moves, and each one is somewhere else:
 //
@@ -67,7 +69,8 @@ var staged embed.FS
 // ErrNotEmbedded is what [Ensure] answers on a build that carries no furrow for
 // this platform — a plain `go build ./...` in a fresh clone, which is a real
 // and useful thing to be able to do. It is not the shipped state: `make build`
-// fetches first and fails rather than produce one.
+// fetches first on Unix and fails rather than produce one. Windows deliberately
+// carries no native engine.
 var ErrNotEmbedded = errors.New("this codeaf was not built with furrow inside it")
 
 // stagedName is where the build put this platform's furrow, and it is derived

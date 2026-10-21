@@ -2265,5 +2265,5 @@ each call asks first, exactly like any other outside action, unless approvals ar
 (`--yolo` or the allow posture). Limits: a setup turn is never replayed on another machine
 (the agent does it again there), it never runs impossible items, it needs your permission
 for the network, a sandboxed conversation can install only inside its own folder (`bin/`, `.venv/bin` and `node_modules/.bin` there count as this machine's tools), and it can be rewound like any turn. When it ends, codeaf looks at what is
-now on this machine and updates the record. Cells are on by default (`CODEAF_CELLS=0` turns them off); without a
+now on this machine and updates the record. Cells default on for dev, staging and source builds, and off for rc and stable (`CODEAF_CELLS=1`/`0` overrides); they need Unix and a compatible furrow engine; without a
 cell there is nothing to set up.
