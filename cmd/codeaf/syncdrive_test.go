@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
@@ -247,8 +250,8 @@ func TestStartDriveWithNoIdentityReportsNothing(t *testing.T) {
 // refuse every tool call in the chat that was moved back.
 func TestAChatMovedBackGetsADriveSideOfItsOwn(t *testing.T) {
 	cfg, c := doorChat(t)
-	srv := httptest.NewServer(relayserve.New(relayserve.Config{Store: t.TempDir()}).Handler)
-	t.Cleanup(srv.Close)
+	srv, published, closeRelay := driveRelayWithPublication(t, c.ID)
+	defer closeRelay()
 	t.Setenv(syncsetup.URLVar, srv.URL)
 	t.Setenv(syncsetup.IntervalVar, "50")
 	first := home.Dir()
@@ -259,6 +262,11 @@ func TestAChatMovedBackGetsADriveSideOfItsOwn(t *testing.T) {
 	seated := v3Seated(cfg)
 	if err := toolCallOn(t, seated.Seat, cfg.Place.Workspace); err != nil {
 		t.Fatal(err)
+	}
+	select {
+	case <-published:
+	case <-time.After(15 * time.Second):
+		t.Fatal("the first durable call did not reach the relay")
 	}
 	firstBook := syncDrives
 
@@ -280,11 +288,17 @@ func TestAChatMovedBackGetsADriveSideOfItsOwn(t *testing.T) {
 	t.Cleanup(func() { syncDrives = firstBook })
 	engine := cellstore.EngineFor(cfg.Place.Workspace)
 	viewing := syncDrives.driveOf(c, engine, func(error) {})
-	if viewing == nil || viewing.started() == nil {
+	if viewing == nil {
 		t.Fatal("the second computer made no drive side")
 	}
+	if err := viewing.Gate(); err == nil {
+		t.Fatal("the second computer was writable while the first held the chat")
+	}
+	if viewing.started() == nil {
+		t.Fatal("the second computer's ownership check did not finish")
+	}
 	if _, viewer := viewing.started().Viewer(); !viewer {
-		t.Skip("the first computer did not hold the lease yet")
+		t.Fatal("the first computer's lease did not make the second view-only")
 	}
 
 	// The first computer lets the chat go; opening it again here must drive it.
@@ -305,8 +319,8 @@ func TestAChatMovedBackGetsADriveSideOfItsOwn(t *testing.T) {
 // lease that is gone, so reusing it would refuse every tool call in the chat that came back.
 func TestAChatTakenAndTakenBackGetsADriveSideOfItsOwn(t *testing.T) {
 	cfg, c := doorChat(t)
-	srv := httptest.NewServer(relayserve.New(relayserve.Config{Store: t.TempDir()}).Handler)
-	t.Cleanup(srv.Close)
+	srv, published, closeRelay := driveRelayWithPublication(t, c.ID)
+	defer closeRelay()
 	t.Setenv(syncsetup.URLVar, srv.URL)
 	t.Setenv(syncsetup.IntervalVar, "50")
 	first := home.Dir()
@@ -317,6 +331,11 @@ func TestAChatTakenAndTakenBackGetsADriveSideOfItsOwn(t *testing.T) {
 	seated := v3Seated(cfg)
 	if err := toolCallOn(t, seated.Seat, cfg.Place.Workspace); err != nil {
 		t.Fatal(err)
+	}
+	select {
+	case <-published:
+	case <-time.After(15 * time.Second):
+		t.Fatal("the first durable call did not reach the relay")
 	}
 	kept := syncDrives.drive[c.ID]
 
@@ -373,4 +392,20 @@ func TestAChatBeingTakenIsNotOpened(t *testing.T) {
 	if opened != 1 {
 		t.Fatal("the chat did not open after its takeover ended")
 	}
+}
+
+// driveRelayWithPublication exposes C4's durable directory receipt, so a test
+// can take the chat after publication without putting the network back on paint.
+func driveRelayWithPublication(t *testing.T, id string) (*httptest.Server, <-chan struct{}, func()) {
+	t.Helper()
+	service := relayserve.New(relayserve.Config{Store: t.TempDir()})
+	published := make(chan struct{})
+	var once sync.Once
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		service.Handler.ServeHTTP(w, r)
+		if r.Method == http.MethodPost && r.URL.Path == "/v1/dir/cells/"+id {
+			once.Do(func() { close(published) })
+		}
+	}))
+	return server, published, func() { syncDrives.closeAll(); server.Close(); _ = service.Close() }
 }

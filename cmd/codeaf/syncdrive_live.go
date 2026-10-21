@@ -8,6 +8,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
@@ -21,20 +22,19 @@ import (
 type liveDrive struct {
 	start func() (*syncsetup.Drive, error)
 
-	mu      sync.Mutex
-	drive   *syncsetup.Drive
-	waiting bool // sync is on and only an identity, or the end of solo, is missing
+	mu        sync.Mutex
+	drive     *syncsetup.Drive
+	waiting   bool // sync is on and only an identity, or the end of solo, is missing
+	ready     chan struct{}
+	attempted bool
+	closed    bool
 }
 
-// newLiveDrive starts the drive side now when it can. It answers nil when sync
-// is off or cannot start for any reason a pairing would not change, so the chat
-// runs unsynced exactly as it did before sync existed.
+// newLiveDrive starts the drive side behind the first paint. Local startup
+// seals do not wait for the relay; new tool work waits for its ownership check.
 func newLiveDrive(start func() (*syncsetup.Drive, error)) *liveDrive {
 	l := &liveDrive{start: start}
 	l.try()
-	if l.drive == nil && !l.waiting {
-		return nil
-	}
 	return l
 }
 
@@ -44,11 +44,47 @@ func newLiveDrive(start func() (*syncsetup.Drive, error)) *liveDrive {
 func (l *liveDrive) try() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.drive != nil || (l.waiting && !syncsetup.MayTalk(home.Dir())) {
+	if l.closed || l.drive != nil || l.ready != nil || (l.attempted && !l.waiting) || (l.waiting && !syncsetup.MayTalk(home.Dir())) {
 		return
 	}
-	d, err := l.start()
-	l.drive, l.waiting = d, errors.Is(err, syncsetup.ErrNoIdentity) || errors.Is(err, syncsetup.ErrQuiet)
+	l.ready = make(chan struct{})
+	ready := l.ready
+	guard.Go("chat sync startup", func() {
+		var d *syncsetup.Drive
+		var err error
+		// A startup fault must release waiting tools as well as spare the
+		// surface. Installing the result is owed even when start panics.
+		defer func() {
+			if closed := l.install(d, err, ready); closed && d != nil {
+				ctx, cancel := context.WithTimeout(context.Background(), driveCloseWithin)
+				defer cancel()
+				_ = d.Close(ctx)
+			}
+		}()
+		d, err = l.start()
+	})
+}
+
+// install joins the startup seals under the same lock lateStore seals through,
+// so a turn cannot fall between catch-up and installing the drive.
+func (l *liveDrive) install(d *syncsetup.Drive, err error, ready chan struct{}) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	defer close(ready)
+	l.ready = nil
+	l.drive, l.waiting, l.attempted = d, errors.Is(err, syncsetup.ErrNoIdentity) || errors.Is(err, syncsetup.ErrQuiet), true
+	if d != nil {
+		d.CatchUp()
+	}
+	return l.closed
+}
+
+// pending reads the startup boundary without holding the mutex while waiting
+// for its network work to finish.
+func (l *liveDrive) pending() <-chan struct{} {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.ready
 }
 
 // current is the running drive side, or nil while there is none.
@@ -61,7 +97,18 @@ func (l *liveDrive) current() *syncsetup.Drive {
 
 // Gate is the drive side's gate: nothing is refused until a drive side exists.
 func (l *liveDrive) Gate() error {
-	if d := l.current(); d != nil {
+	for {
+		l.try()
+		ready := l.pending()
+		if ready == nil {
+			break
+		}
+		<-ready
+	}
+	if d := l.started(); d != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), holdsLeaseWithin)
+		defer cancel()
+		d.CheckLease(ctx)
 		return d.Gate()
 	}
 	return nil
@@ -83,6 +130,19 @@ func (l *liveDrive) Store(e cellstore.Engine) cellstore.Store {
 
 // Close ends the drive side if one ever started.
 func (l *liveDrive) Close(ctx context.Context) error {
+	ready := func() <-chan struct{} {
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		l.closed = true
+		return l.ready
+	}()
+	if ready != nil {
+		select {
+		case <-ready:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 	if d := l.started(); d != nil {
 		return d.Close(ctx)
 	}
@@ -122,8 +182,11 @@ var _ cellstore.Store = lateStore{}
 
 // Seal implements cellstore.Store.
 func (s lateStore) Seal(ctx context.Context, c cell.Cell, info cellstore.TurnInfo) (cellstore.Sealed, error) {
+	s.live.try()
+	s.live.mu.Lock()
+	defer s.live.mu.Unlock()
 	var store cellstore.Store = s.engine
-	if d := s.live.current(); d != nil {
+	if d := s.live.drive; d != nil {
 		store = d.Store(s.engine)
 	}
 	return store.Seal(ctx, c, info)
