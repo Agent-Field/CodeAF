@@ -3,7 +3,9 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -177,5 +179,120 @@ func TestLateReceiptFollowsTheOverflowRoute(t *testing.T) {
 	}
 	if event.Props["routing_provider"] != "openrouter" || event.Props["total_tokens"] != float64(13) {
 		t.Fatal(event.Props)
+	}
+}
+
+// The fixture only sends a usage frame when the streaming request opts in,
+// matching compatible local servers rather than gifting every caller counts.
+func TestLocalStreamingUsageIsRequestedAndCounted(t *testing.T) {
+	for _, source := range []string{"ollama", "custom"} {
+		for _, reported := range []bool{true, false} {
+			name := fmt.Sprintf("%s/reported=%t", source, reported)
+			t.Run(name, func(t *testing.T) {
+				t.Setenv(home.EnvVar, t.TempDir())
+				telemetry.EnableForTest(t, true)
+				telemetry.VersionForTest(t, "v0.7.0")
+				finish := telemetry.BeginUsageSession(telemetry.ModeChat, "local")
+				defer finish()
+				handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					var request struct {
+						Stream  bool `json:"stream"`
+						Options struct {
+							IncludeUsage bool `json:"include_usage"`
+						} `json:"stream_options"`
+					}
+					if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+						t.Fatal(err)
+					}
+					if !request.Stream || !request.Options.IncludeUsage {
+						t.Error("stream did not request token usage")
+					}
+					w.Header().Set("Content-Type", "text/event-stream")
+					fmt.Fprint(w, `data: {"choices":[{"index":0,"delta":{"role":"assistant","content":"ok"}}]}`+"\n\n")
+					fmt.Fprint(w, `data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`+"\n\n")
+					if reported && request.Options.IncludeUsage {
+						fmt.Fprint(w, `data: {"choices":[],"usage":{"prompt_tokens":40,"completion_tokens":2,"total_tokens":42}}`+"\n\n")
+					}
+					fmt.Fprint(w, "data: [DONE]\n\n")
+				})
+				client, err := NewClient(Config{SourceID: source, BaseURL: "http://private-runner.example:11434/v1", Model: "qwen3", Direct: true, KeyOptional: true, HTTPClient: handlerClient(handler)})
+				if err != nil {
+					t.Fatal(err)
+				}
+				ctx := WithStreamObserver(context.Background(), func(StreamEvent) {})
+				response, err := client.CompleteWithMessages(ctx, userMessages("hello"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if response.Text() != "ok" {
+					t.Fatalf("response = %q", response.Text())
+				}
+				rows := telemetry.SpoolContents()
+				if len(rows) != 1 {
+					t.Fatalf("receipts = %d, want 1", len(rows))
+				}
+				var event struct {
+					Props map[string]any `json:"props"`
+				}
+				if err := json.Unmarshal(rows[0], &event); err != nil {
+					t.Fatal(err)
+				}
+				want := "other"
+				if source == "ollama" {
+					want = "ollama"
+				}
+				if event.Props["routing_provider"] != want {
+					t.Fatal(event.Props)
+				}
+				if reported {
+					if event.Props["total_tokens"] != float64(42) || event.Props["usage_status"] != "reported" {
+						t.Fatal(event.Props)
+					}
+				} else {
+					if _, exists := event.Props["total_tokens"]; exists {
+						t.Fatal("missing usage invented tokens")
+					}
+					if event.Props["usage_status"] != "estimated" || event.Props["estimated_total_tokens"] == nil {
+						t.Fatal(event.Props)
+					}
+				}
+				if strings.Contains(string(rows[0]), "private-runner") {
+					t.Fatal("private endpoint escaped")
+				}
+			})
+		}
+	}
+}
+
+func TestUsageProviderKeepsOllamaIdentityOnItsOwnRouteOnly(t *testing.T) {
+	for _, tc := range []struct{ source, base, attempt, want string }{
+		{"ollama", "http://localhost:11434/v1", "http://localhost:11434/v1", "ollama"},
+		{"ollama", "http://[::1]:9000/v1", "http://[::1]:9000/v1", "ollama"},
+		{"ollama", "http://runner.example/v1", "https://openrouter.ai/api/v1", "openrouter"},
+		{"custom", "http://localhost:11434/v1", "http://localhost:11434/v1", "other"},
+		{"private-service", "http://localhost:8080/v1", "http://localhost:8080/v1", "other"},
+	} {
+		client := &Client{config: Config{SourceID: tc.source, BaseURL: tc.base}}
+		if got := client.usageRoutingProvider(tc.attempt); got != tc.want {
+			t.Errorf("%+v: got %s", tc, got)
+		}
+	}
+}
+
+func TestNonStreamingRequestDoesNotSendStreamOptions(t *testing.T) {
+	client, err := NewClient(Config{APIKey: "test", BaseURL: "http://localhost:9000/v1", Model: "qwen3", Direct: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := client.encodeRequest(&ai.Request{Messages: userMessages("hello")}, callKnobs{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var request map[string]any
+	if err := json.Unmarshal(body, &request); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := request["stream_options"]; exists {
+		t.Fatal("non-streamed call sent stream_options")
 	}
 }
