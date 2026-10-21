@@ -501,6 +501,22 @@ A historical request is not a claim that approval is still being checked.
 
 ## When a draft PR becomes ready for review
 
+PR monitoring reads CI, reviews and conversation feedback independently. An
+unread readiness policy or diff does not erase a successful current-head CI
+read or prevent new review feedback and external merge/closure from arriving.
+Incomplete sections carry a specific problem with an inspectable diagnostic;
+authentication/access errors do not masquerade as endlessly transient failures.
+Ordinary polls continue, and a complete later snapshot automatically resumes
+final review for an existing watching job without another Start.
+
+GitHub's explicit plan restriction means that particular protection feature
+does not apply to this repository. The reader still enforces requirements from
+the other applicable policy API and all current-head checks. Generic 403,
+unknown policy, unavailable diff or missing feedback blocks final readiness;
+none is silently treated as an empty policy. Only documented, exact plan-error
+responses qualify; rate limits retain bounded read retries and later polling.
+
+
 Follow PR first waits for current-head CI to pass, with no pending or failed
 checks, readable review feedback and known conflict-free mergeability. It then
 runs a brief read-only final review of the actual GitHub PR description and

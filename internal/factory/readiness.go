@@ -31,6 +31,9 @@ func ReadinessGate(it Item) error {
 	if p == nil || p.State != PROpen || p.HeadSHA == "" {
 		return fmt.Errorf("an open PR and its exact head are required")
 	}
+	if len(p.Problems) > 0 {
+		return fmt.Errorf("%s", p.Problems[0].Summary)
+	}
 	if !p.ChecksRead || !p.ReviewsRead || p.Mergeable != MergeableYes || p.Conflict {
 		return fmt.Errorf("PR checks, reviews or mergeability are incomplete or blocked")
 	}

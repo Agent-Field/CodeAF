@@ -376,12 +376,23 @@ type PRChecks struct {
 // reporting its receipt never changes the identity of the job being run.
 // State, the merge, the reviews and the check summary are filled when a
 // later poll reads the pull request again.
+// PRReadProblem describes one incomplete section of an otherwise current PR read.
+// Other sections stay useful. Detail is diagnostic data, never instructions.
+type PRReadProblem struct {
+	Area      string `json:"area"`
+	Code      string `json:"code"`
+	Summary   string `json:"summary"`
+	Detail    string `json:"detail"`
+	Retryable bool   `json:"retryable"`
+}
+
 type PullRequest struct {
-	ReadinessKey     string     `json:",omitempty"`
-	ReadinessContext string     `json:",omitempty"`
-	BaseSHA          string     `json:",omitempty"`
-	Feedback         string     `json:",omitempty"`
-	CheckRuns        []CheckRun `json:",omitempty"`
+	Problems         []PRReadProblem `json:",omitempty"`
+	ReadinessKey     string          `json:",omitempty"`
+	ReadinessContext string          `json:",omitempty"`
+	BaseSHA          string          `json:",omitempty"`
+	Feedback         string          `json:",omitempty"`
+	CheckRuns        []CheckRun      `json:",omitempty"`
 	Conflict         bool
 	Draft            bool
 	Number           int

@@ -501,7 +501,7 @@ func (c *client) RequiredReviews(ctx context.Context, owner, repo, branch string
 	body, _, err := c.read(ctx, c.repoURL(owner, repo, "/branches/"+url.PathEscape(branch)+"/protection"), "")
 	if err != nil {
 		var apiErr *APIError
-		if errors.As(err, &apiErr) && (apiErr.StatusCode == http.StatusNotFound || apiErr.StatusCode == http.StatusForbidden) {
+		if PolicyUnavailable(err) || (errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound) {
 			return 0, nil
 		}
 		return 0, err

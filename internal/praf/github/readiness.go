@@ -17,6 +17,28 @@ type RequiredCheck struct {
 	AppID   int
 }
 
+// PolicyUnavailable recognizes only GitHub's explicit plan restriction. A generic
+// 403 (including missing permissions or rate limits) never means no policy.
+func PolicyUnavailable(err error) bool {
+	var ae *APIError
+	if !errors.As(err, &ae) || ae.StatusCode != http.StatusForbidden || ae.RetryAfter > 0 {
+		return false
+	}
+	var body struct {
+		Message       string `json:"message"`
+		Documentation string `json:"documentation_url"`
+	}
+	if json.Unmarshal([]byte(ae.Body), &body) != nil {
+		return false
+	}
+	if body.Message != "Upgrade to GitHub Pro or make this repository public to enable this feature." {
+		return false
+	}
+	return body.Documentation == "https://docs.github.com/rest/repos/rules#get-rules-for-a-branch" ||
+		body.Documentation == "https://docs.github.com/rest/branches/branch-protection#get-branch-protection" ||
+		body.Documentation == "https://docs.github.com/rest/branches/branch-protection#get-status-checks-protection"
+}
+
 // ReadinessMaterial reads the complete diff and the enforced required-check
 // names. Unreadable policy and truncated material never mean no requirements.
 func (c *client) ReadinessMaterial(ctx context.Context, owner, repo, base string, number int) (string, []RequiredCheck, error) {
@@ -36,7 +58,7 @@ func (c *client) ReadinessMaterial(ctx context.Context, owner, repo, base string
 	b, _, err := c.read(ctx, c.repoURL(owner, repo, "/branches/"+url.PathEscape(base)+"/protection/required_status_checks"), "")
 	if err != nil {
 		var ae *APIError
-		if !errors.As(err, &ae) || ae.StatusCode != 404 {
+		if !PolicyUnavailable(err) && (!errors.As(err, &ae) || ae.StatusCode != 404) {
 			return "", nil, err
 		}
 	} else {
@@ -62,6 +84,9 @@ func (c *client) ReadinessMaterial(ctx context.Context, owner, repo, base string
 	for page := 1; page <= 20; page++ {
 		b, _, err = c.read(ctx, c.repoURL(owner, repo, "/rules/branches/"+url.PathEscape(base)+"?per_page=100&page="+strconv.Itoa(page)), "")
 		if err != nil {
+			if page == 1 && PolicyUnavailable(err) {
+				break
+			}
 			return "", nil, err
 		}
 		var rules []struct {
@@ -84,16 +109,19 @@ func (c *client) ReadinessMaterial(ctx context.Context, owner, repo, base string
 			}
 		}
 		if len(rules) < 100 {
-			sort.Slice(required, func(i, j int) bool {
-				if required[i].Context != required[j].Context {
-					return required[i].Context < required[j].Context
-				}
-				return required[i].AppID < required[j].AppID
-			})
-			return string(raw), required, nil
+			break
+		}
+		if page == 20 {
+			return "", nil, fmt.Errorf("required check rules exceed 2000; full policy could not be read")
 		}
 	}
-	return "", nil, fmt.Errorf("required check rules exceed 2000; full policy could not be read")
+	sort.Slice(required, func(i, j int) bool {
+		if required[i].Context != required[j].Context {
+			return required[i].Context < required[j].Context
+		}
+		return required[i].AppID < required[j].AppID
+	})
+	return string(raw), required, nil
 }
 
 // MarkPullReady is a single mutation, never an automatically replayed POST.
