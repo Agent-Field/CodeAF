@@ -101,7 +101,7 @@ type receiptWork struct {
 	result Reconciled
 	sink   ReconcileSink
 	queued time.Time
-	usage  func(int, int)
+	usage  func(int, int, bool, bool)
 	base   string
 }
 
@@ -190,7 +190,7 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 		Hedged: hedgeLaneFrom(ctx) != "",
 	}
 	if response != nil {
-		result.Ref = strings.TrimSpace(response.ID)
+		result.Ref = canonicalGenerationID(response.ID)
 	}
 	// NO ID MEANS NO REQUEST. Text still proves that the call got somewhere and
 	// may be charged, so its missing price is said; without text there is no
@@ -201,10 +201,14 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 		}
 		return
 	}
-	work := receiptWork{result: result, sink: sink, base: base, usage: telemetry.CaptureUsageRecorder(telemetry.UsageDimensions{
-		RoutingProvider: telemetry.RoutingProvider(base),
+	attemptID := ""
+	if len(traces) > 0 && traces[0] != nil {
+		attemptID = traces[0].attemptID
+	}
+	work := receiptWork{result: result, sink: sink, base: base, usage: telemetry.CaptureUsageRecorderWithPresence(telemetry.UsageDimensions{
+		RoutingProvider: c.usageRoutingProvider(base),
 		ModelFamily:     telemetry.ModelFamily(result.Model), UsageStatus: "reported",
-		AccountingSource: "provider", ReceiptID: "generation:" + result.Ref,
+		AccountingSource: "provider", ReceiptID: usageReceiptID(base, result.Ref, attemptID),
 	})}
 	// THE WORK IS TOLD A RECEIPT IS OWED BEFORE IT IS QUEUED, and told it was
 	// answered only after the sink has banked it, so a caller waiting for its
@@ -287,7 +291,14 @@ func (c *Client) reconcile(work receiptWork) {
 	ctx, cancel := context.WithDeadline(context.Background(), work.deadline())
 	defer cancel()
 	for attempt := 0; attempt < receiptAttempts; attempt++ {
-		billed, found, noRoute := c.fetchReceiptAt(ctx, result.Ref, base)
+		var presence [2]bool
+		billed, found, noRoute := c.fetchReceiptAt(ctx, result.Ref, base, &presence)
+		// Explicit zero counts are measurements even when the old money door
+		// still considers this an empty, unpriced receipt. Keep its price and
+		// ledger behavior while allowing those counts to replace estimates.
+		if work.usage != nil && (presence[0] || presence[1]) {
+			work.usage(billed.PromptTokens, billed.CompletionTokens, presence[0], presence[1])
+		}
 		if noRoute {
 			receiptRoutes.heard(base, time.Now())
 			work.sink(result)
@@ -298,12 +309,6 @@ func (c *Client) reconcile(work receiptWork) {
 			billed.Model = result.Model
 			result.Billed = billed
 			result.Found = true
-			// Recovery is reached only when the stream had no usage block, so
-			// these tokens replace an unknown receipt rather than add to a
-			// previously reported total.
-			if work.usage != nil {
-				work.usage(billed.PromptTokens, billed.CompletionTokens)
-			}
 			work.sink(result)
 			return
 		}
@@ -337,7 +342,7 @@ func (c *Client) fetchReceipt(ctx context.Context, ref string) (Billed, bool, bo
 }
 
 // fetchReceiptAt follows the route the generation actually used.
-func (c *Client) fetchReceiptAt(ctx context.Context, ref, base string) (Billed, bool, bool) {
+func (c *Client) fetchReceiptAt(ctx context.Context, ref, base string, observed ...*[2]bool) (Billed, bool, bool) {
 	endpoint, err := url.Parse(strings.TrimSpace(base))
 	if err != nil {
 		return Billed{}, false, false
@@ -379,12 +384,18 @@ func (c *Client) fetchReceiptAt(ctx context.Context, ref, base string) (Billed, 
 	if wire.Data.TotalCost != nil {
 		billed.Cost = *wire.Data.TotalCost
 	}
+	presence := [2]bool{}
 	if wire.Data.TokensPrompt != nil || wire.Data.TokensCompletion != nil {
+		presence = [2]bool{wire.Data.TokensPrompt != nil, wire.Data.TokensCompletion != nil}
 		billed.PromptTokens = valueOrZero(wire.Data.TokensPrompt)
 		billed.CompletionTokens = valueOrZero(wire.Data.TokensCompletion)
 	} else {
+		presence = [2]bool{wire.Data.NativeTokensPrompt != nil, wire.Data.NativeTokensCompletion != nil}
 		billed.PromptTokens = valueOrZero(wire.Data.NativeTokensPrompt)
 		billed.CompletionTokens = valueOrZero(wire.Data.NativeTokensCompletion)
+	}
+	if len(observed) > 0 && observed[0] != nil {
+		*observed[0] = presence
 	}
 	if billed.Empty() {
 		return Billed{}, false, false
