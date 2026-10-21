@@ -6,6 +6,7 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -107,11 +108,20 @@ func saveRuleOrigin(profile, id string, saveErr error, origins []RuleOrigin) err
 	if saveErr != nil || len(origins) == 0 {
 		return saveErr
 	}
-	return editRuleMetadata(ruleProfile(profile), func(rows map[string]RuleMetadata) {
+	// A committed permission is success. Metadata may be repaired on a later
+	// save, without replacing the origin of an already attributed rule.
+	err := editRuleMetadata(ruleProfile(profile), func(rows map[string]RuleMetadata) {
 		row := rows[id]
+		if row.Origin != (RuleOrigin{}) {
+			return
+		}
 		row.Origin = origins[0]
 		rows[id] = row
 	})
+	if err != nil {
+		log.Printf("codeaf: save origin for %s: %v", id, err)
+	}
+	return nil
 }
 
 // RuleMetadataAt includes the batch not yet on disk, for immediate receipts.

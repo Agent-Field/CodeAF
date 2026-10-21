@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -84,5 +85,31 @@ func TestConsentAskCarriesOutsideRule(t *testing.T) {
 				t.Fatalf("outside omission: %s", raw)
 			}
 		})
+	}
+}
+
+func TestBashToolOverrideUsesMatchedRuleID(t *testing.T) {
+	agent, _ := consentAgent(t, &scriptedCompleter{}, &approval.Policy{Tools: map[string]approval.Action{"bash": approval.ActionAllow}}, true)
+	profile := t.TempDir()
+	agent.config.ProfileDir = profile
+	origin := config.RuleOrigin{Agent: "api"}
+	if err := config.RememberToolApproval(profile, "bash", "allow", origin); err != nil {
+		t.Fatal(err)
+	}
+	hub := newEventHub()
+	call := ai.ToolCall{ID: "bash-override", Function: ai.ToolCallFunction{Name: "bash", Arguments: `{"command":"go test ./tiny"}`}}
+	if _, ok := agent.approve(context.Background(), hub, call); !ok {
+		t.Fatal("allow refused")
+	}
+	if err := config.FlushRuleUsage(profile); err != nil {
+		t.Fatal(err)
+	}
+	event, found := firstOfKind(hub.backlog, EventConsentAllowed)
+	if !found || event.ApprovalRule == nil || event.ApprovalRule.ID != "tool:bash" || event.ApprovalRule.Uses != 1 || event.ApprovalRule.Origin != origin {
+		t.Fatalf("receipt = %+v", event.ApprovalRule)
+	}
+	metadata, err := config.RuleMetadataAt(profile, "tool:bash")
+	if err != nil || metadata.Uses != 1 {
+		t.Fatalf("matched rule usage = %+v, %v", metadata, err)
 	}
 }

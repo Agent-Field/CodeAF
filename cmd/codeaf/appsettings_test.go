@@ -3,8 +3,12 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+
+	"github.com/Agent-Field/codeaf/internal/filelock"
 	"strings"
 	"testing"
 	"time"
@@ -199,7 +203,128 @@ func TestTerminalAlwaysRecordsConversationAndFolder(t *testing.T) {
 	}
 }
 
-type namedRuleGate struct{ title string }
+type namedRuleGate struct {
+	title  string
+	policy *approval.Policy
+}
 
-func (g *namedRuleGate) ShortTitle() string                 { return g.title }
-func (g *namedRuleGate) SetApprovalPolicy(*approval.Policy) {}
+func (g *namedRuleGate) ShortTitle() string                   { return g.title }
+func (g *namedRuleGate) SetApprovalPolicy(p *approval.Policy) { g.policy = p }
+
+// A writer queued behind another process must check the row after that write.
+func TestAppRestoreChecksConflictUnderProfileLock(t *testing.T) {
+	for _, kind := range []string{"bash", "tool"} {
+		t.Run(kind, func(t *testing.T) {
+			b := settingsBackend(t)
+			profile := config.ProfileDir()
+			key, initial, replacement, id := config.KeyBashApprovals, "allow go test*", "deny go test*", "bash:go test*"
+			if kind == "tool" {
+				key, initial, replacement, id = config.KeyToolApprovals, "bash:allow", "bash:deny", "tool:bash"
+			}
+			if err := applyRow(profile, key, initial); err != nil {
+				t.Fatal(err)
+			}
+			if err := b.RemoveRule(id); err != nil {
+				t.Fatal(err)
+			}
+			lock, err := os.OpenFile(config.BudgetConfigPath(profile)+".lock", os.O_CREATE|os.O_RDWR, 0600)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer lock.Close()
+			if err := filelock.Lock(lock, true, false); err != nil {
+				t.Fatal(err)
+			}
+			done := make(chan error, 1)
+			go func() { done <- b.RestoreRule(id) }()
+			deadline := time.Now().Add(time.Second)
+			for {
+				stack := make([]byte, 1<<20)
+				n := runtime.Stack(stack, true)
+				if strings.Contains(string(stack[:n]), "config.lockProfileConfig(") {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatal("restore did not reach profile lock")
+				}
+				runtime.Gosched()
+			}
+			raw, _ := json.Marshal(map[string]string{key: replacement})
+			if err := os.WriteFile(config.BudgetConfigPath(profile), raw, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := filelock.Unlock(lock); err != nil {
+				t.Fatal(err)
+			}
+			err = <-done
+			var wire *appwire.Error
+			if !errors.As(err, &wire) || wire.Code != appwire.CodeConflict {
+				t.Fatalf("restore = %v, want conflict", err)
+			}
+			if got := settingsRow(profile, key); got != replacement {
+				t.Fatalf("replacement overwritten: %s", got)
+			}
+		})
+	}
+}
+
+func TestAppMultipleUndosKeepRelativePriority(t *testing.T) {
+	for _, reverse := range []bool{false, true} {
+		t.Run(fmt.Sprint(reverse), func(t *testing.T) {
+			b := settingsBackend(t)
+			profile := config.ProfileDir()
+			raw := "deny A*, allow B*"
+			if err := applyRow(profile, config.KeyBashApprovals, raw); err != nil {
+				t.Fatal(err)
+			}
+			ids := []string{"bash:A*", "bash:B*"}
+			for _, id := range ids {
+				if err := b.RemoveRule(id); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if reverse {
+				ids[0], ids[1] = ids[1], ids[0]
+			}
+			for _, id := range ids {
+				if err := b.RestoreRule(id); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if got := config.BashApprovalsAt(profile); got != raw {
+				t.Fatalf("priority = %q, want %q", got, raw)
+			}
+		})
+	}
+}
+
+func TestTerminalAlwaysSurvivesMalformedMetadata(t *testing.T) {
+	for _, kind := range []string{"tool", "bash"} {
+		t.Run(kind, func(t *testing.T) {
+			profile := t.TempDir()
+			if err := os.WriteFile(filepath.Join(profile, "rule-metadata.json"), []byte("{broken"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			gate := &namedRuleGate{title: "api"}
+			save := bankToolApproval(gate, t.TempDir(), profile, false)
+			name := "edit"
+			if kind == "bash" {
+				save = bankBashApproval(gate, t.TempDir(), profile, false)
+				name = "go test*"
+			}
+			if err := save(name); err != nil {
+				t.Fatal(err)
+			}
+			if gate.policy == nil {
+				t.Fatal("committed permission did not refresh the live gate")
+			}
+			decision := gate.policy.Check("edit", nil)
+			if kind == "bash" {
+				decision = gate.policy.CheckBash("go test ./tiny")
+			}
+			if decision.Action != approval.ActionAllow {
+				t.Fatalf("saved permission inactive: %+v", decision)
+			}
+		})
+	}
+}

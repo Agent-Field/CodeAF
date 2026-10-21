@@ -34,7 +34,10 @@ package config
 //     duplicate every time would be a row nobody can read back.
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -205,7 +208,7 @@ func RememberToolApproval(profileDir, tool, action string, origin ...RuleOrigin)
 	}
 	if current, named := existing[tool]; named {
 		if current == action {
-			return nil
+			return saveRuleOrigin(profileDir, "tool:"+tool, nil, origin)
 		}
 		return saveRuleOrigin(profileDir, "tool:"+tool, writeToolApprovals(profileDir, replacePair(raw, tool, action)), origin)
 	}
@@ -294,7 +297,10 @@ func RememberBashApproval(profileDir, match string, origin ...RuleOrigin) error 
 	policy := approval.Policy{BashPatterns: asApprovalRules(rules)}
 	if rule, matched := policy.MatchRule(match); matched {
 		if rule.Action == approval.ActionAllow {
-			return nil
+			if rule.Match != match {
+				return nil
+			}
+			return saveRuleOrigin(profileDir, "bash:"+rule.Match, nil, origin)
 		}
 		return fmt.Errorf("settings row %q already answers this command with %s (%q)",
 			KeyBashApprovals, rule.Action, rule.Match)
@@ -320,4 +326,61 @@ func writeBashApprovals(profileDir, raw string) error {
 		return err
 	}
 	return writeText(profileDir, KeyBashApprovals, raw)
+}
+
+// ErrApprovalRuleConflict refuses Undo when the row changed before its write.
+var ErrApprovalRuleConflict = errors.New("the rule has changed")
+
+// RestoreApprovalRule checks the exact source row under the config file lock.
+// Outstanding removals name predecessors so Undo order cannot change priority.
+func RestoreApprovalRule(profile, kind, tool, match, action string, before []string) error {
+	key := KeyToolApprovals
+	if kind == "bash" {
+		key = KeyBashApprovals
+	}
+	snapshot, err := readProfileConfig(profile)
+	if err != nil {
+		return err
+	}
+	var raw string
+	if value, ok := snapshot[key]; ok {
+		if err := json.Unmarshal(value, &raw); err != nil {
+			return err
+		}
+	}
+	var updated string
+	if kind == "bash" {
+		rules, err := ParseBashApprovals(raw)
+		if err != nil {
+			return err
+		}
+		index := 0
+		for i, rule := range rules {
+			if rule.Match == match {
+				return ErrApprovalRuleConflict
+			}
+			if slices.Contains(before, rule.Match) {
+				index = i + 1
+			}
+		}
+		rules = slices.Insert(rules, index, BashRule{Match: match, Action: action})
+		updated = FormatBashApprovals(rules)
+	} else {
+		rules, err := ParseToolApprovals(raw)
+		if err != nil {
+			return err
+		}
+		if _, exists := rules[tool]; exists {
+			return ErrApprovalRuleConflict
+		}
+		updated = tool + ":" + action
+		if strings.TrimSpace(raw) != "" {
+			updated = strings.TrimRight(raw, " ,\n") + ", " + updated
+		}
+	}
+	err = writeProfileValuesExpecting(profile, map[string]json.RawMessage{key: snapshot[key]}, map[string]any{key: updated})
+	if errors.Is(err, errProfileMoved) {
+		return ErrApprovalRuleConflict
+	}
+	return err
 }

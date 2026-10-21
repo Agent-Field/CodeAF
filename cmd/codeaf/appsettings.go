@@ -15,6 +15,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -313,9 +314,9 @@ func (b *appBackend) ExportSpend(from, to time.Time) (string, error) {
 
 // appRemovedRule keeps only the five-second Undo window, not a trash history.
 type appRemovedRule struct {
-	rule  appwire.Rule
-	index int
-	until time.Time
+	rule   appwire.Rule
+	before []string
+	until  time.Time
 }
 
 const appRuleUndoWindow = 5 * time.Second
@@ -350,16 +351,22 @@ func (b *appBackend) RemoveRule(id string) error {
 	if removed == nil {
 		return appwire.Errorf(appwire.CodeNotFound, "there is no rule %s", id)
 	}
-	index := 0
+	var before []string
 	if removed.Kind == appwire.RuleBash {
 		bash, err := config.ParseBashApprovals(config.BashApprovalsAt(config.ProfileDir()))
 		if err != nil {
 			return appEngineError(err)
 		}
-		for i, rule := range bash {
+		for _, rule := range bash {
 			if rule.Match == removed.Match {
-				index = i
 				break
+			}
+			before = append(before, rule.Match)
+		}
+		// Outstanding removals still have a place in the priority order.
+		for _, previous := range b.removedRules {
+			if previous.rule.Kind == appwire.RuleBash && b.now().Before(previous.until) && !slices.Contains(previous.before, removed.Match) {
+				before = append(before, previous.rule.Match)
 			}
 		}
 	}
@@ -375,7 +382,7 @@ func (b *appBackend) RemoveRule(id string) error {
 			delete(b.removedRules, key)
 		}
 	}
-	b.removedRules[id] = appRemovedRule{rule: *removed, index: index, until: now.Add(appRuleUndoWindow)}
+	b.removedRules[id] = appRemovedRule{rule: *removed, before: before, until: now.Add(appRuleUndoWindow)}
 	if err := b.refreshRuleGates(); err != nil {
 		return appEngineError(err)
 	}
@@ -394,35 +401,14 @@ func (b *appBackend) RestoreRule(id string) error {
 	}
 	profile := config.ProfileDir()
 	rule := removed.rule
-	var err error
-	if rule.Kind == appwire.RuleTool {
-		tools, parseErr := config.ParseToolApprovals(config.ToolApprovalsAt(profile))
-		if parseErr != nil {
-			return appEngineError(parseErr)
-		}
-		if _, exists := tools[rule.Tool]; exists {
-			return appwire.Errorf(appwire.CodeConflict, "the rule has changed")
-		}
-		err = config.RememberToolApproval(profile, rule.Tool, rule.Action)
-	} else {
-		rules, parseErr := config.ParseBashApprovals(config.BashApprovalsAt(profile))
-		if parseErr != nil {
-			return appEngineError(parseErr)
-		}
-		for _, row := range rules {
-			if row.Match == rule.Match {
-				return appwire.Errorf(appwire.CodeConflict, "the rule has changed")
-			}
-		}
-		index := min(removed.index, len(rules))
-		rules = append(rules, config.BashRule{})
-		copy(rules[index+1:], rules[index:])
-		rules[index] = config.BashRule{Match: rule.Match, Action: rule.Action}
-		err = applyRow(profile, config.KeyBashApprovals, config.FormatBashApprovals(rules))
+	err := config.RestoreApprovalRule(profile, rule.Kind, rule.Tool, rule.Match, rule.Action, removed.before)
+	if errors.Is(err, config.ErrApprovalRuleConflict) {
+		return appwire.Errorf(appwire.CodeConflict, "the rule has changed")
 	}
 	if err != nil {
 		return appEngineError(err)
 	}
+
 	delete(b.removedRules, id)
 	if err := b.refreshRuleGates(); err != nil {
 		return appEngineError(err)

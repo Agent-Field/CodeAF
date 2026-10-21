@@ -151,3 +151,53 @@ func TestRuleUsageProcessWriter(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestCommittedPermissionSurvivesSidecarFailureAndRepairsOrigin(t *testing.T) {
+	for _, kind := range []string{"tool", "bash"} {
+		t.Run(kind, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "rule-metadata.json")
+			if err := os.WriteFile(path, []byte("{broken"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			origin := RuleOrigin{Agent: "api", Place: "work", At: time.Now().UTC()}
+			save := func() error { return RememberToolApproval(dir, "edit", "allow", origin) }
+			id := "tool:edit"
+			if kind == "bash" {
+				save = func() error { return RememberBashApproval(dir, "go test*", origin) }
+				id = "bash:go test*"
+			}
+			if err := save(); err != nil {
+				t.Errorf("committed permission reported failure: %v", err)
+			}
+			if kind == "tool" {
+				rules, err := ParseToolApprovals(ToolApprovalsAt(dir))
+				if err != nil || rules["edit"] != "allow" {
+					t.Fatalf("inactive permission: %v, %v", rules, err)
+				}
+			} else {
+				rules, err := ParseBashApprovals(BashApprovalsAt(dir))
+				if err != nil || len(rules) != 1 {
+					t.Fatalf("inactive permission: %v, %v", rules, err)
+				}
+			}
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+			if err := save(); err != nil {
+				t.Fatal(err)
+			}
+			metadata, err := RuleMetadataAt(dir, id)
+			if err != nil || metadata.Origin != origin {
+				t.Fatalf("retry origin = %+v, %v", metadata, err)
+			}
+			if err := saveRuleOrigin(dir, id, nil, []RuleOrigin{{Agent: "later"}}); err != nil {
+				t.Fatal(err)
+			}
+			metadata, err = RuleMetadataAt(dir, id)
+			if err != nil || metadata.Origin != origin {
+				t.Fatalf("existing origin overwritten = %+v, %v", metadata, err)
+			}
+		})
+	}
+}

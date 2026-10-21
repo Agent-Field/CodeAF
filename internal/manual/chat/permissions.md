@@ -1247,9 +1247,16 @@ folders on this machine. The receipt retains those details after reopening.
 Remove rule takes the saved permission away; the next call follows the ordinary
 approval policy and asks again where that policy asks. Calls already allowed
 continue. Undo restores the rule with its metadata within five seconds of
-removal; after five seconds or an app backend restart, Undo is unavailable.
+removal, preserving relative priority even when you Undo several removals in
+a different order. Undo refuses a changed rule rather than replacing it.
+After five seconds or an app backend restart, Undo is unavailable.
 Rules do not acquire a repository scope from their origin folder.
 
 Usage is saved in one-second batches and flushed when the session settles or
 closes. Restarting normally keeps it; killing the process can lose the last
 pending batch. A rule from older settings has no invented conversation or date.
+A saved permission still succeeds if its origin metadata cannot be written;
+the failure is logged. Once the metadata file is valid and writable, saving the
+same rule again fills a missing origin without replacing an existing origin.
+A tool-wide bash override counts against that tool rule, rather than a command
+pattern.

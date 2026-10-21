@@ -191,7 +191,9 @@ type Policy struct {
 // and none of them should be re-deriving it from the Policy.
 type Decision struct {
 	// Scope is the explicit rule matched, absent for default and inferred allows.
-	Scope  string
+	Scope string
+	// RuleID identifies the matched saved rule independently of the called tool.
+	RuleID string
 	Action Action
 	Rule   string
 }
@@ -233,7 +235,7 @@ func (p Policy) CheckBash(command string) Decision {
 // blanket allow that [actsInThePersonsName] describes.
 func (p Policy) base(tool string, args json.RawMessage) Decision {
 	if action, ok := p.Tools[tool]; ok && action.valid() {
-		return Decision{Action: action, Rule: fmt.Sprintf("tool %q", tool), Scope: tool}
+		return Decision{Action: action, Rule: fmt.Sprintf("tool %q", tool), Scope: tool, RuleID: "tool:" + tool}
 	}
 	decision := Decision{Action: ActionPrompt, Rule: "default (unset)"}
 	if p.Default.valid() {
@@ -253,7 +255,7 @@ func (p Policy) checkBash(command string, base Decision) Decision {
 	decision := base
 	matched := false
 	if rule, hit := matchRule(p.BashPatterns, whole, segments, compound); hit {
-		decision = Decision{Action: rule.Action, Rule: fmt.Sprintf("bash pattern %q", rule.Match), Scope: rule.Match}
+		decision = Decision{Action: rule.Action, Rule: fmt.Sprintf("bash pattern %q", rule.Match), Scope: rule.Match, RuleID: "bash:" + rule.Match}
 		matched = true
 	}
 

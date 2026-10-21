@@ -105,6 +105,10 @@ func TestAppPermissionScopesOnTheWire(t *testing.T) {
 						}
 					})
 					t.Setenv(config.ProfileDirEnv, profile)
+					// An optional metadata failure must not reject a committed answer.
+					if err := os.WriteFile(filepath.Join(profile, "rule-metadata.json"), []byte("{broken"), 0600); err != nil {
+						t.Fatal(err)
+					}
 					_, wireErr = w.call("asks.answer", map[string]any{"agent": agent.ID, "id": ask.ID, "option": "always", "scope": scope})
 					if wireErr != nil {
 						t.Fatal(wireErr)

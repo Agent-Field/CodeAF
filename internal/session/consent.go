@@ -226,12 +226,8 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 		return refusal(off), false
 	}
 	decision, governed := a.decide(call)
-	if governed && decision.Action == approval.ActionAllow && decision.Scope != "" {
-		kind := "tool"
-		if call.Function.Name == "bash" {
-			kind = "bash"
-		}
-		id := kind + ":" + decision.Scope
+	if governed && decision.Action == approval.ActionAllow && decision.RuleID != "" {
+		id := decision.RuleID
 		metadata, _ := config.UseApprovalRule(a.config.ProfileDir, id, time.Now())
 		receipt := &config.RuleReceipt{ID: id, Text: config.ApprovalRuleText(decision.Scope, "allow"), Origin: metadata.Origin, Uses: metadata.Uses, Scope: "every agent"}
 		if hub != nil {

@@ -13,3 +13,12 @@ The sidecar is rule-metadata.json beside the profile settings. Older readers
 still read the original tools.approval and tools.bashPatterns rows. A hard kill
 can lose the pending one-second usage batch. Repository-scoped rules remain
 undecided and are not introduced.
+
+Restore now checks the exact source settings row under the config file lock for
+both tool and bash rules. Outstanding removals retain predecessor rule IDs so
+Undo order cannot reverse priority. Automatic usage and receipts carry the
+matched policy rule ID, including tool-wide bash overrides.
+
+A committed permission now succeeds even if origin metadata fails to write;
+the failure is logged. Retrying the same exact rule fills a missing origin
+once the metadata file is valid and writable, without changing a known origin.
