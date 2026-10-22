@@ -69,6 +69,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/reportline"
@@ -263,6 +264,8 @@ type TaskIndexEntry struct {
 	// checkpoint and in the node journal's header too, and a row without it made
 	// re-pricing a landed task a three-file join.
 	Model string `json:"model,omitempty"`
+	// Crew keeps the accepted seats and estimate with the task result rather than in a separate chat receipt.
+	Crew *crewroute.Decision `json:"crew,omitempty"`
 	// RepairedOn is the model a REPAIR ROUND ran on, and it is here only when
 	// that was not the model beside it: work the checker sent back is handed to
 	// the careful tier (internal/session's repair_role.go), and this is the one

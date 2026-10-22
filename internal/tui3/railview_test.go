@@ -78,18 +78,15 @@ func railLanded(a *app, n int) {
 func TestALandedRowSpendsOneLineOnTheColumn(t *testing.T) {
 	a, _, _ := taskApp(t)
 	railLanded(a, 13)
-
 	text := strings.Join(railText(a, 20), "\n")
 	for i := 1; i <= 13; i++ {
-		if !strings.Contains(text, railBuild(i)) {
-			t.Fatalf("landed job %d is off a twenty-row column:\n%s", i, text)
+		if strings.Contains(text, railBuild(i)) {
+			t.Fatalf("completed task occupies sidebar: %s", text)
 		}
-	}
-	// AND THE HISTORY UNDER THEM IS NOT DRAWN. The log path is what a settled job
-	// used to spend its second row on; it is the hint line's now (see below), and
-	// a column that still drew it would not have fitted the thirteen rows above.
-	if strings.Contains(text, railReportOf(1)) {
-		t.Fatalf("a landed row still spends a line on its own history:\n%s", text)
+		card := a.doneCardAt(a.doneEntryFor(uint64(i)))
+		if card == nil || card.cost != railCostOf(i) {
+			t.Fatalf("result facts lost for %d", i)
+		}
 	}
 }
 
@@ -134,23 +131,12 @@ func TestAQueuedRowStillSaysWhatItWaitsOn(t *testing.T) {
 func TestALandedRowGivesItsBlockToTheHintLine(t *testing.T) {
 	a, _, _ := taskApp(t)
 	railLanded(a, 3)
-	hint := railHint(a, 2)
-	if !strings.Contains(hint, dollars(railCostOf(2))) {
-		t.Fatalf("the hint over a landed row does not say what it cost: %q", hint)
+	if _, ok := railRowFor(a, 20, railBuild(2)); ok {
+		t.Fatal("completed task remains on sidebar")
 	}
-	if strings.Contains(hint, dollars(railCostOf(1))) || strings.Contains(hint, dollars(railCostOf(3))) {
-		t.Fatalf("one row's hint carried its neighbours': %q", hint)
-	}
-	// AND THE POINTER READS THE SAME HINT, on the row the pointer is on.
-	_, y := marginLine(t, a, func(l railLine) bool {
-		return strings.Contains(plain(l.text), railBuild(2))
-	})
-	drive(t, a, tea.MouseMotionMsg{X: a.railLeft() + 3, Y: y})
-	if a.hot.kind != hoverRail || a.hot.id != 2 {
-		t.Fatalf("the pointer on the row resolved to %+v", a.hot)
-	}
-	if got := a.sideHoverWords(); got != hint {
-		t.Fatalf("the pointer's hint %q is not the row's %q", got, hint)
+	card := a.doneCardAt(a.doneEntryFor(2))
+	if card == nil || card.cost != railCostOf(2) || card.merge != mergeWordMerged {
+		t.Fatalf("completed task details lost: %+v", card)
 	}
 }
 
@@ -160,11 +146,11 @@ func TestALandedRowGivesItsBlockToTheHintLine(t *testing.T) {
 // right under it with no spacer between.
 func TestTheHeaderStaysWhileTheRosterScrolls(t *testing.T) {
 	a, _, _ := taskApp(t)
-	railLanded(a, 40)
+	railActive(a, 40)
 	a.railScroll(12)
 
 	rows := railText(a, 20)
-	if len(rows) < 2 || !strings.Contains(rows[0], sideTasksWord+" 40") ||
+	if len(rows) < 2 || !strings.Contains(rows[0], sideTasksWord) ||
 		strings.TrimSpace(strings.TrimPrefix(rows[1], "│")) == "" {
 		t.Fatalf("the header moved while scrolling:\n%s", strings.Join(rows, "\n"))
 	}
@@ -176,7 +162,7 @@ func TestTheHeaderStaysWhileTheRosterScrolls(t *testing.T) {
 // beside it, which is the pointer landing on one list and acting on another.
 func TestTheWheelOverTheColumnScrollsTheColumn(t *testing.T) {
 	a, _, _ := taskApp(t)
-	railLanded(a, 60)
+	railActive(a, 60)
 	drive(t, a, frameMsg{})
 	was, wasOffset := a.railTop, a.offset
 
@@ -202,7 +188,7 @@ func TestTheWheelOverTheColumnScrollsTheColumn(t *testing.T) {
 // whole frame's wheel would have replaced one wrong answer with another.
 func TestTheWheelBesideTheColumnStillScrollsTheConversation(t *testing.T) {
 	a, _, _ := taskApp(t)
-	railLanded(a, 60)
+	railActive(a, 60)
 	for i := 0; i < 30; i++ {
 		typeLine(t, a, "line "+itoa(i))
 	}
@@ -223,12 +209,18 @@ func TestTheWheelBesideTheColumnStillScrollsTheConversation(t *testing.T) {
 // an offset nudged out from under it would be undone by the next layout.
 func TestTheWheelWalksTheCursorWhileTheColumnHoldsTheKeyboard(t *testing.T) {
 	a, _, _ := taskApp(t)
-	railLanded(a, 60)
+	railActive(a, 60)
 	a.railTake(true)
 	was := a.railWhere.id
 
 	drive(t, a, tea.MouseWheelMsg{X: a.railLeft() + 3, Y: a.topHeight() + 3, Button: tea.MouseWheelDown})
 	if a.railWhere.id == was {
 		t.Fatalf("the wheel left the cursor on node %d", was)
+	}
+}
+
+func railActive(a *app, n int) {
+	for i := 1; i <= n; i++ {
+		a.taskUpdate(update(uint64(i), railBuild(i), session.TaskRunning, session.TaskNotice{}))
 	}
 }

@@ -109,13 +109,14 @@ func TestWorkTabEscReturnsToConversationAndLandingCardRemains(t *testing.T) {
 	fake.editRows(func(rows []session.PlanTaskRow) { rows[0].Status, rows[1].Status = "done", "done" })
 	a.workTabStable()
 	a.workTabStable()
-	if got := taskText(a); !strings.Contains(got, "Root") {
-		t.Fatalf("self-closing work tab hid the compact landing: %s", got)
+	if got := taskText(a); strings.Contains(got, "the importer landed") {
+		t.Fatalf("closing work tab raised a completion receipt: %s", got)
 	}
-	a.toggleDoneAt(a.doneEntryFor(7))
-	if got := plain(func() string { s, _, _ := a.frame(); return s }()); !strings.Contains(got, "Root") || !strings.Contains(got, "the importer landed") {
-		t.Fatalf("self-closing work tab removed the landing card:\n%s", got)
+	card := a.doneCardFor(7)
+	if card == nil || card.title != "Root" || card.report != "the importer landed" || !card.hidden() {
+		t.Fatalf("closing work tab lost retained result: %+v", card)
 	}
+
 }
 
 func TestWorkTabKeepsTheStripSwitchKey(t *testing.T) {

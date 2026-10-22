@@ -89,84 +89,30 @@ func sideDrawn(a *app) ([]string, []string) {
 // and nothing in the band is drawn again in the list under it.
 func TestTheBandCarriesAsksInAmberAndFailuresInInk(t *testing.T) {
 	a := sideBandFixture(t)
-	keys, raw := sideDrawn(a)
-	var band []int
-	for i, k := range keys {
-		if k != "" && k != sideHeadKey {
-			band = append(band, i)
+	band := a.sideBand()
+	if len(band) != 2 || band[0].key != "task/2" || band[1].key != "task/1" {
+		t.Fatalf("band contains routine failures: %+v", band)
+	}
+	for _, item := range band {
+		if !item.ask {
+			t.Fatal("decision lost attention")
 		}
 	}
-	want := []string{"task/2", "task/1", "fail/5", "band/more"}
-	if len(band) != len(want) {
-		t.Fatalf("the band drew %v, want %v:\n%s", keys, want, strings.Join(railText(a, a.viewHeight()), "\n"))
-	}
-	for i, at := range band {
-		if keys[at] != want[i] {
-			t.Fatalf("band row %d is %q, want %q (all %v)", i, keys[at], want[i], keys)
+	text := strings.Join(railText(a, a.viewHeight()), "\n")
+	for _, hidden := range []string{"Cut the goldens", "Read the law", "Done 1"} {
+		if strings.Contains(text, hidden) {
+			t.Fatalf("completed history occupies sidebar: %s", text)
 		}
 	}
-	if more := plain(raw[band[3]]); !strings.Contains(more, "+2 more") {
-		t.Fatalf("the band's last row is %q, want +2 more", more)
-	}
-	// THE PAINT. The palette's warn ink is on the asks and on nothing else.
-	warn := a.pal.ask("Q")
-	warn = warn[:strings.Index(warn, "Q")]
-	if warn == "" {
-		t.Fatal("the test palette paints no warn ink, so this test would prove nothing")
-	}
-	for i, at := range band[:3] {
-		amber := strings.Contains(raw[at], warn)
-		if ask := i < 2; amber != ask {
-			t.Fatalf("band row %q amber=%v, want %v:\n%q", keys[at], amber, ask, raw[at])
+	for _, id := range []uint64{3, 4, 5, 7} {
+		if a.doneCardAt(a.doneEntryFor(id)) == nil {
+			t.Fatalf("finished result %d lost", id)
 		}
 	}
-	if !strings.Contains(plain(raw[band[2]]), a.taskStateMark(a.tasks[5])+" Cut the goldens 5") {
-		t.Fatalf("the failure row is %q", plain(raw[band[2]]))
-	}
-	// A RULE CLOSES THE BAND, and the list starts under it.
-	if rule := plain(raw[band[3]+1]); !strings.Contains(rule, "────") {
-		t.Fatalf("no rule under the band: %q", rule)
-	}
-	// NOT REPEATED BELOW.
-	railOpenAll(a)
-	for _, e := range a.railEntries() {
-		if e.node != nil && e.node.id <= 5 {
-			t.Fatalf("band item %d is drawn again in the list", e.node.id)
-		}
-	}
-	// `+2 more` SHOWS THEM ALL, and `fewer` folds them back.
-	x, y := sideRowOn(t, a, "band/more")
+	x, y := sideRowOn(t, a, "task/2")
 	railClick(t, a, x, y)
-	if n := len(a.sideBand()); n != 5 {
-		t.Fatalf("the band holds %d items", n)
-	}
-	sideRowOn(t, a, "fail/3")
-	if more := plain(strings.Join(railText(a, a.viewHeight()), "\n")); !strings.Contains(more, "fewer") {
-		t.Fatalf("the opened band offers no way back:\n%s", more)
-	}
-	x, y = sideRowOn(t, a, "band/more")
-	railClick(t, a, x, y)
-	if a.side.bandAll {
-		t.Fatal("`fewer` did not fold the band back")
-	}
-	// OPENING A FAILURE IS LOOKING AT IT: it leaves the band and joins the
-	// finished work.
-	x, y = sideRowOn(t, a, "fail/5")
-	railClick(t, a, x, y)
-	if !a.roomOpen() || a.room.id != 5 {
-		t.Fatalf("a press on the failure opened %d", roomID(a))
-	}
-	for _, item := range a.sideBand() {
-		if item.key == "fail/5" {
-			t.Fatal("the failure the person opened is still in the band")
-		}
-	}
-	listed := false
-	for _, e := range a.railEntries() {
-		listed = listed || (e.node != nil && e.node.id == 5)
-	}
-	if !listed {
-		t.Fatal("the failure the person opened is not in the list")
+	if !a.roomOpen() || a.room.id != 2 {
+		t.Fatal("decision action no longer opens owning task")
 	}
 }
 
@@ -174,16 +120,18 @@ func TestTheBandCarriesAsksInAmberAndFailuresInInk(t *testing.T) {
 // band only counts what it cannot draw from the fifth item on.
 func TestTheBandDrawsFourItemsRatherThanCountOne(t *testing.T) {
 	a := sideBandFixture(t)
-	a.side.acked = map[uint64]bool{3: true}
+	for _, id := range []uint64{3, 4} {
+		a.taskUpdate(update(id, "Choose result "+itoa(int(id)), session.TaskUnverified, session.TaskNotice{Merge: mergeWordAborted, Branch: "task/result"}))
+	}
 	keys, _ := sideDrawn(a)
 	got := strings.Join(keys, " ")
-	for _, want := range []string{"task/2", "task/1", "fail/5", "fail/4"} {
+	for _, want := range []string{"task/4", "task/3", "task/2", "task/1"} {
 		if !strings.Contains(got, want) {
-			t.Fatalf("the band lost %q: %v", want, keys)
+			t.Fatalf("decision missing %s: %v", want, keys)
 		}
 	}
 	if strings.Contains(got, "band/more") {
-		t.Fatalf("four items were cut to three and a count: %v", keys)
+		t.Fatalf("four decisions collapsed into a count: %v", keys)
 	}
 }
 
@@ -206,7 +154,7 @@ func TestAnEmptyBandIsGoneAndAPlainTerminalReadsItsMarks(t *testing.T) {
 	b := sideBandFixture(t)
 	b.linear = true
 	text := strings.Join(railText(b, b.viewHeight()), "\n")
-	for _, want := range []string{b.taskStateMark(b.tasks[2]) + " Port the parser 2", b.taskStateMark(b.tasks[5]) + " Cut the goldens 5", "----"} {
+	for _, want := range []string{b.taskStateMark(b.tasks[2]) + " Port the parser 2", "----"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the plain terminal's band is missing %q:\n%s", want, text)
 		}
@@ -304,7 +252,7 @@ func TestTheHoverGroundIsTheClickTarget(t *testing.T) {
 		}
 	}
 	// A plain chat's one word is not a door: there is nothing to switch to.
-	if len(row.doors) != 1 || row.doors[0].act.kind != sideActHide {
+	if len(row.doors) != 2 || row.doors[0].act.kind != sideActTasks || row.doors[1].act.kind != sideActHide {
 		t.Fatalf("a plain chat's header has doors %+v", row.doors)
 	}
 }

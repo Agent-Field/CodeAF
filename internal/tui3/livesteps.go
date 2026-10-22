@@ -103,6 +103,7 @@ const liveWorkWord = "working"
 // so the run ends there and a new one opens under it — which leaves their
 // sentence standing between two compact blocks, where they said it.
 type liveWork struct {
+	completions []workCompletion
 	// key is the disclosure control; turn remains the transcript identity.
 	key int
 	// turn owns tool windows and Ctrl+O; room phase disclosure keys do not.
@@ -416,7 +417,7 @@ func (a *app) liveStepBlock(w liveWork, width int, d deck) []row {
 			}
 			out = append(out, row{text: drawn, entry: -1, hit: hitWorkFold, turn: w.key, activity: w.pending})
 		}
-		return out
+		return a.liveCompletionSummary(w, out, width)
 	}
 	// Newest first, one whole step at a time, until the budget is spent.
 	type step struct {
@@ -523,7 +524,7 @@ func (a *app) liveStepBlock(w liveWork, width int, d deck) []row {
 			out = append(out, row{text: drawn, entry: -1, hit: hitWorkFold, turn: w.key, activity: (s.live && at == 0) || (waiting && ((inline && i == len(s.lines)-1) || (!inline && i == 0))), inlineWait: waiting && ((inline && i == len(s.lines)-1) || (!inline && i == 0))})
 		}
 	}
-	return out
+	return a.liveCompletionSummary(w, out, width)
 }
 
 // liveWorkDoor is the way back out of an opened window, and it is drawn only
@@ -538,7 +539,11 @@ func (a *app) liveStepBlock(w liveWork, width int, d deck) []row {
 // (tokencol.go states the one rule both obey).
 func (a *app) liveWorkDoor(w liveWork, width int, d deck) row {
 	mark := a.linearMark("▾ ", "v ")
-	text := a.pal.dim(mark + liveWorkWord + " · ctrl+e")
+	label := mark + liveWorkWord
+	if len(w.completions) > 0 {
+		label += railSep + itoa(len(w.completions)) + " finished"
+	}
+	text := a.pal.dim(label + " · ctrl+e")
 	room := width - workIndentCols(width) - actionGutter
 	if room > 0 && w.last {
 		text += a.turnTokenSuffix(d, ansi.StringWidth(text), room)
