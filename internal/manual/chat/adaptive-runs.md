@@ -1793,7 +1793,8 @@ did get done is still readable.
 
 ## Where did my run's rows go — the run disappeared from the task column when I switched away or reopened the conversation
 
-**The rows come back. Both ways.**
+**The rows come back. Both ways.** If your run's rows go missing after a switch,
+return to that conversation; reopening it restores the run's rows too.
 
 **Switching away and coming back** — to home, to another conversation, and back again —
 redraws a live run whole: the run's own row, every node under it, and each one in the state
