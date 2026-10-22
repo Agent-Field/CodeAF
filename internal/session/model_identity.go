@@ -1,26 +1,36 @@
 package session
 
-import "fmt"
+import "errors"
 
 // ModelIdentity separates execution evidence from the next request's choice.
 // Revision orders updates within one live session; a restored snapshot keeps
 // Last, but never revives an in-flight request from a previous process.
 type ModelIdentity struct {
-	Epoch       string `json:"epoch"`
-	Selected    string `json:"selected,omitempty"`
-	Requested   string `json:"requested,omitempty"`
-	Active      string `json:"active,omitempty"`
-	Last        string `json:"last,omitempty"`
-	Provider    string `json:"provider,omitempty"`
-	Mode        string `json:"mode"`
-	RequestMode string `json:"request_mode,omitempty"`
-	Pending     bool   `json:"pending"`
-	Revision    uint64 `json:"revision"`
+	Epoch        string `json:"epoch"`
+	Selected     string `json:"selected,omitempty"`
+	Requested    string `json:"requested,omitempty"`
+	Active       string `json:"active,omitempty"`
+	Last         string `json:"last,omitempty"`
+	Provider     string `json:"provider,omitempty"`
+	Mode         string `json:"mode"`
+	Chosen       string `json:"chosen,omitempty"`
+	LockedReason string `json:"locked_reason,omitempty"`
+	RequestMode  string `json:"request_mode,omitempty"`
+	Pending      bool   `json:"pending"`
+	Revision     uint64 `json:"revision"`
 }
 
 func (a *Agent) modelIdentityLocked() ModelIdentity {
 	s := a.modelIdentity
 	s.Selected = a.model
+	s.Chosen = ""
+	if choice := a.automaticModelsChosen(); choice != nil {
+		s.Chosen = "fixed"
+		if *choice {
+			s.Chosen = "automatic"
+		}
+	}
+	s.LockedReason = a.automaticModelsLockReason()
 	s.Mode = "automatic"
 	if !a.automaticModelsAllowed() {
 		s.Mode = "fixed"
@@ -91,9 +101,30 @@ func (a *Agent) LastModel() string { return a.ModelIdentity().Last }
 func (a *Agent) automaticModelsAllowed() bool {
 	return !a.config.OneModel && a.automaticModels.Load() != 1
 }
+
+// A launch constraint is not a saved preference. Nil keeps inherited policy
+// inherited when a later launch no longer has the one-model restriction.
+func (a *Agent) automaticModelsChosen() *bool {
+	switch a.automaticModels.Load() {
+	case 1:
+		choice := false
+		return &choice
+	case 2:
+		choice := true
+		return &choice
+	default:
+		return nil
+	}
+}
+func (a *Agent) automaticModelsLockReason() string {
+	if a.config.OneModel {
+		return "This session was launched with one-model; automatic model selection is unavailable."
+	}
+	return ""
+}
 func (a *Agent) SetAutomaticModels(enabled bool) error {
-	if enabled && a.config.OneModel {
-		return fmt.Errorf("this session was launched with one-model; automatic selection is unavailable")
+	if reason := a.automaticModelsLockReason(); enabled && reason != "" {
+		return errors.New(reason)
 	}
 	mode := int32(1)
 	if enabled {

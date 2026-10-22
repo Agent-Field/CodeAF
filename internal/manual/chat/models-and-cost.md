@@ -4437,3 +4437,18 @@ crew daily cap, including open models, price rules and incremental +model/-model
 forms. The crew daily cap is separate from the machine spending limit and member
 conversation budgets. Crew settings are machine-local; a client using `--host`
 must change those on that machine.
+
+
+## Automatic model selection is unavailable under one-model — explicit choice versus launch policy
+
+A conversation launched with `--one-model`, including a factory worker using that
+launch constraint, always uses Fixed policy. Its model menu disables Automatic
+model selection and explains the lock. A request to enable Automatic during a
+factory stage records a notice and leaves the stage running; it does not turn a
+settings refusal into a failed step. Selecting another permitted model still works.
+
+The execution snapshot reports effective `mode` separately from the explicit
+`chosen` preference and `locked_reason`. An inherited choice has no `chosen` value.
+The temporary launch constraint is not saved as a new personal Fixed preference.
+An explicit Fixed preference remains saved; an explicit Automatic preference can
+apply again when the conversation is reopened without the launch constraint.

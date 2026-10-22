@@ -31,6 +31,8 @@ const observerShellGuard = `if [ -n "${BASH_VERSION-}" ]; then`
 // Context participates in identity: passing another package, directory, flag
 // set or target platform must never erase an unresolved failure.
 type Check struct {
+	Before  Snapshot `json:"before,omitempty"`
+	After   Snapshot `json:"after,omitempty"`
 	Command string   `json:"command"`
 	Cwd     string   `json:"cwd"`
 	Args    []string `json:"args"`
@@ -98,22 +100,18 @@ func Prepare(transcript, command string) (string, error) {
 	// settings distinguish checks that happen to have identical argv.
 	// The Unix shell resolver also permits sh without Bash. That shell keeps
 	// its original execution path and journal evidence; export -f is Bash-only.
-	prefix := observerShellGuard + `
+	prefix := observerShellGuard + "\n" + worktreeStateFunction + `
 _codeaf_check() {
  local _codeaf_file _codeaf_status
  _codeaf_file=$(command mktemp ` + quote(shell.ListPath(filepath.Join(dir, "check-XXXXXX"))) + `) || return 125
  printf '%s\0' "$PWD" "${GOOS-}" "${GOARCH-}" "${GOFLAGS-}" "${CGO_ENABLED-}" "${GOWORK-}" "${GORACE-}" "${NODE_ENV-}" "${PYTEST_ADDOPTS-}" "$@" > "$_codeaf_file" || return 125
+ if ! _codeaf_worktree_state > "$_codeaf_file.before"; then : > "$_codeaf_file.before"; fi
  if command "$@"; then _codeaf_status=0; else _codeaf_status=$?; fi
+ if ! _codeaf_worktree_state > "$_codeaf_file.after"; then : > "$_codeaf_file.after"; fi
  printf '%s\n' "$_codeaf_status" > "$_codeaf_file.exit"
  return "$_codeaf_status"
 }
-go() { if [ "${1-}" = test ] || [ "${1-}" = vet ]; then _codeaf_check go "$@"; else command go "$@"; fi; }
-pytest() { _codeaf_check pytest "$@"; }
-npm() { if [ "${1-}" = test ] || { [ "${1-}" = run ] && [ "${2-}" = test ]; }; then _codeaf_check npm "$@"; else command npm "$@"; fi; }
-python() { if [ "${1-}" = -m ] && [ "${2-}" = pytest ]; then _codeaf_check python "$@"; else command python "$@"; fi; }
-python3() { if [ "${1-}" = -m ] && [ "${2-}" = pytest ]; then _codeaf_check python3 "$@"; else command python3 "$@"; fi; }
-export -f _codeaf_check go pytest npm python python3
-fi
+` + observerFunctions() + `fi
 `
 	return originalCommandPrefix + base64.StdEncoding.EncodeToString([]byte(command)) + "\n" + prefix + command, nil
 }
@@ -166,7 +164,7 @@ func Read(transcript string) ([]Check, error) {
 			return nil, err
 		}
 		for _, file := range files {
-			if file.IsDir() || !strings.HasPrefix(file.Name(), "check-") || strings.HasSuffix(file.Name(), ".exit") {
+			if file.IsDir() || !strings.HasPrefix(file.Name(), "check-") || (strings.HasSuffix(file.Name(), ".exit") || strings.HasSuffix(file.Name(), ".before") || strings.HasSuffix(file.Name(), ".after")) {
 				continue
 			}
 			path := filepath.Join(place, file.Name())
@@ -184,6 +182,14 @@ func Read(transcript string) ([]Check, error) {
 				return nil, err
 			}
 			c.order = info.ModTime().UnixNano()
+			c.Before, err = readSnapshot(path + ".before")
+			if err != nil {
+				return nil, err
+			}
+			c.After, err = readSnapshot(path + ".after")
+			if err != nil {
+				return nil, err
+			}
 			status, err := os.ReadFile(path + ".exit")
 			if err == nil {
 				exit, parseErr := strconv.Atoi(strings.TrimSpace(string(status)))
@@ -243,21 +249,7 @@ func PresentationOnly(command string) bool {
 			if len(words) == 0 {
 				return false
 			}
-			switch words[0] {
-			case "go":
-				if len(words) < 2 || (words[1] != "test" && words[1] != "vet") {
-					return false
-				}
-			case "npm":
-				if len(words) < 2 || (words[1] != "test" && !(len(words) > 2 && words[1] == "run" && words[2] == "test")) {
-					return false
-				}
-			case "pytest":
-			case "python", "python3":
-				if len(words) < 3 || words[1] != "-m" || words[2] != "pytest" {
-					return false
-				}
-			default:
+			if !checkWords(words) {
 				return false
 			}
 			check := strings.Join(strings.Fields(strings.TrimSpace(strings.TrimSuffix(part.Command, "2>&1"))), " ")
