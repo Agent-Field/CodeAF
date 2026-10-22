@@ -240,7 +240,7 @@ func (a *Agent) backgroundBash(inner bare.Tool) bare.Tool {
 			if _, _, bad := shellOutputsArgs(args); bad != nil && a.mayPublishShellOutputs() {
 				return rejectToolArguments(ctx, "Invalid arguments: "+bad.Error()), true, nil
 			}
-			started, err := a.jobs.startInUnder(context.Background(), a.planCommand(parsed.Command), "", parsed.Notify)
+			started, err := a.jobs.startInUnder(withCallID(context.Background(), callIDFrom(ctx)), a.planCommand(parsed.Command), "", parsed.Notify)
 			if err != nil {
 				return "Could not start the background job: " + err.Error(), true, nil
 			}

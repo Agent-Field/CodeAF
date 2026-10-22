@@ -184,7 +184,7 @@ func TestToolProcessE2EveryJobRoadPersistsTheLiveIdentity(t *testing.T) {
 				}
 			} else {
 				rows, err := agent.JobNotices()
-				if err != nil || len(rows) != 1 || rows[0].ID != end.Job || !rows[0].Started.Equal(end.Started) {
+				if err != nil || len(rows) != 1 || rows[0].ID != end.Job || !rows[0].Started.Equal(end.Started) || rows[0].ToolCallID != "process-call" {
 					t.Fatalf("process list = %+v, %v; live identity = %+v", rows, err, end)
 				}
 			}
