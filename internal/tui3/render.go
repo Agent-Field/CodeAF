@@ -412,9 +412,9 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			if wasUser || wasBlock {
 				gap()
 			}
-			out = append(out, row{text: a.pal.dim(a.workfoldLabel(d, f)), entry: -1, hit: hitWorkFold, turn: f.key})
+			out = append(out, row{text: a.pal.dim(fit(a.workfoldLabel(d, f), max(0, width-workIndentCols(width)))), entry: -1, hit: hitWorkFold, turn: f.key})
 			if a.workFoldOpen(d, f.key) {
-				out = append(out, a.completionRows(f.completions, width)...)
+				out = append(out, a.completionRows(f.completions, max(0, width-workIndentCols(width)))...)
 			}
 			wasCluster, wasBlock, wasUser, wasNote = true, false, false, false
 		}
@@ -442,7 +442,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			// the pass used to sniff for a row that already began with two spaces
 			// so as not to move this one twice, and the sniff caught every other
 			// row that happened to open on two spaces as well (see the pass).
-			out = append(out, row{text: a.pal.dim(a.workfoldLabel(d, f)), entry: -1, hit: hitWorkFold, turn: f.key})
+			out = append(out, row{text: a.pal.dim(fit(a.workfoldLabel(d, f), max(0, width-workIndentCols(width)))), entry: -1, hit: hitWorkFold, turn: f.key})
 			if !open {
 				i = f.answer - 1
 				wasCluster, wasBlock, wasUser, wasNote = false, false, false, false
@@ -473,7 +473,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 				}
 				out = append(out, a.disclosedEntryRows(d, at, width)...)
 			}
-			out = append(out, a.completionRows(f.completions, width)...)
+			out = append(out, a.completionRows(f.completions, max(0, width-workIndentCols(width)))...)
 			i = f.answer - 1
 			wasCluster, wasBlock, wasUser, wasNote = true, false, false, false
 			continue
@@ -568,7 +568,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 				}
 			}
 			if w.last {
-				out = append(out, a.completionRows(w.completions, width)...)
+				out = append(out, a.completionRows(w.completions, max(0, width-workIndentCols(width)))...)
 			}
 			wasCluster, wasBlock, wasUser, wasNote = true, false, false, false
 			i = w.end - 1

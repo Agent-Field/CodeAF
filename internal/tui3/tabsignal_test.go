@@ -384,31 +384,57 @@ func TestATerminalNoticeClearsTheCachedWork(t *testing.T) {
 	}
 }
 
-// THE EDGE IS THE CONVERSATION'S, NOT THE NODE'S. A graph publishing a node a
-// second must not wake the surface a second, and the last node settling is the
-// only clearing that counts.
-func TestOnlyTheConversationsOwnEdgeIsWorthAStir(t *testing.T) {
+// The conversation's working edge and an observed root completion each earn a stir.
+// Duplicate, child and unseen historical terminal notices do not announce new work.
+func TestConversationWorkEdgesAndObservedRootCompletionsAreWorthAStir(t *testing.T) {
 	_, watch, _ := signalLab(t)
 	if !watch.noteTask(signalRunning(21).Task) {
-		t.Fatal("the first node did not raise the edge")
+		t.Fatal("first live node did not raise working edge")
 	}
 	if watch.noteTask(signalRunning(21).Task) {
-		t.Fatal("the same node saying `running` again raised a second edge")
+		t.Fatal("duplicate running event raised another edge")
 	}
 	if watch.noteTask(signalRunning(22).Task) {
-		t.Fatal("a second node starting raised an edge on a conversation already working")
+		t.Fatal("another live node changed already-working state")
 	}
-	if watch.noteTask(signalSettled(21, session.TaskDone).Task) {
-		t.Fatal("one node of two ending cleared the conversation")
+	if !watch.noteTask(signalSettled(21, session.TaskDone).Task) {
+		t.Fatal("observed root completion did not stir for its offscreen notification")
 	}
 	if !watch.tasking.Load() {
-		t.Fatal("a conversation with one node left running stopped claiming work")
+		t.Fatal("another root still runs but work state cleared")
+	}
+	got := watch.takeCompletions()
+	if len(got) != 1 || got[0].task != 21 {
+		t.Fatalf("root completion missing or duplicated: %+v", got)
+	}
+	if watch.noteTask(signalSettled(21, session.TaskDone).Task) || len(watch.takeCompletions()) != 0 {
+		t.Fatal("duplicate settled event announced completion again")
+	}
+	if watch.noteTask(signalSettled(99, session.TaskDone).Task) || len(watch.takeCompletions()) != 0 {
+		t.Fatal("unseen historical terminal event announced new completion")
+	}
+	child := signalRunning(23).Task
+	child.Parent = 22
+	if watch.noteTask(child) {
+		t.Fatal("child admission stirred an already-working conversation")
+	}
+	child = signalSettled(23, session.TaskDone).Task
+	child.Parent = 22
+	if watch.noteTask(child) || len(watch.takeCompletions()) != 0 {
+		t.Fatal("child completion stirred or announced separately from its parent")
+	}
+	if !watch.tasking.Load() {
+		t.Fatal("child completion cleared still-running parent")
 	}
 	if !watch.noteTask(signalSettled(22, session.TaskDone).Task) {
-		t.Fatal("the last node ending did not raise the edge")
+		t.Fatal("last root completion did not stir")
 	}
 	if watch.tasking.Load() {
-		t.Fatal("every node ended and the conversation still claims work")
+		t.Fatal("all roots ended but working state remained")
+	}
+	got = watch.takeCompletions()
+	if len(got) != 1 || got[0].task != 22 {
+		t.Fatalf("last root completion lost or duplicated: %+v", got)
 	}
 }
 

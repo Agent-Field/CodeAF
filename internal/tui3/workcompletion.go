@@ -204,6 +204,10 @@ func (a *app) completionRows(cs []workCompletion, width int) []row {
 			}
 		}
 	}
+	// Every child pays its own nesting before the shared work indentation.
+	for i := range out {
+		out[i].text = fitPainted(out[i].text, width)
+	}
 	return out
 }
 
