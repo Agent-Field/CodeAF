@@ -25,6 +25,8 @@ func (h *Handler) jobVerbs() {
 	stored := h.config.Store != nil
 	h.postJob("start_now", h.seam.Launch != nil, h.guarded("start_now", h.onlyOwner(h.startJob)))
 	h.postJob("run_again", stored && h.seam.Launch != nil, h.guarded("run_again", h.onlyOwner(h.runAgain)))
+	h.postJob("close", stored && h.workers != nil, h.closeJob)
+	h.postJob("reopen", stored, h.guarded("reopen", h.onlyOwner(h.reopenJob)))
 	h.postJob("restore", stored, h.guarded("restore", h.onlyOwner(h.restoreJob)))
 	h.postJob("dismiss", stored, h.dismissJob)
 	h.postJob("assign_to_me", stored, h.assignToMe)
@@ -292,6 +294,7 @@ func (h *Handler) runAgain(w http.ResponseWriter, r *http.Request, it factory.It
 // branch is still on GitHub, because a push never forces. The receipt names
 // the earlier pull request, so it is not lost from the record.
 func (h *Handler) restoreJob(w http.ResponseWriter, r *http.Request, it factory.Item) {
+
 	if factory.JobDoneHow(it) != "dropped" {
 		h.refuse(w, http.StatusConflict, "only a dropped job can be brought back", "conflict", "", nil, factory.JobState(it))
 		return

@@ -29,7 +29,7 @@ func ReadinessGate(it Item) error {
 		return fmt.Errorf("a pending decision must be resolved before readiness can complete")
 	}
 	p := it.PullRequest
-	if it.Manual || it.DoneHow == "dropped" {
+	if it.Manual || it.DoneHow == "dropped" || it.DoneHow == "closed_locally" {
 		return fmt.Errorf("automation is paused or the job was dropped")
 	}
 	if p == nil || p.State != PROpen || p.HeadSHA == "" {

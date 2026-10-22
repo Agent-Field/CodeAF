@@ -7,6 +7,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // A JOB'S CONVERSATIONS ARE ITS OWN PAGE'S. Reading them makes the job's agent
@@ -156,5 +157,41 @@ func TestFinishedStageChatKeepsItsExecutionModel(t *testing.T) {
 	view, _, err := s.backend.ensure(a)
 	if err != nil || view.Model != "vendor/strong" {
 		t.Fatalf("model=%s err=%v", view.Model, err)
+	}
+}
+
+// A read is never permission to reinstate an old job default or execution model.
+func TestFactoryChatRefreshKeepsThePersonsModelPair(t *testing.T) {
+	s := newLocalSetup(t)
+	s.backend.open = func(ask appOpenAsk) (*appConn, error) {
+		c := &appPairConversation{fakeConversation: &fakeConversation{model: "prior/main"}, pair: session.ConversationModels{Main: "prior/main", Fallback: "prior/backup"}}
+		return &appConn{Conv: c, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
+	}
+	st := s.start()
+	floor := s.backend.local.host.floor
+	step, _ := jobConversation(t)
+	it, err := floor.Create(factory.Item{Repo: "acme/api", Kind: factory.KindIssue, Num: 9, State: factory.StateRunning, Model: "prior/main", Stream: &factory.Stream{Phases: []factory.Phase{{Name: "write", Kind: factory.StageChat, Chat: step, State: factory.PhaseDone, Result: &factory.StageResult{Model: "prior/execution"}}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var chats appwire.FactoryJobChats
+	read := func() { s.must("factory.job_chats", map[string]any{"factory": st.Factory, "job": it.ID}, &chats) }
+	read()
+	ids := []string{chats.Agent, chats.Steps[0].Agent}
+	for _, id := range ids {
+		if _, err := s.backend.SetConversationModels(id, session.ConversationModels{Main: "chosen/main", Fallback: "chosen/backup"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	read()
+	read()
+	for _, id := range ids {
+		a, err := s.backend.find(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if a.view.ModelIdentity == nil || a.view.ModelIdentity.Models == nil || a.view.ModelIdentity.Models.Main != "chosen/main" || a.view.ModelIdentity.Models.Fallback != "chosen/backup" {
+			t.Fatalf("chat refresh overwrote an explicit model pair: %+v", a.view.ModelIdentity)
+		}
 	}
 }

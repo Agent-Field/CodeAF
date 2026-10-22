@@ -17,8 +17,8 @@ import (
 // open the way a crew's members are, so the page draws it at once. A running
 // step is lent, as it is to any window (app_lend.go).
 //
-// THE JOB'S MODEL IS THE AGENT'S TOO. A job with a model of its own (its
-// Item.Model) puts its agent on it, so every chat of one job reads one model.
+// Reading chats never sets their models. A job's model supplies an initial
+// default; each saved conversation's Main/Fallback choices remain authoritative.
 
 var _ appwire.FactoryJobChatter = (*appBackend)(nil)
 
@@ -49,9 +49,6 @@ func (b *appBackend) FactoryJobChats(ctx context.Context, p appwire.FactoryJobCh
 	if err := b.holdJobChat(out.Agent); err != nil {
 		return appwire.FactoryJobChats{}, err
 	}
-	if model := strings.TrimSpace(it.Model); model != "" {
-		_, _ = b.SetModel(out.Agent, model)
-	}
 	if it.Effort != "" {
 		_, _ = b.SetEffort(out.Agent, it.Effort)
 	}
@@ -64,11 +61,8 @@ func (b *appBackend) FactoryJobChats(ctx context.Context, p appwire.FactoryJobCh
 			// A STEP WHOSE CHAT CANNOT BE OPENED IS LEFT OUT, never answered as one
 			// the page would then fail to draw.
 			if id := appAgentID(chat); b.holdJobChat(id) == nil {
-				// A finished stage is reopened as an ordinary conversation. Restore
-				// the recorded execution model instead of showing the profile default.
-				if ph.Result != nil && ph.Result.Model != "" && ph.State != factory.PhaseRunning {
-					_, _ = b.SetModel(id, ph.Result.Model)
-				}
+				// Execution history is evidence, not a model preference. Opening a
+				// finished stage must preserve its saved Main/Fallback pair too.
 				out.Steps = append(out.Steps, appwire.FactoryJobStepChat{Step: ph.Name, Agent: id, Rounds: b.roundChats(ph.Rounds)})
 			}
 		}

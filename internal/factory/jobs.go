@@ -219,6 +219,9 @@ const DroppedRefusal = "was dropped · Bring back returns it to Backlog"
 // starts it again from its repository's recipe, so a step edit, a note or a
 // budget let through here would be a change nobody ever reads.
 func RefuseDropped(it Item) error {
+	if it.DoneHow == "closed_locally" {
+		return fmt.Errorf("%s is closed locally · Reopen keeps its work and spending", it.Ref())
+	}
 	if it.DoneHow != "dropped" {
 		return nil
 	}

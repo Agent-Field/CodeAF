@@ -913,7 +913,7 @@ func (c *Client) fallbackChain(model string) []string {
 		}
 	}
 	add(c.config.Fallbacks)
-	if len(chain) == 0 && c.config.NearestModels != nil {
+	if len(c.config.Fallbacks) == 0 && c.config.NearestModels != nil {
 		add(c.config.NearestModels(model))
 	}
 	if len(chain) > maxFallbackModels {

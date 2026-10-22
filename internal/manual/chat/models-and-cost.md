@@ -1408,7 +1408,7 @@ down too. Under this flag **nothing hops** — not on a refusal,
 not on a reply that keeps stalling, not on rate limiting that will not clear — because a
 run whose cost is being attributed to one model cannot have finished a single reply on
 another. That includes the catalog's own guess: with no `fallback models` row written, an
-ordinary run falls back to the nearest same-class model, and this flag withholds that too.
+ordinary run defaults to DeepSeek V4.1 Flash, and this flag withholds that too.
 
 **The two calls that ordinarily refuse the conversation's model ride it too.** The reader that
 decides whether a long answer is moved to a task, and the writer of the brief that task opens
@@ -1691,8 +1691,7 @@ the model · asking again · 2 of 3`, or `the model went quiet mid-reply · aski
 2 of 3`.
 
 **If all three attempts come back with nothing, codeaf finishes the reply on another
-model** — the next one in your `fallback models` row, or the nearest same-class model in
-the catalog when you have written no row. It is said out loud before it happens, naming
+model** — the next one in your `fallback models` row, or DeepSeek V4.1 Flash by default when you have written no row. It is said out loud before it happens, naming
 where the rest of the answer is coming from:
 
 ```
@@ -1936,7 +1935,7 @@ while it is replying* above, and *I changed the model but my task is still on th
 
 Yes. **A model that will not take your request at all is given up on the same way a model
 that goes quiet is: codeaf finishes the reply on the next model in your `fallback models`
-row**, or on the nearest same-class model in the catalog when you have written no row.
+row**, or on DeepSeek V4.1 Flash when you have written no row.
 
 This is what happens. A request that fails outright — a refusal from the machine serving
 your model, a `502`, a torn connection, a deadline — is asked again, with a dim line each

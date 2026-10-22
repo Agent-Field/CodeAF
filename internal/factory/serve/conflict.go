@@ -289,6 +289,10 @@ func reasonFor(status int) string {
 // classify turns a door's error into a status a person can tell apart from a
 // crash. Unknown errors stay 500 and carry no reason.
 func classify(err error) (int, string) {
+	var closeRefusal lease.CloseRefusal
+	if errors.As(err, &closeRefusal) {
+		return http.StatusConflict, "conflict"
+	}
 	var stepRefusal run.StepControlRefusal
 	var editRefusal factory.EditRefusal
 	var planRefusal run.PlanRevisionRefusal

@@ -61,6 +61,10 @@ func (h *Handler) postJob(verb string, exists bool, action jobAction) {
 			if !ok {
 				return
 			}
+			if it.DoneHow == "closed_locally" && verb != "reopen" && verb != "close" {
+				h.refuse(w, 409, "Job closed locally; Reopen keeps its work and spending.", "conflict", "", nil, "done")
+				return
+			}
 			// THE ONE PLACE A PERSON'S DOOR MEETS A REPOSITORY THAT IS OFF:
 			// every door that would work on the job is refused here, before
 			// the door reads its body or writes anything (repo_off.go).

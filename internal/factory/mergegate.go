@@ -115,6 +115,8 @@ func MergeGate(it Item, ask MergeAsk) MergeVerdict {
 		return refuseMerge("codeaf merges only pull requests it opened")
 	case pr == nil || pr.Number <= 0 || it.Publish != "pr":
 		return refuseMerge("this job has opened no pull request")
+	case it.DoneHow == "closed_locally":
+		return refuseMerge("this job is closed locally; Reopen before merging")
 	case it.DoneHow == "dropped":
 		return refuseMerge("this job was dropped")
 	case pr.State == PRMerged:

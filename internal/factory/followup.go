@@ -146,7 +146,7 @@ func prProblemIn(pr *PullRequest, areas ...string) bool {
 // Compatibility name for the PR maintenance queue. Unchanged observations are quiet.
 func QueueCIFollowUp(it *Item, now time.Time) bool {
 	f, pr := it.FollowUp, it.PullRequest
-	if f == nil || pr == nil || it.DoneHow == "dropped" {
+	if f == nil || pr == nil || (it.DoneHow == "dropped" || it.DoneHow == "closed_locally") {
 		return false
 	}
 	if pr.State == PRMerged || pr.State == PRClosed {
