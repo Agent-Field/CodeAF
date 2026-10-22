@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/remote"
 )
 
@@ -41,7 +42,8 @@ func TestNavigationLatency(t *testing.T) {
 	if err = os.WriteFile(filepath.Join(home, "config.json"), raw, 0600); err != nil {
 		t.Fatal(err)
 	}
-	r := startDefault(t, "navigation_latency", home, ws, 140, 42, "chat", "--model", model, "--one-model")
+	r := startWithEnv(t, []string{config.APIKeyEnv + "=" + liveKey(t), "CODEAF_BASE_URL=https://openrouter.ai/api/v1"}, "navigation_latency", home, ws, 140, 42, "chat", "--model", model, "--one-model")
+	r.skipSetup(t)
 	sum := sha256.Sum256([]byte(filepath.Clean(ws)))
 	socket := filepath.Join(home, "v3", "hosts", hex.EncodeToString(sum[:8]), "host.sock")
 	sockets, err := filepath.Glob(filepath.Join(home, "v3", "hosts", "*", "*.sock"))

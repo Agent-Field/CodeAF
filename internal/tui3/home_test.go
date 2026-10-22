@@ -2631,7 +2631,7 @@ func TestAFreshConversationTheWalkCannotSeeStillHasARow(t *testing.T) {
 	}
 	a := lab.app(mine)
 	a.workspace, a.title = alpha, "first thing"
-	a.openHome()
+	spend(t, a, a.openHome())
 	// The row wears the title the way every row does ([homeName] cases it), so
 	// the comparison is case-blind: the claim is that the title is there.
 	text := strings.ToLower(homeText(a))
@@ -2651,7 +2651,7 @@ func TestAFreshConversationTheWalkCannotSeeStillHasARow(t *testing.T) {
 	// conversation, the world holds it once.
 	seen := lab.session("-alpha", "bbbb000000000001", "spoken in", alpha, time.Now())
 	b := lab.app(seen)
-	b.openHome()
+	spend(t, b, b.openHome())
 	rows := 0
 	for _, project := range b.home.world.Projects {
 		for _, row := range project.Sessions {

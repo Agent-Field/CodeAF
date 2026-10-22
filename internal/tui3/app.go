@@ -4444,7 +4444,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, cmd
 		}
 		if a.conversationOpening {
+			previewing := a.conversationPreview != nil
 			a.cancelConversationOpening()
+			// The preview has a different layout from the page beneath it. The
+			// cancelling click must not activate that page's old hit targets.
+			if previewing {
+				return a, nil
+			}
 		}
 		a.ptr.still = false
 		a.clearPlaceRowHover()

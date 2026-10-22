@@ -243,7 +243,7 @@ func TestTheTopLineSpellsTheLimitTheWayEverySurfaceSpellsIt(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(lab.root, session.UsageLedgerName), append(raw, '\n'), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		a.openHome()
+		spend(t, a, a.openHome())
 
 		want := railFigure(rail)
 		drawn := ""

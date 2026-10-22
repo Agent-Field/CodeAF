@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -92,5 +93,26 @@ func TestHomeReadsInTheBackgroundAndDropsAnEarlierVisitsAnswer(t *testing.T) {
 	}
 	if a.homeGen != before || !a.homeReadingPending {
 		t.Fatal("an old visit changed the new visit's reading")
+	}
+}
+
+// A cancelling pointer press belongs to the preview the person saw, never the
+// old Home hit map that happens to remain underneath it.
+func TestCancellingTheOpeningPreviewDoesNotClickThroughToAnotherPage(t *testing.T) {
+	a := openingLab(t)
+	a.width, a.height = 180, 42
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	a.start = func(string) (Conversation, error) { <-release; return Conversation{Agent: &fakeAgent{model: "m"}}, nil }
+	typeHome(a, "A pending first message")
+	a.homeEnter()
+	frame := strings.Split(plain(mustFrame(a)), "\n")
+	x := strings.Index(frame[0], "Settings")
+	if x < 0 {
+		t.Fatal("the preview has no settings navigation target")
+	}
+	a.Update(tea.MouseClickMsg{X: x, Y: 0, Button: tea.MouseLeft})
+	if a.conversationOpening || !a.at(pageHome) || a.home.box.String() != "A pending first message" {
+		t.Fatal("the cancelling press activated the underlying page or lost its draft")
 	}
 }
