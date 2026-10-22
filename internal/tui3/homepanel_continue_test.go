@@ -299,6 +299,58 @@ func TestBranchRowDiscardOnlyWhenMergeIsAbsent(t *testing.T) {
 	}
 }
 
+// TestC6BranchCardOpensSeparately proves C6 amended through home's keys: kept
+// turns open under their own row, and discard remains a separate choice.
+func TestC6BranchCardOpensSeparately(t *testing.T) {
+	lab := newHomeLab(t)
+	workspace := lab.workspace("project")
+	mine := lab.session("project", "0000000000000001", "Main chat", workspace, time.Now())
+	a := lab.app(mine)
+	a.width, a.height = 200, 70
+	drain(t, a, a.openHome())
+	a.machines = continueRows
+	opened, discarded := "", ""
+	a.branches = BranchActions{
+		Open: func(_ context.Context, id string) (Taken, error) {
+			opened = id
+			lab.session("project", id, "Separate kept chat", workspace, time.Now())
+			return Taken{}, nil
+		},
+		Discard: func(_ context.Context, id string) error { discarded = id; return nil },
+	}
+	drain(t, a, a.askMachines())
+	standOn(t, a, "c-branch")
+	text := homeText(a)
+	if !strings.Contains(text, "open separately") || !strings.Contains(text, "discard") || strings.Contains(text, "merge") {
+		t.Fatalf("wrong branch card:\n%s", text)
+	}
+	q, ok := a.homeAsking()
+	if !ok || q.question.Options[0].Key != "1" || q.question.Options[0].Label != "open separately" {
+		t.Fatalf("open separately is not answer 1: %+v", q)
+	}
+	confirm(t, a)
+	if opened != "c-branch" || discarded != "" || a.at(pageHome) {
+		t.Fatalf("open key: opened %s, discarded %s, home %v", opened, discarded, a.at(pageHome))
+	}
+	drain(t, a, a.openHome())
+	standOn(t, a, "c-short")
+	drive(t, a, key("2"), key("enter"))
+	if discarded != "c-short" {
+		t.Fatalf("discard key chose %q", discarded)
+	}
+}
+
+// TestC7HomeExplainsAnOldSyncService proves C7's actionable refusal survives
+// the real continuation card instead of turning into a generic failure.
+func TestC7HomeExplainsAnOldSyncService(t *testing.T) {
+	a := continueHome(t, &fakeTaker{err: directory.ErrConditionalTake}, continueRows, 220)
+	standOn(t, a, "c-off")
+	confirm(t, a)
+	if !strings.Contains(homeText(a), "the sync service must be updated before chats can move") {
+		t.Fatalf("old service refusal missing:\n%s", homeText(a))
+	}
+}
+
 func TestBranchRowGolden(t *testing.T) {
 	golden := map[int][]string{
 		80: {

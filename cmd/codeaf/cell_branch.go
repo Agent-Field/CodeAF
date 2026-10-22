@@ -19,7 +19,8 @@ import (
 // branch back needs a merge of two sealed trees, and the engine's merge works
 // on a live workspace and a snapshot it holds, not on a branch head that is
 // still only in the store; a merge that sealed a wrong head would be worse than
-// no merge. The row says `discard` alone, and the manual says the same.
+// no merge. The terminal verb discards; home's continuation door also opens
+// the kept turns as a separate chat.
 
 // driverOf answers how this device drives a chat: its fence and last durable head.
 type driverOf interface {

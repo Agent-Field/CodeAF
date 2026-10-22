@@ -152,9 +152,12 @@ func StatusLine(r Row) string {
 
 // BranchLine is a branch row's sentence for what the surface can do with it.
 // Merge is offered only where a surface has a way to merge, so a surface
-// without one says the sentence without it rather than promising the verb
-// (a capability that cannot work is absent, not broken).
-func BranchLine(r Row, merge bool) string {
+// without one says the sentence without it rather than promising the verb.
+// Separate is offered only where the continuation door can open the kept chat.
+func BranchLine(r Row, merge bool, separate ...bool) string {
+	if len(separate) > 0 && separate[0] {
+		return fmt.Sprintf("%s from %s: open separately / discard", turns(r.OrphanTurns), r.Device)
+	}
 	if merge {
 		return fmt.Sprintf(branchLine, turns(r.OrphanTurns), r.Device)
 	}
