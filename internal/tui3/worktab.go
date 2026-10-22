@@ -19,6 +19,9 @@ func (a *app) workTab() (chatTab, bool) {
 	// (programroom.go); a tab of its own drew itself selected beside the
 	// conversation's, and a press on the conversation's tab never left it. Only
 	// the rows of a run the belt switch drives make the tab.
+	if a.tabShut[a.frontTabKey()+"#work"] {
+		return chatTab{}, false
+	}
 	rows := beltRows(a.taskSheet.mine.plan)
 	if len(rows) == 0 {
 		return chatTab{}, false
