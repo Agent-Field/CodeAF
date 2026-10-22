@@ -803,3 +803,17 @@ func TestMemoryLoadMoreMakesLaterActiveAndArchivedRowsReachable(t *testing.T) {
 		}
 	}
 }
+
+func TestMemoryMixUsesActualAdmittedDerivedTypes(t *testing.T) {
+	block := store.MemoryBlock{Memories: []store.Memory{{Text: "mock status", Type: store.MemoryPreference, SemanticType: store.MemoryProjectState}, {Text: "mock advice", Type: store.MemoryCorrection}}}
+	store.PopulateMemoryTelemetry(&block)
+	words := memoryMixWords(block)
+	if !strings.Contains(words, "project progress 50%") || !strings.Contains(words, "corrections 50%") || strings.Contains(words, "preferences") {
+		t.Fatalf("incorrect memory composition: %q", words)
+	}
+	p := memoryPlace{}
+	memory := store.Memory{Text: "mock status", Type: store.MemoryPreference, SemanticType: store.MemoryProjectState, Status: store.MemoryActive}
+	if facts := strings.Join(p.memoryFacts(memory), " "); !strings.Contains(facts, "kind · project progress · originally saved as preferences") {
+		t.Fatalf("derived label hides original type: %s", facts)
+	}
+}

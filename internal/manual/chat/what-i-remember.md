@@ -5,7 +5,9 @@
 Yes. codeaf keeps short lines — a preference, a rule, a correction, a decision,
 a lasting fact about you, this machine or this project. **Explicit pins always
 ride in their scope.** Other lines are selected by activation: past use,
-recency and the current project or topic help decide what rides. A line that
+recency and the current project or topic help decide what rides. A protected
+share of the prompt keeps durable rules from being crowded out by progress
+updates; specific matches to your message get space before generic topics. A line that
 does not ride stays stored and searchable; the Memories tab explains why.
 
 Lines get kept three ways, and all three tell you:
@@ -130,7 +132,10 @@ says **project working set preview**; that preview can differ from a live turn. 
 keeps a new line; what you type is drawn in that row. When more rows exist,
 `load more memories` appears above the groups. Press `enter` on it to load
 the next 500 active and archived rows; repeat until every row is available.
-Filtering searches the rows loaded so far.
+Filtering searches the rows loaded so far. `memory mix` shows the share of
+the actual prompt occupied by project progress, corrections, preferences,
+decisions and facts. Open a line to see its kind; an older line reclassified
+as project progress also says its original kind, without changing its words.
 
 When codeaf cannot ask which project this conversation is in, the foot says
 `couldn't ask which project this is · every project's lines are shown by name`,
@@ -262,8 +267,10 @@ that you never see is exactly what this memory does not do.
 
 ## Does it clean up or delete old memories on its own? Does it know if a memory actually helped?
 
-Memory selection uses activation: repeated useful use strengthens a line, while
-unrehearsed lines lose activation with age. A low-activation line stays stored;
+Memory selection uses activation: applying, confirming or merging a line
+strengthens it; merely showing it or finding it in a search does not. A
+correction contradicting a remembered line counts against it. Unrehearsed
+lines lose activation with age. A low-activation line stays stored;
 `archived` in the Memories tab means it is not riding this conversation, not
 that it was deleted. Forgotten and replaced lines remain under `let go`.
 
@@ -282,10 +289,27 @@ budget: keeping, editing, moving and restoring a line are no longer refused
 because a prompt is full. A line remains at most 512 runes.
 
 Explicit user pins always ride, even when they alone exceed the prompt budget.
-Other lines are ranked by activation and admitted when relevant and within the
-remaining budget. The block says `· N more in memory` for stored lines that do
+After pins, at least 40% of the remaining budget is reserved for durable
+corrections, preferences and decisions when they need it. Remaining space
+is available to relevant facts, project progress and other durable lines.
+Within each group, specific phrases, identifiers and nearby matching
+words take priority over generic topic repetition, with activation breaking
+ties. A line must still meet the activation threshold. The block says `· N more in memory` for stored lines that do
 not ride. Open the Memories tab to see `riding` or `archived` and a reason for
-each line; archive does not mean forgotten.
+each line; archive does not mean forgotten. Admitted lines stay with the
+conversation while its context is unchanged, so adjacent turns do not
+randomly swap remembered facts.
+
+
+## Why did an old preference become project progress? Does the upgrade rewrite my memories?
+
+An older build sometimes saved a release update or progress paragraph as a
+preference. A local migration derives a corrected kind alongside the original
+kind; the saved words, source and original label are preserved. Admission uses
+the derived kind so a long progress update does not consume the protected rule
+share just because it was once called a preference. The line's card shows both
+kinds when they differ. New noticing also distinguishes progress from a
+lasting preference before keeping it.
 
 
 ## Can you search memories that are archived or not riding? search_memories

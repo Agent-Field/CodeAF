@@ -105,6 +105,8 @@ type NoticeResult struct {
 	Durability string
 	// Used names the 1-based kept lines actually applied in the answer.
 	Used []int
+	// Contradicted names kept lines explicitly corrected by the person.
+	Contradicted []int
 	// Scope is where Keep holds: `user` (everywhere), `project` or `env` (this
 	// machine).
 	Scope string
@@ -265,12 +267,13 @@ func Notice(ctx context.Context, c Completer, userMsg, assistantMsg string, kept
 	var result NoticeResult
 	err := ask(provider.WithRole(ctx, lane.RoleMemory), c, system, noticeInput(userMsg, assistantMsg, kept, askMemory), func(reply string) error {
 		var wire struct {
-			Keep       string `json:"keep"`
-			Durability string `json:"durability"`
-			Used       []int  `json:"used"`
-			Scope      string `json:"scope"`
-			Replaces   int    `json:"replaces"`
-			State      *struct {
+			Keep         string `json:"keep"`
+			Durability   string `json:"durability"`
+			Used         []int  `json:"used"`
+			Contradicted []int  `json:"contradicted"`
+			Scope        string `json:"scope"`
+			Replaces     int    `json:"replaces"`
+			State        *struct {
 				Goal     string   `json:"goal"`
 				Done     []string `json:"done"`
 				Inflight []string `json:"inflight"`
@@ -284,6 +287,7 @@ func Notice(ctx context.Context, c Completer, userMsg, assistantMsg string, kept
 		}
 		next := NoticeResult{Durability: strings.ToLower(strings.TrimSpace(wire.Durability))}
 		next.Used = validUsedMemoryIndices(wire.Used, len(kept))
+		next.Contradicted = validUsedMemoryIndices(wire.Contradicted, len(kept))
 		if askMemory {
 			next.Keep = strings.TrimSpace(wire.Keep)
 			if next.Durability == "ephemeral" {

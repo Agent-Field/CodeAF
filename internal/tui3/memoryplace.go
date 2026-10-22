@@ -238,6 +238,9 @@ func readMemory(shelves store.MemoryShelves, here string, open, closed map[strin
 		memoryReadingLine{kind: memoryReadingHeader},
 		memoryReadingLine{kind: memoryReadingControl},
 		memoryReadingLine{kind: memoryReadingProse})
+	if mix := memoryMixWords(block); mix != "" {
+		r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingProse, label: mix})
+	}
 	if query == "" {
 		r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingAdd, label: memoryAddWord})
 	}
@@ -571,4 +574,40 @@ func (r memoryReading) counts() string {
 		words += " · project working set preview"
 	}
 	return words
+}
+
+// memoryKindWords names what a line is for, without exposing storage labels.
+func memoryKindWords(kind string) string {
+	switch kind {
+	case store.MemoryProjectState:
+		return "project progress"
+	case store.MemoryCorrection:
+		return "corrections"
+	case store.MemoryPreference:
+		return "preferences"
+	case store.MemoryDecision:
+		return "decisions"
+	case store.MemoryFact:
+		return "facts"
+	}
+	return "other lines"
+}
+
+// memoryMixWords makes status crowding visible from the actual admitted set.
+// Old engines omit aggregate fields, so counting their returned rows is a safe
+// compatibility fallback; no stored row outside the working set is counted.
+func memoryMixWords(block store.MemoryBlock) string {
+	if block.TotalRunes == 0 && len(block.Memories) > 0 {
+		store.PopulateMemoryTelemetry(&block)
+	}
+	if block.TotalRunes == 0 {
+		return ""
+	}
+	parts := []string{"memory mix"}
+	for _, kind := range []string{store.MemoryProjectState, store.MemoryCorrection, store.MemoryPreference, store.MemoryDecision, store.MemoryFact, "unclassified"} {
+		if runes := block.RunesBySemanticType[kind]; runes > 0 {
+			parts = append(parts, fmt.Sprintf("%s %d%%", memoryKindWords(kind), (runes*100+block.TotalRunes/2)/block.TotalRunes))
+		}
+	}
+	return strings.Join(parts, " · ")
 }

@@ -873,6 +873,17 @@ func (p *memoryPlace) memoryFacts(memory store.Memory) []string {
 		about = append(about, "kept by "+word)
 	}
 	facts := []string{strings.Join(about, " · ")}
+	kind := memory.SemanticType
+	if kind == "" {
+		kind = memory.Type
+	}
+	if kind != "" {
+		label := "kind · " + memoryKindWords(kind)
+		if memory.SemanticType != "" && memory.Type != "" && memory.SemanticType != memory.Type {
+			label += " · originally saved as " + memoryKindWords(memory.Type)
+		}
+		facts = append(facts, label)
+	}
 	if !p.hereUnknown || p.shelves.Selection != nil {
 		prefix := ""
 		if p.shelves.Selection == nil {

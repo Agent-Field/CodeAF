@@ -185,6 +185,8 @@ type memoryBrain struct {
 	selection        *store.MemoryBlock
 	selectionContext store.MemoryContext
 	contextWords     string
+	mutationSeq      int64
+	dwellContext     store.MemoryContext
 }
 
 func newMemoryBrain(s *store.Store) *memoryBrain {
@@ -474,14 +476,22 @@ func (a *Agent) refreshMemoryLocked() {
 		a.memoryText = ""
 		return
 	}
-	ctx := store.MemoryContext{Owners: MemoryOwners(a.config.MemoryProjectKey), Project: a.config.MemoryProjectKey, Session: a.sessionID(), Brief: a.cardText}
+	ctx := store.MemoryContext{Owners: MemoryOwners(a.config.MemoryProjectKey), Project: a.config.MemoryProjectKey, Session: a.sessionID(), Brief: a.cardText, Tasks: memoryInflightTasks(a.cardText)}
 	if a.memory != nil {
 		ctx.Keywords = strings.Fields(a.memory.contextWords)
+	}
+	revision, err := st.MemoryMutationSeq(ctx.Owners)
+	if err != nil {
+		return
+	}
+	if a.reuseMemoryDwell(&ctx, revision) {
+		return
 	}
 	block, err := st.AssembleMemoryBlock(ctx)
 	if err != nil {
 		return
 	}
+	store.LogMemoryAssembly(block, "conversation")
 	section := renderMemorySelection(block.Memories, block.Omitted, "")
 	a.memoryText = ""
 	if section != "" {
@@ -493,6 +503,10 @@ func (a *Agent) refreshMemoryLocked() {
 		a.memory.selected = append([]store.Memory(nil), block.Memories...)
 		a.memory.selection = &block
 		a.memory.selectionContext = ctx
+		a.memory.mutationSeq = revision
+		if len(ctx.DwellIDs) == 0 {
+			a.memory.dwellContext = ctx
+		}
 		if a.memory.surfaced == nil {
 			a.memory.surfaced = map[string]bool{}
 		}
@@ -868,14 +882,14 @@ func (a *Agent) learnFromTurn(user userMessage, answer string) {
 	go func() {
 		defer a.memoryJobs.Done()
 		a.importMemoryFile()
-		a.noticeTurn(words, answer, askMemory, kept, usedContext)
+		a.noticeTurn(words, answer, askMemory, kept, usedContext, personTyped(user))
 	}()
 }
 
 // noticeTurn is the reading itself: the lines this conversation can see,
 // numbered so the reading can say one is corrected, the one call, and the
 // state card it always answers.
-func (a *Agent) noticeTurn(words, answer string, askMemory bool, kept []store.Memory, usedContext store.MemoryContext) {
+func (a *Agent) noticeTurn(words, answer string, askMemory bool, kept []store.Memory, usedContext store.MemoryContext, personAuthored bool) {
 	client := a.reflexClient()
 	if client == nil {
 		return
@@ -893,11 +907,14 @@ func (a *Agent) noticeTurn(words, answer string, askMemory bool, kept []store.Me
 		a.mergeStateCard(*found.State)
 	}
 	for _, index := range found.Used {
-		if index > 0 && index <= len(kept) {
+		if index > 0 && index <= len(kept) && !memoryFeedbackContradicts(found, index) {
 			if err := a.memory.store.RecordMemoryContextEvent(kept[index-1].ID, "used", usedContext); err != nil {
 				a.journalMemoryFailure("used", err)
 			}
 		}
+	}
+	if personAuthored {
+		a.recordMemoryContradictions(found, kept, usedContext)
 	}
 	if found.Keep == "" || found.Durability == "ephemeral" {
 		return

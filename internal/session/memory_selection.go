@@ -16,6 +16,14 @@ func (a *Agent) MemorySelection() (store.MemoryBlock, error) {
 	if current := a.memory.selection; current != nil {
 		block := *current
 		block.Memories = append([]store.Memory(nil), current.Memories...)
+		block.BudgetedRunesBySemanticType = make(map[string]int, len(current.BudgetedRunesBySemanticType))
+		for kind, runes := range current.BudgetedRunesBySemanticType {
+			block.BudgetedRunesBySemanticType[kind] = runes
+		}
+		block.RunesBySemanticType = make(map[string]int, len(current.RunesBySemanticType))
+		for kind, runes := range current.RunesBySemanticType {
+			block.RunesBySemanticType[kind] = runes
+		}
 		block.Decisions = make(map[string]store.MemoryAdmission, len(current.Decisions))
 		for id, decision := range current.Decisions {
 			block.Decisions[id] = decision

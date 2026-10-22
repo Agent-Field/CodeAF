@@ -2917,18 +2917,27 @@ bounded at **512 runes** (`store.MemoryTextRunes`), with an **80-rune** title.
 The ordinary working set has a **4,800-rune** line budget
 (`store.MemoryBlockRunes`). Explicit person pins and legacy rules ride first
 and may exceed this soft budget. Other in-scope memories are selected locally
-by activation, using rehearsal history and context. The block ends with
+with a durable-rule floor of **40%** of the remaining budget and
+specificity-first spending within the durable and contextual shares. Derived
+semantic kinds keep legacy status paragraphs out of the rule share. Activation
+remains the admission threshold and tie-break. The block ends with
 `· N more in memory` when some stored lines do not ride. The Memories tab
 shows each visible line's admission status and reason. Archived admission is
 separate from forgotten or superseded storage status.
 
-Selection makes no model or embedding calls. Memory events supply rehearsal
-feedback; a failed read retains the previous block. Selection should be stable
-within unchanged conversation context to preserve the cached prompt prefix.
+Selection makes no model or embedding calls. Only used, confirmed and merged
+events reinforce practice; surfaced and
+retrieved events remain neutral, and contradicted events provide negative
+feedback. Admitted rune totals and shares by derived semantic kind are logged
+as aggregate `memory_admission` JSON, with pin runes separated from ordinary
+budgeted runes and an additional per-kind breakdown excluding pins; no memory text, IDs or owners are logged. Conversation-stage
+records describe the final set after dwell, and the Memories tab shows that
+set's composition. A failed read retains the previous block; selection keeps
+admitted lines while conversation context is unchanged to preserve the cached prompt prefix.
 Daily local maintenance refreshes traces and associations while the clock
 runs, with catch-up on reopen. Semantic status consolidation and optional
-write-time semantic embeddings are not implemented by this change. Performance targets in a design proposal are not
-measurements; the focused store benchmarks are the evidence for this path.
+write-time semantic embeddings are not implemented by this change. Performance
+targets in a design proposal are not measurements; the focused store benchmarks are the evidence for this path.
 
 ## Conversation deletion completion
 

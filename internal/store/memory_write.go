@@ -76,6 +76,7 @@ func (s *Store) Write(req WriteRequest) (WriteResult, error) {
 	if err != nil {
 		return WriteResult{}, fmt.Errorf("write memory: %w", err)
 	}
+	payload.Type = memoryLintType(payload.Type, payload.Text)
 	payload.ID = NewMemoryID()
 	payload.SourceSession = strings.TrimSpace(req.SourceSession)
 

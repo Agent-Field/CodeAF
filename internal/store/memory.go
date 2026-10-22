@@ -123,6 +123,7 @@ const (
 
 // Memory is one durable thing known across conversations.
 type Memory struct {
+	SemanticType  string
 	ID            string
 	OwnerFan      int
 	TopicStrength map[string]int
@@ -848,7 +849,7 @@ func queryMemoriesOn(db memoryQuerier, where string, args []any, order string, l
 		       memories.text, memories.tags, memories.status, memories.origin,
 		       memories.project_name, memories.created_seq, memories.updated_seq,
 		       memories.source_session, memories.source_seq, memories.always_on,
-		       COALESCE((SELECT ts FROM events WHERE seq = memories.updated_seq), ''), COALESCE((SELECT mass FROM memory_activation WHERE memory_id=memories.id),1), COALESCE((SELECT rehearsals FROM memory_activation WHERE memory_id=memories.id),0), COALESCE((SELECT at FROM memory_activation WHERE memory_id=memories.id),0), COALESCE((SELECT json_group_object(t.topic,f.n) FROM memory_topics t JOIN memory_topic_fans f ON f.topic=t.topic WHERE t.memory_id=memories.id),'{}'),COALESCE((SELECT n FROM memory_owner_counts WHERE owner=memories.owner),1),COALESCE((SELECT json_group_object(topic,n) FROM memory_associations WHERE memory_id=memories.id),'{}')
+		       COALESCE((SELECT ts FROM events WHERE seq = memories.updated_seq), ''), COALESCE((SELECT mass FROM memory_activation WHERE memory_id=memories.id),1), COALESCE((SELECT rehearsals FROM memory_activation WHERE memory_id=memories.id),0), COALESCE((SELECT at FROM memory_activation WHERE memory_id=memories.id),0), COALESCE((SELECT json_group_object(t.topic,f.n) FROM memory_topics t JOIN memory_topic_fans f ON f.topic=t.topic WHERE t.memory_id=memories.id),'{}'),COALESCE((SELECT n FROM memory_owner_counts WHERE owner=memories.owner),1),COALESCE((SELECT json_group_object(topic,n) FROM memory_associations WHERE memory_id=memories.id),'{}'),COALESCE((SELECT semantic_type FROM memory_semantics WHERE memory_id=memories.id),memories.type)
 		FROM memories ` + where
 	if order != "" {
 		statement += ` ORDER BY ` + order
@@ -870,7 +871,7 @@ func queryMemoriesOn(db memoryQuerier, where string, args []any, order string, l
 		if err := rows.Scan(&memory.ID, &memory.Owner, &memory.Type, &memory.Scope, &memory.Title,
 			&memory.Text, &tags, &memory.Status, &memory.Origin, &memory.ProjectName,
 			&memory.CreatedSeq, &memory.UpdatedSeq, &memory.SourceSession, &memory.SourceSeq,
-			&memory.Rule, &updatedAt, &memory.Activation, &memory.Rehearsals, &activationAt, &topicFans, &memory.OwnerFan, &topicStrength); err != nil {
+			&memory.Rule, &updatedAt, &memory.Activation, &memory.Rehearsals, &activationAt, &topicFans, &memory.OwnerFan, &topicStrength, &memory.SemanticType); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(tags), &memory.Tags); err != nil {

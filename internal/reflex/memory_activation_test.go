@@ -7,13 +7,16 @@ import (
 )
 
 func TestNoticeDropsEphemeralAndBoundsUseFeedback(t *testing.T) {
-	client := &fake{replies: []string{`{"keep":"run this once","durability":"ephemeral","used":[1,1,0,3,2]}`}}
+	client := &fake{replies: []string{`{"keep":"run this once","durability":"ephemeral","used":[1,1,0,3,2],"contradicted":[2,2,-1,99]}`}}
 	result, err := Notice(context.Background(), client, "run this once", "used rule one", []string{"rule one", "rule two"}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if result.Keep != "" || result.Durability != "ephemeral" {
 		t.Fatalf("ephemeral candidate survived: %+v", result)
+	}
+	if len(result.Contradicted) != 1 || result.Contradicted[0] != 2 {
+		t.Fatalf("unbounded contradiction feedback: %v", result.Contradicted)
 	}
 	if len(result.Used) != 2 || result.Used[0] != 1 || result.Used[1] != 2 {
 		t.Fatalf("unbounded feedback: %v", result.Used)

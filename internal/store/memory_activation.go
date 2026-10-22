@@ -20,16 +20,24 @@ type MemoryContext struct {
 	Project, Brief, Session string
 	Keywords, Tasks         []string
 	Now                     time.Time
+	DwellIDs                []string
 }
 type MemoryAdmission struct {
-	Activation float64
-	Riding     bool
-	Reason     string
+	Activation  float64
+	Specificity float64
+	Lane        string
+	Riding      bool
+	Reason      string
 }
 type MemoryBlock struct {
-	Memories  []Memory
-	Omitted   int
-	Decisions map[string]MemoryAdmission
+	BudgetedRunesBySemanticType map[string]int
+	Memories                    []Memory
+	Omitted                     int
+	Decisions                   map[string]MemoryAdmission
+	RunesBySemanticType         map[string]int
+	TotalRunes                  int
+	PinnedRunes                 int
+	BudgetedRunes               int
 }
 
 const EventMemoryInteraction EventKind = "memory_interaction"
@@ -41,7 +49,8 @@ type memoryInteraction struct {
 	Cues              []string
 }
 
-const activationSchema = `
+const activationSchema = memorySemanticSchema + `
+CREATE INDEX IF NOT EXISTS memory_mutation_seq ON events(seq DESC) WHERE kind IN ('memory_add','memory_update','memory_supersede','memory_forget','memory_restore','memory_rehomed','memory_moved');
 CREATE TABLE IF NOT EXISTS memory_activation(memory_id TEXT PRIMARY KEY, owner TEXT NOT NULL, status TEXT NOT NULL, pinned INTEGER NOT NULL, mass REAL NOT NULL DEFAULT 1, rehearsals INTEGER NOT NULL DEFAULT 0, at INTEGER NOT NULL, recent INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS memory_activation_rank ON memory_activation(owner,status,mass DESC,recent DESC);
 CREATE INDEX IF NOT EXISTS memory_activation_recent ON memory_activation(owner,status,recent DESC);
@@ -54,11 +63,16 @@ CREATE TABLE IF NOT EXISTS memory_maintenance(id INTEGER PRIMARY KEY,at INTEGER 
 CREATE TABLE IF NOT EXISTS memory_topics(topic TEXT NOT NULL,memory_id TEXT NOT NULL,PRIMARY KEY(topic,memory_id));
 CREATE INDEX IF NOT EXISTS memory_topics_chunk ON memory_topics(memory_id,topic);
 CREATE INDEX IF NOT EXISTS memory_associations_chunk ON memory_associations(memory_id,topic);
+CREATE TABLE IF NOT EXISTS memory_durable_topics(topic TEXT NOT NULL,owner TEXT NOT NULL,memory_id TEXT NOT NULL,PRIMARY KEY(topic,owner,memory_id));
+CREATE INDEX IF NOT EXISTS memory_durable_topics_chunk ON memory_durable_topics(memory_id);
+CREATE TABLE IF NOT EXISTS memory_durable_candidates(memory_id TEXT PRIMARY KEY,owner TEXT NOT NULL,status TEXT NOT NULL,mass REAL NOT NULL);
+CREATE INDEX IF NOT EXISTS memory_durable_rank ON memory_durable_candidates(owner,status,mass DESC,memory_id);
+CREATE TRIGGER IF NOT EXISTS memory_durable_refresh AFTER UPDATE ON memory_activation BEGIN UPDATE memory_durable_candidates SET owner=new.owner,status=new.status,mass=new.mass WHERE memory_id=new.memory_id; END;
 CREATE TABLE IF NOT EXISTS memory_topic_owners(topic TEXT NOT NULL,owner TEXT NOT NULL,memory_id TEXT NOT NULL,PRIMARY KEY(topic,owner,memory_id));
 CREATE INDEX IF NOT EXISTS memory_topic_owners_chunk ON memory_topic_owners(memory_id);
 CREATE TABLE IF NOT EXISTS memory_topic_fans(topic TEXT PRIMARY KEY,n INTEGER NOT NULL);
-CREATE TRIGGER IF NOT EXISTS memory_topic_add AFTER INSERT ON memory_topics BEGIN INSERT OR IGNORE INTO memory_topic_owners SELECT new.topic,owner,new.memory_id FROM memory_activation WHERE memory_id=new.memory_id AND status='active'; INSERT INTO memory_topic_fans VALUES(new.topic,1) ON CONFLICT(topic) DO UPDATE SET n=n+1; END;
-CREATE TRIGGER IF NOT EXISTS memory_topic_remove AFTER DELETE ON memory_topics BEGIN DELETE FROM memory_topic_owners WHERE topic=old.topic AND memory_id=old.memory_id; UPDATE memory_topic_fans SET n=n-1 WHERE topic=old.topic; END;
+CREATE TRIGGER IF NOT EXISTS memory_topic_add AFTER INSERT ON memory_topics BEGIN INSERT OR IGNORE INTO memory_topic_owners SELECT new.topic,owner,new.memory_id FROM memory_activation WHERE memory_id=new.memory_id AND status='active'; INSERT OR IGNORE INTO memory_durable_topics SELECT new.topic,a.owner,new.memory_id FROM memory_activation a JOIN memory_semantics s ON s.memory_id=a.memory_id WHERE a.memory_id=new.memory_id AND a.status='active' AND s.semantic_type IN ('correction','preference','decision'); INSERT INTO memory_topic_fans VALUES(new.topic,1) ON CONFLICT(topic) DO UPDATE SET n=n+1; END;
+CREATE TRIGGER IF NOT EXISTS memory_topic_remove AFTER DELETE ON memory_topics BEGIN DELETE FROM memory_topic_owners WHERE topic=old.topic AND memory_id=old.memory_id; DELETE FROM memory_durable_topics WHERE topic=old.topic AND memory_id=old.memory_id; UPDATE memory_topic_fans SET n=n-1 WHERE topic=old.topic; END;
 CREATE TABLE IF NOT EXISTS memory_fingerprints(memory_id TEXT PRIMARY KEY,b0 INTEGER,b1 INTEGER,b2 INTEGER,b3 INTEGER,minhash INTEGER);
 CREATE INDEX IF NOT EXISTS memory_fingerprint_b0 ON memory_fingerprints(b0);
 CREATE INDEX IF NOT EXISTS memory_fingerprint_b1 ON memory_fingerprints(b1);
@@ -72,6 +86,8 @@ CREATE TRIGGER IF NOT EXISTS memory_activation_add AFTER INSERT ON memories BEGI
 END;
 CREATE TRIGGER IF NOT EXISTS memory_activation_update AFTER UPDATE ON memories BEGIN
  INSERT OR IGNORE INTO memory_events SELECT new.id,new.updated_seq,CASE WHEN new.status='active' THEN 'confirmed' ELSE new.status END,new.source_session,COALESCE(unixepoch(ts),unixepoch()) FROM events WHERE seq=new.updated_seq AND (new.status != old.status OR new.text != old.text);
+ DELETE FROM memory_durable_topics WHERE memory_id=new.id;
+ INSERT OR IGNORE INTO memory_durable_topics SELECT t.topic,new.owner,new.id FROM memory_topics t JOIN memory_semantics s ON s.memory_id=t.memory_id WHERE t.memory_id=new.id AND new.status='active' AND s.semantic_type IN ('correction','preference','decision');
  DELETE FROM memory_topic_owners WHERE memory_id=new.id;
  INSERT OR IGNORE INTO memory_topic_owners SELECT topic,new.owner,new.id FROM memory_topics WHERE memory_id=new.id AND new.status='active';
  UPDATE memory_activation SET owner=new.owner,status=new.status,pinned=(new.always_on != 0 OR new.origin='person'),recent=new.updated_seq WHERE memory_id=new.id;
@@ -79,7 +95,7 @@ CREATE TRIGGER IF NOT EXISTS memory_activation_update AFTER UPDATE ON memories B
  INSERT INTO memory_owner_counts VALUES(new.owner,CASE WHEN new.status='active' THEN 1 ELSE 0 END) ON CONFLICT(owner) DO UPDATE SET n=n+excluded.n;
 END;
 CREATE TRIGGER IF NOT EXISTS memory_activation_delete AFTER DELETE ON memories BEGIN
- DELETE FROM memory_activation WHERE memory_id=old.id;
+ DELETE FROM memory_durable_candidates WHERE memory_id=old.id; DELETE FROM memory_activation WHERE memory_id=old.id;
  DELETE FROM memory_topics WHERE memory_id=old.id;
  DELETE FROM memory_fingerprints WHERE memory_id=old.id;
  UPDATE memory_owner_counts SET n=n-CASE WHEN old.status='active' THEN 1 ELSE 0 END WHERE owner=old.owner;
@@ -133,6 +149,9 @@ func memoryWords(s string) []string {
 	return strings.FieldsFunc(strings.ToLower(s), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
 }
 func indexMemoryOn(tx *sql.Tx, id, text string, tags []string, session string) error {
+	if err := deriveMemoryTypeOn(tx, id, text); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(`DELETE FROM memory_topics WHERE memory_id=?`, id); err != nil {
 		return err
 	}
@@ -147,8 +166,8 @@ func indexMemoryOn(tx *sql.Tx, id, text string, tags []string, session string) e
 		return err
 	}
 	seen := map[string]bool{}
-	for _, word := range append(memoryWords(text), tags...) {
-		if len(word) < 3 || seen[word] {
+	for _, word := range append(memoryRawTopics(text), tags...) {
+		if seen[word] {
 			continue
 		}
 		seen[word] = true
@@ -167,7 +186,7 @@ func indexMemoryOn(tx *sql.Tx, id, text string, tags []string, session string) e
 }
 func (s *Store) RecordMemoryEvent(id, kind, session string) error {
 	switch kind {
-	case "surfaced", "retrieved", "used", "confirmed", "ignored", "forgotten", "merged":
+	case "surfaced", "retrieved", "used", "confirmed", "ignored", "forgotten", "merged", "contradicted":
 	default:
 		return fmt.Errorf("memory event: %w: unknown kind", ErrInvalid)
 	}
@@ -210,7 +229,7 @@ func applyMemoryInteraction(tx *sql.Tx, p memoryInteraction, seq int64) error {
 	}
 	// Surfacing is recorded but is not evidence of use: rehearsing every prompt
 	// would make ignored status lines immortal. Only engaged content reinforces.
-	if p.Kind != "used" && p.Kind != "confirmed" && p.Kind != "retrieved" && p.Kind != "merged" {
+	if p.Kind != "used" && p.Kind != "confirmed" && p.Kind != "merged" && p.Kind != "contradicted" {
 		return nil
 	}
 	var mass float64
@@ -219,8 +238,12 @@ func applyMemoryInteraction(tx *sql.Tx, p memoryInteraction, seq int64) error {
 		return err
 	}
 	age := math.Max(1, float64(p.At-at)/3600)
-	mass = mass/math.Sqrt(age) + 1
-	_, err := tx.Exec(`UPDATE memory_activation SET mass=?,at=?,rehearsals=rehearsals+1 WHERE memory_id=?`, mass, p.At, p.ID)
+	weight := 1.0
+	if p.Kind == "contradicted" {
+		weight = -1
+	}
+	mass = mass/math.Sqrt(age) + weight
+	_, err := tx.Exec(`UPDATE memory_activation SET mass=?,at=?,rehearsals=MAX(0,rehearsals+?) WHERE memory_id=?`, mass, p.At, int(weight), p.ID)
 	return err
 }
 
@@ -236,43 +259,22 @@ func SelectMemoryBlock(memories []Memory, ctx MemoryContext) MemoryBlock {
 	for _, o := range ctx.Owners {
 		owners[o] = true
 	}
-	cues := map[string]bool{}
-	for _, w := range memoryWords(ctx.Brief + " " + strings.Join(ctx.Keywords, " ") + " " + strings.Join(ctx.Tasks, " ")) {
-		if len(w) > 2 {
-			cues[w] = true
-		}
-	}
+	specific := memorySpecificityContext(ctx)
+	cues := specific.cues
 	var ranking []memoryScored
 	for _, m := range memories {
-		d := MemoryAdmission{Reason: "outside this conversation's owners"}
-		if len(owners) > 0 && !owners[m.Owner] {
-			out.Decisions[m.ID] = d
-			continue
-		}
-		if m.Status != "" && m.Status != MemoryActive {
-			d.Reason = "archived by explicit change"
-			out.Decisions[m.ID] = d
+		if reason := memoryScopeReason(m, owners); reason != "" {
+			out.Decisions[m.ID] = MemoryAdmission{Reason: reason}
 			continue
 		}
 		a := memoryScore(m, ctx, cues)
 		pin := m.Rule || m.Origin == OriginPerson
-		ranking = append(ranking, memoryScored{m, a, pin})
-		out.Decisions[m.ID] = MemoryAdmission{Activation: a, Reason: "below activation threshold"}
+		score := memorySpecificityFor(m, specific)
+		ranking = append(ranking, memoryScored{m: m, a: a, pin: pin, s: score})
+		out.Decisions[m.ID] = MemoryAdmission{Activation: a, Specificity: score.value(), Lane: memoryLane(m), Reason: "below activation threshold"}
 	}
-	sort.SliceStable(ranking, func(i, j int) bool { return memoryRankLess(ranking[i], ranking[j]) })
-	used := 0
-	for _, r := range ranking {
-		d := out.Decisions[r.m.ID]
-		cost := MemoryLineCost(r.m.Text)
-		d = memoryAdmission(r, used)
-		if d.Riding {
-			out.Memories = append(out.Memories, r.m)
-			used += cost
-		} else {
-			out.Omitted++
-		}
-		out.Decisions[r.m.ID] = d
-	}
+	selectMemoryAdmissions(ranking, ctx, &out)
+	PopulateMemoryTelemetry(&out)
 	return out
 }
 
@@ -307,10 +309,16 @@ func (s *Store) AssembleMemoryBlock(ctx MemoryContext) (MemoryBlock, error) {
 	cues := memoryContextCues(ctx)
 	for _, cue := range cues {
 		for _, owner := range ctx.Owners {
+			if err := collect(`SELECT memory_id FROM memory_durable_topics WHERE topic=? AND owner=? LIMIT 64`, cue, owner); err != nil {
+				return MemoryBlock{}, err
+			}
 			if err := collect(`SELECT t.memory_id FROM (SELECT memory_id FROM memory_topic_owners WHERE topic=? AND owner=? LIMIT 256) t JOIN memory_activation a ON a.memory_id=t.memory_id WHERE a.status='active' ORDER BY a.mass DESC LIMIT 32`, cue, owner); err != nil {
 				return MemoryBlock{}, err
 			}
 		}
+	}
+	for _, id := range ctx.DwellIDs {
+		ids[id] = true
 	}
 	all, err := s.memoryCandidates(ids)
 	if err != nil {
@@ -318,6 +326,7 @@ func (s *Store) AssembleMemoryBlock(ctx MemoryContext) (MemoryBlock, error) {
 	}
 	out := SelectMemoryBlock(all, ctx)
 	out.Omitted = max(0, total-len(out.Memories))
+	LogMemoryAssembly(out)
 	return out, nil
 }
 func (s *Store) MemorySelectionFor(ctx MemoryContext) (MemoryBlock, error) {
@@ -377,6 +386,7 @@ type memoryScored struct {
 	m   Memory
 	a   float64
 	pin bool
+	s   memorySpecificity
 }
 
 func memoryScore(m Memory, ctx MemoryContext, cues map[string]bool) float64 {
@@ -388,9 +398,10 @@ func memoryScore(m Memory, ctx MemoryContext, cues map[string]bool) float64 {
 		at = ctx.Now
 	}
 	mass := m.Activation
-	if mass <= 0 {
+	if mass == 0 && (m.ActivationAt.IsZero() || m.ActivationAt.Unix() == 0) {
 		mass = 1
 	}
+	mass = math.Max(1e-12, mass)
 	age := math.Max(1, ctx.Now.Sub(at).Hours())
 	a := math.Log(mass / math.Sqrt(age))
 	a += memorySpread(m, cues)
@@ -457,6 +468,9 @@ func (s *Store) memoryOwnerCandidates(owners []string, collect func(string, ...a
 			return 0, err
 		}
 		total += n
+		if err = collect(`SELECT memory_id FROM memory_durable_candidates WHERE owner=? AND status='active' ORDER BY mass DESC,memory_id LIMIT 64`, owner); err != nil {
+			return 0, err
+		}
 		if err = collect(`SELECT memory_id FROM memory_activation WHERE owner=? AND status='active' AND pinned=1`, owner); err != nil {
 			return 0, err
 		}
@@ -544,7 +558,7 @@ func applyMemoryAssociations(tx *sql.Tx, p memoryInteraction) error {
 	}
 	seen := map[string]bool{}
 	for _, cue := range p.Cues {
-		if len(cue) < 3 || seen[cue] {
+		if !memoryCueToken(cue) || seen[cue] {
 			continue
 		}
 		seen[cue] = true
@@ -584,26 +598,28 @@ func (s *Store) RefreshMemoryActivationDue(now time.Time) error {
 	return tx.Commit()
 }
 func refreshMemoryTraces(tx *sql.Tx, now time.Time) error {
-	rows, err := tx.Query(`SELECT memory_id,at,1.0 FROM memory_events WHERE kind IN ('created','used','confirmed','retrieved','merged') UNION ALL SELECT memory_id,at,mass FROM memory_legacy_practice`)
+	rows, err := tx.Query(`SELECT memory_id,at,CASE WHEN kind='contradicted' THEN -1.0 ELSE 1.0 END,CASE WHEN kind='created' THEN 0 WHEN kind='contradicted' THEN -1 ELSE 1 END FROM memory_events WHERE kind IN ('created','used','confirmed','merged','contradicted') UNION ALL SELECT memory_id,at,mass,mass FROM memory_legacy_practice`)
 	if err != nil {
 		return err
 	}
 	sums := map[string]float64{}
+	counts := map[string]float64{}
 	for rows.Next() {
 		var id string
 		var at int64
-		var weight float64
-		if err = rows.Scan(&id, &at, &weight); err != nil {
+		var weight, count float64
+		if err = rows.Scan(&id, &at, &weight, &count); err != nil {
 			rows.Close()
 			return err
 		}
+		counts[id] += count
 		sums[id] += weight / math.Sqrt(math.Max(1, float64(now.Unix()-at)/3600))
 	}
 	if err = closeRows(rows); err != nil {
 		return err
 	}
 	for id, mass := range sums {
-		if _, err = tx.Exec(`UPDATE memory_activation SET mass=?,at=? WHERE memory_id=?`, mass, now.Unix(), id); err != nil {
+		if _, err = tx.Exec(`UPDATE memory_activation SET mass=?,at=?,rehearsals=? WHERE memory_id=?`, mass, now.Unix(), int(math.Max(0, counts[id])), id); err != nil {
 			return err
 		}
 	}
@@ -627,7 +643,7 @@ func memorySpread(m Memory, cues map[string]bool) float64 {
 	matches := 0
 	spread := 0.0
 	matched := map[string]bool{}
-	words := memoryWords(m.Text + " " + strings.Join(m.Tags, " "))
+	words := memoryRawTopics(m.Text + " " + strings.Join(m.Tags, " "))
 	for w := range m.TopicStrength {
 		words = append(words, w)
 	}
@@ -640,7 +656,7 @@ func memorySpread(m Memory, cues map[string]bool) float64 {
 		}
 	}
 	if matches > 0 {
-		return math.Log1p(spread) * 2
+		return math.Log1p(spread/(1+float64(len(words))/32)) * 2
 	}
 
 	return 0
@@ -690,13 +706,13 @@ func memoryContextCues(ctx MemoryContext) []string {
 	if ctx.Session != "" {
 		cues = append(cues, "session:"+ctx.Session)
 	}
-	candidates := append(cues, memoryWords(strings.Join(ctx.Keywords, " "))...)
-	candidates = append(candidates, memoryWords(strings.Join(ctx.Tasks, " "))...)
-	candidates = append(candidates, memoryWords(ctx.Brief)...)
+	candidates := append(cues, memoryTopicWords(strings.Join(ctx.Keywords, " "))...)
+	candidates = append(candidates, memoryTopicWords(strings.Join(ctx.Tasks, " "))...)
+	candidates = append(candidates, memoryTopicWords(ctx.Brief)...)
 	seen := map[string]bool{}
 	out := []string{}
 	for _, cue := range candidates {
-		if len(cue) < 3 || seen[cue] {
+		if !memoryCueToken(cue) || seen[cue] {
 			continue
 		}
 		seen[cue] = true

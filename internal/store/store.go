@@ -810,6 +810,9 @@ func Open(path string) (*Store, error) {
 	if err := initMemoryActivation(db); err != nil {
 		return closeOnError(fmt.Errorf("initialize memory activation: %w", err))
 	}
+	if err := initMemoryV2(db); err != nil {
+		return closeOnError(fmt.Errorf("initialize memory v2: %w", err))
+	}
 	if _, err := db.Exec(retrospectiveSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize retrospective schema: %w", err))
 	}
