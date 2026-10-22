@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,11 +17,165 @@ import (
 type repairReportDoor struct {
 	reports int
 	edits   int
+	last    factory.StageResult
 }
 
-func (d *repairReportDoor) Report(context.Context, factory.StageResult) error {
+func (d *repairReportDoor) Report(_ context.Context, r factory.StageResult) error {
 	d.reports++
+	d.last = r
 	return nil
+}
+
+// Real persisted check exits and the command journal must agree after a red
+// regression demonstration, a checkout repair and a differently presented rerun.
+func TestRepairSavedExitFailureIsSupersededOnTheRepairedCheckout(t *testing.T) {
+	root, file, run := repairCheckFixture(t)
+	parent := &repairReportDoor{}
+	door := &receiptStageDoor{StageDoor: parent, file: file, dir: root, repair: true}
+	t.Cleanup(door.closeVerification)
+	fixed := factory.StageResult{Done: true, Repair: &factory.CIRepairResult{Decision: "fixed", Reason: "regression repaired"}}
+	run(`CHECK_EXIT=127 cargo test --test cli regression > check.log 2>&1; ec=$?; echo "EXIT=$ec"; grep -E 'test result|FAIL' check.log | head -8`)
+	if err := door.Report(t.Context(), fixed); err == nil {
+		t.Fatal("failed check accepted")
+	}
+	if err := os.WriteFile(filepath.Join(root, "code.txt"), []byte("repaired"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	run(`cargo test --test cli regression 2>&1 | tail -2`)
+	if err := door.Report(t.Context(), fixed); err != nil {
+		t.Fatalf("passing equivalent check retained historical shell failure: %v", err)
+	}
+	if parent.reports != 1 || !parent.last.Done {
+		t.Fatal("corrected repair did not reach runner")
+	}
+}
+
+func TestRepairRepeatedUnchangedReportsStopWithoutAnotherPaidRound(t *testing.T) {
+	root, file, run := repairCheckFixture(t)
+	parent := &repairReportDoor{}
+	door := &receiptStageDoor{StageDoor: parent, file: file, dir: root, repair: true}
+	t.Cleanup(door.closeVerification)
+	stopped := door.stoppedVerification()
+	fixed := factory.StageResult{Done: true, Repair: &factory.CIRepairResult{Decision: "fixed", Reason: "claimed fixed"}}
+	for i := range stageVerificationRejectLimit {
+		// New receipt files and changed output formatting are not progress.
+		run(fmt.Sprintf("CHECK_EXIT=7 cargo test --test cli regression | tail -%d", i+1))
+		if err := door.Report(t.Context(), fixed); err == nil {
+			t.Fatal("failed repair accepted")
+		}
+	}
+	select {
+	case reason := <-stopped:
+		if !strings.Contains(reason, "same unresolved evidence") {
+			t.Fatal(reason)
+		}
+	default:
+		t.Fatal("repeated rejection left the agent running")
+	}
+	if parent.reports != 1 || parent.last.Done || parent.last.Repair.Decision != "needs_you" {
+		t.Fatal("stop did not retain an incomplete result")
+	}
+	if err := door.Report(t.Context(), fixed); err == nil || parent.reports != 1 {
+		t.Fatal("late completion overwrote the stop")
+	}
+}
+
+func TestRepairCorrectionCancelsTheStallStop(t *testing.T) {
+	root, file, run := repairCheckFixture(t)
+	parent := &repairReportDoor{}
+	door := &receiptStageDoor{StageDoor: parent, file: file, dir: root, repair: true}
+	t.Cleanup(door.closeVerification)
+	fixed := factory.StageResult{Done: true, Repair: &factory.CIRepairResult{Decision: "fixed", Reason: "checked repair"}}
+	run("CHECK_EXIT=7 cargo test --test cli regression")
+	for range stageVerificationRejectLimit - 1 {
+		_ = door.Report(t.Context(), fixed)
+	}
+	run("cargo test --test cli regression")
+	if err := door.Report(t.Context(), fixed); err != nil {
+		t.Fatal(err)
+	}
+	door.stopVerification("the completion recovery time limit was reached")
+	select {
+	case <-door.stoppedVerification():
+		t.Fatal("a corrected repair was stopped by its old deadline")
+	default:
+	}
+	if parent.reports != 1 || !parent.last.Done {
+		t.Fatal("successful report was replaced")
+	}
+}
+
+func TestRepairRecoveryDeadlineRetainsWorkAndStopsAnUnresponsiveTurn(t *testing.T) {
+	root, file, run := repairCheckFixture(t)
+	parent := &repairReportDoor{}
+	door := &receiptStageDoor{StageDoor: parent, file: file, dir: root, repair: true}
+	t.Cleanup(door.closeVerification)
+	run("CHECK_EXIT=7 cargo test --test cli regression")
+	_ = door.Report(t.Context(), factory.StageResult{Done: true, Repair: &factory.CIRepairResult{Decision: "fixed", Reason: "claimed fixed"}})
+	// Invoke the same callback as the timer, without waiting five minutes.
+	door.stopVerification("the completion recovery time limit was reached")
+	if reason := <-door.stoppedVerification(); !strings.Contains(reason, "time limit") {
+		t.Fatal(reason)
+	}
+	if parent.last.Done || parent.last.Repair.Decision != "needs_you" {
+		t.Fatal("deadline accepted unfinished work")
+	}
+	if raw, err := os.ReadFile(filepath.Join(root, "code.txt")); err != nil || string(raw) != "before" {
+		t.Fatal("stop changed the checkout")
+	}
+}
+
+func repairCheckFixture(t *testing.T) (string, string, func(string)) {
+	t.Helper()
+	root := resolvedTempDir(t)
+	file := filepath.Join(t.TempDir(), "transcript.jsonl")
+	gitT(t, root, "init", "-q")
+	if err := os.WriteFile(filepath.Join(root, "code.txt"), []byte("before"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	gitT(t, root, "add", ".")
+	gitT(t, root, "-c", "user.name=ZeroPoint95", "-c", "user.email=test@example.invalid", "commit", "-qm", "fixture")
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "cargo"), []byte("#!/bin/sh\nif [ \"${CHECK_EXIT:-0}\" = 127 ]; then exit 127; fi\necho 'test result: ok'\nexit \"${CHECK_EXIT:-0}\"\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	journal, err := os.Create(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = journal.Close() })
+	enc, n := json.NewEncoder(journal), 0
+	run := func(command string) {
+		t.Helper()
+		// Keep reporting logs outside the measured checkout.
+		command = strings.ReplaceAll(command, "check.log", repairShellQuote(filepath.Join(bin, "check.log")))
+		command = "export PATH=" + repairShellQuote(bin) + ":\"$PATH\"; " + command
+		wrapped, err := verification.Prepare(file, command)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c := exec.Command("bash", "-o", "pipefail", "-c", wrapped)
+		c.Dir = root
+		out, runErr := c.CombinedOutput()
+		output := string(out)
+		if runErr != nil {
+			if exit, ok := runErr.(*exec.ExitError); ok {
+				output += fmt.Sprintf("\nCommand exited with code %d", exit.ExitCode())
+			} else {
+				t.Fatal(runErr)
+			}
+		}
+		n++
+		id := fmt.Sprint(n)
+		args, _ := json.Marshal(map[string]string{"command": command})
+		if err := enc.Encode(map[string]any{"role": "assistant", "toolCalls": []any{map[string]any{"id": id, "function": map[string]string{"name": "bash", "arguments": string(args)}}}}); err != nil {
+			t.Fatal(err)
+		}
+		if err := enc.Encode(map[string]string{"role": "tool", "toolCallId": id, "content": output}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return root, file, run
 }
 func (d *repairReportDoor) Edit(context.Context, factory.PlanEdit) error { d.edits++; return nil }
 func (d *repairReportDoor) Ask(_ context.Context, q factory.Asked) (string, error) {

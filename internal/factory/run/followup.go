@@ -4,10 +4,52 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
+
+// A recheck may call an already-published repair "fixed" without producing
+// another edit. The filesystem and exact-head review decide whether that is
+// no_change; the model's label alone must not demand a pointless new commit.
+func (lp *floorLoop) completedPublishedRepair(captured factory.Item, res factory.StageResult) factory.StageResult {
+	if !res.Done || res.Exit != 0 || res.Findings != 0 || res.Repair == nil || res.Repair.Decision != "fixed" || verificationReason(res) != "" || captured.FollowUp == nil || captured.FollowUp.Kind == "readiness" || captured.PullRequest == nil {
+		return res
+	}
+	current, err := lp.r.opts.Store.Get(captured.ID)
+	if err != nil || current.FollowUp == nil || current.PullRequest == nil || current.Question != "" || current.Asking != nil {
+		return res
+	}
+	p, old := current.PullRequest, captured.PullRequest
+	if p.State != factory.PROpen || p.HeadSHA == "" || p.HeadSHA != old.HeadSHA || p.HeadSHA != current.FollowUp.HeadSHA || p.Feedback != old.Feedback || p.ReviewDecision != old.ReviewDecision || !reflect.DeepEqual(p.Reviews, old.Reviews) {
+		return res
+	}
+	repair := *res.Repair
+	repair.Decision = "no_change"
+	candidate := res
+	candidate.Repair = &repair
+	if factory.ReadinessReportFault(p.HeadSHA, candidate) != "" || lp.r.opts.Workdir == nil {
+		return res
+	}
+	dir, err := lp.r.opts.Workdir(current)
+	if err != nil {
+		return res
+	}
+	git := lp.r.opts.Git
+	if git == nil {
+		git = ExecGit{}
+	}
+	head, err := git.Run(dir, "rev-parse", "HEAD")
+	if err != nil || strings.TrimSpace(head) != p.HeadSHA {
+		return res
+	}
+	status, err := git.Run(dir, "status", "--porcelain", "--untracked-files=all")
+	if err != nil || strings.TrimSpace(status) != "" {
+		return res
+	}
+	return candidate
+}
 
 func (lp *floorLoop) parkCI(c *loopCtl, i int, reason string) {
 	now := lp.r.now()

@@ -259,6 +259,10 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 		}
 	}
 	defer conv.Close()
+	var verificationStopped <-chan string
+	if guarded, ok := conv.(interface{ VerificationStopped() <-chan string }); ok {
+		verificationStopped = guarded.VerificationStopped()
+	}
 	if job.Opened != nil {
 		job.Opened(conv.ID())
 	}
@@ -291,6 +295,9 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 loop:
 	for {
 		select {
+		case reason := <-verificationStopped:
+			log(reason)
+			break loop
 		case <-ctx.Done():
 			return factory.StageResult{}, ctx.Err()
 		case words, ok := <-steer:

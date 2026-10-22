@@ -100,7 +100,7 @@ func Prepare(transcript, command string) (string, error) {
 	// settings distinguish checks that happen to have identical argv.
 	// The Unix shell resolver also permits sh without Bash. That shell keeps
 	// its original execution path and journal evidence; export -f is Bash-only.
-	prefix := observerShellGuard + "\n" + worktreeStateFunction + `
+	prefix := observerShellGuard + "\n" + shell.CargoPathSetup() + worktreeStateFunction + `
 _codeaf_check() {
  local _codeaf_file _codeaf_status
  _codeaf_file=$(command mktemp ` + quote(shell.ListPath(filepath.Join(dir, "check-XXXXXX"))) + `) || return 125
@@ -212,10 +212,12 @@ func Read(transcript string) ([]Check, error) {
 	return checks, nil
 }
 
-// PresentationOnly recognizes a check and its output reporting, including
-// repeated counts of the SAME check joined by headers. A different check or
-// executable remains a whole-command failure: a zero-match grep can prevent
-// a later && branch from running, so one receipt cannot vouch for that branch.
+// PresentationOnly recognizes one check's output reporting, including saved
+// exits and reports read back from a log. Once that check was observed, its
+// measured exit is authoritative; grep's exit and the spelling of the shell
+// presentation must not become a second, permanent verification requirement.
+// A different check or unknown executable stays a whole-command requirement:
+// a zero-match grep can prevent a later && branch from running.
 func PresentationOnly(command string) bool {
 	if !simpleShellText(command) {
 		return false
@@ -235,6 +237,12 @@ func PresentationOnly(command string) bool {
 			}
 			continue
 		}
+		if found && len(words) == 1 && capturedExit.MatchString(words[0]) {
+			if part.Separator != ";" && part.Separator != "\n" && part.Separator != "&&" {
+				return false
+			}
+			continue
+		}
 		if !piped && (words[0] == "echo" || words[0] == "printf") {
 			// Headers cannot run substitutions or hide another command.
 			if strings.ContainsAny(part.Command, "<>") || (part.Separator != "" && part.Separator != "&&" && part.Separator != ";") {
@@ -242,7 +250,10 @@ func PresentationOnly(command string) bool {
 			}
 			continue
 		}
-		if !piped {
+		if found && reportingProgram(words[0]) {
+			// A reporter may consume the check's redirected log in a separate
+			// command, rather than only sitting immediately after a pipe.
+		} else if !piped {
 			for len(words) > 0 && assignment.MatchString(words[0]) {
 				words = words[1:]
 			}
@@ -259,19 +270,27 @@ func PresentationOnly(command string) bool {
 			identity = check
 			found = true
 		} else {
-			switch words[0] {
-			case "grep", "rg", "tail", "head", "cat", "tee", "wc", "sed", "awk", "cut", "sort", "uniq":
-			default:
+			if !reportingProgram(words[0]) {
 				return false
 			}
 		}
-		if part.Separator != "" && part.Separator != "|" && part.Separator != "&&" && part.Separator != ";" {
+		if part.Separator != "" && part.Separator != "|" && part.Separator != "&&" && part.Separator != ";" && part.Separator != "\n" {
 			return false
 		}
 		piped = part.Separator == "|"
 	}
 	return found
 }
+
+func reportingProgram(name string) bool {
+	switch name {
+	case "grep", "rg", "tail", "head", "cat", "tee", "wc", "sed", "awk", "cut", "sort", "uniq":
+		return true
+	}
+	return false
+}
+
+var capturedExit = regexp.MustCompile(`^[A-Za-z_][A-Za-z_0-9]*=(\$\?|"\$\?"|'\$\?')$`)
 
 // Quoted regex punctuation is data. Executable substitutions, grouping and
 // unclosed quotes are outside the small reporting grammar and stay guarded.
