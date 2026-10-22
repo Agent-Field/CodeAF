@@ -13,8 +13,10 @@ func Automatic(it Item) bool { return it.Autonomy == AutonomyAuto && !it.Manual 
 // CheckAutomaticApproval runs under the item's write lock before a queued
 // automatic decision can start work. Budget and mode may have changed since
 // the service selected the candidate; an earlier read is not authority.
+// A settled ("approved") automatic approval is history, not a queued decision:
+// it must not refuse a person's later answer after a switch to Manual.
 func CheckAutomaticApproval(it Item) error {
-	if it.Approval == nil || !it.Approval.Automatic {
+	if it.Approval == nil || !it.Approval.Automatic || it.Approval.State == "approved" {
 		return nil
 	}
 	if !Automatic(it) {

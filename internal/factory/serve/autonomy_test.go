@@ -184,3 +184,21 @@ func TestManualWithoutInternalGatesStillRequiresPublicationApproval(t *testing.T
 		t.Fatal("Manual published automatically")
 	}
 }
+
+func TestAutoApprovalBlockedAtItsTimeGoesBackToThePerson(t *testing.T) {
+	f := newV2Jobs(t)
+	in := autoProof()
+	// Prepared while Auto, then the job moved to Manual before the approval's time.
+	in.Autonomy = factory.AutonomyManual
+	now := time.Unix(0, f.clock.Load()).UTC()
+	in.Approval = &factory.Approval{Automatic: true, State: "approving", Kind: "proof", DecidedBy: "sam", Commit: in.HeadCommit, At: now.Add(-time.Minute), UndoUntil: now.Add(-time.Second)}
+	it := f.create(t, in)
+	f.read(t, it)
+	saved, err := f.st.Get(it.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Approval == nil || saved.Approval.State != "waiting" || !strings.Contains(saved.Approval.Error, "Auto approval stopped") || saved.Publishing {
+		t.Fatalf("blocked automatic approval: %+v publishing=%v", saved.Approval, saved.Publishing)
+	}
+}

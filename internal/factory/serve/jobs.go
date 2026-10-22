@@ -791,6 +791,22 @@ func (h *Handler) settleJobs(approvalsOnly ...bool) {
 			continue
 		}
 		if a.Automatic && !h.automaticApprovalAllowed(it) {
+			// Mode, budget or the repository switch changed after the approval
+			// was prepared. Hand it to the person instead of leaving it approving
+			// past its time, which re-arms the job timer every millisecond.
+			why := "Auto approval stopped: this repository is switched off"
+			if err := factory.CheckAutomaticApproval(it); err != nil {
+				why = err.Error()
+			}
+			_ = h.config.Store.Update(it.ID, func(cur *factory.Item) error {
+				if cur.Approval == nil || !cur.Approval.At.Equal(a.At) || cur.Approval.State != "approving" {
+					return nil
+				}
+				cp := *cur.Approval
+				cp.State, cp.Error = "waiting", why
+				cur.Approval = &cp
+				return nil
+			})
 			continue
 		}
 		raw, _ := json.Marshal(api.Approve{Commit: a.Commit, Edited: a.Edited, Words: a.Words})
