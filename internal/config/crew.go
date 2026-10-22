@@ -1382,6 +1382,11 @@ func RouteCrew(profileDir string, ask CrewAsk) (crewroute.Decision, error) {
 		CostFactor: day.CostFactor[string(reading.Class)],
 		TaskCap:    CrewTaskCapAt(profileDir),
 	}
+	// THE SELECTOR'S PICK, WHEN ONE IS CONFIGURED: a fitted snapshot seats
+	// the unpinned seats through the engine's own gate, and no snapshot
+	// configured leaves the request's Chosen nil — the crew is then the live
+	// router's exactly as it has always been (selectorwire.go says why).
+	req.Chosen = CrewSelectorPicks(profileDir, req)
 	d, err := crewroute.Decide(req)
 	if err != nil && !errors.Is(err, crewroute.ErrStrongest) {
 		// NO CREW CAN BE FORMED: the seat nothing can sit goes down the rest of
