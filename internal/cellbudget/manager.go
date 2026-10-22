@@ -2,6 +2,7 @@ package cellbudget
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -10,10 +11,10 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 )
 
-// Vault is where sealed content lives. Capture snapshots the cell's folder and
-// answers a handle; Restore writes that handle back into the folder.
+// Vault is where sealed content lives. CaptureForGC answers a snapshot and
+// the top-level paths it can restore exactly; Restore writes those paths back.
 type Vault interface {
-	Capture(ctx context.Context, c cell.Cell) (string, error)
+	CaptureForGC(ctx context.Context, c cell.Cell) (string, []string, error)
 	Restore(ctx context.Context, c cell.Cell, handle string, paths []string) error
 }
 
@@ -92,31 +93,33 @@ func (m Manager) materialize(ctx context.Context, c cell.Cell, p Pointer) error 
 
 // evict removes the working files of a cell's workspace. The caller holds its
 // lock, and the rules have said the workspace is the harness's own.
-func (m Manager) evict(ctx context.Context, c cell.Cell, e Entry) error {
-	paths, err := removable(m.Workspace(c))
+func (m Manager) evict(ctx context.Context, c cell.Cell, e Entry, dry bool) ([]string, int64, error) {
+	handle, paths, err := m.Vault(c).CaptureForGC(ctx, c)
 	if err != nil {
-		return err
+		return nil, 0, err
 	}
-	handle, err := m.Vault(c).Capture(ctx, c)
-	if err != nil {
-		return err
+	if len(paths) == 0 {
+		return nil, 0, fmt.Errorf("nothing can be removed: the snapshot cannot restore the excluded files byte for byte")
 	}
-	e.Evicted = &Pointer{Snapshot: handle, AtMs: m.nowMs(), Paths: names(paths)}
+	var size int64
+	for _, name := range paths {
+		n, err := treeSize(filepath.Join(m.Workspace(c), name))
+		if err != nil {
+			return nil, 0, err
+		}
+		size += n
+	}
+	if dry {
+		return paths, size, nil
+	}
+	e.Evicted = &Pointer{Snapshot: handle, AtMs: m.nowMs(), Paths: paths}
 	if err := writeEntry(m.Engine.LocalDir(c), e); err != nil {
-		return err
+		return nil, 0, err
 	}
-	for _, p := range paths {
-		if err := os.RemoveAll(p); err != nil {
-			return err
+	for _, name := range paths {
+		if err := os.RemoveAll(filepath.Join(m.Workspace(c), name)); err != nil {
+			return nil, 0, err
 		}
 	}
-	return nil
-}
-
-func names(paths []string) []string {
-	out := make([]string, len(paths))
-	for i, p := range paths {
-		out[i] = filepath.Base(p)
-	}
-	return out
+	return paths, size, nil
 }

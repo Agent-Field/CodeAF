@@ -39,6 +39,9 @@ func writeGCReport(out io.Writer, rep cellbudget.Report) {
 	fmt.Fprintf(out, "cells hold %s, budget %s\n", gcSize(rep.Total), gcLimit(rep.Limit))
 	for _, a := range rep.Actions {
 		fmt.Fprintf(out, "  %s  %s  %s%s\n", a.ID, gcSize(a.Bytes), a.Outcome, gcWhy(a.Why))
+		for _, path := range a.Paths {
+			fmt.Fprintf(out, "    %s\n", path)
+		}
 	}
 	if gcSawRunning(rep) {
 		fmt.Fprintf(out, "running: %s\n", heldByEngineHint())

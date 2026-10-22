@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 	"github.com/Agent-Field/codeaf/internal/env"
@@ -1810,6 +1811,15 @@ type Settings struct {
 func NewSettings(options SettingsOptions) *Settings {
 	registry := &Settings{options: options}
 	registry.rows = registry.build()
+	// C25 keeps explicit collection settings absent when collection cannot run.
+	if !cell.Available() {
+		for i, row := range registry.rows {
+			if row.Key == KeyCellBudget {
+				registry.rows = append(registry.rows[:i], registry.rows[i+1:]...)
+				break
+			}
+		}
+	}
 	for index := range registry.rows {
 		registry.rows[index].write = registry.announce(registry.rows[index].Key, registry.rows[index].write)
 	}
@@ -2362,7 +2372,7 @@ func (s *Settings) build() []Setting {
 			Hint: "how much disk the working files of all cells may use together — " + formatNumber(DefaultCellBudgetGB) + " by " +
 				"default, and a fraction such as 0.5 is fine. Over it, `codeaf cell gc` evicts " +
 				"the cells opened longest ago and leaves any a session still holds. 0 stops " +
-				"watching the disk.",
+				"any explicit collection. Nothing is removed automatically.",
 			read:  func() string { return formatNumber(CellBudgetGBAt(dir)) },
 			write: func(raw string) error { return writeProfileNumber(dir, KeyCellBudget, raw) },
 		},
