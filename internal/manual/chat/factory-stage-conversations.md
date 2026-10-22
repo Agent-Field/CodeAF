@@ -375,7 +375,12 @@ Later steps receive these receipts instead of rediscovering the working director
 In Manual, Approve at the final gate pushes the approved commit and creates a draft PR.
 Auto records and carries out that routine approval automatically. Its description
 summarizes the implementation and validation, linking the issue instead of copying its body
-and attribution. The app shows GitHub check totals and failed check names separately from local
+and attribution. Factory-created commits keep the person's GitHub handle as author and
+add the same harness co-author account as ordinary chat commits. The signature is
+written before the proof gate records the head; approval and publication never rewrite
+that head to add credit. Existing clean commits keep their identities and hashes.
+A repository's CONTRIBUTING ban on AI attribution is respected on both paths.
+The app shows GitHub check totals and failed check names separately from local
 proof, records check changes in Timeline, and offers Open PR and View GitHub checks. A draft
 needs to be marked ready on GitHub before merging; failing checks still block Merge.
 
