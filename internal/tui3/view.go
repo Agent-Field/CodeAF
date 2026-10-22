@@ -146,6 +146,7 @@ const (
 	// is EMPTY apart from the chip, and the chip is right-aligned, so a press on
 	// it is a question about the column as well as the row (jumpchip.go).
 	chromeJump
+	chromeCompletionToast
 	// chromeLegend is the rule between the transcript and the box. Its right
 	// end carries the hint slot, and the one thing in that slot a person can
 	// press is the door home (home.go's [app.homeDoorPress]).
@@ -291,6 +292,7 @@ func (a *app) frame() (string, int, int) {
 	body = a.teamMembershipOver(body)
 	body = a.teamCreateOver(body)
 	body = a.conversationDeleteOver(body)
+	body = a.completionToastOver(body)
 	return norm.NFC.String(body), caretX, caretY
 }
 
@@ -705,7 +707,13 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	// addGap spends one row of the ladder, and hands it to the chip if the chip
 	// has not been placed yet. THE TIP DOES NOT RIDE THIS ROW: it stands at the
 	// keys row's right end, over the project (footswap.go's [app.hintRow]).
+	toastPlaced := false
 	addGap := func() {
+		if a.completionToastAllowed() && !toastPlaced {
+			toastPlaced = true
+			add("", chromeRow{kind: chromeCompletionToast})
+			return
+		}
 		if chip != "" && !jumped {
 			jumped = true
 			add(chip, chromeRow{kind: chromeJump})

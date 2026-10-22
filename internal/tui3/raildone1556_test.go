@@ -46,86 +46,43 @@ func doneAttemptRows1556(lines []string) []int {
 
 func TestDoneOpenDrawsEveryRowItsHeadingCounts(t *testing.T) {
 	for _, width := range []int{110, 140, 180} {
-		for _, wide := range []bool{false, true} {
-			if width == 110 && wide {
-				continue
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			a := doneColumn1556(t, width)
+			for _, open := range []bool{false, true} {
+				a.side.open[railDone] = open
+				view := strings.Join(railText(a, a.viewHeight()), "\n")
+				if strings.Contains(view, "Done 2") || strings.Contains(view, "rename Load") {
+					t.Fatalf("completed attempts occupy sidebar: %s", view)
+				}
+				for _, id := range []uint64{1, 2} {
+					if a.doneCardAt(a.doneEntryFor(id)) == nil {
+						t.Fatalf("result %d lost", id)
+					}
+				}
 			}
-			t.Run(fmt.Sprintf("width=%d/wide=%t", width, wide), func(t *testing.T) {
-				a := doneColumn1556(t, width)
-				if wide {
-					drive(t, a, altT())
-					drive(t, a, key(railWidenChord))
-				}
-				railClick(t, a, a.bodyWidth()+3, railHeadY(t, a, railDone))
-				lines := railText(a, a.viewHeight())
-				view := strings.Join(lines, "\n")
-				if !strings.Contains(view, "Done 2 "+glyphOpen) {
-					t.Fatalf("the open group lost its count:\n%s", view)
-				}
-				rows := doneAttemptRows1556(lines)
-				if len(rows) != 2 {
-					t.Fatalf("Done 2 draws %d attempt rows, want two:\n%s", len(rows), view)
-				}
-				stopped, done := a.taskStateMark(a.tasks[1]), a.taskStateMark(a.tasks[2])
-				if stopped == done {
-					t.Fatalf("the stopped and done marks are the same: %q", stopped)
-				}
-				for _, mark := range []string{stopped, done} {
-					seen := false
-					for _, at := range rows {
-						row := lines[at]
-						if strings.Contains(row, mark+" ") {
-							seen = true
-							if !strings.Contains(row, "[senior-dev]") && !strings.Contains(row, "[sd]") {
-								t.Fatalf("attempt lost its role badge: %q", row)
-							}
-						}
-					}
-					if !seen {
-						t.Fatalf("no attempt wears state mark %q:\n%s", mark, view)
-					}
-				}
-				head, foot := -1, len(lines)
-				for i, line := range lines {
-					if strings.Contains(line, "Done 2 "+glyphOpen) {
-						head = i
-					}
-					if strings.Contains(line, "+ /task") {
-						foot = i
-					}
-				}
-				if head < 0 || rows[0] <= head || rows[1] >= foot {
-					t.Fatalf("both attempts must stand under Done:\n%s", view)
-				}
-			})
-		}
+		})
 	}
 }
 
 func TestAFoldedGroupFoldsTheRunsItsRowsCarry(t *testing.T) {
 	a := doneColumn1556(t, 180)
-	lines := railText(a, a.viewHeight())
-	if view := strings.Join(lines, "\n"); !strings.Contains(view, "Done 2 "+glyphShut) || len(doneAttemptRows1556(lines)) != 0 {
-		t.Fatalf("folded Done shows an attempt or loses its count:\n%s", view)
+	a.side.open[railDone] = true
+	if view := strings.Join(railText(a, a.viewHeight()), "\n"); strings.Contains(view, "rename Load") || strings.Contains(view, "Done 2") {
+		t.Fatalf("opening obsolete fold raised completed work: %s", view)
 	}
-	railClick(t, a, a.bodyWidth()+3, railHeadY(t, a, railDone))
-	if lines = railText(a, a.viewHeight()); len(doneAttemptRows1556(lines)) != 2 {
-		t.Fatalf("opening Done does not reveal both attempts:\n%s", strings.Join(lines, "\n"))
+	if len(a.tasks) != 2 {
+		t.Fatal("completed results lost")
 	}
 }
 
 func TestAStoppedRowKeepsItsRoleBadge(t *testing.T) {
-	a, _, _ := taskApp(t)
-	a.width, a.height = 180, 40
-	drive(t, a, taskEventMsg{gen: a.taskGen, ev: update(1, "rename LoadConfig", session.TaskRunning,
-		session.TaskNotice{Program: "senior-dev"})})
-	drive(t, a, taskEventMsg{gen: a.taskGen, ev: update(1, "rename LoadConfig", session.TaskFailed,
-		session.TaskNotice{Program: "senior-dev", Stopped: true, Ending: session.TaskEndingStopped})})
-	railClick(t, a, a.bodyWidth()+3, railHeadY(t, a, railDone))
-	row, ok := railRowFor(a, a.viewHeight(), "rename LoadConfig")
-	if !ok || !strings.Contains(row, "[senior-dev]") {
-		t.Fatalf("the stopped row lost its worker badge in the drawn column:\n%s",
-			strings.Join(railText(a, a.viewHeight()), "\n"))
+	a := doneColumn1556(t, 180)
+	card := a.doneCardAt(a.doneEntryFor(1))
+	if card == nil || card.program != "senior-dev" || card.status.State != session.TaskFailed {
+		t.Fatalf("stopped result lost identity: %+v", card)
+	}
+	if _, ok := railRowFor(a, a.viewHeight(), "rename LoadConfig"); ok {
+		t.Fatal("stopped result occupies sidebar")
 	}
 }
 
@@ -190,27 +147,20 @@ func TestANodeNamingAPartCarriesItsRun(t *testing.T) {
 
 func TestDoneFoldKeepsItsCountAndOtherGroups(t *testing.T) {
 	a, _, _ := taskApp(t)
-	a.width, a.height = 180, 40
-	drive(t, a, taskEventMsg{gen: a.taskGen, ev: update(1, "finished work", session.TaskDone, session.TaskNotice{})})
-	drive(t, a, taskEventMsg{gen: a.taskGen, ev: update(2, "running work", session.TaskRunning, session.TaskNotice{})})
-	drive(t, a, taskEventMsg{gen: a.taskGen, ev: update(3, "queued work", session.TaskQueued, session.TaskNotice{})})
-	drive(t, a, taskEventMsg{gen: a.taskGen, ev: update(4, "waiting work", session.TaskQueued,
-		session.TaskNotice{DependsOn: []uint64{2}})})
-	drive(t, a, taskEventMsg{gen: a.taskGen, ev: update(5, "failed work", session.TaskRunning, session.TaskNotice{})})
-	drive(t, a, taskEventMsg{gen: a.taskGen, ev: update(5, "failed work", session.TaskFailed,
-		session.TaskNotice{Ending: session.TaskEndingError})})
-	view := strings.Join(railText(a, a.viewHeight()), "\n")
-	for _, want := range []string{"Done 1 " + glyphShut, "Running 1", "running work", "Queued 1 " + glyphShut,
-		"Waiting 1 " + glyphShut, "failed work incomplete"} {
-		if !strings.Contains(view, want) {
-			t.Fatalf("folded Done changed another group or its count; missing %q:\n%s", want, view)
+	a.taskUpdate(update(1, "finished work", session.TaskDone, session.TaskNotice{Result: "saved answer"}))
+	a.taskUpdate(update(2, "running work", session.TaskRunning, session.TaskNotice{}))
+	a.taskUpdate(update(3, "queued work", session.TaskQueued, session.TaskNotice{}))
+	for _, open := range []bool{false, true} {
+		a.side.open[railDone] = open
+		view := strings.Join(railText(a, a.viewHeight()), "\n")
+		if strings.Contains(view, "finished work") || strings.Contains(view, "Done 1") {
+			t.Fatalf("finished history occupies sidebar: %s", view)
+		}
+		if !strings.Contains(view, "running work") || !strings.Contains(view, "Queued 1") {
+			t.Fatalf("active work lost: %s", view)
 		}
 	}
-	if strings.Contains(view, "finished work") {
-		t.Fatalf("folded Done still draws its row:\n%s", view)
-	}
-	railClick(t, a, a.bodyWidth()+3, railHeadY(t, a, railDone))
-	if view = strings.Join(railText(a, a.viewHeight()), "\n"); !strings.Contains(view, "finished work") || !strings.Contains(view, "Done 1 "+glyphOpen) {
-		t.Fatalf("opening Done did not reveal its counted row:\n%s", view)
+	if card := a.doneCardAt(a.doneEntryFor(1)); card == nil || card.result != "saved answer" {
+		t.Fatal("finished result lost")
 	}
 }

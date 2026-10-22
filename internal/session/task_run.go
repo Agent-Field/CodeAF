@@ -4111,6 +4111,7 @@ func (n *TaskNode) settlesNote(claim noteClaim) durableDelivery {
 // written by the caller, after the seam.
 func (a *Agent) postTaskMessage(node *TaskNode, tag TaskReplyTag, note, record string, durable []durableDelivery, settle settleMark, mark func()) deliveryReceipt {
 	message := wakeNote(note)
+	message.completionOnly = true
 	// AND A LANDING THAT HANDS THE MODEL THE DECISION MARKS ITS WAKE A SETTLE ONE,
 	// so the turn it starts runs under the checker's own bound rather than the
 	// run's wall ([settleWake], agent.go's [Agent.wakeLocked]).

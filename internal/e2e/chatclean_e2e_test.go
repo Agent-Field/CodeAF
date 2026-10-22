@@ -413,6 +413,11 @@ func cleanChatHasAnswer(screen, want string) bool {
 				line = before
 			}
 		}
+		// An open sidebar is outside the conversation too. Only the padded
+		// layout seam qualifies; an answer containing a literal rule does not.
+		if seam := strings.Index(line, "    │"); seam >= 0 {
+			line = line[:seam]
+		}
 		line = strings.Trim(strings.ReplaceAll(strings.TrimSpace(line), " / ", " "), ". ")
 		if line == want {
 			return true
@@ -428,6 +433,9 @@ func TestCleanChatAnswerIgnoresOnlyTheRailGutter(t *testing.T) {
 	}{
 		{"  Still ready for review", true},
 		{"  Still ready for review.                    ❮", true},
+		{"  Still ready for review.                    │ Tasks", true},
+		{"  Still ready for review│", false},
+		{"  Still ready for review │ quoted separator", false},
 		{"  Still ready for review❮", false},
 		{"  Still ready for review but not yet", false},
 		{"  › Still ready for review", false},

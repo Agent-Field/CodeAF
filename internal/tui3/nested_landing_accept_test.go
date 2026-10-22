@@ -56,12 +56,14 @@ func TestANestedLandingAcceptWritesTheTookLine(t *testing.T) {
 			Parent: 1, Elapsed: 42 * time.Second, Merge: mergeWordMerged,
 			Report: took + "\nfinished, but needs your look — nobody could check it in 5m0s",
 		})})
-	// Open the compact batch to inspect its retained acceptance receipt.
-	a.toggleDoneAt(a.doneEntryFor(1))
-	a.toggleDoneAt(a.doneEntryFor(2))
-	if text := taskText(a); !strings.Contains(text, took) {
-		t.Fatalf("the conversation does not say the part was decided:\n%s", text)
+	// Acceptance remains durable without raising another completion receipt.
+	if card := a.doneCardFor(2); card == nil || !strings.Contains(card.report, took) || !card.hidden() {
+		t.Fatalf("acceptance was not retained quietly: %+v", card)
 	}
+	if text := taskText(a); strings.Contains(text, took) {
+		t.Fatalf("acceptance raised a routine receipt: %s", text)
+	}
+
 	card := a.doneCardFor(2)
 	if card == nil || card.status.State != session.TaskDone {
 		t.Fatalf("the decided part left its latest card at %+v", card)

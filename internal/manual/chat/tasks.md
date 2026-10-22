@@ -62,8 +62,8 @@ that must pass, the behaviour that must hold, the output that must appear. The o
 done-condition stay on the record. A correction from you can change the effective
 assignment through `revise_assignment`; the task keeps both your words and its revision.
 
-You can keep working while a task runs. codeaf tells you not to wait for it: its report
-arrives in the conversation when it lands.
+You can keep working while a task runs. Its state updates in Tasks, where its result
+stays available. When the result answers your question, codeaf still replies in chat.
 
 **One other thing on the roster is a task, and it is not work in a copy of its own.** A sub-harness
 being designed runs as a task too — same row, same room, same `x` — with its own phases
@@ -340,9 +340,8 @@ reads `waiting · machine busy`; its held parts read `queued · machine busy` on
 own rows. Those begin by themselves as earlier pieces finish; there is
 nothing to do about it and nothing to come back for. how-tasks-run has the arithmetic.
 
-What it will *not* do is watch them. Each landing writes one dim line in the
-conversation and does not start a turn, so once nothing is left that is independent of the
-work it handed out, the turn simply ends — a reply that sat there polling would have spent
+What it will *not* do is watch them. Their state changes stay in Tasks, so once
+nothing is left that is independent of the work it handed out, the turn simply ends — a reply that sat there polling would have spent
 your money to learn what it was going to be told anyway. If the pieces share what they
 learn, they are one quick task's items instead, and they stay in order.
 ## Can a quick task start more work — quick tasks inside quick tasks, and the two bounds
@@ -873,7 +872,7 @@ and stopped from there.
 
 **If the reply had written anything at all, none of this applies.** One edit is enough: the
 answer takes the ordinary road above — a task in its own copy of the folder, briefed, checked
-and landed — and you read the two lines that road writes.
+and landed — and its result stays in Tasks.
 
 ## Can it keep what it read — does the moved work start over, why did it stop reading and start a task, inherit
 
@@ -1828,38 +1827,43 @@ the roster or `jobs kill` is your decision and is drawn as `stopped`, with the b
 
 ## Where did my task's result go when it finished while codeaf was still answering
 
-If a task finishes while codeaf is still answering, its landed card and its crew line (the
-`task N crew · …` line with what it cost and `not right? /redo stronger`) appear after that
-answer ends, under it, and never inside the `▸ worked` chip the answer's steps fold into.
-They still appear if the answer fails or you stop it. A task that finishes while nothing is
-being answered appears at once. When two tasks finish, their landings stay in the order they
-arrived.
+Routine task endings, crew receipts and process exits settle inside the original
+request's collapsed **worked** disclosure. Click the disclosure, or press `ctrl+e`,
+to inspect its grouped work. Click a task row for its result or a process row for
+its log. The answer codeaf owes your question still appears directly in chat.
 
-## How work lands — what the card means by merged, branch kept, in your own folder, or conflicted
+If a completion happens out of sight while the terminal is focused, a temporary
+notification uses existing space above the input, or a page's footer. **View work**
+(`alt+j`) opens the originating work group; the cross dismisses it. Completions for
+one group coalesce and the notification disappears after six seconds. Watching the
+work update in place does not raise a duplicate notification. Reopening a conversation
+or switching tabs does not announce old completions again.
 
-Every landing writes a compact, expandable notification into the conversation and moves
-the task's row on the roster. A settled notification takes one line:
+Recognizable older standalone receipts also group on reopening, without rewriting
+or deleting the journal. When the original request cannot be established, a collapsed
+background-work group retains the receipt instead of assigning it to a later request.
+Ambiguous mixed messages and requested alerts remain visible. A pending `your call`
+decision stays visible with its reason and working answer controls until resolved.
 
-```
-✓ ◆ Fix nil-map crash · done · 4m12s · 3 files · ctrl+o
-```
+Tasks still retains each result, report, files, branch, models and spending.
+Process logs also remain available through `/processes`.
 
-Click the notification or select it and press `ctrl+o` to read its output and details.
-Press `enter` on the selected notification to open the task's room. Pending `your call`
-decisions keep their reason visible, including inside a folded batch.
+## How work lands — merged, branch kept, in your own folder, or conflicted
 
-With an empty message box, select a notification and press `delete` to dismiss it.
-Use `/dismiss` to hide settled task notifications from this conversation view, or
-`/dismiss undo` to show them again. Dismissal does not delete tasks, output or history,
-and cannot hide a pending `your call` decision. The task remains available in Sessions.
+The task's result page explains whether its work merged, stayed on its branch, or
+needs your decision. Routine completion state belongs to that task, rather than a
+second stream of notifications above your message box.
+
+`/dismiss` and `/dismiss undo` remain available for manually dismissed notifications.
+Undo does not turn routine task state changes back into chat messages. Neither command
+hides a pending `your call`, deletes work, accepts a result or changes the task history.
 
 **The conversation replies only when its task was started while answering your question.**
 That task carries the question until its family lands, then one short reply answers from the
 root task’s report. A part does not reply when it finishes, and neither does a check; the
 family replies once, when the root lands. If you typed `/task` yourself, you asked for work
-rather than an answer, so finishing only shows the landing line and makes no model call.
-The same is true when a task started by the conversation carries no question: the landing
-line is the whole arrival.
+rather than an answer, so finishing updates Tasks and makes no model call.
+The same is true when a task started by the conversation carries no question.
 
 **Every fact on the head is joined by ` · `, the state word included.** It used to read
 `done 4m12s`, with the state and the clock fused into one phrase while `3 files` beside
@@ -1998,95 +2002,23 @@ On a frame too narrow for one whole chip plus its `+N`, the first chip is drawn 
 land between chips a few cells apart, so the phone tier trades the tab row for one door. See
 *Tasks on a phone*.
 
-## The roster: the column of all the work
+## The roster: active work and decisions on the right
 
-The roster is the **Tasks view of the column on the right**. The column is one column in
-every chat, with one header, and it reads like this:
+The sidebar shows `Running`, `Queued` and `Waiting` work, plus unresolved decisions
+in its needs-you band. It has no `Done` or `Ended` section, no completed-work count,
+and no list of old failures. A routine completion leaves the sidebar automatically.
 
-```
-Tasks 14 · Traffic 3 new                  alt+l
-? Port the parser · your call · nobody co…
-✕ parser bench incomplete
-──────────────────────────────────────────
-Running 4
-  ⠙ rebase the parser onto dev          2m
-  ⠙ port the key table                 40s
-Queued 3 ▸
-Done 6 ▸
-+ /task
-```
+Click the `Tasks` heading to open the existing Tasks page for results and history.
+It does not show a total of past tasks. In a team chat, the `Traffic` word keeps its
+existing message count and switches to team traffic; click `Tasks` from Traffic to
+return to active work, then click it again to open task history.
 
-**The header is the column's two words.** `Tasks 14` is this conversation's work, counted
-whole. `Traffic 3 new` is what passes in the team this chat is in; a chat in no team has
-only the first word. The word in front is bold ink and the other is dim, and the other one
-keeps its count, so traffic that arrives while you read the tasks still says `3 new` on the
-header. Each word is a button with a hover ground and a hint (`Show this chat's tasks ·
-click`); press the other word to bring it to the front. A count of `0` is dim. At the right
-of the header is the column's own key, `alt+l` (`opt+l` on a Mac), and it is a button too:
-press it and the column goes away (*Hiding the task column* below).
+A task's row opens its room. The needs-you band also opens the relevant task,
+question or team decision. Work that needs your answer remains present until answered;
+ordinary completed and incomplete work stays available on demand in Tasks.
 
-**Which word is in front is remembered for the session, per kind of chat.** A manager's
-chat opens on the Traffic and every other chat opens on the Tasks. Change it in a member's
-chat and every member's chat you visit this session opens the same way; the manager's chat
-keeps its own answer. The team manager page has the Traffic view.
-
-**Under the header is the needs-you band**, when anything needs you, and nothing at all
-when nothing does:
-
-- a task whose next step is yours (a landing nobody could judge, a branch that
-  conflicted), led by its own state mark, `?` for your call, in the needs-you amber;
-- in a chat in a team, a member's question to you, or a decision put to you, led by `?` in
-  amber;
-- a task that failed while this window watched it and that you have not opened yet, led by
-  its `✕` in ordinary ink. A failure is news, not a demand, so it is never amber.
-
-The band draws at most three rows. A fourth item is drawn as a fourth row, and five or
-more show the first three and a `+2 more` row; press it to show them all, and `fewer` to go
-back to three. A thin rule closes the band. **An item in the band is not drawn again in
-the list under it**, and opening a failure is looking at it: it leaves the band and takes
-its place under Done. Each band row opens its thing: a task's room, the member's chat at the
-question, or the teams page for a decision.
-
-**Under the band the work is grouped by what it is doing:** `Running`, `Queued` (nothing in
-its way but a slot), `Waiting` (behind other work) and `Done`. Running work is always open
-and its heading wears no mark, because it does not fold. The other three start folded to
-one line, `Done 6 ▸`; press the heading, or `enter` on it, to open the group (`Done 6 ▾`)
-and again to fold it. What you open stays open for the rest of the session, through new
-work, new landings and switching chats. A group with nothing in it is not drawn at all;
-there are no empty headings and no `none` rows. When only queued tasks remain and the
-conversation is idle, the main box footer says `queued`. It says `working` when a task
-or background command is running.
-
-**Every task is one line**: its state glyph two cells in, its name cut with `…` where the
-column is too narrow, and how long it has been at it (or how long it took) in the muted ink
-at the right, `40s`, `2m`, `1h`. The time gives way before the name does: it is left off
-rather than cut a name that would fit whole without it. Inside each group the newest work
-is first. Point at a row and the hint line says the whole of it: the whole name, then what
-the row has no room for, the way it used to be written under it (what it is doing, what it
-waits on, how its branch came home, what it cost), then `click opens it`.
-
-The roster holds every task **this conversation** has admitted, not just the live ones.
-Tasks *other* sessions ran are not on it; the page `/history` opens is the one that has
-them, and one dim line at the foot of the column, `ctrl+. earlier`, is the door onto it.
-Work finishing never puts the column away, and neither does `/new`: that takes this
-session's tasks with it and leaves the column standing.
-
-Under the task list the same column carries `+ /task`, then the automations this
-conversation set up, ending in `+ /automations` — *Automations* has that half, under *The
-automations in a conversation's side column* — and, when this conversation has started any,
-a third section labelled `jobs` (*Background jobs on the column* below). The header and the
-band stand still at the top while the list under them scrolls.
-
-**The column is permanent** from 100 columns up: it stands from the session's first
-keystroke, before any task exists, and work fills it rather than raising it. It is a
-quarter of the frame, never under 28 columns or over 40: 28 at 110, 30 at 120, 40 at 160.
-It is the same width in every chat and whichever word is in front, so switching words,
-opening a group, a new row and the band appearing never move the conversation beside it.
-From 120 columns up `alt+w` widens it by 16 columns, when the conversation keeps at least
-56. The one frame without it is the untouched empty conversation, which opens on a centred
-greeting and no column at all until you type, a task lands, or it has an automation of its
-own to list (*The empty screen* page). Under 100 columns there is no column and no edge,
-and `alt+t` (or `alt+l`) lays the same column over the body instead.
+`alt+l` (`opt+l` on a Mac) still hides the sidebar. The `+ /task` and
+`+ /automations` controls still put their command into your message box.
 
 ## Where did the workers go on the task page — find them as rows under their task
 
@@ -2153,7 +2085,7 @@ Under the task rows, one dim `+ /task` row closes the list; press it and `/task 
 into your message box. Then a blank line, then the automations this conversation set up —
 at most three, each its mark and title, a press opening `/automations` on it — and their
 `+ /automations` row (*Automations*). There are no state totals at the foot: the header
-counts the tasks and each group's heading counts its own. The session's spend and tokens
+opens task history and each active group's heading counts its own. The session's spend and tokens
 are on the status row.
 
 Below those are up to two door lines: `ctrl+. earlier` when the full-screen page holds work
@@ -2162,7 +2094,7 @@ this column does not, and, while the column holds the keyboard or the pointer is
 the right of its header.
 
 **Non-running rows are drawn quieter.** A running task's name is in the ordinary text
-colour; queued, waiting and finished names are muted, headings are muted with dim counts,
+colour; queued and waiting names are muted, headings are muted with dim counts,
 and the room you are standing in is the one row in the accent. A glance at the column lands
 on what is moving.
 
@@ -2187,27 +2119,19 @@ the label toggles it. The shapes:
 ```
 jobs · 2 running
 jobs · 1 running · 4m12s
-jobs · 2 running · 6 ran
-jobs · 6 ran
 ```
 
 The clock appears **only when exactly one job is running**, because then there is one
 duration to name. Past that the count is the news.
 
-**Expanded**, every running job draws (oldest first), then finished ones fill whatever
-room is left, newest first, and the remainder is counted on an `N earlier` line rather
-than dropped. That remainder line is a count, not a door: it opens nothing, and it wears
-**no fold mark** for exactly that reason — it used to read `▸ 4 earlier` under a section
-whose head is also a `▸`, which invited a keypress that did nothing. It sits at the rows'
-own indent, under the rows it is counting.
+**Expanded**, every running job draws, oldest first. Finished processes do not
+remain in the sidebar or add an ended count. Their records and logs remain available
+through the existing `/processes` and `jobs output N`.
 
-**Zero jobs draws nothing at all** — no label, no empty row, no `0 jobs`. A conversation
-that has started none looks as it did before jobs had a section.
-
-**`/new` and switching conversations drop the section.** A job belongs to the conversation
-that started it. Coming back, or reopening it, redraws the jobs it ran, settled: a job
-still going when codeaf closed comes back `stopped`. Nothing is restarted. The log stays
-under this conversation's folder, in `logs/jobs/` — never in your project.
+**No running jobs draws nothing at all** — no label, no empty row, no history count.
+Switching tabs or reopening the conversation does not bring completed process rows back.
+A process still going when codeaf closed comes back stopped; nothing restarts itself.
+The logs remain under the conversation folder in `logs/jobs/`.
 
 The `jobs` tool, `jobs output N`, `jobs kill N`, `ctrl+g` promotion and the
 `still running as job 3` sentence are all unchanged. To kill a server you started,
@@ -2629,7 +2553,7 @@ where you type.
 
 The other things on the column that answer a press say so by lighting under the pointer:
 
-- **A group's heading** (`Queued 3 ▸`, `Done 6 ▾`) opens or folds that group. The hint line
+- **A group's heading** (`Queued 3 ▸`, `Waiting 2 ▾`) opens or folds that group. The hint line
   says `Show what is done · click` or `Fold what is done · click`. The `Running` heading does
   not fold, wears no mark and does not light.
 - **A band row** opens its thing: a task's room, the member's chat at the question, or the
@@ -3319,8 +3243,7 @@ as it was: the page is somewhere you go and come back from, not a state the colu
 beside this one. This is the common case: any directory you have worked in before has one.
 
 **`ctrl+. view more` is gone.** It stood for a family the column had folded away. The column
-folds its own groups now (`Done 6 ▸`), and the heading is the door: press it and the rows
-open in place.
+folds its active groups in place. The `Tasks` heading opens task results and history on demand.
 
 A landed task of this session's, already on the column, does not earn the line: it would be
 offering to show you what you are looking at. So a first-ever session in a fresh directory,
@@ -5281,7 +5204,7 @@ same word. The row's kind is not drawn, and its cost is available in the detail 
 `←` folds the branch under the cursor and `→` opens it again. When you fold one, the
 section heading says how many rows are hidden, such as `completed · 4 folded away`.
 The list scrolls through every conversation tree selected by the time window.
-This includes tasks from the run store. The side column inside a conversation has its own groups: Done starts folded, and opening it shows every task row its heading counts, including separate attempts at the same request. That column does not change the Sessions page's folds or chronological order.
+This includes tasks from the run store. The side column inside a conversation shows active work and decisions only. Completed attempts remain on the Tasks page, with their original order and results.
 
 Type to filter; every section narrows at once, and a section the query empties is not drawn.
 The one printable keys that are not the filter are `1` and `2` over a row the pane is offering
@@ -5343,14 +5266,12 @@ A task's **page** shows everything below it under its steps the same way, each
 with its live step while its worker is on one. Opening a row (`enter`) and
 leaving a note are unchanged by the tree.
 
-## Why is this group one line? — Done folds its task rows
+## Where did Done go — completed work stays in Tasks
 
-The side column puts each task under Running, Queued, Waiting or Done. Running
-stays open; the other groups start folded to one heading, such as `Done 2 ▸`.
-Press the heading or use `enter` on it to see its task rows (`Done 2 ▾`). Every
-task the heading counts gets a row, even when two attempts at the same request
-have the same title. A run's parts fold with the task row that carries them.
-Press a task row to open its page and see the work inside it.
+The sidebar is for active work and unresolved decisions. It has no Done or Ended
+fold. Click its `Tasks` heading to open results and history on demand. Finished tasks
+keep their results, reports, files, branch and run details; hiding routine completion
+receipts never deletes their records.
 
 ## What does queued behind it mean? — open tasks are waiting on this one
 
@@ -5787,3 +5708,30 @@ before its cost was saved also stays interrupted: inspect the saved work before
 asking again. Its cost is never guessed or reset to make it resume, it is never
 counted as completed, and its folder is never guessed. Programs that had already started keep their existing
 interrupted-program behavior; this restart rule concerns ordinary planned tasks.
+
+## Crew details and run again with a stronger crew on the task result
+
+Open a finished task result in Tasks to read its crew, model seats, provider, estimate,
+actual spending and any stop cause. Those details do not appear as separate chat receipts.
+When the current conversation can run the selected task again, the result offers
+`r run again with a stronger crew`. Press `r` or click that action to retry that exact
+task, rather than whichever task finished most recently. The action is absent for running
+work, another conversation's task, a program, or a crew stopped for a key or credit issue.
+Existing ordinary retry and `/redo stronger <id>` controls remain available where supported.
+
+## Processes and finished process logs — /processes
+
+Use `/processes` to open this conversation's processes on demand, including completed
+ones. Click a row or select it with the arrow keys and press Enter to open its log page.
+Escape from a log returns to the list; Escape again returns to chat. `/processes <id>`
+opens that process directly. The existing log controls still copy its path, put output
+in your message and stop a process while it is running. Finished processes never stay
+in the active-work sidebar or add an ended count.
+
+## Open a finished routed task's result or its full output
+
+Opening a finished task with a routed crew shows its result card, with the produced
+answer, report, crew models, cost and retry actions in one place. Use `o open full output`
+or click that action to open the existing task transcript room. Tasks without routed
+crew details keep their ordinary room door. An old record with no crew details does not
+invent them; reopening its owning conversation restores the details its checkpoint kept.

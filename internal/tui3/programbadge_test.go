@@ -649,7 +649,7 @@ func TestAProgramsLandedCardSaysWhatItCost(t *testing.T) {
 	}
 	done := a.entries[at].done
 	done.open = true
-	card := plain(strings.Join(a.doneRows(done, 120, false), "\n"))
+	card := retainedLandingText(t, a, 7)
 	if !strings.Contains(card, "$2.30") {
 		t.Fatalf("the program's landed card names no price:\n%s", card)
 	}

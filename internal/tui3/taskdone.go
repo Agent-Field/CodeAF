@@ -99,6 +99,10 @@ type taskDone struct {
 	open bool
 	// Dismissal only affects this window; the task record stays in Sessions.
 	dismissed bool
+	// quiet keeps routine state changes in Tasks while retaining the landing data.
+	quiet bool
+	// attention is a concrete remedy, such as adding credit, rather than a routine failure.
+	attention string
 	// gut is how many columns of the READING GUTTER this card's rows already
 	// carry (gutter.go), for the reason the proposal's own spans carry one
 	// (task.go's [taskCard]).
@@ -226,6 +230,8 @@ func (a *app) landedCard(node *taskNode) {
 		model:       node.model,
 		cost:        node.spent(),
 	}
+	card.attention = node.actionNeeded()
+	card.quiet = card.status.Tier != session.TaskTierYourCall && card.attention == ""
 	if card.span == 0 && !node.began.IsZero() {
 		card.span = a.now().Sub(node.began)
 	}
@@ -255,9 +261,13 @@ func (a *app) landedCard(node *taskNode) {
 	// The streaming block closes so this card is its own block. If the task
 	// lands during that turn, its boundary moves the card past the final answer:
 	// a settled work fold would otherwise close over a card left inside it.
-	a.closeLive()
+	if !card.quiet {
+		a.closeLive()
+	}
 	a.entries = append(a.entries, entry{kind: entryDone, turn: a.turn, done: card})
-	a.follow()
+	if !card.quiet {
+		a.follow()
+	}
 	a.touch()
 }
 
@@ -281,6 +291,9 @@ func (a *app) sayTurnLandings() {
 		return
 	}
 	for _, id := range a.turnLandings {
+		if card := a.doneCardFor(id); card != nil && card.quiet {
+			continue
+		}
 		if said, ok := a.crewSaid[id]; ok && said.landed {
 			for i := len(a.entries) - 1; i >= 0; i-- {
 				if a.entries[i].kind == entryNote && a.entries[i].text == said.text {
@@ -366,12 +379,19 @@ func (a *app) handedBackCard(fresh *taskDone) bool {
 		return false
 	}
 	card.status = fresh.status
+	card.quiet = fresh.quiet
+	card.attention = fresh.attention
 	// A fresh decision must be visible even when its task state did not move.
-	if card.status.Tier == session.TaskTierYourCall {
+	if card.status.Tier == session.TaskTierYourCall || card.attention != "" {
 		card.dismissed = false
 	}
 	a.settleTouched(card)
 	return true
+}
+
+// hidden applies the same presentation policy to live and restored landings.
+func (card *taskDone) hidden() bool {
+	return card.dismissed || card.quiet
 }
 
 // doneCardAt is the card one entry draws, or nil.
@@ -423,7 +443,7 @@ func (a *app) openDone(i int) bool {
 func (a *app) doneCluster(d deck, out []row, from, to, width int) []row {
 	visible := 0
 	for i := from; i < to; i++ {
-		if card := d.entries[i].done; card != nil && !card.dismissed && !supersededIn(d, i, to) {
+		if card := d.entries[i].done; card != nil && !card.hidden() && !supersededIn(d, i, to) {
 			visible++
 		}
 	}
@@ -432,7 +452,7 @@ func (a *app) doneCluster(d deck, out []row, from, to, width int) []row {
 	}
 	for i := from; i < to; i++ {
 		card := d.entries[i].done
-		if card == nil || card.dismissed || supersededIn(d, i, to) {
+		if card == nil || card.hidden() || supersededIn(d, i, to) {
 			continue
 		}
 		for _, text := range a.doneRows(card, width, a.selected(i)) {
@@ -448,10 +468,15 @@ const doneRollupFloor = 1
 // doneRows draws one compact notification. Only an open card or pending
 // decision needs more than its headline.
 func (a *app) doneRows(card *taskDone, width int, sel bool) []string {
-	if card == nil || card.dismissed || width < 8 {
+	if card == nil || card.hidden() || width < 8 {
 		return nil
 	}
 	out := []string{a.doneHead(card, width, sel)}
+	if card.attention != "" {
+		for _, line := range wrap(card.attention, width-2) {
+			out = append(out, "  "+a.pal.warn(line))
+		}
+	}
 	if card.open || card.status.Tier == session.TaskTierYourCall {
 		if line := a.doneUnder(card, width); line != "" {
 			out = append(out, line)
@@ -1161,7 +1186,7 @@ func capFieldMark(lines []string, mark string) []string {
 func (a *app) rollupRows(d deck, out []row, from, to, width int) []row {
 	first := -1
 	for i := from; i < to; i++ {
-		if card := d.entries[i].done; card != nil && !card.dismissed && !supersededIn(d, i, to) {
+		if card := d.entries[i].done; card != nil && !card.hidden() && !supersededIn(d, i, to) {
 			first = i
 			break
 		}
@@ -1177,7 +1202,7 @@ func (a *app) rollupRows(d deck, out []row, from, to, width int) []row {
 	out = append(out, row{text: head, entry: first, hit: hitDone})
 	for i := from; i < to; i++ {
 		card := d.entries[i].done
-		if card == nil || card.dismissed || supersededIn(d, i, to) {
+		if card == nil || card.hidden() || supersededIn(d, i, to) {
 			continue
 		}
 		// A decision is never hidden inside a folded batch.
@@ -1209,7 +1234,7 @@ func (a *app) rollupHead(d deck, from, to, width int) string {
 	var first, last time.Time
 	for i := from; i < to; i++ {
 		card := d.entries[i].done
-		if card == nil || card.dismissed || supersededIn(d, i, to) {
+		if card == nil || card.hidden() || supersededIn(d, i, to) {
 			continue
 		}
 		count++

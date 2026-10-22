@@ -29,7 +29,7 @@ func TestALandedRoomFallsBackToTheReportOnTheRecord(t *testing.T) {
 			Elapsed: 2 * time.Minute,
 		})})
 	close(agent.lane(7))
-	clickRailNode(t, a, 7)
+	drive(t, a, runCmd(a.openRailRoom(a.tasks[7]))...)
 
 	text := roomText(a)
 	if !strings.Contains(text, "Added the guard in parseRow") {
@@ -54,7 +54,7 @@ func TestARefusedDoorDoesNotCountAsATranscript(t *testing.T) {
 	agent.journal = ""
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(4, "Port the parser", session.TaskDone,
 		session.TaskNotice{Report: "Added the guard in parseRow."})})
-	clickRailNode(t, a, 4)
+	drive(t, a, runCmd(a.openRailRoom(a.tasks[4]))...)
 
 	if room := a.room; room != nil {
 		for _, e := range room.entries {
