@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -41,6 +42,7 @@ func sealedTurns(t *testing.T, root string) int {
 }
 
 func TestRunInCellSealsItsCallsAndContinuesFromThem(t *testing.T) {
+	celltest.RequireEngine(t)
 	beltRunEnv(t)
 	t.Setenv(cell.EnvVar, "1")
 	t.Setenv("CODEAF_PLANDB_BIN", beltPlandbDoor(t))
@@ -123,6 +125,7 @@ func TestSealedStateIsInTheBriefAndTheAssignmentSurvivesIt(t *testing.T) {
 }
 
 func TestASealedChainIsNotAnEmptySession(t *testing.T) {
+	celltest.Available(t)
 	t.Setenv(cell.EnvVar, "1")
 	place, err := v3MintSession(t.TempDir(), t.TempDir(), "", false)
 	if err != nil {

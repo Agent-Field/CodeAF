@@ -141,7 +141,7 @@ func TestC3RemovedDeviceHasOneExplanation(t *testing.T) {
 	rig := newPairRig(t)
 	screen, done := rig.asking(t)
 	token := screen.waitFor(t, `codeaf pair approve (\S+)`)[1]
-	if _, err := rig.approveWith(t, []string{"approve", token}, "y\n"); err != nil {
+	if _, err := rig.approveWith(t, []string{"approve", token}, "a\n"); err != nil {
 		t.Fatal(err)
 	}
 	if err := <-done; err != nil {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"regexp"
 	"runtime"
 	"slices"
@@ -147,11 +148,13 @@ func TestPairApproveNoDeclines(t *testing.T) {
 
 // A computer with no identity of its own has no say, and a typo is refused
 // before any request is made.
+// TestPairApproveRefusals proves C1: an identity must exist before approval.
 func TestPairApproveRefusals(t *testing.T) {
+	celltest.Available(t)
 	rig := newPairRig(t)
 	out := &pairScreenText{}
 	err := rig.door(rig.homeB, strings.NewReader("a\n"), out).run(context.Background(), []string{"approve", "k7m2q9xd.AAAAAAAAAAAAAAAAAAAAAA"})
-	if !errors.Is(err, pair.ErrNotJoined) {
+	if !errors.Is(err, pair.ErrNotJoined) || !strings.Contains(err.Error(), "start codeaf here once") {
 		t.Fatalf("an unpaired computer approving ended with %v", err)
 	}
 	err = rig.door(rig.homeA, strings.NewReader(""), out).run(context.Background(), []string{"approve", "nope"})
@@ -163,6 +166,7 @@ func TestPairApproveRefusals(t *testing.T) {
 // `codeaf pair approve` with nothing after it is a usage error that names the
 // link, not a complaint about the shape of a six-digit code.
 func TestPairApproveWithoutALinkSaysUsage(t *testing.T) {
+	celltest.Available(t)
 	rig := newPairRig(t)
 	errs := &bytes.Buffer{}
 	previous := usageErr

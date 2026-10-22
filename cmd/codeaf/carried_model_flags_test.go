@@ -16,6 +16,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/delegate/builtin"
 )
 
+// TestShellResolvesAuxiliaryModelsBeforeARealChildCallsTheProvider proves C18:
+// model flags reach a real child, and the fixture joins its background profile
+// writers before removing the home they belong to.
 func TestShellResolvesAuxiliaryModelsBeforeARealChildCallsTheProvider(t *testing.T) {
 	for _, tc := range []struct {
 		name, light string
@@ -34,6 +37,11 @@ func TestShellResolvesAuxiliaryModelsBeforeARealChildCallsTheProvider(t *testing
 			t.Setenv(carriedChildEnv, "model-flags")
 			t.Setenv("DO_NOT_TRACK", "1")
 			t.Setenv("CODEAF_NO_UPDATE_CHECK", "1")
+			// The pool is not the provider under test; its unrelated refresh stays
+			// on loopback and must finish before this fixture gives up its profile.
+			t.Setenv("CODEAF_MODEL_POOL_URL", "http://127.0.0.1:1/index.json")
+			t.Setenv("CODEAF_MODEL_POOL_MIRROR_URL", "http://127.0.0.1:1/index.json")
+			t.Cleanup(func() { stopPoolErrands(home) })
 			var mu sync.Mutex
 			var sent []string
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

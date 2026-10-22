@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"io"
 	"os"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 )
 
 func TestCellLogAndRewindThroughTheDoor(t *testing.T) {
+	celltest.RequireEngine(t)
 	if _, err := furrow.ResolveBinary(); err != nil {
 		t.Skipf("no engine binary: %v", err)
 	}
@@ -64,6 +66,7 @@ func TestCellDoorRefusesShortCommands(t *testing.T) {
 }
 
 func TestCellRewindRestoresTheWorkspaceTheSessionSealed(t *testing.T) {
+	celltest.RequireEngine(t)
 	if _, err := furrow.ResolveBinary(); err != nil {
 		t.Skipf("no engine binary: %v", err)
 	}
@@ -101,6 +104,7 @@ func TestCellRewindRestoresTheWorkspaceTheSessionSealed(t *testing.T) {
 }
 
 func TestCellResolveClosesACrashedCallAndFindsBucketedCells(t *testing.T) {
+	celltest.RequireEngine(t)
 	if _, err := furrow.ResolveBinary(); err != nil {
 		t.Skipf("no engine binary: %v", err)
 	}
@@ -174,6 +178,7 @@ func TestCellLogMarksCallsThatWereNeverSealed(t *testing.T) {
 
 // EACH CELL'S SEAT OWNS ITS OWN WATCH: a failure on one is not on the other.
 func TestEachSeatOwnsItsSealWatch(t *testing.T) {
+	celltest.RequireEngine(t)
 	if _, err := furrow.ResolveBinary(); err != nil {
 		t.Skipf("no engine binary: %v", err)
 	}

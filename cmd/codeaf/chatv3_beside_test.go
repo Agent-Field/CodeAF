@@ -168,7 +168,7 @@ func farHost(t *testing.T, far *farMachine) {
 	stopped := make(chan error, 1)
 	go func() {
 		stopped <- enginehost.Run(far.workspace, enginehost.Options{
-			Cells: cell.Enabled(),
+			Cells: cell.Available(),
 			Boot:  far.boot,
 			Key:   func(hello remote.Hello) string { return hello.Session },
 		})

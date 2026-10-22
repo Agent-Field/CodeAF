@@ -18,7 +18,7 @@ const toldFile = "sync-told"
 // recorded here, so a caller cannot forget to. A failed write costs a repeat of
 // one sentence, which is better than a silent relay.
 func (s *Sync) FirstRun() (string, bool) {
-	if !s.Hosted {
+	if s == nil || !s.Hosted {
 		return "", false
 	}
 	marker := filepath.Join(s.Home, toldFile)

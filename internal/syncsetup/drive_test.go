@@ -3,6 +3,7 @@ package syncsetup
 import (
 	"context"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -59,6 +60,7 @@ type driveRig struct {
 
 func newDriveRig(t *testing.T, wrap ...func(http.Handler) http.Handler) *driveRig {
 	t.Helper()
+	celltest.RequireEngine(t)
 	bin, err := furrow.ResolveOwned()
 	if err != nil {
 		t.Skipf("no engine binary: %v", err)
@@ -373,6 +375,7 @@ func TestDriveSideCloseReleasesTheLease(t *testing.T) {
 // says so, a seat built over the plain engine seals under the zero device and
 // fence 0, and nothing is written under the home's sync directory.
 func TestDriveSideOffIsStageZero(t *testing.T) {
+	celltest.RequireEngine(t)
 	bin, err := furrow.ResolveOwned()
 	if err != nil {
 		t.Skipf("no engine binary: %v", err)

@@ -51,7 +51,7 @@ func UnavailableReason() string {
 	if reason := DisabledReason(); reason != "" {
 		return reason
 	}
-	if !furrowbin.CellsAvailable() {
+	if !engineAvailable() {
 		return furrowbin.CellsUnavailable
 	}
 	return ""
@@ -60,3 +60,15 @@ func UnavailableReason() string {
 // Available adds the engine contract to the rollout policy before any cell,
 // identity or relay client is opened.
 func Available() bool { return UnavailableReason() == "" }
+
+// engineAvailable is the capability measurement, separate from rollout so a
+// test of wiring can declare availability without staging or starting furrow.
+var engineAvailable = furrowbin.CellsAvailable
+
+// UseAvailabilityInTests replaces only the engine answer and restores it when
+// the caller is done. Production retains the cached engine contract probe.
+func UseAvailabilityInTests(available bool) func() {
+	previous := engineAvailable
+	engineAvailable = func() bool { return available }
+	return func() { engineAvailable = previous }
+}

@@ -3,6 +3,7 @@ package syncsetup
 import (
 	"context"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -56,6 +57,7 @@ func relay(t *testing.T) *httptest.Server {
 // machine is a home with an identity, pointed at url.
 func machine(t *testing.T, url string) string {
 	t.Helper()
+	celltest.Available(t)
 	home := t.TempDir()
 	if _, err := identity.Ensure(home); err != nil {
 		t.Fatal(err)
@@ -79,6 +81,7 @@ func TestOpenOffWithoutURL(t *testing.T) {
 }
 
 func TestSyncOffWithoutIdentity(t *testing.T) {
+	celltest.Available(t)
 	t.Setenv(URLVar, "http://relay.example:8787")
 	home := t.TempDir()
 	_, ok, err := Open(home)
@@ -221,6 +224,7 @@ func TestAnotherIdentityIsNotServed(t *testing.T) {
 }
 
 func TestOpenFirstMakesTheFirstIdentity(t *testing.T) {
+	celltest.Available(t)
 	t.Setenv(URLVar, "http://relay.example:8787")
 	home := t.TempDir()
 	s, ok, err := OpenFirst(home)
@@ -249,6 +253,7 @@ func TestOpenFirstWithNoRelayTouchesNothing(t *testing.T) {
 
 // TestFirstLaunchIsQuietUntilWoken proves C8: only offering or completing pairing ends solo.
 func TestFirstLaunchIsQuietUntilWoken(t *testing.T) {
+	celltest.Available(t)
 	hits := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hits++ }))
 	defer srv.Close()
@@ -295,6 +300,7 @@ func TestExistingIdentityIsNotQuiet(t *testing.T) {
 
 // The wire, the reads and the watch socket all answer to MayTalk alone.
 func TestWireAndReadsFollowMayTalk(t *testing.T) {
+	celltest.Available(t)
 	cases := []struct {
 		name  string
 		setup func(home string)

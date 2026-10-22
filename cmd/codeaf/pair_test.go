@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -60,6 +61,7 @@ func (b *pairScreenText) waitFor(t *testing.T, pattern string) []string {
 // A typo is refused before any relay is looked up, so it needs no network and
 // no relay setting at all.
 func TestPairBadCode(t *testing.T) {
+	celltest.Available(t)
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_SYNC_URL", "off")
 	for _, typed := range []string{"12", "abc-def-ghi", "4-715-30x"} {
@@ -77,6 +79,7 @@ func TestPairBadCode(t *testing.T) {
 // A relay that is switched off is said at once, by both doors, and nothing is
 // sent to any relay: not the saved one and not the one named on the command line.
 func TestPairSyncOff(t *testing.T) {
+	celltest.Available(t)
 	stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("a request reached the relay: %s %s", r.Method, r.URL.Path)
 	}))
@@ -103,6 +106,7 @@ type pairRig struct {
 }
 
 func newPairRig(t *testing.T) *pairRig {
+	celltest.Available(t)
 	t.Helper()
 	svc := relayserve.New(relayserve.Config{Store: t.TempDir()})
 	srv := httptest.NewServer(svc.Handler)

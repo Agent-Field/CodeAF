@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
@@ -16,6 +17,7 @@ import (
 // TestC8DeviceListsOnASoloHomeSendNothing proves C8 for both CLI and slash
 // command doors; reading either device list must not start a fleet.
 func TestC8DeviceListsOnASoloHomeSendNothing(t *testing.T) {
+	celltest.Available(t)
 	var hits atomic.Int64
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)

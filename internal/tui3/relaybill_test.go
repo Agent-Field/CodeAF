@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/furrow"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/relaybill"
@@ -44,6 +45,7 @@ func TestRelayBill(t *testing.T) {
 	if *billURL == "" {
 		t.Fatal("-bill-url is required: the relay to load")
 	}
+	celltest.RequireEngine(t)
 	bin, err := furrow.ResolveOwned()
 	if err != nil {
 		t.Fatalf("no engine program: %v", err)
