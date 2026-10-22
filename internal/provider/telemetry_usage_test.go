@@ -3,10 +3,13 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
+	"testing/iotest"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -144,40 +147,129 @@ func TestOverflowUsageNamesTheActualAttemptRoute(t *testing.T) {
 	}
 }
 
-func TestLateReceiptFollowsTheOverflowRoute(t *testing.T) {
+func TestV1V3DirectLateReceiptNeverUsesAnOverflowHost(t *testing.T) {
+	for _, base := range []string{
+		"https://api.z.ai/api/coding/paas/v4",
+		"https://api.z.ai/api/paas/v4",
+		"https://openrouter.ai/api/v1",
+	} {
+		for _, reason := range []string{receiptTornReason, CutStalled.word(), receiptUnmeteredReason} {
+			for _, reported := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/%s/reported=%t", base, reason, reported), func(t *testing.T) {
+					t.Setenv(home.EnvVar, t.TempDir())
+					telemetry.EnableForTest(t, true)
+					telemetry.VersionForTest(t, "v0.7.0")
+					finish := telemetry.BeginUsageSession(telemetry.ModeTask, "direct-late")
+					defer finish()
+					requests := make(chan *http.Request, receiptAttempts+1)
+					handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						requests <- r.Clone(r.Context())
+						w.Header().Set("Content-Type", "application/json")
+						_, _ = w.Write([]byte(`{"data":{"total_cost":0.02,"tokens_prompt":10,"tokens_completion":3}}`))
+					})
+					client, err := NewClient(Config{APIKey: "vendor-key", BaseURL: "https://api.z.ai/api/coding/paas/v4", Model: "glm-5.3", Direct: true, HTTPClient: handlerClient(handler)})
+					if err != nil {
+						t.Fatal(err)
+					}
+					var bills []Billed
+					results := make(chan Reconciled, 1)
+					ctx := WithBilling(t.Context(), func(billed Billed) { bills = append(bills, billed) })
+					ctx = WithReconcile(ctx, func(result Reconciled) { results <- result })
+					pending := 0
+					ctx = WithReceiptPending(ctx, func() func() {
+						pending++
+						return func() {}
+					})
+					response := &ai.Response{ID: "generation-direct"}
+					cost := 0.005
+					if reported {
+						response.Usage = &ai.Usage{PromptTokens: 4, CompletionTokens: 1, Cost: &cost}
+					}
+					client.settle(ctx, client.config.Model, response, reason, 1, &callTrace{attemptBase: base})
+					// Pending admission is synchronous. Drain an unexpected worker
+					// before inspecting its requests so a regression cannot pass by
+					// racing an assertion against the background lookup.
+					if pending != 0 {
+						t.Errorf("direct service queued %d receipts: %+v", pending, receiptResult(t, results))
+					}
+					for len(requests) > 0 {
+						request := <-requests
+						t.Errorf("direct receipt sent %s %s with Authorization %q", request.Method, request.URL, request.Header.Get("Authorization"))
+					}
+					if len(results) != 0 {
+						t.Errorf("direct service produced %d late banking results", len(results))
+					}
+					if !reported && len(bills) != 0 {
+						t.Errorf("missing direct usage banked %+v", bills)
+					}
+					if reported && (len(bills) != 1 || bills[0] != (Billed{Model: "glm-5.3", PromptTokens: 4, CompletionTokens: 1, Cost: cost})) {
+						t.Errorf("reported direct usage banked %+v", bills)
+					}
+					if rows := telemetry.SpoolContents(); len(rows) != 0 {
+						t.Errorf("direct settlement added %d usage events", len(rows))
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestV2RouterTornAnswerRecoversWithItsOwnBearer(t *testing.T) {
 	t.Setenv(home.EnvVar, t.TempDir())
 	telemetry.EnableForTest(t, true)
 	telemetry.VersionForTest(t, "v0.7.0")
-	finish := telemetry.BeginUsageSession(telemetry.ModeTask, "overflow-late")
+	finish := telemetry.BeginUsageSession(telemetry.ModeTask, "router-late")
 	defer finish()
 	results := make(chan Reconciled, 1)
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Host != "openrouter.ai" || r.URL.Path != "/api/v1/generation" {
-			t.Errorf("receipt followed wrong route: %s", r.URL)
+	requests := make(chan *http.Request, receiptAttempts+2)
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		requests <- r.Clone(r.Context())
+		if r.URL.Path == "/api/v1/chat/completions" {
+			frame := `data: {"id":"generation-router","choices":[{"index":0,"delta":{"content":"begun"}}]}` + "\n\n"
+			return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(io.MultiReader(strings.NewReader(frame), iotest.ErrReader(io.ErrUnexpectedEOF)))}, nil
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"data":{"total_cost":0.02,"tokens_prompt":10,"tokens_completion":3}}`))
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"data":{"total_cost":0.02,"tokens_prompt":10,"tokens_completion":3}}`))}, nil
 	})
-	client, err := NewClient(Config{APIKey: "test", BaseURL: "https://api.anthropic.com/v1", Model: "anthropic/claude-sonnet-4", Direct: true, HTTPClient: handlerClient(handler)})
+	client, err := NewClient(Config{APIKey: "router-key", BaseURL: "https://openrouter.ai/api/v1", Model: "anthropic/claude-sonnet-4", HTTPClient: &http.Client{Transport: transport}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := WithReconcile(context.Background(), func(answer Reconciled) { results <- answer })
-	client.settle(ctx, client.config.Model, &ai.Response{ID: "generation-overflow"}, receiptTornReason, 1, &callTrace{attemptBase: "https://openrouter.ai/api/v1"})
-	if result := receiptResult(t, results); !result.Found {
-		t.Fatal("overflow receipt was not recovered")
+	var bills []Billed
+	ctx := WithStreamObserver(t.Context(), func(StreamEvent) {})
+	ctx = WithCallNode(ctx, "router-node")
+	ctx = WithBilling(ctx, func(billed Billed) { bills = append(bills, billed) })
+	ctx = WithReconcile(ctx, func(answer Reconciled) { results <- answer })
+	if _, err := client.CompleteWithMessages(ctx, userMessages("hello")); !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("torn answer error = %v", err)
+	}
+	result := receiptResult(t, results)
+	want := Reconciled{Billed: Billed{Node: "router-node", Model: client.config.Model, PromptTokens: 10, CompletionTokens: 3, Cost: 0.02}, Ref: "generation-router", Reason: receiptTornReason, Found: true}
+	if result != want || len(bills) != 0 || len(results) != 0 {
+		t.Fatalf("banked result = %+v, want %+v; ordinary bills = %+v; extra results = %d", result, want, bills, len(results))
+	}
+	if len(requests) != 2 {
+		t.Fatalf("router sent %d requests, want one completion and one receipt", len(requests))
+	}
+	for _, expected := range []struct{ method, path, query string }{
+		{http.MethodPost, "/api/v1/chat/completions", ""},
+		{http.MethodGet, "/api/v1/generation", "id=generation-router"},
+	} {
+		request := <-requests
+		if request.URL.Scheme != "https" || request.URL.Host != "openrouter.ai" || request.Method != expected.method || request.URL.Path != expected.path || request.URL.RawQuery != expected.query || request.Header.Get("Authorization") != "Bearer router-key" {
+			t.Errorf("router request = %s %s with Authorization %q", request.Method, request.URL, request.Header.Get("Authorization"))
+		}
 	}
 	rows := telemetry.SpoolContents()
-	if len(rows) != 1 {
-		t.Fatalf("expected one recovered receipt, got %d", len(rows))
+	if len(rows) != 2 {
+		t.Fatalf("expected the torn attempt and recovered receipt, got %d events", len(rows))
 	}
 	var event struct {
 		Props map[string]any `json:"props"`
 	}
-	if err := json.Unmarshal(rows[0], &event); err != nil {
+	if err := json.Unmarshal(rows[1], &event); err != nil {
 		t.Fatal(err)
 	}
-	if event.Props["routing_provider"] != "openrouter" || event.Props["total_tokens"] != float64(13) {
+	if event.Props["routing_provider"] != "openrouter" || event.Props["total_tokens"] != float64(13) || event.Props["usage_status"] != "reported" || event.Props["accounting_source"] != "provider" {
 		t.Fatal(event.Props)
 	}
 }
