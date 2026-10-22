@@ -3477,11 +3477,11 @@ func (a *app) legend(width int) string {
 	seam, dial, gate, cycle := hudSpan{}, hudSpan{}, hudSpan{}, hudSpan{}
 	lift := func(text string) string {
 		return paintSpans(text, paint,
-			spanLift{span: cycle, lift: a.pal.underline, on: a.hot.kind == hoverModelCycle},
 			spanLift{span: seam, lift: func(text string) string {
 				return seamModelPaint(a.pal, text, a.hoveringStatusModel())
 			}, on: true},
 			spanLift{span: dial, lift: a.paintEffortChip, on: a.effortSeamLit()},
+			spanLift{span: cycle, lift: a.pal.underline, on: a.hot.kind == hoverModelCycle},
 			spanLift{span: gate, lift: a.paintApprovalChip, on: a.approvalSeamLit()})
 	}
 	// seat is one attempt: FIT IS DECIDED ON THE PLAIN WIDTHS BEFORE ANYTHING
@@ -3531,6 +3531,7 @@ func (a *app) legend(width int) string {
 		}
 		line, at, ok := a.legendLinePainted(left, right, painted, width, lift)
 		if !ok {
+			a.seamModelCycleSpan = hudSpan{}
 			a.seamModelSpan, a.seamEffortSpan, a.seamApprovalSpan = hudSpan{}, hudSpan{}, hudSpan{}
 			return "", false
 		}
