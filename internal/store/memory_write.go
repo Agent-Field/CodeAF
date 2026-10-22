@@ -97,24 +97,11 @@ func (s *Store) Write(req WriteRequest) (WriteResult, error) {
 		}
 		result = WriteResult{Memory: *existing, Outcome: WriteOutcomeSkipped}
 	} else {
-		if !req.Unbounded {
-			if err := memoryRoomOn(tx, owner, payload.Text, ""); err != nil {
-				return WriteResult{}, fmt.Errorf("write memory: %w", err)
-			}
-		}
-		seq, at, err := appendEvent(tx, payload.ID, EventMemoryAdd, payload)
-		addedAt = at
+		added, at, err := addMemoryOn(tx, owner, payload, req.Unbounded)
 		if err != nil {
 			return WriteResult{}, fmt.Errorf("write memory: %w", err)
 		}
-		if err := applyMemoryAdd(tx, payload, seq); err != nil {
-			return WriteResult{}, fmt.Errorf("write memory: %w", err)
-		}
-		rows, err := queryMemoriesOn(tx, "WHERE id = ?", []any{payload.ID}, "", 1)
-		if err != nil {
-			return WriteResult{}, fmt.Errorf("write memory: %w", err)
-		}
-		result.Memory = rows[0]
+		result.Memory, addedAt = added, at
 	}
 	if err := tx.Commit(); err != nil {
 		return WriteResult{}, fmt.Errorf("write memory: %w", err)
@@ -125,6 +112,30 @@ func (s *Store) Write(req WriteRequest) (WriteResult, error) {
 		}
 	}
 	return result, nil
+}
+
+// addMemoryOn is the add half of [Store.Write], inside its transaction: the
+// room check unless the request is unbounded, the add event and its
+// projection, and the row read back. It answers the event's time too, because
+// the seal made after the commit carries it.
+func addMemoryOn(tx *sql.Tx, owner string, payload memoryPayload, unbounded bool) (Memory, time.Time, error) {
+	if !unbounded {
+		if err := memoryRoomOn(tx, owner, payload.Text, ""); err != nil {
+			return Memory{}, time.Time{}, err
+		}
+	}
+	seq, at, err := appendEvent(tx, payload.ID, EventMemoryAdd, payload)
+	if err != nil {
+		return Memory{}, time.Time{}, err
+	}
+	if err := applyMemoryAdd(tx, payload, seq); err != nil {
+		return Memory{}, time.Time{}, err
+	}
+	rows, err := queryMemoriesOn(tx, "WHERE id = ?", []any{payload.ID}, "", 1)
+	if err != nil {
+		return Memory{}, time.Time{}, err
+	}
+	return rows[0], at, nil
 }
 
 // writeDuplicateOn probes indexed SimHash bands and verifies candidates with

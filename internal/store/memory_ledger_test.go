@@ -1,7 +1,6 @@
 package store
 
 import (
-	"errors"
 	"testing"
 )
 
@@ -33,13 +32,16 @@ func TestCellMemoryLedgerKeepsTheCurrentWriteRules(t *testing.T) {
 	if got, found, err := other.MemoryRecord(kept.ID); err != nil || !found || got.Text != req.Text || got.Owner != req.Owner {
 		t.Fatalf("transferred memory = %+v, found %v, err %v", got, found, err)
 	}
+	// Storage is unbounded and the prompt budget is applied at assembly, so a
+	// write past the block's size is admitted and travels like any other add.
 	fillTo(t, s, OwnerUser, "", "full", MemoryBlockRunes)
 	before := len(ledger.events)
-	if _, err := s.Write(WriteRequest{Owner: OwnerUser, Text: "another line", SourceSession: "chat"}); !errors.Is(err, ErrMemoryFull) {
-		t.Fatalf("full memory write = %v, want the current room refusal", err)
+	added, err := s.Write(WriteRequest{Owner: OwnerUser, Text: "another line", SourceSession: "chat"})
+	if err != nil {
+		t.Fatalf("write past the block's size = %v, want it admitted", err)
 	}
-	if len(ledger.events) != before {
-		t.Fatal("a refused write entered the cell ledger")
+	if len(ledger.events) != before+1 || ledger.events[before].ID != added.Memory.ID {
+		t.Fatalf("an admitted write past the block's size sealed %+v, want its one add", ledger.events[before:])
 	}
 }
 
