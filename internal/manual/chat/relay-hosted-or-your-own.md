@@ -53,3 +53,7 @@ There is no Docker image for the relay. The page `docs/relay.md` in the reposito
 Stable and rc builds have moving chats and pairing off unless `CODEAF_CELLS=1`; Windows does not have them.
 
 **Any caller with a valid signature may make an identity and store on your relay.** The relay has no list of allowed people: an identity is made from a key, and the relay accepts any key. Keep your relay on a private network, a tailnet or behind a proxy that checks who calls. One identity cannot read another's data.
+
+## My sync service is too old to move chats — update before continuing here
+
+An older service can still pair computers and list or show chats, but this build refuses to move a chat through it. It says `the sync service must be updated before chats can move; codeaf's operators update the hosted service, or run this build of codeaf relay for your own service`. The hosted service is updated by codeaf's operators. For your own service, replace the running `codeaf relay` with this build. Reopen codeaf after the update; the service's answer is remembered for the current run.

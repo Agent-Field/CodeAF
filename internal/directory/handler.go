@@ -64,6 +64,7 @@ func (h *handler) serve(rt route) http.HandlerFunc {
 			refuse(w, err)
 			return
 		}
+		w.Header().Set(ConditionalTakeHeader, "1")
 		reply(w, out)
 	}
 }

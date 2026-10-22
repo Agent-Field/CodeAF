@@ -122,8 +122,9 @@ func (t Taker) TakeSeen(ctx context.Context, id string, seen *directory.LeaseExp
 // from that one.
 func displacing(v directory.CellView) directory.AcquireOpts {
 	return directory.AcquireOpts{
-		Force:  v.Cell.Lease.Expires > v.Now,
-		Expect: &directory.LeaseExpectation{Device: v.Cell.Lease.Device, Fence: v.Cell.Lease.Fence},
+		RequireConditional: true,
+		Force:              v.Cell.Lease.Expires > v.Now,
+		Expect:             &directory.LeaseExpectation{Device: v.Cell.Lease.Device, Fence: v.Cell.Lease.Fence},
 	}
 }
 
