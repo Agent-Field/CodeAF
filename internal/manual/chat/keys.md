@@ -3708,3 +3708,24 @@ Press `alt+k` (`opt+k` on macOS) to open the chats menu from a conversation.
 It lists the same open tabs as Home, in the tab strip's order. Select one and press
 Enter. Closed conversations are behind the menu's fold; Home also keeps up to
 three recently closed conversations dimmed below the open list.
+
+
+## suggested replies in the desktop message box — Tab inserts, Escape dismisses
+
+In the desktop app, an idle, empty message box can show a suggested next message
+in your voice instead of its ordinary placeholder. This works in individual,
+crew manager/member, factory manager/step and task-note conversations. It uses
+recent settled messages and the current task or job state. Sometimes no reply
+is needed: the usual placeholder stays, especially while work is running.
+
+Press Tab to insert the suggestion as an editable draft. It does not send,
+approve, resume or change Auto/Manual. Edit it and send normally when ready.
+Escape dismisses it for that context; Shift-Tab keeps normal focus navigation.
+Typing your own words, adding files or opening a command/mention menu takes
+precedence. A late suggestion cannot replace your words or cross conversations.
+
+Generation is one small, cached naming-model request, not a full agent turn.
+Its usage counts toward the conversation and any owning factory job budget.
+It stops at the budget limit or when the conversation closes, and falls back
+quietly if generation fails or the connected engine lacks this capability.
+This is a desktop composer feature; terminal Tab behavior is unchanged.
