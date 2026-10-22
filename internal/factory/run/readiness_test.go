@@ -164,3 +164,40 @@ func TestReadinessPublicationReachesReadyWithoutPushingOrMerging(t *testing.T) {
 		t.Fatal("ready transition created another PR, comment or merge")
 	}
 }
+
+func TestReadinessExternalReadyHeadIsCheckedWithoutPublishing(t *testing.T) {
+	dir := gitRig(t)
+	head := mustGit(t, dir, "rev-parse", "HEAD")
+	var calls atomic.Int32
+	g := newRig(t, map[factory.StageKind]Executor{factory.StageChat: ExecutorFunc(func(_ context.Context, j Job) (factory.StageResult, error) {
+		calls.Add(1)
+		if j.Item.HeadCommit == head {
+			t.Error("head promoted before review passed")
+		}
+		return factory.StageResult{Done: true, Repair: &factory.CIRepairResult{Decision: "no_change", Reason: "Reviewed the current external commit, complete diff, description and feedback", Readiness: &factory.ReadinessReview{Head: head, DiffReviewed: true, DescriptionMatches: true, FeedbackAddressed: true, NoUnfinishedWork: true}}}, nil
+	})}, func(o *Options) {
+		o.Workdir = func(factory.Item) (string, error) { return dir, nil }
+		o.Push = func(string, string) error { t.Error("external checked head was pushed"); return nil }
+	})
+	id := g.add("external ready commit", chat("proof"))
+	if err := g.st.Update(id, func(it *factory.Item) error {
+		it.State, it.Publish, it.HeadCommit, it.Cap = factory.StateShipped, "pr", strings.Repeat("b", 40), 10
+		it.Autonomy = factory.AutonomyAuto
+		it.PullRequest = &factory.PullRequest{Number: 7, State: factory.PROpen, HeadSHA: head, ChecksRead: true, ReviewsRead: true, Mergeable: factory.MergeableYes, CI: "ci ✓", Checks: factory.PRChecks{Passed: 1}, ReadinessKey: "external-snapshot", ReadinessContext: "full diff and description"}
+		it.FollowUp = &factory.PRFollowUp{Kind: "pr", State: "healthy", Limit: 3}
+		it.Stream = &factory.Stream{Phases: []factory.Phase{{Name: "proof", State: factory.PhaseDone}}}
+		factory.QueueCIFollowUp(it, time.Now())
+		it.State = factory.StateRunning
+		it.Stream.Paused = true
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.r.Hold(id, false); err != nil {
+		t.Fatal(err)
+	}
+	got := g.waitState(id, factory.StateShipped)
+	if calls.Load() != 1 || got.HeadCommit != head || got.PullRequest.Draft || got.FollowUp.State != "healthy" || got.FollowUp.Readiness.State != "checked" || factory.ReadinessPending(got) || got.Approval != nil {
+		t.Fatalf("external review did not return directly to monitoring: %+v", got.FollowUp)
+	}
+}

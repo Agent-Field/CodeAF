@@ -15,14 +15,16 @@ const RecoveryWindow = 2 * time.Minute
 // survives a service restart and repeated runner losses, until this step succeeds
 // or the person deliberately tries again. No publication or merge is replayed.
 type StepRecovery struct {
-	Step     string    `json:"step"`
-	State    string    `json:"state"`
-	Attempts int       `json:"attempts"`
-	Limit    int       `json:"limit"`
-	NextAt   time.Time `json:"next_at,omitzero"`
-	Deadline time.Time `json:"deadline"`
-	LastAt   time.Time `json:"last_at"`
-	Reason   string    `json:"reason"`
+	BlockedBy string    `json:"blocked_by,omitempty"`
+	BlockedAt time.Time `json:"blocked_at,omitzero"`
+	Step      string    `json:"step"`
+	State     string    `json:"state"`
+	Attempts  int       `json:"attempts"`
+	Limit     int       `json:"limit"`
+	NextAt    time.Time `json:"next_at,omitzero"`
+	Deadline  time.Time `json:"deadline"`
+	LastAt    time.Time `json:"last_at"`
+	Reason    string    `json:"reason"`
 }
 
 // TransientStepFailure admits only known connection failures. Authentication,
@@ -71,6 +73,21 @@ func PlanStepRecovery(it *Item, now time.Time) bool {
 			return true
 		}
 	}
+	if rec != nil && rec.State == "exhausted" && rec.BlockedBy == "budget" && RecoveryBlockReason(*it) == "" && rec.Attempts < rec.Limit && TransientStepFailure(f) && f.Step == rec.Step && it.Asking == nil && (it.Question == "" || it.QKind == NeedsRunnerOffline || it.QKind == "cap") && !it.Stream.Paused {
+		cp := *rec
+		// Time spent waiting for more budget is not time spent attempting a
+		// recovery. Preserve the remaining window and cumulative attempts.
+		if !cp.BlockedAt.IsZero() {
+			cp.Deadline = cp.Deadline.Add(now.Sub(cp.BlockedAt))
+		}
+		if now.Before(cp.Deadline) {
+			cp.State, cp.Reason, cp.BlockedBy = "waiting", "Budget restored; retrying the interrupted step.", ""
+			cp.NextAt = now
+			cp.BlockedAt = time.Time{}
+			it.Recovery = &cp
+			return true
+		}
+	}
 	if rec != nil && rec.State == "queued" {
 		if why := RecoveryBlockReason(*it); why != "" || !now.Before(rec.Deadline) {
 			cp := *rec
@@ -78,6 +95,9 @@ func PlanStepRecovery(it *Item, now time.Time) bool {
 				why = "The runner did not return within the automatic retry window. Try again when ready."
 			}
 			cp.State, cp.Reason = "exhausted", why
+			if it.Cap <= 0 || JobSpent(*it) >= it.Cap {
+				cp.BlockedBy, cp.BlockedAt = "budget", now
+			}
 			it.Recovery, it.State = &cp, StateNeedsYou
 			StampFailure(it, NewFailure(cp.Step, CodeMachineLost, why, it.WorktreeMachine, FailureStopped, cp.Attempts, now))
 			it.Question, it.QKind = why, NeedsRunnerOffline
@@ -105,6 +125,9 @@ func PlanStepRecovery(it *Item, now time.Time) bool {
 	cp.LastAt, cp.Reason = f.At, f.Detail
 	if why := RecoveryBlockReason(*it); why != "" {
 		cp.State, cp.Reason = "exhausted", why
+		if it.Cap <= 0 || JobSpent(*it) >= it.Cap {
+			cp.BlockedBy, cp.BlockedAt = "budget", now
+		}
 	} else if cp.Attempts >= cp.Limit || !now.Before(cp.Deadline) {
 		cp.State, cp.Reason = "exhausted", fmt.Sprintf("Automatic recovery stopped after %d of %d retries. Try again to make another attempt.", cp.Attempts, cp.Limit)
 	} else {

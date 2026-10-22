@@ -499,12 +499,18 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 			if err := j.o.Mirror.Update(j.id, func(it *factory.Item) error { it.Cap = s.Budget; return nil }); err != nil {
 				return false
 			}
-			if s.Yes {
+			if it, err := j.o.Mirror.Get(j.id); s.Yes && err == nil && it.QKind == "cap" && s.Budget > factory.JobSpent(it) && factory.Automatic(it) && !it.Publishing {
 				_ = r.Answer(j.id, true, factory.ChoiceContinue)
 			}
 		case lease.SignalHold:
 			_ = r.Hold(j.id, s.Yes)
 		case lease.SignalAnswer:
+			if s.ID != "" {
+				it, err := j.o.Mirror.Get(j.id)
+				if err != nil || factory.PendingQuestionID(it) != s.ID {
+					continue
+				}
+			}
 			_ = r.Answer(j.id, s.Yes, s.Words)
 		case lease.SignalSteer:
 			_ = r.Steer(j.id, s.Words)

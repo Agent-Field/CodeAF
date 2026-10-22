@@ -58,6 +58,11 @@ func StepControl(it *factory.Item, name string, rerun bool, words string, now ti
 		target := &s.Phases[index]
 		target.Round = max(previous.Round+1, 1)
 		target.Rounds = append([]factory.RoundLine(nil), previous.Rounds...)
+		if planReportPending(name, previous.Result) && previous.Chat != "" {
+			target.Chat = previous.Chat
+			target.State = factory.PhaseRunning
+			target.Carry = append([]string(nil), previous.Carry...)
+		}
 		if previous.Failure != nil && previous.Round > 0 {
 			factory.NoteRound(target, factory.RoundLinesMost, factory.RoundLine{Round: previous.Round, Summary: previous.Failure.Detail, Rejected: true, At: previous.Failure.At, Started: previous.Started})
 		}

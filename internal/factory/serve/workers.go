@@ -542,6 +542,14 @@ func (h *Handler) doneWorker(w http.ResponseWriter, r *http.Request) {
 			}
 			return run.FinishReport(it, state, now)
 		}
+		if it.PullRequest != nil && (it.PullRequest.State == factory.PRMerged || it.PullRequest.State == factory.PRClosed) {
+			it.State = factory.StateShipped
+			factory.QueueCIFollowUp(it, now)
+			return nil
+		}
+		if run.ExternalPRHeadChecked(*it) {
+			return run.FinishReport(it, state, now)
+		}
 		// A WORKER NEVER APPROVES: done as shipped is a publish only beside
 		// the job's recorded approval and a reported PR or comment; anything
 		// else is the proof gate's to decide, as it always has been.

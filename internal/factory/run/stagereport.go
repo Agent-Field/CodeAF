@@ -250,3 +250,9 @@ func checkoutChange(dir, base string) string {
 	}
 	return cutAt(strings.Join(parts, "\n\n"), inferChangeMost)
 }
+
+// A drafted Plan whose completion handoff failed resumes its conversation on
+// the next bounded round or explicit retry. It does not rediscover the plan.
+func planReportPending(name string, res *factory.StageResult) bool {
+	return name == planStep && res != nil && !res.Done && res.Reports == 0 && !res.Inferred && (strings.HasPrefix(res.Output, stageNoReport) || strings.HasPrefix(res.Output, "Plan report recovery timed out"))
+}

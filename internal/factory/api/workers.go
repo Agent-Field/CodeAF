@@ -206,6 +206,9 @@ func ToWorkerReport(r WorkerReport) factory.RunReport {
 	}
 	if q := r.Question; q != nil {
 		out.Question = &factory.Asked{Stage: q.FromStep, Question: q.Text, Options: q.Options, Pick: q.Pick, Why: q.Why}
+		if q.At != nil {
+			out.Question.At = *q.At
+		}
 		out.QuestionKind = q.Kind
 	}
 	out.PR = toPR(r.PR)
@@ -232,7 +235,7 @@ func FromRunReport(r factory.RunReport) WorkerReport {
 		out.Steps = append(out.Steps, step)
 	}
 	if q := r.Question; q != nil {
-		out.Question = &Question{FromStep: q.Stage, Text: q.Question, Options: q.Options, Pick: q.Pick, Why: q.Why, Kind: r.QuestionKind}
+		out.Question = &Question{FromStep: q.Stage, Text: q.Question, Options: q.Options, Pick: q.Pick, Why: q.Why, Kind: r.QuestionKind, At: timeOrNil(q.At)}
 	}
 	out.PR = fromPR(r.PR)
 	if m := r.Merge; m != nil {

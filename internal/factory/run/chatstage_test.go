@@ -566,7 +566,7 @@ func TestAResumedStageReopensItsChatWithACarryOnNote(t *testing.T) {
 		t.Fatal(err)
 	}
 	spec := maker.Opened()[0].Spec
-	if spec.Resume != "chat-7" || spec.Brief != stageCarryOn || strings.Contains(spec.Brief, "fix the ledger") {
+	if spec.Resume != "chat-7" || spec.Brief != resumedStageBrief(job) || !strings.Contains(spec.Brief, stageAsk(job)) {
 		t.Fatalf("spec = %+v", spec)
 	}
 	if res.Chat != "chat-7" || told != "chat-7" {

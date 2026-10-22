@@ -499,3 +499,16 @@ func (d *Desk) change(change func(*document, time.Time) (bool, error)) error {
 		return d.write(*doc)
 	})
 }
+
+// HasLiveHold observes presence without reaping leases or changing job state.
+// Status questions must never become implicit recovery actions.
+func (d *Desk) HasLiveHold(id int) (bool, error) {
+	held := false
+	err := d.locked(func(doc *document, now time.Time) error {
+		if h := find(doc, id); h != nil {
+			held = now.Before(h.ExpiresAt)
+		}
+		return nil
+	})
+	return held, err
+}

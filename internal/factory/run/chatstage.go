@@ -192,6 +192,12 @@ const StageWall = 2 * time.Hour
 // stageWall is [StageWall], a variable so tests do not wait it out.
 var stageWall = StageWall
 
+// PlanReportWindow bounds closing an already-idle Plan, independently of the
+// work wall. A missing report must not leave a drafted plan working overnight.
+const PlanReportWindow = 2 * time.Minute
+
+var planReportWindow = PlanReportWindow
+
 // NewChatExecutor is the executor for [factory.StageChat] stages, opening each
 // round's conversation through maker.
 func NewChatExecutor(maker ConversationMaker) Executor {
@@ -238,7 +244,7 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 	// rather than failing a round the person only paused.
 	if job.Resume != "" {
 		resume := spec
-		resume.Resume, resume.Brief = job.Resume, carryOnBrief(job.CarryOn)+followProgressBrief(job)
+		resume.Resume, resume.Brief = job.Resume, resumedStageBrief(job)
 		if conv, err = e.maker.Open(ctx, resume); err != nil {
 			if ctx.Err() != nil {
 				return factory.StageResult{}, ctx.Err()
@@ -267,6 +273,15 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 		}
 	}
 
+	reportCtx := ctx
+	var reportDone <-chan struct{}
+	var reportCancel context.CancelFunc
+	defer func() {
+		if reportCancel != nil {
+			reportCancel()
+		}
+	}()
+	reportExpired := false
 	var waitErr error
 	asker := stageAsker{job: job}
 	walled := false
@@ -314,6 +329,10 @@ loop:
 				continue
 			}
 			caption(line)
+		case <-reportDone:
+			reportExpired = true
+			waitErr = errors.New("Plan report recovery timed out; the existing draft and decisions are retained. Try again to finish reporting.")
+			break loop
 		case <-wall.C:
 			walled = true
 			break loop
@@ -350,7 +369,11 @@ loop:
 			if _, stopped := spendStopOf(waitErr); stopped {
 				break loop
 			}
-			line, ok := asker.next(ctx, conv, waitErr)
+			if reportDone == nil && strings.EqualFold(stageLabel(job.Stage), planStep) {
+				reportCtx, reportCancel = context.WithTimeout(ctx, planReportWindow)
+				reportDone = reportCtx.Done()
+			}
+			line, ok := asker.next(reportCtx, conv, waitErr)
 			if !ok {
 				break loop
 			}
@@ -377,7 +400,12 @@ loop:
 	}
 	res := door.result()
 	if door.empty() {
-		made, line := unreported(ctx, conv, job, spec.Brief, waitErr, walled)
+		made, line := factory.StageResult{Output: stageNoReport}, ""
+		if reportExpired {
+			made.Output = waitErr.Error()
+		} else {
+			made, line = unreported(reportCtx, conv, job, spec.Brief, waitErr, walled)
+		}
 		if ctx.Err() != nil {
 			return factory.StageResult{}, ctx.Err()
 		}
@@ -490,6 +518,9 @@ const stageHandleMost = 12
 func stageAsk(job Job) string {
 	ask := stageLabel(job.Stage)
 	if f := job.Item.FollowUp; f != nil && f.Kind == "readiness" && factory.IsCIRepairStage(job.Stage) {
+		if job.Item.PullRequest != nil && !job.Item.PullRequest.Draft {
+			return ask + ": perform a read-only check of the changed PR head, complete diff, description and feedback before returning to monitoring. Do not edit, push, change draft status, or require a human approving review."
+		}
 		return ask + ": perform the final read-only code, description and feedback check before the service marks this draft Ready for Review. Do not edit code or require a human approving review."
 	}
 	if a := oneLine(job.Stage.Ask); a != "" {
@@ -1186,4 +1217,12 @@ func reportExecutionNotes(owner executionReporter, r factory.StageResult) ([]str
 		}
 	}
 	return owner.ExecutionNotes()
+}
+
+// Reopening restores the stage's purpose and completion ownership as well as
+// its transcript. In particular a Plan resumes planning, not implementation or
+// proof, and a saved decision rides beside the existing draft rather than
+// asking the worker to rediscover it.
+func resumedStageBrief(job Job) string {
+	return stageAsk(job) + "\n\n" + stageRole(job) + "\n\n" + planBrief(job) + "\n\n" + carryOnBrief(job.CarryOn) + ciFollowUpBrief(job.Item) + followProgressBrief(job)
 }

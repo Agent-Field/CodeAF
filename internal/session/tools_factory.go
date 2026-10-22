@@ -149,6 +149,9 @@ func (a *Agent) factoryTools() []bare.Tool {
 	// stages, rides on a fourth door, absent on the same law.
 	if a.config.mayRun() {
 		tools = append(tools, a.factoryRunTool())
+		if _, ok := a.config.FactoryRun.(ManagerStatusDoor); ok {
+			tools = append(tools, a.factoryStatusTool())
+		}
 		// `factory_answer` (tools_factory_answer.go), the manager's reply to a
 		// step's question, rides on the same door: it is the manager's.
 		tools = append(tools, a.factoryAnswerTool())

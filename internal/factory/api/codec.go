@@ -870,6 +870,16 @@ func steps(it factory.Item) []Step {
 	for ; j < len(phases); j++ {
 		out = append(out, runStep(Step{StepDef: StepDef{Name: phases[j].Name, Kind: string(phases[j].Kind)}}, phases[j]))
 	}
+	// A persisted decision owns the current step even if an older worker
+	// left its phase marked running. Do not draw an idle working timer.
+	if it.State == factory.StateNeedsYou && it.Question != "" && it.Stream != nil && it.Stream.Cur >= 0 && it.Stream.Cur < len(phases) {
+		name := phases[it.Stream.Cur].Name
+		for i := range out {
+			if out[i].Name == name && out[i].State == StepRunning {
+				out[i].State = StepWaiting
+			}
+		}
+	}
 	return out
 }
 

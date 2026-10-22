@@ -12,6 +12,9 @@ import (
 const FollowPRStep = "followpr"
 const DefaultPRRepairAttempts = 3
 
+const FollowBlockedBudget = "budget"
+const FollowBlockedAttempts = "attempts"
+
 // PRFollowUp keeps the publication record and the PR maintenance cursor.
 // Every later tested head receives its own service-side publication approval.
 type PRFollowUp struct {
@@ -19,7 +22,9 @@ type PRFollowUp struct {
 	ReviewKey      string       `json:"review_key,omitempty"`
 	Kind           string       `json:"kind"`
 	State          string       `json:"state"`
+	BlockedBy      string       `json:"blocked_by,omitempty"`
 	HeadSHA        string       `json:"head_sha,omitempty"`
+	ObservedFrom   string       `json:"observed_from,omitempty"`
 	Attempt        int          `json:"attempt"`
 	Limit          int          `json:"limit"`
 	Reason         string       `json:"reason"`
@@ -105,6 +110,7 @@ func WatchPublishedPR(it *Item) {
 	}
 	f := *it.FollowUp
 	f.Request = ""
+	f.BlockedBy = ""
 	f.State, f.Reason = "watching", "Watching CI, reviews and merge conflicts automatically. Merge remains your decision."
 	if !it.PullRequest.Draft {
 		f.Reason = "PR is ready for review. Watching CI, feedback and conflicts; merge remains your decision."
@@ -162,9 +168,9 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 		it.Stream.Ended = now
 		return true
 	}
-	if ReadinessPending(*it) && !it.Publishing && !it.Manual {
+	if ReadinessPending(*it) && !it.Publishing && !it.Manual && it.Question == "" && it.Asking == nil {
 		a := f.Readiness
-		if !pr.Draft && pr.State == PROpen {
+		if !pr.Draft && pr.State == PROpen && pr.HeadSHA == a.Head && (pr.ReadinessKey == "" || pr.ReadinessKey == a.Key) {
 			a.State, a.At = "ready", now
 			f.State, f.Reason = "healthy", "PR is ready for review. Watching CI, feedback and conflicts; merge remains your decision."
 			it.State = StateShipped
@@ -197,11 +203,26 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 	if it.Manual || pr.State != PROpen || it.State != StateShipped || (it.Merging != nil && it.Merging.State != MergeFailed) {
 		return false
 	}
+	if f.Limit < 1 {
+		f.Limit = DefaultPRRepairAttempts
+	}
+	// Migrate the one unambiguous older spending stop: the combined legacy
+	// reason could only mean budget when the repair count is still below limit.
+	if f.State == "needs_you" && f.BlockedBy == "" && f.Attempt < f.Limit && f.Reason == "Follow PR reached its repair or spending limit. Take over, or raise the limit and resume." {
+		f.BlockedBy = FollowBlockedBudget
+	}
+	releasedBudget := false
+	// Only a spending-owned pause may reopen on a fresh observation. Critical
+	// questions, Manual control and exhausted attempts retain their own doors.
+	if f.State == "needs_you" && f.BlockedBy == FollowBlockedBudget && Automatic(*it) && it.Question == "" && it.Cap > JobSpent(*it) && f.Attempt < f.Limit {
+		f.State, f.BlockedBy = "watching", ""
+		releasedBudget = true
+	}
 	if f.State == "needs_you" || f.State == "queued" || f.State == "running" || f.State == "waiting_approval" {
-		return false
+		return releasedBudget
 	}
 	if pr.HeadSHA == "" {
-		return false
+		return releasedBudget
 	}
 	key := followEvent(pr, f.Request)
 
@@ -227,7 +248,7 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 			reason = "Ready for review blocked: " + reason
 		}
 		if f.State == "watching" && f.Reason == reason {
-			return false
+			return releasedBudget
 		}
 		f.State, f.Reason = "watching", reason
 		i := EnsureFollowPR(it)
@@ -235,31 +256,42 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 		return true
 	}
 	if !needs && (!pr.ChecksRead || pr.Checks.Pending > 0) {
-		return false
+		return releasedBudget
 	}
 	needs = needs || pr.Checks.Failed > 0
 	// Monitoring failures and recoveries are independent of repair deduplication.
 	if needs && f.EventKey == key {
-		return false
+		return releasedBudget
 	}
 	readinessQueued := false
-	if !needs && pr.Draft && pr.ReadinessKey != "" && ReadinessGate(*it) == nil && (f.Readiness == nil || f.Readiness.Key != pr.ReadinessKey) {
+	if !needs && (pr.Draft || pr.HeadSHA != it.HeadCommit) && pr.ReadinessKey != "" && ReadinessGate(*it) == nil && (f.Readiness == nil || f.Readiness.Key != pr.ReadinessKey) {
 		if f.Limit < 1 {
 			f.Limit = DefaultPRRepairAttempts
 		}
 		if f.Attempt >= f.Limit {
+			f.BlockedBy = FollowBlockedAttempts
 			f.State, f.Reason = "needs_you", "Final readiness review reached its attempt limit. Retry Follow PR or take over."
 			return true
 		}
 		readinessQueued = true
 		f.Kind = "readiness"
-		f.Readiness = &PRReadiness{Key: pr.ReadinessKey, Head: pr.HeadSHA, State: "reviewing"}
+		f.Readiness = &PRReadiness{Key: pr.ReadinessKey, Head: pr.HeadSHA, State: "reviewing", External: pr.HeadSHA != it.HeadCommit}
 		f.Details = pr.ReadinessContext
 		needs = true
 	}
+	if !needs && (pr.HeadSHA != it.HeadCommit || pr.Draft) {
+		if it.Cap > 0 && JobSpent(*it) >= it.Cap {
+			return parkFollowBudget(it)
+		}
+		// A green external commit still needs complete captured review material.
+		reason := "PR head changed. Waiting for complete current-head checks and review material before verification."
+		changed := f.State != "watching" || f.Reason != reason
+		f.State, f.Reason = "watching", reason
+		return changed
+	}
 	if !needs {
 		if f.State == "healthy" {
-			return false
+			return releasedBudget
 		}
 		f.State, f.Reason = "healthy", "Checks passed. Watching for review feedback and conflicts; awaiting your merge."
 		f.Attempt = 0
@@ -271,10 +303,15 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 	if f.Limit < 1 {
 		f.Limit = DefaultPRRepairAttempts
 	}
-	if f.Attempt >= f.Limit || (it.Cap > 0 && JobSpent(*it) >= it.Cap) {
-		f.State, f.Reason = "needs_you", "Follow PR reached its repair or spending limit. Take over, or raise the limit and resume."
+	if f.Attempt >= f.Limit {
+		f.BlockedBy = FollowBlockedAttempts
+		f.State, f.Reason = "needs_you", "Follow PR reached its repair limit. Retry Follow PR or take over."
 		return true
 	}
+	if it.Cap <= 0 || JobSpent(*it) >= it.Cap {
+		return parkFollowBudget(it)
+	}
+	f.BlockedBy = ""
 	f.HeadSHA, f.EventKey, f.Attempt = pr.HeadSHA, key, f.Attempt+1
 	if reviewsKnown {
 		// A round started for CI or a conflict during an incomplete feedback
@@ -290,6 +327,9 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 	}
 	if f.Kind == "readiness" {
 		f.Reason = "Final review: checking the current PR diff, description and outstanding feedback before marking it ready for review."
+		if !pr.Draft {
+			f.Reason = "Checking the changed PR head, diff, description and feedback before resuming monitoring."
+		}
 	}
 	i := EnsureFollowPR(it)
 	ph := &it.Stream.Phases[i]
@@ -305,9 +345,18 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 	it.State = StateQueued
 	it.Question, it.QKind = "", ""
 	it.Asking, it.Failure, it.Approval = nil, nil, nil
-	if !readinessQueued {
+	if !readinessQueued || f.Readiness.External {
 		it.Proof, it.Policy = nil, nil
 	}
 	it.Stream.Log = append(it.Stream.Log, LogLine{At: now, Tone: "said", Text: fmt.Sprintf("Follow PR queued · repair %d · PR #%d", f.Attempt, pr.Number)})
 	return true
+}
+
+// Budget is a separate recoverable stop; neither the observation nor a cap edit
+// grants another repair attempt or authorizes publication.
+func parkFollowBudget(it *Item) bool {
+	f := it.FollowUp
+	changed := f.State != "needs_you" || f.BlockedBy != FollowBlockedBudget
+	f.State, f.BlockedBy, f.Reason = "needs_you", FollowBlockedBudget, "Job budget reached. Raise Budget to continue following this PR. GitHub observations continue."
+	return changed
 }

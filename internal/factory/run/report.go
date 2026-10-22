@@ -25,6 +25,9 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 	if report.PR != nil && report.CommentURL != "" {
 		return fmt.Errorf("publish reports either a pr or a comment")
 	}
+	if err := applyFollowObservation(it, report); err != nil {
+		return err
+	}
 	if report.Change != nil {
 		if err := validateChange(report.Change); err != nil {
 			return err
@@ -59,7 +62,7 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 			return fmt.Errorf("follow-up identity changed")
 		}
 		f := *it.FollowUp
-		f.State, f.Reason = report.FollowUp.State, report.FollowUp.Reason
+		f.State, f.Reason, f.BlockedBy = report.FollowUp.State, report.FollowUp.Reason, report.FollowUp.BlockedBy
 		if f.Kind == "readiness" && report.FollowUp.Kind == "pr" && report.FollowUp.Readiness == nil {
 			f.Kind = "pr"
 			f.Readiness = nil
@@ -68,7 +71,7 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 
 		if report.FollowUp.Readiness != nil {
 			a := report.FollowUp.Readiness
-			if a.State != "reviewing" && a.State != "reviewed" && a.State != "ready" {
+			if a.State != "reviewing" && a.State != "reviewed" && a.State != "ready" && a.State != "checked" {
 				return fmt.Errorf("unknown readiness state")
 			}
 			if a.State == "ready" && (f.Readiness == nil || f.Readiness.State != "reviewed" || !it.Publishing) {
@@ -78,7 +81,10 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 			if f.Readiness == nil || a.Key != f.Readiness.Key || a.Head != f.Readiness.Head {
 				return fmt.Errorf("readiness snapshot changed")
 			}
-			if a.State == "reviewed" && f.Readiness.State != "reviewed" {
+			if (a.State == "reviewed" || a.State == "checked") && f.Readiness.State != a.State {
+				if a.State == "checked" && (it.PullRequest == nil || it.PullRequest.Draft || it.PullRequest.HeadSHA != a.Head || !f.Readiness.External) {
+					return fmt.Errorf("checked requires the captured external ready PR head")
+				}
 				found := false
 				for _, step := range report.Stages {
 					if step.Name == factory.FollowPRStep && step.Result != nil {
@@ -110,6 +116,7 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 				it.Note(now, word+" · head "+a.Head+" · "+a.Summary)
 			}
 			cp := *a
+			cp.External = f.Readiness.External
 			f.Readiness = &cp
 		}
 		it.FollowUp = &f
@@ -258,7 +265,10 @@ func reportQuestion(it *factory.Item, question *factory.Asked, kind string, now 
 	if strings.TrimSpace(q.Question) == "" {
 		return fmt.Errorf("question requires text")
 	}
-	q.At, q.With = now, factory.AskedYou
+	if q.At.IsZero() {
+		q.At = now
+	}
+	q.With = factory.AskedYou
 	if q.Stage != "" {
 		i := phaseIndex(it, q.Stage)
 		if i < 0 {
@@ -469,6 +479,35 @@ func FinishReport(it *factory.Item, state factory.State, now time.Time) error {
 	case "", factory.StateLanded:
 		landItem(it, now)
 	case factory.StateShipped:
+		if it.FollowUp != nil && it.FollowUp.State == "healthy" && it.FollowUp.Readiness != nil && it.FollowUp.Readiness.State == "checked" && !ExternalPRHeadChecked(*it) {
+			return fmt.Errorf("checked PR snapshot changed before completion")
+		}
+		if ExternalPRHeadChecked(*it) {
+			if it.Question != "" || it.Asking != nil {
+				return fmt.Errorf("a pending decision must be resolved before completing the PR review")
+			}
+			if err := factory.ReadinessGate(*it); err != nil {
+				return err
+			}
+			found := false
+			for _, ph := range it.Stream.Phases {
+				if ph.Name == factory.FollowPRStep && ph.Result != nil {
+					if err := factory.ValidateReadinessReview(*it, *ph.Result); err != nil {
+						return err
+					}
+					found = true
+				}
+			}
+			if !found {
+				return fmt.Errorf("current-head review report is missing")
+			}
+			it.State = factory.StateShipped
+			it.Question, it.QKind = "", ""
+			it.Asking = nil
+			it.Stream.Ended = now
+			it.Stream.Paused = false
+			return nil
+		}
 		if factory.NeedsPublishApproval(*it) || len(it.Proof) == 0 || !clean(*it) {
 			return fmt.Errorf("job requires proof approval")
 		}
@@ -526,4 +565,44 @@ func landItem(it *factory.Item, now time.Time) bool {
 		loopSay(it, now, "said", sayLanded)
 	}
 	return false
+}
+
+// ExternalPRHeadChecked is completion of an inspection of an already-published
+// ready PR, not an outward action or a worker's substitute publication consent.
+func ExternalPRHeadChecked(it factory.Item) bool {
+	f, p := it.FollowUp, it.PullRequest
+	return f != nil && f.Kind == "readiness" && f.State == "healthy" && f.Readiness != nil && f.Readiness.External && f.Readiness.State == "checked" && p != nil && !p.Draft && p.State == factory.PROpen && p.HeadSHA == it.HeadCommit && p.HeadSHA == f.Readiness.Head && p.ReadinessKey != "" && p.ReadinessKey == f.Readiness.Key
+}
+
+// A held attempt may refresh its captured remote head or review snapshot before
+// work. Accept only the same PR and attempt, following the previous captured
+// head; never overwrite a third, newer service observation or publication.
+func applyFollowObservation(it *factory.Item, report factory.RunReport) error {
+	f, next, pr := it.FollowUp, report.FollowUp, report.PR
+	if f == nil || next == nil || f.Attempt != next.Attempt || pr == nil {
+		return nil
+	}
+	moved := f.HeadSHA != next.HeadSHA
+	snapshot := f.Kind == "readiness" && f.Readiness != nil && next.Readiness != nil && f.Readiness.Key != next.Readiness.Key
+	if !moved && !snapshot {
+		return nil
+	}
+	old := it.PullRequest
+	if it.Publishing || old == nil || old.Number != pr.Number || old.URL != pr.URL || pr.HeadSHA != next.HeadSHA || (old.HeadSHA != f.HeadSHA && old.HeadSHA != pr.HeadSHA) || (moved && next.ObservedFrom != f.HeadSHA) {
+		return fmt.Errorf("follow-up observation no longer matches the held PR attempt")
+	}
+	if err := reportPR(it, pr); err != nil {
+		return err
+	}
+	f.HeadSHA, f.ObservedFrom = next.HeadSHA, next.ObservedFrom
+	if snapshot || moved {
+		it.Approval, it.Proof, it.Policy = nil, nil, nil
+		if f.Kind == "readiness" && next.Readiness != nil {
+			if pr.ReadinessKey == "" || next.Readiness.Key != pr.ReadinessKey || next.Readiness.Head != pr.HeadSHA {
+				return fmt.Errorf("complete current-head review material is required")
+			}
+			f.Readiness = &factory.PRReadiness{Key: pr.ReadinessKey, Head: pr.HeadSHA, State: "reviewing", External: pr.HeadSHA != it.HeadCommit}
+		}
+	}
+	return nil
 }

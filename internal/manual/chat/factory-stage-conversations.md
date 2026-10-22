@@ -110,7 +110,7 @@ brought nothing:
 A spending limit is a stop, not a missing report: a turn today's limit refused stops the job
 with `today's spend limit stopped this step` (another limit: `a spend limit stopped this step:
 <its words>`), with no reminder and nothing asked. Only when all three came back empty, or a
-round ran for two hours, does the job wait for you, in plain words:
+round ran for two hours (or an idle Plan could not finish reporting within its two-minute recovery window), does the job wait for you, in plain words:
 
 - `plan stopped without reporting · try again, or stop the job?`, with why after a colon when
   codeaf could not make the report;
@@ -261,7 +261,7 @@ What you type into the item's chat goes to the run; nothing else is needed.
 - **While the run waits on a question**, a line that starts with `yes` (`yes, go`) answers yes
   and a plain `no` answers no; for a plan, a gate or a stage that fell short, any other words
   (`no, use the other file`) answer it in words, as `a` does. The chat then says `answered: yes`. Words that do not answer a budget question are
-  taken as a steer instead.
+  taken as a steer instead. Status-only questions such as `Where do we stand here? What's next?` and `Are we stuck?` never answer the pending decision.
 
 Each line is taken once. The chat's model still answers you; it shapes the run's stages with
 `factory_run` and changes the budget, thinking and notes through `factory_item`'s card.
@@ -597,3 +597,26 @@ rerun. Missing or unreadable evidence requires a rerun, never an assumed pass.
 A locally checked repair can be pushed while the old remote head is red: fresh CI
 must run on the new commit. Publishing clears old CI evidence; current-head green
 checks, complete PR reads and the final review are still required for readiness.
+
+
+## persisted Plan decisions, cheap status and report recovery
+
+An ordinary manager turn can call `factory_status` to read saved job facts and
+its current step-question ID without inspecting the workspace. Common status-only
+questions (`status`, `Where do we stand here? What's next?`, `Are we stuck?`) sent to an idle manager receive
+that read directly, with no model request, even when the spending rail is reached.
+Other wording can use the status tool. Status never retries work or answers a decision.
+
+The manager can use `factory_answer` with `question_id` and the person's answer,
+including an engineering choice delegated with “you decide”, after the temporary
+inbox turn or after a restart. Only this job's manager can answer. The exact ask
+and round must still match; polling and spending updates do not invalidate it.
+The answer is saved before a warm worker is signalled, or the cold continuation
+is queued. Status-only questions are read without becoming steering notes. Manual takeover and publication retain control. A failed tool call
+means nothing was saved: the manager must report that failure, not say the plan advanced.
+
+A resumed Plan restores its planning role, completion door and saved answer in
+its existing conversation. An idle Plan gets at most three report reminders and
+one inference attempt inside a two-minute recovery window. On timeout it reports
+an explicit shortfall; drafted work and decisions remain available for retry.
+Implementation checks are not prerequisites for a Plan report.

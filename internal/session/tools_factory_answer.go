@@ -18,8 +18,8 @@ package session
 //     the manager with the question, `factory_answer` either answers it, and
 //     the step goes on with the words, or sends it to the person with one line
 //     of why, and the step waits for them. It answers through the door lent
-//     to that turn ([InboxDoor]); on any other turn nothing is waiting on the
-//     manager, and it says so with nothing done.
+//     to that turn ([InboxDoor]). Ordinary manager turns use the durable
+//     ManagerStatusDoor to answer the exact saved question after restart.
 
 import (
 	"context"
@@ -54,12 +54,13 @@ const (
 	answerNeedsOne     = "Invalid arguments: factory_answer needs answer, or ask_person with one line of why, not both."
 )
 
-const factoryAnswerDescription = "Reply to the question a step of your item asked you; the runner hands you the question on its own turn. " +
+const factoryAnswerDescription = "Reply to a step question. During a temporary inbox turn, answer the supplied question. On an ordinary manager turn, read factory_status and pass its question_id to save the person's answer or delegated engineering choice durably; a stale question is refused. A failed tool call means nothing was saved; never claim a decision advanced the run unless the tool confirms it. " +
 	"answer is your answer in words, and the step goes on with it at once: answer yourself when the issue, the recipe, the stages, the notes or what the person said here settle it. " +
 	"ask_person is one line of why, and sends the question to the person in this conversation; the step waits for their answer. " +
 	"Send it to the person when it turns on taste, scope, risk, credentials or access, money, or anything the issue and the recipe do not say. Never guess an answer to spare them."
 
 const factoryAnswerSchemaJSON = `{"type":"object","properties":{` +
+	`"question_id":{"type":"string","description":"The exact pending question_id returned by factory_status, required when answering a persisted step question outside its temporary inbox turn."},` +
 	`"answer":{"type":"string","description":"Your answer in words, for the step."},` +
 	`"ask_person":{"type":"string","description":"One line of why the person decides it."}` +
 	`},"additionalProperties":false}`
@@ -75,8 +76,9 @@ func (a *Agent) factoryAnswerTool() bare.Tool {
 		Schema:      json.RawMessage(factoryAnswerSchemaJSON),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed struct {
-				Answer    string `json:"answer"`
-				AskPerson string `json:"ask_person"`
+				QuestionID string `json:"question_id"`
+				Answer     string `json:"answer"`
+				AskPerson  string `json:"ask_person"`
 			}
 			if len(args) > 0 {
 				if err := decodeToolArguments(args, &parsed); err != nil {
@@ -87,6 +89,16 @@ func (a *Agent) factoryAnswerTool() bare.Tool {
 			why := strings.Join(strings.Fields(parsed.AskPerson), " ")
 			if (answer == "") == (why == "") {
 				return answerNeedsOne, true, nil
+			}
+			if d, ok := a.runDoorForTurn().(ManagerStatusDoor); ok {
+				if answer == "" {
+					return "The persisted question is already with the person; nothing changed.", true, nil
+				}
+				line, err := d.AnswerPending(ctx, a.config.SessionFile, parsed.QuestionID, answer)
+				if err != nil {
+					return "nothing changed: " + err.Error(), true, nil
+				}
+				return line, false, nil
 			}
 			door, ok := a.runDoorForTurn().(InboxDoor)
 			if !ok || door == nil {
