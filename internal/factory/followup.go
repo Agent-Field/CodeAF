@@ -3,6 +3,7 @@ package factory
 import (
 	"crypto/sha256"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -127,6 +128,15 @@ func followEvent(pr *PullRequest, request string) string {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(b.String())))
 }
 
+func prProblemIn(pr *PullRequest, areas ...string) bool {
+	for _, p := range pr.Problems {
+		if slices.Contains(areas, p.Area) {
+			return true
+		}
+	}
+	return false
+}
+
 // Compatibility name for the PR maintenance queue. Unchanged observations are quiet.
 func QueueCIFollowUp(it *Item, now time.Time) bool {
 	f, pr := it.FollowUp, it.PullRequest
@@ -203,7 +213,11 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 	reviewPR.Checks = PRChecks{}
 	reviewPR.Conflict = false
 	reviewKey := followEvent(&reviewPR, "")
-	needsReview := (pr.ReviewDecision == "changes_requested" || pr.Feedback != "") && reviewKey != f.ReviewKey
+	// An incomplete reviews, review-policy or feedback read is not new feedback:
+	// its partial facts would change the key now and change it back on recovery,
+	// starting a paid round each time. Wait for a complete read.
+	reviewsKnown := !prProblemIn(pr, "reviews", "review policy", "feedback")
+	needsReview := reviewsKnown && (pr.ReviewDecision == "changes_requested" || pr.Feedback != "") && reviewKey != f.ReviewKey
 	needs := pr.Conflict || needsReview || f.Request != ""
 	// A failed policy/material read must not discard current CI or prevent a
 	// separate, known repair. Do not label incomplete monitoring as healthy.
@@ -262,7 +276,11 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 		return true
 	}
 	f.HeadSHA, f.EventKey, f.Attempt = pr.HeadSHA, key, f.Attempt+1
-	f.ReviewKey = reviewKey
+	if reviewsKnown {
+		// A round started for CI or a conflict during an incomplete feedback
+		// read keeps the last complete review key.
+		f.ReviewKey = reviewKey
+	}
 	if !readinessQueued {
 		f.Kind = "pr"
 	}
