@@ -1,6 +1,7 @@
 package session
 
 import (
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"strconv"
 	"strings"
 )
@@ -13,6 +14,17 @@ func legacyRoutineCompletion(entry sessionEntry) bool {
 		return false
 	}
 	text := entry.Content
+	// Old crew receipts were authored single-line records. A person's quoted text has no Note mark.
+	if !strings.ContainsAny(text, "\r\n") {
+		head, body, ok := strings.Cut(text, " crew · ")
+		fields := strings.Fields(head)
+		if ok && len(fields) == 2 && fields[0] == "task" && strings.Contains(body, " · worker ") && strings.Contains(body, " · checker ") {
+			id, err := strconv.ParseUint(fields[1], 10, 64)
+			if err == nil && id > 0 {
+				return true
+			}
+		}
+	}
 	if strings.HasPrefix(text, "while you worked:") {
 		return false
 	}
@@ -45,4 +57,39 @@ func legacyRoutineCompletion(entry sessionEntry) bool {
 		return err == nil && id > 0 && strings.HasPrefix(head, "task "+fields[1]+" "+ProjectTask(notice.StatusFacts()).Word+": ") && strings.Contains(head, " · transcript ")
 	}
 	return false
+}
+
+// Receipt provenance is carried separately so inspecting it cannot consume the answer's own tags.
+func completionTaskTags(journal *sessionFile, message ai.Message, routine bool, presentation *presentationIndex) []TaskReplyTag {
+	if routine {
+		if mark := presentation.of(message); mark != nil && len(mark.CompletionTasks) > 0 {
+			return append([]TaskReplyTag(nil), mark.CompletionTasks...)
+		}
+	}
+	if !routine || journal == nil {
+		return nil
+	}
+	return journal.taskReplyTags(message)
+}
+
+// Older mixed batches cannot prove that a requested alert was absent, so their complete content stays visible.
+func legacyAttentionReceipt(entry sessionEntry) bool {
+	if entry.Role != "user" || !entry.Note || len(entry.ToolCalls) != 0 || legacyRoutineCompletion(entry) {
+		return false
+	}
+	text := strings.TrimSpace(entry.Content)
+	if strings.HasPrefix(text, "while you worked:") {
+		return true
+	}
+	return LegacyWatchAlert(text)
+}
+
+// LegacyWatchAlert recognizes only the reserved terminal watch records, not periodic watch ticks.
+func LegacyWatchAlert(text string) bool {
+	head, _, _ := strings.Cut(strings.TrimSpace(text), "\n")
+	if !strings.HasPrefix(head, "watch ") {
+		return false
+	}
+	_, summary, ok := strings.Cut(head, ": ")
+	return ok && (summary == "until matched" || strings.HasPrefix(summary, "quiet for ") || strings.HasPrefix(summary, "stopped: the command failed "))
 }

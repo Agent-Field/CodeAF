@@ -605,8 +605,10 @@ type entry struct {
 	// else (taskdone.go). Like [entry.card] it is a POINTER, because the card
 	// carries the one piece of state a person can change about it — whether its
 	// full context is showing — and the row and that state must never disagree.
-	done    *taskDone
-	harness *harnessCard
+	// completion is operational history disclosed under the request that owns it.
+	completion *workCompletion
+	done       *taskDone
+	harness    *harnessCard
 	// auto is the automation card or line this entry draws, for kind
 	// entryAutomation and nothing else (automation.go). It is a POINTER for
 	// [entry.card]'s reason: the answer lane holds the same card, and the row
@@ -1389,7 +1391,10 @@ type app struct {
 	// same bargain again, for a chip that is right-aligned and so knows its own
 	// columns only once the frame has chosen a width (jumpchip.go's
 	// [app.jumpChip] and [app.jumpPress]).
-	jumpSpan hudSpan
+	jumpSpan                hudSpan
+	completionToast         completionToast
+	completionToastY        int
+	pendingCompletionReveal *completionToast
 	// steerDoor is where the waiting message's `→ steers it in` clause was last
 	// drawn, in columns, or the zero span on a frame that did not draw it — the
 	// same bargain jumpSpan makes, for the same reason: the line that lays the
@@ -3595,7 +3600,11 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if alarm := a.chatTipAlarm(); alarm != nil {
 		cmd = tea.Batch(cmd, alarm)
 	}
+	cmd = tea.Batch(cmd, a.applyCompletionReveal())
 	a.chatTipCount()
+	if alarm := a.completionToastAlarm(); alarm != nil {
+		cmd = tea.Batch(cmd, alarm)
+	}
 	// AND A CLOCK SOMEBODY STOPPED IS TOLD TO THE ENGINE HERE, from a command
 	// rather than from inside the key routine that took the key
 	// (questionhold.go's [app.takeQuestionHolds] says why it is this line).
@@ -3656,6 +3665,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// not survive has news, and a person who presses a key gets it rather than
 	// waiting for whatever repaints next.
 	a.takeLinkNotice()
+	// An explicit gesture after View replaces its pending navigation intent.
+	switch msg.(type) {
+	case tea.KeyPressMsg, tea.PasteMsg, tea.MouseClickMsg, tea.MouseWheelMsg:
+		a.pendingCompletionReveal = nil
+	}
 	// THE TEAMS PAGE TAKES WHAT IS ITS OWN AND HANDS THE REST TO THE MANAGER'S
 	// CONVERSATION it hosts (teamspagehost.go). One comparison on every other
 	// place.
@@ -3663,6 +3677,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, cmd
 	}
 	switch msg := msg.(type) {
+	case completionToastExpiredMsg:
+		if msg.serial == a.completionToast.serial {
+			a.dismissCompletionToast()
+		}
+		return a, nil
 	case tea.WindowSizeMsg:
 		// A zero size is a terminal that could not say — a headless boot, a
 		// window being born. Keeping the last known size draws something;
@@ -3790,6 +3809,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		flushed, taken := a.pasteKey(msg)
 		if taken {
 			return a, flushed
+		}
+		if msg.String() == completionToastKey && a.completionToastAllowed() {
+			return a, tea.Batch(flushed, a.viewCompletionToast())
 		}
 		a.dismissProjectPaste(msg)
 		if a.pasteEdit.open && msg.String() != "ctrl+c" {
@@ -4425,6 +4447,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// and a clock restarted first would have taken the tip row — and the
 		// cross being pressed — off that layout (notice.go's [app.chatTipPress]).
 		defer a.stirred()
+		if msg.Mouse().Button == tea.MouseLeft {
+			if cmd, took := a.completionToastPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
+		}
 		// THE TEAM SWITCHER OWNS THE PRESS WHILE IT IS UP, as a menu does:
 		// its rows answer, and a press off it only puts it away (teammenu.go).
 		if a.teamMenu.on && msg.Mouse().Button == tea.MouseLeft {
@@ -7538,6 +7565,10 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		a.toggleCap(r.turn)
 	case hitWorkFold:
 		a.toggleWorkfold(r.turn)
+	case hitWorkCompletion:
+		return a.openWorkCompletion(r.completion)
+	case hitWorkReceiptDetails:
+		a.toggleWorkCompletionDetails(r.completion)
 	case hitMore:
 		a.showAll(r.entry)
 	case hitThread:
@@ -7710,7 +7741,7 @@ func (a *app) selectTool(delta int) bool {
 		// make the room a mouse-only place. The walk is also what gives ctrl+o
 		// something to act on: the key a card names is spent on the SELECTED card
 		// (taskdone.go's [app.openDone]).
-		if r.hit != hitTool && r.hit != hitCaption && r.hit != hitTask && r.hit != hitDone && r.hit != hitHarness {
+		if r.hit != hitTool && r.hit != hitCaption && r.hit != hitTask && r.hit != hitDone && r.hit != hitHarness && r.hit != hitWorkCompletion {
 			continue
 		}
 		key := r.entry

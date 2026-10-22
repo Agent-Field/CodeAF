@@ -46,6 +46,7 @@ func (a *app) jobUpdate(notice session.JobNotice) bool {
 	if notice.ID == 0 || notice.Kind == session.JobKindTask {
 		return false
 	}
+	a.recordWorkProcess(notice)
 	for at, held := range a.jobs {
 		if held.ID != notice.ID {
 			continue
@@ -53,7 +54,14 @@ func (a *app) jobUpdate(notice session.JobNotice) bool {
 		if held == notice {
 			return false
 		}
+		wasLive := !held.Over()
 		a.jobs[at] = notice
+		if wasLive && notice.Over() {
+			turn, owned := a.workProcessTurn(notice.ID)
+			if owned && !a.workTurnVisible(turn) {
+				a.queueCompletionToast(a.file, turn, 0, notice.ID, notice.State == session.JobFailed)
+			}
+		}
 		return true
 	}
 	// OLDEST FIRST, AND THE ORDER NEVER CHANGES AGAIN. A job's place in this

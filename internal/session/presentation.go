@@ -27,6 +27,10 @@ type messagePresentation struct {
 	// RoutineCompletion is the runtime's delivery receipt, not the answer
 	// the person asked for. Its owner keeps the report and output available.
 	RoutineCompletion bool `json:"routineCompletion,omitempty"`
+	// Attention preserves a requested alert or an ambiguous mixed delivery outside routine work folds.
+	Attention bool `json:"attention,omitempty"`
+	// CompletionTasks preserves source identity in memory-only conversations; journals keep these as replyTags.
+	CompletionTasks []TaskReplyTag `json:"-"`
 }
 
 // Message identity follows its immutable content allocation, as reasoning repair
@@ -119,6 +123,9 @@ func interruptedPresentation(text string) *messagePresentation {
 // text and mixed replies remain untouched. New records always write an explicit
 // audience, so even these exact words can be deliberately addressed to a person.
 func legacyPresentation(entry sessionEntry) *messagePresentation {
+	if legacyAttentionReceipt(entry) {
+		return &messagePresentation{Audience: "operational", Attention: true}
+	}
 	if legacyRoutineCompletion(entry) {
 		return &messagePresentation{Audience: "operational", RoutineCompletion: true}
 	}

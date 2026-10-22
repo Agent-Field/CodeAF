@@ -1197,6 +1197,8 @@ type userMessage struct {
 	// completionOnly distinguishes task/job delivery receipts from requested
 	// watch alerts and mixed background batches. It never changes model delivery.
 	completionOnly bool
+	// attention is a requested alert, independent of its model-facing wake.
+	attention bool
 
 	// wake marks a note the model OWES AN ANSWER FOR: a task's completion
 	// (task_run.go's reportTaskNode), a background job's exit (jobs.go's reap),
@@ -2647,7 +2649,7 @@ func (a *Agent) recordLocked(message ai.Message) {
 // must not write. Everything the model and the tools produce is text and goes
 // through recordLocked exactly as before.
 func (a *Agent) recordUserLocked(user userMessage) {
-	if !user.authored || user.completionOnly {
+	if !user.authored || user.completionOnly || user.attention {
 		// Presentation follows this occurrence, not equal words a person might
 		// later quote. The model still receives the complete original payload.
 		mark := a.presentation.of(user.message)
@@ -2656,12 +2658,13 @@ func (a *Agent) recordUserLocked(user userMessage) {
 			a.presentation = &presentationIndex{}
 		}
 		if user.authored {
-			mark = &messagePresentation{Audience: "operational", RoutineCompletion: true}
+			mark = &messagePresentation{Audience: "operational", RoutineCompletion: user.completionOnly, Attention: user.attention, CompletionTasks: append([]TaskReplyTag(nil), user.replyTags...)}
 		} else if mark == nil {
 			mark = &messagePresentation{Audience: "human"}
 		} else {
 			mark.Audience = "human"
 			mark.RoutineCompletion = false
+			mark.Attention = false
 		}
 		a.presentation.remember(user.message, mark)
 	}
@@ -3406,6 +3409,7 @@ func batchSessionNotes(notes []userMessage) userMessage {
 	order := make([]string, 0, len(notes))
 	parts := make([]string, 0, len(notes))
 	completionOnly := len(notes) > 0
+	hasCompletion, attention := false, false
 	var (
 		wake         bool
 		otherResults bool
@@ -3415,6 +3419,8 @@ func batchSessionNotes(notes []userMessage) userMessage {
 	)
 	for _, note := range notes {
 		completionOnly = completionOnly && note.completionOnly
+		hasCompletion = hasCompletion || note.completionOnly
+		attention = attention || note.attention
 		wake = wake || note.wake
 		otherResults = otherResults || note.otherResults
 		nonTaskNews = nonTaskNews || note.nonTaskNews || len(note.replyTags) == 0
@@ -3461,6 +3467,7 @@ func batchSessionNotes(notes []userMessage) userMessage {
 	return userMessage{
 		message:        textMessage("user", text),
 		completionOnly: completionOnly,
+		attention:      attention || hasCompletion && !completionOnly,
 		replyTags:      tags,
 		otherResults:   otherResults,
 		nonTaskNews:    nonTaskNews,
@@ -3576,6 +3583,7 @@ func (a *Agent) enqueueWatchNote(name, text string, fired bool) {
 	if fired {
 		note := wakeNote(text)
 		note.otherResults = true
+		note.attention = true
 		a.enqueueNote(note)
 		return
 	}
@@ -4641,6 +4649,8 @@ type DisplayEntry struct {
 	// RoutineCompletion is a delivery receipt whose full result belongs to
 	// its task or process. It is retained as data rather than another chat row.
 	RoutineCompletion bool
+	// CompletionTasks keeps the receipt's original task identities independently of the later answer's attribution.
+	CompletionTasks []TaskReplyTag
 	// Answer marks a completed tool-free response or an explicit human update. This
 	// boundary survives replay so a later response cannot demote its message.
 	Answer bool
@@ -4912,6 +4922,10 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 		}
 		interrupted, explicitlyHuman := false, false
 		routineCompletion := false
+		attention := false
+		if mark := presentation.of(msg); mark != nil {
+			attention = mark.Attention
+		}
 		if mark := presentation.of(msg); mark != nil && msg.Role == "user" && mark.RoutineCompletion {
 			role, routineCompletion = "aside", true
 		}
@@ -4941,8 +4955,9 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 		entries = append(entries, DisplayEntry{
 			Role:              role,
 			RoutineCompletion: routineCompletion,
+			CompletionTasks:   completionTaskTags(journal, msg, routineCompletion, presentation),
 			Answer:            role == "assistant" && !interrupted && (len(msg.ToolCalls) == 0 || update),
-			Addressed:         role == "assistant" && (update || interrupted && explicitlyHuman),
+			Addressed:         role == "aside" && attention || role == "assistant" && (update || interrupted && explicitlyHuman),
 			Interrupted:       interrupted,
 			Text:              displayText,
 			ImageRefs:         journal.imageRefs(msg),

@@ -16,6 +16,10 @@ import (
 // same entries derives the same fold, while a person's expansion dies with the
 // window that owns it.
 type workfold struct {
+	// completions remain children of their original request even when they arrive later.
+	completions []workCompletion
+	virtual     bool
+	background  bool
 	// key is THE CHIP'S OWN NAME — what [deck.workOpen] is keyed by, what the
 	// chip's row carries, and what a click and `ctrl+e` name when they open it.
 	//
@@ -105,12 +109,15 @@ func (a *app) deckFolds(d deck) map[int]workfold {
 			}
 		}
 	}
-	return folds
+	return a.withWorkCompletions(d, folds)
 }
 
 // housekeepingFold is retained operational bookkeeping, not another phase of
 // work. Its entries share the turn's disclosure without drawing a second chip.
 func housekeepingFold(es []entry, f workfold) bool {
+	if len(f.completions) > 0 {
+		return false
+	}
 	if f.start >= f.answer {
 		return false
 	}
@@ -529,7 +536,7 @@ func countWork(es []entry, from, to int, f *workfold) {
 	var began, ended time.Time
 	for i := from; i < to; i++ {
 		e := &es[i]
-		if e.kind == entryUser || e.kind == entryDivider || e.kind == entrySteer {
+		if e.completion != nil || e.kind == entryUser || e.kind == entryDivider || e.kind == entrySteer {
 			continue
 		}
 		if e.kind == entryDone && e.done != nil && e.done.hidden() {
@@ -689,7 +696,7 @@ func (a *app) workfoldLabel(d deck, f workfold) string {
 	// one, so a chip in there that consulted the map would quote the time the
 	// conversation's first turn took as the time this node's first phase took —
 	// a figure about somebody else's work, said with confidence.
-	if d.lens.receipts == receiptsInline {
+	if d.lens.receipts == receiptsInline && !f.background {
 		if stamp, ok := a.stamps[f.turn]; ok {
 			took = stamp.took
 		}
@@ -701,6 +708,9 @@ func (a *app) workfoldLabel(d deck, f workfold) string {
 		arrow = "▾"
 	}
 	parts := []string{arrow + " worked"}
+	if f.background {
+		parts[0] = arrow + " background work"
+	}
 	if f.stopped {
 		parts[0] = arrow + " stopped by you"
 		if word := tookWord(took); word != "" {
@@ -730,6 +740,31 @@ func (a *app) workfoldLabel(d deck, f workfold) string {
 	if f.failures > 0 {
 		parts = append(parts, a.linearMark(a.icon(tokens.GFailed), "x")+" "+itoa(f.failures)+" failed")
 	}
+	if len(f.completions) > 0 {
+		tasks, processes := 0, 0
+		for _, c := range f.completions {
+			if c.task != 0 {
+				tasks++
+			}
+			if c.job != 0 {
+				processes++
+			}
+		}
+		if tasks > 0 {
+			word := " tasks"
+			if tasks == 1 {
+				word = " task"
+			}
+			parts = append(parts, itoa(tasks)+word)
+		}
+		if processes > 0 {
+			word := " processes"
+			if processes == 1 {
+				word = " process"
+			}
+			parts = append(parts, itoa(processes)+word)
+		}
+	}
 	parts = append(parts, "ctrl+e")
 	return strings.Join(parts, " · ")
 }
@@ -756,7 +791,7 @@ func rowIsWork(r row, es []entry, folds map[int]workfold) bool {
 	if r.text == "" {
 		return false
 	}
-	if r.hit == hitWorkFold || r.hit == hitFold || r.hit == hitCaption || r.hit == hitTool || r.hit == hitMore {
+	if r.completion != nil || r.hit == hitWorkFold || r.hit == hitFold || r.hit == hitCaption || r.hit == hitTool || r.hit == hitMore {
 		return true
 	}
 	return workEntry(es, folds, r.entry)
@@ -781,10 +816,15 @@ func (a *app) toggleLatestWorkfold() bool {
 		a.setWorkOpen(d, key, !showing)
 		return true
 	}
-	latest, found := 0, false
-	for _, f := range a.deckFolds(d) {
-		if !found || f.key > latest {
-			latest, found = f.key, true
+	latest, latestAt, found := 0, -1, false
+	for at, f := range a.deckFolds(d) {
+		// Keys identify disclosures; their position determines which is newest.
+		// Background history has negative keys and phase folds have local keys.
+		if housekeepingFold(d.entries, f) && !a.workFoldOpen(d, f.key) {
+			continue
+		}
+		if !found || at > latestAt {
+			latest, latestAt, found = f.key, at, true
 		}
 	}
 	if !found {

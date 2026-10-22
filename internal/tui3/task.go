@@ -150,6 +150,9 @@ func (c *taskCard) settled() bool { return c.verdict != "" }
 // elapsed clock counts on the frame tick instead of freezing at whatever the
 // last update happened to say. Everything else is the notice, kept.
 type taskNode struct {
+	// workTurn records the request that admitted this live work, independently of completion time.
+	workTurn  int
+	workOwned bool
 	// retried keeps the conversation card in its original position across attempts.
 	retried bool
 	id      uint64
@@ -5209,6 +5212,10 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 			return nil
 		}
 	}
+	wasLive := false
+	if old := a.tasks[notice.ID]; old != nil {
+		wasLive = old.state == session.TaskRunning || old.state == session.TaskQueued
+	}
 	if a.taskSeen == nil {
 		a.taskSeen = map[uint64]session.TaskState{}
 	}
@@ -5461,6 +5468,9 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		a.landedCard(node)
 	}
 	var pilot tea.Cmd
+	if !node.workOwned {
+		node.workTurn, node.workOwned = a.workCompletionTurn(node.id)
+	}
 	// Crew facts remain with the task rather than producing transcript receipts.
 	a.sayTaskCrew(*notice)
 	switch notice.State {
@@ -5512,6 +5522,13 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		}
 	}
 	a.touch()
+	if wasLive && taskCompletionState(notice.State) && node.parent == "" {
+		if turn, owned := a.workCompletionTurn(node.id); !a.completionIdentityVisible(node.id, 0, turn, owned) {
+			if card := a.doneCardFor(node.id); card == nil || card.quiet {
+				a.queueCompletionToast(a.file, turn, node.id, 0, notice.State == session.TaskFailed)
+			}
+		}
+	}
 	if node.retried && a.taskSheet.detailOn && a.taskSheetNodeFor(&a.taskSheet.detail) == node &&
 		notice.State != session.TaskRunning && notice.State != session.TaskQueued {
 		a.taskSheet.detail = a.currentTaskEntry(a.taskSheet.detail)

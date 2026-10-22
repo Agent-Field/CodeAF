@@ -1827,14 +1827,26 @@ the roster or `jobs kill` is your decision and is drawn as `stopped`, with the b
 
 ## Where did my task's result go when it finished while codeaf was still answering
 
-A task finishing updates its existing row in Tasks. Routine `done`, `incomplete` and
-`stopped` results do not add completion cards or crew receipts to the conversation,
-including when you switch tabs or reopen an older conversation. Nothing is deleted
-from the journal. The answer codeaf owes your question still appears in chat.
+Routine task endings, crew receipts and process exits settle inside the original
+request's collapsed **worked** disclosure. Click the disclosure, or press `ctrl+e`,
+to inspect its grouped work. Click a task row for its result or a process row for
+its log. The answer codeaf owes your question still appears directly in chat.
 
-Open the task from the roster or Tasks to read its result, report, files, branch,
-models and spending. Process logs remain in Processes. A pending `your call` decision
-stays visible with its reason and working answer controls until it is resolved.
+If a completion happens out of sight while the terminal is focused, a temporary
+notification uses existing space above the input, or a page's footer. **View work**
+(`alt+j`) opens the originating work group; the cross dismisses it. Completions for
+one group coalesce and the notification disappears after six seconds. Watching the
+work update in place does not raise a duplicate notification. Reopening a conversation
+or switching tabs does not announce old completions again.
+
+Recognizable older standalone receipts also group on reopening, without rewriting
+or deleting the journal. When the original request cannot be established, a collapsed
+background-work group retains the receipt instead of assigning it to a later request.
+Ambiguous mixed messages and requested alerts remain visible. A pending `your call`
+decision stays visible with its reason and working answer controls until resolved.
+
+Tasks still retains each result, report, files, branch, models and spending.
+Process logs also remain available through `/processes`.
 
 ## How work lands — merged, branch kept, in your own folder, or conflicted
 

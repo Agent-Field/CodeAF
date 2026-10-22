@@ -20,6 +20,7 @@ func (w *behindWatch) noteJob(notice *session.JobNotice) bool {
 	}
 	if was && notice.Over() {
 		w.finished.Add(1)
+		w.completions = append(w.completions, heldCompletion{process: notice.ID, incomplete: notice.State == session.JobFailed})
 	}
 	return w.jobbing.Swap(len(w.jobs) > 0) != (len(w.jobs) > 0) || was && notice.Over()
 }
