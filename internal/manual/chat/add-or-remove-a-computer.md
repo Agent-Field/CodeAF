@@ -143,6 +143,8 @@ The list is in a fixed order: this device first, then devices that are online, t
 
 ## I was told this device was removed — how to bring it back
 
+If this computer was removed while its window was closed, the explanation appears on home on the next launch too. The launch check and the live check share one notice, so learning it both ways does not repeat it.
+
 Another of your devices removed this one. The chat says:
 
 ```

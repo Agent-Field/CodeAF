@@ -22,9 +22,15 @@ import "sync"
 // [NewNotices]. It is safe from any goroutine.
 type Notices struct {
 	mu    sync.Mutex
-	lines []string
+	lines []outsideNotice
 	said  map[string]bool // sentences SayOnce has put on the desk
 	bell  *doorbell
+}
+
+// outsideNotice keeps urgent account news visible on home as well as in chat.
+type outsideNotice struct {
+	text string
+	home bool
 }
 
 // NewNotices makes an empty desk that no surface listens to yet.
@@ -33,11 +39,15 @@ func NewNotices() *Notices { return &Notices{} }
 // Say puts a sentence on the desk and asks the loop to read it. An empty
 // sentence says nothing.
 func (n *Notices) Say(line string) {
+	n.say(line, false)
+}
+
+func (n *Notices) say(line string, home bool) {
 	if n == nil || line == "" {
 		return
 	}
 	n.mu.Lock()
-	n.lines = append(n.lines, line)
+	n.lines = append(n.lines, outsideNotice{text: line, home: home})
 	bell := n.bell
 	n.mu.Unlock()
 	bell.ring()
@@ -47,6 +57,16 @@ func (n *Notices) Say(line string) {
 // "this computer was removed": however many roads find out, the person reads it
 // once.
 func (n *Notices) SayOnce(line string) {
+	n.sayOnce(line, false)
+}
+
+// SayHomeOnce says lasting account news once, including on the home screen
+// where a removed computer first opens without a conversation in front of it.
+func (n *Notices) SayHomeOnce(line string) {
+	n.sayOnce(line, true)
+}
+
+func (n *Notices) sayOnce(line string, home bool) {
 	if n == nil {
 		return
 	}
@@ -58,7 +78,7 @@ func (n *Notices) SayOnce(line string) {
 	n.said[line] = true
 	n.mu.Unlock()
 	if !again {
-		n.Say(line)
+		n.say(line, home)
 	}
 }
 
@@ -78,7 +98,7 @@ func (n *Notices) attach(bell *doorbell) {
 }
 
 // take reads and clears the desk. Called on the loop only.
-func (n *Notices) take() []string {
+func (n *Notices) take() []outsideNotice {
 	if n == nil {
 		return nil
 	}
@@ -104,7 +124,10 @@ func (a *app) useNotices(desk *Notices) {
 // loop on the door again.
 func (a *app) saidNotices() {
 	for _, line := range a.outsideDesk.take() {
-		a.note(line)
+		before := a.echoHome
+		a.echoHome = before || line.home
+		a.note(line.text)
+		a.echoHome = before
 	}
 	a.touch()
 }
