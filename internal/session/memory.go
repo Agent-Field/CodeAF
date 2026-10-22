@@ -902,11 +902,7 @@ func (a *Agent) noticeTurn(words, answer string, askMemory bool, kept []store.Me
 	}
 	found, err := a.noticeWithRecovery(client, words, answer, texts, askMemory)
 	if err != nil {
-		// Closing the chat cancels its background jobs deliberately; that is
-		// not a provider outage and does not need a failure notice.
-		if a.memoryCtx.Err() == nil {
-			a.journalMemoryFailure("notice", err)
-		}
+		a.reportNoticeFailure(err)
 		return
 	}
 	if found.State != nil {
@@ -931,6 +927,13 @@ func (a *Agent) noticeTurn(words, answer string, askMemory bool, kept []store.Me
 		replaced = &line
 	}
 	a.keepNoticedDurable(found.Keep, found.Scope, replaced, found.Durability)
+}
+
+// reportNoticeFailure excludes deliberate chat shutdown from provider failures.
+func (a *Agent) reportNoticeFailure(err error) {
+	if a.memoryCtx.Err() == nil {
+		a.journalMemoryFailure("notice", err)
+	}
 }
 
 // noticeWithRecovery gives a transient outage one later chance without putting

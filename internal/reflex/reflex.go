@@ -406,6 +406,34 @@ func call(ctx context.Context, c Completer, messages []ai.Message) (string, erro
 	// one place its rows in the model-call log get their word.
 	ctx = provider.WithCallTag(ctx, "reflex")
 	ctx = provider.WithoutStream(ctx)
+	response, err := completeWithRecovery(ctx, c, messages)
+	if err != nil {
+		return "", err
+	}
+	if response == nil {
+		return "", errors.New("the model answered nothing")
+	}
+	if !AnsweredNothing(response) {
+		return response.Text(), nil
+	}
+
+	pinned, ok := c.(bound)
+	if !ok || !pinned.abandon(boundModel(c)) {
+		return response.Text(), nil
+	}
+	response, err = c.CompleteWithMessages(ctx, messages)
+	if err != nil {
+		return "", err
+	}
+	if response == nil {
+		return "", errors.New("the fallback model answered nothing")
+	}
+	return response.Text(), nil
+}
+
+// completeWithRecovery reserves time for a transient failure's fallback.
+// It returns a response without decoding or applying session failover policy.
+func completeWithRecovery(ctx context.Context, c Completer, messages []ai.Message) (*ai.Response, error) {
 	// Reserve half of the remaining patience for recovery. Only a bound client
 	// knows where to send that recovery; unbound callers keep their deadline.
 	attemptCtx := ctx
@@ -424,38 +452,21 @@ func call(ctx context.Context, c Completer, messages []ai.Message) (string, erro
 		// deadline rather than the primary attempt's expired child context.
 		kind, _ := provider.RouteFailureOf(err)
 		if ctx.Err() != nil || !canRecover || pinned.fallback == "" || kind != provider.RouteTransient {
-			return "", err
+			return nil, err
 		}
 		fallback := pinned
 		fallback.model = pinned.fallback
 		fallback.session = nil
 		response, err = fallback.CompleteWithMessages(ctx, messages)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 		if response == nil || AnsweredNothing(response) {
-			return "", errors.New("the fallback model answered nothing")
+			return nil, errors.New("the fallback model answered nothing")
 		}
-		return response.Text(), nil
+		return response, nil
 	}
-	if response == nil {
-		return "", errors.New("the model answered nothing")
-	}
-	if !AnsweredNothing(response) {
-		return response.Text(), nil
-	}
-
-	if !canRecover || !pinned.abandon(boundModel(c)) {
-		return response.Text(), nil
-	}
-	response, err = c.CompleteWithMessages(ctx, messages)
-	if err != nil {
-		return "", err
-	}
-	if response == nil {
-		return "", errors.New("the fallback model answered nothing")
-	}
-	return response.Text(), nil
+	return response, nil
 }
 
 // AnsweredNothing is the one failure this package can do anything about: a call
