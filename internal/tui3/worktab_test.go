@@ -177,3 +177,85 @@ func TestARunTabDoesNotDuplicateOrRenameItsConversationLists(t *testing.T) {
 		t.Fatalf("Sessions used the run title %q instead of %q", view.title, a.title)
 	}
 }
+
+func TestWorkTabCloseStaysClosedWithoutClosingConversation(t *testing.T) {
+	for _, inRoom := range []bool{false, true} {
+		t.Run(map[bool]string{false: "from main", true: "from task"}[inRoom], func(t *testing.T) {
+			a, _ := workTabFixture(t)
+			if inRoom {
+				openWorkTabNow(t, a)
+			}
+			frame(a)
+			var work chatTab
+			for _, tab := range a.chatTabs {
+				if tab.work {
+					work = tab
+				}
+			}
+			drain(t, a, a.tabDismiss(work))
+			for i := 0; i < 3; i++ {
+				frame(a)
+				if len(a.chatTabs) != 1 || a.chatTabs[0].work || !a.chatTabs[0].here || a.roomOpen() {
+					t.Fatalf("closing task tab did not leave only its main chat: %+v", a.chatTabs)
+				}
+			}
+			if a.tabShut[a.frontTabKey()] || a.pageShowing() || len(a.closedTabs) != 0 {
+				t.Fatal("closing a task view dismissed or queued its conversation")
+			}
+		})
+	}
+}
+
+func TestWorkTabCannotBeTheNextConversationOnClose(t *testing.T) {
+	a, _ := workTabFixture(t)
+	frame(a)
+	if next, ok := a.lastVisibleTab(); ok {
+		t.Fatalf("task view offered as another conversation: %+v", next)
+	}
+}
+
+func TestWorkTabDoesNotBecomeARememberedConversation(t *testing.T) {
+	a, fake := workTabFixture(t)
+	frame(a)
+	// Keep the outgoing identity in recency, as a real conversation switch does.
+	old := a.frontTabKey()
+	a.prev = append(a.prev, old, old+"#work")
+	a.file, a.title = "/tmp/lab/chat-2/transcript.jsonl", "second chat"
+	a.taskSheet.mine.plan, a.planRows, fake.plan = nil, nil, nil
+	for i := 0; i < 3; i++ {
+		frame(a)
+		for _, tab := range a.chatTabs {
+			if tab.work {
+				t.Fatalf("outgoing task view persisted as a conversation: %+v", tab)
+			}
+		}
+	}
+}
+
+func TestWorkTabKeyboardCloseAndExplicitReopen(t *testing.T) {
+	a, _ := workTabFixture(t)
+	openWorkTabNow(t, a)
+	frame(a)
+	drive(t, a, key(closeTabChord))
+	frame(a)
+	if a.roomOpen() || len(a.chatTabs) != 1 || a.tabShut[a.frontTabKey()] {
+		t.Fatalf("keyboard close did not dismiss just the task view: %+v", a.chatTabs)
+	}
+	// The rail remains the explicit way back to the task after closing its tab.
+	drain(t, a, a.openRailPlan("t-root", nil))
+	frame(a)
+	if !a.roomOpen() || len(a.chatTabs) != 2 || !a.chatTabs[1].work || !a.chatTabs[1].here {
+		t.Fatalf("opening the task did not restore its tab: %+v", a.chatTabs)
+	}
+}
+
+func TestWorkTabDoesNotPreventClosingItsLastConversation(t *testing.T) {
+	a, _ := workTabFixture(t)
+	frame(a)
+	owner := a.frontTabKey()
+	drain(t, a, a.tabDismissNow(a.frontChatTab()))
+	frame(a)
+	if !a.at(pageHome) || !a.tabShut[owner] {
+		t.Fatal("the run tab prevented its last conversation from closing to Home")
+	}
+}
