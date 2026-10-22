@@ -56,8 +56,10 @@ func (a *Agent) movedToolArguments(tool string, args json.RawMessage) (json.RawM
 	default:
 		return args, "", nil
 	}
+	// Arguments that are not one object are passed on untouched: the tool's own
+	// decode refuses them in the one grammar every tool speaks.
 	var fields map[string]json.RawMessage
-	if json.Unmarshal(args, &fields) != nil {
+	if decodeToolArguments(args, &fields) != nil {
 		return args, "", nil
 	}
 	changed := false
