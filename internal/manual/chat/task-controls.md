@@ -31,6 +31,17 @@ rewriting the last attempt. An adaptive run's published
 planner and budget are shown as facts. Assignment and acceptance remain in the
 main task content rather than being repeated in a narrow sidebar.
 
+On a run-backed task, Task setup shows **Assigned crew**: the saved worker,
+planner and checker, including on child tasks and after an interruption before
+any priced call was saved. `Used model` is a separate historical reading from
+the spend ledger, not necessarily the worker's current assignment. Missing old
+records say `Model · not recorded`; the conversation's model is never guessed.
+Run models cannot be changed here. `/crew` sets the next run's crew; it does
+not move an existing run. A specialist such as senior-dev lists the models it
+declared and its thinking level here; those are fixed for that run. Choose
+models when starting it again. Ordinary tasks retain their task model picker,
+even when their earlier model was not recorded.
+
 Deep task trees keep their full ancestry. When indentation would hide a task
 name, `…` replaces outer connectors; breadcrumbs still open the actual ancestors.
 Long sections show their position; resizing clamps each section to its available

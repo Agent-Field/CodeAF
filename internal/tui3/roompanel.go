@@ -137,12 +137,18 @@ func (a *app) roomControlRows(width int) []railLine {
 		return railLine{text: text, entry: -1, roomAction: action}
 	}
 	heading := "Task setup"
-	if taskSetupLater(a.roomNode()) {
+	if taskSetupLater(a.roomNode()) && a.roomModelMovable() {
 		heading = "Next run setup"
 	}
 	out := []railLine{{entry: -1}, {text: a.pal.dim(fit(heading, width)), entry: -1}}
-	if n := a.roomNode(); n != nil && n.model != "" {
-		action, word := "", "Model · "+modelBase(firstNonEmpty(n.nextModel, n.model))
+	if a.programOf() != nil || a.roomPlan() != nil {
+		out = append(out, a.roomRunModelRows(width, row)...)
+	} else if n := a.roomNode(); n != nil {
+		model := modelBase(firstNonEmpty(n.nextModel, n.model))
+		if model == "" {
+			model = "not recorded"
+		}
+		action, word := "", "Model · "+model
 		if a.roomModelMovable() {
 			action = "model"
 			word = fit(word, max(width-2, 0)) + " ▾"
@@ -403,7 +409,7 @@ func taskSetupLater(node *taskNode) bool {
 func taskSetupAvailable(node *taskNode) bool {
 	// A ROW LENT TO A RUN'S TASK HAS NO NODE TO SET UP: its worker is the run's,
 	// and no door here reaches it (planroom.go).
-	if node == nil || node.run != "" || node.planRow != nil {
+	if node == nil || node.run != "" || node.planRow != nil || node.planTask != "" {
 		return false
 	}
 	if node.state == session.TaskRunning || node.state == session.TaskQueued {

@@ -908,6 +908,7 @@ func TestPlanTasksAndPlanTaskPageCrossWhole(t *testing.T) {
 	}
 	page := session.PlanTaskPage{
 		Row: row, Description: "the complete work order",
+		Models:   []session.PlanTaskModel{{Seat: "worker", Model: "saved/worker"}, {Seat: "planner", Model: "saved/planner"}, {Seat: "checker", Model: "saved/checker"}},
 		Notes:    []session.PlanTaskNote{{Author: "worker", Person: true, Body: "note body", At: started}},
 		Steps:    []session.PlanStep{{Kind: "bash", Step: 7, Command: "go test", Observation: "PASS", FullOutput: "/tmp/out", Writes: []string{"wire.go"}, Children: []string{"t-child"}}},
 		Live:     row.Live,

@@ -178,7 +178,10 @@ type PlanTaskNote struct {
 // the description that is its work order, every note left on it, and the steps
 // its worker recorded.
 type PlanTaskPage struct {
-	Row         PlanTaskRow
+	Row PlanTaskRow
+	// Models are the run's accepted seats, including on a child page and before
+	// any spend was saved. Row.Model remains the ledger's historical reading.
+	Models      []PlanTaskModel `json:",omitempty"`
 	Description string
 	Result      string
 	Checks      []string
@@ -205,6 +208,12 @@ type PlanTaskPage struct {
 	// A page that carries one is drawn as that conversation rather than as a
 	// list of steps.
 	Program *PlanProgram
+}
+
+// PlanTaskModel names an assigned seat, not proof that it answered a call.
+type PlanTaskModel struct {
+	Seat  string
+	Model string
 }
 
 // PlanStep is one line of a task's trajectory — one command the worker ran and
@@ -404,6 +413,7 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 	}
 	return PlanTaskPage{
 		Row:         pageRow,
+		Models:      a.planTaskModels(store.RootID()),
 		Description: task.Description,
 		Result:      task.Result,
 		Checks:      append([]string(nil), task.Checks...),
