@@ -37,7 +37,9 @@ package session
 //
 // A REFLEX FAILURE IS INVISIBLE TO THE TURN. The noticing pass runs after the
 // turn is sealed; a provider that does not answer leaves the turn exactly what
-// it was, and the failure is journaled and said once per window.
+// it was. A transient failure gets one delayed retry while the session remains
+// open; only an exhausted failure is journaled and said once per window. The
+// exchange is not queued across application restarts.
 
 import (
 	"bufio"
@@ -898,9 +900,13 @@ func (a *Agent) noticeTurn(words, answer string, askMemory bool, kept []store.Me
 	for index, memory := range kept {
 		texts[index] = memory.Text
 	}
-	found, err := reflex.Notice(a.memoryCtx, client, words, answer, texts, askMemory)
+	found, err := a.noticeWithRecovery(client, words, answer, texts, askMemory)
 	if err != nil {
-		a.journalMemoryFailure("notice", err)
+		// Closing the chat cancels its background jobs deliberately; that is
+		// not a provider outage and does not need a failure notice.
+		if a.memoryCtx.Err() == nil {
+			a.journalMemoryFailure("notice", err)
+		}
 		return
 	}
 	if found.State != nil {
@@ -925,6 +931,29 @@ func (a *Agent) noticeTurn(words, answer string, askMemory bool, kept []store.Me
 		replaced = &line
 	}
 	a.keepNoticedDurable(found.Keep, found.Scope, replaced, found.Durability)
+}
+
+// noticeWithRecovery gives a transient outage one later chance without putting
+// another wait on the person's turn. The original exchange and numbered working
+// set stay together, so a correction never applies to a newer turn's memories.
+// The job remains owned by memoryCtx and memoryJobs, including its backoff.
+func (a *Agent) noticeWithRecovery(client reflex.Completer, words, answer string, texts []string, askMemory bool) (reflex.NoticeResult, error) {
+	found, err := reflex.Notice(a.memoryCtx, client, words, answer, texts, askMemory)
+	kind, _ := provider.RouteFailureOf(err)
+	if err == nil || kind != provider.RouteTransient || a.memoryCtx.Err() != nil {
+		return found, err
+	}
+	timer := time.NewTimer(2 * time.Second)
+	defer timer.Stop()
+	select {
+	case <-a.memoryCtx.Done():
+		return reflex.NoticeResult{}, a.memoryCtx.Err()
+	case <-timer.C:
+	}
+	if err := a.memoryCtx.Err(); err != nil {
+		return reflex.NoticeResult{}, err
+	}
+	return reflex.Notice(a.memoryCtx, client, words, answer, texts, askMemory)
 }
 
 // keepNoticed writes what the reading found through the one door and SAYS SO:
@@ -1203,7 +1232,11 @@ func (a *Agent) journalMemoryFailure(via string, err error) {
 	}
 	a.memory.mu.Unlock()
 	if window {
-		a.sayMemory("couldn't update memory just now · " + clipWords(reason, 120))
+		if via == "notice" {
+			a.sayMemory("couldn't save this exchange to memory · use /remember to save an important detail")
+		} else {
+			a.sayMemory("couldn't update memory just now · " + clipWords(reason, 120))
+		}
 	}
 }
 
