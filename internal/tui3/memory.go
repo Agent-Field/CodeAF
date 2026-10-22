@@ -16,7 +16,7 @@ import (
 
 // THE COMMANDS ONTO WHAT codeaf REMEMBERS.
 //
-// Every line codeaf keeps rides every conversation in its scope
+// Memory is selected for each conversation from lines in its scope
 // (internal/session's memory.go), so a person must be able to read it, add to
 // it and take things out of it by hand — and every receipt says exactly what
 // changed and where it holds. The conversation writes the receipt, because it

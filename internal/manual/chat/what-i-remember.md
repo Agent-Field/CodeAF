@@ -3,10 +3,12 @@
 ## Do you remember me between conversations? Can you remember my preferences for next time?
 
 Yes. codeaf keeps short lines — a preference, a rule, a correction, a decision,
-a lasting fact about you, this machine or this project — and **every line kept
-for where you are rides in front of every conversation there**, every turn,
-until it is forgotten. There is no lookup deciding whether a line is relevant:
-what is kept is what the model is told.
+a lasting fact about you, this machine or this project. **Explicit pins always
+ride in their scope.** Other lines are selected by activation: past use,
+recency and the current project or topic help decide what rides. A protected
+share of the prompt keeps durable rules from being crowded out by progress
+updates; specific matches to your message get space before generic topics. A line that
+does not ride stays stored and searchable; the Memories tab explains why.
 
 Lines get kept three ways, and all three tell you:
 
@@ -48,6 +50,13 @@ someone else wrote cannot plant a line in every future conversation. Answering
 one of its questions after its turn has ended counts the same way, because the
 clock can answer one for you: say "remember that", or `/remember` it.
 
+The `remember` tool can label a standing rule, decision, lasting fact or
+project progress directly, rather than infer every kind from wording.
+Capture instructions keep what you stated or explicitly accepted, preserving
+conditions without adding the assistant's suggestions. Wording may be normalized;
+this is model guidance, not a verbatim or lossless-capture guarantee.
+The Memories tab shows the stored kind.
+
 A line is one sentence, at most 512 characters, and a credential pasted into it
 is redacted before it is kept.
 
@@ -61,13 +70,25 @@ A rule is a memory. "Always use tabs here", "never touch the public API", "our
 conventions for this repo: tests beside the file" — keep it with `/remember` or
 `/always` (they are the same command), or say it and the model keeps it.
 
-**Every memory already rides every conversation**, so there is no separate
-"rule" strength and no switch between "always" and "only when it matters": a
-line is in front of every conversation in its scope, or it is forgotten. Bare
+**Lines you keep with `/remember`, `/always`, or the Memories tab are pins:**
+they always ride conversations in their scope, even when the ordinary memory
+budget is full. Other automatically kept lines compete by activation. Bare
 `/always` prints every line kept here (on home, the ones that hold everywhere).
 
 There is no rule for one conversation only.
 
+
+## Will you keep every condition of a saved rule? What if current facts contradict an old memory?
+
+The memory prompt tells the model to preserve every condition: requirements
+stay mandatory, prohibitions stay prohibited, and preferences stay preferred.
+A rule requiring both approval and a complete checklist must not make the
+checklist optional.
+
+Current user instructions outrank saved lines. Current authoritative evidence,
+such as the manual, can correct stale factual claims. Narrow exceptions coexist
+with broader rules unless revoked. These are prompt instructions, not a
+perfect-recall guarantee; inspect actual admission on the Memories tab.
 
 ## Is that an instruction or a rule? How it knows you mean always, how to make it permanent, and when it didn't notice a rule and did it once
 
@@ -115,16 +136,25 @@ with its fold mark after it, and every line hanging under its group on the
 tree's connectors:
 
 - `you, everywhere`, `this machine` and `this project · <name>` — what a
-  conversation here is told, open from the start;
+  conversation here can draw on, open from the start;
 - each other project, by its name, and `couldn't tell which project` — lines an
   earlier build kept without naming the project — folded;
 - `let go` — forgotten and replaced lines, folded, ready to put back.
 
 Two columns, headed on the filter row: **kept by** (`you`, `the model`,
 `noticed`, or on a let-go line `forgotten` / `replaced`) and **age**. The head
-row counts what is kept, and says `N don't fit in front of the model · forget
-some` when a conversation here has more lines than fit. `+ remember something`
-keeps a new line; what you type is drawn in that row.
+row counts what is kept, and says `N more in memory` for lines not admitted
+to this conversation. Each line starts with `riding` or `archived`; open its pane or card for
+the full reason. Admission reflects the conversation's most recent prompt.
+With an older engine that cannot report admission, the heading explicitly
+says **project working set preview**; that preview can differ from a live turn. `+ remember something`
+keeps a new line; what you type is drawn in that row. When more rows exist,
+`load more memories` appears above the groups. Press `enter` on it to load
+the next 500 active and archived rows; repeat until every row is available.
+Filtering searches the rows loaded so far. `memory mix` shows the share of
+the actual prompt occupied by project progress, corrections, preferences,
+decisions and facts. Open a line to see its kind; an older line reclassified
+as project progress also says its original kind, without changing its words.
 
 When codeaf cannot ask which project this conversation is in, the foot says
 `couldn't ask which project this is · every project's lines are shown by name`,
@@ -256,38 +286,61 @@ that you never see is exactly what this memory does not do.
 
 ## Does it clean up or delete old memories on its own? Does it know if a memory actually helped?
 
-No and no. A line holds until somebody forgets it — there is no expiry, no
-decay by age, and no background tidy. Every line weighs the same, so there is no
-ranking and no count of how often a line helped: the Memories tab shows who kept
-a line and when, not a score. Nothing is ever deleted outright either; a
-forgotten or replaced line waits under `let go`.
+Memory selection uses activation: applying, confirming or merging a line
+strengthens it; merely showing it or finding it in a search does not. A
+correction contradicting a remembered line counts against it. Unrehearsed
+lines lose activation with age. A low-activation line stays stored;
+`archived` in the Memories tab means it is not riding this conversation, not
+that it was deleted. Forgotten and replaced lines remain under `let go`.
+
+Near-duplicate writes can merge with an existing line instead of filling the
+store with copies. Ephemeral observations are not kept as durable memories.
+Local daily maintenance refreshes activation and associations while the clock
+is running, with catch-up after reopening. It makes no model call. Semantic
+status consolidation and write-time embeddings are not implemented.
 
 
 ## How many lines ride along in every conversation? It said memory is full
 
-The lines a conversation here is told — yours everywhere, this machine's and
-this project's — share about 4,800 characters, roughly fifty ordinary lines.
-They ride in the cached front of every request, so they cost little once sent,
-and they only change when somebody keeps or forgets a line.
+The ordinary working set shares a **4,800-rune prompt budget** across your,
+this machine's and this project's lines. Memory storage is not capped by that
+budget: keeping, editing, moving and restoring a line are no longer refused
+because a prompt is full. A line remains at most 512 runes.
 
-Anything that would go past that in **any** conversation is refused: keeping a
-line, rewording one, moving one, or putting one back. A line for you everywhere
-or for this machine rides in every project's conversations, so it is refused when
-any project's would overflow, and the receipt says whose:
+Explicit user pins always ride, even when they alone exceed the prompt budget.
+After pins, at least 40% of the remaining budget is reserved for durable
+corrections, preferences and decisions when they need it. Remaining space
+is available to relevant facts, project progress and other durable lines.
+Within each group, specific phrases, identifiers and nearby matching
+words take priority over generic topic repetition, with activation breaking
+ties. A line must still meet the activation threshold. The block says `· N more in memory` for stored lines that do
+not ride. Open the Memories tab to see `riding` or `archived` and a reason for
+each line; archive does not mean forgotten. Admitted lines stay with the
+conversation while its context is unchanged, so adjacent turns do not
+randomly swap remembered facts. Short related follow-ups such as “why?” or
+“give an example” keep that context. A meaningful topic change or a change to
+saved memory can refresh the working set; a greeting alone does not freeze
+the selection for the real request that follows.
 
-`memory is full here · forget a line on the Memories tab to make room` — this
-conversation's own lines;
-`memory is full for infra · …` — another project's, by name;
-`memory is full in another project · …` — one whose lines carry no name.
 
-Noticing says `noticed something worth keeping, but memory is full here · <line>
-· forget a line on the Memories tab to make room` instead of keeping it.
+## Why did an old preference become project progress? Does the upgrade rewrite my memories?
 
-A store an earlier build filled with no bound can hold more than fits. Then what
-rides is chosen: lines that build kept as rules first, then this project's, then
-this machine's, then yours everywhere, newest first. The conversation says once,
-`N remembered lines don't fit in front of the model here · forget some on the
-Memories tab`, and the tab's head row counts them.
+An older build sometimes saved a release update or progress paragraph as a
+preference. A local migration derives a corrected kind alongside the original
+kind; the saved words, source and original label are preserved. Admission uses
+the derived kind so a long progress update does not consume the protected rule
+share just because it was once called a preference. The line's card shows both
+kinds when they differ. New noticing also distinguishes progress from a
+lasting preference before keeping it.
+
+
+## Can you search memories that are archived or not riding? search_memories
+
+Yes. The `search_memories` tool finds stored active memories in this
+conversation's scope, including lines not admitted to its working set. Ask
+"what do you remember about the test runner?" to search explicitly. Selection
+itself runs locally without a model or embedding call; searching a memory does
+not require re-adding it.
 
 
 ## How do I turn memory off? The notice things to remember setting
@@ -296,7 +349,7 @@ Memories tab`, and the tab's head row counts them.
 codeaf keeps lines on its own after your turns. Off, nothing is noticed. It
 applies from the next turn, with no restart.
 
-It does not stop the lines you kept from riding every conversation, and it does
+It does not stop memory selection or explicit pins from riding, and it does
 not stop `/remember` or the Memories tab. To stop a line, forget it there.
 
 If memory was off before this build, off used to keep your saved lines out of
@@ -351,7 +404,7 @@ memory: the commands, the Memories tab and the receipts all reach that machine's
 store. `--no-host` uses this machine's store directly.
 
 On a small model (a context window under about 32,000 tokens, or a model with no
-tools) your lines still ride every turn and noticing still runs. What a small
+tools) the selected lines still ride and noticing still runs. What a small
 model gives up is its own two hands: `remember` and `forget` are left off its
 belt to save room, so it tells you it cannot keep a line itself and that you can
 `/remember` it.
@@ -405,9 +458,9 @@ nothing shares a line with another person's account.
 
 ## What does remembering cost?
 
-Keeping, forgetting and listing by hand cost nothing: no model is asked. Your
-lines ride in the cached front of every request, which costs little once sent and
-nothing more until a line changes.
+Keeping, forgetting and listing by hand cost nothing: no model is asked. The selected
+lines ride in the cached front of requests. Selection runs locally with no
+model call; prompt tokens still follow your provider's cache pricing.
 
 The one model call is the pass after each turn you finish: it reads the exchange
 once, keeps the conversation's own running summary of where the work stands, and

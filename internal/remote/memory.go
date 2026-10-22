@@ -1,6 +1,10 @@
 package remote
 
-import "github.com/Agent-Field/codeaf/internal/session"
+import (
+	"encoding/json"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/store"
+)
 
 // Remembers reads the engine's pushed request-profile facts without a wire
 // wait. Older engines omit that field and keep their welcome-only capability.
@@ -40,3 +44,14 @@ func (a *Agent) MoveMemory(id, scope string) (string, error) { return a.c.MoveMe
 // MemoryProject is the owner the connected conversation keeps project lines
 // under.
 func (a *Agent) MemoryProject() (string, error) { return a.c.MemoryProject() }
+
+// MemorySelection reads the exact admission used by the connected conversation.
+func (a *Agent) MemorySelection() (store.MemoryBlock, error) { return a.c.MemorySelection() }
+func (c *Client) MemorySelection() (store.MemoryBlock, error) {
+	var block store.MemoryBlock
+	payload, err := c.call(nil, MethodMemorySelection, nil)
+	if err == nil {
+		err = json.Unmarshal(payload, &block)
+	}
+	return block, err
+}

@@ -36,10 +36,8 @@ import (
 // that looked like one more line and opened on the key that opened a line was
 // the page people could not read.
 //
-// EVERY LINE WEIGHS THE SAME. There is no "helped" count and no rule flag: what
-// is under the first three groups is exactly what a conversation here is told,
-// and the head row says so — and says how many lines did not fit, when any did
-// not ([store.FitMemories], the store's own choice of what rides).
+// Every visible line says whether it rides here or stays archived. Selection
+// uses the store's activation model; the detail pane explains its decision.
 
 // The words the groups are headed with, spelled once.
 const (
@@ -84,6 +82,7 @@ const (
 	memoryReadingAdd
 	memoryReadingShelf
 	memoryReadingMemory
+	memoryReadingLoad
 )
 
 // memoryStop is what the cursor can stand on: the add row, a group, or one
@@ -109,22 +108,27 @@ type memoryReadingLine struct {
 	// hangs from `└─` rather than `├─`.
 	last bool
 	// kept and age are a line's two columns.
-	kept   string
-	age    string
-	memory *store.Memory
+	kept      string
+	age       string
+	memory    *store.Memory
+	selection string
 }
 
 type memoryReading struct {
-	typed   string
-	held    int
-	letGo   int
-	outside int
-	lines   []memoryReadingLine
+	typed     string
+	held      int
+	letGo     int
+	outside   int
+	lines     []memoryReadingLine
+	decisions map[string]store.MemoryAdmission
+	preview   bool
 }
 
 // memoryLetGoKey is the let-go group's key in the open map. No owner starts
 // with a NUL, so it cannot collide with one.
 const memoryLetGoKey = "\x00letgo"
+const memoryLoadKey = "\x00load"
+const memoryLoadWord = "load more memories"
 
 // memoryShelfName is a group's heading in a person's words. here is the owner
 // this conversation keeps project lines under ("" when it has none).
@@ -190,9 +194,9 @@ func readMemory(shelves store.MemoryShelves, here string, open, closed map[strin
 	terms := fuzzy.Terms(query)
 	r := memoryReading{held: shelves.Held, letGo: shelves.LetGoCount, typed: strings.TrimSpace(filter)}
 
-	// WHAT A CONVERSATION HERE IS TOLD, in the order it is told it — the
-	// person's, the machine's, the project's — so the head row can say how many
-	// lines did not fit in front of the model.
+	// Collect visible in-scope rows for compatibility previews and explanations
+	// of rows outside the engine's bounded candidate set. Actual admission, when
+	// supplied, always wins over a local estimate.
 	var hereLines []store.Memory
 	for _, rank := range []func(string) bool{
 		func(o string) bool { return o == store.OwnerUser },
@@ -205,7 +209,24 @@ func readMemory(shelves store.MemoryShelves, here string, open, closed map[strin
 			}
 		}
 	}
-	_, r.outside = store.FitMemories(hereLines)
+	var block store.MemoryBlock
+	r.preview = shelves.Selection == nil
+	if shelves.Selection != nil {
+		block = *shelves.Selection
+	} else {
+		block = store.SelectMemoryBlock(hereLines, store.MemoryContext{Owners: []string{store.OwnerUser, store.OwnerMachine, here}, Project: here, Now: now})
+	}
+	r.outside, r.decisions = block.Omitted, block.Decisions
+	if !r.preview {
+		if r.decisions == nil {
+			r.decisions = map[string]store.MemoryAdmission{}
+		}
+		for _, memory := range hereLines {
+			if _, ok := r.decisions[memory.ID]; !ok {
+				r.decisions[memory.ID] = store.MemoryAdmission{Reason: "outside current working set"}
+			}
+		}
+	}
 
 	// A MACHINE THAT HAS REMEMBERED NOTHING HAS NO LINES AT ALL: the place
 	// draws its heading and whisper instead, and the whisper names /remember.
@@ -217,8 +238,18 @@ func readMemory(shelves store.MemoryShelves, here string, open, closed map[strin
 		memoryReadingLine{kind: memoryReadingHeader},
 		memoryReadingLine{kind: memoryReadingControl},
 		memoryReadingLine{kind: memoryReadingProse})
+	if mix := memoryMixWords(block); mix != "" {
+		r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingProse, label: mix})
+	}
 	if query == "" {
 		r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingAdd, label: memoryAddWord})
+	}
+	shownActive := 0
+	for _, shelf := range shelves.Shelves {
+		shownActive += len(shelf.Memories)
+	}
+	if shownActive < shelves.Held || len(shelves.LetGo) < shelves.LetGoCount {
+		r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingLoad, label: memoryLoadWord, shelf: memoryLoadKey})
 	}
 	matches := func(memory store.Memory, shelfName string) bool {
 		if query == "" {
@@ -292,7 +323,8 @@ func (r *memoryReading) addShelf(key, name string, count int, lines []store.Memo
 		r.lines = append(r.lines, memoryReadingLine{
 			kind: memoryReadingMemory, shelf: key, memory: &copy,
 			label: memory.Text, kept: kept, age: sinceAt(memory.UpdatedAt, now),
-			last: i == len(lines)-1,
+			selection: memorySelectionWords(memory, r.decisions),
+			last:      i == len(lines)-1,
 		})
 	}
 }
@@ -314,7 +346,7 @@ func memoryOpenByDefault(shelves store.MemoryShelves, here string) map[string]bo
 func memoryCounts(held, letGo, outside int) string {
 	parts := []string{groupedInt(held) + " kept"}
 	if outside > 0 {
-		parts = append(parts, groupedInt(outside)+" don't fit in front of the model · forget some")
+		parts = append(parts, groupedInt(outside)+" more in memory")
 	}
 	if letGo > 0 {
 		parts = append(parts, groupedInt(letGo)+" "+memoryShelfLetGo)
@@ -360,10 +392,12 @@ func (r memoryReading) paint(width int, pal palette, opts memoryPaint) []string 
 		case memoryReadingProse:
 			rows = append(rows, placeLead+pal.dim(fit(line.label, room)))
 		case memoryReadingHeader:
-			rows = append(rows, placeLead+placeHeading(fit(memoryCounts(r.held, r.letGo, r.outside), room), pal))
+			rows = append(rows, placeLead+placeHeading(fit(r.counts(), room), pal))
 		case memoryReadingControl:
 			row, _ := memoryControlRow(r.typed, width, pal)
 			rows = append(rows, row)
+		case memoryReadingLoad:
+			rows = append(rows, placeLead+placeFactInk(on, pal)(line.label))
 		case memoryReadingAdd:
 			row, _ := memoryAddRow(width, pal, on, opts.editor(memoryAddID))
 			rows = append(rows, row)
@@ -457,7 +491,12 @@ func memoryLineRow(line memoryReadingLine, width int, pal palette, lit bool, box
 		// History recedes: there is no strike paint in this palette.
 		ink = pal.dim
 	}
-	said, caret := fit(line.label, textCells), 0
+	label := line.label
+	if line.selection != "" {
+		badge, _, _ := strings.Cut(line.selection, " · ")
+		label = badge + " · " + label
+	}
+	said, caret := fit(label, textCells), 0
 	if box != nil {
 		said, caret = memoryBoxWindow(box, textCells)
 		ink = pal.ink
@@ -498,7 +537,7 @@ func (r memoryReading) at(i int) (memoryStop, bool) {
 	switch line.kind {
 	case memoryReadingAdd:
 		return memoryStop{add: true}, true
-	case memoryReadingShelf:
+	case memoryReadingLoad, memoryReadingShelf:
 		return memoryStop{shelf: line.shelf}, true
 	case memoryReadingMemory:
 		return memoryStop{shelf: line.shelf, line: line.memory}, true
@@ -509,3 +548,66 @@ func (r memoryReading) at(i int) (memoryStop, bool) {
 // bare says nothing is remembered at all and no filter is typed: the place
 // then draws its whisper and nothing else.
 func (r memoryReading) bare() bool { return r.held == 0 && r.letGo == 0 && r.typed == "" }
+
+// memorySelectionWords describes admission separately from stored status: an
+// active line can be archived from this conversation without being forgotten.
+func memorySelectionWords(memory store.Memory, decisions map[string]store.MemoryAdmission) string {
+	if memory.Status != "" && memory.Status != store.MemoryActive {
+		return "archived · " + memoryStatusWord(memory.Status)
+	}
+	if decision, ok := decisions[memory.ID]; ok {
+		badge := "archived"
+		if decision.Riding {
+			badge = "riding"
+		}
+		if decision.Reason != "" {
+			return badge + " · " + decision.Reason
+		}
+		return badge
+	}
+	return "archived · outside this conversation's scope"
+}
+
+func (r memoryReading) counts() string {
+	words := memoryCounts(r.held, r.letGo, r.outside)
+	if r.preview {
+		words += " · project working set preview"
+	}
+	return words
+}
+
+// memoryKindWords names what a line is for, without exposing storage labels.
+func memoryKindWords(kind string) string {
+	switch kind {
+	case store.MemoryProjectState:
+		return "project progress"
+	case store.MemoryCorrection:
+		return "corrections"
+	case store.MemoryPreference:
+		return "preferences"
+	case store.MemoryDecision:
+		return "decisions"
+	case store.MemoryFact:
+		return "facts"
+	}
+	return "other lines"
+}
+
+// memoryMixWords makes status crowding visible from the actual admitted set.
+// Old engines omit aggregate fields, so counting their returned rows is a safe
+// compatibility fallback; no stored row outside the working set is counted.
+func memoryMixWords(block store.MemoryBlock) string {
+	if block.TotalRunes == 0 && len(block.Memories) > 0 {
+		store.PopulateMemoryTelemetry(&block)
+	}
+	if block.TotalRunes == 0 {
+		return ""
+	}
+	parts := []string{"memory mix"}
+	for _, kind := range []string{store.MemoryProjectState, store.MemoryCorrection, store.MemoryPreference, store.MemoryDecision, store.MemoryFact, "unclassified"} {
+		if runes := block.RunesBySemanticType[kind]; runes > 0 {
+			parts = append(parts, fmt.Sprintf("%s %d%%", memoryKindWords(kind), (runes*100+block.TotalRunes/2)/block.TotalRunes))
+		}
+	}
+	return strings.Join(parts, " · ")
+}

@@ -92,6 +92,9 @@ func (s *Store) Rebuild() error {
 	if _, err := tx.Exec(`DELETE FROM facts_fts`); err != nil {
 		return fmt.Errorf("rebuild facts index: %w", err)
 	}
+	if _, err := tx.Exec(`DELETE FROM memory_durable_candidates; DELETE FROM memory_durable_topics; DELETE FROM memory_semantics; DELETE FROM memory_events; DELETE FROM memory_activation; DELETE FROM memory_topics; DELETE FROM memory_fingerprints; DELETE FROM memory_owner_counts; DELETE FROM memory_associations; DELETE FROM memory_maintenance`); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(`DELETE FROM memories`); err != nil {
 		return fmt.Errorf("rebuild memories: %w", err)
 	}
@@ -672,6 +675,12 @@ func replayEvent(tx *sql.Tx, event Event) error {
 		}
 		return applyMemoryMoved(tx, payload, event.Seq)
 
+	case EventMemoryInteraction:
+		var p memoryInteraction
+		if err := json.Unmarshal(event.Payload, &p); err != nil {
+			return err
+		}
+		return applyMemoryInteraction(tx, p, event.Seq)
 	case EventMemorySkipped, EventMemoryWriteFailed:
 		// Observability events: they name what a device went through and touch
 		// no view. Durable in the journal, a no-op in the views.
