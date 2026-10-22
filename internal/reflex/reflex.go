@@ -25,8 +25,9 @@
 //   - REFLEX NEVER BREAKS A TURN. A model that answers with prose, with a code
 //     fence, or with a word this package has never heard of costs ONE repair
 //     retry. A model that answers nothing gets the session's low-tier fallback.
-//     After that every failure is a zero result and [ErrReflexFailed], and every
-//     caller treats that as "nothing noticed".
+//     A transient request failure also gets one bounded fallback attempt.
+//     Remaining failures return [ErrReflexFailed]; the owner may retry the
+//     original exchange in the background without interrupting its turn.
 //
 // The package is the client only. It makes no decision about WHEN a call
 // happens and holds no store.
@@ -38,6 +39,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/lane"
@@ -62,10 +64,9 @@ type Completer interface {
 // usable: the provider refused, the model went quiet, or two attempts in a row
 // were not a JSON object this package could read.
 //
-// It is ONE error on purpose. A caller has exactly one thing to do with any of
-// those — nothing — and a taxonomy would invite a turn loop to handle a
-// provider timeout differently from a bad enum, which is the beginning of a
-// reflex that can break a turn.
+// The error remains recognizable without losing its wrapped provider cause.
+// The owner can recover a transient failure off the turn's path, while malformed
+// output and permanent refusals do not trigger another background pass.
 var ErrReflexFailed = errors.New("reflex: no usable answer")
 
 // messageLimit is how much of one side of an exchange the model is shown, in
@@ -336,15 +337,13 @@ func validUsedMemoryIndices(indices []int, count int) []int {
 	return used
 }
 
-// ask makes one reflex call and, if the answer was not readable, exactly one
-// repair call. The answer-budget recovery lives inside [call], where the
-// response still carries its finish reason and usage.
+// ask allows one JSON repair per pass. A transport failure can separately use
+// the configured fallback inside [call], but all requests and the repair share
+// the same patience. The owner may retry a transiently failed pass off the turn's
+// path; malformed replies alone never start another pass.
 //
-// ONE retry, never a loop. The repair asks for the same thing in four words
-// with the model's own bad answer in front of it, which is what fixes a fenced
-// or prefaced reply; a model that misses twice is a model that is going to miss
-// again, and a third attempt on a per-turn call is a cost multiplier on a
-// feature whose whole claim is that it is nearly free.
+// The repair asks for the same thing with the unreadable answer in front of it.
+// A second malformed reply is returned to the owner rather than entering a loop.
 func ask(ctx context.Context, c Completer, system, user string, read func(reply string) error) error {
 	// Reflex bypasses the session's ordinary auxiliary adapter. It must still
 	// share the same tier patience across retries rather than wait on HTTP caps.
@@ -400,13 +399,14 @@ func ask(ctx context.Context, c Completer, system, user string, read func(reply 
 // WHAT SURVIVES IS THE PART THAT WAS NEVER ABOUT GENERATION: an answer this
 // package cannot use must not break a turn. A model that says nothing at all
 // abandons this session's reflex model and asks the configured low tier once.
-// There is no loop.
+// A transient request failure also tries that fallback, without declaring the
+// primary unusable for the rest of the session. Both attempts share one bound.
 func call(ctx context.Context, c Completer, messages []ai.Message) (string, error) {
 	// Every reflex request in the process passes through here, so this is the
 	// one place its rows in the model-call log get their word.
 	ctx = provider.WithCallTag(ctx, "reflex")
 	ctx = provider.WithoutStream(ctx)
-	response, err := c.CompleteWithMessages(ctx, messages)
+	response, err := completeWithRecovery(ctx, c, messages)
 	if err != nil {
 		return "", err
 	}
@@ -429,6 +429,44 @@ func call(ctx context.Context, c Completer, messages []ai.Message) (string, erro
 		return "", errors.New("the fallback model answered nothing")
 	}
 	return response.Text(), nil
+}
+
+// completeWithRecovery reserves time for a transient failure's fallback.
+// It returns a response without decoding or applying session failover policy.
+func completeWithRecovery(ctx context.Context, c Completer, messages []ai.Message) (*ai.Response, error) {
+	// Reserve half of the remaining patience for recovery. Only a bound client
+	// knows where to send that recovery; unbound callers keep their deadline.
+	attemptCtx := ctx
+	cancel := func() {}
+	pinned, canRecover := c.(bound)
+	if canRecover && pinned.fallback != "" {
+		if deadline, ok := ctx.Deadline(); ok {
+			attemptCtx, cancel = context.WithTimeout(ctx, time.Until(deadline)/2)
+		}
+	}
+	response, err := c.CompleteWithMessages(attemptCtx, messages)
+	cancel()
+	if err != nil {
+		// A cancelled owner never starts another paid request. A transient
+		// failure tries the small-work model once, with the RESERVED parent
+		// deadline rather than the primary attempt's expired child context.
+		kind, _ := provider.RouteFailureOf(err)
+		if ctx.Err() != nil || !canRecover || pinned.fallback == "" || kind != provider.RouteTransient {
+			return nil, err
+		}
+		fallback := pinned
+		fallback.model = pinned.fallback
+		fallback.session = nil
+		response, err = fallback.CompleteWithMessages(ctx, messages)
+		if err != nil {
+			return nil, err
+		}
+		if response == nil || AnsweredNothing(response) {
+			return nil, errors.New("the fallback model answered nothing")
+		}
+		return response, nil
+	}
+	return response, nil
 }
 
 // AnsweredNothing is the one failure this package can do anything about: a call

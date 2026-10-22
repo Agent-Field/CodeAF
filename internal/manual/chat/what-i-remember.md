@@ -469,7 +469,10 @@ once, keeps the conversation's own running summary of where the work stands, and
 conversation's own model), sends no token ceiling or reasoning switch, and is
 charged to the session total, so `/cost` includes it. An answer it cannot read
 costs one retry; a model that answers nothing is replaced for the session by the
-**small work** model, with one line saying so. Turning noticing off does not
+**small work** model, with one line saying so. A stalled or temporarily failed
+request reserves time for one small-work attempt within the same 45-second
+limit. If that also fails temporarily, the original exchange is tried once more
+after two seconds in the background. Turning noticing off does not
 remove the call, because the running summary still needs it; it only stops lines
 being kept.
 
@@ -487,10 +490,16 @@ and the import tries again on the next turn.
 
 A save, a forget or the noticing pass that cannot reach the store is written to
 the store's journal with its reason, and the conversation says so once every
-five minutes at most: `couldn't update memory just now · <reason>`. When the
+five minutes at most. A failed background reading says
+`couldn't save this exchange to memory · use /remember to save an important detail`;
+a failed direct update says `couldn't update memory just now · <reason>`. When the
 journal itself cannot be written, the reason goes to
 `~/.codeaf/v3/memory-failures.log` instead. The turn you were having is never
-affected.
+affected. Background recovery stays owned by the open chat: closing it cancels
+pending attempts, and failed exchanges are not queued across restarts. A recovered
+reading saves normally without showing a failure notice. If all bounded attempts
+fail, `/remember <detail>` saves the important statement directly without a model
+request; it does not depend on the failed background service.
 
 
 ## What did we decide last week — can you look up an earlier conversation or search old chats
