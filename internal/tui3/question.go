@@ -3127,6 +3127,11 @@ func (a *app) questionKeyTaken(head questionShown, msg tea.KeyPressMsg) (tea.Cmd
 	// before the question had been on screen long enough was aimed at whatever
 	// was there before it, and applying it late is applying it to the wrong
 	// question rather than to none.
+	// An arrival was not asked for. Printable text belongs to the composer
+	// even on the first frame, before the card's settle clock can take a key.
+	if questionArrivedUnasked(head.question) && msg.Text != "" {
+		return a.typeCharacter(msg.Text), true
+	}
 	if a.questionLeavesBox(head) {
 		return nil, false
 	}

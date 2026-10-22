@@ -225,3 +225,29 @@ func TestEnterOverAnEmptyBoxStillAnswersTheArrivalCard(t *testing.T) {
 		t.Fatal("enter over an empty box did not answer the card")
 	}
 }
+
+// TestC5TypingWhileTheArrivalCardIsVisibleKeepsTheFirstMessage proves C5:
+// an unasked arrival card cannot consume a sentence typed after it appears.
+func TestC5TypingWhileTheArrivalCardIsVisibleKeepsTheFirstMessage(t *testing.T) {
+	for _, settled := range []bool{false, true} {
+		for _, words := range []string{"do the work", "1 more change", "? what changed"} {
+			a, agent := movedApp(t)
+			a.offerSetup(machine.Resume{From: "desk", Uncommitted: []string{"x"}})
+			_ = a.questionRows(a.width)
+			if settled {
+				harnessSettled(t, a)
+			}
+			typeText(t, a, words)
+			if got := a.input.String(); got != words {
+				t.Fatalf("settled=%v: typed %q, kept %q", settled, words, got)
+			}
+			drive(t, a, key("enter"))
+			if len(agent.sent) != 1 || agent.sent[0] != words {
+				t.Fatalf("sent %q, want %q", agent.sent, words)
+			}
+			if _, ok := a.questionHead(); !ok {
+				t.Fatal("message answered the arrival card")
+			}
+		}
+	}
+}
