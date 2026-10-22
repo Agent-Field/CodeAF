@@ -244,6 +244,11 @@ type Meta struct {
 	// machine it came from, when that folder is not on this one. It is this
 	// machine's own note, never sealed, so it cannot follow the chat back.
 	Origin string `json:"origin,omitempty"`
+	// FromDevice and FromWorkspace describe this arrival, including a take-back
+	// into the original project. They stay outside the sealed truth because
+	// the next computer must record its own arrival.
+	FromDevice    string `json:"fromDevice,omitempty"`
+	FromWorkspace string `json:"fromWorkspace,omitempty"`
 	// LaunchDir is where the person actually stood when the session opened —
 	// the repo subdirectory, or the temp dir whose presence marks the session
 	// as sweepable litter.
