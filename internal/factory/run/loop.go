@@ -27,6 +27,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/factory/verification"
 )
 
 // loopLogMost is how many lines a stream keeps, the newest last: the same
@@ -895,6 +896,18 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		if res.Spent > 0 && !res.SpendRecorded {
 			job.Spend(res.Spent)
 		}
+		readiness := factory.IsCIRepairStage(st) && job.Item.FollowUp != nil && job.Item.FollowUp.Kind == "readiness"
+		if readiness && (res.Repair == nil || (res.Repair.Decision != "needs_repair" && res.Repair.Decision != "needs_you")) && verificationReason(res) == "" {
+			head := ""
+			if a := job.Item.FollowUp.Readiness; a != nil {
+				head = a.Head
+			}
+			if why := factory.ReadinessReportFault(head, res); why != "" {
+				res.Done, res.Exit = false, 1
+				res.Output = "Final review needs correction: " + why + ". " + res.Output
+				res.Notes = append(res.Notes, verification.FailurePrefix+" final review report: "+why)
+			}
+		}
 		lp.fold(c, it, st, i, res)
 		if !lp.capCheck(c, i, name) {
 			return false
@@ -914,7 +927,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			lp.parkCI(c, i, res.Repair.Reason)
 			return false
 		}
-		if factory.IsCIRepairStage(st) && job.Item.FollowUp != nil && job.Item.FollowUp.Kind == "readiness" {
+		if readiness {
 			if res.Repair != nil && res.Repair.Decision == "needs_repair" && strings.TrimSpace(res.Repair.Reason) != "" {
 				if !lp.capCheck(c, i, name) {
 					return false
@@ -936,10 +949,14 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 				limit = max(limit, round)
 				continue
 			}
-			lp.finishReadiness(c, i, res)
-			return false
+			if verificationReason(res) == "" {
+				lp.finishReadiness(c, i, res)
+				return false
+			}
+			// Reporting and execution shortfalls use the same bounded round
+			// recovery as other steps. They are not an immediate human gate.
 		}
-		if factory.IsCIRepairStage(st) && res.Repair != nil && res.Repair.Decision == "no_change" {
+		if !readiness && factory.IsCIRepairStage(st) && res.Repair != nil && res.Repair.Decision == "no_change" {
 			fresh, _ := lp.r.opts.Store.Get(c.id)
 			if fresh.PullRequest == nil || fresh.PullRequest.Checks.Failed > 0 || fresh.PullRequest.Conflict {
 				lp.parkCI(c, i, "The PR still has failing checks or conflicts and no repair was verified. "+res.Repair.Reason)

@@ -380,8 +380,10 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 		}
 		pr.HeadSHA = it.HeadCommit
 		pr.ChecksRead = false
+		pr.CI = ""
 		pr.CheckRuns = nil
 		pr.Checks = factory.PRChecks{}
+		pr.ReadinessKey, pr.ReadinessContext = "", ""
 		return published{pr: &pr}, nil
 	}
 	rcpt, err := src.Write(ctx, factory.Action{Verb: "pr", Item: it, Branch: branch, Body: body, Draft: true})

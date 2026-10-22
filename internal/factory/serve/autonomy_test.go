@@ -57,6 +57,39 @@ func TestAutoProofUsesRecordedHeadApprovalWithoutUIApprove(t *testing.T) {
 	}
 }
 
+func TestAutoFinalReadinessUsesRecordedApprovalWithoutHumanReview(t *testing.T) {
+	f := newV2Jobs(t)
+	in := autoProof()
+	in.Publish = "pr"
+	in.PullRequest = &factory.PullRequest{Number: 7, State: factory.PROpen, Draft: true, HeadSHA: in.HeadCommit, ChecksRead: true, ReviewsRead: true, Mergeable: factory.MergeableYes, CI: "ci ✓", Checks: factory.PRChecks{Passed: 1}, Required: 2, ReviewDecision: "review_required", ReadinessKey: "snapshot"}
+	in.FollowUp = &factory.PRFollowUp{Kind: "readiness", State: "ready_approval", Readiness: &factory.PRReadiness{Key: "snapshot", Head: in.HeadCommit, State: "reviewed"}}
+	it := f.create(t, in)
+	f.read(t, it)
+	got, err := f.st.Get(it.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Publishing || got.Approval == nil || !got.Approval.Automatic || got.Approval.State != "approved" || !factory.ReadinessPending(got) {
+		t.Fatalf("routine readiness still needs a click: publishing=%v approval=%+v", got.Publishing, got.Approval)
+	}
+	if got.Merging != nil || got.PullRequest.State != factory.PROpen {
+		t.Fatal("readiness approval granted merge authority")
+	}
+	events, err := f.rec.Since(context.Background(), time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	approved := 0
+	for _, event := range events {
+		if event.Kind == record.Approved && event.Commit == in.HeadCommit {
+			approved++
+		}
+	}
+	if approved != 1 {
+		t.Fatalf("recorded readiness approvals=%d", approved)
+	}
+}
+
 func TestAutoLeavesCriticalProblemsAndManualJobsWaiting(t *testing.T) {
 	cases := map[string]func(*factory.Item){
 		"manual":                 func(it *factory.Item) { it.Autonomy = factory.AutonomyManual },

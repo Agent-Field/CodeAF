@@ -15,6 +15,58 @@ import (
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 )
 
+type publishRacingAPI struct {
+	*memAPI
+	afterPull func()
+}
+
+func (m publishRacingAPI) Pull(ctx context.Context, owner, repo string, number int) (forge.Pull, error) {
+	p, err := m.memAPI.Pull(ctx, owner, repo, number)
+	if m.afterPull != nil {
+		m.afterPull()
+	}
+	return p, err
+}
+
+func TestPollCannotRestoreOldGreenHeadOrDraftAfterPublication(t *testing.T) {
+	for _, change := range []string{"head pushed", "marked ready"} {
+		t.Run(change, func(t *testing.T) {
+			st := openStore(t)
+			it, err := st.Create(factory.Item{Repo: "acme/api", Kind: factory.KindIssue, State: factory.StateShipped, Publish: "pr", PullRequest: &factory.PullRequest{Number: 7, State: factory.PROpen, Draft: true, HeadSHA: "old", CI: "ci ✓", ChecksRead: true, Checks: factory.PRChecks{Passed: 8}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			m := newMemAPI(time.Now())
+			m.followed = map[string]forge.Pull{"acme/api#7": {Number: 7, State: "open", Draft: true, HeadSHA: "old", Base: "main"}}
+			m.runs = map[string][]forge.CheckRun{"old": {{Name: "test", Status: "completed", Conclusion: "success"}}}
+			s := New(publishRacingAPI{m, func() {
+				if err := st.Update(it.ID, func(cur *factory.Item) error {
+					pr := *cur.PullRequest
+					if change == "head pushed" {
+						pr.HeadSHA, pr.CI, pr.ChecksRead, pr.Checks = "new", "", false, factory.PRChecks{}
+					} else {
+						pr.Draft = false
+					}
+					cur.PullRequest = &pr
+					return nil
+				}); err != nil {
+					t.Error(err)
+				}
+			}}, nil, nil)
+			if err := followOpened(context.Background(), s, st); err != nil {
+				t.Fatal(err)
+			}
+			got, _ := st.Get(it.ID)
+			if change == "head pushed" && (got.PullRequest.HeadSHA != "new" || got.PullRequest.ChecksRead || got.PullRequest.CI != "") {
+				t.Fatal("late poll restored old green head")
+			}
+			if change == "marked ready" && got.PullRequest.Draft {
+				t.Fatal("late poll restored draft status")
+			}
+		})
+	}
+}
+
 // The poll re-reads pull requests the factory opened. A merged one and a
 // closed one are recorded once; an open one keeps the job shipped and says
 // so on the pull request, with its reviews and checks.
@@ -215,7 +267,10 @@ func TestConversationReviewReadFailureCannotLeaveHealthyStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _ := st.Get(saved.ID)
-	if got.PullRequest.ChecksRead || got.FollowUp.State == "healthy" || !strings.Contains(got.FollowUp.Reason, "review API unavailable") {
+	// CI is independent evidence: a feedback outage must not erase a
+	// successfully read current-head check. The typed feedback problem keeps
+	// the monitoring state from claiming everything is healthy.
+	if !got.PullRequest.ChecksRead || got.PullRequest.ReviewsRead || got.FollowUp.State == "healthy" || len(got.PullRequest.Problems) != 1 || got.PullRequest.Problems[0].Area != "feedback" || !strings.Contains(got.PullRequest.Problems[0].Detail, "review API unavailable") || got.FollowUp.Reason != got.PullRequest.Problems[0].Summary {
 		t.Fatalf("false all-clear: %+v", got.FollowUp)
 	}
 	m.fail = false

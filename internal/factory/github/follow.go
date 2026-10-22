@@ -299,6 +299,12 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 			if item.PullRequest == nil {
 				return nil
 			}
+			// Publication or an observed ready transition may finish while
+			// this network read is in flight. Never restore the old head's
+			// green checks or draft status over that newer local receipt.
+			if item.PullRequest.HeadSHA != it.PullRequest.HeadSHA || item.PullRequest.Draft != it.PullRequest.Draft || item.PullRequest.State != it.PullRequest.State {
+				return nil
+			}
 			cp := next
 			if cp.ChecksRead && item.Stream != nil && (item.PullRequest.Checks != cp.Checks || !item.PullRequest.ChecksRead) {
 				words := []string{}

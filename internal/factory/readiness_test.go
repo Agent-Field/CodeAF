@@ -36,7 +36,7 @@ func TestReadinessGateNeverTreatsUnknownAsGreen(t *testing.T) {
 		"takeover": func(i *Item) { i.Manual = true }, "no checks": func(i *Item) { i.PullRequest.ChecksRead = false }, "no reviews": func(i *Item) { i.PullRequest.ReviewsRead = false },
 		"zero passed": func(i *Item) { i.PullRequest.Checks.Passed = 0 }, "pending": func(i *Item) { i.PullRequest.Checks.Pending = 1 }, "failed": func(i *Item) { i.PullRequest.Checks.Failed = 1 },
 		"combined pending": func(i *Item) { i.PullRequest.CI = "ci …" }, "unknown mergeability": func(i *Item) { i.PullRequest.Mergeable = "" }, "conflict": func(i *Item) { i.PullRequest.Conflict = true },
-		"requested changes": func(i *Item) { i.PullRequest.ReviewDecision = "changes_requested" }, "unknown check": func(i *Item) { i.PullRequest.CheckRuns[0].State = "unknown" }, "budget": func(i *Item) { i.Cap = 0 },
+		"unknown check": func(i *Item) { i.PullRequest.CheckRuns[0].State = "unknown" }, "budget": func(i *Item) { i.Cap = 0 },
 	}
 	for name, change := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -50,6 +50,27 @@ func TestReadinessGateNeverTreatsUnknownAsGreen(t *testing.T) {
 				t.Fatal("queued unsafe readiness")
 			}
 		})
+	}
+}
+
+func TestReadinessDoesNotRequireAHumanApprovingReview(t *testing.T) {
+	for _, decision := range []string{"", "review_required", "changes_requested"} {
+		it := readyItem()
+		it.PullRequest.Required, it.PullRequest.ReviewDecision = 2, decision
+		if err := ReadinessGate(it); err != nil {
+			t.Fatalf("%s blocked final code review: %v", decision, err)
+		}
+		// Previously handled feedback is still included in the final review;
+		// the reviewer can retain their request until they inspect the update.
+		if decision == "changes_requested" {
+			if !QueueCIFollowUp(&it, time.Now()) || it.FollowUp.Kind != "pr" {
+				t.Fatal("fresh review request was ignored")
+			}
+			it.State, it.FollowUp.State = StateShipped, "healthy"
+		}
+		if !QueueCIFollowUp(&it, time.Now()) || it.FollowUp.Kind != "readiness" {
+			t.Fatalf("%s never reached final review", decision)
+		}
 	}
 }
 func TestReadinessReviewRequiresExplicitCompleteEvidence(t *testing.T) {

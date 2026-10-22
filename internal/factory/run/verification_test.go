@@ -3,6 +3,7 @@ package run
 import (
 	"context"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -12,14 +13,19 @@ import (
 
 type verificationMaker struct {
 	*FakeMaker
-	notes []string
+	notes    []string
+	notesNow func() []string
 }
 type verificationConversation struct {
 	Conversation
-	notes []string
+	notes    []string
+	notesNow func() []string
 }
 
 func (c verificationConversation) ExecutionNotes() ([]string, *factory.TestCounts) {
+	if c.notesNow != nil {
+		return c.notesNow(), nil
+	}
 	return c.notes, nil
 }
 func (m verificationMaker) Open(ctx context.Context, spec ConversationSpec) (Conversation, error) {
@@ -27,7 +33,33 @@ func (m verificationMaker) Open(ctx context.Context, spec ConversationSpec) (Con
 	if err != nil {
 		return nil, err
 	}
-	return verificationConversation{c, m.notes}, nil
+	return verificationConversation{Conversation: c, notes: m.notes, notesNow: m.notesNow}, nil
+}
+
+func TestVerificationAutomaticallyCorrectsInTheSameConversation(t *testing.T) {
+	var corrected atomic.Bool
+	report := factory.StageResult{Done: true, Output: "checked", Claims: []factory.Claim{{Text: "behavior holds", OK: true, Evidence: "observed test", Medium: "test"}}, Repair: &factory.CIRepairResult{Decision: "fixed", Reason: "real repair checked"}}
+	maker := verificationMaker{FakeMaker: &FakeMaker{
+		Script: func(ctx context.Context, c *FakeConversation) { _ = c.Spec.Stage.Report(ctx, report) },
+		FollowUp: func(ctx context.Context, c *FakeConversation, words string) {
+			if !strings.Contains(words, "go test ./...") || !strings.Contains(words, "Preserve this step's purpose") {
+				t.Error("correction lost cause or purpose")
+			}
+			corrected.Store(true)
+			_ = c.Spec.Stage.Report(ctx, report)
+		},
+	}, notesNow: func() []string {
+		if !corrected.Load() {
+			return []string{verification.FailurePrefix + " go test ./... · executable not found"}
+		}
+		return []string{`Check receipt: {"exit":0,"outcome":"passed"}`}
+	}}
+	j := reviewJob()
+	j.Stage = proofStage()
+	res, err := NewChatExecutor(maker).Run(context.Background(), j)
+	if err != nil || !res.Done || res.Exit != 0 || !corrected.Load() || len(maker.Opened()) != 1 || len(maker.Opened()[0].Noted()) != 1 {
+		t.Fatalf("automatic correction failed: done=%v exit=%d err=%v", res.Done, res.Exit, err)
+	}
 }
 
 func TestVerificationRejectionOverridesReportedSuccessWithConcreteReason(t *testing.T) {
@@ -52,6 +84,9 @@ func TestVerificationRejectionOverridesReportedSuccessWithConcreteReason(t *test
 			foldResult(&item, job.Stage, 0, result, time.Now())
 			if !item.Stream.Phases[0].Rounds[0].Rejected {
 				t.Fatal("rejected round recorded as successful")
+			}
+			if len(maker.Opened()[0].Noted()) > stageVerificationCorrections+stageReminders {
+				t.Fatal("unbounded correction loop")
 			}
 		})
 	}

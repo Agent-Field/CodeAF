@@ -40,9 +40,8 @@ func ReadinessGate(it Item) error {
 	if p.Checks.Passed < 1 || p.Checks.Failed > 0 || p.Checks.Pending > 0 || p.CI != "ci ✓" {
 		return fmt.Errorf("current-head CI must pass with no pending checks")
 	}
-	if p.ReviewDecision == "changes_requested" {
-		return fmt.Errorf("a requested-changes review is still outstanding")
-	}
+	// Readiness reviews the feedback itself. A reviewer's approving vote is
+	// a merge requirement, never a prerequisite for requesting their review.
 	for _, r := range p.CheckRuns {
 		if r.State != "success" && r.State != "neutral" && r.State != "skipped" {
 			return fmt.Errorf("check %s has not passed", r.Name)
@@ -75,13 +74,38 @@ func ValidateReadinessReview(it Item, r StageResult) error {
 	if it.PullRequest.ReadinessKey != "" && it.PullRequest.ReadinessKey != it.FollowUp.Readiness.Key {
 		return fmt.Errorf("readiness facts changed during the review")
 	}
-	v := r.Repair
-	if v == nil || v.Decision != "no_change" || strings.TrimSpace(v.Reason) == "" || v.Readiness == nil || !r.Done || r.Exit != 0 || r.Findings != 0 {
-		return fmt.Errorf("readiness requires an explicit complete final review with no unresolved findings")
+	if why := ReadinessReportFault(it.FollowUp.Readiness.Head, r); why != "" {
+		return fmt.Errorf("%s", why)
 	}
-	a := v.Readiness
-	if a.Head != it.FollowUp.Readiness.Head || a.Head != it.HeadCommit || a.Head != it.PullRequest.HeadSHA || !a.DiffReviewed || !a.DescriptionMatches || !a.FeedbackAddressed || !a.NoUnfinishedWork {
-		return fmt.Errorf("final review must confirm the exact PR head, diff, description, addressed feedback and no unfinished work")
+	if r.Repair.Readiness.Head != it.HeadCommit || r.Repair.Readiness.Head != it.PullRequest.HeadSHA {
+		return fmt.Errorf("the checkout or remote PR head changed after the final review")
 	}
 	return nil
+}
+
+// ReadinessReportFault is shared by the reporting door and the final gate.
+// Schema omissions are returned while the model can still correct them; live
+// PR facts are separately revalidated before the recorded ready transition.
+func ReadinessReportFault(head string, r StageResult) string {
+	v := r.Repair
+	if v == nil || v.Decision != "no_change" || strings.TrimSpace(v.Reason) == "" {
+		return "final review needs repair.decision no_change and an evidence-based reason; report needs_repair for fixable findings or needs_you for a critical decision"
+	}
+	if !r.Done || r.Exit != 0 {
+		return "final review did not finish successfully; resolve the reported execution problem and report again"
+	}
+	if r.Findings != 0 {
+		return "final review has unresolved findings; report needs_repair with the specific findings"
+	}
+	if v.Readiness == nil {
+		return "include repair.readiness with the full captured head, diff_reviewed, description_matches, feedback_addressed and no_unfinished_work"
+	}
+	a := v.Readiness
+	if a.Head == "" || a.Head != head {
+		return "repair.readiness.head must equal the full captured PR head " + head
+	}
+	if !a.DiffReviewed || !a.DescriptionMatches || !a.FeedbackAddressed || !a.NoUnfinishedWork {
+		return "complete the diff, description, feedback and unfinished-work checks; report needs_repair if a check finds a blocker"
+	}
+	return ""
 }

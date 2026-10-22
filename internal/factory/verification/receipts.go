@@ -40,7 +40,25 @@ type Check struct {
 }
 
 func (c Check) Key() string {
-	raw, _ := json.Marshal([]any{c.Cwd, c.Context, c.Args})
+	args := c.Args
+	if len(args) > 1 && args[0] == "go" && args[1] == "test" {
+		args = make([]string, 0, len(c.Args))
+		for i, arg := range c.Args {
+			if arg == "-args" {
+				args = append(args, c.Args[i:]...)
+				break
+			}
+			// Verbose output does not change which tests or target ran.
+			verbose := arg == "-v" || arg == "-v=true" || arg == "-v=false"
+			// A value such as -run '-v' is a test selector, not verbosity.
+			// Ambiguous flag/value pairs stay exact rather than weakening scope.
+			value := i > 2 && strings.HasPrefix(c.Args[i-1], "-") && !strings.Contains(c.Args[i-1], "=") && c.Args[i-1] != "-v"
+			if !verbose || value {
+				args = append(args, arg)
+			}
+		}
+	}
+	raw, _ := json.Marshal([]any{c.Cwd, c.Context, args})
 	return string(raw)
 }
 
@@ -188,17 +206,18 @@ func Read(transcript string) ([]Check, error) {
 	return checks, nil
 }
 
-// PresentationOnly is deliberately narrower than a shell parser. Only one
-// observed check, optional cd/export setup, and a pipe of output formatters can
-// discount a shell failure. A later build, second check, substitution, control
-// flow or unknown executable stays a whole-command failure. Passing one check
-// MUST NOT launder a compound verification script into success.
+// PresentationOnly recognizes a check and its output reporting, including
+// repeated counts of the SAME check joined by headers. A different check or
+// executable remains a whole-command failure: a zero-match grep can prevent
+// a later && branch from running, so one receipt cannot vouch for that branch.
 func PresentationOnly(command string) bool {
-	if strings.Contains(command, "$(") || strings.ContainsAny(command, "`\n(){}") {
+	if !simpleShellText(command) {
 		return false
 	}
 	parts := approval.SplitBashCommand(command)
 	found := false
+	identity := ""
+	piped := false
 	for _, part := range parts {
 		words := strings.Fields(part.Command)
 		if len(words) == 0 {
@@ -210,7 +229,14 @@ func PresentationOnly(command string) bool {
 			}
 			continue
 		}
-		if !found {
+		if !piped && (words[0] == "echo" || words[0] == "printf") {
+			// Headers cannot run substitutions or hide another command.
+			if strings.ContainsAny(part.Command, "<>") || (part.Separator != "" && part.Separator != "&&" && part.Separator != ";") {
+				return false
+			}
+			continue
+		}
+		if !piped {
 			for len(words) > 0 && assignment.MatchString(words[0]) {
 				words = words[1:]
 			}
@@ -234,6 +260,11 @@ func PresentationOnly(command string) bool {
 			default:
 				return false
 			}
+			check := strings.Join(strings.Fields(strings.TrimSpace(strings.TrimSuffix(part.Command, "2>&1"))), " ")
+			if identity != "" && check != identity {
+				return false
+			}
+			identity = check
 			found = true
 		} else {
 			switch words[0] {
@@ -242,11 +273,48 @@ func PresentationOnly(command string) bool {
 				return false
 			}
 		}
-		if part.Separator != "" && part.Separator != "|" {
+		if part.Separator != "" && part.Separator != "|" && part.Separator != "&&" && part.Separator != ";" {
+			return false
+		}
+		piped = part.Separator == "|"
+	}
+	return found
+}
+
+// Quoted regex punctuation is data. Executable substitutions, grouping and
+// unclosed quotes are outside the small reporting grammar and stay guarded.
+func simpleShellText(command string) bool {
+	var quote byte
+	for i := 0; i < len(command); i++ {
+		ch := command[i]
+		if ch == '\\' && quote != '\'' {
+			i++
+			continue
+		}
+		if quote == '\'' {
+			if ch == quote {
+				quote = 0
+			}
+			continue
+		}
+		if ch == '`' || (ch == '$' && i+1 < len(command) && command[i+1] == '(') {
+			return false
+		}
+		if quote == '"' {
+			if ch == quote {
+				quote = 0
+			}
+			continue
+		}
+		if ch == '\'' || ch == '"' {
+			quote = ch
+			continue
+		}
+		if strings.ContainsRune("\n(){}", rune(ch)) {
 			return false
 		}
 	}
-	return found
+	return quote == 0
 }
 
 var assignment = regexp.MustCompile(`^[A-Za-z_][A-Za-z_0-9]*=`)

@@ -107,6 +107,35 @@ Interrupting the turn takes the card down unanswered, and so does leaving it for
 
 What changed in the terminal chat: it used to draw no `factory_item` card, and the call sat at `running factory_item` until you interrupted. It now draws a plain question block with the same box, keys and receipt as any other card, not a special item card. The card shows only rows that would change, so a fixed or begun step is absent from it; the chat is told afterwards which steps were left as they were. A yes sent from the desktop app with text attached is read as a correction and changes nothing. The `factory_add` and `factory_recipe` cards are not drawn here, so those calls wait until the turn is interrupted or 15 minutes pass.
 
+## ready for review — draft PR, final review, automatic recovery, Resume pipeline
+
+When current-head CI passes, Follow PR checks the actual PR diff, description,
+feedback and unfinished work. In Auto, a passing final code review automatically
+marks the draft **Ready for Review** through the factory's existing GitHub
+connection. It does not wait for a human approving review. Manual asks before
+this transition. Requested feedback must be assessed and addressed; GitHub's
+required reviewer approvals still apply to the final merge.
+
+Transient connection or server failures while marking ready receive up to three
+attempts in Auto. Each attempt re-reads the PR first: an uncertain success is
+observed, never blindly replayed; changed facts require a fresh final check,
+and permission denials do not retry as network errors.
+
+A zero-match output counter is not a failed test. The factory records actual
+check exits separately from output formatting. A missing final-review checklist
+is returned to the model while it can correct its report. An unresolved
+execution problem receives up to two automatic correction turns in the same
+conversation, within the live job budget and stage wall; remaining shortfalls
+use the step's bounded rounds. A critical decision, exhausted allowance or
+missing access can still pause the job, with the specific cause shown.
+
+**Resume pipeline** after a failed final review retries that review, even if the
+PR head is unchanged. Returning from manual work or sending explicit repair
+instructions verifies that work first. Publication rechecks the live PR facts;
+changed code, CI or feedback cannot reuse stale readiness approval. Marking ready
+never grants merge authority. The repository's separate auto-merge setting is
+the explicit opt-in for automatic merge.
+
 ## merge a job's pull request — Merge, auto-merge, why it will not merge
 
 A job whose pull request is open has **Merge**. Only its assignee may press it, and pressing waits five seconds with **Undo** before anything is sent. Then the runner that holds the assignee's GitHub account reads the pull request again and merges it, handing GitHub the exact commit, so a branch that moved is refused. The job is done when the pull request reads merged.

@@ -111,6 +111,10 @@ func TestCIRepairPublishRechecksTheExistingPRBeforePush(t *testing.T) {
 			it.PullRequest = &factory.PullRequest{Number: 7, URL: "https://github.com/acme/api/pull/7", State: factory.PROpen, Draft: true, HeadSHA: old}
 			it.FollowUp = &factory.PRFollowUp{Kind: "ci", State: "waiting_approval", HeadSHA: old, Attempt: 1, Limit: 2}
 			fresh := *it.PullRequest
+			fresh.CI = "ci ✓"
+			fresh.ChecksRead = true
+			fresh.Checks = factory.PRChecks{Passed: 8}
+			fresh.ReadinessKey, fresh.ReadinessContext = "old snapshot", "old diff"
 			if state == "closed" {
 				fresh.State = factory.PRClosed
 			}
@@ -124,6 +128,9 @@ func TestCIRepairPublishRechecksTheExistingPRBeforePush(t *testing.T) {
 			if state == "open" {
 				if err != nil || result.pr == nil || result.pr.Number != 7 || !result.pr.Draft || pushes != 1 {
 					t.Fatalf("result=%+v pushes=%d err=%v", result, pushes, err)
+				}
+				if result.pr.HeadSHA != head || result.pr.ChecksRead || result.pr.CI != "" || result.pr.Checks.Passed != 0 || result.pr.ReadinessKey != "" || result.pr.ReadinessContext != "" {
+					t.Fatal("old-head all-clear survived publication")
 				}
 			} else if err == nil || pushes != 0 || len(g.src.got) != 0 {
 				t.Fatalf("published to changed PR: pushes=%d err=%v", pushes, err)

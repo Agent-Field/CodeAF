@@ -205,6 +205,9 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 	}
 	door := newStageDoor()
 	door.ask, door.stage = job.Ask, job.Stage
+	if f := job.Item.FollowUp; f != nil && f.Kind == "readiness" && f.Readiness != nil {
+		door.readinessHead = f.Readiness.Head
+	}
 	log := job.Log
 	if log == nil {
 		log = func(string) {}
@@ -259,6 +262,7 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 	var waitErr error
 	asker := stageAsker{job: job}
 	walled := false
+	corrections := 0
 	wall := time.NewTimer(stageWall)
 	defer wall.Stop()
 loop:
@@ -301,6 +305,26 @@ loop:
 			// one that is idle with nothing reported is asked again (stagereport.go)
 			// until there is nothing left to ask. A spending limit is never asked
 			// past: the turn it would start is refused before it begins.
+			if _, stopped := spendStopOf(waitErr); stopped {
+				break loop
+			}
+			if !door.empty() && ctx.Err() == nil && corrections < stageVerificationCorrections {
+				if receipts, ok := conv.(executionReporter); ok && checksVerification(job.Stage) {
+					notes, _ := receipts.ExecutionNotes()
+					if reason := verificationReason(factory.StageResult{Notes: notes}); reason != "" {
+						res := door.result()
+						if res.Done && (res.Repair == nil || (res.Repair.Decision != "needs_you" && res.Repair.Decision != "needs_repair")) {
+							corrections++
+							words := "The execution guard found an unresolved check, not a user decision: " + reason + ". Correct the command or environment and re-run the same relevant check. Inspect real check exits independently of output-counting grep. Preserve this step's purpose and report again through stage_result; do not invent a code change to satisfy the guard."
+							if err := conv.Note(ctx, words); err == nil {
+								log("Checking the reported result: correcting an execution problem automatically.")
+								go func() { idle <- conv.Wait(ctx) }()
+								continue
+							}
+						}
+					}
+				}
+			}
 			if !door.empty() || ctx.Err() != nil {
 				break loop
 			}
@@ -349,12 +373,10 @@ loop:
 		res.Reports, res.Inferred = 0, false
 		res.Done, res.Exit, res.Output = false, 1, stop.Error()
 	}
-	if receipts, ok := conv.(interface {
-		ExecutionNotes() ([]string, *factory.TestCounts)
-	}); ok {
+	if receipts, ok := conv.(executionReporter); ok {
 		notes, tests := receipts.ExecutionNotes()
 		res.Notes = append(res.Notes, notes...)
-		if job.Stage.Name == "proof" || job.Stage.Name == "test" || factory.IsCIRepairStage(job.Stage) {
+		if checksVerification(job.Stage) {
 			if reason := verificationReason(res); reason != "" {
 				res.Done = false
 				res.Exit = 1
@@ -437,6 +459,9 @@ const stageHandleMost = 12
 // read it as a stranger would`. A reminder says it again (stagereport.go).
 func stageAsk(job Job) string {
 	ask := stageLabel(job.Stage)
+	if f := job.Item.FollowUp; f != nil && f.Kind == "readiness" && factory.IsCIRepairStage(job.Stage) {
+		return ask + ": perform the final read-only code, description and feedback check before the service marks this draft Ready for Review. Do not edit code or require a human approving review."
+	}
 	if a := oneLine(job.Stage.Ask); a != "" {
 		ask += ": " + a
 	}
@@ -537,6 +562,9 @@ func fixThenCheck(job Job) string {
 	head := "round " + strconv.Itoa(job.Round) + " of " + name + "."
 	if found := lastFound(*job.Last); found != "" {
 		head += " The last round reported:\n" + found
+	}
+	if f := job.Item.FollowUp; f != nil && f.Kind == "readiness" && factory.IsCIRepairStage(job.Stage) {
+		return head + "\nCorrect the specific execution or reporting problem and finish the same read-only final check. Report needs_repair for an actual code finding; do not invent edits or repeat unrelated tests."
 	}
 	switch strings.TrimSpace(job.Stage.Until) {
 	case factory.UntilClean, factory.UntilGreen, factory.UntilProven:
@@ -712,7 +740,8 @@ type stageDoor struct {
 	// stage is the step the round runs, whose until a report is checked
 	// against before it is held ([factory.ReportFault]). The zero stage runs
 	// until done, which no report contradicts.
-	stage factory.Stage
+	stage         factory.Stage
+	readinessHead string
 	// ask is the round's road to the manager (Job.Ask), nil for none.
 	ask func(ctx context.Context, q factory.Asked) (string, error)
 }
@@ -752,6 +781,11 @@ func newStageDoor() *stageDoor { return &stageDoor{} }
 // claim marked ok: false, is held like any report and judged into another
 // round. A refused call is not counted in Reports: nothing was reported.
 func (d *stageDoor) Report(_ context.Context, result factory.StageResult) error {
+	if d.readinessHead != "" && result.Done && (result.Repair == nil || (result.Repair.Decision != "needs_repair" && result.Repair.Decision != "needs_you")) {
+		if why := factory.ReadinessReportFault(d.readinessHead, result); why != "" {
+			return errors.New(why)
+		}
+	}
 	if why := factory.ReportFault(d.stage, result); why != "" {
 		return errors.New(why)
 	}
@@ -1097,4 +1131,16 @@ func verificationReason(res factory.StageResult) string {
 		}
 	}
 	return strings.Join(reasons, "; ")
+}
+
+// A bounded correction stays in the existing conversation with its execution
+// history. The job's live budget and the stage wall still govern every turn.
+const stageVerificationCorrections = 2
+
+type executionReporter interface {
+	ExecutionNotes() ([]string, *factory.TestCounts)
+}
+
+func checksVerification(st factory.Stage) bool {
+	return st.Name == "proof" || st.Name == "test" || factory.IsCIRepairStage(st)
 }

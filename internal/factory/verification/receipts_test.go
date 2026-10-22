@@ -159,6 +159,33 @@ func TestOnlyOutputPresentationMayDiscountShellFailure(t *testing.T) {
 	}
 }
 
+func TestVerboseOutputDoesNotChangeCheckIdentityOrEraseScope(t *testing.T) {
+	check := Check{Cwd: "/repo", Args: []string{"go", "test", "./...", "-count=1", "-v"}}
+	plain := check
+	plain.Args = []string{"go", "test", "./...", "-count=1"}
+	if check.Key() != plain.Key() {
+		t.Fatal("output verbosity changed check identity")
+	}
+	for _, args := range [][]string{
+		{"go", "test", "./...", "-count=1", "-race"},
+		{"go", "test", "./...", "-count=1", "-run", "TestA"},
+		{"go", "test", "./nested", "-count=1"},
+		{"go", "test", "./...", "-count=1", "-args", "-v"},
+	} {
+		other := check
+		other.Args = args
+		if other.Key() == check.Key() {
+			t.Fatalf("different scope cleared check: %v", args)
+		}
+	}
+	selector := Check{Cwd: "/repo", Args: []string{"go", "test", "-run", "-v", "./..."}}
+	other := selector
+	other.Args = []string{"go", "test", "-run", "./..."}
+	if selector.Key() == other.Key() {
+		t.Fatal("a regex value was mistaken for a verbosity flag")
+	}
+}
+
 // Exercise the non-Bash branch even on macOS, whose /bin/sh may itself be Bash.
 func TestObserverPreservesShFallbackWithoutExportedFunctions(t *testing.T) {
 	for _, want := range []int{0, 7} {
