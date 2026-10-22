@@ -109,3 +109,14 @@ func TestReadinessExternalReadyEndsTheGateAndKeepsMonitoring(t *testing.T) {
 		t.Fatal("monitoring stopped after ready")
 	}
 }
+
+func TestSettledAutomaticApprovalDoesNotRefuseALaterAnswer(t *testing.T) {
+	it := Item{Autonomy: AutonomyManual, Cap: 10, Approval: &Approval{Automatic: true, Kind: "plan", State: "approved"}}
+	if err := CheckAutomaticApproval(it); err != nil {
+		t.Fatalf("settled automatic approval refused a later yes: %v", err)
+	}
+	it.Approval.State = "approving"
+	if err := CheckAutomaticApproval(it); err == nil {
+		t.Fatal("an in-flight automatic approval in Manual was allowed")
+	}
+}
