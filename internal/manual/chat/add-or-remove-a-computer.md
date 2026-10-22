@@ -166,6 +166,8 @@ The list is in a fixed order: this device first, then devices that are online, t
 
 Stable and rc builds have moving chats and pairing off unless `CODEAF_CELLS=1`; Windows does not have them.
 
+If this computer was removed while its window was closed, the explanation appears on home on the next launch too. The launch check and the live check share one notice, so learning it both ways does not repeat it.
+
 Another of your devices removed this one. The chat says:
 
 ```
