@@ -1610,7 +1610,7 @@ func TestHomeMarksARowWhoseFolderIsGoneWhereverItsAddressIsDrawn(t *testing.T) {
 	a := lab.app(mine)
 	a.width, a.height = 200, 30
 	openHomeFixtureTabs(a)
-	a.openHome()
+	spend(t, a, a.openHome())
 
 	// AT REST: THE ROW'S OWN MARGIN.
 	for _, line := range strings.Split(homeBodyText(a), "\n") {
@@ -1718,7 +1718,7 @@ func TestHomeStatsAFolderOncePerReadingAndNotPerFrame(t *testing.T) {
 	t.Cleanup(func() { homeFolderThere = was })
 
 	a := lab.app(mine)
-	a.openHome()
+	spend(t, a, a.openHome())
 	// ONE PER PROJECT DIRECTORY, not one per conversation: two conversations in
 	// -tmp-alpha carry the same recorded folder and are one syscall between them.
 	opened := map[string]int{}
@@ -2169,7 +2169,7 @@ func TestHomeDrawsNothingUntilTheFarMachineHasAnswered(t *testing.T) {
 	a := lab.app("")
 	a.host = "box"
 	a.world = func() (session.World, bool) { return session.World{}, false }
-	a.openHome()
+	spend(t, a, a.openHome())
 	text := homeText(a)
 	for _, part := range homeEmptyWhispers() {
 		if strings.Contains(text, part) {
@@ -3395,7 +3395,7 @@ func TestHomeOverHostNeverResolvesTheFarMachinesPathsOnThisDisk(t *testing.T) {
 	prior := resolveTranscript
 	resolveTranscript = func(path string) (string, error) { walked++; return path, nil }
 	defer func() { resolveTranscript = prior }()
-	a.openHome()
+	spend(t, a, a.openHome())
 	if !a.at(pageHome) {
 		t.Fatal("home did not open over --host")
 	}

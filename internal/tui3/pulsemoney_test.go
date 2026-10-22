@@ -138,9 +138,7 @@ func spendPlaceMoney(t *testing.T, a *app) string {
 // silently stayed where it was would prove nothing about anywhere.
 func walkTo(t *testing.T, a *app, id page) {
 	t.Helper()
-	if cmd := a.showPage(id); cmd != nil {
-		runCmd(cmd)
-	}
+	spend(t, a, a.showPage(id))
 	if !a.at(id) {
 		t.Fatalf("%s did not open", id.word())
 	}

@@ -884,6 +884,9 @@ type (
 type app struct {
 	conversationRequest uint64
 	conversationOpening bool
+	conversationPreview *conversationPreview
+	homeReading         homeReading
+	homeReadingPending  bool
 	hostReplayLoading   bool
 	hostReplayPending   []followingMsg
 	hostReplayWaiting   bool
