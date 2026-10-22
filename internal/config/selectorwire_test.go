@@ -232,6 +232,41 @@ func TestTheSelectorPoolIsTheCandidatePool(t *testing.T) {
 	}
 }
 
+// THE WIRE'S CATALOG IS INDEXED: the engine's alias resolution and its
+// line/vendor prior inheritance read that index, and a catalog built as a
+// bare literal leaves it nil — no panic, but every unscored model silently
+// seats on the global prior, the arm-collapse the selector exists to
+// prevent. One alias in the pool proves the index is there.
+func TestTheWiredCatalogResolvesAliases(t *testing.T) {
+	dir := selectorProfile(t)
+	base := CrewCatalog()
+	CrewCatalog = func() []catalog.Model {
+		return append(base, catalog.Model{
+			ID: "z-ai/glm-5.3-flash-alias", CanonicalSlug: "z-ai/glm-5.3-flash-latest",
+			AliasTarget: "z-ai/glm-5.3-flash", OpenWeights: true,
+			PromptPrice: 4.5e-8, CompletionPrice: 6e-7, CacheReadPrice: 2.85e-8,
+			IntelligenceIndex: 41.8, CodingIndex: 71.5, AgenticIndex: 50.9,
+			ContextLength: 1310720, Parameters: []string{"tools"},
+		})
+	}
+	req := crewroute.Request{Candidates: CrewCandidatesAt(dir)}
+	cat := selectorCatalogOf(req)
+	if cat == nil {
+		t.Fatal("no catalog from a full candidate pool")
+	}
+	for i := range cat.Models {
+		if cat.Models[i].ID != "z-ai/glm-5.3-flash-alias" {
+			continue
+		}
+		resolved, ok := cat.Resolve(&cat.Models[i])
+		if !ok || resolved.ID != "z-ai/glm-5.3-flash" {
+			t.Fatalf("the alias resolved to %q (ok=%v), want z-ai/glm-5.3-flash — the wire's catalog lost its index", resolved.ID, ok)
+		}
+		return
+	}
+	t.Fatal("the alias candidate never reached the wired catalog")
+}
+
 // A BAD PATH IS REFUSED AT SET TIME, not silently ignored at route time.
 func TestABadSnapshotPathIsRefusedAndAnEmptyOneClears(t *testing.T) {
 	dir := selectorProfile(t)

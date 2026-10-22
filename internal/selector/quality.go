@@ -24,8 +24,20 @@ type SharedSnapshot struct {
 	GeneratedBy   string             `json:"generated_by"`
 }
 
+// maxSnapshotBytes is a fuse, not a budget: a fitted snapshot is
+// kilobytes. The path comes from profile config and is read on the routing
+// hot path, so a refuse-to-load beats a multi-gigabyte pause per route.
+const maxSnapshotBytes = 64 << 20
+
 // LoadSnapshot reads a lane B SharedSnapshot file.
 func LoadSnapshot(path string) (*SharedSnapshot, error) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("read snapshot: %w", err)
+	}
+	if fi.Size() > maxSnapshotBytes {
+		return nil, fmt.Errorf("snapshot is %d bytes, over the %d-byte fuse", fi.Size(), maxSnapshotBytes)
+	}
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read snapshot: %w", err)
@@ -34,7 +46,34 @@ func LoadSnapshot(path string) (*SharedSnapshot, error) {
 	if err := json.Unmarshal(b, &s); err != nil {
 		return nil, fmt.Errorf("parse snapshot: %w", err)
 	}
+	if err := s.Validate(); err != nil {
+		return nil, fmt.Errorf("parse snapshot: %w", err)
+	}
 	return &s, nil
+}
+
+// Validate refuses a snapshot whose numbers the gate cannot read: a NaN or
+// infinite parameter, and a negative or non-finite uncertainty — which the
+// gate square-roots, so a negative variance is a NaN sigma and every
+// comparison against it is arbitrary. Counts below zero are refused the
+// same way. Unknown keys are fine: the file is shared across lanes.
+func (s *SharedSnapshot) Validate() error {
+	for k, v := range s.Parameters {
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return fmt.Errorf("parameter %q is not finite", k)
+		}
+	}
+	for k, v := range s.Uncertainty {
+		if v < 0 || math.IsNaN(v) || math.IsInf(v, 0) {
+			return fmt.Errorf("uncertainty %q is %v, must be finite and >= 0", k, v)
+		}
+	}
+	for k, n := range s.Counts {
+		if n < 0 {
+			return fmt.Errorf("count %q is %d, must be >= 0", k, n)
+		}
+	}
+	return nil
 }
 
 // roleKey builds the snapshot key for one role/model.
@@ -137,14 +176,16 @@ func (e *PriorEngine) scoredSigma(role, model string) (float64, bool) {
 	return math.Sqrt(u), true
 }
 
-// catalogWeights maps a role to the crewpick seat weights [I, C, A].
-// These are the DefaultShapes values from the findings — the selector does
-// not import crewpick, so they are duplicated here deliberately.
+// catalogWeights maps a ROLE (ClassShape.Role: worker|checker|thinker) to
+// the crewpick seat weights [I, C, A]. These are the DefaultShapes values
+// from the findings, keyed by the string catalogPrior is actually called
+// with — keyed by class id instead, the checker seat's prior silently
+// missed and inherited. The selector does not import crewpick, so they are
+// duplicated here deliberately.
 var catalogWeights = map[string][3]float64{
-	"worker":     {0.2, 0.3, 0.5},
-	"high":       {1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0},
-	"mastermind": {0.6, 0, 0.4},
-	"thinker":    {0.6, 0, 0.4},
+	"worker":  {0.2, 0.3, 0.5},
+	"checker": {1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0},
+	"thinker": {0.6, 0, 0.4},
 }
 
 // catalogPrior computes the crewpick-style weighted quality from the

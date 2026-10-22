@@ -2,7 +2,10 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
@@ -64,6 +67,41 @@ func SetCrewSelectorSnapshot(profileDir, raw string) error {
 // the engine the way [CrewCatalog] and [CrewHistory] are stubbed.
 var CrewSelectorPicks = selectorCrewPicks
 
+// snapshotCache is the one snapshot in effect, cached by path + mtime +
+// size: routing calls selectorCrewPicks on every crewed request, and a
+// fitted file is read once per change, not once per route. The cached
+// snapshot is only ever read — the engine keeps its own per-call state.
+var snapshotCache struct {
+	mu    sync.Mutex
+	path  string
+	mtime time.Time
+	size  int64
+	snap  *selector.SharedSnapshot
+}
+
+// cachedSnapshot loads path, or serves the cached copy when the file has
+// not changed. A nil return is the fallback: unreadable, unparseable or
+// invalid all mean unconfigured (see selectorCrewPicks).
+func cachedSnapshot(path string) *selector.SharedSnapshot {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return nil
+	}
+	snapshotCache.mu.Lock()
+	defer snapshotCache.mu.Unlock()
+	if snapshotCache.snap != nil && snapshotCache.path == path &&
+		snapshotCache.mtime.Equal(fi.ModTime()) && snapshotCache.size == fi.Size() {
+		return snapshotCache.snap
+	}
+	snap, err := selector.LoadSnapshot(path)
+	if err != nil {
+		return nil
+	}
+	snapshotCache.path, snapshotCache.mtime = path, fi.ModTime()
+	snapshotCache.size, snapshotCache.snap = fi.Size(), snap
+	return snap
+}
+
 // selectorCrewPicks runs the engine over this request's candidates and the
 // configured snapshot. The classes are the engine's seat shapes: the worker
 // class seats the worker, the high class the checker, the mastermind class
@@ -74,8 +112,8 @@ func selectorCrewPicks(profileDir string, req crewroute.Request) map[crewroute.S
 	if path == "" || len(req.Candidates) == 0 {
 		return nil
 	}
-	snap, err := selector.LoadSnapshot(path)
-	if err != nil {
+	snap := cachedSnapshot(path)
+	if snap == nil {
 		// UNLOADABLE IS UNCONFIGURED, on purpose: the fallback to the live
 		// router is the safety property, and a route that fails because a
 		// fitted file went stale is a route that fails for nothing. The
@@ -130,17 +168,22 @@ func selectorCatalogOf(req crewroute.Request) *selector.ModelCatalog {
 	for _, row := range rows {
 		byLineage[crewroute.Lineage(row.ID)] = row
 	}
-	out := &selector.ModelCatalog{}
+	var models []selector.Model
 	for _, c := range req.Candidates {
 		if req.Avoid[crewroute.Lineage(c.Model.ID)] {
 			continue
 		}
-		out.Models = append(out.Models, selectorModelOf(c, byLineage[crewroute.Lineage(c.Model.ID)]))
+		models = append(models, selectorModelOf(c, byLineage[crewroute.Lineage(c.Model.ID)]))
 	}
-	if len(out.Models) == 0 {
+	if len(models) == 0 {
 		return nil
 	}
-	return out
+	// NewModelCatalog, not a literal: the constructor indexes the rows for
+	// alias resolution and prior inheritance. A literal builds a catalog
+	// whose byID/bySlug maps are nil — no panic, but every unscored model
+	// silently seats on the global prior, the arm-collapse the engine
+	// exists to prevent.
+	return selector.NewModelCatalog(models)
 }
 
 // selectorModelOf is one candidate as the engine reads it. The candidate is

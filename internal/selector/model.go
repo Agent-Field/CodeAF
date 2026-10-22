@@ -116,6 +116,19 @@ func LoadCatalog(path string) (*ModelCatalog, error) {
 	return &c, nil
 }
 
+// NewModelCatalog is LoadCatalog for rows built in code: it indexes them
+// exactly as LoadCatalog indexes rows read from disk. A catalog assembled
+// without it leaves byID/bySlug nil, which does not panic — it silently
+// kills alias resolution and the line/vendor prior inheritance, seating
+// every unscored model on the global prior. That is the arm-collapse bug
+// this package exists to fix, so there is one way to build a catalog and
+// it indexes.
+func NewModelCatalog(models []Model) *ModelCatalog {
+	c := &ModelCatalog{Models: models}
+	c.index()
+	return c
+}
+
 func (c *ModelCatalog) index() {
 	c.byID = make(map[string]*Model, len(c.Models))
 	c.bySlug = make(map[string]*Model, len(c.Models))
