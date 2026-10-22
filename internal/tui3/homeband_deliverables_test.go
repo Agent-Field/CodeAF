@@ -61,7 +61,7 @@ func TestTheDeliverablesIndexIsReadOnceForTheWholeScreen(t *testing.T) {
 	t.Cleanup(func() { readArtifactIndex = real })
 
 	a.width, a.height = homeCardMin, 40
-	a.openHome()
+	spend(t, a, a.openHome())
 	if reads != 1 {
 		t.Fatalf("opening home read the index %d times, want exactly one reading", reads)
 	}
