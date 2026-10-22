@@ -17,6 +17,12 @@ GITHUB_API="${CODEAF_GITHUB_API:-${AFORGE_GITHUB_API:-https://api.github.com}}" 
 GITHUB_DOWNLOAD="${CODEAF_GITHUB_DOWNLOAD:-${AFORGE_GITHUB_DOWNLOAD:-https://github.com}}" # legacy-name
 # GitHub answers anonymous API calls sixty times an hour per address; a token raises that.
 TOKEN="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
+TOKEN_NAME="GH_TOKEN"
+if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+  TOKEN_NAME="GITHUB_TOKEN"
+fi
+TOKEN_REFUSED=0
+API_NOTE=""
 
 usage() {
   cat <<'EOF'
@@ -46,7 +52,7 @@ Flags:
 Environment:
   CHANNEL, VERSION, CODEAF_INSTALL_NAME, CODEAF_INSTALL_DIR
   CODEAF_NO_MODIFY_PATH, CODEAF_NO_START, VERBOSE
-  GITHUB_TOKEN or GH_TOKEN: GitHub answers anonymous API calls sixty times an hour per address; a token raises that.
+  GITHUB_TOKEN or GH_TOKEN: GitHub answers anonymous API calls sixty times an hour per address; a token raises that. A refused token is set aside for one anonymous try.
   CODEAF_GITHUB_API and CODEAF_GITHUB_DOWNLOAD for mirrors and tests
 EOF
 }
@@ -145,6 +151,15 @@ fail() {
     printf 'codeaf: %s\n' "$*" >&2
   fi
   exit 1
+}
+
+# A recovered lookup still explains why the configured token was set aside.
+note() {
+  if [[ -t 2 && -n "$DIM" ]]; then
+    printf '  %s%s%s\n' "$DIM" "$*" "$RESET" >&2
+  else
+    printf 'codeaf: %s\n' "$*" >&2
+  fi
 }
 
 usage_error() {
@@ -255,7 +270,8 @@ case "$CHANNEL" in
   *) usage_error "CHANNEL must be stable, rc, dev, or staging" ;;
 esac
 
-if [[ ! "$INSTALL_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+name_pattern='^[A-Za-z0-9][A-Za-z0-9._-]*$'
+if [[ ! "$INSTALL_NAME" =~ $name_pattern ]]; then
   usage_error "--name / CODEAF_INSTALL_NAME must match ^[A-Za-z0-9][A-Za-z0-9._-]*$"
 fi
 
@@ -277,17 +293,25 @@ trap cleanup EXIT HUP INT TERM
 print_banner
 
 HTTP_STATUS=""
+HTTP_HEADERS=""
+HTTP_BODY=""
+WGET_KEEPS_ERRORS=""
 http_get() {
   local url="$1"
   local destination="$2"
   local accept="${3:-application/vnd.github+json}"
   local authenticate="${4:-0}"
   local status
+  HTTP_HEADERS="$destination.headers"
+  HTTP_BODY="$destination"
+  # A transport failure must not leave a previous response looking current.
+  : > "$HTTP_HEADERS"
+  : > "$destination"
   if [[ "$VERBOSE" == "1" ]]; then
     printf 'codeaf: GET %s\n' "$url"
   fi
   if command -v curl >/dev/null 2>&1; then
-    local args=(-sSL --output "$destination" --write-out '%{http_code}' -H "Accept: ${accept}")
+    local args=(-sSL -D "$HTTP_HEADERS" --output "$destination" --write-out '%{http_code}' -H "Accept: ${accept}")
     if [[ "$authenticate" == "1" && -n "$TOKEN" ]]; then
       args+=(-H "Authorization: Bearer ${TOKEN}")
     fi
@@ -302,18 +326,29 @@ http_get() {
     esac
   fi
 
-  local headers="$TMP_ROOT/http.headers"
   local wget_code
   local args=(-O "$destination" -S --header="Accept: ${accept}")
   if [[ "$authenticate" == "1" && -n "$TOKEN" ]]; then
     args+=(--header="Authorization: Bearer ${TOKEN}")
   fi
-  if wget "${args[@]}" "$url" 2> "$headers"; then
+  # BusyBox lacks this flag, so asking first keeps its successful downloads working.
+  # The help is read whole rather than piped to grep -q: under pipefail an early
+  # grep exit can kill wget mid-write and quietly read as "not supported".
+  if [[ -z "$WGET_KEEPS_ERRORS" ]]; then
+    WGET_KEEPS_ERRORS=0
+    case "$(wget --help 2>&1 || true)" in
+      *--content-on-error*) WGET_KEEPS_ERRORS=1 ;;
+    esac
+  fi
+  if [[ "$WGET_KEEPS_ERRORS" == "1" ]]; then
+    args+=(--content-on-error)
+  fi
+  if wget "${args[@]}" "$url" 2> "$HTTP_HEADERS"; then
     wget_code=0
   else
     wget_code=$?
   fi
-  status=$(awk '$1 ~ /^HTTP\/[0-9.]+$/ && $2 ~ /^[0-9][0-9][0-9]$/ {status=$2} END {print status}' "$headers")
+  status=$(awk '$1 ~ /^HTTP\/[0-9.]+$/ && $2 ~ /^[0-9][0-9][0-9]$/ {status=$2} END {print status}' "$HTTP_HEADERS")
   HTTP_STATUS="$status"
   if [[ "$wget_code" == "0" && "$status" == 2* ]]; then
     return 0
@@ -321,14 +356,233 @@ http_get() {
   return 1
 }
 
+# BEGIN api refusal: pure functions, read by internal/release/install_test.go
+api_header() {
+  # Redirects and wget indentation must not let an earlier quota shadow the final answer.
+  LC_ALL=C awk -v wanted="$2" '
+    {
+      sub(/^[ \t]+/, "")
+      sub(/\r$/, "")
+      if ($0 ~ /^HTTP\/[0-9.]+[ \t]+[0-9][0-9][0-9]/) {
+        value = ""
+      } else {
+        colon = index($0, ":")
+        if (colon && tolower(substr($0, 1, colon - 1)) == wanted) {
+          value = substr($0, colon + 1)
+          sub(/^[ \t]+/, "", value)
+          sub(/[ \t]+$/, "", value)
+        }
+      }
+    }
+    END {print value}
+  ' "$1"
+}
+
+api_reason() {
+  local status="$1" headers="$2" body="$3"
+  case "$status" in
+    "") printf 'unreachable' ;;
+    401) printf 'rejected' ;;
+    429) printf 'quota' ;;
+    403)
+      if [[ "$(api_header "$headers" x-ratelimit-remaining)" == "0" ]] || LC_ALL=C grep -qi 'rate limit' "$body" 2>/dev/null; then
+        printf 'quota'
+      else
+        printf 'access'
+      fi
+      ;;
+    404) printf 'missing' ;;
+    5??) printf 'server' ;;
+    *) printf 'other' ;;
+  esac
+}
+
+api_epoch() {
+  local epoch="$1" rendered pattern='^[0-9][0-9]:[0-9][0-9]' digits='^[0-9]{1,11}$'
+  # An epoch too long for any clock is refused here: bash's printf fallback
+  # would otherwise render it as the epoch's first second and invent a time.
+  [[ "$epoch" =~ $digits ]] || return 1
+  # A missing date is legal and keeps the conservative wait on minimal hosts.
+  command -v date >/dev/null 2>&1 || return 1
+  # Each host gets its own date syntax; bash supplies the last option only where it exists.
+  # A BSD date once read -d as "set the kernel's daylight-saving flag", so it is
+  # never offered there, even though the attempt would fail without root.
+  case "$(uname -s 2>/dev/null)" in
+    Darwin|*BSD|DragonFly) ;;
+    *)
+      if rendered=$(date -d "@$epoch" '+%H:%M %Z' 2>/dev/null) && [[ "$rendered" =~ $pattern ]]; then
+        printf '%s' "${rendered% }"
+        return 0
+      fi
+      ;;
+  esac
+  if rendered=$(date -r "$epoch" '+%H:%M %Z' 2>/dev/null) && [[ "$rendered" =~ $pattern ]]; then
+    printf '%s' "${rendered% }"
+    return 0
+  fi
+  if (( BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 2) )); then
+    if rendered=$(printf '%(%H:%M %Z)T' "$epoch" 2>/dev/null) && [[ "$rendered" =~ $pattern ]]; then
+      printf '%s' "${rendered% }"
+      return 0
+    fi
+  fi
+  return 1
+}
+
+api_wait() {
+  # Six digits is eleven days; a longer Retry-After overflows some awks into
+  # negative minutes, so it reads as no number at all.
+  local headers="$1" reset rendered retry digits='^[0-9]{1,6}$'
+  reset=$(api_header "$headers" x-ratelimit-reset)
+  if [[ -n "$reset" ]] && rendered=$(api_epoch "$reset"); then
+    printf 'until %s' "$rendered"
+    return 0
+  fi
+  retry=$(api_header "$headers" retry-after)
+  if [[ "$retry" =~ $digits ]]; then
+    LC_ALL=C awk -v seconds="$retry" 'BEGIN {
+      if (seconds <= 90) printf "for about a minute"
+      else printf "for about %.0f minutes", int((seconds + 59) / 60)
+    }'
+  else
+    printf 'for up to an hour'
+  fi
+}
+
+api_message() {
+  # Only a bounded, printable message reaches the terminal, never the raw response body.
+  LC_ALL=C awk '
+    {json = json $0 "\n"}
+    END {
+      # Spelled out rather than [[:space:]]: mawk 1.3.3 has no character classes.
+      if (!match(json, /"message"[ \t\r\n]*:[ \t\r\n]*"/)) exit
+      json = substr(json, RSTART + RLENGTH)
+      message = ""
+      for (i = 1; i <= length(json); i++) {
+        c = substr(json, i, 1)
+        if (c == "\\") {
+          c = substr(json, ++i, 1)
+          if (c == "u") {
+            code = 0
+            for (j = 1; j <= 4; j++) {
+              digit = index("0123456789abcdef", tolower(substr(json, ++i, 1))) - 1
+              if (digit < 0) exit
+              code = code * 16 + digit
+            }
+            c = ""
+            if (code >= 32 && code <= 126) c = sprintf("%c", code)
+          } else if (c != "\\" && c != "\"" && c != "/") {
+            c = ""
+          }
+        } else if (c == "\"") {
+          break
+        }
+        if (c ~ /^[ -~]$/) message = message c
+      }
+      gsub(/ +/, " ", message)
+      if (length(message) > 100) message = substr(message, 1, 100) "..."
+      printf "%s", message
+    }
+  ' "$1"
+}
+# END api refusal
+
+api_status_message() {
+  local status="$1" message
+  message=$(api_message "$2")
+  printf '%s' "$status"
+  [[ -z "$message" ]] || printf ': %s' "$message"
+}
+
+api_short() {
+  local status="$1" headers="$2" body="$3" reason
+  reason=$(api_reason "$status" "$headers" "$body")
+  case "$reason" in
+    quota) printf "this address's rate limit is used up %s" "$(api_wait "$headers")" ;;
+    unreachable) printf 'GitHub could not be reached' ;;
+    missing|server) printf '%s' "$status" ;;
+    *) api_status_message "$status" "$body" ;;
+  esac
+}
+
 api_problem() {
-  fail "GitHub's API could not be reached or refused (a rate limit, or a repository you cannot read?); pin VERSION=<tag>, or export GITHUB_TOKEN"
+  local reason message detail host token_sentence advice
+  reason=$(api_reason "$HTTP_STATUS" "$HTTP_HEADERS" "$HTTP_BODY")
+  if [[ "$TOKEN_REFUSED" == "1" ]]; then
+    case "$(api_reason "$TOKEN_STATUS" "$TOKEN_HEADERS" "$TOKEN_BODY")" in
+      rejected)
+        token_sentence="GitHub rejected $TOKEN_NAME ($(api_status_message "$TOKEN_STATUS" "$TOKEN_BODY"))"
+        advice="replace or unset $TOKEN_NAME"
+        ;;
+      quota)
+        token_sentence="GitHub's API rate limit for $TOKEN_NAME is used up $(api_wait "$TOKEN_HEADERS")"
+        advice="wait"
+        ;;
+      access)
+        token_sentence="GitHub refused $TOKEN_NAME access to $REPOSITORY ($(api_status_message "$TOKEN_STATUS" "$TOKEN_BODY"))"
+        advice="check what $TOKEN_NAME may read"
+        ;;
+    esac
+    fail "$token_sentence, and the request without it failed too ($(api_short "$HTTP_STATUS" "$HTTP_HEADERS" "$HTTP_BODY")); $advice, or pin VERSION=<tag>"
+  fi
+  detail=$(api_status_message "$HTTP_STATUS" "$HTTP_BODY")
+  case "$reason" in
+    quota) fail "GitHub's API rate limit for this address is used up $(api_wait "$HTTP_HEADERS"); export GITHUB_TOKEN to use your own, or pin VERSION=<tag>" ;;
+    access) fail "GitHub's API refused access to $REPOSITORY ($detail); pin VERSION=<tag>" ;;
+    missing)
+      if [[ -n "$TOKEN" ]]; then
+        fail "GitHub's API cannot find $REPOSITORY with $TOKEN_NAME (404), which is also its answer for a repository the token cannot read; check what $TOKEN_NAME may read, or pin VERSION=<tag>"
+      fi
+      fail "GitHub's API cannot find $REPOSITORY (404), which is also its answer for a repository you cannot read; export GITHUB_TOKEN, or pin VERSION=<tag>"
+      ;;
+    rejected) fail "GitHub's API refused the request ($detail); pin VERSION=<tag>" ;;
+    server) fail "GitHub's API answered $HTTP_STATUS and may be having trouble; try again in a minute, or pin VERSION=<tag>" ;;
+    unreachable)
+      host="${GITHUB_API#*://}"
+      host="${host%%/*}"
+      fail "GitHub's API could not be reached at $host; check the connection, or pin VERSION=<tag>"
+      ;;
+    other)
+      message=$(api_message "$HTTP_BODY")
+      if [[ -n "$message" ]]; then
+        fail "GitHub's API answered $HTTP_STATUS ($message); pin VERSION=<tag>"
+      fi
+      fail "GitHub's API answered $HTTP_STATUS; pin VERSION=<tag>"
+      ;;
+  esac
 }
 
 release_api_get() {
-  local suffix="$1"
-  local destination="$2"
-  http_get "$GITHUB_API/repos/$REPOSITORY/$suffix" "$destination" "application/vnd.github+json" 1
+  local suffix="$1" destination="$2" authenticate=0 short
+  if [[ -n "$TOKEN" && "$TOKEN_REFUSED" == "0" ]]; then
+    authenticate=1
+  fi
+  if http_get "$GITHUB_API/repos/$REPOSITORY/$suffix" "$destination" "application/vnd.github+json" "$authenticate"; then
+    return 0
+  fi
+  if [[ "$authenticate" != "1" ]]; then
+    return 1
+  fi
+  case "$HTTP_STATUS" in
+    401|403|429) ;;
+    *) return 1 ;;
+  esac
+  # THE REFUSED TOKEN STAYS ASIDE: a second lookup must not spend its bucket again.
+  TOKEN_REFUSED=1
+  TOKEN_STATUS="$HTTP_STATUS"
+  TOKEN_HEADERS="$TMP_ROOT/token.headers"
+  TOKEN_BODY="$TMP_ROOT/token.json"
+  cp "$HTTP_HEADERS" "$TOKEN_HEADERS"
+  cp "$HTTP_BODY" "$TOKEN_BODY"
+  if ! http_get "$GITHUB_API/repos/$REPOSITORY/$suffix" "$destination" "application/vnd.github+json" 0; then
+    return 1
+  fi
+  if [[ "$(api_reason "$TOKEN_STATUS" "$TOKEN_HEADERS" "$TOKEN_BODY")" == "quota" ]]; then
+    short="its rate limit is used up $(api_wait "$TOKEN_HEADERS")"
+  else
+    short=$(api_status_message "$TOKEN_STATUS" "$TOKEN_BODY")
+  fi
+  API_NOTE="GitHub refused $TOKEN_NAME ($short); continuing without it"
 }
 
 extract_tags() {
@@ -338,15 +592,15 @@ extract_tags() {
 
 # Channel selection accepts exactly the grammar used by internal/update/version.go.
 tag_matches_channel() {
-  local channel="$1"
-  local tag="$2"
+  local channel="$1" tag="$2" pattern
   case "$channel" in
-    stable) [[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] ;;
-    rc) [[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-rc\.([1-9][0-9]*)$ ]] ;;
-    dev) [[ "$tag" =~ ^dev-[0-9]{8}-[0-9a-f]{12}$ ]] ;;
-    staging) [[ "$tag" =~ ^staging-[0-9]{8}-[0-9a-f]{12}$ ]] ;;
+    stable) pattern='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' ;;
+    rc) pattern='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-rc\.([1-9][0-9]*)$' ;;
+    dev) pattern='^dev-[0-9]{8}-[0-9a-f]{12}$' ;;
+    staging) pattern='^staging-[0-9]{8}-[0-9a-f]{12}$' ;;
     *) return 1 ;;
   esac
+  [[ "$tag" =~ $pattern ]]
 }
 
 # GitHub's release-list order is not publish order, so the LAW carries each tag's own timestamp into channel selection.
@@ -422,7 +676,7 @@ else
   case "$CHANNEL" in
     stable)
       if ! release_api_get "releases/latest" "$release_file"; then
-        if [[ "$HTTP_STATUS" == "404" ]]; then
+        if [[ "$HTTP_STATUS" == "404" && "$TOKEN_REFUSED" == "0" ]]; then
           fail "no stable build has been published yet"
         fi
         api_problem
@@ -453,8 +707,11 @@ else
 fi
 
 spin_stop
+if [[ -n "$API_NOTE" ]]; then
+  note "$API_NOTE"
+fi
 if [[ -z "${TAG:-}" ]]; then
-  api_problem
+  fail "GitHub's API answered without a release tag; pin VERSION=<tag>"
 fi
 
 if [[ -z "$VERSION" ]] && ! tag_matches_channel "$CHANNEL" "$TAG"; then
