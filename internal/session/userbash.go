@@ -160,7 +160,11 @@ func (a *Agent) runUserBash(ctx context.Context, hub *eventHub, command string) 
 		caps := a.resultCaps()
 		writer := &shellOutput{hub: hub, id: call.ID, bytes: caps.MaxBytes, lines: caps.MaxLines}
 		var err error
-		output, failed, err = bare.RunBash(ctx, a.config.Workspace, json.RawMessage(checked.Function.Arguments), caps, writer)
+		// C5 includes changes made by the person as well as model tools.
+		// Bash has unknown changes, so its recorded call visits the whole tree.
+		output, failed, err = a.executeRecorded(ctx, bare.Tool{Name: "bash", Execute: func(runCtx context.Context, args json.RawMessage) (string, bool, error) {
+			return bare.RunBash(runCtx, a.config.Workspace, args, caps, writer)
+		}}, json.RawMessage(checked.Function.Arguments))
 		if err != nil {
 			output, failed = err.Error(), true
 		}
