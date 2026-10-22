@@ -61,6 +61,7 @@ func TestAddMachineCardIsAbsentWhenItCannotWork(t *testing.T) {
 }
 
 func TestAddMachineOpensTwoStepsAndAPasteField(t *testing.T) {
+	t.Setenv("CODEAF_CELLS", "1") // C26: the card exists only where moving chats is on
 	a := addMachineRig(&fakeApprovals{}, 1, true)
 	if a.toggleAddMachine() != nil {
 		t.Fatal("opening the card asked for something")
@@ -226,6 +227,7 @@ var altD = tea.KeyPressMsg{Code: 'd', Mod: tea.ModAlt}
 
 // THE CHORD REACHES THE CARD FROM HOME'S BOX, and a bare letter never does.
 func TestAddMachineChordIsHomesAndOnlyWhereTheCardIs(t *testing.T) {
+	t.Setenv("CODEAF_CELLS", "1") // C26: the card exists only where moving chats is on
 	a := addMachineRig(&fakeApprovals{}, 1, true)
 	a.openHome()
 	drive(t, a, altD)

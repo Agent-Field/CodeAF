@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 	"github.com/Agent-Field/codeaf/internal/env"
@@ -1810,15 +1809,6 @@ type Settings struct {
 func NewSettings(options SettingsOptions) *Settings {
 	registry := &Settings{options: options}
 	registry.rows = registry.build()
-	// C25 keeps explicit collection settings absent when collection cannot run.
-	if !cell.Available() {
-		for i, row := range registry.rows {
-			if row.Key == KeyCellBudget {
-				registry.rows = append(registry.rows[:i], registry.rows[i+1:]...)
-				break
-			}
-		}
-	}
 	for index := range registry.rows {
 		registry.rows[index].write = registry.announce(registry.rows[index].Key, registry.rows[index].write)
 	}

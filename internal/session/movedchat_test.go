@@ -169,7 +169,7 @@ func TestYesStartsSetupTurnUnderFloor(t *testing.T) {
 		t.Fatalf("a plan with a folder to bring back and no tool to install was refused: %v", err)
 	}
 	collect(t, events)
-	for _, want := range []string{"This chat moved here from blackmac", "web/node_modules: from web/package-lock.json; it was made with `npm ci` in web/", "Only this folder is writable"} {
+	for _, want := range []string{"This chat moved here from blackmac", "web/node_modules: from web/package-lock.json; it was made with `npm ci` in web/", "install in this workspace: ./bin, ./.venv/bin, ./node_modules/.bin are found automatically"} {
 		if !strings.Contains(brief, want) {
 			t.Errorf("the turn's opening lacks %q:\n%s", want, brief)
 		}

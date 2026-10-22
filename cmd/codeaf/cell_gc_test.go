@@ -35,7 +35,8 @@ func TestCellNamesItsVerbsWhenAskedForANonsense(t *testing.T) {
 // C25 exercises explicit gc and ordinary reopen. A withheld file, a user
 // exclusion and a dependency folder survive, while a captured file is restored.
 func TestCellGCKeepsExcludedFilesAndRestoresCapturedFiles(t *testing.T) {
-	celltest.Available(t)
+	// It seals and restores for real, so it needs the engine, not just the flag.
+	celltest.RequireEngine(t)
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_CELLS", "1")
 	t.Setenv("CODEAF_SYNC_URL", "off")
