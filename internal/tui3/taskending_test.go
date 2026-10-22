@@ -192,11 +192,11 @@ func TestAWorkerThatWouldNotWriteItsNotesSaysSoOnTheRailAndInTheRoom(t *testing.
 	// THE CARD SAYS THE SAME THING ON TWO ROWS, which is its own law: the word and
 	// the branch on the head, the reason under it, and nothing fused
 	// (docs/design/task-states/DESIGN.md).
-	if compact := taskText(a); !strings.Contains(compact, taskBranchKept) {
+	if compact := retainedLandingText(t, a, 7); !strings.Contains(compact, "branch · task/parser") {
 		t.Fatalf("compact receipt lost its kept branch: %s", compact)
 	}
 	a.toggleDoneAt(a.doneEntryFor(7))
-	card := taskText(a)
+	card := retainedLandingText(t, a, 7)
 	for _, want := range []string{
 		" · " + taskIncompleteState + " · ", "would not write its notes down", "branch · task/parser",
 	} {
@@ -206,7 +206,7 @@ func TestAWorkerThatWouldNotWriteItsNotesSaysSoOnTheRailAndInTheRoom(t *testing.
 	}
 	// The landing card keeps the card lane's own sentence for the same ending
 	// until that lane lands.
-	if room := taskText(a); !strings.Contains(room, "would not write its notes down") {
+	if room := retainedLandingText(t, a, 7); !strings.Contains(room, "would not write its notes down") {
 		t.Fatalf("the room does not say why the worker stopped:\n%s", room)
 	}
 	// AND IT IS THE OVER-TIER CELL, DIM. Nobody found anything wrong with the

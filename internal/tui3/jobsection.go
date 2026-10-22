@@ -19,7 +19,7 @@ import (
 // jobSection is this conversation's jobs as the column draws them, or nil
 // when there are none — which is the emptiness law, not an empty heading.
 func (a *app) jobSection(width, room int) []railLine {
-	return jobSectionRows(a.jobsLive(), a.jobsSettled(), a.jobsOpen, a.now(), width, room, a.pal)
+	return jobSectionRows(a.jobsLive(), nil, a.jobsOpen, a.now(), width, room, a.pal)
 }
 
 // jobSectionMin is how many rows the jobs section will spend before it has
@@ -28,7 +28,7 @@ func (a *app) jobSection(width, room int) []railLine {
 // ([app.marginRows]), because live work outranks the furniture around it,
 // which is the same trade the roster's own live head makes.
 func (a *app) jobSectionMin() int {
-	if len(a.jobs) == 0 {
+	if a.jobsRunning() == 0 {
 		return 0
 	}
 	if !a.jobsOpen {

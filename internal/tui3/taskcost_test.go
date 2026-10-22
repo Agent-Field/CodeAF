@@ -34,16 +34,16 @@ func TestTheLandedCardSaysWhatTheWorkCostWhenSomebodyPricedIt(t *testing.T) {
 	if strings.Contains(taskText(a), dollars(0.75)) {
 		t.Fatalf("the collapsed card recites the price:\n%s", taskText(a))
 	}
-	clickHit(t, a, hitDone)
-	if !strings.Contains(taskText(a), dollars(0.75)) {
-		t.Fatalf("the opened card does not say what the work cost:\n%s", taskText(a))
+
+	if !strings.Contains(retainedLandingText(t, a, 7), dollars(0.75)) {
+		t.Fatalf("the opened card does not say what the work cost:\n%s", retainedLandingText(t, a, 7))
 	}
 	// AND IT SITS ON THE MODEL'S OWN ROW, which is what changed when the three
 	// stacked fact rows became one ([app.doneFactsRow]). The price wears no label
 	// any more: on a row of whole facts joined by ` · `, `$0.75` is the only thing
 	// that can be a dollar figure, and `cost · ` in front of it was a noun saying
 	// what the glyph already said.
-	text := taskText(a)
+	text := retainedLandingText(t, a, 7)
 	if !strings.Contains(text, doneModelLabel+"openai/gpt-5"+railSep+dollars(0.75)) {
 		t.Fatalf("the price is not beside the model that earned it:\n%s", text)
 	}
@@ -64,9 +64,8 @@ func TestACardNobodyPricedDrawsNoCostRowAtAll(t *testing.T) {
 		session.TaskDone, session.TaskNotice{
 			Model: "openai/gpt-5", Report: "the guard is in", Merge: mergeWordMerged,
 		})})
-	clickHit(t, a, hitDone)
 
-	text := taskText(a)
+	text := retainedLandingText(t, a, 7)
 	if strings.Contains(text, "$") || strings.Contains(text, dollars(0)) {
 		t.Fatalf("an unpriced node was given a figure:\n%s", text)
 	}
@@ -90,10 +89,9 @@ func TestTheCardsPriceIsTheNodesReconciledFigureAndNotTheRawNotice(t *testing.T)
 	advance(2 * time.Minute)
 	drive(t, a, taskEventMsg{gen: a.taskGen, ev: update(7, "Fix the nil-map crash",
 		session.TaskDone, session.TaskNotice{Report: "the guard is in", Merge: mergeWordMerged})})
-	clickHit(t, a, hitDone)
 
-	if !strings.Contains(taskText(a), dollars(0.30)) {
-		t.Fatalf("the card dropped the spend the pilot counted:\n%s", taskText(a))
+	if !strings.Contains(retainedLandingText(t, a, 7), dollars(0.30)) {
+		t.Fatalf("the card dropped the spend the pilot counted:\n%s", retainedLandingText(t, a, 7))
 	}
 }
 
@@ -132,7 +130,7 @@ func TestTheCardCountsFilesAndInventsNoLineNumbers(t *testing.T) {
 			Changed: []string{"internal/session/loop.go", "internal/session/loop_test.go"},
 		})})
 
-	text := taskText(a)
+	text := retainedLandingText(t, a, 7)
 	if !strings.Contains(text, "2"+doneFilesSuffix) {
 		t.Fatalf("the card does not count the files the node wrote:\n%s", text)
 	}

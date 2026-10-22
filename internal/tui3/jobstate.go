@@ -116,6 +116,7 @@ func (a *app) dropJobs() {
 	a.jobs = nil
 	a.jobsOpen = false
 	a.closeJobPage()
+	a.jobList, a.jobPage = false, 0
 }
 
 // ── THE SEAM BETWEEN THE COLUMN AND THE PAGE ────────────────────────────────
@@ -146,6 +147,11 @@ func (a *app) showJobPage(id int) bool {
 // with it: a log tail and a scroll position kept past the page they belong to
 // are what the NEXT page would open showing (jobpage.go's [jobDraw]).
 func (a *app) closeJobPage() {
+	if a.jobList && a.jobPage != processListPage {
+		a.jobPage, a.jobDraw = processListPage, nil
+		return
+	}
+	a.jobList = false
 	a.jobPage = 0
 	a.jobDraw = nil
 }

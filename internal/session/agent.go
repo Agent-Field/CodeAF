@@ -1194,6 +1194,9 @@ type userMessage struct {
 	// nonTaskNews preserves untagged news inside a batch for the conservative
 	// stopped-result routing guard, without changing the turn's owed asks.
 	nonTaskNews bool
+	// completionOnly distinguishes task/job delivery receipts from requested
+	// watch alerts and mixed background batches. It never changes model delivery.
+	completionOnly bool
 
 	// wake marks a note the model OWES AN ANSWER FOR: a task's completion
 	// (task_run.go's reportTaskNode), a background job's exit (jobs.go's reap),
@@ -1431,6 +1434,7 @@ func jobNote(text string) userMessage {
 	// ([userMessage.ending]).
 	note.ending = true
 	note.otherResults = true
+	note.completionOnly = true
 	return note
 }
 
@@ -2643,6 +2647,23 @@ func (a *Agent) recordLocked(message ai.Message) {
 // must not write. Everything the model and the tools produce is text and goes
 // through recordLocked exactly as before.
 func (a *Agent) recordUserLocked(user userMessage) {
+	if !user.authored || user.completionOnly {
+		// Presentation follows this occurrence, not equal words a person might
+		// later quote. The model still receives the complete original payload.
+		mark := a.presentation.of(user.message)
+		user.message.Content = append([]ai.ContentPart(nil), user.message.Content...)
+		if a.presentation == nil {
+			a.presentation = &presentationIndex{}
+		}
+		if user.authored {
+			mark = &messagePresentation{Audience: "operational", RoutineCompletion: true}
+		} else if mark == nil {
+			mark = &messagePresentation{Audience: "human"}
+		} else {
+			mark.Audience = "human"
+		}
+		a.presentation.remember(user.message, mark)
+	}
 	// AND WHOEVER SENT IT IS OWED AN ANSWER ONLY IF THE RECORD REALLY HOLDS IT.
 	// `durable` is set by each road below: the journal write answers whether the
 	// line reached the file, and a write that failed may not settle a delivery —
@@ -3383,6 +3404,7 @@ func batchSessionNotes(notes []userMessage) userMessage {
 	repeats := make(map[string]*repeated)
 	order := make([]string, 0, len(notes))
 	parts := make([]string, 0, len(notes))
+	completionOnly := len(notes) > 0
 	var (
 		wake         bool
 		otherResults bool
@@ -3391,6 +3413,7 @@ func batchSessionNotes(notes []userMessage) userMessage {
 		delivered    []durableDelivery
 	)
 	for _, note := range notes {
+		completionOnly = completionOnly && note.completionOnly
 		wake = wake || note.wake
 		otherResults = otherResults || note.otherResults
 		nonTaskNews = nonTaskNews || note.nonTaskNews || len(note.replyTags) == 0
@@ -3435,13 +3458,14 @@ func batchSessionNotes(notes []userMessage) userMessage {
 		text = "while you worked:\n\n" + strings.Join(rendered, "\n\n")
 	}
 	return userMessage{
-		message:      textMessage("user", text),
-		replyTags:    tags,
-		otherResults: otherResults,
-		nonTaskNews:  nonTaskNews,
-		delivered:    delivered,
-		wake:         wake,
-		authored:     true,
+		message:        textMessage("user", text),
+		completionOnly: completionOnly,
+		replyTags:      tags,
+		otherResults:   otherResults,
+		nonTaskNews:    nonTaskNews,
+		delivered:      delivered,
+		wake:           wake,
+		authored:       true,
 	}
 }
 
@@ -4613,6 +4637,9 @@ type DisplayEntry struct {
 	// mark, so a line from a file written before the mark existed still arrives as
 	// "user", which is exactly what it always was.
 	Role string
+	// RoutineCompletion is a delivery receipt whose full result belongs to
+	// its task or process. It is retained as data rather than another chat row.
+	RoutineCompletion bool
 	// Answer marks a completed tool-free response or an explicit human update. This
 	// boundary survives replay so a later response cannot demote its message.
 	Answer bool
@@ -4883,6 +4910,10 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			displayText = presentation.personWords(msg)
 		}
 		interrupted, explicitlyHuman := false, false
+		routineCompletion := false
+		if mark := presentation.of(msg); mark != nil && msg.Role == "user" && mark.RoutineCompletion {
+			role, routineCompletion = "aside", true
+		}
 		if mark := presentation.of(msg); role == "assistant" && mark != nil {
 			interrupted = mark.Interrupted
 			explicitlyHuman = mark.Audience == "human"
@@ -4907,13 +4938,14 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			displayText, update = UserFacingUpdate(displayText)
 		}
 		entries = append(entries, DisplayEntry{
-			Role:        role,
-			Answer:      role == "assistant" && !interrupted && (len(msg.ToolCalls) == 0 || update),
-			Addressed:   role == "assistant" && (update || interrupted && explicitlyHuman),
-			Interrupted: interrupted,
-			Text:        displayText,
-			ImageRefs:   journal.imageRefs(msg),
-			ReplyTags:   tags,
+			Role:              role,
+			RoutineCompletion: routineCompletion,
+			Answer:            role == "assistant" && !interrupted && (len(msg.ToolCalls) == 0 || update),
+			Addressed:         role == "assistant" && (update || interrupted && explicitlyHuman),
+			Interrupted:       interrupted,
+			Text:              displayText,
+			ImageRefs:         journal.imageRefs(msg),
+			ReplyTags:         tags,
 			// The journal is the only thing that remembers a user line was typed
 			// INTO the turn above it rather than opening one of its own: the
 			// message itself is an ordinary user message, because that is what the

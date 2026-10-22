@@ -235,6 +235,8 @@ func asideShapeOf(e session.DisplayEntry) asideShape {
 	switch {
 	case len(e.Team) > 0 || strings.HasPrefix(text, teamAsideLead):
 		return asideTeam
+	case e.RoutineCompletion:
+		return asideHidden
 	case session.TeamWakeNote(text):
 		return asideHidden
 	}

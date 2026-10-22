@@ -26,14 +26,9 @@ func TestNotificationBatchFoldsAndKeepsPendingDecisionVisible(t *testing.T) {
 	}
 	d := deck{entries: a.entries}
 	rows := a.doneCluster(d, nil, 0, len(d.entries), 100)
-	if len(rows) != 1 {
-		t.Fatalf("batch has %d rows, want one", len(rows))
+	if len(rows) != 0 {
+		t.Fatalf("routine completions took %d transcript rows", len(rows))
 	}
-	a.openDone(rows[0].entry)
-	if rows = a.doneCluster(d, nil, 0, len(d.entries), 100); len(rows) <= 3 {
-		t.Fatalf("batch did not expand: %v", rows)
-	}
-	a.openDone(rows[0].entry)
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(4, "Needs decision", session.TaskUnverified, unverifiedNotice("needs review"))})
 	d = deck{entries: a.entries}
 	rows = a.doneCluster(d, nil, 0, len(d.entries), 100)
@@ -74,6 +69,12 @@ func TestDeleteDismissesSelectedNotificationAndNavigationSkipsHiddenCards(t *tes
 	a, _, _ := taskApp(t)
 	for i := 1; i <= 3; i++ {
 		drive(t, a, streamEventMsg{gen: a.gen, ev: update(uint64(i), "Completed work", session.TaskDone, session.TaskNotice{})})
+	}
+	// Explicitly visible legacy notifications still support manual dismissal.
+	for i := range a.entries {
+		if a.entries[i].done != nil {
+			a.entries[i].done.quiet = false
+		}
 	}
 	first := a.doneEntryFor(1)
 	if head := plain(a.doneHead(a.doneCardAt(first), 120, true)); !strings.Contains(head, "delete dismiss") {

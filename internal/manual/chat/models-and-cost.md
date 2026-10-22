@@ -1105,10 +1105,9 @@ A task you hand off does not run on it. Each task gets a **crew** — a worker, 
 a checker — picked for each task from what kind of work it is; `/crew` shows the seats and
 `/crew pin` fixes one.
 
-What a task costs is on its crew line. When it starts, the line gives the estimate —
-`task 2 crew · bugfix · worker glm-5.3-flash (openrouter) · checker glm-5.3-flash · est $0.013`
-— and when it lands the line moves to the end of the conversation with what it actually
-cost beside the estimate. Every task is held to the per-task limit, and all crews together
+What a task costs is on its result page in Tasks, together with the routed crew,
+its estimate and actual spending. Starting or finishing does not append a separate
+crew receipt to chat. Every task is held to the per-task limit, and all crews together
 to the crew daily cap when one is set (both on `/crew`'s cap row). `/cost` says what this
 conversation has spent, and `/spend` the whole machine.
 
@@ -1121,8 +1120,8 @@ conversation has spent, and `/spend` the whole machine.
 3. the crew's **worker** — your pin, or the model the crew picked for this task;
 4. the model you are talking to, only when nothing above answers.
 
-The task's crew line, its row on the roster, its room's status line and its finished card
-all name the model it actually ran on. The seats are settled when the task starts, so
+The task's result details, its row on the roster and its room's status line
+name the model it actually ran on. The seats are settled when the task starts, so
 changing the crew — or `/model` — half way through does not move work already going. A
 second task handed off while one is still running joins it and rides its crew.
 

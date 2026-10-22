@@ -90,6 +90,39 @@ func (a *app) taskRetried(msg taskRetriedMsg) {
 // The live graph overrides a saved landing while preserving its transcript and identity.
 func (a *app) currentTaskEntry(entry session.TaskIndexEntry) session.TaskIndexEntry {
 	node := a.taskSheetNodeFor(&entry)
+	if node != nil && node.crew != nil {
+		entry.Crew = node.crew
+	}
+	if node != nil && node.crew != nil {
+		entry.Status, entry.Ending = string(node.state), node.ending
+		entry.Parent = node.parent
+		if node.report != "" {
+			entry.Outcome = firstProseLine(node.report)
+		}
+		if node.spent() > 0 {
+			entry.Cost = node.spent()
+		}
+		if node.model != "" {
+			entry.Model = node.model
+		}
+		if node.branch != "" && node.merge != mergeWordMerged {
+			entry.Branch = node.branch
+		}
+		if node.where != "" {
+			entry.Where = node.where
+		}
+		if len(node.changed) > 0 {
+			entry.Files = append([]string(nil), node.changed...)
+			entry.FilesChanged = len(node.changed)
+		}
+		if !node.started.IsZero() {
+			entry.StartedAt = node.started
+		}
+		if !node.ended.IsZero() {
+			entry.EndedAt = node.ended
+		}
+		entry.DurationMS = node.ranFor().Milliseconds()
+	}
 	if node == nil || !node.retried {
 		return entry
 	}

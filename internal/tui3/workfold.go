@@ -129,7 +129,7 @@ func housekeepingFold(es []entry, f workfold) bool {
 			}
 		case entryCompact, entryTeam, entryDivider:
 		case entryDone:
-			if e.done == nil || !e.done.dismissed {
+			if e.done == nil || !e.done.hidden() {
 				return false
 			}
 		default:
@@ -532,7 +532,7 @@ func countWork(es []entry, from, to int, f *workfold) {
 		if e.kind == entryUser || e.kind == entryDivider || e.kind == entrySteer {
 			continue
 		}
-		if e.kind == entryDone && e.done != nil && e.done.dismissed {
+		if e.kind == entryDone && e.done != nil && e.done.hidden() {
 			continue
 		}
 		if f.start < 0 {

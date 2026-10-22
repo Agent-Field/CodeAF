@@ -423,7 +423,7 @@ func TestTheColumnLeadsWithStateAndSpendsNoCellOnIdentity(t *testing.T) {
 	// the indent under its heading, one state glyph, and the air after it.
 	// That is what lets the column be read downward as one column of states.
 	want := ansi.StringWidth(railSeam) + 4
-	for _, title := range []string{"Collect the fixture", "Ship the streaming", "Cut the goldens"} {
+	for _, title := range []string{"Write the tree walker", "Ship the streaming", "Cut the goldens"} {
 		if got := leadCells(t, mustRailRow(t, a, title), title); got != want {
 			t.Fatalf("the row leads in %d cells, want %d:\n%q", got, want, mustRailRow(t, a, title))
 		}

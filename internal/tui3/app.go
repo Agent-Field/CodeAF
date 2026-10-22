@@ -2113,11 +2113,15 @@ type app struct {
 	// truth instead of a map and a slice kept in step with each other.
 	jobs     []session.JobNotice
 	jobsOpen bool
-	// jobPage is the id of the job whose page is open, and 0 is every frame that
+	// jobPage is a process id, processListPage for its list, or 0 for a frame that
 	// is not on one. It is a JOB'S OWN NUMBER and not a roster id, which is the
 	// point of the whole change: one thing, one number, the same one `jobs kill`
 	// takes.
 	jobPage int
+	// jobList remembers the on-demand process list beneath an opened log.
+	jobList   bool
+	jobCursor int
+	jobHover  int
 	// jobDraw is that page's own reading — the log tail it is showing, the beat
 	// it is on and where it is scrolled to (jobpage.go). It is nil whenever no
 	// page is open, and it is replaced rather than reused when the page moves to
@@ -4223,6 +4227,17 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// for a gesture made over a row that is not that list's. Over the nav on
 		// a place the wheel walks the PLACES, one room a tick (placemouse.go's
 		// [app.placeTabWheel]).
+		if a.jobPageOpen() && !a.asking() {
+			delta := placeWheelDelta(msg.Mouse().Button)
+			if a.jobPage == processListPage {
+				a.jobCursor = min(max(0, a.jobCursor+delta), max(0, len(a.jobs)-1))
+				a.jobHover = -1
+				a.touch()
+			} else {
+				a.jobPageScroll(delta)
+			}
+			return a, nil
+		}
 		if cmd, took := a.placeTabWheel(msg.Mouse().Y, placeWheelDelta(msg.Mouse().Button)); took {
 			return a, cmd
 		}
@@ -4538,8 +4553,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// open a tool call in a conversation that is not even on the frame
 			// (jobpage.go). Its edges are the way back and its body is read.
 			if a.jobPageOpen() {
-				a.jobPagePress(msg.Mouse().X, msg.Mouse().Y)
-				return a, nil
+				return a, a.jobPagePress(msg.Mouse().X, msg.Mouse().Y)
 			}
 			// And the rewind timeline at the same rung and for the same reason: a
 			// press that fell through to the conversation underneath would open a
@@ -4894,6 +4908,17 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, cmd
 		}
 		a.sawAPerson()
+		if a.jobPage == processListPage && !a.asking() {
+			width, height := a.size()
+			_, hits, _, _ := a.processListFrame(width, height)
+			a.jobHover = -1
+			if y := msg.Mouse().Y; y >= 0 && y < len(hits) && hits[y] >= 1000 {
+				a.jobHover = int(hits[y]) - 1000
+			}
+			a.touch()
+			return a, nil
+		}
+
 		// THE WALL OWNS MOTION WHILE IT IS UP, as it owns the press: its own
 		// targets light under the pointer, and the strip above it still does
 		// (wall.go).
@@ -8110,6 +8135,9 @@ func (a *app) slash(line string) tea.Cmd {
 		// `/redo stronger` — the last task again on a stronger crew (crew.go,
 		// taskcommand.go's [app.runRedo]).
 		return a.runRedo(rest)
+
+	case "processes":
+		return a.showProcesses(rest)
 
 	case "history":
 		// The place onto every task this MACHINE has run, this session's and every

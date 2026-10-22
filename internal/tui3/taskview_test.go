@@ -791,7 +791,7 @@ func TestSidebarHeaderStaysWhileRunningWorkScrolls(t *testing.T) {
 	a, _, _ := taskApp(t)
 	a.taskUpdate(update(1, "Ship the port", session.TaskRunning, session.TaskNotice{}))
 	for i := 2; i <= 60; i++ {
-		a.taskUpdate(update(uint64(i), "landed "+itoa(i), session.TaskDone,
+		a.taskUpdate(update(uint64(i), "running "+itoa(i), session.TaskRunning,
 			session.TaskNotice{Merge: mergeWordMerged}))
 	}
 	railOpenAll(a)

@@ -112,8 +112,8 @@ func TestTheLandingNoteNamesTheCopyTheWorkCameHomeFrom(t *testing.T) {
 					Rung: tc.rung, Mode: tc.mode, Report: "the guard is in",
 					Branch: "task/fix-the-nil-map-crash-9c1a2f", Merge: "merged",
 				})})
-			clickHit(t, a, hitDone)
-			text := taskText(a)
+
+			text := retainedLandingText(t, a, 7)
 			if !strings.Contains(text, tc.label+" · task/fix-the-nil-map-crash-9c1a2f") {
 				t.Fatalf("the landing note does not label the branch %q:\n%s", tc.label, text)
 			}
@@ -136,8 +136,8 @@ func TestALandingNoteWithNoRungToNameSaysOnlyBranch(t *testing.T) {
 		session.TaskDone, session.TaskNotice{
 			Report: "the guard is in", Branch: "task/fix-the-nil-map-crash-9c1a2f", Merge: "merged",
 		})})
-	clickHit(t, a, hitDone)
-	text := taskText(a)
+
+	text := retainedLandingText(t, a, 7)
 	if !strings.Contains(text, doneBranchLabel+"task/fix-the-nil-map-crash-9c1a2f") {
 		t.Fatalf("the landing note did not fall back to %q:\n%s", doneBranchLabel, text)
 	}

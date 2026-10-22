@@ -1134,6 +1134,10 @@ func (p *tasksPlace) enter(a *app) tea.Cmd {
 	}
 	entry := item.entry
 	node := a.taskSheetNodeFor(&entry)
+	if node != nil && node.crew != nil && node.state != session.TaskRunning && node.state != session.TaskQueued {
+		entry = a.currentTaskEntry(entry)
+		return a.taskSheetInside(&entry)
+	}
 	if node == nil {
 		return a.taskSheetInside(&entry)
 	}
@@ -1226,8 +1230,7 @@ func (p *tasksPlace) window(a *app, key string) bool {
 // always answered on the first press.
 func (a *app) taskSheetPress(x, y int) tea.Cmd {
 	if a.taskSheet.detailOn {
-		a.taskCardPress(x, y)
-		return nil
+		return a.taskCardPress(x, y)
 	}
 	// THE FRAME IS BUILT ONCE AND BOTH HALVES OF THE HIT MAP COME OUT OF IT. A
 	// press used to lay the whole place out twice — once for the pane's verbs and

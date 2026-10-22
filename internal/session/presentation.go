@@ -24,6 +24,9 @@ type messagePresentation struct {
 	Text        *string `json:"text,omitempty"`
 	Interrupted bool    `json:"interrupted,omitempty"`
 	SkillsBlock string  `json:"-"`
+	// RoutineCompletion is the runtime's delivery receipt, not the answer
+	// the person asked for. Its owner keeps the report and output available.
+	RoutineCompletion bool `json:"routineCompletion,omitempty"`
 }
 
 // Message identity follows its immutable content allocation, as reasoning repair
@@ -116,6 +119,9 @@ func interruptedPresentation(text string) *messagePresentation {
 // text and mixed replies remain untouched. New records always write an explicit
 // audience, so even these exact words can be deliberately addressed to a person.
 func legacyPresentation(entry sessionEntry) *messagePresentation {
+	if legacyRoutineCompletion(entry) {
+		return &messagePresentation{Audience: "operational", RoutineCompletion: true}
+	}
 	if entry.Role != "assistant" || len(entry.ToolCalls) != 0 {
 		return nil
 	}
