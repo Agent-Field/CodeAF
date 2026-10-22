@@ -3,10 +3,14 @@ package factory
 import (
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 )
+
+// ErrNotManager is the only status refusal that permits ordinary conversation.
+var ErrNotManager = errors.New("this conversation is not the manager of any item in the factory")
 
 // PendingQuestionID identifies the decision, not the frequently changing job
 // document. Polling or spending updates cannot expire it; a new ask or round can.

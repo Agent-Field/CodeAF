@@ -12,7 +12,9 @@ func TestManagerDecisionSurvivesRestartAndRejectsTheNextQuestion(t *testing.T) {
 	for _, warm := range []bool{false, true} {
 		t.Run(map[bool]string{false: "cold", true: "held"}[warm], func(t *testing.T) {
 			f := setup(t)
-			it := f.add(t, recoveryJob())
+			job := recoveryJob()
+			job.Talk = "manager"
+			it := f.add(t, job)
 			var hold lease.Lease
 			if warm {
 				var err error
@@ -38,7 +40,7 @@ func TestManagerDecisionSurvivesRestartAndRejectsTheNextQuestion(t *testing.T) {
 			// Unrelated polling/spend revisions do not invalidate the same question.
 			_ = f.store.Annotate(it.ID, func(cur *factory.Item) error { cur.Stream.Spent += 0.1; return nil })
 			doors := lease.NewDoors(recoveryDesk(t, f))
-			if err := doors.AnswerPending(it.ID, id, "Merge both; the person delegated this engineering choice."); err != nil {
+			if _, err := doors.AnswerPending(it.ID, it.Talk, id, "Merge both; the person delegated this engineering choice."); err != nil {
 				t.Fatal(err)
 			}
 			got := readRecovery(t, f, it.ID)
@@ -61,7 +63,7 @@ func TestManagerDecisionSurvivesRestartAndRejectsTheNextQuestion(t *testing.T) {
 				return nil
 			})
 			rev, _ := f.store.Revision(it.ID)
-			if err := doors.AnswerPending(it.ID, id, "stale reply"); err == nil {
+			if _, err := doors.AnswerPending(it.ID, it.Talk, id, "stale reply"); err == nil {
 				t.Fatal("old manager turn answered a new question")
 			}
 			after, _ := f.store.Revision(it.ID)
@@ -74,7 +76,9 @@ func TestManagerDecisionSurvivesRestartAndRejectsTheNextQuestion(t *testing.T) {
 
 func TestBudgetRestoresOnlyBudgetBlockedAutomaticRecovery(t *testing.T) {
 	f := setup(t)
-	it := f.add(t, recoveryJob())
+	job := recoveryJob()
+	job.Talk = "manager"
+	it := f.add(t, job)
 	_ = f.store.Update(it.ID, func(cur *factory.Item) error {
 		cur.State = factory.StateNeedsYou
 		cur.Cap = cur.Stream.Spent
@@ -102,7 +106,9 @@ func TestBudgetRestoresOnlyBudgetBlockedAutomaticRecovery(t *testing.T) {
 
 func TestManagerDecisionFirstWriterWins(t *testing.T) {
 	f := setup(t)
-	it := f.add(t, recoveryJob())
+	job := recoveryJob()
+	job.Talk = "manager"
+	it := f.add(t, job)
 	_ = f.store.Update(it.ID, func(cur *factory.Item) error {
 		cur.State = factory.StateNeedsYou
 		cur.Question, cur.QKind = "Which strategy?", "step"
@@ -113,7 +119,7 @@ func TestManagerDecisionFirstWriterWins(t *testing.T) {
 	doors := lease.NewDoors(recoveryDesk(t, f))
 	results := make(chan error, 2)
 	for _, answer := range []string{"Merge both", "Restrict the form"} {
-		go func(words string) { results <- doors.AnswerPending(it.ID, pending, words) }(answer)
+		go func(words string) { _, err := doors.AnswerPending(it.ID, it.Talk, pending, words); results <- err }(answer)
 	}
 	successes := 0
 	for range 2 {

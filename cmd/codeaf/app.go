@@ -1878,6 +1878,9 @@ func (b *appBackend) sendLocked(a *appAgent, text, clientID string, shown *appSe
 	if opened {
 		b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	}
+	if turn, handled, err := b.tryFactoryStatus(a, text, clientID, shown); handled {
+		return turn, err
+	}
 	return b.startLocked(a, text, clientID, shown)
 }
 

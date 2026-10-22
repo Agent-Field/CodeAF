@@ -335,9 +335,6 @@ func (a *Agent) turnCue(user userMessage) string {
 // a follow-up (agent.go) — an interrupted or faulted turn must not be the thing
 // that starts the next one.
 func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bool {
-	if a.answerFactoryStatus(ctx, hub, user) {
-		return true
-	}
 	// WHAT THE LAST TURN'S MEMORY PASS HAD NOWHERE TO SAY is said first: it ran
 	// after that turn's stream had closed, so this stream is the first it gets
 	// (memory.go's [Agent.sayMemory]).

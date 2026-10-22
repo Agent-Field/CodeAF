@@ -3,7 +3,8 @@ package session
 import (
 	"context"
 	"encoding/json"
-	"time"
+	"errors"
+	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -30,15 +31,40 @@ func (a *Agent) factoryStatusTool() bare.Tool {
 	}}
 }
 
-// A small set of unambiguous status-only questions is answered directly. Other
-// wording, and anything asking for action, keeps the ordinary conversation.
-func (a *Agent) answerFactoryStatus(ctx context.Context, hub *eventHub, user userMessage) bool {
-	if user.factoryStatus == "" {
-		return false
+// ReadFactoryStatus is a pure side read, even during a provider call or while
+// an old follow-up remains queued. It never enters the turn lifecycle.
+func (a *Agent) ReadFactoryStatus(ctx context.Context, text string) (string, bool, error) {
+	if a.config.Stage != nil || !factory.StatusOnlyRequest(text) {
+		return "", false, nil
 	}
-	text := user.factoryStatus
-	a.record(textMessage("assistant", text))
-	hub.send(Event{Kind: EventTextDelta, Text: text})
-	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(Usage{Turns: 1}, time.Now(), a.Model())})
-	return true
+	a.mu.Lock()
+	closed := a.closed
+	a.mu.Unlock()
+	if closed {
+		return "", true, errors.New("session: agent is closed")
+	}
+	door, ok := a.config.FactoryRun.(ManagerStatusDoor)
+	if !ok {
+		return "", false, nil
+	}
+	status, err := door.ManagerStatus(ctx, a.config.SessionFile)
+	if errors.Is(err, factory.ErrNotManager) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", true, err
+	}
+	return strings.Split(status.Text, "\nPending question ID:")[0], true, nil
+}
+
+func factoryStatusStream(text string) <-chan Event {
+	events := make(chan Event, 1)
+	// No turn.done: this reading must not finish the foreground turn in any UI.
+	events <- Event{Kind: EventNotice, Text: text, Unrecorded: true}
+	close(events)
+	return events
+}
+
+func statusOnlyPresentation(p *messagePresentation, text string) bool {
+	return p == nil || (len(p.Reads) == 0 && len(p.Attachments) == 0 && p.Composed == nil && (p.Text == nil || strings.TrimSpace(*p.Text) == strings.TrimSpace(text)))
 }
