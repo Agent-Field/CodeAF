@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -33,6 +36,7 @@ func mintOpened(t *testing.T, bucket, workspace string) session.Place {
 	return place
 }
 
+// TestNewChatIsACellWhenTheFlagIsOn proves C23 at the real chat mint door.
 func TestNewChatIsACellWhenTheFlagIsOn(t *testing.T) {
 	t.Setenv(cell.EnvVar, "1")
 	bucket, workspace := t.TempDir(), t.TempDir()
@@ -54,6 +58,11 @@ func TestNewChatIsACellWhenTheFlagIsOn(t *testing.T) {
 	}
 	if strings.Contains(string(raw), bucket) || strings.Contains(string(raw), workspace) {
 		t.Fatalf("cell meta holds an absolute path: %s", raw)
+	}
+
+	c, err := cell.OpenAt(place.Dir, place.ID())
+	if err != nil || c.Meta().Class != cell.HostBound {
+		t.Fatalf("new chat class = %s, %v; want host-bound (C23)", c.Meta().Class, err)
 	}
 
 	// Resume and listing find it through the same scan every launch uses.
@@ -185,6 +194,8 @@ func seatClass(t *testing.T, cfg session.Config, dir string) executor.Class {
 	return local.Class
 }
 
+// TestSeatFollowsTheCellsClass proves C23 preserves an existing sandboxed
+// cell, including its metadata, when the conversation resumes.
 func TestSeatFollowsTheCellsClass(t *testing.T) {
 	celltest.Available(t)
 	t.Setenv(cell.EnvVar, "1")
@@ -193,7 +204,15 @@ func TestSeatFollowsTheCellsClass(t *testing.T) {
 		t.Fatal(err)
 	}
 	workspace := t.TempDir()
-	cfg := v3Seated(session.Config{Place: session.Place{Dir: c.Root, Workspace: workspace}})
+	before, err := os.ReadFile(filepath.Join(c.Root, cell.MetaPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := v3Seated(v3Migrated(session.Config{Place: session.Place{Dir: c.Root, Workspace: workspace}}))
+	after, err := os.ReadFile(filepath.Join(c.Root, cell.MetaPath))
+	if err != nil || string(before) != string(after) {
+		t.Fatalf("resuming rewrote the declared class: %s, %v", after, err)
+	}
 	if got := seatClass(t, cfg, workspace); got != executor.Sandboxed {
 		t.Fatalf("class = %d, want sandboxed", got)
 	}
@@ -233,5 +252,90 @@ func TestNoSeatWhenCellsAreOffOrTheFolderIsNoCell(t *testing.T) {
 	other := session.Place{Dir: t.TempDir(), Workspace: t.TempDir()}
 	if cfg := v3Seated(session.Config{Place: other}); cfg.Seat != nil {
 		t.Fatal("a folder that is no cell must keep the legacy host rule")
+	}
+}
+
+// TestC23NewChatCommandsHaveOpenNetworkWithoutConfinement proves C23 using
+// the mint and seat doors, with the executor's jail and observer seams so no
+// network connection or working kernel jail is needed.
+func TestC23NewChatCommandsHaveOpenNetworkWithoutConfinement(t *testing.T) {
+	celltest.Available(t)
+	t.Setenv(cell.EnvVar, "1")
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	workspace := t.TempDir()
+	place, err := v3MintSession(t.TempDir(), workspace, workspace, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := cell.OpenAt(place.Dir, place.ID())
+	if err != nil || c.Meta().Class != cell.HostBound {
+		t.Fatalf("minted class = %s, %v; want host-bound", c.Meta().Class, err)
+	}
+	seat, _, _ := v3SeatOf(place, nil)
+	if seat == nil {
+		t.Fatal("new chat has no seat")
+	}
+	local, ok := seat.In(workspace).(executor.Local)
+	if !ok {
+		t.Fatalf("runner = %T, want local", seat.In(workspace))
+	}
+	probe := &c23CommandProbe{}
+	local.Jail, local.Observer = probe, probe
+	res, err := local.Exec(context.Background(), executor.ExecRequest{Argv: []string{"sh", "-c", "printf ordinary"}}, nil)
+	if err != nil || res.Exit != 0 || string(res.Stdout) != "ordinary" {
+		t.Fatalf("ordinary command: %+v, %v", res, err)
+	}
+	if probe.confined || !probe.request.Net.Open || probe.request.Setup || probe.request.Class != executor.HostBound || res.JailDegraded {
+		t.Fatalf("ordinary call policy = %+v, confined = %v, degraded = %v", probe.request, probe.confined, res.JailDegraded)
+	}
+}
+
+type c23CommandProbe struct {
+	confined bool
+	request  executor.ExecRequest
+}
+
+func (p *c23CommandProbe) Confine(*exec.Cmd, executor.ExecRequest) error {
+	p.confined = true
+	return errors.New("C23: a new chat must not enter a jail")
+}
+
+func (p *c23CommandProbe) Observe(req executor.ExecRequest, _ executor.ExecResult) {
+	p.request = req
+}
+
+// TestC23NewChatCanWriteToASiblingThroughItsSeat proves C23 through a real
+// sealed call, so cells being on cannot narrow the host's write access.
+func TestC23NewChatCanWriteToASiblingThroughItsSeat(t *testing.T) {
+	celltest.RequireEngine(t)
+	t.Setenv(cell.EnvVar, "1")
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	parent := t.TempDir()
+	workspace, sibling := filepath.Join(parent, "workspace"), filepath.Join(parent, "sibling")
+	for _, dir := range []string{workspace, sibling} {
+		if err := os.Mkdir(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	place, err := v3MintSession(t.TempDir(), workspace, workspace, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sealError error
+	seat, _, _ := v3SeatOf(place, func(line string) { t.Log(line) })
+	if seat == nil {
+		t.Fatal("new chat has no seat")
+	}
+	path := filepath.Join(sibling, "x")
+	var result executor.ExecResult
+	err = seat.Around(context.Background(), executor.Call{Tool: "bash"}, func() ([]byte, bool) {
+		result, sealError = seat.In(workspace).Exec(context.Background(), executor.ExecRequest{Argv: []string{"touch", path}}, nil)
+		return result.Stdout, sealError != nil || result.Exit != 0
+	})
+	if err != nil || sealError != nil || result.Exit != 0 {
+		t.Fatalf("sibling write = %+v, %v, %v", result, sealError, err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("sibling file was not written: %v", err)
 	}
 }
