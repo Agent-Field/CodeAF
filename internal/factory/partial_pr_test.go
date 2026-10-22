@@ -57,3 +57,46 @@ func TestPartialPRMonitoringTransitionsIgnoreRepairDedupe(t *testing.T) {
 		t.Fatal("unchanged recovery churned state")
 	}
 }
+
+func TestIncompleteFeedbackReadStartsNoRepairRound(t *testing.T) {
+	now := time.Now()
+	complete := func() *PullRequest {
+		return &PullRequest{Number: 7, State: PROpen, HeadSHA: "h1", BaseSHA: "b1", ChecksRead: true, ReviewsRead: true, CI: "ci ✓",
+			Checks: PRChecks{Passed: 1}, CheckRuns: []CheckRun{{Name: "ci", State: "success"}},
+			ReviewDecision: "changes_requested", Reviews: []PRReview{{By: "bob", State: "changes_requested", Body: "rename X"}},
+			Feedback: "PR conversation comment 1 by @bob: please rename X\n"}
+	}
+	it := Item{Kind: KindIssue, State: StateShipped, Autonomy: AutonomyAuto, Cap: 10, Publish: "pr",
+		FollowUp: &PRFollowUp{Kind: "pr", State: "healthy", Limit: 3}, PullRequest: complete()}
+	if !QueueCIFollowUp(&it, now) || it.FollowUp.State != "queued" || it.FollowUp.Attempt != 1 {
+		t.Fatalf("first feedback: %+v", *it.FollowUp)
+	}
+	it.State, it.FollowUp.State = StateShipped, "healthy"
+	for _, area := range []string{"reviews", "review policy", "feedback"} {
+		partial := complete()
+		// Only the part whose read failed is missing; the rest is as complete as before.
+		partial.ReviewsRead = false
+		if area == "feedback" {
+			partial.Feedback = ""
+		} else {
+			partial.Reviews = nil
+		}
+		partial.Problems = []PRReadProblem{{Area: area, Code: "transient", Retryable: true}}
+		it.PullRequest = partial
+		QueueCIFollowUp(&it, now)
+		if it.FollowUp.State == "queued" || it.FollowUp.Attempt > 1 {
+			t.Fatalf("%s read blip queued a repair: %+v", area, *it.FollowUp)
+		}
+		it.PullRequest = complete()
+		QueueCIFollowUp(&it, now)
+		if it.FollowUp.State == "queued" || it.FollowUp.Attempt > 1 {
+			t.Fatalf("recovery after a %s blip queued a repair: %+v", area, *it.FollowUp)
+		}
+	}
+	edited := complete()
+	edited.Feedback = "PR conversation comment 1 by @bob: please rename X and Y\n"
+	it.PullRequest = edited
+	if !QueueCIFollowUp(&it, now) || it.FollowUp.State != "queued" {
+		t.Fatalf("genuinely new feedback ignored: %+v", *it.FollowUp)
+	}
+}
