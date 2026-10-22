@@ -374,6 +374,10 @@ turn. A rewind adds a new turn on top of the newest one and deletes nothing, so 
 rewound too. It refuses while a tool call began and never finished. With no cell named,
 both use the cell the current folder is in.
 
+## Do moving chats restrict commands, network access or installs
+
+New chats declare `host-bound`: shell commands run on this computer with the network and the same access as any program you run. Moving chats on or off does not change that access. `/setup` compares the tools a chat used with this machine and can install missing tools or rebuild folders left behind by a move; it is not needed for ordinary network access. A cell already declared sandboxed by an earlier build keeps that class.
+
 ## Your identity — codeaf identity show, export and import, and when CODEAF_CELLS=0 stops them
 
 Your identity is the one root secret codeaf keeps for you on a machine: a signing key, a

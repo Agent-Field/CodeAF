@@ -348,7 +348,7 @@ The words to type are `/pair`, `/pair <code>`, `/sync`, `/link` and `/laptop`. A
 | Command | Aliases | Argument | Effect |
 |---|---|---|---|
 | `/setup` | — | — | prepare this machine: shows what this device lacks for the conversation (present, installable, impossible) and, for a chat that moved here, the folders it did not bring along, and does nothing else |
-| `/setup` | — | `now` | starts a setup turn in which the agent installs the installable items; asks first unless approvals are open |
+| `/setup` | — | `now` | installs missing tools and rebuilds folders left behind by a move; asks first unless listed commands were approved or approvals are open |
 | `/cache` | — | — | how big the shared build cache is, and where |
 | `/cache` | — | `clean` | asks first, then deletes the cache to free disk — confirm with `/cache clean now` |
 | `/cache` | — | `clean now` | deletes the shared build cache now |
@@ -2258,12 +2258,8 @@ the install folders a lockfile rebuilds (`node_modules`, `.venv`) with the comma
 each back (see "What a moved chat left behind" in home). When nothing is installable and
 nothing was left behind, `/setup` says so and does nothing.
 
-`/setup now` starts a **setup turn**: the agent installs the installable items, and brings back
-what a move left behind, into user space, with the network open for that turn only. Every call in it is recorded as external
-and the turn is marked as a setup turn in `codeaf cell log`. Because the network is open,
-each call asks first, exactly like any other outside action, unless approvals are open
-(`--yolo` or the allow posture). Limits: a setup turn is never replayed on another machine
-(the agent does it again there), it never runs impossible items, it needs your permission
-for the network, a sandboxed conversation can install only inside its own folder (`bin/`, `.venv/bin` and `node_modules/.bin` there count as this machine's tools), and it can be rewound like any turn. When it ends, codeaf looks at what is
-now on this machine and updates the record. Cells default on for dev, staging and source builds, and off for rc and stable (`CODEAF_CELLS=1`/`0` overrides); they need Unix and a compatible furrow engine; without a
-cell there is nothing to set up.
+## /setup now — install missing tools after a move, with ordinary network access
+
+`/setup now` starts a **setup turn**: the agent installs the installable items and brings back what a move left behind, into user space. A new chat's commands already have the network and this computer's ordinary access, with moving chats on or off; `/setup` is not needed to open the network or to install outside the workspace. Each setup call asks first unless approvals are open (`--yolo` or the allow posture), or the arrival card already approved that exact listed command. The setup approval floor still applies in a host-bound chat. Calls are recorded as external and the turn says `Setup` in `codeaf cell log`.
+
+Limits: a setup turn is never replayed on another machine (the agent does it again there), never attempts impossible items, and can be rewound like any turn. When it ends, codeaf looks at what is now on this machine and updates the record. Existing cells keep their declared class: an older sandboxed cell still has its folder limits and opens its network for the setup turn only. Cells default on for dev, staging and source builds, and off for rc and stable (`CODEAF_CELLS=1`/`0` overrides); they need Unix and a compatible furrow engine. Without a cell there is nothing to set up.

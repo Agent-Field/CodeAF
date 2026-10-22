@@ -79,7 +79,7 @@ func (a *app) showSetup(plan machine.Report) tea.Cmd {
 		a.note(setupAllHere)
 		return nil
 	}
-	a.note("type /setup now to have the agent install what it can · it opens the network for that turn and asks first unless approvals are open")
+	a.note("type /setup now to have the agent install what it can · setup calls ask first unless approvals are open")
 	return nil
 }
 

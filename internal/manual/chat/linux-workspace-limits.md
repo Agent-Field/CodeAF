@@ -1,15 +1,19 @@
 # Workspace limits on Linux
 
+## Are chats sandboxed — network access, installs and writes outside the workspace
+
+New chats are not sandboxed. Their commands run on this computer with the network and the same access as any program you run, including writes outside the workspace and the computer's ordinary temporary folder. This is true with moving chats on or off. `/setup` is for preparing tools on this machine after a move; ordinary commands do not need it to reach the network. Command approvals still apply.
+
 ## Why commands fail on Ubuntu 24.04 — user namespaces, AppArmor and reduced workspace limits
 
-Some Linux hosts allow a user namespace but refuse to start codeaf's workspace helper with the capabilities it needs. Ubuntu's AppArmor restrictions can do this. codeaf tests that exact helper launch once per process, before using it; drawing the screen never runs the probe.
+New chats declare `host-bound` and do not enter the Linux jail, so user namespaces and AppArmor's namespace restrictions do not limit their commands. An existing cell made by an earlier build keeps its declared class when reopened or moved here. A cell that already declares `sandboxed` still uses its earlier workspace and network limits; codeaf does not rewrite its metadata.
 
-When those limits are unavailable, a command whose workspace policy allows network access (including a setup call) runs unconfined. The conversation says once, as a dim line:
+For those existing sandboxed cells, codeaf probes the exact workspace helper once per process. If namespace or helper capabilities are unavailable, a call whose policy permits network access runs unconfined and says once:
 
 `This system cannot apply all workspace limits; commands with network access run without full confinement.`
 
-A sandboxed command that requires the network to be blocked does not run. It says:
+A sandboxed call that requires the network to be blocked instead refuses:
 
 `this command was not run: the workspace is sandboxed (no network) but this system cannot block the network: user namespaces are disabled; enable user namespaces or declare the workspace host-bound`
 
-This also applies when the helper cannot use namespaces because of the host's security policy. Enable the required user namespaces and helper capabilities through the host's security settings, or declare trusted work host-bound. A host-bound workspace runs with the host's access. When namespaces work but Landlock is missing, network limits still apply; filesystem limits are reduced and the same dim line names that limit.
+When namespaces work but Landlock is missing, network limits still apply and filesystem limits are reduced. These are rules for cells already declared sandboxed, not the limits of a new chat.

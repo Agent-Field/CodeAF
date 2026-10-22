@@ -34,6 +34,8 @@ func machineApp(t *testing.T, items ...machine.Item) (*app, *setupAgent) {
 	return a, agent
 }
 
+// TestSetupShowsTheLinesAndActsOnlyOnNow proves C15 and C23 keep setup as
+// preparation without claiming that ordinary chat commands lack the network.
 func TestSetupShowsTheLinesAndActsOnlyOnNow(t *testing.T) {
 	a, agent := machineApp(t,
 		machine.Item{Bucket: machine.Installable, Name: "jq"},
@@ -41,7 +43,7 @@ func TestSetupShowsTheLinesAndActsOnlyOnNow(t *testing.T) {
 
 	settleDoor(t, a, a.slash("/setup"))
 	shown := lastNote(t, a)
-	if !strings.Contains(shown, "/setup now") || agent.runs != 0 {
+	if !strings.Contains(shown, "/setup now") || strings.Contains(shown, "opens the network") || agent.runs != 0 {
 		t.Fatalf("bare /setup said %q and ran %d turns; it must only show", shown, agent.runs)
 	}
 	var all []string
