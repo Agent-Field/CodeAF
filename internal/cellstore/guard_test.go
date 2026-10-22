@@ -383,3 +383,37 @@ func TestWithheldNamesTheFilesTheGuardKeptOutAndTheFolderTheyAreIn(t *testing.T)
 		t.Fatalf("Withheld = %q, %v, %v", tree, paths, err)
 	}
 }
+
+// TestC9CertificateBundleIsSealedWhilePrivateKeysAreWithheld proves C9's
+// distinction at the actual seal and restore boundary, on both engine transports.
+func TestC9CertificateBundleIsSealedWhilePrivateKeysAreWithheld(t *testing.T) {
+	forEachTransport(t, func(t *testing.T) {
+		e, r := realEngine(t), newRig(t)
+		e.Workspace, e.Guard = r.tree, r.guard
+		cert := "-----BEGIN CERTIFICATE-----\nPUBLIC_CA_MARKER\n-----END CERTIFICATE-----\n"
+		key := "-----BEGIN PRIVATE KEY-----\nPRIVATE_KEY_MARKER\n-----END PRIVATE KEY-----\n"
+		r.write(".venv/lib/site-packages/certifi/cacert.pem", cert+cert)
+		r.write("private.pem", key)
+		r.write("combined.pem", cert+key)
+		sealed, err := e.Seal(context.Background(), r.cell, TurnInfo{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := r.policy().withheld; len(got) != 2 || got[0] != "combined.pem" || got[1] != "private.pem" {
+			t.Fatalf("withheld %v; want only the two files holding a private key", got)
+		}
+		if hits := grepStore(t, e.LocalDir(r.cell), "PRIVATE_KEY_MARKER"); len(hits) != 0 {
+			t.Fatalf("private key reached the store: %v", hits)
+		}
+		path := filepath.Join(r.tree, ".venv/lib/site-packages/certifi/cacert.pem")
+		if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+		if err := e.Restore(context.Background(), r.cell, sealed.Turn.ID, nil); err != nil {
+			t.Fatal(err)
+		}
+		if raw, err := os.ReadFile(path); err != nil || string(raw) != cert+cert {
+			t.Fatalf("certificate bundle did not survive sealing: %q, %v", raw, err)
+		}
+	})
+}

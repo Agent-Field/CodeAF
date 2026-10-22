@@ -115,6 +115,8 @@ func TestImportDotenv(t *testing.T) {
 	}
 }
 
+// TestScanTree proves C9: key material is withheld without treating a public
+// certificate or an SSH public key as a private key because of its filename.
 func TestScanTree(t *testing.T) {
 	cases := []struct {
 		file, body, rule string // rule "" = clean
@@ -123,14 +125,22 @@ func TestScanTree(t *testing.T) {
 		{".env.local", "X=1", "dotenv-file"},
 		{"sub/prod.env", "X=1", "dotenv-file"},
 		{"aws-credentials.json", "{}", "credentials-file"},
-		{"tls/server.pem", "x", "private-key-file"},
-		{"id_rsa", "x", "private-key-file"},
-		{"id_ed25519.pub", "x", "private-key-file"},
+		{"tls/server.pem", "-----BEGIN CERTIFICATE-----\npublic\n-----END CERTIFICATE-----", ""},
+		{"id_rsa", "-----BEGIN OPENSSH PRIVATE KEY-----", "private-key-file"},
+		{"id_ed25519.pub", "ssh-ed25519 AAAAC3Nz public", ""},
 		{"a.txt", "key=sk-abcdefghijklmnop1234", "api-key-sk"},
 		{"b.txt", "ghp_" + strings.Repeat("a", 36), "github-token"},
 		{"c.txt", "xoxb-1234567890-abcdef", "slack-token"},
 		{"d.txt", "AKIAABCDEFGHIJKLMNOP", "aws-access-key"},
-		{"e.txt", "-----BEGIN RSA PRIVATE KEY-----", "private-key-block"},
+		{"e.txt", "-----BEGIN RSA PRIVATE KEY-----", "private-key-file"},
+		{"ca-bundle.pem", strings.Repeat("-----BEGIN CERTIFICATE-----\npublic\n-----END CERTIFICATE-----\n", 3), ""},
+		{"tls/client.pem", "-----BEGIN PRIVATE KEY-----", "private-key-file"},
+		{"encrypted.key", "-----BEGIN ENCRYPTED PRIVATE KEY-----", "private-key-file"},
+		{"combined.pem", "-----BEGIN CERTIFICATE-----\npublic\n-----END CERTIFICATE-----\n-----BEGIN EC PRIVATE KEY-----", "private-key-file"},
+		{"putty.ppk", "PuTTY-User-Key-File-3: ssh-ed25519\nEncryption: none\nPrivate-Lines: 1\nprivate", "private-key-file"},
+		{"putty2.ppk", "PuTTY-User-Key-File-2: ssh-rsa\nEncryption: aes256-cbc", "private-key-file"},
+		{"tls/client.p12", "opaque PKCS#12", "private-key-file"},
+		{"tls/client.pfx", "opaque PKCS#12", "private-key-file"},
 		{"main.go", "package main // task-sk-1", ""},
 		{"env.md", "about .env files", ""},
 		{"f.txt", "AKIAshort", ""},
