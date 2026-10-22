@@ -158,6 +158,9 @@ func (b *appBackend) steer(agent, text, clientID string, shown *appSending) erro
 	if err != nil {
 		return err
 	}
+	if _, handled, err := b.tryFactoryStatus(a, text, clientID, shown); handled {
+		return err
+	}
 	live := b.liveOf(a)
 	running := false
 	if live != nil {

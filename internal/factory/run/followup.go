@@ -15,7 +15,12 @@ func (lp *floorLoop) parkCI(c *loopCtl, i int, reason string) {
 	if reason == "" {
 		reason = "The failed CI checks need a scope decision."
 	}
-	_ = lp.move(c, "", EventWaiting, reason, func(it *factory.Item) error {
+	err := lp.move(c, "", EventWaiting, reason, func(it *factory.Item) error {
+		// A decision arriving during verification owns the job until answered.
+		// A late audit must neither clear it nor replace its reason.
+		if it.Question != "" || it.Asking != nil {
+			return errors.New("a pending decision already owns this job")
+		}
 		if it.FollowUp != nil {
 			f := *it.FollowUp
 			f.State, f.Reason = "needs_you", reason
@@ -31,7 +36,9 @@ func (lp *floorLoop) parkCI(c *loopCtl, i int, reason string) {
 		loopSay(it, now, "ask", "Follow PR needs your decision: "+reason)
 		return nil
 	})
-	lp.tell(c.id, "Follow PR needs your decision: "+reason)
+	if err == nil {
+		lp.tell(c.id, "Follow PR needs your decision: "+reason)
+	}
 }
 
 // Verify branch continuity and an actual repair; filenames do not define scope.

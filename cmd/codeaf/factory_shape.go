@@ -306,7 +306,7 @@ type seamRunDoor struct {
 }
 
 // errNotAManager is `factory_run` asked by a conversation that manages no item.
-var errNotAManager = errors.New("this conversation is not the manager of any item in the factory")
+var errNotAManager = factory.ErrNotManager
 
 // EditRun edits the item whose conversation is the asking one.
 func (d seamRunDoor) EditRun(ctx context.Context, conversation string, e factory.RunEdit) (factory.Item, []string, error) {
@@ -376,15 +376,21 @@ func (d seamRunDoor) AnswerPending(ctx context.Context, conversation, questionID
 	if err != nil {
 		return "", err
 	}
-	if it.Asking == nil || factory.PendingQuestionID(it) != questionID {
-		return "", errors.New("the pending step question changed; read factory_status before answering again")
-	}
 	desk, err := lease.Open(d.st, lease.Options{})
 	if err != nil {
 		return "", err
 	}
-	if err = lease.NewDoors(desk).AnswerPending(it.ID, questionID, answer); err != nil {
+	receipt, err := lease.NewDoors(desk).AnswerPending(it.ID, it.Talk, questionID, answer)
+	return managerAnswerResult(receipt, err)
+}
+
+func managerAnswerResult(receipt factory.ManagerAnswer, err error) (string, error) {
+	if receipt.QuestionID == "" {
 		return "", err
 	}
-	return "Decision saved for " + it.Asking.Stage + ": " + strings.TrimSpace(answer) + ". The step can continue with this answer.", nil
+	line := "Decision saved for " + receipt.Stage + ": " + receipt.Words + "."
+	if err != nil {
+		return line + " Worker notification could not be persisted: " + err.Error() + ". Retry factory_answer with the same question_id and answer to redeliver; the decision is already saved.", nil
+	}
+	return line + " The saved decision is confirmed. A newer pending question, if any, is unchanged.", nil
 }

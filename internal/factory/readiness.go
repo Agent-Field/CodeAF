@@ -25,6 +25,9 @@ type ReadinessReview struct {
 }
 
 func ReadinessGate(it Item) error {
+	if it.Question != "" || it.Asking != nil {
+		return fmt.Errorf("a pending decision must be resolved before readiness can complete")
+	}
 	p := it.PullRequest
 	if it.Manual || it.DoneHow == "dropped" {
 		return fmt.Errorf("automation is paused or the job was dropped")

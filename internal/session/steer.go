@@ -628,6 +628,15 @@ func (a *Agent) SteerMessage(message Submission) (<-chan Event, error) {
 // steerMarked is Steer's body with the person's mark beside the words, nil for
 // a door that said nothing beyond them.
 func (a *Agent) steerMarked(words string, person *messagePresentation) (<-chan Event, error) {
+	if statusOnlyPresentation(person, words) {
+		if reply, handled, err := a.ReadFactoryStatus(context.Background(), words); handled {
+			if err != nil {
+				return nil, err
+			}
+			return factoryStatusStream(reply), nil
+		}
+	}
+
 	words = strings.TrimSpace(words)
 	if words == "" {
 		return nil, errors.New("session: empty message")

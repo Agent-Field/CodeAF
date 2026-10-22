@@ -2,6 +2,7 @@ package run
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -200,4 +201,73 @@ func TestReadinessExternalReadyHeadIsCheckedWithoutPublishing(t *testing.T) {
 	if calls.Load() != 1 || got.HeadCommit != head || got.PullRequest.Draft || got.FollowUp.State != "healthy" || got.FollowUp.Readiness.State != "checked" || factory.ReadinessPending(got) || got.Approval != nil {
 		t.Fatalf("external review did not return directly to monitoring: %+v", got.FollowUp)
 	}
+}
+
+// A decision may arrive before the audit starts or after its filesystem reads,
+// immediately before the locked completion. Neither success nor its error path
+// may overwrite that decision.
+func TestLocalReadinessPreservesConcurrentCriticalDecision(t *testing.T) {
+	for _, draft := range []bool{true, false} {
+		for _, late := range []bool{false, true} {
+			t.Run(fmt.Sprintf("draft=%t/late=%t", draft, late), func(t *testing.T) {
+				dir := gitRig(t)
+				head := mustGit(t, dir, "rev-parse", "HEAD")
+				g := newRig(t, nil, nil)
+				id := g.add("readiness decision", factory.Stage{Name: factory.FollowPRStep, Kind: factory.StageChat})
+				ask := &factory.Asked{Stage: factory.FollowPRStep, Question: "Choose the public API", With: factory.AskedYou, At: time.Now()}
+				decision := func() {
+					t.Helper()
+					if err := g.st.Update(id, func(it *factory.Item) error {
+						it.Question, it.QKind, it.Asking, it.State = ask.Question, "scope", ask, factory.StateNeedsYou
+						return nil
+					}); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := g.st.Update(id, func(it *factory.Item) error {
+					it.State = factory.StateRunning
+					it.Cap = 10
+					it.HeadCommit = head
+					it.PullRequest = &factory.PullRequest{Number: 7, State: factory.PROpen, Draft: draft, HeadSHA: head, ChecksRead: true, ReviewsRead: true, Mergeable: factory.MergeableYes, CI: "ci ✓", Checks: factory.PRChecks{Passed: 1}, ReadinessKey: "snapshot"}
+					it.FollowUp = &factory.PRFollowUp{Kind: "readiness", State: "running", Readiness: &factory.PRReadiness{Head: head, Key: "snapshot", External: !draft}}
+					it.Stream = &factory.Stream{Phases: []factory.Phase{{Name: factory.FollowPRStep, State: factory.PhaseRunning}}}
+					return nil
+				}); err != nil {
+					t.Fatal(err)
+				}
+				g.r.opts.Workdir = func(factory.Item) (string, error) { return dir, nil }
+				g.r.opts.Git = readinessDecisionGit{dir: dir, afterStatus: func() {
+					if late {
+						decision()
+					}
+				}}
+				if !late {
+					decision()
+				}
+				report := factory.StageResult{Done: true, Repair: &factory.CIRepairResult{Decision: "no_change", Reason: "Complete diff review", Readiness: &factory.ReadinessReview{Head: head, DiffReviewed: true, DescriptionMatches: true, FeedbackAddressed: true, NoUnfinishedWork: true}}}
+				lp := &floorLoop{r: g.r}
+				lp.finishReadiness(&loopCtl{id: id, ctx: context.Background()}, 0, report)
+				got, err := g.st.Get(id)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got.Question != ask.Question || got.QKind != "scope" || got.Asking == nil || !got.Asking.At.Equal(ask.At) || got.State != factory.StateNeedsYou || got.FollowUp.Readiness.State == "checked" || got.Approval != nil || len(got.Proof) != 0 {
+					t.Fatal("readiness overwrote the pending critical decision")
+				}
+			})
+		}
+	}
+}
+
+type readinessDecisionGit struct {
+	dir         string
+	afterStatus func()
+}
+
+func (g readinessDecisionGit) Run(dir string, args ...string) (string, error) {
+	out, err := (ExecGit{}).Run(dir, args...)
+	if len(args) > 0 && args[0] == "status" {
+		g.afterStatus()
+	}
+	return out, err
 }

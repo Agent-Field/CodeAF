@@ -105,6 +105,8 @@ type Desk struct {
 	ttl    time.Duration
 	now    func() time.Time
 	record *record.Record
+	// persist is the atomic lease-file writer; nil uses writeAtomic.
+	persist func(string, []byte) error
 }
 
 // Open holds no handles. Reading is deferred to each operation so a desk

@@ -443,7 +443,7 @@ type Entry struct {
 	// Skills) or "memory" (a memory line, Unrecorded because no transcript
 	// record redraws it). They are absent on every other notice, which is an
 	// ordinary one; a consumer never derives them from Text.
-	NoticeKind string   `json:"notice_kind,omitempty" enum:"skills,memory"`
+	NoticeKind string   `json:"notice_kind,omitempty" enum:"skills,memory,factory_status"`
 	Skills     []string `json:"skills,omitempty"`
 	Unrecorded bool     `json:"unrecorded,omitempty"`
 	// A steer's and a note's state, the step a steer landed at and the step a

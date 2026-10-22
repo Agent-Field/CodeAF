@@ -525,6 +525,8 @@ type Item struct {
 	// on. It is kept on the item so a question sent to the person outlives a
 	// pause and a restart; nil is none.
 	Asking *Asked
+	// ManagerAnswer confirms the last durable decision independently of lease delivery.
+	ManagerAnswer *ManagerAnswer `json:",omitempty"`
 	// Adapted is what was changed about the item's stages, one line each in
 	// the order it changed them, each starting with who changed them
 	// (`manager set review: …`, `plan added arch`), `why: …` last: the record
@@ -856,4 +858,17 @@ func (it Item) WorkState() string {
 		return "publishing"
 	}
 	return ""
+}
+
+// ManagerAnswer is an idempotency receipt for one exact manager decision. Phase,
+// round and chat keep a delayed redelivery from reaching another step attempt.
+type ManagerAnswer struct {
+	QuestionID string
+	Manager    string
+	Words      string
+	Stage      string
+	Phase      int
+	Round      int
+	Chat       string
+	At         time.Time
 }

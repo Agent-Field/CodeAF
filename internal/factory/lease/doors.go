@@ -385,32 +385,75 @@ func stopHandle(caller *string, person string) string {
 	return person
 }
 
-// AnswerPending commits a manager's answer to the exact persisted step ask.
-// The lease and question identity are checked together before a warm signal or
-// cold restart is recorded, so a slow manager cannot answer the next question.
-func (d *Doors) AnswerPending(id int, questionID, words string) error {
-	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
-		if questionID == "" || factory.PendingQuestionID(*it) != questionID {
-			return false, errors.New("the pending step question changed; read factory_status before answering again")
-		}
-		if it.Manual || it.Publishing {
-			return false, errors.New("manual control or publication owns this job")
-		}
-		if strings.TrimSpace(words) == "" {
-			return false, errors.New("an answer is required")
-		}
-		// Keep the answer before clearing the question. Even a worker lost between
-		// the item write and signal delivery resumes with the saved decision.
-		note := fmt.Sprintf("%s asked: %s · the person answered: %s", it.Asking.Stage, it.Asking.Question, strings.TrimSpace(words))
-		if err := run.KeepAnswer(it, false, words, now); err != nil {
+// AnswerPending commits an exact manager decision before signaling a held worker.
+// A nonempty receipt with an error means the answer WAS saved, but delivery needs
+// another attempt. Retrying the same answer confirms it without answering a newer ask.
+func (d *Doors) AnswerPending(id int, manager, questionID, words string) (factory.ManagerAnswer, error) {
+	var saved factory.ManagerAnswer
+	words = strings.TrimSpace(words)
+	err := d.desk.change(func(doc *document, now time.Time) (bool, error) {
+		held := find(doc, id)
+		dirty := false
+		var receipt factory.ManagerAnswer
+		err := d.desk.store.Update(id, func(it *factory.Item) error {
+			if manager == "" || it.Talk != manager {
+				return errors.New("the job's manager changed; read factory_status from its current conversation")
+			}
+			if questionID == "" || words == "" {
+				return errors.New("an exact question identity and answer are required")
+			}
+			if old := it.ManagerAnswer; old != nil && old.QuestionID == questionID {
+				if old.Manager != manager || old.Words != words {
+					return errors.New("this decision already has a different saved answer")
+				}
+				receipt = *old
+				// Confirmation is safe even if a newer question exists; only the same
+				// still-running attempt with no pending decision may receive a redelivery.
+			} else {
+				if factory.PendingQuestionID(*it) != questionID {
+					return errors.New("the pending step question changed; read factory_status before answering again")
+				}
+				if it.Manual || it.Publishing {
+					return errors.New("manual control or publication owns this job")
+				}
+				if it.Stream == nil {
+					return errors.New("the pending step has no saved run to resume")
+				}
+				receipt = factory.ManagerAnswer{QuestionID: questionID, Manager: manager, Words: words, Stage: it.Asking.Stage, Phase: it.Stream.Cur, At: now}
+				if receipt.Phase >= 0 && receipt.Phase < len(it.Stream.Phases) {
+					p := it.Stream.Phases[receipt.Phase]
+					receipt.Round, receipt.Chat = p.Round, p.Chat
+				}
+				note := fmt.Sprintf("%s asked: %s · the person answered: %s", it.Asking.Stage, it.Asking.Question, words)
+				if err := run.KeepAnswer(it, false, words, now); err != nil {
+					return err
+				}
+				it.Note(now, note)
+				it.ManagerAnswer = &receipt
+			}
+			if held != nil && !it.Manual && !it.Publishing && it.Question == "" && it.Asking == nil && it.Stream != nil && it.Stream.Cur == receipt.Phase && receipt.Phase >= 0 && receipt.Phase < len(it.Stream.Phases) {
+				p := it.Stream.Phases[receipt.Phase]
+				if p.Round == receipt.Round && p.Chat == receipt.Chat && (it.State == factory.StateRunning || it.State == factory.StateQueued) {
+					it.State = factory.StateRunning
+					exists := false
+					for _, s := range doc.Signals[id] {
+						if s.Verb == SignalAnswer && s.ID == questionID {
+							exists = true
+						}
+					}
+					if !exists {
+						signal(doc, id, Signal{Verb: SignalAnswer, ID: questionID, Words: words})
+						dirty = true
+					}
+				}
+			}
+			return nil
+		})
+		if err != nil {
 			return false, err
 		}
-		it.Note(now, note)
-		if held == nil {
-			return false, nil
-		}
-		it.State = factory.StateRunning
-		signal(doc, id, Signal{Verb: SignalAnswer, ID: questionID, Words: words})
-		return true, nil
+		saved = receipt // Only after the item file has successfully persisted.
+		return dirty, nil
 	})
+	return saved, err
 }

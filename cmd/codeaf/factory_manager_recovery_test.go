@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"os"
@@ -49,5 +50,17 @@ func TestManagerOrdinaryTurnAnswersPersistedPlanThroughItsOwnDoor(t *testing.T) 
 	got, _ := st.Get(id)
 	if got.State != factory.StateQueued || got.Question != "" || got.Stream.Phases[0].Chat != "existing-plan" || len(got.Stream.Phases[0].Carry) != 1 {
 		t.Fatal("saved decision did not preserve the drafted plan")
+	}
+}
+
+func TestSavedAnswerDeliveryFailureReportsTheSavedOutcome(t *testing.T) {
+	failed := errors.New("lease signal file unavailable")
+	line, err := managerAnswerResult(factory.ManagerAnswer{QuestionID: "saved-question", Stage: "plan", Words: "Merge both"}, failed)
+	if err != nil || !strings.Contains(line, "Decision saved for plan") || !strings.Contains(line, "already saved") || !strings.Contains(line, "Retry factory_answer") || strings.Contains(line, "nothing changed") {
+		t.Fatal("tool would misreport an already persisted answer as unsaved")
+	}
+	line, err = managerAnswerResult(factory.ManagerAnswer{}, failed)
+	if !errors.Is(err, failed) || line != "" {
+		t.Fatal("failure before the durable write was falsely confirmed")
 	}
 }

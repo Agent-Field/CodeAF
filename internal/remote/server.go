@@ -3408,6 +3408,9 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	if payload, handled, err := s.delegationCall(call); handled {
 		return payload, err
 	}
+	if payload, handled, err := factoryStatusCall(agent, call); handled {
+		return payload, err
+	}
 	if payload, handled, err := replySuggestionCall(agent, call); handled {
 		return payload, err
 	}
