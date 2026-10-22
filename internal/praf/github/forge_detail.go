@@ -133,6 +133,10 @@ func (c *client) PullFiles(ctx context.Context, owner, repo string, number int) 
 	return out, nil
 }
 
+// checkPagesMost bounds each paged CI list at 1000 entries; a commit with more
+// is reported incomplete rather than judged from a partial read.
+const checkPagesMost = 10
+
 // CheckRuns is what the commit statuses and check runs on sha add up to, and
 // the check runs themselves: any failure is a failure, else anything
 // unfinished is running, else anything that passed is passed, and a commit
@@ -141,27 +145,39 @@ func (c *client) CheckRuns(ctx context.Context, owner, repo, sha string) (CheckS
 	if sha == "" {
 		return ChecksNone, nil, nil
 	}
-	body, _, err := c.read(ctx, c.repoURL(owner, repo, "/commits/"+url.PathEscape(sha)+"/status"), "")
-	if err != nil {
-		return ChecksNone, nil, err
+	// Both lists are paged (GitHub's default status page is 30). Read every
+	// page up to checkPagesMost before judging completeness, so a busy matrix
+	// is read whole rather than reported as permanently unreadable.
+	type status struct {
+		Context string `json:"context"`
+		URL     string `json:"target_url"`
+		State   string `json:"state"`
 	}
-	var combined struct {
-		State    string `json:"state"`
-		Total    int    `json:"total_count"`
-		Statuses []struct {
-			Context string `json:"context"`
-			URL     string `json:"target_url"`
-			State   string `json:"state"`
-		} `json:"statuses"`
+	var statuses []status
+	statusTotal := 0
+	for page := 1; page <= checkPagesMost; page++ {
+		body, _, err := c.read(ctx, c.repoURL(owner, repo, "/commits/"+url.PathEscape(sha)+"/status?per_page=100&page="+strconv.Itoa(page)), "")
+		if err != nil {
+			return ChecksNone, nil, err
+		}
+		var combined struct {
+			Total    int      `json:"total_count"`
+			Statuses []status `json:"statuses"`
+		}
+		if err := json.Unmarshal(body, &combined); err != nil {
+			return ChecksNone, nil, err
+		}
+		statusTotal = combined.Total
+		statuses = append(statuses, combined.Statuses...)
+		if len(combined.Statuses) < 100 || len(statuses) >= statusTotal {
+			break
+		}
 	}
-	if err := json.Unmarshal(body, &combined); err != nil {
-		return ChecksNone, nil, err
-	}
-	if combined.Total > len(combined.Statuses) {
+	if statusTotal > len(statuses) {
 		return ChecksNone, nil, fmt.Errorf("commit statuses are incomplete; cannot assert current-head CI passed")
 	}
 	failed, running, passed := false, false, false
-	for _, s := range combined.Statuses {
+	for _, s := range statuses {
 		switch s.State {
 		case "failure", "error":
 			failed = true
@@ -171,30 +187,40 @@ func (c *client) CheckRuns(ctx context.Context, owner, repo, sha string) (CheckS
 			passed = true
 		}
 	}
-	body, _, err = c.read(ctx, c.repoURL(owner, repo, "/commits/"+url.PathEscape(sha)+"/check-runs?per_page=100"), "")
-	if err != nil {
-		return ChecksNone, nil, err
+	type run struct {
+		App struct {
+			ID int `json:"id"`
+		} `json:"app"`
+		Name       string `json:"name"`
+		Status     string `json:"status"`
+		Conclusion string `json:"conclusion"`
+		HTMLURL    string `json:"html_url"`
 	}
-	var runs struct {
-		Total     int `json:"total_count"`
-		CheckRuns []struct {
-			App struct {
-				ID int `json:"id"`
-			} `json:"app"`
-			Name       string `json:"name"`
-			Status     string `json:"status"`
-			Conclusion string `json:"conclusion"`
-			HTMLURL    string `json:"html_url"`
-		} `json:"check_runs"`
+	var checkRuns []run
+	runTotal := 0
+	for page := 1; page <= checkPagesMost; page++ {
+		body, _, err := c.read(ctx, c.repoURL(owner, repo, "/commits/"+url.PathEscape(sha)+"/check-runs?per_page=100&page="+strconv.Itoa(page)), "")
+		if err != nil {
+			return ChecksNone, nil, err
+		}
+		var runs struct {
+			Total     int   `json:"total_count"`
+			CheckRuns []run `json:"check_runs"`
+		}
+		if err := json.Unmarshal(body, &runs); err != nil {
+			return ChecksNone, nil, err
+		}
+		runTotal = runs.Total
+		checkRuns = append(checkRuns, runs.CheckRuns...)
+		if len(runs.CheckRuns) < 100 || len(checkRuns) >= runTotal {
+			break
+		}
 	}
-	if err := json.Unmarshal(body, &runs); err != nil {
-		return ChecksNone, nil, err
-	}
-	if runs.Total > len(runs.CheckRuns) {
+	if runTotal > len(checkRuns) {
 		return ChecksNone, nil, fmt.Errorf("check runs are incomplete; cannot assert current-head CI passed")
 	}
 	var out []CheckRun
-	for _, s := range combined.Statuses {
+	for _, s := range statuses {
 		conclusion := s.State
 		status := "completed"
 		if s.State == "pending" {
@@ -206,7 +232,7 @@ func (c *client) CheckRuns(ctx context.Context, owner, repo, sha string) (CheckS
 		}
 		out = append(out, CheckRun{Name: s.Context, Status: status, Conclusion: conclusion, URL: s.URL})
 	}
-	for _, r := range runs.CheckRuns {
+	for _, r := range checkRuns {
 		out = append(out, CheckRun{AppID: r.App.ID, Name: r.Name, Status: r.Status, Conclusion: r.Conclusion, URL: r.HTMLURL})
 		if r.Status != "completed" {
 			running = true
