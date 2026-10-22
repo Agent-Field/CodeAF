@@ -168,3 +168,24 @@ func TestModelRotationNeverAppearsInATaskRoomOrChangesItsModel(t *testing.T) {
 		t.Fatal("chat rotation changed a task room")
 	}
 }
+
+func TestModelRotationSetupRowsKeepTheirPointerOwners(t *testing.T) {
+	a, _ := rotationApp(t)
+	a.openModelRotationSettings()
+	drive(t, a, key("enter"))
+	for _, saved := range []string{"", "vendor/second", "vendor/second, vendor/third"} {
+		row, _ := a.sheet.registry.Row(config.KeyChatModelRotation)
+		if err := row.Apply(saved); err != nil {
+			t.Fatal(err)
+		}
+		lines, owners := a.sheet.selectLines(90, 15, a.pal, a.reasoningFor)
+		if len(lines) != len(owners) || len(lines) != 15 {
+			t.Fatalf("lines=%d owners=%d", len(lines), len(owners))
+		}
+		for i, line := range lines {
+			if strings.Contains(plain(line), "Choose at least two") && owners[i] != -1 {
+				t.Fatal("setup guidance became a selectable model")
+			}
+		}
+	}
+}

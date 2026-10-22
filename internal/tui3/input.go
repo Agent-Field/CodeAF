@@ -700,7 +700,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 
 	// The rotation key is below every modal so it never changes a model while
 	// a person is answering a different question in a panel.
-	if msg.String() == modelCycleKey && a.page == pageNone && !a.roomOpen() && !a.linear {
+	if msg.String() == modelCycleKey && a.at(pageNone) && !a.roomOpen() && !a.linear {
 		a.cycleChatModel()
 		return nil
 	}

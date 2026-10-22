@@ -24,7 +24,7 @@ func (a *app) nextRotationModel() string {
 // modelCycleSuffix belongs only to the conversation; a task keeps its own door.
 // Fewer than two models offer no exchange, so the button is absent.
 func (a *app) modelCycleSuffix() string {
-	if a.page != pageNone || a.roomOpen() || a.linear || len(a.modelRotation) < 2 {
+	if !a.at(pageNone) || a.roomOpen() || a.linear || len(a.modelRotation) < 2 {
 		return ""
 	}
 	position := ""

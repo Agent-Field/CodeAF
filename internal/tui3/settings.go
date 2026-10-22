@@ -3809,7 +3809,11 @@ func (s *sheet) selectLines(width, room int, pal palette, level func(string) str
 	out, owner := sel.pick.rowsOwned(width, max(0, room-len(prefix)), pal, -1, level)
 	if len(prefix) > 0 {
 		out = append(prefix, out...)
-		owner = append([]int{-1}, owner...)
+		prefixOwners := make([]int, len(prefix))
+		for i := range prefixOwners {
+			prefixOwners[i] = -1
+		}
+		owner = append(prefixOwners, owner...)
 	}
 	for len(out) < room {
 		out = append(out, "")
