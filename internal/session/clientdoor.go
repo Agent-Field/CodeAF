@@ -747,7 +747,7 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 	}
 	// AN AUXILIARY CALL NEVER ASKS A ROUTE HEALTH SAYS WILL NOT ANSWER
 	// (taskcrew.go's [Agent.healthyModel]).
-	if !a.foregroundModelCall(purpose) || a.automaticModelsAllowed() {
+	if _, paired := requestConversationModels(ctx); !paired && (!a.foregroundModelCall(purpose) || a.automaticModelsAllowed()) {
 		model = a.healthyModel(ctx, purpose, model)
 	}
 	// A HELPER'S CALL IS PRICED LIKE A SEAT'S: against the crew's day cap —
@@ -782,7 +782,7 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 	if err != nil {
 		return nil, called, err
 	}
-	if a.foregroundModelCall(purpose) && !a.automaticModelsAllowed() && called != model {
+	if _, paired := requestConversationModels(ctx); a.foregroundModelCall(purpose) && (paired || !a.automaticModelsAllowed()) && called != model {
 		return nil, called, fmt.Errorf("fixed model %s is unavailable; refusing automatic substitution with %s", model, called)
 	}
 	// THE DISPATCH FACT IS TAKEN FROM THE HEADER THIS ADAPTER WRITES, never
@@ -818,7 +818,8 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 	// (imageref.go). A copy is made only when a reference is present.
 	actual := called
 	if a.foregroundModelCall(purpose) {
-		a.startModelRequest(called, service.Source.ID)
+		pair, _ := requestConversationModels(ctx)
+		a.startConversationModelRequest(called, service.Source.ID, pair)
 		ctx = provider.WithServedModel(ctx, a.servedModel)
 		defer func() { a.endModelRequest(actual) }()
 	}

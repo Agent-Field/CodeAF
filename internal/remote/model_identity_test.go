@@ -49,3 +49,27 @@ func TestModelIdentityTransportsOneModelLockAndChosenIntent(t *testing.T) {
 		t.Fatalf("lock facts lost: %+v", got)
 	}
 }
+
+func (a *identityAgent) SetConversationModels(pair session.ConversationModels) ([]session.ModelSwitch, error) {
+	a.model = pair.Main
+	a.identity.Models = &pair
+	a.identity.Selected = pair.Main
+	a.identity.Revision++
+	return []session.ModelSwitch{{ID: "remote-pick", Text: "Main model changed."}}, nil
+}
+func TestConversationModelsCrossRemoteWithoutChangingActiveIdentity(t *testing.T) {
+	a := &identityAgent{fakeAgent: &fakeAgent{model: "vendor/old"}, identity: session.ModelIdentity{Epoch: "live", Active: "vendor/old", Selected: "vendor/old", Revision: 1}}
+	loop, err := Loopback(Hello{Version: Version}, Options{Boot: func(Hello) (*Engine, error) { return &Engine{Agent: a}, nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
+	notes, err := loop.Client.Agent().SetConversationModels(session.ConversationModels{Main: "vendor/new", Fallback: "backup/new"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := loop.Client.Agent().ModelIdentity()
+	if len(notes) != 1 || state.Models == nil || state.Models.Main != "vendor/new" || state.Active != "vendor/old" {
+		t.Fatalf("selection: %+v %+v", state, notes)
+	}
+}

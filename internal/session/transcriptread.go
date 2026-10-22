@@ -83,6 +83,7 @@ import (
 // write the window's length, where the region cannot be placed and is dropped
 // rather than drawn twice ([replayedSession.earlier]).
 type Record struct {
+	ModelSwitches []ModelSwitch
 	// userLines is immutable, sparse provenance shared by record copies. Entry
 	// vectors and live folds carry no physical addresses or graph-only bytes.
 	userLines []recordUserLine
@@ -257,14 +258,15 @@ func transcriptFrom(replayed replayedSession, err error) Record {
 	earlier, earlierSteps := shapeWithSteps(replayed.earlier, journal)
 	floor := len(shapeEntries(replayed.messages[:overlap], journal))
 	return Record{
-		userLines:  recordUserLines(replayed),
-		Entries:    entries,
-		Earlier:    earlier,
-		Floor:      floor,
-		Passes:     replayed.passes,
-		Progress:   placedSteps(earlierSteps, len(earlier), entrySteps, floor),
-		Unreadable: unreadPastLine(replayed.unread),
-		Requests:   replayed.requests,
+		userLines:     recordUserLines(replayed),
+		ModelSwitches: replayed.modelSwitches,
+		Entries:       entries,
+		Earlier:       earlier,
+		Floor:         floor,
+		Passes:        replayed.passes,
+		Progress:      placedSteps(earlierSteps, len(earlier), entrySteps, floor),
+		Unreadable:    unreadPastLine(replayed.unread),
+		Requests:      replayed.requests,
 	}
 }
 

@@ -996,13 +996,14 @@ type ProviderConnector interface {
 //
 // It answers at once: the conversation is assembled behind the answer.
 type CreateAsk struct {
-	AutomaticModels *bool          `json:"automatic_models,omitempty"`
-	Workspace       string         `json:"workspace"`
-	Model           string         `json:"model"`
-	BudgetUSD       *float64       `json:"budget_usd"`
-	Text            string         `json:"text"`
-	ClientID        string         `json:"client_id"`
-	Attachments     []AttachSource `json:"attachments,omitempty"`
+	Models          *session.ConversationModels `json:"models,omitempty"`
+	AutomaticModels *bool                       `json:"automatic_models,omitempty"`
+	Workspace       string                      `json:"workspace"`
+	Model           string                      `json:"model"`
+	BudgetUSD       *float64                    `json:"budget_usd"`
+	Text            string                      `json:"text"`
+	ClientID        string                      `json:"client_id"`
+	Attachments     []AttachSource              `json:"attachments,omitempty"`
 	// Said is the person's own words for the first message: what its entry and
 	// the record show in place of Text, as agents.send's said does. Absent is Text.
 	Said *string `json:"said,omitempty"`
