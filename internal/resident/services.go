@@ -112,14 +112,16 @@ func (*platformServiceRuntime) Healthy(ctx context.Context, service store.Servic
 		}
 		return nil
 	case store.ServiceHealthCmd:
-		res, err := procexec.Host.In(service.Dir).Exec(ctx, procexec.ExecRequest{
+		// Health checks discard output, so inherited pipes cannot turn a clean
+		// exit into a failure or accumulate an unbounded output buffer.
+		cmd, err := procexec.Host.In(service.Dir).Command(ctx, procexec.ExecRequest{
 			Argv:  []string{"bash", "-lc", service.Health.Value},
 			Group: procexec.GroupInherit,
-		}, nil)
+		})
 		if err != nil {
 			return err
 		}
-		return res.Failure()
+		return cmd.Run()
 	default:
 		return fmt.Errorf("unknown health kind %q", service.Health.Kind)
 	}

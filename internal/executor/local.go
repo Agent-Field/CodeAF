@@ -102,7 +102,7 @@ func (l Local) Command(ctx context.Context, req ExecRequest) (*exec.Cmd, error) 
 	cmd.Dir, cmd.Env, cmd.Stdin = dir, l.withSecrets(req.Env), req.Stdin
 	configureGroup(cmd, req.Group)
 	cmd.Cancel = canceller(cmd, req.Group)
-	cmd.WaitDelay = req.WaitDelay
+	cmd.WaitDelay = max(req.WaitDelay, 0)
 	if err := l.confine(cmd, req); err != nil {
 		return nil, err
 	}

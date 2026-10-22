@@ -94,7 +94,7 @@ type ExecRequest struct {
 
 	Stdin     io.Reader     // nil reads nothing
 	Group     Group         // where the child sits; the zero value is its own group
-	WaitDelay time.Duration // bound on draining output after exit; zero picks a short default
+	WaitDelay time.Duration // bound on draining output after exit; zero picks a short default; negative waits without a bound
 	Combined  bool          // stderr shares stdout's pipe, so arrival order is kept
 	Stream    bool          // output goes to onOutput only; the result keeps none of it
 }

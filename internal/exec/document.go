@@ -349,7 +349,7 @@ func documentMediaType(path string) (string, bool) {
 func documentCommand(ctx context.Context, binary string, args ...string) ([]byte, error) {
 	res, err := executor.For(ctx).In("").Exec(ctx, executor.ExecRequest{
 		Argv:  append([]string{binary}, args...),
-		Group: executor.GroupInherit, Combined: true,
+		Group: executor.GroupInherit, WaitDelay: -1, Combined: true,
 	}, nil)
 	if err != nil {
 		return res.Stdout, err

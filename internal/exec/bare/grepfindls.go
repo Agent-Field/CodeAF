@@ -713,7 +713,7 @@ func newFindTool(cwd string, caps Caps) Tool {
 
 			res, runErr := executor.For(ctx).In("").Exec(ctx, executor.ExecRequest{
 				Argv:  append([]string{fdPath}, fdArgs...),
-				Group: executor.GroupInherit,
+				Group: executor.GroupInherit, WaitDelay: -1,
 			}, nil)
 			stdout, stderr := string(res.Stdout), string(res.Stderr)
 			if runErr == nil {
