@@ -13,3 +13,7 @@ invalidates:
 The desktop keeps free status exchanges outside provider transcripts and does not
 emit a false foreground turn ending. The existing snapshot, head, CI, publication
 and bounded retry checks remain required.
+
+The durable status tool follows the existing Auto read policy without overriding
+explicit denials. The manager tool belt and fixed prefix are checked with that
+optional capability enabled.
