@@ -374,13 +374,15 @@ func (a *app) sideHeadRow(width int) (string, *sideRow) {
 	}
 	team := kind != sideKindPlain
 	tasksAct, trafficAct := sideAct{kind: sideActTasks}, sideAct{}
+	tasksHint := "Open task results and history"
 	if team {
 		if view != sideTasks {
 			tasksAct = sideAct{kind: sideActView, view: sideTasks}
+			tasksHint = "Show active tasks"
 		}
 		trafficAct = sideAct{kind: sideActView, view: sideTraffic}
 	}
-	word(sideTasksWord, "", false, view == sideTasks, tasksAct, "Open task results and history"+hintSegment+"click")
+	word(sideTasksWord, "", false, view == sideTasks, tasksAct, tasksHint+hintSegment+"click")
 	if team {
 		n, fresh := a.sideTrafficCount(t, kind, handle)
 		// WITH THE TRAFFIC IN FRONT NOTHING IN IT IS NEW TO THE WORD: the `new`

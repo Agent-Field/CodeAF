@@ -37,14 +37,25 @@ func TestRailPlanDrawsEveryPartAsATaskRow(t *testing.T) {
 	}
 	got := plain(strings.Join(a.railRows(a.viewHeight()), "\n"))
 	for _, word := range []string{"rewrite the auth", "implement handler", "schema migration",
-		"integration tests", "old fixture", "old helper"} {
+		"integration tests"} {
 		if !strings.Contains(got, word) {
 			t.Fatalf("the rail lacks %q:\n%s", word, got)
 		}
 	}
-	for _, gone := range []string{"2 done", "2/4", "$ git grep"} {
+	for _, gone := range []string{"2 done", "2/4", "$ git grep", "old fixture", "old helper"} {
 		if strings.Contains(got, gone) {
 			t.Fatalf("the rail still draws the run renderer's %q:\n%s", gone, got)
+		}
+	}
+	for _, id := range []string{"done-a", "done-b"} {
+		retained := false
+		for _, row := range a.taskSheet.mine.plan {
+			if row.ID == id && row.Status == "done" {
+				retained = true
+			}
+		}
+		if !retained {
+			t.Fatalf("completed plan history %s was discarded", id)
 		}
 	}
 	for _, row := range a.railRows(a.viewHeight()) {
@@ -124,11 +135,23 @@ func TestARunAndANodeFamilyDrawTheSameShapeOnTheRail(t *testing.T) {
 	if got, want := railShape(lines[run]), railShape(lines[node]); got != want {
 		t.Fatalf("the run's row is shaped\n%q\nand the node's row\n%q\n\n%s", got, want, strings.Join(lines, "\n"))
 	}
+	if strings.Contains(strings.Join(lines, "\n"), "Kid one B") {
+		t.Fatal("completed part occupies sidebar")
+	}
+	retained := false
+	for _, row := range a.taskSheet.mine.plan {
+		if row.ID == "t-a" && row.Status == "done" {
+			retained = true
+		}
+	}
+	if !retained {
+		t.Fatal("completed part removed from task history")
+	}
 	spinner := tokens.Spinner(0)
 	if !strings.Contains(lines[run], spinner+" Bravo work") {
 		t.Fatalf("the run's row does not wear the working spinner %q:\n%s", spinner, lines[run])
 	}
-	for _, part := range []string{"Kid one B", "Kid two B", "Kid six B"} {
+	for _, part := range []string{"Kid two B", "Kid six B"} {
 		if at(part) <= run {
 			t.Fatalf("the part %q is not its own row under the run:\n%s", part, strings.Join(lines, "\n"))
 		}

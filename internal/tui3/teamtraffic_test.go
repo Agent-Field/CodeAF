@@ -77,7 +77,7 @@ func trafficReadNow(t *testing.T, a *app) {
 
 // THE COLUMN IS THE CACHE, BESIDE THE MANAGER, AND IT OPENS ON THE TRAFFIC.
 // With the manager in front on a wide frame the right of the body is the side
-// column, its header `Tasks 0 · Traffic N` with the Traffic in front; the
+// column, its header `Tasks · Traffic N` with the Traffic in front; the
 // directive is a row of work, the note that answers nothing is General's; the
 // person's own lines are not drawn; the conversation is narrowed by exactly
 // the column; the composer says the words go to the manager; and a handle
@@ -107,7 +107,7 @@ func TestTrafficColumnBesideTheManager(t *testing.T) {
 	if cols != sideColsFor(a.width) || a.bodyWidth() != a.width-cols {
 		t.Fatalf("the column takes %d columns and leaves the body %d of %d", cols, a.bodyWidth(), a.width)
 	}
-	head := railRowOf(rows, sideTasksWord+" 0"+sideWordSep+sideTrafficWord)
+	head := railRowOf(rows, sideTasksWord+sideWordSep+sideTrafficWord)
 	general := railRowOf(rows, "General")
 	work := railRowOf(rows, "take the scope")
 	note := railRowOf(rows, "@"+price+" → ")
@@ -196,7 +196,7 @@ func TestTrafficColumnStandsAt110(t *testing.T) {
 		t.Fatal("the column does not stand at 110")
 	}
 	rows := railLines(t, a)
-	if railRowOf(rows, sideTasksWord+" 0"+sideWordSep+sideTrafficWord) < 0 {
+	if railRowOf(rows, sideTasksWord+sideWordSep+sideTrafficWord) < 0 {
 		t.Fatalf("the header does not carry both words:\n%s", strings.Join(rows, "\n"))
 	}
 }

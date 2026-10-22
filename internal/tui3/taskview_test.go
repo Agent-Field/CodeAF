@@ -1071,8 +1071,11 @@ func TestTheRostersCursorStopsAtTheLastTaskOfThisConversation(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		drive(t, a, key("down"))
 	}
-	if a.railWhere.id != 2 {
-		t.Fatalf("the walk did not clamp on this conversation's last task: %+v", a.railWhere)
+	if a.railWhere.id != 1 {
+		t.Fatalf("the walk did not clamp on this conversation's last active task: %+v", a.railWhere)
+	}
+	if card := a.doneCardAt(a.doneEntryFor(2)); card == nil || card.status.State != session.TaskDone {
+		t.Fatal("completed result lost while removed from sidebar")
 	}
 	// AND enter DOWN THERE IS STILL A ROOM'S DOOR AND NEVER A RECORD CARD'S. Every
 	// row of this column is a node this conversation holds, so there is no row for
@@ -1082,7 +1085,7 @@ func TestTheRostersCursorStopsAtTheLastTaskOfThisConversation(t *testing.T) {
 	if a.taskSheet.detailOn {
 		t.Fatal("a row of this conversation's work opened a record card")
 	}
-	if a.railWhere.id != 2 {
+	if a.railWhere.id != 1 {
 		t.Fatalf("enter moved the cursor off this conversation's work: %+v", a.railWhere)
 	}
 }
