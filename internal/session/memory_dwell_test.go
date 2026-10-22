@@ -16,6 +16,7 @@ func TestMemoryDwellRecognizesMaterialContextWithoutChurningElaboration(t *testi
 		{"first meaningful question", "", "Quartz JSON payload", true},
 		{"two word topic switch", "UI colors", "database backups", true},
 		{"same topic elaboration", "Quartz JSON payload", "Quartz JSON examples", false},
+		{"natural example followup", "Quartz JSON payload", "Can you give an example?", false},
 		{"pronoun continuation", "Quartz JSON payload", "How does it fail?", false},
 		{"short acknowledgement", "Quartz JSON payload", "thanks", false},
 		{"explicit switch", "Quartz JSON payload", "New topic: colors", true},
@@ -138,5 +139,20 @@ func TestAuthoredReportCannotContradictPersonalMemory(t *testing.T) {
 	after, _, err := brain.MemoryRecord(memory.ID)
 	if err != nil || after.Activation != before.Activation {
 		t.Fatalf("authored report changed personal memory practice: before=%f after=%f err=%v", before.Activation, after.Activation, err)
+	}
+}
+
+// Mock constraints exercise the actual system prompt rather than a prose-only fixture.
+func TestSavedConstraintPresentationPreservesConditionalForce(t *testing.T) {
+	script := &reflexScript{}
+	agent, brain := brainAgent(t, script, nil)
+	rule := "Quartz reports MUST use the cobalt palette only when exported; never change draft colors."
+	remember(t, brain, "", rule)
+	collect(t, mustSubmit(t, agent, "How should I export the Quartz report?"))
+	prompt := script.system(0)
+	for _, want := range []string{rule, "Respect saved conditions", "must/only/never bind", "preferences are optional", "Narrow exceptions don't revoke broader rules", "authoritative evidence corrects stale facts"} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("constraint presentation lacks %q", want)
+		}
 	}
 }

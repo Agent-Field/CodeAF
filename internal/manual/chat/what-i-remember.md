@@ -50,6 +50,10 @@ someone else wrote cannot plant a line in every future conversation. Answering
 one of its questions after its turn has ended counts the same way, because the
 clock can answer one for you: say "remember that", or `/remember` it.
 
+The `remember` tool can label a standing rule, decision, lasting fact or
+project progress directly, rather than infer every kind from wording.
+The Memories tab shows the stored kind.
+
 A line is one sentence, at most 512 characters, and a credential pasted into it
 is redacted before it is kept.
 
@@ -70,6 +74,18 @@ budget is full. Other automatically kept lines compete by activation. Bare
 
 There is no rule for one conversation only.
 
+
+## Will you keep every condition of a saved rule? What if current facts contradict an old memory?
+
+The memory prompt tells the model to preserve every condition: requirements
+stay mandatory, prohibitions stay prohibited, and preferences stay preferred.
+A rule requiring both approval and a complete checklist must not make the
+checklist optional.
+
+Current user instructions outrank saved lines. Current authoritative evidence,
+such as the manual, can correct stale factual claims. Narrow exceptions coexist
+with broader rules unless revoked. These are prompt instructions, not a
+perfect-recall guarantee; inspect actual admission on the Memories tab.
 
 ## Is that an instruction or a rule? How it knows you mean always, how to make it permanent, and when it didn't notice a rule and did it once
 
@@ -298,7 +314,10 @@ ties. A line must still meet the activation threshold. The block says `· N more
 not ride. Open the Memories tab to see `riding` or `archived` and a reason for
 each line; archive does not mean forgotten. Admitted lines stay with the
 conversation while its context is unchanged, so adjacent turns do not
-randomly swap remembered facts.
+randomly swap remembered facts. Short related follow-ups such as “why?” or
+“give an example” keep that context. A meaningful topic change or a change to
+saved memory can refresh the working set; a greeting alone does not freeze
+the selection for the real request that follows.
 
 
 ## Why did an old preference become project progress? Does the upgrade rewrite my memories?

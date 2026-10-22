@@ -63,7 +63,7 @@ func TestV2IndexedCrowdingKeepsOldConciseRule(t *testing.T) {
 		t.Fatalf("ordinary block exceeds budget: %d", runes)
 	}
 	// The durable lane lends unused space. With one short rule, its actual
-	// cost, rather than an artificially empty 40%% reservation, is protected.
+	// cost, rather than an artificially empty 40% reservation, is protected.
 	if progress > MemoryBlockRunes-MemoryLineCost(rule.Text) {
 		t.Fatal("progress consumed the concise rule's protected space")
 	}

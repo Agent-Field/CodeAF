@@ -153,7 +153,7 @@ func TestAutomaticCorrectionPreservesExplicitPin(t *testing.T) {
 func TestTaskAssignmentAnticipatesOlderRuleOutsideRecentCandidates(t *testing.T) {
 	agent, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.MemoryProjectKey = "mock-quartz" })
 	const rule = "Quartz integration examples must use mock customer account identifiers"
-	if _, err := brain.AddMemory(store.Memory{Owner: store.OwnerUser, Type: store.MemoryPreference, Origin: store.OriginNoticed, Text: rule}); err != nil {
+	if _, err := brain.AddMemory(store.Memory{Owner: store.OwnerUser, Type: store.MemoryFact, Origin: store.OriginNoticed, Text: rule}); err != nil {
 		t.Fatal(err)
 	}
 	for index := 0; index < 180; index++ {

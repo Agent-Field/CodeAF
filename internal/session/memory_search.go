@@ -14,7 +14,7 @@ import (
 func (a *Agent) memorySearchTool() bare.Tool {
 	return bare.Tool{
 		Name:        "search_memories",
-		Description: "Search saved memory by topic, including lines outside the current working set.",
+		Description: "Search saved memories outside the prompt by topic.",
 		Schema:      json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"}},"required":["query"],"additionalProperties":false}`),
 		Execute: func(_ context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed struct {

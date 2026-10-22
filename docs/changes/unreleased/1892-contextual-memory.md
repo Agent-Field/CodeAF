@@ -15,7 +15,12 @@ Ordinary conversation can teach a durable fact, revise it naturally, and have
 the revision applied in a fresh conversation or task. Explicit remember commands
 remain available as pins. Admission keeps explicit pins unbounded, protects at least 40% of the
 remaining prompt budget for durable rules when needed, and holds admitted lines
-while conversation context stays unchanged. Per-assembly aggregate telemetry
+while conversation context stays unchanged, including short explanation or
+example follow-ups. Saved conditions are presented with their original
+mandatory, prohibited or preferred force; current user instructions take
+precedence, and current authoritative evidence can correct stale factual claims. The model's `remember` tool
+can supply a durable kind directly, rather than depending only on a wording
+heuristic. Per-assembly aggregate telemetry
 records rune shares by derived kind, with pin consumption separate; no memory
 content appears in those logs. Admission uses a bounded trace between exact
 daily refreshes; conservative lexical deduplication does not merge arbitrary semantic

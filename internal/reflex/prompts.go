@@ -62,11 +62,11 @@ FIRST, keep: did the PERSON say something worth remembering in every future conv
 
 durability is one of standing_rule, decision, durable_fact, project_state, ephemeral. Ephemeral requests, progress chatter, and one-off instructions belong only in the transcript: keep must be empty. Lasting project state may be kept as project_state; prefer state for ordinary progress. Progress paragraphs about landed/passed/verified work, versions or issue IDs are project_state even if phrased with prefer, always or a decision verb; these words do not make status a standing rule. used is an array of KEPT line numbers actually applied in the ASSISTANT answer, never merely present or echoed. Use [] when none applied. contradicted lists KEPT numbers the PERSON explicitly corrected, even if the replacement was already saved. Never infer contradiction from the assistant alone.
 
-Write keep as one short line in the person's own terms. Keep every condition they gave.
+Write keep as one short line in the person's own terms. Keep every condition and the original mandatory, prohibited or preferred force; never soften must/only/never into may/prefer.
 
 scope is one of: %s. Use project unless the person said it holds everywhere or for all their work (user), or only for this machine (env).
 
-KEPT lists the lines already remembered here, numbered. If one of them already says it, keep is "". If the new line corrects or updates one of them, set replaces to that line's number; otherwise replaces is 0.
+KEPT lists the lines already remembered here, numbered. If one of them already says it, keep is "". If the new line corrects or updates one of them, set replaces to that line's number; otherwise replaces is 0. A narrower exception coexists with the broader rule: do not replace it unless the person actually revokes that rule.
 
 SECOND, state: ` + stateRules + `
 

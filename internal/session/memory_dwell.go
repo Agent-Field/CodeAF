@@ -112,7 +112,7 @@ func memoryInflightTasks(brief string) []string {
 }
 
 func memoryContextTopics(text string) []string {
-	noise := map[string]bool{"the": true, "and": true, "for": true, "with": true, "this": true, "that": true, "what": true, "how": true, "should": true, "would": true, "could": true, "please": true, "about": true, "from": true, "into": true, "our": true, "your": true, "now": true, "also": true, "again": true, "show": true, "add": true, "example": true, "examples": true, "keep": true, "two": true, "sentences": true, "you": true, "can": true, "does": true, "why": true, "next": true, "hello": true, "hi": true, "thanks": true, "okay": true, "yes": true, "continue": true}
+	noise := map[string]bool{"the": true, "and": true, "for": true, "with": true, "this": true, "that": true, "what": true, "how": true, "should": true, "would": true, "could": true, "please": true, "about": true, "from": true, "into": true, "our": true, "your": true, "now": true, "also": true, "again": true, "show": true, "add": true, "give": true, "an": true, "example": true, "examples": true, "keep": true, "two": true, "sentences": true, "you": true, "can": true, "does": true, "why": true, "next": true, "hello": true, "hi": true, "thanks": true, "okay": true, "yes": true, "continue": true}
 	words := strings.FieldsFunc(strings.ToLower(text), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
 	seen := map[string]bool{}
 	for _, word := range words {

@@ -300,7 +300,7 @@ func memoryReach(owner string, widened bool) string {
 // day be written two ways.
 const (
 	memoryHeading  = "Memory"
-	memoryPreamble = "Saved context relevant here, with explicit user pins always included. Other saved lines remain available through search_memories; the person's own words in this conversation outrank a line. A line you keep or forget is shown to the person."
+	memoryPreamble = "Respect saved conditions: must/only/never bind; preferences are optional. Current user instructions win; current authoritative evidence corrects stale facts. Narrow exceptions don't revoke broader rules. Other lines: search_memories. Changes are shown."
 	// memoryReport is the closing line a task's or a run's section carries and
 	// a conversation's does not: a node works with nobody to ask, so a line it
 	// cannot honour has exactly one place to be said.
@@ -1013,9 +1013,9 @@ func (b billedCompleter) CompleteWithMessages(ctx context.Context, messages []ai
 // time sentence is the mirror of the automation tool's: a timeless rule is a
 // memory, and anything with a time component is an automation.
 const (
-	rememberDescription = "Save a durable preference, rule, correction, decision or fact. Explicit user requests pin it. Anything with a time component needs an automation."
-	rememberSchemaJSON  = `{"type":"object","properties":{"text":{"type":"string"},"scope":{"type":"string","enum":["user","project","env"],"description":"project default; user for all work; env for this machine"}},"required":["text"],"additionalProperties":false}`
-	forgetDescription   = "Forget one saved line by its words. The person sees it and can restore it."
+	rememberDescription = "Save durable conditions; a time component needs automation."
+	rememberSchemaJSON  = `{"type":"object","properties":{"text":{"type":"string"},"scope":{"type":"string","enum":["user","project","env"],"description":"project default; user for all work; env for this machine"},"durability":{"type":"string","enum":["standing_rule","decision","durable_fact","project_state"],"description":"Supply for new captures"}},"required":["text"],"additionalProperties":false}`
+	forgetDescription   = "Forget revoked lines, not broader rules with narrow exceptions."
 	forgetSchemaJSON    = `{"type":"object","properties":{"text":{"type":"string"}},"required":["text"],"additionalProperties":false}`
 )
 
@@ -1082,8 +1082,9 @@ func (a *Agent) memoryTools() []bare.Tool {
 		Schema:      json.RawMessage(rememberSchemaJSON),
 		Execute: func(_ context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed struct {
-				Text  string `json:"text"`
-				Scope string `json:"scope"`
+				Text       string `json:"text"`
+				Scope      string `json:"scope"`
+				Durability string `json:"durability"`
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
@@ -1091,7 +1092,12 @@ func (a *Agent) memoryTools() []bare.Tool {
 			if !a.memory.typed.Load() {
 				return memoryNotTypedWords, true, nil
 			}
-			memory, reach, added, err := a.keep(parsed.Text, parsed.Scope, store.OriginModel, nil)
+			switch parsed.Durability {
+			case "", "standing_rule", "decision", "durable_fact", "project_state":
+			default:
+				return "Invalid durability", true, nil
+			}
+			memory, reach, added, err := a.keepDurable(parsed.Text, parsed.Scope, store.OriginModel, nil, false, parsed.Durability)
 			if errors.Is(err, store.ErrMemoryFull) {
 				return a.memoryFullError(err).Error(), true, nil
 			}
@@ -1336,6 +1342,8 @@ func memoryTypeOf(text string) string {
 // consolidation rather than storing every progress update as a lasting fact.
 func memoryTypeForDurability(text, durability string) string {
 	switch durability {
+	case "durable_fact":
+		return store.MemoryFact
 	case "project_state":
 		return store.MemoryProjectState
 	case "decision":
