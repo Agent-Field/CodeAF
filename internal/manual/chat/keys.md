@@ -5,12 +5,6 @@
 `alt+e` walks this conversation's thinking rung; `/effort` opens the ladder and
 `/effort <rung>` sets it. The models-and-cost page explains the rungs.
 
-## How do I stop a task from the chat without opening it
-
-Raise the task roster with `alt+t`, put the cursor on the task and press `→` to
-open its verbs. `s stop it` stops that task without opening its room. A stoppable
-task row in view also takes `x`, which raises the card and stops nothing itself.
-
 ## Which key sends, and which key opens a new line
 
 `enter` sends the message you have typed.

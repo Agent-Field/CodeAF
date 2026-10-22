@@ -210,9 +210,10 @@ func TestTaskIndexRebuildsRunsBesideNodes(t *testing.T) {
 		t.Fatalf("rows after rebuild = %+v, want ids 1, 4, 5 and 6 only", rows)
 	}
 	run := rows["4"]
+	// A settled run's row names the model it ran on (#1893), rebuilt as written.
 	want := session.TaskIndexEntry{
 		ID: "4", Name: "audit-the-pricing-code", Label: "audit the pricing code", Title: "audit the pricing code",
-		Status: "done", Outcome: "Pricing is sound.", Cost: 0.5, DurationMS: 90000,
+		Status: "done", Outcome: "Pricing is sound.", Cost: 0.5, Model: "m-1", DurationMS: 90000,
 		StartedAt: started, EndedAt: ended, SessionID: c.ID,
 	}
 	if !reflect.DeepEqual(run, want) {
