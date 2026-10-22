@@ -1329,7 +1329,8 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// And the wrap-up's two doors, for the same reason.
 		WrapUp: true,
 		// The two model asks are the agent's, so they are asked of it.
-		TeamAsk: teamAskKnown(sess.agent),
+		TeamAsk:         teamAskKnown(sess.agent),
+		ReplySuggestion: replySuggestionKnown(sess.agent),
 		// This revision checks it in the handler, for every engine behind it
 		// ([Session.agentOf]), so the answer is about the wire and not the agent.
 		SteerOwner: true,
@@ -3405,6 +3406,9 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		return payload, err
 	}
 	if payload, handled, err := s.delegationCall(call); handled {
+		return payload, err
+	}
+	if payload, handled, err := replySuggestionCall(agent, call); handled {
 		return payload, err
 	}
 	if payload, handled, err := teamAskCall(agent, call); handled {

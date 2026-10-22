@@ -2635,6 +2635,7 @@ type Config struct {
 type Agent struct {
 	modelIdentity   ModelIdentity
 	automaticModels atomic.Int32
+	replySuggestion replySuggestionState
 	// rewindUndo keeps one reversible cut; a new cut replaces it.
 	rewindUndo *rewindUndo
 	debugRun   string
@@ -3925,8 +3926,8 @@ type Agent struct {
 	// Serializes current-name metadata snapshots and writes, outside a.mu.
 	titleStampMu sync.Mutex
 
-	// titleCtx is the lifetime of the naming errand and titleJobs counts the one
-	// that may be running. They are memoryCtx's bargain above, for the same
+	// titleCtx is the lifetime of naming/reply errands and titleJobs counts the
+	// errands that may be running. They are memoryCtx's bargain above, for the same
 	// reason and with the same two lines: the namer now runs BESIDE the turn
 	// that triggered it (title.go), so it cannot ride the turn's context — a
 	// quick answer would cancel a name that is still being written — and it may
