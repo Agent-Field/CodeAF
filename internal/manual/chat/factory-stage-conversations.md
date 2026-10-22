@@ -598,6 +598,43 @@ A locally checked repair can be pushed while the old remote head is red: fresh C
 must run on the new commit. Publishing clears old CI evidence; current-head green
 checks, complete PR reads and the final review are still required for readiness.
 
+## Corrected checks, Cargo discovery and repeated verification rejections
+
+A measured passing rerun of the same check, in the same directory and target
+context on the current checkout, supersedes its older failure. Saving `$?`,
+redirecting output to a log and printing that log does not require repeating an
+identical shell string. An initial failing regression demonstration stays in the
+history, but is not an unresolved failure after that check passes on the repair.
+Unknown compound commands and skipped branches remain blocking; a passing subset
+does not erase a different failed check.
+
+Factory shell calls look for an installed Cargo executable before fitting their
+check wrapper. Existing PATH selection wins; otherwise they use `CARGO_HOME/bin`,
+or `~/.cargo/bin` when CARGO_HOME is unset. They do not install anything, source
+shell profiles or change the engine's own PATH.
+
+After a repair claims completion and verification rejects it, the agent can
+correct the check in the same conversation. Three completion reports repeating
+the same unresolved evidence stop the stage. Recovery is also bounded to five
+minutes after the first rejected completion, even if the agent keeps investigating.
+These bounds do not shorten the initial test run. The job retains local changes,
+explains the specific problem and waits for a retry instead of opening another
+paid repair round automatically. A successful correction cancels that stop.
+
+## An already-fixed published PR does not need another commit
+
+A Follow PR recheck can find that the current published head already addresses
+the requested work. It reports `no_change` with evidence and returns to monitoring
+CI, reviews and conflicts. Pending GitHub checks remain pending; monitoring does
+not declare them green or grant merge authority.
+
+If the agent mistakenly calls that result `fixed`, code reconciles it to
+`no_change` only after a successful complete review naming the exact current PR
+head and a clean checkout at that head. Changed feedback, a moved head, untracked
+or edited files, failed checks and incomplete review evidence cannot take that
+shortcut. No extra commit, push or approval is required merely to acknowledge an
+already-published repair.
+
 
 ## persisted Plan decisions, cheap status and report recovery
 

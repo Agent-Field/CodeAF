@@ -9,6 +9,8 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/verification"
@@ -260,9 +262,23 @@ type receiptStageDoor struct {
 	session.StageDoor
 	file, dir string
 	repair    bool
+	mu        sync.Mutex
+	last      string
+	repeats   int
+	reason    string
+	stopped   bool
+	closed    bool
+	timer     *time.Timer
+	stop      chan string
 }
 
-func (d receiptStageDoor) Report(ctx context.Context, r factory.StageResult) error {
+func (d *receiptStageDoor) Report(ctx context.Context, r factory.StageResult) error {
+	d.mu.Lock()
+	stopped := d.stopped || d.closed
+	d.mu.Unlock()
+	if stopped {
+		return errors.New("verification recovery stopped; local changes are retained; retry the step after correcting its check or environment")
+	}
 	if d.repair && r.Done && r.Repair == nil {
 		return errors.New("a completed PR repair needs repair.decision fixed or no_change with evidence; use needs_repair for partial work")
 	}
@@ -281,15 +297,116 @@ func (d receiptStageDoor) Report(ctx context.Context, r factory.StageResult) err
 		notes, _ := (&stageConversation{file: d.file, dir: d.dir}).RepairExecutionNotes()
 		for _, note := range notes {
 			if strings.HasPrefix(note, verification.FailurePrefix) {
-				return fmt.Errorf("repair is incomplete: %s; correct and rerun the required check, or report done:false with repair.decision needs_repair", strings.TrimSpace(strings.TrimPrefix(note, verification.FailurePrefix)))
+				return d.rejectVerification(notes, strings.TrimSpace(strings.TrimPrefix(note, verification.FailurePrefix)))
 			}
 		}
 	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.stopped || d.closed {
+		return errors.New("verification recovery stopped; retry the step after correcting its check or environment")
+	}
+	if d.timer != nil {
+		d.timer.Stop()
+		d.timer = nil
+	}
+	d.last, d.reason, d.repeats = "", "", 0
 	return d.StageDoor.Report(ctx, r)
 }
-func (d receiptStageDoor) Ask(ctx context.Context, q factory.Asked) (string, error) {
+func (d *receiptStageDoor) Ask(ctx context.Context, q factory.Asked) (string, error) {
 	if door, ok := d.StageDoor.(session.StageAsker); ok {
 		return door.Ask(ctx, q)
 	}
 	return "", errors.New("this stage has nobody to ask")
+}
+
+// These limits apply after a repair claims completion, not while its initial
+// tests run. Unchanged evidence gets two opportunities to be corrected. A turn
+// that investigates forever after a refusal is bounded by the recovery window.
+const stageVerificationRejectLimit = 3
+const stageVerificationRecoveryWindow = 5 * time.Minute
+
+func (d *receiptStageDoor) stoppedVerification() <-chan string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.stop == nil {
+		d.stop = make(chan string, 1)
+	}
+	return d.stop
+}
+
+func (d *receiptStageDoor) rejectVerification(notes []string, reason string) error {
+	// The evidence key excludes shell formatting and receipt timestamps. A
+	// newly passing check or changed checkout is progress; reprinting the same
+	// check and repeatedly asserting fixed is not.
+	var evidence []string
+	for _, note := range notes {
+		if strings.HasPrefix(note, verification.FailurePrefix) {
+			evidence = append(evidence, note)
+		} else if raw, ok := strings.CutPrefix(note, "Check receipt: "); ok {
+			var c struct {
+				Cwd    string                `json:"cwd"`
+				Args   []string              `json:"check"`
+				Exit   *int                  `json:"exit"`
+				Before verification.Snapshot `json:"before"`
+				After  verification.Snapshot `json:"after"`
+			}
+			if json.Unmarshal([]byte(raw), &c) == nil {
+				key, _ := json.Marshal([]any{c.Cwd, c.Args, c.Exit, c.Before, c.After})
+				evidence = append(evidence, string(key))
+			}
+		}
+	}
+	sort.Strings(evidence)
+	key := strings.Join(evidence, "\n")
+	d.mu.Lock()
+	if key != d.last {
+		d.last, d.repeats = key, 0
+	}
+	d.repeats++
+	d.reason = reason
+	if d.timer == nil && !d.closed {
+		d.timer = time.AfterFunc(stageVerificationRecoveryWindow, func() { d.stopVerification("the completion recovery time limit was reached") })
+	}
+	exhausted := d.repeats >= stageVerificationRejectLimit
+	d.mu.Unlock()
+	if exhausted {
+		d.stopVerification(fmt.Sprintf("%d completion reports repeated the same unresolved evidence", stageVerificationRejectLimit))
+	}
+	return fmt.Errorf("repair is incomplete: %s; correct and rerun the required check, or report done:false with repair.decision needs_repair", reason)
+}
+
+func (d *receiptStageDoor) stopVerification(why string) {
+	d.mu.Lock()
+	if d.closed || d.stopped || d.reason == "" {
+		d.mu.Unlock()
+		return
+	}
+	d.stopped = true
+	reason := "Verification stopped because " + why + ": " + d.reason + ". Local changes are retained. Correct the check or environment, then retry this step."
+	if d.stop == nil {
+		d.stop = make(chan string, 1)
+	}
+	stop := d.stop
+	// The runner receives an honest incomplete result before its stop signal.
+	// needs_you parks Follow PR instead of starting another paid repair round.
+	_ = d.StageDoor.Report(context.Background(), factory.StageResult{Done: false, Exit: 1, Output: reason, Repair: &factory.CIRepairResult{Decision: "needs_you", Reason: reason}})
+	stop <- reason
+	d.mu.Unlock()
+}
+
+func (d *receiptStageDoor) closeRecovery() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.timer != nil {
+		d.timer.Stop()
+		d.timer = nil
+	}
+}
+
+func (d *receiptStageDoor) closeVerification() {
+	d.mu.Lock()
+	d.closed = true
+	d.mu.Unlock()
+	d.closeRecovery()
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -24,15 +25,19 @@ import (
 // GitHub write is needed to exercise those exact product doors.
 func TestFactoryVerificationThroughTheRealStageConversation(t *testing.T) {
 	for _, tc := range []struct {
-		name, check string
-		done        bool
-		rerun       string
+		name, check     string
+		done            bool
+		rerun           string
+		repeatedReports int
 	}{
-		{"zero-match reporter", "go test -v ./... | grep -c -e '--- FAIL:'", true, ""},
-		{"real test failure", "CHECK_EXIT=7 go test -v ./... | tail -2", false, ""},
-		{"failed build after passing tests", "go test -v ./... && false", false, ""},
-		{"audit failure hidden by shell success", "CHECK_EXIT=1 npm audit || true", false, ""},
-		{"audit corrected in the same conversation", "CHECK_EXIT=1 npm audit || true", true, "npm audit"},
+		{"zero-match reporter", "go test -v ./... | grep -c -e '--- FAIL:'", true, "", 0},
+		{"real test failure", "CHECK_EXIT=7 go test -v ./... | tail -2", false, "", 0},
+		{"failed build after passing tests", "go test -v ./... && false", false, "", 0},
+		{"audit failure hidden by shell success", "CHECK_EXIT=1 npm audit || true", false, "", 0},
+		{"audit corrected in the same conversation", "CHECK_EXIT=1 npm audit || true", true, "npm audit", 0},
+		{"saved exit corrected in the same conversation", "CHECK_EXIT=127 go test ./... > /dev/null 2>&1; ec=$?; echo \"EXIT=$ec\"; grep -c '^FAIL' /dev/null", true, "go test ./...", 0},
+		{"cargo discovered before its check wrapper", "cargo test --test cli regression", true, "", 0},
+		{"repeated rejected report stops the model", "CHECK_EXIT=7 go test ./...", false, "", stageVerificationRejectLimit},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := resolvedTempDir(t)
@@ -60,10 +65,35 @@ func TestFactoryVerificationThroughTheRealStageConversation(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			t.Setenv("CARGO_HOME", filepath.Join(root, "home", ".cargo"))
+			cargoBin := filepath.Join(root, "home", ".cargo", "bin")
+			if err := os.MkdirAll(cargoBin, 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(cargoBin, "cargo"), []byte("#!/bin/sh\necho PASS\n"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if strings.HasPrefix(tc.check, "cargo ") {
+				// Do not accidentally test the laptop's rustup executable. This
+				// PATH has only the tools used by the shell and receipt observer.
+				for _, name := range []string{"bash", "git", "mktemp", "readlink"} {
+					path, err := exec.LookPath(name)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := os.Symlink(path, filepath.Join(bin, name)); err != nil {
+						t.Fatal(err)
+					}
+				}
+				t.Setenv("PATH", bin)
+			}
 			command := "export PATH=" + strconv.Quote(bin) + ":\"$PATH\"; " + tc.check
 			args, _ := json.Marshal(map[string]string{"command": command})
 			fixed := stageCall{"stage_result", `{"done":true,"output":"repaired","repair":{"decision":"fixed","reason":"checked"}}`}
 			calls := []stageCall{{"bash", string(args)}, fixed}
+			for n := 1; n < tc.repeatedReports; n++ {
+				calls = append(calls, fixed)
+			}
 			if tc.rerun != "" {
 				retryArgs, _ := json.Marshal(map[string]string{"command": "export PATH=" + strconv.Quote(bin) + ":\"$PATH\"; " + tc.rerun})
 				calls = append(calls, stageCall{"bash", string(retryArgs)}, fixed)
@@ -105,6 +135,9 @@ func TestFactoryVerificationThroughTheRealStageConversation(t *testing.T) {
 			}
 			if !tc.done && !strings.HasPrefix(result.Output, "Verification blocked:") {
 				t.Fatalf("missing concrete rejection: %s", result.Output)
+			}
+			if tc.repeatedReports > 0 && (result.Repair == nil || result.Repair.Decision != "needs_you" || !strings.Contains(result.Repair.Reason, "same unresolved evidence")) {
+				t.Fatalf("repeated refusal did not stop recoverably: %+v", result.Repair)
 			}
 			found := false
 			for _, note := range result.Notes {

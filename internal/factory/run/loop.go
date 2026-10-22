@@ -901,6 +901,9 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			job.Spend(res.Spent)
 		}
 		readiness := factory.IsCIRepairStage(st) && job.Item.FollowUp != nil && job.Item.FollowUp.Kind == "readiness"
+		if factory.IsCIRepairStage(st) && !readiness {
+			res = lp.completedPublishedRepair(job.Item, res)
+		}
 		if readiness && (res.Repair == nil || (res.Repair.Decision != "needs_repair" && res.Repair.Decision != "needs_you")) && verificationReason(res) == "" {
 			head := ""
 			if a := job.Item.FollowUp.Readiness; a != nil {
@@ -960,16 +963,19 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			// Reporting and execution shortfalls use the same bounded round
 			// recovery as other steps. They are not an immediate human gate.
 		}
-		if !readiness && factory.IsCIRepairStage(st) && res.Repair != nil && res.Repair.Decision == "no_change" {
+		if !readiness && factory.IsCIRepairStage(st) && res.Done && res.Exit == 0 && res.Findings == 0 && verificationReason(res) == "" && res.Repair != nil && res.Repair.Decision == "no_change" {
 			fresh, _ := lp.r.opts.Store.Get(c.id)
 			if fresh.PullRequest == nil || fresh.PullRequest.Checks.Failed > 0 || fresh.PullRequest.Conflict {
 				lp.parkCI(c, i, "The PR still has failing checks or conflicts and no repair was verified. "+res.Repair.Reason)
 			} else {
 				_ = lp.move(c, "", EventShipped, "Following PR", func(it *factory.Item) error {
+					if it.Question != "" || it.Asking != nil {
+						return errors.New("a pending decision already owns this job")
+					}
 					it.State = factory.StateShipped
 					it.Question, it.QKind = "", ""
 					it.Asking = nil
-					it.FollowUp.State, it.FollowUp.Reason, it.FollowUp.Request = "healthy", "No code change needed. "+res.Repair.Reason+" Watching for new feedback; merge remains yours.", ""
+					it.FollowUp.State, it.FollowUp.Reason, it.FollowUp.Request = "watching", "No additional code changes needed. "+res.Repair.Reason+" Watching CI, review feedback and conflicts; merge remains yours.", ""
 					it.Stream.Phases[i].State = factory.PhaseWaiting
 					it.Stream.Phases[i].Note = it.FollowUp.Reason
 					it.Stream.Ended = lp.r.now()

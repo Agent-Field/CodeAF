@@ -121,7 +121,8 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	if model := strings.TrimSpace(spec.Model); model != "" {
 		cfg.Model = model
 	}
-	cfg.Stage = receiptStageDoor{StageDoor: spec.Stage, file: cfg.SessionFile, dir: where, repair: spec.VerifyRepair}
+	verification := &receiptStageDoor{StageDoor: spec.Stage, file: cfg.SessionFile, dir: where, repair: spec.VerifyRepair}
+	cfg.Stage = verification
 	cfg.Interactive = false
 	cfg.Unattended = true
 	cfg.Budget = session.Budget{Wall: factoryStageWall}
@@ -163,13 +164,15 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 		}
 	}
 	c := &stageConversation{
-		agent:    agent,
-		budget:   budget,
-		file:     cfg.SessionFile,
-		dir:      where,
-		captions: make(chan string, 256),
-		progress: spec.Progress,
-		done:     make(chan struct{}),
+		agent:        agent,
+		budget:       budget,
+		file:         cfg.SessionFile,
+		dir:          where,
+		captions:     make(chan string, 256),
+		progress:     spec.Progress,
+		done:         make(chan struct{}),
+		verification: verification,
+		closing:      make(chan struct{}),
 	}
 	brief := spec.Brief
 	if resumed {
@@ -183,7 +186,8 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	}
 	c.wakes, c.stopWakes = agent.WatchWakes()
 	done := c.done
-	guard.Go("factory/stage-conversation", func() { c.follow(events, done) })
+	c.followers.Add(1)
+	guard.Go("factory/stage-conversation", func() { defer c.followers.Done(); c.follow(events, done) })
 	return c, nil
 }
 
@@ -286,15 +290,18 @@ var stageSettle = unattendedRunSettleTick
 
 // stageConversation is one open stage conversation.
 type stageConversation struct {
-	budget    *stageBudget
-	agent     *session.Agent
-	file      string
-	dir       string
-	captions  chan string
-	progress  func(string)
-	wakes     <-chan (<-chan session.Event)
-	stopWakes func()
-	done      chan struct{}
+	budget       *stageBudget
+	agent        *session.Agent
+	file         string
+	dir          string
+	captions     chan string
+	progress     func(string)
+	wakes        <-chan (<-chan session.Event)
+	stopWakes    func()
+	done         chan struct{}
+	verification *receiptStageDoor
+	followers    sync.WaitGroup
+	closing      chan struct{}
 
 	mu      sync.Mutex
 	failure error
@@ -308,6 +315,12 @@ func (c *stageConversation) follow(first <-chan session.Event, done chan struct{
 	c.drain(first)
 	settled := false
 	for {
+		select {
+		case <-c.closing:
+			c.closeDone(done)
+			return
+		default:
+		}
 		if c.agent.StillGoing() {
 			settled = false
 		} else if settled {
@@ -320,6 +333,10 @@ func (c *stageConversation) follow(first <-chan session.Event, done chan struct{
 		}
 		t := time.NewTimer(stageSettle)
 		select {
+		case <-c.closing:
+			t.Stop()
+			c.closeDone(done)
+			return
 		case stream, open := <-c.wakes:
 			t.Stop()
 			if !open {
@@ -487,10 +504,10 @@ func (c *stageConversation) deliverWith(words string, start func(string) (<-chan
 		return err
 	}
 	if idle {
-		guard.Go("factory/stage-conversation", func() { c.follow(events, done) })
+		guard.Go("factory/stage-conversation", func() { defer c.followers.Done(); c.follow(events, done) })
 		return nil
 	}
-	guard.Go("factory/stage-steer", func() { c.drain(events) })
+	guard.Go("factory/stage-steer", func() { defer c.followers.Done(); c.drain(events) })
 	return nil
 }
 
@@ -500,6 +517,9 @@ func (c *stageConversation) deliverWith(words string, start func(string) (<-chan
 func (c *stageConversation) startTurn(words string, start func(string) (<-chan session.Event, error)) (<-chan session.Event, chan struct{}, bool, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.closed {
+		return nil, nil, false, errors.New("this stage conversation is closed")
+	}
 	events, err := start(words)
 	if err != nil {
 		return nil, nil, false, err
@@ -511,6 +531,7 @@ func (c *stageConversation) startTurn(words string, start func(string) (<-chan s
 		c.done, c.failure = make(chan struct{}), nil
 	default:
 	}
+	c.followers.Add(1)
 	return events, c.done, idle, nil
 }
 
@@ -541,6 +562,15 @@ func (c *stageConversation) Wait(ctx context.Context) error {
 
 // Captions is the conversation's running account.
 func (c *stageConversation) Captions(context.Context) <-chan string { return c.captions }
+
+// VerificationStopped lets the runner close an agent that repeatedly reports
+// the same rejected repair, even while its model turn is otherwise still busy.
+func (c *stageConversation) VerificationStopped() <-chan string {
+	if c.verification == nil {
+		return nil
+	}
+	return c.verification.stoppedVerification()
+}
 
 // ID is the conversation's session file, which is how a surface opens it.
 func (c *stageConversation) ID() string { return c.file }
@@ -573,10 +603,14 @@ func (c *stageConversation) Close() {
 	if !c.closeOnce() {
 		return
 	}
+	if c.verification != nil {
+		c.verification.closeVerification()
+	}
 	c.stopWakes()
 	forgetStageAgent(c.agent)
 	c.agent.Interrupt()
 	_ = c.agent.Close()
+	c.followers.Wait()
 }
 
 // closeOnce answers true the first time it is asked, and false after.
@@ -587,6 +621,9 @@ func (c *stageConversation) closeOnce() bool {
 		return false
 	}
 	c.closed = true
+	if c.closing != nil {
+		close(c.closing)
+	}
 	return true
 }
 

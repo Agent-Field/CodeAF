@@ -44,6 +44,7 @@ func TestCIRepairRetestsProvesAndWaitsForApprovalOnTheSamePR(t *testing.T) {
 			id := g.add("fix regression", factory.Stage{Name: "proof", Kind: factory.StageChat, Until: factory.UntilProven})
 			if err := g.st.Update(id, func(it *factory.Item) error {
 				it.Kind = factory.KindIssue
+				it.Cap = 10
 				it.State = factory.StateShipped
 				it.Publish = "pr"
 				it.HeadCommit = head
