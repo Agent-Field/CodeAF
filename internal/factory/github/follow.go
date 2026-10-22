@@ -82,11 +82,16 @@ func (s *Source) FollowPR(ctx context.Context, owner, repo string, number int) (
 	return out, nil
 }
 
+// storedText is an error's words as the store will keep them: valid UTF-8 (JSON
+// replaces invalid bytes) clipped on a character boundary. Comparing a fresh
+// poll's text with the stored one is then equal when nothing changed, instead
+// of rewriting the job on every poll.
+func storedText(s string, n int) string {
+	return clip(strings.ToValidUTF8(s, "\uFFFD"), n)
+}
+
 func readProblem(area string, err error) factory.PRReadProblem {
-	p := factory.PRReadProblem{Area: area, Code: "incomplete", Summary: "PR " + area + " could not be verified.", Detail: err.Error()}
-	if len(p.Detail) > 2000 {
-		p.Detail = p.Detail[:2000]
-	}
+	p := factory.PRReadProblem{Area: area, Code: "incomplete", Summary: "PR " + area + " could not be verified.", Detail: storedText(err.Error(), 2000)}
 	var ae *forge.APIError
 	var ne net.Error
 	switch {
@@ -245,10 +250,7 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 		if err != nil {
 			// A failed feedback read must not leave an old all-clear on screen.
 			// Do not replace an active repair or facts for a newer head.
-			reason := "Could not refresh PR checks/review feedback: " + err.Error() + ". Will retry on the next poll."
-			if len(reason) > 700 {
-				reason = reason[:700]
-			}
+			reason := storedText("Could not refresh PR checks/review feedback: "+err.Error()+". Will retry on the next poll.", 700)
 			if it.FollowUp != nil && (it.FollowUp.State == "healthy" || it.FollowUp.State == "watching") && (it.FollowUp.Reason != reason || it.PullRequest.ChecksRead) {
 				_ = st.Update(it.ID, func(cur *factory.Item) error {
 					if cur.PullRequest == nil || cur.PullRequest.HeadSHA != it.PullRequest.HeadSHA || cur.FollowUp == nil || (cur.FollowUp.State != "healthy" && cur.FollowUp.State != "watching") {
