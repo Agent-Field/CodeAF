@@ -367,3 +367,7 @@ version string. If they are missing, it leaves movement and identity pairing abs
 says `moving chats needs a newer furrow engine than this build carries`. Ordinary chat
 and existing remote access still work. Use a build carrying the newer engine, or point
 `CODEAF_FURROW` at one and restart; `CODEAF_CELLS=1` alone cannot add missing engine verbs.
+
+## Does a CA certificate bundle stay out as a private key — cacert.pem
+
+A PEM certificate bundle containing only `BEGIN CERTIFICATE` blocks is kept in saved history and can move with the workspace. A `.pem` suffix alone does not make it a private key. Files containing PEM private-key headers (including encrypted keys and OpenSSH keys), PuTTY private keys, and PKCS#12 key containers are withheld; a PEM containing both certificates and a private key is withheld too. The same folder exclusions still apply: a certificate inside an install folder left behind for rebuilding is rebuilt with that folder.

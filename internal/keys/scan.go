@@ -60,7 +60,9 @@ func contentRule(name, lead, pattern string) rule {
 var nameRules = []rule{
 	nameRule(RuleDotenv, ".env", ".env.*", "*.env"),
 	nameRule("credentials-file", "*credentials*"),
-	nameRule("private-key-file", "*.pem", "id_rsa*", "id_ed25519*"),
+	// PKCS#12 containers may encrypt their private-key material, so their
+	// opaque contents cannot be cleared by a search for a PEM header.
+	nameRule("private-key-file", "*.p12", "*.pfx"),
 }
 
 var contentRules = []rule{
@@ -68,7 +70,8 @@ var contentRules = []rule{
 	contentRule("github-token", "gh", `\bgh[pousr]_[A-Za-z0-9]{30,}`),
 	contentRule("slack-token", "xox", `\bxox[bp]-[A-Za-z0-9-]{10,}`),
 	contentRule("aws-access-key", "AKIA", `\bAKIA[0-9A-Z]{16}\b`),
-	contentRule("private-key-block", "-----BEGIN", `-----BEGIN [A-Z ]*PRIVATE KEY-----`),
+	contentRule("private-key-file", "-----BEGIN", `-----BEGIN [A-Z ]*PRIVATE KEY-----`),
+	contentRule("private-key-file", "PuTTY-User-Key-File-", `(?m)^PuTTY-User-Key-File-[23]:`),
 }
 
 // ScanTree walks root and reports every file matching a secret rule, one
