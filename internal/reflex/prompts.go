@@ -31,9 +31,11 @@ const statePrompt = `You read one exchange between a person and an assistant and
 
 ` + stateRules + `
 
+If KEPT lines are provided, used is an array of their numbers actually applied in the assistant answer. Never count a line merely present in context.
+
 Answer with ONE JSON object and nothing else. No prose, no code fence.
 
-{"state": {...}} or {}
+{"used": [], "state": {...}} or {}
 
 USER:
 what does this regex do
@@ -58,6 +60,8 @@ const noticeTemplate = `You read one exchange between a person and an assistant.
 
 FIRST, keep: did the PERSON say something worth remembering in every future conversation? Only these count: a preference ("I like short answers"), a standing rule ("always run the tests first", "never touch the public API"), a correction of the assistant, a decision they made, or a lasting fact about them, their machine or this project. It must be TIMELESS: anything tied to a time or an event ("remind me at six", "every Monday", "when CI goes red") is not a memory — leave it out. Never keep what only the assistant said, the work in progress, code, or a question. Most exchanges keep nothing: keep is then "".
 
+durability is one of standing_rule, decision, durable_fact, project_state, ephemeral. Ephemeral requests, progress chatter, and one-off instructions belong only in the transcript: keep must be empty. Lasting project state may be kept as project_state; prefer state for ordinary progress. used is an array of KEPT line numbers actually applied in the ASSISTANT answer, never merely present or echoed. Use [] when none applied.
+
 Write keep as one short line in the person's own terms. Keep every condition they gave.
 
 scope is one of: %s. Use project unless the person said it holds everywhere or for all their work (user), or only for this machine (env).
@@ -68,7 +72,7 @@ SECOND, state: ` + stateRules + `
 
 Answer with ONE JSON object and nothing else. No prose, no code fence.
 
-{"keep": "..." or "", "scope": "...", "replaces": 0, "state": {...} or omitted}
+{"keep": "..." or "", "scope": "...", "durability": "durable_fact", "used": [], "replaces": 0, "state": {...} or omitted}
 
 USER:
 what does this regex do
@@ -121,7 +125,7 @@ KEPT:
 func noticeInput(userMsg, assistantMsg string, kept []string, askMemory bool) string {
 	input := "USER:\n" + clip(userMsg, messageLimit) +
 		"\n\nASSISTANT:\n" + clip(assistantMsg, messageLimit)
-	if !askMemory {
+	if !askMemory && len(kept) == 0 {
 		return input
 	}
 	var lines strings.Builder

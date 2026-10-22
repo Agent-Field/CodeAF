@@ -807,6 +807,9 @@ func Open(path string) (*Store, error) {
 	if err := migrateMemoriesOwner(db); err != nil {
 		return closeOnError(fmt.Errorf("migrate memory owners: %w", err))
 	}
+	if err := initMemoryActivation(db); err != nil {
+		return closeOnError(fmt.Errorf("initialize memory activation: %w", err))
+	}
 	if _, err := db.Exec(retrospectiveSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize retrospective schema: %w", err))
 	}

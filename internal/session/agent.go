@@ -1770,6 +1770,9 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// AND SO IS WHAT THIS CONVERSATION REMEMBERS, on the same trigger and for
 	// the same reason the clock has one: a line kept from another window, or by
 	// /remember a moment ago, holds over the very next turn (memory.go).
+	if a.memory != nil {
+		a.memory.contextWords = user.text()
+	}
 	a.refreshMemoryLocked()
 	a.refreshSystemLocked()
 	hub := a.newReplayHubLocked()

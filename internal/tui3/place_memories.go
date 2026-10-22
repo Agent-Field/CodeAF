@@ -94,6 +94,7 @@ const memoryAddID = "\x00add"
 // keystroke that walks in, and typing filters what is already held.
 type memoryPlace struct {
 	shelves store.MemoryShelves
+	limit   int
 	read    time.Time
 	// here is the owner this conversation keeps project lines under, which is
 	// what makes one shelf "this project". hereUnknown is the engine failing to
@@ -135,7 +136,7 @@ func (p *memoryPlace) close() { *p = memoryPlace{} }
 // conversation here is told already open.
 func (p *memoryPlace) start(shelves store.MemoryShelves, here string, hereUnknown bool, now time.Time) {
 	*p = memoryPlace{
-		shelves: shelves, read: now, here: here, hereUnknown: hereUnknown, hover: -1,
+		shelves: shelves, limit: memorySnapshotRows, read: now, here: here, hereUnknown: hereUnknown, hover: -1,
 		open: memoryOpenByDefault(shelves, here), origins: map[string]memoryOrigin{},
 		asking: map[string]bool{},
 	}
@@ -170,11 +171,14 @@ func (p *memoryPlace) rank() {
 		p.closed, p.closedQuery = nil, query
 	}
 	p.reading = readMemory(p.shelves, p.here, p.open, p.closed, p.filter.String(), p.read)
-	if p.hereUnknown {
+	if p.hereUnknown && p.shelves.Selection == nil {
 		// WHICH LINES RIDE HERE IS WHAT THE ENGINE COULD NOT SAY, so how many do
 		// not fit is unknown too — and unknown is drawn as nothing, never as a
 		// count measured without this project's lines.
 		p.reading.outside = 0
+		for i := range p.reading.lines {
+			p.reading.lines[i].selection = ""
+		}
 	}
 	p.cursor = p.nearestStop(p.cursor)
 }
@@ -269,7 +273,7 @@ func (p *memoryPlace) choice() (store.Memory, bool) {
 // shelfUnder is the group the cursor is standing ON.
 func (p *memoryPlace) shelfUnder() (string, bool) {
 	stop, ok := p.reading.at(p.cursor)
-	if !ok || stop.line != nil || stop.add {
+	if !ok || stop.line != nil || stop.add || stop.shelf == memoryLoadKey {
 		return "", false
 	}
 	return stop.shelf, true
@@ -454,6 +458,7 @@ func (a *app) memorySnapshot() (store.MemoryShelves, string) {
 	if err != nil {
 		return store.MemoryShelves{}, memoryUnreadableWord
 	}
+	a.attachMemorySelection(&shelves)
 	return shelves, ""
 }
 
@@ -463,17 +468,21 @@ func (a *app) refreshMemory() {
 	if !a.at(pageMemory) || !a.memoryReady() {
 		return
 	}
-	shelves, err := a.memory.Snapshot(memorySnapshotRows)
+	shelves, err := a.memory.Snapshot(max(memorySnapshotRows, a.mem.limit))
 	if err != nil {
 		return
 	}
+	a.attachMemorySelection(&shelves)
 	a.mem.refresh(shelves, a.now())
 }
 
 // memoryPlaceDoneMsg is one write the place started, finished: its receipt for
 // the note line. The page re-reads the store when it lands rather than patching
 // the held snapshot, because the store owns the counts and the shelves.
-type memoryPlaceDoneMsg struct{ text string }
+type memoryPlaceDoneMsg struct {
+	text    string
+	shelves *store.MemoryShelves
+}
 
 // memoryPlaceDo runs one write OFF the update loop — over --host it is a wire
 // call — and answers its receipt as a message, so a slow engine never freezes
@@ -488,7 +497,12 @@ func (a *app) adoptMemoryPlaceDone(msg memoryPlaceDoneMsg) {
 		return
 	}
 	a.mem.footer = msg.text
-	a.refreshMemory()
+	if msg.shelves != nil {
+		a.attachMemorySelection(msg.shelves)
+		a.mem.refresh(*msg.shelves, a.now())
+	} else {
+		a.refreshMemory()
+	}
 	a.touch()
 }
 
@@ -699,7 +713,7 @@ func (placeMemory) body(a *app, width, room int) []placeRow {
 		if head == 1 && at == 0 {
 			// THE HEAD ROW IS ABOUT THE TAB AND KEEPS THE WHOLE FRAME; the seam
 			// starts under it, as it does on the Activity tab.
-			out = append(out, placeRow{text: placeLead + placeHeading(fit(memoryCounts(p.reading.held, p.reading.letGo, p.reading.outside), width-len(placeLead)), a.pal), hit: row.hit})
+			out = append(out, placeRow{text: placeLead + placeHeading(fit(p.reading.counts(), width-len(placeLead)), a.pal), hit: row.hit})
 			continue
 		}
 		text := ""
@@ -859,6 +873,13 @@ func (p *memoryPlace) memoryFacts(memory store.Memory) []string {
 		about = append(about, "kept by "+word)
 	}
 	facts := []string{strings.Join(about, " · ")}
+	if !p.hereUnknown || p.shelves.Selection != nil {
+		prefix := ""
+		if p.shelves.Selection == nil {
+			prefix = "project preview · "
+		}
+		facts = append(facts, prefix+memorySelectionWords(memory, p.reading.decisions))
+	}
 	// WHERE IT WAS LEARNED IS SAID ONLY WHEN THE STORE SAID. An origin nobody
 	// could name is absent rather than "somewhere", and one still on its way is
 	// absent until it lands.
@@ -893,15 +914,15 @@ func (p *memoryPlace) addReach() string {
 func memoryShelfAbout(key, here string) string {
 	switch {
 	case key == store.OwnerUser:
-		return "in front of every conversation, in every project"
+		return "available in every conversation, in every project"
 	case key == store.OwnerMachine:
-		return "in front of every conversation on this machine"
+		return "available in every conversation on this machine"
 	case key == memoryLetGoKey:
 		return "forgotten or replaced, and in front of nothing · → on a line puts it back"
 	case key == store.OwnerLegacyProject:
 		return "kept by an earlier build that could not tell which project · → on a line moves it"
 	case here != "" && key == here:
-		return "in front of every conversation in this project"
+		return "available in every conversation in this project"
 	}
 	return "in front of conversations in that project, and not here"
 }
@@ -987,6 +1008,20 @@ func (placeMemory) rowID(a *app) string {
 // and the foot over a group names those and not `enter`.
 func (placeMemory) enter(a *app) tea.Cmd {
 	p := &a.mem
+	if stop, ok := p.reading.at(p.cursor); ok && stop.shelf == memoryLoadKey {
+		if a.memory == nil {
+			return nil
+		}
+		p.limit = max(memorySnapshotRows, p.limit) + memorySnapshotRows
+		limit, memory := p.limit, a.memory
+		return func() tea.Msg {
+			shelves, err := memory.Snapshot(limit)
+			if err != nil {
+				return memoryPlaceDoneMsg{text: memoryUnreadableWord}
+			}
+			return memoryPlaceDoneMsg{text: "more memories loaded", shelves: &shelves}
+		}
+	}
 	if p.onAdd() {
 		p.startEdit(memoryAddID, "")
 		return nil
@@ -1147,6 +1182,8 @@ func (placeMemory) hint(a *app) string {
 		return memoryBareHint
 	case p.onAdd():
 		return memoryAddHint
+	case p.cursor >= 0 && p.cursor < len(p.reading.lines) && p.reading.lines[p.cursor].kind == memoryReadingLoad:
+		return "enter " + memoryLoadWord
 	}
 	if _, ok := p.shelfUnder(); ok {
 		if p.shelfOpen() {
@@ -1187,7 +1224,7 @@ func (placeMemory) press(a *app, y int) (tea.Cmd, bool) {
 	}
 	p.cursor = at
 	a.touch()
-	if !stop.add && stop.line == nil {
+	if !stop.add && stop.line == nil && stop.shelf != memoryLoadKey {
 		p.fold(!p.shelfOpen())
 		return a.memoryFollow(), true
 	}
@@ -1224,4 +1261,16 @@ func (placeMemory) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	return a.memoryKey(msg), true
+}
+
+// attachMemorySelection asks the conversation rather than guessing from the
+// snapshot: hosted rows and their admission must come from the same engine.
+func (a *app) attachMemorySelection(shelves *store.MemoryShelves) {
+	if reader, ok := a.agent.(interface {
+		MemorySelection() (store.MemoryBlock, error)
+	}); ok {
+		if block, err := reader.MemorySelection(); err == nil {
+			shelves.Selection = &block
+		}
+	}
 }

@@ -27,8 +27,8 @@ import (
 )
 
 // memorySnapshotRows is how many active memories one snapshot carries when the
-// caller names no number, and memorySnapshotLetGo how many let-go ones. The
-// counts are exact whatever these are.
+// caller names no number, and memorySnapshotLetGo is the minimum history
+// window. Explicit larger snapshots expand both windows; counts remain exact.
 const (
 	memorySnapshotRows  = 500
 	memorySnapshotLetGo = 100
@@ -50,6 +50,8 @@ type MemoryShelf struct {
 
 // MemoryShelves is the whole snapshot.
 type MemoryShelves struct {
+	// Selection is the conversation's actual last prompt admission, when known.
+	Selection *MemoryBlock
 	// Shelves come person, machine, projects by name, quarantine last. A shelf
 	// with nothing on it is not here.
 	Shelves []MemoryShelf
@@ -84,7 +86,7 @@ func (s *Store) MemorySnapshot(limit int) (MemoryShelves, error) {
 	if err != nil {
 		return MemoryShelves{}, fmt.Errorf("memory snapshot: %w", err)
 	}
-	letGo, err := queryMemoriesOn(tx, `WHERE status <> ?`, []any{MemoryActive}, `memories.updated_seq DESC, memories.id`, memorySnapshotLetGo)
+	letGo, err := queryMemoriesOn(tx, `WHERE status <> ?`, []any{MemoryActive}, `memories.updated_seq DESC, memories.id`, max(memorySnapshotLetGo, limit))
 	if err != nil {
 		return MemoryShelves{}, fmt.Errorf("memory snapshot: %w", err)
 	}

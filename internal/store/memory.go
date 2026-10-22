@@ -22,14 +22,9 @@ import (
 // have to be told again: a preference, a standing rule, a correction, a fact
 // about the person, their machine or their project.
 //
-// A MEMORY IS ONE LINE AND IT HAS ONE STRENGTH. Every active memory a
-// conversation can see is put in front of every one of its turns
-// (internal/session's memory.go), so there is no ranking here, no shortlist, no
-// counter of how often a line helped and no flag that makes one line weigh more
-// than another. What the store keeps beside the words is who it belongs to
-// ([Memory.Owner]), who saved it ([Memory.Origin]) and where it came from
-// ([Memory.SourceSession]) — the three things a person reading their own memory
-// needs in order to trust it or take it back.
+// Memories are admitted to a bounded prompt cache by activation and context.
+// Explicit person pins always ride; other rows remain inspectable and searchable.
+// Event telemetry feeds the cached practice trace rather than remaining write-only.
 //
 // The notebook (facts.go) is a different thing: it distils beliefs out of
 // finished WORK. A memory is something a person said or had noticed for them.
@@ -129,7 +124,13 @@ const (
 
 // Memory is one durable thing known across conversations.
 type Memory struct {
-	ID string
+	ID            string
+	OwnerFan      int
+	TopicStrength map[string]int
+	TopicFans     map[string]int
+	Rehearsals    int
+	Activation    float64
+	ActivationAt  time.Time
 	// Owner is WHO the memory belongs to — the whole of the permission model
 	// (memory_owner.go). Every read that can put a memory in front of a model
 	// filters on it; two projects may hold genuinely different truths about
@@ -855,7 +856,7 @@ func queryMemoriesOn(db memoryQuerier, where string, args []any, order string, l
 		       memories.text, memories.tags, memories.status, memories.origin,
 		       memories.project_name, memories.created_seq, memories.updated_seq,
 		       memories.source_session, memories.source_seq, memories.always_on,
-		       COALESCE((SELECT ts FROM events WHERE seq = memories.updated_seq), '')
+		       COALESCE((SELECT ts FROM events WHERE seq = memories.updated_seq), ''), COALESCE((SELECT mass FROM memory_activation WHERE memory_id=memories.id),1), COALESCE((SELECT rehearsals FROM memory_activation WHERE memory_id=memories.id),0), COALESCE((SELECT at FROM memory_activation WHERE memory_id=memories.id),0), COALESCE((SELECT json_group_object(t.topic,f.n) FROM memory_topics t JOIN memory_topic_fans f ON f.topic=t.topic WHERE t.memory_id=memories.id),'{}'),COALESCE((SELECT n FROM memory_owner_counts WHERE owner=memories.owner),1),COALESCE((SELECT json_group_object(topic,n) FROM memory_associations WHERE memory_id=memories.id),'{}')
 		FROM memories ` + where
 	if order != "" {
 		statement += ` ORDER BY ` + order
@@ -872,16 +873,20 @@ func queryMemoriesOn(db memoryQuerier, where string, args []any, order string, l
 	memories := make([]Memory, 0, 16)
 	for rows.Next() {
 		var memory Memory
-		var tags, updatedAt string
+		var tags, updatedAt, topicFans, topicStrength string
+		var activationAt int64
 		if err := rows.Scan(&memory.ID, &memory.Owner, &memory.Type, &memory.Scope, &memory.Title,
 			&memory.Text, &tags, &memory.Status, &memory.Origin, &memory.ProjectName,
 			&memory.CreatedSeq, &memory.UpdatedSeq, &memory.SourceSession, &memory.SourceSeq,
-			&memory.Rule, &updatedAt); err != nil {
+			&memory.Rule, &updatedAt, &memory.Activation, &memory.Rehearsals, &activationAt, &topicFans, &memory.OwnerFan, &topicStrength); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(tags), &memory.Tags); err != nil {
 			return nil, err
 		}
+		_ = json.Unmarshal([]byte(topicFans), &memory.TopicFans)
+		_ = json.Unmarshal([]byte(topicStrength), &memory.TopicStrength)
+		memory.ActivationAt = time.Unix(activationAt, 0)
 		if updatedAt != "" {
 			// AN UNREADABLE TIMESTAMP IS AN UNKNOWN AGE, NOT A FAILED READ.
 			if at, err := parseTime(updatedAt); err == nil {
@@ -912,7 +917,10 @@ func applyMemoryAdd(tx *sql.Tx, payload memoryPayload, seq int64) error {
 		payload.ID, payload.Owner, payload.Type, payload.Scope, payload.Title, payload.Text,
 		tags, MemoryActive, seq, seq, payload.SourceSession, memorySourceSeq(payload.SourceSession, seq),
 		payload.Origin, payload.ProjectName)
-	return err
+	if err != nil {
+		return err
+	}
+	return indexMemoryOn(tx, payload.ID, payload.Text, payload.Tags, payload.SourceSession)
 }
 
 func applyMemoryUpdate(tx *sql.Tx, payload memoryUpdatePayload, seq int64) error {
@@ -927,10 +935,18 @@ func applyMemoryUpdate(tx *sql.Tx, payload memoryUpdatePayload, seq int64) error
 	if err != nil {
 		return err
 	}
-	return requireOneRow(result, "update targets missing or inactive memory", payload.ID)
+	if err := requireOneRow(result, "update targets missing or inactive memory", payload.ID); err != nil {
+		return err
+	}
+	return indexMemoryOn(tx, payload.ID, payload.Text, payload.Tags, payload.SourceSession)
 }
 
 func applyMemorySupersede(tx *sql.Tx, payload memorySupersedePayload, seq int64) error {
+	var pinned bool
+	if err := tx.QueryRow(`SELECT (always_on != 0 OR origin='person') FROM memories WHERE id=?`, payload.OldID).Scan(&pinned); err != nil {
+		return err
+	}
+
 	result, err := tx.Exec(`
 		UPDATE memories SET status = ?, updated_seq = ?, source_session = ?, source_seq = ?
 		WHERE id = ? AND status = ?`,
@@ -941,7 +957,14 @@ func applyMemorySupersede(tx *sql.Tx, payload memorySupersedePayload, seq int64)
 	if err := requireOneRow(result, "supersession targets missing or inactive memory", payload.OldID); err != nil {
 		return err
 	}
-	return applyMemoryAdd(tx, payload.New, seq)
+	if err := applyMemoryAdd(tx, payload.New, seq); err != nil {
+		return err
+	}
+	if pinned {
+		_, err := tx.Exec(`UPDATE memories SET always_on=1 WHERE id=?`, payload.New.ID)
+		return err
+	}
+	return nil
 }
 
 func applyMemoryForget(tx *sql.Tx, payload memoryForgetPayload, seq int64) error {

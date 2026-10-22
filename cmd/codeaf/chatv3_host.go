@@ -1473,6 +1473,7 @@ func (h *hostLedger) start(since time.Time) {
 // provenance methods remain synchronous because they are reached only by an
 // explicit key and their answer decides what the surface may say happened.
 type hostMemory struct {
+	requestedLimit int
 	client         *remote.Client
 	duty           hostDuty
 	mu             sync.Mutex
@@ -1488,6 +1489,10 @@ func newHostMemory(far hostFar) *hostMemory {
 }
 func (h *hostMemory) prime() { h.refresh(500, time.Time{}) }
 func (h *hostMemory) refresh(limit int, at time.Time) {
+	h.mu.Lock()
+	h.requestedLimit = max(h.requestedLimit, limit)
+	limit = h.requestedLimit
+	h.mu.Unlock()
 	h.duty.run("chatv3/host-memory", "", func() {
 		s, err := h.client.Snapshot(limit)
 		learned, letGo, changedErr := h.client.ChangedSince(at)
@@ -1501,7 +1506,10 @@ func (h *hostMemory) refresh(limit int, at time.Time) {
 }
 func (h *hostMemory) Snapshot(limit int) (store.MemoryShelves, error) {
 	s, _, _, known := h.snapshot()
-	if !known {
+	h.mu.Lock()
+	needsMore := limit > h.requestedLimit
+	h.mu.Unlock()
+	if !known || needsMore {
 		h.refresh(limit, time.Time{})
 	}
 	return s, nil

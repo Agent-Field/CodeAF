@@ -9,9 +9,9 @@
 //
 // IT IS THE ONLY CALL. There used to be three: a router before every turn that
 // chose which remembered lines a message needed, this one, and a decider that
-// settled each new line against its neighbours. Every remembered line now rides
-// every turn (internal/session's memory.go), so there is nothing to route, and
-// this call is shown the lines already kept so it can say "that is already
+// settled each new line against its neighbours. Local activation now assembles
+// each turn's working set without a model call. This call sees admitted lines
+// and identifies actual use, so it can also say "that is already
 // kept" or "this replaces line 3" itself.
 //
 // It keeps the shape and the law the three shared:
@@ -101,6 +101,10 @@ type NoticeResult struct {
 	// person's own terms, or "" — which is the answer for most exchanges, and
 	// always the answer when the call was not asked about memory.
 	Keep string
+	// Durability classifies capture; ephemeral candidates never reach storage.
+	Durability string
+	// Used names the 1-based kept lines actually applied in the answer.
+	Used []int
 	// Scope is where Keep holds: `user` (everywhere), `project` or `env` (this
 	// machine).
 	Scope string
@@ -261,10 +265,12 @@ func Notice(ctx context.Context, c Completer, userMsg, assistantMsg string, kept
 	var result NoticeResult
 	err := ask(provider.WithRole(ctx, lane.RoleMemory), c, system, noticeInput(userMsg, assistantMsg, kept, askMemory), func(reply string) error {
 		var wire struct {
-			Keep     string `json:"keep"`
-			Scope    string `json:"scope"`
-			Replaces int    `json:"replaces"`
-			State    *struct {
+			Keep       string `json:"keep"`
+			Durability string `json:"durability"`
+			Used       []int  `json:"used"`
+			Scope      string `json:"scope"`
+			Replaces   int    `json:"replaces"`
+			State      *struct {
 				Goal     string   `json:"goal"`
 				Done     []string `json:"done"`
 				Inflight []string `json:"inflight"`
@@ -276,9 +282,13 @@ func Notice(ctx context.Context, c Completer, userMsg, assistantMsg string, kept
 		if err := decode(reply, &wire); err != nil {
 			return err
 		}
-		next := NoticeResult{}
+		next := NoticeResult{Durability: strings.ToLower(strings.TrimSpace(wire.Durability))}
+		next.Used = validUsedMemoryIndices(wire.Used, len(kept))
 		if askMemory {
 			next.Keep = strings.TrimSpace(wire.Keep)
+			if next.Durability == "ephemeral" {
+				next.Keep = ""
+			}
 		}
 		if next.Keep != "" {
 			next.Scope = strings.ToLower(strings.TrimSpace(wire.Scope))
@@ -306,6 +316,20 @@ func Notice(ctx context.Context, c Completer, userMsg, assistantMsg string, kept
 		return NoticeResult{}, err
 	}
 	return result, nil
+}
+
+// validUsedMemoryIndices bounds attribution to the exact numbered input and
+// removes repeats, so a malformed answer cannot rehearse an unrelated chunk.
+func validUsedMemoryIndices(indices []int, count int) []int {
+	seen := map[int]bool{}
+	var used []int
+	for _, index := range indices {
+		if index >= 1 && index <= count && !seen[index] {
+			used = append(used, index)
+			seen[index] = true
+		}
+	}
+	return used
 }
 
 // ask makes one reflex call and, if the answer was not readable, exactly one

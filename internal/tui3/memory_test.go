@@ -617,7 +617,7 @@ func TestAnEngineThatCannotNameTheProjectIsSaid(t *testing.T) {
 	}
 	a, _ := memoryPlaceApp(t, rows)
 	openMemoryPlace(t, a)
-	if !strings.Contains(memoryPlaceRowsText(a), "don't fit in front of the model") {
+	if !strings.Contains(memoryPlaceRowsText(a), "more in memory") {
 		t.Fatalf("an overflowing store with the project known counts nothing:\n%s", memoryPlaceRowsText(a))
 	}
 
@@ -630,7 +630,7 @@ func TestAnEngineThatCannotNameTheProjectIsSaid(t *testing.T) {
 	if a.mem.here != "" {
 		t.Fatalf("a project the engine could not name was taken as %q", a.mem.here)
 	}
-	if strings.Contains(memoryPlaceRowsText(a), "don't fit") {
+	if strings.Contains(memoryPlaceRowsText(a), "more in memory") {
 		t.Fatalf("the head row counted what does not fit without knowing the project:\n%s", memoryPlaceRowsText(a))
 	}
 }
@@ -684,7 +684,7 @@ func TestTheHeadRowSaysWhenLinesDoNotFit(t *testing.T) {
 	}
 	a, _ := memoryPlaceApp(t, rows)
 	openMemoryPlace(t, a)
-	if shown := memoryPlaceRowsText(a); !strings.Contains(shown, "don't fit in front of the model") {
+	if shown := memoryPlaceRowsText(a); !strings.Contains(shown, "more in memory") {
 		t.Fatalf("an overflowing store does not say lines are left out:\n%.400s", shown)
 	}
 }
@@ -702,5 +702,104 @@ func settleMemorySlash(t *testing.T, a *app, line string) {
 	t.Helper()
 	if cmd := a.slash(line); cmd != nil {
 		drive(t, a, cmd())
+	}
+}
+
+// Admission explanations must survive both the narrow list and the full card.
+func TestMemoryAdmissionIsVisibleForEveryStoredStatus(t *testing.T) {
+	cases := []struct {
+		name     string
+		memory   store.Memory
+		decision store.MemoryAdmission
+		want     string
+	}{
+		{"pin", store.Memory{ID: "pin", Status: store.MemoryActive}, store.MemoryAdmission{Riding: true, Reason: "explicit pin"}, "riding · explicit pin"},
+		{"not admitted", store.Memory{ID: "quiet", Status: store.MemoryActive}, store.MemoryAdmission{Reason: "below activation threshold"}, "archived · below activation threshold"},
+		{"forgotten", store.Memory{ID: "gone", Status: store.MemoryForgotten}, store.MemoryAdmission{}, "archived · forgotten"},
+		{"replaced", store.Memory{ID: "old", Status: store.MemorySuperseded}, store.MemoryAdmission{}, "archived · replaced"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			decisions := map[string]store.MemoryAdmission{tc.memory.ID: tc.decision}
+			p := memoryPlace{reading: memoryReading{decisions: decisions}}
+			if got := strings.Join(p.memoryFacts(tc.memory), " "); !strings.Contains(got, tc.want) {
+				t.Fatalf("detail = %q; want %q", got, tc.want)
+			}
+			line := memoryReadingLine{memory: &tc.memory, label: "mock preference", selection: memorySelectionWords(tc.memory, decisions)}
+			row, _ := memoryLineRow(line, 100, palette{}, false, nil)
+			badge, _, _ := strings.Cut(tc.want, " · ")
+			if !strings.Contains(row, badge+" · mock preference") {
+				t.Fatalf("list = %q; want %q", row, tc.want)
+			}
+		})
+	}
+	memory := store.Memory{ID: "other-project", Status: store.MemoryActive}
+	if got := memorySelectionWords(memory, nil); got != "archived · outside this conversation's scope" {
+		t.Fatal(got)
+	}
+}
+
+// The prompt's actual selected IDs win over a project-only recomputation.
+func TestMemoryAdmissionUsesActualPromptSelection(t *testing.T) {
+	memory := store.Memory{ID: "mock", Owner: store.OwnerUser, Status: store.MemoryActive, Text: "mock selected context fact"}
+	block := store.MemoryBlock{Omitted: 1, Decisions: map[string]store.MemoryAdmission{"mock": {Reason: "prompt budget"}}}
+	shelves := store.MemoryShelves{Held: 1, Selection: &block, Shelves: []store.MemoryShelf{{Owner: store.OwnerUser, Held: 1, Memories: []store.Memory{memory}}}}
+	reading := readMemory(shelves, "", map[string]bool{store.OwnerUser: true}, nil, "", time.Now())
+	if reading.preview || reading.outside != 1 {
+		t.Fatalf("actual selection became preview: %+v", reading)
+	}
+	for _, line := range reading.lines {
+		if line.memory != nil && line.selection != "archived · prompt budget" {
+			t.Fatalf("actual reason = %q", line.selection)
+		}
+	}
+}
+
+// limitedPanelMemoryStore reproduces the real store's bounded snapshots.
+type limitedPanelMemoryStore struct{ *panelMemoryStore }
+
+func (s limitedPanelMemoryStore) Snapshot(limit int) (store.MemoryShelves, error) {
+	shelves, err := s.panelMemoryStore.Snapshot(limit)
+	remaining := limit
+	for i := range shelves.Shelves {
+		count := min(remaining, len(shelves.Shelves[i].Memories))
+		shelves.Shelves[i].Memories = shelves.Shelves[i].Memories[:count]
+		remaining -= count
+	}
+	shelves.LetGo = shelves.LetGo[:min(limit, len(shelves.LetGo))]
+	return shelves, err
+}
+
+func TestMemoryLoadMoreMakesLaterActiveAndArchivedRowsReachable(t *testing.T) {
+	var rows []store.Memory
+	for i := 0; i < 501; i++ {
+		rows = append(rows, store.Memory{ID: fmt.Sprint("active-", i), Owner: store.OwnerUser, Text: fmt.Sprint("mock active ", i), Status: store.MemoryActive})
+		rows = append(rows, store.Memory{ID: fmt.Sprint("gone-", i), Owner: store.OwnerUser, Text: fmt.Sprint("mock archived ", i), Status: store.MemoryForgotten})
+	}
+	a, memory := memoryPlaceApp(t, rows)
+	a.memory = limitedPanelMemoryStore{memory}
+	openMemoryPlace(t, a)
+	if _, ok := a.mem.byID("active-500"); ok {
+		t.Fatal("initial snapshot ignored its limit")
+	}
+	memoryCursorTo(t, a, memoryLoadWord)
+	for _, msg := range runCmd((placeMemory{}).enter(a)) {
+		if done, ok := msg.(memoryPlaceDoneMsg); ok {
+			a.adoptMemoryPlaceDone(done)
+		}
+	}
+	for _, id := range []string{"active-500", "gone-500"} {
+		if _, ok := a.mem.byID(id); !ok {
+			t.Fatalf("load more left %s inaccessible", id)
+		}
+	}
+	a.refreshMemory()
+	if _, ok := a.mem.byID("active-500"); !ok {
+		t.Fatal("clock refresh reset loaded page")
+	}
+	for _, line := range a.mem.reading.lines {
+		if line.kind == memoryReadingLoad {
+			t.Fatal("load more remains after all rows loaded")
+		}
 	}
 }
