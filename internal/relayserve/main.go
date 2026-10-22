@@ -2,6 +2,7 @@ package relayserve
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -32,6 +33,9 @@ func Main(args []string) error {
 	sweepEvery := flags.Duration("sweep-every", 0, "how often replaced identities whose grace has ended are deleted (default 1h); a test hook")
 	watchers := flags.Int("max-watchers", 0, "directory watch sockets one identity may hold (default 1000); a test hook")
 	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
 		return err
 	}
 	cfg := Config{Store: *store, Status: *status, TrustProxy: *trust, SweepEvery: *sweepEvery, MaxWatchers: *watchers}

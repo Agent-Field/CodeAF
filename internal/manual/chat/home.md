@@ -289,6 +289,10 @@ updates the tab and the row in Sessions together.
 
 ## Chats on my other machines — a chat running on another computer, "running on studio", "studio offline", why does it say running on build-box offline, merge / discard
 
+Stable and rc builds have moving chats and pairing off unless `CODEAF_CELLS=1`; Windows does not have them.
+
+Only chats started after moving chats was turned on can be continued on another computer. Older chats stay where they are, keep their original files, and keep working in every build.
+
 When this machine can reach your other machines, a chat that lives on one of them is a
 row under **sessions**, beside the local ones and ordered by when its last saved turn
 happened. The row says where the chat is only where that tells you something:
@@ -324,6 +328,10 @@ extra is drawn and the panel is exactly the local list. `codeaf cell list --all`
 same rows in a terminal (see "The cell verbs" in running-from-the-terminal).
 
 ## Continue a chat here that another machine left — "studio offline", takeover, "continue here", the chat is running on another computer
+
+Stable and rc builds have moving chats and pairing off unless `CODEAF_CELLS=1`; Windows does not have them.
+
+Only chats started after moving chats was turned on can be continued on another computer. Older chats stay where they are, keep their original files, and keep working in every build.
 
 Press enter on a row that says `<device> offline` or `running on <device>` and home asks **Continue this chat here?**
 with the cursor on `continue here`, because pressing enter on the row already said you want it; `esc` or `2` leaves it there.
@@ -372,6 +380,10 @@ file, never line by line. A file you delete on one machine is deleted on the oth
 identity on this machine, no secrets are fetched and no file is written.
 
 ## Do saved provider keys and credentials follow me to another computer
+
+Stable and rc builds have moving chats and pairing off unless `CODEAF_CELLS=1`; Windows does not have them.
+
+Only chats started after moving chats was turned on can be continued on another computer. Older chats stay where they are, keep their original files, and keep working in every build.
 
 **Your keys travel too, through the same encrypted vault.** Two things are sealed in the
 vault with your identity key and sent when they change, so a machine you continue on does not

@@ -51,6 +51,10 @@ screen. Its heading is `Basic settings`, one line, with the keys line directly u
 
 ## I already use codeaf on a second computer — the code field on the first screen
 
+Stable and rc builds have moving chats and pairing off unless `CODEAF_CELLS=1`; Windows does not have them.
+
+Only chats started after moving chats was turned on can be continued on another computer. Older chats stay where they are and keep working in every build.
+
 The first screen has one field for you if your chats are on another computer:
 
 ```

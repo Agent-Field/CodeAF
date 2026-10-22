@@ -2,6 +2,10 @@
 
 ## How do I add a second device — the Add another device card (add another machine), codeaf pair, a link to paste, and pairing a server with no browser
 
+Stable and rc builds have moving chats and pairing off unless `CODEAF_CELLS=1`; Windows does not have them.
+
+Only chats started after moving chats was turned on can be continued on another computer. Older chats stay where they are, keep their original files, and keep working in every build.
+
 Your chats and your work can follow you to a second device. You add it in two steps. There is no account to make and no form to fill.
 
 While you have only one device, home shows a card at the foot:
@@ -48,7 +52,15 @@ Paired. 3 workspaces available.
 
 (`Paired. 1 workspace available.` when there is one.)
 
+## What does codeaf pair --code do
+
+Stable and rc builds have moving chats and pairing off unless `CODEAF_CELLS=1`; Windows does not have them.
+
+`codeaf pair --code` shows a six-digit code on this computer. On the other computer, run `codeaf pair <code>` to share this computer's chats. Compare the three words and approve on the computer showing the code. The page *Pairing your chats with a second computer* explains each step.
+
 ## The pair words — approve, --code and --via
+
+Stable and rc builds have moving chats and pairing off unless `CODEAF_CELLS=1`; Windows does not have them.
 
 ```
 usage: codeaf pair [--name <name>] | codeaf pair approve <link-or-code> | codeaf pair <code> [--replace] [--name <name>] | codeaf pair --code
@@ -56,7 +68,6 @@ usage: codeaf pair [--name <name>] | codeaf pair approve <link-or-code> | codeaf
 
 - `codeaf pair` with nothing after it is for the NEW device. It asks to join and shows a link.
 - `codeaf pair approve <link-or-code>` is for a device that is already in. It shows who is asking and asks `a / d`. Only `a` approves; `d`, Esc, Enter and anything else decline. Pasting the link into the chat, or typing `/pair <link>`, does the same thing on a screen.
-- `codeaf pair --code` shows a six-digit code that gives your chats to another device, the older way. It is told in the page *Pairing your chats with a second device*.
 - `--name <name>` is what your devices call this computer. See the page *Naming a device*.
 - `--via <address>` names the address of the service to go through when it is not the one this device already uses. Pass it to both `codeaf pair` and `codeaf pair approve`. The new device prints the full approve line with `--via` in it when one is needed.
 
@@ -66,11 +77,15 @@ A link is good for 10 minutes and one approval. If it ran out, run `codeaf pair`
 
 ## The four-digit check — how I know the right computer is asking
 
+Stable and rc builds have moving chats and pairing off unless `CODEAF_CELLS=1`; Windows does not have them.
+
 The new device shows a check number of four digits. The device that approves shows the same four digits. Look at both screens. Approve only when they match. If they do not match, decline: somebody else may have used the link.
 
 On the approving screen the number reads `Check number 4821. Approve only if the new device shows the same number.` In a terminal the question reads the same: `a / d`. Only `a` approves; `d`, Esc, Enter and anything else decline. Code pairing keeps its `y / n` question.
 
 ## Approve a new device — the approve screen, a and d, and decline
+
+Stable and rc builds have moving chats and pairing off unless `CODEAF_CELLS=1`; Windows does not have them.
 
 When you open a link on a device that is already in (paste it, or type `/pair <link>`), the screen says who is asking:
 
@@ -100,6 +115,8 @@ Every other device that is on says it too, a moment later, from the same message
 
 ## What does the dot next to a computer mean — the devices row, online and offline
 
+Stable and rc builds have moving chats and pairing off unless `CODEAF_CELLS=1`; Windows does not have them.
+
 When you have two or more devices, home shows one row of them:
 
 ```
@@ -112,6 +129,8 @@ Under the row, `alt+m bring work here` brings the newest chat of an online devic
 
 ## Does the other computer appear on the device list straight after pairing — a just-paired device, devices empty after pairing
 
+Stable and rc builds have moving chats and pairing off unless `CODEAF_CELLS=1`; Windows does not have them.
+
 Yes, on both sides. When a pairing finishes — a six-digit code on both screens, a link
 typed into `codeaf pair approve`, either end of it — the computer it finished on writes
 its own device record then and there, the same record every chat start writes. For a link approved from the chat card or `codeaf pair approve`, the approving computer writes its record before the new device can receive `Paired.`; if that write fails, approval can be tried again and the request has not been granted. `codeaf
@@ -121,6 +140,8 @@ says one line about it, `paired, but this device could not write its own record:
 is written at the next chat start.`, and the pairing ends cleanly.
 
 ## Which devices do I have — /devices, how to remove or revoke one, a device that was revoked, and I was told this machine was removed
+
+Stable and rc builds have moving chats and pairing off unless `CODEAF_CELLS=1`; Windows does not have them.
 
 Type `/devices` to list them:
 
@@ -143,6 +164,8 @@ The list is in a fixed order: this device first, then devices that are online, t
 
 ## I was told this device was removed — how to bring it back
 
+Stable and rc builds have moving chats and pairing off unless `CODEAF_CELLS=1`; Windows does not have them.
+
 Another of your devices removed this one. The chat says:
 
 ```
@@ -152,6 +175,8 @@ this device was removed by another of your devices, so this chat stays here only
 `/devices` on the removed computer says the same line in place of the list. The terminal command `codeaf devices` gives its removal explanation once, without following it with `nothing is paired yet`. It appears the moment the other device removes this one, even if codeaf has been open for days, in the open chat and on the home screen alike, and once only. Your chats on this device are safe and stay on it. They no longer follow your other devices. To bring the device back, run `codeaf pair` here, then approve the link it shows from a device that is still in (the steps above). If you did not mean to remove it, that is the whole fix.
 
 ## The link did not work — a pairing link or token that ran out, was declined or was answered already
+
+Stable and rc builds have moving chats and pairing off unless `CODEAF_CELLS=1`; Windows does not have them.
 
 These are the sentences a link pairing says when it stops, in the words the screen uses. Nothing was changed on either device when you read one of them.
 

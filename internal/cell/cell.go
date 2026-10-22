@@ -11,8 +11,8 @@
 // New chats are cells while [Available] says the platform, channel and engine can carry them: v3MintSession in
 // cmd/codeaf/chatv3_layout.go calls [CreateIn] on the project bucket, and
 // internal/session's layout.go recognises a folder holding .cell/ and keeps
-// the transcript there. A legacy folder is migrated in place when it is opened
-// (MigrateLegacy, hooked in openV3Agent), only while the flag is on.
+// the transcript there. Older folders keep their original layout when opened (C24);
+// only conversations started as cells participate in moving chats.
 package cell
 
 import (

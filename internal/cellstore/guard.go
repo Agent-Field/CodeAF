@@ -147,9 +147,9 @@ func (g Guard) announceUnreadable(before policyFile, found []keys.Finding) {
 
 func noticeFor(f keys.Finding) string {
 	if f.Rule == keys.RuleDotenv {
-		return f.Path + " is kept in your key vault and out of the saved history; your tools still see its variables"
+		return f.Path + " is kept out of the saved history; its variables are kept locally for your tools, and the file travels through the key vault only to paired computers"
 	}
-	return f.Path + " looks like it holds a secret (" + f.Rule + "), so it is kept in your key vault and out of the saved history"
+	return f.Path + " looks like it holds a secret (" + f.Rule + "), so it is kept out of the saved history; the file travels through the key vault only to paired computers"
 }
 
 // vault keeps the variables of every environment file found. A vault that

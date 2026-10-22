@@ -2,6 +2,10 @@
 
 ## Why does it show my hostname — the host name is the default until a device is named, and where a name appears
 
+Stable and rc builds have moving chats and pairing off unless `CODEAF_CELLS=1`; Windows does not have them.
+
+Only chats started after moving chats was turned on can be continued on another computer. Older chats stay where they are and keep working in every build.
+
 Every screen that names a device uses one name for it: the home rows (`running on spark`, `spark offline`), `Continue spark's latest chat here?`, the approve screen, `spark is now paired. Your chats can continue there.`, `/devices`, and the line after a move, `Moved from spark in 4s`. A device is called by its host name, the word your operating system already uses for it, until you give it a name. A name is only a label. It is not a key and it signs nothing, and renaming a device changes nothing about what it can reach.
 
 Because you never named this device, it kept the default. Name it and every other device shows the new name.

@@ -430,6 +430,10 @@ The engine keeps its sync setting from startup. Changing `CODEAF_SYNC_URL` to an
 
 ## Sync your chats between machines — CODEAF_SYNC_URL and CODEAF_SYNC_INTERVAL_MS
 
+Stable and rc builds have moving chats and pairing off unless `CODEAF_CELLS=1`; Windows does not have them.
+
+Only chats started after moving chats was turned on can be continued on another computer. Older chats stay where they are and keep working in every build.
+
 Two settings, both read from the environment, point this machine at a relay so your chats
 can follow you from one computer to another. Neither is a row in `/settings`. With sync off,
 codeaf behaves exactly as it does without it.
@@ -507,22 +511,23 @@ type `--export`, so a report on its own writes no file and sends nothing.
 **`codeaf cell gc [--dry-run]`** (when cells are available) frees disk from finished
 conversations. A conversation that codeaf keeps its own working folder for has files that
 can always be written back from what codeaf sealed. `gc` removes those working files of
-finished conversations, least recently opened first, until the cells fit the disk budget:
+finished conversations, least recently opened first, toward the disk budget:
 the `cell disk budget` row in settings, or `CODEAF_CELL_BUDGET_GB` for one launch, in
-gigabytes (a fraction such as 0.5 works), 20 when unset, 0 for no limit. `codeaf doctor`
+gigabytes (a fraction such as 0.5 works), 20 when unset, 0 for no limit. The settings row is absent when cells are unavailable. `codeaf doctor`
 shows a `cells` row with what they hold against that budget. Only a conversation nobody is using and that is
 fully sealed is touched. One that is open in any window, one opened in the last ten
 minutes, and one with a call still in flight or not yet sealed are passed over, and `gc`
 says why beside each. Your own project folders are never removed: a conversation
 working in a folder of yours is passed over with "workspace is yours", however much disk
 you are short of. What stays is the conversation itself (its transcript and history),
-so it still lists and opens, and opening one writes its files back, byte for byte. A start
-also looks at the budget, at most once an hour, using sizes it already knows. `--dry-run`
-removes nothing and prints what would go:
+so it still lists and opens, and opening one writes its files back, byte for byte. Nothing is removed automatically when opening a chat, while idle or on a timer. The budget is the default for explicit gc only. A fresh snapshot is checked by restoring it into a temporary folder. Only top-level entries that match that restored copy byte for byte are removed. Withheld secrets, `.furrowpolicy` exclusions, rebuildable dependency folders and any directory containing excluded files stay in place. The policy file and the lockfiles (or their containing folders) stay too, so reopening preserves those exclusions. `--dry-run`
+removes nothing and prints the exact top-level paths that would go (it still checks a fresh capture):
 
 ```
 cells hold 24576.0 MiB, budget 20480.0 MiB
   01M3NZ9GCNB38JGMWYVG7V6WWC  6144.0 MiB  would evict
+    captured.txt
+    src
 ```
 
 ## Connect from the terminal without opening the chat — codeaf connect and codeaf disconnect

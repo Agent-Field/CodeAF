@@ -14,7 +14,7 @@ and where the task was spawned under another task it names that too:
 That works because the task's transcript is a real file on disk, kept beside the
 conversation that commissioned it — `<session folder>/.cell/tasks/<YYYYMMDD-HHMMSS>_<task id>.jsonl`
 for a cell, or `<session folder>/tasks/<YYYYMMDD-HHMMSS>_<task id>.jsonl` for a
-conversation that has not migrated
+older conversation that keeps its original layout
 — and the conversation's task checkpoint remembers which file is which. A checkpoint
 written by an older codeaf that did not remember is no worse off: the file is named with
 the task's id, so the room finds it by that id in the same directory, and remembers it from

@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"runtime"
 	"sort"
 	"strings"
@@ -575,6 +576,11 @@ func (c command) aliasNote() string {
 // [menu.rows] draws it: measuring one spelling and drawing the other is a list
 // that pushes the status line off the frame.
 func (c command) note(chords chordSpelling) string {
+	if c.name == "pair" && c.args == "" {
+		if reason := cell.DisabledReason(); reason != "" {
+			c.desc += " · " + reason
+		}
+	}
 	if tail := c.aliasNote(); tail != "" {
 		return chords.say(c.desc + " · " + tail)
 	}

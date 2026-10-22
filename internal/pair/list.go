@@ -41,6 +41,10 @@ func DevicesList(name string, paired []Paired, keeper Keeper, now time.Time) str
 	fmt.Fprintf(&out, "this machine is reachable as %s\n", name)
 	fmt.Fprintf(&out, "its key is kept in %s\n\n", keeper.Where())
 
+	if len(paired) == 0 {
+		out.WriteString("no devices are paired with this machine.\nrun `codeaf serve` here and `codeaf chat --at " + name + "` there to pair one.\n")
+		return out.String()
+	}
 	widest := 0
 	for _, one := range paired {
 		widest = max(widest, width(one.Label))

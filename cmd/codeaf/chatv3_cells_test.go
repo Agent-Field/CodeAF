@@ -124,45 +124,65 @@ func v3TestConfig(workspace string, place session.Place) session.Config {
 	}
 }
 
-func TestLegacyFolderMigratesOnResumeWhenTheFlagIsOn(t *testing.T) {
+// TestLegacyFolderResumesWithoutMigration proves C24 through the actual open
+// and command doors, using the top-level names and JSONL layout dev writes.
+func TestLegacyFolderResumesWithoutMigration(t *testing.T) {
 	celltest.Available(t)
-	bucket, workspace := t.TempDir(), t.TempDir()
-	place := legacyFolder(t, bucket, workspace)
-	before, err := os.ReadFile(place.Transcript())
-	if err != nil || len(before) == 0 {
-		t.Fatalf("legacy transcript: %v (%d bytes)", err, len(before))
-	}
-
-	t.Setenv(cell.EnvVar, "1")
-	cfg := v3Migrated(v3TestConfig(workspace, place))
-	want := filepath.Join(place.Dir, cell.TranscriptPath)
-	if cfg.SessionFile != want {
-		t.Fatalf("session file = %s, want %s", cfg.SessionFile, want)
-	}
-	after, err := os.ReadFile(want)
-	if err != nil || string(after) != string(before) {
-		t.Fatalf("transcript changed by migration: %v", err)
-	}
-	for _, gone := range []string{"transcript.jsonl", cell.StateDir + "-staging"} {
-		if _, err := os.Stat(filepath.Join(place.Dir, gone)); !os.IsNotExist(err) {
-			t.Errorf("%s left behind: %v", gone, err)
-		}
-	}
-	if _, err := os.Stat(filepath.Join(place.NodeJournals(), "n1.jsonl")); err != nil {
-		t.Errorf("task journal lost: %v", err)
-	}
-	if filepath.Base(place.Dir) != place.ID() || len(place.ID()) != 16 {
-		t.Errorf("session id changed: %q", place.ID())
-	}
-
-	agent, _, _, err := openV3Agent(v3TestConfig(workspace, place), workspace, v3OpenSession)
-	if err != nil {
-		t.Fatalf("migrated session did not resume: %v", err)
-	}
-	_ = agent.Close()
-	spoken, empty := v3ScanBucket(bucket)
-	if len(spoken)+len(empty) != 1 {
-		t.Fatalf("listing = %v %v, want the migrated session", spoken, empty)
+	for _, enabled := range []string{"0", "1"} {
+		t.Run(enabled, func(t *testing.T) {
+			t.Setenv(cell.EnvVar, enabled)
+			t.Setenv("CODEAF_SYNC_URL", "off")
+			workspace := t.TempDir()
+			dir := filepath.Join(t.TempDir(), "0123456789abcdef")
+			files := map[string]string{
+				"transcript.jsonl": `{"type":"session","version":1,"id":"0123456789abcdef","model":"test/model"}` + "\n" + `{"type":"message","role":"user","content":"old words"}` + "\n" + `{"type":"message","role":"assistant","content":"old answer"}` + "\n",
+				"state.json":       `{ "type":"state", "version":1, "records":[] }` + "\n", "card.json": "{}\n", "tasks.json": `{ "type":"tasks", "version":1, "seq":0, "nodes":[] }` + "\n",
+				"tasks/n1.jsonl": "{}\n", "meta.json": `{"id":"0123456789abcdef","workspace":"` + workspace + `"}` + "\n",
+			}
+			for name, body := range files {
+				path := filepath.Join(dir, name)
+				if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			place := session.Place{Dir: dir, Workspace: workspace}
+			agent, cfg, _, err := openV3Agent(v3TestConfig(workspace, place), workspace, v3OpenSession)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer agent.Close()
+			if cfg.Seat != nil || cfg.Seals != nil || cfg.SessionFile != filepath.Join(dir, "transcript.jsonl") {
+				t.Fatalf("legacy chat acquired a cell: %+v", cfg)
+			}
+			for name, body := range files {
+				raw, err := os.ReadFile(filepath.Join(dir, name))
+				if err != nil || string(raw) != body {
+					t.Fatalf("open changed %s: %q, %v", name, raw, err)
+				}
+			}
+			events, err := agent.SubmitBash(t.Context(), "!printf continued")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for event := range events {
+				if event.Kind == session.EventToolFailed {
+					t.Fatalf("command: %+v", event)
+				}
+			}
+			if err := agent.Close(); err != nil {
+				t.Fatal(err)
+			}
+			raw, err := os.ReadFile(filepath.Join(dir, "transcript.jsonl"))
+			if err != nil || !strings.HasPrefix(string(raw), files["transcript.jsonl"]) || !strings.Contains(string(raw), "continued") {
+				t.Fatalf("turn was not appended: %q %v", raw, err)
+			}
+			if _, err := os.Stat(filepath.Join(dir, ".cell")); !os.IsNotExist(err) {
+				t.Fatalf("open created .cell: %v", err)
+			}
+		})
 	}
 }
 
