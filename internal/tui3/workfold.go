@@ -820,9 +820,6 @@ func (a *app) toggleLatestWorkfold() bool {
 	for at, f := range a.deckFolds(d) {
 		// Keys identify disclosures; their position determines which is newest.
 		// Background history has negative keys and phase folds have local keys.
-		if housekeepingFold(d.entries, f) && !a.workFoldOpen(d, f.key) {
-			continue
-		}
 		if !found || at > latestAt {
 			latest, latestAt, found = f.key, at, true
 		}
