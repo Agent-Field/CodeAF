@@ -313,8 +313,7 @@ func (a *Agent) fillMetaLocked(meta Meta) Meta {
 		}
 		meta.Workspace = workspace
 	}
-	automatic := a.automaticModelsAllowed()
-	meta.AutomaticModels = &automatic
+	meta.AutomaticModels = a.automaticModelsChosen()
 	identity := a.modelIdentityLocked()
 	meta.ModelIdentity = &identity
 	meta.Owned = a.config.Place.Owned

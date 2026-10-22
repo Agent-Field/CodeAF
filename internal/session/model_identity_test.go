@@ -176,3 +176,44 @@ func TestModelIdentityKeepsCanonicalEvidenceWhenAStreamFails(t *testing.T) {
 		t.Fatalf("cut stream: %+v", got)
 	}
 }
+
+func TestModelIdentityOneModelLockIsNotAnExplicitSavedChoice(t *testing.T) {
+	dir := t.TempDir()
+	a, _ := newTestAgent(t, chained(nil), func(c *Config) { c.Place = Place{Dir: dir}; c.OneModel = true })
+	a.SetModel("vendor/preferred")
+	if got := a.ModelIdentity(); got.Mode != "fixed" || got.Chosen != "" || got.LockedReason == "" {
+		t.Fatalf("launch policy: %+v", got)
+	}
+	if err := a.SetAutomaticModels(true); err == nil {
+		t.Fatal("one-model lock was bypassed")
+	}
+	a.SettleWrites()
+	meta, err := LoadMeta(dir)
+	if err != nil || meta.AutomaticModels != nil {
+		t.Fatalf("launch became a saved preference: %+v %v", meta.AutomaticModels, err)
+	}
+	a.Close()
+	reopened, _ := newTestAgent(t, chained(nil), func(c *Config) { c.Place = Place{Dir: dir} })
+	if got := reopened.ModelIdentity(); got.Mode != "automatic" || got.Chosen != "" || got.LockedReason != "" {
+		t.Fatalf("launch lock survived reopen: %+v", got)
+	}
+}
+func TestModelIdentityKeepsExplicitAutomaticIntentSeparateFromOneModel(t *testing.T) {
+	dir := t.TempDir()
+	automatic := true
+	a, _ := newTestAgent(t, chained(nil), func(c *Config) { c.Place = Place{Dir: dir}; c.OneModel = true; c.AutomaticModels = &automatic })
+	a.SetModel("vendor/preferred")
+	a.SettleWrites()
+	if got := a.ModelIdentity(); got.Mode != "fixed" || got.Chosen != "automatic" || got.LockedReason == "" {
+		t.Fatalf("effective versus explicit: %+v", got)
+	}
+	meta, err := LoadMeta(dir)
+	if err != nil || meta.AutomaticModels == nil || !*meta.AutomaticModels {
+		t.Fatalf("lost explicit choice: %+v %v", meta.AutomaticModels, err)
+	}
+	a.Close()
+	reopened, _ := newTestAgent(t, chained(nil), func(c *Config) { c.Place = Place{Dir: dir} })
+	if got := reopened.ModelIdentity(); got.Mode != "automatic" || got.Chosen != "automatic" || got.LockedReason != "" {
+		t.Fatalf("reopened preference: %+v", got)
+	}
+}

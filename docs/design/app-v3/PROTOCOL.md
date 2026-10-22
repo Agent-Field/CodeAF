@@ -3143,11 +3143,18 @@ with code spans around the call and rule.
 
 ### Execution model identity
 
+`mode` reports effective policy. Optional `chosen` (`fixed` or `automatic`)
+reports explicit persisted intent; omission means inherited. Optional
+`locked_reason` explains why Automatic is unavailable for this launch. Clients
+must disable Automatic under that lock even when the saved/job intent requests
+it. A launch constraint never becomes a fabricated saved preference. Unavailable
+factory policy requests log a notice and do not stop the stage.
+
 `Agent.model_identity` is optional for older engines. It carries `epoch`,
 `revision`, `selected`, `requested`, `active`, `last`, `provider`, `mode`,
 `request_mode` and `pending`. Selection is intent, never execution evidence.
 `requested` is the last dispatched id; `active`/`last` use a concrete provider id
-when reported. `mode` is the selected policy (`fixed` or `automatic`), while
+when reported. `mode` is the effective policy (`fixed` or `automatic`), while
 `request_mode` is the policy under which the active/last request began. Changes
 publish `agent.changed`, including stream-time alias resolution, before forwarding
 content. Restoration retains the last execution but clears an old active request;
