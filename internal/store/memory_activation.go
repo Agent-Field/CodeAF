@@ -57,7 +57,7 @@ CREATE INDEX IF NOT EXISTS memory_associations_chunk ON memory_associations(memo
 CREATE TABLE IF NOT EXISTS memory_topic_owners(topic TEXT NOT NULL,owner TEXT NOT NULL,memory_id TEXT NOT NULL,PRIMARY KEY(topic,owner,memory_id));
 CREATE INDEX IF NOT EXISTS memory_topic_owners_chunk ON memory_topic_owners(memory_id);
 CREATE TABLE IF NOT EXISTS memory_topic_fans(topic TEXT PRIMARY KEY,n INTEGER NOT NULL);
-CREATE TRIGGER IF NOT EXISTS memory_topic_add AFTER INSERT ON memory_topics BEGIN INSERT OR IGNORE INTO memory_topic_owners SELECT new.topic,owner,new.memory_id FROM memory_activation WHERE memory_id=new.memory_id; INSERT INTO memory_topic_fans VALUES(new.topic,1) ON CONFLICT(topic) DO UPDATE SET n=n+1; END;
+CREATE TRIGGER IF NOT EXISTS memory_topic_add AFTER INSERT ON memory_topics BEGIN INSERT OR IGNORE INTO memory_topic_owners SELECT new.topic,owner,new.memory_id FROM memory_activation WHERE memory_id=new.memory_id AND status='active'; INSERT INTO memory_topic_fans VALUES(new.topic,1) ON CONFLICT(topic) DO UPDATE SET n=n+1; END;
 CREATE TRIGGER IF NOT EXISTS memory_topic_remove AFTER DELETE ON memory_topics BEGIN DELETE FROM memory_topic_owners WHERE topic=old.topic AND memory_id=old.memory_id; UPDATE memory_topic_fans SET n=n-1 WHERE topic=old.topic; END;
 CREATE TABLE IF NOT EXISTS memory_fingerprints(memory_id TEXT PRIMARY KEY,b0 INTEGER,b1 INTEGER,b2 INTEGER,b3 INTEGER,minhash INTEGER);
 CREATE INDEX IF NOT EXISTS memory_fingerprint_b0 ON memory_fingerprints(b0);
@@ -66,13 +66,14 @@ CREATE INDEX IF NOT EXISTS memory_fingerprint_b2 ON memory_fingerprints(b2);
 CREATE INDEX IF NOT EXISTS memory_fingerprint_b3 ON memory_fingerprints(b3);
 CREATE TABLE IF NOT EXISTS memory_owner_counts(owner TEXT PRIMARY KEY,n INTEGER NOT NULL);
 CREATE TRIGGER IF NOT EXISTS memory_activation_add AFTER INSERT ON memories BEGIN
- INSERT OR REPLACE INTO memory_activation VALUES(new.id,new.owner,new.status,(new.always_on != 0 OR new.origin='person'),1,0,COALESCE((SELECT unixepoch(ts) FROM events WHERE seq=new.created_seq),unixepoch()),new.created_seq);
+ INSERT OR REPLACE INTO memory_activation VALUES(new.id,new.owner,new.status,(new.always_on != 0 OR new.origin='person'),1+COALESCE((SELECT mass FROM memory_legacy_practice WHERE memory_id=new.id),0),CAST(COALESCE((SELECT mass FROM memory_legacy_practice WHERE memory_id=new.id),0) AS INTEGER),COALESCE((SELECT unixepoch(ts) FROM events WHERE seq=new.created_seq),unixepoch()),new.created_seq);
  INSERT INTO memory_owner_counts VALUES(new.owner,CASE WHEN new.status='active' THEN 1 ELSE 0 END) ON CONFLICT(owner) DO UPDATE SET n=n+excluded.n;
  INSERT OR IGNORE INTO memory_events SELECT new.id,new.created_seq,'created',new.source_session,COALESCE(unixepoch(ts),unixepoch()) FROM events WHERE seq=new.created_seq;
 END;
 CREATE TRIGGER IF NOT EXISTS memory_activation_update AFTER UPDATE ON memories BEGIN
  INSERT OR IGNORE INTO memory_events SELECT new.id,new.updated_seq,CASE WHEN new.status='active' THEN 'confirmed' ELSE new.status END,new.source_session,COALESCE(unixepoch(ts),unixepoch()) FROM events WHERE seq=new.updated_seq AND (new.status != old.status OR new.text != old.text);
- UPDATE memory_topic_owners SET owner=new.owner WHERE memory_id=new.id;
+ DELETE FROM memory_topic_owners WHERE memory_id=new.id;
+ INSERT OR IGNORE INTO memory_topic_owners SELECT topic,new.owner,new.id FROM memory_topics WHERE memory_id=new.id AND new.status='active';
  UPDATE memory_activation SET owner=new.owner,status=new.status,pinned=(new.always_on != 0 OR new.origin='person'),recent=new.updated_seq WHERE memory_id=new.id;
  UPDATE memory_owner_counts SET n=n-CASE WHEN old.status='active' THEN 1 ELSE 0 END WHERE owner=old.owner;
  INSERT INTO memory_owner_counts VALUES(new.owner,CASE WHEN new.status='active' THEN 1 ELSE 0 END) ON CONFLICT(owner) DO UPDATE SET n=n+excluded.n;
@@ -303,13 +304,7 @@ func (s *Store) AssembleMemoryBlock(ctx MemoryContext) (MemoryBlock, error) {
 	if err != nil {
 		return MemoryBlock{}, err
 	}
-	cues := memoryWords(ctx.Brief + " " + strings.Join(ctx.Keywords, " ") + " " + strings.Join(ctx.Tasks, " "))
-	if ctx.Session != "" {
-		cues = append(cues, "session:"+ctx.Session)
-	}
-	if len(cues) > 32 {
-		cues = cues[:32]
-	}
+	cues := memoryContextCues(ctx)
 	for _, cue := range cues {
 		for _, owner := range ctx.Owners {
 			if err := collect(`SELECT t.memory_id FROM (SELECT memory_id FROM memory_topic_owners WHERE topic=? AND owner=? LIMIT 256) t JOIN memory_activation a ON a.memory_id=t.memory_id WHERE a.status='active' ORDER BY a.mass DESC LIMIT 32`, cue, owner); err != nil {
@@ -356,6 +351,9 @@ func memorySignature(words []string) uint64 {
 // verification step (exact Jaccard, avoiding probabilistic false positives).
 func memoryNearDuplicate(a, b string) bool {
 	aw, bw := memoryWords(a), memoryWords(b)
+	if memoryOperators(a) != memoryOperators(b) {
+		return false
+	}
 	if len(aw) < 8 || len(bw) < 8 {
 		return false
 	}
@@ -530,10 +528,7 @@ func (s *Store) RecordMemoryContextEvent(id, kind string, ctx MemoryContext) err
 		return err
 	}
 	defer tx.Rollback()
-	p := memoryInteraction{ID: id, Kind: kind, Session: ctx.Session, At: time.Now().Unix(), Cues: memoryWords(ctx.Brief + " " + strings.Join(ctx.Keywords, " ") + " " + strings.Join(ctx.Tasks, " "))}
-	if len(p.Cues) > 32 {
-		p.Cues = p.Cues[:32]
-	}
+	p := memoryInteraction{ID: id, Kind: kind, Session: ctx.Session, At: time.Now().Unix(), Cues: memoryContextCues(ctx)}
 	seq, _, err := appendEvent(tx, id, EventMemoryInteraction, p)
 	if err != nil {
 		return err
@@ -675,4 +670,40 @@ func backfillMemoryActivation(tx *sql.Tx, id, text, encodedTags, session string,
 		return err
 	}
 	return nil
+}
+
+// Operators express distinct facts even when all lexical words match.
+func memoryOperators(text string) string {
+	var out strings.Builder
+	for _, r := range text {
+		if strings.ContainsRune("<>+-/=!&|^%*~", r) {
+			out.WriteRune(r)
+		}
+	}
+	return out.String()
+}
+
+// Bound the newest cues before the brief so a long background cannot starve
+// current task, message or source-session associations.
+func memoryContextCues(ctx MemoryContext) []string {
+	cues := []string{}
+	if ctx.Session != "" {
+		cues = append(cues, "session:"+ctx.Session)
+	}
+	candidates := append(cues, memoryWords(strings.Join(ctx.Keywords, " "))...)
+	candidates = append(candidates, memoryWords(strings.Join(ctx.Tasks, " "))...)
+	candidates = append(candidates, memoryWords(ctx.Brief)...)
+	seen := map[string]bool{}
+	out := []string{}
+	for _, cue := range candidates {
+		if len(cue) < 3 || seen[cue] {
+			continue
+		}
+		seen[cue] = true
+		out = append(out, cue)
+		if len(out) == 32 {
+			break
+		}
+	}
+	return out
 }

@@ -92,7 +92,7 @@ func (s *Store) Rebuild() error {
 	if _, err := tx.Exec(`DELETE FROM facts_fts`); err != nil {
 		return fmt.Errorf("rebuild facts index: %w", err)
 	}
-	if _, err := tx.Exec(`DELETE FROM memory_events; DELETE FROM memory_activation; DELETE FROM memory_topics; DELETE FROM memory_fingerprints; DELETE FROM memory_owner_counts; DELETE FROM memory_associations; DELETE FROM memory_maintenance; DELETE FROM memory_legacy_practice`); err != nil {
+	if _, err := tx.Exec(`DELETE FROM memory_events; DELETE FROM memory_activation; DELETE FROM memory_topics; DELETE FROM memory_fingerprints; DELETE FROM memory_owner_counts; DELETE FROM memory_associations; DELETE FROM memory_maintenance`); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`DELETE FROM memories`); err != nil {

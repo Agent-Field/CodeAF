@@ -236,3 +236,111 @@ func TestActivationSupersedePreservesExplicitPin(t *testing.T) {
 		t.Fatalf("pin/provenance lost: %+v %v", m, err)
 	}
 }
+
+func TestActivationRebuildPreservesImportedPracticeBaseline(t *testing.T) {
+	s := openTestStore(t, filepath.Join(t.TempDir(), "graph.db"))
+	r, err := s.Write(WriteRequest{Owner: OwnerUser, Text: "Mock baseline rule"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().Unix()
+	if _, err = s.db.Exec(`INSERT INTO memory_legacy_practice VALUES(?,?,?)`, r.Memory.ID, 8, at); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.db.Exec(`UPDATE memory_activation SET mass=9,at=? WHERE memory_id=?`, at, r.Memory.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.RecordMemoryEvent(r.Memory.ID, "used", "demo"); err != nil {
+		t.Fatal(err)
+	}
+	before, _, _ := s.MemoryRecord(r.Memory.ID)
+	if err = s.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	after, _, _ := s.MemoryRecord(r.Memory.ID)
+	if before.Activation != after.Activation || after.Activation < 9 {
+		t.Fatalf("baseline lost: before %f after %f", before.Activation, after.Activation)
+	}
+	if err = s.RefreshMemoryActivationDue(time.Now().Add(48 * time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	after, _, _ = s.MemoryRecord(r.Memory.ID)
+	if after.Activation <= 1 {
+		t.Fatalf("nightly lost imported baseline: %f", after.Activation)
+	}
+}
+func TestActivationDuplicateKeepsOperatorsDistinct(t *testing.T) {
+	s := openTestStore(t, filepath.Join(t.TempDir(), "graph.db"))
+	base := "Only dispatch the mock amber queue when count > 10 succeeds"
+	a, err := s.Write(WriteRequest{Owner: OwnerUser, Text: base})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, op := range []string{"<", "+", "-", "/", "=", "!="} {
+		b, err := s.Write(WriteRequest{Owner: OwnerUser, Text: strings.Replace(base, ">", op, 1)})
+		if err != nil || b.Memory.ID == a.Memory.ID {
+			t.Fatalf("operator %s merged: %v", op, err)
+		}
+	}
+}
+func TestActivationLongBriefKeepsCurrentContextCandidates(t *testing.T) {
+	s := openTestStore(t, filepath.Join(t.TempDir(), "graph.db"))
+	r, err := s.Write(WriteRequest{Owner: OwnerUser, Text: "Use zephyr dispatch for mock deliveries"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 100; i++ {
+		if _, err = s.Write(WriteRequest{Owner: OwnerUser, Text: fmt.Sprintf("Generic mock status %d has no dispatch association", i)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	brief := []string{}
+	for i := 0; i < 100; i++ {
+		brief = append(brief, fmt.Sprintf("background%d", i))
+	}
+	ctx := MemoryContext{Owners: []string{OwnerUser}, Brief: strings.Join(brief, " "), Keywords: []string{"zephyr", "zephyr"}, Tasks: []string{"delivery"}, Session: "mock-session"}
+	b, err := s.AssembleMemoryBlock(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !b.Decisions[r.Memory.ID].Riding {
+		t.Fatal("long brief starved current keyword association")
+	}
+	cues := memoryContextCues(ctx)
+	if len(cues) != 32 || cues[0] != "session:mock-session" || cues[1] != "zephyr" || cues[2] != "delivery" {
+		t.Fatalf("cue priority/dedup: %v", cues[:3])
+	}
+}
+
+func TestActivationRetiredTopicsDoNotConsumeActiveCandidateWindow(t *testing.T) {
+	s := openTestStore(t, filepath.Join(t.TempDir(), "graph.db"))
+	r, err := s.Write(WriteRequest{Owner: OwnerUser, Text: "Zephyr uses amber dispatch for mock deliveries"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 260; i++ {
+		retired, err := s.Write(WriteRequest{Owner: OwnerUser, Text: fmt.Sprintf("Zephyr obsolete mock dispatch number %d", i)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = s.ForgetMemory(retired.Memory.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 0; i < 100; i++ {
+		if _, err = s.Write(WriteRequest{Owner: OwnerUser, Text: fmt.Sprintf("Unrelated mock task %d", i)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	b, err := s.AssembleMemoryBlock(MemoryContext{Owners: []string{OwnerUser}, Keywords: []string{"zephyr"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !b.Decisions[r.Memory.ID].Riding {
+		t.Fatal("retired topics starved active context association")
+	}
+	var count int
+	if err = s.db.QueryRow(`SELECT COUNT(*) FROM memory_topic_owners WHERE topic='zephyr' AND owner=?`, OwnerUser).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("active topic membership=%d %v", count, err)
+	}
+}

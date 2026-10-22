@@ -1488,11 +1488,24 @@ func newHostMemory(far hostFar) *hostMemory {
 	return h
 }
 func (h *hostMemory) prime() { h.refresh(500, time.Time{}) }
-func (h *hostMemory) refresh(limit int, at time.Time) {
+
+// requestRows keeps the user's expanded window without holding the lock across
+// background scheduling or any network call.
+func (h *hostMemory) requestRows(limit int) int {
 	h.mu.Lock()
+	defer h.mu.Unlock()
 	h.requestedLimit = max(h.requestedLimit, limit)
-	limit = h.requestedLimit
-	h.mu.Unlock()
+	return h.requestedLimit
+}
+
+func (h *hostMemory) needsRows(limit int) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return limit > h.requestedLimit
+}
+
+func (h *hostMemory) refresh(limit int, at time.Time) {
+	limit = h.requestRows(limit)
 	h.duty.run("chatv3/host-memory", "", func() {
 		s, err := h.client.Snapshot(limit)
 		learned, letGo, changedErr := h.client.ChangedSince(at)
@@ -1506,9 +1519,7 @@ func (h *hostMemory) refresh(limit int, at time.Time) {
 }
 func (h *hostMemory) Snapshot(limit int) (store.MemoryShelves, error) {
 	s, _, _, known := h.snapshot()
-	h.mu.Lock()
-	needsMore := limit > h.requestedLimit
-	h.mu.Unlock()
+	needsMore := h.needsRows(limit)
 	if !known || needsMore {
 		h.refresh(limit, time.Time{})
 	}
