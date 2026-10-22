@@ -76,10 +76,5 @@ func (a *app) openTaskResultOutput(entry session.TaskIndexEntry) tea.Cmd {
 		return nil
 	}
 	a.closeTaskSheet()
-	if node.run != "" {
-		a.openOrchRoom(node.run, node.node)
-	} else {
-		a.openRoomFor(node.id, node.title)
-	}
-	return a.takeRoomPump()
+	return a.openRailRoom(node)
 }

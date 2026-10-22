@@ -107,7 +107,8 @@ func TestActionableCrewStopStaysVisibleUntilResolved(t *testing.T) {
 func TestCompletedCrewTaskOpensResultThroughTasksAndKeepsFullOutputDoor(t *testing.T) {
 	a, _, entry := retryFixture(t)
 	a.height = 40
-	a.agent = &selectedCrewAgent{fakeAgent: &fakeAgent{}}
+	_, rooms, _ := roomApp(t)
+	a.agent = &selectedCrewRoomAgent{roomFake: rooms}
 	a.tasks[7].crew = &crewroute.Decision{EstUSD: .52, Crew: []crewroute.Pick{{Seat: crewroute.Worker, Model: "worker-model"}}}
 	a.tasks[7].produced = "Actual selected task deliverable"
 	a.tasks[7].cost = .31
@@ -148,10 +149,43 @@ func TestCompletedCrewTaskOpensResultThroughTasksAndKeepsFullOutputDoor(t *testi
 	if outputRow < 0 {
 		t.Fatal("full output action has no mouse target")
 	}
-	_, rooms, _ := roomApp(t)
-	a.agent = rooms
 	a.taskCardPress(4, outputRow)
 	if !a.roomOpen() || a.room.id != 7 {
 		t.Fatal("full output action failed to open selected transcript")
+	}
+}
+
+// The same agent exposes both result actions throughout layout and the click.
+type selectedCrewRoomAgent struct{ *roomFake }
+
+func (f *selectedCrewRoomAgent) RedoStronger(_ context.Context, _ uint64) (uint64, string, error) {
+	return 9, "stronger", nil
+}
+
+func TestTaskResultOutputUsesTheRunsCanonicalPlanPage(t *testing.T) {
+	a, fake := railTaskPageApp(t, true)
+	a.width, a.height = 120, 40
+	a.tasks[2].state = session.TaskDone
+	a.tasks[2].planTask = "2"
+	entry := session.TaskIndexEntry{ID: "2", Title: a.tasks[2].title, Status: string(session.TaskDone), SessionID: a.taskSheetSelfID()}
+	a.taskSheet.detail, a.taskSheet.detailOn = entry, true
+	rows, hits, _, _ := a.taskCardFrame(120, 40)
+	at := -1
+	for y, hit := range hits {
+		if hit == taskCardHitOutput {
+			at = y
+			break
+		}
+	}
+	if at < 0 {
+		t.Fatalf("result lacks full output target: %v", rows)
+	}
+	cmd := a.taskCardPress(4, at)
+	drive(t, a, runCmd(cmd)...)
+	if fake.pages.Load() != 1 || a.roomPlan() == nil || a.roomPlan().id != "2" {
+		t.Fatalf("full output bypassed canonical run page: reads=%d room=%+v", fake.pages.Load(), a.roomPlan())
+	}
+	if !strings.Contains(planRoomText(t, a), "replace the parser") {
+		t.Fatal("selected run output disappeared")
 	}
 }
