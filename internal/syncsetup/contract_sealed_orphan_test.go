@@ -1,8 +1,10 @@
 package syncsetup
 
 import (
+	"bytes"
 	"context"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"os"
 	"path/filepath"
 	"strings"
@@ -51,7 +53,19 @@ func TestC6TakeBackKeepsSealedUnuploadedTurns(t *testing.T) {
 	if again.KeptTurns != 1 {
 		t.Fatalf("one unpublished turn was reported as %d kept turns", again.KeptTurns)
 	}
-	kept, err := h.continuerB().Take(ctx, again.Taken.Kept)
+	mainLog, err := os.ReadFile(transcriptOf(h.cell))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainFiles := readTree(t, h.work)
+	mainView, err := h.a.Dir.Cell(ctx, h.cell.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.backToA()
+	branchRoot := filepath.Join(t.TempDir(), again.Taken.Kept)
+	opener := h.a.Continuer(h.engine, TakeOptions{RootFor: func(string) string { return branchRoot }})
+	kept, err := opener.OpenBranch(ctx, again.Taken.Kept)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,5 +76,26 @@ func TestC6TakeBackKeepsSealedUnuploadedTurns(t *testing.T) {
 	raw, err = os.ReadFile(transcriptOf(kept.Taken.Cell))
 	if err != nil || !strings.Contains(string(raw), "B sealed but never uploaded") {
 		t.Fatalf("kept branch lost the unpublished transcript: %s, %v", raw, err)
+	}
+	meta, err := session.LoadMeta(kept.Taken.Cell.Root)
+	if err != nil || meta.ID != again.Taken.Kept || meta.ID == h.cell.ID || !meta.Owned {
+		t.Fatalf("separate chat has no independent row: %+v, %v", meta, err)
+	}
+	digest, err := session.ReadDigest(transcriptOf(kept.Taken.Cell))
+	if err != nil || digest.ID != meta.ID {
+		t.Fatalf("separate journal identity = %q, %v; want %s", digest.ID, err, meta.ID)
+	}
+	if got, err := os.ReadFile(transcriptOf(h.cell)); err != nil || !bytes.Equal(got, mainLog) {
+		t.Fatalf("opening separately changed main history: %v", err)
+	}
+	sameTree(t, "main files after opening separately", mainFiles, readTree(t, h.work))
+	if got, err := h.a.Dir.Cell(ctx, h.cell.ID); err != nil || got.Cell.Head != mainView.Cell.Head || got.Cell.Lease != mainView.Cell.Lease {
+		t.Fatalf("opening separately changed main ownership: %+v, %v", got, err)
+	}
+	if err := h.a.Discard(ctx, again.Taken.Kept); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := branchRowOf(t, h.a, h.cell.ID); ok {
+		t.Fatal("discard left the kept branch on home")
 	}
 }

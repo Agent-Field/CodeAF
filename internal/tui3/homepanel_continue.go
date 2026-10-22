@@ -30,9 +30,8 @@ import (
 // reason, quoted whole from [chatlist.TakeoverLine].
 //
 // A VERB THAT CANNOT WORK IS ABSENT. With no [Taker] injected a chat that went
-// off has no `continue here`, and with no merge injected a branch says only
-// `discard`: the row's sentence and its card never promise a verb nothing is
-// behind.
+// off has no `continue here`, and a branch offers only the recovery verbs
+// injected here: its card never promises a verb nothing is behind.
 
 // Taken is what a takeover reports to the surface. Kept names the branch that
 // holds edits made here which the takeover set aside before it fetched, with
@@ -68,6 +67,7 @@ type conditionalTaker interface {
 
 // BranchActions is what a branch row can do. A nil verb is not offered.
 type BranchActions struct {
+	Open    func(ctx context.Context, branch string) (Taken, error)
 	Merge   func(ctx context.Context, branch string) error
 	Discard func(ctx context.Context, branch string) error
 }
@@ -273,6 +273,8 @@ func (a *app) tookTakeover(msg homeTakenMsg) tea.Cmd {
 	case errors.Is(msg.err, directory.ErrUnreachable):
 		a.machineRead.down = true
 		a.home.say(chatlist.Unreachable, "")
+	case errors.Is(msg.err, directory.ErrConditionalTake):
+		a.home.say(directory.ErrConditionalTake.Error(), "")
 	case msg.err != nil:
 		// Say why: the bare sentence left a failing takeover undiagnosable.
 		a.home.say(continueFails+" · "+firstLine(msg.err.Error()), "")
@@ -434,7 +436,7 @@ func (a *app) homeLineOf(cell string) (homeLine, bool) {
 	return homeLine{}, false
 }
 
-// ── a branch: merge / discard ───────────────────────────────────────────────
+// ── a branch: open separately / discard ─────────────────────────────────────
 
 // branchVerb is one thing that can be done with a branch.
 type branchVerb struct {
@@ -446,6 +448,9 @@ type branchVerb struct {
 // offered. A verb with nothing behind it is not in the list.
 func (a *app) branchVerbs() []branchVerb {
 	var verbs []branchVerb
+	if a.branches.Open != nil {
+		verbs = append(verbs, branchVerb{label: "open separately", consequence: "the turns open as their own chat"})
+	}
 	if a.branches.Merge != nil {
 		verbs = append(verbs, branchVerb{"merge", "the turns join this chat", a.branches.Merge})
 	}
@@ -482,7 +487,7 @@ func (a *app) branchShown(row chatlist.Row, verbs []branchVerb) questionShown {
 			Form:    session.FormCard,
 			Asker:   session.Asker{Kind: session.AskerSurface},
 			Head:    branchAsk,
-			Reason:  chatlist.BranchLine(row, a.branches.Merge != nil),
+			Reason:  chatlist.BranchLine(row, a.branches.Merge != nil, a.branches.Open != nil),
 			Subject: session.SubjectRef{Name: row.Title},
 			Options: options,
 			Stakes:  session.StakesReversible,
@@ -507,6 +512,13 @@ type homeBranchMsg struct{ err error }
 // runBranchVerb runs one verb off the update loop, for takeRemote's reason.
 func (a *app) runBranchVerb(v branchVerb, row chatlist.Row) tea.Cmd {
 	ctx := a.ctx
+	if v.label == "open separately" {
+		open := a.branches.Open
+		return func() tea.Msg {
+			taken, err := open(ctx, row.Cell)
+			return homeTakenMsg{row: row, taken: taken, err: err}
+		}
+	}
 	return func() tea.Msg { return homeBranchMsg{err: v.do(ctx, row.Cell)} }
 }
 

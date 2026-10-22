@@ -40,7 +40,8 @@ type machineReading struct {
 	version uint64
 	// merge says a branch row can be merged from here, which decides the
 	// sentence it says (chatlist.BranchLine).
-	merge bool
+	merge    bool
+	separate bool
 	// away says the device a row names is not online now; nil says none is
 	// known to be away. It is set when home is rebuilt, so presence is as new as
 	// the feed.
@@ -91,6 +92,7 @@ func (a *app) tookMachines(msg homeMachinesMsg) tea.Cmd {
 	}
 	a.machineRead.down = msg.err != nil
 	a.machineRead.merge = a.branches.Merge != nil
+	a.machineRead.separate = a.branches.Open != nil
 	a.considerResume()
 	a.rebuildMachines()
 	return a.readOwedByFrames(msg.err == nil)
@@ -125,7 +127,7 @@ func (m machineReading) lines(in *homeGridInput, own []homeLine) []homeLine {
 			row = row.Quiet()
 		}
 		if drawnAsRemote(row, local[row.Cell]) {
-			out = append(out, machineLine(row, m.at, in.now, m.merge))
+			out = append(out, machineLine(row, m.at, in.now, m.merge, m.separate))
 		}
 	}
 	return out
@@ -152,7 +154,7 @@ func heldElsewhere(row chatlist.Row) bool {
 // machineLine is one chat on another machine as a row of the sessions panel.
 // The turn's time is fixed once, from the moment of the read; the age drawn is
 // then counted to now, so it grows with the clock however long ago the ask was.
-func machineLine(row chatlist.Row, readAt, now time.Time, merge bool) homeLine {
+func machineLine(row chatlist.Row, readAt, now time.Time, merge bool, separate ...bool) homeLine {
 	// THE DRAW CLOCK IS THE WORLD'S READING AND THE READ TIME IS THE ASK'S, two
 	// samples of one wall clock a few milliseconds apart. A draw that seems to
 	// come before the read would make a turn look younger than the directory said
@@ -166,7 +168,7 @@ func machineLine(row chatlist.Row, readAt, now time.Time, merge bool) homeLine {
 	if row.Status == chatlist.Branch {
 		// A branch's sentence names what can be done with it and has a narrow
 		// spelling for frames that cannot hold the whole.
-		note, short = chatlist.BranchLine(row, merge), chatlist.BranchShort(row)
+		note, short = chatlist.BranchLine(row, merge, separate...), chatlist.BranchShort(row)
 	}
 	return homeLine{kind: homeMachineRow, since: at, remote: &row, cell: &homeCell{
 		kind: cellRow, panel: panelSessions, title: row.Title,

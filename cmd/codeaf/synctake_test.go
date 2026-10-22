@@ -28,8 +28,8 @@ func TestWireSyncOffAddsOnlyTheDesk(t *testing.T) {
 	}
 }
 
-// With a relay and an identity the surface can list, continue and discard, and
-// it offers no merge.
+// C6 amended: with sync and an identity the real surface wires opening kept
+// turns separately alongside discard, and offers no merge.
 func TestWireSyncOnWiresTheTakeSide(t *testing.T) {
 	celltest.Available(t)
 	h := t.TempDir()
@@ -40,7 +40,7 @@ func TestWireSyncOnWiresTheTakeSide(t *testing.T) {
 	}
 	var o tui3.Options
 	wireSync(&o)
-	if o.Machines == nil || o.Takeover == nil || o.Branches.Discard == nil {
+	if o.Machines == nil || o.Takeover == nil || o.Branches.Open == nil || o.Branches.Discard == nil {
 		t.Fatalf("sync on wired %+v", o)
 	}
 	if o.Branches.Merge != nil {

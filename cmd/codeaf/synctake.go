@@ -41,20 +41,23 @@ func wireSync(o *tui3.Options) {
 	if o.Fleet == nil {
 		o.Fleet = s
 	}
+	take := takeover{s.Continuer(cellstore.EngineFor(""), syncsetup.TakeOptions{
+		DeviceName: deviceName(),
+		RootFor:    takeRootFor,
+		BucketFor:  takeCopyBucket,
+		Notify:     surfaceNotices.Say,
+	})}
 	if o.Takeover == nil {
-		o.Takeover = takeover{s.Continuer(cellstore.EngineFor(""), syncsetup.TakeOptions{
-			DeviceName: deviceName(),
-			RootFor:    takeRootFor,
-			BucketFor:  takeCopyBucket,
-			Notify:     surfaceNotices.Say,
-		})}
+		o.Takeover = take
 	}
-	// THERE IS NO MERGE: a branch row says `discard` alone (cell_branch.go).
+	if o.Branches.Open == nil {
+		o.Branches.Open = take.OpenBranch
+	}
 	if o.Branches.Discard == nil {
-		o.Branches = tui3.BranchActions{Discard: s.Discard}
+		o.Branches.Discard = s.Discard
 	}
-	guard.Go("sync/standing", func() { checkStanding(s.Home, s.Dir, surfaceNotices.SayOnce) })
-	guard.Go("sync/standing-live", func() { watchStanding(s.Home, s.Follow, surfaceNotices.SayOnce) })
+	guard.Go("sync/standing", func() { checkStanding(s.Home, s.Dir, surfaceNotices.SayHomeOnce) })
+	guard.Go("sync/standing-live", func() { watchStanding(s.Home, s.Follow, surfaceNotices.SayHomeOnce) })
 }
 
 // standingWithin bounds the launch-time check so a silent relay costs nothing.
@@ -137,7 +140,20 @@ func (t takeover) TakeSeen(ctx context.Context, id string, seen *directory.Lease
 	if err != nil {
 		return tui3.Taken{}, err
 	}
-	return tui3.Taken{Kept: got.Taken.Kept, KeptTurns: got.KeptTurns, Device: got.Device, TaskCopies: got.TaskCopies, Resume: got.Resume, Transcript: filepath.Join(got.Taken.Cell.Root, cell.TranscriptPath), Elapsed: elapsed}, nil
+	return surfaceTaken(got, elapsed), nil
+}
+
+func (t takeover) OpenBranch(ctx context.Context, id string) (tui3.Taken, error) {
+	began := time.Now()
+	got, err := t.c.OpenBranch(ctx, id)
+	if err != nil {
+		return tui3.Taken{}, err
+	}
+	return surfaceTaken(got, time.Since(began)), nil
+}
+
+func surfaceTaken(got syncsetup.Continued, elapsed time.Duration) tui3.Taken {
+	return tui3.Taken{Kept: got.Taken.Kept, KeptTurns: got.KeptTurns, Device: got.Device, TaskCopies: got.TaskCopies, Resume: got.Resume, Transcript: filepath.Join(got.Taken.Cell.Root, cell.TranscriptPath), Elapsed: elapsed}
 }
 
 // takeRootFor is where this machine keeps the chat with an id: the folder it

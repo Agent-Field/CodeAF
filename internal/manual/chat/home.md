@@ -342,7 +342,7 @@ be on <device>`. The `up to` clause is left out when nothing is waiting there. O
 over at once and it opens. You do not wait for the other machine to go quiet: a chat that is
 running there stops taking new turns there the moment you take it, and its window says
 `<device> continued this chat; this window now only shows it`. Anything it had not yet sent
-is kept as a branch, `<K> turns from <device>: discard`; opening it continues it separately, and discard archives it. On a narrow frame the same
+is kept as a branch, `<K> turns from <device>: open separately / discard`; opening it continues it separately, and discard archives it. On a narrow frame the same
 question takes the whole screen, with the sentence wrapped.
 
 - If you had unsaved edits to that chat here, they are not overwritten. They are kept as a
@@ -502,15 +502,16 @@ up again (say its branch is checked out somewhere else), the sentence `a task's 
 could not be set up again here` names why, and the task's files are still in its folder under
 the chat's `trees` folder.
 
-## Discard the turns of a branch — "2 turns from studio", merge / discard, archive a branch
+## Open separately or discard the turns of a branch — "2 turns from studio", archive a branch, can I merge
 
 A chat that was moved to another machine while another machine still held unsent turns leaves those turns
 as a branch. Press enter on its row to be asked **What should happen to these turns?** and
-answer `discard` (or `merge`, where it is offered), then enter; the cursor starts on `leave
-them`. **Discard archives** the branch: it leaves this list and is not deleted. **Merge is
-not offered on this build**: nothing here can merge a branch yet, so the row says
-`<K> turns from <device>: discard` and the card has only discard and leave them. Where a
-build can merge, the row says `<K> turns from <device>: merge / discard`. If the other
+answer `1 open separately`, `2 discard`, or `3 leave them`, then enter; the cursor starts on `leave
+them`. Opening separately opens its own chat and workspace copy, with the kept turns and
+their files; the main chat stays as it is. **Discard archives** the branch: it leaves this list
+and is not deleted. **Merge is
+not offered on this build**. The row says
+`<K> turns from <device>: open separately / discard`. If the other
 machines cannot be reached, enter says `other machines unreachable` and does nothing.
 
 ## Why does home show a session id for an untitled chat, untitled conversation, new conversation

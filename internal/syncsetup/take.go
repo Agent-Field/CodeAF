@@ -104,12 +104,34 @@ func (c *Continuer) Take(ctx context.Context, id string) (Continued, error) {
 // TakeSeen preserves the holder and fence the continuation card displayed,
 // rather than silently consenting to displace a different device.
 func (c *Continuer) TakeSeen(ctx context.Context, id string, seen *directory.LeaseExpectation) (Continued, error) {
+	return c.take(ctx, id, seen, false)
+}
+
+// OpenBranch opens kept turns through the continuation door, under the
+// branch's own id and folder. It never takes or restores the main chat.
+func (c *Continuer) OpenBranch(ctx context.Context, id string) (Continued, error) {
+	return c.take(ctx, id, nil, true)
+}
+
+func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseExpectation, branchOnly bool) (Continued, error) {
+	view, err := c.sync.Dir.Cell(ctx, id)
+	if err != nil {
+		return Continued{}, err
+	}
+	if branchOnly && (view.Cell.ParentCell == "" || view.Cell.Archived) {
+		return Continued{}, errors.New("these turns are no longer available to open separately")
+	}
 	defer handoff.Arrive(c.opt.RootFor(id))()
 	from := c.holderName(ctx, id)
 	c.retireHolder(ctx, id)
 	sc := c.sync.scope(id)
 	defer sc.Settle()
 	taker := c.taker(sc)
+	if view.Cell.ParentCell != "" {
+		// The branch's snapshot was sealed before it had its own id. Rebind
+		// its journal before rebuilding the row, so two chats never share an id.
+		taker.After = append([]func(context.Context, cell.Cell) error{branchIdentity}, taker.After...)
+	}
 	if project, here := projectOf(c.opt.RootFor(id)); here {
 		// Ownership of this computer's project folder is local. A snapshot
 		// arriving from an owned copy must not turn an in-place return into
