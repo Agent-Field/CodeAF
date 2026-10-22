@@ -189,3 +189,27 @@ func TestTaskResultOutputUsesTheRunsCanonicalPlanPage(t *testing.T) {
 		t.Fatal("selected run output disappeared")
 	}
 }
+
+func TestSelectedTaskResultSaysIdenticalOutcomeOnceAndKeepsDifferentAccount(t *testing.T) {
+	const result = "The parser now handles an empty map. The regression test passes."
+	for _, outcome := range []string{result, "The changes remain on the task branch for your review."} {
+		t.Run(outcome, func(t *testing.T) {
+			a, _, entry := retryFixture(t)
+			node := a.tasks[7]
+			node.crew = &crewroute.Decision{}
+			node.produced, node.report = result, outcome
+			entry.Outcome = outcome
+			a.taskSheet.detail = entry
+			text := ansi.Strip(strings.Join(a.taskCardBody(a.currentTaskEntry(entry), 120), "\n"))
+			if count := strings.Count(text, result); count != 1 {
+				t.Fatalf("selected result repeated %d times: %s", count, text)
+			}
+			if !strings.Contains(text, outcome) {
+				t.Fatalf("distinct landing account lost: %s", text)
+			}
+			if node.produced != result || node.report != outcome || entry.Outcome != outcome {
+				t.Fatal("presentation changed original result fields")
+			}
+		})
+	}
+}

@@ -1007,14 +1007,17 @@ func (a *app) taskCardBody(entry session.TaskIndexEntry, width int) []string {
 	// THE OUTCOME IS THE SENTENCE THE PERSON CAME FOR, so it is the first thing
 	// under the state and it is drawn in ink rather than in the dim every other
 	// fact here wears.
+	displayedResult := ""
 	if node := a.taskSheetNodeFor(&entry); node != nil && node.crew != nil && strings.TrimSpace(node.produced) != "" {
+		displayedResult = strings.TrimSpace(node.produced)
 		var result []string
 		for _, line := range wrap(node.produced, width) {
 			result = append(result, pal.ink(line))
 		}
 		bands = append(bands, result)
 	}
-	if outcome := strings.TrimSpace(entry.Outcome); outcome != "" {
+	// Identical result and landing prose needs one paragraph; both original fields remain intact.
+	if outcome := strings.TrimSpace(entry.Outcome); outcome != "" && outcome != displayedResult {
 		var said []string
 		for _, wrapped := range wrap(outcome, width) {
 			said = append(said, pal.ink(wrapped))
