@@ -158,3 +158,18 @@ func TestCheckCountsComeFromFullOutputAndOmitUnknownCounts(t *testing.T) {
 		t.Fatalf("full output counts = %+v", res)
 	}
 }
+
+func TestApprovedCommitMessageStaysInsidePublicBoundary(t *testing.T) {
+	dir := gitRig(t)
+	if err := os.WriteFile(filepath.Join(dir, "fix.go"), []byte("package fix\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	it := factory.Item{Kind: factory.KindIssue, Repo: "api", Product: "acme", Num: 7, Title: "Fix /Users/private-person/notes handling"}
+	if err := commitApproved(ExecGit{}, dir, it, "Co-authored-by: codeaf <codeaf@users.noreply.github.com>"); err != nil {
+		t.Fatal(err)
+	}
+	msg := mustGit(t, dir, "log", "-1", "--format=%B")
+	if strings.Contains(msg, "private-person") || !strings.Contains(msg, "[local home]/notes") || !strings.Contains(msg, "codeaf@users.noreply.github.com") {
+		t.Fatalf("commit message: %q", msg)
+	}
+}
