@@ -361,8 +361,12 @@ func TestAppFactoryJobActionsTwoPeopleAgainstTheRealServer(t *testing.T) {
 		if got.Current == nil || got.Current.Budget != 10 {
 			t.Fatalf("budget: %+v", got.Current)
 		}
-		// The factory never lowers a limit; its sentence comes back as bad_params.
-		alice.w.mustFail("factory.job_set_budget", alice.params(t, n, map[string]any{"budget": 5}), appwire.CodeBadParams)
+		// A budget may go down as well as up, never below what the job has spent
+		// (nothing yet here).
+		got = alice.act(t, "factory.job_set_budget", n, map[string]any{"budget": 5})
+		if got.Current == nil || got.Current.Budget != 5 {
+			t.Fatalf("lowered budget: %+v", got.Current)
+		}
 		bob.refused(t, "factory.job_set_budget", bob.params(t, n, map[string]any{"budget": 20}), appwire.CodeForbidden)
 	})
 
