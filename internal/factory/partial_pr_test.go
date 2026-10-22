@@ -100,3 +100,40 @@ func TestIncompleteFeedbackReadStartsNoRepairRound(t *testing.T) {
 		t.Fatalf("genuinely new feedback ignored: %+v", *it.FollowUp)
 	}
 }
+
+func TestIndependentRepairDuringPartialFeedbackKeepsHandledReviewKey(t *testing.T) {
+	for _, trigger := range []string{"CI", "conflict"} {
+		t.Run(trigger, func(t *testing.T) {
+			now := time.Now()
+			pr := &PullRequest{Number: 7, State: PROpen, HeadSHA: "h1", BaseSHA: "b1", ChecksRead: true, ReviewsRead: true,
+				Checks: PRChecks{Passed: 1}, Feedback: "PR comment 1: rename X"}
+			it := Item{Kind: KindIssue, State: StateShipped, Autonomy: AutonomyAuto, Cap: 10, Publish: "pr",
+				FollowUp: &PRFollowUp{Kind: "pr", State: "healthy", Limit: 3}, PullRequest: pr}
+			if !QueueCIFollowUp(&it, now) {
+				t.Fatal("initial feedback was not queued")
+			}
+			key := it.FollowUp.ReviewKey
+			it.State, it.FollowUp.State = StateShipped, "healthy"
+			pr.Feedback, pr.ReviewsRead = "", false
+			pr.Problems = []PRReadProblem{{Area: "feedback", Code: "transient", Retryable: true}}
+			if trigger == "CI" {
+				pr.Checks = PRChecks{Failed: 1}
+			} else {
+				pr.Conflict = true
+			}
+			if !QueueCIFollowUp(&it, now) || it.FollowUp.State != "queued" || it.FollowUp.Attempt != 2 {
+				t.Fatalf("known %s problem was not queued: %+v", trigger, it.FollowUp)
+			}
+			if it.FollowUp.ReviewKey != key {
+				t.Fatal("partial feedback replaced the last handled review key")
+			}
+			it.State, it.FollowUp.State = StateShipped, "healthy"
+			pr.Feedback, pr.ReviewsRead, pr.Problems = "PR comment 1: rename X", true, nil
+			pr.Checks, pr.Conflict = PRChecks{Passed: 1}, false
+			QueueCIFollowUp(&it, now)
+			if it.FollowUp.State == "queued" || it.FollowUp.Attempt > 2 {
+				t.Fatalf("restored handled feedback queued duplicate work: %+v", it.FollowUp)
+			}
+		})
+	}
+}

@@ -61,3 +61,65 @@ func TestCheckRunsReadsEveryPage(t *testing.T) {
 		t.Fatalf("state=%v runs=%d", state, len(out))
 	}
 }
+
+// Pagination must fail closed when a list is incomplete or changes while being
+// read. A partial successful page must never authorize a readiness transition.
+func TestCheckRunsRejectsIncompletePaging(t *testing.T) {
+	for _, area := range []string{"status", "check-runs"} {
+		for _, mode := range []string{"short", "shrunk", "grew", "error", "limit"} {
+			t.Run(area+"/"+mode, func(t *testing.T) {
+				pages := 0
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if !strings.HasSuffix(r.URL.Path, "/"+area) {
+						fmt.Fprint(w, `{"total_count":0,"statuses":[],"check_runs":[]}`)
+						return
+					}
+					pages++
+					if r.URL.Query().Get("per_page") != "100" {
+						t.Error("CI page size was not requested")
+					}
+					page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+					total, count := 150, 100
+					if page > 1 {
+						count = 50
+						switch mode {
+						case "short":
+							count = 1
+						case "shrunk":
+							total, count = 100, 0
+						case "grew":
+							total = 151
+						case "error":
+							http.Error(w, "access denied", http.StatusForbidden)
+							return
+						}
+					}
+					if mode == "limit" {
+						total, count = 1001, 100
+					}
+					rows := make([]map[string]any, 0, count)
+					for i := 0; i < count; i++ {
+						rows = append(rows, map[string]any{"context": fmt.Sprintf("status-%d-%d", page, i), "state": "success", "name": fmt.Sprintf("run-%d-%d", page, i), "status": "completed", "conclusion": "success"})
+					}
+					key := "statuses"
+					if area == "check-runs" {
+						key = "check_runs"
+					}
+					json.NewEncoder(w).Encode(map[string]any{"total_count": total, key: rows})
+				}))
+				defer server.Close()
+				state, rows, err := testClient(server.URL, "tok").CheckRuns(context.Background(), "o", "r", "abc")
+				if err == nil || state != ChecksNone || len(rows) != 0 {
+					t.Fatalf("partial read was accepted: state=%v rows=%d err=%v", state, len(rows), err)
+				}
+				wantPages := 2
+				if mode == "limit" {
+					wantPages = checkPagesMost
+				}
+				if pages != wantPages {
+					t.Fatalf("read %d pages, want %d", pages, wantPages)
+				}
+			})
+		}
+	}
+}

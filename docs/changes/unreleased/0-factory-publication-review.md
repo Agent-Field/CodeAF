@@ -18,3 +18,10 @@ remain authoritative. Feedback pagination and size bounds fail explicitly.
 Redaction starts only where an absolute path starts (including after an option such
 as `-I` or a `file://` scheme), so repository-relative paths through `users`, `home`
 or `root` directories and API routes keep their public wording.
+
+Paged CI reads reject lists whose totals change between pages, short incomplete
+pages, read failures and lists beyond the bounded page limit rather than treating
+partial successful rows as green CI. A repair for known CI failures or conflicts
+preserves the last handled feedback key while feedback is temporarily unreadable.
+The chat manual's thinking-chip heading now includes the question people ask so
+factory additions do not make the existing keyboard guidance unreachable.
