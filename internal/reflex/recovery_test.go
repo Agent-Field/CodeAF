@@ -33,6 +33,14 @@ func TestStalledMemoryRequestLeavesTimeForFallback(t *testing.T) {
 		start := time.Now()
 		c := &recoveryCompleter{}
 		c.run = func(ctx context.Context, model string) (*ai.Response, error) {
+			deadline, ok := ctx.Deadline()
+			want := start.Add(roles.PatienceFor(roles.RoleReflex))
+			if model == "primary" {
+				want = start.Add(roles.PatienceFor(roles.RoleReflex) / 2)
+			}
+			if !ok || !deadline.Equal(want) {
+				t.Fatalf("%s deadline=%s want=%s", model, deadline, want)
+			}
 			if model == "primary" {
 				<-ctx.Done()
 				return nil, ctx.Err()
@@ -51,7 +59,7 @@ func TestStalledMemoryRequestLeavesTimeForFallback(t *testing.T) {
 		if !reflect.DeepEqual(c.models, []string{"primary", "fallback"}) {
 			t.Fatal(c.models)
 		}
-		if elapsed := time.Since(start); elapsed >= roles.PatienceFor(roles.RoleReflex) {
+		if elapsed := time.Since(start); elapsed != roles.PatienceFor(roles.RoleReflex)/2+time.Second {
 			t.Fatalf("recovery exhausted patience: %s", elapsed)
 		}
 		// A slow request does not declare the primary permanently unusable.

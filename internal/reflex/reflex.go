@@ -337,15 +337,13 @@ func validUsedMemoryIndices(indices []int, count int) []int {
 	return used
 }
 
-// ask makes one reflex call and, if the answer was not readable, exactly one
-// repair call. The answer-budget recovery lives inside [call], where the
-// response still carries its finish reason and usage.
+// ask allows one JSON repair per pass. A transport failure can separately use
+// the configured fallback inside [call], but all requests and the repair share
+// the same patience. The owner may retry a transiently failed pass off the turn's
+// path; malformed replies alone never start another pass.
 //
-// ONE retry, never a loop. The repair asks for the same thing in four words
-// with the model's own bad answer in front of it, which is what fixes a fenced
-// or prefaced reply; a model that misses twice is a model that is going to miss
-// again, and a third attempt on a per-turn call is a cost multiplier on a
-// feature whose whole claim is that it is nearly free.
+// The repair asks for the same thing with the unreadable answer in front of it.
+// A second malformed reply is returned to the owner rather than entering a loop.
 func ask(ctx context.Context, c Completer, system, user string, read func(reply string) error) error {
 	// Reflex bypasses the session's ordinary auxiliary adapter. It must still
 	// share the same tier patience across retries rather than wait on HTTP caps.
