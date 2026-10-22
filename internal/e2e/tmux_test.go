@@ -363,6 +363,12 @@ func startFresh(t *testing.T, name, home, ws string, cols, rows int, args ...str
 // front of the assignments, then the state root and the terminal.
 func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows int, args ...string) *rig {
 	t.Helper()
+	return startWithLaunchPrefix(t, nil, env, name, home, ws, cols, rows, args...)
+}
+
+// startWithLaunchPrefix optionally isolates the real executable and every child.
+func startWithLaunchPrefix(t *testing.T, prefix, env []string, name, home, ws string, cols, rows int, args ...string) *rig {
+	t.Helper()
 	// EVERY START TAKES THE OLD TIMERS OFF THE LOGIN IT RUNS AS, AND EVERY
 	// WINDOW STARTS A CLOCK. The login, the schedulers it would ask and the
 	// clock's switch all belong to this rig, or a test run boots the
@@ -382,7 +388,8 @@ func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows 
 	// every scenario tests. The variable is dropped first; an assignment in env
 	// follows the -u and wins, so a scenario that names a word still gets it,
 	// and a scenario that names none really runs with the variable absent.
-	command := []string{"env", "-u", "CODEAF_TASK_BELT"}
+	command := append([]string(nil), prefix...)
+	command = append(command, "env", "-u", "CODEAF_TASK_BELT")
 	command = append(command, env...)
 	command = append(command, g.tokens(env)...)
 	command = append(command,

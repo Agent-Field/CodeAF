@@ -43,7 +43,7 @@ func TestPrivateMemoryDwellInRealChat(t *testing.T) {
 	if err := os.MkdirAll(plan.EvidenceDir, 0o700); err != nil {
 		t.Fatal("could not prepare private dwell evidence")
 	}
-	generated := newHome(t, map[string]any{"memory.enabled": true})
+	generated := newHome(t, map[string]any{"memory.enabled": true, "vision_model": e2eModel, "model.image": e2eModel, "model.speech": e2eModel, "model.music": e2eModel, "model.video": e2eModel, "model.voice": e2eModel})
 	home := filepath.Join(plan.EvidenceDir, "home")
 	if os.Mkdir(home, 0o700) != nil {
 		t.Fatal("private dwell destination must be fresh")
@@ -65,7 +65,7 @@ func TestPrivateMemoryDwellInRealChat(t *testing.T) {
 	if err != nil || !found {
 		t.Fatal("could not inspect private dwell source")
 	}
-	r := startDefault(t, "private_dwell", home, ws, 160, 50, "chat", "--one-model", "--debug")
+	r := startPrivateMemory(t, "private_dwell", home, ws, 160, 50, "chat", "--one-model", "--debug")
 	defer func() { r.kill(); r.home = "" }()
 	outcomes := []privateMemoryOutcome{}
 	for i, prompt := range []string{plan.Scenarios[0].Prompt, "Can you give an example?", "Why?"} {

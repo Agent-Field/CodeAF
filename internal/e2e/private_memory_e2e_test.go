@@ -85,7 +85,7 @@ func TestPrivateMemoryAcrossOrdinaryChats(t *testing.T) {
 	if err := os.MkdirAll(plan.EvidenceDir, 0o700); err != nil {
 		t.Fatal("could not create private evidence directory")
 	}
-	generated := newHome(t, map[string]any{"memory.enabled": true})
+	generated := newHome(t, map[string]any{"memory.enabled": true, "vision_model": e2eModel, "model.image": e2eModel, "model.speech": e2eModel, "model.music": e2eModel, "model.video": e2eModel, "model.voice": e2eModel})
 	home := filepath.Join(plan.EvidenceDir, "home")
 	if err := os.Mkdir(home, 0o700); err != nil {
 		t.Fatal("private acceptance needs a fresh evidence destination")
@@ -105,7 +105,7 @@ func TestPrivateMemoryAcrossOrdinaryChats(t *testing.T) {
 		t.Fatal("private source copy could not open")
 	}
 	defer st.Close()
-	r := startDefault(t, "private_memory", home, ws, 160, 50, "chat", "--one-model", "--debug")
+	r := startPrivateMemory(t, "private_memory", home, ws, 160, 50, "chat", "--one-model", "--debug")
 	// Suppress the generic rig's failure dump: evidence stays in the explicitly
 	// private directory, including when assertions fail after all scenarios run.
 	defer func() { r.kill(); r.home = "" }()
