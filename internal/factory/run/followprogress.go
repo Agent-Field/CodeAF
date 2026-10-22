@@ -24,6 +24,9 @@ func followProgressBrief(j Job) string {
 
 func followProgressStart(j Job) string {
 	if j.Item.FollowUp != nil && j.Item.FollowUp.Kind == "readiness" {
+		if j.Item.PullRequest != nil && !j.Item.PullRequest.Draft {
+			return "Checking the changed PR head, current diff, description and outstanding feedback before resuming monitoring."
+		}
 		return "Checking the current PR diff, description and outstanding feedback before marking it ready for review."
 	}
 	var checks []string

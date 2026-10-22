@@ -227,7 +227,7 @@ func asked(prev, cur factory.Item) (*factory.Asked, string) {
 	}
 	q := factory.Asked{Question: cur.Question}
 	if a := cur.Asking; a != nil {
-		q.Stage, q.Options, q.Pick, q.Why = a.Stage, a.Options, a.Pick, a.Why
+		q.Stage, q.Options, q.Pick, q.Why, q.At = a.Stage, a.Options, a.Pick, a.Why, a.At
 	} else if s := cur.Stream; s != nil && s.Cur >= 0 && s.Cur < len(s.Phases) {
 		q.Stage = s.Phases[s.Cur].Name
 	}

@@ -25,7 +25,7 @@ func (s *Source) readinessMaterial(ctx context.Context, owner, name string, p fo
 	if !ok {
 		return nil
 	}
-	if !p.Draft || pr.State != factory.PROpen || !pr.ChecksRead || !pr.ReviewsRead || pr.CI != "ci ✓" || pr.Mergeable != factory.MergeableYes {
+	if pr.State != factory.PROpen || !pr.ChecksRead || !pr.ReviewsRead || pr.CI != "ci ✓" || pr.Mergeable != factory.MergeableYes {
 		return nil
 	}
 	diff, required, err := a.ReadinessMaterial(ctx, owner, name, p.Base, p.Number)

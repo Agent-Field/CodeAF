@@ -9,11 +9,12 @@ import (
 // PRReadiness is the durable review of one exact remote snapshot. The key
 // includes the head, base, description, diff, checks and review feedback.
 type PRReadiness struct {
-	Key     string    `json:"key"`
-	Head    string    `json:"head"`
-	State   string    `json:"state"`
-	Summary string    `json:"summary,omitempty"`
-	At      time.Time `json:"at,omitempty"`
+	External bool      `json:"external,omitempty"`
+	Key      string    `json:"key"`
+	Head     string    `json:"head"`
+	State    string    `json:"state"`
+	Summary  string    `json:"summary,omitempty"`
+	At       time.Time `json:"at,omitempty"`
 }
 type ReadinessReview struct {
 	Head               string `json:"head"`
@@ -77,7 +78,7 @@ func ValidateReadinessReview(it Item, r StageResult) error {
 	if why := ReadinessReportFault(it.FollowUp.Readiness.Head, r); why != "" {
 		return fmt.Errorf("%s", why)
 	}
-	if r.Repair.Readiness.Head != it.HeadCommit || r.Repair.Readiness.Head != it.PullRequest.HeadSHA {
+	if (!it.FollowUp.Readiness.External && r.Repair.Readiness.Head != it.HeadCommit) || r.Repair.Readiness.Head != it.PullRequest.HeadSHA {
 		return fmt.Errorf("the checkout or remote PR head changed after the final review")
 	}
 	return nil

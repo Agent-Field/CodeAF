@@ -187,7 +187,7 @@ func KeepAnswer(it *factory.Item, yes bool, words string, now time.Time) error {
 	if err := keepStored(it, answeredWord(loopAnswer{yes: yes, words: strings.TrimSpace(words)}), now); err != nil {
 		return err
 	}
-	if it.State == factory.StateRunning {
+	if it.State == factory.StateRunning && !storedPaused(*it) {
 		it.State = factory.StateQueued
 	}
 	return nil

@@ -17,7 +17,16 @@ import (
 
 type readinessSource struct {
 	*pullSource
-	ready atomic.Int32
+	ready    atomic.Int32
+	terminal string
+}
+
+func (s *readinessSource) Follow(_ context.Context, it factory.Item) (factory.PullRequest, error) {
+	pr := *it.PullRequest
+	if s.terminal != "" {
+		pr.State = s.terminal
+	}
+	return pr, nil
 }
 
 func (s *readinessSource) Ready(_ context.Context, it factory.Item) (factory.PullRequest, error) {
@@ -30,7 +39,7 @@ func (s *readinessSource) Ready(_ context.Context, it factory.Item) (factory.Pul
 	return pr, nil
 }
 func TestReadinessRealServiceWorkerUsesRecordedAutoOrManualApproval(t *testing.T) {
-	for _, mode := range []string{factory.AutonomyAuto, factory.AutonomyManual} {
+	for _, mode := range []string{factory.AutonomyAuto, factory.AutonomyManual, "external ready", "external merge"} {
 		t.Run(mode, func(t *testing.T) {
 			dir := t.TempDir()
 			git(t, "", "init", "-q", "-b", "main", dir)
@@ -39,6 +48,9 @@ func TestReadinessRealServiceWorkerUsesRecordedAutoOrManualApproval(t *testing.T
 			git(t, dir, "commit", "-qm", "initial")
 			head := git(t, dir, "rev-parse", "HEAD")
 			src := &readinessSource{pullSource: &pullSource{}}
+			if mode == "external merge" {
+				src.terminal = factory.PRMerged
+			}
 			g := newRigWith(t, nil, func(o *run.Options) {
 				o.Workdir = func(factory.Item) (string, error) { return dir, nil }
 				o.Source = func(string) factory.Source { return src }
@@ -53,12 +65,19 @@ func TestReadinessRealServiceWorkerUsesRecordedAutoOrManualApproval(t *testing.T
 			id := g.add(t, check("true"))
 			if err := g.st.Update(id, func(it *factory.Item) error {
 				it.Autonomy = mode
+				if mode == "external ready" || mode == "external merge" {
+					it.Autonomy = factory.AutonomyAuto
+				}
 				it.Starter = "me"
 				it.Cap = 10
 				it.State = factory.StateShipped
 				it.HeadCommit = head
 				it.Publish = "pr"
 				it.PullRequest = &factory.PullRequest{Number: 7, URL: "https://github.com/acme/api/pull/7", State: factory.PROpen, Draft: true, HeadSHA: head, ChecksRead: true, ReviewsRead: true, Mergeable: factory.MergeableYes, CI: "ci ✓", Checks: factory.PRChecks{Passed: 1}, ReadinessKey: "snapshot", ReadinessContext: "complete review material"}
+				if mode == "external ready" || mode == "external merge" {
+					it.PullRequest.Draft = false
+					it.HeadCommit = strings.Repeat("b", 40)
+				}
 				it.Stream = &factory.Stream{Phases: []factory.Phase{{Name: "proof", Kind: factory.StageChat, State: factory.PhaseDone}}}
 				it.FollowUp = &factory.PRFollowUp{Kind: "pr", State: "healthy", Limit: 3}
 				if !factory.QueueCIFollowUp(it, time.Now()) {
@@ -67,6 +86,20 @@ func TestReadinessRealServiceWorkerUsesRecordedAutoOrManualApproval(t *testing.T
 				return nil
 			}); err != nil {
 				t.Fatal(err)
+			}
+			if mode == "external merge" {
+				ended := g.waitFor(t, id, factory.StateShipped)
+				if ended.PullRequest.State != factory.PRMerged || ended.FollowUp.State != factory.PRMerged || src.ready.Load() != 0 {
+					t.Fatal("observed terminal PR did not release maintenance without publication")
+				}
+				return
+			}
+			if mode == "external ready" {
+				checked := g.waitFor(t, id, factory.StateShipped)
+				if checked.HeadCommit != head || checked.FollowUp.Readiness.State != "checked" || src.ready.Load() != 0 {
+					t.Fatal("external ready head did not complete a fresh review without another ready transition")
+				}
+				return
 			}
 			if mode == factory.AutonomyManual {
 				landed := g.waitFor(t, id, factory.StateLanded)

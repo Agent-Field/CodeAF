@@ -1014,6 +1014,16 @@ func (a *Agent) submitText(ctx context.Context, text string, person *messagePres
 	if text == "" {
 		return nil, errors.New("session: empty message")
 	}
+	if a.config.Stage == nil && factory.StatusOnlyRequest(text) {
+		if door, ok := a.config.FactoryRun.(ManagerStatusDoor); ok {
+			if status, err := door.ManagerStatus(ctx, a.config.SessionFile); err == nil {
+				user := userText(text)
+				user.person = person
+				user.factoryStatus = strings.Split(status.Text, "\nPending question ID:")[0]
+				return a.submitUser(ctx, user)
+			}
+		}
+	}
 	// A @ team or chat in the words is a reference, and the model needs a
 	// bounded digest of it (mention.go). The journal keeps the words as typed.
 	said := text
@@ -1093,7 +1103,7 @@ func (a *Agent) submitUser(ctx context.Context, user userMessage) (<-chan Event,
 	// The spend rail is checked here, before anything is recorded: a refused
 	// turn must do NO work, so the person's text is not journaled either — the
 	// message is theirs to send again once the rail moves (rail.go).
-	if user.bash == "" {
+	if user.bash == "" && user.factoryStatus == "" {
 		if err := a.railBlockLocked(); err != nil {
 			a.mu.Unlock()
 			return refusedStream(err), nil
@@ -1236,6 +1246,9 @@ func (a *Agent) attachReplayLocked() (entries []DisplayEntry, events <-chan Even
 // Everything the person types is one of these. A text-only message has no
 // references and journals exactly as it always did.
 type userMessage struct {
+	// factoryStatus is an already-read, read-only reply; no provider call may
+	// start on this route, including when the job budget is exhausted.
+	factoryStatus string
 	// closeKey belongs only to the pending continuation this note consumes.
 	closeKey string
 	// bash is set only by the person's SubmitBash door; model output cannot enter it.
@@ -1931,13 +1944,15 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 		// the transcript on the line above; a shell opening additionally waits
 		// for an ordinary reply to explain its output. Naming is started under
 		// this lock so two Submits racing to be first cannot buy two names.
-		if user.bash == "" {
+		if user.bash == "" && user.factoryStatus == "" {
 			a.startTitleLocked()
 		}
 		// A DESKTOP CONVERSATION IS NAMED FROM WHAT THE PERSON OPENED WITH, and
 		// the shell opening is one of the things that decides it too
 		// (intentname.go).
-		a.startIntentNameLocked(user)
+		if user.factoryStatus == "" {
+			a.startIntentNameLocked(user)
+		}
 	}
 	// THEIR NEXT WORDS ARE WHAT CHANGED. A generation Interrupt minted waits
 	// here for the sentence that follows Esc, and that sentence is the one

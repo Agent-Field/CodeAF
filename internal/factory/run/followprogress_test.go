@@ -89,8 +89,13 @@ func TestFollowPRProgressStartNamesTheObservedTriggerAndReadiness(t *testing.T) 
 		t.Fatal("feedback trigger missing")
 	}
 	j.Item.FollowUp = &factory.PRFollowUp{Kind: "readiness"}
+	j.Item.PullRequest.Draft = true
 	if !strings.Contains(followProgressStart(j), "before marking it ready") {
 		t.Fatal("readiness was misreported as a repair")
+	}
+	j.Item.PullRequest.Draft = false
+	if !strings.Contains(followProgressStart(j), "before resuming monitoring") {
+		t.Fatal("already-ready PR review implied another ready transition")
 	}
 	if followProgressBrief(Job{Stage: chat("plan")}) != "" {
 		t.Fatal("other briefs changed")

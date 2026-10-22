@@ -809,6 +809,9 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		if !lp.capCheck(c, i, name) {
 			return false
 		}
+		if factory.IsCIRepairStage(st) && !lp.refreshPRRound(c, i) {
+			return false
+		}
 		// WHAT THE PERSON TOLD THE MANAGER SINCE THE LAST ROUND IS THIS
 		// ROUND'S STEER, read at the boundary so the brief carries it.
 		lp.hear(c)
@@ -1003,6 +1006,11 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 				return nil
 			})
 			lp.tellStep(c.id, name+": "+retry, &factory.StepProgress{Step: name, Round: round, Event: factory.ProgressFailed})
+		}
+		if planReportPending(name, &res) && res.Chat != "" {
+			lp.mu.Lock()
+			c.carry = res.Chat
+			lp.mu.Unlock()
 		}
 		if round >= limit {
 			back := false
@@ -1311,10 +1319,6 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 			if dirErr == nil && strings.TrimSpace(status) != "" {
 				dirErr = errors.New("the readiness checkout has unfinished local changes")
 			}
-		}
-		if dirErr == nil && it.HeadCommit != strings.TrimSpace(head) {
-			it.HeadCommit = strings.TrimSpace(head)
-			dirErr = lp.write(c, func(cur *factory.Item) error { cur.HeadCommit = it.HeadCommit; return nil })
 		}
 	}
 

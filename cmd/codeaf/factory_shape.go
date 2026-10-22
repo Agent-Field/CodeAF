@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -344,4 +345,46 @@ func sameFileKey(path string) string {
 		path = real
 	}
 	return filepath.Clean(path)
+}
+
+// ManagerStatus reads the durable job and lease without opening another agent
+// or making a provider request. The saved transcript is not execution state.
+func (d seamRunDoor) ManagerStatus(ctx context.Context, conversation string) (factory.ManagerStatus, error) {
+	if err := ctx.Err(); err != nil {
+		return factory.ManagerStatus{}, err
+	}
+	it, err := d.managed(conversation)
+	if err != nil {
+		return factory.ManagerStatus{}, err
+	}
+	desk, err := lease.Open(d.st, lease.Options{})
+	if err != nil {
+		return factory.ManagerStatus{}, err
+	}
+	held, err := desk.HasLiveHold(it.ID)
+	if err != nil {
+		return factory.ManagerStatus{}, err
+	}
+	return factory.StatusForManager(it, held, time.Now()), nil
+}
+
+func (d seamRunDoor) AnswerPending(ctx context.Context, conversation, questionID, answer string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	it, err := d.managed(conversation)
+	if err != nil {
+		return "", err
+	}
+	if it.Asking == nil || factory.PendingQuestionID(it) != questionID {
+		return "", errors.New("the pending step question changed; read factory_status before answering again")
+	}
+	desk, err := lease.Open(d.st, lease.Options{})
+	if err != nil {
+		return "", err
+	}
+	if err = lease.NewDoors(desk).AnswerPending(it.ID, questionID, answer); err != nil {
+		return "", err
+	}
+	return "Decision saved for " + it.Asking.Stage + ": " + strings.TrimSpace(answer) + ". The step can continue with this answer.", nil
 }

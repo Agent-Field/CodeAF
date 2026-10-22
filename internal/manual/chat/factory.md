@@ -49,7 +49,7 @@ On a machine with a factory set up, a conversation can hand work over. Every one
 
 Banking a recipe never writes into a folder held by a running program. A separate change worktree can still be written when it is outside that hold. If the change has to be saved in the held checkout, nothing is written: wait for that run to end, or stop it, then bank the line again. A Git error and your confirmation do not bypass this check.
 
-The conversation that manages an item also has `factory_run` (shape its run), `factory_start` (start, resume or continue it when you ask), `factory_follow_pr` (request maintenance of the same open PR after publication approval) and `factory_answer` (reply to a question a step asked; send it to you when it turns on taste, scope, risk, money or access). The foreman conversation has `factory_floor` (read the whole floor and select items for you to run). These are absent from every other conversation, from `--once` runs and from windows over `--host` or `--at`.
+The conversation that manages an item also has `factory_run` (shape its run), `factory_start` (start, resume or continue it when you ask), `factory_follow_pr` (request maintenance of the same open PR after publication approval) `factory_status` (read current saved progress and its pending decision), and `factory_answer` (answer the temporary inbox question or save an answer to the exact persisted step question; send critical decisions to you). The foreman conversation has `factory_floor` (read the whole floor and select items for you to run). These are absent from every other conversation, from `--once` runs and from windows over `--host` or `--at`.
 
 ## the default steps — what a job runs with no factory.yaml, how many rounds, security pass
 
@@ -219,3 +219,26 @@ Limits: items read before this change show no size until their text changes or s
 Factory reads, manager turns and step conversations follow Task models. With one model selected, every text role uses that exact model on its selected connection. A missing, unreachable or mismatched choice refuses the turn; it does not choose a fallback. The daily crew cap also refuses new factory admission when reached. A job's own spending ceiling remains separate.
 
 An explicit `--one-model` launch keeps its pin. Interactive chats keep their own model. Under the saved one-model policy, a factory manager turn uses its governed factory conversation. If an open chat holds that manager conversation, close it before the background turn can proceed. A running conversation keeps the model it started with.
+
+
+## budget recovery and external PR commits
+
+Spending-owned Follow PR stops keep a durable budget cause. In Auto, raising
+Budget wakes a fresh GitHub read and releases only that stop, within the existing
+repair-attempt limit. Manual mode, takeover, critical questions, exhausted attempts
+and uncertain publication retain their own recovery controls. Cumulative spend,
+local work and other contributors' commits are kept. Interrupted automatic step
+recovery preserves attempts and freezes its remaining retry window while waiting
+for budget; raising a limit does not grant unlimited retries.
+
+GitHub observations continue while spending is blocked. Before paid Follow PR
+work resumes, the runner reads the existing PR again. Merge or closure ends the
+watch; changed commits are fetched and reconciled without force-pushing. Failure
+to read or reconcile is reported, never treated as permission to overwrite work.
+
+A new head on an already-ready PR needs complete current-head CI and a fresh
+read-only diff, description and feedback review. Observation alone does not mark
+that head checked. Only a successful review of the exact clean checkout records
+it; the job then returns to monitoring without pushing, marking ready again or
+merging. Incomplete facts keep it waiting; ordinary findings return to bounded
+repair. New feedback is included even when the remote head did not change.

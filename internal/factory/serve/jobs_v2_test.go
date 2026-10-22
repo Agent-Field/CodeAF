@@ -1052,3 +1052,36 @@ func TestJobBudgetCanBeLoweredButNotBelowRecordedSpend(t *testing.T) {
 	_ = f.st.Annotate(it.ID, func(cur *factory.Item) error { cur.ChatSpent = 5; return nil })
 	f.post(t, it, "raise_budget", `{"budget":5}`, 200)
 }
+
+func TestV2BudgetChangePreservesManualDecisionAndNudgesObservation(t *testing.T) {
+	for _, mode := range []string{"auto", "manual", "takeover", "critical"} {
+		t.Run(mode, func(t *testing.T) {
+			f := newV2Jobs(t)
+			it := f.create(t, factory.Item{State: factory.StateNeedsYou, Cap: 5, Autonomy: factory.AutonomyAuto, Assignee: "sam", QKind: "cap", Question: "Budget reached", Stream: &factory.Stream{Spent: 5}})
+			_ = f.st.Update(it.ID, func(cur *factory.Item) error {
+				switch mode {
+				case "manual":
+					cur.Autonomy = factory.AutonomyManual
+				case "takeover":
+					cur.Manual = true
+				case "critical":
+					cur.QKind = "scope"
+					cur.Question = "Choose the public API"
+				}
+				return nil
+			})
+			f.post(t, it, "raise_budget", `{"budget":10}`, 200)
+			got, _ := f.st.Get(it.ID)
+			if got.Cap != 10 || got.Stream.Spent != 5 || f.st.PollNudged().IsZero() {
+				t.Fatal("cap did not persist or wake observation")
+			}
+			if mode == "auto" {
+				if got.State != factory.StateQueued || got.Question != "" {
+					t.Fatal("automatic cap recovery stranded")
+				}
+			} else if got.State != factory.StateNeedsYou || got.Question == "" {
+				t.Fatal("budget edit erased a separate user decision")
+			}
+		})
+	}
+}

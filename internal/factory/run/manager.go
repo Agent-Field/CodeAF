@@ -232,17 +232,25 @@ func (lp *floorLoop) hear(c *loopCtl) {
 		lp.mu.Lock()
 		pending := c.pending != ""
 		lp.mu.Unlock()
+		if factory.StatusOnlyRequest(h.Words) {
+			if lp.heard(c, h.At) != nil {
+				return
+			}
+			continue
+		}
 		cur, _ := lp.r.opts.Store.Get(c.id)
 		// A STEP'S QUESTION THE PERSON HOLDS is answered here too when the
 		// round that asked it is gone (a pause): the answer is kept for the
 		// step's next round (inbox.go).
 		kept := !pending && cur.Asking != nil && cur.Asking.With == factory.AskedYou
-		if pending || kept {
+		if (pending || kept) && (cur.Asking == nil || !h.At.Before(cur.Asking.At)) {
 			if yes, words, ok := typedAnswer(h.Words, cur.QKind); ok {
+				if lp.r.Answer(c.id, yes, words) != nil {
+					return
+				}
 				if lp.heard(c, h.At) != nil {
 					return
 				}
-				_ = lp.r.Answer(c.id, yes, words)
 				return
 			}
 		}
@@ -317,6 +325,9 @@ func (lp *floorLoop) watchTalk(c *loopCtl, done <-chan struct{}) {
 // do not answer it, which are a steer instead.
 func typedAnswer(words, qkind string) (yes bool, said string, ok bool) {
 	words = strings.TrimSpace(words)
+	if factory.StatusOnlyRequest(words) {
+		return false, "", false
+	}
 	fields := strings.Fields(strings.ToLower(words))
 	if len(fields) == 0 {
 		return false, "", false

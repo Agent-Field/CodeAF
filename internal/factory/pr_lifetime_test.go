@@ -69,6 +69,7 @@ func TestFollowPRDoesNotReplayOldReviewAfterRepair(t *testing.T) {
 	it.State = StateShipped
 	WatchPublishedPR(&it)
 	it.PullRequest.HeadSHA = strings.Repeat("d", 40)
+	it.HeadCommit = it.PullRequest.HeadSHA
 	QueueCIFollowUp(&it, time.Now())
 	if it.State != StateShipped || it.FollowUp.State != "healthy" {
 		t.Fatal("old request started another repair")

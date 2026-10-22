@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -382,4 +383,34 @@ func stopHandle(caller *string, person string) string {
 		return *caller
 	}
 	return person
+}
+
+// AnswerPending commits a manager's answer to the exact persisted step ask.
+// The lease and question identity are checked together before a warm signal or
+// cold restart is recorded, so a slow manager cannot answer the next question.
+func (d *Doors) AnswerPending(id int, questionID, words string) error {
+	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+		if questionID == "" || factory.PendingQuestionID(*it) != questionID {
+			return false, errors.New("the pending step question changed; read factory_status before answering again")
+		}
+		if it.Manual || it.Publishing {
+			return false, errors.New("manual control or publication owns this job")
+		}
+		if strings.TrimSpace(words) == "" {
+			return false, errors.New("an answer is required")
+		}
+		// Keep the answer before clearing the question. Even a worker lost between
+		// the item write and signal delivery resumes with the saved decision.
+		note := fmt.Sprintf("%s asked: %s · the person answered: %s", it.Asking.Stage, it.Asking.Question, strings.TrimSpace(words))
+		if err := run.KeepAnswer(it, false, words, now); err != nil {
+			return false, err
+		}
+		it.Note(now, note)
+		if held == nil {
+			return false, nil
+		}
+		it.State = factory.StateRunning
+		signal(doc, id, Signal{Verb: SignalAnswer, ID: questionID, Words: words})
+		return true, nil
+	})
 }

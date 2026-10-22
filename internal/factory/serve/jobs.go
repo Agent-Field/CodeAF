@@ -563,6 +563,7 @@ func (h *Handler) raiseBudget(w http.ResponseWriter, r *http.Request, it factory
 	}
 	_, held := h.holdOf(it.ID)
 	var budgetRefused error
+	resumeCap := false
 	err := h.recordAction(r, it, record.BudgetChanged, fmt.Sprintf("$%.2f", body.Budget), func() error {
 		return h.config.Store.Update(it.ID, func(cur *factory.Item) error {
 			if body.Budget < factory.JobSpent(*cur) {
@@ -570,13 +571,17 @@ func (h *Handler) raiseBudget(w http.ResponseWriter, r *http.Request, it factory
 				return budgetRefused
 			}
 			cur.Cap = body.Budget
-			if cur.QKind == "cap" && body.Budget > factory.JobSpent(*cur) {
+			if cur.QKind == "cap" && body.Budget > factory.JobSpent(*cur) && factory.Automatic(*cur) && !cur.Publishing && cur.Asking == nil {
+				resumeCap = true
 				cur.State = factory.StateQueued
 				if held {
 					cur.State = factory.StateRunning
 				}
 				cur.Question = ""
 				cur.QKind = ""
+				if cur.Stream != nil && cur.Stream.Cur >= 0 && cur.Stream.Cur < len(cur.Stream.Phases) && cur.Stream.Phases[cur.Stream.Cur].State == factory.PhaseWaiting {
+					cur.Stream.Phases[cur.Stream.Cur].State = factory.PhaseRunning
+				}
 			}
 			return nil
 		})
@@ -588,8 +593,11 @@ func (h *Handler) raiseBudget(w http.ResponseWriter, r *http.Request, it factory
 	if h.failed(w, err) {
 		return
 	}
+	// A budget edit does not queue a published PR from stale observations.
+	// Wake the read-only poll; its fresh snapshot releases spending-owned work.
+	_ = h.config.Store.NudgePoll()
 	if h.workers != nil && h.workers.desk != nil {
-		_, err = h.workers.desk.SignalIfHeld(it.ID, lease.Signal{Verb: lease.SignalBudget, Budget: body.Budget, Yes: it.QKind == "cap" && body.Budget > factory.JobSpent(it)})
+		_, err = h.workers.desk.SignalIfHeld(it.ID, lease.Signal{Verb: lease.SignalBudget, Budget: body.Budget, Yes: resumeCap})
 	}
 	h.finish(w, err)
 }
