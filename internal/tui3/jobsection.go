@@ -14,17 +14,17 @@ import (
 //
 // IT DRAWS NOTHING ITSELF. A string a person sees is formatted from the
 // notice's fields at the width the column has, in jobsview.go, so a test can
-// pin the four collapsed shapes with no window and no terminal.
+// pin the running-work presentation with no window and no terminal.
 
-// jobSection is this conversation's jobs as the column draws them, or nil
-// when there are none — which is the emptiness law, not an empty heading.
+// jobSection shows only running processes. Finished logs stay available through
+// the on-demand Processes list, without a sidebar history count.
 func (a *app) jobSection(width, room int) []railLine {
 	return jobSectionRows(a.jobsLive(), nil, a.jobsOpen, a.now(), width, room, a.pal)
 }
 
-// jobSectionMin is how many rows the jobs section will spend before it has
-// drawn a single finished job: the blank and the label, and — when it is
-// open — every running job. The automations section gives this up first
+// jobSectionMin reserves the blank and the label, plus every running process
+// when expanded. Finished processes consume no sidebar space. The automations
+// section gives this up first
 // ([app.marginRows]), because live work outranks the furniture around it,
 // which is the same trade the roster's own live head makes.
 func (a *app) jobSectionMin() int {
@@ -38,8 +38,8 @@ func (a *app) jobSectionMin() int {
 }
 
 // toggleJobs opens the section or shuts it. Collapsed is the default
-// ([app.jobsOpen] is false until somebody asks), and history is a count on
-// the label until they do.
+// ([app.jobsOpen] is false until somebody asks). Both states show live work
+// only; process history is opened explicitly through /processes.
 func (a *app) toggleJobs() {
 	a.jobsOpen = !a.jobsOpen
 	// THE CURSOR NEVER STAYS ON A ROW THE FOLD TOOK AWAY, which is the

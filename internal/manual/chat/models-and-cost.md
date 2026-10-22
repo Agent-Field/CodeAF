@@ -4285,3 +4285,11 @@ the earlier call and its result are carried as readable conversation text. The
 model can discuss that result, but it cannot make a new tool call itself.
 Switching back to a tool-capable model restores the original tool-call history
 on its request.
+
+## Where are the logs
+
+The model-call log is `~/.codeaf/logs/calls.jsonl`, under `CODEAF_PROFILE_DIR` if
+you moved the profile. Run `codeaf logs` to read recent calls, `codeaf logs --follow`
+to follow them, or `codeaf logs --path` to print the exact path. Each call records
+its model, timing, token use and cost. Background process output is separate: open
+`/processes` in the conversation and choose a process to read its log.

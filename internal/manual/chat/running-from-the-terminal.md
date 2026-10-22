@@ -1352,3 +1352,14 @@ its final totals. With no receipt outstanding, it adds no receipt wait to the
 ending. Otherwise it waits at most the provider's existing receipt deadline and keeps
 the figures already received when a receipt cannot be settled. An incomplete
 receipt therefore reports the work's paid calls as well as its failure reason.
+
+## What background processes are still running
+
+Run `codeaf services` in the terminal to list long-running services started here
+and not yet stopped, with each name, status, age, health check and log path.
+`codeaf services stop <name>` stops a named service. If none are running, the
+command says `nothing is being kept running.`
+
+For the current chat's background commands, watches or renders, use `/processes`
+in that chat. Click a process to open its log. The sidebar shows only running
+processes; finished logs remain available on demand without an ended count.
