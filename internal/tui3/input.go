@@ -1392,59 +1392,65 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return tea.Batch(a.edited(), a.homeByTwoSpaces())
 	}
 	if text := msg.Key().Text; text != "" {
-		// The ordinary case: a key that carries text types it.
-		//
-		// This line used to claim it also caught a paste that arrived as
-		// keystrokes, and it could not: a pasted newline arrives as a key named
-		// "enter", which the switch above matches and SUBMITS on, so a paste on a
-		// terminal whose brackets leaked was sent to the model a line at a time.
-		// The bracket is what catches that now, before this router is reached at
-		// all (app.go's [app.pasteKey]).
-		// A CHARACTER TYPED OVER A SELECTED RUN REPLACES IT, which is what every
-		// text field does and what the pointer's own gesture promises
-		// (editselect.go). The tags are moved for the removal first, so the
-		// insertion below is measured against the text that is actually there.
-		a.dropDraftPick()
-		at := a.input.cursor
-		a.input.insert(text)
-		a.editTags(at, at, len([]rune(text)))
-		// THE FIRST RUNE HOLDS AN OPEN TASK PROPOSAL. This is the typed-character
-		// door; app.paste applies the same hold after the clipboard changes this
-		// box, so both roads share the engine-owned clock policy. The question
-		// block holds it too, off any key it reads (question.go's
-		// [app.holdQuestionClocks]) — this is the half that fires for a rune the
-		// question never sees, which is every rune once the box has words in it.
-		if a.task != nil {
-			a.holdTask(a.task.id)
-		}
-		// AND THE ENGINE IS TOLD SOMEBODY IS WRITING (internal/session's Typing).
-		// It is here, on the one line every typed character passes through,
-		// because that is exactly what it is for: seconds before a request is
-		// made we know one is coming and roughly where it will go, and a
-		// one-token measurement of the two machines it would go to costs about
-		// two hundredths of a cent and takes a stale half-hour aggregate out of
-		// the wait a person is about to sit through.
-		//
-		// EVERY CHARACTER CALLS IT AND ALMOST NONE OF THEM BUY ANYTHING. The
-		// debounce is the engine's — at most one pair every twenty seconds per
-		// model, none at all when the speed guard is off or nobody is waiting —
-		// so a composer has no first-keystroke state to keep and cannot get it
-		// wrong. Nothing waits for it: it returns before anything is sent.
-		a.laneTyping()
-		cmd := a.edited()
-		// AND A DROP TYPED IN CHARACTER BY CHARACTER IS WATCHED FOR HERE, which
-		// is the one line every typed character in this program passes through
-		// (dropkeys.go). Some terminals deliver a dragged file as KEYSTROKES
-		// rather than as the bracketed paste [app.paste] already understands, and
-		// nothing above this line is looking at keys. Ordinary typing pays two
-		// integer comparisons for it and nothing else — no clock, no syscall, no
-		// frame — and a run that could not be a path closes the fold at once.
-		if wake := a.dropWatch(&a.input, &a.chips, at, text); wake != nil {
-			return tea.Batch(cmd, wake)
-		}
-		return cmd
+		return a.typeCharacter(text)
 	}
 	return nil
+}
+
+// typeCharacter is the composer's ordinary text door. An unasked arrival
+// card reaches it before any empty-box shortcut can consume the first letter.
+func (a *app) typeCharacter(text string) tea.Cmd {
+	// The ordinary case: a key that carries text types it.
+	//
+	// This line used to claim it also caught a paste that arrived as
+	// keystrokes, and it could not: a pasted newline arrives as a key named
+	// "enter", which the switch above matches and SUBMITS on, so a paste on a
+	// terminal whose brackets leaked was sent to the model a line at a time.
+	// The bracket is what catches that now, before this router is reached at
+	// all (app.go's [app.pasteKey]).
+	// A CHARACTER TYPED OVER A SELECTED RUN REPLACES IT, which is what every
+	// text field does and what the pointer's own gesture promises
+	// (editselect.go). The tags are moved for the removal first, so the
+	// insertion below is measured against the text that is actually there.
+	a.dropDraftPick()
+	at := a.input.cursor
+	a.input.insert(text)
+	a.editTags(at, at, len([]rune(text)))
+	// THE FIRST RUNE HOLDS AN OPEN TASK PROPOSAL. This is the typed-character
+	// door; app.paste applies the same hold after the clipboard changes this
+	// box, so both roads share the engine-owned clock policy. The question
+	// block holds it too, off any key it reads (question.go's
+	// [app.holdQuestionClocks]) — this is the half that fires for a rune the
+	// question never sees, which is every rune once the box has words in it.
+	if a.task != nil {
+		a.holdTask(a.task.id)
+	}
+	// AND THE ENGINE IS TOLD SOMEBODY IS WRITING (internal/session's Typing).
+	// It is here, on the one line every typed character passes through,
+	// because that is exactly what it is for: seconds before a request is
+	// made we know one is coming and roughly where it will go, and a
+	// one-token measurement of the two machines it would go to costs about
+	// two hundredths of a cent and takes a stale half-hour aggregate out of
+	// the wait a person is about to sit through.
+	//
+	// EVERY CHARACTER CALLS IT AND ALMOST NONE OF THEM BUY ANYTHING. The
+	// debounce is the engine's — at most one pair every twenty seconds per
+	// model, none at all when the speed guard is off or nobody is waiting —
+	// so a composer has no first-keystroke state to keep and cannot get it
+	// wrong. Nothing waits for it: it returns before anything is sent.
+	a.laneTyping()
+	cmd := a.edited()
+	// AND A DROP TYPED IN CHARACTER BY CHARACTER IS WATCHED FOR HERE, which
+	// is the one line every typed character in this program passes through
+	// (dropkeys.go). Some terminals deliver a dragged file as KEYSTROKES
+	// rather than as the bracketed paste [app.paste] already understands, and
+	// nothing above this line is looking at keys. Ordinary typing pays two
+	// integer comparisons for it and nothing else — no clock, no syscall, no
+	// frame — and a run that could not be a path closes the fold at once.
+	if wake := a.dropWatch(&a.input, &a.chips, at, text); wake != nil {
+		return tea.Batch(cmd, wake)
+	}
+	return cmd
 }
 
 // enter is the submit key, and it has one first meaning: send the draft.
