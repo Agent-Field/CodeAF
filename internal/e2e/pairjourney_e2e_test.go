@@ -224,11 +224,12 @@ func runPairJourney(t *testing.T, key, mode string, online bool) {
 	// The real binary keeps its engine running after the window closes, as it
 	// does for a person, so the journey stops every engine its homes started,
 	// moved copies included, or each run leaves daemons behind.
+	// Every t.TempDir of this test shares one root, so ending the engines under
+	// it also ends the fresh-install probe's.
+	testRoot := filepath.Dir(filepath.Dir(homeA))
 	t.Cleanup(func() {
-		for _, root := range []string{homeA, homeB, wsA, wsB} {
-			for _, pid := range engineDaemonsUnder(filepath.Dir(root)) {
-				_ = syscall.Kill(pid, syscall.SIGKILL)
-			}
+		for _, pid := range engineDaemonsUnder(testRoot) {
+			_ = syscall.Kill(pid, syscall.SIGKILL)
 		}
 	})
 	if err := os.WriteFile(filepath.Join(wsB, "Makefile"), []byte("test:\n\t@echo 3 passed\n"), 0o644); err != nil {
