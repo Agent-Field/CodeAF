@@ -37,7 +37,7 @@ any priced call was saved. `Used model` is a separate historical reading from
 the spend ledger, not necessarily the worker's current assignment. Missing old
 records say `Model · not recorded`; the conversation's model is never guessed.
 Run models cannot be changed here. `/crew` sets the next run's crew; it does
-not move an existing run. A specialist such as senior-dev lists the models it
+not move an existing run. A program such as senior-dev lists the models it
 declared and its thinking level here; those are fixed for that run. Choose
 models when starting it again. Ordinary tasks retain their task model picker,
 even when their earlier model was not recorded.
