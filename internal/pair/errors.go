@@ -183,5 +183,5 @@ var (
 	// ErrPairedNotRead is a pairing that worked and a list of devices that did not load.
 	ErrPairedNotRead = errors.New("paired, but your devices could not be read yet; open codeaf again in a moment")
 	// ErrNotJoined is an approver that has no device of its own to answer with.
-	ErrNotJoined = errors.New("this device is not paired yet, so it cannot approve one; run `codeaf pair` first")
+	ErrNotJoined = errors.New("this device has no codeaf identity yet; start codeaf here once before approving another device")
 )

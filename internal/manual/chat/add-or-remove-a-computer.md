@@ -161,7 +161,7 @@ These are the sentences a link pairing says when it stops, in the words the scre
 - `that request was already answered`: another of your devices approved or denied it first.
 - `the request was declined on your other device; run `codeaf pair` to ask again`: the new device sees this when you decline.
 - `the check number does not fit that device, so nothing was approved`: the number on the approve screen does not belong to the device that asked. Do not approve; ask again.
-- `this computer is not paired with any device yet, so it cannot approve one; run `codeaf pair` first`: you ran `codeaf pair approve` on a computer that is not paired yet.
+- `this device has no codeaf identity yet; start codeaf here once before approving another device`: this computer has never started codeaf, so there is no local identity to share yet. Start codeaf here once, then approve the other computer.
 - `paired, but your devices could not be read yet; open codeaf again in a moment`: the pairing worked; the device list needs a moment.
 
 Too many requests from one network are refused too: at most 10 new links in an hour and 3 waiting at once from one network. See *Pairing your chats with a second computer* for the older six-digit code and its own limit `too many pairings from this network; wait 7 min`.
