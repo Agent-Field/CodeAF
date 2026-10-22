@@ -106,11 +106,12 @@ If nothing happens when you press `Continue here`, the cause is one of these:
 - `another device continued this chat first`: another device was faster. The row goes back to `running on <device>`. Nothing changed.
 - `other machines unreachable`: this device cannot reach the service. Nothing can be moved until it can.
 - `could not continue this chat here`: the move failed. The row stays where it was; try again.
+- `the sync service must be updated before chats can move; codeaf's operators update the hosted service, or run this build of codeaf relay for your own service`: the service is too old to move chats safely. Pairing, listing and viewing still work. Reopen codeaf after the service is updated.
 - With no way to continue set up, an off row has no `continue here`: enter says why.
 
 ## Taking a chat back, and two computers racing for the same chat — who wins, and what the loser sees
 
-A chat has one holder at a time. To take a chat back from the computer that took it, continue it there the same way: press enter on its row on that computer and choose `continue here`. Nothing has to be returned or switched off first. A computer with the chat open when another takes it says `<device> continued this chat; this window now only shows it`, stops taking new turns, and keeps what it had not yet sent as a branch (`<K> turns from <device>: discard`). A tool call the model tries there answers with that same line. Taking the chat back leaves a `node_modules` or other install folder that computer already has alone.
+A chat has one holder at a time. To take a chat back from the computer that took it, continue it there the same way: press enter on its row on that computer and choose `continue here`. Nothing has to be returned or switched off first. A computer with the chat open when another takes it says `<device> continued this chat; this window now only shows it`, stops taking new turns, and keeps what it had not yet sent as a branch (`<K> turns from <device>: open separately / discard`). A tool call the model tries there answers with that same line. Taking the chat back leaves a `node_modules` or other install folder that computer already has alone.
 
 The choice covers the holder and turn of ownership shown on the card. If another computer continues the chat before you confirm or while the copy is arriving, your choice cannot take it from that new holder. The slower one sees `another device continued this chat first`, its local copy is not replaced, and its row goes back to `running on <device>`. Older clients that do not send this condition keep their earlier behavior. No turn is lost on either side: whatever the earlier holder had not sent is kept for you as the branch above. This build offers discard, which archives a branch, and opening the branch as a separate chat; merging it into the original chat is unavailable. Pressing `2` (`leave it there`) on the question, or `esc`, changes nothing and leaves the chat where it is.
 
@@ -119,6 +120,8 @@ The choice covers the holder and turn of ownership shown on the card. If another
 Reopening an older copy does not replace newer history on your other devices, even if the other computer has closed the chat. This window only shows its local copy until you choose `continue here`. Submitting a message opens that question and keeps your words in the box. Continuing brings the newer history here before writing can resume.
 
 Locally saved turns that never reached your other devices are kept as a branch before the newer copy replaces them, including turns already sealed on disk. Unsaved workspace edits are sealed and kept too. The move says `your unsaved edits here were kept as <K> turns from <device>`. Open that branch as a separate chat or discard it; merging is unavailable.
+
+Press enter on the kept turns' row. The card offers `1 open separately`, `2 discard`, and `3 leave them`, with `leave them` selected. Choose a number, then enter. `open separately` opens a chat with its own conversation id, the kept history and the files as those turns left them, in its own copy on this computer. The main chat's history and files stay as they are. Discard archives the kept turns; it does not delete them.
 
 ## The chat is arriving on this computer — why it waits to open
 
@@ -139,6 +142,8 @@ Two things are made again on the other computer and are not carried: the project
 Your repository's `.git`, including its history, branches and settings, moves with the chat to your own paired devices. A task's commits travel too, and its working-copy bookkeeping is rebuilt on arrival. A key in an old commit remains in that history: codeaf does not remove or rewrite it. Git history travels sealed end to end; the sync service sees only ciphertext, including when the history contains keys.
 
 The current working files are checked separately. A `.env` or source file that the guard recognises as holding a key is left out of the chat's file capture and carried through the encrypted vault. If you committed that secret earlier, its historical Git copy still moves with the repository. An untracked `.env` with no committed copy arrives only through the vault.
+
+Every seal checks the whole working tree first, including the first turn when it only says a reply or runs a command without changing files. Files ignored by git are checked too. A withheld file stays out of the local saved packs and the uploaded workspace capture, and tools still see a `.env` file's variables through the vault. Restores and arrivals also check before any automatic safety capture.
 
 ## Why does home appear while my chats are still syncing
 
