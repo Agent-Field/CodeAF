@@ -22,12 +22,16 @@ type Capabilities struct {
 }
 
 var (
-	probeOnce sync.Once
+	probeOnce = new(sync.Once)
 	probed    Capabilities
 )
 
 // Probe reports the confinement capabilities, measured once and cached.
 func Probe() Capabilities {
+	if namespaceProbeInTests != nil {
+		abi := landlockABI()
+		return Capabilities{UserNS: namespaceProbeInTests(), Landlock: abi > 0, LandlockABI: abi}
+	}
 	probeOnce.Do(func() {
 		abi := landlockABI()
 		probed = Capabilities{UserNS: userNSWorks(), Landlock: abi > 0, LandlockABI: abi}
@@ -43,15 +47,14 @@ func landlockABI() int {
 	return int(v)
 }
 
-// userNSWorks starts a no-op child in the namespaces the jail needs.
+// userNSWorks re-executes this binary with the jail's exact namespace and
+// ambient-capability attributes. Running an unrelated program misses hosts
+// whose security policy permits clone but refuses the helper exec.
 func userNSWorks() bool {
-	path, err := exec.LookPath("true")
-	if err != nil {
-		return false
-	}
-	cmd := exec.Command(path) //codeaf:plumbing capability probe of the jail itself
+	cmd := exec.Command("/proc/self/exe") //codeaf:plumbing capability probe of the jail itself
+	cmd.Args = []string{helperName, "probe"}
 	cmd.SysProcAttr = namespaceAttr(true)
-	return cmd.Run() == nil
+	return runNamespaceProbe(cmd) == nil
 }
 
 // namespaceAttr builds the clone attributes: a user namespace mapping the
@@ -70,3 +73,19 @@ func namespaceAttr(newNet bool) *syscall.SysProcAttr {
 		AmbientCaps: []uintptr{unix.CAP_SYS_ADMIN},
 	}
 }
+
+// namespaceProbeInTests stands in for hosts that allow clone but deny the
+// helper exec. Only test support installs it; production always measures once.
+var namespaceProbeInTests func() bool
+
+// UseNamespaceProbeInTests supplies the helper-exec answer for a test and
+// returns its restoration, without changing the production probe's cache.
+func UseNamespaceProbeInTests(probe func() bool) func() {
+	previous := namespaceProbeInTests
+	namespaceProbeInTests = probe
+	return func() { namespaceProbeInTests = previous }
+}
+
+// runNamespaceProbe is the exec boundary tests use to reproduce a denied
+// helper after namespace creation, without depending on AppArmor being installed.
+var runNamespaceProbe = func(cmd *exec.Cmd) error { return cmd.Run() }

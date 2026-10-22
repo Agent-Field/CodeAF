@@ -2388,6 +2388,9 @@ type Config struct {
 // events — every Submit streams, whether it started the turn or steered it.
 // The methods live in agent.go; the loop they drive lives in loop.go.
 type Agent struct {
+	// jailNotice keeps a host limit from becoming noise on every tool call.
+	jailNotice sync.Once
+
 	// crewDayHeld is the day's spend crews and their helpers are held to
 	// ([Agent.crewDay]), read once.
 	crewDayOnce sync.Once

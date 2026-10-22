@@ -74,6 +74,9 @@ func boolArg(b bool) string {
 }
 
 func init() {
+	if len(os.Args) == 2 && os.Args[0] == helperName && os.Args[1] == "probe" {
+		os.Exit(0)
+	}
 	if len(os.Args) > 4 && os.Args[0] == helperName {
 		os.Exit(runHelper(os.Args[1] == "1", os.Args[2], os.Args[3], os.Args[4:]))
 	}

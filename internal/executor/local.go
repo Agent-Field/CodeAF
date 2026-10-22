@@ -106,6 +106,11 @@ func (l Local) Command(ctx context.Context, req ExecRequest) (*exec.Cmd, error) 
 	if err := l.confine(cmd, req); err != nil {
 		return nil, err
 	}
+	if degraded(l.Jail, req) {
+		if notice, ok := ctx.Value(degradedNoticeKey{}).(func()); ok {
+			notice()
+		}
+	}
 	return cmd, nil
 }
 
@@ -290,4 +295,15 @@ func serialized(f func(Chunk)) func(Chunk) {
 		defer mu.Unlock()
 		f(c)
 	}
+}
+
+// DegradedLine names the missing limit once in the conversation that uses it.
+const DegradedLine = "This system cannot apply all workspace limits; commands with network access run without full confinement."
+
+type degradedNoticeKey struct{}
+
+// WithDegradedNotice lets the owning conversation report a reduced jail even
+// for a tool that owns its command's lifetime and does not return ExecResult.
+func WithDegradedNotice(ctx context.Context, notice func()) context.Context {
+	return context.WithValue(ctx, degradedNoticeKey{}, notice)
 }

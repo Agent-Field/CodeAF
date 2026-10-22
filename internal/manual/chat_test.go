@@ -30,6 +30,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		question string
 		page     string
 	}{
+		// C15 makes the Linux limit and moved-folder corrections retrievable.
+		{"why do commands fail on Ubuntu 24.04", "linux-workspace-limits"},
+		{"what folder does the moved chat work in", "continuing-a-chat-on-another-computer"},
 		// C12: Key troubleshooting must reach the self-contained restart section.
 		{"I changed or unset my API key in the shell but codeaf still uses the old one", "starting-codeaf"},
 		{"your key was not accepted for this model", "starting-codeaf"},
