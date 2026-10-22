@@ -99,7 +99,12 @@ func (e Engine) Seal(ctx context.Context, c cell.Cell, info TurnInfo) (Sealed, e
 	if err != nil {
 		return Sealed{}, fmt.Errorf("seal: read head: %w", err)
 	}
-	screened, err := e.Guard.Look(c, e.tree(c), e.policyDir(c), info.Changed, knownLocks(c))
+	// EVERY CAPTURED PATH MUST BE SCREENED. Changed is only an engine hint:
+	// a first attachment, a restore or arrival that invalidated its path index,
+	// or a policy change can make it walk the whole tree instead. The guard
+	// cannot observe that private index, so it screens the whole tree even for
+	// a transcript-only turn. Its ledger avoids rereading unchanged clean files.
+	screened, err := e.Guard.Look(c, e.tree(c), e.policyDir(c), nil, knownLocks(c))
 	if err != nil {
 		return Sealed{}, fmt.Errorf("seal: %w", err)
 	}
