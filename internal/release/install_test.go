@@ -1473,6 +1473,10 @@ func TestInstallerC9APIWait(t *testing.T) {
 		{"invalid reset", "x-ratelimit-reset: tomorrow\n", "for up to an hour"},
 		{"invalid reset with retry", "x-ratelimit-reset: invalid\nretry-after: 600\n", "for about 10 minutes"},
 		{"invalid retry", "retry-after: 2 minutes\n", "for up to an hour"},
+		{"oversized reset", "x-ratelimit-reset: " + strings.Repeat("9", 38) + "\n", "for up to an hour"},
+		{"oversized reset with retry", "x-ratelimit-reset: " + strings.Repeat("9", 38) + "\nretry-after: 600\n", "for about 10 minutes"},
+		{"oversized retry", "retry-after: " + strings.Repeat("9", 38) + "\n", "for up to an hour"},
+		{"largest retry", "retry-after: 999999\n", "for about 16667 minutes"},
 		{"final block only", "HTTP/1.1 301 Moved\nx-ratelimit-reset: 1800000000\n\n  HTTP/1.1 403 Forbidden\r\n  Retry-After: 91\r\n", "for about 2 minutes"},
 	} {
 		t.Run(test.name, func(t *testing.T) {

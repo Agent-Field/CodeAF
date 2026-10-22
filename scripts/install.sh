@@ -398,7 +398,9 @@ api_reason() {
 }
 
 api_epoch() {
-  local epoch="$1" rendered pattern='^[0-9][0-9]:[0-9][0-9]' digits='^[0-9]+$'
+  local epoch="$1" rendered pattern='^[0-9][0-9]:[0-9][0-9]' digits='^[0-9]{1,11}$'
+  # An epoch too long for any clock is refused here: bash's printf fallback
+  # would otherwise render it as the epoch's first second and invent a time.
   [[ "$epoch" =~ $digits ]] || return 1
   # A missing date is legal and keeps the conservative wait on minimal hosts.
   command -v date >/dev/null 2>&1 || return 1
@@ -428,7 +430,9 @@ api_epoch() {
 }
 
 api_wait() {
-  local headers="$1" reset rendered retry digits='^[0-9]+$'
+  # Six digits is eleven days; a longer Retry-After overflows some awks into
+  # negative minutes, so it reads as no number at all.
+  local headers="$1" reset rendered retry digits='^[0-9]{1,6}$'
   reset=$(api_header "$headers" x-ratelimit-reset)
   if [[ -n "$reset" ]] && rendered=$(api_epoch "$reset"); then
     printf 'until %s' "$rendered"
