@@ -451,7 +451,7 @@ which runs nothing. With no arrival facts to show, there is no card.
 
 `set up` starts the same setup turn as `/setup now`, opened with exactly those facts, and is
 consent for exactly the commands the card lists: the agent runs them without asking again,
-and any other command asks first, as in every setup turn, because the network is open for it.
+and any other command asks first unless approvals are open. This setup approval floor also applies to new chats, whose ordinary commands already have the network and this computer's usual access.
 `not now` and esc run nothing; the same facts reach the agent once, at its next step, as news
 that asks for nothing, and `/setup` lists what is missing later. codeaf never restarts a
 command by itself, and database rows or container data do not travel. A secret in a recorded
