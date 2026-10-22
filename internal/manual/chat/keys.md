@@ -1234,7 +1234,7 @@ remembered as well.
 With history not wired up (`--no-history`), `up` takes nothing and keeps its other
 meanings.
 
-## The thinking chip above the message box — `alt+e`, `/effort`, and how to make this one chat think harder
+## What is the chip above the message box — the thinking chip, `alt+e`, `/effort`, and how to make this one chat think harder
 
 To make this one chat think harder, choose a higher effort with `alt+e` or `/effort`.
 

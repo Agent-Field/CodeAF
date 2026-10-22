@@ -167,6 +167,9 @@ func (c *client) CheckRuns(ctx context.Context, owner, repo, sha string) (CheckS
 		if err := json.Unmarshal(body, &combined); err != nil {
 			return ChecksNone, nil, err
 		}
+		if page > 1 && combined.Total != statusTotal {
+			return ChecksNone, nil, fmt.Errorf("commit statuses changed while paging; cannot assert current-head CI passed")
+		}
 		statusTotal = combined.Total
 		statuses = append(statuses, combined.Statuses...)
 		if len(combined.Statuses) < 100 || len(statuses) >= statusTotal {
@@ -209,6 +212,9 @@ func (c *client) CheckRuns(ctx context.Context, owner, repo, sha string) (CheckS
 		}
 		if err := json.Unmarshal(body, &runs); err != nil {
 			return ChecksNone, nil, err
+		}
+		if page > 1 && runs.Total != runTotal {
+			return ChecksNone, nil, fmt.Errorf("check runs changed while paging; cannot assert current-head CI passed")
 		}
 		runTotal = runs.Total
 		checkRuns = append(checkRuns, runs.CheckRuns...)
