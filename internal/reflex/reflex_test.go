@@ -143,8 +143,8 @@ func TestNoticeKeepsNothingWhenItWasNotAskedAbout(t *testing.T) {
 	if got.State == nil || got.State.Goal != "tidy the build" {
 		t.Fatalf("state = %+v, want the card's delta read either way", got.State)
 	}
-	if strings.Contains(userMessage(client.calls[0]), "KEPT:") || strings.Contains(prompt(client.calls[0]), "FIRST, keep") {
-		t.Fatal("a call not asking about memory was shown the memory question or the kept lines")
+	if !strings.Contains(userMessage(client.calls[0]), "KEPT:") || strings.Contains(prompt(client.calls[0]), "FIRST, keep") {
+		t.Fatal("a call not saving memory lost use feedback or was asked to save")
 	}
 }
 

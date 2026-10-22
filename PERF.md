@@ -2910,31 +2910,34 @@ paths. No saved conversation is resumed to display or select its card.
 
 ## The memory block
 
-Every active memory line in a conversation's scope — for the person everywhere, for
-this machine, for this project — rides one `<memory>` block in message[0], in a
-stable order (person, machine, project; oldest first) and with no age or other
-clock-derived byte, so it is byte-identical from turn to turn until a line changes,
-which is what keeps the cached prefix warm (`prefixcache_test.go`). The block is
-bounded at **4,800 runes** of lines (`store.MemoryBlockRunes`,
-`internal/store/memory_room.go`), about 1,200 tokens. **The store refuses any change
-that would carry any conversation's block past it** (`store.ErrMemoryFull`) — a new
-line, a replacement, a reworded line, a move or a put-back — measured inside the write
-transaction, against every block the line's owner reaches (a line for the person or this
-machine is in every project's block). Only a store an earlier build filled with no bound
-can hold more than fits; then `store.FitMemories` lets that build's rules, then the
-project's lines, then the machine's, then the person's ride, newest first within each,
-and the conversation says once how many did not; the Memories tab counts them. Each line
-is at most **512 runes** (`store.MemoryTextRunes`) with an 80-rune title. The room check
-reads every active line once per write; the store's lines are bounded by the same rule,
-so that read is a few hundred rows at most.
+Memory storage is independent of the prompt budget. Writes, edits, moves and
+restores are not refused because a conversation is full. Each line remains
+bounded at **512 runes** (`store.MemoryTextRunes`), with an **80-rune** title.
 
-The read is **one indexed statement per turn start** (`Store.MemoriesFor`, over the
-owners the conversation sees); a failed read keeps the last block rather than
-re-pricing the prefix to say nothing. A task worker's brief closes on the same section,
-read once per run (`TaskGraph.memoryWorld`). No retrieval,
-evidence projection, binding read or background tidy exists: the store's work is
-bounded by the scope's own line count, and the event journal continues to grow as the
-durable record.
+The ordinary working set has a **4,800-rune** line budget
+(`store.MemoryBlockRunes`). Explicit person pins and legacy rules ride first
+and may exceed this soft budget. Other in-scope memories are selected locally
+with a durable-rule floor of **40%** of the remaining budget and
+specificity-first spending within the durable and contextual shares. Derived
+semantic kinds keep legacy status paragraphs out of the rule share. Activation
+remains the admission threshold and tie-break. The block ends with
+`· N more in memory` when some stored lines do not ride. The Memories tab
+shows each visible line's admission status and reason. Archived admission is
+separate from forgotten or superseded storage status.
+
+Selection makes no model or embedding calls. Only used, confirmed and merged
+events reinforce practice; surfaced and
+retrieved events remain neutral, and contradicted events provide negative
+feedback. Admitted rune totals and shares by derived semantic kind are logged
+as aggregate `memory_admission` JSON, with pin runes separated from ordinary
+budgeted runes and an additional per-kind breakdown excluding pins; no memory text, IDs or owners are logged. Conversation-stage
+records describe the final set after dwell, and the Memories tab shows that
+set's composition. A failed read retains the previous block; selection keeps
+admitted lines while conversation context is unchanged to preserve the cached prompt prefix.
+Daily local maintenance refreshes traces and associations while the clock
+runs, with catch-up on reopen. Semantic status consolidation and optional
+write-time semantic embeddings are not implemented by this change. Performance
+targets in a design proposal are not measurements; the focused store benchmarks are the evidence for this path.
 
 ## Conversation deletion completion
 

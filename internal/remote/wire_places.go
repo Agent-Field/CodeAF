@@ -94,8 +94,10 @@ const (
 	// because the surface's seam is what this wire exists to fill; cmd/codeaf
 	// already owns that translation in one place ([v3Brain]).
 
+	// MethodMemorySelection reads the current conversation's actual admission.
+	MethodMemorySelection = "Memory.Selection" // nothing → store.MemoryBlock
 	// MethodMemorySnapshot is everything remembered on the engine machine,
-	// shelved and counted, in the two statements the place draws from.
+	// shelved and counted, in the statements the place draws from.
 	MethodMemorySnapshot = "Memory.Snapshot" // int (row cap) → store.MemoryShelves
 	// MethodMemoryChanged is how many memories were learned and how many were
 	// let go of since an instant — the two figures the memory tab's number is

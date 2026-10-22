@@ -163,7 +163,7 @@ var v3MediaVerb = map[string]string{
 // are read at CALL time rather than closed over as values: a person who picks a
 // drawing model in the settings sheet expects the next picture to come from it,
 // not the next launch.
-func v3MediaModel(models *catalog.Catalog, profileDir string, source roles.Source) func(string) string {
+func v3AutomaticMediaModel(models *catalog.Catalog, profileDir string, source roles.Source) func(string) string {
 	return func(modality string) string {
 		modality = strings.ToLower(strings.TrimSpace(modality))
 		if models == nil || v3MediaVerb[modality] == "" {
