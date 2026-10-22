@@ -152,12 +152,12 @@ func TestTheAppLendsItsOwnLiveFactoryStageInsteadOfRefusingIt(t *testing.T) {
 	if !ok {
 		t.Fatal("the worker could not build its own parent")
 	}
-	maker := factoryStageMakerFrom(nil, workspace, profile, source.Config).withRefusal(source.Refusal)
-
+	// As app_factory.go does: the stage charges its job on the floor.
 	st, err := store.Open(filepath.Join(root, "factory"))
 	if err != nil {
 		t.Fatal(err)
 	}
+	maker := factoryStageMakerFrom(st, workspace, profile, source.Config).withRefusal(source.Refusal)
 	id, err := st.Add(context.Background(), factory.Item{
 		Title: "tidy the ledger", Repo: "work", Tier: factory.TierOwner,
 		Stages: []factory.Stage{{Name: "plan", Kind: factory.StageChat, Ask: "plan it", Until: "done", On: true}},
@@ -170,7 +170,7 @@ func TestTheAppLendsItsOwnLiveFactoryStageInsteadOfRefusingIt(t *testing.T) {
 	if err != nil || team == "" {
 		t.Fatalf("the item's team: %q, %v", team, err)
 	}
-	conv, err := maker.Open(context.Background(), factoryrun.ConversationSpec{Team: team, Name: "#1 · plan", Brief: "Plan it. End by calling stage_result once.", Dir: workspace})
+	conv, err := maker.Open(context.Background(), factoryrun.ConversationSpec{Item: item, Team: team, Name: "#1 · plan", Brief: "Plan it. End by calling stage_result once.", Dir: workspace})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -413,11 +413,11 @@ func newLendRig(t *testing.T, again string) *lendRig {
 	if !ok {
 		t.Fatal("the worker could not build its own parent")
 	}
-	r.maker = factoryStageMakerFrom(nil, workspace, profile, source.Config).withRefusal(source.Refusal)
 	st, err := store.Open(filepath.Join(root, "factory"))
 	if err != nil {
 		t.Fatal(err)
 	}
+	r.maker = factoryStageMakerFrom(st, workspace, profile, source.Config).withRefusal(source.Refusal)
 	id, err := st.Add(context.Background(), factory.Item{
 		Title: "tidy the ledger", Repo: "work", Tier: factory.TierOwner,
 		Stages: []factory.Stage{{Name: "plan", Kind: factory.StageChat, Ask: "plan it", Until: "done", On: true}},
@@ -430,7 +430,7 @@ func newLendRig(t *testing.T, again string) *lendRig {
 	if err != nil || team == "" {
 		t.Fatalf("the item's team: %q, %v", team, err)
 	}
-	r.spec = factoryrun.ConversationSpec{Team: team, Name: "#1 · plan", Brief: "Plan it. End by calling stage_result once.", Dir: workspace}
+	r.spec = factoryrun.ConversationSpec{Item: item, Team: team, Name: "#1 · plan", Brief: "Plan it. End by calling stage_result once.", Dir: workspace}
 	r.conv, err = r.maker.Open(context.Background(), r.spec)
 	if err != nil {
 		t.Fatal(err)

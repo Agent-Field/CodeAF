@@ -66,7 +66,14 @@ func TestFactoryConversationsInheritALaterOneModelLaunch(t *testing.T) {
 	t.Cleanup(func() { stageSettle = unattendedRunSettleTick })
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	spec := factoryrun.ConversationSpec{Name: "review", Brief: "look it over", Dir: workspace}
+	// A stage is a job's work: it charges that job's budget live, and a stage
+	// with no job to charge stops before it spends.
+	it, err := st.Create(factory.Item{Repo: "work", Kind: factory.KindIssue, Title: "look it over", Cap: 10,
+		State: factory.StateNew, Stages: factory.CopyStages(factory.DefaultRecipe().For(factory.KindIssue))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := factoryrun.ConversationSpec{Item: it, Name: "review", Brief: "look it over", Dir: workspace}
 	for _, name := range []string{"fresh", "resumed"} {
 		t.Run(name, func(t *testing.T) {
 			bucket, err := v3ProjectDir(workspace)
@@ -89,9 +96,7 @@ func TestFactoryConversationsInheritALaterOneModelLaunch(t *testing.T) {
 			spec.Resume = chat.ID()
 		})
 	}
-	it, err := st.Create(factory.Item{Repo: "work", Kind: factory.KindIssue, Title: "look it over",
-		State: factory.StateNew, Stages: factory.CopyStages(factory.DefaultRecipe().For(factory.KindIssue))})
-	if err != nil {
+	if it, err = st.Get(it.ID); err != nil {
 		t.Fatal(err)
 	}
 	// The item's manager conversation is made as a run makes it, and a turn
