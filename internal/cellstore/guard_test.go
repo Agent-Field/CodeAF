@@ -417,3 +417,23 @@ func TestC9CertificateBundleIsSealedWhilePrivateKeysAreWithheld(t *testing.T) {
 		}
 	})
 }
+
+// C9 and C15 require an unpaired computer's notice to distinguish imported
+// dotenv variables from files that have never been saved to a shared vault.
+func TestSecretNoticesDescribeOnlyWhatAnUnpairedComputerKeeps(t *testing.T) {
+	r := newRig(t)
+	r.write(".env", "LOCAL_KEY="+fakeKey+"\n")
+	r.write("config.py", "key = '"+fakeKey+"'\n")
+	r.screen()
+	if len(r.notice) != 2 {
+		t.Fatalf("notices: %q", r.notice)
+	}
+	for _, notice := range r.notice {
+		if !strings.Contains(notice, "kept out of the saved history") || !strings.Contains(notice, "only to paired computers") || strings.Contains(notice, "kept in your key vault") {
+			t.Fatalf("untrue notice: %s", notice)
+		}
+		if strings.HasPrefix(notice, ".env ") && !strings.Contains(notice, "variables are kept locally for your tools") {
+			t.Fatalf("missing local variables: %s", notice)
+		}
+	}
+}

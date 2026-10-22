@@ -106,6 +106,9 @@ func (d pairDoor) run(ctx context.Context, args []string) error {
 	if reason := cell.UnavailableReason(); reason != "" && !asksForHelp(args) {
 		return errors.New(reason)
 	}
+	if reason := cell.UnavailableReason(); reason != "" && asksForHelp(args) {
+		fmt.Fprintln(usageOut, reason)
+	}
 	flags := commandFlags("pair")
 	via := flags.String("via", "", "the sync address to pair through; empty is the one this device already uses")
 	renamedFlag(flags, "relay", "via")

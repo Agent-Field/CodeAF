@@ -20,7 +20,7 @@ func TestPairHelpIsAnsweredWhereMovingChatsIsOff(t *testing.T) {
 		if code := exitCodeOf(err); code != 0 {
 			t.Fatalf("codeaf pair %s exited %d: %v", ask, code, err)
 		}
-		if !strings.Contains(out.String(), "codeaf pair") {
+		if !strings.Contains(out.String(), "codeaf pair") || !strings.Contains(out.String(), "CODEAF_CELLS=1") {
 			t.Fatalf("codeaf pair %s printed no usage:\n%s", ask, out.String())
 		}
 	}

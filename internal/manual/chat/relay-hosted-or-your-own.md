@@ -2,6 +2,10 @@
 
 ## Hosted relay or my own — which one do I use, and where does sync go by default
 
+Stable and rc builds have moving chats and pairing off unless `CODEAF_CELLS=1`; Windows does not have them.
+
+Only chats started after moving chats was turned on can be continued on another computer. Older chats stay where they are, keep their original files, and keep working in every build.
+
 A relay is the small service your computers sync through. There are two kinds. Both speak the same wire: the chat cannot tell them apart.
 
 - **A hosted relay** is run for you on a cloud account. You do nothing to run it. You give the chat its address.
@@ -12,6 +16,8 @@ Either way the relay sees only ciphertext and the short list on "What can the re
 **Where sync goes by default.** Unset, a computer syncs through codeaf's hosted relay at `https://codeaf.agentfield.ai/fabric`, once this build carries that address. The address lives in one place in the program, `HostedRelayURL`; a build whose value is empty has no default, and then nothing is copied and pairing says `no sync address is set, so there is nowhere to pair through: set CODEAF_SYNC_URL to a sync address, or pass --via <address>`. A new home sends no relay requests before completing a pairing or offering a code or link. Reading the add-device instructions does not start sync. Older identities without the quiet marker retain their earlier behavior: see "Is my code sent anywhere before I pair" on the page *Pairing your chats with a second computer*. To use your own relay instead, set `CODEAF_SYNC_URL` as below. Turn sync off with `CODEAF_SYNC_URL=off`; pairing cannot override that with `--via`.
 
 ## Point codeaf at a relay — CODEAF_SYNC_URL, url or off
+
+Stable and rc builds have moving chats and pairing off unless `CODEAF_CELLS=1`; Windows does not have them.
 
 Set `CODEAF_SYNC_URL` in the environment of every computer that shares the chats.
 
@@ -27,6 +33,8 @@ Your own computers must all name the same relay and hold the same identity, or t
 
 ## Run my own relay — codeaf relay --listen and --store
 
+Stable and rc builds have moving chats and pairing off unless `CODEAF_CELLS=1`; Windows does not have them.
+
 ```
 codeaf relay --listen :8787 --store /var/lib/codeaf
 ```
@@ -41,5 +49,7 @@ Stop it with SIGTERM or ctrl+c: requests under way finish first. **The relay has
 There is no Docker image for the relay. The page `docs/relay.md` in the repository says how to run, back up and upgrade it.
 
 ## Who can use my own relay
+
+Stable and rc builds have moving chats and pairing off unless `CODEAF_CELLS=1`; Windows does not have them.
 
 **Any caller with a valid signature may make an identity and store on your relay.** The relay has no list of allowed people: an identity is made from a key, and the relay accepts any key. Keep your relay on a private network, a tailnet or behind a proxy that checks who calls. One identity cannot read another's data.

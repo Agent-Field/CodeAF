@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -66,6 +67,23 @@ func runDevices(args []string) error {
 		return commandHelp("devices")
 	case len(args) > 0:
 		return fmt.Errorf("usage: codeaf devices [revoke <name> [--all] | rename <name>]")
+	}
+	if !cell.Available() {
+		device, err := pair.ThisDevice(pair.OpenKeeper())
+		if err != nil {
+			return err
+		}
+		paired, err := pair.DeviceBook().Devices()
+		if err != nil {
+			return err
+		}
+		fmt.Print(pair.DevicesList(device.Name(), paired, pair.OpenKeeper(), time.Now()))
+		known, err := pair.Machines()
+		if err != nil {
+			return err
+		}
+		fmt.Print(pair.MachinesList(known, time.Now()))
+		return nil
 	}
 	return listDevices(kinds, time.Now())
 }

@@ -229,6 +229,7 @@ func TestBriefSaidOncePerTakeover(t *testing.T) {
 	}
 }
 
+// C15 keeps setup advice true for both host-bound and sandboxed conversations.
 func TestPlanCarriesWhatOnlyTheTakeoverSawUntilSetupSettles(t *testing.T) {
 	m, _, _ := arrived(t)
 	plan := m.Plan()
@@ -239,7 +240,7 @@ func TestPlanCarriesWhatOnlyTheTakeoverSawUntilSetupSettles(t *testing.T) {
 		t.Fatal("a plan with folders to bring back is idle")
 	}
 	brief := plan.SetupBrief()
-	if !strings.Contains(brief, "web/node_modules") || !strings.Contains(brief, "Only this folder is writable") {
+	if !strings.Contains(brief, "web/node_modules") || !strings.Contains(brief, "install in this workspace: ./bin, ./.venv/bin, ./node_modules/.bin are found automatically") {
 		t.Fatalf("the setup turn's brief:\n%s", brief)
 	}
 	m.Settle(plan)

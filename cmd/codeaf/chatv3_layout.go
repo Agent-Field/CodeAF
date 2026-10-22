@@ -737,17 +737,15 @@ func v3ReapEmpty(empty []v3Folder, keep string) {
 	})
 }
 
-// v3Migrated moves a legacy session folder into the cell layout when cells are
-// on, and points the config at the journal's new home. [openV3Agent] is the one
-// door every open goes through, so this is the one place a folder is migrated.
-//
-// A failed migration is not a failed open: every state it can stop in opens
-// (cell.MigrateLegacy), and the path is read back from the disk either way.
+// v3Migrated readies an existing cell without changing a legacy chat's layout.
+// C24 keeps older chats readable by every build that shares this home.
 func v3Migrated(cfg session.Config) session.Config {
 	if !cell.Available() || cfg.Place.Dir == "" {
 		return cfg
 	}
-	_ = cell.MigrateLegacy(cfg.Place.Dir, session.TruthCarriers()...)
+	if _, err := cell.OpenAt(cfg.Place.Dir, filepath.Base(cfg.Place.Dir)); err != nil {
+		return cfg
+	}
 	session.AdoptArtifacts(cfg.Place, artifactsIndexPath())
 	budgetOnOpen(cfg.Place.Dir)
 	if cfg.Memory != nil {

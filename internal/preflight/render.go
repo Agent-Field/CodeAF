@@ -61,8 +61,7 @@ func (r Report) SetupBrief() string {
 	}
 	var b strings.Builder
 	b.WriteString("This chat needs the following on this machine so it can run here. Install each one " +
-		"in user space, without root. Only this folder is writable, so put programs in ./bin " +
-		"(./.venv/bin and ./node_modules/.bin work too). Check that each now runs, then stop; " +
+		"in user space, without root; install in this workspace: ./bin, ./.venv/bin, ./node_modules/.bin are found automatically. Check that each now runs, then stop; " +
 		"do not explore the machine beyond that:\n")
 	for _, it := range r.Pending() {
 		b.WriteString("- " + it.Line() + "\n")
@@ -72,5 +71,4 @@ func (r Report) SetupBrief() string {
 
 // setupLimits are the terms a setup turn works within when it brings back what a
 // move left behind.
-const setupLimits = "Work in user space, without root. Only this folder is writable, so put programs in ./bin " +
-	"(./.venv/bin and ./node_modules/.bin work too). Check that each thing you bring back now works, then stop.\n"
+const setupLimits = "Work in user space, without root; install in this workspace: ./bin, ./.venv/bin, ./node_modules/.bin are found automatically. Check that each thing you bring back now works, then stop.\n"
