@@ -70,7 +70,7 @@ func TestC5ArrivingCopiesKeepTheirOriginAndAUsableWorkspace(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if meta.Origin != origin || !meta.Owned || workspaceOf(at.Root) != filepath.Join(at.Root, "work") {
+			if meta.FromDevice != nameA || meta.FromWorkspace != origin || meta.Origin != origin || !meta.Owned || workspaceOf(at.Root) != filepath.Join(at.Root, "work") {
 				t.Fatalf("arrived metadata %+v, workspace %s", meta, workspaceOf(at.Root))
 			}
 			if filepath.Base(filepath.Dir(at.Root)) != "copy-"+filepath.Base(origin) {

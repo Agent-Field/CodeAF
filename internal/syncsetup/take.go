@@ -193,6 +193,10 @@ const releaseBeat = 50 * time.Millisecond
 // gate: a look that could not be kept still offers what it found.
 func (c *Continuer) arrive(at cell.Cell, from string) preflight.Resume {
 	resume, _ := preflight.Arrive(at.Root, workspaceOf(at.Root), from)
+	if meta, err := session.LoadMeta(at.Root); err == nil && meta.ID != "" {
+		meta.FromDevice, meta.FromWorkspace = from, resume.Was
+		_ = session.SaveMeta(at.Root, meta)
+	}
 	return resume
 }
 

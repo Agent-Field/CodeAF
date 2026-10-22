@@ -3605,6 +3605,10 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 // owns its process, is recorded like every other. A seat that could not log the
 // call did not run it, and says so as the tool's own error.
 func (a *Agent) executeRecorded(ctx context.Context, tool bare.Tool, args json.RawMessage) (text string, isError bool, err error) {
+	args, moved, mapErr := a.movedToolArguments(tool.Name, args)
+	if mapErr != nil {
+		return "", true, mapErr
+	}
 	ctx, spawns := procexec.WithSpawns(ctx)
 	call := procexec.Call{Tool: tool.Name, Args: args, Changed: a.changedBy(tool.Name, args), Spawns: spawns, Deferred: procexec.Deferred(ctx)}
 	logErr := procexec.For(ctx).Around(ctx, call, func() ([]byte, bool) {
@@ -3613,6 +3617,9 @@ func (a *Agent) executeRecorded(ctx context.Context, tool bare.Tool, args json.R
 	})
 	if logErr != nil {
 		return "", true, logErr
+	}
+	if moved != "" {
+		text = moved + "\n" + text
 	}
 	return text, isError, err
 }
