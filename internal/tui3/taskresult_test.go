@@ -388,7 +388,9 @@ func TestAnOpenCardHoldsItsColumnAgainstLongPathsAndWideCharacters(t *testing.T)
 			t.Fatalf("width %d: the landing drew no card", width)
 		}
 		card.open = true
-		rows := a.doneRows(card, width, false)
+		snapshot := *card
+		snapshot.quiet = false
+		rows := a.doneRows(&snapshot, width, false)
 		if len(rows) < 2 {
 			t.Fatalf("width %d: the open card drew %d rows", width, len(rows))
 		}
