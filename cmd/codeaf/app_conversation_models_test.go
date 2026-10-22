@@ -91,3 +91,16 @@ func TestAppConversationModelsLiveNoticeKeepsItsJournalInstant(t *testing.T) {
 		return ok && e.Entry.ID == "model-switch-source-instant" && e.Entry.At.Equal(at)
 	})
 }
+
+func TestAppDefaultFallbackUsesSharedDefaultAndKeepsExplicitChoice(t *testing.T) {
+	dir := t.TempDir()
+	if got := appDefaultFallback(dir); got != "deepseek/deepseek-v4.1-flash" {
+		t.Fatalf("default=%q", got)
+	}
+	if err := applyRow(dir, "models.fallbacks", "custom/backup,custom/second"); err != nil {
+		t.Fatal(err)
+	}
+	if got := appDefaultFallback(dir); got != "custom/backup" {
+		t.Fatalf("explicit fallback=%q", got)
+	}
+}

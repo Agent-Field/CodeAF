@@ -26,6 +26,9 @@ func (d *Desk) Reply(id int, from, words string) error {
 	}
 	return d.change(func(_ *document, now time.Time) (bool, error) {
 		return false, d.store.Update(id, func(it *factory.Item) error {
+			if err := factory.RefuseDropped(*it); err != nil {
+				return err
+			}
 			if it.Talk == "" && it.State != factory.StateQueued && it.State != factory.StateRunning {
 				return fmt.Errorf("the job has no manager conversation")
 			}

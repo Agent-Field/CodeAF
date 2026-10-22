@@ -10,7 +10,7 @@ import (
 )
 
 func appDefaultFallback(profile string) string {
-	first, _, _ := strings.Cut(settingsRow(profile, config.KeyModelFallbacks), ",")
+	first, _, _ := strings.Cut(config.ModelFallbacksAt(profile), ",")
 	return strings.TrimSpace(first)
 }
 

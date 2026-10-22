@@ -12,7 +12,7 @@ type Verb struct {
 // (`POST /v1/jobs/{id}/<verb>`), then the floor's own. The client seam wires
 // exactly these doors; the server answers exactly these names.
 var Verbs = []Verb{
-	{"start_now", nil}, {"run_again", nil}, {"restore", nil}, {"dismiss", nil}, {"assign_to_me", nil}, {"change_assignee", nil},
+	{"start_now", nil}, {"run_again", nil}, {"restore", nil}, {"close", nil}, {"reopen", nil}, {"dismiss", nil}, {"assign_to_me", nil}, {"change_assignee", nil},
 	{"unassign", nil}, {"nudge", nil}, {"priority", nil}, {"raise_budget", nil}, {"undo", nil},
 	{"queue", []string{"Load"}},
 	{"job", []string{"Load"}},

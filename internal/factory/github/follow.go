@@ -239,7 +239,7 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 		rec = opened
 	}
 	for _, it := range items {
-		if !factory.IsIssueJob(it) || it.PullRequest == nil || it.PullRequest.Number <= 0 || sw.OffJob(it) {
+		if it.DoneHow == "closed_locally" || !factory.IsIssueJob(it) || it.PullRequest == nil || it.PullRequest.Number <= 0 || sw.OffJob(it) {
 			continue
 		}
 		owner, name, ok := pullRepo(it)

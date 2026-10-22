@@ -7,6 +7,8 @@ import "github.com/Agent-Field/codeaf/internal/factory"
 func PresentJob(j *Job) {
 	p := StatePresentation{Kind: j.State}
 	switch {
+	case j.DoneHow == "closed_locally":
+		p.Kind, p.Title, p.Detail = "done", "Closed", "Closed locally; work and spending kept. Reopen to continue."
 	case j.Recovery != nil && (j.Recovery.State == "waiting" || j.Recovery.State == "queued"):
 		p.Kind, p.Title, p.Detail = "waiting_for_runner", "Waiting to retry", j.Recovery.Reason
 	case j.Failure != nil:

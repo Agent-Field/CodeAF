@@ -288,3 +288,21 @@ func TestConversationModelsConcurrentPicksKeepLiveAndJournalOrder(t *testing.T) 
 		}
 	}
 }
+
+func TestConversationModelsMigrateOnlyTheLegacyFallbackPlaceholder(t *testing.T) {
+	for _, fallback := range []string{"nearest in the catalog", "chosen/backup", ""} {
+		t.Run(fallback, func(t *testing.T) {
+			a, _ := newTestAgent(t, chained(nil), func(cfg *Config) {
+				cfg.ConversationModels = &ConversationModels{Main: "test/model", Fallback: fallback}
+			})
+			pair, _ := a.ConversationModelPair()
+			want := fallback
+			if fallback == "nearest in the catalog" {
+				want = "deepseek/deepseek-v4.1-flash"
+			}
+			if pair.Main != "test/model" || pair.Fallback != want {
+				t.Fatalf("pair=%+v", pair)
+			}
+		})
+	}
+}

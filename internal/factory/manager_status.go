@@ -58,6 +58,8 @@ func StatusForManager(it Item, held bool, now time.Time) ManagerStatus {
 		out.Text = "Completed: " + strings.Join(done, ", ") + ".\n"
 	}
 	switch {
+	case it.DoneHow == "closed_locally":
+		out.Text += "Job closed locally. Work and spending are kept. Reopen to continue; nothing is running."
 	case it.DoneHow == "dropped":
 		out.Text += "Job dropped. No pipeline work is running."
 	case it.PullRequest != nil && (it.PullRequest.State == PRMerged || it.PullRequest.State == PRClosed):

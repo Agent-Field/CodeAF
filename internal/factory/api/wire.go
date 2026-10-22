@@ -476,6 +476,8 @@ type Can struct {
 	Run            bool `json:"run"`
 	StartNow       bool `json:"start_now"`
 	Stop           bool `json:"stop"`
+	Close          bool `json:"close"`
+	Reopen         bool `json:"reopen"`
 	Dismiss        bool `json:"dismiss"`
 	Drop           bool `json:"drop"`
 	ChangeAssignee bool `json:"change_assignee"`

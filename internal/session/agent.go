@@ -11,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	preferences "github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -187,6 +188,15 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		pair := *config.ConversationModels
 		pair.Main = config.Model
 		agent.conversationModels = &pair
+	}
+	// Older desktop builds copied a settings display placeholder into this
+	// slot. It is not a callable model or an explicit user choice. Migrate only
+	// that exact legacy value; saved valid pairs and explicit None are untouched.
+	if pair := agent.conversationModels; pair != nil && pair.Fallback == "nearest in the catalog" {
+		pair.Fallback = preferences.DefaultFallbackModel
+		if pair.Fallback == pair.Main {
+			pair.Fallback = ""
+		}
 	}
 	agent.modelIdentity.Epoch = NewSessionID()
 	agent.presentation = &presentationIndex{}

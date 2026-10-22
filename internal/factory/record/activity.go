@@ -39,6 +39,8 @@ func enrich(e *Event) {
 			e.Verb = "merged"
 		case PRClosed, SourceClosed:
 			e.Verb = "closed"
+		case ClosedLocally:
+			e.Verb = "closed locally"
 		case Restored:
 			e.Verb = "brought back"
 		case MergeAsked:
