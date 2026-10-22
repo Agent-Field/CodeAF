@@ -105,16 +105,18 @@ func ToSnapshot(q Queue, jobs []Job) factory.Snapshot {
 // Lost names the Go fields the wire does not carry, and why. The round-trip
 // test reads it, so a field is either carried or named here.
 var Lost = map[string]string{
-	"Snapshot.People":   "the queue projects identities onto mentioned handles only; unrelated cached profiles do not cross",
-	"Item.PlannedFiles": "the cache never crosses: the wire's planned_files is derived from the plan step's result (factory.PlanFilesOf), which does",
-	"Item.OldGate":      "read into approve steps on load and never in memory",
-	"Stage.OldGate":     "read into approve steps on load and never in memory",
-	"Stage.OldGateWhen": "read into approve steps on load and never in memory",
-	"Phase.Carry":       "the runner's own inbox for a resumed step; no surface reads it",
-	"Phase.Result":      "a reader's job carries Output (step result), Spent (step cost), Tests and Model; the rest is the runner's revival state, which only the worker's pull carries (WorkerJob)",
-	"Phase.Kind":        "an empty phase kind under a stage with a kind comes back as the stage's",
-	"Phase.Left":        "crosses in whole milliseconds",
-	"Item.ChatSpent":    "crosses as the job's cost while it has no run; a start carries it into the run's spend before any worker pulls the job",
+	"Snapshot.People":              "the queue projects identities onto mentioned handles only; unrelated cached profiles do not cross",
+	"Item.PlannedFiles":            "the cache never crosses: the wire's planned_files is derived from the plan step's result (factory.PlanFilesOf), which does",
+	"Item.OldGate":                 "read into approve steps on load and never in memory",
+	"Stage.OldGate":                "read into approve steps on load and never in memory",
+	"Stage.OldGateWhen":            "read into approve steps on load and never in memory",
+	"Phase.Carry":                  "the runner's own inbox for a resumed step; no surface reads it",
+	"Phase.Result":                 "a reader's job carries Output (step result), Spent (step cost), Tests and Model; the rest is the runner's revival state, which only the worker's pull carries (WorkerJob)",
+	"Phase.Kind":                   "an empty phase kind under a stage with a kind comes back as the stage's",
+	"Phase.Left":                   "crosses in whole milliseconds",
+	"Item.ChatSpent":               "crosses as the job's cost while it has no run; a start carries it into the run's spend before any worker pulls the job",
+	"CheckRun.AppID":               "server-side readiness matching only; every poll reads it from GitHub again before a required check is matched",
+	"PullRequest.ReadinessContext": "server-side review material up to 384 KiB; a queued final review carries it to the worker as the follow-up's details",
 }
 
 // FromItem is one item as a job.
