@@ -85,6 +85,8 @@ type RepoInfo = forge.RepoInfo
 type Source struct {
 	api API
 	now func() time.Time
+	// readyPause permits a deterministic retry clock in isolated fixtures.
+	readyPause func(context.Context, time.Duration) error
 
 	mu    sync.Mutex
 	repos []string

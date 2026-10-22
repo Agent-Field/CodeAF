@@ -4,8 +4,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"net"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
@@ -21,7 +25,7 @@ func (s *Source) readinessMaterial(ctx context.Context, owner, name string, p fo
 	if !ok {
 		return nil
 	}
-	if !p.Draft || pr.State != factory.PROpen || !pr.ChecksRead || !pr.ReviewsRead || pr.CI != "ci ✓" || pr.Mergeable != factory.MergeableYes || pr.ReviewDecision == "changes_requested" {
+	if !p.Draft || pr.State != factory.PROpen || !pr.ChecksRead || !pr.ReviewsRead || pr.CI != "ci ✓" || pr.Mergeable != factory.MergeableYes {
 		return nil
 	}
 	diff, required, err := a.ReadinessMaterial(ctx, owner, name, p.Base, p.Number)
@@ -59,6 +63,52 @@ func (s *Source) readinessMaterial(ctx context.Context, owner, name string, p fo
 // Ready is executed only by the recorded publication door, on the assignee's
 // existing GitHub identity. It never pushes, replaces the body or merges.
 func (s *Source) Ready(ctx context.Context, it factory.Item) (factory.PullRequest, error) {
+	var pr factory.PullRequest
+	var err error
+	for attempt := 0; attempt < readyAttempts; attempt++ {
+		// Each attempt starts with a complete live read. An uncertain prior
+		// success is observed instead of replayed; changed facts refuse the
+		// old approval before another mutation can be sent.
+		pr, err = s.readyOnce(ctx, it)
+		if err == nil || !factory.Automatic(it) || !transientReadyError(err) || attempt+1 == readyAttempts || ctx.Err() != nil {
+			return pr, err
+		}
+		delay := time.Duration(1<<attempt) * time.Second
+		var apiErr *forge.APIError
+		if errors.As(err, &apiErr) && apiErr.RetryAfter > delay {
+			delay = apiErr.RetryAfter
+		}
+		if s.readyPause != nil {
+			err = s.readyPause(ctx, delay)
+		} else {
+			timer := time.NewTimer(delay)
+			select {
+			case <-ctx.Done():
+				err = ctx.Err()
+			case <-timer.C:
+				err = nil
+			}
+			timer.Stop()
+		}
+		if err != nil {
+			return pr, err
+		}
+	}
+	return pr, err
+}
+
+const readyAttempts = 3
+
+func transientReadyError(err error) bool {
+	var api *forge.APIError
+	if errors.As(err, &api) {
+		return api.StatusCode == 429 || api.StatusCode >= 500 && api.StatusCode <= 599
+	}
+	var network net.Error
+	return errors.As(err, &network) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF)
+}
+
+func (s *Source) readyOnce(ctx context.Context, it factory.Item) (factory.PullRequest, error) {
 	a, ok := s.api.(readinessAPI)
 	if !ok {
 		return factory.PullRequest{}, fmt.Errorf("this factory GitHub client does not support ready for review")

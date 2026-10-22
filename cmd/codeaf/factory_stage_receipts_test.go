@@ -61,6 +61,11 @@ func TestFactoryVerificationReceiptsDoNotConfuseChecksAndReporting(t *testing.T)
 		blocked  bool
 	}{
 		{"zero failures is success", []string{"go test -v ./... | grep -c -e '--- FAIL:'"}, false},
+		{"live chained pass fail skip counts", []string{`cd nested && export PATH="$PATH" && go test ./... -count=1 -v 2>&1 | grep -cE '^\s*--- PASS:' && echo "---" && go test ./... -count=1 -v 2>&1 | grep -cE '^\s*--- FAIL:' && echo "---" && go test ./... -count=1 -v 2>&1 | grep -cE '^\s*--- SKIP:'`}, false},
+		{"zero failures must not hide skipped second target", []string{`go test ./... | grep -c -e '--- FAIL:' && CHECK_EXIT=7 go vet ./...`}, true},
+		{"real failure in chained counts", []string{`CHECK_EXIT=7 go test ./... | grep -c -e '--- FAIL:' && echo "---" && CHECK_EXIT=7 go test ./... | grep -c -e '--- SKIP:'`}, true},
+		{"corrected output verbosity clears same check", []string{"CHECK_EXIT=7 go test -v ./...", "go test ./..."}, false},
+		{"headers and changed setup do not retain stale failure", []string{`CHECK_EXIT=7 go vet ./... && echo VET_CLEAN`, `export PATH="$PATH" && go vet ./... && echo clean`}, false},
 		{"actual failure survives tail", []string{"CHECK_EXIT=7 go test -v ./... | tail -2"}, true},
 		{"corrected filter clears failed check", []string{"CHECK_EXIT=7 go test -v ./... | tail -2", "go test -v ./... | grep -c -e '--- FAIL:'"}, false},
 		{"unrelated subset cannot clear", []string{"CHECK_EXIT=7 go test -v ./...", "go test -v -run TestA ./..."}, true},

@@ -7,10 +7,36 @@ package run
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
+
+func TestFinalReviewMissingChecklistIsCorrectedAtTheReportingDoor(t *testing.T) {
+	head := strings.Repeat("a", 40)
+	maker := &FakeMaker{Script: func(ctx context.Context, c *FakeConversation) {
+		r := factory.StageResult{Done: true, Repair: &factory.CIRepairResult{Decision: "no_change", Reason: "Reviewed diff and description; nothing unfinished"}}
+		if err := c.Spec.Stage.Report(ctx, r); err == nil || !strings.Contains(err.Error(), "repair.readiness") {
+			t.Errorf("missing checklist did not reach model: %v", err)
+		}
+		r.Repair.Readiness = &factory.ReadinessReview{Head: "short", DiffReviewed: true, DescriptionMatches: true, FeedbackAddressed: true, NoUnfinishedWork: true}
+		if err := c.Spec.Stage.Report(ctx, r); err == nil || !strings.Contains(err.Error(), head) {
+			t.Errorf("wrong head did not reach model: %v", err)
+		}
+		r.Repair.Readiness.Head = head
+		if err := c.Spec.Stage.Report(ctx, r); err != nil {
+			t.Errorf("corrected checklist refused: %v", err)
+		}
+	}}
+	j := reviewJob()
+	j.Stage = factory.Stage{Name: factory.FollowPRStep, Kind: factory.StageChat, Until: factory.UntilProven}
+	j.Item.FollowUp = &factory.PRFollowUp{Kind: "readiness", State: "running", Readiness: &factory.PRReadiness{Head: head}}
+	res, err := NewChatExecutor(maker).Run(context.Background(), j)
+	if err != nil || !res.Done || res.Reports != 1 || len(maker.Opened()) != 1 {
+		t.Fatalf("same-turn correction failed: done=%v reports=%d err=%v", res.Done, res.Reports, err)
+	}
+}
 
 // The refusals as the model reads them after `not reported: `
 // (internal/session's tools_stage.go).

@@ -45,6 +45,7 @@ func (h *Handler) controlJob(w http.ResponseWriter, r *http.Request, it factory.
 		}
 	}
 	err := h.config.Store.Update(it.ID, func(cur *factory.Item) error {
+		wasManual := cur.Manual
 		cur.Manual = body.Mode == "take_over"
 		cur.StopUndo = nil
 		cur.Approval = nil
@@ -76,7 +77,15 @@ func (h *Handler) controlJob(w http.ResponseWriter, r *http.Request, it factory.
 			f.State = "watching"
 			f.EventKey = ""
 			f.Attempt = 0
-			f.Request = "The person resumed the pipeline. Inspect the current worktree and manual conversation changes, verify them, and maintain this PR. " + strings.TrimSpace(body.Words)
+			if f.Kind == "readiness" && !wasManual && strings.TrimSpace(body.Words) == "" {
+				// Retry the failed final review, including the same snapshot.
+				// A generic repair request would force edits instead and the
+				// old reviewing cursor would suppress an unchanged-head retry.
+				f.Readiness = nil
+				f.Request = ""
+			} else {
+				f.Request = "The person resumed the pipeline. Inspect the current worktree and manual conversation changes, verify them, and maintain this PR. " + strings.TrimSpace(body.Words)
+			}
 			cur.State = factory.StateShipped
 			factory.QueueCIFollowUp(cur, time.Now().UTC())
 		} else if cur.Stream != nil {

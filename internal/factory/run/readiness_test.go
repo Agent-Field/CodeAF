@@ -13,17 +13,24 @@ import (
 )
 
 func TestReadinessRoundLandsAtExistingApprovalWithoutChangingCode(t *testing.T) {
-	for _, mode := range []string{"pass", "external head", "unfinished", "no report"} {
+	for _, mode := range []string{"pass", "external head", "unfinished", "no report", "verification retry", "report retry"} {
 		t.Run(mode, func(t *testing.T) {
 			dir := gitRig(t)
 			head := mustGit(t, dir, "rev-parse", "HEAD")
+			var calls atomic.Int32
 			g := newRig(t, map[factory.StageKind]Executor{factory.StageChat: ExecutorFunc(func(_ context.Context, j Job) (factory.StageResult, error) {
+				call := calls.Add(1)
 				if !strings.Contains(ciFollowUpBrief(j.Item), "read only") {
 					t.Error("repair instructions used for audit")
 				}
 				r := factory.StageResult{Done: true, Repair: &factory.CIRepairResult{Decision: "no_change", Reason: "Inspected full diff and description; review feedback is addressed", Readiness: &factory.ReadinessReview{Head: head, DiffReviewed: true, DescriptionMatches: true, FeedbackAddressed: true, NoUnfinishedWork: mode != "unfinished"}}}
-				if mode == "no report" {
+				if mode == "no report" || (mode == "report retry" && call == 1) {
 					r.Repair.Readiness = nil
+				}
+				if mode == "verification retry" && call == 1 {
+					r.Done, r.Exit = false, 1
+					r.Notes = []string{"Unresolved verification command failed: go test ./... · failed"}
+					r.Output = "Verification blocked: go test ./... · failed"
 				}
 				return r, nil
 			})}, func(o *Options) {
@@ -54,19 +61,22 @@ func TestReadinessRoundLandsAtExistingApprovalWithoutChangingCode(t *testing.T) 
 				t.Fatal(err)
 			}
 			want := factory.StateLanded
-			if mode != "pass" && mode != "external head" {
+			if mode == "unfinished" || mode == "no report" {
 				want = factory.StateNeedsYou
 			}
 			it := g.waitState(id, want)
 			if got := mustGit(t, dir, "rev-parse", "HEAD"); got != head {
 				t.Fatal("audit committed work")
 			}
-			if mode == "pass" || mode == "external head" {
+			if mode != "unfinished" && mode != "no report" {
 				if !factory.ReadinessPending(it) || it.HeadCommit != head || !strings.Contains(it.FollowUp.Reason, "mark the existing draft PR ready") || len(it.Proof) != 1 {
 					t.Fatal("readiness consent or evidence lost")
 				}
 			} else if factory.ReadinessPending(it) {
 				t.Fatal("incomplete review passed")
+			}
+			if (mode == "verification retry" || mode == "report retry") && calls.Load() != 2 {
+				t.Fatal("final review did not recover automatically in two rounds")
 			}
 		})
 	}
@@ -113,5 +123,44 @@ func TestReadinessOrdinaryFindingContinuesToBoundedRepair(t *testing.T) {
 	it := g.waitState(id, factory.StateLanded)
 	if calls.Load() != 2 || it.FollowUp.Kind != "pr" || it.FollowUp.State != "waiting_approval" || it.HeadCommit == head || it.FollowUp.Readiness != nil {
 		t.Fatal("ordinary finding did not repair through the existing pipeline")
+	}
+}
+
+type readinessPublishSource struct {
+	*prSource
+	calls atomic.Int32
+}
+
+func (s *readinessPublishSource) Ready(_ context.Context, it factory.Item) (factory.PullRequest, error) {
+	s.calls.Add(1)
+	pr := *it.PullRequest
+	pr.Draft = false
+	return pr, nil
+}
+
+func TestReadinessPublicationReachesReadyWithoutPushingOrMerging(t *testing.T) {
+	g := newPublishRig(t, factory.Item{Num: 12, Kind: factory.KindIssue, Repo: "acme/api", Title: "Fix it"})
+	head := mustGit(t, g.dir, "rev-parse", "HEAD")
+	source := &readinessPublishSource{prSource: g.src}
+	g.r.opts.Source = func(string) factory.Source { return source }
+	g.r.opts.Push = func(string, string) error { t.Error("ready transition pushed code"); return nil }
+	if err := g.st.Update(g.id, func(it *factory.Item) error {
+		it.HeadCommit = head
+		it.Autonomy = factory.AutonomyAuto
+		it.PullRequest = &factory.PullRequest{Number: 7, URL: "https://github.com/acme/api/pull/7", State: factory.PROpen, Draft: true, HeadSHA: head, ChecksRead: true, ReviewsRead: true, Mergeable: factory.MergeableYes, CI: "ci ✓", Checks: factory.PRChecks{Passed: 1}, ReadinessKey: "snapshot", Required: 1, ReviewDecision: "review_required"}
+		it.FollowUp = &factory.PRFollowUp{Kind: "readiness", State: "ready_approval", Readiness: &factory.PRReadiness{Key: "snapshot", Head: head, State: "reviewed", Summary: "Checked diff, description and feedback"}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.r.Publish(g.id, testTrailer+" "+head); err != nil {
+		t.Fatal(err)
+	}
+	it := g.settle(t)
+	if it.State != factory.StateShipped || it.PullRequest.Draft || source.calls.Load() != 1 || it.FollowUp.Readiness.State != "ready" || it.FollowUp.State != "watching" {
+		t.Fatal("ready transition did not settle into monitoring")
+	}
+	if it.Merging != nil || len(g.src.got) != 0 {
+		t.Fatal("ready transition created another PR, comment or merge")
 	}
 }
