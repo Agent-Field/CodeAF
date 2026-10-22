@@ -29,6 +29,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/exec"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/publish"
 )
@@ -405,10 +406,9 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 }
 
 // commitApproved commits everything the job left in its worktree as one
-// commit, the job's title and the trailer its message. A worktree with
-// nothing uncommitted is left as it is: its branch already holds the work.
-// A machine with no git identity commits as the approving handle's GitHub
-// noreply address.
+// commit, keeping the person as its author and the shared harness attribution
+// in the trailer block. This happens before the proof gate records its head.
+// A clean worktree is left as it is; signing must never move approved history.
 func commitApproved(git Git, dir string, it factory.Item, trailer string) error {
 	status, err := git.Run(dir, "status", "--porcelain")
 	if err != nil {
@@ -433,7 +433,13 @@ func commitApproved(git Git, dir string, it factory.Item, trailer string) error 
 	}
 	args := []string{"-c", "user.name=" + handle, "-c", "user.email=" + handle + "@users.noreply.github.com"}
 	// The commit is pushed publicly: its message crosses the same boundary as the PR text.
-	args = append(args, "commit", "-q", "-m", factory.PublicText(title+"\n\n"+trailer))
+	message := factory.PublicText(title + "\n\n" + trailer)
+	if !exec.RepositoryRefusesTrailers(dir) {
+		// The runner creates this commit rather than a particular model, so its
+		// shared signature deliberately carries no inferred model name.
+		message = exec.SignCommitMessageOnce(message, "")
+	}
+	args = append(args, "commit", "-q", "-m", message)
 	if _, err := git.Run(dir, args...); err != nil {
 		return fmt.Errorf("could not commit %s's work: %w", it.Ref(), err)
 	}
