@@ -20,7 +20,10 @@ example follow-ups. Saved conditions are presented with their original
 mandatory, prohibited or preferred force; current user instructions take
 precedence, and current authoritative evidence can correct stale factual claims. The model's `remember` tool
 can supply a durable kind directly, rather than depending only on a wording
-heuristic. Per-assembly aggregate telemetry
+heuristic. Capture examples and tool guidance distinguish what the person stated
+or accepted from extra assistant suggestions, without requiring verbatim memory
+text. This guides the model rather than guaranteeing lossless paraphrases.
+Per-assembly aggregate telemetry
 records rune shares by derived kind, with pin consumption separate; no memory
 content appears in those logs. Admission uses a bounded trace between exact
 daily refreshes; conservative lexical deduplication does not merge arbitrary semantic

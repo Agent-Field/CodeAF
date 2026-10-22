@@ -62,7 +62,7 @@ FIRST, keep: did the PERSON say something worth remembering in every future conv
 
 durability is one of standing_rule, decision, durable_fact, project_state, ephemeral. Ephemeral requests, progress chatter, and one-off instructions belong only in the transcript: keep must be empty. Lasting project state may be kept as project_state; prefer state for ordinary progress. Progress paragraphs about landed/passed/verified work, versions or issue IDs are project_state even if phrased with prefer, always or a decision verb; these words do not make status a standing rule. used is an array of KEPT line numbers actually applied in the ASSISTANT answer, never merely present or echoed. Use [] when none applied. contradicted lists KEPT numbers the PERSON explicitly corrected, even if the replacement was already saved. Never infer contradiction from the assistant alone.
 
-Write keep as one short line in the person's own terms. Keep every condition and the original mandatory, prohibited or preferred force; never soften must/only/never into may/prefer.
+Write keep as one short line in the person's own terms. Normalize wording without adding a detail or interpretation from the assistant. Keep every condition and the original mandatory, prohibited or preferred force; never soften must/only/never into may/prefer. An explicit acceptance such as "yes, use that" can adopt the agreed proposal; silence does not accept extra assistant suggestions.
 
 scope is one of: %s. Use project unless the person said it holds everywhere or for all their work (user), or only for this machine (env).
 
@@ -94,7 +94,18 @@ understood — I will make the change and say what I changed.
 KEPT:
 1. uses tabs, not spaces
 
-{"keep":"wants the change made directly, with a short note of what changed, not an explanation first","scope":"user","replaces":0}
+{"keep":"wants the change made directly, not an explanation first","scope":"user","replaces":0}
+
+USER:
+For Quartz reports, the legend must appear only when multiple series are plotted; never smooth raw measurements.
+
+ASSISTANT:
+I will also rotate labels by 45 degrees to make them easier to read.
+
+KEPT:
+(nothing yet)
+
+{"keep":"Quartz reports require a legend only when multiple series are plotted; never smooth raw measurements","scope":"project","durability":"standing_rule","replaces":0}
 
 USER:
 actually we deploy on Tuesdays now, not Fridays

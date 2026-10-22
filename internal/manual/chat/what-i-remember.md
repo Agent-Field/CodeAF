@@ -52,6 +52,9 @@ clock can answer one for you: say "remember that", or `/remember` it.
 
 The `remember` tool can label a standing rule, decision, lasting fact or
 project progress directly, rather than infer every kind from wording.
+Capture instructions keep what you stated or explicitly accepted, preserving
+conditions without adding the assistant's suggestions. Wording may be normalized;
+this is model guidance, not a verbatim or lossless-capture guarantee.
 The Memories tab shows the stored kind.
 
 A line is one sentence, at most 512 characters, and a credential pasted into it

@@ -1013,9 +1013,9 @@ func (b billedCompleter) CompleteWithMessages(ctx context.Context, messages []ai
 // time sentence is the mirror of the automation tool's: a timeless rule is a
 // memory, and anything with a time component is an automation.
 const (
-	rememberDescription = "Save durable conditions; a time component needs automation."
-	rememberSchemaJSON  = `{"type":"object","properties":{"text":{"type":"string"},"scope":{"type":"string","enum":["user","project","env"],"description":"project default; user for all work; env for this machine"},"durability":{"type":"string","enum":["standing_rule","decision","durable_fact","project_state"],"description":"Supply for new captures"}},"required":["text"],"additionalProperties":false}`
-	forgetDescription   = "Forget revoked lines, not broader rules with narrow exceptions."
+	rememberDescription = "Keep durable statements the person stated/accepted, no inferred details; a time component needs automation."
+	rememberSchemaJSON  = `{"type":"object","properties":{"text":{"type":"string"},"scope":{"type":"string","enum":["user","project","env"],"description":"project default; user for all work; env for this machine"},"durability":{"type":"string","enum":["standing_rule","decision","durable_fact","project_state"],"description":"For new captures"}},"required":["text"],"additionalProperties":false}`
+	forgetDescription   = "Forget revoked lines; exceptions keep broader rules."
 	forgetSchemaJSON    = `{"type":"object","properties":{"text":{"type":"string"}},"required":["text"],"additionalProperties":false}`
 )
 
