@@ -523,7 +523,7 @@ responses qualify; rate limits retain bounded read retries and later polling.
 Follow PR first waits for current-head CI to pass, with no pending or failed
 checks, readable review feedback and known conflict-free mergeability. It then
 runs a brief read-only final review of the actual GitHub PR description and
-complete diff against the issue and verified result. The diff is bounded to
+complete diff against the issue and checked result. The diff is bounded to
 192 KiB and combined title, description, diff and feedback to 384 KiB; exceeding
 either limit is an explicit incomplete-read reason, never silent truncation. It explicitly checks that
 feedback is addressed and no unfinished work remains. Ordinary fixable findings
