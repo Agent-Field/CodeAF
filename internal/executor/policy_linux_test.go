@@ -36,8 +36,8 @@ func listener(t *testing.T) string {
 // TestClassGovernsReach dials a listener outside the child's namespace under
 // each class through the real jail: only a sandboxed call without setup is cut off.
 func TestClassGovernsReach(t *testing.T) {
-	if !Probe().UserNS {
-		t.Skip("user namespaces unavailable")
+	if unavailableJail(t) {
+		return
 	}
 	addr := listener(t)
 	dialAddr := ExecRequest{Argv: []string{"bash", "-c", fmt.Sprintf("exec 3<>/dev/tcp/%s", strings.Replace(addr, ":", "/", 1))}, Timeout: 10 * time.Second}
@@ -69,8 +69,8 @@ func TestClassGovernsReach(t *testing.T) {
 // its own is still a setup call on the setup form of a seat, and an ordinary
 // call on the same seat stays cut off.
 func TestSetupStanceOpensTheNetworkForEveryCall(t *testing.T) {
-	if !Probe().UserNS {
-		t.Skip("user namespaces unavailable")
+	if unavailableJail(t) {
+		return
 	}
 	addr := listener(t)
 	req := ExecRequest{Argv: []string{"bash", "-c", fmt.Sprintf("exec 3<>/dev/tcp/%s", strings.Replace(addr, ":", "/", 1))}, Timeout: 10 * time.Second}

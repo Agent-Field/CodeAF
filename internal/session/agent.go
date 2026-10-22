@@ -190,6 +190,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// in the repository it borrowed to work in (landing.go).
 	agent.jobs = newJobRegistry(config.Workspace, config.droppingsPlace(), agent.enqueueJobNote, agent.enqueueWatchNote)
 	agent.jobs.seat = config.seat()
+	agent.jobs.degradedNotice = agent.sayJailLimit
 	agent.jobs.lifecycle = lifecycleOf(config.Machine)
 	// And the registry gets the ROSTER lane as well as the waking one. A job is
 	// work this conversation started, so it shows on the right the way every
@@ -1801,6 +1802,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// AND ITS TOOL CALLS RUN ON THE SESSION'S OWN EXECUTOR, carried the same way
 	// and for the same reason: the tools that spawn hold no reference to the agent.
 	turnCtx = procexec.With(turnCtx, a.config.seatFor(turnCtx))
+	turnCtx = procexec.WithDegradedNotice(turnCtx, a.sayJailLimit)
 	// AND THE TURN IS NUMBERED, so that a turn this session has DISOWNED cannot
 	// clean up after the turn that replaced it. See [Agent.Abandon]; the cleanup
 	// below is the only reader.
@@ -2888,6 +2890,7 @@ func (a *Agent) landVolatileLocked() {
 	// would re-send the card each time (team.go's [teamNoteOpening]). A
 	// conversation that manages nothing has an empty block and lands nothing.
 	a.landNoteLocked(teamNoteOpening, a.teamBlockLocked())
+	a.landMovedCopyLocked()
 	a.landInterruptedLocked()
 }
 
@@ -2954,6 +2957,7 @@ func isVolatileNote(text string) bool {
 		strings.HasPrefix(text, teamNoteOpening) ||
 		strings.HasPrefix(text, teamRoleNoteOpening) ||
 		strings.HasPrefix(text, helpersNoteOpening) ||
+		strings.HasPrefix(text, movedCopyNoteOpening) ||
 		strings.HasPrefix(text, interruptedNoteOpening)
 }
 

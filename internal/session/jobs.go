@@ -544,6 +544,8 @@ type jobRegistry struct {
 	// seat is the executor of the session these jobs belong to; nil is a
 	// registry that belongs to none and runs on the host.
 	seat procexec.Seat
+	// degradedNotice belongs to the conversation even when a job outlives its turn.
+	degradedNotice func()
 	// THE LOG-FOLDER SWEEP BELONGS TO THE REGISTRY AND NOT TO ANY ONE JOB'S
 	// ENDING (issue #1636). A job's end only ASKS for it; one pass at a time
 	// drains every folder asked for, off the road that publishes the ending, so
@@ -872,7 +874,11 @@ func (r *jobRegistry) start(command string) (*job, error) {
 	// that insists on the keyboard — is refused instead of painting over the
 	// person's frame. That was measured, not imagined: two review CLIs run as
 	// jobs drew their own output across the top of a running conversation.
-	process, err := r.runner(started.dir).Command(context.Background(), procexec.ExecRequest{
+	jobContext := context.Background()
+	if r.degradedNotice != nil {
+		jobContext = procexec.WithDegradedNotice(jobContext, r.degradedNotice)
+	}
+	process, err := r.runner(started.dir).Command(jobContext, procexec.ExecRequest{
 		Argv: append([]string{shell}, shellArgs...), Env: bare.StreamingEnv(),
 		Group: procexec.GroupSession,
 	})
