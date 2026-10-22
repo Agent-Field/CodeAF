@@ -98,6 +98,11 @@ log line, never sent to a provider to fail. A renamed slug degrades to the
 best available model instead of a 404, and a machine that has never opened
 settings still draws, speaks, and films out of the box.
 
+With `--one-model`, an explicit media slot or role pin is strict: if the catalog
+does not advertise that model's required capability, the operation is unavailable
+rather than replaced by a catalog candidate. Unpinned media and launches without
+that flag keep the normal ladder.
+
 ### Decision 6 — The door stops starving the pickers
 
 `v3Models` no longer drops non-text-out rows; the full catalog reaches the

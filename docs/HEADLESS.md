@@ -751,10 +751,13 @@ resolution path, the flag cannot drift from the behaviour it is settling.
 
 Two deliberate limits:
 
-- **Media slots are untouched.** Vision, image, speech and video are
-  capability-qualified — a text model cannot answer `view_image` — so settling
-  them on the session model would not make a run single-model, it would make it
-  broken.
+- **Media slots stay separate and capability-qualified.** To measure one model
+  across text and images, also pin `vision_model` (or `CODEAF_VISION_MODEL`) to
+  that model. Under `--one-model`, an explicit media pin that cannot perform
+  its operation makes that tool unavailable; it never falls back to another
+  model. Unpinned media retains normal discovery. Other explicit media slots
+  are `model.image`, `model.speech`, `model.music`, `model.video`, and
+  `model.voice`; pin these too when every model call must stay on one model.
 - **It is refused with `--host`.** Over ssh the far machine owns those rows, and
   a flag that looked like it applied and did not would be worse than no flag.
 

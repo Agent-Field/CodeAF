@@ -1227,7 +1227,7 @@ func v3ConfigFor(proc *v3Process, opts v3Options, workspace string, place sessio
 	// which is the same absence at a finer grain.
 	if activeListsModels {
 		cfg.Media = v3MediaClient(mediaSettings)
-		cfg.MediaModel = v3MediaModel(activeModels, settings.ProfileDir, cfg.RolesSource)
+		cfg.MediaModel = v3MediaModel(activeModels, settings.ProfileDir, cfg.RolesSource, cfg.OneModel)
 		cfg.MediaPick = v3MediaPick(activeModels)
 	}
 
@@ -1673,10 +1673,10 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	// once at the seam every errand passes through, which is the only place a
 	// third crew-only caller can be made right without knowing the flag exists.
 	//
-	// The media slots are deliberately untouched. Vision, image, speech and
-	// video are capability-qualified — a text model cannot answer view_image —
-	// so settling them on the session model would not make the run single-model,
-	// it would make it broken. The flag says every TEXT call, and means it.
+	// Media slots remain capability-qualified rather than following text roles.
+	// With this flag an explicit media pin is strict: an unsupported pinned
+	// operation is unavailable instead of falling through to another model.
+	// Unpinned media keeps its normal discovery and fallback behavior.
 	// The rows are not even read under the flag. Reading them only to discard
 	// the answer would make a malformed pins row stop a launch that had already
 	// said it does not care what the pins say.

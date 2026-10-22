@@ -382,7 +382,16 @@ func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows 
 	// every scenario tests. The variable is dropped first; an assignment in env
 	// follows the -u and wins, so a scenario that names a word still gets it,
 	// and a scenario that names none really runs with the variable absent.
-	command := []string{"env", "-u", "CODEAF_TASK_BELT"}
+	var prefix []string
+	for index := 0; index < len(env); index++ {
+		if env[index] == "CODEAF_E2E_PRIVATE_ISOLATION=1" {
+			prefix = privateMemoryIsolation(t, home, ws, binary(t))
+			env = append(env[:index], env[index+1:]...)
+			break
+		}
+	}
+	command := append([]string(nil), prefix...)
+	command = append(command, "env", "-u", "CODEAF_TASK_BELT")
 	command = append(command, env...)
 	command = append(command, g.tokens(env)...)
 	command = append(command,

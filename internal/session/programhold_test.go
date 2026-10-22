@@ -210,7 +210,7 @@ func TestProgramHoldClassifiesEveryRegisteredChatTool(t *testing.T) {
 		"track": true, "commit": true, "recall": true, "remember": true, "forget": true,
 		"propose_task": true, "tasks": true, "quick_task": true,
 		"use_skill": true, "load_capability": true, "view_image": true,
-		"read_document": true, "search_conversations": true,
+		"read_document": true, "search_conversations": true, "search_memories": true,
 		"workspace": true, "workspace_snapshots": true, "workspace_fork": true,
 		"services": true, "use_service": true,
 		"settings": true, "change_setting": true,

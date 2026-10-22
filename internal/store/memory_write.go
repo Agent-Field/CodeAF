@@ -25,10 +25,11 @@ type WriteRequest struct {
 	// Owner is the blast radius, spelled as an owner (memory_owner.go). An
 	// empty owner is refused — the caller that cannot name one is exactly the
 	// caller the quarantine exists for.
-	Owner string
-	Type  string
-	Text  string
-	Tags  []string
+	Owner      string
+	Durability string
+	Type       string
+	Text       string
+	Tags       []string
 	// SourceSession is the conversation that supplied the words, for the
 	// memory place's card.
 	SourceSession string
@@ -38,12 +39,7 @@ type WriteRequest struct {
 	// ProjectName is the name the person knows the project by, kept beside a
 	// project memory so the memory place can say where it holds.
 	ProjectName string
-	// Unbounded admits the line without measuring it against
-	// [MemoryBlockRunes]. ONE caller sets it: the legacy memory.md import,
-	// whose lines were already the person's before the bound existed — a
-	// store an earlier build filled the same way. What does not fit is then
-	// chosen by [FitMemories] and said, rather than refused half way through
-	// a file the import would retry every turn.
+	// Unbounded is retained for import compatibility. All valid writes are unbounded.
 	Unbounded bool
 }
 
@@ -58,17 +54,17 @@ type WriteResult struct {
 
 // The two outcomes of a write.
 const (
+	WriteOutcomeDropped = "dropped-ephemeral"
 	WriteOutcomeAdded   = "added"
 	WriteOutcomeSkipped = "skipped-duplicate"
 )
 
-// Write validates, deduplicates and measures under one immediate write
-// transaction. Exact folded bodies within the same owner are duplicates, and a
-// duplicate needs no room; a new line must fit every block its owner reaches
-// ([memoryRoomOn]), or the write is refused with [ErrMemoryFull]. Validation
-// comes before the lookup so an invalid request cannot become a successful
-// skip.
+// Write validates and conservatively deduplicates within the named owner in
+// one transaction. Storage is unbounded; only prompt admission has a budget.
 func (s *Store) Write(req WriteRequest) (WriteResult, error) {
+	if req.Durability == "ephemeral" {
+		return WriteResult{Outcome: WriteOutcomeDropped}, nil
+	}
 	owner := normalizeOwner(req.Owner)
 	if !ValidOwner(owner) {
 		return WriteResult{}, fmt.Errorf("write memory: %w: an owner is required and %q is not one this build mints", ErrInvalid, req.Owner)
@@ -80,6 +76,7 @@ func (s *Store) Write(req WriteRequest) (WriteResult, error) {
 	if err != nil {
 		return WriteResult{}, fmt.Errorf("write memory: %w", err)
 	}
+	payload.Type = memoryLintType(payload.Type, payload.Text)
 	payload.ID = NewMemoryID()
 	payload.SourceSession = strings.TrimSpace(req.SourceSession)
 
@@ -95,8 +92,8 @@ func (s *Store) Write(req WriteRequest) (WriteResult, error) {
 	result := WriteResult{Outcome: WriteOutcomeAdded}
 	var addedAt time.Time
 	if existing != nil {
-		if _, _, err := appendEvent(tx, "memory", EventMemorySkipped, map[string]any{"owner": owner, "text": payload.Text, "kept": existing.ID}); err != nil {
-			return WriteResult{}, fmt.Errorf("write memory: %w", err)
+		if err := mergeMemoryWriteOn(tx, owner, payload, existing); err != nil {
+			return WriteResult{}, err
 		}
 		result = WriteResult{Memory: *existing, Outcome: WriteOutcomeSkipped}
 	} else {
@@ -130,11 +127,11 @@ func (s *Store) Write(req WriteRequest) (WriteResult, error) {
 	return result, nil
 }
 
-// writeDuplicateOn checks bodies in the transaction that admits the new row.
-// It streams the owner's active rows, so an old duplicate obeys the same exact
-// rule as a new one.
+// writeDuplicateOn probes indexed SimHash bands and verifies candidates with
+// ordered words so punctuation repeats merge without changing meaning.
 func writeDuplicateOn(tx *sql.Tx, owner, text string) (*Memory, error) {
-	rows, err := tx.Query("SELECT id, text FROM memories WHERE owner = ? AND status = ? ORDER BY updated_seq DESC, id DESC", owner, MemoryActive)
+	sig := memorySignature(memoryWords(text))
+	rows, err := tx.Query(`SELECT m.id,m.text FROM memories m JOIN memory_fingerprints f ON f.memory_id=m.id WHERE m.owner=? AND m.status=? AND (f.b0=? OR f.b1=? OR f.b2=? OR f.b3=?) ORDER BY m.updated_seq DESC,m.id DESC`, owner, MemoryActive, int(sig&65535), int((sig>>16)&65535), int((sig>>32)&65535), int(sig>>48))
 	if err != nil {
 		return nil, err
 	}
@@ -146,7 +143,7 @@ func writeDuplicateOn(tx *sql.Tx, owner, text string) (*Memory, error) {
 			rows.Close()
 			return nil, err
 		}
-		if NormalizeMemoryWords(body) == want {
+		if NormalizeMemoryWords(body) == want || memoryNearDuplicate(body, text) {
 			id = candidateID
 			break
 		}
@@ -207,6 +204,19 @@ func (s *Store) JournalMemoryFailure(via string, err error) error {
 	})
 	if err != nil {
 		return fmt.Errorf("journal memory failure: %w", err)
+	}
+	return nil
+}
+
+func mergeMemoryWriteOn(tx *sql.Tx, owner string, payload memoryPayload, existing *Memory) error {
+	if _, _, err := appendEvent(tx, "memory", EventMemorySkipped, map[string]any{"owner": owner, "text": payload.Text, "kept": existing.ID}); err != nil {
+		return err
+	}
+	if err := memoryInteractionOn(tx, existing.ID, "merged", payload.SourceSession, payload.Origin == OriginPerson); err != nil {
+		return err
+	}
+	if payload.Origin == OriginPerson {
+		existing.Origin = OriginPerson
 	}
 	return nil
 }

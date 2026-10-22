@@ -785,6 +785,10 @@ then the crew picked for this task — and the rung that answered is named besid
 (`--model`, `CODEAF_MODEL`, `pinned`, `routed`). **The checker never inherits the planner:**
 a `--plan-model` says who plans and nothing about who checks.
 
+`codeaf chat --one-model` and `codeaf resume --one-model` keep text calls on the
+session model; with that flag, an explicit media-model pin that cannot handle
+the operation leaves it unavailable rather than switching models.
+
 `codeaf do` takes three more, all for this one task:
 
 - **`--best`** — the strongest crew your allowed models make.

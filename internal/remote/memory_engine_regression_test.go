@@ -93,6 +93,18 @@ func TestDefaultEngineMemoryCommandsReachTheRealSession(t *testing.T) {
 	if err != nil || shelves.Held != 2 {
 		t.Fatalf("the memory place snapshot = %+v, %v", shelves, err)
 	}
+
+	block, err := loop.Client.Agent().MemorySelection()
+	if err != nil {
+		t.Fatalf("memory admission through engine = %v", err)
+	}
+	if block.TotalRunes == 0 || len(block.RunesBySemanticType) == 0 || block.TotalRunes != block.PinnedRunes+block.BudgetedRunes {
+		t.Fatalf("memory composition lost over wire: %+v", block)
+	}
+	admitted, ok := block.Decisions[lines[0].ID]
+	if !ok || !admitted.Riding || admitted.Reason != "explicit pin" {
+		t.Fatalf("explicit pin admission lost over wire: %+v", block)
+	}
 	// A PERSON FORGETS ON THE MEMORIES TAB, by the line's id, through the
 	// engine's own store.
 	if err := loop.Client.ForgetMemory(lines[0].ID); err != nil {
