@@ -2117,9 +2117,13 @@ func (a *Agent) deliverBeltRunLanding(run *beltRun, summary RunSummary, landing 
 		a.accept(delivery{origin: fromRuntime, kind: msgResult, note: a.programLandingNote(run, summary, line)})
 		return
 	}
-	if task := run.store.Task(run.root); landingOwesAnswer(task) {
+	task := run.store.Task(run.root)
+	tags := plainBeltLandingReplyTags(run, task, summary)
+	if landingOwesAnswer(task) {
 		document := owedLandingDocument(task, line)
 		note := wakeNote(document.text())
+		note.completionOnly = true
+		note.replyTags = tags
 		note.landingQuestion, note.landingOutcome = document.landingQuestion, document.landingOutcome
 		note.batch = false
 		note.settle, note.settleCeiling = true, owedLandingCallCeiling()
@@ -2129,10 +2133,37 @@ func (a *Agent) deliverBeltRunLanding(run *beltRun, summary RunSummary, landing 
 		return
 	}
 	note := userText(line)
+	note.completionOnly = true
+	note.replyTags = tags
 	note.authored = true
 	a.mu.Lock()
 	a.recordUserLocked(note)
 	a.mu.Unlock()
+}
+
+// Plain run receipts retain their task identity while the original delivery and answer obligations stay unchanged.
+func plainBeltLandingReplyTags(run *beltRun, task *plandb.Task, summary RunSummary) []TaskReplyTag {
+	id := run.row
+	if id == 0 {
+		id, _ = strconv.ParseUint(strings.TrimPrefix(run.root, "t-"), 10, 64)
+	}
+	if id == 0 {
+		return nil
+	}
+	title, request := run.title, run.brief
+	if task != nil {
+		if title == "" {
+			title = task.Title
+		}
+		if strings.TrimSpace(task.Question) != "" {
+			request = task.Question
+		}
+	}
+	state := TaskDone
+	if summary.Outcome != beltRunOutcomeDone {
+		state = TaskFailed
+	}
+	return []TaskReplyTag{{ID: id, Title: title, Request: request, State: state}}
 }
 
 // recordProgramLimit gives the open surface the same authored line the

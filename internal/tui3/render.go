@@ -34,12 +34,14 @@ import (
 type hitKind uint8
 
 const (
-	hitNone     hitKind = iota
-	hitTool             // a tool call: click expands that call inline
-	hitFold             // the "N earlier tool calls" line: click expands the turn
-	hitCaption          // one step heading: click opens that step's calls
-	hitWorkFold         // one completed turn's folded machinery
-	hitMore             // the "… N more lines" foot of a capped expansion: click lifts the cap
+	hitNone               hitKind = iota
+	hitTool                       // a tool call: click expands that call inline
+	hitFold                       // the "N earlier tool calls" line: click expands the turn
+	hitCaption                    // one step heading: click opens that step's calls
+	hitWorkFold                   // one completed turn's folded machinery
+	hitWorkReceiptDetails         // original receipt details inside a work disclosure
+	hitWorkCompletion             // a task result or process log nested in its work disclosure
+	hitMore                       // the "… N more lines" foot of a capped expansion: click lifts the cap
 	// hitBrief is the door under a node's folded instruction (brieffold.go):
 	// click opens the rest of it, click again folds it back. It is a hit of its
 	// own rather than another hitMore because the two answer the same gesture
@@ -84,10 +86,11 @@ const (
 // the mouse hit-tests row.entry, and ↑/↓ walk the same list. Two sources of
 // truth for "which entry is this row" is how a click lands on the wrong call.
 type row struct {
-	text  string
-	entry int // index into app.entries; -1 for a blank or the fold line
-	hit   hitKind
-	turn  int // the turn a fold line folds
+	text       string
+	entry      int // index into app.entries; -1 for a blank or the fold line
+	hit        hitKind
+	turn       int // the turn a fold line folds
+	completion *workCompletion
 	// activity says this row already carries the running turn's sign of life.
 	// The footer reads the actual drawing so an opened or absent compact block
 	// cannot suppress the only remaining indication of work.
@@ -389,6 +392,14 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	// tense earlier. The lens chooses live compactness independently of its
 	// settled fold policy, and each page owns its disclosure key.
 	lives := deriveLiveWork(d)
+	if d.lens.foldPast == foldTurns {
+		for at, w := range lives {
+			if w.last {
+				w.completions = a.workCompletionsFor(d, w.turn)
+				lives[at] = w
+			}
+		}
+	}
 	// The compact work window already owns the activity indication. Keep
 	// the anchored logo for the initial waiting state, not as a second
 	// animated row stranded above a reply after work resumes.
@@ -397,7 +408,20 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	}
 	for i := 0; i < len(es); i++ {
 		e := &es[i]
-		if f, ok := folds[i]; ok {
+		if f, ok := folds[i]; ok && f.virtual {
+			if wasUser || wasBlock {
+				gap()
+			}
+			out = append(out, row{text: a.pal.dim(fit(a.workfoldLabel(d, f), max(0, width-workIndentCols(width)))), entry: -1, hit: hitWorkFold, turn: f.key})
+			if a.workFoldOpen(d, f.key) {
+				out = append(out, a.completionRows(f.completions, max(0, width-workIndentCols(width)))...)
+			}
+			wasCluster, wasBlock, wasUser, wasNote = true, false, false, false
+		}
+		if e.completion != nil {
+			continue
+		}
+		if f, ok := folds[i]; ok && !f.virtual {
 			// THE CHIP IS NAMED BY ITS OWN KEY AND NOT BY THE TURN
 			// (workfold.go's [workfold.key]): a room's page is one turn holding a
 			// chip per phase, and a row that carried the turn would make every
@@ -418,7 +442,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			// the pass used to sniff for a row that already began with two spaces
 			// so as not to move this one twice, and the sniff caught every other
 			// row that happened to open on two spaces as well (see the pass).
-			out = append(out, row{text: a.pal.dim(a.workfoldLabel(d, f)), entry: -1, hit: hitWorkFold, turn: f.key})
+			out = append(out, row{text: a.pal.dim(fit(a.workfoldLabel(d, f), max(0, width-workIndentCols(width)))), entry: -1, hit: hitWorkFold, turn: f.key})
 			if !open {
 				i = f.answer - 1
 				wasCluster, wasBlock, wasUser, wasNote = false, false, false, false
@@ -449,6 +473,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 				}
 				out = append(out, a.disclosedEntryRows(d, at, width)...)
 			}
+			out = append(out, a.completionRows(f.completions, max(0, width-workIndentCols(width)))...)
 			i = f.answer - 1
 			wasCluster, wasBlock, wasUser, wasNote = true, false, false, false
 			continue
@@ -541,6 +566,9 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 				for call := toolsFrom; call < toolsTo; call++ {
 					out = append(out, a.toolRows(d, call, call == toolsTo-1, width)...)
 				}
+			}
+			if w.last {
+				out = append(out, a.completionRows(w.completions, max(0, width-workIndentCols(width)))...)
 			}
 			wasCluster, wasBlock, wasUser, wasNote = true, false, false, false
 			i = w.end - 1
@@ -903,6 +931,9 @@ func (a *app) captionSpanBody(d deck, c caption, width int) []row {
 // disclosedEntryRows preserves each retained entry's interaction when the
 // surrounding work is opened, including landed-card doors and assistant links.
 func (a *app) disclosedEntryRows(d deck, at, width int) []row {
+	if d.entries[at].completion != nil {
+		return nil
+	}
 	e := &d.entries[at]
 	// The caption owns its lifted narration, including the disclosed remainder.
 	if e.kind == entryAssistant && e.capHead {

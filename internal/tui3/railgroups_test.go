@@ -130,12 +130,11 @@ func TestTheRosterIsOneLinePerTaskUnderItsGroups(t *testing.T) {
 		"│   " + plain(spin) + " Write the tree",
 		"│   " + plain(spin) + " Ship the port",
 		"│ " + railHeadWords[idle] + " 2 " + glyphShut,
-		"│ Done 1 " + glyphShut,
 	}
 	if len(rows) < len(want)+1 {
 		t.Fatalf("the roster drew %d rows:\n%s", len(rows), strings.Join(rows, "\n"))
 	}
-	if !strings.HasPrefix(rows[0], "│ "+sideTasksWord+" 5") || !strings.HasSuffix(strings.TrimRight(rows[0], " "), sideHideKey) {
+	if !strings.HasPrefix(rows[0], "│ "+sideTasksWord) || !strings.HasSuffix(strings.TrimRight(rows[0], " "), sideHideKey) {
 		t.Fatalf("the header is %q", rows[0])
 	}
 	for i, w := range want {
@@ -166,65 +165,51 @@ func TestAFoldIsRememberedForTheSession(t *testing.T) {
 	a, _, _ := roomApp(t)
 	railRun(a)
 	a.height = 30
-	if _, ok := railRowFor(a, a.viewHeight(), "Read the law"); ok {
-		t.Fatalf("the finished work came up open:\n%s", strings.Join(railText(a, a.viewHeight()), "\n"))
-	}
 	x := a.bodyWidth() + ansi.StringWidth(railSeam) + 2
-	railClick(t, a, x, railHeadY(t, a, railDone))
+	if _, ok := railRowFor(a, a.viewHeight(), "Cut the goldens"); ok {
+		t.Fatal("queued group opened itself")
+	}
+	railClick(t, a, x, railHeadY(t, a, railIdle))
 	if a.roomOpen() {
-		t.Fatalf("a press on a heading opened a room: id=%d", roomID(a))
+		t.Fatal("group heading opened room")
 	}
-	if _, ok := railRowFor(a, a.viewHeight(), "Read the law"); !ok {
-		t.Fatalf("a press on the heading did not open the group:\n%s", strings.Join(railText(a, a.viewHeight()), "\n"))
-	}
-	if !strings.Contains(mustRailRow(t, a, "Done 1"), glyphOpen) {
-		t.Fatalf("the open group does not wear ▾: %q", mustRailRow(t, a, "Done 1"))
-	}
-	a.taskUpdate(update(2, "Read the law", session.TaskDone, session.TaskNotice{Merge: mergeWordMerged}))
-	a.taskUpdate(update(6, "Port the loader", session.TaskDone, session.TaskNotice{Merge: mergeWordMerged}))
-	for _, title := range []string{"Read the law", "Port the loader"} {
+	for _, title := range []string{"Cut the goldens", "Wire the seam"} {
 		if _, ok := railRowFor(a, a.viewHeight(), title); !ok {
-			t.Fatalf("the group the person opened closed itself on an update:\n%s", strings.Join(railText(a, a.viewHeight()), "\n"))
+			t.Fatal("opened queued group lost row")
 		}
 	}
-	railClick(t, a, x, railHeadY(t, a, railDone))
-	if _, ok := railRowFor(a, a.viewHeight(), "Read the law"); ok {
-		t.Fatalf("a second press did not fold the group:\n%s", strings.Join(railText(a, a.viewHeight()), "\n"))
+	a.taskUpdate(update(6, "Port the loader", session.TaskQueued, session.TaskNotice{}))
+	if _, ok := railRowFor(a, a.viewHeight(), "Port the loader"); !ok {
+		t.Fatal("group closed after update")
 	}
-	// THE RUNNING WORK DOES NOT FOLD, and its heading says so by wearing no
-	// mark and taking no press.
+	railClick(t, a, x, railHeadY(t, a, railIdle))
+	if _, ok := railRowFor(a, a.viewHeight(), "Cut the goldens"); ok {
+		t.Fatal("second click did not fold group")
+	}
+	drive(t, a, altT())
+	a.railWhere = railSpot{group: int(railIdle) + 1}
+	drive(t, a, key("enter"))
+	if _, ok := railRowFor(a, a.viewHeight(), "Cut the goldens"); !ok {
+		t.Fatal("keyboard did not open queued group")
+	}
+	if _, ok := railRowFor(a, a.viewHeight(), "Read the law"); ok {
+		t.Fatal("completion appeared in active roster")
+	}
 	run := mustRailRow(t, a, "Running ")
 	if strings.Contains(run, glyphOpen) || strings.Contains(run, glyphShut) {
-		t.Fatalf("the running heading wears a fold it does not have: %q", run)
-	}
-	railClick(t, a, x, railHeadY(t, a, railRunning))
-	if _, ok := railRowFor(a, a.viewHeight(), "Ship the port"); !ok {
-		t.Fatalf("a press folded the running work:\n%s", strings.Join(railText(a, a.viewHeight()), "\n"))
-	}
-	// AND THE KEYBOARD REACHES THE SAME FOLD: enter on a heading.
-	drive(t, a, altT())
-	a.railWhere = railSpot{group: int(railDone) + 1}
-	drive(t, a, key("enter"))
-	if _, ok := railRowFor(a, a.viewHeight(), "Read the law"); !ok {
-		t.Fatalf("enter on the heading did not open the group:\n%s", strings.Join(railText(a, a.viewHeight()), "\n"))
-	}
-	if a.roomOpen() {
-		t.Fatal("enter on a heading opened a room")
+		t.Fatal("running heading folds")
 	}
 }
 
-// THE HEADING'S HOVER GROUND IS ITS PRESS. The pointer on a folded heading
-// lights it and names what a press does; the pointer on the running heading
-// lights nothing, because a press there does nothing.
 func TestAHeadingLightsOnlyWhereItFolds(t *testing.T) {
 	a, _, _ := taskApp(t)
 	railRun(a)
 	x := a.bodyWidth() + ansi.StringWidth(railSeam) + 2
-	a.setHover(x, railHeadY(t, a, railDone))
-	if a.hot.kind != hoverRailGroup || railGroup(a.hot.index) != railDone {
+	a.setHover(x, railHeadY(t, a, railIdle))
+	if a.hot.kind != hoverRailGroup || railGroup(a.hot.index) != railIdle {
 		t.Fatalf("the pointer on the Done heading resolved to %+v", a.hot)
 	}
-	if got := a.sideHoverWords(); !strings.Contains(got, "Show what is done") {
+	if got := a.sideHoverWords(); !strings.Contains(got, "Show what is queued") {
 		t.Fatalf("the hint over the folded heading reads %q", got)
 	}
 	a.setHover(x, railHeadY(t, a, railRunning))
@@ -303,7 +288,7 @@ func TestTheFullscreenRosterDrawsTheSameGroups(t *testing.T) {
 	}
 	rows := railText(a, a.viewHeight())
 	body := strings.Join(rows, "\n")
-	for _, want := range []string{sideTasksWord + " 5", "Running 2", "Ship the port", "Done 1"} {
+	for _, want := range []string{sideTasksWord, "Running 2", "Ship the port"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("the fullscreen roster is missing %q:\n%s", want, body)
 		}
@@ -316,10 +301,7 @@ func TestTheFullscreenRosterDrawsTheSameGroups(t *testing.T) {
 			t.Fatalf("row %d is %d cells wide on an %d-column frame:\n%q", i, w, a.width, row)
 		}
 	}
-	a.railWhere = railSpot{group: int(railDone) + 1}
-	drive(t, a, key("enter"))
-	if !strings.Contains(strings.Join(railText(a, a.viewHeight()), "\n"), "Read the law") {
-		t.Fatalf("enter on the heading did not open the group over the body:\n%s",
-			strings.Join(railText(a, a.viewHeight()), "\n"))
+	if strings.Contains(body, "Done") || strings.Contains(body, "Read the law") {
+		t.Fatalf("history appeared in active roster: %s", body)
 	}
 }

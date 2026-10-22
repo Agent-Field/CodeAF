@@ -982,6 +982,10 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// A SELECTED PROPOSAL OWNS IT TOO, for the other half of the same reason:
 		// a click on that card opens the node's room now, so the brief keeps the
 		// key rather than losing both gestures (task.go's [app.openCard]).
+		if c := a.selectedWorkCompletion(); c != nil && c.text != "" {
+			a.toggleWorkCompletionDetails(c)
+			return nil
+		}
 		if a.openDone(a.sel) || a.openCard(a.sel) {
 			return nil
 		}
@@ -1511,6 +1515,9 @@ func (a *app) enterCheckedLine(ownershipRead bool) tea.Cmd {
 		if key, ok := selectedCaption(a.sel); ok {
 			a.toggleCap(key)
 			return nil
+		}
+		if c := a.selectedWorkCompletion(); c != nil {
+			return a.openWorkCompletion(c)
 		}
 		a.openTool(a.sel)
 		return nil

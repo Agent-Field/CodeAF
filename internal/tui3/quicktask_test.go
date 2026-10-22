@@ -113,9 +113,8 @@ func TestAQuickLandingShowsItsAnswerAndNoBranchOrMergeRow(t *testing.T) {
 	notice.Result = "keys.go and keys_test.go agree; parse.go is the odd one out."
 	notice.ResultWhole = notice.Result
 	drive(t, a, taskEventMsg{gen: a.taskGen, ev: update(7, "compare the four files", session.TaskDone, notice)})
-	clickHit(t, a, hitDone)
 
-	text := taskText(a)
+	text := retainedLandingText(t, a, 7)
 	if !strings.Contains(text, "parse.go is the odd one out.") {
 		t.Fatalf("the open card does not carry the worker's last message:\n%s", text)
 	}
@@ -153,9 +152,8 @@ func TestAQuickLandingThatWroteFilesNamesThem(t *testing.T) {
 	notice.Result = "the note is written."
 	notice.Changed = []string{"notes/summary.md"}
 	drive(t, a, taskEventMsg{gen: a.taskGen, ev: update(7, "write the summary", session.TaskDone, notice)})
-	clickHit(t, a, hitDone)
 
-	text := taskText(a)
+	text := retainedLandingText(t, a, 7)
 	if !strings.Contains(text, doneChangedLabel+"notes/summary.md") {
 		t.Fatalf("the card never names the file it wrote:\n%s", text)
 	}

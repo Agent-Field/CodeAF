@@ -53,21 +53,20 @@ func sideWordAt(t *testing.T, a *app, view int) (int, int) {
 }
 
 // WITH THE MANAGER IN FRONT THE ONE COLUMN OPENS ON THE TRAFFIC, and its
-// header offers the manager's own tasks as the other word, with its count,
-// even at zero. A press on the word lays the tasks in the same column at the
+// header offers the manager's own tasks as the other word without a count. A press on the word lays the tasks in the same column at the
 // same width with the header where it was, and a press on the Traffic word
 // takes it back. There is no second column and no special case.
 func TestManagerColumnOpensOnTheTrafficAndOffersItsTasks(t *testing.T) {
 	a := managerColumnApp(t)
 	rows := railLines(t, a)
-	head := railRowOf(rows, sideTasksWord+" 0"+sideWordSep+sideTrafficWord)
+	head := railRowOf(rows, sideTasksWord+sideWordSep+sideTrafficWord)
 	if head < 0 || a.sideView() != sideTraffic {
 		t.Fatalf("the manager's column does not open on the Traffic with both words:\n%s", strings.Join(rows, "\n"))
 	}
 	managerTasks(a, 2)
 	rows = railLines(t, a)
-	if railRowOf(rows, sideTasksWord+" 2"+sideWordSep) != head || railRowOf(rows, "Task 1") >= 0 {
-		t.Fatalf("the Tasks word does not count the work behind it:\n%s", strings.Join(rows, "\n"))
+	if railRowOf(rows, sideTasksWord+sideWordSep) != head || railRowOf(rows, "Task 1") >= 0 {
+		t.Fatalf("the Tasks heading moved or exposed inactive work:\n%s", strings.Join(rows, "\n"))
 	}
 	body, cols := a.bodyWidth(), a.railWidth()
 
@@ -76,7 +75,7 @@ func TestManagerColumnOpensOnTheTrafficAndOffersItsTasks(t *testing.T) {
 	if a.hot.kind != hoverSide || a.hot.key != sideHeadKey || a.hot.index < 0 {
 		t.Fatalf("the Tasks word does not answer the pointer: %+v", a.hot)
 	}
-	if words := a.dockHoverWords(); !strings.Contains(words, "tasks") || !strings.Contains(words, "click") {
+	if words := a.dockHoverWords(); words != "Show active tasks"+hintSegment+"click" {
 		t.Fatalf("the Tasks word's hint says %q", words)
 	}
 	a.dropHover()
@@ -85,9 +84,14 @@ func TestManagerColumnOpensOnTheTrafficAndOffersItsTasks(t *testing.T) {
 		t.Fatal("a press on Tasks did not bring the tasks to the front")
 	}
 	rows = railLines(t, a)
-	if a.bodyWidth() != body || a.railWidth() != cols || railRowOf(rows, sideTasksWord+" 2") != head || railRowOf(rows, "Task 1") <= head {
+	if a.bodyWidth() != body || a.railWidth() != cols || railRowOf(rows, sideTasksWord) != head || railRowOf(rows, "Task 1") <= head {
 		t.Fatalf("the tasks are not in the same column under the same header (body %d->%d, cols %d->%d):\n%s", body, a.bodyWidth(), cols, a.railWidth(), strings.Join(rows, "\n"))
 	}
+	a.setHover(x, y)
+	if words := a.dockHoverWords(); words != "Open task results and history"+hintSegment+"click" {
+		t.Fatalf("active Tasks heading names the wrong action: %q", words)
+	}
+	a.dropHover()
 	x, y = sideWordAt(t, a, sideTraffic)
 	sideClick(t, a, x, y)
 	if a.sideView() != sideTraffic || a.bodyWidth() != body {
@@ -135,7 +139,7 @@ func TestTheColumnsWordIsRememberedPerKindOfChat(t *testing.T) {
 	}
 	plainChat.sideSetView(sideTraffic)
 	rows := railLines(t, plainChat)
-	if plainChat.sideView() != sideTasks || railRowOf(rows, sideTrafficWord) >= 0 || railRowOf(rows, sideTasksWord+" 1") < 0 {
+	if plainChat.sideView() != sideTasks || railRowOf(rows, sideTrafficWord) >= 0 || railRowOf(rows, sideTasksWord) < 0 {
 		t.Fatalf("a chat in no team offers a Traffic:\n%s", strings.Join(rows, "\n"))
 	}
 }

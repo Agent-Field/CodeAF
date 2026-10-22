@@ -255,15 +255,14 @@ func TestTheManualQuotesBothTasksOpeningHeadingsExactly(t *testing.T) {
 }
 
 // THE GROUP HEADINGS THE MANUAL QUOTES ARE BUILT FROM THE ROSTER'S OWN WORD
-// TABLE. The column's footer of counts is gone and its headings carry the
-// counts now (`Running 4`, `Done 6 ▸`); the words moved once before and four
+// TABLE. Only active groups remain in the column; completed results live in
+// Tasks rather than a Done heading. The words moved once before and four
 // passages went on teaching the words it had dropped, so the next move of the
 // table fails here rather than in front of somebody reading the page.
 func TestTheManualQuotesTheRosterGroupsOwnWords(t *testing.T) {
 	wants := []string{
 		railHeadWords[railRunning] + " " + itoa(4),
 		railHeadWords[railIdle] + " " + itoa(3) + " " + glyphShut,
-		railHeadWords[railDone] + " " + itoa(6) + " " + glyphShut,
 	}
 	for _, want := range wants {
 		if !manual.Chat().Mentions(want) {

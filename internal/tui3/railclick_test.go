@@ -120,7 +120,7 @@ func TestTheStateCellOpensTheTask(t *testing.T) {
 		strings.Contains(drawn, "  "+glyphShut) {
 		t.Fatalf("a task row drew a disclosure:\n%s", drawn)
 	}
-	for _, id := range []uint64{1, 9} {
+	for _, id := range []uint64{1, 3} {
 		a.closeRoom()
 		railClick(t, a, glyph, railRowY(t, a, id))
 		if !a.roomOpen() || a.room.id != id {
@@ -268,7 +268,7 @@ func TestEveryVisibleRowOfTheColumnOpensTheTaskItDraws(t *testing.T) {
 	a, _, _ := roomApp(t)
 	railFamily(a)
 	seam := a.bodyWidth() + ansi.StringWidth(railSeam)
-	for _, id := range []uint64{1, 3, 4, 5, 2, 9, 6} {
+	for _, id := range []uint64{1, 3, 4, 5, 6} {
 		for _, at := range []int{0, 4, a.railRoom() - 1} {
 			a.closeRoom()
 			var y int
@@ -301,7 +301,7 @@ func TestPressingAnotherRowWhileARoomIsOpenSwitchesToIt(t *testing.T) {
 	if !a.roomStandingOn(a.tasks[1]) {
 		t.Fatal("the roster does not mark the row the reader walked through")
 	}
-	for _, next := range []uint64{3, 9, 4, 1} {
+	for _, next := range []uint64{3, 5, 4, 1} {
 		// THE ROW IS FOUND WITH THE PAGE STILL OPEN, which is the case this is
 		// about: the room pins a header above the body, so the roster's rows are
 		// not where they were before anybody walked in (view.go's
@@ -423,7 +423,7 @@ func TestTheColumnLeadsWithStateAndSpendsNoCellOnIdentity(t *testing.T) {
 	// the indent under its heading, one state glyph, and the air after it.
 	// That is what lets the column be read downward as one column of states.
 	want := ansi.StringWidth(railSeam) + 4
-	for _, title := range []string{"Collect the fixture", "Ship the streaming", "Cut the goldens"} {
+	for _, title := range []string{"Write the tree walker", "Ship the streaming", "Cut the goldens"} {
 		if got := leadCells(t, mustRailRow(t, a, title), title); got != want {
 			t.Fatalf("the row leads in %d cells, want %d:\n%q", got, want, mustRailRow(t, a, title))
 		}

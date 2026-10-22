@@ -5,7 +5,7 @@ import "github.com/Agent-Field/codeaf/internal/session"
 // Dismissal is presentation state. It never stops, deletes or accepts work.
 func (a *app) dismissDone(i int) bool {
 	card := a.doneCardAt(i)
-	if card == nil || card.dismissed || card.status.Tier == session.TaskTierYourCall {
+	if card == nil || card.dismissed || (card.status.Tier == session.TaskTierYourCall || card.attention != "") {
 		return false
 	}
 	card.dismissed = true

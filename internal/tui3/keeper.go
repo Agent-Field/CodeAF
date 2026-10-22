@@ -251,9 +251,10 @@ type behindWatch struct {
 	// cancellation snapshot. Painting reads only the atomic working flag.
 	live map[uint64]struct{}
 	// The surface snapshots only this conversation’s replayed cancellation IDs.
-	workMu  sync.Mutex
-	jobs    map[int]struct{}
-	jobbing atomic.Bool
+	workMu      sync.Mutex
+	jobs        map[int]struct{}
+	completions []heldCompletion
+	jobbing     atomic.Bool
 	// notices are the lines this conversation said to the person while it was
 	// out of sight that NO RECORD CARRIES — memory's notices
 	// ([session.Event.Unrecorded]). A turn's events and the transcript are
@@ -327,6 +328,11 @@ func (w *behindWatch) noteTask(notice *session.TaskNotice) bool {
 	}
 	w.workMu.Lock()
 	defer w.workMu.Unlock()
+	_, wasLive := w.live[notice.ID]
+	completed := wasLive && taskCompletionState(notice.State) && notice.Parent == 0
+	if completed && (notice.Crew == nil || strings.TrimSpace(notice.Crew.Stopped) == "") {
+		w.completions = append(w.completions, heldCompletion{task: notice.ID, incomplete: notice.State == session.TaskFailed})
+	}
 	switch notice.State {
 	case session.TaskRunning, session.TaskQueued:
 		if w.live == nil {
@@ -338,7 +344,7 @@ func (w *behindWatch) noteTask(notice *session.TaskNotice) bool {
 	default:
 		return false
 	}
-	return w.tasking.Swap(len(w.live) > 0) != (len(w.live) > 0)
+	return w.tasking.Swap(len(w.live) > 0) != (len(w.live) > 0) || completed
 }
 
 // stir asks the surface to look, unless it has already been asked.
@@ -711,6 +717,15 @@ func (a *app) behindStir(note behindStirMsg) tea.Cmd {
 		return tea.Batch(next, a.takeOverKept(note.key, held))
 	}
 	landed := held.watch.took()
+	requiresPerson := needsPerson(held.conv.Agent)
+	for _, completion := range held.watch.takeCompletions() {
+		if !requiresPerson {
+			a.queueCompletionToast(held.conv.SessionFile, 0, completion.task, completion.process, completion.incomplete)
+		}
+	}
+	if requiresPerson && a.completionToast.file == held.conv.SessionFile {
+		a.dismissCompletionToast()
+	}
 	var parked tea.Cmd
 	continued := false
 	if landed && held.side != nil && len(held.side.parks) > 0 {
@@ -725,14 +740,18 @@ func (a *app) behindStir(note behindStirMsg) tea.Cmd {
 	a.touch()
 	var banner tea.Cmd
 	switch {
-	case needsPerson(held.conv.Agent):
+	case requiresPerson:
 		// A QUESTION IN A CONVERSATION NOBODY IS LOOKING AT. The presence file
 		// says `waiting on you` to every other window on the machine and to
 		// home; this is what says it to the person sitting here, who is looking
 		// at a different conversation in the same terminal.
 		banner = a.notifyBehind(held, notifyAskWord)
 	case landed && !continued:
-		banner = a.notifyBehind(held, notifyDoneWord)
+		if a.focused {
+			a.queueReplyToast(held.conv.SessionFile)
+		} else {
+			banner = a.notifyBehind(held, notifyDoneWord)
+		}
 	}
 	// NO FINISHED BANNER FOR AN ANSWER THAT IMMEDIATELY CONTINUES. The finished
 	// counter still advances because the tab truthfully reports how many turns

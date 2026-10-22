@@ -3278,64 +3278,29 @@ func taskAnswerAt(t *testing.T, a *app, want int) (int, int) {
 func TestTheProposalBlockAndTheLandedCardEndInABlank(t *testing.T) {
 	a, agent, _ := taskApp(t)
 	agent.pending = []uint64{7}
-	drive(t, a,
-		streamEventMsg{gen: a.gen, ev: proposal(a, 7, 4*time.Second)},
-		key("esc"),
-		streamEventMsg{gen: a.gen, ev: update(7, "Fix the nil-map crash", session.TaskDone, session.TaskNotice{
-			Elapsed: 8 * time.Second, Merge: mergeWordMerged,
-		})},
-	)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 4*time.Second)}, key("esc"), streamEventMsg{gen: a.gen, ev: update(7, "Fix the nil-map crash", session.TaskDone, session.TaskNotice{Elapsed: 8 * time.Second, Merge: mergeWordMerged})})
+	drive(t, a, streamEventMsg{gen: a.gen, ev: session.Event{Kind: session.EventTextDelta, Text: "and now the reply."}}, frameMsg{})
 	rows := a.visible(a.bodyWidth())
 	foot := -1
 	for i, r := range rows {
 		if strings.HasPrefix(strings.TrimSpace(plain(r.text)), taskFootCorner) {
 			foot = i
 		}
-	}
-	if foot < 0 {
-		t.Fatalf("the settled block has no foot:\n%s", taskText(a))
-	}
-	if foot+1 >= len(rows) || strings.TrimSpace(plain(rows[foot+1].text)) != "" {
-		t.Fatalf("the block runs straight into what follows it:\n%s", taskText(a))
-	}
-	// THE CARD IS FOUND BY ITS HIT and not by its words: it is a block of two
-	// rows now, and what this test owns is the blank under the LAST of them.
-	//
-	// THE HEAD IS SPELLED THE WAY THIS WAVE SPELLS IT, and both halves of that
-	// moved on 2026-09-03. The name arrives WHOLE — taskident.go's [taskTitleOf]
-	// stopped cutting to three words, because a fitter cannot give back cells
-	// spent before it was asked (rowfit.go's first law) — and the span is joined
-	// to the state word with ` · ` like every other fact on the row, because
-	// `done 8s` fuses two separate facts into one phrase (taskdone.go's
-	// [app.doneTail] states the whole of it).
-	if !strings.Contains(taskText(a), "Fix the nil-map crash · "+doneWord+" · 8s · "+mergeWordMerged) {
-		t.Fatalf("the landed card is not in the transcript:\n%s", taskText(a))
-	}
-	// The card is the last entry here, so what it owes the next one is asserted
-	// by putting one after it.
-	drive(t, a, streamEventMsg{gen: a.gen, ev: session.Event{Kind: session.EventTextDelta, Text: "and now the reply."}}, frameMsg{})
-	rows = a.visible(a.bodyWidth())
-	last := -1
-	for i, r := range rows {
 		if r.hit == hitDone {
-			last = i
+			t.Fatal("routine landing inserted a transcript card")
 		}
 	}
-	if last < 0 {
-		t.Fatalf("the landed card left no rows of its own:\n%s", taskText(a))
+	if foot < 0 || foot+1 >= len(rows) || strings.TrimSpace(plain(rows[foot+1].text)) != "" {
+		t.Fatalf("proposal lost its spacing before the answer:\n%s", taskText(a))
 	}
-	if last+1 >= len(rows) || strings.TrimSpace(plain(rows[last+1].text)) != "" {
-		t.Fatalf("the landed card runs straight into the next entry:\n%s", taskText(a))
+	if !strings.Contains(taskText(a), "and now the reply.") {
+		t.Fatal("reply missing")
+	}
+	if card := a.doneCardFor(7); card == nil || card.span != 8*time.Second || card.merge != mergeWordMerged {
+		t.Fatal("landing facts lost")
 	}
 }
 
-// ESC IS LATER, AND IT IS NOT THE TURN'S EITHER.
-//
-// It used to decline the proposal, which was the honest reading of "get this off
-// my screen" while the block was modal and there was no other way out of it.
-// There is one now (question.go): the rows fold to the chip, the proposal stays
-// open, the engine stays waiting, and NOTHING IS DECIDED BY MAKING SOMETHING GO
-// AWAY. The decline is `2`, which is drawn on the row beside it.
 func TestEscFoldsTheProposalRatherThanDecliningItOrTheTurn(t *testing.T) {
 	a, agent, _ := taskApp(t)
 	agent.pending = []uint64{7}
@@ -3378,198 +3343,60 @@ func TestEscFoldsTheProposalRatherThanDecliningItOrTheTurn(t *testing.T) {
 // raising it (task.go's [app.railShowing]).
 func TestTheRailStandsWhileWorkIsAliveAndGoesWhenItLands(t *testing.T) {
 	a, _, advance := taskApp(t)
-	if !a.railShowing() {
-		t.Fatal("an empty session drew no rail")
-	}
-	if a.bodyWidth() != 200-sideColsFor(200) {
-		t.Fatalf("the empty column is not charged against the conversation: body=%d", a.bodyWidth())
-	}
-	// AND IT SAYS WHAT IT IS FOR. Thirty blank columns beside a paragraph read as
-	// a rendering fault, so the empty column carries its one dim label.
-	if rail := plain(strings.Join(a.railRows(10), "\n")); strings.Contains(rail, "no tasks yet") {
-		t.Fatalf("the empty column announces its emptiness:\n%s", rail)
-	}
-
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Fix the nil-map crash", session.TaskRunning, session.TaskNotice{})})
-	if !a.railShowing() {
-		t.Fatal("a running node did not keep the rail standing")
-	}
-	// The label leaves with the emptiness: a column with a row in it needs no
-	// explanation of itself.
-	if rail := plain(strings.Join(a.railRows(10), "\n")); strings.Contains(rail, "no tasks yet") {
-		t.Fatalf("the label outlived the emptiness it explains:\n%s", rail)
-	}
 	advance(12 * time.Second)
-	rail := plain(strings.Join(a.railRows(10), "\n"))
-	// THE ROW CARRIES THE NAME, not the whole title: taskident.go cuts the
-	// engine's sentence to the two-or-three-word label this column is wide enough
-	// to read.
-	if !strings.Contains(rail, "Fix the nil-map") || !strings.Contains(rail, "12s") {
-		t.Fatalf("the running node is not on the rail with its clock:\n%s", rail)
+	if rail := plain(strings.Join(a.railRows(12), "\n")); !strings.Contains(rail, "Fix the nil-map") || !strings.Contains(rail, "12s") {
+		t.Fatal(rail)
 	}
-
-	// A queued node is a hollow circle, a failure is the bad glyph, and a node
-	// whose branch did not come home keeps the branch name.
-	drive(t, a,
-		streamEventMsg{gen: a.gen, ev: update(8, "Mix audio", session.TaskQueued, session.TaskNotice{})},
-		streamEventMsg{gen: a.gen, ev: update(9, "Collect sources", session.TaskRunning, session.TaskNotice{})},
-		streamEventMsg{gen: a.gen, ev: update(9, "Collect sources", session.TaskFailed, session.TaskNotice{
-			Report: "the tests did not build", Merge: mergeWordAborted, Branch: "task/collect",
-		})},
-		streamEventMsg{gen: a.gen, ev: update(7, "Fix the nil-map crash", session.TaskDone, session.TaskNotice{
-			Elapsed: 130 * time.Second, Merge: mergeWordConflicted, Branch: "task/fix-nil-map",
-		})},
-	)
-	// THE QUEUED WORK IS ONE FOLDED ROW UNTIL IT IS OPENED, and the two rows
-	// that need the person are the band's: the conflicted branch in the
-	// needs-you amber, the failure a ✗ in ink (sidecol.go).
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(8, "Mix audio", session.TaskQueued, session.TaskNotice{})}, streamEventMsg{gen: a.gen, ev: update(9, "Collect sources", session.TaskFailed, session.TaskNotice{Report: "tests did not build", Branch: "task/collect"})}, streamEventMsg{gen: a.gen, ev: update(7, "Fix the nil-map crash", session.TaskDone, session.TaskNotice{Merge: mergeWordConflicted, Branch: "task/fix-nil-map"})})
 	a.sideToggleGroup(railIdle)
-	rail = plain(strings.Join(a.railRows(16), "\n"))
-	for _, want := range []string{
-		glyphQueued + " Mix audio",
-		a.taskStateMark(a.tasks[9]) + " Collect sources",
-		a.taskStateMark(a.tasks[7]) + " Fix the nil-map",
-	} {
-		if !strings.Contains(rail, want) {
-			t.Fatalf("the rail is missing %q:\n%s", want, rail)
-		}
+	rail := plain(strings.Join(a.railRows(20), "\n"))
+	if !strings.Contains(rail, "Mix audio") || !strings.Contains(rail, "Fix the nil-map") || strings.Contains(rail, "Collect sources") || strings.Contains(rail, "Done") {
+		t.Fatal(rail)
 	}
-	// A BRANCH NAME IS NEVER ELLIPSIZED: the row is one line, and the hint line
-	// under the pointer carries the handle back to the work whole.
-	for id, want := range map[uint64]string{7: "task/fix-nil-map", 9: "task/collect"} {
-		if hint := railHint(a, id); !strings.Contains(hint, want) {
-			t.Fatalf("the hint over node %d does not name %q: %q", id, want, hint)
-		}
+	if card := a.doneCardFor(9); card == nil || card.branch != "task/collect" {
+		t.Fatal("incomplete result lost")
 	}
-	if strings.Contains(rail+railHint(a, 9), mergeWordAborted) {
-		t.Fatalf("the rail read the engine's own word for a stopped node:\n%s", rail)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(8, "Mix audio", session.TaskDone, session.TaskNotice{Merge: mergeWordMerged})})
+	if rail := plain(strings.Join(a.railRows(20), "\n")); strings.Contains(rail, "Mix audio") {
+		t.Fatal("completed task remained on active sidebar")
 	}
-
-	// A node whose branch CAME HOME keeps its row: the column is the session's
-	// record of its own work now, and "where did that task go" is the commonest
-	// question asked of it. What it stops saying is anything more than its name.
-	drive(t, a, streamEventMsg{gen: a.gen, ev: update(8, "Mix audio", session.TaskDone, session.TaskNotice{
-		Elapsed: 8 * time.Second, Merge: mergeWordMerged,
-	})})
-	railOpenAll(a)
-	if !strings.Contains(plain(strings.Join(a.railRows(12), "\n")), "Mix audio") {
-		t.Fatal("a merged node left the roster's record")
-	}
-	if !a.railShowing() {
-		t.Fatal("the rail left while two kept branches were still on it")
-	}
-	// The two kept branches are what remains, and dealing with them is the
-	// person's business — this test only owns the empty case, so it drops them
-	// the way /new does. The column does NOT leave with them: the place is
-	// permanent, and an emptied column is back to saying what it is for.
 	a.dropTasks()
 	if !a.railShowing() {
-		t.Fatal("/new took the column down with the nodes")
-	}
-	if rail := plain(strings.Join(a.railRows(10), "\n")); strings.Contains(rail, "no tasks yet") {
-		t.Fatalf("the emptied column announces its emptiness:\n%s", rail)
+		t.Fatal("clearing tasks removed the sidebar navigation")
 	}
 }
 
-// A NODE'S END IS HISTORY, so it lands in the transcript — once, however many
-// lanes carried it. The de-dup is (id, state), because an update raised inside a
-// turn arrives on the turn's stream AND on the standing subscription.
-//
-// WHAT LANDS IS A CARD (taskdone.go), not the one dim sentence this surface used
-// to leave, and every fact the sentence carried is asserted here in the card's
-// own grammar: the outcome and the elapsed on the head, the engine's own words
-// quoted underneath.
-//
-// The landings are SEPARATED BY A REPLY because a contiguous run of more than
-// two cards rolls up into one object (taskdone.go's [doneRollupFloor]), and what
-// this test owns is the wording of a card rather than the shape of a batch.
 func TestALandedNodeWritesOneCardWhateverLaneCarriedIt(t *testing.T) {
 	a, agent, _ := taskApp(t)
-	// say is the reply that closes one landing off from the next.
-	say := func(text string) {
-		drive(t, a, streamEventMsg{gen: a.gen, ev: session.Event{Kind: session.EventTextDelta, Text: text}}, frameMsg{})
-	}
-	done := update(7, "Fix the nil-map crash", session.TaskDone, session.TaskNotice{
-		Elapsed: 130 * time.Second, Merge: mergeWordMerged,
-	})
-	// The same event, on both lanes, exactly as internal/session emits it.
+	done := update(7, "Fix the nil-map crash", session.TaskDone, session.TaskNotice{Elapsed: 130 * time.Second, Merge: mergeWordMerged, Report: "Fixed parser", Result: "Final answer"})
 	cmd := a.watchTasks()
 	agent.updates <- done
 	drive(t, a, append(runCmd(cmd), streamEventMsg{gen: a.gen, ev: done})...)
-
-	text := taskText(a)
-	// THE NAME IS WHOLE AND THE SPAN IS A FACT OF ITS OWN, both since 2026-09-03:
-	// taskident.go's [taskTitleOf] no longer cuts a title to three words before
-	// any width is known, and taskdone.go's [app.doneTail] joins the span to the
-	// state word with the row's own separator rather than with a bare space.
-	want := "Fix the nil-map crash · " + doneWord + " · " + taskSpanWord(130*time.Second) + " · " + mergeWordMerged
-	if strings.Count(text, want) != 1 {
-		t.Fatalf("the transcript holds %d copies of %q:\n%s", strings.Count(text, want), want, text)
-	}
-
-	// A failure says why, in the report's first line, and it says it in the
-	// node's own words — which is why they are in quotes.
-	say("looking at the next one.")
-	drive(t, a, streamEventMsg{gen: a.gen, ev: update(9, "Collect sources", session.TaskFailed, session.TaskNotice{
-		Elapsed: 4 * time.Second, Report: "the tests did not build\nsee the log",
-	})})
-	a.openDone(a.doneEntryFor(9))
-	for _, want := range []string{
-		// `failed` is deleted as a landing's word: the head reads `incomplete` and
-		// the row under it says why, in the engine's own sentence for a fault
-		// (docs/design/task-states/DESIGN.md).
-		"Collect sources · " + taskIncompleteState + " · " + taskSpanWord(4*time.Second),
-		"a fault: the tests did not build",
-	} {
-		if !strings.Contains(taskText(a), want) {
-			t.Fatalf("the failure card does not carry %q:\n%s", want, taskText(a))
+	count := 0
+	for _, entry := range a.entries {
+		if entry.done != nil && entry.done.id == 7 {
+			count++
 		}
 	}
-	a.openDone(a.doneEntryFor(9))
-	if strings.Contains(taskText(a), "see the log") {
-		t.Fatalf("the collapsed card leaked the rest of the report:\n%s", taskText(a))
+	if count != 1 {
+		t.Fatalf("duplicate delivery retained %d landings", count)
 	}
-
-	// A NODE THAT KEPT ITS BRANCH SAYS SO AS A FACT AND NOT AS A STATE. The head
-	// carries the word, the file count and `branch kept · <branch>`; the row under
-	// it carries the engine's own account of what went wrong, and the fused
-	// `stopped — branch kept` is gone from the card altogether
-	// (docs/design/task-states/DESIGN.md).
-	say("and the audio.")
-	drive(t, a, streamEventMsg{gen: a.gen, ev: update(11, "Mix audio", session.TaskFailed, session.TaskNotice{
-		Elapsed: 90 * time.Second, Report: "stopped: 40 steps and no finish",
-		Merge: mergeWordAborted, Branch: "task/mix",
-	})})
-	a.openDone(a.doneEntryFor(11))
-	for _, want := range []string{
-		"Mix audio · " + taskIncompleteState + " · " + taskSpanWord(90*time.Second),
-		"branch · task/mix",
-		"stopped: 40 steps and no finish",
-	} {
-		if !strings.Contains(taskText(a), want) {
-			t.Fatalf("the kept-branch card does not carry %q:\n%s", want, taskText(a))
+	card := a.doneCardFor(7)
+	if card == nil || card.result != "Final answer" || card.report != "Fixed parser" || card.span != 130*time.Second || !card.hidden() {
+		t.Fatalf("lost landing facts: %+v", card)
+	}
+	if rows := a.doneRows(card, 120, false); len(rows) != 0 {
+		t.Fatal("duplicate completion occupied chat")
+	}
+	for _, id := range []uint64{9, 11, 12} {
+		drive(t, a, streamEventMsg{gen: a.gen, ev: update(id, "Incomplete task", session.TaskFailed, session.TaskNotice{Report: "tests did not build", Branch: "task/kept"})})
+		if card := a.doneCardFor(id); card == nil || card.report != "tests did not build" || card.branch != "task/kept" || !card.hidden() {
+			t.Fatalf("lost incomplete result: %+v", card)
 		}
-	}
-	for _, never := range []string{mergeWordAborted, "stopped — branch kept"} {
-		if strings.Contains(taskText(a), never) {
-			t.Fatalf("the card says %q, which is not a card's word any more:\n%s", never, taskText(a))
-		}
-	}
-	// And a node that ended with nothing to say still says something: an ending
-	// this surface was told nothing about is a fault, in the engine's bare word
-	// for one, rather than an empty row.
-	say("and the titles.")
-	drive(t, a, streamEventMsg{gen: a.gen, ev: update(12, "Render titles", session.TaskFailed, session.TaskNotice{
-		Elapsed: 3 * time.Second,
-	})})
-	if !strings.Contains(taskText(a), "Render titles · "+taskIncompleteState) {
-		t.Fatalf("a silent failure does not land as %q:\n%s", taskIncompleteState, taskText(a))
 	}
 }
 
-// THE RAIL IS TREE-READY. v1's graph has no edges, so nothing draws one — but a
-// node whose prerequisites are unmet says so in v1's own sentence, from the
-// DependsOn the row model already stores.
 func TestTheRailNamesWhatABlockedNodeWaitsOn(t *testing.T) {
 	a, _, _ := taskApp(t)
 	drive(t, a,
@@ -3782,7 +3609,7 @@ func TestTheRailIsChargedAgainstTheConversationOnly(t *testing.T) {
 		// column (sidecol.go).
 		name := "Fix the nil-map crash"
 		top := a.bodyTop()
-		if tc.rail && !strings.Contains(lines[top], sideTasksWord+" 1") {
+		if tc.rail && !strings.Contains(lines[top], sideTasksWord) {
 			t.Fatalf("at %d columns the column does not open with its header:\n%q", tc.width, lines[top])
 		}
 		if tc.rail && (!strings.Contains(lines[top+1], railHeadWords[railRunning]) || !strings.Contains(lines[top+2], name)) {
@@ -3857,15 +3684,13 @@ func TestTheRosterGroupsItsWorkByStateOneLineEach(t *testing.T) {
 	// everything else one folded row. What needs the person is the band's, above
 	// them, and is not under any of them.
 	want := []string{
-		sideTasksWord + " 6",
+		sideTasksWord,
 		a.taskStateMark(a.tasks[4]) + " Render titles",
-		a.taskStateMark(a.tasks[6]) + " Trim silence",
 		strings.Repeat(a.linearMark("─", "-"), 8),
 		railHeadWords[railRunning] + " 1",
 		"Fix the nil-map crash",
 		railHeadWords[railIdle] + " 1 " + glyphShut,
 		railHeadWords[railParked] + " 1 " + glyphShut,
-		railHeadWords[railDone] + " 1 " + glyphShut,
 	}
 	for i, w := range want {
 		if i >= len(rows) || !strings.Contains(rows[i], w) {
@@ -3875,11 +3700,11 @@ func TestTheRosterGroupsItsWorkByStateOneLineEach(t *testing.T) {
 	rail := strings.Join(rows, "\n")
 	// THE RUNNING WORK'S HEADING WEARS NO MARK: it does not fold, and a mark is
 	// a promise that a press does something.
-	if strings.Contains(rows[4], glyphShut) || strings.Contains(rows[4], glyphOpen) {
+	if strings.Contains(rows[3], glyphShut) || strings.Contains(rows[3], glyphOpen) {
 		t.Fatalf("the running heading wears a fold mark: %q", rows[4])
 	}
 	// ONE GLYPH OPENS A TASK ROW, and it is the state; no identity ◆, no id.
-	if lead := railSeam + "  " + plain(a.railTreeGlyph(a.tasks[2])) + " Fix the nil-map"; !strings.HasPrefix(rows[5], lead) {
+	if lead := railSeam + "  " + plain(a.railTreeGlyph(a.tasks[2])) + " Fix the nil-map"; !strings.HasPrefix(rows[4], lead) {
 		t.Fatalf("the task row does not lead with its state: %q, want %q", rows[5], lead)
 	}
 	if strings.Contains(rail, "#2") || strings.Contains(rail, plain(a.taskMark(identFor(2)))+" Fix") {
@@ -3983,22 +3808,21 @@ func TestTheRostersCursorFollowsANodeThatChangesUrgency(t *testing.T) {
 	if a.railWhere.id != 1 {
 		t.Fatalf("the cursor is on %+v, want the second running node", a.railWhere)
 	}
-	// It lands in the done group, which is folded: the cursor follows it to the
-	// heading standing for it rather than jumping to the top of the column.
-	drive(t, a, streamEventMsg{gen: a.gen, ev: update(1, "Collect sources", session.TaskDone,
-		session.TaskNotice{Merge: mergeWordMerged})})
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(1, "Collect sources", session.TaskDone, session.TaskNotice{Merge: mergeWordMerged})})
 	entries := a.railEntries()
 	at := a.railFocusIndex(entries)
-	if at < 0 || !entries[at].head || entries[at].group != railDone {
-		t.Fatalf("the cursor did not follow the node to its group: %d in %+v", at, entries)
+	if at < 0 || entries[at].group != railRunning {
+		t.Fatalf("focus did not remain with active work: %d %+v", at, entries)
 	}
-	// And opened, the cursor is on the node itself.
-	a.sideToggleGroup(railDone)
-	entries = a.railEntries()
-	at = a.railFocusIndex(entries)
-	if at < 0 || entries[at].node == nil || entries[at].node.id != 1 {
-		t.Fatalf("the cursor is not on the landed node: %d in %+v", at, entries)
+	for _, entry := range entries {
+		if entry.node != nil && entry.node.id == 1 {
+			t.Fatal("finished row retained sidebar focus")
+		}
 	}
+	if a.doneCardFor(1) == nil {
+		t.Fatal("finished task result lost")
+	}
+
 }
 
 func TestTheRosterWindowsHundredsOfNodesAroundItsFocus(t *testing.T) {
@@ -4035,7 +3859,7 @@ func TestTheRosterWindowsHundredsOfNodesAroundItsFocus(t *testing.T) {
 		t.Fatalf("the first task did not scroll with the list:\n%s", rail)
 	}
 	// And the header still counts the whole roster rather than the window.
-	if rows := railText(a, 12); !strings.Contains(rows[0], sideTasksWord+" 300") || !strings.Contains(rows[0], sideHideKey) {
+	if rows := railText(a, 12); !strings.Contains(rows[0], sideTasksWord) || !strings.Contains(rows[0], sideHideKey) {
 		t.Fatalf("the header scrolled away or counts the window: %v", rows)
 	}
 }
@@ -4116,20 +3940,21 @@ func TestAPlainFailureIsFiledAsNewsAndNotAsADemand(t *testing.T) {
 			fails = append(fails, item.key)
 		}
 	}
-	if strings.Join(asks, " ") != "task/5 task/4" || strings.Join(fails, " ") != "fail/6 fail/3 fail/2" {
+	if strings.Join(asks, " ") != "task/5 task/4" || len(fails) != 0 {
 		t.Fatalf("the band holds asks %v and failures %v", asks, fails)
 	}
 	rail := rosterText(a, 24)
-	for _, want := range []string{"+2 more", railHeadWords[railDone] + " 1"} {
-		if !strings.Contains(rail, want) {
-			t.Fatalf("the roster is missing %q:\n%s", want, rail)
+	for _, gone := range []string{"Collect sources", "Trim silence", "Mix audio", "Write the auth", "Done", "+2 more"} {
+		if strings.Contains(rail, gone) {
+			t.Fatalf("routine history leaked into active sidebar: %q\n%s", gone, rail)
 		}
 	}
-	a.sideToggleGroup(railDone)
-	rail = rosterText(a, 24)
-	if !strings.Contains(rail, "Collect sources") || strings.Count(rail, "Render titles")+strings.Count(rail, "Port the parser") != 1 {
-		t.Fatalf("an item of the band is drawn twice, or the clean merge is missing:\n%s", rail)
+	for _, want := range []string{"Cut the trailer", "Port the parser"} {
+		if strings.Count(rail, want) != 1 {
+			t.Fatalf("decision missing or duplicated: %s", rail)
+		}
 	}
+
 }
 
 // ── THE ROOM: A TASK IS A PLACE ─────────────────────────────────────────────

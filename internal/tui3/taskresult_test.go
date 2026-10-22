@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -62,9 +61,8 @@ func conflictedStoryNotice() session.TaskNotice {
 // count.
 func TestAnOpenCardReadsTheAnswerAsProseAndNotAsMarkdownSource(t *testing.T) {
 	a := doneResultApp(t, 80, session.TaskDone, conflictedStoryNotice())
-	clickHit(t, a, hitDone)
 
-	text := taskText(a)
+	text := retainedLandingText(t, a, 7)
 	for _, want := range []string{"The Salt Road", "Chapter one", "The cart came over the ridge at dawn."} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the open card does not say %q:\n%s", want, text)
@@ -147,9 +145,8 @@ func TestAnUndeliveredLandingLeadsTheCardInTheWarnHue(t *testing.T) {
 // under the sentence that says where the work is, rather than beside it.
 func TestTheLandingsOwnDetailStaysOnTheCardUnderTheHeadline(t *testing.T) {
 	a := doneResultApp(t, 80, session.TaskDone, conflictedStoryNotice())
-	clickHit(t, a, hitDone)
 
-	text := taskText(a)
+	text := retainedLandingText(t, a, 7)
 	for _, want := range []string{
 		"would be overwritten",
 		"you took this as done",
@@ -169,20 +166,13 @@ func TestTheLandingsOwnDetailStaysOnTheCardUnderTheHeadline(t *testing.T) {
 // A compact card keeps its account inside; opening draws that account once.
 func TestAnOpenCardDropsTheQuotedPreviewItIsAboutToPrintInFull(t *testing.T) {
 	a := doneResultApp(t, 160, session.TaskDone, conflictedStoryNotice())
-
-	collapsed := taskText(a)
-	if strings.Contains(collapsed, "did not merge cleanly") {
-		t.Fatalf("the collapsed card leaked its detail:\n%s", collapsed)
+	before := taskText(a)
+	detail := retainedLandingText(t, a, 7)
+	if strings.Contains(detail, `"its branch`) || !strings.Contains(detail, "did not merge cleanly") {
+		t.Fatalf("retained detail lost its diagnostic or repeated its preview: %s", detail)
 	}
-	clickHit(t, a, hitDone)
-	open := taskText(a)
-	if strings.Contains(open, `"its branch`) {
-		t.Fatalf("the open card still quotes the sentence it prints in full:\n%s", open)
-	}
-	// Closing it restores the compact notification unchanged.
-	clickHit(t, a, hitDone)
-	if again := taskText(a); again != collapsed {
-		t.Fatalf("closing the card did not restore it:\nwas:\n%s\nnow:\n%s", collapsed, again)
+	if taskText(a) != before || strings.Contains(before, "did not merge cleanly") {
+		t.Fatal("inspecting a retained result polluted the conversation")
 	}
 }
 
@@ -245,9 +235,8 @@ func TestACutAnswerNamesWhereTheWholeOfItIs(t *testing.T) {
 		Result: "Sixteen machines answer for this model.", ResultCut: true,
 		ResultWhole: "/tmp/journal/node-7-result.txt",
 	})
-	clickHit(t, a, hitDone)
 
-	text := taskText(a)
+	text := retainedLandingText(t, a, 7)
 	if !strings.Contains(text, doneMoreAt+"/tmp/journal/node-7-result.txt") {
 		t.Fatalf("the card does not say where the rest of the answer is:\n%s", text)
 	}
@@ -261,9 +250,8 @@ func TestACutAnswerWithNowhereToPointSaysSo(t *testing.T) {
 		Merge: mergeWordMerged, Report: "the survey is written",
 		Result: "Sixteen machines answer for this model.", ResultCut: true,
 	})
-	clickHit(t, a, hitDone)
 
-	text := taskText(a)
+	text := retainedLandingText(t, a, 7)
 	if !strings.Contains(text, doneMoreGone) {
 		t.Fatalf("the card is silent about an answer it only has the start of:\n%s", text)
 	}
@@ -369,34 +357,16 @@ func TestAnUndeliveredLandingWithNoResultSplitsItsReportOnce(t *testing.T) {
 // click anywhere in it — the answer's rows included — which is the mechanic the
 // expansion has always been behind, and the one a new block of rows is easiest
 // to drop out of.
-func TestEveryRowOfAnOpenCardFoldsItBackOnAClick(t *testing.T) {
+func TestRoutineResultLeavesNoTranscriptClickTargets(t *testing.T) {
 	a := doneResultApp(t, 160, session.TaskDone, conflictedStoryNotice())
-	clickHit(t, a, hitDone)
-	card := a.doneCardAt(len(a.entries) - 1)
-	if card == nil || !card.open {
-		t.Fatal("the click did not open the card")
-	}
-
-	// The answer's own row answers to the card, and pressing it closes it.
 	body, _ := a.window(a.width, a.viewHeight())
-	found := false
-	for i, r := range body {
-		if !strings.Contains(plain(r.text), "The cart came over the ridge at dawn.") {
-			continue
+	for _, row := range body {
+		if row.hit == hitDone {
+			t.Fatal("routine result left a transcript click target")
 		}
-		found = true
-		if r.hit != hitDone {
-			t.Fatalf("the answer's row is not part of the card it is inside:\n%q", plain(r.text))
-		}
-		drive(t, a, tea.MouseClickMsg{Y: a.bodyTop() + i, Button: tea.MouseLeft})
-		drive(t, a, tea.MouseReleaseMsg{Y: a.bodyTop() + i, Button: tea.MouseLeft})
-		break
 	}
-	if !found {
-		t.Fatalf("the open card drew no answer to press:\n%s", taskText(a))
-	}
-	if card.open {
-		t.Fatal("a click on the answer did not fold the card back")
+	if text := retainedLandingText(t, a, 7); !strings.Contains(text, "The cart came over the ridge at dawn.") {
+		t.Fatalf("quiet result lost its deliverable: %s", text)
 	}
 }
 
@@ -418,7 +388,9 @@ func TestAnOpenCardHoldsItsColumnAgainstLongPathsAndWideCharacters(t *testing.T)
 			t.Fatalf("width %d: the landing drew no card", width)
 		}
 		card.open = true
-		rows := a.doneRows(card, width, false)
+		snapshot := *card
+		snapshot.quiet = false
+		rows := a.doneRows(&snapshot, width, false)
 		if len(rows) < 2 {
 			t.Fatalf("width %d: the open card drew %d rows", width, len(rows))
 		}
@@ -444,8 +416,8 @@ func TestExpandedAnswerDoesNotRepeatTheComposedReportPreview(t *testing.T) {
 	notice := conflictedStoryNotice()
 	notice.Report += "\n" + strings.TrimSpace(notice.Result)
 	a := doneResultApp(t, 80, session.TaskDone, notice)
-	clickHit(t, a, hitDone)
-	text := taskText(a)
+
+	text := retainedLandingText(t, a, 7)
 	if strings.Count(text, "The Salt Road") != 1 || !strings.Contains(text, "did not merge cleanly") {
 		t.Fatalf("answer must appear once with its delivery diagnostic:\n%s", text)
 	}

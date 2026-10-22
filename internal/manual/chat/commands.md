@@ -2242,11 +2242,18 @@ tabs included, and opening a row brings the tab and its draft back too.
 
 ## Dismiss task notifications
 
-`/dismiss` hides settled task notifications in the current conversation window.
-`/dismiss undo` restores them. With an empty message box, select a task
-notification and press `delete` to dismiss just that notification. Pending
-`your call` decisions stay visible. Dismissal does not stop work, accept a
-result, delete a task, or remove its output from Sessions.
+Routine task completions stay in Tasks automatically, including older conversations.
+`/dismiss` hides manually dismissible settled notifications; `/dismiss undo` restores
+those dismissals without making routine task completions appear in chat. Pending
+`your call` decisions stay visible. Dismissal does not stop work, accept a result,
+delete a task, or remove its output. Open Tasks to read results and run details.
+
+## Process history and logs — /processes
+
+`/processes` opens this conversation's running and finished processes. Click a row or
+select it with the arrow keys and press Enter to read its log. `/processes <id>` opens
+a known process directly. Escape returns from a log to the list, then back to chat.
+The sidebar itself only shows running processes, without a completed count.
 
 ## /setup — prepare this machine so a conversation can run here
 

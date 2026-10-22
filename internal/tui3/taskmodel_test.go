@@ -160,8 +160,8 @@ func TestTheModelFollowsTheNodeOntoTheRailAndTheLandedCard(t *testing.T) {
 	if strings.Contains(taskText(a), "openai/gpt-5") {
 		t.Fatalf("the collapsed card recites the model:\n%s", taskText(a))
 	}
-	clickHit(t, a, hitDone)
-	if !strings.Contains(taskText(a), doneModelLabel+"openai/gpt-5") {
-		t.Fatalf("the opened card does not say what ran the work:\n%s", taskText(a))
+
+	if !strings.Contains(retainedLandingText(t, a, 7), doneModelLabel+"openai/gpt-5") {
+		t.Fatalf("the opened card does not say what ran the work:\n%s", retainedLandingText(t, a, 7))
 	}
 }

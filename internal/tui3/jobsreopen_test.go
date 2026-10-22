@@ -59,20 +59,31 @@ func TestAReopenedConversationStillShowsItsJobs(t *testing.T) {
 			len(jobs), len(a.jobs))
 	}
 
-	// AND THE SECTION IS THE DOOR. Kept jobs that no surface draws would be the
-	// same defect one layer down, so the pin goes all the way to the lines the
-	// column paints.
-	a.jobsOpen = true
-	var drawn []string
-	for _, line := range a.jobSection(48, 20) {
-		drawn = append(drawn, plain(line.text))
+	if rows := a.jobSection(48, 20); len(rows) != 0 {
+		t.Fatal("restored completed jobs appeared in sidebar")
 	}
-	text := strings.Join(drawn, "\n")
+	a.showProcesses("")
+	rows, hits, _, _ := a.processListFrame(100, 24)
+	text := strings.Join(rows, "\n")
 	for _, job := range jobs {
 		if !strings.Contains(text, job.Name) {
-			t.Fatalf("the jobs section drew:\n%s\nand it should name the restored job %q", text, job.Name)
+			t.Fatalf("on-demand process history lost %q: %s", job.Name, text)
 		}
 	}
+	at := -1
+	for i, hit := range hits {
+		if hit == 1000 {
+			at = i
+		}
+	}
+	if at < 0 {
+		t.Fatal("restored process has no click target")
+	}
+	a.width, a.height = 100, 24
+	if cmd := a.jobPagePress(8, at); cmd == nil || a.jobPage != 3 {
+		t.Fatal("restored process log door did not open selected process")
+	}
+
 }
 
 // TestAJobReplayedOnTheStandingLaneOpensItsPage closes the sentence row 1 of the

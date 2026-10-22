@@ -86,6 +86,8 @@ func crewRunEntry(notice TaskNotice, session string) TaskIndexEntry {
 		// AND WHICH PROGRAM HAS IT, so every surface drawing this file can put the
 		// program's badge on the row ([TaskIndexEntry.Program]).
 		Program: notice.Program,
+		Crew:    notice.Crew,
+		Model:   notice.Model,
 	}
 	// A PERSON'S STOP IS THE ROW'S ENDING, as it is on a node's row
 	// ([TaskNode.endingLocked]): the stop road publishes the flag and no word.

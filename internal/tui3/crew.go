@@ -275,13 +275,8 @@ func crewPinMark(linear bool) string {
 	return tokens.Plain.Glyph(tokens.GPinned)
 }
 
-// sayTaskCrew keeps a routed task's crew line in the thread: ONE line, said
-// when the task starts with the estimate, REWRITTEN IN PLACE while the task
-// goes — a seat that failed to start and moved to its fallback — and MOVED TO
-// THE END when it lands, with what it cost beside the estimate and the one
-// door to asking again harder.
-// Two lines for one crew read as two crews; the second said nothing the first
-// could not carry.
+// sayTaskCrew remembers routing facts without adding another transcript block.
+// Tasks owns the run details, including the crew and the retry action.
 func (a *app) sayTaskCrew(notice session.TaskNotice) {
 	if notice.Crew == nil {
 		return
@@ -336,29 +331,8 @@ func (a *app) sayTaskCrew(notice session.TaskNotice) {
 	if text == said.text {
 		return
 	}
-	switch {
-	case said.text == "":
-		a.feed.noteWritten(text, false, facts)
-	case said.landed:
-		// THE LANDED LINE MOVES WITH THE CARD. Rewriting its old estimate in
-		// place would leave the actual cost far above the answer. If a turn is
-		// still speaking, its boundary moves both rows past that answer, beyond
-		// the work that closes under a chip.
-		a.feed.moveNote(said.text, text, facts)
-	case !a.feed.renote(said.text, text, facts):
-		a.feed.noteWritten(text, false, facts)
-	}
-	if said.landed {
-		// The final crew line is addressed to the person. A note left as
-		// ordinary work can disappear under a closed fold even when the task
-		// landed after its proposing turn had already ended.
-		for i := len(a.entries) - 1; i >= 0; i-- {
-			if a.entries[i].kind == entryNote && a.entries[i].text == text {
-				a.entries[i].told = true
-				break
-			}
-		}
-	}
+	// Crew facts belong to the task result, never a second transcript receipt.
+
 	said.text, said.facts = text, facts
 	a.crewSaid[notice.ID] = said
 }
