@@ -698,6 +698,13 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
+	// The rotation key is below every modal so it never changes a model while
+	// a person is answering a different question in a panel.
+	if msg.String() == modelCycleKey && a.page == pageNone && !a.roomOpen() && !a.linear {
+		a.cycleChatModel()
+		return nil
+	}
+
 	// The welcome box reads two keys and gives every other one back (welcome.go):
 	// ↑/↓ walk the recent sessions, enter opens the one they picked, and
 	// anything else is the person starting work, which puts the box away for

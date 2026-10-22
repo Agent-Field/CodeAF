@@ -3441,6 +3441,7 @@ func (a *app) legend(width int) string {
 	// not cleared down there).
 	a.homeDoor = hudSpan{}
 	a.seamProjectSpan = hudSpan{}
+	a.seamModelCycleSpan = hudSpan{}
 	a.seamModelSpan, a.seamEffortSpan, a.seamApprovalSpan = hudSpan{}, hudSpan{}, hudSpan{}
 	a.doors = a.doors[:0]
 	a.moneySpan, a.moneyRow = hudSpan{}, 0
@@ -3473,9 +3474,10 @@ func (a *app) legend(width int) string {
 	//
 	// IN A ROOM THE THREE SPANS ARE THE NODE'S DOORS (roomseam.go), recorded
 	// on the same bargain and pressed through the same three functions.
-	seam, dial, gate := hudSpan{}, hudSpan{}, hudSpan{}
+	seam, dial, gate, cycle := hudSpan{}, hudSpan{}, hudSpan{}, hudSpan{}
 	lift := func(text string) string {
 		return paintSpans(text, paint,
+			spanLift{span: cycle, lift: a.pal.underline, on: a.hot.kind == hoverModelCycle},
 			spanLift{span: seam, lift: func(text string) string {
 				return seamModelPaint(a.pal, text, a.hoveringStatusModel())
 			}, on: true},
@@ -3492,7 +3494,15 @@ func (a *app) legend(width int) string {
 		if !legendFits(left, rung.width, width) {
 			return "", false
 		}
+		cycle = hudSpan{}
+		if suffix := a.modelCycleSuffix(); suffix != "" && span.pressable() {
+			if at := strings.Index(left, suffix); at >= 0 {
+				start := ansi.StringWidth(left[:at])
+				cycle = hudSpan{from: start, to: start + ansi.StringWidth(suffix)}
+			}
+		}
 		seam, dial, gate = span, dialSpan, gateSpan
+		a.seamModelCycleSpan = shiftIntoBorder(cycle)
 		a.seamModelSpan, a.seamEffortSpan, a.seamApprovalSpan = shiftIntoBorder(span), shiftIntoBorder(dialSpan), shiftIntoBorder(gateSpan)
 		right, painted := rung.plain, ""
 		var ledger []hudPart
@@ -3984,6 +3994,11 @@ const hopDoorWord = hopOpenKey + " chats"
 // this slot exists to prevent, and it was the default state of it.
 func (a *app) hintWord() string {
 	switch {
+	case a.hot.kind == hoverModelCycle:
+		if next := a.nextRotationModel(); next != "" {
+			return "next model: " + next + " · " + modelCycleKey
+		}
+		return "choose quick switch models · " + modelCycleKey
 	case a.released:
 		// IT LEADS BECAUSE THE HANDOVER IS READ FIRST ([app.key] takes the pointer
 		// back above every overlay), and because it is the one state on this slot

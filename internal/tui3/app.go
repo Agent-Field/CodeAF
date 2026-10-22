@@ -1353,6 +1353,9 @@ type app struct {
 	// now (foot.go's [app.seamIdentity]). modelSpan above is the room chip's
 	// door on the status row; the two are never both drawn.
 	seamModelSpan hudSpan
+	// The rotation is cached at launch and settings saves; rendering never reads disk.
+	modelRotation      []string
+	seamModelCycleSpan hudSpan
 	// seamProjectSpan is the current workspace path at the rule’s right edge.
 	seamProjectSpan hudSpan
 	// seamEffortSpan is the thinking rung's own columns on that same line, drawn
@@ -3011,6 +3014,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		draftFile:           opts.DraftFile,
 		artifacts:           opts.ArtifactsIndex,
 		ctxWindow:           opts.ContextWindow,
+		modelRotation:       config.ChatModelRotationAt(opts.ProfileDir),
 		profileDir:          opts.ProfileDir,
 		routing:             config.RoutingAt(opts.ProfileDir),
 		oneModel:            opts.OneModel,
@@ -4721,6 +4725,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// AND THE MODEL'S NAME IS THE FOURTH, at the left end of the same
 			// legend: the conversation's model is written on the seam and pressing
 			// it opens the picker (foot.go's [app.legendModelPress]).
+			if a.legendModelCyclePress(msg.Mouse().X, msg.Mouse().Y) {
+				return a, nil
+			}
 			if a.legendModelPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
