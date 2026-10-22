@@ -1,7 +1,7 @@
 ---
 kind: added
 title: switch between saved chat models directly beside the composer
-pr: 1
+pr: 1900
 surface: [chat]
 invalidates:
   - >-
