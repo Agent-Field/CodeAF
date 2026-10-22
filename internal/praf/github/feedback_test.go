@@ -53,8 +53,11 @@ func TestConversationReviewFeedbackReachesHealthyFollowPR(t *testing.T) {
 	json.Unmarshal(data, &restored)
 	restored.State = factory.StateShipped
 	factory.WatchPublishedPR(&restored)
-	if factory.QueueCIFollowUp(&restored, time.Now()) {
-		t.Fatal("same feedback repeated after restart")
+	// Monitoring may settle (watching -> healthy); the handled feedback must not
+	// queue another repair round.
+	factory.QueueCIFollowUp(&restored, time.Now())
+	if restored.FollowUp.State == "queued" || restored.State == factory.StateQueued || restored.FollowUp.ReviewKey != it.FollowUp.ReviewKey {
+		t.Fatalf("same feedback repeated after restart: %+v", *restored.FollowUp)
 	}
 	revision = "2026-10-21T18:00:00Z"
 	feedback, err = c.PullFeedback(ctx, "o", "r", 70)
