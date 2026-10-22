@@ -1532,7 +1532,7 @@ you hand this chat, this piece of work, or this model back to whatever stands ab
 and wrapped from `max` to `low`.) `/effort auto` and the top row of `/effort` still clear
 this conversation in one move from any rung. An automation has no rung for it to move.
 The **thinking** row in `/settings` stays what it is: the answer for every conversation
-that has not been dialled by hand. The keys page has the whole of it — see *The thinking chip above the message box* and *alt+e — how hard the
+that has not been dialled by hand. The keys page has the whole of it — see *What is the chip above the message box — the thinking chip, `alt+e`, `/effort`, and how to make this one chat think harder* and *alt+e — how hard the
 thing you are looking at thinks*.
 
 **Three doors, one rung.** `alt+e`, a press on the rung itself, and `/effort`:
