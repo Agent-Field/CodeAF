@@ -4,6 +4,8 @@ title: paired computers continue the same chat with its workspace and history
 pr: 1888
 surface: [chat, engine, remote, build, docs]
 invalidates:
+  - "New chats with cells on were sandboxed, cutting ordinary commands off from the network and writes outside the workspace. New chats now declare host-bound (C23), preserving the host access they have with cells off; existing cells keep their declared class. The manual and setup hint explain ordinary access and the setup approval floor."
+  - "Every PEM filename was treated as a private key, withholding certificate-only CA bundles such as certifi's cacert.pem. PEM and SSH keys are now recognised by private-key headers, PuTTY keys by their format, and opaque PKCS#12 containers by their suffix; a certificate-only PEM travels unless its install folder is left behind for rebuilding."
   - "A moved chat could keep writing to absolute paths from its original computer. The model now receives a session note naming the source device and old and new folders; file tools and shell commands map old path prefixes into the arrived workspace and report the mapping."
   - "An arrival card could swallow the first message typed while it was visible. Typing now goes to the message box, and enter with an empty box still answers the card."
   - "The Linux jail probe could accept namespace creation while AppArmor denied its helper exec, breaking tool calls on Ubuntu 24.04. The cached probe now launches the exact helper with the jail's namespace attributes and ambient capability. Unavailable confinement keeps the existing network refusal, allows policy-permitted work unconfined, and names reduced limits once in the conversation."

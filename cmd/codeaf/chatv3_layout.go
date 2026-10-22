@@ -457,11 +457,11 @@ func v3PlaceFor(dir, workspace string, owned bool) session.Place {
 // in another window sees the conversation from the moment it exists rather than
 // from the moment somebody speaks in it.
 func v3MintSession(bucket, workspace, launchDir string, owned bool) (session.Place, error) {
-	return v3MintSessionAs(cell.Sandboxed, bucket, workspace, launchDir, owned)
+	return v3MintSessionAs(cell.HostBound, bucket, workspace, launchDir, owned)
 }
 
 // v3MintSessionAs is [v3MintSession] for a session whose cell declares class:
-// a chat is sandboxed, a run whose workers reach the run's record is not.
+// chats and runs keep the host access their commands have always had (C23).
 func v3MintSessionAs(class cell.Class, bucket, workspace, launchDir string, owned bool) (session.Place, error) {
 	id, dir, err := v3NewFolder(bucket, class)
 	if err != nil {
