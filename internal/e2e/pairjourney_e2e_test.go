@@ -221,6 +221,16 @@ func runPairJourney(t *testing.T, key, mode string, online bool) {
 	homeA, homeB := newHome(t, nil), newHome(t, nil)
 	wsA := newWorkspace(t, "proj", true)
 	wsB := newWorkspace(t, "proj", true)
+	// The real binary keeps its engine running after the window closes, as it
+	// does for a person, so the journey stops every engine its homes started,
+	// moved copies included, or each run leaves daemons behind.
+	t.Cleanup(func() {
+		for _, root := range []string{homeA, homeB, wsA, wsB} {
+			for _, pid := range engineDaemonsUnder(filepath.Dir(root)) {
+				_ = syscall.Kill(pid, syscall.SIGKILL)
+			}
+		}
+	})
 	if err := os.WriteFile(filepath.Join(wsB, "Makefile"), []byte("test:\n\t@echo 3 passed\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -282,8 +292,17 @@ func (r *rig) loseLid() {
 
 // engineDaemonsOf lists the pids of the engine daemons serving one workspace,
 // read from the process table by their own command line, never by pattern.
-func engineDaemonsOf(ws string) []int {
-	want := "engine\x00--daemon\x00--workspace\x00" + ws + "\x00"
+func engineDaemonsOf(ws string) []int { return engineDaemons(ws + "\x00") }
+
+// engineDaemonsUnder is every engine daemon whose workspace lies under root.
+func engineDaemonsUnder(root string) []int {
+	return engineDaemons(strings.TrimSuffix(root, "/") + "/")
+}
+
+// engineDaemons is every engine daemon whose workspace argument begins with
+// prefix, read from /proc.
+func engineDaemons(prefix string) []int {
+	want := "engine\x00--daemon\x00--workspace\x00" + prefix
 	entries, _ := os.ReadDir("/proc")
 	var pids []int
 	for _, e := range entries {
