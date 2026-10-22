@@ -1176,11 +1176,13 @@ func appProcessBase(agent string, job session.JobNotice) appwire.Process {
 		process.State = appwire.ProcessStopped
 	}
 	if process.State != appwire.ProcessRunning {
-		if !job.Started.IsZero() {
+		if !job.Ended.IsZero() {
+			process.EndedAt = &job.Ended
+		} else if !job.Started.IsZero() && job.Elapsed > 0 {
 			ended := job.Started.Add(job.Elapsed)
 			process.EndedAt = &ended
 		}
-		if process.State != appwire.ProcessStopped {
+		if process.State != appwire.ProcessStopped && !job.ExitCodeUnknown {
 			code := job.ExitCode
 			process.ExitCode = &code
 		}
@@ -1221,7 +1223,8 @@ func (b *appBackend) processMoved(agent string, live *appLive, job *session.JobN
 	if job.Kind == session.JobKindTask {
 		return
 	}
-	process := appProcessOf(agent, *job)
+	recovered := appRecoverJob(*job, live.replayJobs)
+	process := appProcessOf(agent, recovered)
 	same, finished := false, false
 	b.locked(func() {
 		before, known := live.processes[process.ID]
@@ -1256,6 +1259,9 @@ func (b *appBackend) processRows(agent string) ([]session.JobNotice, *appLive, e
 		rows, err := live.conn.Conv.JobNotices()
 		if err != nil {
 			return nil, nil, appListError(err)
+		}
+		for i := range rows {
+			rows[i] = appRecoverJob(rows[i], live.replayJobs)
 		}
 		return rows, live, nil
 	}

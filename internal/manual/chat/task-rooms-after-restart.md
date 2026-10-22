@@ -121,6 +121,11 @@ different kinds of row, and only a task has a chat inside it.
   the only way to read the file: a far job's log lives on the far machine and the page
   says `its log is on ` plus that machine's name.
 
+In the desktop app, reopening a conversation restores its background processes and the
+links from the bash calls that started them. New records keep the full command, start,
+end and observed exit code. Older records recover the command and link only when the
+bash result names the job; missing times and exit codes remain unknown.
+
 A job's row is easy to tell apart before you open it: it sits in the `jobs` section under
 the tasks and the automations, not among the families, and it has no dim under-line
 starting with `job` and a number — that line is gone. The handle `job 4` is on the page.
