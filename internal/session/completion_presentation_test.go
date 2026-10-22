@@ -18,7 +18,9 @@ func TestCompletionPresentationSurvivesCompactionAndReopenWithoutChangingContext
 	agent.mu.Lock()
 	agent.recordUserLocked(routine)
 	// Equal words typed by the person are a separate occurrence, not a receipt.
-	agent.recordUserLocked(userText(text))
+	quoted := userText(text)
+	quoted.message = agent.messages[len(agent.messages)-1]
+	agent.recordUserLocked(quoted)
 	alert := wakeNote("Your requested watch matched: release is ready")
 	alert.authored = true
 	agent.recordUserLocked(alert)

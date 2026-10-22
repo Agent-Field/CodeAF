@@ -2661,6 +2661,7 @@ func (a *Agent) recordUserLocked(user userMessage) {
 			mark = &messagePresentation{Audience: "human"}
 		} else {
 			mark.Audience = "human"
+			mark.RoutineCompletion = false
 		}
 		a.presentation.remember(user.message, mark)
 	}
