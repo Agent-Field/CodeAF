@@ -14,6 +14,16 @@ func TestPublicExportPaths(t *testing.T) {
 		{`https://example.com/home/someone/factory/work/job/file`, `https://example.com/home/someone/factory/work/job/file`},
 		{`log "/Users/private person/Desktop/file"`, `log "[local home]/Desktop/file"`},
 		{`go test ./... -run '^TestPrivate$'`, `go test ./... -run '^TestPrivate$'`},
+		{`go test ./internal/users/... ./src/home/... ./pkg/root/...`, `go test ./internal/users/... ./src/home/... ./pkg/root/...`},
+		{`npm test -- app/Users/list.test.ts web/home/page.test.tsx`, `npm test -- app/Users/list.test.ts web/home/page.test.tsx`},
+		{`go test ./tmp/factory/work/fixture/...`, `go test ./tmp/factory/work/fixture/...`},
+		{`--dir=/home/private-person/src cd /root/x`, `--dir=[local home]/src cd [local home]/x`},
+		{`/Users/private-person/notes`, `[local home]/notes`},
+		{`Fix the /users/ endpoint and GET /users/:id or /home/{tab}`, `Fix the /users/ endpoint and GET /users/:id or /home/{tab}`},
+		{`ran in /home/private-person and passed`, `ran in [local home] and passed`},
+		{`cc -I/Users/private-person/include -L/home/private-person/lib`, `cc -I[local home]/include -L[local home]/lib`},
+		{`open file:///Users/private-person/report.html`, `open file://[local home]/report.html`},
+		{`go test -run=TestX ./internal/users/...`, `go test -run=TestX ./internal/users/...`},
 	} {
 		if got := PublicText(tc.in); got != tc.want {
 			t.Errorf("got %q want %q", got, tc.want)

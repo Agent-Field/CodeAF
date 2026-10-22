@@ -472,7 +472,10 @@ paths, and other local home prefixes as `[local home]`. The preview and final
 GitHub write both apply this privacy boundary to descriptions, titles and comments,
 including repair updates. Original execution receipts stay private and unchanged;
 redacted placeholders are not executable paths. Public HTTP links and check flags
-are retained. Review the proposed description before a Manual publication.
+are retained. Only an absolute path is rewritten: repository directories named
+`users`, `home` or `root` (such as `./internal/users/...`) and routes such as
+`/users/:id` stay as written. Review the proposed description before a Manual
+publication.
 
 ## ordinary PR conversation comments count as review feedback
 
