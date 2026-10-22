@@ -509,7 +509,7 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 		case lease.SignalSteer:
 			_ = r.Steer(j.id, s.Words)
 		case lease.SignalModel:
-			_ = r.SetModel(j.id, s.Words)
+			_ = r.SetModelSelection(j.id, s.Words, s.Automatic)
 		case lease.SignalAutonomy:
 			if err := j.o.Mirror.Update(j.id, func(it *factory.Item) error { it.Autonomy = s.Words; return nil }); err != nil {
 				return false

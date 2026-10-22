@@ -722,6 +722,8 @@ const (
 	EventCloseContinued = EventItemChanged + 1
 	// EventConsentAllowed records a call allowed by an explicit saved rule.
 	EventConsentAllowed = EventCloseContinued + 1
+	// EventModelIdentity updates execution facts without adding a transcript note.
+	EventModelIdentity = EventConsentAllowed + 1
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -758,9 +760,10 @@ type TaskReplyTag struct {
 // today — sees all of it in order and needs no second rule; a caller that stops
 // at the terminal event stops at the terminal event of the FIRST turn.
 type Event struct {
-	RunID          string       `json:"RunID,omitempty"`
-	ReplayCursor   ReplayCursor `json:",omitempty"`
-	ReplayObserved bool         `json:"-"`
+	ModelIdentity  *ModelIdentity `json:"ModelIdentity,omitempty"`
+	RunID          string         `json:"RunID,omitempty"`
+	ReplayCursor   ReplayCursor   `json:",omitempty"`
+	ReplayObserved bool           `json:"-"`
 
 	Discussion *QuestionDiscussion `json:",omitempty"`
 
@@ -1379,6 +1382,10 @@ type TaskLanding struct {
 }
 
 type Config struct {
+	// AutomaticModels explicitly permits cross-model fallback. Nil inherits the
+	// stored policy or the existing launch default; OneModel always takes priority.
+	AutomaticModels *bool
+
 	// TeamListeningSince preserves the traffic subscription boundary when an
 	// app opens a light record after the event that needs it.
 	TeamListeningSince time.Time
@@ -2626,6 +2633,8 @@ type Config struct {
 // events — every Submit streams, whether it started the turn or steered it.
 // The methods live in agent.go; the loop they drive lives in loop.go.
 type Agent struct {
+	modelIdentity   ModelIdentity
+	automaticModels atomic.Int32
 	// rewindUndo keeps one reversible cut; a new cut replaces it.
 	rewindUndo *rewindUndo
 	debugRun   string

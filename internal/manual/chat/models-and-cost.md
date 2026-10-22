@@ -80,6 +80,31 @@ Over `--host`, the picker and its prices are this laptop's catalog, while the co
 window used for compaction comes from the far machine's catalog. The machine doing the
 work owns that execution limit even when the two catalog caches differ.
 
+## Desktop app: actual model, next selection, and automatic model selection
+
+The desktop model selector names the model handling the current request. Between
+requests it says `Last` and keeps the last model used. A different saved choice
+is labelled `Next`, or `Job` for a factory-wide choice, until a new request uses
+it. Before any execution is known it says `Selected`; an unavailable identity is
+reported as unavailable rather than guessed from another conversation's default.
+The tooltip includes exact model and provider ids, even without a catalogue entry.
+A provider's concrete model name replaces an alias when that provider reports it.
+
+The model menu offers `Fixed model` and `Automatic model selection`. Choosing a
+named model selects Fixed and disables cross-model fallback for that conversation.
+Automatic permits the configured fallback chain and shows an `Auto` prefix beside
+the actual model. Same-model network retries do not require Automatic. A model or
+policy change leaves an in-flight request's identity intact until the request
+boundary; a pending choice is shown explicitly. The last request's recorded mode
+is preserved too. Background naming and memory calls do not replace the foreground
+conversation's model. Independently configured roles have their own models and
+execution identities in their chats.
+
+A factory model choice applies to the job, its running worker and later steps.
+It does not replace the execution model recorded for a previous step or round.
+Factory `Auto`/`Manual` approval automation is separate from automatic model
+selection: enabling one does not enable the other.
+
 ## Which model is the default — Ollama only, a removed model, or no available models
 
 On a local launch, the opening model comes from the same available chat list as

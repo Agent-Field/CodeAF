@@ -348,9 +348,10 @@ func (b *appBackend) FactoryJobMerge(ctx context.Context, p appwire.FactoryJobMe
 
 func (b *appBackend) FactoryJobSetModel(ctx context.Context, p appwire.FactoryJobSetModelParams) (appwire.FactoryJobActed, error) {
 	acted, err := b.jobWrite(ctx, p.Factory, appwire.JobActSetModel, p.Job, "model", struct {
-		Model  string      `json:"model"`
-		Expect *api.Expect `json:"expect,omitempty"`
-	}{p.Model, p.Expect})
+		Model     string      `json:"model"`
+		Automatic *bool       `json:"automatic,omitempty"`
+		Expect    *api.Expect `json:"expect,omitempty"`
+	}{p.Model, p.Automatic, p.Expect})
 	if err == nil {
 		// The job's agent reads the job's model too (appfactory_chats.go).
 		b.jobAgentModel(p.Factory, p.Job)

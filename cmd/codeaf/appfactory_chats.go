@@ -146,6 +146,9 @@ func (b *appBackend) jobAgentModel(factoryID string, job int) {
 		model = host.defaultModel()
 	}
 	if model != "" {
+		if it.AutomaticModels != nil {
+			_ = b.SetAutomaticModels(appAgentID(it.Talk), *it.AutomaticModels)
+		}
 		_, _ = b.SetModel(appAgentID(it.Talk), model)
 	}
 }

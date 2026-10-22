@@ -50,11 +50,12 @@ const (
 
 // Signal is one verb a person asked of a job, with the door's own arguments.
 type Signal struct {
-	Budget float64 `json:"budget,omitempty"`
-	ID     string  `json:"id,omitempty"`
-	Verb   string  `json:"verb"`
-	Yes    bool    `json:"yes,omitempty"`
-	Words  string  `json:"words,omitempty"`
+	Automatic *bool   `json:"automatic,omitempty"`
+	Budget    float64 `json:"budget,omitempty"`
+	ID        string  `json:"id,omitempty"`
+	Verb      string  `json:"verb"`
+	Yes       bool    `json:"yes,omitempty"`
+	Words     string  `json:"words,omitempty"`
 }
 
 // Drain hands the holder of lease id every signal waiting for its job, oldest

@@ -153,10 +153,11 @@ type FactoryJobMergeParams struct {
 // model is a preference that commutes with every other write, so a pick is
 // never refused as stale. Only a Done job refuses one.
 type FactoryJobSetModelParams struct {
-	Factory string      `json:"factory"`
-	Job     int         `json:"job"`
-	Model   string      `json:"model"`
-	Expect  *api.Expect `json:"expect"`
+	Factory   string      `json:"factory"`
+	Job       int         `json:"job"`
+	Model     string      `json:"model"`
+	Automatic *bool       `json:"automatic,omitempty"`
+	Expect    *api.Expect `json:"expect"`
 }
 
 // MaxFactoryJobModel is the longest model id a job keeps.

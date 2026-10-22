@@ -541,7 +541,8 @@ type Item struct {
 	// this job; "" is the factory's default. Every step reads it when it
 	// starts, and a change reaches a step already running at its next turn
 	// (run's SetModel), as a conversation's model does.
-	Model string `json:",omitempty"`
+	Model           string `json:",omitempty"`
+	AutomaticModels *bool  `json:",omitempty"`
 	// Talk is the item's own conversation, by its session file: the one `T`
 	// opens on the floor ([Seam.Talk]). "" IS NONE, which is every item until
 	// a person asks for one — the conversation is never made by default.

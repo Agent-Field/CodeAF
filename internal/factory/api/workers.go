@@ -281,11 +281,12 @@ type WorkerHeartbeat struct {
 // (yes, words), steer (words), recheck, budget, model, reply, publish, merge
 // or stop (internal/factory/lease's Signal* names).
 type WorkerSignal struct {
-	Budget float64 `json:"budget,omitempty"`
-	ID     string  `json:"id,omitempty"`
-	Verb   string  `json:"verb"`
-	Yes    bool    `json:"yes,omitempty"`
-	Words  string  `json:"words,omitempty"`
+	Automatic *bool   `json:"automatic,omitempty"`
+	Budget    float64 `json:"budget,omitempty"`
+	ID        string  `json:"id,omitempty"`
+	Verb      string  `json:"verb"`
+	Yes       bool    `json:"yes,omitempty"`
+	Words     string  `json:"words,omitempty"`
 }
 
 type WorkerLease struct {

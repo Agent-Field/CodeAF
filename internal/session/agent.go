@@ -150,6 +150,25 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// with the header's id, which survives every resume.
 		id: NewSessionID(),
 	}
+	if config.Place.Dir != "" {
+		if meta, err := LoadMeta(config.Place.Dir); err == nil {
+			if meta.ModelIdentity != nil {
+				agent.modelIdentity = *meta.ModelIdentity
+				agent.modelIdentity.Active, agent.modelIdentity.Pending = "", false
+			}
+			if meta.AutomaticModels != nil && !*meta.AutomaticModels {
+				agent.automaticModels.Store(1)
+			}
+		}
+	}
+	if config.AutomaticModels != nil {
+		if *config.AutomaticModels {
+			agent.automaticModels.Store(2)
+		} else {
+			agent.automaticModels.Store(1)
+		}
+	}
+	agent.modelIdentity.Epoch = NewSessionID()
 	agent.presentation = &presentationIndex{}
 	agent.cacheKey = sessionCacheKey(agent.id)
 	// Start with no session-local endpoint limit; the provider applies its
@@ -732,6 +751,7 @@ func (a *Agent) setModel(model string) ModelLanding {
 	// Other windows read the conversation model from its saved configuration.
 	// A model choice exists before another turn is sent, so publish it now.
 	a.stampModel()
+	a.publishModelIdentity()
 	return landing
 }
 

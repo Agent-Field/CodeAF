@@ -44,3 +44,20 @@ func TestAModelPickOnADoneJobIsStillRefused(t *testing.T) {
 		t.Fatalf("a Done job took a model: %q", j.Model)
 	}
 }
+
+func TestModelSelectionPolicyIsExplicitAndSurvivesModelOnlyChanges(t *testing.T) {
+	f := newV2Jobs(t)
+	it := f.create(t, factory.Item{State: factory.StateNew, Assignee: "sam"})
+	f.post(t, it, "model", `{"model":"vendor/first","automatic":false}`, 200)
+	if j := f.read(t, it); j.AutomaticModels == nil || *j.AutomaticModels {
+		t.Fatalf("fixed policy lost: %+v", j.AutomaticModels)
+	}
+	f.post(t, it, "model", `{"model":"vendor/second"}`, 200)
+	if j := f.read(t, it); j.AutomaticModels == nil || *j.AutomaticModels {
+		t.Fatal("legacy model-only change erased fixed selection")
+	}
+	f.post(t, it, "model", `{"model":"vendor/second","automatic":true}`, 200)
+	if j := f.read(t, it); j.AutomaticModels == nil || !*j.AutomaticModels {
+		t.Fatal("same-model policy change was ignored")
+	}
+}

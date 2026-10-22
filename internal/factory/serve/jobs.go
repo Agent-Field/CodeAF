@@ -610,8 +610,9 @@ const jobModelMost = 200
 // had just read it. The one guard that stays is the job's state: Done refuses.
 func (h *Handler) setModel(w http.ResponseWriter, r *http.Request, it factory.Item) {
 	var body struct {
-		Model  string      `json:"model"`
-		Expect *api.Expect `json:"expect,omitempty"`
+		Automatic *bool       `json:"automatic,omitempty"`
+		Model     string      `json:"model"`
+		Expect    *api.Expect `json:"expect,omitempty"`
 	}
 	if !h.decode(w, r, &body, false) {
 		return
@@ -625,12 +626,18 @@ func (h *Handler) setModel(w http.ResponseWriter, r *http.Request, it factory.It
 		h.refuse(w, http.StatusConflict, "job is already Done", "conflict", "", nil, api.StateDone)
 		return
 	}
-	if err := h.config.Store.Update(it.ID, func(cur *factory.Item) error { cur.Model = model; return nil }); h.failed(w, err) {
+	if err := h.config.Store.Update(it.ID, func(cur *factory.Item) error {
+		cur.Model = model
+		if body.Automatic != nil {
+			cur.AutomaticModels = body.Automatic
+		}
+		return nil
+	}); h.failed(w, err) {
 		return
 	}
 	var err error
 	if h.workers != nil && h.workers.desk != nil {
-		_, err = h.workers.desk.SignalIfHeld(it.ID, lease.Signal{Verb: lease.SignalModel, Words: model})
+		_, err = h.workers.desk.SignalIfHeld(it.ID, lease.Signal{Verb: lease.SignalModel, Words: model, Automatic: body.Automatic})
 	}
 	h.finish(w, err)
 }

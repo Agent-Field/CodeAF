@@ -2691,7 +2691,7 @@ func (a *Agent) nextFallback(ctx context.Context, origin string, hopped []string
 	// law is stated in this file's own comment above [cutBudget]'s old home while
 	// being enforced nowhere in it. It is the same guard the checker's failover
 	// keeps for the same reason (taxonomy_boundary.go's failoverCheckerModel).
-	if a.config.OneModel {
+	if !a.automaticModelsAllowed() {
 		return "", false
 	}
 	options, ok := a.modelFallbackChain(origin)
