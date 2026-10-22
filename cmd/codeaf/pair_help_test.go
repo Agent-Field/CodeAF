@@ -9,11 +9,11 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 )
 
-// TestPairHelpIsAnsweredWhereMovingChatsIsOff proves C15 and C21: a build with
+// TestPairHelpIsAnsweredWhereMovingChatsIsOff proves C15 and C26: a build with
 // moving chats off still explains `codeaf pair` when asked, and refuses only
 // the pairing itself, with the sentence that says how to turn it on.
 func TestPairHelpIsAnsweredWhereMovingChatsIsOff(t *testing.T) {
-	t.Setenv(cell.EnvVar, "0")
+	t.Setenv(cell.EnvVar, "")
 	for _, ask := range []string{"--help", "-h", "-help"} {
 		out, _ := captureUsage(t)
 		err := newPairDoor(strings.NewReader(""), io.Discard).run(context.Background(), []string{ask})

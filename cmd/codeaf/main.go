@@ -378,7 +378,7 @@ func run() error {
 		return runWake(os.Args[2:])
 	case "cell":
 		// The turn chain of a cell (cell.go): its log and its rewind. Machinery
-		// with cells on by default, DELIBERATELY ABSENT from the
+		// available only with CODEAF_CELLS=1, DELIBERATELY ABSENT from the
 		// usage text below, like `engine` and `tick`.
 		return runCell(os.Args[2:])
 	case "identity":

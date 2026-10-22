@@ -68,6 +68,7 @@ func machine(t *testing.T, url string) string {
 }
 
 func TestOpenOffWithoutURL(t *testing.T) {
+	celltest.Available(t)
 	hosted(t, "") // a build with no default relay, which is the state this test is about
 	t.Setenv(URLVar, "")
 	home := filepath.Join(t.TempDir(), "home")
@@ -237,6 +238,7 @@ func TestOpenFirstMakesTheFirstIdentity(t *testing.T) {
 }
 
 func TestOpenFirstWithNoRelayTouchesNothing(t *testing.T) {
+	celltest.Available(t)
 	t.Setenv(URLVar, "")
 	// A build with no hosted default is the only way to have no relay, now that an unset variable means the hosted one.
 	was := hostedRelay
@@ -288,6 +290,7 @@ func TestFirstLaunchIsQuietUntilWoken(t *testing.T) {
 }
 
 func TestExistingIdentityIsNotQuiet(t *testing.T) {
+	celltest.Available(t)
 	t.Setenv(URLVar, "http://relay.example:8787")
 	home := t.TempDir()
 	if _, err := identity.Ensure(home); err != nil {

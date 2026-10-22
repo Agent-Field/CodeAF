@@ -11,6 +11,7 @@ import (
 // THE DEVICES ROW AND THE RESCUE PROMPT STAND ON HOME with no row under the
 // cursor (an empty home, or a chat that lives on another device).
 func TestDevicesRowAndRescueStandOnAnEmptyHome(t *testing.T) {
+	t.Setenv("CODEAF_CELLS", "1")
 	a, _ := devicesRig("dev_spark")
 	a.tookMachines(homeMachinesMsg{rows: []chatlist.Row{leftOffRow("a", "dumb", chatlist.Off, time.Hour)}})
 	a.openHome()

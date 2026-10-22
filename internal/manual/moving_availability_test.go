@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// C15, C21 and C24 require independently retrieved moving-chat introductions
+// C15, C26 and C24 require independently retrieved moving-chat introductions
 // to explain rollout, platform availability and which conversations can move.
 func TestMovingChatIntroductionsStateAvailabilityAndLegacyLimits(t *testing.T) {
 	for _, page := range []string{"continuing-a-chat-on-another-computer", "add-or-remove-a-computer", "use-this-on-another-computer", "relay-hosted-or-your-own"} {
@@ -18,7 +18,7 @@ func TestMovingChatIntroductionsStateAvailabilityAndLegacyLimits(t *testing.T) {
 			t.Fatalf("%s has no first section", page)
 		}
 		section, _, _ = strings.Cut(section, "\n## ")
-		for _, want := range []string{"Stable and rc builds", "CODEAF_CELLS=1", "Windows does not", "Only chats started after", "Older chats stay where they are"} {
+		for _, want := range []string{"off on every build", "CODEAF_CELLS=1", "both computers", "shell profile", "Windows does not", "Only chats started after", "Older chats stay where they are"} {
 			if !strings.Contains(section, want) {
 				t.Errorf("%s first section lacks %q", page, want)
 			}
@@ -27,7 +27,7 @@ func TestMovingChatIntroductionsStateAvailabilityAndLegacyLimits(t *testing.T) {
 	for _, query := range []string{"continue on another computer", "add a second computer"} {
 		found := false
 		for _, section := range Chat().Search(query, DefaultResults) {
-			if strings.Contains(section.Body, "Stable and rc builds") && strings.Contains(section.Body, "CODEAF_CELLS=1") && strings.Contains(section.Body, "Windows does not") {
+			if strings.Contains(section.Body, "off on every build") && strings.Contains(section.Body, "CODEAF_CELLS=1") && strings.Contains(section.Body, "Windows does not") {
 				found = true
 				break
 			}

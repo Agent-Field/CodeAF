@@ -15,6 +15,7 @@ import (
 // line, and the conversation shows through nowhere) and that esc or q gives
 // the conversation back exactly as it was — transcript, draft and place.
 func TestAtlasOpensTheMapAndReturnsToTheChat(t *testing.T) {
+	t.Setenv("CODEAF_CELLS", "1")
 	a, _ := sheetApp(t)
 	// A sentence half-typed before the map was asked for, so the test can see
 	// that closing puts the conversation back rather than a blank sheet.
@@ -99,6 +100,7 @@ func TestAtlasOpensTheMapAndReturnsToTheChat(t *testing.T) {
 // sheet with the picker in it — one row per registered map, in the registry's
 // order — and enter opens the row the cursor is on.
 func TestAtlasBareSlashShowsThePickerAndEnterOpens(t *testing.T) {
+	t.Setenv("CODEAF_CELLS", "1")
 	a, _ := sheetApp(t)
 
 	a.slash("/atlas")
@@ -150,6 +152,7 @@ func TestAtlasBareSlashShowsThePickerAndEnterOpens(t *testing.T) {
 // THE REGISTRY ANSWERS AN UNKNOWN NAME IN THE TRANSCRIPT, the way every other
 // refusal here is said: one line, what was asked and what there was instead.
 func TestAtlasUnknownNameSaysTheRegistryLine(t *testing.T) {
+	t.Setenv("CODEAF_CELLS", "1")
 	a, _ := sheetApp(t)
 
 	a.slash("/atlas nope")

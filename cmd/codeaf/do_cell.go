@@ -14,8 +14,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-// A RUN IN A CELL IS A CHAT'S SESSION WITHOUT THE CHAT. With cells on (the default) the
-// run's workers ride the seat a chat rides — minted and built by the same
+// A RUN IN A CELL IS A CHAT'S SESSION WITHOUT THE CHAT. With CODEAF_CELLS=1
+// the run's workers ride the seat a chat rides — minted and built by the same
 // functions ([v3MintSession], [v3Seated]) — so every tool call seals and `codeaf
 // cell log` shows the run's turns. The run's record folder points at the cell
 // (cellPointer), and `do --continue` follows the pointer back to it.

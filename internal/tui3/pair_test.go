@@ -98,6 +98,7 @@ func (r *pairRig) press(names ...string) {
 func (r *pairRig) slash(line string) { r.run(r.a.slash(line)) }
 
 func pairApp(t *testing.T, door Pairing, width int) *app {
+	t.Setenv("CODEAF_CELLS", "1")
 	a := newTestApp(&fakeAgent{model: "test/model"})
 	a.pairing = door
 	a.width, a.height = width, 30
@@ -138,6 +139,7 @@ func TestPairRowsAndAliasesResolve(t *testing.T) {
 }
 
 func TestPairWithNoDoorSaysOneSentence(t *testing.T) {
+	t.Setenv("CODEAF_CELLS", "1")
 	a := newTestApp(&fakeAgent{model: "test/model"})
 	if cmd := a.slash("/pair"); cmd != nil {
 		t.Fatal("a connection that cannot pair started something")

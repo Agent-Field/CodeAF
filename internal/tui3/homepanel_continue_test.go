@@ -161,6 +161,7 @@ func TestTakeoverCardCursorByEntryPoint(t *testing.T) {
 }
 
 func TestTakeoverScreenOpensTheChatAndSaysWhatWasKept(t *testing.T) {
+	t.Setenv("CODEAF_CELLS", "1")
 	lab := newHomeLab(t)
 	workspace := lab.workspace("project")
 	mine := lab.session("project", "0000000000000001", "Mine", workspace, time.Now())
@@ -435,6 +436,7 @@ func TestTakenSaidJoinsWhatTheTakeoverDid(t *testing.T) {
 // card depends on: it is raised when the takeover ends, not when home happens to
 // list the chat by then.
 func TestTheArrivalCardComesOnEveryTakeWhetherOrNotHomeListsTheChat(t *testing.T) {
+	t.Setenv("CODEAF_CELLS", "1")
 	for _, tc := range []struct {
 		name   string
 		listed bool

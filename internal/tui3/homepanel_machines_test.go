@@ -24,6 +24,7 @@ var otherMachines = chatlist.Static{
 // machinesHome opens home with a source and lets its first listing land.
 func machinesHome(t *testing.T, src chatlist.Source, width int) *app {
 	t.Helper()
+	t.Setenv("CODEAF_CELLS", "1")
 	a, _ := homeTabsFixture(t)
 	a.machines = src
 	// A merge is behind the row, so its sentence is the frozen one; the tests of a

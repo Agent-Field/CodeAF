@@ -94,7 +94,7 @@ var Pairing = &Map{
 				{Path: "internal/keys/seal.go", Symbols: []string{"seal", "open"}},
 			}},
 		{ID: "cells", Label: "cells", Short: "continue here", Kind: KindGo, X: 0.8, Y: 0.38,
-			Summary: "A cell is a chat together with its workspace. On by default for dev, staging and source builds; off for rc and stable. CODEAF_CELLS=1/0 overrides; a compatible Unix furrow engine is required. 'Continue here' on home moves the files, history, tool output and task records to this machine.",
+			Summary: "A cell is a chat together with its workspace. Off on every build unless CODEAF_CELLS=1 is set on both computers at startup; a compatible Unix furrow engine is required. 'Continue here' on home moves the files, history, tool output and task records to this machine.",
 			Details: []string{"do_continue.go continues a `do` run on the same machine; it does not move anything between machines"},
 			Files: []FileRef{
 				{Path: "cmd/codeaf/cell.go", Symbols: []string{"runCell", "cellRewind", "cellEngine"}},

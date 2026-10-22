@@ -7,10 +7,10 @@ import (
 	"testing"
 )
 
-// C18 and C21 keep dev's reachable-machine door when chat pairing is off.
+// C18 and C26 keep dev's reachable-machine door when chat pairing is off.
 func TestDevicesWithoutMovingChatsKeepsTheRemoteAccessRoute(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
-	t.Setenv("CODEAF_CELLS", "0")
+	t.Setenv("CODEAF_CELLS", "")
 	saved := os.Stdout
 	r, w, err := os.Pipe()
 	if err != nil {

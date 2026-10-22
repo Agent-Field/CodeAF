@@ -1,5 +1,5 @@
 // Package celltest lets tests declare whether their door needs a real engine
-// or only the availability of cells, independent of build staging.
+// or only the availability of cells, independent of the build channel.
 package celltest
 
 import (
@@ -8,17 +8,19 @@ import (
 	"testing"
 )
 
-// Available declares that a wiring test needs cells but never runs furrow.
-// Rollout settings keep their normal effect, including an explicit off switch.
+// Available opts a wiring test into cells without running furrow. Tests of
+// the off switch set it explicitly after declaring engine availability.
 func Available(t *testing.T) {
 	t.Helper()
+	t.Setenv(cell.EnvVar, "1")
 	t.Cleanup(cell.UseAvailabilityInTests(true))
 }
 
-// RequireEngine leaves real-engine acceptance explicit and visible when the
+// RequireEngine opts into cells and leaves acceptance visible when the
 // configured or embedded binary is missing or lacks the exchange contract.
 func RequireEngine(t *testing.T) {
 	t.Helper()
+	t.Setenv(cell.EnvVar, "1")
 	if !furrowbin.CellsAvailable() {
 		t.Skipf("no engine binary: %s", furrowbin.CellsUnavailable)
 	}

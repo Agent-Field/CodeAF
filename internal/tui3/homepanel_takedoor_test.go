@@ -31,6 +31,7 @@ func (f *flipping) Rows(context.Context) ([]chatlist.Row, error) {
 // heldLab opens home with a chat this machine lists and the directory says
 // another machine holds.
 func heldLab(t *testing.T, src chatlist.Source, taker Taker) (*app, *fakeAgent) {
+	t.Setenv("CODEAF_CELLS", "1")
 	t.Helper()
 	lab := newHomeLab(t)
 	workspace := lab.workspace("project")

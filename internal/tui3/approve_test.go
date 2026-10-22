@@ -75,6 +75,7 @@ func spark(now time.Time) PendingDevice {
 const testLink = "https://codeaf.agentfield.ai/p/k7m2q9xd#Qm9v"
 
 func approveApp(t *testing.T, door Approvals) (*app, *pairRig) {
+	t.Setenv("CODEAF_CELLS", "1")
 	a := newTestApp(&fakeAgent{model: "test/model"})
 	a.approvals = door
 	a.width, a.height = 80, 30

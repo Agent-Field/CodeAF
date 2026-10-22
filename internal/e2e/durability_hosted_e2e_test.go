@@ -64,6 +64,8 @@ type durable struct {
 
 func newDurable(t *testing.T, script ...brainStep) *durable {
 	t.Helper()
+	// C26 requires the receiving home in this process to opt in too.
+	t.Setenv(cell.EnvVar, "1")
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("no tmux on PATH: this suite drives the real binary in a real terminal")
 	}
@@ -84,6 +86,7 @@ func newDurable(t *testing.T, script ...brainStep) *durable {
 // the cuttable proxy as the only road to the relay.
 func (d *durable) env() []string {
 	return []string{
+		"CODEAF_CELLS=1",
 		"OPENROUTER_API_KEY=stub-key", "CODEAF_BASE_URL=" + d.brain.url(),
 		"CODEAF_SYNC_URL=" + d.relay,
 		"HTTPS_PROXY=" + d.proxy.url(), "https_proxy=" + d.proxy.url(),

@@ -482,7 +482,7 @@ func v3MintSessionAs(class cell.Class, bucket, workspace, launchDir string, owne
 }
 
 // v3NewFolder makes the empty folder a new session lives in and answers its id
-// and path: a cell while the platform, channel and engine allow it (the session package finds its
+// and path: a cell only with CODEAF_CELLS=1 and a capable platform and engine (the session package finds its
 // transcript in .cell/ by the folder's shape), a plain folder otherwise.
 func v3NewFolder(bucket string, class cell.Class) (id, dir string, err error) {
 	if cell.Available() {

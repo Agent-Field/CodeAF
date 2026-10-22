@@ -192,7 +192,8 @@ func (r *rig) paste(text string) {
 var linkShape = regexp.MustCompile(`https?://\S+/p/[A-Za-z0-9]+#\S+`)
 
 // TestPairJourney proves C1, C3, C4 and C5 through the terminal doors,
-// including the online and offline routes into the same arrival screen.
+// including the online and offline routes into the same arrival screen. C26
+// requires both homes to opt in explicitly, independently of the test runner.
 func TestPairJourney(t *testing.T) {
 	key := requireTmuxAndKey(t)
 	for _, online := range []bool{false, true} {
@@ -217,7 +218,7 @@ func runPairJourney(t *testing.T, key, mode string, online bool) {
 	defer j.write(filepath.Join(out, "e2e-run.json"))
 
 	j.relay = startRelay(t)
-	env := []string{config.APIKeyEnv + "=" + key, "CODEAF_SYNC_URL=" + j.relay, "CODEAF_SYNC_INTERVAL_MS=1000"}
+	env := []string{"CODEAF_CELLS=1", config.APIKeyEnv + "=" + key, "CODEAF_SYNC_URL=" + j.relay, "CODEAF_SYNC_INTERVAL_MS=1000"}
 	homeA, homeB := newHome(t, nil), newHome(t, nil)
 	wsA := newWorkspace(t, "proj", true)
 	wsB := newWorkspace(t, "proj", true)

@@ -44,7 +44,9 @@ func TestCellLayoutKeepsTruthUnderTheCellDir(t *testing.T) {
 // Seal a session, materialize ONLY the sealed tree (workspace plus .cell/) into
 // a fresh folder, and open it: the dials and cursors are the same.
 func TestSealedTreeCarriesTheSessionTruth(t *testing.T) {
-	t.Setenv(furrow.BinaryEnvVar, "") // the suite pins the engine away; this test seals for real
+	t.Setenv(cell.EnvVar, "1")
+	// The suite pins furrow away; this proof uses the explicit test engine.
+	t.Setenv(furrow.BinaryEnvVar, os.Getenv("CODEAF_TEST_FURROW"))
 	bin, err := furrow.ResolveBinary()
 	if err != nil {
 		t.Skipf("no engine binary: %v", err)
@@ -240,7 +242,8 @@ func slurp(t *testing.T, path string) string {
 // written, so the journal is compared by its name and found in the fresh
 // folder's own node journals.
 func TestSealedTreeCarriesTaskHistory(t *testing.T) {
-	t.Setenv(furrow.BinaryEnvVar, "")
+	t.Setenv(cell.EnvVar, "1")
+	t.Setenv(furrow.BinaryEnvVar, os.Getenv("CODEAF_TEST_FURROW"))
 	bin, err := furrow.ResolveBinary()
 	if err != nil {
 		t.Skipf("no engine binary: %v", err)

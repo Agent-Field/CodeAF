@@ -304,7 +304,7 @@ kept out of it as well, because they do nothing any more (see *codeaf wake and c
 tick* below).
 
 A third, **`codeaf cell`**, is typed by hand but is not in the help text: it works
-when moving chats is available (dev, staging and source default on; rc and stable default off; `CODEAF_CELLS=1`/`0` overrides). Its verbs are described under "The cell verbs" below.
+only with `CODEAF_CELLS=1` at startup on both computers, on every build. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows needs WSL, and a compatible furrow engine is required. Its verbs are described under "The cell verbs" below.
 
 ## codeaf pair — show a code, or use one, from the terminal
 
@@ -366,7 +366,7 @@ version; the map does not keep a second version number.
 
 ## The cell verbs — list a cell's turns and rewind it, and when CODEAF_CELLS=0 stops them
 
-Cells default on for dev, staging and source builds, and off for rc and stable; `CODEAF_CELLS=1` or `0` overrides. They need Unix and a compatible furrow engine. `codeaf cell` is hidden from the
+Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL. They need a compatible furrow engine. `codeaf cell` is hidden from the
 help text, and `CODEAF_CELLS=0` turns cells off and stops it. With cells on, **`codeaf cell log [<cell>]`** lists a cell's
 turns, newest first, one line each (turn, parent, time, trigger, tools, receipt; a setup turn says `Setup` and its calls are marked `[external]`), and
 **`codeaf cell rewind <turn> [<cell>]`** puts the cell's files and transcript back to that
@@ -383,7 +383,7 @@ New chats declare `host-bound`: shell commands run on this computer with the net
 Your identity is the one root secret codeaf keeps for you on a machine: a signing key, a
 secret for deduplicating file content, and the key your saved secrets are sealed under. It
 lives in `identity.json` in the codeaf home, readable by you only. There is no account.
-These verbs are hidden from the help text and follow the same platform, channel and engine rules as moving chats. When off they say `moving chats is off in this build; CODEAF_CELLS=1 turns it on`. Native Windows says `moving chats is not available on Windows because furrow needs Unix; run codeaf in WSL`. An older engine says `moving chats needs a newer furrow engine than this build carries`.
+These verbs are hidden from the help text and require `CODEAF_CELLS=1` at startup on every build and a compatible furrow engine. Set it on both computers; add `export CODEAF_CELLS=1` to each shell profile to keep it on. Windows needs WSL. When off they say `moving chats is off; CODEAF_CELLS=1 turns it on`. Native Windows says `moving chats is not available on Windows because furrow needs Unix; run codeaf in WSL`. An older engine says `moving chats needs a newer furrow engine than this build carries`.
 
 **`codeaf identity show`** prints your public id, a short fingerprint you can compare by
 eye between two machines, the cell key id, and this machine's device id. It makes the identity the first time it runs.
@@ -430,7 +430,7 @@ The engine keeps its sync setting from startup. Changing `CODEAF_SYNC_URL` to an
 
 ## Sync your chats between machines — CODEAF_SYNC_URL and CODEAF_SYNC_INTERVAL_MS
 
-Stable and rc builds have moving chats and pairing off unless `CODEAF_CELLS=1`; Windows does not have them.
+Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
 
 Only chats started after moving chats was turned on can be continued on another computer. Older chats stay where they are and keep working in every build.
 
@@ -993,7 +993,10 @@ is refused in words. Only the run engine keeps this record, so `--continue` is r
 
 ## Continuing a sealed headless run — its cell and incomplete calls
 
-With cells on (the default for dev, staging and source builds), `codeaf do` runs inside a cell, the same kind of folder a chat is, and
+Cells are off on every build unless `CODEAF_CELLS=1` is set at startup. Add
+`export CODEAF_CELLS=1` to the shell profile on both computers to keep moving chats on;
+Windows needs WSL and a compatible furrow engine is required. With cells on, `codeaf do`
+runs inside a cell, the same kind of folder a chat is, and
 the tool calls the run's workers make are sealed as turns, one turn for each set of calls the
 model asked for together, taken after the calls' results are written down, and the end of
 a worker's turn is sealed after its answer: `codeaf cell log` lists the turns,
