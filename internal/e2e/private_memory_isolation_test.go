@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -42,8 +43,7 @@ func startPrivateMemory(t *testing.T, name, home, ws string, cols, rows int, arg
 	// The host guard is the only additional writable mount, and contains fake
 	// scheduler commands rather than the developer's actual login state.
 	guardHost(t, home)
-	prefix := privateMemoryIsolation(t, home, ws, binary(t))
-	r := startWithLaunchPrefix(t, prefix, []string{config.APIKeyEnv + "=" + liveKey(t), "PATH=/usr/local/bin:/usr/bin:/bin", "LANG=C.UTF-8", "TMPDIR=/tmp", "CODEAF_VISION_MODEL=" + e2eModel, "IMAGE_MODEL=" + e2eModel, "SPEECH_MODEL=" + e2eModel, "MUSIC_MODEL=" + e2eModel, "VIDEO_MODEL=" + e2eModel, "VOICE_MODEL=" + e2eModel}, name, home, ws, cols, rows, args...)
+	r := startWithEnv(t, []string{"CODEAF_E2E_PRIVATE_ISOLATION=1", config.APIKeyEnv + "=" + liveKey(t), "PATH=/usr/local/bin:/usr/bin:/bin", "LANG=C.UTF-8", "TMPDIR=/tmp", "CODEAF_VISION_MODEL=" + e2eModel, "IMAGE_MODEL=" + e2eModel, "SPEECH_MODEL=" + e2eModel, "MUSIC_MODEL=" + e2eModel, "VIDEO_MODEL=" + e2eModel, "VOICE_MODEL=" + e2eModel}, name, home, ws, cols, rows, args...)
 	r.skipSetup(t)
 	return r
 }
@@ -101,7 +101,7 @@ test -z "${CODEAF_PRIVATE_MEMORY_DWELL_PLAN-}"
 		t.Fatal(err)
 	}
 	defer oracleFD.Close()
-	child := exec.Command(command[0], command[1:]...)
+	child := exec.Command("/usr/bin/env", command[1:]...)
 	child.ExtraFiles = make([]*os.File, 62)
 	child.ExtraFiles[0], child.ExtraFiles[61] = oracleFD, oracleFD
 	if output, err := child.CombinedOutput(); err != nil {
@@ -116,8 +116,11 @@ test -z "${CODEAF_PRIVATE_MEMORY_DWELL_PLAN-}"
 	// The same mount policy must launch the actual application, not merely a
 	// stand-in shell. Version exits without a model call or a copied key.
 	app := binary(t)
-	appCommand := append(privateMemoryIsolation(t, home, ws, app), "env", "CODEAF_HOME="+home, app, "--version")
-	if output, err := exec.Command(appCommand[0], appCommand[1:]...).CombinedOutput(); err != nil {
+	g := guardHost(t, home)
+	appCommand := append(privateMemoryIsolation(t, home, ws, app), "env")
+	appCommand = append(appCommand, g.tokens(nil)...)
+	appCommand = append(appCommand, "CODEAF_HOME="+home, app, "--version")
+	if output, err := guardedCommand(t, context.Background(), home, nil, appCommand[0], appCommand[1:]...).CombinedOutput(); err != nil {
 		t.Fatalf("isolated application launch failed: %v (%d diagnostic bytes)", err, len(output))
 	}
 }
