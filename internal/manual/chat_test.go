@@ -30,6 +30,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		question string
 		page     string
 	}{
+		// Installer refusals must reach the page that explains both API attempts.
+		{"installer says github api rate limit is used up", "running-from-the-terminal"},
+		{"install script says GitHub rejected GITHUB_TOKEN bad credentials", "running-from-the-terminal"},
+		{"curl install fails with 403 from github", "running-from-the-terminal"},
+		{"why did the installer continue without my GH_TOKEN", "running-from-the-terminal"},
+
 		// C12: Key troubleshooting must reach the self-contained restart section.
 		{"I changed or unset my API key in the shell but codeaf still uses the old one", "starting-codeaf"},
 		{"your key was not accepted for this model", "starting-codeaf"},
