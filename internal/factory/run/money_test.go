@@ -141,3 +141,16 @@ func TestBudgetQuestionSpeaksTheFloorsWord(t *testing.T) {
 		t.Fatalf("the stored kind changed to %q", kind)
 	}
 }
+
+func TestClosedJobRefusesPaidChatWorkUntilReopened(t *testing.T) {
+	for _, cap := range []float64{0, 10} {
+		it := factory.Item{Cap: cap, DoneHow: "closed_locally"}
+		if !strings.Contains(ChatRefusal(it), "closed locally") {
+			t.Fatal("closed job admitted paid chat work")
+		}
+		it.DoneHow = ""
+		if ChatRefusal(it) != "" {
+			t.Fatal("reopened job stayed fenced without exhausting its cap")
+		}
+	}
+}

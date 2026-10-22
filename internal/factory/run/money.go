@@ -167,6 +167,9 @@ const ChatBudgetReached = "job budget reached · %s spent of %s · raise the job
 // "" while it may. A budget question does not exempt owned calls from this
 // limit; raising the cap through the job controls permits work again.
 func ChatRefusal(it factory.Item) string {
+	if it.DoneHow == "closed_locally" {
+		return "job closed locally; Reopen to continue with its work and spending kept"
+	}
 	spent := factory.JobSpent(it)
 	if it.Cap <= 0 || spent < it.Cap {
 		return ""
