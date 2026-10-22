@@ -14,3 +14,7 @@ and comments. Known factory receipts and acknowledgement-only comments are exclu
 from review triggers; substantive human and external bot comments remain untrusted
 evidence. Existing head, ownership, attempt, budget, mode and publication guards
 remain authoritative. Feedback pagination and size bounds fail explicitly.
+
+Redaction starts only where an absolute path starts (including after an option such
+as `-I` or a `file://` scheme), so repository-relative paths through `users`, `home`
+or `root` directories and API routes keep their public wording.
