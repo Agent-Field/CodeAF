@@ -57,6 +57,7 @@ models.crew.source
 models.crew.task_cap
 models.fallbacks
 models.pool.public_key
+models.quick_switch
 models.roles
 models.tiers.high
 models.tiers.low

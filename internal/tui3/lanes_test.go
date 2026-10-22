@@ -695,9 +695,14 @@ func TestEnterOnALaneInTheSettingsPickerPins(t *testing.T) {
 	}
 	// The row and the model row's tail are two readings of one fact, and both
 	// of them say so on the very next frame.
-	if !sheetHas(a, "pinned: Cloudflare") || !sheetHas(a, "· pinned: cloudflare") {
-		t.Fatalf("the panel did not re-read the pin it just wrote:\n%s",
-			strings.Join(sheetLabels(a), "\n"))
+	if !sheetHas(a, "· pinned: cloudflare") {
+		t.Fatal("the model row did not re-read the pin it just wrote")
+	}
+	// The quick-switch row adds a line above Advanced; walk to the lane row
+	// rather than assuming both readings fit in this terminal at once.
+	cursorTo(t, a, config.LaneSettingKey(talkSlot))
+	if !sheetHas(a, "pinned: Cloudflare") {
+		t.Fatalf("the lane row did not re-read the pin it just wrote:\n%s", strings.Join(sheetLabels(a), "\n"))
 	}
 	// AND THE TAIL SAYS NOTHING ABOUT THE BASE WHILE THE BASE TAKES THE CHOICE.
 	// The emptiness law: an unremarkable fact adds no words (issue #433).
