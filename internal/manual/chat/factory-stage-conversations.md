@@ -575,3 +575,25 @@ service's confirmed receipts, and all existing budget and approval rules remain.
 After a confirmed repair publication, the conversation says `PR updated:` and
 explains that fresh GitHub CI is still pending. Initial publication still says
 `PR available:`. A model progress message never substitutes for either receipt.
+
+
+## Repair reports need measured required checks on the current checkout
+
+`repair.decision: fixed` means the local candidate passed its recorded checks,
+not that GitHub CI passed or that the PR is ready to merge. The stage rejects a
+fixed report before it ends the turn when a required check failed, its exit is
+unknown, no measured checks exist, or the checkout changed during or after testing.
+The agent can correct and rerun the check in that conversation. Useful partial
+work uses `done: false` and `repair.decision: needs_repair`; it remains incomplete.
+
+Factory check receipts include actual exits for supported test, lint, build and
+security-audit commands, including `npm audit`, `pip-audit`, `go vet` and `trivy`.
+Piping their output to `tail`, or adding `|| true`, cannot turn a measured failure
+into success. A successful check in another directory, with other targets or
+arguments, cannot erase a failed check. Receipts bind to Git HEAD and tracked and
+nonignored untracked contents; a check that modifies those contents needs a stable
+rerun. Missing or unreadable evidence requires a rerun, never an assumed pass.
+
+A locally checked repair can be pushed while the old remote head is red: fresh CI
+must run on the new commit. Publishing clears old CI evidence; current-head green
+checks, complete PR reads and the final review are still required for readiness.

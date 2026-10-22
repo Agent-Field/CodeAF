@@ -26,10 +26,13 @@ func TestFactoryVerificationThroughTheRealStageConversation(t *testing.T) {
 	for _, tc := range []struct {
 		name, check string
 		done        bool
+		rerun       string
 	}{
-		{"zero-match reporter", "go test -v ./... | grep -c -e '--- FAIL:'", true},
-		{"real test failure", "CHECK_EXIT=7 go test -v ./... | tail -2", false},
-		{"failed build after passing tests", "go test -v ./... && false", false},
+		{"zero-match reporter", "go test -v ./... | grep -c -e '--- FAIL:'", true, ""},
+		{"real test failure", "CHECK_EXIT=7 go test -v ./... | tail -2", false, ""},
+		{"failed build after passing tests", "go test -v ./... && false", false, ""},
+		{"audit failure hidden by shell success", "CHECK_EXIT=1 npm audit || true", false, ""},
+		{"audit corrected in the same conversation", "CHECK_EXIT=1 npm audit || true", true, "npm audit"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := resolvedTempDir(t)
@@ -42,16 +45,30 @@ func TestFactoryVerificationThroughTheRealStageConversation(t *testing.T) {
 			if err := os.MkdirAll(workspace, 0700); err != nil {
 				t.Fatal(err)
 			}
+			gitT(t, workspace, "init", "-q")
+			if err := os.WriteFile(filepath.Join(workspace, "source.txt"), []byte("fixture\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			gitT(t, workspace, "add", "source.txt")
+			gitT(t, workspace, "-c", "user.name=ZeroPoint95", "-c", "user.email=test@example.invalid", "commit", "-qm", "fixture")
 			bin := filepath.Join(root, "bin")
 			if err := os.Mkdir(bin, 0700); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(filepath.Join(bin, "go"), []byte("#!/bin/sh\nprintf '%s\\n' '--- PASS: TestA (0s)' PASS\nexit \"${CHECK_EXIT:-0}\"\n"), 0700); err != nil {
-				t.Fatal(err)
+			for _, program := range []string{"go", "npm"} {
+				if err := os.WriteFile(filepath.Join(bin, program), []byte("#!/bin/sh\nprintf '%s\\n' '--- PASS: TestA (0s)' PASS\nexit \"${CHECK_EXIT:-0}\"\n"), 0700); err != nil {
+					t.Fatal(err)
+				}
 			}
 			command := "export PATH=" + strconv.Quote(bin) + ":\"$PATH\"; " + tc.check
 			args, _ := json.Marshal(map[string]string{"command": command})
-			model := newScriptedStageModel(t, stageCall{"bash", string(args)}, stageCall{"stage_result", `{"done":true,"output":"repaired","repair":{"decision":"fixed","reason":"checked"}}`})
+			fixed := stageCall{"stage_result", `{"done":true,"output":"repaired","repair":{"decision":"fixed","reason":"checked"}}`}
+			calls := []stageCall{{"bash", string(args)}, fixed}
+			if tc.rerun != "" {
+				retryArgs, _ := json.Marshal(map[string]string{"command": "export PATH=" + strconv.Quote(bin) + ":\"$PATH\"; " + tc.rerun})
+				calls = append(calls, stageCall{"bash", string(retryArgs)}, fixed)
+			}
+			model := newScriptedStageModel(t, calls...)
 			t.Setenv("CODEAF_BASE_URL", model.server.URL)
 			t.Chdir(workspace)
 			freshEngineProcess(t)

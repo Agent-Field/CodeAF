@@ -1,7 +1,10 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"os"
 	"sort"
@@ -9,11 +12,21 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/verification"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ExecutionNotes carries exact command context and observed outcomes to later stages.
 // Journal messages are complete; display events are capped and cannot prove results.
 func (c *stageConversation) ExecutionNotes() ([]string, *factory.TestCounts) {
+	return c.executionNotes(false)
+}
+
+// A completed repair needs measured exits for its current checkout. Generic
+// historical notes remain readable; their prose is not upgraded to fresh proof.
+func (c *stageConversation) RepairExecutionNotes() ([]string, *factory.TestCounts) {
+	return c.executionNotes(true)
+}
+func (c *stageConversation) executionNotes(fresh bool) ([]string, *factory.TestCounts) {
 	f, err := os.Open(c.file)
 	if err != nil {
 		return []string{verification.FailurePrefix + " command journal could not be read: " + err.Error()}, nil
@@ -24,6 +37,17 @@ func (c *stageConversation) ExecutionNotes() ([]string, *factory.TestCounts) {
 	var notes []string
 	var tests *factory.TestCounts
 	lastOutcome := map[string]string{}
+	var pending []string
+	var state verification.Snapshot
+	if fresh {
+		var stateErr error
+		state, stateErr = verification.SnapshotAt(c.dir)
+		if stateErr != nil {
+			pending = append(pending, stateErr.Error())
+		} else if state.Head == "" {
+			pending = append(pending, "repair checkout snapshot is unavailable")
+		}
+	}
 	setupFailures := map[string]string{}
 	var journalErr error
 	checks, checkErr := verification.Read(c.file)
@@ -42,7 +66,7 @@ func (c *stageConversation) ExecutionNotes() ([]string, *factory.TestCounts) {
 		if _, seen := corrected[identity]; !seen {
 			corrected[identity] = true
 		}
-		if check.Exit == nil || *check.Exit != 0 {
+		if check.Exit == nil || *check.Exit != 0 || (fresh && !check.Fresh(state)) {
 			corrected[identity] = false
 		}
 	}
@@ -88,7 +112,7 @@ func (c *stageConversation) ExecutionNotes() ([]string, *factory.TestCounts) {
 			continue
 		}
 		delete(setupFailures, cmd)
-		if !strings.Contains(cmd, "go test") && !strings.Contains(cmd, "go vet") && !strings.Contains(cmd, "pytest") && !strings.Contains(cmd, "npm test") {
+		if !verification.CheckCommand(cmd) {
 			continue
 		}
 		passed := (strings.Contains(row.Content, "\nPASS\n") || strings.HasPrefix(row.Content, "PASS\n") || strings.Contains(row.Content, "ok  ")) && !strings.Contains(row.Content, "\nFAIL") && !strings.Contains(row.Content, "Command exited with code")
@@ -104,6 +128,9 @@ func (c *stageConversation) ExecutionNotes() ([]string, *factory.TestCounts) {
 			receipt["scope"] = "shell presentation; check exits recorded separately"
 		} else {
 			lastOutcome[cmd] = receipt["outcome"].(string)
+			if !observed[cmd] && receipt["outcome"] == "completed" {
+				pending = append(pending, cmd+" · exit status unavailable; rerun with a measured check")
+			}
 		}
 		if strings.Contains(cmd, "go test") {
 			counts := &factory.TestCounts{}
@@ -137,7 +164,6 @@ func (c *stageConversation) ExecutionNotes() ([]string, *factory.TestCounts) {
 	// Exact argv, directory and target context identify a check. A later
 	// corrected presentation of THAT check can clear an earlier failure; a
 	// passing subset, other directory or target cannot.
-	var pending []string
 	for command, failure := range setupFailures {
 		pending = append(pending, command+" · "+failure)
 	}
@@ -164,14 +190,19 @@ func (c *stageConversation) ExecutionNotes() ([]string, *factory.TestCounts) {
 				outcome = "failed"
 			}
 		}
-		raw, _ := json.Marshal(map[string]any{"command": check.Command, "check": check.Args, "cwd": check.Cwd, "exit": check.Exit, "outcome": outcome})
+		raw, _ := json.Marshal(map[string]any{"command": check.Command, "check": check.Args, "cwd": check.Cwd, "exit": check.Exit, "outcome": outcome, "before": check.Before, "after": check.After})
 		notes = append(notes, "Check receipt: "+string(raw))
 		if outcome != "passed" {
 			pending = append(pending, check.Label()+" · "+outcome)
+		} else if fresh && !check.Fresh(state) {
+			pending = append(pending, check.Label()+" · verification is stale or unbound to this checkout; rerun after the last change")
 		}
 	}
 	if len(notes) > 12 {
 		notes = notes[len(notes)-12:]
+	}
+	if fresh && len(latest) == 0 {
+		pending = append(pending, "no measured checks verify the current repair checkout")
 	}
 	if checkErr != nil {
 		pending = append(pending, "check receipts could not be read: "+checkErr.Error())
@@ -221,4 +252,44 @@ func verificationCommand(command string) string {
 		}
 	}
 	return strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(command), "2>&1"))
+}
+
+// Reject a false fixed report before the successful stage_result can end the
+// model turn. Keep Ask/Edit on the original door, including manager decisions.
+type receiptStageDoor struct {
+	session.StageDoor
+	file, dir string
+	repair    bool
+}
+
+func (d receiptStageDoor) Report(ctx context.Context, r factory.StageResult) error {
+	if d.repair && r.Done && r.Repair == nil {
+		return errors.New("a completed PR repair needs repair.decision fixed or no_change with evidence; use needs_repair for partial work")
+	}
+	if d.repair && r.Done && r.Repair != nil && r.Repair.Decision == "no_change" {
+		notes, _ := (&stageConversation{file: d.file, dir: d.dir}).ExecutionNotes()
+		for _, note := range notes {
+			if strings.HasPrefix(note, verification.FailurePrefix) {
+				return fmt.Errorf("repair is incomplete: %s", strings.TrimSpace(strings.TrimPrefix(note, verification.FailurePrefix)))
+			}
+		}
+	}
+	if r.Repair != nil && r.Repair.Decision == "fixed" {
+		if !r.Done || r.Exit != 0 || r.Findings != 0 {
+			return errors.New("repair is incomplete: fixed requires done, no failing exit and no remaining findings; report needs_repair for partial work")
+		}
+		notes, _ := (&stageConversation{file: d.file, dir: d.dir}).RepairExecutionNotes()
+		for _, note := range notes {
+			if strings.HasPrefix(note, verification.FailurePrefix) {
+				return fmt.Errorf("repair is incomplete: %s; correct and rerun the required check, or report done:false with repair.decision needs_repair", strings.TrimSpace(strings.TrimPrefix(note, verification.FailurePrefix)))
+			}
+		}
+	}
+	return d.StageDoor.Report(ctx, r)
+}
+func (d receiptStageDoor) Ask(ctx context.Context, q factory.Asked) (string, error) {
+	if door, ok := d.StageDoor.(session.StageAsker); ok {
+		return door.Ask(ctx, q)
+	}
+	return "", errors.New("this stage has nobody to ask")
 }

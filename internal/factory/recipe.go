@@ -449,6 +449,10 @@ const (
 // whether the result meets it ([Met]), and what in it contradicts itself
 // under that rule ([ReportFault]), "" for nothing.
 func judge(s Stage, r StageResult) (met bool, fault string) {
+	// An honest partial repair can report its work without becoming a passed step.
+	if IsCIRepairStage(s) && r.Repair != nil && r.Repair.Decision == "needs_repair" {
+		return false, ""
+	}
 	if IsCIRepairStage(s) && r.Repair != nil && r.Repair.Readiness != nil && r.Repair.Decision == "no_change" {
 		a := r.Repair.Readiness
 		if r.Done && r.Exit == 0 && r.Findings == 0 && strings.TrimSpace(r.Repair.Reason) != "" && a.Head != "" && a.DiffReviewed && a.DescriptionMatches && a.FeedbackAddressed && a.NoUnfinishedWork {

@@ -37,3 +37,15 @@ func TestModelIdentityAndExplicitPolicyCrossRemoteConnection(t *testing.T) {
 		t.Fatalf("policy changed identity: %+v", got)
 	}
 }
+
+func TestModelIdentityTransportsOneModelLockAndChosenIntent(t *testing.T) {
+	a := &identityAgent{fakeAgent: &fakeAgent{model: "vendor/preferred"}, identity: session.ModelIdentity{Epoch: "live", Mode: "fixed", Chosen: "automatic", LockedReason: "one-model launch", Revision: 1}}
+	loop, err := Loopback(Hello{Version: Version}, Options{Boot: func(Hello) (*Engine, error) { return &Engine{Agent: a}, nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
+	if got := loop.Client.Agent().ModelIdentity(); got.Mode != "fixed" || got.Chosen != "automatic" || got.LockedReason != "one-model launch" {
+		t.Fatalf("lock facts lost: %+v", got)
+	}
+}

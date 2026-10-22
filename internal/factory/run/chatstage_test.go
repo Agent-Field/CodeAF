@@ -8,6 +8,7 @@ package run
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -621,10 +622,12 @@ func TestJobModelAndEffortReachEveryConversationSpec(t *testing.T) {
 }
 
 type identityStageMaker struct {
+	policyErr    error
 	inner        *FakeMaker
 	conversation *identityStageConversation
 }
 type identityStageConversation struct {
+	policyErr error
 	*FakeConversation
 	mu         sync.Mutex
 	operations []string
@@ -632,6 +635,9 @@ type identityStageConversation struct {
 
 func (c *identityStageConversation) LastModel() string { return "vendor/served" }
 func (c *identityStageConversation) SetAutomaticModels(enabled bool) error {
+	if c.policyErr != nil {
+		return c.policyErr
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if enabled {
@@ -652,7 +658,7 @@ func (m *identityStageMaker) Open(ctx context.Context, spec ConversationSpec) (C
 	if err != nil {
 		return nil, err
 	}
-	m.conversation = &identityStageConversation{FakeConversation: opened.(*FakeConversation)}
+	m.conversation = &identityStageConversation{FakeConversation: opened.(*FakeConversation), policyErr: m.policyErr}
 	return m.conversation, nil
 }
 func TestModelSelectionAppliesPolicyBeforeModelAndRecordsExecution(t *testing.T) {
@@ -685,5 +691,43 @@ func TestModelSelectionAppliesPolicyBeforeModelAndRecordsExecution(t *testing.T)
 	defer c.mu.Unlock()
 	if len(c.operations) != 2 || c.operations[0] != "fixed" || c.operations[1] != "model" {
 		t.Fatalf("selection order: %v", c.operations)
+	}
+}
+
+func TestModelPolicyRefusalDoesNotStopStageOrDiscardModelSelection(t *testing.T) {
+	for _, unsupported := range []bool{false, true} {
+		t.Run(fmt.Sprint(unsupported), func(t *testing.T) {
+			fake := &FakeMaker{Script: func(ctx context.Context, c *FakeConversation) {
+				for c.Model() != "vendor/final" {
+					select {
+					case <-ctx.Done():
+						return
+					case <-time.After(time.Millisecond):
+					}
+				}
+				_ = c.Spec.Stage.Report(ctx, factory.StageResult{Done: true})
+			}}
+			var maker ConversationMaker = fake
+			if !unsupported {
+				maker = &identityStageMaker{inner: fake, policyErr: errors.New("one-model launch")}
+			}
+			job := reviewJob()
+			choices := make(chan ModelSelection, 2)
+			automatic := true
+			choices <- ModelSelection{Model: "vendor/intermediate", Automatic: &automatic}
+			choices <- ModelSelection{Model: "vendor/final", Automatic: &automatic}
+			job.ModelSelections = choices
+			var notices []string
+			job.Log = func(line string) { notices = append(notices, line) }
+			ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+			defer cancel()
+			result, err := NewChatExecutor(maker).Run(ctx, job)
+			if err != nil || !result.Done {
+				t.Fatalf("control request stopped useful work: done=%v error=%v", result.Done, err)
+			}
+			if !strings.Contains(strings.Join(notices, "\n"), "Model policy change not applied:") {
+				t.Fatalf("missing policy notice: %v", notices)
+			}
+		})
 	}
 }

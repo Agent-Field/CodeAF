@@ -121,7 +121,7 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	if model := strings.TrimSpace(spec.Model); model != "" {
 		cfg.Model = model
 	}
-	cfg.Stage = spec.Stage
+	cfg.Stage = receiptStageDoor{StageDoor: spec.Stage, file: cfg.SessionFile, dir: where, repair: spec.VerifyRepair}
 	cfg.Interactive = false
 	cfg.Unattended = true
 	cfg.Budget = session.Budget{Wall: factoryStageWall}

@@ -16,7 +16,7 @@ func fakeChecks(t *testing.T) (string, string) {
 	if err := os.Mkdir(bin, 0700); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"go", "pytest", "npm", "python3"} {
+	for _, name := range []string{"go", "pytest", "npm", "pnpm", "yarn", "python", "python3", "pip-audit", "trivy", "cargo", "govulncheck", "golangci-lint"} {
 		script := "#!/bin/sh\nprintf '%s\\n' '--- PASS: TestA (0s)' PASS\nexit \"${CHECK_EXIT:-0}\"\n"
 		if err := os.WriteFile(filepath.Join(bin, name), []byte(script), 0700); err != nil {
 			t.Fatal(err)
@@ -239,5 +239,107 @@ func TestOriginalCommandRoundTripAndOrdinaryCommands(t *testing.T) {
 		if got := OriginalCommand(original); got != original {
 			t.Fatalf("malformed metadata changed command: %q", got)
 		}
+	}
+}
+
+func TestAuditExitsCannotBeHiddenByLogsOrShellSuccess(t *testing.T) {
+	for _, command := range []string{"npm audit --omit=dev --audit-level=high | tail -1", "pip-audit || true", "python3 -m pip_audit | cat", "pnpm audit || true", "npm run lint | tail -1"} {
+		t.Run(command, func(t *testing.T) {
+			root, prefix := fakeChecks(t)
+			file := filepath.Join(t.TempDir(), "transcript.jsonl")
+			runObserved(t, file, root, prefix+"CHECK_EXIT=7 "+command)
+			checks, err := Read(file)
+			if err != nil || len(checks) != 1 || checks[0].Exit == nil || *checks[0].Exit != 7 {
+				t.Fatalf("lost check failure: %+v %v", checks, err)
+			}
+			if !CheckCommand(command) {
+				t.Fatal("collector vocabulary disagrees with observer")
+			}
+		})
+	}
+	if CheckCommand("printf '%s' 'npm audit'") {
+		t.Fatal("quoted mention became an executable check")
+	}
+}
+func TestVerificationSnapshotTracksHeadTrackedAndUntrackedContentsWithoutChangingIndex(t *testing.T) {
+	root, prefix := fakeChecks(t)
+	git := func(args ...string) string {
+		t.Helper()
+		c := exec.Command("git", args...)
+		c.Dir = root
+		b, e := c.CombinedOutput()
+		if e != nil {
+			t.Fatalf("git: %v %s", e, b)
+		}
+		return string(b)
+	}
+	git("init", "-q")
+	git("add", ".")
+	git("-c", "user.name=ZeroPoint95", "-c", "user.email=test@example.invalid", "commit", "-qm", "fixture")
+	file := filepath.Join(t.TempDir(), "transcript.jsonl")
+	runObserved(t, file, root, prefix+"npm audit")
+	checks, err := Read(file)
+	if err != nil || len(checks) != 1 {
+		t.Fatalf("checks: %v %v", checks, err)
+	}
+	at, err := SnapshotAt(root)
+	if err != nil || !checks[0].Fresh(at) {
+		t.Fatalf("fresh receipt: %+v %+v %v", checks[0], at, err)
+	}
+	if e := os.WriteFile(filepath.Join(root, "new-test.txt"), []byte("first"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	at2, err := SnapshotAt(root)
+	if err != nil || checks[0].Fresh(at2) {
+		t.Fatal("new test did not stale verification")
+	}
+	before := git("diff", "--cached", "--stat")
+	if before != "" {
+		t.Fatal("taking a snapshot staged files")
+	}
+	if e := os.WriteFile(filepath.Join(root, "new-test.txt"), []byte("second"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	at3, _ := SnapshotAt(root)
+	if at2 == at3 {
+		t.Fatal("untracked content change was lost")
+	}
+	git("add", ".")
+	git("-c", "user.name=ZeroPoint95", "-c", "user.email=test@example.invalid", "commit", "-qm", "new head")
+	at4, _ := SnapshotAt(root)
+	if at4.Head == at.Head || checks[0].Fresh(at4) {
+		t.Fatal("head change reused stale verification")
+	}
+}
+
+func TestCheckThatChangesCheckoutCannotVerifyItsOwnEdits(t *testing.T) {
+	root, prefix := fakeChecks(t)
+	git := func(args ...string) {
+		t.Helper()
+		c := exec.Command("git", args...)
+		c.Dir = root
+		if b, e := c.CombinedOutput(); e != nil {
+			t.Fatalf("git: %v %s", e, b)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "source.txt"), []byte("before"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	script := filepath.Join(root, "bin", "go")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nprintf changed > source.txt\nexit 0\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	git("init", "-q")
+	git("add", ".")
+	git("-c", "user.name=ZeroPoint95", "-c", "user.email=test@example.invalid", "commit", "-qm", "fixture")
+	file := filepath.Join(t.TempDir(), "transcript.jsonl")
+	runObserved(t, file, root, prefix+"go test ./...")
+	checks, err := Read(file)
+	if err != nil || len(checks) != 1 {
+		t.Fatalf("checks: %v %v", checks, err)
+	}
+	at, err := SnapshotAt(root)
+	if err != nil || checks[0].Before == checks[0].After || checks[0].Fresh(at) {
+		t.Fatalf("mutating check accepted: %+v %v", checks[0], err)
 	}
 }
