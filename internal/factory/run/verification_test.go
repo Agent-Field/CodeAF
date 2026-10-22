@@ -74,6 +74,9 @@ func TestVerificationRejectionOverridesReportedSuccessWithConcreteReason(t *test
 			if err != nil {
 				t.Fatal(err)
 			}
+			if result.Repair != nil && result.Repair.Decision == "fixed" {
+				t.Fatal("a rejected repair still claimed fixed")
+			}
 			if result.Done || result.Exit == 0 || factory.Met(job.Stage, result) {
 				t.Fatalf("rejected verification met gate: %+v", result)
 			}

@@ -58,6 +58,10 @@ type StageDoor interface {
 
 // ConversationSpec is everything the maker needs to open one stage round.
 type ConversationSpec struct {
+	// VerifyRepair makes successful PR-repair reports pass the concrete receipt guard.
+	// Read-only readiness reviews retain their separate current-PR snapshot contract.
+	VerifyRepair bool
+
 	Item factory.Item
 	// Team is the item's team id (its Stream's Room), "" when the item has none
 	// yet; the maker makes it then, under the one `factory` team, the way the
@@ -224,6 +228,7 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 		AutomaticModels: job.Item.AutomaticModels,
 		Effort:          job.Item.Effort,
 		Stage:           door,
+		VerifyRepair:    factory.IsCIRepairStage(job.Stage) && (job.Item.FollowUp == nil || job.Item.FollowUp.Kind != "readiness"),
 		Progress:        job.Progress,
 	}
 	var conv Conversation
@@ -291,11 +296,13 @@ loop:
 			}
 			if selection.Automatic != nil {
 				door, ok := conv.(interface{ SetAutomaticModels(bool) error })
+				// This is a control request, not the step's execution result.
+				// A one-model lock (or an older conversation without this door)
+				// must not terminate useful work or discard a valid model pick.
 				if !ok {
-					return factory.StageResult{}, fmt.Errorf("the step cannot change automatic model selection")
-				}
-				if err := door.SetAutomaticModels(*selection.Automatic); err != nil {
-					return factory.StageResult{}, err
+					log("Model policy change not applied: this step cannot change automatic model selection.")
+				} else if err := door.SetAutomaticModels(*selection.Automatic); err != nil {
+					log("Model policy change not applied: " + oneLine(err.Error()))
 				}
 			}
 			if m, ok := conv.(modeler); ok && strings.TrimSpace(selection.Model) != "" {
@@ -322,7 +329,7 @@ loop:
 			}
 			if !door.empty() && ctx.Err() == nil && corrections < stageVerificationCorrections {
 				if receipts, ok := conv.(executionReporter); ok && checksVerification(job.Stage) {
-					notes, _ := receipts.ExecutionNotes()
+					notes, _ := reportExecutionNotes(receipts, door.result())
 					if reason := verificationReason(factory.StageResult{Notes: notes}); reason != "" {
 						res := door.result()
 						if res.Done && (res.Repair == nil || (res.Repair.Decision != "needs_you" && res.Repair.Decision != "needs_repair")) {
@@ -386,11 +393,17 @@ loop:
 		res.Done, res.Exit, res.Output = false, 1, stop.Error()
 	}
 	if receipts, ok := conv.(executionReporter); ok {
-		notes, tests := receipts.ExecutionNotes()
+		notes, tests := reportExecutionNotes(receipts, res)
 		res.Notes = append(res.Notes, notes...)
 		if checksVerification(job.Stage) {
 			if reason := verificationReason(res); reason != "" {
 				res.Done = false
+				if res.Repair != nil && res.Repair.Decision == "fixed" {
+					repair := *res.Repair
+					repair.Decision = "needs_repair"
+					repair.Reason = "Required verification is incomplete: " + reason
+					res.Repair = &repair
+				}
 				res.Exit = 1
 				res.Output = "Verification blocked: " + reason + ". Re-run the relevant check successfully after the repair, or report what remains blocked.\n" + res.Output
 			}
@@ -1160,4 +1173,17 @@ type executionReporter interface {
 
 func checksVerification(st factory.Stage) bool {
 	return st.Name == "proof" || st.Name == "test" || factory.IsCIRepairStage(st)
+}
+
+// New owners provide strict, checkout-bound repair evidence. Existing adapters
+// keep their old execution contract; no fabricated receipts fill a missing door.
+func reportExecutionNotes(owner executionReporter, r factory.StageResult) ([]string, *factory.TestCounts) {
+	if r.Repair != nil && r.Repair.Decision == "fixed" {
+		if strict, ok := owner.(interface {
+			RepairExecutionNotes() ([]string, *factory.TestCounts)
+		}); ok {
+			return strict.RepairExecutionNotes()
+		}
+	}
+	return owner.ExecutionNotes()
 }

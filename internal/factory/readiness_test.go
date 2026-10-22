@@ -120,3 +120,42 @@ func TestSettledAutomaticApprovalDoesNotRefuseALaterAnswer(t *testing.T) {
 		t.Fatal("an in-flight automatic approval in Manual was allowed")
 	}
 }
+
+func TestRepairClaimsCannotOverrideFreshHeadRequiredCI(t *testing.T) {
+	it := readyItem()
+	QueueCIFollowUp(&it, time.Now())
+	report := StageResult{Done: true, Repair: &CIRepairResult{Decision: "no_change", Reason: "local repair checked", Readiness: &ReadinessReview{Head: it.HeadCommit, DiffReviewed: true, DescriptionMatches: true, FeedbackAddressed: true, NoUnfinishedWork: true}}}
+	original := it.PullRequest.Checks
+	for _, state := range []string{"unknown", "pending", "failed"} {
+		t.Run(state, func(t *testing.T) {
+			it.PullRequest.ChecksRead = state != "unknown"
+			it.PullRequest.Checks = original
+			if state == "pending" {
+				it.PullRequest.Checks.Pending = 1
+			}
+			if state == "failed" {
+				it.PullRequest.Checks.Failed = 1
+			}
+			if ValidateReadinessReview(it, report) == nil {
+				t.Fatal("local completion overruled required CI")
+			}
+		})
+	}
+	it.PullRequest.ChecksRead = true
+	it.PullRequest.Checks = original
+	if err := ValidateReadinessReview(it, report); err != nil {
+		t.Fatal(err)
+	}
+	it.PullRequest.HeadSHA = strings.Repeat("b", 40)
+	if ValidateReadinessReview(it, report) == nil {
+		t.Fatal("old green snapshot survived a new PR head")
+	}
+}
+func TestPartialRepairNeverMeetsAStageEvenWhenDoneWasReported(t *testing.T) {
+	r := StageResult{Done: true, Claims: []Claim{{Text: "partial work", OK: true, Evidence: "some tests passed"}}, Repair: &CIRepairResult{Decision: "needs_repair", Reason: "required audit remains red"}}
+	for _, until := range []string{UntilDone, UntilClean, UntilGreen, UntilProven} {
+		if Met(Stage{Name: FollowPRStep, Until: until}, r) {
+			t.Fatalf("partial work met %s", until)
+		}
+	}
+}

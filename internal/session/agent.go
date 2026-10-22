@@ -156,8 +156,12 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 				agent.modelIdentity = *meta.ModelIdentity
 				agent.modelIdentity.Active, agent.modelIdentity.Pending = "", false
 			}
-			if meta.AutomaticModels != nil && !*meta.AutomaticModels {
-				agent.automaticModels.Store(1)
+			if meta.AutomaticModels != nil {
+				if *meta.AutomaticModels {
+					agent.automaticModels.Store(2)
+				} else {
+					agent.automaticModels.Store(1)
+				}
 			}
 		}
 	}
