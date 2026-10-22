@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/env"
@@ -45,6 +44,7 @@ type Action struct {
 	ID      string
 	Bytes   int64
 	Outcome Outcome
+	Paths   []string
 	Why     string
 }
 
@@ -61,7 +61,7 @@ type held struct {
 }
 
 // Collect brings the cells under the budget, least recently opened first. With
-// dry set it changes nothing and reports what it would evict.
+// dry set it checks a capture and reports paths without removing working files.
 func (m Manager) Collect(ctx context.Context, dry bool) (Report, error) {
 	cells, err := m.measured()
 	if err != nil {
@@ -99,14 +99,15 @@ func (m Manager) consider(ctx context.Context, h held, dry bool) Action {
 	if err := m.accepts(h); err != nil {
 		return skip(err)
 	}
-	if dry {
-		a.Outcome = WouldEvict
-		return a
-	}
-	if err := m.evictLocked(ctx, h); err != nil {
+	paths, size, err := m.evictLocked(ctx, h, dry)
+	if err != nil {
 		return skip(err)
 	}
+	a.Paths, a.Bytes = paths, size
 	a.Outcome = Evicted
+	if dry {
+		a.Outcome = WouldEvict
+	}
 	return a
 }
 
@@ -121,24 +122,24 @@ func (m Manager) accepts(h held) error {
 
 // evictLocked evicts under the cell's lock, judging the rules again there:
 // the sweep's first look was without it.
-func (m Manager) evictLocked(ctx context.Context, h held) error {
+func (m Manager) evictLocked(ctx context.Context, h held, dry bool) ([]string, int64, error) {
 	release, err := lock(m.Engine.LocalDir(h.cell), false)
 	if err != nil {
-		return err
+		return nil, 0, err
 	}
 	defer release()
 	e, err := readEntry(m.Engine.LocalDir(h.cell))
 	if err != nil {
-		return err
+		return nil, 0, err
 	}
 	h.entry = e
 	if e.Evicted != nil {
-		return errors.New("already evicted")
+		return nil, 0, errors.New("already evicted")
 	}
 	if err := m.accepts(h); err != nil {
-		return err
+		return nil, 0, err
 	}
-	return m.evict(ctx, h.cell, e)
+	return m.evict(ctx, h.cell, e, dry)
 }
 
 // measured lists the cells that still hold their working files, each with a
@@ -203,21 +204,4 @@ func (m Manager) held(c cell.Cell) (int64, error) {
 func (m Manager) stale(c cell.Cell, e Entry) bool {
 	info, err := os.Stat(filepath.Join(c.Root, cell.TranscriptPath))
 	return e.MeasuredMs == 0 || err != nil || info.ModTime().UnixMilli() > e.MeasuredMs
-}
-
-// Auto is the sweep a start runs: at most once per interval, and free when
-// under budget, because sizes are cached.
-func (m Manager) Auto(ctx context.Context, every time.Duration) error {
-	stamp := filepath.Join(m.Engine.Root(), "sweep.stamp")
-	if info, err := os.Stat(stamp); err == nil && m.Now().Sub(info.ModTime()) < every {
-		return nil
-	}
-	if err := os.MkdirAll(m.Engine.Root(), 0o700); err != nil {
-		return err
-	}
-	if err := os.WriteFile(stamp, nil, 0o600); err != nil {
-		return err
-	}
-	_, err := m.Collect(ctx, false)
-	return err
 }

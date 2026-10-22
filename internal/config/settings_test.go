@@ -1,6 +1,7 @@
 package config
 
 import (
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -776,6 +777,8 @@ func TestEveryTierShipsWithAModelAndCanStillBeCleared(t *testing.T) {
 }
 
 func TestTheTaskThrottleRowsRoundTrip(t *testing.T) {
+	celltest.Available(t)
+	t.Setenv("CODEAF_CELLS", "1")
 	dir := t.TempDir()
 	rows := registry(t, dir)
 

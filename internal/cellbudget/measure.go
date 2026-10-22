@@ -10,7 +10,8 @@ import (
 // to find its store again.
 var kept = map[string]bool{".git": true, ".furrow": true}
 
-// removable lists the top-level entries eviction would remove.
+// removable lists entries counted against the budget. The checked capture
+// selects which of these can actually be removed.
 func removable(root string) ([]string, error) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
