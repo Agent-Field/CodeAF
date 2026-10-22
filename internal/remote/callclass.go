@@ -192,7 +192,10 @@ func classify(method string) callClass {
 		// A side ask is a model call of up to two minutes that writes nothing
 		// into the conversation, so it owes a turn no order and a turn owes it
 		// none (sideask.go).
-		MethodSideAsk:
+		MethodSideAsk,
+		// Reply suggestions are also independent model work. A draft writes
+		// no turn, so a person's send must not queue behind its response.
+		methodReplySuggestion:
 		return classWork
 	default:
 		return classOrdered
