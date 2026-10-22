@@ -1395,7 +1395,8 @@ type Welcome struct {
 	// false, and false is refused at this end before anything is written, which
 	// the wall reads as it reads any failed ask: the word it already holds, and
 	// Organize's folder pass alone.
-	TeamAsk bool `json:"teamAsk,omitempty"`
+	TeamAsk         bool `json:"teamAsk,omitempty"`
+	ReplySuggestion bool `json:"replySuggestion,omitempty"`
 
 	// News says this engine SENDS THE STATUS LINE'S NEWS — the "phase" and
 	// "lane" frames the live rate and the `via <machine>` rider are drawn from

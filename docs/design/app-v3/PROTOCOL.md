@@ -115,6 +115,7 @@ Ask    { id, agent, kind, subkind?, title, detail?, options?: [{id, label}], irr
 | `agents.retry` | `{id}` | `{turn}` (re-run the last failed turn) |
 | `agents.open` | `{id}` | `{agent: Agent}` (attach an engine to a saved conversation; idempotent, one concurrent open per agent; call on chat display or hover to prefetch) |
 | `agents.send` | `{id, text}` | `{turn: <u64>}`; output arrives as events |
+| `agents.suggest_reply` | `{agent, context}` | `{text}`; optional `agents.suggest_reply` feature, empty when no suggestion is useful/available |
 | `agents.stop` | `{id}` | `{}` (interrupt the running turn) |
 | `agents.close` | `{id}` | `{}` (detach and stop its engine; conversation stays on disk) |
 | `asks.list` | `{agent}` | `{asks: Ask[]}` (open asks only) |
@@ -182,6 +183,7 @@ result or an event, `?` marks a field that may be absent.
 | `agents.set_model` | `{id, model, automatic?}` | `{agent}` |
 | `agents.since` | `{after, id}` | `{at?, entries, files?, first?, found, last_at?, turns}` |
 | `agents.steer` | `{attachments, client_id, id, reads, said, text}` | `{}` |
+| `agents.suggest_reply` | `{agent, context}` | `{text}` |
 | `agents.stop` | `{id}` | `{}` |
 | `asks.answer` | `{agent, batch_item, id, later, option, scope, text, why, you_decide}` | `{}` |
 | `asks.defer` | `{agent, id}` | `{ask?}` |
@@ -3160,3 +3162,19 @@ the job stores `automatic_models` and delivers model and policy together to its
 worker. Later rounds inherit the stored policy, and a completed round records
 its last execution model rather than its next preference. Approval automation
 is an independent setting.
+
+## Optional contextual reply drafts
+
+`agents.suggest_reply` accepts a visible conversation's semantic context (UTF-8,
+at most 12 KiB) and returns a single-line user-message draft, at most 240 Unicode
+characters, or an empty string. It uses an already-held local or remote owner;
+it never opens a conversation, sends a turn, runs tools or answers an approval.
+Old peers without this optional capability keep the ordinary placeholder.
+
+The naming-role request has an eight-second ceiling and one model rung, with no
+tools and at most 160 output tokens. Its detached usage is attributed to that
+conversation and the existing factory job budget. Closing/stopping the session
+or exhausting the job budget cancels it; depleted jobs admit no new calls. One
+request per agent may run at a time. A bounded cache includes empty/failed
+results so rendering or reopening the same context cannot buy repeated requests.
+Surfaces discard stale responses and never write an existing draft.
