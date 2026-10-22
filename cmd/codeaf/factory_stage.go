@@ -121,6 +121,11 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	if model := strings.TrimSpace(spec.Model); model != "" {
 		cfg.Model = model
 	}
+	fallback := appDefaultFallback(m.profileDir)
+	if cfg.OneModel || fallback == cfg.Model {
+		fallback = ""
+	}
+	cfg.ConversationModels = &session.ConversationModels{Main: cfg.Model, Fallback: fallback}
 	cfg.Stage = receiptStageDoor{StageDoor: spec.Stage, file: cfg.SessionFile, dir: where, repair: spec.VerifyRepair}
 	cfg.Interactive = false
 	cfg.Unattended = true

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"io"
 	"strings"
 	"sync"
@@ -342,6 +343,26 @@ var methods = map[string]method{
 			return nil, err
 		}
 		return &EntriesResult{nonNil(entries), more}, nil
+	}),
+	"agents.set_models": typed(func(e Engine, p struct {
+		ID       string `json:"id"`
+		Main     string `json:"main"`
+		Fallback string `json:"fallback"`
+	}) (*agentResult, error) {
+		if strings.TrimSpace(p.ID) == "" || strings.TrimSpace(p.Main) == "" {
+			return nil, Errorf(CodeBadParams, "choose a conversation and main model")
+		}
+		door, ok := e.(interface {
+			SetConversationModels(string, session.ConversationModels) (Agent, error)
+		})
+		if !ok {
+			return nil, Errorf(CodeBadParams, "main/fallback selection requires a newer engine")
+		}
+		agent, err := door.SetConversationModels(p.ID, session.ConversationModels{Main: p.Main, Fallback: p.Fallback})
+		if err != nil {
+			return nil, err
+		}
+		return &agentResult{agent}, nil
 	}),
 	"agents.set_model": typed(func(e Engine, p struct {
 		Automatic *bool  `json:"automatic,omitempty"`

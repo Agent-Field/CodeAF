@@ -2945,6 +2945,25 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		}
 		s.session.announce()
 		return nil, nil
+	case MethodSetConversationModels:
+		pair, err := arg[session.ConversationModels](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface {
+			SetConversationModels(session.ConversationModels) ([]session.ModelSwitch, error)
+		})
+		if !ok {
+			return nil, errors.New("main/fallback selection is unsupported by this engine")
+		}
+		if refresh := sess.engine.RefreshModelSources; refresh != nil {
+			refresh()
+		}
+		notes, err := door.SetConversationModels(pair)
+		if err == nil {
+			s.session.announce()
+		}
+		return mustJSON(notes), err
 	case MethodSetModel:
 		model, err := arg[string](call)
 		if err != nil {

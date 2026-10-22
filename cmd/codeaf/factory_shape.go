@@ -259,6 +259,11 @@ func openManagerTurn(parent session.Config, workspace, profileDir string, it fac
 	if where == "" {
 		where = workspace
 	}
+	fallback := appDefaultFallback(profileDir)
+	if cfg.OneModel || fallback == cfg.Model {
+		fallback = ""
+	}
+	cfg.ConversationModels = &session.ConversationModels{Main: cfg.Model, Fallback: fallback}
 	cfg.Interactive = false
 	cfg.AskConsent = false
 	cfg.Factory, cfg.Recipe, cfg.FactoryItem, cfg.Floor, cfg.Stage = nil, nil, nil, nil, nil
