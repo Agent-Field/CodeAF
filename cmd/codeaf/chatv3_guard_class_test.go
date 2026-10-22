@@ -13,7 +13,8 @@ import (
 
 // TestV3ProcessGuardGoClass is the inventory law for goroutines started by a
 // v3 process or launch. A long-lived writer must identify both its stop and the
-// closeAll join. chatv3/models and engine/models name the process waiter, joined
+// closeAll join, or the clock-owned equivalent before its store closes.
+// chatv3/models and engine/models name the process waiter, joined
 // since #1179, and the internal/catalog warm each one starts, which closeAll now
 // cancels and joins through Models.Close. chatv3/sweep-home is joined too, by
 // stopPlaceSweep since #1276. No row is known-open now; a new one that is must
@@ -33,6 +34,7 @@ func TestV3ProcessGuardGoClass(t *testing.T) {
 		"chatv3/host-reap":        {kind: "one-shot", stop: "exec.Cmd.Wait returns when the replaced ssh child exits"},
 		"chatv3/host-follow":      {kind: "one-shot", stop: "remote Follow channel closes with the host connection"},
 		"chatv3/telemetry-events": {kind: "one-shot", stop: "source event channel closes and countedEvents returns"},
+		"memory/maintenance":      {kind: "joined writer", stop: "startClockMemoryMaintenance cancels its child of the clock context", join: "runClock defers stopMemoryMaintenance, which cancels and waits on done before the earlier openV3ClockProcess stop defer closes proc.Memory; TestClockMemoryMaintenanceStopsBeforeStoreCloses proves the join"},
 		"automations/retire":      {kind: "one-shot", stop: "the clock's own context ends when `codeaf clock` leaves, or the watcher cancels it on finding the binary replaced"},
 	}
 

@@ -296,6 +296,8 @@ func runClock(args []string) error {
 	defer cancel()
 	ctx, retire := retireWhenReplaced(ctx, store, logf)
 	defer retire()
+	stopMemoryMaintenance := startClockMemoryMaintenance(ctx, proc.Memory, logf)
+	defer stopMemoryMaintenance()
 	err = clock.Run(ctx)
 	if errors.Is(err, automation.ErrHeld) {
 		return nil

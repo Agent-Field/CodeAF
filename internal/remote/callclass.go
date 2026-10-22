@@ -154,7 +154,7 @@ func classify(method string) callClass {
 		MethodAttachedSkills, MethodSkillShelf,
 		MethodSessionsRecent, MethodHeldQuestions,
 		MethodPlacesWorld, MethodPlacesTask, MethodPlacesLedger, MethodPlacesSearch,
-		MethodMemorySnapshot, MethodMemoryChanged, MethodMemoryProvenance, MethodMemoryProject,
+		MethodMemorySelection, MethodMemorySnapshot, MethodMemoryChanged, MethodMemoryProvenance, MethodMemoryProject,
 		MethodTaskRoom, MethodTaskPending, MethodTaskEffort,
 		MethodListDir, MethodStatPaths, MethodFetchFile,
 		// The wall's two model asks are reads of the naming role, asked off the

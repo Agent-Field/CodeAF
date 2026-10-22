@@ -2302,9 +2302,10 @@ type Config struct {
 	// IS the crew, so the answer is given once at the seam and the next crew-only
 	// caller is right without knowing the flag exists (#443).
 	//
-	// The media slots are untouched by it, for the door's own reason: vision,
-	// image, speech and video are capability-qualified, and a text model settled
-	// on them would not be one model, it would be a broken one.
+	// Media remains capability-qualified rather than inheriting the text model.
+	// The launch door makes explicit media pins strict under this flag: an
+	// unsupported pin leaves the operation unavailable instead of substituting.
+	// Unpinned media keeps its existing discovery behavior.
 	OneModel bool
 
 	// Budget bounds automatic continuation in a fixed headless run. For an

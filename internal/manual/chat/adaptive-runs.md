@@ -1793,8 +1793,7 @@ did get done is still readable.
 
 ## Where did my run's rows go — the run disappeared from the task column when I switched away or reopened the conversation
 
-**The rows come back. Both ways.** If your run's rows go missing after a switch,
-return to that conversation; reopening it restores the run's rows too.
+**Your run's rows come back when you return or reopen the conversation.**
 
 **Switching away and coming back** — to home, to another conversation, and back again —
 redraws a live run whole: the run's own row, every node under it, and each one in the state
@@ -1808,6 +1807,8 @@ back, each saying what is true of it:
 - a node that **finished** comes back done, with its digest and what it spent
 - a node that **failed** comes back failed, with what it said
 - the run's own row and anything still queued or still moving come back **interrupted**
+
+## What interrupted means after reopening a run
 
 `interrupted` means **nothing is driving it, and everything it did is kept**. It is not
 `stopped`, which is you ending the work, and it is not `incomplete`, which is work that

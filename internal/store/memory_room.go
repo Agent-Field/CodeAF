@@ -9,29 +9,8 @@ import (
 	"unicode/utf8"
 )
 
-// THE BOUND EVERY CONVERSATION'S MEMORY BLOCK IS HELD TO, AND THE ONE PLACE IT IS
-// ENFORCED.
-//
-// A conversation is told every active line its owners hold — the person's,
-// this machine's and its project's — in one block in message[0]
-// (internal/session's memory.go). That block has a size, and a line that does
-// not fit in it is a line the model is not told. So the size is checked where a
-// line becomes active, INSIDE THE WRITE TRANSACTION THAT MAKES IT ACTIVE: a
-// check made before the transaction is a check two writers both pass, and a
-// check made only against the writing conversation's own owners is a check a
-// line kept everywhere from project A passes while it pushes project B past
-// the bound. Every door that makes a line active — a new line, a replacement,
-// a reworded line, a line moved, a line put back — asks [memoryRoomOn].
-//
-// What can still exceed the bound is a store an earlier build filled with no
-// bound at all. [FitMemories] decides which of those lines ride, and the
-// conversation and the Memories tab say how many do not.
-
-// MemoryBlockRunes bounds the memory lines one block carries: about twelve
-// hundred tokens at four characters a token, which is fifty-odd ordinary lines.
-// It is paid on every request, in the cached prefix, so it is a bound on the
-// bill as much as on the page. PERF.md records it; changing it changes that
-// section in the same commit.
+// MemoryBlockRunes is a soft prompt-cache budget, never a storage limit.
+// Explicit pins bypass it. AssembleMemoryBlock explains every admission.
 const MemoryBlockRunes = 4800
 
 // MemoryQuote is one line's words as the block carries them: quoted, with the
@@ -105,50 +84,7 @@ func memoryRoomOn(tx *sql.Tx, owner, text, exclude string) error {
 var memoryRoomRead func(text string, err error)
 
 func memoryRoomAnswer(tx *sql.Tx, owner, text, exclude string) error {
-	owner = normalizeOwner(owner)
-	if owner == OwnerLegacyProject {
-		return nil
-	}
-	rows, err := tx.Query(`SELECT id, owner, text, project_name FROM memories WHERE status = ?`, MemoryActive)
-	if err != nil {
-		return err
-	}
-	costs, names := map[string]int{}, map[string]string{}
-	for rows.Next() {
-		var id, rowOwner, body, name string
-		if err := rows.Scan(&id, &rowOwner, &body, &name); err != nil {
-			rows.Close()
-			return err
-		}
-		if id == exclude {
-			continue
-		}
-		costs[rowOwner] += MemoryLineCost(body)
-		if name = strings.TrimSpace(name); name != "" {
-			names[rowOwner] = name
-		}
-	}
-	if err := closeRows(rows); err != nil {
-		return err
-	}
-	base := costs[OwnerUser] + costs[OwnerMachine]
-	add := MemoryLineCost(text)
-	switch OwnerKindOf(owner) {
-	case OwnerKindProject:
-		if base+costs[owner]+add > MemoryBlockRunes {
-			return &MemoryFullError{Owner: owner, Project: names[owner]}
-		}
-	default:
-		worst, worstOwner := 0, ""
-		for other, cost := range costs {
-			if OwnerKindOf(other) == OwnerKindProject && other != OwnerLegacyProject && cost > worst {
-				worst, worstOwner = cost, other
-			}
-		}
-		if base+worst+add > MemoryBlockRunes {
-			return &MemoryFullError{Owner: worstOwner, Project: names[worstOwner]}
-		}
-	}
+	// Storage is unbounded; the prompt budget is enforced at assembly only.
 	return nil
 }
 

@@ -48,6 +48,9 @@ func (a *app) closeTabKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if a.railHold {
 		a.railTake(false)
 	}
+	if work, ok := a.workTab(); ok && work.here && !a.startingChat() {
+		return a.tabDismiss(work), true
+	}
 	return a.tabDismiss(a.frontChatTab()), true
 }
 
