@@ -3684,15 +3684,13 @@ func TestTheRosterGroupsItsWorkByStateOneLineEach(t *testing.T) {
 	// everything else one folded row. What needs the person is the band's, above
 	// them, and is not under any of them.
 	want := []string{
-		sideTasksWord + " 6",
+		sideTasksWord,
 		a.taskStateMark(a.tasks[4]) + " Render titles",
-		a.taskStateMark(a.tasks[6]) + " Trim silence",
 		strings.Repeat(a.linearMark("─", "-"), 8),
 		railHeadWords[railRunning] + " 1",
 		"Fix the nil-map crash",
 		railHeadWords[railIdle] + " 1 " + glyphShut,
 		railHeadWords[railParked] + " 1 " + glyphShut,
-		railHeadWords[railDone] + " 1 " + glyphShut,
 	}
 	for i, w := range want {
 		if i >= len(rows) || !strings.Contains(rows[i], w) {
@@ -3702,11 +3700,11 @@ func TestTheRosterGroupsItsWorkByStateOneLineEach(t *testing.T) {
 	rail := strings.Join(rows, "\n")
 	// THE RUNNING WORK'S HEADING WEARS NO MARK: it does not fold, and a mark is
 	// a promise that a press does something.
-	if strings.Contains(rows[4], glyphShut) || strings.Contains(rows[4], glyphOpen) {
+	if strings.Contains(rows[3], glyphShut) || strings.Contains(rows[3], glyphOpen) {
 		t.Fatalf("the running heading wears a fold mark: %q", rows[4])
 	}
 	// ONE GLYPH OPENS A TASK ROW, and it is the state; no identity ◆, no id.
-	if lead := railSeam + "  " + plain(a.railTreeGlyph(a.tasks[2])) + " Fix the nil-map"; !strings.HasPrefix(rows[5], lead) {
+	if lead := railSeam + "  " + plain(a.railTreeGlyph(a.tasks[2])) + " Fix the nil-map"; !strings.HasPrefix(rows[4], lead) {
 		t.Fatalf("the task row does not lead with its state: %q, want %q", rows[5], lead)
 	}
 	if strings.Contains(rail, "#2") || strings.Contains(rail, plain(a.taskMark(identFor(2)))+" Fix") {
@@ -3810,22 +3808,21 @@ func TestTheRostersCursorFollowsANodeThatChangesUrgency(t *testing.T) {
 	if a.railWhere.id != 1 {
 		t.Fatalf("the cursor is on %+v, want the second running node", a.railWhere)
 	}
-	// It lands in the done group, which is folded: the cursor follows it to the
-	// heading standing for it rather than jumping to the top of the column.
-	drive(t, a, streamEventMsg{gen: a.gen, ev: update(1, "Collect sources", session.TaskDone,
-		session.TaskNotice{Merge: mergeWordMerged})})
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(1, "Collect sources", session.TaskDone, session.TaskNotice{Merge: mergeWordMerged})})
 	entries := a.railEntries()
 	at := a.railFocusIndex(entries)
-	if at < 0 || !entries[at].head || entries[at].group != railDone {
-		t.Fatalf("the cursor did not follow the node to its group: %d in %+v", at, entries)
+	if at < 0 || entries[at].group != railRunning {
+		t.Fatalf("focus did not remain with active work: %d %+v", at, entries)
 	}
-	// And opened, the cursor is on the node itself.
-	a.sideToggleGroup(railDone)
-	entries = a.railEntries()
-	at = a.railFocusIndex(entries)
-	if at < 0 || entries[at].node == nil || entries[at].node.id != 1 {
-		t.Fatalf("the cursor is not on the landed node: %d in %+v", at, entries)
+	for _, entry := range entries {
+		if entry.node != nil && entry.node.id == 1 {
+			t.Fatal("finished row retained sidebar focus")
+		}
 	}
+	if a.doneCardFor(1) == nil {
+		t.Fatal("finished task result lost")
+	}
+
 }
 
 func TestTheRosterWindowsHundredsOfNodesAroundItsFocus(t *testing.T) {
@@ -3862,7 +3859,7 @@ func TestTheRosterWindowsHundredsOfNodesAroundItsFocus(t *testing.T) {
 		t.Fatalf("the first task did not scroll with the list:\n%s", rail)
 	}
 	// And the header still counts the whole roster rather than the window.
-	if rows := railText(a, 12); !strings.Contains(rows[0], sideTasksWord+" 300") || !strings.Contains(rows[0], sideHideKey) {
+	if rows := railText(a, 12); !strings.Contains(rows[0], sideTasksWord) || !strings.Contains(rows[0], sideHideKey) {
 		t.Fatalf("the header scrolled away or counts the window: %v", rows)
 	}
 }
@@ -3943,20 +3940,21 @@ func TestAPlainFailureIsFiledAsNewsAndNotAsADemand(t *testing.T) {
 			fails = append(fails, item.key)
 		}
 	}
-	if strings.Join(asks, " ") != "task/5 task/4" || strings.Join(fails, " ") != "fail/6 fail/3 fail/2" {
+	if strings.Join(asks, " ") != "task/5 task/4" || len(fails) != 0 {
 		t.Fatalf("the band holds asks %v and failures %v", asks, fails)
 	}
 	rail := rosterText(a, 24)
-	for _, want := range []string{"+2 more", railHeadWords[railDone] + " 1"} {
-		if !strings.Contains(rail, want) {
-			t.Fatalf("the roster is missing %q:\n%s", want, rail)
+	for _, gone := range []string{"Collect sources", "Trim silence", "Mix audio", "Write the auth", "Done", "+2 more"} {
+		if strings.Contains(rail, gone) {
+			t.Fatalf("routine history leaked into active sidebar: %q\n%s", gone, rail)
 		}
 	}
-	a.sideToggleGroup(railDone)
-	rail = rosterText(a, 24)
-	if !strings.Contains(rail, "Collect sources") || strings.Count(rail, "Render titles")+strings.Count(rail, "Port the parser") != 1 {
-		t.Fatalf("an item of the band is drawn twice, or the clean merge is missing:\n%s", rail)
+	for _, want := range []string{"Cut the trailer", "Port the parser"} {
+		if strings.Count(rail, want) != 1 {
+			t.Fatalf("decision missing or duplicated: %s", rail)
+		}
 	}
+
 }
 
 // ── THE ROOM: A TASK IS A PLACE ─────────────────────────────────────────────
