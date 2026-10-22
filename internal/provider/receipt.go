@@ -12,7 +12,6 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/guard"
-	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/telemetry"
 )
 
@@ -171,10 +170,10 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 		return
 	}
 	// A DIRECT SERVICE HAS NO OPENROUTER GENERATION ROUTE TO ASK. Its missing
-	// usage block supplies no measured figures to record, and calling the
-	// router's route on the vendor would send that vendor a request and bearer
-	// for a fact this client already knows cannot be there.
-	if c.config.Direct && (base == c.config.BaseURL || telemetry.RoutingProvider(base) != modelsource.DefaultID) {
+	// usage block supplies no measured figures to record. An overflow route
+	// does not change which service owns this client's credential, so it must
+	// not carry that credential to a router's generation route either.
+	if c.config.Direct {
 		return
 	}
 	sink := reconcileFrom(ctx)

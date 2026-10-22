@@ -794,6 +794,31 @@ done so far. The checker's own ceiling still applies inside it.
 without a routed crew; the flag answers the day's questions and the plan-price question,
 not this one.
 
+### The selector snapshot — when the crew is picked by the pareto engine
+
+The crew is normally routed by the learned router, and **nothing else seats a crew unless
+you configured it**. There is one extra hand on the picker: a `selector snapshot` row in the
+profile's settings (`models.crew.selector_snapshot`), a path to a fitted snapshot file.
+Configured, it points the pareto selection engine at the same models your providers reach,
+and it picks one model per unpinned seat — the worker seat from its worker class, the
+checker from its checker class, the planner from its planner class.
+
+What stays yours, whatever the file says: **a pin always wins** — a seat you pinned never
+reads the engine; **a redo routes as before** — `redo stronger` and a redo of a task that
+never started are the learned router's to seat; **a learned offset still applies** — a
+repository whose class was redone starts above the engine's pick; and **the engine can
+only seat what you allow** — its pool is exactly the candidate list the router already
+priced and health-checked, so a demoted route, a turned-off provider and an out-of-credit
+account all hold for it too.
+
+What happens when the file is missing or bad: the crew is routed **exactly as if no
+snapshot were configured** — no half-crew, no refusal, no note. A path that does not load
+is refused when you write it (`that snapshot does not load: …`); one that stops loading
+later silently falls back. A seat the engine cannot seat (no allowed model passes its
+capability gate for that seat) keeps the router's own pick for that seat alone. With no
+snapshot row the engine never runs at all, and every crew is byte for byte the crew the
+router picked before it existed.
+
 ### How hard to try one task — --best and --cheap
 
 The panel says what persists. **How hard to try one task is said in the ask, and sticks to
