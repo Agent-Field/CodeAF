@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: task tabs close without replacing or trapping their main chat
-pr: 1895
+pr: 1897
 surface: [chat, docs]
 invalidates:
   - "A run tab used conversation dismissal and could reappear immediately or be chosen as its owner's next conversation. Task views now dismiss independently, stay hidden until explicitly reopened, and never enter conversation close navigation."
