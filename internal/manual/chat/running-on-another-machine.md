@@ -321,7 +321,7 @@ purpose, and says `this window is reading this conversation, not typing into it`
 
 ## How do I work on the same conversation from two computers — another window, and another machine
 
-Stable and rc builds have moving chats and pairing off unless `CODEAF_CELLS=1`; Windows does not have them.
+Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
 
 Only chats started after moving chats was turned on can be continued on another computer. Older chats stay where they are and keep working in every build.
 

@@ -12,15 +12,19 @@ import (
 	"github.com/Agent-Field/codeaf/internal/furrowbin"
 )
 
-// TestC21OffCommandsDoNothing proves C21 before even a --name flag can write a
+// TestC26OffCommandsDoNothing proves C26 before even a --name flag can write a
 // local identity or a relay request can be prepared.
-func TestC21OffCommandsDoNothing(t *testing.T) {
-	t.Setenv(cell.EnvVar, "0")
+func TestC26OffCommandsDoNothing(t *testing.T) {
 	want := cell.OffReason
 	if runtime.GOOS == "windows" {
 		want = cell.WindowsReason
 	}
-	assertCellCommandsRefuse(t, want)
+	for _, value := range []string{"", "0", "true"} {
+		t.Run("env="+value, func(t *testing.T) {
+			t.Setenv(cell.EnvVar, value)
+			assertCellCommandsRefuse(t, want)
+		})
+	}
 }
 
 func assertCellCommandsRefuse(t *testing.T, want string) {

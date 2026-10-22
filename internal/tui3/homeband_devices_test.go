@@ -38,6 +38,7 @@ func devicesFrame(a *app, width int) string {
 }
 
 func TestDevicesRowDrawsPresenceFromTheFeed(t *testing.T) {
+	t.Setenv("CODEAF_CELLS", "1")
 	a, feed := devicesRig("dev_spark")
 	got := devicesFrame(a, 80)
 	if !strings.Contains(got, "● This Mac  ● spark  ○ dumb (offline)") {
@@ -50,6 +51,7 @@ func TestDevicesRowDrawsPresenceFromTheFeed(t *testing.T) {
 }
 
 func TestDevicesRowIsAbsentWhenItCannotSpeakTruly(t *testing.T) {
+	t.Setenv("CODEAF_CELLS", "1")
 	a, feed := devicesRig("dev_spark")
 	feed.state.Up = false
 	if got := devicesFrame(a, 80); got != "" {
@@ -68,6 +70,7 @@ func TestDevicesRowIsAbsentWhenItCannotSpeakTruly(t *testing.T) {
 }
 
 func TestDevicesRowObeysWidthAndVocabulary(t *testing.T) {
+	t.Setenv("CODEAF_CELLS", "1")
 	a, _ := devicesRig("dev_spark")
 	for _, width := range []int{12, 24, 40, 80} {
 		for _, line := range strings.Split(devicesFrame(a, width), "\n") {
@@ -85,6 +88,7 @@ func TestDevicesRowObeysWidthAndVocabulary(t *testing.T) {
 }
 
 func TestOnlineDeviceOffersMoveHereForARunningChat(t *testing.T) {
+	t.Setenv("CODEAF_CELLS", "1")
 	a, _ := devicesRig("dev_spark")
 	if cmd := a.bringWork(); cmd != nil {
 		t.Fatal("offering the card started work")
@@ -105,6 +109,7 @@ func TestOnlineDeviceOffersMoveHereForARunningChat(t *testing.T) {
 }
 
 func TestSeveralOnlineDevicesAskWhichAndThenOfferTheCard(t *testing.T) {
+	t.Setenv("CODEAF_CELLS", "1")
 	a, _ := devicesRig("dev_spark", "dev_dumb")
 	a.bringWork()
 	ask, ok := a.homeAsking()
@@ -125,6 +130,7 @@ func TestSeveralOnlineDevicesAskWhichAndThenOfferTheCard(t *testing.T) {
 }
 
 func TestOfflineOrEmptyDevicesOfferNothing(t *testing.T) {
+	t.Setenv("CODEAF_CELLS", "1")
 	a, _ := devicesRig()
 	if a.bringWork() != nil {
 		t.Fatal("work started")
@@ -135,6 +141,7 @@ func TestOfflineOrEmptyDevicesOfferNothing(t *testing.T) {
 }
 
 func TestRosterAskFilesDevicesAndFailureKeepsThem(t *testing.T) {
+	t.Setenv("CODEAF_CELLS", "1")
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.tookRoster(rosterMsg{devices: rosterOf})
 	a.tookRoster(rosterMsg{err: errors.New("down")})

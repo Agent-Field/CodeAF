@@ -16,7 +16,6 @@ import (
 )
 
 func mintOpened(t *testing.T, bucket, workspace string) session.Place {
-	celltest.Available(t)
 	t.Helper()
 	place, err := v3MintSession(bucket, workspace, workspace, false)
 	if err != nil {
@@ -38,6 +37,7 @@ func mintOpened(t *testing.T, bucket, workspace string) session.Place {
 
 // TestNewChatIsACellWhenTheFlagIsOn proves C23 at the real chat mint door.
 func TestNewChatIsACellWhenTheFlagIsOn(t *testing.T) {
+	celltest.Available(t)
 	t.Setenv(cell.EnvVar, "1")
 	bucket, workspace := t.TempDir(), t.TempDir()
 	place := mintOpened(t, bucket, workspace)

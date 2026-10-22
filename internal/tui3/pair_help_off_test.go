@@ -6,10 +6,10 @@ import (
 	"testing"
 )
 
-// C15 and C21 require slash help to explain enabling unavailable chat pairing,
+// C15 and C26 require slash help to explain enabling unavailable chat pairing,
 // and C25 keeps a collection setting off a surface that cannot use cells.
 func TestPairHelpAndBudgetWhenMovingChatsIsOff(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "0")
+	t.Setenv("CODEAF_CELLS", "")
 	c := command{name: "pair", desc: "show a code"}
 	if got := c.note(chordSpelling{}); !strings.Contains(got, "CODEAF_CELLS=1") {
 		t.Fatalf("pair help: %s", got)

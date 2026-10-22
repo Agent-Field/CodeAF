@@ -289,7 +289,7 @@ updates the tab and the row in Sessions together.
 
 ## Chats on my other machines — a chat running on another computer, "running on studio", "studio offline", why does it say running on build-box offline, merge / discard
 
-Stable and rc builds have moving chats and pairing off unless `CODEAF_CELLS=1`; Windows does not have them.
+Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
 
 Only chats started after moving chats was turned on can be continued on another computer. Older chats stay where they are, keep their original files, and keep working in every build.
 
@@ -329,7 +329,7 @@ same rows in a terminal (see "The cell verbs" in running-from-the-terminal).
 
 ## Continue a chat here that another machine left — "studio offline", takeover, "continue here", the chat is running on another computer
 
-Stable and rc builds have moving chats and pairing off unless `CODEAF_CELLS=1`; Windows does not have them.
+Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
 
 Only chats started after moving chats was turned on can be continued on another computer. Older chats stay where they are, keep their original files, and keep working in every build.
 
@@ -381,7 +381,7 @@ identity on this machine, no secrets are fetched and no file is written.
 
 ## Do saved provider keys and credentials follow me to another computer
 
-Stable and rc builds have moving chats and pairing off unless `CODEAF_CELLS=1`; Windows does not have them.
+Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
 
 Only chats started after moving chats was turned on can be continued on another computer. Older chats stay where they are, keep their original files, and keep working in every build.
 
@@ -606,7 +606,7 @@ in history. Cancel keeps the chat and its draft.
 switch back is two keys — `space` `space`, then `enter` — and `esc` still goes back to the
 conversation behind home.
 
-## Choose a project for the next message — click a project name or use alt+p
+## Start a chat in another folder — choose a project for the next message, click a project name or use alt+p
 
 **Click a project name under `projects` to select it for the next message.** The
 `project: <path>` label above the message box changes immediately, exactly as if

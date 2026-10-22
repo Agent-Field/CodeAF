@@ -8,20 +8,20 @@ import (
 	"github.com/Agent-Field/codeaf/internal/furrowbin"
 )
 
-// EnvVar overrides the rollout on every channel, but cannot supply an engine
+// EnvVar opts into moving chats on every channel, but cannot supply an engine
 // for an unsupported platform.
 const EnvVar = "CODEAF_CELLS"
 
 const (
-	OffReason     = "moving chats is off in this build; CODEAF_CELLS=1 turns it on"
+	OffReason     = "moving chats is off; CODEAF_CELLS=1 turns it on"
 	WindowsReason = "moving chats is not available on Windows because furrow needs Unix; run codeaf in WSL"
 )
 
-// releaseRevision is the build stamp, kept behind a seam so the channel matrix
-// exercises Enabled without manufacturing a second copy of the rollout rule.
+// releaseRevision keeps the build-stamp seam for the channel matrix. C26
+// deliberately makes the opt-in independent of this value.
 var releaseRevision = buildinfo.Revision
 
-// Enabled reports the platform and channel policy. Startup also asks Available
+// Enabled reports the platform and opt-in policy. Startup also asks Available
 // before exposing a capability that needs the carried engine.
 func Enabled() bool { return DisabledReason() == "" }
 
@@ -31,18 +31,10 @@ func DisabledReason() string {
 	if runtime.GOOS == "windows" {
 		return WindowsReason
 	}
-	switch env.Get(EnvVar) {
-	case "0":
-		return OffReason
-	case "1":
+	if env.Get(EnvVar) == "1" {
 		return ""
 	}
-	switch buildinfo.Channel(releaseRevision()) {
-	case "stable", "rc":
-		return OffReason
-	default:
-		return ""
-	}
+	return OffReason
 }
 
 // UnavailableReason is asked at startup and at explicit command doors, never

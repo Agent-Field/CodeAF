@@ -1342,10 +1342,9 @@ var OperatorEnvPins = []string{
 	// make convenient, it is a decision somebody makes on purpose, in a shell,
 	// for one run that genuinely needs it.
 	"CODEAF_ALLOW_PROVIDER_KEYS_IN_SHELL",
-	// CODEAF_CELLS=0 switches cells off (internal/cell); on is the default, so a
-	// paired install moves chats with no setting. It is an escape hatch and so
-	// plumbing, never a row: a persisted row would turn cells off on a machine
-	// where the variable is nowhere in sight.
+	// CODEAF_CELLS=1 opts into moving chats on every build (internal/cell). It
+	// stays in the launch environment, never a row: both computers must opt in
+	// explicitly rather than inherit a setting copied from another machine.
 	"CODEAF_CELLS",
 	// CODEAF_SYNC_URL names the relay that syncs cells between this person's
 	// machines (internal/syncsetup), and CODEAF_SYNC_INTERVAL_MS is how often
