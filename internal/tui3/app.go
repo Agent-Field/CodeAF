@@ -2257,6 +2257,7 @@ type app struct {
 	// draftFile is where the unsent sentence is kept between sessions
 	// (draft.go); empty means it is not kept at all.
 	draftFile    string
+	draftAliases []string
 	draftPending bool
 	// artifacts is the deliverables index a finished /export records itself in
 	// (export.go). Empty is the door saying nothing, which [app.artifactsIndex]
@@ -3009,6 +3010,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		providerFetchError:  opts.ProviderFetchError,
 		history:             opts.History,
 		draftFile:           opts.DraftFile,
+		draftAliases:        opts.DraftAliases,
 		artifacts:           opts.ArtifactsIndex,
 		ctxWindow:           opts.ContextWindow,
 		profileDir:          opts.ProfileDir,
@@ -8423,6 +8425,7 @@ func (a *app) takeUp(conv Conversation, whole bool) {
 	// be keeping what somebody's repository asked us not to keep (draft.go, and
 	// the door's per-workspace read of the same two rows).
 	a.draftFile = conv.DraftFile
+	a.draftAliases = conv.DraftAliases
 	a.history = conv.History
 	a.saveApproval = conv.SaveApproval
 	a.saveBashApproval = conv.SaveBashApproval
@@ -8582,7 +8585,7 @@ func (a *app) finishRenew(conv Conversation, whole, replacing bool) tea.Cmd {
 		// other seam it was holding ([app.takeUp] states this).
 		conv = Conversation{Agent: conv.Agent, SessionFile: conv.SessionFile,
 			Workspace: a.workspace, Place: a.place, Owned: a.owned,
-			ContextWindow: a.ctxWindow, DraftFile: a.draftFile, History: a.history,
+			ContextWindow: a.ctxWindow, DraftFile: a.draftFile, DraftAliases: a.draftAliases, History: a.history,
 			RecentSessions: a.recentSessions, SaveApproval: a.saveApproval,
 			SaveBashApproval: a.saveBashApproval, ApplyApprovals: a.applyApprovals}
 	}

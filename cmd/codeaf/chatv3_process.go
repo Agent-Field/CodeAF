@@ -47,6 +47,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/subharness"
 	"github.com/Agent-Field/codeaf/internal/tui3"
+	"github.com/Agent-Field/codeaf/internal/workspacepath"
 )
 
 // v3Process is everything a launch may borrow but must not build twice.
@@ -946,6 +947,7 @@ func (s *v3Seam) bundle(agent v3Live, launch *v3Launch, cfg session.Config,
 		Notice:          notice,
 		ContextWindow:   cfg.ContextWindow,
 		DraftFile:       draft,
+		DraftAliases:    workspacepath.Aliases(workspace, s.proc.LaunchDir, s.seed.Workspace),
 		History:         recall,
 		// This project's conversations, walked on the keystroke that asks for
 		// them and never at boot — and this PROJECT's, which is what makes the
@@ -973,6 +975,7 @@ func (s *v3Seam) anchor(agent interface {
 	// on the scratch folder would scope every later launch's project reads and
 	// writes to a project this conversation is no longer in.
 	s.boot.Config.MemoryProjectKey = v3ProjectKey(resolved)
+	s.boot.Config.MemoryProjectAliases = gitidentity.ProjectKeys(resolved, path)
 	s.boot.Config.MemoryProjectName = gitidentity.ProjectName(resolved)
 	s.boot.Place = s.boot.Config.Place
 	if bucket, bucketErr := v3ProjectDir(resolved); bucketErr == nil {

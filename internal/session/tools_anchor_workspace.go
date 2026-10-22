@@ -84,6 +84,7 @@ func (a *Agent) AnchorWorkspace(path string) (string, error) {
 	// mint, and an unprovable workspace answers "" — the quarantine — exactly as
 	// the launching doors answer it.
 	a.config.MemoryProjectKey = anchoredProjectKey(resolved)
+	a.config.MemoryProjectAliases = gitidentity.ProjectKeys(resolved, path)
 	a.config.MemoryProjectName = gitidentity.ProjectName(resolved)
 	// AND THE NEXT REQUEST MUST CARRY THE NEW PROJECT'S MEMORY, not the scratch
 	// folder's: the block is re-read and message[0] rebuilt now, so a call made

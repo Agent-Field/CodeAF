@@ -1188,6 +1188,7 @@ func (a *app) takeBeside(conv Conversation) tea.Cmd {
 		// belongs to this window, with separate owner-scoped slots inside it.
 		if conv.DraftFile == "" {
 			conv.DraftFile = leaving.DraftFile
+			conv.DraftAliases = leaving.DraftAliases
 		}
 		if conv.History == nil {
 			conv.History = leaving.History

@@ -58,6 +58,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/workspacepath"
 )
 
 // A session agent is what the wire serves, and this is where the two are held
@@ -1275,6 +1276,12 @@ func engineLaunchOptions(hello remote.Hello, workspace, sessionFlag string) v3Op
 		Model:       strings.TrimSpace(hello.Model),
 		Session:     firstEngineWord(hello.Session, sessionFlag),
 	}
+	// Keep the incoming spelling as read provenance. openV3Launch still resolves
+	// its write key, while memory can include the pre-upgrade path owner even
+	// when a flat transcript left no workspace citation.
+	if workspacepath.Same(hello.Workspace, workspace) {
+		opts.Workspace = hello.Workspace
+	}
 	// A HELLO MINTING ITS OWN CONVERSATION NAMES NO TRANSCRIPT, and the host's
 	// --session flag is not an answer for it either: that flag says which
 	// conversation this daemon opens for a hello that did not choose, and this
@@ -1344,6 +1351,14 @@ func engineWorkspace(path string) (string, error) {
 	}
 	path = strings.TrimSpace(path)
 	if path == "" {
+		// THE DEFAULT IS THE SAME DOOR AS THE NAMED ONE. Omitting --workspace
+		// means the home directory, and home reaches the resolution below only
+		// when somebody TYPES it — an omitted flag returned the raw spelling, so
+		// a home behind a symlink keyed two hosts depending on how it was said
+		// (#1761).
+		if resolved, err := filepath.EvalSymlinks(home); err == nil {
+			home = resolved
+		}
 		return home, nil
 	}
 	expanded, err := expandHome(path)
@@ -1354,6 +1369,14 @@ func engineWorkspace(path string) (string, error) {
 		expanded = filepath.Join(home, expanded)
 	}
 	expanded = filepath.Clean(expanded)
+	// A WORKSPACE IS NAMED BY ITS RESOLVED PATH, so a folder reached through a
+	// symlink keys the same project, conversation history and engine host as
+	// the folder it points at. Clean alone leaves both spellings distinct and
+	// sha256(Clean(...)) in enginehost.where then builds one host directory per
+	// spelling — two engines, two histories, one folder.
+	if resolved, err := filepath.EvalSymlinks(expanded); err == nil {
+		expanded = resolved
+	}
 	info, err := os.Stat(expanded)
 	if err != nil {
 		return "", fmt.Errorf("open %s: %w", expanded, err)

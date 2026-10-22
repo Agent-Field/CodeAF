@@ -36,6 +36,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/workspacepath"
 )
 
 // v3Dir is ~/.codeaf/v3: the directory this surface keeps its own files in —
@@ -83,14 +84,32 @@ func encodeWorkspace(workspace string) string {
 // explicit workspace — the engine's --workspace, a door that has already
 // resolved one — is taken as given and is always borrowed: it is a place
 // somebody named, and naming a place is asking to work in it.
+//
+// A PROJECT IS NAMED BY THE FOLDER, NOT A SPELLING OF IT. Every answer here is
+// a key this surface reads and writes sessions, tasks and memory under, so the
+// spelling a terminal carried into the directory (a path reached through a
+// symlink) may not leak into it — the engine's door resolved (#1761), and a
+// bucket minted from the alias here would still have been a second project,
+// a second history, for one folder. A path that does not resolve keeps its
+// spelling.
 func v3Workspace(cwd, explicit string) (string, bool) {
 	if named := strings.TrimSpace(explicit); named != "" {
-		return named, false
+		return v3CanonicalPlace(named), false
 	}
 	if root, found := v3GitRoot(cwd); found {
-		return root, false
+		return v3CanonicalPlace(root), false
 	}
-	return cwd, v3NoProjectPlace(cwd)
+	return v3CanonicalPlace(cwd), v3NoProjectPlace(cwd)
+}
+
+// v3CanonicalPlace resolves the links in a path that is about to become a key,
+// and hands back the spelling it was given when the path does not resolve — a
+// workspace not on disk yet, a test's imagined directory.
+func v3CanonicalPlace(dir string) string {
+	if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+		return resolved
+	}
+	return dir
 }
 
 // v3NoProjectPlace reports whether a directory is somewhere the person stood by
@@ -106,17 +125,10 @@ func v3Workspace(cwd, explicit string) (string, bool) {
 // starts a process that was never about a place at all. Those own a workspace,
 // and a session whose workspace was temporary is litter the sweep may reap.
 func v3NoProjectPlace(dir string) bool {
-	dir = filepath.Clean(dir)
-	if home, err := os.UserHomeDir(); err == nil && filepath.Clean(home) == dir {
+	if userHome, err := os.UserHomeDir(); err == nil && workspacepath.Canonical(userHome) == workspacepath.Canonical(dir) {
 		return true
 	}
-	for _, temporary := range []string{os.TempDir(), "/tmp"} {
-		temporary = filepath.Clean(temporary)
-		if dir == temporary || strings.HasPrefix(dir, temporary+string(filepath.Separator)) {
-			return true
-		}
-	}
-	return false
+	return v3TempPath(dir)
 }
 
 // v3GitRootTimeout bounds the one subprocess this answer costs.
@@ -277,12 +289,91 @@ func v3ResolveSession(explicit, workspace, launchDir string, owned bool) (v3Sess
 		// happened.
 		return v3Session{Place: place, Transcript: place.Transcript(), Resumed: resumed, Bucket: bucket}, nil
 	}
+
+	// A CONVERSATION AN OLDER BUILD FILED UNDER ANOTHER SPELLING IS STILL THIS
+	// WORKSPACE'S CONVERSATION. Before the project key was resolved (#1761),
+	// buckets were minted from whatever spelling the terminal carried, and an
+	// upgrade that reads only the canonical bucket would open a fresh journal
+	// beside every conversation a person already had. The newest spoken folder
+	// whose recorded workspace resolves to this folder resumes where it lives —
+	// no merge, no move; the canonical bucket simply takes over from here.
+	if legacy, legacyBucket, found := v3LegacyFolder(workspace); found {
+		place := v3PlaceFor(legacy.dir, workspace, owned || legacy.meta.Owned)
+		return v3Session{Place: place, Transcript: place.Transcript(), Resumed: true, Bucket: legacyBucket}, nil
+	}
+
 	place, err := v3MintSession(bucket, workspace, launchDir, owned)
 	if err != nil {
 		return v3Session{}, err
 	}
 	v3ReapEmpty(empty, place.Dir)
 	return v3Session{Place: place, Transcript: place.Transcript(), Bucket: bucket}, nil
+}
+
+// v3LegacyFolder searches the project buckets OTHER than this workspace's own
+// for the newest conversation somebody has spoken in whose recorded workspace
+// ([session.Meta.Workspace], or LaunchDir for owned sessions) resolves to the
+// same folder, and answers it with
+// the bucket it lives in. It is the upgrade road for buckets minted before the
+// project key was resolved (#1761): the bucket name is a spelling's encoding and
+// cannot be reversed, but every folder cites its own workspace, and a citation
+// that resolves to this folder is this folder's conversation. Empty folders and
+// folders that cite nothing are not candidates — a resume must come back to
+// words, and a citation that was never written cannot be trusted to spellings.
+func v3LegacyFolder(workspace string) (v3Folder, string, bool) {
+	workspace = strings.TrimSpace(workspace)
+	if workspace == "" {
+		return v3Folder{}, "", false
+	}
+	resolved, err := filepath.EvalSymlinks(filepath.Clean(workspace))
+	if err != nil {
+		return v3Folder{}, "", false
+	}
+	root := home.Join("v3", "projects")
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return v3Folder{}, "", false
+	}
+	canonical := filepath.Join(root, encodeWorkspace(workspace))
+	var newest v3Folder
+	newestBucket := ""
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		bucket := filepath.Join(root, entry.Name())
+		if bucket == canonical {
+			continue
+		}
+		spoken, _ := v3ScanBucket(bucket)
+		for _, folder := range spoken {
+			citations := []string{folder.meta.Workspace}
+			// Owned work/ is private to the conversation. Its launch citation also
+			// names the project bucket the older build chose for HOME or temp.
+			if folder.meta.Owned {
+				citations = append(citations, folder.meta.LaunchDir)
+			}
+			matched := false
+			for _, recorded := range citations {
+				recorded = strings.TrimSpace(recorded)
+				if recorded == "" {
+					continue
+				}
+				resolvedRecorded, err := filepath.EvalSymlinks(filepath.Clean(recorded))
+				if err == nil && resolvedRecorded == resolved {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				continue
+			}
+			if newestBucket == "" || folder.at.After(newest.at) {
+				newest, newestBucket = folder, bucket
+			}
+		}
+	}
+	return newest, newestBucket, newestBucket != ""
 }
 
 // v3PickFolder resumes the newest conversation somebody has spoken in. A
@@ -325,7 +416,16 @@ func v3LatestTranscript(workspace string) string {
 		return ""
 	}
 	spoken, empty := v3ScanBucket(bucket)
-	folder, _, found := v3PickFolder(spoken, empty, false)
+	folder, resumed, found := v3PickFolder(spoken, empty, false)
+	if !resumed {
+		// A CONVERSATION AN OLDER BUILD FILED UNDER ANOTHER SPELLING IS STILL
+		// THIS WORKSPACE'S CONVERSATION ([v3LegacyFolder]). Boot prefers those
+		// words to an abandoned empty canonical folder, so hello must too or it
+		// would boot a second agent onto the legacy journal the host holds.
+		if legacy, _, found := v3LegacyFolder(workspace); found {
+			return session.Place{Dir: legacy.dir}.Transcript()
+		}
+	}
 	if !found {
 		return ""
 	}
@@ -393,6 +493,8 @@ func v3PlaceOf(transcript, workspace string) session.Place {
 // with it. It is the ONE place a config changes conversations, so /new, a
 // contended resume and the picker cannot drift apart.
 func v3PointAt(cfg session.Config, place session.Place) (session.Config, error) {
+	previousWorkspace := cfg.Workspace
+	previousKey, previousAliases := cfg.MemoryProjectKey, cfg.MemoryProjectAliases
 	cfg.Place = place
 	cfg.SessionFile = place.Transcript()
 	if !place.Owned {
@@ -404,6 +506,10 @@ func v3PointAt(cfg session.Config, place session.Place) (session.Config, error) 
 			cfg.Workspace = workspace
 		}
 		cfg.MemoryProjectKey = v3ProjectKey(cfg.Workspace)
+		cfg.MemoryProjectAliases = gitidentity.ProjectKeys(cfg.Workspace, previousWorkspace, v3LaunchDir())
+		if cfg.MemoryProjectKey == previousKey {
+			cfg.MemoryProjectAliases = append(cfg.MemoryProjectAliases, previousAliases...)
+		}
 		cfg.MemoryProjectName = gitidentity.ProjectName(cfg.Workspace)
 		return cfg, nil
 	}
@@ -419,6 +525,10 @@ func v3PointAt(cfg session.Config, place session.Place) (session.Config, error) 
 	// every door through this function agrees about whose project this is —
 	// and the name moves with it, so a line kept here says where it holds.
 	cfg.MemoryProjectKey = v3ProjectKey(cfg.Workspace)
+	cfg.MemoryProjectAliases = gitidentity.ProjectKeys(cfg.Workspace, previousWorkspace, v3LaunchDir())
+	if cfg.MemoryProjectKey == previousKey {
+		cfg.MemoryProjectAliases = append(cfg.MemoryProjectAliases, previousAliases...)
+	}
 	cfg.MemoryProjectName = gitidentity.ProjectName(cfg.Workspace)
 	return cfg, nil
 }
@@ -567,21 +677,7 @@ func v3StampLaunchDir(launchDir, workspace string) string {
 // typed it. The pair is pinned by a test; if the sweep's rule ever widens, this
 // one widens with it or a conversation gets reaped under somebody.
 func v3TempPath(path string) bool {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return false
-	}
-	path = filepath.Clean(path)
-	for _, temporary := range []string{os.TempDir(), "/tmp"} {
-		temporary = filepath.Clean(strings.TrimSpace(temporary))
-		if temporary == "" || temporary == string(filepath.Separator) {
-			continue
-		}
-		if path == temporary || strings.HasPrefix(path, temporary+string(filepath.Separator)) {
-			return true
-		}
-	}
-	return false
+	return workspacepath.Temporary(path)
 }
 
 // ── the bucket, read and groomed ────────────────────────────────────────────

@@ -19,6 +19,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/workspacepath"
 )
 
 // ProjectKey answers the stable project key of a workspace: the normalized
@@ -43,7 +45,41 @@ func ProjectKey(workspace string) (string, error) {
 	if err != nil {
 		return "", nil
 	}
+	// THE CANONICAL PATH IS THE RESOLVED ONE. A folder reached through a
+	// symlink is one project: the alias and the target hash to the same key, or
+	// memory would hold two owners for one folder (#1761). A path that does not
+	// resolve keeps the absolute spelling.
+	if resolved, err := filepath.EvalSymlinks(absolute); err == nil {
+		return hashKey(resolved), nil
+	}
 	return hashKey(absolute), nil
+}
+
+// ProjectKeys names the canonical write key followed by proven historical path
+// owners. Remote identities have never depended on a spelling and need no aliases.
+func ProjectKeys(workspace string, candidates ...string) []string {
+	workspace = strings.TrimSpace(workspace)
+	key, _ := ProjectKey(workspace)
+	if key == "" {
+		return nil
+	}
+	keys := []string{key}
+	if remote := NormalizeRemoteURL(originRemote(workspace)); remote != "" {
+		return keys
+	}
+	seen := map[string]bool{key: true}
+	for _, path := range workspacepath.Aliases(workspace, candidates...) {
+		absolute, err := filepath.Abs(path)
+		if err != nil {
+			continue
+		}
+		alias := hashKey(absolute)
+		if !seen[alias] {
+			keys = append(keys, alias)
+			seen[alias] = true
+		}
+	}
+	return keys
 }
 
 // hashKey is the one way a project identity is minted.

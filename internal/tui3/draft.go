@@ -13,6 +13,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/Agent-Field/codeaf/internal/workspacepath"
 )
 
 // THE DRAFT IS THE PERSON'S, NOT THE SESSION'S.
@@ -102,6 +103,7 @@ func DraftFile(dir, workspace string) string {
 	if dir == "" {
 		return ""
 	}
+	workspace = workspacepath.Canonical(workspace)
 	key := filepath.Clean(workspace)
 	draftOrdinals.mu.Lock()
 	ordinal := draftOrdinals.n[key]
@@ -332,17 +334,14 @@ func (a *app) restoreDraft() {
 // matching is not that conversation being opened again — so its documents, its
 // tray and its task pages stay where they are, for the window that opens it
 // (draftkeep.go's [app.reuniteDrafts]).
-func adoptDraft(own, workspace string) string {
+func adoptDraft(own, workspace string, aliases ...string) string {
 	directory := filepath.Dir(own)
 	if strings.TrimSpace(workspace) == "" {
 		// Nothing to glob from. A hunt with no workspace would either sweep the
 		// directory or match nothing, and matching nothing is the safe half.
 		return ""
 	}
-	candidates, err := filepath.Glob(filepath.Join(directory, draftPrefix(workspace)+"*.txt"))
-	if err != nil {
-		return ""
-	}
+	candidates := draftCandidates(directory, append([]string{workspace}, aliases...), ".txt")
 
 	var (
 		newest string
@@ -454,4 +453,34 @@ func writeDraft(path, text string) error {
 		}
 	}
 	return os.WriteFile(path, []byte(text), 0o600)
+}
+
+// draftCandidates reads all proven prefixes together so newest-record ordering
+// and the live-window guard apply across the upgrade boundary as well.
+func draftCandidates(directory string, workspaces []string, extension string) []string {
+	seen := map[string]bool{}
+	var paths []string
+	entries, _ := os.ReadDir(directory)
+	for _, workspace := range workspaces {
+		// Read names literally so state-root glob metacharacters stay literal.
+		prefix := draftPrefix(workspace)
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasPrefix(entry.Name(), prefix) || !strings.HasSuffix(entry.Name(), extension) {
+				continue
+			}
+			path := filepath.Join(directory, entry.Name())
+			if !seen[path] {
+				paths = append(paths, path)
+				seen[path] = true
+			}
+		}
+	}
+	return paths
+}
+
+func (a *app) draftWorkspaces() []string {
+	if a.host != "" {
+		return []string{a.workspace}
+	}
+	return workspacepath.Aliases(a.workspace, a.draftAliases...)
 }

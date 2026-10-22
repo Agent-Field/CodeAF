@@ -245,18 +245,26 @@ func (a *Agent) projectKey() (key, name string, owned bool) {
 // memoryOwners is what this conversation may SEE: the person, this machine,
 // and this project.
 func (a *Agent) memoryOwners() []string {
-	key, _, _ := a.projectKey()
-	return MemoryOwners(key)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return MemoryOwners(a.config.MemoryProjectKey, a.config.MemoryProjectAliases...)
 }
 
 // MemoryOwners is the owner list a conversation at one project may SEE: the
 // person, this machine, and the project when its key is known. It is the one
 // builder of that list, exported for the doors outside this package that read
 // the block for a place with no conversation open on it (`codeaf do`).
-func MemoryOwners(projectKey string) []string {
+func MemoryOwners(projectKey string, aliases ...string) []string {
 	owners := []string{store.OwnerUser, store.OwnerMachine}
-	if key := strings.TrimSpace(projectKey); key != "" {
-		owners = append(owners, store.OwnerProject(key))
+	if strings.TrimSpace(projectKey) != "" {
+		seen := map[string]bool{}
+		for _, key := range append([]string{projectKey}, aliases...) {
+			key = strings.TrimSpace(key)
+			if key != "" && !seen[key] {
+				owners = append(owners, store.OwnerProject(key))
+				seen[key] = true
+			}
+		}
 	}
 	return owners
 }
@@ -408,7 +416,7 @@ func (a *Agent) refreshMemoryLocked() {
 		a.memoryText = ""
 		return
 	}
-	memories, err := st.MemoriesFor(MemoryOwners(a.config.MemoryProjectKey))
+	memories, err := st.MemoriesFor(MemoryOwners(a.config.MemoryProjectKey, a.config.MemoryProjectAliases...))
 	if err != nil {
 		return
 	}

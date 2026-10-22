@@ -243,6 +243,7 @@ func (a *app) front() Conversation {
 		Owned:            a.owned,
 		ContextWindow:    a.ctxWindow,
 		DraftFile:        a.draftFile,
+		DraftAliases:     a.draftAliases,
 		History:          a.history,
 		RecentSessions:   a.recentSessions,
 		SaveApproval:     a.saveApproval,

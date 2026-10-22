@@ -257,6 +257,9 @@ type Conversation struct {
 	// is the project saying keep nothing — which is already how the surface
 	// spells "not kept at all" (draft.go).
 	DraftFile string
+	// DraftAliases carries raw launch spellings for compatibility reads. Each is
+	// accepted only while it still resolves to this conversation's workspace.
+	DraftAliases []string
 	// History is the recall list this conversation's up arrow walks, and nil is
 	// this WORKSPACE keeping none. It is the store the door opened once per
 	// process rather than one per conversation: the file is one file and the
@@ -804,6 +807,9 @@ type Options struct {
 	// DraftFile is where the unsent draft is kept between sessions (draft.go).
 	// Empty keeps it nowhere. Use [DraftFile] to name it.
 	DraftFile string
+	// DraftAliases carries raw launch spellings for compatibility reads. Each is
+	// accepted only while it still resolves to this conversation's workspace.
+	DraftAliases []string
 
 	// ArtifactsIndex is the deliverables index a finished /export writes its row
 	// to (internal/session's artifacts.go). Empty falls through to

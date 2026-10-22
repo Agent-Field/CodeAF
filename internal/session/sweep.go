@@ -61,6 +61,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/workspacepath"
 )
 
 const (
@@ -296,21 +297,7 @@ func sweepIsLitter(meta Meta, dir string, now time.Time) bool {
 // asked, because TMPDIR moves the first without making the second any less of a
 // temp directory to the person who typed it.
 func underTempDir(path string) bool {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return false
-	}
-	path = filepath.Clean(path)
-	for _, temp := range []string{os.TempDir(), "/tmp"} {
-		temp = filepath.Clean(strings.TrimSpace(temp))
-		if temp == "" || temp == string(filepath.Separator) {
-			continue
-		}
-		if path == temp || strings.HasPrefix(path, temp+string(filepath.Separator)) {
-			return true
-		}
-	}
-	return false
+	return workspacepath.Temporary(path)
 }
 
 // reapSession removes one litter session, EVERY REGISTRATION FIRST.

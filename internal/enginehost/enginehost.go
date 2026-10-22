@@ -125,12 +125,24 @@ func Dir(workspace string) (string, error) {
 // that a question was asked. The doors that are about to WRITE something — the
 // host's own listener, the spawn lock, the wait for a host to go — call [Dir]
 // and make it themselves.
+//
+// A HOST DIRECTORY IS NAMED BY THE FOLDER, NOT A SPELLING OF IT. Every identity
+// question in this package — host lookup, dial, spawn, lock, status, stop —
+// funnels through here, so this is the one place a symlinked spelling must be
+// resolved: a surface that reached the folder through a link and a daemon that
+// was handed the resolved path would otherwise hash to two host directories and
+// spend the launch failing to meet (#1761). A path that does not resolve — a
+// workspace not on disk yet, a test's imagined directory — keeps its spelling.
 func where(workspace string) (string, error) {
 	workspace = strings.TrimSpace(workspace)
 	if workspace == "" {
 		return "", errors.New("engine host: no workspace to hold")
 	}
-	sum := sha256.Sum256([]byte(filepath.Clean(workspace)))
+	workspace = filepath.Clean(workspace)
+	if resolved, err := filepath.EvalSymlinks(workspace); err == nil {
+		workspace = resolved
+	}
+	sum := sha256.Sum256([]byte(workspace))
 	return home.Join("v3", "hosts", hex.EncodeToString(sum[:8])), nil
 }
 
@@ -151,12 +163,135 @@ func SocketPath(workspace string) (string, error) {
 
 // Dial connects to a host that is already running, and fails when none is. It
 // never starts one — see [Attach] for that.
+//
+// THE HOST AN OLDER BUILD WROTE FOR THIS FOLDER IS STILL THIS FOLDER'S HOST.
+// The directory a host lives in is named by a hash of the workspace, and once
+// that hash was taken from the resolved spelling (#1761), a directory an older
+// build named by the raw spelling it was handed went dark for every door here:
+// [Held] reads what was written inside, but Dial, Stop, the status door and the
+// takeover rule ask by key. A directory whose recorded workspace ([placeName])
+// resolves to the same folder is this workspace's host whoever wrote it, so a
+// canonical miss is answered by the legacy directories before this gives up —
+// which is what keeps an upgrade from orphaning a running engine, its
+// conversations and the commands that must still stop it. The canonical error
+// is the one handed back when nothing anywhere answers, so the retry semantics
+// above this door do not move.
 func Dial(workspace string) (net.Conn, error) {
 	socket, err := SocketPath(workspace)
 	if err != nil {
 		return nil, err
 	}
-	return net.DialTimeout("unix", socket, dialTimeout)
+	conn, dialErr := net.DialTimeout("unix", socket, dialTimeout)
+	if dialErr == nil {
+		return conn, nil
+	}
+	for _, legacy := range legacySockets(workspace) {
+		if conn, err := net.DialTimeout("unix", legacy, dialTimeout); err == nil {
+			return conn, nil
+		}
+	}
+	return nil, dialErr
+}
+
+// hostDirs is the shared lock and socket inventory. The incoming spelling is
+// proof of its old key even before a citation was written. Other old keys need
+// a live workspace citation; a socket need not exist yet.
+func hostDirs(workspace string) []string {
+	canonical, err := where(workspace)
+	if err != nil {
+		return nil
+	}
+	dirs := []string{canonical}
+	seen := map[string]bool{canonical: true}
+	add := func(dir string) {
+		if info, err := os.Lstat(dir); err == nil && info.IsDir() && !seen[dir] {
+			dirs = append(dirs, dir)
+			seen[dir] = true
+		}
+	}
+	raw := sha256.Sum256([]byte(filepath.Clean(strings.TrimSpace(workspace))))
+	add(home.Join("v3", "hosts", hex.EncodeToString(raw[:8])))
+	resolved, err := filepath.EvalSymlinks(filepath.Clean(workspace))
+	if err != nil {
+		return dirs
+	}
+	root := home.Join("v3", "hosts")
+	entries, _ := os.ReadDir(root)
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		dir := filepath.Join(root, entry.Name())
+		if seen[dir] {
+			continue
+		}
+		name, err := os.ReadFile(filepath.Join(dir, placeName))
+		if err != nil || strings.TrimSpace(string(name)) == "" {
+			continue
+		}
+		recorded, err := filepath.EvalSymlinks(filepath.Clean(strings.TrimSpace(string(name))))
+		if err == nil && recorded == resolved {
+			add(dir)
+		}
+	}
+	return dirs
+}
+
+func legacySockets(workspace string) []string {
+	dirs := hostDirs(workspace)
+	var sockets []string
+	for i, dir := range dirs {
+		if i == 0 {
+			continue
+		}
+		socket := filepath.Join(dir, socketName)
+		if SocketPathFits(socket) {
+			sockets = append(sockets, socket)
+		}
+	}
+	return sockets
+}
+
+// takeWorkspaceLocks serializes acquisition on the canonical key, then holds
+// every proven legacy lock together. Re-enumerating under that lock closes the
+// preflight/acquisition gap between new builds. Run keeps the complete set for
+// its lifetime, so an older build cannot start on a known old key during it.
+func takeWorkspaceLocks(workspace string) ([]*os.File, error) {
+	dir, err := Dir(workspace)
+	if err != nil {
+		return nil, err
+	}
+	first, err := takeLock(filepath.Join(dir, lockName))
+	if err != nil {
+		return nil, err
+	}
+	locks := []*os.File{first}
+	held := map[string]bool{dir: true}
+	for {
+		added := false
+		for _, legacy := range hostDirs(workspace) {
+			if held[legacy] {
+				continue
+			}
+			lock, err := takeLock(filepath.Join(legacy, lockName))
+			if err != nil {
+				releaseWorkspaceLocks(locks)
+				return nil, err
+			}
+			locks = append(locks, lock)
+			held[legacy] = true
+			added = true
+		}
+		if !added {
+			return locks, nil
+		}
+	}
+}
+
+func releaseWorkspaceLocks(locks []*os.File) {
+	for i := len(locks) - 1; i >= 0; i-- {
+		_ = releaseLock(locks[i])
+	}
 }
 
 // dialTimeout is how long one connect attempt may take. A unix socket connects
@@ -198,19 +333,18 @@ func Attach(workspace string, spawn func() error) (net.Conn, error) {
 	if spawn == nil {
 		return nil, errors.New("engine host: nothing to start a host with")
 	}
-	dir, err := Dir(workspace)
-	if err != nil {
+	if _, err := Dir(workspace); err != nil {
 		return nil, err
 	}
-	// A lock that is BUSY is an answer and not a failure: somebody else is
-	// already the host or is starting one, and waiting for their socket is all
-	// this connection has left to do.
-	if held, err := takeLock(filepath.Join(dir, lockName)); err == nil {
-		// The lock is released BEFORE the spawn rather than after it, because
-		// the host we are about to start wants this very lock for its own life.
-		// The window that opens is the one described above, and it costs at
-		// most a second process that finds the lock taken and exits.
-		_ = releaseLock(held)
+	// A successful probe holds the SAME inventory Run will acquire again.
+	// Run's atomic reacquisition is the handoff: if an older host takes a legacy
+	// lock after this release, the child refuses it before opening any socket.
+	if locks, err := takeWorkspaceLocks(workspace); err == nil {
+		if conn, err := Dial(workspace); err == nil {
+			releaseWorkspaceLocks(locks)
+			return conn, nil
+		}
+		releaseWorkspaceLocks(locks)
 		if err := spawn(); err != nil {
 			return nil, err
 		}
@@ -357,8 +491,7 @@ func retire(workspace string, ask remote.WhoIs) error {
 // moment, and a caller that spawned into that moment would watch its new host
 // find the lock busy and exit without a word.
 func waitForGone(workspace string, within time.Duration) error {
-	dir, err := Dir(workspace)
-	if err != nil {
+	if _, err := Dir(workspace); err != nil {
 		return err
 	}
 	deadline := time.Now().Add(within)
@@ -366,9 +499,15 @@ func waitForGone(workspace string, within time.Duration) error {
 		conn, err := Dial(workspace)
 		if err == nil {
 			_ = conn.Close()
-		} else if held, err := takeLock(filepath.Join(dir, lockName)); err == nil {
-			_ = releaseLock(held)
-			return nil
+		} else if locks, err := takeWorkspaceLocks(workspace); err == nil {
+			// Recheck while all lifetime locks are held; no ready or starting host can
+			// enter between a successful preflight and this answer.
+			conn, err := Dial(workspace)
+			releaseWorkspaceLocks(locks)
+			if err != nil {
+				return nil
+			}
+			_ = conn.Close()
 		}
 		if time.Now().After(deadline) {
 			return errors.New("engine host: the host is still holding this workspace")

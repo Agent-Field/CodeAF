@@ -1086,8 +1086,9 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 		// AND THE CONVERSATION'S MEMORY, on a task node's exact terms
 		// (task_run.go's newTaskAgentOn): the parent's brain lent read-only, the
 		// root's project key, no memory write.
-		bindingStore:     parent.bindingBrain(),
-		MemoryProjectKey: parent.MemoryProjectKey,
+		bindingStore:         parent.bindingBrain(),
+		MemoryProjectKey:     parent.MemoryProjectKey,
+		MemoryProjectAliases: parent.MemoryProjectAliases,
 		// And its litter follows the run's own session rather than the directory
 		// the node works in, for a task node's reason exactly (task_run.go's
 		// newChild counterpart, landing.go).

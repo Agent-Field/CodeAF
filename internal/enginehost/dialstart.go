@@ -51,22 +51,20 @@ const (
 // and never a wait, and because it reads the file rather than a pid it is correct
 // across pid namespaces. A missing lock file means no host has taken it.
 func hostLockHeld(workspace string) bool {
-	// where, not Dir: probing whether a host is coming up must not create the
-	// host directory (Dir would MkdirAll it), the same rule Dial and SocketPath
-	// keep so a mere question leaves no litter behind.
-	dir, err := where(workspace)
-	if err != nil {
-		return false
+	for _, dir := range hostDirs(workspace) {
+		file, err := os.OpenFile(filepath.Join(dir, lockName), os.O_RDWR, 0o600)
+		if err != nil {
+			continue
+		}
+		err = filelock.Lock(file, true, true)
+		if err == nil {
+			_ = filelock.Unlock(file)
+		}
+		_ = file.Close()
+		if filelock.IsBusy(err) {
+			return true
+		}
 	}
-	file, err := os.OpenFile(filepath.Join(dir, lockName), os.O_RDWR, 0o600)
-	if err != nil {
-		return false
-	}
-	defer file.Close()
-	if err := filelock.Lock(file, true, true); err != nil {
-		return filelock.IsBusy(err)
-	}
-	_ = filelock.Unlock(file)
 	return false
 }
 

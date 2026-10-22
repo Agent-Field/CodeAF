@@ -1373,6 +1373,9 @@ type Config struct {
 	// read is scoped to the conversation's project, and it is NEVER inherited by
 	// a config copy that was not written to carry it.
 	MemoryProjectKey string
+	// MemoryProjectAliases permits reads and edits of historical path owners.
+	// New rows still use MemoryProjectKey; existing rows keep their durable owner.
+	MemoryProjectAliases []string
 	// MemoryProjectName is the name a person knows that project by — the
 	// repository's name, or the folder's — written beside every project memory
 	// this conversation keeps, so the memory place can say where a line holds

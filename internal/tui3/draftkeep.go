@@ -13,6 +13,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/Agent-Field/codeaf/internal/workspacepath"
 )
 
 // AN UNSENT LINE OUTLIVES THE WINDOW, AND IT COMES BACK TO THE READER IT WAS
@@ -214,6 +215,9 @@ func draftOwnerOf(host, workspace, file string) string {
 	if strings.TrimSpace(file) == "" {
 		return ""
 	}
+	if strings.TrimSpace(host) == "" {
+		workspace, file = workspacepath.Canonical(workspace), workspacepath.Canonical(file)
+	}
 	return strings.TrimSpace(host) + "\x00" + filepath.Clean(workspace) + "\x00" + filepath.Clean(file)
 }
 
@@ -259,7 +263,7 @@ func namedConversation(owner string) bool {
 // belongs to nobody this build can name and is never laid out.
 func (a *app) ownsSlot(slot draftKeepSlot) bool {
 	owner := a.draftKeepOwner()
-	return owner != "" && slot.Owner == owner
+	return owner != "" && a.matchesDraftOwner(slot.Owner)
 }
 
 // speaksFor reports whether a record has anything to say about THIS
@@ -274,15 +278,36 @@ func (a *app) speaksFor(keep draftKeep) bool {
 	if owner == "" {
 		return false
 	}
-	if keep.Owner == owner {
+	if a.matchesDraftOwner(keep.Owner) {
 		return true
 	}
 	for _, slot := range keep.Slots {
-		if slot.Owner == owner {
+		if a.matchesDraftOwner(slot.Owner) {
 			return true
 		}
 	}
 	return false
+}
+
+// matchesDraftOwner preserves the machine and conversation boundaries. Only
+// local paths can be resolved here; a far machine's paths are opaque strings.
+func (a *app) matchesDraftOwner(owner string) bool {
+	current := a.draftKeepOwner()
+	if current == "" || owner == "" {
+		return false
+	}
+	if current == owner {
+		return true
+	}
+	if a.host != "" || !namedConversation(owner) {
+		return false
+	}
+	parts := strings.Split(owner, "\x00")
+	if len(parts) != 3 || parts[0] != "" {
+		return false
+	}
+	same := func(x, y string) bool { return filepath.Clean(x) == filepath.Clean(y) || workspacepath.Same(x, y) }
+	return same(parts[1], a.workspace) && same(parts[2], a.file)
 }
 
 // ── the record on disk ──────────────────────────────────────────────────────
@@ -1187,7 +1212,7 @@ func (a *app) layKeptDrafts() {
 func (a *app) legacyDraftText() string {
 	text := readDraft(a.draftFile)
 	if text == "" && draftFirstHere(a.draftFile, a.workspace) {
-		text = adoptDraft(a.draftFile, a.workspace)
+		text = adoptDraft(a.draftFile, a.workspace, a.draftWorkspaces()...)
 	}
 	return text
 }
@@ -1246,10 +1271,7 @@ func (a *app) reuniteDrafts(into map[recipient]composerState) ([]draftKeepFile, 
 	}
 	own := draftKeepPath(a.draftFile)
 	directory := filepath.Dir(a.draftFile)
-	candidates, err := filepath.Glob(filepath.Join(directory, draftPrefix(a.workspace)+"*.json"))
-	if err != nil {
-		return nil, false
-	}
+	candidates := draftCandidates(directory, a.draftWorkspaces(), ".json")
 	var speakers []draftKeepFile
 	for _, path := range candidates {
 		if path == own || draftWindowAlive(path) {
@@ -1275,7 +1297,7 @@ func (a *app) reuniteDrafts(into map[recipient]composerState) ([]draftKeepFile, 
 	// same words — now held here — or the ones a crash left behind after they were
 	// spent. It is cleared with the prune, and only where that window was holding
 	// THIS conversation: a carrier's export is somebody else's sentence.
-	if newest.keep.Owner == a.draftKeepOwner() {
+	if a.matchesDraftOwner(newest.keep.Owner) {
 		if stale := draftExportPath(newest.path); readDraft(stale) != "" {
 			newest.export = stale
 		}

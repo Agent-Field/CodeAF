@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/gitidentity"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
@@ -112,6 +113,14 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	}
 	if client == nil {
 		return nil, errors.New("session: completer is required")
+	}
+	// Older callers supply only a workspace and key. Resolve their read aliases
+	// once at construction, never on the per-turn memory path.
+	if config.MemoryProjectKey != "" && config.MemoryProjectAliases == nil {
+		keys := gitidentity.ProjectKeys(config.Workspace)
+		if len(keys) > 0 && keys[0] == config.MemoryProjectKey {
+			config.MemoryProjectAliases = keys
+		}
 	}
 	if config.newerBuild == nil {
 		config.newerBuild = buildinfo.StaleNotice

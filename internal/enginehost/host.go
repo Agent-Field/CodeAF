@@ -123,8 +123,9 @@ type Host struct {
 	dir       string
 	opts      Options
 
-	listener net.Listener
-	lock     *os.File
+	listener    net.Listener
+	lock        *os.File
+	legacyLocks []*os.File
 
 	// binary is the file this host was started from, as it looked when it
 	// started. A host whose own binary has been replaced retires the moment it
@@ -191,7 +192,7 @@ func Run(workspace string, opts Options) error {
 	// the socket exists and released only when this process ends, so "is there
 	// a host" is a question the operating system answers rather than a file
 	// somebody has to remember to delete.
-	lock, err := takeLock(filepath.Join(dir, lockName))
+	locks, err := takeWorkspaceLocks(workspace)
 	if err != nil {
 		return ErrHostRunning
 	}
@@ -209,7 +210,7 @@ func Run(workspace string, opts Options) error {
 	_ = os.Remove(socket)
 	listener, err := net.Listen("unix", socket)
 	if err != nil {
-		_ = releaseLock(lock)
+		releaseWorkspaceLocks(locks)
 		return fmt.Errorf("engine host: %w", err)
 	}
 	// The readable half of the directory's name, for a person looking at
@@ -217,16 +218,17 @@ func Run(workspace string, opts Options) error {
 	_ = os.WriteFile(filepath.Join(dir, placeName), []byte(workspace+"\n"), 0o600)
 
 	h := &Host{
-		workspace: workspace,
-		dir:       dir,
-		opts:      opts,
-		binary:    thisBinary(),
-		started:   time.Now(),
-		listener:  listener,
-		lock:      lock,
-		sessions:  map[string]*remote.Session{},
-		quiet:     time.Now(),
-		done:      make(chan struct{}),
+		workspace:   workspace,
+		dir:         dir,
+		opts:        opts,
+		binary:      thisBinary(),
+		started:     time.Now(),
+		listener:    listener,
+		lock:        locks[0],
+		legacyLocks: locks[1:],
+		sessions:    map[string]*remote.Session{},
+		quiet:       time.Now(),
+		done:        make(chan struct{}),
 	}
 	return h.serve()
 }
@@ -801,6 +803,7 @@ func (h *Host) shutdown() {
 	socket := filepath.Join(h.dir, socketName)
 	_ = h.listener.Close()
 	_ = os.Remove(socket)
+	releaseWorkspaceLocks(h.legacyLocks)
 	_ = releaseLock(h.lock)
 }
 
