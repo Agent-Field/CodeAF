@@ -608,7 +608,7 @@ that read directly, whether the manager is idle or working, even at its spending
 This does not open or finish a turn, interrupt a provider request, drain queued
 follow-ups, change the foreground model, retry work or answer a decision. The app
 keeps the exchange in human history outside the model transcript. Other wording
-can use the status tool.
+can use the status tool. In Auto this read is routine; explicit tool denials still apply.
 
 The manager can use `factory_answer` with `question_id` and the person's answer,
 including an engineering choice delegated with “you decide”, after the temporary

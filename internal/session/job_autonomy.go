@@ -18,7 +18,7 @@ func automaticJobPolicy(base *approval.Policy) *approval.Policy {
 	for tool, action := range base.Tools {
 		p.Tools[tool] = action
 	}
-	for _, tool := range []string{"factory_start", "factory_answer", "factory_run", "team_read", "team_status", "manual", "read", "ls", "grep", "find"} {
+	for _, tool := range []string{"factory_start", "factory_answer", "factory_status", "factory_run", "team_read", "team_status", "manual", "read", "ls", "grep", "find"} {
 		if p.Tools[tool] != approval.ActionDeny {
 			p.Tools[tool] = approval.ActionAllow
 		}
