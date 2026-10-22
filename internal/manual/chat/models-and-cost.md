@@ -4293,4 +4293,3 @@ you moved the profile. Run `codeaf logs` to read recent calls, `codeaf logs --fo
 to follow them, or `codeaf logs --path` to print the exact path. Each call records
 its model, timing, token use and cost. Background process output is separate: open
 `/processes` in the conversation and choose a process to read its log.
-
