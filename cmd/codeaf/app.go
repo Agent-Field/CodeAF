@@ -238,6 +238,7 @@ type appConversation interface {
 // new one in a workspace. Minted is a folder this process minted a moment ago
 // for agents.create: nobody else can be holding it, so it is never joined.
 type appOpenAsk struct {
+	Models             *session.ConversationModels
 	AutomaticModels    *bool
 	TeamListeningSince time.Time
 
@@ -291,6 +292,9 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 	clock := ask.ClockS
 	launch := &remote.LaunchShape{TeamListeningSince: ask.TeamListeningSince, Interactive: true, IntentNames: true, HandOverOnAsk: true, ProposalClockS: &clock, ChoiceClockS: clock, QuitGraceS: appQuitGraceS, LiveToolOutput: true, StandingOrders: true, QuickTasks: true}
 	if conn, err := appJoinExisting(ask, launch); conn != nil || err != nil {
+		if err == nil {
+			err = enableAppConversationModels(conn.Conv)
+		}
 		return conn, err
 	}
 
@@ -320,6 +324,9 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 				return nil, err
 			}
 			eng, err := assembleEngine(h, workspace, transcript, workspace)
+			if err == nil {
+				err = enableAppConversationModels(eng.Agent, ask.Models)
+			}
 			if err == nil && ask.AutomaticModels != nil {
 				if door, ok := eng.Agent.(interface{ SetAutomaticModels(bool) error }); ok {
 					err = door.SetAutomaticModels(*ask.AutomaticModels)
@@ -650,6 +657,7 @@ type appTurnMark struct {
 
 // appBoot is agents.create's ask, kept for the background open.
 type appBoot struct {
+	models    *session.ConversationModels
 	automatic *bool
 	model     string
 	budget    *float64
@@ -1211,7 +1219,7 @@ func (b *appBackend) createAgentHeld(prep appCreatePrep, minted string) (appwire
 			a.view.Retryable = false
 		}
 		a.view.UpdatedAt = b.now()
-		a.boot = &appBoot{model: model, budget: ask.BudgetUSD, automatic: ask.AutomaticModels}
+		a.boot = &appBoot{model: model, budget: ask.BudgetUSD, automatic: ask.AutomaticModels, models: ask.Models}
 		a.opening, a.minted = true, true
 		a.users, a.counted = 0, true
 		view = a.view
@@ -1368,6 +1376,7 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 	if boot != nil {
 		ask.Model, ask.Minted = boot.model, true
 		ask.AutomaticModels = boot.automatic
+		ask.Models = boot.models
 	}
 	conn, err := b.open(ask)
 	if err != nil {
@@ -2153,7 +2162,10 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 	ok, failure := true, ""
 	kind, status := "", 0
 	entry := func(e appwire.Entry) {
-		e.Agent, e.Turn, e.At = id, turn, b.now()
+		e.Agent, e.Turn = id, turn
+		if e.At.IsZero() {
+			e.At = b.now()
+		}
 		live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: e})
 	}
 	// EVERY ASSISTANT MESSAGE OF THE TURN HAS ITS INDEX, msg, and the app keys
@@ -2357,6 +2369,10 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			call := appConsentCall{Tool: event.Tool, Args: event.Args}
 			b.locked(func() { live.consents[event.ID] = call })
 		case session.EventNotice:
+			if event.ModelSwitch != nil {
+				entry(appModelSwitchEntry(id, *event.ModelSwitch))
+				break
+			}
 			// THE ENGINE'S NOTICES ARE ITS DIM LINES — the skills a turn
 			// carried, a request reshaped to land — drawn by the terminal as
 			// one muted row and never as a message, and quiet says the same.
@@ -2994,6 +3010,12 @@ func appEntryPageOf(id string, record session.Record, at time.Time, marks map[in
 	appMarkProgress(all, from, places, record.Progress)
 	if len(kept) > 0 {
 		all, from = appInsertFooters(all, from, kept[0], items)
+	}
+	if len(record.ModelSwitches) > 0 {
+		formed = append([]appwire.Entry(nil), formed...)
+	}
+	for _, change := range record.ModelSwitches {
+		formed = append(formed, appModelSwitchEntry(id, change))
 	}
 	if len(formed) > 0 {
 		all = appWithFormed(all, formed, at, &from)

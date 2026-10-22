@@ -2,6 +2,7 @@ package appwire
 
 import (
 	"encoding/json"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"testing"
 )
 
@@ -32,5 +33,28 @@ func TestModelIdentitySelectionPolicyPrecedesModelChange(t *testing.T) {
 	}
 	if _, err := methods["agents.set_model"].call(&fakeEngine{}, raw); err == nil {
 		t.Fatal("unsupported policy was silently ignored")
+	}
+}
+
+type modelPairEngine struct {
+	fakeEngine
+	pair session.ConversationModels
+}
+
+func (e *modelPairEngine) SetConversationModels(id string, pair session.ConversationModels) (Agent, error) {
+	e.pair = pair
+	return Agent{ID: id, Model: pair.Main}, nil
+}
+func TestConversationModelsPairIsAtomicAtAppWireDoor(t *testing.T) {
+	e := &modelPairEngine{}
+	_, err := methods["agents.set_models"].call(e, json.RawMessage(`{"id":"chat","main":"vendor/main","fallback":"vendor/backup"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.pair.Main != "vendor/main" || e.pair.Fallback != "vendor/backup" {
+		t.Fatalf("pair: %+v", e.pair)
+	}
+	if _, err := methods["agents.set_models"].call(&fakeEngine{}, json.RawMessage(`{"id":"chat","main":"vendor/main","fallback":"vendor/backup"}`)); err == nil {
+		t.Fatal("old engine silently accepted pair")
 	}
 }

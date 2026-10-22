@@ -455,6 +455,7 @@ func recordReserve(size int64) int64 {
 // strings still shared.
 func recordVectors(record Record) int64 {
 	cost := int64(len(record.Entries)+len(record.Earlier)) * int64(unsafe.Sizeof(DisplayEntry{}))
+	cost += int64(len(record.ModelSwitches)) * int64(unsafe.Sizeof(ModelSwitch{}))
 	cost += int64(len(record.Requests.Recent)) * int64(unsafe.Sizeof(RequestLine{}))
 	cost += int64(len(record.Passes)) * int64(unsafe.Sizeof(CompactionFact{}))
 	cost += progressCost(record.Progress)
@@ -498,6 +499,10 @@ func recordCost(record Record) int64 {
 	// retained allocation is still charged here, including spare capacity.
 	cost += int64(cap(record.userLines)) * int64(unsafe.Sizeof(recordUserLine{}))
 	cost += int64(len(record.Unreadable))
+	cost += int64(cap(record.ModelSwitches)) * int64(unsafe.Sizeof(ModelSwitch{}))
+	for _, n := range record.ModelSwitches {
+		cost += int64(len(n.ID) + len(n.Text))
+	}
 	cost += int64(cap(record.Requests.Recent)) * int64(unsafe.Sizeof(RequestLine{}))
 	// A pass's summary is the one long string it carries; the journal holds
 	// it on the marker line, so this is bounded by the file like the rest.
@@ -590,6 +595,7 @@ func attachmentSizes(attachment MessageAttachment) int64 {
 // cloneRecord is a record no other reader can reach through: its own entry
 // slices, and its own copy of every slice and pointer inside an entry.
 func cloneRecord(record Record) Record {
+	record.ModelSwitches = append([]ModelSwitch(nil), record.ModelSwitches...)
 	record.Entries = cloneEntries(record.Entries)
 	record.Earlier = cloneEntries(record.Earlier)
 	record.Requests.Recent = slices.Clone(record.Requests.Recent)
