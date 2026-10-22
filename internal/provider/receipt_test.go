@@ -31,12 +31,19 @@ func receiptTestClient(t *testing.T, server *httptest.Server) *Client {
 	return client
 }
 
+// receiptResultCeiling bounds how long a test waits for the receipt worker to
+// say what became of a call. It is a hang detector, not a pace: a passing test
+// returns the moment the worker reports. Five seconds was exceeded on a shared
+// box running other suites at a load average of twenty, twice, so the ceiling
+// is set where only a worker that never reports can reach it.
+const receiptResultCeiling = 30 * time.Second
+
 func receiptResult(t *testing.T, results <-chan Reconciled) Reconciled {
 	t.Helper()
 	select {
 	case result := <-results:
 		return result
-	case <-time.After(5 * time.Second):
+	case <-time.After(receiptResultCeiling):
 		t.Fatal("the receipt worker did not report what became of the call")
 		return Reconciled{}
 	}
