@@ -595,3 +595,23 @@ func TestPublicExportGuardsActualGitHubPayload(t *testing.T) {
 		}
 	}
 }
+
+func TestRepairPushKeepsPRTitleAndBodyInsidePublicBoundary(t *testing.T) {
+	f := newFixture()
+	_, api := f.serve(t)
+	src := New(api, []string{"acme/api"}, time.Now)
+	item := factory.Item{Repo: "api", Product: "acme", Num: 7, Title: "Fix /home/private-person/problem", Origin: factory.OriginForge, PullRequest: &factory.PullRequest{Number: 9}}
+	// The fixture has no PATCH route for the PR; the outgoing payload is what matters.
+	_ = src.UpdatePRBody(context.Background(), item, "Passed: cd /home/private-person/.codeaf/v3/factory/work/job/go && go test ./...")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.posted) == 0 {
+		t.Fatal("no PR update was sent")
+	}
+	last := f.posted[len(f.posted)-1]
+	for _, key := range []string{"title", "body"} {
+		if text, _ := last[key].(string); text == "" || strings.Contains(text, "private-person") {
+			t.Fatalf("outgoing %s: %q", key, text)
+		}
+	}
+}

@@ -432,7 +432,8 @@ func commitApproved(git Git, dir string, it factory.Item, trailer string) error 
 		handle = "codeaf"
 	}
 	args := []string{"-c", "user.name=" + handle, "-c", "user.email=" + handle + "@users.noreply.github.com"}
-	args = append(args, "commit", "-q", "-m", title+"\n\n"+trailer)
+	// The commit is pushed publicly: its message crosses the same boundary as the PR text.
+	args = append(args, "commit", "-q", "-m", factory.PublicText(title+"\n\n"+trailer))
 	if _, err := git.Run(dir, args...); err != nil {
 		return fmt.Errorf("could not commit %s's work: %w", it.Ref(), err)
 	}
