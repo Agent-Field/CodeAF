@@ -29,6 +29,8 @@ restores the ordinary prompt. Combined stdout/stderr appears as plain text while
 the command runs, preserving line breaks and indentation. Wide lines wrap; terminal
 control sequences are removed for safe display. The command and output remain in
 history after reopening. The model waits for your next message before responding.
+In a chat that can move between computers, file changes from `!` are included in
+its next saved turn, just like changes from the model's shell commands.
 A failed command keeps its output and exit status too. Shell paths, `@` names and
 slash words remain literal, not mentions or send tags.
 
