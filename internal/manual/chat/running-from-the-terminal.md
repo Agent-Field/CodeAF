@@ -139,6 +139,33 @@ in the repository, and the `telemetry` switch in `/settings` turns them off.
 `/update` in the chat or `codeaf update` in a terminal replaces it in place;
 running the install line again works too.
 
+## The installer stopped — GitHub API rate limit used up, curl install fails with 403, 401 Bad credentials, GitHub rejected GITHUB_TOKEN, token refused, repository you cannot read
+
+The installer names GitHub's refusal. These are example messages; `HH:MM ZONE`
+stands for the reset time GitHub supplies:
+
+- `GitHub's API rate limit for this address is used up until HH:MM ZONE; export GITHUB_TOKEN to use your own, or pin VERSION=<tag>`
+- `GitHub rejected GITHUB_TOKEN (401: Bad credentials), and the request without it failed too (401: Bad credentials); replace or unset GITHUB_TOKEN, or pin VERSION=<tag>`
+- `GitHub refused GITHUB_TOKEN access to Agent-Field/codeaf (403: Resource not accessible by personal access token), and the request without it failed too (403: Resource not accessible by personal access token); check what GITHUB_TOKEN may read, or pin VERSION=<tag>`
+
+A token GitHub refuses with 401, 403 or 429 is set aside for the rest of the run,
+and the same lookup is asked once without it. If that works, installation
+continues with a note: `GitHub refused GITHUB_TOKEN (its rate limit is used up until HH:MM ZONE); continuing without it`.
+Other token failures get no retry. `GITHUB_TOKEN` supplies the token when
+non-empty; otherwise `GH_TOKEN` does, and the message names `GH_TOKEN` instead.
+Downloads never carry the token.
+
+The reset time comes from GitHub's header in this machine's local time, with
+no zone suffix if the machine supplies none. Without a renderable reset, a
+numeric Retry-After header gives `for about a minute` or `for about M minutes`;
+with neither it says `for up to an hour`. A 403 without quota evidence means
+access was refused. A 404 can also mean a repository you cannot read. Some wget
+builds discard error bodies or headers, so a refusal can lack its message or
+quota details.
+
+Pinning a complete release tag bypasses the API lookup for any of these failures:
+`curl -fsSL https://agentfield.ai/get/codeaf | VERSION=<tag> bash`.
+
 ## What is devaf — dev build beside codeaf — side by side — two versions — install under a different file name — --name
 
 `devaf` is the file name for a codeaf dev-channel build, not another product.
