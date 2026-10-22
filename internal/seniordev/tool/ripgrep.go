@@ -26,7 +26,7 @@ type execRipgrepRunner struct{}
 func (execRipgrepRunner) Run(ctx context.Context, cwd string, args []string) (ripgrepResult, error) {
 	res, err := executor.For(ctx).In(cwd).Exec(ctx, executor.ExecRequest{
 		Argv: append([]string{"rg"}, args...), Env: withoutEnv(os.Environ(), "RIPGREP_CONFIG_PATH"),
-		Group: executor.GroupInherit,
+		Group: executor.GroupInherit, WaitDelay: -1,
 	}, nil)
 	if ctx.Err() != nil {
 		return ripgrepResult{}, ctx.Err()
