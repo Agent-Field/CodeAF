@@ -42,7 +42,7 @@ type SeatDecision struct {
 	TopLCB       float64
 	TopUCB       float64
 	Bill         float64 // volume-weighted bill for the class
-	AllInherited bool   // every passed candidate has an inherited prior
+	AllInherited bool    // every passed candidate has an inherited prior
 	Event        *contract.DecisionEvent
 }
 
@@ -68,7 +68,11 @@ func (e *Engine) Events() []*contract.DecisionEvent { return e.eventSink }
 
 // capGate checks the capability gates for a class.
 func capGate(m *Model, cs ClassShape) bool {
-	if m.ContextLength < cs.MinContext {
+	// A ROW THAT PUBLISHES NO WINDOW IS NOT REFUSED FOR IT — the same law the
+	// live seats keep (internal/crewroute's seatContext): zero is the
+	// provider not saying, and the candidates were already priced and
+	// health-checked by the caller that assembled the catalog.
+	if m.ContextLength > 0 && m.ContextLength < cs.MinContext {
 		return false
 	}
 	if cs.NeedsTools && !m.HasToolUse() {

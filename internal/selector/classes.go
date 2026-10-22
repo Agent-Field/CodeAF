@@ -6,12 +6,12 @@ package selector
 // the crewpick seat shapes' spirit (worker small, high larger, mastermind
 // largest + images).
 type ClassShape struct {
-	ID           string  // reflex | low | worker | high | mastermind
-	MinContext   int     // context gate
-	NeedsTools   bool    // tool-use gate
-	NeedsImages  bool    // image gate
-	Volume       float64 // seat-volume weight for the bill
-	Role         string  // lane B prediction role (worker|checker|thinker)
+	ID          string  // reflex | low | worker | high | mastermind
+	MinContext  int     // context gate
+	NeedsTools  bool    // tool-use gate
+	NeedsImages bool    // image gate
+	Volume      float64 // seat-volume weight for the bill
+	Role        string  // lane B prediction role (worker|checker|thinker)
 }
 
 // DefaultClasses returns the five classes with the session's shapes.

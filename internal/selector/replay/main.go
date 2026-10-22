@@ -1,9 +1,9 @@
 // Command replay runs the lane C shadow selector over lane B's SharedSnapshot
 // and the live model catalog, producing the dev-test deliverables:
 //
-//   (a) docs/selection/decision-table.txt — per-seat shadow decision
-//   (b) docs/selection/front.json        — pareto-front plot data (before/after)
-//   (c) docs/selection/audit.txt         — preset + cold-start audit
+//	(a) docs/selection/decision-table.txt — per-seat shadow decision
+//	(b) docs/selection/front.json        — pareto-front plot data (before/after)
+//	(c) docs/selection/audit.txt         — preset + cold-start audit
 //
 // Shadow only: it reads the fitted snapshot and the catalog and prints what
 // the picker WOULD choose; it never touches the production pick path.
@@ -213,15 +213,15 @@ func coldStart(eng *selector.Engine, cat *selector.ModelCatalog, id string, snap
 			floor = selector.CredibilityFloor * topUCB
 		}
 		gate[cs.ID] = map[string]any{
-			"role":        cs.Role,
-			"prior_q":     round(p.Q, 4),
-			"prior_sigma": round(p.Sigma, 4),
+			"role":         cs.Role,
+			"prior_q":      round(p.Q, 4),
+			"prior_sigma":  round(p.Sigma, 4),
 			"prior_source": p.Source,
 			"prior_from":   p.From,
-			"my_ucb":      round(myUCB, 4),
-			"top_ucb":     round(topUCB, 4),
-			"floor":       round(floor, 4),
-			"gate_passed": myUCB >= floor,
+			"my_ucb":       round(myUCB, 4),
+			"top_ucb":      round(topUCB, 4),
+			"floor":        round(floor, 4),
+			"gate_passed":  myUCB >= floor,
 		}
 	}
 	res["gate"] = gate
@@ -236,6 +236,6 @@ func round(v float64, prec int) float64 {
 	for i := 0; i < prec; i++ {
 		p *= 10
 	}
-	f := float64(int64(v*p + 0.5)) / p
+	f := float64(int64(v*p+0.5)) / p
 	return f
 }

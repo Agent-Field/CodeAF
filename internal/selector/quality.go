@@ -77,8 +77,8 @@ func (s *SharedSnapshot) GlobalSigma(role string) float64 {
 // pool's maxima for [I, C, A] normalization, computed once at construction.
 type PriorEngine struct {
 	maxIdx [3]float64 // pool maxima for [I, C, A] normalization
-	Snap *SharedSnapshot
-	Cat  *ModelCatalog
+	Snap   *SharedSnapshot
+	Cat    *ModelCatalog
 	// roleSigmas caches GlobalSigma per role.
 	roleSigmas map[string]float64
 }

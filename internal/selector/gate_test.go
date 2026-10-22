@@ -110,3 +110,25 @@ func TestRankByLCBNotUCB(t *testing.T) {
 		t.Fatalf("expected %s chosen on LCB (lower UCB), got %s", lowUname.ID, d.Chosen)
 	}
 }
+
+// A ROW THAT PUBLISHES NO WINDOW IS NOT REFUSED FOR IT — the same law the
+// live seats keep (internal/crewroute's seatContext): a zero context is the
+// provider not saying, and since the wiring (internal/config's
+// selectorwire.go) builds the engine's catalog from candidates the live
+// router already priced and health-checked, a silent row is a candidate the
+// engine must still be able to seat, or the overlay would silently shrink
+// the pool.
+func TestAnUnpublishedWindowIsNotARefusal(t *testing.T) {
+	m := mkM("acme/quiet", "acme/quiet", 1000, 0, true, false, 1) // no context published
+	if !capGate(&m, ClassShape{ID: "worker", MinContext: 200_000, NeedsTools: true}) {
+		t.Error("a zero-context row was refused for the window it did not publish")
+	}
+	small := mkM("acme/small", "acme/small", 1000, 32, true, false, 1)
+	if capGate(&small, ClassShape{ID: "worker", MinContext: 200_000, NeedsTools: true}) {
+		t.Error("a published window under the gate must still be refused")
+	}
+	quiet := mkM("acpe/no-tools", "acpe/no-tools", 1000, 400_000, false, false, 1)
+	if capGate(&quiet, ClassShape{ID: "worker", MinContext: 200_000, NeedsTools: true}) {
+		t.Error("a tools seat took a row that names no text input")
+	}
+}

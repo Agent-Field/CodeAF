@@ -1,10 +1,15 @@
-// Package selector implements the shadow selector (lane C): a deterministic
+// Package selector implements the pareto selector (lane C): a deterministic
 // crew picker built on lane B's SharedSnapshot (posterior quality means and
 // variances), reading the live model catalog through its own input struct so
 // it uses the schema fields (canonical_slug, created, alias_target) only —
 // never name-parsing heuristics. It emits contract.DecisionEvents for every
-// seat of every task class. These are shadow decisions: persisted and
-// observable, never applied to real routing.
+// seat of every task class.
+//
+// It is not a router. Its picks reach a real crew through one seam only —
+// internal/config's selectorwire.go, which runs it over a profile's fitted
+// snapshot and hands the seat picks to internal/crewroute as
+// Request.Chosen; with no snapshot configured nothing builds the engine and
+// no crew reads it.
 package selector
 
 import (
@@ -32,8 +37,8 @@ type Model struct {
 	CodingIndex       float64  `json:"coding_index"`
 	AgenticIndex      float64  `json:"agentic_index"`
 	Reasoning         struct {
-		Known     bool     `json:"known"`
-		Mandatory bool     `json:"mandatory"`
+		Known     bool `json:"known"`
+		Mandatory bool `json:"mandatory"`
 	} `json:"reasoning"`
 }
 
