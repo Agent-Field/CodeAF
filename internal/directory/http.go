@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
+	"sync"
 
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
@@ -48,7 +50,11 @@ func (h *HTTP) List(ctx context.Context) (l Listing, err error) {
 }
 
 func (h *HTTP) Cell(ctx context.Context, id string) (v CellView, err error) {
-	return v, h.do(ctx, http.MethodGet, cellPath(id, ""), nil, &v)
+	hdr, err := h.doHeader(ctx, http.MethodGet, cellPath(id, ""), nil, &v)
+	if err == nil {
+		conditionalServices.LoadOrStore(h.serviceKey(), hdr.Get(ConditionalTakeHeader) == "1")
+	}
+	return v, err
 }
 
 func (h *HTTP) PutDevice(ctx context.Context, id string, d Device) error {
@@ -68,7 +74,36 @@ func (h *HTTP) Create(ctx context.Context, id string, in CellInit) (v CellView, 
 }
 
 func (h *HTTP) Acquire(ctx context.Context, id string, o AcquireOpts) (v CellView, err error) {
+	if o.Force || o.RequireConditional {
+		if err := h.requireConditionalTake(ctx, id); err != nil {
+			return v, err
+		}
+	}
 	return v, h.do(ctx, http.MethodPost, cellPath(id, "acquire"), o, &v)
+}
+
+// ConditionalTakeHeader is the service's promise that a take compares the
+// expected holder and fence atomically. Older services omit it.
+const ConditionalTakeHeader = "codeaf-conditional-takes"
+
+// conditionalServices caches the promise per service for this process, across
+// device clients. Failed reads are never cached as capability answers.
+var conditionalServices sync.Map
+
+func (h *HTTP) serviceKey() string { return strings.TrimRight(h.base, "/") }
+
+func (h *HTTP) requireConditionalTake(ctx context.Context, id string) error {
+	answer, known := conditionalServices.Load(h.serviceKey())
+	if !known {
+		if _, err := h.Cell(ctx, id); err != nil {
+			return err
+		}
+		answer, _ = conditionalServices.Load(h.serviceKey())
+	}
+	if answer != true {
+		return ErrConditionalTake
+	}
+	return nil
 }
 
 func (h *HTTP) Heartbeat(ctx context.Context, id string, b Beat) (v CellView, err error) {
