@@ -38,7 +38,7 @@ func TestEngineEnvironmentHostHelper(t *testing.T) {
 	}
 	// F1: Keep the grace unmistakably live without making a test wait for it.
 	remote.WatchFor = time.Hour
-	err := enginehost.Run(workspace, enginehost.Options{Cells: cell.Enabled(), Boot: func(hello remote.Hello) (*remote.Engine, error) {
+	err := enginehost.Run(workspace, enginehost.Options{Cells: cell.Available(), Boot: func(hello remote.Hello) (*remote.Engine, error) {
 		file := hello.Session
 		if file == "" {
 			file = filepath.Join(workspace, "conversation.jsonl")

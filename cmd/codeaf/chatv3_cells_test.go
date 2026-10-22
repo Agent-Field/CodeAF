@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,7 @@ import (
 )
 
 func mintOpened(t *testing.T, bucket, workspace string) session.Place {
+	celltest.Available(t)
 	t.Helper()
 	place, err := v3MintSession(bucket, workspace, workspace, false)
 	if err != nil {
@@ -114,6 +116,7 @@ func v3TestConfig(workspace string, place session.Place) session.Config {
 }
 
 func TestLegacyFolderMigratesOnResumeWhenTheFlagIsOn(t *testing.T) {
+	celltest.Available(t)
 	bucket, workspace := t.TempDir(), t.TempDir()
 	place := legacyFolder(t, bucket, workspace)
 	before, err := os.ReadFile(place.Transcript())
@@ -183,6 +186,7 @@ func seatClass(t *testing.T, cfg session.Config, dir string) executor.Class {
 }
 
 func TestSeatFollowsTheCellsClass(t *testing.T) {
+	celltest.Available(t)
 	t.Setenv(cell.EnvVar, "1")
 	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.Sandboxed})
 	if err != nil {
@@ -198,6 +202,7 @@ func TestSeatFollowsTheCellsClass(t *testing.T) {
 // Two sessions in one process on the same path each keep the class their own
 // cell declared: nothing is looked up by path.
 func TestTwoSessionsOnOnePathKeepTheirOwnClasses(t *testing.T) {
+	celltest.Available(t)
 	t.Setenv(cell.EnvVar, "1")
 	workspace := t.TempDir()
 	seated := func(class cell.Class) session.Config {
@@ -214,6 +219,7 @@ func TestTwoSessionsOnOnePathKeepTheirOwnClasses(t *testing.T) {
 }
 
 func TestNoSeatWhenCellsAreOffOrTheFolderIsNoCell(t *testing.T) {
+	celltest.Available(t)
 	t.Setenv(cell.EnvVar, "0")
 	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.Sandboxed})
 	if err != nil {

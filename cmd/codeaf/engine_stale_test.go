@@ -237,7 +237,7 @@ func hostAnswers(workspace string) bool {
 func TestAHostOfThisBuildIsSplicedOntoWithoutAWord(t *testing.T) {
 	shortEngineHome(t)
 	workspace := "/home/somebody/api"
-	standIn(t, workspace, remote.HostSelf{Version: remote.Version, Build: buildinfo.Identity(), Cells: cell.Enabled()}, false)
+	standIn(t, workspace, remote.HostSelf{Version: remote.Version, Build: buildinfo.Identity(), Cells: cell.Available()}, false)
 
 	note, err := clearStaleEngineHost(workspace)
 	if err != nil {

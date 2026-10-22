@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"path/filepath"
 	"testing"
 
@@ -30,6 +31,7 @@ func TestWireSyncOffAddsOnlyTheDesk(t *testing.T) {
 // With a relay and an identity the surface can list, continue and discard, and
 // it offers no merge.
 func TestWireSyncOnWiresTheTakeSide(t *testing.T) {
+	celltest.Available(t)
 	h := t.TempDir()
 	t.Setenv(home.EnvVar, h)
 	t.Setenv(syncsetup.URLVar, "http://127.0.0.1:1")

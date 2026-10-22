@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/furrow"
@@ -44,6 +45,7 @@ func (a *localPrivacyAgent) Submit(ctx context.Context, text string) (<-chan ses
 // TestC8ReadingAddDeviceInstructionsAndChattingSendsNothing proves C8 through
 // home's alt+d key, local tool calls, directory reads and the real quit door.
 func TestC8ReadingAddDeviceInstructionsAndChattingSendsNothing(t *testing.T) {
+	celltest.RequireEngine(t)
 	if _, err := furrow.ResolveOwned(); err != nil {
 		t.Skipf("no engine: %v", err)
 	}

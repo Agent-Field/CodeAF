@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/pair"
@@ -44,6 +45,7 @@ func TestARefusedRenameKeepsTheOldNameAndSaysWhy(t *testing.T) {
 }
 
 func TestDevicesRenameTakesSeveralWordsAndAnEmptyNameIsUsage(t *testing.T) {
+	celltest.Available(t)
 	dir := t.TempDir()
 	t.Setenv("CODEAF_HOME", dir)
 	t.Setenv("CODEAF_SYNC_URL", "off")
@@ -61,6 +63,7 @@ func TestDevicesRenameTakesSeveralWordsAndAnEmptyNameIsUsage(t *testing.T) {
 // `codeaf pair --name` keeps the name before any relay is looked up, so a bad
 // name stops the pairing with its reason and nothing is sent.
 func TestPairNameFlagIsKeptAndSentAsTheJoiningLabel(t *testing.T) {
+	celltest.Available(t)
 	dir := t.TempDir()
 	t.Setenv("CODEAF_HOME", dir)
 	t.Setenv("CODEAF_SYNC_URL", "off")

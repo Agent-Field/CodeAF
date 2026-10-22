@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -30,6 +31,7 @@ import (
 // home of its own.
 func doorChat(t *testing.T) (session.Config, cell.Cell) {
 	t.Helper()
+	celltest.RequireEngine(t)
 	if _, err := furrow.ResolveOwned(); err != nil {
 		t.Skipf("no engine binary: %v", err)
 	}
@@ -233,6 +235,7 @@ func TestDrivePathsFollowMayTalk(t *testing.T) {
 // A computer with no identity is waiting, not failing to seal: with the hosted default every fresh
 // computer is in that state, and it must not show a failing seal on its first launch.
 func TestStartDriveWithNoIdentityReportsNothing(t *testing.T) {
+	celltest.Available(t)
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv(syncsetup.URLVar, "")
 	var reported []error
