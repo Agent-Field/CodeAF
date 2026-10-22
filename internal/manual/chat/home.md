@@ -2461,3 +2461,11 @@ stop its work or release an agent still held by this window. Such a conversation
 remains in Home history and can reopen here; it must not claim another window
 holds it. The other-window label is reserved for a conversation actually held
 elsewhere.
+
+## Home opens immediately while its readings refresh
+
+`space` twice and `/home` show the last completed Home reading immediately.
+Conversations, memory changes, spending, deliverables and folder availability
+refresh in the background. The first visit can show the page before its rows
+arrive. Typing and navigation remain available during that refresh; a reading
+from a previous visit cannot replace the current visit's selection or draft.

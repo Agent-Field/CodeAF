@@ -3,6 +3,7 @@ package tui3
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -130,7 +131,7 @@ func (a *app) homeBeat(gen int) tea.Cmd {
 	if !a.at(pageHome) || gen != a.homeGen {
 		return nil
 	}
-	a.refreshHome()
+	refresh := a.refreshHomeLater()
 	a.refreshCreditWarnings()
 	// AND THE ROW A MOVE LEFT BEHIND IS AIMED AT AGAIN, because the reading above
 	// has just put the cursor back on this window's own conversation and the row
@@ -140,7 +141,7 @@ func (a *app) homeBeat(gen int) tea.Cmd {
 	// THE BEAT REBUILDS THE LIST AND THE CURSOR FOLLOWS ITS CONVERSATION
 	// ([homeView.build]), so the row the card is about may be a row nothing has
 	// read for. It is an arrival like a key (homecardread.go).
-	asked := tea.Batch(a.refreshHomeCard(a.now()), a.refreshGridReadings(a.now()), a.askEngines())
+	asked := tea.Batch(refresh, a.refreshHomeCard(a.now()), a.refreshGridReadings(a.now()), a.askEngines())
 	// A task starting in another window arrives on this beat, and the spinner it
 	// earns needs the fast clock — woken here because this is the only moment
 	// home learns anything ([app.homeAnimating]; paint keeps it turning and lets
@@ -870,13 +871,14 @@ func (a *app) openHome() tea.Cmd { return a.showPage(pageHome) }
 func (a *app) raiseHome() tea.Cmd {
 	a.closeLists()
 	a.dismissWelcome()
-	world, known := a.readWorldKnown()
+	world, known := a.homeReading.world, a.homeReading.known
 	// THE SAME VIEW THE GREETING BUILDS, BY THE SAME CONSTRUCTOR, AND THE SAME
 	// READINGS: [app.newHomeView] and [app.furnishHome] are the one list of each,
 	// and this road adds only what a door has that a greeting does not — the
 	// cursor's memory of where this window was before.
 	a.home = a.newHomeView(world, known)
-	a.furnishHome()
+	a.useHomeReading(a.homeReading)
+	a.furnishHomeCached()
 	a.home.openAt(a.file)
 	// AND THE CURSOR STANDS ON THE CONVERSATION BEFORE THIS ONE, where this
 	// window has one (homegrid.go's [app.homePreselect]).
@@ -884,7 +886,7 @@ func (a *app) raiseHome() tea.Cmd {
 	// AND THE CARD'S OWN READINGS ARE TAKEN AT THE ARRIVAL, never in the draw
 	// (homecardread.go). The repository among them is a command, so it is asked
 	// for rather than waited on and comes back as a message.
-	asked := tea.Batch(a.refreshHomeCard(time.Now()), a.refreshGridReadings(time.Now()))
+	asked := tea.Batch(a.refreshHomeLater(), a.refreshHomeCard(time.Now()), a.refreshGridReadings(time.Now()))
 	a.touch()
 	// THE PAINT CLOCK JOINS THE SLOW TICK when a row on the column is running:
 	// the spinner and the count-up are claims about this instant, and a still
@@ -1081,10 +1083,17 @@ func (a *app) readWorldKnown() (session.World, bool) {
 		return session.World{}, false
 	}
 	if file := strings.TrimSpace(a.file); file != "" {
+		// A cache may hand the same slices to several readers. Adopt can insert and
+		// sort rows, so only the reader's own slices may be changed.
+		world.Projects = slices.Clone(world.Projects)
+		for i := range world.Projects {
+			world.Projects[i].Sessions = slices.Clone(world.Projects[i].Sessions)
+		}
 		world.Adopt(a.worldRoot(), session.SessionRow{
 			Transcript: file, Title: a.title, Workspace: a.workspace, Model: a.model,
 		}, time.Now())
 	}
+	a.homeReading.world, a.homeReading.known = world, true
 	return world, true
 }
 
@@ -1291,6 +1300,7 @@ func (a *app) furnishHome() {
 	// [homeView.build] is the one that keeps the cursor on its conversation, so
 	// on the beat this is a rescan and a rebuild and nothing else.
 	a.home.build()
+	a.rememberHomeReading()
 }
 
 // placesRoot is where the projects live. The field is the test's door and

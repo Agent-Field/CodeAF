@@ -936,3 +936,14 @@ rather than taking over an empty conversation that could acquire membership duri
 
 `Conversation unavailable` on a team card means its saved transcript is missing. A missing
 file is not recreated silently; add a new conversation and choose it as manager explicitly.
+
+## Starting a new chat without waiting for the first token
+
+Sending a first message from Home or the new-chat page (`+` or `ctrl+t`) shows
+its own `new chat` screen immediately, with your message and
+`opening conversation… · esc cancels`. The conversation opens in the background;
+the message reaches its new conversation only after opening succeeds. This
+screen acknowledges your action before the model starts answering. The previous
+chat keeps its draft and attachments. Escape cancels the pending opening;
+typing also cancels it and edits the original draft. An opening failure returns
+to that draft with the error, so your message is not lost or sent to the old chat.

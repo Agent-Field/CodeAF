@@ -2119,7 +2119,8 @@ func (a *app) showPage(id page) (cmd tea.Cmd) {
 	// frame: the pulse draws a memo and never a file, so a room walked into
 	// between two beats would otherwise open under yesterday's figure
 	// (homemachine.go's [app.readMachineMoney]).
-	a.readMachineMoney(a.now())
+	money := a.readMachineMoneyLater(a.now())
+	defer func() { cmd = tea.Batch(money, cmd) }()
 	next := placeFor(id)
 	if next == nil {
 		// THE CONVERSATION IS A PAGE ID LIKE ANY OTHER, and it is the one with no

@@ -435,7 +435,7 @@ func (a *app) startChatEnter() tea.Cmd {
 		return nil
 	}
 	page := a.liveComposer()
-	return a.renewLater(a.startSay, func() tea.Cmd {
+	cmd := a.renewLater(a.startSay, func() tea.Cmd {
 		a.startBack = startBack{}
 		a.startKept = composerState{}
 		// The start page was the greeting; opening its conversation must not
@@ -444,6 +444,8 @@ func (a *app) startChatEnter() tea.Cmd {
 		a.putComposer(page)
 		return a.enterLine()
 	})
+	a.previewConversation(page.box.String())
+	return cmd
 }
 
 // startChatKey is the page's claim on the keyboard, and it is four keys wide.
