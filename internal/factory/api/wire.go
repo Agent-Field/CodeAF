@@ -333,15 +333,16 @@ type Job struct {
 	// Model is the model a person chose for this job's steps; absent, they
 	// run on the factory's default (Queue.Model). Set with POST
 	// /v1/jobs/{id}/model.
-	Model       string            `json:"model,omitempty"`
-	Reason      string            `json:"reason,omitempty"`
-	DoneHow     string            `json:"done_how,omitempty"`
-	DoneAt      time.Time         `json:"done_at"`
-	Dismissed   bool              `json:"dismissed"`
-	DismissedBy []string          `json:"dismissed_by,omitempty"`
-	WaitingFor  string            `json:"waiting_for,omitempty"`
-	Overlap     []string          `json:"overlap,omitempty"`
-	Approval    *factory.Approval `json:"approval,omitempty"`
+	Model           string            `json:"model,omitempty"`
+	AutomaticModels *bool             `json:"automatic_models,omitempty"`
+	Reason          string            `json:"reason,omitempty"`
+	DoneHow         string            `json:"done_how,omitempty"`
+	DoneAt          time.Time         `json:"done_at"`
+	Dismissed       bool              `json:"dismissed"`
+	DismissedBy     []string          `json:"dismissed_by,omitempty"`
+	WaitingFor      string            `json:"waiting_for,omitempty"`
+	Overlap         []string          `json:"overlap,omitempty"`
+	Approval        *factory.Approval `json:"approval,omitempty"`
 
 	Owners []string        `json:"owners,omitempty"`
 	Change *factory.Change `json:"change,omitempty"`

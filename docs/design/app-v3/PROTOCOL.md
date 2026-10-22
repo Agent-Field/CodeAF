@@ -58,7 +58,7 @@ state again first. An app that does not know the word treats it as a failure.
 ## Types
 
 ```
-Agent  { id, title, workspace, model?, effort?, state, updated_at?, crews?, line? }
+Agent  { id, title, workspace, model?, model_identity?, effort?, state, updated_at?, crews?, line? }
        id: stable string (the conversation's session file id/path key)
        state: "idle" | "working" | "needs_you" | "stopped" | "closed"
        "working" whenever a turn runs, on every agent.changed and every list, whichever window
@@ -109,9 +109,9 @@ Ask    { id, agent, kind, subkind?, title, detail?, options?: [{id, label}], irr
 | `shutdown` | – | `{}` then exit |
 | `agents.labels` | `{ids: string[]}` (at most 32) | `{labels:[{id,title}], incomplete?}`; optional metadata-only lookup, no transcript reads. Missing names stay unknown; incomplete means a scan bound was reached. |
 | `agents.list` | `{workspace?}` | `{agents: Agent[]}` (recent conversations, newest first); a blank conversation, one nobody has said anything in, is never listed (see "Blank conversations") |
-| `agents.create` | `{workspace?, model?, budget_usd?, text?}` | `{agent: Agent}`; with `text` the first turn starts at once (`turn.started` follows) and `title` is the opening name — the words of `text`, or the names of the files attached when there are none, cut to 40 characters with "…" — until the engine's own name arrives as `agent.changed`: one request to the model configured for titles, asked once from those words and file names only, which replaces it unless the person renamed the agent first. No workspace: the user's home folder. |
+| `agents.create` | `{workspace?, model?, automatic_models?, budget_usd?, text?}` | `{agent: Agent}`; with `text` the first turn starts at once (`turn.started` follows) and `title` is the opening name — the words of `text`, or the names of the files attached when there are none, cut to 40 characters with "…" — until the engine's own name arrives as `agent.changed`: one request to the model configured for titles, asked once from those words and file names only, which replaces it unless the person renamed the agent first. No workspace: the user's home folder. |
 | `agents.entries` | `{id, before?, limit?}` | `{entries: Entry[], more: bool}` (oldest first; works for agents not held) |
-| `agents.set_model` | `{id, model}` | `{agent: Agent}` |
+| `agents.set_model` | `{id, model, automatic?}` | `{agent: Agent}`; optional boolean selects automatic/fixed model fallback before changing the model. |
 | `agents.retry` | `{id}` | `{turn}` (re-run the last failed turn) |
 | `agents.open` | `{id}` | `{agent: Agent}` (attach an engine to a saved conversation; idempotent, one concurrent open per agent; call on chat display or hover to prefetch) |
 | `agents.send` | `{id, text}` | `{turn: <u64>}`; output arrives as events |
@@ -165,7 +165,7 @@ result or an event, `?` marks a field that may be absent.
 | `agents.budget.get` | `{id}` | `{budget}` |
 | `agents.budget.set` | `{id, usd}` | `{budget}` |
 | `agents.compact` | `{id}` | `{}` |
-| `agents.create` | `{attachments, budget_usd, client_id, model, said, text, workspace}` | `{agent}` |
+| `agents.create` | `{attachments, automatic_models, budget_usd, client_id, model, said, text, workspace}` | `{agent}` |
 | `agents.entries` | `{before, id, limit}` | `{entries, more}` |
 | `agents.idle` | `{days}` | `{ids}` |
 | `agents.labels` | `{ids}` | `{incomplete?, labels}` |
@@ -179,7 +179,7 @@ result or an event, `?` marks a field that may be absent.
 | `agents.retry` | `{id}` | `{turn}` |
 | `agents.send` | `{attachments, client_id, id, reads, said, text}` | `{turn}` |
 | `agents.set_effort` | `{effort, id}` — `auto`, `low`, `medium`, `high`, `xhigh`, `max` | `{agent}` |
-| `agents.set_model` | `{id, model}` | `{agent}` |
+| `agents.set_model` | `{id, model, automatic?}` | `{agent}` |
 | `agents.since` | `{after, id}` | `{at?, entries, files?, first?, found, last_at?, turns}` |
 | `agents.steer` | `{attachments, client_id, id, reads, said, text}` | `{}` |
 | `agents.stop` | `{id}` | `{}` |
@@ -2732,7 +2732,7 @@ Feature `factory.job_actions` is present only when the engine implements `Factor
 | `factory.job_step_rerun` | step, words? (what to do differently; kept on the job's notes) | `…/steps/{step}/rerun` (assignee only) |
 | `factory.job_merge` | commit? (the pull request's head the person saw) | `…/merge` (assignee only; the factory's merge gate decides) |
 | `factory.job_control` | mode (`take_over` or `resume_pipeline`), optional words | `…/control`; normal job action receipt |
-| `factory.job_set_model` | model (a model id; empty for the factory's default) | `…/model` (assignee only; the next step opens on it and a running step switches at its next turn; `expect` is accepted and not checked, so a pick is never `stale`; a Done job is `conflict`) |
+| `factory.job_set_model` | model (a model id; empty for the factory's default), automatic? (boolean model selection policy) | `…/model` (assignee only; the next step opens on it and a running step switches at its next turn; `expect` is accepted and not checked, so a pick is never `stale`; a Done job is `conflict`) |
 | `factory.job_create` | factory, repo (owner/name), title, text?, assignee?, start? (`backlog`\|`now`) | `POST /v1/jobs` |
 
 **A stuck step.** A job waiting with `needs_you.kind` `out_of_rounds` is a step that stopped short (it never reported, ran out of time, or its until did not hold); `needs_you.question.text` says so in the factory's words and `state_presentation.title` is `Stuck`. Its recovery is `factory.job_step_rerun`: on the stuck step to try again, or on `needs_you.back_to`, the finished step before it, to send the work back (left out when there is none, as for the first step); `words` are kept on the job's notes, which every step's brief carries. Stopping is `factory.job_stop`. The question's own answers are not carried.
@@ -3073,7 +3073,7 @@ Feature `factory.job_chats` is present only when the engine implements `FactoryJ
 
 `agent` is the job's agent: the item's own conversation, which the run reports into and which reads what the person types as the brief before a run and the steer during one (and the answer while the job waits on a question). It is made when the job has none yet; that makes a conversation and its team on this machine, asks no model and starts no job. The agent's calls spend from the job's budget: each also goes on the job's `cost` (before any run it is the job's whole `cost`, and a start carries it into the run's), while the spend ledger keeps each call once, and once the budget is spent its next turn is refused with `job budget reached · $5.02 spent of $5 · raise the job's budget to go on` (a job waiting on its budget question still takes the person's answer there). `steps` is the latest chat of each step that ran, in the run's order; a step that has not run, or whose chat cannot be opened, is left out. A step's `rounds` names the chat of each of its finished rounds, oldest first, matched to `job.steps[].rounds` by `round` (the latest finished round's is usually the step's own `agent`); a round with no chat (a check step's), one recorded before round chats were kept, or one whose chat cannot be opened is left out, and a step with none has no `rounds`. Each `agent` is an ordinary agent id: the engine holds it open before answering (a running step is lent, as to any window), so the app opens and messages it as it does any conversation, and a message to a step's chat goes to that step directly. The chats are read from the factory's own record of the job, never from a team's names.
 
-Only the factory this engine serves (`factory_local`) is answered; any other is `not_found` ("this factory's chats are on the machine that runs its jobs"). A dropped job has no conversations (the drop deleted them) and is never given an agent: it is `not_found` with `the job's conversation could not be opened: #12 was dropped · Bring back returns it to Backlog`. A job dropped before drops deleted conversations still answers the ones it names, until Bring back deletes them. A job with a model of its own (`job.model`) puts its agent on that model, and `factory.job_set_model` moves the agent with the job, so every chat of one job reads one model.
+Only the factory this engine serves (`factory_local`) is answered; any other is `not_found` ("this factory's chats are on the machine that runs its jobs"). A dropped job has no conversations (the drop deleted them) and is never given an agent: it is `not_found` with `the job's conversation could not be opened: #12 was dropped · Bring back returns it to Backlog`. A job dropped before drops deleted conversations still answers the ones it names, until Bring back deletes them. A job with a model of its own (`job.model`) puts its agent on that model, and `factory.job_set_model` moves the agent with the job, so every chat can change the job-wide selection. Each chat separately reports the model actually handling its request or used by its previous round; automatic fallback and pending changes do not rewrite that execution evidence.
 
 The factory's teams (`factory_managed`) are the job's and no longer appear in `crews.overview`'s team pages; reading one by id still answers it.
 
@@ -3138,3 +3138,25 @@ the call. Equal lengths keep settings order. Absent with no such rule, and for
 non-bash calls or other kinds of ask. This explains an ask without changing
 approval: the desktop can show `Waiting on you: <call> · outside <outside>, so it asks`
 with code spans around the call and rule.
+
+### Execution model identity
+
+`Agent.model_identity` is optional for older engines. It carries `epoch`,
+`revision`, `selected`, `requested`, `active`, `last`, `provider`, `mode`,
+`request_mode` and `pending`. Selection is intent, never execution evidence.
+`requested` is the last dispatched id; `active`/`last` use a concrete provider id
+when reported. `mode` is the selected policy (`fixed` or `automatic`), while
+`request_mode` is the policy under which the active/last request began. Changes
+publish `agent.changed`, including stream-time alias resolution, before forwarding
+content. Restoration retains the last execution but clears an old active request;
+epoch/revision identify ordered snapshots. Background helper purposes do not own
+this foreground identity. Unknown fields remain additive for older peers.
+
+`agents.create.automatic_models` optionally sets the opening policy.
+`agents.set_model.automatic` optionally changes it; false is meaningful and must
+not be omitted. A host lacking the policy door refuses rather than silently
+ignoring that setting. Factory `job_set_model` accepts the same optional boolean;
+the job stores `automatic_models` and delivers model and policy together to its
+worker. Later rounds inherit the stored policy, and a completed round records
+its last execution model rather than its next preference. Approval automation
+is an independent setting.

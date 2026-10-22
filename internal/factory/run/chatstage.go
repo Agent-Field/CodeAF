@@ -77,8 +77,9 @@ type ConversationSpec struct {
 	Brief string
 	// Model is the model the conversation opens on: the job's own
 	// (Item.Model), "" for the default the maker's launch already carries.
-	Model  string
-	Effort string
+	Model           string
+	AutomaticModels *bool
+	Effort          string
 	// Resume is the transcript of a conversation to reopen instead of making
 	// one, "" for a new one. The maker then continues it with Brief as a
 	// carry-on note (internal/session's CarryOn), joins no team (it is a
@@ -213,15 +214,17 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 		log = func(string) {}
 	}
 	spec := ConversationSpec{
-		Item:   job.Item,
-		Team:   itemTeam(job.Item),
-		Name:   stageChatName(job),
-		Handle: stageHandle(job),
-		Dir:    job.Dir,
-		Brief:  stageBrief(job) + ciFollowUpBrief(job.Item) + followProgressBrief(job),
-		Model:  strings.TrimSpace(job.Item.Model), Effort: job.Item.Effort,
-		Stage:    door,
-		Progress: job.Progress,
+		Item:            job.Item,
+		Team:            itemTeam(job.Item),
+		Name:            stageChatName(job),
+		Handle:          stageHandle(job),
+		Dir:             job.Dir,
+		Brief:           stageBrief(job) + ciFollowUpBrief(job.Item) + followProgressBrief(job),
+		Model:           strings.TrimSpace(job.Item.Model),
+		AutomaticModels: job.Item.AutomaticModels,
+		Effort:          job.Item.Effort,
+		Stage:           door,
+		Progress:        job.Progress,
 	}
 	var conv Conversation
 	var err error
@@ -249,7 +252,7 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 		job.Opened(conv.ID())
 	}
 	captions := conv.Captions(ctx)
-	steer, models := job.Steer, job.Models
+	steer, selections := job.Steer, job.ModelSelections
 	idle := make(chan error, 1)
 	go func() { idle <- conv.Wait(ctx) }()
 
@@ -281,13 +284,22 @@ loop:
 			if err := conv.Send(ctx, words); err != nil {
 				log(steerNotDelivered + oneLine(err.Error()))
 			}
-		case model, ok := <-models:
+		case selection, ok := <-selections:
 			if !ok {
-				models = nil
+				selections = nil
 				continue
 			}
-			if m, ok := conv.(modeler); ok && strings.TrimSpace(model) != "" {
-				m.SetModel(strings.TrimSpace(model))
+			if selection.Automatic != nil {
+				door, ok := conv.(interface{ SetAutomaticModels(bool) error })
+				if !ok {
+					return factory.StageResult{}, fmt.Errorf("the step cannot change automatic model selection")
+				}
+				if err := door.SetAutomaticModels(*selection.Automatic); err != nil {
+					return factory.StageResult{}, err
+				}
+			}
+			if m, ok := conv.(modeler); ok && strings.TrimSpace(selection.Model) != "" {
+				m.SetModel(strings.TrimSpace(selection.Model))
 			}
 		case line, ok := <-captions:
 			if !ok {
@@ -397,6 +409,11 @@ loop:
 	}
 	if m, ok := conv.(modeler); ok {
 		res.Model = m.Model()
+		if identity, ok := conv.(interface{ LastModel() string }); ok {
+			if last := identity.LastModel(); last != "" {
+				res.Model = last
+			}
+		}
 	}
 	return res, nil
 }

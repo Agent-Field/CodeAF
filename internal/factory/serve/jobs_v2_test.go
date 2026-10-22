@@ -993,12 +993,12 @@ func TestV2AJobsModelIsItsPersonsToChoose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.post(t, it, "model", `{"model":"vendor/model-c"}`, 200)
+	f.post(t, it, "model", `{"model":"vendor/model-c","automatic":false}`, 200)
 	signals, err := desk.DrainLive(held.ID, held.Worker)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(signals) != 1 || signals[0].Verb != lease.SignalModel || signals[0].Words != "vendor/model-c" {
+	if len(signals) != 1 || signals[0].Verb != lease.SignalModel || signals[0].Words != "vendor/model-c" || signals[0].Automatic == nil || *signals[0].Automatic {
 		t.Fatalf("signals = %+v", signals)
 	}
 }

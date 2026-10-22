@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/workgraph"
@@ -154,6 +155,7 @@ type Hello struct {
 // the first century; the emptiness law says
 // an unknown draws nothing, so UpdatedAt and LastActiveAt carry omitzero.
 type Agent struct {
+	ModelIdentity *session.ModelIdentity `json:"model_identity,omitempty"`
 	// Retryable means this backend retained the failed message for agents.retry.
 	Retryable    bool   `json:"retryable"`
 	FactoryOwned bool   `json:"factory_owned,omitempty"`
@@ -994,12 +996,13 @@ type ProviderConnector interface {
 //
 // It answers at once: the conversation is assembled behind the answer.
 type CreateAsk struct {
-	Workspace   string         `json:"workspace"`
-	Model       string         `json:"model"`
-	BudgetUSD   *float64       `json:"budget_usd"`
-	Text        string         `json:"text"`
-	ClientID    string         `json:"client_id"`
-	Attachments []AttachSource `json:"attachments,omitempty"`
+	AutomaticModels *bool          `json:"automatic_models,omitempty"`
+	Workspace       string         `json:"workspace"`
+	Model           string         `json:"model"`
+	BudgetUSD       *float64       `json:"budget_usd"`
+	Text            string         `json:"text"`
+	ClientID        string         `json:"client_id"`
+	Attachments     []AttachSource `json:"attachments,omitempty"`
 	// Said is the person's own words for the first message: what its entry and
 	// the record show in place of Text, as agents.send's said does. Absent is Text.
 	Said *string `json:"said,omitempty"`

@@ -1423,7 +1423,7 @@ func (sess *Session) announce() {
 // text and reasoning deltas carry no changed frame facts.
 func factsMoved(kind session.EventKind) bool {
 	switch kind {
-	case session.EventTurnDone, session.EventError, session.EventTitleChanged, session.EventCompacted,
+	case session.EventModelIdentity, session.EventTurnDone, session.EventError, session.EventTitleChanged, session.EventCompacted,
 		session.EventSummaryStarted, session.EventSummaryFailed,
 		session.EventConsentRequest, session.EventToolEnd, session.EventToolFailed,
 		session.EventConnectAsk, session.EventConnectDone,
@@ -2930,6 +2930,20 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	case MethodModel:
 		return json.Marshal(agent.Model())
 
+	case MethodSetAutomaticModels:
+		enabled, err := arg[bool](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface{ SetAutomaticModels(bool) error })
+		if !ok {
+			return nil, fmt.Errorf("automatic model selection is unsupported")
+		}
+		if err := door.SetAutomaticModels(enabled); err != nil {
+			return nil, err
+		}
+		s.session.announce()
+		return nil, nil
 	case MethodSetModel:
 		model, err := arg[string](call)
 		if err != nil {

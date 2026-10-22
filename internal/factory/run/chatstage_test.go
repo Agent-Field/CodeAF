@@ -259,10 +259,10 @@ func TestAStagesHandleIsItsName(t *testing.T) {
 // it runs switches its conversation for the next turn, and the result says
 // which model it ended on.
 func TestAStageOpensOnTheJobsModelAndSwitchesWhenItChanges(t *testing.T) {
-	models := make(chan string, 1)
+	models := make(chan ModelSelection, 1)
 	switched := make(chan struct{})
 	maker := &FakeMaker{Script: func(ctx context.Context, c *FakeConversation) {
-		models <- "vendor/second"
+		models <- ModelSelection{Model: "vendor/second"}
 		for c.Model() != "vendor/second" {
 			select {
 			case <-ctx.Done():
@@ -275,7 +275,7 @@ func TestAStageOpensOnTheJobsModelAndSwitchesWhenItChanges(t *testing.T) {
 	}}
 	job := reviewJob()
 	job.Item.Model = " vendor/first "
-	job.Models = models
+	job.ModelSelections = models
 	res, err := NewChatExecutor(maker).Run(context.Background(), job)
 	if err != nil {
 		t.Fatal(err)
@@ -607,13 +607,83 @@ func TestJobModelAndEffortReachEveryConversationSpec(t *testing.T) {
 		_ = c.Spec.Stage.Report(ctx, factory.StageResult{Done: true})
 	}}
 	job := reviewJob()
+	enabled := false
+	job.Item.AutomaticModels = &enabled
 	job.Item.Model = "open-weight/pro"
 	job.Item.Effort = "high"
 	if _, err := NewChatExecutor(maker).Run(context.Background(), job); err != nil {
 		t.Fatal(err)
 	}
 	spec := maker.Opened()[0].Spec
-	if spec.Model != "open-weight/pro" || spec.Effort != "high" {
+	if spec.Model != "open-weight/pro" || spec.Effort != "high" || spec.AutomaticModels == nil || *spec.AutomaticModels {
 		t.Fatalf("job settings lost: %s %s", spec.Model, spec.Effort)
+	}
+}
+
+type identityStageMaker struct {
+	inner        *FakeMaker
+	conversation *identityStageConversation
+}
+type identityStageConversation struct {
+	*FakeConversation
+	mu         sync.Mutex
+	operations []string
+}
+
+func (c *identityStageConversation) LastModel() string { return "vendor/served" }
+func (c *identityStageConversation) SetAutomaticModels(enabled bool) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if enabled {
+		c.operations = append(c.operations, "automatic")
+	} else {
+		c.operations = append(c.operations, "fixed")
+	}
+	return nil
+}
+func (c *identityStageConversation) SetModel(model string) {
+	c.mu.Lock()
+	c.operations = append(c.operations, "model")
+	c.mu.Unlock()
+	c.FakeConversation.SetModel(model)
+}
+func (m *identityStageMaker) Open(ctx context.Context, spec ConversationSpec) (Conversation, error) {
+	opened, err := m.inner.Open(ctx, spec)
+	if err != nil {
+		return nil, err
+	}
+	m.conversation = &identityStageConversation{FakeConversation: opened.(*FakeConversation)}
+	return m.conversation, nil
+}
+func TestModelSelectionAppliesPolicyBeforeModelAndRecordsExecution(t *testing.T) {
+	maker := &identityStageMaker{inner: &FakeMaker{Script: func(ctx context.Context, c *FakeConversation) {
+		for c.Model() != "vendor/next" {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Millisecond):
+			}
+		}
+		_ = c.Spec.Stage.Report(ctx, factory.StageResult{Done: true})
+	}}}
+	job := reviewJob()
+	choices := make(chan ModelSelection, 1)
+	fixed := false
+	choices <- ModelSelection{Model: "vendor/next", Automatic: &fixed}
+	job.ModelSelections = choices
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	result, err := NewChatExecutor(maker).Run(ctx, job)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Model != "vendor/served" {
+		t.Fatalf("recorded preference rather than execution: %q", result.Model)
+	}
+	c := maker.conversation
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.operations) != 2 || c.operations[0] != "fixed" || c.operations[1] != "model" {
+		t.Fatalf("selection order: %v", c.operations)
 	}
 }

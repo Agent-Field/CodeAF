@@ -1263,8 +1263,8 @@ func TestAModelChosenMidRunReachesTheRunningStepAndTheNext(t *testing.T) {
 					t.Error(err)
 				}
 				select {
-				case m := <-job.Models:
-					heard <- m
+				case m := <-job.ModelSelections:
+					heard <- m.Model
 				case <-time.After(5 * time.Second):
 					t.Error("the running step never heard the model")
 				}
@@ -1284,5 +1284,39 @@ func TestAModelChosenMidRunReachesTheRunningStepAndTheNext(t *testing.T) {
 	defer mu.Unlock()
 	if opened["write"] != "" || opened["review"] != "vendor/strong" {
 		t.Fatalf("opened on %+v", opened)
+	}
+}
+
+func TestModelSelectionReachesCurrentAndFutureStepsAsOneLatestChoice(t *testing.T) {
+	var g *rig
+	final := true
+	observed := make(chan ModelSelection, 1)
+	g = newRig(t, map[factory.StageKind]Executor{factory.StageChat: ExecutorFunc(func(ctx context.Context, job Job) (factory.StageResult, error) {
+		if job.Stage.Name == "write" {
+			for n := 0; n < 12; n++ {
+				enabled := n%2 == 1
+				if err := g.r.SetModelSelection(job.Item.ID, fmt.Sprintf("vendor/model-%d", n), &enabled); err != nil {
+					t.Error(err)
+				}
+			}
+			select {
+			case choice := <-job.ModelSelections:
+				observed <- choice
+			case <-ctx.Done():
+				t.Error(ctx.Err())
+			}
+		} else if job.Item.Model != "vendor/model-11" || job.Item.AutomaticModels == nil || *job.Item.AutomaticModels != final {
+			t.Errorf("next step opened on %q with policy %v", job.Item.Model, job.Item.AutomaticModels)
+		}
+		return done(""), nil
+	})}, nil)
+	id := g.add("one", chat("write"), chat("review"))
+	if err := g.r.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	g.waitState(id, factory.StateLanded)
+	got := <-observed
+	if got.Model != "vendor/model-11" || got.Automatic == nil || !*got.Automatic {
+		t.Fatalf("latest selection: %+v", got)
 	}
 }

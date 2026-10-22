@@ -117,6 +117,7 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	}
 	cfg.Workspace = where
 	// THE JOB'S OWN MODEL, WHEN A PERSON CHOSE ONE, over the launch's default.
+	cfg.AutomaticModels = spec.AutomaticModels
 	if model := strings.TrimSpace(spec.Model); model != "" {
 		cfg.Model = model
 	}
@@ -555,6 +556,12 @@ func (c *stageConversation) SpendRecorded() bool { return c.budget != nil }
 
 // Model is the model the conversation is on now.
 func (c *stageConversation) Model() string { return c.agent.Model() }
+
+func (c *stageConversation) SetAutomaticModels(enabled bool) error {
+	return c.agent.SetAutomaticModels(enabled)
+}
+
+func (c *stageConversation) LastModel() string { return c.agent.LastModel() }
 
 // SetModel switches the conversation for its next turn, as a person's pick
 // does in any chat.

@@ -238,6 +238,7 @@ type appConversation interface {
 // new one in a workspace. Minted is a folder this process minted a moment ago
 // for agents.create: nobody else can be holding it, so it is never joined.
 type appOpenAsk struct {
+	AutomaticModels    *bool
 	TeamListeningSince time.Time
 
 	Workspace  string
@@ -319,6 +320,13 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 				return nil, err
 			}
 			eng, err := assembleEngine(h, workspace, transcript, workspace)
+			if err == nil && ask.AutomaticModels != nil {
+				if door, ok := eng.Agent.(interface{ SetAutomaticModels(bool) error }); ok {
+					err = door.SetAutomaticModels(*ask.AutomaticModels)
+				} else {
+					err = fmt.Errorf("model selection policy is unsupported")
+				}
+			}
 			if err == nil {
 				if c, ok := eng.Agent.(closedAgent); ok {
 					booted.Store(&c)
@@ -642,8 +650,9 @@ type appTurnMark struct {
 
 // appBoot is agents.create's ask, kept for the background open.
 type appBoot struct {
-	model  string
-	budget *float64
+	automatic *bool
+	model     string
+	budget    *float64
 }
 
 // appFirst is a created agent's first message: the words the model is sent,
@@ -865,7 +874,15 @@ func appRowView(row session.SessionRow) appwire.Agent {
 			state = appwire.StateWorking
 		}
 	}
-	return appwire.Agent{FactoryOwned: factoryOwnedConversation(row.Transcript), ID: row.ID, Title: row.Title, Workspace: row.Workspace, Model: row.Model, State: state, UpdatedAt: at}
+	identity := row.ModelIdentity
+	if identity != nil {
+		copy := *identity
+		if !row.Live {
+			copy.Active, copy.Pending = "", false
+		}
+		identity = &copy
+	}
+	return appwire.Agent{ModelIdentity: identity, FactoryOwned: factoryOwnedConversation(row.Transcript), ID: row.ID, Title: row.Title, Workspace: row.Workspace, Model: row.Model, State: state, UpdatedAt: at}
 }
 
 // remember files what the disk said about an agent, without touching one this
@@ -1194,7 +1211,7 @@ func (b *appBackend) createAgentHeld(prep appCreatePrep, minted string) (appwire
 			a.view.Retryable = false
 		}
 		a.view.UpdatedAt = b.now()
-		a.boot = &appBoot{model: model, budget: ask.BudgetUSD}
+		a.boot = &appBoot{model: model, budget: ask.BudgetUSD, automatic: ask.AutomaticModels}
 		a.opening, a.minted = true, true
 		a.users, a.counted = 0, true
 		view = a.view
@@ -1350,6 +1367,7 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 	_ = b.state.read(func(f *appStateFile) { ask.ClockS = f.clock() })
 	if boot != nil {
 		ask.Model, ask.Minted = boot.model, true
+		ask.AutomaticModels = boot.automatic
 	}
 	conn, err := b.open(ask)
 	if err != nil {
@@ -1396,6 +1414,11 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 	live.replayJobs = appReplayJobs(replayTranscript)
 	startTitles := b.prepareTitles(a, live)
 	title, model := conn.Conv.Title(), conn.Conv.Model()
+	var modelIdentity *session.ModelIdentity
+	if door, ok := conn.Conv.(interface{ ModelIdentity() session.ModelIdentity }); ok {
+		state := door.ModelIdentity()
+		modelIdentity = &state
+	}
 	effort := conn.Conv.ReasoningFor(model)
 	if dial, ok := conn.Conv.(interface{ ConversationEffort() string }); ok {
 		effort = dial.ConversationEffort()
@@ -1418,6 +1441,7 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 			a.users, a.counted = users, true
 		}
 		a.view.Effort = effort
+		a.view.ModelIdentity = modelIdentity
 		if conn.Transcript != "" {
 			a.transcript = conn.Transcript
 		}
@@ -2199,6 +2223,24 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 	titles := map[string]string{}
 	for event := range events {
 		switch event.Kind {
+		case session.EventModelIdentity:
+			if event.ModelIdentity != nil {
+				var view appwire.Agent
+				changed := false
+				b.locked(func() {
+					previous := a.view.ModelIdentity
+					if previous != nil && previous.Epoch == event.ModelIdentity.Epoch && previous.Revision > event.ModelIdentity.Revision {
+						return
+					}
+					changed = true
+					a.view.ModelIdentity = event.ModelIdentity
+					a.view.Model = event.ModelIdentity.Selected
+					view = a.view
+				})
+				if changed {
+					live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+				}
+			}
 		case session.EventCloseContinued:
 			b.closeWakeStarted(id, live, event.Text)
 		case session.EventTextDelta:
@@ -3258,6 +3300,29 @@ func appUpdates(items []session.DisplayEntry) []bool {
 	return update
 }
 
+// SetAutomaticModels changes fallback policy without changing the active request.
+func (b *appBackend) SetAutomaticModels(id string, enabled bool) error {
+	a, err := b.find(id)
+	if err != nil {
+		return err
+	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	if err := b.lentFence(a, "model selection"); err != nil {
+		return err
+	}
+	if _, _, err := b.ensureLocked(a); err != nil {
+		return err
+	}
+	var live *appLive
+	b.locked(func() { live = a.live })
+	door, ok := live.conn.Conv.(interface{ SetAutomaticModels(bool) error })
+	if !ok {
+		return fmt.Errorf("model selection policy is unsupported by this engine")
+	}
+	return door.SetAutomaticModels(enabled)
+}
+
 // SetModel moves the agent to another model, opening its conversation first if
 // none is held: the choice is the conversation's own and is saved with it.
 func (b *appBackend) SetModel(id, model string) (appwire.Agent, error) {
@@ -3292,6 +3357,10 @@ func (b *appBackend) SetModel(id, model string) (appwire.Agent, error) {
 	var view appwire.Agent
 	b.locked(func() {
 		a.view.Model = model
+		if door, ok := live.conn.Conv.(interface{ ModelIdentity() session.ModelIdentity }); ok {
+			state := door.ModelIdentity()
+			a.view.ModelIdentity = &state
+		}
 		view = a.view
 	})
 	b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})

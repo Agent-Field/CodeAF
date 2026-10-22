@@ -41,6 +41,12 @@ func (f ExecutorFunc) Run(ctx context.Context, job Job) (factory.StageResult, er
 }
 
 // Job is everything one round of one stage may read.
+// ModelSelection carries one person's choice without racing policy against model.
+type ModelSelection struct {
+	Model     string
+	Automatic *bool
+}
+
 type Job struct {
 	// Item is the item as it stands when the round starts.
 	Item factory.Item
@@ -72,10 +78,9 @@ type Job struct {
 	// Steer delivers the person's words while the round runs; a chat stage
 	// hands them to its conversation, a check ignores them.
 	Steer <-chan string
-	// Models delivers a model the person chose for the job while the round
-	// runs; a chat stage switches its conversation to it for its next turn, a
-	// check ignores it. The round opened on Item.Model.
-	Models <-chan string
+	// ModelSelections delivers the latest complete model/policy choice while a
+	// round runs. Later rounds open on the same choice recorded on Item.
+	ModelSelections <-chan ModelSelection
 	// Log appends one line to the item's stream, timestamped by the runner.
 	Log func(line string)
 	// Progress relays brief human-facing Follow PR updates to the job conversation.

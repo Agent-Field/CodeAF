@@ -343,11 +343,21 @@ var methods = map[string]method{
 		return &EntriesResult{nonNil(entries), more}, nil
 	}),
 	"agents.set_model": typed(func(e Engine, p struct {
-		ID    string `json:"id"`
-		Model string `json:"model"`
+		Automatic *bool  `json:"automatic,omitempty"`
+		ID        string `json:"id"`
+		Model     string `json:"model"`
 	}) (*agentResult, error) {
 		if strings.TrimSpace(p.ID) == "" || strings.TrimSpace(p.Model) == "" {
 			return nil, Errorf(CodeBadParams, "agents.set_model needs an id and a model")
+		}
+		if p.Automatic != nil {
+			door, ok := e.(interface{ SetAutomaticModels(string, bool) error })
+			if !ok {
+				return nil, Errorf(CodeBadParams, "automatic model selection is unsupported")
+			}
+			if err := door.SetAutomaticModels(p.ID, *p.Automatic); err != nil {
+				return nil, err
+			}
 		}
 		agent, err := e.SetModel(p.ID, strings.TrimSpace(p.Model))
 		if err != nil {
