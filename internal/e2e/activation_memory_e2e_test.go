@@ -5,6 +5,7 @@ package e2e
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -173,6 +174,12 @@ func TestAutomaticMemoryAcrossRealConversations(t *testing.T) {
 	if strings.Contains(strings.ToLower(screen), "cobalt") {
 		t.Fatal("a fresh conversation still showed the superseded envelope choice")
 	}
+	r.lit("/new")
+	r.keys("Enter")
+	r.lit("/task write packing.txt containing a one-sentence packing instruction for a weekend delivery in our fictional parcel demo")
+	r.keys("Enter")
+	waitForMockPackingTask(t, ws)
+	t.Log("A real task in a fresh conversation wrote the corrected envelope choice without being told the color.")
 	models := callModels(t, home)
 	if len(models) == 0 {
 		t.Fatal("automatic memory acceptance has no recorded model calls")
@@ -182,7 +189,26 @@ func TestAutomaticMemoryAcrossRealConversations(t *testing.T) {
 			t.Fatalf("automatic memory used %q instead of %q", actual, model)
 		}
 	}
-	t.Logf("Automatic capture, contextual recall, correction, and fresh-chat recall passed; all %d recorded calls used %s.", len(models), model)
+	t.Logf("Automatic capture, contextual recall, correction, fresh-chat recall, and real task execution passed; all %d recorded calls used %s.", len(models), model)
+}
+
+func waitForMockPackingTask(t *testing.T, ws string) {
+	t.Helper()
+	deadline := time.Now().Add(4 * time.Minute)
+	for time.Now().Before(deadline) {
+		if branch := runBranch(t, ws); branch != "" {
+			content, err := exec.Command("git", "-C", ws, "show", branch+":packing.txt").Output()
+			if err == nil {
+				text := strings.ToLower(string(content))
+				if !strings.Contains(text, "violet") || strings.Contains(text, "cobalt") {
+					t.Fatalf("task wrote the wrong mock packing instruction: %s", content)
+				}
+				return
+			}
+		}
+		time.Sleep(pollEvery)
+	}
+	t.Fatal("the real task did not commit packing.txt on its task branch")
 }
 
 func waitForAutomaticMockMemory(t *testing.T, st *store.Store, owners []string, word, superseded string) store.Memory {

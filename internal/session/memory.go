@@ -369,7 +369,20 @@ func MemoryWorld(st *store.Store, owners []string) string {
 	if st == nil || len(owners) == 0 {
 		return ""
 	}
-	block, err := st.AssembleMemoryBlock(store.MemoryContext{Owners: owners})
+	ctx := store.MemoryContext{Owners: owners}
+	for _, owner := range owners {
+		if store.OwnerKindOf(owner) != store.OwnerUser && store.OwnerKindOf(owner) != store.OwnerMachine {
+			ctx.Project = owner
+		}
+	}
+	return memoryWorldForContext(st, ctx)
+}
+
+func memoryWorldForContext(st *store.Store, ctx store.MemoryContext) string {
+	if st == nil || len(ctx.Owners) == 0 {
+		return ""
+	}
+	block, err := st.AssembleMemoryBlock(ctx)
 	if err != nil {
 		return ""
 	}
@@ -380,15 +393,68 @@ func MemoryWorld(st *store.Store, owners []string) string {
 // the brain a read may use, for the owners this conversation sees — so a
 // conversation and the work it hands out cannot disagree about what is kept.
 func (a *Agent) memoryWorld() string {
-	return MemoryWorld(a.config.bindingBrain(), a.memoryOwners())
+	return a.memoryWorldFor("")
 }
 
-// memoryWorld is the section a starting node's brief closes on.
+// memoryWorldFor admits memories using the worker's actual assignment. Read
+// conversation metadata under its lock, then do local retrieval off that lock.
+func (a *Agent) memoryWorldFor(brief string) string {
+	st, ctx := a.snapshotMemoryContext(brief)
+	return memoryWorldForContext(st, ctx)
+}
+
+func (a *Agent) snapshotMemoryContext(brief string) (*store.Store, store.MemoryContext) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	ctx := store.MemoryContext{Owners: MemoryOwners(a.config.MemoryProjectKey), Project: a.config.MemoryProjectKey, Session: a.sessionID(), Brief: brief + " " + a.cardText}
+	return a.config.bindingBrain(), ctx
+}
+
+// memoryWorld is retained for callers asking for the conversation's context.
 func (g *TaskGraph) memoryWorld() string {
 	if g.home == nil {
 		return ""
 	}
 	return g.home.memoryWorld()
+}
+
+// memoryWorldsForFrontier snapshots queued assignments under the graph lock,
+// then resolves their distinct memory contexts outside both graph and agent
+// locks. A rule for one task must not disappear behind another task's topic.
+func (g *TaskGraph) memoryWorldsForFrontier() map[uint64]string {
+	if g.home == nil {
+		return nil
+	}
+	briefs := g.snapshotQueuedMemoryBriefs()
+	worlds := make(map[uint64]string, len(briefs))
+	for id, brief := range briefs {
+		worlds[id] = g.home.memoryWorldFor(brief)
+	}
+	return worlds
+}
+
+// queuedWithMemoryContext leaves a node admitted after the snapshot for its
+// own admission's frontier pass; it must not start with an unrelated fallback.
+func queuedWithMemoryContext(node *TaskNode, worlds map[uint64]string) bool {
+	if node == nil || node.state != TaskQueued {
+		return false
+	}
+	_, ready := worlds[node.id]
+	return worlds == nil || ready
+}
+
+// snapshotQueuedMemoryBriefs never takes the agent lock or touches storage.
+func (g *TaskGraph) snapshotQueuedMemoryBriefs() map[uint64]string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	briefs := map[uint64]string{}
+	for _, id := range g.order {
+		node := g.nodes[id]
+		if node != nil && node.state == TaskQueued {
+			briefs[id] = g.inheritedLocked(node)
+		}
+	}
+	return briefs
 }
 
 // refreshMemoryLocked puts what this conversation keeps in front of the model.

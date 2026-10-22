@@ -2,8 +2,11 @@ package session
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/store"
 )
@@ -144,5 +147,43 @@ func TestAutomaticCorrectionPreservesExplicitPin(t *testing.T) {
 	kept, err := brain.MemoriesFor(MemoryOwners(""))
 	if err != nil || len(kept) != 1 || kept[0].Text != "Quartz deploys on Tuesdays" || !kept[0].Rule || kept[0].Origin != store.OriginNoticed {
 		t.Fatalf("correction lost pin or provenance: %+v %v", kept, err)
+	}
+}
+
+func TestTaskAssignmentAnticipatesOlderRuleOutsideRecentCandidates(t *testing.T) {
+	agent, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.MemoryProjectKey = "mock-quartz" })
+	const rule = "Quartz integration examples must use mock customer account identifiers"
+	if _, err := brain.AddMemory(store.Memory{Owner: store.OwnerUser, Type: store.MemoryPreference, Origin: store.OriginNoticed, Text: rule}); err != nil {
+		t.Fatal(err)
+	}
+	for index := 0; index < 180; index++ {
+		digest := sha256.Sum256([]byte(fmt.Sprintf("mock-unrelated-fixture-%d", index)))
+		text := fmt.Sprintf("Unrelated fixture %x", digest)
+		if _, err := brain.AddMemory(store.Memory{Owner: store.OwnerUser, Type: store.MemoryFact, Origin: store.OriginNoticed, Text: text}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if plain := MemoryWorld(brain, MemoryOwners("mock-quartz")); strings.Contains(plain, rule) {
+		t.Fatal("fixture did not place older rule outside generic recent candidates")
+	}
+	received := make(chan string, 1)
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		received <- node.brief
+		node.finish("done", nil, "", "")
+		node.graph.complete(node, TaskDone)
+	})
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "Write mock integration", brief: "Draft Quartz integration examples", acceptance: "Uses mock identifiers"})
+	select {
+	case brief := <-received:
+		if !strings.Contains(brief, rule) {
+			t.Fatalf("spawned worker missed older relevant rule: %s", brief)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("worker did not start")
+	}
+	spec := agent.beltRunSpec(&beltRun{title: "Mock integration"}, "Draft Quartz integration examples")
+	if !strings.Contains(spec.Memory, rule) {
+		t.Fatalf("belt worker missed older relevant rule: %s", spec.Memory)
 	}
 }

@@ -7,8 +7,8 @@ package store
 // quarantine of lines nobody could place — because the owner is what decides
 // which conversations a line is put in front of, and a page that grouped by
 // anything else would be drawing a fact nobody acts on. Each shelf's lines are
-// in the order a conversation reads them (oldest first, [Store.MemoriesFor]'s
-// order), so the page and the model never disagree about what comes first.
+// in catalog order (oldest first, [Store.MemoriesFor]'s order). The attached
+// selection separately reports which lines the most recent prompt admitted.
 //
 // The lines that were let go — forgotten, or replaced by a newer line — are a
 // list of their own, newest first, because the one thing a person does with

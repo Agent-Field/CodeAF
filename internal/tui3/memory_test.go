@@ -355,7 +355,7 @@ func TestTheShelvesSayWhereEachLineHoldsAndWhoKeptIt(t *testing.T) {
 	// cannot be mistaken for each other.
 	for text, who := range map[string]string{"prefers tabs": "you", "rg is ripgrep here": "the model", "deploys on Tuesdays": "noticed"} {
 		row := memoryRowSaying(shown, text)
-		if !strings.Contains(row, "─ "+text) || !strings.Contains(row, who) {
+		if !strings.Contains(row, "─ riding · "+text) || !strings.Contains(row, who) {
 			t.Fatalf("the line %q does not hang from a connector beside %q:\n%s", text, who, shown)
 		}
 	}

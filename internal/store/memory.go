@@ -67,9 +67,8 @@ const (
 	EventMemoryMoved EventKind = "memory_moved"
 )
 
-// The five kinds of thing a memory can be. Nothing reads them to decide
-// anything any more — every memory weighs the same — and they are kept because
-// they are a fact about the line that costs nothing to record.
+// The kinds describe durable knowledge and transient project state. Admission
+// depends on practice and context; the kind remains available for inspection.
 const (
 	MemoryFact         = "fact"
 	MemoryPreference   = "preference"
@@ -153,11 +152,8 @@ type Memory struct {
 	// UpdatedAt is when the event that last touched this memory was journaled.
 	// Zero is unknown and renders as nothing.
 	UpdatedAt time.Time
-	// Rule is an earlier build's `always` flag on this line (the always_on
-	// column). Nothing sets it any more and nothing treats the line
-	// differently — except [FitMemories], which, when a store an earlier build
-	// filled holds more than a block fits, lets the lines the person once
-	// marked as rules ride first.
+	// Rule preserves an earlier explicit pin in the always_on column. These
+	// lines bypass activation and always ride, just like current person pins.
 	Rule          bool
 	CreatedSeq    int64
 	UpdatedSeq    int64
@@ -165,11 +161,9 @@ type Memory struct {
 	SourceSeq     int64
 }
 
-// THE COLUMNS THIS BUILD STOPPED WRITING ARE NOT DROPPED. use_count and
-// miss_count exist on stores written by earlier builds; they have defaults,
-// nothing reads them, and SQLite would have to rebuild the table to drop them.
-// always_on is READ ([Memory.Rule]) and never written, so every store has it:
-// an old one already does, and a new one gets it from the migration.
+// Legacy telemetry columns remain compatible with earlier builds. Imported
+// use_count supplies an undated practice baseline; new learning is journaled
+// through memory interactions. always_on preserves earlier explicit pins.
 const memoriesSchema = `
 CREATE TABLE IF NOT EXISTS memories (
     id          TEXT PRIMARY KEY,
@@ -743,11 +737,9 @@ func moveMemoryOn(tx *sql.Tx, id, owner, projectName string) (bool, error) {
 	return false, applyMemoryMoved(tx, payload, seq)
 }
 
-// MemoriesFor is every active memory the named owners hold, IN THE ORDER A
-// CONVERSATION CARRIES THEM: the person's own first, then this machine's, then
-// the project's, and oldest first within each. The order is the store's and
-// never a ranking, because the block it feeds sits in the provider's cached
-// prefix and must render byte for byte until somebody changes a line.
+// MemoriesFor is the complete active catalog for the named owners: person,
+// machine, then project, oldest first within each. Prompt admission instead
+// uses AssembleMemoryBlock so reading the catalog never changes the ranking.
 //
 // An empty owners list is an error and not "everything": this read feeds what a
 // model is told, and "unscoped" would be the leak the owner column closes.

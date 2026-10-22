@@ -346,9 +346,9 @@ func memorySignature(words []string) uint64 {
 	return sig
 }
 
-// Similarity never overrides numbers or negation: these frequently distinguish
-// contradictory instructions. The token-set check is the conservative MinHash
-// verification step (exact Jaccard, avoiding probabilistic false positives).
+// Fingerprint candidates still require the same ordered words and operators.
+// This merges punctuation variants without erasing changed conditions, numbers,
+// or negation. Semantic paraphrases need a separate write-time verification tier.
 func memoryNearDuplicate(a, b string) bool {
 	aw, bw := memoryWords(a), memoryWords(b)
 	if memoryOperators(a) != memoryOperators(b) {

@@ -1096,10 +1096,9 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		ProgramBriefNote:   run.folder.BriefNote(),
 		ProgramFolderHold:  run.folder.Hold(),
 		Crew:               programCrew,
-		// WHAT THE CONVERSATION REMEMBERS IS RESOLVED HERE AND NOT PER WORKER,
-		// for the same reason the frontier resolves it once per pass: every
-		// worker of one run sits in one place.
-		Memory: a.memoryWorld(),
+		// Resolve once for the run's actual assignment, so its topic can
+		// surface older relevant facts before any worker starts.
+		Memory: a.memoryWorldFor(brief),
 	}
 }
 
