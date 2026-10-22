@@ -164,7 +164,7 @@ func TestModelRotationNeverAppearsInATaskRoomOrChangesItsModel(t *testing.T) {
 		t.Fatal("chat rotation appeared in task room")
 	}
 	drive(t, a, tea.KeyPressMsg{Code: tea.KeyF3})
-	if a.model != original || a.roomModelWord() != "vendor/task" {
+	if a.model != original || a.tasks[9].model != "vendor/task" {
 		t.Fatal("chat rotation changed a task room")
 	}
 }
