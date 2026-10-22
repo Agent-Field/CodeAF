@@ -73,7 +73,9 @@ func TestFactoryConversationsInheritALaterOneModelLaunch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	spec := factoryrun.ConversationSpec{Item: it, Name: "review", Brief: "look it over", Dir: workspace}
+	// The scripted stage reports completion, so give it the same reporting
+	// door a real runner supplies rather than recovering a nil-door panic.
+	spec := factoryrun.ConversationSpec{Item: it, Name: "review", Brief: "look it over", Dir: workspace, Stage: &repairReportDoor{}}
 	for _, name := range []string{"fresh", "resumed"} {
 		t.Run(name, func(t *testing.T) {
 			bucket, err := v3ProjectDir(workspace)

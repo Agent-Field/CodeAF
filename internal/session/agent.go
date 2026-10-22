@@ -88,6 +88,13 @@ func New(config Config) (*Agent, error) {
 // parent's account-keyed pool and resolve their own model before their first
 // request, rather than inheriting whichever adapter the parent last used.
 func (a *Agent) newChildAgent(config Config) (*Agent, error) {
+	if pair, ok := a.ConversationModelPair(); ok && config.ConversationModels == nil {
+		pair.Main = config.Model
+		if config.OneModel || pair.Fallback == pair.Main {
+			pair.Fallback = ""
+		}
+		config.ConversationModels = &pair
+	}
 	config.JobBudget = a.jobBudgetOf()
 	client, account, pool, managed, err := a.childClient(config)
 	if err != nil {
@@ -171,6 +178,15 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		} else {
 			agent.automaticModels.Store(1)
 		}
+	}
+	if agent.modelIdentity.Models != nil {
+		pair := *agent.modelIdentity.Models
+		agent.conversationModels = &pair
+		agent.model = pair.Main
+	} else if config.ConversationModels != nil {
+		pair := *config.ConversationModels
+		pair.Main = config.Model
+		agent.conversationModels = &pair
 	}
 	agent.modelIdentity.Epoch = NewSessionID()
 	agent.presentation = &presentationIndex{}
@@ -705,6 +721,12 @@ func (a *Agent) SetModel(model string) { a.setModel(model) }
 // the exported one has nowhere to put. An empty model is no pick at all and
 // lands nothing.
 func (a *Agent) setModel(model string) ModelLanding {
+	if pair, ok := a.ConversationModelPair(); ok {
+		pair.Main = model
+		_, _ = a.SetConversationModels(pair)
+		return ModelLandsNextRequest
+	}
+
 	model = strings.TrimSpace(model)
 	if model == "" {
 		return ModelLandsNextRequest

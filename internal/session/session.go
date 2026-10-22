@@ -761,6 +761,7 @@ type TaskReplyTag struct {
 // at the terminal event stops at the terminal event of the FIRST turn.
 type Event struct {
 	ModelIdentity  *ModelIdentity `json:"ModelIdentity,omitempty"`
+	ModelSwitch    *ModelSwitch   `json:"ModelSwitch,omitempty"`
 	RunID          string         `json:"RunID,omitempty"`
 	ReplayCursor   ReplayCursor   `json:",omitempty"`
 	ReplayObserved bool           `json:"-"`
@@ -1382,6 +1383,10 @@ type TaskLanding struct {
 }
 
 type Config struct {
+	// ConversationModels is the desktop conversation's explicit main/fallback pair.
+	// Nil retains the terminal's existing routing policy.
+	ConversationModels *ConversationModels
+
 	// AutomaticModels explicitly permits cross-model fallback. Nil inherits the
 	// stored policy or the existing launch default; OneModel always takes priority.
 	AutomaticModels *bool
@@ -2633,6 +2638,11 @@ type Config struct {
 // events — every Submit streams, whether it started the turn or steered it.
 // The methods live in agent.go; the loop they drive lives in loop.go.
 type Agent struct {
+	modelChanges       sync.Mutex
+	conversationModels *ConversationModels
+	modelRequestSlot   string
+	fallbackNoticeOwed bool
+
 	modelIdentity   ModelIdentity
 	automaticModels atomic.Int32
 	replySuggestion replySuggestionState

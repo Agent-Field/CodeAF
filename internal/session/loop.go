@@ -1811,6 +1811,16 @@ func (a *Agent) completeWithRetry(ctx context.Context, hub *eventHub, model stri
 }
 
 func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, model string, rung effort.Rung, partial *partialBuffer, reached *reachedThePerson, reasoning *reasoningBuffer, warm *warmBatch, forming *formingBatch, frozenToolHistory int) (*ai.Response, string, error) {
+	// The current provider call is never cancelled by a selection. Every later
+	// outbound attempt observes the newly acknowledged pair.
+	if pair, ok := a.ConversationModelPair(); ok {
+		a.mu.Lock()
+		a.fallbackNoticeOwed = true
+		a.mu.Unlock()
+		model = pair.Main
+		rung = a.effortFor(model)
+		ctx = context.WithValue(ctx, conversationModelsKey{}, pair)
+	}
 	if err := a.admitJobCall(ctx); err != nil {
 		return nil, model, err
 	}
@@ -1961,6 +1971,18 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		if next, said := a.takeModelWord(); said && next != model {
 			takeTheModel(next, true)
 			attempt = 0
+		}
+		// A saved pair can change during a call or backoff. Read it only at
+		// a request boundary: no cancellation and no stale retry chain.
+		{
+			before, paired := requestConversationModels(ctx)
+			if latest, ok := a.ConversationModelPair(); ok && (!paired || latest != before) {
+				ctx = context.WithValue(ctx, conversationModelsKey{}, latest)
+				if latest.Main != before.Main || model == before.Fallback {
+					takeTheModel(latest.Main, true)
+					attempt = 0
+				}
+			}
 		}
 		// Each attempt streams the reply from the beginning, so the buffer
 		// starts empty: an attempt that dies half-way through its text and an
@@ -2189,6 +2211,17 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// invisible from the other. One 502 and three 429s inside seventy-five
 		// seconds ended a turn on 2026-09-10 with two other models sitting
 		// unasked in the same session, and that is the road this is.
+		{
+			before, paired := requestConversationModels(ctx)
+			if latest, ok := a.ConversationModelPair(); ok && (!paired || latest != before) {
+				ctx = context.WithValue(ctx, conversationModelsKey{}, latest)
+				if latest.Main != before.Main {
+					takeTheModel(latest.Main, true)
+					attempt = -1
+					continue
+				}
+			}
+		}
 		next, haveFallback := a.nextFallback(ctx, origin, hopped)
 		// AND A PERSON WHO HAS NAMED A MODEL IS SOMEWHERE LEFT TO GO. This reading
 		// is what the boundary is told about whether the step can move at all, and
@@ -2682,6 +2715,13 @@ func retryNews(model string, spent int, verdict taxonomy.Verdict, cut *provider.
 // A context with no record answers nothing, and the fold is what makes that
 // safe: `hopped` alone still bounds the walk exactly as it always did.
 func (a *Agent) nextFallback(ctx context.Context, origin string, hopped []string) (string, bool) {
+	if pair, ok := requestConversationModels(ctx); ok {
+		fallback := strings.TrimSpace(pair.Fallback)
+		if a.config.OneModel || fallback == "" || fallback == origin || len(hopped) > 0 {
+			return "", false
+		}
+		return fallback, true
+	}
 	// AND `--one-model` IS A PERSON SAYING NO TO THIS, in the one file that has
 	// to honour it rather than only in the door that empties the chain. The flag
 	// already leaves the adapter with no fallbacks to offer, so this is belt and

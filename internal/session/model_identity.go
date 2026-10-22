@@ -6,23 +6,28 @@ import "errors"
 // Revision orders updates within one live session; a restored snapshot keeps
 // Last, but never revives an in-flight request from a previous process.
 type ModelIdentity struct {
-	Epoch        string `json:"epoch"`
-	Selected     string `json:"selected,omitempty"`
-	Requested    string `json:"requested,omitempty"`
-	Active       string `json:"active,omitempty"`
-	Last         string `json:"last,omitempty"`
-	Provider     string `json:"provider,omitempty"`
-	Mode         string `json:"mode"`
-	Chosen       string `json:"chosen,omitempty"`
-	LockedReason string `json:"locked_reason,omitempty"`
-	RequestMode  string `json:"request_mode,omitempty"`
-	Pending      bool   `json:"pending"`
-	Revision     uint64 `json:"revision"`
+	Models       *ConversationModels `json:"models,omitempty"`
+	Epoch        string              `json:"epoch"`
+	Selected     string              `json:"selected,omitempty"`
+	Requested    string              `json:"requested,omitempty"`
+	Active       string              `json:"active,omitempty"`
+	Last         string              `json:"last,omitempty"`
+	Provider     string              `json:"provider,omitempty"`
+	Mode         string              `json:"mode"`
+	Chosen       string              `json:"chosen,omitempty"`
+	LockedReason string              `json:"locked_reason,omitempty"`
+	RequestMode  string              `json:"request_mode,omitempty"`
+	Pending      bool                `json:"pending"`
+	Revision     uint64              `json:"revision"`
 }
 
 func (a *Agent) modelIdentityLocked() ModelIdentity {
 	s := a.modelIdentity
 	s.Selected = a.model
+	if a.conversationModels != nil {
+		pair := *a.conversationModels
+		s.Models = &pair
+	}
 	s.Chosen = ""
 	if choice := a.automaticModelsChosen(); choice != nil {
 		s.Chosen = "fixed"
@@ -62,7 +67,34 @@ func (a *Agent) foregroundModelCall(purpose callPurpose) bool {
 }
 
 func (a *Agent) startModelRequest(model, provider string) {
+	a.startConversationModelRequest(model, provider, ConversationModels{})
+}
+
+func (a *Agent) startConversationModelRequest(model, provider string, pair ConversationModels) {
+	a.modelChanges.Lock()
+	defer a.modelChanges.Unlock()
 	a.mu.Lock()
+	a.modelRequestSlot = ""
+	if pair.Main != "" {
+		a.modelRequestSlot = "main"
+		if model == pair.Fallback {
+			a.modelRequestSlot = "fallback"
+		}
+	}
+	previous := a.modelIdentity.Requested
+	var notice *ModelSwitch
+	isFallback := pair.Main != "" && model == pair.Fallback
+	if pair.Main != "" && (isFallback && (a.fallbackNoticeOwed || previous != model) || previous != "" && previous != model) {
+		text := "Using main model " + model + "."
+		if model == pair.Fallback {
+			text = "Main model " + pair.Main + " failed. Using fallback model " + model + "."
+		}
+		n := a.recordModelSwitchLocked(text)
+		notice = &n
+	}
+	if pair.Main != "" {
+		a.fallbackNoticeOwed = !isFallback
+	}
 	a.modelIdentity.Active, a.modelIdentity.Provider, a.modelIdentity.Requested = model, provider, model
 	a.modelIdentity.RequestMode = "fixed"
 	if a.automaticModelsAllowed() {
@@ -70,21 +102,37 @@ func (a *Agent) startModelRequest(model, provider string) {
 	}
 	a.mu.Unlock()
 	a.publishModelIdentity()
+	if notice != nil {
+		a.publishModelSwitch(*notice)
+	}
 }
 
 func (a *Agent) servedModel(model string) {
+	a.modelChanges.Lock()
+	defer a.modelChanges.Unlock()
 	a.mu.Lock()
 	changed := a.modelIdentity.Active != "" && a.modelIdentity.Active != model
+	var notice *ModelSwitch
 	if changed {
 		a.modelIdentity.Active = model
+		if a.modelRequestSlot != "" && model != a.modelIdentity.Last {
+			slot := a.modelRequestSlot
+			n := a.recordModelSwitchLocked("Using " + slot + " model " + model + ".")
+			notice = &n
+		}
 	}
 	a.mu.Unlock()
 	if changed {
 		a.publishModelIdentity()
 	}
+	if notice != nil {
+		a.publishModelSwitch(*notice)
+	}
 }
 
 func (a *Agent) endModelRequest(model string) {
+	a.modelChanges.Lock()
+	defer a.modelChanges.Unlock()
 	a.mu.Lock()
 	if model == a.modelIdentity.Requested && a.modelIdentity.Active != "" {
 		model = a.modelIdentity.Active
@@ -118,7 +166,7 @@ func (a *Agent) automaticModelsChosen() *bool {
 }
 func (a *Agent) automaticModelsLockReason() string {
 	if a.config.OneModel {
-		return "This session was launched with one-model; automatic model selection is unavailable."
+		return "This conversation was launched with one-model; a fallback model is unavailable."
 	}
 	return ""
 }
