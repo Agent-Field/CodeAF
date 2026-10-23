@@ -40,7 +40,13 @@ func TestFactoryReadinessRecoversLiveCountsAndChecklistThroughRealChat(t *testin
 	}
 	command := fmt.Sprintf(`export PATH=%q:"$PATH"; go test ./... -count=1 -v 2>&1 | grep -cE '^\s*--- PASS:' && echo "---" && go test ./... -count=1 -v 2>&1 | grep -cE '^\s*--- FAIL:' && echo "---" && go test ./... -count=1 -v 2>&1 | grep -cE '^\s*--- SKIP:'`, bin)
 	args, _ := json.Marshal(map[string]string{"command": command})
-	head := strings.Repeat("a", 40)
+	gitT(t, workspace, "init", "-q")
+	if err := os.WriteFile(filepath.Join(workspace, "source.txt"), []byte("fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	gitT(t, workspace, "add", "source.txt")
+	gitT(t, workspace, "-c", "user.name=ZeroPoint95", "-c", "user.email=test@example.invalid", "commit", "-qm", "fixture")
+	head := strings.TrimSpace(gitT(t, workspace, "rev-parse", "HEAD"))
 	model := newScriptedStageModel(t,
 		stageCall{"bash", string(args)},
 		stageCall{"stage_result", `{"done":true,"findings":0,"repair":{"decision":"no_change","reason":"Diff and description match, no remaining findings"}}`},

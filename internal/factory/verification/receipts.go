@@ -43,6 +43,7 @@ type Check struct {
 	Source             string     `json:"source,omitempty"`
 	OwnerRoot          string     `json:"owner_root,omitempty"`
 	Diagnostic         bool       `json:"diagnostic,omitempty"`
+	DiagnosticReason   string     `json:"diagnostic_reason,omitempty"`
 	Problem            string     `json:"problem,omitempty"`
 	StartedAt          time.Time  `json:"started_at,omitempty"`
 	CompletedAt        *time.Time `json:"completed_at,omitempty"`
@@ -118,6 +119,12 @@ func (c Check) Key() string {
 }
 
 func (c Check) Label() string {
+	if len(c.Args) == 0 {
+		if c.Command != "" {
+			return c.Command
+		}
+		return "incomplete recorded check"
+	}
 	parts := make([]string, len(c.Args))
 	for i, arg := range c.Args {
 		parts[i] = quote(arg)

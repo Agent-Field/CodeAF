@@ -148,3 +148,24 @@ race detection across ten packages, 74 desktop projection/history tests, one
 native bridge test, TypeScript and the CSS/raw-value/case gates. This does not
 expand the retained durability or physical-process guarantees above. The final
 engine revision and exact desktop revision are recorded in bundle provenance.
+
+
+## Incident follow-up: fresh and upgraded verification reconciliation
+
+The initial containment did not reconcile pre-upgrade fixture records or Go
+coverage variants. The follow-up applies the canonical job ownership boundary
+when reading both resumed and inherited history, retains foreign diagnostics
+with original provenance, and records supported Go supersession explicitly.
+Only a later successful stable-current-checkout run with equal or wider package
+and test selection can replace an earlier attempt. Output flags and build
+parallelism do not change scope; targets, race, tags and unknown options stay
+conservative. Original failures are not rewritten as success. Stale historical
+passes retain their required scope across edits and failed-only history is
+carried forward rather than dropped. This is a deterministic Go adapter, not
+the general recipe/coverage manifest still planned in B.
+
+Acceptance includes the real factory chat/tool/guard path for a fresh Test
+correction and a portable 41-record incident replay (22 foreign failures), a
+current real failure that must still reject completion, and a resumed history
+that recovers without rerunning valid checks but rejects changed inputs. Live
+job state is neither edited nor restarted during verification or rebuild.

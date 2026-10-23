@@ -478,7 +478,7 @@ loop:
 					res.Repair = &repair
 				}
 				res.Exit = 1
-				res.Output = "Verification blocked: " + reason + ". Re-run the relevant check successfully after the repair, or report what remains blocked.\n" + res.Output
+				res.Output = "Verification blocked: " + reason + ". The completion guard only reads saved results; it does not run tests. Reuse current passing evidence; rerun only unresolved scope after the repair, or report what remains blocked.\n" + res.Output
 			}
 		}
 		if tests != nil {

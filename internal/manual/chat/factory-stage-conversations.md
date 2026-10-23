@@ -627,6 +627,25 @@ These bounds do not shorten the initial test run. The job retains local changes,
 explains the specific problem and waits for a retry instead of opening another
 paid repair round automatically. A successful correction cancels that stop.
 
+## Recovering old test history and corrected Go checks
+
+Verification only reads recorded results; the completion guard does not launch
+extra tests. A new or resumed job uses the same checkout boundary. Historical
+checks outside that checkout (including deleted negative-test fixtures and base
+probes) remain diagnostic records, not obligations for the job. Unknown paths,
+corrupt owned records and actual failures inside the checkout remain unresolved.
+Original histories, exits and timestamps are not rewritten.
+
+A later measured Go test pass can cover an earlier failed invocation on the
+current checkout. Output verbosity, JSON formatting and build parallelism do
+not select different tests. A full local package run can cover its packages or
+selected tests; a passing subset cannot cover a broader failure. Target
+settings, race mode, build tags and other semantic flags must still match.
+Unknown options remain exact. A newer actual failure still blocks completion;
+changing source invalidates old successful evidence. These rules also apply
+when a saved round is resumed or its results are carried into the next round.
+The agent should reuse valid passes and rerun only unresolved scope.
+
 ## An already-fixed published PR does not need another commit
 
 A Follow PR recheck can find that the current published head already addresses

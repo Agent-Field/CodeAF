@@ -11,6 +11,7 @@ import (
 // by their test scope. Invalid argv is never proof that a test actually failed.
 // Unknown commands, target flags and environments retain their exact identity.
 func RequiredChecks(checks []Check, at Snapshot, fresh bool) (map[string]Check, map[string]bool) {
+	checks = Resolve(checks, at, fresh)
 	latest := map[string]Check{}
 	for _, c := range checks {
 		if c.Diagnostic || c.SupersededBy != "" {
@@ -26,6 +27,11 @@ func RequiredChecks(checks []Check, at Snapshot, fresh bool) (map[string]Check, 
 		latest[c.Key()] = c
 	}
 	superseded := map[string]bool{}
+	for _, c := range checks {
+		if c.SupersededBy != "" {
+			superseded[c.Command] = true
+		}
+	}
 	for key, old := range latest {
 		scope, names, invalid, ok := cargoRequirement(old)
 		if !ok {

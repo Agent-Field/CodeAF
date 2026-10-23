@@ -71,8 +71,8 @@ func TestSavedVerificationPauseRecoversWithExactChecksWithoutReplayingWork(t *te
 	if err = os.WriteFile(filepath.Join(root, "code.txt"), []byte("later edit"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if words = inheritFactoryChecks(factoryrun.ConversationSpec{VerifyRepair: true, Item: it}, filepath.Join(t.TempDir(), "transcript.jsonl"), root); words != "" {
-		t.Fatal("changed checkout reused old checks")
+	if words = inheritFactoryChecks(factoryrun.ConversationSpec{VerifyRepair: true, Item: it}, filepath.Join(t.TempDir(), "transcript.jsonl"), root); !strings.Contains(words, "0 measured checks") || !strings.Contains(words, "unresolved checks retained") {
+		t.Fatal("changed checkout reused old passes or forgot the unresolved failure", words)
 	}
 }
 
@@ -182,11 +182,12 @@ func TestLaterDefiniteFailurePreventsReusingAnOlderPass(t *testing.T) {
 	run("CHECK_EXIT=7 cargo test --test cli regression")
 	it := factory.Item{Stream: &factory.Stream{Phases: []factory.Phase{{Name: "proof", At: time.Now(), Chat: file}}}}
 	next := filepath.Join(t.TempDir(), "next.jsonl")
-	if got := inheritFactoryChecks(factoryrun.ConversationSpec{VerificationStage: "proof", Item: it}, next, root); got != "" {
-		t.Fatal("older pass erased newer failure", got)
+	if got := inheritFactoryChecks(factoryrun.ConversationSpec{VerificationStage: "proof", Item: it}, next, root); !strings.Contains(got, "0 measured checks") || !strings.Contains(got, "1 unresolved") {
+		t.Fatal("newer failure was not carried into the next round", got)
 	}
-	if _, err := os.Stat(next + ".checks"); !os.IsNotExist(err) {
-		t.Fatal("old pass was imported")
+	checks, err := verification.Read(next)
+	if err != nil || len(checks) != 1 || checks[0].Exit == nil || *checks[0].Exit != 7 {
+		t.Fatal("old pass erased newer failure", checks, err)
 	}
 }
 
@@ -207,5 +208,57 @@ func TestSameContentFromAnotherWorktreeDoesNotAuthorizeCheckpoint(t *testing.T) 
 	it := factory.Item{Stream: &factory.Stream{Phases: []factory.Phase{{Name: "test", At: time.Now(), Chat: source}}}}
 	if got := inheritFactoryChecks(factoryrun.ConversationSpec{VerificationStage: "test", Item: it}, filepath.Join(t.TempDir(), "new.jsonl"), root); got != "" {
 		t.Fatal("another worktree authorized same-content verification", got)
+	}
+}
+
+func TestTestCheckpointRetainsRequiredScopeAfterAnEdit(t *testing.T) {
+	root, file, run := repairCheckFixture(t)
+	run("cargo test --test cli regression")
+	if err := os.WriteFile(filepath.Join(root, "code.txt"), []byte("edited"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	it := factory.Item{Stream: &factory.Stream{Phases: []factory.Phase{{Name: "test", At: time.Now(), Chat: file}}}}
+	next := filepath.Join(t.TempDir(), "next.jsonl")
+	if err := os.WriteFile(next, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	words := inheritFactoryChecks(factoryrun.ConversationSpec{VerificationStage: "test", Item: it}, next, root)
+	if !strings.Contains(words, "0 measured checks") || !strings.Contains(words, "1 unresolved") {
+		t.Fatal("required stale scope was forgotten", words)
+	}
+	notes, _ := (&stageConversation{file: next, dir: root}).ExecutionNotes()
+	blocked := false
+	for _, n := range notes {
+		blocked = blocked || strings.HasPrefix(n, verification.FailurePrefix) && strings.Contains(n, "stale")
+	}
+	if !blocked {
+		t.Fatal("new round completed without rechecking changed inputs")
+	}
+}
+
+func TestTestCheckpointDoesNotForgetUnreadablePriorEvidence(t *testing.T) {
+	root, file, _ := repairCheckFixture(t)
+	if err := os.MkdirAll(file+".checks", 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(file+".checks", "inherited.json"), []byte("broken committed records"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	it := factory.Item{Stream: &factory.Stream{Phases: []factory.Phase{{Name: "test", At: time.Now(), Chat: file}}}}
+	next := filepath.Join(t.TempDir(), "next.jsonl")
+	if err := os.WriteFile(next, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	words := inheritFactoryChecks(factoryrun.ConversationSpec{VerificationStage: "test", Item: it}, next, root)
+	if !strings.Contains(words, "1 unresolved") {
+		t.Fatal("unreadable previous evidence was forgotten", words)
+	}
+	notes, _ := (&stageConversation{file: next, dir: root}).ExecutionNotes()
+	blocked := false
+	for _, n := range notes {
+		blocked = blocked || strings.HasPrefix(n, verification.FailurePrefix) && strings.Contains(n, "read prior verification records")
+	}
+	if !blocked {
+		t.Fatal("corrupt evidence became an empty successful round")
 	}
 }
