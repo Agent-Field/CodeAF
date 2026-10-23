@@ -19,6 +19,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/calllog"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/lane/control"
+	"github.com/Agent-Field/codeaf/internal/redirect"
 	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
@@ -684,6 +685,16 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			// machine walk; preserve the typed cause for the session's person-facing
 			// sentence and return after the one request that established it.
 			if terminalTransportFailureFrom(err) {
+				return nil, fmt.Errorf("execute request: %w", err)
+			}
+			// A REFUSED REDIRECT IS A DECISION, NOT A FAULT. The origin answered
+			// by pointing somewhere the configured key must not follow, and it
+			// will answer the same way on every retry; re-asking it until the
+			// deadline would burn the whole call on a redirect that cannot move.
+			// Return the typed refusal at once so the person sees the target host
+			// (#1896).
+			var refusedRedirect *redirect.RefusedError
+			if errors.As(err, &refusedRedirect) {
 				return nil, fmt.Errorf("execute request: %w", err)
 			}
 			lastErr = fmt.Errorf("execute request: %w", err)

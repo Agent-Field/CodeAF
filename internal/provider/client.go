@@ -18,6 +18,7 @@ import (
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/lane/control"
 	"github.com/Agent-Field/codeaf/internal/paymentrefusal"
+	"github.com/Agent-Field/codeaf/internal/redirect"
 	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
@@ -240,8 +241,11 @@ func NewClient(config Config) (*Client, error) {
 	}
 	httpClient, streamClient := config.HTTPClient, config.HTTPClient
 	if httpClient == nil {
-		httpClient = &http.Client{Transport: SharedTransport(), Timeout: config.Timeout}
-		streamClient = &http.Client{Transport: streamTransport()}
+		httpClient = &http.Client{Transport: SharedTransport(), Timeout: config.Timeout, CheckRedirect: redirect.Policy}
+		streamClient = &http.Client{Transport: streamTransport(), CheckRedirect: redirect.Policy}
+	} else {
+		httpClient = redirect.Guard(httpClient)
+		streamClient = redirect.Guard(streamClient)
 	}
 	client := &Client{
 		config:   config,

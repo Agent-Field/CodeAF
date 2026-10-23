@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/redirect"
 )
 
 const (
@@ -172,7 +173,9 @@ func NewMediaClient(config Config) (*MediaClient, error) {
 	}
 	client := config.HTTPClient
 	if client == nil {
-		client = &http.Client{Transport: SharedTransport(), Timeout: config.Timeout}
+		client = &http.Client{Transport: SharedTransport(), Timeout: config.Timeout, CheckRedirect: redirect.Policy}
+	} else {
+		client = redirect.Guard(client)
 	}
 	return &MediaClient{
 		config: config, http: client, videoNow: time.Now, videoWait: waitContext,

@@ -11,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/redirect"
 	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
@@ -896,7 +897,9 @@ func (f sheetFetcher) Fetch(ctx context.Context, url, bearer string) (io.ReadClo
 	ApplyAttribution(request.Header)
 	client := f.http
 	if client == nil {
-		client = &http.Client{Timeout: sheetTimeout}
+		client = &http.Client{Timeout: sheetTimeout, CheckRedirect: redirect.Policy}
+	} else {
+		client = redirect.Guard(client)
 	}
 	response, err := client.Do(request)
 	if err != nil {

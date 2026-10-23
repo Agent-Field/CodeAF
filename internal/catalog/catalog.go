@@ -24,6 +24,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/redirect"
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
@@ -1203,7 +1204,9 @@ func fetch(ctx context.Context, options Options) ([]Model, error) {
 	}
 	client := options.HTTPClient
 	if client == nil {
-		client = &http.Client{Timeout: FetchTimeout}
+		client = &http.Client{Timeout: FetchTimeout, CheckRedirect: redirect.Policy}
+	} else {
+		client = redirect.Guard(client)
 	}
 	response, err := client.Do(request)
 	if err != nil {

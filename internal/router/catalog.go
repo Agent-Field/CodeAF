@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/redirect"
 )
 
 // catalogTTL is how long a fetched catalog is trusted. Prices and context
@@ -95,7 +96,9 @@ func fetchCatalog(baseURL, apiKey string, client *http.Client) (*Catalog, error)
 		request.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 	if client == nil {
-		client = &http.Client{Timeout: 20 * time.Second}
+		client = &http.Client{Timeout: 20 * time.Second, CheckRedirect: redirect.Policy}
+	} else {
+		client = redirect.Guard(client)
 	}
 	response, err := client.Do(request)
 	if err != nil {
