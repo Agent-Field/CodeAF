@@ -253,7 +253,8 @@ func TestOpenFirstWithNoRelayTouchesNothing(t *testing.T) {
 	}
 }
 
-// TestFirstLaunchIsQuietUntilWoken proves C8: only offering or completing pairing ends solo.
+// TestFirstLaunchIsQuietUntilWoken proves D5 and amended C27.4: a local identity
+// is allowed, while sync sends nothing before pairing. C8 also holds: only offering or completing pairing ends solo.
 func TestFirstLaunchIsQuietUntilWoken(t *testing.T) {
 	celltest.Available(t)
 	hits := 0
@@ -268,12 +269,28 @@ func TestFirstLaunchIsQuietUntilWoken(t *testing.T) {
 	if !Quiet(home) {
 		t.Fatal("a machine that just made its identity must be quiet")
 	}
+	if _, err := identity.Load(home); err != nil {
+		t.Fatalf("D5 permits and retains the local first-start identity: %v", err)
+	}
 	ctx := context.Background()
 	if n, err := s.FleetSize(ctx); n != 0 || err != nil {
 		t.Fatalf("FleetSize = %d, %v; want 0, nil", n, err)
 	}
 	if _, err := s.Dir.Cell(ctx, "x"); err == nil || !strings.Contains(err.Error(), ErrQuiet.Error()) {
 		t.Fatalf("a direct call = %v; want the quiet refusal", err)
+	}
+	if rows, err := s.Rows(ctx); err != nil || len(rows) != 0 {
+		t.Fatalf("quiet chats: %v %v", rows, err)
+	}
+	if rows, err := s.Roster(ctx); err != nil || len(rows) != 0 {
+		t.Fatalf("quiet roster: %v %v", rows, err)
+	}
+	_, _ = s.Store.Has(ctx, []string{strings.Repeat("a", 64)})
+	if w, ok := s.Dir.(directory.Watcher); ok {
+		if socket, err := w.Watch(ctx); err == nil {
+			socket.Close()
+			t.Fatal("unpaired home opened a sync socket")
+		}
 	}
 	if hits != 0 {
 		t.Fatalf("a quiet machine sent %d requests", hits)

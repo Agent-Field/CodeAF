@@ -2627,13 +2627,31 @@ func (a *Agent) Close() error {
 	}
 	// Quit stays responsive, but another process must not claim this journal
 	// for deletion while a cancelled run still owns task record writers.
+	drainCtx, drainCancel := context.WithTimeout(context.Background(), procexec.DrainWithin)
+	defer drainCancel()
 	if !deleting && beltDone != nil {
 		select {
 		case <-beltDone:
 		default:
-			a.finishCloseWhenStopped()
-			return nil
+			// A capture seat must see the stopped worker's final transcript.
+			// Other seats keep their existing deferred journal close.
+			if _, saves := a.config.seat().(procexec.Drainer); !saves {
+				a.finishCloseWhenStopped()
+				return nil
+			}
+			select {
+			case <-beltDone:
+			case <-drainCtx.Done():
+				a.finishCloseWhenStopped()
+				return fmt.Errorf("still saving this chat while its workers stop: %w", drainCtx.Err())
+			}
 		}
+	}
+	if err := procexec.Drain(drainCtx, a.config.seat()); err != nil {
+		if file != nil {
+			_ = file.Close()
+		}
+		return err
 	}
 	if file == nil {
 		return nil

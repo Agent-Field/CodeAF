@@ -1484,7 +1484,7 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 	if err == nil {
 		if restoredPosture != "" {
 			if err := agent.SetApprovalPosture(restoredPosture); err != nil {
-				_ = agent.Close()
+				closeV3Agent(agent)
 				return nil, cfg, "", fmt.Errorf("restore conversation approvals: %w", err)
 			}
 		}
@@ -2807,7 +2807,7 @@ func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, lev
 	if notice != "" {
 		fmt.Fprintln(os.Stderr, notice+": "+cfg.SessionFile)
 	}
-	defer func() { _ = agent.Close() }()
+	defer func() { closeV3Agent(agent) }()
 	var wakes <-chan (<-chan session.Event)
 	if cfg.Unattended && cfg.Budget.Set() {
 		var stopWakes func()

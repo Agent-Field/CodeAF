@@ -35,7 +35,7 @@ func TestSyncEngineRoundTripRealEngine(t *testing.T) {
 		Keys:      SyncKeys{CellKey: make([]byte, 32), Dedup: make([]byte, 32)},
 		Ledger:    LedgerName("http://relay", "id_test"),
 		Target: func(c2 cell.Cell) Target {
-			return Target{Tree: store.tree(c2), DataDir: store.LocalDir(c2), CellDir: store.cellDir(c2)}
+			return store.target(c2)
 		},
 		Outbox: func(cell.Cell) string { return t.TempDir() },
 	}

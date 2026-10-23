@@ -39,7 +39,7 @@ func SeatOver(class executor.Class, c cell.Cell, workspace string, obs executor.
 	if over != nil {
 		store = over(engine)
 	}
-	rec, err := recorderFor(base.In(workspace), store, c, Options{Report: report, Refresh: refreshOf(obs)})
+	rec, err := recorderFor(base.In(workspace), store, c, Options{Report: report, Refresh: refreshOf(obs), Async: engine.pipeline})
 	if err != nil {
 		return executor.Watching(base, obs), err
 	}
@@ -48,6 +48,10 @@ func SeatOver(class executor.Class, c cell.Cell, workspace string, obs executor.
 
 // SeatOption adjusts the engine a seat seals through.
 type SeatOption func(*Engine)
+
+// WithPipeline returns command results while their capture finishes. Every next
+// call and close still drains the same recorder, with a bounded wait (D3).
+func WithPipeline() SeatOption { return func(e *Engine) { e.pipeline = true } }
 
 // WithNotices sends the guard's one-line notices (a file kept out of the saved
 // history, and why) to say instead of to stderr, which a full-screen surface
@@ -64,7 +68,7 @@ func WithNotices(say func(string)) SeatOption {
 // session's seat and the `cell` verbs both come here, so a rewind restores the
 // tree that was sealed.
 func EngineFor(workspace string) Engine {
-	return Engine{Workspace: workspace, Compose: Composers{taskcopy.Carry{}, chatfiles.Carry{}}, Guard: Guard{Ledger: keys.NewLedger()}}
+	return Engine{Workspace: workspace, Compose: Composers{taskcopy.Carry{}, chatfiles.Carry{}}, Guard: Guard{Ledger: keys.NewLedger(), index: &captureIndex{}}}
 }
 
 func recorderFor(inner executor.Executor, store Store, c cell.Cell, opts Options) (*Recorder, error) {
@@ -93,6 +97,9 @@ func (s sealed) Around(ctx context.Context, call executor.Call, run func() ([]by
 	effect := executor.Classify(executor.PolicyFor(s.Class, s.Setup))
 	return s.rec.Around(ctx, call, effect, s.trigger(), run)
 }
+
+// Drain implements executor.Drainer: process exit keeps the pending capture.
+func (s sealed) Drain(ctx context.Context) error { return s.rec.Drain(ctx) }
 
 // Settle implements executor.Settler.
 func (s sealed) Settle(ctx context.Context) { s.rec.Settle(ctx) }

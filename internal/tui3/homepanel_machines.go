@@ -95,7 +95,7 @@ func (a *app) tookMachines(msg homeMachinesMsg) tea.Cmd {
 	a.machineRead.separate = a.branches.Open != nil
 	a.considerResume()
 	a.rebuildMachines()
-	return a.readOwedByFrames(msg.err == nil)
+	return tea.Batch(a.readOwedByFrames(msg.err == nil), a.finishBring())
 }
 
 // into merges the other machines' chats into the panel's own lines, newest

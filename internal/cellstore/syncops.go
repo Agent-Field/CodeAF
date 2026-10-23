@@ -311,9 +311,10 @@ func (e Engine) Sync(keys SyncKeys, ledger string) SyncEngine {
 		Keys:      keys,
 		Ledger:    ledger,
 		Target: func(c cell.Cell) Target {
-			return Target{Tree: e.tree(c), DataDir: e.LocalDir(c), CellDir: e.cellDir(c)}
+			return e.target(c)
 		},
-		Inbox: func(c cell.Cell) string { return e.LocalDir(c) + ".inbox" },
+		Inbox:  func(c cell.Cell) string { return e.LocalDir(c) + ".inbox" },
+		Outbox: func(c cell.Cell) string { return e.LocalDir(c) + ".outbox" },
 		MaterializeWith: func(ctx context.Context, c cell.Cell, op Op) ([]byte, error) {
 			if err := e.screenCapture(ctx, c); err != nil {
 				return nil, err

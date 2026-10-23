@@ -358,14 +358,18 @@ func (d *Drive) HoldsLease(ctx context.Context) bool {
 
 // CheckLease closes the stale-window gap before a tool runs, even when no
 // heartbeat or directory change has reached this process since the move.
-func (d *Drive) CheckLease(ctx context.Context) {
+func (d *Drive) CheckLease(ctx context.Context) error {
+	if err := cellstore.Await(ctx, d.cell); err != nil {
+		return err
+	}
 	if _, viewer := d.Viewer(); viewer || d.batcher == nil {
-		return
+		return nil
 	}
 	v, err := d.sync.Dir.Cell(ctx, d.cell.ID)
 	if err == nil && (v.Cell.Lease.Device != d.sync.Device.ID() || v.Cell.Lease.Fence != d.batcher.Fence()) {
 		d.becomeViewer(cellsync.Superseded{By: v.Cell.Lease.Device})
 	}
+	return nil
 }
 
 // Gate refuses with the superseded line once the chat is a viewer, and answers
@@ -381,7 +385,15 @@ func (d *Drive) Gate() error {
 // uploaded goes up now. A chat that only views has nothing to upload.
 func (d *Drive) Idle() {
 	if d.batcher != nil {
-		d.batcher.Idle()
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin)
+			defer cancel()
+			if err := cellstore.Await(ctx, d.cell); err != nil {
+				d.notice(err.Error())
+				return
+			}
+			d.batcher.Idle()
+		}()
 	}
 }
 
@@ -418,11 +430,20 @@ func (s stamping) Seal(ctx context.Context, c cell.Cell, info cellstore.TurnInfo
 func (d *Drive) Close(ctx context.Context) error {
 	var err error
 	d.once.Do(func() {
+		pending := cellstore.Await(ctx, d.cell)
 		if d.batcher == nil {
+			err = pending
 			return
 		}
 		d.cancel()
 		<-d.done
+		// A failed drain must still stop heartbeats. Its local head remains
+		// available for recovery; it is never uploaded as a successful close.
+		if pending != nil {
+			d.scope.Settle()
+			err = pending
+			return
+		}
 		d.syncVault(ctx)
 		err = d.batcher.Close(ctx)
 		d.scope.Settle() // a publish that failed after the last flush line still counts

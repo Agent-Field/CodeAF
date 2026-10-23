@@ -221,6 +221,7 @@ func waitFor(t *testing.T, what string, ok func() bool) {
 // TestDriveSidePublishesTurns is the heart of the drive side: two sealed turns
 // reach the relay's store, the directory head is the chat's head, and what the
 // stats file says was sent is what the relay says it received.
+// D1 keeps the engine's published ledger beside its shared objects.
 func TestDriveSidePublishesTurns(t *testing.T) {
 	r := newDriveRig(t)
 	var notices noticeLog
@@ -242,7 +243,7 @@ func TestDriveSidePublishesTurns(t *testing.T) {
 	}
 	assertStatsMatchRelay(t, r)
 	// One name for the ledger: the file the engine wrote is the one Sync names.
-	if _, err := os.Stat(filepath.Join(r.engine.LocalDir(r.cell), "published."+r.a.Ledger)); err != nil {
+	if _, err := os.Stat(filepath.Join(r.engine.StoreDir(r.cell), "published."+r.a.Ledger)); err != nil {
 		t.Fatalf("the engine's ledger is not the one Sync names: %v", err)
 	}
 }

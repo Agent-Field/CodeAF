@@ -13,6 +13,7 @@ func leftOffRow(cell, device string, status chatlist.Status, ago time.Duration) 
 	return chatlist.Row{Cell: cell, Title: cell, Device: device, DeviceID: "dev_" + device, Status: status, DurableAgo: ago}
 }
 
+// TestResumePicksTheNewestRecentChatOnAnOfflineDevice proves D6 for released and offline chats.
 func TestResumePicksTheNewestRecentChatOnAnOfflineDevice(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -24,7 +25,7 @@ func TestResumePicksTheNewestRecentChatOnAnOfflineDevice(t *testing.T) {
 		{"running on an offline device", resumeState{feedUp: true, rows: []chatlist.Row{leftOffRow("a", "spark", chatlist.Running, time.Minute)}}, "a"},
 		{"online and busy", resumeState{feedUp: true, online: []string{"dev_spark"}, rows: []chatlist.Row{leftOffRow("a", "spark", chatlist.Running, time.Minute)}}, ""},
 		{"online with a lapsed lease", resumeState{feedUp: true, online: []string{"dev_spark"}, rows: []chatlist.Row{leftOffRow("a", "spark", chatlist.Off, time.Minute)}}, "a"},
-		{"online and let go", resumeState{feedUp: true, online: []string{"dev_spark"}, rows: []chatlist.Row{leftOffRow("a", "spark", chatlist.Idle, time.Minute)}}, ""},
+		{"online and let go", resumeState{feedUp: true, online: []string{"dev_spark"}, rows: []chatlist.Row{leftOffRow("a", "spark", chatlist.Idle, time.Minute)}}, "a"},
 		{"too old", resumeState{rows: []chatlist.Row{leftOffRow("a", "spark", chatlist.Off, 3*resumeRecent)}}, ""},
 		{"this device", resumeState{rows: []chatlist.Row{leftOffRow("a", "mac", chatlist.Here, time.Minute)}}, ""},
 		{"newest wins", resumeState{rows: []chatlist.Row{
@@ -59,7 +60,7 @@ func TestResumeIsDecidedAgainWhenTheFeedSaysTheDeviceWentOffline(t *testing.T) {
 	if leftOffFrame(a) != "" {
 		t.Fatal("offered a chat on a device that is still online")
 	}
-	// The relay's offline debounce is over: the feed drops the device.
+	// D6: The relay's offline debounce is over: the feed drops the device.
 	feed.state.Online = nil
 	a.tookWatch(dirWatchMsg{from: feed})
 	if got := leftOffFrame(a); !strings.Contains(got, "Continue spark's latest chat here?") {

@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -29,6 +31,15 @@ func (o planOp) Args() []string { return []string{"--json", "rewind", o.Snapshot
 // The daemon does not serve the plan, so this asks a spawned engine, which is
 // always correct and runs once per takeover.
 func (e Engine) Dirty(ctx context.Context, c cell.Cell) (bool, error) {
+	_, recovery, err := OpenWAL(e.WALPath(c))
+	if err != nil {
+		return false, err
+	}
+	// External output can be the only effect of a finished call. Take-back
+	// must branch it even when no workspace file or transcript changed (D4/L9).
+	if len(recovery.Completed) > 0 {
+		return true, nil
+	}
 	if err := e.screenCapture(ctx, c); err != nil {
 		return false, err
 	}
@@ -41,7 +52,7 @@ func (e Engine) Dirty(ctx context.Context, c cell.Cell) (bool, error) {
 	if head != nil && sizeOf(rel(c, cell.TranscriptPath)) != head.Receipt.Transcript.End {
 		return true, nil
 	}
-	target := Target{Tree: e.tree(c), DataDir: e.LocalDir(c), CellDir: e.cellDir(c)}
+	target := e.target(c)
 	out, err := Spawn{Binary: e.Binary}.Do(ctx, target, planOp{Snapshot: "head"})
 	if err != nil {
 		return false, fmt.Errorf("dirty: %w", err)
@@ -84,9 +95,13 @@ func (o rebindOp) Args() []string { return []string{"--json", "rebind", "--from"
 // The daemon does not serve the verb, so this asks a spawned engine, once per
 // takeover.
 func (e Engine) Follow(ctx context.Context, from, to cell.Cell) error {
-	target := Target{Tree: e.tree(to), DataDir: e.LocalDir(to)}
+	target := e.target(to)
+	target.CellDir = ""
 	if _, err := (Spawn{Binary: e.Binary}).Do(ctx, target, rebindOp{From: e.tree(from)}); err != nil {
 		return fmt.Errorf("follow: %w", err)
 	}
-	return nil
+	if err := os.MkdirAll(e.LocalDir(to), 0700); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(e.LocalDir(to), "engine-tree"), []byte(target.Tree), 0600)
 }

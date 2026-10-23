@@ -10,15 +10,16 @@ import (
 )
 
 // TestC12EngineContract proves C12 by withholding each required verb and each
-// changed-path sealing flag, independently of any version string.
+// changed-path sealing flag, independently of any version string. D1 also
+// requires named timelines before separate chats may share an engine store.
 func TestC12EngineContract(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("furrow runs through WSL")
 	}
-	for _, missing := range []string{"export", "published", "want", "import", "rebind", "materialize", "serve", "--changed", "--changed-stdin", "--cell-dir", ""} {
+	for _, missing := range []string{"export", "published", "want", "import", "rebind", "materialize", "serve", "--changed", "--changed-stdin", "--cell-dir", "--timeline", ""} {
 		t.Run("missing="+missing, func(t *testing.T) {
 			program := filepath.Join(t.TempDir(), "furrow")
-			help := "--changed PATH --changed-stdin --cell-dir DIR"
+			help := "--changed PATH --changed-stdin --cell-dir DIR --timeline ID"
 			if strings.HasPrefix(missing, "--") {
 				help = strings.ReplaceAll(help, missing, "")
 			}

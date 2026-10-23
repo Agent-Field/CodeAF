@@ -124,7 +124,7 @@ func (a *app) hurryMachines() tea.Cmd {
 func (a *app) fileMachines(msg homeMachinesMsg) {
 	now := a.now()
 	changed := msg.err == nil && !chatlist.Same(a.machineRead.rows, msg.rows)
-	a.machinePoll.landed(now, changed, a.socketUp())
+	a.machinePoll.landed(now, changed, a.socketUp() && msg.err == nil)
 	if msg.err == nil {
 		a.machineRead = machineReading{rows: msg.rows, at: now, version: msg.version}
 	}

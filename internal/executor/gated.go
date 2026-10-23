@@ -38,3 +38,6 @@ func (g gated) Around(ctx context.Context, call Call, run func() ([]byte, bool))
 
 // Settle implements Settler: the seat beneath keeps the record.
 func (g gated) Settle(ctx context.Context) { Settle(ctx, g.Seat) }
+
+// Drain forwards the pending capture boundary to the seat beneath.
+func (g gated) Drain(ctx context.Context) error { return Drain(ctx, g.Seat) }

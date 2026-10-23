@@ -23,6 +23,7 @@ const daemonEnv = "CODEAF_ENGINE_DAEMON"
 // .cell/ entry (empty when the tree is the cell's own folder).
 type Target struct {
 	Tree, DataDir, CellDir string
+	Timeline               string
 }
 
 // Op is one engine verb. It knows its own two spellings: the daemon's JSON
@@ -65,6 +66,9 @@ func (s Spawn) Do(ctx context.Context, t Target, op Op) ([]byte, error) {
 	argv := append([]string{bin}, op.Args()...)
 	if t.CellDir != "" {
 		argv = append(argv, cellDirArg(t.CellDir)...)
+	}
+	if t.Timeline != "" {
+		argv = append(argv, "--timeline", t.Timeline)
 	}
 	environ := append(os.Environ(), dataDirEnv+"="+t.DataDir)
 	return s.run(ctx, t.Tree, append(environ, opEnv(op)...), argv...)

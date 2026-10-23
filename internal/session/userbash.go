@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	procexec "github.com/Agent-Field/codeaf/internal/executor"
 )
 
 // These refusals are shared with the composer so a late engine refusal gives
@@ -162,7 +163,7 @@ func (a *Agent) runUserBash(ctx context.Context, hub *eventHub, command string) 
 		var err error
 		// C5 includes changes made by the person as well as model tools.
 		// Bash has unknown changes, so its recorded call visits the whole tree.
-		output, failed, err = a.executeRecorded(ctx, bare.Tool{Name: "bash", Execute: func(runCtx context.Context, args json.RawMessage) (string, bool, error) {
+		output, failed, err = a.executeRecorded(procexec.Deferring(ctx), bare.Tool{Name: "bash", Execute: func(runCtx context.Context, args json.RawMessage) (string, bool, error) {
 			return bare.RunBash(runCtx, a.config.Workspace, args, caps, writer)
 		}}, json.RawMessage(checked.Function.Arguments))
 		if err != nil {

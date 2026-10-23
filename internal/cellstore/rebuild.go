@@ -2,6 +2,7 @@ package cellstore
 
 import (
 	"os"
+	"path"
 	"path/filepath"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -29,6 +30,7 @@ type Apart struct{ Path, Reason string }
 // out of the seal, the lockfiles seen in the tree, and the single paths set
 // apart because this machine cannot read them or cannot keep their names.
 type Screened struct {
+	scan    *captureScan
 	Folders []Left
 	Locks   []string
 	Apart   []Apart
@@ -47,7 +49,14 @@ func (s Screened) paths() []string {
 // 19.4, and each folder that fails any test of it travels with the seal exactly
 // as before, so being wrong costs the bytes the seal would have carried anyway.
 func (g Guard) leftOut(tree string, changed, locks []string, policy policyFile) Screened {
-	found := rebuild.Scan(tree, changed, rebuild.Found{Folders: policy.rebuilt, Locks: locks}, policy.isLeftOut)
+	personal := policy
+	personal.ignoredDirs = nil
+	// An ignored install folder still has its rebuild instruction. Recognizing
+	// its name does not enter it; every other ignored directory stays pruned.
+	skip := func(rel string) bool {
+		return personal.isLeftOut(rel) || (policy.isLeftOut(rel) && !rebuild.IsInstallFolder(path.Base(rel)))
+	}
+	found := rebuild.Scan(tree, changed, rebuild.Found{Folders: policy.rebuilt, Locks: locks}, skip)
 	out := Screened{Locks: found.Locks}
 	for _, folder := range found.Folders {
 		if lock, ok := g.licence(tree, folder, policy); ok {
@@ -61,7 +70,9 @@ func (g Guard) leftOut(tree string, changed, locks []string, policy policyFile) 
 // one: the person has not excluded the folder themselves, a lock that will be
 // in the seal rebuilds it, and nothing in it is source the project tracks.
 func (g Guard) licence(tree, folder string, policy policyFile) (string, bool) {
-	if policy.isLeftOut(folder) {
+	personal := policy
+	personal.ignoredDirs = nil
+	if personal.isLeftOut(folder) {
 		return "", false
 	}
 	lock, ok := rebuild.LockFor(tree, folder, func(lock string) bool { return g.inSeal(tree, lock, policy) })
@@ -72,7 +83,7 @@ func (g Guard) licence(tree, folder string, policy policyFile) (string, bool) {
 // excluded it and the secret guard would not hold it back. The other machine
 // rebuilds from what it receives, so a lock that does not arrive licenses nothing.
 func (g Guard) inSeal(tree, lock string, policy policyFile) bool {
-	if policy.isLeftOut(lock) {
+	if policy.isLeftOut(lock) || gitIgnored(tree, lock) {
 		return false
 	}
 	return len(keys.Scanner{Ledger: g.Ledger}.Paths(tree, []string{lock})) == 0
@@ -103,6 +114,11 @@ func noteLeftOut(c cell.Cell, tree string, s Screened, calls []Executed) error {
 	return inventory.Record(c.Root, func(inv *inventory.Inventory) {
 		inv.Lockfiles = s.Locks
 		entries := withheldEntries(inv.Withheld, s.Folders, calls, modifiedAt(tree))
+		for _, w := range inv.Withheld {
+			if w.Reason == reasonGitIgnored {
+				entries = append(entries, w)
+			}
+		}
 		inv.SetWithheld(ownedBySeal, append(entries, apartEntries(inv.Withheld, s.Apart)...))
 	})
 }

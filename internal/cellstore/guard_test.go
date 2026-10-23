@@ -101,6 +101,7 @@ func TestScreenWithholdsAnyFileWithASecretAndSaysOnce(t *testing.T) {
 	}
 }
 
+// TestScreenReleasesAFileThatIsCleaned proves D2: the directive stays after secrets are cleared.
 func TestScreenReleasesAFileThatIsCleaned(t *testing.T) {
 	r := newRig(t)
 	r.write("src/config.py", "KEY = '"+fakeKey+"'\n")
@@ -110,8 +111,8 @@ func TestScreenReleasesAFileThatIsCleaned(t *testing.T) {
 	if got := r.policy().withheld; len(got) != 0 {
 		t.Fatalf("withheld %v after the secret was removed", got)
 	}
-	if _, err := os.Stat(filepath.Join(r.state(), policyName)); !os.IsNotExist(err) {
-		t.Fatalf("an empty policy file is left behind: %v", err)
+	if raw, err := os.ReadFile(filepath.Join(r.state(), policyName)); err != nil || strings.TrimSpace(string(raw)) != "gitignore" {
+		t.Fatalf("D2 policy = %q, %v", raw, err)
 	}
 }
 
@@ -141,12 +142,13 @@ func TestScreenKeepsWhatThePersonWrote(t *testing.T) {
 	}
 }
 
+// TestScreenWritesNothingWhenTheTreeIsClean proves D2: a clean tree still carries the ignore directive.
 func TestScreenWritesNothingWhenTheTreeIsClean(t *testing.T) {
 	r := newRig(t)
 	r.write("a.txt", "hello\n")
 	r.screen()
-	if _, err := os.Stat(filepath.Join(r.state(), policyName)); !os.IsNotExist(err) {
-		t.Fatalf("clean tree got a policy file: %v", err)
+	if raw, err := os.ReadFile(filepath.Join(r.state(), policyName)); err != nil || strings.TrimSpace(string(raw)) != "gitignore" {
+		t.Fatalf("D2 policy = %q, %v", raw, err)
 	}
 	if keys.Exists(r.guard.Home) {
 		t.Fatal("a clean tree created a vault")
@@ -197,10 +199,10 @@ func TestL3_SecretsNeverEnterTheStore(t *testing.T) {
 		if out := gitStatus(t, r.tree); out != "?? .env\n?? src/config.py" {
 			t.Fatalf("the working-tree secrets must remain untracked: %q", out)
 		}
-		if hits := grepStore(t, e.LocalDir(r.cell), fakeKey); len(hits) != 0 {
+		if hits := grepStore(t, e.StoreDir(r.cell), fakeKey); len(hits) != 0 {
 			t.Fatalf("the secret is in the store: %v", hits)
 		}
-		if len(grepStore(t, e.LocalDir(r.cell), "MARKER_KEPT")) == 0 {
+		if len(grepStore(t, e.StoreDir(r.cell), "MARKER_KEPT")) == 0 {
 			t.Skip("the store does not keep file text in the clear, so the absence above proves nothing here")
 		}
 		if got := r.guard.Env(r.cell); len(got) != 1 || got[0] != "OPENROUTER_API_KEY="+fakeKey {
@@ -290,7 +292,7 @@ func TestC9SecretAtTheEndOfALargeSourceFileIsWithheld(t *testing.T) {
 		if _, err := e.Seal(context.Background(), r.cell, TurnInfo{}); err != nil {
 			t.Fatal(err)
 		}
-		if hits := grepStore(t, e.LocalDir(r.cell), fakeKey); len(hits) != 0 {
+		if hits := grepStore(t, e.StoreDir(r.cell), fakeKey); len(hits) != 0 {
 			t.Fatalf("secret in local store: %v", hits)
 		}
 		if _, held, err := e.Withheld(r.cell); err != nil || len(held) != 2 {
@@ -331,7 +333,7 @@ func TestC9CaptureAndRewindKeepWorkingTreeSecretsOut(t *testing.T) {
 				t.Fatalf("the local secret %s was lost: %q, %v", path, raw, err)
 			}
 		}
-		if hits := grepStore(t, e.LocalDir(r.cell), fakeKey); len(hits) != 0 {
+		if hits := grepStore(t, e.StoreDir(r.cell), fakeKey); len(hits) != 0 {
 			t.Fatalf("secret in local store: %v", hits)
 		}
 	})
@@ -402,7 +404,7 @@ func TestC9CertificateBundleIsSealedWhilePrivateKeysAreWithheld(t *testing.T) {
 		if got := r.policy().withheld; len(got) != 2 || got[0] != "combined.pem" || got[1] != "private.pem" {
 			t.Fatalf("withheld %v; want only the two files holding a private key", got)
 		}
-		if hits := grepStore(t, e.LocalDir(r.cell), "PRIVATE_KEY_MARKER"); len(hits) != 0 {
+		if hits := grepStore(t, e.StoreDir(r.cell), "PRIVATE_KEY_MARKER"); len(hits) != 0 {
 			t.Fatalf("private key reached the store: %v", hits)
 		}
 		path := filepath.Join(r.tree, ".venv/lib/site-packages/certifi/cacert.pem")

@@ -176,3 +176,6 @@ func isAssignment(word string) bool {
 
 // Settle implements Settler: the seat beneath keeps the record.
 func (w watched) Settle(ctx context.Context) { Settle(ctx, w.Seat) }
+
+// Drain forwards the pending capture boundary to the seat beneath.
+func (w watched) Drain(ctx context.Context) error { return Drain(ctx, w.Seat) }

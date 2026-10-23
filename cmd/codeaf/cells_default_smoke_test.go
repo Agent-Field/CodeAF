@@ -20,7 +20,8 @@ import (
 
 // TestC27NewChatByDefaultStaysQuiet proves C27.1 and C23 through the binary
 // --once door on every channel, with a logging relay and a model turn.
-// Its C27.4 assertions cover this door; interactive startup wires sync separately.
+// Its D5/C27.4 assertions cover this door; a local identity is allowed, and
+// interactive startup wires sync separately.
 func TestC27NewChatByDefaultStaysQuiet(t *testing.T) {
 	celltest.RequireEngine(t)
 	var relayRequests atomic.Int64
@@ -120,10 +121,6 @@ func TestC27NewChatByDefaultStaysQuiet(t *testing.T) {
 			}
 			if got := relayRequests.Load(); got != 0 {
 				t.Fatalf("unpaired home sent %d relay requests", got)
-			}
-
-			if _, err := os.Stat(filepath.Join(home, "identity.json")); !os.IsNotExist(err) {
-				t.Errorf("unpaired chat made an identity: %v", err)
 			}
 		})
 	}

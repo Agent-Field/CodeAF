@@ -167,9 +167,11 @@ func TestMaterializeWithoutHeldNamesWritesNothing(t *testing.T) {
 	}
 }
 
+// TestPolicyRoundTripsEveryBlock proves D2: the required ignore directive
+// coexists with every managed block without losing the person's exclusions.
 func TestPolicyRoundTripsEveryBlock(t *testing.T) {
 	p := policyFile{
-		user:       []string{"exclude mine"},
+		user:       []string{"exclude mine", "gitignore"},
 		withheld:   []string{".env"},
 		rebuilt:    []string{"node_modules"},
 		unreadable: []string{"odd.bin"},

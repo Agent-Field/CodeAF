@@ -86,6 +86,8 @@ func ScanTree(root string) []Finding { return Scanner{}.Walk(root) }
 type Scanner struct {
 	Skip   func(rel string) bool
 	Ledger *Ledger
+	// Visit observes screened entries so a caller can reuse this metadata walk.
+	Visit func(string, fs.DirEntry)
 }
 
 // Walk scans every file under root.
@@ -113,6 +115,10 @@ func (s Scanner) from(root, start string) []Finding {
 		}
 		if rel != "." && s.Skip != nil && s.Skip(rel) {
 			return skipEntry(d)
+		}
+		if s.Visit != nil {
+			d = &screenEntry{DirEntry: d}
+			s.Visit(rel, d)
 		}
 		if !d.Type().IsRegular() {
 			return nil
@@ -219,4 +225,21 @@ func contentInFile(abs string) (string, error) {
 		}
 		kept = copy(buf, buf[max(0, end-overlap):end])
 	}
+}
+
+// screenEntry shares one lstat between the metadata observer and the clean-file
+// ledger. A full screen must not double its filesystem calls to build a hint.
+type screenEntry struct {
+	fs.DirEntry
+	info fs.FileInfo
+	err  error
+	read bool
+}
+
+func (d *screenEntry) Info() (fs.FileInfo, error) {
+	if !d.read {
+		d.info, d.err = d.DirEntry.Info()
+		d.read = true
+	}
+	return d.info, d.err
 }

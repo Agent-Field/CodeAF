@@ -46,8 +46,9 @@ type policyFile struct {
 	// unreadable is the paths this machine cannot read, sorted; a seal recomputes it.
 	unreadable []string
 	// held is the paths whose name this machine cannot keep; only a take writes it.
-	held    []string
-	outside []string // the workspace's own lines, when the file is elsewhere
+	held        []string
+	ignoredDirs []string // Git-ignored directories with no tracked entries are never screened.
+	outside     []string // the workspace's own lines, when the file is elsewhere
 }
 
 // readPolicy reads the harness's policy file in dir and, when dir is not the
@@ -147,6 +148,13 @@ func sorted(paths []string) []string {
 
 func (p policyFile) String() string {
 	lines := append([]string(nil), p.user...)
+	hasIgnore := false
+	for _, line := range lines {
+		hasIgnore = hasIgnore || strings.TrimSpace(line) == "gitignore"
+	}
+	if !hasIgnore {
+		lines = append(lines, "gitignore")
+	}
 	lines = appendBlock(lines, withheldTag, p.withheld)
 	lines = appendBlock(lines, rebuiltTag, p.rebuilt)
 	lines = appendBlock(lines, unreadableTag, p.unreadable)
@@ -187,7 +195,7 @@ func (p policyFile) isHeld(rel string) bool { return inRules(p.held, rel) }
 // excluded: nothing there is sealed, so nothing there is scanned.
 func (p policyFile) isLeftOut(rel string) bool {
 	first, _, _ := strings.Cut(rel, "/")
-	return controlDirs[first] || inRules(p.userRules(), rel)
+	return controlDirs[first] || inRules(p.userRules(), rel) || inRules(p.ignoredDirs, rel)
 }
 
 func (p policyFile) userRules() []string {

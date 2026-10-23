@@ -39,6 +39,7 @@ const (
 	// deviceKey is the chord that brings a device's work here.
 	deviceKey      = "alt+m"
 	deviceBring    = deviceKey + " bring work here"
+	deviceArriving = "chats are still arriving from your other computer; this opens when they are ready"
 	deviceNothing  = "no other device that is online has a chat to bring here"
 	devicePickAsk  = "Which device?"
 	devicePickLeav = "leave it there"
@@ -53,8 +54,9 @@ func init() {
 // deviceRoster is the row's whole state: the devices last read, and whether a
 // read is out.
 type deviceRoster struct {
-	devices []chatlist.Device
-	asking  bool
+	devices      []chatlist.Device
+	asking       bool
+	bringPending bool
 }
 
 // rosterMsg is one answer from the [Roster].
@@ -85,7 +87,7 @@ func (a *app) tookRoster(msg rosterMsg) tea.Cmd {
 		a.devRow.devices = msg.devices
 		a.touch()
 	}
-	return nil
+	return a.finishBring()
 }
 
 // presence is who the feed says is online, and whether it can say at all.
@@ -167,6 +169,11 @@ func (a *app) bringWork() tea.Cmd {
 	picks := a.devicePicks()
 	switch len(picks) {
 	case 0:
+		if a.machines != nil && (a.machinesAsking || a.devRow.asking || a.machineRead.at.IsZero() || a.feedAhead() || a.otherDeviceOnline()) {
+			a.devRow.bringPending = true
+			a.home.say(deviceArriving, "")
+			return a.askMachines()
+		}
 		a.home.say(deviceNothing, "")
 		return nil
 	case 1:
@@ -206,4 +213,29 @@ func (a *app) devicePickShown(picks []chatlist.Row) questionShown {
 			return nil
 		},
 	}
+}
+
+// otherDeviceOnline distinguishes a chat still being published from a fleet
+// with nobody available. Presence and catalog publication are separate frames.
+func (a *app) otherDeviceOnline() bool {
+	online, known := a.presence()
+	if !known {
+		return false
+	}
+	for _, d := range a.devRow.devices {
+		if d.Self {
+			delete(online, d.ID)
+		}
+	}
+	return len(online) > 0
+}
+
+// finishBring keeps an early chord alive across the listing and roster reads.
+// It offers the ordinary confirmation; arrival never silently takes a chat.
+func (a *app) finishBring() tea.Cmd {
+	if !a.devRow.bringPending || len(a.devicePicks()) == 0 {
+		return nil
+	}
+	a.devRow.bringPending = false
+	return a.bringWork()
 }

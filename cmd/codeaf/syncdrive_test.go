@@ -50,12 +50,17 @@ func doorChat(t *testing.T) (session.Config, cell.Cell) {
 	return session.Config{Place: session.Place{Dir: c.Root, Workspace: t.TempDir()}}, c
 }
 
+// toolCallOn completes the call and its D4 capture boundary before callers
+// inspect the sealed turn or release the fixture's files.
 func toolCallOn(t *testing.T, seat executor.Seat, workspace string) error {
 	t.Helper()
 	call := executor.Call{Tool: "bash", Args: []byte(`{"command":"echo"}`)}
-	return seat.Around(context.Background(), call, func() ([]byte, bool) {
+	if err := seat.Around(context.Background(), call, func() ([]byte, bool) {
 		return nil, os.WriteFile(filepath.Join(workspace, "f.txt"), []byte("x"), 0o600) != nil
-	})
+	}); err != nil {
+		return err
+	}
+	return executor.Drain(context.Background(), seat)
 }
 
 // With no relay set the door is Stage 0 exactly: no drive side is made, the seat

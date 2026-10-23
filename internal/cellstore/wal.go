@@ -189,6 +189,11 @@ func (w *WAL) rewrite(recs []record) error {
 		}
 		buf.Write(append(line, '\n'))
 	}
+	// A transcript-only seal may precede the first call log. The shared engine
+	// store no longer creates this private folder as a side effect (D1).
+	if err := os.MkdirAll(filepath.Dir(w.path), 0o700); err != nil {
+		return err
+	}
 	tmp := w.path + ".tmp"
 	if err := os.WriteFile(tmp, buf.Bytes(), 0o600); err != nil {
 		return err

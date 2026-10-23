@@ -12,10 +12,26 @@ import (
 // takes one just before it removes a working tree, so nothing the tree held
 // since the last seal is lost.
 func (e Engine) Capture(ctx context.Context, c cell.Cell) (string, error) {
+	if err := Await(ctx, c); err != nil {
+		return "", err
+	}
+	if err := e.recoverCompleted(ctx, c); err != nil {
+		return "", err
+	}
 	if err := e.screenCapture(ctx, c); err != nil {
 		return "", err
 	}
-	out, err := e.do(ctx, c, e.cellDir(c), snapOp{Message: "materialization capture"})
+	var op Op = snapOp{Message: "materialization capture"}
+	// A new chat may need a capture before its first recorded turn. The seal
+	// verb attaches a named timeline atomically; snap requires one already there.
+	head, err := Head(c)
+	if err != nil {
+		return "", err
+	}
+	if head == nil {
+		op = sealOp{Turn: "materialization capture"}
+	}
+	out, err := e.do(ctx, c, e.cellDir(c), op)
 	if err != nil {
 		return "", fmt.Errorf("capture: %w", err)
 	}
@@ -48,4 +64,35 @@ func (e Engine) screenCapture(ctx context.Context, c cell.Cell) error {
 		return err
 	}
 	return noteLeftOut(c, e.tree(c), s, nil)
+}
+
+// recoverCompleted carries a dead process's durable outputs into its next
+// capture. The WAL stays local, but a branch or move must include the receipt
+// of a completed external call even if death preceded its background seal (D4,
+// L9). Incomplete intents remain unresolved and are never executed here.
+func (e Engine) recoverCompleted(ctx context.Context, c cell.Cell) error {
+	_, recovery, err := OpenWAL(e.WALPath(c))
+	if err != nil {
+		return err
+	}
+	if len(recovery.Completed) == 0 {
+		return nil
+	}
+	_, err = e.SealRecovered(ctx, c)
+	return err
+}
+
+// SealRecovered keeps local edits and a dead process's completed calls in the
+// same turn before take-back sets them aside as a branch (D4, L9). A call that
+// only returned external output is still work; incomplete intents stay local.
+func (e Engine) SealRecovered(ctx context.Context, c cell.Cell) (Sealed, error) {
+	wal, recovery, err := OpenWAL(e.WALPath(c))
+	if err != nil {
+		return Sealed{}, err
+	}
+	sealed, err := e.Seal(ctx, c, TurnInfo{Calls: recovery.Completed, Changed: changedOf(recovery.Completed)})
+	if err != nil || len(recovery.Completed) == 0 {
+		return sealed, err
+	}
+	return sealed, wal.Sealed(recovery.Completed)
 }

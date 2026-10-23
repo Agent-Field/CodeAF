@@ -106,9 +106,11 @@ func (l *liveDrive) Gate() error {
 		<-ready
 	}
 	if d := l.started(); d != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), holdsLeaseWithin)
+		ctx, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin+holdsLeaseWithin)
 		defer cancel()
-		d.CheckLease(ctx)
+		if err := d.CheckLease(ctx); err != nil {
+			return err
+		}
 		return d.Gate()
 	}
 	return nil
@@ -183,11 +185,24 @@ var _ cellstore.Store = lateStore{}
 // Seal implements cellstore.Store.
 func (s lateStore) Seal(ctx context.Context, c cell.Cell, info cellstore.TurnInfo) (cellstore.Sealed, error) {
 	s.live.try()
-	s.live.mu.Lock()
-	defer s.live.mu.Unlock()
+	used := s.live.started()
 	var store cellstore.Store = s.engine
-	if d := s.live.drive; d != nil {
-		store = d.Store(s.engine)
+	if used != nil {
+		store = used.Store(s.engine)
 	}
-	return store.Seal(ctx, c, info)
+	sealed, err := store.Seal(ctx, c, info)
+	if err == nil {
+		s.live.catchUpAfter(used)
+	}
+	return sealed, err
+}
+
+// catchUpAfter joins a seal made while the drive was being installed. The
+// mutex covers only the catch-up decision, never the engine's disk work.
+func (l *liveDrive) catchUpAfter(used *syncsetup.Drive) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.drive != nil && l.drive != used {
+		l.drive.CatchUp()
+	}
 }

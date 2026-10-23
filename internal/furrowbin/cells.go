@@ -32,6 +32,12 @@ func CellsAvailable() bool { return cellsAvailable() }
 func probeCells(binary string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	// A shared store without named heads would put different chats on the
+	// same timeline. Older exchange-capable engines must stay absent (D1/C12).
+	root, err := exec.CommandContext(ctx, binary, "--help").Output() //codeaf:plumbing checks timeline routing without opening a workspace.
+	if err != nil || !strings.Contains(string(root), "--timeline ") {
+		return false
+	}
 	for _, verb := range []string{"export", "published", "want", "import", "rebind", "materialize", "serve"} {
 		if err := exec.CommandContext(ctx, binary, verb, "--help").Run(); err != nil { //codeaf:plumbing checks the engine's read-only capability contract
 			return false

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,7 +26,11 @@ func (e Engine) CaptureForGC(ctx context.Context, c cell.Cell) (string, []string
 		return "", nil, err
 	}
 	defer os.RemoveAll(scratch)
-	target := Target{Tree: scratch, DataDir: e.LocalDir(c)}
+	target := e.target(c)
+	target.Tree, target.CellDir = scratch, ""
+	// The comparison tree has its own path identity; adopting it must not move
+	// the chat's timeline head away from the real workspace (D1, C25).
+	target.Timeline = ""
 	if _, err := e.transport().Do(ctx, target, materializeOp{Head: snapshot}); err != nil {
 		return "", nil, fmt.Errorf("check gc restore: %w", err)
 	}
@@ -37,6 +42,25 @@ func (e Engine) CaptureForGC(ctx context.Context, c cell.Cell) (string, []string
 	// policy and lockfile ancestors that explain exclusions until that capture,
 	// so a dependency or a user-excluded file cannot enter the undo history.
 	kept := map[string]bool{policyName: true}
+	// Ignore rules must survive until the restore's undo capture, just like
+	// lockfiles. Removing them while ignored output stays would capture that
+	// output as newly unignored work (D2, C25).
+	if err := filepath.WalkDir(scratch, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		name, _ := filepath.Rel(scratch, path)
+		first, _, _ := strings.Cut(filepath.ToSlash(name), "/")
+		if d.IsDir() && controlDirs[first] {
+			return filepath.SkipDir
+		}
+		if !d.IsDir() && d.Name() == ".gitignore" {
+			kept[first] = true
+		}
+		return nil
+	}); err != nil {
+		return "", nil, err
+	}
 	for _, lock := range knownLocks(c) {
 		first, _, _ := strings.Cut(filepath.ToSlash(lock), "/")
 		kept[first] = true

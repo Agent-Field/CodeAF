@@ -14,6 +14,8 @@ import (
 
 // Options tune a Recorder; every field has a working zero value.
 type Options struct {
+	// Async pipelines capture after the durable completion, never the command.
+	Async bool
 	// Tool names the calls in receipts; "exec" when empty.
 	Tool string
 	// Now is the clock; time.Now when nil.
@@ -32,11 +34,16 @@ type Options struct {
 // Recorder is the one hook (task 0.7): an executor.Executor that logs each
 // call's intent, runs it, logs its completion, and seals the cell.
 type Recorder struct {
-	inner executor.Executor
-	store Store
-	cell  cell.Cell
-	wal   *WAL
-	opts  Options
+	inner     executor.Executor
+	store     Store
+	cell      cell.Cell
+	wal       *WAL
+	opts      Options
+	asyncMu   sync.Mutex
+	running   chan struct{}
+	requested bool
+	errorMu   sync.Mutex
+	lastError error
 
 	mu         sync.Mutex // serialises seals; guards pending and incomplete
 	pending    []Executed
@@ -75,6 +82,9 @@ func Wrap(inner executor.Executor, c cell.Cell) (executor.Executor, error) {
 // Exec implements executor.Executor. A call whose intent cannot be made
 // durable does not run: an unlogged external call could never be recovered.
 func (r *Recorder) Exec(ctx context.Context, req executor.ExecRequest, onOutput func(executor.Chunk)) (executor.ExecResult, error) {
+	if err := r.wait(ctx); err != nil {
+		return executor.ExecResult{}, err
+	}
 	intent := r.intent(req)
 	if err := r.wal.Begin(intent); err != nil {
 		return executor.ExecResult{}, fmt.Errorf("log call intent: %w", err)
@@ -89,6 +99,9 @@ func (r *Recorder) Exec(ctx context.Context, req executor.ExecRequest, onOutput 
 // call is the boundary the tree is sealed at, so this is what a session uses;
 // Exec is the same record for a caller that has only an executor.
 func (r *Recorder) Around(ctx context.Context, call executor.Call, effect executor.SideEffect, trigger Trigger, run func() ([]byte, bool)) error {
+	if err := r.wait(ctx); err != nil {
+		return err
+	}
 	intent := Intent{V: walV, Tool: call.Tool, ArgsHash: hashHex(call.Args), Started: r.now().UnixMilli(),
 		SideEffect: string(effect), Brief: briefOf(call.Args)}
 	if err := r.wal.Begin(intent); err != nil {
@@ -187,11 +200,18 @@ func argsHash(req executor.ExecRequest) string {
 // Settle loses nothing the next start does not carry.
 func (r *Recorder) complete(ctx context.Context, i Intent, e Executed, seal bool) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	if err := r.wal.Finish(i, e); err != nil {
 		r.report(err)
 	}
 	r.pending = append(r.pending, e)
+	if r.opts.Async {
+		r.mu.Unlock()
+		if seal {
+			r.schedule(ctx)
+		}
+		return
+	}
+	defer r.mu.Unlock()
 	if seal {
 		r.seal(context.WithoutCancel(ctx))
 	}
@@ -203,6 +223,10 @@ func (r *Recorder) complete(ctx context.Context, i Intent, e Executed, seal bool
 // neither. A seal with no call in it looks at the state directory only: nothing
 // but the transcript changed.
 func (r *Recorder) Settle(ctx context.Context) {
+	if r.opts.Async {
+		r.schedule(ctx)
+		return
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if len(r.pending) == 0 && len(r.models) == 0 && !r.transcriptGrew() {
@@ -244,12 +268,20 @@ func (r *Recorder) seal(ctx context.Context) {
 
 // outcome tells Report how a seal ended, nil included.
 func (r *Recorder) outcome(err error) {
+	r.errorMu.Lock()
+	r.lastError = err
+	r.errorMu.Unlock()
 	if r.opts.Report != nil {
 		r.opts.Report(err)
 	}
 }
 
 func (r *Recorder) report(err error) {
+	if err != nil {
+		r.errorMu.Lock()
+		r.lastError = err
+		r.errorMu.Unlock()
+	}
 	if err != nil && r.opts.Report != nil {
 		r.opts.Report(err)
 	}

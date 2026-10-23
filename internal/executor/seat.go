@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os/exec"
 	"sync"
+	"time"
 )
 
 // Runner is what a tool site needs from its seat: buffered or streamed calls
@@ -63,6 +64,22 @@ func Settle(ctx context.Context, s Seat) {
 	if settler, ok := s.(Settler); ok {
 		settler.Settle(ctx)
 	}
+}
+
+// Drainer waits for any pipelined captures before the session gives up its files.
+type Drainer interface{ Drain(context.Context) error }
+
+// DrainWithin is the shared bound for saving a chat and waiting for its save.
+// The recorder and process exit must not disagree about how long is allowed.
+const DrainWithin = 30 * time.Second
+
+// Drain settles the final transcript and waits for its capture, when present.
+func Drain(ctx context.Context, s Seat) error {
+	if d, ok := s.(Drainer); ok {
+		return d.Drain(ctx)
+	}
+	Settle(ctx, s)
+	return nil
 }
 
 type deferKey struct{}

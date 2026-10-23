@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -13,8 +14,7 @@ import (
 )
 
 // dataDirEnv names where the engine keeps its store and catalog. One directory
-// per cell means one catalog lock per writer: two writers never wait on each
-// other and never share a store.
+// per home shares content-addressed objects between chats.
 const dataDirEnv = "FURROW_DATA_DIR"
 
 // maxChangedArgs bounds the changed-path list passed on the command line. A
@@ -31,7 +31,7 @@ type Engine struct {
 	// Binary is the engine program; empty means the configured or embedded
 	// engine, checked to be able to seal (see sealingEngine).
 	Binary string
-	// DataRoot holds one store directory per cell; empty means the state root's.
+	// DataRoot holds the shared engine store and private cell directories; empty means the state root.
 	DataRoot string
 	// Workspace, when set, is the tree the engine seals: the folder the tools
 	// work in, which is not the cell's own. The cell's .cell/ directory is then
@@ -55,6 +55,7 @@ type Engine struct {
 	// Transport carries the engine's verbs; nil means transportFor's choice.
 	Transport Transport
 	Now       func() time.Time
+	pipeline  bool
 }
 
 var _ Store = Engine{}
@@ -80,11 +81,11 @@ func (cs Composers) Compose(c cell.Cell) error {
 	return nil
 }
 
-// LocalDir is the device-local directory of a cell: the engine store and the
-// call WAL. It is never inside the cell and never synced.
+// LocalDir holds only this cell's private WAL, overlays and transport scratch.
+// An older engine store there stays in place for compatibility (D1).
 func (e Engine) LocalDir(c cell.Cell) string { return filepath.Join(e.Root(), c.ID) }
 
-// Root is the directory that holds one local directory per cell.
+// Root holds the shared engine store beside each cell's private state.
 func (e Engine) Root() string {
 	if e.DataRoot == "" {
 		return home.Join("v3", "stores")
@@ -120,14 +121,29 @@ func (e Engine) Seal(ctx context.Context, c cell.Cell, info TurnInfo) (Sealed, e
 	if err := e.compose(c, raw, rid, info); err != nil {
 		return Sealed{}, fmt.Errorf("seal: compose: %w", err)
 	}
-	snapshot, err := e.snapshot(ctx, c, rid, info.Changed)
+	changes := info.Changed
+	if screened.scan != nil {
+		changes = screened.scan.changed(e.tree(c))
+	}
+	snapshot, err := e.snapshotReply(ctx, c, rid, changes)
 	if err != nil {
 		return Sealed{}, err
 	}
-	turn := newTurn(snapshot, parentOf(head), at, info, rid, e.identity())
+	changed, err := noteIgnored(c, snapshot.Ignored)
+	if err != nil {
+		return Sealed{}, err
+	}
+	if changed {
+		snapshot, err = e.snapshotReply(ctx, c, rid, []string{})
+		if err != nil {
+			return Sealed{}, err
+		}
+	}
+	turn := newTurn(snapshot.Snapshot, parentOf(head), at, info, rid, e.identity())
 	if err := appendTurn(c, turn); err != nil {
 		return Sealed{}, fmt.Errorf("seal: record turn: %w", err)
 	}
+	screened.scan.commit()
 	return Sealed{Turn: turn, Receipt: receipt}, nil
 }
 
@@ -158,11 +174,25 @@ func (e Engine) identity() Identity {
 // the agent-run trigger. The label carries the receipt id, which is what ties
 // a snapshot to its receipt until the engine has a receipt field of its own.
 func (e Engine) snapshot(ctx context.Context, c cell.Cell, receipt string, changed []string) (string, error) {
+	reply, err := e.snapshotReply(ctx, c, receipt, changed)
+	return reply.Snapshot, err
+}
+
+type captureReply struct {
+	Snapshot string        `json:"snapshot"`
+	Ignored  *ignoredPaths `json:"ignored"`
+}
+
+func (e Engine) snapshotReply(ctx context.Context, c cell.Cell, receipt string, changed []string) (captureReply, error) {
 	out, err := e.do(ctx, c, e.cellDir(c), sealOp{Turn: receipt, Changed: changedPaths(changed)})
 	if err != nil {
-		return "", fmt.Errorf("seal: snapshot: %w", err)
+		return captureReply{}, fmt.Errorf("seal: snapshot: %w", err)
 	}
-	return parseSnapshot(out)
+	var reply captureReply
+	if err := json.Unmarshal(out, &reply); err != nil || reply.Snapshot == "" {
+		return reply, fmt.Errorf("seal: engine answered %q, not a snapshot id", bytes.TrimSpace(out))
+	}
+	return reply, nil
 }
 
 // changedPaths is the paths the engine should visit instead of walking the
@@ -222,7 +252,11 @@ func stateDir(c cell.Cell) string { return filepath.Join(c.Root, cell.StateDir) 
 // do runs one engine verb on the cell's folder against the cell's store, with
 // cellDir composed in as the tree's .cell/ entry.
 func (e Engine) do(ctx context.Context, c cell.Cell, cellDir string, op Op) ([]byte, error) {
-	target := Target{Tree: e.tree(c), DataDir: e.LocalDir(c), CellDir: cellDir}
+	target := e.target(c)
+	target.CellDir = cellDir
+	if err := e.bindTarget(ctx, c, target); err != nil {
+		return nil, err
+	}
 	return e.transport().Do(ctx, target, op)
 }
 
@@ -241,4 +275,24 @@ func parseSnapshot(out []byte) (string, error) {
 		return "", fmt.Errorf("seal: engine answered %q, not a snapshot id", bytes.TrimSpace(out))
 	}
 	return doc.Snapshot, nil
+}
+
+// StoreDir shares objects for new chats, while an existing per-cell store keeps
+// its original folder and path-based workspace identity. WAL creation alone must
+// never select the legacy layout (D1).
+func (e Engine) StoreDir(c cell.Cell) string {
+	local := e.LocalDir(c)
+	if _, err := os.Stat(filepath.Join(local, "store-v1")); err == nil {
+		return local
+	}
+	return filepath.Join(e.Root(), "shared")
+}
+
+func (e Engine) target(c cell.Cell) Target {
+	dir := e.StoreDir(c)
+	timeline := c.ID
+	if dir == e.LocalDir(c) {
+		timeline = ""
+	}
+	return Target{Tree: e.tree(c), DataDir: dir, CellDir: e.cellDir(c), Timeline: timeline}
 }

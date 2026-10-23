@@ -35,9 +35,10 @@ type wireRequest struct {
 }
 
 type wireTarget struct {
-	DataDir string `json:"data_dir"`
-	Tree    string `json:"tree"`
-	CellDir string `json:"cell_dir,omitempty"`
+	Timeline string `json:"timeline,omitempty"`
+	DataDir  string `json:"data_dir"`
+	Tree     string `json:"tree"`
+	CellDir  string `json:"cell_dir,omitempty"`
 }
 
 type wireResponse struct {
@@ -119,7 +120,7 @@ func newRequest(t Target, op Op) wireRequest {
 	args, _ := json.Marshal(op) // an Op is plain data
 	return wireRequest{
 		V: wireVersion, ID: nextID.Add(1), Verb: op.Verb(), Args: args,
-		Target: &wireTarget{DataDir: t.DataDir, Tree: t.Tree, CellDir: t.CellDir},
+		Target: &wireTarget{DataDir: t.DataDir, Tree: t.Tree, CellDir: t.CellDir, Timeline: t.Timeline},
 	}
 }
 

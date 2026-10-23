@@ -114,6 +114,11 @@ func (c *Continuer) OpenBranch(ctx context.Context, id string) (Continued, error
 }
 
 func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseExpectation, branchOnly bool) (Continued, error) {
+	root := c.opt.RootFor(id)
+	defer handoff.Arrive(root)()
+	if err := cellstore.Await(ctx, cell.Cell{Root: root}); err != nil {
+		return Continued{}, err
+	}
 	view, err := c.sync.Dir.Cell(ctx, id)
 	if err != nil {
 		return Continued{}, err
@@ -121,7 +126,6 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	if branchOnly && (view.Cell.ParentCell == "" || view.Cell.Archived) {
 		return Continued{}, errors.New("these turns are no longer available to open separately")
 	}
-	defer handoff.Arrive(c.opt.RootFor(id))()
 	from := c.holderName(ctx, id)
 	c.retireHolder(ctx, id)
 	sc := c.sync.scope(id)
@@ -300,7 +304,7 @@ func (l engineLocal) Seal(ctx context.Context, c cell.Cell) (string, uint32, err
 	if err != nil {
 		return "", 0, err
 	}
-	sealed, err := l.eng.Seal(ctx, opened, cellstore.TurnInfo{})
+	sealed, err := l.eng.SealRecovered(ctx, opened)
 	return sealed.Turn.ID, 1, err
 }
 

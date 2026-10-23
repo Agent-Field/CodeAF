@@ -326,7 +326,8 @@ func (p *c23CommandProbe) Observe(req executor.ExecRequest, _ executor.ExecResul
 }
 
 // TestC23NewChatCanWriteToASiblingThroughItsSeat proves C23 through a real
-// sealed call, so cells being on cannot narrow the host's write access.
+// sealed call, so cells being on cannot narrow the host's write access. D4 also
+// requires the pending capture to finish before its files are removed.
 func TestC23NewChatCanWriteToASiblingThroughItsSeat(t *testing.T) {
 	celltest.RequireEngine(t)
 	t.Setenv("CODEAF_HOME", t.TempDir())
@@ -357,5 +358,8 @@ func TestC23NewChatCanWriteToASiblingThroughItsSeat(t *testing.T) {
 	}
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("sibling file was not written: %v", err)
+	}
+	if err := executor.Drain(context.Background(), seat); err != nil {
+		t.Fatalf("sibling write was not sealed: %v", err)
 	}
 }

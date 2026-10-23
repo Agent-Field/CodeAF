@@ -99,7 +99,7 @@ func (s resumeState) pick() *chatlist.Row {
 
 // offered says a row is a chat to rescue.
 func (s resumeState) offered(row chatlist.Row) bool {
-	live := row.Status == chatlist.Running || row.Status == chatlist.Off
+	live := row.Status == chatlist.Running || row.Status == chatlist.Off || (row.Status == chatlist.Idle && !row.Mine)
 	return live && row.Device != "" && !s.answered[row.Device] && row.DurableAgo <= resumeRecent && s.away(row)
 }
 
@@ -107,7 +107,7 @@ func (s resumeState) offered(row chatlist.Row) bool {
 // or the feed, when it can speak and the row names the device, does not list it
 // as online.
 func (s resumeState) away(row chatlist.Row) bool {
-	if row.Status == chatlist.Off {
+	if row.Status == chatlist.Off || (row.Status == chatlist.Idle && !row.Mine) {
 		return true
 	}
 	return s.feedUp && row.DeviceID != "" && !slices.Contains(s.online, row.DeviceID)

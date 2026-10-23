@@ -663,10 +663,9 @@ func (p *v3Process) closeAll() {
 		// conversations still get closed.
 		guard.Go("chatv3/close-agent", func() {
 			defer waiting.Done()
-			// The error is dropped for the reason the door's defer always
-			// dropped it: nothing is left to say it to, and a session file that
-			// would not flush is not a reason to hold the terminal.
-			_ = agent.Close()
+			// A pending save has a bounded wait. Its failure must remain visible
+			// after the terminal is restored, rather than disappearing with the surface.
+			closeV3Agent(agent)
 		})
 	}
 	waiting.Wait()
@@ -876,7 +875,7 @@ func (s *v3Seam) open(launch *v3Launch, cfg session.Config, resumed bool) (tui3.
 	}
 	conv, err := s.bundle(agent, launch, cfg, resumed, notice)
 	if err != nil {
-		_ = agent.Close()
+		closeV3Agent(agent)
 		return tui3.Conversation{}, err
 	}
 	return conv, nil
@@ -1077,5 +1076,13 @@ func v3RehomeLegacyMemories(brain *store.Store) {
 			// quarantine, and the complaint names where.
 			fmt.Fprintln(os.Stderr, "memory: could not re-home quarantined rows: "+err.Error())
 		}
+	}
+}
+
+// closeV3Agent preserves a saving failure after the full-screen surface has
+// closed. A bounded drain must never silently acknowledge a pending save (D3).
+func closeV3Agent(agent interface{ Close() error }) {
+	if err := agent.Close(); err != nil {
+		fmt.Fprintln(os.Stderr, "codeaf: "+err.Error())
 	}
 }

@@ -153,12 +153,12 @@ func TestC9SealScreensBeyondItsChangedHint(t *testing.T) {
 
 func assertC9Screened(t *testing.T, e Engine, r *guardRig, path, secret string) {
 	t.Helper()
-	for _, dir := range []string{e.LocalDir(r.cell), stateDir(r.cell)} {
+	for _, dir := range []string{e.StoreDir(r.cell), stateDir(r.cell)} {
 		if hits := grepStore(t, dir, secret); len(hits) != 0 {
 			t.Fatalf("working-tree secret reached raw saved files: %v", hits)
 		}
 	}
-	if len(grepStore(t, e.LocalDir(r.cell), "C9_SAFE_CAPTURE_MARKER")) == 0 {
+	if len(grepStore(t, e.StoreDir(r.cell), "C9_SAFE_CAPTURE_MARKER")) == 0 {
 		t.Fatal("the fixture did not capture its safe file in plaintext")
 	}
 	_, withheld, err := e.Withheld(r.cell)
