@@ -24,6 +24,9 @@ func creditsProfile(t *testing.T) string {
 
 func TestCreditsRecordChangesImplicitDefaultsWithoutSavingModels(t *testing.T) {
 	dir := creditsProfile(t)
+	if err := SetCrewFreeRoutes(dir, true); err != nil {
+		t.Fatal(err)
+	}
 	if err := WriteAPIKey(dir, "secret-key"); err != nil {
 		t.Fatal(err)
 	}
@@ -190,6 +193,9 @@ func TestFreeModelNeedsASuffixOrAKnownZeroTariff(t *testing.T) {
 // paid OpenRouter route is tried first. A healthy reading routes as usual.
 func TestALowBalanceRoutesTheCrewToFreePools(t *testing.T) {
 	dir := crewProfile(t)
+	if err := SetCrewFreeRoutes(dir, true); err != nil {
+		t.Fatal(err)
+	}
 	rows := CrewCatalog()
 	rows = append(rows, catalog.Model{ID: "z-ai/glm-5.3-flash:free", OpenWeights: true, IntelligenceIndex: 41.8, CodingIndex: 71.5,
 		AgenticIndex: 50.9, ArenaElo: 1348, ContextLength: 1310720, Parameters: []string{"tools"}})
@@ -210,6 +216,9 @@ func TestALowBalanceRoutesTheCrewToFreePools(t *testing.T) {
 	}
 	if strings.Count(d.Note, "free routes in use (may log prompts)") != 1 {
 		t.Errorf("the decision note is %q, want the free-routes notice once", d.Note)
+	}
+	if err := SetCrewFreeRoutes(dir, false); err != nil {
+		t.Fatal(err)
 	}
 	if err := WriteCreditsReading(dir, APIKeyAt(dir), credits.Reading{Known: true}); err != nil {
 		t.Fatal(err)
@@ -238,6 +247,9 @@ func TestLowCreditsFollowTheEffectiveEnvironmentKey(t *testing.T) {
 		t.Run(row.name, func(t *testing.T) {
 			t.Setenv("CODEAF_BASE_URL", "")
 			dir := creditsProfile(t)
+			if err := SetCrewFreeRoutes(dir, true); err != nil {
+				t.Fatal(err)
+			}
 			if err := WriteAPIKey(dir, "sk-or-v1-test-profile"); err != nil {
 				t.Fatal(err)
 			}

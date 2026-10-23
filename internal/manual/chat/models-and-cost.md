@@ -883,8 +883,11 @@ the task stops on the one thing to do, which leads its line in place of `/redo s
 continue`, `reconnect openrouter with /connect`, or when the limit resets. What each route did is kept: a route
 that refused a model is left out for a week, one at its limit rests until its reset, an
 account out of credit is skipped until a paid call on it answers again. Free routes are
-off unless you turn them on; when every paid route is out of reach they are used anyway,
-and the line says `free routes in use (may log prompts)`. A rescue never takes a model
+off unless you turn them on, including after a payment refusal or a low-balance reading.
+With free routes off, the task tries eligible connected alternatives or stops with
+`add credit on openrouter to continue`; your work stays saved. You can add credit,
+connect another provider, or explicitly enable free routes in `/crew`. When enabled,
+the line says `free routes in use (may log prompts)`. A rescue never takes a model
 whose name says it was tuned for one domain (finance, medicine, law) or is too small for
 a seat's work, and a seat tries at most three free pools in a task; a pool at its limit
 is not waited on — the seat moves on at once, and with nothing left the task stops on
@@ -913,9 +916,10 @@ logged with how it ended, and routes are weighed by it:
   that rarely answers can lose to a dearer one that does;
 - an **account out of credit** or a **key refused** is skipped by helpers, and the next
   task's first seat call asks it again, once: an answer puts it back at once;
-- an **OpenRouter balance read as low** (*OpenRouter credits and free models*) counts as out
-  of credit before any call is made and is not asked again by a task: with no other paid
-  provider connected, the crew goes to free routes and the line says
+- an **OpenRouter balance read as low** (*OpenRouter credits and free models*) steers
+  automatic seats toward free routes only if you enabled them. With free routes off,
+  a small positive balance remains usable until a payment refusal or a known-zero
+  account says otherwise. With free routes enabled, the crew may use them and its line says
   `free routes in use (may log prompts) · credit unavailable on openrouter`. The balance is
   read again at every launch while it is low, so a top-up puts routing back to ordinary.
 
@@ -1067,14 +1071,19 @@ content (`docs/TELEMETRY.md` in the repository lists every field they carry).
 
 **Free routes may log prompts.** A provider's free pool of a model (an OpenRouter `…:free`
 id) may log or train on what it is sent. The crew uses free routes only when you turn
-them on — the `free routes` switch at the end of `/crew`'s providers list — with one
-exception: when every paid route a seat could use is out of reach, a seat moves onto a
-free pool rather than leave the task unable to run. "Out of reach" is one of: your
-OpenRouter balance is known to be low, a paid call on that provider was refused for
-payment, or the provider reports its credit at zero. A seat tries at most three free pools
-in one task; your allowed models (`/crew models`) still limit which ones; and the task's
-crew line then says `free routes in use (may log prompts)`. A paid call answering again
-puts the next task back on paid routes.
+them on — the `free routes` switch at the end of `/crew`'s providers list. A low balance,
+remembered payment refusal, or live payment refusal never turns that switch on or
+sends a task to a free pool behind your back. Existing paid, subscription and local
+connections remain eligible. If none can serve the task, its work stays saved and
+its line explains how to continue: add credit or reconnect the provider. You can
+also explicitly enable free routes in `/crew` if their privacy tradeoff is acceptable.
+
+An explicit choice of a named `:free` model — in `/model`, a helper row, or a crew pin —
+permits that named route even with the automatic switch off. It does not permit
+other free fallback models. Turning the switch off also excludes free routes from
+saved automatic fallback ladders. When free routes are enabled, a seat tries at
+most three pools per task, within your allowed models and spend limits, and the
+crew line says `free routes in use (may log prompts)`.
 
 ## Why does my OpenRouter activity say AgentField AI or codeaf dev — which app a request names
 

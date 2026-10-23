@@ -393,6 +393,9 @@ func (c crewSeatCompleter) completeSeat(ctx context.Context, key string, message
 	retried := false
 	for {
 		current := crew.sendFor(key)
+		if c.freeRouteBlocked(current) {
+			return nil, crewSeatEnd("free routes are off · choose a paid model or enable free routes in /crew", nil)
+		}
 		if failed, ok := crew.failedHere(current); ok {
 			// A SEND THAT FAILED ON THIS TASK IS NOT ASKED AGAIN, by this seat
 			// or any other: a pool that answered 429 with an hour's
@@ -817,7 +820,8 @@ func (a *Agent) moveCrewSeat(run *beltRun, key, current string, kind provider.Ro
 		if run.recoveredCrew != nil {
 			rescue = crew.rescue[seat]
 		}
-		rung, ok := crew.takeRungLocked(seat, append(append([]crewroute.Pick(nil), crew.ladders[seat]...), rescue...))
+		rungs := append(append([]crewroute.Pick(nil), crew.ladders[seat]...), rescue...)
+		rung, ok := crew.takeRungLocked(seat, config.AutomaticCrewRungs(a.config.ProfileDir, rungs))
 		if !ok {
 			continue
 		}
