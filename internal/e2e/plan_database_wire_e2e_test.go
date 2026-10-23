@@ -25,9 +25,10 @@ func planCLI(t *testing.T, ctx context.Context, dir, path string, args ...string
 	t.Helper()
 	argv := append([]string{"plandb"}, args...)
 	argv = append(argv, "--db", path, "--json")
-	cmd := exec.CommandContext(ctx, binary(t), argv...)
+	home := t.TempDir()
+	env := append(os.Environ(), "CODEAF_HOME="+home, "CODEAF_PROFILE_DIR=", "PLANDB_DB=", "PLANDB_RUN=", "PLANDB_AGENT=")
+	cmd := guardedCommand(t, ctx, home, env, binary(t), argv...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "PLANDB_DB=", "PLANDB_RUN=", "PLANDB_AGENT=")
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
