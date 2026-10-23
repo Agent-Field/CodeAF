@@ -56,17 +56,20 @@ func TestPolicyFollowsOnlySameOrigin(t *testing.T) {
 
 func TestPolicyStopsAfterTenRequests(t *testing.T) {
 	original := requestFor(t, "https://api.example.com/v1/chat")
-	// Eleven requests in the chain — the original plus ten redirects — is the
-	// same depth at which the stdlib default refuses to follow any further.
-	via := []*http.Request{original, original, original, original, original, original, original, original, original, original, original}
+	// Ten requests in the chain (the original plus nine redirects) is the
+	// depth at which the stdlib default refuses to follow any further — its
+	// cap is len(via) >= 10, checked before the next request is built — so
+	// the tenth request's redirect is the last one answered and no eleventh
+	// request is ever sent.
+	via := []*http.Request{original, original, original, original, original, original, original, original, original, original}
 	err := Policy(original, via)
 	if err == nil || !strings.Contains(err.Error(), "10 redirects") {
 		t.Fatalf("Policy cap = %v, want stopped after 10 redirects", err)
 	}
 	// One request shy of the cap is still followed when it stays on the origin.
-	ten := via[:10]
-	if err := Policy(original, ten); err != nil {
-		t.Fatalf("Policy refused a chain of ten requests: %v", err)
+	nine := via[:9]
+	if err := Policy(original, nine); err != nil {
+		t.Fatalf("Policy refused a chain of nine requests: %v", err)
 	}
 }
 

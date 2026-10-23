@@ -36,11 +36,12 @@ func (e *RefusedError) Error() string {
 // header would surface as a confusing 401 at a host the person never
 // configured. Same-origin redirects keep working.
 //
-// Like the stdlib default, the policy stops after 10 redirects so a same-origin
-// loop terminates: the chain is refused at the same depth Go's own cap would
-// stop it, where the requests made so far, original included, exceed ten.
+// Like the stdlib default, the policy stops after ten requests in the chain
+// so a same-origin loop terminates: the check runs before the next request is
+// built, so a chain of ten requests (the original included) is refused at
+// exactly the same depth as Go's own cap — before an eleventh goes out.
 func Policy(request *http.Request, via []*http.Request) error {
-	if len(via) > 10 {
+	if len(via) >= 10 {
 		return errors.New("stopped after 10 redirects")
 	}
 	if len(via) == 0 || sameOrigin(request.URL, via[0].URL) {
