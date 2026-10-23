@@ -1,10 +1,17 @@
 # OpenRouter credits and free models: it worked and then stopped
 
-## Out of credits — why codeaf picks only free models
+## Out of credits — free models need your choice
 
 For the default OpenRouter service, codeaf reads the account's credit balance and
 the key's own spending cap, whichever is smaller. A known remaining balance of $0.50
-or less is low. While it is low, a new conversation on a profile where you never
+or less is low. A low balance never grants permission to use prompt-logging free routes.
+With automatic free routes off (the default), chat and helpers keep their normal
+models, and a small positive balance can still serve paid tasks. If a paid request
+is refused, tasks try eligible connected alternatives or stop with the add-credit action.
+Your work stays saved. Add credit, connect another provider, or explicitly turn on
+`free routes` in `/crew` if you accept that tradeoff.
+
+When free routes are enabled and the balance is low, a new conversation on a profile where you never
 chose a model opens on `qwen/qwen3.8-27b:free`, and the two helper rows nobody set
 use `nvidia/nemotron-3.5-lightning:free` for reflex and
 `thinkingmachines/inkling-small:free` for small work. The crew's three seats — worker,
@@ -50,7 +57,8 @@ on the vendor's whole sentence, top-up link included, for example
 Any payment refusal from OpenRouter — on your turn, or on a background call such
 as the reflex, a title or a task — also starts a fresh balance read, unless one
 finished in the last 30 seconds. If the account reads low, the free defaults and
-the warning below take effect without a relaunch.
+the warning below take effect without a relaunch; free defaults apply only if you
+enabled free routes.
 
 ## Why is my model a free one — when the balance is read
 
@@ -69,7 +77,8 @@ The read decides whether the key expired; a merely invalid key is a failed read 
 changes nothing.
 
 A conversation that has sent nothing and whose model nobody chose follows the
-default both ways: onto the free model when the account reads low, and back to
+default both ways: onto the free model when the account reads low and free routes
+are enabled, and back to
 the usual default when a later read finds more than $0.50. A conversation that has
 sent a message keeps its model either way. After a top-up, the next new
 conversation opens on the usual default, the helper rows return to their usual models,

@@ -1,6 +1,6 @@
 package config
 
-// FreeChatModel is the build's chat bottom rung while a known account is low.
+// FreeChatModel is the implicit chat rung when free routes are enabled and credit is low.
 const FreeChatModel = "qwen/qwen3.8-27b:free"
 
 // freeHelperModels are the free models the two rows that are not crew seats —
@@ -11,7 +11,7 @@ const FreeChatModel = "qwen/qwen3.8-27b:free"
 // The three crew seats are not here: they are routed per task, and a known-low
 // account reaches the router as an OpenRouter account out of credit
 // ([crewHealthAt]), which moves the seats onto free routes with the router's
-// own notice.
+// own notice, but only with explicit free-route opt-in.
 var freeHelperModels = map[string]string{
 	ModelTierReflex: "nvidia/nemotron-3.5-lightning:free",
 	ModelTierLow:    "thinkingmachines/inkling-small:free",
