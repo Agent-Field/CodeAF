@@ -130,6 +130,11 @@ func (h *Handler) redactMachines(r *http.Request, j *api.Job) {
 	}
 	caller := h.machineViewer(r)
 	mine := func(handle string) bool { return caller != "" && factory.NormalizeHandle(handle) == caller }
+	// Capacity belongs to the job owner's computers, just like their slots and
+	// heartbeat. Shared job state remains visible without exposing those counts.
+	if j.StatePresentation.Kind == "waiting_for_capacity" && !mine(j.AssignedTo) {
+		j.StatePresentation.Detail = "Waiting for an available execution slot."
+	}
 	// A live hold names its machine from the lease and the worker's own handle:
 	// that is wire provenance. The job's assignee proves nothing about a stored
 	// machine id (a reassigned job keeps the first worker's id), so every
