@@ -1,7 +1,7 @@
 # codeaf Test-stage reliability plan
 
 **Updated:** 2026-10-23, after independent feedback and source verification.  
-**Status:** Plan A implemented and focused source checks passed; isolated native build is the final release gate. Plans B and C are follow-on designs, not claims about this build.  
+**Status:** Plan A implemented and focused source checks passed; isolated native bundles have separate provenance and signature verification. Plans B and C are follow-on designs, not claims about this build.
 **Audited revisions:** engine `e2e5a6f08`; desktop `fefc2982`.  
 **Review input:** `CodeAF-Test-Stage-Reliability-Plan-2026-10-23-feedback.md` on the Desktop. The review is evidence to check, not implementation authority.
 
@@ -133,3 +133,18 @@ The original detailed proposal and feedback remain available for later B/C desig
 - Source naming and whitespace checks pass. Broad Linux/native physical-sleep and arbitrary-crash acceptance have not been run and are not implied by these fixtures. No live job was used or resumed.
 
 Specific retained limits: checkpoints are runtime-only; explicit coverage requirements remain B; delivery still has a service apply/cache crash gap and no automatic old-lease reconciliation UI; same-job cleanup fencing is in-process, not physical orphan reconciliation; presence reporting does not stop OS-resumed goroutines before the wake callback. Earlier same-round attempts stay visible in the UI, but their ambiguous legacy round-only chat link is withheld.
+
+
+## 9. Integration review
+
+Two additional regression fixtures failed against the source handoff and pass
+with the integration follow-up. If the first delivery artifact cannot be saved,
+cleanup preserves the only remaining mirror. A model report refusal also keeps
+the recovery owner's newer terminal assessment rather than withdrawing it as a
+stale model completion. Existing malformed-report withdrawal remains enforced.
+
+The final focused integration selection passed 56 top-level engine tests under
+race detection across ten packages, 74 desktop projection/history tests, one
+native bridge test, TypeScript and the CSS/raw-value/case gates. This does not
+expand the retained durability or physical-process guarantees above. The final
+engine revision and exact desktop revision are recorded in bundle provenance.

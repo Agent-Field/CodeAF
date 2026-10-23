@@ -249,6 +249,11 @@ func (j *job) retainDeliverySnapshot() error {
 }
 
 func (j *job) clearMirror() {
+	// An initial delivery save can fail before a pending artifact exists.
+	// Keep the mirror itself when it is the only copy of unconfirmed work.
+	if j.blocked != "" && j.pending == nil {
+		return
+	}
 	if err := j.retainDeliverySnapshot(); err != nil {
 		// A failed private save is not permission to erase the last local copy.
 		return

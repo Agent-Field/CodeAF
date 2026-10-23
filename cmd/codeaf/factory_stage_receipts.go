@@ -324,6 +324,7 @@ type receiptStageDoor struct {
 	workRunning     func() bool
 	requireFresh    bool
 	requireAnyCheck bool
+	recoveryFinal   bool
 }
 
 func (d *receiptStageDoor) Report(ctx context.Context, r factory.StageResult) error {
@@ -386,6 +387,13 @@ func (d *receiptStageDoor) Report(ctx context.Context, r factory.StageResult) er
 // RejectReport forwards invalidation through the evidence wrapper, including
 // parser rejections that happen before Report can receive a typed result.
 func (d *receiptStageDoor) RejectReport() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	// A refused model report may have just installed the recovery owner's
+	// newer terminal assessment. Do not invalidate that assessment as stale.
+	if d.recoveryFinal {
+		return
+	}
 	if door, ok := d.StageDoor.(interface{ RejectReport() }); ok {
 		door.RejectReport()
 	}
@@ -477,7 +485,7 @@ func (d *receiptStageDoor) stopVerification(why string) {
 	stop := d.stop
 	// The runner receives an honest incomplete result before its stop signal.
 	// needs_you parks Follow PR instead of starting another paid repair round.
-	_ = d.StageDoor.Report(context.Background(), factory.StageResult{Done: false, Exit: 1, Output: reason, Repair: &factory.CIRepairResult{Decision: "needs_you", Reason: reason}})
+	d.recoveryFinal = d.StageDoor.Report(context.Background(), factory.StageResult{Done: false, Exit: 1, Output: reason, Repair: &factory.CIRepairResult{Decision: "needs_you", Reason: reason}}) == nil
 	stop <- reason
 	d.mu.Unlock()
 }

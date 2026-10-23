@@ -689,6 +689,8 @@ only a confirmed response advances its baseline. Retryable delivery uses a
 two-minute window with bounded request waits. Deterministic rejection stops work,
 retains the unsent results privately and asks for reporting-problem reconciliation,
 without claiming that the tests failed. It does not release the job as complete.
+If the first local delivery save fails, cleanup keeps the mirror containing the
+unconfirmed results and spending rather than deleting their only retained copy.
 
 This delivery bridge does not automatically replay old leases after a restart.
 The server's response cache still has a gap between applying results and saving
@@ -720,7 +722,9 @@ Old receipts without that boundary are not silently reclassified as harmless.
 The desktop shows a running check's purpose and actual start time in the existing
 step Activity and sidebar. An incomplete reporting wait is distinct from a failed
 assertion. After bounded in-round recovery, a guarded step retry preserves usable
-results without automatically charging another code-repair round. Manual retains
+results without automatically charging another code-repair round. When repeated
+completion refusals stop recovery, their explicit recovery assessment is retained;
+rejecting the model's claim cannot withdraw that newer stopped outcome. Manual retains
 its existing approval meaning; it is not a pause of an already authorized check.
 
 Granted round limits survive a new runner. Retry history merges by conversation,
