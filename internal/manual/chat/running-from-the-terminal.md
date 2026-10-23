@@ -636,6 +636,15 @@ The top-level synopsis includes `do` worker limits and model choices (`--slots`,
 `--best`, `--cheap`, `--pin`, and `--check-model`). It also names chat
 `--max-cost` and `--max-hours`; those unattended-work limits require `--yolo`.
 
+## Conversation time limit — --max-hours
+
+When the conversation reaches `--max-hours`, its delegated runs, background jobs,
+and automatic memory or title work stop before the terminal error appears:
+`conversation time limit reached · start a new conversation or relaunch with a larger --max-hours`.
+The stopped run records `a time limit you set stopped it`. Start a new conversation
+or relaunch with a larger limit to do more work. Closing a window is different: it
+detaches the window and does not itself stop delegated work.
+
 ## What $? means after a headless one-shot — the codes it leaves with
 
 **One table, and `codeaf do`, `codeaf exec` and `codeaf run` all leave on it.**

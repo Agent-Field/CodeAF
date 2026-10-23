@@ -1147,6 +1147,7 @@ func helpText(file string, chords chordSpelling) string {
 		// every chat; the second needs a team with a manager, and the rows say so
 		// rather than leaving a person to find out by pressing them elsewhere.
 		helpKeyRow(chords.say(trafficKey), "show or hide the right column · Tasks or Traffic"),
+		helpKeyRow(modelCycleKey, "next quick switch chat model · choose the rotation in Settings → Models"),
 		helpKeyRow(chords.say(teamManagerKey), "in a team with a manager: go to the manager"),
 		helpKeyRow(reopenTabChord, "reopen the last closed tab · when the terminal sends this distinct chord"),
 		helpKeyRow(chords.say(railHoldChord), "the task roster · ↑↓ move · ←→ tasks/traffic · enter opens · esc back"),

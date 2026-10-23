@@ -108,6 +108,7 @@ func (a *app) pulseCounted(msg pulseWorldMsg) {
 	if a.at(pageHome) || !msg.known {
 		return
 	}
+	a.homeReading.world, a.homeReading.known = msg.world, true
 	a.readMachine(a.now(), msg.world.Sessions())
 	a.touch()
 }

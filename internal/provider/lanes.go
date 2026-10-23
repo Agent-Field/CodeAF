@@ -12,6 +12,8 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/trace"
+
+	"github.com/Agent-Field/codeaf/internal/providerhttp"
 )
 
 // ── THE ADAPTER BETWEEN A BELIEF AND A WIRE ─────────────────────────────────
@@ -896,9 +898,9 @@ func (f sheetFetcher) Fetch(ctx context.Context, url, bearer string) (io.ReadClo
 	ApplyAttribution(request.Header)
 	client := f.http
 	if client == nil {
-		client = &http.Client{Timeout: sheetTimeout}
+		client = &http.Client{Timeout: sheetTimeout, CheckRedirect: providerhttp.CheckRedirect}
 	}
-	response, err := client.Do(request)
+	response, err := providerhttp.Do(client, request)
 	if err != nil {
 		return nil, err
 	}

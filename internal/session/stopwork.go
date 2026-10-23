@@ -1,13 +1,18 @@
 package session
 
-import "errors"
+import (
+	"context"
+	"errors"
+)
 
 var errWorkStopping = errors.New("this conversation is stopping; wait for its work to finish stopping before sending a new message")
 
 // StopWork closes this conversation's admission gates before cancelling work.
 // Unlike Interrupt, this includes background jobs and adaptive runs. Completion
 // news remains in the record but cannot buy another turn until a fresh Submit.
-func (a *Agent) StopWork() error {
+func (a *Agent) StopWork() error { return a.stopWorkFor("", StopByWorkStopped) }
+
+func (a *Agent) stopWorkFor(why string, door StopDoor) error {
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
@@ -18,9 +23,13 @@ func (a *Agent) StopWork() error {
 		return nil
 	}
 	a.workStopped, a.workStopping = true, true
+	a.workEpoch++
+	a.workStopReason = why
+	a.workStopDone = make(chan struct{})
 	a.dropFollowUpsLocked()
 	a.stopSteerGraceLocked()
 	cancel, done := a.cancel, a.done
+	memoryStop, titleStop := a.memoryStop, a.titleStop
 	// Keep completed runs inspectable, and mark cancellation as the person's
 	// decision before cutting their contexts. Close deliberately discards this
 	// registry; stopping a conversation must preserve it.
@@ -46,9 +55,15 @@ func (a *Agent) StopWork() error {
 		graph.mu.Unlock()
 	}
 	a.mu.Unlock()
+	if memoryStop != nil {
+		memoryStop()
+	}
+	if titleStop != nil {
+		titleStop()
+	}
 	a.interrupt.begin()
 	if cancel != nil {
-		cancel(stopFor(StopByWorkStopped))
+		cancel(stopFor(door))
 	}
 	for _, live := range runs {
 		live.run.Cancel()
@@ -59,17 +74,18 @@ func (a *Agent) StopWork() error {
 	}
 	// The UI receives acceptance promptly. Reopening admission waits for the old
 	// producers themselves, so a late tool cannot join a freshly resumed registry.
-	go a.finishWorkStop(done, graph, jobs)
+	beltDone := a.stopOwnedBeltRun(why)
+	go a.finishWorkStop(done, graph, jobs, beltDone, why)
 	return nil
 }
 
-func (a *Agent) finishWorkStop(done <-chan struct{}, graph *TaskGraph, jobs *jobRegistry) {
+func (a *Agent) finishWorkStop(done <-chan struct{}, graph *TaskGraph, jobs *jobRegistry, beltDone <-chan struct{}, why string) {
 	if graph != nil {
 		graph.mu.Lock()
 		ids := append([]uint64(nil), graph.order...)
 		graph.mu.Unlock()
 		for _, id := range ids {
-			_, _ = graph.stop(id)
+			_, _ = graph.stopFor(id, why)
 		}
 	}
 	if jobs != nil {
@@ -78,6 +94,11 @@ func (a *Agent) finishWorkStop(done <-chan struct{}, graph *TaskGraph, jobs *job
 	if done != nil {
 		<-done
 	}
+	if beltDone != nil {
+		<-beltDone
+	}
+	a.memoryJobs.Wait()
+	a.titleJobs.Wait()
 	a.orchestrateWorkers.Wait()
 	// Setup admitted before StopWork may have created the graph meanwhile. Its
 	// constructor inherits the closed gate, and its final nodes are cancelled here.
@@ -89,7 +110,7 @@ func (a *Agent) finishWorkStop(done <-chan struct{}, graph *TaskGraph, jobs *job
 		ids := append([]uint64(nil), graph.order...)
 		graph.mu.Unlock()
 		for _, id := range ids {
-			_, _ = graph.stop(id)
+			_, _ = graph.stopFor(id, why)
 		}
 		graph.runners.Wait()
 	}
@@ -98,19 +119,39 @@ func (a *Agent) finishWorkStop(done <-chan struct{}, graph *TaskGraph, jobs *job
 			<-job.done
 		}
 	}
+	// A run admitted before Stop may have finished setup after the first cut.
+	a.beltStartMu.Lock()
+	late := a.stopOwnedBeltRun(why)
+	a.beltStartMu.Unlock()
+	if late != nil {
+		<-late
+	}
 	a.mu.Lock()
 	a.workStopping = false
+	close(a.workStopDone)
 	a.mu.Unlock()
 }
 
 // resumeWorkLocked is reached only by a new explicit user submission. Keeping
 // the same registries preserves job IDs, logs and the task history on reopening.
 func (a *Agent) resumeWorkLocked() error {
+	if a.wallEndingTaken && a.interactiveBudget().Wall > 0 {
+		return launchBudgetReached{said: conversationTimeLimitWord}
+	}
 	if a.workStopping {
 		return errWorkStopping
 	}
 	if !a.workStopped {
 		return nil
+	}
+	// The old auxiliary producers have joined before admission reopens. A
+	// fresh explicit input gets fresh lifetimes; old retries keep cancelled ones.
+	if a.memoryCtx != nil {
+		a.memoryCtx, a.memoryStop = context.WithCancel(context.Background())
+	}
+	a.titleCtx, a.titleStop = context.WithCancel(context.Background())
+	if a.title == "" {
+		a.titleTried = false
 	}
 	a.workStopped = false
 	a.orchestrateContext, a.orchestrateStop = nil, nil
@@ -123,4 +164,17 @@ func (a *Agent) resumeWorkLocked() error {
 		a.tasks.mu.Unlock()
 	}
 	return nil
+}
+
+// stopOwnedBeltRun marks the run terminal before cutting its shared worker
+// context. Close uses a different road so ordinary detach stays resumable.
+func (a *Agent) stopOwnedBeltRun(why string) <-chan struct{} {
+	a.beltMu.Lock()
+	run := a.beltRun
+	a.beltMu.Unlock()
+	if run == nil {
+		return nil
+	}
+	_, _, _ = a.stopBeltRow(run.row, why)
+	return run.over
 }

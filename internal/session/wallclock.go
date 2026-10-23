@@ -42,10 +42,14 @@ func wallIsUp(steward *Steward) bool {
 // road leaves work alone, while this reader stops it and keeps what it did.
 const stopStoppedMovingTail = " · work was still going, so it was stopped and what it did was kept"
 
-// armWallClock starts the one reader only for an unattended session whose
-// budget names a wall. A person, an unattended session with no budget, and a
-// money-only ceiling get no channel and no goroutine at all.
+// armWallClock arms an explicit interactive launch wall, or the existing
+// unattended Steward wall. Sessions without a wall and money-only ceilings
+// get no channel or goroutine.
 func (a *Agent) armWallClock() {
+	if a.interactiveBudget().Wall > 0 {
+		a.armConversationWall()
+		return
+	}
 	steward := a.steward()
 	if steward == nil || steward.Budget().Wall <= 0 {
 		return
@@ -117,14 +121,7 @@ func (a *Agent) endRunOnTheWall() bool {
 	}
 	a.mu.Unlock()
 
-	graph := a.tasker()
-	if graph == nil {
-		return false
-	}
-	graph.mu.Lock()
-	flight := graph.flightLocked()
-	graph.mu.Unlock()
-	if len(flight.moving) == 0 {
+	if !a.ownedWorkIsMoving() {
 		return false
 	}
 
@@ -148,9 +145,7 @@ func (a *Agent) endRunOnTheWall() bool {
 
 	a.stopWorkOnTheWall()
 	decision := stopSpent(why)
-	if len(flight.moving) > 0 {
-		decision.Reason += stopStoppedMovingTail
-	}
+	decision.Reason += stopStoppedMovingTail
 	note := checkpointStoppedNote + decision.Reason
 	a.journalDecision(decision)
 	a.record(textMessage("assistant", note))
@@ -178,21 +173,56 @@ func (a *Agent) endRunOnTheWall() bool {
 // lets a running worker land its stopped row, and deliberately leaves every
 // branch and working copy alone.
 func (a *Agent) stopWorkOnTheWall() {
-	graph := a.tasker()
-	if graph == nil {
+	if err := a.stopWorkFor(conversationTimeLimitReason, StopByTimeLimit); err != nil {
 		return
 	}
-	graph.mu.Lock()
-	graph.quitting = true
-	ids := make([]uint64, 0, len(graph.order))
-	for _, id := range graph.order {
-		if node := graph.nodes[id]; node != nil && !node.state.settled() {
-			ids = append(ids, id)
+	a.mu.Lock()
+	done := a.workStopDone
+	a.mu.Unlock()
+	if done != nil {
+		<-done
+	}
+}
+
+// ownedWorkIsMoving observes the same producers StopWork owns. A standalone
+// job or adaptive run need not have a moving row in the task graph.
+func (a *Agent) ownedWorkIsMoving() bool {
+	graph := a.tasker()
+	if graph != nil {
+		graph.mu.Lock()
+		moving := len(graph.flightLocked().moving) > 0
+		graph.mu.Unlock()
+		if moving {
+			return true
 		}
 	}
-	graph.mu.Unlock()
-
-	for _, id := range ids {
-		_, _ = graph.stop(id)
+	a.beltMu.Lock()
+	beltMoving := a.beltRun != nil
+	a.beltMu.Unlock()
+	if beltMoving {
+		return true
 	}
+	a.mu.Lock()
+	jobs, harnessMoving := a.jobs, len(a.harnessRuns) > 0
+	runs := make([]*orchestration, 0, len(a.orchestrations))
+	for _, run := range a.orchestrations {
+		runs = append(runs, run)
+	}
+	a.mu.Unlock()
+	if harnessMoving {
+		return true
+	}
+	if jobs != nil {
+		for _, job := range jobs.all() {
+			if job.running() {
+				return true
+			}
+		}
+	}
+	for _, live := range runs {
+		if !live.run.Snapshot().Done {
+			return true
+		}
+	}
+	return false
 }

@@ -2687,6 +2687,8 @@ No. Home’s Sessions list and the chats menu keep one row for the conversation,
 
 A run the task-belt switch (`CODEAF_TASK_BELT=bash`) drives also has a tab of its own on the strip beside its conversation’s, named after the task the run is working on, for as long as the run works. It is a view inside that conversation: while it is open it is the one tab drawn selected, and a press on the conversation’s tab, a press on the `home` tab, or `esc` leaves it.
 
+The run tab’s close button hides that task view without stopping its work or closing the conversation. `ctrl+w` does the same while that task tab is selected. Opening the task again from its row restores the tab. Closing the main conversation selects another open conversation, or Home when it was the last one; a task view never becomes a substitute conversation.
+
 A task handed to a program such as senior-dev has no tab. It opens inside the conversation’s own tab, as any task does, and `esc`, the conversation’s tab and the `home` tab leave it.
 
 ## Why does a closed conversation say another window
@@ -2696,3 +2698,11 @@ stop its work or release an agent still held by this window. Such a conversation
 remains in Home history and can reopen here; it must not claim another window
 holds it. The other-window label is reserved for a conversation actually held
 elsewhere.
+
+## Home opens immediately while its readings refresh
+
+`space` twice and `/home` show the last completed Home reading immediately.
+Conversations, memory changes, spending, deliverables and folder availability
+refresh in the background. The first visit can show the page before its rows
+arrive. Typing and navigation remain available during that refresh; a reading
+from a previous visit cannot replace the current visit's selection or draft.

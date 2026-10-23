@@ -103,43 +103,51 @@ func Open(path, project, rootID, rootTitle, rootDescription string, chat ...stri
 		return nil, err
 	}
 	store.db = db
-	loaded, err := store.loadOrCreate(project, rootID, rootTitle, rootDescription, tag)
-	if err != nil {
-		_ = db.Close()
-		store.db = nil
-		return nil, err
-	}
 	rdb, err := openReadDatabase(path)
 	if err != nil {
 		_ = db.Close()
-		store.db = nil
 		return nil, err
 	}
 	store.rdb = rdb
+	loaded, err := store.loadOrCreate(project, rootID, rootTitle, rootDescription, tag)
+	if err != nil {
+		_ = rdb.Close()
+		_ = db.Close()
+		return nil, err
+	}
 	store.data = loaded
 	return store, nil
 }
 
-// loadOrCreate is the open's one transaction: it loads the plan if there is
-// one and adopts it, or seeds a new one under the root. TWO PROCESSES CAN
-// REACH THE SECOND ROAD AT ONCE — the runtime seeding, a worker's CLI init-ing
-// — and BEGIN IMMEDIATE serializes them: the second re-reads and adopts the
-// first one's store rather than writing its own over it. Adopting keeps the
-// rule the load road states: a store that belongs to another run is a refusal,
-// not a merge.
+// loadOrCreate adopts a committed plan without taking the writer lock. New
+// roots are seeded only under BEGIN IMMEDIATE: concurrent creators re-read
+// and adopt the first committed root rather than overwriting it. A plan that
+// belongs to a different run is always refused.
 func (s *Store) loadOrCreate(project, rootID, rootTitle, rootDescription, chat string) (state, error) {
+	// Adoption is a snapshot read, not a write. If there is no committed root
+	// yet, re-read under the writer lock below before seeding: another creator
+	// may have committed while this handle was waiting for that lock.
+	read, err := s.rdb.Begin()
+	if err != nil {
+		return state{}, err
+	}
+	loaded, err := loadState(read)
+	_ = read.Rollback()
+	if err == nil {
+		return adoptState(loaded, project, rootID)
+	}
+	if !errors.Is(err, errNoStore) {
+		return state{}, err
+	}
 	tx, err := s.beginWrite()
 	if err != nil {
 		return state{}, err
 	}
 	defer tx.Rollback()
-	loaded, err := loadState(tx)
+	loaded, err = loadState(tx)
 	switch {
 	case err == nil:
-		if (rootID != "" && loaded.RootID != rootID) || (project != "" && loaded.Project != project) {
-			return state{}, errors.New("plan store belongs to a different run")
-		}
-		return loaded, nil
+		return adoptState(loaded, project, rootID)
 	case !errors.Is(err, errNoStore):
 		return state{}, err
 	}
@@ -166,6 +174,13 @@ func (s *Store) loadOrCreate(project, rootID, rootTitle, rootDescription, chat s
 		return state{}, err
 	}
 	return fresh, nil
+}
+
+func adoptState(loaded state, project, rootID string) (state, error) {
+	if (rootID != "" && loaded.RootID != rootID) || (project != "" && loaded.Project != project) {
+		return state{}, errors.New("plan store belongs to a different run")
+	}
+	return loaded, nil
 }
 
 func (s *Store) Path() string {
@@ -2188,14 +2203,20 @@ func (s *Store) beginWrite() (*sql.Tx, error) {
 	if err := s.errIfClosed(); err != nil {
 		return nil, err
 	}
-	deadline := time.Now().Add(writeLockWait)
+	return s.beginWriteUntil(time.Now().Add(writeLockWait))
+}
+
+func (s *Store) beginWriteUntil(deadline time.Time) (*sql.Tx, error) {
 	for {
 		tx, err := s.db.Begin()
 		if err == nil {
 			return tx, nil
 		}
-		if !isBusy(err) || !time.Now().Before(deadline) {
+		if !isBusy(err) {
 			return nil, err
+		}
+		if !time.Now().Before(deadline) {
+			return nil, writeLockError(err)
 		}
 		time.Sleep(time.Duration(rand.Intn(20)+1) * time.Millisecond)
 	}

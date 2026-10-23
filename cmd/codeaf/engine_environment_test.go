@@ -463,12 +463,23 @@ func TestEnvironmentStopCommandQuotesTheWorkspaceForTheShell(t *testing.T) {
 	for _, workspace := range []string{"/tmp/my project", "/tmp/it's project"} {
 		t.Run(workspace, func(t *testing.T) {
 			note := differentEngineEnvironmentSentence(workspace)
-			_, command, ok := strings.Cut(note, ", or run ")
-			if !ok || !strings.Contains(note, "and is still in use — close its other windows or let its work finish") {
+			_, command, ok := strings.Cut(note, "), run ")
+			if !ok || !strings.Contains(note, "after work finishes, close every window for this workspace and reopen") || !strings.Contains(note, "To stop now (interrupts active turns and tasks)") {
 				t.Fatalf("busy note does not explain the recovery: %s", note)
 			}
-			// A shell function records the arguments instead of stopping a host.
-			out, err := exec.Command("bash", "-c", "codeaf() { printf '%s\\n' \"$@\"; }; "+command).Output()
+			// Keep the production command's complete shell argument text. Only
+			// replace its executable with a recorder, so this test cannot stop a
+			// real engine and also exercises executable paths needing quoting.
+			recorder := filepath.Join(t.TempDir(), "devaf's test recorder")
+			if err := os.WriteFile(recorder, []byte("#!/bin/sh\nprintf '%s\\n' \"$@\"\n"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			binary := shellQuote(enginehost.ThisBinary())
+			if !strings.HasPrefix(command, binary+" engine --stop ") {
+				t.Fatalf("stop command does not use the installed executable: %q", command)
+			}
+			command = shellQuote(recorder) + strings.TrimPrefix(command, binary)
+			out, err := exec.Command("bash", "-c", command).Output()
 			if err != nil || string(out) != "engine\n--stop\n--workspace\n"+workspace+"\n" {
 				t.Fatalf("copied command arguments = %q, error %v", out, err)
 			}

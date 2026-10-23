@@ -269,7 +269,7 @@ func TestAnOlderEngineHoldingWorkKeepsItAndIsJoined(t *testing.T) {
 	if err != nil {
 		t.Fatalf("an older engine holding work was refused rather than joined: %v", err)
 	}
-	for _, want := range []string{"older codeaf", "still holding work", "picks up this build once it goes quiet"} {
+	for _, want := range []string{"older codeaf background engine", "Attached windows count as in use", "all windows and work are gone", "interrupts active turns and tasks", engineStopWords(workspace)} {
 		if !strings.Contains(note, want) {
 			t.Fatalf("the busy line %q does not say %q", note, want)
 		}
@@ -337,7 +337,7 @@ func TestAnOlderEngineThatRefusedTheStandDownKeepsItsWork(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a host that kept its work was refused rather than joined: %v", err)
 	}
-	if !strings.Contains(note, "older codeaf") || !strings.Contains(note, "still holding work") {
+	if !strings.Contains(note, "older codeaf") || !strings.Contains(note, "Attached windows count as in use") {
 		t.Fatalf("the busy line %q does not say what happened", note)
 	}
 	if !hostAnswers(workspace) {
@@ -369,7 +369,7 @@ func TestAnOldHostThatIgnoresTheNoteIsNotPromisedAQuietMoment(t *testing.T) {
 	if strings.Contains(note, "once it goes quiet") {
 		t.Fatalf("the line promises a quiet-moment handover this host was never told about: %q", note)
 	}
-	for _, want := range []string{"older codeaf", "still holding work", "your next launch once the work is done"} {
+	for _, want := range []string{"older codeaf", "close every window", "restarting one window does not update it"} {
 		if !strings.Contains(note, want) {
 			t.Fatalf("the line %q does not say %q", note, want)
 		}
@@ -431,8 +431,8 @@ func TestAnOlderBuildWithNoStampHoldingWorkIsJoined(t *testing.T) {
 	if !strings.Contains(note, "older codeaf") {
 		t.Fatalf("the notice did not say which engine this is: %q", note)
 	}
-	if strings.Contains(note, "--stop") {
-		t.Fatalf("the notice sends somebody off to stop something by hand: %q", note)
+	if !strings.Contains(note, "After work finishes, close every window") || !strings.Contains(note, "interrupts active turns and tasks") {
+		t.Fatalf("the notice does not offer a safe update and warn about explicit stop: %q", note)
 	}
 	if !hostAnswers(workspace) || !host.waitingSaid() || host.forced() {
 		t.Fatal("a stampless older build was ended rather than joined")
@@ -790,7 +790,7 @@ func TestStatusNamesTheEngineHoldingTheWorkspace(t *testing.T) {
 		"build      a1b2c3d4 built 2026-09-21 09:00",
 		"(43h00m ago)",
 		"2 attached · 3 conversations open",
-		"stop it    codeaf engine --stop --workspace " + workspace,
+		"stop it    " + engineStopWords(workspace),
 	} {
 		if !strings.Contains(said, want) {
 			t.Fatalf("status does not say %q:\n%s", want, said)
@@ -814,5 +814,37 @@ func TestStatusSaysNoneWhenNothingHoldsTheWorkspace(t *testing.T) {
 	}
 	if got := strings.TrimSpace(out.String()); got != "no engine is holding "+home+" on this machine" {
 		t.Fatalf("status of an empty workspace said %q", got)
+	}
+}
+
+func TestEngineStopGuidanceQuotesTheInstalledExecutableAndWorkspace(t *testing.T) {
+	got := engineStopWordsAs("/Applications/Dev Build/devaf", "/Users/somebody/work's folder")
+	want := shellQuote("/Applications/Dev Build/devaf") + " engine --stop --workspace " + shellQuote("/Users/somebody/work's folder")
+	if got != want {
+		t.Fatalf("restart command = %q, want %q", got, want)
+	}
+}
+
+func TestEngineStatusUpgradeGuidanceMatchesAdmission(t *testing.T) {
+	shortEngineHome(t)
+	for _, tc := range []struct {
+		name           string
+		answered, busy bool
+		want           string
+	}{
+		{"busy", true, true, "a new window keeps using it"},
+		{"idle", true, false, "idle; the next launch replaces it"},
+		{"unknown", false, false, "a new window will not replace it"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var out strings.Builder
+			writeEngineStatus(&out, "/work/with space", enginehost.Holder{Answered: tc.answered, Self: remote.HostSelf{Version: remote.Version, BuiltAt: earlier, Busy: tc.busy, Surfaces: 1}}, window("today", later), time.Now())
+			if !strings.Contains(out.String(), tc.want) {
+				t.Fatal(out.String())
+			}
+			if strings.Contains(out.String(), "a turn, a task or a question is in flight") {
+				t.Fatal("attached windows falsely reported as active work")
+			}
+		})
 	}
 }

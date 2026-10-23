@@ -2451,6 +2451,13 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeModelRoles(dir, raw) },
 		},
 		Setting{
+			Key: KeyChatModelRotation, Category: CategoryModels, Kind: SettingText,
+			Label: "quick switch models", EmptyLabel: "choose models",
+			Hint:  "your chat model rotation, in click order. Choose models in settings, or write comma-separated model ids. The switch beside your chat model advances through this list; it does not change task models.",
+			read:  func() string { return strings.Join(ChatModelRotationAt(dir), ", ") },
+			write: func(raw string) error { return WriteChatModelRotation(dir, raw) },
+		},
+		Setting{
 			Key: KeyModelFallbacks, Category: CategoryModels, Kind: SettingText,
 			Label: "fallback models", EmptyLabel: "nearest in the catalog",
 			Hint: "where a conversation goes when your model cannot answer — nothing serving " +

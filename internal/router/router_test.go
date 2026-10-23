@@ -315,7 +315,9 @@ func TestProviderFailuresNeverMoveRatings(t *testing.T) {
 	})
 	router := newRouter(t, server, threeModels())
 
-	ctx := provider.WithCall(context.Background(), provider.ClassPlanSpine)
+	// This test measures cascade/rating behavior, not the provider's patient
+	// 429 retry policy. Return the first refusal so the next rung is exercised.
+	ctx := provider.WithCall(provider.WithoutPatientRateLimits(context.Background()), provider.ClassPlanSpine)
 	if _, err := router.CompleteWithMessages(ctx, userMessages("go"), ai.WithSchema(testSchema)); err != nil {
 		t.Fatal(err)
 	}

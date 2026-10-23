@@ -172,8 +172,7 @@ as another build. Four things can be true:
   old process keeps what it was holding and steps aside at its first quiet moment; a host
   built before this ask ignores the note, so for one of those the line says the work is kept
   and **your next safe launch once the work is done and every window has left** opens from
-  the new build. An attached idle window counts as holding work, so close it before the
-  handover.
+  the new build. An attached idle window counts as holding work. After turns and tasks finish, close every window for that workspace and reopen. Restarting just one window keeps joining the old engine while another window remains. The startup note names the machine and an explicit stop command using its installed executable; that command interrupts active turns and tasks, so use it only when ready.
 - **It is an older build, holding nothing.** It hands the workspace over at once and the
   window says `replaced the older engine on spark (pid <n>, <build>, <binary>) — this build
   holds the workspace now`.

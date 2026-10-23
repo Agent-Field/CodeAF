@@ -22,10 +22,10 @@ import (
 	"strings"
 	"time"
 
-	_ "modernc.org/sqlite"
-
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/plandb"
+	"github.com/Agent-Field/codeaf/internal/sqliteuri"
+	_ "modernc.org/sqlite"
 )
 
 // PlanTaskRow is one row of the chat's plan. It carries what a surface draws
@@ -178,7 +178,10 @@ type PlanTaskNote struct {
 // the description that is its work order, every note left on it, and the steps
 // its worker recorded.
 type PlanTaskPage struct {
-	Row         PlanTaskRow
+	Row PlanTaskRow
+	// Models are the run's accepted seats, including on a child page and before
+	// any spend was saved. Row.Model remains the ledger's historical reading.
+	Models      []PlanTaskModel `json:",omitempty"`
 	Description string
 	Result      string
 	Checks      []string
@@ -205,6 +208,12 @@ type PlanTaskPage struct {
 	// A page that carries one is drawn as that conversation rather than as a
 	// list of steps.
 	Program *PlanProgram
+}
+
+// PlanTaskModel names an assigned seat, not proof that it answered a call.
+type PlanTaskModel struct {
+	Seat  string
+	Model string
 }
 
 // PlanStep is one line of a task's trajectory — one command the worker ran and
@@ -404,6 +413,7 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 	}
 	return PlanTaskPage{
 		Row:         pageRow,
+		Models:      a.planTaskModels(store.RootID()),
 		Description: task.Description,
 		Result:      task.Result,
 		Checks:      append([]string(nil), task.Checks...),
@@ -605,7 +615,12 @@ func (a *Agent) PlanSpend(since time.Time) []PlanSpendLine {
 // digits vary, so a text comparison against a bound would misorder a whole
 // second against its own fraction.
 func planSpendBySeat(path, chat string, since time.Time) []PlanSpendLine {
-	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro")
+	uri, err := sqliteuri.FromPath(path)
+	if err != nil {
+		return nil
+	}
+	uri.RawQuery = "mode=ro"
+	db, err := sql.Open("sqlite", uri.String())
 	if err != nil {
 		return nil
 	}
@@ -914,7 +929,12 @@ func planTrajectory(dir, id string) []PlanStep {
 // beside a writer, and a store that will not open as a reader answers no
 // figures rather than failing the read.
 func planSpendByTask(path string) map[string]float64 {
-	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro")
+	uri, err := sqliteuri.FromPath(path)
+	if err != nil {
+		return nil
+	}
+	uri.RawQuery = "mode=ro"
+	db, err := sql.Open("sqlite", uri.String())
 	if err != nil {
 		return nil
 	}
@@ -948,7 +968,12 @@ type planTaskUsage struct {
 // its own read-only connection for the same reason. A row that names no model
 // names none, and a task whose rows carry no tokens has none known.
 func planUsageByTask(path string) map[string]planTaskUsage {
-	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro")
+	uri, err := sqliteuri.FromPath(path)
+	if err != nil {
+		return nil
+	}
+	uri.RawQuery = "mode=ro"
+	db, err := sql.Open("sqlite", uri.String())
 	if err != nil {
 		return nil
 	}

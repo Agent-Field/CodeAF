@@ -887,6 +887,9 @@ type (
 type app struct {
 	conversationRequest uint64
 	conversationOpening bool
+	conversationPreview *conversationPreview
+	homeReading         homeReading
+	homeReadingPending  bool
 	hostReplayLoading   bool
 	hostReplayPending   []followingMsg
 	hostReplayWaiting   bool
@@ -1360,6 +1363,9 @@ type app struct {
 	// now (foot.go's [app.seamIdentity]). modelSpan above is the room chip's
 	// door on the status row; the two are never both drawn.
 	seamModelSpan hudSpan
+	// The rotation is cached at launch and settings saves; rendering never reads disk.
+	modelRotation      []string
+	seamModelCycleSpan hudSpan
 	// seamProjectSpan is the current workspace path at the rule’s right edge.
 	seamProjectSpan hudSpan
 	// seamEffortSpan is the thinking rung's own columns on that same line, drawn
@@ -3089,6 +3095,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		draftFile:           opts.DraftFile,
 		artifacts:           opts.ArtifactsIndex,
 		ctxWindow:           opts.ContextWindow,
+		modelRotation:       config.ChatModelRotationAt(opts.ProfileDir),
 		profileDir:          opts.ProfileDir,
 		routing:             config.RoutingAt(opts.ProfileDir),
 		oneModel:            opts.OneModel,
@@ -4545,7 +4552,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, cmd
 		}
 		if a.conversationOpening {
+			previewing := a.conversationPreview != nil
 			a.cancelConversationOpening()
+			// The preview has a different layout from the page beneath it. The
+			// cancelling click must not activate that page's old hit targets.
+			if previewing {
+				return a, nil
+			}
 		}
 		// THE MAP OWNS THE PRESS WHILE IT IS UP, before anything else reads
 		// one: a press that fell through to a page underneath would act on a
@@ -4843,6 +4856,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// AND THE MODEL'S NAME IS THE FOURTH, at the left end of the same
 			// legend: the conversation's model is written on the seam and pressing
 			// it opens the picker (foot.go's [app.legendModelPress]).
+			if a.legendModelCyclePress(msg.Mouse().X, msg.Mouse().Y) {
+				return a, nil
+			}
 			if a.legendModelPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}

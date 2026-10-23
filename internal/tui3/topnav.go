@@ -108,6 +108,11 @@ func (a *app) navMoreWord(pal palette) string {
 // navLit is the place the nav lights: the one a person is standing in, and
 // `chats` everywhere that is not a place, since every such page is the chats.
 func (a *app) navLit() page {
+	// The first-message preview is already a chat screen, although its former
+	// page stays intact underneath until opening succeeds or is cancelled.
+	if a.conversationOpening && a.conversationPreview != nil {
+		return pageChats
+	}
 	if a.pageShowing() {
 		return a.page
 	}
@@ -120,6 +125,7 @@ func (a *app) navLit() page {
 // same thing for four thousand lines is laid out once. Every field is compared
 // as a value, so the check costs nothing.
 type navMemo struct {
+	preview                bool
 	width                  int
 	ink                    uint64
 	page, hover            page
@@ -140,7 +146,7 @@ type navMemo struct {
 
 // navMemoKey is the memo's key half for this frame.
 func (a *app) navMemoKey(width int, pal palette) navMemo {
-	m := navMemo{width: width, ink: a.inkState, page: a.page, hover: a.tabHover, bar: a.bar,
+	m := navMemo{preview: a.conversationOpening && a.conversationPreview != nil, width: width, ink: a.inkState, page: a.page, hover: a.tabHover, bar: a.bar,
 		every: a.mapShowing, moreOn: a.navMore.on, moreHot: a.navMore.hot, facts: a.machine,
 		host: a.host, profile: pal.profile, ascii: pal.ascii, linear: a.linear || pal.linear, places: pal.placeRows,
 		accent: pal.ramp.accent, muted: pal.ramp.muted}
@@ -156,7 +162,7 @@ func (a *app) navMemoKey(width int, pal palette) navMemo {
 }
 
 func (m navMemo) same(k navMemo) bool {
-	return m.line != "" && m.width == k.width && m.ink == k.ink && m.page == k.page && m.hover == k.hover &&
+	return m.line != "" && m.preview == k.preview && m.width == k.width && m.ink == k.ink && m.page == k.page && m.hover == k.hover &&
 		m.bar == k.bar && m.every == k.every && m.moreOn == k.moreOn && m.moreHot == k.moreHot &&
 		m.facts == k.facts && m.minute == k.minute && m.host == k.host && m.counts == k.counts &&
 		m.profile == k.profile && m.ascii == k.ascii && m.linear == k.linear && m.places == k.places &&

@@ -171,6 +171,9 @@ func TestAZeroCreditAccountWalksTheLadder(t *testing.T) {
 	if got := probe.Seat(crewroute.Worker); got.Kind != crewroute.Metered {
 		t.Fatalf("the next task's worker is %+v, want the paid route, probed", got)
 	}
+	if err := SetCrewFreeRoutes(dir, true); err != nil {
+		t.Fatal(err)
+	}
 	rescue := CrewRescue(dir, crewroute.Bugfix, crewroute.Worker, "somelab/the-chat-model")
 	if len(rescue) == 0 || rescue[0].Kind != crewroute.Free {
 		t.Fatalf("the rescue is %+v, want the free pool", rescue)
@@ -186,6 +189,9 @@ func TestAZeroCreditAccountWalksTheLadder(t *testing.T) {
 		t.Errorf("the one action is %q", got)
 	}
 
+	if err := SetCrewFreeRoutes(dir, false); err != nil {
+		t.Fatal(err)
+	}
 	history = append(history, router.CrewRouteOutcome{At: time.Now(), Seat: "worker", Send: w.Send, Provider: w.Provider, Paid: true})
 	for _, r := range CrewRescue(dir, crewroute.Bugfix, crewroute.Worker, "somelab/the-chat-model") {
 		if r.Kind == crewroute.Free {
@@ -341,14 +347,17 @@ func TestCrewOffersNoSpeechOrImageModels(t *testing.T) {
 // person's own model on the account that said no is not.
 func TestTheRescueFallsToAFreePoolWhenNothingPaidIsReachable(t *testing.T) {
 	dir := crewProfile(t)
+	if err := SetCrewFreeRoutes(dir, true); err != nil {
+		t.Fatal(err)
+	}
 	rows := CrewCatalog()
 	rows = append(rows, catalog.Model{ID: "z-ai/glm-5.3-flash:free", OpenWeights: true,
 		IntelligenceIndex: 41.8, CodingIndex: 71.5, AgenticIndex: 50.9, ContextLength: 1310720, Parameters: []string{"tools"}})
 	CrewCatalog = func() []catalog.Model { return rows }
 	history := []router.CrewRouteOutcome{{At: time.Now(), Seat: "worker", Send: "z-ai/glm-5.3-flash", Provider: "openrouter", Kind: "payment"}}
 	withRouteHistory(t, &history)
-	if CrewFreeRoutesAt(dir) {
-		t.Fatal("the switch should be off")
+	if !CrewFreeRoutesAt(dir) {
+		t.Fatal("the switch should be on")
 	}
 	rescue := CrewRescue(dir, crewroute.Bugfix, crewroute.Worker, "moonshotai/kimi-k3")
 	if len(rescue) == 0 || rescue[0].Kind != crewroute.Free {
@@ -467,6 +476,9 @@ func TestADecisionRowNamesOnlySeatableCandidatesAndItsTopThree(t *testing.T) {
 // says free routes once.
 func TestTheFreeRescuePrefersGeneralModels(t *testing.T) {
 	dir := crewProfile(t)
+	if err := SetCrewFreeRoutes(dir, true); err != nil {
+		t.Fatal(err)
+	}
 	rows := CrewCatalog()
 	rows = append(rows,
 		catalog.Model{ID: "inclusionai/ling-3.0-flash-fin:free", ContextLength: 262144, IntelligenceIndex: 60, CodingIndex: 80, AgenticIndex: 60, Parameters: []string{"tools"}},
@@ -573,6 +585,9 @@ func TestTheSpendLinesASeatCallIsHeldTo(t *testing.T) {
 // rescue — while an explicit-zero `:free` pool still is.
 func TestAnUnpricedModelIsNeverPicked(t *testing.T) {
 	dir := crewProfile(t)
+	if err := SetCrewFreeRoutes(dir, true); err != nil {
+		t.Fatal(err)
+	}
 	rows := CrewCatalog()
 	rows = append(rows,
 		catalog.Model{ID: "stealth/space-bunny-alpha", ContextLength: 1048576,

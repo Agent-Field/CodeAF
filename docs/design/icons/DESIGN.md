@@ -309,3 +309,10 @@ own page, a run held at its spend gate drew the banned `⏸`, and the fold mark
 `GTeamDot` marks a team identity in the Teams sidebar: `●` in the plain tier,
 `nf-fa-circle` in the Nerd Font tier, and `o` in ASCII. All teams uses white ink.
 The navigation tree separates this circle from work-state dots by position.
+
+### Chat model exchange
+
+The quick-switch control beside the chat model reuses `GActionTransfer`: an
+exchange between model choices. It retains the vocabulary's plain `⇄`, Nerd Font
+`nf-fa-exchange`, and ASCII `&` spellings. The padded control has its own pointer
+span, separate from the model name that opens the catalog.

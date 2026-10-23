@@ -53,6 +53,10 @@ import (
 // session, every test, and every headless frame. Nothing half-works there: no
 // segment is drawn, no notice is looked for, and no question is asked about.
 type LinkSeam struct {
+	// EngineBuild reads the latest welcome already held by the client. It
+	// changes after redial onto a replacement engine and never touches the wire.
+	EngineBuild func() string
+
 	// Note is the quiet true sentence about the link right now, and the empty
 	// string whenever there is nothing to say — which is almost always. It
 	// reads `reconnecting to devbox — trying for up to 5 minutes` while a
@@ -326,7 +330,7 @@ func (a *app) takeLinkNotice() {
 // from before the status line's news crossed a connection. It is in the
 // engine-host sentences' own voice (cmd/codeaf's busyEngineHostSentence): the
 // machine is older, nothing is wrong, and it says when that changes.
-const newsSilenceNote = "this conversation's engine is an older codeaf, so the host and tok/s are not shown — they come back once it picks up this build"
+const newsSilenceNote = "this window uses an older background engine; host and tok/s are unavailable · /status shows the engine and window builds; reopening one window may keep the same engine"
 
 // sayNewsSilence says [newsSilenceNote] once per window, the first time a turn
 // that produced an answer ends on an engine that has sent no news.

@@ -303,7 +303,7 @@ func TestHomeAnswersItsOwnWindowThroughItsOwnResolver(t *testing.T) {
 	// The card this window is holding, with the same id the presence file
 	// carries — which is what makes the two the same question.
 	a.askConsent(consentEvent(7, "bash", "rm -rf build/", "bash always asks"))
-	a.openHome()
+	spend(t, a, a.openHome())
 	a.home.point(mine)
 
 	// The answer travels on the command the key hands back (offloop.go).

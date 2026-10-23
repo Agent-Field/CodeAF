@@ -150,6 +150,10 @@ type settingMeta struct {
 // dollar figure and it lives under Session, because the question it answers is
 // "what may THIS conversation do".
 var settingUI = map[string]settingMeta{
+	config.KeyChatModelRotation: {
+		tab: tabProviders, label: "quick switch models", widget: widgetSelect,
+		about: "choose your chat models in rotation order. Enter adds or removes a model; remove and add again to move it to the end. The switch beside your chat model uses this list.",
+	},
 	// ── Session ─────────────────────────────────────────────────────────────
 	config.KeyToolApprovalMode: {
 		tab: tabSafety, label: "ask before running", widget: widgetCycle,
@@ -758,6 +762,7 @@ func modelsSectionOrder() []string {
 	// for one answer and two rows that can disagree on screen.
 	order := []string{
 		config.ModelSettingKey(talkSlot),
+		config.KeyChatModelRotation,
 		config.LaneSettingKey(talkSlot),
 		config.KeyLaneGuard,
 		config.KeyRouting,
@@ -3020,6 +3025,10 @@ func (a *app) sheetSelectKey(msg tea.KeyPressMsg) {
 	// ENTER CONFIRMS AND CLOSES THE MODEL LIST, as it does in the conversation,
 	// so the settings row immediately shows the model that was chosen.
 	case "enter":
+		if sel.key == config.KeyChatModelRotation {
+			a.toggleRotationModel(sel)
+			return
+		}
 		// ENTER INSIDE AN OPEN FOLD IS A LANE AND NOT A SLOT.
 		if lane, onLane := sel.pick.laneUnder(); onLane {
 			a.applyLaneFromSheet(sel, lane)
@@ -3797,7 +3806,23 @@ func (s *sheet) selectLines(width, room int, pal palette, level func(string) str
 	// add to its top: a row at [tierPhone] is two lines, and "line i is hit
 	// top+i" would put every click one row further down the list than the one
 	// that was pressed (palette.go's [picker.rowsOwned]).
-	out, owner := sel.pick.rowsOwned(width, room, pal, -1, level)
+	var prefix []string
+	if sel.key == config.KeyChatModelRotation {
+		row, _ := s.registry.Row(sel.key)
+		prefix = append(prefix, pal.dim(fit("Click order: "+row.Value(), width)))
+		if len(config.ParseModelFallbacks(rowText(row))) < 2 {
+			prefix = append(prefix, pal.dim(fit("Choose at least two models to enable quick switch.", width)))
+		}
+	}
+	out, owner := sel.pick.rowsOwned(width, max(0, room-len(prefix)), pal, -1, level)
+	if len(prefix) > 0 {
+		out = append(prefix, out...)
+		prefixOwners := make([]int, len(prefix))
+		for i := range prefixOwners {
+			prefixOwners[i] = -1
+		}
+		owner = append(prefixOwners, owner...)
+	}
 	for len(out) < room {
 		out = append(out, "")
 		owner = append(owner, -1)
@@ -3864,6 +3889,9 @@ func (s *sheet) keysLine() string {
 	case s.edit != nil:
 		return "enter save · esc cancel"
 	case s.sel != nil:
+		if s.sel.key == config.KeyChatModelRotation {
+			return "↑↓ move · enter add/remove · esc done · type to filter"
+		}
 		// THE LEGEND SAYS `→ providers` ONLY WHERE `→` OPENS THEM — on a row that
 		// has a provider row behind it. Offering the key on the drawing slot would
 		// be the foot of the screen promising a gesture that does nothing.

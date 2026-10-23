@@ -183,6 +183,8 @@ const (
 	// where the press would do nothing, the render records no span and this
 	// answers nothing (room.go's [app.roomModelMovable]).
 	hoverStatusModel
+	// hoverModelCycle is separate from the model picker door.
+	hoverModelCycle
 	// hoverSeamProject is the project path on the message-box seam.
 	hoverSeamProject
 	// hoverEffort is the THINKING RUNG on the seam, the cell drawn immediately
@@ -662,6 +664,9 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			// it is the keys row's (footswap.go's [app.hintRow]), read below.
 			if !a.seamCarriesTelemetry() && a.seamProjectSpan.holds(x) {
 				return hoverAt{kind: hoverSeamProject}
+			}
+			if a.seamModelCycleSpan.holds(x) {
+				return hoverAt{kind: hoverModelCycle}
 			}
 			if a.seamModelSpan.holds(x) {
 				return hoverAt{kind: hoverStatusModel}

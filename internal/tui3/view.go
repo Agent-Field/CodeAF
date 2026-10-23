@@ -309,6 +309,9 @@ func (a *app) frameBody() (string, int, int) {
 	// [app.navPress]).
 	a.tabRow = -1
 	width, height := a.size()
+	if a.conversationOpening && a.conversationPreview != nil {
+		return a.conversationPreviewFrame(width, height)
+	}
 	if a.pasteEdit.open {
 		return a.pasteEditorFrame(width, height)
 	}

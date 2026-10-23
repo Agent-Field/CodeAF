@@ -3028,3 +3028,28 @@ their own counts. Tests exercise the actual pinned proxy with scripted fetches
 and an immediate timer, covering request bytes, unchanged application responses,
 exact retry exhaustion and refusal of an unknown runtime. The Go request-bound
 fixture uses held channels and cancellation rather than sleeps.
+
+## Navigation and first-message response
+
+Home paints its last completed reading and refreshes the world, memory ledger,
+spending, deliverables and folder availability off the UI loop. At most **one**
+Home reading is outstanding across visits; a late result schedules the current
+visit's read rather than replacing its draft or selection. A single completed
+reading is retained across visits. Startup can still take the initial reading
+before the event loop starts. Page-entry money refreshes also run off the loop.
+
+The first-message opening screen retains the submitted string and displays at
+most **width × height × 4 bytes** before sanitizing and wrapping, then clips to
+the viewport. Opening failure and cancellation leave the original composers
+intact. No model request or session is created by merely opening a new tab.
+`navigation_latency_test.go` pins blocked-reader responsiveness, stale results,
+and first-message acknowledgement before session creation completes.
+
+`TestNavigationLatency` drives the built binary in a real terminal and records
+keypress-to-Home, new-tab, return, and first-message visibility. It separates
+ordinary setup from a controlled **800 ms** engine stall and records short-answer
+visibility separately from the UI acknowledgement. Polling is **5 ms** plus
+command overhead; timing is diagnostic, not a machine-dependent unit-test gate.
+Every live model role is pinned to `deepseek/deepseek-v4.1-flash` and call logs
+are audited. Raw measurements can be kept outside the repository through
+`CODEAF_E2E_EVIDENCE_DIR`.

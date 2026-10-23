@@ -491,6 +491,7 @@ func (t seamTry) on(tier seamTier) bool {
 // per frame so the ladder below is only ever choosing between them.
 type seamPieces struct {
 	host, name, model, rung, gate, project string
+	exchange                               string
 	// rider is the WHOLE rider — ` (relace)`, ` (parasail · rescued)`, or a
 	// rescue's own ` · slow · trying coreweave…` — and fit is the door that
 	// answers it for a given room, or says nothing ([app.modelRiderAt]). The
@@ -523,7 +524,7 @@ func (a *app) seamPieces(width int) seamPieces {
 	// AND A PINNED LANE RIDES THE ID AS `@lane` ([app.modelWord]), which is the
 	// one place the pin is written on the chrome: the status row and the phone
 	// deck take the same word from the same function.
-	pieces := seamPieces{host: a.host, model: a.modelWord(),
+	pieces := seamPieces{host: a.host, model: a.modelWord(), exchange: a.modelCycleSuffix(),
 		project: a.seamProjectWord()}
 	// AND IN A MANAGED TEAM THE SLOT SAYS WHERE THE WORDS GO, once there are
 	// words: the empty box says it as its placeholder (teamrailpointer.go's
@@ -633,7 +634,7 @@ func (p seamPieces) lay(try seamTry, room int) (string, hudSpan, hudSpan, hudSpa
 	if try.name {
 		name = p.name
 		if try.cut {
-			rest := dotted(p.host, dotted(seamModelEffort(model+rider, rung), gate))
+			rest := dotted(p.host, dotted(seamModelEffort(model+rider, rung)+p.exchange, gate))
 			left := room - ansi.StringWidth(rest)
 			if rest != "" {
 				left -= ansi.StringWidth(legendJoin)
@@ -646,17 +647,25 @@ func (p seamPieces) lay(try seamTry, room int) (string, hudSpan, hudSpan, hudSpa
 	}
 	head := dotted(p.host, name)
 	if try.rider == riderFit && model != "" {
-		bare := dotted(head, dotted(seamModelEffort(model, rung), gate))
+		bare := dotted(head, dotted(seamModelEffort(model, rung)+p.exchange, gate))
 		if ansi.StringWidth(bare) > room {
 			return "", none, none, none, false
 		}
 		rider = p.fit(room - ansi.StringWidth(bare))
 	}
-	cluster := dotted(head, dotted(seamModelEffort(model+rider, rung), gate))
+	exchange := ""
+	if model != "" {
+		exchange = p.exchange
+	}
+	cluster := dotted(head, dotted(seamModelEffort(model+rider, rung)+exchange, gate))
 	if ansi.StringWidth(cluster) > room {
 		return "", none, none, none, false
 	}
 	named, dial, chip := seamSpans(head, model, rider, rung, gate)
+	if chip.pressable() {
+		chip.from += ansi.StringWidth(exchange)
+		chip.to += ansi.StringWidth(exchange)
+	}
 	return cluster, named, dial, chip, true
 }
 
