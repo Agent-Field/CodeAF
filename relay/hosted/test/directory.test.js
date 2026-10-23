@@ -131,3 +131,16 @@ test('a cell that is not there is not_found for every verb that needs one', () =
     assert.equal(code(verb), 'not_found');
   }
 });
+
+// C31.1/C31.3 distinguish the quit clock from old content and background copies.
+test('C31 released time records a quit but background preparation stays quiet', () => {
+  const { dir, clock } = open();
+  const id = '01AAAAAAAAAAAAAAAAAAAAAAAA';
+  const made = dir.create(id, init('a'.repeat(64)), 'dev_a');
+  clock.now += 48*60*60*1000;
+  dir.release(id,'dev_a',made.cell.lease.fence);
+  assert.equal(dir.cell(id).cell.lease.released_at,clock.now);
+  const acquired=dir.acquire(id,'dev_a');
+  dir.release(id,'dev_a',acquired.cell.lease.fence,true);
+  assert.equal(dir.cell(id).cell.lease.released_at,0);
+});

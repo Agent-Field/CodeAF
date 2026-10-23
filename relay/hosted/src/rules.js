@@ -51,9 +51,9 @@ export function makeRules({ ttlMs, renewOnPublish }) {
     return omitEmpty(next, { title, frames: p.frames });
   };
 
-  const releaseOf = (c, device, fence) => {
+  const releaseOf = (c, device, fence, now) => {
     holder(c, device, fence);
-    return { ...c, lease: { ...c.lease, expires: 0, pending: 0 } };
+    return { ...c, lease: { ...c.lease, expires: 0, pending: 0, ...(now === undefined ? {} : { released_at: now }) } };
   };
 
   const created = (init, device, now) => {

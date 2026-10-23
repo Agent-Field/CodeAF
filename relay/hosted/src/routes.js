@@ -132,7 +132,7 @@ const ROUTES = [
   }],
   ['POST', /^\/v1\/dir\/cells\/([^/]+)\/heartbeat$/, DIR_WRITE, (c, [id]) => json(c.tenant.dir.heartbeat(id, c.device, object(c.body)))],
   ['POST', /^\/v1\/dir\/cells\/([^/]+)\/publish$/, DIR_WRITE, (c, [id]) => json(c.tenant.dir.publish(id, c.device, object(c.body)))],
-  ['POST', /^\/v1\/dir\/cells\/([^/]+)\/release$/, DIR_WRITE, (c, [id]) => (c.tenant.dir.release(id, c.device, object(c.body).fence), empty())],
+  ['POST', /^\/v1\/dir\/cells\/([^/]+)\/release$/, DIR_WRITE, (c, [id]) => (c.tenant.dir.release(id, c.device, object(c.body).fence, object(c.body).quiet === true), empty())],
   ['POST', /^\/v1\/dir\/cells\/([^/]+)\/archive$/, DIR_WRITE, (c, [id]) => (c.tenant.dir.archive(id), empty())],
   ['GET', /^\/v1\/identity\/rotation$/, DIR, (c) => json(c.tenant.rotationView())],
   ['POST', /^\/v1\/identity\/rotation$/, DIR, (c) => json(c.tenant.rotate(c.device, object(c.body)))],

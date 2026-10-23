@@ -111,8 +111,8 @@ export class Directory {
     return this.change(id, (c, now) => this.rules.publishTo(c, device, p, now));
   }
 
-  release(id, device, fence) {
-    this.change(id, (c) => this.rules.releaseOf(c, device, fence));
+  release(id, device, fence, quiet = false) {
+    this.change(id, (c, now) => this.rules.releaseOf(c, device, fence, quiet ? 0 : now));
   }
 
   archive(id) {
