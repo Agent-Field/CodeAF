@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -251,7 +252,7 @@ func runCompletedPlanRecovery(t *testing.T, live bool) {
 	if after := completedTaskLedger(t, home, env, plan); after != beforeLedger {
 		t.Fatalf("task ledger changed across restart: %g -> %g", beforeLedger, after)
 	}
-	if cost := completedCheckpointCost(home); cost+1e-9 < beforeLedger {
+	if cost := completedCheckpointCost(home); math.Abs(cost-beforeLedger) > 1e-9 {
 		t.Fatalf("recovered task/index lost its actual spend: cost=%g ledger=%g", cost, beforeLedger)
 	}
 	checkCompletedProof(t, proof)
@@ -280,7 +281,7 @@ func runCompletedPlanRecovery(t *testing.T, live bool) {
 		t.Fatal("explicit acceptance did not land a commit")
 	}
 	checkCompletedProof(t, ws)
-	if cost := completedCheckpointCost(home); cost+1e-9 < beforeLedger {
+	if cost := completedCheckpointCost(home); math.Abs(cost-beforeLedger) > 1e-9 {
 		t.Fatalf("accepted task/index lost its actual spend: cost=%g ledger=%g", cost, beforeLedger)
 	}
 	receipt := completedCommitReceipt(t, home)
@@ -290,6 +291,13 @@ func runCompletedPlanRecovery(t *testing.T, live bool) {
 	if err := exec.Command("git", "-C", ws, "merge-base", "--is-ancestor", receipt, "HEAD").Run(); err != nil {
 		t.Fatalf("receipt commit was not landed: %s", receipt)
 	}
+	if after := completedTaskLedger(t, home, env, plan); math.Abs(after-beforeLedger) > 1e-9 {
+		t.Fatalf("explicit acceptance changed task ledger: %g -> %g", beforeLedger, after)
+	}
+	if got := stopSpendSnapshot(t, home); got != beforeSpend {
+		t.Fatalf("explicit acceptance launched new model work: before=%+v after=%+v", beforeSpend, got)
+	}
+	t.Logf("Accepted persisted run cost=%g; whole-run ledger=%g", completedCheckpointCost(home), beforeLedger)
 	assertCompletedPlanPrice(t, rig, beforeLedger)
 	models := callModels(t, home)
 	if live {
@@ -471,10 +479,9 @@ func completedTaskLedger(t *testing.T, home string, env []string, plan string) f
 	}
 	var usd float64
 	for _, row := range rows {
-		if row.Key == "1" {
-			usd += row.USD
-		}
+		usd += row.USD
 	}
+	t.Logf("Actual whole-run task ledger: %s; total=%g", strings.TrimSpace(string(raw)), usd)
 	return usd
 }
 func completedCheckpointCost(home string) float64 {
