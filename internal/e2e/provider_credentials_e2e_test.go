@@ -128,6 +128,7 @@ func TestVideoPollingCredentialsOnTheRealTerminal(t *testing.T) {
 			})
 			mux.HandleFunc("/chat/completions", func(w http.ResponseWriter, r *http.Request) {
 				var body struct {
+					Stream   bool `json:"stream"`
 					Messages []struct {
 						Content json.RawMessage `json:"content"`
 					} `json:"messages"`
@@ -151,10 +152,10 @@ func TestVideoPollingCredentialsOnTheRealTerminal(t *testing.T) {
 					}
 				}
 				if offer && asked && issued.CompareAndSwap(0, 1) {
-					credentialToolResponse(w, "generate_video", `{"prompt":"a fictional amber lighthouse","path":"credential-proof.mp4"}`)
+					credentialToolResponse(w, "generate_video", `{"prompt":"a fictional amber lighthouse","path":"credential-proof.mp4"}`, body.Stream)
 					return
 				}
-				credentialTextResponse(w, nil, "SCRIPTED_RENDER_SUBMITTED")
+				credentialTextResponseStream(w, "SCRIPTED_RENDER_SUBMITTED", body.Stream)
 			})
 			source = httptest.NewServer(mux)
 			defer source.Close()
@@ -229,13 +230,37 @@ func credentialCatalog(mux *http.ServeMux) {
 	})
 }
 func credentialTextResponse(w http.ResponseWriter, r *http.Request, text string) {
-	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"id":"credential-fixture","model":%q,"choices":[{"index":0,"message":{"role":"assistant","content":%q},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`, credentialFixtureModel, text)
+	stream := false
+	if r != nil {
+		var body struct {
+			Stream bool `json:"stream"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		stream = body.Stream
+	}
+	credentialTextResponseStream(w, text, stream)
 }
-func credentialToolResponse(w http.ResponseWriter, name, args string) {
+func credentialTextResponseStream(w http.ResponseWriter, text string, stream bool) {
+	message := map[string]any{"role": "assistant", "content": text}
+	credentialWireResponse(w, message, "stop", stream)
+}
+func credentialToolResponse(w http.ResponseWriter, name, args string, stream bool) {
+	message := map[string]any{"role": "assistant", "tool_calls": []any{map[string]any{"index": 0, "id": "credential-video-call", "type": "function", "function": map[string]string{"name": name, "arguments": args}}}}
+	credentialWireResponse(w, message, "tool_calls", stream)
+}
+func credentialWireResponse(w http.ResponseWriter, message map[string]any, finish string, stream bool) {
+	if stream {
+		w.Header().Set("Content-Type", "text/event-stream")
+		for _, choice := range []map[string]any{{"index": 0, "delta": message, "finish_reason": nil}, {"index": 0, "delta": map[string]any{}, "finish_reason": finish}} {
+			payload := map[string]any{"id": "credential-fixture", "model": credentialFixtureModel, "choices": []any{choice}, "usage": map[string]int{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}}
+			raw, _ := json.Marshal(payload)
+			fmt.Fprintf(w, "data: %s\n\n", raw)
+		}
+		fmt.Fprint(w, "data: [DONE]\n\n")
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
-	payload := map[string]any{"id": "credential-tool", "model": credentialFixtureModel, "choices": []any{map[string]any{"index": 0, "message": map[string]any{"role": "assistant", "tool_calls": []any{map[string]any{"id": "credential-video-call", "type": "function", "function": map[string]any{"name": name, "arguments": args}}}}, "finish_reason": "tool_calls"}}, "usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}}
-	_ = json.NewEncoder(w).Encode(payload)
+	_ = json.NewEncoder(w).Encode(map[string]any{"id": "credential-fixture", "model": credentialFixtureModel, "choices": []any{map[string]any{"index": 0, "message": message, "finish_reason": finish}}, "usage": map[string]int{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}})
 }
 
 // A separate, authenticated OpenRouter regression never talks to the fault
