@@ -47,7 +47,7 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 	lastOutcome := map[string]string{}
 	var pending []string
 	var state verification.Snapshot
-	checks, checkErr := verification.Read(c.file)
+	checks, checkErr := verification.ReadIn(c.file, c.dir)
 	hasOwnedCheck := false
 	for _, check := range checks {
 		if !check.Diagnostic && check.SupersededBy == "" {
@@ -82,12 +82,17 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 		}
 	}
 	observed := map[string]bool{}
+	checks = verification.Resolve(checks, state, fresh)
 	latest, superseded := verification.RequiredChecks(checks, state, fresh)
 	for _, check := range checks {
+		observed[check.Command] = true
 		if check.Diagnostic {
+			notes = append(notes, "Diagnostic check retained outside job requirements: "+check.Label()+" · "+check.DiagnosticReason)
 			continue
 		}
-		observed[check.Command] = true
+		if check.SupersededBy != "" {
+			notes = append(notes, "Check superseded by passing evidence: "+check.Label()+" · "+check.SupersededBy+" · "+check.SupersessionReason)
+		}
 	}
 	seenResults := map[string]bool{}
 	corrected := map[string]bool{}
@@ -358,6 +363,17 @@ func (d *receiptStageDoor) Report(ctx context.Context, r factory.StageResult) er
 			}
 		}
 	}
+	// Ordinary Test/Proof reports need the same live correction door as PR
+	// repairs. Accepting done first would close the conversation and consume
+	// another round before the runner could explain its failing evidence.
+	if d.requireFresh && r.Done && (r.Repair == nil || r.Repair.Decision != "fixed") {
+		notes, _ := (&stageConversation{file: d.file, dir: d.dir}).executionNotesMode(true, d.requireAnyCheck)
+		for _, note := range notes {
+			if strings.HasPrefix(note, verification.FailurePrefix) {
+				return d.rejectVerification(notes, strings.TrimSpace(strings.TrimPrefix(note, verification.FailurePrefix)))
+			}
+		}
+	}
 	if r.Repair != nil && r.Repair.Decision == "fixed" {
 		if !r.Done || r.Exit != 0 || r.Findings != 0 {
 			return errors.New("repair is incomplete: fixed requires done, no failing exit and no remaining findings; report needs_repair for partial work")
@@ -458,7 +474,7 @@ func (d *receiptStageDoor) rejectVerification(notes []string, reason string) err
 	if exhausted {
 		d.stopVerification(fmt.Sprintf("%d completion reports repeated the same unresolved evidence", stageVerificationRejectLimit))
 	}
-	return fmt.Errorf("repair is incomplete: %s; correct and rerun the required check, or report done:false with repair.decision needs_repair", reason)
+	return fmt.Errorf("repair is incomplete: %s. The completion guard only reads saved results; it does not run tests. Reuse current passing evidence. Correct only the unresolved check or report done:false with the remaining blocker (PR repairs use repair.decision needs_repair); do not repeat the whole suite without a coverage reason", reason)
 }
 
 func (d *receiptStageDoor) stopVerification(why string) {

@@ -26,7 +26,7 @@ func factoryVerificationRecovered(it factory.Item, dir string) bool {
 		if review == nil || review.Readiness == nil || review.Readiness.Head != it.HeadCommit || !review.Readiness.DiffReviewed || !review.Readiness.FeedbackAddressed || !review.Readiness.DescriptionMatches || !review.Readiness.NoUnfinishedWork {
 			return false
 		}
-		checks, err := verification.Read(ph.Chat)
+		checks, err := verification.ReadIn(ph.Chat, dir)
 		if err != nil {
 			return false
 		}
@@ -102,8 +102,9 @@ func inheritFactoryChecks(spec factoryrun.ConversationSpec, file, dir string) st
 			continue
 		}
 		seenSources[source] = true
-		checks, err := verification.Read(source)
+		checks, err := verification.ReadIn(source, dir)
 		if err != nil {
+			history = append(history, verification.Check{Source: source, ID: "checkpoint-read-error", Command: "read prior verification records", Problem: err.Error()})
 			continue
 		}
 		for _, c := range checks {
@@ -115,6 +116,7 @@ func inheritFactoryChecks(spec factoryrun.ConversationSpec, file, dir string) st
 			history = append(history, c)
 		}
 	}
+	history = verification.Resolve(history, at, true)
 	required, _ := verification.RequiredChecks(history, at, true)
 	// Only finished source conversations reach this point. An interrupted repeat
 	// does not refute an earlier pass on exactly the same inputs and context. A
@@ -133,6 +135,11 @@ func inheritFactoryChecks(spec factoryrun.ConversationSpec, file, dir string) st
 		}
 	}
 	var saved []verification.Check
+	for _, c := range history {
+		if c.Diagnostic || c.SupersededBy != "" {
+			saved = append(saved, c)
+		}
+	}
 	passes := 0
 	unresolved := 0
 	for key, c := range required {
@@ -144,26 +151,24 @@ func inheritFactoryChecks(spec factoryrun.ConversationSpec, file, dir string) st
 				c = pass
 			}
 		}
-		// A stale historical success is not imported as fresh evidence. Failures
-		// and incomplete executions remain obligations alongside independent passes.
-		if c.Exit != nil && *c.Exit == 0 && c.Problem == "" {
-			if !c.Fresh(at) || !belongs(c) {
-				continue
-			}
+		// Stale successes retain their required scope, never their authority to
+		// complete. Otherwise an edit followed by a new round forgets every
+		// check and can turn an empty conversation into accidental success.
+		if c.Exit != nil && *c.Exit == 0 && c.Problem == "" && c.Fresh(at) && belongs(c) {
 			passes++
 		} else {
 			unresolved++
 		}
 		saved = append(saved, c)
 	}
-	if passes == 0 {
+	if passes+unresolved == 0 {
 		return ""
 	}
 	sort.Slice(saved, func(i, j int) bool { return saved[i].Key() < saved[j].Key() })
 	if err = writeFactoryCheckCheckpoint(file, "", saved); err != nil {
 		return ""
 	}
-	return fmt.Sprintf("\nSaved verification checkpoint: %d measured checks already passed on this exact checkout (HEAD %s); %d unresolved checks retained. Original source receipts remain authoritative. Reuse qualifying results; rerun unresolved checks and any scope invalidated by edits.\n", passes, at.Head, unresolved)
+	return fmt.Sprintf("\nSaved verification checkpoint: %d measured checks already passed on this exact checkout (HEAD %s); %d unresolved checks retained. Original source receipts remain authoritative; unrelated diagnostic checks and superseded attempts are retained for audit, not completion requirements. The guard only reads results; it does not run tests. Reuse qualifying results; rerun only unresolved checks and scope invalidated by edits.\n", passes, at.Head, unresolved)
 }
 
 func writeFactoryCheckCheckpoint(file, source string, checks []verification.Check) error {
