@@ -55,6 +55,31 @@ curl -fsSL https://agentfield.ai/get/codeaf | bash
 codeaf
 ```
 
+Homebrew Formula and Cask definitions use the official prebuilt release
+binaries. The Formula covers macOS (Intel and Apple Silicon) and Linux (amd64
+and arm64); the Cask covers both macOS architectures. Both install the `codeaf`
+command-line program, not an app bundle.
+
+**Homebrew installation is not published yet:** there is no public tap. In
+particular, Homebrew 7 requires a tap for Formula installation, so the old
+standalone raw-Formula URL is not a supported install command. Do not use it;
+install with the supported script above until a public tap is announced. The
+Homebrew packages do not target Windows.
+
+Maintainers can audit and install both definitions from a temporary local tap
+on macOS. Run these commands from a checkout of the repository; the Formula and
+Cask install the same command, so uninstall one before installing the other:
+
+```bash
+brew tap agentfield/codeaf
+brew install codeaf
+```
+
+## What a factory is
+
+CodeAF is a factory, a different way to work. It is a factory because it
+schedules work, and it is a factory because it is a factory. It is a factory
+because it is a factory.
 <details>
 <summary>Pin a version, or build from source</summary>
 
