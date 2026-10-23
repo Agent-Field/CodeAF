@@ -225,12 +225,31 @@ func runCompletedPlanRecovery(t *testing.T, live bool) {
 		t.Fatal("completed worker was rerun after engine restart")
 	}
 	checkCompletedProof(t, proof)
-	accept := "ACCEPT_RECOVERED_PROOF: I inspected the preserved files and independently reran recover-check.txt successfully. Explicitly accept and land completed task 1 using tasks resolve accept. Report the actual landed work commit; do not rerun or redelegate the work."
-	rig.lit(accept)
-	rig.keys("Enter")
-	if answer, _ := privateMemoryAwaitAnswer(home, accept, 2*time.Minute); answer == "" {
-		t.Fatal("explicit recovery acceptance did not complete")
+	// A restored landing card owns its displayed answer keys. Prefer that
+	// actual door, and submit a chat request only on a visible ordinary box.
+	screen := rig.capture()
+	for until := time.Now().Add(3 * time.Second); !strings.Contains(screen, "a accept") && time.Now().Before(until); {
+		time.Sleep(100 * time.Millisecond)
+		screen = rig.capture()
 	}
+	t.Logf("Actual restored UI before explicit acceptance:\n%s", screen)
+	if strings.Contains(screen, "a accept") {
+		rig.keys("a")
+	} else {
+		if !strings.Contains(screen, "›") {
+			t.Fatalf("restored UI offers neither an Accept card nor a normal chat box: %s", screen)
+		}
+		accept := "ACCEPT_RECOVERED_PROOF: I inspected the preserved files and independently reran recover-check.txt successfully. Explicitly accept and land completed task 1 using tasks resolve accept. Report the actual landed work commit; do not rerun or redelegate the work."
+		rig.lit(accept)
+		rig.keys("Enter")
+	}
+	for deadline = time.Now().Add(2 * time.Minute); completedCommitReceipt(t, home) == "" || completedGit(t, ws, "rev-parse", "HEAD") == beforeHead; {
+		if time.Now().After(deadline) {
+			t.Fatalf("actual explicit acceptance did not produce a landed commit receipt: %s", rig.capture())
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
 	finalHead := completedGit(t, ws, "rev-parse", "HEAD")
 	if finalHead == beforeHead {
 		t.Fatal("explicit acceptance did not land a commit")
