@@ -196,8 +196,11 @@ func TestUnavailableWrapIsTheExecutorItself(t *testing.T) {
 	}
 }
 
-// C27.7 exercises this behaviour without an opt-in switch.
+// C27.7 exercises this behaviour without an opt-in switch. It declares the
+// engine available rather than asking the one this build carries, so it proves
+// the wiring wherever the carried engine predates named timelines.
 func TestAvailableWrapRecords(t *testing.T) {
+	t.Cleanup(cell.UseAvailabilityInTests(true))
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	got, err := Wrap(&stubExec{}, newCell(t))
 	if _, ok := got.(*Recorder); err != nil || !ok {
