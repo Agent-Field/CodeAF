@@ -69,3 +69,15 @@ func TestStatusOnlyRequestRecognizesNaturalCheckInsWithoutSwallowingWork(t *test
 		})
 	}
 }
+
+func TestManagerStatusQueuedExplainsExecutionCapacityAndSettings(t *testing.T) {
+	status := StatusForManager(Item{State: StateQueued}, false, time.Now())
+	for _, want := range []string{"queued", "execution slot", "Settings → Factory concurrency", "Idle PR monitoring does not use"} {
+		if !strings.Contains(status.Text, want) {
+			t.Fatalf("queued status missing %q: %s", want, status.Text)
+		}
+	}
+	if strings.Contains(status.Text, "bench") {
+		t.Fatal(status.Text)
+	}
+}
