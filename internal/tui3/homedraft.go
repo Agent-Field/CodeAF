@@ -238,10 +238,11 @@ func (a *app) targetProject() string {
 	// [targetWhere], which is an address a pin and a chord still act on.
 	if a.at(pageHome) {
 		if line, ok := a.home.previewLine(); ok && line.kind == homeSession {
-			// homeGone is the reading the world scan already took, and not a
-			// stat of the frame's own: a frame that read the disk to name a
-			// project is the frame that must not exist (render_test.go).
-			if row := line.row; row.Origin != "" && (row.Owned || a.homeGone(row.Workspace)) {
+			// homeFolderHere is the reading the world scan already took, and
+			// not a stat of the frame's own: a frame that read the disk to name
+			// a project is the frame that must not exist (render_test.go). A
+			// folder that reading has not reached yet is not claimed.
+			if row := line.row; row.Origin != "" && (row.Owned || !a.homeFolderHere(row.Workspace)) {
 				return filepath.Base(row.Origin) + session.MovedCopyWord
 			}
 		}

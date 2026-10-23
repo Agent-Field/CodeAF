@@ -523,6 +523,42 @@ func TestHomeNamesACopyProjectForWhereItCameFrom(t *testing.T) {
 	}
 }
 
+// Home reads which folders are here in the background. A copy whose recorded
+// folder that reading has not reached is named for where it came from; once the
+// reading finds the folder on this machine, the foot names the folder itself.
+func TestHomeFootNamesACopysFolderOnlyOnceTheReadingFindsItHere(t *testing.T) {
+	lab := newHomeLab(t)
+	spoke := lab.pin(time.Now())
+	here := t.TempDir()
+	dir := filepath.Join(lab.project("-tmp-here"), "cell000000000002")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "transcript.jsonl"),
+		[]byte(`{"type":"session","version":1,"id":"cell000000000002"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.SaveMeta(dir, session.Meta{
+		ID: "cell000000000002", Title: "fix it",
+		Workspace: here, LaunchDir: here, Origin: here,
+		Created: spoke.Add(-time.Hour), LastUserAt: spoke,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	world := session.ReadWorld(lab.root)
+	a := lab.app("")
+	a.world = func() (session.World, bool) { return world, true }
+	a.openHome()
+	a.home.gone = nil
+	if got := a.targetProject(); !strings.Contains(got, session.MovedCopyWord) {
+		t.Fatalf("before the reading the foot names %q, want the copy word", got)
+	}
+	a.home.gone = map[string]bool{here: false}
+	if got := a.targetProject(); strings.Contains(got, session.MovedCopyWord) || !strings.Contains(got, filepath.Base(here)) {
+		t.Fatalf("after the reading found %s the foot names %q", here, got)
+	}
+}
+
 // A chat that came home — its folder is on this machine again — is not a copy
 // whatever a note from an earlier hop says: the world names its project by the
 // folder that is there.

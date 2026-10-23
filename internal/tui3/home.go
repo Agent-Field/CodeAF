@@ -3383,6 +3383,16 @@ func (a *app) homeGone(where string) bool {
 	return a.home.gone[where]
 }
 
+// homeFolderHere is whether the last reading found this folder on this
+// machine. A folder the reading has not reached is not here: Home reads in
+// the background, and until it answers, a copy taken from another machine must
+// not be named for a folder that may exist only on the machine it left.
+func (a *app) homeFolderHere(where string) bool {
+	where = strings.TrimSpace(where)
+	gone, asked := a.home.gone[where]
+	return where != "" && asked && !gone
+}
+
 // homeRowGone is the same question asked about one conversation's row.
 //
 // It looks ONLY at the recorded project directory, which is exactly what
