@@ -1,5 +1,20 @@
 # The performance laws
 
+## Factory execution capacity
+
+New runners default to **15 concurrent jobs**, with a configurable **1–100**
+limit per owner and computer. This is a bounded product policy, not a benchmark
+of hardware capacity. Existing saved limits remain in force. The worker follows
+capacity changes every **5 seconds**; a lowering retires surplus slots between
+jobs and never cancels admitted work. Registrations for individual worker slots
+share one computer limit and must never multiply it. Queued-job capacity facts
+are derived from one presence snapshot and deduplicated per computer.
+
+Idle PR monitoring holds no execution lease. Actionable feedback queues one
+repair, which competes for the same finite capacity; returning to monitoring
+releases it. The capacity, queue projection and monitoring-lease regressions in
+`internal/factory/serve`, `lease` and `worker` defend this separation.
+
 A wave of work in August 2026 took a millisecond and half a megabyte off every
 provider call, stopped the frame redoing what nothing asked it to redo, and took
 two thirds off the embedded corpora. This file is what keeps it. Every win below

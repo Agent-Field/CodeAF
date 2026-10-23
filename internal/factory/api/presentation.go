@@ -2,6 +2,8 @@ package api
 
 import "github.com/Agent-Field/codeaf/internal/factory"
 
+const ConcurrencySettingsHint = "Configure Jobs at once in Settings → Factory concurrency."
+
 // PresentJob is shared by every producer. The service narrows controls using
 // its actual doors after caller permissions and runner presence are known.
 func PresentJob(j *Job) {
@@ -28,6 +30,13 @@ func PresentJob(j *Job) {
 		p.Kind, p.Title = "spending", "Spending limit reached"
 	case j.State == StateQueued || (j.NeedsYou != nil && j.NeedsYou.Kind == factory.NeedsRunnerOffline):
 		p.Kind, p.Title = "waiting_for_runner", "Waiting to start"
+		if j.State == StateQueued {
+			p.Detail = "Queued. Waiting for an available runner. " + ConcurrencySettingsHint
+			// Presence decorates only this read, never the saved job or its version.
+			if j.StatePresentation.Kind == "waiting_for_capacity" {
+				p = j.StatePresentation
+			}
+		}
 	case j.State == StateRunning:
 		p.Title = "Running"
 		for _, step := range j.Steps {
