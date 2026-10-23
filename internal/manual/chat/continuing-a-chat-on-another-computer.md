@@ -199,9 +199,9 @@ If Git cannot read the project's ignore rules, saving stops with `cannot read wh
 
 ## Does saving slow my command — pending save, quit while saving, moving before the save finishes
 
-A command's result returns after its call log is durable, while its file capture finishes in the background. The next tool call, continuing the chat on this computer, uploading it and closing the conversation wait for the pending save. The first capture of a new chat does not hold its first command's result open. A failed capture keeps the finished call in its local log for the next save; codeaf never runs that command again to recover it.
+A command's result returns after its call log is written, while its file capture finishes in the background. The next tool call, continuing the chat on this computer, uploading it and closing the conversation wait for the pending save. Opening a chat starts its first screened capture in the background. A command submitted before that capture finishes waits for it; commands cannot change files while that first screen is being saved. A failed capture keeps the finished call in its local log for the next save; codeaf never runs that command again to recover it.
 
-A wait lasts at most 30 seconds. A timeout says `still saving this chat on this computer: context deadline exceeded`; the pending save is not silently treated as done. The saving status reports failures, and quitting reports an error if saving could not finish.
+A wait lasts at most 30 seconds. A timeout says `still saving this chat on this computer: context deadline exceeded`; the pending save is not silently treated as done. The saving status reports failures, and quitting reports an error if saving could not finish. A final disk-flush failure says `codeaf: could not finish saving this chat:` followed by the cause and exits unsuccessfully.
 
 ## I pressed alt+m before the other chat appeared — still arriving, home on a second computer
 
@@ -210,3 +210,9 @@ Device presence can arrive before its list of chats. If you press `alt+m` early,
 ## Does first start send anything — local identity before pairing
 
 The first start may create a local identity for this computer. That file sends nothing: there is no sync traffic or network use until you pair or offer a pairing code. Reading the add-device instructions leaves it quiet. Offering a pairing code or running `codeaf pair` contacts the sync service for that pairing. `CODEAF_SYNC_URL=off` blocks sync traffic even after pairing.
+
+## What survives a crash or power loss — durability, killed process, lost call records
+
+If the codeaf process dies, written call records and finished results survive; recovery never runs those commands again. An interrupted external command is shown as incomplete rather than retried. A machine losing power can lose at most roughly the last second of call records and saves. Losing a record never causes its command to run again, and a torn final record is discarded without damaging earlier history.
+
+Call records are written in order without waiting for a disk flush on each command. A background group flush runs about every 250 milliseconds. Moving or uploading the chat, becoming view-only, quitting and closing wait for the pending save and disk flush; a failure is reported. Saving also flushes the call records before relying on the saved files, and keeps the receipt before removing completed records from the local call log.

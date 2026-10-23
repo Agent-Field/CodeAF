@@ -772,10 +772,11 @@ command opens it again. Running the session elsewhere with `--host` has its own 
 
 ## A command was running when codeaf was killed — what the chat says when you come back, and whether it runs again
 
-When codeaf is killed hard (`kill -9`, a crash, a power cut) while a command is running,
-the conversation is kept up to the last finished step. The command that was running is
-**never run again on its own**: it may have stopped part way or have finished, and running
-it twice could do the same thing twice.
+When the codeaf process is killed hard (`kill -9`, a crash) while a command is running,
+its written call records and finished results survive. A machine losing power can lose
+roughly the last second of call records and saves; earlier history stays readable. The
+command that was running, or one whose record was lost, is **never run again on its own**:
+it may have stopped part way or have finished, and running it twice could do the same thing twice.
 
 Opening the conversation again says so, one plain line for each command that was cut off:
 
