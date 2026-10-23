@@ -1050,6 +1050,10 @@ var OperatorEnvPins = []string{
 	// of asking its long-lived daemon (internal/cellstore). It is an escape
 	// hatch that changes speed and never results, so it is plumbing.
 	"CODEAF_ENGINE_DAEMON",
+	// CODEAF_BASH names the bash native Windows runs commands in when Git for
+	// Windows is not where codeaf looks (internal/shell). A path to a program
+	// is plumbing for the same reason CODEAF_FURROW is.
+	"CODEAF_BASH",
 	// The three site-attribution pins — a URL, an app name, a category list —
 	// used to sit here, and they are gone rather than moved: the OpenRouter app
 	// this binary reports as is decided in internal/provider from the binary's
