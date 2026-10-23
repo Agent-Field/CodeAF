@@ -195,7 +195,7 @@ func answerLocked(doc *document, held *Lease, id int, it *factory.Item, yes bool
 	if held == nil {
 		return false, run.AnswerUnheld(it, yes, words, now)
 	}
-	if err := run.AnswerHeld(it, yes, now); err != nil {
+	if err := run.AnswerHeld(it, yes, now, words); err != nil {
 		return false, err
 	}
 	signal(doc, id, Signal{Verb: SignalAnswer, Yes: yes, Words: words})

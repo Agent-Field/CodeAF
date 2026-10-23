@@ -20,6 +20,9 @@ import (
 // ExecutionNotes carries exact command context and observed outcomes to later stages.
 // Journal messages are complete; display events are capped and cannot prove results.
 func (c *stageConversation) ExecutionNotes() ([]string, *factory.TestCounts) {
+	if c.verification != nil && c.verification.requireFresh {
+		return c.executionNotesMode(true, c.verification.requireAnyCheck)
+	}
 	return c.executionNotes(false)
 }
 
@@ -29,6 +32,9 @@ func (c *stageConversation) RepairExecutionNotes() ([]string, *factory.TestCount
 	return c.executionNotes(true)
 }
 func (c *stageConversation) executionNotes(fresh bool) ([]string, *factory.TestCounts) {
+	return c.executionNotesMode(fresh, fresh)
+}
+func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]string, *factory.TestCounts) {
 	f, err := os.Open(c.file)
 	if err != nil {
 		return []string{verification.FailurePrefix + " command journal could not be read: " + err.Error()}, nil
@@ -41,7 +47,15 @@ func (c *stageConversation) executionNotes(fresh bool) ([]string, *factory.TestC
 	lastOutcome := map[string]string{}
 	var pending []string
 	var state verification.Snapshot
-	if fresh {
+	checks, checkErr := verification.Read(c.file)
+	hasOwnedCheck := false
+	for _, check := range checks {
+		if !check.Diagnostic && check.SupersededBy == "" {
+			hasOwnedCheck = true
+			break
+		}
+	}
+	if fresh && (hasOwnedCheck || requireAnyCheck) {
 		var stateErr error
 		state, stateErr = verification.SnapshotAt(c.dir)
 		if stateErr != nil {
@@ -52,12 +66,30 @@ func (c *stageConversation) executionNotes(fresh bool) ([]string, *factory.TestC
 	}
 	setupFailures := map[string]string{}
 	var journalErr error
-	checks, checkErr := verification.Read(c.file)
+	// Reused evidence has to qualify on the current checkout even when this is
+	// an ordinary Test rather than a PR repair. Historical passes stay historical.
+	if !fresh {
+		for _, check := range checks {
+			if check.Inherited {
+				fresh = true
+				var e error
+				state, e = verification.SnapshotAt(c.dir)
+				if e != nil {
+					pending = append(pending, e.Error())
+				}
+				break
+			}
+		}
+	}
 	observed := map[string]bool{}
 	latest, superseded := verification.RequiredChecks(checks, state, fresh)
 	for _, check := range checks {
+		if check.Diagnostic {
+			continue
+		}
 		observed[check.Command] = true
 	}
+	seenResults := map[string]bool{}
 	corrected := map[string]bool{}
 	for command := range superseded {
 		notes = append(notes, "Corrected verification invocation: "+command)
@@ -109,6 +141,12 @@ func (c *stageConversation) executionNotes(fresh bool) ([]string, *factory.TestC
 		if row.Role != "tool" || cmd == "" {
 			continue
 		}
+		// Compaction appends the retained tool history again. A tool invocation
+		// contributes one observation, not one more blocker per compaction.
+		if seenResults[row.ToolCallID] {
+			continue
+		}
+		seenResults[row.ToolCallID] = true
 		// Setup refusal happens before the shell runs and has no exit receipt.
 		// Keep it even for commands outside the legacy check-name vocabulary.
 		if strings.HasPrefix(row.Content, verification.SetupFailurePrefix) {
@@ -187,7 +225,9 @@ func (c *stageConversation) executionNotes(fresh bool) ([]string, *factory.TestC
 	for _, key := range keys {
 		check := latest[key]
 		outcome := "unknown"
-		if check.Exit != nil {
+		if check.Problem != "" {
+			outcome = "instrumentation_error"
+		} else if check.Exit != nil {
 			if *check.Exit == 0 {
 				outcome = "passed"
 			} else {
@@ -196,7 +236,9 @@ func (c *stageConversation) executionNotes(fresh bool) ([]string, *factory.TestC
 		}
 		raw, _ := json.Marshal(map[string]any{"command": check.Command, "check": check.Args, "cwd": check.Cwd, "exit": check.Exit, "outcome": outcome, "before": check.Before, "after": check.After})
 		notes = append(notes, "Check receipt: "+string(raw))
-		if outcome != "passed" {
+		if check.Problem != "" {
+			pending = append(pending, check.Label()+" · "+check.Problem)
+		} else if outcome != "passed" {
 			if why := check.InvocationProblem(); why != "" {
 				pending = append(pending, check.Label()+" · invalid test command: "+why)
 			} else {
@@ -209,14 +251,17 @@ func (c *stageConversation) executionNotes(fresh bool) ([]string, *factory.TestC
 	if len(notes) > 12 {
 		notes = notes[len(notes)-12:]
 	}
-	if fresh && len(latest) == 0 {
+	if requireAnyCheck && len(latest) == 0 {
 		pending = append(pending, "no measured checks verify the current repair checkout")
 	}
 	if checkErr != nil {
 		pending = append(pending, "check receipts could not be read: "+checkErr.Error())
 	}
 	sort.Strings(pending)
-	for _, command := range pending {
+	for i, command := range pending {
+		if i > 0 && command == pending[i-1] {
+			continue
+		}
 		notes = append(notes, verification.FailurePrefix+" "+command)
 	}
 	return notes, tests
@@ -266,24 +311,40 @@ func verificationCommand(command string) string {
 // model turn. Keep Ask/Edit on the original door, including manager decisions.
 type receiptStageDoor struct {
 	session.StageDoor
-	file, dir string
-	repair    bool
-	mu        sync.Mutex
-	last      string
-	repeats   int
-	reason    string
-	stopped   bool
-	closed    bool
-	timer     *time.Timer
-	stop      chan string
+	file, dir       string
+	repair          bool
+	mu              sync.Mutex
+	last            string
+	repeats         int
+	reason          string
+	stopped         bool
+	closed          bool
+	timer           *time.Timer
+	stop            chan string
+	workRunning     func() bool
+	requireFresh    bool
+	requireAnyCheck bool
 }
 
 func (d *receiptStageDoor) Report(ctx context.Context, r factory.StageResult) error {
+	// A newer refused attempt withdraws any older terminal candidate. Keeping
+	// the old candidate would let an invalid revision silently fall back to it.
+	accepted := false
+	defer func() {
+		if !accepted {
+			d.RejectReport()
+		}
+	}()
 	d.mu.Lock()
 	stopped := d.stopped || d.closed
 	d.mu.Unlock()
 	if stopped {
 		return errors.New("verification recovery stopped; local changes are retained; retry the step after correcting its check or environment")
+	}
+	if r.Checkpoint {
+		err := d.StageDoor.Report(ctx, r)
+		accepted = err == nil
+		return err
 	}
 	if d.repair && r.Done && r.Repair == nil {
 		return errors.New("a completed PR repair needs repair.decision fixed or no_change with evidence; use needs_repair for partial work")
@@ -317,7 +378,17 @@ func (d *receiptStageDoor) Report(ctx context.Context, r factory.StageResult) er
 		d.timer = nil
 	}
 	d.last, d.reason, d.repeats = "", "", 0
-	return d.StageDoor.Report(ctx, r)
+	err := d.StageDoor.Report(ctx, r)
+	accepted = err == nil
+	return err
+}
+
+// RejectReport forwards invalidation through the evidence wrapper, including
+// parser rejections that happen before Report can receive a typed result.
+func (d *receiptStageDoor) RejectReport() {
+	if door, ok := d.StageDoor.(interface{ RejectReport() }); ok {
+		door.RejectReport()
+	}
 }
 func (d *receiptStageDoor) Ask(ctx context.Context, q factory.Asked) (string, error) {
 	if door, ok := d.StageDoor.(session.StageAsker); ok {
@@ -383,6 +454,16 @@ func (d *receiptStageDoor) rejectVerification(notes []string, reason string) err
 }
 
 func (d *receiptStageDoor) stopVerification(why string) {
+	// The lifecycle owner, not nullable receipt exits, knows whether physical
+	// owned work is still running. Its absolute stage and money bounds remain.
+	if d.workRunning != nil && d.workRunning() {
+		d.mu.Lock()
+		if !d.closed && !d.stopped {
+			d.timer = time.AfterFunc(stageVerificationRecoveryWindow, func() { d.stopVerification(why) })
+		}
+		d.mu.Unlock()
+		return
+	}
 	d.mu.Lock()
 	if d.closed || d.stopped || d.reason == "" {
 		d.mu.Unlock()

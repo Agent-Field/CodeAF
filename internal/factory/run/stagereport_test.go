@@ -285,7 +285,7 @@ func TestAStepThatReportsAndGoesIdleEndsPromptly(t *testing.T) {
 	}
 }
 
-// THE WALL STILL ENDS A STEP THAT NEVER STOPS, and its last report stands.
+// A report cannot make a never-settled step successful after its wall expires.
 func TestTheWallStillEndsAStepThatReportedAndNeverStops(t *testing.T) {
 	old := stageWall
 	stageWall = 20 * time.Millisecond
@@ -294,11 +294,13 @@ func TestTheWallStillEndsAStepThatReportedAndNeverStops(t *testing.T) {
 		_ = c.Spec.Stage.Report(ctx, factory.StageResult{Done: true, Output: "partial"})
 		<-ctx.Done()
 	}}
-	res, err := NewChatExecutor(maker).Run(context.Background(), reviewJob())
+	job := reviewJob()
+	job.Stage.Name = "test"
+	res, err := NewChatExecutor(maker).Run(context.Background(), job)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !res.Done || res.Output != "partial" || !maker.Opened()[0].Closed() {
+	if res.Done || res.Output != stageWalled || res.ExecutionBlocked != "check_wait_timeout" || !maker.Opened()[0].Closed() {
 		t.Fatalf("result = %+v", res)
 	}
 }

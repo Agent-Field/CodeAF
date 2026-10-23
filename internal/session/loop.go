@@ -335,6 +335,12 @@ func (a *Agent) turnCue(user userMessage) string {
 // a follow-up (agent.go) — an interrupted or faulted turn must not be the thing
 // that starts the next one.
 func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bool {
+	// A newly admitted stage turn may do more work after an earlier report.
+	// Withdraw that candidate before this turn can submit a newer one; runTurn
+	// is serialized, so a later valid final report cannot be invalidated here.
+	if a.config.mayStage() {
+		a.rejectStageReport()
+	}
 	// WHAT THE LAST TURN'S MEMORY PASS HAD NOWHERE TO SAY is said first: it ran
 	// after that turn's stream had closed, so this stream is the first it gets
 	// (memory.go's [Agent.sayMemory]).
@@ -1364,6 +1370,13 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// belt carries none of them), so nothing can have reached the world before
 		// this check, and a rejected batch is answered with nothing run at all.
 		// See bashbelt_envelope.go for the envelope and its reject roads.
+		if fault := a.stageReportBatchFault(calls); fault != "" {
+			a.rejectStageReport()
+			a.rejectBashEnvelope(hub, calls, fault)
+			warm.reset()
+			continue
+		}
+
 		if skip, ended := a.enforceBashEnvelope(ctx, hub, calls, &turn, started, model); ended {
 			return true
 		} else if skip {

@@ -1,12 +1,10 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
+	"sort"
 	"strings"
-	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
@@ -56,98 +54,125 @@ func factoryVerificationRecovered(it factory.Item, dir string) bool {
 // still match. The original journal is untouched; prior attempts remain auditable.
 // No command, commit, push, or previously approved side effect is replayed.
 func inheritFactoryChecks(spec factoryrun.ConversationSpec, file, dir string) string {
-	if !spec.VerifyRepair || spec.Item.Stream == nil || spec.Resume != "" {
+	stage := spec.VerificationStage
+	if spec.VerifyRepair {
+		stage = factory.FollowPRStep
+	}
+	if (stage != "test" && stage != "proof" && !spec.VerifyRepair) || spec.Item.Stream == nil || spec.Resume != "" {
 		return ""
+	}
+	at, err := verification.SnapshotAt(dir)
+	if err != nil || at.Head == "" {
+		return ""
+	}
+	owner, err := verification.OwnerAt(dir)
+	if err != nil {
+		return ""
+	}
+	belongs := func(c verification.Check) bool {
+		if c.OwnerRoot != "" && c.OwnerRoot != owner {
+			return false
+		}
+		cwd, e := filepath.EvalSymlinks(c.Cwd)
+		if e != nil {
+			return false
+		}
+		rel, e := filepath.Rel(owner, cwd)
+		return e == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 	}
 	var candidates []string
 	for _, ph := range spec.Item.Stream.Phases {
-		if ph.Name != factory.FollowPRStep {
+		if ph.Name != stage {
 			continue
 		}
-		if ph.Chat != "" {
+		for _, round := range ph.Rounds {
+			if round.Chat != "" && !round.At.IsZero() {
+				candidates = append(candidates, round.Chat)
+			}
+		}
+		if ph.Chat != "" && (!ph.At.IsZero() || ((ph.State == factory.PhaseDone || ph.State == factory.PhaseFailed) && ph.Result != nil)) {
 			candidates = append(candidates, ph.Chat)
 		}
-		for i := len(ph.Rounds) - 1; i >= 0 && len(candidates) < 12; i-- {
-			if ph.Rounds[i].Chat != "" {
-				candidates = append(candidates, ph.Rounds[i].Chat)
-			}
-		}
 	}
+	seenSources := map[string]bool{}
+	seenChecks := map[string]bool{}
+	var history []verification.Check
 	for _, source := range candidates {
-		if source == file {
+		if source == file || seenSources[source] {
 			continue
 		}
-		notes, _ := (&stageConversation{file: source, dir: dir}).RepairExecutionNotes()
-		blocked := false
-		for _, n := range notes {
-			blocked = blocked || strings.HasPrefix(n, verification.FailurePrefix)
-		}
-		if blocked {
-			continue
-		}
+		seenSources[source] = true
 		checks, err := verification.Read(source)
-		if err != nil || len(checks) == 0 || len(checks) > 512 {
-			continue
-		}
-		at, err := verification.SnapshotAt(dir)
 		if err != nil {
 			continue
 		}
-		required, _ := verification.RequiredChecks(checks, at, true)
-		if len(required) == 0 {
-			continue
-		}
-		var saved []verification.Check
-		for _, c := range required {
-			if c.Exit == nil || *c.Exit != 0 || !c.Fresh(at) {
-				blocked = true
-				break
+		for _, c := range checks {
+			identity := c.Source + "\x00" + c.ID
+			if seenChecks[identity] {
+				continue
 			}
-			saved = append(saved, c)
+			seenChecks[identity] = true
+			history = append(history, c)
 		}
-		if blocked {
+	}
+	required, _ := verification.RequiredChecks(history, at, true)
+	// Only finished source conversations reach this point. An interrupted repeat
+	// does not refute an earlier pass on exactly the same inputs and context. A
+	// later definite failure does, and must be followed by a new passing check.
+	qualifying := map[string]verification.Check{}
+	for _, c := range history {
+		if c.Diagnostic || c.SupersededBy != "" {
 			continue
 		}
-		if err = writeFactoryCheckCheckpoint(file, source, saved); err != nil {
-			return ""
+		if c.Problem != "" || (c.Exit != nil && *c.Exit != 0) {
+			delete(qualifying, c.Key())
+			continue
 		}
-		return fmt.Sprintf("\nSaved verification checkpoint: %d measured checks already passed on this exact checkout (HEAD %s). They are available to stage_result. Reuse these results; rerun only checks invalidated by edits or a newly required scope. Review the current feedback and report no_change when the published work already satisfies it.\n", len(saved), at.Head)
+		if c.Exit != nil && *c.Exit == 0 && c.Fresh(at) && belongs(c) {
+			qualifying[c.Key()] = c
+		}
 	}
-	return ""
+	var saved []verification.Check
+	passes := 0
+	unresolved := 0
+	for key, c := range required {
+		if c.Exit == nil && c.Problem == "" {
+			if pass, ok := qualifying[key]; ok {
+				c.SupersededBy = pass.Source + ":" + pass.ID
+				c.SupersessionReason = "incomplete repeat from a finished round; exact-input passing evidence retained"
+				saved = append(saved, c)
+				c = pass
+			}
+		}
+		// A stale historical success is not imported as fresh evidence. Failures
+		// and incomplete executions remain obligations alongside independent passes.
+		if c.Exit != nil && *c.Exit == 0 && c.Problem == "" {
+			if !c.Fresh(at) || !belongs(c) {
+				continue
+			}
+			passes++
+		} else {
+			unresolved++
+		}
+		saved = append(saved, c)
+	}
+	if passes == 0 {
+		return ""
+	}
+	sort.Slice(saved, func(i, j int) bool { return saved[i].Key() < saved[j].Key() })
+	if err = writeFactoryCheckCheckpoint(file, "", saved); err != nil {
+		return ""
+	}
+	return fmt.Sprintf("\nSaved verification checkpoint: %d measured checks already passed on this exact checkout (HEAD %s); %d unresolved checks retained. Original source receipts remain authoritative. Reuse qualifying results; rerun unresolved checks and any scope invalidated by edits.\n", passes, at.Head, unresolved)
 }
+
 func writeFactoryCheckCheckpoint(file, source string, checks []verification.Check) error {
-	target := file + ".checks"
-	root, err := os.MkdirTemp(filepath.Dir(file), ".checkpoint-")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(root)
-	for i, c := range checks {
-		dir, err := os.MkdirTemp(root, "call-checkpoint-")
-		if err != nil {
-			return err
-		}
-		raw, _ := json.Marshal(c.Command)
-		if err = os.WriteFile(filepath.Join(dir, "command.json"), raw, 0600); err != nil {
-			return err
-		}
-		path := filepath.Join(dir, "check-saved")
-		fields := append([]string{c.Cwd}, c.Context...)
-		fields = append(fields, c.Args...)
-		if err = os.WriteFile(path, []byte(strings.Join(fields, "\x00")+"\x00"), 0600); err != nil {
-			return err
-		}
-		for suffix, raw := range map[string]string{".exit": "0\n", ".before": c.Before.Head + " " + c.Before.Fingerprint, ".after": c.After.Head + " " + c.After.Fingerprint} {
-			if err = os.WriteFile(path+suffix, []byte(raw), 0600); err != nil {
-				return err
+	if source != "" {
+		for i := range checks {
+			if checks[i].Source == "" {
+				checks[i].Source = source
 			}
-			stamp := time.Now().Add(time.Duration(i) * time.Nanosecond)
-			_ = os.Chtimes(path+suffix, stamp, stamp)
 		}
 	}
-	if err := os.Rename(root, target); err != nil {
-		return err
-	}
-	proof, _ := json.Marshal(map[string]any{"source": source, "checks": len(checks), "head": checks[0].Before.Head, "fingerprint": checks[0].Before.Fingerprint})
-	return os.WriteFile(file+".checkpoint.json", proof, 0600)
+	return verification.Inherit(file, checks)
 }

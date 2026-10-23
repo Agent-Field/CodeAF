@@ -440,8 +440,9 @@ func RoundCap(max, round int) int {
 	return max
 }
 
-// NoteRound records one finished try. A repeat of the same round replaces
-// the earlier line. The list stays within cap.
+// NoteRound records one finished try. Re-delivery of the same conversation
+// updates that try; a new conversation never erases an earlier one just because
+// recovery reused its round number. Legacy checks without chats use the round.
 func NoteRound(ph *Phase, cap int, line RoundLine) {
 	if ph == nil || line.Round < 1 {
 		return
@@ -451,7 +452,7 @@ func NoteRound(ph *Phase, cap int, line RoundLine) {
 	}
 	replaced := false
 	for i := range ph.Rounds {
-		if ph.Rounds[i].Round == line.Round {
+		if (line.Chat != "" && ph.Rounds[i].Chat == line.Chat) || (line.Chat == "" && ph.Rounds[i].Chat == "" && ph.Rounds[i].Round == line.Round) {
 			ph.Rounds[i] = line
 			replaced = true
 			break

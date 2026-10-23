@@ -81,11 +81,16 @@ func ResumeItem(it *factory.Item, now time.Time) error {
 // runner hears the answer through the lease and logs it. An approve step is
 // passed (yes) or sent back to wait (no) here, because only a person's door
 // moves it. Passing it stamps the step's finish, which the brief's clock reads.
-func AnswerHeld(it *factory.Item, yes bool, now time.Time) error {
+func AnswerHeld(it *factory.Item, yes bool, now time.Time, words ...string) error {
 	if it.State != factory.StateNeedsYou || strings.TrimSpace(it.Question) == "" {
 		return fmt.Errorf("%s is not waiting on you", it.Ref())
 	}
 	qkind := it.QKind
+	answer := ""
+	if len(words) > 0 {
+		answer = words[0]
+	}
+	grantAdditionalRound(it, yes, answer)
 	it.State = factory.StateRunning
 	it.Question, it.QKind = "", ""
 	it.Asking = nil
@@ -108,6 +113,29 @@ func AnswerHeld(it *factory.Item, yes bool, now time.Time) error {
 	return nil
 }
 
+// Save the grant at the authoritative answer, not only after the worker hears
+// it. Repeated delivery is idempotent: the grant is based on the same round.
+func grantAdditionalRound(it *factory.Item, yes bool, words string) {
+	if it.QKind != factory.QKindOutOfAttempts || factory.OutOfAttemptsChoice(yes, words) != factory.ChoiceTryOnceMore || it.Stream == nil || it.Stream.Cur < 0 || it.Stream.Cur >= len(it.Stream.Phases) {
+		return
+	}
+	ph := &it.Stream.Phases[it.Stream.Cur]
+	if ph.Verification == nil || ph.Verification.State != "incomplete" {
+		ph.RoundLimit = max(ph.RoundLimit, ph.Round+1)
+	}
+}
+
+func grantFreshLoop(it *factory.Item, ph *factory.Phase) {
+	limit := 1
+	for _, st := range it.Stages {
+		if st.Name == ph.Name {
+			limit = max(st.Max, 1)
+			break
+		}
+	}
+	ph.RoundLimit = max(ph.Round, 1) + limit - 1
+}
+
 // AnswerUnheld is a person's answer to a question on a job no worker holds. An
 // approve question's no is the SEND BACK the warm runner makes (back in
 // loop.go): the step before the gate runs again in a new round, the gate waits
@@ -116,6 +144,35 @@ func AnswerHeld(it *factory.Item, yes bool, now time.Time) error {
 // nothing here starts a run: the job is queued for a worker to pull. Every
 // other question is kept for the step's next round, as KeepAnswer does.
 func AnswerUnheld(it *factory.Item, yes bool, words string, now time.Time) error {
+	if it.QKind == factory.QKindOutOfAttempts && it.State == factory.StateNeedsYou && it.Stream != nil && it.Stream.Cur >= 0 && it.Stream.Cur < len(it.Stream.Phases) {
+		i := it.Stream.Cur
+		ph := &it.Stream.Phases[i]
+		switch factory.OutOfAttemptsChoice(yes, words) {
+		case factory.ChoiceCancel:
+			stopStored(it, now)
+			return nil
+		case factory.ChoiceSendBack:
+			prev := factory.PreviousWork(it.Stream.Phases, i)
+			if prev < 0 {
+				return fmt.Errorf("there is no previous work step to send back")
+			}
+			rewindToStep(it, i, prev, factory.SendBackReason(words), now)
+		default:
+			incomplete := ph.Verification != nil && ph.Verification.State == "incomplete"
+			grantAdditionalRound(it, yes, words)
+			if !incomplete {
+				ph.Round = max(ph.Round, 1) + 1
+			}
+			setPhaseState(ph, factory.PhasePending, now)
+			ph.Chat = ""
+		}
+		if words = strings.TrimSpace(words); words != "" && words != factory.ChoiceTryOnceMore && !strings.EqualFold(words, "yes") {
+			it.Notes = append(it.Notes, words)
+		}
+		it.Question, it.QKind, it.Asking = "", "", nil
+		it.State = factory.StateQueued
+		return nil
+	}
 	if it.QKind != factory.QKindApprove {
 		return KeepAnswer(it, yes, words, now)
 	}

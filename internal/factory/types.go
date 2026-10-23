@@ -275,8 +275,12 @@ type Phase struct {
 	State PhaseState
 	Note  string
 	Round int
-	Tasks int
-	Left  time.Duration
+	// RoundLimit is the effective limit, including explicit user extensions.
+	// Persist it before a round starts so reopening cannot revoke that grant.
+	RoundLimit   int               `json:",omitempty"`
+	Verification *StepVerification `json:",omitempty"`
+	Tasks        int
+	Left         time.Duration
 	// Chat and Handle name the stage's conversation when the stage is one:
 	// the room a person walks into from the phase strip.
 	Chat   string

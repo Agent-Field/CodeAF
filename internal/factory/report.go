@@ -49,10 +49,12 @@ type PipelineChange struct {
 // StageReport addresses a pipeline step by name, so a report cannot invent a
 // new step or depend on an index that a person changed between reports.
 type StageReport struct {
-	Name  string
-	Chat  string
-	State PhaseState
-	Round int
+	RoundLimit   int
+	Verification *StepVerification
+	Name         string
+	Chat         string
+	State        PhaseState
+	Round        int
 	// Started is when the step's latest round began on the worker
 	// ([Phase.Started]); zero leaves the factory's as it is.
 	Started time.Time

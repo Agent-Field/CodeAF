@@ -236,6 +236,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// belongs beside the transcript of the conversation that commissioned it, not
 	// in the repository it borrowed to work in (landing.go).
 	agent.jobs = newJobRegistry(config.Workspace, config.droppingsPlace(), agent.enqueueJobNote, agent.enqueueWatchNote)
+	agent.jobs.stage = config.mayStage()
 	agent.jobs.notifyQuiet = agent.enqueueJobNoteQuiet
 	agent.jobs.notifyUnowed = agent.enqueueJobNoteUnowed
 	// And the registry gets the ROSTER lane as well as the waking one. A job is
@@ -4315,7 +4316,7 @@ func (a *Agent) wakeAnsweringLocked(answersPerson bool, answersMessage string) b
 	// Steward's own wall and clock without asking its spend closure while this
 	// function holds a.mu.
 	wallGone := wallIsUp(a.steward())
-	if a.running || a.closed || a.workStopped || wallGone || (a.config.InTask && !a.config.roomThread) || !a.opened {
+	if a.stageSettled || a.running || a.closed || a.workStopped || wallGone || (a.config.InTask && !a.config.roomThread) || !a.opened {
 		return false
 	}
 	if err := a.railBlockLocked(); err != nil {

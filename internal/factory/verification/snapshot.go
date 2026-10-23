@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/shell"
 )
 
@@ -68,15 +70,18 @@ func readSnapshot(path string) (Snapshot, error) {
 }
 
 // SnapshotAt reads the same checkout fingerprint as the shell observer.
+var snapshotReadTimeout = 5 * time.Second
+
 func SnapshotAt(dir string) (Snapshot, error) {
 	bash, err := shell.Bash()
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("cannot read verification checkout snapshot: %w", err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), snapshotReadTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bash, "-c", worktreeStateFunction+"\n_codeaf_worktree_state")
 	cmd.Dir = dir
+	boundSnapshot(cmd)
 	raw, err := cmd.Output()
 	if err != nil {
 		if e, ok := err.(*exec.ExitError); ok && e.ExitCode() == 4 {
@@ -86,6 +91,44 @@ func SnapshotAt(dir string) (Snapshot, error) {
 	}
 	return snapshotText(string(raw))
 }
+
+func boundSnapshot(cmd *exec.Cmd) {
+	processgroup.Configure(cmd)
+	cmd.Cancel = func() error {
+		if cmd.Process == nil {
+			return nil
+		}
+		return processgroup.Kill(cmd.Process.Pid)
+	}
+	cmd.WaitDelay = 200 * time.Millisecond
+}
+
+func canonicalOwner(dir string) (string, error) {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return "", err
+	}
+	abs, err = filepath.EvalSymlinks(abs)
+	if err != nil {
+		return "", err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--show-toplevel")
+	cmd.Dir = abs
+	boundSnapshot(cmd)
+	out, err := cmd.Output()
+	if err != nil {
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		return abs, nil
+	}
+	return filepath.EvalSymlinks(strings.TrimSpace(string(out)))
+}
+
+// OwnerAt resolves the explicit worktree boundary used for check admission.
+func OwnerAt(dir string) (string, error) { return canonicalOwner(dir) }
 
 // Fresh requires a stable check invocation on the checkout being accepted.
 func (c Check) Fresh(at Snapshot) bool { return at.Head != "" && c.Before == at && c.After == at }

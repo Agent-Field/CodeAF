@@ -703,6 +703,7 @@ func rewindToStep(it *factory.Item, i, prev int, words string, now time.Time) st
 	}
 	ph := &it.Stream.Phases[prev]
 	ph.Round = max(ph.Round, 1) + 1
+	grantFreshLoop(it, ph)
 	it.Stream.Cur = prev
 	loopSay(it, now, "said", backLine(ph.Name, words))
 	return ph.Name
@@ -797,7 +798,9 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 
 	round := max(it.Stream.Phases[i].Round, 1)
 	limit := max(st.Max, 1)
-	if round > 1 && it.Stream.Phases[i].State == factory.PhasePending {
+	if saved := it.Stream.Phases[i].RoundLimit; saved > 0 {
+		limit = max(saved, round)
+	} else if round > 1 && it.Stream.Phases[i].State == factory.PhasePending {
 		// SENT BACK FROM AN APPROVE STEP ([floorLoop.back]): the step has its
 		// whole loop again from the round it starts on.
 		limit += round - 1
@@ -847,6 +850,8 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			ph := &it.Stream.Phases[i]
 			setPhaseState(ph, factory.PhaseRunning, now)
 			ph.Round = round
+			ph.RoundLimit = limit
+			ph.Verification = nil
 			// A ROUND BEGINS WHERE ITS CHAT DOES: a fresh chat is a fresh start,
 			// and a round carrying on in the chat a pause cut short keeps the
 			// start it had (one that never recorded one takes this one).
@@ -938,6 +943,38 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			lp.mu.Unlock()
 			continue
 		}
+		if res.ExecutionBlocked != "" {
+			// Waiting/reporting exhausted its in-round recovery, not a code
+			// repair round. The person may retry the same bounded round; passing
+			// check evidence stays available to that next conversation.
+			_ = lp.write(c, func(cur *factory.Item) error {
+				cur.Stream.Phases[i].Verification = &factory.StepVerification{State: "incomplete", Reason: res.Output}
+				return nil
+			})
+			q := name + " verification is incomplete: " + res.Output + " · try again, or stop the job?"
+			a, ok := lp.ask(c, i, "rounds", factory.QKindOutOfAttempts, q, factory.PhaseWaiting, res.Output, askLine("", q))
+			if !ok {
+				return false
+			}
+			switch factory.OutOfAttemptsChoice(a.yes, a.words) {
+			case factory.ChoiceCancel:
+				lp.stop(c)
+				return false
+			case factory.ChoiceSendBack:
+				cur, err := lp.r.opts.Store.Get(c.id)
+				if err == nil && cur.Stream != nil {
+					if prev := factory.PreviousWork(cur.Stream.Phases, i); prev >= 0 {
+						return lp.back(c, i, prev, factory.SendBackReason(a.words))
+					}
+				}
+				lp.stop(c)
+				return false
+			}
+			if words := strings.TrimSpace(a.words); words != "" && words != factory.ChoiceTryOnceMore && !strings.EqualFold(words, "yes") {
+				lp.addNote(c.id, words)
+			}
+			continue
+		}
 		// A SPENDING LIMIT IS A STOP, NOT A SHORTFALL (stagereport.go's
 		// [SpendStop]): another round would be refused before it began, so the
 		// job stops on the limit's own words and nothing is asked.
@@ -965,6 +1002,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 				lp.tell(c.id, "Final readiness review found blockers. Follow PR will repair and verify them: "+res.Repair.Reason)
 				round++
 				limit = max(limit, round)
+				_ = lp.write(c, func(it *factory.Item) error { it.Stream.Phases[i].RoundLimit = limit; return nil })
 				continue
 			}
 			if verificationReason(res) == "" {
@@ -1069,6 +1107,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			lp.addNote(c.id, words)
 			round++
 			limit = round
+			_ = lp.write(c, func(it *factory.Item) error { it.Stream.Phases[i].RoundLimit = limit; return nil })
 			continue
 		}
 		lp.say(c, "fail", fmt.Sprintf("%s %d/%d: %s · going again", name, round, limit, shortfall(res)))
@@ -1371,6 +1410,7 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 		ModelSelections: c.modelSelections,
 		Log:             func(line string) { lp.say(c, "thought", line) },
 		Progress:        lp.followProgress(c, st, i, round),
+		Verification:    lp.verificationProgress(c, i, round),
 		Spend:           lp.spender(c),
 		Ask: func(ctx context.Context, q factory.Asked) (string, error) {
 			return lp.inbox(ctx, c, i, stageLabel(st), q)
@@ -1715,7 +1755,14 @@ func (lp *floorLoop) stop(c *loopCtl) {
 		defer lp.tellStep(c.id, sayStopped, cut)
 	}
 	c.wmu.Unlock()
-	lp.release(c)
+	// A running drive owns this control until its executor's deferred cleanup
+	// has finished. Releasing here let immediate Resume overlap old processes.
+	lp.mu.Lock()
+	queued := c.benchNo == 0 && !c.reverify
+	lp.mu.Unlock()
+	if queued {
+		lp.release(c)
+	}
 }
 
 // Stop ends a stream and keeps its branch; the item returns to new.
@@ -2043,8 +2090,18 @@ func (r *Runner) Answer(id int, yes bool, words string) error {
 		}
 		return fmt.Errorf("%s is not waiting on you", it.Ref())
 	}
+	pending := c.pending
 	c.pending = ""
 	lp.mu.Unlock()
+	if err := r.opts.Store.Update(id, func(it *factory.Item) error {
+		grantAdditionalRound(it, yes, words)
+		return nil
+	}); err != nil {
+		lp.mu.Lock()
+		c.pending = pending
+		lp.mu.Unlock()
+		return err
+	}
 	c.answers <- loopAnswer{yes: yes, words: strings.TrimSpace(words)}
 	return nil
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/factory/verification"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -126,7 +128,7 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 		fallback = ""
 	}
 	cfg.ConversationModels = &session.ConversationModels{Main: cfg.Model, Fallback: fallback}
-	verification := &receiptStageDoor{StageDoor: spec.Stage, file: cfg.SessionFile, dir: where, repair: spec.VerifyRepair}
+	verification := &receiptStageDoor{StageDoor: spec.Stage, file: cfg.SessionFile, dir: where, repair: spec.VerifyRepair, requireFresh: spec.VerifyChecks}
 	cfg.Stage = verification
 	cfg.Interactive = false
 	cfg.Unattended = true
@@ -160,6 +162,8 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	if spec.Effort != "" {
 		agent.SetConversationEffort(spec.Effort)
 	}
+	verification.workRunning = agent.StageHasChecks
+	agent.ArmStageJobPark(factoryStageWall)
 	rememberStageAgent(agent)
 	if team := strings.TrimSpace(spec.Team); team != "" && !resumed {
 		if err := stageJoinTeam(m.profileDir, team, cfg.SessionFile, where, spec.Name, spec.Handle, spec.Brief); err != nil {
@@ -169,15 +173,16 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 		}
 	}
 	c := &stageConversation{
-		agent:        agent,
-		budget:       budget,
-		file:         cfg.SessionFile,
-		dir:          where,
-		captions:     make(chan string, 256),
-		progress:     spec.Progress,
-		done:         make(chan struct{}),
-		verification: verification,
-		closing:      make(chan struct{}),
+		agent:                agent,
+		budget:               budget,
+		file:                 cfg.SessionFile,
+		dir:                  where,
+		captions:             make(chan string, 256),
+		progress:             spec.Progress,
+		verificationProgress: spec.Verification,
+		done:                 make(chan struct{}),
+		verification:         verification,
+		closing:              make(chan struct{}),
 	}
 	brief := spec.Brief + inheritFactoryChecks(spec, cfg.SessionFile, where)
 	if resumed {
@@ -191,6 +196,10 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	}
 	c.wakes, c.stopWakes = agent.WatchWakes()
 	done := c.done
+	if c.verificationProgress != nil {
+		c.followers.Add(1)
+		guard.Go("factory/stage-check-progress", func() { defer c.followers.Done(); c.watchVerification() })
+	}
 	c.followers.Add(1)
 	guard.Go("factory/stage-conversation", func() { defer c.followers.Done(); c.follow(events, done) })
 	return c, nil
@@ -295,18 +304,19 @@ var stageSettle = unattendedRunSettleTick
 
 // stageConversation is one open stage conversation.
 type stageConversation struct {
-	budget       *stageBudget
-	agent        *session.Agent
-	file         string
-	dir          string
-	captions     chan string
-	progress     func(string)
-	wakes        <-chan (<-chan session.Event)
-	stopWakes    func()
-	done         chan struct{}
-	verification *receiptStageDoor
-	followers    sync.WaitGroup
-	closing      chan struct{}
+	budget               *stageBudget
+	agent                *session.Agent
+	file                 string
+	dir                  string
+	captions             chan string
+	progress             func(string)
+	verificationProgress func(*factory.StepVerification)
+	wakes                <-chan (<-chan session.Event)
+	stopWakes            func()
+	done                 chan struct{}
+	verification         *receiptStageDoor
+	followers            sync.WaitGroup
+	closing              chan struct{}
 
 	mu      sync.Mutex
 	failure error
@@ -326,7 +336,7 @@ func (c *stageConversation) follow(first <-chan session.Event, done chan struct{
 			return
 		default:
 		}
-		if c.agent.StillGoing() {
+		if c.agent.StageStillGoing() {
 			settled = false
 		} else if settled {
 			if c.settle(done) {
@@ -369,7 +379,7 @@ func (c *stageConversation) closeDone(done chan struct{}) {
 func (c *stageConversation) settle(done chan struct{}) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.agent.StillGoing() {
+	if !c.agent.SettleStage() {
 		return false
 	}
 	close(done)
@@ -525,6 +535,7 @@ func (c *stageConversation) startTurn(words string, start func(string) (<-chan s
 	if c.closed {
 		return nil, nil, false, errors.New("this stage conversation is closed")
 	}
+	c.agent.ReopenStage()
 	events, err := start(words)
 	if err != nil {
 		return nil, nil, false, err
@@ -841,4 +852,58 @@ func (c *stageConversation) relativeHint(s string) string {
 	}
 	s = strings.ReplaceAll(s, c.dir+string(os.PathSeparator), "")
 	return strings.ReplaceAll(s, c.dir, ".")
+}
+
+// watchVerification relays bounded structured facts even while a model turn parks.
+// It never wakes a model or prints receipt bookkeeping into the conversation.
+func (c *stageConversation) watchVerification() {
+	tick := time.NewTicker(time.Second)
+	defer tick.Stop()
+	defer c.verificationProgress(nil)
+	last := ""
+	for {
+		current, _ := verification.Current(c.file)
+		status := liveStageVerification(current, c.agent.StageChecks())
+		raw, _ := json.Marshal(status)
+		if string(raw) != last {
+			last = string(raw)
+			c.verificationProgress(status)
+		}
+		select {
+		case <-c.closing:
+			return
+		case <-tick.C:
+		}
+	}
+}
+
+// A nullable old receipt is not liveness. Match the exact currently owned
+// native tool call, including foreground checks and promoted background work.
+func liveStageVerification(current []verification.CurrentCheck, live []session.StageCheckProgress) *factory.StepVerification {
+	ids := make(map[string]time.Time, len(live))
+	for _, check := range live {
+		if check.CallID != "" {
+			ids[check.CallID] = check.Started
+		}
+	}
+	var status *factory.StepVerification
+	for _, check := range current {
+		started, owned := ids[check.CallID]
+		if check.Outcome != "running" || check.CallID == "" || !owned {
+			continue
+		}
+		// Provider call IDs may repeat across turns. A receipt from before the
+		// current physical process cannot borrow its new liveness.
+		if !started.IsZero() && (check.StartedAt.IsZero() || check.StartedAt.Before(started)) {
+			continue
+		}
+		if status == nil {
+			status = &factory.StepVerification{State: "running"}
+		}
+		if len(status.Checks) >= 8 {
+			break
+		}
+		status.Checks = append(status.Checks, factory.RunningCheck{ID: check.ID, Purpose: check.Purpose, StartedAt: check.StartedAt})
+	}
+	return status
 }

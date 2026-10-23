@@ -57,6 +57,7 @@ func StepControl(it *factory.Item, name string, rerun bool, words string, now ti
 		// worker admission revives it without erasing spend or earlier results.
 		target := &s.Phases[index]
 		target.Round = max(previous.Round+1, 1)
+		grantFreshLoop(it, target)
 		target.Rounds = append([]factory.RoundLine(nil), previous.Rounds...)
 		if previous.Chat != "" {
 			factory.NoteRound(target, factory.RoundLinesMost, factory.RoundLine{Round: previous.Round, Chat: previous.Chat, Summary: previous.Note, At: previous.At, Started: previous.Started})
