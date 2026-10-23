@@ -390,6 +390,10 @@ type beltRun struct {
 	cut        context.CancelFunc
 	stopped    bool
 	stopReason string
+	// bringingHome linearizes Stop against the existing main-checkout merge.
+	// quiet suppresses model narration after a stop arrives beyond that point.
+	bringingHome bool
+	quiet        bool
 	// ending says the engine has answered and the run is only landing,
 	// summarising and settling now: its supervisor is gone, so nothing will ever
 	// run work added to its store. closing says the CONVERSATION is ending
@@ -551,6 +555,11 @@ func (a *Agent) startOrJoinTaskRun(ctx context.Context, id uint64, title, brief 
 // startOrJoinTaskRunVia is the one body behind every door above: the start
 // lock, the join, the folder or the copy, the store and the first row.
 func (a *Agent) startOrJoinTaskRunVia(ctx context.Context, id uint64, title, brief string, dependsOn []uint64, stand taskStand, question string, via *delegate.Delegate, asked ...string) (bool, error) {
+	epoch, err := a.beltAdmissionEpoch()
+	if err != nil {
+		return false, err
+	}
+
 	engine := chatRunEngine
 	g := a.graph()
 	if engine == nil || g == nil || g.planPath() == "" {
@@ -597,6 +606,9 @@ func (a *Agent) startOrJoinTaskRunVia(ctx context.Context, id uint64, title, bri
 	// as children, exactly as a hand-off made a minute later would.
 	a.lockBeltStart()
 	defer a.beltStartMu.Unlock()
+	if err := a.checkBeltAdmission(epoch); err != nil {
+		return false, err
+	}
 	live, err := a.joinOrWait(ctx, stand, id, title, brief, dependencies, via)
 	if err != nil {
 		return false, err
@@ -1607,6 +1619,13 @@ func (a *Agent) installBeltRun(g *TaskGraph, run *beltRun) {
 	a.beltRun = run
 	a.beltMu.Unlock()
 	a.publishJoinedRunRows(g, run)
+	// Setup admitted before a stop inherits its closed admission gate.
+	a.mu.Lock()
+	stopped, why := a.workStopped, a.workStopReason
+	a.mu.Unlock()
+	if stopped {
+		_, _, _ = a.stopBeltRow(run.row, why)
+	}
 }
 
 // publishRunRow hands one run row to whoever is watching and keeps it for a
@@ -1911,13 +1930,10 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 	if run.cut != nil {
 		defer run.cut()
 	}
-	if stopped, why := a.beltRunStopped(run); stopped {
-		// A RUN A PERSON STOPPED IS NOT LANDED. Its work is kept where the stop's
-		// own sentence said it would be, and the ending is the stop's (stoprun.go).
-		a.settleStoppedBeltRun(run, why, summary.Cut)
-		a.settleTaskCrew(run.row, router.CrewStopped, summary.USD)
+	if a.settleBeltStopIfNeeded(run, summary) {
 		return
 	}
+
 	if closing && run.delegate == nil && summary.Outcome != beltRunOutcomeDone {
 		// THE CONVERSATION CLOSED UNDER THE RUN, AND THAT IS NOBODY'S ENDING. The
 		// run is not landed, its row is not settled and nothing is written on its
@@ -1932,42 +1948,19 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 		// branch below — never merged into the person's.
 		return
 	}
-	var landing RunLanding
-	if run.delegate != nil {
-		// A PROGRAM'S RUN IS OVER WHEN ITS PROGRAM IS, however it ended: it is
-		// a run of one task that nothing continues, so a store the engine left
-		// open — a program ended at a limit leaves it so — is closed here, or its
-		// page would read `running` and offer `stop it` for ever. A run that
-		// already ended is left as it ended.
-		//
-		// IT IS CLOSED BEFORE THE LANDING, NOT AFTER IT. The folder's last
-		// commit takes its time, and a page that went on reading `running` over
-		// a program that had already exited was a page claiming a present that
-		// was over — for the two limit endings alone, because every other ending
-		// is written by the engine at the program's exit.
-		if summary.Outcome != beltRunOutcomeDone {
-			words, _ := runEndingWords(summary)
-			_ = run.store.FailRoot(words)
-		}
-		landing = a.landDelegateRun(run, summary)
-	} else {
-		// EVERY OTHER ENDING IS WRITTEN ON THE RUN'S OWN TASK. The engine writes
-		// the ending of a limit or a failed root worker itself; this is the same
-		// write made again from the door, which the store takes once and ignores
-		// after, so no engine can leave a run the next hand-off would find still
-		// open.
-		if summary.Outcome != beltRunOutcomeDone {
-			_ = run.store.EndRoot(summary.Outcome)
-		}
-		landing = a.landBeltRun(ctx, engine, run)
+	landing := a.finishBeltRunLanding(ctx, engine, run, summary)
+	if a.settleBeltStopIfNeeded(run, summary) {
+		return
 	}
 	// A LANDING GETS ONE LAST READING before its digest is composed. The call
 	// owns the short beltRunSummaryDeadline: refusal, malformed output, or a
 	// slow provider leaves the stored reading alone and cannot hold the run
 	// beyond that bound. RefreshRunSummary itself declines without a store.
-	refreshCtx, cancelRefresh := context.WithTimeout(withCrewTask(ctx, run.crew), beltRunSummaryDeadline)
-	a.RefreshRunSummary(refreshCtx, run.root, time.Time{})
-	cancelRefresh()
+	if !a.beltRunQuiet(run) {
+		refreshCtx, cancelRefresh := context.WithTimeout(withCrewTask(ctx, run.crew), beltRunSummaryDeadline)
+		a.RefreshRunSummary(refreshCtx, run.root, time.Time{})
+		cancelRefresh()
+	}
 	note := beltRunOutcomeNote(run.store, run.root, summary, landing, a.beltRunSpan(run))
 	if run.delegate != nil {
 		note = programPageNote(programName(run.delegate), landing)
@@ -1991,6 +1984,42 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 		outcome = router.CrewAccepted
 	}
 	a.settleTaskCrew(run.row, outcome, run.crew.taskSpent(summary.USD))
+}
+
+// finishBeltRunLanding settles the isolated work before its receipt is published.
+func (a *Agent) finishBeltRunLanding(ctx context.Context, engine RunEngine, run *beltRun, summary RunSummary) RunLanding {
+	var landing RunLanding
+	if run.delegate != nil {
+		// A PROGRAM'S RUN IS OVER WHEN ITS PROGRAM IS, however it ended: it is
+		// a run of one task that nothing continues, so a store the engine left
+		// open — a program ended at a limit leaves it so — is closed here, or its
+		// page would read `running` and offer `stop it` for ever. A run that
+		// already ended is left as it ended.
+		//
+		// IT IS CLOSED BEFORE THE LANDING, NOT AFTER IT. The folder's last
+		// commit takes its time, and a page that went on reading `running` over
+		// a program that had already exited was a page claiming a present that
+		// was over — for the two limit endings alone, because every other ending
+		// is written by the engine at the program's exit.
+		if summary.Outcome != beltRunOutcomeDone {
+			words, _ := runEndingWords(summary)
+			_ = run.store.FailRoot(words)
+		}
+		if a.beginBeltHomecoming(run) {
+			landing = a.landDelegateRun(run, summary)
+		}
+	} else {
+		// EVERY OTHER ENDING IS WRITTEN ON THE RUN'S OWN TASK. The engine writes
+		// the ending of a limit or a failed root worker itself; this is the same
+		// write made again from the door, which the store takes once and ignores
+		// after, so no engine can leave a run the next hand-off would find still
+		// open.
+		if summary.Outcome != beltRunOutcomeDone {
+			_ = run.store.EndRoot(summary.Outcome)
+		}
+		landing = a.landBeltRun(ctx, engine, run)
+	}
+	return landing
 }
 
 // crewKept is whether a run's ending counts as its crew's work kept: it
@@ -2058,6 +2087,9 @@ func (a *Agent) releaseBeltRun(run *beltRun) {
 func (a *Agent) landBeltRun(ctx context.Context, engine RunEngine, run *beltRun) RunLanding {
 	landing, err := engine.Land(ctx, run.store, run.workspace, run.tree.checkBase, run.root)
 	if err != nil {
+		if stopped, _ := a.beltRunStopped(run); stopped {
+			return RunLanding{}
+		}
 		if g := a.graph(); g != nil {
 			g.planNote("the run's landing failed: " + err.Error())
 		}
@@ -2071,6 +2103,9 @@ func (a *Agent) landBeltRun(ctx context.Context, engine RunEngine, run *beltRun)
 // across or the branch kept and the files named, the copy given back, and the
 // homecoming written on the run's page.
 func (a *Agent) bringBeltRunHome(run *beltRun, landing RunLanding) RunLanding {
+	if !a.beginBeltHomecoming(run) {
+		return landing
+	}
 	if run.tree.dir == "" {
 		return landing
 	}
@@ -2109,6 +2144,10 @@ func (a *Agent) bringBeltRunHome(run *beltRun, landing RunLanding) RunLanding {
 // whose ending is always the conversation's to act on (program_outcome.go).
 func (a *Agent) deliverBeltRunLanding(run *beltRun, summary RunSummary, landing RunLanding) {
 	line := beltRunOutcomeNote(run.store, run.root, summary, landing, a.beltRunSpan(run))
+	if a.beltRunQuiet(run) {
+		a.recordQuietBeltLanding(run, summary, line, landing)
+		return
+	}
 	if run.delegate != nil {
 		if limit := programLimitLine(run, summary, landing); limit != "" {
 			a.recordProgramLimit(limit)
@@ -2134,6 +2173,25 @@ func (a *Agent) deliverBeltRunLanding(run *beltRun, summary RunSummary, landing 
 	note := userText(line)
 	note.completionOnly = true
 	note.replyTags = tags
+	note.authored = true
+	a.mu.Lock()
+	a.recordUserLocked(note)
+	a.mu.Unlock()
+}
+
+// recordQuietBeltLanding preserves the actual result and its operational
+// attribution after a late stop, without admitting another model turn.
+func (a *Agent) recordQuietBeltLanding(run *beltRun, summary RunSummary, line string, landing RunLanding) {
+	note := userText(line)
+	if run.delegate != nil {
+		if limit := programLimitLine(run, summary, landing); limit != "" {
+			a.recordProgramLimit(limit)
+		}
+		note = a.programLandingNote(run, summary, line)
+	}
+	note.wake = false
+	note.completionOnly = true
+	note.replyTags = plainBeltLandingReplyTags(run, run.store.Task(run.root), summary)
 	note.authored = true
 	a.mu.Lock()
 	a.recordUserLocked(note)

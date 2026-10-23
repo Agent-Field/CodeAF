@@ -79,6 +79,15 @@ func (a *Agent) stopBeltRow(id uint64, why string) (string, bool, error) {
 	}
 	if run.row == id {
 		name := taskStopName(id, run.title)
+		if run.bringingHome {
+			run.quiet = true
+			cut := run.cut
+			a.beltMu.Unlock()
+			if cut != nil {
+				cut()
+			}
+			return name + " has already finished; there is nothing to stop", true, nil
+		}
 		if run.stopped {
 			a.beltMu.Unlock()
 			return name + " is already stopping", true, nil

@@ -40,6 +40,10 @@ import (
 // door that spends money says what it did in the words the person will read
 // about it afterwards.
 func (a *Agent) ContinueRun(ctx context.Context, row uint64) (string, error) {
+	epoch, err := a.beltAdmissionEpoch()
+	if err != nil {
+		return "", err
+	}
 	engine := chatRunEngine
 	g := a.graph()
 	if engine == nil || g == nil || g.planPath() == "" {
@@ -52,6 +56,9 @@ func (a *Agent) ContinueRun(ctx context.Context, row uint64) (string, error) {
 	// store ([Agent.lockBeltStart]).
 	a.lockBeltStart()
 	defer a.beltStartMu.Unlock()
+	if err := a.checkBeltAdmission(epoch); err != nil {
+		return "", err
+	}
 	a.beltMu.Lock()
 	live := a.beltRun
 	a.beltMu.Unlock()
