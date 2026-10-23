@@ -71,6 +71,12 @@ func (c Config) freeHelperAllowed(model string) bool {
 	if hasProjectLow && sameFreeModel(projectLow, model) {
 		return true
 	}
+	return c.profileHelperConsent(model, hasProjectLow)
+}
+
+// An explicit project low row replaces the profile row, including when empty.
+// Reflex remains profile-owned; only pinned rows grant consent while off.
+func (c Config) profileHelperConsent(model string, hasProjectLow bool) bool {
 	for _, tier := range []string{config.ModelTierReflex, config.ModelTierLow} {
 		if tier == config.ModelTierLow && hasProjectLow {
 			continue
