@@ -3311,6 +3311,29 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what has each model proven with checks", "running-from-the-terminal"},
 		{"where are my cleared drafts", "commands"},
 		{"what does /workspace path do", "commands"},
+		// A DROP DELETES THE JOB'S LOCAL WORK, asking first when there is some,
+		// and a start checks the one issue on GitHub.
+		{"bring back a dropped factory job", "factory"},
+		{"does dropping a factory job delete its branch", "factory"},
+		{"drop a factory job that has uncommitted changes", "factory"},
+		{"the factory says my issue was closed on GitHub so it wasn't started", "factory"},
+		{"check GitHub now in the factory", "factory"},
+		// A STOP IS A FACT ON THE JOB, and a start after it begins again.
+		{"I stopped a factory job, what happens when I start it again", "factory"},
+		{"undo a stop of a factory job", "factory"},
+		{"run again a stopped factory job", "factory"},
+		{"the factory says my job was dropped, can it be restarted", "factory"},
+		// BRING BACK IS A FRESH START: the earlier conversation is deleted.
+		{"I brought back a dropped factory job and the old conversation is still there", "factory"},
+		// A RUN CLONES A REPOSITORY IT HAS NO CHECKOUT OF, and a start is
+		// refused only when it cannot.
+		{"the factory says my repository isn't checked out on this machine", "factory"},
+		{"does the factory clone a private repository it has no checkout of", "factory"},
+		{"factory start refused, not checked out, connect GitHub so the factory can clone it", "factory"},
+		// WHAT A STEP FOUND REACHES THE STEPS AFTER IT: the plan whole, the
+		// files it names, every claim so far.
+		{"does the factory write step see the whole plan", "factory-stage-conversations"},
+		{"does the proof step know what earlier steps claimed", "factory-stage-conversations"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
@@ -4226,6 +4249,30 @@ func TestFactoryItemCardAnswerQuestionsReachTheAnswerSection(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("%q does not reach the factory_item card answer section", asked)
+		}
+	}
+}
+
+// A person asking how to merge, or why a factory job will not merge, must
+// reach the section that names Merge, its one check and auto-merge; the
+// pages about merging a task's branch also say "merge".
+func TestFactoryMergeQuestionsReachTheMergeSection(t *testing.T) {
+	const heading = "merge a job's pull request"
+	for _, asked := range []string{
+		"how do I merge the factory job's pull request",
+		"why won't the factory merge my pull request",
+		"factory auto-merge",
+		"can the factory merge automatically when checks pass",
+	} {
+		found := false
+		for _, section := range Chat().Search(asked, DefaultResults) {
+			if section.Page == "factory" && strings.HasPrefix(section.Title, heading) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach the factory section %q", asked, heading)
 		}
 	}
 }

@@ -14,9 +14,9 @@ import (
 // injected Unix preference tests, this does not require an installed /bin/bash.
 func TestUnixDoorArgv(t *testing.T) {
 	for _, tc := range []struct{ file, function, call string }{
-		{"exec/tools.go", "runShell", `exec.CommandContext(runCtx, bash, "-lc", command)`},
-		{"exec/jobs.go", "startBackground", `exec.CommandContext(jobCtx, bash, "-lc", command)`},
-		{"exec/services.go", "StartDetachedService", `exec.Command(bash, "-lc", command)`},
+		{"exec/tools.go", "runShell", `exec.CommandContext(runCtx, bash, "-o", "pipefail", "-lc", command)`},
+		{"exec/jobs.go", "startBackground", `exec.CommandContext(jobCtx, bash, "-o", "pipefail", "-lc", command)`},
+		{"exec/services.go", "StartDetachedService", `exec.Command(bash, "-o", "pipefail", "-lc", command)`},
 		{"exec/bare/tools.go", "getShellConfig", `shell.Preferred()`},
 		{"exec/bare/tools.go", "newBashTool", `exec.Command(shell, shellArgs...)`},
 		{"exec/bare/streaming.go", "StreamingShell", `append(append([]string{}, shellArgs...), command)`},

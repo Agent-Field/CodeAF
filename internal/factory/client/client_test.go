@@ -169,10 +169,6 @@ func verbCases(seam factory.Seam) []verbCase {
 		{"request_changes", "POST", "/v1/jobs/9/request_changes", `{"words":"prove restart survival"}`, actionSentence,
 			func() error { return seam.SendBack(9, "prove restart survival") }},
 		{"recheck", "POST", "/v1/jobs/9/recheck", "", actionSentence, func() error { return seam.Reverify(9) }},
-		{"shape", "POST", "/v1/jobs/8/shape", "", actionSentence, func() error {
-			_, err := seam.Shape(ctx, 8)
-			return err
-		}},
 		{"prioritize", "POST", "/v1/jobs/7/prioritize", `{"to":"top"}`, actionSentence,
 			func() error { return seam.Mark([]int{7}, true) }},
 		{"reply", "POST", "/v1/jobs/2/reply", `{"words":"keep the tests"}`, actionSentence,
@@ -239,7 +235,7 @@ func TestClientLeavesTUIOnlyDoorsNil(t *testing.T) {
 			t.Errorf("%s is neither wired nor TUI-only", f.Name)
 		}
 	}
-	if seam.Has("pause") || seam.Has("clone") || !seam.Has("launch") || !seam.Has("hold") || !seam.Has("shape") {
+	if seam.Has("pause") || seam.Has("clone") || !seam.Has("launch") || !seam.Has("hold") {
 		t.Fatalf("Has: pause %v clone %v launch %v hold %v", seam.Has("pause"), seam.Has("clone"), seam.Has("launch"), seam.Has("hold"))
 	}
 }
@@ -398,3 +394,38 @@ func stringify(v reflect.Value) string {
 }
 
 func fmtSprint(v reflect.Value) string { return v.String() }
+
+// New evidence must not cause an old strict factory to lose the report's cost.
+func TestWorkerModelsLeaveTheLegacyReportBodyUnchanged(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		var body api.WorkerReport
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+			w.WriteHeader(400)
+			return
+		}
+		if len(body.Steps) != 1 || body.Steps[0].Model != "" || body.Steps[0].Chat != "" || body.Cost != .25 {
+			t.Errorf("legacy body: %+v", body)
+		}
+		var chats map[string]string
+		if err := json.Unmarshal([]byte(r.Header.Get(api.StepChatsHeader)), &chats); err != nil || chats["proof"] != "/worker/proof.jsonl" {
+			t.Errorf("chat header: %v %v", chats, err)
+		}
+		var models map[string]string
+		if err := json.Unmarshal([]byte(r.Header.Get(api.StepModelsHeader)), &models); err != nil || models["proof"] != "vendor/strong" {
+			t.Errorf("model header: %v %v", models, err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	cli := client.Open(srv.URL, "")
+	report := api.WorkerReport{Cost: .25, Steps: []api.StepReport{{Name: "proof", Model: "vendor/strong", Chat: "/worker/proof.jsonl", Result: &api.StepResult{Done: true}}}}
+	if err := cli.Worker("credential").Report(context.Background(), "lease", report); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 || report.Steps[0].Model != "vendor/strong" {
+		t.Fatalf("calls=%d, mutated report=%+v", calls, report)
+	}
+}

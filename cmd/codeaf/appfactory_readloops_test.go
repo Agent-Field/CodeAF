@@ -24,11 +24,12 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-// ── the read loops after an explicit Run ───────────────────────────────────
+// ── what this Mac's factory reads by itself ────────────────────────────────
 //
-// Real appBackend, real wire, real local host, real poll and triage workers.
-// Only the two outside worlds are fakes, both on loopback: a GitHub that
-// lists issues and a model endpoint that answers a triage read.
+// Real appBackend, real wire, real local host, real poll and runner. Only the
+// two outside worlds are fakes, both on loopback: a GitHub that lists issues
+// and a model endpoint that would answer a triage read, which counts whether
+// anything asked it.
 
 const readLoopsPin = "deepseek/deepseek-v4.1-flash"
 
@@ -188,12 +189,16 @@ func readLoopsSetup(t *testing.T, w *readLoopsWorld, pin string) *localSetup {
 	return s
 }
 
+// watchAndStart starts the factory and then watches acme/api, nudging the
+// poll the way a saved repository choice does, so its first read is now.
 func watchAndStart(t *testing.T, s *localSetup) appwire.FactoryLocalStatus {
 	t.Helper()
 	st := s.start()
-	if err := s.backend.local.host.floor.SetRepos([]string{"acme/api"}); err != nil {
+	floor := s.backend.local.host.floor
+	if err := floor.SetRepos([]string{"acme/api"}); err != nil {
 		t.Fatal(err)
 	}
+	factorygithub.Nudge(floor)
 	return st
 }
 
@@ -209,169 +214,127 @@ func readLoopsItems(t *testing.T, floor *store.Store) []factory.Item {
 // settle gives a loop that was never started every chance to appear.
 func settle() { time.Sleep(250 * time.Millisecond) }
 
-// EXPLICIT RUN, AND ONLY RUN, STARTS THE POLL AND TRIAGE. A cold conversation,
-// the start, and a cold resume read nothing and call no model even with a key,
-// a watched repository, a token's source and a waiting item; the run reads the
-// forge into the floor, triage reads the item on exactly the saved pin, a
-// second run starts neither again, and quitting stops both.
-func TestOnlyAnExplicitRunStartsThePollAndTriage(t *testing.T) {
+// THIS MAC'S FACTORY POLLS AND NEVER ASKS A MODEL ON ITS OWN. Once it knows
+// whose GitHub it is, the start brings its runner and the GitHub poll on, so a
+// filed issue reaches the floor; no triage reads an item, so the model is never
+// asked, however long it runs and across a restart; quitting stops the poll.
+func TestThisMacsFactoryPollsAndNeverAsksAModel(t *testing.T) {
 	quickReads(t)
 	world := newReadLoopsWorld(t)
 	world.file(7)
 	s := readLoopsSetup(t, world, readLoopsPin)
 	first := watchAndStart(t, s)
-	floor := s.backend.local.host.floor
-	if _, err := floor.Create(factory.Item{Repo: "acme/api", Title: "Waiting", Kind: factory.KindIssue, State: factory.StateNew}); err != nil {
+	if !first.Runner {
+		t.Fatalf("the start did not bring the runner on: %+v", first)
+	}
+	host := s.backend.local.host
+	if _, err := host.floor.Create(factory.Item{Repo: "acme/api", Title: "Waiting", Kind: factory.KindIssue, State: factory.StateNew}); err != nil {
 		t.Fatal(err)
 	}
-
-	// BEFORE RUN: started, then cold-resumed, with everything the loops need
-	// in place, nothing polls and nothing is asked of a model.
+	filed := func(floor *store.Store, title string) func() bool {
+		return func() bool {
+			for _, it := range readLoopsItems(t, floor) {
+				if it.Title == title {
+					return true
+				}
+			}
+			return false
+		}
+	}
+	eventually(t, "the filed issue is on the floor", filed(host.floor, "Issue 7"))
 	settle()
+	noModel := func(floor *store.Store) {
+		t.Helper()
+		if n := world.asked.Load(); n != 0 {
+			t.Fatalf("a model was asked %d times with nobody pressing Run: %v", n, world.requested())
+		}
+		for _, it := range readLoopsItems(t, floor) {
+			if it.Triage.Read != "" || it.State != factory.StateNew {
+				t.Fatalf("an item was read or started on its own: %+v", it)
+			}
+		}
+		if release, ok := floor.TryTriager(); !ok {
+			t.Fatal("a triager holds its lock")
+		} else {
+			release()
+		}
+	}
+	noModel(host.floor)
+
+	// A RESTART BRINGS THE POLL BACK, and still no model.
 	s.backend.Close()
 	w, _ := reopened(t, s.backend.factoryHub())
 	w.backend.local.pollSource = world.source()
 	w.backend.local.newIntake = world.intake
 	var resumed appwire.FactoryLocalStatus
 	w.must("factory.local_status", map[string]any{"caller": "w1"}, &resumed)
-	if resumed.State != appwire.LocalRunning || resumed.Runner || resumed.Factory != first.Factory {
-		t.Fatalf("cold resume: %+v", resumed)
+	if resumed.State != appwire.LocalRunning || !resumed.Runner || resumed.Factory != first.Factory {
+		t.Fatalf("resume: %+v", resumed)
 	}
+	next := w.backend.local.host
+	world.file(8)
+	eventually(t, "the restarted factory polls", filed(next.floor, "Issue 8"))
 	settle()
-	host := w.backend.local.host
-	host.loopMu.Lock()
-	on := host.loopsOn
-	host.loopMu.Unlock()
-	if on || world.ghCalls.Load() != 0 || world.asked.Load() != 0 || world.sources.Load() != 0 {
-		t.Fatalf("before run: loops=%v github=%d model=%d sources=%d", on, world.ghCalls.Load(), world.asked.Load(), world.sources.Load())
-	}
-	if items := readLoopsItems(t, host.floor); len(items) != 1 || items[0].Triage.Read != "" {
-		t.Fatalf("an item was read before run: %+v", items)
-	}
-	if release, ok := host.floor.TryTriager(); !ok {
-		t.Fatal("triage held its lock before run")
-	} else {
-		release()
-	}
+	noModel(next.floor)
 
-	// RUN: the forge's issue reaches the floor, and both items are read on the
-	// pin, exactly, and never a tier or a fallback.
-	var run appwire.FactoryLocalStatus
-	w.must("factory.local_run", map[string]any{"caller": "w1"}, &run)
-	if !run.Runner {
-		t.Fatalf("run: %+v", run)
-	}
-	eventually(t, "the filed issue is on the floor", func() bool {
-		for _, it := range readLoopsItems(t, host.floor) {
-			if it.Title == "Issue 7" {
-				return true
-			}
-		}
-		return false
-	})
-	eventually(t, "every item is read", func() bool {
-		items := readLoopsItems(t, host.floor)
-		for _, it := range items {
-			if it.Triage.Read == "" {
-				return false
-			}
-		}
-		return len(items) >= 2
-	})
-	for _, m := range world.requested() {
-		if m != readLoopsPin {
-			t.Fatalf("triage asked %q; the saved one model is %q", m, readLoopsPin)
-		}
-	}
-
-	// READING IS NOT STARTING: this repository's rules are empty, so no rule
-	// authorized a job and none launched.
-	if n := world.launches.Load(); n != 0 {
-		t.Fatalf("the reads launched %d jobs", n)
-	}
-
-	// A SECOND RUN IS THE SAME LOOPS: one source asked for, one lock holder.
-	var again appwire.FactoryLocalStatus
-	w.must("factory.local_run", map[string]any{"caller": "w2"}, &again)
-	if !again.Runner || world.sources.Load() != 1 {
-		t.Fatalf("second run: %+v, sources=%d", again, world.sources.Load())
-	}
-	if release, ok := host.floor.TryTriager(); ok {
-		release()
-		t.Fatal("triage does not hold its lock while running")
-	}
-
-	// QUIT STOPS BOTH, BOUNDED, and nothing is written afterwards.
+	// QUIT STOPS THE POLL, BOUNDED, and nothing is read afterwards.
 	started := time.Now()
 	w.backend.closeLocalFactory()
 	if took := time.Since(started); took > appLocalStopWait {
 		t.Fatalf("quit took %s", took)
 	}
-	if release, ok := host.floor.TryTriager(); !ok {
-		t.Fatal("quit left the triage lock held")
-	} else {
-		release()
-	}
-	if release, ok := host.floor.TryPoller(); !ok {
+	if release, ok := next.floor.TryPoller(); !ok {
 		t.Fatal("quit left the poll lock held")
 	} else {
 		release()
 	}
-	gh, asked := world.ghCalls.Load(), world.asked.Load()
-	world.file(8)
+	gh := world.ghCalls.Load()
+	world.file(9)
 	settle()
-	if world.ghCalls.Load() != gh || world.asked.Load() != asked {
-		t.Fatal("a loop kept reading after quit")
+	if world.ghCalls.Load() != gh {
+		t.Fatal("the poll kept reading after quit")
 	}
 }
 
-// RUN IS THE CONSENT TO THE REPOSITORY'S START RULES: with a rule that allows
-// the waiting item, nothing launches before Run, exactly one launch follows
-// Run, and a repeated Run launches nothing more.
-func TestRunLetsTheStartRulesLaunchExactlyOnce(t *testing.T) {
+// AN ARRIVING ISSUE STARTS NOTHING. Even with a repository start rule that
+// allows the waiting item, this Mac's runner, on and polling, launches no job:
+// a job starts only when a person presses Run.
+func TestStartRulesNeverLaunchAJobOnThisMac(t *testing.T) {
 	quickReads(t)
 	world := newReadLoopsWorld(t)
 	world.startRule(t)
+	world.file(4)
 	s := readLoopsSetup(t, world, readLoopsPin)
-	watchAndStart(t, s)
+	if st := watchAndStart(t, s); !st.Runner {
+		t.Fatalf("start: %+v", st)
+	}
 	floor := s.backend.local.host.floor
 	if _, err := floor.Create(factory.Item{Repo: "acme/api", Num: 3, Title: "Ready", Kind: factory.KindIssue, State: factory.StateNew, Labels: []string{"agent-ready", "size:S"}}); err != nil {
 		t.Fatal(err)
 	}
+	eventually(t, "the poll has run", func() bool { return len(readLoopsItems(t, floor)) >= 2 })
 	settle()
 	if n := world.launches.Load(); n != 0 {
-		t.Fatalf("%d launches before run", n)
+		t.Fatalf("%d jobs launched with nobody pressing Run", n)
 	}
-	s.must("factory.local_run", map[string]any{"caller": "w1"}, &appwire.FactoryLocalStatus{})
-	eventually(t, "the rule launched the item", func() bool { return world.launches.Load() == 1 })
-	settle()
-	s.must("factory.local_run", map[string]any{"caller": "w2"}, &appwire.FactoryLocalStatus{})
-	settle()
-	if n := world.launches.Load(); n != 1 {
-		t.Fatalf("%d launches; the rule allows one item exactly once", n)
-	}
-	// The host's own runner takes the queued item, so it is past New, not
-	// necessarily still Queued.
-	if items := readLoopsItems(t, floor); len(items) == 0 || items[0].State == factory.StateNew {
-		t.Fatalf("the launched item is still new: %+v", items)
+	for _, it := range readLoopsItems(t, floor) {
+		if it.State != factory.StateNew {
+			t.Fatalf("an item left Backlog on its own: %+v", it)
+		}
 	}
 }
 
-// A HOST MADE LATER IN THE SAME PROCESS STARTS ITS OWN READS: the start is
-// per host, so quitting one local factory and starting another is not
-// answered by a process-wide once that already fired.
-func TestANewHostInTheSameProcessStartsItsOwnReads(t *testing.T) {
+// A HOST MADE LATER IN THE SAME PROCESS STARTS ITS OWN POLL: the start is per
+// host, so quitting one local factory and starting another is not answered by
+// a process-wide once that already fired.
+func TestANewHostInTheSameProcessStartsItsOwnPoll(t *testing.T) {
 	quickReads(t)
 	world := newReadLoopsWorld(t)
 	world.file(1)
 	s := readLoopsSetup(t, world, readLoopsPin)
 	watchAndStart(t, s)
-	s.must("factory.local_run", map[string]any{"caller": "w1"}, &appwire.FactoryLocalStatus{})
 	host := s.backend.local.host
-	eventually(t, "the first host reads", func() bool {
-		items := readLoopsItems(t, host.floor)
-		return len(items) == 1 && items[0].Triage.Read != ""
-	})
+	eventually(t, "the first host polls", func() bool { return len(readLoopsItems(t, host.floor)) == 1 })
 	s.backend.Close()
 
 	w, _ := reopened(t, s.backend.factoryHub())
@@ -380,14 +343,13 @@ func TestANewHostInTheSameProcessStartsItsOwnReads(t *testing.T) {
 	var st appwire.FactoryLocalStatus
 	w.must("factory.local_status", map[string]any{"caller": "w1"}, &st)
 	world.file(2)
-	w.must("factory.local_run", map[string]any{"caller": "w1"}, &appwire.FactoryLocalStatus{})
 	next := w.backend.local.host
 	if next == host {
 		t.Fatal("the same host came back")
 	}
-	eventually(t, "the second host reads the new issue", func() bool {
+	eventually(t, "the second host polls the new issue", func() bool {
 		for _, it := range readLoopsItems(t, next.floor) {
-			if it.Title == "Issue 2" && it.Triage.Read != "" {
+			if it.Title == "Issue 2" {
 				return true
 			}
 		}
@@ -423,18 +385,24 @@ func TestAJoinedFactoryGetsNoReadLoops(t *testing.T) {
 	}
 }
 
-// THE SAVED ONE MODEL IS STRICT: a pin the profile cannot meet is a refusal, so
-// triage asks no model at all, never the tier or the fallback.
-func TestTriageAfterRunNeverFallsBackFromAnUnmetOneModel(t *testing.T) {
+// THE SAVED ONE MODEL IS STRICT where triage still runs (a terminal's factory):
+// a pin the profile cannot meet is a refusal, so triage asks no model at all,
+// never the tier or the fallback.
+func TestTriageNeverFallsBackFromAnUnmetOneModel(t *testing.T) {
 	quickReads(t)
 	world := newReadLoopsWorld(t)
-	s := readLoopsSetup(t, world, "openai/gpt-x@moonshot")
-	watchAndStart(t, s)
-	floor := s.backend.local.host.floor
+	readLoopsProfile(t, world, "openai/gpt-x@moonshot")
+	floor, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := floor.Create(factory.Item{Repo: "acme/api", Title: "Waiting", Kind: factory.KindIssue, State: factory.StateNew}); err != nil {
 		t.Fatal(err)
 	}
-	s.must("factory.local_run", map[string]any{"caller": "w1"}, &appwire.FactoryLocalStatus{})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { defer close(done); runFactoryTriage(ctx, floor, world.intake) }()
+	t.Cleanup(func() { cancel(); <-done })
 	// THE TRIAGER IS ALIVE: "no call" must mean refused, not absent.
 	eventually(t, "triage holds its lock", func() bool {
 		release, ok := floor.TryTriager()
@@ -444,10 +412,6 @@ func TestTriageAfterRunNeverFallsBackFromAnUnmetOneModel(t *testing.T) {
 		return !ok
 	})
 	settle()
-	if release, ok := floor.TryTriager(); ok {
-		release()
-		t.Fatal("triage stopped instead of refusing")
-	}
 	if n := world.asked.Load(); n != 0 {
 		t.Fatalf("triage asked a model %d times, %v, for a pin it could not meet", n, world.requested())
 	}

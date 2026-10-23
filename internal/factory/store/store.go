@@ -155,6 +155,16 @@ func (st *Store) Add(ctx context.Context, it factory.Item) (int, error) {
 	if strings.TrimSpace(it.Title) == "" {
 		return 0, errors.New("factory store: an item needs a title")
 	}
+	// A JOB IS NEVER MADE ON A REPOSITORY THAT IS OFF ([factory.RepoSwitch]),
+	// as the factory's own new-job door refuses it: it would leave the queue
+	// the moment it was made.
+	sw, err := st.RepoSwitch()
+	if err != nil {
+		return 0, err
+	}
+	if repo := factory.RepoOf(it); sw.Off(repo) {
+		return 0, errors.New(factory.RepoOffWords(repo))
+	}
 	if it.Origin == "" {
 		it.Origin = factory.OriginChat
 	}
@@ -164,11 +174,17 @@ func (st *Store) Add(ctx context.Context, it factory.Item) (int, error) {
 	if it.Kind == "" {
 		it.Kind = factory.KindIssue
 	}
+	if err := factory.RequireIssueJob(it); err != nil {
+		return 0, err
+	}
 	if len(it.Stages) == 0 {
 		it.Stages = factory.CopyStages(factory.DefaultRecipe().For(it.Kind))
 	}
 	if it.Repo != "" && len(it.Places) == 0 {
 		it.Places = []string{it.Repo}
+	}
+	if it.Autonomy == "" {
+		it.Autonomy = factory.AutonomyAuto
 	}
 	it.State = factory.StateNew
 	it.ID = 0
@@ -407,16 +423,30 @@ func (st *Store) update(id int, stamp bool, expect *int, change func(*factory.It
 
 // Revision is how many times one item's document has been written. It is a
 // fact about the document, so it is read off the envelope and never off the
-// item.
+// item: the item is not decoded at all, which matters because a queue read
+// asks this once for every job it lists.
 func (st *Store) Revision(id int) (int, error) {
 	if err := checkID(id); err != nil {
 		return 0, ErrNotFound
 	}
-	d, err := st.read(st.ItemPath(id))
+	data, err := os.ReadFile(st.ItemPath(id))
 	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, ErrNotFound
+		}
 		return 0, err
 	}
-	return d.Revision, nil
+	var envelope struct {
+		Schema   int `json:"schema"`
+		Revision int `json:"revision"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return 0, fmt.Errorf("factory store: cannot read %d.json: %w", id, err)
+	}
+	if envelope.Schema > Schema {
+		return 0, fmt.Errorf("%w: %d.json", ErrNewer, id)
+	}
+	return envelope.Revision, nil
 }
 
 // now is the store's clock.
@@ -463,6 +493,15 @@ func (st *Store) highestID() (int, error) {
 		return 0, err
 	}
 	highest := 0
+	if data, e := os.ReadFile(filepath.Join(st.root, "mint-high-water")); e == nil {
+		n, e := strconv.Atoi(strings.TrimSpace(string(data)))
+		if e != nil || n < 0 {
+			return 0, errors.New("factory store: invalid mint high-water mark")
+		}
+		highest = n
+	} else if !os.IsNotExist(e) {
+		return 0, e
+	}
 	for _, entry := range entries {
 		name, ok := strings.CutSuffix(entry.Name(), ".json")
 		if !ok || entry.IsDir() {

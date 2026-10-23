@@ -147,6 +147,9 @@ type Recipe struct {
 	// Adapt is how much the plan stage may change an item's stages, per kind.
 	// A kind it does not name is [AdaptFree]; read it through [Recipe.AdaptFor].
 	Adapt map[Kind]AdaptMode
+	// Merge is the pipeline's `merge:` settings; the zero value is auto-merge
+	// off and the forge's own choice of method.
+	Merge MergePolicy
 }
 
 // For is the stage list a kind runs.
@@ -246,6 +249,11 @@ type Repo struct {
 	Recipe Recipe
 	CIRed  bool
 	Hue    int
+	// Watched says the repository is on the watched list the floor keeps
+	// ([RepoSwitch]): the poll reads it and the factory works on its jobs.
+	// The factory's queue stamps it; a floor read straight off the items
+	// does not know it and leaves it false.
+	Watched bool
 }
 
 // PhaseState is a stage's state inside a running stream.
@@ -267,8 +275,12 @@ type Phase struct {
 	State PhaseState
 	Note  string
 	Round int
-	Tasks int
-	Left  time.Duration
+	// RoundLimit is the effective limit, including explicit user extensions.
+	// Persist it before a round starts so reopening cannot revoke that grant.
+	RoundLimit   int               `json:",omitempty"`
+	Verification *StepVerification `json:",omitempty"`
+	Tasks        int
+	Left         time.Duration
 	// Chat and Handle name the stage's conversation when the stage is one:
 	// the room a person walks into from the phase strip.
 	Chat   string
@@ -286,6 +298,12 @@ type Phase struct {
 	// ended, and again once it is sent back to run. The wire's step.at is
 	// this instant.
 	At time.Time `json:",omitempty"`
+	// Started is when the phase's latest round began: set as a round starts
+	// in a fresh chat, kept when a round carries on in the chat a pause cut
+	// short, and zero again once the phase is pending. The wire's
+	// step.started_at is this instant; a phase recorded before it existed has
+	// none.
+	Started time.Time `json:",omitempty"`
 	// Rounds is one line per finished try, oldest first, bounded to the
 	// step's max. The last Result stays; these lines are what each try did.
 	Rounds []RoundLine `json:",omitempty"`
@@ -343,6 +361,8 @@ const (
 
 // PRReview is one review on a pull request the factory opened.
 type PRReview struct {
+	Body  string
+	URL   string
 	By    string
 	State string
 	At    time.Time
@@ -360,19 +380,54 @@ type PRChecks struct {
 // reporting its receipt never changes the identity of the job being run.
 // State, the merge, the reviews and the check summary are filled when a
 // later poll reads the pull request again.
+// PRReadProblem describes one incomplete section of an otherwise current PR read.
+// Other sections stay useful. Detail is diagnostic data, never instructions.
+type PRReadProblem struct {
+	Area      string `json:"area"`
+	Code      string `json:"code"`
+	Summary   string `json:"summary"`
+	Detail    string `json:"detail"`
+	Retryable bool   `json:"retryable"`
+}
+
+// PRFeedback stores the semantic review cursor separately from display text.
+type PRFeedback struct {
+	ID       string
+	Revision string
+	Resolved bool
+	External bool
+}
+
 type PullRequest struct {
-	Conflict       bool
-	Draft          bool
-	Number         int
-	URL            string
-	CI             string
-	State          string
-	MergedBy       string
-	MergedAt       time.Time
-	ReviewDecision string
-	Reviews        []PRReview
-	Required       int
-	Checks         PRChecks
+	FeedbackItems    []PRFeedback    `json:",omitempty"`
+	FeedbackTracked  bool            `json:",omitempty"`
+	Problems         []PRReadProblem `json:",omitempty"`
+	ReadinessKey     string          `json:",omitempty"`
+	ReadinessContext string          `json:",omitempty"`
+	BaseSHA          string          `json:",omitempty"`
+	Feedback         string          `json:",omitempty"`
+	CheckRuns        []CheckRun      `json:",omitempty"`
+	Conflict         bool
+	Draft            bool
+	Number           int
+	URL              string
+	CI               string
+	State            string
+	MergedBy         string
+	MergedAt         time.Time
+	ReviewDecision   string
+	Reviews          []PRReview
+	Required         int
+	Checks           PRChecks
+	// HeadSHA is the commit the pull request's branch points at, Mergeable
+	// whether the forge says it can merge ([MergeableYes], [MergeableNo], or
+	// "" while it has not worked that out), and ChecksRead and ReviewsRead
+	// whether the last follow read those at all. [MergeGate] refuses on any
+	// of them unknown: a fact nobody read is never a yes.
+	HeadSHA     string `json:",omitempty"`
+	Mergeable   string `json:",omitempty"`
+	ChecksRead  bool   `json:",omitempty"`
+	ReviewsRead bool   `json:",omitempty"`
 }
 
 // Item is one row on the floor.
@@ -380,17 +435,27 @@ type PullRequest struct {
 const QKindAskFirst = "ask_first"
 
 type Item struct {
+	// Autonomy is explicit on new jobs. Missing on older jobs means manual.
+	Autonomy string      `json:",omitempty"`
+	Manual   bool        `json:",omitempty"`
+	Effort   string      `json:",omitempty"`
+	FollowUp *PRFollowUp `json:",omitempty"`
 	// SetupHeld keeps first-run imports in Backlog until a person starts them.
 	SetupHeld bool `json:",omitempty"`
 	// Job decisions belong to the binary; presentation derives from these facts.
-	Priority        *JobPriority `json:",omitempty"`
-	DismissedBy     []string     `json:",omitempty"`
-	DoneHow         string       `json:",omitempty"`
-	DoneAt          time.Time    `json:",omitempty"`
-	BranchDeleteAt  time.Time    `json:",omitempty"`
-	BranchDeletedAt time.Time    `json:",omitempty"`
-	Approval        *Approval    `json:",omitempty"`
-	StopUndo        *StopUndo    `json:",omitempty"`
+	Priority    *JobPriority `json:",omitempty"`
+	DismissedBy []string     `json:",omitempty"`
+	DoneHow     string       `json:",omitempty"`
+	DoneAt      time.Time    `json:",omitempty"`
+	Approval    *Approval    `json:",omitempty"`
+	StopUndo    *StopUndo    `json:",omitempty"`
+	// MergePolicy is the pipeline's merge settings as they stood when the
+	// proof was approved: approving publishes, and the approval says whether
+	// the pull request it opens may merge on its own. nil is auto-merge off.
+	MergePolicy *MergePolicy `json:",omitempty"`
+	// Merging is a merge on its way, from Merge (or the pipeline's
+	// auto-merge) until the runner reports what the forge did.
+	Merging *MergeRun `json:",omitempty"`
 
 	// Owners is derived from default-branch CODEOWNERS for the wire and fixture.
 	Owners  []string `json:",omitempty"`
@@ -418,6 +483,11 @@ type Item struct {
 	// WorktreeMachine keeps resumed runs and publishing beside the files the
 	// first worker made, even after its lease expires or the factory restarts.
 	WorktreeMachine string `json:",omitempty"`
+	// ReportReceipts are service-owned acknowledgments for retained worker results.
+	// They commit with the item so a lost recovery reply never charges twice.
+	ReportReceipts []WorkerReportReceipt `json:",omitempty"`
+	// ReportRetryAt is a person's explicit retry grant, never an automatic loop.
+	ReportRetryAt time.Time `json:",omitzero"`
 	// Publishing lasts from recorded approval until the publisher reports its
 	// outcome, so the surface cannot say shipped before the pull request exists.
 	Publishing    bool        `json:",omitempty"`
@@ -457,6 +527,8 @@ type Item struct {
 	// Failure is a step that errored. Nil means the job has not failed.
 	// It is not a question.
 	Failure *Failure `json:",omitempty"`
+	// Recovery is the service-owned, bounded retry of an interrupted step.
+	Recovery *StepRecovery `json:",omitempty"`
 	// PublishError is the first line of a publish that failed. The job stays
 	// landed so the approval already recorded can retry. Empty means none.
 	PublishError string `json:",omitempty"`
@@ -472,6 +544,8 @@ type Item struct {
 	// on. It is kept on the item so a question sent to the person outlives a
 	// pause and a restart; nil is none.
 	Asking *Asked
+	// ManagerAnswer confirms the last durable decision independently of lease delivery.
+	ManagerAnswer *ManagerAnswer `json:",omitempty"`
 	// Adapted is what was changed about the item's stages, one line each in
 	// the order it changed them, each starting with who changed them
 	// (`manager set review: …`, `plan added arch`), `why: …` last: the record
@@ -484,10 +558,23 @@ type Item struct {
 	// RUNNER LANDS, and until then nothing reads them but the item's own
 	// conversation and its page.
 	Notes []string
+	// Model is the model this job's steps run on, as a person chose it for
+	// this job; "" is the factory's default. Every step reads it when it
+	// starts, and a change reaches a step already running at its next turn
+	// (run's SetModel), as a conversation's model does.
+	Model           string `json:",omitempty"`
+	AutomaticModels *bool  `json:",omitempty"`
 	// Talk is the item's own conversation, by its session file: the one `T`
 	// opens on the floor ([Seam.Talk]). "" IS NONE, which is every item until
 	// a person asks for one — the conversation is never made by default.
 	Talk string
+	// ChatSpent is what Talk spent while the job had no run: the job's chat
+	// before its first Start, in dollars. A JOB'S CHAT SPENDS FROM THE JOB'S
+	// BUDGET (the owner's ruling of 2026-10-20), and with no run there is no
+	// Stream to hold it; the next start carries it into the run's Spent and
+	// zeroes it (run's freshStream). A job with a stream books its chat's
+	// spend there instead ([AddChatSpend]), so [JobSpent] reads one figure.
+	ChatSpent float64 `json:",omitempty"`
 	// Thread is replicated from the worker so every machine reads the same
 	// conversation. AnsweredQuestions keeps asks after the open gate clears.
 	Thread            []Message  `json:",omitempty"`
@@ -621,9 +708,11 @@ type FileChange struct {
 // run's conclusion when it finished, otherwise its status: `success`,
 // `failure`, `in_progress`, `queued`), and its page.
 type CheckRun struct {
-	Name  string
-	State string
-	URL   string
+	Source string `json:",omitempty"`
+	AppID  int    `json:",omitempty"`
+	Name   string
+	State  string
+	URL    string
 }
 
 // Event is one line of an item's activity: when, and what, in a few plain
@@ -721,8 +810,9 @@ type Snapshot struct {
 	Marked []int
 	// Checkouts is where this machine has each of the floor's repositories
 	// checked out, by the name the floor shows, for the repositories it knows
-	// a folder for; a repository not in it has no checkout here, and a run of
-	// its items waits for one ([Seam.Clone]). NIL IS A SEAM THAT DOES NOT SAY,
+	// a folder for; a repository not in it has no checkout here, and the
+	// first step of a run of its items clones one ([Seam.CheckoutOf] says
+	// whether it can). NIL IS A SEAM THAT DOES NOT SAY,
 	// which the surface reads as nothing to check; a seam that knows where
 	// repositories are checked out answers a map, empty when it knows none.
 	Checkouts map[string]string
@@ -788,4 +878,17 @@ func (it Item) WorkState() string {
 		return "publishing"
 	}
 	return ""
+}
+
+// ManagerAnswer is an idempotency receipt for one exact manager decision. Phase,
+// round and chat keep a delayed redelivery from reaching another step attempt.
+type ManagerAnswer struct {
+	QuestionID string
+	Manager    string
+	Words      string
+	Stage      string
+	Phase      int
+	Round      int
+	Chat       string
+	At         time.Time
 }

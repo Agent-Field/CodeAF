@@ -1,6 +1,7 @@
 package run
 
 import (
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -13,7 +14,10 @@ func (e StepControlRefusal) Error() string { return string(e) }
 
 // StepControl changes only a recorded run. A rerun keeps completed earlier
 // steps and the money already spent; publishing and final jobs cannot rewind.
-func StepControl(it *factory.Item, name string, rerun bool, now time.Time) error {
+// words, on a rerun, are the person's for it: kept on the item's notes, which
+// every step's brief carries, so trying again or sending work back says what to
+// do differently. A stop takes none.
+func StepControl(it *factory.Item, name string, rerun bool, words string, now time.Time) error {
 	if factory.JobState(*it) == "done" || it.Publishing {
 		return StepControlRefusal("finished or publishing jobs cannot change steps")
 	}
@@ -34,26 +38,52 @@ func StepControl(it *factory.Item, name string, rerun bool, now time.Time) error
 	if !rerun && (index != s.Cur || (it.State != factory.StateRunning && it.State != factory.StateNeedsYou && it.State != factory.StateQueued)) {
 		return StepControlRefusal("only the current running step can stop")
 	}
-	if rerun && s.Phases[index].State == factory.PhasePending {
+	failedClaim := it.Failure != nil && it.Failure.Step == name && it.Failure.Next == factory.FailureStopped
+	if rerun && s.Phases[index].State == factory.PhasePending && !failedClaim {
 		return StepControlRefusal("step has not run yet")
 	}
+	if rerun && it.Cap > 0 && factory.JobSpent(*it) >= it.Cap {
+		return StepControlRefusal("job budget reached; raise Budget before trying again")
+	}
 	if rerun {
+		it.Recovery = nil
+		previous := s.Phases[index]
 		for i := index; i < len(s.Phases); i++ {
 			p := s.Phases[i]
 			s.Phases[i] = factory.Phase{Name: p.Name, Kind: p.Kind, Note: p.Note, State: factory.PhasePending}
 		}
-		// The queued target is marked begun so a worker revives this stream,
-		// including a rerun from the first step, instead of erasing its spend.
-		s.Phases[index].State = factory.PhaseRunning
+		// A fresh round retains this step's history and identity. Its nonzero
+		// round marks the stream begun, even when retrying the first step, so
+		// worker admission revives it without erasing spend or earlier results.
+		target := &s.Phases[index]
+		target.Round = max(previous.Round+1, 1)
+		grantFreshLoop(it, target)
+		target.Rounds = append([]factory.RoundLine(nil), previous.Rounds...)
+		if previous.Chat != "" {
+			factory.NoteRound(target, factory.RoundLinesMost, factory.RoundLine{Round: previous.Round, Chat: previous.Chat, Summary: previous.Note, At: previous.At, Started: previous.Started})
+		}
+		if planReportPending(name, previous.Result) && previous.Chat != "" {
+			target.Chat = previous.Chat
+			target.State = factory.PhaseRunning
+			target.Carry = append([]string(nil), previous.Carry...)
+		}
+		if previous.Failure != nil && previous.Round > 0 {
+			factory.NoteRound(target, factory.RoundLinesMost, factory.RoundLine{Round: previous.Round, Chat: previous.Chat, Summary: previous.Failure.Detail, Rejected: true, At: previous.Failure.At, Started: previous.Started})
+		}
 		it.State = factory.StateQueued
 		it.Failure = nil
 		it.Proof, it.Policy = nil, nil
 		it.PublishError = ""
 		it.PublishStatus = nil
+		if it.FollowUp != nil {
+			f := *it.FollowUp
+			f.State, f.Reason = "queued", "Waiting for a runner to retry "+name
+			it.FollowUp = &f
+		}
 		s.Ended = time.Time{}
 	} else {
 		it.State = factory.StateNew
-		failure := &factory.Failure{Step: name, Code: "stopped", Detail: "Stopped by you", Attempts: s.Phases[index].Round, Next: factory.FailureStopped, At: now}
+		failure := stoppedByYou(name, s.Phases[index].Round, now)
 		it.Failure = failure
 		s.Phases[index].State, s.Phases[index].Failure, s.Phases[index].At = factory.PhaseFailed, failure, now
 		s.Ended = now
@@ -61,7 +91,12 @@ func StepControl(it *factory.Item, name string, rerun bool, now time.Time) error
 	s.Cur, s.Paused = index, false
 	it.Question, it.QKind, it.Asking = "", "", nil
 	it.Approval, it.StopUndo = nil, nil
-	loopSay(it, now, "said", map[bool]string{true: "Rerun from " + name, false: "Stopped step " + name}[rerun])
+	said := map[bool]string{true: "Rerun from " + name, false: "Stopped step " + name}[rerun]
+	if words = strings.TrimSpace(words); rerun && words != "" {
+		it.Notes = append(it.Notes, words)
+		said += ": " + oneLine(words)
+	}
+	loopSay(it, now, "said", said)
 	return nil
 }
 

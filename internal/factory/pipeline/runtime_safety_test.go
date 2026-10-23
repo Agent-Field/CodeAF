@@ -296,7 +296,7 @@ func TestMarkdownSectionsKeepTheirOwnRuntimeWords(t *testing.T) {
 		}
 	}
 	// A check in one section and the shipped chat in another stay apart.
-	f := FromMarkdown("# factory recipe · codeaf\n\n## issue\n1. test · check · go test ./... · until green\n")
+	f := FromMarkdown("# factory recipe · codeaf\n\n## issue\n1. test · check · go test ./... · until green\n\n## ci\n1. test · chat · run the tests\n")
 	if s := f.Recipe().Stages[0]; s.Kind != factory.StageCheck || s.Ask != "go test ./..." {
 		t.Fatalf("issue test = %+v", s)
 	}

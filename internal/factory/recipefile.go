@@ -167,7 +167,7 @@ func Parse(text string) (Recipe, []Problem) {
 				habits = append(habits, s)
 			}
 		default:
-			st, whys, ok := parseStageLine(Kind(section), line)
+			st, whys, ok := parseStageLine(line)
 			for _, why := range whys {
 				bad(why)
 			}
@@ -264,7 +264,7 @@ func bullet(line string) (string, bool) {
 // parseStageLine reads one `N. name · …` line. ok is false only when there is
 // no stage to keep at all; a bad knob is a reason in whys and the stage loads
 // without it.
-func parseStageLine(k Kind, line string) (st Stage, whys []string, ok bool) {
+func parseStageLine(line string) (st Stage, whys []string, ok bool) {
 	m := reStageLine.FindStringSubmatch(line)
 	if m == nil {
 		return Stage{}, []string{"a stage is one line: N. name · kind · ask · knobs"}, false
@@ -310,8 +310,12 @@ func parseStageLine(k Kind, line string) (st Stage, whys []string, ok bool) {
 	}
 	st = Stage{Name: name, Ask: ask}
 	if ask == "" {
-		if i := StageIndex(DefaultRecipe().For(k), name); i >= 0 {
-			st = CopyStages(DefaultRecipe().For(k)[i : i+1])[0]
+		// A LINE WITH NO ASK IS THE SHIPPED STAGE OF THAT NAME ([ShippedStage]),
+		// one definition whatever section names it, with the line's knobs laid
+		// over it. Whether it is fixed is the line's own word, never the copy's.
+		if shipped, ok := ShippedStage(name); ok {
+			st = shipped
+			st.Fixed = false
 		}
 	}
 	if kind != "" {

@@ -335,6 +335,12 @@ func (a *Agent) turnCue(user userMessage) string {
 // a follow-up (agent.go) — an interrupted or faulted turn must not be the thing
 // that starts the next one.
 func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bool {
+	// A newly admitted stage turn may do more work after an earlier report.
+	// Withdraw that candidate before this turn can submit a newer one; runTurn
+	// is serialized, so a later valid final report cannot be invalidated here.
+	if a.config.mayStage() {
+		a.rejectStageReport()
+	}
 	// WHAT THE LAST TURN'S MEMORY PASS HAD NOWHERE TO SAY is said first: it ran
 	// after that turn's stream had closed, so this stream is the first it gets
 	// (memory.go's [Agent.sayMemory]).
@@ -1364,6 +1370,13 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// belt carries none of them), so nothing can have reached the world before
 		// this check, and a rejected batch is answered with nothing run at all.
 		// See bashbelt_envelope.go for the envelope and its reject roads.
+		if fault := a.stageReportBatchFault(calls); fault != "" {
+			a.rejectStageReport()
+			a.rejectBashEnvelope(hub, calls, fault)
+			warm.reset()
+			continue
+		}
+
 		if skip, ended := a.enforceBashEnvelope(ctx, hub, calls, &turn, started, model); ended {
 			return true
 		} else if skip {
@@ -1379,13 +1392,13 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// A SWEEP THE MODEL WILL NOT HAND OFF IS HANDED OFF HERE (readhandoff.go).
 		// The prompt taught the judgement and the models recited it without acting,
 		// so the loop — the one place the reading's cost is a fact rather than an
-		// instruction — spends the hand-off itself. Conversations only: a task
-		// worker's own reads are its work, not a sweep.
+		// instruction — spends the hand-off itself, where [Config.maySweepReads]
+		// says the reading is not the agent's own work.
 		// Post-response tools receive the successful request snapshot. Early warm
 		// reads already started on their own context and deliberately stay unknown.
 		batchCtx := withMediaInputs(toolCtx, inputCapture.messages)
 		var results []toolResult
-		if !a.config.InTask && chatRunEngine != nil && sweep.due(calls) {
+		if a.config.maySweepReads() && chatRunEngine != nil && sweep.due(calls) {
 			if handed := a.handoffReadSweep(batchCtx, episode, hub, user, calls, sweep, warm); handed != nil {
 				results = handed
 			} else {
@@ -1429,6 +1442,10 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 				ToolCallID: call.ID,
 				Content:    []ai.ContentPart{{Type: "text", Text: results[index].text}},
 			}, results[index])
+		}
+
+		if a.stageBatchFinal(calls, results) {
+			return true
 		}
 
 		// `post-feedback` (hooks.go): the step boundary, where the turn's ledger
@@ -1807,6 +1824,19 @@ func (a *Agent) completeWithRetry(ctx context.Context, hub *eventHub, model stri
 }
 
 func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, model string, rung effort.Rung, partial *partialBuffer, reached *reachedThePerson, reasoning *reasoningBuffer, warm *warmBatch, forming *formingBatch, frozenToolHistory int) (*ai.Response, string, error) {
+	// The current provider call is never cancelled by a selection. Every later
+	// outbound attempt observes the newly acknowledged pair.
+	if pair, ok := a.ConversationModelPair(); ok {
+		a.mu.Lock()
+		a.fallbackNoticeOwed = true
+		a.mu.Unlock()
+		model = pair.Main
+		rung = a.effortFor(model)
+		ctx = context.WithValue(ctx, conversationModelsKey{}, pair)
+	}
+	if err := a.admitJobCall(ctx); err != nil {
+		return nil, model, err
+	}
 	if node := a.config.taskControl; node != nil {
 		if err := node.appBoundary(ctx); err != nil {
 			return nil, model, err
@@ -1932,6 +1962,9 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 	}
 	attempt := 0
 	for ; ; attempt++ {
+		if err := a.admitJobCall(ctx); err != nil {
+			return nil, model, err
+		}
 		// AND IT IS ASKED AT THE TOP, because it is the only thing that ends this
 		// ladder. A failure below has its own reading — the boundary is told the
 		// deadline is gone and answers hop-or-end through the one classifier —
@@ -1951,6 +1984,18 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		if next, said := a.takeModelWord(); said && next != model {
 			takeTheModel(next, true)
 			attempt = 0
+		}
+		// A saved pair can change during a call or backoff. Read it only at
+		// a request boundary: no cancellation and no stale retry chain.
+		{
+			before, paired := requestConversationModels(ctx)
+			if latest, ok := a.ConversationModelPair(); ok && (!paired || latest != before) {
+				ctx = context.WithValue(ctx, conversationModelsKey{}, latest)
+				if latest.Main != before.Main || model == before.Fallback {
+					takeTheModel(latest.Main, true)
+					attempt = 0
+				}
+			}
 		}
 		// Each attempt streams the reply from the beginning, so the buffer
 		// starts empty: an attempt that dies half-way through its text and an
@@ -2044,8 +2089,10 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		})
 		attemptCtx, generation := a.beginGeneration(attemptCtx, reached)
 		inputMessages := a.preparedMediaInputs(messages)
-		response, err := a.completeWithModel(attemptCtx, purpose, messages, model,
-			ai.WithTools(a.beltDefinitions()))
+		// THE BELT, AND THE ONE TOOL THIS ANSWER MUST CALL WHEN THE TURN OWES ONE
+		// (tools_stage.go): it is spent by an answer, never by an attempt.
+		belt, must := a.turnBelt()
+		response, err := a.completeWithModel(attemptCtx, purpose, messages, model, belt...)
 		cause := a.endGeneration(generation)
 		if errors.Is(cause, errSteerCut) {
 			return response, model, errSteerCut
@@ -2057,6 +2104,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// it is deliberate: a person typing into a turn has said they want the
 		// boundary whatever else happened.
 		if err == nil {
+			a.spendMustCall(must)
 			publishMediaInputs(ctx, inputMessages)
 			return response, model, nil
 		}
@@ -2176,6 +2224,17 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// invisible from the other. One 502 and three 429s inside seventy-five
 		// seconds ended a turn on 2026-09-10 with two other models sitting
 		// unasked in the same session, and that is the road this is.
+		{
+			before, paired := requestConversationModels(ctx)
+			if latest, ok := a.ConversationModelPair(); ok && (!paired || latest != before) {
+				ctx = context.WithValue(ctx, conversationModelsKey{}, latest)
+				if latest.Main != before.Main {
+					takeTheModel(latest.Main, true)
+					attempt = -1
+					continue
+				}
+			}
+		}
 		next, haveFallback := a.nextFallback(ctx, origin, hopped)
 		// AND A PERSON WHO HAS NAMED A MODEL IS SOMEWHERE LEFT TO GO. This reading
 		// is what the boundary is told about whether the step can move at all, and
@@ -2669,6 +2728,13 @@ func retryNews(model string, spent int, verdict taxonomy.Verdict, cut *provider.
 // A context with no record answers nothing, and the fold is what makes that
 // safe: `hopped` alone still bounds the walk exactly as it always did.
 func (a *Agent) nextFallback(ctx context.Context, origin string, hopped []string) (string, bool) {
+	if pair, ok := requestConversationModels(ctx); ok {
+		fallback := strings.TrimSpace(pair.Fallback)
+		if a.config.OneModel || fallback == "" || fallback == origin || len(hopped) > 0 {
+			return "", false
+		}
+		return fallback, true
+	}
 	// AND `--one-model` IS A PERSON SAYING NO TO THIS, in the one file that has
 	// to honour it rather than only in the door that empties the chain. The flag
 	// already leaves the adapter with no fallbacks to offer, so this is belt and
@@ -2678,7 +2744,7 @@ func (a *Agent) nextFallback(ctx context.Context, origin string, hopped []string
 	// law is stated in this file's own comment above [cutBudget]'s old home while
 	// being enforced nowhere in it. It is the same guard the checker's failover
 	// keeps for the same reason (taxonomy_boundary.go's failoverCheckerModel).
-	if a.config.OneModel {
+	if !a.automaticModelsAllowed() {
 		return "", false
 	}
 	options, ok := a.modelFallbackChain(origin)
@@ -3643,6 +3709,9 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 
 // dispatchTool is the dispatch itself: find the hand, ask the doors, run it.
 func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall, rendered string) toolResult {
+	if err := a.jobBudgetBlock(); err != nil {
+		return a.finishToolResult(ep, call, toolResult{text: err.Error(), isError: true, harness: true})
+	}
 	// A reading cannot ask, including through consent or an off-belt call.
 	// Refuse before pre-action can open a question or capture a file.
 	if refusal := a.readingToolRefusal(call.Function.Name); refusal != "" {
@@ -4335,6 +4404,14 @@ func (a *Agent) bank(call bankedCall) {
 	a.mu.Unlock()
 	if call.ledger {
 		a.recordUsageLine(call)
+	}
+	// AND THE FACTORY JOB'S SPEND, when this conversation is a job's own chat:
+	// each direct call charges the shared family meter immediately. Children
+	// charge at their own call boundary; their later folded totals do not.
+	if call.used.CostUSD > 0 {
+		if budget := a.jobBudgetOf(); budget != nil && call.ledger {
+			budget.Spend(call.used.CostUSD)
+		}
 	}
 }
 

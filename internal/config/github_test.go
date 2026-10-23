@@ -34,8 +34,9 @@ func TestGitHubTokenAndViaReplaceEachOther(t *testing.T) {
 	}
 }
 
-// THE APP'S GITHUB KEY IS MEMORY ONLY: it answers the reader, and neither
-// writer will put anything in the profile while the app holds the keys.
+// THE APP'S GITHUB KEY IS MEMORY ONLY: it answers the reader, and no writer
+// puts a token in the profile while the app holds the keys. The yes to gh is
+// consent, not a key, so the app's profile keeps that alone, and takes it back.
 func TestAppGitHubKeyNeverReachesTheProfile(t *testing.T) {
 	dir := t.TempDir()
 	creds := NewAppCredentials()
@@ -47,8 +48,11 @@ func TestAppGitHubKeyNeverReachesTheProfile(t *testing.T) {
 	if err := WriteGitHubToken(dir, "ghp_written"); !errors.Is(err, ErrAppKeys) {
 		t.Fatalf("a token write was answered %v", err)
 	}
-	if err := WriteGitHubViaGH(dir); !errors.Is(err, ErrAppKeys) {
-		t.Fatalf("a gh write was answered %v", err)
+	if err := WriteGitHubViaGH(dir); err != nil || GitHubViaAt(dir) != "gh" {
+		t.Fatalf("the yes to gh was not kept: %v, via %q", err, GitHubViaAt(dir))
+	}
+	if err := ForgetGitHubViaGH(dir); err != nil || GitHubViaAt(dir) != "" {
+		t.Fatalf("the yes to gh was not taken back: %v, via %q", err, GitHubViaAt(dir))
 	}
 	raw, _ := os.ReadFile(BudgetConfigPath(dir))
 	if strings.Contains(string(raw), "opaque-app") || strings.Contains(string(raw), "ghp_") {

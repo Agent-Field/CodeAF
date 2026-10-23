@@ -72,6 +72,22 @@ func (h *Handler) keepReadGrant(r *http.Request, grant factorygithub.ReadGrant) 
 	return nil
 }
 
+// pollGitHub is POST /v1/github/poll, "Check GitHub now": it wakes the poll
+// on this factory's machine at once ([factorygithub.Nudge]) and answers
+// without waiting for the read. The read itself is the poll's ordinary one,
+// so what it finds arrives the way every read does, and the queue's github
+// source says it is reading (polling) and then when it last read well
+// (polled). Nudges while a read is in flight fold into one more read after
+// it, so pressing twice costs one read, not two. A factory with no store has
+// no poll to wake.
+func (h *Handler) pollGitHub(w http.ResponseWriter, r *http.Request) {
+	if !h.requireVerb(w, h.config.Store != nil) {
+		return
+	}
+	factorygithub.Nudge(h.config.Store)
+	h.finish(w, nil)
+}
+
 // readGrantLogin checks identity and refuses known write-capable classic OAuth scopes.
 // GitHub App tokens have no OAuth scopes; their Issues and Metadata read permissions
 // are configured in the app, and this credential is only handed to read clients.

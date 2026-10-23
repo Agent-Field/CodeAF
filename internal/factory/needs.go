@@ -36,8 +36,12 @@ const (
 	CodeProviderError     = "provider_error"
 	CodeCrash             = "crash"
 	CodeMachineLost       = "machine_lost"
-	FailureRequeued       = "requeued"
-	FailureStopped        = "stopped"
+	CodeTransportError    = "transport_error"
+	// CodeStopped is a person's stop that cut a step, by the step's own Stop
+	// or the whole job's: the job and that step both say it was stopped.
+	CodeStopped     = "stopped"
+	FailureRequeued = "requeued"
+	FailureStopped  = "stopped"
 	// RoundLinesMost is how many per-round lines one step keeps. A loop's
 	// own max is the bound when it is smaller. The list cannot grow with a
 	// report that names a huge round.
@@ -105,10 +109,20 @@ type Failure struct {
 
 // RoundLine is one finished try of a loop step. The step keeps one line per
 // round, bounded by RoundCap, so out of attempts can show what each try did.
+//
+// Started and Chat are when that try began and the conversation it ran in, so
+// a surface can draw and open an earlier round as it does the latest. A line
+// written before they were recorded has neither, and Chat is empty for a step
+// that is not a conversation (a check).
 type RoundLine struct {
-	Round   int       `json:",omitempty"`
-	Summary string    `json:",omitempty"`
-	At      time.Time `json:",omitempty"`
+	// Rejected means the round ended without meeting its completion rule.
+	// Absent on older records, whose outcome must not be inferred from prose.
+	Rejected bool      `json:",omitempty"`
+	Round    int       `json:",omitempty"`
+	Summary  string    `json:",omitempty"`
+	At       time.Time `json:",omitempty"`
+	Started  time.Time `json:",omitempty"`
+	Chat     string    `json:",omitempty"`
 }
 
 // Acts is who may use each verb on this job. It is computed for one caller.
@@ -353,6 +367,8 @@ func ClassifyFailure(msg string) (code, detail string) {
 		code = CodeCrash
 	case strings.Contains(low, "provider") || strings.Contains(low, "rate limit"):
 		code = CodeProviderError
+	case ConnectionFailure(msg):
+		code = CodeTransportError
 	default:
 		code = CodeToolError
 	}
@@ -367,8 +383,30 @@ func firstLine(s string) string {
 	return s
 }
 
-// RoundSummary is the one line a finished round leaves on the step.
+// RoundSummary is the one line a finished round leaves on the step, which is
+// what the Timeline shows of it: `reported for the step · …` when the factory
+// made the report ([StageResult.Inferred]), and `… · updated 2 times` when the
+// step reported again after its first report, so a person can see that the
+// step corrected itself and that what they read is its last word.
 func RoundSummary(res StageResult) string {
+	line := roundWords(res)
+	switch {
+	case res.Inferred:
+		return ReportedForTheStep + " · " + line
+	case res.Reports == 2:
+		return line + " · updated 1 time"
+	case res.Reports > 2:
+		return line + " · updated " + strconv.Itoa(res.Reports-1) + " times"
+	}
+	return line
+}
+
+// ReportedForTheStep is how a report the factory made for a step is marked
+// wherever a person reads it.
+const ReportedForTheStep = "reported for the step"
+
+// roundWords is what a round said, in one line.
+func roundWords(res StageResult) string {
 	if line := firstLine(res.Output); line != "" {
 		return line
 	}
@@ -402,8 +440,9 @@ func RoundCap(max, round int) int {
 	return max
 }
 
-// NoteRound records one finished try. A repeat of the same round replaces
-// the earlier line. The list stays within cap.
+// NoteRound records one finished try. Re-delivery of the same conversation
+// updates that try; a new conversation never erases an earlier one just because
+// recovery reused its round number. Legacy checks without chats use the round.
 func NoteRound(ph *Phase, cap int, line RoundLine) {
 	if ph == nil || line.Round < 1 {
 		return
@@ -413,7 +452,7 @@ func NoteRound(ph *Phase, cap int, line RoundLine) {
 	}
 	replaced := false
 	for i := range ph.Rounds {
-		if ph.Rounds[i].Round == line.Round {
+		if (line.Chat != "" && ph.Rounds[i].Chat == line.Chat) || (line.Chat == "" && ph.Rounds[i].Chat == "" && ph.Rounds[i].Round == line.Round) {
 			ph.Rounds[i] = line
 			replaced = true
 			break

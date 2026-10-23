@@ -647,7 +647,7 @@ func newFindTool(cwd string, caps Caps) Tool {
 	caps = caps.resolve()
 	return Tool{
 		Name:        "find",
-		Description: findDescription(caps),
+		Description: findToolDescription(caps),
 		Schema:      json.RawMessage(findSchemaJSON),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var p struct {
@@ -661,7 +661,7 @@ func newFindTool(cwd string, caps Caps) Tool {
 
 			fdPath, err := exec.LookPath("fd")
 			if err != nil {
-				return "fd is not available and could not be downloaded", true, nil
+				return findByWalking(ctx, cwd, p.Pattern, p.Path, p.Limit, caps)
 			}
 
 			searchDir := "."

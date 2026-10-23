@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/factory"
 )
 
 // reposDoc is <root>/repos.json: the forge repositories this floor watches,
@@ -26,28 +28,47 @@ func (st *Store) ReposPath() string { return filepath.Join(st.root, "repos.json"
 // NO FILE IS NO REPOSITORIES and no error: a floor nobody connected to a forge
 // is the ordinary floor.
 func (st *Store) Repos() ([]string, error) {
+	repos, _, err := st.readRepos()
+	return repos, err
+}
+
+// RepoSwitch is the watched list as the factory's power switch per
+// repository ([factory.RepoSwitch]): on the list is on, off it is off. The
+// switch exists once the file does, so a floor that never kept a list has
+// nothing off, and a list saved empty has everything off.
+func (st *Store) RepoSwitch() (factory.RepoSwitch, error) {
+	repos, kept, err := st.readRepos()
+	if err != nil {
+		return factory.RepoSwitch{}, err
+	}
+	return factory.NewRepoSwitch(repos, kept), nil
+}
+
+// readRepos is the one read of repos.json: the cleaned list, and whether the
+// file is there at all.
+func (st *Store) readRepos() ([]string, bool, error) {
 	if st == nil {
-		return nil, nil
+		return nil, false, nil
 	}
 	data, err := os.ReadFile(st.ReposPath())
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil
+			return nil, false, nil
 		}
-		return nil, err
+		return nil, false, err
 	}
 	var d reposDoc
 	if err := json.Unmarshal(data, &d); err != nil {
 		var bare []string
 		if json.Unmarshal(data, &bare) != nil {
-			return nil, fmt.Errorf("factory store: cannot read repos.json: %w", err)
+			return nil, false, fmt.Errorf("factory store: cannot read repos.json: %w", err)
 		}
 		d.Repos = bare
 	}
 	if d.Schema > Schema {
-		return nil, fmt.Errorf("%w: repos.json", ErrNewer)
+		return nil, false, fmt.Errorf("%w: repos.json", ErrNewer)
 	}
-	return CleanRepos(d.Repos), nil
+	return CleanRepos(d.Repos), true, nil
 }
 
 // SetRepos writes the watched repositories, temp+rename under the file's own

@@ -503,3 +503,11 @@ func TestAServerFaultDoesNotEnterTheChain(t *testing.T) {
 		}
 	}
 }
+
+func TestConfiguredFallbackEqualToMainDoesNotChooseCatalogNeighbour(t *testing.T) {
+	called := false
+	client := &Client{config: Config{Fallbacks: []string{"deepseek/deepseek-v4.1-flash"}, NearestModels: func(string) []string { called = true; return []string{"guessed/model"} }}}
+	if got := client.fallbackChain("deepseek/deepseek-v4.1-flash"); len(got) != 0 || called {
+		t.Fatalf("default fallback escaped to a guessed neighbour: %v, catalog=%v", got, called)
+	}
+}

@@ -35,10 +35,20 @@ func (h *Handler) guarded(verb string, action jobAction) jobAction {
 // withVersion stamps the store's document revision onto the job the page
 // reads. A handler with no store leaves it zero, and the field stays off the wire.
 func (h *Handler) withVersion(job api.Job) api.Job {
-	retention := api.RunningRetention
+	return h.withVersionKept(job, h.retention())
+}
+
+// retention is how long a finished job stays on the page. A response that
+// lists many jobs reads it once and hands it to [Handler.withVersionKept].
+func (h *Handler) retention() time.Duration {
 	if h.config.ServedBy == "app" {
-		retention = time.Duration(config.AppFactoryDoneDaysAt(h.config.ProfileDir)) * 24 * time.Hour
+		return time.Duration(config.AppFactoryDoneDaysAt(h.config.ProfileDir)) * 24 * time.Hour
 	}
+	return api.RunningRetention
+}
+
+// withVersionKept is [Handler.withVersion] with the retention already read.
+func (h *Handler) withVersionKept(job api.Job, retention time.Duration) api.Job {
 	job.Display = api.DisplayForRetention(job, h.clock(), retention)
 	if h.config.Store == nil || job.ID == 0 {
 		return job
@@ -279,6 +289,10 @@ func reasonFor(status int) string {
 // classify turns a door's error into a status a person can tell apart from a
 // crash. Unknown errors stay 500 and carry no reason.
 func classify(err error) (int, string) {
+	var closeRefusal lease.CloseRefusal
+	if errors.As(err, &closeRefusal) {
+		return http.StatusConflict, "conflict"
+	}
 	var stepRefusal run.StepControlRefusal
 	var editRefusal factory.EditRefusal
 	var planRefusal run.PlanRevisionRefusal
@@ -288,6 +302,13 @@ func classify(err error) (int, string) {
 	var stale *store.StaleError
 	if errors.As(err, &stale) {
 		return http.StatusConflict, "stale"
+	}
+	// A start whose repository cannot be checked out here is a refusal with
+	// its own reason wherever it surfaces (startJob asks first; a Launch
+	// another door reaches says the same).
+	var needs factory.NeedsCheckout
+	if errors.As(err, &needs) {
+		return http.StatusConflict, api.ReasonNeedsCheckout
 	}
 	switch {
 	case errors.Is(err, fs.ErrNotExist), errors.Is(err, store.ErrNotFound):
@@ -316,7 +337,7 @@ func classify(err error) (int, string) {
 
 func conflictSentence(msg string) bool {
 	for _, part := range []string{
-		"was dropped for good",
+		factory.DroppedRefusal,
 		"is not running",
 		"is not paused",
 		"is not waiting",

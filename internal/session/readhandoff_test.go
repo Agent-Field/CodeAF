@@ -154,3 +154,17 @@ func (s *readSweep) keys() []string {
 	}
 	return keys
 }
+
+// A STAGE'S READING IS ITS WORK: neither a task worker nor a factory stage has
+// its reads handed off, and an ordinary conversation does.
+func TestOnlyAConversationHasItsReadsSwept(t *testing.T) {
+	if !(Config{}).maySweepReads() {
+		t.Fatal("a conversation's sweep was switched off")
+	}
+	if (Config{InTask: true}).maySweepReads() {
+		t.Fatal("a task worker's reads were swept")
+	}
+	if (Config{Stage: &fakeStageDoor{}}).maySweepReads() {
+		t.Fatal("a factory stage's reads were swept")
+	}
+}

@@ -20,7 +20,7 @@ package main
 // IT IS SENT ONLY TO A FACTORY AND A COMPUTER THAT CAN TAKE IT. The runner
 // directory must carry the server's slots_policy (an older factory sends none,
 // and would answer 422 to the new field or write to a worker that cannot follow
-// it), the policy must be the one this build expects, and the computer must say
+// it), the policy must fit within this build's supported range, and the computer must say
 // live_capacity. The request repeats the last condition as require_live_capacity,
 // which the factory checks under the lock that writes, so a worker that went
 // back to an older binary between this read and the write is refused with the
@@ -61,10 +61,10 @@ type appRunnerSettingsBody struct {
 	RequireLiveCapacity bool `json:"require_live_capacity"`
 }
 
-// expectedRunnerSlotsPolicy is the only policy this build will write against.
-// A server that states anything else is not one whose rules this engine knows.
+// A lower server ceiling is compatible (for example an existing eight-slot
+// factory). A wider range or missing atomic live guard is not supported.
 func expectedRunnerSlotsPolicy(p *api.RunnerSlotsPolicy) bool {
-	return p != nil && p.Min == 1 && p.Max == api.MaxRunnerSlots && p.RequiresLive
+	return p != nil && p.Min == 1 && p.Max >= p.Min && p.Max <= api.MaxRunnerSlots && p.RequiresLive
 }
 
 func runnerSignInChanged() error {
@@ -109,6 +109,9 @@ func (b *appBackend) FactoryRunnerSlots(ctx context.Context, p appwire.FactoryRu
 	}
 	if !expectedRunnerSlotsPolicy(dir.SlotsPolicy) {
 		return none, appwire.Errorf(appwire.CodeConflict, "this factory cannot change a computer's slots from here yet; nothing was changed")
+	}
+	if p.Slots == nil || *p.Slots < dir.SlotsPolicy.Min || *p.Slots > dir.SlotsPolicy.Max {
+		return none, appwire.Errorf(appwire.CodeConflict, "that number is outside this factory's supported range; read its computers before trying again. Nothing was changed.")
 	}
 	var own *api.Runner
 	elsewhere := false

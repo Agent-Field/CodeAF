@@ -305,6 +305,16 @@ func Merge(repo, personal File) (File, []Problem) {
 	for name, step := range personal.Steps {
 		probs = tightenStep(&out, repo, name, step, probs)
 	}
+	if personal.set.mergeAuto {
+		if personal.Merge.Auto && !repo.Merge.Auto {
+			probs = append(probs, Problem{Where: "merge.auto", Why: "ignored; a personal file cannot turn auto-merge on"})
+		} else {
+			out.Merge.Auto = personal.Merge.Auto
+		}
+	}
+	if personal.set.mergeMethod && !strings.EqualFold(personal.Merge.Method, repo.Merge.Method) {
+		probs = append(probs, Problem{Where: "merge.method", Why: "ignored; a personal file cannot change how the repository merges"})
+	}
 	// Parse problems from the personal file belong with the refusals, or a
 	// key it could not read disappears while the rest of the file tightens.
 	probs = append(append([]Problem{}, personal.Problems...), probs...)

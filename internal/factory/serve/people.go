@@ -85,33 +85,50 @@ func (h *Handler) withPeople(r *http.Request, s factory.Snapshot, allOwners ...b
 			}
 		}
 	}
+	summarize := h.summaries(r)
 	for handle := range people {
-		h.addSummary(r, people, handle)
+		summarize(people, handle)
 	}
 	s.People = people
 	return s, rules
 }
 
-// addSummary never lets a profile outage prevent a queue from being read.
-func (h *Handler) addSummary(r *http.Request, people map[string]factory.PersonSummary, handle string) {
-	handle = factory.NormalizeHandle(handle)
-	if handle == "" {
-		return
-	}
-	if _, ok := people[handle]; !ok {
-		people[handle] = factory.PersonSummary{}
-	}
-	if h.config.PersonProfile != nil {
-		profile, err := h.config.PersonProfile(r.Context(), handle)
-		if err == nil {
-			people[handle] = profile.PersonSummary
+// summaries answers each handle's name and photo for one response. It never
+// lets a profile outage prevent a queue from being read, and never lets
+// GitHub's speed decide how long the queue takes: with PersonKnown it answers
+// only what is already known. The member roster is read once per response,
+// not once per handle, because on a team host it is a file read.
+func (h *Handler) summaries(r *http.Request) func(people map[string]factory.PersonSummary, handle string) {
+	var members []api.Member
+	read := false
+	return func(people map[string]factory.PersonSummary, handle string) {
+		handle = factory.NormalizeHandle(handle)
+		if handle == "" {
 			return
 		}
-	}
-	for _, member := range h.memberList() {
-		if factory.NormalizeHandle(member.Handle) == handle {
-			people[handle] = factory.PersonSummary{Name: member.Name, AvatarURL: member.AvatarURL}
-			return
+		if _, ok := people[handle]; !ok {
+			people[handle] = factory.PersonSummary{}
+		}
+		if h.config.PersonKnown != nil {
+			if profile, ok := h.config.PersonKnown(handle); ok {
+				people[handle] = profile.PersonSummary
+				return
+			}
+		} else if h.config.PersonProfile != nil {
+			profile, err := h.config.PersonProfile(r.Context(), handle)
+			if err == nil {
+				people[handle] = profile.PersonSummary
+				return
+			}
+		}
+		if !read {
+			members, read = h.memberList(), true
+		}
+		for _, member := range members {
+			if factory.NormalizeHandle(member.Handle) == handle {
+				people[handle] = factory.PersonSummary{Name: member.Name, AvatarURL: member.AvatarURL}
+				return
+			}
 		}
 	}
 }

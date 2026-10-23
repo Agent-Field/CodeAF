@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/workgraph"
@@ -61,6 +62,20 @@ const (
 	// (already approved, already taken) is CodeConflict.
 	CodeForbidden = "forbidden"
 	CodeStale     = "stale"
+	// CodeHasWork refuses a factory.job_drop whose job holds work on this
+	// machine that the drop would delete: commits on its local branch or
+	// changes in its folder. The message is the factory's sentence naming
+	// them, and Detail a FactoryRefusal. The same drop with discard is the
+	// person's yes; nothing sends it on anyone's behalf.
+	CodeHasWork = "has_work"
+	// CodeHasRunning refuses a factory.repo_set that would turn a repository
+	// off while any of its jobs is running, queued or waiting on a person.
+	// The message is the factory's sentence naming them; the repository is
+	// still on. The same switch with stop is the person's yes to stopping
+	// them first; nothing sends it on anyone's behalf. It also answers a stop
+	// that failed on the way: the message names the job, and the repository
+	// is still on.
+	CodeHasRunning = "has_running"
 )
 
 // The states an agent can be in, as the app draws them.
@@ -140,10 +155,14 @@ type Hello struct {
 // the first century; the emptiness law says
 // an unknown draws nothing, so UpdatedAt and LastActiveAt carry omitzero.
 type Agent struct {
-	ID        string `json:"id"`
-	Title     string `json:"title"`
-	Workspace string `json:"workspace"`
-	Model     string `json:"model,omitempty"`
+	ModelIdentity *session.ModelIdentity `json:"model_identity,omitempty"`
+	// Retryable means this backend retained the failed message for agents.retry.
+	Retryable    bool   `json:"retryable"`
+	FactoryOwned bool   `json:"factory_owned,omitempty"`
+	ID           string `json:"id"`
+	Title        string `json:"title"`
+	Workspace    string `json:"workspace"`
+	Model        string `json:"model,omitempty"`
 	// Effort is the conversation override: low, medium, high, xhigh or max.
 	// It is omitted when unset (auto); other effort scopes can still apply.
 	Effort    string    `json:"effort,omitempty"`
@@ -424,7 +443,7 @@ type Entry struct {
 	// Skills) or "memory" (a memory line, Unrecorded because no transcript
 	// record redraws it). They are absent on every other notice, which is an
 	// ordinary one; a consumer never derives them from Text.
-	NoticeKind string   `json:"notice_kind,omitempty" enum:"skills,memory"`
+	NoticeKind string   `json:"notice_kind,omitempty" enum:"skills,memory,factory_status"`
 	Skills     []string `json:"skills,omitempty"`
 	Unrecorded bool     `json:"unrecorded,omitempty"`
 	// A steer's and a note's state, the step a steer landed at and the step a
@@ -455,6 +474,12 @@ type Entry struct {
 	// Op is a durable fact the conversation's record keeps beside its
 	// messages, said as the fact and never as words: the app words it.
 	Op *EntryOp `json:"op,omitempty"`
+	// Progress is, on an answer the factory runner wrote into a job's own
+	// conversation, the step round that line reports on and what happened to
+	// it. It is the runner's word, never read out of Text, which keeps the
+	// line's words for a surface that shows them; absent on every other entry,
+	// and on the runner's lines about the job as a whole.
+	Progress *EntryProgress `json:"progress,omitempty"`
 	// Compaction is a summary entry's pass, as facts (compaction.go).
 	Compaction *Compaction `json:"compaction,omitempty"`
 	// Team is, on a notice that is a crew's delivery, its lines as facts: who
@@ -464,6 +489,18 @@ type Entry struct {
 	// A tool entry carries the facts of its call (worklog.go); a note entry
 	// names its task there too.
 	ToolFacts
+}
+
+// EntryProgress is the step a factory runner's line in a job's conversation
+// reports on: its name as the job's steps spell it, the round (absent for a
+// step with no rounds, an approve step), and what the line says happened.
+// started and done are the round beginning and ending; failed and stopped are
+// the run ending under it, on the step's error or a person's stop; waiting is
+// the step waiting on a question put to the person.
+type EntryProgress struct {
+	Step  string `json:"step"`
+	Round int    `json:"round,omitempty"`
+	Event string `json:"event" enum:"started,done,failed,stopped,waiting"`
 }
 
 // TeamLine is one line of a crew's delivery to a member. From is "manager",
@@ -959,12 +996,14 @@ type ProviderConnector interface {
 //
 // It answers at once: the conversation is assembled behind the answer.
 type CreateAsk struct {
-	Workspace   string         `json:"workspace"`
-	Model       string         `json:"model"`
-	BudgetUSD   *float64       `json:"budget_usd"`
-	Text        string         `json:"text"`
-	ClientID    string         `json:"client_id"`
-	Attachments []AttachSource `json:"attachments,omitempty"`
+	Models          *session.ConversationModels `json:"models,omitempty"`
+	AutomaticModels *bool                       `json:"automatic_models,omitempty"`
+	Workspace       string                      `json:"workspace"`
+	Model           string                      `json:"model"`
+	BudgetUSD       *float64                    `json:"budget_usd"`
+	Text            string                      `json:"text"`
+	ClientID        string                      `json:"client_id"`
+	Attachments     []AttachSource              `json:"attachments,omitempty"`
 	// Said is the person's own words for the first message: what its entry and
 	// the record show in place of Text, as agents.send's said does. Absent is Text.
 	Said *string `json:"said,omitempty"`

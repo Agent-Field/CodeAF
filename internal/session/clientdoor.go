@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -741,9 +742,14 @@ func (a *Agent) completeWithModel(ctx context.Context, purpose callPurpose, mess
 // missing default-service key moved the call onto the live seat; asking the pool
 // a second time afterwards could observe a different model or source set.
 func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose, messages []ai.Message, model string, options ...ai.Option) (*ai.Response, string, error) {
+	if purpose == purposeTurn {
+		messages = a.jobAutonomyMessages(messages)
+	}
 	// AN AUXILIARY CALL NEVER ASKS A ROUTE HEALTH SAYS WILL NOT ANSWER
 	// (taskcrew.go's [Agent.healthyModel]).
-	model = a.healthyModel(ctx, purpose, model)
+	if _, paired := requestConversationModels(ctx); !paired && (!a.foregroundModelCall(purpose) || a.automaticModelsAllowed()) {
+		model = a.healthyModel(ctx, purpose, model)
+	}
 	// A HELPER'S CALL IS PRICED LIKE A SEAT'S: against the crew's day cap —
 	// and, made for a task, that task's limit — before it is made, and on the
 	// day after. A crew seat's own call is its
@@ -776,6 +782,9 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 	if err != nil {
 		return nil, called, err
 	}
+	if _, paired := requestConversationModels(ctx); a.foregroundModelCall(purpose) && (paired || !a.automaticModelsAllowed()) && called != model {
+		return nil, called, fmt.Errorf("fixed model %s is unavailable; refusing automatic substitution with %s", model, called)
+	}
 	// THE DISPATCH FACT IS TAKEN FROM THE HEADER THIS ADAPTER WRITES, never
 	// from the account that chose it, the settings, or the answer.
 	if observe := dispatchObserverOf(ctx); observe != nil {
@@ -807,7 +816,17 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 	// THE ONE PLACE A PICTURE BECOMES BYTES: references in the transcript are read
 	// back, verified and encoded for this request alone, under its budget
 	// (imageref.go). A copy is made only when a reference is present.
+	actual := called
+	if a.foregroundModelCall(purpose) {
+		pair, _ := requestConversationModels(ctx)
+		a.startConversationModelRequest(called, service.Source.ID, pair)
+		ctx = provider.WithServedModel(ctx, a.servedModel)
+		defer func() { a.endModelRequest(actual) }()
+	}
 	response, err := client.CompleteWithMessages(toldItsWindow(ctx), materializeImageRefs(messages), append(options, ai.WithModel(wire))...)
+	if response != nil && response.Model != "" {
+		actual = response.Model
+	}
 	if helper != nil {
 		helper.after(ctx, model, response, held)
 		crewTaskOf(ctx).addHelperSpend(response)

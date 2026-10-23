@@ -112,6 +112,9 @@ func (s *PipelineEditSource) SetParsed(src pipeline.Source) {
 	s.Fixed = append([]string(nil), src.Fixed...)
 	s.Pipelines, s.Steps = nil, nil
 	for _, k := range src.Kinds {
+		if k.Kind == "pr" || k.Kind == "ci" {
+			continue
+		}
 		s.Pipelines = append(s.Pipelines, PipelineEditKind{Kind: k.Kind, Steps: append([]string{}, k.Steps...), InFile: k.InFile})
 	}
 	for _, st := range src.Steps {

@@ -36,7 +36,10 @@ func TestReadCarriesThePageCommentsFilesAndChecks(t *testing.T) {
 	if strings.Join(said, "|") != "comment 2|comment 3|comment 4" {
 		t.Fatalf("the issue kept %q, want the last three oldest first", said)
 	}
-	pr := got[9]
+	pr, err := New(api, nil, nil).Refetch(context.Background(), factory.Item{Kind: factory.KindPR, Origin: factory.OriginForge, Repo: "api", Product: "acme", Num: 9})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if pr.URL != "https://github.com/acme/api/pull/9" || len(pr.Comments) != 1 || pr.Comments[0].Body != "looks right" {
 		t.Fatalf("the pull request's page or comments: %+v", pr)
 	}
@@ -44,7 +47,7 @@ func TestReadCarriesThePageCommentsFilesAndChecks(t *testing.T) {
 	if !reflect.DeepEqual(pr.Files, wantFiles) {
 		t.Fatalf("files %+v, want %+v", pr.Files, wantFiles)
 	}
-	wantRuns := []factory.CheckRun{{Name: "build", State: "in_progress", URL: "https://github.com/acme/api/runs/1"}}
+	wantRuns := []factory.CheckRun{{Name: "legacy CI", State: "success"}, {Name: "build", State: "in_progress", URL: "https://github.com/acme/api/runs/1"}}
 	if !reflect.DeepEqual(pr.CheckRuns, wantRuns) || pr.Checks != "ci running" {
 		t.Fatalf("check runs %+v (%q), want %+v", pr.CheckRuns, pr.Checks, wantRuns)
 	}
@@ -197,7 +200,7 @@ func TestRefreshReadsOneItemAgain(t *testing.T) {
 	if !seam.Has("refresh") || !seam.Has("refreshall") || !seam.Has("open") {
 		t.Fatal("the source doors are missing over a source")
 	}
-	issue, pr := items[7], items[9]
+	issue := items[7]
 	read(t, st, issue.ID, "a read")
 	f.mu.Lock()
 	f.issueBody = "changed, and the list was never asked"
@@ -212,21 +215,6 @@ func TestRefreshReadsOneItemAgain(t *testing.T) {
 	}
 	if f.hit("GET /repos/acme/api/issues/7") != 1 || f.hit("GET /repos/acme/api/issues/7/comments") != comments+1 {
 		t.Fatal("the refresh did not ask for the issue and its comments by number")
-	}
-
-	files, runs := f.hit("GET /repos/acme/api/pulls/9/files"), f.hit("GET /repos/acme/api/commits/abc/check-runs")
-	f.mu.Lock()
-	f.checksRun = false
-	f.mu.Unlock()
-	if err := seam.Refresh(ctx, pr.ID); err != nil {
-		t.Fatal(err)
-	}
-	if f.hit("GET /repos/acme/api/pulls/9/files") != files+1 || f.hit("GET /repos/acme/api/commits/abc/check-runs") != runs+1 {
-		t.Fatal("a pull request's refresh did not read its files and checks")
-	}
-	gotPR, _ := st.Get(pr.ID)
-	if gotPR.Checks != "ci ✓" || len(gotPR.CheckRuns) != 1 || gotPR.CheckRuns[0].State != "success" {
-		t.Fatalf("the refreshed checks did not land: %q %+v", gotPR.Checks, gotPR.CheckRuns)
 	}
 
 	id, err := st.Add(ctx, factory.Item{Title: "typed on the floor", Repo: "api", Origin: factory.OriginTerminal})
@@ -261,8 +249,8 @@ func TestRefreshAllEstimatesThenDoes(t *testing.T) {
 	asked := len(f.paths)
 
 	n, est, err := seam.RefreshAll(factory.DryRun(ctx))
-	if err != nil || n != 2 || est != 2*factory.DefaultReadCost {
-		t.Fatalf("dry run: %d items at $%v (%v), want 2 at the default", n, est, err)
+	if err != nil || n != 1 || est != factory.DefaultReadCost {
+		t.Fatalf("dry run: %d items at $%v (%v), want one issue at the default", n, est, err)
 	}
 	if len(f.paths) != asked {
 		t.Fatal("a dry run asked GitHub")
@@ -273,15 +261,15 @@ func TestRefreshAllEstimatesThenDoes(t *testing.T) {
 	_ = st.NoteReadCost(0.001)
 	_ = st.NoteReadCost(0.003)
 	_ = st.NoteReadCost(0) // an unpriced read is not counted
-	if _, est, _ = seam.RefreshAll(factory.DryRun(ctx)); est < 0.00399 || est > 0.00401 {
-		t.Fatalf("the estimate is $%v, want two items at the $0.002 average", est)
+	if _, est, _ = seam.RefreshAll(factory.DryRun(ctx)); est < 0.00199 || est > 0.00201 {
+		t.Fatalf("the estimate is $%v, want one issue at the $0.002 average", est)
 	}
 
 	n, _, err = seam.RefreshAll(ctx)
-	if err != nil || n != 2 {
+	if err != nil || n != 1 {
 		t.Fatalf("the refresh read %d items (%v)", n, err)
 	}
-	if f.hit("GET /repos/acme/api/issues/7") != 1 || f.hit("GET /repos/acme/api/pulls/9") < 2 {
+	if f.hit("GET /repos/acme/api/issues/7") != 1 || f.hit("GET /repos/acme/api/pulls/9") != 0 {
 		t.Fatal("the refresh did not read every item again")
 	}
 	if got, _ := st.Get(items[7].ID); got.Triage.Read != "" {
@@ -296,8 +284,8 @@ func TestRefreshAllEstimatesThenDoes(t *testing.T) {
 func TestOpenAnswersThePage(t *testing.T) {
 	f := newFixture()
 	st, seam, items := localFloor(t, f)
-	url, err := seam.Open(items[9].ID)
-	if err != nil || url != "https://github.com/acme/api/pull/9" {
+	url, err := seam.Open(items[7].ID)
+	if err != nil || url != "https://github.com/acme/api/issues/7" {
 		t.Fatalf("open answered %q, %v", url, err)
 	}
 	id, _ := st.Add(context.Background(), factory.Item{Title: "mine", Repo: "api"})
@@ -339,7 +327,7 @@ func TestBusyWhileRefreshing(t *testing.T) {
 	if _, _, err := seam.RefreshAll(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if lines[1] != "refreshing 2 items · 0 done" || lines[2] != "refreshing 2 items · 1 done" {
+	if len(lines) != 2 || lines[1] != "refreshing 1 items · 0 done" {
 		t.Fatalf("the floor's line read %q", lines[1:])
 	}
 	snap, _ := seam.Load()

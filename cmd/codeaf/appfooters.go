@@ -59,6 +59,11 @@ func (b *appBackend) keepAppFooter(a *appAgent, key, kind, words string) error {
 // links and explanations. A call anchors its receipt after its tool row, even
 // when the event consumer is behind the journal writer.
 func (b *appBackend) keepAppEntry(a *appAgent, entry appwire.Entry, afterCall string) error {
+	return b.keepAppEntries(a, []appwire.Entry{entry}, afterCall)
+}
+
+// A read-only status exchange is kept atomically, outside the model transcript.
+func (b *appBackend) keepAppEntries(a *appAgent, entries []appwire.Entry, afterCall string) error {
 	var transcript, id string
 	b.locked(func() { transcript, id = a.transcript, a.view.ID })
 	b.footerMu.Lock()
@@ -67,10 +72,21 @@ func (b *appBackend) keepAppEntry(a *appAgent, entry appwire.Entry, afterCall st
 	if err != nil {
 		return err
 	}
-	for _, f := range kept {
-		if f.Entry.ID == entry.ID {
-			return nil
+	pending := make([]appwire.Entry, 0, len(entries))
+	for _, entry := range entries {
+		exists := false
+		for _, f := range kept {
+			if f.Entry.ID == entry.ID {
+				exists = true
+				break
+			}
 		}
+		if !exists {
+			pending = append(pending, entry)
+		}
+	}
+	if len(pending) == 0 {
+		return nil
 	}
 	afterID, afterHash := "", ""
 	if err := appRecords.WithRecord(transcript, func(record session.Record) error {
@@ -87,7 +103,9 @@ func (b *appBackend) keepAppEntry(a *appAgent, entry appwire.Entry, afterCall st
 	}); err != nil {
 		return err
 	}
-	kept = append(kept, appKeptFooter{AfterID: &afterID, AfterHash: afterHash, Entry: entry})
+	for _, entry := range pending {
+		kept = append(kept, appKeptFooter{AfterID: &afterID, AfterHash: afterHash, Entry: entry})
+	}
 	raw, err := json.Marshal(kept)
 	if err != nil {
 		return err

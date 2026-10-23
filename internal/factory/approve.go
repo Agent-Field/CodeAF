@@ -2,6 +2,7 @@ package factory
 
 import (
 	"encoding/json"
+	"slices"
 	"strconv"
 )
 
@@ -212,8 +213,8 @@ func (it *Item) UnmarshalJSON(data []byte) error {
 // issue's approve step belongs after plan. So an issue that NEVER RAN, whose
 // steps nobody edited (no step carries who set it), whose one approve step is
 // its last, and whose other steps are the default recipe's in order, is read
-// as the default it was: the approve step moves to after plan, everything
-// else about every step kept. Any other item is left exactly as it is.
+// as the default it was ([oldShipDefault]): the approve step moves to after
+// plan, everything else about every step kept. Any other item is left exactly as it is.
 func RepairShipDefault(it *Item) bool {
 	if it == nil || it.Stream != nil || (it.Kind != KindIssue && it.Kind != "") {
 		return false
@@ -232,28 +233,30 @@ func RepairShipDefault(it *Item) bool {
 	if it.Stages[n-1].By != "" {
 		return false
 	}
-	def := DefaultRecipe().For(KindIssue)
-	var want []string
-	at := -1
-	for i, s := range def {
-		if IsApprove(s) {
-			if at >= 0 {
-				return false
-			}
-			at = i
-			continue
-		}
-		want = append(want, s.Name)
-	}
-	if at < 0 || at == len(def)-1 || len(names) != len(want) {
+	if !slices.Equal(names, oldShipDefault) {
 		return false
 	}
-	for i := range names {
-		if names[i] != want[i] {
-			return false
+	approve := it.Stages[n-1]
+	it.Stages = insertStage(CopyStages(it.Stages[:n-1]), 1, approve)
+	return true
+}
+
+// oldShipDefault is the issue stages the floor wrote before approve steps, in
+// order, without the approve step at their end. IT IS THE PAST AND IS NEVER
+// READ OFF [DefaultRecipe]: the default has moved since (security left its
+// list on 2026-10-20), and an item written then still carries what was written.
+var oldShipDefault = []string{"plan", "write", "test", "review", "security", "proof"}
+
+// NeedsPublishApproval keeps publication separate from an internal gate being skipped.
+// Removing all gates from a recipe still explicitly selects the existing self-publish mode.
+func NeedsPublishApproval(it Item) bool {
+	if it.Autonomy == AutonomyAuto || it.Autonomy == AutonomyManual {
+		return true
+	}
+	for _, s := range it.Stages {
+		if IsApprove(s) {
+			return true
 		}
 	}
-	approve := it.Stages[n-1]
-	it.Stages = insertStage(CopyStages(it.Stages[:n-1]), at, approve)
-	return true
+	return false
 }

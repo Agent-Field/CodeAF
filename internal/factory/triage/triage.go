@@ -220,7 +220,7 @@ func Apply(it *factory.Item, t factory.Triage) {
 // Wants says whether an item is still waiting for its read: on the floor,
 // with no read written and never triaged.
 func Wants(it factory.Item) bool {
-	return it.State != factory.StateDismissed &&
+	return factory.IsIssueJob(it) && it.State != factory.StateDismissed &&
 		strings.TrimSpace(it.Triage.Read) == "" &&
 		it.Triage.TriagedAt.IsZero()
 }
@@ -477,10 +477,20 @@ func (w *worker) once(ctx context.Context) tick {
 		w.say("triage: list: " + err.Error())
 		return tickIdle
 	}
+	// A REPOSITORY THAT IS OFF IS NEVER READ ([factory.RepoSwitch]): no model
+	// is paid to read a job the factory does not work on. Its jobs wait,
+	// unread, and are read when it is turned on again.
+	var sw factory.RepoSwitch
+	if s, ok := w.st.(repoSwitcher); ok {
+		if sw, err = s.RepoSwitch(); err != nil {
+			w.say("triage: repositories: " + err.Error())
+			return tickIdle
+		}
+	}
 	var it factory.Item
 	found := false
 	for _, x := range items {
-		if Wants(x) {
+		if factory.IsIssueJob(x) && Wants(x) && !sw.OffJob(x) {
 			it, found = x, true
 			break
 		}
@@ -546,6 +556,13 @@ var errAlreadyRead = errors.New("triage: already read")
 // writing half); *store.Store is one.
 type busyMarker interface {
 	SetBusy(id int, word string) error
+}
+
+// repoSwitcher is a store that keeps the watched list as the factory's
+// switch per repository; *store.Store is one. A store that keeps none has
+// nothing off.
+type repoSwitcher interface {
+	RepoSwitch() (factory.RepoSwitch, error)
 }
 
 // PromptWithStart asks for exact rule matches in the same paid read as size and cost.

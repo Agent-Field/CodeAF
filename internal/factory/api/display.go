@@ -12,6 +12,9 @@ func DisplayFor(job Job, now time.Time) JobDisplay {
 
 // DisplayForRetention keeps historical jobs while applying the host's chosen Running window.
 func DisplayForRetention(job Job, now time.Time, retention time.Duration) JobDisplay {
+	if job.DoneHow == "closed_locally" {
+		return JobDisplay{}
+	}
 	visible := job.State == StateRunning || job.State == StateNeedsYou
 	if job.PR != nil && job.PR.State == "open" && job.State == StateDone {
 		visible = true

@@ -66,7 +66,6 @@ func (c *Client) Seam() factory.Seam {
 		SignOff:       c.signOff,
 		SendBack:      c.sendBack,
 		Reverify:      c.reverify,
-		Shape:         c.shape,
 		New:           c.make,
 		Repos:         c.repos,
 		SetRepos:      c.setRepos,

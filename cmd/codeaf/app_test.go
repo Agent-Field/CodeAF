@@ -1187,6 +1187,9 @@ func TestAppSortsAProviderFailureAndRetriesIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if agent.Retryable {
+		t.Fatal("new agent advertises a nonexistent failed message")
+	}
 	var wire *appwire.Error
 	if _, err := backend.Retry(agent.ID); !errors.As(err, &wire) || wire.Code != appwire.CodeNotFound {
 		t.Fatalf("retry with nothing failed = %v", err)
@@ -1208,7 +1211,7 @@ func TestAppSortsAProviderFailureAndRetriesIt(t *testing.T) {
 	// The next try goes through.
 	rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
 		c, ok := data.(appwire.AgentChanged)
-		return ok && c.Agent.State == appwire.StateIdle
+		return ok && c.Agent.State == appwire.StateIdle && c.Agent.Retryable
 	})
 	conv.mu.Lock()
 	conv.script = []session.Event{{Kind: session.EventTurnDone}}
@@ -1952,5 +1955,33 @@ func TestAppNoticeEntriesCarryOnlyTheEnginesTypedKinds(t *testing.T) {
 		if !ok || got.NoticeKind != "" || got.Skills != nil || got.Unrecorded != (plain == "memory is full") || !got.Quiet {
 			t.Fatalf("ordinary notice %q = %+v (present %v)", plain, got, ok)
 		}
+	}
+}
+
+// Reopening a completed stage or any saved conversation keeps its own choice.
+func TestAppReopenKeepsTheSavedModel(t *testing.T) {
+	rec := newAppRecorder()
+	backend := newFakeBackend(rec, func(ask appOpenAsk) (*appConn, error) {
+		model := ask.Model
+		if model == "" {
+			model = "profile/default"
+		}
+		return &appConn{Conv: &fakeConversation{model: model}, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
+	})
+	defer backend.Close()
+	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: t.TempDir(), Model: "vendor/strong"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := backend.find(agent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.gate.Lock()
+	backend.release(a)
+	a.gate.Unlock()
+	reopened, _, err := backend.ensure(a)
+	if err != nil || reopened.Model != "vendor/strong" {
+		t.Fatalf("reopened=%+v, err=%v", reopened, err)
 	}
 }

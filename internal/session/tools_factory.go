@@ -88,7 +88,7 @@ const (
 // factoryKinds and factorySizes are the schema's enums, held once so the schema
 // and the handler's check read the same list.
 var (
-	factoryKinds = []string{"bug", "feat", "chore", "question", "pr"}
+	factoryKinds = []string{"bug", "feat", "chore", "question"}
 	factorySizes = []string{"S", "M", "L"}
 )
 
@@ -131,6 +131,9 @@ func init() { glossField["factory_add"] = "title" }
 // and is absent on the same law when that door is nil.
 func (a *Agent) factoryTools() []bare.Tool {
 	var tools []bare.Tool
+	if _, ok := a.jobChatOf().(prMaintainer); ok {
+		tools = append(tools, a.factoryFollowPRTool())
+	}
 	if a.config.mayFactory() {
 		tools = append(tools, a.factoryAddTool())
 	}
@@ -146,6 +149,9 @@ func (a *Agent) factoryTools() []bare.Tool {
 	// stages, rides on a fourth door, absent on the same law.
 	if a.config.mayRun() {
 		tools = append(tools, a.factoryRunTool())
+		if _, ok := a.config.FactoryRun.(ManagerStatusDoor); ok {
+			tools = append(tools, a.factoryStatusTool())
+		}
 		// `factory_answer` (tools_factory_answer.go), the manager's reply to a
 		// step's question, rides on the same door: it is the manager's.
 		tools = append(tools, a.factoryAnswerTool())
@@ -249,18 +255,11 @@ func (a *Agent) factoryAddTool() bare.Tool {
 // AUTHOR IS LEFT EMPTY ON PURPOSE. The engine behind the door knows whose floor
 // this is; a name written here would be the model's guess at it.
 func factoryItem(notice FactoryNotice, now time.Time) factory.Item {
-	kind := factory.KindIssue
 	triageType := notice.Kind
-	switch notice.Kind {
-	case "pr":
-		kind, triageType = factory.KindPR, "review"
-	case "chore":
-		kind = factory.KindChore
-	}
 	return factory.Item{
 		Repo:    notice.Repo,
 		Places:  []string{notice.Repo},
-		Kind:    kind,
+		Kind:    factory.KindIssue,
 		Title:   notice.Title,
 		Body:    notice.Body,
 		Tier:    factory.TierOwner,

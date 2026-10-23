@@ -2437,12 +2437,12 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyModelFallbacks, Category: CategoryModels, Kind: SettingText,
-			Label: "fallback models", EmptyLabel: "nearest in the catalog",
+			Label: "fallback models", EmptyLabel: "DeepSeek V4.1 Flash",
 			Hint: "where a conversation goes when your model cannot answer — nothing serving " +
 				"it will take the request, it keeps going quiet mid-reply, or it is being " +
 				"rate limited and will not stop. One or more slugs, comma-separated, first " +
 				"tried first: `openai/gpt-5-mini, anthropic/claude-sonnet-4`. Leave it blank " +
-				"and the nearest same-class model in the catalog is used. The turn says which " +
+				"to use DeepSeek V4.1 Flash by default. The turn says which " +
 				"one it moved to.",
 			read:  func() string { return ModelFallbacksAt(dir) },
 			write: func(raw string) error { return writeText(dir, KeyModelFallbacks, raw) },
@@ -4006,12 +4006,15 @@ func RetiredPinNote(raw string) string {
 	return fmt.Sprintf("%s are no longer roles — those pins are ignored", strings.Join(dropped, " and "))
 }
 
-// ModelFallbacksAt resolves the fallback chain as the person wrote it.
+// DefaultFallbackModel is the shared default for chats, teams and factory stages.
+const DefaultFallbackModel = "deepseek/deepseek-v4.1-flash"
+
+// ModelFallbacksAt resolves an explicit chain, or the shared default when blank.
 func ModelFallbacksAt(profileDir string) string {
-	if value, ok := persistedString(profileDir, KeyModelFallbacks); ok {
+	if value, ok := persistedString(profileDir, KeyModelFallbacks); ok && strings.TrimSpace(value) != "" && strings.TrimSpace(value) != "nearest in the catalog" {
 		return strings.TrimSpace(value)
 	}
-	return ""
+	return DefaultFallbackModel
 }
 
 // ParseModelFallbacks reads the row into an ordered list of model slugs.

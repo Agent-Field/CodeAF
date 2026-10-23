@@ -73,7 +73,10 @@ type appFactoryRow struct {
 	ID   string `json:"id"`
 	URL  string `json:"url"`
 	Name string `json:"name,omitempty"`
-	Mode string `json:"mode,omitempty"`
+	// Label is the name a person gave the factory in this app (factory.rename).
+	// It wins over every name the factory reports, and is never sent to it.
+	Label string `json:"label,omitempty"`
+	Mode  string `json:"mode,omitempty"`
 	// Local marks the one row this engine made for the factory of its own
 	// machine (appfactory_setup.go). It is the ONLY row that engine may forget
 	// when it quits or replaces: a row a person attached by address, solo or
@@ -345,7 +348,7 @@ func (h *appFactoryHub) load() error {
 			}
 			haveLocal, id = true, appLocalID
 		}
-		h.rows = append(h.rows, appFactoryRow{ID: id, URL: origin, Name: row.Name, Mode: row.Mode, Local: row.Local, Resume: row.Local && row.Resume})
+		h.rows = append(h.rows, appFactoryRow{ID: id, URL: origin, Name: row.Name, Label: row.Label, Mode: row.Mode, Local: row.Local, Resume: row.Local && row.Resume})
 	}
 	// A conflicting saved local marker must never discard an address the
 	// person attached. Keep the manual row; only our own local metadata may
@@ -640,8 +643,29 @@ func (h *appFactoryHub) read(ctx context.Context, id, path string, limit int64, 
 
 // ── connections ────────────────────────────────────────────────────────────
 
-func (h *appFactoryHub) view(ctx context.Context, row appFactoryRow) appwire.FactoryConnection {
-	out := appwire.FactoryConnection{ID: row.ID, URL: row.URL, Name: row.Name, Mode: row.Mode, State: appwire.FactoryUnreachable}
+// localFactoryName is the factory on this Mac as a person reads it when they
+// have not named it: whose it is, once GitHub says, and plainly theirs before.
+func localFactoryName(handle string) string {
+	if handle = strings.TrimSpace(strings.TrimPrefix(handle, "@")); handle != "" {
+		return handle + "'s factory"
+	}
+	return appLocalName
+}
+
+// view is the connection as listed: the factory's own answer, then the
+// person's name for it (row.Label) over everything, and for the factory on this
+// Mac with no name of the person's, whose factory it is.
+func (h *appFactoryHub) view(ctx context.Context, row appFactoryRow) (out appwire.FactoryConnection) {
+	handle := ""
+	defer func() {
+		switch {
+		case strings.TrimSpace(row.Label) != "":
+			out.Name = strings.TrimSpace(row.Label)
+		case row.Local || row.ID == appLocalID:
+			out.Name = localFactoryName(handle)
+		}
+	}()
+	out = appwire.FactoryConnection{ID: row.ID, URL: row.URL, Name: row.Name, Mode: row.Mode, State: appwire.FactoryUnreachable}
 	if out.Name == "" {
 		out.Name = "Factory"
 	}
@@ -685,6 +709,7 @@ func (h *appFactoryHub) view(ctx context.Context, row appFactoryRow) appwire.Fac
 		if json.Unmarshal(r.body, &me) != nil {
 			return out
 		}
+		handle = me.Handle
 		if me.Factory.Name != "" {
 			out.Name = me.Factory.Name
 		}
@@ -752,6 +777,11 @@ func (b *appBackend) FactoryList(ctx context.Context) (appwire.FactoryList, erro
 		})
 	}
 	wg.Wait()
+	for i, row := range rows {
+		if row.Local && row.Resume && out[i].State == appwire.FactoryUnreachable && localHeldElsewhere() {
+			out[i].Reason = appLocalHeldElsewhere
+		}
+	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return appwire.FactoryList{Factories: out}, nil
 }
@@ -861,6 +891,37 @@ func (h *appFactoryHub) saveAttached(row appFactoryRow, known bool) error {
 		h.rows = append(h.rows, row)
 	}
 	return h.save()
+}
+
+var _ appwire.FactoryRefresher = (*appBackend)(nil)
+
+// FactoryRefresh is "Check GitHub now": one POST to the factory's
+// /v1/github/poll, which wakes its poll and answers before the read. It is
+// sent once, like every write; the read's outcome is on the next queue.
+func (b *appBackend) FactoryRefresh(ctx context.Context, id string) error {
+	_, err := b.factoryHub().write(ctx, id, "/v1/github/poll", struct{}{})
+	return err
+}
+
+var _ appwire.FactoryRenamer = (*appBackend)(nil)
+
+// FactoryRename keeps the person's own name for one connected factory on the
+// app's record of it; "" goes back to the default. Nothing is sent to the
+// factory.
+func (b *appBackend) FactoryRename(_ context.Context, id, name string) error {
+	h := b.factoryHub()
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if err := h.load(); err != nil {
+		return err
+	}
+	for i := range h.rows {
+		if h.rows[i].ID == id {
+			h.rows[i].Label = strings.TrimSpace(name)
+			return h.save()
+		}
+	}
+	return appwire.Errorf(appwire.CodeNotFound, "no such factory")
 }
 
 func (b *appBackend) FactoryDetach(_ context.Context, id string) error {

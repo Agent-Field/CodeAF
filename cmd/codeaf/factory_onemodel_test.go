@@ -38,19 +38,12 @@ func TestFactoryConversationsInheritALaterOneModelLaunch(t *testing.T) {
 		t.Fatal(err)
 	}
 	previousParent := factoryWorkerParent()
-	previousShape := factoryShapeHere()
 	factoryProcess.once = sync.Once{}
 	t.Cleanup(func() {
 		factoryProcess.once = sync.Once{}
-		if previousShape != nil {
-			factoryProcess.once.Do(func() {})
-		}
-		setFactoryProcess(func() {
-			factoryProcess.parent, factoryProcess.shape = previousParent, previousShape
-		})
+		setFactoryProcess(func() { factoryProcess.parent = previousParent })
 	})
 	startFactoryWorker(st, workspace, profile, launch.Config)
-	shape := factoryShapeHere()
 	maker := factoryStageMakerFrom(st, workspace, profile, factoryWorkerParent)
 	launch, err = openV3Launch(proc, v3Options{Model: pinned, OneModel: true, Workspace: workspace})
 	if err != nil {
@@ -73,7 +66,16 @@ func TestFactoryConversationsInheritALaterOneModelLaunch(t *testing.T) {
 	t.Cleanup(func() { stageSettle = unattendedRunSettleTick })
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	spec := factoryrun.ConversationSpec{Name: "review", Brief: "look it over", Dir: workspace}
+	// A stage is a job's work: it charges that job's budget live, and a stage
+	// with no job to charge stops before it spends.
+	it, err := st.Create(factory.Item{Repo: "work", Kind: factory.KindIssue, Title: "look it over", Cap: 10,
+		State: factory.StateNew, Stages: factory.CopyStages(factory.DefaultRecipe().For(factory.KindIssue))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The scripted stage reports completion, so give it the same reporting
+	// door a real runner supplies rather than recovering a nil-door panic.
+	spec := factoryrun.ConversationSpec{Item: it, Name: "review", Brief: "look it over", Dir: workspace, Stage: &repairReportDoor{}}
 	for _, name := range []string{"fresh", "resumed"} {
 		t.Run(name, func(t *testing.T) {
 			bucket, err := v3ProjectDir(workspace)
@@ -96,20 +98,16 @@ func TestFactoryConversationsInheritALaterOneModelLaunch(t *testing.T) {
 			spec.Resume = chat.ID()
 		})
 	}
-	it, err := st.Create(factory.Item{Repo: "work", Kind: factory.KindIssue, Title: "look it over",
-		State: factory.StateNew, Stages: factory.CopyStages(factory.DefaultRecipe().For(factory.KindIssue))})
+	if it, err = st.Get(it.ID); err != nil {
+		t.Fatal(err)
+	}
+	// The item's manager conversation is made as a run makes it, and a turn
+	// the worker gives it opens on the pinned launch, not the first one.
+	talk, err := managerMaker(st, workspace, profile)(ctx, it)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// This is the shaping door built by the FIRST launch, not a replacement
-	// built by the pinned launch. It must open the manager on the new pin too.
-	if _, err := shape(ctx, it.ID); err != nil {
-		t.Fatal(err)
-	}
-	it, err = st.Get(it.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	it.Talk = talk
 	turn, err := openManagerTurn(parent, workspace, profile, it, nil, false)
 	if err != nil {
 		t.Fatal(err)

@@ -54,7 +54,11 @@ func oneLineWords(s string) string { return strings.Join(strings.Fields(s), " ")
 // question.
 func (s *shapeTurns) Inbox(ctx context.Context, it factory.Item, q factory.Asked) (factoryrun.InboxReply, error) {
 	door := &inboxDoor{stage: q.Stage}
-	if _, err := s.through(ctx, it, inboxAskFor(q), door); err != nil {
+	ask := inboxAskFor(q)
+	if factory.Automatic(it) {
+		ask += " Auto mode is enabled: decide routine implementation, design and scope choices within this issue yourself. Do not escalate taste or ordinary engineering choices. Ask the person only for a critical unresolved decision, missing access/credentials, spending authority, destructive external action or conflicting explicit instructions. Never merge. Use factory_answer to record your actual decision."
+	}
+	if _, err := s.through(ctx, it, ask, door); err != nil {
 		return factoryrun.InboxReply{}, err
 	}
 	return door.reply(), nil

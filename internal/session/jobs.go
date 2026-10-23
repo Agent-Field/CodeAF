@@ -66,6 +66,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/factory/verification"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/shell"
 )
@@ -175,7 +176,10 @@ type job struct {
 	epoch   uint64
 	id      int
 	command string
-	kind    jobKind
+	// stageOwned is immutable completion ownership, independent of the parked caller.
+	stageOwned     bool
+	stageDelivered bool
+	kind           jobKind
 	// label and detail are a watch's short name and its terms ("every 10s on
 	// change"), empty for a bash job. They are set once at start and read
 	// without the lock.
@@ -319,7 +323,7 @@ func (j *job) info() jobInfo {
 		elapsed = j.ended.Sub(j.started)
 	}
 	return jobInfo{
-		id: j.id, command: j.command, kind: j.kind, label: j.label, detail: j.detail, outputTruncated: truncated, url: url,
+		id: j.id, command: verification.OriginalCommand(j.command), kind: j.kind, label: j.label, detail: j.detail, outputTruncated: truncated, url: url,
 		name:    j.name,
 		callID:  j.callID,
 		logPath: j.logPath,
@@ -663,8 +667,10 @@ type jobRegistry struct {
 	// with nobody parked leaves it nil and pays nothing.
 	paid func()
 
-	mu   sync.Mutex
-	jobs []*job
+	// stage confines finite-check ownership to factory stage conversations.
+	stage bool
+	mu    sync.Mutex
+	jobs  []*job
 	// Claims keep ids unique even when a legacy registry changes workspace.
 	claimMu sync.Mutex
 	seq     int
@@ -1164,8 +1170,11 @@ func (r *jobRegistry) startInUnder(ctx context.Context, command, want string, no
 	}
 
 	// Record the request before the reaper can observe even an immediate exit.
+	started.mu.Lock()
 	started.notify = len(notify) > 0 && notify[0]
+	started.stageOwned = r.stage && verification.CheckCommand(verification.OriginalCommand(command))
 	started.callID = callIDFrom(ctx)
+	started.mu.Unlock()
 
 	// THE SAME STREAMING SHELL A FOREGROUND CALL GETS (internal/exec/bare's
 	// streaming.go). A background job is the one place where block-buffered
@@ -1438,6 +1447,7 @@ func (r *jobRegistry) adopt(taken *bare.BashCall, how adoption) (*job, error) {
 	// The provenance is written before the job joins the registry, which is the
 	// last instant this goroutine is the only one that can see it.
 	started.owed = how.owed
+	started.stageOwned = r.stage && verification.CheckCommand(verification.OriginalCommand(taken.Command()))
 	started.callID = how.callID
 	// THE JOIN COMES BEFORE THE ATTACH, so that a refused adoption never points
 	// bash's streams at a sink this registry has just closed and a log it has
@@ -1471,6 +1481,18 @@ func (r *jobRegistry) reap(watched *job) {
 // it became known: the job is made final, and unless the death was asked for a
 // note goes to the waking lane or waits silently for the next turn.
 func (r *jobRegistry) settleExit(watched *job, code int) {
+	// Receipt/news delivery remains live work even after the process has exited.
+	defer func() {
+		if watched.stageOwned {
+			watched.mu.Lock()
+			watched.stageDelivered = true
+			watched.mu.Unlock()
+			if r.paid != nil {
+				r.paid()
+			}
+		}
+	}()
+
 	requested := r.settled(watched, code)
 
 	// A JOB'S REAL ENDING REACHES THE JOURNAL BEFORE THE NOTE. This is the one
@@ -1512,11 +1534,11 @@ func (r *jobRegistry) settleExit(watched *job, code int) {
 	// The answer is kept because a registry with no notify lane still has to
 	// release the park itself below.
 	owed := watched.payOwed()
-	quiet := code == 0 && !owed && !watched.notify
+	quiet := code == 0 && !owed && !watched.notify && !watched.stageOwned
 	notify := r.notify
 	if quiet {
 		notify = r.notifyQuiet
-	} else if !owed && r.notifyUnowed != nil {
+	} else if !owed && !watched.stageOwned && r.notifyUnowed != nil {
 		notify = r.notifyUnowed
 	}
 	if notify != nil {

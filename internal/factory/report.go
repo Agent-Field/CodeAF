@@ -1,8 +1,11 @@
 package factory
 
+import "time"
+
 // RunReport is a worker's incremental write, not a replacement item. Keeping the
 // identity and pipeline out of it preserves changes a person made meanwhile.
 type RunReport struct {
+	FollowUp   *PRFollowUp
 	Change     *Change
 	ChangeBase string
 	HeadCommit string
@@ -31,6 +34,8 @@ type RunReport struct {
 	// recorded on its mirror (Stream.Room). The server keeps the first one it
 	// is given and refuses a different one; "" is no change.
 	Room string
+	// Merge is what the runner's merge did, nil when it carried none out.
+	Merge *MergeReport
 }
 
 // PipelineChange is the job's stages and the run's phase list as the worker's
@@ -44,9 +49,15 @@ type PipelineChange struct {
 // StageReport addresses a pipeline step by name, so a report cannot invent a
 // new step or depend on an index that a person changed between reports.
 type StageReport struct {
-	Name    string
-	State   PhaseState
-	Round   int
+	RoundLimit   int
+	Verification *StepVerification
+	Name         string
+	Chat         string
+	State        PhaseState
+	Round        int
+	// Started is when the step's latest round began on the worker
+	// ([Phase.Started]); zero leaves the factory's as it is.
+	Started time.Time
 	Result  *StageResult
 	Rounds  []RoundLine
 	Failure *Failure

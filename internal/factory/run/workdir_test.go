@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
 // gitRig is a real checkout with one commit on main, made with the git on
@@ -153,12 +154,7 @@ func TestForChecksOutAnExistingBranch(t *testing.T) {
 	}
 	mustGit(t, dir, "commit", "-q", "--allow-empty", "-m", "the fix")
 	tip := mustGit(t, dir, "rev-parse", "HEAD")
-	if err := w.Remove(it, checkout); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(dir); err == nil {
-		t.Fatal("Remove left the folder")
-	}
+	mustGit(t, checkout, "worktree", "remove", "--force", dir)
 	mustGit(t, checkout, "rev-parse", "--verify", "refs/heads/factory/1-total-double-counts")
 	dir, err = w.For(it, checkout)
 	if err != nil {
@@ -272,7 +268,12 @@ func TestAPrWithNoRemoteSaysSoAndPostsNothing(t *testing.T) {
 	}
 }
 
-func TestDroppedBranchKeepsSevenDaysAndDeletionLeavesTheCheckout(t *testing.T) {
+// A DROP WITH NOTHING TO LOSE DELETES THE FOLDER AND THE LOCAL BRANCH, and
+// only those: the checkout keeps its files. The worktree is found from inside
+// itself, so a folder made from another checkout than the one the factory
+// names (a window opened in the repository) is deleted all the same, and a
+// second discard finds nothing left and does nothing.
+func TestDiscardWithNoWorkDeletesTheFolderAndTheLocalBranch(t *testing.T) {
 	checkout := gitRig(t)
 	w := NewWorkdirs(filepath.Join(t.TempDir(), "work"), ExecGit{})
 	it := wdItem()
@@ -280,28 +281,214 @@ func TestDroppedBranchKeepsSevenDaysAndDeletionLeavesTheCheckout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	at := time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC)
-	it.DoneHow = "dropped"
-	it.BranchDeleteAt = at.Add(factory.DroppedBranchRetention)
-	if err := w.DeleteDropped(it, checkout, it.BranchDeleteAt.Add(-time.Nanosecond)); err == nil {
-		t.Fatal("early delete")
+	if work, err := w.Work(it, checkout); err != nil || work.Any() || work.String() != "" {
+		t.Fatalf("a fresh worktree holds work: %+v %v", work, err)
 	}
-	if _, err := os.Stat(dir); err != nil {
-		t.Fatal("worktree disappeared early")
-	}
-	if err := w.DeleteDropped(it, checkout, it.BranchDeleteAt); err != nil {
+	other := gitRig(t)
+	if err := w.Discard(it, other); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {
-		t.Fatal("dropped worktree remains")
+		t.Fatal("the dropped job's folder remains")
 	}
 	if branches := mustGit(t, checkout, "branch", "--list", w.Branch(it)); branches != "" {
-		t.Fatal(branches)
+		t.Fatalf("the dropped job's branch remains: %q", branches)
 	}
 	if _, err := os.Stat(filepath.Join(checkout, "ledger.go")); err != nil {
-		t.Fatal("checkout changed")
+		t.Fatal("the checkout changed")
 	}
-	if err := w.DeleteDropped(it, checkout, it.BranchDeleteAt); err != nil {
-		t.Fatal("retry is not idempotent", err)
+	if err := w.Discard(it, checkout); err != nil {
+		t.Fatal("a second discard is not a no-op:", err)
+	}
+}
+
+// WORK IS NAMED BEFORE IT IS LOST: commits on the job's branch beyond where it
+// started, and changes in its folder that were never committed, untracked
+// files among them. Discarding it anyway deletes it all.
+func TestWorkNamesCommitsAndUncommittedChanges(t *testing.T) {
+	checkout := gitRig(t)
+	w := NewWorkdirs(filepath.Join(t.TempDir(), "work"), ExecGit{})
+	it := wdItem()
+	dir, err := w.For(it, checkout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	it.ChangeBase = mustGit(t, dir, "rev-parse", "HEAD")
+	mustGit(t, dir, "commit", "-q", "--allow-empty", "-m", "one")
+	if work, err := w.Work(it, checkout); err != nil || work.String() != "1 commit" {
+		t.Fatalf("one commit: %+v %v", work, err)
+	}
+	mustGit(t, dir, "commit", "-q", "--allow-empty", "-m", "two")
+	mustGit(t, dir, "commit", "-q", "--allow-empty", "-m", "three")
+	if err := os.WriteFile(filepath.Join(dir, "new.go"), []byte("package ledger\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	work, err := w.Work(it, checkout)
+	if err != nil || work.Commits != 3 || !work.Uncommitted || work.String() != "3 commits and uncommitted changes" {
+		t.Fatalf("work %+v %q %v", work, work.String(), err)
+	}
+	// With no pinned start the count is from where a new branch would start.
+	it.ChangeBase = ""
+	if work, err := w.Work(it, checkout); err != nil || work.Commits != 3 {
+		t.Fatalf("unpinned %+v %v", work, err)
+	}
+	mustGit(t, dir, "reset", "-q", "--hard", "HEAD~3")
+	if err := os.Remove(filepath.Join(dir, "new.go")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "ledger.go"), []byte("package ledger // edited\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if work, err := w.Work(it, checkout); err != nil || work.String() != "uncommitted changes" {
+		t.Fatalf("an edit alone: %+v %v", work, err)
+	}
+	if err := w.Discard(it, checkout); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatal("the folder with work in it remains")
+	}
+	if branches := mustGit(t, checkout, "branch", "--list", w.Branch(it)); branches != "" {
+		t.Fatalf("the branch remains: %q", branches)
+	}
+}
+
+// A PULL REQUEST'S JOB KEEPS ITS BRANCH: only its folder goes, so only what
+// is uncommitted there is work a drop would lose.
+func TestAPullRequestJobsDiscardKeepsItsBranch(t *testing.T) {
+	checkout, _ := prRig(t)
+	w := NewWorkdirs(filepath.Join(t.TempDir(), "work"), ExecGit{})
+	it := prItem()
+	dir, err := w.For(it, checkout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, dir, "commit", "-q", "--allow-empty", "-m", "a review note")
+	if work, err := w.Work(it, checkout); err != nil || work.Any() {
+		t.Fatalf("a commit on a kept branch is counted as lost: %+v %v", work, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if work, err := w.Work(it, checkout); err != nil || work.String() != "uncommitted changes" {
+		t.Fatalf("work %+v %v", work, err)
+	}
+	if err := w.Discard(it, checkout); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatal("the pull request job's folder remains")
+	}
+	mustGit(t, checkout, "rev-parse", "--verify", "refs/heads/"+w.Branch(it))
+}
+
+// NOTHING ON THE REMOTE IS TOUCHED: a branch already pushed stays there after
+// the local one is deleted.
+func TestDiscardLeavesTheRemoteBranch(t *testing.T) {
+	checkout := gitRig(t)
+	bare := filepath.Join(t.TempDir(), "remote.git")
+	mustGit(t, "", "init", "-q", "--bare", bare)
+	mustGit(t, checkout, "remote", "add", "origin", bare)
+	mustGit(t, checkout, "push", "-q", "origin", "main")
+	w := NewWorkdirs(filepath.Join(t.TempDir(), "work"), ExecGit{})
+	it := wdItem()
+	dir, err := w.For(it, checkout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, dir, "commit", "-q", "--allow-empty", "-m", "the fix")
+	mustGit(t, dir, "push", "-q", "origin", w.Branch(it))
+	pushed := mustGit(t, bare, "rev-parse", "refs/heads/"+w.Branch(it))
+	if err := w.Discard(it, checkout); err != nil {
+		t.Fatal(err)
+	}
+	if got := mustGit(t, bare, "rev-parse", "refs/heads/"+w.Branch(it)); got != pushed {
+		t.Fatalf("the remote branch moved: %s, want %s", got, pushed)
+	}
+	if got := mustGit(t, checkout, "ls-remote", "--heads", "origin"); !strings.Contains(got, w.Branch(it)) {
+		t.Fatalf("the remote lost the branch: %q", got)
+	}
+}
+
+// A named namespace is pinned by the created branch record, even if the job
+// is reassigned before it is dropped.
+func TestWorktreeUsesItsPersonsNamespaceAndKeepsItsRecordedBranch(t *testing.T) {
+	checkout := gitRig(t)
+	w := NewWorkdirs(filepath.Join(t.TempDir(), "work"), ExecGit{})
+	w.Prefix = func(it factory.Item) string { return it.Assignee }
+	it := wdItem()
+	it.Assignee = "owner"
+	var made string
+	w.Log = func(_ factory.Item, line string) { made = strings.TrimPrefix(line, "branch: ") }
+	dir, err := w.For(it, checkout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := mustGit(t, dir, "branch", "--show-current"); got != "owner/1-total-double-counts" {
+		t.Fatal(got)
+	}
+	it.Change = &factory.Change{Branch: made}
+	it.Stream = &factory.Stream{Log: []factory.LogLine{{Text: "branch: " + made}}}
+	it.Assignee = "someone-else"
+	it.Title = "Renamed issue"
+	if !strings.Contains(workTree(Job{Item: it, Dir: dir}), made) {
+		t.Fatal("brief lost recorded branch")
+	}
+	mustGit(t, checkout, "worktree", "remove", dir)
+	if _, err := w.For(it, checkout); err != nil {
+		t.Fatal(err)
+	}
+	if got := mustGit(t, dir, "branch", "--show-current"); got != made {
+		t.Fatal("recovery changed branch: " + got)
+	}
+	if w.ownBranch(it) != made {
+		t.Fatal("lost recorded branch")
+	}
+	if err := w.Discard(it, checkout); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.git.Run(checkout, "show-ref", "--verify", "refs/heads/"+made); err == nil {
+		t.Fatal("branch was not discarded")
+	}
+}
+
+// The first brief reads the branch recorded while preparing its worktree.
+func TestFirstBriefNamesTheCreatedBranch(t *testing.T) {
+	checkout := gitRig(t)
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := wdItem()
+	original.ID = 0
+	original.Assignee = "owner"
+	original.Stream = &factory.Stream{}
+	it, err := st.Create(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := NewWorkdirs(filepath.Join(st.Root(), "work"), ExecGit{})
+	w.Prefix = func(it factory.Item) string { return it.Person() }
+	w.Log = StoreLog(st, time.Now)
+	r := New(Options{Store: st, Workdir: func(it factory.Item) (string, error) { return w.For(it, checkout) }})
+	lp := &floorLoop{r: r}
+	job := lp.job(&loopCtl{id: it.ID, ctx: context.Background()}, factory.Stage{Name: "plan"}, 0, 0, 1)
+	if !strings.Contains(workTree(job), "owner/1-total-double-counts") {
+		t.Fatalf("first brief: %s", workTree(job))
+	}
+}
+
+func TestBranchRecordsCannotNameUnrelatedLocalWork(t *testing.T) {
+	w := NewWorkdirs(t.TempDir(), ExecGit{})
+	w.Prefix = func(factory.Item) string { return "owner" }
+	it := wdItem()
+	it.Stream = &factory.Stream{Log: []factory.LogLine{{Text: "branch: main"}, {Text: "branch: owner/2-other-job"}}}
+	if got := w.ownBranch(it); got != "owner/1-total-double-counts" {
+		t.Fatalf("unrelated branch: %s", got)
+	}
+	it.Stream.Log = append(it.Stream.Log, factory.LogLine{Text: "branch: previous-owner/1-original"})
+	it.Change = &factory.Change{Branch: "factory/1-old-record"}
+	if got := w.ownBranch(it); got != "previous-owner/1-original" {
+		t.Fatalf("ignored current record: %s", got)
 	}
 }

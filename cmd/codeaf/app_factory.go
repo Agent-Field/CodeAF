@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -37,6 +38,9 @@ import (
 // appFactoryHost mounts the solo floor without opening a second listener.
 // Service election and worker election use the same files as terminal windows.
 type appFactoryHost struct {
+	// seam is the floor's door the service serves, kept for what the app asks
+	// of this machine's factory directly (a job's conversations).
+	seam                               factory.Seam
 	defaultTarget                      func() (factoryTarget, error)
 	parent                             func() session.Config
 	mu                                 sync.Mutex
@@ -137,6 +141,10 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 		}
 		return appFactoryProxy(target), nil
 	}
+	if err := forgetFactoryPRJobs(h.ctx, h.floor, h.profile); err != nil {
+		release()
+		return nil, err
+	}
 	history, err := record.Open(h.floor, record.Options{})
 	if err != nil {
 		release()
@@ -146,7 +154,8 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 	if h.seamHook != nil {
 		seam = h.seamHook(seam)
 	}
-	handler := serve.New(seam, serve.Config{ProfileDir: h.profile, GitHubToken: func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }, GitHubHTTPClient: h.githubHTTP, Mode: api.FactorySolo, ServedBy: "app", Address: h.address, AccessToken: h.token, Name: "This machine", Store: h.floor, Root: h.floor.Root(), Record: history, PollingEvery: factoryPollEvery,
+	h.seam = seam
+	handler := serve.New(seam, serve.Config{ProfileDir: h.profile, DefaultModel: h.defaultModel, GitHubToken: func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }, GitHubHTTPClient: h.githubHTTP, Mode: api.FactorySolo, ServedBy: "app", Address: h.address, AccessToken: h.token, Name: appLocalName, Store: h.floor, Root: h.floor.Root(), Record: history, PollingEvery: factoryPollEvery,
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {
 			if h.rules != nil {
 				return h.rules(ctx, repo, dir)
@@ -154,7 +163,12 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 			return factoryRules().Load(ctx, repo, dir, home.Join("factory.yaml"))
 		},
 		ChangeAssignee: factorygithub.JobWrites{Token: func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }}.Assign,
-		PersonProfile:  factoryPeople().Profile, CodeOwners: factoryPeople().Owners})
+		// A person's start reads the one item again first (serve's endedOnGitHub).
+		Recheck: factorygithub.Rechecker(func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }),
+		// A drop deletes the job's local branch and folder on this machine,
+		// and its conversations and crew.
+		Folders: newFactoryJobFolders(h.floor), DeleteChats: factoryDeleteJobChats(h.profile, h.floor),
+		PersonProfile: factoryPeople().Profile, PersonKnown: factoryPeople().Known, CodeOwners: factoryPeople().Owners})
 	closeDiscovery, err := serveAppFactoryDiscovery(h.floor.Root(), factoryTarget{h.address, h.token})
 	if err != nil {
 		handler.Close()
@@ -223,6 +237,34 @@ func (h *appFactoryHost) readLoops() {
 		}
 		if source != nil {
 			factorygithub.Poll(h.ctx, source, h.floor, factoryPollEvery, nil, h.intakeFor(h.floor).Once)
+		}
+	})
+}
+
+// pollLoop starts the GitHub poll alone, for this Mac's own factory: issues
+// filed after setup reach Backlog, and nothing rides on the poll. No intake
+// applies start rules after it and no triage reads what it brought, so it
+// starts no job and asks no model. It shares [readLoops]' once-per-host guard,
+// and closing the host stops it.
+func (h *appFactoryHost) pollLoop() {
+	h.loopMu.Lock()
+	defer h.loopMu.Unlock()
+	if h.loopsOn || h.loopsClosed || h.ctx.Err() != nil {
+		return
+	}
+	h.loopsOn = true
+	h.loops.Add(1)
+	guard.Go("app/factory poll", func() {
+		defer h.loops.Done()
+		var source *factorygithub.Source
+		if h.pollSource != nil {
+			source = h.waitForPollSource()
+		} else {
+			token := func(ctx context.Context) string { t, _ := factorygithub.TokenAt(ctx, h.profile); return t }
+			source = waitForFactoryGitHub(h.ctx, h.floor, token, factoryWatchEvery)
+		}
+		if source != nil {
+			factorygithub.Poll(h.ctx, source, h.floor, factoryPollEvery, nil)
 		}
 	})
 }
@@ -394,13 +436,6 @@ func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget) {
 	turns := factoryShapeTurnsFrom(h.floor, h.workspace, h.profile, current)
 	turns.refusal = source.Refusal
 	turns.liveOK = factoryLiveOK(raw, h.profile)
-	setFactoryProcess(func() {
-		if factoryProcess.workerShapes == nil {
-			factoryProcess.workerShapes = map[string]func(context.Context, int) (string, error){}
-		}
-		factoryProcess.workerShapes[mirror.Root()] = factoryShapeDoor(mirror, h.workspace, h.profile, turns)
-	})
-	defer setFactoryProcess(func() { delete(factoryProcess.workerShapes, mirror.Root()) })
 	runner := buildFactoryRunner(mirror, h.floor, h.workspace, h.profile, factoryStageMakerFrom(h.floor, h.workspace, h.profile, current).withRefusal(source.Refusal), turns)
 	dial := newFactoryWorkerDial(h.floor, func() (factoryTarget, error) { return target, nil })
 	machine, _ := os.Hostname()
@@ -438,7 +473,7 @@ func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget) {
 			kind = api.RunnerThisMac
 		}
 	}
-	factoryworker.Run(ctx, factoryworker.Options{Dial: dial.dial, Keep: dial.keep, Attach: api.WorkerAttach{Machine: machine, Name: machine, Handle: me.Handle, OS: runtime.GOOS, CodeafVersion: buildinfo.String(), Kind: kind, Slots: factoryBenches(), Checkouts: checkouts, TakesUnassigned: takes}, Slots: factoryBenches(), Desired: dial.desiredSlots, Runner: runner, Mirror: mirror, LocalLease: factoryLocalLease(mirror), Reply: func(ctx context.Context, it factory.Item, words string) error {
+	factoryworker.Run(ctx, factoryworker.Options{Dial: dial.dial, Keep: dial.keep, Attach: api.WorkerAttach{Machine: machine, Name: machine, Handle: me.Handle, OS: runtime.GOOS, CodeafVersion: buildinfo.String(), Kind: kind, Slots: factoryBenches(), Checkouts: checkouts, TakesUnassigned: takes}, Slots: factoryBenches(), Desired: dial.desiredSlots, Runner: runner, Mirror: mirror, DeliveryRoot: filepath.Join(h.floor.Root(), "worker-reports"), LocalFactory: target.url == h.address || (me.Mode == api.FactorySolo && factoryLoopback(target.url)), LocalLease: factoryLocalLease(mirror), Reply: func(ctx context.Context, it factory.Item, words string) error {
 		_, err := turns.through(ctx, it, words, nil)
 		return err
 	}})
@@ -481,6 +516,17 @@ func (h *appFactoryHost) parentSource() (*factoryParentSource, func() session.Co
 	// whichever parent this host was given.
 	source := &factoryParentSource{raw: raw, profile: h.profile}
 	return source, raw, true
+}
+
+// defaultModel is the model this machine's runner opens a step on when the job
+// names none: the parent every stage opens from, settled on the saved Task
+// models policy, exactly as the stage maker reads it.
+func (h *appFactoryHost) defaultModel() string {
+	source, _, ok := h.parentSource()
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(source.Config().Model)
 }
 
 // Power uses the elected runner's saved registration, so a second process

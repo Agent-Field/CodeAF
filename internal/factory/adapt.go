@@ -162,6 +162,7 @@ func Adapt(it Item, edit PlanEdit, recipe Recipe) (Item, []string, error) {
 //
 // The bounds held in both modes:
 //
+//   - a dropped job is never edited ([RefuseDropped]);
 //   - a name is one word ([StageWord]) the item does not have yet, in any
 //     case, and an item has at most [StageMost] stages;
 //   - a stage is found by its name without case and is kept in its stored
@@ -199,6 +200,11 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 	}()
 	if e.Empty() {
 		return it, nil, nil
+	}
+	// A DROPPED JOB'S STEPS ARE NOT EDITED by anyone: nothing of it runs, and
+	// Bring back sets its steps to the recipe again ([RefuseDropped]).
+	if err := RefuseDropped(it); err != nil {
+		return it, nil, err
 	}
 	if mode == "" {
 		mode = EditInRun
@@ -416,6 +422,8 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 			errs = append(errs, FixedRefusal(st.Name))
 		case IsProofStage(st):
 			refuse("%s may not skip proof", who)
+		case IsApprove(st) && who != ByYou:
+			refuse("only you may choose automatic approval for %s", st.Name)
 		case policyNames(recipe.Policy, st.Name):
 			refuse("%s may not skip %s; the policy names it", who, st.Name)
 		case started[st.Name]:
