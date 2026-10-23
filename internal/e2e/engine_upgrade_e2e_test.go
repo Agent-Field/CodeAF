@@ -27,9 +27,10 @@ func TestOlderEngineUpgradeOnTheRealTerminal(t *testing.T) {
 	if e2eModel != model {
 		t.Fatalf("requires CODEAF_E2E_MODEL=%s", model)
 	}
-	home := newHome(t, map[string]any{"memory.enabled": false})
+	home := recoveryShortHome(t, newHome(t, map[string]any{"memory.enabled": false}))
 	ws := newWorkspace(t, "engine-upgrade", false)
 	env := []string{config.APIKeyEnv + "=" + liveKey(t), "CODEAF_BASE_URL=" + config.DefaultBaseURL}
+	stopRecoveryEngineOnCleanup(t, env, home, ws)
 	old := startUpgradeOldWindow(t, oldBinary, env, home, ws)
 	old.skipSetup(t)
 	prompt := "Create upgrade-proof.txt containing exactly amber lighthouse. Do not modify any other file, delegate, or use memory tools."
@@ -178,4 +179,38 @@ func assertUpgradeFile(t *testing.T, ws string) {
 	if err != nil || strings.TrimSpace(string(raw)) != "amber lighthouse" {
 		t.Fatalf("upgrade lost original mock file: %q %v", raw, err)
 	}
+}
+
+// Engine sockets need a short state root on both Linux and macOS. Keep every
+// pinned model and credential from the guarded profile, without shortHome's
+// historical model defaults.
+func recoveryShortHome(t *testing.T, original string) string {
+	t.Helper()
+	home := filepath.Join(shortRoot(t), "h")
+	if err := os.Mkdir(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(original, "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "config.json"), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return home
+}
+
+// Register before starting windows: LIFO cleanup closes every fixture surface
+// first, then stops its engine while the socket and state root still exist.
+func stopRecoveryEngineOnCleanup(t *testing.T, env []string, home, ws string) {
+	t.Helper()
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		cmd := guardedCommand(t, ctx, home, append(append(os.Environ(), env...), "CODEAF_HOME="+home), binary(t), "engine", "--stop", "--workspace", ws)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Errorf("fixture engine cleanup: %v %s", err, out)
+		}
+	})
 }

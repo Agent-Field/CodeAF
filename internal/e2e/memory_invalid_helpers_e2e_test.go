@@ -109,6 +109,7 @@ func TestMemoryRecoversFromInvalidHelpersOnTheRealTerminal(t *testing.T) {
 		config.KeyModelRoles:      strings.Join(pins, ","),
 		config.KeyModelFallbacks:  "",
 	})
+	home = recoveryShortHome(t, home)
 	ws := newWorkspace(t, "juniper-recovery", false)
 	project, err := gitidentity.ProjectKey(ws)
 	if err != nil {
@@ -119,7 +120,9 @@ func TestMemoryRecoversFromInvalidHelpersOnTheRealTerminal(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	r := startWithEnv(t, []string{config.APIKeyEnv + "=" + liveKey(t), "CODEAF_BASE_URL=" + server.URL + "/fixture"}, "memory_invalid_helpers", home, ws, 150, 45, "chat", "--model", model, "--debug")
+	stateEnv := []string{config.APIKeyEnv + "=" + liveKey(t), "CODEAF_BASE_URL=" + server.URL + "/fixture"}
+	stopRecoveryEngineOnCleanup(t, stateEnv, home, ws)
+	r := startWithEnv(t, stateEnv, "memory_invalid_helpers", home, ws, 150, 45, "chat", "--model", model)
 	r.skipSetup(t)
 	prompt := "For the fictional Juniper demo, our standing packaging convention is violet envelopes for weekend parcels. Please acknowledge in one sentence without calling any tools."
 	r.lit(prompt)
@@ -163,8 +166,11 @@ func TestMemoryRecoversFromInvalidHelpersOnTheRealTerminal(t *testing.T) {
 	// A different process edits the profile while the original engine remains
 	// attached. A NEW unavailable ID must be attempted, proving this was a
 	// fresh settings read rather than the cached original failed helper.
-	stateEnv := []string{config.APIKeyEnv + "=" + liveKey(t), "CODEAF_BASE_URL=" + server.URL + "/fixture"}
-	beforePID := upgradePID(upgradeEngineCommand(t, binary(t), stateEnv, home, ws, "--status"))
+	beforeStatus := upgradeEngineCommand(t, binary(t), stateEnv, home, ws, "--status")
+	beforePID := upgradePID(beforeStatus)
+	if beforePID == "" {
+		t.Fatalf("fixture did not start a background engine: %s", beforeStatus)
+	}
 	configPath := filepath.Join(home, "config.json")
 	rawConfig, err := os.ReadFile(configPath)
 	if err != nil {
@@ -284,7 +290,7 @@ func TestMemoryRecoversFromInvalidHelpersOnTheRealTerminal(t *testing.T) {
 	r.lit("/new")
 	r.keys("Enter")
 	time.Sleep(time.Second)
-	apply := "For the fictional Juniper demo, create packaging.json with a weekend_envelope_color field set from our current convention. Use saved memory and do not ask me to repeat it."
+	apply := "For the fictional Juniper demo, use the write or bash tool to create packaging.json in this project with a weekend_envelope_color field set from our current convention, then read the actual file to verify it exists. Use saved memory and do not ask me to repeat it. Do not merely display JSON in your reply."
 	r.lit(apply)
 	r.keys("Enter")
 	if completed, _ := privateMemoryAwaitAnswer(home, apply, 2*time.Minute); completed == "" {

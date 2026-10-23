@@ -397,7 +397,7 @@ func nothingHolds(workspace string) bool {
 // stops the folder actually holding the old environment, including from Home.
 func differentEngineEnvironmentSentence(workspace string) string {
 	stop := engineStopWords(workspace)
-	return "the background engine for this folder started with a different environment than this terminal and is still in use — after work finishes, close every window for this workspace and reopen, or run " + stop + " (interrupts active turns and tasks)"
+	return "the background engine for this folder started with a different environment than this terminal and is still in use — after work finishes, close every window for this workspace and reopen. To stop now (interrupts active turns and tasks), run " + stop
 }
 
 // sameEngineBuild is the host being this build: the same wire, the same source,
