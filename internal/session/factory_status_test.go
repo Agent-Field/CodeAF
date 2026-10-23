@@ -106,7 +106,7 @@ func TestBusyFactoryStatusDoesNotSteerOrCancelTheTurn(t *testing.T) {
 		t.Fatal("provider did not start")
 	}
 	identity := a.ModelIdentity()
-	for _, read := range []func() (<-chan Event, error){func() (<-chan Event, error) { return a.Submit(t.Context(), "are we stuck?") }, func() (<-chan Event, error) { return a.Steer("what's next?") }} {
+	for _, read := range []func() (<-chan Event, error){func() (<-chan Event, error) { return a.Submit(t.Context(), "Everything ok here?") }, func() (<-chan Event, error) { return a.Steer("How is the plan coming along?") }} {
 		stream, err := read()
 		if err != nil {
 			t.Fatal(err)

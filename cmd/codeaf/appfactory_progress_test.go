@@ -131,3 +131,33 @@ func TestAProgressLineInAConversationTheAppDoesNotHoldIsReadWhenItOpens(t *testi
 		t.Fatalf("the line reads %+v", got)
 	}
 }
+
+func TestRecordedFactorySteerEchoStaysHiddenLiveAndAfterReload(t *testing.T) {
+	backend, rec := heldOverFakes(t)
+	transcript, id := jobConversation(t)
+	if err := backend.holdJobChat(id); err != nil {
+		t.Fatal(err)
+	}
+	const echo = "steer: Everything ok here?"
+	if err := session.AppendProgress(transcript, echo, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.AppendProgress(transcript, "plan started", nil); err != nil {
+		t.Fatal(err)
+	}
+	// News is delivered in order; this establishes that the echo was processed.
+	live := addedSaying(t, rec, "plan started")
+	rec.mu.Lock()
+	for _, data := range rec.data {
+		if added, ok := data.(appwire.EntryAdded); ok && added.Entry.Agent == id && added.Entry.Text == echo {
+			t.Error("the runner echo was emitted live")
+		}
+	}
+	rec.mu.Unlock()
+	for range 2 {
+		page, _, err := backend.Entries(id, "", 100)
+		if err != nil || len(page) != 1 || page[0].Text != "plan started" || page[0].ID != live.ID {
+			t.Fatalf("reloaded history exposed the echo or changed ids: %+v, %v", page, err)
+		}
+	}
+}

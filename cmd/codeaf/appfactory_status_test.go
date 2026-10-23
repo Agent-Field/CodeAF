@@ -50,10 +50,10 @@ func TestAppFactoryStatusLeavesForegroundAndQueueUntouched(t *testing.T) {
 			rec.mu.Lock()
 			beforeEvents := len(rec.events)
 			rec.mu.Unlock()
-			if _, err := b.Send(agent.ID, "status", "status-send"); err != nil {
+			if _, err := b.Send(agent.ID, "Everything ok here?", "status-send"); err != nil {
 				t.Fatal(err)
 			}
-			if err := b.steer(agent.ID, "what's next?", "status-steer", nil); err != nil {
+			if err := b.steer(agent.ID, "Any updates?", "status-steer", nil); err != nil {
 				t.Fatal(err)
 			}
 			answer := addedSaying(t, rec, "Plan is waiting for the saved decision.")

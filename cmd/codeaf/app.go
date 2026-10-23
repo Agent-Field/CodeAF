@@ -3267,6 +3267,12 @@ func appEntryShapes(agent string, items []session.DisplayEntry, at time.Time, ma
 				entry.Kind = appwire.EntryUpdate
 			}
 			m++
+			// Older runners echoed the person's steering as a progress answer.
+			// Hide only that producer-marked receipt, after reserving its id:
+			// authored prose stays visible and later answers never renumber.
+			if item.FactoryProgress && strings.HasPrefix(entry.Text, "steer: ") {
+				continue
+			}
 		case "tool":
 			// A TOOL'S RESULT MESSAGE IS NOT A SECOND CALL. The shaping keeps a
 			// row for it with no call id and no name; the call it answers is
