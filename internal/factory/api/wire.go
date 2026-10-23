@@ -39,6 +39,30 @@ type Factory struct {
 // read none of this factory's repositories. The HTTP status stays 200.
 const ReasonNoVisibleRepos = "no_visible_repos"
 
+// ReasonHasWork is the reason on Drop's 409 when the job's local branch or
+// folder holds work a drop would delete; the error names it. The same drop
+// with `"discard": true` is the person's yes to deleting it.
+const ReasonHasWork = "has_work"
+
+// ReasonHasRunning is the reason on the 409 that refuses to turn a repository
+// off (`PUT /v1/repos/{owner}/{repo}` or `PUT /v1/repos`) while any of its
+// jobs is running, queued or waiting on a person; the error names them. The
+// same write with `"stop": true` is the person's yes to stopping them first.
+// It is also the reason when one of those stops failed: the repository is
+// still on, and the error names the job.
+const ReasonHasRunning = "has_running"
+
+// ReasonRepoOff is the reason on the 409 that refuses a door that would work
+// on a job of a repository that is off; the error is
+// [factory.RepoOffWords].
+const ReasonRepoOff = "repo_off"
+
+// ReasonNeedsCheckout is the reason on the 409 that refuses a start whose
+// repository has no checkout on the factory's machine and cannot be cloned
+// there; the error is [factory.NeedsCheckout]'s sentence, naming why. It is
+// answered before anything is written, so the job's version has not moved.
+const ReasonNeedsCheckout = "needs_checkout"
+
 // Queue is `GET /v1/queue`: the whole floor as one person sees it.
 type Queue struct {
 	Mode     string                           `json:"mode,omitempty"`
@@ -54,6 +78,10 @@ type Queue struct {
 	NeedsYou []NeedsYouGroup                  `json:"needs_you,omitempty"`
 	// Reason is set only for a signed-in viewer who can see no repository.
 	Reason string `json:"reason,omitempty"`
+	// Model is the model a job's steps run on when it names none: the
+	// default of the machine running them, absent when this factory does not
+	// know it (a runner elsewhere decides).
+	Model string `json:"model,omitempty"`
 }
 
 // QueueDesk is what the TUI page reads off the floor that the dashboard does
@@ -112,32 +140,51 @@ type Capacity struct {
 	Workers []Worker `json:"workers,omitempty"`
 }
 
-// Source is a connected source of jobs (desk).
+// Source is a connected source of jobs (desk). The github row is ALSO HOW A
+// CLIENT SAYS WHEN GITHUB WAS LAST READ: it is here only while a poll on the
+// factory's machine is alive (it tried within the factory's FactsFresh window,
+// internal/factory/github), and absent when nothing is polling, which reads
+// as GitHub not being checked at all.
 type Source struct {
-	Name    string    `json:"name"`
-	Writes  bool      `json:"writes,omitempty"`
-	Repos   []string  `json:"repos,omitempty"`
-	Polled  time.Time `json:"polled"`
-	Trouble string    `json:"trouble,omitempty"`
-	Polling bool      `json:"polling,omitempty"`
-	Reading string    `json:"reading,omitempty"`
-	Read    int       `json:"read,omitempty"`
-	Of      int       `json:"of,omitempty"`
-	Items   int       `json:"items,omitempty"`
+	Name   string   `json:"name"`
+	Writes bool     `json:"writes,omitempty"`
+	Repos  []string `json:"repos,omitempty"`
+	// Polled is when the poll last read this source WITHOUT A FAILURE, the
+	// time a "checked 2 min ago" says. It is absent until a read has gone
+	// well: never a zero time.
+	Polled time.Time `json:"polled,omitzero"`
+	// Trouble is the last read's failure in a few words ("token refused",
+	// "not reachable"); absent when the last read went well.
+	Trouble string `json:"trouble,omitempty"`
+	// Polling is a read in flight now: a "Check GitHub now" (factory.refresh)
+	// shows here within a second, and it ends with the read: Polled moves, or
+	// Trouble says why not.
+	Polling bool   `json:"polling,omitempty"`
+	Reading string `json:"reading,omitempty"`
+	Read    int    `json:"read,omitempty"`
+	Of      int    `json:"of,omitempty"`
+	Items   int    `json:"items,omitempty"`
 }
 
-// Repo is a watched repository and the pipeline it runs.
+// Repo is a repository the queue's jobs are on and the pipeline it runs. The
+// queue lists only repositories that are on (a repository that is off takes
+// its jobs out of the queue with it), so a listed repository's Watched is true
+// unless the factory keeps no watched list at all, whose poll reads nothing.
+// There is no separate on: listed is on.
 type Repo struct {
-	On       bool      `json:"on"`
-	Name     string    `json:"name"`
-	Watched  bool      `json:"watched"`
-	Checkout string    `json:"checkout,omitempty"`
-	Pipeline *Pipeline `json:"pipeline,omitempty"`
-	Team     string    `json:"team,omitempty"`   // desk
-	Areas    []string  `json:"areas,omitempty"`  // desk
-	Habits   []string  `json:"habits,omitempty"` // desk
-	Hue      int       `json:"hue,omitempty"`    // desk
-	CIRed    bool      `json:"ci_red,omitempty"` // desk
+	Name     string `json:"name"`
+	Watched  bool   `json:"watched"`
+	Checkout string `json:"checkout,omitempty"`
+	// CheckedOut says the factory's machine knows a checkout of the
+	// repository; false is none known, whose jobs are cloned on their first
+	// step or refused (the job's own `checkout` says which).
+	CheckedOut bool      `json:"checked_out"`
+	Pipeline   *Pipeline `json:"pipeline,omitempty"`
+	Team       string    `json:"team,omitempty"`   // desk
+	Areas      []string  `json:"areas,omitempty"`  // desk
+	Habits     []string  `json:"habits,omitempty"` // desk
+	Hue        int       `json:"hue,omitempty"`    // desk
+	CIRed      bool      `json:"ci_red,omitempty"` // desk
 }
 
 // Pipeline is a repository's steps in order, per kind of job, and the policy
@@ -161,6 +208,15 @@ type Pipeline struct {
 	Origin       string      `json:"origin,omitempty"` // main, working tree, defaults
 	Start        *StartBlock `json:"start,omitempty"`
 	Size         *SizeBlock  `json:"size,omitempty"`
+	// Merge is the file's `merge:` settings; absent is auto-merge off and the
+	// repository's own choice of method.
+	Merge *MergeBlock `json:"merge,omitempty"`
+}
+
+// MergeBlock is a pipeline's merge settings on the wire.
+type MergeBlock struct {
+	Auto   bool   `json:"auto,omitempty"`
+	Method string `json:"method,omitempty"`
 }
 
 // StartBlock is the file's start: what may begin without a person.
@@ -238,7 +294,29 @@ type JobReadSize struct {
 
 // Job is one unit of work on the floor (code: [factory.Item]).
 type Job struct {
-	SetupHeld         bool                 `json:"setup_held,omitempty"`
+	AutonomyWhy    string              `json:"autonomy_why,omitempty"`
+	Autonomy       string              `json:"autonomy,omitempty"`
+	FollowPR       bool                `json:"follow_pr,omitempty"`
+	PublishPreview string              `json:"publish_preview,omitempty"`
+	Manual         bool                `json:"manual,omitempty"`
+	Effort         string              `json:"effort,omitempty"`
+	FollowUp       *factory.PRFollowUp `json:"follow_up,omitempty"`
+	SetupHeld      bool                `json:"setup_held,omitempty"`
+	// RepoOff says the job's repository is switched off: the factory does not
+	// work on it, so the job is not on the queue, and its run, start, rerun,
+	// publish and merge are absent from can and controls. Only the job's own
+	// read (`GET /v1/jobs/{id}`) says it, so an open page can show why;
+	// turning the repository on in Repos brings the job back as it was.
+	RepoOff bool `json:"repo_off,omitempty"`
+	// Checkout is how a run of the job's repository gets its folder on the
+	// factory's machine ([factory.CheckoutState]): `here` (a checkout is
+	// known), `will_clone` (the runner clones it on the first step) or
+	// `missing` (it cannot be cloned, and a start is refused 409
+	// needs_checkout). It names no path. Only the job's own read says it,
+	// and only a factory that knows its machine's checkouts; absent is
+	// nothing to say (no repository, or a factory whose runners keep their
+	// own).
+	Checkout          string               `json:"checkout,omitempty" jsonschema:"enum=here,enum=will_clone,enum=missing"`
 	Display           JobDisplay           `json:"display"`
 	StatePresentation StatePresentation    `json:"state_presentation"`
 	Controls          JobControls          `json:"controls"`
@@ -249,9 +327,14 @@ type Job struct {
 	Priority          *factory.JobPriority `json:"priority,omitempty"`
 	// Size is the size LABEL alone, the only size a start reads. ReadSize is
 	// what a surface may SHOW when there is no label; it never starts a job.
-	Size            string            `json:"size,omitempty"`
-	ReadSize        *JobReadSize      `json:"read_size,omitempty"`
-	Budget          float64           `json:"budget,omitempty"`
+	Size     string       `json:"size,omitempty"`
+	ReadSize *JobReadSize `json:"read_size,omitempty"`
+	Budget   float64      `json:"budget,omitempty"`
+	// Model is the model a person chose for this job's steps; absent, they
+	// run on the factory's default (Queue.Model). Set with POST
+	// /v1/jobs/{id}/model.
+	Model           string            `json:"model,omitempty"`
+	AutomaticModels *bool             `json:"automatic_models,omitempty"`
 	Reason          string            `json:"reason,omitempty"`
 	DoneHow         string            `json:"done_how,omitempty"`
 	DoneAt          time.Time         `json:"done_at"`
@@ -260,8 +343,6 @@ type Job struct {
 	WaitingFor      string            `json:"waiting_for,omitempty"`
 	Overlap         []string          `json:"overlap,omitempty"`
 	Approval        *factory.Approval `json:"approval,omitempty"`
-	BranchDeleteAt  time.Time         `json:"branch_delete_at"`
-	BranchDeletedAt time.Time         `json:"branch_deleted_at"`
 
 	Owners []string        `json:"owners,omitempty"`
 	Change *factory.Change `json:"change,omitempty"`
@@ -292,15 +373,16 @@ type Job struct {
 	// named, so the brief can say how many it planned against how many the
 	// change touched. Unknown is omitted: no declaration, an ambiguous one, or
 	// a plan not finished.
-	PlannedFiles  []string       `json:"planned_files,omitempty"`
-	Questions     []Question     `json:"questions,omitempty"`
-	NeedsYou      *NeedsYou      `json:"needs_you,omitempty"`
-	SpendingLimit *SpendingLimit `json:"spending_limit,omitempty"`
-	Failure       *Failure       `json:"failure,omitempty"`
-	Ask           *JobAsk        `json:"ask,omitempty"`
-	PublishError  string         `json:"publish_error,omitempty"`
-	Cost          float64        `json:"cost"`
-	CreatedAt     time.Time      `json:"created_at"`
+	PlannedFiles  []string              `json:"planned_files,omitempty"`
+	Questions     []Question            `json:"questions,omitempty"`
+	NeedsYou      *NeedsYou             `json:"needs_you,omitempty"`
+	SpendingLimit *SpendingLimit        `json:"spending_limit,omitempty"`
+	Failure       *Failure              `json:"failure,omitempty"`
+	Recovery      *factory.StepRecovery `json:"recovery,omitempty"`
+	Ask           *JobAsk               `json:"ask,omitempty"`
+	PublishError  string                `json:"publish_error,omitempty"`
+	Cost          float64               `json:"cost"`
+	CreatedAt     time.Time             `json:"created_at"`
 	// HeldBy is the hold on this job now. The machine and heartbeat in it are
 	// set only for the caller's own machine: ALL PEER MACHINE INFORMATION IS
 	// FORBIDDEN, the operator included, so another person's hold keeps who
@@ -311,7 +393,9 @@ type Job struct {
 	CommentURL string              `json:"comment,omitempty"`
 	HeadCommit string              `json:"head_commit,omitempty"`
 	Publishing *factory.Publishing `json:"publishing,omitempty"`
-	Desk       *JobDesk            `json:"desk,omitempty"`
+	// Merge is the job's merging; absent until it has opened a pull request.
+	Merge *JobMerge `json:"merge,omitempty"`
+	Desk  *JobDesk  `json:"desk,omitempty"`
 	// Can is computed for the caller. It is not stored on the job.
 	Can Can `json:"can"`
 }
@@ -326,7 +410,9 @@ type NeedsYou struct {
 	// BackTo is, on an approve_plan wait, the finished step a plan sent back
 	// runs again (factory.PlanSendsBack). It is left out when there is none,
 	// and also when an old document's step carries no name; can.reject_plan,
-	// never this field, says whether the revision is possible.
+	// never this field, says whether the revision is possible. On an
+	// out_of_rounds wait it is the finished step before the stuck one, which a
+	// step rerun from it sends the work back to.
 	BackTo string `json:"back_to,omitempty"`
 }
 
@@ -368,11 +454,18 @@ type Failure struct {
 	At       time.Time `json:"at"`
 }
 
-// RoundLine is one finished try of a loop step.
+// RoundLine is one finished try of a loop step. started_at is when the try
+// began, absent on a try recorded before it was. chat is the conversation it
+// ran in, the same kind of id step.chat is, and like step.chat it reaches only
+// the worker holding the job: every reader's job has it withheld (serve's
+// withholdChats), and the app opens a round's chat through factory.job_chats.
 type RoundLine struct {
-	Round   int       `json:"round"`
-	Summary string    `json:"summary,omitempty"`
-	At      time.Time `json:"at"`
+	Rejected  bool      `json:"rejected,omitempty"`
+	Round     int       `json:"round"`
+	Summary   string    `json:"summary,omitempty"`
+	At        time.Time `json:"at"`
+	StartedAt time.Time `json:"started_at,omitzero"`
+	Chat      string    `json:"chat,omitempty"`
 }
 
 // Can is which verbs this caller may use on this job. It follows the
@@ -383,6 +476,8 @@ type Can struct {
 	Run            bool `json:"run"`
 	StartNow       bool `json:"start_now"`
 	Stop           bool `json:"stop"`
+	Close          bool `json:"close"`
+	Reopen         bool `json:"reopen"`
 	Dismiss        bool `json:"dismiss"`
 	Drop           bool `json:"drop"`
 	ChangeAssignee bool `json:"change_assignee"`
@@ -405,6 +500,12 @@ type Can struct {
 	// serves the route. A factory from before the route never sends it, which
 	// reads as false: no plan revision is offered.
 	RejectPlan bool `json:"reject_plan"`
+	// Merge is the merge gate passing for the caller now: Merge would go.
+	Merge bool `json:"merge"`
+	// Restore is POST /v1/jobs/{id}/restore (Bring back) for this caller now:
+	// the job was dropped and the caller may act on it. A factory from before
+	// the route never sends it, which reads as false.
+	Restore bool `json:"restore"`
 }
 
 // JobAsk is how the job was requested. A GitHub issue fills issue and text.
@@ -510,23 +611,39 @@ type StepAt struct {
 // may be in the job's pipeline, in its run, or both; the two flags say which,
 // so the codec can give each half back to its own list.
 type Step struct {
-	Tests *factory.TestCounts `json:"tests,omitempty"`
+	RoundLimit   int                       `json:"round_limit,omitempty"`
+	Verification *factory.StepVerification `json:"verification,omitempty"`
+	Tests        *factory.TestCounts       `json:"tests,omitempty"`
 	StepDef
-	State      string      `json:"state"`
-	Round      int         `json:"round,omitempty"`
-	Result     string      `json:"result,omitempty"`
-	Rounds     []RoundLine `json:"rounds,omitempty"`
-	Failure    *Failure    `json:"failure,omitempty"`
-	Cost       float64     `json:"cost,omitempty"`
-	At         *time.Time  `json:"at,omitempty"`      // when the step ended; absent until it does
-	Note       string      `json:"note,omitempty"`    // desk
-	Tasks      int         `json:"tasks,omitempty"`   // desk
-	LeftMS     int64       `json:"left_ms,omitempty"` // desk
-	Chat       string      `json:"chat,omitempty"`    // desk
-	Handle     string      `json:"handle,omitempty"`  // desk
-	RunKind    string      `json:"run_kind,omitempty"`
-	InPipeline bool        `json:"in_pipeline"`
-	InRun      bool        `json:"in_run"`
+	State   string      `json:"state"`
+	Round   int         `json:"round,omitempty"`
+	Result  string      `json:"result,omitempty"`
+	Rounds  []RoundLine `json:"rounds,omitempty"`
+	Failure *Failure    `json:"failure,omitempty"`
+	Cost    float64     `json:"cost,omitempty"`
+	At      *time.Time  `json:"at,omitempty"`      // when the step ended; absent until it does
+	Note    string      `json:"note,omitempty"`    // desk
+	Tasks   int         `json:"tasks,omitempty"`   // desk
+	LeftMS  int64       `json:"left_ms,omitempty"` // desk
+	Chat    string      `json:"chat,omitempty"`    // desk
+	// StartedAt is when the step's latest round began: absent while the step
+	// has not started, and on a step recorded before it was kept. With at it
+	// bounds the round the step is in or last ran; each earlier round has its
+	// own in rounds.
+	StartedAt *time.Time `json:"started_at,omitempty"`
+	// Model is the model the step's conversation ran on, once it ran.
+	Model      string `json:"model,omitempty"`
+	Handle     string `json:"handle,omitempty"` // desk
+	RunKind    string `json:"run_kind,omitempty"`
+	InPipeline bool   `json:"in_pipeline"`
+	InRun      bool   `json:"in_run"`
+	// Report is the step's whole last report (done, findings, claims, notes,
+	// output, exit), in the words a worker reports one with. ONLY THE WORKER'S
+	// PULL CARRIES IT ([WorkerJob]): the runner that takes a job on hands the
+	// steps after it everything the steps before them found, and a reader has
+	// result, cost, tests and model already. A step without it (a pull from a
+	// factory older than the field) is read from result as before.
+	Report *StepResult `json:"report,omitempty"`
 }
 
 // Claim is one row of a proof sheet.
@@ -570,22 +687,61 @@ type Answer = factory.Answer
 // The job's state stays done; this field is how a reader tells PR open from
 // Merged. Contract stays 2.
 type PR struct {
-	Conflict        bool       `json:"conflict,omitempty"`
-	Draft           bool       `json:"draft"`
-	Number          int        `json:"number"`
-	URL             string     `json:"url"`
-	CI              string     `json:"ci,omitempty"`
-	State           string     `json:"state,omitempty"`
-	MergedBy        string     `json:"merged_by,omitempty"`
-	MergedAt        *time.Time `json:"merged_at,omitempty"`
-	ReviewDecision  string     `json:"review_decision,omitempty"`
-	Reviews         []PRReview `json:"reviews,omitempty"`
-	RequiredReviews int        `json:"required_reviews,omitempty"`
-	Checks          *PRChecks  `json:"checks,omitempty"`
+	FeedbackItems   []factory.PRFeedback    `json:"feedback_items,omitempty"`
+	FeedbackTracked bool                    `json:"feedback_tracked,omitempty"`
+	Problems        []factory.PRReadProblem `json:"problems,omitempty"`
+	ReadinessKey    string                  `json:"readiness_key,omitempty"`
+	BaseSHA         string                  `json:"base_sha,omitempty"`
+	Feedback        string                  `json:"feedback,omitempty"`
+	CheckRuns       []CheckRun              `json:"check_runs,omitempty"`
+	Conflict        bool                    `json:"conflict,omitempty"`
+	Draft           bool                    `json:"draft"`
+	Number          int                     `json:"number"`
+	URL             string                  `json:"url"`
+	CI              string                  `json:"ci,omitempty"`
+	State           string                  `json:"state,omitempty"`
+	MergedBy        string                  `json:"merged_by,omitempty"`
+	MergedAt        *time.Time              `json:"merged_at,omitempty"`
+	ReviewDecision  string                  `json:"review_decision,omitempty"`
+	Reviews         []PRReview              `json:"reviews,omitempty"`
+	RequiredReviews int                     `json:"required_reviews,omitempty"`
+	Checks          *PRChecks               `json:"checks,omitempty"`
+	// HeadSHA, Mergeable ("yes", "no", "" unknown), ChecksRead and ReviewsRead
+	// are the facts the merge gate reads; see factory.MergeGate.
+	HeadSHA     string `json:"head_sha,omitempty"`
+	Mergeable   string `json:"mergeable,omitempty"`
+	ChecksRead  bool   `json:"checks_read,omitempty"`
+	ReviewsRead bool   `json:"reviews_read,omitempty"`
+}
+
+// JobMerge is a job's merging: the pipeline's settings pinned when its proof
+// was approved (auto, method), the merge on its way or the last one that
+// failed (run), and, when nothing is on its way, blocked: why Merge would be
+// refused now, "" when it would go through.
+type JobMerge struct {
+	Auto    bool         `json:"auto,omitempty"`
+	Method  string       `json:"method,omitempty"`
+	Run     *JobMergeRun `json:"run,omitempty"`
+	Blocked string       `json:"blocked,omitempty"`
+}
+
+// JobMergeRun is [factory.MergeRun] on the wire.
+type JobMergeRun struct {
+	State     string     `json:"state"`
+	By        string     `json:"by,omitempty"`
+	Auto      bool       `json:"auto,omitempty"`
+	Rule      string     `json:"rule,omitempty"`
+	Why       string     `json:"why,omitempty"`
+	Commit    string     `json:"commit,omitempty"`
+	Method    string     `json:"method,omitempty"`
+	At        *time.Time `json:"at,omitempty"`
+	UndoUntil *time.Time `json:"undo_until,omitempty"`
 }
 
 // PRReview is one review on a pull request the factory opened.
 type PRReview struct {
+	Body  string    `json:"body,omitempty"`
+	URL   string    `json:"url,omitempty"`
 	By    string    `json:"by"`
 	State string    `json:"state"`
 	At    time.Time `json:"at"`
@@ -645,9 +801,10 @@ type File struct {
 
 // CheckRun is one check on a pull request's head (desk).
 type CheckRun struct {
-	Name  string `json:"name"`
-	State string `json:"state"`
-	URL   string `json:"url,omitempty"`
+	Source string `json:"source,omitempty"`
+	Name   string `json:"name"`
+	State  string `json:"state"`
+	URL    string `json:"url,omitempty"`
 }
 
 // Activity is one line of a job's own short history (desk).

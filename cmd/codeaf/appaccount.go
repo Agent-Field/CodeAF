@@ -559,6 +559,9 @@ func (b *appBackend) SetKey(provider, key string) error {
 // proved — its region, the road its key opened, its address — in the profile.
 // A launch's hand-over carries no connection and keeps what is already there.
 func (b *appBackend) SetProvider(params appwire.KeyParams) error {
+	if params.Provider == appwire.KeyGitHub {
+		return b.setGitHubKey(params.Key)
+	}
 	p, ok := b.appProviderNamed(params.Provider)
 	if !ok {
 		return appwire.Errorf(appwire.CodeBadParams, "codeaf cannot connect %s with a key", params.Provider)
@@ -582,6 +585,20 @@ func (b *appBackend) SetProvider(params appwire.KeyParams) error {
 	b.keysMoved(p.id)
 	b.providerChanged(p, "")
 	b.warmProviderModels()
+	return nil
+}
+
+// setGitHubKey holds the factory's GitHub token the app kept from setup. It
+// is no model provider, so no conversation, model list or profile row hears of
+// it; the factory reads it through the app's credentials (factorygithub's
+// TokenAt), first, before any gh login. AN EMPTY TOKEN IS REFUSED, NOT HELD AS
+// A REMOVAL: a removal would also shut out the gh login the person said yes to.
+func (b *appBackend) setGitHubKey(key string) error {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return appwire.Errorf(appwire.CodeBadParams, "keys.set %s needs a token", appwire.KeyGitHub)
+	}
+	b.keys.Set(appwire.KeyGitHub, key)
 	return nil
 }
 

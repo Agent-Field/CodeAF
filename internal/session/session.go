@@ -722,6 +722,8 @@ const (
 	EventCloseContinued = EventItemChanged + 1
 	// EventConsentAllowed records a call allowed by an explicit saved rule.
 	EventConsentAllowed = EventCloseContinued + 1
+	// EventModelIdentity updates execution facts without adding a transcript note.
+	EventModelIdentity = EventConsentAllowed + 1
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -758,9 +760,11 @@ type TaskReplyTag struct {
 // today — sees all of it in order and needs no second rule; a caller that stops
 // at the terminal event stops at the terminal event of the FIRST turn.
 type Event struct {
-	RunID          string       `json:"RunID,omitempty"`
-	ReplayCursor   ReplayCursor `json:",omitempty"`
-	ReplayObserved bool         `json:"-"`
+	ModelIdentity  *ModelIdentity `json:"ModelIdentity,omitempty"`
+	ModelSwitch    *ModelSwitch   `json:"ModelSwitch,omitempty"`
+	RunID          string         `json:"RunID,omitempty"`
+	ReplayCursor   ReplayCursor   `json:",omitempty"`
+	ReplayObserved bool           `json:"-"`
 
 	Discussion *QuestionDiscussion `json:",omitempty"`
 
@@ -1379,6 +1383,14 @@ type TaskLanding struct {
 }
 
 type Config struct {
+	// ConversationModels is the desktop conversation's explicit main/fallback pair.
+	// Nil retains the terminal's existing routing policy.
+	ConversationModels *ConversationModels
+
+	// AutomaticModels explicitly permits cross-model fallback. Nil inherits the
+	// stored policy or the existing launch default; OneModel always takes priority.
+	AutomaticModels *bool
+
 	// TeamListeningSince preserves the traffic subscription boundary when an
 	// app opens a light record after the event that needs it.
 	TeamListeningSince time.Time
@@ -2413,6 +2425,17 @@ type Config struct {
 	// item's manager to shape its run.
 	FactoryRun RunDoor
 
+	// JobChat is the door a factory job's own conversation spends from the
+	// job's budget through (factory_contract.go). NIL IS NO DOOR, and every
+	// conversation spends as it always has. It is set where FactoryItem is,
+	// kept on the turn the runner gives a job's manager, and taken off a
+	// stage's conversation, whose round's spend the runner already counts.
+	JobChat JobChatDoor
+
+	// JobBudget is the shared live meter of a factory-owned agent family.
+	// Children inherit it without inheriting manager or stage authority.
+	JobBudget JobChat
+
 	// Stage is the door a factory stage's own conversation reports through
 	// (stage_contract.go). NIL IS NO DOOR: `stage_result` and `plan_edit` are off
 	// the belt. Only the factory's runner sets it, on a stage round it opened.
@@ -2615,6 +2638,14 @@ type Config struct {
 // events — every Submit streams, whether it started the turn or steered it.
 // The methods live in agent.go; the loop they drive lives in loop.go.
 type Agent struct {
+	modelChanges       sync.Mutex
+	conversationModels *ConversationModels
+	modelRequestSlot   string
+	fallbackNoticeOwed bool
+
+	modelIdentity   ModelIdentity
+	automaticModels atomic.Int32
+	replySuggestion replySuggestionState
 	// rewindUndo keeps one reversible cut; a new cut replaces it.
 	rewindUndo *rewindUndo
 	debugRun   string
@@ -2651,6 +2682,10 @@ type Agent struct {
 	// that lock. Atomic publication keeps both roads on the same figure.
 	liveSpendRail    atomic.Uint64
 	liveSpendRailSet atomic.Bool
+	// jobChat is the factory job this conversation is the own chat of, asked
+	// of Config.JobChat once ([Agent.jobChatOf]); nil is no job's.
+	jobChatOnce sync.Once
+	jobChat     JobChat
 	// moveAsked is the person's ask to move the running reply to a task, taken
 	// at the next step boundary ([Agent.MoveTurnToTask]).
 	moveAsked atomic.Bool
@@ -3334,6 +3369,11 @@ type Agent struct {
 	// session that has never opened an episode.
 	writes  *writeMeter
 	running bool
+	// mustCall is the one tool the running turn's next answered request must
+	// call, "" for none ([Agent.FollowUpRequiring]): set from the message that
+	// opens the turn and spent by the first request that is answered
+	// (tools_stage.go's [Agent.turnBelt]).
+	mustCall string
 	// turnFloor is where the running turn's WORK begins in a.messages: the
 	// index just past the message that opened the turn, stamped by
 	// [Agent.startTurnLocked] and meaningful only while running is true. It is
@@ -3486,12 +3526,10 @@ type Agent struct {
 	// wakes for itself ([Agent.postTaskNews]).
 	taskNotes int
 	taskNews  chan struct{}
-	// jobParkBound is the allowance a task worker's run was given, and it is
-	// non-zero only on a worker: it is what ARMS the wait on a command this agent
-	// started in the foreground and had taken over into a job (task_job_park.go's
-	// [Agent.armJobPark]). A conversation leaves it zero, and its park returns
-	// having done nothing, because a person's chat answers a long command by
-	// yielding the keyboard rather than by waiting.
+	// stageSettled fences automatic wakes while the runner adjudicates an idle stage.
+	stageSettled bool
+	// jobParkBound arms engine waiting for task workers and factory stages.
+	// Ordinary conversations leave it zero and continue yielding the keyboard.
 	jobParkBound time.Duration
 	// handover is the seam a delivery's last two writes are made across, and the
 	// seam the runner reads them across ([Agent.handOverTaskNews] and
@@ -3896,8 +3934,8 @@ type Agent struct {
 	// Serializes current-name metadata snapshots and writes, outside a.mu.
 	titleStampMu sync.Mutex
 
-	// titleCtx is the lifetime of the naming errand and titleJobs counts the one
-	// that may be running. They are memoryCtx's bargain above, for the same
+	// titleCtx is the lifetime of naming/reply errands and titleJobs counts the
+	// errands that may be running. They are memoryCtx's bargain above, for the same
 	// reason and with the same two lines: the namer now runs BESIDE the turn
 	// that triggered it (title.go), so it cannot ride the turn's context — a
 	// quick answer would cancel a name that is still being written — and it may

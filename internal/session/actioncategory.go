@@ -224,7 +224,7 @@ func ActionCategoryForTool(tool string) ActionCategory {
 		// A manager looking at its team: the states, and a member's page.
 		"team_status", "team_read",
 		// The foreman reading the factory floor (a mark is a proposal, not a change).
-		"factory_floor":
+		"factory_floor", "factory_status":
 		return ActionRead
 
 	// Changing something that exists.

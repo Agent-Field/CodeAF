@@ -24,7 +24,7 @@ the last row of the frame is the keys that work right now, and nothing else.
 **The tray row** carries what the next message takes with it besides its words —
 a picked sub-harness, an attached picture, an attached file. The **thinking rung** is not
 on it: it moved onto the rule above the box, beside the model, on 2026-09-09 (see *The
-line above the message box* below, and *The thinking chip above the message box* on the
+line above the message box* below, and *What is the chip above the message box — the thinking chip, `alt+e`, `/effort`, and how to make this one chat think harder* on the
 keys page). The tray is drawn only when it has something on it: with nothing attached, the
 row is not there and the box sits straight under the gap.
 
@@ -758,7 +758,7 @@ auto → low → medium → high → xhigh → max, and back to auto — which i
 back to `auto` again; `/effort auto` gets there in one move. Each brightens
 under the pointer over exactly its own cells, so you can see which of the two you are
 about to press. With the mouse turned off (`ui.mouse`), `/model`, `/effort` and `alt+e`
-do all three jobs. See "The thinking chip above the message box" on the keys page.
+do all three jobs. See "What is the chip above the message box — the thinking chip, `alt+e`, `/effort`, and how to make this one chat think harder" on the keys page.
 
 Until 2026-09-09 the rung was spelled onto the model id with a colon
 (`glm-5.3-flash:high`) and there was a second chip for it at the right end of the tray

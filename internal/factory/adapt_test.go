@@ -301,7 +301,10 @@ func TestEditAddsAndSkipsApproveSteps(t *testing.T) {
 	if err != nil || got.Stages[1].Name != "approve2" || got.Stages[1].Kind != factory.StageGate {
 		t.Fatalf("second approve = %+v, %v", got.Stages, err)
 	}
-	got, lines, err = factory.Edit(got, factory.RunEdit{By: factory.ByManager, Skip: []string{"approve2", "sign"}}, factory.DefaultRecipe(), factory.EditBeforeRun)
+	if _, _, err := factory.Edit(got, factory.RunEdit{By: factory.ByManager, Skip: []string{"approve2"}}, factory.DefaultRecipe(), factory.EditBeforeRun); err == nil {
+		t.Fatal("manager skipped a person's approval")
+	}
+	got, lines, err = factory.Edit(got, factory.RunEdit{By: factory.ByYou, Skip: []string{"approve2", "sign"}}, factory.DefaultRecipe(), factory.EditBeforeRun)
 	if err != nil || len(lines) != 2 || got.Stages[1].On || got.Stages[factory.StageIndex(got.Stages, "sign")].On {
 		t.Fatalf("skip = %q %+v %v", lines, got.Stages, err)
 	}
@@ -465,13 +468,14 @@ func TestNineStagesAtMost(t *testing.T) {
 	}
 }
 
-// PROOF IS NEVER SKIPPED, by anyone, in either mode.
+// PROOF IS NEVER SKIPPED, by anyone, in either mode, even under a recipe that
+// does not fix it (the shipped default does, and refuses in the fixed words).
 func TestEditNeverSkipsProof(t *testing.T) {
 	it := adaptItem()
 	it.Stream = nil
 	for _, by := range []string{factory.ByManager, factory.ByPlan, factory.ByYou} {
 		for _, mode := range []factory.EditMode{factory.EditBeforeRun, factory.EditInRun} {
-			if _, _, err := factory.Edit(it, factory.RunEdit{By: by, Skip: []string{"proof"}}, factory.DefaultRecipe(), mode); err == nil || err.Error() != by+" may not skip proof" {
+			if _, _, err := factory.Edit(it, factory.RunEdit{By: by, Skip: []string{"proof"}}, factory.Recipe{}, mode); err == nil || err.Error() != by+" may not skip proof" {
 				t.Fatalf("%s %s skipped proof: %v", by, mode, err)
 			}
 		}

@@ -67,6 +67,8 @@ func (a *Agent) stampUserLocked(text string) {
 	title := placeholderTitle(text)
 	a.metaStamp().Owe(func() {
 		a.updateMeta(dir, snapshot, func(meta *Meta) {
+			meta.AutomaticModels = snapshot.AutomaticModels
+			meta.ModelIdentity = snapshot.ModelIdentity
 			meta.Model, meta.Effort, meta.Approval = snapshot.Model, snapshot.Effort, snapshot.Approval
 			meta.Places, meta.Trees = snapshot.Places, snapshot.Trees
 			meta.LastUserAt = at
@@ -281,6 +283,8 @@ func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
 			meta.Created = snapshot.Created
 		}
 		if meta.Model == "" {
+			meta.AutomaticModels = snapshot.AutomaticModels
+			meta.ModelIdentity = snapshot.ModelIdentity
 			meta.Model, meta.Effort, meta.Approval = snapshot.Model, snapshot.Effort, snapshot.Approval
 		}
 		if meta.Places == nil {
@@ -309,6 +313,9 @@ func (a *Agent) fillMetaLocked(meta Meta) Meta {
 		}
 		meta.Workspace = workspace
 	}
+	meta.AutomaticModels = a.automaticModelsChosen()
+	identity := a.modelIdentityLocked()
+	meta.ModelIdentity = &identity
 	meta.Owned = a.config.Place.Owned
 	if meta.Created.IsZero() {
 		meta.Created = time.Now()
@@ -375,6 +382,8 @@ func (a *Agent) stampTrees() { a.stampMeta() }
 func (a *Agent) stampMeta() {
 	dir, snapshot := a.metaSnapshotAt()
 	a.updateMeta(dir, snapshot, func(meta *Meta) {
+		meta.AutomaticModels = snapshot.AutomaticModels
+		meta.ModelIdentity = snapshot.ModelIdentity
 		meta.Model, meta.Effort, meta.Approval = snapshot.Model, snapshot.Effort, snapshot.Approval
 		meta.Places, meta.Trees = snapshot.Places, snapshot.Trees
 	})

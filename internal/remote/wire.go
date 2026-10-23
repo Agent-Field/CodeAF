@@ -512,20 +512,22 @@ const (
 	// the surface drops the answer it was never waiting for, and what is lost is
 	// a pre-warm nobody can see. Nothing goes dark, so nothing is refused at the
 	// door.
-	MethodTyping          = "Typing"                 // nothing → nothing, and nothing waits
-	MethodStopWork        = "StopWork"               // nothing → nothing; stop this conversation, retaining history
-	MethodInterrupt       = "Interrupt"              // InterruptArgs, or nothing → nothing
-	MethodCompact         = "Compact"                // nothing → nothing (error carries the failure)
-	MethodClose           = "Close"                  // nothing → nothing
-	MethodModel           = "Model"                  // nothing → string
-	MethodSetModel        = "SetModel"               // string → nothing
-	MethodSetSpendRail    = "SetSpendRail"           // dollars → nothing
-	MethodSpendRail       = "SpendRail"              // nothing → dollars, zero for none; an older engine answers "no such method"
-	MethodSetContext      = "SetContextWindow"       // legacy version-5 hint; current remote surfaces do not send it
-	MethodReasoningFor    = "ReasoningFor"           // string → string
-	MethodSetReasoningFor = "SetReasoningFor"        // ReasoningArgs → nothing
-	MethodConsent         = "ResolveConsent"         // ConsentArgs → nothing
-	MethodConsentRemember = "ResolveConsentRemember" // ConsentArgs → nothing
+	MethodTyping                = "Typing"    // nothing → nothing, and nothing waits
+	MethodStopWork              = "StopWork"  // nothing → nothing; stop this conversation, retaining history
+	MethodInterrupt             = "Interrupt" // InterruptArgs, or nothing → nothing
+	MethodCompact               = "Compact"   // nothing → nothing (error carries the failure)
+	MethodClose                 = "Close"     // nothing → nothing
+	MethodModel                 = "Model"     // nothing → string
+	MethodSetAutomaticModels    = "SetAutomaticModels"
+	MethodSetConversationModels = "SetConversationModels"
+	MethodSetModel              = "SetModel"               // string → nothing
+	MethodSetSpendRail          = "SetSpendRail"           // dollars → nothing
+	MethodSpendRail             = "SpendRail"              // nothing → dollars, zero for none; an older engine answers "no such method"
+	MethodSetContext            = "SetContextWindow"       // legacy version-5 hint; current remote surfaces do not send it
+	MethodReasoningFor          = "ReasoningFor"           // string → string
+	MethodSetReasoningFor       = "SetReasoningFor"        // ReasoningArgs → nothing
+	MethodConsent               = "ResolveConsent"         // ConsentArgs → nothing
+	MethodConsentRemember       = "ResolveConsentRemember" // ConsentArgs → nothing
 	// MethodQuestionResolve is the ONE door for an answer to any question, over
 	// the wire (docs/design/questions/DESIGN.md). It carries
 	// [session.Answer] whole — the lane, the token, the keys, the words beside
@@ -1394,7 +1396,8 @@ type Welcome struct {
 	// false, and false is refused at this end before anything is written, which
 	// the wall reads as it reads any failed ask: the word it already holds, and
 	// Organize's folder pass alone.
-	TeamAsk bool `json:"teamAsk,omitempty"`
+	TeamAsk         bool `json:"teamAsk,omitempty"`
+	ReplySuggestion bool `json:"replySuggestion,omitempty"`
 
 	// News says this engine SENDS THE STATUS LINE'S NEWS — the "phase" and
 	// "lane" frames the live rate and the `via <machine>` rider are drawn from

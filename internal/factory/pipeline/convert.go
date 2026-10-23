@@ -57,15 +57,31 @@ func Encode(f File) ([]byte, error) {
 			Issue   string `yaml:"issue"`
 		}{f.Size.PRLines, f.Size.Issue}
 	}
+	// A FILE THAT SAYS NOTHING ABOUT MERGING IS WRITTEN WITHOUT THE KEY, so
+	// saving a pipeline never adds a line its author did not write.
+	type mergeKey struct {
+		Auto   string `yaml:"auto,omitempty"`
+		Method string `yaml:"method,omitempty"`
+	}
+	var merge *mergeKey
+	if f.Merge.Auto || f.Merge.Method != "" || f.set.mergeAuto {
+		merge = &mergeKey{Method: f.Merge.Method}
+		if f.Merge.Auto {
+			merge.Auto = "on"
+		} else if f.set.mergeAuto {
+			merge.Auto = "off"
+		}
+	}
 	return yaml.Marshal(struct {
-		DefaultBudget float64  `yaml:"default_budget,omitempty"`
-		Start         any      `yaml:"start,omitempty"`
-		Size          any      `yaml:"size,omitempty"`
-		Pipeline      any      `yaml:"pipeline"`
-		Steps         any      `yaml:"steps"`
-		Fixed         []string `yaml:"fixed"`
-		Rules         []string `yaml:"rules"`
-	}{f.DefaultBudget, start, size, f.Pipeline, steps, f.Fixed, f.Rules})
+		DefaultBudget float64   `yaml:"default_budget,omitempty"`
+		Start         any       `yaml:"start,omitempty"`
+		Size          any       `yaml:"size,omitempty"`
+		Pipeline      any       `yaml:"pipeline"`
+		Steps         any       `yaml:"steps"`
+		Fixed         []string  `yaml:"fixed"`
+		Rules         []string  `yaml:"rules"`
+		Merge         *mergeKey `yaml:"merge,omitempty"`
+	}{f.DefaultBudget, start, size, f.Pipeline, steps, f.Fixed, f.Rules, merge})
 }
 
 // Convert renders a Markdown recipe as YAML without writing either file.

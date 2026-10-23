@@ -180,6 +180,8 @@ func (p Place) Work() string {
 // wrote the citation. A session whose meta.json is missing or corrupt is a
 // session with a blank row, never a session that will not open.
 type Meta struct {
+	AutomaticModels *bool          `json:"automaticModels,omitempty"`
+	ModelIdentity   *ModelIdentity `json:"modelIdentity,omitempty"`
 	// ID is the session's id — the same 16-hex id the transcript header
 	// carries, and the folder's name.
 	ID string `json:"id"`

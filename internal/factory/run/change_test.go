@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -42,6 +43,10 @@ func TestChangeIncludesCommittedStagedUnstagedAndUntrackedFiles(t *testing.T) {
 		{Path: "ledger.go", Added: 1, Status: "modified"},
 		{Path: "staged.go", Added: 1, Status: "added"},
 	}}
+	if !strings.Contains(change.Patch, "// unstaged") || !strings.Contains(change.Patch, "committed.go") {
+		t.Fatal("patch preview lost changes")
+	}
+	want.Patch = change.Patch
 	if !reflect.DeepEqual(change, want) {
 		t.Fatalf("change = %+v, files = %+v; want %+v", change, change.Files, want)
 	}
@@ -151,5 +156,20 @@ func TestCheckCountsComeFromFullOutputAndOmitUnknownCounts(t *testing.T) {
 	}
 	if res.Exit != 1 || res.Tests == nil || res.Tests.Passed != 1 {
 		t.Fatalf("full output counts = %+v", res)
+	}
+}
+
+func TestApprovedCommitMessageStaysInsidePublicBoundary(t *testing.T) {
+	dir := gitRig(t)
+	if err := os.WriteFile(filepath.Join(dir, "fix.go"), []byte("package fix\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	it := factory.Item{Kind: factory.KindIssue, Repo: "api", Product: "acme", Num: 7, Title: "Fix /Users/private-person/notes handling"}
+	if err := commitApproved(ExecGit{}, dir, it, "Co-authored-by: codeaf <codeaf@users.noreply.github.com>"); err != nil {
+		t.Fatal(err)
+	}
+	msg := mustGit(t, dir, "log", "-1", "--format=%B")
+	if strings.Contains(msg, "private-person") || !strings.Contains(msg, "[local home]/notes") || !strings.Contains(msg, "codeaf@users.noreply.github.com") {
+		t.Fatalf("commit message: %q", msg)
 	}
 }

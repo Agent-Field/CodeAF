@@ -98,7 +98,7 @@ func TestDismissalAndOverlapAreDerived(t *testing.T) {
 	if !Match("is:dismissed", "sam")(a) || Match("is:dismissed", "mei")(a) {
 		t.Fatal("dismissed query crossed people")
 	}
-	if ApprovalUndo != 5*time.Second || DroppedBranchRetention != 7*24*time.Hour {
+	if ApprovalUndo != 5*time.Second {
 		t.Fatal("canvas timing changed")
 	}
 }

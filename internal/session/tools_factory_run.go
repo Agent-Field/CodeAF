@@ -242,7 +242,7 @@ func (a *Agent) factoryRunTool() bare.Tool {
 }
 
 // SubmitRunnerNote starts a turn on words the factory's runner wrote for the
-// item's manager (`Shape the run for this item now. …`): the same turn
+// item's manager (a step's question for the inbox): the same turn
 // [Agent.Submit] starts, journaled as the session's own note rather than as
 // the person's words, so the runner never reads its own ask back as a steer
 // ([PersonLines] skips a note).
@@ -262,22 +262,22 @@ func runnerNote(text string) userMessage {
 	return note
 }
 
-// ── A SHAPING TURN THROUGH A CONVERSATION THE WINDOW HOLDS ──────────────────
+// ── A RUNNER'S TURN THROUGH A CONVERSATION THE WINDOW HOLDS ─────────────────
 //
 // When the person has the item's manager open in a window of this process,
-// the runner's shaping turn cannot open the conversation a second time (the
-// journal's lock refuses it). It runs as a turn of THAT conversation instead,
-// so the window shows the manager thinking, and `factory_run` on that ONE turn
-// answers through the runner's collecting door rather than the floor's: the
-// runner applies the edit itself, as it does on its own road.
+// a turn the runner gives it (a step's question for the inbox) cannot open the
+// conversation a second time (the journal's lock refuses it). It runs as a
+// turn of THAT conversation instead, so the window shows the manager thinking,
+// and the tools on that ONE turn answer through the door the runner lent it
+// rather than the floor's.
 //
 // THE DOOR BELONGS TO THE TURN, NOT TO THE AGENT. It is kept beside the turn's
 // number ([Agent.teamTurnSerial]) and read under the agent's lock, so the next
 // turn (the person's own, a follow-up, a wake) gets the floor's door again
 // without anybody having to put it back, and there is no moment between the
-// shaping turn's end and a restore in which a person's turn could reach the
-// collecting door. A person's line said INTO the shaping turn steers it, and
-// what the manager sets on that line is collected with the rest.
+// runner's turn's end and a restore in which a person's turn could reach the
+// lent door. A person's line said INTO the runner's turn steers it, and goes
+// through the same lent door.
 
 // turnRunDoor is a door lent to one turn.
 type turnRunDoor struct {

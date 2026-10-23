@@ -1610,6 +1610,7 @@ type appSlept struct {
 // Sleep stops every running process before the Mac sleeps, and every held
 // agent reads asleep until it wakes.
 func (b *appBackend) Sleep() error {
+	powerErr := b.factoryPower(true)
 	var agents []*appAgent
 	b.locked(func() {
 		b.asleep = true
@@ -1642,12 +1643,13 @@ func (b *appBackend) Sleep() error {
 		})
 		live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	}
-	return nil
+	return powerErr
 }
 
 // Wake brings every agent back, and says once per process the sleep stopped
 // that it stopped, so the person can run it again.
 func (b *appBackend) Wake() error {
+	powerErr := b.factoryPower(false)
 	var agents []*appAgent
 	b.locked(func() {
 		b.asleep = false
@@ -1682,5 +1684,17 @@ func (b *appBackend) Wake() error {
 		}
 		live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	}
-	return nil
+	return powerErr
+}
+
+// Factory presence follows the native power door, not whether a step's chat is
+// open. Never hold the local-host lock while contacting its elected service.
+func (b *appBackend) factoryPower(asleep bool) error {
+	b.local.mu.Lock()
+	host := b.local.host
+	b.local.mu.Unlock()
+	if host == nil {
+		return nil
+	}
+	return host.power(context.Background(), asleep)
 }

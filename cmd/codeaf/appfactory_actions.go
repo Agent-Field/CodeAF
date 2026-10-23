@@ -50,6 +50,8 @@ const (
 	factoryVerbStop          = "stop"
 	factoryVerbDismiss       = "dismiss"
 	factoryVerbDrop          = "drop"
+	factoryVerbRestore       = "restore"
+	factoryVerbRunAgain      = "run_again"
 	factoryVerbUnassign      = "unassign"
 	factoryVerbAssignToMe    = "assign_to_me"
 	factoryVerbAssignee      = "change_assignee"
@@ -59,6 +61,7 @@ const (
 	factoryVerbUndo          = "undo"
 	factoryVerbRequestChange = "request_changes"
 	factoryVerbRetryPublish  = "retry_publish"
+	factoryVerbMerge         = "merge"
 )
 
 // appFactoryAnswer is the part of a factory's yes this layer reads. The
@@ -192,12 +195,24 @@ func appFactoryActionFailure(r appFactoryReply) error {
 		return refused(appwire.CodeForbidden, "the factory does not let you do that")
 	case r.status == http.StatusConflict && (detail.Reason == "stale" || detail.Reason == "changed_since_opened"):
 		return refused(appwire.CodeStale, "the job changed while you looked")
+	case r.status == http.StatusConflict && detail.Reason == api.ReasonHasWork:
+		// A drop that would delete work: the factory's sentence names it, and
+		// the person's yes is the same drop with discard.
+		return refused(appwire.CodeHasWork, "the job has work that dropping would delete")
 	case r.status == http.StatusConflict:
 		return refused(appwire.CodeConflict, "the job is not in a state for that")
 	case r.status == http.StatusNotImplemented:
 		return appwire.Errorf(appwire.CodeEngine, "this factory does not provide that action")
 	case r.status >= 500:
-		return appwire.Errorf(appwire.CodeUncertain, "the factory failed while acting; the action may have happened, so read the job before trying again")
+		// STILL UNCERTAIN, BUT IN THE FACTORY'S OWN WORDS: a 5xx may have
+		// half-happened, so the code stays uncertain, and the sentence the
+		// factory gave for it (a clone that failed, a store that could not be
+		// written) goes in front of the warning instead of being dropped.
+		const maybe = "the action may have happened, so read the job before trying again"
+		if words != "" {
+			return appwire.Errorf(appwire.CodeUncertain, "%s · %s", words, maybe)
+		}
+		return appwire.Errorf(appwire.CodeUncertain, "the factory failed while acting; %s", maybe)
 	}
 	return appFactoryFailure(r)
 }
@@ -211,7 +226,7 @@ func (h *appFactoryHub) acted(ctx context.Context, id, action string, job int, a
 		out.Job = a.ID
 	}
 	if ap := a.Approval; ap != nil {
-		out.Approval = &appwire.FactoryApprovalReceipt{Kind: ap.Kind, State: ap.State, DecidedBy: ap.DecidedBy, At: ap.At, UndoUntil: ap.UndoUntil, Commit: ap.Commit, Edited: ap.Edited}
+		out.Approval = &appwire.FactoryApprovalReceipt{Automatic: ap.Automatic, Kind: ap.Kind, State: ap.State, DecidedBy: ap.DecidedBy, At: ap.At, UndoUntil: ap.UndoUntil, Commit: ap.Commit, Edited: ap.Edited}
 		if out.UndoUntil == nil && !ap.UndoUntil.IsZero() {
 			u := ap.UndoUntil
 			out.UndoUntil = &u
@@ -251,11 +266,26 @@ func (b *appBackend) FactoryJobDismiss(ctx context.Context, p appwire.FactoryJob
 	return b.jobWrite(ctx, p.Factory, appwire.JobActDismiss, p.Job, factoryVerbDismiss, guardBody{p.Expect})
 }
 
+// FactoryJobDrop is Drop. The factory deletes the job's local branch and
+// folder, and refuses one whose work would be lost unless Discard says yes.
 func (b *appBackend) FactoryJobDrop(ctx context.Context, p appwire.FactoryJobDropParams) (appwire.FactoryJobActed, error) {
 	return b.jobWrite(ctx, p.Factory, appwire.JobActDrop, p.Job, factoryVerbDrop, struct {
-		Words  string      `json:"words,omitempty"`
-		Expect *api.Expect `json:"expect,omitempty"`
-	}{p.Words, p.Expect})
+		Discard bool        `json:"discard,omitempty"`
+		Expect  *api.Expect `json:"expect,omitempty"`
+	}{p.Discard, p.Expect})
+}
+
+// FactoryJobRestore is Bring back. The factory refuses a job that was not
+// dropped, and only the job's person may bring it back.
+func (b *appBackend) FactoryJobRestore(ctx context.Context, p appwire.FactoryJobActionParams) (appwire.FactoryJobActed, error) {
+	return b.jobWrite(ctx, p.Factory, appwire.JobActRestore, p.Job, factoryVerbRestore, guardBody{p.Expect})
+}
+
+// FactoryJobRunAgain is Run again. The factory refuses a job that carries no
+// failure (a person's stop that cut a step is one) and whose pull request was
+// not closed unmerged, and only the job's person may run it again.
+func (b *appBackend) FactoryJobRunAgain(ctx context.Context, p appwire.FactoryJobActionParams) (appwire.FactoryJobActed, error) {
+	return b.jobWrite(ctx, p.Factory, appwire.JobActRunAgain, p.Job, factoryVerbRunAgain, guardBody{p.Expect})
 }
 
 func (b *appBackend) FactoryJobUnassign(ctx context.Context, p appwire.FactoryJobActionParams) (appwire.FactoryJobActed, error) {
@@ -306,12 +336,38 @@ func (b *appBackend) FactoryJobRetryPublish(ctx context.Context, p appwire.Facto
 	return b.jobWrite(ctx, p.Factory, appwire.JobActRetryPublish, p.Job, factoryVerbRetryPublish, guardBody{p.Expect})
 }
 
+// FactoryJobMerge presses Merge. The factory's merge gate decides and its
+// refusal comes back whole; a merge it takes waits with Undo, then rides the
+// job's lease to the runner that carries it out.
+func (b *appBackend) FactoryJobMerge(ctx context.Context, p appwire.FactoryJobMergeParams) (appwire.FactoryJobActed, error) {
+	return b.jobWrite(ctx, p.Factory, appwire.JobActMerge, p.Job, factoryVerbMerge, struct {
+		Commit string      `json:"commit,omitempty"`
+		Expect *api.Expect `json:"expect,omitempty"`
+	}{p.Commit, p.Expect})
+}
+
+func (b *appBackend) FactoryJobSetModel(ctx context.Context, p appwire.FactoryJobSetModelParams) (appwire.FactoryJobActed, error) {
+	acted, err := b.jobWrite(ctx, p.Factory, appwire.JobActSetModel, p.Job, "model", struct {
+		Model     string      `json:"model"`
+		Automatic *bool       `json:"automatic,omitempty"`
+		Expect    *api.Expect `json:"expect,omitempty"`
+	}{p.Model, p.Automatic, p.Expect})
+	if err == nil {
+		// The job's agent reads the job's model too (appfactory_chats.go).
+		b.jobAgentModel(p.Factory, p.Job)
+	}
+	return acted, err
+}
+
 func (b *appBackend) FactoryJobStepStop(ctx context.Context, p appwire.FactoryJobStepParams) (appwire.FactoryJobActed, error) {
 	return b.jobWrite(ctx, p.Factory, appwire.JobActStepStop, p.Job, "steps/"+stepSegment(p.Step)+"/stop", guardBody{p.Expect})
 }
 
 func (b *appBackend) FactoryJobStepRerun(ctx context.Context, p appwire.FactoryJobStepParams) (appwire.FactoryJobActed, error) {
-	return b.jobWrite(ctx, p.Factory, appwire.JobActStepRerun, p.Job, "steps/"+stepSegment(p.Step)+"/rerun", guardBody{p.Expect})
+	return b.jobWrite(ctx, p.Factory, appwire.JobActStepRerun, p.Job, "steps/"+stepSegment(p.Step)+"/rerun", struct {
+		Expect *api.Expect `json:"expect,omitempty"`
+		Words  string      `json:"words,omitempty"`
+	}{p.Expect, p.Words})
 }
 
 // stepSegment is a step name as one path segment. The name was checked to

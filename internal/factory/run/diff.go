@@ -22,6 +22,9 @@ import (
 func Diff(prev, cur factory.Item) (factory.RunReport, bool) {
 	ps, cs := streamOf(prev), streamOf(cur)
 	var r factory.RunReport
+	if !reflect.DeepEqual(prev.FollowUp, cur.FollowUp) {
+		r.FollowUp = cur.FollowUp
+	}
 	if pipelineMoved(prev, cur) {
 		r.Pipeline = &factory.PipelineChange{Stages: cur.Stages, Phases: cs.Phases}
 	}
@@ -65,6 +68,15 @@ func Diff(prev, cur factory.Item) (factory.RunReport, bool) {
 	}
 	if len(cur.Notes) > len(prev.Notes) && reflect.DeepEqual(cur.Notes[:len(prev.Notes)], prev.Notes) {
 		r.Notes = append([]string(nil), cur.Notes[len(prev.Notes):]...)
+	}
+	r.Merge = mergeMoved(prev, cur)
+	// Retry counters reset when local work completes, including publication
+	// and observed-head rechecks. Transport identity stays on the held attempt;
+	// the service derives acknowledgement from the accepted completion.
+	if r.FollowUp != nil && prev.FollowUp != nil && r.FollowUp.Attempt == 0 && prev.FollowUp.Attempt > 0 {
+		f := *r.FollowUp
+		f.Attempt = prev.FollowUp.Attempt
+		r.FollowUp = &f
 	}
 	r.Log = without(r.Log, echoes(prev, r))
 	return r, !reflect.DeepEqual(r, factory.RunReport{})
@@ -143,9 +155,9 @@ func unlanded(lines []factory.LogLine) []factory.LogLine {
 	return kept
 }
 
-// stepsMoved is each phase whose state, round or result changed. An approve
-// step is never reported: its question puts it waiting, and the person's
-// answer on the server passes it or sends it back.
+// stepsMoved is each phase whose state, round, start or result changed. An
+// approve step is never reported: its question puts it waiting, and the
+// person's answer on the server passes it or sends it back.
 func stepsMoved(prev, cur []factory.Phase) []factory.StageReport {
 	was := map[string]factory.Phase{}
 	for _, ph := range prev {
@@ -154,13 +166,13 @@ func stepsMoved(prev, cur []factory.Phase) []factory.StageReport {
 	var out []factory.StageReport
 	for _, ph := range cur {
 		old, seen := was[ph.Name]
-		if seen && old.State == ph.State && old.Round == ph.Round && reflect.DeepEqual(old.Result, ph.Result) && reflect.DeepEqual(old.Rounds, ph.Rounds) && reflect.DeepEqual(old.Failure, ph.Failure) {
+		if seen && old.Chat == ph.Chat && old.State == ph.State && old.Round == ph.Round && old.RoundLimit == ph.RoundLimit && reflect.DeepEqual(old.Verification, ph.Verification) && old.Started.Equal(ph.Started) && reflect.DeepEqual(old.Result, ph.Result) && reflect.DeepEqual(old.Rounds, ph.Rounds) && reflect.DeepEqual(old.Failure, ph.Failure) {
 			continue
 		}
 		if ph.Kind == factory.StageGate {
 			continue
 		}
-		step := factory.StageReport{Name: ph.Name, State: ph.State, Round: ph.Round}
+		step := factory.StageReport{Name: ph.Name, Chat: ph.Chat, State: ph.State, Round: ph.Round, RoundLimit: ph.RoundLimit, Verification: ph.Verification, Started: ph.Started}
 		if ph.Result != nil && (!seen || !reflect.DeepEqual(old.Result, ph.Result)) {
 			res := *ph.Result
 			res.Edit = nil
@@ -223,7 +235,7 @@ func asked(prev, cur factory.Item) (*factory.Asked, string) {
 	}
 	q := factory.Asked{Question: cur.Question}
 	if a := cur.Asking; a != nil {
-		q.Stage, q.Options, q.Pick, q.Why = a.Stage, a.Options, a.Pick, a.Why
+		q.Stage, q.Options, q.Pick, q.Why, q.At = a.Stage, a.Options, a.Pick, a.Why, a.At
 	} else if s := cur.Stream; s != nil && s.Cur >= 0 && s.Cur < len(s.Phases) {
 		q.Stage = s.Phases[s.Cur].Name
 	}

@@ -12,7 +12,7 @@ package run
 //     issue, the recipe and the stages. An answer goes back to the step at
 //     once, and the manager conversation says `manager answered plan: …`;
 //   - anything else (the manager sends it on, its turn fails or takes longer
-//     than the shaping wait, there is no manager) sends the question to the
+//     than the turn's wait, there is no manager) sends the question to the
 //     person: the manager conversation says `plan asks you: … · why`, the item
 //     needs you with the question on it, and THE STEP WAITS. The person answers
 //     in the manager conversation (any words: the question takes words) or with
@@ -151,7 +151,7 @@ func (lp *floorLoop) inbox(ctx context.Context, c *loopCtl, i int, stage string,
 }
 
 // managerAnswers is the manager's one turn on a step's question, under the
-// round's ctx and the shaping wait. A turn that fails or does not answer in
+// round's ctx and the turn's wait ([floorLoop.shapeWait]). A turn that fails or does not answer in
 // time is no answer, which sends the question to the person.
 func (lp *floorLoop) managerAnswers(ctx context.Context, c *loopCtl, q factory.Asked) InboxReply {
 	fn := lp.r.opts.Inbox
@@ -277,4 +277,28 @@ func dropStaleAsk(it *factory.Item) {
 	if it.QKind == qkindStep {
 		it.Question, it.QKind = "", ""
 	}
+}
+
+// The two reasons a manager turn did not happen, by name: the door that gives
+// the turn (cmd/codeaf's) wraps them, so a caller can tell a busy conversation
+// from one that never answered.
+//
+//   - ErrManagerBusy: the conversation is open in this process and was in the
+//     middle of a turn of its own, asked once more after it, and still was;
+//   - ErrManagerAway: another process holds the conversation (a window on the
+//     engine host, `--host`), so this runner cannot give it a turn. No retry.
+var (
+	ErrManagerBusy = errors.New("the manager was busy in the window")
+	ErrManagerAway = errors.New("the manager is open in another window")
+)
+
+// shapeWaitDefault is how long a manager turn may take when
+// [Options.ShapeWait] is zero.
+const shapeWaitDefault = time.Minute
+
+func (lp *floorLoop) shapeWait() time.Duration {
+	if d := lp.r.opts.ShapeWait; d > 0 {
+		return d
+	}
+	return shapeWaitDefault
 }

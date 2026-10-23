@@ -97,18 +97,6 @@ type Seam struct {
 	// refused edit changes nothing and answers why. A running item's runner
 	// reads the new stages at its next round.
 	Edit func(ctx context.Context, id int, e RunEdit) (Item, []string, error)
-	// Shape is `shape steps`: the item's manager is given its shaping turn
-	// now, because the person asked (the owner's journey, 2026-10-09: OPENING
-	// AN ISSUE RUNS NOTHING, and the manager shapes only when asked). The
-	// manager conversation is made when the item has none (no model is asked
-	// for that), given one turn, and the edit it makes is applied as the
-	// launch applies it: to every step before a run, to the steps not yet
-	// started during one. Nothing is run. The line it recorded goes into the
-	// conversation and is answered (`manager set …`, or `the recipe stands`);
-	// [ShapeAlready] while a turn for the item is already out. A turn that did
-	// not answer, an edit refused, or an item whose run is over is an error in
-	// words.
-	Shape func(ctx context.Context, id int) (line string, err error)
 
 	// THE FLOOR'S OWN SETTINGS (settings.go), each a door like every other:
 	// nil is a key the floor does not draw.
@@ -187,11 +175,21 @@ type Seam struct {
 	// short name the floor shows, when only one watched repository has it),
 	// into the factory's own folder, and records the folder as the
 	// repository's checkout, so the next Load's [Snapshot.Checkouts] and every
-	// run read it. dir is the folder. It may take a minute; the surface asks
-	// it off the loop, and only when a person said yes to it. A REPOSITORY
+	// run read it. dir is the folder. It may take a minute, so it is asked
+	// off the loop; the runner clones through the same door on the first step
+	// of a run that has no checkout, so no start waits on it. A REPOSITORY
 	// THIS MACHINE ALREADY KNOWS A FOLDER FOR IS NEVER CLONED AGAIN: the door
 	// answers that folder.
 	Clone func(ctx context.Context, repo string) (dir string, err error)
+	// CheckoutOf says how a run of repo gets its checkout on this machine
+	// (checkout.go): [CheckoutHere], [CheckoutWillClone] (the runner clones
+	// it on the first step), or [CheckoutMissing] with the [NeedsCheckout]
+	// that says why it cannot be cloned; the error is non-nil only then. An
+	// empty repo answers "" and nil: there is nothing to check out. Every
+	// start asks it before it writes anything, and Launch refuses a missing
+	// one whatever asked. NIL IS A SEAM THAT DOES NOT KNOW (a remote factory's,
+	// whose runners keep their own checkouts), which refuses nothing.
+	CheckoutOf func(ctx context.Context, repo string) (CheckoutState, error)
 
 	// THE FIRST OFFER OF A RECIPE FILE: a repository with no
 	// `.codeaf/factory.yaml` is asked once, when its first item lands, whether
@@ -220,11 +218,6 @@ func (s Seam) Job(id int) Seam {
 	}
 	return s
 }
-
-// ShapeAlready is what [Seam.Shape] answers while a shaping turn for the item
-// is already out: the second press asks nothing, and the surface says nothing
-// for it.
-const ShapeAlready = "already shaped"
 
 // Has says whether a door exists, by the door's name: the field's name in
 // lower case (`launch`, `signoff`, `addstage`, `tick`). A name that is not a
@@ -274,8 +267,6 @@ func (s Seam) Has(door string) bool {
 		return s.SetEffort != nil
 	case "edit":
 		return s.Edit != nil
-	case "shape":
-		return s.Shape != nil
 	case "repos":
 		return s.Repos != nil
 	case "setrepos":
@@ -308,6 +299,8 @@ func (s Seam) Has(door string) bool {
 		return s.Open != nil
 	case "clone":
 		return s.Clone != nil
+	case "checkoutof":
+		return s.CheckoutOf != nil
 	case "recipeoffer":
 		return s.RecipeOffer != nil
 	case "writerecipe":

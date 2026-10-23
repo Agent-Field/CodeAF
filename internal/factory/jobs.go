@@ -8,13 +8,10 @@ import (
 )
 
 // DefaultJobBudget is the pipeline default when no file supplies one.
-const DefaultJobBudget = 3.0
+const DefaultJobBudget = 5.0
 
 // ApprovalUndo is the interval during which consent has no outward effect.
 const ApprovalUndo = 5 * time.Second
-
-// DroppedBranchRetention is how long a dropped job keeps its branch.
-const DroppedBranchRetention = 7 * 24 * time.Hour
 
 // JobPriority records a person's choice; defaults are derived from labels.
 type JobPriority struct {
@@ -24,6 +21,7 @@ type JobPriority struct {
 
 // Approval preserves consent across server restarts without storing credentials.
 type Approval struct {
+	Automatic bool      `json:"automatic,omitempty"`
 	Kind      string    `json:"kind"`
 	State     string    `json:"state"`
 	Matched   string    `json:"matched,omitempty"`
@@ -121,7 +119,7 @@ const (
 )
 
 // ShownSize is the ONE resolver every DISPLAY or FILTER of an item's size
-// reads (`size:`, `risky`, `when: large`, the shaping turn, the chat floor),
+// reads (`size:`, `risky`, `when: large`, the manager's turn, the chat floor),
 // and it answers (letter, source). A size label a person set wins; else a
 // forge's measured diff (SizeFrom "diff"); else a completed read's size
 // (SizeFrom "read" with the item triaged). Anything else, a legacy document
@@ -158,16 +156,30 @@ func IsDismissed(it Item, person string) bool {
 
 // JobState projects historical engine states into the five canvas states.
 func JobState(it Item) string {
+	if it.PullRequest != nil && (it.PullRequest.State == PRMerged || it.PullRequest.State == PRClosed) {
+		return "done"
+	}
 	if it.DoneHow != "" || it.State == StateDismissed {
 		return "done"
 	}
+	if it.FollowUp != nil && it.FollowUp.State == "needs_you" && it.PullRequest != nil && it.PullRequest.State == PROpen {
+		return "needs_you"
+	}
 	if it.PublishError != "" || it.Failure != nil || (it.PublishStatus != nil && it.PublishStatus.State == "failed") {
+		return "needs_you"
+	}
+	// A MERGE THAT FAILED IS YOURS TO LOOK AT: the gate or the forge said no,
+	// and nothing tries again on its own.
+	if m := it.Merging; m != nil && m.State == MergeFailed && (it.PullRequest == nil || it.PullRequest.State == PROpen) {
 		return "needs_you"
 	}
 	if it.State == StateShipped {
 		if pr := it.PullRequest; pr != nil {
 			if pr.State == PRMerged || pr.State == PRClosed {
 				return "done"
+			}
+			if it.FollowUp != nil && (it.FollowUp.State == "watching" || it.FollowUp.State == "healthy") {
+				return "running"
 			}
 			if pr.ReviewDecision == "changes_requested" || pr.Conflict {
 				return "needs_you"
@@ -190,6 +202,36 @@ func JobState(it Item) string {
 		return "backlog"
 	}
 }
+
+// DroppedRefusal is the end of the sentence every door that would start or
+// change a dropped job is refused with, after the job's reference. The
+// factory's HTTP door reads it to answer that refusal as a conflict, so it is
+// spelled once, here.
+const DroppedRefusal = "was dropped · Bring back returns it to Backlog"
+
+// RefuseDropped is that refusal for a dropped job, and nil for any other.
+//
+// A DROPPED JOB IS REFUSED WITH ITS WAY BACK. Bring back is the one door out
+// of a drop, so the refusal names it rather than calling the drop final: an
+// agent that relays this sentence to a person must not tell them the job can
+// never run again. AND NO DOOR CLAIMS A CHANGE THAT CANNOT TAKE EFFECT: the
+// drop deleted the job's conversations, nothing of it runs, and Bring back
+// starts it again from its repository's recipe, so a step edit, a note or a
+// budget let through here would be a change nobody ever reads.
+func RefuseDropped(it Item) error {
+	if it.DoneHow == "closed_locally" {
+		return fmt.Errorf("%s is closed locally · Reopen keeps its work and spending", it.Ref())
+	}
+	if it.DoneHow != "dropped" {
+		return nil
+	}
+	return fmt.Errorf("%s %s", it.Ref(), DroppedRefusal)
+}
+
+// RunEnded says the job's last run is over and says why, a step's failure or
+// a person's stop, and nothing has started it again. Such a job has nothing
+// to stop: it waits for a person to start it, run it again or drop it.
+func RunEnded(it Item) bool { return it.State == StateNew && it.Failure != nil }
 
 func JobDoneHow(it Item) string {
 	if it.DoneHow != "" {
@@ -217,6 +259,9 @@ func JobReason(it Item) string {
 	if JobState(it) == "needs_you" {
 		if it.PublishError != "" || (it.PublishStatus != nil && it.PublishStatus.State == "failed") {
 			return "publish_failed"
+		}
+		if m := it.Merging; m != nil && m.State == MergeFailed {
+			return "merge_failed"
 		}
 		if it.Failure != nil {
 			if it.Failure.Code == CodeMachineLost {
@@ -253,6 +298,9 @@ func JobReason(it Item) string {
 	if JobState(it) == "running" {
 		if it.Publishing {
 			return "publishing"
+		}
+		if m := it.Merging; m != nil && (m.State == MergeQueued || m.State == MergeMerging) {
+			return "merging"
 		}
 		if it.PullRequest != nil {
 			return "github"

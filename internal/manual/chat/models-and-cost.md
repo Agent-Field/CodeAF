@@ -80,6 +80,32 @@ Over `--host`, the picker and its prices are this laptop's catalog, while the co
 window used for compaction comes from the far machine's catalog. The machine doing the
 work owns that execution limit even when the two catalog caches differ.
 
+## Desktop chat model picker: main and fallback models
+
+Each desktop conversation has its own Main and Fallback model. Both use the
+searchable model list in the same dropdown; Fallback can be None. The default
+pair comes from Settings → Models. Factory managers and steps start with the
+same defaults, then keep their own choices: changing one chat does not change
+the job, another chat or a later step. A saved pair survives reopening.
+
+Every new request starts with Main. If it fails through the existing bounded
+recovery path, the engine can try only the selected Fallback. Successful or
+failed fallback use does not replace Main: the next request starts there again.
+Same-model retries and budget guards still apply. A one-model launch cannot use
+a fallback, and the picker explains that restriction.
+
+The dropdown button names this chat's active model, including provider-confirmed
+concrete names. Between requests it shows Main. It never borrows a step's identity
+for its manager or prints a list of previous and future models. Missing catalogue
+rows keep known ids; an unknown identity is reported as unavailable.
+
+Changing either slot never interrupts a request, including one waiting for its
+first token. The new pair applies to subsequent requests. Main/Fallback edits,
+using Fallback, and returning to Main produce chronological, dismissible info
+notices in that conversation. Notices are durable journal facts outside the
+provider transcript. Background titles and memory do not replace chat identity.
+Factory Auto/Manual approval automation is separate from model selection.
+
 ## Which model is the default — Ollama only, a removed model, or no available models
 
 On a local launch, the opening model comes from the same available chat list as
@@ -1382,7 +1408,7 @@ down too. Under this flag **nothing hops** — not on a refusal,
 not on a reply that keeps stalling, not on rate limiting that will not clear — because a
 run whose cost is being attributed to one model cannot have finished a single reply on
 another. That includes the catalog's own guess: with no `fallback models` row written, an
-ordinary run falls back to the nearest same-class model, and this flag withholds that too.
+ordinary run defaults to DeepSeek V4.1 Flash, and this flag withholds that too.
 
 **The two calls that ordinarily refuse the conversation's model ride it too.** The reader that
 decides whether a long answer is moved to a task, and the writer of the brief that task opens
@@ -1507,7 +1533,7 @@ you hand this chat, this piece of work, or this model back to whatever stands ab
 and wrapped from `max` to `low`.) `/effort auto` and the top row of `/effort` still clear
 this conversation in one move from any rung. An automation has no rung for it to move.
 The **thinking** row in `/settings` stays what it is: the answer for every conversation
-that has not been dialled by hand. The keys page has the whole of it — see *The thinking chip above the message box* and *alt+e — how hard the
+that has not been dialled by hand. The keys page has the whole of it — see *What is the chip above the message box — the thinking chip, `alt+e`, `/effort`, and how to make this one chat think harder* and *alt+e — how hard the
 thing you are looking at thinks*.
 
 **Three doors, one rung.** `alt+e`, a press on the rung itself, and `/effort`:
@@ -1665,8 +1691,7 @@ the model · asking again · 2 of 3`, or `the model went quiet mid-reply · aski
 2 of 3`.
 
 **If all three attempts come back with nothing, codeaf finishes the reply on another
-model** — the next one in your `fallback models` row, or the nearest same-class model in
-the catalog when you have written no row. It is said out loud before it happens, naming
+model** — the next one in your `fallback models` row, or DeepSeek V4.1 Flash by default when you have written no row. It is said out loud before it happens, naming
 where the rest of the answer is coming from:
 
 ```
@@ -1910,7 +1935,7 @@ while it is replying* above, and *I changed the model but my task is still on th
 
 Yes. **A model that will not take your request at all is given up on the same way a model
 that goes quiet is: codeaf finishes the reply on the next model in your `fallback models`
-row**, or on the nearest same-class model in the catalog when you have written no row.
+row**, or on DeepSeek V4.1 Flash when you have written no row.
 
 This is what happens. A request that fails outright — a refusal from the machine serving
 your model, a `502`, a torn connection, a deadline — is asked again, with a dim line each
@@ -4412,3 +4437,18 @@ crew daily cap, including open models, price rules and incremental +model/-model
 forms. The crew daily cap is separate from the machine spending limit and member
 conversation budgets. Crew settings are machine-local; a client using `--host`
 must change those on that machine.
+
+
+## Automatic model selection is unavailable under one-model — explicit choice versus launch policy
+
+A conversation launched with `--one-model`, including a factory worker using that
+launch constraint, always uses Fixed policy. Its model menu disables Automatic
+model selection and explains the lock. A request to enable Automatic during a
+factory stage records a notice and leaves the stage running; it does not turn a
+settings refusal into a failed step. Selecting another permitted model still works.
+
+The execution snapshot reports effective `mode` separately from the explicit
+`chosen` preference and `locked_reason`. An inherited choice has no `chosen` value.
+The temporary launch constraint is not saved as a new personal Fixed preference.
+An explicit Fixed preference remains saved; an explicit Automatic preference can
+apply again when the conversation is reopened without the launch constraint.

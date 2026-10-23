@@ -37,15 +37,30 @@ func enrich(e *Event) {
 			e.Verb = "requested changes"
 		case PRMerged:
 			e.Verb = "merged"
-		case PRClosed:
+		case PRClosed, SourceClosed:
 			e.Verb = "closed"
+		case ClosedLocally:
+			e.Verb = "closed locally"
+		case Restored:
+			e.Verb = "brought back"
+		case MergeAsked:
+			e.Verb = "pressed merge"
+		case MergeQueued:
+			e.Verb = "sent merge"
+		case MergeRefused:
+			e.Verb = "refused merge"
 		case StepFailed:
 			e.Verb = "failed"
 		case "priority_changed":
 			e.Verb = "changed priority"
+		case BudgetChanged:
+			e.Verb = "changed budget"
 		case "budget_raised":
 			e.Verb = "raised budget"
 		case "branch_deleted":
+			// Older receipts only: the seven-day deletion of a dropped job's
+			// branch that wrote them is gone, and a drop now deletes the job's
+			// local work at once, inside the drop's own receipt.
 			e.Verb = "deleted branch"
 		case Took:
 			e.Verb = "assigned"

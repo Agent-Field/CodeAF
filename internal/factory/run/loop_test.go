@@ -60,8 +60,13 @@ func (g *rig) add(title string, stages ...factory.Stage) int {
 	for i := range stages {
 		stages[i].On = true
 	}
-	id, err := g.st.Add(context.Background(), factory.Item{Title: title, Repo: "acme/api", Stages: stages})
+	id, err := g.st.Add(context.Background(), factory.Item{Autonomy: factory.AutonomyManual, Title: title, Repo: "acme/api", Stages: stages})
 	if err != nil {
+		g.t.Fatal(err)
+	}
+	// Existing protocol fixtures predate the persisted approval modes.
+	// Explicit-mode publication behavior has its own real service fixtures.
+	if err := g.st.Update(id, func(it *factory.Item) error { it.Autonomy = ""; return nil }); err != nil {
 		g.t.Fatal(err)
 	}
 	return id
@@ -158,7 +163,7 @@ func TestLaunchRunsStagesInOrderAndLands(t *testing.T) {
 	if s.Bench != 1 || s.Started.IsZero() || s.Ended.IsZero() {
 		t.Fatalf("stream = bench %d, started %v, ended %v", s.Bench, s.Started, s.Ended)
 	}
-	if !logHas(it, "write: write went fine") || !logHas(it, "landed · proof sheet ready · your approval") {
+	if !logHas(it, "write: write went fine") || !logHas(it, sayLanded) {
 		t.Fatalf("log = %+v", s.Log)
 	}
 	if err := g.r.Launch(id); err == nil || !strings.Contains(err.Error(), "has landed") {
@@ -330,7 +335,7 @@ func TestUntilCleanWithMaxTwoLoopsTwiceThenAsks(t *testing.T) {
 	if err := g.r.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	q := "review is not clean after 2 rounds: 2 findings · try once more, send it back, or cancel the job?"
+	q := "review is not clean after 2 rounds: 2 findings · try again, or stop the job?"
 	it := g.asked(id, q)
 	if calls.Load() != 2 || it.QKind != factory.QKindOutOfAttempts {
 		t.Fatalf("calls %d, kind %q", calls.Load(), it.QKind)
@@ -341,7 +346,7 @@ func TestUntilCleanWithMaxTwoLoopsTwiceThenAsks(t *testing.T) {
 	if err := g.r.Answer(id, true, ""); err != nil {
 		t.Fatal(err)
 	}
-	g.asked(id, "review is not clean after 3 rounds: 2 findings · try once more, send it back, or cancel the job?")
+	g.asked(id, "review is not clean after 3 rounds: 2 findings · try again, or stop the job?")
 	if calls.Load() != 3 {
 		t.Fatalf("one more round ran %d calls", calls.Load())
 	}
@@ -349,8 +354,47 @@ func TestUntilCleanWithMaxTwoLoopsTwiceThenAsks(t *testing.T) {
 		t.Fatal(err)
 	}
 	it = g.waitState(id, factory.StateNew)
-	if it.Question != "" || it.Failure != nil || !logHas(it, "stopped · branch kept") {
+	// A NO TO A STEP OUT OF ROUNDS IS THE PERSON'S STOP, and the job and the
+	// step it cut say so.
+	if it.Question != "" || it.Failure == nil || it.Failure.Code != factory.CodeStopped || it.Failure.Step != "review" || !logHas(it, "stopped · branch kept") {
 		t.Fatalf("cancel = %+v failure %+v", it.Stream, it.Failure)
+	}
+	if ph := it.Stream.Phases[0]; ph.State != factory.PhaseFailed || ph.Failure == nil || ph.Failure.Code != factory.CodeStopped {
+		t.Fatalf("the cancelled step = %+v", ph)
+	}
+}
+
+// ROUNDS ARE NAMED ONLY WHERE THERE WERE ROUNDS, a step that never reported
+// says so, and send it back is offered only where there is a step to go back
+// to.
+func TestAStepThatStoppedSaysWhatHappenedInPlainWords(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		stage factory.Stage
+		round int
+		res   factory.StageResult
+		note  string
+		why   string
+	}{
+		{"never reported", factory.Stage{Name: "plan"}, 1, factory.StageResult{Output: stageNoReport}, "plan stopped without reporting", ""},
+		{"turn broke", factory.Stage{Name: "plan"}, 1, factory.StageResult{Output: stageNoReport + ": the provider refused"}, "plan stopped without reporting", "the provider refused"},
+		{"walled", factory.Stage{Name: "write"}, 1, factory.StageResult{Output: stageWalled}, "write ran out of time without reporting", ""},
+		{"one try, could not", factory.Stage{Name: "plan"}, 1, factory.StageResult{Output: "the issue names a file that is gone\nmore"}, "plan did not finish", "the issue names a file that is gone"},
+		{"one try, until held back", factory.Stage{Name: "test", Until: factory.UntilProven, Max: 1}, 1, factory.StageResult{Done: true, Claims: []factory.Claim{{Text: "a", OK: true, Evidence: "x"}, {Text: "b"}}}, "test is not proven", "1 of 2 claims shown"},
+		{"loops", factory.Stage{Name: "review", Until: factory.UntilClean, Max: 2}, 2, factory.StageResult{Done: true, Findings: 2}, "review is not clean after 2 rounds", "2 findings"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			note, why := stepShort(tc.stage.Name, tc.stage, tc.round, tc.res)
+			if note != tc.note || why != tc.why {
+				t.Fatalf("stepShort = %q, %q; want %q, %q", note, why, tc.note, tc.why)
+			}
+			if strings.Contains(note, "round") && tc.stage.Max <= 1 {
+				t.Fatalf("a one-try step named rounds: %q", note)
+			}
+		})
+	}
+	if stepShortChoices(false) != "try again, or stop the job?" || stepShortChoices(true) != "try again, send it back, or stop the job?" {
+		t.Fatal("the choices offered a step to go back to that is not there")
 	}
 }
 
@@ -369,7 +413,7 @@ func TestOutOfAttemptsSendBackRunsThePreviousStep(t *testing.T) {
 	if err := g.r.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	q := "review is not clean after 1 round: 1 finding · try once more, send it back, or cancel the job?"
+	q := "review is not clean: 1 finding · try again, send it back, or stop the job?"
 	g.asked(id, q)
 	if err := g.r.Answer(id, false, "send_back: use the other file"); err != nil {
 		t.Fatal(err)
@@ -477,10 +521,11 @@ func TestThePlanEditIsAppliedUnderAdaptAndAskedUnderAsk(t *testing.T) {
 
 func TestStopMidRound(t *testing.T) {
 	cut := make(chan struct{})
+	var once sync.Once
 	g := newRig(t, map[factory.StageKind]Executor{
 		factory.StageChat: ExecutorFunc(func(ctx context.Context, job Job) (factory.StageResult, error) {
 			<-ctx.Done()
-			close(cut)
+			once.Do(func() { close(cut) })
 			return factory.StageResult{}, ctx.Err()
 		}),
 	}, nil)
@@ -503,13 +548,107 @@ func TestStopMidRound(t *testing.T) {
 	if it.Stream == nil || it.Stream.Phases[0].State != factory.PhaseFailed || !logHas(it, "stopped · branch kept") {
 		t.Fatalf("stopped stream = %+v", it.Stream)
 	}
+	assertStoppedByYou(t, it, "write")
 	if err := g.r.Stop(id); err == nil || err.Error() != "#1 is not running" {
 		t.Fatalf("a second stop = %v", err)
 	}
 	// The stream is kept for the log, and the item launches again from new.
 	time.Sleep(20 * time.Millisecond)
-	if again, _ := g.st.Get(id); again.State != factory.StateNew {
-		t.Fatalf("a stopped round wrote after the stop: %s", again.State)
+	if again, _ := g.st.Get(id); again.State != factory.StateNew || again.Failure == nil {
+		t.Fatalf("a stopped round wrote after the stop: %s %+v", again.State, again.Failure)
+	}
+	// A START TAKES THE STOP DOWN: the run begins again at its first step.
+	if err := g.r.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	again, _ := g.st.Get(id)
+	if again.Failure != nil || again.Stream == nil || again.Stream.Phases[0].State == factory.PhaseFailed || again.Stream.Phases[0].Failure != nil {
+		t.Fatalf("a start kept the stop: %+v %+v", again.Failure, again.Stream)
+	}
+	if err := g.r.Stop(id); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A STOP OF A JOB NO RUNNER HERE HOLDS IS THE SAME FACT AS THE LOOP'S OWN: a
+// process that died mid-round left the job running, and the stop marks the
+// step it cut and the job exactly as a stop of a live run does.
+func TestStopWithNoRunMarksTheJobAndTheStepItCut(t *testing.T) {
+	g := newRig(t, map[factory.StageKind]Executor{}, nil)
+	id := g.add("one", chat("plan"), chat("write"), chat("review"))
+	now := time.Date(2026, 10, 19, 9, 0, 0, 0, time.UTC)
+	if err := g.st.Update(id, func(it *factory.Item) error {
+		it.State = factory.StateRunning
+		it.Stream = &factory.Stream{Cur: 1, Spent: 0.75, Started: now, Phases: []factory.Phase{
+			{Name: "plan", Kind: factory.StageChat, State: factory.PhaseDone},
+			{Name: "write", Kind: factory.StageChat, State: factory.PhaseRunning, Round: 2},
+			{Name: "review", Kind: factory.StageChat, State: factory.PhasePending},
+		}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.r.Stop(id); err != nil {
+		t.Fatal(err)
+	}
+	it, _ := g.st.Get(id)
+	if it.State != factory.StateNew || it.Stream.Phases[0].State != factory.PhaseDone || it.Stream.Phases[2].State != factory.PhasePending || it.Stream.Spent != 0.75 || !logHas(it, "stopped · branch kept") {
+		t.Fatalf("stopped = %s %+v", it.State, it.Stream)
+	}
+	assertStoppedByYou(t, it, "write")
+	if it.Failure.Attempts != 2 {
+		t.Fatalf("the stop forgot the step's rounds: %+v", it.Failure)
+	}
+	if err := g.r.Stop(id); err == nil || err.Error() != "#1 is not running" {
+		t.Fatalf("a second stop = %v", err)
+	}
+}
+
+// A STOP THAT CUT NO STEP LEAVES NO MARK: a queued job whose steps had not
+// begun is simply back in the backlog, with nothing failed.
+func TestStopBeforeAnyStepBeganIsBacklog(t *testing.T) {
+	g := newRig(t, map[factory.StageKind]Executor{}, nil)
+	id := g.add("one", chat("plan"), chat("write"))
+	now := time.Date(2026, 10, 19, 9, 0, 0, 0, time.UTC)
+	if err := g.st.Update(id, func(it *factory.Item) error {
+		it.State = factory.StateQueued
+		it.Stream = &factory.Stream{Started: now, Phases: loopPhases(*it)}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.r.Stop(id); err != nil {
+		t.Fatal(err)
+	}
+	it, _ := g.st.Get(id)
+	if it.State != factory.StateNew || it.Failure != nil || factory.JobState(it) != "backlog" || factory.RunEnded(it) || !logHas(it, "stopped · branch kept") {
+		t.Fatalf("stopped before any step = %s %+v", factory.JobState(it), it.Failure)
+	}
+	for _, ph := range it.Stream.Phases {
+		if ph.State != factory.PhasePending || ph.Failure != nil {
+			t.Fatalf("a step that never began reads %+v", ph)
+		}
+	}
+}
+
+// assertStoppedByYou is the one shape a person's stop leaves: the job is new,
+// carries the stop as its failure, and the step it cut is failed with the same
+// stop, so no step reads running.
+func assertStoppedByYou(t *testing.T, it factory.Item, step string) {
+	t.Helper()
+	if f := it.Failure; it.State != factory.StateNew || f == nil || f.Code != factory.CodeStopped || f.Next != factory.FailureStopped || f.Step != step || f.Detail != "Stopped by you" {
+		t.Fatalf("the job does not say it was stopped: %s %+v", it.State, it.Failure)
+	}
+	for _, ph := range it.Stream.Phases {
+		if ph.State == factory.PhaseRunning || ph.State == factory.PhaseWaiting {
+			t.Fatalf("step %s still reads %s after the stop", ph.Name, ph.State)
+		}
+		if ph.Name == step && (ph.State != factory.PhaseFailed || ph.Failure == nil || ph.Failure.Code != factory.CodeStopped) {
+			t.Fatalf("the cut step = %+v", ph)
+		}
+	}
+	if factory.JobState(it) != "needs_you" || !factory.RunEnded(it) {
+		t.Fatalf("a stopped job reads %s", factory.JobState(it))
 	}
 }
 
@@ -1105,4 +1244,79 @@ func TestRunOnAnItemNobodyPausedIsRefused(t *testing.T) {
 	}
 	close(p.release)
 	g.waitState(id, factory.StateLanded)
+}
+
+// A MODEL CHOSEN WHILE A JOB RUNS reaches the step running now, and every step
+// after it opens on it.
+func TestAModelChosenMidRunReachesTheRunningStepAndTheNext(t *testing.T) {
+	var mu sync.Mutex
+	opened := map[string]string{}
+	heard := make(chan string, 1)
+	var g *rig
+	g = newRig(t, map[factory.StageKind]Executor{
+		factory.StageChat: ExecutorFunc(func(ctx context.Context, job Job) (factory.StageResult, error) {
+			mu.Lock()
+			opened[job.Stage.Name] = job.Item.Model
+			mu.Unlock()
+			if job.Stage.Name == "write" {
+				if err := g.r.SetModel(job.Item.ID, "vendor/strong"); err != nil {
+					t.Error(err)
+				}
+				select {
+				case m := <-job.ModelSelections:
+					heard <- m.Model
+				case <-time.After(5 * time.Second):
+					t.Error("the running step never heard the model")
+				}
+			}
+			return done(""), nil
+		}),
+	}, nil)
+	id := g.add("one", chat("write"), chat("review"))
+	if err := g.r.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	g.waitState(id, factory.StateLanded)
+	if m := <-heard; m != "vendor/strong" {
+		t.Fatalf("the running step heard %q", m)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if opened["write"] != "" || opened["review"] != "vendor/strong" {
+		t.Fatalf("opened on %+v", opened)
+	}
+}
+
+func TestModelSelectionReachesCurrentAndFutureStepsAsOneLatestChoice(t *testing.T) {
+	var g *rig
+	final := true
+	observed := make(chan ModelSelection, 1)
+	g = newRig(t, map[factory.StageKind]Executor{factory.StageChat: ExecutorFunc(func(ctx context.Context, job Job) (factory.StageResult, error) {
+		if job.Stage.Name == "write" {
+			for n := 0; n < 12; n++ {
+				enabled := n%2 == 1
+				if err := g.r.SetModelSelection(job.Item.ID, fmt.Sprintf("vendor/model-%d", n), &enabled); err != nil {
+					t.Error(err)
+				}
+			}
+			select {
+			case choice := <-job.ModelSelections:
+				observed <- choice
+			case <-ctx.Done():
+				t.Error(ctx.Err())
+			}
+		} else if job.Item.Model != "vendor/model-11" || job.Item.AutomaticModels == nil || *job.Item.AutomaticModels != final {
+			t.Errorf("next step opened on %q with policy %v", job.Item.Model, job.Item.AutomaticModels)
+		}
+		return done(""), nil
+	})}, nil)
+	id := g.add("one", chat("write"), chat("review"))
+	if err := g.r.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	g.waitState(id, factory.StateLanded)
+	got := <-observed
+	if got.Model != "vendor/model-11" || got.Automatic == nil || !*got.Automatic {
+		t.Fatalf("latest selection: %+v", got)
+	}
 }

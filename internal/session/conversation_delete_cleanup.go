@@ -113,6 +113,12 @@ func finishDeletedMemberships(profile, file string, choices map[string]string, s
 }
 
 func removeDeletedConversationJournal(file string) error {
+	// Verification receipts contain command history and belong to this journal,
+	// not to its deliverables. Owners have stopped before this cleanup runs.
+	// RemoveAll removes a symlink itself, preserving any unrelated target.
+	if err := os.RemoveAll(file + ".checks"); err != nil {
+		return err
+	}
 	for _, path := range []string{file + ".delete-pending", file} {
 		journal, err := os.OpenFile(path, os.O_RDWR, 0)
 		if os.IsNotExist(err) {

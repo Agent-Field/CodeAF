@@ -26,16 +26,23 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
+
+// stageResultToolName is the verb a stage reports with, and the one a turn
+// may be made to call ([Agent.FollowUpRequiring]).
+const stageResultToolName = "stage_result"
 
 // The sentences the model reads back. The manual quotes them
 // (internal/manual/chat/factory-stage-conversations.md).
 const (
-	stageReported      = "reported · the stage ends when you stop"
+	stageReported      = "reported"
 	stageNotReported   = "not reported: "
 	planProposed       = "proposed · the runner applies it within the recipe's bounds"
 	planNotProposed    = "not proposed: "
@@ -45,29 +52,22 @@ const (
 	planNeedsChange    = "Invalid arguments: plan_edit needs at least one of add, skip or on."
 )
 
-const stageResultDescription = "This conversation IS one stage of a factory item, and the ask you were given is its brief. " +
-	"Work as in any conversation: read, change, run, and hand parts that do not need each other to tasks so they run in parallel. " +
-	"End the stage by calling this ONCE, when the work is finished, with an honest account. " +
-	"done says whether the ask was carried out; findings counts the problems still open, and a stage that runs until clean needs zero; " +
-	"claims are what you say is now true, each with ok, its evidence and the medium that shows it (test, screenshot, transcript, benchmark, policy); " +
-	"notes are sentences for the stages after this one; output is what you did, in a few lines. " +
-	"Nothing is posted anywhere, by this or by anything in the stage. The stage ends when you stop after calling it."
-
-const planEditDescription = "Propose a change to this factory item's stages, from inside one of them. " +
-	"add is new stage sentences, a place word first when it matters (\"after test, read it for auth holes\"); skip and on are stage names the item already has. " +
-	"Nothing changes by calling this: the runner applies it once this stage ends, within the recipe's bounds, and refuses what crosses them; proof and a person's gate are never skipped. " +
-	"It never posts anywhere."
+const stageResultDescription = "This IS one stage of a factory item. Follow its brief; independent parts may go to tasks. Report this step's result. Successful done ends the step immediately; use final false for an intermediate report. Findings count unresolved problems; until clean needs zero. Claims need evidence in their stated medium. Nothing is posted anywhere."
+const planEditDescription = "Propose stage changes: add sentences, skip or on named stages. Nothing changes by calling this: the runner applies it within the recipe's bounds; proof and a person's gate are never skipped. It never posts anywhere."
 
 func stageResultSchemaJSON() string {
 	return `{"type":"object","properties":{` +
-		`"done":{"type":"boolean","description":"True when the ask was carried out."},` +
-		`"findings":{"type":"integer","minimum":0,"description":"Problems still open."},` +
+		`"final":{"type":"boolean","description":"Defaults to done; false keeps working."},` +
+		`"done":{"type":"boolean","description":"Ask completed."},` +
+		`"findings":{"type":"integer","minimum":0,"description":"Unresolved problems."},` +
 		`"claims":{"type":"array","items":{"type":"object","properties":{` +
 		`"text":{"type":"string"},"ok":{"type":"boolean"},"evidence":{"type":"string"},` +
 		`"medium":{"type":"string","description":"test, screenshot, transcript, benchmark or policy."}` +
-		`},"required":["text","ok"],"additionalProperties":false},"description":"What is now true, each with its evidence."},` +
+		`},"required":["text","ok","evidence"],"additionalProperties":false},"description":"What is now true, each with its evidence."},` +
+		`"publish_summary":{"type":"array","maxItems":3,"items":{"type":"string","maxLength":600},"description":"Final PR-ready change bullets; accurate names and complete sentences."},` +
 		`"notes":{"type":"array","items":{"type":"string"},"description":"Sentences for the stages after this one."},` +
-		`"output":{"type":"string","description":"What you did, in a few lines."}` +
+		`"repair":{"type":"object","properties":{"decision":{"type":"string","enum":["fixed","no_change","needs_repair","needs_you"]},"reason":{"type":"string"},"readiness":{"type":"object","properties":{"head":{"type":"string"},"diff_reviewed":{"type":"boolean"},"description_matches":{"type":"boolean"},"feedback_addressed":{"type":"boolean"},"no_unfinished_work":{"type":"boolean"}},"required":["head","diff_reviewed","description_matches","feedback_addressed","no_unfinished_work"],"additionalProperties":false}},"required":["decision","reason"],"additionalProperties":false,"description":"Follow PR outcome; dependencies and new files are allowed."},` +
+		`"output":{"type":"string","description":"What changed and what was verified; omit guessed test totals."}` +
 		`},"required":["done"],"additionalProperties":false}`
 }
 
@@ -83,7 +83,7 @@ func planEditSchemaJSON() string {
 // The gloss a person reads beside each call: what the stage did, and why the
 // plan wants a change.
 func init() {
-	glossField["stage_result"] = "output"
+	glossField[stageResultToolName] = "output"
 	glossField["plan_edit"] = "why"
 }
 
@@ -107,11 +107,14 @@ type stageClaim struct {
 // stageResultArgs is `stage_result`'s arguments. Done is a pointer so a call
 // that never said it is told so, rather than read as a stage that failed.
 type stageResultArgs struct {
-	Done     *bool        `json:"done"`
-	Findings int          `json:"findings"`
-	Claims   []stageClaim `json:"claims"`
-	Notes    []string     `json:"notes"`
-	Output   string       `json:"output"`
+	PublishSummary []string                `json:"publish_summary"`
+	Done           *bool                   `json:"done"`
+	Final          *bool                   `json:"final"`
+	Findings       int                     `json:"findings"`
+	Claims         []stageClaim            `json:"claims"`
+	Notes          []string                `json:"notes"`
+	Output         string                  `json:"output"`
+	Repair         *factory.CIRepairResult `json:"repair"`
 }
 
 // parseStageResult reads the arguments into the result the door is handed,
@@ -129,7 +132,13 @@ func parseStageResult(args json.RawMessage) (factory.StageResult, string) {
 	if parsed.Findings < 0 {
 		return factory.StageResult{}, stageNeedsFindings
 	}
+	final := *parsed.Done
+	if parsed.Final != nil {
+		final = *parsed.Final
+	}
 	result := factory.StageResult{
+		Checkpoint: !final,
+		Repair:     parsed.Repair, PublishSummary: cleanNames(parsed.PublishSummary),
 		Done:     *parsed.Done,
 		Findings: parsed.Findings,
 		Notes:    cleanNames(parsed.Notes),
@@ -150,18 +159,24 @@ func parseStageResult(args json.RawMessage) (factory.StageResult, string) {
 	return result, ""
 }
 
-// stageResultTool hands the round's result to the door.
+// stageResultTool hands the round's result to the door. EVERY CALL IS HANDED
+// ON, and the door keeps the last one: a step that reported early and went on
+// working says so again. The door is also the one place a report is refused,
+// and a refusal is read back as `not reported: <why>` in the same turn, so the
+// model can put the report right and call again.
 func (a *Agent) stageResultTool() bare.Tool {
 	return bare.Tool{
-		Name:        "stage_result",
+		Name:        stageResultToolName,
 		Description: stageResultDescription,
 		Schema:      json.RawMessage(stageResultSchemaJSON()),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			result, invalid := parseStageResult(args)
 			if invalid != "" {
+				a.rejectStageReport()
 				return invalid, true, nil
 			}
 			if err := a.config.Stage.Report(ctx, result); err != nil {
+				a.rejectStageReport()
 				return stageNotReported + oneLine(err.Error()), true, nil
 			}
 			return stageReported, false, nil
@@ -213,5 +228,183 @@ func (a *Agent) planEditTool() bare.Tool {
 			}
 			return planProposed, false, nil
 		},
+	}
+}
+
+// ── a turn that must report ─────────────────────────────────────────────────
+//
+// A STAGE THAT FORGOT ITS REPORT IS ASKED ON A TURN THAT CANNOT ANSWER IN
+// WORDS. The runner reminds a stage that stopped without `stage_result`
+// (internal/factory/run's chatstage.go), and the last of its reminders is a
+// turn whose first request names the verb in `tool_choice`, the provider's own
+// required-tool setting: a model that honours it answers with the call. It is
+// one request and not the whole turn, because a turn that had to call the
+// verb on every request could never end; the call is answered, the next
+// request is free again, and the turn ends as any other does.
+//
+// A PROVIDER THAT IGNORES THE SETTING IS NOT AN ERROR. Its model answers as it
+// would have, and a turn that still did not report leaves the runner its last
+// resort ([Agent.InferStageResult]). A tool the belt does not carry is never
+// named: a choice of a function the request does not define is refused by every
+// provider that reads it.
+
+// FollowUpRequiring is [Agent.FollowUp] for a turn whose first answer must be
+// a call to tool: the requirement rides the message, so a follow-up queued
+// behind a running turn carries it into the turn it opens and no other.
+func (a *Agent) FollowUpRequiring(text, tool string) (<-chan Event, error) {
+	return a.followUpMarked(text, nil, strings.TrimSpace(tool))
+}
+
+// turnBelt is the options a turn's request is sent with: the belt, and when the
+// turn still owes a call to one tool on it, the choice that requires it. must is
+// that tool, "" for none, for [Agent.spendMustCall] once the request is answered.
+func (a *Agent) turnBelt() (options []ai.Option, must string) {
+	definitions := a.beltDefinitions()
+	options = []ai.Option{ai.WithTools(definitions)}
+	a.mu.Lock()
+	must = a.mustCall
+	a.mu.Unlock()
+	if must == "" || !definesTool(definitions, must) {
+		return options, ""
+	}
+	return append(options, requireTool(must)), must
+}
+
+// spendMustCall lets the turn go free once a request that required must has
+// been answered, whatever the answer said.
+func (a *Agent) spendMustCall(must string) {
+	if must == "" {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.mustCall == must {
+		a.mustCall = ""
+	}
+}
+
+// requireTool sets `tool_choice` to the one named function, in the chat
+// completions spelling every road out of this package carries or translates
+// (internal/codexauth's transport writes the Responses API's form of it). It
+// is applied after [ai.WithTools], which sets `auto`.
+func requireTool(name string) ai.Option {
+	return func(request *ai.Request) error {
+		request.ToolChoice = map[string]any{"type": "function", "function": map[string]any{"name": name}}
+		return nil
+	}
+}
+
+// definesTool says whether the definitions carry the named tool.
+func definesTool(definitions []ai.ToolDefinition, name string) bool {
+	for _, definition := range definitions {
+		if definition.Function.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// ── the report the factory makes for a step ─────────────────────────────────
+
+// errNoStageReport is a last-resort call that came back without a report.
+var errNoStageReport = errors.New("the model answered without a report")
+
+// errNotAStage is a report asked of a conversation that is not a stage.
+var errNotAStage = errors.New("this conversation is not a factory stage")
+
+// InferStageResult makes this stage's report in one short call apart from its
+// own turns, on its own model, for a stage that stopped without one however it
+// was asked. ask is the whole of what the call reads (the runner writes it: the
+// step's brief, its last message and its change), and the call carries
+// `stage_result` alone and requires it. NOTHING REACHES THE DOOR: the result
+// is handed back for the runner to mark as its own, and a call that answers in
+// words, or with a report that does not parse, is an error that says so. What
+// it costs is this conversation's, as every errand it runs is.
+func (a *Agent) InferStageResult(ctx context.Context, ask string) (factory.StageResult, error) {
+	if !a.config.mayStage() {
+		return factory.StageResult{}, errNotAStage
+	}
+	definitions, err := toolDefinitions([]bare.Tool{a.stageResultTool()})
+	if err != nil {
+		return factory.StageResult{}, err
+	}
+	messages := []ai.Message{textMessage("user", ask)}
+	response, called, err := a.callRole(withDetachedUsage(ctx), roles.RoleWorker, a.Model(), messages,
+		ai.WithTools(definitions), requireTool(stageResultToolName))
+	if err != nil {
+		return factory.StageResult{}, err
+	}
+	a.addDetachedUsageAs(response, called, 1, string(roles.RoleWorker))
+	if response == nil || len(response.Choices) == 0 {
+		return factory.StageResult{}, errNoStageReport
+	}
+	for _, call := range response.Choices[0].Message.ToolCalls {
+		if call.Function.Name != stageResultToolName {
+			continue
+		}
+		result, invalid := parseStageResult(json.RawMessage(call.Function.Arguments))
+		if invalid != "" {
+			return factory.StageResult{}, errors.New(invalid)
+		}
+		return result, nil
+	}
+	return factory.StageResult{}, errNoStageReport
+}
+
+// LastWords is the last thing this conversation's model said in words, ""
+// when it has said nothing yet: what a stage that stopped without reporting
+// left as its account of itself.
+func (a *Agent) LastWords() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for i := len(a.messages) - 1; i >= 0; i-- {
+		if a.messages[i].Role != "assistant" {
+			continue
+		}
+		if text := strings.TrimSpace(messageContentText(a.messages[i])); text != "" {
+			return text
+		}
+	}
+	return ""
+}
+
+// stageBatchFinal ends a submitted final report after its tool receipt is saved.
+// Intermediate reports remain replaceable, and refused reports never end work.
+func (a *Agent) stageBatchFinal(calls []ai.ToolCall, results []toolResult) bool {
+	if !a.config.mayStage() {
+		return false
+	}
+	for i, call := range calls {
+		if call.Function.Name != stageResultToolName || i >= len(results) || results[i].isError {
+			continue
+		}
+		result, invalid := parseStageResult(json.RawMessage(call.Function.Arguments))
+		return invalid == "" && !result.Checkpoint
+	}
+	return false
+}
+
+// stageReportBatchFault refuses ambiguous lifecycle submissions before any effect.
+func (a *Agent) stageReportBatchFault(calls []ai.ToolCall) string {
+	if !a.config.mayStage() {
+		return ""
+	}
+	count := 0
+	for _, call := range calls {
+		if call.Function.Name == stageResultToolName {
+			count++
+		}
+	}
+	if count > 1 {
+		return "No action executed: submit only one stage_result per response; progress and completion reports cannot race in a parallel batch."
+	}
+	return ""
+}
+
+// rejectStageReport is optional for compatibility with ordinary stage adapters.
+// A malformed newer completion must not leave an earlier accepted one green.
+func (a *Agent) rejectStageReport() {
+	if door, ok := a.config.Stage.(interface{ RejectReport() }); ok {
+		door.RejectReport()
 	}
 }

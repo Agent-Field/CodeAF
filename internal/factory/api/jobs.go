@@ -204,4 +204,5 @@ var ServiceRoutes = []ServiceRoute{
 	{"GET", "/v1/issues", nil, Issues{}},
 	{"POST", "/v1/jobs", NewJob{}, JobCreated{}},
 	{"DELETE", "/v1/auth/device", DevicePoll{}, ActionResult{}},
+	{"POST", "/v1/github/poll", nil, ActionResult{}},
 }

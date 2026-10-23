@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -52,9 +53,11 @@ func (h *Handler) idempotent(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		row, ok := h.replays.rows[id]
-		if !ok {
+		if !ok || !cacheWorkerResponse(r, row) {
 			row = h.capture(r)
-			h.replays.rows[id] = row
+			if cacheWorkerResponse(r, row) {
+				h.replays.rows[id] = row
+			}
 		}
 		sendReplay(w, row)
 		return
@@ -82,8 +85,12 @@ func (h *Handler) idempotent(w http.ResponseWriter, r *http.Request) {
 	if err == nil && h.failed(w, json.Unmarshal(raw, &row)) {
 		return
 	}
-	if row.At.IsZero() || h.clock().Sub(row.At) >= 24*time.Hour {
+	if row.At.IsZero() || h.clock().Sub(row.At) >= 24*time.Hour || !cacheWorkerResponse(r, row) {
 		row = h.capture(r)
+		if !cacheWorkerResponse(r, row) {
+			sendReplay(w, row)
+			return
+		}
 		raw, err = json.Marshal(row)
 		if h.failed(w, err) {
 			return
@@ -96,6 +103,21 @@ func (h *Handler) idempotent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	sendReplay(w, row)
+}
+
+// A retryable worker refusal must not become a cached day-long outage. A report
+// refused by validation has not committed its results: after a server repair it
+// must be validated again, including when an older server cached its 422. Other
+// verbs retain their original response and successful reports stay deduplicated.
+// This bridge still has a handler-commit/response-cache crash gap; only an
+// acknowledgment committed with the job itself can close it.
+func cacheWorkerResponse(r *http.Request, row replay) bool {
+	if row.Status == http.StatusUnprocessableEntity &&
+		(strings.HasPrefix(r.URL.Path, "/v1/workers/leases/") || strings.HasPrefix(r.URL.Path, "/v1/runners/leases/")) &&
+		strings.HasSuffix(r.URL.Path, "/report") {
+		return false
+	}
+	return !workerPath(r.URL.Path) || (row.Status < 500 && row.Status != http.StatusRequestTimeout && row.Status != http.StatusTooManyRequests)
 }
 
 func (h *Handler) capture(r *http.Request) replay {

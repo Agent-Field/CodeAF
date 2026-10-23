@@ -208,11 +208,12 @@ type FactoryLocal interface {
 	// It is idempotent and starts no job.
 	FactoryLocalStart(ctx context.Context, caller string) (FactoryLocalStatus, error)
 	FactoryLocalStatus(ctx context.Context, caller string) (FactoryLocalStatus, error)
-	// FactoryLocalRun is the one door that turns this engine's runner on: it
-	// takes jobs of the factory this engine serves, with the engine's own
-	// keys and model settings. Idempotent. It starts no job by itself (a
-	// person starts one with factory.job_start), and it is refused when the
-	// factory is not started or another codeaf serves it.
+	// FactoryLocalRun starts this engine's runner for the factory it serves
+	// (the engine also starts it by itself once that factory knows whose
+	// GitHub it is): it takes jobs with the engine's own keys and model
+	// settings. Idempotent. It starts no job by itself (a person starts one
+	// with factory.job_start), and it is refused when the factory is not
+	// started, GitHub is not connected, or another codeaf serves it.
 	FactoryLocalRun(ctx context.Context, caller string) (FactoryLocalStatus, error)
 	// FactoryLocalAdopt shows the app the factory `codeaf attach` named, when
 	// it is safe to; the bearer stays in memory.

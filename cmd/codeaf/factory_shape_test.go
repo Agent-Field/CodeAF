@@ -34,6 +34,7 @@ func TestTheManagersBriefIsTheFiveBlocksThenTheFacts(t *testing.T) {
 		"You are the manager of #12 in acme/web.",
 		"You know: the issue and its comments, what codeaf read of it, the repository's recipe, policy and habits, the checkout, and what the person has said here.",
 		talkBlockDo,
+		talkBlockBrief,
 		"Shape the run with factory_run: stages are one lowercase word each, at most nine. Each stage has an ask that says what done looks like, a loop (until, rounds, fanout) and one line of why. Keep the recipe's stages unless the item says otherwise; change asks before adding stages; add a stage only for work no existing stage covers. Never drop proof. An approve step is where the run holds until the person says continue: keep the recipe's, add one (named approve) after a stage the person wants to read first, and skip one only when the person asks. Nothing posts outward before an approve step.",
 		talkBlockInbox,
 		"Say what you set in three lines at most, then stop. Do not narrate.",
@@ -50,7 +51,7 @@ func TestTheManagersBriefIsTheFiveBlocksThenTheFacts(t *testing.T) {
 		}
 	}
 	for _, fact := range []string{"budget $5 · thinking strong", "refunds count twice", "codeaf read it: a small fix in the ledger",
-		"stages:", "3. write · chat · make the change in the checkout · until done · fanout per file", "policy:\n- tests pass before anything posts",
+		"stages:", "3. write · chat · make the change in the checkout · until done · max 2", "policy:\n- tests pass before anything posts",
 		"habits:\n- keep the changelog", "Its item field is 12"} {
 		if !strings.Contains(brief, fact) {
 			t.Errorf("the facts lack %q:\n%s", fact, brief)
@@ -66,16 +67,12 @@ type fakeManagerTurn struct {
 	edit   factory.RunEdit
 	asked  *[]string
 	closed bool
-	refuse *error
 }
 
 func (f *fakeManagerTurn) SubmitRunnerNote(ctx context.Context, text string) (<-chan session.Event, error) {
 	*f.asked = append(*f.asked, text)
 	ch := make(chan session.Event, 4)
-	_, _, err := f.door.EditRun(ctx, "", f.edit)
-	if f.refuse != nil {
-		*f.refuse = err
-	}
+	_, _, _ = f.door.EditRun(ctx, "", f.edit)
 	ch <- session.Event{Kind: session.EventTextDelta, Text: "set review to read for security."}
 	close(ch)
 	return ch, nil
@@ -83,62 +80,59 @@ func (f *fakeManagerTurn) SubmitRunnerNote(ctx context.Context, text string) (<-
 func (f *fakeManagerTurn) Interrupt()   {}
 func (f *fakeManagerTurn) Close() error { f.closed = true; return nil }
 
-// ONE SHAPING TURN: the ask goes in as the runner's note, the turn's
-// `factory_run` is collected and not written, and the thinking is cheap
-// unless the item reads as large.
-func TestOneShapingTurnCollectsTheManagersEdit(t *testing.T) {
+// turnAsk is the ask the tests hand a manager turn: the shape of an inbox
+// question, which is the turn the runner gives the manager now.
+const turnAsk = "plan asks: which storage shape?"
+
+// keptDoor is a turn's door that keeps every edit it is handed and writes
+// nothing, so a test can see the turn reached the door it was given.
+type keptDoor struct{ got []factory.RunEdit }
+
+func (d *keptDoor) EditRun(_ context.Context, _ string, e factory.RunEdit) (factory.Item, []string, error) {
+	d.got = append(d.got, e)
+	return factory.Item{}, nil, nil
+}
+
+// ONE MANAGER TURN: the ask goes in as the runner's note, the turn uses the
+// door it was handed, its words come back, the opened conversation is
+// closed, and the thinking is cheap unless the item reads as large.
+func TestOneManagerTurnGoesThroughItsDoor(t *testing.T) {
 	var asked []string
 	var cheapness []bool
 	var turn *fakeManagerTurn
-	var refused error
 	edit := factory.RunEdit{By: "manager", Ask: map[string]string{"review": "read it for security"}}
 	s := &shapeTurns{
 		dirs: func(string) string { return "" },
 		open: func(_ context.Context, it factory.Item, door session.RunDoor, cheap bool) (managerTurn, error) {
 			cheapness = append(cheapness, cheap)
-			turn = &fakeManagerTurn{door: door, edit: edit, asked: &asked, refuse: &refused}
+			turn = &fakeManagerTurn{door: door, edit: edit, asked: &asked}
 			return turn, nil
 		},
 	}
 	it := factory.Item{ID: 3, Talk: "/x/transcript.jsonl", Stages: factory.CopyStages(factory.DefaultRecipe().Stages), Triage: factory.Triage{Size: "M"}}
-	got, reply, err := s.Shape(context.Background(), it, []string{"keep the old API"})
+	door := &keptDoor{}
+	reply, err := s.through(context.Background(), it, turnAsk, door)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Ask["review"] != "read it for security" || reply != "set review to read for security." {
-		t.Fatalf("collected %+v, reply %q", got, reply)
+	if len(door.got) != 1 || door.got[0].Ask["review"] != "read it for security" || reply != "set review to read for security." {
+		t.Fatalf("door saw %+v, reply %q", door.got, reply)
 	}
-	if len(asked) != 1 || asked[0] != "Shape the run for this item now. What the person said: keep the old API" {
-		t.Fatalf("asked %q", asked)
-	}
-	if !turn.closed || refused != nil {
-		t.Fatalf("closed %v, refused %v", turn.closed, refused)
-	}
-	if it.Stages[4].Ask != "read it as a stranger would" {
-		t.Fatal("the shaping turn wrote the item")
+	if len(asked) != 1 || asked[0] != turnAsk || !turn.closed {
+		t.Fatalf("asked %q, closed %v", asked, turn.closed)
 	}
 	it.Triage.Size, it.Triage.SizeFrom, it.Triage.TriagedAt = "L", factory.SizeFromRead, time.Unix(100, 0)
-	if _, _, err := s.Shape(context.Background(), it, nil); err != nil {
+	if _, err := s.through(context.Background(), it, turnAsk, &keptDoor{}); err != nil {
 		t.Fatal(err)
-	}
-	if asked[1] != shapeAsk {
-		t.Fatalf("asked %q", asked[1])
 	}
 	if len(cheapness) != 2 || !cheapness[0] || cheapness[1] {
 		t.Fatalf("cheap %v, want cheap for M and not for L", cheapness)
-	}
-	// A CALL THE BOUNDS REFUSE IS NOT COLLECTED: the manager is told why, and
-	// the recipe stands.
-	edit = factory.RunEdit{By: "manager", Ask: map[string]string{"nosuch": "x"}}
-	got, _, err = s.Shape(context.Background(), it, nil)
-	if err != nil || len(got.Ask) != 0 || refused == nil || asked[2] != shapeAsk {
-		t.Fatalf("a refused call collected %+v (%v), refused %v, asked %q", got, err, refused, asked[2])
 	}
 	// A CONVERSATION THAT CANNOT BE OPENED is the turn's error.
 	s.open = func(context.Context, factory.Item, session.RunDoor, bool) (managerTurn, error) {
 		return nil, errors.New("held by another window")
 	}
-	if _, _, err := s.Shape(context.Background(), it, nil); err == nil {
+	if _, err := s.through(context.Background(), it, turnAsk, &keptDoor{}); err == nil {
 		t.Fatal("a turn that could not open answered no error")
 	}
 }
@@ -155,7 +149,7 @@ func TestTheRunDoorEditsTheItemThisConversationManages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	door := runDoor(st, web)
+	door := runDoor(st, web, "")
 	if door == nil {
 		t.Fatal("no run door over a store")
 	}
@@ -173,7 +167,7 @@ func TestTheRunDoorEditsTheItemThisConversationManages(t *testing.T) {
 	if _, _, err := door.EditRun(context.Background(), filepath.Join(t.TempDir(), "other.jsonl"), factory.RunEdit{Skip: []string{"review"}}); !errors.Is(err, errNotAManager) {
 		t.Fatalf("another conversation edited the item: %v", err)
 	}
-	if runDoor(nil, web) != nil {
+	if runDoor(nil, web, "") != nil {
 		t.Fatal("a nil store has a run door")
 	}
 }
@@ -207,7 +201,7 @@ func (f *fakeLiveTurn) Interrupt()                     {}
 func (f *fakeLiveTurn) Close() error                   { return nil }
 func (f *fakeLiveTurn) WaitIdle(context.Context) error { f.waits++; return nil }
 
-// liveShapeRig is shaping turns whose item conversation is live in this
+// liveShapeRig is manager turns whose item conversation is live in this
 // process at talk, and whose open fails the test: no second open may happen.
 func liveShapeRig(t *testing.T, talk string, live *fakeLiveTurn) *shapeTurns {
 	t.Helper()
@@ -227,28 +221,24 @@ func liveShapeRig(t *testing.T, talk string, live *fakeLiveTurn) *shapeTurns {
 	}
 }
 
-// THE PERSON TALKED IN THE WINDOW AND PRESSED `r` (the 2026-10-08 19:33
-// recording): the shaping turn runs through the window's own conversation, no
-// second open happens, the person's words are in the ask, the edit is
-// collected and not written, and the window's conversation is not closed.
-func TestALiveConversationShapesThroughTheWindow(t *testing.T) {
+// THE PERSON HAS THE MANAGER OPEN IN A WINDOW when a turn comes for it: the
+// turn runs through the window's own conversation with the door lent to it,
+// no second open happens, and the window's conversation is not closed.
+func TestALiveConversationTakesTheTurnThroughTheWindow(t *testing.T) {
 	talk := "/x/manager/transcript.jsonl"
 	live := &fakeLiveTurn{edit: factory.RunEdit{By: "manager", Ask: map[string]string{"review": "review it thoroughly"}}}
 	s := liveShapeRig(t, talk, live)
 	it := factory.Item{ID: 1, Talk: talk, Stages: factory.CopyStages(factory.DefaultRecipe().Stages), Triage: factory.Triage{Size: "S"}}
-	said := "keep the fix tiny and prove it at the CLI, review it thoroughly"
-	got, reply, err := s.Shape(context.Background(), it, []string{said})
+	door := &keptDoor{}
+	reply, err := s.through(context.Background(), it, turnAsk, door)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Ask["review"] != "review it thoroughly" || reply == "" {
-		t.Fatalf("collected %+v, reply %q", got, reply)
+	if len(door.got) != 1 || door.got[0].Ask["review"] != "review it thoroughly" || reply == "" {
+		t.Fatalf("door saw %+v, reply %q", door.got, reply)
 	}
-	if len(live.asked) != 1 || live.asked[0] != shapeAsk+" What the person said: "+said {
+	if len(live.asked) != 1 || live.asked[0] != turnAsk {
 		t.Fatalf("asked %q", live.asked)
-	}
-	if it.Stages[factory.StageIndex(it.Stages, "review")].Ask == "review it thoroughly" {
-		t.Fatal("the shaping turn wrote the item")
 	}
 	if live.waits != 0 {
 		t.Fatalf("an idle conversation was waited on %d times", live.waits)
@@ -271,13 +261,14 @@ func TestABusyLiveConversationIsAskedOnceMoreThenNamed(t *testing.T) {
 	edit := factory.RunEdit{By: "manager", Ask: map[string]string{"review": "review it thoroughly"}}
 
 	once := &fakeLiveTurn{edit: edit, busy: 1}
-	got, _, err := liveShapeRig(t, talk, once).Shape(context.Background(), it, nil)
-	if err != nil || got.Ask["review"] != "review it thoroughly" || len(once.asked) != 2 || once.waits != 1 {
-		t.Fatalf("busy once: %+v, %v, asked %d, waited %d", got, err, len(once.asked), once.waits)
+	door := &keptDoor{}
+	_, err := liveShapeRig(t, talk, once).through(context.Background(), it, turnAsk, door)
+	if err != nil || len(door.got) != 1 || len(once.asked) != 2 || once.waits != 1 {
+		t.Fatalf("busy once: %+v, %v, asked %d, waited %d", door.got, err, len(once.asked), once.waits)
 	}
 
 	twice := &fakeLiveTurn{edit: edit, busy: 2}
-	_, _, err = liveShapeRig(t, talk, twice).Shape(context.Background(), it, nil)
+	_, err = liveShapeRig(t, talk, twice).through(context.Background(), it, turnAsk, &keptDoor{})
 	if !errors.Is(err, factoryrun.ErrManagerBusy) || len(twice.asked) != 2 || twice.waits != 1 {
 		t.Fatalf("busy twice: %v, asked %d, waited %d", err, len(twice.asked), twice.waits)
 	}
@@ -294,13 +285,13 @@ func TestAConversationAnotherProcessHoldsIsNamed(t *testing.T) {
 			return nil, &session.SessionLockedError{Path: "/x/t.jsonl"}
 		},
 	}
-	_, _, err := s.Shape(context.Background(), factory.Item{ID: 1, Talk: "/x/t.jsonl"}, nil)
+	_, err := s.through(context.Background(), factory.Item{ID: 1, Talk: "/x/t.jsonl"}, turnAsk, &keptDoor{})
 	if !errors.Is(err, factoryrun.ErrManagerAway) || opens != 1 {
 		t.Fatalf("err %v after %d opens", err, opens)
 	}
 }
 
-// The shaping turn thinks cheap unless the SHOWN size is large: a label, a
+// A manager turn thinks cheap unless the SHOWN size is large: a label, a
 // measured diff or a completed read. A bare L (a legacy document) or a chat
 // model's guess is no size.
 func TestShapeCheapReadsTheShownSize(t *testing.T) {
@@ -351,7 +342,11 @@ func TestTheManagersBriefSaysThinkingPerStepAndNeverOneForAMixedJob(t *testing.T
 		{"uniform beside an off step", map[string]string{"plan": "strong", "write": "strong", "test": "strong", "review": "strong", "proof": "strong", "security": "cheap"}, nil,
 			"budget $5 · thinking strong", "effort cheap · off"},
 	} {
-		it := factory.Item{ID: 12, Repo: "acme/web", Title: "fix the ledger", Cap: 5, Stages: factory.CopyStages(recipe.For(factory.KindIssue))}
+		// AN OFF STEP IS LAID ON BY HAND: the shipped default has none since
+		// 2026-10-20, and this is the shape whose thinking must not count.
+		stages := factory.CopyStages(recipe.For(factory.KindIssue))
+		stages = factory.PlaceStage(stages, factory.Stage{Name: "security", Kind: factory.StageChat, Ask: "secrets", Until: factory.UntilClean, On: false}, "after review")
+		it := factory.Item{ID: 12, Repo: "acme/web", Title: "fix the ledger", Cap: 5, Stages: stages}
 		for i, st := range it.Stages {
 			it.Stages[i].Effort = c.think[st.Name]
 		}

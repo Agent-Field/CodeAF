@@ -133,13 +133,6 @@ func factoryLocalJobs(floor *store.Store, base, workspace, profileDir string, sn
 						return token
 					})
 				})))
-			setFactoryProcess(func() {
-				if shape := factoryProcess.workerShapes[mirror.Root()]; shape != nil {
-					seam.Shape = shape
-				} else if factoryProcess.mirror == mirror.Root() {
-					seam.Shape = factoryProcess.workerShape
-				}
-			})
 			if pause != nil {
 				seam.Pause = func(id int) error {
 					it, err := mirror.Get(id)

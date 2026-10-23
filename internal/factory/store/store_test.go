@@ -142,11 +142,18 @@ func TestAddFillsTheChatDefaults(t *testing.T) {
 	if len(it.Stages) == 0 || it.Stages[0].Name != "plan" {
 		t.Fatalf("Add stages = %+v, want the default issue recipe", it.Stages)
 	}
-	pr, _ := st.Add(context.Background(), factory.Item{Title: "a pull request", Kind: factory.KindPR, Origin: factory.OriginTerminal, Tier: factory.TierCollab})
-	got, _ := st.Get(pr)
-	if got.Origin != factory.OriginTerminal || got.Tier != factory.TierCollab || got.Stages[0].Name != "read" {
-		t.Fatalf("Add overrode what the caller said: %+v", got)
+	issue, err := st.Add(context.Background(), factory.Item{Title: "an issue", Kind: factory.KindIssue, Origin: factory.OriginTerminal, Tier: factory.TierCollab})
+	if err != nil {
+		t.Fatal(err)
 	}
+	got, _ := st.Get(issue)
+	if got.Origin != factory.OriginTerminal || got.Tier != factory.TierCollab || got.Stages[0].Name != "plan" {
+		t.Fatalf("Add overrode the caller: %+v", got)
+	}
+	if _, err := st.Add(context.Background(), factory.Item{Title: "old PR job", Kind: factory.KindPR}); err == nil {
+		t.Fatal("chat created a standalone PR job")
+	}
+
 	if _, err := st.Add(context.Background(), factory.Item{}); err == nil {
 		t.Fatal("Add made an item with no title")
 	}

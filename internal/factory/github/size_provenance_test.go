@@ -116,63 +116,16 @@ func TestBodyEditLeavesALegacySizeUnknown(t *testing.T) {
 // A pull request's size follows the forge's measurement: stamped on arrival,
 // restamped when the counts move, upgraded from a legacy value, and left
 // alone by a read that carried no counts.
-func TestPullRequestDiffSizeFollowsTheForge(t *testing.T) {
-	st := openStore(t)
-	files := []factory.FileChange{{Path: "a.go", Added: 5}}
-	if err := Merge(st, Name, []factory.Item{sizePull(20, 10, files)}); err != nil {
-		t.Fatal(err)
-	}
-	items, _ := st.List()
-	id := items[0].ID
-	shown := func() (string, string) { got, _ := st.Get(id); return factory.ShownSize(got) }
-	if size, from := shown(); size != "S" || from != factory.ShownDiff {
-		t.Fatalf("arrival: %q from %q", size, from)
-	}
-	// The counts move: the size is measured again.
-	if err := Merge(st, Name, []factory.Item{sizePull(300, 100, files)}); err != nil {
-		t.Fatal(err)
-	}
-	if size, from := shown(); size != "M" || from != factory.ShownDiff {
-		t.Fatalf("refresh: %q from %q", size, from)
-	}
-	// A read that has not measured (no files, no counts) keeps the size.
-	undetailed := sizePull(0, 0, nil)
-	undetailed.Title = "p renamed"
-	if err := Merge(st, Name, []factory.Item{undetailed}); err != nil {
-		t.Fatal(err)
-	}
-	if size, from := shown(); size != "M" || from != factory.ShownDiff {
-		t.Fatalf("an unmeasured read changed the size: %q from %q", size, from)
-	}
-	// A pull request stored before provenance is unknown until the forge measures it.
-	_ = st.Update(id, func(it *factory.Item) error { it.Triage.Size, it.Triage.SizeFrom = "L", ""; return nil })
-	if size, from := shown(); size != "" || from != "" {
-		t.Fatalf("legacy pull request shows %q from %q", size, from)
-	}
-	if err := Merge(st, Name, []factory.Item{sizePull(300, 100, files)}); err != nil {
-		t.Fatal(err)
-	}
-	if size, from := shown(); size != "M" || from != factory.ShownDiff {
-		t.Fatalf("the forge did not restamp a legacy pull request: %q from %q", size, from)
-	}
-}
 
 // A title edit on a pull request clears its read but keeps the measured diff.
-func TestPullRequestEditKeepsTheDiffSize(t *testing.T) {
+
+func TestStandalonePRInputsAreNotWorkItems(t *testing.T) {
 	st := openStore(t)
-	files := []factory.FileChange{{Path: "a.go", Added: 5}}
-	if err := Merge(st, Name, []factory.Item{sizePull(20, 10, files)}); err != nil {
+	if err := Merge(st, Name, []factory.Item{sizePull(20, 10, []factory.FileChange{{Path: "a.go", Added: 5}})}); err != nil {
 		t.Fatal(err)
 	}
-	items, _ := st.List()
-	_ = st.Update(items[0].ID, func(it *factory.Item) error { it.Triage.Read, it.Triage.TriagedAt = "r", time.Now(); return nil })
-	edited := sizePull(20, 10, files)
-	edited.Title = "retitled"
-	if err := Merge(st, Name, []factory.Item{edited}); err != nil {
-		t.Fatal(err)
-	}
-	got, _ := st.Get(items[0].ID)
-	if got.Triage.Read != "" || got.Triage.Size != "S" || got.Triage.SizeFrom != factory.SizeFromDiff {
-		t.Fatalf("after a retitle: %+v", got.Triage)
+	items, err := st.List()
+	if err != nil || len(items) != 0 {
+		t.Fatalf("imported standalone PR: %+v %v", items, err)
 	}
 }

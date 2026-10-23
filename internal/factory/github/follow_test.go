@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +14,58 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 )
+
+type publishRacingAPI struct {
+	*memAPI
+	afterPull func()
+}
+
+func (m publishRacingAPI) Pull(ctx context.Context, owner, repo string, number int) (forge.Pull, error) {
+	p, err := m.memAPI.Pull(ctx, owner, repo, number)
+	if m.afterPull != nil {
+		m.afterPull()
+	}
+	return p, err
+}
+
+func TestPollCannotRestoreOldGreenHeadOrDraftAfterPublication(t *testing.T) {
+	for _, change := range []string{"head pushed", "marked ready"} {
+		t.Run(change, func(t *testing.T) {
+			st := openStore(t)
+			it, err := st.Create(factory.Item{Repo: "acme/api", Kind: factory.KindIssue, State: factory.StateShipped, Publish: "pr", PullRequest: &factory.PullRequest{Number: 7, State: factory.PROpen, Draft: true, HeadSHA: "old", CI: "ci ✓", ChecksRead: true, Checks: factory.PRChecks{Passed: 8}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			m := newMemAPI(time.Now())
+			m.followed = map[string]forge.Pull{"acme/api#7": {Number: 7, State: "open", Draft: true, HeadSHA: "old", Base: "main"}}
+			m.runs = map[string][]forge.CheckRun{"old": {{Name: "test", Status: "completed", Conclusion: "success"}}}
+			s := New(publishRacingAPI{m, func() {
+				if err := st.Update(it.ID, func(cur *factory.Item) error {
+					pr := *cur.PullRequest
+					if change == "head pushed" {
+						pr.HeadSHA, pr.CI, pr.ChecksRead, pr.Checks = "new", "", false, factory.PRChecks{}
+					} else {
+						pr.Draft = false
+					}
+					cur.PullRequest = &pr
+					return nil
+				}); err != nil {
+					t.Error(err)
+				}
+			}}, nil, nil)
+			if err := followOpened(context.Background(), s, st); err != nil {
+				t.Fatal(err)
+			}
+			got, _ := st.Get(it.ID)
+			if change == "head pushed" && (got.PullRequest.HeadSHA != "new" || got.PullRequest.ChecksRead || got.PullRequest.CI != "") {
+				t.Fatal("late poll restored old green head")
+			}
+			if change == "marked ready" && got.PullRequest.Draft {
+				t.Fatal("late poll restored draft status")
+			}
+		})
+	}
+}
 
 // The poll re-reads pull requests the factory opened. A merged one and a
 // closed one are recorded once; an open one keeps the job shipped and says
@@ -81,9 +134,7 @@ func TestPollFollowsPullRequestsTheFactoryOpened(t *testing.T) {
 	mrg := got(merged.ID)
 	if mrg.State != factory.StateShipped || mrg.PullRequest == nil || mrg.PullRequest.State != factory.PRMerged ||
 		mrg.PullRequest.MergedBy != "mei" || !mrg.PullRequest.MergedAt.Equal(when) ||
-		mrg.PullRequest.ReviewDecision != "approved" || mrg.PullRequest.Required != 1 ||
-		mrg.PullRequest.CI != "ci ✓" || mrg.PullRequest.Checks != (factory.PRChecks{Passed: 1}) ||
-		len(mrg.PullRequest.Reviews) != 1 || mrg.PullRequest.Reviews[0].By != "mei" || mrg.PullRequest.Reviews[0].State != "approved" {
+		mrg.PullRequest.ChecksRead || mrg.PullRequest.ReviewsRead {
 		t.Fatalf("merged pull request: state %s pr %+v", mrg.State, mrg.PullRequest)
 	}
 	cld := got(closed.ID)
@@ -169,9 +220,65 @@ func TestFollowPRReadsTheForge(t *testing.T) {
 	}
 	wantAt := time.Date(2026, 10, 11, 9, 41, 0, 0, time.UTC)
 	if got.State != factory.PRMerged || got.MergedBy != "mei" || !got.MergedAt.Equal(wantAt) || got.Number != 40 ||
-		got.ReviewDecision != "approved" || got.Required != 1 || got.CI != "ci ✕" ||
-		got.Checks != (factory.PRChecks{Passed: 1, Failed: 1}) ||
-		len(got.Reviews) != 1 || got.Reviews[0].By != "mei" || got.Reviews[0].State != "approved" {
+		got.ChecksRead || got.ReviewsRead {
 		t.Fatalf("followed %+v", got)
+	}
+	// Terminal state and its head are authoritative without optional reads.
+	// GitHub left mergeable out, which remains unknown.
+	if got.HeadSHA != "abc" || got.ChecksRead || got.ReviewsRead || got.Mergeable != "" {
+		t.Fatalf("gate facts %+v", got)
+	}
+}
+
+func TestMergeableWordKeepsUnknownApartFromNo(t *testing.T) {
+	yes, no := true, false
+	if mergeableWord(nil) != "" || mergeableWord(&yes) != factory.MergeableYes || mergeableWord(&no) != factory.MergeableNo {
+		t.Fatal("mergeable words")
+	}
+}
+
+type unavailableFeedback struct {
+	*memAPI
+	fail bool
+}
+
+func (m *unavailableFeedback) PullFeedback(context.Context, string, string, int) (string, error) {
+	if m.fail {
+		return "", fmt.Errorf("review API unavailable")
+	}
+	return "", nil
+}
+func TestConversationReviewReadFailureCannotLeaveHealthyStatus(t *testing.T) {
+	now := time.Now()
+	m := &unavailableFeedback{memAPI: newMemAPI(now), fail: true}
+	m.followed = map[string]forge.Pull{"acme/api#70": {Number: 70, State: "open", HeadSHA: "head", Base: "main"}}
+	m.runs = map[string][]forge.CheckRun{"head": {{Name: "tests", Status: "completed", Conclusion: "success"}}}
+	st := openStore(t)
+	st.SetRepos([]string{"acme/api"})
+	it := factory.Item{Kind: factory.KindIssue, Repo: "api", Product: "acme", Num: 59, State: factory.StateShipped, Publish: "pr", HeadCommit: "head", Cap: 10, PullRequest: &factory.PullRequest{Number: 70, State: factory.PROpen, HeadSHA: "head", ChecksRead: true, Checks: factory.PRChecks{Passed: 1}}, Stream: &factory.Stream{Phases: []factory.Phase{{Name: "proof", State: factory.PhaseDone}}}}
+	factory.WatchPublishedPR(&it)
+	factory.QueueCIFollowUp(&it, now)
+	saved, err := st.Create(it)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := New(m, []string{"acme/api"}, func() time.Time { return now })
+	if err := followOpened(context.Background(), src, st); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := st.Get(saved.ID)
+	// CI is independent evidence: a feedback outage must not erase a
+	// successfully read current-head check. The typed feedback problem keeps
+	// the monitoring state from claiming everything is healthy.
+	if !got.PullRequest.ChecksRead || got.PullRequest.ReviewsRead || got.FollowUp.State == "healthy" || len(got.PullRequest.Problems) != 1 || got.PullRequest.Problems[0].Area != "feedback" || !strings.Contains(got.PullRequest.Problems[0].Detail, "review API unavailable") || got.FollowUp.Reason != got.PullRequest.Problems[0].Summary {
+		t.Fatalf("false all-clear: %+v", got.FollowUp)
+	}
+	m.fail = false
+	if err := followOpened(context.Background(), src, st); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = st.Get(saved.ID)
+	if !got.PullRequest.ChecksRead || got.FollowUp.State != "healthy" {
+		t.Fatalf("did not recover: %+v", got.FollowUp)
 	}
 }

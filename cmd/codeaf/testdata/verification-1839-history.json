@@ -1,0 +1,1357 @@
+[
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test -count=1 -p 8 ./...",
+    "cwd": "$JOB",
+    "args": [
+      "go",
+      "test",
+      "-count=1",
+      "-p",
+      "8",
+      "./..."
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 0,
+    "id": "call-3283829661/check-3cIdGz",
+    "source": "incident-round-1.jsonl",
+    "owner_root": "$JOB",
+    "started_at": "2026-10-23T08:16:31.41410385-04:00",
+    "completed_at": "2026-10-23T08:26:56.433959689-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test -count=1 -run TestASubTeamStartsOnItsParentsDefaultModel|TestEffectiveWalksTheModelChainAndNamesEachOrigin ./internal/session/ ./internal/teams/ -v",
+    "cwd": "$JOB",
+    "args": [
+      "go",
+      "test",
+      "-count=1",
+      "-run",
+      "TestASubTeamStartsOnItsParentsDefaultModel|TestEffectiveWalksTheModelChainAndNamesEachOrigin",
+      "./internal/session/",
+      "./internal/teams/",
+      "-v"
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 0,
+    "id": "call-1223007997/check-RxqDOw",
+    "source": "incident-round-2.jsonl",
+    "started_at": "2026-10-22T23:19:24.462636309-04:00",
+    "completed_at": "2026-10-22T23:19:26.420456729-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test -count=1 -run TestGrepWithoutRipgrepFindsWhatRipgrepWouldFind$ ./internal/exec/bare/",
+    "cwd": "$JOB",
+    "args": [
+      "go",
+      "test",
+      "-count=1",
+      "-run",
+      "TestGrepWithoutRipgrepFindsWhatRipgrepWouldFind$",
+      "./internal/exec/bare/"
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 0,
+    "id": "call-3131913331/check-1Fa0CM",
+    "source": "incident-round-1.jsonl",
+    "owner_root": "$JOB",
+    "started_at": "2026-10-23T08:06:15.648508914-04:00",
+    "completed_at": "2026-10-23T08:06:16.327952608-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test -count=1 -run TestOnceRetriesAHostInTheStaleSocketWindow$|TestEngineEnvironmentHostHelper$|TestSameOrUnknownEnvironmentJoinsRealHostSilently$ ./cmd/codeaf/",
+    "cwd": "$JOB",
+    "args": [
+      "go",
+      "test",
+      "-count=1",
+      "-run",
+      "TestOnceRetriesAHostInTheStaleSocketWindow$|TestEngineEnvironmentHostHelper$|TestSameOrUnknownEnvironmentJoinsRealHostSilently$",
+      "./cmd/codeaf/"
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 0,
+    "id": "call-3131913331/check-NoFv33",
+    "source": "incident-round-1.jsonl",
+    "owner_root": "$JOB",
+    "started_at": "2026-10-23T08:06:16.3455147-04:00",
+    "completed_at": "2026-10-23T08:06:18.297741787-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test -count=1 -run TestTeamStartResolvesItsModelLikeATask|TestASubTeamStartsOnItsParentsDefaultModel|TestEffectiveWalksTheModelChainAndNamesEachOrigin|TestTrafficStartAppliesItsModelBeforeItJoins ./internal/teams/ ./internal/session/ ./internal/tui3/ -v",
+    "cwd": "$JOB",
+    "args": [
+      "go",
+      "test",
+      "-count=1",
+      "-run",
+      "TestTeamStartResolvesItsModelLikeATask|TestASubTeamStartsOnItsParentsDefaultModel|TestEffectiveWalksTheModelChainAndNamesEachOrigin|TestTrafficStartAppliesItsModelBeforeItJoins",
+      "./internal/teams/",
+      "./internal/session/",
+      "./internal/tui3/",
+      "-v"
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 0,
+    "id": "call-557935405/check-DQxBQc",
+    "source": "incident-round-1.jsonl",
+    "owner_root": "$JOB",
+    "started_at": "2026-10-23T07:42:32.190605642-04:00",
+    "completed_at": "2026-10-23T07:42:34.428290798-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test -count=1 -run TestTeamStartResolvesItsModelLikeATask|TestASubTeamStartsOnItsParentsDefaultModel|TestTheVerbsWriteTrafficToTheContract|TestEffectiveWalksCoverModelWithChainOrigin ./internal/session/ ./internal/teams/ -v",
+    "cwd": "$JOB",
+    "args": [
+      "go",
+      "test",
+      "-count=1",
+      "-run",
+      "TestTeamStartResolvesItsModelLikeATask|TestASubTeamStartsOnItsParentsDefaultModel|TestTheVerbsWriteTrafficToTheContract|TestEffectiveWalksCoverModelWithChainOrigin",
+      "./internal/session/",
+      "./internal/teams/",
+      "-v"
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 0,
+    "id": "call-478817856/check-zODCAv",
+    "source": "incident-round-2.jsonl",
+    "started_at": "2026-10-22T23:19:05.255982921-04:00",
+    "completed_at": "2026-10-22T23:19:07.05396028-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test -count=1 -run TestTheDailyCeilingBindsTaskAndErrandTurnsToo$ ./internal/session/ -v",
+    "cwd": "$JOB",
+    "args": [
+      "go",
+      "test",
+      "-count=1",
+      "-run",
+      "TestTheDailyCeilingBindsTaskAndErrandTurnsToo$",
+      "./internal/session/",
+      "-v"
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 0,
+    "id": "call-3312780687/check-Xv7ajx",
+    "source": "incident-round-1.jsonl",
+    "owner_root": "$JOB",
+    "started_at": "2026-10-23T07:42:10.528244056-04:00",
+    "completed_at": "2026-10-23T07:42:12.298423045-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test -count=1 -run TestTrafficStartAppliesItsModelBeforeItJoins ./internal/tui3/ -v",
+    "cwd": "$JOB",
+    "args": [
+      "go",
+      "test",
+      "-count=1",
+      "-run",
+      "TestTrafficStartAppliesItsModelBeforeItJoins",
+      "./internal/tui3/",
+      "-v"
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 0,
+    "id": "call-3629442696/check-8I93cN",
+    "source": "incident-round-2.jsonl",
+    "started_at": "2026-10-22T23:19:05.250277943-04:00",
+    "completed_at": "2026-10-22T23:19:07.456039169-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test -count=1 -run ^TestTheDailyCeilingBindsTaskAndErrandTurnsToo$ ./internal/session/ -v",
+    "cwd": "$JOB",
+    "args": [
+      "go",
+      "test",
+      "-count=1",
+      "-run",
+      "^TestTheDailyCeilingBindsTaskAndErrandTurnsToo$",
+      "./internal/session/",
+      "-v"
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 0,
+    "id": "call-1562048873/check-OjECHL",
+    "source": "incident-round-3.jsonl",
+    "started_at": "2026-10-22T23:02:55.864933176-04:00",
+    "completed_at": "2026-10-22T23:03:03.01248498-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test -count=1 ./...",
+    "cwd": "$JOB",
+    "args": [
+      "go",
+      "test",
+      "-count=1",
+      "./..."
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 1,
+    "id": "call-1334688715/check-684YBU",
+    "source": "incident-round-1.jsonl",
+    "owner_root": "$JOB",
+    "started_at": "2026-10-23T08:06:23.67353398-04:00",
+    "completed_at": "2026-10-23T08:16:04.482080952-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test -count=1 ./internal/delegate/ ./internal/exec/bare/ ./internal/run/",
+    "cwd": "$JOB",
+    "args": [
+      "go",
+      "test",
+      "-count=1",
+      "./internal/delegate/",
+      "./internal/exec/bare/",
+      "./internal/run/"
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 1,
+    "id": "call-3075285080/check-BpP0uH",
+    "source": "incident-round-1.jsonl",
+    "owner_root": "$JOB",
+    "started_at": "2026-10-23T07:53:32.580204395-04:00",
+    "completed_at": "2026-10-23T07:54:16.125611772-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test -count=1 ./internal/manual/",
+    "cwd": "$JOB",
+    "args": [
+      "go",
+      "test",
+      "-count=1",
+      "./internal/manual/"
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 0,
+    "id": "call-2479449379/check-LNaheJ",
+    "source": "incident-round-4.jsonl",
+    "started_at": "2026-10-22T23:22:02.154325286-04:00",
+    "completed_at": "2026-10-22T23:22:06.14769559-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test -count=1 ./internal/namelaw/ ./internal/manual/",
+    "cwd": "$JOB",
+    "args": [
+      "go",
+      "test",
+      "-count=1",
+      "./internal/namelaw/",
+      "./internal/manual/"
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 0,
+    "id": "call-2131537465/check-cpIMX5",
+    "source": "incident-round-1.jsonl",
+    "owner_root": "$JOB",
+    "started_at": "2026-10-23T07:41:59.058436895-04:00",
+    "completed_at": "2026-10-23T07:42:02.13517782-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test -count=1 ./internal/namelaw/",
+    "cwd": "$JOB",
+    "args": [
+      "go",
+      "test",
+      "-count=1",
+      "./internal/namelaw/"
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 0,
+    "id": "call-2479449379/check-1UKGLU",
+    "source": "incident-round-4.jsonl",
+    "started_at": "2026-10-22T23:22:06.152048846-04:00",
+    "completed_at": "2026-10-22T23:22:09.293603481-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test -count=1 ./internal/session/",
+    "cwd": "$JOB",
+    "args": [
+      "go",
+      "test",
+      "-count=1",
+      "./internal/session/"
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 0,
+    "id": "call-2080356858/check-7iO2Hd",
+    "source": "incident-round-1.jsonl",
+    "owner_root": "$JOB",
+    "started_at": "2026-10-23T07:33:28.42105316-04:00",
+    "completed_at": "2026-10-23T07:41:52.944998849-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test -count=1 ./internal/teams/ ./internal/tui3/",
+    "cwd": "$JOB",
+    "args": [
+      "go",
+      "test",
+      "-count=1",
+      "./internal/teams/",
+      "./internal/tui3/"
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 0,
+    "id": "call-1106792183/check-3yzeLR",
+    "source": "incident-round-1.jsonl",
+    "owner_root": "$JOB",
+    "started_at": "2026-10-23T07:32:13.24308827-04:00",
+    "completed_at": "2026-10-23T07:33:25.25968878-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test -count=1 ./internal/teams/",
+    "cwd": "$JOB",
+    "args": [
+      "go",
+      "test",
+      "-count=1",
+      "./internal/teams/"
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 0,
+    "id": "call-2877256969/check-GIfN6z",
+    "source": "incident-round-4.jsonl",
+    "started_at": "2026-10-22T23:21:59.097224771-04:00",
+    "completed_at": "2026-10-22T23:21:59.914546734-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test -count=1 ./internal/tui3/",
+    "cwd": "$JOB",
+    "args": [
+      "go",
+      "test",
+      "-count=1",
+      "./internal/tui3/"
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 0,
+    "id": "call-1583888520/check-t9Y9uX",
+    "source": "incident-round-4.jsonl",
+    "started_at": "2026-10-22T23:22:02.168742483-04:00",
+    "completed_at": "2026-10-22T23:23:17.941743807-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go vet ./internal/teams/ ./internal/session/ ./internal/tui3/",
+    "cwd": "$JOB",
+    "args": [
+      "go",
+      "vet",
+      "./internal/teams/",
+      "./internal/session/",
+      "./internal/tui3/"
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 0,
+    "id": "call-2131537465/check-3mDz0P",
+    "source": "incident-round-1.jsonl",
+    "owner_root": "$JOB",
+    "started_at": "2026-10-23T07:41:58.36506762-04:00",
+    "completed_at": "2026-10-23T07:41:59.041020381-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test ./...",
+    "cwd": "$OUTSIDE/fixture-1",
+    "args": [
+      "go",
+      "test",
+      "./..."
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 1,
+    "id": "call-2804908680/check-FdlS7V",
+    "source": "incident-round-3.jsonl",
+    "started_at": "2026-10-22T23:10:03.217976319-04:00",
+    "completed_at": "2026-10-22T23:10:03.608629919-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test ./...",
+    "cwd": "$OUTSIDE/fixture-2",
+    "args": [
+      "go",
+      "test",
+      "./..."
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 1,
+    "id": "call-5840167/check-wXaWEu",
+    "source": "incident-round-3.jsonl",
+    "started_at": "2026-10-22T22:50:39.7688393-04:00",
+    "completed_at": "2026-10-22T22:50:40.177300367-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test ./...",
+    "cwd": "$OUTSIDE/fixture-3",
+    "args": [
+      "go",
+      "test",
+      "./..."
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 1,
+    "id": "call-1196622168/check-R8TH0R",
+    "source": "incident-round-3.jsonl",
+    "started_at": "2026-10-22T22:59:17.130752008-04:00",
+    "completed_at": "2026-10-22T22:59:17.498024659-04:00"
+  },
+  {
+    "before": {},
+    "after": {},
+    "command": "go test -json ./...",
+    "cwd": "$OUTSIDE/fixture-4",
+    "args": [
+      "go",
+      "test",
+      "-json",
+      "./..."
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 1,
+    "id": "call-375254132/check-GptbnN",
+    "source": "incident-round-3.jsonl",
+    "started_at": "2026-10-22T23:13:27.701981215-04:00",
+    "completed_at": "2026-10-22T23:13:27.737529599-04:00"
+  },
+  {
+    "before": {},
+    "after": {},
+    "command": "go test -json ./...",
+    "cwd": "$OUTSIDE/fixture-5",
+    "args": [
+      "go",
+      "test",
+      "-json",
+      "./..."
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 1,
+    "id": "call-375254132/check-HmxkPP",
+    "source": "incident-round-3.jsonl",
+    "started_at": "2026-10-22T23:13:29.563919598-04:00",
+    "completed_at": "2026-10-22T23:13:29.645213728-04:00"
+  },
+  {
+    "before": {},
+    "after": {},
+    "command": "go test -json ./...",
+    "cwd": "$OUTSIDE/fixture-6",
+    "args": [
+      "go",
+      "test",
+      "-json",
+      "./..."
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 1,
+    "id": "call-375254132/check-OiSJVS",
+    "source": "incident-round-3.jsonl",
+    "started_at": "2026-10-22T23:12:45.298443941-04:00",
+    "completed_at": "2026-10-22T23:12:45.333673905-04:00"
+  },
+  {
+    "before": {},
+    "after": {},
+    "command": "go test -json ./...",
+    "cwd": "$OUTSIDE/fixture-7",
+    "args": [
+      "go",
+      "test",
+      "-json",
+      "./..."
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 1,
+    "id": "call-375254132/check-z3Ep2B",
+    "source": "incident-round-3.jsonl",
+    "started_at": "2026-10-22T23:12:43.7532869-04:00",
+    "completed_at": "2026-10-22T23:12:43.792712243-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test ./...",
+    "cwd": "$OUTSIDE/fixture-8",
+    "args": [
+      "go",
+      "test",
+      "./..."
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 1,
+    "id": "call-1196622168/check-hwq2UH",
+    "source": "incident-round-3.jsonl",
+    "started_at": "2026-10-22T22:59:14.546930763-04:00",
+    "completed_at": "2026-10-22T22:59:14.644128381-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test ./...",
+    "cwd": "$OUTSIDE/fixture-9",
+    "args": [
+      "go",
+      "test",
+      "./..."
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 1,
+    "id": "call-2804908680/check-yr2E5y",
+    "source": "incident-round-3.jsonl",
+    "started_at": "2026-10-22T23:10:00.724675476-04:00",
+    "completed_at": "2026-10-22T23:10:00.819705879-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test ./...",
+    "cwd": "$OUTSIDE/fixture-10",
+    "args": [
+      "go",
+      "test",
+      "./..."
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 1,
+    "id": "call-1196622168/check-eBCzMf",
+    "source": "incident-round-3.jsonl",
+    "started_at": "2026-10-22T22:58:03.386350028-04:00",
+    "completed_at": "2026-10-22T22:58:03.478396077-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test ./...",
+    "cwd": "$OUTSIDE/fixture-11",
+    "args": [
+      "go",
+      "test",
+      "./..."
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 1,
+    "id": "call-1196622168/check-DQLtLv",
+    "source": "incident-round-3.jsonl",
+    "started_at": "2026-10-22T22:56:55.551938754-04:00",
+    "completed_at": "2026-10-22T22:56:55.637288936-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test ./...",
+    "cwd": "$OUTSIDE/fixture-12",
+    "args": [
+      "go",
+      "test",
+      "./..."
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 1,
+    "id": "call-2804908680/check-Q1YH5i",
+    "source": "incident-round-3.jsonl",
+    "started_at": "2026-10-22T23:07:37.771244826-04:00",
+    "completed_at": "2026-10-22T23:07:37.875963015-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test ./...",
+    "cwd": "$OUTSIDE/fixture-13",
+    "args": [
+      "go",
+      "test",
+      "./..."
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 1,
+    "id": "call-5840167/check-ersawS",
+    "source": "incident-round-3.jsonl",
+    "started_at": "2026-10-22T22:49:40.939634534-04:00",
+    "completed_at": "2026-10-22T22:49:41.028720609-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test ./...",
+    "cwd": "$OUTSIDE/fixture-14",
+    "args": [
+      "go",
+      "test",
+      "./..."
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 1,
+    "id": "call-5840167/check-JE9rIN",
+    "source": "incident-round-3.jsonl",
+    "started_at": "2026-10-22T22:50:37.40439058-04:00",
+    "completed_at": "2026-10-22T22:50:37.496700964-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test ./...",
+    "cwd": "$OUTSIDE/fixture-15",
+    "args": [
+      "go",
+      "test",
+      "./..."
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 1,
+    "id": "call-5840167/check-j2kiP9",
+    "source": "incident-round-3.jsonl",
+    "started_at": "2026-10-22T22:48:19.191448005-04:00",
+    "completed_at": "2026-10-22T22:48:19.283480262-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test ./...",
+    "cwd": "$OUTSIDE/fixture-16",
+    "args": [
+      "go",
+      "test",
+      "./..."
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 1,
+    "id": "call-5840167/check-g9Q2ED",
+    "source": "incident-round-3.jsonl",
+    "started_at": "2026-10-22T22:49:26.679440178-04:00",
+    "completed_at": "2026-10-22T22:49:26.77415445-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test ./...",
+    "cwd": "$OUTSIDE/fixture-17",
+    "args": [
+      "go",
+      "test",
+      "./..."
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 1,
+    "id": "call-2804908680/check-QHQhol",
+    "source": "incident-round-3.jsonl",
+    "started_at": "2026-10-22T23:10:02.291494089-04:00",
+    "completed_at": "2026-10-22T23:10:02.709482902-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test ./...",
+    "cwd": "$OUTSIDE/fixture-18",
+    "args": [
+      "go",
+      "test",
+      "./..."
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 1,
+    "id": "call-1196622168/check-QDq3ml",
+    "source": "incident-round-3.jsonl",
+    "started_at": "2026-10-22T22:58:17.657210305-04:00",
+    "completed_at": "2026-10-22T22:58:17.741642732-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test ./...",
+    "cwd": "$OUTSIDE/fixture-19",
+    "args": [
+      "go",
+      "test",
+      "./..."
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 1,
+    "id": "call-2804908680/check-9ofpUt",
+    "source": "incident-round-3.jsonl",
+    "started_at": "2026-10-22T23:09:02.373990243-04:00",
+    "completed_at": "2026-10-22T23:09:02.470344755-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test ./...",
+    "cwd": "$OUTSIDE/fixture-20",
+    "args": [
+      "go",
+      "test",
+      "./..."
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 1,
+    "id": "call-1196622168/check-52uTzw",
+    "source": "incident-round-3.jsonl",
+    "started_at": "2026-10-22T22:59:16.122970324-04:00",
+    "completed_at": "2026-10-22T22:59:16.577875085-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test ./...",
+    "cwd": "$OUTSIDE/fixture-21",
+    "args": [
+      "go",
+      "test",
+      "./..."
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 1,
+    "id": "call-5840167/check-gZq65t",
+    "source": "incident-round-3.jsonl",
+    "started_at": "2026-10-22T22:50:38.857211851-04:00",
+    "completed_at": "2026-10-22T22:50:39.283830845-04:00"
+  },
+  {
+    "before": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "after": {
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "command": "go test ./...",
+    "cwd": "$OUTSIDE/fixture-22",
+    "args": [
+      "go",
+      "test",
+      "./..."
+    ],
+    "context": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "exit": 1,
+    "id": "call-2804908680/check-MDbXd1",
+    "source": "incident-round-3.jsonl",
+    "started_at": "2026-10-22T23:08:47.325007033-04:00",
+    "completed_at": "2026-10-22T23:08:47.425495067-04:00"
+  }
+]

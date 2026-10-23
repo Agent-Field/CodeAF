@@ -1,5 +1,20 @@
 # The performance laws
 
+## Factory execution capacity
+
+New runners default to **15 concurrent jobs**, with a configurable **1–100**
+limit per owner and computer. This is a bounded product policy, not a benchmark
+of hardware capacity. Existing saved limits remain in force. The worker follows
+capacity changes every **5 seconds**; a lowering retires surplus slots between
+jobs and never cancels admitted work. Registrations for individual worker slots
+share one computer limit and must never multiply it. Queued-job capacity facts
+are derived from one presence snapshot and deduplicated per computer.
+
+Idle PR monitoring holds no execution lease. Actionable feedback queues one
+repair, which competes for the same finite capacity; returning to monitoring
+releases it. The capacity, queue projection and monitoring-lease regressions in
+`internal/factory/serve`, `lease` and `worker` defend this separation.
+
 A wave of work in August 2026 took a millisecond and half a megabyte off every
 provider call, stopped the frame redoing what nothing asked it to redo, and took
 two thirds off the embedded corpora. This file is what keeps it. Every win below
@@ -3019,3 +3034,23 @@ and `SavedListEntries` (32768 directory entries across all scanned folders) befo
 loading. Directories are scanned in batches of 128; bytes are stat-checked and read
 through a limit to cover file growth. The reply remains capped at 512 KiB. An exceeded
 budget refuses the entire request with `too_large`; admission refuses with `busy`.
+
+## Factory Follow PR progress relay bounds
+
+Follow PR reuses the worker's existing assistant stream, with no heartbeat model
+calls or extra GitHub polls. Per stream, provisional prose capture is bounded at
+4 KiB until a committed assistant/tool boundary. The relay uses the existing
+400-character stage-summary limit and admits one distinct message per 30 seconds
+per round; a round's initial trigger can be reported immediately. Stop, takeover
+and round replacement invalidate callbacks. Service outcome messages retain their
+existing path and are not throttled by model narration. Focused progress tests
+cover bounds, retries, hidden reasoning, cancellation and callback invalidation.
+
+## Partial factory PR reads
+
+A PR refresh retains at most one diagnostic for each independent failing read
+(checks, reviews/review policy, feedback, readiness). Each diagnostic detail is
+bounded to 2000 bytes. This adds no model call, polling timer or unbounded retry:
+the existing GitHub read retry and factory poll remain the only retry owners.
+Policy capability failures are not cached, so subsequent polls observe plan or
+permission changes. Readiness keys are issued only for complete snapshots.

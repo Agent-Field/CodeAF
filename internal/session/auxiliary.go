@@ -92,6 +92,9 @@ func (a *Agent) callRole(
 func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDefault string,
 	messages []ai.Message, accept func(*ai.Response, string) bool, options ...ai.Option,
 ) (*ai.Response, string, error) {
+	if err := a.admitJobCall(ctx); err != nil {
+		return nil, sessionDefault, err
+	}
 	a.mu.Lock()
 	source := a.config.RolesSource
 	// ONE MODEL MEANS ONE MODEL AT EVERY RUNG. A crew-only caller passes an empty
@@ -230,6 +233,9 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 	// per rung on a title would turn one bad minute at a provider into several
 	// charges and several waits for an answer nobody asked for.
 	for attempt, rung := range rungs {
+		if err := a.admitJobCall(errandCtx); err != nil {
+			return nil, rung.Model, err
+		}
 		// AND THE CALLER THAT HAS SOMEBODY WATCHING IS TOLD, before the wait
 		// rather than after it. A person looking at a task being sized has one
 		// phase word and nothing under it; which model is being asked, and

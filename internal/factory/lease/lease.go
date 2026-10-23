@@ -60,7 +60,9 @@ type Lease struct {
 	Asleep     bool `json:"asleep,omitempty"`
 	// Publish keeps a collected approval recoverable if the publisher vanishes.
 	Publish string `json:"publish,omitempty"`
-	Handle  string `json:"handle"`
+	// Merge is the commit of a collected merge, kept the same way.
+	Merge  string `json:"merge,omitempty"`
+	Handle string `json:"handle"`
 	// Since is when this hold began. HeartbeatAt is the last renewal. Both
 	// stay on the lease so a restart can still say who is working and when
 	// they were last heard, without a second presence file.
@@ -103,6 +105,8 @@ type Desk struct {
 	ttl    time.Duration
 	now    func() time.Time
 	record *record.Record
+	// persist is the atomic lease-file writer; nil uses writeAtomic.
+	persist func(string, []byte) error
 }
 
 // Open holds no handles. Reading is deferred to each operation so a desk
@@ -260,6 +264,13 @@ func (d *Desk) reserve(doc *document, worker Worker, taken Lease) error {
 			it.WorktreeMachine = taken.Machine
 		}
 		if !taken.ThreadOnly {
+			if it.Recovery != nil && it.Recovery.State == "queued" {
+				cp := *it.Recovery
+				cp.State = "running"
+				cp.RunningAt = taken.Since
+				cp.Reason = fmt.Sprintf("Automatic retry %d of %d is running.", cp.Attempts, cp.Limit)
+				it.Recovery = &cp
+			}
 			it.State = factory.StateRunning
 		}
 		return nil
@@ -322,6 +333,18 @@ func (d *Desk) Requeue(id int, worker string) error {
 }
 
 func eligible(it factory.Item, worker Worker) bool {
+	if factory.JobState(it) == "done" {
+		return false
+	}
+	if it.Recovery != nil && it.Recovery.State == "waiting" {
+		return false
+	}
+	if it.Recovery != nil && it.Recovery.State == "queued" && factory.RecoveryBlockReason(it) != "" {
+		return false
+	}
+	if !factory.IsIssueJob(it) {
+		return false
+	}
 	if (it.State != factory.StateQueued || paused(it)) && !pendingReply(it) || (it.WorktreeMachine != "" && it.WorktreeMachine != worker.Machine) {
 		return false
 	}
@@ -412,6 +435,11 @@ func (d *Desk) queueJob(id int, lost time.Time, machine string) error {
 		it.Question = "Runner went offline mid-step"
 		failed = factory.NewFailure(step, factory.CodeMachineLost, "Runner went offline mid-step", machine, factory.FailureStopped, attempts, lost)
 		factory.StampFailure(it, failed)
+		if it.FollowUp != nil {
+			cp := *it.FollowUp
+			cp.State, cp.Reason = "needs_you", failed.Detail
+			it.FollowUp = &cp
+		}
 		return nil
 	})
 	if errors.Is(err, store.ErrNotFound) || errors.Is(err, unchanged) {
@@ -476,4 +504,17 @@ func (d *Desk) change(change func(*document, time.Time) (bool, error)) error {
 		}
 		return d.write(*doc)
 	})
+}
+
+// HasLiveHold observes presence without reaping leases or changing job state.
+// Status questions must never become implicit recovery actions.
+func (d *Desk) HasLiveHold(id int) (bool, error) {
+	held := false
+	err := d.locked(func(doc *document, now time.Time) error {
+		if h := find(doc, id); h != nil {
+			held = h.Asleep || now.Before(h.ExpiresAt)
+		}
+		return nil
+	})
+	return held, err
 }

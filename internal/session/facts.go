@@ -29,6 +29,7 @@ package session
 // these five here — a frame or a keystroke reads it, so waiting on the wire for
 // it is a terminal that has stopped repainting.
 type Facts struct {
+	ModelIdentity *ModelIdentity `json:"modelIdentity,omitempty"`
 	// Memory is whether this request profile can use its saved notes. A missing
 	// field identifies an older engine that only states it in the welcome;
 	// an explicit false must travel when a full profile becomes lean.
@@ -160,6 +161,10 @@ func FactsOf(source FactSource) Facts {
 		Spent:         source.Usage(),
 		ContextTokens: source.ContextTokens(),
 		Reasoning:     source.ReasoningLevels(),
+	}
+	if door, ok := source.(interface{ ModelIdentity() ModelIdentity }); ok {
+		identity := door.ModelIdentity()
+		facts.ModelIdentity = &identity
 	}
 	if door, ok := source.(interface{ ContextUse() ContextUse }); ok {
 		use := door.ContextUse()

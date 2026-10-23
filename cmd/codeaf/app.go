@@ -36,7 +36,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -44,7 +43,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -54,6 +52,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/leave"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/redact"
@@ -118,13 +117,20 @@ func runApp(args []string) error {
 	os.Stdout = os.Stderr
 	defer func() { os.Stdout = wire }()
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
+	// THE ONE ROAD OUT (internal/leave): a first SIGTERM, SIGINT or SIGHUP
+	// starts the quit's careful wrap-up, and a second ends the process at once.
+	// The app's process ending is the app leaving too, even while something
+	// else still holds its pipe open, and leaving is bounded (appleave.go).
+	ctx, leaving := context.WithCancel(context.Background())
+	defer leaving()
+	defer leave.On(leaving, nil)()
+	guard.Go("app/parent", func() { watchAppParent(ctx, os.Getppid, appParentPoll, leaving) })
 	// THE APP'S KEYS LIVE IN THIS PROCESS'S MEMORY, installed before anything
 	// can read a key, and no profile write may put one on disk while they are.
 	defer config.UseAppCredentials(config.NewAppCredentials())()
 	server := appwire.NewServer(wire)
 	backend := newAppBackend(server, appOpenInProcess)
+	guard.Go("app/leave", func() { leaveWithin(ctx, backend.left, appLeaveWait, appLeaveNow) })
 	// Capture the previous holders before crews, quit resumes or client calls
 	// can open a journal and overwrite the evidence with this process's claim.
 	backend.snapshotCloseClaims()
@@ -232,6 +238,8 @@ type appConversation interface {
 // new one in a workspace. Minted is a folder this process minted a moment ago
 // for agents.create: nobody else can be holding it, so it is never joined.
 type appOpenAsk struct {
+	Models             *session.ConversationModels
+	AutomaticModels    *bool
 	TeamListeningSince time.Time
 
 	Workspace  string
@@ -284,6 +292,9 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 	clock := ask.ClockS
 	launch := &remote.LaunchShape{TeamListeningSince: ask.TeamListeningSince, Interactive: true, IntentNames: true, HandOverOnAsk: true, ProposalClockS: &clock, ChoiceClockS: clock, QuitGraceS: appQuitGraceS, LiveToolOutput: true, StandingOrders: true, QuickTasks: true}
 	if conn, err := appJoinExisting(ask, launch); conn != nil || err != nil {
+		if err == nil {
+			err = enableAppConversationModels(conn.Conv)
+		}
 		return conn, err
 	}
 
@@ -313,6 +324,16 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 				return nil, err
 			}
 			eng, err := assembleEngine(h, workspace, transcript, workspace)
+			if err == nil {
+				err = enableAppConversationModels(eng.Agent, ask.Models)
+			}
+			if err == nil && ask.AutomaticModels != nil {
+				if door, ok := eng.Agent.(interface{ SetAutomaticModels(bool) error }); ok {
+					err = door.SetAutomaticModels(*ask.AutomaticModels)
+				} else {
+					err = fmt.Errorf("model selection policy is unsupported")
+				}
+			}
 			if err == nil {
 				if c, ok := eng.Agent.(closedAgent); ok {
 					booted.Store(&c)
@@ -424,8 +445,10 @@ type appBackend struct {
 	// orderStore is the automations store standing orders are kept in
 	// (apporders.go); nil is standing orders off.
 	orderStore appOrderStore
-	// stopPhases puts the engine's phase news back the way it was.
-	stopPhases func()
+	// stopPhases puts the engine's phase news back the way it was, and
+	// stopProgress the factory runner's progress news (appfactory_progress.go).
+	stopPhases   func()
+	stopProgress func()
 	// factories is the attached-factory registry (appfactory.go), made by the
 	// first factory.* call.
 	factories   *appFactoryHub
@@ -469,6 +492,10 @@ type appBackend struct {
 
 	sweepStop chan struct{}
 	sweepDone chan struct{}
+	// left closes when Close begins, whatever started the leaving: the app's
+	// pipe closing, its shutdown request, a signal or the app's process ending.
+	// runApp bounds the leaving from that moment (appleave.go).
+	left chan struct{}
 	// spent is the last figure spend.changed said, so it is said on a change.
 	spent float64
 	// mint makes a new conversation's folder and answers its transcript path:
@@ -630,8 +657,10 @@ type appTurnMark struct {
 
 // appBoot is agents.create's ask, kept for the background open.
 type appBoot struct {
-	model  string
-	budget *float64
+	models    *session.ConversationModels
+	automatic *bool
+	model     string
+	budget    *float64
 }
 
 // appFirst is a created agent's first message: the words the model is sent,
@@ -685,6 +714,10 @@ type appLive struct {
 	savedScopes map[string]string
 	// stopping says the person stopped the running turn.
 	stopping bool
+	// progressSaid is the ids of the factory runner's lines this conversation
+	// last said live, newest last, at most [appProgressLook]
+	// (appfactory_progress.go).
+	progressSaid []string
 	// money are the open budget asks this process raised itself, by ask id;
 	// budgetAsked is the last budget level asked about, so it is asked once;
 	// lastAnswer is the agent's last words, which a budget ask quotes.
@@ -782,10 +815,12 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 		agents:    map[string]*appAgent{},
 		sweepStop: make(chan struct{}),
 		sweepDone: make(chan struct{}),
+		left:      make(chan struct{}),
 		mint:      appMint,
 	}
 	b.emit = b.newAppInbox(emit)
 	b.stopPhases = b.listenPhases()
+	b.stopProgress = b.listenProgress()
 	guard.Go("app/sweep", b.sweep)
 	return b
 }
@@ -847,7 +882,15 @@ func appRowView(row session.SessionRow) appwire.Agent {
 			state = appwire.StateWorking
 		}
 	}
-	return appwire.Agent{ID: row.ID, Title: row.Title, Workspace: row.Workspace, Model: row.Model, State: state, UpdatedAt: at}
+	identity := row.ModelIdentity
+	if identity != nil {
+		copy := *identity
+		if !row.Live {
+			copy.Active, copy.Pending = "", false
+		}
+		identity = &copy
+	}
+	return appwire.Agent{ModelIdentity: identity, FactoryOwned: factoryOwnedConversation(row.Transcript), ID: row.ID, Title: row.Title, Workspace: row.Workspace, Model: row.Model, State: state, UpdatedAt: at}
 }
 
 // remember files what the disk said about an agent, without touching one this
@@ -864,6 +907,7 @@ func (b *appBackend) remember(row session.SessionRow) appwire.Agent {
 		a.transcript = row.Transcript
 	}
 	disk := appRowView(row)
+	disk.Retryable = a.failed != "" && a.live == nil
 	busyElsewhere := a.live == nil && (disk.State == appwire.StateWorking || disk.State == appwire.StateNeedsYou)
 	if !busyElsewhere && (a.live != nil || a.view.State == appwire.StateClosed || a.view.State == appwire.StateStopped) {
 		view := a.view
@@ -970,7 +1014,7 @@ func (b *appBackend) ListAgents(workspace string) ([]appwire.Agent, error) {
 	seen := map[string]bool{}
 	var agents []appwire.Agent
 	for _, row := range session.ReadWorld(session.PlacesRoot()).Sessions() {
-		if row.DeletionPending || !matches(row.Workspace, row.ProjectDir) {
+		if row.DeletionPending || factoryOwnedConversation(row.Transcript) || !matches(row.Workspace, row.ProjectDir) {
 			continue
 		}
 		seen[row.ID] = true
@@ -996,7 +1040,7 @@ func (b *appBackend) ListAgents(workspace string) ([]appwire.Agent, error) {
 	var beyond []beyondWalk
 	b.locked(func() {
 		for id, a := range b.agents {
-			if !seen[id] && (a.live != nil || a.opening) && matches(a.view.Workspace) {
+			if !seen[id] && !a.view.FactoryOwned && !factoryOwnedConversation(a.transcript) && (a.live != nil || a.opening) && matches(a.view.Workspace) {
 				beyond = append(beyond, beyondWalk{view: a.view, transcript: a.transcript, said: a.saidLocked()})
 			}
 		}
@@ -1172,9 +1216,10 @@ func (b *appBackend) createAgentHeld(prep appCreatePrep, minted string) (appwire
 		a.view.State = appwire.StateIdle
 		if first.words != "" {
 			a.view.State = appwire.StateWorking
+			a.view.Retryable = false
 		}
 		a.view.UpdatedAt = b.now()
-		a.boot = &appBoot{model: model, budget: ask.BudgetUSD}
+		a.boot = &appBoot{model: model, budget: ask.BudgetUSD, automatic: ask.AutomaticModels, models: ask.Models}
 		a.opening, a.minted = true, true
 		a.users, a.counted = 0, true
 		view = a.view
@@ -1240,6 +1285,7 @@ func (b *appBackend) bootFailed(a *appAgent, first appFirst, err error) {
 	b.locked(func() {
 		if text != "" && !unsure {
 			a.failed, a.failedKind, a.failedShown, a.failedClient = text, appwire.ErrorOther, first.shown, first.clientID
+			a.view.Retryable = true
 		}
 		a.boot = nil
 		if a.live == nil {
@@ -1322,11 +1368,15 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 	if b.isClosing() {
 		return appwire.Agent{}, false, appwire.Errorf(appwire.CodeClosed, "codeaf is shutting down")
 	}
-	ask := appOpenAsk{Workspace: workspace, Transcript: transcript, ClockS: appProposedClockS}
+	// A stored conversation carries its model even before another turn.
+	// Opening without it would replace the saved choice with the profile default.
+	ask := appOpenAsk{Workspace: workspace, Transcript: transcript, Model: view.Model, ClockS: appProposedClockS}
 	b.locked(func() { ask.TeamListeningSince = a.listening })
 	_ = b.state.read(func(f *appStateFile) { ask.ClockS = f.clock() })
 	if boot != nil {
 		ask.Model, ask.Minted = boot.model, true
+		ask.AutomaticModels = boot.automatic
+		ask.Models = boot.models
 	}
 	conn, err := b.open(ask)
 	if err != nil {
@@ -1373,6 +1423,11 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 	live.replayJobs = appReplayJobs(replayTranscript)
 	startTitles := b.prepareTitles(a, live)
 	title, model := conn.Conv.Title(), conn.Conv.Model()
+	var modelIdentity *session.ModelIdentity
+	if door, ok := conn.Conv.(interface{ ModelIdentity() session.ModelIdentity }); ok {
+		state := door.ModelIdentity()
+		modelIdentity = &state
+	}
 	effort := conn.Conv.ReasoningFor(model)
 	if dial, ok := conn.Conv.(interface{ ConversationEffort() string }); ok {
 		effort = dial.ConversationEffort()
@@ -1395,6 +1450,7 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 			a.users, a.counted = users, true
 		}
 		a.view.Effort = effort
+		a.view.ModelIdentity = modelIdentity
 		if conn.Transcript != "" {
 			a.transcript = conn.Transcript
 		}
@@ -1831,6 +1887,9 @@ func (b *appBackend) sendLocked(a *appAgent, text, clientID string, shown *appSe
 	if opened {
 		b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	}
+	if turn, handled, err := b.tryFactoryStatus(a, text, clientID, shown); handled {
+		return turn, err
+	}
 	return b.startLocked(a, text, clientID, shown)
 }
 
@@ -1860,6 +1919,7 @@ func (b *appBackend) Retry(id string) (uint64, error) {
 		b.locked(func() {
 			if a.failed == text {
 				a.failed, a.failedKind, a.failedShown, a.failedClient = "", "", nil, ""
+				a.view.Retryable = false
 			}
 		})
 		return 0, appwire.Errorf(appwire.CodeUncertain, "%s", appUnsureWords)
@@ -2054,6 +2114,7 @@ func (b *appBackend) startTurnLocked(a *appAgent, text, clientID string, shown *
 	b.locked(func() {
 		a.users = n + 1
 		a.view.State = appwire.StateWorking
+		a.view.Retryable = false
 		if live.needsYou() {
 			a.view.State = appwire.StateNeedsYou
 		}
@@ -2101,7 +2162,10 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 	ok, failure := true, ""
 	kind, status := "", 0
 	entry := func(e appwire.Entry) {
-		e.Agent, e.Turn, e.At = id, turn, b.now()
+		e.Agent, e.Turn = id, turn
+		if e.At.IsZero() {
+			e.At = b.now()
+		}
 		live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: e})
 	}
 	// EVERY ASSISTANT MESSAGE OF THE TURN HAS ITS INDEX, msg, and the app keys
@@ -2174,6 +2238,24 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 	titles := map[string]string{}
 	for event := range events {
 		switch event.Kind {
+		case session.EventModelIdentity:
+			if event.ModelIdentity != nil {
+				var view appwire.Agent
+				changed := false
+				b.locked(func() {
+					previous := a.view.ModelIdentity
+					if previous != nil && previous.Epoch == event.ModelIdentity.Epoch && previous.Revision > event.ModelIdentity.Revision {
+						return
+					}
+					changed = true
+					a.view.ModelIdentity = event.ModelIdentity
+					a.view.Model = event.ModelIdentity.Selected
+					view = a.view
+				})
+				if changed {
+					live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+				}
+			}
 		case session.EventCloseContinued:
 			b.closeWakeStarted(id, live, event.Text)
 		case session.EventTextDelta:
@@ -2287,6 +2369,10 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			call := appConsentCall{Tool: event.Tool, Args: event.Args}
 			b.locked(func() { live.consents[event.ID] = call })
 		case session.EventNotice:
+			if event.ModelSwitch != nil {
+				entry(appModelSwitchEntry(id, *event.ModelSwitch))
+				break
+			}
 			// THE ENGINE'S NOTICES ARE ITS DIM LINES — the skills a turn
 			// carried, a request reshaped to land — drawn by the terminal as
 			// one muted row and never as a message, and quiet says the same.
@@ -2344,8 +2430,10 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			ok, kind, status = false, appwire.ErrorStopped, 0
 		}
 		a.failed, a.failedKind, a.failedShown, a.failedClient = "", "", nil, ""
+		a.view.Retryable = false
 		if !ok {
 			a.failed, a.failedKind, a.failedShown = text, kind, shown
+			a.view.Retryable = text != ""
 		}
 	})
 	switch {
@@ -2435,19 +2523,44 @@ const appSummaryRole = "summary"
 // compaction, the live transcript beneath the last one's floor, and a mark
 // for each pass at its own place, carrying the pass ([appRecordPass]).
 func appRecordItems(record session.Record) []session.DisplayEntry {
-	if len(record.Earlier) == 0 && len(record.Passes) == 0 {
-		return record.Entries
-	}
+	items, _ := appRecordPlaced(record)
+	return items
+}
+
+// appRecordPlaced is [appRecordItems] with each item's place in the record's
+// own count, `Earlier` followed by `Entries[Floor:]` (where a pass and a step
+// mark are placed), and -1 for a pass's mark, which is no line of the record.
+func appRecordPlaced(record session.Record) ([]session.DisplayEntry, []int) {
 	floor := min(max(record.Floor, 0), len(record.Entries))
+	if len(record.Earlier) == 0 && len(record.Passes) == 0 {
+		places := make([]int, len(record.Entries))
+		for i := range places {
+			places[i] = max(i-floor, -1)
+		}
+		return record.Entries, places
+	}
 	if len(record.Passes) == 0 {
 		// A region with no pass facts — a record told by an engine from
 		// before they existed — is marked once, where the region ends.
 		items := append([]session.DisplayEntry(nil), record.Earlier...)
 		items = append(items, session.DisplayEntry{Role: appSummaryRole})
-		return append(items, record.Entries[floor:]...)
+		items = append(items, record.Entries[floor:]...)
+		places := make([]int, len(items))
+		for i := range places {
+			switch {
+			case i < len(record.Earlier):
+				places[i] = i
+			case i == len(record.Earlier):
+				places[i] = -1
+			default:
+				places[i] = i - 1
+			}
+		}
+		return items, places
 	}
 	told := len(record.Earlier) + len(record.Entries) - floor
 	items := make([]session.DisplayEntry, 0, told+len(record.Passes))
+	places := make([]int, 0, told+len(record.Passes))
 	// In place order; a pass's sequence breaks a tie, so two passes at one
 	// place stand in the order they were made.
 	passes := slices.Clone(record.Passes)
@@ -2460,6 +2573,7 @@ func appRecordItems(record session.Record) []session.DisplayEntry {
 				continue
 			}
 			items = append(items, session.DisplayEntry{Role: appSummaryRole, Pass: &pass})
+			places = append(places, -1)
 		}
 	}
 	position := 0
@@ -2467,11 +2581,12 @@ func appRecordItems(record session.Record) []session.DisplayEntry {
 		for _, item := range part {
 			mark(position)
 			items = append(items, item)
+			places = append(places, position)
 			position++
 		}
 	}
 	mark(told)
-	return items
+	return items, places
 }
 
 // appDetailLimit bounds a tool's short result line.
@@ -2890,10 +3005,17 @@ func appEntryPageWith(id string, record session.Record, at time.Time, marks map[
 // however long the record is, and a notice's id is a cursor like any other
 // entry's.
 func appEntryPageOf(id string, record session.Record, at time.Time, marks map[int]appTurnMark, notes func() (*appNoticeReader, error), before string, limit int, facts func(session.DisplayEntry) appwire.ToolFacts, formed []appwire.Entry, kept ...[]appKeptFooter) ([]appwire.Entry, bool, error) {
-	items := appRecordItems(record)
+	items, places := appRecordPlaced(record)
 	all, from := appEntryShapes(id, items, at, marks)
+	appMarkProgress(all, from, places, record.Progress)
 	if len(kept) > 0 {
 		all, from = appInsertFooters(all, from, kept[0], items)
+	}
+	if len(record.ModelSwitches) > 0 {
+		formed = append([]appwire.Entry(nil), formed...)
+	}
+	for _, change := range record.ModelSwitches {
+		formed = append(formed, appModelSwitchEntry(id, change))
 	}
 	if len(formed) > 0 {
 		all = appWithFormed(all, formed, at, &from)
@@ -3145,6 +3267,12 @@ func appEntryShapes(agent string, items []session.DisplayEntry, at time.Time, ma
 				entry.Kind = appwire.EntryUpdate
 			}
 			m++
+			// Older runners echoed the person's steering as a progress answer.
+			// Hide only that producer-marked receipt, after reserving its id:
+			// authored prose stays visible and later answers never renumber.
+			if item.FactoryProgress && strings.HasPrefix(entry.Text, "steer: ") {
+				continue
+			}
 		case "tool":
 			// A TOOL'S RESULT MESSAGE IS NOT A SECOND CALL. The shaping keeps a
 			// row for it with no call id and no name; the call it answers is
@@ -3203,6 +3331,29 @@ func appUpdates(items []session.DisplayEntry) []bool {
 	return update
 }
 
+// SetAutomaticModels changes fallback policy without changing the active request.
+func (b *appBackend) SetAutomaticModels(id string, enabled bool) error {
+	a, err := b.find(id)
+	if err != nil {
+		return err
+	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	if err := b.lentFence(a, "model selection"); err != nil {
+		return err
+	}
+	if _, _, err := b.ensureLocked(a); err != nil {
+		return err
+	}
+	var live *appLive
+	b.locked(func() { live = a.live })
+	door, ok := live.conn.Conv.(interface{ SetAutomaticModels(bool) error })
+	if !ok {
+		return fmt.Errorf("model selection policy is unsupported by this engine")
+	}
+	return door.SetAutomaticModels(enabled)
+}
+
 // SetModel moves the agent to another model, opening its conversation first if
 // none is held: the choice is the conversation's own and is saved with it.
 func (b *appBackend) SetModel(id, model string) (appwire.Agent, error) {
@@ -3237,6 +3388,10 @@ func (b *appBackend) SetModel(id, model string) (appwire.Agent, error) {
 	var view appwire.Agent
 	b.locked(func() {
 		a.view.Model = model
+		if door, ok := live.conn.Conv.(interface{ ModelIdentity() session.ModelIdentity }); ok {
+			state := door.ModelIdentity()
+			a.view.ModelIdentity = &state
+		}
 		view = a.view
 	})
 	b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
@@ -3273,6 +3428,9 @@ func (b *appBackend) SetEffort(id, word string) (appwire.Agent, error) {
 		return appwire.Agent{}, appwire.Errorf(appwire.CodeEngine, "this conversation has no thinking dial; update the engine and reconnect")
 	}
 	chosen := dial.ConversationEffort()
+	if err := b.saveJobEffort(a.transcript, chosen); err != nil {
+		return appwire.Agent{}, err
+	}
 	var view appwire.Agent
 	b.locked(func() {
 		a.view.Effort = chosen
@@ -3669,6 +3827,9 @@ func (b *appBackend) Close() error {
 			return
 		}
 		b.closing = true
+		if b.left != nil {
+			close(b.left)
+		}
 		if b.reportCancel != nil {
 			b.reportCancel()
 		}
@@ -3692,11 +3853,16 @@ func (b *appBackend) Close() error {
 	if already {
 		return nil
 	}
+	// THIS MACHINE'S FACTORY IS LET GO BEFORE ANYTHING THAT WAITS ON A
+	// CONVERSATION. Stopping the close watch waits for a carry-on that may be
+	// opening a conversation, and nothing below it is the factory's business;
+	// the next engine cannot serve the factory until this one has let it go.
+	// Its runner stops here the way a quit has always stopped it.
+	b.closeLocalFactory()
 	b.stopCloseWatch()
 	if balances != nil {
 		balances.stop()
 	}
-	b.closeLocalFactory()
 	b.closeFactories()
 	// What was mid-reply and what was running is written down before anything
 	// stops, so the next start can carry on (appquit.go).
@@ -3705,6 +3871,9 @@ func (b *appBackend) Close() error {
 	<-b.sweepDone
 	if b.stopPhases != nil {
 		b.stopPhases()
+	}
+	if b.stopProgress != nil {
+		b.stopProgress()
 	}
 	if warmed != nil {
 		<-warmed

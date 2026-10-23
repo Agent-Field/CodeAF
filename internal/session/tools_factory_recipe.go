@@ -74,10 +74,8 @@ const (
 	RecipeNotNowKey = "2"
 )
 
-// recipeKinds are the sections a stage line may go in. Chore is left out on
-// purpose: it is a section of the file, but nothing in a conversation names it,
-// and a model offered it would file stages nobody asked for under it.
-var recipeKinds = []string{string(factory.KindIssue), string(factory.KindPR), string(factory.KindCI)}
+// Recipe stage changes target the issue pipeline, the only factory work item.
+var recipeKinds = []string{string(factory.KindIssue)}
 
 const factoryRecipeDescription = "Offer one line for a repository's factory recipe, its policy or its habits, when the person says something that belongs there: " +
 	"\"in this repo always run a security review when auth is touched\" is a stage, \"never post without green tests\" is policy, \"PRs from my own issues ship when proof is green\" is a habit. " +

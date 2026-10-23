@@ -33,26 +33,50 @@ func withholdTalk(j *api.Job) {
 	j.Desk = &d
 }
 
-// withholdChats drops each step's conversation id. A chat stage's id is the
-// session FILE PATH on the machine that ran it (stageConversation.ID), so it
-// names a runner's home directory to whoever reads the job, and a path on one
-// machine means nothing on another. ONLY THE WORKER holding the lease needs it,
-// to resume the same conversation after a pause, and it receives the job from
-// pulled, which does not call this. The slice is cloned so nothing is written
-// through into a shared backing array.
+// withholdChats drops each step's conversation id, and each of its finished
+// rounds'. A chat stage's id is the session FILE PATH on the machine that ran
+// it (stageConversation.ID), so it names a runner's home directory to whoever
+// reads the job, and a path on one machine means nothing on another. ONLY THE
+// WORKER holding the lease needs it, to resume the same conversation after a
+// pause, and it receives the job from pulled, which does not call this. The
+// app on the machine that ran the job opens a step's chat, and a round's, by
+// factory.job_chats, which answers agent ids. The slices are cloned so nothing
+// is written through into a shared backing array.
 func withholdChats(j *api.Job) {
 	for i := range j.Steps {
-		if j.Steps[i].Chat == "" {
+		if !stepNamesChat(j.Steps[i]) {
 			continue
 		}
 		steps := make([]api.Step, len(j.Steps))
 		copy(steps, j.Steps)
 		for k := i; k < len(steps); k++ {
 			steps[k].Chat = ""
+			if len(steps[k].Rounds) == 0 {
+				continue
+			}
+			rounds := make([]api.RoundLine, len(steps[k].Rounds))
+			copy(rounds, steps[k].Rounds)
+			for r := range rounds {
+				rounds[r].Chat = ""
+			}
+			steps[k].Rounds = rounds
 		}
 		j.Steps = steps
 		return
 	}
+}
+
+// stepNamesChat says a step carries a conversation id: its own, or a round's.
+func stepNamesChat(s api.Step) bool {
+	if s.Chat != "" {
+		return true
+	}
+	for _, r := range s.Rounds {
+		if r.Chat != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // presentWorkerJob runs after solo permissions and presence have narrowed the
@@ -70,13 +94,15 @@ func (h *Handler) presentWorkerJob(r *http.Request, j *api.Job) {
 		for _, s := range j.Steps {
 			if s.Name == j.Step.Name && s.InRun {
 				step = true
-				stoppable = s.State == api.StepRunning || s.State == api.StepWaiting
-				rerunnable = s.State != api.StepPending
+				stopped := j.Failure != nil && j.Failure.Step == s.Name && j.Failure.Next == factory.FailureStopped
+				stoppable = (s.State == api.StepRunning || s.State == api.StepWaiting) && !stopped
+				rerunnable = s.State != api.StepPending || stopped
 				break
 			}
 		}
 	}
-	mutable := j.State != api.StateDone && j.Publishing == nil
+	publishing := j.Publishing != nil && (j.Publishing.State == "queued" || j.Publishing.State == "pushing")
+	mutable := j.State != api.StateDone && !publishing
 	j.Controls.StopStep = owner && active && stoppable && mutable && h.workers != nil && h.workers.desk != nil
 	j.Controls.RerunStep = owner && step && rerunnable && mutable && h.workers != nil && h.workers.desk != nil
 	j.Controls.EditSteps = owner && mutable && !j.Ready && h.seam.Edit != nil
@@ -104,6 +130,11 @@ func (h *Handler) redactMachines(r *http.Request, j *api.Job) {
 	}
 	caller := h.machineViewer(r)
 	mine := func(handle string) bool { return caller != "" && factory.NormalizeHandle(handle) == caller }
+	// Capacity belongs to the job owner's computers, just like their slots and
+	// heartbeat. Shared job state remains visible without exposing those counts.
+	if j.StatePresentation.Kind == "waiting_for_capacity" && !mine(j.AssignedTo) {
+		j.StatePresentation.Detail = "Waiting for an available execution slot."
+	}
 	// A live hold names its machine from the lease and the worker's own handle:
 	// that is wire provenance. The job's assignee proves nothing about a stored
 	// machine id (a reassigned job keeps the first worker's id), so every

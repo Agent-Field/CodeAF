@@ -89,6 +89,14 @@ func (h *Handler) setupToken(ctx context.Context) (string, error) {
 	return token, nil
 }
 
+// setupTokenRefused is whether GitHub refused token outright, as opposed to
+// answering, or not being reached at all.
+func (h *Handler) setupTokenRefused(ctx context.Context, token string) bool {
+	var user struct{}
+	resp, err := h.setupJSON(ctx, "/user", token, &user)
+	return err != nil && resp != nil && resp.StatusCode == http.StatusUnauthorized
+}
+
 // setupJSON follows only fixed GitHub API paths; no client-supplied host receives a credential.
 func (h *Handler) setupJSON(ctx context.Context, path, token string, out any) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.github.com"+path, nil)
@@ -136,9 +144,16 @@ func clearSetupConnection(out *setupState) {
 }
 
 // A saved setup remembers progress, not proof that its credential is still held.
+//
+// A FINISHED SETUP ASKS GITHUB ONCE WHETHER ITS TOKEN STILL ANSWERS. A kept
+// token outlives a launch, so it can be revoked or run out while setup says
+// done, and reopening setup is how the person connects again. Only GitHub's
+// refusal sends setup back; a network that is down proves nothing and changes
+// nothing. The steps before done make GitHub calls of their own and say there
+// when one is refused.
 func (h *Handler) reconnectSetupIfNeeded(ctx context.Context, out *setupState) {
 	token, err := h.setupToken(ctx)
-	if err == nil && token != "" {
+	if err == nil && token != "" && (out.View.State != "done" || !h.setupTokenRefused(ctx, token)) {
 		return
 	}
 	clearSetupConnection(out)
@@ -353,6 +368,20 @@ func (h *Handler) setupAction(ctx context.Context, out *setupState, body api.Fac
 			}
 			if err := h.setupScope(ctx, token); err != nil {
 				return err
+			}
+			// THE CONNECTION OUTLIVES THIS LAUNCH, each way kept by its owner:
+			// the yes to gh in the factory's profile (gh keeps its own token),
+			// a pasted token in the app's keychain, which hands it back with
+			// keys.set at every launch. The yes is kept or taken back first, so
+			// a write that fails leaves the connection as it was.
+			keep := config.ForgetGitHubViaGH
+			if body.Source == "gh" {
+				keep = config.WriteGitHubViaGH
+			}
+			if profile := h.config.ProfileDir; profile != "" {
+				if err := keep(profile); err != nil {
+					return errors.New("codeaf could not keep this GitHub connection")
+				}
 			}
 			credentials.Set("github", token)
 		} else {

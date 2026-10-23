@@ -110,25 +110,10 @@ func (h *Handler) releaseToken(handle string) {
 	h.viewer.mu.Unlock()
 }
 
-// itemRepo is the GitHub owner/name a job belongs to. A short name joins the
-// product; anything that is not owner/name is not a repository we can check.
-func itemRepo(it factory.Item) string {
-	repo := strings.ToLower(strings.TrimSpace(it.Repo))
-	if repo == "" {
-		return ""
-	}
-	if strings.Count(repo, "/") == 1 {
-		return repo
-	}
-	if strings.Contains(repo, "/") {
-		return ""
-	}
-	product := strings.ToLower(strings.TrimSpace(it.Product))
-	if product == "" || strings.Contains(product, "/") {
-		return ""
-	}
-	return product + "/" + repo
-}
+// itemRepo is the GitHub owner/name a job belongs to ([factory.RepoOf]), in
+// lower case for the visibility keys. A short name joins the product; anything
+// that is not owner/name is not a repository we can check.
+func itemRepo(it factory.Item) string { return strings.ToLower(factory.RepoOf(it)) }
 
 func repoKeys(s factory.Snapshot) []string {
 	keys := make([]string, 0, len(s.Items)+len(s.Repos))

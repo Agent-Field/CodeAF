@@ -605,10 +605,22 @@ const checkpointAskedNote = "Moved to a task · the chat is free again"
 // errNothingToMove is [Agent.MoveTurnToTask]'s answer when no reply is running.
 var errNothingToMove = errors.New("no reply is running to move")
 
+// errStageStays is [Agent.MoveTurnToTask]'s answer in a factory stage.
+var errStageStays = errors.New("a factory step's reply stays in its step")
+
 // MoveTurnToTask asks that the running reply move to a task at its next step
 // boundary. It answers at once; the task arrives on the task lane like any
 // other, and a reply that ends first simply ends.
+//
+// A FACTORY STAGE'S REPLY IS NEVER MOVED ([Config.mayStage]). Its runner is
+// waiting on that conversation's `stage_result`, and a reply moved out of it
+// takes the work somewhere the report cannot come from: the app may lend a
+// running stage to a person (cmd/codeaf's app_lend.go), and this is the one
+// door through which their move would have reached it.
 func (a *Agent) MoveTurnToTask() error {
+	if a.config.mayStage() {
+		return errStageStays
+	}
 	a.mu.Lock()
 	running := a.hub != nil
 	a.mu.Unlock()
@@ -3224,7 +3236,8 @@ func (a *Agent) checkpointSettle(ctx context.Context, hub *eventHub, turn *Usage
 // stands in front of the meter and therefore in front of every call this file
 // makes.
 func (a *Agent) checkpoints(ctx context.Context, user userMessage) bool {
-	if a.config.InTask {
+	// The factory runner owns background completion, including its manager chat.
+	if a.config.InTask || a.jobChatOf() != nil {
 		return false
 	}
 	// A SCREENLESS SESSION WITH NOBODY LEFT IN CHARGE HAS NO ONE TO READ THE

@@ -9,9 +9,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -103,7 +105,7 @@ func TestStageResultHandsTheDoorWhatTheModelReported(t *testing.T) {
 	out, isErr := callStageTool(t, tool, `{"done":true,"findings":1,
 		"claims":[{"text":"  refunds   count once ","ok":true,"evidence":"TestRefund passes","medium":" Test "}],
 		"notes":["the export changed",""],"output":"  one finding left  "}`)
-	if isErr || out != "reported · the stage ends when you stop" {
+	if isErr || out != "reported" {
 		t.Fatalf("result = %q (error %v)", out, isErr)
 	}
 	want := factory.StageResult{Done: true, Findings: 1, Notes: []string{"the export changed"}, Output: "one finding left",
@@ -130,8 +132,8 @@ func TestStageResultSaysWhatIsMissing(t *testing.T) {
 	if len(door.reports) != 0 {
 		t.Fatal("an invalid call reached the door")
 	}
-	door.refuse = errors.New("this stage already reported, and its first report stands")
-	if out, isErr := callStageTool(t, tool, `{"done":false}`); !isErr || out != "not reported: this stage already reported, and its first report stands" {
+	door.refuse = errors.New("claim 1 has no evidence: add what shows it, or set ok: false")
+	if out, isErr := callStageTool(t, tool, `{"done":false}`); !isErr || out != "not reported: claim 1 has no evidence: add what shows it, or set ok: false" {
 		t.Fatalf("a refusal answered %q", out)
 	}
 }
@@ -163,7 +165,7 @@ func TestPlanEditHandsTheDoorAProposalAndChangesNothing(t *testing.T) {
 // THE DESCRIPTIONS SAY WHAT A STAGE IS, because the model has nothing else to
 // learn it from: no sentence on the page names these verbs.
 func TestTheStageDescriptionsSayWhatAStageIsAndHowItEnds(t *testing.T) {
-	for _, want := range []string{"IS one stage of a factory item", "its brief", "tasks", "ONCE", "until clean needs zero", "Nothing is posted anywhere", "ends when you stop"} {
+	for _, want := range []string{"IS one stage of a factory item", "its brief", "tasks", "Successful done ends the step immediately; use final false for an intermediate report.", "until clean needs zero", "Nothing is posted anywhere"} {
 		if !strings.Contains(stageResultDescription, want) {
 			t.Errorf("stage_result's description lacks %q", want)
 		}
@@ -203,11 +205,20 @@ func TestTheStageVerbsCostOnlyTheStageAndStayUnderTheirBudget(t *testing.T) {
 	if total > stageBeltBudget {
 		t.Fatalf("the stage verbs are %d bytes, over their %d", total, stageBeltBudget)
 	}
+	// BEING A STAGE CHANGES ONE PARAGRAPH OF THE PAGE AND NOTHING ELSE: the
+	// hand-off paragraph names no quick task it does not carry
+	// (stage_turn_test.go). Every other conversation's page is untouched.
 	plain := Config{Workspace: "/w"}
 	stage := plain
 	stage.Stage = &fakeStageDoor{}
-	if promptWithBeltFacts(plain) != promptWithBeltFacts(stage) {
-		t.Fatal("being a stage changed the page: the page is paid for by every conversation")
+	plainPage, stagePage := promptWithBeltFacts(plain), promptWithBeltFacts(stage)
+	for _, page := range []string{plainPage, stagePage} {
+		if strings.Contains(page, "stage_result") || strings.Contains(page, "plan_edit") {
+			t.Fatal("the page names a stage verb: the page is paid for by every conversation")
+		}
+	}
+	if strings.Contains(stagePage, "`"+quickTaskToolName+"`") || !strings.Contains(plainPage, "`"+quickTaskToolName+"`") {
+		t.Fatal("the hand-off paragraph is not the one each belt carries")
 	}
 }
 
@@ -222,5 +233,58 @@ func TestTheStageVerbsHaveAFamilyAGlossAndAPageInTheManual(t *testing.T) {
 	}
 	if glossField["stage_result"] != "output" || glossField["plan_edit"] != "why" {
 		t.Fatal("the stage verbs are glossed by the wrong field")
+	}
+}
+
+// A FACTORY STAGE HAS ONE JUDGE, ITS RUNNER. Armed exactly as the factory
+// arms one (unattended, under a wall), a stage conversation has no goal owner,
+// so nothing in it can say done for a stage that never reported; and it is
+// still asked whether it is going, so its runner waits for a landing it owes
+// an answer.
+func TestAStageConversationHasNoGoalOwnerAndIsStillAskedIfItIsGoing(t *testing.T) {
+	stage, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Stage = &fakeStageDoor{}
+		c.Unattended, c.Budget = true, Budget{Wall: time.Hour}
+	})
+	if stage.steward() != nil {
+		t.Fatal("a stage conversation was given a goal owner")
+	}
+	if stage.checkpoints(context.Background(), userMessage{wake: true}) {
+		t.Fatal("a stage conversation takes stock, which only a goal owner reads")
+	}
+	stage.graph()
+	if stage.StillGoing() {
+		t.Fatal("an idle stage read as still going")
+	}
+	stage.mu.Lock()
+	stage.steering = append(stage.steering, jobNote("task 1 has landed"))
+	stage.mu.Unlock()
+	if !stage.StillGoing() {
+		t.Fatal("a stage owed an answer to a landing read as idle")
+	}
+
+	plain, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Unattended, c.Budget = true, Budget{Wall: time.Hour}
+	})
+	if plain.steward() == nil {
+		t.Fatal("an unattended run under a wall lost its goal owner")
+	}
+}
+
+func TestFactoryManagerDoesNotOwnOrPollPipelineCompletion(t *testing.T) {
+	talk := filepath.Join(t.TempDir(), "manager.jsonl")
+	door := &jobChatStub{talk: talk}
+	manager, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.SessionFile = talk
+		c.JobChat = door
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+		c.AskConsent = true
+	})
+	if manager.steward() != nil {
+		t.Fatal("factory manager has a second completion owner")
+	}
+	if manager.checkpoints(context.Background(), userMessage{wake: true}) {
+		t.Fatal("manager completion checker polls the runner")
 	}
 }

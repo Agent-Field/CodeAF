@@ -1234,7 +1234,7 @@ remembered as well.
 With history not wired up (`--no-history`), `up` takes nothing and keeps its other
 meanings.
 
-## The thinking chip above the message box — `alt+e`, `/effort`, and how to make this one chat think harder
+## What is the chip above the message box — the thinking chip, `alt+e`, `/effort`, and how to make this one chat think harder
 
 To make this one chat think harder, choose a higher effort with `alt+e` or `/effort`.
 
@@ -3333,7 +3333,7 @@ and it moves the rung of **the thing you are looking at**. One chord, three scop
 
 | Where you are | What moves |
 |---|---|
-| The message box, typing or empty | **This conversation's** rung — the one on the legend above the box, beside the model, see *The thinking chip above the message box* |
+| The message box, typing or empty | **This conversation's** rung — the one on the legend above the box, beside the model, see *What is the chip above the message box — the thinking chip, `alt+e`, `/effort`, and how to make this one chat think harder* |
 | The task roster holds the keyboard (`alt+t`) and the cursor is on a task | That task's rung |
 | You are inside a task's page | That task's rung |
 | Home, whatever row the cursor is on | **The next conversation's** rung — the effort word after the model's colon on the rule above home's box, carried onto the conversation `enter` opens |
@@ -3391,7 +3391,7 @@ answer:
 | `ctrl+k` | **Bound, in every box**: delete from the caret to the end of the line, the pair to `ctrl+u`. It does not eat the newline. It was the conversation switcher until that moved to `alt+k` (`opt+k` on a Mac) to give this letter back to the message box |
 | `alt+k` | **The switcher**: the card of every conversation this terminal has open. On a Mac it is `opt+k`, and it needs "use option as meta" turned on in your terminal — see "Why alt+k and not ctrl+k or ctrl+tab" |
 | `ctrl+r` | Bound. In the message box it is **spell it out** — see "Make my prompt better" above — in the `/files` list it opens the folder a file is in, and in the `/model` picker it fetches the newest model list. Nowhere else |
-| `alt+e` | **Bound**, on three surfaces: it moves how hard the thing you are looking at thinks — this conversation from the message box, a task, or on home the next conversation. An automation has no rung to move. The machine's own default is the `thinking` row of `/settings` and is not on this chord. See "The thinking chip above the message box" and "alt+e — how hard the thing you are looking at thinks". Anywhere else it does nothing. On macOS it is shown as `opt+e`; the terminal must send Option as Alt/Meta, as for the other Option shortcuts |
+| `alt+e` | **Bound**, on three surfaces: it moves how hard the thing you are looking at thinks — this conversation from the message box, a task, or on home the next conversation. An automation has no rung to move. The machine's own default is the `thinking` row of `/settings` and is not on this chord. See "What is the chip above the message box — the thinking chip, `alt+e`, `/effort`, and how to make this one chat think harder" and "alt+e — how hard the thing you are looking at thinks". Anywhere else it does nothing. On macOS it is shown as `opt+e`; the terminal must send Option as Alt/Meta, as for the other Option shortcuts |
 | `ctrl+x` | Bound in two places: inside the paste editor it discards that paste (`ctrl+x discards this paste`); and on a `tasks` row of home that this window holds it asks to stop that task (`ctrl+x stop it` on the `alt+.` map; the foot under a field row is the resting sentence and does not name it). It stops no automation — that is `→` then `s` on `/automations` — and it no longer drops a harness design. Not bound anywhere else |
 | `ctrl+y` | **Bound** on a program's task page: it turns the page between the actions the program took and its raw model calls; on a Home project row and in the `/files` list it copies the path under the cursor. Nowhere else |
 | `ctrl+z` | **Bound**: undo in every box, with `ctrl+shift+z` to redo — see "Undo what I typed" |
@@ -3708,3 +3708,24 @@ Press `alt+k` (`opt+k` on macOS) to open the chats menu from a conversation.
 It lists the same open tabs as Home, in the tab strip's order. Select one and press
 Enter. Closed conversations are behind the menu's fold; Home also keeps up to
 three recently closed conversations dimmed below the open list.
+
+
+## suggested replies in the desktop message box — Tab inserts, Escape dismisses
+
+In the desktop app, an idle, empty message box can show a suggested next message
+in your voice instead of its ordinary placeholder. This works in individual,
+crew manager/member, factory manager/step and task-note conversations. It uses
+recent settled messages and the current task or job state. Sometimes no reply
+is needed: the usual placeholder stays, especially while work is running.
+
+Press Tab to insert the suggestion as an editable draft. It does not send,
+approve, resume or change Auto/Manual. Edit it and send normally when ready.
+Escape dismisses it for that context; Shift-Tab keeps normal focus navigation.
+Typing your own words, adding files or opening a command/mention menu takes
+precedence. A late suggestion cannot replace your words or cross conversations.
+
+Generation is one small, cached naming-model request, not a full agent turn.
+Its usage counts toward the conversation and any owning factory job budget.
+It stops at the budget limit or when the conversation closes, and falls back
+quietly if generation fails or the connected engine lacks this capability.
+This is a desktop composer feature; terminal Tab behavior is unchanged.

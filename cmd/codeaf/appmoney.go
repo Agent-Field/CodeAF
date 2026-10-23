@@ -106,6 +106,7 @@ func (b *appBackend) dayRefused(a *appAgent, live *appLive, text, clientID strin
 	b.locked(func() {
 		id = a.view.ID
 		a.failed, a.failedKind, a.failedClient = text, appwire.ErrorBudget, clientID
+		a.view.Retryable = text != ""
 	})
 	live.box.Event(appwire.EventTurnStarted, appwire.TurnStarted{Agent: id, Turn: turn})
 	live.box.Event(appwire.EventTurnDone, appwire.TurnDone{Agent: id, Turn: turn, OK: false, Error: words, ErrorKind: appwire.ErrorBudget})

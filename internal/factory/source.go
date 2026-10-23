@@ -34,7 +34,7 @@ type Source interface {
 // Action is one outward move, named by verb so a source can refuse the ones
 // it does not have.
 type Action struct {
-	Verb   string // comment · review · label · open-pr · open-issue · close
+	Verb   string // comment · review · label · open-pr · open-issue · close · merge
 	Item   Item
 	Body   string
 	Labels []string
@@ -43,6 +43,11 @@ type Action struct {
 	// draft PR, a pending review). The surface sets it for anything a person
 	// has not signed off on.
 	Draft bool
+	// Commit is the exact head a merge may merge, and Method how it merges
+	// ("" lets the repository's settings choose). A merge with no Commit is
+	// refused: the forge must be able to refuse a head that moved.
+	Commit string
+	Method string
 }
 
 // Receipt is what came back: the thing's address on the source, so provenance

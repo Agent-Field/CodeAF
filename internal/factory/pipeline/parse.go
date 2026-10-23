@@ -75,7 +75,7 @@ func decodeRoot(text string) (*yaml.Node, error) {
 		return nil, nil
 	}
 	if doc.Kind != yaml.MappingNode {
-		return nil, errors.New("factory.yaml is a map of start, size, pipeline, steps, fixed and rules")
+		return nil, errors.New("factory.yaml is a map of start, size, pipeline, steps, fixed, rules and merge")
 	}
 	return &doc, nil
 }
@@ -96,6 +96,7 @@ type draft struct {
 	steps    map[string]Step
 	fixed    []string
 	rules    []string
+	merge    factory.MergePolicy
 }
 
 func readDoc(root *yaml.Node) draft {
@@ -133,6 +134,8 @@ func readDoc(root *yaml.Node) draft {
 				d.fixed = names
 				d.set.fixed = true
 			}
+		case "merge":
+			d.readMerge(p.val)
 		case "rules":
 			rules, ps, ok := stringList(p.val)
 			d.problems = append(d.problems, tag("rules", ps)...)
@@ -197,6 +200,53 @@ func (d *draft) readStart(n *yaml.Node) {
 			d.problems = append(d.problems, Problem{Line: p.line, Where: "start." + p.name, Why: "not a start key"})
 		}
 	}
+}
+
+// readMerge reads `merge: {auto, method}`. auto is on or off (true and false
+// read the same); method is merge, squash or rebase, and omitted lets the
+// forge's repository settings choose.
+func (d *draft) readMerge(n *yaml.Node) {
+	pairs, probs := mapping(n)
+	d.problems = append(d.problems, tag("merge", probs)...)
+	if n.Kind != yaml.MappingNode {
+		return
+	}
+	for _, p := range pairs {
+		switch p.name {
+		case "auto":
+			s, ok := scalar(p.val)
+			on, good := onOff(s)
+			if !ok || !good {
+				d.problems = append(d.problems, Problem{Line: p.line, Where: "merge.auto", Why: "auto-merge is on or off"})
+				continue
+			}
+			d.merge.Auto = on
+			d.set.mergeAuto = true
+		case "method":
+			s, ok := scalar(p.val)
+			method, good := stepWord(s, factory.MergeMethods)
+			if !ok || !good {
+				d.problems = append(d.problems, Problem{Line: p.line, Where: "merge.method", Why: "method is merge, squash or rebase"})
+				continue
+			}
+			d.merge.Method = method
+			d.set.mergeMethod = true
+		default:
+			d.problems = append(d.problems, Problem{Line: p.line, Where: "merge." + p.name, Why: "not a merge key"})
+		}
+	}
+}
+
+// onOff reads a yes-or-no word. YAML 1.1 spells on and off as booleans; the
+// decoder keeps them as the words, so both spellings arrive here as text.
+func onOff(s string) (bool, bool) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "on", "true", "yes":
+		return true, true
+	case "off", "false", "no":
+		return false, true
+	}
+	return false, false
 }
 
 func (d *draft) readSize(n *yaml.Node) {
@@ -463,6 +513,12 @@ func (d draft) file(defaults bool) File {
 	}
 	if d.set.rules {
 		f.Rules = append([]string(nil), d.rules...)
+	}
+	if d.set.mergeAuto {
+		f.Merge.Auto = d.merge.Auto
+	}
+	if d.set.mergeMethod {
+		f.Merge.Method = d.merge.Method
 	}
 	if defaults {
 		f.resolve()
