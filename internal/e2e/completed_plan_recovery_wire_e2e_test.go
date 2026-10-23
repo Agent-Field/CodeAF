@@ -28,8 +28,8 @@ func TestCompletedPlanRecoversAndAcceptsOnTheRealEngine(t *testing.T) {
 }
 func TestCompletedPlanRecoveryLiveWorkflow(t *testing.T) { runCompletedPlanRecovery(t, true) }
 
-// The interruption is explicit fictional test work: the actual worker persists
-// plandb done then stops only its disposable engine, before landing can run.
+// The worker finishes ordinary fictional work. A harness-owned one-shot git
+// hook pauses only its disposable engine after completion and before landing.
 func runCompletedPlanRecovery(t *testing.T, live bool) {
 	if runtime.GOOS != "linux" {
 		t.Skip("owned engine identity check uses Linux proc metadata")
@@ -60,8 +60,8 @@ func runCompletedPlanRecovery(t *testing.T, live bool) {
 	}
 	home := recoveryShortHome(t, newHome(t, rows))
 	ws := newWorkspace(t, "completed-plan", false)
+	statesWorkBranch(t, ws)
 	var mu sync.Mutex
-	enginePID := 0
 	assignmentCalls := 0
 	accepted := false
 	base := "https://openrouter.ai/api/v1"
@@ -102,9 +102,8 @@ func runCompletedPlanRecovery(t *testing.T, live bool) {
 				if len(assignment) == 3 {
 					mu.Lock()
 					assignmentCalls++
-					pid := enginePID
 					mu.Unlock()
-					command := fmt.Sprintf("printf 'MOCK_RECOVERY_VALUE\\n' > recover.txt && printf 'grep -qx MOCK_RECOVERY_VALUE recover.txt\\n' > recover-check.txt && sh recover-check.txt && plandb done %s --agent %s --result 'MOCK_RECOVERY_VALUE verified' && kill -STOP %d; sleep 2", assignment[1], assignment[2], pid)
+					command := fmt.Sprintf("printf 'MOCK_RECOVERY_VALUE\\n' > recover.txt && printf 'grep -qx MOCK_RECOVERY_VALUE recover.txt\\n' > recover-check.txt && sh recover-check.txt && plandb done %s --agent %s --result 'MOCK_RECOVERY_VALUE verified'", assignment[1], assignment[2])
 					args, _ := json.Marshal(map[string]string{"command": command})
 					terminalStopResponse(w, model, "", map[string]any{"index": 0, "id": "recovery-finish-" + assignment[2], "type": "function", "function": map[string]string{"name": "bash", "arguments": string(args)}}, body.Stream)
 					return
@@ -147,27 +146,26 @@ func runCompletedPlanRecovery(t *testing.T, live bool) {
 		t.Fatalf("no actual engine PID: %s", status)
 	}
 	assertCompletedEngineIdentity(t, pid, home, ws)
-	mu.Lock()
-	enginePID = pid
-	mu.Unlock()
 	t.Cleanup(func() {
 		if completedEnginePaused(pid) && completedEngineIdentity(pid, home, ws) {
 			_ = syscall.Kill(pid, syscall.SIGCONT)
 		}
 	})
 	beforeHead := strings.TrimSpace(completedGit(t, ws, "rev-parse", "HEAD"))
-	prompt := fmt.Sprintf("/task solo disposable recovery exercise: write recover.txt containing exactly MOCK_RECOVERY_VALUE, write recover-check.txt containing exactly the runnable shell command grep -qx MOCK_RECOVERY_VALUE recover.txt, and run that check. Finish with ONE compound bash call that runs the check, marks your assigned plan task done using plandb done with your actual assigned task id and claimed agent and result 'MOCK_RECOVERY_VALUE verified', then immediately executes kill -STOP %d followed by sleep 2. This PID is only this disposable project's engine; pausing it is the explicit lifecycle test. Do not stop any other process. Do not delegate further.", pid)
+	marker := installCompletedPauseHook(t, pid, home, ws)
+	prompt := "/task solo write recover.txt containing exactly MOCK_RECOVERY_VALUE, write recover-check.txt containing exactly the runnable shell command grep -qx MOCK_RECOVERY_VALUE recover.txt, run that check, and finish normally using plandb done with your actual assigned task id and claimed agent and result 'MOCK_RECOVERY_VALUE verified'. Do not delegate further or make git commits yourself; leave commits and landing to the runtime."
+
 	rig.lit(prompt)
 	rig.keys("Enter")
 	deadline := time.Now().Add(2 * time.Minute)
 	for !completedEnginePaused(pid) {
 		if time.Now().After(deadline) {
-			t.Fatalf("actual worker never reached done-before-land pause: %s", rig.capture())
+			t.Fatalf("actual completed run never reached its guarded landing pause: %s", rig.capture())
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	// The engine was stopped by the actual worker, not by a timer guessing when
-	// it had finished. Confirm the durable root and untouched original checkout.
+	// The guarded one-shot git hook stops the engine after real worker spend
+	// and completion exist. Confirm that barrier and the untouched checkout.
 	plan := completedPlanPath(t, home)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	cmd := guardedCommand(t, ctx, home, append(append(os.Environ(), env...), "CODEAF_HOME="+home), binary(t), "plandb", "show", "t-1", "--db", plan, "--json")
@@ -179,8 +177,34 @@ func runCompletedPlanRecovery(t *testing.T, live bool) {
 	if completedGit(t, ws, "rev-parse", "HEAD") != beforeHead || fileExists(filepath.Join(ws, "recover.txt")) {
 		t.Fatal("fixture did not stop before original checkout landing")
 	}
+	if !fileExists(marker) {
+		t.Fatal("actual guarded git hook did not record its completion barrier")
+	}
+	originalHook := completedGit(t, ws, "rev-parse", "--git-path", "hooks/prepare-commit-msg")
+	if !filepath.IsAbs(originalHook) {
+		originalHook = filepath.Join(ws, originalHook)
+	}
+	if fileExists(originalHook) {
+		t.Fatal("one-shot original hook was not removed")
+	}
+	beforeLedger := completedTaskLedger(t, home, env, plan)
+	if beforeLedger <= 0 {
+		t.Fatal("completed worker has no actual task ledger spend")
+	}
+	checkpointBefore := completedCheckpointCost(home)
+	t.Logf("Paused completed root: task ledger=%g; running checkpoint cost=%g.", beforeLedger, checkpointBefore)
 	proof := completedProofDir(t, home)
 	checkCompletedProof(t, proof)
+	lock := completedGit(t, proof, "rev-parse", "--git-path", "index.lock")
+	if !filepath.IsAbs(lock) {
+		lock = filepath.Join(proof, lock)
+	}
+	for until := time.Now().Add(5 * time.Second); fileExists(lock); {
+		if time.Now().After(until) {
+			t.Fatal("hook's git process did not release its exact index lock")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 	beforeSpend := stopSpendSnapshot(t, home)
 	if beforeSpend.Cost <= 0 {
 		t.Fatal("interrupted live work recorded no spend")
@@ -224,6 +248,13 @@ func runCompletedPlanRecovery(t *testing.T, live bool) {
 	if nowCalls != callsBefore {
 		t.Fatal("completed worker was rerun after engine restart")
 	}
+	if after := completedTaskLedger(t, home, env, plan); after != beforeLedger {
+		t.Fatalf("task ledger changed across restart: %g -> %g", beforeLedger, after)
+	}
+	if cost := completedCheckpointCost(home); cost+1e-9 < beforeLedger {
+		t.Fatalf("recovered task/index lost its actual spend: cost=%g ledger=%g", cost, beforeLedger)
+	}
+	assertCompletedPlanPrice(t, rig, beforeLedger)
 	checkCompletedProof(t, proof)
 	// A restored landing card owns its displayed answer keys. Prefer that
 	// actual door, and submit a chat request only on a visible ordinary box.
@@ -234,8 +265,11 @@ func runCompletedPlanRecovery(t *testing.T, live bool) {
 	}
 	t.Logf("Actual restored UI before explicit acceptance:\n%s", screen)
 	if strings.Contains(screen, "a accept") {
-		rig.keys("a")
+		rig.keys("a", "Enter")
 	} else {
+		if strings.Contains(screen, say(t, "roomTabsWords")) {
+			t.Fatalf("restored task room offers no actual Accept card; refusing to submit a task note: %s", screen)
+		}
 		if !strings.Contains(screen, "›") {
 			t.Fatalf("restored UI offers neither an Accept card nor a normal chat box: %s", screen)
 		}
@@ -255,6 +289,9 @@ func runCompletedPlanRecovery(t *testing.T, live bool) {
 		t.Fatal("explicit acceptance did not land a commit")
 	}
 	checkCompletedProof(t, ws)
+	if cost := completedCheckpointCost(home); cost+1e-9 < beforeLedger {
+		t.Fatalf("accepted task/index lost its actual spend: cost=%g ledger=%g", cost, beforeLedger)
+	}
 	receipt := completedCommitReceipt(t, home)
 	if receipt == "" {
 		t.Fatal("accepted task has no actual work commit receipt")
@@ -368,4 +405,135 @@ func completedCommitReceipt(t *testing.T, home string) string {
 		return match[1]
 	}
 	return ""
+}
+
+func installCompletedPauseHook(t *testing.T, pid int, home, ws string) string {
+	t.Helper()
+	var transcripts []string
+	_ = filepath.WalkDir(home, func(path string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && d.Name() == "transcript.jsonl" {
+			transcripts = append(transcripts, path)
+		}
+		return nil
+	})
+	if len(transcripts) != 1 {
+		t.Fatalf("expected exactly one current conversation before the task, got %d", len(transcripts))
+	}
+	plan := filepath.Join(filepath.Dir(transcripts[0]), "plandb.db")
+	hook := completedGit(t, ws, "rev-parse", "--git-path", "hooks/prepare-commit-msg")
+	if !filepath.IsAbs(hook) {
+		hook = filepath.Join(ws, hook)
+	}
+	marker := filepath.Join(home, "completed-hook-fired.json")
+	fixture, _ := json.Marshal(map[string]any{"pid": pid, "home": home, "workspace": ws, "binary": binary(t), "plan": plan, "marker": marker, "hook": hook})
+	script := "#!/usr/bin/env python3\nimport json, os, pathlib, signal, subprocess, sys\nfixture = json.loads(" + strconv.Quote(string(fixture)) + ")\n" + `
+# Every child inherits the engine's already guarded, isolated fixture environment.
+pid=fixture['pid']
+command=pathlib.Path('/proc/%d/cmdline'%pid).read_bytes()
+environment=pathlib.Path('/proc/%d/environ'%pid).read_bytes()
+if b'engine\0' not in command or ('--workspace\0'+fixture['workspace']+'\0').encode() not in command:
+    raise SystemExit(1)
+if ('CODEAF_HOME='+fixture['home']+'\0').encode() not in environment:
+    raise SystemExit(1)
+if pathlib.Path('recover.txt').read_text().strip()!='MOCK_RECOVERY_VALUE':
+    raise SystemExit(1)
+if pathlib.Path('recover-check.txt').read_text().strip()!='grep -qx MOCK_RECOVERY_VALUE recover.txt':
+    raise SystemExit(1)
+subprocess.run(['sh','recover-check.txt'],check=True)
+base=[fixture['binary'],'plandb']
+root=json.loads(subprocess.check_output(base+['show','t-1','--db',fixture['plan'],'--json']))
+if root.get('id')!='t-1' or root.get('status')!='done':
+    raise SystemExit(1)
+ledger=json.loads(subprocess.check_output(base+['spend','--by','task','--db',fixture['plan'],'--json']))
+usd=sum(row['usd'] for row in ledger if row['key']=='1')
+if usd<=0:
+    raise SystemExit(1)
+pathlib.Path(fixture['marker']).write_text(json.dumps({'root':'1','task_usd':usd}))
+for owned_hook in {pathlib.Path(__file__).resolve(),pathlib.Path(fixture['hook']).resolve()}:
+    owned_hook.unlink(missing_ok=True)
+os.kill(pid,signal.SIGSTOP) # Only the exact verified disposable engine.
+raise SystemExit(1) # Let git release its index lock; no sleeper/commit survives.
+`
+	if err := os.WriteFile(hook, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Remove(hook) })
+	return marker
+}
+
+func completedTaskLedger(t *testing.T, home string, env []string, plan string) float64 {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := guardedCommand(t, ctx, home, append(append(os.Environ(), env...), "CODEAF_HOME="+home), binary(t), "plandb", "spend", "--by", "task", "--db", plan, "--json")
+	raw, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("actual task ledger CLI: %v %s", err, raw)
+	}
+	var rows []struct {
+		Key string  `json:"key"`
+		USD float64 `json:"usd"`
+	}
+	if err := json.Unmarshal(raw, &rows); err != nil {
+		t.Fatal(err)
+	}
+	var usd float64
+	for _, row := range rows {
+		if row.Key == "1" {
+			usd += row.USD
+		}
+	}
+	return usd
+}
+func completedCheckpointCost(home string) float64 {
+	var cost float64
+	_ = filepath.WalkDir(home, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || d.Name() != "tasks.json" {
+			return nil
+		}
+		raw, _ := os.ReadFile(path)
+		var record struct {
+			Runs []struct {
+				ID  uint64  `json:"id"`
+				USD float64 `json:"costUsd"`
+			} `json:"runs"`
+		}
+		if json.Unmarshal(raw, &record) == nil {
+			for _, run := range record.Runs {
+				if run.ID == 1 {
+					cost = run.USD
+				}
+			}
+		}
+		return nil
+	})
+	return cost
+}
+func assertCompletedPlanPrice(t *testing.T, rig *rig, usd float64) {
+	t.Helper()
+	openTasksPlace(t, rig)
+	tasksPlaceRunRow(t, rig)
+	rig.keys("Enter")
+	screen := rig.waitFor(15*time.Second, say(t, "roomTabsWords"))
+	if !strings.Contains(screen, say(t, "roomTabsWords")) {
+		t.Fatal("recovered actual plan room did not load")
+	}
+	price := fmt.Sprintf("$%.2f", usd)
+	if usd < 0.01 {
+		price = config.SubCent(usd)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		screen = rig.capture()
+		for _, line := range strings.Split(screen, "\n") {
+			if strings.Contains(line, "your call") && strings.Contains(line, price) {
+				t.Logf("Actual recovered task-room header preserves ledger price %s:\n%s", price, screen)
+				return
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("actual recovered task header lost ledger price %s: %s", price, screen)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
