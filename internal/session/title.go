@@ -146,7 +146,7 @@ const titleWindow = 2 * time.Minute
 // shell opening has an ordinary answer. The gate and mark share the hold, so
 // two Submits racing cannot buy two names.
 func (a *Agent) startTitleLocked() {
-	if a.file == nil || a.titleTried || strings.TrimSpace(a.title) != "" || a.closed || a.titleCtx == nil {
+	if a.file == nil || a.titleTried || strings.TrimSpace(a.title) != "" || a.closed || a.workStopped || a.titleCtx == nil {
 		return
 	}
 	// AND A TASK NODE NAMES NOTHING. A name exists for the picker, which lists

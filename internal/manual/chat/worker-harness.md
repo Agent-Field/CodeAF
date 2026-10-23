@@ -646,6 +646,12 @@ task no `p pause` is named.
 Closing the window, `ctrl+c` and `/quit` do NOT stop a run: it carries on without the
 window and its work lands by itself. Stop it first if you want it ended.
 
+Stopping a delegated run also stops its workers and prevents another checking or
+acceptance pass from starting. Its saved work and trace remain available. A request
+already sent can still return its final usage receipt; stopping does not erase costs
+already incurred. If bringing finished work home has already begun, that operation
+finishes and its actual result is preserved.
+
 ## What a stopped run keeps: its branch after you stop it, bring it in or drop it
 
 **Nothing a stopped run made goes into your folder.** What it had made so far is

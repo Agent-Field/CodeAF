@@ -69,7 +69,8 @@ stop confirmations. The header and controls stop the work on the open page.
 conversation and the model calls `tasks` with that id and `stop`. That is the same door
 `/stop`, `x` and the `Stop task…` row take, so the ending is identical whichever hand pulls
 it: the worker is cut off where it stands, its branch is kept with its work committed on it,
-the row reads `stopped`, and what it spent freezes where it was.
+the row reads `stopped`, and no new requests are started for it. Usage from a request
+already sent can still arrive in its final receipt.
 
 **A hosted conversation waits for the stop to come back before it claims success.** Once the
 normal session host has ended the run and returned its receipt, the chat can answer `Stopped.`.
