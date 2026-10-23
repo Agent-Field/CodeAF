@@ -3014,7 +3014,7 @@ type Agent struct {
 	// read off the background.
 	wokenTurnBase func() context.Context
 	// wallStop ends the one reader that waits independently for this session's
-	// wall, and is nil when the session has no unattended wall (wallclock.go).
+	// wall, and is nil when neither launch nor Steward sets a wall.
 	// wallEndingTaken is the once-only mark on the ending that reader writes.
 	// Both are guarded by mu because Close and the reader meet on them from
 	// different goroutines.
@@ -3054,8 +3054,11 @@ type Agent struct {
 	// never has to, because a cut is refused while a turn is in flight.
 	turnFloor int
 	// Explicit conversation stops suppress autonomous wakes until fresh input.
-	workStopped  bool
-	workStopping bool
+	workStopped    bool
+	workStopping   bool
+	workEpoch      uint64
+	workStopReason string
+	workStopDone   chan struct{}
 	// cancel ends the turn in flight AND SAYS WHICH DOOR IT CAME THROUGH. It is
 	// a [context.CancelCauseFunc] rather than a plain one because a turn that
 	// ends with nothing said has to be able to account for itself afterwards —
