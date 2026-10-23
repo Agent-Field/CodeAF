@@ -1041,6 +1041,10 @@ var OperatorEnvPins = []string{
 	// CODEAF_FURROW names a furrow to use instead of the one codeaf carries
 	// (internal/furrow). A path to a program is plumbing.
 	"CODEAF_FURROW",
+	// CODEAF_BASH names the bash native Windows runs commands in when Git for
+	// Windows is not where codeaf looks (internal/shell). A path to a program
+	// is plumbing for the same reason CODEAF_FURROW is.
+	"CODEAF_BASH",
 	// The three site-attribution pins — a URL, an app name, a category list —
 	// used to sit here, and they are gone rather than moved: the OpenRouter app
 	// this binary reports as is decided in internal/provider from the binary's
