@@ -222,10 +222,18 @@ func TestResumedStageKeepsItsOpeningBriefThroughTheRealMaker(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	maker := factoryStageMaker(nil, workspace, "", launch.Config)
+	floor, err := store.Open(filepath.Join(root, "floor"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, err := floor.Create(factory.Item{Kind: factory.KindIssue, Repo: "acme/api", Num: 1, State: factory.StateRunning, Cap: 10, Stream: &factory.Stream{Room: team, Phases: []factory.Phase{{Name: "review", Kind: factory.StageChat, State: factory.PhaseRunning}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	maker := factoryStageMaker(floor, workspace, "", launch.Config)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	spec := factoryrun.ConversationSpec{Name: "#1 · review", Team: team, Brief: "Look it over. End by calling stage_result once.", Dir: workspace}
+	spec := factoryrun.ConversationSpec{Item: item, Stage: &repairReportDoor{}, Name: "#1 · review", Team: team, Brief: "Look it over. End by calling stage_result once.", Dir: workspace}
 	first, err := maker.Open(ctx, spec)
 	if err != nil {
 		t.Fatal(err)

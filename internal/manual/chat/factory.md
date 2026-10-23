@@ -242,3 +242,19 @@ that head checked. Only a successful review of the exact clean checkout records
 it; the job then returns to monitoring without pushing, marking ready again or
 merging. Incomplete facts keep it waiting; ordinary findings return to bounded
 repair. New feedback is included even when the remote head did not change.
+
+## corrected test commands and saved verification — invalid Cargo arguments, retry Follow PR
+
+A malformed Cargo test invocation is an execution problem, not proof of a failing test. Follow PR accepts later measured checks that cover the same test scope on the current checkout: a corrected multi-name invocation, all named tests individually, or the matching full target. A passing subset, other target, environment or stale checkout cannot clear it. Expected regression failures on old code stay in history; passing checks on the repaired checkout can replace them. Unknown commands keep exact matching.
+
+A retry reuses saved measured checks only while the checkout and scope still match. It keeps the old transcript and charges, and never replays a commit or push. Changes invalidate the saved results. An older Auto job stopped only by the malformed-Cargo guard can receive one bounded recheck after GitHub is refreshed and its saved checks pass the corrected rules. Manual, takeover, Stop, closed jobs, exhausted budgets and genuine decisions remain paused.
+
+## review tracking while a repair is paused — outdated inline comments, contributor agreement
+
+Review comments are tracked by stable identity and edited content. An outdated diff position does not resolve a thread. Resolving or moving an old comment does not start another paid repair. A finding is marked handled after its repair completes, not when a worker starts. Completion resets that repair episode's attempt count; later feedback gets its own bounded episode. Reopening a resolved thread is actionable again. Partial feedback reads cannot claim all concerns were handled.
+
+GitHub observations continue while a repair is paused. The job shows pending feedback separately; eligible Auto execution pauses can resume for new actionable feedback within repair and spending limits. A contributor agreement remains a GitHub merge prerequisite and is shown as CLA pending, not running CI. The factory does not sign it, and it does not stop independent review maintenance.
+
+## runner recovery window — running time versus waiting for reconnect
+
+Automatic interrupted-step recovery allows three retries with a two-minute reconnect window. Time actually spent running an admitted retry does not consume that waiting window. Waiting, backoff and attempts remain bounded, survive restarts and never replay uncertain publication. A person's explicit Retry remains available after exhaustion; saved checks and previous work are retained.

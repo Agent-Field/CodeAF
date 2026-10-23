@@ -179,7 +179,7 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 		verification: verification,
 		closing:      make(chan struct{}),
 	}
-	brief := spec.Brief
+	brief := spec.Brief + inheritFactoryChecks(spec, cfg.SessionFile, where)
 	if resumed {
 		brief = session.CarryOn(brief)
 	}

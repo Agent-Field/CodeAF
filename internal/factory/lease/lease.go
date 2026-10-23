@@ -267,6 +267,7 @@ func (d *Desk) reserve(doc *document, worker Worker, taken Lease) error {
 			if it.Recovery != nil && it.Recovery.State == "queued" {
 				cp := *it.Recovery
 				cp.State = "running"
+				cp.RunningAt = taken.Since
 				cp.Reason = fmt.Sprintf("Automatic retry %d of %d is running.", cp.Attempts, cp.Limit)
 				it.Recovery = &cp
 			}

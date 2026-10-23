@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
+	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -387,7 +388,12 @@ func factoryGitHub(ctx context.Context, st *store.Store, token func(context.Cont
 	if tok == "" {
 		return nil
 	}
-	return factorygithub.New(forge.NewClient(tok), repos, nil)
+	src := factorygithub.New(forge.NewClient(tok), repos, nil)
+	src.SetVerificationRecovery(func(it factory.Item) bool {
+		dir := factoryrun.NewWorkdirs(filepath.Join(st.Root(), "work"), nil).Dir(it)
+		return factoryVerificationRecovered(it, dir)
+	})
+	return src
 }
 
 // factoryPoll is the one GitHub poll this process runs, started at most once.

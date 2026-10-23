@@ -38,7 +38,7 @@ func TestPartialPRBlocksReadinessButAllowsKnownRepairs(t *testing.T) {
 }
 
 func TestPartialPRMonitoringTransitionsIgnoreRepairDedupe(t *testing.T) {
-	it := Item{Kind: KindIssue, State: StateShipped, Cap: 10, PullRequest: &PullRequest{Number: 7, State: PROpen, HeadSHA: "head", CI: "ci ✓", ChecksRead: true, ReviewsRead: true, Checks: PRChecks{Passed: 8}}, FollowUp: &PRFollowUp{State: "healthy", Kind: "pr", Limit: 3}}
+	it := Item{Kind: KindIssue, State: StateShipped, Cap: 10, HeadCommit: "head", PullRequest: &PullRequest{Number: 7, State: PROpen, HeadSHA: "head", CI: "ci ✓", ChecksRead: true, ReviewsRead: true, Checks: PRChecks{Passed: 8}}, FollowUp: &PRFollowUp{State: "healthy", Kind: "pr", Limit: 3}}
 	it.FollowUp.EventKey = followEvent(it.PullRequest, "")
 	it.PullRequest.ReviewsRead = false
 	it.PullRequest.Problems = []PRReadProblem{{Area: "review policy", Code: "access_denied", Summary: "Policy access denied"}}

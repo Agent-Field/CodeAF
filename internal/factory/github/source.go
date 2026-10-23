@@ -83,8 +83,9 @@ type RepoInfo = forge.RepoInfo
 
 // Source reads and writes the watched repositories.
 type Source struct {
-	api API
-	now func() time.Time
+	verificationRecovered func(factory.Item) bool
+	api                   API
+	now                   func() time.Time
 	// readyPause permits a deterministic retry clock in isolated fixtures.
 	readyPause func(context.Context, time.Duration) error
 
@@ -590,7 +591,7 @@ func checkRuns(in []forge.CheckRun) []factory.CheckRun {
 		if r.Status != "completed" || state == "" {
 			state = r.Status
 		}
-		out = append(out, factory.CheckRun{AppID: r.AppID, Name: r.Name, State: state, URL: r.URL})
+		out = append(out, factory.CheckRun{Source: r.Source, AppID: r.AppID, Name: r.Name, State: state, URL: r.URL})
 	}
 	return out
 }
@@ -841,3 +842,6 @@ func (s *Source) UpdatePRBody(ctx context.Context, it factory.Item, body string)
 	_, err := s.api.UpdatePullRequest(ctx, owner, repo, it.PullRequest.Number, factory.PublicText(it.Title), factory.PublicText(body))
 	return err
 }
+
+// SetVerificationRecovery installs a local, read-only checkpoint evaluator.
+func (s *Source) SetVerificationRecovery(f func(factory.Item) bool) { s.verificationRecovered = f }

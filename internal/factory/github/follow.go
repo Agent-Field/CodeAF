@@ -65,12 +65,35 @@ func (s *Source) FollowPR(ctx context.Context, owner, repo string, number int) (
 		}
 	}
 	if feedback, ok := s.api.(interface {
+		PullFeedbackState(context.Context, string, string, int) (forge.ReviewFeedback, error)
+	}); ok {
+		state, e := feedback.PullFeedbackState(ctx, owner, repo, number)
+		out.Feedback = state.Text
+		if e != nil {
+			out.ReviewsRead = false
+			out.Problems = append(out.Problems, readProblem("feedback", e))
+		} else {
+			out.FeedbackTracked = true
+			for _, item := range state.Items {
+				out.FeedbackItems = append(out.FeedbackItems, factory.PRFeedback{ID: item.ID, Revision: item.Revision, Resolved: item.Resolved, External: item.External})
+			}
+		}
+	} else if feedback, ok := s.api.(interface {
 		PullFeedback(context.Context, string, string, int) (string, error)
 	}); ok {
 		out.Feedback, err = feedback.PullFeedback(ctx, owner, repo, number)
 		if err != nil {
 			out.ReviewsRead = false
 			out.Problems = append(out.Problems, readProblem("feedback", err))
+		}
+	}
+	if out.ChecksRead && len(out.CheckRuns) > 0 {
+		allExternal := true
+		for _, c := range out.CheckRuns {
+			allExternal = allExternal && factory.ExternalPRCheck(c)
+		}
+		if allExternal {
+			out.CI = factory.PRWaitingWords(&out)
 		}
 	}
 	if len(out.Problems) == 0 {
@@ -251,15 +274,18 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 			// A failed feedback read must not leave an old all-clear on screen.
 			// Do not replace an active repair or facts for a newer head.
 			reason := storedText("Could not refresh PR checks/review feedback: "+err.Error()+". Will retry on the next poll.", 700)
-			if it.FollowUp != nil && (it.FollowUp.State == "healthy" || it.FollowUp.State == "watching") && (it.FollowUp.Reason != reason || it.PullRequest.ChecksRead) {
+			if it.FollowUp != nil && (it.FollowUp.Monitoring != reason || it.PullRequest.ChecksRead) {
 				_ = st.Update(it.ID, func(cur *factory.Item) error {
-					if cur.PullRequest == nil || cur.PullRequest.HeadSHA != it.PullRequest.HeadSHA || cur.FollowUp == nil || (cur.FollowUp.State != "healthy" && cur.FollowUp.State != "watching") {
+					if cur.PullRequest == nil || cur.PullRequest.HeadSHA != it.PullRequest.HeadSHA || cur.FollowUp == nil {
 						return nil
 					}
 					pr := *cur.PullRequest
 					pr.ChecksRead, pr.ReviewsRead, pr.CI = false, false, ""
 					follow := *cur.FollowUp
-					follow.State, follow.Reason = "watching", reason
+					if follow.State == "healthy" || follow.State == "watching" {
+						follow.State, follow.Reason = "watching", reason
+					}
+					follow.Monitoring = reason
 					cur.PullRequest, cur.FollowUp = &pr, &follow
 					return nil
 				})
@@ -272,7 +298,18 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 		if fresh.URL == "" {
 			fresh.URL = it.PullRequest.URL
 		}
+		checkpointRecovered := false
+		if !held[it.ID] && f.verificationRecovered != nil && len(fresh.Problems) == 0 && it.PullRequest.HeadSHA == fresh.HeadSHA {
+			checkpointRecovered = f.verificationRecovered(it)
+		}
 		probe := it
+		if it.FollowUp != nil {
+			cp := *it.FollowUp
+			probe.FollowUp = &cp
+		}
+		if checkpointRecovered {
+			factory.ReleaseVerificationPause(&probe, f.now())
+		}
 		probe.PullRequest = &fresh
 		initialWatch := probe.FollowUp == nil && probe.State == factory.StateShipped && probe.Publish == "pr" && probe.HeadCommit != ""
 		if initialWatch {
@@ -282,7 +319,7 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 		if !held[it.ID] || fresh.State == factory.PRMerged || fresh.State == factory.PRClosed {
 			followChanged = factory.QueueCIFollowUp(&probe, f.now())
 		}
-		followChanged = followChanged || initialWatch
+		followChanged = followChanged || initialWatch || checkpointRecovered
 		if reflect.DeepEqual(*it.PullRequest, fresh) && !followChanged {
 			continue
 		}
@@ -320,6 +357,9 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 					item.Note(f.now(), fmt.Sprintf("PR #%d observed ready for review on GitHub · head %s", cp.Number, cp.HeadSHA))
 				}
 				item.Stream.Log = append(item.Stream.Log, factory.LogLine{At: f.now(), Tone: "ok", Text: fmt.Sprintf("PR #%d observed ready for review on GitHub · head %s", cp.Number, cp.HeadSHA)})
+			}
+			if checkpointRecovered && f.verificationRecovered(*item) {
+				factory.ReleaseVerificationPause(item, f.now())
 			}
 			item.PullRequest = &cp
 			if initialWatch && item.FollowUp == nil {

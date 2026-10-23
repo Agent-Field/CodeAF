@@ -69,3 +69,15 @@ func TestStepRerunExecutesTailAndKeepsSpend(t *testing.T) {
 		})
 	}
 }
+
+func TestStepRetryRetainsTheInterruptedChatAsACheckpointCandidate(t *testing.T) {
+	now := time.Now()
+	it := factory.Item{Kind: factory.KindIssue, State: factory.StateNeedsYou, Cap: 10, Failure: &factory.Failure{Step: factory.FollowPRStep, Code: factory.CodeMachineLost, Next: factory.FailureStopped}, Stream: &factory.Stream{Spent: 2.5, Phases: []factory.Phase{{Name: factory.FollowPRStep, Kind: factory.StageChat, State: factory.PhaseFailed, Round: 4, Chat: "saved-stage/transcript.jsonl", Failure: &factory.Failure{Detail: "runner lost", At: now}}}}}
+	if err := StepControl(&it, factory.FollowPRStep, true, "", now); err != nil {
+		t.Fatal(err)
+	}
+	ph := it.Stream.Phases[0]
+	if len(ph.Rounds) != 1 || ph.Rounds[0].Chat != "saved-stage/transcript.jsonl" || it.Stream.Spent != 2.5 || ph.Round != 5 {
+		t.Fatal("retry discarded its checkpoint source or prior spending")
+	}
+}

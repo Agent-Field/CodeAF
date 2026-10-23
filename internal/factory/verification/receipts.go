@@ -225,6 +225,7 @@ func PresentationOnly(command string) bool {
 	parts := approval.SplitBashCommand(command)
 	found := false
 	identity := ""
+	savedExit := ""
 	piped := false
 	for _, part := range parts {
 		words := strings.Fields(part.Command)
@@ -238,9 +239,13 @@ func PresentationOnly(command string) bool {
 			continue
 		}
 		if found && len(words) == 1 && capturedExit.MatchString(words[0]) {
+			savedExit, _, _ = strings.Cut(words[0], "=")
 			if part.Separator != ";" && part.Separator != "\n" && part.Separator != "&&" {
 				return false
 			}
+			continue
+		}
+		if found && savedExit != "" && len(words) == 2 && words[0] == "exit" && strings.Trim(words[1], "\"'") == "$"+savedExit && part.Separator == "" {
 			continue
 		}
 		if !piped && (words[0] == "echo" || words[0] == "printf") {

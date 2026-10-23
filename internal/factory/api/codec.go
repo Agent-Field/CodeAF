@@ -515,7 +515,7 @@ func fromPR(pr *factory.PullRequest) *PR {
 		return nil
 	}
 	out := &PR{
-		Problems: append([]factory.PRReadProblem(nil), pr.Problems...), BaseSHA: pr.BaseSHA, Feedback: pr.Feedback, CheckRuns: mapList(pr.CheckRuns, fromCheckRun),
+		FeedbackItems: append([]factory.PRFeedback(nil), pr.FeedbackItems...), FeedbackTracked: pr.FeedbackTracked, Problems: append([]factory.PRReadProblem(nil), pr.Problems...), BaseSHA: pr.BaseSHA, Feedback: pr.Feedback, CheckRuns: mapList(pr.CheckRuns, fromCheckRun),
 		ReadinessKey: pr.ReadinessKey, Conflict: pr.Conflict, Draft: pr.Draft, Number: pr.Number, URL: pr.URL, CI: pr.CI, State: pr.State,
 		MergedBy: pr.MergedBy, ReviewDecision: pr.ReviewDecision, RequiredReviews: pr.Required,
 		Reviews: mapList(pr.Reviews, func(r factory.PRReview) PRReview {
@@ -539,7 +539,7 @@ func toPR(pr *PR) *factory.PullRequest {
 		return nil
 	}
 	out := &factory.PullRequest{
-		Problems: append([]factory.PRReadProblem(nil), pr.Problems...), BaseSHA: pr.BaseSHA, Feedback: pr.Feedback, CheckRuns: mapList(pr.CheckRuns, toCheckRun),
+		FeedbackItems: append([]factory.PRFeedback(nil), pr.FeedbackItems...), FeedbackTracked: pr.FeedbackTracked, Problems: append([]factory.PRReadProblem(nil), pr.Problems...), BaseSHA: pr.BaseSHA, Feedback: pr.Feedback, CheckRuns: mapList(pr.CheckRuns, toCheckRun),
 		ReadinessKey: pr.ReadinessKey, Conflict: pr.Conflict, Draft: pr.Draft, Number: pr.Number, URL: pr.URL, CI: pr.CI, State: pr.State,
 		MergedBy: pr.MergedBy, ReviewDecision: pr.ReviewDecision, Required: pr.RequiredReviews,
 		Reviews: mapList(pr.Reviews, func(r PRReview) factory.PRReview {
@@ -735,10 +735,10 @@ func toFile(f File) factory.FileChange {
 }
 
 func fromCheckRun(c factory.CheckRun) CheckRun {
-	return CheckRun{Name: c.Name, State: c.State, URL: c.URL}
+	return CheckRun{Source: c.Source, Name: c.Name, State: c.State, URL: c.URL}
 }
 func toCheckRun(c CheckRun) factory.CheckRun {
-	return factory.CheckRun{Name: c.Name, State: c.State, URL: c.URL}
+	return factory.CheckRun{Source: c.Source, Name: c.Name, State: c.State, URL: c.URL}
 }
 
 func fromActivity(e factory.Event) Activity { return Activity{At: e.At, What: e.What} }

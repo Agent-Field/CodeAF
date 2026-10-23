@@ -32,6 +32,7 @@ type FileChange struct {
 // CheckRun is one check run on a commit: its name, its status (`queued`,
 // `in_progress`, `completed`), its conclusion once completed, and its page.
 type CheckRun struct {
+	Source     string
 	AppID      int
 	Name       string
 	Status     string
@@ -236,10 +237,10 @@ func (c *client) CheckRuns(ctx context.Context, owner, repo, sha string) (CheckS
 		if s.State == "error" {
 			conclusion = "failure"
 		}
-		out = append(out, CheckRun{Name: s.Context, Status: status, Conclusion: conclusion, URL: s.URL})
+		out = append(out, CheckRun{Source: "status", Name: s.Context, Status: status, Conclusion: conclusion, URL: s.URL})
 	}
 	for _, r := range checkRuns {
-		out = append(out, CheckRun{AppID: r.App.ID, Name: r.Name, Status: r.Status, Conclusion: r.Conclusion, URL: r.HTMLURL})
+		out = append(out, CheckRun{Source: "check_run", AppID: r.App.ID, Name: r.Name, Status: r.Status, Conclusion: r.Conclusion, URL: r.HTMLURL})
 		if r.Status != "completed" {
 			running = true
 			continue

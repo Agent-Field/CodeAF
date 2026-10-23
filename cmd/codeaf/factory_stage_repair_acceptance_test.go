@@ -256,3 +256,42 @@ func TestRepairFixedRequiresCurrentMeasuredAuditsAndKeepsPartialWorkIncomplete(t
 	}
 }
 func repairShellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
+
+func TestRepairInvalidCargoInvocationIsRecoverableAfterValidCoverage(t *testing.T) {
+	root, file, run := repairCheckFixture(t)
+	run("CHECK_EXIT=1 cargo test --test cli regression_one regression_two")
+	run("cargo test --test cli regression_one")
+	notes, _ := (&stageConversation{file: file, dir: root}).RepairExecutionNotes()
+	if !strings.Contains(strings.Join(notes, "\n"), verification.FailurePrefix) {
+		t.Fatal("incomplete coverage cleared invalid invocation")
+	}
+	run("cargo test --test cli regression_two")
+	notes, _ = (&stageConversation{file: file, dir: root}).RepairExecutionNotes()
+	for _, n := range notes {
+		if strings.HasPrefix(n, verification.FailurePrefix) {
+			t.Fatalf("valid corrected coverage remained blocked: %s", n)
+		}
+	}
+}
+
+func TestRepairInvalidArgvCorrectionCannotEraseAnUnrelatedFailedShellSuffix(t *testing.T) {
+	root, file, run := repairCheckFixture(t)
+	run("CHECK_EXIT=1 cargo test --test cli one two; false")
+	run("cargo test --test cli")
+	notes, _ := (&stageConversation{file: file, dir: root}).RepairExecutionNotes()
+	if !strings.Contains(strings.Join(notes, "\n"), verification.FailurePrefix) {
+		t.Fatal("corrected test erased an independent failed shell command")
+	}
+}
+func TestRepairCorrectsInvalidCargoWithSavedExitAndReporting(t *testing.T) {
+	root, file, run := repairCheckFixture(t)
+	run(`CHECK_EXIT=1 cargo test --test cli one two > check.log 2>&1; ec=$?; echo "EXIT=$ec"; grep -E "test result" check.log; exit $ec`)
+	run(`cargo test --test cli one`)
+	run(`cargo test --test cli two`)
+	notes, _ := (&stageConversation{file: file, dir: root}).RepairExecutionNotes()
+	for _, n := range notes {
+		if strings.HasPrefix(n, verification.FailurePrefix) {
+			t.Fatalf("saved-exit correction remained blocked: %s", n)
+		}
+	}
+}

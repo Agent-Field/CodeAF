@@ -18,6 +18,9 @@ func PresentJob(j *Job) {
 		}
 	case j.NeedsYou != nil && j.NeedsYou.Kind == factory.NeedsOutOfAttempts:
 		p.Kind, p.Title = "out_of_rounds", "Stuck"
+		if j.FollowUp != nil && j.FollowUp.BlockedBy == "verification" {
+			p.Title = "Verification needs retry"
+		}
 		if j.NeedsYou.Question != nil {
 			p.Detail = j.NeedsYou.Question.Text
 		}
