@@ -130,6 +130,7 @@ func TestVideoPollingCredentialsOnTheRealTerminal(t *testing.T) {
 				var body struct {
 					Stream   bool `json:"stream"`
 					Messages []struct {
+						Role    string          `json:"role"`
 						Content json.RawMessage `json:"content"`
 					} `json:"messages"`
 					Tools []struct {
@@ -146,6 +147,21 @@ func TestVideoPollingCredentialsOnTheRealTerminal(t *testing.T) {
 					}
 					if tool.Function.Name == "load_capability" {
 						canLoad = true
+					}
+				}
+				// Relay the provider failure the real runtime delivered. The
+				// expected host is never manufactured by this scripted model.
+				for _, message := range body.Messages {
+					if message.Role != "user" {
+						continue
+					}
+					note := credentialMessageText(message.Content)
+					for _, line := range strings.Split(note, "\n") {
+						if strings.Contains(line, "video polling at ") && strings.Contains(line, "failed:") {
+							t.Logf("Actual runtime failure note: %s", line)
+							credentialTextResponseStream(w, line, body.Stream)
+							return
+						}
 					}
 				}
 				asked := false
@@ -354,4 +370,22 @@ func TestProviderCredentialBoundaryLiveConversationRegression(t *testing.T) {
 		}
 	}
 	t.Logf("PASS actual OpenRouter: normal hosted chat automatically captured mock convention, fresh chat recalled and wrote actual JSON file; %d receipt rows all used %s\n%s", len(models), model, r.capture())
+}
+
+func credentialMessageText(raw json.RawMessage) string {
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		return text
+	}
+	var parts []struct {
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(raw, &parts) != nil {
+		return ""
+	}
+	var texts []string
+	for _, part := range parts {
+		texts = append(texts, part.Text)
+	}
+	return strings.Join(texts, "\n")
 }
