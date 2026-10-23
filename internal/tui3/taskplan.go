@@ -646,10 +646,11 @@ func planNamesOf(rows []tasksMineRow, chat string) map[string]bool {
 // landed yet, and the run's store is archived the moment a finished plan is
 // replaced ([session.Agent.openBeltRunStore]) — dropping a row on the strength
 // of an identity nothing answers for would take the run off the page
-// altogether, which is worse than the row it replaces.
-func planStoreDraws(rows []tasksMineRow, plan []session.PlanTaskRow) []tasksMineRow {
+// altogether, which is worse than the row it replaces. The returned identities
+// also suppress those same published rows from the persisted world scan.
+func planStoreDraws(rows []tasksMineRow, plan []session.PlanTaskRow) ([]tasksMineRow, map[tasksKey]bool) {
 	if len(rows) == 0 || len(plan) == 0 {
-		return rows
+		return rows, nil
 	}
 	held := make(map[string]bool, len(plan))
 	for _, task := range plan {
@@ -658,13 +659,15 @@ func planStoreDraws(rows []tasksMineRow, plan []session.PlanTaskRow) []tasksMine
 		}
 	}
 	kept := make([]tasksMineRow, 0, len(rows))
+	replaced := make(map[tasksKey]bool)
 	for _, row := range rows {
 		if held[strings.TrimSpace(row.planTask)] {
+			replaced[tasksKeyOf(row.entry)] = true
 			continue
 		}
 		kept = append(kept, row)
 	}
-	return kept
+	return kept, replaced
 }
 
 // ── THE PAGE ONE PLAN ROW OPENS ─────────────────────────────────────────────
