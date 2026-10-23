@@ -39,7 +39,7 @@ const (
 	sayStartResumed   = "%s resumed"
 	sayStartContinued = "%s went past %s"
 	sayStartRunning   = "%s is already running"
-	sayStartQueued    = "%s is queued · it starts when a bench frees"
+	sayStartQueued    = "%s is queued · waiting for an available execution slot. Configure Jobs at once in Settings → Factory concurrency."
 )
 
 // startItem starts, resumes or continues the run of item it on st. ITS LAUNCH

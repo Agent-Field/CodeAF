@@ -16,6 +16,30 @@ A machine with no factory set up has none of this: the chat's factory tools are 
 
 `codeaf factory` (the same as `codeaf factory serve`) runs the service and prints the address to give people, plus one operator access link. It listens on `127.0.0.1:7420` unless `--listen host:port` says otherwise, or the `listen` key of `~/.codeaf/factory/config.yaml` does (`--config path` picks another file). It runs no job itself: Run queues a job, and a runner that has joined pulls it. With no runner attached a job stays queued.
 
+### Jobs at once and queued work
+
+A newly attached computer defaults to **15 jobs at once**. Set a different limit
+in **Settings → Factory concurrency → Jobs at once**, then press **Set slots**.
+The same owner-only control remains in Settings → Factory → Your machines.
+The current supported range is 1–100. An existing saved limit is kept on restart
+and upgrade, including a previously chosen limit of two; change it in Settings
+to admit more jobs. A change applies within about five seconds without restarting.
+Lowering the limit lets admitted jobs finish and withholds new jobs until there
+is room. Raising it admits queued work up to the new limit.
+
+When the owner's eligible computers are full, queued jobs say **Waiting for
+capacity** and show the number of occupied execution slots and the configured
+limit. The notice points to Settings → Factory concurrency and offers
+**Configure concurrency**. An offline or unknown runner is reported as waiting
+for a runner, without inventing a full-capacity count. The manager calls these
+execution slots, never benches, and gives the same Settings location.
+
+Idle Follow PR monitoring uses the factory's background GitHub poll, with no
+execution slot or model turn. New actionable review feedback, failing CI or a
+conflict queues a bounded maintenance pass. Only the worker executing that pass
+holds a slot; completing it releases capacity and resumes background monitoring.
+Budgets, ownership, publication consent and duplicate-repair protection still apply.
+
 The config keys are `name`, `listen`, `access_token`, `repos` (a list of `owner/name`), `github_client_id` (an OAuth app with device flow on), `team` (GitHub handles), `mode` (`solo` or `team`) and the HTTPS keys `tls`, `domain`, `cert_file`, `key_file`, `cache_dir` and `trusted_proxies`. Unknown keys are refused. Serving plain HTTP on a non-loopback address prints a warning, because access tokens and sign-in sessions would cross the network unencrypted. `--model slug` and `--one-model` pin the model its triage reads use. `--new-operator-link` prints a fresh one-time operator recovery link. Only one service runs per codeaf home (`serve.lock`); a second one says so.
 
 ## give someone access — codeaf factory token, revoke, revoke-sessions and name
