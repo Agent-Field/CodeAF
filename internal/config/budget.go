@@ -65,9 +65,8 @@ func WriteDailyBudgetUSD(profileDir string, amount float64) error {
 // internal/filememo spends one stat to decide whether it may answer, and
 // [SettingsGeneration] is folded in beside it so a value this process persisted
 // can never be served back stale, whatever a filesystem's timestamp resolution
-// is. What the memo does not see is what the counter below already documents it
-// cannot: a config.json edited by hand in another process, which has always
-// landed on the next launch.
+// is. File metadata also notices ordinary writes by another process; the
+// counter covers this process's writes where timestamp granularity cannot.
 var profileConfigMemo = filememo.Stamped(SettingsGeneration,
 	func(_ string, data []byte, missing bool) (map[string]json.RawMessage, error) {
 		// A file that is not there yet is an empty object, not an error.
@@ -251,11 +250,10 @@ func errorKey(updates map[string]any) string {
 // stale, because it re-stats the file on every read and reads this counter
 // beside it.)
 //
-// WHAT IT DOES NOT SEE, stated plainly: a config.json edited by hand in another
-// process, and a project file (`<workspace>/.codeaf/config.json`) edited by
-// anything. Both are the same as the behaviour before a counter existed — those
-// changes have always landed on the next launch — and a counter that pretended
-// otherwise would need a watcher on two files per session.
+// The counter alone does not see another process's writes. Live snapshot
+// readers must pair it with file metadata: the v3 crew source does this for
+// both profile and project configuration, and profileConfigMemo does it for
+// parsed profile values. No watcher or repeated JSON decode is required.
 
 var settingsGeneration atomic.Uint64
 

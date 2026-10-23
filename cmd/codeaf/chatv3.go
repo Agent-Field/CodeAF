@@ -2245,24 +2245,11 @@ func v3MemorySeam(brain *store.Store) tui3.MemoryStore {
 // that made them restart to be heard would be a knob that does nothing on the
 // surface that offers it.
 //
-// The seam is a SNAPSHOT INVALIDATED BY A GENERATION COUNTER
-// ([config.SettingsGeneration]), for reasons the two obvious alternatives fail:
-//
-//   - Re-reading config on every Resolve would put a file read on the path of
-//     every auxiliary call — twice a turn for the reflex pair alone — for a file
-//     that changes once a week. internal/config caches nothing on purpose.
-//   - Invalidating from the settings panel's write hook would only see the
-//     panel. The `change_setting` tool writes the same rows from inside a turn,
-//     and /crew writes four of them at once.
-//
-// A counter bumped by the ONE persisted writer sees all of them, costs an atomic
-// load per call when nothing has moved, and holds the lock only to rebuild. A
-// mid-session change is honored by the NEXT crew call, which is the promise the
-// settings rows now make.
-//
-// What it does not see is stated where the counter is: a config file edited by
-// another process, and the project layer's file at all. Both land on the next
-// launch, which is what every settings row did before this.
+// The snapshot follows this process's settings generation and the on-disk
+// stamps of both profile and project configuration. A settings panel in another
+// window is a different process from the engine: its writes must reach the next
+// auxiliary call without restarting the engine. Unchanged files cost stats,
+// never repeated reads or JSON decoding; internal/config memoizes their values.
 func v3RolesSource(workspace, profileDir string) (func(string) (string, bool), error) {
 	crew := &v3Crew{workspace: workspace, profileDir: profileDir}
 	// The first build happens HERE rather than lazily, so a malformed pins row
@@ -2283,6 +2270,7 @@ type v3Crew struct {
 	// is impossible after the first build, so there is no "never read" state to
 	// spell separately.
 	generation uint64
+	files      [2]crewConfigStamp
 	values     map[string]string
 	// low is [config.CreditsLowAt] as of the snapshot. It is compared on every
 	// read beside the generation because the balance record is written by
@@ -2300,10 +2288,10 @@ type v3Crew struct {
 	err error
 }
 
-// read is [roles.Source]: one key, and the fast path is an atomic load and a
-// read lock.
+// read is [roles.Source]: unchanged configuration costs file metadata checks
+// and a read lock, never repeated file reads or JSON decoding.
 func (c *v3Crew) read(key string) (string, bool) {
-	if generation, low := c.stampNow(); config.SettingsGeneration() != generation || config.CreditsLowAt(c.profileDir) != low {
+	if generation, low, files := c.stampNow(); config.SettingsGeneration() != generation || config.CreditsLowAt(c.profileDir) != low || c.configFilesNow() != files {
 		// A rebuild that fails leaves the old snapshot in place, so the error is
 		// dropped here on purpose: this is the resolution path, and the honest
 		// answer to "which model" is the last one that parsed.
@@ -2320,16 +2308,17 @@ func (c *v3Crew) read(key string) (string, bool) {
 
 // stampNow is what the snapshot was built against: the settings generation and
 // whether the balance record read low.
-func (c *v3Crew) stampNow() (uint64, bool) {
+func (c *v3Crew) stampNow() (uint64, bool, [2]crewConfigStamp) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.generation, c.low
+	return c.generation, c.low, c.files
 }
 
 // rebuild reads the rows and replaces the snapshot. It reads BEFORE taking the
 // write lock so a slow disk cannot hold a concurrent turn's resolution.
 func (c *v3Crew) rebuild() error {
 	generation := config.SettingsGeneration()
+	files := c.configFilesNow()
 	low := config.CreditsLowAt(c.profileDir)
 	values, err := c.snapshot()
 	c.mu.Lock()
@@ -2338,7 +2327,7 @@ func (c *v3Crew) rebuild() error {
 	// retried on every single call — that would put a file read back on the hot
 	// path, which is the thing this seam exists to avoid — so the refusal is
 	// recorded and the next write is what triggers another attempt.
-	c.generation, c.low, c.err = generation, low, err
+	c.generation, c.low, c.files, c.err = generation, low, files, err
 	if err != nil {
 		return err
 	}

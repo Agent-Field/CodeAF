@@ -474,7 +474,9 @@ A plain `codeaf` does not run your conversation inside the window — the sessio
 in a process of its own, so it survives the terminal closing. That process also outlives the
 build that started it.
 
-**An older engine holding work is joined, and steps aside at its first quiet moment.** Your
+**A new window can still use an old background engine. Restarting one window does not update that engine.**
+
+An older engine holding work is joined, and steps aside at its first quiet moment. Your
 window attaches and your work carries on; the old process keeps what it was holding and is
 asked to retire once nothing is in flight. If it was holding nothing, the workspace is handed
 over at once and you are told in one line:
@@ -489,6 +491,10 @@ at the next connection. **An attached idle window counts as holding work**, so t
 waits until you close it; only a stalled window whose link is gone is ignored. A host built
 before this ask ignores it, so for one of those the old process keeps its work and **your
 next safe launch — after the work is done and every window has left — opens from this build**.
+
+For a safe update, let active turns and tasks finish, close **every window for this workspace**, then reopen with the updated binary. `engine --status --workspace <path>` names the running build and attached windows. Attached windows count as in use even when no reply is running; status does not treat that alone as proof of an active turn.
+
+The startup note also gives an explicit, shell-quoted `engine --stop --workspace <path>` command using the installed executable (for example `devaf`). Run it on the named machine only when ready: **it interrupts active turns and tasks in that workspace**. Reconnect afterward with the updated build. Other workspace engines are unaffected.
 
 When both ends support restart detection, that reconnect retires the old reply channels
 before displaying new replies. If an answer was still open, the window says

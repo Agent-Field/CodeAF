@@ -1004,7 +1004,7 @@ func (a *Agent) reflexClient() reflex.Completer {
 	if routed == nil {
 		return nil
 	}
-	return a.memory.reflex.Bind(billedCompleter{agent: a, inner: routed}, named, fallback, a.sayMemory)
+	return a.memory.reflex.Bind(billedCompleter{agent: a, inner: routed}, named, fallback, a.sayMemory, model)
 }
 
 // billedCompleter is what makes a reflex call cost something a person can see:
