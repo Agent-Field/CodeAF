@@ -50,7 +50,8 @@ func TestLowBalanceFreeRoutesRequireConsentOnTheRealBinary(t *testing.T) {
 					fmt.Fprint(w, `{"data":{"total_credits":1,"total_usage":0.75}}`)
 				case "/chat/completions":
 					var body struct {
-						Model string `json:"model"`
+						Stream bool   `json:"stream"`
+						Model  string `json:"model"`
 					}
 					if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 						http.Error(w, "fixture decode", 400)
@@ -60,7 +61,7 @@ func TestLowBalanceFreeRoutesRequireConsentOnTheRealBinary(t *testing.T) {
 					sent = append(sent, body.Model)
 					mu.Unlock()
 
-					_ = json.NewEncoder(w).Encode(map[string]any{"id": "free-consent-fixture", "model": body.Model, "choices": []any{map[string]any{"index": 0, "message": map[string]string{"role": "assistant", "content": "FREE_CONSENT_CONTROL_OK"}, "finish_reason": "stop"}}, "usage": map[string]int{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}})
+					freeConsentResponse(w, body.Model, "FREE_CONSENT_CONTROL_OK", nil, body.Stream)
 				default:
 					http.NotFound(w, r)
 				}
@@ -150,7 +151,11 @@ func TestAutomaticTask402FreeFallbackRequiresConsentOnTheRealTerminal(t *testing
 						if model == free {
 							price = "0"
 						}
-						rows = append(rows, map[string]any{"id": model, "canonical_slug": model, "name": model, "context_length": 1310720, "architecture": map[string]any{"input_modalities": []string{"text"}, "output_modalities": []string{"text"}, "instruct_type": "chat", "modality": "text->text"}, "pricing": map[string]string{"prompt": price, "completion": price}, "supported_parameters": []string{"tools", "tool_choice", "max_tokens"}})
+						rows = append(rows, map[string]any{"id": model, "canonical_slug": model, "name": model, "hugging_face_id": "fixture/glm", "benchmarks": map[string]any{"artificial_analysis": map[string]float64{"intelligence_index": 41.8, "coding_index": 71.5, "agentic_index": 50.9}}, "context_length": 1310720, "architecture": map[string]any{"input_modalities": []string{"text"}, "output_modalities": []string{"text"}, "instruct_type": "chat", "modality": "text->text"}, "pricing": map[string]string{"prompt": price, "completion": price}, "supported_parameters": []string{"tools", "tool_choice", "max_tokens"}})
+						if model == manager {
+							delete(rows[len(rows)-1], "benchmarks")
+							delete(rows[len(rows)-1], "hugging_face_id")
+						}
 					}
 					_ = json.NewEncoder(w).Encode(map[string]any{"data": rows})
 				case "/key", "/auth/key":
@@ -159,6 +164,7 @@ func TestAutomaticTask402FreeFallbackRequiresConsentOnTheRealTerminal(t *testing
 					fmt.Fprint(w, `{"data":{"total_credits":100,"total_usage":0}}`)
 				case "/chat/completions":
 					var body struct {
+						Stream   bool   `json:"stream"`
 						Model    string `json:"model"`
 						Messages []struct {
 							Role string `json:"role"`
@@ -189,12 +195,12 @@ func TestAutomaticTask402FreeFallbackRequiresConsentOnTheRealTerminal(t *testing
 							wrote = true
 							mu.Unlock()
 							args := `{"command":"printf FREE_TASK_FALLBACK_OK > free-consent-proof.txt"}`
-							freeConsentResponse(w, body.Model, "", map[string]any{"id": "free-task-write", "type": "function", "function": map[string]string{"name": "bash", "arguments": args}})
+							freeConsentResponse(w, body.Model, "", map[string]any{"index": 0, "id": "free-task-write", "type": "function", "function": map[string]string{"name": "bash", "arguments": args}}, body.Stream)
 							return
 						}
 					}
 					mu.Unlock()
-					freeConsentResponse(w, body.Model, "The scripted task completed.", nil)
+					freeConsentResponse(w, body.Model, "The scripted task completed.", nil, body.Stream)
 				default:
 					http.NotFound(w, r)
 				}
@@ -205,7 +211,7 @@ func TestAutomaticTask402FreeFallbackRequiresConsentOnTheRealTerminal(t *testing
 			stopRecoveryEngineOnCleanup(t, env, home, ws)
 			rig := startWithEnv(t, env, "free_402_"+name, home, ws, 170, 48, "chat", "--model", manager)
 			rig.skipSetup(t)
-			rig.lit("/task solo fix: the parser crashes on empty input; write free-consent-proof.txt containing FREE_TASK_FALLBACK_OK")
+			rig.lit("/task fix: the parser crashes on empty input; write free-consent-proof.txt containing FREE_TASK_FALLBACK_OK")
 			rig.keys("Enter")
 			deadline := time.Now().Add(45 * time.Second)
 			for {
@@ -215,7 +221,7 @@ func TestAutomaticTask402FreeFallbackRequiresConsentOnTheRealTerminal(t *testing
 				if !enableOn402 && paidN > 0 && strings.Contains(strings.ToLower(rig.capture()), "credit") {
 					break
 				}
-				if enableOn402 && paidN > 0 && freeN > 0 && (freeConsentFileExists(home) || freeConsentFileExists(ws)) {
+				if enableOn402 && paidN > 0 && freeN > 0 && (freeConsentFileExists(home) || freeConsentFileExists(ws)) && strings.Contains(rig.capture(), say(t, "taskDoneWord")) {
 					break
 				}
 				if time.Now().After(deadline) {
@@ -232,12 +238,21 @@ func TestAutomaticTask402FreeFallbackRequiresConsentOnTheRealTerminal(t *testing
 		})
 	}
 }
-func freeConsentResponse(w http.ResponseWriter, model, text string, call any) {
+func freeConsentResponse(w http.ResponseWriter, model, text string, call any, stream bool) {
 	message := map[string]any{"role": "assistant", "content": text}
 	finish := "stop"
 	if call != nil {
 		message["tool_calls"] = []any{call}
 		finish = "tool_calls"
+	}
+	if stream {
+		w.Header().Set("Content-Type", "text/event-stream")
+		for _, choice := range []map[string]any{{"index": 0, "delta": message, "finish_reason": nil}, {"index": 0, "delta": map[string]any{}, "finish_reason": finish}} {
+			raw, _ := json.Marshal(map[string]any{"id": "free-task-fixture", "model": model, "choices": []any{choice}, "usage": map[string]int{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}})
+			fmt.Fprintf(w, "data: %s\n\n", raw)
+		}
+		fmt.Fprint(w, "data: [DONE]\n\n")
+		return
 	}
 	_ = json.NewEncoder(w).Encode(map[string]any{"id": "free-task-fixture", "model": model, "choices": []any{map[string]any{"index": 0, "message": message, "finish_reason": finish}}, "usage": map[string]int{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}})
 }
