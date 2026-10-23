@@ -369,6 +369,26 @@ func (a *app) teamSheetSettingsLines(t team, inner int) []wallCardLine {
 	if s.err != "" {
 		lines = append(lines, wallCardLine{s: pal.bad(fit(s.err, inner))})
 	}
+	// THE TEAM'S OWN TOTAL, beside the settings: the figure the page owes the
+	// team, and the per-member share that shows who it belongs to. A team
+	// with nothing read yet, or nothing spent, draws no rows.
+	if tv, ok := a.tp.total[t.ID]; ok && tv.USD > 0 {
+		lines = append(lines, wallCardLine{rule: true})
+		total := pal.dim(teamsPad("Total cost", valueX)) + pal.ink(teamsMoney(teamstore.RoundMoney(tv.USD)))
+		lines = append(lines, wallCardLine{s: total})
+		for _, m := range append(append([]teamMember(nil), t.Members...), t.FormerMembers...) {
+			share, ok := tv.ByMember[m.Key]
+			if !ok || share <= 0 {
+				continue
+			}
+			name := m.Word
+			if m.Handle != "" {
+				name = "@" + m.Handle
+			}
+			row := pal.dim(teamsPad(name, valueX)) + pal.dim(teamsMoney(teamstore.RoundMoney(share)))
+			lines = append(lines, wallCardLine{s: row})
+		}
+	}
 	if !t.Root {
 		lines = append(lines, wallCardLine{rule: true})
 		button, hit, _ := a.teamSheetButton("Delete team", "", tsDeleteTeam, 0, false)

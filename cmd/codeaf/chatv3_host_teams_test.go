@@ -2,6 +2,9 @@ package main
 
 import (
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/remote"
@@ -219,6 +222,67 @@ func TestTheWrapUpDoorsCrossHostOnlyWhenTheEngineSaysSo(t *testing.T) {
 	older := hostTeamsSeam(hostFar{client: loop.Client}, welcome)
 	if older.Decide == nil || older.WrapUp != nil || older.AcceptClosing != nil {
 		t.Fatal("an engine without the wrap-up doors was handed them, or lost the others")
+	}
+}
+
+// THE TOTAL DOOR CROSSES --host WHEN THE ENGINE SAYS SO, and an engine that
+// does not hands a seam without it. The engine reads TeamTotal from ITS
+// profile: one line in its own usage ledger, the member's own call, totals to
+// $67.46 over the seam, and the same-stamp ask is answered `same` without a
+// second read. welcome.TeamsTotal=false leaves the door nil, and the page in
+// front of that connection draws no totals and never reads this machine's
+// ledger.
+func TestTheTotalDoorCrossesHostOnlyWhenTheEngineSaysSo(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	far := t.TempDir()
+	loop, err := remote.Loopback(remote.Hello{Version: remote.Version}, remote.Options{Boot: func(remote.Hello) (*remote.Engine, error) {
+		return &remote.Engine{Agent: &quietAgent{}, ProfileDir: far}, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = loop.Close() })
+	const (
+		harbor = "0a0a0a0a0a0a"
+		sess   = "0123456789abcdef"
+	)
+	if err := teamstore.Save(far, []teamstore.Team{{ID: harbor, Name: "harbor",
+		Members: []teamstore.Member{{Key: filepath.Join("/srv/sessions", sess, "transcript.jsonl"), Handle: "web"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	ledger := teamstore.UsageLedgerPath()
+	if err := os.MkdirAll(filepath.Dir(ledger), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	line := fmt.Sprintf(`{"at":"2026-10-23T10:00:00-04:00","day":%q,"usd":67.46,"calls":1,"session":%q,"root":""}`,
+		teamstore.Today(), sess)
+	if err := os.WriteFile(ledger, []byte(line+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	welcome := loop.Client.Welcome()
+	if !welcome.TeamsTotal {
+		t.Fatalf("the engine welcome has no total door: %+v", welcome)
+	}
+	seam := hostTeamsSeam(hostFar{client: loop.Client}, welcome)
+	if seam.Total == nil {
+		t.Fatal("an engine with the total door got a seam without it")
+	}
+	total, stamp, same, err := seam.Total(harbor, "")
+	if err != nil || same || total.USD != 67.46 || total.Calls != 1 {
+		t.Fatalf("the total over the seam: %+v %q %v %v", total, stamp, same, err)
+	}
+	if _, _, same, _ := seam.Total(harbor, stamp); !same {
+		t.Fatal("a quiet total read over the seam was not same")
+	}
+
+	welcome.TeamsTotal = false
+	older := hostTeamsSeam(hostFar{client: loop.Client}, welcome)
+	if older.Load == nil || older.Update == nil {
+		t.Fatal("an engine with the teams doors and not the total door lost its teams seam")
+	}
+	if older.Total != nil {
+		t.Fatal("an engine without the total door was handed it")
 	}
 }
 

@@ -63,6 +63,23 @@ type Spend struct {
 	ByMember map[string]float64 `json:"by_member,omitempty"`
 }
 
+// Total is what a team and every team under it has cost, all time: every
+// ledger line whose conversation belongs to the subtree, whole conversation
+// chains, money following the conversation (membership intervals), floored at
+// the owning team's Made. It is the figure of the team's own the teams page
+// draws on its rail rows and in the pane; the day's spend against the cap
+// ([Spend]) is the different figure the header keeps. A conversation in two
+// teams counts in both, and once in the root team's.
+type Total struct {
+	Team  string  `json:"team"`
+	USD   float64 `json:"usd"`
+	Calls int     `json:"calls"`
+	// ByMember is each counted conversation's share, by conversation key:
+	// the line that shows one runaway member, and why the total is computed
+	// per conversation at all.
+	ByMember map[string]float64 `json:"by_member,omitempty"`
+}
+
 // TeamSpend is team teamID's spend on day ("2006-01-02", local) from this
 // machine's usage ledger.
 func TeamSpend(profileDir, teamID, day string) (Spend, error) {
@@ -112,6 +129,132 @@ func TeamSpendIn(profileDir, ledger, teamID, day string) (Spend, error) {
 	return out, nil
 }
 
+// TeamTotal is team teamID's total live cost, all time, from this machine's
+// usage ledger.
+func TeamTotal(profileDir, teamID string) (Total, error) {
+	return TeamTotalIn(profileDir, UsageLedgerPath(), teamID)
+}
+
+// TeamTotalIn is [TeamTotal] against the ledger at ledger.
+//
+// WHOLE CHAINS, NOT ONE HOP. The day spend counts a line whose session or
+// root is a member; the total also follows a root that is itself a delegated
+// conversation, so a task's own sub-task lands on the member whose chain it
+// sits under, at any depth. The owner of a line (its ByMember key) is the
+// terminal member of its session's chain, falling back to its root's.
+//
+// MONEY FOLLOWS THE CONVERSATION. A line counts when its owner's membership
+// of the subtree held it at the moment the line was written: inside one of
+// the owner's [Member.JoinedAt, Member.LeftAt) intervals, a removal's LeftAt
+// stamped by [File.RemoveMember], a removal written before the field existed
+// left none and bounds it from above, and at or after the owning team's Made.
+// Runs are kept per ledger line, so the boundary is exact even when a join or
+// a removal lands mid-day.
+func TeamTotalIn(profileDir, ledger, teamID string) (Total, error) {
+	f, err := Load(profileDir)
+	if err != nil {
+		return Total{}, err
+	}
+	out := Total{Team: teamID}
+	team, ok := f.Team(teamID)
+	if !ok {
+		return out, nil
+	}
+	ids := map[string]string{} // session id -> member key
+	type interval struct{ from, to, made int64 }
+	intervals := map[string][]interval{}
+	for _, t := range append([]Team{team}, f.Descendants(teamID)...) {
+		made := t.Made.UnixNano()
+		for _, m := range t.Members {
+			for _, id := range sessionIDs(m.Key) {
+				if _, ok := ids[id]; !ok {
+					ids[id] = m.Key
+				}
+			}
+			intervals[m.Key] = append(intervals[m.Key], interval{from: m.JoinedAt.UnixNano(), made: made})
+		}
+		for _, m := range t.FormerMembers {
+			for _, id := range sessionIDs(m.Key) {
+				if _, ok := ids[id]; !ok {
+					ids[id] = m.Key
+				}
+			}
+			iv := interval{from: m.JoinedAt.UnixNano(), made: made}
+			if !m.LeftAt.IsZero() {
+				iv.to = m.LeftAt.UnixNano()
+			}
+			intervals[m.Key] = append(intervals[m.Key], iv)
+		}
+	}
+	spendCache.mu.Lock()
+	defer spendCache.mu.Unlock()
+	fold, err := spendCache.refresh(ledger)
+	if err != nil {
+		return out, err
+	}
+	// The chain edges, session -> the conversation it delegated to; a chain
+	// is followed up to a member, bounded by the seen set so a cycle cannot
+	// hang it.
+	parent := map[string]string{}
+	for pair := range fold.pairs {
+		if pair.session != "" && pair.root != "" {
+			if _, ok := parent[pair.session]; !ok {
+				parent[pair.session] = pair.root
+			}
+		}
+	}
+	terminal := func(start string) (string, bool) {
+		seen := map[string]bool{}
+		for at := start; at != ""; {
+			if key, ok := ids[at]; ok {
+				return key, true
+			}
+			if seen[at] {
+				return "", false
+			}
+			seen[at] = true
+			next, ok := parent[at]
+			if !ok {
+				return "", false
+			}
+			at = next
+		}
+		return "", false
+	}
+	for pair, runs := range fold.pairs {
+		owner, ok := terminal(pair.session)
+		if !ok && pair.root != "" {
+			owner, ok = terminal(pair.root)
+		}
+		if !ok {
+			continue
+		}
+		ivs := intervals[owner]
+		if len(ivs) == 0 {
+			continue
+		}
+		for _, run := range runs {
+			inside := false
+			for _, iv := range ivs {
+				if run.at >= iv.from && (iv.to == 0 || run.at < iv.to) && run.at >= iv.made {
+					inside = true
+					break
+				}
+			}
+			if !inside {
+				continue
+			}
+			out.USD += run.usd
+			out.Calls += run.calls
+			if out.ByMember == nil {
+				out.ByMember = map[string]float64{}
+			}
+			out.ByMember[owner] += run.usd
+		}
+	}
+	return out, nil
+}
+
 // SpendStamp is one stamp over what a team's spend is read from: the teams
 // file (membership) and the ledger. Equal stamps on one day are one answer.
 func SpendStamp(profileDir, ledger string) string {
@@ -123,6 +266,13 @@ func SpendStamp(profileDir, ledger string) string {
 // local window both answer "same" from it.
 func TeamSpendStamp(profileDir, teamID, day string) string {
 	return day + "|" + teamID + "|" + SpendStamp(profileDir, UsageLedgerPath())
+}
+
+// TeamTotalStamp is the stamp of one team's total as [TeamTotal] reads it:
+// the team and [SpendStamp] over the machine's ledger. The engine and a local
+// window both answer "same" from it.
+func TeamTotalStamp(profileDir, teamID string) string {
+	return teamID + "|t|" + SpendStamp(profileDir, UsageLedgerPath())
 }
 
 // sessionIDs is the ledger ids a conversation key can carry: its folder's
@@ -163,11 +313,26 @@ type spendSum struct {
 	calls int
 }
 
+// spendRun is one ledger line, its time kept whole for the exact
+// [JoinedAt, LeftAt) boundary the team's total counts on.
+type spendRun struct {
+	at    int64 // unix nanos
+	usd   float64
+	calls int
+}
+
 // ledgerFold is one ledger as read so far.
 type ledgerFold struct {
 	stamp  string
 	offset int64
 	days   map[string]map[spendPair]spendSum
+	// pairs is every line's (session, root) pair, in order, with each line's
+	// time and money: the fold the all-time total reads. Runs are per line
+	// and never evicted, because dropping an old line would silently
+	// undercount a total; that is roughly 24 bytes per ledger line, the
+	// price of answering "what has this team cost" without re-reading the
+	// ledger.
+	pairs map[spendPair][]spendRun
 }
 
 // spendMemory is every ledger folded so far, shared by the process.
@@ -212,13 +377,16 @@ func (m *spendMemory) day(path, day string) (map[spendPair]spendSum, error) {
 // moved, the appended bytes when it grew, the whole file when it is new here
 // or shrank. The caller holds m.mu.
 func (m *spendMemory) refresh(path string) (*ledgerFold, error) {
+	if m.ledgers == nil {
+		m.ledgers = map[string]*ledgerFold{}
+	}
 	stamp := stampOf(path)
 	f := m.ledgers[path]
 	if f != nil && f.stamp == stamp {
 		return f, nil
 	}
 	if stamp == MissingStamp {
-		f = &ledgerFold{stamp: stamp, days: map[string]map[spendPair]spendSum{}}
+		f = &ledgerFold{stamp: stamp, days: map[string]map[spendPair]spendSum{}, pairs: map[spendPair][]spendRun{}}
 		m.ledgers[path] = f
 		return f, nil
 	}
@@ -227,7 +395,7 @@ func (m *spendMemory) refresh(path string) (*ledgerFold, error) {
 		return nil, err
 	}
 	if f == nil || info.Size() < f.offset {
-		f = &ledgerFold{days: map[string]map[spendPair]spendSum{}}
+		f = &ledgerFold{days: map[string]map[spendPair]spendSum{}, pairs: map[spendPair][]spendRun{}}
 	}
 	file, err := os.Open(path)
 	if err != nil {
@@ -263,6 +431,7 @@ func (m *spendMemory) refresh(path string) (*ledgerFold, error) {
 				sum.usd += line.USD
 				sum.calls += calls
 				totals[pair] = sum
+				f.pairs[pair] = append(f.pairs[pair], spendRun{at: line.At.UnixNano(), usd: line.USD, calls: calls})
 			}
 		}
 		if err == io.EOF {

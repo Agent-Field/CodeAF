@@ -48,6 +48,10 @@ const (
 	// MethodTeamsSpend is one team's spend on a day, or word that neither the
 	// teams file nor the ledger moved since the stamp the window holds.
 	MethodTeamsSpend = "Teams.Spend" // SpendArgs → SpendReading
+	// MethodTeamsTotal is one team's total live cost, all time, or word that
+	// neither the teams file nor the ledger moved since the stamp the window
+	// holds.
+	MethodTeamsTotal = "Teams.Total" // TotalArgs → TotalReading
 	// MethodTeamsDelete forgets a closed team and its files.
 	MethodTeamsDelete = "Teams.Delete" // DeleteTeamArgs → DeleteTeamReply
 )
@@ -136,6 +140,20 @@ type SpendReading struct {
 	Stamp string           `json:"stamp"`
 	Same  bool             `json:"same,omitempty"`
 	Spend *teamstore.Spend `json:"spend,omitempty"`
+}
+
+// TotalArgs is one team and the stamp the window last got.
+type TotalArgs struct {
+	Team  string `json:"team"`
+	Stamp string `json:"stamp,omitempty"`
+}
+
+// TotalReading is the team's total and its stamp; Same says nothing moved and
+// then Total is absent.
+type TotalReading struct {
+	Stamp string           `json:"stamp"`
+	Same  bool             `json:"same,omitempty"`
+	Total *teamstore.Total `json:"total,omitempty"`
 }
 
 // DeleteTeamArgs names the closed team to forget.
