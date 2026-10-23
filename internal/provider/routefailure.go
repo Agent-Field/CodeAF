@@ -104,6 +104,10 @@ func RouteFailureOf(err error) (RouteFailure, time.Time) {
 		return RouteUnavailable, time.Time{}
 	case refusal.Status == http.StatusForbidden || refusal.PlanUnavailable || holdsAny(said, forbiddenPhrases):
 		return RouteForbidden, time.Time{}
+	// OpenRouter rejects an unknown model slug with 400 rather than 404.
+	// Match its model-specific refusal, never a generic malformed request.
+	case refusal.Status == http.StatusBadRequest && (strings.Contains(strings.ToLower(refusal.Message), "is not a valid model id") || strings.EqualFold(refusal.Code, "model_not_found")):
+		return RouteUnavailable, time.Time{}
 	case refusal.Status == http.StatusNotFound:
 		return RouteUnavailable, time.Time{}
 	case refusal.Status >= http.StatusInternalServerError:

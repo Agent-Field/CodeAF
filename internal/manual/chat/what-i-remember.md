@@ -389,12 +389,19 @@ every line's words, where it came from and whether it was active. A line an old
 store kept as "project" without naming the project is kept under the Memories
 tab's `couldn't tell which project` group until you move it.
 
-A window held by an engine keeps that engine until a newer build replaces it.
-Update codeaf on the machine holding the workspace and reconnect; on that same
-machine a newer build replaces the older engine as the window connects. For an
-engine on another machine, update codeaf there too, then run
-`codeaf engine --stop --workspace <that folder>` there when its work is safe and
-reconnect. `codeaf engine --status` names the engine.
+The window and the background engine can be on different builds. Updating the
+executable and reopening one window does not replace an older engine while
+workspace windows remain attached. `/status` shows **window build** and **engine
+build**, and follows a replacement after reconnection. A newer window can still
+be served by old memory code until that engine changes.
+
+Let current work finish, then close all windows attached to that workspace and
+reopen codeaf. To restart explicitly, run the exact workspace-specific command
+shown by `codeaf engine --status --workspace <folder>` on the machine holding
+it. The command uses the installed executable, including `devaf` when that is
+what you installed. Stopping an engine interrupts its active turns and tasks;
+other workspaces keep their own engines. “In use” can mean attached windows,
+not necessarily a running turn.
 
 
 ## Does memory work on the ordinary launch, over --host, and on a smaller model?
@@ -468,11 +475,15 @@ once, keeps the conversation's own running summary of where the work stands, and
 `/settings` → Models (`google/gemini-2.5-flash` by default; nothing set means the
 conversation's own model), sends no token ceiling or reasoning switch, and is
 charged to the session total, so `/cost` includes it. An answer it cannot read
-costs one retry; a model that answers nothing is replaced for the session by the
-**small work** model, with one line saying so. A stalled or temporarily failed
-request reserves time for one small-work attempt within the same 45-second
-limit. If that also fails temporarily, the original exchange is tried once more
-after two seconds in the background. Turning noticing off does not
+costs one repair. An empty or unavailable helper is skipped for that chat;
+recovery tries the configured **small work** model, then the current chat model,
+without changing your saved preferences. Attempts share 45 seconds, reserving
+time for each remaining distinct model. A notice identifies a substitute only
+after it returns a readable answer. `/settings` → Models lets you fix the helper;
+the running engine picks up saved helper changes on its next call without a
+restart. If all attempts fail temporarily, the original exchange is tried once
+more after two seconds in the background. Authentication, payment, quota and
+policy refusals do not start another model chain. Turning noticing off does not
 remove the call, because the running summary still needs it; it only stops lines
 being kept.
 

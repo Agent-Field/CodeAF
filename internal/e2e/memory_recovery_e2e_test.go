@@ -177,7 +177,7 @@ func TestMemoryRecoversFromTimeoutOnTheRealTerminal(t *testing.T) {
 	r.lit("/new")
 	r.keys("Enter")
 	time.Sleep(time.Second)
-	apply := "For the fictional Juniper demo, create packaging.json with a weekend_envelope_color field set from our current convention. Use saved memory and do not ask me to repeat it."
+	apply := "For the fictional Juniper demo, use the write or bash tool to create packaging.json in this project with a weekend_envelope_color field set from our current convention, then read the actual file to verify it exists. Use saved memory and do not ask me to repeat it. Do not merely display JSON in your reply."
 	r.lit(apply)
 	r.keys("Enter")
 	if completed, _ := privateMemoryAwaitAnswer(home, apply, 2*time.Minute); completed == "" {
