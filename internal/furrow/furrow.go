@@ -48,8 +48,8 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/env"
-
 	"github.com/Agent-Field/codeaf/internal/furrowbin"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // Binary is the program this package shells out to. It is normally the copy
@@ -60,6 +60,18 @@ import (
 const (
 	Binary       = "furrow"
 	BinaryEnvVar = "CODEAF_FURROW"
+
+	// DataDirEnv is furrow's OWN variable, not codeaf's: the one thing that
+	// moves its snapshot store. furrow resolves the store as
+	// $FURROW_DATA_DIR/store-v1, and when the variable is absent it falls back
+	// to the OS data root of the login it runs as — `~/Library/Application
+	// Support/dev.furrow.furrow` on macOS, `~/.local/share/furrow` on Linux
+	// (directories' ProjectDirs::from("dev", "furrow", "furrow")). Two
+	// profiles that share one HOME would therefore share one store behind
+	// codeaf's back, which is why [runBinary] always names it. It is furrow's
+	// name, so this package reads it with os.LookupEnv and not the env door
+	// that guards CODEAF_ variables.
+	DataDirEnv = "FURROW_DATA_DIR"
 )
 
 // detectTimeout bounds the two cheap calls [Detect] makes. Detection sits in
@@ -465,6 +477,18 @@ func runBinary(ctx context.Context, binary, root string, args ...string) ([]byte
 	var out, errOut bytes.Buffer
 	command.Stdout = &out
 	command.Stderr = &errOut
+	// THE STORE FOLLOWS THE STATE ROOT. One CODEAF_HOME is one complete,
+	// separable profile, and a furrow child that resolves its store from the
+	// login's data root would violate that the moment two profiles share a
+	// HOME (#1769) — the test-drive store landing inside the developer's own.
+	// So every child is pointed at the state root's own furrow/ directory. A
+	// variable the environment already names is left alone: a caller that aims
+	// the store somewhere on purpose — or a test proving furrow's own
+	// retirement behaviour against the real binary — keeps exactly what it
+	// set.
+	if _, set := os.LookupEnv(DataDirEnv); !set {
+		command.Env = append(os.Environ(), DataDirEnv+"="+home.Join("furrow"))
+	}
 	// furrow's own law is that a prompt in machine mode is an error and not a
 	// hang, and its rewind honours that by refusing without --yes when stdin is
 	// not a terminal. Handing it a closed stdin is codeaf agreeing to that

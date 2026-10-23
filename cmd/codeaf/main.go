@@ -31,6 +31,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/delegate/builtin"
+	"github.com/Agent-Field/codeaf/internal/furrow"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
@@ -45,6 +46,12 @@ import (
 
 func main() {
 	home.Adopt(log.Printf)
+	// The furrow snapshot store follows the state root now ([runBinary] names
+	// FURROW_DATA_DIR for every child), and a store a pre-fix build left in the
+	// OS data root is carried into the default profile once so its timelines
+	// and forks are not orphaned (internal/furrow/adopt.go). Best effort: a
+	// failure here costs one logged line.
+	furrow.Adopt(log.Printf)
 	// CODEAF SCHEDULES NOTHING ON THE MACHINE. The timers the feature that
 	// automations replaced installed are taken off this login on every start,
 	// whoever installed them (internal/automation's legacy.go).
@@ -687,8 +694,9 @@ A variable that pins a ` + "`/settings`" + ` row wins over that row.
                        1 spends past the day's limit without stopping a
                        headless run to ask
   CODEAF_HOME          the whole state root — journal, workspace, CAS, craft,
-                       profiles, catalog, skills (default ~/.codeaf). Move it
-                       to run a disposable store that touches nothing of yours.
+                       profiles, catalog, skills and furrow's snapshot store
+                       (default ~/.codeaf). Move it to run a disposable store
+                       that touches nothing of yours.
   CODEAF_NO_UPDATE_CHECK
                        1 skips the launch check and the update a released
                        codeaf installs as it opens; /update and codeaf
