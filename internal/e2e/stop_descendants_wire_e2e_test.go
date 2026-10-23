@@ -112,9 +112,12 @@ func TestTerminalStopEndsOwnedTasksOnTheRealTerminal(t *testing.T) {
 				if screen := rig.capture(); strings.Contains(screen, "background work") && strings.Contains(screen, "ctrl+e") {
 					rig.keys("C-e")
 				}
-				screen := rig.waitFor(10*time.Second, "a time limit you set stopped it")
-				if !strings.Contains(screen, "a time limit you set stopped it") {
-					t.Fatal("joined wall stop reason was not disclosed")
+				screen := rig.waitFor(10*time.Second, "· stopped ·")
+				if !strings.Contains(screen, "· stopped ·") {
+					t.Fatal("joined wall stop summary was not disclosed")
+				}
+				if !stopRecordedReason(home, "a time limit you set stopped it") {
+					t.Fatal("joined wall stop result did not record its exact reason")
 				}
 			} else {
 				rig.waitFor(20*time.Second, "stopped")
@@ -268,11 +271,25 @@ func stopSpendSnapshot(t *testing.T, home string) stopSpend {
 func stopOwnedTaskThroughItsPage(t *testing.T, rig *rig) {
 	t.Helper()
 	openTasksPlace(t, rig)
-	tasksPlaceRunRow(t, rig)
-	hit, screen := rig.waitForAny(15*time.Second, say(t, "tasksEnterInsideWord"), say(t, "tasksEnterRoomWord"))
-	if hit == "" {
-		t.Fatalf("active task row never offered its room: %s", screen)
+	if screen := rig.capture(); !strings.Contains(screen, "1 chat · 1 subtask") {
+		t.Fatalf("fresh single-task history duplicated its active run: %s", screen)
 	}
+	// Select the live plan by its advertised Stop verb, not by a title or
+	// row index. The single-task assertion above also catches duplicate records.
+	var screen string
+	selected := false
+	for attempts := 0; attempts < 8; attempts++ {
+		screen = rig.capture()
+		if strings.Contains(screen, "s stop it") {
+			selected = true
+			break
+		}
+		rig.keys("Down")
+	}
+	if !selected {
+		t.Fatalf("no active plan row offered Stop: %s", screen)
+	}
+	t.Logf("selected stoppable task row before enter:\n%s", screen)
 	rig.keys("Enter")
 	screen = rig.waitFor(15*time.Second, say(t, "roomTabsWords"))
 	if !strings.Contains(screen, say(t, "roomTabsWords")) {
@@ -285,4 +302,32 @@ func stopOwnedTaskThroughItsPage(t *testing.T, rig *rig) {
 	}
 	rig.keys("1")
 	rig.keys("Enter")
+}
+
+func stopRecordedReason(home, reason string) bool {
+	found := false
+	_ = filepath.WalkDir(home, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || d.Name() != "tasks.json" {
+			return nil
+		}
+		raw, e := os.ReadFile(path)
+		if e != nil {
+			return nil
+		}
+		var record struct {
+			Runs []struct {
+				Stopped bool   `json:"stopped"`
+				Report  string `json:"report"`
+			} `json:"runs"`
+		}
+		if json.Unmarshal(raw, &record) == nil {
+			for _, run := range record.Runs {
+				if run.Stopped && strings.Contains(run.Report, reason) {
+					found = true
+				}
+			}
+		}
+		return nil
+	})
+	return found
 }
