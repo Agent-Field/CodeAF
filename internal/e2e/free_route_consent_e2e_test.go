@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -167,7 +168,8 @@ func TestAutomaticTask402FreeFallbackRequiresConsentOnTheRealTerminal(t *testing
 						Stream   bool   `json:"stream"`
 						Model    string `json:"model"`
 						Messages []struct {
-							Role string `json:"role"`
+							Role    string          `json:"role"`
+							Content json.RawMessage `json:"content"`
 						} `json:"messages"`
 					}
 					if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -191,11 +193,22 @@ func TestAutomaticTask402FreeFallbackRequiresConsentOnTheRealTerminal(t *testing
 					}
 					if strings.HasSuffix(body.Model, ":free") {
 						freeRequests++
-						if !wrote {
-							wrote = true
+						var assignment []string
+						for _, message := range body.Messages {
+							if match := freeConsentAssignment.FindStringSubmatch(string(message.Content)); len(match) == 3 {
+								assignment = match
+							}
+						}
+						if len(assignment) == 3 {
+							command := "grep -qx FREE_TASK_FALLBACK_OK free-consent-proof.txt"
+							if !wrote {
+								wrote = true
+								command = "printf FREE_TASK_FALLBACK_OK > free-consent-proof.txt && " + command
+							}
+							command += " && plandb done " + assignment[1] + " --agent " + assignment[2] + " --result 'holds: proof file has the requested contents'"
+							args, _ := json.Marshal(map[string]string{"command": command})
 							mu.Unlock()
-							args := `{"command":"printf FREE_TASK_FALLBACK_OK > free-consent-proof.txt"}`
-							freeConsentResponse(w, body.Model, "", map[string]any{"index": 0, "id": "free-task-write", "type": "function", "function": map[string]string{"name": "bash", "arguments": args}}, body.Stream)
+							freeConsentResponse(w, body.Model, "", map[string]any{"index": 0, "id": "free-task-finish-" + assignment[2], "type": "function", "function": map[string]string{"name": "bash", "arguments": string(args)}}, body.Stream)
 							return
 						}
 					}
@@ -270,3 +283,5 @@ func freeConsentFileExists(root string) bool {
 	})
 	return found
 }
+
+var freeConsentAssignment = regexp.MustCompile(`YOUR TASK IN THE PLAN IS (t-[A-Za-z0-9_.-]+), claimed by agent ([A-Za-z0-9_.-]+)\.`)
