@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"os"
 	"path/filepath"
 
@@ -100,5 +101,5 @@ func writeAtomic(path string, data []byte) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), path)
+	return fsreplace.Rename(tmp.Name(), path)
 }

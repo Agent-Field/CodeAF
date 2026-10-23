@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -18,6 +19,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
+	"github.com/Agent-Field/codeaf/internal/rtk"
+	commandshell "github.com/Agent-Field/codeaf/internal/shell"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -133,6 +136,10 @@ func newJobRegistry(workspace *Workspace, leaf string, results int) *jobRegistry
 // startBackground starts a shell with file-backed output. Because no parent
 // pipe is involved, a verbose build cannot block on a reader in the executor.
 func (t *Toolbox) startBackground(ctx context.Context, command string, args map[string]any) Result {
+	_, shellErr := commandshell.Bash()
+	if shellErr != nil {
+		return errorf("%s", shellErr)
+	}
 	duration, err := backgroundDuration(ctx, args)
 	if err != nil {
 		return errorf("could not start background job: %v", err)
@@ -144,7 +151,20 @@ func (t *Toolbox) startBackground(ctx context.Context, command string, args map[
 			environment = os.Environ()
 			environment = replaceEnv(environment, "CODEAF_SKILLS_BIN", bin)
 			environment = replaceEnv(environment, env.Legacy("CODEAF_SKILLS_BIN"), bin)
-			command = "export PATH=\"${CODEAF_SKILLS_BIN:?}:$PATH\"\n" + command
+			command = commandshell.PathExport("CODEAF_SKILLS_BIN", bin) + command
+		}
+	}
+	// Windows jobs need the native rtk shelf on their own shell PATH too.
+	// No rewriting is applied: a background job keeps its ordinary output.
+	if runtime.GOOS == "windows" {
+		if tool, ok := rtk.Available(); ok {
+			if environment == nil {
+				environment = os.Environ()
+			}
+			bin := filepath.Dir(tool.Path)
+			environment = replaceEnv(environment, "CODEAF_RTK_BIN", bin)
+			environment = replaceEnv(environment, env.Legacy("CODEAF_RTK_BIN"), bin)
+			command = commandshell.PathExport("CODEAF_RTK_BIN", bin) + command
 		}
 	}
 	// A BACKGROUND JOB IS STILL A MODEL'S COMMAND, and its shell must not reach
@@ -168,7 +188,7 @@ func (t *Toolbox) startBackground(ctx context.Context, command string, args map[
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 		return errorf("could not create background log directory: %v", err)
 	}
-	logFile, err := os.OpenFile(full, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	logFile, err := commandshell.OpenLog(full, 0o644)
 	if err != nil {
 		return errorf("could not create background log %s: %v", relative, err)
 	}

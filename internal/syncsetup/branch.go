@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"io"
 	"os"
 	"path/filepath"
@@ -61,7 +62,11 @@ func branchIdentity(_ context.Context, c cell.Cell) (err error) {
 	if err = out.Close(); err != nil {
 		return err
 	}
-	if err := os.Rename(out.Name(), path); err != nil {
+	// K3: NTFS cannot replace the journal while this reader still holds it.
+	if err := in.Close(); err != nil {
+		return err
+	}
+	if err := fsreplace.Rename(out.Name(), path); err != nil {
 		return err
 	}
 	return branchRow(c)

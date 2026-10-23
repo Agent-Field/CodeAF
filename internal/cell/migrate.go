@@ -3,6 +3,7 @@ package cell
 import (
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -51,7 +52,7 @@ func MigrateLegacy(dir string, carry ...Carrier) error {
 	if err := stageCell(dir, carry); err != nil {
 		return fmt.Errorf("migrate %s: %w", filepath.Base(dir), err)
 	}
-	if err := os.Rename(filepath.Join(dir, stagingDir, StateDir), filepath.Join(dir, StateDir)); err != nil {
+	if err := fsreplace.Rename(filepath.Join(dir, stagingDir, StateDir), filepath.Join(dir, StateDir)); err != nil {
 		return fmt.Errorf("migrate %s: %w", filepath.Base(dir), err)
 	}
 	return finish(dir, carry)
@@ -148,7 +149,7 @@ func dropLegacyName(dir, name string) error {
 		if err := os.MkdirAll(filepath.Dir(kept), 0o700); err != nil {
 			return err
 		}
-		return os.Rename(legacy, kept)
+		return fsreplace.Rename(legacy, kept)
 	}
 	if err != nil || !os.SameFile(old, held) {
 		return err

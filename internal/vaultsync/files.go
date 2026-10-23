@@ -5,10 +5,12 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -141,7 +143,39 @@ func (m fileMedium) Read() (string, time.Time, error) {
 	return encodeFile(info.Mode().Perm(), raw), info.ModTime(), err
 }
 
-func (m fileMedium) Realized(content string) string { return content }
+// Realized reflects Windows account permissions without mistaking the absence
+// of Unix mode bits for a file edit after a cross-OS move (K3/K4).
+func (m fileMedium) Realized(content string) string {
+	if runtime.GOOS != "windows" {
+		return content
+	}
+	mode, data, err := decodeFile(content)
+	if err != nil {
+		return content
+	}
+	actual := os.FileMode(0666)
+	if mode&0222 == 0 {
+		actual = 0444
+	}
+	return encodeFile(actual, data)
+}
+
+// recorded keeps an incoming file's Unix mode when Windows edits its bytes.
+// A newly created Windows file gets the portable default, 0644 (K3/K4).
+func (m fileMedium) recorded(content, previous string) string {
+	if runtime.GOOS != "windows" {
+		return content
+	}
+	_, data, err := decodeFile(content)
+	if err != nil {
+		return content
+	}
+	mode := os.FileMode(0644)
+	if previousMode, _, err := decodeFile(previous); err == nil {
+		mode = previousMode
+	}
+	return encodeFile(mode, data)
+}
 
 func (m fileMedium) Clear() error {
 	parent, name, close, err := m.parent(false)
@@ -158,7 +192,7 @@ func (m fileMedium) Write(content string) error {
 	if err != nil {
 		return ErrDamaged
 	}
-	if have, _, err := m.Read(); err == nil && have == content {
+	if have, _, err := m.Read(); err == nil && have == m.Realized(content) {
 		return nil
 	}
 	parent, name, close, err := m.parent(true)
@@ -186,7 +220,7 @@ func (m fileMedium) Write(content string) error {
 	if err := f.Close(); err != nil {
 		return err
 	}
-	return parent.Rename(tmp, name)
+	return fsreplace.Retry(func() error { return parent.Rename(tmp, name) })
 }
 
 // parent opens each directory relative to an already-pinned directory handle.

@@ -3,6 +3,7 @@ package cellstore
 import (
 	"context"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"io/fs"
 	"os"
 	"path"
@@ -126,5 +127,5 @@ func copyFile(src, dst string) error {
 		_ = os.Remove(tmp.Name())
 		return err
 	}
-	return os.Rename(tmp.Name(), dst)
+	return fsreplace.Rename(tmp.Name(), dst)
 }

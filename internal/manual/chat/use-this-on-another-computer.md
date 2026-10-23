@@ -2,7 +2,7 @@
 
 ## How do I use this on my laptop — pair a second computer with a code, connect another computer, and log in on a new machine
 
-Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Only chats started after moving chats became available can be continued on another computer. Older chats stay where they are, keep their original files, and keep working in every build.
 
@@ -34,22 +34,21 @@ The code is good for 10 minutes. It works once.
 
 ## Sync my chats — how to sync between paired computers
 
-Moving chats and pairing are available by default on Linux and macOS on every build.
-Pair both computers first with `codeaf pair` or `/pair`; Windows does not have moving
-chats yet, so use WSL. New chats save their turns locally and sync them to your paired
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine.
+Pair both computers first with `codeaf pair` or `/pair`, on Linux, macOS or native Windows. New chats save their turns locally and sync them to your paired
 computers through the saved or hosted relay. `CODEAF_SYNC_URL=off` stops relay traffic.
 Only chats started after moving chats became available can move; older chats keep
 their original layout and stay local. A never-paired home sends no relay requests.
 
 ## What does /laptop do — /pair, /sync and /link
 
-Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 `/pair` also answers to `/sync`, `/link` and `/laptop`. Type `/pair` with nothing after it to show a code. Type `/pair <code>` to use one. `codeaf pair --code` shows a code in a terminal; `codeaf pair` with nothing after it asks to join by link instead. `codeaf pair <code>` uses one.
 
 ## Terminal pairing usage — codeaf pair
 
-Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 ```
 usage: codeaf pair [--name <name>] | codeaf pair approve <link-or-code> | codeaf pair <code> [--replace] [--name <name>] | codeaf pair --code
@@ -61,7 +60,7 @@ A computer that has no relay cannot pair. See "The relay" below. A chat that run
 
 ## The three words — the check on the computer that has your chats
 
-Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Both screens show the same three words. This is how you know the two computers are the ones you hold.
 
@@ -105,7 +104,7 @@ The code is now dead. It cannot pair a third computer.
 
 ## The code did not work — one attempt for each code
 
-Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 **Each code takes 1 attempt.** A wrong code does not get a second try. The computer that shows the code throws it away and shows a new one at once. You do not press a key. It says:
 
@@ -179,7 +178,7 @@ too many pairings from this network; wait 7 min
 
 ## What the pairing shares — the other computer holds everything this one holds
 
-Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 **Pairing gives the other computer your whole identity.** Your chats, your saved keys and your sync are all part of it. The other computer now holds everything that this computer holds.
 
@@ -203,7 +202,7 @@ already paired; nothing changed
 
 ## I got a new laptop — move my chats to a new machine
 
-Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 1. On the old computer, type `/pair`.
 2. On the new computer, run `codeaf pair <code>`, or type `/pair <code>` in the chat, or type the code on the first screen.
@@ -215,7 +214,7 @@ There is no phone app for continuing chats. A phone browser can open the `/p/` p
 
 ## Devices and revoking — what you can stop, and what you cannot
 
-Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 When moving chats is available, `codeaf devices` lists every device linked to this computer, in up to two groups. A group with nothing in it does not show. With nothing of either kind it says:
 
@@ -261,7 +260,7 @@ To make revoking take effect for real, give all your other computers a new ident
 
 ## Without a relay — identity export and import
 
-Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 You can move your identity by file. This needs no relay. It is the way to use when neither computer can reach a relay.
 
@@ -274,7 +273,7 @@ Keep the file and the passphrase safe. Anybody who has both has your chats.
 
 ## Is my code sent anywhere before I pair — quiet first launch
 
-Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 On a new home, no device record reaches the relay, and no relay request, connection or chat upload is sent, until this home completes a pairing or starts offering a pairing code. Showing a code needs the relay even if nobody joins. A new device's `codeaf pair` also contacts the relay to offer its link; its chats start syncing only after approval. Opening or closing `+ Add another device` with `alt+d`, reading its instructions, listing `/devices` or `codeaf devices`, and ordinary local chats leave a new home **quiet**.
 
@@ -286,7 +285,7 @@ The first-run line about the hosted relay is said once, when chats are first cop
 
 ## Where your chats are stored — the hosted relay, turning it off, your own relay, is my code private
 
-Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Your chats live on your own computer first. They are also copied, sealed,
 to a relay, so your other computers can open them. Which relay is one setting,
@@ -313,7 +312,7 @@ stops new copies going, and a relay you run is yours to empty.
 
 ## The relay — what it sees, your own relay, and turning pairing off
 
-Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 A relay is a small service that passes bytes between the two computers. Your chats sync end to end encrypted. The relay only carries ciphertext. It never sees the code, the three words or your chats.
 
@@ -350,7 +349,7 @@ sync is off (CODEAF_SYNC_URL=off); pairing needs a sync address
 
 ## The pairing relay does not answer, is full or is too old
 
-Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Other things the relay can say while you pair:
 
@@ -374,7 +373,7 @@ that sync service is too old for pairing
 
 ## I lost my laptop — what to do
 
-Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 1. On a computer you still have, run `codeaf devices`.
 2. Run `codeaf devices revoke <name>` for the lost computer.
@@ -382,7 +381,7 @@ Moving chats and pairing are available by default on Linux and macOS on every bu
 
 ## Which door do I use — pairing, --at or --host
 
-Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 - **The same chats on both computers:** pair them with `/pair`. This page.
 - **Work on one machine from the other, with no ssh:** `codeaf serve` on the machine that has the work, and `codeaf chat --at <name>` on the other. Read *Reaching a machine with a pairing code*.
@@ -390,27 +389,32 @@ Moving chats and pairing are available by default on Linux and macOS on every bu
 - **A phone:** there is no phone client in this stage.
 
 
-## Moving chats on Windows, WSL, dev, staging, rc and stable builds
+## Moving chats on Windows — vault permissions, refused names, symlinks, hard links, WSL and every build
 
-Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 `CODEAF_SYNC_URL=off` stops relay traffic; local chats still keep their saved turns.
 Only chats started after this feature became available can move. Older chats stay where they are and keep their original layout when opened. Nothing is deleted automatically to save disk.
 
-Native Windows has no furrow engine. Pairing a shared chat identity, devices that hold
-chats, sync, continue/take and identity rotation are absent. The pairing and devices slash
-rows, home device rows, add-device key hint, move cards and pairing atlas are omitted.
-An explicitly typed command or pressed add-device chord says
-`moving chats is not available on Windows yet; run codeaf in WSL`.
+Native Windows moves chats with the native engine, just like Linux and macOS.
+Install Git for Windows to run commands; codeaf uses Git Bash, never the WSL launcher.
+A build with no compatible engine keeps moving chats absent and says
+`moving chats needs a newer furrow engine than this build carries`.
 
+Names Windows refuses (such as `con`, `aux.c`, a colon, trailing dots or spaces,
+or names differing only by case) stay behind and appear in `not brought along:`
+with their reason. Other files arrive with identical bytes. Task working copies keep their LF, CRLF
+or mixed line endings even when the receiving Git uses another checkout setting. Creating symlinks needs Windows Developer Mode or permission to make
+links; links that cannot be created are reported on the same line. Hard-linked names
+currently arrive on Windows as separate files with identical bytes. The chat works
+in its folder on this computer, with old absolute workspace paths remapped there.
 
-Existing remote access still works: `codeaf serve`, `chat --at`, `--host`, six-digit
-machine pairing and `codeaf devices` for listing or revoking remote access. The
-self-hosted `codeaf relay` server also remains available.
+The encrypted vault and withheld secrets live under your codeaf home in your user profile. Windows protects that profile with its account permissions; Unix file
+mode bits are recorded for later moves, but do not provide Windows access control.
 
 ## Moving chats needs a newer furrow engine than this build carries
 
-Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Chat movement needs the configured or embedded furrow's exchange verbs, daemon and
 changed-path sealing. codeaf checks these capabilities once at startup, without using a
@@ -421,6 +425,6 @@ and existing remote access still work. Use a build carrying the newer engine, or
 
 ## Does a CA certificate bundle stay out as a private key — cacert.pem
 
-Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 A PEM certificate bundle containing only `BEGIN CERTIFICATE` blocks is kept in saved history and can move with the workspace. A `.pem` suffix alone does not make it a private key. Files containing PEM private-key headers (including encrypted keys and OpenSSH keys), PuTTY private keys, and PKCS#12 key containers are withheld; a PEM containing both certificates and a private key is withheld too. The same folder exclusions still apply: a certificate inside an install folder left behind for rebuilding is rebuilt with that folder.

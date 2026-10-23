@@ -663,7 +663,10 @@ func (r *jobRegistry) runTick(ctx context.Context, spec watchSpec) (string, stri
 	tickCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	shell, shellArgs := jobShell()
+	shell, shellArgs, shellErr := jobShell()
+	if shellErr != nil {
+		return "", shellErr.Error()
+	}
 	// A new SESSION rather than a bare process group: the group-kill is
 	// unchanged (a session leader leads its own group), and a tick's child that
 	// opens /dev/tty is refused rather than drawing on the person's frame

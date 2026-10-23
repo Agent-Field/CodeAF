@@ -51,7 +51,7 @@ screen. Its heading is `Basic settings`, one line, with the keys line directly u
 
 ## I already use codeaf on a second computer — the code field on the first screen
 
-Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Only chats started after moving chats became available can be continued on another computer. Older chats stay where they are and keep working in every build.
 

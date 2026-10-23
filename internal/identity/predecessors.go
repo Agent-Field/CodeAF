@@ -2,6 +2,7 @@ package identity
 
 import (
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -55,5 +56,5 @@ func RecordPredecessor(home, id string) error {
 	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, filepath.Join(home, predecessorsFile))
+	return fsreplace.Rename(tmp, filepath.Join(home, predecessorsFile))
 }

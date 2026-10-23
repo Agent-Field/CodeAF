@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -224,7 +225,7 @@ func (w *WAL) rewrite(recs []record) error {
 	if err := commits.flush(ctx, w.owner); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, w.path); err != nil {
+	if err := fsreplace.Rename(tmp, w.path); err != nil {
 		return fmt.Errorf("compact wal: %w", err)
 	}
 	commits.mark(w.owner, w.path, true)

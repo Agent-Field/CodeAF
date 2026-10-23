@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"os"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -271,13 +272,13 @@ func swap(stage, root string) error {
 	}
 	had := exists(root)
 	if had {
-		if err := os.Rename(root, aside); err != nil {
+		if err := fsreplace.Rename(root, aside); err != nil {
 			return err
 		}
 	}
-	if err := os.Rename(stage, root); err != nil {
+	if err := fsreplace.Rename(stage, root); err != nil {
 		if had {
-			err = errors.Join(err, os.Rename(aside, root))
+			err = errors.Join(err, fsreplace.Rename(aside, root))
 		}
 		return err
 	}

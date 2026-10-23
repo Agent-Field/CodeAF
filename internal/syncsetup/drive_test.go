@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -27,6 +28,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/relayserve"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
@@ -94,6 +96,8 @@ func newDriveRig(t *testing.T, wrap ...func(http.Handler) http.Handler) *driveRi
 	r.engine = cellstore.EngineFor(r.work)
 	r.engine.DataRoot, r.engine.Binary = t.TempDir(), bin
 	r.engine.Transport = cellstore.Spawn{Binary: bin}
+	t.Cleanup(cellstore.StopSpawned)
+	t.Cleanup(session.CloseUsage)
 	return r
 }
 
@@ -452,7 +456,11 @@ func TestDriveSidePublishesOverTheDefaultDaemon(t *testing.T) {
 	c := r.startChat(&notices)
 	c.mustSay()
 	waitFor(t, "the directory head to reach the chat's head", func() bool { return r.directoryHead(r.cell.ID) == r.head() })
-	if socks, _ := filepath.Glob(home.Join("v3", "engine-*.sock")); len(socks) == 0 {
+	socketPattern := home.Join("v3", "engine-*.sock")
+	if runtime.GOOS == "windows" {
+		socketPattern = filepath.Join(os.Getenv("LOCALAPPDATA"), "codeaf", "e-*.sock")
+	}
+	if socks, _ := filepath.Glob(socketPattern); len(socks) == 0 {
 		t.Fatal("no engine daemon socket: the sync verbs did not go through the daemon")
 	}
 }
@@ -461,6 +469,10 @@ func TestDriveSidePublishesOverTheDefaultDaemon(t *testing.T) {
 // test's own home, so none is anyone else's.
 func stopDaemons(t *testing.T) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		cellstore.StopSpawned()
+		return
+	}
 	socks, _ := filepath.Glob(home.Join("v3", "engine-*.sock"))
 	for _, s := range socks {
 		_ = cellstore.Daemon{Socket: s}.Stop(context.Background())

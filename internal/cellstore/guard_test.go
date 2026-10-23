@@ -235,7 +235,7 @@ func TestSeatGivesTheToolTheVaultEnv(t *testing.T) {
 	r.write(".env", "TOOL_TOKEN=abc123\n")
 	r.screen()
 	local := executor.Local{Root: r.tree, Class: executor.HostBound, Secrets: vaultEnvIn{r.guard, r.cell}}
-	res, err := local.Exec(context.Background(), executor.ExecRequest{Argv: []string{"sh", "-c", "printf %s \"$TOOL_TOKEN\""}}, nil)
+	res, err := local.Exec(context.Background(), executor.ExecRequest{Argv: []string{testShell(t), "-c", "printf %s \"$TOOL_TOKEN\""}}, nil)
 	if err != nil || string(res.Stdout) != "abc123" {
 		t.Fatalf("tool saw %q, %v", res.Stdout, err)
 	}

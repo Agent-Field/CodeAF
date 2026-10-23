@@ -2,6 +2,7 @@ package keys
 
 import (
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"os"
 	"path/filepath"
 )
@@ -48,7 +49,7 @@ func readNext(home string) ([]byte, error) {
 // CommitReseal puts the staged vault in place of the live one. It is the step
 // after the identity changed, and it does nothing when nothing is staged.
 func CommitReseal(home string) error {
-	err := os.Rename(filepath.Join(home, nextFile), filepath.Join(home, "vault.enc"))
+	err := fsreplace.Rename(filepath.Join(home, nextFile), filepath.Join(home, "vault.enc"))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}

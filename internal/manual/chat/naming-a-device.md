@@ -2,7 +2,7 @@
 
 ## Why does it show my hostname — the host name is the default until a device is named, and where a name appears
 
-Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Only chats started after moving chats became available can be continued on another computer. Older chats stay where they are and keep working in every build.
 

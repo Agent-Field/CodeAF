@@ -2,11 +2,15 @@ package cell
 
 import "testing"
 
-// TestC11WindowsCannotEnableCells proves C27.3 with a nonexistent engine:
-// Windows never attempts to launch it.
-func TestC11WindowsCannotEnableCells(t *testing.T) {
-	t.Setenv("CODEAF_FURROW", "does-not-exist.exe")
-	if Enabled() || Available() || UnavailableReason() != WindowsReason {
-		t.Fatal("Windows offered a Unix-only capability")
+// TestK1WindowsMovingChatsNeedOnlyTheEngine proves K1: native Windows offers
+// the same capability as Unix and keeps it absent when the engine is missing.
+func TestK1WindowsMovingChatsNeedOnlyTheEngine(t *testing.T) {
+	t.Cleanup(UseAvailabilityInTests(true))
+	if !Enabled() || !Available() {
+		t.Fatal("Windows omitted moving chats with an available engine")
+	}
+	engineAvailable = func() bool { return false }
+	if Available() || UnavailableReason() == "" {
+		t.Fatal("Windows offered moving chats without an engine")
 	}
 }

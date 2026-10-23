@@ -65,7 +65,7 @@ func (k Carry) restoreOne(c cell.Cell, project, name string) error {
 	}
 	dest := filepath.Join(liveRoot(c), name)
 	cutErr := k.cutAgain(project, dest, name, from, rec)
-	return errors.Join(cutErr, overlay(filepath.Join(from, filesDir), dest, rec), applyModes(dest, rec.Modes))
+	return errors.Join(cutErr, applyEOL(dest, rec.EOL), overlay(filepath.Join(from, filesDir), dest, rec), applyModes(dest, rec.Modes))
 }
 
 // applyModes gives each file of the copy the bits it left with, including the

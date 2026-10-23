@@ -58,7 +58,7 @@ func TestFileMediumConfinementPreservesNormalRestoreAndDelete(t *testing.T) {
 	must(t, m.Write(content))
 	got, _, err := m.Read()
 	must(t, err)
-	if got != content {
+	if got != m.Realized(content) {
 		t.Fatalf("restored %q, want %q", got, content)
 	}
 	must(t, m.Clear())

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -195,6 +196,9 @@ func (p policyFile) isHeld(rel string) bool { return inRules(p.held, rel) }
 // excluded: nothing there is sealed, so nothing there is scanned.
 func (p policyFile) isLeftOut(rel string) bool {
 	first, _, _ := strings.Cut(rel, "/")
+	if runtime.GOOS == "windows" {
+		first = strings.ToLower(first)
+	}
 	return controlDirs[first] || inRules(p.userRules(), rel) || inRules(p.ignoredDirs, rel)
 }
 

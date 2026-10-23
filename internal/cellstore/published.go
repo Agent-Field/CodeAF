@@ -3,6 +3,7 @@ package cellstore
 import (
 	"encoding/json"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"os"
 	"path/filepath"
 
@@ -48,7 +49,7 @@ func NotePublished(c cell.Cell, head string) error {
 	if err := os.WriteFile(p+".tmp", raw, 0o600); err != nil {
 		return err
 	}
-	return os.Rename(p+".tmp", p)
+	return fsreplace.Rename(p+".tmp", p)
 }
 
 // Unpublished names the sealed local work beyond the uploaded head. An older

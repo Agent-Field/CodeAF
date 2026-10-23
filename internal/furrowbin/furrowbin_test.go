@@ -45,7 +45,7 @@ func TestAFreshStateRootGetsTheBinaryStampedWithItsVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat what was extracted: %v", err)
 	}
-	if info.Mode().Perm()&0o111 == 0 {
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0o111 == 0 {
 		t.Fatalf("extracted furrow has mode %v; a binary codeaf cannot execute is a binary it did not extract", info.Mode())
 	}
 
@@ -123,7 +123,11 @@ func TestAnOlderVersionIsLeftBesideTheNewOneAndNeverWrittenOver(t *testing.T) {
 	}
 }
 
+// K1 preserves the Unix refusal test; Windows account permissions do not follow Chmod.
 func TestAStateRootThatCannotBeWrittenToIsAnErrorAndNotAHalfBinary(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows uses account permissions instead of Unix mode bits")
+	}
 	if os.Geteuid() == 0 {
 		t.Skip("root writes into a read-only directory, so there is nothing to refuse")
 	}

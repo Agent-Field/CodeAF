@@ -3,7 +3,7 @@ package identity
 import (
 	"encoding/json"
 	"errors"
-	"os"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"path/filepath"
 )
 
@@ -33,7 +33,7 @@ func Install(home string, id Identity, dev Dev) error {
 	if err := Save(home, id); err != nil {
 		return err
 	}
-	return write(filepath.Join(home, DeviceFile), dev.document(), os.Rename)
+	return write(filepath.Join(home, DeviceFile), dev.document(), fsreplace.Rename)
 }
 
 // Marshal is the device as one document in memory, for a journal that must

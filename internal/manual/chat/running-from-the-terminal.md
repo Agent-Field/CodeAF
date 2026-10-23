@@ -331,7 +331,7 @@ kept out of it as well, because they do nothing any more (see *codeaf wake and c
 tick* below).
 
 A third, **`codeaf cell`**, is typed by hand but is not in the help text: it works
-by default on Linux and macOS on every build. Windows needs WSL, and a compatible furrow engine is required. Its verbs are described under "The cell verbs" below.
+by default on Linux and macOS on every build. Native Windows is supported too; a compatible furrow engine is required. Its verbs are described under "The cell verbs" below.
 
 ## codeaf pair — show a code, or use one, from the terminal
 
@@ -393,7 +393,7 @@ version; the map does not keep a second version number.
 
 ## The cell verbs — list a cell's turns and rewind it
 
-Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL. They need a compatible furrow engine. `codeaf cell` is hidden from the
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first. They need a compatible furrow engine. `codeaf cell` is hidden from the
 help text. **`codeaf cell log [<cell>]`** lists a cell's
 turns, newest first, one line each (turn, parent, time, trigger, tools, receipt; a setup turn says `Setup` and its calls are marked `[external]`), and
 **`codeaf cell rewind <turn> [<cell>]`** puts the cell's files and transcript back to that
@@ -410,7 +410,7 @@ New chats declare `host-bound`: shell commands run on this computer with the net
 Your identity is the one root secret codeaf keeps for you on a machine: a signing key, a
 secret for deduplicating file content, and the key your saved secrets are sealed under. It
 lives in `identity.json` in the codeaf home, readable by you only. There is no account.
-These verbs are hidden from the help text and are available by default on Linux and macOS with a compatible furrow engine. Native Windows says `moving chats is not available on Windows yet; run codeaf in WSL`. An older engine says `moving chats needs a newer furrow engine than this build carries`.
+These verbs are hidden from the help text and are available by default on Linux, macOS and native Windows with a compatible furrow engine. An older engine says `moving chats needs a newer furrow engine than this build carries`.
 
 **`codeaf identity show`** prints your public id, a short fingerprint you can compare by
 eye between two machines, the cell key id, and this machine's device id. It makes the identity the first time it runs.
@@ -459,7 +459,7 @@ The engine keeps its sync setting from startup. Changing `CODEAF_SYNC_URL` to an
 
 ## Sync your chats between machines — CODEAF_SYNC_URL and CODEAF_SYNC_INTERVAL_MS
 
-Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Only chats started after moving chats became available can be continued on another computer. Older chats stay where they are and keep working in every build.
 
@@ -1038,8 +1038,8 @@ is refused in words. Only the run engine keeps this record, so `--continue` is r
 
 ## Continuing a sealed headless run — its cell and incomplete calls
 
-Cells are available by default on Linux and macOS on every build.
-Windows needs WSL and a compatible furrow engine is required. `codeaf do`
+Cells are available by default on Linux, macOS and native Windows on every build with a compatible engine.
+Native Windows is supported too, and a compatible furrow engine is required. `codeaf do`
 runs inside a cell, the same kind of folder a chat is, and
 the tool calls the run's workers make are sealed as turns, one turn for each set of calls the
 model asked for together, taken after the calls' results are written down, and the end of

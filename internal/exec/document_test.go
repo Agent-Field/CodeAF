@@ -141,9 +141,7 @@ func stubPDFBinaries(t *testing.T, text string, pages int) string {
 		scripts["pdfinfo"] = "#!/bin/sh\nprintf 'Pages:          %s\\n' \"$" + stubPDFPagesEnv + "\"\n"
 	}
 	for name, script := range scripts {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(script), 0o755); err != nil {
-			t.Fatal(err)
-		}
+		fixtureExecutable(t, filepath.Join(dir, name), []byte(script), 0o755)
 	}
 	t.Setenv("PATH", dir)
 	t.Setenv(stubPDFLogEnv, log)

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -116,6 +117,9 @@ func (s *Store) Annotate(key string, note map[string]any) error {
 }
 
 func (s *Store) write(inv Inventory) error {
+	// K3: these recorded source folders travel to computers with another path grammar.
+	inv.Workspace = filepath.ToSlash(inv.Workspace)
+	inv.ChatDir = filepath.ToSlash(inv.ChatDir)
 	raw, err := json.MarshalIndent(inv, "", "  ")
 	if err != nil {
 		return err
@@ -147,7 +151,7 @@ func writeAtomic(path string, data []byte) (err error) {
 	if err = tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), path)
+	return fsreplace.Rename(tmp.Name(), path)
 }
 
 // clone deep-copies through JSON, which is also the shape that persists.

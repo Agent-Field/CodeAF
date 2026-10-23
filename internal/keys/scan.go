@@ -9,6 +9,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 )
 
@@ -36,6 +37,10 @@ type rule struct {
 func nameRule(name string, globs ...string) rule {
 	return rule{name, func(rel string, _ []byte) bool {
 		base := path.Base(rel)
+		// K3: Windows names are case-insensitive, including secret-bearing suffixes.
+		if runtime.GOOS == "windows" {
+			base = strings.ToLower(base)
+		}
 		for _, g := range globs {
 			if ok, _ := path.Match(g, base); ok {
 				return true
@@ -181,6 +186,10 @@ func firstHit(rel, abs string) (string, bool) {
 // about secrets, so only its content is judged.
 func isTemplate(rel string) bool {
 	base := path.Base(rel)
+	// K3: Windows names are case-insensitive, including secret-bearing suffixes.
+	if runtime.GOOS == "windows" {
+		base = strings.ToLower(base)
+	}
 	for _, suffix := range []string{".example", ".sample", ".template"} {
 		if strings.HasSuffix(base, suffix) {
 			return true

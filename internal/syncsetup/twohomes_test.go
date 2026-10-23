@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -297,6 +298,7 @@ func readTree(t *testing.T, dir string) map[string]entry {
 	out := map[string]entry{}
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		rel, _ := filepath.Rel(dir, path)
+		rel = filepath.ToSlash(rel)
 		if err != nil || rel == "." || rel == ".furrow" || strings.HasPrefix(rel, ".furrow"+string(filepath.Separator)) || d.IsDir() {
 			return err
 		}
@@ -445,14 +447,14 @@ func assertEnvInjected(t *testing.T, work string) {
 	t.Helper()
 	path := filepath.Join(work, ".env")
 	info, err := os.Stat(path)
-	if err != nil || info.Mode().Perm() != 0o644 {
+	if err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0o644) {
 		t.Fatalf(".env on B = %v, %v; want A's file at mode 0644", info, err)
 	}
 	if got, _ := os.ReadFile(path); string(got) != envBody {
 		t.Fatalf(".env on B = %q", got)
 	}
 	deep := filepath.Join(work, "web/client/app/.env.production")
-	if info, err := os.Stat(deep); err != nil || info.Mode().Perm() != 0o640 {
+	if info, err := os.Stat(deep); err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0o640) {
 		t.Fatalf("the nested dotenv on B = %v, %v; want it back at mode 0640", info, err)
 	}
 	if got, _ := os.ReadFile(deep); string(got) != "# prod\nAPI_URL='https://x'\n" {

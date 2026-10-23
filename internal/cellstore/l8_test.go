@@ -22,6 +22,7 @@ func treeDigest(t *testing.T, root string) []string {
 	var lines []string
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		r, _ := filepath.Rel(root, path)
+		r = filepath.ToSlash(r)
 		if err != nil || r == "." || skippedByDigest(r) {
 			if d != nil && d.IsDir() && skippedByDigest(r) {
 				return fs.SkipDir
@@ -52,7 +53,7 @@ func describe(t *testing.T, path, rel string, d fs.DirEntry) string {
 		return rel + "/ " + info.Mode().String()
 	case info.Mode()&fs.ModeSymlink != 0:
 		to, _ := os.Readlink(path)
-		return rel + " -> " + to
+		return rel + " -> " + filepath.ToSlash(to)
 	}
 	raw, _ := os.ReadFile(path)
 	sum := sha256.Sum256(raw)

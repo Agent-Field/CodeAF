@@ -1,5 +1,3 @@
-//go:build !windows
-
 package cellstore
 
 import (
@@ -10,7 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -85,7 +82,7 @@ func launch(d Daemon) (<-chan struct{}, error) {
 	}
 	sealInheritedDescriptors()
 	cmd := exec.Command(bin, "serve", "--socket", d.Socket, "--idle-minutes", idleFlag()) //codeaf:plumbing starts the engine's long-lived daemon
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	configureDaemonCommand(cmd)
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start engine daemon: %w", err)
 	}

@@ -36,6 +36,8 @@ type record struct {
 	Deleted []string               `json:"deleted,omitempty"`
 	Linked  bool                   `json:"linked,omitempty"`
 	Modes   map[string]fs.FileMode `json:"modes,omitempty"`
+	// EOL records actual working-tree endings rather than this machine's Git defaults.
+	EOL map[string]string `json:"eol,omitempty"`
 }
 
 // modeOf is the mode a carried file is put back with: the one the record kept,

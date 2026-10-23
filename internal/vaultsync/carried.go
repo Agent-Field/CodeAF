@@ -69,8 +69,13 @@ func (c Carried) record(v VaultFile, absent func(VaultFile) error) error {
 	if err != nil {
 		return err
 	}
-	if held, err := v.Get(c.ID); err == nil && c.Medium.Realized(held.Value) == content {
+	held, heldErr := v.Get(c.ID)
+	if heldErr == nil && c.Medium.Realized(held.Value) == content {
 		return nil
+	}
+	// K3/K4: a medium may preserve recorded metadata its host cannot represent.
+	if medium, ok := c.Medium.(interface{ recorded(string, string) string }); ok {
+		content = medium.recorded(content, held.Value)
 	}
 	return v.PutAt(c.ID, keys.Entry{Name: c.Name, Value: content, Scope: c.Scope}, at)
 }

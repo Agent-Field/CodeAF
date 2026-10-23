@@ -61,7 +61,7 @@ func TestC9SeatScreensAnEmptyChangesTurn(t *testing.T) {
 						}
 					}
 					if door == "shell reply" {
-						if _, err := seat.In(r.tree).Exec(ctx, executor.ExecRequest{Argv: []string{"sh", "-c", "echo ok"}}, nil); err != nil {
+						if _, err := seat.In(r.tree).Exec(ctx, executor.ExecRequest{Argv: []string{testShell(t), "-c", "echo ok"}}, nil); err != nil {
 							t.Fatal(err)
 						}
 					}
@@ -74,7 +74,7 @@ func TestC9SeatScreensAnEmptyChangesTurn(t *testing.T) {
 					}
 					assertC9Screened(t, e, r, path, secret)
 					if path == ".env" {
-						res, err := seat.In(r.tree).Exec(ctx, executor.ExecRequest{Argv: []string{"sh", "-c", `test "$DEMO_TOKEN" = c9-not-a-real-secret`}}, nil)
+						res, err := seat.In(r.tree).Exec(ctx, executor.ExecRequest{Argv: []string{testShell(t), "-c", `test "$DEMO_TOKEN" = c9-not-a-real-secret`}}, nil)
 						if err != nil || res.Exit != 0 {
 							t.Fatalf("tools lost the vaulted variable: %+v, %v", res, err)
 						}

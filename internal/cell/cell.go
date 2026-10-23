@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"os"
 	"path/filepath"
 	"strings"
@@ -178,7 +179,7 @@ func writeAtomic(path string, data []byte) (err error) {
 	if err = tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), path)
+	return fsreplace.Rename(tmp.Name(), path)
 }
 
 var errBadMeta = errors.New("invalid cell meta")

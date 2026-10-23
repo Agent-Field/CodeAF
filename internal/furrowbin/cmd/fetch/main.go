@@ -260,13 +260,12 @@ func refusal(pin furrowbin.Pin, platform string, cause error) string {
 		"internal/furrowbin/pin.json.\n\n"
 }
 
-// pinAsset names the file a person would go and find, or the platform itself
-// when the pin has no entry for it — which is the one failure where naming an
-// asset would be inventing one.
+// pinAsset prefers the published pin and otherwise uses the release workflow
+// spelling, including Windows executable suffixes before their hashes exist.
 func pinAsset(pin furrowbin.Pin, platform string) string {
 	artifact, err := pin.ArtifactFor(platform)
 	if err != nil {
-		return "furrow-" + platform
+		return furrowbin.AssetName(platform)
 	}
 	return artifact.Asset
 }

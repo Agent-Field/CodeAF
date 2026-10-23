@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -61,7 +62,7 @@ func TestCredentialsAddedOnAAppearsOnB(t *testing.T) {
 	must(t, a.Push(ctx))
 	must(t, b.Pull(ctx))
 	b.wantCreds(t, credsOne)
-	if info, err := os.Stat(b.credsPath()); err != nil || info.Mode().Perm() != 0o600 {
+	if info, err := os.Stat(b.credsPath()); err != nil || runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Fatalf("the restored file must be private, stat %v mode %v", err, info)
 	}
 }

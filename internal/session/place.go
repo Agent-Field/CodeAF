@@ -19,9 +19,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -356,7 +358,16 @@ func LoadMetaIn(dir, workspace string) (Meta, error) {
 	if strings.TrimSpace(meta.Workspace) == "" {
 		meta.Workspace = workspace
 	}
-	return overlayTruth(dir, meta)
+	meta, err = overlayTruth(dir, meta)
+	// K3 keeps persisted paths portable; callers use native local drive paths.
+	if runtime.GOOS == "windows" {
+		for _, field := range []*string{&meta.Workspace, &meta.Origin, &meta.FromWorkspace} {
+			if windowsSource(*field) {
+				*field = filepath.FromSlash(*field)
+			}
+		}
+	}
+	return meta, err
 }
 
 // readMeta reads meta.json alone: the derived summary, plus whatever truth a
@@ -449,6 +460,14 @@ func SaveMeta(dir string, meta Meta) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("save session meta: %w", err)
 	}
+	// K3: schema paths use slashes even when their source machine is Windows.
+	for _, field := range []*string{&meta.Workspace, &meta.Origin, &meta.FromWorkspace} {
+		if windowsSource(*field) {
+			*field = strings.ReplaceAll(*field, "\\", "/")
+		} else {
+			*field = filepath.ToSlash(*field)
+		}
+	}
 	meta.Build = buildinfo.String()
 	if path := layoutOf(dir).metaTruth(dir); path != "" {
 		if err := writeTruth(dir, path, meta); err != nil {
@@ -482,7 +501,7 @@ func writeJSONAtomic(path string, v any) error {
 		os.Remove(name)
 		return err
 	}
-	if err := os.Rename(name, path); err != nil {
+	if err := fsreplace.Rename(name, path); err != nil {
 		os.Remove(name)
 		return err
 	}

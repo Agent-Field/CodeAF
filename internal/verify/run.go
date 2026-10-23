@@ -11,12 +11,12 @@ package verify
 import (
 	"bytes"
 	"context"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/executor"
+	"github.com/Agent-Field/codeaf/internal/shell"
 )
 
 // strictPreamble is prefixed to every command this package runs. A pipeline
@@ -133,7 +133,7 @@ func RunReading(
 	if strategy.Empty() {
 		return Result{}, false
 	}
-	shell, err := exec.LookPath(readingShell)
+	bash, err := shell.Reading()
 	if err != nil {
 		return Result{}, false
 	}
@@ -148,7 +148,7 @@ func RunReading(
 	// block forever on a process it has already killed.
 	captured := &tailBuffer{limit: capturedOutputLimit}
 	run, err := executor.For(ctx).In(filepath.Join(workspace, strategy.Workdir)).Exec(ctx, executor.ExecRequest{
-		Argv:      []string{shell, "-c", strictPreamble + strategy.Command},
+		Argv:      []string{bash, "-c", strictPreamble + strategy.Command},
 		WaitDelay: 2 * time.Second, Combined: true, Stream: true,
 	}, func(c executor.Chunk) { _, _ = captured.Write(c.Data) })
 	ran := run.Status != ""

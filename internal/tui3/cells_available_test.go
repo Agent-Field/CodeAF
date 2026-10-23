@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/furrowbin"
 )
@@ -15,7 +14,7 @@ import (
 // device, sync or takeover door survives, and every explicit gesture explains
 // the same reason without starting work or drawing a move card.
 func TestC27UnavailableSurface(t *testing.T) {
-	for _, reason := range []string{cell.WindowsReason, furrowbin.CellsUnavailable} {
+	for _, reason := range []string{furrowbin.CellsUnavailable} {
 		t.Run(reason, func(t *testing.T) {
 			a := newApp(context.Background(), Options{
 				Agent: &fakeAgent{model: "m"}, CellsUnavailable: reason,

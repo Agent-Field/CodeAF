@@ -18,7 +18,7 @@ func attachmentFixture(t *testing.T, dir, name, body string) string {
 	return path
 }
 
-// The journey the reference exists for: a contract attached on Monday, moved
+// K3/K4: the journey the reference exists for: a contract attached on Monday, moved
 // into a different folder on Tuesday, and a job retried on Wednesday that
 // still reads exactly the bytes that were attached.
 func TestAKeptAttachmentSurvivesTheOriginalMovingAway(t *testing.T) {
@@ -30,7 +30,7 @@ func TestAKeptAttachmentSurvivesTheOriginalMovingAway(t *testing.T) {
 	if err != nil {
 		t.Fatalf("keep: %v", err)
 	}
-	if !strings.HasPrefix(reference, cas.Scheme) || !strings.HasSuffix(reference, original) {
+	if !strings.HasPrefix(reference, cas.Scheme) || !strings.HasSuffix(reference, filepath.ToSlash(original)) {
 		t.Fatalf("reference = %q, want a digest carrying %q", reference, original)
 	}
 	if filepath.Ext(reference) != ".pdf" || filepath.Base(reference) != "contract.pdf" {
