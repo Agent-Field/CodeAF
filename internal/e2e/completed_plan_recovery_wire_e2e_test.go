@@ -254,29 +254,20 @@ func runCompletedPlanRecovery(t *testing.T, live bool) {
 	if cost := completedCheckpointCost(home); cost+1e-9 < beforeLedger {
 		t.Fatalf("recovered task/index lost its actual spend: cost=%g ledger=%g", cost, beforeLedger)
 	}
-	assertCompletedPlanPrice(t, rig, beforeLedger)
 	checkCompletedProof(t, proof)
-	// A restored landing card owns its displayed answer keys. Prefer that
-	// actual door, and submit a chat request only on a visible ordinary box.
+	// Wait for the actual restored card, then let its input settle guard expire.
+	// Reading the persisted recovery record alone does not mean the UI is ready.
 	screen := rig.capture()
-	for until := time.Now().Add(3 * time.Second); !strings.Contains(screen, "a accept") && time.Now().Before(until); {
+	for until := time.Now().Add(10 * time.Second); (!strings.Contains(screen, "a accept") || !strings.Contains(screen, "n not right")) && time.Now().Before(until); {
 		time.Sleep(100 * time.Millisecond)
 		screen = rig.capture()
 	}
-	t.Logf("Actual restored UI before explicit acceptance:\n%s", screen)
-	if strings.Contains(screen, "a accept") {
-		rig.keys("a", "Enter")
-	} else {
-		if strings.Contains(screen, say(t, "roomTabsWords")) {
-			t.Fatalf("restored task room offers no actual Accept card; refusing to submit a task note: %s", screen)
-		}
-		if !strings.Contains(screen, "›") {
-			t.Fatalf("restored UI offers neither an Accept card nor a normal chat box: %s", screen)
-		}
-		accept := "ACCEPT_RECOVERED_PROOF: I inspected the preserved files and independently reran recover-check.txt successfully. Explicitly accept and land completed task 1 using tasks resolve accept. Report the actual landed work commit; do not rerun or redelegate the work."
-		rig.lit(accept)
-		rig.keys("Enter")
+	if !strings.Contains(screen, "a accept") || !strings.Contains(screen, "n not right") {
+		t.Fatalf("restored UI offers no actual acceptance card: %s", screen)
 	}
+	time.Sleep(350 * time.Millisecond)
+	t.Logf("Actual restored UI before explicit acceptance:\n%s", rig.capture())
+	rig.keys("a", "Enter")
 	for deadline = time.Now().Add(2 * time.Minute); completedCommitReceipt(t, home) == "" || completedGit(t, ws, "rev-parse", "HEAD") == beforeHead; {
 		if time.Now().After(deadline) {
 			t.Fatalf("actual explicit acceptance did not produce a landed commit receipt: %s", rig.capture())
@@ -299,6 +290,7 @@ func runCompletedPlanRecovery(t *testing.T, live bool) {
 	if err := exec.Command("git", "-C", ws, "merge-base", "--is-ancestor", receipt, "HEAD").Run(); err != nil {
 		t.Fatalf("receipt commit was not landed: %s", receipt)
 	}
+	assertCompletedPlanPrice(t, rig, beforeLedger)
 	models := callModels(t, home)
 	if live {
 		for _, got := range models {
@@ -526,7 +518,7 @@ func assertCompletedPlanPrice(t *testing.T, rig *rig, usd float64) {
 	for {
 		screen = rig.capture()
 		for _, line := range strings.Split(screen, "\n") {
-			if strings.Contains(line, "your call") && strings.Contains(line, price) {
+			if strings.Contains(line, "done") && strings.Contains(line, price) {
 				t.Logf("Actual recovered task-room header preserves ledger price %s:\n%s", price, screen)
 				return
 			}
