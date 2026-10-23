@@ -105,21 +105,17 @@ func TestTerminalStopEndsOwnedTasksOnTheRealTerminal(t *testing.T) {
 				}
 			}
 			if mode != "conversation_wall" {
-				rig.lit("/history")
-				rig.keys("Enter")
-				time.Sleep(500 * time.Millisecond)
-				rig.keys("Right")
-				rig.keys("Down")
-				rig.keys("Enter")
-				time.Sleep(500 * time.Millisecond)
-				rig.keys("x")
-				rig.waitFor(10*time.Second, "Stop this task?")
-				rig.keys("1")
-				rig.keys("Enter")
+				stopOwnedTaskThroughItsPage(t, rig)
 			}
 			if mode == "conversation_wall" {
 				rig.waitFor(35*time.Second, "conversation time limit reached")
-				rig.waitFor(10*time.Second, "a time limit you set stopped it")
+				if screen := rig.capture(); strings.Contains(screen, "background work") && strings.Contains(screen, "ctrl+e") {
+					rig.keys("C-e")
+				}
+				screen := rig.waitFor(10*time.Second, "a time limit you set stopped it")
+				if !strings.Contains(screen, "a time limit you set stopped it") {
+					t.Fatal("joined wall stop reason was not disclosed")
+				}
 			} else {
 				rig.waitFor(20*time.Second, "stopped")
 			}
@@ -197,17 +193,7 @@ func TestTerminalStopLiveOwnedTaskWorkflow(t *testing.T) {
 		}
 		time.Sleep(pollEvery)
 	}
-	rig.lit("/history")
-	rig.keys("Enter")
-	time.Sleep(500 * time.Millisecond)
-	rig.keys("Right")
-	rig.keys("Down")
-	rig.keys("Enter")
-	time.Sleep(500 * time.Millisecond)
-	rig.keys("x")
-	rig.waitFor(10*time.Second, "Stop this task?")
-	rig.keys("1")
-	rig.keys("Enter")
+	stopOwnedTaskThroughItsPage(t, rig)
 	rig.waitFor(20*time.Second, "stopped")
 	bytesAtStop := stopHeartbeatBytes(home) + stopHeartbeatBytes(ws)
 	time.Sleep(10 * time.Second)
@@ -277,4 +263,26 @@ func stopSpendSnapshot(t *testing.T, home string) stopSpend {
 		}
 	}
 	return total
+}
+
+func stopOwnedTaskThroughItsPage(t *testing.T, rig *rig) {
+	t.Helper()
+	openTasksPlace(t, rig)
+	tasksPlaceRunRow(t, rig)
+	hit, screen := rig.waitForAny(15*time.Second, say(t, "tasksEnterInsideWord"), say(t, "tasksEnterRoomWord"))
+	if hit == "" {
+		t.Fatalf("active task row never offered its room: %s", screen)
+	}
+	rig.keys("Enter")
+	screen = rig.waitFor(15*time.Second, say(t, "roomTabsWords"))
+	if !strings.Contains(screen, say(t, "roomTabsWords")) {
+		t.Fatal("active task room did not load")
+	}
+	rig.keys("x")
+	screen = rig.waitFor(10*time.Second, "Stop this task?", "stop it", "keep going")
+	if !strings.Contains(screen, "Stop this task?") || !strings.Contains(screen, "stop it") || !strings.Contains(screen, "keep going") {
+		t.Fatal("actual Stop confirmation was not displayed")
+	}
+	rig.keys("1")
+	rig.keys("Enter")
 }
