@@ -20,6 +20,8 @@ import (
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/lane/control"
 	"github.com/Agent-Field/codeaf/internal/trace"
+
+	"github.com/Agent-Field/codeaf/internal/providerhttp"
 )
 
 // waitContext is in media.go: one timer, stopped on the way out, so a retry
@@ -652,7 +654,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			ctx: ctx, request: request, knobs: knobs, stream: stream,
 			attempt: attempts, began: attemptBegan, phase: calllog.PhaseStart,
 		})
-		response, err := httpClient.Do(httpRequest)
+		response, err := providerhttp.Do(&httpClient, httpRequest)
 		if err == nil && response != nil && response.StatusCode == http.StatusPaymentRequired {
 			// Every call shape passes this transport door, including reflexes,
 			// titles, tasks, and the affordable retry itself.
@@ -683,7 +685,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			// not a reachability fault and cannot improve under this dispatcher's
 			// machine walk; preserve the typed cause for the session's person-facing
 			// sentence and return after the one request that established it.
-			if terminalTransportFailureFrom(err) {
+			if terminalTransportFailureFrom(err) || providerhttp.IsBoundary(err) {
 				return nil, fmt.Errorf("execute request: %w", err)
 			}
 			lastErr = fmt.Errorf("execute request: %w", err)

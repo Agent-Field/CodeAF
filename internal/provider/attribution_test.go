@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 )
 
@@ -123,15 +124,9 @@ func TestTheRunningBinaryReportsAsItsOwnStamp(t *testing.T) {
 	})
 }
 
-// The SDK's client is the second writer of these headers: it sends the referer
-// and the title it was built with whenever it thinks it is talking to
-// OpenRouter, which it decides from the base URL or from an `openrouter/` model
-// id. The model id is how this test reaches that branch without the network.
-// It must name the same app the package's own transport does.
-func TestTheSDKClientReportsAsTheSameApp(t *testing.T) {
-	// The SDK has an opt-out of its own, read from the environment on every
-	// request; a machine that set it would turn this test into a test of that.
-	t.Setenv("AGENTFIELD_OPENROUTER_ATTRIBUTION", "")
+// Custom endpoint tool loops use the same attributed transport as ordinary
+// completions, so moving away from the SDK never loses the app identity.
+func TestTheCustomLoopReportsAsTheSameApp(t *testing.T) {
 	seen := make(chan http.Header, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		select {
@@ -147,19 +142,16 @@ func TestTheSDKClientReportsAsTheSameApp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	base := client.sdkClient()
-	if base == nil {
-		t.Fatal("a client with a key built no SDK client")
-	}
-	if _, err := base.Complete(context.Background(), "hi"); err != nil {
+	if _, _, err := client.ExecuteToolCallLoop(context.Background(), userMessages("hi"), nil,
+		ai.ToolCallConfig{MaxTurns: 1}, func(context.Context, string, map[string]interface{}) (map[string]interface{}, error) { return nil, nil }); err != nil {
 		t.Fatal(err)
 	}
 	header := <-seen
 	app := RunningApp()
 	if got := header.Get("HTTP-Referer"); got != app.URL {
-		t.Fatalf("SDK HTTP-Referer = %q, want %q", got, app.URL)
+		t.Fatalf("custom loop HTTP-Referer = %q, want %q", got, app.URL)
 	}
 	if got := header.Get("X-Title"); got != app.Name {
-		t.Fatalf("SDK X-Title = %q, want %q", got, app.Name)
+		t.Fatalf("custom loop X-Title = %q, want %q", got, app.Name)
 	}
 }
