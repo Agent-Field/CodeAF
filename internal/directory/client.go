@@ -100,3 +100,14 @@ var (
 	// safely move chats; its other read and pairing doors remain usable.
 	ErrConditionalTake = errors.New("the sync service must be updated before chats can move; codeaf's operators update the hosted service, or run this build of codeaf relay for your own service")
 )
+
+// ReleaseQuiet distinguishes background preparation from quitting an open
+// conversation. Older clients can still release; their records have no quit clock.
+func ReleaseQuiet(ctx context.Context, client Client, id string, fence uint64) error {
+	if quiet, ok := client.(interface {
+		ReleaseQuiet(context.Context, string, uint64) error
+	}); ok {
+		return quiet.ReleaseQuiet(ctx, id, fence)
+	}
+	return client.Release(ctx, id, fence)
+}

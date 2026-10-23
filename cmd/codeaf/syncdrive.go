@@ -161,3 +161,26 @@ func driveStore(d *liveDrive) func(cellstore.Engine) cellstore.Store {
 	}
 	return d.Store
 }
+
+// closeCell is a conversation's final release after its agent has closed and
+// its last seal is durable, even when the local engine process stays alive.
+func (b *driveBook) closeCell(id string) {
+	d := b.takeCell(id)
+	if d == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), driveCloseWithin)
+	defer cancel()
+	if err := d.Close(ctx); err != nil {
+		log.Print("sync: closing a chat: ", err)
+	}
+}
+
+// takeCell forgets one drive under the book lock before any closing I/O begins.
+func (b *driveBook) takeCell(id string) *liveDrive {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	d := b.drive[id]
+	delete(b.drive, id)
+	return d
+}

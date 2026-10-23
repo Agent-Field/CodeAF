@@ -121,3 +121,4 @@ update.auto
 vision_model
 work.workers
 working_set_tokens
+sync.preference_times

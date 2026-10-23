@@ -70,11 +70,14 @@ func PublishTo(c Cell, device string, p Publish, now int64) (Cell, error) {
 
 // ReleaseOf gives the lease up. The fence stays, so the next acquire still
 // goes up by one.
-func ReleaseOf(c Cell, device string, fence uint64) (Cell, error) {
+func ReleaseOf(c Cell, device string, fence uint64, at ...int64) (Cell, error) {
 	if err := holder(c, device, fence); err != nil {
 		return c, err
 	}
 	c.Lease.Expires, c.Lease.Pending = 0, 0
+	if len(at) > 0 {
+		c.Lease.ReleasedAt = at[0]
+	}
 	return c, nil
 }
 

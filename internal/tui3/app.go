@@ -1545,9 +1545,11 @@ type app struct {
 	landedBell *doorbell
 	// outsideDesk is the desk sentences from outside the loop are put on, and
 	// noticeBell the door that brings the loop to read it (notices.go).
-	outsideDesk  *Notices
-	noticeBell   *doorbell
-	serviceLands *serviceLands
+	outsideDesk *Notices
+	// homeAccountNotice keeps lasting account news across the startup landing.
+	homeAccountNotice string
+	noticeBell        *doorbell
+	serviceLands      *serviceLands
 	// frontGen counts the conversations this window has taken up, and it is
 	// WHICH ONE IS IN FRONT rather than how many there have been: a door asked
 	// of one conversation and answered after the person switched to another
@@ -2497,8 +2499,10 @@ type app struct {
 	// invited home onto the first frame ([app.landHome]) and whether it asked
 	// for the resume picker there instead. Both are properties of ONE launch,
 	// which is why they are read off the options and never off the profile.
-	landing     bool
-	pickSession bool
+	landing            bool
+	autoContinue       bool
+	continueGeneration uint64
+	pickSession        bool
 	// takeOverAt is a conversation this launch met a lock on
 	// ([Options.TakeOver]). It is a transcript path, and the launch lands on
 	// home with that row armed instead of quietly starting a second
@@ -3064,6 +3068,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		owned:               owned,
 		movedName:           movedName,
 		landing:             opts.Landing,
+		autoContinue:        opts.Landing && !opts.PickSession && opts.Host == "",
 		takeOverAt:          opts.TakeOver,
 		pickSession:         opts.PickSession,
 		workspace:           place,
@@ -3762,6 +3767,8 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg.(type) {
 	case tea.KeyPressMsg, tea.PasteMsg, tea.MouseClickMsg, tea.MouseWheelMsg:
 		a.pendingCompletionReveal = nil
+		a.autoContinue = false
+		a.continueGeneration++
 	}
 	// THE TEAMS PAGE TAKES WHAT IS ITS OWN AND HANDS THE REST TO THE MANAGER'S
 	// CONVERSATION it hosts (teamspagehost.go). One comparison on every other
@@ -5421,6 +5428,8 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case rosterMsg:
 		return a, a.tookRoster(msg)
 
+	case continuationChecked:
+		return a, a.continuationReady(msg)
 	case homeMachinesMsg:
 		// THE OTHER MACHINES' CHATS, COMING BACK, off the update loop for the
 		// reason the repository's reading is (homepanel_machines.go).

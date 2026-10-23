@@ -32,6 +32,7 @@ package tui3
 // lead into, and the offer is never made.
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"time"
@@ -156,6 +157,9 @@ func (a *app) resumeKeyHandler(key string) (tea.Cmd, bool) {
 	case resumeKey:
 		a.leftOff.answer()
 		a.touch()
+		if safe, ok := a.taker.(continuationSafety); ok {
+			return a.continueIfSafe(*row, safe), true
+		}
 		return a.offerContinue(*row, chatlist.OfferFor(*row)), true
 	case resumeSkipKey:
 		a.leftOff.answer()
@@ -173,4 +177,92 @@ func drawResumeBand(a *app, ctx bandContext) []string {
 	head := ctx.pal.ink(fit(fmt.Sprintf(resumeAskFormat, row.Device), ctx.width))
 	keys := func(s string) string { return paintHint(s, ctx.pal, ctx.pal.dim) }
 	return append([]string{head}, bandClauses(ctx.width, 0, keys, a.chords.say(resumeYes), a.chords.say(resumeNo))...)
+}
+
+// continuationSafety checks local work off the surface loop. A real choice
+// keeps the existing card; a clean move needs no second keystroke (C31.2).
+type continuationSafety interface {
+	SafeToContinue(context.Context, string, string, bool) (bool, error)
+}
+
+// continueIfSafe checks immediately before taking, retaining the displayed
+// lease expectation so a later holder can never be displaced by this gesture.
+func (a *app) continueIfSafe(row chatlist.Row, safe continuationSafety) tea.Cmd {
+	ctx, file := a.ctx, a.file
+	return func() tea.Msg {
+		clean, err := safe.SafeToContinue(ctx, row.Cell, file, false)
+		return continuationChecked{row: row, clean: clean, err: err}
+	}
+}
+
+type continuationChecked struct {
+	row        chatlist.Row
+	clean      bool
+	automatic  bool
+	generation uint64
+	err        error
+}
+
+// continueAfterQuit is considered once, on bare startup's first directory
+// answer. User input cancels the intent before an asynchronous answer arrives.
+func (a *app) continueAfterQuit(err error) tea.Cmd {
+	if !a.autoContinue {
+		return nil
+	}
+	a.autoContinue = false
+	if err != nil && a.taker != nil {
+		// The listing already supplies its unreachable sentence. Reopening
+		// Home here would erase account news that arrived ahead of this reply.
+		if !a.at(pageHome) {
+			return a.openHome()
+		}
+		return nil
+	}
+	if a.taker == nil || a.pickSession || a.hosted() {
+		return nil
+	}
+	var best *chatlist.Row
+	for i := range a.machineRead.rows {
+		r := &a.machineRead.rows[i]
+		if r.Status == chatlist.Idle && r.Released && !r.Mine && r.DeviceID != "" && r.ReleasedAgo >= 0 && r.ReleasedAgo <= resumeRecent && (best == nil || r.ReleasedAgo < best.ReleasedAgo) {
+			best = r
+		}
+	}
+	safe, ok := a.taker.(continuationSafety)
+	if best == nil || !ok {
+		return nil
+	}
+	row, ctx, gen, file := *best, a.ctx, a.continueGeneration, a.file
+	return func() tea.Msg {
+		clean, err := safe.SafeToContinue(ctx, row.Cell, file, true)
+		return continuationChecked{row: row, clean: clean, automatic: true, generation: gen, err: err}
+	}
+}
+
+func (a *app) continuationReady(msg continuationChecked) tea.Cmd {
+	if msg.automatic && msg.generation != a.continueGeneration {
+		return nil
+	}
+	if msg.automatic {
+		world, _ := a.readWorldKnown()
+		for _, row := range world.Sessions() {
+			if row.Open && row.Transcript != a.file {
+				return nil
+			}
+		}
+	}
+
+	if msg.automatic && !a.at(pageHome) {
+		_ = a.openHome()
+	}
+	if msg.err != nil {
+		return a.tookTakeover(homeTakenMsg{row: msg.row, err: msg.err})
+	}
+	if !msg.clean {
+		if msg.automatic {
+			return nil
+		}
+		return a.raiseContinue(msg.row, continueYesAt)
+	}
+	return a.takeRemote(msg.row)
 }

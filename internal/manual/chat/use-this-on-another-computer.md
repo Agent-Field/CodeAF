@@ -4,7 +4,7 @@
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-Only chats started after moving chats became available can be continued on another computer. Older chats stay where they are, keep their original files, and keep working in every build.
+Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
 There is no account and no password to log in with. You pair: a code on one screen, typed on the other.
 
@@ -37,8 +37,7 @@ The code is good for 10 minutes. It works once.
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine.
 Pair both computers first with `codeaf pair` or `/pair`, on Linux, macOS or native Windows. New chats save their turns locally and sync them to your paired
 computers through the saved or hosted relay. `CODEAF_SYNC_URL=off` stops relay traffic.
-Only chats started after moving chats became available can move; older chats keep
-their original layout and stay local. A never-paired home sends no relay requests.
+Older chats become movable through independent copies after pairing; their original layout and files stay untouched for older builds. Recent chats are prepared in the background, and opening any other older chat prepares its copy. A never-paired home sends no relay requests.
 
 ## What does /laptop do — /pair, /sync and /link
 
@@ -394,7 +393,7 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 `CODEAF_SYNC_URL=off` stops relay traffic; local chats still keep their saved turns.
-Only chats started after this feature became available can move. Older chats stay where they are and keep their original layout when opened. Nothing is deleted automatically to save disk.
+Older chats move through independent copies after pairing. Their original files and layout remain untouched for older builds. Nothing is deleted automatically to save disk.
 
 Native Windows moves chats with the native engine, just like Linux and macOS.
 Install Git for Windows to run commands; codeaf uses Git Bash, never the WSL launcher.

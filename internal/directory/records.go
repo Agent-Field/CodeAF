@@ -81,6 +81,8 @@ type Lease struct {
 	Fence   uint64 `json:"fence"`   // +1 on every acquire, never decreases
 	Expires int64  `json:"expires"` // directory ms; held iff Expires > now; release sets 0
 	Pending uint32 `json:"pending"` // turns sealed on the holder and not yet durable
+	// ReleasedAt is directory time of an explicit release, separate from the last turn.
+	ReleasedAt int64 `json:"released_at,omitempty"`
 }
 
 // Cell is keyed by cell ULID. It exists only once it has a durable head.

@@ -291,7 +291,7 @@ func (c *memoryClient) Publish(_ context.Context, id string, p Publish) (CellVie
 }
 
 func (c *memoryClient) Release(_ context.Context, id string, fence uint64) error {
-	_, err := c.changed(id, func(cell Cell, _ int64) (Cell, error) { return ReleaseOf(cell, c.device, fence) })
+	_, err := c.changed(id, func(cell Cell, now int64) (Cell, error) { return ReleaseOf(cell, c.device, fence, now) })
 	return err
 }
 
@@ -311,4 +311,9 @@ func copyCell(c Cell) Cell {
 	}
 	c.Keys = keys
 	return c
+}
+
+func (c *memoryClient) ReleaseQuiet(_ context.Context, id string, fence uint64) error {
+	_, err := c.changed(id, func(cell Cell, _ int64) (Cell, error) { return ReleaseOf(cell, c.device, fence, 0) })
+	return err
 }

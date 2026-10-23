@@ -124,7 +124,13 @@ func (r *keyedRun) captureAll() error {
 	}
 	for name := range r.digests {
 		if _, still := r.held[name]; !still {
-			if err := r.v.Delete(r.id(name)); err != nil {
+			remove := func() error { return r.v.Delete(r.id(name)) }
+			if timed, ok := r.set.(interface{ KeyTime(string) time.Time }); ok {
+				if vault, ok := r.v.(interface{ DeleteAt(string, time.Time) error }); ok {
+					remove = func() error { return vault.DeleteAt(r.id(name), timed.KeyTime(name)) }
+				}
+			}
+			if err := remove(); err != nil {
 				return err
 			}
 			delete(r.digests, name)
@@ -138,7 +144,13 @@ func (r *keyedRun) captureKey(name, value string) error {
 		return nil
 	}
 	if e, err := r.v.Get(r.id(name)); err != nil || e.Value != value {
-		if err := r.v.PutAt(r.id(name), keys.Entry{Name: name, Value: value, Scope: r.scope}, time.Now()); err != nil {
+		at := time.Now()
+		if timed, ok := r.set.(interface{ KeyTime(string) time.Time }); ok {
+			if known := timed.KeyTime(name); !known.IsZero() {
+				at = known
+			}
+		}
+		if err := r.v.PutAt(r.id(name), keys.Entry{Name: name, Value: value, Scope: r.scope}, at); err != nil {
 			return err
 		}
 	}
@@ -159,7 +171,13 @@ func (r *keyedRun) restoreAll() error {
 		return err
 	}
 	if len(changes) > 0 {
-		if err := r.set.Apply(changes); err != nil {
+		apply := func() error { return r.set.Apply(changes) }
+		if guarded, ok := r.set.(interface {
+			ApplyIf(map[string]string, map[string]string) error
+		}); ok {
+			apply = func() error { return guarded.ApplyIf(changes, r.held) }
+		}
+		if err := apply(); err != nil {
 			return err
 		}
 	}

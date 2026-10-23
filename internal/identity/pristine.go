@@ -28,7 +28,7 @@ func Pristine(home string) (bool, error) {
 // carries its own judge, so a file that is sometimes made by a start and
 // sometimes by use (a chat's transcript, the memory graph) is judged by what it
 // holds rather than by its name.
-var started = within(rules{
+var startupRules = rules{
 	File: never, DeviceFile: never, legacyKeyFile: never, soloFile: never,
 	"config.json": never, "config.json.lock": never, "notices.json": never,
 	"catalog.json": never, "model-catalog.json": never, "model-quirks.json": never,
@@ -50,7 +50,9 @@ var started = within(rules{
 		}),
 		"projects": within(rules{"*": within(rules{"*": withinSession})}),
 	}),
-})
+}
+
+var started = within(startupRules)
 
 // withinSession is one chat folder: its bookkeeping is made again on demand and
 // its transcript and memories are the chat itself.

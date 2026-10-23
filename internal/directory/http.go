@@ -200,3 +200,8 @@ func refusal(resp *http.Response) error {
 	}
 	return fmt.Errorf("directory: %s", resp.Status)
 }
+
+// ReleaseQuiet lets background preparation go without announcing a quit.
+func (h *HTTP) ReleaseQuiet(ctx context.Context, id string, fence uint64) error {
+	return h.do(ctx, http.MethodPost, cellPath(id, "release"), fenceBody{Fence: fence, Quiet: true}, nil)
+}

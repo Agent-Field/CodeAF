@@ -402,6 +402,16 @@ func localDoors(options *tui3.Options, welcome remote.Welcome, settings config.C
 		profileDir = settings.ProfileDir
 	}
 	options.ProfileDir = profileDir
+	// Home decides its greeting once, before the first frame. This engine's
+	// files are here, so its still-unknown wire cache must not turn fifty saved
+	// chats into an empty conversation for the rest of the window's lifetime.
+	// This is the same direct world reading as the in-process local door.
+	root := strings.TrimSpace(welcome.PlacesRoot)
+	if root == "" {
+		root = session.PlacesRoot()
+	}
+	options.WorldRoot = root
+	options.World = localWorldFirst(root, options.World)
 	if options.Teams.Load != nil {
 		// The linked-local engine keeps its profile on this machine, so its closed
 		// teams' packets can be read here without borrowing the --host wire.
@@ -453,6 +463,24 @@ func localDoors(options *tui3.Options, welcome remote.Welcome, settings config.C
 			}
 			options.Agent.SetModel(options.Agent.Model())
 		}
+	}
+}
+
+// localWorldFirst seeds the one-time landing from this machine's files, then
+// keeps the engine's ordinary cache for subsequent frames and fresh readings.
+// A named launch pays for no walk until it actually opens a place.
+func localWorldFirst(root string, wire func() (session.World, bool)) func() (session.World, bool) {
+	var once sync.Once
+	var held session.World
+	return func() (session.World, bool) {
+		first := false
+		once.Do(func() { held, first = session.ReadWorld(root), true })
+		if !first && wire != nil {
+			if world, known := wire(); known {
+				return world, true
+			}
+		}
+		return held, true
 	}
 }
 

@@ -5,7 +5,8 @@ import (
 	"testing"
 )
 
-// K1, K5, C15, C27.1, C27.6 and C24 require independently retrieved moving-chat introductions
+// C29.7 supersedes C24's local-only limit while retaining its untouched original.
+// K1, K5, C15, C27.1 and C27.6 require independently retrieved introductions
 // to explain rollout, platform availability and which conversations can move.
 func TestMovingChatIntroductionsStateAvailabilityAndLegacyLimits(t *testing.T) {
 	for _, page := range []string{"continuing-a-chat-on-another-computer", "add-or-remove-a-computer", "use-this-on-another-computer", "relay-hosted-or-your-own"} {
@@ -18,7 +19,7 @@ func TestMovingChatIntroductionsStateAvailabilityAndLegacyLimits(t *testing.T) {
 			t.Fatalf("%s has no first section", page)
 		}
 		section, _, _ = strings.Cut(section, "\n## ")
-		for _, want := range []string{"available by default", "Linux, macOS and native Windows", "every build", "Pair both computers first", "Only chats started after", "Older chats stay where they are"} {
+		for _, want := range []string{"available by default", "Linux, macOS and native Windows", "every build", "Pair both computers first", "independent copy", "original files stay untouched"} {
 			if !strings.Contains(section, want) {
 				t.Errorf("%s first section lacks %q", page, want)
 			}

@@ -124,6 +124,9 @@ func (a *app) useNotices(desk *Notices) {
 // loop on the door again.
 func (a *app) saidNotices() {
 	for _, line := range a.outsideDesk.take() {
+		if line.home {
+			a.homeAccountNotice = firstLine(line.text)
+		}
 		before := a.echoHome
 		a.echoHome = before || line.home
 		a.note(line.text)

@@ -4,7 +4,7 @@
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-Only chats started after moving chats became available can be continued on another computer. Older chats stay where they are, keep their original files, and keep working in every build.
+Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
 Your chats and your work can follow you to a second device. You add it in two steps. There is no account to make and no form to fill.
 
@@ -194,3 +194,9 @@ These are the sentences a link pairing says when it stops, in the words the scre
 - `paired, but your devices could not be read yet; open codeaf again in a moment`: the pairing worked; the device list needs a moment.
 
 Too many requests from one network are refused too: at most 10 new links in an hour and 3 waiting at once from one network. See *Pairing your chats with a second computer* for the older six-digit code and its own limit `too many pairings from this network; wait 7 min`.
+
+## I quit on my laptop and opened my desktop after pairing
+
+After a clean quit and final durable save, bare `codeaf` on another paired computer within 24 hours opens the released chat automatically. A sleeping or disconnected laptop still needs `alt+c` on Home. Local unsaved edits, another open local window, a named chat, `--host`, `--at` or `--session` prevent automatic continuation. A running chat never moves by itself. The arrival retains its `Moved from` banner and `not brought along:` facts; `esc` goes Home.
+
+Personal memory and stored model, display, approval and limit defaults follow the paired computers too. Limits are shared as values; spending counted against them stays per computer. Automations and machine-specific paths and settings stay local.

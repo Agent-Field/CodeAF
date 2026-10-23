@@ -645,12 +645,12 @@ the same error is counted against itself. There is no command or panel for it,
 it is not on the Memories tab, and the noticing setting does not turn it off: the
 one line on a failed row is the whole of what it says.
 
-## Does /remember work on my other computer — memory across computers, memory missing on the new laptop, and what travels with a chat
+## Does /remember work on my other computer — hand edited memories follow my paired computers, memory missing on the new laptop
 
-A memory is kept in the file `~/.codeaf/graph.db` of the computer that made it, and that file is never copied to the relay on its own. With cells enabled, what travels is the memories a **chat** wrote, with that chat. When you `/remember` a line in a conversation (or the model remembers one), the line is also written into that conversation's own ledger, which is sealed and moved with the chat. When you continue the chat on another computer, that computer reads the ledger back and has those lines in its own memory.
+Person and project memory follow your paired computers through the encrypted vault within one sync round, including hand-edited lines in the Memories place and lines written by older chats. No chat needs to be continued first. Concurrent edits of different lines both survive; for the same line the later edit wins, including forgetting a line. The service receives ciphertext only.
 
-So: a line remembered in a chat reaches your other computer **when that chat is continued there**, not before, and not for chats you never move. A memory that belongs to no chat, such as a line you edited by hand in the memory place, stays on the computer where you wrote it. Pairing a second computer does not merge two memories into one. To carry everything to a new computer at once, copy `graph.db` as described under "Where is everything you remember kept", or continue the chats you care about there.
+Machine-scoped memories describe one computer and stay there. An unpaired home sends nothing. Pairing a computer that has its own memory merges those lines and preferences; explicit `--replace` replaces them. Chat-written memory still rides in each chat's own saved ledger as well.
 
 ## Memory in older local conversations and new moving chats
 
-Memories use the existing local store. A legacy conversation writes no portable `memories.jsonl` sidecar. A new cell session keeps the memories it writes in its sealed `.cell/memories.jsonl`, so those memories can follow the chat to another paired computer.
+Memories use the local store on each computer. After pairing, an older conversation gets an independent movable copy with its earlier memory history sealed into `.cell/memories.jsonl`; the original is untouched. Person and project memory also sync independently through the encrypted vault.

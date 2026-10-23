@@ -240,3 +240,27 @@ func TestPutAtStampsWithTheEditTimeAndDeletedSeesTombstones(t *testing.T) {
 		t.Fatal("an unknown id reads as deleted")
 	}
 }
+
+// TestC30NewPreferenceKeepsItsOwnEditClock proves C30.3: recording a recent
+// unrelated slot must not make an older preference look newer than another
+// computer's later edit. Capture order must never decide which words win.
+func TestC30NewPreferenceKeepsItsOwnEditClock(t *testing.T) {
+	a, b := twoHomes(t)
+	at := time.Unix(1700000000, 0)
+	must(t, a.Put("unrelated", Entry{Name: "N", Value: "local", Scope: "keys"}))
+	must(t, a.PutAt("model", Entry{Name: "model", Value: "older", Scope: "preferences"}, at))
+	must(t, b.PutAt("model", Entry{Name: "model", Value: "later", Scope: "preferences"}, at.Add(time.Second)))
+	doc, err := a.read()
+	must(t, err)
+	if doc.Secrets["model"].Updated != at.UnixMilli() {
+		t.Fatal("new preference inherited another slot's capture clock")
+	}
+	enc, err := b.Export()
+	must(t, err)
+	must(t, a.Merge(enc))
+	e, err := a.Get("model")
+	must(t, err)
+	if e.Value != "later" {
+		t.Fatal("unrelated capture defeated the later preference edit")
+	}
+}

@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"errors"
+	"log"
 	"path/filepath"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/devname"
@@ -13,6 +15,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
@@ -176,3 +179,37 @@ func takeCopyBucket(origin string) string {
 // deviceName is what this machine is called in a sentence about it: the name a
 // person gave it, else its host name.
 func deviceName() string { return devname.Name(home.Dir()) }
+
+// SafeToContinue refuses an automatic move when any local window already holds
+// a conversation or this chat has work that would need its own branch (C31.3).
+func (t takeover) SafeToContinue(ctx context.Context, id, current string, automatic bool) (bool, error) {
+	if automatic {
+		if windows, err := automation.NewPresence(automationsRoot()).Count(); err != nil || windows > 1 {
+			return false, err
+		}
+	}
+	for _, row := range session.ReadHome().Sessions() {
+		if row.Open && row.ID == id && row.Transcript != current {
+			log.Printf("continue %s needs a choice: open in another window (%s)", id, row.Transcript)
+			return false, nil
+		}
+	}
+	c, err := openCellByID(id)
+	if err != nil {
+		return true, nil
+	}
+	meta, err := session.LoadMeta(c.Root)
+	if err != nil {
+		return false, err
+	}
+	e := cellstore.EngineFor(meta.Workspace)
+	if meta.Owned {
+		e.Workspace = session.Place{Dir: c.Root, Owned: true}.Work()
+	}
+
+	dirty, err := e.LocalWork(ctx, c)
+	if dirty {
+		log.Printf("continue %s needs a choice: local files, conversation or tool work changed", id)
+	}
+	return !dirty, err
+}

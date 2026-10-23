@@ -33,6 +33,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		question string
 		page     string
 	}{
+		// C29.4/C30.2/C31.5 must be reachable in the person's own words.
+		{"can I rewind an old chat on my new laptop", "continuing-a-chat-on-another-computer"},
+		{"I quit on my laptop and opened my desktop", "continuing-a-chat-on-another-computer"},
+		{"do hand edited memories follow my paired computers", "what-i-remember"},
 		// C15 makes the Linux limit and moved-folder corrections retrievable.
 		{"why do commands fail on Ubuntu 24.04", "linux-workspace-limits"},
 		{"what folder does the moved chat work in", "continuing-a-chat-on-another-computer"},
@@ -4408,6 +4412,7 @@ func TestTheDeviceQuestionsReachTheirPages(t *testing.T) {
 	}
 }
 
+// C30.5 replaces the old chat-only memory promise with independent encrypted sync.
 func TestTheCrossComputerQuestionsReachTheFactThatAnswersThem(t *testing.T) {
 	for _, probe := range []struct{ asked, page, says string }{
 		{"is my code sent anywhere before I pair", "use-this-on-another-computer", "no device record reaches the relay"},
@@ -4422,7 +4427,7 @@ func TestTheCrossComputerQuestionsReachTheFactThatAnswersThem(t *testing.T) {
 		{"can I read the job log on my other computer", "continuing-a-chat-on-another-computer", "A single such file over 1 MiB stays behind"},
 		{"is there a size limit on task journals when I move a chat", "continuing-a-chat-on-another-computer", "A task journal has no size limit and always moves whole."},
 		{"is the task history carried to the other computer", "continuing-a-chat-on-another-computer", "rebuilt from the chat's own record"},
-		{"does /remember work on my other computer", "what-i-remember", "when that chat is continued there"},
+		{"does /remember work on my other computer", "what-i-remember", "within one sync round"},
 		{"how do I take a chat back from my other computer", "continuing-a-chat-on-another-computer", "Nothing has to be returned or switched off first."},
 		{"what happens if two computers continue the same chat at once", "continuing-a-chat-on-another-computer", "The slower one sees `another device continued this chat first`"},
 		{"where does sync go by default", "relay-hosted-or-your-own", "https://codeaf.agentfield.ai/fabric"},

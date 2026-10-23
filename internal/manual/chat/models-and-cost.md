@@ -243,6 +243,10 @@ When a connected provider has an empty cached list, codeaf fetches its model lis
 at launch. `ctrl+r` in `/model` asks for a fresh list; the settings rows use the list
 already known.
 
+## How do I get back to editing the filter after the arrows started navigating
+
+Type a letter, use `backspace` or `ctrl+w`, or paste: any edit returns the caret to the filter. `ctrl+b` and `ctrl+f` move the caret without changing your query. The model picker's left/right arrows control providers after you stop typing; up/down navigate rows.
+
 ## Where the model picker cursor opens — Enter confirms, refresh and ctrl+u return
 
 Every model list opens on the model it holds. `/model` opens on the model in use,

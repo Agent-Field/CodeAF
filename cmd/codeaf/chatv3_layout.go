@@ -40,6 +40,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/preflight"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 )
@@ -262,6 +263,16 @@ func v3ResolveSession(explicit, workspace, launchDir string, owned bool) (v3Sess
 	spoken, empty := v3ScanBucket(bucket)
 
 	if folder, resumed, found := v3PickFolder(spoken, empty, true); found {
+		// C29.2: the first paint never waits for an older folder's capture.
+		// Home can open its independent copy asynchronously through v3Reopen;
+		// this launch holds a fresh shell while the background worker copies.
+		if resumed && cell.Available() && syncsetup.MayTalk(home.Dir()) {
+			if _, err := cell.OpenAt(folder.dir, filepath.Base(folder.dir)); err != nil {
+				place, err := v3MintSession(bucket, workspace, launchDir, owned)
+				return v3Session{Place: place, Transcript: place.Transcript(), Bucket: bucket}, err
+			}
+		}
+
 		// A folder somebody has spoken in carries its OWN posture — a
 		// conversation that owns its workspace goes on owning it whatever
 		// terminal reopens it — while an empty one has nothing to remember and
@@ -368,6 +379,10 @@ func v3NamedSession(explicit, workspace string, owned bool) (v3Session, error) {
 	// owned, whatever the terminal it is being opened from looks like. A folder
 	// with no meta.json yet takes the launch's posture.
 	found.Place = v3PlaceOf(path, workspace)
+	if found.Place, err = movablePlace(context.Background(), found.Place); err != nil {
+		return v3Session{}, err
+	}
+	found.Transcript = found.Place.Transcript()
 	dir := found.Place.Dir
 	if meta, _ := session.LoadMeta(dir); strings.TrimSpace(meta.ID) == "" && owned {
 		found.Place = v3PlaceFor(dir, workspace, true)
@@ -396,6 +411,10 @@ func v3PlaceOf(transcript, workspace string) session.Place {
 // with it. It is the ONE place a config changes conversations, so /new, a
 // contended resume and the picker cannot drift apart.
 func v3PointAt(cfg session.Config, place session.Place) (session.Config, error) {
+	var err error
+	if place, err = movablePlace(context.Background(), place); err != nil {
+		return cfg, err
+	}
 	cfg.Place = place
 	cfg.SessionFile = place.Transcript()
 	if !place.Owned {
@@ -637,7 +656,7 @@ func v3ScanBucket(bucket string) (spoken, empty []v3Folder) {
 		if !entry.IsDir() {
 			continue
 		}
-		dir := filepath.Join(bucket, entry.Name())
+		dir := cell.Copied(filepath.Join(bucket, entry.Name()))
 		place := session.Place{Dir: dir}
 		if _, err := os.Stat(place.Transcript()); err != nil {
 			continue

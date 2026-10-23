@@ -11,7 +11,9 @@ import (
 	"time"
 )
 
-// journeyRun walks the steps in the order a person meets them.
+// journeyRun walks the steps in the order a person meets them. C31.2 requires
+// one-key arrival from an asleep computer with no local copy to choose between;
+// C31.3 keeps the explicit choice when the other computer is still running.
 func journeyRun(j *journey, env []string, homeA, homeB, wsA, wsB string, online bool) {
 	t := j.t
 	var a, b *rig
@@ -176,18 +178,27 @@ func journeyRun(j *journey, env []string, homeA, homeB, wsA, wsB string, online 
 	moved := false
 	j.step("6a A: Continue here on B's chat", false, func() {
 		if !online {
-			a.keys("Up")
+			a.keys("M-c")
+		} else {
+			screen, ok := waitPlain(a, 8*time.Second, "Continue this chat here?")
+			if !j.require(ok, "no takeover question for B's running chat") {
+				j.see(a)
+				return
+			}
+			j.see(a)
+			j.check(strings.Contains(screen, "continue here"), "the question does not offer 'continue here'")
+			a.keys("1")
 			a.keys("Enter")
 		}
-		screen, ok := waitPlain(a, 8*time.Second, "Continue this chat here?")
-		j.require(ok, "no takeover question for B's chat")
-		j.see(a)
-		j.check(strings.Contains(screen, "continue here"), "the question does not offer 'continue here'")
-		a.keys("1")
-		a.keys("Enter")
 		began := time.Now()
 		after, ok := waitPlain(a, 40*time.Second, "Moved from")
-		j.require(ok, "no 'Moved from' banner after continuing")
+		if !j.require(ok, "no 'Moved from' banner after continuing") {
+			j.see(a)
+			return
+		}
+		if !online {
+			j.check(!strings.Contains(after, "Continue this chat here?"), "one-key arrival from an asleep computer asked for another key")
+		}
 		j.check(regexp.MustCompile(`Moved from \S+ in [0-9.]+m?s`).MatchString(after), "the banner does not say how long the move took")
 		j.see(a)
 		t.Logf("banner after %s", time.Since(began))

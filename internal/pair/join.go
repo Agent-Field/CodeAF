@@ -33,6 +33,10 @@ type Joining struct {
 	Label string
 	// Replace lets a computer that already has different chats give them up.
 	Replace bool
+	// MergeState keeps memory and preferences when a startup-only home joins.
+	MergeState bool
+	// ProfileDir names the preferences being joined, when outside Home.
+	ProfileDir string
 	// SaveSyncURL is told the relay the other device syncs through, when it is
 	// not the default. Nil ignores it.
 	SaveSyncURL func(url string) error
@@ -123,8 +127,31 @@ func adopt(j Joining, grant Grant) (Joined, error) {
 	case err == nil && slices.Contains(grant.Replaces, held.ID()):
 		return Joined{Successor: true}, follow(j, held, grant)
 	}
-	if _, err := identity.Adopt(j.Home, grant.Identity, j.Replace); err != nil {
+	merge := j.MergeState
+	if err == nil && held.ID() != grant.Identity.ID() && !j.Replace && identity.Solo(j.Home) {
+		can, checkErr := identity.Joinable(j.Home)
+		if checkErr != nil {
+			return Joined{}, checkErr
+		}
+		merge = can
+	}
+	if merge && err == nil {
+		if _, err := keys.StageReseal(j.Home, held.CellKey(), grant.Identity.CellKey()); err != nil {
+			return Joined{}, err
+		}
+	}
+	if _, err := identity.Adopt(j.Home, grant.Identity, j.Replace || merge); err != nil {
 		return Joined{}, adoptFailure(err)
+	}
+	if merge {
+		if err := keys.CommitReseal(j.Home); err != nil {
+			return Joined{}, err
+		}
+	}
+	if j.Replace {
+		if err := replaceState(j.Home, j.ProfileDir); err != nil {
+			return Joined{}, err
+		}
 	}
 	if grant.SyncURL != "" && j.SaveSyncURL != nil {
 		return Joined{}, j.SaveSyncURL(grant.SyncURL)

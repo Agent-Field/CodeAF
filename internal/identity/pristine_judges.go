@@ -41,6 +41,11 @@ func within(r rules) judge {
 
 // of is the judge that owns one name, or the judge of an unknown name.
 func (r rules) of(name string) judge {
+	// Exact startup names outrank directory globs; Go map order must never
+	// decide whether an existing file is mistaken for a directory (C30.4).
+	if exact, ok := r[name]; ok {
+		return exact
+	}
 	for glob, j := range r {
 		if ok, _ := filepath.Match(glob, name); ok {
 			return j

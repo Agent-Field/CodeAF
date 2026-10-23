@@ -13,7 +13,7 @@
 // cmd/codeaf/chatv3_layout.go calls [CreateIn] on the project bucket, and
 // internal/session's layout.go recognises a folder holding .cell/ and keeps
 // the transcript there. Older folders keep their original layout when opened (C24);
-// only conversations started as cells participate in moving chats.
+// older conversations can move through independent durable copies (C29).
 package cell
 
 import (

@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/chatfiles"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/handoff"
 	"github.com/Agent-Field/codeaf/internal/inventory"
 	"github.com/Agent-Field/codeaf/internal/keys"
@@ -462,6 +463,17 @@ func (s *Sync) files(eng cellstore.Engine, c cell.Cell) (vaultsync.Files, error)
 // under the vault scope, so vaultsync stays unaware of counting, and what the
 // run moved is written when it ends.
 func (s *Sync) withVault(use func(vaultsync.Syncer) error, extra ...vaultsync.Carrier) error {
+	stateMu.Lock()
+	defer stateMu.Unlock()
+	lock, err := os.OpenFile(filepath.Join(s.Home, "state-sync.lock"), os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	if err := filelock.Lock(lock, true, true); err != nil {
+		return err
+	}
+
 	v, err := keys.Open(s.Home)
 	if err != nil {
 		return err
@@ -484,7 +496,7 @@ func (s *Sync) profile() string {
 // carried is the profile state that travels in the vault beside the secrets.
 func (s *Sync) carried() []vaultsync.Carrier {
 	dir := s.profile()
-	return []vaultsync.Carrier{vaultsync.Credentials(filepath.Join(dir, vaultsync.CredentialsFile)), providerKeys(dir, s.Home)}
+	return []vaultsync.Carrier{vaultsync.Credentials(filepath.Join(dir, vaultsync.CredentialsFile)), providerKeys(dir, s.Home), preferences(dir, s.Home), sharedMemories(s.Home)}
 }
 
 // Discard sets a branch aside: it is archived, not deleted, so it leaves every

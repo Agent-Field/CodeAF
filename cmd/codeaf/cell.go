@@ -105,6 +105,8 @@ func openCellNamed(name, cwd string) (cell.Cell, error) {
 // its workspace names, or in the flat cells directory of cell.Create.
 func openCellByID(id string) (cell.Cell, error) {
 	buckets, _ := filepath.Glob(filepath.Join(home.Join("v3", "projects"), "*", id))
+	copies, _ := filepath.Glob(filepath.Join(home.Join("v3", "projects"), "*", ".moving", id))
+	buckets = append(buckets, copies...)
 	for _, dir := range append(buckets, filepath.Join(cell.Dir(home.Dir()), id)) {
 		if c, err := cell.OpenAt(dir, id); err == nil {
 			return c, nil

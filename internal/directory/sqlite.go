@@ -488,7 +488,7 @@ func (c *sqliteClient) Publish(ctx context.Context, id string, p Publish) (CellV
 }
 
 func (c *sqliteClient) Release(ctx context.Context, id string, fence uint64) error {
-	_, err := c.change(ctx, id, func(cell Cell, _ int64) (Cell, error) { return ReleaseOf(cell, c.device, fence) })
+	_, err := c.change(ctx, id, func(cell Cell, now int64) (Cell, error) { return ReleaseOf(cell, c.device, fence, now) })
 	return err
 }
 
@@ -497,5 +497,10 @@ func (c *sqliteClient) Archive(ctx context.Context, id string) error {
 		cell.Archived = true
 		return cell, nil
 	})
+	return err
+}
+
+func (c *sqliteClient) ReleaseQuiet(ctx context.Context, id string, fence uint64) error {
+	_, err := c.change(ctx, id, func(cell Cell, _ int64) (Cell, error) { return ReleaseOf(cell, c.device, fence, 0) })
 	return err
 }

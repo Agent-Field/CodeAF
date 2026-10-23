@@ -191,6 +191,7 @@ type vaultSwap struct {
 
 // fenceBody is the body of a release.
 type fenceBody struct {
+	Quiet bool   `json:"quiet,omitempty"`
 	Fence uint64 `json:"fence"`
 }
 
@@ -204,5 +205,8 @@ func acquire(c call, o AcquireOpts) (any, error)  { return pair(c.cl.Acquire(c.c
 func heartbeat(c call, b Beat) (any, error)       { return pair(c.cl.Heartbeat(c.ctx(), c.id(), b)) }
 func publish(c call, p Publish) (any, error)      { return pair(c.cl.Publish(c.ctx(), c.id(), p)) }
 func release(c call, f fenceBody) (any, error) {
+	if f.Quiet {
+		return nothing(ReleaseQuiet(c.ctx(), c.cl, c.id(), f.Fence))
+	}
 	return nothing(c.cl.Release(c.ctx(), c.id(), f.Fence))
 }

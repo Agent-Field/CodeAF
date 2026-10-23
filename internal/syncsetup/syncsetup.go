@@ -51,13 +51,14 @@ var ErrNoIdentity = errors.New(chatlist.NoIdentity)
 
 // Sync is everything that talks to the relay, bound to this device.
 type Sync struct {
-	Dir      directory.Client // bound to this device by its signer
-	Store    blobstore.Store  // the bare store wire; every use of it goes through a Scope so it is counted
-	Device   identity.Dev
-	Identity identity.Identity
-	Relay    string // the normalized relay address every client and the ledger name are built from
-	Hosted   bool   // Relay is the hosted default, which the first-run line speaks of
-	Home     string // the codeaf home: where the branch map and the stats files live
+	stateSent string           // The last completed home-state round, guarded by stateMu.
+	Dir       directory.Client // bound to this device by its signer
+	Store     blobstore.Store  // the bare store wire; every use of it goes through a Scope so it is counted
+	Device    identity.Dev
+	Identity  identity.Identity
+	Relay     string // the normalized relay address every client and the ledger name are built from
+	Hosted    bool   // Relay is the hosted default, which the first-run line speaks of
+	Home      string // the codeaf home: where the branch map and the stats files live
 	// ProfileDir is where the product keeps its profile files (config.json,
 	// credentials.json): CODEAF_PROFILE_DIR when set, else empty, which means Home.
 	ProfileDir string

@@ -223,6 +223,7 @@ func editProfile(profileDir, key string, decide func(held map[string]json.RawMes
 	if change.empty() {
 		return nil
 	}
+	stampPreferences(profileDir, held, &change)
 	encoded, err := json.MarshalIndent(change.applyTo(held), "", "  ")
 	if err != nil {
 		return fmt.Errorf("write config %s: %w", key, err)

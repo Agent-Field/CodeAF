@@ -115,7 +115,11 @@ func FolderOf(transcript string) (string, bool) {
 // or the transcript's own directory for a flat file.
 func BucketOf(transcript string) string {
 	if dir, ok := FolderOf(transcript); ok {
-		return filepath.Dir(dir)
+		bucket := filepath.Dir(dir)
+		if filepath.Base(bucket) == ".moving" {
+			return filepath.Dir(bucket)
+		}
+		return bucket
 	}
 	return filepath.Dir(transcript)
 }

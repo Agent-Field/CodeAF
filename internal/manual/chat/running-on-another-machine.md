@@ -322,7 +322,7 @@ purpose, and says `this window is reading this conversation, not typing into it`
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-Only chats started after moving chats became available can be continued on another computer. Older chats stay where they are and keep working in every build.
+Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
 These are two different things and they are easy to run together.
 

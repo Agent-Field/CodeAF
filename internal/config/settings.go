@@ -2060,7 +2060,7 @@ func (s *Settings) build() []Setting {
 				"it is a backstop against a runaway, not a budget — so set it to what " +
 				"you actually want to spend. When the day's calls reach it, new work " +
 				"waits for midnight or for you to raise it here. " +
-				"Say none for no limit. A change lands at the next rail check.",
+				"Say none for no limit. The limit value follows your paired computers; spending against it is counted per computer. A change lands at the next rail check.",
 			read:    func() string { return moneyValue(resolvedDollars(DailyBudgetUSDAt(dir))) },
 			write:   func(raw string) error { return writeDollars(dir, KeyDailyBudget, raw) },
 			receipt: s.spentTodayReceipt,

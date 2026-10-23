@@ -90,9 +90,9 @@ func (s *Store) seal(id string, kind EventKind, at time.Time, payload memoryEven
 func (s *Store) MemoryEventsOf(session string) ([]LedgerMemoryEvent, error) {
 	rows, err := s.db.Query(`
 		SELECT ts, node_id, kind, payload FROM events
-		WHERE kind IN (?, ?, ?, ?, ?) AND json_extract(payload, '$.source_session') = ?
+		WHERE kind IN (?, ?, ?, ?, ?) AND json_extract(payload, '$.source_session') = ? AND seq>COALESCE((SELECT MAX(seq) FROM events WHERE kind=?),0)
 		ORDER BY seq`,
-		EventMemoryAdd, EventMemoryUpdate, EventMemorySupersede, EventMemoryForget, EventMemoryRestore, session)
+		EventMemoryAdd, EventMemoryUpdate, EventMemorySupersede, EventMemoryForget, EventMemoryRestore, session, EventMemoryReset)
 	if err != nil {
 		return nil, fmt.Errorf("read memory events: %w", err)
 	}

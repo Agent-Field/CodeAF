@@ -115,7 +115,13 @@ func (v *Vault) Put(id string, e Entry) error { return v.PutAt(id, e, time.Now()
 // another machine has already sent.
 func (v *Vault) PutAt(id string, e Entry, at time.Time) error {
 	return v.update(func(d *vaultDoc) error {
-		d.Secrets[id] = record{Entry: e, Updated: stampAt(at, d.Secrets[id], d)}
+		stamp := at.UnixMilli()
+		if previous, exists := d.Secrets[id]; exists {
+			stamp = stampAt(at, previous, d)
+		}
+		// A new slot has its own edit clock. Falling back to the document's
+		// clock would make another setting's recent capture age this one.
+		d.Secrets[id] = record{Entry: e, Updated: stamp}
 		return nil
 	})
 }
@@ -143,13 +149,16 @@ func (v *Vault) Deleted(id string) (bool, error) {
 // Delete removes the secret under id and leaves a tombstone, so merging with a
 // device that still holds the secret does not bring it back. A missing id is
 // not an error and leaves nothing.
-func (v *Vault) Delete(id string) error {
+func (v *Vault) Delete(id string) error { return v.DeleteAt(id, time.Now()) }
+
+// DeleteAt preserves the edit time of a setting removed while offline.
+func (v *Vault) DeleteAt(id string, at time.Time) error {
 	return v.update(func(d *vaultDoc) error {
 		prev, ok := d.Secrets[id]
 		if !ok || !prev.live() {
 			return errUnchanged
 		}
-		d.Secrets[id] = record{Deleted: true, Updated: nextStamp(prev, d)}
+		d.Secrets[id] = record{Deleted: true, Updated: stampAt(at, prev, d)}
 		return nil
 	})
 }

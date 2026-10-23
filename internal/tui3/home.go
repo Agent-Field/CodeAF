@@ -1235,6 +1235,7 @@ func (a *app) dropHome() {
 // both roads get.
 func (a *app) newHomeView(world session.World, known bool) homeView {
 	return homeView{
+		msg:        a.homeAccountNotice,
 		tabs:       a.tabList,
 		holding:    a.holding,
 		closedTabs: func() []chatTab { return a.closedTabs },

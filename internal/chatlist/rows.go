@@ -37,6 +37,9 @@ type Row struct {
 	// Mine says this device was the chat's last holder, so a lapsed lease is
 	// this device's own to pick up and not another device's work gone quiet.
 	Mine bool
+	// Released distinguishes a real release from a revoked or offline holder.
+	Released    bool
+	ReleasedAgo time.Duration
 }
 
 // Quiet is the row of a chat whose live holder has gone: a lease that still
@@ -119,6 +122,8 @@ func rowOf(id string, c directory.Cell, l directory.Listing, self string, open O
 		Parent:      c.ParentCell,
 		Status:      heldStatus(c, l, self),
 		Mine:        c.Lease.Device == self,
+		Released:    c.Lease.Expires == 0 && c.Lease.ReleasedAt > 0 && !l.Devices[c.Lease.Device].Revoked,
+		ReleasedAgo: time.Duration(l.Now-c.Lease.ReleasedAt) * time.Millisecond,
 		DurableAgo:  time.Duration(l.Now-c.DurableAt) * time.Millisecond,
 		DurableAt:   c.DurableAt,
 		Pending:     c.Lease.Pending,

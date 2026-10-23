@@ -56,9 +56,11 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
+	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
 
 // A session agent is what the wire serves, and this is where the two are held
@@ -1158,6 +1160,15 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	proc.warmModels("engine/models", agent, launch.Model)
 
 	return &remote.Engine{
+		ReleaseOnLeave: func(current remote.WrappedAgent) bool {
+			built, ok := current.(*session.Agent)
+			if !ok {
+				return false
+			}
+			place := v3PlaceOf(built.SessionPath(), workspace)
+			_, err := cell.OpenAt(place.Dir, place.ID())
+			return err == nil && syncsetup.MayTalk(home.Dir())
+		},
 		Headless: hello.Headless,
 		Agent:    agent,
 		// A model picked through a linked-local surface arrives on the existing
@@ -1174,6 +1185,7 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		Closed: func(closed remote.WrappedAgent) {
 			if built, ok := closed.(*session.Agent); ok {
 				proc.forget(built)
+				syncDrives.closeCell(v3PlaceOf(built.SessionPath(), workspace).ID())
 			}
 		},
 		// A linked-local surface writes a banked approval into this profile and

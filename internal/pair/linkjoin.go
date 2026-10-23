@@ -80,11 +80,11 @@ func (j LinkJoining) free() (LinkJoining, error) {
 	if _, err := identity.Load(j.Home); err != nil {
 		return j, nil
 	}
-	fresh, err := identity.Pristine(j.Home)
+	fresh, err := identity.Joinable(j.Home)
 	if err != nil || !fresh {
 		return j, ErrDifferentChats
 	}
-	j.Replace = true
+	j.MergeState = true
 	return j, nil
 }
 

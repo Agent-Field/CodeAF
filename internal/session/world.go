@@ -59,6 +59,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
@@ -673,7 +674,7 @@ func readProject(dir, bucket string, now time.Time) (Project, bool) {
 
 	project := Project{Bucket: bucket, Dir: dir}
 	for _, entry := range entries {
-		if !entry.IsDir() {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
 			continue
 		}
 		row, ok := readSessionRow(filepath.Join(dir, entry.Name()), entry.Name(), now)
@@ -730,6 +731,9 @@ func readProject(dir, bucket string, now time.Time) (Project, bool) {
 // cannot say what it is, stays, because hiding somebody's conversation on the
 // strength of a lookup file is the more expensive mistake.
 func readSessionRow(dir, id string, now time.Time) (SessionRow, bool) {
+	if copy := cell.Copied(dir); copy != dir {
+		dir, id = copy, filepath.Base(copy)
+	}
 	pending := false
 	if _, err := os.Stat(filepath.Join(dir, conversationDeletedFile)); err == nil {
 		if _, err := os.Stat(filepath.Join(dir, conversationTaskCleanupFile)); err != nil {

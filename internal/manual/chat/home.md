@@ -291,7 +291,7 @@ updates the tab and the row in Sessions together.
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-Only chats started after moving chats became available can be continued on another computer. Older chats stay where they are, keep their original files, and keep working in every build.
+Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
 When this machine can reach your other machines, a chat that lives on one of them is a
 row under **sessions**, beside the local ones and ordered by when its last saved turn
@@ -333,7 +333,7 @@ same rows in a terminal (see "The cell verbs" in running-from-the-terminal).
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-Only chats started after moving chats became available can be continued on another computer. Older chats stay where they are, keep their original files, and keep working in every build.
+Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
 Press enter on a row that says `<device> offline` or `running on <device>` and home asks **Continue this chat here?**
 with the cursor on `continue here`, because pressing enter on the row already said you want it; `esc` or `2` leaves it there.
@@ -389,7 +389,7 @@ identity on this machine, no secrets are fetched and no file is written.
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-Only chats started after moving chats became available can be continued on another computer. Older chats stay where they are, keep their original files, and keep working in every build.
+Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
 **Your keys travel too, through the same encrypted vault.** Two things are sealed in the
 vault with your identity key and sent when they change, so a machine you continue on does not
@@ -405,11 +405,9 @@ is kept beside it as `credentials.json.damaged`.
 
 ## Do budgets, settings and model choices move between computers
 
-**Budgets stay per machine.** Only the key fields of `config.json` travel. Your budgets and
-limits, model picks and every other setting are not sent, and a key arriving never changes them,
-so a limit you set here is not applied to your other machine. A service's key lands only on a
-machine that already has that service listed, and a machine without it never removes it for
-your other machines.
+Your stored model picks, display and approval defaults, and spending-limit values follow your paired computers through the encrypted vault. Each setting merges independently; the later edit wins. Spending counted against a limit stays **per computer**, so a daily limit is not a combined fleet allowance. Local paths, caches, service addresses, automations and operator environment pins stay on their computer.
+
+Person and project memories also follow within a sync round, including lines edited by hand and memories from older chats. Concurrent edits of different lines survive; the later edit of the same line wins. Machine-scoped memories stay local.
 
 ## Unsaved local edits when continuing a chat here — the kept branch
 
@@ -436,7 +434,7 @@ A chat that moves to another computer brings, from the relay and sealed on the w
 
 The project's task history (the list of finished tasks) and the git bookkeeping inside a task's working copy are not carried: they are made again on the other computer from the chat's own record.
 
-It leaves behind, and lists on the card under `not brought along:`: install folders a lockfile rebuilds (`node_modules`, `.venv`, `target`, `vendor`, `Pods`), files this computer cannot read, and one of two names that differ only in letter case or accent. A read-only folder arrives read-only. A secret file (`.env`) is not in the chat's files: it travels in the key vault. Budgets, limits and model picks are per computer and never travel. Memory that belongs to no chat, for example a line edited by hand in the memory place, stays on the computer it was written on.
+It leaves behind, and lists on the card under `not brought along:`: install folders a lockfile rebuilds (`node_modules`, `.venv`, `target`, `vendor`, `Pods`), files this computer cannot read, and one of two names that differ only in letter case or accent. A read-only folder arrives read-only. A secret file (`.env`) is not in the chat's files: it travels in the key vault. Stored limit values, model picks and personal memory follow separately through the encrypted vault. Spending against limits remains per computer; machine-scoped memory and local paths stay local.
 
 ## Does dist or other gitignored output move — ignored files and secret files
 
@@ -2706,3 +2704,9 @@ Conversations, memory changes, spending, deliverables and folder availability
 refresh in the background. The first visit can show the page before its rows
 arrive. Typing and navigation remain available during that refresh; a reading
 from a previous visit cannot replace the current visit's selection or draft.
+
+## I quit on my laptop and opened my desktop — straight back into the chat
+
+After a clean quit lets a paired computer's chat go, bare `codeaf` on another paired computer continues that chat automatically within 24 hours. You arrive with the `Moved from` banner and the usual `not brought along:` facts; `esc` goes Home.
+
+If the laptop only slept or lost its connection, Home offers its latest chat and `alt+c` continues immediately. When local unsaved edits need to be kept as a branch, the continuation card asks first. Nothing moves automatically while the other computer is running that chat, for a named chat or `--host`/`--at`/`--session`, when another local window holds a chat, or when local unsaved edits need a choice. If the move fails, Home stays open and says why.
