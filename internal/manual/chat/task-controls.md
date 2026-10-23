@@ -208,3 +208,21 @@ conversation and task. Rendering reads thinking settings from task updates.
 An older connected engine shows `Engine update needed` instead of editing controls: update that engine and
 reconnect. An older local host holding work keeps running until it goes quiet;
 rebuilding the terminal binary alone does not replace a busy host.
+
+## The task finished just before a restart — its plan says done, but its changes have not landed
+
+A completed plan whose final checks and landing were not recorded returns as `your call`.
+Its saved working copy, branch, crew, and recorded spend are preserved. Restarting does
+not run the completed work again or merge its changes automatically.
+
+Inspect the saved files and checks. Choose `accept` or `not right` on its question, or ask
+the conversation to use `tasks` with its number and `resolve: "accept"` or
+`resolve: "refute"`. Acceptance uses the ordinary landing and names the actual work commit.
+A conflict keeps the work `your call`: repair the saved copy and accept again. Refuting
+keeps its branch and records that the work was not accepted.
+
+A missing final check receipt is not a passing check. `resolve: "reaudit"` explains that
+this recovered task has no final check receipt and asks you to inspect and accept or
+refute it. A missing copy or changed branch is refused with its location; nothing is
+recreated in its place. If saving a receipt fails after a merge, the error reports the
+actual commit and which record could not be saved. Inspect that outcome before retrying.

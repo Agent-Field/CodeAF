@@ -715,7 +715,8 @@ type harnessOfferRecord struct {
 // exists, and no answer could reach one. Left out, the row comes back settled
 // like every other row that was moving, which is the truth about it.
 type runRecord struct {
-	CrewState *TaskCrewRecord `json:"crewState,omitempty"`
+	RecoveredCompletion bool            `json:"recoveredCompletion,omitempty"`
+	CrewState           *TaskCrewRecord `json:"crewState,omitempty"`
 
 	ID     uint64 `json:"id"`
 	Run    string `json:"run,omitempty"`
@@ -1099,30 +1100,31 @@ func runRowRecord(notice TaskNotice) runRecord {
 		state = TaskRunning
 	}
 	return runRecord{
-		CrewState:  notice.CrewState,
-		ID:         notice.ID,
-		Run:        notice.Run,
-		Node:       notice.Node,
-		Parent:     notice.Parent,
-		Title:      notice.Title,
-		Kind:       notice.Kind,
-		Program:    notice.Program,
-		State:      state,
-		Stopped:    notice.Stopped,
-		Report:     notice.Report,
-		Model:      notice.Model,
-		CostUSD:    notice.CostUSD,
-		ElapsedMS:  notice.Elapsed.Milliseconds(),
-		StartedAt:  notice.StartedAt,
-		EndedAt:    notice.EndedAt,
-		Copy:       notice.Copy,
-		PendingRun: notice.PendingRun,
-		Ending:     notice.Ending,
-		Branch:     notice.Branch,
-		Merge:      notice.Merge,
-		Result:     notice.Result,
-		Changed:    append([]string(nil), notice.Changed...),
-		PlanTask:   notice.PlanTask,
+		CrewState:           notice.CrewState,
+		ID:                  notice.ID,
+		Run:                 notice.Run,
+		Node:                notice.Node,
+		Parent:              notice.Parent,
+		Title:               notice.Title,
+		Kind:                notice.Kind,
+		Program:             notice.Program,
+		State:               state,
+		Stopped:             notice.Stopped,
+		Report:              notice.Report,
+		Model:               notice.Model,
+		CostUSD:             notice.CostUSD,
+		ElapsedMS:           notice.Elapsed.Milliseconds(),
+		StartedAt:           notice.StartedAt,
+		EndedAt:             notice.EndedAt,
+		Copy:                notice.Copy,
+		PendingRun:          notice.PendingRun,
+		Ending:              notice.Ending,
+		Branch:              notice.Branch,
+		Merge:               notice.Merge,
+		Result:              notice.Result,
+		Changed:             append([]string(nil), notice.Changed...),
+		PlanTask:            notice.PlanTask,
+		RecoveredCompletion: notice.RecoveredCompletion,
 	}
 }
 
@@ -1160,16 +1162,17 @@ func runRowNotice(record runRecord) TaskNotice {
 		CostUSD:   record.CostUSD,
 		Elapsed:   time.Duration(record.ElapsedMS) * time.Millisecond,
 
-		StartedAt:  record.StartedAt,
-		EndedAt:    record.EndedAt,
-		Copy:       record.Copy,
-		PendingRun: record.PendingRun,
-		Ending:     record.Ending,
-		Branch:     record.Branch,
-		Merge:      record.Merge,
-		Result:     record.Result,
-		Changed:    append([]string(nil), record.Changed...),
-		PlanTask:   record.PlanTask,
+		StartedAt:           record.StartedAt,
+		EndedAt:             record.EndedAt,
+		Copy:                record.Copy,
+		PendingRun:          record.PendingRun,
+		Ending:              record.Ending,
+		Branch:              record.Branch,
+		Merge:               record.Merge,
+		Result:              record.Result,
+		Changed:             append([]string(nil), record.Changed...),
+		PlanTask:            record.PlanTask,
+		RecoveredCompletion: record.RecoveredCompletion,
 	}
 	if record.CrewState != nil && record.CrewState.Routed {
 		decision := record.CrewState.Decision

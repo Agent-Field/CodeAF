@@ -782,3 +782,18 @@ func TestAHeldPlanRailRowKeepsItsReasonAndQueuedRoomState(t *testing.T) {
 		t.Fatalf("held plan room state = %q, want queued · machine busy", got)
 	}
 }
+
+func TestRecoveredCompletedPlanShowsReviewWithoutDisablingPausedWork(t *testing.T) {
+	recovered := session.PlanTaskRow{ID: "t-7", Title: "Mock completed work", Status: string(session.TaskUnverified)}
+	if planStateWord(recovered) != "your call" || planNodeState(recovered) != session.TaskUnverified || planStatus(recovered).Tier != session.TaskTierYourCall || !planEnded(recovered) || len((&app{}).tasksPlanKeyWords(recovered)) != 0 {
+		t.Fatal("completed review does not read as an ended worker needing an explicit decision")
+	}
+	paused := session.PlanTaskRow{ID: "t-part", Parent: "t-root", Status: "paused"}
+	if planEnded(paused) {
+		t.Fatal("recovered review disabled existing paused task controls")
+	}
+	words := strings.Join((&app{}).tasksPlanKeyWords(paused), " · ")
+	if !strings.Contains(words, tasksPlanResumeWord) || !strings.Contains(words, tasksPlanCancelWord) {
+		t.Fatalf("paused task lost resume/Stop: %q", words)
+	}
+}

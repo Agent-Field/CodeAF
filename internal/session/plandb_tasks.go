@@ -157,7 +157,7 @@ func (row PlanTaskRow) StateWord() string {
 		return taskWordDone
 	case string(plandb.StatusFailed), string(plandb.StatusCancelled):
 		return taskWordIncomplete
-	case "paused":
+	case "paused", string(TaskUnverified):
 		return taskWordYourCall
 	}
 	return ""
@@ -459,10 +459,21 @@ func (a *Agent) markPlanInterrupted(row *PlanTaskRow) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	for _, notice := range g.runRowsLocked() {
-		if notice.PlanTask == row.ID && notice.State == TaskInterrupted {
-			row.Interrupted = true
-			return
+		if notice.PlanTask != row.ID {
+			continue
 		}
+		if notice.State == TaskInterrupted {
+			row.Interrupted = true
+		}
+		if notice.RecoveredCompletion {
+			row.Status = string(notice.State)
+			row.Ended = notice.EndedAt
+			if notice.CostUSD > row.USD {
+				row.USD = notice.CostUSD
+			}
+			row.Note = notice.Report
+		}
+		return
 	}
 }
 

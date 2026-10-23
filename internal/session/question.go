@@ -2995,6 +2995,8 @@ func (a *Agent) landingQuestion(pending PendingDecision) Question {
 	// own check costs: one record read per derived landing question, no cache
 	// and so no second source of truth. Banked words are an unanswered
 	// question and carry no fate — [Agent.said] returns them untouched.
+	q = completedLandingQuestion(q, notice)
+
 	if record, found := decidedAlready(a.Decisions(), q); found {
 		stamp := landingAnsweredStamp(record)
 		switch {
@@ -3009,7 +3011,7 @@ func (a *Agent) landingQuestion(pending PendingDecision) Question {
 			q.Reason = stamp + " · " + q.Reason
 		}
 	}
-	return a.said(kind, token, q)
+	return a.said(q.Kind, token, q)
 }
 
 // landingForm is which shape a landing asks to be drawn in, and it is decided
