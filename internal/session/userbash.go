@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	procexec "github.com/Agent-Field/codeaf/internal/executor"
+	"github.com/Agent-Field/codeaf/internal/shell"
 )
 
 // These refusals are shared with the composer so a late engine refusal gives
@@ -43,6 +44,9 @@ func (a *Agent) SubmitBash(ctx context.Context, text string) (<-chan Event, erro
 	}
 	if a.config.InTask {
 		return nil, errors.New("run ! commands from the parent conversation")
+	}
+	if _, err := shell.Bash(); err != nil {
+		return nil, err
 	}
 	user := userText(text)
 	user.bash = command

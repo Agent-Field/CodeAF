@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"maps"
 	"os"
 	"path/filepath"
@@ -131,5 +132,5 @@ func (m *BranchMap) save() error {
 	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
 		return err
 	}
-	return os.Rename(tmp, m.path)
+	return fsreplace.Rename(tmp, m.path)
 }

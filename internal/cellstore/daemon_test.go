@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -93,7 +94,7 @@ func TestDaemonOfANonEngineIsUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := Daemon{Socket: filepath.Join(t.TempDir(), "e.sock"), Binary: false_}
+	d := Daemon{Socket: testSocket(t), Binary: false_}
 	_, err = d.Do(context.Background(), Target{}, snapOp{})
 	if !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("err = %v, want ErrUnavailable", err)
@@ -104,7 +105,7 @@ func TestDaemonOfANonEngineIsUnavailable(t *testing.T) {
 func TestSocketIsKeyedToTheEngineBinary(t *testing.T) {
 	a := socketFor("/x/furrow-0.1.0-aaaaaaaaaaaa")
 	b := socketFor("/x/furrow-0.1.0-bbbbbbbbbbbb")
-	if a == b || filepath.Base(a) != "engine-0.1.0-aaaaaaaaaaaa.sock" {
+	if a == b || (runtime.GOOS != "windows" && filepath.Base(a) != "engine-0.1.0-aaaaaaaaaaaa.sock") {
 		t.Errorf("sockets %q and %q must differ by build", a, b)
 	}
 }
@@ -135,7 +136,7 @@ func serveHealth(t *testing.T, socket, engine string) {
 
 // A daemon of another engine build is not used: the verb goes to the spawn.
 func TestDaemonOfAnotherEngineIsNotUsed(t *testing.T) {
-	socket := filepath.Join(t.TempDir(), "e.sock")
+	socket := testSocket(t)
 	serveHealth(t, socket, "furrow-0.0.9-oldoldoldold")
 	d := Daemon{Socket: socket, Binary: "/x/furrow-0.1.0-newnewnewnew"}
 	if _, err := d.Do(context.Background(), Target{}, snapOp{}); !errors.Is(err, ErrUnavailable) {
@@ -156,7 +157,7 @@ func TestWedgedDaemonIsUnavailableWithinTheHealthBound(t *testing.T) {
 	old := healthWait
 	healthWait = 100 * time.Millisecond
 	t.Cleanup(func() { healthWait = old })
-	sock := filepath.Join(t.TempDir(), "e.sock")
+	sock := testSocket(t)
 	ln, err := net.Listen("unix", sock)
 	if err != nil {
 		t.Fatal(err)

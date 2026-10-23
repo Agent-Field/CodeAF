@@ -21,6 +21,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
+	"github.com/Agent-Field/codeaf/internal/shell"
 )
 
 // Tool is the shape every tool in this package wears, and the shape a
@@ -54,7 +55,7 @@ func AllTools(cwd string) []Tool { return AllToolsCapped(cwd, DefaultCaps()) }
 // from the pair they are actually applying.
 func AllToolsCapped(cwd string, caps Caps) []Tool {
 	caps = caps.resolve()
-	return []Tool{
+	return availableTools([]Tool{
 		newReadTool(cwd, caps),
 		newBashTool(cwd, caps),
 		newEditTool(cwd),
@@ -62,7 +63,7 @@ func AllToolsCapped(cwd string, caps Caps) []Tool {
 		newGrepTool(cwd, caps),
 		newFindTool(cwd, caps),
 		newLsTool(cwd, caps),
-	}
+	})
 }
 
 // Tools returns the four default active pi tools in registry order: read,
@@ -75,12 +76,12 @@ func Tools(cwd string) []Tool { return ToolsCapped(cwd, DefaultCaps()) }
 // ToolsCapped is [Tools] with the belt's own result caps. See [AllToolsCapped].
 func ToolsCapped(cwd string, caps Caps) []Tool {
 	caps = caps.resolve()
-	return []Tool{
+	return availableTools([]Tool{
 		newReadTool(cwd, caps),
 		newBashTool(cwd, caps),
 		newEditTool(cwd),
 		newWriteTool(cwd),
-	}
+	})
 }
 
 // ── wire schemas (verbatim from pi) ────────────────────────────────────────
@@ -462,7 +463,10 @@ func newBashTool(cwd string, caps Caps) Tool {
 			// held in a 4KB buffer until it exits is a command that looks dead to
 			// anybody reading its log, and a long one gets killed for it
 			// (streaming.go states the whole case).
-			shell, shellArgs := StreamingShell(p.Command)
+			shell, shellArgs, shellErr := StreamingShell(p.Command)
+			if shellErr != nil {
+				return shellErr.Error(), true, nil
+			}
 
 			// THE COMMAND IS NOT BOUND TO THE CONTEXT, and the watcher below
 			// does the binding by hand. exec.CommandContext's own watcher kills
@@ -714,16 +718,10 @@ func exitCodeFromWait(err error) int {
 }
 
 // getShellConfig mirrors pi's shell.js:getShellConfig on Unix: /bin/bash if
-// it exists, then bash on PATH, then fallback to sh. Returns the shell path
-// and args (["-c"]).
-func getShellConfig() (string, []string) {
-	if _, err := os.Stat("/bin/bash"); err == nil {
-		return "/bin/bash", []string{"-c"}
-	}
-	if bash, err := exec.LookPath("bash"); err == nil {
-		return bash, []string{"-c"}
-	}
-	return "sh", []string{"-c"}
+// it exists, then bash on PATH, then fallback to sh. Windows instead uses the
+// engine's native bash, and refuses before a command can reach a WSL launcher.
+func getShellConfig() (string, []string, error) {
+	return shell.Preferred()
 }
 
 // killProcessGroup sends SIGKILL to the process group, mirroring pi's
@@ -1279,4 +1277,19 @@ func commandCutWords(began time.Time, text string) string {
 		return head + " nothing had been written yet"
 	}
 	return head + "\n" + text
+}
+
+// availableTools omits a shell with no native implementation, so the model
+// cannot select a command that will fail on every call. Unix is unchanged.
+func availableTools(tools []Tool) []Tool {
+	if _, err := shell.Bash(); err == nil {
+		return tools
+	}
+	out := tools[:0]
+	for _, tool := range tools {
+		if tool.Name != "bash" {
+			out = append(out, tool)
+		}
+	}
+	return out
 }

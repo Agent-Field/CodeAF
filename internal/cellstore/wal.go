@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -198,7 +199,7 @@ func (w *WAL) rewrite(recs []record) error {
 	if err := os.WriteFile(tmp, buf.Bytes(), 0o600); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, w.path); err != nil {
+	if err := fsreplace.Rename(tmp, w.path); err != nil {
 		return fmt.Errorf("compact wal: %w", err)
 	}
 	return nil

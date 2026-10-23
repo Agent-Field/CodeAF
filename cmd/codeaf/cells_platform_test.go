@@ -17,9 +17,6 @@ import (
 func TestC27UnavailableCommandsDoNothing(t *testing.T) {
 	t.Cleanup(cell.UseAvailabilityInTests(false))
 	want := furrowbin.CellsUnavailable
-	if runtime.GOOS == "windows" {
-		want = cell.WindowsReason
-	}
 	assertCellCommandsRefuse(t, want)
 }
 
@@ -42,7 +39,7 @@ func assertCellCommandsRefuse(t *testing.T, want string) {
 // process, so a previous test's compatible-engine cache cannot mask failure.
 func TestC12OldEngineCLI(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("C11 covers the native Windows refusal")
+		t.Skip("this fake engine is a Unix shell script; K1 covers the native engine")
 	}
 	if os.Getenv("CODEAF_TEST_OLD_FURROW") == "1" {
 		assertCellCommandsRefuse(t, furrowbin.CellsUnavailable)

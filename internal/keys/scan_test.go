@@ -4,12 +4,16 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"sort"
 	"testing"
 )
 
 func scanFixture(t *testing.T) string {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("K3: this fixture denies reads with Unix mode bits; Windows uses account permissions")
+	}
 	if os.Geteuid() == 0 {
 		t.Skip("root reads files whatever their mode")
 	}

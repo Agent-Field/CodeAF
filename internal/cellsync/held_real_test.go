@@ -31,15 +31,8 @@ func TestAFreshLedgerSendsOnlyTheTurnRealEngine(t *testing.T) {
 	}
 	local := cellstore.Engine{Binary: bin, DataRoot: t.TempDir(), Transport: cellstore.Spawn{Binary: bin}}
 	engineFor := func(name string) cellstore.SyncEngine {
-		return cellstore.SyncEngine{
-			Transport: cellstore.Spawn{Binary: bin},
-			Keys:      cellstore.SyncKeys{CellKey: make([]byte, 32), Dedup: make([]byte, 32)},
-			Ledger:    cellstore.LedgerName("http://relay-"+name, "id_test"),
-			Target: func(c2 cell.Cell) cellstore.Target {
-				return cellstore.Target{DataDir: local.LocalDir(c2), Tree: c2.Root}
-			},
-			Outbox: func(cell.Cell) string { return t.TempDir() },
-		}
+		// D1/K3 routes exports to the shared store where the seal was written.
+		return local.Sync(cellstore.SyncKeys{CellKey: make([]byte, 32), Dedup: make([]byte, 32)}, cellstore.LedgerName("http://relay-"+name, "id_test"))
 	}
 	chat := make([]byte, 1<<20)
 	_, _ = rand.Read(chat)

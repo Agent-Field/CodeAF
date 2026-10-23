@@ -3,6 +3,7 @@ package vaultsync
 import (
 	"encoding/json"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"os"
 	"path/filepath"
 	"time"
@@ -75,7 +76,7 @@ func (f credentialsFile) holds(content string) (bool, error) {
 	if json.Valid(have) {
 		return false, nil
 	}
-	return false, os.Rename(f.path, f.path+".damaged")
+	return false, fsreplace.Rename(f.path, f.path+".damaged")
 }
 
 func lockFile(path string) (func(), error) {
@@ -107,7 +108,7 @@ func writeAtomic(path string, data []byte, mode os.FileMode) error {
 	if err = errors.Join(err, tmp.Close()); err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), path)
+	return fsreplace.Rename(tmp.Name(), path)
 }
 
 func ignoreMissing(err error) error {

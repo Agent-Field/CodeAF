@@ -63,15 +63,8 @@ func (m *machine) local() cellstore.Engine {
 
 func (m *machine) sync() cellstore.SyncEngine {
 	local := m.local()
-	return cellstore.SyncEngine{
-		Transport: cellstore.Spawn{Binary: m.bin},
-		Keys:      m.keys,
-		Ledger:    cellstore.LedgerName(m.url, "id_test"),
-		Target: func(c cell.Cell) cellstore.Target {
-			return cellstore.Target{DataDir: local.LocalDir(c), Tree: c.Root}
-		},
-		Outbox: func(cell.Cell) string { return m.t.TempDir() },
-	}
+	// D1/K3: use the sealing engine's shared timeline on both platforms.
+	return local.Sync(m.keys, cellstore.LedgerName(m.url, "id_test"))
 }
 
 // chat makes a new chat whose folder holds files, and seals it.

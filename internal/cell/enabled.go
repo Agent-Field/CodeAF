@@ -1,25 +1,16 @@
 package cell
 
 import (
-	"runtime"
-
 	"github.com/Agent-Field/codeaf/internal/furrowbin"
 )
 
-const WindowsReason = "moving chats is not available on Windows yet; run codeaf in WSL"
+// Enabled reports support for moving chats on every shipped platform.
+// Startup also asks Available before exposing doors that need the engine.
+func Enabled() bool { return true }
 
-// Enabled reports platform support. Startup also asks Available
-// before exposing a capability that needs the carried engine.
-func Enabled() bool { return DisabledReason() == "" }
-
-// DisabledReason is cheap enough for menus: it never starts an engine or reads
-// the filesystem. Windows needs the engine port before it can move chats.
-func DisabledReason() string {
-	if runtime.GOOS == "windows" {
-		return WindowsReason
-	}
-	return ""
-}
+// DisabledReason remains the cheap menu door; only the engine probe can make
+// moving chats unavailable now that Windows has a native engine (K1).
+func DisabledReason() string { return "" }
 
 // UnavailableReason is asked at startup and at explicit command doors, never
 // during paint. Engine detection is cached for the life of this process.

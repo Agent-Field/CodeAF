@@ -12,7 +12,7 @@ Run it on a computer you keep, as soon as you know a computer is lost:
 codeaf identity rotate
 ```
 
-It is hidden from the help text and, like the other `codeaf identity` verbs, is available by default on Linux and macOS with a compatible furrow engine. Windows needs WSL. It needs a relay. With sync off it says `a rotation needs a relay`.
+It is hidden from the help text and, like the other `codeaf identity` verbs, is available by default on Linux, macOS and native Windows with a compatible furrow engine. Native Windows is supported too. It needs a relay. With sync off it says `a rotation needs a relay`.
 
 ```
 usage: codeaf identity rotate [--grace 7d] [--yes] [--abandon]

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -94,7 +95,7 @@ func Save(home string, id Identity) error {
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		return err
 	}
-	return write(path(home), id.document(), os.Rename)
+	return write(path(home), id.document(), fsreplace.Rename)
 }
 
 func hasLegacyKey(home string) bool {
@@ -119,7 +120,7 @@ func inheritedCellKey(home string) (key, error) {
 }
 
 // write puts v as JSON at target through a private temp file and publish,
-// which is os.Rename to replace and os.Link to refuse replacing.
+// which is fsreplace.Rename to replace and os.Link to refuse replacing.
 func write(target string, v any, publish func(from, to string) error) error {
 	raw, err := json.Marshal(v)
 	if err != nil {

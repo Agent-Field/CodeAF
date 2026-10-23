@@ -4,6 +4,7 @@ package cellstore
 
 import (
 	"os"
+	"os/exec"
 	"strconv"
 	"sync"
 	"syscall"
@@ -76,4 +77,9 @@ func StopSpawned() {
 			<-d.exited
 		}
 	}
+}
+
+// configureDaemonCommand detaches the engine from the terminal on Unix.
+func configureDaemonCommand(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 }

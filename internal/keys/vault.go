@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"os"
 	"path/filepath"
 	"sort"
@@ -268,7 +269,7 @@ func (v *Vault) adoptStaged() bool {
 	if _, err := open(v.key, blob); err != nil {
 		return false
 	}
-	return os.Rename(next, v.path) == nil
+	return fsreplace.Rename(next, v.path) == nil
 }
 
 // openDoc opens a sealed vault envelope and decodes the document inside.

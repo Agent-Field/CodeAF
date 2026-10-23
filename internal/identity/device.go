@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"os"
 	"path/filepath"
 	"time"
@@ -90,7 +91,7 @@ func deviceFor(home string, id Identity) (Dev, error) {
 	if err != nil {
 		return Dev{}, err
 	}
-	return d, write(filepath.Join(home, DeviceFile), d.document(), os.Rename)
+	return d, write(filepath.Join(home, DeviceFile), d.document(), fsreplace.Rename)
 }
 
 func newDevice(id Identity) (Dev, error) {

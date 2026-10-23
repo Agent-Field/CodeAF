@@ -1,23 +1,12 @@
 package tui3
 
-import (
-	"runtime"
-	"strings"
-	"testing"
+import "testing"
 
-	"github.com/Agent-Field/codeaf/internal/cell"
-)
-
-// C27.1 and C27.6 require ordinary pairing help without an enable instruction.
-// The platform reason stays available where moving chats cannot work (C27.3).
+// TestPairHelpByDefault proves C27.1, C27.6 and K1: pairing has ordinary help
+// on Windows as on Unix, without an enable instruction or a platform refusal.
 func TestPairHelpByDefault(t *testing.T) {
 	c := command{name: "pair", desc: "show a code"}
-	got := c.note(chordSpelling{})
-	if runtime.GOOS == "windows" {
-		if !strings.Contains(got, cell.WindowsReason) {
-			t.Fatalf("pair help: %s", got)
-		}
-	} else if got != "show a code" {
+	if got := c.note(chordSpelling{}); got != "show a code" {
 		t.Fatalf("pair help: %s", got)
 	}
 }

@@ -19,6 +19,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"os"
 	"path/filepath"
 	"strings"
@@ -123,7 +124,7 @@ func (f FileKeeper) Save(seed []byte) error {
 	if err := os.WriteFile(temporary, []byte(encodeSeed(seed)), 0o600); err != nil {
 		return err
 	}
-	return os.Rename(temporary, f.Path)
+	return fsreplace.Rename(temporary, f.Path)
 }
 
 func (f FileKeeper) Forget() error {

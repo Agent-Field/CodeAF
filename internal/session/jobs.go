@@ -66,6 +66,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	procexec "github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
+	"github.com/Agent-Field/codeaf/internal/shell"
 )
 
 const (
@@ -853,6 +854,10 @@ func (r *jobRegistry) settled(one *job, code int) bool {
 // answering the person. The job's lifetime is the session's, and Close is the
 // only thing that ends it early.
 func (r *jobRegistry) start(command string) (*job, error) {
+	program, shellArgs, shellErr := bare.StreamingShell(command)
+	if shellErr != nil {
+		return nil, shellErr
+	}
 	started, err := r.newJob(command, jobKindBash)
 	if err != nil {
 		return nil, err
@@ -864,7 +869,6 @@ func (r *jobRegistry) start(command string) (*job, error) {
 	// stays empty until exit is a job that looks dead for as long as it runs —
 	// and this used to be a hand-copied three-line shell choice with no
 	// buffering fix in it at all.
-	shell, shellArgs := bare.StreamingShell(command)
 	// A new session puts the job and everything it spawns in one process group,
 	// so a kill reaches the whole tree — the leader of a new session leads its
 	// own group, so every `kill -pgid` here works exactly as it did under
@@ -879,7 +883,7 @@ func (r *jobRegistry) start(command string) (*job, error) {
 		jobContext = procexec.WithDegradedNotice(jobContext, r.degradedNotice)
 	}
 	process, err := r.runner(started.dir).Command(jobContext, procexec.ExecRequest{
-		Argv: append([]string{shell}, shellArgs...), Env: bare.StreamingEnv(),
+		Argv: append([]string{program}, shellArgs...), Env: bare.StreamingEnv(),
 		Group: procexec.GroupSession,
 	})
 	if err != nil {
@@ -1791,24 +1795,16 @@ func (s *jobSink) lastNonEmptyLine() string {
 
 // ── process plumbing ────────────────────────────────────────────────────────
 
-// jobShell mirrors bare's shell preference (/bin/bash, bash on PATH, sh). It is
-// a copy rather than a call because bare's is unexported and this slice wraps
-// that package rather than editing it; the order is three lines and it is the
-// same three lines.
+// jobShell shares bare's shell preference through internal/shell: Unix keeps
+// /bin/bash, bash on PATH, sh, and Windows uses the engine's native bash.
 //
 // IT IS NOT FOR ANYTHING WHOSE OUTPUT SOMEBODY READS WHILE IT RUNS. A bash job
 // goes through [bare.StreamingShell] instead, which is this choice plus the
 // line-buffering that keeps a long command's log from being empty until it
 // exits. What is left on this one is a watch's tick and an automation's look
 // — commands that are short by construction and read only after they end.
-func jobShell() (string, []string) {
-	if _, err := os.Stat("/bin/bash"); err == nil {
-		return "/bin/bash", []string{"-c"}
-	}
-	if bash, err := exec.LookPath("bash"); err == nil {
-		return bash, []string{"-c"}
-	}
-	return "sh", []string{"-c"}
+func jobShell() (string, []string, error) {
+	return shell.Preferred()
 }
 
 // waitExitCode extracts an exit code from cmd.Wait's error, -1 when the process

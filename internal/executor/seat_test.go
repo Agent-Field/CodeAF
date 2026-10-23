@@ -1,3 +1,6 @@
+//go:build !windows
+
+// K6: these tests exercise Unix signals or the Unix-only senior-dev helper.
 package executor_test
 
 import (

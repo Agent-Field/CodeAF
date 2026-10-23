@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -123,7 +124,7 @@ func TestProviderKeySetOnAIsUsableOnB(t *testing.T) {
 	if got := config.PersistedAPIKey(b.profile); got != fakeKeyOne {
 		t.Fatal("the key B's sessions resolve is not A's key")
 	}
-	if info, err := os.Stat(config.BudgetConfigPath(b.profile)); err != nil || info.Mode().Perm() != 0o600 {
+	if info, err := os.Stat(config.BudgetConfigPath(b.profile)); err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0o600) {
 		t.Fatalf("config.json must stay private: %v %v", err, info)
 	}
 }

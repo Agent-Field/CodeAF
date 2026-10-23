@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -73,7 +74,7 @@ func (w *workspace) want(t *testing.T, rel, content string, mode os.FileMode) {
 	if got := readFile(t, path); got != content {
 		t.Fatalf("%s holds %q, want %q", rel, got, content)
 	}
-	if info.Mode().Perm() != mode {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != mode {
 		t.Fatalf("%s has mode %v, want %v", rel, info.Mode().Perm(), mode)
 	}
 }

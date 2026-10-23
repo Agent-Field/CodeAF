@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"io/fs"
 	"maps"
 	"os"
@@ -514,7 +515,7 @@ func replaceFile(target string, content []byte) error {
 	if err := os.WriteFile(next, content, 0o600); err != nil {
 		return err
 	}
-	return os.Rename(next, target)
+	return fsreplace.Rename(next, target)
 }
 
 func removeAbsent(root string, snap snapshot) error {

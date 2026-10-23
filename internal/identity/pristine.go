@@ -3,6 +3,7 @@ package identity
 import (
 	"errors"
 	"io/fs"
+	"os"
 )
 
 // Pristine says whether the home holds nothing but what starting codeaf makes:
@@ -10,10 +11,14 @@ import (
 // join another identity without losing anything. When in doubt it answers no:
 // an entry that [started] does not name counts as use.
 func Pristine(home string) (bool, error) {
-	used, err := started(home)
-	if errors.Is(err, fs.ErrNotExist) {
+	// K3: only a missing HOME is pristine. On Windows a file where a folder
+	// belongs can also report path-not-found; that nested error must keep data.
+	if _, err := os.Stat(home); errors.Is(err, fs.ErrNotExist) {
 		return true, nil
+	} else if err != nil {
+		return false, err
 	}
+	used, err := started(home)
 	return !used && err == nil, err
 }
 

@@ -262,7 +262,7 @@ func TestRepeatedReadAfterEditSeesTheNewContent(t *testing.T) {
 	}
 }
 
-// TestResolveAcceptsAbsolutePathsInsideTheWorkspace guards the rule that cost
+// K3/K6: TestResolveAcceptsAbsolutePathsInsideTheWorkspace guards the rule that cost
 // a run its deliverable: an agent that just ran pwd writes absolute paths in
 // good faith, and on macOS the same workspace has two spellings because /tmp
 // is a symlink to /private/tmp.
@@ -278,7 +278,7 @@ func TestResolveAcceptsAbsolutePathsInsideTheWorkspace(t *testing.T) {
 			t.Fatalf("Resolve(%q) = %q, want %q", inside, resolved, want)
 		}
 	}
-	if _, err := space.Resolve("/somewhere/else/entirely"); err == nil {
+	if _, err := space.Resolve(filepath.Join(filepath.VolumeName(space.Root())+string(filepath.Separator), "somewhere", "else", "entirely")); err == nil {
 		t.Fatal("Resolve accepted a path outside the workspace")
 	}
 	if _, err := space.Resolve("../sibling"); err == nil {

@@ -48,3 +48,6 @@ relay/hosted/.wrangler/
 
 # External furrow profile measurements keep their build output inside this worktree.
 .cargo-target/
+
+# Native Windows test executables are local acceptance artifacts.
+.wintest/

@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/env"
-	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // daemonEnv turns the engine daemon off when set to 0: every verb then spawns
@@ -144,12 +143,4 @@ func transportFor(binary string, run Runner) Transport {
 	// missing engine in its own words.
 	bin, _ := Spawn{Binary: binary}.program()
 	return Fallback{Primary: Daemon{Socket: socketFor(bin), Binary: bin}, Secondary: direct}
-}
-
-// socketFor names the daemon's socket after the engine binary, whose file name
-// is already unique per build (furrow-<version>-<hash>). Two engine builds then
-// never share a daemon, so a daemon left over from an upgrade is never asked
-// to run the new store logic; it idles out on its own.
-func socketFor(bin string) string {
-	return home.Join("v3", "engine-"+strings.TrimPrefix(filepath.Base(bin), "furrow-")+".sock")
 }

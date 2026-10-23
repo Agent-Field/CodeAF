@@ -10,8 +10,7 @@
 // the reader's, and the pages that described it had to hedge every sentence. So
 // the binary rides along, and the only thing that still varies is whether a
 // particular folder has been attached with `furrow watch`.
-// Native Windows deliberately omits this Unix-only engine; chat movement is
-// available there through WSL instead.
+// Native Windows carries the same engine contract as Linux and macOS.
 //
 // The bytes get here in three moves, and each one is somewhere else:
 //
@@ -69,8 +68,7 @@ var staged embed.FS
 // ErrNotEmbedded is what [Ensure] answers on a build that carries no furrow for
 // this platform — a plain `go build ./...` in a fresh clone, which is a real
 // and useful thing to be able to do. It is not the shipped state: `make build`
-// fetches first on Unix and fails rather than produce one. Windows deliberately
-// carries no native engine.
+// fetches first and fails rather than produce one.
 var ErrNotEmbedded = errors.New("this codeaf was not built with furrow inside it")
 
 // stagedName is where the build put this platform's furrow, and it is derived
@@ -188,14 +186,14 @@ func extractInto(dir, version string, archive []byte) (string, error) {
 // executable, non-empty file.
 func installed(path string) bool {
 	info, err := os.Stat(path)
-	return err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0 && info.Size() > 0
+	return err == nil && info.Mode().IsRegular() && (runtime.GOOS == "windows" || info.Mode().Perm()&0o111 != 0) && info.Size() > 0
 }
 
 // installPath is the one place the extracted file's name is decided:
 // furrow-<version>-<stamp>. The stamp is hashed from the embedded archive
 // bytes, which Ensure reads once per process, never from the extracted file.
 func installPath(dir, version string, archive []byte) string {
-	return filepath.Join(dir, "furrow-"+version+"-"+stamp(archive))
+	return filepath.Join(dir, "furrow-"+version+"-"+stamp(archive)+executableSuffix())
 }
 
 // stamp is the first twelve hex digits of the archive's sha256: enough that two
@@ -247,3 +245,11 @@ func Compress(binary []byte) ([]byte, error) {
 // The build needs it for a platform it is cross-compiling to, which is why it
 // takes the platform rather than reading runtime's.
 func StagedFileName(platform string) string { return "furrow-" + platform + ".gz" }
+
+// executableSuffix lets Windows execute the extracted engine directly (K1).
+func executableSuffix() string {
+	if runtime.GOOS == "windows" {
+		return ".exe"
+	}
+	return ""
+}

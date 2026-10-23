@@ -2,7 +2,6 @@ package atlas
 
 import (
 	"fmt"
-	"runtime"
 	"strings"
 )
 
@@ -11,11 +10,8 @@ import (
 // and nothing else; adding a map here is all it takes to publish one.
 var Maps = platformMaps()
 
-// platformMaps omits the move-only picture where the capability cannot run.
+// platformMaps exposes the same moving-chat picture on every platform (K1).
 func platformMaps() []*Map {
-	if runtime.GOOS == "windows" {
-		return nil
-	}
 	return []*Map{Pairing}
 }
 

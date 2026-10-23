@@ -196,6 +196,7 @@ func tree(t *testing.T, root string) map[string]string {
 			return err
 		}
 		rel, _ := filepath.Rel(root, p)
+		rel = filepath.ToSlash(rel)
 		raw, err := os.ReadFile(p)
 		out[rel] = string(raw)
 		return err

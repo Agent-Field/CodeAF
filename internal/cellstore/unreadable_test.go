@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -16,6 +17,9 @@ import (
 // a file with no permissions.
 func skipIfRoot(t *testing.T) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("K3: Windows access control uses account permissions, not Unix mode bits")
+	}
 	if os.Geteuid() == 0 {
 		t.Skip("root reads files whatever their mode")
 	}

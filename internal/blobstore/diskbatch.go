@@ -3,6 +3,7 @@ package blobstore
 import (
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -111,7 +112,7 @@ func place(files []staged) error {
 	for i, f := range files {
 		err := f.tmp.Close()
 		if err == nil {
-			err = os.Rename(f.tmp.Name(), f.path)
+			err = fsreplace.Rename(f.tmp.Name(), f.path)
 		}
 		if err != nil {
 			discard(files[i:])

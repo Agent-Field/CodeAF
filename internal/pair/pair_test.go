@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -61,7 +62,7 @@ func TestADeviceKeyIsMadeOnceAndKeptForEver(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A KEY THAT WAS EVER WORLD-READABLE IS A KEY THAT HAS TO BE ASSUMED READ.
-	if mode := info.Mode().Perm(); mode != 0o600 {
+	if mode := info.Mode().Perm(); runtime.GOOS != "windows" && mode != 0o600 {
 		t.Fatalf("the device key file is %o, not 0600", mode)
 	}
 }

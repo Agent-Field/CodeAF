@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/shell"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -125,4 +127,29 @@ func (s *stubExec) Exec(_ context.Context, req executor.ExecRequest, _ func(exec
 		return executor.ExecResult{SideEffect: executor.Classify(req.Net)}, nil
 	}
 	return s.fn(req)
+}
+
+// testSocket keeps even long test names below AF_UNIX's address ceiling (K2).
+func testSocket(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "cs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	return filepath.Join(dir, "e.sock")
+}
+
+// testShell retains Unix argv and uses the native Git Bash resolver on Windows
+// so K3's secret propagation runs through an actual shell on both platforms.
+func testShell(t *testing.T) string {
+	t.Helper()
+	if runtime.GOOS != "windows" {
+		return "sh"
+	}
+	bash, err := shell.Bash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return bash
 }

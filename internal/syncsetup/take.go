@@ -3,6 +3,7 @@ package syncsetup
 import (
 	"context"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"os"
 	"path/filepath"
 	"strings"
@@ -386,7 +387,7 @@ func (c *Continuer) fileCopy(ctx context.Context, at cell.Cell) (cell.Cell, func
 	if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
 		return at, filed, err
 	}
-	if err := os.Rename(at.Root, dest); err != nil {
+	if err := fsreplace.Rename(at.Root, dest); err != nil {
 		return at, filed, err
 	}
 	landed := cell.Cell{ID: at.ID, Root: dest}

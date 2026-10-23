@@ -42,6 +42,8 @@ func (h *staleHolder) answer(root string) {
 			raw, _ := os.ReadFile(session.Place{Dir: root}.Transcript())
 			session.CancelTakeover(root)
 			_ = filelock.Unlock(h.file)
+			// K3: retiring a session also closes its journal before NTFS replaces it.
+			_ = h.file.Close()
 			h.released <- string(raw)
 			return
 		}

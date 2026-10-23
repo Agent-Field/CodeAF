@@ -4,17 +4,19 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/furrowbin"
 )
 
-// TestC11WindowsIdentityDoors proves C11 without opening a terminal or a relay.
-// Remote-access device books remain present independently of shared chats.
-func TestC11WindowsIdentityDoors(t *testing.T) {
-	assertCellCommandsRefuse(t, cell.WindowsReason)
+// TestK1WindowsIdentityDoors proves K1 without opening a terminal or a relay.
+// Remote-access device books remain available when the engine is absent.
+func TestK1WindowsIdentityDoors(t *testing.T) {
+	t.Cleanup(cell.UseAvailabilityInTests(false))
+	assertCellCommandsRefuse(t, furrowbin.CellsUnavailable)
 	kinds := openDeviceKinds()
 	if len(kinds) != 1 {
-		t.Fatalf("Windows has %d device kinds, want only remote access", len(kinds))
+		t.Fatalf("missing engine has %d device kinds, want remote access", len(kinds))
 	}
 	if _, ok := kinds[0].(bookKind); !ok {
-		t.Fatalf("Windows lost remote-access devices: %T", kinds[0])
+		t.Fatalf("lost remote-access devices: %T", kinds[0])
 	}
 }

@@ -473,7 +473,7 @@ your home directory.
 
 ## An older engine cannot move chats — what happens when a new window needs them
 
-Moving chats is available by default on Linux and macOS with a compatible engine.
+Moving chats is available by default on Linux, macOS and native Windows with a compatible engine.
 An older engine may lack that capability. **An idle engine without it is restarted**,
 with one line saying so: `restarted the idle engine because it ran without moving chats; moving chats available now`.
 **An engine that is still working is left alone** and the window says what to do:

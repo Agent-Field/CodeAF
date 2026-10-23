@@ -1,7 +1,6 @@
 package cell
 
 import (
-	"runtime"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/furrowbin"
@@ -15,9 +14,6 @@ func TestC27EnvironmentCannotDisableMovingChats(t *testing.T) {
 		t.Run("env="+value, func(t *testing.T) {
 			t.Setenv("CODEAF_CELLS", value)
 			want := ""
-			if runtime.GOOS == "windows" {
-				want = WindowsReason
-			}
 			if got := UnavailableReason(); got != want {
 				t.Fatalf("UnavailableReason() = %q, want %q", got, want)
 			}
@@ -33,9 +29,6 @@ func TestC27EnvironmentCannotDisableMovingChats(t *testing.T) {
 func TestC27MissingEngineStaysAbsent(t *testing.T) {
 	t.Cleanup(UseAvailabilityInTests(false))
 	want := furrowbin.CellsUnavailable
-	if runtime.GOOS == "windows" {
-		want = WindowsReason
-	}
 	if Available() || UnavailableReason() != want {
 		t.Fatalf("missing engine: %q", UnavailableReason())
 	}

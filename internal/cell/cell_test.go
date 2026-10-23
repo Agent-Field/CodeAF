@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -119,9 +118,9 @@ func TestIDsSortByTime(t *testing.T) {
 	}
 }
 
-// TestEnabled proves C27.1 and C27.3: supported platforms need no opt-in.
+// TestEnabled proves C27.1 and K1: every shipped platform needs no opt-in.
 func TestEnabled(t *testing.T) {
-	if got, want := Enabled(), runtime.GOOS != "windows"; got != want {
+	if got, want := Enabled(), true; got != want {
 		t.Fatalf("Enabled() = %v, want %v", got, want)
 	}
 }

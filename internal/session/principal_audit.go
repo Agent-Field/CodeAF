@@ -55,7 +55,9 @@ import (
 	"strings"
 	"time"
 
+	procexec "github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/shell"
 	"github.com/Agent-Field/codeaf/internal/verify"
 )
 
@@ -194,7 +196,7 @@ func (a *Agent) checkNow(ctx context.Context, tree, check string) (CheckRun, boo
 		return CheckRun{Command: check, Unread: notEnoughTimeToRun + check}, false
 	}
 	started := time.Now()
-	run := runOneCheck(ctx, tree, check, window)
+	run := runOneCheck(procexec.With(ctx, a.config.seatFor(ctx)), tree, check, window)
 	took := time.Since(started)
 	after := treeStateNow(tree)
 	moved := after != state
@@ -248,8 +250,17 @@ func runOneCheck(ctx context.Context, tree, check string, windows ...time.Durati
 	}
 	ctx, done := context.WithTimeout(ctx, window)
 	defer done()
-	command := exec.CommandContext(ctx, "bash", "-c", check)
-	command.Dir = tree
+	bash, err := shell.Bash()
+	if err != nil {
+		return CheckRun{Command: check, Tail: err.Error()}
+	}
+	// I0: the check uses its caller's seat, while retaining its unbounded drain.
+	command, err := procexec.For(ctx).In(tree).Command(ctx, procexec.ExecRequest{
+		Argv: []string{bash, "-c", check}, WaitDelay: -1,
+	})
+	if err != nil {
+		return CheckRun{Command: check, Tail: err.Error()}
+	}
 	output, err := command.CombinedOutput()
 	// A COMMAND THAT RAN AND A COMMAND THAT COULD NOT BE RUN ARE DIFFERENT NEWS.
 	// An exit status — whatever it was — is the shell having executed the thing

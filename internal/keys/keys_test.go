@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -43,6 +44,7 @@ func TestRoundTrip(t *testing.T) {
 	}
 }
 
+// K3 keeps the vault encrypted on Windows; its user profile supplies account access control.
 func TestFilesArePrivateAndSealed(t *testing.T) {
 	v, home := mustOpen(t)
 	if err := v.Put("id1", Entry{Name: "K", Value: "hunter2-plain", Scope: "p"}); err != nil {
@@ -50,7 +52,7 @@ func TestFilesArePrivateAndSealed(t *testing.T) {
 	}
 	for _, name := range []string{"vault.enc", "identity.json"} {
 		info, err := os.Stat(filepath.Join(home, name))
-		if err != nil || info.Mode().Perm() != 0o600 {
+		if err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0o600) {
 			t.Fatalf("%s: %v %v", name, info, err)
 		}
 	}

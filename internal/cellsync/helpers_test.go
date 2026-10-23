@@ -232,6 +232,7 @@ func readFiles(t *testing.T, root string) map[string]string {
 		}
 		raw, err := os.ReadFile(p)
 		rel, _ := filepath.Rel(root, p)
+		rel = filepath.ToSlash(rel)
 		out[rel] = string(raw)
 		return err
 	})

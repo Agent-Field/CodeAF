@@ -47,7 +47,7 @@ embed: manual-pack-law
 # ── the furrow that rides inside ────────────────────────────────────────────
 #
 # Unix builds carry furrow, so the build fetches it before producing codeaf.
-# Windows omits the Unix-only engine and uses WSL for chat movement.
+# Windows embeds the native engine through the same artifact door.
 # This step downloads the release pinned in
 # internal/furrowbin/pin.json for whatever platform is being built for, checks
 # it against the sha256 the pin names, keeps it in a gitignored third_party/
@@ -79,9 +79,7 @@ FURROW_SOURCE ?=
 FURROW_SOURCE_TARGET = $(if $(CARGO_TARGET_DIR),$(CARGO_TARGET_DIR),$(FURROW_SOURCE)/target)
 
 furrow:
-ifeq ($(FURROW_GOOS),windows)
-	@env -u GOOS -u GOARCH go run ./internal/furrowbin/cmd/fetch -omit
-else ifneq ($(strip $(FURROW_SOURCE)),)
+ifneq ($(strip $(FURROW_SOURCE)),)
 	cd "$(FURROW_SOURCE)" && cargo build --release --locked -p furrow-cli
 	@env -u GOOS -u GOARCH go run ./internal/furrowbin/cmd/fetch \
 		-goos=$(FURROW_GOOS) -goarch=$(FURROW_GOARCH) \

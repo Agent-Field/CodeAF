@@ -3,7 +3,9 @@ package session
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/shell"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"strings"
 )
@@ -75,10 +77,9 @@ func (a *Agent) movedToolArguments(tool string, args json.RawMessage) (json.RawM
 			if err != nil {
 				return nil, "", err
 			}
-		} else if filepath.IsAbs(value) {
-			clean := filepath.Clean(value)
-			if rel := relativeTo(meta.Origin, clean); len(rel) > 0 {
-				mapped = filepath.Join(root, filepath.FromSlash(rel[0]))
+		} else {
+			if rel, ok := movedRelative(meta.Origin, value); ok {
+				mapped = filepath.Join(root, filepath.FromSlash(rel))
 				if err := checkMovedDestination(root, mapped); err != nil {
 					return nil, "", err
 				}
@@ -99,7 +100,38 @@ func (a *Agent) movedToolArguments(tool string, args json.RawMessage) (json.RawM
 // movedCommand replaces whole absolute path prefixes, including quoted paths
 // and flag values, while leaving similarly named sibling folders untouched.
 func movedCommand(command, origin, workspace string) (string, error) {
-	origin = filepath.Clean(origin)
+	// Source paths must be parsed in the source computer's grammar, not the
+	// destination's filepath grammar (K4). Accept both Windows slash spellings.
+	roots := []string{origin}
+	if windowsSource(origin) {
+		normalized := strings.ReplaceAll(origin, "\\", "/")
+		for _, variant := range []string{normalized, strings.ReplaceAll(normalized, "/", "\\")} {
+			if variant != origin {
+				roots = append(roots, variant)
+			}
+		}
+	}
+	for _, source := range roots {
+		var err error
+		command, err = movedCommandFrom(command, source, workspace)
+		if err != nil {
+			return "", err
+		}
+	}
+	return command, nil
+}
+
+func movedCommandFrom(command, origin, workspace string) (string, error) {
+	if origin == "" {
+		return command, nil
+	}
+	if origin != "/" {
+		origin = strings.TrimRight(origin, "/\\")
+	}
+	replacement := shell.ListPath(workspace)
+	if origin == "/" {
+		replacement = strings.TrimRight(replacement, "/") + "/"
+	}
 	var out strings.Builder
 	var quote byte
 	escaped := false
@@ -111,7 +143,7 @@ func movedCommand(command, origin, workspace string) (string, error) {
 		}
 		end := at + len(origin)
 		before := at == 0 || strings.ContainsRune(" \t\r\n\"'`=(:;|&<>{[", rune(command[at-1]))
-		after := end == len(command) || strings.ContainsRune("/ \t\r\n\"'`;|&<>)}]", rune(command[end]))
+		after := origin == "/" || end == len(command) || strings.ContainsRune("/\\ \t\r\n\"'`;|&<>)}]", rune(command[end]))
 		for i := 0; i < at; i++ {
 			c := command[i]
 			switch {
@@ -133,7 +165,11 @@ func movedCommand(command, origin, workspace string) (string, error) {
 			for pathEnd < len(command) && !strings.ContainsRune(" \t\r\n\"'`;|&<>():,[]{}", rune(command[pathEnd])) {
 				pathEnd++
 			}
-			path := filepath.Clean(workspace + command[end:pathEnd])
+			suffix := command[end:pathEnd]
+			if windowsSource(origin) {
+				suffix = strings.ReplaceAll(suffix, "\\", "/")
+			}
+			path := filepath.Join(workspace, filepath.FromSlash(strings.TrimLeft(suffix, "/")))
 			if err := checkMovedDestination(workspace, path); err != nil {
 				return "", err
 			}
@@ -141,11 +177,16 @@ func movedCommand(command, origin, workspace string) (string, error) {
 			// one did not. Escape only the replacement for its current shell quote.
 			switch quote {
 			case '\'':
-				out.WriteString(strings.ReplaceAll(workspace, "'", "'\"'\"'"))
+				out.WriteString(strings.ReplaceAll(replacement, "'", "'\"'\"'"))
 			case '"':
-				out.WriteString(strings.NewReplacer("\\", "\\\\", "$", "\\$", "`", "\\`", "\"", "\\\"").Replace(workspace))
+				out.WriteString(strings.NewReplacer("\\", "\\\\", "$", "\\$", "`", "\\`", "\"", "\\\"").Replace(replacement))
 			default:
-				out.WriteString("'" + strings.ReplaceAll(workspace, "'", "'\"'\"'") + "'")
+				out.WriteString("'" + strings.ReplaceAll(replacement, "'", "'\"'\"'") + "'")
+			}
+			if windowsSource(origin) {
+				out.WriteString(suffix)
+				command = command[pathEnd:]
+				continue
 			}
 		} else {
 			out.WriteString(origin)
@@ -180,4 +221,33 @@ func checkMovedDestination(root, path string) error {
 		}
 		path = parent
 	}
+}
+
+// windowsSource recognizes a recorded drive or UNC path without consulting this
+// machine's filesystem. The origin determines case semantics during a move (K4).
+func windowsSource(value string) bool {
+	return len(value) >= 3 && value[1] == ':' && (value[2] == '/' || value[2] == '\\') || strings.HasPrefix(value, "\\\\") || strings.HasPrefix(value, "//")
+}
+
+// movedRelative resolves only absolute paths within the original workspace.
+// Cleaning with path instead of filepath keeps Unix roots meaningful on Windows.
+func movedRelative(origin, value string) (string, bool) {
+	if windowsSource(origin) {
+		origin = strings.ReplaceAll(origin, "\\", "/")
+		value = strings.ReplaceAll(value, "\\", "/")
+	} else if !strings.HasPrefix(value, "/") {
+		return "", false
+	}
+	root, full := pathpkg.Clean(origin), pathpkg.Clean(value)
+	compareRoot, compareFull := root, full
+	if windowsSource(origin) {
+		compareRoot, compareFull = strings.ToLower(root), strings.ToLower(full)
+	}
+	if compareFull == compareRoot {
+		return ".", true
+	}
+	if !strings.HasPrefix(compareFull, strings.TrimRight(compareRoot, "/")+"/") {
+		return "", false
+	}
+	return full[len(strings.TrimRight(root, "/"))+1:], true
 }

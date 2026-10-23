@@ -3,6 +3,7 @@ package cellstore
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -12,6 +13,9 @@ import (
 // fakeEngineBinary writes a script that answers every call with help text.
 func fakeEngineBinary(t *testing.T, help string) string {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		return fakeNativeEngine(t, help)
+	}
 	path := filepath.Join(t.TempDir(), "furrow")
 	script := "#!/bin/sh\ncat <<'EOF'\n" + help + "\nEOF\n"
 	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {

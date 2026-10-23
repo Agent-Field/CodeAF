@@ -5,8 +5,8 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"github.com/Agent-Field/codeaf/internal/sqliteuri"
 	"io"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -67,6 +67,9 @@ func empty(path string) (bool, error) {
 
 func emptyTree(dir string) (bool, error) {
 	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return true, err
+	}
 	for _, e := range entries {
 		if used, err := empty(filepath.Join(dir, e.Name())); used || err != nil {
 			return true, err
@@ -153,7 +156,13 @@ func bareGraph(path string) (bool, error) {
 	if sound, err := soundDatabase(path); !sound || err != nil {
 		return true, err
 	}
-	db, err := sql.Open("sqlite", (&url.URL{Scheme: "file", Opaque: filepath.ToSlash(path), RawQuery: "mode=ro"}).String())
+	// K3: this is a filesystem path, including a Windows drive or literal %/#.
+	uri, err := sqliteuri.FromPath(path)
+	if err != nil {
+		return true, err
+	}
+	uri.RawQuery = "mode=ro"
+	db, err := sql.Open("sqlite", uri.String())
 	if err != nil {
 		return true, err
 	}

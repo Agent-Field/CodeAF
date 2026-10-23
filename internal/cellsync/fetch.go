@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"os"
 	"path/filepath"
 	"sync"
@@ -243,7 +244,7 @@ func writeWhole(inbox string, o blobstore.Object) error {
 	if err := os.WriteFile(tmp, o.Bytes, 0o600); err != nil {
 		return err
 	}
-	return os.Rename(tmp, filepath.Join(inbox, o.RID))
+	return fsreplace.Rename(tmp, filepath.Join(inbox, o.RID))
 }
 
 // failed reports whether a write has already been refused, so the spawn

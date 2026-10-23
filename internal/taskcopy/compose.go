@@ -22,7 +22,8 @@ type Carry struct{ Cutter Cutter }
 // into the cell's .cell/trees/. It is one of the things a seal composes before
 // the engine captures the tree, and it is exact: a copy that is gone (its task
 // finished and its folder was removed) leaves nothing behind, and a copy with no
-// edits leaves only its record.
+// ordinary edits leaves only its record. A clean file with mixed line endings
+// carries its raw bytes, because a checkout cannot reconstruct their layout.
 func (Carry) Compose(c cell.Cell) error {
 	live := liveCopies(liveRoot(c))
 	if err := dropCarriedExcept(carriedRoot(c), live); err != nil {
@@ -85,6 +86,11 @@ func carry(tree, dest string) error {
 	if err != nil {
 		return err
 	}
+	styles, mixed, err := checkoutEOL(tree)
+	if err != nil {
+		return err
+	}
+	changed = append(changed, mixed...)
 	present, deleted := partition(tree, withoutSecrets(tree, changed))
 	if _, err := mirror.Sync(tree, filepath.Join(dest, filesDir), present); err != nil {
 		return err
@@ -93,7 +99,7 @@ func carry(tree, dest string) error {
 	if err := carryCommits(tree, branch, strings.TrimSpace(head), dest); err != nil {
 		return err
 	}
-	return writeRecord(dest, record{Branch: branch, Head: strings.TrimSpace(head), Deleted: deleted, Linked: isLinkedWorktree(tree), Modes: modesOfTree(tree)})
+	return writeRecord(dest, record{Branch: branch, Head: strings.TrimSpace(head), Deleted: deleted, Linked: isLinkedWorktree(tree), Modes: portableModes(tree, dest), EOL: styles})
 }
 
 // carryCommits keeps dest's bundle of the commits only this copy holds in step
