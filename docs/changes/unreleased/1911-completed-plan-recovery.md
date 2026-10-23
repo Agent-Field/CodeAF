@@ -12,3 +12,6 @@ Existing task-page and conversation decisions can land the saved work and report
 its actual commit. Ownership, branch and Stop checks remain enforced; failed
 checkpoint or page-receipt writes report the actual outcome without claiming
 that a completed merge was rolled back or safely recorded.
+
+When the last checkpoint predates the final spending receipt, recovery restores
+the run's price from its existing ledger without charging the conversation again.
