@@ -883,7 +883,7 @@ the task stops on the one thing to do, which leads its line in place of `/redo s
 continue`, `reconnect openrouter with /connect`, or when the limit resets. What each route did is kept: a route
 that refused a model is left out for a week, one at its limit rests until its reset, an
 account out of credit is skipped until a paid call on it answers again. Free routes are
-off unless you turn them on, including after a payment refusal or a low-balance reading.
+off unless you enable them, including after a payment refusal or a low-balance reading.
 With free routes off, the task tries eligible connected alternatives or stops with
 `add credit on openrouter to continue`; your work stays saved. You can add credit,
 connect another provider, or explicitly enable free routes in `/crew`. When enabled,
@@ -1070,9 +1070,9 @@ provider's policy and your account's settings there. codeaf's own usage counts c
 content (`docs/TELEMETRY.md` in the repository lists every field they carry).
 
 **Free routes may log prompts.** A provider's free pool of a model (an OpenRouter `…:free`
-id) may log or train on what it is sent. The crew uses free routes only when you turn
-them on — the `free routes` switch at the end of `/crew`'s providers list. A low balance,
-remembered payment refusal, or live payment refusal never turns that switch on or
+id) may log or train on what it is sent. The crew uses free routes only when you enable
+them — the `free routes` switch at the end of `/crew`'s providers list. A low balance,
+remembered payment refusal, or live payment refusal never enables that switch or
 sends a task to a free pool behind your back. Existing paid, subscription and local
 connections remain eligible. If none can serve the task, its work stays saved and
 its line explains how to continue: add credit or reconnect the provider. You can
@@ -1080,7 +1080,7 @@ also explicitly enable free routes in `/crew` if their privacy tradeoff is accep
 
 An explicit choice of a named `:free` model — in `/model`, a helper row, or a crew pin —
 permits that named route even with the automatic switch off. It does not permit
-other free fallback models. Turning the switch off also excludes free routes from
+other free fallback models. Disabling automatic free routes also excludes them from
 saved automatic fallback ladders. When free routes are enabled, a seat tries at
 most three pools per task, within your allowed models and spend limits, and the
 crew line says `free routes in use (may log prompts)`.
