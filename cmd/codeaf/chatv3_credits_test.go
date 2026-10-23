@@ -22,6 +22,9 @@ import (
 func TestStartedConversationResolvesCurrentCreditDefault(t *testing.T) {
 	t.Setenv(config.ModelEnv, "")
 	dir := t.TempDir()
+	if err := config.SetCrewFreeRoutes(dir, true); err != nil {
+		t.Fatal(err)
+	}
 	if err := config.WriteAPIKey(dir, "key"); err != nil {
 		t.Fatal(err)
 	}
@@ -219,6 +222,9 @@ func TestProcessWatcherDropsAReadSupersededByAChangedKey(t *testing.T) {
 
 func TestEngineStartUsesTheCurrentDefaultAndItsWindow(t *testing.T) {
 	proc := v3TestProcess(t)
+	if err := config.SetCrewFreeRoutes(proc.ProfileDir, true); err != nil {
+		t.Fatal(err)
+	}
 	opts := v3Options{Workspace: t.TempDir(), Interactive: true}
 	boot, err := openV3Launch(proc, opts)
 	if err != nil {
@@ -307,6 +313,9 @@ func TestLocalCreditDoorReadsOnlyDefaultServiceAndStoresNoBalance(t *testing.T) 
 func TestAFreshConversationOpensOnTheDefaultTheBalanceAnswersNow(t *testing.T) {
 	t.Setenv(config.ModelEnv, "")
 	dir := t.TempDir()
+	if err := config.SetCrewFreeRoutes(dir, true); err != nil {
+		t.Fatal(err)
+	}
 	if err := config.WriteAPIKey(dir, "key"); err != nil {
 		t.Fatal(err)
 	}

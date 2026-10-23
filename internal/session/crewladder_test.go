@@ -128,11 +128,24 @@ func crewStubAgent(t *testing.T, stub *crewStub) (*Agent, string) {
 
 // askWorker routes one task and makes its worker's first call through the
 // seat ladder, as the run engine does.
-func askWorker(t *testing.T, agent *Agent, row uint64) (*beltRun, error) {
+func askWorker(t *testing.T, agent *Agent, row uint64, freeRecovery ...bool) (*beltRun, error) {
 	t.Helper()
 	crew, err := agent.routeTaskCrew(t.Context(), row, "fix: the parser crashes on empty input", "Traceback: ValueError")
 	if err != nil {
 		return nil, err
+	}
+	// These controls opt into free recovery after the paid crew was selected,
+	// so the first 402 still exercises the fallback boundary. Other tests retain
+	// the profile's original choice.
+	if len(freeRecovery) > 0 && freeRecovery[0] {
+		if err := config.SetCrewFreeRoutes(agent.config.ProfileDir, true); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := config.SetCrewFreeRoutes(agent.config.ProfileDir, false); err != nil {
+				t.Fatal(err)
+			}
+		}()
 	}
 	run := &beltRun{row: row, crew: crew}
 	worker := crew.current().Seat(crewroute.Worker).Send
@@ -152,7 +165,7 @@ func TestTheSeatLadderReachesTheFreePoolsOnAnAccountOutOfCredit(t *testing.T) {
 	stub := newCrewStub(t, http.StatusPaymentRequired, free)
 	agent, _ := crewStubAgent(t, stub)
 
-	run, err := askWorker(t, agent, 1)
+	run, err := askWorker(t, agent, 1, true)
 	if err != nil {
 		t.Fatalf("task 1: %v (asked %v)", err, stub.models())
 	}
@@ -167,7 +180,7 @@ func TestTheSeatLadderReachesTheFreePoolsOnAnAccountOutOfCredit(t *testing.T) {
 	stub.mu.Lock()
 	stub.asked, stub.free["z-ai/glm-5.3-flash:free"] = nil, http.StatusTooManyRequests
 	stub.mu.Unlock()
-	if _, err := askWorker(t, agent, 2); err != nil {
+	if _, err := askWorker(t, agent, 2, true); err != nil {
 		t.Fatalf("task 2: %v (asked %v)", err, stub.models())
 	}
 	if got := stub.models(); len(got) < 2 || got[0] != "z-ai/glm-5.3-flash" || got[len(got)-1] != "vendor/stranger:free" {
@@ -177,7 +190,7 @@ func TestTheSeatLadderReachesTheFreePoolsOnAnAccountOutOfCredit(t *testing.T) {
 	stub.mu.Lock()
 	stub.free["vendor/stranger:free"] = http.StatusTooManyRequests
 	stub.mu.Unlock()
-	run, err = askWorker(t, agent, 3)
+	run, err = askWorker(t, agent, 3, true)
 	var stopped crewStopped
 	if !errors.As(err, &stopped) || stopped.action != "add credit on openrouter to continue" {
 		t.Fatalf("task 3 ended %v, want the one action", err)
@@ -227,13 +240,13 @@ func TestNoCallReachesAQuarantinedRoute(t *testing.T) {
 		IntelligenceIndex: 24.2, CodingIndex: 56.2, AgenticIndex: 22.2, ContextLength: 1048576, Parameters: []string{"tools"}})
 	config.CrewCatalog = func() []catalog.Model { return rows }
 
-	if _, err := askWorker(t, agent, 1); err != nil {
+	if _, err := askWorker(t, agent, 1, true); err != nil {
 		t.Fatalf("task 1: %v (asked %v)", err, stub.models())
 	}
 	stub.mu.Lock()
 	stub.asked = nil
 	stub.mu.Unlock()
-	run, err := askWorker(t, agent, 2)
+	run, err := askWorker(t, agent, 2, true)
 	if err != nil {
 		t.Fatalf("task 2: %v (asked %v)", err, stub.models())
 	}
@@ -288,6 +301,9 @@ func TestEveryRouteDownStopsWithinThreeFreePools(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := config.SetCrewFreeRoutes(agent.config.ProfileDir, true); err != nil {
+		t.Fatal(err)
+	}
 	run := &beltRun{row: 1, crew: crew}
 	began := time.Now()
 	// EVERY SEAT, AND THE WORKER AGAIN: the engine asks each seat, and asks a
@@ -337,7 +353,7 @@ func TestNoRoadReachesARouteThatRefusedThisTask(t *testing.T) {
 	if !config.CrewRouteAnswers(dir, "z-ai/glm-5.3-flash") {
 		t.Fatal("the route was resting before anything refused it")
 	}
-	if _, err := askWorker(t, agent, 1); err != nil {
+	if _, err := askWorker(t, agent, 1, true); err != nil {
 		t.Fatalf("task 1: %v (asked %v)", err, stub.models())
 	}
 	glm := func() int {
@@ -447,7 +463,7 @@ func TestTheDefaultProfileKeepsHelpersOffARefusedRoute(t *testing.T) {
 	stub := newCrewStub(t, http.StatusOK, map[string]int{"z-ai/glm-5.3-flash:free": http.StatusOK})
 	stub.only = map[string]int{"z-ai/glm-5.3-flash": http.StatusForbidden}
 	agent := crewStubAgentOnDefault(t, stub, nil)
-	if _, err := askWorker(t, agent, 1); err != nil {
+	if _, err := askWorker(t, agent, 1, true); err != nil {
 		t.Fatalf("task 1: %v (asked %v)", err, stub.models())
 	}
 	_, _, _ = agent.callRole(t.Context(), roles.RoleWorker, "z-ai/glm-5.3-flash",
