@@ -16,6 +16,11 @@ read model, so the desktop can show a real check wait inside its existing shared
 Activity. Production app sleep/wake now reports runner presence. Manual keeps
 its existing approval meaning; a check wait does not become a failed assertion.
 
+If the initial delivery artifact cannot be saved, cleanup retains the original
+mirror so unacknowledged results and spending are not erased. Completion refusals
+also preserve the recovery owner's newer stopped assessment instead of withdrawing
+it with the model's stale claim.
+
 This is incident containment. It does not add an explicit coverage manifest,
 transactional cross-crash accounting, automatic old-lease replay, process
 reconciliation after arbitrary crashes, or bounded asleep-lease retention.
