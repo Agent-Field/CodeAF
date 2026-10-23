@@ -386,7 +386,17 @@ type PRReadProblem struct {
 	Retryable bool   `json:"retryable"`
 }
 
+// PRFeedback stores the semantic review cursor separately from display text.
+type PRFeedback struct {
+	ID       string
+	Revision string
+	Resolved bool
+	External bool
+}
+
 type PullRequest struct {
+	FeedbackItems    []PRFeedback    `json:",omitempty"`
+	FeedbackTracked  bool            `json:",omitempty"`
 	Problems         []PRReadProblem `json:",omitempty"`
 	ReadinessKey     string          `json:",omitempty"`
 	ReadinessContext string          `json:",omitempty"`
@@ -689,10 +699,11 @@ type FileChange struct {
 // run's conclusion when it finished, otherwise its status: `success`,
 // `failure`, `in_progress`, `queued`), and its page.
 type CheckRun struct {
-	AppID int `json:",omitempty"`
-	Name  string
-	State string
-	URL   string
+	Source string `json:",omitempty"`
+	AppID  int    `json:",omitempty"`
+	Name   string
+	State  string
+	URL    string
 }
 
 // Event is one line of an item's activity: when, and what, in a few plain

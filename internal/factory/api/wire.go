@@ -685,6 +685,8 @@ type Answer = factory.Answer
 // The job's state stays done; this field is how a reader tells PR open from
 // Merged. Contract stays 2.
 type PR struct {
+	FeedbackItems   []factory.PRFeedback    `json:"feedback_items,omitempty"`
+	FeedbackTracked bool                    `json:"feedback_tracked,omitempty"`
 	Problems        []factory.PRReadProblem `json:"problems,omitempty"`
 	ReadinessKey    string                  `json:"readiness_key,omitempty"`
 	BaseSHA         string                  `json:"base_sha,omitempty"`
@@ -797,9 +799,10 @@ type File struct {
 
 // CheckRun is one check on a pull request's head (desk).
 type CheckRun struct {
-	Name  string `json:"name"`
-	State string `json:"state"`
-	URL   string `json:"url,omitempty"`
+	Source string `json:"source,omitempty"`
+	Name   string `json:"name"`
+	State  string `json:"state"`
+	URL    string `json:"url,omitempty"`
 }
 
 // Activity is one line of a job's own short history (desk).

@@ -54,12 +54,14 @@ func (c *stageConversation) executionNotes(fresh bool) ([]string, *factory.TestC
 	var journalErr error
 	checks, checkErr := verification.Read(c.file)
 	observed := map[string]bool{}
-	latest := map[string]verification.Check{}
+	latest, superseded := verification.RequiredChecks(checks, state, fresh)
 	for _, check := range checks {
 		observed[check.Command] = true
-		latest[check.Key()] = check
 	}
 	corrected := map[string]bool{}
+	for command := range superseded {
+		notes = append(notes, "Corrected verification invocation: "+command)
+	}
 	for _, check := range latest {
 		if !verification.PresentationOnly(check.Command) {
 			continue
@@ -173,7 +175,7 @@ func (c *stageConversation) executionNotes(fresh bool) ([]string, *factory.TestC
 		pending = append(pending, "command journal could not be decoded: "+journalErr.Error())
 	}
 	for command, outcome := range lastOutcome {
-		if outcome == "failed" && !(verification.PresentationOnly(command) && corrected[verificationCommand(command)]) {
+		if outcome == "failed" && !(verification.PresentationOnly(command) && (corrected[verificationCommand(command)] || superseded[command])) {
 			pending = append(pending, command)
 		}
 	}
@@ -195,7 +197,11 @@ func (c *stageConversation) executionNotes(fresh bool) ([]string, *factory.TestC
 		raw, _ := json.Marshal(map[string]any{"command": check.Command, "check": check.Args, "cwd": check.Cwd, "exit": check.Exit, "outcome": outcome, "before": check.Before, "after": check.After})
 		notes = append(notes, "Check receipt: "+string(raw))
 		if outcome != "passed" {
-			pending = append(pending, check.Label()+" · "+outcome)
+			if why := check.InvocationProblem(); why != "" {
+				pending = append(pending, check.Label()+" · invalid test command: "+why)
+			} else {
+				pending = append(pending, check.Label()+" · "+outcome)
+			}
 		} else if fresh && !check.Fresh(state) {
 			pending = append(pending, check.Label()+" · verification is stale or unbound to this checkout; rerun after the last change")
 		}

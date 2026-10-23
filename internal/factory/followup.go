@@ -2,7 +2,9 @@ package factory
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -18,22 +20,27 @@ const FollowBlockedAttempts = "attempts"
 // PRFollowUp keeps the publication record and the PR maintenance cursor.
 // Every later tested head receives its own service-side publication approval.
 type PRFollowUp struct {
-	Readiness      *PRReadiness `json:"readiness,omitempty"`
-	ReviewKey      string       `json:"review_key,omitempty"`
-	Kind           string       `json:"kind"`
-	State          string       `json:"state"`
-	BlockedBy      string       `json:"blocked_by,omitempty"`
-	HeadSHA        string       `json:"head_sha,omitempty"`
-	ObservedFrom   string       `json:"observed_from,omitempty"`
-	Attempt        int          `json:"attempt"`
-	Limit          int          `json:"limit"`
-	Reason         string       `json:"reason"`
-	AllowedPaths   []string     `json:"allowed_paths,omitempty"` // legacy context, not a restriction
-	Details        string       `json:"details,omitempty"`
-	EventKey       string       `json:"event_key,omitempty"`
-	Request        string       `json:"request,omitempty"`
-	AutoPush       bool         `json:"auto_push,omitempty"`
-	PublishConsent string       `json:"publish_consent,omitempty"`
+	Reviewed        map[string]string `json:"reviewed,omitempty"`
+	Inspecting      map[string]string `json:"inspecting,omitempty"`
+	PendingFeedback int               `json:"pending_feedback,omitempty"`
+	Monitoring      string            `json:"monitoring,omitempty"`
+	RecoveryVersion int               `json:"recovery_version,omitempty"`
+	Readiness       *PRReadiness      `json:"readiness,omitempty"`
+	ReviewKey       string            `json:"review_key,omitempty"`
+	Kind            string            `json:"kind"`
+	State           string            `json:"state"`
+	BlockedBy       string            `json:"blocked_by,omitempty"`
+	HeadSHA         string            `json:"head_sha,omitempty"`
+	ObservedFrom    string            `json:"observed_from,omitempty"`
+	Attempt         int               `json:"attempt"`
+	Limit           int               `json:"limit"`
+	Reason          string            `json:"reason"`
+	AllowedPaths    []string          `json:"allowed_paths,omitempty"` // legacy context, not a restriction
+	Details         string            `json:"details,omitempty"`
+	EventKey        string            `json:"event_key,omitempty"`
+	Request         string            `json:"request,omitempty"`
+	AutoPush        bool              `json:"auto_push,omitempty"`
+	PublishConsent  string            `json:"publish_consent,omitempty"`
 }
 type CIRepairResult struct {
 	Decision  string           `json:"decision"`
@@ -108,6 +115,7 @@ func WatchPublishedPR(it *Item) {
 	if it.FollowUp == nil {
 		it.FollowUp = &PRFollowUp{Kind: "pr", Limit: DefaultPRRepairAttempts}
 	}
+	AcknowledgeReview(it)
 	f := *it.FollowUp
 	f.Request = ""
 	f.BlockedBy = ""
@@ -130,7 +138,12 @@ func followEvent(pr *PullRequest, request string) string {
 	for _, r := range pr.Reviews {
 		fmt.Fprintf(&b, "|%s:%s:%s:%s", r.By, r.State, r.At.Format(time.RFC3339Nano), r.Body)
 	}
-	fmt.Fprintf(&b, "|%s|%s", pr.Feedback, pr.ReadinessKey)
+	if pr.FeedbackTracked {
+		versions, _ := json.Marshal(ReviewVersions(pr))
+		fmt.Fprintf(&b, "|%s|%s", versions, pr.ReadinessKey)
+	} else {
+		fmt.Fprintf(&b, "|%s|%s", pr.Feedback, pr.ReadinessKey)
+	}
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(b.String())))
 }
 
@@ -200,8 +213,54 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 			return true
 		}
 	}
+	// Observation and repair admission are separate. A parked repair continues
+	// to receive facts, but a critical decision or deliberate Stop owns control.
+	monitorChanged := false
+	if len(pr.Problems) > 0 {
+		reason := "GitHub monitoring incomplete: " + pr.Problems[0].Summary + " Reads will retry automatically."
+		monitorChanged = f.Monitoring != reason
+		f.Monitoring = reason
+	}
+	if pr.FeedbackTracked && !prProblemIn(pr, "feedback", "reviews") {
+		// A reopened thread is a new concern even when its text was not edited.
+		for _, r := range pr.FeedbackItems {
+			if r.Resolved && f.Reviewed[r.ID] != "" {
+				delete(f.Reviewed, r.ID)
+				monitorChanged = true
+			}
+		}
+		pending := unseenReviews(pr, f.Reviewed)
+		monitoring := "Watching CI, review feedback and conflicts."
+		if pending > 0 {
+			monitoring = fmt.Sprintf("Watching GitHub; %d review updates await follow-up.", pending)
+			if pending == 1 {
+				monitoring = "Watching GitHub; 1 review update awaits follow-up."
+			}
+		}
+		if len(pr.Problems) > 0 {
+			monitoring = f.Monitoring
+		}
+		monitorChanged = monitorChanged || f.PendingFeedback != pending || f.Monitoring != monitoring
+		f.PendingFeedback, f.Monitoring = pending, monitoring
+		if f.State == "needs_you" && ReviewPauseRecoverable(*it) && f.Attempt < f.Limit {
+			// Only genuinely new actionable revisions can wake an execution pause.
+			fresh := false
+			for id, v := range ReviewVersions(pr) {
+				if f.Inspecting[id] != v && f.Reviewed[id] != v {
+					fresh = true
+				}
+			}
+			if fresh {
+				it.State = StateShipped
+				it.Question, it.QKind = "", ""
+				it.Asking, it.Failure = nil, nil
+				f.State, f.BlockedBy = "watching", ""
+				monitorChanged = true
+			}
+		}
+	}
 	if it.Manual || pr.State != PROpen || it.State != StateShipped || (it.Merging != nil && it.Merging.State != MergeFailed) {
-		return false
+		return monitorChanged
 	}
 	if f.Limit < 1 {
 		f.Limit = DefaultPRRepairAttempts
@@ -211,7 +270,7 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 	if f.State == "needs_you" && f.BlockedBy == "" && f.Attempt < f.Limit && f.Reason == "Follow PR reached its repair or spending limit. Take over, or raise the limit and resume." {
 		f.BlockedBy = FollowBlockedBudget
 	}
-	releasedBudget := false
+	releasedBudget := monitorChanged
 	// Only a spending-owned pause may reopen on a fresh observation. Critical
 	// questions, Manual control and exhausted attempts retain their own doors.
 	if f.State == "needs_you" && f.BlockedBy == FollowBlockedBudget && Automatic(*it) && it.Question == "" && it.Cap > JobSpent(*it) && f.Attempt < f.Limit {
@@ -239,10 +298,13 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 	// starting a paid round each time. Wait for a complete read.
 	reviewsKnown := !prProblemIn(pr, "reviews", "review policy", "feedback")
 	needsReview := reviewsKnown && (pr.ReviewDecision == "changes_requested" || pr.Feedback != "") && reviewKey != f.ReviewKey
+	if pr.FeedbackTracked {
+		needsReview = reviewsKnown && unseenReviews(pr, f.Reviewed) > 0
+	}
 	needs := pr.Conflict || needsReview || f.Request != ""
 	// A failed policy/material read must not discard current CI or prevent a
 	// separate, known repair. Do not label incomplete monitoring as healthy.
-	if !needs && pr.Checks.Failed == 0 && len(pr.Problems) > 0 {
+	if !needs && !PRHasRepairableCheckFailure(pr) && len(pr.Problems) > 0 {
 		reason := pr.Problems[0].Summary
 		if pr.Draft {
 			reason = "Ready for review blocked: " + reason
@@ -256,11 +318,18 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 		return true
 	}
 	if !needs && (!pr.ChecksRead || pr.Checks.Pending > 0) {
+		reason := PRWaitingWords(pr)
+		if f.State != "watching" || f.Reason != reason {
+			f.State, f.Reason = "watching", reason
+			i := EnsureFollowPR(it)
+			it.Stream.Phases[i].Note = reason
+			return true
+		}
 		return releasedBudget
 	}
-	needs = needs || pr.Checks.Failed > 0
+	needs = needs || PRHasRepairableCheckFailure(pr)
 	// Monitoring failures and recoveries are independent of repair deduplication.
-	if needs && f.EventKey == key {
+	if needs && f.EventKey == key && !(pr.FeedbackTracked && needsReview) {
 		return releasedBudget
 	}
 	readinessQueued := false
@@ -293,7 +362,7 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 		if f.State == "healthy" {
 			return releasedBudget
 		}
-		f.State, f.Reason = "healthy", "Checks passed. Watching for review feedback and conflicts; awaiting your merge."
+		f.State, f.Reason = "healthy", PRWaitingWords(pr)
 		f.Attempt = 0
 		i := EnsureFollowPR(it)
 		it.Stream.Phases[i].State = PhaseWaiting
@@ -317,6 +386,9 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 		// A round started for CI or a conflict during an incomplete feedback
 		// read keeps the last complete review key.
 		f.ReviewKey = reviewKey
+		if pr.FeedbackTracked {
+			f.Inspecting = maps.Clone(ReviewVersions(pr))
+		}
 	}
 	if !readinessQueued {
 		f.Kind = "pr"

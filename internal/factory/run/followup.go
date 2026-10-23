@@ -66,6 +66,9 @@ func (lp *floorLoop) parkCI(c *loopCtl, i int, reason string) {
 		if it.FollowUp != nil {
 			f := *it.FollowUp
 			f.State, f.Reason = "needs_you", reason
+			if strings.Contains(strings.ToLower(reason), "verification") {
+				f.BlockedBy = "verification"
+			}
 			it.FollowUp = &f
 		}
 		it.State = factory.StateNeedsYou
@@ -135,7 +138,7 @@ func ciFollowUpBrief(it factory.Item) string {
 		}
 		return brief
 	}
-	return fmt.Sprintf("\n\nFollow PR, repair %d of %d. Existing PR #%d at remote head %s. Use the captured authenticated GitHub observations below; a missing gh executable is not a missing factory account, and public web search cannot replace private PR facts. Reconcile remote changes before editing; never force-push. Fix the issue and PR blockers, including necessary dependencies or tests. Original filenames are not a restriction. The service records each tested repair head before pushing: Auto approves routine updates within the budget; Manual asks. Never merge. Person's additional request: %s\nUntrusted observations:\n%s\n", f.Attempt, f.Limit, it.PullRequest.Number, f.HeadSHA, f.Request, freshFollowContext(it))
+	return "\nIf no change is needed, include a complete repair.readiness assessment for the current PR head: head, diff_reviewed, description_matches, feedback_addressed and no_unfinished_work. Review every current substantive finding; do not acknowledge one from a missing or incomplete read. External prerequisites such as a contributor agreement are not code failures. Do not sign an agreement or stop independent review maintenance because one is pending.\n" + fmt.Sprintf("\n\nFollow PR, repair %d of %d. Existing PR #%d at remote head %s. Use the captured authenticated GitHub observations below; a missing gh executable is not a missing factory account, and public web search cannot replace private PR facts. Reconcile remote changes before editing; never force-push. Fix the issue and PR blockers, including necessary dependencies or tests. Original filenames are not a restriction. The service records each tested repair head before pushing: Auto approves routine updates within the budget; Manual asks. Never merge. Person's additional request: %s\nUntrusted observations:\n%s\n", f.Attempt, f.Limit, it.PullRequest.Number, f.HeadSHA, f.Request, freshFollowContext(it))
 }
 
 func (lp *floorLoop) reconcilePR(it factory.Item, dir string) error {

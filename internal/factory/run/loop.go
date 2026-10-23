@@ -904,6 +904,17 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		if factory.IsCIRepairStage(st) && !readiness {
 			res = lp.completedPublishedRepair(job.Item, res)
 		}
+		if !readiness && factory.IsCIRepairStage(st) && job.Item.PullRequest != nil && job.Item.PullRequest.FeedbackTracked && res.Done && res.Repair != nil && res.Repair.Decision == "no_change" {
+			candidate := res
+			repair := *res.Repair
+			repair.Decision = "fixed"
+			candidate.Repair = &repair
+			if checked := lp.completedPublishedRepair(job.Item, candidate); checked.Repair.Decision != "no_change" {
+				res.Done, res.Exit = false, 1
+				res.Output = "The no-change review needs a complete assessment of current feedback on the clean published head. " + res.Output
+				res.Notes = append(res.Notes, verification.FailurePrefix+" current-head feedback review is incomplete or the checkout changed")
+			}
+		}
 		if readiness && (res.Repair == nil || (res.Repair.Decision != "needs_repair" && res.Repair.Decision != "needs_you")) && verificationReason(res) == "" {
 			head := ""
 			if a := job.Item.FollowUp.Readiness; a != nil {
@@ -965,13 +976,14 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		}
 		if !readiness && factory.IsCIRepairStage(st) && res.Done && res.Exit == 0 && res.Findings == 0 && verificationReason(res) == "" && res.Repair != nil && res.Repair.Decision == "no_change" {
 			fresh, _ := lp.r.opts.Store.Get(c.id)
-			if fresh.PullRequest == nil || fresh.PullRequest.Checks.Failed > 0 || fresh.PullRequest.Conflict {
+			if fresh.PullRequest == nil || factory.PRHasRepairableCheckFailure(fresh.PullRequest) || fresh.PullRequest.Conflict {
 				lp.parkCI(c, i, "The PR still has failing checks or conflicts and no repair was verified. "+res.Repair.Reason)
 			} else {
 				_ = lp.move(c, "", EventShipped, "Following PR", func(it *factory.Item) error {
 					if it.Question != "" || it.Asking != nil {
 						return errors.New("a pending decision already owns this job")
 					}
+					factory.AcknowledgeReview(it)
 					it.State = factory.StateShipped
 					it.Question, it.QKind = "", ""
 					it.Asking = nil
@@ -1006,6 +1018,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 					f.Reason = retry
 					if round >= limit {
 						f.State = "needs_you"
+						f.BlockedBy = "verification"
 					}
 					it.FollowUp = &f
 				}

@@ -119,3 +119,32 @@ func TestPublishedRepairNormalizationRequiresCurrentCleanHeadAndCompleteReport(t
 		})
 	}
 }
+
+func TestTrackedNoChangeCannotAcknowledgeFeedbackWithoutCurrentHeadAssessment(t *testing.T) {
+	dir := gitRig(t)
+	head := mustGit(t, dir, "rev-parse", "HEAD")
+	g := newRig(t, map[factory.StageKind]Executor{factory.StageChat: ExecutorFunc(func(_ context.Context, j Job) (factory.StageResult, error) {
+		return factory.StageResult{Done: true, Repair: &factory.CIRepairResult{Decision: "no_change", Reason: "looks done"}}, nil
+	})}, func(o *Options) { o.Workdir = func(factory.Item) (string, error) { return dir, nil } })
+	id := g.add("review feedback", chat("proof"))
+	if err := g.st.Update(id, func(it *factory.Item) error {
+		it.Cap = 10
+		it.State = factory.StateRunning
+		it.Publish = "pr"
+		it.HeadCommit = head
+		it.PullRequest = &factory.PullRequest{Number: 11, State: factory.PROpen, HeadSHA: head, FeedbackTracked: true, FeedbackItems: []factory.PRFeedback{{ID: "inline:1", Revision: "v1"}}}
+		it.FollowUp = &factory.PRFollowUp{State: "queued", Kind: "pr", HeadSHA: head, Attempt: 1, Limit: 3, Inspecting: map[string]string{"inline:1": "v1"}}
+		it.Stream = &factory.Stream{Phases: []factory.Phase{{Name: "proof", Kind: factory.StageChat, State: factory.PhaseDone}}, Paused: true}
+		factory.EnsureFollowPR(it)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.r.Hold(id, false); err != nil {
+		t.Fatal(err)
+	}
+	it := g.waitState(id, factory.StateNeedsYou)
+	if len(it.FollowUp.Reviewed) != 0 || it.FollowUp.Inspecting["inline:1"] != "v1" {
+		t.Fatal("incomplete no-change claim consumed review feedback")
+	}
+}
