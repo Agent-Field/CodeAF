@@ -13,6 +13,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/furrowbin"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // Every test here runs against a FAKE furrow: a shell script on PATH that
@@ -964,5 +965,44 @@ esac
 	// this refusal on.
 	if program := Program(); !strings.Contains(program, filepath.Join(dir, Binary)) {
 		t.Fatalf("Program() = %q, want the furrow on PATH", program)
+	}
+}
+
+// THE STORE IS THE STATE ROOT'S, NOT THE LOGIN'S. [runBinary] points every
+// furrow child at a FURROW_DATA_DIR under the state root, so two profiles that
+// share a HOME stop sharing one snapshot store (#1769). A data dir the
+// environment already names survives: a caller that aims the store somewhere
+// on purpose, or a test proving furrow's own retirement behaviour against the
+// real binary, keeps exactly what it set.
+func TestEveryFurrowChildGetsTheStateRootsStoreDir(t *testing.T) {
+	prev, hadPrev := os.LookupEnv(DataDirEnv)
+	os.Unsetenv(DataDirEnv)
+	t.Cleanup(func() {
+		if hadPrev {
+			os.Setenv(DataDirEnv, prev)
+		} else {
+			os.Unsetenv(DataDirEnv)
+		}
+	})
+	probe := filepath.Join(t.TempDir(), "probe")
+	if err := os.WriteFile(probe, []byte("#!/bin/sh\nprintf '%s\\n' \"$FURROW_DATA_DIR\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	out, _, err := runBinary(context.Background(), probe, "", "--version")
+	if err != nil {
+		t.Fatalf("probe run: %v", err)
+	}
+	if got := strings.TrimSpace(string(out)); got != home.Join("furrow") {
+		t.Fatalf("FURROW_DATA_DIR = %q; want the state root's own store dir %q", got, home.Join("furrow"))
+	}
+
+	t.Setenv(DataDirEnv, "/somewhere-else")
+	out, _, err = runBinary(context.Background(), probe, "", "--version")
+	if err != nil {
+		t.Fatalf("probe run with a named data dir: %v", err)
+	}
+	if got := strings.TrimSpace(string(out)); got != "/somewhere-else" {
+		t.Fatalf("FURROW_DATA_DIR = %q; want the caller's own %q to survive", got, "/somewhere-else")
 	}
 }
