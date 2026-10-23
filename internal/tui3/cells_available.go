@@ -3,7 +3,7 @@ package tui3
 import "github.com/Agent-Field/codeaf/internal/cell"
 
 // prepareCells removes every move-only door together. The engine's reason is
-// supplied by startup; the platform and opt-in check itself is pure.
+// supplied by startup; the platform check itself is pure.
 func prepareCells(opts *Options) {
 	if opts.CellsUnavailable == "" {
 		opts.CellsUnavailable = cell.DisabledReason()

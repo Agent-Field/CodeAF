@@ -15,7 +15,6 @@ import (
 // TestC5OnlineContinueOpensTheArrivedCopy proves C5 through the home panel:
 // the recorded arrival's workspace outranks a stale row's project bucket.
 func TestC5OnlineContinueOpensTheArrivedCopy(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "1")
 	lab := newHomeLab(t)
 	ws := lab.workspace("project")
 	mine := lab.session("project", heldCell, "Mine", ws, time.Now())
@@ -64,7 +63,6 @@ func TestC5OnlineContinueOpensTheArrivedCopy(t *testing.T) {
 // TestC18OwnershipReadPreservesTheSendChord proves C18: checking a paired
 // chat's holder cannot turn steering or stop-and-replace into a queued message.
 func TestC18OwnershipReadPreservesTheSendChord(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "1")
 	for _, chord := range []string{"enter", bargeKey} {
 		t.Run(chord, func(t *testing.T) {
 			a, agent := bargeable(t, "still answering")
@@ -85,7 +83,6 @@ func TestC18OwnershipReadPreservesTheSendChord(t *testing.T) {
 // TestC5OwnershipReadKeepsDisplacedChords proves C5: a move arriving before
 // the change frame blocks both in-turn send chords without consuming the draft.
 func TestC5OwnershipReadKeepsDisplacedChords(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "1")
 	for _, chord := range []string{"enter", bargeKey} {
 		t.Run(chord, func(t *testing.T) {
 			a, agent := bargeable(t, "still answering")

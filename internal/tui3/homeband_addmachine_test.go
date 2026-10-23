@@ -1,16 +1,15 @@
 package tui3
 
 import (
-	tea "charm.land/bubbletea/v2"
 	"context"
-	"github.com/Agent-Field/codeaf/internal/pair"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/charmbracelet/x/ansi"
-
+	tea "charm.land/bubbletea/v2"
+	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // The add-machine card's tests: the fleet and the link are fakes, so each test
@@ -60,8 +59,8 @@ func TestAddMachineCardIsAbsentWhenItCannotWork(t *testing.T) {
 	}
 }
 
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestAddMachineOpensTwoStepsAndAPasteField(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "1") // C26: the card exists only where moving chats is on
 	a := addMachineRig(&fakeApprovals{}, 1, true)
 	if a.toggleAddMachine() != nil {
 		t.Fatal("opening the card asked for something")
@@ -226,8 +225,8 @@ func TestAFailedFleetAskKeepsWhatWasKnown(t *testing.T) {
 var altD = tea.KeyPressMsg{Code: 'd', Mod: tea.ModAlt}
 
 // THE CHORD REACHES THE CARD FROM HOME'S BOX, and a bare letter never does.
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestAddMachineChordIsHomesAndOnlyWhereTheCardIs(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "1") // C26: the card exists only where moving chats is on
 	a := addMachineRig(&fakeApprovals{}, 1, true)
 	a.openHome()
 	drive(t, a, altD)

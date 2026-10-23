@@ -56,7 +56,7 @@ func TestC8ReadingAddDeviceInstructionsAndChattingSendsNothing(t *testing.T) {
 	}))
 	defer srv.Close()
 	t.Setenv(syncsetup.URLVar, srv.URL)
-	t.Setenv(cell.EnvVar, "1")
+
 	t.Setenv("CODEAF_ENGINE_DAEMON", "0")
 	root := t.TempDir()
 	t.Setenv(home.EnvVar, root)

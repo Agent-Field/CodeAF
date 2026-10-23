@@ -9,7 +9,6 @@ import (
 // TestC11WindowsIdentityDoors proves C11 without opening a terminal or a relay.
 // Remote-access device books remain present independently of shared chats.
 func TestC11WindowsIdentityDoors(t *testing.T) {
-	t.Setenv(cell.EnvVar, "1")
 	assertCellCommandsRefuse(t, cell.WindowsReason)
 	kinds := openDeviceKinds()
 	if len(kinds) != 1 {

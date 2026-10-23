@@ -1341,14 +1341,10 @@ var OperatorEnvPins = []string{
 	// make convenient, it is a decision somebody makes on purpose, in a shell,
 	// for one run that genuinely needs it.
 	"CODEAF_ALLOW_PROVIDER_KEYS_IN_SHELL",
-	// CODEAF_CELLS=1 opts into moving chats on every build (internal/cell). It
-	// stays in the launch environment, never a row: both computers must opt in
-	// explicitly rather than inherit a setting copied from another machine.
-	"CODEAF_CELLS",
 	// CODEAF_SYNC_URL names the relay that syncs cells between this person's
 	// machines (internal/syncsetup), and CODEAF_SYNC_INTERVAL_MS is how often
-	// unsaved turns are flushed to it. Like CODEAF_CELLS they are plumbing, never
-	// a row: unset, sync is off and nothing changes. A persisted row would point
+	// unsaved turns are flushed to it. They stay in the environment, never
+	// a row: an unpaired home sends nothing. A persisted row would point
 	// a machine at a relay it was never told about.
 	"CODEAF_SYNC_URL",
 	"CODEAF_SYNC_INTERVAL_MS",

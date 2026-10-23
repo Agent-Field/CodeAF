@@ -482,7 +482,7 @@ func v3MintSessionAs(class cell.Class, bucket, workspace, launchDir string, owne
 }
 
 // v3NewFolder makes the empty folder a new session lives in and answers its id
-// and path: a cell only with CODEAF_CELLS=1 and a capable platform and engine (the session package finds its
+// and path: a cell when a compatible engine is available and a capable platform and engine (the session package finds its
 // transcript in .cell/ by the folder's shape), a plain folder otherwise.
 func v3NewFolder(bucket string, class cell.Class) (id, dir string, err error) {
 	if cell.Available() {
@@ -760,7 +760,7 @@ func v3Migrated(cfg session.Config) session.Config {
 // class the cell declared and the workspace its tools run in.
 //
 // A folder that is not a readable cell gets no seat and its calls run on the
-// host as they always did, and so does every folder while cells are off. The
+// host as they always did, and so does every folder without a compatible engine. The
 // seat is set on every call, so a config reused for the next conversation never
 // carries the last one's executor.
 func v3Seated(cfg session.Config) session.Config {

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -35,10 +35,9 @@ func mintOpened(t *testing.T, bucket, workspace string) session.Place {
 	return place
 }
 
-// TestNewChatIsACellWhenTheFlagIsOn proves C23 at the real chat mint door.
-func TestNewChatIsACellWhenTheFlagIsOn(t *testing.T) {
+// TestNewChatIsACellByDefault proves C27.1 and C23 at the real chat mint door.
+func TestNewChatIsACellByDefault(t *testing.T) {
 	celltest.Available(t)
-	t.Setenv(cell.EnvVar, "1")
 	bucket, workspace := t.TempDir(), t.TempDir()
 	place := mintOpened(t, bucket, workspace)
 
@@ -78,8 +77,9 @@ func TestNewChatIsACellWhenTheFlagIsOn(t *testing.T) {
 	}
 }
 
-func TestNewChatIsALegacyFolderWhenTheFlagIsOff(t *testing.T) {
-	t.Setenv(cell.EnvVar, "0")
+// C27.3 preserves host execution when the engine is unavailable.
+func TestNewChatIsALegacyFolderWithoutAnEngine(t *testing.T) {
+	t.Cleanup(cell.UseAvailabilityInTests(false))
 	bucket, workspace := t.TempDir(), t.TempDir()
 	place := mintOpened(t, bucket, workspace)
 
@@ -87,7 +87,7 @@ func TestNewChatIsALegacyFolderWhenTheFlagIsOff(t *testing.T) {
 		t.Fatalf("transcript = %s, want %s", place.Transcript(), want)
 	}
 	if _, err := os.Stat(filepath.Join(place.Dir, cell.StateDir)); !os.IsNotExist(err) {
-		t.Fatalf("flag off must not create .cell: %v", err)
+		t.Fatalf("unavailable engine must not create .cell: %v", err)
 	}
 }
 
@@ -95,7 +95,7 @@ func TestNewChatIsALegacyFolderWhenTheFlagIsOff(t *testing.T) {
 // real mint and the real agent, with a task journal beside the transcript.
 func legacyFolder(t *testing.T, bucket, workspace string) session.Place {
 	t.Helper()
-	t.Setenv(cell.EnvVar, "0")
+	t.Cleanup(cell.UseAvailabilityInTests(false))
 	place, err := v3MintSession(bucket, workspace, workspace, false)
 	if err != nil {
 		t.Fatal(err)
@@ -130,7 +130,7 @@ func TestLegacyFolderResumesWithoutMigration(t *testing.T) {
 	celltest.Available(t)
 	for _, enabled := range []string{"0", "1"} {
 		t.Run(enabled, func(t *testing.T) {
-			t.Setenv(cell.EnvVar, enabled)
+			t.Setenv("CODEAF_CELLS", enabled)
 			t.Setenv("CODEAF_SYNC_URL", "off")
 			workspace := t.TempDir()
 			dir := filepath.Join(t.TempDir(), "0123456789abcdef")
@@ -186,7 +186,8 @@ func TestLegacyFolderResumesWithoutMigration(t *testing.T) {
 	}
 }
 
-func TestLegacyFolderStaysLegacyWhenTheFlagIsOff(t *testing.T) {
+// C27.5 and C24 preserve old conversations without an engine.
+func TestLegacyFolderStaysLegacyWithoutAnEngine(t *testing.T) {
 	bucket, workspace := t.TempDir(), t.TempDir()
 	place := legacyFolder(t, bucket, workspace)
 
@@ -195,7 +196,7 @@ func TestLegacyFolderStaysLegacyWhenTheFlagIsOff(t *testing.T) {
 		t.Fatalf("session file moved: %s", cfg.SessionFile)
 	}
 	if _, err := os.Stat(filepath.Join(place.Dir, cell.StateDir)); !os.IsNotExist(err) {
-		t.Fatalf("flag off must not create .cell: %v", err)
+		t.Fatalf("unavailable engine must not create .cell: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(place.Dir, "transcript.jsonl")); err != nil {
 		t.Fatalf("legacy transcript gone: %v", err)
@@ -218,7 +219,6 @@ func seatClass(t *testing.T, cfg session.Config, dir string) executor.Class {
 // cell, including its metadata, when the conversation resumes.
 func TestSeatFollowsTheCellsClass(t *testing.T) {
 	celltest.Available(t)
-	t.Setenv(cell.EnvVar, "1")
 	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.Sandboxed})
 	if err != nil {
 		t.Fatal(err)
@@ -240,9 +240,9 @@ func TestSeatFollowsTheCellsClass(t *testing.T) {
 
 // Two sessions in one process on the same path each keep the class their own
 // cell declared: nothing is looked up by path.
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestTwoSessionsOnOnePathKeepTheirOwnClasses(t *testing.T) {
 	celltest.Available(t)
-	t.Setenv(cell.EnvVar, "1")
 	workspace := t.TempDir()
 	seated := func(class cell.Class) session.Config {
 		c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: class})
@@ -257,18 +257,20 @@ func TestTwoSessionsOnOnePathKeepTheirOwnClasses(t *testing.T) {
 	}
 }
 
-func TestNoSeatWhenCellsAreOffOrTheFolderIsNoCell(t *testing.T) {
+// C27.3 and C24 leave unavailable and existing host conversations on the host.
+func TestNoSeatWithoutAnEngineOrTheFolderIsNoCell(t *testing.T) {
 	celltest.Available(t)
-	t.Setenv(cell.EnvVar, "0")
+	t.Cleanup(cell.UseAvailabilityInTests(false))
 	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.Sandboxed})
 	if err != nil {
 		t.Fatal(err)
 	}
 	place := session.Place{Dir: c.Root, Workspace: t.TempDir()}
 	if cfg := v3Seated(session.Config{Place: place, Seat: executor.Host}); cfg.Seat != nil {
-		t.Fatal("flag off must leave the session on the host, and clear a stale seat")
+		t.Fatal("unavailable engine must leave the session on the host, and clear a stale seat")
 	}
-	t.Setenv(cell.EnvVar, "1")
+
+	t.Cleanup(cell.UseAvailabilityInTests(true))
 	other := session.Place{Dir: t.TempDir(), Workspace: t.TempDir()}
 	if cfg := v3Seated(session.Config{Place: other}); cfg.Seat != nil {
 		t.Fatal("a folder that is no cell must keep the legacy host rule")
@@ -280,7 +282,6 @@ func TestNoSeatWhenCellsAreOffOrTheFolderIsNoCell(t *testing.T) {
 // network connection or working kernel jail is needed.
 func TestC23NewChatCommandsHaveOpenNetworkWithoutConfinement(t *testing.T) {
 	celltest.Available(t)
-	t.Setenv(cell.EnvVar, "1")
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	workspace := t.TempDir()
 	place, err := v3MintSession(t.TempDir(), workspace, workspace, false)
@@ -328,7 +329,6 @@ func (p *c23CommandProbe) Observe(req executor.ExecRequest, _ executor.ExecResul
 // sealed call, so cells being on cannot narrow the host's write access.
 func TestC23NewChatCanWriteToASiblingThroughItsSeat(t *testing.T) {
 	celltest.RequireEngine(t)
-	t.Setenv(cell.EnvVar, "1")
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	parent := t.TempDir()
 	workspace, sibling := filepath.Join(parent, "workspace"), filepath.Join(parent, "sibling")

@@ -11,14 +11,15 @@ import (
 	"github.com/Agent-Field/codeaf/internal/executor"
 )
 
-func TestSeatIsPlainWhenCellsAreOff(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "0")
+// C27.7 exercises this behaviour without an opt-in switch.
+func TestSeatIsPlainWithoutAnEngine(t *testing.T) {
+	t.Cleanup(cell.UseAvailabilityInTests(false))
 	seat, err := SeatFor(executor.Sandboxed, newCell(t), t.TempDir(), nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := seat.(executor.Stance); !ok {
-		t.Fatalf("flag off built %T, want a plain stance with no recorder", seat)
+		t.Fatalf("unavailable engine built %T, want a plain stance with no recorder", seat)
 	}
 }
 

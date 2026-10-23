@@ -59,10 +59,10 @@ func NewRecorder(inner executor.Executor, store Store, c cell.Cell, walPath stri
 		pending: rec.Completed, incomplete: rec.Incomplete}, nil
 }
 
-// Wrap is the seam callers use. With CODEAF_CELLS=0 it returns inner itself,
-// so the flag-off path is not a different code path, it is no path.
+// Wrap leaves the executor unchanged when this build cannot move chats, so
+// an unavailable engine adds no recording path to ordinary host execution.
 func Wrap(inner executor.Executor, c cell.Cell) (executor.Executor, error) {
-	if !cell.Enabled() {
+	if !cell.Available() {
 		return inner, nil
 	}
 	r, err := recorderFor(inner, Engine{}, c, Options{})

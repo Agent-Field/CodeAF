@@ -3,25 +3,24 @@
 package celltest
 
 import (
+	"testing"
+
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/furrowbin"
-	"testing"
 )
 
-// Available opts a wiring test into cells without running furrow. Tests of
-// the off switch set it explicitly after declaring engine availability.
+// Available declares engine availability for wiring tests without running furrow.
 func Available(t *testing.T) {
 	t.Helper()
-	t.Setenv(cell.EnvVar, "1")
 	t.Cleanup(cell.UseAvailabilityInTests(true))
 }
 
-// RequireEngine opts into cells and leaves acceptance visible when the
-// configured or embedded binary is missing or lacks the exchange contract.
+// RequireEngine leaves acceptance visible when the configured or embedded
+// binary is missing or lacks the exchange contract.
 func RequireEngine(t *testing.T) {
 	t.Helper()
-	t.Setenv(cell.EnvVar, "1")
 	if !furrowbin.CellsAvailable() {
 		t.Skipf("no engine binary: %s", furrowbin.CellsUnavailable)
 	}
+	t.Cleanup(cell.UseAvailabilityInTests(true))
 }

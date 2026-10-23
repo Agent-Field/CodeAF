@@ -16,11 +16,12 @@ import (
 // join another computer's chats. The first half of the test is that fact read
 // off the real binary's own files; the second is that a pair link typed at the
 // start screen goes to the approve screen and not to a model.
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestFreshStartIsPristineAndAPairLinkIsNotAChatMessage(t *testing.T) {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("no tmux on PATH: this suite drives the real binary in a real terminal")
 	}
-	env := []string{config.APIKeyEnv + "=not-a-real-key", "CODEAF_CELLS=1", "CODEAF_SYNC_URL=" + startRelay(t), "CODEAF_TELEMETRY=off"}
+	env := []string{config.APIKeyEnv + "=not-a-real-key", "CODEAF_SYNC_URL=" + startRelay(t), "CODEAF_TELEMETRY=off"}
 	home := emptyHome(t)
 	ws := newWorkspace(t, "fresh", false)
 	r := startWithEnv(t, env, "fresh", home, ws, 120, 40)

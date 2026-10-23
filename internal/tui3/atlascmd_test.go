@@ -14,8 +14,8 @@ import (
 // it is really the map (the frame draws the atlas's own title and its own hint
 // line, and the conversation shows through nowhere) and that esc or q gives
 // the conversation back exactly as it was — transcript, draft and place.
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestAtlasOpensTheMapAndReturnsToTheChat(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "1")
 	a, _ := sheetApp(t)
 	// A sentence half-typed before the map was asked for, so the test can see
 	// that closing puts the conversation back rather than a blank sheet.
@@ -99,8 +99,8 @@ func TestAtlasOpensTheMapAndReturnsToTheChat(t *testing.T) {
 // THE PICKER (atlascmd.go). Bare /atlas no longer guesses a map: it raises the
 // sheet with the picker in it — one row per registered map, in the registry's
 // order — and enter opens the row the cursor is on.
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestAtlasBareSlashShowsThePickerAndEnterOpens(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "1")
 	a, _ := sheetApp(t)
 
 	a.slash("/atlas")
@@ -151,8 +151,8 @@ func TestAtlasBareSlashShowsThePickerAndEnterOpens(t *testing.T) {
 
 // THE REGISTRY ANSWERS AN UNKNOWN NAME IN THE TRANSCRIPT, the way every other
 // refusal here is said: one line, what was asked and what there was instead.
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestAtlasUnknownNameSaysTheRegistryLine(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "1")
 	a, _ := sheetApp(t)
 
 	a.slash("/atlas nope")

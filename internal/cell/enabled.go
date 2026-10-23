@@ -3,38 +3,22 @@ package cell
 import (
 	"runtime"
 
-	"github.com/Agent-Field/codeaf/internal/buildinfo"
-	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/furrowbin"
 )
 
-// EnvVar opts into moving chats on every channel, but cannot supply an engine
-// for an unsupported platform.
-const EnvVar = "CODEAF_CELLS"
+const WindowsReason = "moving chats is not available on Windows yet; run codeaf in WSL"
 
-const (
-	OffReason     = "moving chats is off; CODEAF_CELLS=1 turns it on"
-	WindowsReason = "moving chats is not available on Windows because furrow needs Unix; run codeaf in WSL"
-)
-
-// releaseRevision keeps the build-stamp seam for the channel matrix. C26
-// deliberately makes the opt-in independent of this value.
-var releaseRevision = buildinfo.Revision
-
-// Enabled reports the platform and opt-in policy. Startup also asks Available
+// Enabled reports platform support. Startup also asks Available
 // before exposing a capability that needs the carried engine.
 func Enabled() bool { return DisabledReason() == "" }
 
 // DisabledReason is cheap enough for menus: it never starts an engine or reads
-// the filesystem. Windows cannot opt into a Unix-only engine.
+// the filesystem. Windows needs the engine port before it can move chats.
 func DisabledReason() string {
 	if runtime.GOOS == "windows" {
 		return WindowsReason
 	}
-	if env.Get(EnvVar) == "1" {
-		return ""
-	}
-	return OffReason
+	return ""
 }
 
 // UnavailableReason is asked at startup and at explicit command doors, never
@@ -49,11 +33,11 @@ func UnavailableReason() string {
 	return ""
 }
 
-// Available adds the engine contract to the rollout policy before any cell,
+// Available adds the engine contract to platform support before any cell,
 // identity or relay client is opened.
 func Available() bool { return UnavailableReason() == "" }
 
-// engineAvailable is the capability measurement, separate from rollout so a
+// engineAvailable is the capability measurement, separate from platform support so a
 // test of wiring can declare availability without staging or starting furrow.
 var engineAvailable = furrowbin.CellsAvailable
 

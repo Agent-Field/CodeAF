@@ -1,7 +1,6 @@
 package config
 
 import (
-	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -10,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/automation"
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/pool/poolcfg"
 	"github.com/Agent-Field/codeaf/internal/taxonomy"
 )
@@ -776,9 +776,9 @@ func TestEveryTierShipsWithAModelAndCanStillBeCleared(t *testing.T) {
 	}
 }
 
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestTheTaskThrottleRowsRoundTrip(t *testing.T) {
 	celltest.Available(t)
-	t.Setenv("CODEAF_CELLS", "1")
 	dir := t.TempDir()
 	rows := registry(t, dir)
 

@@ -12,19 +12,15 @@ import (
 	"github.com/Agent-Field/codeaf/internal/furrowbin"
 )
 
-// TestC26OffCommandsDoNothing proves C26 before even a --name flag can write a
-// local identity or a relay request can be prepared.
-func TestC26OffCommandsDoNothing(t *testing.T) {
-	want := cell.OffReason
+// TestC27UnavailableCommandsDoNothing proves C27.3 before even a --name
+// flag can write an identity or prepare a relay request.
+func TestC27UnavailableCommandsDoNothing(t *testing.T) {
+	t.Cleanup(cell.UseAvailabilityInTests(false))
+	want := furrowbin.CellsUnavailable
 	if runtime.GOOS == "windows" {
 		want = cell.WindowsReason
 	}
-	for _, value := range []string{"", "0", "true"} {
-		t.Run("env="+value, func(t *testing.T) {
-			t.Setenv(cell.EnvVar, value)
-			assertCellCommandsRefuse(t, want)
-		})
-	}
+	assertCellCommandsRefuse(t, want)
 }
 
 func assertCellCommandsRefuse(t *testing.T, want string) {
@@ -61,7 +57,7 @@ func TestC12OldEngineCLI(t *testing.T) {
 		t.Fatal(err)
 	}
 	cmd := exec.Command(binary, "-test.run=^TestC12OldEngineCLI$", "-test.v") //codeaf:plumbing runs the real command doors with a fresh engine capability cache
-	cmd.Env = append(os.Environ(), "CODEAF_TEST_OLD_FURROW=1", "CODEAF_CELLS=1", "CODEAF_FURROW="+program)
+	cmd.Env = append(os.Environ(), "CODEAF_TEST_OLD_FURROW=1", "CODEAF_FURROW="+program)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("old-engine commands: %v\n%s", err, out)
 	}

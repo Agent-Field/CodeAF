@@ -3,15 +3,14 @@ package tui3
 import (
 	"context"
 	"fmt"
-	"github.com/Agent-Field/codeaf/internal/dirwatch"
 	"strings"
 	"testing"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/dirwatch"
 	machine "github.com/Agent-Field/codeaf/internal/preflight"
 )
 
@@ -160,8 +159,8 @@ func TestTakeoverCardCursorByEntryPoint(t *testing.T) {
 	}
 }
 
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestTakeoverScreenOpensTheChatAndSaysWhatWasKept(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "1")
 	lab := newHomeLab(t)
 	workspace := lab.workspace("project")
 	mine := lab.session("project", "0000000000000001", "Mine", workspace, time.Now())
@@ -435,8 +434,8 @@ func TestTakenSaidJoinsWhatTheTakeoverDid(t *testing.T) {
 // TestTheArrivalCardComesOnEveryTakeWhetherOrNotHomeListsTheChat is the seam the
 // card depends on: it is raised when the takeover ends, not when home happens to
 // list the chat by then.
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestTheArrivalCardComesOnEveryTakeWhetherOrNotHomeListsTheChat(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "1")
 	for _, tc := range []struct {
 		name   string
 		listed bool

@@ -101,7 +101,7 @@ func runPair(args []string) error {
 
 func (d pairDoor) run(ctx context.Context, args []string) error {
 	// ASKING FOR HELP IS ANSWERED WHERE PAIRING CANNOT RUN. `pair` is on the help
-	// page, so a build with moving chats off, or an engine that cannot run here,
+	// page, so a build with no compatible engine,
 	// still explains the command; only the pairing itself is refused.
 	if reason := cell.UnavailableReason(); reason != "" && !asksForHelp(args) {
 		return errors.New(reason)

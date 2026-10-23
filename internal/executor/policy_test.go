@@ -67,7 +67,7 @@ func TestRefusalIsReadable(t *testing.T) {
 	}
 }
 
-// The host seat (CODEAF_CELLS off) runs exactly as before the policy existed:
+// The host seat runs exactly as before the policy existed:
 // unjailed, network open.
 func TestHostSeatRunsAsBefore(t *testing.T) {
 	res, err := Host.In(t.TempDir()).Exec(context.Background(), sh("true"), nil)

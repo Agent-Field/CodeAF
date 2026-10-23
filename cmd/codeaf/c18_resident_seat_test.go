@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/consent"
 	tools "github.com/Agent-Field/codeaf/internal/exec"
 	"github.com/Agent-Field/codeaf/internal/executor"
@@ -29,7 +30,7 @@ func TestC18ResidentRootsRunToolsWithoutTestFallback(t *testing.T) {
 		}
 		return
 	}
-	t.Setenv("CODEAF_CELLS", "0")
+	t.Cleanup(cell.UseAvailabilityInTests(false))
 	t.Setenv("CODEAF_RTK", "off")
 	workspace := t.TempDir()
 	if _, err := executor.For(context.Background()).In(workspace).Exec(t.Context(), executor.ExecRequest{Argv: []string{"true"}}, nil); !errors.Is(err, executor.ErrNoSeat) {

@@ -5,11 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/x/ansi"
-
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // The devices row's tests: the roster, the rows and the feed are set by hand,
@@ -37,8 +36,8 @@ func devicesFrame(a *app, width int) string {
 	return plain(strings.Join(drawDevicesBand(a, ctx), "\n"))
 }
 
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestDevicesRowDrawsPresenceFromTheFeed(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "1")
 	a, feed := devicesRig("dev_spark")
 	got := devicesFrame(a, 80)
 	if !strings.Contains(got, "● This Mac  ● spark  ○ dumb (offline)") {
@@ -50,8 +49,8 @@ func TestDevicesRowDrawsPresenceFromTheFeed(t *testing.T) {
 	}
 }
 
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestDevicesRowIsAbsentWhenItCannotSpeakTruly(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "1")
 	a, feed := devicesRig("dev_spark")
 	feed.state.Up = false
 	if got := devicesFrame(a, 80); got != "" {
@@ -69,8 +68,8 @@ func TestDevicesRowIsAbsentWhenItCannotSpeakTruly(t *testing.T) {
 	}
 }
 
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestDevicesRowObeysWidthAndVocabulary(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "1")
 	a, _ := devicesRig("dev_spark")
 	for _, width := range []int{12, 24, 40, 80} {
 		for _, line := range strings.Split(devicesFrame(a, width), "\n") {
@@ -87,8 +86,8 @@ func TestDevicesRowObeysWidthAndVocabulary(t *testing.T) {
 	}
 }
 
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestOnlineDeviceOffersMoveHereForARunningChat(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "1")
 	a, _ := devicesRig("dev_spark")
 	if cmd := a.bringWork(); cmd != nil {
 		t.Fatal("offering the card started work")
@@ -108,8 +107,8 @@ func TestOnlineDeviceOffersMoveHereForARunningChat(t *testing.T) {
 	}
 }
 
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestSeveralOnlineDevicesAskWhichAndThenOfferTheCard(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "1")
 	a, _ := devicesRig("dev_spark", "dev_dumb")
 	a.bringWork()
 	ask, ok := a.homeAsking()
@@ -129,8 +128,8 @@ func TestSeveralOnlineDevicesAskWhichAndThenOfferTheCard(t *testing.T) {
 	}
 }
 
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestOfflineOrEmptyDevicesOfferNothing(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "1")
 	a, _ := devicesRig()
 	if a.bringWork() != nil {
 		t.Fatal("work started")
@@ -140,8 +139,8 @@ func TestOfflineOrEmptyDevicesOfferNothing(t *testing.T) {
 	}
 }
 
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestRosterAskFilesDevicesAndFailureKeepsThem(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "1")
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.tookRoster(rosterMsg{devices: rosterOf})
 	a.tookRoster(rosterMsg{err: errors.New("down")})

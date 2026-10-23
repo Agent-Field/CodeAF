@@ -9,13 +9,26 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 )
 
-// TestC26NewChatWithoutOptInHasNoCellOrStore proves C26 through the binary's
-// chat door after a model turn, with both development and stable release stamps.
-func TestC26NewChatWithoutOptInHasNoCellOrStore(t *testing.T) {
+// TestC27NewChatByDefaultStaysQuiet proves C27.1 and C23 through the binary
+// --once door on every channel, with a logging relay and a model turn.
+// Its C27.4 assertions cover this door; interactive startup wires sync separately.
+func TestC27NewChatByDefaultStaysQuiet(t *testing.T) {
+	celltest.RequireEngine(t)
+	var relayRequests atomic.Int64
+	relay := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		relayRequests.Add(1)
+		http.Error(w, "unpaired home contacted relay", http.StatusForbidden)
+	}))
+	defer relay.Close()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "/models") {
 			w.Header().Set("Content-Type", "application/json")
@@ -23,7 +36,7 @@ func TestC26NewChatWithoutOptInHasNoCellOrStore(t *testing.T) {
 			return
 		}
 		if !strings.HasSuffix(r.URL.Path, "/chat/completions") {
-			t.Errorf("unexpected service request with cells off: %s %s", r.Method, r.URL.Path)
+			t.Errorf("unexpected service request on an unpaired home: %s %s", r.Method, r.URL.Path)
 			http.NotFound(w, r)
 			return
 		}
@@ -32,11 +45,25 @@ func TestC26NewChatWithoutOptInHasNoCellOrStore(t *testing.T) {
 			"data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"))
 	}))
 	t.Cleanup(server.Close)
-	for _, stamp := range []string{"dev-20261022-0123456789ab", "v0.9.0"} {
+	for _, stamp := range []string{"", "source-0123456789ab", "dev-20261022-0123456789ab", "staging-20261022-0123456789ab", "v0.9.0-rc.1", "v0.9.0"} {
 		t.Run(stamp, func(t *testing.T) {
 			binary := buildCodeafStamped(t, stamp)
-			environment, home := smokeEnv(t, server.URL)
-			environment = append(environment, "CODEAF_NO_AUTOMATIONS=1", "CODEAF_SYNC_URL="+server.URL)
+			environment, _ := smokeEnv(t, server.URL)
+			// C27.1 now reaches the real daemon, whose Unix socket needs a
+			// short home independently of Go's descriptive subtest directory.
+			home, err := os.MkdirTemp("", "c27")
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				sockets, _ := filepath.Glob(filepath.Join(home, "v3", "engine-*.sock"))
+				for _, socket := range sockets {
+					_ = (cellstore.Daemon{Socket: socket}).Stop(context.Background())
+				}
+				_ = os.RemoveAll(home)
+			})
+			environment = append(environment, "HOME="+home, "CODEAF_HOME="+home, "CODEAF_PROFILE_DIR="+home)
+			environment = append(environment, "CODEAF_NO_AUTOMATIONS=1", "CODEAF_SYNC_URL="+relay.URL, "CODEAF_FURROW="+os.Getenv("CODEAF_FURROW"))
 			workspace := t.TempDir()
 			// A minimal empty repository makes this a project chat without running
 			// git mutations; no committed history is needed to mint a conversation.
@@ -55,13 +82,13 @@ func TestC26NewChatWithoutOptInHasNoCellOrStore(t *testing.T) {
 			if out, err := cmd.CombinedOutput(); err != nil || !strings.Contains(string(out), smokeAnswer) {
 				t.Fatalf("new chat: %v\n%s", err, out)
 			}
-			var transcripts []string
-			err := filepath.WalkDir(home, func(path string, entry fs.DirEntry, err error) error {
+			var transcripts, cells []string
+			err = filepath.WalkDir(home, func(path string, entry fs.DirEntry, err error) error {
 				if err != nil {
 					return err
 				}
 				if entry.IsDir() && entry.Name() == ".cell" {
-					t.Errorf("chat made a cell without opting in: %s", path)
+					cells = append(cells, filepath.Dir(path))
 				}
 				if entry.Name() == "transcript.jsonl" {
 					transcripts = append(transcripts, path)
@@ -75,16 +102,28 @@ func TestC26NewChatWithoutOptInHasNoCellOrStore(t *testing.T) {
 			if err != nil || !strings.Contains(string(raw), smokeAnswer) {
 				t.Fatalf("chat did not persist the model turn: %s, %v", raw, err)
 			}
-			entries, err := os.ReadDir(filepath.Join(home, "v3", "stores"))
-			if len(entries) != 0 || (err != nil && !os.IsNotExist(err)) {
-				t.Fatalf("chat made a store without opting in: %v, %v", entries, err)
+			if len(cells) != 1 {
+				t.Fatalf("cells = %v, want one", cells)
 			}
+			c, err := cell.OpenAt(cells[0], filepath.Base(cells[0]))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if turns, err := os.ReadFile(filepath.Join(c.Root, cellstore.TurnsPath)); err != nil || len(turns) == 0 {
+				t.Fatalf("chat did not seal its first turn: %s, %v", turns, err)
+			}
+			if c.Meta().Class != cell.HostBound {
+				t.Fatalf("class = %s, want host-bound", c.Meta().Class)
+			}
+			if !strings.Contains(transcripts[0], string(filepath.Separator)+".cell"+string(filepath.Separator)) {
+				t.Fatalf("transcript is not in cell: %s", transcripts[0])
+			}
+			if got := relayRequests.Load(); got != 0 {
+				t.Fatalf("unpaired home sent %d relay requests", got)
+			}
+
 			if _, err := os.Stat(filepath.Join(home, "identity.json")); !os.IsNotExist(err) {
-				t.Errorf("chat made an identity without opting in: %v", err)
-			}
-			sockets, err := filepath.Glob(filepath.Join(home, "v3", "engine-*.sock"))
-			if err != nil || len(sockets) != 0 {
-				t.Errorf("chat started an engine without opting in: %v, %v", sockets, err)
+				t.Errorf("unpaired chat made an identity: %v", err)
 			}
 		})
 	}

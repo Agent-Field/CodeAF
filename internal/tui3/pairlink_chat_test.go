@@ -15,8 +15,8 @@ func sentAnywhere(lab *startLab) []string { return append(lab.agent.sent, lab.ne
 
 // THE START PAGE IS WHERE A FRESH INSTALL LANDS, and the link pasted there is
 // the approve screen's. It makes no conversation and sends nothing.
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestPairLinkOnTheStartPageShowsTheApproveScreenAndMakesNoChat(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "1")
 	lab := newStartLab(t)
 	a := lab.app()
 	a.approvals = &fakeApprovals{pending: spark(time.Now())}
@@ -39,8 +39,8 @@ func TestPairLinkOnTheStartPageShowsTheApproveScreenAndMakesNoChat(t *testing.T)
 }
 
 // A COMPUTER WITH NO WAY TO APPROVE ANSWERS PLAINLY, and still sends nothing.
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestPairLinkOnTheStartPageWithNoDoorSendsNothing(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "1")
 	lab := newStartLab(t)
 	a := lab.app()
 	openStart(t, a)
@@ -56,8 +56,8 @@ func TestPairLinkOnTheStartPageWithNoDoorSendsNothing(t *testing.T) {
 }
 
 // A RUNNING CONVERSATION'S BOX IS NO DIFFERENT.
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestPairLinkInARunningChatShowsTheApproveScreenAndIsNotSent(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "1")
 	door := &fakeApprovals{pending: spark(time.Now())}
 	a, r := approveApp(t, door)
 	agent := a.agent.(*fakeAgent)
@@ -74,8 +74,8 @@ func TestPairLinkInARunningChatShowsTheApproveScreenAndIsNotSent(t *testing.T) {
 
 // A DEVICE LIST THAT CANNOT LOAD SAYS WHY. The error used to land on a card that
 // was still drawing "looking up your devices…", so a refusal never showed.
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestDevicesCardSaysWhyItCannotLoad(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "1")
 	const why = "this device was removed by another of your devices"
 	door := &fakeApprovals{err: errors.New(why)}
 	a, r := approveApp(t, door)

@@ -10,6 +10,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/executor"
 )
@@ -49,8 +50,10 @@ func (s *transcriptAtSeal) seals() int {
 // holds its closing answer: a process killed right after either leaves the
 // other machine a transcript that says what the work was and what came of it,
 // so the model does not run a finished call again.
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestSealsCarryTheToolResultAndTheClosingAnswer(t *testing.T) {
-	t.Setenv(cell.EnvVar, "1")
+	// C27.7 declares the engine capability supplied by this test's fake store.
+	celltest.Available(t)
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.FilesOnly})
 	if err != nil {

@@ -13,7 +13,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"io"
 	"log"
 	"os"
@@ -24,12 +23,11 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-
 	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/calllog"
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/delegate/builtin"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -42,6 +40,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/telemetry"
 	"github.com/Agent-Field/codeaf/internal/trace"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func main() {
@@ -378,7 +377,7 @@ func run() error {
 		return runWake(os.Args[2:])
 	case "cell":
 		// The turn chain of a cell (cell.go): its log and its rewind. Machinery
-		// available only with CODEAF_CELLS=1, DELIBERATELY ABSENT from the
+		// available when a compatible engine is available, DELIBERATELY ABSENT from the
 		// usage text below, like `engine` and `tick`.
 		return runCell(os.Args[2:])
 	case "identity":

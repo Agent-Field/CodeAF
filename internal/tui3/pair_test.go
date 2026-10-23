@@ -8,9 +8,8 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
-
 	"github.com/Agent-Field/codeaf/internal/pair"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // The pairing surface's tests (pair.go, pair_firstrun.go). The door is a fake
@@ -98,7 +97,6 @@ func (r *pairRig) press(names ...string) {
 func (r *pairRig) slash(line string) { r.run(r.a.slash(line)) }
 
 func pairApp(t *testing.T, door Pairing, width int) *app {
-	t.Setenv("CODEAF_CELLS", "1")
 	a := newTestApp(&fakeAgent{model: "test/model"})
 	a.pairing = door
 	a.width, a.height = width, 30
@@ -138,8 +136,8 @@ func TestPairRowsAndAliasesResolve(t *testing.T) {
 	}
 }
 
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestPairWithNoDoorSaysOneSentence(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "1")
 	a := newTestApp(&fakeAgent{model: "test/model"})
 	if cmd := a.slash("/pair"); cmd != nil {
 		t.Fatal("a connection that cannot pair started something")

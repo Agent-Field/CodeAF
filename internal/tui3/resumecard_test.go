@@ -20,7 +20,6 @@ func webResume() machine.Resume {
 }
 
 func movedApp(t *testing.T) (*app, *setupAgent) {
-	t.Setenv("CODEAF_CELLS", "1")
 	t.Helper()
 	a, agent := machineApp(t, machine.Item{Bucket: machine.Installable, Name: "node"})
 	agent.report.Resume = webResume()

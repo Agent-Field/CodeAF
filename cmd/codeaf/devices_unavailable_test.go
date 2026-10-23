@@ -5,12 +5,14 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/cell"
 )
 
-// C18 and C26 keep dev's reachable-machine door when chat pairing is off.
+// C27.3 keeps the reachable-machine door when no engine can move chats.
 func TestDevicesWithoutMovingChatsKeepsTheRemoteAccessRoute(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
-	t.Setenv("CODEAF_CELLS", "")
+	t.Cleanup(cell.UseAvailabilityInTests(false))
 	saved := os.Stdout
 	r, w, err := os.Pipe()
 	if err != nil {

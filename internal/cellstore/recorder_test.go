@@ -179,28 +179,29 @@ func TestExternalCallKeepsOutputInTheWAL(t *testing.T) {
 	}
 }
 
-func TestFlagOffWrapIsTheExecutorItself(t *testing.T) {
-	t.Setenv(cell.EnvVar, "0")
+// C27.7 exercises this behaviour without an opt-in switch.
+func TestUnavailableWrapIsTheExecutorItself(t *testing.T) {
+	t.Cleanup(cell.UseAvailabilityInTests(false))
 	c := newCell(t)
 	inner := &stubExec{}
 	got, err := Wrap(inner, c)
 	if err != nil || got != executor.Executor(inner) {
-		t.Fatalf("Wrap with the flag off = %#v, %v; want the same executor", got, err)
+		t.Fatalf("Wrap with the unavailable engine = %#v, %v; want the same executor", got, err)
 	}
 	if _, err := got.Exec(context.Background(), req(executor.NetPolicy{}, "x"), nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(rel(c, TurnsPath)); !os.IsNotExist(err) {
-		t.Fatalf("flag off wrote %s", TurnsPath)
+		t.Fatalf("unavailable engine wrote %s", TurnsPath)
 	}
 }
 
-func TestFlagOnWrapRecords(t *testing.T) {
-	t.Setenv(cell.EnvVar, "1")
+// C27.7 exercises this behaviour without an opt-in switch.
+func TestAvailableWrapRecords(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	got, err := Wrap(&stubExec{}, newCell(t))
 	if _, ok := got.(*Recorder); err != nil || !ok {
-		t.Fatalf("Wrap with the flag on = %T, %v", got, err)
+		t.Fatalf("Wrap with the available engine = %T, %v", got, err)
 	}
 }
 

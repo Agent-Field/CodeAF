@@ -1,8 +1,7 @@
 package main
 
-// The door and the cells mode of the engine it finds. An engine reads
-// CODEAF_CELLS once, so the door must never attach to one in the other mode
-// without saying so.
+// C27.3 requires an older host without moving-chat support to be retired
+// before a new window relies on that capability.
 
 import (
 	"strings"
@@ -17,7 +16,9 @@ func sameBuildHost(cells, busy bool) remote.HostSelf {
 	return remote.HostSelf{Version: remote.Version, Build: buildinfo.Identity(), Cells: cells, Busy: busy}
 }
 
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestAnIdleEngineInTheOtherCellsModeIsRestarted(t *testing.T) {
+	t.Setenv("CODEAF_SYNC_URL", "")
 	shortEngineHome(t)
 	workspace := "/home/somebody/api"
 	standIn(t, workspace, sameBuildHost(false, false), false)
@@ -28,7 +29,7 @@ func TestAnIdleEngineInTheOtherCellsModeIsRestarted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("an idle engine in the other mode was refused: %v", err)
 	}
-	if !strings.Contains(note, "cells off") || !strings.Contains(note, "cells on now") {
+	if !strings.Contains(note, "without moving chats") || !strings.Contains(note, "moving chats available now") {
 		t.Fatalf("the restart line does not name both modes: %q", note)
 	}
 	if conn, err := enginehost.Dial(workspace); err == nil {
@@ -37,7 +38,9 @@ func TestAnIdleEngineInTheOtherCellsModeIsRestarted(t *testing.T) {
 	}
 }
 
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestABusyEngineInTheOtherCellsModeIsRefusedAndLeftRunning(t *testing.T) {
+	t.Setenv("CODEAF_SYNC_URL", "")
 	shortEngineHome(t)
 	workspace := "/home/somebody/api"
 	standIn(t, workspace, sameBuildHost(false, true), false)
@@ -48,7 +51,7 @@ func TestABusyEngineInTheOtherCellsModeIsRefusedAndLeftRunning(t *testing.T) {
 	if err == nil {
 		t.Fatal("a busy engine in the other mode was attached to in silence")
 	}
-	for _, want := range []string{"cells off", "codeaf engine --stop --workspace " + workspace} {
+	for _, want := range []string{"without moving chats", "codeaf engine --stop --workspace " + workspace} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("the refusal %q does not say %q", err, want)
 		}
@@ -60,7 +63,9 @@ func TestABusyEngineInTheOtherCellsModeIsRefusedAndLeftRunning(t *testing.T) {
 	}
 }
 
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestAnEngineInTheSameCellsModeIsJoinedWithoutAWord(t *testing.T) {
+	t.Setenv("CODEAF_SYNC_URL", "")
 	shortEngineHome(t)
 	workspace := "/home/somebody/api"
 	standIn(t, workspace, sameBuildHost(true, true), false)

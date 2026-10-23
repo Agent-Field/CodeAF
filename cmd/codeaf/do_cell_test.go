@@ -41,10 +41,11 @@ func sealedTurns(t *testing.T, root string) int {
 	return len(turns)
 }
 
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestRunInCellSealsItsCallsAndContinuesFromThem(t *testing.T) {
 	celltest.RequireEngine(t)
 	beltRunEnv(t)
-	t.Setenv(cell.EnvVar, "1")
+
 	t.Setenv("CODEAF_PLANDB_BIN", beltPlandbDoor(t))
 	workspace := beltRepoWorkspace(t)
 
@@ -74,15 +75,15 @@ func TestRunInCellSealsItsCallsAndContinuesFromThem(t *testing.T) {
 	}
 }
 
-// TestRunWithCellsOffMakesNoCell proves C10 at codeaf do's real tool-call door.
-func TestRunWithCellsOffMakesNoCell(t *testing.T) {
+// TestRunWithoutAnEngineMakesNoCell proves C10 at codeaf do's real tool-call door.
+func TestRunWithoutAnEngineMakesNoCell(t *testing.T) {
 	beltRunEnv(t)
-	t.Setenv(cell.EnvVar, "0")
+	t.Cleanup(cell.UseAvailabilityInTests(false))
 	t.Setenv("CODEAF_PLANDB_BIN", beltPlandbDoor(t))
 
 	record := doInCell(t, beltRepoWorkspace(t), "write out.txt", "")
 	if cellOf(record) != "" {
-		t.Fatal("a run with cells off points at a cell")
+		t.Fatal("a run with no engine points at a cell")
 	}
 	if _, err := os.Stat(filepath.Join(record, cellPointer)); !os.IsNotExist(err) {
 		t.Fatalf("a pointer was written: %v", err)
@@ -91,7 +92,7 @@ func TestRunWithCellsOffMakesNoCell(t *testing.T) {
 		t.Fatalf("a project bucket was made: %v", err)
 	}
 	if _, err := os.Stat(home.Join("v3", "stores")); !os.IsNotExist(err) {
-		t.Fatalf("a cell store was written with cells off: %v", err)
+		t.Fatalf("a cell store was written with no engine: %v", err)
 	}
 }
 
@@ -124,9 +125,9 @@ func TestSealedStateIsInTheBriefAndTheAssignmentSurvivesIt(t *testing.T) {
 	}
 }
 
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestASealedChainIsNotAnEmptySession(t *testing.T) {
 	celltest.Available(t)
-	t.Setenv(cell.EnvVar, "1")
 	place, err := v3MintSession(t.TempDir(), t.TempDir(), "", false)
 	if err != nil {
 		t.Fatal(err)

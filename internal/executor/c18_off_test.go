@@ -6,14 +6,16 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/cell"
 )
 
-// C18 preserves ordinary host shell text when cells are off.
+// C18 preserves ordinary host shell text when the engine is unavailable.
 func TestC18CellsOffHostKeepsOrdinaryShellBehavior(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "0")
+	t.Cleanup(cell.UseAvailabilityInTests(false))
 	r, err := Host.In(t.TempDir()).Exec(context.Background(), ExecRequest{Argv: []string{"bash", "-lc", "printf '%s' '.cell'"}}, nil)
 	if err != nil || strings.TrimSpace(string(r.Stdout)) != ".cell" {
-		t.Fatalf("cells off plain shell refused harmless text: output=%q error=%v", r.Stdout, err)
+		t.Fatalf("no engine plain shell refused harmless text: output=%q error=%v", r.Stdout, err)
 	}
 }
 

@@ -11,7 +11,7 @@ import (
 )
 
 // SeatFor builds the executor a session owns: every call runs under the class
-// the cell declared and, with cells on, each tool call is logged and the
+// the cell declared and each tool call is logged and the
 // workspace sealed when it returns. This is the one place a session's
 // executor is made.
 //
@@ -28,7 +28,7 @@ func SeatFor(class executor.Class, c cell.Cell, workspace string, obs executor.O
 // itself. It is how a chat that syncs notes each turn it seals.
 func SeatOver(class executor.Class, c cell.Cell, workspace string, obs executor.Observer, report func(error), over func(Engine) Store, opts ...SeatOption) (executor.Seat, error) {
 	base := executor.Stance{Class: class, Observer: obs, Secrets: vaultEnv{c}}
-	if !cell.Enabled() {
+	if !cell.Available() {
 		return executor.Watching(base, obs), nil
 	}
 	engine := EngineFor(workspace)

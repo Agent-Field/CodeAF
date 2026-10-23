@@ -9,9 +9,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/Agent-Field/codeaf/internal/crewroute"
-	"github.com/Agent-Field/codeaf/internal/devname"
-	"github.com/Agent-Field/codeaf/internal/router"
 	"io"
 	"log"
 	"os"
@@ -28,7 +25,9 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/calllog"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
+	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/exec"
 	"github.com/Agent-Field/codeaf/internal/head"
@@ -36,6 +35,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/lease"
 	"github.com/Agent-Field/codeaf/internal/resident"
 	"github.com/Agent-Field/codeaf/internal/revision"
+	"github.com/Agent-Field/codeaf/internal/router"
 	runengine "github.com/Agent-Field/codeaf/internal/run"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
@@ -431,7 +431,7 @@ type doRequest struct {
 	// continuation of it. It names the run; empty is a fresh run, named by task.
 	assignment string
 	// cellRoot is the cell a continuation goes on working in; empty mints one
-	// only with CODEAF_CELLS=1, or runs on the host.
+	// when a compatible engine is available, or runs on the host.
 	cellRoot string
 	// run is the id this invocation minted at the door ([trace.Begin]). It goes
 	// out on the `--json` envelope, where it is the join to the model-call log

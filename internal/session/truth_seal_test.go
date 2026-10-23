@@ -43,8 +43,8 @@ func TestCellLayoutKeepsTruthUnderTheCellDir(t *testing.T) {
 
 // Seal a session, materialize ONLY the sealed tree (workspace plus .cell/) into
 // a fresh folder, and open it: the dials and cursors are the same.
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestSealedTreeCarriesTheSessionTruth(t *testing.T) {
-	t.Setenv(cell.EnvVar, "1")
 	// The suite pins furrow away; this proof uses the explicit test engine.
 	t.Setenv(furrow.BinaryEnvVar, os.Getenv("CODEAF_TEST_FURROW"))
 	bin, err := furrow.ResolveBinary()
@@ -241,8 +241,8 @@ func slurp(t *testing.T, path string) string {
 // there. The checkpoint records the journal by the path it had where it was
 // written, so the journal is compared by its name and found in the fresh
 // folder's own node journals.
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestSealedTreeCarriesTaskHistory(t *testing.T) {
-	t.Setenv(cell.EnvVar, "1")
 	t.Setenv(furrow.BinaryEnvVar, os.Getenv("CODEAF_TEST_FURROW"))
 	bin, err := furrow.ResolveBinary()
 	if err != nil {

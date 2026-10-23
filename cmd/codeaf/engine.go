@@ -419,12 +419,9 @@ func differentEngineEnvironmentSentence(workspace string) string {
 	return "the engine for this folder started with a different environment than this terminal and is still in use — close its other windows or let its work finish, or run " + stop
 }
 
-// settleCellsMode is the last question before joining a host: does it run in
-// this process's cells mode? A host reads CODEAF_CELLS once, when it starts, so
-// one started with cells off would serve every later chat with cells off and
-// nothing would ever migrate. There is no silent mismatch. An idle host is asked
-// to retire and the next line of the door starts one in this mode, with one line
-// saying so; a host holding work is left exactly as it is and refused in words.
+// settleCellsMode checks the capability of an already-running host before
+// a new window relies on it. An idle older host can retire; a busy host keeps
+// its work until the person finishes it or explicitly stops that workspace.
 func settleCellsMode(workspace string, host remote.HostSelf, me engineBuild) (string, error) {
 	if host.Cells == me.Cells {
 		return "", nil
@@ -439,17 +436,33 @@ func settleCellsMode(workspace string, host remote.HostSelf, me engineBuild) (st
 	return cellsRestartedSentence(me.Cells), nil
 }
 
-// cellsMode is a mode as a person types it.
+// cellsMode describes the capability an older host reported.
 func cellsMode(on bool) string {
 	if on {
-		return "on"
+		return "with moving chats"
 	}
-	return "off"
+	return "without moving chats"
+}
+
+// cellsStatus describes actual support without suggesting a feature switch.
+func cellsStatus(available bool) string {
+	if available {
+		return "available"
+	}
+	return "unavailable"
 }
 
 // cellsRestartedSentence is the line owed for replacing an idle host.
 func cellsRestartedSentence(now bool) string {
-	return fmt.Sprintf("restarted the idle engine because it ran with cells %s; it runs with cells %s now", cellsMode(!now), cellsMode(now))
+	return fmt.Sprintf("restarted the idle engine because it ran %s; %s available now", cellsMode(!now), cellsCapability(now))
+}
+
+// cellsCapability names the capability after an idle host has been replaced.
+func cellsCapability(available bool) string {
+	if available {
+		return "moving chats"
+	}
+	return "ordinary chats"
 }
 
 // cellsHostBusySentence is the refusal for a host in the other mode that is
@@ -460,7 +473,7 @@ func cellsHostBusySentence(hostCells bool, workspace string) string {
 	if workspace = strings.TrimSpace(workspace); workspace != "" {
 		stop += " --workspace " + workspace
 	}
-	return fmt.Sprintf("engine: the engine on %s runs with cells %s and something is still going in it — let that finish, or run %s, then open again",
+	return fmt.Sprintf("engine: the engine on %s runs %s and something is still going in it — let that finish, or run %s, then open again",
 		machineOrThis(), cellsMode(hostCells), stop)
 }
 
@@ -748,7 +761,7 @@ func writeEngineStatus(out io.Writer, workspace string, held enginehost.Holder, 
 		fmt.Fprintf(out, "  started    %s (%s ago)\n", host.Started.Local().Format("2006-01-02 15:04"), roughAge(now.Sub(host.Started)))
 	}
 	if held.Answered {
-		fmt.Fprintf(out, "  cells      %s\n", cellsMode(host.Cells))
+		fmt.Fprintf(out, "  chat moves %s\n", cellsStatus(host.Cells))
 		fmt.Fprintf(out, "  windows    %d attached · %s open\n", host.Surfaces, countWord(host.Conversations, "conversation", "conversations"))
 		if host.Busy {
 			fmt.Fprintln(out, "  working    yes — a turn, a task or a question is in flight")

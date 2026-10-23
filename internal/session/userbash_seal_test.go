@@ -14,7 +14,6 @@ import (
 // C5 requires a moved chat's snapshot to include composer ! work, including
 // a file changed after an initial snapshot that could otherwise be reused.
 func TestUserBashChangesReachTheTurnEndSnapshot(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "1")
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	// The session suite pins the engine away by default. This real-store proof
 	// deliberately resolves the configured test engine or the embedded engine.

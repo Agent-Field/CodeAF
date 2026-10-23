@@ -3,14 +3,15 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/Agent-Field/codeaf/internal/cell"
-	"github.com/Agent-Field/codeaf/internal/cell/celltest"
-	"github.com/Agent-Field/codeaf/internal/cellstore"
-	"github.com/Agent-Field/codeaf/internal/session"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 func TestCellGCOnAHomeWithNoCellsReportsAnEmptyBudget(t *testing.T) {
@@ -38,7 +39,7 @@ func TestCellGCKeepsExcludedFilesAndRestoresCapturedFiles(t *testing.T) {
 	// It seals and restores for real, so it needs the engine, not just the flag.
 	celltest.RequireEngine(t)
 	t.Setenv("CODEAF_HOME", t.TempDir())
-	t.Setenv("CODEAF_CELLS", "1")
+
 	t.Setenv("CODEAF_SYNC_URL", "off")
 	t.Setenv("CODEAF_CELL_BUDGET_GB", "0.000000001")
 	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.HostBound})

@@ -1,15 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"encoding/hex"
 	"os"
-
-	"bytes"
-	"github.com/Agent-Field/codeaf/internal/identity"
-	"github.com/Agent-Field/codeaf/internal/keys"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/identity"
+	"github.com/Agent-Field/codeaf/internal/keys"
 )
 
 func door(t *testing.T, home, phrase string) (identityDoor, *bytes.Buffer) {
@@ -56,9 +57,10 @@ func TestIdentityImportRefusesOtherIdentityWithoutReplace(t *testing.T) {
 	}
 }
 
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestIdentityNeedsCells(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "0")
-	if err := runIdentity([]string{"show"}); err == nil || !strings.Contains(err.Error(), "CODEAF_CELLS") {
+	t.Cleanup(cell.UseAvailabilityInTests(false))
+	if err := runIdentity([]string{"show"}); err == nil || err.Error() != cell.UnavailableReason() {
 		t.Fatalf("got %v", err)
 	}
 }

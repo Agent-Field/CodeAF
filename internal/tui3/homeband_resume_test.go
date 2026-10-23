@@ -97,8 +97,8 @@ func TestResumeStaysAnsweredOncePutOff(t *testing.T) {
 	}
 }
 
+// C27.7 exercises this behaviour without an opt-in switch.
 func TestResumeOffersOnceAndLeadsToTheTakeoverCard(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "1") // C26: the takeover card exists only where moving chats is on
 	a := leftOffApp(&fakeTaker{})
 	a.tookMachines(homeMachinesMsg{rows: []chatlist.Row{leftOffRow("a", "spark", chatlist.Off, time.Hour)}})
 	got := leftOffFrame(a)

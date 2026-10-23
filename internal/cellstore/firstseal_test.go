@@ -21,7 +21,7 @@ func TestC9SeatScreensAnEmptyChangesTurn(t *testing.T) {
 		for _, path := range []string{".env", "config/settings.py"} {
 			for _, door := range []string{"model reply", "empty-changes call", "shell reply"} {
 				t.Run(path+"/"+door, func(t *testing.T) {
-					t.Setenv("CODEAF_CELLS", "1")
+
 					r := newRig(t)
 					t.Setenv("CODEAF_HOME", r.guard.Home)
 					e := realEngine(t)

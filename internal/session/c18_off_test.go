@@ -1,15 +1,17 @@
 package session
 
 import (
-	"github.com/Agent-Field/codeaf/internal/store"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
-// C18 preserves legacy memory writes without a portable sidecar when cells are off.
+// C18 preserves legacy memory writes without a portable sidecar when the engine is unavailable.
 func TestC18CellsOffMustNotWriteMemorySidecar(t *testing.T) {
-	t.Setenv("CODEAF_CELLS", "0")
+	t.Cleanup(cell.UseAvailabilityInTests(false))
 	dir := t.TempDir()
 	brain, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
 	if err != nil {
@@ -29,7 +31,7 @@ func TestC18CellsOffMustNotWriteMemorySidecar(t *testing.T) {
 	}
 	path := filepath.Join(dir, "memories.jsonl")
 	if raw, err := os.ReadFile(path); err == nil {
-		t.Fatalf("cells off wrote extra memory sidecar %s (%d bytes)", path, len(raw))
+		t.Fatalf("no engine wrote extra memory sidecar %s (%d bytes)", path, len(raw))
 	} else if !os.IsNotExist(err) {
 		t.Fatal(err)
 	}
