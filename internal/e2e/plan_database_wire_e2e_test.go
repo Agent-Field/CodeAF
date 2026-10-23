@@ -5,6 +5,7 @@ package e2e
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -45,7 +46,7 @@ func TestPlanCLIReadsWhileWriterHeldAndFinishesAfterRelease(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "contended.db")
 	mustPlanCLI(t, dir, path, "init", "fictional-lock-plan", "--description", "Verify concurrent plan inspection")
-	mustPlanCLI(t, dir, path, "go", "--agent", "fixture-writer")
+	claimPlanProof(t, dir, path, "fixture-writer")
 	uri := sqliteuri.File(path)
 	uri.RawQuery = "_txlock=immediate&_pragma=busy_timeout(1000)"
 	db, err := sql.Open("sqlite", uri.String())
@@ -62,9 +63,9 @@ func TestPlanCLIReadsWhileWriterHeldAndFinishesAfterRelease(t *testing.T) {
 	time.Sleep(6 * time.Second)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	began := time.Now()
-	out, err := planCLI(t, ctx, dir, path, "show", "t-root")
+	out, err := planCLI(t, ctx, dir, path, "show", "t-proof")
 	cancel()
-	if err != nil || !strings.Contains(out, "fictional-lock-plan") {
+	if err != nil || !strings.Contains(out, "fictional-proof-task") {
 		t.Fatalf("read CLI failed while writer remained held: %v %s", err, out)
 	}
 	readElapsed := time.Since(began)
@@ -76,7 +77,7 @@ func TestPlanCLIReadsWhileWriterHeldAndFinishesAfterRelease(t *testing.T) {
 	ctx, cancel = context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	go func() {
-		out, err := planCLI(t, ctx, dir, path, "done", "t-root", "--agent", "fixture-writer", "--result", "LOCK_RELEASE_PROOF")
+		out, err := planCLI(t, ctx, dir, path, "done", "t-proof", "--agent", "fixture-writer", "--result", "LOCK_RELEASE_PROOF")
 		finished <- result{out, err}
 	}()
 	select {
@@ -91,7 +92,7 @@ func TestPlanCLIReadsWhileWriterHeldAndFinishesAfterRelease(t *testing.T) {
 	if got.err != nil || !strings.Contains(got.out, "LOCK_RELEASE_PROOF") {
 		t.Fatalf("write did not recover after release: %v %s", got.err, got.out)
 	}
-	reopened := mustPlanCLI(t, dir, path, "show", "t-root")
+	reopened := mustPlanCLI(t, dir, path, "show", "t-proof")
 	if !strings.Contains(reopened, "LOCK_RELEASE_PROOF") || !strings.Contains(reopened, `"done"`) {
 		t.Fatalf("reopen lost completion: %s", reopened)
 	}
@@ -116,9 +117,9 @@ func TestPlanCLIPreservesLiteralDatabasePaths(t *testing.T) {
 					if info, err := os.Stat(literal); err != nil || info.Size() == 0 {
 						t.Fatalf("literal requested database missing: %v", err)
 					}
-					mustPlanCLI(t, dir, path, "go", "--agent", "path-owner")
-					mustPlanCLI(t, dir, path, "done", "t-root", "--agent", "path-owner", "--result", "LITERAL_PATH_OK")
-					out := mustPlanCLI(t, dir, path, "show", "t-root")
+					claimPlanProof(t, dir, path, "path-owner")
+					mustPlanCLI(t, dir, path, "done", "t-proof", "--agent", "path-owner", "--result", "LITERAL_PATH_OK")
+					out := mustPlanCLI(t, dir, path, "show", "t-proof")
 					if !strings.Contains(out, "LITERAL_PATH_OK") {
 						t.Fatalf("literal reopen lost update: %s", out)
 					}
@@ -205,4 +206,16 @@ func TestSpecialPathProjectLivePlanWorkflow(t *testing.T) {
 		}
 	}
 	t.Logf("PASS live special-path project: actual inspected repository, two-file tested plan completed, both artifacts on task branch; all %d receipts exact %s.\n%s", len(models), model, rig.capture())
+}
+
+func claimPlanProof(t *testing.T, dir, path, agent string) {
+	t.Helper()
+	mustPlanCLI(t, dir, path, "add", "fictional-proof-task", "--as", "proof", "--description", "Inspect and complete this fictional proof task")
+	out := mustPlanCLI(t, dir, path, "go", "--agent", agent)
+	var claimed struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(out), &claimed); err != nil || claimed.ID != "t-proof" {
+		t.Fatalf("actual CLI did not claim the proof child: %v %s", err, out)
+	}
 }
