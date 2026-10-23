@@ -38,12 +38,15 @@ type hostTeams struct {
 	defaults func() (teamstore.Defaults, error)
 	// applyDefault writes one `teams.` row ([remote.Welcome.TeamSettings]).
 	// Nil leaves the settings Teams tab read-only.
-	applyDefault  func(key, raw string) (teamstore.Defaults, error)
-	packets       func(scope, stamp string) (remote.PacketsReading, error)
-	raise         func(p teamstore.Packet) (teamstore.Packet, error)
-	decide        func(id, by, decision, reason string) (teamstore.Packet, error)
-	escalate      func(id, by, to, reason string) (teamstore.Packet, error)
-	spend         func(team, day, stamp string) (remote.SpendReading, error)
+	applyDefault func(key, raw string) (teamstore.Defaults, error)
+	packets      func(scope, stamp string) (remote.PacketsReading, error)
+	raise        func(p teamstore.Packet) (teamstore.Packet, error)
+	decide       func(id, by, decision, reason string) (teamstore.Packet, error)
+	escalate     func(id, by, to, reason string) (teamstore.Packet, error)
+	spend        func(team, day, stamp string) (remote.SpendReading, error)
+	// total is one team's total live cost ([remote.Welcome.TeamsTotal]). Nil
+	// leaves the page's totals out over the connection.
+	total         func(team, stamp string) (remote.TotalReading, error)
 	deleteOne     func(team string) (remote.DeleteTeamReply, error)
 	deleteChecked func(team string, expected []string) (remote.DeleteTeamReply, error)
 	// The wrap-up's two doors, nil when the engine does not answer them
@@ -69,7 +72,7 @@ const hostTeamsTries = 3
 // errHostTeamsBusy is a write that met another writer on every try.
 var errHostTeamsBusy = errors.New("the teams on the far machine kept changing while this was written; try again")
 
-func newHostTeams(far hostFar, delegation, wrapUp, settings bool) *hostTeams {
+func newHostTeams(far hostFar, delegation, wrapUp, settings, totals bool) *hostTeams {
 	h := &hostTeams{
 		read:    far.client.TeamsRead,
 		write:   far.client.TeamsUpdate,
@@ -84,6 +87,9 @@ func newHostTeams(far hostFar, delegation, wrapUp, settings bool) *hostTeams {
 		}
 		h.defaults, h.packets, h.raise = c.TeamsDefaults, c.TeamsPackets, c.TeamsRaise
 		h.decide, h.escalate, h.spend, h.deleteOne = c.TeamsDecide, c.TeamsEscalate, c.TeamsSpend, func(team string) (remote.DeleteTeamReply, error) { return c.TeamsDelete(team) }
+		if totals {
+			h.total = c.TeamsTotal
+		}
 		if wrapUp {
 			h.wrapUp, h.acceptClosing = c.TeamsWrapUp, c.TeamsAcceptClosing
 		}
@@ -105,7 +111,7 @@ func hostTeamsSeam(far hostFar, welcome remote.Welcome) tui3.TeamsSeam {
 	if welcome.TeamMembershipVersion != remote.TeamMembershipVersion {
 		return tui3.TeamsSeam{}
 	}
-	return newHostTeams(far, welcome.Delegation, welcome.WrapUp, welcome.TeamSettings).seam()
+	return newHostTeams(far, welcome.Delegation, welcome.WrapUp, welcome.TeamSettings, welcome.TeamsTotal).seam()
 }
 
 // seam is h as the surface's functions. The delegation doors are handed only
@@ -121,6 +127,9 @@ func (h *hostTeams) seam() tui3.TeamsSeam {
 	}
 	s.Defaults, s.Raise, s.Decide, s.Escalate = h.defaults, h.raise, h.decide, h.escalate
 	s.Packets, s.Spend, s.Delete = h.readPackets, h.readSpend, h.forget
+	if h.total != nil {
+		s.Total = h.readTotal
+	}
 	if h.deleteChecked != nil {
 		s.DeleteChecked = h.forgetChecked
 	}
@@ -169,6 +178,22 @@ func (h *hostTeams) readSpend(team, day, since string) (teamstore.Spend, string,
 		return teamstore.Spend{Team: team, Day: day}, got.Stamp, false, nil
 	}
 	return *got.Spend, got.Stamp, false, nil
+}
+
+// readTotal is [tui3.TeamsSeam.Total]: one round trip, a few bytes when
+// neither the engine's teams file nor its ledger moved.
+func (h *hostTeams) readTotal(team, since string) (teamstore.Total, string, bool, error) {
+	got, err := h.total(team, since)
+	if err != nil {
+		return teamstore.Total{}, "", false, err
+	}
+	if got.Same {
+		return teamstore.Total{}, got.Stamp, true, nil
+	}
+	if got.Total == nil {
+		return teamstore.Total{Team: team}, got.Stamp, false, nil
+	}
+	return *got.Total, got.Stamp, false, nil
 }
 
 // forget is [tui3.TeamsSeam.Delete]: the engine forgets the team and its

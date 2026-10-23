@@ -37,6 +37,11 @@ type Member struct {
 	// JoinedAt bounds delivery for a conversation added through membership editing.
 	// An ended membership cannot regain directives from its previous lifetime.
 	JoinedAt time.Time `json:"joined_at,omitempty"`
+	// LeftAt is when this membership ended: [File.RemoveMember] stamps it when
+	// it moves a member to FormerMembers. Zero is an open membership, or a
+	// removal written before the field existed, and bounds it from above in
+	// the team's total ([TeamTotal]).
+	LeftAt time.Time `json:"left_at,omitempty"`
 	// StartID is the Traffic start admitted when this membership was created.
 	// Only that brief may cross its join boundary; handles can be reused.
 	StartID string `json:"start_id,omitempty"`
@@ -456,6 +461,12 @@ func (f *File) RemoveMember(id, key string) error {
 	if j := t.member(key); j >= 0 {
 		m := t.Members[j]
 		m.Home, m.Independent = false, false
+		// THE REMOVAL IS THE END OF THE MEMBERSHIP. All time counts a team's
+		// money through membership intervals ([TeamTotal]): what was spent
+		// while the member was here stays the team's, and nothing after
+		// LeftAt is. SetManager and SetHome never touch the field, because a
+		// replaced manager or a moved home is still a member.
+		m.LeftAt = time.Now()
 		t.FormerMembers = append(t.FormerMembers, m)
 		t.Members = append(t.Members[:j:j], t.Members[j+1:]...)
 	}

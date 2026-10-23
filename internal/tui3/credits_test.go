@@ -227,6 +227,7 @@ func TestFailedCreditReadKeepsThePreviousSurfaceState(t *testing.T) {
 func TestLowCreditReadSwapsOnlyAnUntouchedImplicitConversation(t *testing.T) {
 	a := placeApp(t)
 	a.readCredits = func(context.Context) (credits.Reading, error) { return credits.Reading{Known: true, Low: true}, nil }
+	config.SetCrewFreeRoutes(a.profileDir, true) // the automatic swap honors free-route consent
 	seedLowCredits(t, a)
 	a.implicitTalk = true
 	a.model = config.DefaultModel

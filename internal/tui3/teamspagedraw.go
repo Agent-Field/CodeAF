@@ -287,8 +287,14 @@ func (a *app) teamsRailTeam(d *teamsDraw, t team, depth, width, y int) string {
 	if t.Root {
 		name = teamstore.RootName
 	}
+	// The team's own total, dim at the row's right, before the needs/working
+	// mark: the name truncates first, so the figure never drops off the row.
+	total, totalW := "", 0
+	if words := a.teamsTotalWords(t); words != "" {
+		total, totalW = pal.dim(words), ansi.StringWidth(words)
+	}
 	lead := " " + strings.Repeat("  ", depth)
-	room := width - ansi.StringWidth(lead) - 2 - markW - 2
+	room := width - ansi.StringWidth(lead) - 2 - markW - totalW - 2
 	if room < 3 {
 		room = 3
 	}
@@ -304,6 +310,10 @@ func (a *app) teamsRailTeam(d *teamsDraw, t team, depth, width, y int) string {
 	text := lead + dot + " " + pal.ink(name)
 	if t.Manager != "" {
 		text += " " + pal.dim(a.teamManagerMark())
+	}
+	if total != "" {
+		gap := width - ansi.StringWidth(text) - totalW - markW - 2
+		text += strings.Repeat(" ", max(gap, 1)) + total
 	}
 	if mark != "" {
 		gap := width - ansi.StringWidth(text) - markW - 1
@@ -436,7 +446,33 @@ func (a *app) teamsSpendWords(t team) string {
 	return words
 }
 
-// teamsRaisedCap is today's ceiling after a person accepted a raise. The
+// teamsTotalWords is team t's total live cost, all time: `$67.46`, the figure
+// of the team's own that has no cap in it. "" while no total is read yet, or
+// when the team has spent nothing at all.
+func (a *app) teamsTotalWords(t team) string {
+	tv, ok := a.tp.total[t.ID]
+	if !ok || tv.USD <= 0 {
+		return ""
+	}
+	return teamsMoney(teamstore.RoundMoney(tv.USD))
+}
+
+// teamsBodyMoney is the pane body's one money line for team t: its total live
+// cost beside the day's spend against the cap, `total $67.46 · $1.20 of $5
+// today`. "" when there is nothing to say yet. The strip's cap piece
+// ([app.teamsSpendWords]) stays where it is; this is the figure of the team
+// itself, drawn open and closed.
+func (a *app) teamsBodyMoney(t team) string {
+	var parts []string
+	if total := a.teamsTotalWords(t); total != "" {
+		parts = append(parts, "total "+total)
+	}
+	if spend := a.teamsSpendWords(t); spend != "" {
+		parts = append(parts, spend)
+	}
+	return strings.Join(parts, " "+a.teamsDot()+" ")
+}
+
 // decision is deliberately not a team setting, so the header must read the
 // same packet the cap gate uses rather than the stored recurring ceiling.
 func (a *app) teamsRaisedCap(owner string, cap float64) float64 {
@@ -850,6 +886,10 @@ func (a *app) teamsPaneRest(d *teamsDraw, width, y int) []string {
 		out = append(out, a.teamsClosedRows(d, t, width, y)...)
 	default:
 		out = append(out, "")
+		if money := a.teamsBodyMoney(t); money != "" {
+			out = append(out, " "+pal.dim(money))
+			out = append(out, "")
+		}
 		out = append(out, a.teamsMemberCards(d, t, width, y+len(out))...)
 	}
 	return out
@@ -919,8 +959,8 @@ func (a *app) teamsClosedRows(d *teamsDraw, t team, width, y int) []string {
 	out = append(out, "", " "+pal.muted("members"))
 	members := a.teamsMembersRows(d, t, width, y+len(out))
 	out = append(out, members...)
-	if spend := a.teamsSpendWords(t); spend != "" {
-		out = append(out, "", " "+pal.dim(spend))
+	if money := a.teamsBodyMoney(t); money != "" {
+		out = append(out, "", " "+pal.dim(money))
 	}
 	out = append(out, "", " "+pal.muted("Decisions"))
 	for _, packet := range a.tp.history[t.ID] {

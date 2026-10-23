@@ -1,6 +1,8 @@
 package tui3
 
 import (
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -918,5 +920,248 @@ func TestTeamSettingsWakeUsesTheSharedOverrideAndResetMechanics(t *testing.T) {
 	text := teamsFrameText(a)
 	if strings.Contains(text, "from Settings") || strings.Contains(text, "Inside") {
 		t.Fatal("settings clutter returned")
+	}
+}
+
+// ── the team's own total ────────────────────────────────────────────────────
+
+// THE RAIL ROW CARRIES THE TEAM'S OWN TOTAL, DIM AT ITS RIGHT: `$67.46` on
+// harbor's row and `$12.00` on orbit's, figures of the teams themselves, one
+// per row, apart from the day's `of $5` cap reading that stays in the header
+// strip. The two figures sit in different homes, so a capped day does not
+// move the total and a quiet total does not move the cap.
+func TestTeamsRailRowCarriesTheTeamsOwnTotal(t *testing.T) {
+	a, harbor, orbit := teamsPlaceLabIDs(t)
+	a.tp.defaultsOK = true
+	a.tp.defaults = teamstore.Defaults{CapUSDDay: 5}
+	a.tp.spend = map[string]teamstore.Spend{harbor: {USD: 1.2}}
+	a.tp.total = map[string]teamstore.Total{
+		harbor: {Team: harbor, USD: 67.46},
+		orbit:  {Team: orbit, USD: 12.00},
+	}
+	// The day's cap reading is in the header strip, not on the rail.
+	if text := teamsFrameText(a); !strings.Contains(text, "$1.20 of $5 today") {
+		t.Fatalf("the strip lost the day's cap reading:\n%s", text)
+	}
+	lines := strings.Split(teamsFrameText(a), "\n")
+	for i, l := range lines {
+		if at := strings.Index(l, "│"); at >= 0 {
+			lines[i] = l[:at]
+		}
+	}
+	var harborRow, orbitRow string
+	for y, l := range lines {
+		if y < placeHeadRows || y >= a.height-1 {
+			continue
+		}
+		if strings.Contains(l, "harbor") {
+			harborRow = l
+		}
+		if strings.Contains(l, "orbit") {
+			orbitRow = l
+		}
+	}
+	if harborRow == "" || orbitRow == "" {
+		t.Fatalf("no rail rows:\n%s", strings.Join(lines, "\n"))
+	}
+	if !strings.Contains(harborRow, "$67.46") {
+		t.Fatalf("the harbor rail row lost its total: %q", harborRow)
+	}
+	if !strings.Contains(orbitRow, "$12") {
+		t.Fatalf("the orbit rail row lost its total: %q", orbitRow)
+	}
+	// The total is not the cap reading: no `of $` figure on the rail.
+	if strings.Contains(harborRow, "of $") {
+		t.Fatalf("the cap reading sits on the rail row: %q", harborRow)
+	}
+}
+
+// THE PANE BODY DRAWS ONE MONEY LINE OF THE TEAM'S OWN: `total $67.46 ·
+// $1.20 of $5 today`, the all-time figure beside the day's cap reading, for
+// an open team and for a closed one. The cap piece stays alone in the strip;
+// this is the line the total lives on.
+func TestTeamsPaneBodyDrawsTheTotalBesideTheDaysSpend(t *testing.T) {
+	a, harbor, _ := teamsPlaceLabIDs(t)
+	a.tp.defaultsOK = true
+	a.tp.defaults = teamstore.Defaults{CapUSDDay: 5}
+	a.tp.spend = map[string]teamstore.Spend{harbor: {USD: 1.2}}
+	a.tp.total = map[string]teamstore.Total{harbor: {Team: harbor, USD: 67.46}}
+	team := mustTeam(t, a, harbor)
+	dot := a.teamsDot()
+	want := "total $67.46 " + dot + " $1.20 of $5 today"
+	if got := a.teamsBodyMoney(team); got != want {
+		t.Fatalf("the body money line is %q, want %q", got, want)
+	}
+	if text := teamsFrameText(a); !strings.Contains(text, want) {
+		t.Fatalf("the open pane lost the money line %q:\n%s", want, text)
+	}
+	// WHILE THE TEAM STAYS OPEN THE STRIP KEEPS THE CAP PIECE: the total and
+	// the cap are drawn in their two homes, and nothing under $67.46 is the
+	// cap's place.
+	if text := teamsFrameText(a); !strings.Contains(text, "$1.20 of $5 today") {
+		t.Fatalf("the strip lost the day's cap reading:\n%s", text)
+	}
+
+	// A CLOSED TEAM'S PANE KEEPS THE TOTAL AND LOSES THE CAP PIECE:
+	// disbanding spends nothing, and the figure belongs to the team, not to
+	// its day — but a closed team has no effective cap (`CapFrom` closed), so
+	// the day's reading is `$1.20 today`, as it always was on a closed pane;
+	// the strip's cap piece was never a closed team's. The close's own write
+	// read the real, quiet store and folded its zeros over the page's figures,
+	// so put the page's figures back before drawing.
+	drive(t, a, runCmd(a.teamsCloseNow(harbor, ""))...)
+	// the close's own write read the real, quiet store and folded its defaults,
+	// spend and totals over the page's figures, so put the page's state back.
+	a.tp.defaultsOK = true
+	a.tp.defaults = teamstore.Defaults{CapUSDDay: 5}
+	a.tp.spend[harbor] = teamstore.Spend{USD: 1.2}
+	a.tp.total[harbor] = teamstore.Total{Team: harbor, USD: 67.46}
+	if sel, ok := a.teamsSelected(); !ok || sel.ID != harbor || !sel.Closed() {
+		t.Fatalf("the close did not leave the closed team selected: %+v %v", sel, ok)
+	}
+	closedWant := "total $67.46 " + dot + " $1.20 today"
+	if text := teamsFrameText(a); !strings.Contains(text, closedWant) {
+		sel, _ := a.teamsSelected()
+		eff := a.teamTree().Effective(sel.ID, a.tp.defaults)
+		t.Fatalf("the closed pane lost the money line %q (words %q, defaults %+v, effective %+v):\n%s",
+			closedWant, a.teamsSpendWords(sel), a.tp.defaults, eff, text)
+	}
+	if text := teamsFrameText(a); strings.Contains(text, "of $5 today") {
+		t.Fatalf("a closed team kept a cap reading:\n%s", text)
+	}
+}
+
+// THE SETTINGS CARD SHOWS THE TOTAL AND EVERY MEMBER'S SHARE OF IT, FORMER
+// MEMBERS INCLUDED: `Total cost  $67.46` and one row per conversation that
+// spent something, the runaway-member line the ByMember split is computed
+// for. A member that has left keeps their share on the card, under their
+// handle.
+func TestTeamsSettingsCardShowsTheTotalAndThePerMemberShare(t *testing.T) {
+	a, harbor, _ := teamsPlaceLabIDs(t)
+	// A member who has left: their lines stay the team's, and their share
+	// stays on the card.
+	gonePath := filepath.Join(t.TempDir(), "gone.jsonl")
+	gone := a.convKey(gonePath)
+	if err := a.teamEdit(func(f *teamstore.File) error {
+		if err := f.AddMember(harbor, teamstore.Member{Key: gone, File: gonePath, Where: t.TempDir(), Word: "gone", Handle: "gone"}); err != nil {
+			return err
+		}
+		return f.RemoveMember(harbor, gone)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	team := mustTeam(t, a, harbor)
+	var keys = map[string]bool{}
+	for _, m := range append(append([]teamMember(nil), team.Members...), team.FormerMembers...) {
+		keys[m.Key] = true
+	}
+	if !keys[gone] {
+		t.Fatalf("the removed member is not among the team's members: %+v", team.Members)
+	}
+	a.tp.total = map[string]teamstore.Total{harbor: {Team: harbor, USD: 67.46, ByMember: map[string]float64{
+		team.Members[0].Key: 40.12,
+		team.Members[1].Key: 25.35,
+		gone:                1.99,
+	}}}
+	var totalLine, shareLine, formerLine int
+	for _, ln := range a.teamSheetSettingsLines(team, 64) {
+		s := strings.TrimSpace(plain(ln.s))
+		switch {
+		case strings.HasPrefix(s, "Total cost") && strings.Contains(s, "$67.46"):
+			totalLine++
+		case strings.Contains(s, "@gone") && strings.Contains(s, "$1.99"):
+			formerLine++
+		case strings.Contains(s, "$40.12") || strings.Contains(s, "$25.35"):
+			shareLine++
+		}
+	}
+	if totalLine != 1 || shareLine != 2 || formerLine != 1 {
+		t.Fatalf("the settings card lost its total or a share (total %d, current shares %d, former %d):\n%s",
+			totalLine, shareLine, formerLine, teamsFrameText(a))
+	}
+}
+
+// OVER A SEAM WITHOUT THE TOTAL DOOR THE PAGE DRAWS NO TOTALS, and over the
+// same store behind a door that does answer, it draws the figure. The door
+// without [TeamsSeam.Total] is an older engine over --host: [app.teamsCanReadTotals]
+// answers false, [app.teamsRead] asks for none, folds none, and the rail row
+// and the body money line carry no `total $…` — the connection never gets
+// figures off this machine's ledger. The day's spend still crosses the same
+// door, so the absence is the total door's, not the store's and not the
+// page's.
+func TestTeamsWithNoTotalDoorDrawsNoTotals(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	farDir := t.TempDir()
+	const (
+		sess   = "0123456789abcdef"
+		harbor = "0a0a0a0a0a0a"
+	)
+	if err := teamstore.Save(farDir, []teamstore.Team{{ID: harbor, Name: "harbor",
+		Members: []teamstore.Member{{Key: filepath.Join("/srv", sess, "transcript.jsonl"), Handle: "web"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	line := fmt.Sprintf(`{"at":"2026-10-23T10:00:00-04:00","day":%q,"usd":67.46,"calls":1,"session":%q,"root":""}`,
+		teamstore.Today(), sess)
+	ledger := teamstore.UsageLedgerPath()
+	if err := os.MkdirAll(filepath.Dir(ledger), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ledger, []byte(line+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	a, _, _ := teamsPlaceLabIDs(t)
+	// THE OLDER ENGINE'S SEAM: the same store, the Total door taken out.
+	older := localTeams(farDir, &a.teamsDisk.watch)
+	older.Total = nil
+	a.teamsDisk.door = older
+	a.wall.loaded = false
+	a.teamsEnsure()
+	if a.teamsCanReadTotals() {
+		t.Fatal("a seam without the total door says it can read totals")
+	}
+	drive(t, a, runCmd(a.teamsRead(true))...)
+	if tv, ok := a.tp.total[harbor]; ok {
+		t.Fatalf("a read without the total door folded a total: %+v", tv)
+	}
+	drive(t, a, runCmd(a.teamsSelect(harbor))...)
+	text := teamsFrameText(a)
+	if strings.Contains(text, "total $") {
+		t.Fatalf("the pane drew a total over a door without it:\n%s", text)
+	}
+	if !strings.Contains(text, "$67.46 today") {
+		t.Fatalf("the day's spend failed to cross the same door:\n%s", text)
+	}
+
+	// THE SAME STORE BEHIND A DOOR THAT ANSWERS THE TOTAL: the figure lands
+	// on the rail row the moment the door has it, for the same store that a
+	// moment ago drew none.
+	withTotal := localTeams(farDir, &a.teamsDisk.watch)
+	a.teamsDisk.door = withTotal
+	drive(t, a, runCmd(a.teamsRead(true))...)
+	tv, ok := a.tp.total[harbor]
+	if !ok || int(tv.USD*100+0.5) != 6746 {
+		t.Fatalf("the total door folded %+v", tv)
+	}
+	text = teamsFrameText(a)
+	if !strings.Contains(text, "total $67.46") {
+		t.Fatalf("the pane lost the total over a door with it:\n%s", text)
+	}
+	var harborRow string
+	rows := strings.Split(text, "\n")
+	for i, l := range rows {
+		if i == len(rows)-1 {
+			continue // the keyboard footer is its own row, not the rail
+		}
+		if at := strings.Index(l, "│"); at >= 0 {
+			l = l[:at]
+		}
+		if strings.Contains(l, "harbor") {
+			harborRow = l
+			break
+		}
+	}
+	if !strings.Contains(harborRow, "$67.46") {
+		t.Fatalf("the harbor rail row lost its total: %q\nframe:\n%s", harborRow, text)
 	}
 }

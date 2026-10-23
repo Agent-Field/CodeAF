@@ -91,6 +91,10 @@ type TeamsSeam struct {
 	// Spend is team's spend on day ("" that machine's today) with its stamp,
 	// or same when neither the teams file nor the ledger moved since since.
 	Spend func(team, day, since string) (spend teamstore.Spend, stamp string, same bool, err error)
+	// Total is team's total live cost, all time, with its stamp, or same when
+	// neither the teams file nor the ledger moved since since. It is the
+	// page's own figure, kept apart from the day's Spend.
+	Total func(team, since string) (total teamstore.Total, stamp string, same bool, err error)
 	// Delete forgets a closed team, the teams under it and their files, and
 	// answers the ids forgotten. The window reads the list again after it
 	// (ReadSince), because the file moved.
@@ -212,6 +216,14 @@ func localTeams(dir string, watch *teamstore.Watch) TeamsSeam {
 			spend, err := teamstore.TeamSpend(dir, team, day)
 			return spend, stamp, false, err
 		},
+		Total: func(team, since string) (teamstore.Total, string, bool, error) {
+			stamp := teamstore.TeamTotalStamp(dir, team)
+			if since != "" && since == stamp {
+				return teamstore.Total{}, stamp, true, nil
+			}
+			total, err := teamstore.TeamTotal(dir, team)
+			return total, stamp, false, err
+		},
 		Delete:        func(team string) ([]string, error) { return teamstore.Delete(dir, team) },
 		DeleteChecked: func(team string, expected []string) ([]string, error) { return teamstore.Delete(dir, team, expected) },
 		History: func(team string) ([]teamstore.Packet, error) {
@@ -288,6 +300,14 @@ func (a *app) teamsCanWrapUp() bool {
 // teamsCanReadHistory reports whether the seam can read a team's packets.
 func (a *app) teamsCanReadHistory() bool {
 	return !a.teamsDisk.door.present() || a.teamsDisk.door.History != nil
+}
+
+// teamsCanReadTotals reports whether the seam reads a team's total live cost.
+// A local seam always can; over --host, only when the engine answers
+// [remote.Welcome.TeamsTotal]. The page in front of an engine that cannot
+// draws no totals, and never reads this machine's ledger.
+func (a *app) teamsCanReadTotals() bool {
+	return !a.teamsDisk.door.present() || a.teamsDisk.door.Total != nil
 }
 
 // teamsOff reports whether this window has no teams it can keep: over --host,
