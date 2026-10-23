@@ -1,8 +1,11 @@
 package session
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -135,8 +138,11 @@ func TestAlreadyCreatedHelperHonorsOptOutUnlessItsCurrentRowExplicitlyNamesFreeM
 			if err := config.SetCrewFreeRoutes(dir, false); err != nil {
 				t.Fatal(err)
 			}
+			// The live resolver can retain an old automatic value; it is never
+			// evidence that the person explicitly selected this free route.
+			agent.config.RolesSource = func(key string) (string, bool) { return frozen, key == roles.TierKey(roles.TierLow) }
 			if explicit {
-				agent.config.RolesSource = func(key string) (string, bool) { return frozen, key == roles.TierKey(roles.TierLow) }
+				writeFreeConsentProfileRows(t, dir, map[string]any{config.KeyTierLowModel: frozen})
 			}
 			_, err := (crewSeatCompleter{agent: agent, run: run}).CompleteWithMessages(t.Context(), []ai.Message{textMessage("user", "private probe task")}, ai.WithModel(frozen))
 			if explicit {
@@ -149,5 +155,81 @@ func TestAlreadyCreatedHelperHonorsOptOutUnlessItsCurrentRowExplicitlyNamesFreeM
 				}
 			}
 		})
+	}
+}
+
+func TestFrozenHelperDoesNotTreatFailedSettingsRebuildAsConsent(t *testing.T) {
+	const model = "thinkingmachines/inkling-small:free"
+	for _, current := range []string{"invalid role row", "invalid project JSON", "current explicit helper", "current explicit project helper", "current explicit role pin", "current explicit profile role pin"} {
+		t.Run(current, func(t *testing.T) {
+			stub := newCrewStub(t, http.StatusOK, map[string]int{model: http.StatusOK})
+			agent, dir := crewStubAgent(t, stub)
+			// This is the last good v3Crew snapshot, retained when the current
+			// settings fail to parse. It was an automatic free choice while on.
+			agent.config.RolesSource = func(key string) (string, bool) { return model, key == roles.TierKey(roles.TierLow) }
+			if err := config.SetCrewFreeRoutes(dir, false); err != nil {
+				t.Fatal(err)
+			}
+			projectDir := filepath.Join(agent.config.Workspace, config.ProjectConfigDir)
+			if err := os.MkdirAll(projectDir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			project := map[string]any{}
+			switch current {
+			case "invalid role row":
+				project[config.KeyModelRoles] = "not-a-pair"
+			case "current explicit helper":
+				writeFreeConsentProfileRows(t, dir, map[string]any{config.KeyTierLowModel: model})
+			case "current explicit project helper":
+				project[config.KeyTierLowModel] = model
+			case "current explicit role pin":
+				project[config.KeyModelRoles] = "title:" + model
+			case "current explicit profile role pin":
+				writeFreeConsentProfileRows(t, dir, map[string]any{config.KeyModelRoles: "title:" + model})
+			}
+			raw, err := json.Marshal(project)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if current == "invalid project JSON" {
+				raw = []byte(`{"model.roles":`)
+			}
+			if err := os.WriteFile(filepath.Join(projectDir, config.ProjectConfigFile), raw, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			crew := &taskCrew{original: map[crewroute.Seat]string{crewroute.Worker: "z-ai/glm-5.3-flash"}}
+			_, err = (crewSeatCompleter{agent: agent, run: &beltRun{row: 1, crew: crew}}).CompleteWithMessages(t.Context(), []ai.Message{textMessage("user", "private frozen helper fixture")}, ai.WithModel(model))
+			explicit := strings.HasPrefix(current, "current explicit")
+			if explicit {
+				if err != nil || len(stub.models()) != 1 {
+					t.Fatalf("current explicit consent refused: err=%v calls=%v", err, stub.models())
+				}
+			} else if err == nil || len(stub.models()) != 0 || !strings.Contains(err.Error(), "free routes are off") {
+				t.Fatalf("stale automatic source granted consent: err=%v calls=%v", err, stub.models())
+			}
+		})
+	}
+}
+
+func writeFreeConsentProfileRows(t *testing.T, dir string, rows map[string]any) {
+	t.Helper()
+	path := filepath.Join(dir, "config.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var profile map[string]any
+	if err := json.Unmarshal(raw, &profile); err != nil {
+		t.Fatal(err)
+	}
+	for key, value := range rows {
+		profile[key] = value
+	}
+	raw, err = json.Marshal(profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
 	}
 }

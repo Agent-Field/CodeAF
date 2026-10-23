@@ -45,25 +45,38 @@ func (c Config) freeHelperAllowed(model string) bool {
 	if !crewroute.IsFree(model) || config.CrewFreeRoutesAt(c.ProfileDir) {
 		return true
 	}
-	if c.RolesSource != nil && c.sourceNamesFreeHelper(model) {
-		return true
+	// RolesSource may retain a previous automatic choice when a later settings
+	// parse fails. A resolved model is not proof of current explicit consent.
+	project, err := config.LoadProjectConfig(c.Workspace)
+	if err != nil {
+		return false
 	}
-	for _, tier := range []string{config.ModelTierReflex, config.ModelTierLow} {
-		seat := config.TierSeatAt(c.ProfileDir, tier)
-		if seat.Source == config.SeatPinned && sameFreeModel(seat.Model, model) {
+	rawPins, err := project.ResolveString(c.ProfileDir, config.KeyModelRoles)
+	if err != nil {
+		return false
+	}
+	pins, err := config.ParseModelRoles(rawPins)
+	if err != nil {
+		return false
+	}
+	projectLow, hasProjectLow, err := project.String(config.KeyTierLowModel)
+	if err != nil {
+		return false
+	}
+	for _, named := range pins {
+		if sameFreeModel(named, model) {
 			return true
 		}
 	}
-	return false
-}
-
-func (c Config) sourceNamesFreeHelper(model string) bool {
-	keys := []string{roles.TierKey(roles.TierReflex), roles.TierKey(roles.TierLow)}
-	for _, role := range roles.Vocabulary() {
-		keys = append(keys, roles.PinKey(role))
+	if hasProjectLow && sameFreeModel(projectLow, model) {
+		return true
 	}
-	for _, key := range keys {
-		if named, ok := c.RolesSource(key); ok && sameFreeModel(named, model) {
+	for _, tier := range []string{config.ModelTierReflex, config.ModelTierLow} {
+		if tier == config.ModelTierLow && hasProjectLow {
+			continue
+		}
+		seat := config.TierSeatAt(c.ProfileDir, tier)
+		if seat.Source == config.SeatPinned && sameFreeModel(seat.Model, model) {
 			return true
 		}
 	}
