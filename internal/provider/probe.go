@@ -13,6 +13,8 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
+
+	"github.com/Agent-Field/codeaf/internal/providerhttp"
 )
 
 // ── THE PROBE: THE TRANSPORT HALF ───────────────────────────────────────────
@@ -75,7 +77,7 @@ func (c *Client) probeLane(ctx context.Context, model, lane string) (time.Durati
 		return 0, err
 	}
 	began := c.clock()
-	response, err := c.streamClient().Do(httpRequest)
+	response, err := providerhttp.Do(c.streamClient(), httpRequest)
 	if err != nil {
 		return 0, fmt.Errorf("probe: %w", err)
 	}

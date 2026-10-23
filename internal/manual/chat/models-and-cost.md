@@ -4293,3 +4293,18 @@ you moved the profile. Run `codeaf logs` to read recent calls, `codeaf logs --fo
 to follow them, or `codeaf logs --path` to print the exact path. Each call records
 its model, timing, token use and cost. Background process output is separate: open
 `/processes` in the conversation and choose a process to read its log.
+
+## A provider redirects a request to another address
+
+codeaf follows a provider redirect only within the original scheme, hostname and
+effective port. A subdomain, a different port or a change between HTTP and HTTPS
+is another origin. That request is stopped, rather than sent with or without your
+key, and says `provider redirect to <host> refused; check the configured service address`.
+Check `/settings` → Providers for the intended API address. The notice names only
+the host and port; it does not print URL credentials or query values.
+
+This applies to chat, streamed replies, custom OpenAI-compatible tool loops,
+media, model lists, connection probes, credits and provider lane reads. A custom
+HTTP transport retains its own timeouts and can impose stricter redirects, but
+cannot allow a request outside the original origin. Same-origin redirects work;
+a chain ends after ten requests rather than waiting forever.

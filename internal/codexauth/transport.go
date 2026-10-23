@@ -22,6 +22,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/trace"
+
+	"github.com/Agent-Field/codeaf/internal/providerhttp"
 )
 
 var refreshLocks struct {
@@ -47,7 +49,7 @@ func ClientWithOptions(profileDir string, options Options) *http.Client {
 	if options.HTTPClient != nil {
 		timeout = options.HTTPClient.Timeout
 	}
-	return &http.Client{Transport: transport, Timeout: timeout}
+	return &http.Client{Transport: transport, Timeout: timeout, CheckRedirect: providerhttp.CheckRedirect}
 }
 
 // Translate authenticates every backend request and translates the provider

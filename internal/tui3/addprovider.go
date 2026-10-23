@@ -15,6 +15,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 
 	"charm.land/bubbletea/v2"
+
+	"github.com/Agent-Field/codeaf/internal/providerhttp"
 )
 
 // Known ports to probe for local model servers on loopback (issue #1508).
@@ -121,7 +123,7 @@ func ProbeOpenAIEndpoint(ctx context.Context, address, key string) (int, error) 
 	if key != "" {
 		req.Header.Set("Authorization", "Bearer "+key)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := providerhttp.Do(nil, req)
 	if err != nil {
 		var uerr *url.Error
 		if errors.As(err, &uerr) && uerr.Err != nil {

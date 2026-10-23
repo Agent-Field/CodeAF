@@ -25,6 +25,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/roles"
+
+	"github.com/Agent-Field/codeaf/internal/providerhttp"
 )
 
 const (
@@ -1203,9 +1205,9 @@ func fetch(ctx context.Context, options Options) ([]Model, error) {
 	}
 	client := options.HTTPClient
 	if client == nil {
-		client = &http.Client{Timeout: FetchTimeout}
+		client = &http.Client{Timeout: FetchTimeout, CheckRedirect: providerhttp.CheckRedirect}
 	}
-	response, err := client.Do(request)
+	response, err := providerhttp.Do(client, request)
 	if err != nil {
 		return nil, err
 	}
