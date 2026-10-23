@@ -85,7 +85,13 @@ func (a *Agent) reconcileSettledRun(g *TaskGraph, kept TaskNotice, root *plandb.
 		kept.State, kept.Report = TaskFailed, root.Error
 		kept.EndedAt = root.CompletedAt
 	default:
-		kept.Report = "the plan finished before the restart; inspect the saved working copy before landing its changes"
+		kept.Report = "the plan finished before the restart; " + errNoRunCopy.Error()
+		kept.RecoveredCompletion = true
+		if kept.Copy != nil {
+			kept.State, kept.Report = TaskUnverified, withReport(completedRunReview, root.Result)
+			kept.EndedAt = root.CompletedAt
+			kept.Elapsed = runSpan(kept.StartedAt, root.CompletedAt)
+		}
 	}
 	a.publishRunRow(g, kept)
 }
