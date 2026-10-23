@@ -230,19 +230,10 @@ func TestWhatThePersonTypesDuringARunIsTheNextStagesSteer(t *testing.T) {
 	if !logHas(it, "steer: use the second ledger") {
 		t.Error("the item's log does not say the steer")
 	}
-	talk.waitSaid(t, it.Talk, "steer: use the second ledger")
-	lines := talk.lines(it.Talk)
-	steerAt, writeAt := -1, -1
-	for k, l := range lines {
-		switch l {
-		case "steer: use the second ledger":
-			steerAt = k
-		case "write started":
-			writeAt = k
+	for _, line := range talk.lines(it.Talk) {
+		if line == "steer: use the second ledger" {
+			t.Error("the runner repeated the person's message in chat")
 		}
-	}
-	if steerAt < 0 || writeAt < steerAt {
-		t.Fatalf("the steer is not said before write starts:\n%s", strings.Join(lines, "\n"))
 	}
 	if it.Heard.IsZero() {
 		t.Error("the item does not remember what it heard")

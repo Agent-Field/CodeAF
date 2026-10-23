@@ -267,10 +267,10 @@ func (lp *floorLoop) hear(c *loopCtl) {
 }
 
 // steer takes words for the item's run: the next round's brief reads them in
-// the notes, the item's log and its conversation say `steer: …`, and push
-// hands them to the round running now as well.
+// the notes and the item's audit log keeps `steer: …`. The original user
+// message already says the words in chat; push hands them to the running round.
 func (lp *floorLoop) steer(c *loopCtl, words string, push bool) {
-	if words = strings.TrimSpace(words); words == "" {
+	if words = strings.TrimSpace(words); words == "" || factory.StatusOnlyRequest(words) {
 		return
 	}
 	if push {
@@ -281,7 +281,6 @@ func (lp *floorLoop) steer(c *loopCtl, words string, push bool) {
 	}
 	lp.addNote(c.id, words)
 	lp.say(c, "said", fmt.Sprintf(saySteer, words))
-	lp.tell(c.id, fmt.Sprintf(saySteer, words))
 }
 
 // roundRunning says whether a round of the item is running now.

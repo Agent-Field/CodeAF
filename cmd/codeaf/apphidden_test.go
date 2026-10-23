@@ -250,3 +250,30 @@ func TestAToolResultMessageIsNotAStep(t *testing.T) {
 		}
 	}
 }
+
+func TestFactorySteerEchoIsHiddenWithoutHidingAuthoredTextOrRenumberingAnswers(t *testing.T) {
+	items := []session.DisplayEntry{
+		{Role: "user", Text: "Everything ok here?"},
+		{Role: "assistant", Text: "Plan is running", Answer: true},
+		{Role: "assistant", Text: "steer: Everything ok here?", Answer: true, FactoryProgress: true},
+		{Role: "assistant", Text: "A later update", Answer: true},
+		{Role: "assistant", Text: "steer: this is an ordinary model reply", Answer: true},
+		{Role: "user", Text: "steer: these are my own words"},
+		{Role: "assistant", Text: "plan started", FactoryProgress: true},
+	}
+	entries := appEntriesOf("a", items, time.Now(), nil)
+	if len(entries) != 6 {
+		t.Fatalf("only the provenance-marked acknowledgement should disappear: %+v", entries)
+	}
+	for _, e := range entries {
+		if e.Text == "steer: Everything ok here?" {
+			t.Fatal("runner acknowledgement leaked into visible history")
+		}
+		if e.Text == "A later update" && e.ID != appAnswerEntryID(0, 2) {
+			t.Fatal("hiding a historical echo renumbered a later message")
+		}
+	}
+	if entries[3].Text != items[4].Text || entries[4].Text != items[5].Text || entries[5].Text != "plan started" {
+		t.Fatal("authored messages or meaningful runner progress were hidden")
+	}
+}

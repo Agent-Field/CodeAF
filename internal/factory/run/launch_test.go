@@ -121,7 +121,7 @@ func TestALaunchRunsWhatTheManagerSetBeforeIt(t *testing.T) {
 // MID-RUN WORDS ARE HANDLED ONCE: the person typed them to the manager, whose
 // own turn answers them, so the runner takes them as the steer and gives the
 // manager NO second turn on them (the owner's run of 2026-10-09 answered
-// `how's the plan coming along?` twice). A stage the manager's own pen changed
+// the same message twice). A stage the manager's own pen changed
 // meanwhile is what runs.
 func TestMidRunWordsAreASteerAndNoSecondManagerTurn(t *testing.T) {
 	talk := newFakeTalk()
@@ -132,7 +132,7 @@ func TestMidRunWordsAreASteerAndNoSecondManagerTurn(t *testing.T) {
 	exec := ExecutorFunc(func(ctx context.Context, job Job) (factory.StageResult, error) {
 		switch job.Stage.Name {
 		case "plan":
-			talk.typed(job.Item.Talk, "how is the plan coming along?")
+			talk.typed(job.Item.Talk, "Use the existing helper")
 			// The manager's own turn on those words changes review through
 			// its pen, as the floor's edit door does.
 			_ = g.st.Update(job.Item.ID, func(it *factory.Item) error {
@@ -143,7 +143,7 @@ func TestMidRunWordsAreASteerAndNoSecondManagerTurn(t *testing.T) {
 			})
 			deadline := time.Now().Add(10 * time.Second)
 			for time.Now().Before(deadline) {
-				if it, _ := g.st.Get(job.Item.ID); logHas(it, "steer: how is the plan coming along?") {
+				if it, _ := g.st.Get(job.Item.ID); logHas(it, "steer: Use the existing helper") {
 					break
 				}
 				time.Sleep(3 * time.Millisecond)
@@ -175,7 +175,7 @@ func TestMidRunWordsAreASteerAndNoSecondManagerTurn(t *testing.T) {
 	if reviewAsk != "read it for security" {
 		t.Fatalf("review ran with %q", reviewAsk)
 	}
-	if !logHas(it, "steer: how is the plan coming along?") {
+	if !logHas(it, "steer: Use the existing helper") {
 		t.Fatalf("log %+v", it.Stream.Log)
 	}
 }

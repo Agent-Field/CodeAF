@@ -218,7 +218,7 @@ func (r *Runner) Launch(id int) error {
 			if !h.At.After(it.Heard) {
 				continue
 			}
-			if words := strings.TrimSpace(h.Words); words != "" {
+			if words := strings.TrimSpace(h.Words); words != "" && !factory.StatusOnlyRequest(words) {
 				it.Notes = append(it.Notes, words)
 			}
 			it.Heard = h.At

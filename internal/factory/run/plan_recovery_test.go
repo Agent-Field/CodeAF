@@ -53,7 +53,7 @@ func TestMissingPlanReportRecoveryHasADeadline(t *testing.T) {
 }
 
 func TestStatusQuestionDoesNotAnswerAPendingStep(t *testing.T) {
-	for _, text := range []string{"Where do we stand here? What's next?", "Are we stuck?", "status please"} {
+	for _, text := range []string{"Where do we stand here? What's next?", "Are we stuck?", "status please", "Everything ok here?", "Any updates?", "How is the plan coming along?"} {
 		if _, _, ok := typedAnswer(text, qkindStep); ok {
 			t.Fatalf("status question consumed as a decision: %q", text)
 		}

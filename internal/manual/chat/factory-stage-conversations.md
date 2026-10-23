@@ -217,7 +217,7 @@ as the manager's own message and marked as the run's (a surface may draw them as
 - `plan asks: <question>` when a stage asks something, then `manager answered plan: <answer>` or
   `plan asks you: <question> · <why>` (see a stage asks a question, on the factory page);
 - `answered: yes`, `answered: no` or `answered: <your words>`, however you answered;
-- `steer: <words>`, `changes requested: <words>`;
+- `changes requested: <words>`;
 - the final approval message explains pushing the branch and creating a draft pull request;
 - the publication receipt links the draft PR or issue comment; publication does not mean merged;
 - `stopped`, `paused`, `resumed`.
@@ -253,11 +253,12 @@ changes them, on the job's page or in words to its manager here.
 
 What you type into the item's chat goes to the run; nothing else is needed.
 
-- **Before a run**, everything you typed there since the last run becomes the item's notes when
+- **Before a run**, your instructions since the last run become the item's notes when
   you press `r`, and every stage's brief opens with them (`keep the old API`).
-- **During a run**, what you type is the steer: at the next stage (or round) it is folded into
-  that stage's brief, a round already running is handed it, the item's log says
-  `steer: <words>`, and the chat gets the same line. It is the same as `S` in the factory.
+- **During a run**, instructions reach the active round and the next stage's brief. The
+  item's internal log keeps `steer: <words>`; the chat does not repeat your message as an
+  acknowledgement. Pure status questions never reach a worker or a later stage's notes,
+  including check-ins typed before launch. An instruction is the same as `S` in the factory.
 - **While the run waits on a question**, a line that starts with `yes` (`yes, go`) answers yes
   and a plain `no` answers no; for a plan, a gate or a stage that fell short, any other words
   (`no, use the other file`) answer it in words, as `a` does. The chat then says `answered: yes`. Words that do not answer a budget question are
@@ -645,12 +646,16 @@ already-published repair.
 
 An ordinary manager turn can call `factory_status` to read saved job facts and
 its current step-question ID without inspecting the workspace. Common status-only
-questions (`status`, `Where do we stand here? What's next?`, `Are we stuck?`) receive
-that read directly, whether the manager is idle or working, even at its spending rail.
+questions (`status`, `Everything ok here?`, `Any updates?`, `How is the plan coming along?`,
+`Where do we stand here? What's next?`, `Are we stuck?`) receive that read directly,
+whether the manager is idle or working, even at its spending rail.
 This does not open or finish a turn, interrupt a provider request, drain queued
 follow-ups, change the foreground model, retry work or answer a decision. The app
 keeps the exchange in human history outside the model transcript. Other wording
-can use the status tool. In Auto this read is routine; explicit tool denials still apply.
+can use the status tool. Combined requests such as “Are we stuck? Please fix it” stay on
+ordinary conversation so the requested work is retained. In Auto this read is routine;
+explicit tool denials still apply. The desktop also hides old producer-marked steering
+acknowledgements; the original user message, ordinary model replies and internal audit stay.
 
 The manager can use `factory_answer` with `question_id` and the person's answer,
 including an engineering choice delegated with “you decide”, after the temporary
