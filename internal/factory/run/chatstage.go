@@ -37,6 +37,7 @@ package run
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -60,7 +61,9 @@ type StageDoor interface {
 type ConversationSpec struct {
 	// VerifyRepair makes successful PR-repair reports pass the concrete receipt guard.
 	// Read-only readiness reviews retain their separate current-PR snapshot contract.
-	VerifyRepair bool
+	VerifyRepair      bool
+	VerifyChecks      bool
+	VerificationStage string
 
 	Item factory.Item
 	// Team is the item's team id (its Stream's Room), "" when the item has none
@@ -94,7 +97,8 @@ type ConversationSpec struct {
 	// (session.Config.Stage) and on nothing else.
 	Stage StageDoor
 	// Progress receives committed model prose, not tool captions or reasoning.
-	Progress func(line string)
+	Progress     func(line string)
+	Verification func(*factory.StepVerification)
 }
 
 // Conversation is one open stage conversation.
@@ -224,18 +228,21 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 		log = func(string) {}
 	}
 	spec := ConversationSpec{
-		Item:            job.Item,
-		Team:            itemTeam(job.Item),
-		Name:            stageChatName(job),
-		Handle:          stageHandle(job),
-		Dir:             job.Dir,
-		Brief:           stageBrief(job) + ciFollowUpBrief(job.Item) + followProgressBrief(job),
-		Model:           strings.TrimSpace(job.Item.Model),
-		AutomaticModels: job.Item.AutomaticModels,
-		Effort:          job.Item.Effort,
-		Stage:           door,
-		VerifyRepair:    factory.IsCIRepairStage(job.Stage) && (job.Item.FollowUp == nil || job.Item.FollowUp.Kind != "readiness"),
-		Progress:        job.Progress,
+		Item:              job.Item,
+		Team:              itemTeam(job.Item),
+		Name:              stageChatName(job),
+		Handle:            stageHandle(job),
+		Dir:               job.Dir,
+		Brief:             stageBrief(job) + ciFollowUpBrief(job.Item) + followProgressBrief(job),
+		Model:             strings.TrimSpace(job.Item.Model),
+		AutomaticModels:   job.Item.AutomaticModels,
+		Effort:            job.Item.Effort,
+		Stage:             door,
+		VerificationStage: job.Stage.Name,
+		VerifyChecks:      checksVerification(job.Stage),
+		VerifyRepair:      factory.IsCIRepairStage(job.Stage) && (job.Item.FollowUp == nil || job.Item.FollowUp.Kind != "readiness"),
+		Progress:          job.Progress,
+		Verification:      job.Verification,
 	}
 	var conv Conversation
 	var err error
@@ -290,6 +297,7 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 	asker := stageAsker{job: job}
 	walled := false
 	corrections := 0
+	var idleFailure *factory.StageResult
 	wall := time.NewTimer(stageWall)
 	defer wall.Stop()
 loop:
@@ -308,8 +316,11 @@ loop:
 			if words = strings.TrimSpace(words); words == "" {
 				continue
 			}
+			priorReports := door.result().Reports
 			if err := conv.Send(ctx, words); err != nil {
 				log(steerNotDelivered + oneLine(err.Error()))
+			} else {
+				door.invalidateCompletion(priorReports)
 			}
 		case selection, ok := <-selections:
 			if !ok {
@@ -353,7 +364,16 @@ loop:
 			if _, stopped := spendStopOf(waitErr); stopped {
 				break loop
 			}
-			if !door.empty() && ctx.Err() == nil && corrections < stageVerificationCorrections {
+			if (door.empty() || door.result().Checkpoint) && checksVerification(job.Stage) {
+				if receipts, ok := conv.(executionReporter); ok {
+					notes, _ := reportExecutionNotes(receipts, door.result())
+					if exit, failed := terminalCheckFailure(notes); failed {
+						idleFailure = &factory.StageResult{Done: false, Exit: exit, Output: "A required check failed; its measured result is retained."}
+						break loop
+					}
+				}
+			}
+			if !door.empty() && !door.result().Checkpoint && ctx.Err() == nil && corrections < stageVerificationCorrections {
 				if receipts, ok := conv.(executionReporter); ok && checksVerification(job.Stage) {
 					notes, _ := reportExecutionNotes(receipts, door.result())
 					if reason := verificationReason(factory.StageResult{Notes: notes}); reason != "" {
@@ -361,7 +381,9 @@ loop:
 						if res.Done && (res.Repair == nil || (res.Repair.Decision != "needs_you" && res.Repair.Decision != "needs_repair")) {
 							corrections++
 							words := "The execution guard found an unresolved check, not a user decision: " + reason + ". Correct the command or environment and re-run the same relevant check. Inspect real check exits independently of output-counting grep. Preserve this step's purpose and report again through stage_result; do not invent a code change to satisfy the guard."
+							priorReports := door.result().Reports
 							if err := conv.Note(ctx, words); err == nil {
+								door.invalidateCompletion(priorReports)
 								log("Checking the reported result: correcting an execution problem automatically.")
 								go func() { idle <- conv.Wait(ctx) }()
 								continue
@@ -370,7 +392,7 @@ loop:
 					}
 				}
 			}
-			if !door.empty() || ctx.Err() != nil {
+			if (!door.empty() && !door.result().Checkpoint) || ctx.Err() != nil {
 				break loop
 			}
 			if _, stopped := spendStopOf(waitErr); stopped {
@@ -406,9 +428,17 @@ loop:
 		}
 	}
 	res := door.result()
-	if door.empty() {
+	if idleFailure != nil {
+		idleFailure.Edit = res.Edit
+		res = *idleFailure
+	} else if door.empty() || res.Checkpoint || walled {
 		made, line := factory.StageResult{Output: stageNoReport}, ""
-		if reportExpired {
+		if walled {
+			made.Output = stageWalled
+			if checksVerification(job.Stage) {
+				made.ExecutionBlocked = "check_wait_timeout"
+			}
+		} else if reportExpired {
 			made.Output = waitErr.Error()
 		} else {
 			made, line = unreported(reportCtx, conv, job, spec.Brief, waitErr, walled)
@@ -418,6 +448,9 @@ loop:
 		}
 		if line != "" {
 			log(line)
+		}
+		if checksVerification(job.Stage) && made.ExecutionBlocked == "" {
+			made.ExecutionBlocked = "report_incomplete"
 		}
 		made.Edit = res.Edit
 		res = made
@@ -432,6 +465,11 @@ loop:
 		res.Notes = append(res.Notes, notes...)
 		if checksVerification(job.Stage) {
 			if reason := verificationReason(res); reason != "" {
+				// A missing final assessment must not hide concrete failing evidence.
+				// The legacy guard cannot safely reclassify assertion failures as machinery.
+				if _, failed := terminalCheckFailure(notes); res.ExecutionBlocked == "report_incomplete" && failed {
+					res.ExecutionBlocked = ""
+				}
 				res.Done = false
 				if res.Repair != nil && res.Repair.Decision == "fixed" {
 					repair := *res.Repair
@@ -836,25 +874,27 @@ func newStageDoor() *stageDoor { return &stageDoor{} }
 //
 // THIS IS THE ONE PLACE A REPORT IS ACCEPTED. An error returned here reaches
 // the model as `not reported: <why>` in the same turn (internal/session's
-// tools_stage.go) and the report held before it stands, so a check of a
+// tools_stage.go) and any completion held before it is withdrawn, so a check of a
 // report against its step's rule belongs here and nowhere else: the step puts
 // it right and calls again.
 //
 // A REPORT THAT CONTRADICTS ITS STEP'S RULE IS NOT HELD. A review that says
 // done with findings still open, or a proof claim marked ok with nothing
 // showing it, is answered with the fix ([factory.ReportFault], the judge's own
-// rules) and the earlier report stands. Until 2026-10-20 such a report was
+// rules) and withdraws an earlier completion. Until 2026-10-20 such a report was
 // held and failed by the judge after the round, so a whole round was spent to
 // learn what the call itself gave away. An honest shortfall, done: false or a
 // claim marked ok: false, is held like any report and judged into another
 // round. A refused call is not counted in Reports: nothing was reported.
 func (d *stageDoor) Report(_ context.Context, result factory.StageResult) error {
-	if d.readinessHead != "" && result.Done && (result.Repair == nil || (result.Repair.Decision != "needs_repair" && result.Repair.Decision != "needs_you")) {
+	if !result.Checkpoint && d.readinessHead != "" && result.Done && (result.Repair == nil || (result.Repair.Decision != "needs_repair" && result.Repair.Decision != "needs_you")) {
 		if why := factory.ReadinessReportFault(d.readinessHead, result); why != "" {
+			d.RejectReport()
 			return errors.New(why)
 		}
 	}
-	if why := factory.ReportFault(d.stage, result); why != "" {
+	if why := factory.ReportFault(d.stage, result); !result.Checkpoint && why != "" {
+		d.RejectReport()
 		return errors.New(why)
 	}
 	r := result
@@ -901,6 +941,25 @@ func (d *stageDoor) result() factory.StageResult {
 		r.Edit = &e
 	}
 	return r
+}
+
+// RejectReport withdraws a previous completion when a newer attempt is refused.
+// Keep its evidence for correction, but never let stale success stand in for it.
+func (d *stageDoor) RejectReport() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.report != nil {
+		d.report.Checkpoint = true
+	}
+}
+
+// invalidateCompletion keeps progress while withdrawing a superseded terminal report.
+func (d *stageDoor) invalidateCompletion(priorReports int) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.report != nil && d.reports == priorReports {
+		d.report.Checkpoint = true
+	}
 }
 
 // empty says no report arrived.
@@ -1201,6 +1260,26 @@ func verificationReason(res factory.StageResult) string {
 	return strings.Join(reasons, "; ")
 }
 
+// terminalCheckFailure reads only current measured check receipts, after Wait
+// has established quiescence. A missing exit, presentation failure or prose is
+// not an assertion failure and still gets bounded report recovery.
+func terminalCheckFailure(notes []string) (int, bool) {
+	for _, note := range notes {
+		raw, ok := strings.CutPrefix(note, "Check receipt: ")
+		if !ok {
+			continue
+		}
+		var check struct {
+			Exit    *int   `json:"exit"`
+			Outcome string `json:"outcome"`
+		}
+		if json.Unmarshal([]byte(raw), &check) == nil && check.Exit != nil && *check.Exit != 0 && check.Outcome == "failed" {
+			return *check.Exit, true
+		}
+	}
+	return 0, false
+}
+
 // A bounded correction stays in the existing conversation with its execution
 // history. The job's live budget and the stage wall still govern every turn.
 const stageVerificationCorrections = 2
@@ -1210,7 +1289,7 @@ type executionReporter interface {
 }
 
 func checksVerification(st factory.Stage) bool {
-	return st.Name == "proof" || st.Name == "test" || factory.IsCIRepairStage(st)
+	return strings.EqualFold(st.Name, "proof") || strings.EqualFold(st.Name, "test") || st.Until == factory.UntilGreen || st.Until == factory.UntilProven || factory.IsCIRepairStage(st)
 }
 
 // New owners provide strict, checkout-bound repair evidence. Existing adapters

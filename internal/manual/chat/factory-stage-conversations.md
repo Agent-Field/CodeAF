@@ -674,3 +674,56 @@ its existing conversation. An idle Plan gets at most three report reminders and
 one inference attempt inside a two-minute recovery window. On timeout it reports
 an explicit shortfall; drafted work and decisions remain available for retry.
 Implementation checks are not prerequisites for a Plan report.
+
+## Result delivery and Mac sleep
+
+When this Mac sleeps, the app reports the elected runner's sleep to its factory,
+even when no step chat is open. The service retains that sleeping runner's lease;
+wake refreshes its silence deadline. A failed presence request remains an error,
+not confirmation that remote ownership was retained. This does not change how
+ordinary conversation processes stop for sleep or turn an interrupted check green.
+
+Worker result delivery retains one exact per-lease request and retry identity
+before sending. A lost reply retries that request before reporting newer work;
+only a confirmed response advances its baseline. Retryable delivery uses a
+two-minute window with bounded request waits. Deterministic rejection stops work,
+retains the unsent results privately and asks for reporting-problem reconciliation,
+without claiming that the tests failed. It does not release the job as complete.
+
+This delivery bridge does not automatically replay old leases after a restart.
+The server's response cache still has a gap between applying results and saving
+the replay response; it is not transactional accounting. Retained artifacts need
+reconciliation before retry, and do not restore execution or publication authority.
+
+
+## Checkpoints and essential checks
+
+A progress `stage_result` (`final: false`) is a checkpoint, never a finished
+round. A newer refused report or newly admitted stage turn withdraws the earlier
+completion while retaining its check evidence. Verification stages require their own terminal assessment; the factory
+cannot infer a successful Test or Proof from an idle conversation. Green/proven
+completion rules have the same guard even when the step has a custom name.
+
+A foreground check promoted into a job, or a recognized explicit background
+check, remains owned by the stage until its ending is delivered. The engine parks
+between model steps while that work runs: no paid turn is needed to poll it. A
+person can still steer the conversation; steering does not discard ownership.
+Persistent servers and watches explicitly started in the background do not hold
+stage completion. Stop, Close and the job cap retain their cancellation effect.
+
+Finished rounds contribute qualifying measured passes only for identical current
+checkout inputs and command context. An unfinished broader suite remains
+unresolved; a narrower pass cannot certify it. New observers isolate recognized
+parent checks from fixture descendants and bind worktree ownership explicitly.
+Old receipts without that boundary are not silently reclassified as harmless.
+
+The desktop shows a running check's purpose and actual start time in the existing
+step Activity and sidebar. An incomplete reporting wait is distinct from a failed
+assertion. After bounded in-round recovery, a guarded step retry preserves usable
+results without automatically charging another code-repair round. Manual retains
+its existing approval meaning; it is not a pause of an already authorized check.
+
+Granted round limits survive a new runner. Retry history merges by conversation,
+including an interrupted attempt sharing a round number. Same-job replacement is
+refused while the prior executor is cleaning up. This is an in-process fence,
+not a promise to recover escaped processes after an arbitrary app crash.

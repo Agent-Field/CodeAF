@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/client"
@@ -182,8 +183,15 @@ func TestAppPowerUsesExistingRunnerCredential(t *testing.T) {
 		t.Fatal(err)
 	}
 	host := &appFactoryHost{floor: floor}
+	backend := &appBackend{local: appLocalFactory{host: host}, now: time.Now}
 	for _, asleep := range []bool{true, false} {
-		if err := host.power(context.Background(), asleep); err != nil {
+		var err error
+		if asleep {
+			err = backend.Sleep()
+		} else {
+			err = backend.Wake()
+		}
+		if err != nil {
 			t.Fatal(err)
 		}
 	}

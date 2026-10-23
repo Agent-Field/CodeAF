@@ -887,6 +887,7 @@ func steps(it factory.Item) []Step {
 }
 
 func runStep(s Step, p factory.Phase) Step {
+	s.RoundLimit, s.Verification = p.RoundLimit, p.Verification
 	s.InRun, s.State, s.Round, s.Note, s.Tasks = true, string(p.State), p.Round, p.Note, p.Tasks
 	s.LeftMS, s.Chat, s.Handle = p.Left.Milliseconds(), p.Chat, p.Handle
 	if string(p.Kind) != s.Kind {
@@ -972,7 +973,7 @@ func toPhase(s Step) factory.Phase {
 		kind = s.RunKind
 	}
 	p := factory.Phase{Name: s.Name, Kind: factory.StageKind(kind), State: factory.PhaseState(s.State), Note: s.Note,
-		Round: s.Round, Tasks: s.Tasks, Left: time.Duration(s.LeftMS) * time.Millisecond, Chat: s.Chat, Handle: s.Handle}
+		Round: s.Round, RoundLimit: s.RoundLimit, Verification: s.Verification, Tasks: s.Tasks, Left: time.Duration(s.LeftMS) * time.Millisecond, Chat: s.Chat, Handle: s.Handle}
 	// THE WHOLE REPORT WINS WHEN IT CAME. A worker's pull carries it; a
 	// reader's job, and a pull from an older factory, carry only the step's
 	// result line, which is read as it always was (no done, no notes, no claims).

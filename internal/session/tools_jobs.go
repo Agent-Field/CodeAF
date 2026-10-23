@@ -197,7 +197,7 @@ func (a *Agent) backgroundBash(inner bare.Tool) bare.Tool {
 					Command string `json:"command"`
 				}
 				if decodeToolArguments(args, &call) == nil && strings.TrimSpace(call.Command) != "" {
-					command, err := verification.Prepare(a.config.SessionFile, call.Command)
+					command, err := verification.PrepareCallIn(a.config.SessionFile, a.config.Workspace, call.Command, callIDFrom(ctx))
 					if err != nil {
 						return verification.SetupFailurePrefix + " " + err.Error(), true, nil
 					}

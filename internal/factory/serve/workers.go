@@ -451,6 +451,28 @@ func (h *Handler) reportWorker(w http.ResponseWriter, r *http.Request) {
 			body.Steps[i].Chat = chats[body.Steps[i].Name]
 		}
 	}
+	if raw := r.Header.Get(api.StepRuntimeHeader); raw != "" {
+		var runtime map[string]api.StepRuntime
+		if len(raw) > 64<<10 || json.Unmarshal([]byte(raw), &runtime) != nil {
+			h.fail(w, http.StatusBadRequest, "invalid step runtime")
+			return
+		}
+		known := map[string]bool{}
+		for _, step := range body.Steps {
+			known[step.Name] = true
+		}
+		for name, state := range runtime {
+			if !known[name] || state.RoundLimit < 0 {
+				h.fail(w, http.StatusBadRequest, "step runtime names an unknown step or invalid limit")
+				return
+			}
+		}
+		for i := range body.Steps {
+			if state, ok := runtime[body.Steps[i].Name]; ok {
+				body.Steps[i].RoundLimit, body.Steps[i].Verification = state.RoundLimit, state.Verification
+			}
+		}
+	}
 	report := api.ToWorkerReport(body)
 	only, err := h.workers.desk.ThreadOnly(r.PathValue("lease"), requestWorker(r).ID)
 	if h.workerError(w, err) {

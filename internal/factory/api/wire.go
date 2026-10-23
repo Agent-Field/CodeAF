@@ -611,7 +611,9 @@ type StepAt struct {
 // may be in the job's pipeline, in its run, or both; the two flags say which,
 // so the codec can give each half back to its own list.
 type Step struct {
-	Tests *factory.TestCounts `json:"tests,omitempty"`
+	RoundLimit   int                       `json:"round_limit,omitempty"`
+	Verification *factory.StepVerification `json:"verification,omitempty"`
+	Tests        *factory.TestCounts       `json:"tests,omitempty"`
 	StepDef
 	State   string      `json:"state"`
 	Round   int         `json:"round,omitempty"`

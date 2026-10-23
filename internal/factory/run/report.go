@@ -345,6 +345,8 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 		return fmt.Errorf("step round must not be negative")
 	}
 	ph := &it.Stream.Phases[i]
+	newLoop := step.State == factory.PhasePending && step.Round > ph.Round
+	ph.Verification = nil
 	if step.Chat != "" {
 		ph.Chat = step.Chat
 	}
@@ -360,6 +362,13 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 	if step.Round > 0 {
 		ph.Round = step.Round
 	}
+	if step.RoundLimit > 0 {
+		if newLoop {
+			ph.RoundLimit = step.RoundLimit
+		} else {
+			ph.RoundLimit = max(ph.RoundLimit, step.RoundLimit)
+		}
+	}
 	it.Stream.Cur = i
 	if step.Result != nil {
 		if step.Result.Edit != nil {
@@ -367,12 +376,16 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 		}
 		foldResult(it, st, i, *step.Result, now)
 	}
+	// This snapshot describes the current report, not the result folded above.
+	ph.Verification = step.Verification
+	if ph.State == factory.PhaseDone || ph.State == factory.PhaseFailed || ph.State == factory.PhasePending {
+		ph.Verification = nil
+	}
 	if len(step.Rounds) > 0 {
-		ph.Rounds = append([]factory.RoundLine(nil), step.Rounds...)
-		// A report cannot leave more lines than the step's own max.
-		cap := factory.RoundCap(st.Max, ph.Round)
-		if len(ph.Rounds) > cap {
-			ph.Rounds = append([]factory.RoundLine(nil), ph.Rounds[len(ph.Rounds)-cap:]...)
+		// Merge by conversation identity. A restarted worker may have only a
+		// suffix; it must not erase tries already acknowledged by the service.
+		for _, line := range step.Rounds {
+			factory.NoteRound(ph, factory.RoundLinesMost, line)
 		}
 	}
 	if step.Failure != nil {
@@ -390,7 +403,11 @@ func addCost(it *factory.Item, usd float64) { it.Stream.Spent += usd }
 // foldResult is the persisted half of fold; the local loop also keeps its
 // in-memory prior results, while a worker carries those in its own runner.
 func foldResult(it *factory.Item, st factory.Stage, i int, res factory.StageResult, now time.Time) {
+	if res.Checkpoint {
+		return
+	}
 	ph := &it.Stream.Phases[i]
+	ph.Verification = nil
 	if res.Chat != "" {
 		ph.Chat = res.Chat
 	}
@@ -407,8 +424,8 @@ func foldResult(it *factory.Item, st factory.Stage, i int, res factory.StageResu
 	if round < 1 {
 		round = 1
 	}
-	factory.NoteRound(ph, factory.RoundCap(st.Max, round), factory.RoundLine{
-		Rejected: !factory.Met(st, res), Round: round, Summary: factory.RoundSummary(kept), At: now, Started: ph.Started, Chat: res.Chat,
+	factory.NoteRound(ph, factory.RoundLinesMost, factory.RoundLine{
+		Rejected: !factory.Met(st, res) && res.ExecutionBlocked == "", Round: round, Summary: factory.RoundSummary(kept), At: now, Started: ph.Started, Chat: res.Chat,
 	})
 	it.Stream.Findings = res.Findings
 	sheet := makesSheet(st)
@@ -461,6 +478,9 @@ func foldResult(it *factory.Item, st factory.Stage, i int, res factory.StageResu
 // not a new round.
 func setPhaseState(ph *factory.Phase, state factory.PhaseState, now time.Time) {
 	ph.State = state
+	if state == factory.PhaseDone || state == factory.PhaseFailed || state == factory.PhasePending {
+		ph.Verification = nil
+	}
 	switch state {
 	case factory.PhaseDone, factory.PhaseFailed:
 		ph.At = now

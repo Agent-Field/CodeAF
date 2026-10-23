@@ -67,7 +67,7 @@ func TestVerificationRejectionOverridesReportedSuccessWithConcreteReason(t *test
 		t.Run(name, func(t *testing.T) {
 			maker := verificationMaker{FakeMaker: &FakeMaker{Script: func(ctx context.Context, c *FakeConversation) {
 				_ = c.Spec.Stage.Report(ctx, factory.StageResult{Done: true, Output: "Everything is ready", Repair: &factory.CIRepairResult{Decision: "fixed"}})
-			}}, notes: []string{verification.FailurePrefix + " go test ./... · failed"}}
+			}}, notes: []string{`Check receipt: {"check":["go","test","./..."],"exit":1,"outcome":"failed"}`, verification.FailurePrefix + " go test ./... · failed"}}
 			job := reviewJob()
 			job.Stage = factory.Stage{Name: name, Kind: factory.StageChat, Until: factory.UntilDone}
 			result, err := NewChatExecutor(maker).Run(context.Background(), job)

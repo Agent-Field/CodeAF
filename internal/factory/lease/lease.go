@@ -512,7 +512,7 @@ func (d *Desk) HasLiveHold(id int) (bool, error) {
 	held := false
 	err := d.locked(func(doc *document, now time.Time) error {
 		if h := find(doc, id); h != nil {
-			held = now.Before(h.ExpiresAt)
+			held = h.Asleep || now.Before(h.ExpiresAt)
 		}
 		return nil
 	})

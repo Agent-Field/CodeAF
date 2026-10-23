@@ -167,7 +167,7 @@ func (a *Agent) parkOnOwedJob(ctx context.Context) {
 	// read inside the loop and must not be deleted as one: that read is taken
 	// after the generation and is what carries the correctness, while this one is
 	// only the early out.
-	if allowance <= 0 || jobs == nil || !jobs.owedRunning() {
+	if allowance <= 0 || jobs == nil || !(jobs.owedRunning() || jobs.stageRunning()) {
 		return
 	}
 	// THE PARK'S OWN BOUND, taken from the allowance rather than being it. A run
@@ -180,14 +180,20 @@ func (a *Agent) parkOnOwedJob(ctx context.Context) {
 	}
 	// IT IS THE RUN'S CLOCK ([Agent.taskClockTimer]), which is what lets a test
 	// drive the bound without a sleep standing in for causality.
-	timer, stop := a.taskClockTimer(bound)
+	var timer <-chan time.Time
+	stop := func() {}
+	if !a.config.mayStage() {
+		timer, stop = a.taskClockTimer(bound)
+	}
+	// A stage has its runner's absolute wall. A shorter park handback would
+	// buy an unnecessary model request merely to learn that a check still runs.
 	defer stop()
 	for {
 		news := a.taskNewsWait()
-		if !jobs.owedRunning() {
+		if !(jobs.owedRunning() || jobs.stageRunning()) {
 			return
 		}
-		if a.steeringHeld() {
+		if a.steeringHeld() || (a.config.mayStage() && a.stageSteeringHeld()) {
 			return
 		}
 		select {

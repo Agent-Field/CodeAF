@@ -132,8 +132,13 @@ func parseStageResult(args json.RawMessage) (factory.StageResult, string) {
 	if parsed.Findings < 0 {
 		return factory.StageResult{}, stageNeedsFindings
 	}
+	final := *parsed.Done
+	if parsed.Final != nil {
+		final = *parsed.Final
+	}
 	result := factory.StageResult{
-		Repair: parsed.Repair, PublishSummary: cleanNames(parsed.PublishSummary),
+		Checkpoint: !final,
+		Repair:     parsed.Repair, PublishSummary: cleanNames(parsed.PublishSummary),
 		Done:     *parsed.Done,
 		Findings: parsed.Findings,
 		Notes:    cleanNames(parsed.Notes),
@@ -167,9 +172,11 @@ func (a *Agent) stageResultTool() bare.Tool {
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			result, invalid := parseStageResult(args)
 			if invalid != "" {
+				a.rejectStageReport()
 				return invalid, true, nil
 			}
 			if err := a.config.Stage.Report(ctx, result); err != nil {
+				a.rejectStageReport()
 				return stageNotReported + oneLine(err.Error()), true, nil
 			}
 			return stageReported, false, nil
@@ -371,14 +378,33 @@ func (a *Agent) stageBatchFinal(calls []ai.ToolCall, results []toolResult) bool 
 		if call.Function.Name != stageResultToolName || i >= len(results) || results[i].isError {
 			continue
 		}
-		var args stageResultArgs
-		if json.Unmarshal([]byte(call.Function.Arguments), &args) != nil {
-			continue
-		}
-		if args.Final != nil {
-			return *args.Final
-		}
-		return args.Done != nil && *args.Done
+		result, invalid := parseStageResult(json.RawMessage(call.Function.Arguments))
+		return invalid == "" && !result.Checkpoint
 	}
 	return false
+}
+
+// stageReportBatchFault refuses ambiguous lifecycle submissions before any effect.
+func (a *Agent) stageReportBatchFault(calls []ai.ToolCall) string {
+	if !a.config.mayStage() {
+		return ""
+	}
+	count := 0
+	for _, call := range calls {
+		if call.Function.Name == stageResultToolName {
+			count++
+		}
+	}
+	if count > 1 {
+		return "No action executed: submit only one stage_result per response; progress and completion reports cannot race in a parallel batch."
+	}
+	return ""
+}
+
+// rejectStageReport is optional for compatibility with ordinary stage adapters.
+// A malformed newer completion must not leave an earlier accepted one green.
+func (a *Agent) rejectStageReport() {
+	if door, ok := a.config.Stage.(interface{ RejectReport() }); ok {
+		door.RejectReport()
+	}
 }

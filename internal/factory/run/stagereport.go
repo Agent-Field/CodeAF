@@ -65,8 +65,9 @@ const stageReminders = 3
 // item's log keeps of it, and how a round a spending limit stopped reads.
 const (
 	stageReminder = "You stopped without calling stage_result, so the factory has nothing from this step yet. " +
-		"If the work is finished, call stage_result now with what you found. If it is not, carry on and call stage_result when it is, " +
-		"or with done false and why, if it cannot be finished."
+		"If the work is finished, call stage_result with final true and what you found. " +
+		"If required checks are still running, wait for their results; do not poll, restart or report them as failures. " +
+		"Use final true, done false only for a terminal blocker that prevents finishing."
 	stageReminderLast = "Call stage_result now with this step's result: whether its ask is carried out, what you did and found, and what is still open."
 	stageReminded     = "stopped without reporting · reminded, "
 	stageRequired     = ", on a turn that must report"
@@ -182,6 +183,9 @@ func unreported(ctx context.Context, conv Conversation, job Job, brief string, w
 	}
 	if stop, ok := spendStopOf(waitErr); ok {
 		return factory.StageResult{Output: stop.Error()}, ""
+	}
+	if checksVerification(job.Stage) {
+		return factory.StageResult{Output: stageNoReport + ": verification needs an explicit final assessment; measured results and changes are retained"}, ""
 	}
 	why := ""
 	if waitErr != nil {

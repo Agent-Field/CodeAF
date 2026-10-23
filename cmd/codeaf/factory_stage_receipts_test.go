@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/verification"
 )
 
@@ -215,5 +218,134 @@ func TestFactoryObserverSetupFailureRemainsBlockingWithoutReceiptFiles(t *testin
 				t.Fatal("successful exact retry did not resolve observer setup failure")
 			}
 		})
+	}
+}
+
+func TestCompactedToolResultsContributeOneBlocker(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "session.jsonl")
+	rows := `{"role":"assistant","toolCalls":[{"id":"once","function":{"name":"bash","arguments":"{\"command\":\"cd /missing && go test ./...\"}"}}]}` + "\n" + `{"role":"tool","toolCallId":"once","content":"cd failed"}` + "\n"
+	if err := os.WriteFile(file, []byte(strings.Repeat(rows, 4)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	notes, _ := (&stageConversation{file: file, dir: t.TempDir()}).ExecutionNotes()
+	count := 0
+	for _, n := range notes {
+		if strings.HasPrefix(n, verification.FailurePrefix) {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("compaction multiplied blockers: %v", notes)
+	}
+}
+
+func TestVerificationCheckpointBypassesTerminalRepairGuardAndRunningWorkDefersWatchdog(t *testing.T) {
+	parent := &repairReportDoor{}
+	running := true
+	door := &receiptStageDoor{StageDoor: parent, repair: true, reason: "missing result", workRunning: func() bool { return running }}
+	t.Cleanup(door.closeVerification)
+	if err := door.Report(t.Context(), factory.StageResult{Done: true, Checkpoint: true}); err != nil {
+		t.Fatal(err)
+	}
+	door.stopVerification("report timeout")
+	if door.stopped || door.timer == nil || parent.reports != 1 {
+		t.Fatal("running check was stopped by reporting watchdog")
+	}
+	running = false
+	door.stopVerification("report timeout")
+	if !door.stopped || parent.reports != 2 || parent.last.Repair.Decision != "needs_you" {
+		t.Fatal("idle unresolved recovery was not bounded")
+	}
+}
+
+func TestObservedFreshnessDoesNotInventPolicyProofCommands(t *testing.T) {
+	root, file, run := repairCheckFixture(t)
+	run("cargo test --test cli regression")
+	conv := &stageConversation{file: file, dir: root, verification: &receiptStageDoor{requireFresh: true}}
+	notes, _ := conv.ExecutionNotes()
+	for _, n := range notes {
+		if strings.HasPrefix(n, verification.FailurePrefix) {
+			t.Fatal(n)
+		}
+	}
+	os.WriteFile(filepath.Join(root, "code.txt"), []byte("changed after verification"), 0600)
+	notes, _ = conv.ExecutionNotes()
+	stale := false
+	for _, n := range notes {
+		if strings.HasPrefix(n, verification.FailurePrefix) && strings.Contains(n, "stale") {
+			stale = true
+		}
+	}
+	if !stale {
+		t.Fatal("ordinary observed Test accepted stale verification", notes)
+	}
+	policy := filepath.Join(t.TempDir(), "policy.jsonl")
+	os.WriteFile(policy, nil, 0600)
+	notes, _ = (&stageConversation{file: policy, dir: t.TempDir(), verification: &receiptStageDoor{requireFresh: true}}).ExecutionNotes()
+	for _, n := range notes {
+		if strings.HasPrefix(n, verification.FailurePrefix) {
+			t.Fatalf("policy-only proof invented a command requirement: %s", n)
+		}
+	}
+}
+
+type withdrawingReportDoor struct {
+	repairReportDoor
+	rejects    int
+	failReport bool
+}
+
+func (d *withdrawingReportDoor) Report(ctx context.Context, r factory.StageResult) error {
+	if d.failReport {
+		return errors.New("new report rejected")
+	}
+	return d.repairReportDoor.Report(ctx, r)
+}
+
+func (d *withdrawingReportDoor) RejectReport() {
+	d.rejects++
+	d.last.Checkpoint = true
+}
+
+func TestReceiptReportRefusalsWithdrawEarlierTerminalCandidate(t *testing.T) {
+	for _, kind := range []string{"stopped", "missing repair", "inconsistent fixed", "no_change with failure", "fixed with failure", "underlying refusal"} {
+		t.Run(kind, func(t *testing.T) {
+			root, file, run := repairCheckFixture(t)
+			parent := &withdrawingReportDoor{repairReportDoor: repairReportDoor{last: factory.StageResult{Done: true}, reports: 1}}
+			d := &receiptStageDoor{StageDoor: parent, file: file, dir: root, repair: true}
+			t.Cleanup(d.closeVerification)
+			r := factory.StageResult{Done: true}
+			switch kind {
+			case "stopped":
+				d.stopped = true
+			case "inconsistent fixed":
+				r.Exit = 1
+				r.Repair = &factory.CIRepairResult{Decision: "fixed"}
+			case "no_change with failure", "fixed with failure":
+				run("CHECK_EXIT=7 cargo test --test cli regression")
+				r.Repair = &factory.CIRepairResult{Decision: "fixed"}
+				if kind == "no_change with failure" {
+					r.Repair.Decision = "no_change"
+				}
+			case "underlying refusal":
+				d.repair = false
+				parent.failReport = true
+			}
+			if err := d.Report(t.Context(), r); err == nil {
+				t.Fatal("invalid newer report accepted")
+			}
+			if parent.rejects != 1 || !parent.last.Checkpoint || parent.reports != 1 {
+				t.Fatalf("older terminal survived: %+v", parent)
+			}
+		})
+	}
+	parent := &withdrawingReportDoor{}
+	d := &receiptStageDoor{StageDoor: parent, repair: true}
+	if err := d.Report(t.Context(), factory.StageResult{Done: true, Checkpoint: true}); err != nil || parent.rejects != 0 {
+		t.Fatalf("accepted progress report was invalidated: %v %+v", err, parent)
+	}
+	d.RejectReport()
+	if parent.rejects != 1 {
+		t.Fatal("parser rejection was not forwarded")
 	}
 }

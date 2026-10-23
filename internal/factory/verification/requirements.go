@@ -13,6 +13,16 @@ import (
 func RequiredChecks(checks []Check, at Snapshot, fresh bool) (map[string]Check, map[string]bool) {
 	latest := map[string]Check{}
 	for _, c := range checks {
+		if c.Diagnostic || c.SupersededBy != "" {
+			continue
+		}
+		// The observer publishes argv before starting the executable. An empty
+		// in-flight placeholder is not an executed check or a permanent obligation.
+		// Native job ownership still blocks stage closure; the shell journal keeps
+		// an unexecuted/failed tool call honest. Committed corruption stays blocking.
+		if len(c.Args) == 0 && c.Exit == nil && c.Problem == "" {
+			continue
+		}
 		latest[c.Key()] = c
 	}
 	superseded := map[string]bool{}
@@ -23,6 +33,9 @@ func RequiredChecks(checks []Check, at Snapshot, fresh bool) (map[string]Check, 
 		}
 		covered := map[string]bool{}
 		for _, c := range checks {
+			if c.Diagnostic || c.SupersededBy != "" || c.Problem != "" {
+				continue
+			}
 			if c.order < old.order || c.Exit == nil || *c.Exit != 0 || (fresh && !c.Fresh(at)) || (!fresh && (c.Before.Head == "" || c.Before != c.After)) {
 				continue
 			}

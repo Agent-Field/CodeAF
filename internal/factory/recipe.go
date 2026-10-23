@@ -356,6 +356,12 @@ var untilWords = []string{UntilDone, UntilClean, UntilProven, UntilGreen}
 // a findings count of 0 on a round that never reported would otherwise read
 // exactly like green and clean.
 type StageResult struct {
+	// Checkpoint is runtime-only progress, never a finished round or persisted proof.
+	// Its zero value keeps synthetic and historical results terminal.
+	Checkpoint bool `json:"-"`
+	// ExecutionBlocked names a mechanical interruption, not a failed assertion.
+	ExecutionBlocked string `json:"-"`
+
 	PublishSummary []string        `json:",omitempty"`
 	Repair         *CIRepairResult `json:",omitempty"`
 	// Tests is absent when the command did not report individual outcomes.
@@ -399,6 +405,9 @@ type StageResult struct {
 // the vocabulary is never met, so the runner stops at its rounds and asks
 // rather than passing a stage on a word it cannot check.
 func Met(s Stage, r StageResult) bool {
+	if r.Checkpoint {
+		return false
+	}
 	met, _ := judge(s, r)
 	return met
 }
@@ -449,6 +458,9 @@ const (
 // whether the result meets it ([Met]), and what in it contradicts itself
 // under that rule ([ReportFault]), "" for nothing.
 func judge(s Stage, r StageResult) (met bool, fault string) {
+	if r.Checkpoint {
+		return false, ""
+	}
 	// An honest partial repair can report its work without becoming a passed step.
 	if IsCIRepairStage(s) && r.Repair != nil && r.Repair.Decision == "needs_repair" {
 		return false, ""

@@ -25,6 +25,7 @@ func TestSavedVerificationPauseRecoversWithExactChecksWithoutReplayingWork(t *te
 	if !factoryVerificationRecovered(it, root) {
 		t.Fatal("legacy saved job did not recover")
 	}
+	it.Stream.Phases[0].At = time.Now()
 	for _, mode := range []string{"manual", "takeover", "budget", "stopped", "new decision", "already recovered"} {
 		t.Run(mode, func(t *testing.T) {
 			x := it
@@ -72,5 +73,139 @@ func TestSavedVerificationPauseRecoversWithExactChecksWithoutReplayingWork(t *te
 	}
 	if words = inheritFactoryChecks(factoryrun.ConversationSpec{VerifyRepair: true, Item: it}, filepath.Join(t.TempDir(), "transcript.jsonl"), root); words != "" {
 		t.Fatal("changed checkout reused old checks")
+	}
+}
+
+func TestTestCheckpointSelectivelyReusesPassAndRetainsIndependentFailure(t *testing.T) {
+	root, file, run := repairCheckFixture(t)
+	run("cargo test --test cli passed")
+	run("CHECK_EXIT=7 cargo test --test other broken")
+	original, err := verification.Read(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := filepath.Join(t.TempDir(), "next.jsonl")
+	if err = os.WriteFile(next, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	it := factory.Item{Stream: &factory.Stream{Phases: []factory.Phase{{Name: "test", Chat: file, At: time.Now()}}}}
+	words := inheritFactoryChecks(factoryrun.ConversationSpec{VerificationStage: "test", Item: it}, next, root)
+	if !strings.Contains(words, "1 measured checks") || !strings.Contains(words, "1 unresolved") {
+		t.Fatal(words)
+	}
+	saved, err := verification.Read(next)
+	if err != nil || len(saved) != 2 {
+		t.Fatalf("selective inheritance: %+v %v", saved, err)
+	}
+	for _, s := range saved {
+		if s.Source != file || s.CompletedAt == nil {
+			t.Fatal("original provenance missing", s)
+		}
+	}
+	if original[0].Source != saved[0].Source {
+		t.Fatal("source lost")
+	}
+	notes, _ := (&stageConversation{file: next, dir: root}).RepairExecutionNotes()
+	blocked := false
+	for _, n := range notes {
+		if strings.HasPrefix(n, verification.FailurePrefix) && strings.Contains(n, "broken") {
+			blocked = true
+		}
+	}
+	if !blocked {
+		t.Fatalf("independent failing requirement vanished: %v", notes)
+	}
+}
+
+func TestFinishedRoundPassSurvivesAnInterruptedIdenticalRepeat(t *testing.T) {
+	root, file, run := repairCheckFixture(t)
+	run("cargo test --test cli regression")
+	run("cargo test --test cli regression")
+	run("cargo test --test other")
+	checks, err := verification.Read(file)
+	if err != nil || len(checks) != 3 {
+		t.Fatalf("%+v %v", checks, err)
+	}
+	for _, c := range checks[1:] {
+		if err = os.Remove(filepath.Join(file+".checks", c.ID) + ".exit"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	it := factory.Item{Stream: &factory.Stream{Phases: []factory.Phase{{Name: "test", Rounds: []factory.RoundLine{{At: time.Now(), Chat: file}}}}}}
+	next := filepath.Join(t.TempDir(), "next.jsonl")
+	os.WriteFile(next, nil, 0600)
+	words := inheritFactoryChecks(factoryrun.ConversationSpec{VerificationStage: "test", Item: it}, next, root)
+	if !strings.Contains(words, "1 measured checks") || !strings.Contains(words, "1 unresolved") {
+		t.Fatal(words)
+	}
+	saved, err := verification.Read(next)
+	if err != nil || len(saved) != 3 {
+		t.Fatalf("history not preserved: %+v %v", saved, err)
+	}
+	superseded := 0
+	for _, c := range saved {
+		if c.SupersededBy != "" {
+			superseded++
+			if c.Exit != nil || c.Source != file {
+				t.Fatal("interruption was fabricated as success", c)
+			}
+		}
+	}
+	if superseded != 1 {
+		t.Fatal("interrupted repeat not explicitly retained")
+	}
+	notes, _ := (&stageConversation{file: next, dir: root}).RepairExecutionNotes()
+	unknown := 0
+	for _, n := range notes {
+		if strings.HasPrefix(n, verification.FailurePrefix) && strings.Contains(n, "unknown") {
+			unknown++
+			if !strings.Contains(n, "other") {
+				t.Fatal("qualifying original pass was thrown away", n)
+			}
+		}
+	}
+	if unknown != 1 {
+		t.Fatalf("broader unknown was lost: %v", notes)
+	}
+	// Active/uncertain physical source conversations cannot supply reusable passes.
+	it.Stream.Phases[0].Rounds = nil
+	it.Stream.Phases[0].Chat = file
+	it.Stream.Phases[0].State = factory.PhaseRunning
+	if got := inheritFactoryChecks(factoryrun.ConversationSpec{VerificationStage: "test", Item: it}, filepath.Join(t.TempDir(), "active.jsonl"), root); got != "" {
+		t.Fatal("active source reused", got)
+	}
+}
+
+func TestLaterDefiniteFailurePreventsReusingAnOlderPass(t *testing.T) {
+	root, file, run := repairCheckFixture(t)
+	run("cargo test --test cli regression")
+	run("CHECK_EXIT=7 cargo test --test cli regression")
+	it := factory.Item{Stream: &factory.Stream{Phases: []factory.Phase{{Name: "proof", At: time.Now(), Chat: file}}}}
+	next := filepath.Join(t.TempDir(), "next.jsonl")
+	if got := inheritFactoryChecks(factoryrun.ConversationSpec{VerificationStage: "proof", Item: it}, next, root); got != "" {
+		t.Fatal("older pass erased newer failure", got)
+	}
+	if _, err := os.Stat(next + ".checks"); !os.IsNotExist(err) {
+		t.Fatal("old pass was imported")
+	}
+}
+
+func TestSameContentFromAnotherWorktreeDoesNotAuthorizeCheckpoint(t *testing.T) {
+	root, file, run := repairCheckFixture(t)
+	run("cargo test --test cli regression")
+	checks, err := verification.Read(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreign := t.TempDir()
+	checks[0].Cwd = foreign
+	checks[0].OwnerRoot = foreign
+	source := filepath.Join(t.TempDir(), "foreign.jsonl")
+	if err = verification.Inherit(source, checks); err != nil {
+		t.Fatal(err)
+	}
+	it := factory.Item{Stream: &factory.Stream{Phases: []factory.Phase{{Name: "test", At: time.Now(), Chat: source}}}}
+	if got := inheritFactoryChecks(factoryrun.ConversationSpec{VerificationStage: "test", Item: it}, filepath.Join(t.TempDir(), "new.jsonl"), root); got != "" {
+		t.Fatal("another worktree authorized same-content verification", got)
 	}
 }

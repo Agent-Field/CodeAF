@@ -22,7 +22,10 @@ var ErrLeaseGone = errors.New("factory worker: the lease is gone")
 
 // Refusal is a request the factory read and refused, in its own sentence, as
 // opposed to one that never reached it.
-type Refusal struct{ error }
+type Refusal struct {
+	error
+	Status int
+}
 
 func (r Refusal) Unwrap() error { return r.error }
 
@@ -98,6 +101,21 @@ func (w *WorkerClient) Heartbeat(ctx context.Context, lease string) (api.WorkerH
 
 // Report sends what the runner wrote since the last report.
 func (w *WorkerClient) Report(ctx context.Context, lease string, report api.WorkerReport) error {
+	request, err := PrepareWorkerReport(report, "")
+	if err != nil {
+		return err
+	}
+	return w.ReportPrepared(ctx, lease, request)
+}
+
+// PreparedWorkerReport freezes the complete request, including compatibility
+// headers, so a lost reply cannot turn a retry into a different cost delta.
+type PreparedWorkerReport struct {
+	Body    json.RawMessage `json:"body"`
+	Headers http.Header     `json:"headers"`
+}
+
+func PrepareWorkerReport(report api.WorkerReport, key string) (PreparedWorkerReport, error) {
 	// Keep new model evidence out of the JSON older factories decode strictly.
 	// Copy the steps: callers may reuse their report after this send.
 	// Check names are read-side detail; older strict factories accept the original PR shape.
@@ -115,6 +133,13 @@ func (w *WorkerClient) Report(ctx context.Context, lease string, report api.Work
 	}
 	models := map[string]string{}
 	chats := map[string]string{}
+	runtime := map[string]api.StepRuntime{}
+	// A reshaped pipeline also uses Step's read-side runtime fields. Runtime
+	// travels only with named step reports; leave pipeline JSON legacy-safe.
+	report.Pipeline = append([]api.Step(nil), report.Pipeline...)
+	for i := range report.Pipeline {
+		report.Pipeline[i].RoundLimit, report.Pipeline[i].Verification = 0, nil
+	}
 	report.Steps = append([]api.StepReport(nil), report.Steps...)
 	for i := range report.Steps {
 		if chat := report.Steps[i].Chat; chat != "" {
@@ -125,23 +150,45 @@ func (w *WorkerClient) Report(ctx context.Context, lease string, report api.Work
 			models[report.Steps[i].Name] = model
 			report.Steps[i].Model = ""
 		}
+		if report.Steps[i].RoundLimit > 0 || report.Steps[i].Verification != nil {
+			runtime[report.Steps[i].Name] = api.StepRuntime{RoundLimit: report.Steps[i].RoundLimit, Verification: report.Steps[i].Verification}
+		}
+		report.Steps[i].RoundLimit, report.Steps[i].Verification = 0, nil
 	}
 	extra := http.Header{}
+	if len(runtime) > 0 {
+		raw, err := json.Marshal(runtime)
+		if err != nil {
+			return PreparedWorkerReport{}, err
+		}
+		if len(raw) > 64<<10 {
+			return PreparedWorkerReport{}, errors.New("step runtime metadata exceeds 64 KiB")
+		}
+		extra.Set(api.StepRuntimeHeader, string(raw))
+	}
 	if len(chats) > 0 {
 		raw, err := json.Marshal(chats)
 		if err != nil {
-			return err
+			return PreparedWorkerReport{}, err
 		}
 		extra.Set(api.StepChatsHeader, string(raw))
 	}
 	if len(models) > 0 {
 		raw, err := json.Marshal(models)
 		if err != nil {
-			return err
+			return PreparedWorkerReport{}, err
 		}
 		extra.Set(api.StepModelsHeader, string(raw))
 	}
-	_, err := w.sendWith(ctx, http.MethodPost, leasePath(lease, "report"), w.credential, extra, report, nil)
+	if key != "" {
+		extra.Set("Idempotency-Key", key)
+	}
+	body, err := json.Marshal(report)
+	return PreparedWorkerReport{Body: body, Headers: extra}, err
+}
+
+func (w *WorkerClient) ReportPrepared(ctx context.Context, lease string, request PreparedWorkerReport) error {
+	_, err := w.sendWith(ctx, http.MethodPost, leasePath(lease, "report"), w.credential, request.Headers, request.Body, nil)
 	return err
 }
 
@@ -204,7 +251,7 @@ func (w *WorkerClient) sendWith(ctx context.Context, method, path, bearer string
 	case resp.StatusCode == http.StatusConflict || resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusNotFound:
 		return resp.StatusCode, ErrLeaseGone
 	case resp.StatusCode < 200 || resp.StatusCode >= 300:
-		return resp.StatusCode, Refusal{sentence(raw)}
+		return resp.StatusCode, Refusal{error: sentence(raw), Status: resp.StatusCode}
 	}
 	if out == nil || len(bytes.TrimSpace(raw)) == 0 {
 		return resp.StatusCode, nil

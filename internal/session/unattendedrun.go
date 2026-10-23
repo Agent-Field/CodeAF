@@ -20,6 +20,10 @@ func (a *Agent) StillGoing() bool {
 	// never calls a method that would take a.mu while the graph is held.
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	return a.stillGoingLocked()
+}
+
+func (a *Agent) stillGoingLocked() bool {
 	if a.closed {
 		return false
 	}

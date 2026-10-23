@@ -86,6 +86,8 @@ type Job struct {
 	// Progress relays brief human-facing Follow PR updates to the job conversation.
 	// It is nil for other stages and never authorizes an action or accepts proof.
 	Progress func(line string)
+	// Verification publishes engine-owned running check facts, not chat prose.
+	Verification func(*factory.StepVerification)
 	// Spend reports model cost the round incurred, in dollars, as it happens.
 	Spend func(usd float64)
 	// Resume names the conversation a pause cut short (a chat stage's

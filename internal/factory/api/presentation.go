@@ -30,6 +30,14 @@ func PresentJob(j *Job) {
 		p.Kind, p.Title = "waiting_for_runner", "Waiting to start"
 	case j.State == StateRunning:
 		p.Title = "Running"
+		for _, step := range j.Steps {
+			if step.State != StepRunning || step.Verification == nil || len(step.Verification.Checks) == 0 {
+				continue
+			}
+			p.Kind, p.Title = "verifying", "Waiting for checks"
+			p.Detail = step.Name + ": " + step.Verification.Checks[0].Purpose + " is running. Waiting does not use a model turn."
+			break
+		}
 	case j.State == StateNeedsYou:
 		p.Title, p.Detail = "Needs you", j.Reason
 	case j.State == StateDone:
