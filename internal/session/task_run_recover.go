@@ -31,6 +31,7 @@ func (a *Agent) recoverBeltRun() {
 		return
 	}
 	root := store.Task(store.RootID())
+	recordedSpend := storeSpent(store)
 	id, parseErr := strconv.ParseUint(store.RootID(), 10, 64)
 	_ = store.Close()
 	if root == nil || parseErr != nil {
@@ -46,6 +47,9 @@ func (a *Agent) recoverBeltRun() {
 		return
 	}
 	if terminalStoreStatus(root.Status) {
+		// The last running checkpoint can precede the worker's final receipt.
+		// Restore its price label from the ledger without charging it again.
+		kept.CostUSD = max(kept.CostUSD, recordedSpend)
 		a.reconcileSettledRun(g, kept, root)
 		return
 	}

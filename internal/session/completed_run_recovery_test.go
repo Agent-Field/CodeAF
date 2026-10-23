@@ -16,6 +16,10 @@ import (
 )
 
 func completedRecoveryFixture(t *testing.T) (*Agent, string, *TaskCopyRecord, *beltRunDouble, uint64, time.Time, func() *Agent) {
+	return completedRecoveryFixtureWithSpend(t, 0.42, 0)
+}
+
+func completedRecoveryFixtureWithSpend(t *testing.T, checkpointCost, ledgerCost float64) (*Agent, string, *TaskCopyRecord, *beltRunDouble, uint64, time.Time, func() *Agent) {
 	t.Helper()
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	engine := newBeltRunDouble("must not run")
@@ -42,13 +46,18 @@ func completedRecoveryFixture(t *testing.T) (*Agent, string, *TaskCopyRecord, *b
 	if err != nil {
 		t.Fatal(err)
 	}
+	if ledgerCost > 0 {
+		if err := store.AddSpend(store.RootID(), "mock/model", "work", ledgerCost, 100, 25); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := store.CompleteRoot("mock test passed; counter ready"); err != nil {
 		t.Fatal(err)
 	}
 	root := store.Task(store.RootID())
 	_ = store.Close()
 	copy := runCopyOf(tree)
-	first.publishRunRow(g, TaskNotice{ID: id, Title: "mock completed counter", State: TaskRunning, Copy: copy, CrewState: first.unroutedCrewRecord(), CostUSD: 0.42, StartedAt: time.Now().Add(-time.Minute), PlanTask: planStoreID(strconv.FormatUint(id, 10))})
+	first.publishRunRow(g, TaskNotice{ID: id, Title: "mock completed counter", State: TaskRunning, Copy: copy, CrewState: first.unroutedCrewRecord(), CostUSD: checkpointCost, StartedAt: time.Now().Add(-time.Minute), PlanTask: planStoreID(strconv.FormatUint(id, 10))})
 	if err := first.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -327,5 +336,60 @@ func TestCompletedPlanRecoveryReportsUnsavedRefusalWithoutChangingItsCopy(t *tes
 	if _, err := os.Stat(filepath.Join(copy.Dir, "counter.txt")); err != nil {
 		t.Fatal("refusal removed saved work")
 	}
+	nothingStarted(t, agent, engine)
+}
+
+func TestCompletedPlanRecoveryKeepsLedgerSpendWhenCheckpointIsUnpriced(t *testing.T) {
+	agent, _, _, engine, id, _, open := completedRecoveryFixtureWithSpend(t, 0, 0.37)
+	check := func(a *Agent) {
+		t.Helper()
+		kept, _ := runRowOf(a.graph(), id)
+		if kept.CostUSD != 0.37 {
+			t.Fatalf("run receipt lost authoritative ledger price: %+v", kept)
+		}
+		if a.Usage().CostUSD != 0 {
+			t.Fatal("restoring a price label charged the conversation again")
+		}
+		row := planRowFor(a.PlanTasks(), planStoreID(strconv.FormatUint(id, 10)))
+		if row == nil || row.USD != 0.37 {
+			t.Fatalf("recovery erased task's authoritative spend: %+v", row)
+		}
+		page, ok := a.PlanTaskPage(planStoreID(strconv.FormatUint(id, 10)))
+		if !ok || page.Row.USD != 0.37 {
+			t.Fatalf("task page erased its ledger spend: %+v", page.Row)
+		}
+		text, ok := a.planTaskText(a.runPlanTasks(), strconv.FormatUint(id, 10))
+		if !ok || !strings.Contains(text, "$0.37") {
+			t.Fatalf("task reader lost ledger cost: %q", text)
+		}
+	}
+	check(agent)
+	if err := agent.Close(); err != nil {
+		t.Fatal(err)
+	}
+	agent = open()
+	check(agent)
+	if err := agent.ResolveUnverified(id, TaskAccept, "mock work inspected"); err != nil {
+		t.Fatal(err)
+	}
+	kept, _ := runRowOf(agent.graph(), id)
+	if kept.CostUSD != 0.37 {
+		t.Fatalf("accepted run receipt lost ledger spend: %+v", kept)
+	}
+	var indexCost float64
+	for _, entry := range ReadTaskIndex(TaskIndexPath(agent.config.SessionFile)) {
+		if entry.ID == strconv.FormatUint(id, 10) {
+			indexCost = entry.Cost
+		}
+	}
+	if indexCost != 0.37 {
+		t.Fatalf("accepted task index lost ledger spend: %g", indexCost)
+	}
+	check(agent)
+	if err := agent.Close(); err != nil {
+		t.Fatal(err)
+	}
+	agent = open()
+	check(agent)
 	nothingStarted(t, agent, engine)
 }
