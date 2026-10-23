@@ -473,7 +473,7 @@ func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget) {
 			kind = api.RunnerThisMac
 		}
 	}
-	factoryworker.Run(ctx, factoryworker.Options{Dial: dial.dial, Keep: dial.keep, Attach: api.WorkerAttach{Machine: machine, Name: machine, Handle: me.Handle, OS: runtime.GOOS, CodeafVersion: buildinfo.String(), Kind: kind, Slots: factoryBenches(), Checkouts: checkouts, TakesUnassigned: takes}, Slots: factoryBenches(), Desired: dial.desiredSlots, Runner: runner, Mirror: mirror, DeliveryRoot: filepath.Join(h.floor.Root(), "worker-reports"), LocalLease: factoryLocalLease(mirror), Reply: func(ctx context.Context, it factory.Item, words string) error {
+	factoryworker.Run(ctx, factoryworker.Options{Dial: dial.dial, Keep: dial.keep, Attach: api.WorkerAttach{Machine: machine, Name: machine, Handle: me.Handle, OS: runtime.GOOS, CodeafVersion: buildinfo.String(), Kind: kind, Slots: factoryBenches(), Checkouts: checkouts, TakesUnassigned: takes}, Slots: factoryBenches(), Desired: dial.desiredSlots, Runner: runner, Mirror: mirror, DeliveryRoot: filepath.Join(h.floor.Root(), "worker-reports"), LocalFactory: target.url == h.address || (me.Mode == api.FactorySolo && factoryLoopback(target.url)), LocalLease: factoryLocalLease(mirror), Reply: func(ctx context.Context, it factory.Item, words string) error {
 		_, err := turns.through(ctx, it, words, nil)
 		return err
 	}})

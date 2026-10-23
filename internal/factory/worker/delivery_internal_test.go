@@ -85,6 +85,10 @@ func TestWorkerRejectedDeliveryParksAndRetainsOriginal(t *testing.T) {
 		t.Run(http.StatusText(status), func(t *testing.T) {
 			results, controls := 0, 0
 			j, _ := deliveryJob(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if strings.HasPrefix(r.URL.Path, "/v1/workers/recover/") {
+					w.WriteHeader(404)
+					return
+				}
 				var report api.WorkerReport
 				_ = json.NewDecoder(r.Body).Decode(&report)
 				if report.Question != nil {

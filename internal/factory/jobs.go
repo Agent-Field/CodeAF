@@ -8,7 +8,7 @@ import (
 )
 
 // DefaultJobBudget is the pipeline default when no file supplies one.
-const DefaultJobBudget = 3.0
+const DefaultJobBudget = 5.0
 
 // ApprovalUndo is the interval during which consent has no outward effect.
 const ApprovalUndo = 5 * time.Second

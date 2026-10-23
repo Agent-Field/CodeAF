@@ -277,6 +277,9 @@ A job's own chat (`T` on the floor, or the job's chat on its page) is the job's 
 you say there before Start is the brief, it starts the job when you ask, and its turns spend
 from the job's budget like the job's steps: everything done for the job spends from one budget.
 
+- **Default Budget** is up to $5 per factory job when the repository has no explicit
+  `default_budget`. Existing saved job budgets and configured repository defaults stay
+  unchanged; the default is not a migration or a budget increase for existing work.
 - **Before Start** the job's cost is what its chat has spent, and Start carries that into the
   run, so a step's budget question counts it.
 - **During a run** the manager, stages and their delegated workers record priced calls
@@ -750,3 +753,23 @@ Granted round limits survive a new runner. Retry history merges by conversation,
 including an interrupted attempt sharing a round number. Same-job replacement is
 refused while the prior executor is cleaning up. This is an in-process fence,
 not a promise to recover escaped processes after an arbitrary app crash.
+
+
+## Blocked results and Retry saved results
+
+`Blocked — could not save results` is an internal reporting block (`results_not_saved`),
+not a question or approval for the user. A step may have completed locally while the
+factory has not accepted its report. Auto is the chosen approval mode; it does not mean
+work is currently running. The Jobs list, Steps and conversation show the reporting block
+instead of stale Running or Needs you captions.
+
+The worker keeps the original completed result. Automatic recovery makes at most three
+revalidation attempts and resubmits the same immutable saved report. **Retry saved results**
+reconciles and resubmits that report without repeating tests or model work. Restart can
+recover a confirmed rejected report on the original machine, only while the job's head,
+round and ownership still match. Stale results remain blocked with the recorded reason;
+recovery does not apply them to different work or bypass a real user decision.
+
+An accepted “no code change needed” assessment (`repair.decision: no_change`) is a
+successful outcome: Follow PR returns to
+watching GitHub for new activity. No code change does not require a new approval.

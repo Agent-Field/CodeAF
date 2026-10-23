@@ -483,6 +483,11 @@ type Item struct {
 	// WorktreeMachine keeps resumed runs and publishing beside the files the
 	// first worker made, even after its lease expires or the factory restarts.
 	WorktreeMachine string `json:",omitempty"`
+	// ReportReceipts are service-owned acknowledgments for retained worker results.
+	// They commit with the item so a lost recovery reply never charges twice.
+	ReportReceipts []WorkerReportReceipt `json:",omitempty"`
+	// ReportRetryAt is a person's explicit retry grant, never an automatic loop.
+	ReportRetryAt time.Time `json:",omitzero"`
 	// Publishing lasts from recorded approval until the publisher reports its
 	// outcome, so the surface cannot say shipped before the pull request exists.
 	Publishing    bool        `json:",omitempty"`

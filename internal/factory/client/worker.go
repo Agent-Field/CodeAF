@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 )
@@ -257,4 +259,20 @@ func (w *WorkerClient) sendWith(ctx context.Context, method, path, bearer string
 		return resp.StatusCode, nil
 	}
 	return resp.StatusCode, json.Unmarshal(raw, out)
+}
+
+// Recover reconciles one retained report under the server's durable receipt.
+// It is independent of a stale lease's report URL; the server checks ownership,
+// current round and head before accepting any saved work or spending.
+func (w *WorkerClient) Recover(ctx context.Context, id int, originalLease string, request PreparedWorkerReport, additionalCost float64) (api.WorkerRecovered, error) {
+	var out api.WorkerRecovered
+	_, err := w.send(ctx, http.MethodPost, fmt.Sprintf("/v1/workers/recover/%d", id), w.credential, api.WorkerRecovery{OriginalLease: originalLease, Body: request.Body, Headers: request.Headers, AdditionalCost: additionalCost}, &out)
+	return out, err
+}
+
+// RecoveryRetry reads a typed user retry request without applying retained work.
+func (w *WorkerClient) RecoveryRetry(ctx context.Context, id int) (time.Time, error) {
+	var out api.WorkerRecovered
+	_, err := w.send(ctx, http.MethodGet, fmt.Sprintf("/v1/workers/recover/%d", id), w.credential, nil, &out)
+	return out.RetryRequestedAt, err
 }

@@ -25,8 +25,24 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 	if report.PR != nil && report.CommentURL != "" {
 		return fmt.Errorf("publish reports either a pr or a comment")
 	}
+	legacyReset := report.FollowUp != nil && it.FollowUp != nil && report.FollowUp.Attempt == 0 && it.FollowUp.Attempt > 0
+	if legacyReset {
+		f := *report.FollowUp
+		f.Attempt = it.FollowUp.Attempt
+		report.FollowUp = &f
+	}
+	previousPR := it.PullRequest
 	if err := applyFollowObservation(it, report); err != nil {
 		return err
+	}
+	completed := completedFollowReport(*it, report)
+	if legacyReset && !completed {
+		return fmt.Errorf("follow-up identity changed")
+	}
+	if completed && previousPR != nil && previousPR.HeadSHA == it.FollowUp.HeadSHA {
+		// The service may have observed newer feedback while the worker was
+		// checking this head. Completion cannot roll that observation backward.
+		report.PR = nil
 	}
 	if report.Change != nil {
 		if err := validateChange(report.Change); err != nil {
@@ -58,7 +74,7 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 		it.PublishStatus = p
 	}
 	if report.FollowUp != nil {
-		if it.FollowUp == nil || report.FollowUp.HeadSHA != it.FollowUp.HeadSHA || report.FollowUp.Attempt != it.FollowUp.Attempt {
+		if it.FollowUp == nil || report.FollowUp.HeadSHA != it.FollowUp.HeadSHA || (report.FollowUp.Attempt != it.FollowUp.Attempt && !completed) {
 			return fmt.Errorf("follow-up identity changed")
 		}
 		f := *it.FollowUp
@@ -144,6 +160,18 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 	for _, step := range report.Stages {
 		if err := reportStep(it, step, now); err != nil {
 			return err
+		}
+	}
+	if completed {
+		// Acknowledge only the revisions captured for this attempt. Feedback
+		// arriving in flight remains pending; no worker-supplied map overwrites it.
+		factory.AcknowledgeReview(it)
+		it.FollowUp.Request = ""
+		if it.QKind == "results_not_saved" {
+			it.Question, it.QKind = "", ""
+			it.Asking = nil
+			it.Failure = nil
+			it.State = factory.StateRunning
 		}
 	}
 	addCost(it, report.Cost)

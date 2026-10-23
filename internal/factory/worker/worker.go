@@ -63,6 +63,9 @@ type Options struct {
 	// DeliveryRoot keeps unsent per-lease result artifacts outside disposable
 	// mirrors. Empty uses a private child of Mirror; app hosts supply their home.
 	DeliveryRoot string
+	// LocalFactory permits a retained loopback origin to change its ephemeral
+	// port across restart. Only the app host owning this private store sets it.
+	LocalFactory bool
 	// Now makes bounded delivery backoff deterministic in isolated checks.
 	Now func() time.Time
 
@@ -200,6 +203,7 @@ func (o Options) slot(ctx context.Context, slot int) {
 				o.Keep(slot, w)
 			}
 		}
+		o.recoverRetained(ctx, w)
 		began := time.Now()
 		pulled, ok, err := w.Pull(ctx)
 		switch {
@@ -387,6 +391,9 @@ func begun(s *factory.Stream) bool {
 // transport failures do not turn newly incurred cost into a larger replay.
 func (j *job) flush(ctx context.Context) bool {
 	if j.blocked != "" {
+		if j.recoverBlocked(ctx, false) {
+			return false
+		}
 		return j.reportBlocked(ctx)
 	}
 	if j.pending != nil {
@@ -469,6 +476,12 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 	for _, s := range signals {
 		// A generic Resume or manager reply cannot bypass reconciliation of a
 		// rejected result. Stop remains available and unsent replies stay pending.
+		if j.blocked != "" && s.Verb == lease.SignalReconcile {
+			if j.recoverBlocked(ctx, true) {
+				return false
+			}
+			continue
+		}
 		if j.blocked != "" && s.Verb != lease.SignalStop {
 			continue
 		}

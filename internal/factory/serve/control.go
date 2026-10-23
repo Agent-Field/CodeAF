@@ -1,8 +1,10 @@
 package serve
 
 import (
+	"fmt"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"net/http"
 	"strings"
 	"time"
@@ -43,6 +45,24 @@ func (h *Handler) controlJob(w http.ResponseWriter, r *http.Request, it factory.
 		if err := h.seam.Stop(it.ID); h.failed(w, err) {
 			return
 		}
+	}
+	if body.Mode == "resume_pipeline" && it.QKind == "results_not_saved" {
+		if h.workers == nil {
+			h.fail(w, 422, "Saved results need the original runner to reconnect.")
+			return
+		}
+		err := h.config.Store.Update(it.ID, func(cur *factory.Item) error {
+			if cur.QKind != "results_not_saved" || cur.Manual {
+				return fmt.Errorf("the result-save block changed")
+			}
+			cur.ReportRetryAt = time.Now().UTC()
+			return nil
+		})
+		if err == nil {
+			_, err = h.workers.desk.SignalIfHeld(it.ID, lease.Signal{Verb: lease.SignalReconcile})
+		}
+		h.finish(w, err)
+		return
 	}
 	err := h.config.Store.Update(it.ID, func(cur *factory.Item) error {
 		wasManual := cur.Manual

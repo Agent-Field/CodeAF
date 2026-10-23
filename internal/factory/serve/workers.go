@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"reflect"
@@ -86,11 +85,12 @@ func (h *Handler) workerRoutes() {
 	h.route("/v1/workers/leases/{lease}/heartbeat", map[string]http.HandlerFunc{http.MethodPost: h.heartbeatWorker})
 	h.route("/v1/workers/leases/{lease}/report", map[string]http.HandlerFunc{http.MethodPost: h.reportWorker})
 	h.route("/v1/workers/leases/{lease}/done", map[string]http.HandlerFunc{http.MethodPost: h.doneWorker})
+	h.route("/v1/workers/recover/{id}", map[string]http.HandlerFunc{http.MethodPost: h.recoverWorkerReport, http.MethodGet: h.workerRecoveryStatus})
 }
 
 func workerPath(path string) bool {
 	return (strings.HasPrefix(path, "/v1/workers/") && path != "/v1/workers/attach") ||
-		(strings.HasPrefix(path, "/v1/runners/leases/")) || path == "/v1/runners/pull" || path == "/v1/runners/presence" || path == "/v1/runner/self"
+		strings.HasPrefix(path, "/v1/runners/leases/") || strings.HasPrefix(path, "/v1/runners/recover/") || path == "/v1/runners/pull" || path == "/v1/runners/presence" || path == "/v1/runner/self"
 }
 
 func bearer(r *http.Request) string {
@@ -429,49 +429,9 @@ func (h *Handler) reportWorker(w http.ResponseWriter, r *http.Request) {
 	if !h.decode(w, r, &body, false) {
 		return
 	}
-	if raw := r.Header.Get(api.StepModelsHeader); raw != "" {
-		var models map[string]string
-		if len(raw) > 64<<10 || json.Unmarshal([]byte(raw), &models) != nil {
-			h.fail(w, http.StatusBadRequest, "invalid step models")
-			return
-		}
-		for i := range body.Steps {
-			if model := models[body.Steps[i].Name]; model != "" {
-				body.Steps[i].Model = model
-			}
-		}
-	}
-	if raw := r.Header.Get(api.StepChatsHeader); raw != "" {
-		var chats map[string]string
-		if len(raw) > 64<<10 || json.Unmarshal([]byte(raw), &chats) != nil {
-			h.fail(w, http.StatusBadRequest, "invalid step chats")
-			return
-		}
-		for i := range body.Steps {
-			body.Steps[i].Chat = chats[body.Steps[i].Name]
-		}
-	}
-	if raw := r.Header.Get(api.StepRuntimeHeader); raw != "" {
-		var runtime map[string]api.StepRuntime
-		if len(raw) > 64<<10 || json.Unmarshal([]byte(raw), &runtime) != nil {
-			h.fail(w, http.StatusBadRequest, "invalid step runtime")
-			return
-		}
-		known := map[string]bool{}
-		for _, step := range body.Steps {
-			known[step.Name] = true
-		}
-		for name, state := range runtime {
-			if !known[name] || state.RoundLimit < 0 {
-				h.fail(w, http.StatusBadRequest, "step runtime names an unknown step or invalid limit")
-				return
-			}
-		}
-		for i := range body.Steps {
-			if state, ok := runtime[body.Steps[i].Name]; ok {
-				body.Steps[i].RoundLimit, body.Steps[i].Verification = state.RoundLimit, state.Verification
-			}
-		}
+	if err := workerReportHeaders(&body, r.Header); err != nil {
+		h.fail(w, http.StatusBadRequest, err.Error())
+		return
 	}
 	report := api.ToWorkerReport(body)
 	only, err := h.workers.desk.ThreadOnly(r.PathValue("lease"), requestWorker(r).ID)

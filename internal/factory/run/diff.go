@@ -70,6 +70,14 @@ func Diff(prev, cur factory.Item) (factory.RunReport, bool) {
 		r.Notes = append([]string(nil), cur.Notes[len(prev.Notes):]...)
 	}
 	r.Merge = mergeMoved(prev, cur)
+	// Retry counters reset when local work completes, including publication
+	// and observed-head rechecks. Transport identity stays on the held attempt;
+	// the service derives acknowledgement from the accepted completion.
+	if r.FollowUp != nil && prev.FollowUp != nil && r.FollowUp.Attempt == 0 && prev.FollowUp.Attempt > 0 {
+		f := *r.FollowUp
+		f.Attempt = prev.FollowUp.Attempt
+		r.FollowUp = &f
+	}
 	r.Log = without(r.Log, echoes(prev, r))
 	return r, !reflect.DeepEqual(r, factory.RunReport{})
 }

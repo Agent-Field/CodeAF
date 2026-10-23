@@ -44,8 +44,9 @@ const (
 	// SignalModel carries the model a person chose for the job (Words, ""
 	// for the default) to the worker running it, whose next step opens on it
 	// and whose running step switches at its next turn.
-	SignalModel    = "model"
-	SignalAutonomy = "autonomy"
+	SignalModel     = "model"
+	SignalAutonomy  = "autonomy"
+	SignalReconcile = "reconcile_results"
 )
 
 // Signal is one verb a person asked of a job, with the door's own arguments.

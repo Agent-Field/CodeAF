@@ -40,6 +40,9 @@ type pendingDelivery struct {
 	Deadline         time.Time
 	NextAt           time.Time
 	Attempts         int
+	RecoveryAttempts int
+	RecoveryNextAt   time.Time
+	RetrySeen        time.Time
 }
 
 const deliveryRequestTimeout = 5 * time.Second
@@ -177,7 +180,7 @@ func (j *job) sendPending(ctx context.Context) bool {
 			}
 			var refused client.Refusal
 			_ = errors.As(err, &refused)
-			j.blockDelivery(fmt.Sprintf("The factory refused this step's results (HTTP %d). Work stopped and unsent results are retained. Resolve the reporting problem before retrying the step.", refused.Status))
+			j.blockDelivery(fmt.Sprintf("The factory refused this step's results (HTTP %d): %s. Saved results are retained for recovery; completed work does not need to be repeated.", refused.Status, err.Error()))
 			return j.reportBlocked(ctx)
 		}
 	}
