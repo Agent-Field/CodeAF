@@ -63,21 +63,6 @@ is kept; a design task can discard its unsaved page, and the confirmation says
 which consequence applies. Runs and background jobs use their own existing
 stop confirmations. The header and controls stop the work on the open page.
 
-Stopping a delegated run also stops its workers and prevents another checking or
-acceptance pass from starting. Its saved work and trace remain available. A request
-already sent can still return its final usage receipt; stopping does not erase costs
-already incurred. If bringing finished work home has already begun, that operation
-finishes and its actual result is preserved.
-
-## Conversation time limit — --max-hours
-
-When the conversation reaches `--max-hours`, its delegated runs, background jobs,
-and automatic memory or title work stop before the terminal error appears:
-`conversation time limit reached · start a new conversation or relaunch with a larger --max-hours`.
-The stopped run records `a time limit you set stopped it`. Start a new conversation
-or relaunch with a larger limit to do more work. Closing a window is different: it
-detaches the window and does not itself stop delegated work.
-
 ## Asking the chat to stop a task — can I tell the chat to stop a task, I asked it to stop task 2 and it kept going, the model said it stopped but the task is still running, cancel task 2
 
 **Yes, and it is a real stop.** Say "stop task 2", "cancel task 2" or "drop task 2" in the
