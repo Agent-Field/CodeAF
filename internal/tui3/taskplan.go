@@ -184,7 +184,7 @@ func planStateWord(row session.PlanTaskRow) string {
 		return "done"
 	case "failed", "cancelled":
 		return "incomplete"
-	case "paused":
+	case "paused", string(session.TaskUnverified):
 		return "your call"
 	}
 	// A status this build has never heard of draws NOTHING rather than a word it
@@ -249,7 +249,7 @@ func planStatus(row session.PlanTaskRow) session.TaskStatus {
 			Presence: session.TaskPresenceIncomplete,
 			Word:     planStateWord(row),
 		}
-	case "paused":
+	case "paused", string(session.TaskUnverified):
 		return session.TaskStatus{
 			Tier:      session.TaskTierYourCall,
 			Presence:  session.TaskPresenceNeedsLook,
@@ -268,6 +268,8 @@ func planEntryStatus(store string) string {
 	switch strings.TrimSpace(store) {
 	case "pending", "ready", "claimed", "running", "paused":
 		return string(session.TaskRunning)
+	case string(session.TaskUnverified):
+		return string(session.TaskUnverified)
 	case "done":
 		return string(session.TaskDone)
 	case "failed", "cancelled":
@@ -912,6 +914,9 @@ func (a *app) tasksPlanKeyWords(row session.PlanTaskRow) []string {
 // row already draws for its state, so the key line and the page's sentences
 // cannot disagree about which tasks can still move.
 func planEnded(row session.PlanTaskRow) bool {
+	if row.Status == string(session.TaskUnverified) {
+		return true
+	}
 	switch planStateWord(row) {
 	case "done", "incomplete", "stopped":
 		return true
