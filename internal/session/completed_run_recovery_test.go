@@ -19,7 +19,7 @@ func completedRecoveryFixture(t *testing.T) (*Agent, string, *TaskCopyRecord, *b
 	return completedRecoveryFixtureWithSpend(t, 0.42, 0)
 }
 
-func completedRecoveryFixtureWithSpend(t *testing.T, checkpointCost, ledgerCost float64) (*Agent, string, *TaskCopyRecord, *beltRunDouble, uint64, time.Time, func() *Agent) {
+func completedRecoveryFixtureWithSpend(t *testing.T, checkpointCost, ledgerCost float64, checkerCost ...float64) (*Agent, string, *TaskCopyRecord, *beltRunDouble, uint64, time.Time, func() *Agent) {
 	t.Helper()
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	engine := newBeltRunDouble("must not run")
@@ -48,6 +48,20 @@ func completedRecoveryFixtureWithSpend(t *testing.T, checkpointCost, ledgerCost 
 	}
 	if ledgerCost > 0 {
 		if err := store.AddSpend(store.RootID(), "mock/model", "work", ledgerCost, 100, 25); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(checkerCost) > 0 {
+		if _, err := store.AddMany([]plandb.TaskSpec{{ID: "mock-checker", Title: "Mock checker", Description: "check completed counter", ParentID: store.RootID()}}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.Claim("mock-checker", "mock-checker"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.Done("mock-checker", "mock-checker", "mock check passed", nil, nil); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.AddSpend("mock-checker", "mock/model", "check", checkerCost[0], 50, 10); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -475,5 +489,42 @@ func TestCompletedPlanRecoveryNamesTheMissingCopyThroughItsActualToolDoor(t *tes
 	if kept.State != TaskInterrupted || kept.Copy != nil || runTreeHead(repo) != before {
 		t.Fatalf("missing-copy refusal invented or changed work: %+v", kept)
 	}
+	nothingStarted(t, agent, engine)
+}
+
+func TestCompletedPlanRecoveryKeepsWholeRunSpendWithoutChargingAgain(t *testing.T) {
+	agent, _, _, engine, id, _, open := completedRecoveryFixtureWithSpend(t, 0, 0.02, 0.02)
+	check := func(a *Agent) {
+		t.Helper()
+		kept, _ := runRowOf(a.graph(), id)
+		page, ok := a.PlanTaskPage(planStoreID(strconv.FormatUint(id, 10)))
+		if kept.CostUSD != 0.04 || !ok || page.Row.USD != 0.04 {
+			t.Fatalf("root and checker must appear once in whole-run receipt and page: receipt=%g page=%g", kept.CostUSD, page.Row.USD)
+		}
+		store, err := plandb.Open(a.graph().planPath(), "mock", strconv.FormatUint(id, 10), "mock completed counter", "write counter", a.graph().planChat())
+		if err != nil {
+			t.Fatal(err)
+		}
+		spent := storeSpent(store)
+		_ = store.Close()
+		if spent != 0.04 || a.Usage().CostUSD != 0 {
+			t.Fatalf("recovery changed actual ledger or charged again: ledger=%g usage=%g", spent, a.Usage().CostUSD)
+		}
+	}
+	check(agent)
+	if err := agent.Close(); err != nil {
+		t.Fatal(err)
+	}
+	agent = open()
+	check(agent)
+	if err := agent.ResolveUnverified(id, TaskAccept, "mock root and checker inspected"); err != nil {
+		t.Fatal(err)
+	}
+	check(agent)
+	if err := agent.Close(); err != nil {
+		t.Fatal(err)
+	}
+	agent = open()
+	check(agent)
 	nothingStarted(t, agent, engine)
 }
