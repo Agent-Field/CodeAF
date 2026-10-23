@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/exec"
+	"github.com/Agent-Field/codeaf/internal/shell"
 )
 
 // THE PROMPT NAMES EXACTLY THE TOOLS THE CALL CARRIES.
@@ -77,7 +78,10 @@ func (c Config) shelvesCapabilities() bool { return !c.InTask }
 // mayWatch says whether `watch` belongs on this belt (tools.go). It comes off
 // inside a task because its whole delivery mechanism is a note arriving in a
 // conversation, and a node has none.
-func (c Config) mayWatch() bool { return !c.InTask }
+func (c Config) mayWatch() bool {
+	_, err := shell.Bash()
+	return !c.InTask && err == nil
+}
 
 // mayAsk says whether `ask` belongs on this belt. It is unconditional on the
 // conversation's belt — only the shelf changes whether the schema is carried now

@@ -664,7 +664,10 @@ func (r *jobRegistry) runTick(ctx context.Context, spec watchSpec) (string, stri
 	tickCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	shell, shellArgs := jobShell()
+	shell, shellArgs, shellErr := jobShell()
+	if shellErr != nil {
+		return "", shellErr.Error()
+	}
 	process := exec.CommandContext(tickCtx, shell, append(shellArgs, spec.command)...)
 	process.Dir = r.workspace
 	process.Env = os.Environ()
