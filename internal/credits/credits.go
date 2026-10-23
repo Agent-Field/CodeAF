@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/providerhttp"
 )
 
 // LowCreditsUSD covers one worst-case turn on the shipped DeepSeek default:
@@ -49,7 +51,7 @@ func Read(ctx context.Context, client *http.Client, baseURL, key string) (Readin
 		}
 		req.Header.Set("Authorization", "Bearer "+key)
 		req.Header.Set("Accept", "application/json")
-		resp, err := client.Do(req)
+		resp, err := providerhttp.Do(client, req)
 		if err != nil {
 			return nil, 0, err
 		}

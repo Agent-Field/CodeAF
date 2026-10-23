@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/guard"
+
+	"github.com/Agent-Field/codeaf/internal/providerhttp"
 )
 
 const (
@@ -55,9 +57,9 @@ func (o Options) backend() string {
 
 func (o Options) client() *http.Client {
 	if o.HTTPClient != nil {
-		return o.HTTPClient
+		return providerhttp.Clone(o.HTTPClient)
 	}
-	return &http.Client{Timeout: 30 * time.Second}
+	return &http.Client{Timeout: 30 * time.Second, CheckRedirect: providerhttp.CheckRedirect}
 }
 
 func (o Options) now() time.Time {
@@ -239,7 +241,7 @@ func (f *Flow) exchangeCode(code string) (Tokens, error) {
 	}
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	request.Header.Set("Accept", "application/json")
-	response, err := f.client.Do(request)
+	response, err := providerhttp.Do(f.client, request)
 	if err != nil {
 		return Tokens{}, fmt.Errorf("connect Codex: exchange the browser code: %w", err)
 	}

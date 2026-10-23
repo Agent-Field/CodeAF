@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+
+	"github.com/Agent-Field/codeaf/internal/providerhttp"
 )
 
 const (
@@ -172,8 +174,9 @@ func NewMediaClient(config Config) (*MediaClient, error) {
 	}
 	client := config.HTTPClient
 	if client == nil {
-		client = &http.Client{Transport: SharedTransport(), Timeout: config.Timeout}
+		client = &http.Client{Transport: SharedTransport(), Timeout: config.Timeout, CheckRedirect: providerhttp.CheckRedirect}
 	}
+	client = providerhttp.Clone(client)
 	return &MediaClient{
 		config: config, http: client, videoNow: time.Now, videoWait: waitContext,
 		connection:       &Client{http: client, wait: waitContext},
@@ -282,7 +285,7 @@ func (c *MediaClient) generateVideo(ctx context.Context, request VideoRequest) (
 		}
 
 		if err := c.getJSON(ctx, pollingURL, &job, request.Model); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("video polling at %s failed: %w", pollingHost(pollingURL), err)
 		}
 		switch strings.ToLower(strings.TrimSpace(job.Status)) {
 		case "pending", "in_progress":
@@ -385,7 +388,7 @@ func (c *MediaClient) postJSON(ctx context.Context, path string, request any, ta
 }
 
 func (c *MediaClient) getJSON(ctx context.Context, endpoint string, target any, model string) error {
-	response, err := c.doEndpoint(ctx, http.MethodGet, endpoint, nil, true, model)
+	response, err := c.doEndpoint(ctx, http.MethodGet, endpoint, nil, c.sameHostAsBase(endpoint), model)
 	if err != nil {
 		return err
 	}
@@ -463,7 +466,7 @@ func (c *MediaClient) doEndpoint(ctx context.Context, method, endpoint string, b
 			// is inert anywhere it is not read.
 			ApplyAttribution(request.Header)
 		}
-		response, err := c.http.Do(request)
+		response, err := providerhttp.Do(c.http, request)
 		if err != nil {
 			if authenticated && c.connection != nil && connectionFailure(err) && !sent.Load() && ctx.Err() == nil {
 				if err := c.connection.recoverBeforeSend(ctx, &recovery, model, endpoint); err != nil {
@@ -487,14 +490,9 @@ func (c *MediaClient) mediaEndpoint(path string) string {
 	return strings.TrimSuffix(strings.TrimSpace(c.config.BaseURL), "/") + path
 }
 
-// sameHostAsBase reports whether an absolute URL points at the very host this
-// client was configured with. It is the whole test behind [downloadVideo]'s
-// credential decision, and it compares HOSTS — scheme and port included via
-// url.Host — rather than prefixes: a prefix check would hand the key to
-// `openrouter.ai.evil.example` for a base of `openrouter.ai`.
-//
-// A URL that will not parse answers false. An unreadable download URL is not a
-// reason to guess in the direction that leaks a credential.
+// sameHostAsBase scopes polling and download credentials to the configured
+// origin: scheme, case-insensitive hostname and effective port. Unreadable URLs
+// and URLs carrying their own userinfo never receive the provider bearer.
 func (c *MediaClient) sameHostAsBase(endpoint string) bool {
 	target, err := url.Parse(strings.TrimSpace(endpoint))
 	if err != nil {
@@ -504,7 +502,7 @@ func (c *MediaClient) sameHostAsBase(endpoint string) bool {
 	if err != nil {
 		return false
 	}
-	return target.Host != "" && strings.EqualFold(target.Host, base.Host)
+	return providerhttp.SameOrigin(target, base) && target.User == nil
 }
 
 func (c *MediaClient) resolveEndpoint(raw string) (string, error) {
@@ -598,3 +596,5 @@ func usageFromHeaders(headers http.Header) *ai.Usage {
 	}
 	return nil
 }
+
+func pollingHost(endpoint string) string { u, _ := url.Parse(endpoint); return providerhttp.Host(u) }

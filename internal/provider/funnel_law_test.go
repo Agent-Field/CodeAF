@@ -415,13 +415,18 @@ func TestOneFunctionSendsACompletionOnTheWire(t *testing.T) {
 			case *ast.SelectorExpr:
 				switch fun.Sel.Name {
 				case "Do":
-					if len(call.Args) != 1 {
+					var request ast.Expr
+					if pkg, ok := fun.X.(*ast.Ident); ok && pkg.Name == "providerhttp" && len(call.Args) == 2 {
+						request = call.Args[1]
+					} else if len(call.Args) == 1 {
+						request = call.Args[0]
+					} else {
 						return true
 					}
-					if _, isFunc := call.Args[0].(*ast.FuncLit); isFunc {
+					if _, isFunc := request.(*ast.FuncLit); isFunc {
 						return true
 					}
-					if ident, isIdent := call.Args[0].(*ast.Ident); isIdent && declared[ident.Name] {
+					if ident, isIdent := request.(*ast.Ident); isIdent && declared[ident.Name] {
 						return true
 					}
 					where := funnelEnclosing(file, call.Pos())

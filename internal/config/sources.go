@@ -17,6 +17,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/paymentrefusal"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/trace"
+
+	"github.com/Agent-Field/codeaf/internal/providerhttp"
 )
 
 const keyModelSources = "model_sources"
@@ -566,7 +568,7 @@ func runServiceProbe(ctx context.Context, address, key string, probe modelsource
 	if key != "" {
 		request.Header.Set("Authorization", "Bearer "+key)
 	}
-	response, err := (&http.Client{Timeout: probe.Timeout}).Do(request)
+	response, err := providerhttp.Do(&http.Client{Timeout: probe.Timeout, CheckRedirect: providerhttp.CheckRedirect}, request)
 	if err != nil {
 		return 0, nil, false
 	}

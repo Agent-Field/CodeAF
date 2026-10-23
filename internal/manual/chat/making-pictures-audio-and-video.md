@@ -631,3 +631,17 @@ inside it.
 The permission rules apply as they do to any other tool, so under the default
 approval mode you are asked before a generation runs. See the permissions page
 for how to change that.
+
+## A video polling host refuses the job, or a media request redirects elsewhere
+
+The provider key stays on the configured origin: scheme, hostname and port must
+match. A video job can name a separate polling or download host; codeaf asks it
+**without the provider key**. It does not retry that host with the key if refused.
+Same-origin polling and downloads keep their authentication.
+
+A polling failure names the host: `video polling at <host> failed: <reason>`.
+Check the provider's job status or configured service address before trying again.
+A cross-origin redirect is stopped before sending any request to its target:
+`provider redirect to <host> refused; check the configured service address`.
+The address in this notice excludes user names, passwords, paths and query values.
+Same-origin redirects remain supported, with a limit of ten requests in a chain.
