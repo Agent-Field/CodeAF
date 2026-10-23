@@ -39,6 +39,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
@@ -392,6 +393,8 @@ type beltRun struct {
 	stopReason string
 	// bringingHome linearizes Stop against the existing main-checkout merge.
 	// quiet suppresses model narration after a stop arrives beyond that point.
+	// deliveryMu serializes page Stop with final receipt admission.
+	deliveryMu   sync.Mutex
 	bringingHome bool
 	quiet        bool
 	// ending says the engine has answered and the run is only landing,
@@ -2142,17 +2145,22 @@ func (a *Agent) bringBeltRunHome(run *beltRun, landing RunLanding) RunLanding {
 // deliverBeltRunLanding writes the run's digest into the conversation record.
 // A LANDING SPEAKS ONLY WHEN AN ANSWER IS OWED — or when a program ended it,
 // whose ending is always the conversation's to act on (program_outcome.go).
+var beltLandingAdmissionWaits func()
+
 func (a *Agent) deliverBeltRunLanding(run *beltRun, summary RunSummary, landing RunLanding) {
 	line := beltRunOutcomeNote(run.store, run.root, summary, landing, a.beltRunSpan(run))
 	if a.beltRunQuiet(run) {
 		a.recordQuietBeltLanding(run, summary, line, landing)
 		return
 	}
+	if beltLandingAdmissionWaits != nil {
+		beltLandingAdmissionWaits()
+	}
 	if run.delegate != nil {
 		if limit := programLimitLine(run, summary, landing); limit != "" {
 			a.recordProgramLimit(limit)
 		}
-		a.accept(delivery{origin: fromRuntime, kind: msgResult, note: a.programLandingNote(run, summary, line)})
+		a.admitBeltLanding(run, summary, line, landing, a.programLandingNote(run, summary, line))
 		return
 	}
 	task := run.store.Task(run.root)
@@ -2167,7 +2175,7 @@ func (a *Agent) deliverBeltRunLanding(run *beltRun, summary RunSummary, landing 
 		note.settle, note.settleCeiling = true, owedLandingCallCeiling()
 		note.settlePrompt = landingAnswerPrompt
 		note.settleModel, _ = roles.TierModel(roles.Source(a.config.RolesSource), owedLandingTier())
-		a.accept(delivery{origin: fromRuntime, kind: msgResult, note: note})
+		a.admitBeltLanding(run, summary, line, landing, note)
 		return
 	}
 	note := userText(line)
@@ -2177,6 +2185,19 @@ func (a *Agent) deliverBeltRunLanding(run *beltRun, summary RunSummary, landing 
 	a.mu.Lock()
 	a.recordUserLocked(note)
 	a.mu.Unlock()
+}
+
+// admitBeltLanding makes the last quiet check and wake admission one step
+// against page Stop. Receipt construction and persistence happen outside it.
+func (a *Agent) admitBeltLanding(run *beltRun, summary RunSummary, line string, landing RunLanding, note userMessage) {
+	run.deliveryMu.Lock()
+	if a.beltRunQuiet(run) {
+		run.deliveryMu.Unlock()
+		a.recordQuietBeltLanding(run, summary, line, landing)
+		return
+	}
+	a.accept(delivery{origin: fromRuntime, kind: msgResult, note: note})
+	run.deliveryMu.Unlock()
 }
 
 // recordQuietBeltLanding preserves the actual result and its operational

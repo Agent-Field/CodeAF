@@ -71,30 +71,48 @@ func beltStoppedWhere(branch, ground string, changed []string) string {
 // every other task number lives.
 func (a *Agent) stopBeltRow(id uint64, why string) (string, bool, error) {
 	why = strings.TrimSpace(why)
-	a.beltMu.Lock()
-	run := a.beltRun
-	if run == nil {
+	for {
+		a.beltMu.Lock()
+		run := a.beltRun
 		a.beltMu.Unlock()
-		return a.endedBeltRow(id, why)
+		if run == nil {
+			return a.endedBeltRow(id, why)
+		}
+		// Never acquire delivery admission while holding beltMu: acceptance takes
+		// the conversation lock and may read this run's state.
+		run.deliveryMu.Lock()
+		a.beltMu.Lock()
+		if a.beltRun != run {
+			a.beltMu.Unlock()
+			run.deliveryMu.Unlock()
+			continue
+		}
+		return a.stopCurrentBeltRow(run, id, why)
 	}
+}
+
+// stopCurrentBeltRow enters holding deliveryMu and beltMu. Both are released
+// with the stop flag, before cancellation, store writes or other work.
+func (a *Agent) stopCurrentBeltRow(run *beltRun, id uint64, why string) (string, bool, error) {
+	unlock := func() { a.beltMu.Unlock(); run.deliveryMu.Unlock() }
 	if run.row == id {
 		name := taskStopName(id, run.title)
 		if run.bringingHome {
 			run.quiet = true
 			cut := run.cut
-			a.beltMu.Unlock()
+			unlock()
 			if cut != nil {
 				cut()
 			}
 			return name + " has already finished; there is nothing to stop", true, nil
 		}
 		if run.stopped {
-			a.beltMu.Unlock()
+			unlock()
 			return name + " is already stopping", true, nil
 		}
 		run.stopped, run.stopReason = true, why
 		cut := run.cut
-		a.beltMu.Unlock()
+		unlock()
 		// THE STORE FIRST, THE CONTEXT NEXT (the header says why). A store that
 		// would not take the write is said on the run's page by whoever settles
 		// it; the context is cut either way, because the person asked for the
@@ -117,7 +135,7 @@ func (a *Agent) stopBeltRow(id uint64, why string) (string, bool, error) {
 	for _, row := range run.joined {
 		joined = joined || row == id
 	}
-	a.beltMu.Unlock()
+	unlock()
 	if !joined {
 		return a.endedBeltRow(id, why)
 	}

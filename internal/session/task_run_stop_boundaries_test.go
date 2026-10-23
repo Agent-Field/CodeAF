@@ -144,3 +144,53 @@ func TestQuietLandingKeepsOperationalTaskAndProgramProvenanceWithoutWake(t *test
 		})
 	}
 }
+
+func TestPageStopWinningFinalReceiptAdmissionDoesNotWake(t *testing.T) {
+	completer := &scriptedCompleter{steps: []step{finalText("Do not buy this answer.")}}
+	agent, _ := newTestAgent(t, completer, nil)
+	store := askStore(t, "repair parser")
+	defer store.Close()
+	question := "What did the repair find?"
+	if _, err := store.Revise(store.RootID(), plandb.TaskPatch{Question: &question}); err != nil {
+		t.Fatal(err)
+	}
+	run := &beltRun{store: store, root: store.RootID(), row: 98, title: "Parser", bringingHome: true}
+	agent.beltMu.Lock()
+	agent.beltRun = run
+	agent.beltMu.Unlock()
+	t.Cleanup(func() { agent.beltMu.Lock(); agent.beltRun = nil; agent.beltMu.Unlock() })
+	entered, release, delivered := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	unblock := func() { once.Do(func() { close(release) }) }
+	prior := beltLandingAdmissionWaits
+	beltLandingAdmissionWaits = func() { close(entered); <-release }
+	t.Cleanup(func() { unblock(); beltLandingAdmissionWaits = prior })
+	go func() {
+		agent.deliverBeltRunLanding(run, RunSummary{Outcome: beltRunOutcomeDone, Result: "Preserved result."}, RunLanding{})
+		close(delivered)
+	}()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("receipt did not reach admission")
+	}
+	if _, owned, err := agent.stopBeltRow(run.row, ""); !owned || err != nil {
+		t.Fatalf("stop refused: owned=%v err=%v", owned, err)
+	}
+	unblock()
+	select {
+	case <-delivered:
+	case <-time.After(time.Second):
+		t.Fatal("receipt did not settle")
+	}
+	agent.mu.Lock()
+	woke := agent.running || len(agent.steering) != 0
+	agent.mu.Unlock()
+	if woke || completer.requests() != 0 {
+		t.Fatal("receipt admitted a model wake after page Stop won")
+	}
+	entries := agent.Transcript()
+	if len(entries) != 1 || !entries[0].RoutineCompletion || len(entries[0].CompletionTasks) != 1 || entries[0].CompletionTasks[0].ID != run.row {
+		t.Fatalf("quiet receipt lost provenance: %+v", entries)
+	}
+}
