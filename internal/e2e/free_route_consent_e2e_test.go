@@ -227,6 +227,7 @@ func TestAutomaticTask402FreeFallbackRequiresConsentOnTheRealTerminal(t *testing
 			rig.lit("/task fix: the parser crashes on empty input; write free-consent-proof.txt containing FREE_TASK_FALLBACK_OK")
 			rig.keys("Enter")
 			deadline := time.Now().Add(45 * time.Second)
+			expanded := false
 			for {
 				mu.Lock()
 				paidN, freeN := paidRequests, freeRequests
@@ -234,8 +235,16 @@ func TestAutomaticTask402FreeFallbackRequiresConsentOnTheRealTerminal(t *testing
 				if !enableOn402 && paidN > 0 && strings.Contains(strings.ToLower(rig.capture()), "credit") {
 					break
 				}
-				if enableOn402 && paidN > 0 && freeN > 0 && (freeConsentFileExists(home) || freeConsentFileExists(ws)) && strings.Contains(rig.capture(), say(t, "taskDoneWord")) {
-					break
+				if enableOn402 && paidN > 0 && freeN > 0 && (freeConsentFileExists(home) || freeConsentFileExists(ws)) && freeConsentDoneNote(home) {
+					screen := rig.capture()
+					if !expanded && strings.Contains(screen, "background work") && strings.Contains(screen, "ctrl+e") {
+						rig.keys("C-e")
+						expanded = true
+						continue
+					}
+					if strings.Contains(screen, say(t, "taskDoneWord")) {
+						break
+					}
 				}
 				if time.Now().After(deadline) {
 					t.Fatalf("automatic402 acceptance incomplete: on=%t paid=%d free=%d screen=%s", enableOn402, paidN, freeN, rig.capture())
@@ -285,3 +294,32 @@ func freeConsentFileExists(root string) bool {
 }
 
 var freeConsentAssignment = regexp.MustCompile(`YOUR TASK IN THE PLAN IS (t-[A-Za-z0-9_.-]+), claimed by agent ([A-Za-z0-9_.-]+)\.`)
+
+func freeConsentDoneNote(root string) bool {
+	found := false
+	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil || entry.IsDir() || entry.Name() != "transcript.jsonl" {
+			return nil
+		}
+		raw, _ := os.ReadFile(path)
+		for _, line := range strings.Split(string(raw), "\n") {
+			var row struct {
+				Note      bool `json:"note"`
+				ReplyTags []struct {
+					State string `json:"state"`
+				} `json:"replyTags"`
+			}
+			if json.Unmarshal([]byte(line), &row) != nil || !row.Note {
+				continue
+			}
+			for _, tag := range row.ReplyTags {
+				if tag.State == "done" {
+					found = true
+					return filepath.SkipAll
+				}
+			}
+		}
+		return nil
+	})
+	return found
+}
