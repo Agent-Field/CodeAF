@@ -88,7 +88,7 @@ func TestVideoPollingCredentialsOnTheRealTerminal(t *testing.T) {
 			name = "same_origin_poll_and_download"
 		}
 		t.Run(name, func(t *testing.T) {
-			var foreignCalls, foreignAuth, pollAuth, downloadAuth, issued atomic.Int64
+			var foreignCalls, foreignAuth, pollAuth, downloadAuth, issued, loaded atomic.Int64
 			target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				foreignCalls.Add(1)
 				if r.Header.Get("Authorization") != "" {
@@ -139,10 +139,13 @@ func TestVideoPollingCredentialsOnTheRealTerminal(t *testing.T) {
 					} `json:"tools"`
 				}
 				_ = json.NewDecoder(r.Body).Decode(&body)
-				offer := false
+				offer, canLoad := false, false
 				for _, tool := range body.Tools {
 					if tool.Function.Name == "generate_video" {
 						offer = true
+					}
+					if tool.Function.Name == "load_capability" {
+						canLoad = true
 					}
 				}
 				asked := false
@@ -150,6 +153,10 @@ func TestVideoPollingCredentialsOnTheRealTerminal(t *testing.T) {
 					if strings.Contains(string(m.Content), "CREDENTIAL_VIDEO_PROBE") {
 						asked = true
 					}
+				}
+				if asked && !offer && canLoad && loaded.CompareAndSwap(0, 1) {
+					credentialToolResponse(w, "load_capability", `{"group":"media"}`, body.Stream)
+					return
 				}
 				if offer && asked && issued.CompareAndSwap(0, 1) {
 					credentialToolResponse(w, "generate_video", `{"prompt":"a fictional amber lighthouse","path":"credential-proof.mp4"}`, body.Stream)
@@ -245,7 +252,7 @@ func credentialTextResponseStream(w http.ResponseWriter, text string, stream boo
 	credentialWireResponse(w, message, "stop", stream)
 }
 func credentialToolResponse(w http.ResponseWriter, name, args string, stream bool) {
-	message := map[string]any{"role": "assistant", "tool_calls": []any{map[string]any{"index": 0, "id": "credential-video-call", "type": "function", "function": map[string]string{"name": name, "arguments": args}}}}
+	message := map[string]any{"role": "assistant", "tool_calls": []any{map[string]any{"index": 0, "id": "credential-" + name + "-call", "type": "function", "function": map[string]string{"name": name, "arguments": args}}}}
 	credentialWireResponse(w, message, "tool_calls", stream)
 }
 func credentialWireResponse(w http.ResponseWriter, message map[string]any, finish string, stream bool) {
