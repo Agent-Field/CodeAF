@@ -615,7 +615,7 @@ func (a *Agent) PlanSpend(since time.Time) []PlanSpendLine {
 // digits vary, so a text comparison against a bound would misorder a whole
 // second against its own fraction.
 func planSpendBySeat(path, chat string, since time.Time) []PlanSpendLine {
-	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro")
+	db, err := sql.Open("sqlite", plandb.StoreURI(path, "mode=ro"))
 	if err != nil {
 		return nil
 	}
@@ -924,7 +924,7 @@ func planTrajectory(dir, id string) []PlanStep {
 // beside a writer, and a store that will not open as a reader answers no
 // figures rather than failing the read.
 func planSpendByTask(path string) map[string]float64 {
-	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro")
+	db, err := sql.Open("sqlite", plandb.StoreURI(path, "mode=ro"))
 	if err != nil {
 		return nil
 	}
@@ -958,7 +958,7 @@ type planTaskUsage struct {
 // its own read-only connection for the same reason. A row that names no model
 // names none, and a task whose rows carry no tokens has none known.
 func planUsageByTask(path string) map[string]planTaskUsage {
-	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro")
+	db, err := sql.Open("sqlite", plandb.StoreURI(path, "mode=ro"))
 	if err != nil {
 		return nil
 	}

@@ -4,8 +4,6 @@ import (
 	"database/sql"
 	"path/filepath"
 	"time"
-
-	"github.com/Agent-Field/codeaf/internal/sqliteuri"
 )
 
 // RootPreview is the original request behind a saved run. Listing a conversation
@@ -24,9 +22,7 @@ func ReadRootPreview(path string) (RootPreview, error) {
 	if err != nil {
 		return RootPreview{}, err
 	}
-	uri := sqliteuri.File(absolute)
-	uri.RawQuery = "mode=ro"
-	db, err := sql.Open("sqlite", uri.String())
+	db, err := sql.Open("sqlite", StoreURI(absolute, "mode=ro"))
 	if err != nil {
 		return RootPreview{}, err
 	}

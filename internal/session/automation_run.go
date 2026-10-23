@@ -168,7 +168,10 @@ func (r *automationRunner) Look(ctx context.Context, item automation.Automation)
 // it replaces did not do. A failing command is evidence, not an error: "is CI
 // red" is often answered by an exit status.
 func automationLookCommand(ctx context.Context, workspace, command string) (automation.Sight, error) {
-	shell, args := jobShell()
+	shell, args, shellErr := jobShell()
+	if shellErr != nil {
+		return automation.Sight{}, shellErr
+	}
 	process := exec.CommandContext(ctx, shell, append(args, command)...)
 	process.Dir = workspace
 	process.Env = bare.StreamingEnv()

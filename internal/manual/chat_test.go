@@ -1,6 +1,7 @@
 package manual
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -10,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/shell"
 )
 
 // RETRIEVAL IS THE FEATURE, NOT THE PAGES.
@@ -30,6 +33,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		question string
 		page     string
 	}{
+		// N4 reaches the Windows requirements in the asker's words.
+		{"which bash does codeaf use on Windows", "running-commands-on-windows"},
+		{"my commands fail on Windows when no bash was found", "running-commands-on-windows"},
+		{"CODEAF_BASH does not exist", "running-commands-on-windows"},
+		{"why does gh api say not found on Windows", "running-commands-on-windows"},
+		{"can I run codeaf inside WSL on Windows", "running-commands-on-windows"},
+
 		// Installer refusals must reach the page that explains both API attempts.
 		{"installer says github api rate limit is used up", "running-from-the-terminal"},
 		{"install script says GitHub rejected GITHUB_TOKEN bad credentials", "running-from-the-terminal"},
@@ -4174,6 +4184,19 @@ func TestTheChatManualExplainsStoppedResultRouting(t *testing.T) {
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the retrieved stopped-result answer omits %q", want)
+		}
+	}
+}
+
+// N4 pins all shared refusals quoted by the Windows manual sections.
+func TestWindowsManualQuotesTheShellRefusal(t *testing.T) {
+	page, ok := Chat().Page("running-commands-on-windows")
+	if !ok {
+		t.Fatal("the Windows shell page is missing")
+	}
+	for _, refusal := range []string{shell.NoBash, fmt.Sprintf(shell.MissingBash, "<path>"), fmt.Sprintf(shell.WSLBash, "<path>")} {
+		if !strings.Contains(page, "\""+refusal+"\"") {
+			t.Errorf("Windows manual must quote the shared refusal exactly: %q", refusal)
 		}
 	}
 }
