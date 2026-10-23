@@ -44,6 +44,8 @@ func (e Engine) compose(c cell.Cell, raw []byte, id string, info TurnInfo) error
 	if err := writeBlobs(c, info); err != nil {
 		return err
 	}
+	commits.mark(c.Root, rel(c, ReceiptsDir+"/"+id+".json"), true)
+	commits.mark(c.Root, rel(c, cell.TranscriptPath), false)
 	return e.composeExtra(c)
 }
 
@@ -62,9 +64,11 @@ func writeBlobs(c cell.Cell, info TurnInfo) error {
 			if len(out) == 0 || len(out) > maxBlob {
 				continue
 			}
-			if err := writeFile(rel(c, BlobsDir+"/"+hashHex(out)), out); err != nil {
+			path := rel(c, BlobsDir+"/"+hashHex(out))
+			if err := writeFile(path, out); err != nil {
 				return err
 			}
+			commits.mark(c.Root, path, true)
 		}
 	}
 	return nil
@@ -95,6 +99,11 @@ func appendTurn(c cell.Cell, t Turn) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
+	if err := repairTurnTail(path); err != nil {
+		return err
+	}
+	_, before := os.Stat(path)
+	created := errors.Is(before, fs.ErrNotExist)
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
@@ -103,11 +112,9 @@ func appendTurn(c cell.Cell, t Turn) error {
 		_ = f.Close()
 		return err
 	}
-	if err := f.Sync(); err != nil {
-		_ = f.Close()
-		return err
-	}
-	return f.Close()
+	err = f.Close()
+	commits.mark(c.Root, path, created)
+	return err
 }
 
 // Head is the newest sealed turn of the cell and its receipt, or nil for a
@@ -154,12 +161,18 @@ func lastTurn(path string) (*Turn, error) {
 	if err != nil {
 		return nil, err
 	}
-	line := bytes.TrimSpace(tail[bytes.LastIndexByte(bytes.TrimRight(tail, "\n"), '\n')+1:])
-	if len(line) == 0 {
-		return nil, nil
+	// A power cut can tear the last append even when its newline survived.
+	// Only complete readable turns were published; keep the preceding one (C28).
+	end := bytes.LastIndexByte(tail, '\n')
+	for end >= 0 {
+		start := bytes.LastIndexByte(tail[:end], '\n') + 1
+		var t Turn
+		if err := json.Unmarshal(tail[start:end], &t); err == nil {
+			return &t, nil
+		}
+		end = start - 1
 	}
-	var t Turn
-	return &t, json.Unmarshal(line, &t)
+	return nil, nil
 }
 
 func readTail(f *os.File) ([]byte, error) {
@@ -172,4 +185,33 @@ func readTail(f *os.File) ([]byte, error) {
 		return nil, err
 	}
 	return io.ReadAll(f)
+}
+
+// repairTurnTail keeps the ordinary append bounded to the last few turns.
+// Only a torn tail needs the full recovery read; long chats must not reread
+// their whole history on every command just to handle a possible power cut.
+func repairTurnTail(path string) error {
+	f, err := os.Open(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	tail, err := readTail(f)
+	_ = f.Close()
+	if err != nil {
+		return err
+	}
+	if len(tail) == 0 {
+		return nil
+	}
+	if tail[len(tail)-1] == '\n' {
+		start := bytes.LastIndexByte(tail[:len(tail)-1], '\n') + 1
+		var turn Turn
+		if json.Unmarshal(tail[start:len(tail)-1], &turn) == nil {
+			return nil
+		}
+	}
+	return repairLogTail(path)
 }

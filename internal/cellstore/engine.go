@@ -56,6 +56,7 @@ type Engine struct {
 	Transport Transport
 	Now       func() time.Time
 	pipeline  bool
+	warm      bool
 }
 
 var _ Store = Engine{}
@@ -125,6 +126,11 @@ func (e Engine) Seal(ctx context.Context, c cell.Cell, info TurnInfo) (Sealed, e
 	if screened.scan != nil {
 		changes = screened.scan.changed(e.tree(c))
 	}
+	// The engine may make this receipt durable. Its input log must reach disk
+	// first, even though individual commands no longer wait for an fsync (C28).
+	if err := commits.flush(ctx, c.Root); err != nil {
+		return Sealed{}, err
+	}
 	snapshot, err := e.snapshotReply(ctx, c, rid, changes)
 	if err != nil {
 		return Sealed{}, err
@@ -142,6 +148,11 @@ func (e Engine) Seal(ctx context.Context, c cell.Cell, info TurnInfo) (Sealed, e
 	turn := newTurn(snapshot.Snapshot, parentOf(head), at, info, rid, e.identity())
 	if err := appendTurn(c, turn); err != nil {
 		return Sealed{}, fmt.Errorf("seal: record turn: %w", err)
+	}
+	// Publishing can note this turn before the recorder compacts its WAL.
+	// Its local chain must be durable before that upload can start (C28/E1).
+	if err := commits.flush(ctx, c.Root); err != nil {
+		return Sealed{}, err
 	}
 	screened.scan.commit()
 	return Sealed{Turn: turn, Receipt: receipt}, nil

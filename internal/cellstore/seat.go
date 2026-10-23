@@ -43,6 +43,9 @@ func SeatOver(class executor.Class, c cell.Cell, workspace string, obs executor.
 	if err != nil {
 		return executor.Watching(base, obs), err
 	}
+	if engine.warm {
+		rec.Warm(context.Background())
+	}
 	return executor.Watching(sealed{Stance: base, rec: rec}, obs), nil
 }
 
@@ -52,6 +55,10 @@ type SeatOption func(*Engine)
 // WithPipeline returns command results while their capture finishes. Every next
 // call and close still drains the same recorder, with a bounded wait (D3).
 func WithPipeline() SeatOption { return func(e *Engine) { e.pipeline = true } }
+
+// WithWarmCapture starts the first screened capture as soon as the seat opens,
+// rather than leaving a cold attachment for the second command (E2).
+func WithWarmCapture() SeatOption { return func(e *Engine) { e.warm = true } }
 
 // WithNotices sends the guard's one-line notices (a file kept out of the saved
 // history, and why) to say instead of to stderr, which a full-screen surface

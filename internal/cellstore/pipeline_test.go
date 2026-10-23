@@ -3,6 +3,7 @@ package cellstore
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -122,5 +123,83 @@ func TestD4FailedCaptureBlocksAMove(t *testing.T) {
 	_, recovery, err := OpenWAL(wal)
 	if err != nil || len(recovery.Completed) != 1 {
 		t.Fatalf("failed save lost its completion: %+v %v", recovery, err)
+	}
+}
+
+// TestE2WarmStartsBeforeACommandAndCloseJoinsIt proves E2 and C9: a newly
+// opened chat starts capture without a tool, and neither an early tool nor
+// close can race its screen. No command is needed to finish the first capture.
+func TestE2WarmStartsBeforeACommandAndCloseJoinsIt(t *testing.T) {
+	c := newCell(t)
+	s := blockingCapture{make(chan struct{}, 2), make(chan struct{}), make(chan TurnInfo, 2)}
+	r, err := NewRecorder(&stubExec{}, s, c, filepath.Join(t.TempDir(), "wal"), Options{Async: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Warm(t.Context())
+	<-s.entered
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	ran := false
+	err = r.Around(ctx, executor.Call{Tool: "bash"}, executor.EffectExternal, AgentRun, func() ([]byte, bool) { ran = true; return nil, false })
+	if !errors.Is(err, context.Canceled) || ran {
+		t.Fatalf("tool raced cold screen: %v ran=%v", err, ran)
+	}
+	if err := r.Drain(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("close abandoned capture: %v", err)
+	}
+	close(s.release)
+	if err := r.Drain(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	in := <-s.calls
+	if len(in.Calls) != 0 {
+		t.Fatalf("warm capture fabricated calls: %+v", in)
+	}
+}
+
+// TestC28CommandWaitDoesNotCommitBeforeBoundary proves C28/E1: ordinary
+// command ownership checks wait for capture, but a disk-flush error belongs to
+// the explicit movement boundary, not to each following command.
+func TestC28CommandWaitDoesNotCommitBeforeBoundary(t *testing.T) {
+	c := newCell(t)
+	parent := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(parent, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(parent, "not-a-directory")
+	commits.mark(c.Root, path, false)
+	defer func() { commits.mu.Lock(); delete(commits.pending, commitPath{c.Root, path}); commits.mu.Unlock() }()
+	if err := Captured(t.Context(), c); err != nil {
+		t.Fatalf("command forced disk flush: %v", err)
+	}
+	if err := Await(t.Context(), c); err == nil {
+		t.Fatal("move hid disk flush error")
+	}
+}
+
+// TestE2ExitJoinsAnOpenedSeatWithoutAnAgent proves E2/C28: an error after
+// seat construction cannot abandon a first capture just because no Agent.Close
+// was installed. The common process exit also waits and reports cancellation.
+func TestE2ExitJoinsAnOpenedSeatWithoutAnAgent(t *testing.T) {
+	c := newCell(t)
+	s := blockingCapture{make(chan struct{}, 2), make(chan struct{}), make(chan TurnInfo, 2)}
+	r, err := NewRecorder(&stubExec{}, s, c, filepath.Join(t.TempDir(), "wal"), Options{Async: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Warm(t.Context())
+	<-s.entered
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := Flush(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("exit abandoned opened seat: %v", err)
+	}
+	close(s.release)
+	if err := r.wait(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := Flush(t.Context()); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -215,6 +216,26 @@ func seatClass(t *testing.T, cfg session.Config, dir string) executor.Class {
 	return local.Class
 }
 
+// closeClassSeat gives E2's background work an explicit fixture lifetime.
+// Class and policy fixtures use the availability seam without requiring an
+// engine; capture tests use RequireEngine and assert the saving result itself.
+func closeClassSeat(t *testing.T, seat executor.Seat) {
+	t.Helper()
+	if seat == nil {
+		return
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin)
+		defer cancel()
+		err := executor.Drain(ctx, seat)
+		if ctx.Err() != nil {
+			t.Error(err)
+		} else if err != nil {
+			t.Logf("class fixture capture: %v", err)
+		}
+	})
+}
+
 // TestSeatFollowsTheCellsClass proves C23 preserves an existing sandboxed
 // cell, including its metadata, when the conversation resumes.
 func TestSeatFollowsTheCellsClass(t *testing.T) {
@@ -229,6 +250,7 @@ func TestSeatFollowsTheCellsClass(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := v3Seated(v3Migrated(session.Config{Place: session.Place{Dir: c.Root, Workspace: workspace}}))
+	closeClassSeat(t, cfg.Seat)
 	after, err := os.ReadFile(filepath.Join(c.Root, cell.MetaPath))
 	if err != nil || string(before) != string(after) {
 		t.Fatalf("resuming rewrote the declared class: %s, %v", after, err)
@@ -249,7 +271,9 @@ func TestTwoSessionsOnOnePathKeepTheirOwnClasses(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return v3Seated(session.Config{Place: session.Place{Dir: c.Root, Workspace: workspace}})
+		cfg := v3Seated(session.Config{Place: session.Place{Dir: c.Root, Workspace: workspace}})
+		closeClassSeat(t, cfg.Seat)
+		return cfg
 	}
 	sandboxed, host := seated(cell.Sandboxed), seated(cell.HostBound)
 	if a, b := seatClass(t, sandboxed, workspace), seatClass(t, host, workspace); a != executor.Sandboxed || b != executor.HostBound {
@@ -293,6 +317,7 @@ func TestC23NewChatCommandsHaveOpenNetworkWithoutConfinement(t *testing.T) {
 		t.Fatalf("minted class = %s, %v; want host-bound", c.Meta().Class, err)
 	}
 	seat, _, _ := v3SeatOf(place, nil)
+	closeClassSeat(t, seat)
 	if seat == nil {
 		t.Fatal("new chat has no seat")
 	}

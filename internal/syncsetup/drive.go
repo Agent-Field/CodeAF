@@ -294,6 +294,13 @@ func (d *Drive) becomeViewer(s cellsync.Superseded) {
 	d.mu.Lock()
 	d.line = line
 	d.mu.Unlock()
+	// Refuse new work immediately, then preserve the pending save before
+	// announcing displacement. A routine ownership check does no fsync (C28).
+	ctx, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin)
+	defer cancel()
+	if err := cellstore.Await(ctx, d.cell); err != nil {
+		d.notice(err.Error())
+	}
 	if s.Branch != "" {
 		d.notice(chatlist.KeptEdits(s.Turns, d.opt.DeviceName))
 	}
@@ -359,7 +366,7 @@ func (d *Drive) HoldsLease(ctx context.Context) bool {
 // CheckLease closes the stale-window gap before a tool runs, even when no
 // heartbeat or directory change has reached this process since the move.
 func (d *Drive) CheckLease(ctx context.Context) error {
-	if err := cellstore.Await(ctx, d.cell); err != nil {
+	if err := cellstore.Captured(ctx, d.cell); err != nil {
 		return err
 	}
 	if _, viewer := d.Viewer(); viewer || d.batcher == nil {

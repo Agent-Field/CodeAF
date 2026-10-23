@@ -42,6 +42,7 @@ type Recorder struct {
 	asyncMu   sync.Mutex
 	running   chan struct{}
 	requested bool
+	warming   bool
 	errorMu   sync.Mutex
 	lastError error
 
@@ -61,6 +62,7 @@ func NewRecorder(inner executor.Executor, store Store, c cell.Cell, walPath stri
 	if err != nil {
 		return nil, fmt.Errorf("open call log: %w", err)
 	}
+	wal.owner = c.Root
 	reapOrphans(rec.Incomplete, reapGrace)
 	return &Recorder{inner: inner, store: store, cell: c, wal: wal, opts: opts,
 		pending: rec.Completed, incomplete: rec.Incomplete}, nil
@@ -257,8 +259,18 @@ func (r *Recorder) seal(ctx context.Context) {
 	if r.opts.Refresh != nil {
 		r.opts.Refresh()
 	}
+	if err := commits.flush(ctx, r.cell.Root); err != nil {
+		r.report(err)
+		return
+	}
 	batch := r.pending
 	if _, err := r.store.Seal(ctx, r.cell, TurnInfo{Trigger: triggerOfBatch(batch), Calls: batch, Models: r.models, Changed: changedOf(batch)}); err != nil {
+		r.report(err)
+		return
+	}
+	// The turn and its receipt must reach disk before compaction can remove
+	// their only recovery copy from the WAL (C28/L9/L12).
+	if err := commits.flush(ctx, r.cell.Root); err != nil {
 		r.report(err)
 		return
 	}

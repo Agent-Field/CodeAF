@@ -3,6 +3,7 @@ package cellstore
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,8 +16,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/executor"
 )
 
-// Intent is a call's promise to run (SCHEMAS.md 6): written and fsynced before
-// the call, so a death mid-call leaves it behind.
+// Intent is a call's promise to run (SCHEMAS.md 6): written before the call,
+// so process death leaves it behind. C28 groups power-loss durability separately.
 type Intent struct {
 	V          uint16 `json:"V"`
 	Tool       string `json:"tool"`
@@ -72,13 +73,17 @@ type record struct {
 // WAL is the device-local call-intent log: append-only JSON lines, outside the
 // cell, never synced.
 type WAL struct {
-	mu   sync.Mutex
-	path string
+	mu    sync.Mutex
+	path  string
+	owner string
 }
 
 // OpenWAL opens the log at path and reports what it holds.
 func OpenWAL(path string) (*WAL, Recovery, error) {
-	w := &WAL{path: path}
+	w := &WAL{path: path, owner: path}
+	if err := repairLogTail(path); err != nil {
+		return nil, Recovery{}, err
+	}
 	recs, err := w.read()
 	if err != nil {
 		return nil, Recovery{}, err
@@ -143,6 +148,8 @@ func (w *WAL) append(r record) error {
 	if err := os.MkdirAll(filepath.Dir(w.path), 0o700); err != nil {
 		return err
 	}
+	_, before := os.Stat(w.path)
+	created := errors.Is(before, fs.ErrNotExist)
 	f, err := os.OpenFile(w.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
@@ -151,11 +158,9 @@ func (w *WAL) append(r record) error {
 		_ = f.Close()
 		return err
 	}
-	if err := f.Sync(); err != nil {
-		_ = f.Close()
-		return err
-	}
-	return f.Close()
+	err = f.Close()
+	commits.mark(w.owner, w.path, created)
+	return err
 }
 
 // read returns every record. A final line torn by a crash is dropped: it was
@@ -194,13 +199,35 @@ func (w *WAL) rewrite(recs []record) error {
 	if err := os.MkdirAll(filepath.Dir(w.path), 0o700); err != nil {
 		return err
 	}
+	if len(recs) == 0 {
+		// The sealed turn and its receipt are already durable. With no older
+		// unresolved call to retain, truncation needs no replacement-file sync
+		// on the next command's path (C28/E1). Recovery never executes calls.
+		_, before := os.Stat(w.path)
+		f, err := os.OpenFile(w.path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+		if err != nil {
+			return err
+		}
+		err = f.Close()
+		commits.mark(w.owner, w.path, errors.Is(before, fs.ErrNotExist))
+		return err
+	}
 	tmp := w.path + ".tmp"
 	if err := os.WriteFile(tmp, buf.Bytes(), 0o600); err != nil {
+		return err
+	}
+	// The replacement carries old unresolved calls too. It must reach disk
+	// before rename, or power loss could erase records older than C28's window.
+	commits.mark(w.owner, tmp, false)
+	ctx, cancel := context.WithTimeout(context.Background(), SealWithin)
+	defer cancel()
+	if err := commits.flush(ctx, w.owner); err != nil {
 		return err
 	}
 	if err := os.Rename(tmp, w.path); err != nil {
 		return fmt.Errorf("compact wal: %w", err)
 	}
+	commits.mark(w.owner, w.path, true)
 	return nil
 }
 
@@ -255,4 +282,28 @@ func (s *replayState) result() Recovery {
 		}
 	}
 	return rec
+}
+
+// repairLogTail discards only the unacknowledged tail after power loss (C28).
+// Appending to a torn line would hide the next complete call on the next open.
+func repairLogTail(path string) error {
+	raw, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	end := bytes.LastIndexByte(raw, '\n') + 1
+	for end > 0 {
+		start := bytes.LastIndexByte(raw[:end-1], '\n') + 1
+		if json.Valid(raw[start : end-1]) {
+			break
+		}
+		end = start
+	}
+	if end == len(raw) {
+		return nil
+	}
+	return os.Truncate(path, int64(end))
 }

@@ -13,6 +13,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/furrow"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -177,6 +178,7 @@ func TestCellLogMarksCallsThatWereNeverSealed(t *testing.T) {
 }
 
 // EACH CELL'S SEAT OWNS ITS OWN WATCH: a failure on one is not on the other.
+// E2 finishes each opened seat's initial capture before testing later failures.
 func TestEachSeatOwnsItsSealWatch(t *testing.T) {
 	celltest.RequireEngine(t)
 	if _, err := furrow.ResolveBinary(); err != nil {
@@ -190,6 +192,11 @@ func TestEachSeatOwnsItsSealWatch(t *testing.T) {
 			t.Fatal(err)
 		}
 		cfg := v3Seated(session.Config{Place: session.Place{Dir: c.Root, Workspace: t.TempDir()}})
+		ctx, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin)
+		defer cancel()
+		if err := executor.Drain(ctx, cfg.Seat); err != nil {
+			t.Fatal(err)
+		}
 		watch, ok := cfg.Seals.(*cellstore.SealWatch)
 		if !ok {
 			t.Fatalf("no watch on a sealed session: %T", cfg.Seals)

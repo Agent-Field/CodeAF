@@ -25,6 +25,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/calllog"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
@@ -189,6 +190,18 @@ func surfaceProcs(ncpu int) int {
 // one calm sentence over a restored terminal instead of spilling a goroutine
 // dump across the screen the user was working in.
 func execute() (code int) {
+	// Every CLI door shares this exit, including verbs with no session to close.
+	// C28 requires their grouped call and turn records to reach disk too.
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin)
+		defer cancel()
+		if err := cellstore.Flush(ctx); err != nil {
+			fmt.Fprintln(os.Stderr, "codeaf: could not finish saving this chat:", err)
+			if code == 0 {
+				code = 1
+			}
+		}
+	}()
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			code = reportFault(os.Stderr, fmt.Sprint(recovered), debug.Stack())

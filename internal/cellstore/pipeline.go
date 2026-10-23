@@ -27,6 +27,16 @@ var captures = struct {
 // Await waits for this process's pending capture before a move, upload or
 // displacement can read its head. It does not start work or contact a relay.
 func Await(ctx context.Context, c cell.Cell) error {
+	if err := Captured(ctx, c); err != nil {
+		return err
+	}
+	return commits.flush(ctx, c.Root)
+}
+
+// Captured waits for the prior file capture without forcing a group commit.
+// The next command's ownership check needs this screen boundary, while only
+// movement, upload, displacement and exit need disk durability (C28/E1).
+func Captured(ctx context.Context, c cell.Cell) error {
 	captures.Lock()
 	state := captures.cells[c.Root]
 	captures.Unlock()
@@ -61,6 +71,16 @@ func (r *Recorder) wait(ctx context.Context) error {
 	done := r.running
 	r.asyncMu.Unlock()
 	return awaitCapture(ctx, done)
+}
+
+// Warm begins a screened capture before tools run. A tool arriving before the
+// initial screen finishes waits: reading files concurrently with an unscreened
+// writer would break C9. Close and movement wait on this same worker (E2).
+func (r *Recorder) Warm(ctx context.Context) {
+	r.asyncMu.Lock()
+	r.warming = true
+	r.asyncMu.Unlock()
+	r.schedule(ctx)
 }
 
 // schedule coalesces only requests made while the same capture is running.
@@ -110,7 +130,11 @@ func (r *Recorder) takeRequest() {
 func (r *Recorder) capture(ctx context.Context) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if len(r.pending) == 0 && len(r.models) == 0 && !r.transcriptGrew() {
+	r.asyncMu.Lock()
+	warm := r.warming
+	r.warming = false
+	r.asyncMu.Unlock()
+	if !warm && len(r.pending) == 0 && len(r.models) == 0 && !r.transcriptGrew() {
 		return
 	}
 	run, cancel := context.WithTimeout(context.WithoutCancel(ctx), SealWithin)
@@ -146,6 +170,10 @@ func completeCapture(root string, state *captureState) {
 func (r *Recorder) Drain(ctx context.Context) error {
 	r.Settle(ctx)
 	if err := r.wait(ctx); err != nil {
+		r.report(err)
+		return err
+	}
+	if err := commits.flush(ctx, r.cell.Root); err != nil {
 		r.report(err)
 		return err
 	}
