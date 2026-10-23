@@ -111,6 +111,9 @@ func (e Engine) plannedSnapshot(ctx context.Context, c cell.Cell, receipt string
 		if err = json.Unmarshal(out, &reply); err != nil || reply.Snapshot == "" {
 			return reply, fmt.Errorf("seal: engine did not return a snapshot id")
 		}
+		// An earlier group may have synced while this capture was still in flight.
+		// The completed snapshot must remain owed before its local turn can become durable (C28/P5).
+		markEngine(c, e)
 		e.Guard.index.noteDirectories(captureKey(tree, c.ID), plan.Full, screened.directories)
 		return reply, nil
 	}
