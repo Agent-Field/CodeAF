@@ -2,7 +2,7 @@
 
 ## Are chats sandboxed — network access, installs and writes outside the workspace
 
-New chats are not sandboxed. Their commands run on this computer with the network and the same access as any program you run, including writes outside the workspace and the computer's ordinary temporary folder. This is true with moving chats on or off. `/setup` is for preparing tools on this machine after a move; ordinary commands do not need it to reach the network. Command approvals still apply.
+New chats are not sandboxed. Their commands run on this computer with the network and the same access as any program you run, including writes outside the workspace and the computer's ordinary temporary folder. Moving chats keeps that access. `/setup` is for preparing tools on this machine after a move; ordinary commands do not need it to reach the network. Command approvals still apply.
 
 ## Why commands fail on Ubuntu 24.04 — user namespaces, AppArmor and reduced workspace limits
 

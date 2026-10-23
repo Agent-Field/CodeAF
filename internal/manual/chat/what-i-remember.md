@@ -631,6 +631,6 @@ A memory is kept in the file `~/.codeaf/graph.db` of the computer that made it, 
 
 So: a line remembered in a chat reaches your other computer **when that chat is continued there**, not before, and not for chats you never move. A memory that belongs to no chat, such as a line you edited by hand in the memory place, stays on the computer where you wrote it. Pairing a second computer does not merge two memories into one. To carry everything to a new computer at once, copy `graph.db` as described under "Where is everything you remember kept", or continue the chats you care about there.
 
-## Memory when cells are off
+## Memory in older local conversations and new moving chats
 
-With `CODEAF_CELLS=0`, memories use the existing local store. A legacy conversation writes no portable `memories.jsonl` sidecar. An enabled cell session keeps the memories it writes in its sealed `.cell/memories.jsonl`, so those memories can follow the chat to another paired computer.
+Memories use the existing local store. A legacy conversation writes no portable `memories.jsonl` sidecar. A new cell session keeps the memories it writes in its sealed `.cell/memories.jsonl`, so those memories can follow the chat to another paired computer.

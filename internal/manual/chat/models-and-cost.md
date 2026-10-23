@@ -3942,6 +3942,8 @@ unchanged, and **without the path header in front of them**, because the reason 
 it is that another program — `jq`, a script, a spreadsheet — is reading what comes out. The
 filters apply first, so `--json --tag leaf` is exactly the leaf rows and nothing else.
 
+## Open one logged call’s body — the raw request and reply
+
 `--body` takes a call id and prints the request and reply that were recorded for it,
 looking first in the run trace (`~/.codeaf/logs/trace/<run>/calls/<id>.json`) and then in
 the kept-failure folder (`~/.codeaf/logs/failures/<id>.json`). **Neither is written yet.**
@@ -3955,6 +3957,8 @@ no body recorded for 4f2a91c7
 That is the truthful answer and not a fault. Until those land, the way to get the exact
 bytes is `CODEAF_CALL_LOG_BODIES=1`, described below, which puts them on the log line
 itself.
+
+## Read call log lines — in flight, missing numbers, and file rotation
 
 **A call still running shows as `⋯ in flight`.** That is the reason a line is written when
 a call goes *out* as well as when it comes back: a planning call four minutes into a

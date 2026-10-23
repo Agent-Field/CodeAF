@@ -2,9 +2,9 @@
 
 ## Hosted relay or my own — which one do I use, and where does sync go by default
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
-Only chats started after moving chats was turned on can be continued on another computer. Older chats stay where they are, keep their original files, and keep working in every build.
+Only chats started after moving chats became available can be continued on another computer. Older chats stay where they are, keep their original files, and keep working in every build.
 
 A relay is the small service your computers sync through. There are two kinds. Both speak the same wire: the chat cannot tell them apart.
 
@@ -17,7 +17,7 @@ Either way the relay sees only ciphertext and the short list on "What can the re
 
 ## Point codeaf at a relay — CODEAF_SYNC_URL, url or off
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
 Set `CODEAF_SYNC_URL` in the environment of every computer that shares the chats.
 
@@ -33,7 +33,7 @@ Your own computers must all name the same relay and hold the same identity, or t
 
 ## Run my own relay — codeaf relay --listen and --store
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
 ```
 codeaf relay --listen :8787 --store /var/lib/codeaf
@@ -50,7 +50,7 @@ There is no Docker image for the relay. The page `docs/relay.md` in the reposito
 
 ## Who can use my own relay
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
 **Any caller with a valid signature may make an identity and store on your relay.** The relay has no list of allowed people: an identity is made from a key, and the relay accepts any key. Keep your relay on a private network, a tailnet or behind a proxy that checks who calls. One identity cannot read another's data.
 

@@ -2,9 +2,9 @@
 
 ## Why does it show my hostname — the host name is the default until a device is named, and where a name appears
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
-Only chats started after moving chats was turned on can be continued on another computer. Older chats stay where they are and keep working in every build.
+Only chats started after moving chats became available can be continued on another computer. Older chats stay where they are and keep working in every build.
 
 Every screen that names a device uses one name for it: the home rows (`running on spark`, `spark offline`), `Continue spark's latest chat here?`, the approve screen, `spark is now paired. Your chats can continue there.`, `/devices`, and the line after a move, `Moved from spark in 4s`. A device is called by its host name, the word your operating system already uses for it, until you give it a name. A name is only a label. It is not a key and it signs nothing, and renaming a device changes nothing about what it can reach.
 

@@ -287,11 +287,11 @@ before choosing the fifteen most recent, so each conversation appears once.
 The `opt+k` chats menu still lists open tabs; dismissing or reopening a tab
 updates the tab and the row in Sessions together.
 
-## Chats on my other machines — a chat running on another computer, "running on studio", "studio offline", why does it say running on build-box offline, merge / discard
+## A chat is running on my other computer — how does home show it, chats on my other machines, "running on studio", "studio offline", why does it say running on build-box offline, merge / discard
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
-Only chats started after moving chats was turned on can be continued on another computer. Older chats stay where they are, keep their original files, and keep working in every build.
+Only chats started after moving chats became available can be continued on another computer. Older chats stay where they are, keep their original files, and keep working in every build.
 
 When this machine can reach your other machines, a chat that lives on one of them is a
 row under **sessions**, beside the local ones and ordered by when its last saved turn
@@ -304,7 +304,9 @@ happened. The row says where the chat is only where that tells you something:
 | a branch left by a takeover | `<K> turns from <device>: discard` (this build has no merge) |
 | held by this machine, or let go by everyone | nothing |
 
-Read the two words apart: `running on build-box` says that computer is working on the chat now, and `build-box offline` says that computer has not answered for 25 seconds (it is switched off, asleep, frozen or offline; the word appears within 30 seconds, and goes at once when it answers again) and has not let the chat go, so the chat's last saved turns are what you would get. The name is only the device's. A chat on a computer that is `offline` can still be continued here; the card says how many turns may still be there. A count of one reads `1 turn`, never `1 turns`. The device is the name you gave that machine. A chat whose name will not open shows
+## Why a chat says running on build-box or build-box offline
+
+For a chat on another paired computer, read the two words apart: `running on build-box` says that computer is working on the chat now, and `build-box offline` says that computer has not answered for 25 seconds (it is switched off, asleep, frozen or offline; the word appears within 30 seconds, and goes at once when it answers again) and has not let the chat go, so the chat's last saved turns are what you would get. The name is only the device's. A chat on a computer that is `offline` can still be continued here; the card says how many turns may still be there. A count of one reads `1 turn`, never `1 turns`. The device is the name you gave that machine. A chat whose name will not open shows
 `untitled`, and a machine whose name will not open shows the first eight characters of
 its id. On a narrow frame a branch's sentence shortens to `<K> turns · <device>`, and where
 even that will not fit the sentence gives way whole before the chat's name is cut, so a
@@ -329,9 +331,9 @@ same rows in a terminal (see "The cell verbs" in running-from-the-terminal).
 
 ## Continue a chat here that another machine left — "studio offline", takeover, "continue here", the chat is running on another computer
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
-Only chats started after moving chats was turned on can be continued on another computer. Older chats stay where they are, keep their original files, and keep working in every build.
+Only chats started after moving chats became available can be continued on another computer. Older chats stay where they are, keep their original files, and keep working in every build.
 
 Press enter on a row that says `<device> offline` or `running on <device>` and home asks **Continue this chat here?**
 with the cursor on `continue here`, because pressing enter on the row already said you want it; `esc` or `2` leaves it there.
@@ -344,6 +346,10 @@ running there stops taking new turns there the moment you take it, and its windo
 `<device> continued this chat; this window now only shows it`. Anything it had not yet sent
 is kept as a branch, `<K> turns from <device>: open separately / discard`; opening it continues it separately, and discard archives it. On a narrow frame the same
 question takes the whole screen, with the sentence wrapped.
+
+## Continue here with unsaved edits, another device continuing first, or an unreachable computer
+
+When continuing a chat from another paired computer:
 
 - If you had unsaved edits to that chat here, they are not overwritten. They are kept as a
   branch and the chat says `your unsaved edits here were kept as <K> turns from <device>`.
@@ -381,9 +387,9 @@ identity on this machine, no secrets are fetched and no file is written.
 
 ## Do saved provider keys and credentials follow me to another computer
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
-Only chats started after moving chats was turned on can be continued on another computer. Older chats stay where they are, keep their original files, and keep working in every build.
+Only chats started after moving chats became available can be continued on another computer. Older chats stay where they are, keep their original files, and keep working in every build.
 
 **Your keys travel too, through the same encrypted vault.** Two things are sealed in the
 vault with your identity key and sent when they change, so a machine you continue on does not

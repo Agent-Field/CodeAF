@@ -1,12 +1,12 @@
 # Continuing a chat that one of your machines holds
 
-This page is about continuing a chat on another computer: the question home asks, the offer when a device is off, and the line that says how long the move took.
+To continue on this machine, select the chat on home and choose `continue here`. When your paired computer is offline or has let go of its latest chat, home can ask `Continue spark's latest chat here?`: `alt+c` opens its continuation card, and `alt+x` dismisses the offer. Moving chats is available by default on Linux and macOS with a compatible engine; Windows needs WSL. Existing older local chats stay local.
 
 ## Why can't I type in this chat — my message did not send and home opened with a question
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
-Only chats started after moving chats was turned on can be continued on another computer. Older chats stay where they are, keep their original files, and keep working in every build.
+Only chats started after moving chats became available can be continued on another computer. Older chats stay where they are, keep their original files, and keep working in every build.
 
 A chat can be worked on by one device at a time. If you open a chat here that another of your devices is running right now, and you type a message and press enter, the message does not go to the chat. Home opens instead, with that chat's row under the cursor and the question up:
 
@@ -25,21 +25,21 @@ If you continue it, the other device's window stops taking new turns and says `<
 
 ## What does leave it there do
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
 On `Continue this chat here?`, `leave it there` closes the question without moving the chat. Your typed words stay in the box and nothing is sent. If the question opened because you tried to send from an older window, this answer is already selected. Choose `1 continue here` to bring the chat here before sending.
 
 ## What does running on spark mean — a row on home and the verb it offers
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
 Home lists chats from your other devices. A chat that a device is working on now says `running on <device>`. One that a device let go of, or that went off because its lid closed, says `<device> offline`.
 
 Press enter on either row to continue it here. The verb on the card depends on the row: **Move here** for a chat another device is running right now, **Continue here** for one it let go of. You already chose to continue, so the cursor starts on `continue here` and enter completes the move; `esc` leaves it there. The card says how fresh the copy is, so you know how many turns may still be on the other device.
 
-## How do I continue on this machine — Continue where you left off, alt+c and alt+x
+## Continue on this machine — Continue where you left off, alt+c and alt+x
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
 If you open codeaf and a chat on another device was running or went off in the last 24 hours, and that device is offline now (its lid is closed) or has let go of the chat, home offers it first of all:
 
@@ -57,7 +57,7 @@ To bring work from a device that is online, use the devices row: `alt+m bring wo
 
 ## What happens when the chat arrives — the banner Moved from spark, and what was not brought
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
 When the chat opens on this device it starts with one line that says how long the move took:
 
@@ -81,7 +81,9 @@ not committed yet: main.go, util.go · last tests: passed
 got it
 ```
 
-The lines under the heading are:
+## What was not brought along — the lines on the arrival card
+
+When a chat arrives on a paired computer, its arrival card can include these lines:
 
 Each line is left out when it has nothing to say.
 
@@ -97,13 +99,13 @@ Typing while either arrival card is up goes into the message box, including the 
 
 ## Does a moved chat have the network — installs and access on this computer
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
-A new chat is host-bound and keeps that class when moved. Its commands run on the computer that now holds it, with the network and the same access as any program you run there. Moving chats on or off does not restrict commands to their workspace. `/setup` prepares missing tools and folders after a move; it does not enable ordinary network access. Existing cells declared sandboxed by an earlier build keep their declared class when moved or reopened.
+A new chat is host-bound and keeps that class when moved. Its commands run on the computer that now holds it, with the network and the same access as any program you run there. Moving chats does not restrict commands to their workspace. `/setup` prepares missing tools and folders after a move; it does not enable ordinary network access. Existing cells declared sandboxed by an earlier build keep their declared class when moved or reopened.
 
 ## What folder does the moved chat work in — old absolute paths in earlier turns
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
 A moved copy works in the workspace it arrived in. Before its next model request, the agent gets a session note naming the device it came from, the old folder and the new folder. Paths in earlier turns under the old folder now name the same relative paths under this workspace. The note is context for the agent, not a message you typed, and remains available after reopening or compacting.
 
@@ -113,13 +115,13 @@ Taking a chat back into its original project restores that project in place. The
 
 ## Why does the project label say copy from another machine
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
 A chat arriving here for the first time works in its own copy. It is filed under the folder it came from, apart from conversations in this computer's own folder of the same name. Home and the keys-row label say `proj-a (copy from another machine)`. This remains a copy even if a folder with the original path happens to exist on this computer. Taking back a chat that already works in your own project restores that project in place. An unknown origin is left unnamed.
 
 ## Continue here did nothing — another device continued first or the sync service is unreachable
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
 If nothing happens when you press `Continue here`, the cause is one of these:
 
@@ -131,7 +133,7 @@ If nothing happens when you press `Continue here`, the cause is one of these:
 
 ## Taking a chat back, and two computers racing for the same chat — who wins, and what the loser sees
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
 A chat has one holder at a time. To take a chat back from the computer that took it, continue it there the same way: press enter on its row on that computer and choose `continue here`. Nothing has to be returned or switched off first. A computer with the chat open when another takes it says `<device> continued this chat; this window now only shows it`, stops taking new turns, and keeps what it had not yet sent as a branch (`<K> turns from <device>: open separately / discard`). A tool call the model tries there answers with that same line. Taking the chat back leaves a `node_modules` or other install folder that computer already has alone.
 
@@ -139,7 +141,7 @@ The choice covers the holder and turn of ownership shown on the card. If another
 
 ## I reopened an old local chat after the other computer let go — where are the newer turns
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
 Reopening an older copy does not replace newer history on your other devices, even if the other computer has closed the chat. This window only shows its local copy until you choose `continue here`. Submitting a message opens that question and keeps your words in the box. Continuing brings the newer history here before writing can resume.
 
@@ -149,7 +151,7 @@ Press enter on the kept turns' row. The card offers `1 open separately`, `2 disc
 
 ## The chat is arriving on this computer — why it waits to open
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
 While a chat is moving onto this computer, pressing enter on its row says `this chat is arriving on this computer; it opens by itself in a moment`. Nothing is wrong and nothing needs doing: the move takes a second or two, and the chat opens by itself when it ends, with the other computer's latest turns in it. Opening it earlier is refused on purpose, because a window opened halfway would show the chat as it was before the move and could not save your turns.
 
@@ -157,9 +159,11 @@ When the holder is off (its lid is shut), the row reads `<device> offline` and y
 
 ## Can the chat on the other computer still open the job logs it mentions — logs, saved tool output, task journals and the task history after a move
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
 Yes. A chat's messages name files that sit beside the chat and not in your project: the log of a background job (`log at …/logs/jobs/2.log`), the full output of a tool result that was cut short (`full: logs/stubs/9c2f.txt`), and the journals of its tasks. They move with the chat. The other computer puts the logs and saved output back in the chat's own folder, so the same names open there. The task journals (each task's transcript, trajectory and saved output) are part of the chat itself, so they arrive whole inside it at the paths the chat reads them from. The first message it receives after the move says where they are now (`… that earlier messages name under <old folder> were carried: they are under <new folder> here`). A path in an old message still shows the old folder; use the new one.
+
+## Job log and saved tool output limits after a move — task journals stay whole
 
 Three limits keep a move light, and they apply to job logs and saved tool output only. A single such file over 1 MiB stays behind, and so does whatever does not fit in 16 MiB together (the oldest go first). A task journal has no size limit and always moves whole. A file that looks like it holds a secret (a key, a token) stays behind too. Each one is named under `not brought along:` with the reason and `stayed on the machine that made it`; read it there by asking that machine, and never assume the other computer has it.
 
@@ -167,7 +171,7 @@ Two things are made again on the other computer and are not carried: the project
 
 ## What moves with a chat — is my git history sent, branches, secrets in my repo
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
 Your repository's `.git`, including its history, branches and settings, moves with the chat to your own paired devices. A task's commits travel too, and its working-copy bookkeeping is rebuilt on arrival. A key in an old commit remains in that history: codeaf does not remove or rewrite it. Git history travels sealed end to end; the sync service sees only ciphertext, including when the history contains keys.
 
@@ -177,6 +181,6 @@ Every seal checks the whole working tree first, including the first turn when it
 
 ## Why does home appear while my chats are still syncing
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
 The first screen draws while this computer publishes its device record, shares its saved keys and sends the first saved turn in the background. A slow sync service does not leave the terminal blank. New tool work waits for the initial ownership check; local startup saves are sent once that check finishes.

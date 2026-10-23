@@ -1,6 +1,6 @@
 # Keys, typing, and the mouse — what all the keys do
 
-## How do I make this one chat think harder — effort keys
+## How do I make this one chat think harder — can I click the thinking level — effort keys
 
 `alt+e` walks this conversation's thinking rung; `/effort` opens the ladder and
 `/effort <rung>` sets it. The models-and-cost page explains the rungs.
@@ -3715,7 +3715,7 @@ It lists the same open tabs as Home, in the tab strip's order. Select one and pr
 Enter. Closed conversations are behind the menu's fold; Home also keeps up to
 three recently closed conversations dimmed below the open list.
 
-## How do I make this one chat think harder
+## How do I make this one chat think harder — can I click the thinking level
 
 Press `alt+e` (`opt+e` on a Mac) or click the effort word beside the model above
 the message box. It cycles `auto`, `low`, `medium`, `high`, `xhigh`, `max`, then

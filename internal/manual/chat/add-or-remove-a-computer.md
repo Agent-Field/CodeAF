@@ -2,9 +2,9 @@
 
 ## How do I add a second device — the Add another device card (add another machine), codeaf pair, a link to paste, and pairing a server with no browser
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
-Only chats started after moving chats was turned on can be continued on another computer. Older chats stay where they are, keep their original files, and keep working in every build.
+Only chats started after moving chats became available can be continued on another computer. Older chats stay where they are, keep their original files, and keep working in every build.
 
 Your chats and your work can follow you to a second device. You add it in two steps. There is no account to make and no form to fill.
 
@@ -29,7 +29,9 @@ Press `alt+d` to open the steps, and `alt+d` again to close them:
 
 The card goes away once you have two devices. It is not drawn when this chat cannot pair at all, for example a chat that runs over `--host` or `--at`.
 
-What the new device prints while it waits:
+## Pairing a server with no browser — the link, token and check number
+
+On the new computer, `codeaf pair` prints this while it waits:
 
 ```
 Approve this device from one you already use.
@@ -54,13 +56,13 @@ Paired. 3 workspaces available.
 
 ## What does codeaf pair --code do
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
 `codeaf pair --code` shows a six-digit code on this computer. On the other computer, run `codeaf pair <code>` to share this computer's chats. Compare the three words and approve on the computer showing the code. The page *Pairing your chats with a second computer* explains each step.
 
 ## The pair words — approve, --code and --via
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
 ```
 usage: codeaf pair [--name <name>] | codeaf pair approve <link-or-code> | codeaf pair <code> [--replace] [--name <name>] | codeaf pair --code
@@ -77,7 +79,7 @@ A link is good for 10 minutes and one approval. If it ran out, run `codeaf pair`
 
 ## The four-digit check — how I know the right computer is asking
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
 The new device shows a check number of four digits. The device that approves shows the same four digits. Look at both screens. Approve only when they match. If they do not match, decline: somebody else may have used the link.
 
@@ -85,7 +87,7 @@ On the approving screen the number reads `Check number 4821. Approve only if the
 
 ## Approve a new device — the approve screen, a and d, and decline
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
 When you open a link on a device that is already in (paste it, or type `/pair <link>`), the screen says who is asking:
 
@@ -115,7 +117,7 @@ Every other device that is on says it too, a moment later, from the same message
 
 ## What does the dot next to a computer mean — the devices row, online and offline
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
 When you have two or more devices, home shows one row of them:
 
@@ -129,7 +131,7 @@ Under the row, `alt+m bring work here` brings the newest chat of an online devic
 
 ## Does the other computer appear on the device list straight after pairing — a just-paired device, devices empty after pairing
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
 Yes, on both sides. When a pairing finishes — a six-digit code on both screens, a link
 typed into `codeaf pair approve`, either end of it — the computer it finished on writes
@@ -141,7 +143,7 @@ is written at the next chat start.`, and the pairing ends cleanly.
 
 ## Which devices do I have — /devices, how to remove or revoke one, a device that was revoked, and I was told this machine was removed
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
 Type `/devices` to list them:
 
@@ -164,7 +166,7 @@ The list is in a fixed order: this device first, then devices that are online, t
 
 ## I was told this device was removed — how to bring it back
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
 If this computer was removed while its window was closed, the explanation appears on home on the next launch too. The launch check and the live check share one notice, so learning it both ways does not repeat it.
 
@@ -178,7 +180,7 @@ this device was removed by another of your devices, so this chat stays here only
 
 ## The link did not work — a pairing link or token that ran out, was declined or was answered already
 
-Moving chats and pairing are off on every build unless `CODEAF_CELLS=1` is set when codeaf starts on both computers. Add `export CODEAF_CELLS=1` to each computer's shell profile to keep it on. Windows does not have moving chats; use WSL.
+Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
 These are the sentences a link pairing says when it stops, in the words the screen uses. Nothing was changed on either device when you read one of them.
 
