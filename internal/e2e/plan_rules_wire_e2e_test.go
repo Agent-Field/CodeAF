@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -165,7 +166,7 @@ func TestScopedProjectRulesLivePlanWorkflow(t *testing.T) {
 	rig.lit("Our fictional project needs a small packaging handoff. First inspect the saved instructions for this project and acknowledge that you will use them; don't write any files yet.")
 	rig.keys("Enter")
 	rig.waitFor(90*time.Second, planRuleMark)
-	rig.lit("/task create plan-rule-proof.txt with exactly the project-required marker, then create plan-rule-check.txt recording the actual shell command you ran to verify the proof file, run that verification, and finish only after both files have been checked. Use the saved project instructions without asking me to repeat them.")
+	rig.lit("/task create plan-rule-proof.txt with exactly the project-required marker, then create plan-rule-check.txt containing only the exact runnable shell command you ran to verify the proof file (no Markdown or explanation), run that verification, and finish only after both files have been checked. Use the saved project instructions without asking me to repeat them.")
 	rig.keys("Enter")
 	deadline := time.Now().Add(4 * time.Minute)
 	for !freeConsentDoneNote(home) {
@@ -182,8 +183,18 @@ func TestScopedProjectRulesLivePlanWorkflow(t *testing.T) {
 		_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 			if err == nil && !d.IsDir() && d.Name() == "plan-rule-check.txt" {
 				raw, _ := os.ReadFile(path)
-				if len(strings.TrimSpace(string(raw))) > 0 && !strings.Contains(string(raw), otherPlanRuleMark) {
-					checked = true
+				command := strings.TrimSpace(string(raw))
+				if strings.Contains(command, "plan-rule-proof.txt") && !strings.Contains(command, otherPlanRuleMark) {
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					cmd := exec.CommandContext(ctx, "bash", "-c", command)
+					cmd.Dir = filepath.Dir(path)
+					output, runErr := cmd.CombinedOutput()
+					cancel()
+					if runErr != nil {
+						t.Errorf("recorded verification command fails: %v %s", runErr, output)
+					} else {
+						checked = true
+					}
 				}
 			}
 			return nil
