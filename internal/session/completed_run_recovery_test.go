@@ -393,3 +393,87 @@ func TestCompletedPlanRecoveryKeepsLedgerSpendWhenCheckpointIsUnpriced(t *testin
 	check(agent)
 	nothingStarted(t, agent, engine)
 }
+
+func TestCompletedPlanRecoveryAcceptsItsArchiveWithoutAdoptingTheNewerPlan(t *testing.T) {
+	agent, repo, _, engine, id, _, _ := completedRecoveryFixture(t)
+	path := agent.graph().planPath()
+	if err := setAsideRunStore(path); err != nil {
+		t.Fatal(err)
+	}
+	nextID := strconv.FormatUint(id+1, 10)
+	newer, err := plandb.Open(path, "mock", nextID, "newer mock work", "leave this new request alone", agent.graph().planChat())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer newer.Close()
+	if err := newer.AddSpend(nextID, "mock/newer-model", "work", 0.91, 10, 2); err != nil {
+		t.Fatal(err)
+	}
+	before := newer.Task(nextID)
+	if err := agent.ResolveUnverified(id, TaskAccept, "read the older saved work"); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(filepath.Join(repo, "counter.txt")); err != nil || string(data) != "mock completed work\n" {
+		t.Fatalf("archived work did not land: %q %v", data, err)
+	}
+	after := newer.Task(nextID)
+	if after.Status != before.Status || after.Description != before.Description || after.Result != "" || len(newer.Notes(nextID, 0)) != 0 {
+		t.Fatalf("old acceptance adopted or changed the newer plan: %+v", after)
+	}
+	archived, err := plandb.Open(path+".1", "", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archived.Close()
+	notes := archived.Notes(strconv.FormatUint(id, 10), 0)
+	if len(notes) == 0 || !strings.Contains(notes[len(notes)-1].Body, "work commit ") {
+		t.Fatalf("receipt went to the wrong plan: %+v", notes)
+	}
+	kept, _ := runRowOf(agent.graph(), id)
+	if kept.State != TaskDone || kept.CostUSD != 0.42 {
+		t.Fatalf("archived acceptance mixed newer task's state or spend: %+v", kept)
+	}
+	nothingStarted(t, agent, engine)
+}
+
+func TestCompletedPlanRecoveryRefusesAPlanFromAnotherChat(t *testing.T) {
+	agent, repo, copy, engine, id, _, _ := completedRecoveryFixture(t)
+	before := runTreeHead(repo)
+	path := agent.graph().planPath()
+	armPlanStore(t, agent, path, "mock-foreign-chat")
+	err := agent.ResolveUnverified(id, TaskAccept, "must not cross chats")
+	if err == nil || !strings.Contains(err.Error(), "no completed plan in this conversation") {
+		t.Fatalf("foreign plan was accepted or refused without explanation: %v", err)
+	}
+	kept, _ := runRowOf(agent.graph(), id)
+	if kept.State != TaskUnverified || runTreeHead(repo) != before {
+		t.Fatal("foreign-plan refusal changed existing work")
+	}
+	if _, err := os.Stat(filepath.Join(copy.Dir, "counter.txt")); err != nil {
+		t.Fatal("foreign-plan refusal removed saved work")
+	}
+	nothingStarted(t, agent, engine)
+}
+
+func TestCompletedPlanRecoveryNamesTheMissingCopyThroughItsActualToolDoor(t *testing.T) {
+	agent, repo, _, engine, id, _, open := completedRecoveryFixture(t)
+	before := runTreeHead(repo)
+	kept, _ := runRowOf(agent.graph(), id)
+	kept.Copy = nil
+	kept.State = TaskInterrupted
+	agent.graph().keepRunRows(id, []TaskNotice{kept})
+	if err := agent.Close(); err != nil {
+		t.Fatal(err)
+	}
+	agent = open()
+	args, _ := json.Marshal(map[string]any{"id": strconv.FormatUint(id, 10), "resolve": "accept"})
+	reply, bad, err := agent.tasksTool().Execute(context.Background(), args)
+	if err != nil || !bad || !strings.Contains(reply, "working copy was not written down") || strings.Contains(reply, "No task") {
+		t.Fatalf("missing saved copy became a false task miss or success: %q bad=%v err=%v", reply, bad, err)
+	}
+	kept, _ = runRowOf(agent.graph(), id)
+	if kept.State != TaskInterrupted || kept.Copy != nil || runTreeHead(repo) != before {
+		t.Fatalf("missing-copy refusal invented or changed work: %+v", kept)
+	}
+	nothingStarted(t, agent, engine)
+}
