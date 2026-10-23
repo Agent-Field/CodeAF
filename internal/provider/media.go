@@ -509,14 +509,17 @@ func (c *MediaClient) resolveEndpoint(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	reference, err := url.Parse(raw)
 	if err != nil {
-		return "", err
+		return "", invalidMediaEndpoint(raw)
+	}
+	if _, err := url.QueryUnescape(reference.RawQuery); err != nil {
+		return "", invalidMediaEndpoint(raw)
 	}
 	if reference.IsAbs() {
 		return reference.String(), nil
 	}
 	base, err := url.Parse(strings.TrimSuffix(strings.TrimSpace(c.config.BaseURL), "/") + "/")
 	if err != nil {
-		return "", err
+		return "", invalidMediaEndpoint(c.config.BaseURL)
 	}
 	if strings.HasPrefix(raw, "/") {
 		base.Path = "/"
@@ -598,3 +601,22 @@ func usageFromHeaders(headers http.Header) *ai.Usage {
 }
 
 func pollingHost(endpoint string) string { u, _ := url.Parse(endpoint); return providerhttp.Host(u) }
+
+// Even an invalid signed URL may contain credentials in its query or path.
+// Parse only its authority for diagnostics; never wrap net/url's raw error.
+func invalidMediaEndpoint(raw string) error {
+	host := "unknown host"
+	_, authority, absolute := strings.Cut(raw, "://")
+	if !absolute && strings.HasPrefix(raw, "//") {
+		authority, absolute = strings.TrimPrefix(raw, "//"), true
+	}
+	if absolute {
+		if end := strings.IndexAny(authority, "/?#"); end >= 0 {
+			authority = authority[:end]
+		}
+		if endpoint, err := url.Parse("//" + authority); err == nil {
+			host = providerhttp.Host(endpoint)
+		}
+	}
+	return fmt.Errorf("invalid media URL at %s; check the provider's job address", host)
+}

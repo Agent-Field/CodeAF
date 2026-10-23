@@ -147,5 +147,15 @@ type boundaryError struct{ message string }
 
 func (e *boundaryError) Error() string { return e.message }
 
-// A refused origin cannot be repaired by retrying the same provider request.
-func (*boundaryError) TerminalTransportFailure() bool { return true }
+// IsBoundary identifies a local origin refusal, not an authentication failure.
+func IsBoundary(err error) bool { _, ok := BoundaryMessage(err); return ok }
+
+// BoundaryMessage is safe for a user-facing ending: it contains only the host
+// and the action, never net/http's Location URL or arbitrary upstream text.
+func BoundaryMessage(err error) (string, bool) {
+	var boundary *boundaryError
+	if !errors.As(err, &boundary) {
+		return "", false
+	}
+	return boundary.Error(), true
+}

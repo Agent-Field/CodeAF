@@ -84,3 +84,36 @@ func TestCustomToolLoopUsesGuardedCallerTransport(t *testing.T) {
 		t.Fatal("caller mutated")
 	}
 }
+
+func TestMalformedSignedVideoEndpointsNeverExposeURLSecrets(t *testing.T) {
+	for _, kind := range []string{"poll", "download"} {
+		for _, suffix := range []string{"/job?token=mock-query-secret%zz", "/job%zz?token=mock-query-secret"} {
+			t.Run(kind+suffix, func(t *testing.T) {
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "application/json")
+					endpoint := "https://mock-user:mock-password@poll.test" + suffix
+					if kind == "poll" {
+						fmt.Fprintf(w, `{"id":"job","status":"pending","polling_url":%q}`, endpoint)
+					} else {
+						fmt.Fprintf(w, `{"id":"job","status":"completed","unsigned_urls":[%q]}`, endpoint)
+					}
+				}))
+				defer server.Close()
+				client, err := NewMediaClient(Config{APIKey: "mock-media-key", BaseURL: server.URL})
+				if err != nil {
+					t.Fatal(err)
+				}
+				client.videoWait = func(context.Context, time.Duration) error { return nil }
+				_, err = client.GenerateVideo(context.Background(), VideoRequest{Model: "mock/video", Prompt: "a mock"})
+				if err == nil || !strings.Contains(err.Error(), "poll.test") {
+					t.Fatalf("missing safe host diagnosis: %v", err)
+				}
+				for _, secret := range []string{"mock-user", "mock-password", "mock-query-secret", "token=", "%zz"} {
+					if strings.Contains(err.Error(), secret) {
+						t.Fatalf("URL secret in %s error: %v", kind, err)
+					}
+				}
+			})
+		}
+	}
+}

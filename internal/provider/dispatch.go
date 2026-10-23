@@ -685,7 +685,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			// not a reachability fault and cannot improve under this dispatcher's
 			// machine walk; preserve the typed cause for the session's person-facing
 			// sentence and return after the one request that established it.
-			if terminalTransportFailureFrom(err) {
+			if terminalTransportFailureFrom(err) || providerhttp.IsBoundary(err) {
 				return nil, fmt.Errorf("execute request: %w", err)
 			}
 			lastErr = fmt.Errorf("execute request: %w", err)

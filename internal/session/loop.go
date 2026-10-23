@@ -90,6 +90,7 @@ import (
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/providerhttp"
 	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/store"
@@ -2907,11 +2908,14 @@ func transportWordsFor(verdict taxonomy.Verdict, keySource string) string {
 	return said
 }
 
-// terminalFailureWords preserves the three endings whose typed error carries
+// terminalFailureWords preserves endings whose typed error carries
 // a more useful action than the generic transport taxonomy can. The service is
 // resolved by [Agent.failureServiceWord], from the same source set that built
 // the client, so a payment refusal names the connection the person chose.
 func terminalFailureWords(err error, service string) (string, bool) {
+	if said, ok := providerhttp.BoundaryMessage(err); ok {
+		return said, true
+	}
 	if errors.Is(err, codexauth.ErrSignInExpired) {
 		return codexauth.ErrSignInExpired.Error(), true
 	}

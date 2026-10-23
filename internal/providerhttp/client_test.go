@@ -39,7 +39,7 @@ func TestProviderRedirectStopsBeforeForeignTargetAndRedactsSecrets(t *testing.T)
 			defer target.Close()
 			tu, _ := url.Parse(target.URL)
 			origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Location", "http://mock-user:mock-password@"+targetHost+":"+tu.Port()+"/mock-secret-path?key=mock-query-secret#mock-fragment")
+				w.Header().Set("Location", "http://"+targetHost+":"+tu.Port()+"/mock-secret-path?key=mock-query-secret#mock-fragment")
 				w.WriteHeader(307)
 			}))
 			defer origin.Close()
@@ -156,5 +156,19 @@ func TestCallerCanRefuseSameOriginWithoutMutation(t *testing.T) {
 	v, _ := url.Parse("https://api.test/second")
 	if err := Clone(caller).CheckRedirect(&http.Request{URL: v}, []*http.Request{{URL: u}}); err != http.ErrUseLastResponse || called != 1 {
 		t.Fatalf("stricter caller rule lost: %v calls=%d", err, called)
+	}
+}
+
+func TestSameOriginRedirectWithUserinfoIsRefused(t *testing.T) {
+	origin, _ := url.Parse("https://api.test/start")
+	target, _ := url.Parse("https://mock-user:mock-password@api.test/next?key=mock-query-secret")
+	err := CheckRedirect(&http.Request{URL: target}, []*http.Request{{URL: origin}})
+	if err == nil || !strings.Contains(err.Error(), "api.test") {
+		t.Fatalf("missing userinfo refusal: %v", err)
+	}
+	for _, secret := range []string{"mock-user", "mock-password", "mock-query-secret"} {
+		if strings.Contains(err.Error(), secret) {
+			t.Fatalf("unsafe error: %v", err)
+		}
 	}
 }
