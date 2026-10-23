@@ -4,6 +4,10 @@ title: paired computers continue the same chat with its workspace and history
 pr: 1888
 surface: [chat, engine, remote, build, docs]
 invalidates:
+  - "Each new chat kept a private copy of the entire workspace, including ignored output. New chats now share one home-level object store with separate timeline heads and private call logs; older private stores stay in place. Untracked Git-ignored output is neither captured nor uploaded. Wholly ignored directories are not screened; ignored secret files in ordinary directories still travel through the vault. The arrival card names the engine's ignored paths."
+  - "Commands synchronously waited for capture and every capture walked the whole tree again. The secret screen now supplies metadata changes to the engine while preserving full screening; command captures run behind the durable result, with bounded waits before another tool, a move, upload or close."
+  - "An early bring-work chord claimed no chat existed while presence had arrived before the catalog. It now keeps the request and says the chats are still arriving, then offers confirmation when the list arrives. A recent released chat is also offered on home."
+  - "C27.4 originally disallowed a local identity on first start. The driver amended it: that local file is allowed, while relay traffic and all sync network use stay absent until pairing is requested."
   - "Opening an older chat migrated its files into .cell and made it unreadable to older builds. Existing chats now keep their layout and host execution (C24); only chats started as cells can move."
   - "Opening a chat could start disk collection and remove files excluded from its snapshot. Collection is now explicit only (C25), removes only entries checked against a byte-identical restored capture, and lists those paths in --dry-run. The disk budget is the explicit gc default and is hidden where cells are unavailable."
   - "Command health checks captured output and could fail after a clean exit when a child held a pipe. They now discard output; fd, PDF and senior-dev search helpers retain their former unbounded drain while other executor bounds stay unchanged."

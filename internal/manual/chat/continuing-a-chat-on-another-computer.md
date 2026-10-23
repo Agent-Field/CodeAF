@@ -177,10 +177,36 @@ Your repository's `.git`, including its history, branches and settings, moves wi
 
 The current working files are checked separately. A `.env` or source file that the guard recognises as holding a key is left out of the chat's file capture and carried through the encrypted vault. If you committed that secret earlier, its historical Git copy still moves with the repository. An untracked `.env` with no committed copy arrives only through the vault.
 
-Every seal checks the whole working tree first, including the first turn when it only says a reply or runs a command without changing files. Files ignored by git are checked too. A withheld file stays out of the local saved packs and the uploaded workspace capture, and tools still see a `.env` file's variables through the vault. Restores and arrivals also check before any automatic safety capture.
+Every seal screens the working files it can capture, including the first reply or command with no changes. A wholly git-ignored directory is neither entered nor screened unless it holds tracked files. An ignored file in an ordinary directory is still screened: root `.env`, `config/.env.local` and a private key in a `*.pem` file travel through the encrypted vault to paired computers. A withheld file stays out of local saved packs and the uploaded workspace capture. Tools still see a `.env` file's variables through the vault. Restores and arrivals also screen before an automatic safety capture.
 
 ## Why does home appear while my chats are still syncing
 
 Moving chats and pairing are available by default on Linux and macOS on every build. Pair both computers first. Windows does not have moving chats yet; use WSL.
 
 The first screen draws while this computer publishes its device record, shares its saved keys and sends the first saved turn in the background. A slow sync service does not leave the terminal blank. New tool work waits for the initial ownership check; local startup saves are sent once that check finishes.
+
+## Does every chat copy my whole project — disk space, shared saved files, older chats
+
+New chats on this computer share one store of saved file contents. Opening four chats in the same project does not make four private copies of every unchanged file. Each chat keeps its own history, call log and transport scratch; restoring one does not move another chat's saved head. A chat whose older private store already exists keeps using that store in place, without migration. Nothing is deleted automatically. `codeaf cell gc` is an explicit command and removes only files the saved copy can restore.
+
+## Why did dist or node_modules not move — gitignored files, build output, ignored folders
+
+Every chat's capture follows Git's ignore rules. Untracked ignored output stays on the computer that made it: it is neither stored in the local file history nor uploaded. Tracked files travel even if an ignore rule matches their name. A wholly ignored directory is not walked or screened. Lockfile rebuild folders still follow the existing rebuild rules.
+
+The arrival card names omitted paths from the saved summary, for example `not brought along: dist/ (git ignores them), node_modules/ (git ignores them)`. The summary is bounded and can name only some omitted groups. Ignored secret files in ordinary directories are still screened and travel through the key vault; an ignored `.env` inside a wholly ignored directory stays there with that directory.
+
+If Git cannot read the project's ignore rules, saving stops with `cannot read which folders Git ignores here` and the cause. Completed calls stay in their local log for a later save. codeaf does not fall back to searching ignored directories or putting their secret files in the key vault.
+
+## Does saving slow my command — pending save, quit while saving, moving before the save finishes
+
+A command's result returns after its call log is durable, while its file capture finishes in the background. The next tool call, continuing the chat on this computer, uploading it and closing the conversation wait for the pending save. The first capture of a new chat does not hold its first command's result open. A failed capture keeps the finished call in its local log for the next save; codeaf never runs that command again to recover it.
+
+A wait lasts at most 30 seconds. A timeout says `still saving this chat on this computer: context deadline exceeded`; the pending save is not silently treated as done. The saving status reports failures, and quitting reports an error if saving could not finish.
+
+## I pressed alt+m before the other chat appeared — still arriving, home on a second computer
+
+Device presence can arrive before its list of chats. If you press `alt+m` early, home says `chats are still arriving from your other computer; this opens when they are ready`. It keeps your request and opens the ordinary confirmation once the chat arrives; it never takes the chat without that confirmation. A recent chat left on another computer is offered when home opens, including one that computer closed cleanly.
+
+## Does first start send anything — local identity before pairing
+
+The first start may create a local identity for this computer. That file sends nothing: there is no sync traffic or network use until you pair or offer a pairing code. Reading the add-device instructions leaves it quiet. Offering a pairing code or running `codeaf pair` contacts the sync service for that pairing. `CODEAF_SYNC_URL=off` blocks sync traffic even after pairing.

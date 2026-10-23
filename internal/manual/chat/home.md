@@ -438,6 +438,10 @@ The project's task history (the list of finished tasks) and the git bookkeeping 
 
 It leaves behind, and lists on the card under `not brought along:`: install folders a lockfile rebuilds (`node_modules`, `.venv`, `target`, `vendor`, `Pods`), files this computer cannot read, and one of two names that differ only in letter case or accent. A read-only folder arrives read-only. A secret file (`.env`) is not in the chat's files: it travels in the key vault. Budgets, limits and model picks are per computer and never travel. Memory that belongs to no chat, for example a line edited by hand in the memory place, stays on the computer it was written on.
 
+## Does dist or other gitignored output move — ignored files and secret files
+
+Untracked Git-ignored output stays on the computer that made it and is named on the arrival card with `(git ignores them)`. It is neither captured locally nor uploaded. Tracked files still move. A wholly ignored directory is not walked or screened; an ignored secret file in an ordinary directory, such as `.env` or `config/.env.local`, is screened and still travels through the key vault to paired computers.
+
 ## What a moved chat left behind — set this machine up, why is node_modules missing, my dev server is not running after I moved, not brought along, rebuilt from the lockfile
 
 A chat that moves brings its conversation and every file it worked on, except an install
