@@ -803,6 +803,14 @@ no proof is not done: the worker proves it then, or reports it undone in its
 result. Reaching the end of the steps is not the same as having met every
 requirement in them, and speed is no permission to skip the walk.
 
+An up-to-date plan remains readable while another worker is writing: `plandb show`
+and the other read commands see the last committed state. Mutations wait for the
+writer within a bounded retry budget. If that wait expires, the command reports
+that no changes were made and asks you to retry after the other writer finishes.
+Creating or upgrading an older database still requires a write lock. Paths passed
+to `--db` name the literal file, including spaces, percent signs and punctuation;
+a relative path remains relative to the command's working folder.
+
 ## Costs and limits
 
 - **The cost cap.** A run may spend what is left of the conversation's own **spend rail**

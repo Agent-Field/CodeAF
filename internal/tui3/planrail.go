@@ -70,7 +70,7 @@ func planNodeState(row session.PlanTaskRow) session.TaskState {
 		return session.TaskDone
 	case "failed", "cancelled":
 		return session.TaskFailed
-	case "paused":
+	case "paused", string(session.TaskUnverified):
 		return session.TaskUnverified
 	}
 	return ""
