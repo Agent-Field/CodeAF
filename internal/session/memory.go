@@ -1272,7 +1272,7 @@ func appendMemoryFailureLog(path, via, reason, storeErr string) {
 func (a *Agent) startMemoryJob() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.closed || a.memoryCtx == nil {
+	if a.closed || a.workStopped || a.memoryCtx == nil {
 		return false
 	}
 	a.memoryJobs.Add(1)
