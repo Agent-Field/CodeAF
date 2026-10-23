@@ -98,3 +98,14 @@ func TestSavedAutomaticRungsHonorCurrentChoiceWithoutBlockingConnectedPlans(t *t
 		t.Fatal(got)
 	}
 }
+
+func TestFreeNoticeDoesNotInventFreeUseWithoutFreeRoutes(t *testing.T) {
+	for _, routes := range [][]crewroute.Route{nil, {{Kind: crewroute.Plan}}, {{Kind: crewroute.Local}}, {{Kind: crewroute.Plan}, {Kind: crewroute.Free}}} {
+		if onlyFreeRoutes([]crewroute.Candidate{{Routes: routes}}) {
+			t.Fatalf("claimed free use with routes %+v", routes)
+		}
+	}
+	if !onlyFreeRoutes([]crewroute.Candidate{{Routes: []crewroute.Route{{Kind: crewroute.Free}}}}) {
+		t.Fatal("free-only available routes not recognized")
+	}
+}

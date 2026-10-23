@@ -376,6 +376,9 @@ func (c crewSeatCompleter) CompleteWithMessages(ctx context.Context, messages []
 		return nil, err
 	}
 	if !crew.seats(key) {
+		if !c.agent.config.freeHelperAllowed(key) {
+			return nil, crewSeatEnd(freeRoutesOffAction, nil)
+		}
 		// NOT A SEAT OF THIS CREW: a tier the run asks for that the crew does
 		// not name (a probe, a small errand). It is an auxiliary call, and it
 		// goes through the route-health guard like every other one — never
@@ -393,8 +396,8 @@ func (c crewSeatCompleter) completeSeat(ctx context.Context, key string, message
 	retried := false
 	for {
 		current := crew.sendFor(key)
-		if c.freeRouteBlocked(current) {
-			return nil, crewSeatEnd("free routes are off · choose a paid model or enable free routes in /crew", nil)
+		if c.freeRouteBlocked(ctx, current) {
+			return nil, crewSeatEnd(freeRoutesOffAction, nil)
 		}
 		if failed, ok := crew.failedHere(current); ok {
 			// A SEND THAT FAILED ON THIS TASK IS NOT ASKED AGAIN, by this seat

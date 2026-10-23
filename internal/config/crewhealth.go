@@ -312,21 +312,25 @@ func crewCandidatesNoticed(profileDir string, health crewHealth) ([]crewroute.Ca
 	rule, providers, off := CrewAllowedAt(profileDir), CrewProvidersAt(profileDir), CrewProvidersOffAt(profileDir)
 	facts := crewRouteFacts{free: CrewFreeRoutesAt(profileDir), health: health}
 	candidates := off.Candidates(crewCandidatesWith(rule, providers, facts))
-	if facts.free && len(health.unaffordable) > 0 && !anyPaidRoute(candidates) {
+	if facts.free && len(health.unaffordable) > 0 && onlyFreeRoutes(candidates) {
 		return candidates, "free routes in use (may log prompts) · credit unavailable on " + strings.Join(crewSet(health.unaffordable), ", ")
 	}
 	return candidates, ""
 }
 
-func anyPaidRoute(candidates []crewroute.Candidate) bool {
+// A notice names free routes only when every available route is free; an
+// empty candidate set or a subscription/local alternative is not free use.
+func onlyFreeRoutes(candidates []crewroute.Candidate) bool {
+	found := false
 	for _, c := range candidates {
 		for _, r := range c.Routes {
-			if r.Kind == crewroute.Metered {
-				return true
+			if r.Kind != crewroute.Free {
+				return false
 			}
+			found = true
 		}
 	}
-	return false
+	return found
 }
 
 // AutomaticCrewRungs excludes free pools from automatic substitution while the
