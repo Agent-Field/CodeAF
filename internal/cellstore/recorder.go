@@ -259,21 +259,13 @@ func (r *Recorder) seal(ctx context.Context) {
 	if r.opts.Refresh != nil {
 		r.opts.Refresh()
 	}
-	if err := commits.flush(ctx, r.cell.Root); err != nil {
-		r.report(err)
-		return
-	}
 	batch := r.pending
 	if _, err := r.store.Seal(ctx, r.cell, TurnInfo{Trigger: triggerOfBatch(batch), Calls: batch, Models: r.models, Changed: changedOf(batch)}); err != nil {
 		r.report(err)
 		return
 	}
-	// The turn and its receipt must reach disk before compaction can remove
-	// their only recovery copy from the WAL (C28/L9/L12).
-	if err := commits.flush(ctx, r.cell.Root); err != nil {
-		r.report(err)
-		return
-	}
+	// Ordered turn and receipt writes survive process death. Group commit and
+	// explicit boundaries make both stores durable before work leaves this computer (C28/U1).
 	r.pending, r.models = nil, nil
 	r.outcome(r.wal.Sealed(batch))
 }

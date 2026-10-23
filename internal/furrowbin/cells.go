@@ -33,18 +33,19 @@ func probeCells(binary string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	// A shared store without named heads would put different chats on the
-	// same timeline. Older exchange-capable engines must stay absent (D1/C12).
+	// same timeline. Capture tokens and explicit sync are also required so an
+	// older engine cannot expose an unscreened or non-durable move (C9/U1/U2/C12).
 	root, err := exec.CommandContext(ctx, binary, "--help").Output() //codeaf:plumbing checks timeline routing without opening a workspace.
 	if err != nil || !strings.Contains(string(root), "--timeline ") {
 		return false
 	}
-	for _, verb := range []string{"export", "published", "want", "import", "rebind", "materialize", "serve"} {
+	for _, verb := range []string{"export", "published", "want", "import", "rebind", "materialize", "serve", "capture-plan", "sync"} {
 		if err := exec.CommandContext(ctx, binary, verb, "--help").Run(); err != nil { //codeaf:plumbing checks the engine's read-only capability contract
 			return false
 		}
 	}
 	help, err := exec.CommandContext(ctx, binary, "hook", "turn-end", "--help").Output() //codeaf:plumbing checks changed-path sealing without opening a workspace
-	return err == nil && strings.Contains(string(help), "--changed ") && strings.Contains(string(help), "--changed-stdin") && strings.Contains(string(help), "--cell-dir")
+	return err == nil && strings.Contains(string(help), "--changed ") && strings.Contains(string(help), "--changed-stdin") && strings.Contains(string(help), "--cell-dir") && strings.Contains(string(help), "--plan")
 }
 
 // cellsBinary follows the same owned-engine choice as internal/furrow, without

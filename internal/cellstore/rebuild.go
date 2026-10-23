@@ -30,10 +30,12 @@ type Apart struct{ Path, Reason string }
 // out of the seal, the lockfiles seen in the tree, and the single paths set
 // apart because this machine cannot read them or cannot keep their names.
 type Screened struct {
-	scan    *captureScan
-	Folders []Left
-	Locks   []string
-	Apart   []Apart
+	// directories pins membership at screen time and advances only after a
+	// successful capture, so an editor's later new file remains owed.
+	directories map[string]fileStamp
+	Folders     []Left
+	Locks       []string
+	Apart       []Apart
 }
 
 func (s Screened) paths() []string {

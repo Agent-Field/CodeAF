@@ -11,7 +11,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/executor"
@@ -39,7 +38,24 @@ func engineFor(t testing.TB, dataRoot string) Engine {
 	if err != nil {
 		t.Skipf("no engine binary: %v", err)
 	}
-	return Engine{Binary: bin, DataRoot: dataRoot, Transport: current.make(t, bin)}
+	engine := Engine{Binary: bin, DataRoot: dataRoot, Transport: current.make(t, bin)}
+	// Retire this fixture before stopping its daemon, or a background group could
+	// restart that writer while Windows removes its now-closed catalog (U4/C28).
+	t.Cleanup(func() {
+		// Join the background group before retiring its routes. Otherwise an
+		// already-copied debt could reopen a fixture after its daemon stopped.
+		commits.flushing <- struct{}{}
+		defer func() { <-commits.flushing }()
+		socket := transportSocket(engine.Transport)
+		engineCommits.Lock()
+		defer engineCommits.Unlock()
+		for root, debt := range engineCommits.cells {
+			if debt.target.DataDir == dataRoot || strings.HasPrefix(debt.target.DataDir, dataRoot+string(filepath.Separator)) || (socket != "" && transportSocket(debt.transport) == socket) {
+				delete(engineCommits.cells, root)
+			}
+		}
+	})
+	return engine
 }
 
 // A transportCase is one way the real engine is reached; every real-engine
@@ -50,7 +66,10 @@ type transportCase struct {
 }
 
 var transportCases = []transportCase{
-	{"spawn", func(_ testing.TB, bin string) Transport { return Spawn{Binary: bin} }},
+	{"spawn", func(t testing.TB, bin string) Transport {
+		daemon := daemonFor(t, bin).(Daemon)
+		return Spawn{Binary: bin, Socket: daemon.Socket}
+	}},
 	{"daemon", daemonFor},
 }
 
@@ -79,8 +98,11 @@ func daemonFor(t testing.TB, bin string) Transport {
 	}
 	d := Daemon{Socket: filepath.Join(dir, "e.sock"), Binary: bin}
 	t.Cleanup(func() {
-		_ = d.Stop(context.Background())
-		time.Sleep(50 * time.Millisecond) // let it unlink its socket
+		ctx, cancel := context.WithTimeout(context.Background(), SealWithin)
+		defer cancel()
+		if err := d.Stop(ctx); err != nil {
+			t.Errorf("stop fixture engine: %v", err)
+		}
 		os.RemoveAll(dir)
 	})
 	return d
@@ -100,6 +122,12 @@ func (f *fakeEngine) run(_ context.Context, _ string, _ []string, argv ...string
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, argv)
+	if strings.Contains(strings.Join(argv, " "), "capture-plan") {
+		return []byte(`{"token":"test-plan","full":true,"paths":[]}`), nil
+	}
+	if strings.Contains(strings.Join(argv, " "), "--json sync") {
+		return []byte(`{"durable":true}`), nil
+	}
 	return json.Marshal(map[string]string{"snapshot": fmt.Sprintf("%064x", len(f.calls))})
 }
 
@@ -152,4 +180,16 @@ func testShell(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return bash
+}
+
+// transportSocket identifies a fixture's writer even when a test replaces its
+// data root with a simulated home after constructing the engine.
+func transportSocket(tr Transport) string {
+	switch t := tr.(type) {
+	case Daemon:
+		return t.Socket
+	case Spawn:
+		return t.Socket
+	}
+	return ""
 }

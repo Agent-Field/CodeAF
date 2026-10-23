@@ -26,7 +26,7 @@ const maxChangedArgs = 512
 // tests can count and fake spawns.
 type Runner func(ctx context.Context, dir string, env []string, argv ...string) ([]byte, error)
 
-// Engine is the stage 0 Store: one engine spawn per seal.
+// Engine captures through the home's long-lived engine daemon.
 type Engine struct {
 	// Binary is the engine program; empty means the configured or embedded
 	// engine, checked to be able to seal (see sealingEngine).
@@ -101,18 +101,6 @@ func (e Engine) Seal(ctx context.Context, c cell.Cell, info TurnInfo) (Sealed, e
 	if err != nil {
 		return Sealed{}, fmt.Errorf("seal: read head: %w", err)
 	}
-	// EVERY CAPTURED PATH MUST BE SCREENED. Changed is only an engine hint:
-	// a first attachment, a restore or arrival that invalidated its path index,
-	// or a policy change can make it walk the whole tree instead. The guard
-	// cannot observe that private index, so it screens the whole tree even for
-	// a transcript-only turn. Its ledger avoids rereading unchanged clean files.
-	screened, err := e.Guard.Look(c, e.tree(c), e.policyDir(c), nil, knownLocks(c))
-	if err != nil {
-		return Sealed{}, fmt.Errorf("seal: %w", err)
-	}
-	if err := noteLeftOut(c, e.tree(c), screened, info.Calls); err != nil {
-		return Sealed{}, fmt.Errorf("seal: record what was left out: %w", err)
-	}
 	at := e.now()
 	receipt := newReceipt(info, transcriptRange(c, head), at)
 	raw, rid, err := receipt.encode()
@@ -122,16 +110,7 @@ func (e Engine) Seal(ctx context.Context, c cell.Cell, info TurnInfo) (Sealed, e
 	if err := e.compose(c, raw, rid, info); err != nil {
 		return Sealed{}, fmt.Errorf("seal: compose: %w", err)
 	}
-	changes := info.Changed
-	if screened.scan != nil {
-		changes = screened.scan.changed(e.tree(c))
-	}
-	// The engine may make this receipt durable. Its input log must reach disk
-	// first, even though individual commands no longer wait for an fsync (C28).
-	if err := commits.flush(ctx, c.Root); err != nil {
-		return Sealed{}, err
-	}
-	snapshot, err := e.snapshotReply(ctx, c, rid, changes)
+	snapshot, err := e.plannedSnapshot(ctx, c, rid, info.Changed, info.Calls)
 	if err != nil {
 		return Sealed{}, err
 	}
@@ -140,7 +119,7 @@ func (e Engine) Seal(ctx context.Context, c cell.Cell, info TurnInfo) (Sealed, e
 		return Sealed{}, err
 	}
 	if changed {
-		snapshot, err = e.snapshotReply(ctx, c, rid, []string{})
+		snapshot, err = e.plannedSnapshot(ctx, c, rid, []string{}, info.Calls)
 		if err != nil {
 			return Sealed{}, err
 		}
@@ -149,12 +128,6 @@ func (e Engine) Seal(ctx context.Context, c cell.Cell, info TurnInfo) (Sealed, e
 	if err := appendTurn(c, turn); err != nil {
 		return Sealed{}, fmt.Errorf("seal: record turn: %w", err)
 	}
-	// Publishing can note this turn before the recorder compacts its WAL.
-	// Its local chain must be durable before that upload can start (C28/E1).
-	if err := commits.flush(ctx, c.Root); err != nil {
-		return Sealed{}, err
-	}
-	screened.scan.commit()
 	return Sealed{Turn: turn, Receipt: receipt}, nil
 }
 
@@ -195,15 +168,7 @@ type captureReply struct {
 }
 
 func (e Engine) snapshotReply(ctx context.Context, c cell.Cell, receipt string, changed []string) (captureReply, error) {
-	out, err := e.do(ctx, c, e.cellDir(c), sealOp{Turn: receipt, Changed: changedPaths(changed)})
-	if err != nil {
-		return captureReply{}, fmt.Errorf("seal: snapshot: %w", err)
-	}
-	var reply captureReply
-	if err := json.Unmarshal(out, &reply); err != nil || reply.Snapshot == "" {
-		return reply, fmt.Errorf("seal: engine answered %q, not a snapshot id", bytes.TrimSpace(out))
-	}
-	return reply, nil
+	return e.plannedSnapshot(ctx, c, receipt, changed, nil)
 }
 
 // changedPaths is the paths the engine should visit instead of walking the
@@ -220,9 +185,9 @@ func changedPaths(changed []string) []string {
 // tree is the folder the engine seals and restores.
 func (e Engine) tree(c cell.Cell) string {
 	if w := e.workspace(c); w != "" {
-		return w
+		return canonicalTree(w)
 	}
-	return c.Root
+	return canonicalTree(c.Root)
 }
 
 // workspace is the folder the tools of c work in, "" when c's own folder is
@@ -239,7 +204,7 @@ func (e Engine) workspace(c cell.Cell) string {
 // what is sealed. The engine reads a .furrowpolicy from either.
 func (e Engine) policyDir(c cell.Cell) string {
 	if e.workspace(c) == "" {
-		return c.Root
+		return canonicalTree(c.Root)
 	}
 	return stateDir(c)
 }
@@ -305,5 +270,16 @@ func (e Engine) target(c cell.Cell) Target {
 	if dir == e.LocalDir(c) {
 		timeline = ""
 	}
-	return Target{Tree: e.tree(c), DataDir: dir, CellDir: e.cellDir(c), Timeline: timeline}
+	return Target{Tree: canonicalTree(e.tree(c)), DataDir: dir, CellDir: e.cellDir(c), Timeline: timeline}
+}
+
+func canonicalTree(tree string) string {
+	absolute, err := filepath.Abs(tree)
+	if err != nil {
+		return filepath.Clean(tree)
+	}
+	if resolved, err := filepath.EvalSymlinks(absolute); err == nil {
+		return resolved
+	}
+	return absolute
 }

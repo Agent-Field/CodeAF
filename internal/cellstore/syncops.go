@@ -155,7 +155,10 @@ type Export struct {
 // each on the cell's own device-local store.
 type SyncEngine struct {
 	Transport Transport
-	Keys      SyncKeys
+	// BeforeExport joins local records and the engine group before frames can
+	// leave this computer. Bare independent clients can use the transport alone.
+	BeforeExport func(context.Context, cell.Cell) error
+	Keys         SyncKeys
 	// Ledger is LedgerName(sync URL, identity id).
 	Ledger string
 	// Target says where a cell's store and tree are.
@@ -175,6 +178,11 @@ type SyncEngine struct {
 // Export implements the sync seam.
 func (e SyncEngine) Export(ctx context.Context, c cell.Cell, head string) (Export, error) {
 	var out Export
+	if e.BeforeExport != nil {
+		if err := e.BeforeExport(ctx, c); err != nil {
+			return out, err
+		}
+	}
 	op := exportOp{Head: head, Outbox: e.outbox(c), Ledger: e.Ledger, MaxFrame: e.MaxFrame, keyArgs: hexKeys(e.Keys)}
 	return out, e.ask(ctx, c, op, &out)
 }
@@ -308,8 +316,14 @@ func (e SyncEngine) ask(ctx context.Context, c cell.Cell, op Op, out any) error 
 func (e Engine) Sync(keys SyncKeys, ledger string) SyncEngine {
 	return SyncEngine{
 		Transport: e.transport(),
-		Keys:      keys,
-		Ledger:    ledger,
+		BeforeExport: func(ctx context.Context, c cell.Cell) error {
+			if err := Await(ctx, c); err != nil {
+				return err
+			}
+			return syncEngine(ctx, e.transport(), e.target(c))
+		},
+		Keys:   keys,
+		Ledger: ledger,
 		Target: func(c cell.Cell) Target {
 			return e.target(c)
 		},

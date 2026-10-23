@@ -19,16 +19,21 @@ type commitPath struct{ owner, path string }
 // commitQueue keeps generations, rather than open descriptors, because a WAL
 // compaction replaces its inode. A concurrent write always needs another sync.
 type commitQueue struct {
-	mu       sync.Mutex
-	pending  map[commitPath]uint64
-	next     uint64
-	timer    bool
-	after    func(time.Duration, func())
-	flushing chan struct{}
-	syncPath func(string) error
+	mu          sync.Mutex
+	pending     map[commitPath]uint64
+	next        uint64
+	timer       bool
+	after       func(time.Duration, func())
+	flushing    chan struct{}
+	syncPath    func(string) error
+	beforeFlush func(context.Context, string) error
 }
 
-var commits = newCommitQueue(syncPath)
+var commits = func() *commitQueue {
+	q := newCommitQueue(syncPath)
+	q.beforeFlush = flushEngines
+	return q
+}()
 
 func newCommitQueue(syncFile func(string) error) *commitQueue {
 	return &commitQueue{pending: map[commitPath]uint64{}, flushing: make(chan struct{}, 1), syncPath: syncFile, after: func(d time.Duration, f func()) { time.AfterFunc(d, f) }}
@@ -50,7 +55,17 @@ func (q *commitQueue) mark(owner, path string, parent bool) {
 }
 
 func (q *commitQueue) background() {
-	_ = q.flush(context.Background(), "")
+	// A broken chat must not prevent another chat's records from meeting the
+	// same power-loss window. Each owner retries its own dependency separately.
+	q.mu.Lock()
+	owners := map[string]bool{}
+	for path := range q.pending {
+		owners[path.owner] = true
+	}
+	q.mu.Unlock()
+	for owner := range owners {
+		_ = q.flush(context.Background(), owner)
+	}
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	q.timer = false
@@ -83,6 +98,13 @@ func (q *commitQueue) flush(ctx context.Context, owner string) error {
 		if len(batch) == 0 {
 			return nil
 		}
+		// A durable local turn must never outrun the engine snapshot it names.
+		// The background group and explicit boundaries share this dependency (C28).
+		if q.beforeFlush != nil {
+			if err := q.beforeFlush(ctx, owner); err != nil {
+				return err
+			}
+		}
 		// File contents precede directory entries. A rename must not outlive the
 		// replacement WAL's data after power loss (C28).
 		for _, dirs := range []bool{false, true} {
@@ -92,6 +114,9 @@ func (q *commitQueue) flush(ctx context.Context, owner string) error {
 				}
 				info, err := os.Stat(p.path)
 				if errors.Is(err, os.ErrNotExist) {
+					if err := missingRecordParent(p.path); err != nil {
+						return fmt.Errorf("save call records: %w", err)
+					}
 					q.clear(p, version)
 					continue
 				}
@@ -118,13 +143,25 @@ func (q *commitQueue) clear(p commitPath, version uint64) {
 	}
 }
 
-func syncPath(path string) error {
-	f, err := os.Open(path)
-	if err != nil {
-		return err
+// missingRecordParent distinguishes a removed record from a corrupt path.
+// Windows reports both a missing name and a regular-file ancestor as NOT_FOUND;
+// only the former can be cleared as a renamed or removed queue entry (C28/U4).
+func missingRecordParent(path string) error {
+	for dir := filepath.Dir(path); ; dir = filepath.Dir(dir) {
+		info, err := os.Stat(dir)
+		if err == nil {
+			if !info.IsDir() {
+				return fmt.Errorf("%s is not a directory", dir)
+			}
+			return nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		if filepath.Dir(dir) == dir {
+			return nil
+		}
 	}
-	defer f.Close()
-	return f.Sync()
 }
 
 // Flush commits every local record before the CLI exits. Conversation close
@@ -134,12 +171,18 @@ func Flush(ctx context.Context) error {
 	// capture still belongs to this process and must finish before exit (E2).
 	captures.Lock()
 	active := make([]*captureState, 0, len(captures.cells))
-	for _, state := range captures.cells {
+	for root, state := range captures.cells {
 		select {
 		case <-state.done:
+			// A removed temporary home no longer owns state in this process. Live
+			// homes still report a completed failed capture at process exit (U1).
+			if _, err := os.Stat(root); os.IsNotExist(err) {
+				delete(captures.cells, root)
+				continue
+			}
 		default:
-			active = append(active, state)
 		}
+		active = append(active, state)
 	}
 	captures.Unlock()
 	var fault error
@@ -150,5 +193,5 @@ func Flush(ctx context.Context) error {
 		}
 		fault = errors.Join(fault, state.err)
 	}
-	return errors.Join(fault, commits.flush(ctx, ""))
+	return errors.Join(fault, durable(ctx, ""))
 }

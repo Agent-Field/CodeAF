@@ -30,7 +30,7 @@ func Await(ctx context.Context, c cell.Cell) error {
 	if err := Captured(ctx, c); err != nil {
 		return err
 	}
-	return commits.flush(ctx, c.Root)
+	return durable(ctx, c.Root)
 }
 
 // Captured waits for the prior file capture without forcing a group commit.
@@ -173,7 +173,7 @@ func (r *Recorder) Drain(ctx context.Context) error {
 		r.report(err)
 		return err
 	}
-	if err := commits.flush(ctx, r.cell.Root); err != nil {
+	if err := durable(ctx, r.cell.Root); err != nil {
 		r.report(err)
 		return err
 	}

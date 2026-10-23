@@ -45,8 +45,12 @@ type Transport interface {
 // engine that ran and refused is an answer, not an absence.
 var ErrUnavailable = errors.New("engine unavailable")
 
-// Spawn is the Transport that runs the engine program once per verb.
+// Spawn runs standalone verbs and uses the managed daemon for seals and sync.
+// A custom Runner still sees every invocation, which keeps fixture seams exact.
 type Spawn struct {
+	// Socket selects an explicitly owned daemon; empty uses the home address.
+	// Isolated clients can release their store handles without stopping other chats.
+	Socket string
 	// Binary is the engine program; empty means the configured or embedded
 	// engine, checked to be able to seal (see sealingEngine).
 	Binary string
@@ -61,6 +65,16 @@ func (s Spawn) Do(ctx context.Context, t Target, op Op) ([]byte, error) {
 	bin, err := s.program()
 	if err != nil {
 		return nil, err
+	}
+	// Seals and durability fences always use codeaf's one daemon. The CLI's
+	// implicit daemon is per data directory and escapes codeaf's child lifecycle;
+	// invoking its direct sync would also miss the retained writer's pending group.
+	if s.Run == nil && (op.Verb() == "seal" || op.Verb() == "sync") {
+		socket := s.Socket
+		if socket == "" {
+			socket = socketFor(bin)
+		}
+		return (Daemon{Socket: socket, Binary: bin}).Do(ctx, t, op)
 	}
 	argv := append([]string{bin}, op.Args()...)
 	if t.CellDir != "" {

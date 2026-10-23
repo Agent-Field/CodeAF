@@ -6,12 +6,17 @@ type sealOp struct {
 	Turn string `json:"turn"`
 	// Changed lists the paths to visit; nil walks the tree.
 	Changed []string `json:"changed"`
+	Plan    string   `json:"plan,omitempty"`
+	Durable bool     `json:"durable"`
 }
 
 func (sealOp) Verb() string { return "seal" }
 
 func (o sealOp) Args() []string {
 	args := []string{"--json", "hook", "turn-end", "--turn", o.Turn}
+	if o.Plan != "" {
+		args = append(args, "--plan", o.Plan)
+	}
 	for _, p := range o.Changed {
 		args = append(args, "--changed", p)
 	}

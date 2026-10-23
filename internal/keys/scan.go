@@ -107,6 +107,37 @@ func (s Scanner) Paths(root string, rels []string) []Finding {
 	return out
 }
 
+// Candidates screens exactly the listed entries without descending into a
+// directory. A capture-plan caller has already enumerated its read scope; a
+// second walk could screen different content and waste its metadata reading.
+func (s Scanner) Candidates(root string, rels []string) []Finding {
+	var out []Finding
+	for _, rel := range rels {
+		rel = filepath.ToSlash(rel)
+		if s.Skip != nil && s.Skip(rel) {
+			continue
+		}
+		abs := filepath.Join(root, filepath.FromSlash(rel))
+		info, err := os.Lstat(abs)
+		if err != nil {
+			if f, ok := refused(rel, err); ok {
+				out = append(out, f)
+			}
+			continue
+		}
+		entry := fs.FileInfoToDirEntry(info)
+		if s.Visit != nil {
+			s.Visit(rel, entry)
+		}
+		if info.Mode().IsRegular() {
+			if f, ok := s.file(rel, abs, entry); ok {
+				out = append(out, f)
+			}
+		}
+	}
+	return out
+}
+
 func (s Scanner) from(root, start string) []Finding {
 	var out []Finding
 	filepath.WalkDir(filepath.Join(root, start), func(p string, d fs.DirEntry, err error) error {

@@ -18,24 +18,17 @@ func (e Engine) Capture(ctx context.Context, c cell.Cell) (string, error) {
 	if err := e.recoverCompleted(ctx, c); err != nil {
 		return "", err
 	}
-	if err := e.screenCapture(ctx, c); err != nil {
+	if err := e.composeExtra(c); err != nil {
 		return "", err
 	}
-	var op Op = snapOp{Message: "materialization capture"}
-	// A new chat may need a capture before its first recorded turn. The seal
-	// verb attaches a named timeline atomically; snap requires one already there.
-	head, err := Head(c)
+	reply, err := e.plannedSnapshot(ctx, c, "materialization capture", nil, nil)
 	if err != nil {
 		return "", err
 	}
-	if head == nil {
-		op = sealOp{Turn: "materialization capture"}
+	if err = durable(ctx, c.Root); err != nil {
+		return "", err
 	}
-	out, err := e.do(ctx, c, e.cellDir(c), op)
-	if err != nil {
-		return "", fmt.Errorf("capture: %w", err)
-	}
-	return parseSnapshot(out)
+	return reply.Snapshot, nil
 }
 
 // Restore writes the snapshot back into the cell's folder, byte for byte:

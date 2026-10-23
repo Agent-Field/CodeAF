@@ -73,8 +73,7 @@ func (g Guard) Look(c cell.Cell, tree, policyDir string, changed, locks []string
 	}
 	left := g.leftOut(tree, changed, locks, policy)
 	policy = policy.leaving(left.paths())
-	scan := g.index.begin(captureKey(tree, c.ID))
-	secrets, unreadable := splitUnreadable(g.scanWith(tree, changed, policy, scan))
+	secrets, unreadable := splitUnreadable(g.scan(tree, changed, policy))
 	next := policy.with(pathsOf(secrets)).unreadableAre(pathsOf(unreadable))
 	if err := next.write(policyDir); err != nil {
 		return Screened{}, fmt.Errorf("screen for secrets: %w", err)
@@ -83,7 +82,6 @@ func (g Guard) Look(c cell.Cell, tree, policyDir string, changed, locks []string
 	g.announceUnreadable(policy, unreadable)
 	g.vault(c, tree, secrets)
 	left.Apart = next.apart()
-	left.scan = scan
 	return left, nil
 }
 
@@ -105,13 +103,9 @@ func splitUnreadable(found []keys.Finding) (secrets, unreadable []keys.Finding) 
 // paths already withheld or unreadable, which are looked at again so a file whose
 // permissions were fixed goes back into the next seal.
 func (g Guard) scan(tree string, changed []string, policy policyFile) []keys.Finding {
-	return g.scanWith(tree, changed, policy, nil)
-}
-
-func (g Guard) scanWith(tree string, changed []string, policy policyFile, scan *captureScan) []keys.Finding {
 	again := append(append([]string(nil), policy.withheld...), policy.unreadable...)
 	held := keys.Scanner{Skip: func(rel string) bool { return policy.isLeftOut(rel) || policy.isRebuilt(rel) }}.Paths(tree, again)
-	sc := keys.Scanner{Skip: skipping(policy), Ledger: g.Ledger, Visit: scan.visit}
+	sc := keys.Scanner{Skip: skipping(policy), Ledger: g.Ledger}
 	if changed == nil || len(changed) > maxChangedArgs {
 		return append(held, sc.Walk(tree)...)
 	}

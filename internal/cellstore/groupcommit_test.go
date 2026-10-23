@@ -194,9 +194,9 @@ func TestC28TornTailKeepsEarlierHistoryAndFutureWrites(t *testing.T) {
 	}
 }
 
-// TestC28SealCannotPublishBeforeRecordFlush proves C28/E1/L12: the engine
-// cannot return a sealed turn to its publishing wrapper until the call/turn
-// records reach disk, even though the recorder has not compacted the WAL yet.
+// TestC28SealCannotPublishBeforeRecordFlush proves C28/U1/L12: capture may
+// acknowledge ordered writes, but a publication boundary cannot acknowledge
+// a turn until its local call and turn records reach durable storage.
 func TestC28SealCannotPublishBeforeRecordFlush(t *testing.T) {
 	c := newCell(t)
 	fake := &fakeEngine{}
@@ -208,13 +208,41 @@ func TestC28SealCannotPublishBeforeRecordFlush(t *testing.T) {
 	path := filepath.Join(parent, "not-a-directory")
 	defer func() { commits.mu.Lock(); delete(commits.pending, commitPath{c.Root, path}); commits.mu.Unlock() }()
 	e.Run = func(ctx context.Context, dir string, environ []string, argv ...string) ([]byte, error) {
-		// Introduce the flush failure only after the pre-capture dependency flush.
+		// Introduce a durability failure while the capture is still allowed to finish.
 		out, err := fake.run(ctx, dir, environ, argv...)
 		commits.mark(c.Root, path, false)
 		return out, err
 	}
 	_, err := e.Seal(t.Context(), c, TurnInfo{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = Await(t.Context(), c)
 	if err == nil || !strings.Contains(err.Error(), "save call records") {
 		t.Fatalf("publisher received an unflushed turn: %v", err)
+	}
+}
+
+// TestU1BrokenEngineDoesNotHoldAnotherChatsGroup proves U1/C28: an engine
+// dependency failure retains its owner's debt while another chat still meets
+// the background power-loss window, without waiting for an explicit boundary.
+func TestU1BrokenEngineDoesNotHoldAnotherChatsGroup(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "records")
+	if err := os.WriteFile(file, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	q := newCommitQueue(func(string) error { return nil })
+	q.after = func(time.Duration, func()) {}
+	q.beforeFlush = func(_ context.Context, owner string) error {
+		if owner == "broken" {
+			return errors.New("engine unavailable")
+		}
+		return nil
+	}
+	q.mark("broken", file, false)
+	q.mark("healthy", file, false)
+	q.background()
+	if len(q.pending) != 1 || q.pending[commitPath{"broken", file}] == 0 {
+		t.Fatalf("healthy records were held by another engine: %v", q.pending)
 	}
 }

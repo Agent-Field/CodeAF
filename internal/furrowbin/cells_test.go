@@ -12,14 +12,15 @@ import (
 // TestC12EngineContract proves C12 by withholding each required verb and each
 // changed-path sealing flag, independently of any version string. D1 also
 // requires named timelines before separate chats may share an engine store.
+// U1/U2 additionally require token-bound captures and explicit durability.
 func TestC12EngineContract(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("this fake engine is a Unix shell script; K1 exercises the native engine")
 	}
-	for _, missing := range []string{"export", "published", "want", "import", "rebind", "materialize", "serve", "--changed", "--changed-stdin", "--cell-dir", "--timeline", ""} {
+	for _, missing := range []string{"export", "published", "want", "import", "rebind", "materialize", "serve", "capture-plan", "sync", "--plan", "--changed", "--changed-stdin", "--cell-dir", "--timeline", ""} {
 		t.Run("missing="+missing, func(t *testing.T) {
 			program := filepath.Join(t.TempDir(), "furrow")
-			help := "--changed PATH --changed-stdin --cell-dir DIR --timeline ID"
+			help := "--changed PATH --changed-stdin --cell-dir DIR --timeline ID --plan TOKEN"
 			if strings.HasPrefix(missing, "--") {
 				help = strings.ReplaceAll(help, missing, "")
 			}

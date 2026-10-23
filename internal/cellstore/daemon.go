@@ -49,8 +49,9 @@ type wireResponse struct {
 
 var nextID atomic.Uint64
 
-// Do implements Transport. Any failure before the daemon has answered is
-// ErrUnavailable; an answer that is an error is the engine's own.
+// Do implements Transport. A connection or health failure is ErrUnavailable.
+// An interrupted operation answer is surfaced because the engine may already
+// have completed the writes; a fallback must never replay that request (C28).
 func (d Daemon) Do(ctx context.Context, t Target, op Op) ([]byte, error) {
 	conn, err := d.connect(ctx)
 	if err != nil {
@@ -66,7 +67,9 @@ func (d Daemon) Do(ctx context.Context, t Target, op Op) ([]byte, error) {
 	}
 	response, err := exchange(conn, newRequest(t, op))
 	if err != nil {
-		return nil, unavailable(err)
+		// The engine may have completed its writes before the answer was lost.
+		// Replaying a mutation through a fallback would cross C28's no-repeat boundary.
+		return nil, fmt.Errorf("engine %s answer interrupted: %w", op.Verb(), err)
 	}
 	if response.Err != "" {
 		return nil, fmt.Errorf("engine %s: %s", op.Verb(), response.Err)
@@ -106,12 +109,29 @@ var healthWait = 5 * time.Second
 // not running is already stopped.
 func (d Daemon) Stop(ctx context.Context) error {
 	conn, err := dial(ctx, d.Socket)
-	if err != nil {
-		return nil
+	if err != nil && ctx.Err() != nil {
+		return ctx.Err()
 	}
-	defer conn.Close()
-	_, err = exchange(conn, wireRequest{V: wireVersion, ID: nextID.Add(1), Verb: "shutdown"})
-	return err
+	if err == nil {
+		stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+		defer stop()
+		_, err = exchange(conn, wireRequest{V: wireVersion, ID: nextID.Add(1), Verb: "shutdown"})
+		_ = conn.Close()
+		if err != nil {
+			return err
+		}
+	}
+	// The shutdown answer precedes the engine's final flush. Closing the control
+	// connection first lets its handler finish; only process exit releases every
+	// retained store handle, especially on native Windows (U1/U4).
+	if owned, ok := daemonExits.Load(d.Socket); ok {
+		select {
+		case <-owned.(<-chan struct{}):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return nil
 }
 
 func unavailable(err error) error { return fmt.Errorf("%w: %v", ErrUnavailable, err) }

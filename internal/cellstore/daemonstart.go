@@ -33,6 +33,10 @@ func idleFlag() string {
 // verb in that window goes straight to the fallback.
 const retryAfter = 30 * time.Second
 
+// daemonExits lets an owned shutdown join the process rather than guessing
+// how long its final group flush and catalog close will take (U1/C28).
+var daemonExits sync.Map
+
 var (
 	startMu sync.Mutex
 	failed  = map[string]failure{} // socket -> last failed start
@@ -88,9 +92,11 @@ func launch(d Daemon) (<-chan struct{}, error) {
 	}
 	exited := make(chan struct{})
 	remember(cmd.Process, exited)
+	daemonExits.Store(d.Socket, (<-chan struct{})(exited))
 	go func() { // reap it; it outlives this call by design
 		_ = cmd.Wait()
 		close(exited)
+		daemonExits.CompareAndDelete(d.Socket, (<-chan struct{})(exited))
 	}()
 	return exited, nil
 }
