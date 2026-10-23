@@ -573,13 +573,28 @@ func (a *app) openSession(chosen Session) (tea.Cmd, string) {
 	return cmd, ""
 }
 
-// welcomeRowPress is a click on one row of the unit: on a recent session it
-// opens that session, on the message box it does nothing — the keyboard is
-// already there, and a click that yanked the box to the foot of the frame would
-// be the surface moving the thing a person just aimed at — and anywhere else it
-// is the person reaching past the greeting, which dismisses it.
-func (a *app) welcomeRowPress(row int) tea.Cmd {
+// welcomeRowPress is a click on one row of the unit: on the attachment tray it
+// takes the chip under the pointer off, on a recent session it opens that
+// session, on the message box it does nothing — the keyboard is already there,
+// and a click that yanked the box to the foot of the frame would be the surface
+// moving the thing a person just aimed at — and anywhere else it is the person
+// reaching past the greeting, which dismisses it.
+func (a *app) welcomeRowPress(row, x int) tea.Cmd {
 	if !a.welcome.open {
+		return nil
+	}
+	// THE TRAY ANSWERS BY COLUMN as well as by row. The chips it drew came out
+	// of [app.welcomeUnitBox]'s lead, so the pointer's own column is the same
+	// one [app.chipPress] resolves a conversation's tray with — what is drawn
+	// and what a click hits are read from the same labels (attach.go's
+	// [app.chipAt]). The row is found through the unit's marks and not the foot
+	// chrome's geometry, because this tray has no foot chrome: it is a row of
+	// the unit [app.chipTrayTarget] deliberately refuses to see (attach.go).
+	if mark, ok := a.welcomeMarkAt(row); ok && mark.kind == welcomeRowTray {
+		_, lead := a.welcomeUnitBox(a.widthOr())
+		if i := chipAt(removableChipLabels(a.chips, a.pal), x-lead); i >= 0 {
+			a.removeChip(i)
+		}
 		return nil
 	}
 	if a.welcomeInputRow(row) {
@@ -866,6 +881,11 @@ const (
 	// welcomeRowStarter is one of the first conversation's starting points, and
 	// pressing it does what enter on it does: fills the box, sends nothing.
 	welcomeRowStarter
+	// welcomeRowTray is the attachment tray drawn above the start page's box
+	// while a drop is waiting on it ([app.welcomeUnit]). Pressing a chip's own
+	// column takes it off the way the conversation's tray does (attach.go's
+	// [app.chipPress]).
+	welcomeRowTray
 )
 
 // welcomeMark is one row's kind and, for a recent session, which one.
@@ -978,6 +998,21 @@ func (a *app) welcomeRows(width int) []string {
 	return rows
 }
 
+// welcomeUnitBox is the unit's width and the lead that centres it — the two
+// numbers every row of the unit is drawn with. The draw and the pointer ask
+// this one function, so a click can never land a column off from what was
+// painted (chipLabels' own law, attach.go).
+func (a *app) welcomeUnitBox(width int) (unit, lead int) {
+	unit = min(width-4, welcomeUnitWidth)
+	lead = (width - unit) / 2
+	// One cell further in while the unit is arriving: the whole slide is a
+	// single column, which is a movement a person notices without watching.
+	if a.welcome.step < welcomeSlide {
+		lead++
+	}
+	return unit, lead
+}
+
 // welcomeUnit is the unit as rows, one mark per row, and where the caret sits
 // in it — a column from the frame's left edge, and a row from the unit's top —
 // while the unit holds the message box.
@@ -994,13 +1029,7 @@ func (a *app) welcomeUnit(width int) ([]string, []welcomeMark, int, int) {
 	}
 	w := &a.welcome
 	pal := a.pal
-	unit := min(width-4, welcomeUnitWidth)
-	lead := (width - unit) / 2
-	// One cell further in while the unit is arriving: the whole slide is a
-	// single column, which is a movement a person notices without watching.
-	if w.step < welcomeSlide {
-		lead++
-	}
+	unit, lead := a.welcomeUnitBox(width)
 	pad := strings.Repeat(" ", lead)
 
 	rows := make([]string, 0, 16)
@@ -1044,12 +1073,35 @@ func (a *app) welcomeUnit(width int) ([]string, []welcomeMark, int, int) {
 
 	caretX, caretRow := 0, 0
 	if a.welcomeHolds() {
+		// THE TRAY IS PART OF THE BOX, AND THE START PAGE DRAWS ITS OWN — one
+		// row above the draft, the chips alone, dimmed the way the
+		// conversation's tray is (attach.go). A drop lands in the person's tray
+		// on this page through the same [app.keyboardBox] door it lands through
+		// anywhere else, and a page that accepted the file and painted nothing
+		// about it looked exactly like a page that had not (1827): the file only
+		// appeared once the chat opened and the composer's row finally drew it.
+		// It is the CHIPS ONLY and deliberately NOT [app.chipStrip]: this page
+		// has no chat yet, and the strip would draw the picked harness, folders
+		// and skills of the chat this page is about to replace over the box that
+		// belongs to a new one.
+		tray := ""
+		if labels := removableChipLabels(a.chips, pal); len(labels) > 0 {
+			painted := make([]string, len(labels))
+			for i, label := range labels {
+				painted[i] = pal.dim(label)
+			}
+			tray, _ = fitWidth(strings.Join(painted, chipGap), unit)
+		}
 		// THE DRAFT IS THE REAL DRAFT, laid out by the same function the foot of
 		// the frame uses, at the unit's width. It may not take the window: a
 		// restored draft six rows tall in a twelve-row window would push the
 		// wordmark off the top, so the box gets what is left after the rest of
-		// the unit and the status row have taken theirs.
+		// the unit and the status row have taken theirs — and the tray above it
+		// has taken a row of that same allowance.
 		box := max(1, min(draftRows, a.welcomeRowsLeft()-a.statusHeight(width)-8))
+		if tray != "" {
+			box = max(1, box-1)
+		}
 		// AND A SECRET IS MASKED WHEREVER THE BOX IS DRAWN. The greeting lifts
 		// the real draft into the middle of the frame, and a question asking for
 		// a credential is answered in exactly that box — so the one rule about
@@ -1060,9 +1112,17 @@ func (a *app) welcomeUnit(width int) ([]string, []welcomeMark, int, int) {
 		if block == nil {
 			block, x, row = draftBlockWithTags(&a.input, pal, unit, box, a.trafficHint(), a.roomLead(unit), a.input.demotedTags, a.draftInk())
 		}
+		if tray != "" {
+			block = append([]string{tray}, block...)
+			row++
+		}
 		caretX, caretRow = lead+x, len(rows)+row
-		for _, line := range block {
-			add(line, welcomeMark{kind: welcomeRowInput})
+		for at, line := range block {
+			kind := welcomeRowInput
+			if at == 0 && tray != "" {
+				kind = welcomeRowTray
+			}
+			add(line, welcomeMark{kind: kind})
 		}
 	}
 	// A DOOR THAT REFUSED SAYS SO HERE. While the start page is up the transcript

@@ -4858,7 +4858,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// on the screen.
 			if a.welcome.open && !a.roomOpen() {
 				if mark, ok := a.chromeAt(msg.Mouse().Y); ok && mark.kind == chromeWelcome {
-					return a, a.welcomeRowPress(mark.index)
+					return a, a.welcomeRowPress(mark.index, msg.Mouse().X)
 				}
 			}
 			// A CLICK ON THE BOX PUTS THE CARET UNDER THE POINTER (draftclick.go).
@@ -7484,7 +7484,7 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 	// dismissal means (welcome.go).
 	if a.welcome.open && !a.roomOpen() {
 		if mark, ok := a.chromeAt(y); ok && mark.kind == chromeWelcome {
-			return a.welcomeRowPress(mark.index)
+			return a.welcomeRowPress(mark.index, x)
 		}
 		a.dismissWelcome()
 	}
