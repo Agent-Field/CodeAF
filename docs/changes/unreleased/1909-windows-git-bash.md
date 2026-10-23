@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Run native Windows commands in Git Bash
-pr: 0
+pr: 1909
 surface: [chat, engine]
 invalidates:
   - "Native Windows commands previously selected the WSL launcher and parsed variables a second time in Linux. Native commands now select Git Bash, preserve shell variables and Windows file access, and omit the shell tool when no usable bash is installed."
