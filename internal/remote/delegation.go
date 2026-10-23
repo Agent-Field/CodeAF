@@ -18,7 +18,7 @@ import (
 func (s *server) delegationCall(call Frame) (json.RawMessage, bool, error) {
 	switch call.Method {
 	case MethodTeamsDefaults, MethodTeamsApplyDefault, MethodTeamsPackets, MethodTeamsRaise, MethodTeamsDecide,
-		MethodTeamsEscalate, MethodTeamsSpend, MethodTeamsDelete,
+		MethodTeamsEscalate, MethodTeamsSpend, MethodTeamsTotal, MethodTeamsDelete,
 		MethodTeamsWrapUp, MethodTeamsAcceptClosing:
 	default:
 		return nil, false, nil
@@ -111,6 +111,21 @@ func delegationAnswer(dir string, call Frame) (any, error) {
 		}
 		return SpendReading{Stamp: stamp, Spend: &spend}, nil
 
+	case MethodTeamsTotal:
+		args, err := arg[TotalArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		stamp := teamstore.TeamTotalStamp(dir, args.Team)
+		if args.Stamp != "" && args.Stamp == stamp {
+			return TotalReading{Stamp: stamp, Same: true}, nil
+		}
+		total, err := teamstore.TeamTotal(dir, args.Team)
+		if err != nil {
+			return nil, err
+		}
+		return TotalReading{Stamp: stamp, Total: &total}, nil
+
 	case MethodTeamsWrapUp:
 		args, err := arg[WrapUpArgs](call)
 		if err != nil {
@@ -188,6 +203,12 @@ func (c *Client) TeamsEscalate(id, by, to, reason string) (teamstore.Packet, err
 // nothing moved since stamp.
 func (c *Client) TeamsSpend(team, day, stamp string) (SpendReading, error) {
 	return delegationAsk[SpendReading](c, MethodTeamsSpend, SpendArgs{Team: team, Day: day, Stamp: stamp})
+}
+
+// TeamsTotal is one team's total live cost, all time, or word that neither
+// the teams file nor the ledger moved since stamp.
+func (c *Client) TeamsTotal(team, stamp string) (TotalReading, error) {
+	return delegationAsk[TotalReading](c, MethodTeamsTotal, TotalArgs{Team: team, Stamp: stamp})
 }
 
 // TeamsDelete forgets a closed team on the engine.

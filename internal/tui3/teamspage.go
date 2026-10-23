@@ -98,6 +98,8 @@ type teamsPage struct {
 	packetsKnown bool
 	spend        map[string]teamstore.Spend
 	spendStamp   map[string]string
+	total        map[string]teamstore.Total
+	totalStamp   map[string]string
 	defaults     teamstore.Defaults
 	defaultsOK   bool
 	world        map[string]session.SessionRow
@@ -549,6 +551,8 @@ type teamsGot struct {
 	defaultsOK   bool
 	spend        map[string]teamstore.Spend
 	spendStamp   map[string]string
+	total        map[string]teamstore.Total
+	totalStamp   map[string]string
 	world        map[string]session.SessionRow
 	worldKnown   bool
 	worldAsked   bool
@@ -628,6 +632,28 @@ func (a *app) teamsRead(withWorld bool) tea.Cmd {
 	for i, id := range pools {
 		spendSince[i] = a.tp.spendStamp[id]
 	}
+	// THE TOTALS, FOR EVERY TEAM THE RAIL DRAWS AND THE SELECTION. Each is
+	// its own figure beside the day's spend, stamped, so a quiet ledger
+	// leaves every one standing. A seam without the Total door (an older
+	// engine over --host, [app.teamsCanReadTotals]) asks for none and the
+	// page draws no totals.
+	var totalIDs []string
+	var totalSince []string
+	if a.teamsCanReadTotals() {
+		sel := a.tp.sel
+		seen := map[string]bool{}
+		for _, t := range a.wall.teams {
+			if t.Closed() && !a.tp.closedOpen && t.ID != sel {
+				continue
+			}
+			if seen[t.ID] {
+				continue
+			}
+			seen[t.ID] = true
+			totalIDs = append(totalIDs, t.ID)
+			totalSince = append(totalSince, a.tp.totalStamp[t.ID])
+		}
+	}
 	var files []string
 	if withWorld {
 		files = a.teamsMemberFiles()
@@ -662,7 +688,8 @@ func (a *app) teamsRead(withWorld bool) tea.Cmd {
 		rowsDoor = session.ReadRows
 	}
 	return a.besideLine(func() func(bool) tea.Cmd {
-		got := teamsGot{spend: map[string]teamstore.Spend{}, spendStamp: map[string]string{}}
+		got := teamsGot{spend: map[string]teamstore.Spend{}, spendStamp: map[string]string{},
+			total: map[string]teamstore.Total{}, totalStamp: map[string]string{}}
 		var wg sync.WaitGroup
 		// A large hierarchy must not start one remote request per team at once.
 		slots := make(chan struct{}, 4)
@@ -713,6 +740,22 @@ func (a *app) teamsRead(withWorld bool) tea.Cmd {
 				})
 			}
 		}
+		type totalGot struct {
+			total teamstore.Total
+			stamp string
+			ok    bool
+		}
+		totals := make([]totalGot, len(totalIDs))
+		if a.teamsCanReadTotals() {
+			for i, id := range totalIDs {
+				side(func() {
+					to, stamp, same, err := seam.Total(id, totalSince[i])
+					if err == nil && !same {
+						totals[i] = totalGot{total: to, stamp: stamp, ok: true}
+					}
+				})
+			}
+		}
 		var histories [][]teamstore.Packet
 		if seam.History != nil && len(closedReports) > 0 {
 			histories = make([][]teamstore.Packet, len(closedReports))
@@ -739,6 +782,11 @@ func (a *app) teamsRead(withWorld bool) tea.Cmd {
 		for i, id := range pools {
 			if spends[i].ok {
 				got.spend[id], got.spendStamp[id] = spends[i].spend, spends[i].stamp
+			}
+		}
+		for i, id := range totalIDs {
+			if totals[i].ok {
+				got.total[id], got.totalStamp[id] = totals[i].total, totals[i].stamp
 			}
 		}
 		// ONLY THE HISTORIES THAT WERE ASKED FOR. A seam with no History door
@@ -851,6 +899,15 @@ func (a *app) teamsFold(got teamsGot) tea.Cmd {
 		}
 		for id, s := range got.spend {
 			a.tp.spend[id], a.tp.spendStamp[id] = s, got.spendStamp[id]
+		}
+		changed = true
+	}
+	if len(got.total) > 0 {
+		if a.tp.total == nil {
+			a.tp.total, a.tp.totalStamp = map[string]teamstore.Total{}, map[string]string{}
+		}
+		for id, tv := range got.total {
+			a.tp.total[id], a.tp.totalStamp[id] = tv, got.totalStamp[id]
 		}
 		changed = true
 	}

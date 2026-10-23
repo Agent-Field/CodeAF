@@ -13,11 +13,12 @@ type memberFields Member
 type wireMember struct {
 	memberFields
 	JoinedAt *time.Time `json:"joined_at,omitempty"`
+	LeftAt   *time.Time `json:"left_at,omitempty"`
 }
 
 var knownMemberFields = map[string]bool{
 	"key": true, "file": true, "where": true, "word": true, "handle": true,
-	"home": true, "independent": true, "joined_at": true, "start_id": true, "started": true, "handle_by": true,
+	"home": true, "independent": true, "joined_at": true, "start_id": true, "started": true, "handle_by": true, "left_at": true,
 }
 
 func (m *Member) UnmarshalJSON(raw []byte) error {
@@ -32,6 +33,9 @@ func (m *Member) UnmarshalJSON(raw []byte) error {
 	*m = Member(w.memberFields)
 	if w.JoinedAt != nil {
 		m.JoinedAt = *w.JoinedAt
+	}
+	if w.LeftAt != nil {
+		m.LeftAt = *w.LeftAt
 	}
 	for k, v := range all {
 		if !knownMemberFields[k] {
@@ -49,6 +53,10 @@ func (m Member) MarshalJSON() ([]byte, error) {
 	if !m.JoinedAt.IsZero() {
 		at := m.JoinedAt
 		w.JoinedAt = &at
+	}
+	if !m.LeftAt.IsZero() {
+		at := m.LeftAt
+		w.LeftAt = &at
 	}
 	raw, err := json.Marshal(w)
 	if err != nil || len(m.extra) == 0 {

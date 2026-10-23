@@ -1291,6 +1291,13 @@ type Welcome struct {
 	// with `Close now` only over that connection, said as such.
 	WrapUp bool `json:"wrap_up,omitempty"`
 
+	// TeamsTotal says this engine ANSWERS [MethodTeamsTotal]: the teams page
+	// can draw a team's total live cost over the connection. A flag beside
+	// [Welcome.Delegation] for its reason, so an engine built between the two
+	// reads the spend and not the total. ABSENCE IS false, and false leaves
+	// the page's totals out over that connection, said as such.
+	TeamsTotal bool `json:"teams_total,omitempty"`
+
 	// TeamAsk says this engine ANSWERS THE WALL'S TWO MODEL ASKS
 	// ([MethodTeamsName], [MethodTeamsPropose]): its agent names a group of
 	// conversations and proposes teams on its own naming role.
