@@ -131,7 +131,7 @@ func runCompletedPlanRecovery(t *testing.T, live bool) {
 		defer server.Close()
 		base = server.URL
 	}
-	env := []string{config.APIKeyEnv + "=" + key, "CODEAF_BASE_URL=" + base, "CODEAF_PROFILE_DIR=", "CODEAF_CALL_LOG_BODIES=1"}
+	env := []string{config.APIKeyEnv + "=" + key, "CODEAF_BASE_URL=" + base, "CODEAF_PROFILE_DIR=", "CODEAF_DEBUG=0", "CODEAF_CALL_LOG_BODIES=0"}
 	stopRecoveryEngineOnCleanup(t, env, home, ws)
 	rig := startWithEnv(t, env, "completed_recovery", home, ws, 180, 50, "chat", "--model", model, "--one-model", "--yolo")
 	rig.skipSetup(t)
