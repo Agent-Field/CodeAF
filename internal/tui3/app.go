@@ -2525,11 +2525,10 @@ type app struct {
 	// ([app.homeSlash]), and it is what tells a command's answer apart from every
 	// other note this surface writes ([app.noteWritten] holds the argument).
 	echoHome bool
-	// target is the draft home's box is FOR: which folder the next conversation
-	// opens in and which model it answers on (homedraft.go). It lives on the app
-	// rather than on [homeView] because both pins survive `esc` and a reopen of
-	// home — the owner's ruling, and homeView is rebuilt every time the screen is
-	// raised.
+	// target is the draft home's box is FOR: which folder the next conversation opens in and
+	// which model it answers on (homedraft.go). It lives on the app rather than on [homeView]
+	// because both pins survive `esc` and a reopen of home —, and homeView is rebuilt every
+	// time the screen is raised.
 	target homeTarget
 	// targetRow is which row of the frame home's rule was drawn on, and
 	// targetFolderSpan and targetModelSpan are the columns its two doors landed
@@ -2973,8 +2972,8 @@ type app struct {
 	// (homeband_repo.go's [app.repoAsking] states this law).
 	folderAsking map[string]bool
 	// placeChosen is the last directory this conversation chose, whichever road
-	// it came in by ([app.referPlace]). It is what P1 keeps; lane P2 is what
-	// turns it into a remembered set on the conversation's meta.
+	// it came in by ([app.referPlace]). It is persisted as part of the
+	// remembered set on the conversation metadata.
 	placeChosen string
 	// recentSessions answers the box's right column and the picker's rows, and
 	// resume opens one of them. Both are nil on a surface the door did not wire,

@@ -12,7 +12,7 @@ package main
 //   - WHICH PROJECT. The workspace is the git root of the directory the person
 //     stood in, so `codeaf` typed in repo/cmd and in repo/ is the same project.
 //     The encoded directory name is a bucket and not an identity — meta.json
-//     carries the real path — which is what lets the encoding stay dumb.
+//     carries the real path — which is what lets the encoding stay simple.
 //   - BORROWED OR OWNED. A conversation opened inside a project borrows it and
 //     litters nothing; one opened nowhere at all owns a workspace of its own.
 //   - WHICH CONVERSATION. The newest one the PERSON spoke in, or a fresh

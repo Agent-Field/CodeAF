@@ -1709,8 +1709,8 @@ func (s *jobSink) trimLocked() {
 		return
 	}
 	start := len(s.ring) - jobRingBytes
-	// Do not cut a rune in half: a tail starting mid-character renders as a
-	// replacement glyph in the model's context for no reason.
+	// Do not cut a rune in half: a tail starting mid-character renders as
+	// a replacement glyph in the model's context for no reason.
 	for start < len(s.ring) && !utf8RuneStart(s.ring[start]) {
 		start++
 	}

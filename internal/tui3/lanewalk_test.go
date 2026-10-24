@@ -15,9 +15,8 @@ import (
 
 // ── THE PICKER IS A TREE, AND THE LANE IS WRITTEN ON THE MODEL ──────────────
 //
-// the implementation. The owner opened /model on 2026-09-10,
-// pressed ← and →, and asked how anybody changes the provider of a model. Every
-// test here is one of the four answers, driven the way a person drives it.
+// the design notes Every test here is one of the four answers, driven
+// the way a person drives it.
 
 // walkCatalog puts the model in use twelfth, which is where the owner's own
 // catalog put it: [picker.start] opens the cursor on it, and [listTop] leaves it

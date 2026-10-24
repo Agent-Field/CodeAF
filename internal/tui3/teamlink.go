@@ -36,7 +36,7 @@ import (
 // opened so the row is there. Over --host against an engine without the teams
 // doors ([app.teamsOff]) the page cannot open, so the press still opens the
 // conversations view on that team, and the hint says that rather than the
-// page. A member's hint names the title: `Open @security · santosh dev2
+// page. A member's hint names the title: `Open @security · example dev2
 // branch… · click`.
 //
 // THE HOVER IS A GROUND, as every other control on this surface answers the

@@ -9,14 +9,12 @@ import (
 
 // ── SELECTING TEXT INSIDE A BOX ─────────────────────────────────────────────
 //
-// THE DEFECT THIS FILE EXISTS FOR. Mouse reporting takes the terminal's own
-// drag-select away — dragselect.go states that law and answers it for the
-// transcript — and every BOX on this surface was left out of the answer: a
-// press on the message box put the caret under the pointer and returned
-// (draftclick.go, placemouse.go), so the sweep that followed reached nothing at
-// all. The drag machinery parks on the BODY, and a press a box has already
-// taken never parks. The owner's words were "i am unable to select text with
-// highlight from input bar in all places … it acts like normal text".
+// THE DEFECT THIS FILE EXISTS FOR. Mouse reporting takes the terminal's own drag-select
+// away — dragselect.go states that law and answers it for the transcript — and every BOX
+// on this surface was left out of the answer: a press on the message box put the caret
+// under the pointer and returned (draftclick.go, placemouse.go), so the sweep that
+// followed reached nothing at all. The drag machinery parks on the BODY, and a press a box
+// has already taken never parks.
 //
 // So a box now selects the way the transcript does and the way every text field
 // does: sweep and the run wears the highlight, double-click takes the word,

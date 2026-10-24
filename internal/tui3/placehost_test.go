@@ -123,10 +123,7 @@ func TestTheTabBarNamesTheMachineOverHostAndNeverAtHome(t *testing.T) {
 	}
 }
 
-// The tasks place over --host draws THE FAR MACHINE'S work and not one row of
-// this one's. It is the owner's own report, turned into a test: they attached to
-// tower, pressed the tasks tab, and read "work codeaf ran on its own. 8, $22.54
-// of it." — the laptop's eight tasks and the laptop's money.
+// The tasks place over --host draws THE FAR MACHINE'S work and not one row of this one's.
 func TestTheTasksPlaceOverHostDrawsTheFarMachinesWork(t *testing.T) {
 	a := hostedPlaceLab(t)
 	now := time.Now()

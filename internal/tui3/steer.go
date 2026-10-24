@@ -427,11 +427,8 @@ func (a *app) tookSteer(msg steeredMsg) tea.Cmd {
 // typingHint is the send half of the running-turn hint while there is something
 // in the box or on the tray.
 //
-// It teaches plain enter first, then the queue key where the terminal can send
-// it and there are words to queue. THE STOP-AND-SEND CHORD IS NOT NAMED HERE,
-// by the owner's call (2026-09-30): `ctrl+shift+enter` still stops and sends
-// (bargein.go) and the key sheet lists it, but the slot it held on this line
-// went to the queue key, which is pressed far more often.
+// It teaches plain enter first, then the queue key where the terminal can send it and
+// there are words to queue.
 //
 //	enter steers it in · ctrl+enter queue
 var steerShortHint = "enter " + steerSendWord

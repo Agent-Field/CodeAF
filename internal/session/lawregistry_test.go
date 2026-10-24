@@ -145,8 +145,7 @@ var lawRegistry = []lawUnit{
 	// task and a quick task all report themselves; lanes deleting a tool's own
 	// copy of that rule are deleting it on the strength of THIS line, so its
 	// wording is a fixture and not a draft.
-	// AND THE KEY IS THE FAMILY FRAGMENT RATHER THAN THE WHOLE SENTENCE (lane F,
-	// 2026-09-10). `jobs` said this twice in its own description and `watch`
+	// AND THE KEY IS THE FAMILY FRAGMENT RATHER THAN THE WHOLE SENTENCE. `jobs` said this twice in its own description and `watch`
 	// said it once more; all three are deleted now on the strength of the page's
 	// line, and `watch.instead-of-polling` went with them because the law it
 	// filed no longer has a verb-class home. Matching on the shorter fragment is
@@ -183,10 +182,7 @@ var lawRegistry = []lawUnit{
 	{id: "tasks.look-inside", class: lawCore, key: "Look inside running or landed work with `tasks` and its id"},
 	{id: "tasks.continue-is-not-a-new-task", class: lawCore, key: "never a fresh `propose_task`"},
 	{id: "read.what-read-cannot-turn-into-text", class: lawCore, key: "What `read` cannot turn into text → `read_document`"},
-	// ── and the two triggers for a program codeaf carries (delegate_door.go's
-	// [delegateFact], the owner's call of 2026-09-24): the work a program's own
-	// guide claims goes to it, and so does work the person asks one for. What
-	// each program is for is its guide's; these say only that codeaf prefers it.
+	// What each program is for is its guide's; these say only that codeaf prefers it.
 	{id: "program.work-it-is-for", class: lawCore, key: "AND WORK A PROGRAM BUILT INTO CODEAF IS FOR GOES TO IT WHOLE"},
 	{id: "program.the-one-asked-for", class: lawCore, key: "so does work the person asks one for, by name or as `/name`."},
 	// ── the mark codeaf leaves on work it did in somebody's name. It is core

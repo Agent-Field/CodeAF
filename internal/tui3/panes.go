@@ -10,17 +10,12 @@ import (
 
 // ── TWO PANES, SIDE BY SIDE ─────────────────────────────────────────────────
 //
-// ONE WIDTH DECIDES WHETHER A FRAME HOLDS TWO COLUMNS, AND THIS SURFACE ALREADY
-// HAD IT. The task column stands beside the conversation from [railSlimFloor]
-// up and under it "the transcript is the thing a person came for" (task.go);
-// the owner's picks of 2026-09-11 put a question's answers beside the evidence
-// of the one the pointer is on at the same width (preview A, page A, "≥100
-// cols") and fold that evidence under its row below it (preview-narrow B). So
-// there is one reading of it, [besideFits], and one way to lay two columns out,
-// [besides] — the panel and the page both ask here, and neither measures its
-// own. (The asker's own two-pane layout block decides by its CONTENT instead:
-// its panes stand side by side wherever both fit whole, which is the reason a
-// fixed width was only ever standing in for — questionblocks.go.)
+// ONE WIDTH DECIDES WHETHER A FRAME HOLDS TWO COLUMNS, AND THIS SURFACE ALREADY HAD IT. So
+// there is one reading of it, [besideFits], and one way to lay two columns out, [besides]
+// — the panel and the page both ask here, and neither measures its own. (The asker's own
+// two-pane layout block decides by its CONTENT instead: its panes stand side by side
+// wherever both fit whole, which is the reason a fixed width was only ever standing in for
+// — questionblocks.go.)
 //
 // A SEAM, NOT A BOX. The two panes are one object split in two, so the line
 // between them is the frame's own side ([tokens.GFrameSide]) and the rules

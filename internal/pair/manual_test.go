@@ -143,7 +143,7 @@ func TestTheManualQuotesTheLimitsThisPackageActuallyApplies(t *testing.T) {
 
 // The page must not describe the keychain or a fingerprint as something that
 // works, because neither is built. A page that promised one would be the worst
-// possible failure of this lane: somebody choosing to pair a device because
+// possible failure of this test: somebody choosing to pair a device because
 // they believed the key was behind a fingerprint.
 func TestTheManualDoesNotPromiseAKeychainThisBuildDoesNotHave(t *testing.T) {
 	page, ok := manual.Chat().Page("reaching-this-machine-without-ssh")

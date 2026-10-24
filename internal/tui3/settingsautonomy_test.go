@@ -39,8 +39,8 @@ func autonomySettingsApp(t *testing.T) *app {
 	return a
 }
 
-// A SETTING THAT CHANGES WHAT THE PROGRAM DOES ON ITS OWN IS NEVER REACHABLE
-// ONLY BY A SLASH COMMAND (owner ruling 2026-09-11).
+// A SETTING THAT CHANGES WHAT THE PROGRAM DOES ON ITS OWN IS NEVER REACHABLE ONLY BY A
+// SLASH COMMAND.
 //
 // `/autonomy` was the only door to these rules, and a slash command is invisible:
 // somebody who has never been told the word cannot find the one setting that

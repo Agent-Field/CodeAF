@@ -16,7 +16,7 @@ import (
 // Resume is what a chat that moved here left behind. The transcript says what
 // was done; it cannot say what is not running now, what the copy left out, or
 // what this machine lacks, and those three are the whole of a Resume
-// (docs/STAGE-1-CONTRACTS.md section 19.5). It is facts, never a summary.
+// . It is facts, never a summary.
 //
 // A Resume is built with no model call, from the record the other machine
 // sealed and from a look at this one, and it carries no command to run: the

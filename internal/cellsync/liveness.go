@@ -1,7 +1,7 @@
 package cellsync
 
 // Liveness is a watch socket that can vouch for the leases this process holds
-// (STAGE-1-CONTRACTS.md §21.11). While it does, the relay counts the socket's
+// . While it does, the relay counts the socket's
 // pings as the holder's proof of life, so the Batcher need not heartbeat.
 type Liveness interface {
 	// Keep names the lease of cell at fence on the socket and answers how to

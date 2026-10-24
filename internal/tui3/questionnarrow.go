@@ -294,12 +294,11 @@ func (a *app) questionBandWord(word, key string, width int) string {
 // is, the key it also answers to, its word, and `◆ recommended` at the right
 // edge where the asker named this one.
 //
-// IT IS THE PANEL'S ROW GRAMMAR ON A PHONE (owner ruling 2026-09-11, colour
-// pick C and recommended pick A): the marks are amber, the key is the payload
-// hue, the word is ordinary ink, and the row the pointer stands on takes the
-// GROUND ladder rather than a colour. The sheet used to paint every band in the
-// question hue with its key in brackets, which was the one surface still
-// shouting — and it was the one surface where the pick was not said at all.
+// IT IS THE PANEL'S ROW GRAMMAR ON A PHONE: the marks are amber, the key is the payload
+// hue, the word is ordinary ink, and the row the pointer stands on takes the GROUND ladder
+// rather than a colour. The sheet used to paint every band in the question hue with its
+// key in brackets, which was the one surface still shouting — and it was the one surface
+// where the pick was not said at all.
 //
 // Under the mouse it takes the hover background every pressable row on this
 // surface takes (hover.go) — an affordance for a mouse and a no-op for a thumb,

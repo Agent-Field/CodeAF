@@ -107,7 +107,7 @@ type InvokeRequest struct {
 // harnessOptions builds the appx.HarnessOptions for one invocation — the cwd
 // and project_dir keyword arguments HarnessWrapper passed to app.harness. The
 // rest of what Python passed (provider, model, max_turns, max_budget_usd, the
-// provider environment, schema_max_retries=0, an opencode server) configured an
+// provider environment, schema_max_retries=0, a tool server) configured an
 // external CLI that codeaf does not run, and was dropped with it.
 func (w *HarnessWrapper) harnessOptions(req InvokeRequest) appx.HarnessOptions {
 	return appx.HarnessOptions{

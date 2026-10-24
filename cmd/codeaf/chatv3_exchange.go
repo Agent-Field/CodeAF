@@ -7,7 +7,7 @@ package main
 //
 // ───────────────────────────────────────────────────────────────────────────
 // MERGE NOTE (lane errand). Everything in this file is new, and the only line
-// this lane added outside it is the `Errand:` / `ErrandsRoot:` pair in
+// this implementation added outside it is the `Errand:` / `ErrandsRoot:` pair in
 // chatv3.go's tui3.Options literal. If that literal has moved under another
 // lane, the pair is the whole of what has to be carried across.
 // ───────────────────────────────────────────────────────────────────────────

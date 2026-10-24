@@ -1,4 +1,4 @@
-// Command replay runs the lane C shadow selector over lane B's SharedSnapshot
+// Command replay runs the shadow selector over a SharedSnapshot
 // and the live model catalog, producing the dev-test deliverables:
 //
 //	(a) docs/selection/decision-table.txt — per-seat shadow decision

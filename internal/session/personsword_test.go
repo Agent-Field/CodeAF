@@ -2,10 +2,7 @@ package session
 
 // THE PERSON'S WORD WINS, AND IT WINS AT THE REQUEST.
 //
-// steer.go states the law and the run it was measured against: a task step
-// thirteen minutes into a wait, the owner picking another model, and the step
-// still talking to the model they had moved off a minute later. These fixtures
-// are the two halves of the rule and the clock on both.
+// These fixtures are the two halves of the rule and the clock on both.
 //
 // EVERY ASSERTION IS ON THE WIRE. What each request carried is
 // [scriptedCompleter.model] — the model id the adapter was actually handed for

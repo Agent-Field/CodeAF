@@ -138,7 +138,7 @@ func (a *Agent) watchLane(name laneName, method string) (<-chan session.Event, f
 // THE REPLICA IS MOVED BEFORE THE EVENT IS DELIVERED, and that is done at the
 // frame rather than here (client.go's reader): a surface woken by this lane
 // draws [Agent.Title] on the very next frame, and a cached name a beat behind
-// the event announcing it is the whole defect this lane exists to avoid.
+// the event announcing it is the whole defect this implementation exists to avoid.
 func (a *Agent) WatchTitle() (<-chan session.Event, func()) {
 	return a.watchLane(laneTitle, MethodTitleWatch)
 }

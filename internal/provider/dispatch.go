@@ -761,15 +761,13 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// ── A REFUSAL THAT NAMED A MACHINE IS THAT MACHINE'S, AND THE OTHERS
 		// HAVE SAID NOTHING ─────────────────────────────────────────────────
 		//
-		// THE OWNER'S RULING, 2026-09-10: "that is in OpenRouter, that does not
-		// matter — if we get any such error or error in general we need to
-		// recover." An account-policy 404 and a 400 the router RELAYED from the
-		// endpoint it picked are neither a person's mistake nor a fact about the
-		// model: they are one machine saying no, and the answer to them is the
-		// same walk a 429 gets. Until this line they ended the call, and the
-		// rotation that eventually moved was the SESSION's — three whole turns
-		// apart, each learning the same fact over again through the ledger
-		// (refusal_test.go's `TestThreeAttemptsAfterAnUpstreamRefusalReach…`).
+		// An account-policy 404 and a 400 the
+		// router RELAYED from the endpoint it picked are neither a person's mistake nor a fact
+		// about the model: they are one machine saying no, and the answer to them is the same
+		// walk a 429 gets. Until this line they ended the call, and the rotation that eventually
+		// moved was the SESSION's — three whole turns apart, each learning the same fact over
+		// again through the ledger (refusal_test.go's
+		// `TestThreeAttemptsAfterAnUpstreamRefusalReach…`).
 		//
 		// A REFUSAL THAT NAMED NOBODY IS NOT THIS. That one is the router
 		// reading our own bytes and saying no, and every machine alive will say
@@ -944,8 +942,8 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		}
 		// ── "NOT YET" IS ANSWERED BY GOING SOMEWHERE ELSE ───────────────────
 		//
-		// THE OWNER'S RULING, 2026-09-10: a person must never work around a 429
-		// by switching models themselves. So the three moves, in this order.
+		// The recovery rule: a person must never work around a 429 by switching models themselves.
+		// So the three moves, in this order.
 		//
 		// FIRST, ANOTHER MACHINE, AT ONCE. The refusing machine is off the next
 		// body and the next body goes out with no backoff at all — see [moved].

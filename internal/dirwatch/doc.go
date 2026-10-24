@@ -27,8 +27,8 @@
 //     the relay closed because it went quiet (CloseSilent) is dialled again at
 //     once. The set is empty while
 //     State.Up is false, because the relay names who is online only when a
-//     socket opens. A surface draws "● spark" for a name in Online and
-//     "○ dumb" otherwise, and reads the last time a device was seen from the
+//     socket opens. A surface draws "● laptop" for a name in Online and
+//     "○ desktop" otherwise, and reads the last time a device was seen from the
 //     device record's last_seen.
 //   - State.Joined lists the newest MaxJoined device-joined events, oldest
 //     first, each with a Seq that only rises. A surface remembers the newest

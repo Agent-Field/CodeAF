@@ -12,7 +12,7 @@ import (
 // A run is not a node: no row, no roster, nothing on screen that knows it
 // exists. Its three event kinds are the whole of the surface's knowledge of one,
 // and they arrive on a subscription of the session's own — never on a turn's
-// stream, because the run outlives the turn that started it. Until this lane was
+// stream, because the run outlives the turn that started it. Until this test was
 // opened the events fired into nothing and the run's page could not be reached.
 
 // runLaneAgent is a session driving adaptive runs: the standing lane, and

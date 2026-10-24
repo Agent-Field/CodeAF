@@ -98,12 +98,9 @@ func TestTheSeamSaysWhatRunsWithoutAskingAtEveryPosture(t *testing.T) {
 	}
 }
 
-// THE GREETING DRAWS NO BADGE, AT ANY POSTURE. The welcome box stands where
-// the conversation will be with no seam over it, and the red word in the
-// corner of that empty frame was the thing the owner asked to have removed:
-// the first keystroke puts the seam up with the cell on it. And a frame with
-// no greeting and no cell — a window whose engine has no dial — still says
-// `YOLO` on the row when the gate is open, and only then.
+// THE GREETING DRAWS NO BADGE, AT ANY POSTURE. And a frame with no greeting and no cell —
+// a window whose engine has no dial — still says `YOLO` on the row when the gate is open,
+// and only then.
 func TestTheGreetingDrawsNoBadgeAndAFrameWithNoChipStillDoes(t *testing.T) {
 	agent, a := gated(t)
 	agent.stored = session.PostureAllow

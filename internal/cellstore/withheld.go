@@ -17,7 +17,7 @@ import (
 // lands in the person's folder; a cell that seals its own folder uses that
 // folder's file. Below one marker line sit the paths withheld because they
 // carry secrets, and below another the install folders left out because a
-// lockfile that does travel rebuilds them (docs/STAGE-1-CONTRACTS.md section 19).
+// lockfile that does travel rebuilds them.
 // Two more blocks set single paths apart: those this machine cannot read (a file
 // with no permissions, a folder it may not list) and those whose name this
 // machine's file system cannot keep beside another's (written when a chat is

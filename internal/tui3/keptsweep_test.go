@@ -11,10 +11,10 @@ import (
 
 // THE SWEEP: what gives an open conversation's cost back without a person asking.
 //
-// The keeper refuses nothing however many conversations somebody opens, which is
-// the owner's own ruling — so the only honest way to bound what a window holds is
-// to let go of the ones nothing would be lost from. These tests are the list of
-// what "nothing would be lost" means, one claim at a time.
+// The keeper refuses nothing however many conversations somebody opens — so the only
+// honest way to bound what a window holds is to let go of the ones nothing would be lost
+// from. These tests are the list of what "nothing would be lost" means, one claim at a
+// time.
 
 // askingAgent is a conversation stopped on a question. No other double on this
 // surface answers [session.Agent.NeedsPerson], and the sweep asks that door

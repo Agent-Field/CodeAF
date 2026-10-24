@@ -600,9 +600,8 @@ func tasksPolishFixture() (session.World, session.UsageWindow, time.Time) {
 // tasksOpen is one reading with every fold open, for the tests that are about
 // something other than folding.
 //
-// EVERY CONVERSATION AND EVERY FAMILY OPENS SHUT (the owner's ruling — see
-// [tasksReading.opens]). A test written to look at a piece of work would be
-// looking at the root standing over it instead, so it says which it means by
+// EVERY CONVERSATION AND EVERY FAMILY OPENS SHUT. A test written to look at a piece of
+// work would be looking at the root standing over it instead, so it says which it means by
 // asking for this. The tests that are ABOUT the folds do not call it.
 func tasksOpen(r tasksReading) tasksReading {
 	r.unfolded = true

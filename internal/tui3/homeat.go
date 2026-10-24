@@ -9,13 +9,9 @@ import (
 
 // ── THE `@` LIST ON HOME ─────────────────────────────────────────────────────
 //
-// Home's box is a draft for a conversation that does not exist yet, and until
-// 2026-09-22 an `@` typed into it was two letters of a search: the completion
-// that every conversation's box has (files.go) was bound to that box alone. The
-// owner met it as a bug — the hint on home's own row promised the list — and
-// this file is the other binding: the same [completion], synced against home's
-// box, drawn as rows of home's column exactly as the slash list is
-// (homeslash.go's [homeView.commandLines]), and answered by the same enter.
+// Home's box is a draft for a conversation that does not exist yet, and until 2026-09-22
+// an `@` typed into it was two letters of a search: the completion that every
+// conversation's box has (files.go) was bound to that box alone.
 //
 // WHAT IT WALKS IS WHERE THE NEXT CONVERSATION OPENS ([app.targetWhere]),
 // because that is the folder the sentence is about; a target moved by `alt+p`

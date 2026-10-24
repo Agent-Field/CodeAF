@@ -315,7 +315,7 @@ func TestTheSheetsDoubtsRankALaneLastAndAProbeStillAsksIt(t *testing.T) {
 		t.Fatalf("the probe drew %+v, want the doubted lane asked first", probed)
 	}
 
-	// AND EVIDENCE ENDS THE DOUBT. Three tool calls this lane actually served are
+	// AND EVIDENCE ENDS THE DOUBT. Three tool calls this test actually served are
 	// a measurement of the thing the sheet was guessing at.
 	served := lanes[ID{Model: testModel, Lane: "GMICloud"}]
 	served.Quality = Beta{A: 12, B: 1}

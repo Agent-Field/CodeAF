@@ -2935,7 +2935,7 @@ func (w *settlementWatch) checklistFor(nodeID string, wrote []string) (rows []re
 // is empty - contains no implementation" over exit 0 for want of the Unclosed
 // field, and another produced no file at all and reported settled, done, success
 // under a note explaining that the review had overreached
-// (2026-08-28, meta/muse-spark-1.1). Exit 2, partial, is the honest code for a
+// (2026-08-28, a model response). Exit 2, partial, is the honest code for a
 // job that delivered less than it promised.
 //
 // THE READING IS store.DeliveryGate.Whole AND IT IS NOT REPEATED HERE. This

@@ -400,7 +400,7 @@ func saidGround(said, workspace string) taskStand {
 // made ~/Desktop/pong, named it as ground and said `in place` handed senior-dev
 // the whole home folder; senior-dev, finding no git history there, began to
 // snapshot all of it and died on the first folder macOS keeps to itself
-// (`open /Users/…/.Trash: operation not permitted`). So a program's placement
+// (`open /workspace/.Trash: operation not permitted`). So a program's placement
 // is its own (programfolder.go) and `where` is not read for it.
 //
 // THE FOLDER IS READ BEFORE THE CARD, as the run will read it: snapped to its

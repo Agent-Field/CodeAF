@@ -179,7 +179,7 @@ func TestAPressOnTheEvidenceBesideTheListPressesNothing(t *testing.T) {
 
 // THE ANSWER THE POINTER IS ON IS ALWAYS ON SCREEN, in one column and in two
 // panes, however far down the arrows walk and however tall the evidence under
-// it — the defect lane F measured on the old page, where the window moved only
+// it — the regression on the old page, where the window moved only
 // under the wheel.
 func TestTheAnswerThePointerIsOnIsAlwaysOnScreen(t *testing.T) {
 	q := tallEvidence()

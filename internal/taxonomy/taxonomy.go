@@ -173,7 +173,7 @@ const (
 
 // Evidence is everything the boundary is allowed to reason from.
 //
-// It is deliberately small and deliberately dumb: booleans and counts that the
+// It is deliberately small and deliberately simple: booleans and counts that the
 // call site reads off the helpers it already has ([provider.RefusalFrom],
 // [provider.CutFrom], a tally the work carries), never an error to be
 // re-grepped here. A second pattern list in this package would be a second

@@ -10,14 +10,12 @@ import (
 
 // ── THE CARD'S DOORS, AND THE POINTER ON THEM ───────────────────────────────
 //
-// THE RIGHT COLUMN HAS DOORS AND NOTHING ON IT SAID SO. A fold line opens the
-// band it is the foot of, and a work row opens that task's record — both of
-// them presses a person can make and neither of them a thing the card drew any
-// differently from the sentences around it. On a terminal that is worse than on
-// a page: there is no underline, no cursor change, no affordance at all except
-// the one the surface paints, so a card whose doors look exactly like its prose
-// is a card that hides every door it has. The owner met it as a task row that
-// opened a record when pressed and lit nothing when pointed at.
+// THE RIGHT COLUMN HAS DOORS AND NOTHING ON IT SAID SO. A fold line opens the band it is
+// the foot of, and a work row opens that task's record — both of them presses a person can
+// make and neither of them a thing the card drew any differently from the sentences around
+// it. On a terminal that is worse than on a page: there is no underline, no cursor change,
+// no affordance at all except the one the surface paints, so a card whose doors look
+// exactly like its prose is a card that hides every door it has.
 //
 // So the line under the pointer takes THE GROUND LADDER'S CURSOR STEP
 // ([palette.cursor], styles.go — the same background the left column's hovered

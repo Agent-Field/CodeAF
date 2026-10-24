@@ -13,8 +13,7 @@ import (
 
 // ── A TEAM'S MEMBERS: ACTIVE ONES ON THE HEADER, EVERYONE ON A CARD ─────────
 //
-// The pane's header is one line (owner feedback 2026-09-24, which replaced two
-// wrapped rows of every member as prose):
+// The pane's header is one line:
 //
 //	● harbor  ◆ Manager   @news ⠿ working   @review ? asking   +4 idle     $0.42 today   Settings  Close…  Open ▦
 //

@@ -159,12 +159,11 @@ import (
 //
 // ── AND THE SAME MARK SERVES THE OTHER PAGE ────────────────────────────────
 //
-// A task's page is one question — the instruction the work was given — and
-// everything the person says on it after that is, by the nature of the page, a
-// correction to work already moving. So it is drawn with this mark too: the
-// elbow where it was said, no turn opened, and on replay a correction that reads
-// as a correction rather than as a second brief (the implementation,
-// Decision 2 and the owner's ruling 2).
+// A task's page is one question — the instruction the work was given — and everything the
+// person says on it after that is, by the nature of the page, a correction to work already
+// moving. So it is drawn with this mark too: the elbow where it was said, no turn opened,
+// and on replay a correction that reads as a correction rather than as a second brief
+//.
 //
 // ONE THING IS TRUE THERE THAT IS NOT TRUE HERE, and it earns the one field this
 // file added for it ([steerElbow.receipt]). A correction typed into this
@@ -173,8 +172,7 @@ import (
 // correction typed into a TASK crosses to ANOTHER AGENT, and there is a moment —
 // sometimes a long one, when the node had parked on the pieces it handed out —
 // in which nothing at all happens on the page. That silence is
-// indistinguishable from the words having gone nowhere, and it is why the owner
-// ruled (2026-09-01) that every task steer confirms delivery:
+// indistinguishable from the words having gone nowhere, so every task steer confirms delivery:
 //
 //	└ use the staging bucket, not production · delivered
 //

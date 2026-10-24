@@ -10,14 +10,12 @@ import (
 
 // ── THE ONE FRAME ───────────────────────────────────────────────────────────
 //
-// docs/DESIGN-LANGUAGE.md refused borders — "one continuous surface: zones are
-// made of typography, alignment and at most a hairline rule" — and three dim
-// rounded boxes shipped anyway, each with a written argument for being the
-// exception and each with its own copy of the six pieces: the `/folder` chooser
-// (contextmodal.go), the `alt+k` switcher card (hop.go) and the onboarding
-// panel (onboarding.go). The owner's ruling of 2026-09-11 made a fourth kind of
-// thing framed on purpose — a QUESTION hangs above the box as one object — and
-// said the fourth must not be a fourth copy. So there is one frame, this one:
+// docs/DESIGN-LANGUAGE.md refused borders — "one continuous surface: zones are made of
+// typography, alignment and at most a hairline rule" — and three dim rounded boxes shipped
+// anyway, each with a written argument for being the exception and each with its own copy
+// of the six pieces: the `/folder` chooser (contextmodal.go), the `alt+k` switcher card
+// (hop.go) and the onboarding panel (onboarding.go). A QUESTION hangs above
+// the composer as one object and shares the same frame instead of copying it. So there is one frame, this one:
 //
 // THE QUESTION, THE SWITCHER CARD AND THE ONBOARDING PANEL ARE ON IT. The
 // `/folder` chooser is NOT, yet, and it is the one box still carrying its own

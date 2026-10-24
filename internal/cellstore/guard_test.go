@@ -169,8 +169,8 @@ func TestScopeIsTheNormalizedRemoteElseTheCell(t *testing.T) {
 	}
 }
 
-// TestL3_SecretsNeverEnterTheStore proves that committed history travels sealed,
-// so this fixture commits
+// TestL3_SecretsNeverEnterTheStore checks the working-tree boundary.
+// Committed history travels sealed, so this fixture commits
 // only non-secret files. The secrets remain untracked rather than ignored to
 // prove the guard, independently of Git's ignore rules. After two seals no
 // store object holds the key, and the next tool call still gets the .env value.

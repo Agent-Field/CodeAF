@@ -4,8 +4,7 @@ package tui3
 //
 // A task on the run engine is a row of the run's plan store and not a node of
 // this window's graph: it has no journal and no live lane, and for a while it
-// opened a page of its own that looked like the room and was not one. The owner
-// ruled that the two should be the same page, so there is ONE PAGE TYPE and
+// opened a page of its own that looked like the room and was not one. The two use ONE PAGE TYPE and
 // this file is its second source. A run's task opens the same [taskRoom], with
 // the same head, the same transcript renderer, the same box and the same keys;
 // what changes is where the page READS from.

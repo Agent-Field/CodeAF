@@ -23,7 +23,7 @@ import (
 
 // viewTool is the tool as the belt would carry it, or a failure: these tests
 // call it directly because tools.go — where the belt lane registers viewTools —
-// is not this lane's file.
+// is not this test's file.
 func viewTool(t *testing.T, agent *Agent) bare.Tool {
 	t.Helper()
 	tools := agent.viewTools()

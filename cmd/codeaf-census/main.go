@@ -7,7 +7,7 @@
 // committed instrument every one of those numbers is an argument about
 // anecdotes. The first census was a
 // throwaway pass over the same file; this is that pass, committed, tested on a
-// fixture, and runnable nightly by a cron on the Spark (`make census`).
+// fixture, and runnable nightly by a cron in a test run (`make census`).
 //
 // It is a developer's binary and never a verb on codeaf, for the reason
 // cmd/codeaf-changes and cmd/codeaf-demo-home are: the shipped binary is on a

@@ -1864,13 +1864,12 @@ func TestAnUnnamedSessionPutsNoPlaceholderOnTheLegend(t *testing.T) {
 	}
 }
 
-// `VIA <MACHINE>` IS ON THE SEAM WHOEVER SERVED, which is the owner's ruling of
-// 2026-09-09. The rider used to go silent when the server's name was already
-// inside the model id — `z-ai/glm-5.3-flash` answered by z-ai — on the argument
-// that the reader already had the word. On this line they do not: the model is
-// spelled as its BASENAME, so the vendor half of the id is not on the screen at
-// all, and a rider that appeared for one endpoint and vanished for another read
-// as the sighting having been lost.
+// `VIA <MACHINE>` IS ON THE SEAM WHOEVER SERVED. The rider used to go silent when the
+// server's name was already inside the model id — `z-ai/glm-5.3-flash` answered by z-ai —
+// on the argument that the reader already had the word. On this line they do not: the
+// model is spelled as its BASENAME, so the vendor half of the id is not on the screen at
+// all, and a rider that appeared for one endpoint and vanished for another read as the
+// sighting having been lost.
 func TestTheSeamNamesTheMachineEvenWhereTheVendorServesItsOwnModel(t *testing.T) {
 	a, _, now := hudApp(t)
 	a.title = "porting the parser"
@@ -1888,10 +1887,9 @@ func TestTheSeamNamesTheMachineEvenWhereTheVendorServesItsOwnModel(t *testing.T)
 	}
 }
 
-// A LONG TITLE COSTS THE SEAM NOTHING, because the title is not on it (foot.go:
-// the owner's ruling of 2026-09-17). Until that day a long name was cut with
-// one ellipsis after the branch had gone; now the numbers stay, and the name
-// is on the tab strip whatever its length.
+// A LONG TITLE COSTS THE SEAM NOTHING, because the title is not on it (foot.go:). Until
+// that day a long name was cut with one ellipsis after the branch had gone; now the
+// numbers stay, and the name is on the tab strip whatever its length.
 func TestALongNameIsCutOnTheSeamAndNeverTakesTheNumbersSlot(t *testing.T) {
 	a, _, _ := hudApp(t)
 	a.title = "porting the parser off the old tokenizer and onto the new one at last"
@@ -2286,10 +2284,6 @@ func TestTheHintSlotFollowsTheStateAndIsEmptyAtRest(t *testing.T) {
 	}
 	a.pick.open = false
 
-	// A call parked on a person says NOTHING here while the block above the box
-	// is drawing its own keys (owner ruling 2026-09-11, hints pick A): the slot
-	// three rows under the panel repeating the panel's keys, in its own order,
-	// was the owner's "the hint line names keys that are not there".
 	a.entries = append(a.entries, entry{kind: entryTool, tool: "bash", status: toolConsent})
 	raiseAsk(a, 7, "bash")
 	if hint := a.hintWord(); strings.Contains(hint, "allow once") {
@@ -4482,12 +4476,11 @@ func TestSteeringANodeWaitingOnItsPiecesSaysWhatTheLineJustDid(t *testing.T) {
 	}
 }
 
-// EVERY TASK STEER CONFIRMS DELIVERY (the owner's ruling 4, 2026-09-01). A
-// correction typed into this conversation is answered by the answer; one typed
-// into a task crosses to ANOTHER AGENT and the page can stay silent afterwards
-// for as long as the node's current step runs. That silence is what the person
-// would also see if the words had gone nowhere, so the elbow says they arrived —
-// briefly, on the same fade the conversation's own landing clause takes.
+// EVERY TASK STEER CONFIRMS DELIVERY. A correction typed into this conversation is
+// answered by the answer; one typed into a task crosses to ANOTHER AGENT and the page can
+// stay silent afterwards for as long as the node's current step runs. That silence is what
+// the person would also see if the words had gone nowhere, so the elbow says they arrived
+// — briefly, on the same fade the conversation's own landing clause takes.
 func TestEveryTaskSteerConfirmsDelivery(t *testing.T) {
 	a, _, _ := roomApp(t)
 	clickRail(t, a, 0)
@@ -4933,10 +4926,7 @@ func TestTheSeamKeepsTheRiderWithoutTheBranchOrTitle(t *testing.T) {
 	}
 }
 
-// THE SEAM'S RIDER IS ATTRIBUTION ALONE. On 2026-09-10 the owner read `via
-// relace · 1.3s · 79 t/s` beside the model while an answer was being written
-// and took the figure for the live rate — which stood, that same frame, at the
-// right edge of the status row. The last answer's wait and average stay on the
+// THE SEAM'S RIDER IS ATTRIBUTION ALONE. The last answer's wait and average stay on the
 // sheet's `served` row, where a person goes to ask about the last answer.
 func TestTheSeamRiderNamesTheMachineAndNotTheLastAnswersFigures(t *testing.T) {
 	a, _, now := hudApp(t)
