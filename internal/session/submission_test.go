@@ -481,10 +481,10 @@ func TestAPersonsMarkCostsAnEntryNothing(t *testing.T) {
 	if unsafe.Sizeof(uintptr(0)) != 8 {
 		t.Skip("the figure is a 64-bit layout")
 	}
-	// RunID adds 16 bytes; packing Answered with the other bools recovers 8.
-	// ToolProcess adds one optional pointer for the registry's call identity.
-	if size := unsafe.Sizeof(DisplayEntry{}); size > 304 {
-		t.Fatalf("DisplayEntry is %d bytes; budget is 304 including the producing turn and tool process", size)
+	// Both branches need receipt provenance; packing RoutineCompletion with the
+	// other bools leaves only the 24-byte CompletionTasks slice above app/v3's bound.
+	if size := unsafe.Sizeof(DisplayEntry{}); size > 328 {
+		t.Fatalf("DisplayEntry is %d bytes; budget is 328 including the completion receipt identities", size)
 	}
 }
 

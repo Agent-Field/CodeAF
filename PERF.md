@@ -23,13 +23,18 @@ with a message that says what happened.
 
 ## Tool process identity in history
 
-`DisplayEntry` is bounded at **304 bytes** on a 64-bit machine, up from 296:
+`DisplayEntry` is bounded at **328 bytes** on a 64-bit machine. The process
+identity raised the bound from 296 to 304 bytes:
 one optional pointer carries the job's registry number and start, or the kept
 service's id, from the exact tool-result occurrence. Ordinary entries allocate
 no process identity. This pays eight bytes per entry so history can name the
 same process as the live tool end without parsing output or guessing from a
-clock that excludes approval waits. The existing layout guards in
-`internal/session/submission_test.go` and `media_attempt_test.go` pin the bound.
+clock that excludes approval waits. Completion receipts retain their own task
+identities independently of the assistant answer's tags, adding a 24-byte
+`CompletionTasks` slice. Packing `RoutineCompletion` with the other boolean
+fields removes eight bytes of merge padding; the flag itself adds no bytes.
+Both exported receipt fields remain available to surface constructors. The
+person-mark layout guard in `internal/session/submission_test.go` pins the bound.
 
 ## Teams overview reading bounds
 

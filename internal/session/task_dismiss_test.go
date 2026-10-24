@@ -225,7 +225,8 @@ func TestDismissIsReadBackOnTheWorkGraph(t *testing.T) {
 func TestDismissLeavesStoppedAndDeclinedTasksExactlyAsTheyWere(t *testing.T) {
 	agent, _, started, checkpoint := failedConversation(t)
 	before8, before9 := viewOf(t, agent, "8"), viewOf(t, agent, "9")
-	if before8.State != "failed" || before9.State != "declined" {
+	// app/v3 projects the person's stop explicitly instead of showing a generic failure.
+	if before8.State != "stopped" || before9.State != "declined" {
 		t.Fatalf("fixture states = %q / %q", before8.State, before9.State)
 	}
 	for _, id := range []string{"8", "9"} {
@@ -233,7 +234,7 @@ func TestDismissLeavesStoppedAndDeclinedTasksExactlyAsTheyWere(t *testing.T) {
 			t.Fatalf("task %s was hidden", id)
 		}
 	}
-	if after := viewOf(t, agent, "8"); after.State != "failed" || after.Result != before8.Result || after.Dismissed {
+	if after := viewOf(t, agent, "8"); after.State != before8.State || after.Result != before8.Result || after.Dismissed {
 		t.Fatalf("task 8 = %+v", after)
 	}
 	if document := readCheckpoint(t, checkpoint); len(document.Dismissed) != 0 || started.Load() != 0 {
