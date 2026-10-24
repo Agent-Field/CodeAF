@@ -32,6 +32,7 @@ func (e CommittedRefusal) Error() string {
 }
 
 type Status struct {
+	Ready                 []uint64         `json:"ready,omitempty"`
 	LeadershipUnavailable bool             `json:"leadership_unavailable,omitempty"`
 	Cluster               string           `json:"cluster"`
 	Self                  uint64           `json:"self"`

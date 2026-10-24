@@ -5,6 +5,8 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -19,6 +21,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
 	"github.com/Agent-Field/codeaf/internal/raftdirectory"
 	"github.com/Agent-Field/codeaf/internal/raftstore"
+	"github.com/Agent-Field/codeaf/internal/rafttransport"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
@@ -33,6 +36,7 @@ type nativeProvision struct {
 }
 type nativeNamespace struct {
 	timer memberTimer
+	peers http.Handler
 	*raftdirectory.V1Directory
 	host     *raftdirectory.Native
 	feed     *directory.Feed
@@ -195,6 +199,31 @@ func (n *namespaces) activate(ctx context.Context, id string, root []byte) (*nat
 		d.Close()
 		return nil, err
 	}
+	// Inbox loss fences old cursors, independently of the IMMUTABLE source
+	// provision. A restart must never rewrite that manifest or its keys.
+	generation, e := advanceNativeTransport(filepath.Join(path, "transport-generation"))
+	if e != nil {
+		d.Close()
+		return nil, e
+	}
+	var keys [3]ed25519.PrivateKey
+	for i, key := range provision.Anchors {
+		keys[i] = ed25519.PrivateKey(key)
+	}
+	router, e := host.AttachTransport(ctx, generation, keys)
+	if e != nil {
+		d.Close()
+		return nil, e
+	}
+	pump := router.Pump
+	router.Pump = func(request rafttransport.Request, now int64) error {
+		err := pump(request, now)
+		if err == nil && len(request.Messages) > 0 {
+			d.armMembers()
+		}
+		return err
+	}
+	d.peers = rafttransport.Handler(router, n.now)
 	d.timer = memberTimer{started: n.now(), anchor: ed25519.PrivateKey(provision.Anchors[0]), after: func(delay time.Duration, fn func()) func() bool { return time.AfterFunc(delay, fn).Stop }}
 	if n.after != nil {
 		d.timer.after = n.after
@@ -456,4 +485,49 @@ func (c *nativeClient) DenyRequest(ctx context.Context, code string) error {
 		return err
 	}
 	return c.owner.effects.Deliver(ctx, c.owner.now().UnixMilli(), c.owner.links, code)
+}
+
+// advanceNativeTransport publishes a checksummed counter before exchange can
+// open. Its own file is mutable host state; the source provision never changes.
+func advanceNativeTransport(path string) (uint64, error) {
+	raw, err := os.ReadFile(path)
+	generation := uint64(0)
+	if err == nil {
+		if len(raw) != 8+sha256.Size {
+			return 0, rafttransport.ErrGeneration
+		}
+		sum := sha256.Sum256(raw[:8])
+		if !bytes.Equal(raw[8:], sum[:]) {
+			return 0, rafttransport.ErrGeneration
+		}
+		generation = binary.BigEndian.Uint64(raw[:8])
+		if generation == 0 || generation == ^uint64(0) {
+			return 0, rafttransport.ErrGeneration
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return 0, err
+	}
+	generation++
+	raw = make([]byte, 8, 8+sha256.Size)
+	binary.BigEndian.PutUint64(raw, generation)
+	sum := sha256.Sum256(raw)
+	raw = append(raw, sum[:]...)
+	f, err := os.CreateTemp(filepath.Dir(path), ".transport-")
+	if err != nil {
+		return 0, err
+	}
+	defer os.Remove(f.Name())
+	_, err = f.Write(raw)
+	err = errors.Join(err, f.Sync(), f.Close())
+	if err != nil {
+		return 0, err
+	}
+	if err = os.Rename(f.Name(), path); err != nil {
+		return 0, err
+	}
+	dir, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return 0, err
+	}
+	return generation, errors.Join(dir.Sync(), dir.Close())
 }

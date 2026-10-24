@@ -24,6 +24,9 @@ const (
 // Request signs polls and acknowledgments as well as outbound digests. A
 // stolen unsigned cursor must not allow a third party to drain a peer's inbox.
 type Request struct {
+	// Applied is signed evidence from the member after its application transaction.
+	// A transport acknowledgment or leader Match alone never makes it ready.
+	Applied     uint64            `json:"applied,string,omitempty"`
 	Scope       Scope             `json:"scope"`
 	Node        uint64            `json:"node,string"`
 	Incarnation uint64            `json:"incarnation,string"`
@@ -296,7 +299,13 @@ func serveSocket(ctx context.Context, conn *websocket.Conn, router *Router, init
 			return
 		}
 		response, err = router.exchange(req, now().UnixMilli(), receiveOnly)
-		if err != nil || !writeSocket(ctx, conn, response) {
+		if err != nil {
+			return
+		}
+		if receiveOnly && len(response.Messages) == 0 {
+			continue
+		}
+		if !writeSocket(ctx, conn, response) {
 			return
 		}
 	}

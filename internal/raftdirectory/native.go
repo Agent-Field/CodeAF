@@ -23,9 +23,11 @@ import (
 // Native owns three independent durable actors on one host. The queue covers
 // each persistence completion, authenticated local delivery and read callback;
 // no caller can inspect a replica between its barrier and its application read.
-// All peer bytes originate inside this queue, never at a public HTTP door.
+// Peer bytes reach a core only inside this queue, after committed enrollment
+// authenticates external input. Public operations never wait on a learner.
 type Native struct {
 	mu       sync.Mutex
+	peers    *nativePeers
 	manifest clusterstate.LegacyManifest
 	stores   [3]*raftstore.SQLite
 	nodes    [3]*raftcore.Core
@@ -269,7 +271,14 @@ func (g *Native) drain(ctx context.Context) error {
 			}
 		}
 		if !found {
-			return directory.ErrUnauthorized
+			if g.peers == nil {
+				// Activation can recover voters before their committed router
+				// opens. An unreachable learner cannot gate that recovery.
+				continue
+			}
+			if err := g.sendExternal(ctx, m); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -325,6 +334,10 @@ func (g *Native) stageSnapshot(ctx context.Context, target int, message *pb.Mess
 }
 
 func (g *Native) submit(ctx context.Context, c clusterstate.Command) (clusterstate.Result, error) {
+	if g.peers != nil {
+		g.peers.sleeping = false
+		g.peers.now = max(g.peers.now, c.Now)
+	}
 	i := g.leader()
 	if i < 0 {
 		return clusterstate.Result{}, directory.ErrUnreachable
@@ -374,6 +387,10 @@ func (g *Native) submit(ctx context.Context, c clusterstate.Command) (clustersta
 			}
 		}
 	}
+	if err := g.checkpointExternal(ctx); err != nil {
+		g.failed = err
+		return r, err
+	}
 	if g.Changed != nil {
 		app, _, e := g.stores[i].ApplicationView(ctx)
 		if e != nil {
@@ -383,9 +400,17 @@ func (g *Native) submit(ctx context.Context, c clusterstate.Command) (clustersta
 			return r, e
 		}
 	}
+	if g.peers != nil {
+		if err := g.installPeers(ctx); err != nil {
+			return r, err
+		}
+	}
 	return r, nil
 }
 func (g *Native) barrier(ctx context.Context) (int, raftstore.Application, error) {
+	if g.peers != nil {
+		g.peers.sleeping = false
+	}
 	i := g.leader()
 	if i < 0 {
 		return i, raftstore.Application{}, directory.ErrUnreachable

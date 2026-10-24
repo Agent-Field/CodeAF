@@ -81,6 +81,12 @@ func (g *Native) Maintain(ctx context.Context, elapsed, now int64, key ed25519.P
 	if leader < 0 {
 		return after, directory.ErrUnreachable
 	}
+	if g.peers != nil {
+		g.peers.now = max(g.peers.now, now)
+		if err := g.reconcileMembership(ctx); err != nil {
+			return after, err
+		}
+	}
 	plan := plans[leader]
 	if plan.Barrier {
 		id := fmt.Sprintf("idle-%d", g.serial)
@@ -173,6 +179,11 @@ func (g *Native) Maintain(ctx context.Context, elapsed, now int64, key ed25519.P
 		allSleep = allSleep && p.Sleeping
 	}
 	if allSleep {
+		if g.peers != nil {
+			if err := g.quiescePeers(ctx); err != nil {
+				return after, err
+			}
+		}
 		return 0, nil
 	}
 	return after, nil

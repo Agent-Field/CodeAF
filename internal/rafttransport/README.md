@@ -1,10 +1,11 @@
 # Native peer transport
 
-This is P07's internal relay bridge, not an enrollment service or a directory
-writer. `relayserve.Config.Cluster` receives `rafttransport.Handler(router, now)` from
-the member host after it loads committed enrollment. An ordinary relay has no peer routes until that assembly
-exists. P08 supplies hosted actors, P12 supplies durable enrollment and P17 wires
-production client routing. No environment switch selects another writer.
+This is the authenticated peer bridge, separate from application ingress. The
+persistent native relay assembles its router from committed membership and serves
+personal admission, HTTP exchange and the outbound push socket on its ordinary
+listener. `relayserve.Config.Cluster` is the internal custom-host handler seam.
+The hosted relay's member/control doors remain absent, and the codeaf client does
+not yet activate its own learner. No environment switch selects another writer.
 
 ## Host ordering and authorization
 
@@ -160,3 +161,60 @@ consent, exclusive certificate expiry, revocation, rotation and current process
 incarnation. The old metadata-only CommittedView marks workers revoked, so a
 host that has not supplied these dependencies fails closed. Worker restarts
 cannot resurrect a retired peer: remove/re-enroll with a fresh node ID.
+
+## Native personal learners
+
+The persistent native relay now owns its committed router and mounts enrollment,
+exchange and socket routes on its ordinary listener. `Config.Cluster` remains the
+internal custom-host assembly seam; the default native service installs its own
+router. Hosted member/control routes remain absent.
+
+`POST /v2/cluster/enroll` uses the existing `reqsign` headers, original paired
+personal certificate and body `{"store":"<64 lowercase hex characters>","protocol":1}`.
+The client generates that random store token once when creating its SQLite store
+and persists it alongside the store. Reopening it reuses the token. Wiping it
+requires a new token: the old node is permanently retired, including its store
+mapping and tombstone. Admission allocates from committed `NextNode`; caller IDs
+and keys are never allocation authority. The original signed request is retained
+and checked by the replicated evaluator against the committed root and revocation.
+Worker certificates and retained worker/service roles cannot use personal admission.
+
+The reply is `raftdirectory.PersonalEnrollment`: scope, durable router generation,
+node, incarnation, advertised barrier and committed member public keys. The four
+uint64 fields cross JSON as decimal strings. A first reply may have barrier `"0"`:
+registry admission committed, and activation/maintenance completes the separate
+learner configuration. Repeating the same request refreshes the grant without
+allocating another node. A nonzero barrier is the committed settlement index;
+readiness additionally requires actual learner-local application through it.
+
+An exchange Request may include `applied` as a decimal string, signed with all its
+other fields. The faithful host sets it only after its SQLite application commit.
+The control Status `ready` list contains current learners whose signed durable
+progress covers their advertised barrier. Leader replication Match and transport
+acknowledgments alone never set ready. Router restart forgets this advisory evidence
+and requires a new signed report. Registered keys and generations are checked on
+HTTP and every socket frame/push. Ordinary public ingress or a returning peer may
+activate an existing durable namespace; a peer cannot bootstrap an unknown one.
+
+The router's Pump callback runs outside its lock. The native actor drains its
+anchor inboxes through LocalExchange and completes persistence/application under
+its queue, then makes bounded messages available to the outward-dialing learner.
+It never dials or waits on that learner. Snapshot manifests precede ≤256 KiB chunks
+on the separate chunk lane; the recipient stages all chunks before stepping the
+snapshot into its core and reporting application. Retention or a lost transfer
+reports failure to Raft for retry, while normal snapshots compact independently
+of learner lag. All-voter quiescence discards expendable learner deliveries and
+stops scheduling without learner acknowledgments. Fresh public read/write input
+wakes the ordinary quorum path.
+
+The codeaf client does not start its own learner yet. This server assembly adds
+no automatic client discovery, network attempts, worker setup or leadership.
+
+The native host advances its checksummed `transport-generation` file with atomic
+rename and directory fsync before opening its router; it never mutates the source
+provision. Counter corruption refuses activation and retains evidence. During cold
+voter activation external deliveries are unreachable until the committed router
+is installed. A maximum-sized legal command can acquire protobuf framing larger
+than the normal peer budget. In that case the host checkpoints only the applied
+prefix and uses snapshot chunks for catch-up, keeping both existing byte limits
+and successful voter operations intact.
