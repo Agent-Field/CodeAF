@@ -1,6 +1,8 @@
 // The front door's routing, kept apart from the Worker entry so a test can drive it without the
 // Durable Object classes (which only load inside the Workers runtime).
 import { stripBase } from './base.js';
+import { clusterRequestLimit } from './raft/ingress.js';
+import { sharedRuntime } from './raft/actor.js';
 import { checkDeclared } from './body.js';
 import { serveLink } from './link/front.js';
 import { isPagePath, servePage } from './page.js';
@@ -12,7 +14,7 @@ import { notFound, respond } from './wire.js';
 
 /** forward hands an identity's request to its Durable Object, after refusing what needs no object to refuse. */
 async function forward(request, env) {
-  const route = matchRoute(request.method, new URL(request.url).pathname);
+  const route = new URL(request.url).pathname==='/v2/cluster/api' ? {limit:clusterRequestLimit(sharedRuntime()),over:"too_large"} : matchRoute(request.method, new URL(request.url).pathname);
   checkDeclared(request, route.limit, route.over);
   const identity = await identityOf(request.headers.get('codeaf-identity'));
   return env.IDENTITY.get(env.IDENTITY.idFromName(identity)).fetch(request);
@@ -26,6 +28,6 @@ export function dispatch(outer, env) {
   const { pathname } = new URL(request.url);
   if (pathname.startsWith('/v1/link/')) return serveLink(request, env);
   if (pathname.startsWith('/v1/pair')) return servePair(request, env);
-  if (pathname.startsWith('/v1/')) return forward(request, env);
+  if (pathname.startsWith('/v1/') || pathname==='/v2/cluster/api') return forward(request, env);
   throw notFound();
 }

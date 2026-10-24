@@ -1,3 +1,5 @@
+import { clusterIngress } from './ingress.js';
+import { workerCell,workerAssignment } from './worker.js';
 import { DurableObject } from 'cloudflare:workers';
 import { MemberActor, sharedRuntime } from './actor.js';
 import { MemberInbox, INBOX_BYTES } from './inbox.js';
@@ -65,7 +67,7 @@ export class RaftMemberDO extends DurableObject {
     await this.ctx.storage.delete('legacy-pending');await this.ctx.storage.sync();
   }
   async hostInput(tag,value) {
-    if(![0,1,3,4,10,12,16].includes(tag))throw new Error('raft member: unsupported coordinator input');
+    if(![0,1,3,4,10,12,15,16].includes(tag))throw new Error('raft member: unsupported coordinator input');
     await this.load();
     if(tag===3){
       const raw=value.slice();return this.actor.serial(async()=>{
@@ -86,6 +88,19 @@ export class RaftMemberDO extends DurableObject {
         rows.push({key:row.key,data:raw});size+=raw.length;
       }
       return {app,rows};
+    });
+  }
+  // The coordinator's fresh ReadIndex must have applied before a scoped
+  // read runs. Authority/time and selected rows share this member queue.
+  async hostSelected(raw,index) {
+    await this.load();return this.actor.serial(()=>{
+      if(this.actor.stopped||this.actor.store.stopped||this.actor.status.applied<BigInt(index))throw new Error('raft member: read barrier incomplete');
+      const app=this.actor.store.application();
+      const {actor,request:q}=clusterIngress(sharedRuntime(),raw,app.now);
+      if(q.cluster!==this.config.cluster)throw new Error('raft member: wrong cluster');
+      return q.action==='cell'
+        ?workerCell(sharedRuntime(),this.actor.store,q.cluster,actor,q.cell,q.incarnation)
+        :workerAssignment(sharedRuntime(),this.actor.store,q.cluster,actor,q.incarnation,q.assignment);
     });
   }
   async hostResult(raw,after=0n) {

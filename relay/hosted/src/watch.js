@@ -82,11 +82,11 @@ export class Watchers {
    * it is also the viewer that makes the presence sweep worth arming (contract 21.12.4). `beat` is the ping period the
    * client declared, from which the socket's window follows.
    */
-  accept(device, version, now, { holds, beat, events = false, receipts = false }) {
+  accept(device, version, now, { holds, beat, events = false, receipts = false, certificate = undefined }) {
     if (this.ctx.getWebSockets().length >= this.cap) throw new Wire('too_many_watchers', 429);
     const { 0: client, 1: server } = new WebSocketPair();
     this.ctx.acceptWebSocket(server, [device]);
-    server.serializeAttachment({ ...FRESH, at: now, holds, events, beat, receipts });
+    server.serializeAttachment({ ...FRESH, at: now, holds, events, beat, receipts, ...(certificate?{certificate}:{}) });
     server.send(frame(version));
     if (events) for (const text of this.liveness.snapshot(device)) server.send(text);
     this.liveness.opened(device);
@@ -114,7 +114,7 @@ export class Watchers {
       let seenAt=0;
       try {seenAt=Math.max(att.at,this.ctx.getWebSocketAutoResponseTimestamp(ws)?.getTime()??0);} catch {}
       return {device:this.ctx.getTags(ws)[0],holds:att.lapsed ? [] : att.holds.map(([cell,fence])=>({cell,fence:String(fence)})),
-        seenAt,
+        seenAt,certificate:att.certificate,
         send:text=>{if(att.receipts)attempt(()=>ws.send(text));},failed:()=>attempt(()=>ws.close(1013,'retry'))};
     });
   }

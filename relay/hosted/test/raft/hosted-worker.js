@@ -50,6 +50,19 @@ export class IdentityDO extends Source {
       this.host.queue.push({from,to,bytes:raw});await this.host.pump();return this.host.members.size;
     });
   }
+  async idleSchedule(){
+    // R26 allows eviction between the HTTP request and this fixture RPC.
+    // Restore through the production alarm before driving its virtual clock.
+    if(!this.host)await super.alarm();
+    return this.host.serial(async()=>{
+    const base=Date.now();
+    for(let n=1;n<=20;n++)await this.host.maintenance(base+n*this.host.policy.tick_every,this.host.started+n*this.host.policy.tick_every);
+    const id=this.host.leader(),before=this.host.states.get(id).applied;
+    const sleeping=this.host.asleep;
+    const turns=measurements.turns;
+    for(let n=21;n<=140;n++)await this.host.maintenance(base+n*this.host.policy.tick_every,this.host.started+n*this.host.policy.tick_every);
+    return {sleeping,appliedBefore:String(before),appliedAfter:String(this.host.states.get(id).applied),recurringMemberCalls:measurements.turns-turns,idleMilliseconds:120*this.host.policy.tick_every};
+  });}
   inspect() {
     return {gate:this.ctx.storage.sql.exec('SELECT doc FROM legacy_gate WHERE one=1').toArray()[0]?.doc,
       originals:this.ctx.storage.sql.exec('SELECT kind,id,doc FROM dir ORDER BY kind,id').toArray()};
@@ -88,6 +101,7 @@ export default {
       if(op==='release-upload'){await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).releaseHeldUpload();return Response.json(true);}
       if(op==='retry-without-quorum')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).retryWithoutQuorum());
       if(op==='stale-snapshot')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).replayStale());
+      if(op==='idle-schedule')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).idleSchedule());
       if(op==='source')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).inspect());
       if(op==='seed-transport-tail'){await env.RAFT_MEMBERS.get(env.RAFT_MEMBERS.idFromName(cluster+'/'+node)).seedTransportTail();return Response.json(true);}
       if(op==='retained-control')return Response.json(await env.RAFT_MEMBERS.get(env.RAFT_MEMBERS.idFromName(cluster+'/'+node)).retainedControl());

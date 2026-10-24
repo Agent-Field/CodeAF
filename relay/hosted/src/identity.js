@@ -4,6 +4,11 @@
 import { DurableObject } from 'cloudflare:workers';
 import { LegacyAdmission } from './raft/legacy.js';
 import { HostedIdentity } from './raft/hosted.js';
+import { clusterIngress,clusterRequestLimit } from './raft/ingress.js';
+import { sharedRuntime } from './raft/actor.js';
+import { identityOf } from './verify.js';
+import { b64,unb64 } from './raft/storage.js';
+import { fromBase64Url } from './codec.js';
 import { signedUri } from './base.js';
 import { readBody } from './body.js';
 import { dropTables, erasePage } from './erasure.js';
@@ -15,7 +20,7 @@ import { policyOf } from './rules.js';
 import { Tenant, HAS_WAIT_MS } from './tenant.js';
 import { finishClose, Watchers } from './watch.js';
 import { checkCert, checkRequest } from './verify.js';
-import { gone, ipOf, rateLimited, respond, unwrap } from './wire.js';
+import { gone, ipOf, rateLimited, respond, unwrap, Wire } from './wire.js';
 
 const SIGNED = { identity: 'codeaf-identity', cert: 'codeaf-cert', time: 'codeaf-time', sig: 'codeaf-sig' };
 const signedHeaders = (request) => Object.fromEntries(Object.entries(SIGNED).map(([k, h]) => [k, request.headers.get(h)]));
@@ -73,6 +78,21 @@ export class IdentityDO extends DurableObject {
 
   async #serve(request) {
     const url = new URL(request.url);
+    if(url.pathname==='/v2/cluster/api'){
+      if(request.method!=='POST'||url.search)throw new Wire('bad_request',400);
+      const raw=await readBody(request,clusterRequestLimit(sharedRuntime()),'too_large');
+      let verified;try{verified=clusterIngress(sharedRuntime(),raw,Date.now());}catch{throw new Wire("unauthorized",401);}
+      const {actor,request:proof}=verified;
+      const root=fromBase64Url(request.headers.get('codeaf-identity'));
+      if(!root||b64(root)!==proof.identity_key)throw new Wire('unauthorized',401);
+      await this.#refuseGone();
+      await this.#admitted.get(ipOf(request,this.env));
+      const identity=await identityOf(request.headers.get('codeaf-identity'));
+      const tenant=this.#tenantOf(identity);this.#admit(tenant,actor);
+      this.host??=new HostedIdentity(this.ctx,this.env,tenant,this.legacyAdmission,at=>this.#arm(at));
+      const reply=await this.host.serial(()=>this.host.api(raw,proof,actor));
+      this.watchers=this.host.watchers;return reply;
+    }
     const route = matchRoute(request.method, url.pathname);
     const caller = await checkCert(signedHeaders(request));
     const leave = route.frames ? this.#enterPut() : () => {};
@@ -83,7 +103,7 @@ export class IdentityDO extends DurableObject {
       await this.#admitted.get(ipOf(request, this.env));
       const tenant = this.#tenantOf(who.identity);
       this.#admit(tenant, who.device);
-      this.host ??= new HostedIdentity(this.ctx,this.env,tenant,this.legacyAdmission);
+      this.host ??= new HostedIdentity(this.ctx,this.env,tenant,this.legacyAdmission,at=>this.#arm(at));
       const reply=await this.host.dispatch({tenant,device:who.device,body,request,env:this.env},route);
       this.watchers=this.host.watchers;return reply;
     } finally {
@@ -132,12 +152,12 @@ export class IdentityDO extends DurableObject {
       // request supplies the public root; an alarm cannot invent that key.
       this.watchers.closeAll(1012,'reconnecting');return;
     }
-    const tenant=this.#tenantOf(identity);this.host ??= new HostedIdentity(this.ctx,this.env,tenant,this.legacyAdmission);
+    const tenant=this.#tenantOf(identity);this.host ??= new HostedIdentity(this.ctx,this.env,tenant,this.legacyAdmission,at=>this.#arm(at));
     const erase=await this.host.serial(async()=>{
       await this.host.ensure(Uint8Array.from(atob(provision.config.signing_key),c=>c.charCodeAt(0)));
       this.watchers=this.host.watchers;this.watchers.expire();tenant.stats.flush();
-      const raw=await this.host.barrierRecord({namespace:'state',key:'identity'});
-      const record=this.host.project('identity',raw),at=record.rotation?.retire_at;
+      await this.host.maintenance(Date.now());
+      const at=this.host.retireAt;
       if(at && at<=Date.now())return true;
       if(at)await this.#arm(at);return false;
     });
