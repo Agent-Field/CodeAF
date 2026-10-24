@@ -26,6 +26,7 @@ type Receipt struct {
 	Method         string `json:"method"`
 	At             string `json:"at"`
 	Status         string `json:"status"`
+	Reason         string `json:"reason,omitempty"`
 }
 
 // save replaces the state durably. The caller holds mu, so settings and

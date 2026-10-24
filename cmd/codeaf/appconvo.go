@@ -653,6 +653,9 @@ func (b *appBackend) AnswerAskWith(agent, id string, answer appwire.AskAnswer) e
 				label = option.Label
 			}
 		}
+		if err := b.checkAnswerTargets(live, []string{id}, answer.BeforeResolve); err != nil {
+			return err
+		}
 		b.locked(func() { live.answered[id] = appAnsweredMark + appDecideMark + label })
 		resolved := session.Answer{Kind: q.Kind, ID: q.ID, Ref: q.Ref, Ask: q.Ask, Key: q.Pick.Key, Picked: []string{q.Pick.Key}, Change: text}
 		if err := live.conn.Conv.ResolveQuestion(resolved); err != nil {
@@ -670,6 +673,9 @@ func (b *appBackend) AnswerAskWith(agent, id string, answer appwire.AskAnswer) e
 				targets = siblings
 			}
 		})
+	}
+	if err := b.checkAnswerTargets(live, targets, answer.BeforeResolve); err != nil {
+		return err
 	}
 	// A saved scope answers the selected call alone; siblings have their own scopes.
 	if answer.Option == appwire.OptionAlways {
@@ -703,6 +709,29 @@ func (b *appBackend) AnswerAskWith(agent, id string, answer appwire.AskAnswer) e
 		b.restateBatch(live, q)
 	}
 	return nil
+}
+
+// checkAnswerTargets authorizes the same fixed ids AnswerAskWith will deliver,
+// after batch selection rather than against a pre-claim snapshot of the batch.
+func (b *appBackend) checkAnswerTargets(live *appLive, targets []string, check func([]appwire.Ask) error) error {
+	if check == nil {
+		return nil
+	}
+	var asks []appwire.Ask
+	b.locked(func() {
+		for _, id := range targets {
+			for _, ask := range live.asks {
+				if ask.ID == id {
+					asks = append(asks, ask)
+					break
+				}
+			}
+		}
+	})
+	if len(asks) != len(targets) {
+		return appwire.Errorf(appwire.CodeNotFound, "the answer target is no longer open")
+	}
+	return check(asks)
 }
 
 // appDecideMark marks an ask the person handed back to the agent's own pick.

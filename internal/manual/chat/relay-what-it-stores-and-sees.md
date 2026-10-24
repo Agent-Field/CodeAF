@@ -149,3 +149,12 @@ It continues updating other subscribed methods; a failed read does not stop
 all the client's snapshots. v0 does not paginate or silently truncate large
 snapshots. After the last client is unpaired, startup retains old call receipts
 without opening sync or starting a client refresh loop.
+
+## Face ID for a whole consent batch
+
+A queued answer requires the signed `face_id` assertion when any open ask it
+resolves is irreversible. The real answer path checks the fixed target set, so
+a sibling arriving during claiming is covered too. This includes a whole consent
+batch and a different
+ask selected by `batch_item`. Without it the call is refused before any consent
+is answered, and the paired-client refusal is kept in the chat with “Face ID”.
