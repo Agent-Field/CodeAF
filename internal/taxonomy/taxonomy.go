@@ -246,7 +246,7 @@ type Evidence struct {
 	//
 	// IT IS CARRIED RATHER THAN INFERRED. `Status >= 400 && Upstream == ""` was
 	// the inference, and it was made in three places with three different lists
-	// of exceptions bolted onto it — which is the defect docs/design/recovery
+	// of exceptions bolted onto it — which is the defect the implementation
 	// §2.6 counts. The transport decides it once, at its refusal door
 	// ([provider.APIError.OurRequest]), and it travels here as a fact.
 	OurBytes bool
@@ -279,13 +279,13 @@ type Evidence struct {
 	// with its budget declared spent, never [Work]: a turn that reads it as the
 	// work ends with the router's own sentence on the screen while a chain the
 	// person configured sits unasked, which is the failure
-	// docs/design/recovery/DESIGN.md §5 is written about.
+	// the implementation §5 is written about.
 	Spent bool
 
 	// OutOfTime says the CALLER'S OWN DEADLINE is gone: the plan's give-up, in
 	// the person's time (`lane.Role.GiveUp` scaled by [Limits.Patience]), which
 	// is the one thing that bounds how long a failing request may go on
-	// recovering (docs/design/recovery/DESIGN.md §4).
+	// recovering.
 	//
 	// IT IS THE COUNT'S REPLACEMENT AND NOT THE LADDER'S. `TransportAttempts`
 	// used to answer "is there another try in this" from a number; the number is

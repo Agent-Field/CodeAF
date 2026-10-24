@@ -13,7 +13,7 @@ import (
 
 // ── THE RUNG IS A MOVE ──────────────────────────────────────────────────────
 //
-// docs/design/recovery/DESIGN.md §4's last un-folded loop. The ladder walked
+// the implementation §4's last un-folded loop. The ladder walked
 // `relaxationPlan` itself until 2026-09-11 — a private length, under a deadline
 // that could not see it, beside a move generator that already knew the rungs —
 // and what it does now is ask [control.Next] for its rung like every other move.

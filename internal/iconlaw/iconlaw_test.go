@@ -5,7 +5,7 @@
 // chrome — and it lives in internal/tui2/tokens with three spellings per slot:
 // the Font Awesome 4 icon a patched font draws, the geometric floor every
 // terminal draws, and the one ASCII character a screen reader can name.
-// docs/design/icons/DESIGN.md is the law's own page; what follows is the part a
+// the implementation is the law's own page; what follows is the part a
 // build can fail on.
 //
 // IT LIVES IN ITS OWN PACKAGE BECAUSE IT IS NOT ONE SURFACE'S LAW. It landed as
@@ -171,8 +171,7 @@ func TestNoSurfaceSpellsAnIconItself(t *testing.T) {
 					}
 					t.Errorf("%s: the literal %s spells %U, which is %s. Ask for the slot through "+
 						"this surface's own glyph door — palette.glyph or app.icon in internal/tui3 — "+
-						"so the line gets this terminal's repertoire "+
-						"(docs/design/icons/DESIGN.md)",
+						"so the line gets this terminal's repertoire",
 						fset.Position(lit.Pos()), lit.Value, r, slot)
 				}
 				return true

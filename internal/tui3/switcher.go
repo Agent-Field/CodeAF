@@ -24,7 +24,7 @@ import (
 //
 // IT IS PURE AND IT MUST STAY PURE. Nothing here takes an *app, starts a clock,
 // opens a file or asks the disk anything: the facts are gathered on home's own
-// three-second beat and handed in whole (docs/design/home-rethink/ARCHITECTURE.md
+// three-second beat and handed in whole (the implementation
 // states the three layers and which may know what). That is what lets the whole
 // reading be tested with fixtures, and what keeps the panels that draw it
 // (homepanel_*.go) pure over it too.

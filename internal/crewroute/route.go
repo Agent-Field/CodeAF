@@ -12,7 +12,7 @@
 //
 // ── WHY IT ROUTES ON THE CLASS OF WORK ──
 //
-// The design is in docs/design/model-pool/pareto-crewing.pdf. The rule it
+// The design is in the implementation. The rule it
 // follows: narrow fixes use the cheapest qualified crew, and open-ended work
 // gets a stronger checker, the one seat worth paying for there. The policy is
 // read off a table ([prior]) rather than written into branches: classify the

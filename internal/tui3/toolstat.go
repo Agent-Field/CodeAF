@@ -11,7 +11,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui2/modelui"
 )
 
-// PER-TOOL DERIVATION (docs/CHAT-V3.md D11).
+// PER-TOOL DERIVATION.
 //
 // Every tool line carries an inline stat and every open tool line carries a
 // tool-shaped expansion, and BOTH are derived HERE — in the surface, from the

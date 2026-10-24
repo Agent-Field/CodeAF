@@ -104,7 +104,7 @@ func TestAQueuedRowIsNotWordedAsRunning(t *testing.T) {
 	// AND A RUNNING ROW SAYS `working`, which is the one word every surface says
 	// for it since the task-states wave: the record used to spell it `running`,
 	// the rail `working`, and one state with two spellings is two states to
-	// whoever is reading (docs/design/task-states/DESIGN.md).
+	// whoever is reading.
 	running := session.TaskIndexEntry{Status: string(session.TaskRunning)}
 	if word := taskStateWord(running, true); word != "working" {
 		t.Errorf("a running row says %q, want %q", word, "working")

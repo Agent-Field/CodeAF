@@ -227,7 +227,7 @@ var commands = []command{
 	// `/subharness` AND `/sub` USED TO BE WORDS FOR THE ROW ABOVE and are not any
 	// more, because they now name something else. A subharness is a typed program
 	// with an input schema, a cost shape and a card you settle before it runs
-	// (docs/SUBHARNESS-PRD.md §2 fixes the person-facing name); a harness is the
+	//; a harness is the
 	// older saved shape of work that row opens. They are two things, so they are
 	// two rows — a word that reached whichever of them the table happened to list
 	// first is a word nobody could rely on.

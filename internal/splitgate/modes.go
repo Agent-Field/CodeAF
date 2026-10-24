@@ -14,7 +14,7 @@ import (
 // is refused. Two repairs were proposed and neither was argued to a conclusion,
 // so the owner ruled that the choice would be made by a designed experiment —
 // four planner arms against four readings of this gate, 273 judged draws on the
-// plan door (docs/design/plan-gate-doe/REPORT.md).
+// plan door.
 //
 // THE EXPERIMENT PICKED THE GATE OFF. The front it drew is the stages planner
 // with this gate having no say: the same quality as the best armed cell, the

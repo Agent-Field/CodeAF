@@ -3,7 +3,7 @@ package session
 // The team verbs: a manager running its team, and a member speaking in it.
 //
 // A team's manager is an ordinary conversation with every ordinary tool under
-// the ordinary approval rules (docs/design/conversations-and-teams/DESIGN.md,
+// the ordinary approval rules (the implementation,
 // section 5). What makes it a manager is its verbs and the digest its turns
 // carry (team.go); a member has the verbs to answer and raise a conflict.
 //

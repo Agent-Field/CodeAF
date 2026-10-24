@@ -15,7 +15,7 @@ import (
 
 // ── THE PICKER IS A TREE, AND THE LANE IS WRITTEN ON THE MODEL ──────────────
 //
-// docs/design/lanes-picker/DESIGN.md. The owner opened /model on 2026-09-10,
+// the implementation. The owner opened /model on 2026-09-10,
 // pressed ← and →, and asked how anybody changes the provider of a model. Every
 // test here is one of the four answers, driven the way a person drives it.
 

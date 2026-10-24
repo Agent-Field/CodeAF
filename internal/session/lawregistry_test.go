@@ -46,7 +46,7 @@ import (
 )
 
 // lawClass is the delivery class from the diet's taxonomy
-// (docs/design/prompt-diet/DESIGN.md §2). Every byte of law is filed under
+// . Every byte of law is filed under
 // exactly one of them, and the class is what decides where the sentence lives.
 type lawClass string
 
@@ -177,7 +177,7 @@ var lawRegistry = []lawUnit{
 	// ── the routing triggers, which are the page's own and nobody else's. A
 	// description says what a verb DOES; it cannot say when to reach for it
 	// without teaching every model that carries the belt a rule it did not ask
-	// for (docs/design/prompt-diet/DESIGN.md §4), so the trigger is core law and
+	// for, so the trigger is core law and
 	// the contract is verb law, and these three came back to the page when lane
 	// F took the routing prose off the descriptions.
 	{id: "tasks.look-inside", class: lawCore, key: "Look inside running or landed work with `tasks` and its id"},
@@ -218,7 +218,7 @@ var lawRegistry = []lawUnit{
 	// `standing.background-checks` and `standing.a-minute-is-a-timer` were filed
 	// here against the chat manual's keeping-an-eye page. Both laws described the
 	// standing side — an operating-system timer on by default, and a one-minute
-	// reminder riding it — which automations replaced (docs/design/automations/
+	// reminder riding it — which automations replaced (the implementation
 	// DESIGN.md): nothing is installed on the machine any more, and the page they
 	// lived on is gone with the feature. They were deleted, not moved.
 	{id: "accounts.never-sent-twice", class: lawDemand, at: "manual:accounts", key: "Each outgoing mail or Slack message goes out **once**"},

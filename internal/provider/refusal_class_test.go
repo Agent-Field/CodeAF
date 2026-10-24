@@ -22,7 +22,7 @@ import (
 //
 // These tests hold the gate that does not go out of date, and — just as
 // importantly — the four things that must still NOT enter it. Rule 1 of
-// docs/design/failsafe/FAILSAFE.md is what they are pinning.
+// the implementation is what they are pinning.
 
 // knownModelPrice is a catalog that has resolved this build's model: a published
 // list price is how [Client.catalogKnowsModel] asks about membership.
@@ -184,7 +184,7 @@ func TestARefusalOnAModelTheCatalogDoesNotKnowIsSurfaced(t *testing.T) {
 // stripping the person's request instead.
 //
 // AND THE WALK IS NOW TAKEN INSIDE THE CALL RATHER THAN THREE TURNS LATER
-// (docs/design/recovery/DESIGN.md §3). It used to be the session's: a relayed
+// . It used to be the session's: a relayed
 // 4xx ended the call, and the rotation happened only because the ledger
 // remembered the refusing machine into the NEXT turn. So this is two requests
 // now, not one — the refusal, and the one move that finds out whether the veto

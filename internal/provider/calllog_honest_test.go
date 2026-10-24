@@ -14,7 +14,7 @@ import (
 
 // ── THE ROW IS HONEST ABOUT WHO ANSWERED, WHAT IT COST AND WHAT IT ASKED FOR ─
 //
-// The census over ten days of this build's own log (docs/design/recovery/
+// The census over ten days of this build's own log (the implementation
 // census-20260910.md) found three things wrong with the record itself, and each
 // of them made a later wave's number unmeasurable:
 //

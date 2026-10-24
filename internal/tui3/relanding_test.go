@@ -82,7 +82,7 @@ func TestARelandedNodesQuestionReplacesTheFirst(t *testing.T) {
 	// single string for the reason the tmux table states beside the same words:
 	// three separate searches would pass on a block that drew the columns on
 	// three rows, or in the other order, or without the third — and the third is
-	// the one docs/design/task-states/DESIGN.md is emphatic about.
+	// the one the implementation is emphatic about.
 	if !strings.Contains(block, "a resolve it   n drop it   s tell it") {
 		t.Fatalf("the block does not draw the task-states row:\n%s", block)
 	}
@@ -94,7 +94,7 @@ func TestARelandedNodesQuestionReplacesTheFirst(t *testing.T) {
 	}
 	// AND `[a]` ON THAT ROAD SPENDS THE MERGE ROUND AND NOT AN ACCEPT: what is
 	// being asked is which of two versions of the person's own file survives, and
-	// no accept answers that (docs/design/task-states/DESIGN.md).
+	// no accept answers that.
 	drive(t, a, key("a"))
 	if len(agent.merged) != 1 || agent.merged[0] != 7 {
 		t.Fatalf("the conflict's yes reached the engine as %+v (accepts: %+v)", agent.merged, agent.resolved)

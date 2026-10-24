@@ -23,7 +23,7 @@ import (
 // lane's own — its own layout arithmetic, its own two keys, its own pressable
 // columns and its own idea of what `esc` meant — and every law it carried had to
 // be argued again in eight other blocks that never got round to it
-// (docs/design/questions/DESIGN.md).
+//.
 //
 // It is still ONE ROW, which was the whole of that row's design and is now a
 // fact about the object rather than about a renderer: the offer names a

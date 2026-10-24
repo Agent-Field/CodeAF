@@ -1,7 +1,7 @@
 package tui3
 
 // The surface's half of changing an answer, and of stopping a clock that
-// answers (docs/design/questions/DESIGN.md, "An answer is a message").
+// answers.
 
 import (
 	"strings"

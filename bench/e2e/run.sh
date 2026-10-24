@@ -37,7 +37,7 @@ REPO_ROOT="$(cd "$E2E_ROOT/../.." && pwd)"
 # E2E_PEER_MODEL is what pi and opencode are given, because neither understands
 # codeaf's alias syntax: passing the `~` form to pi returns
 # `400 ... is not a valid model ID`. It is the concrete slug that alias serves,
-# recorded in bench/probelab/REPORT.md.
+# recorded in the implementation.
 #
 # Changing either without changing the other silently compares two models and
 # makes every historical row in e2e.csv incomparable. The `model` column exists

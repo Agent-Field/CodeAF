@@ -88,6 +88,6 @@ func halted(ending session.TaskEnding) bool {
 // and `!` was a fourth cell for one of them, which left a person deciding
 // whether it was louder than the `✗` beside it; work that did not finish is
 // `✗`, dim unless something actually broke (tasktier.go's [tierGlyph], and
-// docs/design/task-states/DESIGN.md). The same cell in both glyph tiers,
+// the implementation). The same cell in both glyph tiers,
 // because ! is already a character a screen with no Unicode has.
 const glyphHalted = "!"

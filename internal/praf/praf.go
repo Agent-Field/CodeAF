@@ -10,7 +10,7 @@
 // AgentField node: a control plane carried its calls, a router key it held
 // paid for its models, and a coding-agent binary ran each of its reviewers.
 // Its Go port was copied into codeaf once, at the tag codeaf-absorb
-// (docs/design/pr-review/ABSORB.md); its algorithm — the intake, the review
+// ; its algorithm — the intake, the review
 // plan, the dimension reviewers, the evidence, challenge, cross-reference and
 // coverage passes, the prompts — is in the packages below this one and is its
 // own. What it runs on is codeaf's: the agent loop sec runs on too

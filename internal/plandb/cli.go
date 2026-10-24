@@ -1,6 +1,6 @@
 package plandb
 
-// The plandb CLI: one runner, two doors (docs/design/plandb-cli/DESIGN.md).
+// The plandb CLI: one runner, two doors.
 // cmd/plandb builds bin/plandb, and `codeaf plandb` reaches the same Main as
 // the fallback road when the sibling binary is not beside the running binary.
 //
@@ -11,7 +11,7 @@ package plandb
 // dispatches under the task's own id; the lifecycle verbs are refused with
 // the supervisor's own sentence, naming the verb, so a model that reaches
 // for one learns the rule in one step. `go` and `done --next` are the two
-// caller-owned claims (docs/design/plandb-cli/REFERENCE.md): the pulse
+// caller-owned claims: the pulse
 // re-claims a task claimed that way under its own id once it becomes a node.
 //
 // Output has one shape everywhere: human text by default, --json for
@@ -2365,7 +2365,7 @@ func cliVerbHelp(verb string) string {
 
 // cliUsage is the whole surface, in the voice the doctrine teaches it.
 func cliUsage() string {
-	return `plandb ` + cliVersion + ` — the plan store on the bash belt (docs/design/plandb-cli/DESIGN.md)
+	return `plandb ` + cliVersion + ` — the plan store on the bash belt
 
 usage: plandb [--db PATH] [--json] [-c] [--agent ID] [--project NAME] <verb> [args]
 

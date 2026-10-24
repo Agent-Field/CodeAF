@@ -3,7 +3,7 @@ package tui3
 // ── THE THREE LIVE PANELS' SHARED RULES ─────────────────────────────────────
 //
 // `needs you`, `running` and `since you left` are the panels whose rows come and
-// go while a person watches (docs/design/home-mission-control/DESIGN.md §3
+// go while a person watches (the implementation §3
 // P1–P3). They fold what they cannot draw behind one door at the budget the
 // order table gives each of them ([homePanelCut]), and a row names what enter
 // will do when that is not simply "open it" — which is written once, here, and

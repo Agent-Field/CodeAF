@@ -334,7 +334,7 @@ type Outcome struct {
 	// It exists because the delivery gate was reading a suite's absolute state
 	// as a verdict on the change, and a repository with one pre-existing red
 	// test therefore convicted every correct patch that passed through it — a
-	// measured, repeated way of throwing finished work away (audit-notes
+	// measured, repeated way of throwing finished work away (the implementation
 	// §14.4.1). A worker that can tell the difference owes the judge the
 	// difference in words, because the judge cannot rerun anything. Only a
 	// worker that actually photographs the repository before it starts fills
@@ -360,7 +360,7 @@ type Outcome struct {
 	// not a distinction anything downstream needs and nothing writes one: this
 	// field is nil or it is populated. A populated one is a finding the gate
 	// raises itself, with no citation to weigh, because the person never had to
-	// ask for their repository to keep working (docs/design/gate/SETTLEMENT.md
+	// ask for their repository to keep working (the implementation
 	// §4, FAILSAFE.md clause 2).
 	Regressed []string
 
@@ -417,7 +417,7 @@ type Outcome struct {
 	// neither question can be asked of a list of failures. The Taken flag is
 	// what keeps the gate honest about a project that declares no verification:
 	// nobody looked and nothing may be concluded, which is a different fact from
-	// a suite that came back clean. See docs/design/gate/ACCEPTANCE.md.
+	// a suite that came back clean. See the implementation.
 	//
 	// A zero value is a photograph nobody took, which is what every worker that
 	// cannot take two readings leaves here.
@@ -733,7 +733,7 @@ func Mutates(executor Executor) bool {
 // IT IS ALSO THE SUBHARNESS REGISTRY, and there is deliberately only the one.
 // The name→worker lookup with a fallback that this type has always been is
 // exactly the shape a typed subharness needs, so the subharness contract GREW
-// this rather than standing a second registry beside it (docs/SUBHARNESS-PRD.md
+// this rather than standing a second registry beside it (the implementation
 // §3). The two halves answer two different questions about the same names:
 //
 //   - executors/fallback below serve a LEAF that named a worker. [Registry.For]

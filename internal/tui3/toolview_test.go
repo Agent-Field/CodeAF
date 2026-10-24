@@ -11,7 +11,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-// The tool column's law is docs/CHAT-V3.md D11, and these are its acceptance
+// The tool column's law is the implementation D11, and these are its acceptance
 // tests: the grammar of one line, the arithmetic behind its stat, the shape of
 // its expansion, and the two tiers it degrades through.
 

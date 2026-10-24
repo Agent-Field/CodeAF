@@ -168,7 +168,7 @@ func TestTheNarrowFootDropsWholeHintsAndNeverSlicesOne(t *testing.T) {
 // IT IS EMPTY, and the two entries it opened with are gone rather than
 // forgotten: `jobpage.go` and `taskrecord.go` both went onto [hintFit] with the
 // way out moved to the end of their key rows, where the ranked-clause fitter
-// keeps it (docs/design/polish/audit-jobs.md's hint rows). The map stays so the
+// keeps it. The map stays so the
 // second half of the law below — a file fixed but still named here — has
 // something to guard the day somebody needs the ledger again.
 var hintsStillCutByCharacter = map[string]string{}

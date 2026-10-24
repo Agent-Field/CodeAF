@@ -593,7 +593,7 @@ The report now uses **binary outcome success**, separates exact scenario/door/mo
 
 Cancelled streams may lack their final usage event. The guard records generation IDs, request identities, and timing without prompt contents. After the owned runtime stops, `reconcile.py` can obtain read-only generation billing metadata from OpenRouter. It preserves the raw ledger and writes a derived ledger and receipts; ID/model mismatches, unfinished records, or unavailable prices stay unknown. No inference is retried to recover a price.
 
-The product goals, staged comparison protocol, holdout requirement, and proposed acceptance margins are in [PARETO.md](../../docs/design/conversation-runtime/PARETO.md). Run `python3 -m unittest discover -s bench/conversation/test -p 'test_*.py'` alongside the existing shell selftest when changing measurement code.
+The product goals, staged comparison protocol, holdout requirement, and proposed acceptance margins are in PARETO.md. Run `python3 -m unittest discover -s bench/conversation/test -p 'test_*.py'` alongside the existing shell selftest when changing measurement code.
 
 ### A free chat is not a finished background action
 

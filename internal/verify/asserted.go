@@ -8,7 +8,7 @@ package verify
 // widget has more than zero lines spells `expand` and weighs nothing about it.
 // textual s13 wrote three such checks, every one of them mapped to a stated
 // behaviour, and shipped at exit 0 with the hidden check for that exact
-// behaviour red (docs/design/gate/ACCEPTANCE.md).
+// behaviour red.
 //
 // So this reads the other half: for each check a file declares, the TEXT OF ITS
 // ASSERTION STATEMENTS and nothing else — the lines that would fail if what they
