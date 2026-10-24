@@ -4,7 +4,7 @@ package session
 //
 // A subharness is a saved PROGRAM for a shape of work this project does again
 // and again: typed input, typed output, its own tools, its own bounds
-// (docs/SUBHARNESS-PRD.md). The whole value of having one is that it gets USED,
+//. The whole value of having one is that it gets USED,
 // and the way a thing on a list stops being used is that nobody remembers the
 // list exists. So the conversation itself offers one when the work in front of
 // it is that shape — which is the same argument harness.go makes about the turn

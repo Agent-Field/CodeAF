@@ -27,7 +27,7 @@ func TestTheFileShapedBitIsGatedOnAWorkspaceAndAName(t *testing.T) {
 			terrain: "/tmp/work", goal: "update REPORT.md with the new figures", want: true,
 		},
 		"a workspace and a named path": {
-			terrain: "/tmp/work", goal: "rewrite docs/JOURNEY.md", want: true,
+			terrain: "/tmp/work", goal: "rewrite docs/GUIDE.md", want: true,
 		},
 		"a workspace and a question": {
 			terrain: "/tmp/work", goal: "which of these two designs is faster, and why", want: false,

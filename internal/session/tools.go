@@ -19,7 +19,7 @@ import (
 // yet; when the tasker attaches they append to this slice and nothing else
 // changes.
 //
-// There is deliberately no todo tool (docs/CHAT-V3.md Decision 11): a plan
+// There is deliberately no todo tool: a plan
 // the person can read beats state only the model can see, and work big enough
 // to decompose belongs to the workforce, not to a session-local list.
 //

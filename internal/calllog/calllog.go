@@ -216,7 +216,7 @@ type Record struct {
 	// apparently running past twice their own deadline. Every one of those was
 	// a healthy call outliving a hazard ceiling, which is the ordinary case. The
 	// figure was right and the NAME was the lie, so the name moved
-	// (docs/design/recovery/DESIGN.md §7, wave R0).
+	//.
 	HazardCeilingMs int64 `json:"hazard_ceiling_ms,omitempty"`
 	// AppliedMs is THE BOUND THAT ACTUALLY ENDED THIS ATTEMPT and AppliedWord is
 	// what to call it. HazardCeilingMs above says what was PLANNED; these two say

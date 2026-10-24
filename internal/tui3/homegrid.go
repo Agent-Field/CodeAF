@@ -15,7 +15,7 @@ import (
 // ── THE GRID ────────────────────────────────────────────────────────────────
 //
 // HOME IS A FIXED SET OF PANELS, EACH ANSWERING ONE QUESTION A PERSON HAS WHEN
-// THEY WALK UP TO A COLLEAGUE'S DESK (docs/design/home-mission-control/DESIGN.md
+// THEY WALK UP TO A COLLEAGUE'S DESK (the implementation
 // §1). The chat list is one of them. This file is the arrangement: which panel
 // stands in which column at which width, how a short terminal gives way, and
 // what an empty panel says. What each panel HOLDS is its own file

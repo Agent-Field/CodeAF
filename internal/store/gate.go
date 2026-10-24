@@ -112,7 +112,7 @@ type DeliveryGate struct {
 	// other field here is: the exit code turns on it, and a sentence is not a
 	// field. Seven of eight measured runs exited 0 over a provenance refusal
 	// while the review that named the missing work was right every time
-	// (2026-08-28, bench/deepswe; see docs/design/gate/SETTLEMENT.md §2).
+	// (2026-08-28, bench/deepswe; see the implementation §2).
 	//
 	// THE WORLD IS THE DISK, A READING, OR THE RECORD — NEVER THE DELIVERABLE'S
 	// OWN PROSE. The deliverable is the component the gate is checking, and a
@@ -136,7 +136,7 @@ type DeliveryGate struct {
 	// the world says; ink s5 and ofetch s5 both composed a better summary over a
 	// finding about the substance of the work, were re-judged on the summary, and
 	// settled whole at 7 of 25 and 44 of 47 hidden checks (2026-08-29,
-	// bench/deepswe; docs/design/gate/SETTLEMENT.md §8).
+	// bench/deepswe; the implementation §8).
 	//
 	// A round that moved nothing may still close a finding whose only ground was the
 	// delivered text — that is what writing can honestly fix — so this is a fact
@@ -360,7 +360,7 @@ type ExercisedPoint struct {
 // person watching reads from Pass and Refused alone — so ink s5 and ofetch s5
 // printed "gate: fail — The deliverable is a listing of files, not the answer
 // itself" as the last thing anybody saw and left with exit 0
-// (2026-08-29, bench/deepswe; docs/design/gate/SETTLEMENT.md §7). A verdict a
+// (2026-08-29, bench/deepswe; the implementation §7). A verdict a
 // person reads and a verdict an exit code carries are one fact, and one fact is
 // one reading.
 func (g DeliveryGate) Whole() bool {
@@ -751,7 +751,7 @@ func (s *Store) DeliveryGateAnchor(baseID string) (seq int64, at time.Time, ok b
 // question an autopsy of a finished run needs answered from the run's own
 // journal. It is also what the headless stream reads to say the checklist exists
 // at all — a fail-safe that does not reach the person watching is decoration
-// (docs/design/failsafe/FAILSAFE.md clause 3).
+// .
 const EventAcceptance EventKind = "acceptance"
 
 // AcceptancePoint is one thing the request states, the words of the request it

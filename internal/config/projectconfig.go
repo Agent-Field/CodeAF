@@ -23,7 +23,7 @@ import (
 // Three laws, and they are the whole of it.
 //
 //  1. RESOLUTION IS PROJECT → PROFILE → BUILT-IN DEFAULT, which is exactly omp's
-//     layering and exactly the order docs/CHAT-V3.md Decision 6 states. The
+//     layering and exactly the order the implementation Decision 6 states. The
 //     environment still outranks all three where a row has a pin: a variable is
 //     the operator's explicit instruction for this process, and a file checked
 //     into a repository must not be able to overrule the shell the binary was

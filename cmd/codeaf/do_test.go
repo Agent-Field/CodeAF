@@ -2163,7 +2163,7 @@ func TestASettledRunThatDidNotLandWholeLeavesWithAPartialCode(t *testing.T) {
 			// about whether the work landed, and the finding is still standing
 			// when the run hands over. Seven of eight measured DeepSWE runs
 			// exited 0 on exactly this shape, each with a review that was right
-			// (bench/deepswe/AUTOPSY.md).
+			//.
 			name: "the gap was refused for where its words came from",
 			build: func(t *testing.T, graph *store.Store, session string) {
 				t.Helper()

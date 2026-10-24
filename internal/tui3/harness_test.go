@@ -107,7 +107,7 @@ func TestTheHarnessOfferIsOneRowWithBothAnswers(t *testing.T) {
 // `enter`, `y`, `esc` and `n` used to be the four keys here, and none of them is
 // an answer any more: this test answers `1` and `2` like every other question on
 // the block, and `esc` is *later* rather than the no
-// (docs/design/questions/DESIGN.md's ONE KEY GRAMMAR).
+// .
 func TestTheHarnessOfferAnswersToItsKeys(t *testing.T) {
 	for _, c := range []struct {
 		key string

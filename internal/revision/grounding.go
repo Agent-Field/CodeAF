@@ -21,7 +21,7 @@ import (
 // request with a middle skipped; two more quoted the working method, which one
 // door of the rule already accepted and the other had never been told about.
 // Every one of them named work the run had genuinely promised and not done, and
-// each refusal delivered the shortfall as done. See docs/design/gate/SETTLEMENT.md.
+// each refusal delivered the shortfall as done. See the implementation.
 //
 // GROUNDS ARE THE PROMISES THIS RUN MADE BEFORE IT BEGAN WORKING. Three things
 // answer to that and nothing else does: the person's own request, the working

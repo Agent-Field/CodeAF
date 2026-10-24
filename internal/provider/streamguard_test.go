@@ -989,7 +989,7 @@ func shortenWall(t *testing.T, floor, ceiling time.Duration) func() {
 
 // ── A STREAM PRODUCING TOKENS IS NOT CUT FOR ELAPSED TIME ───────────────────
 //
-// The recovery design's one law from the census (`docs/design/recovery/
+// The recovery design's one law from the census (`the implementation
 // DESIGN.md` §5): silence is bounded relative to the lane's own measured rate,
 // and the only DURATION bound a producing stream may meet is the twenty-minute
 // absolute ceiling from #786.

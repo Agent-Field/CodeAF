@@ -38,9 +38,8 @@ func (a *app) teamsGlobalManagerCard(d *teamsDraw, width, y int) []string {
 			}
 		}
 		var reports []string
-		tree := a.teamTree()
 		for _, t := range a.teamsOverviewRoots() {
-			home, reportsHere := tree.Home(t.Manager)
+			home, reportsHere := a.teamReportingHome(t.Manager)
 			if !t.Closed() && t.Manager != "" && reportsHere && home.Team == root.ID && home.Manager == root.Manager {
 				reports = append(reports, t.Name)
 			}

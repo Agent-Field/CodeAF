@@ -219,6 +219,12 @@ func taskPaneHitsOf(hits []placeHit) []taskPaneHit {
 // head cut to the list's half would unbind four keys on a frame wide enough to
 // offer them, which is why the seam starts under it and not beside it.
 func (a *app) taskSheetBody(width, room int) []placeRow {
+	// Share filtering and layout across the list, cursor and preview for this
+	// paint only. The next input always starts from the current authorities.
+	r := a.tasksFiltered()
+	r.layouts = make(map[int][]tasksLine)
+	a.taskSheet.paint = &r
+	defer func() { a.taskSheet.paint = nil }()
 	left := taskPaneList(width)
 	if left == width || a.taskSheet.reading.held == 0 {
 		// A PLACE WITH NOTHING IN IT SPENDS THE FRAME TEACHING WHAT IT IS
@@ -232,7 +238,6 @@ func (a *app) taskSheetBody(width, room int) []placeRow {
 	// the reading this place is already holding, taken once. Each of them used to
 	// take its own, and a filtered reading builds a fresh tree every time it is
 	// asked for ([tasksPlace.filtered]), so a frame paid for four.
-	r := a.tasksFiltered()
 	lines := r.lay(left)
 	// THE HEAD SPENDS A ROW OF THE FRAME AND NONE OF THE PANE, so the pane is
 	// built at the room that is actually left for it. A pane built at the body's

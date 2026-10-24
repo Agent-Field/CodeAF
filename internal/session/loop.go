@@ -50,7 +50,7 @@ package session
 // tool RUNS, so there is nothing to run beside it and nothing it can be applied
 // to afterwards. It keeps its full ten-second window, and what it owes the person
 // instead is a phase word for the whole of it, because a wait that is real is
-// reported (docs/design/waiting/DESIGN.md).
+// reported.
 //
 // THE LAW IS ALSO TRUE READ FROM THE OTHER END: NOTHING THE TURN *TELLS* MAY
 // HOLD IT UP EITHER. A reading is something a turn asks for; a phase is
@@ -238,7 +238,7 @@ const hintLimit = 80
 //
 // It is 32k rather than a paragraph's worth because of what a surface derives
 // from this field. An edit call's "+3 −1" and its unified diff are computed
-// from the old/new strings the call carried (docs/CHAT-V3.md D11, rendered in
+// from the old/new strings the call carried (the implementation D11, rendered in
 // internal/tui3) — the tool's own result is one sentence saying it worked, so
 // the arguments are the ONLY record of the change that reaches a screen. A cap
 // that cut them at 400 bytes did not shorten the diff; it produced the wrong
@@ -716,7 +716,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// A TASK NODE'S λ IS NOT ZERO WHEN SOMEBODY IS SITTING IN FRONT OF THE RUN.
 	// It was, on every task turn this build ever ran, and the simulator priced
 	// what that bought: a fifth off the money for nearly four times the wait
-	// (bench/lanelab/REPORT.md, "the λ = 0 row"). λ = 0 is the statement that a
+	//. λ = 0 is the statement that a
 	// second is worth NOTHING, and it is only true of work whose owner is not
 	// there — a run started from a window somebody is watching has an owner
 	// reading its cards as they land, and the seconds are theirs.
@@ -847,7 +847,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	emptyReplies := 0
 	// AND THE RE-ASKING IS BOUNDED BY TIME AND NOT BY A COUNT. It used to walk
 	// the person's `response.attempts` through the boundary, which is one of the
-	// six session-side ladders docs/design/recovery/DESIGN.md §7 names: a count
+	// six session-side ladders the implementation §7 names: a count
 	// under a transport that was already bounded by the plan's deadline, so the
 	// two multiplied and neither could be stated. This is the same give-up the
 	// call under it runs on, started at the FIRST empty answer — a turn doing
@@ -1137,7 +1137,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 				// boundary decided it, the wait was taken, and the surface was told
 				// NOTHING — no [EventRetrying], no [RetryNews], no phase — so a
 				// person watched a clock counting a request that had already come
-				// back empty (docs/design/recovery/DESIGN.md §2.8, one of the four
+				// back empty (the implementation §2.8, one of the four
 				// silent waits). The verdict is the same one a refusal earns, the
 				// allowance is the same allowance, and now the line is the same
 				// line.
@@ -1884,7 +1884,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 	var hopped []string
 	// ── THE LADDER HAS NO LENGTH, AND THE DEADLINE IS THE WHOLE OF THE BOUND ──
 	//
-	// THE MEASURED FAILURE (docs/design/recovery/DESIGN.md §2 problem 1). This
+	// THE MEASURED FAILURE. This
 	// count and the transport's own MULTIPLIED. Each of these attempts is a whole
 	// call under the dispatcher's plan — up to `lane.Role.GiveUp` of walking
 	// machines and climbing rungs — so three of them was three times the bound
@@ -2347,7 +2347,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// THAT DISTINCTION USED TO BE DRAWN HERE TOO, one line below the
 		// classification that had just drawn it: `refusal.OurRequest()` with a bare
 		// return under it, the second of the three rules a 404 was classified by
-		// (docs/design/recovery/DESIGN.md §2.6). It is gone. The shape reaches the
+		//. It is gone. The shape reaches the
 		// switch below as [taxonomy.Shape] carrying [taxonomy.ActionReshape], which
 		// ends the request through the same door every other ending uses — and,
 		// unlike the bare return, names the SHAPE in the row a person reads instead
@@ -2678,7 +2678,7 @@ func retryNews(model string, spent int, verdict taxonomy.Verdict, cut *provider.
 // thing that changes a model, and until 2026-09-10 it was not — the adapter's
 // endpoint ladder walked the same `FallbackModels` at its foot and neither knew
 // the other had been there, so a turn could pay for one fallback twice and skip
-// another entirely (docs/design/recovery/DESIGN.md §2.2). The adapter's walk is
+// another entirely. The adapter's walk is
 // deleted and this is the one model hop in the build; what it reads is the FACT
 // of which models the dispatcher has actually put on the wire for this turn
 // ([provider.ModelsTried]), folded with this loop's own record, and it answers
@@ -4513,7 +4513,7 @@ func assistantContent(response *ai.Response) []ai.ContentPart {
 	return response.Choices[0].Message.Content
 }
 
-// ── compaction (docs/CHAT-V3.md Decision 9, omp's architecture) ─────────────
+// ── compaction ─────────────
 
 const (
 	// compactReservePercent / compactReserveFloorTokens are omp's threshold:

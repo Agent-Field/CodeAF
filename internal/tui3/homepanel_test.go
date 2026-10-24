@@ -11,7 +11,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-// ── THE PANELS (docs/design/home-mission-control/DESIGN.md §1, §3 G2–G6) ────
+// ── THE PANELS ────
 
 // homeLineAfter is the frame line under the first one holding a word.
 func homeLineAfter(frame, word string) string { return homeLineBelow(frame, word, 1) }

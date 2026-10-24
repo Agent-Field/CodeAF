@@ -43,7 +43,7 @@ func writeV3Session(t *testing.T, bucket, id, said string, spoke time.Time) stri
 // Resume follows the person, not the filesystem. A background write touching a
 // file is not somebody returning to a conversation, so the launch opens the
 // session with the newest last-spoken stamp even when another folder was
-// modified a moment ago (docs/CHAT-V3.md, Decision 26).
+// modified a moment ago.
 func TestResumeOpensTheConversationThePersonSpokeInLast(t *testing.T) {
 	t.Setenv("CODEAF_HOME", filepath.Join(t.TempDir(), "state"))
 	workspace := t.TempDir()

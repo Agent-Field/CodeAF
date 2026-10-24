@@ -8,7 +8,7 @@ import (
 // ── THE CONTROLLER ──────────────────────────────────────────────────────────
 //
 // One inequality, three distributions, six acts. Everything below is the
-// arithmetic of `docs/design/waiting/DESIGN.md` §B and nothing else: no clock,
+// arithmetic of `the implementation` §B and nothing else: no clock,
 // no connection, no vocabulary a person reads.
 //
 // At every moment the controller holds two numbers.
@@ -52,7 +52,7 @@ import (
 //
 // The inequality above answers "DOES ACTING PAY". It does not answer "IS THIS
 // LANE MISBEHAVING", and for a while this package used it for both — which is a
-// defect and was measured as one. `bench/lanelab/REPORT.md` has the run: with a
+// defect and was measured as one. `the implementation` has the run: with a
 // warmed store, where the belief about each lane is TIGHT and correct, the
 // controller hedged healthy requests MORE often than it did from a cold one,
 // because a cheap alternative and a well-known median make "another arm would
@@ -86,7 +86,7 @@ import (
 //
 // **The budget is not a new number.** It is §K's own acceptance criterion:
 // no more than 2% of healthy requests may carry an arm
-// (`docs/design/waiting/DESIGN.md` §K, and Dean & Barroso's measured figure for
+// (`the implementation` §K, and Dean & Barroso's measured figure for
 // how much extra traffic removes most of a p99). The test is sized to the bound
 // it has to meet, which is the whole of the derivation.
 //

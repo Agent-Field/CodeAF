@@ -4,7 +4,7 @@ package tui3
 //
 //	THE LENS MAY LOWER SALIENCE; IT MAY NOT DROP A FACT.
 //
-// That sentence is the whole of docs/design/lens/DESIGN.md's Decision 4, and
+// That sentence is the whole of the implementation's Decision 4, and
 // this file is the whole of its enforcement. A page may fold a fact away, dim
 // it, put it a keypress down or draw it somewhere else entirely — what it may
 // not do is fail to have it.
@@ -114,10 +114,10 @@ var salienceTable = []salienceCase{
 		ev: session.Event{Kind: session.EventTaskPhase, Task: &session.TaskNotice{ID: 4}}},
 	{name: "EventTurnDone", chatOnly: "the two lines a turn ends with — what it changed and what it cost — are " +
 		"the conversation's receipts. A room's numbers aggregate in its header instead of dribbling down the " +
-		"scroll (docs/design/lens/DESIGN.md, Decision 3)",
+		"scroll",
 		ev: session.Event{Kind: session.EventTurnDone}},
 	{name: "EventSteerAccepted", chatOnly: "the elbow's landing clause is the chat's today; a room's steer " +
-		"becomes the same elbow in lane L3 (docs/design/lens/DESIGN.md, Decision 2 and ruling 4)",
+		"becomes the same elbow in lane L3",
 		ev: session.Event{Kind: session.EventSteerAccepted, Steer: &session.SteerNote{ID: 1, Words: "use the other file"}}},
 	{name: "EventSteerConsumed", chatOnly: "the other half of the elbow's lifecycle, and lane L3's for the same " +
 		"reason", ev: session.Event{Kind: session.EventSteerConsumed, Steer: &session.SteerNote{ID: 1, Words: "use the other file"}}},
@@ -340,7 +340,7 @@ func TestANodesRowSaysWhatTheCallTook(t *testing.T) {
 }
 
 // AND TWO CALLS OF ONE NAME RESOLVE BY THEIR ARGUMENTS, on BOTH pages — ruling
-// 3 of docs/design/lens/DESIGN.md. The chat used to take the oldest row of that
+// 3 of the implementation. The chat used to take the oldest row of that
 // name, which is right by convention and wrong half the time two same-name
 // calls are in flight at once.
 func TestAnEndPairsByArgumentsInTheConversationToo(t *testing.T) {

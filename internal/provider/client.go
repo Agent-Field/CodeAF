@@ -965,7 +965,7 @@ func (c *Client) newRequest(messages []ai.Message, options []ai.Option) (*ai.Req
 // reading was not a stream at all.
 //
 // A fail-safe that arms only when a person is looking is decoration
-// (docs/design/failsafe/FAILSAFE.md). So the shape of the request is decided
+// . So the shape of the request is decided
 // here, by what the adapter needs in order to see, and the observer is optional
 // throughout the streamed path.
 //

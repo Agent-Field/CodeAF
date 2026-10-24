@@ -118,7 +118,7 @@ func (a *Agent) railBlockLocked() error {
 		return nil
 	}
 	// THE TRIP LINE NAMES THE LIMIT, THE FIGURE AND THE DOOR, in one line, and
-	// says nothing about it twice (docs/design/spending/DESIGN.md).
+	// says nothing about it twice.
 	//
 	// It says `limit` and not `rail`: the machinery's word is this file's and the
 	// person's word is theirs. And it names `/budget` rather than a bare letter,

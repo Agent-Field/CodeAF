@@ -10,7 +10,7 @@ import (
 
 // THE FOUR SHAPES BELOW A QUESTION, which is rung six of the ladder:
 // "structured input — blanks · checklist · this-or-this · dial, never free text
-// where a key would do" (docs/design/questions/DESIGN.md).
+// where a key would do".
 //
 // WHY THE RUNG EXISTS AT ALL. A question whose answer is "postgres, port 5432,
 // keep the old file" asked as free text is a question the model has to parse,

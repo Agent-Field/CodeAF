@@ -58,7 +58,7 @@ const (
 // different questions — what may it spend, what may it run without asking, how
 // does it run tasks, and which workers exist — so a person looking for "how much
 // may it spend" read about load averages and repair rounds first. The three
-// questions are three sections now, and docs/design/spending/DESIGN.md is the
+// questions are three sections now, and the implementation is the
 // argument: a category is what a row is ABOUT, and a category that answers four
 // questions is a drawer rather than a section.
 const (
@@ -1245,7 +1245,7 @@ var OperatorEnvPins = []string{
 	// THE DEFAULT MOVED ON MEASUREMENT, not on argument: a designed experiment
 	// ran four planner arms against four readings of this gate over 273 judged
 	// plan draws, and the front it drew is the planner with the gate off —
-	// docs/design/plan-gate-doe/REPORT.md, issues #418 and #384. It is plumbing
+	// the implementation, issues #418 and #384. It is plumbing
 	// for the reason CODEAF_SWARM is — it picks which decomposition doctrine the
 	// binary runs, not something the product has an opinion about — and it has
 	// the same lifetime: it disappears when nobody has a reason to reach for a
@@ -1302,7 +1302,7 @@ var OperatorEnvPins = []string{
 	// And the update offer's own fixture states (internal/tui3/updatedemo.go).
 	"CODEAF_UPDATE_DEMO",
 	// CODEAF_TASK_BELT sends a task worker BACK to the older node belt
-	// (internal/session's bashbelt.go, docs/design/worker-harness/DESIGN.md).
+	// (internal/session's bashbelt.go, the implementation).
 	// The bash belt is the shipped default, so the variable is an escape
 	// hatch rather than the way in: `node`, `legacy` and `off` are the only
 	// words that turn it off, and one binary still runs both roads. It stays
@@ -4108,7 +4108,7 @@ func ResponseLimitsAt(profileDir string) taxonomy.Limits {
 // ── WHAT N MEANS CHANGED, AND THE ROW DID NOT ───────────────────────────────
 //
 // It was a count of sends and it is a MULTIPLIER ON THE DEADLINE
-// (docs/design/recovery/DESIGN.md §4, [taxonomy.Limits.Patience]): `3` is three
+// : `3` is three
 // times the role's own give-up — four and a half minutes on a conversation's
 // turn rather than ninety seconds — and never three identical requests. The key
 // keeps its name because the QUESTION a person is answering when they turn it is

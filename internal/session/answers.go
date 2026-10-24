@@ -256,7 +256,7 @@ func AnswerOptions(kind QuestionKind) []AnswerOption {
 		}
 	case QuestionLanding, QuestionConflict:
 		// THE LANDING KEYS ARE TASK-STATES' OWN, LETTER FOR LETTER
-		// (docs/design/task-states/DESIGN.md): `[a] <yes> · [n] <no> · [s] tell
+		//: `[a] <yes> · [n] <no> · [s] tell
 		// it`, always the same three columns in the same order. The words
 		// beside them are the row's own — [TaskAsk] carries them, and
 		// [landingOptions] is what fills them in for one node. This list is the
@@ -336,7 +336,7 @@ func HarnessOptions(ask AskKind) []AnswerOption {
 //
 // THEY ARE LETTERS AND NOT DIGITS, which is the one place this package parts
 // company with [AnswerOptions]' rule that a key is a digit — because
-// docs/design/task-states/DESIGN.md fixed `a`, `n` and `s` on that card before
+// the implementation fixed `a`, `n` and `s` on that card before
 // this file existed, and a hand that learned them there must find them here.
 // Home draws them as chips, so the letters cost nothing there either.
 const (
@@ -345,7 +345,7 @@ const (
 	// LandingNoKey says it does not hold.
 	LandingNoKey = "n"
 	// LandingTellKey sends words to the work and LEAVES THE QUESTION OPEN — a
-	// steer never resolves a task by itself (docs/design/task-states/DESIGN.md).
+	// steer never resolves a task by itself.
 	LandingTellKey = "s"
 	// LandingAgainKey sends a fresh look at the same working copy.
 	LandingAgainKey = "r"

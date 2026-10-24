@@ -72,7 +72,7 @@ const (
 	// the foot draws on almost every frame. The head's right corner already says
 	// `esc back` at every width it has a corner to say it in, and a page that
 	// named the same instruction twice on a six-line card spent two of its
-	// sixteen words repeating itself (docs/design/polish/audit-tasks.md row 15).
+	// sixteen words repeating itself.
 	// So THE FOOT CARRIES THE WAY OUT ONLY WHERE THE HEAD DOES NOT, which is
 	// [app.taskCardTitleLine]'s own answer and not a second guess at it.
 	//
@@ -606,7 +606,7 @@ func (a *app) taskCardFrame(width, height int) ([]string, []taskCardHit, int, in
 	// card, is a foot pinned for nobody: the reader's eye travels the whole
 	// frame to find `esc back` for a page that ended at line eleven, and the
 	// emptiness the law forbids in a figure is drawn here as rows of it
-	// (docs/design/polish/audit-tasks.md row 5).
+	//.
 	//
 	// A PAGE THAT SCROLLS KEEPS ITS PINNED FOOT, because there the bottom of the
 	// frame IS where the content ends — so the pad is gone and nothing else is:
@@ -833,7 +833,7 @@ type taskRecordVerb struct {
 // the shape [app.questionAnswerParts] already falls back to for an option
 // carrying no key of its own — it spells `itoa(i+1)` there — and the only
 // difference here is that these options DO carry keys: the landing's answers wear
-// LETTERS because docs/design/task-states/DESIGN.md fixed `a`, `n` and `s` on that
+// LETTERS because the implementation fixed `a`, `n` and `s` on that
 // card (session's answers.go states the law). So the position is a SECOND name
 // beside the letter rather than a stand-in for a missing one, and the letters are
 // untouched.

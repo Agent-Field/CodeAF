@@ -1,11 +1,11 @@
 // codeaf-census is the instrument the recovery design asks for: it reads the
 // model-call log this build always writes (`~/.codeaf/logs/calls.jsonl`,
 // internal/calllog) and prints, as markdown, the table
-// docs/design/recovery/DESIGN.md §1 argues from.
+// the implementation §1 argues from.
 //
 // IT EXISTS BECAUSE EVERY WAVE OF THAT DESIGN MOVES A NUMBER, and without a
 // committed instrument every one of those numbers is an argument about
-// anecdotes. The first census (docs/design/recovery/census-20260910.md) was a
+// anecdotes. The first census was a
 // throwaway pass over the same file; this is that pass, committed, tested on a
 // fixture, and runnable nightly by a cron in a test run (`make census`).
 //
@@ -71,7 +71,7 @@ func main() {
 func usage() {
 	fmt.Fprint(os.Stderr, `usage: codeaf-census [flags] [path to calls.jsonl]
 
-Prints the recovery census (docs/design/recovery/DESIGN.md §1) as markdown.
+Prints the recovery census as markdown.
 With no path it reads this machine's own model-call log.
 
 flags:

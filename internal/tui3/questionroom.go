@@ -16,7 +16,7 @@ import (
 
 // THE ROOM: A QUESTION IS A PLACE TOO, AND YOU CAN GO THERE.
 //
-// docs/design/questions/DESIGN.md gives a question four sizes, and this file is
+// the implementation gives a question four sizes, and this file is
 // the largest of them: "a page over the conversation (the task-room idiom): head
 // and attribution, options as sections (▸/▾, bodies, blocks), x compare on the
 // asker's dimensions, c comment on the focused part, ? ask back, the foot

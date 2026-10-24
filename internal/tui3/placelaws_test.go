@@ -19,7 +19,7 @@ import (
 
 // ── THE LAWS THE PLACES ARE BUILT ON ────────────────────────────────────────
 //
-// docs/design/home-rethink/ARCHITECTURE.md states six, and every one of them is
+// the implementation states six, and every one of them is
 // a shape a person could not see going wrong until a room was already broken.
 // They are pinned here because the whole argument for the `place` interface is
 // that a room added later cannot half-exist — and "cannot" has to be something

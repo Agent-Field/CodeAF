@@ -275,7 +275,7 @@ func (c Config) mayProposeSubharness() bool {
 }
 
 // mayBashBelt says whether this agent's belt is the experiment's bash belt
-// (bashbelt.go, docs/design/bash-task-loop/DESIGN.md): the one `bash` tool
+// (bashbelt.go, the implementation): the one `bash` tool
 // plus the hands that cannot be a shell command. InTask is half of the
 // predicate so no road can hand the experiment to a conversation, and the
 // flag is asked ONLY here — the one-reading law every belt verb follows —
@@ -350,7 +350,7 @@ var beltFacts = []beltFact{{
 	present: "- ON `propose_task` NEVER NAME THE METHOD: a task is always given its own copy, so \"work in this repo directly\", a branch or a checkout is never yours to specify.\n" +
 		"- Earlier work referred to but not pointed at (\"the reconciler task\", \"same as before\"): call `tasks` with their words BEFORE answering.\n" +
 		// AND THE TWO TRIGGERS THAT LOST THEIR HOME when the tool descriptions
-		// gave up their routing prose (docs/design/prompt-diet/DESIGN.md §4).
+		// gave up their routing prose.
 		// [tasksDescription] says what an id DOES; what it cannot say is when to
 		// reach for one, and the second half is a refusal: "continue task N" is
 		// the `continue` field on a task that already exists, and a model that
@@ -380,7 +380,7 @@ var beltFacts = []beltFact{{
 		// [shiftNotYours]), and a verb reaching for a graph that has closed is
 		// refused in the tool's own reply (tools_tasks.go). Every one of those was
 		// bought on each request of every turn in order to be told a second time on
-		// the one turn it mattered (docs/design/prompt-diet/DESIGN.md §2).
+		// the one turn it mattered.
 		"- To send the person's current correction to a running task, use `tasks` with `id` and `forward: true`. `say` is your own coordination and ends nothing; `stop` ends a task.",
 	absent: "- THE RECORD OF EARLIER WORK IS NOT REACHABLE FROM HERE and none of this work goes to anybody else: answer from the brief and from what is in front of you, and say plainly when something earlier is referred to that you cannot see. A `[Task reference: ...]` block you were handed carries transcript URIs, and `read` takes one exactly as printed, `file://` and all: `grep` a journal or `read` it with `offset`/`limit`, and never expand an outcome line into work you did not read.",
 }, {
@@ -637,7 +637,7 @@ var programFacts = []beltFact{{
 //
 // EXISTENCE IS THE PAGE'S; MECHANICS RIDE WITH THE VERB; CONSEQUENCES RIDE WITH
 // THE EVENT. Those are the three classes the prompt diet files every law under
-// (docs/design/prompt-diet/DESIGN.md §2):
+// :
 //
 //   - EXISTENCE — that a sentence can be left behind rather than done — is the
 //     only part needed BEFORE the model plans, because "remind me at 6" has to

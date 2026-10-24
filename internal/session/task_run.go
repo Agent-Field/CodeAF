@@ -35,7 +35,7 @@ package session
 // Four things end a node's work, and every one of them has a name the person
 // can read: its deadline, its step budget, its no-progress count, and a run of
 // actions that produced nothing that was not already there
-// (harness-research-notes.md §1 — Argus terminates on named thresholds rather
+// (the implementation §1 — Argus terminates on named thresholds rather
 // than on a reviewer's judgement, arXiv:2608.05144). The fourth is the only one
 // that does not end anything on its own: reaching it is what makes the harness
 // ASK, with the count and the working copy in front of whoever is asked
@@ -261,7 +261,7 @@ const (
 // the auditor judges against, the report a dependent inherits — reads THAT text
 // and no other.
 //
-// This is Argus's two-tier goal contract (harness-research-notes.md §1,
+// This is Argus's two-tier goal contract (the implementation §1,
 // arXiv:2608.05144), and the two tiers are drawn exactly here: the semantic
 // tier moves freely BEFORE admission — the model grooms the brief, the person
 // redirects it and their words are appended (task.go) — and the precise
@@ -4224,7 +4224,7 @@ func (a *Agent) standsIn(node *TaskNode) bool {
 // `failed` and `needs your look` have LEFT THIS NOTE. The first sent the model —
 // and then the person — looking for a fault in work nobody had judged, and the
 // second was one surface's private word for the state every other surface now
-// calls your call (docs/design/task-states/DESIGN.md).
+// calls your call.
 //
 // NOT ONE OF THEM IS THE HARNESS'S OWN VOCABULARY. The model reads this line and
 // says it back to a person in its own words, so "auditor", "verdict", VERIFIED
@@ -4340,7 +4340,7 @@ const (
 // A CONFLICT IS NEVER THE MODEL'S TO ACCEPT. It cannot merge by decree: what is
 // being asked is which of two versions of somebody's own file survives, and no
 // verb on the belt is an answer to that. The model's job is to say what conflicts
-// and leave the choice where it belongs (docs/design/task-states/DESIGN.md).
+// and leave the choice where it belongs.
 const conflictNotYours = "\nits branch conflicts with the person's and that is not yours to accept: no verb of yours merges it, and which of two versions of their own file survives is theirs to say. Tell them what conflicts and leave the choice with them."
 
 // shiftNotYours is the same refusal on the other road: the branch WOULD fasten
@@ -4386,7 +4386,7 @@ type landingAddress struct {
 //
 // A HARNESS-AUTHORED MESSAGE CARRIES ITS OWN READING INSTRUCTION. That is the
 // pattern [checkpointCarryOnLead] and the standing orders' news rule were
-// already written in, and docs/design/prompt-diet/DESIGN.md §2 files it as a
+// already written in, and the implementation §2 files it as a
 // delivery class of its own: what to do about an event is needed only on the
 // turn it happens, so it rides the event and costs nothing on the thousands of
 // turns where no task lands. The paragraphs prompts/system.md used to spend on
@@ -4601,7 +4601,7 @@ func taskMergeNote(notice TaskNotice) string {
 // versions of somebody's own file survives, and no policy about who decides
 // unchecked work is an answer to that question — so a conflict lands with the
 // person holding it under auto exactly as it does under ask
-// (docs/design/task-states/DESIGN.md).
+// .
 //
 // AND A GROUND THAT MOVED IS THE SAME REFUSAL. The branch would fasten and the
 // work holds; what is being asked is still which of two versions of the person's
@@ -5540,7 +5540,7 @@ func (a *Agent) settleUnfinished(ctx context.Context, node *TaskNode, tree taskT
 
 // auditOn says whether a node's work meets an auditor: the person left the
 // audit row on, and the node's belt is not the experiment's bash belt, which
-// keeps no auditor at all (docs/design/bash-task-loop/INVESTIGATION.md). It is
+// keeps no auditor at all. It is
 // one predicate rather than a conjunction spelled at each gate, so the gates
 // gain no decisions of their own while the belt is being tried.
 func (a *Agent) auditOn() bool { return a.config.TaskAudit && !bashBeltAsked() }
@@ -5555,7 +5555,7 @@ func (a *Agent) auditOff() bool { return !a.auditOn() }
 // shell worker's writes are never staged, so on this belt it read "no diff, no
 // staged change" against a tree that already carried the fix and refuted
 // correct work on every row of the first grid
-// (docs/design/bash-task-loop/INVESTIGATION.md).
+// .
 //
 // THE RUNNER KEEPS THE ONE ANSWER THE AUDITOR WAS ALSO GIVING: whether the run
 // finished at all. A node whose worker gave up — the circling road, a rule it
@@ -5890,7 +5890,7 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	// gate stands open and the node's own account merges — marked unaudited,
 	// because 'done' should never wear 'verified's clothes.
 	// AND THE BASH BELT KEEPS NO AUDITOR: the experiment is the planner's loop
-	// and nothing else (docs/design/bash-task-loop/INVESTIGATION.md), so the
+	// and nothing else, so the
 	// landing is the one combination of roads [Agent.landBashBeltUnaudited]
 	// names — kept in a function of its own so this gate stays as short as it
 	// was.
@@ -7703,7 +7703,7 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// reading it — so a line steered at it has to START one or it is a
 		// question nothing ever answers (agent.go's wakeLocked, harness_task.go).
 		roomThread: node.kind == TaskKindHarness,
-		// THE EXPERIMENT'S ONE DOOR (docs/design/bash-task-loop/DESIGN.md):
+		// THE EXPERIMENT'S ONE DOOR:
 		// CODEAF_TASK_BELT=bash builds this worker on the bash belt — the one
 		// `bash` tool plus the hands that cannot be a shell command. Unset,
 		// every byte of this worker is where it was, which is what lets both

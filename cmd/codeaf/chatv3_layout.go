@@ -1,7 +1,7 @@
 package main
 
 // chatv3_layout.go is where a v3 conversation lives, and which one a launch
-// opens (docs/CHAT-V3.md, Decision 26).
+// opens.
 //
 // A session is a FOLDER: ~/.codeaf/v3/projects/<encoded-workspace>/<id>/, with
 // the transcript, the sidecars, the node journals and — for an owned session —

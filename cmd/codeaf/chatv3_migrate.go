@@ -1,6 +1,6 @@
 package main
 
-// chatv3_migrate.go folds the flat layout into the folder one (docs/CHAT-V3.md,
+// chatv3_migrate.go folds the flat layout into the folder one (the implementation,
 // Decision 26's last law).
 //
 // ONE BOOT PASS, ONE-WAY, NEVER FATAL. A person who upgrades in the middle of a

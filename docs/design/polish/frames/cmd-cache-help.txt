@@ -1,1 +1,0 @@
-error: usage: aforge cache [clean [--yes]]

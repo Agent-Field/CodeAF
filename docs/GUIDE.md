@@ -399,7 +399,7 @@ but it reaches the network for the catalog and stops with
 
 </details>
 
-See [the headless contract](docs/HEADLESS.md) and [automations](docs/design/automations/DESIGN.md).
+See [the headless contract](docs/HEADLESS.md) and [automations].
 
 ## Work on another machine
 
@@ -441,4 +441,4 @@ and [AGENTS.md](AGENTS.md) before contributing.
 
 Start with [the documentation map](docs/README.md); the enduring references are the
 [design language](docs/DESIGN-LANGUAGE.md), [remote access](docs/REMOTE.md), the
-[headless contract](docs/HEADLESS.md) and [automations](docs/design/automations/DESIGN.md).
+[headless contract](docs/HEADLESS.md) and [automations].

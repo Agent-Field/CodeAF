@@ -127,7 +127,7 @@ type welcome struct {
 	// first says this is the FIRST CONVERSATION on this machine — the greeting
 	// that opens the moment the setup screen goes — and it changes three things
 	// about the unit, each stated where it acts (onboarding.go holds the screen
-	// before it, and docs/design/onboarding/DESIGN.md the whole journey):
+	// before it, and the implementation the whole journey):
 	//
 	//   - IT SAYS WHAT THIS BOX IS FOR. A heading, one instruction and the folder
 	//     the conversation is standing in, above three starting points. Every

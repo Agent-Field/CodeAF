@@ -44,7 +44,7 @@ func pacedClient(t *testing.T, handler http.Handler) *Client {
 //
 // It used to be a count — six attempts, `rateLimitAttempts` — and the count is
 // deleted with the other five budgets this loop owned
-// (docs/design/recovery/DESIGN.md §4). What bounds a watched call now is
+// . What bounds a watched call now is
 // `lane.Role.GiveUp` for the role it was made in: ninety seconds for a
 // conversation's turn, and the waits it asked for count against that whether or
 // not the seam below really slept them.

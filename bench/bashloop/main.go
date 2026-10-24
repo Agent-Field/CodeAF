@@ -1,7 +1,7 @@
 package main
 
 // command bashloop — the two-arm bench for the bash-only task loop
-// (docs/design/bash-task-loop/DESIGN.md, wave 3).
+//.
 //
 // One binary, two arms, six cells, n replicates, interleaved same-day. The
 // dry run composes every invocation and executes none of them; the live grid

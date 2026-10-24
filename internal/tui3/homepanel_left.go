@@ -11,7 +11,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-// leftPanel is `since you left` (docs/design/home-mission-control/DESIGN.md §1,
+// leftPanel is `since you left` (the implementation §1,
 // §3 P3): what happened on its own while nobody was looking, newest first — a
 // line per task that landed, a line per file a conversation made, the
 // automations that ran and what memory learned. The heading carries how long

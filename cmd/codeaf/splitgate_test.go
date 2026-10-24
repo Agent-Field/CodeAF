@@ -26,7 +26,7 @@ func TestGateDecisions(t *testing.T) {
 // the fold was the fault #418 reports. A designed experiment then ran four
 // planner arms against four readings of this gate over 273 judged plan draws
 // and put the arm with the gate off on the front
-// (docs/design/plan-gate-doe/REPORT.md), so an unpinned door now keeps what the
+// , so an unpinned door now keeps what the
 // planner drew and the count is something a run asks for.
 func TestThePlanDoorFoldsOrKeepsAccordingToTheModePinned(t *testing.T) {
 	const narrow = "HANDBOOK.md is one file. Deliver lanes that share no lines: rewrite the headings, link the cross-references, insert a contents section."

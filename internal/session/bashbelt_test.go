@@ -16,7 +16,7 @@ import (
 )
 
 // THE WAVE'S PROOF. Each test names the acceptance line it stands for
-// (docs/design/bash-task-loop/DESIGN.md, the W1 row): the belt composition
+//: the belt composition
 // (kept set present, the six file tools absent, the flag-off belt identical
 // byte for byte to today's), the envelope (a two-call batch rejected without
 // poisoning history, four consecutive invalids landing the node failed on the
@@ -899,7 +899,7 @@ func universeToolNames(t *testing.T) map[string]bool {
 // The auditor could not have helped here anyway: it verifies a STAGED diff, and
 // a shell worker's writes are never staged, so on every grid row it read "no
 // diff, no staged change" against a tree that already carried the fix and
-// refuted correct work (docs/design/bash-task-loop/INVESTIGATION.md).
+// refuted correct work.
 func TestBashBeltNodeKeepsNoAuditor(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("CODEAF_TASK_BELT", "bash")

@@ -24,7 +24,7 @@ import (
 // of them lands at a path that scrolled off the screen an hour ago. "The
 // report from Tuesday" is then a question nobody can answer without knowing
 // which directory that conversation was about, which is the question this list
-// exists to remove (docs/CHAT-V3.md, Decision 26).
+// exists to remove.
 //
 // It reads the GLOBAL index and not a directory, and that is the whole of why
 // it is worth having: what was made lives in as many places as there were

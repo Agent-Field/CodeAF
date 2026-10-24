@@ -15,7 +15,7 @@ import (
 
 // ── THE PICKER IS A TREE, AND THE LANE IS WRITTEN ON THE MODEL ──────────────
 //
-// docs/design/lanes-picker/DESIGN.md. Every test here is one of the four answers, driven
+// the design notes Every test here is one of the four answers, driven
 // the way a person drives it.
 
 // walkCatalog puts the model in use twelfth, which is where the owner's own

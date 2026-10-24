@@ -324,7 +324,7 @@ func contextGlyphs(pal palette) contextGlyph {
 	// THE PIECES ARE THE VOCABULARY'S, through this surface's one glyph door.
 	// They were literals until the frame primitive claimed the same six slots
 	// (frame.go), and a literal cannot know which repertoire the terminal is on
-	// — which is the whole of docs/design/icons/DESIGN.md's law, and what
+	// — which is the whole of the implementation's law, and what
 	// internal/iconlaw walks this package for.
 	return contextGlyph{
 		pal.glyph(tokens.GFrameTopLeft), pal.glyph(tokens.GFrameTopRight),

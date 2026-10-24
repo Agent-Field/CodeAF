@@ -45,7 +45,7 @@ func splitAsAsked(ctx context.Context, graph *store.Store, plans *jobPlans, sett
 	// Split gate: refuse divisions that won't pay for their overhead — WHERE
 	// SOMEBODY HAS ASKED FOR THAT. Unpinned the gate has no say and a leaf's
 	// division stands as it asked for it (splitgate's modes.go: the experiment
-	// that moved the default is in docs/design/plan-gate-doe/REPORT.md). Under
+	// that moved the default is in the implementation). Under
 	// `CODEAF_SPLITGATE=1` a leaf's own division earns its keep under the same
 	// rule as the planner's: the work it found enumerates many independent
 	// items.

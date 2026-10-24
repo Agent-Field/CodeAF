@@ -774,7 +774,7 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	}
 	// THE QUESTION BLOCK IS THE FIRST OF THE PINNED BLOCKS, because it is the
 	// one every other block on this ladder is being folded into
-	// (docs/design/questions/DESIGN.md). It carries the receipts of what was
+	//. It carries the receipts of what was
 	// just answered as well as what is still open, so it sits ABOVE the older
 	// blocks rather than under them: a receipt is about a question that has
 	// gone, and a receipt drawn below a question that is still up would read as

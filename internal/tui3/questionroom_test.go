@@ -2,7 +2,7 @@ package tui3
 
 // THE PAGE A QUESTION OPENS INTO.
 //
-// These tests hold what docs/design/questions/DESIGN.md promises about the room
+// These tests hold what the implementation promises about the room
 // form and what the surface's own laws demand of anything drawn over the
 // conversation: the four attribution facts are on it, the pick is marked with
 // its reason and what would change its mind, `x` compares only what differs and

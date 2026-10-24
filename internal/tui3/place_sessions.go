@@ -23,7 +23,7 @@ import (
 // the one door the roster's column has onto here.
 //
 // The methods on [tasksPlace] are shaped for the `place` contract the switcher is
-// settling into (docs/design/home-rethink/ARCHITECTURE.md): close, body, stops,
+// settling into: close, body, stops,
 // enter, window, note, hint, changed. Where the rest of the surface already
 // spells one of them under an older name, that name survives beside it as a
 // one-line call — the seam the refactor lane deletes when the interface lands,
@@ -37,6 +37,9 @@ import (
 // cursor is a line of that walk rather than a count of items the frame would
 // have to re-derive.
 type tasksPlace struct {
+	// paint is shared only while this body's immutable snapshot is being drawn.
+	// It is discarded before any input, fold, filter, or engine update can run.
+	paint *tasksReading
 	// actionNote reports the last explicit row action, including write failures.
 	actionNote string
 	cursor     int
@@ -341,17 +344,35 @@ func (p *tasksPlace) lineOf(a *app, want tasksKey) (int, bool) {
 // place is holding at this instant.
 func (p *tasksPlace) filtered(a *app) tasksReading {
 	r := p.reading
-	undeletedItems := r.items[:0:0]
-	for _, item := range r.items {
-		if !a.deletedSessionRows[tasksKeyOf(item.entry)] && !a.deletedSessionRows[tasksChatKey(item.row.ID)] {
-			undeletedItems = append(undeletedItems, item)
+	undeletedItems := r.items
+	if len(a.deletedSessionRows) > 0 {
+		for i, item := range r.items {
+			if a.deletedSessionRows[tasksKeyOf(item.entry)] || a.deletedSessionRows[tasksChatKey(item.row.ID)] {
+				if len(undeletedItems) == len(r.items) {
+					undeletedItems = make([]tasksItem, 0, len(r.items)-1)
+					undeletedItems = append(undeletedItems, r.items[:i]...)
+				}
+				continue
+			}
+			if len(undeletedItems) != len(r.items) {
+				undeletedItems = append(undeletedItems, item)
+			}
 		}
 	}
 	r.items = undeletedItems
-	undeletedChats := r.chats[:0:0]
-	for _, row := range r.chats {
-		if !a.deletedSessionRows[tasksChatKey(row.ID)] {
-			undeletedChats = append(undeletedChats, row)
+	undeletedChats := r.chats
+	if len(a.deletedSessionRows) > 0 {
+		for i, row := range r.chats {
+			if a.deletedSessionRows[tasksChatKey(row.ID)] {
+				if len(undeletedChats) == len(r.chats) {
+					undeletedChats = make([]session.SessionRow, 0, len(r.chats)-1)
+					undeletedChats = append(undeletedChats, r.chats[:i]...)
+				}
+				continue
+			}
+			if len(undeletedChats) != len(r.chats) {
+				undeletedChats = append(undeletedChats, row)
+			}
 		}
 	}
 	r.chats = undeletedChats
@@ -720,6 +741,9 @@ func (a *app) taskSheetFiltering() bool { return a.taskSheetFilter() != "" }
 // remember is asking about the whole of the machine's work — and a section a
 // query empties is not drawn at all ([tasksReading.lay] states that half).
 func (a *app) tasksFiltered() tasksReading {
+	if a.taskSheet.paint != nil {
+		return *a.taskSheet.paint
+	}
 	// IT IS THE ONE DOOR ONTO THE READING, so the freshness check hangs here:
 	// every path that draws, counts, moves the cursor or answers a key comes
 	// through this function, and a check on one of them would be the page fresh

@@ -254,7 +254,7 @@ func TestTheDeliverablesOwnProseCannotOverturnAFindingAboutFilesOnDisk(t *testin
 // forty lines away narrated the job's own registry. A repair node produces
 // nothing, so the gate that judged one was told the run had left nothing behind
 // and refused deliveries whose files were on disk (textual s5 task-2-x3, igel s5
-// task-2-x1; docs/design/gate/SETTLEMENT.md §5).
+// task-2-x1; the implementation §5).
 //
 // A behaviour test cannot see that, because both lists are the right TYPE and a
 // unit test supplies whichever one it means. What is checkable is the seam: the
@@ -320,7 +320,7 @@ func TestEveryDeliveryGateIsHeldToTheJobsRecord(t *testing.T) {
 // composition rewrites the account of work that already landed and runs nothing,
 // so the second gate reads a better summary of the identical world the first one
 // failed. ink s5 and ofetch s5 both settled whole that way, at 7 of 25 and 44 of
-// 47 hidden checks (docs/design/gate/SETTLEMENT.md §8).
+// 47 hidden checks.
 //
 // The rule lives in revision.RepairClosed, which weighs the verdict, the tree
 // stamp taken either side of the round, and whether the finding's ground is the

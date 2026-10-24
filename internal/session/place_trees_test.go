@@ -1,6 +1,6 @@
 package session
 
-// WHERE THE WORK HAPPENS, PROVED (docs/CHAT-V3.md, Decision 26): a session with
+// WHERE THE WORK HAPPENS, PROVED: a session with
 // a folder of its own keeps its worktrees, its lock and its node journals
 // inside it — or under the state root — and NOTHING of ours is left in the
 // person's repository. The zero Place is the legacy layout, unchanged, so the

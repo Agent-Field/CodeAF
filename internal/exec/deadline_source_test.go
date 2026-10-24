@@ -19,7 +19,7 @@ import (
 // floor plus that pad plus five minutes, so a floor raised in the chat surface
 // and nowhere else put the backstop BELOW the deadline it exists to sit above,
 // which is not a backstop but the thing that fires first. That is the shape of
-// the seventh failure in docs/design/failsafe/FAILSAFE.md, and it cost two
+// the seventh failure in the implementation, and it cost two
 // benchmark runs their whole ninety-minute wall.
 //
 // So there is one author: [SubharnessInfo.Deadline] for the room, and

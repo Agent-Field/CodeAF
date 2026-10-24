@@ -627,7 +627,7 @@ verbatim (`standingWorldHolding`). Every waking kind rides under
 `standingWorldWaiting`: *"These are the person's own standing orders over this
 place, each waiting on a moment, a rhythm or a change of its own. They are here
 so you know what stands; none of them is a condition over this work and none asks
-anything of you now."* The wording is the register `docs/STANDING-ORDERS.md`
+anything of you now."* The wording is the interface register
 already speaks — standing orders, conditions, waiting, context — and introduces
 no vocabulary of its own.
 
@@ -794,7 +794,7 @@ is dropped without ever reaching the transcript.
   at it, and `:648-652` propagates the nil `Ask` into nested calls. Honestly
   declared as a known absence (`chatv3_harness.go:43-48`), honestly recorded in the
   trail, and already named "the anti-pattern" by
-  `docs/SUBHARNESS-PRD.md:266-269`. Recorded because law 3 says a yes is never
+  the subharness contract. Recorded because law 3 says a yes is never
   assumed and the person **is** there.
 - **m14 — `"ask again later"` is untrue at `task.parallel = 1`** — **FIXED, w42,
   2026-08-24**: `divisionNoLane` has two sentences, and the one-lane one ends

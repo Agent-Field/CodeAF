@@ -4,7 +4,7 @@ package session
 // answer takes back to it.
 //
 // AN ANSWER IS A MESSAGE TO THE CONVERSATION THAT ALSO RELEASES A WAITING CALL
-// WHEN THERE IS ONE (docs/design/questions/DESIGN.md, "An answer is a message").
+// WHEN THERE IS ONE.
 // Until this implementation existed an answer was only the RETURN VALUE of the `ask` call
 // that raised the question — the turn parked on a channel, and an answer that
 // arrived with nobody parked went nowhere at all. Three things a person asked

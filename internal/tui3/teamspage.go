@@ -86,6 +86,10 @@ type teamsPage struct {
 	// recent exists only during a paint, sharing one subtree-time pass between
 	// the sidebar and every nested card. Readers outside paint use fresh state.
 	recent map[string]time.Time
+	// homes exists only during paint. Shared membership lookups must be built
+	// once, not rescan every team's members for every card and status count.
+	homes        map[string]teamstore.Report
+	homesPending bool
 	// reading says a read is out, so a beat that comes round before it is
 	// answered does not start a second; again says a read was asked for while
 	// it was out, and againWorld that the ask wanted the members' rows too.

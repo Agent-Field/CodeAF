@@ -237,7 +237,7 @@ func (a *app) visible(width int) []row {
 	return a.rows
 }
 
-// layout is THE SPACING LAW (docs/CHAT-V3.md D11), and it is a law because it
+// layout is THE SPACING LAW, and it is a law because it
 // is enforced in exactly one place. Every blank row on this surface is emitted
 // by the four rules below and by nothing else — no entry appends one, no
 // renderer leaves one behind (see [trimBlanks]):
@@ -3942,7 +3942,7 @@ func (a *app) idleHint() string {
 // name a key that works.
 //
 // THE NOUN IS `chats` AND IT USED TO BE THE VERB `switch`. One word for one door
-// is the rule the audit-words pass was written to keep (docs/design/polish/
+// is the rule the audit-words pass was written to keep (the implementation
 // audit-words.md found `esc` spelled three ways across two panels), and this
 // door had picked up two: the tab row's own control said `Chats`, home's rule
 // says `alt+k chats`, and this line said `switch`. The noun is the one that

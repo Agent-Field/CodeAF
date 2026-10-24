@@ -163,7 +163,7 @@ import (
 // person says on it after that is, by the nature of the page, a correction to work already
 // moving. So it is drawn with this mark too: the elbow where it was said, no turn opened,
 // and on replay a correction that reads as a correction rather than as a second brief
-// (docs/design/lens/DESIGN.md, Decision 2).
+//.
 //
 // ONE THING IS TRUE THERE THAT IS NOT TRUE HERE, and it earns the one field this
 // file added for it ([steerElbow.receipt]). A correction typed into this

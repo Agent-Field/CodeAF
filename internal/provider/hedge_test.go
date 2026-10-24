@@ -421,7 +421,7 @@ const rigScale = 20
 
 // rigTimeline is how many times faster this rig's wire runs than the world the
 // design's figures are written about. It is the same hundred `internal/lane`'s
-// own e2e scenarios and `bench/lanelab/gosim` use.
+// own e2e scenarios and `the benchmark harness` use.
 //
 // IT IS WHAT λ IS BROUGHT ONTO, AND THE REASON IS THAT MONEY DOES NOT COMPRESS.
 // λ is SECONDS PER DOLLAR, so on a timeline a hundred times shorter one dollar

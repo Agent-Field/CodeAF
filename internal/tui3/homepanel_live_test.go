@@ -11,7 +11,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-// ── THE LIVE PANELS (docs/design/home-mission-control/DESIGN.md §3 P1–P3) ───
+// ── THE LIVE PANELS ───
 
 // liveLab is a machine with two conversations of its own in one project and a
 // third somewhere else, opened at a hundred and twenty by forty-five — two

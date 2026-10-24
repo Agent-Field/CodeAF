@@ -2082,7 +2082,7 @@ func TestEnterOnTheRowYouAreInJustStepsIntoIt(t *testing.T) {
 }
 
 // AN EMPTY MACHINE'S HOME WHISPERS WHAT ARRIVES, panel by panel, and never
-// says it is empty (docs/design/home-mission-control/DESIGN.md §4).
+// says it is empty.
 func TestAnEmptyMachinesHomeWhispersWhatArrives(t *testing.T) {
 	lab := newHomeLab(t)
 	a := lab.app("")

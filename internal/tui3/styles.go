@@ -11,7 +11,7 @@ import (
 
 // The whole surface's palette lives here and nowhere else.
 //
-// This file is the CURATED PASTEL AUTHORITY of docs/CHAT-V3.md Decision 11.
+// This file is the CURATED PASTEL AUTHORITY of the implementation Decision 11.
 // The colours are authored as hex, dark-terminal first, and there is one rule
 // above every choice: if a colour could be described as "bright", it is wrong.
 //
@@ -1043,7 +1043,7 @@ type palette struct {
 // repertoire, so a person with a patched font gets a proper icon beside every
 // tool call and a geometric stand-in beside every task, which is precisely the
 // split the owner found. icons_test.go fails the build on a mark spelled
-// outside internal/tui2/tokens, and docs/design/icons/DESIGN.md is the law.
+// outside internal/tui2/tokens, and the implementation is the law.
 func (p palette) glyph(id tokens.GlyphID) string {
 	if p.ascii {
 		return tokens.ASCII.Glyph(id)

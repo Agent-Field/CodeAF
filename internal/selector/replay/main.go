@@ -20,8 +20,8 @@ import (
 )
 
 func main() {
-	snapPath := flag.String("snapshot", "bench/pareto-learn/out/shared-snapshot.json", "lane B SharedSnapshot path")
-	catPath := flag.String("catalog", "/home/santosh/.codeaf/model-catalog.json", "model catalog path")
+	snapPath := flag.String("snapshot", "shared-snapshot.json", "selector snapshot path")
+	catPath := flag.String("catalog", "model-catalog.json", "model catalog path")
 	heldOut := flag.String("heldout", "deepseek/deepseek-v4.1-flash-1017", "held-out new-model id for cold-start")
 	out := flag.String("out", "docs/selection", "output directory")
 	flag.Parse()

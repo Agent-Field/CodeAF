@@ -51,7 +51,7 @@ type recordSink interface {
 
 // eventWriter is the run's one outlet for what it has to say.
 //
-// STDOUT CARRIES THE PROTOCOL'S RECORDS AND NOTHING ELSE (docs/design/delegate/
+// STDOUT CARRIES THE PROTOCOL'S RECORDS AND NOTHING ELSE (the implementation
 // PROTOCOL.md), and it is codeaf's: a run codeaf hosts reports its stages and
 // its finished steps through the host, and those are the only two records it
 // writes as it goes. The instance bus's payloads — sessions, messages, parts,

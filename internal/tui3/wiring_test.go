@@ -463,8 +463,7 @@ func TestTheWideningYesTakesItsOwnRoad(t *testing.T) {
 // The line puts the question and its answers on one row, and on a frame with no
 // room for that the honest shape is the card — an offer with its tail truncated
 // is an offer that hides an answer, and the answer it hides is the last one,
-// which on this test is `deny`. Forms promote and never demote
-// (docs/design/questions/DESIGN.md).
+// which on this test is `deny`. Forms promote and never demote.
 func TestANarrowFrameGivesEveryAnswerARowRatherThanCuttingOne(t *testing.T) {
 	_, a := wired([]session.Event{
 		toolBegin("bash", "bash rm -rf build"),

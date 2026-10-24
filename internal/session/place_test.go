@@ -13,7 +13,7 @@ import (
 
 // Everything one conversation writes lands in one folder, and the project's
 // task index lands in the directory ABOVE it — the bucket every window on the
-// repository shares (docs/CHAT-V3.md, Decision 26).
+// repository shares.
 func TestTheSidecarsFollowTheSessionFolder(t *testing.T) {
 	bucket := filepath.Join(t.TempDir(), "projects", "-home-p-code")
 	dir := filepath.Join(bucket, "0123456789abcdef")

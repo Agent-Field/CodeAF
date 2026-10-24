@@ -138,7 +138,7 @@ func (a *Agent) autonomyFor(kind AskKind) Policy {
 		// THE ONE KIND WITH A CLOCK NOBODY ASKED FOR, and it is the kind whose
 		// own shape is that nothing is decided at the end of it: an assumptions
 		// card's options STAND unless they are struck, so the clock ends a
-		// reading and not a decision (docs/design/questions/DESIGN.md's table).
+		// reading and not a decision.
 		return Policy{Kind: PolicyRecommendThenAuto, After: autonomyClock(0)}
 	}
 	return Policy{Kind: PolicyAsk}
