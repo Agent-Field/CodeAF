@@ -723,6 +723,7 @@ caret is on the first logical line. Once browsing, `up` and `down` move whole
 entries, including multiline prompts, in both the conversation and task rooms.
 `down` past the newest entry restores your draft and caret; `esc` restores them
 immediately. The conversation hint says `↑ older · ↓ newer · esc restore draft · enter send`.
+Narrow terminals shorten this to `↑↓ history · esc draft` or `↑↓ history`.
 
 A word jump crosses the same boundary the word kill deletes: spaces first, then
 the run of non-spaces, so `alt+left` then `alt+backspace` always deletes exactly
@@ -3231,6 +3232,7 @@ selected. After copying it reads `COPY · clipboard sent` until you move or chan
 the selection. This confirms that codeaf sent the clipboard write; your terminal
 must permit clipboard access. The row under the box reads
 `↑↓ move · v select · a block · enter copy · esc`.
+Narrow terminals keep `enter copy` visible while dropping the other clauses.
 
 ## What copy mode copies, and what it refuses
 

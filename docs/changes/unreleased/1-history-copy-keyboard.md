@@ -11,3 +11,4 @@ invalidates:
 History keeps its existing ordering: cleared drafts, project history, then other
 projects. Terminal clipboard permissions still apply; clipboard sent confirms
 the write was emitted rather than claiming the terminal accepted it.
+Narrow frames keep the history arrows and Enter copy visible with shorter hints.

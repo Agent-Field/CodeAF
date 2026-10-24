@@ -492,6 +492,16 @@ func (a *app) runHint() string {
 // Idle controls yield from the left to commands and home; running hints keep
 // their existing priority from the left. Every step removes at least one clause.
 func (a *app) hintShorter(slot string) string {
+	switch slot {
+	case recallKeysWord:
+		return "↑↓ history · esc draft"
+	case "↑↓ history · esc draft":
+		return "↑↓ history"
+	case copyKeysWord:
+		return "v select · enter copy · esc"
+	case "v select · enter copy · esc":
+		return "enter copy · esc"
+	}
 	// THE OFFER'S OWN CLAUSE SURVIVES THE TURN'S. It is appended to a running
 	// turn's keys, and the generic rule below cannot shorten a line that extends
 	// the run hint without deleting the whole row. So while the grace is open the

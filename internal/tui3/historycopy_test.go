@@ -14,6 +14,8 @@ func TestHistoryArrowsWalkWholeMultilineEntries(t *testing.T) {
 		history.Entry{Text: "older prompt", Cwd: "/tmp/lab"},
 		history.Entry{Text: "first line\nsecond line", Cwd: "/tmp/lab"},
 	)
+	a.width = 140
+	a.welcome.open = false
 	typeInto(t, a, "my draft")
 	for _, step := range []struct{ key, want string }{
 		{"up", "first line\nsecond line"},
@@ -26,8 +28,23 @@ func TestHistoryArrowsWalkWholeMultilineEntries(t *testing.T) {
 			t.Fatalf("%s shows %q, want %q", step.key, got, step.want)
 		}
 		if step.want != "my draft" && !strings.Contains(plain(frame(a)), "↑ older · ↓ newer") {
-			t.Fatal("history does not show its navigation keys")
+			t.Fatalf("history does not show its navigation keys:\n%s", plain(frame(a)))
 		}
+	}
+}
+
+func TestHistoryAndCopyKeepTheirActionsOnNarrowFrames(t *testing.T) {
+	a, _ := recallApp(t, history.Entry{Text: "an old prompt", Cwd: "/tmp/lab"})
+	a.welcome.open = false
+	a.width = 40
+	drive(t, a, key("up"))
+	if screen := plain(frame(a)); !strings.Contains(screen, "↑↓ history") {
+		t.Fatalf("narrow history hides its arrows:\n%s", screen)
+	}
+	a = copyApp(t)
+	a.width = 40
+	if screen := plain(frame(a)); !strings.Contains(screen, "enter copy") {
+		t.Fatalf("narrow copy mode hides its copy action:\n%s", screen)
 	}
 }
 
