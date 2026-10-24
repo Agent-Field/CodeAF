@@ -327,7 +327,11 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 	}
 	digest, _ := Digest(c)
 	signed, e := SigningBytes(c)
-	if e != nil || c.Cluster != meta.Cluster || auth.Cluster != c.Cluster || !auth.ValidRole() || len(auth.Key) != ed25519.PublicKeySize || !ed25519.Verify(auth.Key, signed, c.Signature) || digest != c.RequestDigest {
+	authenticated := e == nil && len(auth.Key) == ed25519.PublicKeySize && ed25519.Verify(ed25519.PublicKey(auth.Key), signed, c.Signature)
+	if c.V1 != nil {
+		auth, authenticated = V1AuthorityAt(c, identity, meta.Now)
+	}
+	if !authenticated || c.Cluster != meta.Cluster || auth.Cluster != c.Cluster || !auth.ValidRole() || len(auth.Key) != ed25519.PublicKeySize || digest != c.RequestDigest {
 		return out, nil
 	}
 	// Revocation precedes dedup: a saved old response cannot authorize a revoked
@@ -357,7 +361,7 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 	if decode(SessionKey(c.Actor, c.Session), &last) != nil || decode(SessionsKey(), &counts) != nil {
 		return out, ErrDependency
 	}
-	known := rows[SessionKey(c.Actor, c.Session)] != nil
+	known := c.V1 == nil && rows[SessionKey(c.Actor, c.Session)] != nil
 	refuse := func(code Code) (Evaluation, error) { out.Result.Code = code; return out, nil }
 	if known && (last.Closed || c.Sequence < last.Sequence || c.Sequence == last.Sequence && c.RequestDigest != last.Digest) {
 		return refuse(Conflict)
@@ -366,10 +370,10 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 		out.Result = last.Result
 		return out, nil
 	}
-	if !service && (!known && (c.Sequence != 1 || c.Ack != 0) || known && (last.Sequence == ^uint64(0) || c.Sequence != last.Sequence+1 || c.Ack != last.Sequence)) {
+	if !service && c.V1 == nil && (!known && (c.Sequence != 1 || c.Ack != 0) || known && (last.Sequence == ^uint64(0) || c.Sequence != last.Sequence+1 || c.Ack != last.Sequence)) {
 		return refuse(Conflict)
 	}
-	if !service && !known && (counts.Live >= MaxLiveSessions || counts.Retained >= MaxRetainedSessions) {
+	if !service && c.V1 == nil && !known && (counts.Live >= MaxLiveSessions || counts.Retained >= MaxRetainedSessions) {
 		return refuse(Capacity)
 	}
 	if c.Now < 0 || c.Now > int64(MaxSafeInteger)-LeaseTTLMillis {
@@ -452,7 +456,7 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 		counts.Live--
 	}
 	save := func() {
-		if service {
+		if service || c.V1 != nil {
 			return
 		}
 		put(SessionKey(c.Actor, c.Session), session{Sequence: c.Sequence, Digest: c.RequestDigest, Closed: c.Change.CloseSession != nil, Result: out.Result})
