@@ -155,3 +155,36 @@ it, commits more than the 4 MiB trigger through the majority, compacts both stor
 and caches, and then installs/replays/restarts the learner. The pure format tests
 pin full-width integer and binary framing vectors independently of the encoder.
 These are the P05 mechanism gates; P06/P08 own simulator/cross-runtime campaigns.
+
+## Legacy directory import
+
+P11 freezes the source with `directory.SQLite.FreezeLegacy`, waits for admitted
+legacy writes and pairing decisions, samples hold evidence, then inventories the
+original rows through the shared Go converter. `InventoryLegacy` is resumable;
+`ExportLegacy` streams canonical rows in namespace/key order. Unknown fields or
+rows above the existing one-row envelope refuse the import and retain the frozen
+source. It never truncates records or rewrites original JSON. Erased namespaces
+remain refused by the existing namespace tombstone before opening the source.
+
+The source allocates ONE UUID/generation and ordered three-anchor configuration.
+Each target calls `ImportLegacy` on its own fresh store, streams the same export,
+and commits genesis index/term 1, all rows, version, logical time and complete
+three-voter configuration atomically. A portable checkpoint follows. A crash
+before checkpoint completion resumes it without replaying imported rows over
+later cluster work. Conflicting manifests or nonempty unimported stores refuse.
+The `membership/legacy-import` row retains provenance and the byte ceiling
+`max(8 MiB, imported rows plus exact provenance bytes)` through compaction.
+`raftdirectory.Apply` reads that persisted ceiling rather than a caller override.
+
+`OwnLegacy` accepts host-internal readback receipts for the same manifest from
+at least two distinct configured anchors; the host obtains them through a fresh
+current-term quorum barrier. Only then does `MigrationRoute` return the Raft
+facade. Freeze, inventory and ownership never reopen the old writer, including
+stale handles and restarts. The full production host/client routing is assembled
+in P17. No API caller may submit import receipts or allocate replacement UUIDs.
+Public root and original authenticated device certificates install authority;
+metadata alone cannot enroll a device. Previously unseen personal devices must
+present their root-signed certificate at the later enrollment/ingress door.
+Legacy public link decisions drain before freeze and remain in their original
+request store through its existing TTL; pending codes enter P10's reserved
+outbox after cutover. No grant is regenerated or automatically replayed as work.

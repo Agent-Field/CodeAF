@@ -61,6 +61,7 @@ type group struct {
 	queue   []raftcore.Outbound
 	results [3][]clusterstate.Result
 	reads   map[string]bool
+	keys    map[string]ed25519.PrivateKey
 	seq     map[string]uint64
 	genesis []raftstore.Write
 	blocked bool
@@ -179,12 +180,18 @@ func (g *group) submit(c clusterstate.Command) (clusterstate.Result, error) {
 	}
 	return g.results[i][before], nil
 }
+func (g *group) commandKey(actor string) ed25519.PrivateKey {
+	if k := g.keys[actor]; k != nil {
+		return k
+	}
+	return key(actor)
+}
 func (g *group) Change(_ context.Context, actor string, m clusterstate.Mutation) (clusterstate.Result, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.seq[actor]++
 	seq := g.seq[actor]
-	c, e := clusterstate.Sign(clusterstate.Command{Schema: 1, Cluster: cluster, Actor: actor, Session: "api", Sequence: seq, Ack: seq - 1, Now: g.clock().UnixMilli(), Change: m}, key(actor))
+	c, e := clusterstate.Sign(clusterstate.Command{Schema: 1, Cluster: cluster, Actor: actor, Session: "api", Sequence: seq, Ack: seq - 1, Now: g.clock().UnixMilli(), Change: m}, g.commandKey(actor))
 	if e != nil {
 		return clusterstate.Result{}, e
 	}
@@ -198,7 +205,7 @@ func (g *group) barrier(actor string) (int, raftstore.Application, error) {
 	// Public expiry reads commit the ingress clock before their fresh barrier.
 	g.seq[actor]++
 	seq := g.seq[actor]
-	c, e := clusterstate.Sign(clusterstate.Command{Schema: 1, Cluster: cluster, Actor: actor, Session: "api", Sequence: seq, Ack: seq - 1, Now: g.clock().UnixMilli(), Change: clusterstate.Mutation{AdvanceTime: &clusterstate.AdvanceTime{}}}, key(actor))
+	c, e := clusterstate.Sign(clusterstate.Command{Schema: 1, Cluster: cluster, Actor: actor, Session: "api", Sequence: seq, Ack: seq - 1, Now: g.clock().UnixMilli(), Change: clusterstate.Mutation{AdvanceTime: &clusterstate.AdvanceTime{}}}, g.commandKey(actor))
 	if e != nil {
 		return i, raftstore.Application{}, e
 	}

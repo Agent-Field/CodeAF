@@ -164,6 +164,12 @@ func (r *Runtime) Call(b []byte) (out []byte) {
 func (r *Runtime) call(op uint32, d *decoder) ([]byte, error) {
 	e := encoder{}
 	switch op {
+	case 14:
+		return legacyAuthorities(d)
+	case 13:
+		return legacyGenesis(d)
+	case 12:
+		return legacyCodec(d)
 	case 10, 11:
 		return applicationCodec(op, d)
 	case 1:
@@ -241,6 +247,10 @@ func (r *Runtime) call(op uint32, d *decoder) ([]byte, error) {
 			in = raftcore.StorageFailed{BatchID: d.u64()}
 		case 10:
 			in = raftcore.CancelRead{RequestID: d.str()}
+		case 14:
+			return legacyAuthorities(d)
+		case 13:
+			return legacyGenesis(d)
 		case 12:
 			in = raftcore.TransportResult{Peer: d.u64(), Snapshot: d.u32() != 0, Success: d.u32() != 0}
 		case 11:

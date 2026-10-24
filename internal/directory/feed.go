@@ -161,6 +161,11 @@ func (f *Feed) SubscribeBeat(device string, holds []Hold, beat time.Duration) (*
 func (f *Feed) subscribe(device string, holds []Hold, beat time.Duration) (*Sub, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	select {
+	case <-f.closed:
+		return nil, errFeedClosed
+	default:
+	}
 	if len(f.subs) >= f.cap {
 		return nil, ErrTooManyWatchers
 	}
