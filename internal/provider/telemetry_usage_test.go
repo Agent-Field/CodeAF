@@ -202,7 +202,8 @@ func TestV1V3DirectLateReceiptNeverUsesAnOverflowHost(t *testing.T) {
 					if !reported && len(bills) != 0 {
 						t.Errorf("missing direct usage banked %+v", bills)
 					}
-					if reported && (len(bills) != 1 || bills[0] != (Billed{Model: "glm-5.3", PromptTokens: 4, CompletionTokens: 1, Cost: cost})) {
+					// app/v3 carries an explicit unknown billing road when no door stated one.
+					if reported && (len(bills) != 1 || bills[0] != (Billed{Model: "glm-5.3", PromptTokens: 4, CompletionTokens: 1, Cost: cost, Billing: BillingFact{Kind: BillingUnknown}})) {
 						t.Errorf("reported direct usage banked %+v", bills)
 					}
 					if rows := telemetry.SpoolContents(); len(rows) != 0 {
@@ -243,7 +244,8 @@ func TestV2RouterTornAnswerRecoversWithItsOwnBearer(t *testing.T) {
 		t.Fatalf("torn answer error = %v", err)
 	}
 	result := receiptResult(t, results)
-	want := Reconciled{Billed: Billed{Node: "router-node", Model: client.config.Model, PromptTokens: 10, CompletionTokens: 3, Cost: 0.02}, Ref: "generation-router", Reason: receiptTornReason, Found: true}
+	// app/v3 preserves the attempt's explicit unknown billing road on its receipt.
+	want := Reconciled{Billed: Billed{Node: "router-node", Model: client.config.Model, PromptTokens: 10, CompletionTokens: 3, Cost: 0.02, Billing: BillingFact{Kind: BillingUnknown}}, Ref: "generation-router", Reason: receiptTornReason, Found: true}
 	if result != want || len(bills) != 0 || len(results) != 0 {
 		t.Fatalf("banked result = %+v, want %+v; ordinary bills = %+v; extra results = %d", result, want, bills, len(results))
 	}

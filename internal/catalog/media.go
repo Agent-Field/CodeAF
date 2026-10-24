@@ -15,6 +15,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/providerhttp"
 )
 
 // THE DEDICATED MEDIA CATALOGS — what /models?output_modalities=all does not say.
@@ -449,9 +450,9 @@ func getBounded(ctx context.Context, options Options, endpoint string, limit int
 	}
 	client := options.HTTPClient
 	if client == nil {
-		client = &http.Client{Timeout: FetchTimeout}
+		client = &http.Client{Timeout: FetchTimeout, CheckRedirect: providerhttp.CheckRedirect}
 	}
-	response, err := client.Do(request)
+	response, err := providerhttp.Do(client, request)
 	if err != nil {
 		return nil, err
 	}

@@ -320,6 +320,13 @@ func (c *Client) ExecuteToolCallLoop(
 	call ai.CallFunc,
 	options ...ai.Option,
 ) (*ai.Response, *ai.ToolCallTrace, error) {
+	// Plain compatible endpoints retain their observer coverage boundary even
+	// though their loops now use this adapter's guarded transport.
+	if !c.shippedRouterHint() && !c.config.Direct && !c.config.KeyOptional {
+		if err := refuseObserved(ctx, SurfaceToolLoop); err != nil {
+			return nil, nil, err
+		}
+	}
 	// The SDK has no HTTP-client injection seam. Every loop must use this
 	// adapter's guarded transport, including custom OpenAI-compatible services.
 	return c.executeOwnToolCallLoop(ctx, messages, tools, config, call, options...)
