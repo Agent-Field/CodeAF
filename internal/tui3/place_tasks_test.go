@@ -256,8 +256,7 @@ func openTaskPlaceWithRows(a *app) bool {
 	a.showPage(pageTasks)
 	// AND IT OPENS THE FOLDS, because these tests are about the ROWS.
 	//
-	// The place itself opens every conversation and every family SHUT (the owner's
-	// ruling, 2026-09-11 — [tasksReading.opens] states it and says why), so a test
+	// The place itself opens every conversation and every family SHUT, so a test
 	// written to look at a piece of work would be looking at the root standing
 	// over it instead. A person reaches the same page with `→`; a test says so by
 	// calling this. The tests that are about the FOLDS ask for the place without

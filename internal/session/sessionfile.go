@@ -698,23 +698,18 @@ type journalMark struct {
 // this is an act — and because a handover can fire with no reading behind it at
 // all (a sidecar nobody could reach still meets the ceiling).
 //
-// Decision is `moved`, `dropped:nothing-left` — the running model declared the
-// work finished AND the mark's own reader agreed nothing remained — or one of the
-// two ways a handover ends with no task of its own: `dropped:no-brief`, when
-// nothing could be written down for anybody, and `dropped:work-already-out`, when
-// everything there was to write down was about pieces this conversation is still
-// holding and therefore nobody else's to take (checkpoint.go's custody road). On a
-// run with a goal owner two more are possible, and both mean the turn was sealed
-// at the handover with no task started: `dropped:stopped`, the owner read the
-// ending and stopped the run with a reason, and `dropped:done`, the owner read it
-// and said the ask was met (checkpoint.go's [Agent.endTurnUnderSteward]). And the
-// write seam writes one more of its own, `dropped:delivering-own-result`: the turn
-// is finishing the delivery of a result this conversation already owns, so the
-// counter stood down and the work stayed here (writeseam.go's
-// [Agent.writeSeamFires]). TaskID names the node when one was ADMITTED, and is
-// absent otherwise by the emptiness law the rest of the line keeps — the delivery
-// row admits nothing and names its result in Reason instead, so a bench counting
-// tasks started off that field still counts only tasks.
+// Decision is `moved`, `dropped:nothing-left` — the running model declared the work
+// finished AND the mark's own reader agreed nothing remained — or one of the two ways a
+// handover ends with no task of its own: `dropped:no-brief`, when nothing could be written
+// down for anybody, and `dropped:work-already-out`, when everything there was to write
+// down was about pieces this conversation is still holding and therefore nobody else's to
+// take (checkpoint.go's custody road). And the write seam writes one more of its own,
+// `dropped:delivering-own-result`: the turn is finishing the delivery of a result this
+// conversation already owns, so the counter stood down and the work stayed here
+// (writeseam.go's [Agent.writeSeamFires]). TaskID names the node when one was ADMITTED,
+// and is absent otherwise by the emptiness law the rest of the line keeps — the delivery
+// row admits nothing and names its result in Reason instead, so a bench counting tasks
+// started off that field still counts only tasks.
 //
 // Carry NAMES THE RUNG THAT SUPPLIED THE BRIEF the task actually opened on
 // (checkpoint.go's [Agent.handOverRunningTurn]): `handoff`, `draft` or `ask`.

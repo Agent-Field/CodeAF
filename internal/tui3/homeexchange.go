@@ -1676,7 +1676,7 @@ func (a *app) exchangeEnter(ex *homeExchange) tea.Cmd {
 // THE SIGNAL HAS TO EXIST BEFORE THE ANSWER DOES. A follow-up typed into a
 // settled exchange used to draw the sentence and then nothing at all until the
 // first token arrived seconds later — which is a person pressing enter and
-// watching a still screen, the exact complaint this lane exists to answer. The
+// watching a still screen, the exact complaint this implementation exists to answer. The
 // state word, the clock and the strip all hang off these three fields, so they
 // are set the moment the words leave the box.
 func (ex *homeExchange) startTurn(now time.Time) {

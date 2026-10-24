@@ -203,7 +203,7 @@ func newLaneRigWithPrice(
 // seconds is a statement about how long a person is asked to watch an empty
 // line, and a wire test that really waited it would take ten seconds to prove
 // something about a channel. So the scenarios below state the ceiling they are
-// about and prove what this lane owns — that the ceiling is what acts when
+// about and prove what this test owns — that the ceiling is what acts when
 // nothing at all is believed, and that it acts through the wire.
 //
 // IT IS ALSO WHERE A HELD FIRST WORD IS BOUNDED. The ceiling stated here is the

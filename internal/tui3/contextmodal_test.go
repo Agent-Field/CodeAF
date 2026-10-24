@@ -5,11 +5,6 @@ package tui3
 // chrome, that it owns the keyboard and the pointer while it is up, that the
 // conversation under it neither competes nor acts, and that leaving it changes
 // nothing.
-//
-// The owner met every one of these as a defect on a real Mac binary
-// (../reports/modal.md records the screenshot and the four roots), so each test
-// below is written against the FRAME — what a person would actually see — rather
-// than against the browser's own state.
 
 import (
 	"image/png"

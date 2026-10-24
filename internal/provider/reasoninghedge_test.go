@@ -26,8 +26,6 @@ import (
 // already spent and nothing anybody would watch disappear, so it buys no
 // commitment at all and a stall inside it is hedged like any other.
 
-// TestAStallInsideTheThinkingIsRescued is the owner's report, staged: a
-// hundred deltas of thought, then silence, with a healthy lane beside it.
 func TestAStallInsideTheThinkingIsRescued(t *testing.T) {
 	rig := newLaneRig(t, "reason/stall",
 		lanestub.Lane{Name: "A", Profile: lanestub.Profile{

@@ -3715,7 +3715,7 @@ func (h *homeView) runLabel(text string) string {
 	// memory and it asks the disk nothing, so a command pays what it always paid:
 	// no command this surface answers has a separator inside its own word, which
 	// is exactly the test. Without it a dropped screenshot stood on this row
-	// wearing `run /Users/…/Screenshot\ 2026-08-31\ at\ 5.png`, a promise enter
+	// wearing `run /workspace/Screenshot\ 2026-08-31\ at\ 5.png`, a promise enter
 	// could only break.
 	if droppedPathShape(text) {
 		return ""
@@ -5492,16 +5492,11 @@ func (a *app) homeHintWords() string {
 		}
 		return "enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · esc clear"
 	case a.home.gridOn() && (line.kind == homeSession || line.kind == homeLedger):
-		// ONE SENTENCE ON EVERY ROW OF THE GRID. A conversation, an
-		// automation, a landing, a line of news: each used to say its own thing here
-		// — `enter opens the place this happened in`, `enter open where it was
-		// asked · ctrl+e pause` — and the foot changed under the hand on every
-		// step of the cursor. The owner ruled (2026-09-15) that the rows under
-		// the moving headings all rest on the resting sentence, so the foot is
-		// something a person reads once and then stops reading; `enter open` is
-		// true of every one of them. The rows' own sentences below still serve
-		// the phone and the filtered list, where there is no grid to be
-		// consistent across.
+		// ONE SENTENCE ON EVERY ROW OF THE GRID. A conversation, an automation, a landing, a
+		// line of news: each used to say its own thing here — `enter opens the place this
+		// happened in`, `enter open where it was asked · ctrl+e pause` — and the foot changed
+		// under the hand on every step of the cursor. The rows' own sentences below still serve
+		// the phone and the filtered list, where there is no grid to be consistent across.
 	case line.kind == homeFold:
 		// The panel's fold is a toggle and the foot says which way it will go;
 		// the words are the ones every fold door on every place uses

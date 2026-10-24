@@ -21,7 +21,7 @@ import (
 // where it is a dead end. So the two facts a reviewer would have to hold in
 // their head are held here instead, and a build fails when either moves.
 //
-// The two tests below are deliberately dumb: one counts the doors, the other
+// The two tests below are deliberately simple: one counts the doors, the other
 // counts the sentences. Neither tries to decide whether a road is CORRECT, and
 // neither could; what they enforce is that a road cannot appear, or a
 // person-addressed sentence be written, without somebody having said in this

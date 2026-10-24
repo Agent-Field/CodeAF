@@ -528,11 +528,11 @@ func (a *Agent) refreshMemoryLocked() {
 // because the notice it guards is about what the store's lines now do.
 func memoryUpgradeMarker() string { return home.Join("v3", "memory-upgrade-noticed") }
 
-// noteMemoryOffUpgradeLocked is the owner's ruling for a person who had memory
-// OFF before this build: off used to keep their saved lines out of every
-// prompt, and now it governs only the noticing, so the lines ride again. That
-// is said ONCE PER MACHINE — on the first start after the upgrade, in the
-// first conversation that turn starts in — and nothing about the lines changes.
+// noteMemoryOffUpgradeLocked is for a person who had memory OFF before this build: off
+// used to keep their saved lines out of every prompt, and now it governs only the
+// noticing, so the lines ride again. That is said ONCE PER MACHINE — on the first start
+// after the upgrade, in the first conversation that turn starts in — and nothing about the
+// lines changes.
 //
 // THE MARKER IS CREATED FIRST, EXCLUSIVELY, WHATEVER THE SETTING SAYS. The
 // first start after the upgrade is the one moment "had memory off before" is

@@ -4,16 +4,12 @@ package main
 // something on every one of v3's places, so the surface can be looked at full
 // rather than empty.
 //
-// WHY IT IS NOT A FIXTURE FOR TESTS AND NOT A SEED FOR A REAL MACHINE. The
-// owner opened the standing page, the memory page and the spend page on their
-// own machine and saw nothing, because on their machine those stores are new
-// and empty — which is the emptiness law working exactly as designed. The
-// answer is not to write invented automations, invented memories and invented
-// spending into ~/.codeaf, which would make a person's own record a lie; it is
-// a SECOND home, somewhere else, that the surface can be pointed at.
-// So this program never touches the real state root: it writes one directory,
-// the one it was given, and the launcher hands that directory to the binary as
-// HOME.
+// WHY IT IS NOT A FIXTURE FOR TESTS AND NOT A SEED FOR A REAL MACHINE. The answer is not
+// to write invented automations, invented memories and invented spending into ~/.codeaf,
+// which would make a person's own record a lie; it is a SECOND home, somewhere else, that
+// the surface can be pointed at. So this program never touches the real state root: it
+// writes one directory, the one it was given, and the launcher hands that directory to the
+// binary as HOME.
 //
 // WHY IT IS A SEPARATE BINARY. cmd/codeaf has a clean place for a hidden verb —
 // `engine` and `tick` both live there — but the seeding below is several hundred

@@ -455,7 +455,7 @@ func (a *app) resumeSession(chosen Session) tea.Cmd {
 // is holding, and it is ONE SENTENCE IN ONE PLACE.
 //
 // It replaces the engine's own error, which reads
-// `session file: /Users/…/b9c0d3ad…/transcript.jsonl is open in another codeaf`
+// `session file: /workspace/b9c0d3ad…/transcript.jsonl is open in another codeaf`
 // — a full path, wrapped across two lines of somebody's conversation, naming a
 // directory they have never had a reason to look at and a fact they cannot act
 // on. The path is not the news. The news is that the conversation is open
@@ -637,12 +637,8 @@ func (a *app) welcomePress(slot int) tea.Cmd {
 // first screen of a fresh install (TestTheWordmarkCanSpellTheProductsWholeName
 // is what holds the two together).
 //
-// THE WORD IS SPELLED `codeaf` AND DRAWN `CodeAF`. The table is keyed by the
-// letters of [product], which is the one spelling every sentence uses, but the
-// forms under `a` and `f` are capitals: the owner wants the two letters at the
-// end to stand up out of the word (2026-09-17), and a letterform table is the
-// one place a drawing may differ from the text without the text changing. The
-// terminal that gets the word instead of the drawing still gets `codeaf`.
+// THE WORD IS SPELLED `codeaf` AND DRAWN `CodeAF`. The terminal that gets the word instead
+// of the drawing still gets `codeaf`.
 //
 // THE TOP ROW IS THE CAP LINE AND THE BASELINE IS ONE LINE, and both come from
 // one fact about box-drawing: a bar sits at the MIDDLE of its cell and only a
@@ -688,12 +684,9 @@ var wordmarkGlyphs = map[rune][4]string{
 	// make a hole of the two blanks below.
 	'e': {"   ", "┌─┐", "├─╴", "└─┘"},
 	'n': {"   ", "┌─┐", "│ │", "╵ ╵"},
-	// A CAPITAL: the apex on the cap line, the crossbar a third of the way up,
-	// and two legs that reach the baseline apart. It used to be `┌─┐ / ├─┤ /
-	// └─┘`, which is not an `a` but two closed bowls of equal size stacked on
-	// each other, and two equal closed bowls are an `8` — which is what the
-	// owner read on the first screen. Opening the bottom is what makes it a
-	// letter, and the crossbar is what keeps it from being the `n` above.
+	// A CAPITAL: the apex on the cap line, the crossbar a third of the way up, and two legs
+	// that reach the baseline apart. Opening the bottom is what makes it a letter, and the
+	// crossbar is what keeps it from being the `n` above.
 	'a': {"┌─┐", "│ │", "├─┤", "╵ ╵"},
 	// A CAPITAL, AND THE TOP ARM IS THE LONGER ONE. Both arms of the old `f`
 	// were two cells, which is a lowercase `f` drawn without its hook and reads

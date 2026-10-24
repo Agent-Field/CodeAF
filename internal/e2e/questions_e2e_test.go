@@ -451,7 +451,7 @@ func questionsCard(t *testing.T) {
 
 // questionsBlocksUnderAnswers is the call a model could not make. On 2026-09-10
 // deepseek-v4-flash was given the message below — a person's own words, on the
-// tower, in a real terminal — and three calls running it sent the answers list
+// test machine, in a real terminal — and three calls running it sent the answers list
 // as a JSON STRING holding the list; every one was refused with `options takes
 // a list`, the turn ended on the loop guard and the person never saw a
 // question. Two things changed (session/toolargs.go, session/tools_ask.go), and
@@ -604,11 +604,10 @@ func questionsRoom(t *testing.T) {
 	screenSays(t, room, say(t, "questionWouldSwitchWord"), "what would change the asker's mind")
 	shot(t, r, "open")
 
-	// TWO PANES, AND THE ARROWS MOVING BETWEEN THEM (owner ruling 2026-09-11,
-	// page pick A): the answers on the left, the evidence of the one the pointer
-	// is on beside them, and `→ detail` on the foot because there IS a pane to
-	// move into. A page of one column unfolds that evidence under the pointer
-	// and does not offer the key.
+	// TWO PANES, AND THE ARROWS MOVING BETWEEN THEM: the answers on the left, the evidence of
+	// the one the pointer is on beside them, and `→ detail` on the foot because there IS a
+	// pane to move into. A page of one column unfolds that evidence under the pointer and
+	// does not offer the key.
 	screenSays(t, room, say(t, "questionPageDetailWord"), "the page is two panes at this width")
 	shot(t, r, "split")
 

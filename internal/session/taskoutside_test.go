@@ -216,7 +216,7 @@ func TestAWorkerIsRefusedOnTheSeamForWritingOutsideItsGround(t *testing.T) {
 	}
 
 	// AND A BASH AIMED OUT OF THE GROUND IS REFUSED WITH THE PATH LAW'S SENTENCE
-	// AND NOT THE VERB GUARD'S, which is the defect this lane exists for.
+	// AND NOT THE VERB GUARD'S, which is the defect this test exists for.
 	command := `{"command":"cd ` + elsewhere + ` && git checkout -b fix/codeql-54"}`
 	shell := worker.executeTool(context.Background(), episode, nil, withdrawnCall("c3", "bash", command), "")
 	if !shell.isError || !strings.Contains(shell.text, outsideYourCopy) {

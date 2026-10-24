@@ -19,7 +19,7 @@ ISSUES="${ISSUES:-20 21 22 23}"
 HARNESSES="${HARNESSES:-codeaf pi opencode}"
 
 # Wall-clock cap per cell. A harness that has not produced a diff by here is
-# recorded as DNF rather than left to spend: opencode hit this on issue #22 and
+# recorded as DNF rather than left running indefinitely. A stalled process
 # kept spending after the diff never arrived.
 CELL_TIMEOUT="${CELL_TIMEOUT:-40m}"
 
@@ -31,7 +31,7 @@ CELL_TIMEOUT="${CELL_TIMEOUT:-40m}"
 # (2026-08-02, merge of PR #18): the last commit with all four issues open.
 BASE_COMMIT="${BASE_COMMIT:-}"
 
-# codeaf shape. Four values, against the same recorded pi and opencode rows:
+# codeaf shape. Four values use the same recorded comparison rows:
 #
 #   node     one leaf, one graph. The executor measured alone, and the drift
 #            control: byte for byte the invocation the recorded codeaf numbers
@@ -61,7 +61,7 @@ case "${1:-}" in
   --dry-run) BENCH_DRY_RUN=1 ;;
 esac
 
-# pi and opencode flags move between versions. These are the invocations the
+# External harness flags move between versions. These are the invocations the
 # recorded runs used; check them against your installed version before
 # concluding anything from a zero-file result.
 PI_BIN="${PI_BIN:-pi}"
@@ -296,8 +296,8 @@ run_harness() {
 }
 
 # harness_cost reads the run's own accounting. For codeaf that is the $ figure
-# on the run summary line, which every graph shape ends with. For pi and
-# opencode there is nothing to read, and the account-level delta is not a
+# on the run summary line, which every graph shape ends with. Other harnesses
+# provide no summary value, and the account-level delta is not a
 # substitute — see bench/README.md.
 harness_cost() {
   local harness="$1" log="$2" cell="${3:-}"

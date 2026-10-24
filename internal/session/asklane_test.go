@@ -330,7 +330,7 @@ func TestChangingAnAlwaysRevokesThePermission(t *testing.T) {
 	}
 }
 
-// AN ANSWER TO A QUESTION THIS LANE IS NOT HOLDING IS REFUSED IN WORDS. It is
+// AN ANSWER TO A QUESTION this test IS NOT HOLDING IS REFUSED IN WORDS. It is
 // the row left on a screen by a turn that was interrupted, or by a session host
 // that has restarted since — and the person pressing the key is owed the
 // sentence rather than a key that does nothing.
@@ -359,7 +359,7 @@ func TestAnAnswerToAQuestionTheLaneNoLongerHoldsIsRefusedInWords(t *testing.T) {
 
 // AND A CHANGE AFTER A TURN WAITED FOR ITS ANSWER IS STILL A MESSAGE. The call
 // that was parked has taken its answer and gone; the correction cannot be handed
-// to it, and a channel nobody reads is where this was lost on the tower before
+// to it, and a channel nobody reads is where this was lost in a test run before
 // the wait was claimed on the handover (askwait.go).
 func TestChangingAnAnswerTheTurnWaitedForReachesTheModel(t *testing.T) {
 	a := askTestAgent(t, true)
@@ -412,7 +412,7 @@ func deskRows(a *Agent) int {
 // AN ANSWERED QUESTION LEAVES THE DESK, and it is the answer that takes it off
 // rather than the call returning.
 //
-// Measured on the tower, 2026-09-11: with the let-go still deferred in the call,
+// Measured in a test run, 2026-09-11: with the let-go still deferred in the call,
 // a question the call did not wait for kept its presence row for the rest of the
 // session — so home drew that answered row as the thing this conversation was
 // waiting for, every time any other question came up, and a key pressed on it

@@ -352,7 +352,7 @@ func (w *remoteWorld) thePathLaw(t *testing.T) {
 // persistent engine leaves a socket under its codeaf home
 // (internal/enginehost's Dir and SocketPath); a pipe engine leaves nothing. So
 // this scenario asserts the behaviour the machine actually has today, and picks
-// up the stronger assertion by itself on the day lane A wires the host in.
+// up the stronger assertion once the host connection is wired.
 func (w *remoteWorld) theLinkDiesMidTurn(t *testing.T) {
 	persistent := w.enginePersistent(t)
 	t.Logf("the engine on this build is persistent=%v (a host socket under %s/v3/hosts is what decides it)",
@@ -606,7 +606,7 @@ func (w *remoteWorld) buildStatic(t *testing.T, name, pkg string) {
 	build.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH="+containerArch())
 	if said, err := build.CombinedOutput(); err != nil {
 		// A build that fails because ANOTHER LANE's file is half-written is not
-		// this lane's fault and is worth saying plainly, because it is the
+		// this test's fault and is worth saying plainly, because it is the
 		// single most likely red in a parallel wave.
 		t.Fatalf("could not build %s (another lane's in-flight file will do this; try again after `go build ./...` is clean): %v\n%s",
 			pkg, err, said)

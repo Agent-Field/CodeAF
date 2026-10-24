@@ -1,21 +1,10 @@
 package tui3
 
-// programbrief.go draws a program's brief as a DOCUMENT: what `▸ brief` opens on
-// a program's room (programroom.go). The brief is the work order codeaf handed
-// the program — often thousands of words — and it used to be drawn between the
-// head's rules, pinned, cut to half the frame with a count for the rest. The
-// owner asked on 2026-09-28 for the whole of it, scrollable and well formatted,
-// so while the dropdown is open the brief IS the room's body: the room's own
-// scroll reads it, and the steps come back, where they were, when it shuts.
-//
-// IT IS NOT RENDERED AS MARKDOWN. A brief is a model's plain text about files,
-// and markdown would read `__init__.py` as bold `init.py` and run a list the
-// model wrote one item to a line into one paragraph. What it gets instead is
-// the little a document needs: each part of a generated work order under its
-// plain heading in bold (taskrequest.go's [requestSections]), every line the
-// brief has kept as its own, a blank line between paragraphs, a list item's
-// wrapped lines hung under its text rather than its marker, and a line that
-// opens in capitals — `DONE WHEN`, `FIRST ACTION:` — with those words in bold.
+// programbrief.go draws the program brief as a scrollable document. While its
+// dropdown is open, the brief takes the room body and its scroll controls;
+// closing it restores the steps at their previous position. Plain-text rendering
+// preserves filenames, line breaks and list indentation that Markdown could
+// reinterpret.
 
 import (
 	"regexp"

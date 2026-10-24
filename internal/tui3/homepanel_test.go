@@ -102,11 +102,9 @@ func TestSinceYouLeftIsItsOwnPanelOfDoors(t *testing.T) {
 	}
 }
 
-// WHERE YOU WERE: this window's own conversation first, in bold, the last thing
-// said in it under it, then the most recent quiet ones. A row from another
-// folder carries its project as its description, under the cursor — the margin
-// is a time on every row (owner, 2026-09-15; the project used to be a tag
-// beside the age, and `here` the own row's margin).
+// WHERE YOU WERE: this window's own conversation first, in bold, the last thing said in it
+// under it, then the most recent quiet ones. A row from another folder carries its project
+// as its description, under the cursor — the margin is a time on every row.
 func TestWhereYouWereLeadsWithThisWindowsOwnConversation(t *testing.T) {
 	lab := newSwitchLab(t)
 	a := lab.open(120, 45)
@@ -497,9 +495,9 @@ func TestSpendIsASmallHudOfThreeLines(t *testing.T) {
 			t.Fatalf("at 40 cells the panel draws %q", row)
 		}
 	}
-	// AND NOTHING UNDER THE HEADING IS A STOP OR A DOOR (owner, 2026-09-17):
-	// the cursor steps over every one of the panel's lines, and a press on one
-	// leaves home up. The heading is still the door into the spend place.
+	// AND NOTHING UNDER THE HEADING IS A STOP OR A DOOR: the cursor steps over every one of
+	// the panel's lines, and a press on one leaves home up. The heading is still the door
+	// into the spend place.
 	for at, line := range a.home.lines {
 		if line.cell == nil || line.cell.panel != panelSpend || line.cell.kind == cellHead {
 			continue

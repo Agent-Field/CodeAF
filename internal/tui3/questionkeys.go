@@ -16,7 +16,7 @@ import (
 //
 // IT IS ONE TABLE BECAUSE FOUR READERS AGREE THROUGH IT. The line, the card and
 // the ratify row draw their answers row from it ([app.questionKeyRow]); the room
-// reads it for its foot (lane S2 imports [questionKeys] rather than spelling a
+// reads it for its foot (it imports [questionKeys] rather than spelling a
 // second set); `internal/manual/chat/questions.md` lists exactly these keys and
 // exactly these words; and the tmux suite's needles come out of the same words.
 // A key spelled in two places is a key that means two things the first week one
@@ -52,9 +52,8 @@ type questionVerb struct {
 	// form. The emptiness law lives here: no pick means no `enter →` line, no
 	// rule to offer means no `r`, nothing real to undo means no `u`.
 	needs questionNeed
-	// tier is which of the two rows a question draws this key on: the primary
-	// keys are written into the frame's bottom edge and the rest stand on one
-	// dim row under the frame (owner ruling 2026-09-11, hints pick A).
+	// tier is which of the two rows a question draws this key on: the primary keys are
+	// written into the frame's bottom edge and the rest stand on one dim row under the frame.
 	//
 	// IT IS A COLUMN AND NOT A LIST OF NAMES SOMEWHERE ELSE. The primary tier is
 	// "what a person needs in order to answer this at all" — walk, take, later,
@@ -111,8 +110,8 @@ const (
 	formsGroup
 )
 
-// formsBlock is the three forms THIS lane draws — the pinned block above the
-// box. The room is lane S2's and is named here so its keys travel in the same
+// formsBlock is the three forms this block draws — the pinned block above the
+// box. The room is named here so its keys travel in the same
 // table rather than in a second one beside it.
 const formsBlock = formsLine | formsCard | formsRatify
 
@@ -152,7 +151,7 @@ const (
 	// would be the surface deciding an irreversible thing on somebody's behalf
 	// — which is exactly what the question exists to prevent.
 	needHands
-	// ── the room's own conditions (lane S2) ────────────────────────────────
+	// ── the room's own conditions ────────────────────────────────
 	//
 	// They are HERE and not in a second table beside this one, because a key is
 	// a key wherever it is drawn: the room's `a`/`b`/`=` and its `n` have to be
@@ -253,7 +252,7 @@ const (
 	// questionWalkDownKey is the same walk spelled for a card, whose answers
 	// stand in a column.
 	questionWalkDownKey = "↑↓"
-	// The room's own keys (lane S2). `a` and `b` are the two sides of a pair and
+	// The room's own keys. `a` and `b` are the two sides of a pair and
 	// `a` is also the checklist's "take its suggestion" — the one collision the
 	// grammar has, and it is the same instinct at two shapes: take the thing on
 	// the left.
@@ -288,10 +287,7 @@ const (
 // on it, and let the person type. Nothing is cancelled, so the word may not say
 // cancelled.
 var questionKeys = []questionVerb{
-	// THE WALK COMES FIRST, because every drawing the owner picked reads its
-	// keys in the order a hand uses them: choose, then take it, then put it
-	// off (the implementation — `↑↓ choose · enter take it · esc
-	// later`). It is given up early all the same; the order is not the rank.
+	// It is given up early all the same; the order is not the rank.
 	//
 	// THE POINTER'S KEYS ARE SPELLED THE WAY THE FORM LAYS ITS ANSWERS OUT:
 	// across on a line, down on a card. Both pairs walk on both.

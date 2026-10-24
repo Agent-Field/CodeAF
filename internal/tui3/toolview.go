@@ -1482,11 +1482,10 @@ func countUpRungs(big int, bigUnit string, small int, smallUnit string) string {
 // waiting on a person, in which case the whole row is the question.
 func (a *app) paintName(e *entry, name string) string {
 	if e.status == toolConsent {
-		// THE WORDS ARE INK AND THE MARK IS THE AMBER (owner ruling 2026-09-11,
-		// colour pick C). A row waiting on a person already wears `?` in the
-		// gutter; painting its name and its target in the question hue as well
-		// was the same claim made three times, and it made the transcript shout
-		// at the exact moment a person was trying to READ a command.
+		// THE WORDS ARE INK AND THE MARK IS THE AMBER. A row waiting on a person already wears
+		// `?` in the gutter; painting its name and its target in the question hue as well was
+		// the same claim made three times, and it made the transcript shout at the exact moment
+		// a person was trying to READ a command.
 		return a.pal.ink(name)
 	}
 	return a.pal.muted(name)

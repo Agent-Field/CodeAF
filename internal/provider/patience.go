@@ -29,16 +29,14 @@ import (
 //
 // ── WHY THE TWO ARE DIFFERENT ANSWERS TO ONE FACT ──
 //
-// The remainder still depends on whether anybody is sitting there. When every
-// machine this request may go to is being held, a conversation's call hands the
-// refusal straight back so the session can offer the NEXT MODEL — which beats
-// any window, and is the owner's ruling of 2026-09-10: nobody should ever have
-// to work a rate limit around by switching models themselves. A task child's
-// call has nobody to disappoint, no fallback of its own and everything to lose
-// — abandoning a node over pacing throws away a worktree of work for a
-// condition that was always going to clear. So the child waits, for the window
-// the machine itself named, and the surface is told what it is waiting for and
-// until when.
+// The remainder still depends on whether anybody is sitting there. When every machine this
+// request may go to is being held, a conversation's call hands the refusal straight back
+// so the session can offer the NEXT MODEL — which beats any window, and is nobody should
+// ever have to work a rate limit around by switching models themselves. A task child's
+// call has nobody to disappoint, no fallback of its own and everything to lose —
+// abandoning a node over pacing throws away a worktree of work for a condition that was
+// always going to clear. So the child waits, for the window the machine itself named, and
+// the surface is told what it is waiting for and until when.
 //
 // SO [WithPatientRateLimits] NO LONGER MEANS "sixty attempts against one
 // machine". It means MAY WAIT FOR THE EARLIEST WINDOW WHEN THERE IS NOWHERE

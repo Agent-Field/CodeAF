@@ -56,7 +56,7 @@ func serviceReceipt(kind store.CommandKind, service store.Service, action string
 // INFORMATIONAL questions while consent-class ones always escalate; 9.4 says the
 // class axis must exist first with a conservative default — unlabeled means
 // consent means escalate. All three landed. What 12.1.4 then found is the fact
-// that decides this lane: every existing AskQuestion producer in the product is
+// that decides this implementation: every existing AskQuestion producer in the product is
 // genuinely consent-bearing and NONE is labeled informational. So the autonomy
 // half of this tool has, today, no question it could legitimately answer, and
 // granting it anyway would mean the head settling consent in the user's name.

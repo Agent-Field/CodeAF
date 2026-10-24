@@ -666,7 +666,7 @@ func TestInterruptJournalsTheStopAndStillEndsTheTurn(t *testing.T) {
 
 // ApplyInterrupt is the reconciler's arm, written here so the one line the
 // resident needs is a call rather than a design. It is tested from this side
-// because this lane may not edit resident.go — see interrupt.go for the exact
+// because this test may not edit resident.go — see interrupt.go for the exact
 // edit and 12.3.3 for why the seam is closed.
 func TestApplyInterruptIsTheArmTheReconcilerWouldCall(t *testing.T) {
 	graph := openHeadStore(t)

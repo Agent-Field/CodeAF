@@ -17,15 +17,13 @@ package tui3
 // and a blank ([placeHeadRows]) and the body starts one row higher. In a chat
 // the strip sits between the air row and the rule ([chatHeadRows]).
 //
-// THE STRIP USED TO BE DRAWN ON EVERY PAGE, including places, where it repeated
-// the teams rail and home's sessions and offered a jump from a place to one
-// chat that is not a journey anyone takes. `chats` on row zero, `alt+k` and
-// home's sessions list are the ways between them (owner, 2026-09-25).//
-// THE PLACES AND THE STRIP USED TO SHARE ROW ONE AND TAKE TURNS ON IT. A place
-// drew its bar there and a conversation drew its strip there, so the words a
-// hand was reaching for changed under it on every walk (owner, 2026-09-24).
-// Row zero is the places on every page. The strip, when it is drawn, is only
-// the chats.
+// THE STRIP USED TO BE DRAWN ON EVERY PAGE, including places, where it repeated the teams
+// rail and home's sessions and offered a jump from a place to one chat that is not a
+// journey anyone takes. `chats` on row zero, `alt+k` and home's sessions list are the ways
+// between them.// THE PLACES AND THE STRIP USED TO SHARE ROW ONE AND TAKE TURNS ON IT. A
+// place drew its bar there and a conversation drew its strip there, so the words a hand
+// was reaching for changed under it on every walk. Row zero is the places on every page.
+// The strip, when it is drawn, is only the chats.
 //
 // THE TWO FRAMES SHARE ONE HEAD BECAUSE A PERSON WALKS BETWEEN THEM ALL DAY.
 // The conversation's head used to be two to four rows of its own with no pulse,
@@ -34,7 +32,7 @@ package tui3
 // 11). One function draws the head for every frame.
 //
 // A ROOM WEARS THE WHOLE HEAD TOO, and its trail and facts are the first rows
-// under it, where a place's heading is (PLACES-AUDIT.md, lane K).
+// under it, where a place's heading is.
 
 // headRows is the head, drawn at `width` in `pal`. While a conversation is in
 // front, `strip` (the frame's [app.tabsRow]) is the row under the air row and

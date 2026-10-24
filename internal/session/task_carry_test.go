@@ -102,7 +102,7 @@ func TestTheProductionConstructorCarriesTheProviderRepairOntoEveryWorker(t *test
 
 // THE NO-TOOLS RESCUE MUST WORK AT EVERY DEPTH. [Agent.newTaskAgent] reads
 // SupportsParameter off the parent's config to refuse a model that cannot hold a
-// tool at all — and until this lane it did not carry the answer down, so the
+// tool at all — and until this test it did not carry the answer down, so the
 // check ran for a conversation's own task and for nothing below it. C1 made that
 // reachable far more often: every part division hands out is built by a worker.
 func TestAPartIsBuiltWithTheSameNoToolsRescueItsParentHad(t *testing.T) {

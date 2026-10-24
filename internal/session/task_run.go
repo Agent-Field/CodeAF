@@ -170,23 +170,20 @@ const (
 	// decomposition (task.go's fan-out law), and each answers a different way
 	// for it to run away.
 	//
-	// NEITHER IS WHAT DECIDES HOW WIDE WORK GOES, and until 2026-09-11 both were
-	// written as though they were. Five children was a guess about decomposition
-	// ("more than that has not decomposed its work, it has shredded it") and two
-	// levels a guess about where a third stops paying, and nobody had measured
-	// either. What actually bounds how much runs at once is the machine and the
-	// work: the person's task.parallel holds a ready node until a slot frees,
-	// the admission governor holds one while the machine is already loaded
-	// (task_pressure.go, which weighs the machine once per frontier pass, so a
-	// batch that becomes ready together is admitted on one reading), and two
-	// parts that would write one file are refused (a division) or queued one
-	// behind the other (quick tasks' file claims), not counted. Whether a worker
-	// SHOULD split is the fan-out page's question (prompts/fanout.md) and the
-	// division road's evidence gate (task_divide.go), each asked of the material
-	// in front of it; a constant here cannot know the answer for work it has
-	// never seen. The owner's ruling is that breadth may be large where the work
-	// parallelises, because a node's parts cost the longest of them and not
-	// their sum.
+	// NEITHER IS WHAT DECIDES HOW WIDE WORK GOES, and until 2026-09-11 both were written as
+	// though they were. Five children was a guess about decomposition ("more than that has
+	// not decomposed its work, it has shredded it") and two levels a guess about where a
+	// third stops paying, and nobody had measured either. What actually bounds how much runs
+	// at once is the machine and the work: the person's task.parallel holds a ready node
+	// until a slot frees, the admission governor holds one while the machine is already
+	// loaded (task_pressure.go, which weighs the machine once per frontier pass, so a batch
+	// that becomes ready together is admitted on one reading), and two parts that would write
+	// one file are refused (a division) or queued one behind the other (quick tasks' file
+	// claims), not counted. Whether a worker SHOULD split is the fan-out page's question
+	// (prompts/fanout.md) and the division road's evidence gate (task_divide.go), each asked
+	// of the material in front of it; a constant here cannot know the answer for work it has
+	// never seen. Breadth may be large where the work parallelises, because a node's
+	// parts cost the longest of them and not their sum.
 	//
 	// SO THE FAN CAP IS A RUNAWAY STOP AND NOTHING ELSE. A node handing out more
 	// than twenty pieces has lost the plot rather than found the width, and it

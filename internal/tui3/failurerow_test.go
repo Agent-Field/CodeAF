@@ -12,11 +12,6 @@ import (
 
 // THE FAILURE STORY, ON THE SCREEN.
 //
-// These are the owner's report of 2026-09-10 written down as tests: a turn ran
-// two commands, failed the follow-up request four times over ninety seconds and
-// gave up — and what was on the screen two minutes later was a step that still
-// said `running 2 commands` with nothing under it. "Things are just stuck".
-//
 // Each of them asserts THE RENDERED FRAME rather than a field, because every one
 // of the defects was a fact the surface held perfectly well and never drew.
 

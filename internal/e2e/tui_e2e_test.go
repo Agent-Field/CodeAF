@@ -20,8 +20,7 @@ package e2e
 //
 // Forty minutes is enough for TestTUIE2E alone. The FULL
 // tagged package — ManualOnTheWire, QuestionsE2E, roomfeed, families, custody,
-// contracts — does not fit in forty: tower's #807 run hit the ceiling before
-// TestTUIE2E started. Prefer `make test-e2e-tui` for the ambient surface, or
+// contracts — needs a longer ceiling. Prefer `make test-e2e-tui` for the ambient surface, or
 // give the whole package two hours. It needs a provider key and tmux, costs a
 // few cents. The key is resolved the way the product resolves one ([liveKey]:
 // OPENROUTER_API_KEY, OPENAI_API_KEY, then the profile's api_key row).
@@ -1716,7 +1715,7 @@ func taskOnTheRunEngine(t *testing.T, rigName string, beltWords ...string) {
 	// WHICH COMMANDS ARE ON IT IS THE WORKER'S BUSINESS. The finish is the
 	// worker's own `plandb done` when the worker writes one, and the RUN's when
 	// it does not (internal/run's worker.go), and a brief this small on a fast
-	// model is regularly the second — measured twice on this lane, where the
+	// model is regularly the second — measured twice on this test, where the
 	// page carried `echo`, `cat` and the run's own ending note. So the finish
 	// command is observed and logged, never waited out: asserting it made a red
 	// out of a model's choice and said nothing about the surface.

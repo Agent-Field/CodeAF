@@ -2,13 +2,11 @@ package tui3
 
 // ── THE CARD'S RHYTHM, AND ITS THREE ROLES ──────────────────────────────────
 //
-// The right column of home is a stack of bands (homebands.go), and every one of
-// them used to be separated from its neighbour by exactly one blank row. That is
-// a rhythm with no information in it: the address under the title, the bill
-// under the work and the verbs under the bill all stood the same distance apart,
-// so a card of seven bands read as seven facts in a heap rather than as four
-// readings of one conversation. The owner met it as "the right side preview —
-// make the spacing a bit more wide… it seems small".
+// The right column of home is a stack of bands (homebands.go), and every one of them used
+// to be separated from its neighbour by exactly one blank row. That is a rhythm with no
+// information in it: the address under the title, the bill under the work and the verbs
+// under the bill all stood the same distance apart, so a card of seven bands read as seven
+// facts in a heap rather than as four readings of one conversation.
 //
 // SO THE CARD HAS GROUPS, AND THE GAP IS WHAT SAYS SO. Four readings, in the
 // order somebody asks them:

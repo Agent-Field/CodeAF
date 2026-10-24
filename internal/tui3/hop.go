@@ -54,14 +54,12 @@ import (
 //
 // ── THE CARD WEARS THE ONE FRAME, AND THE DEPTH IS WHAT SAYS `LAYER` ────────
 //
-// This header used to say the card had no border, while the card drew one — a
-// dim rounded box of its own, one of three copies of the same six pieces on this
-// surface. It is drawn by the one frame now (frame.go, owner ruling 2026-09-11),
-// dim, on the card's own raised ground. What says `layer` is still the depth:
-// the body behind it is repainted at the FAINTEST stop of the depth ladder
-// ([composerFade], depthfade.go) and the card's own rows are left at full ink.
-// That is the same move SCREEN 2e's composer layer makes over a place, one
-// mechanism rather than two, and the frame only says where the card ends.
+// This header used to say the card had no border, while the card drew one — a dim rounded
+// box of its own, one of three copies of the same six pieces on this surface. What says
+// `layer` is still the depth: the body behind it is repainted at the FAINTEST stop of the
+// depth ladder ([composerFade], depthfade.go) and the card's own rows are left at full
+// ink. That is the same move SCREEN 2e's composer layer makes over a place, one mechanism
+// rather than two, and the frame only says where the card ends.
 //
 // The rows themselves are home's rows — the same glyph door, the same bold
 // subject, the same dim tail dropped in the same order (switcher.go's
@@ -660,11 +658,7 @@ func (a *app) hopRest(open []hopRow, now time.Time) []hopRow {
 		if len(open)+len(rest) >= hopShown {
 			break
 		}
-		// THE FOLDER IS ASKED ABOUT ONCE AND BOTH READINGS TAKE THAT ANSWER. It
-		// used to be asked here for the GLYPH and left false on the row
-		// [hopRestNote] reads, so a conversation whose project had gone was drawn
-		// with the refusing `✕` and no clause saying why — a mark a person cannot
-		// account for, which is the whole of what the owner's report was about.
+		// THE FOLDER IS ASKED ABOUT ONCE AND BOTH READINGS TAKE THAT ANSWER.
 		row.gone = !homeFolderThere(row.place)
 		rest = append(rest, hopRow{
 			file: row.session.Transcript, title: row.title, project: row.project,
@@ -1247,14 +1241,11 @@ func (a *app) hopOpenRows() int { return a.hop.tabs }
 
 // ── what the card looks like ────────────────────────────────────────────────
 //
-// THE CARD IS A BOX, AND IT IS THE ONE ON THIS SURFACE. The house rule is that
-// nothing is outlined — emphasis is a raised ground and an accent, never a ring
-// drawn round a thing (harnesscard.go states it) — and this is the deliberate
-// exception, ruled by the owner off SCREEN 3b's own drawing. The reason it earns
-// the exception is that it is the only thing here that FLOATS: every other panel
-// on this surface takes the frame or hangs off an edge, so its bounds are the
-// screen's. A list dropped into the middle of a dimmed transcript has no edge of
-// its own, and without one the eye reads it as text that happens to be brighter.
+// THE CARD IS A BOX, AND IT IS THE ONE ON THIS SURFACE. The reason it earns the exception
+// is that it is the only thing here that FLOATS: every other panel on this surface takes
+// the frame or hangs off an edge, so its bounds are the screen's. A list dropped into the
+// middle of a dimmed transcript has no edge of its own, and without one the eye reads it
+// as text that happens to be brighter.
 //
 // THE COLUMNS ARE FIXED AND THAT IS THE WHOLE OF WHY IT SCANS. Glyph, subject,
 // one clause, project, clock — the subjects form a straight edge you read down
@@ -1288,11 +1279,8 @@ const (
 	// hopTightNote is what the clause narrows to on the way down, which is
 	// `3 tasks running` whole.
 	hopTightNote = 16
-	// hopGutter is the air kept at the right-hand end of the subject column, so a
-	// name that fills its column does not touch the clause beside it. Without it
-	// the two run together as one word — `…parsing regres…nothing new` — which is
-	// the reading the owner reported, and no amount of extra column width fixes
-	// it, because a long enough name fills whatever it is given.
+	// hopGutter is the air kept at the right-hand end of the subject column, so a name that
+	// fills its column does not touch the clause beside it.
 	hopGutter = 2
 )
 

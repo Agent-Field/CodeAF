@@ -385,7 +385,7 @@ func TestTheNamerIsRegisteredOnTheCheapClass(t *testing.T) {
 
 // A PERSON'S `/task` IS NAMED THE MOMENT IT EXISTS. That is the exact case the
 // complaint arrived as: the row falls back to the person's own first eight words,
-// and the column shows the first three of them — "read /Users/me/src" — which
+// and the column shows the first three of them — "read /workspace/src" — which
 // names the work after the path they pasted. The shaper used to name it, after a
 // wait in front of the node; the door asks no model now (task_person.go), so the
 // namer every unnamed node gets is the one that names this one too, and the

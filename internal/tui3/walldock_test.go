@@ -60,7 +60,7 @@ func TestDockDrawsEveryConversationInStripOrder(t *testing.T) {
 		// AN INERT WATCHER, as the strip's own signal tests use (tabsignal_test.go's
 		// [signalLab]). The live one's goroutine stores its first reading of the
 		// agent when it starts, and a flag set here before that could be put
-		// back to idle under the second render: red 4 times in 30 on tower.
+		// back to idle under the second render: red 4 times in 30 on test machine.
 		held.watch = &behindWatch{key: tab.key, agent: held.conv.Agent}
 		if working == "" {
 			held.watch.turning.Store(true)

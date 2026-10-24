@@ -307,11 +307,10 @@ func (h *homeView) marksPanel(at int) bool {
 // homeCellLeadBlank is the lead of a row that wears no mark.
 var homeCellLeadBlank = strings.Repeat(" ", homeGridLead)
 
-// homeDescLeadCells is what a note in the description column stands in, and it
-// is ONE CELL WIDER THAN A ROW'S LEAD so the mark and the first letter of the
-// sentence it leads are not touching (owner, 2026-09-15). Every note takes it,
-// marked or not, because notes are read down the column against each other
-// rather than against the rows in the column beside them.
+// homeDescLeadCells is what a note in the description column stands in, and it is ONE CELL
+// WIDER THAN A ROW'S LEAD so the mark and the first letter of the sentence it leads are
+// not touching. Every note takes it, marked or not, because notes are read down the column
+// against each other rather than against the rows in the column beside them.
 const homeDescLeadCells = homeGridLead + 1
 
 var homeDescLeadBlank = strings.Repeat(" ", homeDescLeadCells)
@@ -542,11 +541,7 @@ func (a *app) homeCellLead(cell *homeCell, at int, pal palette) string {
 	if spin := a.homeSpinCell(at); spin != "" && cell.mark != cellMarkNeeds {
 		return pal.accent(spin) + " "
 	}
-	// THE MARK LEADS THE ROW, ALWAYS. It used to move beside the question on a
-	// frame whose description column drew the question permanently (owner,
-	// 2026-09-15); the question is drawn only under the pointer or the cursor
-	// now, and the owner asked (2026-09-17) that the `?` always show — so it
-	// stands beside the title, where it is on every frame.
+	// THE MARK LEADS THE ROW, ALWAYS.
 	switch cell.mark {
 	case cellMarkNeeds:
 		return pal.warn(pal.glyph(tokens.GNeedsHuman)) + " "
@@ -563,12 +558,10 @@ func (a *app) homeCellLead(cell *homeCell, at int, pal palette) string {
 // homeCellBody is a row after its lead: the title, a note in the title's
 // shadow, and the facts at the right margin.
 //
-// THE AGE OUTRANKS THE TAIL OF A TITLE (owner, 2026-09-10: `Generate and Display
-// First 200 Primes, Sleep, Then Prin…` drew with no age beside rows that had
-// one). The note gives way first, then the tag, then the title is cut — and the
-// right-hand word, the age or the door word, is the last thing to go: only where
-// the title would keep fewer than [homeCellTitleFloor] cells beside it, and a
-// held word not even then.
+// THE AGE OUTRANKS THE TAIL OF A TITLE. The note gives way first, then the tag, then the
+// title is cut — and the right-hand word, the age or the door word, is the last thing to
+// go: only where the title would keep fewer than [homeCellTitleFloor] cells beside it, and
+// a held word not even then.
 //
 // A PROGRAM'S BADGE IS MEASURED AS PART OF THE TITLE AND PAID FOR OUT OF IT
 // ([homeCellWears]), so the note, the tag and the age give way to it exactly as
@@ -649,7 +642,7 @@ func homeCellBody(cell *homeCell, width int, pal palette, lit bool) string {
 }
 
 // giveWay is the facts in the order a narrow row sheds them. A cell that
-// KEEPS ITS NOTE (a chat on another machine: `running on studio` is the point
+// KEEPS ITS NOTE (a chat on another machine: `running on desktop` is the point
 // of the row) sheds the tag alone and lets the title be cut, for as long as the
 // note still fits beside a title of [homeCellTitleFloor] cells; below that the
 // note goes as it always did.
@@ -757,13 +750,12 @@ func homeCellWidth(title string, pad int, note, tag, right string) int {
 // on the line of the row whose `enter` raised it, and nil where there is no
 // question or its row is not in the field.
 //
-// IT IS THE QUESTION BLOCK'S OWN CARD ([app.homeAskRows]) and not a second
-// drawing of the same facts, so a person who has learnt one question on this
-// surface has learnt this one. Until this column existed the grid had nowhere to
-// put it: the card belongs to the detail column beside the typed search, which
-// is not up at rest, so a raised question left only its one-line foot version —
-// appended to the resting sentence, where it read as a run-on and was missed
-// (owner, 2026-09-15).
+// IT IS THE QUESTION BLOCK'S OWN CARD ([app.homeAskRows]) and not a second drawing of the
+// same facts, so a person who has learnt one question on this surface has learnt this one.
+// Until this column existed the grid had nowhere to put it: the card belongs to the detail
+// column beside the typed search, which is not up at rest, so a raised question left only
+// its one-line foot version — appended to the resting sentence, where it read as a run-on
+// and was missed.
 //
 // IT IS PULLED UP RATHER THAN CUT where the card is taller than the room under
 // its row. A decision with its last answer off the bottom of the screen is worse

@@ -53,11 +53,7 @@ package tui3
 //     which is how sixty columns came to spend twelve cells on `thu 12:01am`
 //     while the whole right end went unwritten.)
 //
-//   - THE LADDER IS THE NAV'S NOW (topnav.go's [app.navTails]). The line shares
-//     its row with the places, and the owner ruled the order the row gives
-//     things up in (2026-09-24): the clock, then the moving count, then the
-//     words of `2 want you` (never its count), then the places fold, and the
-//     day's figure is the last clause but one standing.
+// - THE LADDER IS THE NAV'S NOW (topnav.go's [app.navTails]).
 //
 //   - AND THE COUNT THAT WANTS YOU NEVER LEAVES THE ROW. It was allowed to,
 //     for one wave, on the argument that a place's own rows and the strip's
@@ -67,20 +63,13 @@ package tui3
 //     So `2 want you` shortens to `2 ?` in the same amber before anything
 //     else is given up, and it outlasts the money and the places.
 //
-//   - THE ALLOWANCE IS A FRACTION HERE, AND THE OWNER OVERRULED THIS FILE TO PUT
-//     IT THERE. What stood here for four waves was the opposite law, and it read:
-//     "NEVER A QUOTA FRACTION HERE. What the day has spent belongs on the pulse;
-//     what the day is ALLOWED to spend is the machine card's `today` band and
-//     nowhere else. A ceiling on this line would turn a glance into an arithmetic
-//     problem." (That band is retired with home's resting state and this line is
-//     the only one left that draws either figure.) The design draws
-//     `$0.55 / $20.00`, the owner said "follow the
-//     exact design" on 2026-08-25, and the old law is retired rather than quietly
-//     dropped — this paragraph is its headstone. The argument it lost is worth
-//     keeping: the fraction is two figures where one would do. The argument that
-//     beat it is that "how much is left" is the only thing anybody ever wanted the
-//     first figure FOR, and a person who has to remember their own ceiling to read
-//     a spend segment is doing the arithmetic anyway, in their head, wrongly.
+// What stood here for four waves was the opposite law, and it read:     "NEVER A QUOTA
+// FRACTION HERE. What the day has spent belongs on the pulse;     what the day is ALLOWED
+// to spend is the machine card's `today` band and     nowhere else. The argument it lost
+// is worth     keeping: the fraction is two figures where one would do. The argument that
+// beat it is that "how much is left" is the only thing anybody ever wanted the     first
+// figure FOR, and a person who has to remember their own ceiling to read     a spend
+// segment is doing the arithmetic anyway, in their head, wrongly.
 //
 //   - AND THE FRACTION RETIRED THE COLOUR CHANGE THAT STOOD IN FOR IT. The figure
 //     used to rise out of the dim into the warning hue as the bound came close,

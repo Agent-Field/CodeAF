@@ -6,28 +6,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/env"
 )
 
-// Which reading of "is this division real" a run is on.
-//
-// THE GATE IS OFF UNLESS SOMEBODY PINNED IT ON. It shipped armed, with a
-// six-item floor under every division, and issue #418 said the floor folds real
-// divisions: a brief that names three lanes over one file counts zero items and
-// is refused. Two repairs were proposed and neither was argued to a conclusion,
-// so the owner ruled that the choice would be made by a designed experiment —
-// four planner arms against four readings of this gate, 273 judged draws on the
-// plan door.
-//
-// THE EXPERIMENT PICKED THE GATE OFF. The front it drew is the stages planner
-// with this gate having no say: the same quality as the best armed cell, the
-// fewest divisions the tests could not recover (4 of 21 against 12 and 18), and
-// the lowest cost. Every armed reading paid for the narrow divisions it refused
-// by folding wide ones, and the counting repair helped one planner and hurt
-// another — an interaction, not an improvement. So on 2026-09-02 the default
-// moved: with nothing pinned, every division the planner drew is kept.
-//
-// THE COUNT AND THE SIZING STAY REACHABLE AS PINS. The experiment measured
-// them, they are not wrong everywhere, and a run that wants the shipped floor
-// back should not need a build to get it — but neither is now what a person
-// gets without asking.
+// The division gate stays off unless explicitly enabled. A count of parts cannot
+// establish that work is independent, so the opt-in modes let callers evaluate
+// the gate without imposing that assumption on every plan.
 
 // GateMode is which reading of "is this division real" the binary is running.
 // It is a string rather than an integer because the pin is read by people

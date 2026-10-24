@@ -23,10 +23,7 @@ import (
 // THE MODEL'S OWN CELL — `glm-5.3-flash (deepinfra)` — so the two halves of
 // "who is answering" read as one word (render.go's [app.modelRiderAt]).
 //
-// THE CONVERSATION'S NAME IS NOT ON IT. It was, from 2026-09-09 until
-// 2026-09-17, and the owner ruled it off: a title takes up the room the
-// numbers need, and it is already on the tab strip and the breadcrumb bar
-// (chattabs.go, title.go). The machine on a `--host` session still leads the
+// THE CONVERSATION'S NAME IS NOT ON IT. The machine on a `--host` session still leads the
 // line — it is the half nobody can reconstruct from anything else on screen.
 //
 // THE NUMBERS ARE GROUPED BY THE QUESTION EACH GROUP ANSWERS, three cells of
@@ -429,15 +426,13 @@ func (a *app) runStatusNote() tea.Cmd {
 //
 // THE LADDER IS [seamLadder], read top to bottom, and it never clips.
 //
-// THREE CELLS ON THIS CLUSTER ARE CONTROLS AND ALL THREE RETURN THEIR COLUMNS:
-// the model opens the picker ([app.legendModelPress]), the rung walks one step
-// ([app.legendEffortPress]) and the approvals chip walks the gate's wheel one
-// stop ([app.legendApprovalPress]). The rider stands between the model and
-// the rung — the owner's ruling of 2026-09-17 that the model and its machine
-// read as one thing — and is outside the model's span, so a press on `via`
-// opens nothing; the rung and the chip are measured past it (seamSpans). A
-// room comes through [app.roomSeamIdentity] with the way out where the name
-// slot is.
+// THREE CELLS ON THIS CLUSTER ARE CONTROLS AND ALL THREE RETURN THEIR COLUMNS: the model
+// opens the picker ([app.legendModelPress]), the rung walks one step
+// ([app.legendEffortPress]) and the approvals chip walks the gate's wheel one stop
+// ([app.legendApprovalPress]). The rider stands between the model and the rung because the
+// model and its machine read as one thing. It is outside the model's span, so a press on
+// `via` opens nothing; the rung and the chip are measured past it (seamSpans). A room
+// comes through [app.roomSeamIdentity] with the way out where the name slot is.
 func (a *app) seamIdentity(width, room int, tier seamTier) (string, hudSpan, hudSpan, hudSpan) {
 	pieces := a.seamPieces(width)
 	return seamLay(&pieces, room, tier)
@@ -502,12 +497,8 @@ type seamPieces struct {
 }
 
 func (a *app) seamPieces(width int) seamPieces {
-	// THE NAME SLOT IS EMPTY ON A CONVERSATION. The title stood here from
-	// 2026-09-09 (with the folder standing in until the session had named
-	// itself) until the owner ruled it off on 2026-09-17: it took the room the
-	// numbers need, and the tab strip and the breadcrumb bar already say it.
-	// The slot is still a slot because a room writes its way out into it
-	// (roomseam.go).
+	// THE NAME SLOT IS EMPTY ON A CONVERSATION. The slot is still a slot because a room
+	// writes its way out into it (roomseam.go).
 	//
 	// THE MODEL KEEPS ITS FULL ADDRESS, AND HOW HARD IT IS ASKED TO THINK IS THE
 	// CELL AFTER IT. The level used to be spelled onto the id with a colon —
@@ -603,8 +594,7 @@ var seamLadder = []seamTry{
 //
 // THE RIDER IS WRITTEN ONTO THE MODEL — `glm-5.3-flash (deepinfra)` — and the
 // rung and the gate come after the pair, so the two halves of "who is
-// answering" are never separated by a cell about something else (the owner's
-// ruling of 2026-09-17).
+// answering" are never separated by a cell about something else.
 func (p seamPieces) lay(try seamTry, room int) (string, hudSpan, hudSpan, hudSpan, bool) {
 	none := hudSpan{}
 	if try.cut && p.name == "" {

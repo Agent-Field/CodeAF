@@ -2,7 +2,7 @@
 
 // TWO CONTRACTS, END TO END, AGAINST A REAL MODEL.
 //
-// WHAT THIS LANE PROVES. A worker is handed one document — its contract — and it
+// WHAT this test PROVES. A worker is handed one document — its contract — and it
 // does what the document says. Both issues below are the same failure read from
 // two sides: the contract said something about a place or a command that was
 // TRUE OF SOMEBODY ELSE, and the worker obeyed it anyway.
@@ -349,7 +349,7 @@ func assertTheWorkerStayedInItsCopy(t *testing.T, one *contractAttempt) {
 
 // briefProduceHeading is the contract's own heading for the thing to make, as
 // task_brief.go spells it. It is repeated here rather than reached for because
-// it is unexported there and this lane reads the disk.
+// it is unexported there and this test reads the disk.
 const briefProduceHeading = "WHAT TO PRODUCE"
 
 // briefDoneWhenHeading is the section after it, which is where the WHAT TO
@@ -407,7 +407,7 @@ const theWideCommand = "ls -1"
 
 // divisionRefusedSharedCheck is the decision the division road writes when it
 // turns a division down for this rule (task_divide.go). Spelled again here for
-// [taskRow]'s reason: it is unexported there and this lane reads the record.
+// [taskRow]'s reason: it is unexported there and this test reads the record.
 const divisionRefusedSharedCheck = "refused:shared-check"
 
 // divisionRepairedSharedCheck is the SECOND firing of that rule on one node: the
@@ -549,7 +549,7 @@ func TestOneWideCheckIsNotOrderedByEveryPart(t *testing.T) {
 	// written — and it is a fact about how a cheap model reads a refusal, not
 	// about whether the road was right to make it. The families lane asserts a
 	// worker carries on through the #231 refusal; that assertion is not made
-	// here, because making it would put this lane's verdict on #569 in the hands
+	// here, because making it would put this test's verdict on #569 in the hands
 	// of one model's willingness to redraw a boundary.
 	root := run.rootRow()
 	t.Logf("  the family ended %s (%s) having written %v", root.State, root.Ending, root.Changed)
@@ -611,7 +611,7 @@ func theWideCheckShapeWasReached(run *familyRun) bool {
 // THE END STATE THE FIX IS FOR is three admitted children each carrying a check
 // over its own slice, none of them carrying the family-wide one, and that
 // family-wide run made ONCE by the parent after its parts' work is home. Whether
-// a cheap model gets there is not something this lane can make true, and an
+// a cheap model gets there is not something this test can make true, and an
 // assertion that quietly relaxed until it passed would be worse than no
 // assertion — so every part of it is measured and written down in the log, in
 // the model's own words, for whoever reads the run.
@@ -866,7 +866,7 @@ func awaitRootNode(ctx context.Context, t *testing.T, place session.Place) uint6
 // ── watching a file that will not survive the run ───────────────────────────
 
 // copyWatch is one file polled while the work runs, because the two directories
-// this lane is about do not both outlive it: a landed task's worktree is
+// this test is about do not both outlive it: a landed task's worktree is
 // REMOVED, so what its copy held has to be taken while the worker is standing in
 // it. It records the last content seen at each matching path, and the ordered
 // sequence of DISTINCT contents — which is how "did their own file change while

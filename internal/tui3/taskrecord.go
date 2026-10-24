@@ -630,13 +630,12 @@ func (a *app) taskCardFrame(width, height int) ([]string, []taskCardHit, int, in
 	}
 
 	add(pal.dim(rule(width)), taskCardHitNone)
-	// THE PAGE ENTER LANDS ON FROM A `needs you` ROW SHOWS THE QUESTION IT
-	// NEEDS YOU FOR. The landing has been on the block above the conversation's
-	// box all along ([session.Agent.publishLandingQuestion]); this card is a
-	// place, the block is neither drawn nor keyed under a place, and a person
-	// sent here by `enter` read the whole report and found nothing to press
-	// (the owner, 2026-09-10). So the card draws the question's own head and
-	// answers row, from the block's own object, above its foot.
+	// THE PAGE ENTER LANDS ON FROM A `needs you` ROW SHOWS THE QUESTION IT NEEDS YOU FOR. The
+	// landing has been on the block above the conversation's box all along
+	// ([session.Agent.publishLandingQuestion]); this card is a place, the block is neither
+	// drawn nor keyed under a place, and a person sent here by `enter` read the whole report
+	// and found nothing to press. So the card draws the question's own head and answers row,
+	// from the block's own object, above its foot.
 	asking := false
 	if q, ok := a.taskRecordLanding(entry); ok {
 		asking = true

@@ -598,7 +598,7 @@ func everyFamilyCount(groups []otherProjectFamilies) int {
 // machine, grouped by project, under the same query the search used.
 //
 //	running in other projects on this machine:
-//	wisp · /Users/ada/code/wisp
+//	wisp · /workspace/code/wisp
 //	  another window · Port the parser · running · running for 2m 3s
 //	    in the window called "parser work"
 //	  open here · Rewrite the docs · queued

@@ -319,10 +319,9 @@ func (a *app) queueFootOffered() bool {
 // the block when their turn starts — where the words land in the transcript as
 // the ordinary sent line they become.
 //
-// THERE IS NO LINE UNDER THE BLOCK, by the owner's call (2026-09-30). It said
-// `queued for after this turn · click takes one back · ctrl+enter queues the
-// draft`; the arrow says the first, the hover says the second, and the running
-// foot says the third, so the sentence was three things already on the frame.
+// It said `queued for after this turn · click takes one back · ctrl+enter queues the
+// draft`; the arrow says the first, the hover says the second, and the running foot says
+// the third, so the sentence was three things already on the frame.
 func (a *app) followRows(width int) []string {
 	if a.followWaiting() == 0 || width < 5 {
 		return nil

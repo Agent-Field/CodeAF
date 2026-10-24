@@ -307,13 +307,8 @@ func pulseLab(t *testing.T) (*app, time.Time) {
 
 // THE TOP LINE GIVES THINGS UP IN THE OWNER'S ORDER.
 //
-// The places and the pulse share the first row now, and the owner ruled the
-// order a narrowing row gives things up in (2026-09-24): the clock first, with
-// the machine's name, then the counts (the moving one before the one that
-// wants you), then the allowance behind the day's figure, then the trailing
-// places fold into `more ▾`, and the day's figure is the last clause standing.
-// Every width is checked: a thing given up early may never be on the row while
-// a thing given up later is gone, and every rung of the ladder is met.
+// Every width is checked: a thing given up early may never be on the row while a thing
+// given up later is gone, and every rung of the ladder is met.
 func TestTheTopLineGivesThingsUpInTheOwnersOrder(t *testing.T) {
 	a, now := pulseLab(t)
 	a.showPage(pageNone)

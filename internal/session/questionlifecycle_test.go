@@ -51,7 +51,7 @@ func TestTheConnectOfferIsRaisedAnsweredAndWithdrawnOnTheQuestionsLane(t *testin
 	if answered.Question.Ref != ref {
 		t.Fatalf("the answered event is about %q, want %q", answered.Question.Ref, ref)
 	}
-	// AND THE RECORD KEEPS IT, which no family of this lane had before: an
+	// AND THE RECORD KEEPS IT, which no family of this test had before: an
 	// answer with no banked words leaves nothing anybody can read afterwards.
 	decisions := agent.Decisions()
 	if len(decisions) == 0 || !strings.Contains(decisions[len(decisions)-1].Head, "Notion") {

@@ -648,7 +648,7 @@ func probeOpen(path string) error {
 
 // pathReason strips an operating-system error down to its reason alone.
 // [openFailure] has already named the path, and `could not open ~/.codeaf/graph.db:
-// open /home/you/.codeaf/graph.db: permission denied` says it twice.
+// open /workspace/.codeaf/graph.db: permission denied` says it twice.
 func pathReason(err error) error {
 	var failure *fs.PathError
 	if errors.As(err, &failure) && failure.Err != nil {

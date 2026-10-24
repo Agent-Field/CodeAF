@@ -43,7 +43,7 @@ import (
 
 // MachineName is what this machine calls itself on the wire: the name a person
 // gave it, else its host name with any domain trimmed off ([devname.Name]), so a
-// person reads `spark` rather than `spark.local.example.com` in a sentence about
+// person reads `laptop` rather than `laptop.local.example.com` in a sentence about
 // which window is typing.
 //
 // IT IS A LABEL AND NOT AN IDENTITY (see [Hello.Surface]). The empty string is a

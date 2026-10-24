@@ -1,10 +1,5 @@
 package tui3
 
-// foldercontext_test.go is THE CONTEXT BROWSER as the owner asked for it: files
-// and folders in one deliberate sheet, a real preview beside them, a mark tray
-// and a confirm that does what the row says — and, under all of it, the law
-// that makes the sheet safe to explore:
-//
 //	BROWSING, FOCUSING AND PREVIEWING ATTACH NOTHING.
 //
 // Every test here either proves that law or proves one deliberate act crossing
@@ -523,10 +518,8 @@ func TestThePreviewHidesAndTakesTheWholeSheet(t *testing.T) {
 		t.Fatalf("the wide legend reads %q", a.folder.folderHintAt(a.width))
 	}
 	drive(t, a, key(folderWideKey))
-	// EVERY CHORD THE SHEET OWNS IS NAMED EXACTLY ONCE, across the two lines that
-	// carry them: the box's own placeholder and the foot row under the columns.
-	// Naming them all in both places was the wall of shortcuts the owner's review
-	// asked us to stop drawing (folderpick.go's [folderBrowseHintFields]).
+	// EVERY CHORD THE SHEET OWNS IS NAMED EXACTLY ONCE, across the two lines that carry them:
+	// the box's own placeholder and the foot row under the columns.
 	said := a.folder.folderHintAt(a.width) + " · " + a.folder.controlLegend(a.width)
 	for _, want := range []string{folderPaneKey, folderWideKey, folderMarkKey, "esc", "enter"} {
 		if !strings.Contains(said, want) {
@@ -904,11 +897,9 @@ func TestAThingThatVanishedUnderTheConfirmSaysSo(t *testing.T) {
 // THE WAY OUT AND THE PREVIEW'S OWN DOOR ARE ON THE SHEET AT EVERY WIDTH, and
 // which of the two places names them is contextual.
 //
-// The foot row used to name every chord the sheet owns, at every width, which is
-// the wall of shortcuts the owner's review asked us to stop drawing. `alt+o` is
-// on the foot exactly where the preview is NOT drawn — there it is the only way
-// to read a file at all — and in the box's own placeholder where it is, because
-// the box is empty while browsing now and its placeholder is on screen.
+// `alt+o` is on the foot exactly where the preview is NOT drawn — there it is the only way
+// to read a file at all — and in the box's own placeholder where it is, because the box is
+// empty while browsing now and its placeholder is on screen.
 func TestThePreviewDoorAndTheWayOutAreOnTheSheetAtEveryWidth(t *testing.T) {
 	a, _, root := mixedLab(t)
 	for _, width := range []int{52, 100, 170} {

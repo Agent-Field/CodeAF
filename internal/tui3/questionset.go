@@ -32,10 +32,10 @@ import (
 //
 // ── THE TWO DRAWINGS, EXACTLY AS THEY ARE DRAWN ─────────────────────────────
 //
-// TABS (owner pick `multi — A`): one panel, a tab per question across the top
-// edge and a review tab after them. `←→` move between questions, `↑↓` walk the
-// answers of the one on screen, and `enter` takes an answer FOR THIS TAB — it is
-// held, and the panel moves on to the next question still waiting.
+// TABS: one panel, a tab per question across the top edge and a review tab after them.
+// `←→` move between questions, `↑↓` walk the answers of the one on screen, and `enter`
+// takes an answer FOR THIS TAB — it is held, and the panel moves on to the next question
+// still waiting.
 //
 //	╭─ ● storage   ○ naming   ○ tests   ✓ review ───────────────── 1 of 3 ─╮
 //	│                                                                      │

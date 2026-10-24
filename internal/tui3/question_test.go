@@ -324,12 +324,11 @@ func consentAsk() session.Question {
 // shape of a permission, asserted as rows rather than as a substring: a block
 // that grew a row nobody decided on is a block that moved the box.
 //
-// IT IS THE PANEL AND NOT A LINE. A person allowing a call has to READ the call
-// (owner ruling 2026-09-11, consent pick B), so the chooser sends every
-// permission here: the head and who is asking in the frame's top edge, the call
-// and the policy's own words on the first row, a blank, a row per answer, a
-// blank, the keys that answer in the bottom edge, and the quieter keys on one
-// dim row under it.
+// IT IS THE PANEL AND NOT A LINE. A person allowing a call has to READ the call, so the
+// chooser sends every permission here: the head and who is asking in the frame's top edge,
+// the call and the policy's own words on the first row, a blank, a row per answer, a
+// blank, the keys that answer in the bottom edge, and the quieter keys on one dim row
+// under it.
 //
 // AND NO LIFETIMES ROW, though this fixture offers two. The consent gate reads
 // an answer's key and never [session.Answer.Scope], so the row is off a
@@ -409,9 +408,8 @@ func TestEscIsLaterAndCancelsNothing(t *testing.T) {
 	if len(lab.answer) != 0 {
 		t.Fatalf("esc answered something: %+v", lab.answer)
 	}
-	// A QUESTION PUT OFF FOLDS IN PLACE TO ONE TITLED RULE (owner ruling
-	// 2026-09-11, fold pick A): it never jumps to the status line, and the rule
-	// says what is waiting and which key opens it again.
+	// A QUESTION PUT OFF FOLDS IN PLACE TO ONE TITLED RULE: it never jumps to the status
+	// line, and the rule says what is waiting and which key opens it again.
 	folded := lab.rows()
 	if len(folded) != 1 {
 		t.Fatalf("the folded question is not one rule:\n%s", strings.Join(folded, "\n"))
@@ -636,13 +634,12 @@ func TestACardDrawsARowPerAnswerAndMarksTheAskersPick(t *testing.T) {
 // TestEnterOnAPermissionSplitsOnTheStakes is where the pointer stands when the
 // asker named no pick, and it is the half of the pointer that keeps it safe.
 //
-// `enter` takes the answer the pointer is on, so the ruling (owner, 2026-09-11)
-// is one keystroke wide: an ORDINARY call opens on `allow once` and a GRAVE one
-// on `deny`, and the engine's grade — [session.Question.Stakes], written by the
-// gate out of internal/approval's own judgement — is the only thing that says
-// which is which. #933 could not ship the split because nothing upstream graded
-// a call; it shipped deny-first for all of them, and this test is what its
-// successor proves now that the grade arrives.
+// `enter` takes the answer the pointer is on, so the ruling is one keystroke wide: an
+// ORDINARY call opens on `allow once` and a GRAVE one on `deny`, and the engine's grade —
+// [session.Question.Stakes], written by the gate out of internal/approval's own judgement
+// — is the only thing that says which is which. #933 could not ship the split because
+// nothing upstream graded a call; it shipped deny-first for all of them, and this test is
+// what its successor proves now that the grade arrives.
 //
 // ONE CASE EACH WAY, read off the question and never spelled as an answer
 // number: a test naming `3` would still pass the day the engine renumbered its
@@ -1475,9 +1472,8 @@ func TestALongNoteUnderEveryAnswerIsCutToWhatTheScreenHolds(t *testing.T) {
 		Reason: "a tour needs a shape", Options: options,
 		Input: session.InputShape{Kind: session.InputChecklist}, Stakes: session.StakesReversible,
 	})
-	// THE NOTE IS UNDER THE POINTER AND NOWHERE ELSE (owner ruling 2026-09-11,
-	// recommended pick A). Eight answers each carrying a paragraph is a panel
-	// taller than the conversation under it; the pointer is the person saying
+	// THE NOTE IS UNDER THE POINTER AND NOWHERE ELSE. Eight answers each carrying a paragraph
+	// is a panel taller than the conversation under it; the pointer is the person saying
 	// which one they are weighing, and `o open full` holds the rest.
 	screen := lab.plain()
 	if n := strings.Count(screen, glyphMore); n > 1 {
@@ -1518,9 +1514,8 @@ func TestArrowsWalkThePointerOnACardAndEnterTakesIt(t *testing.T) {
 	if !strings.Contains(screen, tokens.GlyphPointer+" 2  Adaptive") {
 		t.Fatalf("the pointer does not start on the asker's pick:\n%s", screen)
 	}
-	// THE PICK IS A MARK AND A WORD AT THE RIGHT EDGE OF ITS ROW, never a word
-	// appended to what the answer costs (owner ruling 2026-09-11, recommended
-	// pick A) — `needs a watch · suggested` read as one more thing it would do.
+	// THE PICK IS A MARK AND A WORD AT THE RIGHT EDGE OF ITS ROW, never a word appended to
+	// what the answer costs — `needs a watch · suggested` read as one more thing it would do.
 	if !strings.Contains(screen, tokens.GlyphRecommended+" "+questionRecommendedWord) {
 		t.Fatalf("the asker's pick is not said on its row:\n%s", screen)
 	}
@@ -1620,12 +1615,11 @@ func TestTheTaskRecordPageDrawsTheLandingQuestionAndTakesItsKeys(t *testing.T) {
 	}
 }
 
-// `c` AND `?` POINT THE BOX AT THE QUESTION, VISIBLY. The answers row becomes
-// a prompt saying what the box is writing now, every letter types (a `d` is a
-// letter, not `you decide`), enter sends the words with the pointed answer
-// (`c`) or to the asker with the question still open (`?`), and esc points the
-// box back at the conversation. Before this the keys changed nothing on the
-// screen and the words went out as a chat message (the owner, 2026-09-10).
+// `c` AND `?` POINT THE BOX AT THE QUESTION, VISIBLY. The answers row becomes a prompt
+// saying what the box is writing now, every letter types (a `d` is a letter, not `you
+// decide`), enter sends the words with the pointed answer (`c`) or to the asker with the
+// question still open (`?`), and esc points the box back at the conversation. Before this
+// the keys changed nothing on the screen and the words went out as a chat message.
 func TestChangeAndAskBackTurnTheRowIntoAPromptAndEnterSendsTheWords(t *testing.T) {
 	lab := newQuestionLab(t)
 	lab.a.width = 120

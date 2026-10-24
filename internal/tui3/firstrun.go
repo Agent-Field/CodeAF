@@ -727,7 +727,7 @@ func (a *app) setupCommit() bool {
 // setup's refusals were `err.Error()`, so the first sentence a new person could
 // be shown — on the one screen where they have done nothing yet and something
 // has already failed — was a wrapped chain like `write config daily_budget_usd:
-// open /home/…/.codeaf/config.json: permission denied`. It names a function, a
+// open /workspace/.codeaf/config.json: permission denied`. It names a function, a
 // key, a path inside the program's own storage and an errno, and there is no act
 // in it. Three lines away this same file already had the right shape twice
 // ([setupKeyShapeWord], [setupNoKeyConnectWord]): the cause, and then what to do.

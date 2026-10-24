@@ -2,10 +2,8 @@ package tui3
 
 // WHY `via <provider>` AND tok/s WENT MISSING, one test per cause.
 //
-// The owner, 2026-09-10: "at some times I don't see infra provider and tok/sec,
-// I am not sure when it does not show up, maybe when I have follow up or
-// something". It was not one bug with a random trigger; it was six, each with a
-// trigger a person would never connect to the gap:
+// It was not one bug with a random trigger; it was six, each with a trigger a person would
+// never connect to the gap:
 //
 //  1. any model with a reasoning level set lost the live rate, because the
 //     status row lent the model field `id:level` for its draw and the rate is
@@ -105,11 +103,10 @@ func TestAReasoningLevelNoLongerHidesTheLiveRate(t *testing.T) {
 
 // ── 2. the vendor serving its own model ─────────────────────────────────────
 
-// `via` IS ON THE SEAM WHOEVER SERVED, which is the owner's ruling of
-// 2026-09-09. The seam spells the model as its basename, so the vendor is not on
-// the screen; the lane layer's rider still went quiet when the machine's name
-// was inside the id, and over an engine host nothing under it had anything to
-// say — so `deepseek/…` answered by DeepSeek drew no provider at all.
+// `via` IS ON THE SEAM WHOEVER SERVED. The seam spells the model as its basename, so the
+// vendor is not on the screen; the lane layer's rider still went quiet when the machine's
+// name was inside the id, and over an engine host nothing under it had anything to say —
+// so `deepseek/…` answered by DeepSeek drew no provider at all.
 func TestTheSeamSaysViaWhenTheVendorServesItsOwnModel(t *testing.T) {
 	a, now := newsApp(t, flash)
 	PostLaneNews(LaneNews{Model: flash, Lane: "DeepSeek", Role: lane.RoleTalk, At: now})
@@ -303,13 +300,10 @@ func TestAnEngineWithTheNewsIsNeverCalledOlder(t *testing.T) {
 
 // ── 7. the machine stays ────────────────────────────────────────────────────
 
-// THE MACHINE IN BRACKETS DOES NOT AGE OUT. Until 2026-09-17 the seam's `via`
-// went quiet ten minutes after the last answer, so a conversation read after
-// lunch said `deepseek-v4-flash ·` and nothing — the owner read that as the
-// provider having gone missing. Who answered last is a fact until somebody
-// else answers, and the seam says it for as long as the window is open; the
-// sheet's `served` row keeps the window, because the figures beside its name
-// are about one answer (lanes.go's [riderBeside]).
+// THE MACHINE IN BRACKETS DOES NOT AGE OUT. Who answered last is a fact until somebody
+// else answers, and the seam says it for as long as the window is open; the sheet's
+// `served` row keeps the window, because the figures beside its name are about one answer
+// (lanes.go's [riderBeside]).
 func TestTheSeamKeepsNamingTheLastMachineAfterTheWindowClosed(t *testing.T) {
 	a, now := newsApp(t, flash)
 	PostLaneNews(LaneNews{Model: flash, Lane: "Baidu", Role: lane.RoleTalk, At: now.Add(-servedWindow - time.Hour)})

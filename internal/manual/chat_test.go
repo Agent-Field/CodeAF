@@ -198,7 +198,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why does /connect say connections are unavailable", "accounts"},
 		{"connect says unavailable on my own machine", "accounts"},
 		{"credentials.json is damaged but where are my models", "accounts"},
-		// The questions object (docs/design/questions/DESIGN.md), asked the
+		// The questions object, asked the
 		// six ways somebody meets it: the shapes, the clock, the record, the
 		// refusals, answering from elsewhere, and what is not built.
 		{"what kinds of questions does it ask me", "questions"},
@@ -211,7 +211,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it went ahead by itself", "questions"},
 		{"make it ask me every time", "questions"},
 		{"it assumed something wrong", "questions"},
-		// An answer is a message now (docs/design/questions/DESIGN.md), and the
+		// An answer is a message now, and the
 		// three things that fall out of it are asked in the words somebody
 		// reaches for: the work going on around a question, changing their mind
 		// afterwards, and a clock that went with the recommendation.
@@ -230,7 +230,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// And the receipt on a window too narrow for it, asked by somebody who
 		// has just noticed half of their own sentence is not on the line.
 		{"the decided line is missing what I typed", "questions"},
-		// The block (docs/design/questions/DESIGN.md, internal/tui3's
+		// The block (the design notes, internal/tui3's
 		// question.go), asked the five ways somebody meets it: putting one off,
 		// finding it again, what happened when nobody pressed anything, taking
 		// an approval back, and making the asking stop.
@@ -258,7 +258,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I just let it decide", "questions"},
 		{"stop asking me this kind of thing", "questions"},
 		{"none of the answers it offered are right", "questions"},
-		// Reach (docs/design/questions/DESIGN.md's PRESENCE-AWARE DELIVERY,
+		// Reach (the design notes PRESENCE-AWARE DELIVERY,
 		// ONE STEP ONE PANEL, WITHDRAWN WITH A REASON and FIRST ANSWER WINS), asked the way somebody meets each of them: answering somewhere
 		// else, coming back to a window nobody was at, a pile of them arriving
 		// together, one vanishing, two windows racing, and the setting that
@@ -349,7 +349,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I typed no to the task and it started anyway", "tasks"},
 		{"where did the model chips on the proposal go", "tasks"},
 		{"change which model a task runs on before it starts", "tasks"},
-		// The wire (docs/design/questions/DESIGN.md, internal/remote's
+		// The wire (the design notes, internal/remote's
 		// questionlane.go). Somebody who has just met a question that did not
 		// appear asks about the ROAD, in the words the road is spelled in on
 		// each of them, and about the page that reads another conversation.
@@ -1634,7 +1634,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"set my daily budget to 5", "what-i-can-do"},
 
 		// THE SPENDING WAVE, in the words of the person asking
-		// (docs/design/spending/DESIGN.md acceptance 9). Money has one editor
+		//. Money has one editor
 		// and many doors, and every one of these is somebody standing at a
 		// different door asking the same question.
 		{"how do I remove the daily limit", "models-and-cost"},
@@ -2152,7 +2152,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"undo started a task", "tasks"},
 		{"fix this one line became a task", "tasks"},
 
-		// The quick task (docs/design/quick-task/DESIGN.md), asked the ten ways
+		// The quick task, asked the ten ways
 		// somebody meets it. Nobody types the word `quick_task`: they describe
 		// the shape of what they wanted or read the row back off the screen, so
 		// each probe is the sentence somebody actually says at the surface —
@@ -2674,7 +2674,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// looking at the page, at the card's `where` band, or at the one line a
 		// conversation opens with.
 		// A RULE IS A MEMORY MARKED ALWAYS NOW (what-i-remember.md's `Always`
-		// sections; docs/design/automations/DESIGN.md), so the questions about
+		// sections), so the questions about
 		// making one, which rules hold here and how far one reaches are answered
 		// on the memory page. What stood on a clock is an automation, and the
 		// standing page's own words — the page, the count, the line a
@@ -2719,7 +2719,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I make this permanent", "what-i-remember"},
 		{"it didn't notice this was a rule and did it once", "what-i-remember"},
 		{"can I click keeping an eye on 2", "automations"},
-		// THE AUTOMATIONS WAVE (automations.md, docs/design/automations/DESIGN.md):
+		// THE AUTOMATIONS WAVE (automations.md):
 		// a reminder, scheduled work or a watch, on a clock, only while a codeaf
 		// window is open. Asked the ways people meet them — saying one, typing
 		// one exactly, finding the list, a card in front of them, a line or a
@@ -3102,7 +3102,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I turn off endpoint routing", "lanes"},
 		// The picker's lanes, asked by somebody who pressed the arrows and saw
 		// nothing move, and by somebody reading `@cloudflare` on the name
-		// (docs/design/lanes-picker/DESIGN.md).
+		//.
 		{"how do I change the host for a model", "lanes"},
 		{"which host am I pinned to", "lanes"},
 		{"left and right arrows in the model picker do nothing", "lanes"},

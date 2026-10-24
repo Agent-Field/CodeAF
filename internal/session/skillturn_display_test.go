@@ -8,12 +8,9 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-// THE TRANSCRIPT SHOWS ONLY WHAT THE PERSON TYPED. The skills a turn carries
-// are model context, chosen for one message ([attachTurnSkillsLocked]); the
-// block rides the copy the model reads, and the dim `skills carried` notice is
-// the one channel a surface draws. The owner, 2026-09-25, #1504: the block was
-// printed as part of the person's message, so every surface that renders the
-// conversation printed a list nobody asked for.
+// THE TRANSCRIPT SHOWS ONLY WHAT THE PERSON TYPED. The skills a turn carries are model
+// context, chosen for one message ([attachTurnSkillsLocked]); the block rides the copy the
+// model reads, and the dim `skills carried` notice is the one channel a surface draws.
 //
 // This is the END-TO-END reading of that law: through the real chat door, with
 // an active shelf and a message that matches one of its skills, the record the
