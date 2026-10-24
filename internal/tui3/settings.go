@@ -3875,7 +3875,7 @@ func (s *sheet) footNote() string {
 		}
 	}
 	// The path is READ from internal/config rather than spelled here, so the one
-	// late rename (docs/CHAT-V3.md, Decision 26) moves the sentence a person
+	// late rename moves the sentence a person
 	// reads along with the directory it names.
 	return "saved to your profile · a project's own " + config.ProjectConfigDir + "/" + config.ProjectConfigFile + " is a hand edit"
 }

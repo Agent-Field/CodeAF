@@ -10,7 +10,7 @@ package revision
 // hidden tests; happy-dom passed "All tests pass (31/31)" at 13 of 14. In both
 // the gate accepted THE WORKER'S CLAIM ABOUT TESTS THE WORKER WROTE ITSELF,
 // which is FAILSAFE clause 2 broken in the one place the whole verdict is
-// decided. See docs/design/gate/ACCEPTANCE.md.
+// decided. See the implementation.
 //
 // Everything here answers one question — is there a check that exercises this
 // behaviour — and it answers it from two sources, neither of which is prose: the

@@ -67,7 +67,7 @@ const (
 )
 
 // autonomyKinds is every shape a rule can be written for, in the kind table's
-// own order (docs/design/questions/DESIGN.md), which is [questionShapeOrder]'s.
+// own order, which is [questionShapeOrder]'s.
 var autonomyKinds = []session.AskKind{
 	session.AskPermission, session.AskChoice, session.AskJudgement,
 	session.AskClarification, session.AskConfirmation, session.AskLanding,
@@ -324,7 +324,7 @@ func (a *app) autonomyChanged() tea.Cmd { return a.readAutonomy() }
 // questionShapeOrder is which kind of question goes above which, on this sheet's
 // rows and in anything else that lists the kinds.
 //
-// IT IS THE KIND TABLE'S OWN ORDER (docs/design/questions/DESIGN.md's "Kinds and
+// IT IS THE KIND TABLE'S OWN ORDER (the implementation's "Kinds and
 // their defaults") AND NOT THE ALPHABET. The table is ordered by how much of the
 // person a question wants — a permission is a key, a judgement is a reading, a
 // clarification is a sentence only they can write — so a list in that order is

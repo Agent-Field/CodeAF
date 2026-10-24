@@ -90,8 +90,7 @@ SNAPSHOT_EVERY="${SNAPSHOT_EVERY:-3600}"
 # bind mounts are written by root inside the container, and a root-owned
 # directory anywhere under the repo breaks more than `go build`: internal/config's
 # registry test walks the tree and dies on `permission denied`. So artifacts are
-# written to $MAR_OUT (default ~/af-bench/marathon) and bench/oneroad/marathon/_results
-# is a SYMLINK to it — filepath.Walk does not follow symlinks.
+# written to $MAR_OUT, outside the repository.
 MAR_OUT="${MAR_OUT:-$HOME/af-bench/marathon}"
 mkdir -p "$MAR_OUT"
 CELL="$MAR_OUT/$ARM-$TASK-$SEED"

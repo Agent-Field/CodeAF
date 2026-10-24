@@ -11,7 +11,7 @@ import (
 
 // The one-action envelope, and the road a malformed response takes.
 //
-// THE ENVELOPE IS THE EXPERIMENT'S SECOND BET (docs/design/bash-task-loop/
+// THE ENVELOPE IS THE EXPERIMENT'S SECOND BET (the implementation
 // DESIGN.md, Decision 2): a bash-belt worker gets the one-action discipline —
 // exactly one tool call per response — in exchange for parallelism moving into
 // the shell, where `&` and `xargs -P` have always lived. A response carrying

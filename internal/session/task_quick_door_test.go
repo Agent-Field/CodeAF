@@ -6,7 +6,7 @@ package session
 // IS on every side of that road — the same shape whichever road admitted it,
 // the same body after the file has been written and read back, a hold on what
 // it wrote, and one row, not eight, in another window's account of it
-// (docs/design/quick-task/DESIGN.md, the 2026-09-11 section).
+//.
 
 import (
 	"context"

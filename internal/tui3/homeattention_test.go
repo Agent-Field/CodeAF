@@ -148,7 +148,7 @@ func TestOneConversationHasOneRowAndARescanLeavesTheCursorOnIt(t *testing.T) {
 //
 // The panels are the map now and they keep their headings over nothing — a map
 // that redraws itself is not a map — with one dim whisper naming what arrives
-// (docs/design/home-mission-control/DESIGN.md §4). What stays banned is a
+// . What stays banned is a
 // sentence about something that has happened: the old list's claim over it,
 // and a fold over rows that do not exist.
 func TestAQuietMachineDrawsNothingForAStateItIsNotIn(t *testing.T) {

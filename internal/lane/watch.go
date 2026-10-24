@@ -12,7 +12,7 @@ import (
 //
 // Everything before this point picks a lane before the request goes out. The
 // watch is the half that can still act after it has gone, and since
-// `docs/design/waiting/DESIGN.md` it decides nothing itself: it is the ADAPTER
+// `the implementation` it decides nothing itself: it is the ADAPTER
 // between the shape a stream loop has — tokens, heartbeats, a beat asking
 // whether anything has arrived — and [control.Controller], which holds the one
 // inequality every phase of every call is judged by.

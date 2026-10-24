@@ -75,7 +75,7 @@ import (
 // ── IT IS NOT A RETRY BUDGET AND MUST NOT BE FOLDED INTO THE DEADLINE ───────
 //
 // Every other count on this path went when the plan's one deadline arrived
-// (docs/design/recovery/DESIGN.md §4), and this one deliberately stayed, so here
+// , and this one deliberately stayed, so here
 // is the difference in one sentence: those counted how many times a question may
 // be ASKED AGAIN, and this bounds how many copies of it may be in flight AT
 // ONCE. A hedge is Dean & Barroso's tail-at-scale rescue — a second request
@@ -199,7 +199,7 @@ type hedgeRace struct {
 	// OF IT HERE. A race kept its own `tried` set until 2026-09-11 — a second
 	// answer to the same question the dispatcher under every arm was answering
 	// from [control.Plan.Moves], free to disagree with it the moment either side
-	// learned something the other did not (docs/design/recovery/DESIGN.md §4).
+	// learned something the other did not.
 	// The claim, the release and the "where could an arm go now" read all go
 	// through [hedgeRace.plan]'s own move log, which every arm shares.
 	// refused is set the moment the purse says no. A REFUSAL IS FINAL for this

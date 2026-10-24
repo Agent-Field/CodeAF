@@ -1,7 +1,7 @@
 // recentplace.go lists the conversations a directory holds when that directory
 // may hold them in EITHER shape.
 //
-// A v3 session is a folder (place.go, and docs/CHAT-V3.md's Decision 26), and
+// A v3 session is a folder (place.go, and the implementation's Decision 26), and
 // every session written before that decision is a flat `<stem>.jsonl` beside
 // its siblings. Both are real on the same disk for as long as the migration
 // takes, and a picker that could read only one of them would be a picker that

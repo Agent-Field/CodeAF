@@ -106,7 +106,7 @@ const (
 	// is news, and it asks for nothing.
 	//
 	// A HARNESS-AUTHORED MESSAGE CARRIES ITS OWN READING INSTRUCTION, which is
-	// the delivery class docs/design/prompt-diet/DESIGN.md §2 files this under.
+	// the delivery class the implementation §2 files this under.
 	// Saying it here costs the turn a job ends on; saying it on the page cost
 	// every request of every turn.
 	//

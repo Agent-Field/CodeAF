@@ -148,7 +148,7 @@ const (
 	// WAS NOT AN ANSWER. Asked mid-turn, the running chat model emitted a tool call
 	// instead of answering between 17% and 53% of the time, depending on the
 	// phrasing; the mastermind left 0% to 7% unanswered on the same transcripts
-	// (bench/oneroad/replay/RESULTS.md). A reader that goes silent under tool
+	//. A reader that goes silent under tool
 	// momentum is silent on exactly the turns this is for. What it costs is bounded
 	// hard: at most three calls, and only on a turn that has already run ten rounds
 	// of tools, which most turns never do.
@@ -203,7 +203,7 @@ const (
 	RoleShaper Role = "shaper"
 
 	// RoleIntake fills a subharness's input form from what the conversation has
-	// already said (docs/SUBHARNESS-PRD.md §4: infer, then confirm — never
+	// already said (the implementation §4: infer, then confirm — never
 	// interrogate). It sits LOW for the title's reason rather than the shaper's:
 	// its answer lands on a card the person is looking at and about to confirm,
 	// so a wrong guess costs one correction rather than a whole run's spend, and

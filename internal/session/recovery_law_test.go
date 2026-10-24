@@ -16,7 +16,7 @@ import (
 // covered that package ONLY, for a reason stated in its own comment: six
 // ladders in this package still counted their own attempts, each bounded, none
 // of them reading the plan under it. Those six are folded
-// (docs/design/recovery/DESIGN.md §7) and the law reaches here now.
+// and the law reaches here now.
 //
 // WHAT IT IS FOR. A count of tries above a transport that is already bounded by
 // a deadline does not bound anything — it MULTIPLIES. The census of 2026-09-10
@@ -89,7 +89,7 @@ func TestNoAttemptCountingLoopInTheSession(t *testing.T) {
 				for _, counted := range loopCounts(loop) {
 					if counting[strings.ToLower(counted)] {
 						t.Errorf("%s: %s counts %q in a loop — the one bound is the plan's deadline "+
-							"(docs/design/recovery/DESIGN.md §4). If it counts THINGS rather than "+
+							". If it counts THINGS rather than "+
 							"tries, add it to countsTries with the line that says which",
 							name, function.Name.Name, counted)
 					}
@@ -150,7 +150,7 @@ func TestNoConstantInTheSessionBoundsAnAttemptCount(t *testing.T) {
 				}
 				if counting[lastWordOf(ident.Name)] {
 					t.Errorf("%s declares %s — a budget of its own is what the one deadline replaced "+
-						"(docs/design/recovery/DESIGN.md §4). If it counts THINGS, add it to "+
+						". If it counts THINGS, add it to "+
 						"boundsACount with the line that says which", name, ident.Name)
 				}
 			}

@@ -1,7 +1,7 @@
 package session
 
 // THE DELEGATE DOOR: how a conversation hands a task to a program codeaf
-// carries — senior-dev first (internal/delegate, docs/design/delegate/). A
+// carries — senior-dev first (internal/delegate, the implementation). A
 // program is one more worker kind behind the run engine, and this file is the
 // half a conversation needs of it: which programs this build carries, the door
 // `/<name> <brief>` and `propose_task`'s `via` both open, and the landing of a

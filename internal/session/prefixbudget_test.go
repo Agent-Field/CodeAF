@@ -214,7 +214,7 @@ import (
 // discovery carries 26,740, including its 708-byte loader. Measure whole JSON
 // arrays rather than adding separately encoded array sizes.
 // THE DIET'S DELETE PASS TOOK 677 BYTES AND ADDED A LAW (2026-09-10). Lane C of
-// the prompt diet (docs/design/prompt-diet/DESIGN.md §1) deleted the SECOND and
+// the prompt diet deleted the SECOND and
 // THIRD copies of five rules and put ONE new sentence in their place, and the
 // new sentence is the reason the deletions are safe rather than merely cheap:
 // "anything handed off — a job, a watch, a task, a quick task — reports itself
@@ -235,7 +235,7 @@ import (
 // id and a class, and a second copy of one is now a build failure rather than a
 // thing the next audit finds.
 // AND THE EVENT LANE PAID NOTHING AND TOOK 2,189 BYTES BACK (2026-09-10). The
-// prompt diet's WITH THE EVENT pass (docs/design/prompt-diet/DESIGN.md §2): a
+// prompt diet's WITH THE EVENT pass: a
 // harness-authored message now carries its own reading instruction, so the page
 // stopped explaining messages it may never see. A landed task's note opens on
 // [landingNoteLead] — 234 bytes on the turn a task lands, with the tier word
@@ -274,7 +274,7 @@ import (
 // THE DIET'S ON-DEMAND LANE PAID 3,854 BYTES BACK AND ASKED FOR NOTHING
 // (2026-09-10). Four runs of prose came off prompts/system.md and message[0]
 // stopped carrying any of them, because each one is already delivered by
-// whoever needs it and only then (docs/design/prompt-diet/DESIGN.md §2):
+// whoever needs it and only then:
 //   - the standing section, 2,482 bytes, is one existence line. Its mechanics
 //     are tools_standing.go's [standDescription] and [standSchemaJSON], beside
 //     the field each governs; its `[something you set up fired]` frame is
@@ -569,7 +569,7 @@ const fixedPrefixTarget = 48_000
 // 50,171, and both waivers are sec's plus exactly that 203.
 //
 // 2026-10-10, automations replace standing orders
-// (docs/design/automations/DESIGN.md). `stand` and its 9,607 bytes leave every
+// . `stand` and its 9,607 bytes leave every
 // belt that carried them, and `automation` — a smaller tool for the same
 // sentences — takes its place; the one-sentence paragraph the page composes
 // beside it is the same length as the one it replaces, and `watch`'s boundary
@@ -620,7 +620,7 @@ const (
 // `read_document` one call away.
 //
 // The diet's target for this arm is 12,000 bytes
-// (docs/design/prompt-diet/DESIGN.md §6) and nothing in this wave reaches it,
+// and nothing in this wave reaches it,
 // which is worth saying plainly rather than rounding away. The two numbers that
 // would move it were both named on landing: `ask`'s schema, and the page's
 // 16,825, which is the shared CORE minus one section and so comes down when CORE

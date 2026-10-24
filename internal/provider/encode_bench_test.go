@@ -60,7 +60,7 @@ func benchTools(count int) []ai.ToolDefinition {
 }
 
 // BenchmarkEncodeMessages is the per-call transcript serialization. The turn
-// counts bracket what BENCHMARKS.md records for real runs (45 and 81 turns),
+// counts bracket what the implementation records for real runs (45 and 81 turns),
 // and the interesting number is how the cost per call grows with them: encode
 // is paid once per provider call, so a cost linear in transcript length is a
 // total cost quadratic in the length of the run.

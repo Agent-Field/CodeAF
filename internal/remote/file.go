@@ -191,7 +191,7 @@ func (s *server) depositFile(call Frame) (json.RawMessage, error) {
 // borrowed session that copied every log file somebody dropped into the repo it
 // was lent would be littering. So it lands in the session's own folder, which
 // is where everything a session holds ABOUT ITSELF lives — one folder per
-// session is one gesture to delete them (docs/CHAT-V3.md, Decision 26).
+// session is one gesture to delete them.
 //
 // It is NOT under [session.Place.Logs], which is the other thing in that folder
 // that is not a deliverable, because the droppings there carry the sweep's

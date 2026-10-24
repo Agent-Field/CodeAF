@@ -762,7 +762,7 @@ func replayEvent(tx *sql.Tx, event Event) error {
 		// THE v1 SCHEDULER'S EVENTS LAND HERE NOW. Charters, their wakes,
 		// sentinel checks, firings, tenure and the standing-watch decisions
 		// were journaled by machinery that has been removed (see
-		// docs/design/automations/DESIGN.md), and the one table they built is
+		// the implementation), and the one table they built is
 		// no longer read by anything, so an old journal that holds them
 		// rebuilds everything else exactly as it did and simply leaves them
 		// where they are.

@@ -16,7 +16,7 @@ import (
 // anything else: do I need to do anything? There are three answers
 // ([session.TaskTier]), each has one glyph and one word, and a person who has
 // learned the glyphs has learned the whole system
-// (docs/design/task-states/DESIGN.md).
+//.
 //
 // BEFORE THIS FILE THE SURFACE HAD FOUR TABLES. The rail worked a cell out of
 // the state and the merge word, the roster worked one out of the presence, home
@@ -41,7 +41,7 @@ import (
 // floor forever — a literal cannot know which repertoire the terminal is on —
 // which is how a person with a patched font came to see a proper icon beside
 // every tool call and a bare geometric shape beside every task
-// (docs/design/icons/DESIGN.md). internal/iconlaw fails the build on a state mark
+//. internal/iconlaw fails the build on a state mark
 // spelled anywhere in this package, or in any other surface package.
 
 // glyphRunASCII is the screen reader's own working mark, for the rows that draw
@@ -181,7 +181,7 @@ const tierTitleFloor = 8
 // that survives: the files a conflict names give way first, then the title down
 // to [tierTitleFloor], and only a row with no room for either is cut through the
 // word itself. A sentence that trails off before the one instruction a person
-// needs has spent its cells saying nothing (docs/design/task-states/DESIGN.md).
+// needs has spent its cells saying nothing.
 func tierRow(pal palette, status session.TaskStatus, title string, width int) string {
 	lead := tierGlyph(pal, status) + " "
 	room := width - ansi.StringWidth(lead)

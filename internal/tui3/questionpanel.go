@@ -974,7 +974,7 @@ func questionOtherAt(q session.Question) int { return len(q.Options) }
 // row at all.
 //
 // A QUESTION THAT TAKES WORDS TAKES THEM HERE. The ladder's last rung is "free
-// text: always available, never the only door" (docs/design/questions/DESIGN.md),
+// text: always available, never the only door",
 // and until this row existed the door was a letter nothing on screen named. The
 // two shapes that do NOT get it are the two where the answers ARE the question:
 // a confirmation, which takes no words at all ([questionTakesWords]), and any

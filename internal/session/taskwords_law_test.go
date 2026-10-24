@@ -14,7 +14,7 @@ import (
 // that had been standing in for `your call` were struck out with them:
 // `needs your look` was the landing report's lead, one wire sentence and the
 // ratings file's outcome all at once, and `awaiting review` was a rail's own
-// private ordering exception (docs/design/task-states/DESIGN.md). Each of those
+// private ordering exception. Each of those
 // was correct on its own page, which is exactly why they survived three passes:
 // nobody reading one file could see that four files were spelling one state four
 // ways.
@@ -47,7 +47,7 @@ func TestNoStringInThisPackageSpellsADeletedTaskWord(t *testing.T) {
 			}
 			for _, word := range deleted {
 				if strings.Contains(strings.ToLower(text), word) {
-					t.Errorf("%s: %q still spells %q — the word for that state is %q (docs/design/task-states/DESIGN.md)",
+					t.Errorf("%s: %q still spells %q — the word for that state is %q",
 						fset.Position(literal.Pos()), text, word, taskWordYourCall)
 				}
 			}

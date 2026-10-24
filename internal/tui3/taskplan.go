@@ -151,7 +151,7 @@ func (a *app) refreshRunSummary() tea.Cmd {
 }
 
 // planStateWord maps one store status onto the ONE state word a row wears
-// (docs/design/task-states/DESIGN.md: a row says what a person does next, never
+// (the implementation: a row says what a person does next, never
 // a machinery word).
 //
 // THE STORE'S VOCABULARY IS NOT THE SURFACE'S. `ready` and `claimed` are the

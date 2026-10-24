@@ -286,7 +286,7 @@ func TestAHeldAnswerIsNamedAndNeverDrawnAsTheAnswer(t *testing.T) {
 	// AND THE POINTER IS WHERE THE ANSWER IS AND NOTHING ELSE. The sentence this
 	// block used to lead with — `what it produced was not taken as done` — was a
 	// second spelling of a state the card's own reason row now says in the
-	// engine's words (docs/design/task-states/DESIGN.md).
+	// engine's words.
 	got := plainOf(a.doneDetail(card, 78))
 	if !strings.Contains(got, doneMoreAt+"/tmp/journal/node-7.jsonl") {
 		t.Fatalf("the card does not say where the answer is:\n%s", got)

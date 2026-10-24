@@ -324,8 +324,7 @@ answered that with a strike table: two slow answers demote, three refuse for
 five minutes, and slow means a fixed two seconds. That is reactive, blind on the
 first call of every process, forgotten at exit, unable to rescue a request that
 is already slow, and invisible in the picker. Every one of those five is a
-consequence of having a *table* where a *belief* belongs. `docs/design/routing/provider-routing.md`
-is the full design and the measurements it was drawn from.
+consequence of having a *table* where a *belief* belongs.
 
 ### The boundary
 
@@ -405,7 +404,7 @@ disjoint set of files, so no two of them edit the same one.
 | L-B | `internal/lane/choose*.go`, `frontier*.go`, `value*.go`; `internal/provider/lanes.go`; λ plumbing in `internal/session` | the gate, the Pareto prune, the scalar, and the adapter that replaces the velocity ledger's order and ignore |
 | L-C | `internal/lane/watch*.go`, `hedge*.go`, `probe*.go`; `internal/provider/hedge.go`, `probe.go`; the stream loop in `internal/provider/client.go` | the derived deadline, the heartbeat and drift tests, the budgeted hedge, the probe on typing |
 | L-D | `internal/tui3/lanes*.go` and the picker, settings and HUD edits; the lane keys in `internal/config`; the manual pages | the speed column, the lane unfold, the filter grammar, the settings rows |
-| L-E | the new fields in `internal/session/usage_ledger.go` and `internal/calllog`; `bench/lanelab/`; `internal/lane/e2e_test.go` | the ledger fields, the simulator and the live A/B, and the real-key proof under `-tags e2e` |
+| L-E | the new fields in `internal/session/usage_ledger.go` and `internal/calllog`; `the benchmark harness/`; `internal/lane/e2e_test.go` | the ledger fields, the simulator and the live A/B, and the real-key proof under `-tags e2e` |
 
 Two practical notes for the lanes. `internal/provider` already has an unexported
 type called `lane` (`velocity.go`), so the adapter file imports this package
@@ -450,8 +449,7 @@ a scenario scripted in minutes finishes in microseconds.
 
 **Decision.** *When* to act on a silence is decided by ONE controller, for every
 token-generating call, in every phase. `internal/lane/control` holds it: pure
-functions over a moment and a belief, no clock, no connection, no surface. The
-design is `docs/design/waiting/DESIGN.md`; this is the shape of it.
+functions over a moment and a belief, no clock, no connection, no surface.
 
 **Why one and not three.** A request is silent for one of three reasons —
 nothing has arrived, the endpoint is writing a run of thought nobody can read,
@@ -545,7 +543,7 @@ pay before it rescues anything. `internal/provider/streamguard_ceiling_test.go`
 walks every role in `lane.Roles()` at every rate `gapFor` can be handed and
 fails the build if any bound falls to or below a ceiling.
 
-**ROWS 1–6 WERE REWRITTEN BY THE WAITING POLICY** (`docs/design/waiting/DESIGN.md`).
+**ROWS 1–6 WERE REWRITTEN BY THE WAITING POLICY**.
 What they replace, and why each is retired:
 
 | retired | was | why it is gone |

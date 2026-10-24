@@ -6,7 +6,7 @@ package session
 // whole the moment its arguments close (internal/provider's sse.go), which for
 // the second and third proposal of a batch is many seconds before the reply
 // itself ends: a groomed proposal is the longest thing a model writes, and the
-// measurement that justified this (docs/design/task-start/DESIGN.md) put the
+// measurement that justified this put the
 // stream still running a median of five to twelve seconds after the first
 // proposal of a two-proposal reply had closed.
 //
@@ -30,7 +30,7 @@ package session
 // the hold's lifetime kept by the same batch: released when the batch claims
 // the call, withdrawn on every other road out of the attempt. loop.go belonged
 // to another lane when this landed, so those lines arrived as a seam of their
-// own; docs/design/task-start/DESIGN.md ("The seam in loop.go") names all five.
+// own; the implementation ("The seam in loop.go") names all five.
 
 // stagesEarly reports whether a call to this tool may start while the reply
 // carrying it is still arriving, held at its commit until the reply is whole.

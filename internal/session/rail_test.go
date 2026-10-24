@@ -118,7 +118,7 @@ func TestSpendRailNeverCutsTheTurnInFlight(t *testing.T) {
 }
 
 // TestTheRefusalNamesTheLimitTheFigureAndTheDoor is
-// docs/design/spending/DESIGN.md acceptance 6: one line, the limit, the figure
+// the implementation acceptance 6: one line, the limit, the figure
 // and the key — and nothing about it said twice.
 //
 // IT SAYS `limit` AND NOT `rail`. The machinery's word is this file's; the

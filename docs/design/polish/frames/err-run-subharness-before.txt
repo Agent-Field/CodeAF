@@ -1,3 +1,0 @@
-$ ./bin/aforge run nosuchharness --input - </dev/null
-error: the input is empty — there is nothing here for the run to do
-exit=1

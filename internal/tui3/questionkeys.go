@@ -10,7 +10,7 @@ import (
 
 // ── ONE KEY GRAMMAR, SPELLED ONCE ───────────────────────────────────────────
 //
-// docs/design/questions/DESIGN.md's ONE KEY GRAMMAR law names fifteen keys and
+// the implementation's ONE KEY GRAMMAR law names fifteen keys and
 // then says the thing that matters about them: "Spelled once in one table, read
 // by every form and by the manual." This file is that table.
 //
@@ -128,7 +128,7 @@ const (
 	// nothing for `enter` to take and the row does not say there is.
 	needPick
 	// needRule is the third same-shaped yes, which is the only moment `r` is
-	// offered (docs/design/questions/DESIGN.md's RULES ARE OFFERED, VISIBLE,
+	// offered (the implementation's RULES ARE OFFERED, VISIBLE,
 	// FORGETTABLE).
 	needRule
 	// needUndo is an answer that can still be taken back — `u` while real.
@@ -290,7 +290,7 @@ const (
 var questionKeys = []questionVerb{
 	// THE WALK COMES FIRST, because every drawing the owner picked reads its
 	// keys in the order a hand uses them: choose, then take it, then put it
-	// off (docs/design/questions/picked — `↑↓ choose · enter take it · esc
+	// off (the implementation — `↑↓ choose · enter take it · esc
 	// later`). It is given up early all the same; the order is not the rank.
 	//
 	// THE POINTER'S KEYS ARE SPELLED THE WAY THE FORM LAYS ITS ANSWERS OUT:
@@ -738,7 +738,7 @@ func (a *app) questionPageOf(q questionShown) *questionRoom {
 // gate asks because a policy said a person has to see this call; `you decide` on
 // it would give that decision straight back to the thing the gate was put in
 // front of, which is the gate answering itself with one keystroke.
-// docs/design/questions/DESIGN.md's kind table says the same about the clock — a
+// the implementation's kind table says the same about the clock — a
 // permission may act on its own "only when Stakes == reversible" — and a key
 // that skips a question is a clock a person wound by hand.
 //
@@ -778,7 +778,7 @@ func questionHasMore(q session.Question) bool {
 
 // questionTakesWords reports whether a typed answer means anything here.
 //
-// A CONFIRMATION TAKES NONE (docs/design/questions/DESIGN.md's kind table says
+// A CONFIRMATION TAKES NONE (the implementation's kind table says
 // so in one word), because the two answers ARE the question: `stop it` and
 // `keep going` have no third reading a sentence could add, and a box under them
 // would be a place to type something nothing reads.
@@ -841,7 +841,7 @@ func questionOwnsBox(q session.Question) bool {
 // `↑↓` choosing, `tab` walking, `enter` taking, `esc` putting it off, the mouse
 // landing on an answer. That is the owner's own grammar for this block read in
 // the order a hand uses it — choose, then take it, then put it off
-// (docs/design/questions/picked) — and every one of those gestures is somebody
+// — and every one of those gestures is somebody
 // looking at the question rather than at the box.
 //
 // AND THE ANSWERS' OWN KEYS ARE NOT ON THIS ROAD. `1`-`9`, and the letters a

@@ -12,7 +12,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// ── THE GRID'S LAWS (docs/design/home-mission-control/DESIGN.md §1) ──────────
+// ── THE GRID'S LAWS ──────────
 
 // homeRowOf is the BODY row a word first appears on — the frame's four head
 // rows are the router's, and the tab bar spells three of the panels' words —

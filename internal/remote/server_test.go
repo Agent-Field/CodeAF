@@ -1448,7 +1448,7 @@ func TestServeExitsQuietlyWhenNobodySaidHello(t *testing.T) {
 
 // A picture that arrives for a BORROWED session lands in the session's own
 // artifacts directory and never in the repository the engine is standing in
-// (docs/CHAT-V3.md, Decision 26). It earns NO row in the deliverables index:
+// . It earns NO row in the deliverables index:
 // a paste is the person's input, not something made for them, and /files
 // buried under a person's own clipboard would answer nothing.
 func TestServeLandsAnUploadedPictureInTheSessionFolder(t *testing.T) {

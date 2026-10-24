@@ -11,7 +11,7 @@ import (
 
 // ── THE SPENDING TAB, AND EVERY DOOR ONTO IT ────────────────────────────────
 //
-// docs/design/spending/DESIGN.md's acceptance list, one test per point. The
+// the implementation's acceptance list, one test per point. The
 // design's own sentence is the thing under test: money has ONE EDITOR and MANY
 // DOORS, and no door is a second editor.
 

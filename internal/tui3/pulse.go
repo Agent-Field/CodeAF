@@ -16,7 +16,7 @@ package tui3
 // reading a single row.
 //
 // THE WORDS AND THE ORDER ARE THE DESIGN'S, EXACTLY. The retained
-// docs/design/home-rethink/FIDELITY.md item 2 records the owner's instruction
+// the implementation item 2 records the owner's instruction
 // for this line, and every clause below follows that record.
 //
 // ── THE LAWS ──

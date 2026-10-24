@@ -69,8 +69,7 @@ POLL="${POLL:-10}"
 # died on `permission denied` reading a live cell's profile. Go's `_` prefix
 # hides a directory from the BUILD, not from filepath.Walk.
 # So the artifacts are written to $SWE_OUT (default ~/af-bench/swe) and
-# bench/oneroad/swe/_results is a SYMLINK to it — filepath.Walk does not follow
-# symlinks, so no walker in the repository can descend into a running cell.
+# Repository walkers cannot descend into that output directory.
 SWE_OUT="${SWE_OUT:-$HOME/af-bench/swe}"
 mkdir -p "$SWE_OUT"
 CELL="$SWE_OUT/$ARM-$TASK-$SEED"

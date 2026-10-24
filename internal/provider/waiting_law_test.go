@@ -19,7 +19,7 @@ import (
 
 // ── THE WAITING LAWS, AT THE SEAM THAT SENDS ────────────────────────────────
 //
-// `docs/design/waiting/DESIGN.md` states the design; `internal/lane/law_test.go`
+// `the implementation` states the design; `internal/lane/law_test.go`
 // holds the half of it that is arithmetic; this file holds the half that is
 // wiring. Every law here is about a place two layers have to agree, which is
 // exactly the set of places the reported defect was hiding in: the funnel built
@@ -379,7 +379,7 @@ var spokenWaitExceptions = map[string]string{
 
 // TestEveryWaitInTheRequestPathIsSpoken is the recovery design's clause 4 as a
 // law: `no select on a timer in the request path without a notePhase`
-// (`docs/design/recovery/DESIGN.md` §3).
+// (`the implementation` §3).
 //
 // FOUR WAITS WERE SILENT and the census could not see any of them, because a
 // wait with no phase leaves no row and no line — it is indistinguishable, from
@@ -428,7 +428,7 @@ func TestEveryWaitInTheRequestPathIsSpoken(t *testing.T) {
 				continue
 			}
 			t.Errorf("internal/provider/%s: %s parks on a timer and says nothing — "+
-				"a wait that is real is reported (docs/design/waiting/DESIGN.md). "+
+				"a wait that is real is reported. "+
 				"Post a notePhase with an honest deadline, or name it in spokenWaitExceptions "+
 				"with the sentence that says why nobody is waiting on it.",
 				name, spelled)

@@ -182,7 +182,7 @@ const VisiblePatience = 10 * time.Second
 // IT IS NOT A TIMEOUT AND NOTHING IS CUT AT IT. It is the other half of
 // [VisiblePatience], and the half this build was missing: ten seconds is when
 // we MOVE, and until this wave it was also the first moment a person heard
-// anything at all. A wait that is real is reported (`docs/design/waiting/
+// anything at all. A wait that is real is reported (`the implementation
 // DESIGN.md`), and four waits in the request path had no voice — the limiter's
 // slot, the empty-200 re-ask, the abandon grace and the connectivity probe.
 //
@@ -237,7 +237,7 @@ const ActionFloor = 700 * time.Millisecond
 // and the sheet publishes each lane's own: the one §K's rows were proved
 // against says 430 ms and 900 ms, which is 0.577. Held under every lane, one
 // nat asserted that every lane's tail is the worst tail on the sheet, and
-// `bench/lanelab` measured what that cost — a healthy talk turn crossed the
+// `the benchmark harness` measured what that cost — a healthy talk turn crossed the
 // inequality at the action floor, on every request that had not started by
 // then. So a lane's own published dispersion is the floor wherever there is one
 // ([Hierarchy.Draw]) and this is the prior for where there is not, which is the
@@ -391,7 +391,7 @@ func (r Role) Ceiling() time.Duration {
 
 // GiveUp is how long a call in this role may spend reaching a model before it
 // stops trying, and it is the WHOLE of that bound — the one deadline
-// docs/design/recovery/DESIGN.md §4 replaced eleven budgets with.
+// the implementation §4 replaced eleven budgets with.
 //
 // IT IS THE CEILING'S ARITHMETIC APPLIED TO THE OTHER MEASURED NUMBER. The
 // ceiling is when we ACT on a silence ([VisiblePatience] × the role's patience);
@@ -424,7 +424,7 @@ func (r Role) GiveUp() time.Duration {
 // wanted the harness to try harder set it to eight, and what they bought was
 // eight identical requests inside a deadline that stopped at ninety seconds
 // anyway — a number that multiplied the transport's own and bounded nothing
-// (docs/design/recovery/DESIGN.md §7). It is the same intent read the honest
+// . It is the same intent read the honest
 // way now: more patience, which is more TIME, on the one figure that really
 // ends a call. Three is three times ninety seconds for a turn, and the default
 // of one is exactly the measured behaviour this build already had.

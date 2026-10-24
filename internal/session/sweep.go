@@ -1,4 +1,4 @@
-// sweep.go is the idle reaper (docs/CHAT-V3.md, Decision 26): one pass over the
+// sweep.go is the idle reaper: one pass over the
 // session folders, once per launch, that expires droppings and removes litter.
 //
 // IT HAS EXACTLY THREE RULES, and the third one outranks the other two.

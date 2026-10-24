@@ -4,7 +4,7 @@ package main
 //
 // The task door (run.go) starts one task inside this driver's own process;
 // the do door launches the product binary as a subprocess, the way
-// bench/deepswe/run.sh drives it (bench/deepswe/AUTOPSY.md carries the
+// bench/deepswe/run.sh drives it (the implementation carries the
 // invocation's provenance). One door, one flag, the same fixture seeding, the
 // same throwaway home, the same readings and the same graders — so the two
 // doors' rows are comparable row for row.

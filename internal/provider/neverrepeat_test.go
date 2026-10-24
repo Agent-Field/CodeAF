@@ -19,7 +19,7 @@ import (
 
 // ── NEVER REPEAT ────────────────────────────────────────────────────────────
 //
-// The census (docs/design/recovery/census-20260910.md) counted 226 of 428
+// The census counted 226 of 428
 // multi-attempt chains that never left the lane they started on, and three that
 // spent sixteen and seventeen consecutive sends on one machine over eleven
 // minutes. Every one of those was this transport re-sending bytes it had

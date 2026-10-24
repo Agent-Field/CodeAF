@@ -1,5 +1,5 @@
 // Package delegate is what codeaf needs of the programs it carries and can hand
-// a whole task to — senior-dev first (docs/design/delegate/PROTOCOL.md): what
+// a whole task to — senior-dev first: what
 // one IS (a Go value in the build's list, internal/delegate/builtin), the
 // command line every one of them answers (`codeaf <name> …`), the records a
 // running one writes on its stdout and the one reader over them, the model API

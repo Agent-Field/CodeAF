@@ -5,7 +5,7 @@ package e2e
 // A TASK'S PAGE, IN A REAL TERMINAL, SAYING WHAT A CALL TOOK.
 //
 // This is the end-to-end evidence for the change that put the task room on the
-// conversation's own reducer (docs/design/lens/DESIGN.md, Decision 1). The
+// conversation's own reducer. The
 // defect it holds shut is exactly the one the design names: a node's row never
 // carried a duration, because EventToolFinished was not in room.go's switch at
 // all — a fact the chat had and a task's page did not.

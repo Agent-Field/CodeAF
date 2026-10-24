@@ -12,7 +12,7 @@ package session
 // conversation — was built on a sentence the executor wrote about itself.
 //
 // That is the failure mode LongHorizon-Harness names in one line
-// (harness-research-notes.md §1, arXiv:2608.01964): task state is updated ONLY
+//: task state is updated ONLY
 // from independent audit evidence, and executor self-reports never flip a
 // record to completed. An agent that has spent forty steps on a change is the
 // worst available judge of whether the change works — not because it lies, but
@@ -455,7 +455,7 @@ const (
 // defect the three tiers were drawn to end.
 //
 // `finished, but needs your look — ` WAS THIS LEAD AND IT IS DELETED as
-// person-facing text (docs/design/task-states/DESIGN.md). It named a state no
+// person-facing text. It named a state no
 // surface calls that any more, and it said the same sentence for a branch that
 // would not merge as for work nobody could check.
 //
@@ -1782,7 +1782,7 @@ func checkerConclusion(node *TaskNode, fallback string) string {
 // instruction — its goal, its constraints, the conventions it was told to
 // follow — and an auditor reading it starts grading effort and intention. The
 // acceptance is the contract (Argus's two-tier goal contract,
-// harness-research-notes.md §1: the objective moves only with authority), and
+// the implementation §1: the objective moves only with authority), and
 // it is the SAME frozen text the node was finished against. The node's own last
 // words are included as a CLAIM, labelled as one: it is the thing under audit,
 // not evidence about it.

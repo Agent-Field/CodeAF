@@ -118,7 +118,7 @@ type brainOptions struct {
 	// the gate judging one was told the run had left nothing behind and refused
 	// a delivery whose files were on disk and in this registry the whole time
 	// (2026-08-29, bench/deepswe textual s5 and igel s5;
-	// docs/design/gate/SETTLEMENT.md §5).
+	// the implementation §5).
 	produced artifactRecord
 	// consent answers the price question for a desk with nobody at it. Nil is
 	// the ordinary desk: it asks, and the job waits.
@@ -1810,7 +1810,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 						// summary, a missing explanation — which is the case
 						// Compose was built for and which writing really does
 						// fix. See revision.GroundedInTheWorld, and
-						// docs/design/gate/SETTLEMENT.md §8.
+						// the implementation §8.
 						evidence.PolishClosed = revision.RepairClosed(closed, unmet, reread, evidence.Unmoved)
 						outcome.Verdict = provider.ReadingSemanticFailure
 						revised = true
@@ -2785,7 +2785,7 @@ func leafShape(shape []exec.TurnUsage, outcome *exec.Outcome) []exec.TurnUsage {
 //
 // ONE RECORD. The settlement narrates this list under the deliverable and the
 // delivery gate is held to it, and for a while those were two different lists —
-// see brainOptions.produced and docs/design/gate/SETTLEMENT.md §5. An interface
+// see brainOptions.produced and the implementation §5. An interface
 // rather than the concrete registry so that chat.go, which every driver shares,
 // does not learn the errand's own type.
 type artifactRecord interface {
@@ -3218,7 +3218,7 @@ func gateEvidence(node store.Node, spec plan.Spec, outcome *exec.Outcome, artifa
 		// gate needs the rosters, not the failures: which checks exist is what
 		// answers whether anything exercises what the request asked for, and
 		// which checks stopped existing is what catches a worker deleting the
-		// test that was failing it. See docs/design/gate/ACCEPTANCE.md.
+		// test that was failing it. See the implementation.
 		evidence.Verification = outcome.Verification
 		// And the account of the work itself, when the worker kept one: the
 		// files it changed and the checks it ran. The gate that used to be
@@ -5126,7 +5126,7 @@ type owedPlanSpend struct {
 // two-to-eight character alphanumeric extension opening with a letter. The
 // extension's shape is what keeps prose out — "e.g.", "i.e.", "vs.", "1.5x" and
 // version numbers all fail it — and the stem's character class is what lets a
-// path through, because "docs/JOURNEY.md" names a file exactly as "report.md"
+// path through, because "the implementation" names a file exactly as "report.md"
 // does.
 var namedFileInAsk = regexp.MustCompile(`[\w.\-/]*\w\.[A-Za-z][A-Za-z0-9]{1,7}\b`)
 
