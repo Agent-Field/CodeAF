@@ -34,6 +34,13 @@ func (c call) code() string         { return c.r.PathValue("code") }
 // route answers one call. A nil result is an empty 204.
 type route func(call) (any, error)
 
+// RequestDirectory binds the exact authenticated v1 request to its client.
+// Consensus adapters retain this proof rather than mint a device signature.
+// Ordinary in-process directories need only implement Directory.
+type RequestDirectory interface {
+	ForRequest(device string, request *http.Request, body []byte) Client
+}
+
 // Handler serves the directory wire. Each request is authenticated first, and
 // then answered by open(identity).For(device), both taken from auth, so a body
 // can never name the acting device or reach another identity's records.
@@ -83,7 +90,13 @@ func (h *handler) admit(w http.ResponseWriter, r *http.Request) (call, error) {
 	if err != nil {
 		return call{}, err
 	}
-	return call{dir: dir, cl: dir.For(device), device: device, r: r, body: body}, nil
+	var cl Client
+	if bound, ok := dir.(RequestDirectory); ok {
+		cl = bound.ForRequest(device, r, body)
+	} else {
+		cl = dir.For(device)
+	}
+	return call{dir: dir, cl: cl, device: device, r: r, body: body}, nil
 }
 
 // denial names a refusal the way the wire does: skew and revoked have their

@@ -28,17 +28,18 @@ var (
 // client sequence. Signature authentication and committed authorization belong
 // to ingress and apply respectively; decoding alone grants no authority.
 type Command struct {
-	WorkerIncarnation uint64   `json:"worker_incarnation,omitempty"`
-	Schema            uint16   `json:"schema"`
-	Cluster           string   `json:"cluster"`
-	Actor             string   `json:"actor"`
-	Session           string   `json:"session"`
-	Sequence          uint64   `json:"sequence"`
-	RequestDigest     string   `json:"request_digest"`
-	Ack               uint64   `json:"ack,omitempty"`
-	Now               int64    `json:"now"`
-	Change            Mutation `json:"change"`
-	Signature         []byte   `json:"signature"`
+	V1                *V1Request `json:"v1_request,omitempty"`
+	WorkerIncarnation uint64     `json:"worker_incarnation,omitempty"`
+	Schema            uint16     `json:"schema"`
+	Cluster           string     `json:"cluster"`
+	Actor             string     `json:"actor"`
+	Session           string     `json:"session"`
+	Sequence          uint64     `json:"sequence"`
+	RequestDigest     string     `json:"request_digest"`
+	Ack               uint64     `json:"ack,omitempty"`
+	Now               int64      `json:"now"`
+	Change            Mutation   `json:"change"`
+	Signature         []byte     `json:"signature"`
 }
 
 // Mutation is a closed union: exactly one field is present. Future packets add

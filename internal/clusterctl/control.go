@@ -76,7 +76,7 @@ func Handler(auth wireauth.Authenticate, open func(string) (Backend, error)) htt
 		} else {
 			var c cs.Command
 			c, err = cs.DecodeCommand(body)
-			if err != nil || c.Actor != device || c.Change.RequestLeadership == nil {
+			if err != nil || cs.ClientCommand(c) != nil || c.Actor != device || c.Change.RequestLeadership == nil {
 				http.Error(w, "refresh cluster status before requesting leadership", 400)
 				return
 			}
@@ -158,7 +158,7 @@ func (c Client) Status(ctx context.Context) (s Status, err error) {
 	return
 }
 func (c Client) Lead(ctx context.Context, command cs.Command) (r cs.LeadershipReceipt, err error) {
-	if command.Change.RequestLeadership == nil {
+	if command.Change.RequestLeadership == nil || cs.ClientCommand(command) != nil {
 		return r, errors.New("a leadership request is required")
 	}
 	b, err := cs.EncodeCommand(command)

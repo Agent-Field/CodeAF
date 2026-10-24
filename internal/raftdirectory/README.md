@@ -47,8 +47,8 @@ and hosted tests provision genesis/request dependencies explicitly. The effects 
 external request/certificate admission, authorization installation, outbox delivery,
 blob receipts and v2 upload-before-head. P11 owns actual genesis/import; P12 owns peer
 registry; P14 owns watch presence and committed renewal scheduling. No socket can
-extend a lease through this evaluator. P17 supplies original v1 authentication proof
-and production client wiring. These boundaries are internal, not new manual claims.
+extend a lease through this evaluator. The v1 adapter below retains original HTTP authentication proof; production
+member/client routing still requires the complete namespace assembly. These boundaries are internal, not new manual claims.
 
 P10 adds `Effects` and the equivalent hosted `RaftEffectsFacade`. Provision a
 separate `Authority{Effects:true}` protocol key; it must not be personal. It can
@@ -69,10 +69,10 @@ stale fences/heads before missing upload evidence. The existing Client facade ex
 already identifies v1 Acquire. Old clients cannot supply the encrypted head RID;
 they retain the existing upload-before-publish client ordering and their existing
 safe API semantics. This is protocol compatibility in the same evaluator, never
-a second writer. P17 must select this marker only from original authenticated v1
-ingress and reject compatibility markers in v2 requests. A v2 body cannot become
-v1 merely by requesting it. P17 owns that ingress/client assembly; the production
-writer is unchanged until P11 migrates it. Never derive an encrypted remote
+a second writer. V1Directory selects this marker only from the original authenticated v1
+ingress; ClientCommand rejects compatibility markers at a public v2 boundary. A v2 body cannot become
+v1 merely by requesting it. The production writer remains unchanged until namespace migration and host
+assembly install the adapter. No internal facade activates that route by itself. Never derive an encrypted remote
 object ID from a local turn ID. Receipts admit at most 512 declared frame hints;
 a frame plan remains optional and partial.
 
@@ -122,3 +122,28 @@ without invoking tools. Execute must use the ordinary call recorder and
 cellsync.Publisher; it returns only an already published head. The adapter never
 loads a personal identity, discovers a relay, provisions a box or adds a public
 command. P17/P18 retain public client assembly and operator journeys.
+
+The native `V1Directory` implements `directory.RequestDirectory`. The HTTP
+handler first authenticates, then binds the exact request to its client. The
+relay has no personal signing key. `clusterstate.V1Command` translates the closed
+v1 method/URI/body shapes; apply verifies the original certificate and HTTP
+signature against the committed identity and rechecks revocation/rotation there.
+Unsigned host time cannot freshen a request after committed time has advanced.
+V1 uses its existing reconciliation behavior and does not consume v2 sessions.
+ABI 29 and `src/raft/v1.js` expose that SAME translation to the WASI host.
+
+`V1Host` must hold the actor queue across committed application and read
+callbacks. GET first commits its ingress time; every read passes a new
+current-term ReadIndex and durable applied index. A POST followed by its
+rotation view passes another barrier without repeating the mutation. The
+adapter checks current root/device authority inside that callback. Missing
+request proof is refused; no in-process `For` call can bypass authentication.
+
+This adapter is an integration boundary, not the production cutover. It does
+not yet supply watches, personal-member lifecycle, worker/v2 HTTP ingress, or
+the wake/outbox coordinator. Encoded commands remain bounded at 64 KiB, so
+large legacy HTTP bodies need a supported representation before full legacy
+compatibility can be claimed. The production relay contract test intentionally
+remains red until persistent namespace assembly routes its real HTTP doors
+through consensus. Do not enable a second writer or weaken a quorum to make
+that test pass.
