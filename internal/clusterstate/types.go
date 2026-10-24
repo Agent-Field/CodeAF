@@ -45,6 +45,11 @@ type Command struct {
 // their typed operations here; unknown fields fail decoding on older members.
 // There is no arbitrary JSON payload in which task text or secrets can hide.
 type Mutation struct {
+	Assign             *Assign             `json:"assign,omitempty"`
+	Reassign           *Assign             `json:"reassign,omitempty"`
+	ClaimAssignment    *ClaimAssignment    `json:"claim_assignment,omitempty"`
+	FinishAssignment   *FinishAssignment   `json:"finish_assignment,omitempty"`
+	CancelAssignment   *CancelAssignment   `json:"cancel_assignment,omitempty"`
 	EnrollWorker       *EnrollWorker       `json:"enroll_worker,omitempty"`
 	RegisterWorker     *RegisterWorker     `json:"register_worker,omitempty"`
 	WorkerBeatBatch    *WorkerBeatBatch    `json:"worker_beat_batch,omitempty"`
@@ -151,6 +156,7 @@ type DeviceSeen struct {
 // no free-form diagnostic text, so logging a refusal cannot disclose payloads.
 // Now and Version are application time/version, never a local clock/Raft index.
 type Result struct {
+	Assignment *Assignment       `json:"assignment,omitempty"`
 	Workers    []WorkerResult    `json:"workers,omitempty"`
 	Index      uint64            `json:"index,omitempty"`
 	Membership *MembershipResult `json:"membership,omitempty"`
