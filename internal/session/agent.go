@@ -2935,6 +2935,14 @@ func (a *Agent) recordLocked(message ai.Message) {
 // through recordLocked exactly as before.
 func (a *Agent) recordUserLocked(user userMessage) {
 	user = ensureUserIdentity(user)
+	if prior := a.presentation.of(user.message); user.person != nil && prior != nil {
+		// A new person's occurrence cannot reuse a runtime note's allocation:
+		// presentation marks follow that allocation even when the words match.
+		user.message.Content = append([]ai.ContentPart(nil), user.message.Content...)
+		mark := *user.person
+		mark.SkillsBlock = prior.SkillsBlock
+		a.presentation.remember(user.message, &mark)
+	}
 	if user.person == nil && (!user.authored || user.completionOnly || user.attention) {
 		// Presentation follows this occurrence, not equal words a person might
 		// later quote. The model still receives the complete original payload.
@@ -5055,11 +5063,11 @@ type DisplayEntry struct {
 	// Pass is a compaction pass a READER placed in a listing it built from a
 	// [Record] ([Record.Passes]); this package's own shaping never sets it.
 	Pass *CompactionFact
+	// CompletionTasks keeps the receipt's original task identities independently of the later answer's attribution.
+	CompletionTasks []TaskReplyTag
 	// RoutineCompletion is a delivery receipt whose full result belongs to
 	// its task or process. It is retained as data rather than another chat row.
 	RoutineCompletion bool
-	// CompletionTasks keeps the receipt's original task identities independently of the later answer's attribution.
-	CompletionTasks []TaskReplyTag
 	// Answer marks a completed tool-free response or an explicit human update. This
 	// boundary survives replay so a later response cannot demote its message.
 	Answer bool

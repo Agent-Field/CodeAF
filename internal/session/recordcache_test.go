@@ -539,6 +539,9 @@ func TestRecordVectorsReserveToolProcessCopies(t *testing.T) {
 func TestComposedCostCountsSpareCapacity(t *testing.T) {
 	var entry DisplayEntry
 	fill(reflect.ValueOf(&entry).Elem())
+	completionTasks := make([]TaskReplyTag, 1, 4)
+	copy(completionTasks, entry.CompletionTasks)
+	entry.CompletionTasks = completionTasks
 	mark := entry.Person.Composed
 	media := make([]MessageMedia, 1, 7)
 	copy(media, mark.Media)

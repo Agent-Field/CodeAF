@@ -443,7 +443,7 @@ func sameStamp(info os.FileInfo, stamp recordStamp) bool {
 
 // recordReserve is what a journal of size bytes is expected to cost once read.
 // The record keeps the display text of each line, capped, plus a fixed shape
-// of 304 bytes per entry on 64-bit hosts. Short journal lines can expand
+// of 328 bytes per entry on 64-bit hosts. Short journal lines can expand
 // beyond four times the file, before their strings and nested metadata are
 // counted. Reserve five times the file plus room for small records. This is
 // still an estimate: a record that comes out larger is read but not kept.
@@ -464,6 +464,7 @@ func recordVectors(record Record) int64 {
 			entry := &entries[i]
 			cost += int64(len(entry.ImageRefs))*int64(unsafe.Sizeof("")) +
 				int64(len(entry.ReplyTags))*int64(unsafe.Sizeof(TaskReplyTag{})) +
+				int64(len(entry.CompletionTasks))*int64(unsafe.Sizeof(TaskReplyTag{})) +
 				int64(len(entry.Team))*int64(unsafe.Sizeof(TeamLine{}))
 			if entry.Person != nil {
 				cost += composedSizes(entry.Person.Composed)
@@ -535,7 +536,11 @@ func entriesCost(entries []DisplayEntry) int64 {
 		}
 		cost += int64(cap(entry.ReplyTags)) * int64(unsafe.Sizeof(TaskReplyTag{}))
 		for _, tag := range entry.ReplyTags {
-			cost += int64(len(tag.Title) + len(tag.Request) + len(tag.Obligation))
+			cost += int64(len(tag.Title) + len(tag.Request) + len(tag.Obligation) + len(tag.State))
+		}
+		cost += int64(cap(entry.CompletionTasks)) * int64(unsafe.Sizeof(TaskReplyTag{}))
+		for _, tag := range entry.CompletionTasks {
+			cost += int64(len(tag.Title) + len(tag.Request) + len(tag.Obligation) + len(tag.State))
 		}
 		if entry.Steer != nil {
 			cost += int64(unsafe.Sizeof(SteerMark{})) + int64(len(entry.Steer.Landing))
@@ -613,6 +618,7 @@ func cloneEntries(entries []DisplayEntry) []DisplayEntry {
 		entry := &out[i]
 		entry.ImageRefs = slices.Clone(entry.ImageRefs)
 		entry.ReplyTags = slices.Clone(entry.ReplyTags)
+		entry.CompletionTasks = slices.Clone(entry.CompletionTasks)
 		entry.Team = slices.Clone(entry.Team)
 		if entry.Person != nil {
 			person := PersonMark{Authored: entry.Person.Authored, Attachments: cloneAttachments(entry.Person.Attachments), Reads: cloneReads(entry.Person.Reads), Composed: cloneComposed(entry.Person.Composed), Queued: entry.Person.Queued, ClientID: entry.Person.ClientID}

@@ -28,6 +28,12 @@ func (b *liveBudgetStub) Refusal() string {
 func TestJobBudgetChargesDirectCallsNotFoldedUsage(t *testing.T) {
 	b := &liveBudgetStub{cap: 5}
 	a := &Agent{config: Config{JobBudget: b, usageLedger: filepath.Join(t.TempDir(), UsageLedgerName)}}
+	// The asynchronous ledger must finish before its temporary directory is removed.
+	t.Cleanup(func() {
+		if !StopUsageWriter(a.config.usageLedger) {
+			t.Error("usage writer did not stop")
+		}
+	})
 	a.bank(bankedCall{used: Usage{CostUSD: 1}, ledger: true})
 	a.bank(bankedCall{used: Usage{CostUSD: 1}, ledger: false})
 	if b.spent != 1 {
