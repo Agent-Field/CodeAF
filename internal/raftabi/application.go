@@ -1,6 +1,10 @@
 package raftabi
 
-import "github.com/Agent-Field/codeaf/internal/clusterstate"
+import (
+	"github.com/Agent-Field/codeaf/internal/clusterstate"
+	"github.com/Agent-Field/codeaf/internal/raftcore"
+	pb "go.etcd.io/raft/v3/raftpb"
+)
 
 func applicationCodec(op uint32, d *decoder) ([]byte, error) {
 	raw := d.blob()
@@ -41,6 +45,12 @@ func applicationCodec(op uint32, d *decoder) ([]byte, error) {
 		rows[k] = b
 		size += len(b) + len(k.Key) + len(k.Namespace)
 	}
+	if op == 15 {
+		meta.Index = d.u64()
+		conf := new(pb.ConfState)
+		d.message(conf)
+		meta.Configuration = raftcore.Configuration(conf)
+	}
 	if err := d.end(); err != nil {
 		return nil, err
 	}
@@ -70,5 +80,43 @@ func applicationCodec(op uint32, d *decoder) ([]byte, error) {
 		e.str(w.Key)
 		e.blob(w.Data)
 	}
+	return e.b, nil
+}
+
+// registryCodec pages one peer at a time so large retained device metadata
+// cannot require materializing an identity or its full registry in the reactor.
+func registryCodec(d *decoder) ([]byte, error) {
+	node, applied := d.u64(), d.u64()
+	conf := new(pb.ConfState)
+	d.message(conf)
+	header, member, device := d.blob(), d.blob(), d.blob()
+	if err := d.end(); err != nil {
+		return nil, err
+	}
+	var h clusterstate.Membership
+	var m clusterstate.MemberRecord
+	if clusterstate.Decode(header, &h) != nil || clusterstate.Decode(member, &m) != nil || h.Index > applied || m.Node != node {
+		return nil, clusterstate.ErrDependency
+	}
+	found := false
+	for _, id := range h.Nodes {
+		found = found || id == node
+	}
+	if !found {
+		return nil, clusterstate.ErrDependency
+	}
+	if h.Validate() != nil {
+		return nil, clusterstate.ErrDependency
+	}
+	peer, err := clusterstate.PeerFromRecord(m, device, raftcore.Configuration(conf))
+	if err != nil {
+		return nil, err
+	}
+	b, err := clusterstate.Encode(peer)
+	if err != nil {
+		return nil, err
+	}
+	e := encoder{}
+	e.blob(b)
 	return e.b, nil
 }

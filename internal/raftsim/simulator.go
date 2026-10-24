@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/Agent-Field/codeaf/internal/clusterstate"
 	"github.com/Agent-Field/codeaf/internal/raftcore"
 	"github.com/Agent-Field/codeaf/internal/raftsim/model"
 	"go.etcd.io/raft/v3"
@@ -157,7 +158,7 @@ func New(config Config) (*Simulator, error) {
 	if config.MaxEvents == 0 {
 		config.MaxEvents = MaxEvents
 	}
-	if config.PaddingBytes < 0 || config.PaddingBytes > 640<<10 || config.Nodes < 3 || config.Nodes > 5 || config.MaxEvents > MaxEvents || config.MaxEvents < 1 || config.Delay < 0 || config.Delay > 20 || config.Drop < 0 || config.Drop > 1000 || config.Duplicate < 0 || config.Duplicate > 1000 {
+	if config.PaddingBytes < 0 || config.PaddingBytes > 640<<10 || config.Nodes < 3 || config.Nodes > 3+clusterstate.MaxLearners || config.MaxEvents > MaxEvents || config.MaxEvents < 1 || config.Delay < 0 || config.Delay > 20 || config.Drop < 0 || config.Drop > 1000 || config.Duplicate < 0 || config.Duplicate > 1000 {
 		return nil, errors.New("raftsim: invalid bounded configuration")
 	}
 	s := &Simulator{initial: config, Config: config, ReadAckDelay: map[int]int64{}, rng: config.Seed + 1, FailNext: map[int]bool{}, Blocked: map[[2]int]bool{}, Stalled: map[int]int64{}, catalog: map[string]model.Call{}, leaders: map[uint64]int{}, commits: map[uint64]string{}, applications: map[uint64]string{}, maxFence: map[string]uint64{}, maxCommit: make([]uint64, config.Nodes), maxApplied: make([]uint64, config.Nodes), appGeneration: make([]uint64, config.Nodes)}
@@ -664,6 +665,18 @@ func (s *Simulator) Do(a Action) int {
 			change = &pb.ConfChangeV2{Changes: []*pb.ConfChangeSingle{{Type: pb.ConfChangeAddLearnerNode.Enum(), NodeId: proto.Uint64(uint64(a.Other + 1))}}}
 		case 2:
 			change = &pb.ConfChangeV2{Transition: pb.ConfChangeTransitionJointExplicit.Enum(), Changes: []*pb.ConfChangeSingle{{Type: pb.ConfChangeAddLearnerNode.Enum(), NodeId: proto.Uint64(3)}, {Type: pb.ConfChangeAddNode.Enum(), NodeId: proto.Uint64(4)}}}
+		case 6:
+			change = &pb.ConfChangeV2{}
+			for node := 3; node < len(s.Nodes); node++ {
+				change.Changes = append(change.Changes, &pb.ConfChangeSingle{Type: pb.ConfChangeRemoveNode.Enum(), NodeId: proto.Uint64(uint64(node + 1))})
+			}
+		case 5:
+			change = &pb.ConfChangeV2{}
+			for node := 3; node < len(s.Nodes); node++ {
+				change.Changes = append(change.Changes, &pb.ConfChangeSingle{Type: pb.ConfChangeAddLearnerNode.Enum(), NodeId: proto.Uint64(uint64(node + 1))})
+			}
+		case 4:
+			change = &pb.ConfChangeV2{Changes: []*pb.ConfChangeSingle{{Type: pb.ConfChangeRemoveNode.Enum(), NodeId: proto.Uint64(uint64(a.Other + 1))}}}
 		case 3:
 			change = &pb.ConfChangeV2{}
 		default:

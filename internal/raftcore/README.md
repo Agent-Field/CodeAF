@@ -135,3 +135,36 @@ conservative persist-before-send protocol without sending an acknowledgment for
 an uninstalled snapshot. The later Apply effect confirms that installed index
 and applies any committed suffix before `Applied`. Recover the application before
 constructing a core; no application rows or chunks belong in its log cache.
+
+
+## Committed learner intents
+
+P12's `PlanMembership` accepts only the durable `clusterstate.Membership` header
+under the member serialization lock. `InitMembership` records exactly the three
+already-applied anchors and their protocol public keys; source provisioning must
+supply that SAME manifest to the bootstrap transport. Personal enrollment must
+already have committed certificate authority. Metadata upserts grant none.
+
+The header retains a single add/remove intent and configuration revision. Plan,
+submit its deterministic ConfChangeV2, wait for durable application, then plan
+again. A durable uncommitted configuration returns ErrBusy. Checkpoint when
+requested before allowing compacted catch-up: a pre-admission snapshot cannot
+restore a learner it excludes. Submit authorized SettleMembership only after the
+configuration is applied. The evaluator checks the host's applied ConfState;
+a request cannot supply it. `MembershipResult.Barrier` is zero on admission,
+and the settlement entry index afterward. The learner must durably apply that
+barrier before reporting ready. Current committed authorization must also hold.
+
+A removal immediately retires transport authority, but its configuration change
+still completes through Raft. IDs and tombstones survive snapshots and are never
+reused. New IDs increase monotonically. Live learners are limited separately
+from retained records; exhaustion refuses enrollment without deleting anything.
+P13 owns promotion, joint swaps, transfer completion and anchor fallback. No
+P12 policy command removes/promotes a voter. Configuration/provisioning APIs are
+internal host seams, never unauthenticated client endpoints.
+
+Provisioned anchor keys receive a restricted committed authority that can only
+settle an existing intent or close their request session. They cannot enroll,
+remove, read directory content, mutate chats, pair or rotate. Thus a crashed
+requester need not return for an already authorized admission to finish. The
+settlement still requires the exact applied configuration and pending revision.

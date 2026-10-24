@@ -44,24 +44,28 @@ type Command struct {
 // their typed operations here; unknown fields fail decoding on older members.
 // There is no arbitrary JSON payload in which task text or secrets can hide.
 type Mutation struct {
-	RecordUpload *UploadReceipt `json:"record_upload,omitempty"`
-	AdmitJoin    *AdmitJoin     `json:"admit_join,omitempty"`
-	CompleteJoin *CompleteJoin  `json:"complete_join,omitempty"`
-	Rotate       *RotateRequest `json:"rotate,omitempty"`
-	CloseSession *CloseSession  `json:"close_session,omitempty"`
-	DecideJoin   *JoinDecision  `json:"decide_join,omitempty"`
-	Create       *CreateCell    `json:"create,omitempty"`
-	Acquire      *AcquireCell   `json:"acquire,omitempty"`
-	Beat         *BeatCell      `json:"beat,omitempty"`
-	BeatBatch    *BeatBatch     `json:"beat_batch,omitempty"`
-	Publish      *PublishCell   `json:"publish,omitempty"`
-	Release      *ReleaseCell   `json:"release,omitempty"`
-	Archive      *CellID        `json:"archive,omitempty"`
-	PutDevice    *PutDevice     `json:"put_device,omitempty"`
-	Revoke       *DeviceID      `json:"revoke,omitempty"`
-	SetVault     *VaultCAS      `json:"set_vault,omitempty"`
-	AdvanceTime  *AdvanceTime   `json:"advance_time,omitempty"`
-	DeviceSeen   *DeviceSeen    `json:"device_seen,omitempty"`
+	InitMembership   *InitMembership   `json:"init_membership,omitempty"`
+	EnrollMember     *EnrollMember     `json:"enroll_member,omitempty"`
+	RemoveMember     *RemoveMember     `json:"remove_member,omitempty"`
+	SettleMembership *SettleMembership `json:"settle_membership,omitempty"`
+	RecordUpload     *UploadReceipt    `json:"record_upload,omitempty"`
+	AdmitJoin        *AdmitJoin        `json:"admit_join,omitempty"`
+	CompleteJoin     *CompleteJoin     `json:"complete_join,omitempty"`
+	Rotate           *RotateRequest    `json:"rotate,omitempty"`
+	CloseSession     *CloseSession     `json:"close_session,omitempty"`
+	DecideJoin       *JoinDecision     `json:"decide_join,omitempty"`
+	Create           *CreateCell       `json:"create,omitempty"`
+	Acquire          *AcquireCell      `json:"acquire,omitempty"`
+	Beat             *BeatCell         `json:"beat,omitempty"`
+	BeatBatch        *BeatBatch        `json:"beat_batch,omitempty"`
+	Publish          *PublishCell      `json:"publish,omitempty"`
+	Release          *ReleaseCell      `json:"release,omitempty"`
+	Archive          *CellID           `json:"archive,omitempty"`
+	PutDevice        *PutDevice        `json:"put_device,omitempty"`
+	Revoke           *DeviceID         `json:"revoke,omitempty"`
+	SetVault         *VaultCAS         `json:"set_vault,omitempty"`
+	AdvanceTime      *AdvanceTime      `json:"advance_time,omitempty"`
+	DeviceSeen       *DeviceSeen       `json:"device_seen,omitempty"`
 }
 
 type CellID struct {
@@ -136,12 +140,13 @@ type DeviceSeen struct {
 // no free-form diagnostic text, so logging a refusal cannot disclose payloads.
 // Now and Version are application time/version, never a local clock/Raft index.
 type Result struct {
-	Schema  uint16       `json:"schema"`
-	Code    Code         `json:"code"`
-	Now     int64        `json:"now"`
-	Version uint64       `json:"version"`
-	View    *CellView    `json:"view,omitempty"`
-	Items   []ItemResult `json:"items,omitempty"`
+	Membership *MembershipResult `json:"membership,omitempty"`
+	Schema     uint16            `json:"schema"`
+	Code       Code              `json:"code"`
+	Now        int64             `json:"now"`
+	Version    uint64            `json:"version"`
+	View       *CellView         `json:"view,omitempty"`
+	Items      []ItemResult      `json:"items,omitempty"`
 }
 
 type ItemResult struct {
@@ -171,6 +176,7 @@ const (
 	AlreadyDecided Code = "already_decided"
 	BadRequest     Code = "bad_request"
 	Capacity       Code = "capacity"
+	UpdateRequired Code = "update_required"
 )
 
 // Row encodes one application record for paged reads and streamed snapshots.

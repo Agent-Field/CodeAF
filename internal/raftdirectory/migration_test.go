@@ -117,7 +117,7 @@ func TestR24TwoCertifiedHomesMigrateThroughQuorumAndRestart(t *testing.T) {
 	must(t, source.FreezeLegacy(ctx, cfg))
 	manifest, e := source.InventoryLegacy(ctx)
 	must(t, e)
-	g := &group{t: t, clock: clock, reads: map[string]bool{}, seq: map[string]uint64{}, keys: map[string]ed25519.PrivateKey{a: key("paired-a"), b: key("paired-b")}}
+	g := &group{paths: make([]string, 3), stores: make([]*raftstore.SQLite, 3), nodes: make([]*raftcore.Core, 3), status: make([]raftcore.Status, 3), results: make([][]clusterstate.Result, 3), absent: map[uint64]bool{}, t: t, clock: clock, reads: map[string]bool{}, seq: map[string]uint64{}, keys: map[string]ed25519.PrivateKey{a: key("paired-a"), b: key("paired-b")}}
 	defer func() {
 		for _, store := range g.stores {
 			if store != nil {

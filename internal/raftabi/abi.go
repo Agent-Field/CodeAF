@@ -164,13 +164,23 @@ func (r *Runtime) Call(b []byte) (out []byte) {
 func (r *Runtime) call(op uint32, d *decoder) ([]byte, error) {
 	e := encoder{}
 	switch op {
+	case 20:
+		return configurationAtEntry(d)
+	case 19:
+		return anchorRegistry(d)
+	case 17:
+		return r.membershipPlan(d)
+	case 18:
+		return learnerReady(d)
+	case 16:
+		return registryCodec(d)
 	case 14:
 		return legacyAuthorities(d)
 	case 13:
 		return legacyGenesis(d)
 	case 12:
 		return legacyCodec(d)
-	case 10, 11:
+	case 10, 11, 15:
 		return applicationCodec(op, d)
 	case 1:
 		cfg := raftcore.Config{ClusterUUID: d.str(), NodeID: d.u64(), Seed: d.u64()}

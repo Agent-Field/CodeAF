@@ -54,22 +54,23 @@ type group struct {
 	t       *testing.T
 	mu      sync.Mutex
 	clock   func() time.Time
-	paths   [3]string
-	stores  [3]*raftstore.SQLite
-	nodes   [3]*raftcore.Core
-	status  [3]raftcore.Status
+	paths   []string
+	stores  []*raftstore.SQLite
+	nodes   []*raftcore.Core
+	status  []raftcore.Status
 	queue   []raftcore.Outbound
-	results [3][]clusterstate.Result
+	results [][]clusterstate.Result
 	reads   map[string]bool
 	keys    map[string]ed25519.PrivateKey
 	seq     map[string]uint64
 	genesis []raftstore.Write
+	absent  map[uint64]bool
 	blocked bool
 	readID  uint64
 }
 
 func newGroup(t *testing.T, clock func() time.Time, extra ...raftstore.Write) *group {
-	g := &group{t: t, clock: clock, reads: map[string]bool{}, seq: map[string]uint64{}}
+	g := &group{paths: make([]string, 3), stores: make([]*raftstore.SQLite, 3), nodes: make([]*raftcore.Core, 3), status: make([]raftcore.Status, 3), results: make([][]clusterstate.Result, 3), absent: map[uint64]bool{}, t: t, clock: clock, reads: map[string]bool{}, seq: map[string]uint64{}}
 	actors := []string{devA, devB, "a", "b"}
 	for i := range 50 {
 		actors = append(actors, fmt.Sprintf("dev_%032x", i+1))
@@ -110,7 +111,9 @@ func newGroup(t *testing.T, clock func() time.Time, extra ...raftstore.Write) *g
 }
 func (g *group) drive(i int, in raftcore.Input) {
 	e, err := g.nodes[i].Step(in)
-	must(g.t, err)
+	if err != nil {
+		g.t.Fatalf("node %d input %T: %v", i+1, in, err)
+	}
 	for n := 0; n < 100; n++ {
 		g.status[i] = e.Status
 		g.queue = append(g.queue, e.Send...)
@@ -150,7 +153,7 @@ func (g *group) drain() {
 		}
 		m := g.queue[0]
 		g.queue = g.queue[1:]
-		if !g.blocked {
+		if !g.blocked && !g.absent[m.To] && int(m.To) <= len(g.nodes) {
 			g.drive(int(m.To)-1, raftcore.PeerMessage{Bytes: m.Bytes})
 		}
 	}

@@ -141,3 +141,14 @@ unit tests pin auth, generation, socket revocation and all queue reservations.
 P06/P06b's 2,000-seed simulator soak remains a required regression gate. Full
 R10 enrollment/worker journeys, R11 churn/snapshot interoperability, application
 revocation and the R15 full-state sentinel campaign remain later packet gates.
+
+
+P12's `CommittedView` derives protocol authority from the applied registry and
+current device revocations. Hold the actor lock while reading and installing
+that view, before acknowledging the command. Use the applied index as its
+revision, so a device revoke updates routing even without a membership edit.
+Retain retired entries; Router.Install refuses their resurrection. Increment
+and persist router generation before admitting exchanges after inbox loss.
+An authenticated source's three provisioned anchor keys may bootstrap protocol
+traffic before registry commitment. A personal key requires committed enrollment;
+never accept a caller's arbitrary view as an enrollment grant.

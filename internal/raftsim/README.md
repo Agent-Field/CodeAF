@@ -124,3 +124,12 @@ other X/J requirements are not claimed by a metadata simulator.
 
 Porcupine v1.1.0 is MIT licensed and only imported by the simulator checker.
 Neither this dependency nor the simulator is linked into `bin/codeaf`.
+
+
+P12 extends the bounded topology to three voters plus at most 32 learner cores.
+Its full-fanout case admits the learners in one internal configuration batch,
+sleeps all of them, commits writes, compacts, restores a lagging learner through
+a fresh snapshot and removes it with delayed responses. The unchanged 2,000-event
+ceiling still applies. Separate signed-policy tests prove sequential admission,
+its 33rd-learner refusal, revision races and retained ID tombstones; the raw
+simulator configuration action is not a public admission policy.

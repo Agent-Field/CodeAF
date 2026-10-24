@@ -4,13 +4,14 @@ package raftcore
 
 import (
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/clusterstate"
 
 	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
 )
 
 const (
-	ProtocolVersion     uint16 = 1
+	ProtocolVersion     uint16 = clusterstate.ClusterProtocol
 	ElectionTicks              = 6
 	HeartbeatTicks             = 1
 	MaxMessageBytes            = 64 << 10
