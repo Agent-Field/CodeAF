@@ -4,12 +4,13 @@ import { MemberInbox } from './inbox.js';
 import { directoryEvaluator } from './directory.js';
 import { DEFAULT_ROWS_BYTES, MemberStorage } from './storage.js';
 import { HostCodec } from './abi.js';
+import { committedRegistry, provisionedRegistry } from './membership.js';
 import { stageLegacyImport, finishLegacyImport } from './legacy.js';
 export { installRaftModule, runtimeMetrics } from './actor.js';
 
 // Only internal namespace calls can initialize a provisioned member. The
 // public Worker exports this class but does not route directory traffic here.
-// P12 supplies the durable committed enrollment view and P09 the evaluator.
+// Enrollment is derived from the durable Go registry; P09 supplies evaluation.
 export class RaftMemberDO extends DurableObject {
   constructor(ctx, env) { super(ctx, env); this.actor = null; this.loading = null; this.ctx = ctx; this.env = env; }
   evaluator(config) { return directoryEvaluator(sharedRuntime(), config.cluster, config.ceiling ?? DEFAULT_ROWS_BYTES); }
@@ -57,7 +58,7 @@ export class RaftMemberDO extends DurableObject {
     if (!previous) { await this.ctx.storage.put('raft-config', canonical); await this.ctx.storage.sync(); }
     const actor = new MemberActor(this.ctx.storage, sharedRuntime(), this.evaluator(config));
     const result = await actor.init(canonical);
-    this.config = canonical; this.registry = await this.ctx.storage.get('raft-registry'); this.actor = actor;
+    this.config = canonical; this.registry = actor.store.read('membership', 'registry') ? committedRegistry(sharedRuntime(), actor.store) : await this.ctx.storage.get('raft-registry'); this.actor = actor;
     return result;
   }
 
@@ -71,8 +72,10 @@ export class RaftMemberDO extends DurableObject {
   async restore() {
     const config = await this.ctx.storage.get('raft-config'); if (!config) throw new Error('raft member: not provisioned');
     const actor = new MemberActor(this.ctx.storage, sharedRuntime(), this.evaluator(config));
-    this.recoveredEffects = await actor.init(config); this.config = config; this.registry = await this.ctx.storage.get('raft-registry'); this.actor = actor;
+    this.recoveredEffects = await actor.init(config); this.config = config; this.registry = actor.store.read('membership', 'registry') ? committedRegistry(sharedRuntime(), actor.store) : await this.ctx.storage.get('raft-registry'); this.actor = actor;
   }
+  async membership() { await this.load(); return this.actor.membership(); }
+  async joinStatus(advertised) { await this.load(); return this.actor.joinStatus(advertised); }
   async drainRecovery() {
     await this.load();
     return this.actor.serial(() => { const effects = this.recoveredEffects; this.recoveredEffects = null; return effects; });
@@ -80,8 +83,8 @@ export class RaftMemberDO extends DurableObject {
   async peer(raw) {
     await this.load();
     const config = this.config;
-    if (!this.registry) throw new Error('raft member: enrollment is absent');
-    this.inbox ??= new MemberInbox(config.scope, config.id, this.actor.codec, () => this.registry, fn => this.actor.serial(fn));
+    if (!this.actor.store.read('membership', 'registry') && !config.anchors) throw new Error('raft member: enrollment is absent');
+    this.inbox ??= new MemberInbox(config.scope, config.id, this.actor.codec, () => this.actor.store.read('membership', 'registry') ? committedRegistry(sharedRuntime(), this.actor.store) : provisionedRegistry(sharedRuntime(), config), fn => this.actor.serial(fn));
     return this.inbox.receive(raw, async (envelope, payload) => {
       if (envelope.chunk) {
         if (!this.actor.store.one('SELECT id FROM snapshots WHERE id=?', envelope.chunk.generation)) return { staged: false };
@@ -104,19 +107,26 @@ export class RaftMemberDO extends DurableObject {
       return this.actor.drive(2, payload);
     });
   }
-  // A registry update is trusted assembly input derived from committed state.
-  // Serialize it with dispatch and persist before acknowledging revocation.
+  // Refresh under the dispatch queue; never accept a caller-supplied membership
+  // list as evidence that a device joined or a revoked transport key returned.
+  async refreshEnrollment() {
+    await this.load();
+    return this.actor.serial(async () => {
+      const view = committedRegistry(sharedRuntime(), this.actor.store);
+      await this.ctx.storage.put('raft-registry', view); await this.ctx.storage.sync(); this.registry = view;
+      return view;
+    });
+  }
+  // Existing internal callers may request publication, but cannot supply a
+  // different view or invent enrollment before the committed manifest exists.
   async enrollment(view, applied) {
     view = structuredClone(view);
     await this.load();
     return this.actor.serial(async () => {
       if (BigInt(applied) > this.actor.status.applied) throw new Error('raft member: enrollment barrier not applied');
-      const old = await this.ctx.storage.get('raft-registry') ?? {};
-      for (const [id, member] of Object.entries(old)) {
-        const next = view[id];
-        if (!next || (member.revoked && !next.revoked) || BigInt(next.incarnation) < BigInt(member.incarnation) || (next.incarnation === member.incarnation && next.key !== member.key)) throw new Error('raft member: enrollment regression');
-      }
-      await this.ctx.storage.put('raft-registry', view); await this.ctx.storage.sync(); this.registry = view;
+      const committed = committedRegistry(sharedRuntime(), this.actor.store);
+      if (JSON.stringify(committed) !== JSON.stringify(view)) throw new Error('raft member: enrollment differs from committed registry');
+      await this.ctx.storage.put('raft-registry', committed); await this.ctx.storage.sync(); this.registry = committed;
     });
   }
 }

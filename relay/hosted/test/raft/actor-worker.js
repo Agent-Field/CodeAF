@@ -4,6 +4,7 @@ import core from './core.wasm';
 import { installRaftModule, runtimeMetrics, MemberActor, sharedRuntime } from '../../src/raft/actor.js';
 import { RaftMemberDO } from '../../src/raft/member.js';
 import { frame, response } from '../../src/raft/abi.js';
+import { MemberInbox } from '../../src/raft/inbox.js';
 import { b64, unb64 } from '../../src/raft/storage.js';
 export { IdentityDO, NewcomerGate, LinkGate, LinkRequest, PairGate, Mailbox } from '../../src/worker.js';
 installRaftModule(core);
@@ -16,6 +17,41 @@ const evaluate = (command, read, app) => {
 };
 export class ActorFixture extends RaftMemberDO {
   evaluator() { return evaluate; }
+  async enrollment(view, applied) {
+    await this.load();
+    return this.actor.serial(async () => {
+      if (BigInt(applied) > this.actor.status.applied) throw new Error('raft member: enrollment barrier not applied');
+      const old = await this.ctx.storage.get('raft-registry') ?? {};
+      for (const [id, before] of Object.entries(old)) {
+        const after = view[id];
+        if (!after || before.revoked && !after.revoked || BigInt(after.incarnation) < BigInt(before.incarnation) || after.incarnation === before.incarnation && after.key !== before.key) throw new Error('raft member: enrollment regression');
+      }
+      await this.ctx.storage.put('raft-registry', view); await this.ctx.storage.sync(); this.registry = view;
+    });
+  }
+  async peer(raw) {
+    // The mechanism fixture isolates host durability from policy. Its explicit
+    // local registry is not a production admission or authority path.
+    await this.load();
+    this.inbox ??= new MemberInbox(this.config.scope, this.config.id, this.actor.codec, () => this.registry, fn => this.actor.serial(fn));
+    return this.inbox.receive(raw, async (envelope, payload) => {
+      if (envelope.chunk) {
+        if (!this.actor.store.one('SELECT id FROM snapshots WHERE id=?', envelope.chunk.generation)) return { staged: false };
+        await this.actor.store.putChunk(envelope.chunk.generation, Number(BigInt(envelope.chunk.offset)), payload, envelope.chunk.hash); return { staged: true };
+      }
+      const message = this.actor.codec.inspect(4, payload);
+      if (message.snapshot.length) {
+        const snapshot = this.actor.codec.inspect(3, message.snapshot);
+        if (snapshot.index > this.actor.status.applied) {
+          const id = await this.actor.store.beginSnapshot(snapshot.data), manifest = this.actor.store.generation(id).manifest;
+          if (this.actor.store.one('SELECT count(*) AS n FROM chunks WHERE generation=?', id).n !== Number(manifest.chunks)) return { staged: true, installed: false };
+          await this.actor.store.completeSnapshot(id);
+        }
+        const result = await this.actor.drive(2, payload); return { ...result, installed: this.actor.status.applied >= snapshot.index };
+      }
+      return this.actor.drive(2, payload);
+    });
+  }
   async fetch(request) {
     const url = new URL(request.url), b = request.method === 'POST' ? await request.json() : {};
     try {

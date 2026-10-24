@@ -129,10 +129,11 @@ export class MemberStorage {
       for (const b of a.entries) {
         const e = this.codec.inspect(1, b); check(e.index === index + 1n);
         const persisted = this.one('SELECT data FROM journal WHERE idx=?', key(e.index)); check(persisted && equal(bytes(persisted.data), b));
+        if (e.type !== 0) app.conf = b64(this.codec.configuration(unb64(app.conf), b));
         if (e.type === 0 && e.data.length) {
           check(evaluate, 'raft storage: application evaluator is absent');
           let readBytes = 0, writeBytes = 0;
-          const change = evaluate(e.data, (ns, k) => { const data = this.read(ns, k); readBytes += data?.length ?? 0; check(readBytes <= ROW_BYTES, 'raft storage: evaluation read-set capacity'); return data; }, { ...app });
+          const change = evaluate(e.data, (ns, k) => { const data = this.read(ns, k); readBytes += data?.length ?? 0; check(readBytes <= ROW_BYTES, 'raft storage: evaluation read-set capacity'); return data; }, { ...app, index: e.index });
           check(change && !change.then && Array.isArray(change.writes));
           for (const r of change.writes) {
             check(namespaces.includes(r.namespace) && typeof r.key === 'string' && enc.encode(r.key).length > 0 && enc.encode(r.key).length <= ROW_BYTES && r.data instanceof Uint8Array && r.data.length <= ROW_BYTES);
