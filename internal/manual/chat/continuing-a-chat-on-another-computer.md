@@ -256,38 +256,17 @@ A relay directory upgrade can briefly pause pairing and chat moves. Retry after 
 
 ## Joined computers, learner capacity and an outdated build
 
-Joining the relay's coordination group does not make a computer a voter. Its
-learner role does not require other laptops to stay awake, and a slow learner
-cannot hold back relay writes or keep old coordination logs forever. A learner
-is ready only after it has applied the committed join barrier. Removing one
-retires its node ID permanently; joining again allocates a fresh ID.
+Paired computers currently use the relay as authenticated directory clients. The production client does not yet activate its own persistent coordination member, so pairing alone does not make this computer a learner or a voter. The relay keeps three persistent voters and does not need either of your paired laptops to stay awake.
 
-The group admits at most 32 live learners. Retired enrollment records are kept,
-with a separate operator capacity limit; reaching either limit refuses new
-enrollment instead of deleting saved chats or old records. The capacity sentence
-is `this cluster has reached its enrollment limit; remove a joined computer or ask the relay operator for capacity`.
-An unsupported protocol says `this codeaf build must be updated before it can join this cluster; your saved chats are still here`.
-Joining alone does not request leadership. Use `codeaf cluster lead` after this computer has joined with persistent storage. A worker setup command is not available yet.
+The membership protocol admits at most 32 live learners and retains retired records instead of reusing their authority. A protocol mismatch says `this codeaf build must be updated before it can join this cluster; your saved chats are still here`. Its capacity refusal is `this cluster has reached its enrollment limit; remove a joined computer or ask the relay operator for capacity`. Personal-member activation and a worker setup command are not available through the production client yet.
 
 ## Which computer coordinates: cluster status and cluster lead
 
-`codeaf cluster status` asks the relay for the current coordinator and voting computers. `codeaf cluster lead` requests leadership for this computer after it has joined with persistent storage. The target must catch up and exchange recent traffic; a pending request is not success. A successful line names the computer, term, revision and read barrier. Leadership moves coordination metadata; it does not move chat ownership or download chat content. Continue a chat through the usual continue door.
+`codeaf cluster status` and `codeaf cluster lead` exist, but the production personal-member door is not connected yet. The relay currently says `this relay does not offer cluster leadership yet; your saved chats are still here`. A paired API client cannot lead. A relay that provides status without a joined member says `this computer must join the cluster with persistent storage before it can lead`.
 
-The default has three persistent relay voters. Paired computers join without votes. To lead, one caught-up personal computer replaces one anchor through a majority-approved change, retaining three voters; that anchor stays caught up without voting. When the personal leader disappears, the two remaining anchor voters can elect a replacement and restore the third anchor. The returning computer does not automatically lead again. Request leadership explicitly.
+Do not treat pairing or a saved leadership request as a successful transfer. Success requires the selected computer to be elected, commit its current term and pass a fresh majority read; its receipt names the computer, term, revision and read barrier. Retrying `codeaf cluster lead` preserves an already saved signed request. Continue chats through the ordinary continue door.
 
-Three voters tolerate one unavailable member. Losing the personal leader and one of its two voting anchors pauses coordination. Saved chats remain. The refusal is `this cluster cannot coordinate right now; reconnect enough of its voting computers and try again; your saved chats are still here`. Network partitions and scheduling stalls can delay elections beyond the healthy fallback target. A relay without this door says `this relay does not offer cluster leadership yet; your saved chats are still here`. Persistent member/client assembly is required; a paired API client alone cannot lead. It says `this computer must join the cluster with persistent storage before it can lead`. If a reply is lost, running `codeaf cluster lead` again resumes the saved request rather than silently choosing a new configuration.
-
-## How long does a replacement leader take after my laptop sleeps?
-
-With the two remaining relay voters reachable, codeaf aims to accept a new
-conditional operation within about 65 seconds. Relay anchors ask to lead in
-ordered randomized windows: the first at 30–35 seconds, the second at 40–45,
-and the third at 50–55. A promoted personal computer uses 60–65 seconds.
-Network partitions or scheduling stalls can take longer. If the personal leader
-and either remaining relay voter are both unavailable before the third anchor
-is restored, writes wait for a majority to return. Returning computers stay
-learners; leadership returns only when you request it again.
-
+Three voters tolerate one unavailable member. Losing a majority pauses coordination; saved chats remain. The refusal is `this cluster cannot coordinate right now; reconnect enough of its voting computers and try again; your saved chats are still here`.
 
 ## Does an open connection keep my chat running on this computer?
 
@@ -307,7 +286,7 @@ Worker setup and assignment execution are not available as a terminal command ye
 
 A worker restart registers a newer process number. Delayed requests and heartbeats from its previous process cannot refresh availability or save work. A drained worker cannot receive new claims; already held work can still save and let go. Restarting does not clear draining. Expired and removed enrollment records remain retained; reaching their capacity limit refuses new enrollment instead of deleting records or saved chats.
 
-A scoped API worker does not join the coordination log. Joining as a learner requires explicit consent in its certificate: the full log reveals identity-wide routing and ownership metadata, while chat content, names and task instructions remain encrypted. Use scoped API access for an untrusted third-party worker. A delegated learner gets no vote and cannot become leader. Existing paired personal computers keep their shared-root trust model.
+A scoped API worker does not join the coordination log. Joining as a learner requires explicit consent in its certificate: the full log reveals identity-wide routing and ownership metadata, while chat content, names and task instructions remain encrypted. Use scoped API access for an untrusted third-party worker. A delegated learner gets no vote and cannot become leader. The production client does not yet activate delegated learners; selected API access is available without joining the log. Existing paired personal computers keep their shared-root trust model.
 
 
 ## How does a worker claim an assignment or run parallel tasks?
@@ -363,3 +342,10 @@ listing, publishing, releasing and continuing a chat they observed. A very old
 client that blindly forces a live chat receives `another device continued this chat first`.
 Quit on the holder first, or update that client before continuing a live chat.
 Watch sockets show presence; older clients still send their normal heartbeats.
+
+
+## Scoped worker requests and committed watch receipts
+
+The relay's selected-worker API accepts an original signed command or a signed request for one chat or assignment. A delegated worker receives only its selected sealed grant. Each read commits current time, waits for a fresh majority response and checks its current scope and process number. A retained claim alone cannot authorize execution after another computer takes the chat. A worker cannot use this API to pair computers, rotate the identity or promote itself.
+
+Native and hosted watch connections carry committed receipts to clients that ask for them. Each receipt names the exact chat and ownership number, durable position and hold-until time. Older clients receive their original version and presence frames and keep ordinary heartbeats. A ping without a receipt cannot suppress those heartbeats. A released chat cannot be revived by a delayed ping. Idle presence pings do not start a recurring directory request loop.
