@@ -14,7 +14,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/env"
 )
 
-// C1 proves a real Windows process hands Git Bash one parse, including multiline
+// N2 proves a real Windows process hands Git Bash one parse, including multiline
 // text and every character that the WSL launcher used to expand prematurely.
 func TestWindowsSingleParse(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
@@ -34,7 +34,7 @@ func TestWindowsSingleParse(t *testing.T) {
 	}
 }
 
-// C4 and D6 prove an explicit bad choice refuses and changing the override
+// N1 proves an explicit bad choice refuses and changing the override
 // invalidates the cached answer, rather than silently falling through to PATH.
 func TestWindowsOverrideCacheAndRefusal(t *testing.T) {
 	bash, err := Bash()
@@ -66,5 +66,25 @@ func TestWindowsOverrideCacheAndRefusal(t *testing.T) {
 	// R4 keeps both route remedies in the Windows-only shell fact.
 	if fact := PromptFact(); !strings.Contains(fact, bash) || !strings.Contains(fact, "/c/…") || !strings.HasSuffix(fact, PathConversionFact) {
 		t.Fatalf("C8 shell fact: %q", fact)
+	}
+}
+
+// N2 keeps cwd, long output and exit status through the real native bash door.
+func TestWindowsCwdLongOutputAndExit(t *testing.T) {
+	bash, err := Bash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "marker"), []byte("cwd is right"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bash, "-c", "cat marker; printf '\\n'; for ((n=0;n<12000;n++)); do printf 'long output %05d\\n' \"$n\"; done; exit 23")
+	cmd.Dir = dir
+	body, err := cmd.CombinedOutput()
+	if cmd.ProcessState == nil || cmd.ProcessState.ExitCode() != 23 || err == nil || !strings.HasPrefix(string(body), "cwd is right\n") || !strings.HasSuffix(string(body), "long output 11999\n") || strings.Count(string(body), "long output ") != 12000 {
+		t.Fatalf("exit/cwd/output: bytes=%d, state=%v, err=%v", len(body), cmd.ProcessState, err)
 	}
 }

@@ -17,6 +17,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/paymentrefusal"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/trace"
+
+	"github.com/Agent-Field/codeaf/internal/providerhttp"
 )
 
 const keyModelSources = "model_sources"
@@ -73,15 +75,32 @@ func persistedSourcesFrom(values map[string]json.RawMessage) []PersistedSource {
 	return rows
 }
 
-// WriteSources atomically replaces the non-default service rows while keeping
-// every unrelated profile setting.
+// WriteSources replaces the non-default service rows with rows, keeping every
+// unrelated profile setting. It is for a caller that owns the whole list; one
+// that derives the new list from the old one uses [UpdateSources].
 func WriteSources(profileDir string, rows []PersistedSource) error {
-	// A row's key is a credential: what it changes is recorded as it is
-	// written ([crewCredentialWrite]).
-	return crewCredentialWrite(profileDir, func() error { return writeSources(profileDir, rows) })
+	return UpdateSources(profileDir, func([]PersistedSource) []PersistedSource { return rows })
 }
 
-func writeSources(profileDir string, rows []PersistedSource) error {
+// UpdateSources changes the service rows from what the file holds at the moment
+// of the write: change is handed the current rows and answers the new ones. The
+// read happens under the profile lock, so a service or a key another writer
+// stored a moment ago is in the rows change sees and cannot be dropped by a
+// list loaded earlier.
+func UpdateSources(profileDir string, change func([]PersistedSource) []PersistedSource) error {
+	// A row's key is a credential: what it changes is recorded as it is
+	// written ([crewCredentialWrite]).
+	return crewCredentialWrite(profileDir, func() error {
+		return editProfile(profileDir, keyModelSources, func(held map[string]json.RawMessage) (profileChange, error) {
+			rows := cleanSources(change(persistedSourcesFrom(held)))
+			return encodeChange(map[string]any{keyModelSources: rows})
+		})
+	})
+}
+
+// cleanSources is rows in the form the file keeps: trimmed, without the fields
+// a row's kind does not use, and without a row too incomplete to name a service.
+func cleanSources(rows []PersistedSource) []PersistedSource {
 	cleaned := make([]PersistedSource, 0, len(rows))
 	for _, row := range rows {
 		row.ID = strings.TrimSpace(row.ID)
@@ -115,7 +134,7 @@ func writeSources(profileDir string, rows []PersistedSource) error {
 		}
 		cleaned = append(cleaned, row)
 	}
-	return writeProfileValue(profileDir, keyModelSources, cleaned)
+	return cleaned
 }
 
 // addressOwned reports whether a vendored row's service is one whose address
@@ -666,7 +685,7 @@ func runServiceProbe(ctx context.Context, address, key string, probe modelsource
 	if key != "" {
 		request.Header.Set("Authorization", "Bearer "+key)
 	}
-	response, err := (&http.Client{Timeout: probe.Timeout}).Do(request)
+	response, err := providerhttp.Do(&http.Client{Timeout: probe.Timeout, CheckRedirect: providerhttp.CheckRedirect}, request)
 	if err != nil {
 		return 0, nil, false
 	}
@@ -782,32 +801,34 @@ func collectVendorWords(value any, words *[]string) {
 }
 
 func persistConnectedSource(profileDir string, row PersistedSource) error {
-	rows := PersistedSources(profileDir)
-	replaced := false
-	for index := range rows {
-		if strings.EqualFold(strings.TrimSpace(rows[index].ID), strings.TrimSpace(row.ID)) {
-			rows[index] = row
-			replaced = true
-			break
+	return UpdateSources(profileDir, func(rows []PersistedSource) []PersistedSource {
+		for index := range rows {
+			if sameServiceID(rows[index].ID, row.ID) {
+				rows[index] = row
+				return rows
+			}
 		}
-	}
-	if !replaced {
-		rows = append(rows, row)
-	}
-	return WriteSources(profileDir, rows)
+		return append(rows, row)
+	})
+}
+
+func sameServiceID(a, b string) bool {
+	return strings.EqualFold(strings.TrimSpace(a), strings.TrimSpace(b))
 }
 
 // DisconnectService removes one service row and its stored credential. Codex's
 // rotating tokens live in their owner-only sibling file and leave with it.
 func DisconnectService(profileDir, id string) error {
-	rows := PersistedSources(profileDir)
-	kept := rows[:0]
-	for _, row := range rows {
-		if !strings.EqualFold(strings.TrimSpace(row.ID), strings.TrimSpace(id)) {
-			kept = append(kept, row)
+	err := UpdateSources(profileDir, func(rows []PersistedSource) []PersistedSource {
+		kept := rows[:0]
+		for _, row := range rows {
+			if !sameServiceID(row.ID, id) {
+				kept = append(kept, row)
+			}
 		}
-	}
-	if err := WriteSources(profileDir, kept); err != nil {
+		return kept
+	})
+	if err != nil {
 		return err
 	}
 	if strings.EqualFold(strings.TrimSpace(id), "codex") {

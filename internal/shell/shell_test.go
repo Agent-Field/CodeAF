@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// R3 distinguishes the two explicit-choice refusals without claiming discovery
+// N1 distinguishes the two explicit-choice refusals without claiming discovery
 // failed, and preserves the person's path exactly in either answer.
 func TestWindowsOverrideRefusalSentences(t *testing.T) {
 	for _, tc := range []struct{ path, format string }{
@@ -45,7 +45,7 @@ func fakeLookup(environment, programs map[string]string, files ...string) Lookup
 	}
 }
 
-// C2-C4 prove every resolution tier without depending on a Windows host.
+// N1 proves every resolution tier without depending on a Windows host.
 func TestWindowsResolutionRules(t *testing.T) {
 	const git = `C:\Program Files\Git`
 	const bin = git + `\bin\bash.exe`
@@ -74,6 +74,10 @@ func TestWindowsResolutionRules(t *testing.T) {
 		{name: "PATH WSL refuses", env: map[string]string{"SystemRoot": `C:\Windows`}, programs: map[string]string{"bash.exe": wsl}, files: []string{wsl}, refusal: NoBash},
 		{name: "PATH alias refuses", programs: map[string]string{"bash.exe": `C:\Users\x\AppData\Local\WindowsApps\bash.exe`}, files: []string{`C:\Users\x\AppData\Local\WindowsApps\bash.exe`}, refusal: NoBash},
 		{name: "missing PATH file", programs: map[string]string{"bash.exe": other}, refusal: NoBash},
+		{name: "native PATH bash after WSL", env: map[string]string{"SystemRoot": `C:\Windows`, "PATH": `C:\Windows\System32;D:\msys64\usr\bin`}, programs: map[string]string{"bash.exe": wsl}, files: []string{wsl, other}, want: other},
+		{name: "quoted native PATH after WSL", env: map[string]string{"SystemRoot": `C:\Windows`, "PATH": `C:\Windows\System32;"C:\Program Files\Git\bin"`}, programs: map[string]string{"bash.exe": wsl}, files: []string{wsl, bin}, want: bin},
+		{name: "PATH WSL without SystemRoot refuses", programs: map[string]string{"bash.exe": wsl}, files: []string{wsl}, refusal: NoBash},
+		{name: "explicit WSL without SystemRoot refuses", env: map[string]string{"CODEAF_BASH": wsl}, files: []string{wsl}, refusal: wsl},
 		{name: "none", refusal: NoBash},
 	}
 	// C3 also proves the complete standard-root ordering, including usr fallback.
@@ -115,7 +119,7 @@ func TestWindowsResolutionRules(t *testing.T) {
 	}
 }
 
-// C2 covers cleaned, case-insensitive system launcher and WindowsApps paths.
+// N1 covers cleaned, case-insensitive system launcher and WindowsApps paths.
 func TestWindowsWSLPredicate(t *testing.T) {
 	for _, name := range []string{
 		`C:\Windows\System32\bash.exe`, `C:\WINDOWS\SysWOW64\BASH.EXE`, `c:/windows/Sysnative/bash.exe/`,
@@ -132,7 +136,7 @@ func TestWindowsWSLPredicate(t *testing.T) {
 	}
 }
 
-// D6 and C6-C7 pin drive, UNC and POSIX forms without spawning a converter.
+// N2 and N3 pin drive, UNC and POSIX forms without spawning a converter.
 func TestWindowsListPath(t *testing.T) {
 	for _, tc := range []struct{ native, want string }{
 		{`C:\a\b`, `/c/a/b`}, {`D:/a/b`, `/d/a/b`}, {`z:\Program Files (x86)\héllo ✓`, `/z/Program Files (x86)/héllo ✓`},
@@ -149,7 +153,7 @@ func TestWindowsListPath(t *testing.T) {
 	}
 }
 
-// C5 pins all Unix preferences, including missing /bin/bash, with fake lookups.
+// N3 pins all Unix preferences, including missing /bin/bash, with fake lookups.
 func TestUnixShellArgv(t *testing.T) {
 	for _, tc := range []struct {
 		absolute, onPath bool
@@ -184,7 +188,7 @@ func TestUnixShellArgv(t *testing.T) {
 	}
 }
 
-// C5 proves verify still resolves bash from PATH, rather than /bin/bash or sh.
+// N3 proves verify still resolves bash from PATH, rather than /bin/bash or sh.
 func TestUnixReadingUsesPathLookup(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Unix lookup contract")
@@ -206,7 +210,7 @@ func TestUnixReadingUsesPathLookup(t *testing.T) {
 	}
 }
 
-// C2-C4 prove an explicit relative file cannot be re-searched on PATH and reach
+// N1 proves an explicit relative file cannot be re-searched on PATH and reach
 // WSL, and that an explicit relative path into a system folder is also refused.
 func TestWindowsExplicitRelativePath(t *testing.T) {
 	const candidate = `C:\work\bash.exe`

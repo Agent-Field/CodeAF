@@ -998,3 +998,39 @@ func TestAConversationWithNoTitleIsCalledTheWordNotItsId(t *testing.T) {
 		}
 	}
 }
+
+func TestLivePlanReplacesItsPublishedRecordAcrossTheWorldReading(t *testing.T) {
+	now := time.Now()
+	published := session.TaskIndexEntry{ID: "7", Title: "Mock counter", SessionID: "current-chat", Status: string(session.TaskRunning), StartedAt: now}
+	unrelated := published
+	unrelated.SessionID = "other-chat"
+	own := session.SessionRow{ID: "current-chat", Title: "Current", Tasks: session.TaskRollup{Rows: []session.TaskIndexEntry{published}}}
+	other := session.SessionRow{ID: "other-chat", Title: "Other", Tasks: session.TaskRollup{Rows: []session.TaskIndexEntry{unrelated}}}
+	world := session.World{Projects: []session.Project{{Sessions: []session.SessionRow{own, other}}}}
+	mine := tasksMine{row: own, rows: []tasksMineRow{{entry: published, planTask: "t-7"}}, plan: []session.PlanTaskRow{{ID: "t-7", Title: published.Title, Status: "claimed", Started: now}}}
+	reading := readTasks(world, mine, session.LastDays(now, 10), tasksSort{}, time.Time{}, now)
+	if len(reading.items) != 2 {
+		t.Fatalf("one live run and unrelated chat produced %d rows, want 2: %+v", len(reading.items), reading.items)
+	}
+	foundPlan, foundOther := false, false
+	for _, item := range reading.items {
+		switch item.entry.SessionID {
+		case own.ID:
+			foundPlan = item.plan != nil && item.plan.ID == "t-7" && item.status().Word == "running"
+			if !foundPlan {
+				t.Fatalf("live run opens a historical card instead of its stoppable plan room: %+v", item)
+			}
+		case other.ID:
+			foundOther = item.plan == nil && item.entry.ID == unrelated.ID
+		}
+	}
+	if !foundPlan || !foundOther {
+		t.Fatalf("store identity crossed conversation boundary: plan=%v other=%v", foundPlan, foundOther)
+	}
+	// An absent/still-loading store cannot erase the only recorded work.
+	mine.plan = nil
+	reading = readTasks(world, mine, session.LastDays(now, 10), tasksSort{}, time.Time{}, now)
+	if len(reading.items) != 2 {
+		t.Fatalf("missing plan erased its index record: %+v", reading.items)
+	}
+}

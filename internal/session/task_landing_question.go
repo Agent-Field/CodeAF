@@ -234,6 +234,11 @@ func (a *Agent) retireLandingQuestion(notice TaskNotice, standing QuestionKind) 
 // to the reading law; a conflict, a shift, a ground that moved, or a check that
 // did not pass misses the last, and each stays the person's (task-states law).
 func (a *Agent) landingTakesItsDefault(notice TaskNotice) bool {
+	// A restarted completed plan has no final acceptance receipt to recover.
+	// Only a fresh explicit answer may land that saved work.
+	if notice.RecoveredCompletion {
+		return false
+	}
 	if !a.config.Unattended || !a.config.AskConsent {
 		return false
 	}

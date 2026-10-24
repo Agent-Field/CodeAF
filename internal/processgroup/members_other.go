@@ -9,3 +9,6 @@ package processgroup
 func groupHasLiveMember(pgid int) bool {
 	return Alive(pgid)
 }
+
+// Members is unknown off Linux; callers fall back to what they started.
+func Members(pgid int) []int { return nil }

@@ -272,7 +272,8 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by 
 	// done here rather than in either loop so the title dedupe further down sees
 	// the same set of rows the page does — a run's row left in the name set
 	// would hide its own plan row.
-	mine.rows = planStoreDraws(mine.rows, mine.plan)
+	var replaced map[tasksKey]bool
+	mine.rows, replaced = planStoreDraws(mine.rows, mine.plan)
 	// order keeps the pass stable: a map alone would re-order the page on every
 	// frame it was rebuilt, and the sections below are drawn in the order the
 	// rows arrived within each one.
@@ -288,6 +289,11 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by 
 	for _, project := range world.Projects {
 		for _, row := range project.Sessions {
 			for _, entry := range row.Tasks.Rows {
+				// The live store replaces both the in-memory published row and
+				// that same identity from the project's persisted world scan.
+				if replaced[tasksKeyOf(entry)] {
+					continue
+				}
 				// The world scan has already judged this row against the
 				// conversation that wrote it (world.go's first law), so its
 				// answer travels with it.

@@ -99,3 +99,18 @@ func (p Pin) ArtifactFor(platform string) (Artifact, error) {
 func (p Pin) DownloadURL(artifact Artifact) string {
 	return fmt.Sprintf("https://github.com/%s/releases/download/%s/%s", p.Repository, p.Tag, artifact.Asset)
 }
+
+// Windows release assets are furrow-windows-amd64.exe and
+// furrow-windows-arm64.exe, matching the engine release workflow (K1). A
+// platform the pin does not name stays absent; developer builds can stage a
+// candidate through FURROW_ARTIFACT.
+
+// AssetName is the release workflow's spelling, also before a pin is published
+// so offline build instructions name the native Windows executable (K1).
+func AssetName(platform string) string {
+	name := "furrow-" + platform
+	if platform == Platform("windows", "amd64") || platform == Platform("windows", "arm64") {
+		name += ".exe"
+	}
+	return name
+}

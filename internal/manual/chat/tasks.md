@@ -2671,6 +2671,8 @@ reason>` when a check named what is missing or the wire, a limit or a stale brie
 and `stopped` when you ended it yourself. All of them wear `✕` except the stop, which wears
 `■`; **only the fault is coloured bad**, because nothing was found wrong with the rest.
 
+## An old task says now — the age of work from a previous session
+
 **How long ago a settled row landed is what that row's own record says.** Work reopened
 from a previous session is dated when it LANDED, not when you sat down and reopened it. It
 therefore stays in the time window it belongs to instead of being filed in the future and

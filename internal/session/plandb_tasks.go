@@ -22,10 +22,9 @@ import (
 	"strings"
 	"time"
 
-	_ "modernc.org/sqlite"
-
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/plandb"
+	_ "modernc.org/sqlite"
 )
 
 // PlanTaskRow is one row of the chat's plan. It carries what a surface draws
@@ -160,7 +159,7 @@ func (row PlanTaskRow) StateWord() string {
 		return taskWordDone
 	case string(plandb.StatusFailed), string(plandb.StatusCancelled):
 		return taskWordIncomplete
-	case "paused":
+	case "paused", string(TaskUnverified):
 		return taskWordYourCall
 	}
 	return ""
@@ -186,7 +185,10 @@ type PlanTaskNote struct {
 // the description that is its work order, every note left on it, and the steps
 // its worker recorded.
 type PlanTaskPage struct {
-	Row         PlanTaskRow
+	Row PlanTaskRow
+	// Models are the run's accepted seats, including on a child page and before
+	// any spend was saved. Row.Model remains the ledger's historical reading.
+	Models      []PlanTaskModel `json:",omitempty"`
 	Description string
 	Result      string
 	Checks      []string
@@ -213,6 +215,12 @@ type PlanTaskPage struct {
 	// A page that carries one is drawn as that conversation rather than as a
 	// list of steps.
 	Program *PlanProgram
+}
+
+// PlanTaskModel names an assigned seat, not proof that it answered a call.
+type PlanTaskModel struct {
+	Seat  string
+	Model string
 }
 
 // PlanStep is one line of a task's trajectory — one command the worker ran and
@@ -464,6 +472,7 @@ func (a *Agent) planTaskPageFor(id string, withProgram bool) (PlanTaskPage, plan
 	}
 	return PlanTaskPage{
 		Row:         pageRow,
+		Models:      a.planTaskModels(store.RootID()),
 		Description: task.Description,
 		Result:      task.Result,
 		Checks:      append([]string(nil), task.Checks...),
@@ -509,10 +518,21 @@ func (a *Agent) markPlanInterrupted(row *PlanTaskRow) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	for _, notice := range g.runRowsLocked() {
-		if notice.PlanTask == row.ID && notice.State == TaskInterrupted {
-			row.Interrupted = true
-			return
+		if notice.PlanTask != row.ID {
+			continue
 		}
+		if notice.State == TaskInterrupted {
+			row.Interrupted = true
+		}
+		if notice.RecoveredCompletion {
+			row.Status = string(notice.State)
+			row.Ended = notice.EndedAt
+			if notice.CostUSD > row.USD {
+				row.USD = notice.CostUSD
+			}
+			row.Note = notice.Report
+		}
+		return
 	}
 }
 

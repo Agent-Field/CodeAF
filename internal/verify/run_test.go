@@ -2,8 +2,11 @@ package verify
 
 import (
 	"context"
+	"github.com/Agent-Field/codeaf/internal/shell"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +16,17 @@ import (
 // which is what Discover reads as this project's own test entrypoint.
 func stageProject(t *testing.T, recipe string) string {
 	t.Helper()
+	// I0 preserves the make-based assertion where make exists; Git for Windows
+	// supplies Bash but does not ship make, which this fixture actually invokes.
+	if runtime.GOOS == "windows" {
+		bash, err := shell.Bash()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := exec.Command(bash, "-c", "command -v make").Run(); err != nil {
+			t.Skip("make is not installed in the native Git Bash environment")
+		}
+	}
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "Makefile"),
 		[]byte("test:\n\t"+recipe+"\n"), 0o644); err != nil {

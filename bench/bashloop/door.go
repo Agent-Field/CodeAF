@@ -38,6 +38,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/sqliteuri"
 	_ "modernc.org/sqlite" // the store driver: graph.db is read read-only
 )
 
@@ -342,7 +343,12 @@ func doModelFlags(iv invocation) []string {
 // and no error — a run that ended before the store carried that table is an
 // honest no-reading, the same law collectReadings keeps.
 func applyStoreReadings(reading *readings, dbPath string) error {
-	db, err := sql.Open("sqlite", "file:"+dbPath+"?mode=ro")
+	uri, err := sqliteuri.FromPath(dbPath)
+	if err != nil {
+		return err
+	}
+	uri.RawQuery = "mode=ro"
+	db, err := sql.Open("sqlite", uri.String())
 	if err != nil {
 		return err
 	}
@@ -466,7 +472,12 @@ func storeCommand(tool, body string) string {
 // page teaches it). Zero bash calls with zero rejections and zero plan-CLI
 // words is the shape an unarmed arm leaves.
 func storeBeltFingerprints(dbPath string) (bashCalls, rejections, planWords int) {
-	db, err := sql.Open("sqlite", "file:"+dbPath+"?mode=ro")
+	uri, err := sqliteuri.FromPath(dbPath)
+	if err != nil {
+		return 0, 0, 0
+	}
+	uri.RawQuery = "mode=ro"
+	db, err := sql.Open("sqlite", uri.String())
 	if err != nil {
 		return 0, 0, 0
 	}

@@ -1,6 +1,8 @@
 package tui3
 
 import (
+	"github.com/Agent-Field/codeaf/internal/cell"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -135,6 +137,11 @@ func (c command) aliasNote() string {
 // [menu.rows] draws it: measuring one spelling and drawing the other is a list
 // that pushes the status line off the frame.
 func (c command) note(chords chordSpelling) string {
+	if c.name == "pair" && c.args == "" {
+		if reason := cell.DisabledReason(); reason != "" {
+			c.desc += " · " + reason
+		}
+	}
 	if tail := c.aliasNote(); tail != "" {
 		return chords.say(c.desc + " · " + tail)
 	}
@@ -333,6 +340,9 @@ func (m *menu) rank(needle string) {
 	}
 	m.hits = m.hits[:0]
 	for i, c := range commands {
+		if !commandOnPlatform(c) {
+			continue
+		}
 		at, ok := c.matchAt(needle)
 		if !ok {
 			continue
@@ -577,6 +587,9 @@ const helpKeyColumn = 15
 func helpText(file string, chords chordSpelling) string {
 	width := 0
 	for _, c := range commands {
+		if !commandOnPlatform(c) {
+			continue
+		}
 		if n := len(c.typed()); n > width {
 			width = n
 		}
@@ -587,6 +600,9 @@ func helpText(file string, chords chordSpelling) string {
 	// already in (styles.go's [product]).
 	lines = append(lines, product, "")
 	for _, c := range commands {
+		if !commandOnPlatform(c) {
+			continue
+		}
 		// The aliases are printed here as they are on the row, and nothing is cut:
 		// /help is prose in the transcript, which wraps, rather than a list drawn
 		// into a fixed block (see [command.menuNote]).
@@ -691,6 +707,7 @@ func helpText(file string, chords chordSpelling) string {
 		// every chat; the second needs a team with a manager, and the rows say so
 		// rather than leaving a person to find out by pressing them elsewhere.
 		helpKeyRow(chords.say(trafficKey), "show or hide the right column · Tasks or Traffic"),
+		helpKeyRow(modelCycleKey, "next quick switch chat model · choose the rotation in Settings → Models"),
 		helpKeyRow(chords.say(teamManagerKey), "in a team with a manager: go to the manager"),
 		helpKeyRow(reopenTabChord, "reopen the last closed tab · when the terminal sends this distinct chord"),
 		helpKeyRow(chords.say(railHoldChord), "the task roster · ↑↓ move · ←→ tasks/traffic · enter opens · esc back"),
@@ -914,3 +931,9 @@ const unknownCommandLead = "there is no command called"
 // refusal for a DROPPED path is written from the same two halves (dropkeys.go)
 // and a door spelled twice is a door that gets moved once.
 const unknownCommandDoorWord = "/ lists them"
+
+// commandOnPlatform keeps unsupported move-only rows out of help and completion.
+// A fully typed command still reaches its one-sentence refusal.
+func commandOnPlatform(c command) bool {
+	return runtime.GOOS != "windows" || (c.name != "pair" && c.name != "devices" && c.name != "atlas")
+}

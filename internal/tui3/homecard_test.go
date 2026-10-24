@@ -287,7 +287,7 @@ func TestHomeAnimatesOnlyWhileWorkRuns(t *testing.T) {
 	now := time.Now()
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "quiet", "/tmp/alpha", now)
 	a := lab.app(mine)
-	a.openHome()
+	spend(t, a, a.openHome())
 	if a.homeAnimating() {
 		t.Fatal("a home with nothing running claims to be animating")
 	}
@@ -300,7 +300,7 @@ func TestHomeAnimatesOnlyWhileWorkRuns(t *testing.T) {
 	})
 	lab.presence("-tmp-alpha", "aaaa000000000002", session.PresenceWorking, "", now,
 		session.PresenceTask{ID: "7", Title: "Port the picker", State: "running", StartedAt: now})
-	a.openHome()
+	spend(t, a, a.openHome())
 	if !a.homeAnimating() {
 		t.Fatal("a home with a running row does not animate")
 	}

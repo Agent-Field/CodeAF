@@ -12,8 +12,6 @@ package main
 
 import (
 	"bytes"
-	"context"
-	"flag"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -26,46 +24,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/provider/modelapi"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
-
-// fakeFolder is the name of the fake that works in its folder.
-const fakeFolder = "fake-folder"
-
-// fakeFolderProgram is a program that edits files the way senior-dev does:
-// it says whether it was told it works without git, writes one file of work
-// and one of its own notes into the folder it was handed, and passes.
-func fakeFolderProgram() delegate.Delegate {
-	return delegate.Delegate{
-		Name: fakeFolder, Summary: "a program the tests carry, which writes a file where it is told to work", Default: "run", Page: "delegates",
-		Guide:       "For the tests' folder work, with a brief that names the file.",
-		PlainFolder: []string{"--in-place"},
-		Notes:       ".fake-folder",
-		Commands: []delegate.Command{{
-			Name: "run", Usage: "[flags] -- <brief>", Summary: "does the whole task",
-			Bind: func(fs *flag.FlagSet) delegate.Body {
-				inPlace := fs.Bool("in-place", false, "work without git")
-				return func(ctx context.Context, host delegate.Host, args []string) error {
-					host.Hello([]string{"implement"})
-					mode := "git"
-					if *inPlace {
-						mode = "in place"
-					}
-					host.Step(delegate.StepRecord{Command: "folder", Observation: mode})
-					if err := os.WriteFile(filepath.Join(host.Workspace(), "made.txt"), []byte("made\n"), 0o644); err != nil {
-						return err
-					}
-					if err := os.MkdirAll(filepath.Join(host.Workspace(), ".fake-folder"), 0o755); err != nil {
-						return err
-					}
-					if err := os.WriteFile(filepath.Join(host.Workspace(), ".fake-folder", "spec.md"), []byte(strings.Join(args, " ")+"\n"), 0o644); err != nil {
-						return err
-					}
-					host.Terminal(delegate.Ending{Status: delegate.StatusPass, Message: "made it"})
-					return nil
-				}
-			},
-		}},
-	}
-}
 
 // hostWithFolderChild is [hostWithRealChild] for the fake that works in its
 // folder, and it answers what the run printed on stdout and on stderr.

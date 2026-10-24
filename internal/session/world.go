@@ -59,6 +59,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
@@ -155,6 +156,14 @@ type Project struct {
 	// Sessions are the conversations held here, in triage order (see
 	// [sortSessions]).
 	Sessions []SessionRow
+	// Moved marks a project every conversation of which is a copy taken here
+	// from another machine: none of them works in this machine's own folder,
+	// and the project's [Project.Name] is the origin folder's name marked with
+	// [MovedCopyWord] instead of a local path. A surface that draws a PATH for
+	// a project ([projectWord] in internal/tui3's projects panel) draws the
+	// marked name for a moved one, because the recorded path is a folder on
+	// the machine the chat came from and would be claiming one here.
+	Moved bool
 }
 
 // At is when somebody last spoke in this project, which is its first session's
@@ -220,6 +229,14 @@ type SessionRow struct {
 	Owned     bool
 	// Model is what it was last on.
 	Model string
+	// Origin is the project folder this chat was left in on the machine it
+	// came from, when that folder is not on this one (place.go's [Meta.Origin]).
+	// It is carried beside [SessionRow.Workspace] because the two together are
+	// the question every surface that names a place has to ask of a taken chat:
+	// a row whose workspace is missing here and whose origin is set works in its
+	// own copy, and is named by [MovedCopyWord] rather than by a folder this
+	// machine does not have.
+	Origin string
 	// At is when the PERSON last spoke, which is the ordering law everywhere in
 	// this codebase (place.go's [Meta.LastUserAt]) and deliberately not the
 	// file's modification time.
@@ -495,13 +512,13 @@ func ReadRows(transcripts []string) map[string]SessionRow {
 	rows := make(map[string]SessionRow, len(transcripts))
 	for _, name := range transcripts {
 		transcript := filepath.Clean(strings.TrimSpace(name))
-		if transcript == "." || filepath.Base(transcript) != placeTranscript {
+		dir, isFolder := FolderOf(transcript)
+		if transcript == "." || !isFolder {
 			continue
 		}
 		if _, done := rows[transcript]; done {
 			continue
 		}
-		dir := filepath.Dir(transcript)
 		if row, ok := readSessionRow(dir, filepath.Base(dir), now); ok {
 			rows[transcript] = row
 		}
@@ -529,10 +546,10 @@ func ReadRows(transcripts []string) map[string]SessionRow {
 // A conversation the walk already found is left exactly as the walk read it.
 func (w *World) Adopt(root string, seed SessionRow, now time.Time) bool {
 	transcript := filepath.Clean(strings.TrimSpace(seed.Transcript))
-	if transcript == "." || filepath.Base(transcript) != placeTranscript {
+	dir, isFolder := FolderOf(transcript)
+	if transcript == "." || !isFolder {
 		return false
 	}
-	dir := filepath.Dir(transcript)
 	bucketDir := filepath.Dir(dir)
 	if filepath.Dir(bucketDir) != filepath.Clean(strings.TrimSpace(root)) {
 		return false
@@ -659,7 +676,7 @@ func readProject(dir, bucket string, now time.Time) (Project, bool) {
 
 	project := Project{Bucket: bucket, Dir: dir}
 	for _, entry := range entries {
-		if !entry.IsDir() {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
 			continue
 		}
 		row, ok := readSessionRow(filepath.Join(dir, entry.Name()), entry.Name(), now)
@@ -676,6 +693,26 @@ func readProject(dir, bucket string, now time.Time) (Project, bool) {
 		return Project{}, false
 	}
 	project.Name = projectName(project.Path, bucket)
+	// A COPY TAKEN HERE FROM ANOTHER MACHINE is named for where it came from,
+	// not for the folder it recorded: that folder is on the machine the chat
+	// left (take.go's recordOrigin writes the note this reads), and a heading
+	// or a panel row that repeated its name unmarked would be pointing at a
+	// place on this machine that is not there. The whole bucket must be copies
+	// for the project to be called one — a folder that holds a chat that never
+	// moved beside one that did is the machine's own folder, and says so.
+	moved := len(project.Sessions) > 0
+	for _, row := range project.Sessions {
+		if !movedCopy(row) {
+			moved = false
+			break
+		}
+	}
+	if moved {
+		project.Moved = true
+		if name := movedName(project.Sessions[0]); name != "" {
+			project.Name = name
+		}
+	}
 	for i := range project.Sessions {
 		project.Sessions[i].Project = project.Name
 		project.Sessions[i].ProjectDir = project.Path
@@ -696,6 +733,9 @@ func readProject(dir, bucket string, now time.Time) (Project, bool) {
 // cannot say what it is, stays, because hiding somebody's conversation on the
 // strength of a lookup file is the more expensive mistake.
 func readSessionRow(dir, id string, now time.Time) (SessionRow, bool) {
+	if copy := cell.Copied(dir); copy != dir {
+		dir, id = copy, filepath.Base(copy)
+	}
 	pending := false
 	if _, err := os.Stat(filepath.Join(dir, conversationDeletedFile)); err == nil {
 		if _, err := os.Stat(filepath.Join(dir, conversationTaskCleanupFile)); err != nil {
@@ -749,6 +789,7 @@ func readSessionRow(dir, id string, now time.Time) (SessionRow, bool) {
 		DeletionPending: pending,
 		Title:           strings.TrimSpace(meta.Title),
 		Workspace:       strings.TrimSpace(meta.Workspace),
+		Origin:          strings.TrimSpace(meta.Origin),
 		Owned:           meta.Owned,
 		Model:           strings.TrimSpace(meta.Model),
 		ModelIdentity:   meta.ModelIdentity,
@@ -808,6 +849,9 @@ func rollUp(rows []TaskIndexEntry, held SessionRow) TaskRollup {
 // names the session and not the project — so the launch directory, which is
 // where the person was actually standing, is the one that answers for it.
 func projectPath(row SessionRow) string {
+	if row.Owned && row.Origin != "" {
+		return ""
+	}
 	if !row.Owned && row.Workspace != "" {
 		return row.Workspace
 	}
@@ -876,4 +920,39 @@ func sortSessions(rows []SessionRow) {
 		}
 		return rows[i].At.After(rows[j].At)
 	})
+}
+
+// movedCopy reports whether one conversation is a copy taken here from another
+// machine: this machine wrote a note naming the folder the chat was left in
+// (place.go's [Meta.Origin], written only when that folder is not here), the
+// recorded workspace is still not here, and the chat therefore works in its own
+// copy. A chat that came home — its folder is on this machine again — is not a
+// copy no matter what a note from an earlier hop says, and neither is a chat
+// whose project was merely deleted (no note was ever written, because the
+// chat never moved).
+func movedCopy(row SessionRow) bool {
+	return row.Origin != "" && (row.Owned || !dirThere(row.Workspace))
+}
+
+// dirThere is whether a recorded folder is on this machine's disk.
+func dirThere(path string) bool {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return false
+	}
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}
+
+// movedName is what a project of copies is called: the folder they were left
+// in on the machine they came from, marked as a copy ([MovedCopyWord]).
+func movedName(row SessionRow) string {
+	if row.Origin == "" {
+		return ""
+	}
+	name := filepath.Base(strings.TrimSpace(row.Origin))
+	if name == "" || name == "." || name == string(filepath.Separator) {
+		return ""
+	}
+	return name + MovedCopyWord
 }

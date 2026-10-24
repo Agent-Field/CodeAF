@@ -1389,7 +1389,7 @@ func TestTheFrameDrawsThePageThatWasOpenedLast(t *testing.T) {
 		t.Fatalf("the settings panel is not what the frame draws:\n%s", frame)
 	}
 	// Home over the panel: the frame must change hands, not merely add a flag.
-	a.openHome()
+	spend(t, a, a.openHome())
 	home, _, _ := a.frame()
 	if strings.Contains(plain(home), tabProviders) {
 		t.Fatalf("the settings panel is still being drawn under home:\n%s", home)

@@ -2582,6 +2582,9 @@ func (a *Agent) ResolveUnverified(id uint64, resolution TaskResolution, why stri
 func (a *Agent) resolveUnverifiedBy(id uint64, resolution TaskResolution, why string, by TaskAskOwner) error {
 	node := a.taskNode(id)
 	if node == nil {
+		if _, found, err := a.resolveCompletedRun(context.Background(), id, resolution, why, by); found {
+			return err
+		}
 		return fmt.Errorf("no task %d in this session", id)
 	}
 	// The state is read here for the ERROR, and claimed again inside each of the
@@ -2912,7 +2915,7 @@ func (a *Agent) reauditTask(node *TaskNode) error {
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(a.rootContext())
 	// NO JOB ROW, NO RE-AUDIT. The registry is where the cancel is registered, so
 	// a goroutine started without one would run on a bare context: no `jobs kill`,
 	// no death at [Agent.Close], and a landing that finishes a node into a session

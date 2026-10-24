@@ -658,13 +658,19 @@ In one of three places, decided by whose folder the workspace is:
 
 - If the session **owns** its workspace (codeaf made it), files land straight in
   it, like anything else the work produced.
-- If the workspace is **your repository**, they land in the session's own
-  `artifacts/` folder instead, so nothing of codeaf's is dropped in your project.
+- If the workspace is **your repository**, they land in the conversation's own
+  artifacts folder instead, so nothing of codeaf's is dropped in your project.
+  That folder is part of the conversation itself, so the files travel with it: take
+  the conversation up on another machine and the pictures, audio and video it made
+  are there too, listed in `/files` on that machine. A conversation made before this
+  is brought in the first time you open it.
 - With no session folder at all, they land under
   `<workspace>/.codeaf/images`, `/audio`, `/music` or `/video`.
 
 Either way every generated file gets a row in the deliverables index, so
-`/files` finds it again later by name and date, from any directory. Give the
+`/files` finds it again later by name and date, from any directory. A conversation
+keeps its own list of the files it made, and each machine builds its index from
+those lists, so a conversation you take to another machine shows its files there. Give the
 tool an explicit `path` and that decision is yours instead.
 
 **A saved program lands its files in the same three places**, and they get the
@@ -724,3 +730,17 @@ inside it.
 The permission rules apply as they do to any other tool, so under the default
 approval mode you are asked before a generation runs. See the permissions page
 for how to change that.
+
+## A video polling host refuses the job, or a media request redirects elsewhere
+
+The provider key stays on the configured origin: scheme, hostname and port must
+match. A video job can name a separate polling or download host; codeaf asks it
+**without the provider key**. It does not retry that host with the key if refused.
+Same-origin polling and downloads keep their authentication.
+
+A polling failure names the host: `video polling at <host> failed: <reason>`.
+Check the provider's job status or configured service address before trying again.
+A cross-origin redirect is stopped before sending any request to its target:
+`provider redirect to <host> refused; check the configured service address`.
+The address in this notice excludes user names, passwords, paths and query values.
+Same-origin redirects remain supported, with a limit of ten requests in a chain.

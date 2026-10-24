@@ -136,14 +136,14 @@ func TestEveryWayOfHavingNoReadingCarriesItsReason(t *testing.T) {
 		t.Fatal(err)
 	}
 	hung := photograph(context.Background(), slow, Plan{},
-		[]Strategy{{Command: script, Read: FormatPlain}}, 300*time.Millisecond)
+		[]Strategy{{Command: fixtureShellPath(script), Read: FormatPlain}}, 300*time.Millisecond)
 	if hung.Taken {
 		t.Fatal("a reading that never finished was taken as one that did")
 	}
 	if !strings.Contains(hung.Unread, "killed at its ceiling") {
 		t.Errorf("a hung reading does not say it was killed: %q", hung.Unread)
 	}
-	if !strings.Contains(hung.Unread, script) {
+	if !strings.Contains(hung.Unread, fixtureShellPath(script)) {
 		t.Errorf("a hung reading does not name the command that hung: %q", hung.Unread)
 	}
 }
@@ -164,5 +164,5 @@ func stageRunner(t *testing.T, root string) string {
 	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	return path
+	return fixtureShellPath(path)
 }

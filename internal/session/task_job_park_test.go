@@ -458,6 +458,7 @@ func TestATaskParksOnItsPromotedForegroundCommandUntilItExits(t *testing.T) {
 // CAN HAVE. A `sleep 30` stood here once and was the same test with a ceiling on
 // it: nothing about this is supposed to depend on the stop arriving within half
 // a minute.
+// N2 and N3 preserve command-stop behaviour through the platform process probe.
 func TestAStoppedCommandWakesTheWaitWithItsOwnEnding(t *testing.T) {
 	record := &askLog{}
 	long := holdACommand(t, "the long one", "never")

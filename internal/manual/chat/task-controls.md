@@ -36,6 +36,19 @@ name, `…` replaces outer connectors; breadcrumbs still open the actual ancesto
 Long sections show their position; resizing clamps each section to its available
 rows. Short or narrow terminals retain the compact column and existing controls.
 
+## Why task models are missing, and which task models can be changed
+
+On a run-backed task, Task setup shows **Assigned crew**: the saved worker,
+planner and checker, including on child tasks and after an interruption before
+any priced call was saved. `Used model` is a separate historical reading from
+the spend ledger, not necessarily the worker's current assignment. Missing old
+records say `Model · not recorded`; the conversation's model is never guessed.
+Run models cannot be changed here. `/crew` sets the next run's crew; it does
+not move an existing run. A program such as senior-dev lists the models it
+declared and its thinking level here; those are fixed for that run. Choose
+models when starting it again. Ordinary tasks retain their task model picker,
+even when their earlier model was not recorded.
+
 ## Stop this task — /stop and the Stop task button
 
 Click `Stop task…` under Task setup, click `Stop` in the compact task header, or type
@@ -56,7 +69,8 @@ stop confirmations. The header and controls stop the work on the open page.
 conversation and the model calls `tasks` with that id and `stop`. That is the same door
 `/stop`, `x` and the `Stop task…` row take, so the ending is identical whichever hand pulls
 it: the worker is cut off where it stands, its branch is kept with its work committed on it,
-the row reads `stopped`, and what it spent freezes where it was.
+the row reads `stopped`, and no new requests are started for it. Usage from a request
+already sent can still arrive in its final receipt.
 
 **A hosted conversation waits for the stop to come back before it claims success.** Once the
 normal session host has ended the run and returned its receipt, the chat can answer `Stopped.`.
@@ -194,3 +208,21 @@ conversation and task. Rendering reads thinking settings from task updates.
 An older connected engine shows `Engine update needed` instead of editing controls: update that engine and
 reconnect. An older local host holding work keeps running until it goes quiet;
 rebuilding the terminal binary alone does not replace a busy host.
+
+## The task finished just before a restart — its plan says done, but its changes have not landed
+
+A completed plan whose final checks and landing were not recorded returns as `your call`.
+Its saved working copy, branch, crew, and recorded spend are preserved. Restarting does
+not run the completed work again or merge its changes automatically.
+
+Inspect the saved files and checks. Choose `accept` or `not right` on its question, or ask
+the conversation to use `tasks` with its number and `resolve: "accept"` or
+`resolve: "refute"`. Acceptance uses the ordinary landing and names the actual work commit.
+A conflict keeps the work `your call`: repair the saved copy and accept again. Refuting
+keeps its branch and records that the work was not accepted.
+
+A missing final check receipt is not a passing check. `resolve: "reaudit"` explains that
+this recovered task has no final check receipt and asks you to inspect and accept or
+refute it. A missing copy or changed branch is refused with its location; nothing is
+recreated in its place. If saving a receipt fails after a merge, the error reports the
+actual commit and which record could not be saved. Inspect that outcome before retrying.

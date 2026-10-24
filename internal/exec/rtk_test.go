@@ -30,10 +30,7 @@ func compressorBench(t *testing.T) (*Toolbox, string, func() []string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	binary := filepath.Join(t.TempDir(), "rtk")
-	if err := os.WriteFile(binary, source, 0o700); err != nil {
-		t.Fatal(err)
-	}
+	binary := fixtureExecutable(t, filepath.Join(t.TempDir(), "rtk"), source, 0o700)
 	logPath := filepath.Join(t.TempDir(), "asked.log")
 	t.Setenv("CODEAF_RTK_STUB_LOG", logPath)
 	t.Setenv(rtk.EnvBinary, binary)

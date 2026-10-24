@@ -103,6 +103,49 @@ var removeProfileKey = profileKeyRemoval{}
 // spell a removal any other way.
 type profileKeyRemoval struct{}
 
+// profileChange is what one write does to the file: the rows it sets, already
+// encoded, and the rows it takes out.
+type profileChange struct {
+	set     map[string]json.RawMessage
+	removed []string
+}
+
+// encodeChange turns the caller's updates into a profileChange. A value that
+// cannot be encoded is refused here, before any lock is taken, because
+// user-defined marshalers do not belong inside the profile critical section.
+func encodeChange(updates map[string]any) (profileChange, error) {
+	change := profileChange{set: make(map[string]json.RawMessage, len(updates))}
+	for name, value := range updates {
+		if _, remove := value.(profileKeyRemoval); remove {
+			change.removed = append(change.removed, name)
+			continue
+		}
+		encoded, err := json.Marshal(value)
+		if err != nil {
+			return profileChange{}, fmt.Errorf("write config %s: %w", name, err)
+		}
+		change.set[name] = encoded
+	}
+	return change, nil
+}
+
+// empty reports a change that sets and removes nothing, which is not written.
+func (c profileChange) empty() bool { return len(c.set) == 0 && len(c.removed) == 0 }
+
+// applyTo is held with the change made. THE WRITER OWNS ITS OWN MAP:
+// [readProfileConfig] hands back the map its memo is holding, and adding a row
+// to that map in place would rewrite what every reader in this package is about
+// to be told the file says, including on the path where the write then fails.
+func (c profileChange) applyTo(held map[string]json.RawMessage) map[string]json.RawMessage {
+	values := make(map[string]json.RawMessage, len(held)+len(c.set))
+	maps.Copy(values, held)
+	maps.Copy(values, c.set)
+	for _, name := range c.removed {
+		delete(values, name)
+	}
+	return values
+}
+
 func writeProfileValues(profileDir string, updates map[string]any) error {
 	return writeProfileValuesExpecting(profileDir, nil, updates)
 }
@@ -125,29 +168,37 @@ func writeProfileValuesExpecting(profileDir string, expect map[string]json.RawMe
 	if len(updates) == 0 {
 		return nil
 	}
-	// The key in the error messages is a DETERMINISTIC one — a map has no order,
-	// and a failure that named a different row on every attempt would be a
-	// failure nobody could search for.
-	key := errorKey(updates)
-	encodedUpdates := make(map[string]json.RawMessage, len(updates))
-	var removed []string
-	for name, value := range updates {
-		if _, remove := value.(profileKeyRemoval); remove {
-			removed = append(removed, name)
-			continue
-		}
-		encodedValue, err := json.Marshal(value)
-		if err != nil {
-			return fmt.Errorf("write config %s: %w", name, err)
-		}
-		encodedUpdates[name] = encodedValue
+	change, err := encodeChange(updates)
+	if err != nil {
+		return err
 	}
+	// The key in the error messages is a DETERMINISTIC one, since a map has no
+	// order and a failure that named a different row on every attempt would be a
+	// failure nobody could search for.
+	return editProfile(profileDir, errorKey(updates), func(held map[string]json.RawMessage) (profileChange, error) {
+		for name, want := range expect {
+			got, present := held[name]
+			if present != (want != nil) || (present && !bytes.Equal(bytes.TrimSpace(got), bytes.TrimSpace(want))) {
+				return profileChange{}, errProfileMoved
+			}
+		}
+		return change, nil
+	})
+}
 
+// editProfile is THE ONE WRITER of config.json and the seam every write passes:
+// under the process mutex and the cross-process file lock it reads the file as
+// it is NOW, asks decide what to change given that reading, and renames the
+// result into place. A caller that must compute its change from what the file
+// holds (a service row's key, the list of connected services, a rule added to a
+// list) does that inside decide, so it can never write back a copy it loaded
+// before another writer, or another machine's restore, put something new in the
+// file. Whatever decide does not name is carried over untouched.
+func editProfile(profileDir, key string, decide func(held map[string]json.RawMessage) (profileChange, error)) error {
 	// A settings write is one read-copy-rename transaction. Two surface actions
 	// may reach it together; serializing the whole transaction keeps the second
 	// read behind the first rename instead of letting either rename discard the
-	// other action. Marshal before the lock because user-defined marshalers do
-	// not belong inside the profile critical section.
+	// other action.
 	profileWriteMu.Lock()
 	defer profileWriteMu.Unlock()
 
@@ -165,58 +216,48 @@ func writeProfileValuesExpecting(profileDir string, expect map[string]json.RawMe
 	if err != nil {
 		return fmt.Errorf("write config: preserve existing file: %w", err)
 	}
-	for name, want := range expect {
-		got, present := held[name]
-		if present != (want != nil) || (present && !bytes.Equal(bytes.TrimSpace(got), bytes.TrimSpace(want))) {
-			return errProfileMoved
-		}
+	change, err := decide(held)
+	if err != nil {
+		return err
 	}
-	// THE WRITER OWNS ITS OWN MAP. [readProfileConfig] hands back the map its
-	// memo is holding, and adding a row to that map in place would rewrite what
-	// every reader in this package is about to be told the file says — including
-	// on the path where the write itself then fails.
-	values := make(map[string]json.RawMessage, len(held)+len(updates))
-	maps.Copy(values, held)
-	for name, encodedValue := range encodedUpdates {
-		values[name] = encodedValue
+	if change.empty() {
+		return nil
 	}
-	for _, name := range removed {
-		delete(values, name)
-	}
-	encoded, err := json.MarshalIndent(values, "", "  ")
+	stampPreferences(profileDir, held, &change)
+	encoded, err := json.MarshalIndent(change.applyTo(held), "", "  ")
 	if err != nil {
 		return fmt.Errorf("write config %s: %w", key, err)
 	}
-	temporary, err := os.CreateTemp(filepath.Dir(path), ".config-*.json")
-	if err != nil {
+	if err := replaceProfileFile(path, append(encoded, '\n')); err != nil {
 		return fmt.Errorf("write config %s: %w", key, err)
 	}
-	temporaryPath := temporary.Name()
-	removeTemporary := true
-	defer func() {
-		if removeTemporary {
-			_ = os.Remove(temporaryPath)
-		}
-	}()
-	if err := temporary.Chmod(0o600); err != nil {
-		_ = temporary.Close()
-		return fmt.Errorf("write config %s: %w", key, err)
-	}
-	if _, err := temporary.Write(append(encoded, '\n')); err != nil {
-		_ = temporary.Close()
-		return fmt.Errorf("write config %s: %w", key, err)
-	}
-	if err := temporary.Close(); err != nil {
-		return fmt.Errorf("write config %s: %w", key, err)
-	}
-	if err := os.Rename(temporaryPath, path); err != nil {
-		return fmt.Errorf("write config %s: %w", key, err)
-	}
-	removeTemporary = false
 	// EVERY PERSISTED WRITE PASSES HERE, which is what makes one counter enough
 	// for a live reader to know its snapshot is stale (see [SettingsGeneration]).
 	bumpSettingsGeneration()
 	return nil
+}
+
+// replaceProfileFile writes body to a temporary file beside path and renames it
+// over path, so a reader sees the old file or the new one and never half of
+// either. The file is owner-only from its first byte.
+func replaceProfileFile(path string, body []byte) error {
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".config-*.json")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(temporary.Name()) // a no-op once the rename has moved it
+	if err := temporary.Chmod(0o600); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if _, err := temporary.Write(body); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	return os.Rename(temporary.Name(), path)
 }
 
 // errorKey is the key a multi-key write blames, chosen deterministically: the
@@ -250,11 +291,10 @@ func errorKey(updates map[string]any) string {
 // stale, because it re-stats the file on every read and reads this counter
 // beside it.)
 //
-// WHAT IT DOES NOT SEE, stated plainly: a config.json edited by hand in another
-// process, and a project file (`<workspace>/.codeaf/config.json`) edited by
-// anything. Both are the same as the behaviour before a counter existed — those
-// changes have always landed on the next launch — and a counter that pretended
-// otherwise would need a watcher on two files per session.
+// The counter alone does not see another process's writes. Live snapshot
+// readers must pair it with file metadata: the v3 crew source does this for
+// both profile and project configuration, and profileConfigMemo does it for
+// parsed profile values. No watcher or repeated JSON decode is required.
 
 var settingsGeneration atomic.Uint64
 

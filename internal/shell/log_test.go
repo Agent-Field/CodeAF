@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// R1 pins the existing Unix open flags independently of the host's platform.
+// N3 pins the existing Unix open flags independently of the host's platform.
 func TestUnixLogFlags(t *testing.T) {
 	for _, goos := range []string{"linux", "darwin", "freebsd"} {
 		if got, want := logFlags(goos), os.O_CREATE|os.O_WRONLY|os.O_APPEND; got != want {
@@ -18,7 +18,7 @@ func TestUnixLogFlags(t *testing.T) {
 	}
 }
 
-// R1 keeps earlier output when a command reopens a log on either platform.
+// N2 keeps earlier output when a command reopens a log on either platform.
 func TestOpenLogKeepsExistingOutput(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "command.log")
 	if err := os.WriteFile(path, []byte("earlier\n"), 0o600); err != nil {

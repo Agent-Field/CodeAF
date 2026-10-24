@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	stdimage "image"
+	"time"
 	// The decoders are imported for their side effect alone: they register
 	// themselves with image.DecodeConfig, which is how a saved picture's
 	// dimensions are read back out of the bytes we just wrote. Only these three
@@ -17,7 +18,6 @@ import (
 	_ "image/png"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"

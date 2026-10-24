@@ -176,45 +176,73 @@ func TestTheCrewSourceIsSafeUnderConcurrentTurns(t *testing.T) {
 	wait.Wait()
 }
 
-// C1 on the ordinary launch road (#1439): the surface reads the balance and
-// writes the record, and the ENGINE process seats the crew. A record written by
-// another process never moves this process's settings generation, so the crew
-// has to notice the record itself — or the engine keeps seating the paid table
-// its snapshot was built on, and the reflex call on a $0 account is refused.
+// The surface writes credit records while the engine seats the crew. External
+// writes do not move this process's settings generation. The live source must
+// notice the threshold record, but only explicit free-route opt-in may change
+// its model; low means <= $0.50, not proof that the account is empty.
 func TestACreditRecordWrittenByAnotherProcessReseatsTheLiveCrew(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv(config.APIKeyEnv, "sk-or-v1-crewtest")
-	source, err := v3RolesSource(t.TempDir(), dir)
-	if err != nil {
-		t.Fatalf("v3RolesSource: %v", err)
-	}
-	reflex := roles.TierKey(roles.TierReflex)
-	paid, _ := source(reflex)
-	if paid != config.DefaultReflexModel {
-		t.Fatalf("a profile with no record seated reflex on %q, want the shipped %q", paid, config.DefaultReflexModel)
-	}
-	record, err := json.Marshal(map[string]any{
-		"low": true, "known": true, "key": config.CreditsKeyPrint("sk-or-v1-crewtest"), "read_at": "2026-09-24T21:44:22Z",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Written the way ANOTHER process writes it: straight to the file, with no
-	// call into this process's settings writer.
-	if err := os.WriteFile(filepath.Join(dir, "credits.json"), record, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	free, _ := source(reflex)
-	if free == paid || free != config.TierModelAt(dir, config.ModelTierReflex) || !strings.HasSuffix(free, ":free") {
-		t.Fatalf("after another process recorded a low balance the live crew seated reflex on %q", free)
-	}
-	record, _ = json.Marshal(map[string]any{
-		"low": false, "known": true, "key": config.CreditsKeyPrint("sk-or-v1-crewtest"), "read_at": "2026-09-24T21:50:00Z",
-	})
-	if err := os.WriteFile(filepath.Join(dir, "credits.json"), record, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if back, _ := source(reflex); back != paid {
-		t.Fatalf("after a top-up recorded elsewhere the live crew kept reflex on %q", back)
+	for _, freeAllowed := range []bool{false, true} {
+		name := "free routes off keeps paid helpers"
+		if freeAllowed {
+			name = "explicit opt-in follows external balance"
+		}
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			const key = "sk-or-v1-crewtest"
+			t.Setenv(config.APIKeyEnv, key)
+			if freeAllowed {
+				if err := config.SetCrewFreeRoutes(dir, true); err != nil {
+					t.Fatal(err)
+				}
+			}
+			source, err := v3RolesSource(t.TempDir(), dir)
+			if err != nil {
+				t.Fatalf("v3RolesSource: %v", err)
+			}
+			reflex := roles.TierKey(roles.TierReflex)
+			paid, _ := source(reflex)
+			if paid != config.DefaultReflexModel {
+				t.Fatalf("a profile with no record seated reflex on %q, want %q", paid, config.DefaultReflexModel)
+			}
+			generation := config.SettingsGeneration()
+			writeExternalRecord := func(low bool, readAt string) {
+				t.Helper()
+				record, err := json.Marshal(map[string]any{"low": low, "known": true, "key": config.CreditsKeyPrint(key), "read_at": readAt})
+				if err != nil {
+					t.Fatal(err)
+				}
+				// Use the external writer's file path, never this process's settings API.
+				if err := os.WriteFile(filepath.Join(dir, "credits.json"), record, 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if config.SettingsGeneration() != generation {
+					t.Fatal("external credit record changed this process's settings generation")
+				}
+			}
+			writeExternalRecord(true, "2026-09-24T21:44:22Z")
+			if !config.CreditsLowAt(dir) {
+				t.Fatal("external low threshold record was not visible")
+			}
+			current, _ := source(reflex)
+			if freeAllowed {
+				if current == paid || current != config.TierModelAt(dir, config.ModelTierReflex) || !strings.HasSuffix(current, ":free") {
+					t.Fatalf("opted-in live crew ignored external low reading: %q", current)
+				}
+			} else {
+				if current != paid {
+					t.Fatalf("a low threshold record silently enabled free reflex: %q", current)
+				}
+				if low, _ := source(roles.TierKey(roles.TierLow)); strings.HasSuffix(low, ":free") {
+					t.Fatalf("a low threshold record silently enabled free small-work: %q", low)
+				}
+			}
+			writeExternalRecord(false, "2026-09-24T21:50:00Z")
+			if back, _ := source(reflex); back != paid {
+				t.Fatalf("after a top-up recorded elsewhere the live crew kept reflex on %q", back)
+			}
+			if config.CrewFreeRoutesAt(dir) != freeAllowed {
+				t.Fatal("external balance read changed the person's free-route choice")
+			}
+		})
 	}
 }

@@ -14,7 +14,7 @@ func openingLab(t *testing.T) *app {
 	lab := newHomeLab(t)
 	mine := lab.session("mine", "aaaa000000000001", "old conversation", lab.workspace("mine"), time.Now())
 	a := lab.app(mine)
-	a.openHome()
+	spend(t, a, a.openHome())
 	t.Cleanup(a.doorLine.close)
 	return a
 }

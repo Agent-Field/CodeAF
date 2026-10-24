@@ -41,6 +41,10 @@ package tokens
 const NFFailedCell = "nf-fa-times_circle_o"
 
 var vocabulary = []GlyphBinding{
+	{ID: GMapLeft, Name: "MapLeft", Meaning: "a connection travelling left", Plain: GlyphMapLeft, NerdFont: "\uF0D9", NFName: "nf-fa-caret_left", ASCII: "<", UsualTint: TextTertiary, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true},
+	{ID: GMapUp, Name: "MapUp", Meaning: "a connection travelling up", Plain: GlyphMapUp, NerdFont: "\uF0D8", NFName: "nf-fa-caret_up", ASCII: "^", UsualTint: TextTertiary, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true},
+	{ID: GMapDown, Name: "MapDown", Meaning: "a connection travelling down", Plain: GlyphMapDown, NerdFont: "\uF0D7", NFName: "nf-fa-caret_down", ASCII: "v", UsualTint: TextTertiary, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true},
+
 	{ID: GPromptShell, Name: "PromptShell", Meaning: "composer prompt (shell)",
 		Plain: GlyphShell, UsualTint: Amber, Geometry: true},
 	// -- state (card line 1, rail card, agent row) ---------------------------

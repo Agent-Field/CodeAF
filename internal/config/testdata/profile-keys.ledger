@@ -16,6 +16,7 @@ attribution
 attribution.model
 bash.background_after_seconds
 brief_after
+cell.budget_gb
 completion_reserve
 context_fill_pct
 context_reuse_pct
@@ -57,6 +58,7 @@ models.crew.source
 models.crew.task_cap
 models.fallbacks
 models.pool.public_key
+models.quick_switch
 models.roles
 models.tasks.mode
 models.tasks.one
@@ -124,3 +126,4 @@ working_set_tokens
 
 daily_budget_authority
 daily_budget_today
+sync.preference_times

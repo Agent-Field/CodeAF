@@ -44,3 +44,13 @@ work/
 # The desktop app's garbled sidecars (`make app-sidecar`), built for a bundle
 # and never committed.
 /dist/
+
+# hosted relay dev install (wrangler, miniflare)
+relay/hosted/node_modules
+relay/hosted/.wrangler/
+
+# External furrow profile measurements keep their build output inside this worktree.
+.cargo-target/
+
+# Native Windows test executables are local acceptance artifacts.
+.wintest/

@@ -31,6 +31,7 @@ func (a *Agent) recoverBeltRun() {
 		return
 	}
 	root := store.Task(store.RootID())
+	recordedSpend := storeSpent(store)
 	id, parseErr := strconv.ParseUint(store.RootID(), 10, 64)
 	_ = store.Close()
 	if root == nil || parseErr != nil {
@@ -46,6 +47,9 @@ func (a *Agent) recoverBeltRun() {
 		return
 	}
 	if terminalStoreStatus(root.Status) {
+		// The last running checkpoint can precede the worker's final receipt.
+		// Restore its price label from the ledger without charging it again.
+		kept.CostUSD = max(kept.CostUSD, recordedSpend)
 		a.reconcileSettledRun(g, kept, root)
 		return
 	}
@@ -85,7 +89,13 @@ func (a *Agent) reconcileSettledRun(g *TaskGraph, kept TaskNotice, root *plandb.
 		kept.State, kept.Report = TaskFailed, root.Error
 		kept.EndedAt = root.CompletedAt
 	default:
-		kept.Report = "the plan finished before the restart; inspect the saved working copy before landing its changes"
+		kept.Report = "the plan finished before the restart; " + errNoRunCopy.Error()
+		kept.RecoveredCompletion = true
+		if kept.Copy != nil {
+			kept.State, kept.Report = TaskUnverified, withReport(completedRunReview, root.Result)
+			kept.EndedAt = root.CompletedAt
+			kept.Elapsed = runSpan(kept.StartedAt, root.CompletedAt)
+		}
 	}
 	a.publishRunRow(g, kept)
 }
@@ -100,7 +110,7 @@ func (a *Agent) resumeAdmittedRun(g *TaskGraph, kept TaskNotice) {
 		a.interruptUnrecoverableRun(g, kept, "the saved task has no working folder; ask for the task again with its folder")
 		return
 	}
-	if _, err := a.ContinueRun(context.Background(), kept.ID); err != nil {
+	if _, err := a.ContinueRun(a.rootContext(), kept.ID); err != nil {
 		log.Printf("session: could not resume task %d: %v", kept.ID, err)
 		a.interruptUnrecoverableRun(g, kept, err.Error())
 	}
@@ -136,7 +146,7 @@ func (a *Agent) resumePendingRun(g *TaskGraph, kept TaskNotice) {
 	if err != nil {
 		return
 	}
-	ctx, cut := context.WithCancel(context.Background())
+	ctx, cut := context.WithCancel(a.rootContext())
 	run := &beltRun{plan: plan, store: reopened, root: reopened.RootID(), row: id,
 		title: kept.Title, brief: pending.Brief, crew: crew, recoveredCrew: kept.CrewState, ground: canonicalPath(pending.Ground),
 		stand: taskStand{dir: pending.Ground, mode: pending.Mode}, pending: true,

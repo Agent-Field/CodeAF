@@ -128,6 +128,13 @@ func (a *app) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	a.ptr.still = false
 	switch msg := msg.(type) {
 	case tea.MouseMotionMsg:
+		// THE MAP OWNS MOTION WHILE IT IS UP, before the pointer's fold reads
+		// one: a drag that paused for the sweep would lose the box it was
+		// moving (atlascmd.go).
+		if a.atlas.on {
+			a.atlasMoved(msg)
+			return a, nil
+		}
 		if !a.placeMotionAllowed(msg) {
 			return a, nil
 		}

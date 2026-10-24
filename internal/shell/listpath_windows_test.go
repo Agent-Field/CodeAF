@@ -3,16 +3,28 @@
 package shell
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-// F4 reaches the real ListPath with Windows' own absolutiser, including the
+// N2 and N3 reach the real ListPath with Windows' own absolutiser, including the
 // current drive's separate directory for C:rel and its root for \tools\bin.
 func TestWindowsListPathUsesNativeAbsoluteRules(t *testing.T) {
 	cwd := t.TempDir()
-	t.Chdir(cwd)
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(previous); err != nil {
+			t.Error(err)
+		}
+	})
+	if err := os.Chdir(cwd); err != nil {
+		t.Fatal(err)
+	}
 	drive := filepath.VolumeName(cwd)
 	for _, native := range []string{drive, drive + `skills\bin`, `\tools\bin`, `rel\x`} {
 		absolute, err := filepath.Abs(native)

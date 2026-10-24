@@ -768,6 +768,17 @@ func (a *Agent) oneTask(ctx context.Context, token string, parsed tasksArguments
 			return a.stopOneTask(entry, id, true, parsed.Say)
 		}
 	}
+	if resolution := strings.TrimSpace(parsed.Resolve); resolution != "" {
+		id, err := strconv.ParseUint(strings.TrimPrefix(strings.TrimPrefix(token, "#"), "t-"), 10, 64)
+		if err == nil {
+			if reply, found, err := a.resolveCompletedRun(ctx, id, TaskResolution(strings.ToLower(resolution)), parsed.Say, TaskAskOwnerModel); found {
+				if err != nil {
+					return capitalized(err.Error()) + ".", true, nil
+				}
+				return reply, false, nil
+			}
+		}
+	}
 	rows := a.withoutOwnRunRows(a.taskRows())
 	entry, found := a.taskByToken(rows, token)
 	if !found {

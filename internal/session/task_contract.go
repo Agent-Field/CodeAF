@@ -652,6 +652,8 @@ type TaskNotice struct {
 	// carries these facts in its own record. Nil is a row whose copy was never
 	// recorded, which is a run that cannot be carried on.
 	Copy *TaskCopyRecord
+	// RecoveredCompletion identifies a completed plan recovered before its final landing receipt.
+	RecoveredCompletion bool
 	// PendingRun keeps an admitted request before it owns a working copy.
 	PendingRun *PendingRunRecord
 	// PlanTask is WHICH TASK OF THE PLAN STORE THIS ROW IS, and it is the one

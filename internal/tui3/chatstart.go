@@ -419,6 +419,11 @@ func (a *app) startChatEnter() tea.Cmd {
 	if !a.startingChat() {
 		return nil
 	}
+	// A PAIR LINK IS NOT A FIRST MESSAGE: it opens no conversation, and it is
+	// answered before one is made (approve.go's [app.takePairLink]).
+	if cmd, took := a.takePairLink(); took {
+		return cmd
+	}
 	// A FULL TRAY IS A MESSAGE, which is input.go's law about enter: a picture
 	// with no words is not an empty message. Anything else is a person pressing
 	// enter at a blank page, and a conversation made for that would be a session
@@ -435,7 +440,7 @@ func (a *app) startChatEnter() tea.Cmd {
 		return nil
 	}
 	page := a.liveComposer()
-	return a.renewLater(a.startSay, func() tea.Cmd {
+	cmd := a.renewLater(a.startSay, func() tea.Cmd {
 		a.startBack = startBack{}
 		a.startKept = composerState{}
 		// The start page was the greeting; opening its conversation must not
@@ -444,6 +449,8 @@ func (a *app) startChatEnter() tea.Cmd {
 		a.putComposer(page)
 		return a.enterLine()
 	})
+	a.previewConversation(page.box.String())
+	return cmd
 }
 
 // startChatKey is the page's claim on the keyboard, and it is four keys wide.

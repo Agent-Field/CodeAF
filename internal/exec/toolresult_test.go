@@ -149,12 +149,17 @@ func TestATruncationWithNowhereToSpillSaysSo(t *testing.T) {
 	}
 }
 
-// End to end, through the tool the whole thing exists for: a command that
+// K3: end to end, through the tool the whole thing exists for: a command that
 // prints more than the leaf can hold leaves the tail in context, the whole
 // output on disk, and a command that reads the head back — and running that
 // command works.
 func TestALoudCommandLeavesItsTailInContextAndTheWholeOnDisk(t *testing.T) {
-	space := workspace(t)
+	loudCommandRoundTrip(t, workspace(t))
+}
+
+// K3 keeps the same end-to-end assertion usable with native scratch layouts.
+func loudCommandRoundTrip(t *testing.T, space *Workspace) {
+	t.Helper()
 	tools := NewToolbox(space, "9", nil)
 	result := tools.Execute(t.Context(), "sh",
 		`{"cmd":"awk 'BEGIN{for(i=1;i<=20000;i++) printf \"line %d of a very loud command\\n\", i}'"}`)

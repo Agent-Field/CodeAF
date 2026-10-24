@@ -98,6 +98,11 @@ func (a *Agent) PendingDecisions() []PendingDecision {
 			Depth:   graph.depthLocked(node),
 		})
 	}
+	for _, notice := range graph.runRowsLocked() {
+		if notice.RecoveredCompletion && notice.State == TaskUnverified {
+			out = append(out, PendingDecision{Notice: notice})
+		}
+	}
 	return out
 }
 

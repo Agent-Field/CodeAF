@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// C8 pins the complete Unix project footer to its pre-Windows-shell bytes.
+// N3 pins the complete Unix project footer to its pre-Windows-shell bytes.
 func TestUnixWorkerFooterBytes(t *testing.T) {
 	config := Config{Workspace: t.TempDir()}
 	now := time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)

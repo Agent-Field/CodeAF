@@ -99,7 +99,7 @@ func TestABoundEmptyAnswerFallsBackOnceAndSaysSoOnce(t *testing.T) {
 			t.Fatalf("call %d added max_tokens", call+1)
 		}
 	}
-	if len(notices) != 1 || notices[0] != "the reflex model answers nothing; using "+low+" for this session" {
+	if len(notices) != 1 || notices[0] != "memory helper recovered using "+low+"; your model settings are unchanged" {
 		t.Fatalf("notices = %q, want the one fallback line", notices)
 	}
 

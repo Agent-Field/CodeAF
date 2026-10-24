@@ -120,9 +120,9 @@ func crewHealthAt(profileDir string) crewHealth {
 	// A refusal of a credential no longer in force, or of credit since found,
 	// holds nothing back ([crewHeldAgainstNow]).
 	h := crewHealthOf(crewHeldAgainstNow(profileDir, history, now), now)
-	// AN OPENROUTER BALANCE KNOWN TO BE LOW ([CreditsLowAt]) is an account out
-	// of credit before any call is made: the seats reach for free routes and
-	// the crew line says so, instead of a first paid call being refused.
+	// With free-route opt-in, a low OpenRouter balance steers automatic seats
+	// toward free routes. Without it, a small positive balance remains usable
+	// until a real payment refusal or known-zero account says otherwise.
 	if useFreeDefaultsAt(profileDir) {
 		h.unaffordable[modelsource.DefaultID] = true
 		h.lowBalance = map[string]bool{modelsource.DefaultID: true}
@@ -318,39 +318,47 @@ func (h crewHealth) usable(routes []crewroute.Route) []crewroute.Route {
 	return out
 }
 
-// crewCandidatesNoticed is [CrewCandidatesAt] with the one notice a decision
-// carries when it had to reach for free routes.
-//
-// WHEN NOTHING PAID CAN BE REACHED, THE FREE POOLS ARE USED — whatever the
-// free-routes row says — because a task on a free pool is better than a task
-// that cannot start, and the line says so: a free pool may log what it is
-// sent. A paid route coming back (a paid call answering, a provider reporting
-// credit) puts the next task back on normal routing on its own.
+// crewCandidatesNoticed keeps the automatic candidate set within the person's
+// free-route choice, even when every paid account is out of credit.
 func crewCandidatesNoticed(profileDir string, health crewHealth) ([]crewroute.Candidate, string) {
 	rule, providers, off := CrewAllowedAt(profileDir), CrewProvidersAt(profileDir), CrewProvidersOffAt(profileDir)
 	facts := crewRouteFacts{free: CrewFreeRoutesAt(profileDir), health: health}
 	candidates := off.Candidates(crewCandidatesWith(rule, providers, facts))
-	if facts.free || len(health.unaffordable) == 0 || anyPaidRoute(candidates) {
-		return candidates, ""
+	if facts.free && len(health.unaffordable) > 0 && onlyFreeRoutes(candidates) {
+		return candidates, "free routes in use (may log prompts) · credit unavailable on " + strings.Join(crewSet(health.unaffordable), ", ")
 	}
-	facts.free = true
-	withFree := off.Candidates(crewCandidatesWith(rule, providers, facts))
-	if len(withFree) == len(candidates) {
-		return candidates, ""
-	}
-	return withFree, "free routes in use (may log prompts) · credit unavailable on " + strings.Join(crewSet(health.unaffordable), ", ")
+	return candidates, ""
 }
 
-// anyPaidRoute is whether any candidate is reachable on a route that bills.
-func anyPaidRoute(candidates []crewroute.Candidate) bool {
+// A notice names free routes only when every available route is free; an
+// empty candidate set or a subscription/local alternative is not free use.
+func onlyFreeRoutes(candidates []crewroute.Candidate) bool {
+	found := false
 	for _, c := range candidates {
 		for _, r := range c.Routes {
-			if r.Kind == crewroute.Metered {
-				return true
+			if r.Kind != crewroute.Free {
+				return false
 			}
+			found = true
 		}
 	}
-	return false
+	return found
+}
+
+// AutomaticCrewRungs excludes free pools from automatic substitution while the
+// switch is off. An explicit pin is resolved separately and is never rewritten.
+// Check again when selecting a saved ladder: a task can outlive a settings edit.
+func AutomaticCrewRungs(profileDir string, rungs []crewroute.Pick) []crewroute.Pick {
+	if CrewFreeRoutesAt(profileDir) {
+		return rungs
+	}
+	out := make([]crewroute.Pick, 0, len(rungs))
+	for _, rung := range rungs {
+		if rung.Kind != crewroute.Free && !crewroute.IsFree(rung.Send) {
+			out = append(out, rung)
+		}
+	}
+	return out
 }
 
 // crewSet is a set's members in order.
@@ -466,6 +474,9 @@ func CrewRescue(profileDir string, class crewroute.Class, seat crewroute.Seat, c
 		// NOT EVEN THE PERSON'S OWN MODEL rides an account that just said it
 		// is out of credit, or a key that was just refused: the conversation
 		// running on it proves the model, not the account.
+		if pin.Kind == crewroute.Free && !CrewFreeRoutesAt(profileDir) {
+			return
+		}
 		if health.disconnected[pin.Provider] || (pin.Kind == crewroute.Metered && health.unaffordable[pin.Provider]) {
 			return
 		}
@@ -488,17 +499,13 @@ func CrewRescue(profileDir string, class crewroute.Class, seat crewroute.Seat, c
 	return out
 }
 
-// crewFreeRescue is the seat on a free pool when EVERY PAID ROUTE IS OUT OF
-// REACH — the free-routes switch off or on. With the switch on the pools are
-// already routes on the seat's ladder; with it off they are used only here,
-// and the crew line says so ([crewCandidatesNoticed]'s notice). The best few
-// free picks for the seat, each a different model, so a pool at its limit
-// leaves the next.
+// crewFreeRescue offers the best few allowed free pools only after explicit
+// free-route opt-in. An empty paid balance never grants that permission.
 func crewFreeRescue(profileDir string, class crewroute.Class, seat crewroute.Seat, health crewHealth) []crewroute.Pick {
-	candidates, notice := crewCandidatesNoticed(profileDir, health)
-	if notice == "" {
+	if !CrewFreeRoutesAt(profileDir) {
 		return nil
 	}
+	candidates, _ := crewCandidatesNoticed(profileDir, health)
 	var free []crewroute.Candidate
 	for _, c := range candidates {
 		var routes []crewroute.Route

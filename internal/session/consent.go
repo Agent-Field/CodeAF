@@ -225,10 +225,13 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 		return refusal(off), false
 	}
 	decision, governed := a.decide(call)
+	if governed {
+		decision = a.setupFloor(ctx, decision)
+	}
 	if governed && decision.Action == approval.ActionAllow && decision.Scope != "" && hub != nil {
 		hub.send(Event{Kind: EventConsentAllowed, Tool: call.Function.Name, Args: argsText(call), CallID: call.ID, Hint: a.gloss(call), Rule: decision.Scope})
 	}
-	if !governed || decision.Action == approval.ActionAllow {
+	if !governed || decision.Action == approval.ActionAllow || setupGranted(ctx, call, decision) {
 		return toolResult{}, true
 	}
 	if decision.Action == approval.ActionDeny {

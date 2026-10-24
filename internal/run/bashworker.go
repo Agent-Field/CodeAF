@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	procexec "github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/search"
@@ -82,6 +83,16 @@ type BashWorker struct {
 	// that one limit the same way `doSpendGuard` lifts it from the crew guard.
 	dailyBudgetUSD     float64
 	spendPreauthorized bool
+	// seat carries the cell execution boundary into every worker call.
+	seat procexec.Seat
+}
+
+// WorkerOption changes how a worker is built; the zero set is the host worker.
+type WorkerOption func(*BashWorker)
+
+// WithSeat runs the worker's tool calls on seat.
+func WithSeat(seat procexec.Seat) WorkerOption {
+	return func(w *BashWorker) { w.seat = seat }
 }
 
 // NewBashWorker builds the seat the run's factory hands each claimed task to.
@@ -90,8 +101,12 @@ type BashWorker struct {
 // copy every worker of the run shares, and the model is the seat's. The
 // completer is the seat's provider: a test scripts it, a run hands the door's
 // own.
-func NewBashWorker(store *plandb.Store, workspace, model string, completer session.Completer) *BashWorker {
-	return &BashWorker{store: store, workspace: workspace, model: model, completer: completer}
+func NewBashWorker(store *plandb.Store, workspace, model string, completer session.Completer, opts ...WorkerOption) *BashWorker {
+	w := &BashWorker{store: store, workspace: workspace, model: model, completer: completer}
+	for _, opt := range opts {
+		opt(w)
+	}
+	return w
 }
 
 // Run hosts one agent's turn loop for the task until the agent ends its turn
@@ -131,6 +146,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 	agent, err := session.NewBeltWorker(session.Config{
 		Workspace:        w.workspace,
 		Model:            w.model,
+		Seat:             w.seat,
 		WaitForBeltSteps: true,
 		AuthKeySource:    w.authKeySource,
 		SearchProvider:   w.searchProvider,
