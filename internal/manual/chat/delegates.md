@@ -1,5 +1,9 @@
 # Programs codeaf carries
 
+## What is a delegate
+
+A delegate is a program built into codeaf that takes a whole task and works on it inside your conversation's time and spending limits. The delegates are senior-dev, sec and review. Give one a brief with its slash command or `codeaf <name> <brief>`. Each delegate's own manual page describes its work and limits.
+
 ## What a program codeaf carries is — a delegate, another coding agent, an agent of its own for a whole task, which programs there are
 
 codeaf carries programs of its own that take one whole task and do it alone, for as
