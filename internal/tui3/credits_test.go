@@ -231,6 +231,13 @@ func TestLowCreditReadSwapsOnlyAnUntouchedImplicitConversation(t *testing.T) {
 	}
 	a.readCredits = func(context.Context) (credits.Reading, error) { return credits.Reading{Known: true, Low: true}, nil }
 	seedLowCredits(t, a)
+	// THE SWAP IS A FREE ROUTE. The low-credit move to the free model is gated
+	// on the crew's free routes being on (config.ChatDefaultAt), which a fresh
+	// test profile has off (#1905); a test of the swap says so and turns them
+	// on, or the gate makes the assertion inert.
+	if err := config.SetCrewFreeRoutes(a.profileDir, true); err != nil {
+		t.Fatal(err)
+	}
 	a.implicitTalk = true
 	a.model = config.DefaultModel
 	a.tookCredits(creditReadMsg{reading: credits.Reading{Known: true, Low: true}})
@@ -255,6 +262,12 @@ func TestLowCreditReadKeepsUsedAndChosenConversationModels(t *testing.T) {
 			a := placeApp(t)
 			a.model = config.DefaultModel
 			seedLowCredits(t, a)
+			// Same opt-in as the swap test above: with free routes off the
+			// low-credit path would not even try to move the model, and the
+			// "kept" assertion would pass without exercising it (#1905).
+			if err := config.SetCrewFreeRoutes(a.profileDir, true); err != nil {
+				t.Fatal(err)
+			}
 			a.implicitTalk = tc.implicit
 			if tc.used {
 				a.turn = 1

@@ -2,9 +2,14 @@ package tui3
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // ── THE NEW-CHAT START PAGE ─────────────────────────────────────────────────
@@ -554,5 +559,125 @@ func TestTheTaskPageAndItsOwnLineComeBackWhenTheStartPageIsCancelled(t *testing.
 	}
 	if made != 0 {
 		t.Fatalf("opening and cancelling the page over a task made %d conversations", made)
+	}
+}
+
+// ── THE TRAY ────────────────────────────────────────────────────────────────
+
+// A FILE DROPPED ON THE START PAGE IS DRAWN ON IT. The drop lands in the
+// person's tray through the same door as any other ([app.keyboardBox]), so
+// what was missing was the START PAGE's half: the unit draws its own tray row
+// above the box, and the page says the drop landed instead of keeping it a
+// secret until the chat opens (1827).
+func TestDroppingFilesOntoTheStartPageDrawsThemOnTheTray(t *testing.T) {
+	lab := newStartLab(t)
+	a := lab.app()
+	openStart(t, a)
+	shot := filepath.Join(t.TempDir(), "shot.png")
+	if err := os.WriteFile(shot, []byte("png"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pasteText(t, a, shot)
+
+	if !a.startingChat() {
+		t.Fatal("a drop on the start page took the page down")
+	}
+	if want := []string{"shot.png"}; !equalStrings(chipNames(a), want) {
+		t.Fatalf("chips are %v, want %v", chipNames(a), want)
+	}
+	if frame := plain(mustFrame(a)); !strings.Contains(frame, "▣ #1 shot.png") {
+		t.Fatalf("the start page names no attachment:\n%s", frame)
+	}
+}
+
+// BACKSPACE ON THE START PAGE'S EMPTY BOX TAKES THE LAST CHIP OFF, the way it
+// does on the conversation's: the page's box is the real draft, so the tray is
+// already behind the caret there. A non-picture drop is what leaves the box
+// empty enough to stand on it — dropping a picture writes its `[image #n]`
+// into the sentence (imagepaste.go).
+func TestBackspaceOnTheStartPagesEmptyBoxTakesTheLastChipOff(t *testing.T) {
+	lab := newStartLab(t)
+	a := lab.app()
+	openStart(t, a)
+	dir := t.TempDir()
+	one, two := filepath.Join(dir, "one.md"), filepath.Join(dir, "two.md")
+	if err := os.WriteFile(one, []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(two, []byte("b"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pasteText(t, a, one)
+	pasteText(t, a, two)
+
+	if got := a.input.String(); got != "" {
+		t.Fatalf("dropping files wrote %q into the box", got)
+	}
+	drive(t, a, key("backspace"))
+	if want := []string{"one.md"}; !equalStrings(chipNames(a), want) {
+		t.Fatalf("chips are %v, want %v after backspace", chipNames(a), want)
+	}
+	frame := plain(mustFrame(a))
+	if strings.Contains(frame, "two.md") {
+		t.Fatalf("the taken chip is still drawn on the page:\n%s", frame)
+	}
+	if !strings.Contains(frame, "one.md") {
+		t.Fatalf("the remaining chip vanished from the page:\n%s", frame)
+	}
+}
+
+// A CLICK ON THE START PAGE'S TRAY TAKES OFF THE CHIP IT LANDED ON, the way a
+// click on the conversation's tray does — and the picture's token leaves the
+// sentence with it. The row answers by column because the chips it drew came
+// out of the unit's own lead ([app.welcomeUnitBox]), the same lead the
+// conversation's tray is resolved from (attach.go's [app.chipAt]).
+func TestAClickOnTheStartPagesTrayTakesThatChipOff(t *testing.T) {
+	lab := newStartLab(t)
+	a := lab.app()
+	openStart(t, a)
+	dir := t.TempDir()
+	one, two := filepath.Join(dir, "one.png"), filepath.Join(dir, "two.png")
+	if err := os.WriteFile(one, []byte("p"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(two, []byte("q"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pasteText(t, a, one)
+	pasteText(t, a, two)
+	if want := []string{"one.png", "two.png"}; !equalStrings(chipNames(a), want) {
+		t.Fatalf("chips are %v, want %v", chipNames(a), want)
+	}
+
+	// The tray is the frame row that names both pictures; the second chip is
+	// clicked on its own name, in the column the unit drew it at. The column is
+	// measured as CELLS, not bytes: the chip mark and its remove glyph are
+	// multi-byte runes, and the pointer lands on the column where the name was
+	// painted ([app.welcomeUnitBox]'s lead is inside the row already).
+	lines := strings.Split(plain(mustFrame(a)), "\n")
+	y, x := -1, -1
+	for i, line := range lines {
+		if at := strings.Index(line, "two.png"); at >= 0 {
+			y, x = i, ansi.StringWidth(line[:at])+1
+			break
+		}
+	}
+	if y < 0 {
+		t.Fatalf("the start page drew no tray:\n%s", strings.Join(lines, "\n"))
+	}
+	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
+
+	if want := []string{"one.png"}; !equalStrings(chipNames(a), want) {
+		t.Fatalf("chips are %v, want the clicked one off", chipNames(a))
+	}
+	if !a.startingChat() {
+		t.Fatal("a press on the tray took the start page down")
+	}
+	if got := a.input.String(); strings.Contains(got, "#2") {
+		t.Fatalf("the removed picture's token stayed in the sentence: %q", got)
+	}
+	if frame := plain(mustFrame(a)); strings.Contains(frame, "two.png") {
+		t.Fatalf("the removed chip is still drawn on the page:\n%s", frame)
 	}
 }
