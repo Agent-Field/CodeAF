@@ -84,6 +84,23 @@ func rejectionTurn(t *testing.T, calls []rejectionCall) (*Agent, string, []Event
 }
 
 func TestRejectedBeforeRunIsATypedFactAndNeverReadFromText(t *testing.T) {
+	// Older runs could learn a command as a cure for rejected arguments; that memory must stay silent.
+	root := t.TempDir()
+	t.Setenv("CODEAF_HOME", root)
+	signature, keyed := fixSignature("bash", bashMissingCommand)
+	if !keyed {
+		t.Fatal("the stale argument-error memory has no signature")
+	}
+	store := settledFixStore(t, filepath.Join(root, "v3", fixesFileName))
+	for range fixMinPairings {
+		store.confirm(signature, "printf RECOVERED")
+	}
+	store.confirmAdvised(signature, "printf RECOVERED")
+	if len(store.consult(signature)) == 0 {
+		t.Fatal("the stale argument-error memory did not become recallable")
+	}
+	store.settle()
+
 	calls := []rejectionCall{
 		{"c-fetch-json", "web_fetch", `{"url":`, true, rejectedJSONText},
 		{"c-fetch-missing", "web_fetch", `{}`, true, "Invalid arguments: url is required"},

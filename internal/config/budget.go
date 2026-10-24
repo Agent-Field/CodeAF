@@ -162,9 +162,6 @@ var errProfileMoved = errors.New("these settings changed while the change was be
 // rows it was computed from, or not at all, rather than over a write that came
 // in between.
 func writeProfileValuesExpecting(profileDir string, expect map[string]json.RawMessage, updates map[string]any) error {
-	if err := refuseAppCredentialUpdates(profileDir, updates); err != nil {
-		return err
-	}
 	if len(updates) == 0 {
 		return nil
 	}
@@ -222,6 +219,10 @@ func editProfile(profileDir, key string, decide func(held map[string]json.RawMes
 	}
 	if change.empty() {
 		return nil
+	}
+	// Computed changes pass the same credential guard as direct writes, against the locked reading.
+	if err := refuseAppCredentialUpdates(held, change); err != nil {
+		return err
 	}
 	stampPreferences(profileDir, held, &change)
 	encoded, err := json.MarshalIndent(change.applyTo(held), "", "  ")
