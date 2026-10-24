@@ -226,6 +226,10 @@ type overviewPage struct {
 
 // teamPage is the open teams directly under parent, newest made first and then
 // by id. An omitted parent is the root when the file has one, else the top.
+//
+// THE FACTORY'S TEAMS ARE NOT CREWS. A job's agent and its steps' chats belong
+// on the job's own page (factory.job_chats), so a team the factory made is left
+// out of every crews list; asking for one by id still answers it.
 func (x *overviewIndex) teamPage(parent string) (overviewPage, error) {
 	if parent == "" && x.root >= 0 {
 		parent = x.teams[x.root].ID
@@ -237,7 +241,7 @@ func (x *overviewIndex) teamPage(parent string) (overviewPage, error) {
 	}
 	var kids []teamstore.Team
 	for _, t := range x.teams {
-		if t.Parent == parent && !t.Closed() && !t.Root {
+		if t.Parent == parent && !t.Closed() && !t.Root && !t.FactoryManaged {
 			kids = append(kids, t)
 		}
 	}

@@ -770,8 +770,13 @@ func exitCodeFromWait(err error) int {
 // getShellConfig mirrors pi's shell.js:getShellConfig on Unix: /bin/bash if
 // it exists, then bash on PATH, then fallback to sh. Windows instead uses the
 // engine's native bash, and refuses before a command can reach a WSL launcher.
+// Bash pipelines preserve a failing check's status on every supported platform.
 func getShellConfig() (string, []string, error) {
-	return shell.Preferred()
+	program, args, err := shell.Preferred()
+	if err == nil && program != "sh" {
+		args = append([]string{"-o", "pipefail"}, args...)
+	}
+	return program, args, err
 }
 
 // killProcessGroup sends SIGKILL to the process group, mirroring pi's

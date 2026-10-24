@@ -2,21 +2,26 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/api"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
+	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // `factory_start` IS THE RUN BUTTON FROM THE MANAGER'S CHAT: it launches the
-// item the conversation manages (recording the steps as the manager's, so the
-// launch gives it no second turn to shape), goes past the approve step the
+// item the conversation manages with its steps as they stand (recording
+// nothing about them), goes past the approve step the
 // run holds at, and says why when nothing is left to start. Another
 // conversation starts nothing.
 func TestFactoryStartLaunchesContinuesAndSaysWhy(t *testing.T) {
@@ -38,7 +43,7 @@ func TestFactoryStartLaunchesContinuesAndSaysWhy(t *testing.T) {
 	}
 	it, _ := g.st.Get(id)
 	ref := it.Ref()
-	door, ok := runDoor(g.st, g.workspace).(session.RunStarter)
+	door, ok := runDoor(g.st, g.workspace, "").(session.RunStarter)
 	if !ok {
 		t.Fatal("the floor's run door cannot start")
 	}
@@ -50,8 +55,8 @@ func TestFactoryStartLaunchesContinuesAndSaysWhy(t *testing.T) {
 		t.Fatalf("start answered %q, %v", line, err)
 	}
 	held := g.waitFor(t, id, factory.StateNeedsYou)
-	if !factoryrun.ShapedByManager(held) {
-		t.Fatalf("the start left the item unshaped, so the launch would shape it again: %q", held.Adapted)
+	if len(held.Adapted) != 0 {
+		t.Fatalf("the start recorded a change to the steps nobody made: %q", held.Adapted)
 	}
 	if held.QKind != factory.QKindApprove {
 		t.Fatalf("held on %q, not the approve step", held.QKind)
@@ -66,5 +71,71 @@ func TestFactoryStartLaunchesContinuesAndSaysWhy(t *testing.T) {
 	}
 	if !door.(session.RunManagerDoor).Manages(talk) {
 		t.Fatal("the item's conversation is not its manager")
+	}
+}
+
+// `factory_start` AND THE HEADER'S START TAKE THE SAME PATH: on a repository
+// this machine has no checkout of and cannot clone (GitHub not connected),
+// the manager's start and the app's start_now refuse in the one sentence,
+// the second as 409 needs_checkout, and neither moves the job's version; with
+// GitHub connected the same job starts from the chat, because the runner
+// will clone it.
+func TestFactoryStartAndTheHeaderStartTakeTheSamePath(t *testing.T) {
+	for _, name := range []string{"GH_TOKEN", "GITHUB_TOKEN"} {
+		t.Setenv(name, "")
+	}
+	st, err := store.Open(filepath.Join(t.TempDir(), "factory"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetRepos([]string{"acme/api"}); err != nil {
+		t.Fatal(err)
+	}
+	profile := t.TempDir()
+	talk := filepath.Join(t.TempDir(), "transcript.jsonl")
+	if err := os.WriteFile(talk, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	id, err := st.Add(context.Background(), factory.Item{
+		Title: "prove it builds", Repo: "acme/api", Tier: factory.TierOwner, Talk: talk,
+		Stages: []factory.Stage{{Name: "test", Kind: factory.StageCheck, Ask: "true", On: true}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	was, _ := st.Revision(id)
+	want := "acme/api isn't checked out on this machine · " + factory.CheckoutNeedsGitHub
+
+	door := runDoor(st, "", profile).(session.RunStarter)
+	var needs factory.NeedsCheckout
+	if _, err := door.StartRun(context.Background(), talk); !errors.As(err, &needs) || err.Error() != want {
+		t.Fatalf("factory_start with no way to a checkout = %v", err)
+	}
+
+	handler := serve.New(factorySeam(st, "", profile), serve.Config{Address: "http://test", Mode: api.FactorySolo, Store: st})
+	t.Cleanup(handler.Close)
+	r := httptest.NewRequest("POST", "/v1/jobs/"+strconv.Itoa(id)+"/start_now", strings.NewReader(`{}`))
+	r.RemoteAddr = "127.0.0.1:1234"
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+	var body struct {
+		Error  string `json:"error"`
+		Reason string `json:"reason"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &body)
+	if w.Code != 409 || body.Error != want || body.Reason != api.ReasonNeedsCheckout {
+		t.Fatalf("the header's start = %d %s", w.Code, w.Body)
+	}
+	if now, _ := st.Revision(id); now != was {
+		t.Fatalf("a refused start moved the job's version from %d to %d", was, now)
+	}
+
+	t.Setenv("GH_TOKEN", "tok-secret")
+	it, _ := st.Get(id)
+	if line, err := door.StartRun(context.Background(), talk); err != nil || line != it.Ref()+" started" {
+		t.Fatalf("factory_start the runner will clone for = %q, %v", line, err)
+	}
+	if got, _ := st.Get(id); got.State != factory.StateQueued {
+		t.Fatalf("the start did not queue the job: %s", got.State)
 	}
 }

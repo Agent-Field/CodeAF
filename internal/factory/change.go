@@ -3,10 +3,12 @@ package factory
 // Change is the last change the holding machine could read from the job's
 // worktree. Nil means no machine has reported it yet.
 type Change struct {
-	Files  []ChangedFile `json:"files,omitempty"`
-	Stat   *ChangeStat   `json:"stat,omitempty"`
-	Branch string        `json:"branch,omitempty"`
-	Tests  []StepTests   `json:"tests,omitempty"`
+	Patch          string        `json:"patch,omitempty"`
+	PatchTruncated bool          `json:"patch_truncated,omitempty"`
+	Files          []ChangedFile `json:"files,omitempty"`
+	Stat           *ChangeStat   `json:"stat,omitempty"`
+	Branch         string        `json:"branch,omitempty"`
+	Tests          []StepTests   `json:"tests,omitempty"`
 }
 
 // ChangedFile names a path in the worktree, including untracked additions.
@@ -29,9 +31,10 @@ type ChangeStat struct {
 // TestCounts exists only when a check's output names individual outcomes.
 // An exit code alone never establishes how many tests ran.
 type TestCounts struct {
-	Passed  int `json:"passed,omitempty"`
-	Failed  int `json:"failed,omitempty"`
-	Skipped int `json:"skipped,omitempty"`
+	Command string `json:"command,omitempty"`
+	Passed  int    `json:"passed,omitempty"`
+	Failed  int    `json:"failed,omitempty"`
+	Skipped int    `json:"skipped,omitempty"`
 }
 
 // StepTests keeps each check's latest counts separate from other checks.

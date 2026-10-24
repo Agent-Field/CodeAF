@@ -178,7 +178,6 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 	}
 	localSettings(&seam, st, o)
 	localRunner(&seam, o)
-	localShape(&seam, o)
 	// THE FLOOR'S OWN MARKS, kept by the store when it keeps them (marks.go).
 	localMarks(&seam, st)
 	if o.talk != nil {
@@ -241,15 +240,6 @@ func WithRepoDirs(dir func(repo string) string) LocalOption {
 	return func(o *localOptions) { o.dirs = dir }
 }
 
-// WithShape gives the local seam its [Seam.Shape] door: shape is the manager's
-// shaping turn for one item, built where the session engine is (cmd/codeaf's
-// factory_shape.go), because THIS PACKAGE IMPORTS NEITHER the engine nor the
-// runner. A seam without it has no Shape door, and opening an item page
-// shapes nothing.
-func WithShape(shape func(ctx context.Context, id int) (string, error)) LocalOption {
-	return func(o *localOptions) { o.shape = shape }
-}
-
 // WithTalk gives the local seam its [Seam.Talk] door: maker is what makes an
 // item's conversation and answers its session file. It is a func handed in
 // rather than anything this package builds, because a conversation is the
@@ -295,7 +285,6 @@ type localOptions struct {
 	dirs           func(repo string) string
 	lister         RepoLister
 	talk           func(ctx context.Context, it Item) (string, error)
-	shape          func(ctx context.Context, id int) (string, error)
 	refetch        func(ctx context.Context, it Item) error
 }
 
@@ -443,6 +432,12 @@ func localTalk(ctx context.Context, st ItemStore, id int, maker func(context.Con
 	if chat := strings.TrimSpace(it.Talk); chat != "" {
 		return chat, nil
 	}
+	// A DROPPED JOB HAS NO CONVERSATION AND IS NEVER GIVEN ONE: the drop
+	// deleted its agent, and one made now would be an agent nothing runs for,
+	// deleted again by Bring back ([RefuseDropped]).
+	if err := RefuseDropped(it); err != nil {
+		return "", err
+	}
 	chat, err := maker(ctx, it)
 	if err != nil {
 		return "", err
@@ -532,6 +527,7 @@ func localLoad(st ItemStore, started, now time.Time, recipe func(repo string) Re
 	if err != nil {
 		return Snapshot{}, err
 	}
+	items = IssueJobs(items)
 	snap := Snapshot{
 		Now:   now,
 		Items: items,
@@ -569,7 +565,7 @@ func localLoad(st ItemStore, started, now time.Time, recipe func(repo string) Re
 // (a cap, a gate word, a round count, an effort, a security pass) and what is left,
 // tidied, is the title. The stages are the repo's recipe for an issue, with
 // the chips written onto them: rounds onto review, the effort onto write,
-// security switched on.
+// security switched on or added.
 func localNew(st ItemStore, repo, words string, now time.Time, recipe Recipe) (int, error) {
 	repo = strings.TrimSpace(repo)
 	if repo == "" {
@@ -582,19 +578,20 @@ func localNew(st ItemStore, repo, words string, now time.Time, recipe Recipe) (i
 		return 0, errors.New("say what the work is, not only how")
 	}
 	it := Item{
-		Repo:    repo,
-		Places:  []string{repo},
-		Kind:    KindIssue,
-		Title:   title,
-		Tier:    TierOwner,
-		Origin:  OriginTerminal,
-		State:   StateNew,
-		Created: now,
-		Changed: now,
-		Cap:     c.Cap,
-		Ask:     &JobAsk{Text: title, At: now, Source: AskTUI},
-		Triage:  Triage{Type: GuessType(title)},
-		Stages:  CopyStages(recipe.For(KindIssue)),
+		Autonomy: AutonomyAuto,
+		Repo:     repo,
+		Places:   []string{repo},
+		Kind:     KindIssue,
+		Title:    title,
+		Tier:     TierOwner,
+		Origin:   OriginTerminal,
+		State:    StateNew,
+		Created:  now,
+		Changed:  now,
+		Cap:      c.Cap,
+		Ask:      &JobAsk{Text: title, At: now, Source: AskTUI},
+		Triage:   Triage{Type: GuessType(title)},
+		Stages:   CopyStages(recipe.For(KindIssue)),
 	}
 	// THE GATE WORDS PLACE APPROVE STEPS ([ApproveForGate]): `plan first`
 	// one after plan, `ship it` one before the result, `self-ship` none, so
@@ -618,8 +615,14 @@ func localNew(st ItemStore, repo, words string, now time.Time, recipe Recipe) (i
 		}
 		it.Stages[i].Max = c.Rounds
 	}
-	if i := StageIndex(it.Stages, "security"); security && i >= 0 {
-		it.Stages[i].On = true
+	// SECURITY IS IN NO DEFAULT LIST ([DefaultRecipe]): the chip switches on a
+	// recipe's own security stage, or lays the shipped one after review.
+	if security {
+		if i := StageIndex(it.Stages, "security"); i >= 0 {
+			it.Stages[i].On = true
+		} else if sec, ok := ShippedStage("security"); ok {
+			it.Stages = PlaceStage(it.Stages, sec, "after review")
+		}
 	}
 	if i := StageIndex(it.Stages, "write"); c.Effort != "" && i >= 0 {
 		if c.Effort != it.Stages[i].Effort && StageFixed(it.Stages, i, recipe, KindIssue) {
@@ -872,11 +875,4 @@ func localRunner(seam *Seam, o localOptions) {
 	seam.SignOff = r.SignOff
 	seam.SendBack = r.SendBack
 	seam.Reverify = r.Reverify
-}
-
-// localShape hangs the Shape door handed in, if any.
-func localShape(seam *Seam, o localOptions) {
-	if o.shape != nil {
-		seam.Shape = o.shape
-	}
 }

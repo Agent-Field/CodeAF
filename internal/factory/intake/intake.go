@@ -63,12 +63,19 @@ func (in *Intake) Once(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// A REPOSITORY THAT IS OFF IS PASSED BY ([factory.RepoSwitch]): its
+	// labelled jobs are neither started nor asked about, and its rules are not
+	// even read, because the factory does not work on it.
+	sw, err := in.st.RepoSwitch()
+	if err != nil {
+		return err
+	}
 	var errs []error
 	for _, it := range items {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if it.SetupHeld || it.State != factory.StateNew || len(it.Labels) == 0 || it.AskedFirstReason != "" {
+		if factory.JobState(it) == "done" || !factory.IsIssueJob(it) || it.SetupHeld || it.State != factory.StateNew || len(it.Labels) == 0 || it.AskedFirstReason != "" || sw.OffJob(it) {
 			continue
 		}
 		if err := in.decide(ctx, it); err != nil {
@@ -137,7 +144,7 @@ var errMoved = errors.New("intake: job already moved")
 // after Once listed the backlog still wins. Only a person's Run door may
 // restart a job they stopped; labels never restore that permission.
 func (in *Intake) canStart(ctx context.Context, it factory.Item) error {
-	if it.SetupHeld {
+	if it.SetupHeld || factory.JobState(it) == "done" {
 		return errMoved
 	}
 	if it.State != factory.StateNew {
@@ -148,7 +155,7 @@ func (in *Intake) canStart(ctx context.Context, it factory.Item) error {
 		return err
 	}
 	for _, event := range events {
-		if event.Job == it.ID && event.Kind == record.Stopped {
+		if event.Job == it.ID && (event.Kind == record.Stopped || event.Kind == record.ClosedLocally) {
 			return errMoved
 		}
 	}

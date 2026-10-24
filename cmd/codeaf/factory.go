@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
+	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -221,10 +222,7 @@ func factorySeam(st *store.Store, workspace, profileDir string) factory.Seam {
 	// machine, so its door is hung only here, where the floor is this
 	// machine's: --once and --host never build this seam.
 	dirs := factoryRepoDirs(st, workspace)
-	token := func(ctx context.Context) string {
-		t, _ := factorygithub.TokenAt(ctx, profileDir)
-		return t
-	}
+	token := factoryTokenOf(profileDir)
 	local := factory.LocalSeam(st, time.Now(),
 		// THE RUNNER'S DOORS ARE HUNG IN EVERY WINDOW (factory_run.go): they
 		// are the lease's, which queue a job for a worker and signal its
@@ -233,9 +231,6 @@ func factorySeam(st *store.Store, workspace, profileDir string) factory.Seam {
 		factoryPipelineOption(), factory.WithRepoDirs(dirs),
 		factory.WithRepoLister(factorygithub.Lister(profileDir)),
 		factory.WithTalk(talkMaker(st, workspace, profileDir)),
-		// THE MANAGER READS THE ISSUE WHEN ITS PAGE OPENS (factory_shape.go):
-		// the door is this process's, built with its worker loop.
-		factory.WithShape(factoryShapeHere()),
 		// THE REFRESH DOORS (`u`, `U`, `g`) read through a GitHub source built
 		// at the moment of asking over the profile's token and the watched
 		// repositories, because the poll may be running in another process
@@ -249,11 +244,11 @@ func factorySeam(st *store.Store, workspace, profileDir string) factory.Seam {
 	// AND THE FOREMAN (`m`, factory_foreman.go), on the Talk door's law.
 	local = withForeman(local, st, workspace, profileDir)
 	seam := nudgeOnWatch(factorygithub.Connect(factorygithub.Facts(local, st, nil), profileDir), st)
-	// A RUN NEVER STARTS WITHOUT A CHECKOUT (factory_clone.go): the Clone door
-	// gets one into the factory's own folder over the same token the forge
-	// reads with, and Launch refuses an item whose repository has none.
+	// A RUN NEVER STARTS WITHOUT A CHECKOUT (factory_clone.go): the runner
+	// clones one into the factory's own folder over the same token the forge
+	// reads with, and Launch refuses only a repository that cannot be cloned.
 	seam.Clone = factoryCloneDoor(st, token)
-	return factoryNeedsCheckout(seam, st, dirs)
+	return factoryCheckouts(seam, st, dirs, token)
 }
 
 // nudgeOnWatch wraps the picker's save so that, once repos.json is written,
@@ -393,7 +388,12 @@ func factoryGitHub(ctx context.Context, st *store.Store, token func(context.Cont
 	if tok == "" {
 		return nil
 	}
-	return factorygithub.New(forge.NewClient(tok), repos, nil)
+	src := factorygithub.New(forge.NewClient(tok), repos, nil)
+	src.SetVerificationRecovery(func(it factory.Item) bool {
+		dir := factoryrun.NewWorkdirs(filepath.Join(st.Root(), "work"), nil).Dir(it)
+		return factoryVerificationRecovered(it, dir)
+	})
+	return src
 }
 
 // factoryPoll is the one GitHub poll this process runs, started at most once.

@@ -104,6 +104,13 @@ func readChange(dir, base string) (*factory.Change, error) {
 		files[path] = f
 	}
 	change := &factory.Change{Branch: strings.TrimSpace(branch)}
+	if patch, e := git.Run(dir, "diff", "--no-ext-diff", "--no-renames", "--no-color", base, "--"); e == nil {
+		if len(patch) > 512000 {
+			patch = patch[:512000]
+			change.PatchTruncated = true
+		}
+		change.Patch = strings.ToValidUTF8(patch, "")
+	}
 	if len(files) > 0 {
 		change.Stat = &factory.ChangeStat{Files: len(files)}
 		for _, f := range files {

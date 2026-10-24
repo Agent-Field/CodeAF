@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -15,11 +16,11 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/factory/verification"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/teams"
-	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
 // ── A STAGE IS A CONVERSATION: THE MAKER ───────────────────────────────────
@@ -35,9 +36,15 @@ import (
 //
 //   - Stage is the round's door, so `stage_result` and `plan_edit` are on its
 //     belt (internal/session's tools_stage.go);
-//   - it is UNATTENDED, under a wall of [factoryStageWall]: nobody is at its
-//     keyboard, so it keeps going on its own until its work, and the tasks it
-//     handed out, are done;
+//   - it is UNATTENDED: nobody is at its keyboard, so a card it raises takes
+//     its default and a task's landing takes the check road's accept. It has
+//     NO GOAL OWNER, because its runner already judges what it reports
+//     (internal/session's newPrincipalFor): it works until it stops, its last
+//     `stage_result` standing, and the runner asks for a report it forgot,
+//     then makes it report on a turn that must ([stageConversation.NoteRequiring]),
+//     then makes one for it ([stageConversation.Infer]). The budget's wall,
+//     [factoryStageWall], bounds what it hands out to tasks, and the runner
+//     bounds the round with the same figure;
 //   - it runs at the ALLOW POSTURE, what --yolo gives, behind the headless
 //     gate ([stageApprovalGate]): a stage that writes must be able to edit and
 //     run things in its checkout, and nothing it does may wait on a person who
@@ -48,6 +55,7 @@ import (
 
 // stageMaker opens stage conversations from parent, the launch's own config.
 type stageMaker struct {
+	floor      *store.Store
 	parent     session.Config
 	current    func() session.Config
 	refusal    func() error
@@ -56,14 +64,14 @@ type stageMaker struct {
 }
 
 // factoryStageMaker is this process's maker.
-func factoryStageMaker(_ *store.Store, workspace, profileDir string, parent session.Config) factoryrun.ConversationMaker {
-	return stageMaker{parent: parent, workspace: workspace, profileDir: profileDir}
+func factoryStageMaker(floor *store.Store, workspace, profileDir string, parent session.Config) factoryrun.ConversationMaker {
+	return stageMaker{floor: floor, parent: parent, workspace: workspace, profileDir: profileDir}
 }
 
 // factoryStageMakerFrom reads the worker's current launch for each round,
 // including a resumed round whose journal predates the one-model launch.
-func factoryStageMakerFrom(_ *store.Store, workspace, profileDir string, current func() session.Config) stageMaker {
-	return stageMaker{current: current, workspace: workspace, profileDir: profileDir}
+func factoryStageMakerFrom(floor *store.Store, workspace, profileDir string, current func() session.Config) stageMaker {
+	return stageMaker{floor: floor, current: current, workspace: workspace, profileDir: profileDir}
 }
 
 // withRefusal gives the maker the reason its parent was last refused.
@@ -106,8 +114,22 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	if err != nil {
 		return nil, err
 	}
+	if err := markFactoryStageChat(m.floor, spec.Item, cfg.SessionFile); err != nil {
+		return nil, err
+	}
 	cfg.Workspace = where
-	cfg.Stage = spec.Stage
+	// THE JOB'S OWN MODEL, WHEN A PERSON CHOSE ONE, over the launch's default.
+	cfg.AutomaticModels = spec.AutomaticModels
+	if model := strings.TrimSpace(spec.Model); model != "" {
+		cfg.Model = model
+	}
+	fallback := appDefaultFallback(m.profileDir)
+	if cfg.OneModel || fallback == cfg.Model {
+		fallback = ""
+	}
+	cfg.ConversationModels = &session.ConversationModels{Main: cfg.Model, Fallback: fallback}
+	verification := &receiptStageDoor{StageDoor: spec.Stage, file: cfg.SessionFile, dir: where, repair: spec.VerifyRepair, requireFresh: spec.VerifyChecks}
+	cfg.Stage = verification
 	cfg.Interactive = false
 	cfg.Unattended = true
 	cfg.Budget = session.Budget{Wall: factoryStageWall}
@@ -115,6 +137,11 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	cfg.Factory, cfg.Recipe, cfg.FactoryItem, cfg.Floor = nil, nil, nil, nil
 	// AND NO STAGE SHAPES THE RUN: `factory_run` is the manager's.
 	cfg.FactoryRun = nil
+	// Stages carry no manager tool authority. Their separate live meter charges
+	// the same job before round completion, including delegated provider calls.
+	cfg.JobChat = nil
+	budget := &stageBudget{floor: m.floor, item: spec.Item}
+	cfg.JobBudget = budget
 	gate := stageApprovalGate{rows: v3ApprovalGate{workspace: where, profileDir: m.profileDir, headless: true}, posture: factoryStagePosture()}
 	cfg.ApprovalGate = gate
 	cfg.ApprovalPosture = gate.posture
@@ -132,21 +159,32 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	// known from the moment its journal is open (a crew tick landing between the
 	// open and a later register would find a live, unregistered agent and read
 	// it as another window's) to Close or to a failed start (app_lend.go).
+	if spec.Effort != "" {
+		agent.SetConversationEffort(spec.Effort)
+	}
+	verification.workRunning = agent.StageHasChecks
+	agent.ArmStageJobPark(factoryStageWall)
 	rememberStageAgent(agent)
 	if team := strings.TrimSpace(spec.Team); team != "" && !resumed {
-		if err := stageJoinTeam(m.profileDir, team, cfg.SessionFile, where, spec.Name, spec.Brief); err != nil {
+		if err := stageJoinTeam(m.profileDir, team, cfg.SessionFile, where, spec.Name, spec.Handle, spec.Brief); err != nil {
 			forgetStageAgent(agent)
 			_ = agent.Close()
 			return nil, err
 		}
 	}
 	c := &stageConversation{
-		agent:    agent,
-		file:     cfg.SessionFile,
-		captions: make(chan string, 256),
-		done:     make(chan struct{}),
+		agent:                agent,
+		budget:               budget,
+		file:                 cfg.SessionFile,
+		dir:                  where,
+		captions:             make(chan string, 256),
+		progress:             spec.Progress,
+		verificationProgress: spec.Verification,
+		done:                 make(chan struct{}),
+		verification:         verification,
+		closing:              make(chan struct{}),
 	}
-	brief := spec.Brief
+	brief := spec.Brief + inheritFactoryChecks(spec, cfg.SessionFile, where)
 	if resumed {
 		brief = session.CarryOn(brief)
 	}
@@ -157,7 +195,13 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 		return nil, err
 	}
 	c.wakes, c.stopWakes = agent.WatchWakes()
-	guard.Go("factory/stage-conversation", func() { c.follow(events) })
+	done := c.done
+	if c.verificationProgress != nil {
+		c.followers.Add(1)
+		guard.Go("factory/stage-check-progress", func() { defer c.followers.Done(); c.watchVerification() })
+	}
+	c.followers.Add(1)
+	guard.Go("factory/stage-conversation", func() { defer c.followers.Done(); c.follow(events, done) })
 	return c, nil
 }
 
@@ -241,7 +285,7 @@ func (g stageApprovalGate) Standing() string { return g.posture }
 // IT IS THE OPENING BRIEF AND ONLY THAT: a resumed stage is never joined again
 // (Open skips this), because what a resume is given is a carry-on note
 // ([session.CarryOn]) and not the brief the stage began on.
-func stageJoinTeam(profileDir, team, transcript, where, name, brief string) error {
+func stageJoinTeam(profileDir, team, transcript, where, name, handle, brief string) error {
 	key := transcript
 	if real, err := filepath.EvalSymlinks(transcript); err == nil {
 		key = real
@@ -249,7 +293,7 @@ func stageJoinTeam(profileDir, team, transcript, where, name, brief string) erro
 	key = filepath.Clean(key)
 	now := time.Now()
 	return teams.Update(profileDir, func(f *teams.File) error {
-		return f.AddMember(team, teams.Member{Key: key, File: transcript, Where: where, Word: name, JoinedAt: now, FactoryStage: true, FactoryBrief: redact.Secrets(brief)})
+		return f.AddMember(team, teams.Member{Key: key, File: transcript, Where: where, Word: name, Handle: handle, JoinedAt: now, FactoryStage: true, FactoryBrief: redact.Secrets(brief)})
 	})
 }
 
@@ -260,12 +304,19 @@ var stageSettle = unattendedRunSettleTick
 
 // stageConversation is one open stage conversation.
 type stageConversation struct {
-	agent     *session.Agent
-	file      string
-	captions  chan string
-	wakes     <-chan (<-chan session.Event)
-	stopWakes func()
-	done      chan struct{}
+	budget               *stageBudget
+	agent                *session.Agent
+	file                 string
+	dir                  string
+	captions             chan string
+	progress             func(string)
+	verificationProgress func(*factory.StepVerification)
+	wakes                <-chan (<-chan session.Event)
+	stopWakes            func()
+	done                 chan struct{}
+	verification         *receiptStageDoor
+	followers            sync.WaitGroup
+	closing              chan struct{}
 
 	mu      sync.Mutex
 	failure error
@@ -275,23 +326,36 @@ type stageConversation struct {
 // follow drains the first turn, then every turn a landing wakes, into the
 // captions, and closes done when the conversation has been idle for a whole
 // [stageSettle]: its turn ended AND nothing it handed out is still running.
-func (c *stageConversation) follow(first <-chan session.Event) {
-	defer close(c.done)
+func (c *stageConversation) follow(first <-chan session.Event, done chan struct{}) {
 	c.drain(first)
 	settled := false
 	for {
-		if c.agent.StillGoing() {
+		select {
+		case <-c.closing:
+			c.closeDone(done)
+			return
+		default:
+		}
+		if c.agent.StageStillGoing() {
 			settled = false
 		} else if settled {
-			return
+			if c.settle(done) {
+				return
+			}
+			settled = false
 		} else {
 			settled = true
 		}
 		t := time.NewTimer(stageSettle)
 		select {
+		case <-c.closing:
+			t.Stop()
+			c.closeDone(done)
+			return
 		case stream, open := <-c.wakes:
 			t.Stop()
 			if !open {
+				c.closeDone(done)
 				return
 			}
 			settled = false
@@ -301,12 +365,60 @@ func (c *stageConversation) follow(first <-chan session.Event) {
 	}
 }
 
+// closeDone closes done under the lock [stageConversation.deliver] reads it under.
+func (c *stageConversation) closeDone(done chan struct{}) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	close(done)
+}
+
+// settle closes done when the conversation is still idle, under the lock
+// [stageConversation.deliver] starts a next turn under: a note that lands in the
+// same breath either starts its turn first, which this reads as going, or
+// finds done closed and follows its turn again.
+func (c *stageConversation) settle(done chan struct{}) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.agent.SettleStage() {
+		return false
+	}
+	close(done)
+	return true
+}
+
 // drain reads one turn's events into captions and keeps its failure.
 func (c *stageConversation) drain(events <-chan session.Event) {
+	// Streamed text is provisional until a journal boundary. Never relay
+	// reasoning, failed/retried fragments, raw tool output or partial responses.
+	var prose strings.Builder
+	flush := func() {
+		if c.progress != nil && prose.Len() > 0 {
+			c.progress(prose.String())
+		}
+		prose.Reset()
+	}
 	for event := range events {
 		switch event.Kind {
+		case session.EventTextDelta:
+			if c.progress != nil && prose.Len() < 4*1024 {
+				text := event.Text
+				if len(text) > 4*1024-prose.Len() {
+					text = text[:4*1024-prose.Len()]
+				}
+				prose.WriteString(text)
+			}
+		case session.EventAssistantDone:
+			flush()
+		case session.EventRetrying:
+			prose.Reset()
 		case session.EventToolBegin:
-			c.say(tui3.ToolGloss(event.Tool, event.Hint))
+			flush()
+			hint := c.relativeHint(event.Hint)
+			if hint != "" {
+				c.say(event.Tool + " " + hint)
+			} else {
+				c.say(event.Tool)
+			}
 		case session.EventToolFailed:
 			reason := event.Hint
 			if reason == "" && event.Err != nil {
@@ -321,15 +433,23 @@ func (c *stageConversation) drain(events <-chan session.Event) {
 				c.say(event.Text)
 			}
 		case session.EventError:
+			prose.Reset()
 			c.fail(event.Err)
 		}
 	}
 }
 
 // fail keeps a turn's failure, in words when it came with none.
+//
+// A TURN A SPENDING LIMIT REFUSED IS HANDED ON AS A STOP ([factoryrun.SpendStop]),
+// told apart by what refused it and never by its words, so the round ends on
+// the limit rather than trying a turn that would be refused again.
 func (c *stageConversation) fail(err error) {
 	if err == nil {
 		err = errors.New("the turn failed without a reason")
+	}
+	if errors.Is(err, session.ErrSpendRail) || errors.Is(err, session.ErrSpendUnverified) {
+		err = factoryrun.SpendStop{Daily: session.IsDailyLimit(err), Said: err.Error()}
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -351,23 +471,105 @@ func (c *stageConversation) say(line string) {
 // Send hands the person's words to the conversation: into the turn when one
 // is running, as the next turn when none is.
 func (c *stageConversation) Send(_ context.Context, words string) error {
-	events, err := c.agent.Steer(words)
-	if errors.Is(err, session.ErrNothingToSteer) {
-		events, err = c.agent.FollowUp(words)
-	}
+	return c.deliver(words)
+}
+
+// Note hands codeaf's own words to the conversation the same way, as a
+// carry-on note ([session.CarryOn]) so the chat never shows them as the
+// person's.
+func (c *stageConversation) Note(_ context.Context, words string) error {
+	return c.deliver(session.CarryOn(words))
+}
+
+// NoteRequiring is Note on a turn of its own whose first answer must call
+// tool (internal/session's FollowUpRequiring): never steered into a running
+// turn, which owes nothing, but queued behind it when one is running.
+func (c *stageConversation) NoteRequiring(_ context.Context, words, tool string) error {
+	return c.deliverWith(session.CarryOn(words), func(text string) (<-chan session.Event, error) {
+		return c.agent.FollowUpRequiring(text, tool)
+	})
+}
+
+// LastWords is the last thing the conversation's model said in words.
+func (c *stageConversation) LastWords() string { return c.agent.LastWords() }
+
+// Infer makes the step's report in one short call apart from the
+// conversation's turns (internal/session's InferStageResult).
+func (c *stageConversation) Infer(ctx context.Context, ask string) (factory.StageResult, error) {
+	return c.agent.InferStageResult(ctx, ask)
+}
+
+// deliver steers the running turn, or starts the next one. A conversation that
+// had already gone idle is followed again from that turn, so [Wait] answers
+// when it is idle once more rather than at once.
+func (c *stageConversation) deliver(words string) error {
+	return c.deliverWith(words, func(text string) (<-chan session.Event, error) {
+		events, err := c.agent.Steer(text)
+		if errors.Is(err, session.ErrNothingToSteer) {
+			events, err = c.agent.FollowUp(text)
+		}
+		return events, err
+	})
+}
+
+// deliverWith is deliver with the way the words reach the agent given.
+func (c *stageConversation) deliverWith(words string, start func(string) (<-chan session.Event, error)) error {
+	events, done, idle, err := c.startTurn(words, start)
 	if err != nil {
 		return err
 	}
-	guard.Go("factory/stage-steer", func() { c.drain(events) })
+	if idle {
+		guard.Go("factory/stage-conversation", func() { defer c.followers.Done(); c.follow(events, done) })
+		return nil
+	}
+	guard.Go("factory/stage-steer", func() { defer c.followers.Done(); c.drain(events) })
 	return nil
+}
+
+// startTurn hands the words to the agent through start, under the lock
+// [stageConversation.settle] closes done under, and answers whether the
+// conversation had gone idle (so done is a new one, to follow again).
+func (c *stageConversation) startTurn(words string, start func(string) (<-chan session.Event, error)) (<-chan session.Event, chan struct{}, bool, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return nil, nil, false, errors.New("this stage conversation is closed")
+	}
+	c.agent.ReopenStage()
+	events, err := start(words)
+	if err != nil {
+		return nil, nil, false, err
+	}
+	idle := false
+	select {
+	case <-c.done:
+		idle = true
+		c.done, c.failure = make(chan struct{}), nil
+	default:
+	}
+	c.followers.Add(1)
+	return events, c.done, idle, nil
+}
+
+// currentDone is the channel the conversation's current turn closes when idle.
+func (c *stageConversation) currentDone() chan struct{} {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.done
 }
 
 // Wait returns when the conversation is idle, or when ctx ends.
 func (c *stageConversation) Wait(ctx context.Context) error {
+	done := c.currentDone()
 	select {
-	case <-c.done:
+	case <-done:
 		c.mu.Lock()
 		defer c.mu.Unlock()
+		if c.budget != nil {
+			if why := c.budget.Refusal(); why != "" {
+				return factoryrun.SpendStop{Job: c.budget.reachedCap(), Said: why}
+			}
+		}
 		return c.failure
 	case <-ctx.Done():
 		return ctx.Err()
@@ -377,11 +579,39 @@ func (c *stageConversation) Wait(ctx context.Context) error {
 // Captions is the conversation's running account.
 func (c *stageConversation) Captions(context.Context) <-chan string { return c.captions }
 
+// VerificationStopped lets the runner close an agent that repeatedly reports
+// the same rejected repair, even while its model turn is otherwise still busy.
+func (c *stageConversation) VerificationStopped() <-chan string {
+	if c.verification == nil {
+		return nil
+	}
+	return c.verification.stoppedVerification()
+}
+
 // ID is the conversation's session file, which is how a surface opens it.
 func (c *stageConversation) ID() string { return c.file }
 
 // Spent is what the conversation has cost, its tasks folded in.
-func (c *stageConversation) Spent() float64 { return c.agent.Usage().CostUSD }
+func (c *stageConversation) Spent() float64 {
+	if c.budget != nil {
+		return c.budget.total()
+	}
+	return c.agent.Usage().CostUSD
+}
+func (c *stageConversation) SpendRecorded() bool { return c.budget != nil }
+
+// Model is the model the conversation is on now.
+func (c *stageConversation) Model() string { return c.agent.Model() }
+
+func (c *stageConversation) SetAutomaticModels(enabled bool) error {
+	return c.agent.SetAutomaticModels(enabled)
+}
+
+func (c *stageConversation) LastModel() string { return c.agent.LastModel() }
+
+// SetModel switches the conversation for its next turn, as a person's pick
+// does in any chat.
+func (c *stageConversation) SetModel(model string) { c.agent.SetModel(model) }
 
 // Close interrupts a turn still in flight and lets go of the conversation;
 // its folder stays where it was made, to be opened.
@@ -389,10 +619,14 @@ func (c *stageConversation) Close() {
 	if !c.closeOnce() {
 		return
 	}
+	if c.verification != nil {
+		c.verification.closeVerification()
+	}
 	c.stopWakes()
 	forgetStageAgent(c.agent)
 	c.agent.Interrupt()
 	_ = c.agent.Close()
+	c.followers.Wait()
 }
 
 // closeOnce answers true the first time it is asked, and false after.
@@ -403,6 +637,9 @@ func (c *stageConversation) closeOnce() bool {
 		return false
 	}
 	c.closed = true
+	if c.closing != nil {
+		close(c.closing)
+	}
 	return true
 }
 
@@ -606,4 +843,67 @@ func factoryItemTeam(profileDir string, it factory.Item) (string, error) {
 		return nil
 	})
 	return id, err
+}
+
+// relativeHint spends the visible log on the filename and command, not a home path.
+func (c *stageConversation) relativeHint(s string) string {
+	if c.dir == "" {
+		return s
+	}
+	s = strings.ReplaceAll(s, c.dir+string(os.PathSeparator), "")
+	return strings.ReplaceAll(s, c.dir, ".")
+}
+
+// watchVerification relays bounded structured facts even while a model turn parks.
+// It never wakes a model or prints receipt bookkeeping into the conversation.
+func (c *stageConversation) watchVerification() {
+	tick := time.NewTicker(time.Second)
+	defer tick.Stop()
+	defer c.verificationProgress(nil)
+	last := ""
+	for {
+		current, _ := verification.Current(c.file)
+		status := liveStageVerification(current, c.agent.StageChecks())
+		raw, _ := json.Marshal(status)
+		if string(raw) != last {
+			last = string(raw)
+			c.verificationProgress(status)
+		}
+		select {
+		case <-c.closing:
+			return
+		case <-tick.C:
+		}
+	}
+}
+
+// A nullable old receipt is not liveness. Match the exact currently owned
+// native tool call, including foreground checks and promoted background work.
+func liveStageVerification(current []verification.CurrentCheck, live []session.StageCheckProgress) *factory.StepVerification {
+	ids := make(map[string]time.Time, len(live))
+	for _, check := range live {
+		if check.CallID != "" {
+			ids[check.CallID] = check.Started
+		}
+	}
+	var status *factory.StepVerification
+	for _, check := range current {
+		started, owned := ids[check.CallID]
+		if check.Outcome != "running" || check.CallID == "" || !owned {
+			continue
+		}
+		// Provider call IDs may repeat across turns. A receipt from before the
+		// current physical process cannot borrow its new liveness.
+		if !started.IsZero() && (check.StartedAt.IsZero() || check.StartedAt.Before(started)) {
+			continue
+		}
+		if status == nil {
+			status = &factory.StepVerification{State: "running"}
+		}
+		if len(status.Checks) >= 8 {
+			break
+		}
+		status.Checks = append(status.Checks, factory.RunningCheck{ID: check.ID, Purpose: check.Purpose, StartedAt: check.StartedAt})
+	}
+	return status
 }

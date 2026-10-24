@@ -33,7 +33,7 @@ const (
 	Nudged          = "nudged"
 	PriorityChanged = "priority_changed"
 	BudgetRaised    = "budget_raised"
-	BranchDeleted   = "branch_deleted"
+	BudgetChanged   = "budget_changed"
 	Undone          = "undone"
 	Started         = "started"
 	Stopped         = "stopped"
@@ -44,6 +44,7 @@ const (
 	Posted          = "posted"
 	Took            = "took"
 	Dropped         = "dropped"
+	ClosedLocally   = "closed_locally"
 	// Released is un-take: the person who took the job let it go. It does not
 	// withdraw an approval the way a drop does.
 	Released       = "released"
@@ -52,6 +53,19 @@ const (
 	// opened. The handle, when GitHub named one, is who merged it.
 	PRMerged = "pr_merged"
 	PRClosed = "pr_closed"
+	// Restored is a person bringing a dropped job back to Backlog.
+	Restored = "restored"
+	// SourceClosed is the factory finding, as a person chose a job to run,
+	// that its issue or pull request was closed or merged on GitHub, so the
+	// job was finished instead of started. Its verb says which.
+	SourceClosed = "source_closed"
+	// MergeAsked is a person pressing Merge, inside its Undo window;
+	// MergeQueued a merge the gate passed and sent to the runner (Detail
+	// names the rule: the person, or the pipeline's auto-merge); and
+	// MergeRefused a merge the gate or the forge refused, with the words.
+	MergeAsked   = "merge_asked"
+	MergeQueued  = "merge_queued"
+	MergeRefused = "merge_refused"
 	// StepFailed is a step that errored. It is not a person's decision. The
 	// detail is code, step and next, so the audit can show what happened.
 	StepFailed      = "step_failed"
@@ -176,7 +190,7 @@ func (r *Record) Append(ctx context.Context, event Event) (Event, error) {
 
 func validate(e Event) error {
 	switch e.Kind {
-	case StepEdited, StepStopped, StepRerun, HandOffNotNow, Dismissed, Assigned, Unassigned, Nudged, PriorityChanged, BudgetRaised, BranchDeleted, Undone, Started, Stopped, AutoStarted, AskedFirst, Approved, Answered, Posted, Took, Dropped, Released, RequestChanges, PRMerged, PRClosed, StepFailed, RunnerAdded, RunnerChanged, ReposChanged, LinkCreated, LinkRevoked, SessionsRevoked, OperatorClaimed, GitHubGranted:
+	case StepEdited, StepStopped, StepRerun, HandOffNotNow, Dismissed, Assigned, Unassigned, Nudged, PriorityChanged, BudgetRaised, BudgetChanged, Undone, Started, Stopped, AutoStarted, AskedFirst, Approved, Answered, Posted, Took, Dropped, ClosedLocally, Restored, Released, RequestChanges, PRMerged, PRClosed, SourceClosed, MergeAsked, MergeQueued, MergeRefused, StepFailed, RunnerAdded, RunnerChanged, ReposChanged, LinkCreated, LinkRevoked, SessionsRevoked, OperatorClaimed, GitHubGranted:
 	default:
 		return fmt.Errorf("factory record: unknown event kind %q", e.Kind)
 	}
@@ -186,7 +200,7 @@ func validate(e Event) error {
 		return errors.New("factory record: actor must be person, agent or factory")
 	}
 	switch e.Verb {
-	case "edited steps", "reran step", "put away hand-off", "started", "stopped", "asked", "approved", "answered", "published", "assigned", "dropped", "unassigned", "requested changes", "merged", "closed", "failed", "added runner", "changed runner", "connected repo", "disconnected repo", "created access link", "revoked access link", "revoked sessions", "dismissed", "nudged", "changed priority", "raised budget", "deleted branch", "undone", "claimed factory", "granted GitHub read access":
+	case "edited steps", "reran step", "put away hand-off", "started", "stopped", "asked", "approved", "answered", "published", "assigned", "dropped", "brought back", "unassigned", "requested changes", "merged", "closed", "closed locally", "pressed merge", "sent merge", "refused merge", "failed", "added runner", "changed runner", "connected repo", "disconnected repo", "created access link", "revoked access link", "revoked sessions", "dismissed", "nudged", "changed priority", "raised budget", "changed budget", "undone", "claimed factory", "granted GitHub read access":
 	default:
 		return errors.New("factory record: unknown Activity verb")
 	}
@@ -291,7 +305,7 @@ func (r *Record) TrailerFor(ctx context.Context, id int, commit string) (string,
 				trailer += " " + e.Commit
 			}
 			return trailer, nil
-		case Started, AutoStarted, Dropped, RequestChanges, Released:
+		case Started, AutoStarted, Dropped, Restored, RequestChanges, Released:
 			return "", errors.New("job requires a recorded approval before publishing")
 		}
 	}

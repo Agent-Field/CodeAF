@@ -33,9 +33,10 @@ import (
 //     hundred items are one team on every list of teams, folded until a person
 //     opens it (internal/tui3's factory_talk.go);
 //   - one conversation in that team, a session folder in the bucket of the
-//     repository's checkout (or this window's workspace when the checkout is
-//     not known), whose journal opens with the item in front of it
-//     ([talkBrief]) as the session's own note ([session.SeedConversation]).
+//     folder it works in ([talkFolder]: the repository's checkout, the
+//     factory's own clone of it, or an empty folder of the job's own), whose
+//     journal opens with the item in front of it ([talkBrief]) as the
+//     session's own note ([session.SeedConversation]).
 //
 // THE CONVERSATION IS THE MANAGER OF THE ITEM'S RUN (the owner's decision of
 // 2026-10-08). It is the LEAD of the item's team, the stages' conversations
@@ -63,25 +64,33 @@ const factoryTeamName = "factory"
 const (
 	talkBlockWho   = "You are the manager of %s in %s."
 	talkBlockKnow  = "You know: the issue and its comments, what codeaf read of it, the repository's recipe, policy and habits, the checkout, and what the person has said here."
-	talkBlockDo    = "You do: shape the run, start it with factory_start when the person asks (nothing to look up first), report each stage here, answer the person, and hold at each approve step until the person says continue, saying what you wait on. The runner runs the steps: read a step to report on it, and never send one work, stop it or start one yourself."
+	talkBlockDo    = "You do: shape the run, start it with factory_start when the person asks (nothing to look up first), report each stage here from the runner’s recorded state, answer the person, and hold at each approve step until the person says continue, saying what you wait on. The runner runs the steps: read a step to report on it, and never send one work, stop it or start one yourself."
 	talkBlockShape = "Shape the run with factory_run: stages are one lowercase word each, at most nine. Each stage has an ask that says what done looks like, a loop (until, rounds, fanout) and one line of why. Keep the recipe's stages unless the item says otherwise; change asks before adding stages; add a stage only for work no existing stage covers. Never drop proof. An approve step is where the run holds until the person says continue: keep the recipe's, add one (named approve) after a stage the person wants to read first, and skip one only when the person asks. Nothing posts outward before an approve step."
-	talkBlockSay   = "Say what you set in three lines at most, then stop. Do not narrate."
+	talkBlockSay   = "Say what you set in three lines at most, then stop. Do not narrate. Call concurrency limits execution slots, never benches. When a job is queued, explain that it waits for an available execution slot and point to Jobs at once in Settings → Factory concurrency. Read factory_status for current facts; never invent a limit, running-job count or start time. Idle PR monitoring uses no execution slot."
 )
+
+// talkBlockBrief is the block on the job before it starts and on the
+// checkout (the owner's decision of 2026-10-20): what the person says before
+// Start is the brief, the job starts only when asked, and the runner, never
+// the manager, clones the repository. A manager that cloned it itself put a
+// second copy in whatever folder its conversation happened to open in. The
+// manual says it (internal/manual/chat/factory-stage-conversations.md).
+const talkBlockBrief = "Before the job starts, what the person says here is the brief. Start the job only when asked. The runner clones the repository when the job starts; never clone it yourself."
 
 // talkBlockInbox is the sixth block (the owner's decision of 2026-10-09): the
 // manager conversation is the item's one inbox, and this is when it answers a
 // step's question itself and when it sends it to the person
 // (factory_inbox.go). The manual quotes it (internal/manual/chat/factory.md).
-const talkBlockInbox = "You are the inbox: every question a stage asks comes to you first, and you reply with factory_answer. Answer it yourself when the issue, the recipe, the stages, the notes or what the person said here settle it. Send it to the person (ask_person, one line of why) when it turns on taste, scope, risk, credentials or access, money, or anything those do not settle; the stage waits, and the person answers here."
+const talkBlockInbox = "A model turn timing out is not a step failure: the runner retries it. Never declare a job complete or failed from a team turn ending. The runner owns those outcomes. Do not poll team_status or team_read to wait for a stage; wait for the runner’s next event. You are the inbox: every question a stage asks comes to you first, and you reply with factory_answer. Answer it yourself when the issue, the recipe, the stages, the notes or what the person said here settle it. Send it to the person (ask_person, one line of why) when it turns on taste, scope, risk, credentials or access, money, or anything those do not settle; the stage waits, and the person answers here."
 
-// talkBlocks is the five blocks for one item, the ref and the repository
-// filled in.
+// talkBlocks is the manager's blocks for one item, the ref and the
+// repository filled in.
 func talkBlocks(it factory.Item) []string {
 	repo := strings.TrimSpace(it.Repo)
 	if repo == "" {
 		repo = "this repository"
 	}
-	return []string{fmt.Sprintf(talkBlockWho, it.Ref(), repo), talkBlockKnow, talkBlockDo, talkBlockShape, talkBlockInbox, talkBlockSay}
+	return []string{fmt.Sprintf(talkBlockWho, it.Ref(), repo), talkBlockKnow, talkBlockDo, talkBlockBrief, talkBlockShape, talkBlockInbox, talkBlockSay}
 }
 
 // talkItemDoor is the brief's one sentence about `factory_item`, which keeps
@@ -89,18 +98,16 @@ func talkBlocks(it factory.Item) []string {
 const talkItemDoor = "factory_item changes the budget (its field is cap), the thinking of the steps that have not begun and are not fixed (its field is effort) and notes for the stages, behind a card the person answers. Its item field is %d; never say that number, call the item %s."
 
 // talkMaker is the Talk door's maker for this machine's floor: st is the store
-// the item lives in, workspace the window's own folder, and profileDir the
-// profile whose teams file the item's team is written into.
+// the item lives in, workspace the window's own folder (which is the
+// checkout only when it is the repository's, [factoryRepoDirs]), and
+// profileDir the profile whose teams file the item's team is written into.
 func talkMaker(st *store.Store, workspace, profileDir string) func(context.Context, factory.Item) (string, error) {
 	dirs := factoryRepoDirs(st, workspace)
 	return func(_ context.Context, it factory.Item) (string, error) {
 		factoryReconcileOnce(profileDir, st)
-		where := strings.TrimSpace(dirs(it.Repo))
-		if where == "" {
-			where = strings.TrimSpace(workspace)
-		}
-		if where == "" {
-			return "", errors.New("codeaf does not know which folder this item's conversation belongs in")
+		where, err := talkFolder(st, dirs, it)
+		if err != nil {
+			return "", err
 		}
 		bucket, err := v3ProjectDir(where)
 		if err != nil {
@@ -111,6 +118,9 @@ func talkMaker(st *store.Store, workspace, profileDir string) func(context.Conte
 			return "", err
 		}
 		transcript := place.Transcript()
+		if err := markFactoryChat(st, it, transcript); err != nil {
+			return "", err
+		}
 		name := talkTeamName(it)
 		if err := session.SeedConversation(transcript, where, name, talkBrief(it, factoryItemRecipe(dirs, it))); err != nil {
 			return "", err
@@ -136,9 +146,12 @@ func managerMaker(st *store.Store, workspace, profileDir string) func(context.Co
 			return mint(ctx, it)
 		}
 		factoryReconcileOnce(profileDir, st)
-		where := strings.TrimSpace(dirs(it.Repo))
-		if where == "" {
-			where = strings.TrimSpace(workspace)
+		where, err := talkFolder(st, dirs, it)
+		if err != nil {
+			return "", err
+		}
+		if err := markFactoryChat(st, it, chat); err != nil {
+			return "", err
 		}
 		if err := talkJoinTeam(profileDir, it, chat, where, talkTeamName(it)); err != nil {
 			return "", err
@@ -147,15 +160,46 @@ func managerMaker(st *store.Store, workspace, profileDir string) func(context.Co
 	}
 }
 
+// talkFolder is the folder a job's own conversation works in: the
+// repository's checkout when one is known, else the factory's own clone of it
+// (<factory>/repos/<owner>/<name>, [factoryCloneFolder]) when the runner has
+// made one, else a folder of the job's own under the factory's root
+// (<factory>/chats/<id>), made empty on demand.
+//
+// NEVER THE WINDOW'S FOLDER, AND NEVER THE APP'S: a job's conversation that
+// fell back to the folder its window was opened in worked in the app's own
+// home, and a manager there with no checkout cloned the repository into it.
+// The runner clones the repository when the job starts ([talkBlockBrief]).
+func talkFolder(st *store.Store, dirs func(string) string, it factory.Item) (string, error) {
+	if where := strings.TrimSpace(dirs(it.Repo)); where != "" {
+		return where, nil
+	}
+	if full, err := factoryCloneName(st, it.Repo); err == nil {
+		clone := factoryCloneFolder(st.Root(), full)
+		if _, err := os.Stat(filepath.Join(clone, ".git")); err == nil {
+			return clone, nil
+		}
+	}
+	if st.Root() == "" || it.ID <= 0 {
+		return "", errors.New("codeaf does not know which folder this item's conversation belongs in")
+	}
+	own := filepath.Join(st.Root(), "chats", strconv.Itoa(it.ID))
+	if err := os.MkdirAll(own, 0o700); err != nil {
+		return "", fmt.Errorf("the item's conversation has no folder: %w", err)
+	}
+	return own, nil
+}
+
 // sessionTalk is the runner's [factoryrun.Talk] over internal/session's
 // journal doors: a line goes in as the manager's own message, marked
-// factory-progress, and what the person typed comes out by its instant.
+// factory-progress with the step it reports on, and what the person typed
+// comes out by its instant.
 type sessionTalk struct{}
 
 // Say appends one line; a conversation that is not there any more is
 // [factoryrun.ErrTalkGone], so the runner stops owing it lines.
-func (sessionTalk) Say(transcript, line string) error {
-	err := session.AppendProgress(transcript, line)
+func (sessionTalk) Say(transcript, line string, step *factory.StepProgress) error {
+	err := session.AppendProgress(transcript, line, step)
 	if errors.Is(err, os.ErrNotExist) {
 		return factoryrun.ErrTalkGone
 	}

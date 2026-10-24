@@ -3,6 +3,7 @@ package serve
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -681,5 +683,86 @@ func TestFactorySetupDiscoverNamesGHThroughTheSharedResolver(t *testing.T) {
 	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "discover"}, 200, &out)
 	if out.GitHub.GH == nil || out.GitHub.GH.Path != "/fake/brew/gh" || out.GitHub.GH.Login != "cli-other" {
 		t.Fatalf("setup did not use the shared resolver: %+v", out.GitHub.GH)
+	}
+}
+
+// THE APP'S CONNECTION OUTLIVES ITS LAUNCH, each way kept by its owner: a yes
+// to gh is kept in the factory's profile (gh keeps its own token), and a pasted
+// token takes that yes back, because the app keeps that token in its keychain.
+// No token reaches the profile either way.
+func TestFactorySetupInTheAppKeepsHowGitHubWasConnected(t *testing.T) {
+	f := peopleV2Setup(t, api.FactorySolo)
+	fail := false
+	setupGitHub(t, f, &fail)
+	credentials := config.NewAppCredentials()
+	defer config.UseAppCredentials(credentials)()
+	gh := filepath.Join(t.TempDir(), "gh")
+	if err := os.WriteFile(gh, []byte("#!/bin/sh\necho setup-secret\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	keep := forge.LookPath
+	forge.LookPath = func(string) (string, error) { return gh, nil }
+	t.Cleanup(func() { forge.LookPath = keep })
+	profile := f.h.config.ProfileDir
+	var out api.FactorySetup
+	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "connect", Source: "gh"}, 200, &out)
+	if out.State != "repos" || config.GitHubViaAt(profile) != "gh" {
+		t.Fatalf("a gh connection was not kept: state %q, via %q", out.State, config.GitHubViaAt(profile))
+	}
+	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "back"}, 200, &out)
+	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "connect", Source: "token", Token: "setup-secret"}, 200, &out)
+	if out.State != "repos" || config.GitHubViaAt(profile) != "" {
+		t.Fatalf("a pasted token left the yes to gh: state %q, via %q", out.State, config.GitHubViaAt(profile))
+	}
+	if token, _ := credentials.Key("github"); token != "setup-secret" {
+		t.Fatal("the app does not hold the pasted token")
+	}
+	if data, _ := os.ReadFile(config.ProfilePath(profile, "config.json")); strings.Contains(string(data), "setup-secret") {
+		t.Fatal("a GitHub token was written to the profile")
+	}
+}
+
+// A kept token can be revoked or run out while setup says done, and reopening
+// setup is how the person connects again: GitHub's refusal sends a finished
+// setup back to its GitHub step. A GitHub that cannot be reached, or answers
+// with anything but a refusal, proves nothing, and setup stays done.
+func TestFactorySetupDoneGoesBackToGitHubOnlyWhenTheTokenIsRefused(t *testing.T) {
+	f := peopleV2Setup(t, api.FactorySolo)
+	fail := false
+	setupGitHub(t, f, &fail)
+	var out api.FactorySetup
+	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "connect", Source: "token", Token: "setup-secret"}, 200, &out)
+	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "select_repos", RepoIDs: []string{"acme/api"}}, 200, &out)
+	waitSetup(t, f.h)
+	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "skip", RepoID: "acme/api"}, 200, &out)
+	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "done"}, 200, &out)
+	if out.State != "done" {
+		t.Fatalf("setup did not complete: %+v", out)
+	}
+	answer := func(status int, err error) {
+		f.h.config.GitHubHTTPClient.Transport = githubTransport(func(*http.Request) (*http.Response, error) {
+			if err != nil {
+				return nil, err
+			}
+			return &http.Response{StatusCode: status, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("{}"))}, nil
+		})
+	}
+	for name, ask := range map[string]func(){
+		"unreachable": func() { answer(0, errors.New("network is down")) },
+		"unavailable": func() { answer(http.StatusServiceUnavailable, nil) },
+		"answering":   func() { answer(http.StatusOK, nil) },
+	} {
+		ask()
+		out = api.FactorySetup{}
+		f.request(t, "GET", "/v1/factory-setup/local", "operator-secret", nil, 200, &out)
+		if out.State != "done" {
+			t.Fatalf("%s: setup left done: %+v", name, out)
+		}
+	}
+	answer(http.StatusUnauthorized, nil)
+	out = api.FactorySetup{}
+	f.request(t, "GET", "/v1/factory-setup/local", "operator-secret", nil, 200, &out)
+	if out.State != "github" || out.GitHub.Connected {
+		t.Fatalf("a refused token left setup done: %+v", out)
 	}
 }

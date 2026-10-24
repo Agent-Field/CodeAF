@@ -127,10 +127,18 @@ func (a *Agent) railBlockLocked() error {
 				spentToday = max(spentToday, a.crewDayHeld.Total())
 			}
 			if spentToday >= daily {
-				return spendRailReached{said: fmt.Sprintf(
+				return spendRailReached{daily: true, said: fmt.Sprintf(
 					"daily limit reached · %s spent of %s · /budget day changes it",
 					railMoney(spentToday), railMoney(daily))}
 			}
+		}
+	}
+	// A FACTORY JOB'S OWN CONVERSATION STOPS AT THE JOB'S BUDGET, the way a
+	// step does: the job's figure is everything done for it, this chat's
+	// turns included, and its line names the door that raises it.
+	if chat := a.jobBudgetOf(); chat != nil {
+		if said := chat.Refusal(); said != "" {
+			return spendRailReached{said: said}
 		}
 	}
 	rail := a.spendRailUSD()
@@ -166,10 +174,27 @@ func (a *Agent) railBlockLocked() error {
 // matched with [errors.Is] and never read, so it says nothing here: this type
 // carries the sentence, unwraps to the sentinel, and every existing
 // `errors.Is(err, ErrSpendRail)` is unchanged.
-type spendRailReached struct{ said string }
+//
+// daily marks the refusal of today's limit over every conversation on the
+// machine, which is the one a factory step names as its own stop
+// ([IsDailyLimit]).
+type spendRailReached struct {
+	said  string
+	daily bool
+}
 
 func (e spendRailReached) Error() string { return e.said }
 func (e spendRailReached) Unwrap() error { return ErrSpendRail }
+
+// IsDailyLimit says whether err is a turn refused by today's spending limit,
+// as against this conversation's own. A factory step stopped by it says
+// `today's spend limit stopped this step` rather than that it never reported
+// (internal/factory/run's chatstage.go), so the two must be told apart by
+// what refused the turn and never by its words.
+func IsDailyLimit(err error) bool {
+	var reached spendRailReached
+	return errors.As(err, &reached) && reached.daily
+}
 
 // railMoney writes a figure the way money is written on this line: whole dollars
 // when the figure is whole, cents when it is not, and four decimals under a cent

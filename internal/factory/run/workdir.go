@@ -25,14 +25,15 @@ import (
 // two items running at once would have written over each other. So an item
 // never works in the person's checkout. It works in a git worktree of its
 // own, `<store>/work/<repo>-<number>`, on a branch of its own,
-// `factory/<number>-<slug>`, made from the checkout the first time a round
+// `<person>/<number>-<slug>` (factory by default), made from the checkout the first time a round
 // needs a folder and reused by every round after.
 //
 // THE PERSON'S CHECKOUT IS NEVER TOUCHED. `git worktree add` writes only the
 // new folder and the repository's shared refs; whatever is uncommitted in the
 // checkout stays exactly where it was, and the item starts from a commit, not
-// from that mess. THE WORKTREE AND THE BRANCH OUTLIVE THE ITEM: a stop, a
-// ship and a send back all keep them, and nothing deletes either yet.
+// from that mess. THE WORKTREE AND THE BRANCH OUTLIVE THE RUN: a stop, a
+// ship and a send back all keep them. Only a person's Drop deletes them
+// ([Workdirs.Discard]), and only on this machine.
 
 // Git runs one git command in dir and answers what it printed. The real one
 // is [ExecGit]; a test may hand in its own.
@@ -109,6 +110,9 @@ func lastLine(s string) string {
 type Workdirs struct {
 	root string
 	git  Git
+	// Prefix chooses the namespace for new branches. Existing worktrees and
+	// recorded branches keep their names through reassignment and recovery.
+	Prefix func(factory.Item) string
 	// Log, when set, is told the line `branch: <name>` once, when an item's
 	// worktree is made: that line is how the post stage's `pr` knows which
 	// branch to push. The wire sets it to [StoreLog].
@@ -139,9 +143,44 @@ func (w *Workdirs) Dir(it factory.Item) string {
 	return filepath.Join(w.root, repo+"-"+itemDigits(it))
 }
 
-// Branch is the branch its work goes on: `factory/<number>-<slug>`, the slug
-// from the title, at most forty characters.
-func (w *Workdirs) Branch(it factory.Item) string { return itemBranch(it) }
+// Branch keeps the recorded branch, or chooses Prefix/<number>-<slug> for
+// new work (factory when no prefix is supplied).
+func (w *Workdirs) Branch(it factory.Item) string {
+	if branch := recordedWorkBranch(it); branch != "" {
+		return branch
+	}
+	branch := itemBranch(it)
+	if w.Prefix != nil {
+		prefix := strings.Trim(w.Prefix(it), "/ ")
+		if prefix != "" {
+			return prefix + "/" + strings.TrimPrefix(branch, "factory/")
+		}
+	}
+	return branch
+}
+
+// A log line cannot authorize deleting an unrelated branch. Only the shape
+// made for this job is a worktree record, including an earlier person's prefix.
+func recordedWorkBranch(it factory.Item) string {
+	if it.Stream == nil {
+		return ""
+	}
+	digits := itemDigits(it)
+	for i := len(it.Stream.Log) - 1; i >= 0; i-- {
+		branch, ok := strings.CutPrefix(it.Stream.Log[i].Text, "branch: ")
+		if !ok {
+			continue
+		}
+		prefix, tail, ok := strings.Cut(branch, "/")
+		if !ok || prefix == "" || strings.IndexFunc(prefix, func(r rune) bool { return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-') }) >= 0 {
+			continue
+		}
+		if tail == digits || strings.HasPrefix(tail, digits+"-") {
+			return branch
+		}
+	}
+	return ""
+}
 
 // For answers its worktree, making it from checkout the first time. A
 // worktree git already lists at that folder is used as it is, on whatever
@@ -156,6 +195,16 @@ func (w *Workdirs) For(it factory.Item, checkout string) (string, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.listed(checkout, dir) {
+		// A new run can have a fresh stream but still reuse this worktree.
+		// Restore its actual branch record before briefs or publishing use it.
+		if w.Log != nil {
+			if branch, err := w.git.Run(dir, "branch", "--show-current"); err == nil {
+				branch = strings.TrimSpace(branch)
+				if branch != "" && branch != branchFor(it) {
+					w.Log(it, "branch: "+branch)
+				}
+			}
+		}
 		if isPull(it) {
 			w.toHead(it, checkout, dir)
 		}
@@ -282,22 +331,6 @@ func (w *Workdirs) toHead(it factory.Item, checkout, dir string) {
 		short, _ := w.git.Run(dir, "rev-parse", "--short", "HEAD")
 		w.Log(it, "at the head of "+it.Ref()+": "+strings.TrimSpace(short))
 	}
-}
-
-// Remove takes its worktree away and KEEPS ITS BRANCH, so the work is still
-// in the repository. NOTHING CALLS IT YET: a stop, a ship and a send back all
-// keep the worktree, and the manual says nothing deletes one.
-func (w *Workdirs) Remove(it factory.Item, checkout string) error {
-	checkout = strings.TrimSpace(checkout)
-	if checkout == "" {
-		return fmt.Errorf("codeaf does not know where %s is checked out", strings.TrimSpace(it.Repo))
-	}
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if _, err := w.git.Run(checkout, "worktree", "remove", "--force", w.Dir(it)); err != nil {
-		return fmt.Errorf("could not remove the worktree for %s: %s", it.Ref(), lastLine(err.Error()))
-	}
-	return nil
 }
 
 // listed says whether git already has a worktree at dir. Both sides go
@@ -447,37 +480,144 @@ func itemBranch(it factory.Item) string {
 	return "factory/" + itemDigits(it) + "-" + s
 }
 
-// DeleteDropped removes this job's local worktree and branch only after the
-// retention deadline. The checkout itself is never removed or reset.
-func (w *Workdirs) DeleteDropped(it factory.Item, checkout string, now time.Time) error {
-	if it.DoneHow != "dropped" || it.BranchDeleteAt.IsZero() || now.Before(it.BranchDeleteAt) {
-		return errors.New("dropped branch retention has not ended")
+// ── WHAT A DROP THROWS AWAY ─────────────────────────────────────────────────
+//
+// A DROP DELETES THE JOB'S LOCAL WORK AND NOTHING ELSE: its worktree folder,
+// exactly [Workdirs.Dir], and its local branch, exactly the one the runner made
+// for it. Nothing is found by a pattern, the person's checkout is never touched,
+// and nothing on GitHub is: a branch already pushed and a pull request already
+// opened stay where they are. A PULL REQUEST'S JOB KEEPS ITS BRANCH. Its
+// worktree is the pull request's head, someone else's work, so only the folder
+// goes. Before anything is deleted, [Workdirs.Work] says what would be lost, so
+// a drop can ask the person first.
+
+// Work is what a job's local branch and folder hold that deleting them loses.
+type Work struct {
+	// Commits is how many commits the job's branch has beyond the commit it
+	// started from. A pull request's job counts none: its branch is kept.
+	Commits int
+	// Uncommitted says the folder holds changes not committed, untracked
+	// files among them (ignored files are not work).
+	Uncommitted bool
+}
+
+// Any says whether there is anything to lose.
+func (w Work) Any() bool { return w.Commits > 0 || w.Uncommitted }
+
+// String names the work plainly: `3 commits and uncommitted changes`,
+// `1 commit`, `uncommitted changes`, or "" for none.
+func (w Work) String() string {
+	var parts []string
+	switch {
+	case w.Commits == 1:
+		parts = append(parts, "1 commit")
+	case w.Commits > 1:
+		parts = append(parts, strconv.Itoa(w.Commits)+" commits")
 	}
-	checkout = strings.TrimSpace(checkout)
-	if checkout == "" {
+	if w.Uncommitted {
+		parts = append(parts, "uncommitted changes")
+	}
+	return strings.Join(parts, " and ")
+}
+
+// Work reads what the job's worktree and branch hold. A job with neither on
+// this machine holds nothing. An error means the work could not be read, which
+// a drop must treat as work it cannot see, never as none.
+func (w *Workdirs) Work(it factory.Item, checkout string) (Work, error) {
+	var out Work
+	repo, dir := w.repoOf(it, checkout), w.Dir(it)
+	if repo == "" {
+		return out, nil
+	}
+	if w.listed(repo, dir) {
+		status, err := w.git.Run(dir, "status", "--porcelain")
+		if err != nil {
+			return Work{}, fmt.Errorf("could not read the folder of %s: %s", it.Ref(), lastLine(err.Error()))
+		}
+		out.Uncommitted = strings.TrimSpace(status) != ""
+	}
+	if it.Kind == factory.KindPR {
+		return out, nil
+	}
+	ref := "refs/heads/" + w.ownBranch(it)
+	if _, err := w.git.Run(repo, "rev-parse", "--verify", "--quiet", ref); err != nil {
+		return out, nil
+	}
+	// The run pinned the commit it started from (ChangeBase); a branch made
+	// before that pin, or on a machine that never fetched it, is counted from
+	// the commit a new branch would start from instead.
+	count := func(base string) (int, error) {
+		n, err := w.git.Run(repo, "rev-list", "--count", ref, "--not", base)
+		if err != nil {
+			return 0, err
+		}
+		return strconv.Atoi(strings.TrimSpace(n))
+	}
+	var n int
+	var err error
+	if pinned := strings.TrimSpace(it.ChangeBase); pinned == "" {
+		n, err = count(w.base(repo))
+	} else if n, err = count(pinned); err != nil {
+		n, err = count(w.base(repo))
+	}
+	if err != nil {
+		return Work{}, fmt.Errorf("could not read the branch of %s: %s", it.Ref(), lastLine(err.Error()))
+	}
+	out.Commits = n
+	return out, nil
+}
+
+// Discard deletes the job's worktree (`git worktree remove --force`) and,
+// unless it works on a pull request, its local branch (`git branch -D`), in
+// the repository that worktree belongs to. What is already gone is not an
+// error, so a second discard does nothing.
+func (w *Workdirs) Discard(it factory.Item, checkout string) error {
+	repo, dir := w.repoOf(it, checkout), w.Dir(it)
+	if repo == "" {
 		return nil
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.listed(checkout, w.Dir(it)) {
-		if _, err := w.git.Run(checkout, "worktree", "remove", "--force", w.Dir(it)); err != nil {
-			return err
+	if w.listed(repo, dir) {
+		if _, err := w.git.Run(repo, "worktree", "remove", "--force", dir); err != nil {
+			return fmt.Errorf("could not delete the folder of %s: %s", it.Ref(), lastLine(err.Error()))
 		}
 	}
-	branch := w.DroppedBranch(it)
-	listed, err := w.git.Run(checkout, "branch", "--list", branch)
-	if err != nil {
-		return err
-	}
-	if strings.TrimSpace(listed) == "" {
+	if it.Kind == factory.KindPR {
 		return nil
 	}
-	_, err = w.git.Run(checkout, "branch", "-D", branch)
-	return err
+	branch := w.ownBranch(it)
+	if _, err := w.git.Run(repo, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch); err != nil {
+		return nil
+	}
+	if _, err := w.git.Run(repo, "branch", "-D", branch); err != nil {
+		return fmt.Errorf("could not delete the branch of %s: %s", it.Ref(), lastLine(err.Error()))
+	}
+	return nil
 }
 
-// DroppedBranch uses the runner's actual branch rather than a renamed issue title.
-func (w *Workdirs) DroppedBranch(it factory.Item) string {
+// repoOf is the repository the job's worktree belongs to. When the folder is a
+// worktree, git names its repository from inside it, so a worktree made from
+// another checkout of the same repository (the folder a window was opened in)
+// is still found; the answer counts only when that repository lists this exact
+// folder as its worktree, so a stray folder inside some other repository is
+// never mistaken for one. Otherwise it is checkout, the factory's own.
+func (w *Workdirs) repoOf(it factory.Item, checkout string) string {
+	dir := w.Dir(it)
+	if out, err := w.git.Run(dir, "rev-parse", "--path-format=absolute", "--git-common-dir"); err == nil {
+		if common := strings.TrimSpace(out); common != "" && w.listed(common, dir) {
+			return common
+		}
+	}
+	return strings.TrimSpace(checkout)
+}
+
+// ownBranch is the branch the runner actually made, which the job's change
+// names, rather than one spelled from a title renamed since.
+func (w *Workdirs) ownBranch(it factory.Item) string {
+	if branch := recordedWorkBranch(it); branch != "" {
+		return branch
+	}
 	if it.Change != nil && strings.HasPrefix(it.Change.Branch, "factory/"+itemDigits(it)+"-") {
 		return it.Change.Branch
 	}

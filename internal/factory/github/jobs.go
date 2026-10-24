@@ -16,8 +16,11 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
 
-// JobWrites contains the two GitHub writes that a job decision owns. Requests
-// never follow redirects with a token, and GitHub response bodies stay private.
+// JobWrites is the GitHub write a job decision owns: the assignee. A DROP
+// WRITES NOTHING TO GITHUB; it deletes only the job's local branch and folder
+// (internal/factory/run's Workdirs.Discard), so no remote branch is ever
+// deleted from here. Requests never follow redirects with a token, and GitHub
+// response bodies stay private.
 type JobWrites struct {
 	Token func(context.Context) string
 	HTTP  *http.Client
@@ -50,22 +53,10 @@ func (j JobWrites) Assign(ctx context.Context, it factory.Item, handle string) e
 	}
 	return j.write(ctx, http.MethodPatch, "/repos/"+owner+"/"+repo+"/issues/"+strconv.Itoa(it.Num), struct {
 		Assignees []string `json:"assignees"`
-	}{people}, false)
+	}{people})
 }
 
-// DeleteDroppedBranch removes only the factory branch after its retention date.
-func (j JobWrites) DeleteDroppedBranch(ctx context.Context, it factory.Item, branch string, now time.Time) error {
-	if it.DoneHow != "dropped" || it.BranchDeleteAt.IsZero() || now.Before(it.BranchDeleteAt) || !strings.HasPrefix(branch, "factory/"+strconv.Itoa(jobNumber(it))+"-") {
-		return errors.New("dropped branch retention has not ended")
-	}
-	owner, repo, err := jobRepository(it)
-	if err != nil {
-		return err
-	}
-	return j.write(ctx, http.MethodDelete, "/repos/"+owner+"/"+repo+"/git/refs/heads/"+url.PathEscape(branch), nil, true)
-}
-
-func (j JobWrites) write(ctx context.Context, method, path string, body any, absentOK bool) error {
+func (j JobWrites) write(ctx context.Context, method, path string, body any) error {
 	token := ""
 	if j.Token != nil {
 		token = j.Token(ctx)
@@ -106,18 +97,5 @@ func (j JobWrites) write(ctx context.Context, method, path string, body any, abs
 	if response.StatusCode >= 200 && response.StatusCode < 300 {
 		return nil
 	}
-	if absentOK && response.StatusCode == 404 {
-		// GitHub also hides inaccessible repositories behind 404. Confirm
-		// repository access before claiming its branch is already gone.
-		repoPath := strings.SplitN(path, "/git/refs/", 2)[0]
-		return j.write(ctx, http.MethodGet, repoPath, nil, false)
-	}
 	return fmt.Errorf("GitHub refused this job change (HTTP %d)", response.StatusCode)
-}
-
-func jobNumber(it factory.Item) int {
-	if it.Num > 0 {
-		return it.Num
-	}
-	return it.ID
 }

@@ -1113,7 +1113,7 @@ func TestGrepFindLsDescriptionsVerbatim(t *testing.T) {
 	if tools[4].Description != grepToolDescription(DefaultCaps()) {
 		t.Errorf("grep description mismatch")
 	}
-	if tools[5].Description != findDescription(DefaultCaps()) {
+	if tools[5].Description != findToolDescription(DefaultCaps()) {
 		t.Errorf("find description mismatch")
 	}
 	if tools[6].Description != lsDescription(DefaultCaps()) {

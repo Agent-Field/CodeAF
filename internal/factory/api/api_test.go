@@ -152,6 +152,17 @@ var pageReads = []string{
 func TestEveryFieldRoundTrips(t *testing.T) {
 	var want factory.Snapshot
 	fill(reflect.ValueOf(&want).Elem(), "Snapshot", 0)
+	for i := range want.Items {
+		want.Items[i].Kind = factory.KindIssue
+	}
+	for i := range want.Repos {
+		old := want.Repos[i].Recipe.ByKind
+		want.Repos[i].Recipe.ByKind = nil
+		for _, st := range old {
+			want.Repos[i].Recipe.ByKind = map[factory.Kind][]factory.Stage{factory.KindIssue: st}
+			break
+		}
+	}
 	got := wire(t, want)
 	for _, d := range diff(reflect.ValueOf(want), reflect.ValueOf(got), "Snapshot") {
 		t.Error(d)
@@ -596,5 +607,21 @@ func TestPlannedFilesFollowTheCurrentRoundAcrossTheWire(t *testing.T) {
 				t.Fatalf("client read back %v, want unknown", back)
 			}
 		})
+	}
+}
+
+// THE QUEUE SAYS WHEN GITHUB WAS LAST READ WELL as its github source's polled,
+// and says nothing at all before a read has gone well: never a zero time.
+func TestQueueSaysWhenGitHubWasLastReadWell(t *testing.T) {
+	at := time.Date(2026, 10, 19, 9, 30, 0, 0, time.UTC)
+	q := FromSnapshot(factory.Snapshot{Sources: []factory.SourceInfo{{Name: "github", Polled: at}}}, "", at)
+	data, _ := json.Marshal(q.Desk.Sources)
+	if string(data) != `[{"name":"github","polled":"2026-10-19T09:30:00Z"}]` {
+		t.Fatalf("read well: %s", data)
+	}
+	q = FromSnapshot(factory.Snapshot{Sources: []factory.SourceInfo{{Name: "github", Trouble: "token refused"}}}, "", at)
+	data, _ = json.Marshal(q.Desk.Sources)
+	if string(data) != `[{"name":"github","trouble":"token refused"}]` {
+		t.Fatalf("never read well: %s", data)
 	}
 }

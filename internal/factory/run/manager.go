@@ -10,7 +10,10 @@ package run
 //
 //   - IT REPORTS. One line per event goes into the conversation as the
 //     manager's own message ([Talk.Say]), in the order the events happened. The
-//     lines are the table below and nowhere else, in the floor's words.
+//     lines are the table below and nowhere else, in the floor's words. A line
+//     that reports one step's round (it started, finished, waits on you, or
+//     the run stopped under it) carries that step and round beside its words
+//     ([factory.StepProgress]).
 //   - IT LISTENS. What the person types there is read off the conversation's
 //     own file ([Talk.Heard]) after the last thing the runner took
 //     ([factory.Item.Heard]): before a run it becomes the item's notes, which
@@ -45,16 +48,18 @@ import (
 // conversation, in ONE table. The manual quotes them
 // (internal/manual/chat/factory-stage-conversations.md); a line respelled here
 // is respelled there in the same change.
+const sayAutoLanded = "Implementation, tests, review and proof are complete. Auto is preparing the recorded push and draft pull request within the job budget. Merge remains your decision."
+
 const (
-	sayStarted   = "%s started"                                 // plan started
-	sayDone      = "%s done"                                    // plan done · 2m · $0.04 · what it said
-	sayAsking    = "asking you: %s"                             // asking you: plan is ready · go, or change it?
-	sayFailedAsk = "%s · asking you: %s"                        // a lead, then the question
-	sayCapAsk    = "budget of %s reached · asking you"          // budget of $5 reached · asking you
-	sayAnswered  = "answered: %s"                               // answered: yes · answered: no · answered: <words>
-	sayChanges   = "changes requested: %s"                      // the person's request changes
-	sayLanded    = "landed · proof sheet ready · your approval" // every stage done
-	sayShipped   = "shipped"                                    // approved, or shipped itself as a habit
+	sayStarted   = "%s started"                                                                                                                                                                                                                                                                                                                     // plan started
+	sayDone      = "%s done"                                                                                                                                                                                                                                                                                                                        // plan done · 2m · $0.04 · what it said
+	sayAsking    = "asking you: %s"                                                                                                                                                                                                                                                                                                                 // asking you: plan is ready · go, or change it?
+	sayFailedAsk = "%s · asking you: %s"                                                                                                                                                                                                                                                                                                            // a lead, then the question
+	sayCapAsk    = "budget of %s reached · asking you"                                                                                                                                                                                                                                                                                              // budget of $5 reached · asking you
+	sayAnswered  = "answered: %s"                                                                                                                                                                                                                                                                                                                   // answered: yes · answered: no · answered: <words>
+	sayChanges   = "changes requested: %s"                                                                                                                                                                                                                                                                                                          // the person's request changes
+	sayLanded    = "Implementation, tests, review and proof are complete. The changes are committed locally. Approval needed: push the branch to the remote and create a draft pull request. Press Approve to publish. Manual will ask before later repair pushes; enable Auto to handle those within the job budget. Merge remains your decision." // every stage done
+	sayShipped   = "Published · the result is available on GitHub; this does not mean it has been merged."                                                                                                                                                                                                                                          // approved, or shipped itself as a habit
 	sayStopped   = "stopped"
 	sayPaused    = "paused"
 	sayResumed   = "resumed"
@@ -84,9 +89,11 @@ var ErrTalkGone = errors.New("the item's conversation is gone")
 // [session.LastSaid]); this package imports none of the engine.
 type Talk interface {
 	// Say appends one line to the conversation as the manager's own message.
-	// An error leaves the line owed: the runner says it again later, in order.
-	// [ErrTalkGone] drops it.
-	Say(transcript, line string) error
+	// step is the step the line reports on, nil for a line about the job as a
+	// whole ([factory.StepProgress]); it is kept beside the words, never in
+	// them. An error leaves the line owed: the runner says it again later, in
+	// order. [ErrTalkGone] drops it.
+	Say(transcript, line string, step *factory.StepProgress) error
 	// Heard is what the person typed into the conversation after the instant
 	// after, oldest first.
 	Heard(transcript string, after time.Time) ([]Heard, error)
@@ -100,15 +107,22 @@ type Heard struct {
 	Words string
 }
 
-// owedLine is a line said to a conversation that could not take it yet.
+// owedLine is a line said to a conversation that could not take it yet, with
+// the step it reports on.
 type owedLine struct {
 	transcript string
 	line       string
+	step       *factory.StepProgress
 }
 
-// tell says line into the item's manager conversation, after every line the
-// item still owes it.
-func (lp *floorLoop) tell(id int, line string) {
+// tell says line, about the job as a whole, into the item's manager
+// conversation, after every line the item still owes it.
+func (lp *floorLoop) tell(id int, line string) { lp.tellStep(id, line, nil) }
+
+// tellStep is [floorLoop.tell] for a line that reports one step's round: the
+// line carries step beside its words, so a surface can fold it into that
+// round's frame. A nil step is a line about the job.
+func (lp *floorLoop) tellStep(id int, line string, step *factory.StepProgress) {
 	talk := lp.r.opts.Talk
 	if talk == nil || strings.TrimSpace(line) == "" {
 		return
@@ -118,7 +132,7 @@ func (lp *floorLoop) tell(id int, line string) {
 		return
 	}
 	lp.sayMu.Lock()
-	q := append(lp.owed[id], owedLine{transcript: it.Talk, line: line})
+	q := append(lp.owed[id], owedLine{transcript: it.Talk, line: line, step: step})
 	if over := len(q) - talkOwedMost; over > 0 {
 		q = q[over:]
 	}
@@ -135,7 +149,7 @@ func (lp *floorLoop) flushTalk(id int) {
 	defer lp.sayMu.Unlock()
 	for len(lp.owed[id]) > 0 {
 		o := lp.owed[id][0]
-		err := talk.Say(o.transcript, o.line)
+		err := talk.Say(o.transcript, o.line, o.step)
 		if errors.Is(err, ErrTalkGone) {
 			delete(lp.owed, id)
 			return
@@ -218,17 +232,25 @@ func (lp *floorLoop) hear(c *loopCtl) {
 		lp.mu.Lock()
 		pending := c.pending != ""
 		lp.mu.Unlock()
+		if factory.StatusOnlyRequest(h.Words) {
+			if lp.heard(c, h.At) != nil {
+				return
+			}
+			continue
+		}
 		cur, _ := lp.r.opts.Store.Get(c.id)
 		// A STEP'S QUESTION THE PERSON HOLDS is answered here too when the
 		// round that asked it is gone (a pause): the answer is kept for the
 		// step's next round (inbox.go).
 		kept := !pending && cur.Asking != nil && cur.Asking.With == factory.AskedYou
-		if pending || kept {
+		if (pending || kept) && (cur.Asking == nil || !h.At.Before(cur.Asking.At)) {
 			if yes, words, ok := typedAnswer(h.Words, cur.QKind); ok {
+				if lp.r.Answer(c.id, yes, words) != nil {
+					return
+				}
 				if lp.heard(c, h.At) != nil {
 					return
 				}
-				_ = lp.r.Answer(c.id, yes, words)
 				return
 			}
 		}
@@ -245,10 +267,10 @@ func (lp *floorLoop) hear(c *loopCtl) {
 }
 
 // steer takes words for the item's run: the next round's brief reads them in
-// the notes, the item's log and its conversation say `steer: …`, and push
-// hands them to the round running now as well.
+// the notes and the item's audit log keeps `steer: …`. The original user
+// message already says the words in chat; push hands them to the running round.
 func (lp *floorLoop) steer(c *loopCtl, words string, push bool) {
-	if words = strings.TrimSpace(words); words == "" {
+	if words = strings.TrimSpace(words); words == "" || factory.StatusOnlyRequest(words) {
 		return
 	}
 	if push {
@@ -259,7 +281,6 @@ func (lp *floorLoop) steer(c *loopCtl, words string, push bool) {
 	}
 	lp.addNote(c.id, words)
 	lp.say(c, "said", fmt.Sprintf(saySteer, words))
-	lp.tell(c.id, fmt.Sprintf(saySteer, words))
 }
 
 // roundRunning says whether a round of the item is running now.
@@ -303,6 +324,9 @@ func (lp *floorLoop) watchTalk(c *loopCtl, done <-chan struct{}) {
 // do not answer it, which are a steer instead.
 func typedAnswer(words, qkind string) (yes bool, said string, ok bool) {
 	words = strings.TrimSpace(words)
+	if factory.StatusOnlyRequest(words) {
+		return false, "", false
+	}
 	fields := strings.Fields(strings.ToLower(words))
 	if len(fields) == 0 {
 		return false, "", false

@@ -14,19 +14,6 @@ func (c *Client) reverify(id int) error {
 	return c.postID(id, "recheck", nil)
 }
 
-// shape posts one shaping turn. The factory runs it where the job's worker
-// lives, or leaves it on the lease when a worker already holds the job. The
-// line is what that turn recorded; a forwarded ask has none yet.
-func (c *Client) shape(ctx context.Context, id int) (string, error) {
-	var out struct {
-		Line string `json:"line"`
-	}
-	if err := c.call(ctx, http.MethodPost, jobPath(id, "shape"), nil, &out); err != nil {
-		return "", err
-	}
-	return out.Line, nil
-}
-
 // hold posts pause or resume. The API's two verbs say the intent; the
 // seam's Hold is the one door, and Pause stays nil so the desk does not
 // draw a second key that would undo itself.

@@ -170,3 +170,18 @@ type StatePayload struct {
 	State  string `json:"state"`
 	Reason string `json:"reason"`
 }
+
+// ForgetJobs removes replay payloads for work items deliberately erased by
+// the issue-only migration, preserving sequence IDs and other notifications.
+func ForgetJobs(root string, ids map[int]bool) error {
+	return locked(root, true, func(d *document) error {
+		kept := d.Events[:0]
+		for _, e := range d.Events {
+			if !ids[e.Job] {
+				kept = append(kept, e)
+			}
+		}
+		d.Events = kept
+		return save(root, d)
+	})
+}

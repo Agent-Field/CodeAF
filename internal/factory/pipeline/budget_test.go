@@ -6,6 +6,9 @@ import (
 )
 
 func TestPipelineDefaultBudgetReadsWritesAndTightens(t *testing.T) {
+	if factory.DefaultJobBudget != 5 {
+		t.Fatal("new factory jobs must default to a five-dollar budget")
+	}
 	if Defaults().DefaultBudget != factory.DefaultJobBudget {
 		t.Fatal("default drift")
 	}

@@ -1329,7 +1329,8 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// And the wrap-up's two doors, for the same reason.
 		WrapUp: true,
 		// The two model asks are the agent's, so they are asked of it.
-		TeamAsk: teamAskKnown(sess.agent),
+		TeamAsk:         teamAskKnown(sess.agent),
+		ReplySuggestion: replySuggestionKnown(sess.agent),
 		// This revision checks it in the handler, for every engine behind it
 		// ([Session.agentOf]), so the answer is about the wire and not the agent.
 		SteerOwner: true,
@@ -1423,7 +1424,7 @@ func (sess *Session) announce() {
 // text and reasoning deltas carry no changed frame facts.
 func factsMoved(kind session.EventKind) bool {
 	switch kind {
-	case session.EventTurnDone, session.EventError, session.EventTitleChanged, session.EventCompacted,
+	case session.EventModelIdentity, session.EventTurnDone, session.EventError, session.EventTitleChanged, session.EventCompacted,
 		session.EventSummaryStarted, session.EventSummaryFailed,
 		session.EventConsentRequest, session.EventToolEnd, session.EventToolFailed,
 		session.EventConnectAsk, session.EventConnectDone,
@@ -2930,6 +2931,39 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	case MethodModel:
 		return json.Marshal(agent.Model())
 
+	case MethodSetAutomaticModels:
+		enabled, err := arg[bool](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface{ SetAutomaticModels(bool) error })
+		if !ok {
+			return nil, fmt.Errorf("automatic model selection is unsupported")
+		}
+		if err := door.SetAutomaticModels(enabled); err != nil {
+			return nil, err
+		}
+		s.session.announce()
+		return nil, nil
+	case MethodSetConversationModels:
+		pair, err := arg[session.ConversationModels](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface {
+			SetConversationModels(session.ConversationModels) ([]session.ModelSwitch, error)
+		})
+		if !ok {
+			return nil, errors.New("main/fallback selection is unsupported by this engine")
+		}
+		if refresh := sess.engine.RefreshModelSources; refresh != nil {
+			refresh()
+		}
+		notes, err := door.SetConversationModels(pair)
+		if err == nil {
+			s.session.announce()
+		}
+		return mustJSON(notes), err
 	case MethodSetModel:
 		model, err := arg[string](call)
 		if err != nil {
@@ -3391,6 +3425,12 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		return payload, err
 	}
 	if payload, handled, err := s.delegationCall(call); handled {
+		return payload, err
+	}
+	if payload, handled, err := factoryStatusCall(agent, call); handled {
+		return payload, err
+	}
+	if payload, handled, err := replySuggestionCall(agent, call); handled {
 		return payload, err
 	}
 	if payload, handled, err := teamAskCall(agent, call); handled {

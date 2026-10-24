@@ -103,6 +103,7 @@ type sessionHeader struct {
 }
 
 type sessionEntry struct {
+	ModelSwitch *ModelSwitch `json:"modelSwitch,omitempty"`
 	// Presentation is the source-authored audience of this occurrence, never a
 	// rule inferred from its words. Older entries omit it and use conservative
 	// compatibility handling only for complete reserved bookkeeping records.
@@ -1873,11 +1874,12 @@ func replaySessionFile(path string) (replayedSession, error) {
 // both reading doors, because it is the same fact about the same file.
 func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, error) {
 	var (
-		messages  []ai.Message
-		reasoning []provider.MessageReasoning
-		earlier   []ai.Message
-		overlap   int
-		passes    []CompactionFact
+		modelSwitches []ModelSwitch
+		messages      []ai.Message
+		reasoning     []provider.MessageReasoning
+		earlier       []ai.Message
+		overlap       int
+		passes        []CompactionFact
 		// earlierRows is countEntries(earlier), kept as the region grows so
 		// placing a pass never re-counts the conversation above it.
 		earlierRows int
@@ -1973,6 +1975,10 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			// conversation actually has.
 			if id == "" {
 				id = strings.TrimSpace(header.ID)
+			}
+		case "model_switch":
+			if entry.ModelSwitch != nil {
+				modelSwitches = append(modelSwitches, *entry.ModelSwitch)
 			}
 		case "message":
 			if entry.Role == "" {
@@ -2312,6 +2318,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 		overlap:        overlap,
 		passes:         passes,
 		title:          title,
+		modelSwitches:  modelSwitches,
 		shortTitle:     shortTitle,
 		id:             id,
 		images:         images,
@@ -2464,6 +2471,7 @@ func legacyCompactionNote(summary string) string {
 // the name arrived here after the other two — and a reader of a call site
 // should not have to count positions to know which bool is which.
 type replayedSession struct {
+	modelSwitches []ModelSwitch
 	// userLines is read-only physical provenance for display reads, nil on resume.
 	userLines map[any]int
 	messages  []ai.Message

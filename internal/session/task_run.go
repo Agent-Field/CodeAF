@@ -5069,6 +5069,15 @@ func (a *Agent) replayTaskRoster(stream *eventStream) {
 	// moment old is the same snapshot a live watcher already drew; a job
 	// that moves after this returns will announce onto the lane itself.
 	liveJobs := a.liveJobNotices()
+	// The process shelf may know a settled job's full name and final facts.
+	// It wins over the roster's short title just as it does in JobNotices.
+	if kept, err := a.JobNotices(); err == nil {
+		for _, job := range kept {
+			if _, live := liveJobs[job.ID]; !live {
+				liveJobs[job.ID] = job
+			}
+		}
+	}
 	graph.mu.Lock()
 	defer graph.mu.Unlock()
 	for i, node := range nodes {
@@ -5098,8 +5107,8 @@ func (a *Agent) replayTaskRoster(stream *eventStream) {
 		// ran yesterday.
 		if job, isJob := jobNoticeFromRow(row); isJob {
 			// A LIVE JOB IS THE REGISTRY'S, NOT THE CHECKPOINT'S. The row is
-			// what tomorrow will read; it never held Started, Command, Kind
-			// or the name that arrived after the first announce. A lane
+			// what tomorrow will read; an older row lacks Started, Command,
+			// Kind and the name that arrived after the first announce. A lane
 			// attaching while the process is still going would otherwise
 			// draw a blank clock and a page with no command until the job
 			// ended — announceJobRow will not fill those in, because a

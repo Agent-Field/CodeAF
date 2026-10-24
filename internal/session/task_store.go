@@ -752,6 +752,12 @@ type harnessOfferRecord struct {
 // exists, and no answer could reach one. Left out, the row comes back settled
 // like every other row that was moving, which is the truth about it.
 type runRecord struct {
+	// JobCommand, JobCallID and JobExitCode keep facts a job's title cannot carry.
+	// A nil code means the ending was never observed.
+	JobCommand  string `json:"job_command,omitempty"`
+	JobCallID   string `json:"job_call_id,omitempty"`
+	JobExitCode *int   `json:"job_exit_code,omitempty"`
+
 	CrewState *TaskCrewRecord `json:"crewState,omitempty"`
 
 	ID     uint64 `json:"id"`
@@ -1166,6 +1172,7 @@ func runRowRecord(notice TaskNotice) runRecord {
 		state = TaskRunning
 	}
 	return runRecord{
+		JobCommand: notice.JobCommand, JobCallID: notice.JobCallID, JobExitCode: notice.JobExitCode,
 		CrewState:  notice.CrewState,
 		ID:         notice.ID,
 		Run:        notice.Run,
@@ -1214,6 +1221,7 @@ func runRowRecord(notice TaskNotice) runRecord {
 // That is a fact about this reader and not a statement that the work is over.
 func runRowNotice(record runRecord) TaskNotice {
 	notice := TaskNotice{
+		JobCommand: record.JobCommand, JobCallID: record.JobCallID, JobExitCode: record.JobExitCode,
 		CrewState: record.CrewState,
 		ID:        record.ID,
 		Run:       record.Run,

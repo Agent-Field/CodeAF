@@ -18,16 +18,17 @@ import (
 type fakeTalk struct {
 	mu     sync.Mutex
 	said   map[string][]string
+	steps  map[string][]*factory.StepProgress // the step beside each said line, nil for none
 	person map[string][]Heard
 	last   map[string]string
 	refuse int // how many Says to refuse before taking them
 }
 
 func newFakeTalk() *fakeTalk {
-	return &fakeTalk{said: map[string][]string{}, person: map[string][]Heard{}, last: map[string]string{}}
+	return &fakeTalk{said: map[string][]string{}, steps: map[string][]*factory.StepProgress{}, person: map[string][]Heard{}, last: map[string]string{}}
 }
 
-func (f *fakeTalk) Say(transcript, line string) error {
+func (f *fakeTalk) Say(transcript, line string, step *factory.StepProgress) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.refuse > 0 {
@@ -35,7 +36,22 @@ func (f *fakeTalk) Say(transcript, line string) error {
 		return errors.New("the conversation is in the middle of a turn")
 	}
 	f.said[transcript] = append(f.said[transcript], line)
+	f.steps[transcript] = append(f.steps[transcript], step)
 	return nil
+}
+
+// stepOf is the step said beside the first line that begins with line, and
+// whether such a line was said at all. A prefix, because a done line's time
+// depends on the clock it ran under.
+func (f *fakeTalk) stepOf(transcript, line string) (*factory.StepProgress, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i, said := range f.said[transcript] {
+		if strings.HasPrefix(said, line) {
+			return f.steps[transcript][i], true
+		}
+	}
+	return nil, false
 }
 
 func (f *fakeTalk) Heard(transcript string, after time.Time) ([]Heard, error) {
@@ -147,7 +163,7 @@ func TestTheManagerHearsEveryStageInOrderInTheFloorsWords(t *testing.T) {
 	if err := g.r.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	q := "test is not proven after 1 round: 1 of 2 claims shown · try once more, send it back, or cancel the job?"
+	q := "test is not proven: 1 of 2 claims shown · try again, send it back, or stop the job?"
 	g.asked(id, q)
 	m := "manager-" + strconv.Itoa(id)
 	talk.waitSaid(t, m, "asking you: "+q)
@@ -214,19 +230,10 @@ func TestWhatThePersonTypesDuringARunIsTheNextStagesSteer(t *testing.T) {
 	if !logHas(it, "steer: use the second ledger") {
 		t.Error("the item's log does not say the steer")
 	}
-	talk.waitSaid(t, it.Talk, "steer: use the second ledger")
-	lines := talk.lines(it.Talk)
-	steerAt, writeAt := -1, -1
-	for k, l := range lines {
-		switch l {
-		case "steer: use the second ledger":
-			steerAt = k
-		case "write started":
-			writeAt = k
+	for _, line := range talk.lines(it.Talk) {
+		if line == "steer: use the second ledger" {
+			t.Error("the runner repeated the person's message in chat")
 		}
-	}
-	if steerAt < 0 || writeAt < steerAt {
-		t.Fatalf("the steer is not said before write starts:\n%s", strings.Join(lines, "\n"))
 	}
 	if it.Heard.IsZero() {
 		t.Error("the item does not remember what it heard")

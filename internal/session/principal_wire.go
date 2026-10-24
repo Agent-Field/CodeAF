@@ -63,6 +63,21 @@ func newPrincipalFor(a *Agent) Principal {
 	if a.config.InTask || a.config.Errand {
 		return NewPerson()
 	}
+	// AND A FACTORY STAGE OR MANAGER HAS ONE OWNER ALREADY, ITS RUNNER.
+	//
+	// A stage conversation ends by calling `stage_result`, and whether that
+	// result met the stage is [factory.Met], asked by code. A goal owner beside
+	// it is a second judge reading the brief, and the two disagree out loud: on
+	// 2026-10-18 a plan stage's goal owner read its ending at round 16, said
+	// done, sealed the turn with `finishing here · what was asked is done`, and
+	// the runner then recorded a stage that never reported. So a stage is owned
+	// by nobody here, which also takes away the marks, the ceiling and the
+	// handovers ([Agent.checkpoints] reads no goal owner on a screenless
+	// session): the conversation works until it reports, and the runner says
+	// what happens when it does not (internal/factory/run's chatstage.go).
+	if a.config.mayStage() || a.jobChatOf() != nil {
+		return NewPerson()
+	}
 	// AND A CONVERSATION SOMEBODY IS STEERING WORKS FOR THE PERSON STEERING
 	// IT, whatever its approval posture and ceilings: yolo is approvals and a
 	// budget is the goal owner's ceiling, and neither one says nobody is

@@ -112,8 +112,15 @@ func (c Config) mayProposeTask() bool {
 // THE DESKTOP APP KEEPS IT ([Config.QuickTasks]) where the terminal's one task
 // road takes it off: small work done in place, read and carried on from, is a
 // thing the app offers whatever road the full tasks take.
+//
+// AND A FACTORY STAGE NEVER HAS IT ([Config.mayStage]). A quick task's answer
+// comes back as a note to read and carry on from, which is a chat's habit: on
+// codeaf#1765 a plan stage handed part of its reading to one, said it was
+// finished, and ended without the report its runner was waiting for. A stage's
+// work is its own, as its reads are ([Config.maySweepReads]); what it may still
+// hand out is a full task, checked and merged into its checkout.
 func (c Config) mayQuickTask() bool {
-	return c.mayProposeTask() && (!c.oneTaskRoad() || c.QuickTasks && !c.InTask)
+	return c.mayProposeTask() && !c.mayStage() && (!c.oneTaskRoad() || c.QuickTasks && !c.InTask)
 }
 
 // oneTaskRoad says whether this agent is a conversation whose hand-offs are
@@ -326,6 +333,12 @@ type beltFact struct {
 	// because that is the only verb such a belt carries. Empty falls back to
 	// [beltFact.present].
 	oneRoad string
+	// stage is the present wording for a factory stage ([Config.mayStage]),
+	// whose belt carries `propose_task` and never `quick_task`
+	// ([Config.mayQuickTask]). Empty falls back to [beltFact.present]; a stage
+	// on the one task road reads [beltFact.oneRoad], which names no quick task
+	// either.
+	stage string
 	// fill, when set, is applied to the chosen text before it is placed: it is
 	// how a fact writes a fact of THIS launch into itself — the delegates this
 	// machine has (delegate_door.go) — where every other fact is a constant.
@@ -611,6 +624,22 @@ var handoffFacts = []beltFact{{
 		"answer them: `tasks` with `stop` ends work that should not go on, and `tasks`\n" +
 		"with `note` tells a worker a fact it is missing. You are the only one holding\n" +
 		"the conversation, so you are the only one who can know. Leave the rest alone.",
+	// A STAGE IS TOLD THE ONE ROAD IT HAS, in the goal paragraph's own words, and
+	// no picture of a quick task it does not carry.
+	stage: "You are one mind with a clock, and one way to put more minds on the work beside\n" +
+		"you: `propose_task`, a worker in a copy of the folder, checked and merged when it\n" +
+		"finishes. It is yours to steer and to stop, and it wakes you when it lands. This\n" +
+		"conversation is one step of a factory job, so it has no quick tasks: what you\n" +
+		"would read and carry on with, you read yourself.\n" +
+		"\n" +
+		"THE GOAL IS THE SHORTEST WALL TIME FOR THE WHOLE JOB: parts of the step that do\n" +
+		"not need each other may go out together and cost the longest of them alone. One\n" +
+		"read, one edit, one command is never worth a hand-off: do it here.\n" +
+		"\n" +
+		"AFTER HANDING OUT YOU ARE NOT WAITING. Do the piece you kept. Each landing comes\n" +
+		"to you as a note, and starts a turn if yours has ended, so fold them as they\n" +
+		"arrive. When nothing independent of what you handed out remains, end your turn.\n" +
+		"That is how you wait.",
 	bashAbsent: "Work goes out through the plan when it has parts that do not need each other:\n" +
 		"`plandb add` and `plandb split` in bash are how, and every ready task they make\n" +
 		"is given a worker of its own. What is yours alone you carry here, in the order\n" +
@@ -795,6 +824,8 @@ func renderBeltFacts(config Config, facts []beltFact, join string) string {
 			text = fact.present
 			if fact.oneRoad != "" && config.oneTaskRoad() {
 				text = fact.oneRoad
+			} else if fact.stage != "" && config.mayStage() {
+				text = fact.stage
 			}
 			// AND THE SHELVED WORDING ONLY WHERE THE SHAPE ACTUALLY SHELVES
 			// THESE TOOLS. A worker or a task node carries them directly, so

@@ -2,11 +2,15 @@ package github
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"net"
 	"reflect"
 	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
@@ -31,28 +35,117 @@ func (s *Source) FollowPR(ctx context.Context, owner, repo string, number int) (
 		Number: p.Number, URL: p.URL, Draft: p.Draft,
 		Conflict: p.Mergeable != nil && !*p.Mergeable,
 		State:    pullFollowState(p), MergedBy: p.MergedBy, MergedAt: p.MergedAt,
+		BaseSHA: p.BaseSHA, HeadSHA: p.HeadSHA, Mergeable: mergeableWord(p.Mergeable),
+	}
+	// Terminal metadata is authoritative even when optional APIs are unavailable.
+	if out.State != factory.PROpen {
+		return out, nil
 	}
 	if p.HeadSHA != "" {
-		state, runs, err := s.api.CheckRuns(ctx, owner, repo, p.HeadSHA)
-		if err != nil {
-			return factory.PullRequest{}, err
+		state, runs, e := s.api.CheckRuns(ctx, owner, repo, p.HeadSHA)
+		if e != nil {
+			out.Problems = append(out.Problems, readProblem("checks", e))
+		} else {
+			out.CI, out.Checks, out.CheckRuns, out.ChecksRead = ChecksWords(state), summarizeChecks(runs), checkRuns(runs), true
 		}
-		out.CI = ChecksWords(state)
-		out.Checks = summarizeChecks(runs)
 	}
 	if extra, ok := s.api.(followExtra); ok {
-		reviews, err := extra.Reviews(ctx, owner, repo, number)
-		if err != nil {
-			return factory.PullRequest{}, err
+		reviews, e := extra.Reviews(ctx, owner, repo, number)
+		if e != nil {
+			out.Problems = append(out.Problems, readProblem("reviews", e))
+		} else {
+			out.Reviews = factoryReviews(reviews)
+			out.Required, e = extra.RequiredReviews(ctx, owner, repo, p.Base)
+			out.ReviewDecision = reviewDecision(out.Reviews, out.Required)
+			if e != nil {
+				out.Problems = append(out.Problems, readProblem("review policy", e))
+			} else {
+				out.ReviewsRead = true
+			}
 		}
-		out.Reviews = factoryReviews(reviews)
-		out.Required, err = extra.RequiredReviews(ctx, owner, repo, p.Base)
-		if err != nil {
-			return factory.PullRequest{}, err
-		}
-		out.ReviewDecision = reviewDecision(out.Reviews, out.Required)
 	}
+	if feedback, ok := s.api.(interface {
+		PullFeedbackState(context.Context, string, string, int) (forge.ReviewFeedback, error)
+	}); ok {
+		state, e := feedback.PullFeedbackState(ctx, owner, repo, number)
+		out.Feedback = state.Text
+		if e != nil {
+			out.ReviewsRead = false
+			out.Problems = append(out.Problems, readProblem("feedback", e))
+		} else {
+			out.FeedbackTracked = true
+			for _, item := range state.Items {
+				out.FeedbackItems = append(out.FeedbackItems, factory.PRFeedback{ID: item.ID, Revision: item.Revision, Resolved: item.Resolved, External: item.External})
+			}
+		}
+	} else if feedback, ok := s.api.(interface {
+		PullFeedback(context.Context, string, string, int) (string, error)
+	}); ok {
+		out.Feedback, err = feedback.PullFeedback(ctx, owner, repo, number)
+		if err != nil {
+			out.ReviewsRead = false
+			out.Problems = append(out.Problems, readProblem("feedback", err))
+		}
+	}
+	if out.ChecksRead && len(out.CheckRuns) > 0 {
+		allExternal := true
+		for _, c := range out.CheckRuns {
+			allExternal = allExternal && factory.ExternalPRCheck(c)
+		}
+		if allExternal {
+			out.CI = factory.PRWaitingWords(&out)
+		}
+	}
+	if len(out.Problems) == 0 {
+		if err = s.readinessMaterial(ctx, owner, repo, p, &out); err != nil {
+			out.Problems = append(out.Problems, readProblem("readiness", err))
+		}
+	}
+
 	return out, nil
+}
+
+// storedText is an error's words as the store will keep them: valid UTF-8 (JSON
+// replaces invalid bytes) clipped on a character boundary. Comparing a fresh
+// poll's text with the stored one is then equal when nothing changed, instead
+// of rewriting the job on every poll.
+func storedText(s string, n int) string {
+	return clip(strings.ToValidUTF8(s, "\uFFFD"), n)
+}
+
+func readProblem(area string, err error) factory.PRReadProblem {
+	p := factory.PRReadProblem{Area: area, Code: "incomplete", Summary: "PR " + area + " could not be verified.", Detail: storedText(err.Error(), 2000)}
+	var ae *forge.APIError
+	var ne net.Error
+	switch {
+	case errors.As(err, &ae):
+		switch {
+		case ae.StatusCode == 401:
+			p.Code, p.Summary = "authentication", "GitHub authentication must be restored to read PR "+area+"."
+		case ae.StatusCode == 429 || ae.StatusCode >= 500 || (ae.StatusCode == 403 && (ae.RetryAfter > 0 || strings.Contains(strings.ToLower(ae.Body), "rate limit"))):
+			p.Code, p.Retryable, p.Summary = "transient", true, "GitHub temporarily could not provide PR "+area+"; monitoring will retry."
+		case ae.StatusCode == 403:
+			p.Code, p.Summary = "access_denied", "GitHub denied access to PR "+area+"; check repository permissions."
+		case ae.StatusCode == 404:
+			p.Code, p.Summary = "unavailable", "GitHub did not expose PR "+area+"; access or capability needs checking."
+		}
+	case errors.As(err, &ne), errors.Is(err, context.DeadlineExceeded):
+		p.Code, p.Retryable, p.Summary = "transient", true, "Network interrupted the PR "+area+" read; monitoring will retry."
+	}
+	return p
+}
+
+// mergeableWord is GitHub's three-valued mergeable as the merge gate reads
+// it: nil is "not worked out yet", which the gate refuses on.
+func mergeableWord(m *bool) string {
+	switch {
+	case m == nil:
+		return ""
+	case *m:
+		return factory.MergeableYes
+	default:
+		return factory.MergeableNo
+	}
 }
 
 func pullFollowState(p forge.Pull) string {
@@ -92,7 +185,7 @@ func factoryReviews(in []forge.Review) []factory.PRReview {
 	}
 	out := make([]factory.PRReview, 0, len(in))
 	for _, r := range in {
-		out = append(out, factory.PRReview{By: r.User, State: strings.ToLower(r.State), At: r.At})
+		out = append(out, factory.PRReview{By: r.User, State: strings.ToLower(r.State), At: r.At, Body: r.Body, URL: r.URL})
 	}
 	return out
 }
@@ -104,7 +197,7 @@ func reviewDecision(reviews []factory.PRReview, required int) string {
 	latest := map[string]factory.PRReview{}
 	for _, r := range reviews {
 		by := strings.ToLower(strings.TrimSpace(r.By))
-		if by == "" {
+		if by == "" || (strings.EqualFold(r.State, "commented") || strings.EqualFold(r.State, "pending")) {
 			continue
 		}
 		prev, ok := latest[by]
@@ -149,12 +242,27 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 	if err != nil || len(items) == 0 {
 		return err
 	}
+	// A REPOSITORY THAT IS OFF HAS ITS PULL REQUESTS LEFT ALONE
+	// ([factory.RepoSwitch]): nothing reads them or writes their state onto
+	// the job, and turning it back on follows them from where they stand.
+	sw, err := st.RepoSwitch()
+	if err != nil {
+		return err
+	}
+	held := map[int]bool{}
+	if desk, e := lease.Open(st, lease.Options{}); e == nil {
+		if live, e := desk.Live(); e == nil {
+			for _, l := range live {
+				held[l.Job] = true
+			}
+		}
+	}
 	var rec *record.Record
 	if opened, err := record.Open(st, record.Options{}); err == nil {
 		rec = opened
 	}
 	for _, it := range items {
-		if it.PullRequest == nil || it.PullRequest.Number <= 0 {
+		if it.DoneHow == "closed_locally" || !factory.IsIssueJob(it) || it.PullRequest == nil || it.PullRequest.Number <= 0 || sw.OffJob(it) {
 			continue
 		}
 		owner, name, ok := pullRepo(it)
@@ -163,6 +271,25 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 		}
 		fresh, err := f.FollowPR(ctx, owner, name, it.PullRequest.Number)
 		if err != nil {
+			// A failed feedback read must not leave an old all-clear on screen.
+			// Do not replace an active repair or facts for a newer head.
+			reason := storedText("Could not refresh PR checks/review feedback: "+err.Error()+". Will retry on the next poll.", 700)
+			if it.FollowUp != nil && (it.FollowUp.Monitoring != reason || it.PullRequest.ChecksRead) {
+				_ = st.Update(it.ID, func(cur *factory.Item) error {
+					if cur.PullRequest == nil || cur.PullRequest.HeadSHA != it.PullRequest.HeadSHA || cur.FollowUp == nil {
+						return nil
+					}
+					pr := *cur.PullRequest
+					pr.ChecksRead, pr.ReviewsRead, pr.CI = false, false, ""
+					follow := *cur.FollowUp
+					if follow.State == "healthy" || follow.State == "watching" {
+						follow.State, follow.Reason = "watching", reason
+					}
+					follow.Monitoring = reason
+					cur.PullRequest, cur.FollowUp = &pr, &follow
+					return nil
+				})
+			}
 			continue
 		}
 		if fresh.Number <= 0 {
@@ -171,18 +298,78 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 		if fresh.URL == "" {
 			fresh.URL = it.PullRequest.URL
 		}
-		if reflect.DeepEqual(*it.PullRequest, fresh) {
+		checkpointRecovered := false
+		if !held[it.ID] && f.verificationRecovered != nil && len(fresh.Problems) == 0 && it.PullRequest.HeadSHA == fresh.HeadSHA {
+			checkpointRecovered = f.verificationRecovered(it)
+		}
+		probe := it
+		if it.FollowUp != nil {
+			cp := *it.FollowUp
+			probe.FollowUp = &cp
+		}
+		if checkpointRecovered {
+			factory.ReleaseVerificationPause(&probe, f.now())
+		}
+		probe.PullRequest = &fresh
+		initialWatch := probe.FollowUp == nil && probe.State == factory.StateShipped && probe.Publish == "pr" && probe.HeadCommit != ""
+		if initialWatch {
+			factory.WatchPublishedPR(&probe)
+		}
+		followChanged := false
+		if !held[it.ID] || fresh.State == factory.PRMerged || fresh.State == factory.PRClosed {
+			followChanged = factory.QueueCIFollowUp(&probe, f.now())
+		}
+		followChanged = followChanged || initialWatch || checkpointRecovered
+		if reflect.DeepEqual(*it.PullRequest, fresh) && !followChanged {
 			continue
+		}
+		details := ""
+		if followChanged && probe.FollowUp != nil && probe.FollowUp.State == "queued" {
+			details = f.ciFailureDetails(ctx, it, fresh, owner, name)
 		}
 		prev := it.PullRequest.State
 		next := fresh
 		applied := false
-		if err := st.Annotate(it.ID, func(item *factory.Item) error {
+		write := st.Annotate
+		if followChanged {
+			write = st.Update
+		}
+		if err := write(it.ID, func(item *factory.Item) error {
 			if item.PullRequest == nil {
 				return nil
 			}
+			// Publication or an observed ready transition may finish while
+			// this network read is in flight. Never restore the old head's
+			// green checks or draft status over that newer local receipt.
+			if item.PullRequest.HeadSHA != it.PullRequest.HeadSHA || item.PullRequest.Draft != it.PullRequest.Draft || item.PullRequest.State != it.PullRequest.State {
+				return nil
+			}
 			cp := next
+			if cp.ChecksRead && item.Stream != nil && (item.PullRequest.Checks != cp.Checks || !item.PullRequest.ChecksRead) {
+				words := []string{}
+				for _, check := range cp.CheckRuns {
+					words = append(words, check.Name+": "+check.State)
+				}
+				item.Stream.Log = append(item.Stream.Log, factory.LogLine{At: time.Now().UTC(), Tone: "said", Text: "GitHub checks · " + strings.Join(words, " · ")})
+			}
+			if item.PullRequest.Draft && !cp.Draft && cp.State == factory.PROpen && item.Stream != nil {
+				if !item.Publishing {
+					item.Note(f.now(), fmt.Sprintf("PR #%d observed ready for review on GitHub · head %s", cp.Number, cp.HeadSHA))
+				}
+				item.Stream.Log = append(item.Stream.Log, factory.LogLine{At: f.now(), Tone: "ok", Text: fmt.Sprintf("PR #%d observed ready for review on GitHub · head %s", cp.Number, cp.HeadSHA)})
+			}
+			if checkpointRecovered && f.verificationRecovered(*item) {
+				factory.ReleaseVerificationPause(item, f.now())
+			}
 			item.PullRequest = &cp
+			if initialWatch && item.FollowUp == nil {
+				factory.WatchPublishedPR(item)
+			}
+			if (!held[it.ID] || cp.State == factory.PRMerged || cp.State == factory.PRClosed) && factory.QueueCIFollowUp(item, f.now()) && item.FollowUp != nil && item.FollowUp.State == "queued" {
+				if item.FollowUp.Kind != "readiness" {
+					item.FollowUp.Details = details
+				}
+			}
 			item.DismissedBy = nil
 			if (cp.State == factory.PRMerged || cp.State == factory.PRClosed) && item.DoneAt.IsZero() {
 				item.DoneAt = time.Now().UTC()

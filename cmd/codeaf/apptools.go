@@ -669,7 +669,7 @@ func (b *appBackend) appToolProcessID(agent string, process *session.ToolProcess
 		}
 		return ""
 	}
-	if process.Job <= 0 || process.Started.IsZero() {
+	if process.Job <= 0 {
 		return ""
 	}
 	return appProcessID(agent, session.JobNotice{ID: process.Job, Started: process.Started})

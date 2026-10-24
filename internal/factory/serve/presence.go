@@ -180,6 +180,7 @@ func (h *Handler) applyPresence(jobs []api.Job) (online, busy int, err error) {
 		return 0, 0, err
 	}
 	roster := h.roster(h.clock(), leases)
+	capacity := h.executionCapacity(leases)
 	for _, row := range roster {
 		switch row.Status {
 		case api.MachineBusy:
@@ -206,6 +207,7 @@ func (h *Handler) applyPresence(jobs []api.Job) (online, busy int, err error) {
 		h.workers.mu.RUnlock()
 	}
 	for i := range jobs {
+		presentQueuedCapacity(&jobs[i], capacity)
 		if p := jobs[i].Publishing; p != nil && p.State == "queued" && jobs[i].Desk != nil && jobs[i].Desk.WorktreeMachine != "" {
 			online := false
 			for _, row := range roster {

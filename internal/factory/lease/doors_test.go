@@ -57,17 +57,17 @@ func TestDoorsSignalTheJobsHolder(t *testing.T) {
 	}
 }
 
-// SHAPE IS A SIGNAL AND NOTHING ELSE: a held job grows one shape signal, and a
-// job nobody holds is left for the factory to shape itself.
-func TestShapeSignalsOnlyAHeldJob(t *testing.T) {
+// A SIGNAL REACHES ONLY A HELD JOB: a held job grows one signal, handed once,
+// and a job nobody holds is not signaled at all.
+func TestASignalReachesOnlyAHeldJob(t *testing.T) {
 	f := setup(t)
 	it, held := f.running(t)
-	heldNow, err := f.desk.SignalIfHeld(it.ID, lease.Signal{Verb: lease.SignalShape})
+	heldNow, err := f.desk.SignalIfHeld(it.ID, lease.Signal{Verb: lease.SignalModel, Words: "m"})
 	if err != nil || !heldNow {
 		t.Fatalf("held job was not signaled: %v, %v", heldNow, err)
 	}
 	signals, err := f.desk.Drain(held.ID, "w1")
-	want := []lease.Signal{{Verb: lease.SignalShape}}
+	want := []lease.Signal{{Verb: lease.SignalModel, Words: "m"}}
 	if err != nil || !reflect.DeepEqual(signals, want) {
 		t.Fatalf("drained %+v, %v", signals, err)
 	}
@@ -75,14 +75,15 @@ func TestShapeSignalsOnlyAHeldJob(t *testing.T) {
 		t.Fatalf("a signal was handed twice: %+v", again)
 	}
 	free := f.add(t, factory.Item{State: factory.StateNew})
-	heldNow, err = f.desk.SignalIfHeld(free.ID, lease.Signal{Verb: lease.SignalShape})
+	heldNow, err = f.desk.SignalIfHeld(free.ID, lease.Signal{Verb: lease.SignalModel, Words: "m"})
 	if err != nil || heldNow {
 		t.Fatalf("a job nobody holds was signaled: %v, %v", heldNow, err)
 	}
 }
 
 // A STOP TAKES THE LEASE: the job is backlog at once, and the holder's next
-// call learns the lease is gone, which is how it stops.
+// call learns the lease is gone, which is how it stops. No step of this job
+// had reported running, so nothing was cut and it carries no stop mark.
 func TestAStopReleasesTheLease(t *testing.T) {
 	f := setup(t)
 	it, held := f.running(t)
@@ -90,6 +91,9 @@ func TestAStopReleasesTheLease(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.state(t, it.ID, factory.StateNew)
+	if got, _ := f.store.Get(it.ID); got.Failure != nil || factory.JobState(got) != "backlog" {
+		t.Fatalf("a stop that cut no step left %s %+v", factory.JobState(got), got.Failure)
+	}
 	if _, err := f.desk.Drain(held.ID, "w1"); !errors.Is(err, lease.ErrNoLease) {
 		t.Fatalf("the stopped job's lease is still live: %v", err)
 	}
@@ -100,6 +104,56 @@ func TestAStopReleasesTheLease(t *testing.T) {
 	events, err := history.Since(context.Background(), f.now.Add(-1))
 	if err != nil || len(events) != 1 || events[0].Kind != record.Stopped || events[0].Job != it.ID {
 		t.Fatalf("stop history = %+v; error = %v", events, err)
+	}
+}
+
+// A RUN THAT ALREADY ENDED HAS NOTHING TO STOP: a person's stop of it is
+// refused as not running and records nothing, and the reset a reassignment
+// or a drop makes first leaves why it ended as it was. A start takes the stop
+// down and the run begins again at its first step.
+func TestAStoppedJobIsNotStoppedAgain(t *testing.T) {
+	f := setup(t)
+	it := f.add(t, factory.Item{State: factory.StateRunning, Stages: []factory.Stage{
+		{Name: "plan", Kind: factory.StageChat, Ask: "plan it", On: true},
+		{Name: "write", Kind: factory.StageChat, Ask: "write it", On: true},
+	}, Stream: &factory.Stream{Cur: 1, Spent: 0.5, Phases: []factory.Phase{
+		{Name: "plan", Kind: factory.StageChat, State: factory.PhaseDone},
+		{Name: "write", Kind: factory.StageChat, State: factory.PhaseRunning, Round: 1},
+	}}})
+	doors := lease.NewDoors(f.desk)
+	if err := doors.Stop(it.ID); err != nil {
+		t.Fatal(err)
+	}
+	stopped, _ := f.store.Get(it.ID)
+	if got := stopped.Failure; got == nil || got.Code != factory.CodeStopped || got.Step != "write" {
+		t.Fatalf("stop = %+v", stopped.Failure)
+	}
+	if ph := stopped.Stream.Phases[1]; ph.State != factory.PhaseFailed || ph.Failure == nil || ph.Failure.Code != factory.CodeStopped {
+		t.Fatalf("the cut step still reads %+v", ph)
+	}
+	if err := doors.Stop(it.ID); err == nil || !strings.Contains(err.Error(), "is not running") {
+		t.Fatalf("a second stop = %v", err)
+	}
+	if err := doors.Reset(it.ID); err != nil {
+		t.Fatal(err)
+	}
+	again, _ := f.store.Get(it.ID)
+	if !reflect.DeepEqual(again.Failure, stopped.Failure) || again.State != factory.StateNew || !reflect.DeepEqual(again.Stream.Phases, stopped.Stream.Phases) {
+		t.Fatalf("a reset rewrote the stopped job: %+v %+v", again.Failure, again.Stream.Phases)
+	}
+	history, err := record.Open(f.store, record.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if events, err := history.Since(context.Background(), f.now.Add(-1)); err != nil || len(events) != 1 || events[0].Kind != record.Stopped {
+		t.Fatalf("stop history = %+v; error = %v", events, err)
+	}
+	if err := doors.Launch(it.ID); err != nil {
+		t.Fatal(err)
+	}
+	started, _ := f.store.Get(it.ID)
+	if started.State != factory.StateQueued || started.Failure != nil || started.Stream.Spent != 0 || len(started.Stream.Phases) != 2 || started.Stream.Phases[0].State != factory.PhasePending || started.Stream.Phases[1].State != factory.PhasePending {
+		t.Fatalf("start = %s %+v %+v", started.State, started.Failure, started.Stream)
 	}
 }
 

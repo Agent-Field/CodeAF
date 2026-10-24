@@ -26,9 +26,21 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
+	"github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/factory/tokens"
 )
+
+// JobFolders is a drop's reach into this machine: the job's local branch and
+// its worktree folder, as the runner made them (internal/factory/run's
+// Workdirs). Nothing it does reaches GitHub.
+type JobFolders interface {
+	// Work is what deleting the job's local branch and folder would lose. An
+	// error is work that could not be read, which a drop treats as work.
+	Work(factory.Item) (run.Work, error)
+	// Discard deletes them once nothing on this machine still runs the job.
+	Discard(factory.Item) error
+}
 
 // Config is supplied by the host so the handler never reads a person's home
 // or guesses the published address from a client-controlled Host header.
@@ -38,21 +50,47 @@ type Config struct {
 
 	// Mode is solo or team; an unset mode follows the host access configuration.
 	Mode string
+	// DefaultModel answers the model a job's steps run on when it names none,
+	// for the queue's `model`. Nil when this factory does not know it: a
+	// runner elsewhere decides with its own settings.
+	DefaultModel func() string
 	// ProfileDir resolves the solo factory's existing GitHub connection for setup reads.
 	ProfileDir string
 	// OperatorLogin names a solo host; team identity comes from the persisted claim.
 	OperatorLogin string
 	// ChangeAssignee mirrors a person's decision to GitHub before storing it.
 	ChangeAssignee func(context.Context, factory.Item, string) error
-	// DeleteBranch removes only a dropped job's branch after retention expires.
-	DeleteBranch func(context.Context, factory.Item) error
+	// Folders is the job work on this factory's own machine, which a drop
+	// reads before it deletes it. Nil is a factory that keeps no job folders
+	// of its own, whose drop deletes nothing.
+	Folders JobFolders
+	// DeleteChats deletes a job's conversations on this factory's own
+	// machine: the crew the factory made for it and every conversation the
+	// factory recorded for it, its agent's and each step's of every round.
+	// Drop calls it, and Bring back again for whatever is still named, with
+	// the job as it stood, once the job no longer names them; a job naming
+	// none deletes nothing. Nil is a factory that keeps no conversations of
+	// its own, whose drop deletes none.
+	DeleteChats func(factory.Item) error
 
 	// PersonProfile reads cached public GitHub identity, including outside authors.
+	// It may wait on GitHub, so only the card about one person uses it.
 	PersonProfile func(context.Context, string) (factory.GitHubPerson, error)
+	// PersonKnown answers the identity already read for a handle without
+	// waiting on GitHub, and asks for it to be read when it is not. Every list
+	// of people (the queue's above all) reads it, so a queue naming hundreds
+	// of authors never waits on hundreds of profile reads; the next read
+	// carries what arrived. Nil falls back to PersonProfile.
+	PersonKnown func(string) (factory.GitHubPerson, bool)
 	// CodeOwners reads a watched repository's cached default-branch ownership.
 	CodeOwners func(context.Context, string) ([]factory.CodeOwner, error)
 	// Pipeline reads the same repository rules as intake, including personal limits.
-	Pipeline    func(context.Context, string, string) (pipeline.File, error)
+	Pipeline func(context.Context, string, string) (pipeline.File, error)
+	// Recheck reads how one GitHub item stands right now, in one request
+	// ([factorygithub.Standing]): "" while it is open, "closed" or "merged"
+	// when it ended. A person's start asks it first, so an issue closed on
+	// GitHub is finished instead of run. Nil starts on what the floor knows.
+	Recheck     func(context.Context, factory.Item) (string, error)
 	Address     string
 	Version     string
 	AccessToken string
@@ -121,6 +159,7 @@ type Handler struct {
 	jobsMu     sync.Mutex
 	jobsTimer  *time.Timer
 	jobsClosed bool
+	jobsBusy   sync.WaitGroup
 
 	seam    factory.Seam
 	config  Config
@@ -176,6 +215,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.read("/v1/repos/{owner}/{repo}/dryrun", h.dryrun)
 	h.read("/v1/github", h.github)
 	h.route("/v1/github/grant", map[string]http.HandlerFunc{http.MethodPut: h.grantGitHub})
+	h.route("/v1/github/poll", map[string]http.HandlerFunc{http.MethodPost: h.pollGitHub})
 	h.read("/v1/about", h.about)
 	h.read("/v1/me", h.me)
 	h.route("/v1/me/takes_unassigned", map[string]http.HandlerFunc{http.MethodPut: h.setTakes})
@@ -242,6 +282,7 @@ func (h *Handler) Close() {
 			h.jobsTimer.Stop()
 		}
 		h.jobsMu.Unlock()
+		h.jobsBusy.Wait()
 	}
 
 	if h != nil {
@@ -368,6 +409,13 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s, reason, whole := h.forViewer(r, s)
+	// A REPOSITORY THAT IS OFF TAKES ITS JOBS OUT OF THE QUEUE, in every
+	// state, and comes back with them when it is turned on (repo_off.go).
+	sw, err := h.repoSwitch()
+	if h.failed(w, err) {
+		return
+	}
+	s = onlyOn(s, sw)
 	s, _ = h.withPeople(r, s)
 	if h.authFailed(w, r) {
 		return
@@ -386,11 +434,15 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 	}
 	s.Items = items
 	q := api.FromSnapshot(s, handle, h.clock())
+	retention := h.retention()
 	for i := range q.Jobs {
-		q.Jobs[i] = h.withVersion(q.Jobs[i])
+		q.Jobs[i] = h.withVersionKept(q.Jobs[i], retention)
 	}
 	q.Factory = h.factory
 	q.Mode = h.mode()
+	if h.config.DefaultModel != nil {
+		q.Model = strings.TrimSpace(h.config.DefaultModel())
+	}
 	if q.Mode == api.FactorySolo {
 		for i := range q.Jobs {
 			h.soloJob(&q.Jobs[i], s.Items[i], handle)
@@ -424,9 +476,10 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 	for i := range q.Jobs {
 		h.presentJob(r, &q.Jobs[i])
 	}
+	summarize := h.summaries(r)
 	for _, job := range q.Jobs {
 		if job.HeldBy != nil {
-			h.addSummary(r, q.People, job.HeldBy.Handle)
+			summarize(q.People, job.HeldBy.Handle)
 		}
 	}
 	h.write(w, http.StatusOK, q)
@@ -456,7 +509,23 @@ func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
 	if _, _, err := h.applyPresence(jobs); h.failed(w, err) {
 		return
 	}
+	// HOW A RUN GETS ITS CHECKOUT is said before anyone presses Start, in the
+	// words the start itself would act on ([factory.Seam.CheckoutOf]), and
+	// never as a path.
+	if h.seam.CheckoutOf != nil {
+		state, _ := h.seam.CheckoutOf(r.Context(), it.Repo)
+		jobs[0].Checkout = string(state)
+	}
 	h.presentJob(r, &jobs[0])
+	// A job of a repository that is off stays readable, so a page already
+	// open on it can say why it left the queue (repo_off.go).
+	sw, err := h.repoSwitch()
+	if h.failed(w, err) {
+		return
+	}
+	if sw.OffJob(it) {
+		offJob(&jobs[0])
+	}
 	h.write(w, http.StatusOK, struct {
 		Factory api.Factory `json:"factory"`
 		api.Job
@@ -479,7 +548,7 @@ func (h *Handler) findJob(w http.ResponseWriter, r *http.Request) (factory.Item,
 		return factory.Item{}, false
 	}
 	for _, it := range s.Items {
-		if it.ID == id || factory.JobRef(it) == r.PathValue("id") {
+		if factory.IsIssueJob(it) && (it.ID == id || factory.JobRef(it) == r.PathValue("id")) {
 			// A hidden job is the same answer as a missing one, so the
 			// caller cannot tell which repositories exist.
 			visible := h.repoVisible(r, itemRepo(it))

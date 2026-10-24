@@ -69,7 +69,7 @@ func StartDetachedService(command, dir, logPath string) (int, time.Time, error) 
 	if err != nil {
 		return 0, time.Time{}, err
 	}
-	cmd := exec.Command(bash, "-lc", command)
+	cmd := exec.Command(bash, "-o", "pipefail", "-lc", command)
 	configureDetachedCommand(cmd, dir, logFile)
 	if err := cmd.Start(); err != nil {
 		_ = logFile.Close()

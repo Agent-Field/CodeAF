@@ -85,11 +85,12 @@ func (h *Handler) workerRoutes() {
 	h.route("/v1/workers/leases/{lease}/heartbeat", map[string]http.HandlerFunc{http.MethodPost: h.heartbeatWorker})
 	h.route("/v1/workers/leases/{lease}/report", map[string]http.HandlerFunc{http.MethodPost: h.reportWorker})
 	h.route("/v1/workers/leases/{lease}/done", map[string]http.HandlerFunc{http.MethodPost: h.doneWorker})
+	h.route("/v1/workers/recover/{id}", map[string]http.HandlerFunc{http.MethodPost: h.recoverWorkerReport, http.MethodGet: h.workerRecoveryStatus})
 }
 
 func workerPath(path string) bool {
 	return (strings.HasPrefix(path, "/v1/workers/") && path != "/v1/workers/attach") ||
-		(strings.HasPrefix(path, "/v1/runners/leases/")) || path == "/v1/runners/pull" || path == "/v1/runners/presence" || path == "/v1/runner/self"
+		strings.HasPrefix(path, "/v1/runners/leases/") || strings.HasPrefix(path, "/v1/runners/recover/") || path == "/v1/runners/pull" || path == "/v1/runners/presence" || path == "/v1/runner/self"
 }
 
 func bearer(r *http.Request) string {
@@ -386,10 +387,11 @@ func (h *Handler) pulled(w http.ResponseWriter, r *http.Request, held lease.Leas
 	if h.workerError(w, err) {
 		return
 	}
-	job := h.withVersion(api.FromItem(it))
+	job := h.withVersion(api.WorkerJob(it))
 	job.Can = api.CanFor(it, requestWorker(r).Handle)
-	// The lease holder's own copy keeps each step's chat: it is how a resumed
-	// chat stage finds its conversation again.
+	// The lease holder's own copy keeps each step's chat, and carries each
+	// step's whole report: they are how a resumed chat stage finds its
+	// conversation again, and how the steps after it hear what came before.
 	h.presentWorkerJob(r, &job)
 	h.write(w, http.StatusOK, api.WorkerPull{Factory: h.factory, Lease: workerLease(held), Job: job, Signals: wireSignals(signals)})
 }
@@ -397,7 +399,7 @@ func (h *Handler) pulled(w http.ResponseWriter, r *http.Request, held lease.Leas
 func wireSignals(in []lease.Signal) []api.WorkerSignal {
 	out := make([]api.WorkerSignal, len(in))
 	for i, s := range in {
-		out[i] = api.WorkerSignal{Budget: s.Budget, ID: s.ID, Verb: s.Verb, Yes: s.Yes, Words: s.Words}
+		out[i] = api.WorkerSignal{Automatic: s.Automatic, Budget: s.Budget, ID: s.ID, Verb: s.Verb, Yes: s.Yes, Words: s.Words}
 	}
 	return out
 }
@@ -427,6 +429,10 @@ func (h *Handler) reportWorker(w http.ResponseWriter, r *http.Request) {
 	if !h.decode(w, r, &body, false) {
 		return
 	}
+	if err := workerReportHeaders(&body, r.Header); err != nil {
+		h.fail(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	report := api.ToWorkerReport(body)
 	only, err := h.workers.desk.ThreadOnly(r.PathValue("lease"), requestWorker(r).ID)
 	if h.workerError(w, err) {
@@ -448,7 +454,10 @@ func (h *Handler) reportWorker(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		after := it.Failure
-		if after == nil || failureKey(after) == before || h.config.Record == nil {
+		// A PERSON'S STOP IS NOT A STEP THAT ERRORED: a worker whose run
+		// stopped on a person's no reports the cut step with the stop on it,
+		// and the person's answer is already on the record.
+		if after == nil || after.Code == factory.CodeStopped || failureKey(after) == before || h.config.Record == nil {
 			return nil
 		}
 		_, _ = h.config.Record.Append(r.Context(), record.Event{
@@ -487,6 +496,25 @@ func (h *Handler) doneWorker(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusUnprocessableEntity, "unknown final job state")
 		return
 	}
+	merged, err := h.workers.desk.CarriedMerge(r.PathValue("lease"), requestWorker(r).ID)
+	if h.workerError(w, err) {
+		return
+	}
+	if merged {
+		// A MERGE'S DONE IS NOT A PUBLISH. The job's pull request is already
+		// out; its report said what the merge did, and the job stays done or
+		// waits on the person whose merge failed.
+		h.applyWorker(w, r, true, func(it *factory.Item) error {
+			it.State = factory.StateShipped
+			if m := it.Merging; m != nil && (m.State == factory.MergeQueued || m.State == factory.MergeMerging) {
+				cp := *m
+				cp.State, cp.Why = factory.MergeFailed, "the runner finished without saying what the merge did"
+				it.Merging = &cp
+			}
+			return nil
+		})
+		return
+	}
 	h.applyWorker(w, r, true, func(it *factory.Item) error {
 		now := h.workers.now()
 		if state != factory.StateShipped {
@@ -494,6 +522,14 @@ func (h *Handler) doneWorker(w http.ResponseWriter, r *http.Request) {
 				it.State = factory.StateLanded
 				return nil
 			}
+			return run.FinishReport(it, state, now)
+		}
+		if it.PullRequest != nil && (it.PullRequest.State == factory.PRMerged || it.PullRequest.State == factory.PRClosed) {
+			it.State = factory.StateShipped
+			factory.QueueCIFollowUp(it, now)
+			return nil
+		}
+		if run.ExternalPRHeadChecked(*it) {
 			return run.FinishReport(it, state, now)
 		}
 		// A WORKER NEVER APPROVES: done as shipped is a publish only beside

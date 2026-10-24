@@ -47,12 +47,25 @@ func WriteGitHubToken(profileDir, token string) error {
 
 // WriteGitHubViaGH keeps the person's yes to gh's own login and forgets any
 // kept token, in one write.
+//
+// IN APP MODE IT KEEPS THE YES ALONE. The yes is consent, not a key: gh keeps
+// its own token, and the yes is what lets the app's factory read GitHub again
+// after a relaunch. A token the person pasted is the app's to keep, in its
+// keychain, so no token row is touched here.
 func WriteGitHubViaGH(profileDir string) error {
 	if AppMode() {
-		return ErrAppKeys
+		return writeProfileValues(profileDir, map[string]any{KeyGitHubVia: "gh"})
 	}
 	return writeProfileValues(profileDir, map[string]any{
 		KeyGitHubVia:   "gh",
 		KeyGitHubToken: removeProfileKey,
 	})
+}
+
+// ForgetGitHubViaGH takes back the yes to gh's own login, for the app's
+// factory when the person connects a pasted token instead: the token the app
+// keeps is then the one answer, and a keychain that loses it must not quietly
+// fall back to gh.
+func ForgetGitHubViaGH(profileDir string) error {
+	return writeProfileValues(profileDir, map[string]any{KeyGitHubVia: removeProfileKey})
 }

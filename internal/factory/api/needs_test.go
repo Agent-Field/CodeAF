@@ -61,6 +61,25 @@ func TestNeedsYouKindsQuestionsAndWhoMayAnswer(t *testing.T) {
 	}
 }
 
+// A STUCK STEP NAMES WHERE IT COULD BE SENT BACK TO, and only a finished
+// step that is not a gate: the first step names none.
+func TestAStuckStepNamesTheStepItCanBeSentBackTo(t *testing.T) {
+	stuck := func(cur int, phases ...factory.Phase) factory.Item {
+		return factory.Item{ID: 7, State: factory.StateNeedsYou, Question: "review is not clean: 1 finding · try again, send it back, or stop the job?", QKind: factory.QKindOutOfAttempts, Stream: &factory.Stream{Cur: cur, Phases: phases}}
+	}
+	plan := factory.Phase{Name: "plan", Kind: factory.StageChat, State: factory.PhaseDone}
+	gate := factory.Phase{Name: "approve", Kind: factory.StageGate, State: factory.PhaseDone}
+	review := factory.Phase{Name: "review", Kind: factory.StageChat, State: factory.PhaseWaiting}
+	if j := FromItem(stuck(2, plan, gate, review)); j.NeedsYou == nil || j.NeedsYou.BackTo != "plan" {
+		t.Fatalf("needs_you = %+v", j.NeedsYou)
+	}
+	first := review
+	first.Name = "plan"
+	if j := FromItem(stuck(0, first)); j.NeedsYou == nil || j.NeedsYou.BackTo != "" {
+		t.Fatalf("the first step named a step to go back to: %+v", j.NeedsYou)
+	}
+}
+
 func itoa(n int) string {
 	if n == 0 {
 		return "0"

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -17,6 +18,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	factoryworker "github.com/Agent-Field/codeaf/internal/factory/worker"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -52,30 +54,18 @@ const factoryNoWorkerEnv = "CODEAF_FACTORY_NO_WORKER"
 // The manual quotes it (internal/manual/chat/factory.md).
 const factoryBenchesDefault = api.DefaultRunnerSlots
 
-// factoryStageWall is the most one stage conversation runs for, which is also
-// what makes it an unattended conversation that keeps going until its work is
-// done (internal/session's Budget): nobody is at its keyboard.
-const factoryStageWall = 2 * time.Hour
+// factoryStageWall is the most one stage conversation runs for: the runner's
+// own bound on a round (internal/factory/run's StageWall), handed to the
+// conversation as its budget so the tasks it hands out are bounded by it too.
+const factoryStageWall = factoryrun.StageWall
 
-// factoryProcess is what this process built for the floor once: the manager's
-// shaping door every window's page uses, and the worker loop's stop.
+// factoryProcess is what this process built for the floor once: the launch's
+// conversation config the worker opens from, and the worker loop's stop.
 var factoryProcess struct {
-	once         sync.Once
-	mu           sync.Mutex
-	shape        func(ctx context.Context, id int) (string, error)
-	mirror       string
-	workerShape  func(ctx context.Context, id int) (string, error)
-	workerShapes map[string]func(context.Context, int) (string, error)
-	stop         context.CancelFunc
-	parent       session.Config
-}
-
-// factoryShapeHere is this process's Shape door, nil before
-// [startFactoryWorker] built it (a window with no conversation config).
-func factoryShapeHere() func(ctx context.Context, id int) (string, error) {
-	factoryProcess.mu.Lock()
-	defer factoryProcess.mu.Unlock()
-	return factoryProcess.shape
+	once   sync.Once
+	mu     sync.Mutex
+	stop   context.CancelFunc
+	parent session.Config
 }
 
 // factoryRunnerDoors is the seam option every window's floor hangs: the
@@ -104,11 +94,6 @@ func startFactoryWorker(st *store.Store, workspace, profileDir string, parent se
 	// manager and stage conversations must not keep the first window's crew.
 	setFactoryProcess(func() { factoryProcess.parent = parent })
 	factoryProcess.once.Do(func() {
-		source := &factoryParentSource{raw: factoryWorkerParent, profile: profileDir}
-		turns := factoryShapeTurnsFrom(st, workspace, profileDir, source.Config)
-		turns.refusal = source.Refusal
-		turns.liveOK = factoryLiveOK(factoryWorkerParent, profileDir)
-		setFactoryProcess(func() { factoryProcess.shape = factoryShapeDoor(st, workspace, profileDir, turns) })
 		// IN THE APP PROCESS NO LOOP STARTS HERE, AND NO DEFAULT TARGET MAY SERVE.
 		// This worker's target is resolveFactory, which serves a factory of its
 		// own when none is live: in the app that wrote a token-less serve.json
@@ -190,7 +175,7 @@ func setFactoryProcess(change func()) {
 // `factory run` row beside them would count every dollar twice. So the money
 // is handed no ledger: what a round spent goes on the item (its spend, its
 // cap, today's rail) and nowhere else.
-func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string, maker factoryrun.ConversationMaker, shape *shapeTurns) *factoryrun.Runner {
+func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string, maker factoryrun.ConversationMaker, turns *shapeTurns) *factoryrun.Runner {
 	dirs := factoryRepoDirs(floor, workspace)
 	recipe := func(repo string) factory.Recipe {
 		return factoryItemRecipe(dirs, factory.Item{Repo: repo})
@@ -205,7 +190,6 @@ func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string,
 	workdirs := factoryWorkdirs(items, floor)
 	// A PUSH GOES AS THE PERSON: git is handed the profile's GitHub token,
 	// the one the source writes with, never in its arguments.
-	git := factoryrun.ExecGit{}
 	pushGit := factoryrun.ExecGit{Token: func() string {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -237,9 +221,10 @@ func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string,
 		Rail:       money.Rail,
 		SpentToday: money.SpentToday,
 		RepoDir:    dirs,
-		Workdir: func(it factory.Item) (string, error) {
-			return workdirs.For(it, dirs(it.Repo))
-		},
+		// AND A REPOSITORY WITH NO CHECKOUT HERE IS CLONED FIRST, into this
+		// machine's factory folder, over the token the push uses
+		// (factory_clone.go).
+		Workdir:   factoryRunWorkdir(floor, dirs, workdirs, factoryTokenOf(profileDir)),
 		Recipe:    recipe,
 		Source:    source,
 		Publisher: factoryPublisher(profileDir),
@@ -247,7 +232,7 @@ func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string,
 		// worktree is committed with git, its branch pushed as the person,
 		// and the pull request opened through source.
 		Push: factoryrun.GitPush(pushGit),
-		Git:  git,
+		Git:  pushGit,
 		// EVENTS ARE DROPPED. The loop writes every move to the store before
 		// it would send one, and the worker reports what it wrote, so nothing
 		// is waiting to hear them.
@@ -259,20 +244,14 @@ func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string,
 		Manager: managerMaker(floor, workspace, profileDir),
 		Talk:    sessionTalk{},
 	}
-	// AND THE MANAGER SHAPES THE RUN: one turn of its conversation at the
-	// launch of an item it never shaped, before the first stage
-	// (factory_shape.go). Nil shapes nothing; the recipe stands. What the
-	// person says during the run is the manager's own turn, never a second one.
-	if shape != nil {
-		opts.Shape = shape.Shape
-		// `shape steps` while this worker holds the job is the same turn the
-		// floor's Shape door runs, bounded to the steps not yet started.
-		opts.ShapeNow = func(ctx context.Context, it factory.Item, inRun bool) (factory.RunEdit, string, error) {
-			return shape.run(ctx, it, shapeAsk, inRun)
-		}
-		// AND THE MANAGER IS THE INBOX: every question a step asks is given to
-		// it first, one turn of its conversation (factory_inbox.go).
-		opts.Inbox = shape.Inbox
+	// THE LAUNCH GIVES THE MANAGER NO TURN: the run starts at its first stage
+	// with the stages as they stand, and what the person says during the run
+	// is the manager's own turn, never a second one. The manager's
+	// conversation is the INBOX: every question a step asks is given to it
+	// first, one turn of its conversation (factory_inbox.go); nil turns give
+	// it none.
+	if turns != nil {
+		opts.Inbox = turns.Inbox
 	}
 	return factoryrun.New(opts)
 }
@@ -282,7 +261,72 @@ func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string,
 func factoryWorkdirs(items, floor *store.Store) *factoryrun.Workdirs {
 	w := factoryrun.NewWorkdirs(filepath.Join(floor.Root(), "work"), factoryrun.ExecGit{})
 	w.Log = factoryrun.StoreLog(items, time.Now)
+	w.Prefix = func(it factory.Item) string { return factory.NormalizeHandle(it.Person()) }
 	return w
+}
+
+// factoryJobFolders is a drop's reach on this machine (serve's JobFolders):
+// the job's worktree under this factory folder's `work`, exactly where the
+// runner made it, and its local branch, in the checkout the factory knows for
+// the job's repository. A job that ran on another machine has neither here,
+// so a drop finds nothing to read or delete for it.
+type factoryJobFolders struct {
+	floor *store.Store
+	work  *factoryrun.Workdirs
+}
+
+func newFactoryJobFolders(floor *store.Store) factoryJobFolders {
+	return factoryJobFolders{floor: floor, work: factoryWorkdirs(floor, floor)}
+}
+
+func (f factoryJobFolders) Work(it factory.Item) (factoryrun.Work, error) {
+	return f.work.Work(it, f.floor.CheckoutDir(it.Repo))
+}
+
+// Discard deletes the job's local work once nothing on this machine runs it.
+// THE FOLDER IS NEVER DELETED UNDER A RUNNING STEP: a drop takes the job's
+// lease away, and the worker holding it learns that at its next heartbeat and
+// stops its runner, so the delete waits for that worker to let go. A worker
+// still holding it when the wait ends keeps the folder, and the drop says so.
+func (f factoryJobFolders) Discard(it factory.Item) error {
+	if !factoryRunnerLetGo(f.floor.Root(), it.ID, factoryLetGoWait) {
+		return fmt.Errorf("%s was still running on this machine", it.Ref())
+	}
+	return f.work.Discard(it, f.floor.CheckoutDir(it.Repo))
+}
+
+// factoryLetGoWait bounds that wait: the worker hears the stop at its next
+// heartbeat and then gives its runner [factoryworker.StopWait] to stop.
+const factoryLetGoWait = lease.HeartbeatEvery + factoryworker.StopWait + time.Second
+
+// factoryRunnerLetGo waits, at most wait, until no worker on this machine
+// holds job id, and answers whether none does.
+func factoryRunnerLetGo(root string, id int, wait time.Duration) bool {
+	deadline := time.Now().Add(wait)
+	for factoryMirrorHolds(root, id) {
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return true
+}
+
+// factoryMirrorHolds says whether a live worker process keeps job id in its
+// mirror, `<floor>/workers/<pid>/<factory>/<id>.json`: a worker writes it when
+// it takes the job and removes it only after its runner has stopped. Every
+// factory's mirror is read, because a worker of this machine's factory dials
+// whatever address it was given; another factory's job with the same number
+// only makes the wait longer, never the delete earlier.
+func factoryMirrorHolds(root string, id int) bool {
+	held, _ := filepath.Glob(filepath.Join(root, "workers", "*", "*", strconv.Itoa(id)+".json"))
+	for _, path := range held {
+		pid, err := strconv.Atoi(filepath.Base(filepath.Dir(filepath.Dir(path))))
+		if err == nil && pid > 0 && processgroup.ProcessAlive(pid) {
+			return true
+		}
+	}
+	return false
 }
 
 // factoryBenches is how many items this worker asks to run at once before the

@@ -3,7 +3,9 @@ package lease
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -104,8 +106,13 @@ func (d *Doors) stop(id int, caller *string, receipt bool) error {
 		return err
 	}
 	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
-		if err := run.StopItem(it, now); err != nil {
-			return false, err
+		// A RESET OF A RUN THAT ALREADY ENDED CHANGES NOTHING: a failed or
+		// stopped job is reassigned or dropped as it stands, and why it ended
+		// stays. Only a person's Stop of it is refused, as not running.
+		if receipt || !factory.RunEnded(*it) {
+			if err := run.StopItem(it, now); err != nil {
+				return false, err
+			}
 		}
 		// THE PERSON'S STOP WINS: keep it durable while the job is locked,
 		// before intake can see the job back in the backlog.
@@ -180,10 +187,15 @@ func (d *Doors) Answer(id int, yes bool, words string) error {
 // a job no worker holds is answered on the document, and a held job has its
 // question taken down and hears the answer through its lease.
 func answerLocked(doc *document, held *Lease, id int, it *factory.Item, yes bool, words string, now time.Time) (bool, error) {
+	if yes {
+		if err := factory.CheckAutomaticApproval(*it); err != nil {
+			return false, err
+		}
+	}
 	if held == nil {
 		return false, run.AnswerUnheld(it, yes, words, now)
 	}
-	if err := run.AnswerHeld(it, yes, now); err != nil {
+	if err := run.AnswerHeld(it, yes, now, words); err != nil {
 		return false, err
 	}
 	signal(doc, id, Signal{Verb: SignalAnswer, Yes: yes, Words: words})
@@ -264,6 +276,12 @@ func (d *Doors) SignOff(id int, edited bool) (bool, error) {
 	}
 	var repo string
 	err = d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+		if it.Cap > 0 && factory.JobSpent(*it) >= it.Cap {
+			return false, fmt.Errorf("job budget reached; raise Budget before publishing")
+		}
+		if err := factory.CheckAutomaticApproval(*it); err != nil {
+			return false, err
+		}
 		if run.TrailerCommit(trailer) != it.HeadCommit {
 			return false, publish.ErrCommitChanged
 		}
@@ -279,6 +297,11 @@ func (d *Doors) SignOff(id int, edited bool) (bool, error) {
 			// and keeps this signal, which queues the job again.
 			it.State = factory.StateLanded
 		}
+		if it.FollowUp == nil {
+			it.FollowUp = &factory.PRFollowUp{Kind: "pr", Limit: factory.DefaultPRRepairAttempts}
+		}
+		it.FollowUp.AutoPush = true
+		it.FollowUp.PublishConsent = trailer
 		it.Publishing = true
 		repo = it.Repo
 		signal(doc, id, Signal{Verb: SignalPublish, Words: trailer})
@@ -288,6 +311,35 @@ func (d *Doors) SignOff(id int, edited bool) (bool, error) {
 		return false, err
 	}
 	return run.HabitDue(d.desk.store, repo), nil
+}
+
+// Merge sends a merge the factory's gate passed to the runner that carries
+// it out: m, queued, goes on the job, and its exact commit rides beside the
+// lease as a merge signal, to the job's holder when a worker still holds it
+// (its done keeps the signal and queues the job again), else on the job
+// queued for the next pull. That worker reads the pull request again, runs
+// the same gate, and merges only that commit.
+func (d *Doors) Merge(id int, m factory.MergeRun) error {
+	if m.Commit == "" {
+		return errors.New("a merge names the exact commit to merge")
+	}
+	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+		if it.State != factory.StateShipped {
+			return false, fmt.Errorf("%s has not opened its pull request", it.Ref())
+		}
+		m.State = factory.MergeQueued
+		m.UndoUntil = time.Time{}
+		if m.At.IsZero() {
+			m.At = now
+		}
+		cp := m
+		it.Merging = &cp
+		if held == nil {
+			it.State = factory.StateQueued
+		}
+		signal(doc, id, Signal{Verb: SignalMerge, Words: m.Commit})
+		return true, nil
+	})
 }
 
 // trailer is the job's recorded approval as its trailer line, read from the
@@ -331,4 +383,77 @@ func stopHandle(caller *string, person string) string {
 		return *caller
 	}
 	return person
+}
+
+// AnswerPending commits an exact manager decision before signaling a held worker.
+// A nonempty receipt with an error means the answer WAS saved, but delivery needs
+// another attempt. Retrying the same answer confirms it without answering a newer ask.
+func (d *Doors) AnswerPending(id int, manager, questionID, words string) (factory.ManagerAnswer, error) {
+	var saved factory.ManagerAnswer
+	words = strings.TrimSpace(words)
+	err := d.desk.change(func(doc *document, now time.Time) (bool, error) {
+		held := find(doc, id)
+		dirty := false
+		var receipt factory.ManagerAnswer
+		err := d.desk.store.Update(id, func(it *factory.Item) error {
+			if manager == "" || it.Talk != manager {
+				return errors.New("the job's manager changed; read factory_status from its current conversation")
+			}
+			if questionID == "" || words == "" {
+				return errors.New("an exact question identity and answer are required")
+			}
+			if old := it.ManagerAnswer; old != nil && old.QuestionID == questionID {
+				if old.Manager != manager || old.Words != words {
+					return errors.New("this decision already has a different saved answer")
+				}
+				receipt = *old
+				// Confirmation is safe even if a newer question exists; only the same
+				// still-running attempt with no pending decision may receive a redelivery.
+			} else {
+				if factory.PendingQuestionID(*it) != questionID {
+					return errors.New("the pending step question changed; read factory_status before answering again")
+				}
+				if it.Manual || it.Publishing {
+					return errors.New("manual control or publication owns this job")
+				}
+				if it.Stream == nil {
+					return errors.New("the pending step has no saved run to resume")
+				}
+				receipt = factory.ManagerAnswer{QuestionID: questionID, Manager: manager, Words: words, Stage: it.Asking.Stage, Phase: it.Stream.Cur, At: now}
+				if receipt.Phase >= 0 && receipt.Phase < len(it.Stream.Phases) {
+					p := it.Stream.Phases[receipt.Phase]
+					receipt.Round, receipt.Chat = p.Round, p.Chat
+				}
+				note := fmt.Sprintf("%s asked: %s · the person answered: %s", it.Asking.Stage, it.Asking.Question, words)
+				if err := run.KeepAnswer(it, false, words, now); err != nil {
+					return err
+				}
+				it.Note(now, note)
+				it.ManagerAnswer = &receipt
+			}
+			if held != nil && !it.Manual && !it.Publishing && it.Question == "" && it.Asking == nil && it.Stream != nil && it.Stream.Cur == receipt.Phase && receipt.Phase >= 0 && receipt.Phase < len(it.Stream.Phases) {
+				p := it.Stream.Phases[receipt.Phase]
+				if p.Round == receipt.Round && p.Chat == receipt.Chat && (it.State == factory.StateRunning || it.State == factory.StateQueued) {
+					it.State = factory.StateRunning
+					exists := false
+					for _, s := range doc.Signals[id] {
+						if s.Verb == SignalAnswer && s.ID == questionID {
+							exists = true
+						}
+					}
+					if !exists {
+						signal(doc, id, Signal{Verb: SignalAnswer, ID: questionID, Words: words})
+						dirty = true
+					}
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return false, err
+		}
+		saved = receipt // Only after the item file has successfully persisted.
+		return dirty, nil
+	})
+	return saved, err
 }

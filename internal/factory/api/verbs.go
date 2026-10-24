@@ -12,7 +12,7 @@ type Verb struct {
 // (`POST /v1/jobs/{id}/<verb>`), then the floor's own. The client seam wires
 // exactly these doors; the server answers exactly these names.
 var Verbs = []Verb{
-	{"start_now", nil}, {"run_again", nil}, {"dismiss", nil}, {"assign_to_me", nil}, {"change_assignee", nil},
+	{"start_now", nil}, {"run_again", nil}, {"restore", nil}, {"close", nil}, {"reopen", nil}, {"dismiss", nil}, {"assign_to_me", nil}, {"change_assignee", nil},
 	{"unassign", nil}, {"nudge", nil}, {"priority", nil}, {"raise_budget", nil}, {"undo", nil},
 	{"queue", []string{"Load"}},
 	{"job", []string{"Load"}},
@@ -28,9 +28,12 @@ var Verbs = []Verb{
 	{"steer", []string{"Steer"}},
 	{"approve", []string{"SignOff", "Answer"}},
 	{"retry_publish", nil},
+	// Merge is the factory's own: its gate and the lease's merge signal.
+	{"merge", nil},
+	// A job's model is the factory's own record and the lease's model signal.
+	{"model", nil},
 	{"request_changes", []string{"SendBack"}},
 	{"recheck", []string{"Reverify"}},
-	{"shape", []string{"Shape"}},
 	{"take", nil},
 	// Release is un-take: the person who took the job lets it go. Like take,
 	// it is the lease desk's door and has no Seam field.
@@ -57,6 +60,7 @@ var TUIOnly = map[string]string{
 
 	// Doors on this machine's disk.
 	"Clone":        "checks a repository out on this machine",
+	"CheckoutOf":   "says whether this machine has a repository's checkout or can clone one; the job read carries it as checkout",
 	"RecipeAt":     "reads the repository rules from the forge with an offline checkout fallback",
 	"SaveRecipe":   "writes the recipe file in this machine's checkout",
 	"RecipeOffer":  "asks whether this machine's checkout has a recipe file",

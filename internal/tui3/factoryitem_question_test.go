@@ -303,8 +303,10 @@ var itemRenderCases = []struct {
 		// AN OFF STEP is edited and stays off.
 		name: "off",
 		shape: func(it *factory.Item) {
-			sec := factory.StageIndex(it.Stages, "security")
-			it.Stages[sec].On, it.Stages[sec].Effort = false, "cheap"
+			// The shipped default has no security step since 2026-10-20, so
+			// one is laid on after review, off.
+			sec := factory.Stage{Name: "security", Kind: factory.StageChat, Ask: "secrets", Until: factory.UntilClean, On: false, Effort: "cheap"}
+			it.Stages = factory.PlaceStage(it.Stages, sec, "after review")
 		},
 		moved: map[string]string{"security": "strong", "write": "strong"},
 		off:   "security",

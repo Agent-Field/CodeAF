@@ -361,8 +361,12 @@ func TestAppFactoryJobActionsTwoPeopleAgainstTheRealServer(t *testing.T) {
 		if got.Current == nil || got.Current.Budget != 10 {
 			t.Fatalf("budget: %+v", got.Current)
 		}
-		// The factory never lowers a limit; its sentence comes back as bad_params.
-		alice.w.mustFail("factory.job_set_budget", alice.params(t, n, map[string]any{"budget": 5}), appwire.CodeBadParams)
+		// A budget may go down as well as up, never below what the job has spent
+		// (nothing yet here).
+		got = alice.act(t, "factory.job_set_budget", n, map[string]any{"budget": 5})
+		if got.Current == nil || got.Current.Budget != 5 {
+			t.Fatalf("lowered budget: %+v", got.Current)
+		}
 		bob.refused(t, "factory.job_set_budget", bob.params(t, n, map[string]any{"budget": 20}), appwire.CodeForbidden)
 	})
 
@@ -614,13 +618,18 @@ func TestAppFactoryJobActionsSpeakOnlyTheFactorysRoutes(t *testing.T) {
 	v := &api.Expect{Version: ptr(7)}
 	f := conn.ID
 	b.FactoryJobStart(ctx, appwire.FactoryJobActionParams{Factory: f, Job: 4, Expect: v})
-	b.FactoryJobDrop(ctx, appwire.FactoryJobDropParams{Factory: f, Job: 4, Words: "dup", Expect: v})
+	b.FactoryJobDrop(ctx, appwire.FactoryJobDropParams{Factory: f, Job: 4, Discard: true, Expect: v})
+	b.FactoryJobRestore(ctx, appwire.FactoryJobActionParams{Factory: f, Job: 4, Expect: v})
+	b.FactoryJobRunAgain(ctx, appwire.FactoryJobActionParams{Factory: f, Job: 4, Expect: v})
 	b.FactoryJobChangeAssignee(ctx, appwire.FactoryJobAssigneeParams{Factory: f, Job: 4, Assignee: "bob", Expect: v})
 	b.FactoryJobSetPriority(ctx, appwire.FactoryJobPriorityParams{Factory: f, Job: 4, Priority: "low", Expect: v})
 	b.FactoryJobSetBudget(ctx, appwire.FactoryJobBudgetParams{Factory: f, Job: 4, Budget: 20, Expect: v})
 	b.FactoryJobApprove(ctx, appwire.FactoryJobApproveParams{Factory: f, Job: 4, Commit: "abc1234", Words: "ok", Edited: true, Expect: v})
 	b.FactoryJobRequestChanges(ctx, appwire.FactoryJobChangesParams{Factory: f, Job: 4, Words: "redo", Expect: v})
 	b.FactoryJobStepRerun(ctx, appwire.FactoryJobStepParams{Factory: f, Job: 4, Step: "re view", Expect: v})
+	if err := b.FactoryRefresh(ctx, f); err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
 	made, err := b.FactoryJobCreate(ctx, appwire.FactoryJobCreateParams{Factory: f, Repo: "o/r", Title: "T", Text: "B"})
 	if err != nil || made.Job != 9 {
 		t.Fatalf("create: %+v %v", made, err)
@@ -635,17 +644,69 @@ func TestAppFactoryJobActionsSpeakOnlyTheFactorysRoutes(t *testing.T) {
 	mu.Unlock()
 	want := []string{
 		`POST /v1/jobs/4/start_now {"expect":{"version":7}} Bearer ` + actionTestCredential,
-		`POST /v1/jobs/4/drop {"expect":{"version":7},"words":"dup"} Bearer ` + actionTestCredential,
+		`POST /v1/jobs/4/drop {"discard":true,"expect":{"version":7}} Bearer ` + actionTestCredential,
+		`POST /v1/jobs/4/restore {"expect":{"version":7}} Bearer ` + actionTestCredential,
+		`POST /v1/jobs/4/run_again {"expect":{"version":7}} Bearer ` + actionTestCredential,
 		`POST /v1/jobs/4/change_assignee {"assignee":"bob","expect":{"version":7}} Bearer ` + actionTestCredential,
 		`POST /v1/jobs/4/priority {"expect":{"version":7},"priority":"low"} Bearer ` + actionTestCredential,
 		`POST /v1/jobs/4/raise_budget {"budget":20,"expect":{"version":7}} Bearer ` + actionTestCredential,
 		`POST /v1/jobs/4/approve {"commit":"abc1234","edited":true,"expect":{"version":7},"words":"ok"} Bearer ` + actionTestCredential,
 		`POST /v1/jobs/4/request_changes {"expect":{"version":7},"words":"redo"} Bearer ` + actionTestCredential,
 		`POST /v1/jobs/4/steps/re%20view/rerun {"expect":{"version":7}} Bearer ` + actionTestCredential,
+		`POST /v1/github/poll {} Bearer ` + actionTestCredential,
 		`POST /v1/jobs {"repo":"o/r","source":"app","text":"B","title":"T"} Bearer ` + actionTestCredential,
 	}
 	if strings.Join(posts, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("requests:\n%s\nwant:\n%s", strings.Join(posts, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+// A DROP THAT WOULD DELETE WORK reaches the app as has_work, carrying the
+// factory's own sentence naming the work and the refusal's detail, so the app
+// can ask the person and send the same drop again with discard.
+func TestAppFactoryDropWithWorkIsHasWork(t *testing.T) {
+	err := appFactoryActionFailure(appFactoryReply{status: http.StatusConflict, body: []byte(`{"error":"codeaf#1844's branch has 3 commits and uncommitted changes.","reason":"has_work","now_state":"running"}`)})
+	var wire *appwire.Error
+	if !errors.As(err, &wire) || wire.Code != appwire.CodeHasWork || wire.Message != "codeaf#1844's branch has 3 commits and uncommitted changes." {
+		t.Fatalf("has_work refusal = %#v", err)
+	}
+	if d, ok := wire.Detail.(*appwire.FactoryRefusal); !ok || d.Reason != api.ReasonHasWork || d.NowState != "running" {
+		t.Fatalf("has_work detail = %#v", wire.Detail)
+	}
+}
+
+// A 5XX STAYS UNCERTAIN BUT KEEPS THE FACTORY'S WORDS: the action may have
+// half-happened, so the person is still told to read the job first, after the
+// sentence the factory gave for the failure; a 5xx with no sentence of its own
+// says the general warning alone.
+func TestAppFactory5xxKeepsTheFactorysWords(t *testing.T) {
+	const maybe = "the action may have happened, so read the job before trying again"
+	for _, c := range []struct {
+		body, want string
+	}{
+		{`{"error":"could not clone acme/api · repository not found"}`, "could not clone acme/api · repository not found · " + maybe},
+		{`<html>bad gateway</html>`, "the factory failed while acting; " + maybe},
+		{`{"error":"  "}`, "the factory failed while acting; " + maybe},
+	} {
+		err := appFactoryActionFailure(appFactoryReply{status: http.StatusInternalServerError, body: []byte(c.body)})
+		var wire *appwire.Error
+		if !errors.As(err, &wire) || wire.Code != appwire.CodeUncertain || wire.Message != c.want {
+			t.Fatalf("a 5xx with %s = %#v, want uncertain %q", c.body, err, c.want)
+		}
+	}
+}
+
+// A START THAT CANNOT GET A CHECKOUT reaches the app as a conflict in the
+// factory's own sentence, with reason needs_checkout, never as uncertain.
+func TestAppFactoryNeedsCheckoutIsAConflictInTheFactorysWords(t *testing.T) {
+	words := "acme/api isn't checked out on this machine · " + factory.CheckoutNeedsGitHub
+	err := appFactoryActionFailure(appFactoryReply{status: http.StatusConflict, body: []byte(`{"error":"` + words + `","reason":"needs_checkout","now_state":"backlog"}`)})
+	var wire *appwire.Error
+	if !errors.As(err, &wire) || wire.Code != appwire.CodeConflict || wire.Message != words {
+		t.Fatalf("needs_checkout refusal = %#v", err)
+	}
+	if d, ok := wire.Detail.(*appwire.FactoryRefusal); !ok || d.Reason != api.ReasonNeedsCheckout {
+		t.Fatalf("needs_checkout detail = %#v", wire.Detail)
 	}
 }
 
