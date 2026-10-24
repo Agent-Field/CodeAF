@@ -239,6 +239,10 @@ func (r *Runtime) call(op uint32, d *decoder) ([]byte, error) {
 			in = raftcore.StorageFailed{BatchID: d.u64()}
 		case 10:
 			in = raftcore.CancelRead{RequestID: d.str()}
+		case 11:
+			p := &pb.Snapshot{}
+			d.message(p)
+			in = raftcore.CompactSnapshot{Snapshot: p}
 		default:
 			return nil, errFrame
 		}
@@ -274,6 +278,21 @@ func (r *Runtime) call(op uint32, d *decoder) ([]byte, error) {
 			return nil, err
 		}
 		e.blob(next)
+	case 6:
+		id := d.u32()
+		if err := d.end(); err != nil {
+			return nil, err
+		}
+		node := r.nodes[id]
+		if node == nil {
+			return nil, errFrame
+		}
+		point := node.SnapshotNeeded()
+		e.flag(point != nil)
+		if point != nil {
+			e.u64(point.Index)
+			e.u64(point.Term)
+		}
 	default:
 		return nil, errFrame
 	}

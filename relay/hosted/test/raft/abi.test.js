@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Writer, Reader, frame, response, MAX_BUFFER } from '../../src/raft/abi.js';
+import { Writer, Reader, frame, response, MAX_BUFFER, stepFrame, snapshotNeeded } from '../../src/raft/abi.js';
 import { wasiPreview1 } from '../../src/raft/wasi.js';
 
 test('R14 binary ABI preserves full uint64 and opaque bytes',()=>{
@@ -20,4 +20,14 @@ test('R27 WASI shim has fixed environment, no I/O and rejects blocking schedulin
  assert.throws(()=>wasi.imports.poll_oneoff(),/blocking poll/);assert.throws(()=>wasi.imports.sched_yield(),/scheduler yield/);
  assert.equal(wasi.imports.fd_read(),8);assert.equal(wasi.imports.sock_accept(),8);assert.equal(wasi.imports.fd_write(9),8);
  assert.throws(()=>wasi.imports.random_get(65536,1),/bounds/);
+});
+
+// R13/R14 pin the additive ABI-1 maintenance grammar used by a streamed host.
+test('R13 R14 snapshot maintenance framing preserves exact indexes and bytes',()=>{
+ const p=Uint8Array.of(0,255,1),r=new Reader(stepFrame(7,11,p));
+ assert.equal(r.u32(),1);assert.equal(r.u32(),3);assert.equal(r.u32(),7);assert.equal(r.u32(),11);assert.deepEqual(r.blob(),p);r.end();
+ const index=(1n<<64n)-1n;
+ assert.deepEqual(snapshotNeeded(new Writer().u32(1).str('').u32(1).u64(index).u64(9007199254740993n).finish()),{index,term:9007199254740993n});
+ assert.equal(snapshotNeeded(new Writer().u32(1).str('').u32(0).finish()),null);
+ assert.throws(()=>snapshotNeeded(new Writer().u32(1).str('').u32(1).finish()),/truncated/);
 });
