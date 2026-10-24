@@ -16,6 +16,7 @@ import (
 	"sync"
 
 	"github.com/Agent-Field/codeaf/internal/raftcore"
+	"github.com/Agent-Field/codeaf/internal/raftsnapshot"
 	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
@@ -23,8 +24,8 @@ import (
 )
 
 const (
-	FormatVersion  = 1
-	MaxRecordBytes = 1 << 20
+	FormatVersion  = 2
+	MaxRecordBytes = raftsnapshot.RecordBytes
 )
 
 var (
@@ -33,7 +34,7 @@ var (
 	ErrBatch    = errors.New("raftstore: invalid persistence or application batch")
 	ErrConflict = errors.New("raftstore: application read index changed")
 	ErrStopped  = errors.New("raftstore: storage failed; close and recover before participating")
-	ErrSnapshot = errors.New("raftstore: snapshot installation requires the snapshot lifecycle adapter")
+	ErrSnapshot = errors.New("raftstore: snapshot is incomplete, inconsistent or not installable")
 )
 
 // Identity permanently binds a file to one member, not just to one identity's
@@ -113,6 +114,8 @@ type SQLite struct {
 const schema = `
 CREATE TABLE meta (key TEXT PRIMARY KEY, data BLOB NOT NULL, checksum BLOB NOT NULL) WITHOUT ROWID;
 CREATE TABLE raft_log (idx BLOB PRIMARY KEY CHECK(length(idx)=8), data BLOB NOT NULL, checksum BLOB NOT NULL) WITHOUT ROWID;
+CREATE TABLE snapshots (id TEXT PRIMARY KEY, manifest BLOB NOT NULL, checksum BLOB NOT NULL, complete INTEGER NOT NULL) WITHOUT ROWID;
+CREATE TABLE snapshot_chunks (generation TEXT NOT NULL, offset BLOB NOT NULL CHECK(length(offset)=8), data BLOB NOT NULL, checksum BLOB NOT NULL, PRIMARY KEY(generation,offset)) WITHOUT ROWID;
 CREATE TABLE records (namespace TEXT NOT NULL, key TEXT NOT NULL, data BLOB NOT NULL, checksum BLOB NOT NULL, PRIMARY KEY(namespace,key)) WITHOUT ROWID;
 `
 
@@ -182,6 +185,9 @@ func Open(path string, identity Identity) (*SQLite, error) {
 				return err
 			}
 			if err := putMeta(ctx, tx, "log_tip", indexKey(0)); err != nil {
+				return err
+			}
+			if err := putProto(ctx, tx, "snapshot", &pb.Snapshot{}); err != nil {
 				return err
 			}
 			return putApplication(ctx, tx, Application{ConfState: &pb.ConfState{}})
@@ -331,17 +337,14 @@ func (s *SQLite) transaction(ctx context.Context, fn func(*sql.Tx) error) error 
 
 // Persist returns only after FULL-synchronous COMMIT. Submit Persisted to the
 // core only on success; a queued write or transport receipt is insufficient.
-// Snapshot input is explicitly refused until P05 supplies atomic installation.
+// Snapshot input is accepted only after the host has durably staged all chunks.
 func (s *SQLite) Persist(ctx context.Context, batch raftcore.PersistBatch) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.stopped {
 		return ErrStopped
 	}
-	if !raft.IsEmptySnap(batch.Snapshot) {
-		return ErrSnapshot
-	}
-	if len(batch.Entries) == 0 && raft.IsEmptyHardState(batch.HardState) {
+	if len(batch.Entries) == 0 && raft.IsEmptyHardState(batch.HardState) && raft.IsEmptySnap(batch.Snapshot) {
 		return nil
 	}
 	return s.transaction(ctx, func(tx *sql.Tx) error {
@@ -356,6 +359,14 @@ func (s *SQLite) Persist(ctx context.Context, batch raftcore.PersistBatch) error
 		if len(h.ProtoReflect().GetUnknown()) != 0 || h.GetTerm() < old.GetTerm() || h.GetCommit() < old.GetCommit() || (h.GetTerm() == old.GetTerm() && old.GetVote() != 0 && h.GetVote() != old.GetVote()) {
 			return ErrBatch
 		}
+		if !raft.IsEmptySnap(batch.Snapshot) {
+			if batch.Snapshot.GetMetadata().GetIndex() < old.GetCommit() || h.GetCommit() < batch.Snapshot.GetMetadata().GetIndex() {
+				return ErrSnapshot
+			}
+			if err := s.installSnapshot(ctx, tx, batch.Snapshot); err != nil {
+				return err
+			}
+		}
 		last, err := lastEntry(ctx, tx)
 		if err != nil {
 			return err
@@ -364,9 +375,13 @@ func (s *SQLite) Persist(ctx context.Context, batch raftcore.PersistBatch) error
 		if err != nil || !bytes.Equal(tip, indexKey(last.GetIndex())) {
 			return ErrCorrupt
 		}
+		base, err := getSnapshot(ctx, tx)
+		if err != nil {
+			return err
+		}
 		if len(batch.Entries) != 0 {
 			first := batch.Entries[0].GetIndex()
-			if first == 0 || (last.GetIndex() != ^uint64(0) && first > last.GetIndex()+1) {
+			if first <= base.GetMetadata().GetIndex() || first == 0 || (last.GetIndex() != ^uint64(0) && first > last.GetIndex()+1) {
 				return ErrBatch
 			}
 			previous := &pb.Entry{}
@@ -444,7 +459,7 @@ func validEntry(e *pb.Entry) bool {
 }
 
 func validKey(k Key) bool {
-	if k.Key == "" {
+	if k.Key == "" || len(k.Key) > MaxRecordBytes {
 		return false
 	}
 	switch k.Namespace {
@@ -464,13 +479,22 @@ func (s *SQLite) Apply(ctx context.Context, batch raftcore.ApplyBatch, update Up
 	if s.stopped {
 		return ErrStopped
 	}
-	if !raft.IsEmptySnap(batch.Snapshot) {
-		return ErrSnapshot
-	}
 	return s.transaction(ctx, func(tx *sql.Tx) error {
 		a, err := getApplication(ctx, tx)
 		if err != nil {
 			return err
+		}
+		if !raft.IsEmptySnap(batch.Snapshot) {
+			p, err := getSnapshot(ctx, tx)
+			if err != nil {
+				return err
+			}
+			if !proto.Equal(p, batch.Snapshot) || a.Applied < p.GetMetadata().GetIndex() {
+				return ErrSnapshot
+			}
+			if len(batch.Entries) == 0 && batch.Index == a.Applied && proto.Equal(batch.ConfState, a.ConfState) && len(update.Writes) == 0 && update.VisibleVersion == a.VisibleVersion && update.LogicalTime == a.LogicalTime {
+				return nil
+			}
 		}
 		if update.ExpectedApplied != a.Applied {
 			return ErrConflict
@@ -479,6 +503,7 @@ func (s *SQLite) Apply(ctx context.Context, batch raftcore.ApplyBatch, update Up
 		if err := getProto(ctx, tx, "hardstate", h); err != nil {
 			return err
 		}
+
 		if len(batch.Entries) == 0 || batch.Index <= a.Applied || batch.Index > h.GetCommit() || batch.ConfState == nil || len(batch.ConfState.ProtoReflect().GetUnknown()) != 0 || update.LogicalTime < a.LogicalTime || update.VisibleVersion < a.VisibleVersion {
 			return ErrBatch
 		}

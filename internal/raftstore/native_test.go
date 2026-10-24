@@ -9,6 +9,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/clusterstate"
 	"github.com/Agent-Field/codeaf/internal/raftcore"
+	"github.com/Agent-Field/codeaf/internal/raftsnapshot"
 	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
@@ -18,17 +19,19 @@ import (
 // SQLite databases and production cores. Its one-cell rule evaluator is not
 // P09's authorized directory writer or P06's independent history oracle.
 type nativeGroup struct {
-	t        *testing.T
-	nodes    [3]*raftcore.Core
-	stores   [3]*SQLite
-	paths    [3]string
-	apps     [3]Application
-	alive    [3]bool
-	status   [3]raftcore.Status
-	queue    []raftcore.Outbound
-	reads    []raftcore.ReadBarrier
-	events   int
-	cutApply func(int, string, *raftcore.ApplyBatch) bool
+	t             *testing.T
+	nodes         [3]*raftcore.Core
+	stores        [3]*SQLite
+	paths         [3]string
+	apps          [3]Application
+	alive         [3]bool
+	status        [3]raftcore.Status
+	queue         []raftcore.Outbound
+	reads         []raftcore.ReadBarrier
+	events        int
+	cutApply      func(int, string, *raftcore.ApplyBatch) bool
+	maintain      bool
+	snapshotsSent int
 }
 
 func newNativeGroup(t *testing.T) *nativeGroup {
@@ -87,6 +90,9 @@ func (g *nativeGroup) call(i int, input raftcore.Input) {
 				g.t.Fatal("dependent effect escaped before Ready durability")
 			}
 			must(g.t, g.stores[i].Persist(testContext, *e.Persist))
+			if !raft.IsEmptySnap(e.Persist.Snapshot) {
+				g.apps[i] = recovered(g.t, g.stores[i]).Application
+			}
 			e, err = g.nodes[i].Step(raftcore.Persisted{BatchID: e.Persist.ID})
 		} else if e.Apply != nil {
 			if g.cutApply != nil && g.cutApply(i, "before-apply", e.Apply) {
@@ -101,6 +107,11 @@ func (g *nativeGroup) call(i int, input raftcore.Input) {
 			}
 			g.apps[i] = recovered(g.t, g.stores[i]).Application
 			e, err = g.nodes[i].Step(raftcore.Applied{BatchID: e.Apply.ID})
+		} else if g.maintain && e.SnapshotNeeded != nil {
+			p, createErr := g.stores[i].CreateSnapshot(testContext)
+			must(g.t, createErr)
+			must(g.t, g.stores[i].Compact(testContext, p.GetMetadata().GetIndex()))
+			e, err = g.nodes[i].Step(raftcore.CompactSnapshot{Snapshot: p})
 		} else {
 			return
 		}
@@ -169,7 +180,26 @@ func (g *nativeGroup) pump() {
 	for len(g.queue) != 0 {
 		out := g.queue[0]
 		g.queue = g.queue[1:]
-		g.call(int(out.To)-1, raftcore.PeerMessage{Bytes: out.Bytes})
+		target := int(out.To) - 1
+		message := &pb.Message{}
+		must(g.t, proto.Unmarshal(out.Bytes, message))
+		if g.alive[target] && message.GetType() == pb.MsgSnap {
+			source := int(message.GetFrom()) - 1
+			pointer := message.GetSnapshot()
+			id, err := g.stores[target].BeginSnapshot(testContext, pointer.Data)
+			must(g.t, err)
+			m, err := raftsnapshot.Decode(pointer.Data)
+			must(g.t, err)
+			for offset := uint64(0); offset < m.Chunks; offset++ {
+				data, err := g.stores[source].ReadSnapshotChunk(testContext, id, offset)
+				must(g.t, err)
+				must(g.t, g.stores[target].PutSnapshotChunk(testContext, id, offset, data, raftsnapshot.ID(data)))
+			}
+			_, err = g.stores[target].CompleteSnapshot(testContext, id)
+			must(g.t, err)
+			g.snapshotsSent++
+		}
+		g.call(target, raftcore.PeerMessage{Bytes: out.Bytes})
 	}
 }
 

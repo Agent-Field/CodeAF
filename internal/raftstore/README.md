@@ -1,6 +1,6 @@
 # Native member durability
 
-This is P04's internal host adapter, with no production directory routing or new
+This is the internal native host adapter, with no production directory routing or new
 person-facing door. Each member has its own SQLite file, permanently bound to
 `Identity{ClusterUUID, NodeID, Protocol}` and `FormatVersion`. The same identity's
 three anchors must use three distinct files. The caller creates the parent
@@ -71,15 +71,56 @@ of an entire consistent database to an old backup.
 uses a newly enrolled replacement ID, not deletion of the file. There is no path
 here that deletes chats, frames, branches, saved heads or legacy original stores.
 
-## P05 boundary
+## Snapshot lifecycle and compaction
 
-Snapshot input explicitly returns `ErrSnapshot`; no snapshot acknowledgment may
-escape. P05 must add streamed manifest/chunk generations, checksums, two retained
-complete generations, atomic installation and compaction. Its recovered snapshot
-must already be installed in the application before constructing the core. The
-current schema retains the whole log and recovery materializes that suffix; this
-is not the completed bounded log/cache policy. P05 must update the format and
-recovery checks together, preserving all application namespaces and exact results.
+Storage format 2 adds a checksummed `meta.snapshot` pointer, `snapshots` manifests
+and `snapshot_chunks`, with full-width big-endian chunk numbers. Format-1 stores
+from the earlier development packet are refused, retained and never upgraded in
+place; this is an internal pre-cutover format, not a legacy directory migration.
+The cross-runtime stream is format 1 in `internal/raftsnapshot/README.md`.
+
+For a local checkpoint, serialize the actor, call `CreateSnapshot`, then
+`Compact(snapshot index)`, then `core.Step(CompactSnapshot{Snapshot})`. Creation
+streams sorted rows from one fixed applied SQLite transaction, with at most one
+record and one 256 KiB chunk in memory. It retains all namespaces and application
+metadata. Compact deletes only the applied log prefix covered by the complete
+durable pointer. `SnapshotDue` and core `SnapshotNeeded` share the 1,024-entry /
+4 MiB thresholds. Hosts must service maintenance before admitting more growth;
+learners do not pin it. Recovery loads only the suffix after the active snapshot.
+
+For incoming transfer, call `BeginSnapshot(manifest bytes)`, then
+`PutSnapshotChunk(id, chunk number, data, SHA-256 hex)`. A duplicate chunk is
+idempotent; conflicting bytes, wrong digest, offset or length are refused. One
+incomplete generation may stage; starting a new one abandons only incomplete
+consensus bytes. A completed transfer awaiting installation keeps that slot.
+`CompleteSnapshot(id)` validates all chunks, ordering, stream digest, count and
+application hash and returns the portable protobuf pointer. This publishes a
+complete transfer, not application authority. The active pointer remains old.
+The host must enforce the imported/application byte ceiling and transport quota
+before staging; this adapter does not choose P09/P11's admission policy.
+
+Only `Persist` of the real incoming Ready atomically replaces application rows,
+header/ConfState, active snapshot pointer, log prefix and hard state. Successful
+return means installation is durable, so the core may now receive `Persisted`.
+Re-read application metadata after that return before evaluating a suffix. A
+snapshot-only Apply is an idempotent confirmation with unchanged metadata and no
+writes. It can confirm the install even if the host's previous expected index
+was older; suffix writes still require the installed index through normal CAS.
+
+Two complete generations are retained. Completion of a new transfer can retire
+the oldest redundant generation while retaining the active one; publication of a
+local checkpoint or installation retains its predecessor. Incomplete generations
+never replace an installed pointer. On restart, validate both complete snapshots
+and restore the active pointer; an uninstalled complete transfer cannot supersede
+the Raft decision. Corruption of authoritative complete bytes refuses that node
+and retains evidence. An incomplete transfer is ignored for authority and may be
+retried. Recovery never silently falls back from corrupt committed state.
+
+Creation, installation, compaction and generation retirement never delete an
+application record, saved chat, frame, branch, vault or legacy original. Snapshot
+installation replaces the local application with the complete authoritative
+replicated view, not a filtered subset. Explicit application deletes retain their
+existing policy boundary. No frame garbage collection is introduced here.
 
 ## Focused proof
 
@@ -101,6 +142,16 @@ The bounded three-native-node fixture runs real cores/stores and real create/
 publish lease rules, then loses a leader and recovers another member from durable
 bytes before a quorum read. It also recovers and leaves real joint membership.
 Its one-cell evaluator is test-only, not P09's authorized directory writer or the
-independent P06 history oracle. Full fault schedules, snapshots, transport,
+independent P06 history oracle. Full simulator fault schedules, hosted snapshot interoperability, transport,
 membership policy, cross-runtime storage and real-client journeys remain later
 packets; these mechanism tests do not claim complete R1–R30 release proof.
+
+The P05 R13 tests cut real subprocesses at staging/chunk/completion, each
+source/install row and created chunk, application/pointer/log publication,
+compaction and both sides of COMMIT. They retain database/WAL only. Missing and
+corrupt chunk tests cover every chunk in a near-limit record, plus canonical
+manifest refusals. The R11 native fixture demotes a member to learner, disconnects
+it, commits more than the 4 MiB trigger through the majority, compacts both stores
+and caches, and then installs/replays/restarts the learner. The pure format tests
+pin full-width integer and binary framing vectors independently of the encoder.
+These are the P05 mechanism gates; P06/P08 own simulator/cross-runtime campaigns.

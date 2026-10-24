@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	"github.com/Agent-Field/codeaf/internal/clusterstate"
+	"github.com/Agent-Field/codeaf/internal/raftsnapshot"
 	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
@@ -15,7 +16,7 @@ var wire = proto.MarshalOptions{Deterministic: true}
 
 // storage is an explicit in-memory view of recovered and completed durable
 // bytes. No host callback or filesystem read occurs while stepping consensus.
-// P05 will bound retained history by snapshots; this is not a durable store.
+// Durable checkpoints bound this cache; this is not a durable store.
 type storage struct {
 	*raft.MemoryStorage
 	conf *pb.ConfState
@@ -177,6 +178,9 @@ func (c *Core) Step(input Input) (effects Effects, err error) {
 		}
 		effects.Status = c.status()
 		effects.NeedNextTick = !c.stopped
+		if !c.stopped && c.pending == nil {
+			effects.SnapshotNeeded = c.SnapshotNeeded()
+		}
 	}()
 	if c.stopped {
 		return effects, ErrStopped
@@ -226,6 +230,37 @@ func (c *Core) Step(input Input) (effects Effects, err error) {
 		return effects, ErrBusy
 	}
 	switch in := input.(type) {
+	case CompactSnapshot:
+		p := in.Snapshot
+		m, e := raftsnapshot.Decode(p.GetData())
+		index := p.GetMetadata().GetIndex()
+		term, e2 := c.store.Term(index)
+		if e != nil || e2 != nil || index != c.applied || m.Index != index || m.Term != term || m.Cluster != c.cfg.ClusterUUID || m.Protocol != uint64(c.cfg.Protocol) || p.GetMetadata().GetTerm() != term || !proto.Equal(p.GetMetadata().GetConfState(), c.store.conf) {
+			return effects, ErrSnapshot
+		}
+		conf, e := m.Configuration()
+		if e != nil || !proto.Equal(conf, c.store.conf) {
+			return effects, ErrSnapshot
+		}
+		existing, e := c.store.Snapshot()
+		if e != nil {
+			return effects, ErrSnapshot
+		}
+		if existing.GetMetadata().GetIndex() == index {
+			if !proto.Equal(existing, p) {
+				return effects, ErrSnapshot
+			}
+		} else {
+			if _, e = c.store.CreateSnapshot(index, clone(c.store.conf), bytes.Clone(p.Data)); e != nil {
+				return effects, ErrSnapshot
+			}
+		}
+		first, _ := c.store.FirstIndex()
+		if first <= index {
+			if e = c.store.Compact(index); e != nil {
+				return effects, ErrSnapshot
+			}
+		}
 	case Poll:
 	case Tick:
 		c.node.Tick()
@@ -482,4 +517,33 @@ func (c *Core) finish(e *Effects) {
 	}
 	c.node.Advance(p.ready)
 	c.pending = nil
+}
+
+// SnapshotNeeded is a pure maintenance hint, never a client receipt. Hosts
+// service it before admitting more growth. Its bounds exclude uncommitted
+// entries, whose separate Raft admission budget remains unchanged.
+func (c *Core) SnapshotNeeded() *SnapshotPoint {
+	if c.stopped || c.pending != nil {
+		return nil
+	}
+	first, e := c.store.FirstIndex()
+	if e != nil || first > c.applied {
+		return nil
+	}
+	entries, e := c.store.Entries(first, c.applied+1, ^uint64(0))
+	if e != nil {
+		return nil
+	}
+	var size uint64
+	for _, entry := range entries {
+		size += uint64(proto.Size(entry))
+	}
+	if len(entries) < SnapshotEntries && size < SnapshotLogBytes {
+		return nil
+	}
+	term, e := c.store.Term(c.applied)
+	if e != nil {
+		return nil
+	}
+	return &SnapshotPoint{Index: c.applied, Term: term}
 }
