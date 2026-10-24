@@ -203,6 +203,8 @@ A command's result returns after its call log is written, while its file capture
 
 A wait lasts at most 30 seconds. A timeout says `still saving this chat on this computer: context deadline exceeded`; the pending save is not silently treated as done. The saving status reports failures, and quitting reports an error if saving could not finish. A final disk-flush failure says `codeaf: could not finish saving this chat:` followed by the cause and exits unsuccessfully.
 
+If the last upload fails when you quit, for example because the connection dropped, this computer does not let the chat go. Your other computer keeps showing it as running here and does not open the older save by itself; the unsent turns stay on this computer until an upload succeeds.
+
 ## I pressed alt+m before the other chat appeared — still arriving, home on a second computer
 
 Device presence can arrive before its list of chats. If you press `alt+m` early, home says `chats are still arriving from your other computer; this opens when they are ready`. It keeps your request and opens the ordinary confirmation once the chat arrives; it never takes the chat without that confirmation. A recent chat left on another computer is offered when home opens, including one that computer closed cleanly.
