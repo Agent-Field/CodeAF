@@ -80,10 +80,8 @@ func (needsPanel) rows(in *homeGridInput) homePanelRows {
 // needsFresh is the task calls that are still worth checking, and how many are
 // history.
 //
-// A YOUR-CALL OLDER THAN [homeNeedsTaskFresh] IS HISTORY, NOT A QUESTION (owner,
-// 2026-09-10: a machine with twenty-four week-old landings drew twenty-four rows
-// over rows nobody was going to answer, and a live question arriving under them
-// would have been the twenty-fifth). They stay one press away — the fold counts
+// A YOUR-CALL OLDER THAN [homeNeedsTaskFresh] IS HISTORY, NOT A QUESTION.
+// They stay one press away — the fold counts
 // them and opening the panel shows them. The tasks place also keeps every
 // record. Only a task's
 // call ages: a conversation stopped on a question and a watch that needs

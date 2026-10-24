@@ -243,7 +243,7 @@ func TestNewsGoesOnlyToTheConnectionOfTheConversationItNames(t *testing.T) {
 	here := dialSession(t, mine)
 	here.hello(Hello{Version: Version, Surface: "macbook"})
 	there := dialSession(t, theirs)
-	there.hello(Hello{Version: Version, Surface: "studio"})
+	there.hello(Hello{Version: Version, Surface: "host-a"})
 	newsWatching(t, mine, 1)
 	newsWatching(t, theirs, 1)
 
@@ -539,7 +539,7 @@ func TestTheWelcomeSaysWhetherThisConversationsNewsWillCross(t *testing.T) {
 	unnamed := newsSession(t, &fakeAgent{})
 	there := dialSession(t, unnamed)
 	welcome = Welcome{}
-	if err := json.Unmarshal(there.hello(Hello{Version: Version, Surface: "studio"}).Payload, &welcome); err != nil {
+	if err := json.Unmarshal(there.hello(Hello{Version: Version, Surface: "host-a"}).Payload, &welcome); err != nil {
 		t.Fatalf("the welcome did not parse: %v", err)
 	}
 	if welcome.News {
@@ -567,7 +567,7 @@ func TestAWindowArrivingAfterTheAnswerIsToldWhoAnsweredLast(t *testing.T) {
 	first.await(func(f Frame) bool { return f.Kind == "lane" })
 
 	later := dialSession(t, sess)
-	later.hello(Hello{Version: Version, Surface: "studio"})
+	later.hello(Hello{Version: Version, Surface: "host-a"})
 	frame := later.await(func(f Frame) bool { return f.Kind == "lane" })
 	var wire LaneWire
 	if err := json.Unmarshal(frame.Payload, &wire); err != nil {

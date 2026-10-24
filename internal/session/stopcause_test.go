@@ -186,20 +186,20 @@ func TestARetiredStopNamesTheWindowItBelievedHadGone(t *testing.T) {
 	if unnamed != "nobody was left watching this conversation, so the reply stopped — ask again to pick it up" {
 		t.Fatalf("an unnamed retirement said %q", unnamed)
 	}
-	named := stopSentence(StopByRetired, "studio")
-	if named != "nobody was left watching this conversation from studio, so the reply stopped — ask again to pick it up" {
+	named := stopSentence(StopByRetired, "host-a")
+	if named != "nobody was left watching this conversation from host-a, so the reply stopped — ask again to pick it up" {
 		t.Fatalf("a named retirement said %q", named)
 	}
 	// AND THE NAME DOES NOT CHANGE THE DOOR. StoppedBy, stopCause and a
 	// plain cancellation check must keep the answers they have always had.
-	cause := stopAs(StopByRetired, "studio")
+	cause := stopAs(StopByRetired, "host-a")
 	if door, ok := StoppedBy(cause); !ok || door != StopByRetired {
 		t.Fatalf("a named cause read back as %q (%v)", door, ok)
 	}
 	if !errors.Is(cause, context.Canceled) {
 		t.Fatal("a named cause is no longer a cancellation")
 	}
-	if stopName(cause) != "studio" {
+	if stopName(cause) != "host-a" {
 		t.Fatalf("the cause forgot the window: %q", stopName(cause))
 	}
 	if stopName(stopFor(StopByRetired)) != "" {

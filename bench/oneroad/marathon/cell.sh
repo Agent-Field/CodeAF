@@ -398,7 +398,6 @@ PY
       live="$(printf '%s' "$tl" | python3 -c 'import json,sys
 try:  print(json.load(sys.stdin)["live"])
 except Exception: print(0)' 2>/dev/null)"
-      # See the wave-1 runner: a live STATE is not a live task.
       stranded_ids="$(printf '%s' "$tl" | python3 -c 'import json,sys
 try:  print(",".join(str(i) for i in json.load(sys.stdin).get("stranded_ids") or []))
 except Exception: print("")' 2>/dev/null)"

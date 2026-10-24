@@ -18,8 +18,7 @@ func (nextPanel) rows(in *homeGridInput) homePanelRows {
 	shown := min(in.cap(panelNext), len(upcoming))
 	lines := make([]homeLine, 0, shown)
 	for _, item := range upcoming[:shown] {
-		// A ROW IS THE PERSON'S OWN WORDS AND NOTHING AT ITS RIGHT (owner,
-		// 2026-09-15): the row's time is said ONCE, in its description, under
+		// A ROW IS THE PERSON'S OWN WORDS AND NOTHING AT ITS RIGHT: the row's time is said ONCE, in its description, under
 		// the cursor — and at every width, as the second line under the cursor's
 		// row where the description column does not fit.
 		lines = append(lines, homeLine{kind: homeLedger, project: placeAutomationsWord, dir: item.ID,

@@ -40,7 +40,7 @@ import (
 // branch… · click`.
 //
 // THE HOVER IS A GROUND, as every other control on this surface answers the
-// pointer, and not the task link's brightening: the owner's bar is that
+// pointer, and not the task link's brightening: the interaction rule is that
 // everything clickable has a hover ground.
 //
 // THE ORDINALS ARE THE TASK LINKS' OWN SPACE, offset by [teamLinkOrd]. A block

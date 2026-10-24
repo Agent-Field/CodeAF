@@ -5,7 +5,7 @@ import "strings"
 // writeSGR copies an already-verified SGR sequence (the full "ESC '[' ...
 // 'm'" bytes, exactly as scanCSIBody validated it) to out, remapping any
 // ANSI-16 color parameters through t along the way. For the identity table
-// — every caller until Wave 2's token layer exists — this is a single
+// — callers that request no remapping — this is a single
 // array comparison and then a raw copy: no parsing, no allocation beyond
 // the output buffer already in use.
 func writeSGR(out *strings.Builder, seq string, t Table) {
@@ -179,8 +179,8 @@ func decomposeSGRCode(code int) (sgrFamily, int, bool) {
 }
 
 func composeSGRCode(family sgrFamily, index int) int {
-	// A caller-supplied Table is trusted plumbing (Wave 2's token layer,
-	// not untrusted input), but defensively clamp anyway: an out-of-range
+	// A caller-supplied Table is trusted plumbing (the token layer,
+	// rather than untrusted input), but defensively clamp anyway: an out-of-range
 	// entry falls back to the nearest valid color rather than emitting a
 	// nonsense SGR code.
 	if index < 0 {

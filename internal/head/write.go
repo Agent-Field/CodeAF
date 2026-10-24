@@ -348,7 +348,7 @@ func writeArtifactFile(target, body string, revise bool) (string, bool, error) {
 //
 // It is process state rather than journal state, and that is a known shortfall
 // rather than a design: the durable form is a message part naming the artifact,
-// which is Wave 2's structured-parts work, and the ledger says so. What it buys
+// which requires structured message parts. What it buys
 // today is the repair doctrine's second half — a head that wrote a document an
 // hour ago can read it back to fix it, instead of offering to and discovering it
 // cannot.

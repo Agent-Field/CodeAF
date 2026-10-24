@@ -43,24 +43,24 @@ func TestNameIsTheHostNameUntilAPersonChoosesOne(t *testing.T) {
 	if got := Name(dir); got != Default() {
 		t.Fatalf("unnamed computer is %q; want the host name %q", got, Default())
 	}
-	if _, err := Set(dir, "  studio "); err != nil {
+	if _, err := Set(dir, "  host-a "); err != nil {
 		t.Fatal(err)
 	}
-	if got := Name(dir); got != "studio" {
-		t.Fatalf("named computer is %q; want studio", got)
+	if got := Name(dir); got != "host-a" {
+		t.Fatalf("named computer is %q; want host-a", got)
 	}
 }
 
 func TestARefusedNameChangesNothing(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := Set(dir, "studio"); err != nil {
+	if _, err := Set(dir, "host-a"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Set(dir, "bad\x00"); err == nil {
 		t.Fatal("a name with a control character was kept")
 	}
-	if got := Name(dir); got != "studio" {
-		t.Fatalf("name after a refused rename is %q; want studio", got)
+	if got := Name(dir); got != "host-a" {
+		t.Fatalf("name after a refused rename is %q; want host-a", got)
 	}
 }
 
@@ -88,10 +88,10 @@ func TestShownCutsTheLocalSuffixAMacHostNameCarries(t *testing.T) {
 
 func TestNameIsShownThroughTheSameRuleForAChosenName(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, fileName), []byte("studio.local\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, fileName), []byte("host-a.local\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got := Name(dir); got != "studio" {
+	if got := Name(dir); got != "host-a" {
 		t.Fatalf("Name = %q; a chosen name reads like every other label", got)
 	}
 }

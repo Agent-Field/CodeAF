@@ -33,7 +33,7 @@ func TestC5DisplacementIsShownWhileTheChatIsOpen(t *testing.T) {
 	src.mu.Unlock()
 	a.machinePoll.hurry()
 	drain(t, a, a.homeBeat(a.homeGen))
-	if got := plain(lastNote(t, a)); got != chatlist.Superseded("studio") {
+	if got := plain(lastNote(t, a)); got != chatlist.Superseded("host-a") {
 		t.Fatalf("no displacement sentence: %q", got)
 	}
 	typeText(t, a, "keep these words")

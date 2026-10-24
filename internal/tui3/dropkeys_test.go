@@ -54,7 +54,7 @@ func settleDrop(t *testing.T, a *app, tick func(time.Duration)) {
 
 // ── what a person gets ──────────────────────────────────────────────────────
 
-// THE OWNER'S FIRST REPORT. A screenshot dropped on a terminal that types the
+// A DROPPED SCREENSHOT IS AN ATTACHMENT. A screenshot dropped on a terminal that types the
 // drop left the escaped path sitting in the box as text. It becomes the chip a
 // pasted drop has always become.
 func TestAScreenshotTypedInByTheTerminalBecomesAChip(t *testing.T) {
@@ -101,7 +101,7 @@ func TestARawSpacePictureTypedAndEnteredIsNeverAnUnknownCommand(t *testing.T) {
 	}
 }
 
-// THE OWNER'S SECOND REPORT, and the sentence it must never say again.
+// A SECOND DROP MUST ALSO RESOLVE TO AN ATTACHMENT.
 func TestADropTypedInAndEnteredIsNeverAnUnknownCommand(t *testing.T) {
 	a, dir, _ := dropLab(t, map[string]int{"server.log": 12})
 	typeBurst(a, filepath.Join(dir, "server.log"))

@@ -34,8 +34,8 @@ func settledCard(a *app, id uint64) (*taskCard, bool) {
 	return nil, false
 }
 
-// TestAProposalDecidedBeforeThisWindowArrivedIsDrawnAnsweredAndNotAsked is the
-// owner's defect from the surface's side: approve a task, switch tab, come back,
+// TestAProposalDecidedBeforeThisWindowArrivedIsDrawnAnsweredAndNotAsked is a
+// repeated-approval regression: approve a task, switch tab, come back,
 // and be asked the same question again — every time, with the question taking
 // the keyboard so the conversation behind it could not be scrolled either.
 func TestAProposalDecidedBeforeThisWindowArrivedIsDrawnAnsweredAndNotAsked(t *testing.T) {

@@ -107,7 +107,7 @@ func TestC4AStartupFaultReleasesWaitingTools(t *testing.T) {
 // or sync tick is needed for the joining device to list its approver.
 func TestC1ChatApprovalPublishesTheApproverBeforePaired(t *testing.T) {
 	rig := newPairRig(t)
-	if _, err := devname.Set(rig.homeA, "studio"); err != nil {
+	if _, err := devname.Set(rig.homeA, "host-a"); err != nil {
 		t.Fatal(err)
 	}
 	screen, done := rig.asking(t)
@@ -128,7 +128,7 @@ func TestC1ChatApprovalPublishesTheApproverBeforePaired(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, row := range rows {
-		if !row.Self && row.Name == "studio" {
+		if !row.Self && row.Name == "host-a" {
 			return
 		}
 	}

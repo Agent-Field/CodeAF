@@ -880,8 +880,7 @@ func (p *homeGridPanel) shrink() {
 // at every width ([homeView.placesTop], homebridge.go): a landing that moved
 // with the frame is a landing nobody can build a habit on.
 //
-// AND THE COLUMN IT NO LONGER SPILLS INTO IS THE DESCRIPTION'S (owner,
-// 2026-09-15). A field that could take the middle when it ran out of room made
+// AND THE COLUMN IT NO LONGER SPILLS INTO IS THE DESCRIPTION'S. A field that could take the middle when it ran out of room made
 // the middle a column that was a description sometimes and a panel other times;
 // reserving it costs a squeeze on a short frame and buys a column that means one
 // thing at every size ([homeDescCol]).

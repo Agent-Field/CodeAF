@@ -66,7 +66,7 @@ func TestThePlacesAreOneList(t *testing.T) {
 	}
 	// AND alt+0 IS NOTHING, rather than a tenth place: the eight digits are the
 	// seven rooms and the way back to the chats, teams second and the chats
-	// third (the owner's order).
+	// third (the specified order).
 	if _, ok := placeDigit("alt+0"); ok {
 		t.Fatal("alt+0 reaches a place that does not exist")
 	}

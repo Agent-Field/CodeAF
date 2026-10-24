@@ -139,7 +139,7 @@ func TestTheLineSaysClassPlannerAndARetry(t *testing.T) {
 	}
 }
 
-// THE OWNER'S CATALOG: a free stranger with no price and one published index
+// A SAMPLE CATALOG: a free stranger with no price and one published index
 // beside the priced models. Every class keeps it out.
 func TestTheOwnersCatalogNeverSeatsTheFreeStranger(t *testing.T) {
 	stranger := Candidate{

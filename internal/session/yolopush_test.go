@@ -12,7 +12,7 @@ import (
 // THE ROAD A CHAT DOOR'S OWN BASH PUSH TOOK.
 //
 // An unattended `codeaf chat --yolo` run hosted a /task in a clone checked out
-// on a local branch named `santos/dev` — the same name as the shared remote
+// on a local branch named `feature/example` — the same name as the shared remote
 // branch. The task itself was refused its push by the git guard's task register
 // (taskgit.go, "git push is not yours to run"), read the refusal, and stopped.
 // The DOOR hosting it then ran, as its own bash calls, the three lines this
@@ -77,11 +77,11 @@ func TestAYoloRunDoesNotPushToABranchItDidNotCreate(t *testing.T) {
 	// exactly that fact, so the session records it here.
 	//
 	// AND IT STANDS IN A REAL CHECKOUT. The incident's door was hosted in a
-	// clone on `santos/dev` — a local branch sharing the remote's name, and a
+	// clone on `feature/example` — a local branch sharing the remote's name, and a
 	// branch the run did not create. The guard reads the branch off the
 	// session's own workspace, so the session is given one.
 	repo := t.TempDir()
-	mustGit(t, repo, "init", "-q", "-b", "santos/dev")
+	mustGit(t, repo, "init", "-q", "-b", "feature/example")
 	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-m", "first")
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.Interactive = true
@@ -101,8 +101,8 @@ func TestAYoloRunDoesNotPushToABranchItDidNotCreate(t *testing.T) {
 	// branch after a rebase. The third pushed a second branch out of a
 	// directory the door created for the purpose.
 	commands := []string{
-		"cd /home/dev/src/hint-fix && git push origin santos/dev 2>&1 | tail -3",
-		"cd /home/dev/src/hint-fix && git rebase origin/santos/dev 2>&1 | tail -2 && git log --oneline -3 && git push origin santos/dev 2>&1 | tail -3",
+		"cd /home/dev/src/hint-fix && git push origin feature/example 2>&1 | tail -3",
+		"cd /home/dev/src/hint-fix && git rebase origin/feature/example 2>&1 | tail -2 && git log --oneline -3 && git push origin feature/example 2>&1 | tail -3",
 		"cd /tmp/hint-fix-pr && git switch -c fix/opening-hint-test-owns-profile && git push -u origin fix/opening-hint-test-owns-profile",
 	}
 	for _, command := range commands {
@@ -149,12 +149,12 @@ func TestAnUnattendedRunMayMoveOnlyTheBranchItCut(t *testing.T) {
 	// commands, and only [Config.Unattended] differs: a person in their own
 	// checkout keeps their whole terminal, which is what taskgit_test.go's rows
 	// already pin and this must not take away.
-	foreign := gitRepoOn(t, "santos/dev")
+	foreign := gitRepoOn(t, "feature/example")
 	attended, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
 		c.Interactive = true
 		c.Workspace = foreign
 	})
-	for _, command := range []string{"git push origin santos/dev", "git merge --ff-only origin/santos/dev", "git rebase origin/santos/dev"} {
+	for _, command := range []string{"git push origin feature/example", "git merge --ff-only origin/feature/example", "git rebase origin/feature/example"} {
 		if _, refusal, allowed := (taskGitGuard{agent: attended}).PreAction(context.Background(), nil, nil, bashGitCall(command)); !allowed {
 			t.Errorf("%q was refused with %q for an attended session; the person's own git is theirs", command, refusal.text)
 		}
@@ -166,7 +166,7 @@ func TestAnUnattendedRunMayMoveOnlyTheBranchItCut(t *testing.T) {
 		c.Unattended = true
 		c.Workspace = foreign
 	})
-	for _, command := range []string{"git push origin santos/dev", "git merge --ff-only origin/santos/dev", "git rebase origin/santos/dev"} {
+	for _, command := range []string{"git push origin feature/example", "git merge --ff-only origin/feature/example", "git rebase origin/feature/example"} {
 		_, refusal, allowed := (taskGitGuard{agent: run}).PreAction(context.Background(), nil, nil, bashGitCall(command))
 		if allowed {
 			t.Errorf("%q was allowed for a run standing on a branch it did not create", command)

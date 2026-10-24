@@ -305,7 +305,7 @@ func pulseLab(t *testing.T) (*app, time.Time) {
 	return a, now
 }
 
-// THE TOP LINE GIVES THINGS UP IN THE OWNER'S ORDER.
+// THE TOP LINE GIVES THINGS UP IN PRIORITY ORDER.
 //
 // Every width is checked: a thing given up early may never be on the row while a thing
 // given up later is gone, and every rung of the ladder is met.

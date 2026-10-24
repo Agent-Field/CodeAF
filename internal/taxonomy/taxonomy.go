@@ -448,8 +448,7 @@ type Evidence struct {
 // identically, nothing can be taken off the next body, and the only moves left
 // are a wait and then another model.
 //
-// THE MEASURED FAILURE IS THE ORDER THIS REPLACED (2026-09-11 14:39–14:41, the
-// owner's own task on deepseek/deepseek-v4.1-flash). `Status == 429` was asked
+// A per-machine rate limit must remain distinct from an account rate limit. `Status == 429` was asked
 // before `Upstream != ""`, so a per-machine `(via Wafer: … temporarily
 // rate-limited upstream)` rode the account-limiter road — wait, double, send the
 // same order again — for eight sends and ninety seconds, while six other

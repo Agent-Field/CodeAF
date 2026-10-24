@@ -25,7 +25,7 @@ func (f *flipping) set(s chatlist.Status) { f.mu.Lock(); f.status = s; f.mu.Unlo
 func (f *flipping) Rows(context.Context) ([]chatlist.Row, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return []chatlist.Row{{Cell: heldCell, Title: "Mine", Device: "studio", Status: f.status, Mine: f.mine, DurableAgo: time.Minute}}, nil
+	return []chatlist.Row{{Cell: heldCell, Title: "Mine", Device: "host-a", Status: f.status, Mine: f.mine, DurableAgo: time.Minute}}, nil
 }
 
 // heldLab opens home with a chat this machine lists and the directory says
@@ -62,7 +62,7 @@ func TestListedHereAndHeldElsewhereDrawsTheDoor(t *testing.T) {
 	if local, remote := rowsOf(a, heldCell); local != 1 || remote != 1 {
 		t.Fatalf("local=%d remote=%d rows, want one of each:\n%s", local, remote, homeText(a))
 	}
-	if !strings.Contains(homeText(a), "running on studio") {
+	if !strings.Contains(homeText(a), "running on host-a") {
 		t.Fatalf("the held chat does not say where it runs:\n%s", homeText(a))
 	}
 }

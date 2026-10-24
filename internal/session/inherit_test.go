@@ -60,7 +60,7 @@ func quickCallInheriting(id, title, line string, tokens int) step {
 // A PROMOTED WORKER OPENS ON THE CONVERSATION AS IT STANDS, AND READS NOTHING
 // TWICE.
 //
-// This is the measured failure inverted. On the owner's laptop a worker started
+// This is the measured failure inverted. A worker started
 // out of a running turn was handed a brief and a list of POINTERS at the calls
 // that turn had already made, and its first six calls ran them again: 551,000
 // input tokens at 24% cached, 393 seconds, not one item ticked. So the thing to

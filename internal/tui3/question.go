@@ -202,8 +202,7 @@ type questionShown struct {
 	// pointed answer as [session.Answer.Change]) or [questionAskBackKey] after
 	// `?` (the words go to the asker with the question still open). The
 	// block's answers row becomes a prompt saying so while it is set, because
-	// a box whose meaning changed silently was the owner's "typing does not
-	// work · is there a separate typing place?" (2026-09-10).
+	// a box whose meaning changes silently leaves people unsure where to type.
 	writing string
 	// other is the person's OWN answer: the words typed into the panel's last
 	// row, and the answer they will travel with where they travel with one.
@@ -745,8 +744,7 @@ func questionSameHoles(fresh, held questionInput) bool {
 // questionPointerStart is where the person's pointer stands when a question
 // arrives. EVERY QUESTION WITH ANSWERS HAS A POINTER — the row `↑`/`↓` walk
 // and `enter` takes — because a block that answered only to digits, with the
-// arrows doing nothing, was one nobody could tell how to work (the owner,
-// 2026-09-10: "none of my arrow keys make it obvious"). It starts on the
+// arrows doing nothing, was one nobody could tell how to work. It starts on the
 // asker's pick when there is one, so `enter` alone still takes the
 // recommendation; on the first answer otherwise; and on the answer that loses
 // nothing for a confirmation, which is the one shape where enter must never
@@ -2358,8 +2356,7 @@ func (a *app) questionRecordRow(record questionRecord, width int) string {
 // that is the surface's — `c change` names a key on this keyboard, so it is
 // never given up and never counted against the record's own words.
 func (a *app) questionReceiptLine(record questionRecord, width int) string {
-	// THE RECEIPT OPENS WITH THE SETTLED MARK AND NOT THE WORD `decided` (owner
-	// ruling 2026-09-11, after-you-answer pick A): `✓ <head> → <answer> · you ·
+	// THE RECEIPT OPENS WITH THE SETTLED MARK AND NOT THE WORD `decided`: `✓ <head> → <answer> · you ·
 	// 14:02`. The mark is the vocabulary's ([tokens.GSettled], the same one the
 	// ratify line wears) and it says what the word said in one cell, which is
 	// what leaves room for the answer's own words on a narrow row.
@@ -3926,7 +3923,7 @@ func (a *app) questionUndo(head questionShown) tea.Cmd {
 // questionDial is `D`: decide questions of this shape from now on, without
 // asking.
 //
-// THE DIAL'S STORAGE IS LANE E2'S (`autonomy.json`, per project) AND THIS IS
+// THE DIAL'S STORAGE IS PER PROJECT (`autonomy.json`, per project) AND THIS IS
 // THE SEAM ONTO IT — wired now, through [session.Agent.SetAutonomy] and the wire
 // frame that carries it to an engine in another process (internal/remote's
 // MethodSetAutonomy, which every local chat window goes through).

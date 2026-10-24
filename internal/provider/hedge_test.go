@@ -1387,7 +1387,7 @@ func TestTheRowSaysWhyItWaitedAndWhatWasDone(t *testing.T) {
 	}
 }
 
-// TestAtTheCeilingAnErrandNobodyIsWatchingIsStillRescued is the owner's order,
+// TestAtTheCeilingAnErrandNobodyIsWatchingIsStillRescued is the required behavior,
 // stated as a scenario: ALL of this build's calls answer promptly, not only the
 // ones a person is reading.
 //

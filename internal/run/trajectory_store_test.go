@@ -62,7 +62,7 @@ func TestReviewContractComesOnlyFromTheWorkersDeclarationAcrossFixtures(t *testi
 		task     string
 		declared []string
 	}{
-		{name: "long recorded work", root: "testdata/c249", task: "jcrhzh", declared: []string{"go test ./...", "go vet ./..."}},
+		{name: "long recorded work", root: "testdata/recorded", task: "jcrhzh", declared: []string{"go test ./...", "go vet ./..."}},
 		{name: "alternate recorded work", root: "testdata/declared", task: "alternate", declared: []string{"python -m unittest discover", "python -m compileall -q src"}},
 	}
 	for _, fixture := range fixtures {

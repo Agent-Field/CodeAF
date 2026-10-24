@@ -218,7 +218,7 @@ const homeGutter = 4
 // of home's "while you were away": no notification, no banner, one cell of one
 // row saying something finished here (see [homeView.seen]).
 //
-// ── THE TWO MARKS THE DESIGN RE-SPELLED (owner-signed, FIDELITY.md item 4) ───
+// ── THE TWO MARKS THE DESIGN RE-SPELLED ───
 //
 // `?` AND NOT `▲` FOR A ROW THAT HAS STOPPED ON YOU. The triangle was this
 // screen's own invention and it was the wrong shape twice over: a warning
@@ -602,8 +602,7 @@ type homeView struct {
 	// DOOR — a panel whose heading names a place ([homeHeadAt],
 	// [app.homeHeadDoor]) — or -1. A heading is no cursor stop, so [hover] never
 	// lands on one; this is the one fact the pointer adds to a heading, and it
-	// is drawn as an underline under the word rather than a ground (owner,
-	// 2026-09-17: a clickable heading should say so under the mouse).
+	// is drawn as an underline under the word rather than a ground.
 	headHover int
 	// projectHover underlines a clickable project without moving the list cursor.
 	projectHover int

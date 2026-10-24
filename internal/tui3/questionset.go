@@ -57,7 +57,7 @@ import (
 //	│                                                                      │
 //	╰─ enter send · ← back · esc later ────────────────────────────────────╯
 //
-// ONE PERMISSION FRAME (the owner's approved "group permissions"): where every
+// ONE PERMISSION FRAME: where every
 // question in the set is a permission with a plain grant and an answer that
 // loses nothing, the set is ONE decision about several calls, and it is asked
 // as one. `one by one` opens the same set as the tabs above.

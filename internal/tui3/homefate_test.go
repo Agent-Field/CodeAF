@@ -4,9 +4,7 @@ package tui3
 // it on a screen that is not a conversation, read off the row BEFORE the key is
 // pressed, and done by the same table that drew it (homeslash.go's [homeFate]).
 //
-// The owner's ask, in their words: "see what other slash commands need clear
-// indication like that even if it's not usable". So the two claims under test
-// are that every command has a fate, and that the fate on the row is the road
+// The two claims under test are that every command has a fate, and that the fate on the row is the road
 // the dispatch actually takes.
 
 import (

@@ -1,6 +1,6 @@
 package session
 
-// THE OWNER'S SESSION, AS TESTS.
+// SESSION BEHAVIOR, AS TESTS.
 //
 //	├─▶ tasks — Invalid arguments: json: cannot unmarshal number 10.0 into Go
 //	    struct field tasksArguments.limit of type int   ✗

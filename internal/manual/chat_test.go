@@ -239,11 +239,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did it decide by itself", "questions"},
 		{"undo what I just approved", "questions"},
 		{"stop asking me about rm", "questions"},
-		// And the room form (lane S2): the page a question opens into, and the
+		// And the room form: the page a question opens into, and the
 		// nine things a person does on it. Each one is asked in the words
 		// somebody would actually type rather than in the key's own name.
 		{"can I open a question up to read it properly", "questions"},
-		// And lane R's three, in the asker's own words: the conversation asked for
+		// Option comparisons, in the asker's own words: the conversation asked for
 		// exactly these sentences (2026-09-11) and each one is a person
 		// describing the drawing rather than naming a key.
 		{"show me the options side by side", "questions"},
@@ -275,8 +275,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did several questions arrive at once", "questions"},
 		{"answer a whole batch of questions at once", "questions"},
 		{"same answer for all of these", "questions"},
-		// Several questions from one step are tabs with a review (lane T of the
-		// question-views wave), asked the ways somebody meets them: moving
+		// Several questions from one step are tabs with a review, asked the ways somebody meets them: moving
 		// between them, sending them together, and a batch of approvals.
 		{"go back to the previous question", "questions"},
 		{"answer them all at once", "questions"},
@@ -1472,11 +1471,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// meant it to.
 		{"select a word with the mouse", "keys"},
 		{"why did copying take the whole line instead of the words I dragged over", "keys"},
-		// Selecting inside the BOX, and taking back what was typed there. The
-		// owner asked for both in one sentence — "i am unable to select text
-		// with highlight from input bar in all places … maybe even ctrl+z as
-		// well like undo or redo like shift z" — and the words people reach for
-		// are "input bar", "highlight", "undo", and the chord itself.
+		// Selection and undo in the message box use familiar editing words.
 		{"how do I select text in the message box", "keys"},
 		{"I cannot highlight text in the input bar", "keys"},
 		{"can I drag to select what I typed in the input box", "keys"},
@@ -2866,8 +2861,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"is a retired tip gone for good", "hints-and-tips"},
 		{"a tip appeared in my conversation after a while", "hints-and-tips"},
 		{"why does the hint only show up when I stop typing", "hints-and-tips"},
-		// The showing rule, and the day the row went blank: asked by the
-		// owner, whose afternoon of stepping through home had spent the table.
+		// Hints count as shown after enough time on screen; exhausted hints leave no row.
 		{"how long does a tip have to be on screen to count", "hints-and-tips"},
 		{"no hints at all any more, home's row is blank", "hints-and-tips"},
 		{"can I search my conversations with memory off", "places"},

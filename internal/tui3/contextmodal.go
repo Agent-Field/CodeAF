@@ -77,7 +77,7 @@ import (
 // wide screen — two things a person's eye cannot associate, which is the defect
 // the screenshot shows. A hundred and twenty-eight cells is about as wide as
 // three columns of paths stay readable, and it is close to the proportion the
-// owner's reference (../reference-yazi.png) keeps on a large display.
+// column browser layout keeps on a large display.
 const (
 	// contextSheetWide is the widest the sheet is ever drawn.
 	contextSheetWide = 128

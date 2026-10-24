@@ -40,11 +40,11 @@ func TestRevokedDeviceReadsAsRevokedOnEveryComputer(t *testing.T) {
 // list reads it like every other label does.
 func TestOpenNameDropsTheLocalSuffixLikeEveryOtherLabel(t *testing.T) {
 	key := []byte("0123456789abcdef0123456789abcdef")
-	sealed, err := directory.SealName(directory.MetadataKey(key), "studio.local")
+	sealed, err := directory.SealName(directory.MetadataKey(key), "host-a.local")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := openName(directory.MetadataKey(key), sealed); got != "studio" {
+	if got := openName(directory.MetadataKey(key), sealed); got != "host-a" {
 		t.Fatalf("openName = %q", got)
 	}
 }

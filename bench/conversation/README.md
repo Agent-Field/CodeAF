@@ -31,8 +31,8 @@ from, are in `lib/adapters.sh`:
 | arm | interactive door | markers from |
 |---|---|---|
 | codeaf | yes | `internal/tui3/render.go` (`stateWord`, `waitingWord`) — the renderer itself, checked against a live pane |
-| pi | yes | live pane capture on pi 0.84.2 in this lane; the provider segment is derived from the provider in use, not hardcoded |
-| omp | yes | live pane capture on omp 18.1.2 in this lane |
+| pi | yes | live pane capture on pi 0.84.2; the provider segment is derived from the provider in use, not hardcoded |
+| omp | yes | live pane capture on omp 18.1.2 |
 | opencode | **no** | no calibrated markers — its interactive cells are `unsupported` |
 
 ## Open models only
@@ -179,7 +179,7 @@ parse, the cell comes back `cost unknown` and not-comparable rather than zero.
 A harness that loads the operator's skills, extensions and MCP servers is not
 running the task it was given: it is running that task plus whatever is
 installed on that machine — extra tools, a longer system prompt, extra latency,
-and a different set on every box. A live pane in this lane showed omp mounting
+and a different set on every box. A live pane showed omp mounting
 MCP tools and failing one of them out of `~/.claude.json`, and pi listing
 thirty-odd skills out of `~/.agents/skills`.
 
@@ -483,7 +483,7 @@ record of what they were. A cell whose directory already exists refuses too, and
 records a skip. `--overwrite` is the deliberate way, and `--out` gives a run a
 directory of its own.
 
-Live runs so far, all by the owner:
+Recorded runs:
 
 * `notes/pilot-01.md` — the first print-door cells, and why one of its three
   costs is not usable.
