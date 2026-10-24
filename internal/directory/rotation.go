@@ -38,7 +38,7 @@ type RotationReq struct {
 type GraceBounds struct{ Min, Max, Default time.Duration }
 
 // DefaultGraceBounds is one hour to thirty days, a week unless told.
-var DefaultGraceBounds = GraceBounds{Min: time.Hour, Max: 30 * 24 * time.Hour, Default: 7 * 24 * time.Hour}
+var DefaultGraceBounds = GraceBounds{Min: time.Duration(clusterstate.MinGraceMillis) * time.Millisecond, Max: time.Duration(clusterstate.MaxGraceMillis) * time.Millisecond, Default: time.Duration(clusterstate.DefaultGraceMillis) * time.Millisecond}
 
 // RotationView is the answer to both rotation calls: the state now, the
 // directory's time, and the bounds it enforces, so a conformance run can test
