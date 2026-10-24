@@ -17,7 +17,6 @@ import (
 var rules = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\b(?:the\s+owner|owner's)\s+(?:has\s+(?:already\s+)?)?(?:asked|ruled|decided|ruling|feedback|report|review|wants|picks?)\b|ruled by the owner`),
 	regexp.MustCompile(`(?i)\bthis lane\s+(?:added|fixes|proves|ends|may not edit|measured|replaces)|(?-i:\blane [A-Z][0-9]*\b)|\b(?:ai|coding|development) lane\b`),
-	regexp.MustCompile(`(?i)\b(?:spark|blackmac|dgx|dumb|studio|santosh|abir|zeropoint)\b`),
 	regexp.MustCompile(`(?i)(?:^|[\s"'(\x60])/(?:home|Users)/[^/\s]+|(?-i:STAGE-[0-9][A-Z0-9-]*(?:\.md)?)|\b(?:LEDGER|DECISION)\.md`),
 	regexp.MustCompile(`(?i)\b(?:opencode|claude code|codex|pi)\b`),
 	regexp.MustCompile(`(?i)\b(?:faster|slower|better|worse|versus|compared|unlike)\b[^.\n]{0,80}\b(?:opencode|claude code|codex|pi)\b|\b(?:opencode|claude code|codex|pi)\b[^.\n]{0,80}\b(?:faster|slower|better|worse|versus)\b`),
@@ -28,13 +27,34 @@ var rules = []*regexp.Regexp{
 var exceptions = []struct {
 	path, text *regexp.Regexp
 	rule       int
-	term       string
+	terms      map[string]struct{}
 }{
-	{regexp.MustCompile(`\.go$`), regexp.MustCompile(`(?i)codex/gpt|CLI|provider|transport|codexauth|sign.in|model|catalog|account|credential|service|backend|profile|272k|window|context|skills?|plugin|agentskills\.io`), 4, "codex"}, // Codex is an authenticated model service.
-	{regexp.MustCompile(`^(internal/(skills|home|store|resident|session)/|cmd/codeaf/)`), regexp.MustCompile(`(?i)skills?|plugins?|agentskills\.io|registry|settings\.json`), 4, "skills"},                                              // Skill discovery reads other tools' file formats.
-	{regexp.MustCompile(`^(internal/exec/bare/|internal/session/|internal/tui3/toolstat\.go|cmd/harness-design/)`), regexp.MustCompile(`(?i)\bpi\b`), 4, "pi"},                                                                          // The tool library preserves compatible wire schemas and results.
-	{regexp.MustCompile(`\.go$`), regexp.MustCompile(`(?i)TERM.?=.?dumb|dumb terminal|TERM unset or.*dumb|found a dumb|LM Studio`), 2, "terminal"},                                                                                      // Terminal capabilities and provider names are protocols.
-	{regexp.MustCompile(`^internal/tui3/(spark|wallcontract|wallview|render|spendplace|homegrid)\.go$`), regexp.MustCompile(`(?i)\bspark\b`), 2, "spark"},                                                                               // Spark names a chart sample or field in these renderers.
+	{regexp.MustCompile(`\.go$`), regexp.MustCompile(`(?i)codex/gpt|CLI|provider|transport|codexauth|sign.in|model|catalog|account|credential|service|backend|profile|272k|window|context|skills?|plugin|agentskills\.io`), 3, map[string]struct{}{"codex": {}}}, // Codex is an authenticated model service.
+	{regexp.MustCompile(`^(internal/(skills|home|store|resident|session)/|cmd/codeaf/)`), regexp.MustCompile(`(?i)skills?|plugins?|agentskills\.io|registry|settings\.json`), 3, map[string]struct{}{"claude code": {}, "opencode": {}, "codex": {}}},            // Skill discovery reads other tools' file formats.
+	{regexp.MustCompile(`^(internal/exec/bare/|internal/session/|internal/tui3/toolstat\.go|cmd/harness-design/)`), regexp.MustCompile(`(?i)\bpi\b`), 3, map[string]struct{}{"pi": {}}},                                                                          // The tool library preserves compatible wire schemas and results.
+}
+
+func exempt(rule int, path, text, term string) bool {
+	for _, ex := range exceptions {
+		if _, ok := ex.terms[term]; ok && ex.rule == rule && ex.path.MatchString(path) && ex.text.MatchString(text) {
+			return true
+		}
+	}
+	return false
+}
+
+// Private terms stay in the test environment rather than the public rules.
+func commentRules() []*regexp.Regexp {
+	var terms []string
+	for _, term := range strings.Split(os.Getenv("COMMENTLAW_PRIVATE_TERMS"), ",") {
+		if term = strings.TrimSpace(term); term != "" {
+			terms = append(terms, regexp.QuoteMeta(term))
+		}
+	}
+	if len(terms) == 0 {
+		return rules
+	}
+	return append(append([]*regexp.Regexp(nil), rules...), regexp.MustCompile(`(?i)\b(?:`+strings.Join(terms, "|")+`)\b`))
 }
 
 func TestSourceComments(t *testing.T) {
@@ -48,6 +68,7 @@ func TestSourceComments(t *testing.T) {
 }
 
 func violations(root string) []string {
+	rules := commentRules()
 	var found []string
 	for _, scope := range []string{"cmd", "internal", "scripts", "relay/src", "bench/canary", "bench/run.sh"} {
 		err := filepath.WalkDir(filepath.Join(root, scope), func(path string, d fs.DirEntry, err error) error {
@@ -87,14 +108,7 @@ func violations(root string) []string {
 					}
 					for _, match := range matches {
 						term := strings.ToLower(c.text[match[0]:match[1]])
-						allowed := false
-						for _, ex := range exceptions {
-							if ex.rule == i && ex.path.MatchString(rel) && ex.text.MatchString(c.text) && (i != 2 || ex.term == "spark" && term == "spark" || ex.term == "terminal" && (term == "dumb" || term == "studio")) && (i != 4 || ex.term == term || ex.term == "skills" && (term == "claude code" || term == "opencode" || term == "codex")) {
-								allowed = true
-								break
-							}
-						}
-						if !allowed {
+						if !exempt(i, rel, c.text, term) {
 							found = append(found, fmt.Sprintf("%s:%d: comment should describe product behavior: %s", rel, c.line+strings.Count(c.text[:match[0]], "\n"), term))
 						}
 					}
@@ -268,20 +282,20 @@ func scriptComments(path, body string) []comment {
 }
 
 func TestCommentPatternsAndBoundaries(t *testing.T) {
+	t.Setenv("COMMENTLAW_PRIVATE_TERMS", "")
 	cases := []struct {
 		name, path, body string
 		want             int
 	}{
 		{"Go attribution", "internal/example/source.go", "package example\n// The owner asked for this behavior.\nvar x=1\n", 1},
-		{"block and inline comments", "cmd/example/source.go", "package main\n/* Abir requested this. */\nvar x=1 // lane A measured this.\n", 2},
-		{"JavaScript", "relay/src/source.js", "const url='https://example.com'; // measured on Spark\n/* /Users/name/work */", 2},
-		{"Python docstring", "scripts/source.py", "\"\"\"Measured on Spark.\"\"\"\n", 1},
-		{"Python", "scripts/source.py", "text = '# Spark'\n# STAGE-1-CONTRACTS.md\n", 1},
-		{"shell heredoc", "scripts/example.sh", "cat <<'EOF'\n# Spark\nEOF\n# Describe the product.\n", 0},
-		{"Python string", "scripts/source.py", "data=\"\"\"# Spark\"\"\"\n", 0},
-		{"template literal", "relay/src/source.js", "const text=`// Spark`; // Describe the product.\n", 0},
-		{"shell", "bench/run.sh", "echo '# Spark' # blackmac\n", 1},
-		{"quoted words", "internal/example/source.go", "package example\nvar x=\"the owner asked on Spark\"\n", 0},
+		{"block and inline comments", "cmd/example/source.go", "package main\n/* The owner asked for this. */\nvar x=1 // lane A measured this.\n", 2},
+		{"JavaScript", "relay/src/source.js", "const url='https://example.com'; // the owner asked\n/* /Users/name/work */", 2},
+		{"Python docstring", "scripts/source.py", "\"\"\"The owner asked for this.\"\"\"\n", 1},
+		{"Python", "scripts/source.py", "text = '# the owner asked'\n# STAGE-1-CONTRACTS.md\n", 1},
+		{"shell heredoc", "scripts/example.sh", "cat <<'EOF'\n# the owner asked\nEOF\n# Describe the product.\n", 0},
+		{"Python string", "scripts/source.py", "data=\"\"\"# the owner asked\"\"\"\n", 0},
+		{"template literal", "relay/src/source.js", "const text=`// the owner asked`; // Describe the product.\n", 0},
+		{"quoted words", "internal/example/source.go", "package example\nvar x=\"the owner asked\"\n", 0},
 		{"multiline attribution", "internal/example/source.go", "package example\n// The owner\n// ruled that this works.\n", 1},
 		{"documentation URL", "internal/example/source.go", "package example\n// https://example.com/docs/home/getting-started\n", 0},
 		{"public issue", "internal/example/source.go", "package example\n// Avoid duplicate delivery after reconnect (#123).\n", 0},
@@ -289,11 +303,11 @@ func TestCommentPatternsAndBoundaries(t *testing.T) {
 		{"comparison", "internal/config/source.go", "package config\n// The Codex model service is faster than other tools.\n", 1},
 		{"authentication", "internal/config/source.go", "package config\n// The Codex model service requires an account bearer.\n", 0},
 		{"no cross-name exception", "internal/config/source.go", "package config\n// The Codex model service outperforms opencode.\n", 1},
-		{"fixture", "internal/example/testdata/source.go", "// Spark\n", 0},
-		{"Go test", "internal/example/source_test.go", "// Spark\n", 0},
-		{"manual", "internal/manual/example.go", "// Spark\n", 0},
-		{"hosted tree", "relay/hosted/src/source.js", "// Spark\n", 0},
-		{"excluded scripts", "scripts/test_example.py", "# Spark\n", 0},
+		{"fixture", "internal/example/testdata/source.go", "// the owner asked\n", 0},
+		{"Go test", "internal/example/source_test.go", "// the owner asked\n", 0},
+		{"manual", "internal/manual/example.go", "// the owner asked\n", 0},
+		{"hosted tree", "relay/hosted/src/source.js", "// the owner asked\n", 0},
+		{"excluded scripts", "scripts/test_example.py", "# the owner asked\n", 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -311,6 +325,31 @@ func TestCommentPatternsAndBoundaries(t *testing.T) {
 			}
 			if tc.want > 0 && !strings.Contains(got[0], tc.path+":") {
 				t.Fatalf("missing source location: %v", got)
+			}
+		})
+	}
+}
+
+func TestPrivateTerms(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "scripts"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	body := "# ALPHA and bravo.\n# alphabet and bravocado.\n"
+	if err := os.WriteFile(filepath.Join(root, "scripts", "example.sh"), []byte(body), 0644); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, terms string
+		want        string
+	}{
+		{"disabled", "", ""},
+		{"whole words", " alpha, ,bravo,", "scripts/example.sh:1: comment should describe product behavior: alpha\nscripts/example.sh:1: comment should describe product behavior: bravo"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("COMMENTLAW_PRIVATE_TERMS", tc.terms)
+			if got := strings.Join(violations(root), "\n"); got != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
 			}
 		})
 	}
