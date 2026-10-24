@@ -475,14 +475,14 @@ func v3PlaceFor(dir, workspace string, owned bool) session.Place {
 // it, and meta.json written BEFORE the first line of the journal — so a picker
 // in another window sees the conversation from the moment it exists rather than
 // from the moment somebody speaks in it.
-func v3MintSession(bucket, workspace, launchDir string, owned bool) (session.Place, error) {
-	return v3MintSessionAs(cell.HostBound, bucket, workspace, launchDir, owned)
+func v3MintSession(bucket, workspace, launchDir string, owned bool, before ...func(string) error) (session.Place, error) {
+	return v3MintSessionAs(cell.HostBound, bucket, workspace, launchDir, owned, before...)
 }
 
 // v3MintSessionAs is [v3MintSession] for a session whose cell declares class:
 // chats and runs keep the host access their commands have always had (C23).
-func v3MintSessionAs(class cell.Class, bucket, workspace, launchDir string, owned bool) (session.Place, error) {
-	id, dir, err := v3NewFolder(bucket, class)
+func v3MintSessionAs(class cell.Class, bucket, workspace, launchDir string, owned bool, before ...func(string) error) (session.Place, error) {
+	id, dir, err := v3NewFolder(bucket, class, before...)
 	if err != nil {
 		return session.Place{}, err
 	}
@@ -503,9 +503,16 @@ func v3MintSessionAs(class cell.Class, bucket, workspace, launchDir string, owne
 // v3NewFolder makes the empty folder a new session lives in and answers its id
 // and path: a cell when a compatible engine is available and a capable platform and engine (the session package finds its
 // transcript in .cell/ by the folder's shape), a plain folder otherwise.
-func v3NewFolder(bucket string, class cell.Class) (id, dir string, err error) {
+func v3NewFolder(bucket string, class cell.Class, before ...func(string) error) (id, dir string, err error) {
 	if cell.Available() {
-		c, err := cell.CreateIn(bucket, cell.Options{Class: class})
+		c, err := cell.CreateIn(bucket, cell.Options{Class: class, BeforeCreate: func(c cell.Cell) error {
+			for _, hook := range before {
+				if err := hook(filepath.Join(c.Root, cell.TranscriptPath)); err != nil {
+					return err
+				}
+			}
+			return nil
+		}})
 		if err != nil {
 			return "", "", fmt.Errorf("create session directory: %w", err)
 		}
@@ -513,6 +520,11 @@ func v3NewFolder(bucket string, class cell.Class) (id, dir string, err error) {
 	}
 	id = session.NewSessionID()
 	dir = filepath.Join(bucket, id)
+	for _, hook := range before {
+		if err := hook((session.Place{Dir: dir}).Transcript()); err != nil {
+			return "", "", err
+		}
+	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", "", fmt.Errorf("create session directory: %w", err)
 	}
@@ -530,7 +542,7 @@ func v3NextSession(current session.Place, workspace string) (session.Place, erro
 
 // v3NextSessionFrom is [v3NextSession] with the launch directory named by the
 // door rather than read off the process.
-func v3NextSessionFrom(current session.Place, workspace, launchDir string) (session.Place, error) {
+func v3NextSessionFrom(current session.Place, workspace, launchDir string, before ...func(string) error) (session.Place, error) {
 	if dir := strings.TrimSpace(current.Dir); dir != "" {
 		root := strings.TrimSpace(current.Workspace)
 		if current.Owned {
@@ -539,14 +551,14 @@ func v3NextSessionFrom(current session.Place, workspace, launchDir string) (sess
 			root = workspace
 		}
 		return v3MintSession(filepath.Dir(dir), root,
-			v3StampLaunchDir(launchDir, root), current.Owned)
+			v3StampLaunchDir(launchDir, root), current.Owned, before...)
 	}
 	bucket, err := v3ProjectDir(workspace)
 	if err != nil {
 		return session.Place{}, err
 	}
 	return v3MintSession(bucket, workspace,
-		v3StampLaunchDir(launchDir, workspace), false)
+		v3StampLaunchDir(launchDir, workspace), false, before...)
 }
 
 // v3LaunchDir is where the person is standing, and "" when even that cannot be

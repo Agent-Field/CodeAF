@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"io"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"time"
@@ -168,7 +170,23 @@ func (r *Runner) dispatch(c Client, e Queued, call Call, agent string, skipped R
 	if talker, ok := engine.(appwire.Talker); ok && call.Method == "asks.answer" {
 		engine = answerGuard{Engine: engine, Talker: talker, faceID: call.FaceID}
 	}
-
+	if call.Method == "agents.create" {
+		engine = creationRecorder{Engine: engine, reserve: func(transcript string) error {
+			folder, ok := session.FolderOf(transcript)
+			if !ok {
+				return errors.New("created chat has no transcript folder")
+			}
+			receipt.Agent = filepath.Base(folder)
+			receipt.Transcript = transcript
+			return r.keep(receipt)
+		}, record: func(agent appwire.Agent) error {
+			receipt.Agent = agent.ID
+			if err := r.keep(receipt); err != nil {
+				return err
+			}
+			return r.log(receipt)
+		}}
+	}
 	result, callErr := appwire.Call(engine, call.Method, call.Params)
 	receipt.Status = "done"
 	if callErr != nil {
@@ -187,6 +205,20 @@ func (r *Runner) dispatch(c Client, e Queued, call Call, agent string, skipped R
 		receipt.Agent = created.Agent.ID
 	}
 	return receipt, r.keep(receipt)
+}
+
+// creationRecorder installs a durable handoff through the ordinary create
+// request. The app records the chat before releasing its first turn.
+type creationRecorder struct {
+	appwire.Engine
+	record  func(appwire.Agent) error
+	reserve func(string) error
+}
+
+func (e creationRecorder) CreateAgent(ask appwire.CreateAsk) (appwire.Agent, error) {
+	ask.BeforeMint = e.reserve
+	ask.BeforeStart = e.record
+	return e.Engine.CreateAgent(ask)
 }
 
 func (r *Runner) openCall(e Queued) (Call, error) {

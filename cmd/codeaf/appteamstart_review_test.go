@@ -70,7 +70,7 @@ func TestReviewR1ReplayTreatsAReadFailureAsNew(t *testing.T) {
 		t.Fatal(err)
 	}
 	mint := h.b.mint
-	h.b.mint = func(w string) (string, error) {
+	h.b.mint = func(w string, _ ...func(string) error) (string, error) {
 		_ = os.WriteFile(path, good, 0o600)
 		return mint(w)
 	}
@@ -261,7 +261,7 @@ func TestReviewR6AttachmentVanishingAfterValidationFailsAfterCommit(t *testing.T
 		t.Fatal(err)
 	}
 	mint := h.b.mint
-	h.b.mint = func(w string) (string, error) {
+	h.b.mint = func(w string, _ ...func(string) error) (string, error) {
 		_ = os.Remove(file)
 		return mint(w)
 	}

@@ -101,7 +101,7 @@ func TestScopedClientReadsAnswersAndAcksThroughTheAppBackend(t *testing.T) {
 		return &appConn{Conv: conv, Workspace: ask.Workspace, Transcript: transcript, Release: func() {}}, nil
 	})
 	defer backend.Close()
-	backend.mint = func(string) (string, error) { return transcript, nil }
+	backend.mint = func(string, ...func(string) error) (string, error) { return transcript, nil }
 	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
@@ -290,7 +290,7 @@ func TestQueuedFaceIDCoversTheResolvedConsentSet(t *testing.T) {
 				return &appConn{Conv: conv, Workspace: ask.Workspace, Transcript: transcript, Release: func() {}}, nil
 			})
 			defer backend.Close()
-			backend.mint = func(string) (string, error) { return transcript, nil }
+			backend.mint = func(string, ...func(string) error) (string, error) { return transcript, nil }
 			agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: t.TempDir()})
 			if err != nil {
 				t.Fatal(err)

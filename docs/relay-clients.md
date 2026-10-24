@@ -224,3 +224,13 @@ receipt before requesting the claim. If the reply is lost, restart recovers
 with that token; another process with separate state cannot reuse the claim.
 After ownership is confirmed, a durable `started` receipt precedes dispatch.
 Restart acknowledges a started call without executing it again.
+
+## Interrupted new work keeps its chat receipt
+
+For queued `agents.create`, the app reserves the generated chat id and transcript
+path with the runner before creating the folder. That association reaches the
+started receipt durably before minting. The paired-client line is written before
+the first turn starts. Restart repairs the line if death happened immediately
+after minting, even before the create result or derived session metadata exists.
+If the reserved folder was never created, recovery invents no chat. Both cases
+acknowledge the uncertain call without creating another chat.

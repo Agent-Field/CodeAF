@@ -18,6 +18,7 @@ type state struct {
 // Receipt is durable before dispatch and finished afterward. A begun call is
 // never dispatched again after a crash: its effect may already have happened.
 type Receipt struct {
+	Transcript     string `json:"transcript,omitempty"`
 	ClaimToken     string `json:"claim_token,omitempty"`
 	SkippedFrom    int64  `json:"skipped_from,omitempty"`
 	SkippedThrough int64  `json:"skipped_through,omitempty"`

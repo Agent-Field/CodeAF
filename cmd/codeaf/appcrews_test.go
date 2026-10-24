@@ -730,7 +730,7 @@ func TestAppCrewStartRecordsTheStartLineAndTheBriefFollowsIt(t *testing.T) {
 	)
 	rec := newAppRecorder()
 	backend := newFakeBackend(rec, nil)
-	backend.mint = func(string) (string, error) {
+	backend.mint = func(string, ...func(string) error) (string, error) {
 		mu.Lock()
 		defer mu.Unlock()
 		minted++

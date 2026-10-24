@@ -47,7 +47,7 @@ func TestAppCreateRefusesBadAttachmentsAndMakesNothing(t *testing.T) {
 	rec := newAppRecorder()
 	backend := newFakeBackend(rec, fakeOpener(&fakeConversation{}, &opens, &releases, &mu))
 	defer backend.Close()
-	backend.mint = func(string) (string, error) { mints.Add(1); return appFakeTranscript, nil }
+	backend.mint = func(string, ...func(string) error) (string, error) { mints.Add(1); return appFakeTranscript, nil }
 	work := t.TempDir()
 	half := strings.Repeat("x", appwire.MaxAttachChars/2)
 	eleven := make([]appwire.AttachSource, appwire.MaxAttachments+1)
