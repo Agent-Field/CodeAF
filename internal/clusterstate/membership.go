@@ -37,6 +37,7 @@ func hasID(ids []uint64, id uint64) bool {
 // MemberRecord contains protocol authority only. Retired IDs are never deleted;
 // a device that rejoins receives a fresh ID and a fresh transport incarnation.
 type MemberRecord struct {
+	Store         string `json:"store,omitempty"`
 	Worker        bool   `json:"worker,omitempty"`
 	WorkerExpires int64  `json:"worker_expires,omitempty"`
 	Node          uint64 `json:"node"`
@@ -69,15 +70,18 @@ type InitMembership struct {
 	Limit   uint32         `json:"limit"`
 }
 type EnrollMember struct {
-	Node     uint64 `json:"node"`
-	Revision uint64 `json:"revision"`
-	Device   string `json:"device"`
-	Protocol uint16 `json:"protocol"`
+	Store     string     `json:"store,omitempty"`
+	Admission *V1Request `json:"admission,omitempty"`
+	Node      uint64     `json:"node"`
+	Revision  uint64     `json:"revision"`
+	Device    string     `json:"device"`
+	Protocol  uint16     `json:"protocol"`
 }
 type RemoveMember struct {
-	Revision uint64 `json:"revision"`
-	Node     uint64 `json:"node"`
-	Device   string `json:"device"`
+	Admission *V1Request `json:"admission,omitempty"`
+	Revision  uint64     `json:"revision"`
+	Node      uint64     `json:"node"`
+	Device    string     `json:"device"`
 }
 type SettleMembership struct {
 	Revision uint64 `json:"revision"`
@@ -117,10 +121,16 @@ func membershipDependencies(m Mutation) []RecordKey {
 			keys = append(keys, MemberKey(a.Node), AuthorityKey(AnchorActor(a.Node)))
 		}
 	case m.EnrollMember != nil:
-		keys = append(keys, MembershipKey(), DeviceKey(m.EnrollMember.Device), AuthorityKey(m.EnrollMember.Device), MemberDeviceKey(m.EnrollMember.Device), MemberKey(m.EnrollMember.Node), MemberTombstoneKey(m.EnrollMember.Node))
+		keys = append(keys, MemberStoreKey(m.EnrollMember.Device, m.EnrollMember.Store), MembershipKey(), DeviceKey(m.EnrollMember.Device), AuthorityKey(m.EnrollMember.Device), MemberDeviceKey(m.EnrollMember.Device), MemberKey(m.EnrollMember.Node), MemberTombstoneKey(m.EnrollMember.Node))
 	case m.RemoveMember != nil:
 		v := m.RemoveMember
-		keys = append(keys, MembershipKey(), MemberKey(v.Node), MemberTombstoneKey(v.Node), MemberDeviceKey(v.Device))
+		keys = append(keys, MembershipKey(), MemberKey(v.Node), MemberTombstoneKey(v.Node), MemberDeviceKey(v.Device), DeviceKey(v.Device), AuthorityKey(v.Device))
+		if v.Admission != nil {
+			var request PersonalAdmission
+			if legacyBody(v.Admission.Body, &request, false) == nil {
+				keys = append(keys, MemberStoreKey(v.Device, request.Store))
+			}
+		}
 	case m.SettleMembership != nil:
 		v := m.SettleMembership
 		keys = append(keys, MembershipKey(), MemberKey(v.Node))
@@ -201,9 +211,30 @@ func applyMembership(c Command, meta ApplicationMeta, rows map[RecordKey][]byte,
 			return UpdateRequired
 		}
 		var authority Authority
+		var admissionKey []byte
+		if v.Admission != nil {
+			var identity IdentityRec
+			if Decode(rows[IdentityKey()], &identity) != nil {
+				return BadRequest
+			}
+			request, granted, actor, err := VerifyPersonalAdmission(*v.Admission, identity, result.Now)
+			if err != nil || actor != v.Device || request.Store != v.Store || request.Protocol != v.Protocol {
+				return Unauthorized
+			}
+			granted.Cluster = c.Cluster
+			authority = granted
+			admissionKey = granted.Key
+			if rows[MemberStoreKey(v.Device, v.Store)] != nil {
+				return Conflict
+			}
+		} else if v.Store != "" {
+			return Unauthorized
+		}
 		var device Device
 		var prior DeviceMember
-		if rows[AuthorityKey(v.Device)] == nil && v.Device == c.Actor && c.Certificate != "" {
+		if rows[AuthorityKey(v.Device)] == nil && v.Admission != nil {
+			// The original device proof supplied authority above.
+		} else if rows[AuthorityKey(v.Device)] == nil && v.Device == c.Actor && c.Certificate != "" {
 			var identity IdentityRec
 			if Decode(rows[IdentityKey()], &identity) != nil {
 				return BadRequest
@@ -214,6 +245,9 @@ func applyMembership(c Command, meta ApplicationMeta, rows map[RecordKey][]byte,
 				return Unauthorized
 			}
 		} else if Decode(rows[AuthorityKey(v.Device)], &authority) != nil {
+			return Unauthorized
+		}
+		if v.Admission != nil && (!authority.Personal || !bytes.Equal(authority.Key, admissionKey)) {
 			return Unauthorized
 		}
 		if authority.Cluster != c.Cluster || !authority.ValidRole() || !authority.Personal && authority.Worker == nil || len(authority.Key) != ed25519.PublicKeySize {
@@ -273,8 +307,11 @@ func applyMembership(c Command, meta ApplicationMeta, rows map[RecordKey][]byte,
 		if rows[AuthorityKey(v.Device)] == nil {
 			put(AuthorityKey(v.Device), authority)
 		}
-		put(MemberKey(node), MemberRecord{Node: node, Device: v.Device, Key: bytes.Clone(authority.Key), Incarnation: incarnation, Protocol: ClusterProtocol, Worker: authority.Worker != nil, WorkerExpires: workerExpires})
+		put(MemberKey(node), MemberRecord{Store: v.Store, Node: node, Device: v.Device, Key: bytes.Clone(authority.Key), Incarnation: incarnation, Protocol: ClusterProtocol, Worker: authority.Worker != nil, WorkerExpires: workerExpires})
 		put(MemberDeviceKey(v.Device), DeviceMember{Node: node})
+		if v.Store != "" {
+			put(MemberStoreKey(v.Device, v.Store), DeviceMember{Node: node})
+		}
 		put(MembershipKey(), h)
 		result.Membership = &MembershipResult{Node: node, Revision: h.Revision}
 		return OK
@@ -286,6 +323,27 @@ func applyMembership(c Command, meta ApplicationMeta, rows map[RecordKey][]byte,
 		var member MemberRecord
 		if Decode(rows[MemberKey(v.Node)], &member) != nil {
 			return NotFound
+		}
+		if v.Admission != nil {
+			var identity IdentityRec
+			if Decode(rows[IdentityKey()], &identity) != nil {
+				return BadRequest
+			}
+			request, granted, actor, err := VerifyPersonalAdmission(*v.Admission, identity, result.Now)
+			var device Device
+			if err != nil || actor != v.Device || request.Protocol != ClusterProtocol || request.Store == member.Store {
+				return Unauthorized
+			}
+			var authority Authority
+			if Decode(rows[AuthorityKey(v.Device)], &authority) != nil || !authority.ValidRole() || !authority.Personal || authority.Cluster != c.Cluster || !bytes.Equal(authority.Key, granted.Key) {
+				return Unauthorized
+			}
+			if rows[MemberStoreKey(v.Device, request.Store)] != nil {
+				return Conflict
+			}
+			if raw := rows[DeviceKey(v.Device)]; raw != nil && (Decode(raw, &device) != nil || device.Revoked) {
+				return Revoked
+			}
 		}
 		if member.Anchor || member.Retired || member.Node != v.Node || member.Device != v.Device || hasID(meta.Configuration.Voters, v.Node) {
 			return Conflict

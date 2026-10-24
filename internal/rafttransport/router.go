@@ -70,6 +70,10 @@ type group struct {
 	now     int64
 }
 type Router struct {
+	// Pump services locally hosted members after routing, outside the router lock.
+	// It must never wait for an external member or perform network I/O.
+	Pump func(Request, int64) error
+
 	mu     sync.Mutex
 	limits Limits
 	groups map[Scope]*group
@@ -232,6 +236,23 @@ func (r *Router) Exchange(req Request, now int64) (Response, error) {
 	return r.exchange(req, now, false)
 }
 func (r *Router) exchange(req Request, now int64, receiveOnly bool) (Response, error) {
+	response, err := r.route(req, now, receiveOnly)
+	if err != nil || r.Pump == nil {
+		return response, err
+	}
+	if err = r.Pump(req, now); err != nil {
+		return Response{}, err
+	}
+	return r.route(req, now, true)
+}
+
+// LocalExchange is the actor's internal side of the SAME authenticated router.
+// It avoids recursively entering Pump while that actor holds its own queue.
+func (r *Router) LocalExchange(req Request, now int64) (Response, error) {
+	return r.route(req, now, false)
+}
+
+func (r *Router) route(req Request, now int64, receiveOnly bool) (Response, error) {
 	if now < 0 || now > math.MaxInt64-RetentionMillis {
 		return Response{}, ErrWire
 	}
@@ -395,4 +416,27 @@ func (r *Router) Stats(scope Scope, now int64) Stats {
 		}
 	}
 	return s
+}
+
+// Quiesce discards only expendable deliveries to nonvoters at the all-voter
+// sleep boundary. Learner queues cannot keep a group active or push old work
+// after sleep. Raft sends fresh append or snapshot traffic after public wake.
+func (r *Router) Quiesce(scope Scope) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	g := r.groups[scope]
+	if g == nil {
+		return
+	}
+	for id, box := range g.inboxes {
+		if g.members[id].Voter {
+			continue
+		}
+		for lane, queue := range box.queues {
+			for _, q := range queue {
+				g.bytes[lane] -= q.size
+			}
+			box.queues[lane] = nil
+		}
+	}
 }
