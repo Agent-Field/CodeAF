@@ -160,7 +160,7 @@ func (g *group) drain() {
 }
 func (g *group) leader() int {
 	for i, s := range g.status {
-		if s.Role == raft.StateLeader {
+		if s.Role == raft.StateLeader && !g.absent[uint64(i+1)] {
 			return i
 		}
 	}

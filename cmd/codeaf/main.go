@@ -330,6 +330,8 @@ func run() error {
 		// whoever hosts the relay and not typed in a conversation, so like
 		// `engine` it is absent from the usage text.
 		return relayserve.Main(os.Args[2:])
+	case "cluster":
+		return runCluster(os.Args[2:])
 	case "devices":
 		// Who is allowed to open a conversation here, and the door for taking
 		// that back. REVOKING IS THIS MACHINE'S DECISION AND ONLY THIS
@@ -606,7 +608,7 @@ Housekeeping — changes state on disk or on the network
       approve a new device; or use or show a six-digit code for your chats
   codeaf serve [--workspace path] [--via url]
       be reachable from your other devices without ssh, with a pairing code
-  codeaf devices
+  codeaf devices | codeaf cluster status | lead
       list your devices and the ones that can use this machine
   codeaf devices revoke <name> [--all] | rename <name>
       remove one (cannot undo what a device holds), or name this one

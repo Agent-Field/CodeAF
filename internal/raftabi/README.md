@@ -158,3 +158,28 @@ returns the shared genesis Entry/HardState/ConfState protobuf bytes), and op 14
 (validated public certificates/effects authority rows). These calls convert
 bounded bytes and establish no request authentication or successful coordination
 receipt. Source/target hosts own the irrevocable migration gate and durability.
+
+P13 adds op 21 (node handle, canonical Membership header, canonical target
+LeadershipEvidence; returns a canonical LeadershipPlan) and op 22 (node handle,
+canonical Membership header; returns a consumed current-term LeadershipReceipt).
+These are internal host calls, never public configuration or readiness inputs.
+Plans distinguish Configure from empty bytes because the explicit leave-joint
+protobuf has zero bytes. Operation 15 accepts an optional trailing entry term;
+new hosts supply the actual committed entry term when evaluating leadership
+intents, and old directory-only frames retain their prior representation.
+
+The expanded mixed-runtime proof sets its Node coordinator old-generation limit to 16 MiB so
+its retained request/report garbage does not consume the native/workerd share
+of the unchanged 256 MiB combined RSS gate. The same six hosted handles, native
+process death, both personal-leader roles and all snapshot/configuration steps
+remain in the workload; production isolate/core ceilings are unchanged.
+
+## Ranked election timing (R7/R14)
+
+ABI 1 create optionally appends an anchor count (exactly three) and three uint64
+IDs after the applied index. Old mechanism frames may omit it. Hosts obtain the
+ordered IDs from the durably applied membership registry, or the same provisioned
+bootstrap manifest before initialization. They must never use the current voter
+list, which changes when C becomes a standby. The core uses election timing
+version 2 in native and WASI. Rank survives snapshots and restarts as registry
+state; absent provisioning identifies a personal learner, never an invented rank.

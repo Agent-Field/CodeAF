@@ -32,12 +32,14 @@ export function response(bytes) {
   const error = r.str(); if (error) { r.end(); throw new Error(error); }
   return r;
 }
-export function createFrame({ cluster, id, seed, bootstrap = [], hard = new Uint8Array(), conf = new Uint8Array(), snapshot = new Uint8Array(), entries = [], applied = 0n }) {
+export function createFrame({ cluster, id, seed, bootstrap = [], anchors = [], hard = new Uint8Array(), conf = new Uint8Array(), snapshot = new Uint8Array(), entries = [], applied = 0n }) {
   const w = frame(1).str(cluster).u64(id).u64(seed).u32(1).u32(bootstrap.length);
   for (const id of bootstrap) w.u64(id);
   w.blob(hard).blob(conf).blob(snapshot).u32(entries.length);
   for (const e of entries) w.blob(e);
-  return w.u64(applied).finish();
+  w.u64(applied);
+  if (anchors.length) { w.u32(anchors.length); for (const id of anchors) w.u64(id); }
+  return w.finish();
 }
 export function stepFrame(handle, tag, value) {
   const w = frame(3).u32(handle).u32(tag);

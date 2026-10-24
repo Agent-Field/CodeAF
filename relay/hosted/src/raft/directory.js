@@ -9,7 +9,7 @@ export function directoryEvaluator(runtime, cluster, ceiling) {
     const keys = Array.from({ length: r.u32() }, () => ({ namespace: r.str(), key: r.str() })); r.end();
     const w = (app.index === undefined ? frame(10) : frame(15)).blob(command).str(cluster).u64(app.now).u64(app.version).u64(app.size).u64(ceiling).u32(keys.length);
     for (const k of keys) { const data = read(k.namespace, k.key); w.str(k.namespace).str(k.key).u32(data == null ? 0 : 1).blob(data ?? new Uint8Array()); }
-    if (app.index !== undefined) w.u64(app.index).blob(unb64(app.conf));
+    if (app.index !== undefined) w.u64(app.index).blob(unb64(app.conf)).u64(app.term ?? 0);
     r = response(runtime.call(w.finish()));
     const now = r.u64(), version = r.u64(), result = r.blob();
     const writes = Array.from({ length: r.u32() }, () => ({ namespace: r.str(), key: r.str(), data: r.blob() })); r.end();
@@ -23,4 +23,12 @@ export class RaftDirectoryFacade {
   constructor(host) { this.host = host; }
   async command(originalSignedBytes) { return this.host.commit(originalSignedBytes); }
   async read(authenticatedRequest) { return this.host.barrierRead(authenticatedRequest); }
+}
+
+// The status facade cannot change voters. Its host authorizes a fresh quorum
+// read and drives the committed intent, target election and completion barrier.
+export class RaftLeadershipFacade {
+  constructor(host) { this.host = host; }
+  async status(authenticatedRequest) { return this.host.clusterStatus(authenticatedRequest); }
+  async lead(originalSignedBytes) { return this.host.leadership(originalSignedBytes); }
 }

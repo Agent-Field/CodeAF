@@ -630,3 +630,7 @@ func (s *SQLite) Read(ctx context.Context, expectedApplied uint64, keys []Key) (
 	}
 	return out, a, nil
 }
+
+// MemberIdentity exposes the immutable store binding so a target cannot attest
+// durable application on behalf of a different member.
+func (s *SQLite) MemberIdentity() Identity { return s.identity }

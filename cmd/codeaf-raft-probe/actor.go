@@ -20,6 +20,7 @@ import (
 )
 
 type actorRequest struct {
+	Header     []byte                     `json:"header"`
 	Rows       []clusterstate.RecordWrite `json:"rows"`
 	Op         string                     `json:"op"`
 	Cluster    string                     `json:"cluster"`
@@ -123,6 +124,32 @@ func (a *probeActor) open() error {
 func (a *probeActor) call(r actorRequest, dir string) (any, error) {
 	ctx := context.Background()
 	switch r.Op {
+	case "leadership-plan", "leadership-receipt":
+		var h clusterstate.Membership
+		if err := clusterstate.Decode(r.Header, &h); err != nil {
+			return nil, err
+		}
+		var value any
+		if r.Op == "leadership-receipt" {
+			v, err := a.core.LeadershipReceipt(h)
+			if err != nil {
+				return nil, err
+			}
+			value = v
+		} else {
+			var evidence raftcore.LeadershipEvidence
+			if err := clusterstate.Decode(r.Value, &evidence); err != nil {
+				return nil, err
+			}
+			v, err := a.core.PlanLeadership(h, evidence)
+			if err != nil {
+				return nil, err
+			}
+			value = v
+		}
+		b, err := clusterstate.Encode(value)
+		return json.RawMessage(b), err
+
 	case "legacy-import":
 		var m clusterstate.LegacyManifest
 		if err := clusterstate.Decode(r.Value, &m); err != nil {
@@ -162,7 +189,7 @@ func (a *probeActor) call(r actorRequest, dir string) (any, error) {
 				return nil, err
 			}
 		}
-		a.cfg = raftcore.Config{ClusterUUID: r.Cluster, NodeID: r.ID, Seed: 100 + r.ID, Protocol: 1, Bootstrap: []uint64{1, 2, 3}}
+		a.cfg = raftcore.Config{ClusterUUID: r.Cluster, NodeID: r.ID, Seed: 100 + r.ID, Protocol: 1, Anchors: []uint64{1, 2, 3}, Bootstrap: []uint64{1, 2, 3}}
 		a.path = filepath.Join(dir, fmt.Sprintf("%s-%d.db", r.Cluster, r.ID))
 		if err := a.open(); err != nil {
 			return nil, err

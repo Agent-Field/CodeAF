@@ -265,4 +265,23 @@ with a separate operator capacity limit; reaching either limit refuses new
 enrollment instead of deleting saved chats or old records. The capacity sentence
 is `this cluster has reached its enrollment limit; remove a joined computer or ask the relay operator for capacity`.
 An unsupported protocol says `this codeaf build must be updated before it can join this cluster; your saved chats are still here`.
-This does not add a leadership command or a worker setup command.
+Joining alone does not request leadership. Use `codeaf cluster lead` after this computer has joined with persistent storage. A worker setup command is not available yet.
+
+## Which computer coordinates: cluster status and cluster lead
+
+`codeaf cluster status` asks the relay for the current coordinator and voting computers. `codeaf cluster lead` requests leadership for this computer after it has joined with persistent storage. The target must catch up and exchange recent traffic; a pending request is not success. A successful line names the computer, term, revision and read barrier. Leadership moves coordination metadata; it does not move chat ownership or download chat content. Continue a chat through the usual continue door.
+
+The default has three persistent relay voters. Paired computers join without votes. To lead, one caught-up personal computer replaces one anchor through a majority-approved change, retaining three voters; that anchor stays caught up without voting. When the personal leader disappears, the two remaining anchor voters can elect a replacement and restore the third anchor. The returning computer does not automatically lead again. Request leadership explicitly.
+
+Three voters tolerate one unavailable member. Losing the personal leader and one of its two voting anchors pauses coordination. Saved chats remain. The refusal is `this cluster cannot coordinate right now; reconnect enough of its voting computers and try again; your saved chats are still here`. Network partitions and scheduling stalls can delay elections beyond the healthy fallback target. A relay without this door says `this relay does not offer cluster leadership yet; your saved chats are still here`. Persistent member/client assembly is required; a paired API client alone cannot lead. It says `this computer must join the cluster with persistent storage before it can lead`. If a reply is lost, running `codeaf cluster lead` again resumes the saved request rather than silently choosing a new configuration.
+
+## How long does a replacement leader take after my laptop sleeps?
+
+With the two remaining relay voters reachable, codeaf aims to accept a new
+conditional operation within about 65 seconds. Relay anchors ask to lead in
+ordered randomized windows: the first at 30–35 seconds, the second at 40–45,
+and the third at 50–55. A promoted personal computer uses 60–65 seconds.
+Network partitions or scheduling stalls can take longer. If the personal leader
+and either remaining relay voter are both unavailable before the third anchor
+is restored, writes wait for a majority to return. Returning computers stay
+learners; leadership returns only when you request it again.

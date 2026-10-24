@@ -133,7 +133,7 @@ export class MemberStorage {
         if (e.type === 0 && e.data.length) {
           check(evaluate, 'raft storage: application evaluator is absent');
           let readBytes = 0, writeBytes = 0;
-          const change = evaluate(e.data, (ns, k) => { const data = this.read(ns, k); readBytes += data?.length ?? 0; check(readBytes <= ROW_BYTES, 'raft storage: evaluation read-set capacity'); return data; }, { ...app, index: e.index });
+          const change = evaluate(e.data, (ns, k) => { const data = this.read(ns, k); readBytes += data?.length ?? 0; check(readBytes <= ROW_BYTES, 'raft storage: evaluation read-set capacity'); return data; }, { ...app, index: e.index, term: e.term });
           check(change && !change.then && Array.isArray(change.writes));
           for (const r of change.writes) {
             check(namespaces.includes(r.namespace) && typeof r.key === 'string' && enc.encode(r.key).length > 0 && enc.encode(r.key).length <= ROW_BYTES && r.data instanceof Uint8Array && r.data.length <= ROW_BYTES);
