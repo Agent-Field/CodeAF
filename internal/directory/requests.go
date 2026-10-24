@@ -29,13 +29,13 @@ const (
 
 // The numbers every implementation shares (contract 1, 3).
 const (
-	RequestTTL  = 10 * time.Minute // a request lives this long, counted by the relay's clock
-	DecidedKeep = 2 * time.Minute  // a decided request stays readable this long
-	MaxWait     = 25 * time.Second // the longest GetRequest wait
-	MaxGrant    = 4096             // bytes of grant the relay stores
-	MaxNewBody  = 1024             // bytes of a create body
-	maxName     = 96               // bytes of name before sealing
-	sealedExtra = 24 + 16          // secretbox nonce and tag
+	RequestTTL  = 10 * time.Minute          // a request lives this long, counted by the relay's clock
+	DecidedKeep = 2 * time.Minute           // a decided request stays readable this long
+	MaxWait     = 25 * time.Second          // the longest GetRequest wait
+	MaxGrant    = clusterstate.MaxJoinGrant // bytes of grant the relay stores
+	MaxNewBody  = 1024                      // bytes of a create body
+	maxName     = 96                        // bytes of name before sealing
+	sealedExtra = 24 + 16                   // secretbox nonce and tag
 	keySize     = 32
 )
 

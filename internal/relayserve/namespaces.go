@@ -141,3 +141,57 @@ func (n *namespaces) revoked(identity, device string) (bool, error) {
 	}
 	return d.Revoked(device), nil
 }
+
+// CommittedBlobStore checks current committed authority on both sides of an
+// external put. A revocation or freeze during disk/R2 I/O leaves the bytes for
+// reuse but returns no successful upload to that caller. The receipt command
+// rechecks authority again at its own log position before any head may move.
+// P11 assembles this only after the namespace's old writer is frozen.
+type CommittedBlobStore struct {
+	blobstore.Store
+	Authorize func(context.Context) error
+}
+
+func (s CommittedBlobStore) PutFrame(ctx context.Context, frame []byte) (blobstore.FrameID, error) {
+	if s.Authorize == nil {
+		return "", wireauth.ErrUnauthorized
+	}
+	if err := s.Authorize(ctx); err != nil {
+		return "", err
+	}
+	id, err := s.Store.PutFrame(ctx, frame)
+	if err != nil {
+		return "", err
+	}
+	if err = s.Authorize(ctx); err != nil {
+		return "", err
+	}
+	return id, nil
+}
+
+// ConfirmReferences preserves the disk store's extra durability boundary through
+// this authorization wrapper; embedding Store alone would hide that method.
+func (s CommittedBlobStore) ConfirmReferences(ctx context.Context, head string, frames []string) error {
+	if s.Authorize == nil {
+		return wireauth.ErrUnauthorized
+	}
+	if err := s.Authorize(ctx); err != nil {
+		return err
+	}
+	if err := blobstore.CheckReferences(ctx, s.Store, head, frames); err != nil {
+		return err
+	}
+	return s.Authorize(ctx)
+}
+func (r readOnlyOnceReplaced) ConfirmReferences(ctx context.Context, head string, frames []string) error {
+	if r.rotation() != nil {
+		return wireauth.ErrRotated
+	}
+	if err := blobstore.CheckReferences(ctx, r.Store, head, frames); err != nil {
+		return err
+	}
+	if r.rotation() != nil {
+		return wireauth.ErrRotated
+	}
+	return nil
+}

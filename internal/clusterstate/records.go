@@ -5,9 +5,10 @@ package clusterstate
 
 // IdentityRec is the per-identity root record.
 type IdentityRec struct {
-	V        uint16 `json:"V"`
-	Identity string `json:"identity"`        // id_…, derived from the signing key
-	Vault    string `json:"vault,omitempty"` // rid of the current vault object
+	V          uint16 `json:"V"`
+	Identity   string `json:"identity"`              // id_…, derived from the signing key
+	SigningKey []byte `json:"signing_key,omitempty"` // Public identity key for committed certificate checks.
+	Vault      string `json:"vault,omitempty"`       // rid of the current vault object
 	// Rotation is set once the identity has been replaced by a rotation: it
 	// takes no writes from then on. Nil means live.
 	Rotation *Rotation `json:"rotation,omitempty"`

@@ -200,3 +200,11 @@ Too many requests from one network are refused too: at most 10 new links in an h
 After a clean quit and final durable save, bare `codeaf` on another paired computer within 24 hours opens the released chat automatically. A sleeping or disconnected laptop still needs `alt+c` on Home. Local unsaved edits, another open local window, a named chat, `--host`, `--at` or `--session` prevent automatic continuation. A running chat never moves by itself. The arrival retains its `Moved from` banner and `not brought along:` facts; `esc` goes Home.
 
 Personal memory and stored model, display, approval and limit defaults follow the paired computers too. Limits are shared as values; spending counted against them stays per computer. Automations and machine-specific paths and settings stay local.
+
+## An approval was interrupted — retrying the same pairing decision
+
+A new computer receives its sealed pairing grant only after its approval has
+been saved. If the reply is interrupted, retrying the same approval keeps the
+same decision. A different answer cannot replace a decision already made. If
+the link has run out, ask the new computer for a fresh one. Removing a device
+blocks its later requests; it cannot take back bytes the device already received.

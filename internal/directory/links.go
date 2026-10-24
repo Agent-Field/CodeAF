@@ -52,10 +52,12 @@ type Links struct {
 // entry is a request, the moment it stops being readable, and a channel that
 // closes when it is decided.
 type entry struct {
-	rec   Request
-	peer  string
-	until int64
-	done  chan struct{}
+	rec      Request
+	peer     string
+	until    int64
+	cluster  string
+	delivery string
+	done     chan struct{}
 }
 
 // NewLinks returns an empty store that reads time from clock.
@@ -183,6 +185,9 @@ func (l *Links) Decide(code string, d Decision, apply func(Request) error) error
 	e, ok := l.reqs[NormalizeCode(code)]
 	if !ok {
 		return ErrRequestGone
+	}
+	if e.cluster != "" {
+		return ErrAlreadyDecided
 	}
 	switch err := Settle(e.rec, d); err {
 	case errRepeat:

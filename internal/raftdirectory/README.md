@@ -43,9 +43,55 @@ overflow. Pure rules retain their legacy behavior for pre-cutover stores.
 
 Pairing commands require an existing committed request dependency, atomically write
 the device metadata and sealed decision, and retain the first decision. The native
-and hosted tests provision genesis/request dependencies explicitly. P10 still owns
+and hosted tests provision genesis/request dependencies explicitly. The effects adapter below supplies
 external request/certificate admission, authorization installation, outbox delivery,
-blob receipts and upload-before-head. P11 owns actual genesis/import; P12 owns peer
+blob receipts and v2 upload-before-head. P11 owns actual genesis/import; P12 owns peer
 registry; P14 owns watch presence and committed renewal scheduling. No socket can
 extend a lease through this evaluator. P17 supplies original v1 authentication proof
 and production client wiring. These boundaries are internal, not new manual claims.
+
+P10 adds `Effects` and the equivalent hosted `RaftEffectsFacade`. Provision a
+separate `Authority{Effects:true}` protocol key; it must not be personal. It can
+only record upload evidence, reserve a join dependency, or complete a delivery.
+These commands are idempotent by immutable effect keys and do not consume client
+sessions. All effect rows count against the identity's application ceiling;
+capacity refuses further growth without removing receipts, decisions or blobs.
+
+Before issuing a receipt, call `Effects.Upload` with the local head ID, its
+**different encrypted remote object ID**, and the existing incremental frame
+hint. Disk confirmation checks retrieval and flushes directory ancestry; hosted
+confirmation awaits R2, its complete index and the supplied storage durability
+boundary. A client still uploads its entire encrypted closure before requesting
+this receipt: a relay cannot decrypt or traverse it, and an empty frame hint
+never proves an empty closure. The receipt binds actor, both head IDs and the
+exact frame hint. V2 Create/Publish require the committed receipt, and still report
+stale fences/heads before missing upload evidence. The existing Client facade explicitly identifies v1 Create/Publish, as it
+already identifies v1 Acquire. Old clients cannot supply the encrypted head RID;
+they retain the existing upload-before-publish client ordering and their existing
+safe API semantics. This is protocol compatibility in the same evaluator, never
+a second writer. P17 must select this marker only from original authenticated v1
+ingress and reject compatibility markers in v2 requests. A v2 body cannot become
+v1 merely by requesting it. P17 owns that ingress/client assembly; the production
+writer is unchanged until P11 migrates it. Never derive an encrypted remote
+object ID from a local turn ID. Receipts admit at most 512 declared frame hints;
+a frame plan remains optional and partial.
+
+Admit calls `LinkEffects.Bind` before logging the request. A reservation excludes
+other identities and legacy decision paths. Failed admission retains it until
+the ordinary public request expires. Approval verifies the original existing
+certificate under `IdentityRec.SigningKey`, checks that its device key matches
+the bound request, and installs personal authorization, device metadata and the
+sealed decision atomically. P11 must populate that **public** root key from
+authenticated genesis/import. An upsert never installs authorization. Peer/node
+membership is still P12, and delegated workers remain P15.
+
+Replay scans at most 64 retained outbox rows per call, from a quorum-authorized
+view. Deliver reads the decision through another fresh barrier, sends its hash
+as the destination's idempotency key, then commits `CompleteJoin`. A crash at
+any boundary repeats only that same decision. A public request that expired
+records `gone`; a lost destination reply retries without changing its grant.
+Restarting a scan at the beginning is safe. P11/P14 must schedule these bounded
+pages on activation/wake; no periodic network loop starts here. Delivery of a
+grant approved before revocation cannot restore authority after it: every
+subsequent operation still checks the committed device record. Already delivered
+sealed bytes cannot be recalled, as with existing personal pairing.

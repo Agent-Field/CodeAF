@@ -44,6 +44,9 @@ type Command struct {
 // their typed operations here; unknown fields fail decoding on older members.
 // There is no arbitrary JSON payload in which task text or secrets can hide.
 type Mutation struct {
+	RecordUpload *UploadReceipt `json:"record_upload,omitempty"`
+	AdmitJoin    *AdmitJoin     `json:"admit_join,omitempty"`
+	CompleteJoin *CompleteJoin  `json:"complete_join,omitempty"`
 	Rotate       *RotateRequest `json:"rotate,omitempty"`
 	CloseSession *CloseSession  `json:"close_session,omitempty"`
 	DecideJoin   *JoinDecision  `json:"decide_join,omitempty"`
@@ -69,7 +72,10 @@ type DeviceID struct {
 	Device string `json:"device"`
 }
 
+// V1 is protocol provenance supplied by authenticated v1 ingress; v2 request
+// bodies must never select it. Old clients retain their upload ordering.
 type CreateCell struct {
+	V1      bool     `json:"v1,omitempty"`
 	Cell    string   `json:"cell"`
 	Init    CellInit `json:"init"`
 	Receipt string   `json:"receipt"`
@@ -97,6 +103,7 @@ type BeatBatch struct {
 }
 
 type PublishCell struct {
+	V1      bool    `json:"v1,omitempty"`
 	Cell    string  `json:"cell"`
 	Publish Publish `json:"publish"`
 	Receipt string  `json:"receipt"`
@@ -186,8 +193,8 @@ type RotateRequest struct {
 	GraceMS int64  `json:"grace_ms,omitempty"`
 }
 
-// JoinDecision records only sealed pairing data. P10 supplies a committed request
-// dependency and delivers the outbox after this transaction has committed.
+// JoinDecision records only sealed pairing data. The committed request binds
+// its certificate key; outbox delivery follows the authorization transaction.
 type JoinDecision struct {
 	Code   string `json:"code"`
 	Device string `json:"device"`
