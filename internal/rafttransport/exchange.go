@@ -83,10 +83,21 @@ func (r *Request) Sign(key ed25519.PrivateKey) error {
 	if len(key) != ed25519.PrivateKeySize {
 		return ErrAuth
 	}
+	return r.SignWith(func(b []byte) []byte { return ed25519.Sign(key, b) })
+}
+
+// SignWith uses the same canonical bytes without exporting a device seed.
+func (r *Request) SignWith(sign func([]byte) []byte) error {
+	if sign == nil {
+		return ErrAuth
+	}
 	if err := r.validate(); err != nil {
 		return err
 	}
-	r.Signature = ed25519.Sign(key, r.signingBytes())
+	r.Signature = sign(r.signingBytes())
+	if len(r.Signature) != ed25519.SignatureSize {
+		return ErrAuth
+	}
 	return nil
 }
 func (r Request) Verify(key ed25519.PublicKey) error {
@@ -251,9 +262,7 @@ func serveSocket(ctx context.Context, conn *websocket.Conn, router *Router, init
 	frames := make(chan frame, 1)
 	go func() {
 		for {
-			readCtx, stop := context.WithTimeout(ctx, socketTimeout)
-			kind, data, err := conn.Read(readCtx)
-			stop()
+			kind, data, err := conn.Read(ctx)
 			if kind != websocket.MessageBinary && err == nil {
 				err = ErrWire
 			}
@@ -267,6 +276,30 @@ func serveSocket(ctx context.Context, conn *websocket.Conn, router *Router, init
 			}
 		}
 	}()
+	// An idle member owes no keepalive. The existing response deadline applies
+	// only while a bounded delivery awaits acknowledgment, so a sleeping group
+	// can wake this socket without a recurring request loop.
+	var deadline <-chan time.Time
+	var timer *time.Timer
+	defer func() {
+		if timer != nil {
+			timer.Stop()
+		}
+	}()
+	arm := func(resp Response, received bool) {
+		if len(resp.Messages) != 0 && timer != nil && !received {
+			return
+		}
+		if timer != nil {
+			timer.Stop()
+			timer = nil
+		}
+		deadline = nil
+		if len(resp.Messages) != 0 {
+			timer = time.NewTimer(socketTimeout)
+			deadline = timer.C
+		}
+	}
 	req := initial
 	changed, err := router.changed(req)
 	if err != nil {
@@ -276,10 +309,13 @@ func serveSocket(ctx context.Context, conn *websocket.Conn, router *Router, init
 	if err != nil || !writeSocket(ctx, conn, response) {
 		return
 	}
+	arm(response, true)
 	for {
 		receiveOnly := false
 		select {
 		case <-ctx.Done():
+			return
+		case <-deadline:
 			return
 		case <-changed:
 			receiveOnly = true
@@ -308,6 +344,7 @@ func serveSocket(ctx context.Context, conn *websocket.Conn, router *Router, init
 		if !writeSocket(ctx, conn, response) {
 			return
 		}
+		arm(response, !receiveOnly)
 	}
 }
 

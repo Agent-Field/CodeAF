@@ -103,11 +103,22 @@ func (e *Envelope) Sign(key ed25519.PrivateKey) error {
 	if len(key) != ed25519.PrivateKeySize {
 		return ErrAuth
 	}
+	return e.SignWith(func(b []byte) []byte { return ed25519.Sign(key, b) })
+}
+
+// SignWith keeps device private keys behind their existing signing boundary.
+func (e *Envelope) SignWith(sign func([]byte) []byte) error {
+	if sign == nil {
+		return ErrAuth
+	}
 	e.Digest = digest(e.Payload)
 	if err := e.validate(); err != nil {
 		return err
 	}
-	e.Signature = ed25519.Sign(key, e.signingBytes())
+	e.Signature = sign(e.signingBytes())
+	if len(e.Signature) != ed25519.SignatureSize {
+		return ErrAuth
+	}
 	return nil
 }
 func (e Envelope) Verify(key ed25519.PublicKey) error {
