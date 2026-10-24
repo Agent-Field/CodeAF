@@ -313,7 +313,7 @@ func TestTheTopLineGivesThingsUpInTheOwnersOrder(t *testing.T) {
 	a, now := pulseLab(t)
 	a.showPage(pageNone)
 	a.machine = machineFacts{wants: 12, hands: 4, spent: 123.45, ceiling: 500}
-	a.host = "spark"
+	a.host = "tower"
 	clock := pulseClock(now)
 	type state struct{ clock, host, hands, wants, allowance, unfolded, spend bool }
 	seen := map[state]bool{}
@@ -326,7 +326,7 @@ func TestTheTopLineGivesThingsUpInTheOwnersOrder(t *testing.T) {
 			t.Fatalf("at %d columns the top line lost the wordmark or the lit place:\n\t%q", width, line)
 		}
 		s := state{
-			clock: strings.Contains(line, clock), host: strings.Contains(line, "on spark"),
+			clock: strings.Contains(line, clock), host: strings.Contains(line, "on tower"),
 			hands: strings.Contains(line, "4 moving"), wants: strings.Contains(line, "12 want you"),
 			allowance: strings.Contains(line, "/ "+railFigure(500)), unfolded: !a.navMore.span.pressable(),
 			spend: strings.Contains(line, "$123.45"),

@@ -555,7 +555,7 @@ func TestPinningWritesOnTheProfilePathNobodySet(t *testing.T) {
 func TestAHostedSurfacePinsNothing(t *testing.T) {
 	laneLab(t, threeLanes())
 	a := laneApp(t)
-	a.host = "blackmac"
+	a.host = "laptop"
 	typeLine(t, a, "/model")
 
 	drive(t, a, key("right"), key("down"), key("right"), key("enter"))

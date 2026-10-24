@@ -25,8 +25,8 @@ import (
 // a path that already looks outside is ever resolved on disk.
 const (
 	theGround           = "/work/trees/1"
-	thePersonsCheckout  = "/Users/santoshkumar/Documents/agentfield/code/agentfield"
-	theOtherCheckout    = "/Users/santoshkumar/Documents/agentfield/code/codeaf"
+	thePersonsCheckout  = "/Users/dev/Documents/agentfield/code/agentfield"
+	theOtherCheckout    = "/Users/dev/Documents/agentfield/code/codeaf"
 	outsideYourCopy     = "is outside your copy"
 	worksInTheGroundNow = "this task works in " + theGround
 )

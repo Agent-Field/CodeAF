@@ -2094,7 +2094,7 @@ for it, and each door has its own sentence:
 | the conversation was closed or left under the turn | `the reply stopped when this conversation was left — ask again to pick it up` |
 | your stop took too long and was let go of | `the reply was let go of after the stop took too long` |
 | you stopped all the work in the conversation | `everything running here was stopped, the reply with it` |
-| nobody was left watching a conversation on another machine | `nobody was left watching this conversation, so the reply stopped — ask again to pick it up`. Only the unattended door says this. If the engine knew which window it thought had gone, the sentence names it: `nobody was left watching this conversation from studio, so the reply stopped — ask again to pick it up` |
+| nobody was left watching a conversation on another machine | `nobody was left watching this conversation, so the reply stopped — ask again to pick it up`. Only the unattended door says this. If the engine knew which window it thought had gone, the sentence names it: `nobody was left watching this conversation from tower, so the reply stopped — ask again to pick it up` |
 | the engine holding this conversation was stopped | `the engine holding this conversation was stopped, so the reply stopped — ask again to pick it up` |
 
 **You do not have to type your question again when a conversation moved.** If the
@@ -2147,7 +2147,7 @@ second window taking the conversation over.
 
 A window that just did something — pressed a key, answered a card — is still watching, even if its link dropped for a few seconds. That gap is a stalled call and the redial after it, not an empty room, and the reply is not stopped for want of a watcher.
 
-When the unattended door does take a stop, it names the window it believed had gone: `nobody was left watching this conversation from studio, so the reply stopped — ask again to pick it up`. Without a name the sentence is the one above, unchanged.
+When the unattended door does take a stop, it names the window it believed had gone: `nobody was left watching this conversation from tower, so the reply stopped — ask again to pick it up`. Without a name the sentence is the one above, unchanged.
 
 ## Why did my task not move to a stronger model — trouble with the connection never buys a dearer model
 

@@ -173,7 +173,7 @@ func TestEverySentenceOfNamingAComputerIsOnItsPage(t *testing.T) {
 		t.Fatalf("the page %s is not in the corpus", name)
 	}
 	for _, sentence := range []string{
-		NamePrompt("spark"),
+		NamePrompt("tower"),
 		RenamedLine("atlas"),
 		RenamedHereLine("atlas"),
 		RenamedAloneLine("atlas"),

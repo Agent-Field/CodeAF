@@ -416,7 +416,7 @@ func (cancelFake) Cancel(string) (string, error) { return "stopping", nil }
 // it. A task's part is on its record and not on this panel.
 func TestSinceYouLeftNamesEachLandedTaskAndFile(t *testing.T) {
 	l := newLiveLab(t)
-	l.task("-alpha", session.TaskIndexEntry{ID: "1", SessionID: "aaaa000000000002", Label: "spark fleet ssh audit", Title: "spark fleet ssh audit",
+	l.task("-alpha", session.TaskIndexEntry{ID: "1", SessionID: "aaaa000000000002", Label: "tower fleet ssh audit", Title: "tower fleet ssh audit",
 		Status: string(session.TaskDone), Outcome: "2 hosts up, 1 not", Cost: 0.42,
 		EndedAt: l.now.Add(-3 * time.Hour)})
 	l.task("-alpha", session.TaskIndexEntry{ID: "2", SessionID: "aaaa000000000002", Label: "port the parser", Title: "port the parser",
@@ -431,7 +431,7 @@ func TestSinceYouLeftNamesEachLandedTaskAndFile(t *testing.T) {
 	a.readSwitchLedger()
 	a.home.build()
 	rows := panelRows(a, panelLeft)
-	want := []string{"made apartments-minto.md", "port the parser · lost the connection", "spark fleet ssh audit · 2 hosts up, 1 not"}
+	want := []string{"made apartments-minto.md", "port the parser · lost the connection", "tower fleet ssh audit · 2 hosts up, 1 not"}
 	if len(rows) != len(want) {
 		t.Fatalf("since you left drew %d lines, want %d:\n%s", len(rows), len(want), homeText(a))
 	}
@@ -457,7 +457,7 @@ func TestSinceYouLeftNamesEachLandedTaskAndFile(t *testing.T) {
 // A LANDED TASK'S LINE IS A DOOR INTO ITS RECORD.
 func TestSinceYouLeftOpensALandedTasksRecord(t *testing.T) {
 	l := newLiveLab(t)
-	l.task("-alpha", session.TaskIndexEntry{ID: "1", SessionID: "aaaa000000000002", Label: "spark fleet ssh audit", Title: "spark fleet ssh audit",
+	l.task("-alpha", session.TaskIndexEntry{ID: "1", SessionID: "aaaa000000000002", Label: "tower fleet ssh audit", Title: "tower fleet ssh audit",
 		Status: string(session.TaskDone), Outcome: "all up", EndedAt: l.now.Add(-time.Hour)})
 	a := l.open()
 	a.home.seen = l.now.Add(-4 * time.Hour)

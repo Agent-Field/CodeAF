@@ -32,8 +32,8 @@ import (
 // git remote or credentials: everything it gets, it gets from the relay.
 
 const (
-	nameA = "spark"
-	nameB = "blackmac"
+	nameA = "tower"
+	nameB = "laptop"
 )
 
 // twoHomes is a driveRig with what the take side needs on top of it.

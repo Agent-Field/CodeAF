@@ -1472,8 +1472,7 @@ signs on the right:
  >● codeaf   home  chats  AI teams  activity  memories  automations  spend  settings   2 want you · 4 moving · $0.55 / $20 · thu 1:11pm
 ```
 
-When there is not room for all of it, things give way **one at a time, in a fixed order**
-(the owner's order, 2026-09-24):
+When there is not room for all of it, things give way **one at a time, in a fixed order**:
 
 ```
 clock (and `on <machine>`) → moving → `2 want you` becomes `2 ?` → the allowance → the places fold into `more ▾` → the day's spend
@@ -3141,10 +3140,7 @@ legend while one is up. Its whole value is that seeing it anywhere means one thi
 settings — paint from the table you just read.** Same inks, same three background steps, same
 terminal background showing through. A place is the chat's palette applied to a list.
 
-For a while they were not. A wave painted a page of their own — a near-black `#12121A`
-under every cell, with the design's own brighter greys on top of it — and the owner tried
-it and asked for it back: *"i want bg color and text color to be same as in inside chat…
-this new bg looks weird."* So there is one palette again.
+Home and chat use one shared palette.
 
 | What a place is saying | The colour it uses | Where you have seen it |
 | --- | --- | --- |

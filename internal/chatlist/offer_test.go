@@ -112,8 +112,8 @@ func TestRelayFullNamesTheCeilingOnlyWhenTheRelayDid(t *testing.T) {
 }
 
 func TestMovedSaysTheMeasuredTime(t *testing.T) {
-	got := Moved("spark", 3200*time.Millisecond, true)
-	want := "Moved from spark in 3.2s. Everything as you left it. What was running there can start again here."
+	got := Moved("tower", 3200*time.Millisecond, true)
+	want := "Moved from tower in 3.2s. Everything as you left it. What was running there can start again here."
 	if got != want {
 		t.Fatalf("got %q", got)
 	}

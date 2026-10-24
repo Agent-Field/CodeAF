@@ -36,8 +36,8 @@ func TestArtifactsSinceKeepsOnlyWhatLandedAfterTheLook(t *testing.T) {
 func TestLandedSinceIsTheWorkThatFinishedWhileYouWereAway(t *testing.T) {
 	look := time.Now().Add(-12 * time.Hour)
 	world := &World{Projects: []Project{
-		{Name: "codeaf", Sessions: []SessionRow{{ID: "aaaa1111aaaa1111", Title: "Spark fleet", Tasks: TaskRollup{Rows: []TaskIndexEntry{
-			{ID: "1", Title: "Spark fleet ssh audit", Status: string(TaskDone), EndedAt: look.Add(2 * time.Hour)},
+		{Name: "codeaf", Sessions: []SessionRow{{ID: "aaaa1111aaaa1111", Title: "tower fleet", Tasks: TaskRollup{Rows: []TaskIndexEntry{
+			{ID: "1", Title: "tower fleet ssh audit", Status: string(TaskDone), EndedAt: look.Add(2 * time.Hour)},
 			{ID: "2", Title: "Still going", Status: string(TaskRunning)},
 			{ID: "3", Title: "Seen yesterday", Status: string(TaskDone), EndedAt: look.Add(-time.Hour)},
 			{ID: "4", Title: "Not started", Status: string(TaskQueued)},
@@ -54,7 +54,7 @@ func TestLandedSinceIsTheWorkThatFinishedWhileYouWereAway(t *testing.T) {
 	if landed[0].Entry.Title != "Rebuild the pricing table" || landed[0].Session.ID != "bbbb2222bbbb2222" {
 		t.Fatalf("the newest landing reads %+v", landed[0])
 	}
-	if landed[1].Entry.Title != "Spark fleet ssh audit" || landed[1].Session.Title != "Spark fleet" {
+	if landed[1].Entry.Title != "tower fleet ssh audit" || landed[1].Session.Title != "tower fleet" {
 		t.Fatalf("the older landing reads %+v", landed[1])
 	}
 	if never := LandedSince(world, time.Time{}); never != nil {

@@ -737,7 +737,7 @@ func TestASinceYouLeftRowRestsOnTheOneFootAndOpensItsConversationsFolder(t *test
 	t.Cleanup(func() { processOpener = was })
 
 	l := newLiveLab(t)
-	l.task("-alpha", session.TaskIndexEntry{ID: "1", SessionID: "aaaa000000000002", Label: "spark fleet ssh audit", Title: "spark fleet ssh audit",
+	l.task("-alpha", session.TaskIndexEntry{ID: "1", SessionID: "aaaa000000000002", Label: "tower fleet ssh audit", Title: "tower fleet ssh audit",
 		Status: string(session.TaskDone), Outcome: "all up", EndedAt: l.now.Add(-time.Hour)})
 	a := l.open()
 	a.width, a.height = 180, 45

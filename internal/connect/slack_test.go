@@ -94,7 +94,7 @@ func TestSlackExchangeSendsAUserKeyAsBearer(t *testing.T) {
 		if got := r.Header.Get("Authorization"); got != "Bearer "+key {
 			t.Errorf("Authorization = %q, want the user key sent as Bearer", got)
 		}
-		writeJSON(t, w, map[string]any{"ok": true, "user": "abir", "team": "AgentField"})
+		writeJSON(t, w, map[string]any{"ok": true, "user": "dev", "team": "AgentField"})
 	})
 	server := fakeSlack(t, mux)
 
@@ -110,7 +110,7 @@ func TestSlackExchangeSendsAUserKeyAsBearer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Account: %v", err)
 	}
-	if account != "abir · AgentField" {
+	if account != "dev · AgentField" {
 		t.Errorf("Account = %q", account)
 	}
 	if keys.TokenType != "user" {
@@ -357,14 +357,14 @@ func TestSlackSendCarriesTheOptionalThread(t *testing.T) {
 func TestSlackAccountDropsNoIdentityPieces(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/auth.test", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(t, w, map[string]any{"ok": true, "user": "abir", "team": "AgentField"})
+		writeJSON(t, w, map[string]any{"ok": true, "user": "dev", "team": "AgentField"})
 	})
 	server := fakeSlack(t, mux)
 	got, err := (slack{}).Account(context.Background(), server.Client())
 	if err != nil {
 		t.Fatalf("Account: %v", err)
 	}
-	if got != "abir · AgentField" {
+	if got != "dev · AgentField" {
 		t.Errorf("Account = %q", got)
 	}
 }

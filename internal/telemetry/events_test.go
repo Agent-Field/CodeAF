@@ -21,11 +21,11 @@ var (
 // constructor is fed them wherever a value could possibly flow, and the
 // privacy law below holds that not one of them reaches marshalled bytes.
 var sentinels = []string{
-	"/Users/santosh/secret-project/leaky.go", // a path
-	"person@example.com",                     // an email
-	"hades.corp.internal",                    // a hostname
-	"santosh",                                // a username
-	"secret-project",                         // a repo name
+	"/Users/dev/secret-project/leaky.go", // a path
+	"person@example.com",                 // an email
+	"hades.corp.internal",                // a hostname
+	"dev",                                // a username
+	"secret-project",                     // a repo name
 	"why does my deploy keep failing after the auth change",      // a prompt
 	"Sure - here is the rewritten handler you asked for",         // a model reply
 	"func handler(w http.ResponseWriter) { w.WriteHeader(204) }", // code
@@ -34,7 +34,7 @@ var sentinels = []string{
 	"fatal: authentication failed for 'https://git.internal/x'",  // raw error text
 	"panic: the deploy froze mid-write",                          // a panic message
 	"192.168.13.45",                                              // an IP
-	"CODEAF_HOME=/Users/santosh/secret-project",                  // an env value
+	"CODEAF_HOME=/Users/dev/secret-project",                      // an env value
 }
 
 func TestBucketCountEdges(t *testing.T) {
