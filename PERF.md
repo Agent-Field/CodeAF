@@ -145,6 +145,15 @@ guard are unchanged, as are both exact fanout limits.
 
 ## The size ratchet
 
+The 2026-10-24 native relay cutover links the pinned modified Raft core, protobuf,
+the signed state machine and FULL SQLite actor/snapshot host into the product.
+On linux/amd64 the stripped binary grew from 75,268,361 to 77,787,401 bytes
+(+2,519,040). This is the cost of making the persistent relay actually use the
+three-voter path; no optional runtime branch hides that dependency. The budget
+moves from 75,811,848 to 78,330,888 bytes by the measured increase, preserving
+543,487 bytes of measured Linux headroom. Subsequent builds still gate the same
+checked-in cap; this measurement does not claim another platform's result.
+
 `SIZE-BUDGET` holds one number: the bytes the stripped binary may weigh. `make
 check` builds and weighs; over budget is a hard failure naming the size, the
 budget, and the overage. `make build` alone never gates, because a developer

@@ -325,3 +325,24 @@ Reassignment changes the run revision and requires a new conditional claim. The 
 ## Why can an older computer list chats but not continue a chat that is still running?
 
 Older builds can still list, save, publish and release chats through a compatible relay. A relay using quorum-backed coordination refuses an older request that tries to take a live chat without naming its observed holder and ownership number. It uses the existing refusal, `another device continued this chat first`; an old build does not necessarily show an extra update hint. Quit on the computer holding the chat before continuing it elsewhere, or update codeaf on the computer trying to continue. A released or expired chat can still be taken. A conditional choice never silently changes to a newer holder.
+
+
+## Running a relay on one persistent computer
+
+`codeaf relay --store <dir>` serves pairing, encrypted files and the chat directory
+with one command. Each identity uses three local persistent coordination copies,
+with separate databases under `<dir>/raft/`. Changes and authority reads require
+a fresh majority response. All three copies still depend on this computer and
+its disk; this setup does not survive losing the relay host. Without `--store`,
+the relay is only a transport and pairing mailbox.
+
+On first use, an existing directory is frozen, copied into the three stores and
+checked through a majority before requests resume. The original directory stays
+as a frozen backup under `<dir>/directory/`. An interrupted upgrade resumes with
+the same identity and stores; an incomplete or damaged import refuses requests
+instead of reopening the old writer. Keep the whole store directory when
+restarting or backing up the relay. Chat content stays encrypted in the existing
+blob store. No switch selects the former directory writer.
+
+Encoded directory commands currently have a 64 KiB limit; a larger older request
+can be refused before it changes ownership. Larger imported records stay retained.
