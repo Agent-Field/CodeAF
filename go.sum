@@ -16,6 +16,8 @@ github.com/amp-labs/amp-common v0.0.0-20260814191756-775714ec2997 h1:tSy0lHivSjB
 github.com/amp-labs/amp-common v0.0.0-20260814191756-775714ec2997/go.mod h1:jbTw6fXlE4qWGsAjxrwnRz8lA7UoX3JkLtXHd17hLSM=
 github.com/amp-labs/connectors v0.0.0-20260814231226-e12d95c297eb h1:Irpqzr0Mg+YPs+yLOFTTUef6walS1HbZqdNwTMC4rfU=
 github.com/amp-labs/connectors v0.0.0-20260814231226-e12d95c297eb/go.mod h1:4gpg6Xqe/zgmFGyZryhpUBN+9dxAq6CVZqckKY6RUxE=
+github.com/anishathalye/porcupine v1.1.0 h1:jkMLqDejaWqvhvjxYKyqwQO3d1Jw+/08wHiIw0O4wcU=
+github.com/anishathalye/porcupine v1.1.0/go.mod h1:WM0SsFjWNl2Y4BqHr/E/ll2yY1GY1jqn+W7Z/84Zoog=
 github.com/antchfx/xmlquery v1.5.1 h1:T9I4Ns1EXiWHy0IqKupGhnfTQtJwlGrpXtauYOoNv78=
 github.com/antchfx/xmlquery v1.5.1/go.mod h1:bVqnl7TaDXSReKINrhZz+2E/PbCu2tUahb+wZ7WZNT8=
 github.com/antchfx/xpath v1.3.6 h1:s0y+ElRRtTQdfHP609qFu0+c6bglDv20pqOViQjjdPI=

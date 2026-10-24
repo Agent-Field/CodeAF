@@ -1,15 +1,17 @@
 // Package model is the independent sequential ownership/vault oracle for the
 // fault simulator. It deliberately imports no production state types or rules.
-// P06 supplies history checking, unknown timeout outcomes and assignment cases.
+// Histories include timed-out requests as unknown outcomes; assignments extend
+// this domain when their production adapter lands.
 package model
 
 // State describes observable coordination, independent of Raft internals.
 // Calls advance committed time explicitly; the model never reads a host clock.
 type State struct {
-	Now     int64
-	Vault   string
-	Cells   map[string]Cell
-	Revoked map[string]bool
+	Now      int64
+	Vault    string
+	Cells    map[string]Cell
+	Revoked  map[string]bool
+	Sessions map[string]Session
 }
 
 type Cell struct {
@@ -24,6 +26,10 @@ type Cell struct {
 // Call contains only the small ownership/vault domain. Expected is an observed
 // holder/fence, not a fresh read substituted by the checker behind the caller.
 type Call struct {
+	Session  string
+	Sequence uint64
+	Digest   string
+	Ack      uint64
 	Kind     string
 	Actor    string
 	Cell     string
@@ -49,7 +55,7 @@ type Outcome struct {
 // Step returns a new state so alternative history orders cannot mutate one
 // another. The independent 90-second lease specification is intentional: using
 // the production constant or apply function would hide a shared defect.
-func Step(s State, op Call) (State, Outcome) {
+func domain(s State, op Call) (State, Outcome) {
 	next := State{Now: s.Now, Vault: s.Vault, Cells: map[string]Cell{}, Revoked: map[string]bool{}}
 	for k, v := range s.Cells {
 		next.Cells[k] = v
@@ -57,7 +63,8 @@ func Step(s State, op Call) (State, Outcome) {
 	for k, v := range s.Revoked {
 		next.Revoked[k] = v
 	}
-	if op.At > next.Now {
+	next.Sessions = s.Sessions
+	if op.Kind != "read" && op.Kind != "read_vault" && op.At > next.Now {
 		next.Now = op.At
 	}
 	if next.Revoked[op.Actor] {
@@ -130,5 +137,53 @@ func Step(s State, op Call) (State, Outcome) {
 	}
 	next.Cells[op.Cell] = c
 	out.Cell = c
+	return next, out
+}
+
+// Session retains one result until an acknowledged advance, and closed IDs stay
+// tombstoned. The oracle intentionally spells the contract limits independently.
+type Session struct {
+	Actor    string
+	Sequence uint64
+	Digest   string
+	Result   Outcome
+	Closed   bool
+}
+
+func Step(s State, op Call) (State, Outcome) {
+	if op.Session == "" || op.Kind == "read" || op.Kind == "read_vault" {
+		return domain(s, op)
+	}
+	key := op.Actor + "/" + op.Session
+	old, exists := s.Sessions[key]
+	if exists && (old.Closed || op.Sequence < old.Sequence || op.Sequence == old.Sequence && op.Digest != old.Digest) {
+		return s, Outcome{Code: "conflict"}
+	}
+	if exists && op.Sequence == old.Sequence {
+		return s, old.Result
+	}
+	if op.Sequence == 0 || !exists && op.Sequence != 1 || exists && (op.Sequence != old.Sequence+1 || op.Ack != old.Sequence) {
+		return s, Outcome{Code: "conflict"}
+	}
+	if !exists {
+		live := 0
+		for _, v := range s.Sessions {
+			if !v.Closed {
+				live++
+			}
+		}
+		if live >= 128 {
+			return s, Outcome{Code: "capacity"}
+		}
+	}
+	next, out := s, Outcome{Code: "ok"}
+	if op.Kind != "session_close" {
+		next, out = domain(s, op)
+	}
+	next.Sessions = map[string]Session{}
+	for k, v := range s.Sessions {
+		next.Sessions[k] = v
+	}
+	next.Sessions[key] = Session{Actor: op.Actor, Sequence: op.Sequence, Digest: op.Digest, Result: out, Closed: op.Kind == "session_close"}
 	return next, out
 }
