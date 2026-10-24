@@ -31,11 +31,18 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cellindex"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/gitidentity"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/preflight"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
 // v3Dir is ~/.codeaf/v3: the directory this surface keeps its own files in —
@@ -256,6 +263,16 @@ func v3ResolveSession(explicit, workspace, launchDir string, owned bool) (v3Sess
 	spoken, empty := v3ScanBucket(bucket)
 
 	if folder, resumed, found := v3PickFolder(spoken, empty, true); found {
+		// C29.2: the first paint never waits for an older folder's capture.
+		// Home can open its independent copy asynchronously through v3Reopen;
+		// this launch holds a fresh shell while the background worker copies.
+		if resumed && cell.Available() && syncsetup.MayTalk(home.Dir()) {
+			if _, err := cell.OpenAt(folder.dir, filepath.Base(folder.dir)); err != nil {
+				place, err := v3MintSession(bucket, workspace, launchDir, owned)
+				return v3Session{Place: place, Transcript: place.Transcript(), Bucket: bucket}, err
+			}
+		}
+
 		// A folder somebody has spoken in carries its OWN posture — a
 		// conversation that owns its workspace goes on owning it whatever
 		// terminal reopens it — while an empty one has nothing to remember and
@@ -348,8 +365,8 @@ func v3NamedSession(explicit, workspace string, owned bool) (v3Session, error) {
 		return v3Session{}, fmt.Errorf("create session directory: %w", err)
 	}
 	_, statErr := os.Stat(path)
-	found := v3Session{Transcript: path, Resumed: statErr == nil, Bucket: filepath.Dir(filepath.Dir(path))}
-	if filepath.Base(path) != v3TranscriptName {
+	found := v3Session{Transcript: path, Resumed: statErr == nil, Bucket: session.BucketOf(path)}
+	if _, isFolder := session.FolderOf(path); !isFolder {
 		bucket, err := v3ProjectDir(workspace)
 		if err != nil {
 			return v3Session{}, err
@@ -362,8 +379,13 @@ func v3NamedSession(explicit, workspace string, owned bool) (v3Session, error) {
 	// owned, whatever the terminal it is being opened from looks like. A folder
 	// with no meta.json yet takes the launch's posture.
 	found.Place = v3PlaceOf(path, workspace)
-	if meta, _ := session.LoadMeta(filepath.Dir(path)); strings.TrimSpace(meta.ID) == "" && owned {
-		found.Place = v3PlaceFor(filepath.Dir(path), workspace, true)
+	if found.Place, err = movablePlace(context.Background(), found.Place); err != nil {
+		return v3Session{}, err
+	}
+	found.Transcript = found.Place.Transcript()
+	dir := found.Place.Dir
+	if meta, _ := session.LoadMeta(dir); strings.TrimSpace(meta.ID) == "" && owned {
+		found.Place = v3PlaceFor(dir, workspace, true)
 	}
 	return found, nil
 }
@@ -376,16 +398,12 @@ func v3NamedSession(explicit, workspace string, owned bool) (v3Session, error) {
 // that is a fact about the conversation and not about the window opening it.
 func v3PlaceOf(transcript, workspace string) session.Place {
 	transcript = strings.TrimSpace(transcript)
-	if transcript == "" || filepath.Base(transcript) != v3TranscriptName {
+	dir, ok := session.FolderOf(transcript)
+	if transcript == "" || !ok {
 		return session.Place{}
 	}
-	dir := filepath.Dir(transcript)
-	meta, _ := session.LoadMeta(dir)
-	root := strings.TrimSpace(meta.Workspace)
-	if root == "" {
-		root = workspace
-	}
-	return v3PlaceFor(dir, root, meta.Owned)
+	meta, _ := session.LoadMetaIn(dir, workspace)
+	return v3PlaceFor(dir, strings.TrimSpace(meta.Workspace), meta.Owned)
 }
 
 // v3PointAt aims one launch's config at a session folder: the journal inside
@@ -393,6 +411,10 @@ func v3PlaceOf(transcript, workspace string) session.Place {
 // with it. It is the ONE place a config changes conversations, so /new, a
 // contended resume and the picker cannot drift apart.
 func v3PointAt(cfg session.Config, place session.Place) (session.Config, error) {
+	var err error
+	if place, err = movablePlace(context.Background(), place); err != nil {
+		return cfg, err
+	}
 	cfg.Place = place
 	cfg.SessionFile = place.Transcript()
 	if !place.Owned {
@@ -436,12 +458,6 @@ func v3Reopen(cfg session.Config, transcript, workspace string) (session.Config,
 	return v3PointAt(cfg, place)
 }
 
-// v3TranscriptName is the journal's name inside a session folder. It is
-// [session.Place.Transcript]'s last element, repeated here because this side
-// has to RECOGNIZE one — a path a person typed — where the other side only ever
-// builds them.
-const v3TranscriptName = "transcript.jsonl"
-
 // v3PlaceFor builds the Place for one session folder. The workspace follows
 // from the posture and never from a caller's opinion: an owned session's tools
 // root is its own work/, and a borrowed one's is the project it borrowed.
@@ -460,10 +476,15 @@ func v3PlaceFor(dir, workspace string, owned bool) session.Place {
 // in another window sees the conversation from the moment it exists rather than
 // from the moment somebody speaks in it.
 func v3MintSession(bucket, workspace, launchDir string, owned bool) (session.Place, error) {
-	id := session.NewSessionID()
-	dir := filepath.Join(bucket, id)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return session.Place{}, fmt.Errorf("create session directory: %w", err)
+	return v3MintSessionAs(cell.HostBound, bucket, workspace, launchDir, owned)
+}
+
+// v3MintSessionAs is [v3MintSession] for a session whose cell declares class:
+// chats and runs keep the host access their commands have always had (C23).
+func v3MintSessionAs(class cell.Class, bucket, workspace, launchDir string, owned bool) (session.Place, error) {
+	id, dir, err := v3NewFolder(bucket, class)
+	if err != nil {
+		return session.Place{}, err
 	}
 	place := v3PlaceFor(dir, workspace, owned)
 	// The write is not checked for the reason place.go gives: meta.json is a
@@ -477,6 +498,25 @@ func v3MintSession(bucket, workspace, launchDir string, owned bool) (session.Pla
 		Created:   time.Now(),
 	})
 	return place, nil
+}
+
+// v3NewFolder makes the empty folder a new session lives in and answers its id
+// and path: a cell when a compatible engine is available and a capable platform and engine (the session package finds its
+// transcript in .cell/ by the folder's shape), a plain folder otherwise.
+func v3NewFolder(bucket string, class cell.Class) (id, dir string, err error) {
+	if cell.Available() {
+		c, err := cell.CreateIn(bucket, cell.Options{Class: class})
+		if err != nil {
+			return "", "", fmt.Errorf("create session directory: %w", err)
+		}
+		return c.ID, c.Root, nil
+	}
+	id = session.NewSessionID()
+	dir = filepath.Join(bucket, id)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", "", fmt.Errorf("create session directory: %w", err)
+	}
+	return id, dir, nil
 }
 
 // v3NextSession mints a sibling of the session a launch is already on: the same
@@ -616,7 +656,7 @@ func v3ScanBucket(bucket string) (spoken, empty []v3Folder) {
 		if !entry.IsDir() {
 			continue
 		}
-		dir := filepath.Join(bucket, entry.Name())
+		dir := cell.Copied(filepath.Join(bucket, entry.Name()))
 		place := session.Place{Dir: dir}
 		if _, err := os.Stat(place.Transcript()); err != nil {
 			continue
@@ -682,7 +722,9 @@ func v3EmptyUnassignedSession(dir string) bool {
 	if spoken || !sure || session.HasSavedTasks(dir) {
 		return false
 	}
-	for _, kept := range []string{place.Work(), place.Trees(), place.Artifacts()} {
+	// A sealed chain is something made in it: a run that worked in the cell said
+	// nothing, and its turns are the record of what it did.
+	for _, kept := range []string{place.Work(), place.Trees(), place.Artifacts(), filepath.Join(dir, cellstore.TurnsPath)} {
 		if _, err := os.Stat(kept); err == nil {
 			return false
 		}
@@ -712,4 +754,150 @@ func v3ReapEmpty(empty []v3Folder, keep string) {
 		}
 		return nil
 	})
+}
+
+// v3Migrated readies an existing cell without changing a legacy chat's layout.
+// C24 keeps older chats readable by every build that shares this home.
+func v3Migrated(cfg session.Config) session.Config {
+	if !cell.Available() || cfg.Place.Dir == "" {
+		return cfg
+	}
+	if _, err := cell.OpenAt(cfg.Place.Dir, filepath.Base(cfg.Place.Dir)); err != nil {
+		return cfg
+	}
+	session.AdoptArtifacts(cfg.Place, artifactsIndexPath())
+	budgetOnOpen(cfg.Place.Dir)
+	if cfg.Memory != nil {
+		_ = session.SealMemories(cfg.Place.Dir, cfg.Memory)
+	}
+	_, _ = cellindex.RebuildAt(cfg.Place.Dir, cfg.Place.Workspace)
+	cfg.SessionFile = cfg.Place.Transcript()
+	return cfg
+}
+
+// v3Seated gives the session the executor it owns, built once here from the
+// class the cell declared and the workspace its tools run in.
+//
+// A folder that is not a readable cell gets no seat and its calls run on the
+// host as they always did, and so does every folder without a compatible engine. The
+// seat is set on every call, so a config reused for the next conversation never
+// carries the last one's executor.
+func v3Seated(cfg session.Config) session.Config {
+	cfg.Seat, cfg.Machine, cfg.Seals, cfg.Interrupted = nil, nil, nil, nil
+	seat, machine, seals := v3SeatWith(cfg.Place, nil, syncDrives)
+	cfg.Seat, cfg.Interrupted = seat, executor.InterruptedOn(seat)
+	if machine != nil {
+		cfg.Machine = machine
+	}
+	if seals != nil {
+		cfg.Seals = seals
+	}
+	return cfg
+}
+
+// v3SeatOf is the seat of the cell a place names, the machine view it was
+// built with, and the watch of its seals — one per seat, so one per cell. A
+// nil say queues the watch's sentences for the surface showing the session;
+// a door with no surface passes where they go: the one construction every door that seals its calls goes
+// through. A place that is not a readable cell answers no seat.
+func v3SeatOf(place session.Place, say func(string)) (executor.Seat, *preflight.Machine, *cellstore.SealWatch) {
+	return v3SeatWith(place, say, nil)
+}
+
+// v3SeatWith is v3SeatOf for a door that syncs: with a drive side for the cell
+// every seal is also noted for the relay, and once another machine has taken
+// the chat its tool calls are refused. A nil book, or sync off, is the seat
+// exactly as it was.
+func v3SeatWith(place session.Place, say func(string), drives *driveBook) (executor.Seat, *preflight.Machine, *cellstore.SealWatch) {
+	if !cell.Available() || place.Dir == "" || place.Workspace == "" {
+		return nil, nil, nil
+	}
+	c, err := cell.OpenAt(place.Dir, filepath.Base(place.Dir))
+	if err != nil {
+		return nil, nil, nil
+	}
+	class, ok := executor.ParseClass(string(c.Meta().Class))
+	if !ok {
+		class = executor.HostBound
+	}
+	machine, err := preflight.OpenMachine(c.Root, place.Workspace)
+	watch := &cellstore.SealWatch{Say: say}
+	failed(watch, err)
+	drive := drives.driveOf(c, cellstore.EngineFor(place.Workspace), watch.Report)
+	if drive != nil {
+		watch.OnTurnEnd = drive.Idle // the agent waits for the person: upload what is sealed now
+	}
+	seat, err := cellstore.SeatOver(class, c, place.Workspace, observerOf(machine), watch.Report, driveStore(drive), cellstore.WithNotices(watch.Note), cellstore.WithPipeline(), cellstore.WithWarmCapture())
+	failed(watch, err)
+	watch.OnTail = func() { sealTail(seat, drive) }
+	return executor.Gated(seat, driveGate(drive)), machine, watch
+}
+
+// sealTail seals what the chat wrote after the turn-end seal (titles, summaries,
+// memories) and sends it. It is the turn's own ending again, so the record has
+// one way to become durable; the sync side's single flight folds it into the
+// upload already running. The watch calls it from its own timer, once.
+func sealTail(seat executor.Seat, drive *liveDrive) {
+	executor.Settle(context.Background(), seat)
+	if drive != nil {
+		drive.Idle()
+	}
+}
+
+// observerOf is the machine's observer, and no observer where the inventory
+// could not be opened: a call is never failed for want of a record.
+func observerOf(m *preflight.Machine) executor.Observer {
+	if m == nil {
+		return nil
+	}
+	return m.Observer()
+}
+
+// sealSeamOf is what a session's seals tell the chat surface: nothing for a
+// session with no seat of its own.
+//
+// WHETHER THE LAST SEAL FAILED IS ASKED OF THE AGENT, not of the watch: the
+// ordinary launch shows an agent running in a separate engine process, where
+// the watch is not in this one and the engine states the fact over the wire
+// ([session.Facts.Unsealed]). The agent's own predicate is the one source both
+// readings come from. The sentences are drained from the local watch only; an
+// engine tells its own on the turn's stream.
+func sealSeamOf(agent any, seals session.SealState) tui3.SealSeam {
+	var seam tui3.SealSeam
+	if seals != nil {
+		seam = tui3.SealSeam{Failing: seals.Failing, Notice: seals.Take}
+	}
+	if door, ok := agent.(interface{ SealFailing() bool }); ok {
+		seam.Failing = door.SealFailing
+	}
+	return seam
+}
+
+// stderrSay is where a run with no surface says its sentences.
+func stderrSay(sentence string) { fmt.Fprintln(os.Stderr, "codeaf: "+sentence) }
+
+// failed tells the watch about a seat that could not be built, and is silent
+// about one that could: a nil error there is no seal having held.
+func failed(watch *cellstore.SealWatch, err error) {
+	if err != nil {
+		watch.Report(err)
+	}
+}
+
+// hostSeated is the root of a command that runs work outside any conversation
+// (do, exec, run, a carried program): its tool calls run on the host seat, and
+// say so here once instead of at every site.
+func hostSeated(ctx context.Context) context.Context {
+	return executor.With(ctx, executor.Host)
+}
+
+// v3Interrupted is the entry notice with what a person reads about a last run
+// that was cut off mid-call added under it: one line for each call, and nothing
+// added when none was.
+func v3Interrupted(cfg session.Config, notice string) string {
+	if cfg.Interrupted == nil {
+		return notice
+	}
+	lines := append([]string{notice}, cfg.Interrupted.Lines()...)
+	return strings.TrimSpace(strings.Join(lines, "\n"))
 }

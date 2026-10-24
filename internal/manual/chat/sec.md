@@ -110,4 +110,4 @@ When the audit finds confirmed or likely problems, the chat offers to hand them 
 - **It runs nothing.** It does not start your app, send requests to it or run exploits; what it shows exploitable it shows from the code.
 - **It looks up nothing online.** Known vulnerabilities in your dependencies come from what its models know, not from a live advisory database, so a very recent advisory can be missed.
 - **It cannot be told anything while it runs.** It reads no messages; stop it and start it again with other words.
-- **It is absent on Windows**, as every program codeaf carries is there.
+- **It is absent on Windows**.

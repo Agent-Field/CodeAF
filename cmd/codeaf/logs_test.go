@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"io"
 	"os"
 	"path/filepath"
@@ -39,6 +41,10 @@ func TestMain(m *testing.M) {
 	if code, child := runAsCarriedChild(); child {
 		os.Exit(code)
 	}
+	// C27.7 keeps unrelated CLI fixtures on host execution. Cell wiring tests
+	// declare availability, and engine-backed tests require the real engine;
+	// the stamped binary smoke independently proves the production default.
+	restoreCells := cell.UseAvailabilityInTests(false)
 	if _, pinned := os.LookupEnv(calllog.EnvVar); !pinned {
 		os.Setenv(calllog.EnvVar, calllog.OffValue)
 	}
@@ -82,6 +88,8 @@ func TestMain(m *testing.M) {
 	// "bash" for itself and wins.
 	os.Setenv("CODEAF_TASK_BELT", "node")
 	code := m.Run()
+	cellstore.StopSpawned() // no engine daemon outlives the run
+	restoreCells()
 	restore()
 	os.Exit(code)
 }

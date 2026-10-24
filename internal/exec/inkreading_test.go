@@ -253,6 +253,7 @@ func TestAnAfterReadingWhoseSuiteDidNotCollectSaysSo(t *testing.T) {
 // whether it was read or reproduced.
 func countingSuite(t *testing.T) (*Workspace, string) {
 	t.Helper()
+	requireFixtureMake(t)
 	root, log := t.TempDir(), filepath.Join(t.TempDir(), "runs.log")
 	files := map[string]string{
 		"go.mod":   "module example.com/thing\n\ngo 1.22\n",

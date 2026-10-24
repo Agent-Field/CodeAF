@@ -1,6 +1,6 @@
 # Running on another machine
 
-## What --host is — running this on my dev box, over ssh
+## Can I run it on another computer — what --host is, running this on my dev box over ssh
 
 `--host` runs the chat surface on the machine you are sitting at, and runs the
 conversation on another machine, over ssh.
@@ -149,7 +149,7 @@ Either way the fix is one command: update codeaf on the machine that is behind. 
 negotiated down — two builds that might disagree about a frame must not find that out three
 turns into a conversation.
 
-## I updated codeaf on that machine and it still says the versions differ
+## I rebuilt codeaf on my dev box and --host still refuses — updated codeaf but the versions differ
 
 The next connection checks the running build as well as protocol compatibility. An idle old copy is replaced automatically; a busy one is left running and the connection explains how to retire it.
 
@@ -179,6 +179,8 @@ as another build. Four things can be true:
 - **It is a newer build.** Your window joins it. If its wire is one this binary cannot
   speak, the connection is refused, naming this binary as the older one and
   `codeaf engine --status` as the way to see which is newer.
+
+## The older engine refusal — stop it with the exact --workspace
 
 An older engine on another wire, or one too old to be asked at all, is refused, in these
 words:
@@ -317,6 +319,10 @@ A **reading** window — one opened only to watch a task's page — is refused t
 purpose, and says `this window is reading this conversation, not typing into it`.
 
 ## How do I work on the same conversation from two computers — another window, and another machine
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+
+Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
 These are two different things and they are easy to run together.
 

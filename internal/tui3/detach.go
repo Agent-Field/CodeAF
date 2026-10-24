@@ -481,6 +481,7 @@ func (a *app) closeForSwitch() {
 	a.pick.close()
 	a.mem.close()
 	a.permPanel.close()
+	a.pair.hide()
 	// AND /subharness, for the reason above and one of its own: a card is an
 	// answer half typed, and carrying one across a switch would leave a person
 	// about to start work in a conversation they are no longer in

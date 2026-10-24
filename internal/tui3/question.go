@@ -468,7 +468,21 @@ func (a *app) questionOpen() []questionShown {
 // confirmation is raised by a gesture and answered in the same breath, so
 // nothing can pile up in front.
 func questionRaisedHere(q session.Question) bool {
-	return q.Asker.Kind == session.AskerSurface && q.Ask == session.AskConfirmation
+	return q.Asker.Kind == session.AskerSurface && q.Ask == session.AskConfirmation && !questionArrivedUnasked(q)
+}
+
+// questionArrivedUnasked reports whether the surface raised this card on its
+// own account, because something arrived, rather than because a person pressed
+// a key to get it.
+//
+// IT IS THE LINE THAT KEEPS A CARD FROM TAKING THE KEYBOARD. Every guard that
+// [questionRaisedHere] lifts rests on the person's hand having just made the
+// gesture. A card that landed with a moved chat has no such gesture behind it,
+// so it keeps the settle guard and leaves the box alone: the first `enter` over
+// a typed sentence sends the sentence, as it does under any question the engine
+// asks, instead of answering the card and leaving the words standing.
+func questionArrivedUnasked(q session.Question) bool {
+	return q.Kind == resumeKind
 }
 
 // questionHead is the question the block is drawing, and whether there is one.
@@ -3113,6 +3127,14 @@ func (a *app) questionKeyTaken(head questionShown, msg tea.KeyPressMsg) (tea.Cmd
 	// before the question had been on screen long enough was aimed at whatever
 	// was there before it, and applying it late is applying it to the wrong
 	// question rather than to none.
+	// An arrival was not asked for. Printable text belongs to the composer
+	// even on the first frame, before the card's settle clock can take a key.
+	if questionArrivedUnasked(head.question) && msg.Text != "" {
+		return a.typeCharacter(msg.Text), true
+	}
+	if a.questionLeavesBox(head) {
+		return nil, false
+	}
 	if !a.questionSettled(head) {
 		// AND A DROP ON A CLOCK THAT ANSWERS IS NOT A SILENT ONE (#1547). The
 		// task proposal is the one question whose silence starts paid work, and
@@ -3195,6 +3217,13 @@ func (a *app) questionKeyTaken(head questionShown, msg tea.KeyPressMsg) (tea.Cmd
 		return nil, false
 	}
 	return a.questionVerbKey(head, key)
+}
+
+// questionLeavesBox leaves a typed sentence with the composer when a moved
+// chat's setup card arrived without a gesture. Ordinary questions keep their
+// existing settle and input rules.
+func (a *app) questionLeavesBox(head questionShown) bool {
+	return questionArrivedUnasked(head.question) && strings.TrimSpace(a.input.String()) != "" && !questionOwnsBox(head.question)
 }
 
 // questionEnter is `enter` under a question: send the words where there are

@@ -3,8 +3,10 @@ package verify
 import (
 	"context"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/shell"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -18,7 +20,7 @@ func writeScript(t *testing.T, name, body string) string {
 	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	return path
+	return fixtureShellPath(path)
 }
 
 // textualTreeShape is textual with enough of its own tests/ tree to be worth
@@ -922,4 +924,13 @@ func TestARequestThatNamesAPackageIsReadOverThatPackage(t *testing.T) {
 	if strings.Contains(first.Command, "./...") {
 		t.Errorf("the scoped reading still names the whole tree: %q", first.Command)
 	}
+}
+
+// I0/K3: scripts are shell input, so native drive paths must reach Git Bash in
+// its path grammar; Unix retains the original command bytes.
+func fixtureShellPath(path string) string {
+	if runtime.GOOS == "windows" {
+		return "'" + strings.ReplaceAll(shell.ListPath(path), "'", "'\"'\"'") + "'"
+	}
+	return path
 }

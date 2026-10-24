@@ -19,6 +19,7 @@
 package iconlaw
 
 import (
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -46,6 +47,7 @@ import (
 // nothing but this test stands between it and its own private spelling of the
 // flag.
 var surfaces = []string{
+	"../atlas",    // C16 holds the architecture map to the same vocabulary.
 	"../tui3",     // v3, the live chat
 	"../head",     // the resident's head
 	"../resident", // the resident itself
@@ -153,6 +155,13 @@ func TestNoSurfaceSpellsAnIconItself(t *testing.T) {
 						continue
 					}
 					slot, owned := ownedRunes[r]
+					if surface == "../atlas" {
+						for _, b := range tokens.Vocabulary() {
+							if !b.Geometry && b.Plain == string(r) && r > 127 {
+								slot, owned = "tokens.GlyphSet.Glyph("+b.Name+")", true
+							}
+						}
+					}
 					if !owned {
 						continue
 					}

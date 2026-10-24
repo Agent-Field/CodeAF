@@ -17,6 +17,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/connect"
@@ -25,6 +26,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/gitidentity"
 	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/handoff"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/leave"
 	"github.com/Agent-Field/codeaf/internal/openrouterauth"
@@ -171,7 +173,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// which they meant would open a conversation on a machine they did not
 	// name.
 	if strings.TrimSpace(*host) != "" && strings.TrimSpace(*at) != "" {
-		return fmt.Errorf("--host reaches a machine over ssh and --at reaches one through a relay: name one or the other, not both")
+		return fmt.Errorf("--host reaches a machine over ssh and --at reaches one through the sync service: name one or the other, not both")
 	}
 
 	// A BUDGET IS A SENTENCE ABOUT AN UNATTENDED SESSION, so it is refused
@@ -511,6 +513,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	err = runSurface(ctx, tui3.Options{
 		Agent:             agent,
 		Build:             buildinfo.String(),
+		Seal:              sealSeamOf(agent, cfg.Seals),
 		UnreadProfileKeys: append([]string(nil), proc.UnreadProfileKeys...),
 		// The memory place reads the conversation's store; a store that would not
 		// open supplies no seam.
@@ -671,7 +674,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// the top of the conversation — rather than growing surfaces of their
 		// own. An ordinary attended launch with the same file on disk is still
 		// shown nothing whatever.
-		Notice:        joinV3Notices(entryNotice, notice, session.UnattendedNotice(cfg), buildinfo.StaleNotice()),
+		Notice:        v3Interrupted(cfg, joinV3Notices(entryNotice, notice, session.UnattendedNotice(cfg), buildinfo.StaleNotice())),
 		ContextWindow: cfg.ContextWindow,
 		History:       recall,
 		DraftFile:     draft,
@@ -1442,6 +1445,12 @@ func v3Connections(manager *connect.Manager) tui3.Connections {
 // cannot be shown a fuel gate (engine.go) — and a door deciding that for itself
 // would be this file guessing who is watching.
 func openV3Agent(cfg session.Config, workspace string, open func(session.Config) (*session.Agent, error)) (*session.Agent, session.Config, string, error) {
+	// A chat in the middle of being taken over here is not opened: a session booted
+	// now would read the journal from before the swap (see [handoff.Arrive]).
+	if handoff.Arriving(cfg.Place.Dir) {
+		return nil, cfg, "", errors.New(chatArrivingSentence)
+	}
+	cfg = v3Seated(v3Migrated(cfg))
 	// Restore the gate before construction, so restored work cannot start behind
 	// the profile default. Return the launch config unchanged: a subsequent new
 	// conversation must not inherit this one's saved override.
@@ -1475,7 +1484,7 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 	if err == nil {
 		if restoredPosture != "" {
 			if err := agent.SetApprovalPosture(restoredPosture); err != nil {
-				_ = agent.Close()
+				closeV3Agent(agent)
 				return nil, cfg, "", fmt.Errorf("restore conversation approvals: %w", err)
 			}
 		}
@@ -1492,6 +1501,10 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 		reason:     sessionHeldElsewhereSentence(workspace),
 	}
 }
+
+// chatArrivingSentence is what a door says about a chat that is being moved onto
+// this computer right now: it opens by itself when the move ends.
+const chatArrivingSentence = "this chat is arriving on this computer; it opens by itself in a moment"
 
 // sessionHeldElsewhere is a conversation another window is writing, named so a
 // door with a SCREEN can do something better than print the sentence.
@@ -2186,6 +2199,9 @@ func v3Memory(profileDir string) *store.Store {
 		fmt.Fprintln(os.Stderr, "memory is unavailable in this session: "+err.Error())
 		return nil
 	}
+	if cell.Available() {
+		brain.SetMemoryLedger(session.CellMemories)
+	}
 	return brain
 }
 
@@ -2780,7 +2796,7 @@ func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, lev
 	if notice != "" {
 		fmt.Fprintln(os.Stderr, notice+": "+cfg.SessionFile)
 	}
-	defer func() { _ = agent.Close() }()
+	defer func() { closeV3Agent(agent) }()
 	var wakes <-chan (<-chan session.Event)
 	if cfg.Unattended && cfg.Budget.Set() {
 		var stopWakes func()

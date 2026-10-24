@@ -2,6 +2,8 @@
 
 This file covers every third-party Go module compiled into the codeaf binary, plus the two copied components carried in this repository's own tree. It ships beside the binaries in every release. Regenerate it with `go run ./cmd/codeaf-notices generate`.
 
+The embedded furrow engine is a separate Apache-2.0 project from [Agent-Field/furrow](https://github.com/Agent-Field/furrow), copyright 2026 furrow contributors. Its source is maintained upstream; codeaf records its release and artifact hashes in `internal/furrowbin/pin.json`. See [furrow's licence](https://github.com/Agent-Field/furrow/blob/main/LICENSE). Explicit developer artifacts and `FURROW_SOURCE` checkouts replace that pinned engine. Native Windows builds omit it.
+
 ## charm.land/bubbletea/v2
 
 - Version: v2.0.8
@@ -875,6 +877,29 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+```
+
+## github.com/coder/websocket
+
+- Version: v1.8.15
+- Licence: not determined
+
+### LICENSE.txt
+
+```text
+Copyright (c) 2025 Coder
+
+Permission to use, copy, modify, and distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
 ## github.com/dlclark/regexp2/v2

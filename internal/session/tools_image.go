@@ -18,7 +18,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
@@ -165,13 +164,7 @@ func (a *Agent) accountImageRung(model string, usage *ai.Usage) {
 // happens after the bytes are safely down, and a failure to write the lookup
 // file is not news the model can act on.
 func (a *Agent) recordImageArtifact(path, prompt string) {
-	RecordArtifact(a.config.ArtifactsIndex, Artifact{
-		Path:    path,
-		Session: a.journalID(),
-		Title:   mediaTitle(prompt, path),
-		Kind:    "image",
-		Created: time.Now(),
-	})
+	a.recordArtifact(path, mediaTitle(prompt, path), "image")
 }
 
 // GenerateImage is the whole road behind generate_image, as a plain function

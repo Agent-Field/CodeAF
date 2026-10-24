@@ -2,6 +2,8 @@ package tui3
 
 import (
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/cell"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -380,6 +382,8 @@ var commands = []command{
 	// /clean already means "start another conversation" there, and a word that
 	// sometimes cleared the screen and sometimes deleted half a gigabyte would
 	// be the most expensive pun on the surface.
+	{name: "setup", desc: "prepare this machine · what it lacks for this conversation"},
+	{name: "setup", args: "now", desc: "…have the agent install what it can · asks first"},
 	{name: "cache", desc: "the shared build cache — how big, and where"},
 	{name: "cache", args: "clean", desc: "…delete it to free disk · asks before anything is removed"},
 	{name: "cache", args: "clean now", desc: "…delete the cache now"},
@@ -478,6 +482,27 @@ var commands = []command{
 	// and position here is a claim about frequency — nobody turns the record on
 	// twice in a day, and a row inserted higher would push a daily command
 	// behind a scroll.
+	// SHARING YOUR CHATS WITH ANOTHER COMPUTER (pair.go). It is an errand nobody
+	// does twice in a day, so it stands below the daily eight with /update and
+	// /debug, where position in this table is the honest claim about frequency.
+	//
+	// TWO ROWS FOR ONE COMMAND, /export's reason exactly: the bare form is the one
+	// that can be run from the list, and the one that takes a code rides under it
+	// wearing the "…" of the other computer. The other words are what people say
+	// they want: "use this on my laptop", "sync my chats", "connect another
+	// computer".
+	{name: "pair", desc: "show a code that shares your chats with another computer",
+		alias: []string{"sync", "link", "laptop"}},
+	{name: "pair", args: "<code>", desc: "…join the chats of the computer that shows that code"},
+	{name: "pair", args: "<link>", desc: "…approve a new computer from the link it shows"},
+	{name: "pair", args: "<code> --replace", desc: "…join, replacing this computer's own chats with its chats"},
+	{name: "devices", desc: "list your devices · n renames this one, r removes one"},
+	// THE ARCHITECTURE MAP, INSIDE THE CONVERSATION (atlascmd.go). It rides
+	// beside the pair rows because it is a picture OF that work, and it is
+	// read-only and spends nothing — the same map `codeaf atlas` draws on its
+	// own terminal, opened here so a person mid-chat does not leave the window.
+	// esc or q hands the conversation back.
+	{name: "atlas", args: "<map>", desc: "the architecture map · bare /atlas picks one"},
 	{name: "debug", desc: "keep the full record of this conversation · says where it goes"},
 	{name: "update", desc: "install the newest codeaf for the next launch", alias: []string{"upgrade"}},
 	{name: "update", args: "<channel or tag>", desc: "…that channel or exact tag; skip or never answer an open offer"},
@@ -552,6 +577,11 @@ func (c command) aliasNote() string {
 // [menu.rows] draws it: measuring one spelling and drawing the other is a list
 // that pushes the status line off the frame.
 func (c command) note(chords chordSpelling) string {
+	if c.name == "pair" && c.args == "" {
+		if reason := cell.DisabledReason(); reason != "" {
+			c.desc += " · " + reason
+		}
+	}
 	if tail := c.aliasNote(); tail != "" {
 		return chords.say(c.desc + " · " + tail)
 	}
@@ -750,6 +780,9 @@ func (m *menu) rank(needle string) {
 	}
 	m.hits = m.hits[:0]
 	for i, c := range commands {
+		if !commandOnPlatform(c) {
+			continue
+		}
 		at, ok := c.matchAt(needle)
 		if !ok {
 			continue
@@ -994,6 +1027,9 @@ const helpKeyColumn = 15
 func helpText(file string, chords chordSpelling) string {
 	width := 0
 	for _, c := range commands {
+		if !commandOnPlatform(c) {
+			continue
+		}
 		if n := len(c.typed()); n > width {
 			width = n
 		}
@@ -1004,6 +1040,9 @@ func helpText(file string, chords chordSpelling) string {
 	// already in (styles.go's [product]).
 	lines = append(lines, product, "")
 	for _, c := range commands {
+		if !commandOnPlatform(c) {
+			continue
+		}
 		// The aliases are printed here as they are on the row, and nothing is cut:
 		// /help is prose in the transcript, which wraps, rather than a list drawn
 		// into a fixed block (see [command.menuNote]).
@@ -1352,3 +1391,9 @@ const unknownCommandLead = "there is no command called"
 // refusal for a DROPPED path is written from the same two halves (dropkeys.go)
 // and a door spelled twice is a door that gets moved once.
 const unknownCommandDoorWord = "/ lists them"
+
+// commandOnPlatform keeps unsupported move-only rows out of help and completion.
+// A fully typed command still reaches its one-sentence refusal.
+func commandOnPlatform(c command) bool {
+	return runtime.GOOS != "windows" || (c.name != "pair" && c.name != "devices" && c.name != "atlas")
+}

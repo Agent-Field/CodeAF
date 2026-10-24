@@ -1,3 +1,5 @@
+//go:build !windows
+
 package exec
 
 import (
@@ -18,7 +20,7 @@ func TestStopServiceProcessEscalatesFromTermToKill(t *testing.T) {
 	if err != nil {
 		t.Fatalf("start detached service: %v", err)
 	}
-	defer syscall.Kill(-pid, syscall.SIGKILL)
+	defer testProcessSignal(-pid, syscall.SIGKILL)
 	if startedAt.IsZero() {
 		t.Fatal("detached service recorded no start time")
 	}
@@ -63,7 +65,7 @@ func TestProcessIdentityRefusesPIDReuse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("start detached service: %v", err)
 	}
-	defer syscall.Kill(-pid, syscall.SIGKILL)
+	defer testProcessSignal(-pid, syscall.SIGKILL)
 
 	matched, err := ProcessIdentityMatches(pid, startedAt)
 	if err != nil || !matched {

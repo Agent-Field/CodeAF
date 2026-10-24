@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/shell"
 )
 
 // ── THE PAGE A MODEL WITH NO TOOLS READS ────────────────────────────────────
@@ -43,6 +45,7 @@ func chatPage(config Config, now time.Time) string {
 	out.WriteString("\n\n# Project\n")
 	fmt.Fprintf(&out, "- Workstation: %s/%s\n", runtime.GOOS, runtime.GOARCH)
 	fmt.Fprintf(&out, "- Working directory: %s\n", config.Workspace)
+	out.WriteString(shell.PromptFact())
 	out.WriteString(nowLine(now))
 	return out.String()
 }

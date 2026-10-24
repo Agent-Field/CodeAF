@@ -19,6 +19,11 @@ package tokens
 // x/ansi and go-runewidth — it fails the very law the section states. Boost is
 // an escalation, so it ships as ⇡ (U+21E1, one cell everywhere).
 const (
+	// Map arrowheads show the direction a connection travels through a diagram.
+	GlyphMapLeft = "◀"
+	GlyphMapUp   = "▲"
+	GlyphMapDown = "▼"
+
 	// State vocabulary. Shape encodes state CATEGORY and may change at a true
 	// state transition; shape never animates on a long-lived row (8.1.6).
 	GlyphQueued  = "○"
@@ -456,6 +461,9 @@ type GlyphInfo struct {
 // Tests, the `?` help surface, and a glyph-preview screen all walk it.
 func Glyphs() []GlyphInfo {
 	return []GlyphInfo{
+		{"MapLeft", GlyphMapLeft, '◀', true},
+		{"MapUp", GlyphMapUp, '▲', true},
+		{"MapDown", GlyphMapDown, '▼', true},
 		{"Queued", GlyphQueued, '○', true},
 		{"Working", GlyphWorking, '◐', true},
 		{"Settled", GlyphSettled, '✓', false},

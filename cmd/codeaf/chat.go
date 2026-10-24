@@ -2123,8 +2123,10 @@ func (b *chatBrain) closeAll() {
 // construction never leaves a goroutine behind for a caller that decides not to
 // run what it built.
 func (b *chatBrain) start() {
-	ctx, cancel := context.WithCancel(context.Background())
-	runCtx, runCancel := context.WithCancel(context.Background())
+	// Resident work belongs to the host, including the housekeeping that can
+	// call tools. Each lifetime keeps that seat when cancellation diverges.
+	ctx, cancel := context.WithCancel(hostSeated(context.Background()))
+	runCtx, runCancel := context.WithCancel(hostSeated(context.Background()))
 	if b.wall > 0 {
 		// The deadline rides the RUN context — the loops that claim, execute
 		// and grow — and not the background one, which owns the housekeeping a

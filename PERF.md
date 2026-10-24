@@ -318,6 +318,35 @@ and its schema readers the ones sec brought — so the cost is pr-af's own code
 and prompts and the tables that code carries. The budget rises by exactly that
 cost, to 72,395,784.
 
+It was reset a ninth time on 2026-10-21 for paired computers (Wormhole),
+with the owner's approval to pay exactly the measured feature cost and keep
+the existing byte headroom. Measured on linux/amd64 with Go 1.26.5, the packed
+manuals and the stripped, trimmed flags of `make build`:
+
+| source and embedded engine | bytes |
+| --- | --- |
+| `origin/dev` at `428baa65f`, its own pinned furrow v0.1.0 | 70,959,369 |
+| Wormhole with that same v0.1.0 artifact | 74,219,785 |
+| Wormhole with the furrow v0.2.0 candidate | 74,375,433 |
+| Go code, corpora and Go metadata growth | 3,260,416 |
+| embedded engine growth, including alignment | 155,648 |
+| total feature cost | 3,416,064 |
+
+The dev baseline was exported with `git archive origin/dev` and built with its
+normal `make build`, which fetched its own pinned v0.1.0 artifact. The candidate
+uses the supplied prebuilt v0.2.0 artifact through `FURROW_ARTIFACT`; no engine
+was rebuilt. The gzipped engine grows from 3,613,636 to
+3,767,522 bytes. Most of this bill is the Go integration:
+cells and their executor, encrypted transfer and indexing, device pairing,
+engine compatibility and the surface/manual doors. The engine keeps its fast
+profile.
+
+The budget rises from 72,395,784 by exactly 3,416,064, to
+75,811,848. The linux/amd64 headroom remains
+1,436,415 bytes, exactly what the dev baseline had.
+These measurements account for this platform's cost; release measurements on
+other platforms remain part of their own build checks.
+
 ## Adaptive run shutdown grace
 
 `Agent.Close` cancels adaptive runs and their name calls, then gives all accepted
@@ -2964,6 +2993,41 @@ ordering guarantee, not a merge of caches written by separate processes.
 
 Restart fixtures drain their owned scheduled writes before discarding process
 memory. No timeout, response limit or request/retry budget changes.
+
+## Local Worker conformance bounds
+
+The local Worker proof runs tracks and suites sequentially and defaults to two
+Go test cases at a time; watch cases run alone so the thousand-socket case has
+the proxy to itself. Its test-only HTTP transport admits two requests at once,
+releasing the request slot when an upgraded watch's headers arrive. The canonical
+WebSocket dialler and the signed HTTP client share this same bound. The shared
+policy is `relay/hosted/test/proxy-env.sh`; the canonical assertions and their
+internal concurrency stay unchanged. Authorization cases keep the normal
+mailbox lifetime. A separate four-second mailbox service runs the canonical
+expiry case, and a third service remains capped at two mailboxes for RelayFull.
+The runner refuses a skipped expiry case, so these fixtures preserve all the
+original assertions under local proxy load.
+
+The thousand-socket watch case uses an isolated local runtime with the same
+limits. Its original cap, refusal and freed-place assertions all run. Stopping
+that fixture after the watch suite prevents its bulk socket teardown from
+stalling another identity's five-second dial on the shared development proxy.
+
+Each local Wrangler gets a private package copy under the run's temporary state.
+Only that copy's development proxy retries the exact transport exception
+`Network connection lost.`, at most twice. It clones the request so each attempt
+keeps the same body and signed headers. An application response, including a 500
+with those words in its body, is never retried; EOF and other exceptions retain
+their failures. Preparation refuses an unknown proxy structure. The production
+Worker, installed dependencies and production clients are unchanged.
+
+Each retry is reported at the proxy itself, before HTTP can turn the lost
+connection into an indistinguishable 500. The proof table counts retries per
+suite and prints the total including startup; the operator smoke checks print
+their own counts. Tests exercise the actual pinned proxy with scripted fetches
+and an immediate timer, covering request bytes, unchanged application responses,
+exact retry exhaustion and refusal of an unknown runtime. The Go request-bound
+fixture uses held channels and cancellation rather than sleeps.
 
 ## Navigation and first-message response
 

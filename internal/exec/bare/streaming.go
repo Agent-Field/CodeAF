@@ -55,6 +55,7 @@ package bare
 import (
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -92,13 +93,16 @@ func TailForResultAt(text string, caps Caps) string { return truncateTail(text, 
 // reads while it runs — the foreground bash tool here, and the background job
 // registry in internal/session, which used to keep a hand-copied three-line
 // version of the choice and now asks this instead.
-func StreamingShell(command string) (string, []string) {
-	shell, shellArgs := getShellConfig()
+func StreamingShell(command string) (string, []string, error) {
+	shell, shellArgs, err := getShellConfig()
+	if err != nil {
+		return "", nil, err
+	}
 	full := append(append([]string{}, shellArgs...), command)
 	if prefix := stdbufPrefix(); len(prefix) > 0 {
-		return prefix[0], append(append(append([]string{}, prefix[1:]...), shell), full...)
+		return prefix[0], append(append(append([]string{}, prefix[1:]...), shell), full...), nil
 	}
-	return shell, full
+	return shell, full, nil
 }
 
 // StreamingEnv is the environment such a command runs in: the person's own,
@@ -139,10 +143,15 @@ func StreamingEnv() []string {
 // run once against `true`, and it is taken only if it exits clean and says
 // nothing at all.
 var stdbufPrefix = sync.OnceValue(func() []string {
+	// A native Windows child must be launched directly, without an MSYS wrapper.
+	if runtime.GOOS == "windows" {
+		return nil
+	}
 	path, err := exec.LookPath("stdbuf")
 	if err != nil {
 		return nil
 	}
+	//codeaf:plumbing capability probe of a helper binary
 	probe := exec.Command(path, "-oL", "-eL", "true")
 	probe.Env = os.Environ()
 	output, err := probe.CombinedOutput()

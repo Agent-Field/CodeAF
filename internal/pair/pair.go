@@ -63,14 +63,22 @@ const protocol = "aforge-pair/1" // legacy-name
 // It is quoted in the person-facing line, and there is exactly one of it.
 const CodeValidFor = 10 * time.Minute
 
-// CodeAttempts is how many wrong codes a single code will absorb before it is
-// thrown away.
+// CodeAttempts is how many exchanges a single code will absorb before it is
+// thrown away: one, for a machine and for a person's chats alike.
 //
 // IT IS THE OTHER HALF OF WHAT MAKES SIX DIGITS ENOUGH. A PAKE gives an
-// attacker one guess per exchange and no way to test a guess offline; a small
-// cap on exchanges is what turns "one guess at a time" into "five guesses,
-// ever". A million codes and five guesses is the whole of the arithmetic.
-const CodeAttempts = 5
+// attacker one guess per exchange and no way to test a guess offline; a cap of
+// one exchange is what turns "one guess at a time" into "one guess, ever, and
+// the person sees it burn". A code that grants a shell has to be at least as
+// strict as one that grants chats, so there is one number. A wrong or garbled
+// attempt costs the person nothing but a new code, which the screen shows at
+// once.
+const CodeAttempts = 1
+
+// ConfirmWithin is how long the device that showed the code waits for a person
+// to say yes or no to the join words, and how long the joining device waits for
+// that answer. Silence is a no.
+const ConfirmWithin = 2 * time.Minute
 
 // HandshakeWithin bounds every exchange in this package. A connection that has
 // arrived but not finished proving who it is holds a slot, and a slot held for

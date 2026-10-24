@@ -53,11 +53,14 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
+	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
 
 // A session agent is what the wire serves, and this is where the two are held
@@ -247,6 +250,9 @@ type engineBuild struct {
 	// Binary is the file this process runs from, "" when the platform will
 	// not say.
 	Binary string
+	// Cells is the cells mode this process runs in. A host answers with its
+	// own, and the door settles the two ([settleCellsMode]).
+	Cells bool
 }
 
 // thisEngineBuild is the build that is running, measured the way a host
@@ -256,6 +262,7 @@ func thisEngineBuild() engineBuild {
 		Build:   buildinfo.Identity(),
 		BuiltAt: enginehost.BuildMoment(),
 		Binary:  enginehost.ThisBinary(),
+		Cells:   cell.Available(),
 	}
 }
 
@@ -302,9 +309,20 @@ func clearStaleEngineHostAs(workspace string, me engineBuild) (string, error) {
 		return "", nil
 	}
 	host := held.Self
+	// A relay choice governs every session the host serves. Joining busy work
+	// with the old choice would ignore this terminal's off switch or address.
+	if held.Answered && host.Version == remote.Version && enginehost.SyncDiffers(workspace) {
+		if err := enginehost.Retire(workspace, false); err != nil {
+			if errors.Is(err, enginehost.ErrHostBusy) {
+				return "", &staleHost{reason: differentEngineEnvironmentSentence(hostWorkspace(host, workspace))}
+			}
+			return "", err
+		}
+		return "the engine restarted to pick up this terminal's sync setting", nil
+	}
 	if held.Answered && sameEngineBuild(host, me) {
 		if !enginehost.EnvironmentDiffers(workspace) {
-			return "", nil
+			return settleCellsMode(workspace, host, me)
 		}
 		// THE HOST DECIDES WHETHER IT CAN GO. Never send Anyway for an
 		// environment change: a window, turn, question or background work must
@@ -317,7 +335,7 @@ func clearStaleEngineHostAs(workspace string, me engineBuild) (string, error) {
 	if held.Answered && !host.BuiltAt.Before(me.BuiltAt) {
 		// A NEWER BUILD (or a tie) IS NOT REPLACED FROM HERE. Same wire: join it.
 		if host.Version == remote.Version {
-			return "", nil
+			return settleCellsMode(workspace, host, me)
 		}
 		return "", &staleHost{reason: newerEngineHostSentence(hostWorkspace(host, workspace))}
 	}
@@ -398,6 +416,72 @@ func nothingHolds(workspace string) bool {
 func differentEngineEnvironmentSentence(workspace string) string {
 	stop := engineStopWords(workspace)
 	return "the background engine for this folder started with a different environment than this terminal and is still in use — after work finishes, close every window for this workspace and reopen. To stop now (interrupts active turns and tasks), run " + stop
+}
+
+// settleCellsMode checks the capability of an already-running host before
+// a new window relies on it. An idle older host can retire; a busy host keeps
+// its work until the person finishes it or explicitly stops that workspace.
+func settleCellsMode(workspace string, host remote.HostSelf, me engineBuild) (string, error) {
+	if host.Cells == me.Cells {
+		return "", nil
+	}
+	err := enginehost.Retire(workspace, false)
+	if errors.Is(err, enginehost.ErrHostBusy) {
+		return "", &staleHost{reason: cellsHostBusySentence(host.Cells, hostWorkspace(host, workspace))}
+	}
+	if err != nil {
+		return "", err
+	}
+	return cellsRestartedSentence(me.Cells), nil
+}
+
+// cellsMode describes the capability an older host reported.
+func cellsMode(on bool) string {
+	if on {
+		return "with moving chats"
+	}
+	return "without moving chats"
+}
+
+// cellsStatus describes actual support without suggesting a feature switch.
+func cellsStatus(available bool) string {
+	if available {
+		return "available"
+	}
+	return "unavailable"
+}
+
+// cellsRestartedSentence is the line owed for replacing an idle host.
+func cellsRestartedSentence(now bool) string {
+	return fmt.Sprintf("restarted the idle engine because it ran %s; %s available now", cellsMode(!now), cellsCapability(now))
+}
+
+// cellsCapability names the capability after an idle host has been replaced.
+func cellsCapability(available bool) string {
+	if available {
+		return "moving chats"
+	}
+	return "ordinary chats"
+}
+
+// cellsHostBusySentence is the refusal for a host in the other mode that is
+// still holding work. It names the workspace in the command, for the reason
+// [staleEngineHostSentence] gives.
+func cellsHostBusySentence(hostCells bool, workspace string) string {
+	stop := "codeaf engine --stop"
+	if workspace = strings.TrimSpace(workspace); workspace != "" {
+		stop += " --workspace " + workspace
+	}
+	return fmt.Sprintf("engine: the engine on %s runs %s and something is still going in it — let that finish, or run %s, then open again",
+		machineOrThis(), cellsMode(hostCells), stop)
+}
+
+// machineOrThis is this machine's name, or "this machine" when it has none.
+func machineOrThis() string {
+	if name := strings.TrimSpace(remote.MachineName()); name != "" {
+		return name
+	}
+	return "this machine"
 }
 
 // sameEngineBuild is the host being this build: the same wire, the same source,
@@ -687,9 +771,12 @@ func writeEngineStatus(out io.Writer, workspace string, held enginehost.Holder, 
 		fmt.Fprintf(out, "  started    %s (%s ago)\n", host.Started.Local().Format("2006-01-02 15:04"), roughAge(now.Sub(host.Started)))
 	}
 	if held.Answered {
+		fmt.Fprintf(out, "  chat moves %s\n", cellsStatus(host.Cells))
 		fmt.Fprintf(out, "  windows    %d attached · %s open\n", host.Surfaces, countWord(host.Conversations, "conversation", "conversations"))
 		if host.Busy {
 			fmt.Fprintln(out, "  in use     yes — an attached window, turn, task or question keeps it running")
+		} else if host.Conversations > 0 {
+			fmt.Fprintf(out, "  holding    idle chats keep their lock for %s after the last window closes, then the engine lets go\n", roughAge(enginehost.SessionIdleAfter()))
 		}
 	}
 	if enginehost.EnvironmentDiffers(workspace) {
@@ -850,6 +937,7 @@ func runEngineHost(workspaceFlag, sessionFlag string) error {
 		return fmt.Errorf("open %s: %w", workspace, err)
 	}
 	err = enginehost.Run(workspace, enginehost.Options{
+		Cells: cell.Available(),
 		Boot: func(hello remote.Hello) (*remote.Engine, error) {
 			return bootEngine(hello, workspace, sessionFlag)
 		}, // usage writer owner: see CloseUsage after the host returns
@@ -1072,6 +1160,15 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	proc.warmModels("engine/models", agent, launch.Model)
 
 	return &remote.Engine{
+		ReleaseOnLeave: func(current remote.WrappedAgent) bool {
+			built, ok := current.(*session.Agent)
+			if !ok {
+				return false
+			}
+			place := v3PlaceOf(built.SessionPath(), workspace)
+			_, err := cell.OpenAt(place.Dir, place.ID())
+			return err == nil && syncsetup.MayTalk(home.Dir())
+		},
 		Headless: hello.Headless,
 		Agent:    agent,
 		// A model picked through a linked-local surface arrives on the existing
@@ -1088,6 +1185,7 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		Closed: func(closed remote.WrappedAgent) {
 			if built, ok := closed.(*session.Agent); ok {
 				proc.forget(built)
+				syncDrives.closeCell(v3PlaceOf(built.SessionPath(), workspace).ID())
 			}
 		},
 		// A linked-local surface writes a banked approval into this profile and
@@ -1102,7 +1200,7 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		Workspace:         workspace,
 		SessionFile:       transcript,
 		Resumed:           resumed,
-		Note:              notice,
+		Note:              v3Interrupted(cfg, notice),
 		// The shape this conversation ended up with, for the surface to compare
 		// against what it asked for. It is the shape that was APPLIED, so a
 		// hello that joined a conversation somebody else opened reads the other

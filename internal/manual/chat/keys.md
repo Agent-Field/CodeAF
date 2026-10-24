@@ -1,5 +1,10 @@
 # Keys, typing, and the mouse — what all the keys do
 
+## How do I make this one chat think harder — can I click the thinking level — effort keys
+
+`alt+e` walks this conversation's thinking rung; `/effort` opens the ladder and
+`/effort <rung>` sets it. The models-and-cost page explains the rungs.
+
 ## Which key sends, and which key opens a new line
 
 `enter` sends the message you have typed.
@@ -627,6 +632,9 @@ If you came here looking for a different kind of key, it is somewhere else:
   *Reaching a machine with a pairing code*
 - an **ssh key** — that is your own ssh setup, and codeaf runs your `ssh` unchanged; see
   *Running on another machine*
+- the **architecture map** — `/atlas`, or `codeaf atlas` from the shell. It takes the
+  whole frame while it is up; `?` inside shows its keys, and `esc` or `q` closes the map
+  or its map picker and gives the frame back
 
 ## Keys in the message box: sending, stopping, and queueing
 
@@ -1234,7 +1242,7 @@ remembered as well.
 With history not wired up (`--no-history`), `up` takes nothing and keeps its other
 meanings.
 
-## The thinking chip above the message box — `alt+e`, `/effort`, and how to make this one chat think harder
+## What is the chip above the message box — the thinking chip, `alt+e`, `/effort`, and how to make this one chat think harder
 
 The line above the message box — the legend — names how hard the model will think about
 your next turn, immediately after the model that will be doing the thinking:
@@ -3707,7 +3715,7 @@ It lists the same open tabs as Home, in the tab strip's order. Select one and pr
 Enter. Closed conversations are behind the menu's fold; Home also keeps up to
 three recently closed conversations dimmed below the open list.
 
-## How do I make this one chat think harder
+## How do I make this one chat think harder — can I click the thinking level
 
 Press `alt+e` (`opt+e` on a Mac) or click the effort word beside the model above
 the message box. It cycles `auto`, `low`, `medium`, `high`, `xhigh`, `max`, then

@@ -1,0 +1,429 @@
+# Pairing your chats with a second computer
+
+## How do I use this on my laptop — pair a second computer with a code, connect another computer, and log in on a new machine
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+
+Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
+
+There is no account and no password to log in with. You pair: a code on one screen, typed on the other.
+
+You learn one thing here: **a code shown on a screen you own, typed on the other computer.**
+
+The computer that has your chats shows the code. The other computer types it. After that, both computers have the same chats.
+
+This page is the code way. A new computer can also ask to join and be approved from a link, with a four-digit check: the page *Adding a computer to your devices, approving it, and removing it* tells it.
+
+There are two doors. Pick one.
+
+1. On the computer that has your chats, type `/pair` in the chat. Or run `codeaf pair --code` in a terminal. It shows a code and how to use it:
+
+```
+  this shares your chats with the device you pair
+  on it run  codeaf pair 42-715-302   (valid 10 minutes)
+```
+
+2. On the other computer, use the code:
+   - in a terminal, run `codeaf pair 42-715-302`;
+   - or, in the chat, type `/pair 42-715-302`;
+   - or, on the first screen of a new codeaf, type the code in the field `have a code from another device?`.
+
+Dashes and spaces in the code do not matter. `42-715-302`, `42 715 302` and `42715302` are the same code.
+
+The code is good for 10 minutes. It works once.
+
+## Sync my chats — how to sync between paired computers
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine.
+Pair both computers first with `codeaf pair` or `/pair`, on Linux, macOS or native Windows. New chats save their turns locally and sync them to your paired
+computers through the saved or hosted relay. `CODEAF_SYNC_URL=off` stops relay traffic.
+Older chats become movable through independent copies after pairing; their original layout and files stay untouched for older builds. Recent chats are prepared in the background, and opening any other older chat prepares its copy. A never-paired home sends no relay requests.
+
+## What does /laptop do — /pair, /sync and /link
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+
+`/pair` also answers to `/sync`, `/link` and `/laptop`. Type `/pair` with nothing after it to show a code. Type `/pair <code>` to use one. `codeaf pair --code` shows a code in a terminal; `codeaf pair` with nothing after it asks to join by link instead. `codeaf pair <code>` uses one.
+
+## Terminal pairing usage — codeaf pair
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+
+```
+usage: codeaf pair [--name <name>] | codeaf pair approve <link-or-code> | codeaf pair <code> [--replace] [--name <name>] | codeaf pair --code
+```
+
+Press ctrl+c in the terminal to take a shown code back. In the chat, `c` copies the displayed code, a mouse drag selects and copies text, and Esc stops it. The hint is `c copy code · esc stop`.
+
+A computer that has no relay cannot pair. See "The relay" below. A chat that runs over `--host` or `--at` cannot pair: it says `pairing is not available here`. Pair from a chat that runs on the computer itself.
+
+## The three words — the check on the computer that has your chats
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+
+Both screens show the same three words. This is how you know the two computers are the ones you hold.
+
+The computer that uses the code shows the words first and waits:
+
+```
+waiting for approval on your other device; it should show: amber fox dune
+```
+
+The computer that has your chats asks you. It shows the name of the other computer and the same words. You answer `y` or `n`:
+
+```
+"laptop" wants your chats. Same three words on that screen: amber fox dune?  y / n
+```
+
+**There is no default.** Enter alone does nothing. Only `y` lets the other computer in. In the chat the hint under the box reads `y / n · esc is n`: Esc counts as `n`.
+
+Compare the words with your own eyes. Answer `y` only if both screens show the same three words. If the words are different, answer `n`. Somebody else may have used the code.
+
+If you answer `n`, or you do not answer for 2 minutes, the other computer says:
+
+```
+refused on the other device
+```
+
+Nothing is sent. The code is gone. If you were not at the screen, run `/pair` again.
+
+When you answer `y`, the computer that has your chats says:
+
+```
+paired: laptop
+```
+
+and the other computer says:
+
+```
+Paired. This device now has your chats.
+```
+
+The code is now dead. It cannot pair a third computer.
+
+## The code did not work — one attempt for each code
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+
+**Each code takes 1 attempt.** A wrong code does not get a second try. The computer that shows the code throws it away and shows a new one at once. You do not press a key. It says:
+
+```
+someone typed a wrong code. New code:
+```
+
+and the new code appears under it. Use the new code.
+
+This is why six digits are enough. An attacker gets one guess for each code. Each wrong guess shows on your screen. You then compare three words with your eyes.
+
+The computer that typed the wrong code says:
+
+```
+that code did not work, or it timed out; ask for a new one
+```
+
+A code that ran out of time (10 minutes) says the same. Ask for a new code with `/pair` on the computer that has your chats.
+
+Other things you can meet, each in one sentence:
+
+A code with the wrong shape is refused before anything is sent:
+
+```
+a pairing code looks like 42-715-302: digits, with dashes or spaces if you like
+```
+
+The first number of the code is the place of the code on the relay. If nothing is there, you see this (the number is the one you typed):
+
+```
+no pairing is waiting under 42
+```
+
+This is also what you see when the code ran out. Ask for a new code.
+
+Somebody else typed the code first:
+
+```
+someone else used that code
+```
+
+The computer that has your chats stopped, or the relay lost the pairing, before it finished:
+
+```
+the other device stopped pairing; run /pair there again
+```
+
+The pairing ran out of time in the middle:
+
+```
+the pairing did not finish; nothing was changed
+```
+
+A code is already on the screen of that computer, and you asked for a second one:
+
+```
+a pairing code is already showing on this computer
+```
+
+What the other computer sent could not be read:
+
+```
+what the other device sent could not be read; nothing was changed
+```
+
+A network asked for too many codes in an hour. The number is how long to wait:
+
+```
+too many pairings from this network; wait 7 min
+```
+
+## What the pairing shares — the other computer holds everything this one holds
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+
+**Pairing gives the other computer your whole identity.** Your chats, your saved keys and your sync are all part of it. The other computer now holds everything that this computer holds.
+
+It is not a view of your chats. It is a copy of you. Pair only a computer you own and trust.
+
+Pairing shares your chats. It does not share remote access. A paired computer is not a key to the tools on this machine. That is a different code, from `codeaf serve`. Read *Reaching a machine with a pairing code* for that door. The two doors are compared in a table on that page.
+
+If the other computer already has chats of its own, it keeps them and nothing changes. It says:
+
+```
+this computer already has chats of its own, so they stay local and nothing was changed; to replace them with the other device's, run this again with --replace
+```
+
+Run `codeaf pair <code> --replace` if you want the chats of the other computer instead. In the chat, type `/pair <code> --replace`: it asks first, states that this machine's own chats will be permanently replaced and that chats sealed under the old identity can no longer be read afterwards, and replaces them only after an explicit yes. A no, or closing the panel with esc, leaves everything as it was.
+
+If the other computer already has the same chats, it says:
+
+```
+already paired; nothing changed
+```
+
+## I got a new laptop — move my chats to a new machine
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+
+1. On the old computer, type `/pair`.
+2. On the new computer, run `codeaf pair <code>`, or type `/pair <code>` in the chat, or type the code on the first screen.
+3. Compare the three words. Answer `y` on the old computer.
+
+The new computer now has your chats. If both computers are on the same relay, chats sync between them. Read *Sync your chats between machines* in the terminal page for the sync settings.
+
+There is no phone app for continuing chats. A phone browser can open the `/p/` pairing-link page, but that page only shows the approval command and a link for a computer with codeaf installed; it does not turn the browser into a paired device. Use a supported desktop or server build to pair and continue chats.
+
+## Devices and revoking — what you can stop, and what you cannot
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+
+When moving chats is available, `codeaf devices` lists every device linked to this computer, in up to two groups. A group with nothing in it does not show. With nothing of either kind it says:
+
+```
+nothing is paired yet — run `codeaf pair` to add another device, or `codeaf serve` to let a device use this machine.
+```
+
+When moving chats is unavailable, `codeaf devices` names this machine and its key location. With no remote-access devices, it says `no devices are paired with this machine.` and points to `codeaf serve` here and `codeaf chat --at <name>` on the other computer. It does not recommend unavailable chat pairing.
+
+The group of computers you paired with `/pair` has this heading:
+
+```
+your devices
+
+  laptop   this device
+  desktop
+
+remove one with `codeaf devices revoke <name>` — it stops syncing your chats, but keeps what it already holds.
+```
+
+The group of computers you let in with `codeaf serve` has this heading, and its own list under it:
+
+```
+devices that can use this machine
+```
+
+## Remove a paired computer — revoke and the chats it already downloaded
+
+To remove a computer, run `codeaf devices revoke <name>` with the name from the list. It works on both groups. When you remove a device that holds your chats, it says:
+
+```
+desktop was removed — it can no longer sync your chats.
+It cannot undo what that device already holds: your chats and keys. If it was lost or stolen, treat your chats as exposed and run `codeaf identity rotate` to lock it out for good.
+```
+
+You cannot remove the device you are typing on. It says `that is this device — remove it from another of your devices instead`. A device that is already removed says `desktop is already removed.` With only this device paired, the list is not shown and the sentence above is.
+
+**Revoking has a limit, and you must know it.** Revoking cuts a device off from the relay. The relay stops serving it. Revoking does not undo what the device already holds. That device has your whole identity. It keeps every secret it already has.
+
+So a computer that is lost or stolen must be treated as if your chats are exposed. Revoking it stops it from syncing. It does not make the chats on it unreadable to the person who has it.
+
+To make revoking take effect for real, give all your other computers a new identity: run `codeaf identity rotate` on a computer you keep. Read *Locking out a lost computer for good*.
+
+## Without a relay — identity export and import
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+
+You can move your identity by file. This needs no relay. It is the way to use when neither computer can reach a relay.
+
+- `codeaf identity export` on the first computer asks for a passphrase and writes your identity under it.
+- `codeaf identity import` on the other computer reads that file with the same passphrase.
+
+The `identity` verb follows the same availability rules as moving chats. It is not in the help text. Without a compatible engine it says `moving chats needs a newer furrow engine than this build carries`. The full description is under "Your identity" on the terminal page.
+
+Keep the file and the passphrase safe. Anybody who has both has your chats.
+
+## Is my code sent anywhere before I pair — quiet first launch
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+
+On a new home, no device record reaches the relay, and no relay request, connection or chat upload is sent, until this home completes a pairing or starts offering a pairing code. Showing a code needs the relay even if nobody joins. A new device's `codeaf pair` also contacts the relay to offer its link; its chats start syncing only after approval. Opening or closing `+ Add another device` with `alt+d`, reading its instructions, listing `/devices` or `codeaf devices`, and ordinary local chats leave a new home **quiet**.
+
+An identity made by an older build without the quiet marker keeps its earlier sync behavior. That local identity does not say whether it was paired, so codeaf preserves existing pairings rather than silently stopping them. Set `CODEAF_SYNC_URL=off` to stop relay requests on that home too.
+
+If something reaches for the relay while quiet, it gets the word `sync is waiting until another machine is added`. That is not a fault.
+
+The first-run line about the hosted relay is said once, when chats are first copied, after pairing or offering a code. `CODEAF_SYNC_URL=off` keeps even a paired machine from contacting a relay, including pairing with `--via`.
+
+## Where your chats are stored — the hosted relay, turning it off, your own relay, is my code private
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+
+Your chats live on your own computer first. They are also copied, sealed,
+to a relay, so your other computers can open them. Which relay is one setting,
+`CODEAF_SYNC_URL`, and there is no sign-in and no account:
+
+- **Unset** uses codeaf's hosted relay (`https://codeaf.agentfield.ai/fabric`) when this build has one, and says so once, in one
+  line, the first time your chats are copied: `Your chats sync end-to-end encrypted through
+  codeaf's hosted relay, which only ever sees ciphertext; turn that off with
+  CODEAF_SYNC_URL=off, or use your own relay with CODEAF_SYNC_URL=<url>.` A computer you
+  paired with another one uses the relay that pairing saved instead. A build with no
+  hosted relay has no default, and nothing is copied until you name a relay.
+- **`CODEAF_SYNC_URL=off`** turns the copying off. Nothing leaves the computer, and `codeaf pair`
+  says `sync is off (CODEAF_SYNC_URL=off); pairing needs a sync address`.
+- **`CODEAF_SYNC_URL=https://relay.example.com`** is your own relay. You run it with
+  `codeaf relay --listen :8787 --store <directory>` (see "Running the relay yourself" on the page
+  *Reaching a machine with a pairing code*). The hosted relay and your own speak the same way, so
+  nothing else changes.
+
+**Is my code private?** Everything a chat holds, its turns and the files it saved, is sealed
+on your computer with a key only your own computers have, before it is sent. The relay keeps
+ciphertext: it cannot read your messages, your code, or even the names of your chats. It can
+see that an identity's devices talk to it, when, and how many bytes. Turning it off
+stops new copies going, and a relay you run is yours to empty.
+
+## The relay — what it sees, your own relay, and turning pairing off
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+
+A relay is a small service that passes bytes between the two computers. Your chats sync end to end encrypted. The relay only carries ciphertext. It never sees the code, the three words or your chats.
+
+What the relay does see is short: the number at the start of the code, the time, how long each message is, and the network address of each computer. It never sees the six digits.
+
+Pairing goes through the relay this computer syncs through. The first that answers wins: the one `CODEAF_SYNC_URL` names, else the one an earlier pairing saved, else codeaf's hosted relay (`https://codeaf.agentfield.ai/fabric`) when this build has one. A build with no hosted relay has no default, so there you must name one: set `CODEAF_SYNC_URL` to the address of a relay, or pass it in the command. With no relay at all, `/pair` and `codeaf pair` say:
+
+```
+no sync address is set, so there is nowhere to pair through: set CODEAF_SYNC_URL to a sync address, or pass --via <address>
+```
+
+## Pair through your own relay, or stop relay traffic with CODEAF_SYNC_URL=off
+
+To use your own relay, name it on the computer that uses the code:
+
+```
+codeaf pair 42-715-302 --via https://relay.example.com
+```
+
+When the computer that has your chats uses a relay you named, the code it shows carries that relay. Then the other computer does not have to guess:
+
+```
+  this shares your chats with the device you pair
+  on it run  codeaf pair 42-715-302 --via https://relay.example.com   (valid 10 minutes)
+```
+
+After the pairing, the other computer saves that relay and syncs through it; when it is the hosted relay there is nothing to save, because every computer reaches it without being told. The way to run a relay yourself is on the page *Reaching a machine with a pairing code*, under "Running the relay yourself".
+
+`CODEAF_SYNC_URL=off` turns sync off. Then pairing is not available. Both commands say so before they send anything:
+
+```
+sync is off (CODEAF_SYNC_URL=off); pairing needs a sync address
+```
+
+## The pairing relay does not answer, is full or is too old
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+
+Other things the relay can say while you pair:
+
+The relay does not answer. The name is the host you used:
+
+```
+cannot reach relay.example.com — check your internet connection and try again
+```
+
+The relay is full. Try again in a few minutes:
+
+```
+sync is full right now; try again in a few minutes
+```
+
+The relay is an old one that does not know pairing:
+
+```
+that sync service is too old for pairing
+```
+
+## I lost my laptop — what to do
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+
+1. On a computer you still have, run `codeaf devices`.
+2. Run `codeaf devices revoke <name>` for the lost computer.
+3. Treat your chats as exposed: the lost computer holds your whole identity, and revoking takes nothing back. `codeaf identity rotate` shuts it for good.
+
+## Which door do I use — pairing, --at or --host
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+
+- **The same chats on both computers:** pair them with `/pair`. This page.
+- **Work on one machine from the other, with no ssh:** `codeaf serve` on the machine that has the work, and `codeaf chat --at <name>` on the other. Read *Reaching a machine with a pairing code*.
+- **Work on one machine from the other, with ssh:** `codeaf chat --host <machine>`. Read *Running on another machine*.
+- **A phone:** there is no phone client in this stage.
+
+
+## Moving chats on Windows — vault permissions, refused names, symlinks, hard links, WSL and every build
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+
+`CODEAF_SYNC_URL=off` stops relay traffic; local chats still keep their saved turns.
+Older chats move through independent copies after pairing. Their original files and layout remain untouched for older builds. Nothing is deleted automatically to save disk.
+
+Native Windows moves chats with the native engine, just like Linux and macOS.
+Install Git for Windows to run commands; codeaf uses Git Bash, never the WSL launcher.
+A build with no compatible engine keeps moving chats absent and says
+`moving chats needs a newer furrow engine than this build carries`.
+
+Names Windows refuses (such as `con`, `aux.c`, a colon, trailing dots or spaces,
+or names differing only by case) stay behind and appear in `not brought along:`
+with their reason. Other files arrive with identical bytes. Task working copies keep their LF, CRLF
+or mixed line endings even when the receiving Git uses another checkout setting. Creating symlinks needs Windows Developer Mode or permission to make
+links; links that cannot be created are reported on the same line. Hard-linked names
+currently arrive on Windows as separate files with identical bytes. The chat works
+in its folder on this computer, with old absolute workspace paths remapped there.
+
+The encrypted vault and withheld secrets live under your codeaf home in your user profile. Windows protects that profile with its account permissions; Unix file
+mode bits are recorded for later moves, but do not provide Windows access control.
+
+## Moving chats needs a newer furrow engine than this build carries
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+
+Chat movement needs the configured or embedded furrow's exchange verbs, daemon and
+changed-path sealing. codeaf checks these capabilities once at startup, without using a
+version string. If they are missing, it leaves movement and identity pairing absent and
+says `moving chats needs a newer furrow engine than this build carries`. Ordinary chat
+and existing remote access still work. Use a build carrying the newer engine, or point
+`CODEAF_FURROW` at one and restart.
+
+## Does a CA certificate bundle stay out as a private key — cacert.pem
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+
+A PEM certificate bundle containing only `BEGIN CERTIFICATE` blocks is kept in saved history and can move with the workspace. A `.pem` suffix alone does not make it a private key. Files containing PEM private-key headers (including encrypted keys and OpenSSH keys), PuTTY private keys, and PKCS#12 key containers are withheld; a PEM containing both certificates and a private key is withheld too. The same folder exclusions still apply: a certificate inside an install folder left behind for rebuilding is rebuilt with that folder.

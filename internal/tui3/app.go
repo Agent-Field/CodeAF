@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/dirwatch"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +17,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/codeaf/internal/atlas"
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/connect"
@@ -1139,6 +1142,10 @@ type app struct {
 	// must not leave the transcript lighting rows nobody swept.
 	boxSel    boxDrag
 	dragInBox bool
+	// pairSel is the same gesture over the pairing panel's rows (pairdrag.go):
+	// the panel takes every press and answers none, but a press on it may arm a
+	// sweep whose release copies the code or the lines around it.
+	pairSel pairDrag
 	// clickAt, clickX, clickY and clicks are the multi-click count: a press
 	// soon and near the last is the same gesture's second or third click
 	// (dragselect.go's [app.countClick]).
@@ -1456,9 +1463,22 @@ type app struct {
 	behind map[string]*kept
 	// wall is the grid of every open conversation and the teams (wallcontract.go).
 	wall wallState
+	// atlas is the architecture map over the conversation, up while /atlas
+	// has it open (atlascmd.go). The model is kept between opens, so a box a
+	// person dragged stays where they put it.
+	atlas atlasState
 	// traffic is the Traffic log's cache, its clock and its rail
 	// (teamtraffic.go).
 	traffic trafficState
+	// homeTakenSaid is the takeover's own closing work — the sentence about
+	// what came over and the setup card — waiting to be said INSIDE the
+	// conversation the person is arriving in (homepanel_continue.go). The
+	// ordinary open from home goes off the loop and lands later
+	// (conversation_open.go's [app.homeOpenLater]), so a note written where the
+	// takeover is confirmed would be said into the conversation the person is
+	// LEAVING. The open's landing spends it; a shared window opens in place
+	// and spends it at once.
+	homeTakenSaid func() tea.Cmd
 	// teamsDisk is where the teams are kept and the edits not yet written
 	// there (teamseam.go).
 	teamsDisk teamsDisk
@@ -1522,8 +1542,14 @@ type app struct {
 	// provider listing that a launch warm or a ctrl+r walk stocked behind the
 	// frame (servicelands.go). Made with the surface for the same reason news
 	// is — the fan-out may ring before Init — and read only on the loop.
-	landedBell   *doorbell
-	serviceLands *serviceLands
+	landedBell *doorbell
+	// outsideDesk is the desk sentences from outside the loop are put on, and
+	// noticeBell the door that brings the loop to read it (notices.go).
+	outsideDesk *Notices
+	// homeAccountNotice keeps lasting account news across the startup landing.
+	homeAccountNotice string
+	noticeBell        *doorbell
+	serviceLands      *serviceLands
 	// frontGen counts the conversations this window has taken up, and it is
 	// WHICH ONE IS IN FRONT rather than how many there have been: a door asked
 	// of one conversation and answered after the person switched to another
@@ -2090,6 +2116,9 @@ type app struct {
 	// is every local session — no segment, no notice, no waiting room — which is
 	// the same absence the seam above draws when automations are off.
 	link LinkSeam
+	// seal is what the door can tell this surface about the sealing of the
+	// conversation's calls (sealseam.go). Its zero value draws nothing.
+	seal SealSeam
 	// newsSilenceSaid is whether this window has already said that its engine
 	// sends no status-line news (hostlink.go's [app.sayNewsSilence]). It is said
 	// once per window, because it is a fact about a machine and not about a turn.
@@ -2272,6 +2301,28 @@ type app struct {
 	// down twenty rows of one project forks one command and not twenty
 	// (homeband_repo.go's [app.refreshRepoOf]).
 	repoAsking map[string]bool
+	// machines is where chats on other machines are listed from, machineRead the
+	// last listing it gave, and machinesAsking that an ask is in flight
+	// (homepanel_machines.go).
+	machines       chatlist.Source
+	taker          Taker
+	branches       BranchActions
+	machineRead    machineReading
+	machinesAsking bool
+	machinePoll    machinePoll
+	// fleet counts this person's devices and addMachine is the home card that
+	// uses the count (homeband_addmachine.go).
+	fleet      Fleet
+	addMachine addMachine
+	// resume is the one-time "continue where you left off" offer (homeband_resume.go).
+	leftOff resumeOffer
+	// roster is the devices row's devices (homeband_devices.go).
+	devRow deviceRoster
+	// dirFeed is this window's hold on the directory's change feed while home is
+	// being looked at, and readOwed that a frame arrived while a read was in
+	// flight (machinewatch.go).
+	dirFeed  dirwatch.Follower
+	readOwed bool
 	// leftOffAsking is the same idea for the reading a card takes of its own
 	// row (homecardread.go).
 	leftOffAsking map[string]bool
@@ -2448,8 +2499,10 @@ type app struct {
 	// invited home onto the first frame ([app.landHome]) and whether it asked
 	// for the resume picker there instead. Both are properties of ONE launch,
 	// which is why they are read off the options and never off the profile.
-	landing     bool
-	pickSession bool
+	landing            bool
+	autoContinue       bool
+	continueGeneration uint64
+	pickSession        bool
 	// takeOverAt is a conversation this launch met a lock on
 	// ([Options.TakeOver]). It is a transcript path, and the launch lands on
 	// home with that row armed instead of quietly starting a second
@@ -2645,6 +2698,18 @@ type app struct {
 	// anything; closed, it costs the frame nothing.
 	permPanel permPanel
 
+	// pairing is the door onto pairing this computer with another, and pair the
+	// panel /pair opens over it (pair.go). Nil pairing is a connection that
+	// cannot; closed, the panel costs the frame nothing.
+	cellsUnavailable string
+	pairing          Pairing
+	pair             pairPanel
+
+	// approvals answers a new device's request and revokes devices, and
+	// approve remembers what its screens have said (approve.go).
+	approvals Approvals
+	approve   approveState
+
 	// draftPage is the list /drafts opens over the ring of cleared-but-kept
 	// drafts (draftring.go): closed, it costs the frame nothing.
 	draftPage draftPanel
@@ -2765,6 +2830,8 @@ type app struct {
 	// than a project somebody opened codeaf inside of (Options.Owned). It is
 	// read by [app.placeWord] and [app.contextStart].
 	owned bool
+	// movedName names a chat moved here whose project is not on this machine.
+	movedName string
 	// handedApproval is the tool-approval posture this launch knows the
 	// surface's own profile cannot answer, carried in Options.ApprovalMode. Over
 	// --host it is the engine's row; locally it is --yolo's forced allow. Empty
@@ -2944,6 +3011,7 @@ func (a *app) noteKilled() {
 const landingKeysWord = "esc interrupts · ctrl+c quits · ? for help"
 
 func newApp(ctx context.Context, opts Options) *app {
+	prepareCells(&opts)
 	// THE ENVIRONMENT IS READ THROUGH THE SEAM AND NOWHERE ELSE, so the four
 	// facts below that come from the shell all come from the same table when a
 	// test hands one in ([Options.Env] says why a test must).
@@ -2963,11 +3031,24 @@ func newApp(ctx context.Context, opts Options) *app {
 			place = cwd
 		}
 	}
-	shown := placeShown(place, opts.Owned, host)
+	owned := opts.Owned || session.OwnsFolder(place)
+	movedName := movedWord(place, opts.Owned)
+	shown := placeShown(place, owned, host)
+	if movedName != "" {
+		shown = movedName
+	}
 	a := &app{
+		machines:            opts.Machines,
+		taker:               opts.Takeover,
+		pairing:             opts.Pairing,
+		cellsUnavailable:    opts.CellsUnavailable,
+		approvals:           opts.Approvals,
+		fleet:               opts.Fleet,
+		branches:            opts.Branches,
 		ctx:                 ctx,
 		doorLine:            newDoorLine(),
 		news:                newDoorbell(newsMsg{}),
+		noticeBell:          newDoorbell(noticesMsg{}),
 		leaving:             newDoorbell(sigQuitMsg{}),
 		agent:               opts.Agent,
 		fresh:               opts.Fresh,
@@ -2984,8 +3065,10 @@ func newApp(ctx context.Context, opts Options) *app {
 		engineRoad:          opts.EngineRoad,
 		handedApproval:      strings.TrimSpace(opts.ApprovalMode),
 		bashBackgroundAfter: opts.BashBackgroundAfterSeconds,
-		owned:               opts.Owned,
+		owned:               owned,
+		movedName:           movedName,
 		landing:             opts.Landing,
+		autoContinue:        opts.Landing && !opts.PickSession && opts.Host == "",
 		takeOverAt:          opts.TakeOver,
 		pickSession:         opts.PickSession,
 		workspace:           place,
@@ -3038,6 +3121,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		notifyFirst:         new(atomic.Bool),
 		teamsDisk:           teamsDisk{door: opts.Teams},
 		link:                opts.Link,
+		seal:                opts.Seal,
 		conns:               opts.Connections,
 		harn:                opts.Harnesses,
 		memory:              opts.Memory,
@@ -3249,7 +3333,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		}
 	}
 	if notice := strings.TrimSpace(opts.Notice); notice != "" {
-		a.note(notice)
+		eachLine(notice, a.note)
 	}
 	if from := strings.TrimSpace(opts.UpdatedFrom); from != "" {
 		a.note(updatedFromNote(from, a.updateRunning))
@@ -3321,6 +3405,8 @@ func newApp(ctx context.Context, opts Options) *app {
 	// and from then on [app.retitle] sends it again only when it moves.
 	a.titleSent = terminalTitle(a)
 	a.refreshCreditWarnings()
+	// AND THE NOTICE DESK, once the surface can say a note (notices.go).
+	a.useNotices(opts.Notices)
 	return a
 }
 
@@ -3489,7 +3575,7 @@ func (a *app) Init() tea.Cmd {
 		a.setupDemoCmd(), a.setupTurnCmd(), a.checkForUpdate(), a.launchCredits(), a.creditWake.waitRing(), titleSend(a.titleSent),
 		// AND THE TWO DOORS INTO THE LOOP FROM ELSEWHERE, each with its one
 		// command parked on it (doorbell.go).
-		a.news.waitRing(), a.leaving.waitRing(), a.landedBell.waitRing(),
+		a.news.waitRing(), a.leaving.waitRing(), a.landedBell.waitRing(), a.noticeBell.waitRing(),
 		// AND THE TEAMS' FIRST READ, when the seam held nothing to load above
 		// (teamseam.go); nil on every local launch.
 		a.teamsWrite()}
@@ -3521,6 +3607,10 @@ func (a *app) Init() tea.Cmd {
 		if a.homeAnimating() {
 			standing = append(standing, a.wake())
 		}
+	} else if a.watchesConversation() {
+		// Ownership can move while a conversation is on screen. Join the same
+		// directory feed and clock home uses, off the first-paint path.
+		standing = append(standing, homeTick(a.homeGen), a.hurryMachines())
 	}
 	// THE PROGRAM ROWS ARE ASKED FOR AT THE LAUNCH, off the loop, so the picker
 	// and /help list them from the first answer rather than the first keystroke
@@ -3672,10 +3762,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// not survive has news, and a person who presses a key gets it rather than
 	// waiting for whatever repaints next.
 	a.takeLinkNotice()
+	a.takeSealNotice()
 	// An explicit gesture after View replaces its pending navigation intent.
 	switch msg.(type) {
 	case tea.KeyPressMsg, tea.PasteMsg, tea.MouseClickMsg, tea.MouseWheelMsg:
 		a.pendingCompletionReveal = nil
+		a.autoContinue = false
+		a.continueGeneration++
 	}
 	// THE TEAMS PAGE TAKES WHAT IS ITS OWN AND HANDS THE REST TO THE MANAGER'S
 	// CONVERSATION it hosts (teamspagehost.go). One comparison on every other
@@ -3694,9 +3787,22 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// window being born. Keeping the last known size draws something;
 		// taking the zero draws nothing.
 		if msg.Width > 0 && msg.Height > 0 {
+			// THE MAP IS TOLD THE TERMINAL'S SIZE TOO, so its boxes land in
+			// the cells it is really drawn in (atlascmd.go).
+			if a.atlas.on {
+				a.atlas.model.Update(msg)
+			}
 			return a, a.resized(msg.Width, msg.Height)
 		}
 		return a, nil
+
+	case atlas.Beat:
+		// ONE BEAT OF A PLAYING FLOW (atlascmd.go). The sheet owns the clock
+		// while it is up; a beat that outlived the sheet changes nothing.
+		if !a.atlas.on {
+			return a, nil
+		}
+		return a, a.atlasBeat()
 
 	case tea.BackgroundColorMsg:
 		// THE TERMINAL ANSWERED [app.Init]'s one unanswerable question. Everything
@@ -3723,6 +3829,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// this loop, which is the whole of that file's law; what comes back
 		// here is the piece of work that was waiting on the answer.
 		return a, a.doorSaid(msg)
+
+	case noticesMsg:
+		// A SENTENCE FROM OUTSIDE THE LOOP IS ON THE DESK (notices.go). It is
+		// said as a note now, and the door is parked again in the same breath.
+		a.saidNotices()
+		return a, a.noticeBell.waitRing()
 
 	case newsMsg:
 		// THE LANE LAYER OR THE PHASE CLOCK SAID SOMETHING (tui3.go's
@@ -3898,7 +4010,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// frame there has been anybody to read it (question.go's
 		// [app.tickQuestion]).
 		a.refocusQuestions()
-		return a, nil
+		// AND HOME IS READ AT ONCE, because a list left to age a minute while
+		// nobody looked must not be what the person sees on arrival.
+		a.probeWatch()
+		return a, a.hurryMachines()
 
 	case tea.BlurMsg:
 		a.focused, a.seenFocus = false, true
@@ -4452,6 +4567,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return a, nil
 			}
 		}
+		// THE MAP OWNS THE PRESS WHILE IT IS UP, before anything else reads
+		// one: a press that fell through to a page underneath would act on a
+		// surface nobody can see (atlascmd.go).
+		if a.atlas.on {
+			a.atlasPress(msg)
+			return a, nil
+		}
 		a.ptr.still = false
 		a.clearPlaceRowHover()
 		a.sawAPerson()
@@ -4658,6 +4780,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// anywhere else closes the list.
 			if a.permPanel.open {
 				return a, a.permPanelPress(msg.Mouse().Y)
+			}
+			// AND THE PAIRING PANEL TAKES EVERY PRESS AND ACTS ON NONE: a press must
+			// never answer the question of whether a device may have your chats.
+			if a.pair.open {
+				// It may still ARM a sweep: a drag over the panel copies the code it
+				// shows, the way a drag over any text here copies it (pairdrag.go).
+				return a, a.pairPressed(msg.Mouse().X, msg.Mouse().Y)
 			}
 			// THE STANDING PAGE USED TO BE READ HERE, under the two registry
 			// panels, until it became a PLACE read with the others above — one
@@ -4900,6 +5029,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, cmd
 		}
 		a.ptr.still = false
+		// A RELEASE ON THE MAP ENDS ITS DRAG, before anything else reads one —
+		// a release without a move is the click that opens a box's detail
+		// (atlascmd.go).
+		if a.atlas.on {
+			a.atlasReleased(msg)
+			return a, nil
+		}
 		// A RELEASE UNDER THE CHOOSER ENDS NOTHING, because nothing under it was
 		// started: the press it would close was taken by the sheet, and letting
 		// this one through would end a sweep of a transcript nobody swept
@@ -4951,6 +5087,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, cmd
 		}
 		a.sawAPerson()
+		// THE MAP OWNS MOTION WHILE IT IS UP: a drag has to keep moving its box
+		// for as long as the button is down, wherever the pointer goes
+		// (atlascmd.go).
+		if a.atlas.on {
+			a.atlasMoved(msg)
+			return a, nil
+		}
 		if a.jobPage == processListPage && !a.asking() {
 			width, height := a.size()
 			_, hits, _, _ := a.processListFrame(width, height)
@@ -5021,6 +5164,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// the box took never parked a body drag and the two can therefore never
 		// both be live: this is the same gesture answered where the transcript's
 		// own machinery cannot see it (boxselect.go).
+		if msg.Mouse().Button == tea.MouseLeft && a.pairMotion(msg.Mouse().X, msg.Mouse().Y) {
+			return a, nil
+		}
 		if msg.Mouse().Button == tea.MouseLeft && a.boxMotion(msg.Mouse().X, msg.Mouse().Y) {
 			return a, nil
 		}
@@ -5269,6 +5415,31 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case homeLeftOffMsg:
 		a.tookHomeLeftOff(msg)
 		return a, nil
+
+	case homeTakenMsg:
+		return a, a.tookTakeover(msg)
+
+	case homeBranchMsg:
+		return a, a.tookBranch(msg)
+
+	case fleetMsg:
+		return a, a.tookFleet(msg)
+
+	case rosterMsg:
+		return a, a.tookRoster(msg)
+
+	case continuationChecked:
+		return a, a.continuationReady(msg)
+	case homeMachinesMsg:
+		// THE OTHER MACHINES' CHATS, COMING BACK, off the update loop for the
+		// reason the repository's reading is (homepanel_machines.go).
+		return a, a.tookMachines(msg)
+	case ownershipReadMsg:
+		return a, a.afterOwnershipRead(msg)
+
+	case dirWatchMsg:
+		// THE DIRECTORY'S CHANGE SOCKET HAS SOMETHING TO SAY (machinewatch.go).
+		return a, a.tookWatch(msg)
 
 	case homeRepoMsg:
 		// A REPOSITORY'S READING, COMING BACK. It was asked for on the keystroke
@@ -5650,6 +5821,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// through the door its live twin comes through, and a kind this build
 		// does not know is left waiting (hostlink.go).
 		return a, a.replayHeld(msg)
+
+	case pairMsg:
+		return a, a.tookPair(msg)
+
+	case cardMsg:
+		return a, msg.land(a)
 
 	case linkPingTickMsg:
 		// The next timer is armed immediately when this one finds a reconnect in
@@ -7832,6 +8009,12 @@ func (a *app) slash(line string) tea.Cmd {
 	case "update":
 		return a.runUpdateCommand(rest)
 
+	case "pair":
+		return a.runPair(rest)
+
+	case "devices":
+		return a.openDevices()
+
 	case "autonomy":
 		a.noticeEvent(eventAutonomyAsked)
 		if rest != "" {
@@ -8237,6 +8420,11 @@ func (a *app) slash(line string) tea.Cmd {
 		a.noticeEvent(eventCostShown)
 		return nil
 
+	case "setup":
+		// "Prepare this machine": what this device lacks for the conversation,
+		// and the guarded road to the agent installing it (setupcmd.go).
+		return a.runSetupCommand(rest)
+
 	case "cache":
 		// The shared build cache — reading it, and the guarded road to deleting
 		// it. Every branch runs off the loop and answers as a note; the guard
@@ -8294,6 +8482,14 @@ func (a *app) slash(line string) tea.Cmd {
 
 	case "delete":
 		return a.conversationDeleteOpen(a.file, a.sessionName())
+	case "atlas":
+		// THE ARCHITECTURE MAP, INSIDE THIS CONVERSATION (atlascmd.go): the
+		// same model `codeaf atlas` draws on its own terminal, opened here as
+		// a fullscreen sheet. It reads nothing and spends nothing, and esc or
+		// q gives the conversation back whole. The words after the name pick
+		// the map, and bare /atlas raises the picker over the registry.
+		return a.runAtlas(rest)
+
 	case "new":
 		// The command that replaces the agent is the one command here that
 		// returns work: the standing task lane belongs to the agent that handed
@@ -8418,7 +8614,8 @@ func (a *app) takeUp(conv Conversation, whole bool) {
 	if workspace := strings.TrimSpace(conv.Workspace); workspace != "" {
 		a.workspace = workspace
 	}
-	a.owned = conv.Owned
+	a.owned = conv.Owned || session.OwnsFolder(a.workspace)
+	a.movedName = movedWord(a.workspace, conv.Owned)
 	a.anchorWorkspace = conv.AnchorWorkspace
 	if shown := strings.TrimSpace(conv.Place); shown != "" {
 		a.place = shown
@@ -8427,6 +8624,9 @@ func (a *app) takeUp(conv Conversation, whole bool) {
 		// CALLED is a rendering question and this is the package that answers it
 		// (host.go's [placeShown]).
 		a.place = placeShown(a.workspace, a.owned, a.host)
+		if a.movedName != "" {
+			a.place = a.movedName
+		}
 	}
 	if conv.ContextWindow > 0 {
 		// Zero is nobody knowing, and a meter drawn against an unknown window
@@ -8440,6 +8640,9 @@ func (a *app) takeUp(conv Conversation, whole bool) {
 	// the door's per-workspace read of the same two rows).
 	a.draftFile = conv.DraftFile
 	a.history = conv.History
+	// AND THE SEALS ARE THIS CONVERSATION'S OWN, cleared by a zero for the same
+	// reason: one chat's failed seal is not another's (sealseam.go).
+	a.seal = conv.Seal
 	a.saveApproval = conv.SaveApproval
 	a.saveBashApproval = conv.SaveBashApproval
 	a.applyApprovals = conv.ApplyApprovals
@@ -8639,7 +8842,7 @@ func (a *app) finishRenew(conv Conversation, whole, replacing bool) tea.Cmd {
 		// open — "session open elsewhere — started a new one" is the sentence
 		// that exists — and the entry line is where the first conversation's own
 		// notice lands too ([Options.Notice]).
-		a.toldNote(conv.Notice)
+		eachLine(conv.Notice, func(line string) { a.toldNote(line) })
 	}
 	if key := a.convKey(a.file); key != "" {
 		a.rememberOpen(key)
@@ -9230,6 +9433,10 @@ func (a *app) paste(text string) tea.Cmd {
 	// declining a paste and losing one.
 	if a.copy.on {
 		return nil
+	}
+	// A LINK PASTED ON THE OPEN ADD-MACHINE CARD is the card's, not the draft's.
+	if cmd, took := a.pasteLink(text); took {
+		return cmd
 	}
 	// A PASTE IS SOMEBODY STARTING WORK, so it dismisses the welcome box on the
 	// same terms every other input does (welcome.go): everything puts the box
