@@ -66,3 +66,23 @@ process death, full joint configuration restart and co-resident identities.
 Unit tests cover durability waits, queue bounds, all snapshot namespaces,
 partial/corrupt generations, revocation during an await and native wire bytes.
 This is internal host proof, not the final client journeys or a deployment.
+
+P11 adds `LegacyAdmission` around full legacy IdentityDO requests, so freeze
+waits for admitted pairing/blob awaits. `Tenant.migration` supplies a
+`LegacySource`: freeze once, inventory original SQL rows through Go ABI op 12,
+then stream one converted row at a time. Sampled watch renewals are stored apart
+from original JSON; old watchers close and reread. A durable source gate blocks
+old methods even through previously constructed Directory objects. An erased
+source is refused, never enrolled as a fresh group.
+
+`RaftMemberDO.legacyImport(config, manifest, row, finish)` stages bounded rows
+and records `legacy-pending` before provisioning. Pending imports cannot
+initialize/load a core after eviction. Exact retries survive interruption;
+finish checks the complete digest, installs a three-voter genesis and portable
+checkpoint, then removes only redundant staging rows and clears the pending
+marker durably. The stored ceiling includes all grandfathered rows. One import
+request per member can run at once, preventing page buffers stacking in memory.
+After fresh quorum readback, `LegacySource.own` publishes `raft-owned`; `route`
+then resolves only that UUID. There is no rollback to a legacy writer. P17
+assembles the complete facade, receipt ingress and existing-client doors; P14
+owns continuing watch renewal/scheduling. Source backup cleanup is explicit.

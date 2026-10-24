@@ -2,7 +2,9 @@ import { DurableObject } from 'cloudflare:workers';
 import { MemberActor, sharedRuntime } from './actor.js';
 import { MemberInbox } from './inbox.js';
 import { directoryEvaluator } from './directory.js';
-import { DEFAULT_ROWS_BYTES } from './storage.js';
+import { DEFAULT_ROWS_BYTES, MemberStorage } from './storage.js';
+import { HostCodec } from './abi.js';
+import { stageLegacyImport, finishLegacyImport } from './legacy.js';
 export { installRaftModule, runtimeMetrics } from './actor.js';
 
 // Only internal namespace calls can initialize a provisioned member. The
@@ -11,7 +13,30 @@ export { installRaftModule, runtimeMetrics } from './actor.js';
 export class RaftMemberDO extends DurableObject {
   constructor(ctx, env) { super(ctx, env); this.actor = null; this.loading = null; this.ctx = ctx; this.env = env; }
   evaluator(config) { return directoryEvaluator(sharedRuntime(), config.cluster, config.ceiling ?? DEFAULT_ROWS_BYTES); }
+  // Source migration feeds bounded immutable rows before a core can activate.
+  // The durable pending marker fences initialize/load across process death.
+  legacyImport(config, manifest, row = null, finish = false) {
+    if(this.actor||this.loading||this.importWork)return Promise.reject(new Error('raft member: active or import busy; retry'));
+    config=structuredClone(config);manifest=structuredClone(manifest);row=row&&structuredClone(row);
+    this.importPending=true;
+    const run=Promise.resolve().then(async()=>{
+      const store=new MemberStorage(this.ctx.storage,new HostCodec(sharedRuntime()));
+      const canonical={...config,id:String(config.id),seed:String(config.seed),bootstrap:manifest.config.anchors.map(String),ceiling:Number(manifest.ceiling)};
+      const previous=await this.ctx.storage.get('raft-config');
+      if(previous&&JSON.stringify(previous)!==JSON.stringify(canonical))throw new Error('raft member: provisioned identity cannot change');
+      await this.ctx.storage.put('legacy-pending',true);await this.ctx.storage.sync();
+      if(!previous){await this.ctx.storage.put('raft-config',canonical);await this.ctx.storage.sync();}
+      await store.open({cluster:canonical.cluster,id:canonical.id,protocol:1},canonical.ceiling);
+      await stageLegacyImport(store,manifest,row);
+      if(!finish)return;
+      const snapshot=await finishLegacyImport(store,manifest);
+      await this.ctx.storage.delete('legacy-pending');await this.ctx.storage.sync();this.importPending=false;
+      return snapshot;
+    });
+    this.importWork=run;return run.finally(()=>{this.importWork=null;});
+  }
   async initialize(config) {
+    if(await this.ctx.storage.get('legacy-pending')||this.importPending)throw new Error('raft member: import incomplete; retry');
     config = { ...config, id: String(config.id), seed: String(config.seed), bootstrap: config.bootstrap.map(String) };
     if (this.loading) {
       if (this.loadingConfig !== JSON.stringify(config)) throw new Error('raft member: different activation is in progress');
@@ -38,6 +63,7 @@ export class RaftMemberDO extends DurableObject {
 
   async load() {
     if (this.actor) return;
+    if(await this.ctx.storage.get('legacy-pending')||this.importPending)throw new Error('raft member: import incomplete; retry');
     if (this.loading) return this.loading;
     this.loading = this.restore();
     try { return await this.loading; } finally { this.loading = null; }

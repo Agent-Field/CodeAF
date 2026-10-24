@@ -119,5 +119,6 @@ export class HostCodec {
     const r = this.call(frame(8).blob(state).blob(block));
     const v = { state: r.blob(), digest: r.blob() }; r.end(); return v;
   }
+  genesis(data) {const r=this.call(frame(13).blob(data));const v={entry:r.blob(),hard:r.blob(),conf:r.blob()};r.end();return v;}
   snapshot(data) { const r = this.call(frame(9).blob(data)); const b = r.blob(); r.end(); return b; }
 }

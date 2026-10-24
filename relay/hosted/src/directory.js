@@ -2,6 +2,7 @@
 // and every method here is one synchronous turn (no await between a read and the write that
 // depends on it), so nothing can interleave inside a swap: that is the compare-and-swap the
 // lease rules need. The rules themselves are pure and live in rules.js.
+import { Wire } from './wire.js';
 import { makeRules, RuleError } from './rules.js';
 import { lifted } from './vouch.js';
 import { CLOSE_REVOKED, CLOSE_ROTATED, NOBODY } from './watch.js';
@@ -24,13 +25,19 @@ export class Directory {
     this.clock = clock;
     this.rules = makeRules(policy);
     this.watchers = watchers;
+    sql.exec('CREATE TABLE IF NOT EXISTS legacy_gate (one INTEGER PRIMARY KEY CHECK(one=1), doc TEXT NOT NULL)');
     sql.exec('CREATE TABLE IF NOT EXISTS dir (kind TEXT NOT NULL, id TEXT NOT NULL, doc TEXT NOT NULL, PRIMARY KEY (kind, id)) WITHOUT ROWID');
     sql.exec('CREATE TABLE IF NOT EXISTS dirver (one INTEGER PRIMARY KEY CHECK (one = 1), n INTEGER NOT NULL)');
     sql.exec('INSERT OR IGNORE INTO dirver VALUES (1, 0)');
     this.version = sql.exec('SELECT n FROM dirver').one().n;
   }
 
+  assertLegacy() {
+    if(this.sql.exec('SELECT doc FROM legacy_gate WHERE one=1').toArray().length) throw new Wire('unreachable',503);
+  }
+
   read(kind, id) {
+    this.assertLegacy();
     const row = this.sql.exec('SELECT doc FROM dir WHERE kind = ? AND id = ?', kind, id).toArray()[0];
     return row ? JSON.parse(row.doc) : null;
   }
@@ -40,6 +47,7 @@ export class Directory {
    * version. This is the one place a version is counted, so no verb, rotation included, decides alone.
    */
   write(kind, id, doc) {
+    this.assertLegacy();
     const before = this.#stored(kind, id);
     this.sql.exec('INSERT OR REPLACE INTO dir VALUES (?,?,?)', kind, id, JSON.stringify(doc));
     if (!before || this.#visible(kind, id, before) !== this.#visible(kind, id, doc)) this.#bump();
@@ -182,6 +190,7 @@ export class Directory {
 
   /** list answers the whole Listing: the identity record, every device and every cell. */
   list() {
+    this.assertLegacy();
     const out = { now: this.clock(), identity: { V: 1, identity: this.identity }, devices: {}, cells: {} };
     for (const { kind, id, doc } of this.sql.exec('SELECT kind, id, doc FROM dir').toArray()) {
       if (kind === 'identity') out.identity = JSON.parse(doc);
