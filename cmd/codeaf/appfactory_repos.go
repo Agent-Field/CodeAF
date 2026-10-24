@@ -3,12 +3,15 @@ package main
 // ── codeaf app: TURNING A REPOSITORY ON OR OFF ──────────────────────────────
 //
 // The engine's half of appwire.FactoryRepoAdmin. It makes ONE write to ONE
-// route of the factory's /v1 API, PUT /v1/repos/{owner}/{repo} with {"on": …},
-// spelled here as a constant: the path and the verb are never taken from the
-// app, and the owner and name are validated by appwire and escaped here. It
-// does not edit the factory's repository configuration, write to GitHub or
-// touch a job, a checkout or a folder: turning a repository off only removes it
-// from the factory's watched list.
+// route of the factory's /v1 API, PUT /v1/repos/{owner}/{repo} with {"on": …}
+// and, when the person said yes to stopping, "stop": true, spelled here as a
+// constant: the path and the verb are never taken from the app, and the owner
+// and name are validated by appwire and escaped here. It does not edit the
+// factory's repository configuration, write to GitHub or touch a checkout or a
+// folder. Turning a repository off stops the factory working on it; the
+// factory refuses that while any of its jobs is under way (409 has_running,
+// answered as appwire.CodeHasRunning with the factory's sentence), and with
+// stop it stops them first, as each job's own Stop would.
 //
 // WHO MAY: the OPERATOR, with the credential this app holds for that connection
 // right now, asked again through GET /v1/me on every call. The machine's own
@@ -26,6 +29,8 @@ package main
 // answer, a 5xx, or a refusal WITHOUT the phase marker (api.PhaseHeader) is
 // appwire.CodeUncertain: the factory saves the list and then records the
 // event, and the second step can fail with a status that looks like a refusal.
+// The one exception is 409 has_running, which the factory sends only before it
+// saves, so it is definite even after the stops that cleared the marker.
 // Only 200 or 204 is completed. Every wait is followed by a check that the
 // connection still holds the same credential; an answer that arrives for a
 // caller who has since been replaced reveals nothing.
@@ -112,14 +117,26 @@ func (b *appBackend) FactoryRepoSet(ctx context.Context, p appwire.FactoryRepoSe
 	owner, name, _ := strings.Cut(p.Repo, "/")
 	path := appFactoryRepoRoute + url.PathEscape(owner) + "/" + url.PathEscape(name)
 	body := struct {
-		On bool `json:"on"`
-	}{On: *p.On}
+		On   bool `json:"on"`
+		Stop bool `json:"stop,omitempty"`
+	}{On: *p.On, Stop: p.Stop}
 	r, err := h.linkDo(ctx, who, http.MethodPut, path, body, appFactorySmall)
 	switch {
 	case err == errLinkNotSent:
 		return appwire.FactoryRepoSetDone{}, appwire.Errorf(appwire.CodeUnreachable, "the factory is not answering")
 	case err != nil:
 		return appwire.FactoryRepoSetDone{}, repoUncertain()
+	}
+	// HAS_RUNNING IS DEFINITE WITH OR WITHOUT THE PHASE MARKER: the factory
+	// sends it only before it saves the list, so the repository is still on.
+	// A stop it made first is a change to a job, not to the switch, and the
+	// sentence says which job would not stop. Like any refusal, it names
+	// nothing to a caller who changed meanwhile.
+	if refusal := repoHasRunning(r); refusal != nil {
+		if !h.callerIs(p.Factory, who.token) {
+			return appwire.FactoryRepoSetDone{}, appwire.Errorf(appwire.CodeConflict, "the sign-in changed while this was loading; try again")
+		}
+		return appwire.FactoryRepoSetDone{}, refusal
 	}
 	// Only a refusal that proves nothing was stored may be called one; it
 	// reveals nothing scoped, so a caller who changed meanwhile is told so.
@@ -136,6 +153,27 @@ func (b *appBackend) FactoryRepoSet(ctx context.Context, p appwire.FactoryRepoSe
 	}
 	h.touch(p.Factory)
 	return appwire.FactoryRepoSetDone{Factory: p.Factory, Repo: p.Repo, On: *p.On}, nil
+}
+
+// repoHasRunning is the factory's 409 has_running as appwire.CodeHasRunning,
+// with the factory's own sentence (made safe to show) as its message: it names
+// the jobs under way, or the one that would not stop. Any other answer is nil.
+func repoHasRunning(r linkReply) error {
+	if r.status != http.StatusConflict || r.bodyBad {
+		return nil
+	}
+	var refusal struct {
+		Error  string `json:"error"`
+		Reason string `json:"reason"`
+	}
+	if json.Unmarshal(r.body, &refusal) != nil || refusal.Reason != api.ReasonHasRunning {
+		return nil
+	}
+	words := cleanLinkText(refusal.Error, 600)
+	if words == "" {
+		words = "the repository has jobs under way, so it was not turned off"
+	}
+	return appwire.Errorf(appwire.CodeHasRunning, "%s", words)
 }
 
 func repoUncertain() error {

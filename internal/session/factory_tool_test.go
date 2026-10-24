@@ -377,11 +377,19 @@ func TestFactoryAddTagsItsSizeAsAChatGuess(t *testing.T) {
 	if size, from := factory.ShownSize(it); size != "" || from != "" {
 		t.Fatalf("a chat guess is shown: %q from %q", size, from)
 	}
-	pr := factoryItem(FactoryNotice{Repo: "acme/api", Kind: "pr", Title: "t", Size: "L"}, time.Now())
-	if size, _ := factory.ShownSize(pr); size != "" {
-		t.Fatalf("a chat pull request shows %q", size)
-	}
 	if bare := factoryItem(FactoryNotice{Repo: "acme/api", Kind: "bug", Title: "t"}, time.Now()); bare.Triage.Size != "" || bare.Triage.SizeFrom != "" {
 		t.Fatalf("an unsized card gained provenance: %+v", bare.Triage)
+	}
+}
+
+func TestFactoryHandoffsAlwaysCreateIssues(t *testing.T) {
+	for _, kind := range factoryKinds {
+		it := factoryItem(FactoryNotice{Repo: "acme/api", Kind: kind, Title: "work"}, time.Now())
+		if it.Kind != factory.KindIssue || it.Triage.Type != kind {
+			t.Fatalf("%s handoff lost its issue kind or work type: %+v", kind, it)
+		}
+		if kind == "pr" {
+			t.Fatal("PR jobs are still offered")
+		}
 	}
 }

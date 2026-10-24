@@ -11,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/factory/api"
 )
 
 // ── the list: only this engine's own row is ever forgotten ─────────────────
@@ -194,17 +195,22 @@ func eventually(t *testing.T, what string, ok func() bool) {
 	t.Fatalf("never: %s", what)
 }
 
-func TestOnlyAnExplicitRunStartsTheLocalRunner(t *testing.T) {
+// THIS MAC IS THE RUNNER OF ITS OWN FACTORY FROM THE START, AND IT STARTS
+// NOTHING. A factory that knows whose GitHub it is brings its runner on with no
+// switch to find (one that does not is TestLocalRunNeedsGitHubConnected…), and
+// setup all the way to done still starts no job.
+func TestTheLocalRunnerIsOnFromTheStartAndStartsNothing(t *testing.T) {
 	s := newLocalSetup(t)
 	// Before start there is nothing to run.
 	s.mustFail("factory.local_run", map[string]any{"caller": "w1"}, appwire.CodeNotFound)
 	s.mustFail("factory.local_run", map[string]any{}, appwire.CodeBadParams)
 
 	st := s.start()
-	if st.Runner {
-		t.Fatalf("start turned the runner on: %+v", st)
+	if !st.Runner {
+		t.Fatalf("the start did not bring the runner on: %+v", st)
 	}
-	// Setup, all the way to done, starts none either.
+	l := &s.backend.local
+	eventually(t, "the runner holds the worker lock", func() bool { return runnerHeld(s) })
 	s.setup("factory.setup_connect", map[string]any{"source": "token", "token": setupSecret})
 	s.setup("factory.setup_select", map[string]any{"repos": []string{"acme/api"}})
 	s.until("checkouts", func(v appwire.FactorySetupView) bool { return v.State == "checkouts" })
@@ -212,14 +218,14 @@ func TestOnlyAnExplicitRunStartsTheLocalRunner(t *testing.T) {
 	if v := s.setup("factory.setup_done", map[string]any{}); v.State != "done" {
 		t.Fatalf("done: %+v", v)
 	}
-	// Give a runner every chance to appear that nothing asked for.
+	// Give a job every chance to start that nobody pressed Run on.
 	time.Sleep(1500 * time.Millisecond)
-	l := &s.backend.local
-	l.mu.Lock()
-	started := l.runner || l.runnerDone != nil
-	l.mu.Unlock()
-	if started || runnerHeld(s) {
-		t.Fatal("start or setup elected a runner")
+	var q api.Queue
+	s.must("factory.queue", map[string]any{"factory": st.Factory}, &q)
+	for _, j := range q.Jobs {
+		if j.State != "backlog" {
+			t.Fatalf("job %d is %q with nobody pressing Run", j.ID, j.State)
+		}
 	}
 
 	var run appwire.FactoryLocalStatus
@@ -227,7 +233,6 @@ func TestOnlyAnExplicitRunStartsTheLocalRunner(t *testing.T) {
 	if !run.Runner || run.State != appwire.LocalRunning || run.Factory != st.Factory {
 		t.Fatalf("run: %+v", run)
 	}
-	eventually(t, "the runner holds the worker lock", func() bool { return runnerHeld(s) })
 	// Run again is the same runner.
 	l.mu.Lock()
 	done := l.runnerDone
@@ -267,8 +272,9 @@ func TestOnlyAnExplicitRunStartsTheLocalRunner(t *testing.T) {
 }
 
 // A RUNNER THE FACTORY WOULD REFUSE IS NOT STARTED. With no GitHub login the
-// factory takes no worker (it needs a handle), so a run says so and starts
-// nothing, instead of retrying in silence for as long as the engine lives.
+// factory takes no worker (it needs a handle), so the start brings none on, and
+// a run asked for says so and starts nothing, instead of retrying in silence
+// for as long as the engine lives.
 func TestLocalRunNeedsGitHubConnectedAndStartsNothingWithout(t *testing.T) {
 	useLocalHome(t)
 	w := newFactoryWire(t, testFactoryHub(t))

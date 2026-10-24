@@ -184,7 +184,7 @@ func TestReleaseClearsTheTakeAndRefusesSomeoneElse(t *testing.T) {
 	}
 }
 
-func TestDropRecordsWordsAndStopsTheHolder(t *testing.T) {
+func TestDropRecordsAndStopsTheHolder(t *testing.T) {
 	st, err := store.Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -230,14 +230,14 @@ func TestDropRecordsWordsAndStopsTheHolder(t *testing.T) {
 	if err := json.Unmarshal(pull.Body.Bytes(), &held); err != nil || held.Lease.ID == "" {
 		t.Fatalf("pull: %s %v", pull.Body, err)
 	}
-	dropped := verbRequest(h, "POST", fmt.Sprintf("/v1/jobs/%d/drop", it.ID), `{"words":"not this one"}`)
+	dropped := verbRequest(h, "POST", fmt.Sprintf("/v1/jobs/%d/drop", it.ID), `{}`)
 	checkJSON(t, dropped, 200)
 	read, err := st.Get(it.ID)
 	if err != nil || read.State != factory.StateDismissed {
 		t.Fatalf("after drop: %+v %v", read, err)
 	}
 	events, err := rec.Since(context.Background(), time.Time{})
-	if err != nil || len(events) != 2 || events[1].Kind != record.Dropped || events[1].Detail != "not this one" || events[0].Kind != record.RunnerAdded {
+	if err != nil || len(events) != 2 || events[1].Kind != record.Dropped || events[1].Detail != "" || events[0].Kind != record.RunnerAdded {
 		t.Fatalf("audit: %+v %v", events, err)
 	}
 	beat := authed(h, "POST", "/v1/workers/leases/"+held.Lease.ID+"/heartbeat", worker.Credential, "")

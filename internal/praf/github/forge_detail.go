@@ -8,6 +8,7 @@ package github
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"sort"
 	"strconv"
@@ -31,6 +32,8 @@ type FileChange struct {
 // CheckRun is one check run on a commit: its name, its status (`queued`,
 // `in_progress`, `completed`), its conclusion once completed, and its page.
 type CheckRun struct {
+	Source     string
+	AppID      int
 	Name       string
 	Status     string
 	Conclusion string
@@ -55,7 +58,7 @@ func (c *client) Issue(ctx context.Context, owner, repo string, number int) (Iss
 		Number: r.Number, Title: r.Title, Body: deref(r.Body), User: r.User.Login,
 		Labels: labelNames(r.Labels), Created: r.CreatedAt, Updated: r.UpdatedAt,
 		URL: r.HTMLURL, Pull: r.PullRequest != nil, Comments: r.Comments,
-		Assignees: assigneeLogins(r.Assignees),
+		Assignees: assigneeLogins(r.Assignees), State: r.State,
 	}, nil
 }
 
@@ -131,6 +134,10 @@ func (c *client) PullFiles(ctx context.Context, owner, repo string, number int) 
 	return out, nil
 }
 
+// checkPagesMost bounds each paged CI list at 1000 entries; a commit with more
+// is reported incomplete rather than judged from a partial read.
+const checkPagesMost = 10
+
 // CheckRuns is what the commit statuses and check runs on sha add up to, and
 // the check runs themselves: any failure is a failure, else anything
 // unfinished is running, else anything that passed is passed, and a commit
@@ -139,21 +146,42 @@ func (c *client) CheckRuns(ctx context.Context, owner, repo, sha string) (CheckS
 	if sha == "" {
 		return ChecksNone, nil, nil
 	}
-	body, _, err := c.read(ctx, c.repoURL(owner, repo, "/commits/"+url.PathEscape(sha)+"/status"), "")
-	if err != nil {
-		return ChecksNone, nil, err
+	// Both lists are paged (GitHub's default status page is 30). Read every
+	// page up to checkPagesMost before judging completeness, so a busy matrix
+	// is read whole rather than reported as permanently unreadable.
+	type status struct {
+		Context string `json:"context"`
+		URL     string `json:"target_url"`
+		State   string `json:"state"`
 	}
-	var combined struct {
-		State    string `json:"state"`
-		Statuses []struct {
-			State string `json:"state"`
-		} `json:"statuses"`
+	var statuses []status
+	statusTotal := 0
+	for page := 1; page <= checkPagesMost; page++ {
+		body, _, err := c.read(ctx, c.repoURL(owner, repo, "/commits/"+url.PathEscape(sha)+"/status?per_page=100&page="+strconv.Itoa(page)), "")
+		if err != nil {
+			return ChecksNone, nil, err
+		}
+		var combined struct {
+			Total    int      `json:"total_count"`
+			Statuses []status `json:"statuses"`
+		}
+		if err := json.Unmarshal(body, &combined); err != nil {
+			return ChecksNone, nil, err
+		}
+		if page > 1 && combined.Total != statusTotal {
+			return ChecksNone, nil, fmt.Errorf("commit statuses changed while paging; cannot assert current-head CI passed")
+		}
+		statusTotal = combined.Total
+		statuses = append(statuses, combined.Statuses...)
+		if len(combined.Statuses) < 100 || len(statuses) >= statusTotal {
+			break
+		}
 	}
-	if err := json.Unmarshal(body, &combined); err != nil {
-		return ChecksNone, nil, err
+	if statusTotal > len(statuses) {
+		return ChecksNone, nil, fmt.Errorf("commit statuses are incomplete; cannot assert current-head CI passed")
 	}
 	failed, running, passed := false, false, false
-	for _, s := range combined.Statuses {
+	for _, s := range statuses {
 		switch s.State {
 		case "failure", "error":
 			failed = true
@@ -163,24 +191,56 @@ func (c *client) CheckRuns(ctx context.Context, owner, repo, sha string) (CheckS
 			passed = true
 		}
 	}
-	body, _, err = c.read(ctx, c.repoURL(owner, repo, "/commits/"+url.PathEscape(sha)+"/check-runs?per_page=100"), "")
-	if err != nil {
-		return ChecksNone, nil, err
+	type run struct {
+		App struct {
+			ID int `json:"id"`
+		} `json:"app"`
+		Name       string `json:"name"`
+		Status     string `json:"status"`
+		Conclusion string `json:"conclusion"`
+		HTMLURL    string `json:"html_url"`
 	}
-	var runs struct {
-		CheckRuns []struct {
-			Name       string `json:"name"`
-			Status     string `json:"status"`
-			Conclusion string `json:"conclusion"`
-			HTMLURL    string `json:"html_url"`
-		} `json:"check_runs"`
+	var checkRuns []run
+	runTotal := 0
+	for page := 1; page <= checkPagesMost; page++ {
+		body, _, err := c.read(ctx, c.repoURL(owner, repo, "/commits/"+url.PathEscape(sha)+"/check-runs?per_page=100&page="+strconv.Itoa(page)), "")
+		if err != nil {
+			return ChecksNone, nil, err
+		}
+		var runs struct {
+			Total     int   `json:"total_count"`
+			CheckRuns []run `json:"check_runs"`
+		}
+		if err := json.Unmarshal(body, &runs); err != nil {
+			return ChecksNone, nil, err
+		}
+		if page > 1 && runs.Total != runTotal {
+			return ChecksNone, nil, fmt.Errorf("check runs changed while paging; cannot assert current-head CI passed")
+		}
+		runTotal = runs.Total
+		checkRuns = append(checkRuns, runs.CheckRuns...)
+		if len(runs.CheckRuns) < 100 || len(checkRuns) >= runTotal {
+			break
+		}
 	}
-	if err := json.Unmarshal(body, &runs); err != nil {
-		return ChecksNone, nil, err
+	if runTotal > len(checkRuns) {
+		return ChecksNone, nil, fmt.Errorf("check runs are incomplete; cannot assert current-head CI passed")
 	}
 	var out []CheckRun
-	for _, r := range runs.CheckRuns {
-		out = append(out, CheckRun{Name: r.Name, Status: r.Status, Conclusion: r.Conclusion, URL: r.HTMLURL})
+	for _, s := range statuses {
+		conclusion := s.State
+		status := "completed"
+		if s.State == "pending" {
+			status = "in_progress"
+			conclusion = ""
+		}
+		if s.State == "error" {
+			conclusion = "failure"
+		}
+		out = append(out, CheckRun{Source: "status", Name: s.Context, Status: status, Conclusion: conclusion, URL: s.URL})
+	}
+	for _, r := range checkRuns {
+		out = append(out, CheckRun{Source: "check_run", AppID: r.App.ID, Name: r.Name, Status: r.Status, Conclusion: r.Conclusion, URL: r.HTMLURL})
 		if r.Status != "completed" {
 			running = true
 			continue

@@ -29,6 +29,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/exec"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/publish"
 )
@@ -75,6 +76,9 @@ func PublishItem(it *factory.Item, edited bool, now time.Time) error {
 	// A retry of a publish that failed starts clean. The approval already
 	// recorded is the one this queue carries.
 	it.PublishError = ""
+	// A new publish is a new head: a merge that failed on the old one says
+	// nothing about it.
+	it.Merging = nil
 	it.State = factory.StateQueued
 	it.MarkPublishing("queued", "", "", now)
 	loopSay(it, now, "said", "approved · publishing")
@@ -97,12 +101,13 @@ func ShipPublished(it *factory.Item, now time.Time) error {
 	}
 	ensureStream(it, now)
 	it.State = factory.StateShipped
+	factory.WatchPublishedPR(it)
 	it.MarkPublishing("opened", "", "", now)
 	it.Question, it.QKind = "", ""
 	it.Asking = nil
 	it.Stream.Ended = now
 	it.Stream.Paused = false
-	loopSay(it, now, "ok", "shipped · your approval · "+url)
+	loopSay(it, now, "ok", "published · your approval · "+url)
 	return nil
 }
 
@@ -131,6 +136,9 @@ func (r *Runner) Publish(id int, trailer string) error {
 	lp.mu.Unlock()
 	now := r.now()
 	err := lp.write(c, func(it *factory.Item) error {
+		if err := factory.RequireIssueJob(*it); err != nil {
+			return err
+		}
 		if it.State != factory.StateLanded {
 			return fmt.Errorf("%s has not landed", it.Ref())
 		}
@@ -161,7 +169,7 @@ func (lp *floorLoop) publishRun(c *loopCtl, trailer string) {
 	receipt, err := lp.r.publish(c.ctx, it, trailer)
 	now := lp.r.now()
 	if err != nil {
-		_ = lp.write(c, func(it *factory.Item) error {
+		writeErr := lp.write(c, func(it *factory.Item) error {
 			it.State = factory.StateLanded
 			detail := loopFirstLine(err.Error())
 			if detail == "" {
@@ -172,6 +180,9 @@ func (lp *floorLoop) publishRun(c *loopCtl, trailer string) {
 			loopSay(it, now, "fail", "could not publish: "+detail)
 			return nil
 		})
+		if writeErr == nil && it.PullRequest != nil {
+			lp.tell(c.id, "PR update was not confirmed: "+loopFirstLine(err.Error())+". Follow PR has paused publication; review the recorded error before retrying.")
+		}
 		return
 	}
 	if lp.write(c, func(it *factory.Item) error {
@@ -187,12 +198,45 @@ func (lp *floorLoop) publishRun(c *loopCtl, trailer string) {
 			it.DoneAt = now
 		}
 		it.PublishError = ""
+		if receipt.pr != nil {
+			if it.FollowUp == nil {
+				it.FollowUp = &factory.PRFollowUp{Kind: "pr", Limit: factory.DefaultPRRepairAttempts}
+			}
+			if it.FollowUp.PublishConsent == "" {
+				it.FollowUp.PublishConsent = trailer
+				it.FollowUp.AutoPush = true
+			}
+			if factory.ReadinessPending(*it) && !receipt.pr.Draft {
+				a := *it.FollowUp.Readiness
+				a.State, a.At = "ready", now
+				it.FollowUp.Readiness = &a
+				it.Note(now, "PR marked ready for review · head "+a.Head+" · "+a.Summary)
+				loopSay(it, now, "ok", fmt.Sprintf("PR #%d marked ready for review · reviewed head %s · %s", receipt.pr.Number, a.Head, a.Summary))
+			}
+			factory.WatchPublishedPR(it)
+		}
 		it.MarkPublishing("opened", "", "", now)
 		loopSay(it, now, "ok", "published · "+url)
 		return nil
 	}) == nil {
 		lp.emit(c.id, "", EventShipped, "shipped")
-		lp.tell(c.id, sayShipped)
+		if receipt.pr != nil {
+			if factory.ReadinessPending(it) && !receipt.pr.Draft {
+				lp.tell(c.id, fmt.Sprintf("PR #%d is ready for review. Final review passed on head %s. Follow PR continues monitoring CI, feedback and conflicts; merge remains your decision.", receipt.pr.Number, it.HeadCommit))
+				return
+			}
+			mode := "Manual asks before pushing repairs; enable Auto for automatic checked updates within the job budget."
+			if factory.Automatic(it) {
+				mode = "Auto records and pushes checked repairs within the job budget."
+			}
+			if it.PullRequest != nil && it.PullRequest.Number == receipt.pr.Number {
+				lp.tell(c.id, "PR updated: "+receipt.pr.URL+". The verified local repair was pushed. Waiting for GitHub CI on the updated PR; Follow PR continues watching review feedback and conflicts.")
+			} else {
+				lp.tell(c.id, "PR available: "+receipt.pr.URL+". Follow PR watches CI, reviews and conflicts. "+mode+" Merge remains your decision.")
+			}
+		} else {
+			lp.tell(c.id, "Published issue comment: "+receipt.comment)
+		}
 	}
 }
 
@@ -217,6 +261,40 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 	}
 	if src == nil {
 		return published{}, fmt.Errorf("%s is not on a source codeaf can post to", it.Ref())
+	}
+	if it.FollowUp != nil && it.FollowUp.Kind == "readiness" {
+		if !factory.ReadinessPending(it) {
+			return published{}, errors.New("final readiness review is incomplete; it cannot publish code or change draft status")
+		}
+		if TrailerCommit(trailer) != it.FollowUp.Readiness.Head {
+			return published{}, publish.ErrCommitChanged
+		}
+		ready, ok := src.(interface {
+			Ready(context.Context, factory.Item) (factory.PullRequest, error)
+		})
+		if !ok {
+			return published{}, errors.New("this factory source does not support ready for review")
+		}
+		pr, e := ready.Ready(ctx, it)
+		if e != nil {
+			return published{}, e
+		}
+		return published{pr: &pr}, nil
+	}
+	var existingPR *factory.PullRequest
+	if it.FollowUp != nil && it.FollowUp.State == "waiting_approval" {
+		follower, ok := src.(factory.Follower)
+		if !ok {
+			return published{}, errors.New("cannot re-read the existing PR before updating it")
+		}
+		fresh, err := follower.Follow(ctx, it)
+		if err != nil {
+			return published{}, err
+		}
+		if it.PullRequest == nil || fresh.Number != it.PullRequest.Number || fresh.State != factory.PROpen || fresh.HeadSHA != it.FollowUp.HeadSHA {
+			return published{}, errors.New("the existing PR closed or its head moved; review it before publishing the repair")
+		}
+		existingPR = &fresh
 	}
 	body := PublishBody(it, trailer)
 	if isPull(it) {
@@ -252,7 +330,8 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 		if err != nil {
 			return published{}, publish.Wrap(err, "worktree")
 		}
-		if strings.TrimSpace(head) != TrailerCommit(trailer) || strings.TrimSpace(status) != "" {
+		approvedHead := TrailerCommit(trailer)
+		if strings.TrimSpace(head) != approvedHead || strings.TrimSpace(status) != "" {
 			if strings.TrimSpace(head) != it.HeadCommit {
 				if err := r.opts.Store.Update(it.ID, func(saved *factory.Item) error { saved.HeadCommit = strings.TrimSpace(head); return nil }); err != nil {
 					return published{}, err
@@ -288,7 +367,27 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 	if err := push(pushBranch, dir, it, ref); err != nil {
 		return published{}, publish.Wrap(err, "push")
 	}
-	rcpt, err := src.Write(ctx, factory.Action{Verb: "pr", Item: it, Branch: branch, Body: body})
+	if it.FollowUp != nil && it.FollowUp.State == "waiting_approval" && it.PullRequest != nil {
+		if updater, ok := src.(interface {
+			UpdatePRBody(context.Context, factory.Item, string) error
+		}); ok {
+			if err := updater.UpdatePRBody(ctx, it, body); err != nil {
+				return published{}, fmt.Errorf("repair pushed, but could not update the PR description: %w", err)
+			}
+		}
+		pr := *it.PullRequest
+		if existingPR != nil {
+			pr = *existingPR
+		}
+		pr.HeadSHA = it.HeadCommit
+		pr.ChecksRead = false
+		pr.CI = ""
+		pr.CheckRuns = nil
+		pr.Checks = factory.PRChecks{}
+		pr.ReadinessKey, pr.ReadinessContext = "", ""
+		return published{pr: &pr}, nil
+	}
+	rcpt, err := src.Write(ctx, factory.Action{Verb: "pr", Item: it, Branch: branch, Body: body, Draft: true})
 	if err != nil {
 		return published{}, publish.Wrap(err, "pr")
 	}
@@ -299,14 +398,17 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 	if n <= 0 || strings.TrimSpace(rcpt.URL) == "" {
 		return published{}, fmt.Errorf("the source opened no pull request it could name")
 	}
-	return published{pr: &factory.PullRequest{Number: n, URL: rcpt.URL, State: factory.PROpen}}, nil
+	draft := true
+	if it.PullRequest != nil {
+		draft = it.PullRequest.Draft
+	}
+	return published{pr: &factory.PullRequest{Number: n, URL: rcpt.URL, Draft: draft, State: factory.PROpen}}, nil
 }
 
 // commitApproved commits everything the job left in its worktree as one
-// commit, the job's title and the trailer its message. A worktree with
-// nothing uncommitted is left as it is: its branch already holds the work.
-// A machine with no git identity commits as the approving handle's GitHub
-// noreply address.
+// commit, keeping the person as its author and the shared harness attribution
+// in the trailer block. This happens before the proof gate records its head.
+// A clean worktree is left as it is; signing must never move approved history.
 func commitApproved(git Git, dir string, it factory.Item, trailer string) error {
 	status, err := git.Run(dir, "status", "--porcelain")
 	if err != nil {
@@ -322,18 +424,22 @@ func commitApproved(git Git, dir string, it factory.Item, trailer string) error 
 	if title == "" {
 		title = "factory work on " + it.Ref()
 	}
-	var args []string
-	if email, err := git.Run(dir, "config", "user.email"); err != nil || strings.TrimSpace(email) == "" {
-		handle := TrailerHandle(trailer)
-		if handle == "" {
-			handle = factory.NormalizeHandle(it.Person())
-		}
-		if handle == "" {
-			handle = "codeaf"
-		}
-		args = append(args, "-c", "user.name="+handle, "-c", "user.email="+handle+"@users.noreply.github.com")
+	handle := TrailerHandle(trailer)
+	if handle == "" {
+		handle = factory.NormalizeHandle(it.Person())
 	}
-	args = append(args, "commit", "-q", "-m", title+"\n\n"+trailer)
+	if handle == "" {
+		handle = "codeaf"
+	}
+	args := []string{"-c", "user.name=" + handle, "-c", "user.email=" + handle + "@users.noreply.github.com"}
+	// The commit is pushed publicly: its message crosses the same boundary as the PR text.
+	message := factory.PublicText(title + "\n\n" + trailer)
+	if !exec.RepositoryRefusesTrailers(dir) {
+		// The runner creates this commit rather than a particular model, so its
+		// shared signature deliberately carries no inferred model name.
+		message = exec.SignCommitMessageOnce(message, "")
+	}
+	args = append(args, "commit", "-q", "-m", message)
 	if _, err := git.Run(dir, args...); err != nil {
 		return fmt.Errorf("could not commit %s's work: %w", it.Ref(), err)
 	}
@@ -343,27 +449,8 @@ func commitApproved(git Git, dir string, it factory.Item, trailer string) error 
 // PublishBody is what a publish says on the forge: the proof summary, each
 // claim, and the trailer as the last line.
 func PublishBody(it factory.Item, trailer string) string {
-	var b strings.Builder
-	if ask := factory.AskText(it); ask != "" {
-		b.WriteString(ask)
-		b.WriteString("\n\n")
-	}
-	if it.Kind == factory.KindIssue && it.Num > 0 {
-		fmt.Fprintf(&b, "Closes #%d.\n\n", it.Num)
-	}
-	claims := append(append([]factory.Claim(nil), it.Proof...), it.Policy...)
-	shown := 0
-	for _, c := range claims {
-		if c.OK {
-			shown++
-		}
-	}
-	fmt.Fprintf(&b, "Proof · %d of %d claims shown\n", shown, len(claims))
-	if list := proofList(factory.Item{Proof: claims}, nil); list != "" {
-		b.WriteString(list + "\n")
-	}
-	b.WriteString("\nby codeaf factory\n\n" + trailer)
-	return b.String()
+	body := factory.PublishBody(it, trailer)
+	return portablePublishText(body)
 }
 
 // pullNumber is the number at the end of a pull request's address.
@@ -443,4 +530,11 @@ func (r *Runner) publishPreview(it factory.Item) string {
 	}
 	mode, _ := publishMode(git, dir)
 	return mode
+}
+
+// Home folder names are private machine context and never belong in a forge post.
+var publishHomePath = regexp.MustCompile(`/((Users)|(home))/[^/\s` + "`" + `]+`)
+
+func portablePublishText(s string) string {
+	return publishHomePath.ReplaceAllStringFunc(s, func(string) string { return "$HOME" })
 }

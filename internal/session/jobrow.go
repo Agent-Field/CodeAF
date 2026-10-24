@@ -166,6 +166,12 @@ func (a *Agent) announceJobRow(info jobInfo) {
 		// person reading it afterwards.
 		Report: jobRowLead(info.id, info.logPath),
 	}
+	notice.JobCommand, notice.JobCallID = info.command, info.callID
+	notice.StartedAt, notice.EndedAt = info.started, info.ended
+	if info.state == jobExited {
+		code := info.code
+		notice.JobExitCode = &code
+	}
 	if minted {
 		notice.Source = a.bornSource()
 	} else {

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/factory/verification"
 )
 
 // ── bash, wrapped ───────────────────────────────────────────────────────────
@@ -188,6 +189,23 @@ func (a *Agent) backgroundBash(inner bare.Tool) bare.Tool {
 		Description: inner.Description + backgroundSentence + timeoutSentence(a.config.BashBackgroundAfterSeconds) + a.keepSentence(),
 		Schema:      a.schemaWithKeep(schemaWithBackground(inner.Schema)),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
+			// A factory must judge the check itself, not grep/tail's exit.
+			// Fit this before either foreground or background dispatch so a
+			// promoted check keeps writing the same receipt when it finishes.
+			if a.config.Stage != nil && a.config.SessionFile != "" {
+				var call struct {
+					Command string `json:"command"`
+				}
+				if decodeToolArguments(args, &call) == nil && strings.TrimSpace(call.Command) != "" {
+					command, err := verification.PrepareCallIn(a.config.SessionFile, a.config.Workspace, call.Command, callIDFrom(ctx))
+					if err != nil {
+						return verification.SetupFailurePrefix + " " + err.Error(), true, nil
+					}
+					if changed, ok := withBashCommand(args, command); ok {
+						args = changed
+					}
+				}
+			}
 			var parsed struct {
 				Command     string           `json:"command"`
 				Background  bool             `json:"background"`
@@ -222,7 +240,7 @@ func (a *Agent) backgroundBash(inner bare.Tool) bare.Tool {
 			if _, _, bad := shellOutputsArgs(args); bad != nil && a.mayPublishShellOutputs() {
 				return rejectToolArguments(ctx, "Invalid arguments: "+bad.Error()), true, nil
 			}
-			started, err := a.jobs.startInUnder(context.Background(), a.planCommand(parsed.Command), "", parsed.Notify)
+			started, err := a.jobs.startInUnder(withCallID(context.Background(), callIDFrom(ctx)), a.planCommand(parsed.Command), "", parsed.Notify)
 			if err != nil {
 				return "Could not start the background job: " + err.Error(), true, nil
 			}

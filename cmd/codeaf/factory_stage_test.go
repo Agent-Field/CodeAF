@@ -145,7 +145,7 @@ func TestAChatStageIsAConversationThatReportsThroughStageResult(t *testing.T) {
 		t.Fatal(err)
 	}
 	id, err := st.Add(context.Background(), factory.Item{
-		Title: "tidy the ledger", Repo: "work", Tier: factory.TierOwner,
+		Title: "tidy the ledger", Repo: "work", Tier: factory.TierOwner, Model: "openai/gpt-4.1",
 		Stages: []factory.Stage{{Name: "review", Kind: factory.StageChat, Ask: "look it over", Until: "done", On: true}},
 	})
 	if err != nil {
@@ -156,7 +156,9 @@ func TestAChatStageIsAConversationThatReportsThroughStageResult(t *testing.T) {
 	}
 	it, _ := st.Get(id)
 
-	maker := factoryStageMaker(st, workspace, "", launch.Config)
+	parent := launch.Config
+	parent.Model = "profile/default"
+	maker := factoryStageMaker(st, workspace, "", parent)
 	exec := factoryChatStage(st, "", factoryrun.NewChatExecutor(maker))
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -177,6 +179,24 @@ func TestAChatStageIsAConversationThatReportsThroughStageResult(t *testing.T) {
 		}
 		model.mu.Unlock()
 		t.Fatalf("result = done %v, output %q; want the reported round", res.Done, res.Output)
+	}
+	if res.Model != it.Model {
+		t.Fatalf("stage ran on %q, want job model %q", res.Model, it.Model)
+	}
+	model.mu.Lock()
+	usedRequested := slices.Contains(model.models, it.Model)
+	stageRequests := 0
+	for _, belt := range model.belts {
+		if slices.Contains(belt, "stage_result") {
+			stageRequests++
+		}
+	}
+	if stageRequests != 1 {
+		t.Errorf("final stage report caused %d model requests; want exactly one", stageRequests)
+	}
+	model.mu.Unlock()
+	if !usedRequested {
+		t.Fatal("the requested model never reached the provider")
 	}
 	if strings.TrimSpace(res.Chat) == "" {
 		t.Fatal("the round names no conversation")
@@ -225,7 +245,7 @@ func TestAChatStageIsAConversationThatReportsThroughStageResult(t *testing.T) {
 			t.Errorf("the stage's belt carries %s, which waits on a card nobody answers", verb)
 		}
 	}
-	if !strings.Contains(model.briefs[0], "End by calling stage_result once.") {
+	if !strings.Contains(model.briefs[0], "End by calling stage_result with your final result.") {
 		t.Error("the first turn did not carry the stage's brief")
 	}
 }

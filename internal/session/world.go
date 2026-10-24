@@ -198,6 +198,7 @@ func (p Project) NeedsPerson() int {
 // meta.json, whether a window is holding it right now, and what the project's
 // index says it ran.
 type SessionRow struct {
+	ModelIdentity *ModelIdentity
 	// ID is the session id, which is its folder's name.
 	ID string
 	// Dir is the session folder and Transcript its journal — the path a resume
@@ -552,6 +553,7 @@ func (w *World) Adopt(root string, seed SessionRow, now time.Time) bool {
 		Workspace:     firstWord(seed.Workspace, meta.Workspace),
 		Owned:         meta.Owned,
 		Model:         firstWord(seed.Model, meta.Model),
+		ModelIdentity: meta.ModelIdentity,
 		At:            meta.LastUserAt,
 		Created:       meta.Created,
 		Spend:         meta.SpentUSD,
@@ -749,6 +751,7 @@ func readSessionRow(dir, id string, now time.Time) (SessionRow, bool) {
 		Workspace:       strings.TrimSpace(meta.Workspace),
 		Owned:           meta.Owned,
 		Model:           strings.TrimSpace(meta.Model),
+		ModelIdentity:   meta.ModelIdentity,
 		At:              at,
 		Created:         meta.Created,
 		Spend:           meta.SpentUSD,

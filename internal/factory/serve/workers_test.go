@@ -18,6 +18,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/client"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
@@ -624,5 +625,44 @@ func TestWorkerLongPollFindsArrivingJob(t *testing.T) {
 	}
 	if pulled.Job.ID != job.ID {
 		t.Fatal("long poll returned another job")
+	}
+}
+
+// The current server records execution evidence sent in the compatibility header.
+func TestWorkerModelHeaderRecordsExecutionModel(t *testing.T) {
+	f := workerSetup(t)
+	job := f.add(t, "sam")
+	attached := f.attach(t, "sam")
+	pulled := f.pull(t, attached)
+	cli := client.Open(f.server.URL, "")
+	report := api.FromRunReport(factory.RunReport{Stages: []factory.StageReport{{Name: "proof", State: factory.PhaseDone, Result: &factory.StageResult{Done: true, Model: "vendor/strong", Output: "done"}}}})
+	if err := cli.Worker(attached.Credential).Report(context.Background(), pulled.Lease.ID, report); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := f.st.Get(job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := saved.Stream.Phases[0].Result; got == nil || got.Model != "vendor/strong" {
+		t.Fatalf("lost model: %+v", got)
+	}
+}
+
+func TestWorkerLiveChatHeaderReachesMainJob(t *testing.T) {
+	f := workerSetup(t)
+	job := f.add(t, "sam")
+	attached := f.attach(t, "sam")
+	pulled := f.pull(t, attached)
+	cli := client.Open(f.server.URL, "").Worker(attached.Credential)
+	report := api.FromRunReport(factory.RunReport{Stages: []factory.StageReport{{Name: "proof", State: factory.PhaseRunning, Round: 1, Chat: "/worker/proof/transcript.jsonl"}}})
+	if err := cli.Report(context.Background(), pulled.Lease.ID, report); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := f.st.Get(job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Stream.Phases[0].Chat != "/worker/proof/transcript.jsonl" || saved.Stream.Phases[0].Result != nil {
+		t.Fatalf("missing live chat: %+v", saved.Stream.Phases[0])
 	}
 }

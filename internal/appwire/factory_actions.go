@@ -14,7 +14,8 @@ import (
 // ── JOB ACTIONS ON AN ATTACHED FACTORY ──────────────────────────────────────
 //
 // factory.job_* are the writes a person makes on one job of a factory this
-// engine is attached to: start, stop, dismiss, drop, assign, set priority or
+// engine is attached to: start, stop, dismiss, drop, bring back a dropped job,
+// assign, set priority or
 // budget, approve, undo, ask for changes, retry publishing, make a new job,
 // stop or rerun one step. Each is ONE method with its own typed params and one
 // route behind it; there is no method that forwards a path, a verb name or a
@@ -45,7 +46,7 @@ import (
 const FeatureFactoryJobActions = "factory.job_actions"
 
 // FactoryBudgetSteps are the limits factory.job_set_budget accepts, in US
-// dollars. The factory raises a job's limit to one of these and never lowers it.
+// dollars. The job owner can choose either direction, never below recorded spending.
 var FactoryBudgetSteps = []float64{5, 10, 20, 30}
 
 // The priorities factory.job_set_priority takes, as the factory spells them.
@@ -70,6 +71,8 @@ const (
 	JobActStop           = "stop"
 	JobActDismiss        = "dismiss"
 	JobActDrop           = "drop"
+	JobActRestore        = "restore"
+	JobActRunAgain       = "run_again"
 	JobActUnassign       = "unassign"
 	JobActAssignToMe     = "assign_to_me"
 	JobActChangeAssignee = "change_assignee"
@@ -82,22 +85,27 @@ const (
 	JobActCreate         = "create"
 	JobActStepStop       = "step_stop"
 	JobActStepRerun      = "step_rerun"
+	JobActMerge          = "merge"
+	JobActSetModel       = "set_model"
 )
 
 // FactoryJobActionParams names the job and the read it was acted on from. It
-// is the whole request of start, stop, dismiss, unassign, assign_to_me, undo
-// and retry_publish.
+// is the whole request of start, stop, dismiss, restore, run_again, unassign,
+// assign_to_me, undo and retry_publish.
 type FactoryJobActionParams struct {
 	Factory string      `json:"factory"`
 	Job     int         `json:"job"`
 	Expect  *api.Expect `json:"expect"`
 }
 
-// FactoryJobDropParams drops a job. Words are optional and kept on the record.
+// FactoryJobDropParams drops a job, which deletes its local branch and folder
+// and its conversations and crew on the factory's machine.
+// Discard is the person's yes to deleting work they hold; without it a job with
+// work is refused with [CodeHasWork]. A drop takes no words.
 type FactoryJobDropParams struct {
 	Factory string      `json:"factory"`
 	Job     int         `json:"job"`
-	Words   string      `json:"words,omitempty"`
+	Discard bool        `json:"discard,omitempty"`
 	Expect  *api.Expect `json:"expect"`
 }
 
@@ -118,13 +126,42 @@ type FactoryJobPriorityParams struct {
 	Expect   *api.Expect `json:"expect"`
 }
 
-// FactoryJobBudgetParams raises a job's limit to one of [FactoryBudgetSteps].
+// FactoryJobBudgetParams changes a job's limit to one of [FactoryBudgetSteps], never below recorded spending.
 type FactoryJobBudgetParams struct {
 	Factory string      `json:"factory"`
 	Job     int         `json:"job"`
 	Budget  float64     `json:"budget"`
 	Expect  *api.Expect `json:"expect"`
 }
+
+// FactoryJobMergeParams presses Merge on ONE job. Commit is the pull
+// request's head the person saw (api.Job.PR.HeadSHA): the factory refuses a
+// merge of any other head. The factory's merge gate decides; its refusal comes
+// back whole, in the gate's words. A merge waits five seconds with Undo
+// (factory.job_undo) before it is sent.
+type FactoryJobMergeParams struct {
+	Factory string      `json:"factory"`
+	Job     int         `json:"job"`
+	Commit  string      `json:"commit,omitempty"`
+	Expect  *api.Expect `json:"expect"`
+}
+
+// FactoryJobSetModelParams chooses the model ONE job's steps run on. Model
+// is a model id; "" goes back to the factory's default. The next step opens on
+// it, and a step already running switches at its next turn. Expect is carried
+// like every job write's, and the factory accepts it without checking it: a
+// model is a preference that commutes with every other write, so a pick is
+// never refused as stale. Only a Done job refuses one.
+type FactoryJobSetModelParams struct {
+	Factory   string      `json:"factory"`
+	Job       int         `json:"job"`
+	Model     string      `json:"model"`
+	Automatic *bool       `json:"automatic,omitempty"`
+	Expect    *api.Expect `json:"expect"`
+}
+
+// MaxFactoryJobModel is the longest model id a job keeps.
+const MaxFactoryJobModel = 200
 
 // FactoryJobApproveParams approves ONE job. Commit is the head commit the
 // person saw (api.Job.HeadCommit): the factory refuses an approval of any
@@ -154,6 +191,9 @@ type FactoryJobStepParams struct {
 	Job     int         `json:"job"`
 	Step    string      `json:"step"`
 	Expect  *api.Expect `json:"expect"`
+	// Words are the person's for a rerun (optional): what to do differently,
+	// kept on the job's notes. A step stop takes none.
+	Words string `json:"words,omitempty"`
 }
 
 // FactoryJobCreateParams makes a job. WITHOUT Start THE JOB IS ONLY ADDED TO
@@ -174,6 +214,7 @@ type FactoryJobCreateParams struct {
 // approval waits UndoUntil before it is acted on: until then the same person's
 // factory.job_undo withdraws it, and after it the factory publishes.
 type FactoryApprovalReceipt struct {
+	Automatic bool      `json:"automatic,omitempty"`
 	Kind      string    `json:"kind,omitempty"`
 	State     string    `json:"state"`
 	DecidedBy string    `json:"decided_by,omitempty"`
@@ -237,6 +278,12 @@ type FactoryActor interface {
 	FactoryJobStop(ctx context.Context, p FactoryJobActionParams) (FactoryJobActed, error)
 	FactoryJobDismiss(ctx context.Context, p FactoryJobActionParams) (FactoryJobActed, error)
 	FactoryJobDrop(ctx context.Context, p FactoryJobDropParams) (FactoryJobActed, error)
+	// FactoryJobRestore is Bring back: a dropped job returns to Backlog.
+	FactoryJobRestore(ctx context.Context, p FactoryJobActionParams) (FactoryJobActed, error)
+	// FactoryJobRunAgain is Run again: a job whose run ended on a failure,
+	// a person's stop that cut a step among them, or whose pull request was
+	// closed unmerged, starts over at its first step.
+	FactoryJobRunAgain(ctx context.Context, p FactoryJobActionParams) (FactoryJobActed, error)
 	FactoryJobUnassign(ctx context.Context, p FactoryJobActionParams) (FactoryJobActed, error)
 	FactoryJobAssignToMe(ctx context.Context, p FactoryJobActionParams) (FactoryJobActed, error)
 	FactoryJobChangeAssignee(ctx context.Context, p FactoryJobAssigneeParams) (FactoryJobActed, error)
@@ -249,6 +296,8 @@ type FactoryActor interface {
 	FactoryJobCreate(ctx context.Context, p FactoryJobCreateParams) (FactoryJobActed, error)
 	FactoryJobStepStop(ctx context.Context, p FactoryJobStepParams) (FactoryJobActed, error)
 	FactoryJobStepRerun(ctx context.Context, p FactoryJobStepParams) (FactoryJobActed, error)
+	FactoryJobMerge(ctx context.Context, p FactoryJobMergeParams) (FactoryJobActed, error)
+	FactoryJobSetModel(ctx context.Context, p FactoryJobSetModelParams) (FactoryJobActed, error)
 }
 
 func withFactoryActorFeature(hello Hello, e Engine) Hello {
@@ -257,6 +306,13 @@ func withFactoryActorFeature(hello Hello, e Engine) Hello {
 	}
 	if _, ok := e.(FactoryActor); ok {
 		hello = withFeature(hello, FeatureFactoryJobActions)
+		if _, ok := e.(FactoryCloser); ok {
+			hello = withFeature(hello, FeatureFactoryJobClose)
+		}
+		if _, ok := e.(FactoryJobController); ok {
+			hello = withFeature(hello, FeatureFactoryJobControl)
+			hello = withFeature(hello, FeatureFactoryJobAutonomy)
+		}
 	}
 	return hello
 }
@@ -335,14 +391,7 @@ func factoryAction[P any](name string, prep func(*P) error, call func(FactoryAct
 
 func prepAction(p *FactoryJobActionParams) error { return checkJob(&p.Factory, p.Job, p.Expect) }
 
-func prepDrop(p *FactoryJobDropParams) error {
-	if err := checkJob(&p.Factory, p.Job, p.Expect); err != nil {
-		return err
-	}
-	var err error
-	p.Words, err = words("words", p.Words, MaxFactoryJobWords, false)
-	return err
-}
+func prepDrop(p *FactoryJobDropParams) error { return checkJob(&p.Factory, p.Job, p.Expect) }
 
 func prepAssignee(p *FactoryJobAssigneeParams) error {
 	if err := checkJob(&p.Factory, p.Job, p.Expect); err != nil {
@@ -393,6 +442,28 @@ func prepApprove(p *FactoryJobApproveParams) error {
 	return err
 }
 
+func prepMerge(p *FactoryJobMergeParams) error {
+	if err := checkJob(&p.Factory, p.Job, p.Expect); err != nil {
+		return err
+	}
+	p.Commit = strings.ToLower(strings.TrimSpace(p.Commit))
+	if p.Commit != "" && !factoryCommit.MatchString(p.Commit) {
+		return Errorf(CodeBadParams, "commit must be the pull request's head commit id the person saw")
+	}
+	return nil
+}
+
+func prepSetModel(p *FactoryJobSetModelParams) error {
+	if err := checkJob(&p.Factory, p.Job, p.Expect); err != nil {
+		return err
+	}
+	p.Model = strings.TrimSpace(p.Model)
+	if len(p.Model) > MaxFactoryJobModel || strings.ContainsFunc(p.Model, func(r rune) bool { return r <= ' ' || r == 0x7f }) {
+		return Errorf(CodeBadParams, "model must be a model id of at most 200 characters, with no spaces")
+	}
+	return nil
+}
+
 func prepChanges(p *FactoryJobChangesParams) error {
 	if err := checkJob(&p.Factory, p.Job, p.Expect); err != nil {
 		return err
@@ -402,7 +473,24 @@ func prepChanges(p *FactoryJobChangesParams) error {
 	return err
 }
 
+// prepStepRerun is [prepStep] with the rerun's optional words.
+func prepStepRerun(p *FactoryJobStepParams) error {
+	words, err := words("words", p.Words, MaxFactoryJobWords, false)
+	if err != nil {
+		return err
+	}
+	p.Words = ""
+	if err := prepStep(p); err != nil {
+		return err
+	}
+	p.Words = words
+	return nil
+}
+
 func prepStep(p *FactoryJobStepParams) error {
+	if strings.TrimSpace(p.Words) != "" {
+		return Errorf(CodeBadParams, "only a rerun takes words")
+	}
 	if err := checkJob(&p.Factory, p.Job, p.Expect); err != nil {
 		return err
 	}
@@ -458,6 +546,8 @@ func init() {
 		"factory.job_stop":            factoryAction("factory.job_stop", prepAction, FactoryActor.FactoryJobStop),
 		"factory.job_dismiss":         factoryAction("factory.job_dismiss", prepAction, FactoryActor.FactoryJobDismiss),
 		"factory.job_drop":            factoryAction("factory.job_drop", prepDrop, FactoryActor.FactoryJobDrop),
+		"factory.job_restore":         factoryAction("factory.job_restore", prepAction, FactoryActor.FactoryJobRestore),
+		"factory.job_run_again":       factoryAction("factory.job_run_again", prepAction, FactoryActor.FactoryJobRunAgain),
 		"factory.job_unassign":        factoryAction("factory.job_unassign", prepAction, FactoryActor.FactoryJobUnassign),
 		"factory.job_assign_to_me":    factoryAction("factory.job_assign_to_me", prepAction, FactoryActor.FactoryJobAssignToMe),
 		"factory.job_change_assignee": factoryAction("factory.job_change_assignee", prepAssignee, FactoryActor.FactoryJobChangeAssignee),
@@ -469,7 +559,9 @@ func init() {
 		"factory.job_retry_publish":   factoryAction("factory.job_retry_publish", prepAction, FactoryActor.FactoryJobRetryPublish),
 		"factory.job_create":          factoryAction("factory.job_create", prepCreate, FactoryActor.FactoryJobCreate),
 		"factory.job_step_stop":       factoryAction("factory.job_step_stop", prepStep, FactoryActor.FactoryJobStepStop),
-		"factory.job_step_rerun":      factoryAction("factory.job_step_rerun", prepStep, FactoryActor.FactoryJobStepRerun),
+		"factory.job_step_rerun":      factoryAction("factory.job_step_rerun", prepStepRerun, FactoryActor.FactoryJobStepRerun),
+		"factory.job_merge":           factoryAction("factory.job_merge", prepMerge, FactoryActor.FactoryJobMerge),
+		"factory.job_set_model":       factoryAction("factory.job_set_model", prepSetModel, FactoryActor.FactoryJobSetModel),
 	} {
 		methods[name] = m
 		factoryActionMethods[name] = m

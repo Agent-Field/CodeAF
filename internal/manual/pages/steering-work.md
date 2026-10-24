@@ -175,3 +175,5 @@ commission work, and report back without handing you off to anything.
 Every change comes back as a receipt that counts what moved and names it in your
 words: "Cancelling 4: Line scans, Market research…". A receipt states what was
 queued, never what was delivered, and never promises a time.
+
+Factory job **Close** stops owned work and moves the job into Closed while keeping its branch, folder, chats and spending. It changes no GitHub issue, branch or PR. **Reopen** retains that work and starts nothing; resume the pipeline when ready. **Drop** deletes the job's local work instead, and Bring back starts fresh.

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
-	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
@@ -20,10 +19,8 @@ import (
 // before telling them to press ▶ run. The door is the floor's own control,
 // the one the top bar's button sends, reached from the manager's chat:
 //
-//   - an item that never ran (or was dismissed) is launched ([factory.Seam.Launch]);
-//     the manager is in the chat where the person asked, so the launch never
-//     gives it a second turn to shape: an item it had not shaped is recorded
-//     as kept ([shapeKeptRecord]) before it goes;
+//   - an item that never ran (or was dismissed) is launched ([factory.Seam.Launch])
+//     with its steps as they stand, as the button launches it;
 //   - a paused run goes on with the same step in the same chat ([factory.Seam.Hold]);
 //   - a run held at an approve step goes past it ([factory.Seam.Answer] with
 //     yes), which the tool's description reserves for the person's own clear
@@ -42,13 +39,17 @@ const (
 	sayStartResumed   = "%s resumed"
 	sayStartContinued = "%s went past %s"
 	sayStartRunning   = "%s is already running"
-	sayStartQueued    = "%s is queued · it starts when a bench frees"
+	sayStartQueued    = "%s is queued · waiting for an available execution slot. Configure Jobs at once in Settings → Factory concurrency."
 )
 
-// startItem starts, resumes or continues the run of item it on st.
-func startItem(st *store.Store, workspace string, it factory.Item) (string, error) {
+// startItem starts, resumes or continues the run of item it on st. ITS LAUNCH
+// IS THE HEADER'S: the same checkout door over the same token
+// ([factoryCheckouts]), so a job the runner will clone starts from the chat as
+// it does from the button, and one that cannot be cloned is refused in the
+// same sentence.
+func startItem(st *store.Store, workspace, profileDir string, it factory.Item) (string, error) {
 	dirs := factoryRepoDirs(st, workspace)
-	seam := factoryNeedsCheckout(factory.LocalSeam(st, time.Now(), factoryRunnerDoors(st), factoryPipelineOption(), factory.WithRepoDirs(dirs)), st, dirs)
+	seam := factoryCheckouts(factory.LocalSeam(st, time.Now(), factoryRunnerDoors(st), factoryPipelineOption(), factory.WithRepoDirs(dirs)), st, dirs, factoryTokenOf(factoryProfile(profileDir)))
 	ref := it.Ref()
 	switch it.State {
 	case factory.StateLanded:
@@ -88,18 +89,6 @@ func startItem(st *store.Store, workspace string, it factory.Item) (string, erro
 	if seam.Launch == nil {
 		return "", errors.New("this window cannot reach the factory's runner")
 	}
-	// THE MANAGER IS HERE, IN THE CHAT WHERE THE PERSON SAID START: the
-	// launch gives it no second turn to shape what it has just talked over.
-	if !factoryrun.ShapedByManager(it) {
-		if err := st.Update(it.ID, func(x *factory.Item) error {
-			if !factoryrun.ShapedByManager(*x) {
-				x.Adapted = append(append([]string(nil), x.Adapted...), shapeKeptRecord)
-			}
-			return nil
-		}); err != nil {
-			return "", err
-		}
-	}
 	if err := seam.Launch(it.ID); err != nil {
 		return "", err
 	}
@@ -126,7 +115,7 @@ func (d seamRunDoor) StartRun(_ context.Context, conversation string) (string, e
 	if err != nil {
 		return "", err
 	}
-	return startItem(d.st, d.workspace, it)
+	return startItem(d.st, d.workspace, d.profileDir, it)
 }
 
 // Manages says whether conversation is the manager of an item on the floor.

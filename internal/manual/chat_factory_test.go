@@ -54,6 +54,57 @@ func TestTheFactoryQuestionsReachTheirSections(t *testing.T) {
 			says:     []string{"`factory_add`", "writes nothing until you say yes", "none of them starts a job"},
 		},
 		{
+			question: "what is this out of rounds state, my factory job stopped",
+			page:     "factory-stage-conversations",
+			title:    "a step stopped without reporting",
+			says:     []string{"`stage_result`", "reminded, 1 of 3", "Rounds are named only for a step that loops"},
+		},
+		{
+			question: "my plan step never called stage_result, what does reported for the step mean in the timeline",
+			page:     "factory-stage-conversations",
+			title:    "a step stopped without reporting",
+			says:     []string{"`tool_choice`", "reported for the step ·", "today's spend limit stopped this step"},
+		},
+		{
+			question: "the step reported early and kept working, does its second stage_result count or is it cut off",
+			page:     "factory-stage-conversations",
+			title:    "a step that reports again",
+			says:     []string{"Each call replaces the one before", "never cut off", "updated 2 times"},
+		},
+		{
+			question: "the plan step stopped without reporting, how do I try again",
+			page:     "factory-stage-conversations",
+			title:    "a step stopped without reporting",
+			says:     []string{"plan stopped without reporting · try again, or stop the job?", "never offers it"},
+		},
+		// ONE DEFAULT RECIPE, WITH ROOM TO FIX: a job a person starts and one a
+		// rule starts run the same steps, and a step that falls short goes round
+		// again before it asks.
+		{
+			question: "what default steps does a factory job run with no factory.yaml, and how many rounds",
+			page:     "factory",
+			title:    "the default steps",
+			says:     []string{"plan › approve › write › test › review › proof", "whether a person started it or a start rule did", "| review, security | clean | 3 |", "`codeaf factory steps`"},
+		},
+		{
+			question: "what do findings count when the factory review fixed what it found",
+			page:     "factory-stage-conversations",
+			title:    "how a step is judged",
+			says:     []string{"still wrong after the", "reports zero"},
+		},
+		{
+			question: "why is my factory proof not proven when a claim has no evidence",
+			page:     "factory-stage-conversations",
+			title:    "how a step is judged",
+			says:     []string{"Every claim needs `evidence`", "a claim whose evidence is blank is not proven"},
+		},
+		{
+			question: "what does the second round of a factory step see from the first round",
+			page:     "factory-stage-conversations",
+			title:    "a second round",
+			says:     []string{"The last round reported:", "the first 4,000 characters", "in a fresh conversation"},
+		},
+		{
 			question: "what does a factory stage conversation get, stage_result and plan_edit",
 			page:     "factory-stage-conversations",
 			title:    "a stage is a conversation",

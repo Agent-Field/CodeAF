@@ -11,8 +11,8 @@ import (
 // ── add_step, remove_step and move_step ─────────────────────────────────────
 //
 // editBase's issue pipeline is [plan approve write test lint-pass proof], its pr
-// pipeline [read review proof], and ci is the shipped default [read write test
-// proof]. approve and proof are fixed.
+// pipeline [read review proof], and ci is the shipped default [bisect fix test
+// proof approve]. approve and proof are fixed.
 
 func add(kind, name, after, prompt string) EditOp {
 	return EditOp{Op: OpAddStep, Pipeline: kind, Name: name, After: s(after), Prompt: s(prompt)}
@@ -101,14 +101,14 @@ func TestAddStepFirstAndWithEveryField(t *testing.T) {
 
 func TestStructureWorksOnTheDefaultAMinimalFileAndACustomKind(t *testing.T) {
 	for name, c := range map[string]struct {
-		base, kind, want string
+		base, kind, after, want string
 	}{
-		"default ci":   {editBase, "ci", "read,write,bench,test,proof"},
-		"minimal file": {"default_budget: 3\n", "issue", "plan,approve,write,bench,test,review,proof"},
-		"custom kind":  {"pipeline:\n  docs: [read, write, proof]\n", "docs", "read,write,bench,proof"},
+		"default ci":   {editBase, "ci", "fix", "bisect,fix,bench,test,proof,approve"},
+		"minimal file": {"default_budget: 3\n", "issue", "write", "plan,approve,write,bench,test,review,proof"},
+		"custom kind":  {"pipeline:\n  docs: [read, write, proof]\n", "docs", "write", "read,write,bench,proof"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			got := mustApply(t, c.base, add(c.kind, "bench", "write", "time the hot path"))
+			got := mustApply(t, c.base, add(c.kind, "bench", c.after, "time the hot path"))
 			back := reread(t, got.Text)
 			if g := joined(back.Pipeline[factory.Kind(c.kind)]); g != c.want {
 				t.Fatalf("%s", g)
@@ -152,7 +152,7 @@ func TestAddStepReusingADefinitionIsListOnlyAndNeverRewritesIt(t *testing.T) {
 	// The same words: review joins ci and its definition is not touched.
 	got := mustApply(t, editBase, add("ci", "review", "test", "review the diff"))
 	back := reread(t, got.Text)
-	if g := joined(back.Pipeline[factory.KindCI]); g != "read,write,test,review,proof" || len(got.Added) != 0 || len(got.Steps) != 0 {
+	if g := joined(back.Pipeline[factory.KindCI]); g != "bisect,fix,test,review,proof,approve" || len(got.Added) != 0 || len(got.Steps) != 0 {
 		t.Fatalf("%s added=%v steps=%+v", g, got.Added, got.Steps)
 	}
 	if back.Steps["review"].Until != "clean" {
@@ -341,7 +341,7 @@ func TestStructuralRefusalRefusesTheWholeList(t *testing.T) {
 		"no such pipeline":     {[]EditOp{remove("deploy", "plan")}, EditUnknownStep, 0},
 		"twice in one kind":    {[]EditOp{move("issue", "test", "plan"), move("issue", "test", "write")}, EditBadOp, 1},
 		"set_step after add":   {[]EditOp{add("issue", "lint", "write", "x"), {Op: OpSetStep, Name: "lint", Max: i(2)}}, EditBadOp, 1},
-		"set_step before add":  {[]EditOp{{Op: OpSetStep, Name: "write", Max: i(2)}, add("ci", "write", "read", "carry out the plan")}, EditBadOp, 1},
+		"set_step before add":  {[]EditOp{{Op: OpSetStep, Name: "write", Max: i(2)}, add("ci", "write", "fix", "carry out the plan")}, EditBadOp, 1},
 		"locked after a valid": {[]EditOp{add("issue", "lint", "write", "x"), remove("issue", "approve")}, EditLocked, 1},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -351,7 +351,7 @@ func TestStructuralRefusalRefusesTheWholeList(t *testing.T) {
 	// The same name in two kinds is two rows, and both apply.
 	got := mustApply(t, editBase, remove("issue", "test"), remove("ci", "test"))
 	back := reread(t, got.Text)
-	if joined(back.Pipeline[factory.KindIssue]) != "plan,approve,write,lint-pass,proof" || joined(back.Pipeline[factory.KindCI]) != "read,write,proof" || len(got.Order) != 2 {
+	if joined(back.Pipeline[factory.KindIssue]) != "plan,approve,write,lint-pass,proof" || joined(back.Pipeline[factory.KindCI]) != "bisect,fix,proof,approve" || len(got.Order) != 2 {
 		t.Fatalf("%+v", got.Order)
 	}
 }

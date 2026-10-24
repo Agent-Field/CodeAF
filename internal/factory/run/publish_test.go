@@ -307,7 +307,7 @@ func TestPublishCommitsPushesAndOpensThePullRequestWithTheTrailer(t *testing.T) 
 		t.Fatalf("writes = %+v", g.src.got)
 	}
 	a := g.src.got[0]
-	if a.Verb != "pr" || a.Branch != branch || a.Draft {
+	if a.Verb != "pr" || a.Branch != branch || !a.Draft {
 		t.Fatalf("action = %+v", a)
 	}
 	for _, want := range []string{"Closes #12.", "Proof · 1 of 1 claims shown", "✓ go test passes"} {
@@ -341,28 +341,23 @@ func TestPublishWithoutAnApprovalPublishesNothing(t *testing.T) {
 // TestApprovingAPullRequestPostsAReviewComment: codeaf never pushes to the
 // branch of a pull request it was asked to look at; the approval is a comment
 // on it, with the trailer, and the job's pr is that pull request.
-func TestApprovingAPullRequestPostsAReviewComment(t *testing.T) {
+func TestStandalonePRJobsCannotPublish(t *testing.T) {
 	st, err := store.Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	saved, err := st.Create(factory.Item{Num: 40, Kind: factory.KindPR, Draft: true, Repo: "acme/api", Title: "Speed up", URL: "https://github.com/acme/api/pull/40", State: factory.StateLanded, Stream: &factory.Stream{}})
+	saved, err := st.Create(factory.Item{Num: 40, Kind: factory.KindPR, Repo: "acme/api", Title: "legacy PR job", State: factory.StateLanded})
 	if err != nil {
 		t.Fatal(err)
 	}
 	src := &fakeSource{}
 	pushed := false
 	r := New(Options{Store: st, Source: func(string) factory.Source { return src }, Push: func(string, string) error { pushed = true; return nil }})
-	if err := r.Publish(saved.ID, testTrailer); err != nil {
-		t.Fatal(err)
+	if err := r.Publish(saved.ID, testTrailer); err == nil || !strings.Contains(err.Error(), "issues only") {
+		t.Fatalf("accepted legacy PR job: %v", err)
 	}
-	g := publishRig{st: st, r: r, id: saved.ID}
-	it := g.settle(t)
-	if it.State != factory.StateShipped || it.PullRequest == nil || !it.PullRequest.Draft || it.PullRequest.Number != 40 || it.PullRequest.URL != saved.URL {
-		t.Fatalf("job = %s %+v", it.State, it.PullRequest)
-	}
-	if pushed || len(src.got) != 1 || src.got[0].Verb != "comment" || !strings.HasSuffix(src.got[0].Body, "\n"+testTrailer) {
-		t.Fatalf("pushed=%t writes=%+v", pushed, src.got)
+	if pushed || len(src.got) != 0 {
+		t.Fatal("legacy PR job published")
 	}
 }
 
@@ -386,18 +381,18 @@ func TestAPublishThatFailsLandsTheJobAgain(t *testing.T) {
 	}
 }
 
-func TestPublishBodyStartsWithTheAsk(t *testing.T) {
-	local := PublishBody(factory.Item{Kind: factory.KindIssue, Num: 12, Title: "Fix it", Ask: &factory.JobAsk{Text: "Count once."}}, testTrailer)
-	if !strings.HasPrefix(local, "Count once.\n\n") || !strings.Contains(local, "Closes #12.") || !strings.HasSuffix(local, "\n"+testTrailer) {
-		t.Fatalf("local body = %q", local)
+func TestPublishBodyDescribesImplementationWithoutIssueAttribution(t *testing.T) {
+	it := factory.Item{Kind: factory.KindIssue, Num: 12, Title: "Fix dispatch", Body: "old issue\nGenerated with Claude Code", Origin: factory.OriginForge, URL: "https://github.com/acme/api/issues/12", Stream: &factory.Stream{Phases: []factory.Phase{{Name: "write", Result: &factory.StageResult{Output: "Run both branches concurrently."}}}}}
+	body := PublishBody(it, testTrailer)
+	for _, want := range []string{"Run both branches concurrently.", "Closes #12.", "## Validation", testTrailer} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q: %s", want, body)
+		}
 	}
-	issue := PublishBody(factory.Item{Kind: factory.KindIssue, Origin: factory.OriginForge, Num: 12, URL: "https://github.com/acme/api/issues/12", Title: "Fix it", Body: "From the issue."}, testTrailer)
-	if !strings.HasPrefix(issue, "From the issue.\n\nCloses #12.") {
-		t.Fatalf("issue body = %q", issue)
-	}
-	plain := PublishBody(factory.Item{Kind: factory.KindIssue, Num: 12, Title: "Fix it"}, testTrailer)
-	if !strings.HasPrefix(plain, "Closes #12.") {
-		t.Fatalf("a job with no ask changed the body: %q", plain)
+	for _, wrong := range []string{"Claude Code", "old issue"} {
+		if strings.Contains(body, wrong) {
+			t.Fatalf("copied issue text: %s", body)
+		}
 	}
 }
 

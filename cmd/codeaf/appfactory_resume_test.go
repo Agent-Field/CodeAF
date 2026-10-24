@@ -1,13 +1,17 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
+	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 )
 
 // ── the local factory survives the app closing ─────────────────────────────
@@ -111,12 +115,16 @@ func TestLocalFactoryComesBackQuietlyAfterTheAppRestarts(t *testing.T) {
 	}
 	var status appwire.FactoryLocalStatus
 	w.must("factory.local_status", map[string]any{"caller": "w1"}, &status)
-	if status.State != appwire.LocalRunning || status.Authority != appwire.LocalAuthorityApp || status.Factory != appLocalID || status.Runner {
+	if status.State != appwire.LocalRunning || status.Authority != appwire.LocalAuthorityApp || status.Factory != appLocalID || !status.Runner {
 		t.Fatalf("status after restart: %+v", status)
 	}
 	host := w.backend.local.host
 	if host == nil || !host.quiet || host.token == "" || host.token == firstToken {
 		t.Fatal("the resumed service is not quiet, or kept the last launch's bearer")
+	}
+	// Not one request reached GitHub by the restart itself (the poll waits).
+	if seen := gh.seen(); len(seen) != 0 {
+		t.Fatalf("restart made GitHub requests: %v", seen)
 	}
 	setup := func() appwire.FactorySetupView {
 		var v appwire.FactorySetupView
@@ -127,20 +135,18 @@ func TestLocalFactoryComesBackQuietlyAfterTheAppRestarts(t *testing.T) {
 		t.Fatalf("the checkout was not kept: %+v", r)
 	}
 
-	// Nothing ran: no runner, no election, no job started, and not one request
-	// to GitHub (the credential does not even exist in the new process).
-	if release, free := host.floor.TryWorker(); !free {
-		t.Fatal("a runner was elected on restart")
-	} else {
-		release()
+	// THE RUNNER IS BACK AND NOTHING RAN: every job is still in Backlog, and
+	// the one request that reached GitHub is the finished setup's read asking
+	// once whether its token still answers.
+	var held api.Queue
+	w.must("factory.queue", map[string]any{"factory": appLocalID}, &held)
+	for _, j := range held.Jobs {
+		if j.State != "backlog" {
+			t.Fatalf("restart started job %d: %q", j.ID, j.State)
+		}
 	}
-	var runners api.Runners
-	w.must("factory.runners", map[string]any{"factory": appLocalID}, &runners)
-	if len(runners.Runners) != 0 {
-		t.Fatalf("restart registered a runner: %+v", runners.Runners)
-	}
-	if seen := gh.seen(); len(seen) != 0 {
-		t.Fatalf("restart made GitHub requests: %v", seen)
+	if seen := gh.seen(); len(seen) != 1 || seen[0] != "GET /user" {
+		t.Fatalf("restart and one setup read made GitHub requests: %v", seen)
 	}
 	data, _ := os.ReadFile(w.backend.factoryHub().path())
 	for _, secret := range []string{host.token, firstToken, setupSecret} {
@@ -414,5 +420,64 @@ func TestJoiningAListedLocalOriginUsesTheVerifiedCallersSession(t *testing.T) {
 		if strings.Contains(line, token) {
 			t.Fatal("the completed caller grant reached the app wire")
 		}
+	}
+}
+
+// THE CONNECTION OUTLIVES THE LAUNCH. The app keeps a pasted token and hands it
+// back with keys.set before it asks anything else: a launch without it finds
+// setup asking for GitHub again, and the one handed back finds setup done. A
+// yes to gh needs nothing handed back: the factory's profile keeps the yes,
+// and gh is read again.
+func TestTheLocalFactoryKeepsItsGitHubAcrossARestart(t *testing.T) {
+	for _, source := range []string{"token", "gh"} {
+		t.Run(source, func(t *testing.T) {
+			s := newLocalSetup(t)
+			gh := filepath.Join(t.TempDir(), "gh")
+			if err := os.WriteFile(gh, []byte("#!/bin/sh\necho "+setupSecret+"\n"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			keep := forge.LookPath
+			forge.LookPath = func(string) (string, error) { return gh, nil }
+			t.Cleanup(func() { forge.LookPath = keep })
+			s.start()
+			connect := map[string]any{"source": source}
+			if source == "token" {
+				connect["token"] = setupSecret
+			}
+			s.setup("factory.setup_connect", connect)
+			s.setup("factory.setup_select", map[string]any{"repos": []string{"acme/api"}})
+			s.until("checkouts", func(v appwire.FactorySetupView) bool { return v.State == "checkouts" })
+			s.setup("factory.setup_skip", map[string]any{"repo": "acme/api"})
+			if v := s.setup("factory.setup_done", map[string]any{}); v.State != "done" {
+				t.Fatalf("setup did not finish: %+v", v)
+			}
+			s.backend.Close()
+
+			// The app opens again, holding only the keys it hands over, and hands
+			// them over before it asks the factory anything, as the app does.
+			t.Cleanup(config.UseAppCredentials(config.NewAppCredentials()))
+			w, _ := reopened(t, s.backend.factoryHub())
+			profile := w.backend.localProfile()
+			if source == "token" {
+				if token, _ := factorygithub.TokenAt(context.Background(), profile); token != "" {
+					t.Fatal("a new launch knew the pasted token before the app handed it back")
+				}
+				w.must("keys.set", map[string]any{"provider": appwire.KeyGitHub, "key": setupSecret}, nil)
+			}
+			if token, _ := factorygithub.TokenAt(context.Background(), profile); token != setupSecret {
+				t.Fatal("the factory does not read the kept connection")
+			}
+			var status appwire.FactoryLocalStatus
+			w.must("factory.local_status", map[string]any{"caller": "w1"}, &status)
+			if status.State != appwire.LocalRunning || !status.Runner {
+				t.Fatalf("the factory did not come back running its jobs: %+v", status)
+			}
+			var v appwire.FactorySetupView
+			w.must("factory.setup_read", map[string]any{"caller": "w1"}, &v)
+			if v.State != "done" {
+				t.Fatalf("setup asks for GitHub again: %+v", v)
+			}
+			w.neverSaid(setupSecret)
+		})
 	}
 }

@@ -1176,11 +1176,13 @@ func appProcessBase(agent string, job session.JobNotice) appwire.Process {
 		process.State = appwire.ProcessStopped
 	}
 	if process.State != appwire.ProcessRunning {
-		if !job.Started.IsZero() {
+		if !job.Ended.IsZero() {
+			process.EndedAt = &job.Ended
+		} else if !job.Started.IsZero() && job.Elapsed > 0 {
 			ended := job.Started.Add(job.Elapsed)
 			process.EndedAt = &ended
 		}
-		if process.State != appwire.ProcessStopped {
+		if process.State != appwire.ProcessStopped && !job.ExitCodeUnknown {
 			code := job.ExitCode
 			process.ExitCode = &code
 		}
@@ -1221,7 +1223,8 @@ func (b *appBackend) processMoved(agent string, live *appLive, job *session.JobN
 	if job.Kind == session.JobKindTask {
 		return
 	}
-	process := appProcessOf(agent, *job)
+	recovered := appRecoverJob(*job, live.replayJobs)
+	process := appProcessOf(agent, recovered)
 	same, finished := false, false
 	b.locked(func() {
 		before, known := live.processes[process.ID]
@@ -1256,6 +1259,9 @@ func (b *appBackend) processRows(agent string) ([]session.JobNotice, *appLive, e
 		rows, err := live.conn.Conv.JobNotices()
 		if err != nil {
 			return nil, nil, appListError(err)
+		}
+		for i := range rows {
+			rows[i] = appRecoverJob(rows[i], live.replayJobs)
 		}
 		return rows, live, nil
 	}
@@ -1604,6 +1610,7 @@ type appSlept struct {
 // Sleep stops every running process before the Mac sleeps, and every held
 // agent reads asleep until it wakes.
 func (b *appBackend) Sleep() error {
+	powerErr := b.factoryPower(true)
 	var agents []*appAgent
 	b.locked(func() {
 		b.asleep = true
@@ -1636,12 +1643,13 @@ func (b *appBackend) Sleep() error {
 		})
 		live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	}
-	return nil
+	return powerErr
 }
 
 // Wake brings every agent back, and says once per process the sleep stopped
 // that it stopped, so the person can run it again.
 func (b *appBackend) Wake() error {
+	powerErr := b.factoryPower(false)
 	var agents []*appAgent
 	b.locked(func() {
 		b.asleep = false
@@ -1676,5 +1684,17 @@ func (b *appBackend) Wake() error {
 		}
 		live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	}
-	return nil
+	return powerErr
+}
+
+// Factory presence follows the native power door, not whether a step's chat is
+// open. Never hold the local-host lock while contacting its elected service.
+func (b *appBackend) factoryPower(asleep bool) error {
+	b.local.mu.Lock()
+	host := b.local.host
+	b.local.mu.Unlock()
+	if host == nil {
+		return nil
+	}
+	return host.power(context.Background(), asleep)
 }

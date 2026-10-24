@@ -65,3 +65,11 @@ func TestExitCodeFromWaitNeverInventsAZero(t *testing.T) {
 		t.Fatalf("an unknown wait read as %d", code)
 	}
 }
+
+func TestPipedFailureIsNotReportedAsSuccess(t *testing.T) {
+	args, _ := json.Marshal(map[string]string{"command": "printf 'check failed\\n'; false | tail -20"})
+	text, isError, err := bareBash(t).Execute(context.Background(), args)
+	if err != nil || !isError || !strings.Contains(text, "Command exited with code 1") {
+		t.Fatalf("failed check masked: %v %v %q", err, isError, text)
+	}
+}

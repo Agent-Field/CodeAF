@@ -341,10 +341,27 @@ func TestRunnerSlotsAnOlderFactoryWithoutPolicyIsUnsupportedBeforeAnyPut(t *test
 	}
 }
 
+func TestRunnerSlotsAnExistingEightSlotFactoryStillAcceptsSupportedChanges(t *testing.T) {
+	stub := newRunnerStub(t, alice(), liveRunner("mbp", "alice", 2, true))
+	stub.dir.SlotsPolicy = &api.RunnerSlotsPolicy{Min: 1, Max: 8, RequiresLive: true}
+	r := newRunnerWire(t, stub, runnerToken)
+	if _, err := r.slots("mbp", 8); err != nil {
+		t.Fatalf("compatible older factory refused: %v", err)
+	}
+	if stub.count("PUT ") != 1 {
+		t.Fatal("the supported change was not sent once")
+	}
+	_, err := r.slots("mbp", 15)
+	wantRunnerCode(t, err, appwire.CodeConflict)
+	if stub.count("PUT ") != 1 {
+		t.Fatal("an above-server-limit change was sent")
+	}
+}
+
 func TestRunnerSlotsASpoofedOrMismatchedPolicyIsRefusedBeforeAnyPut(t *testing.T) {
 	bad := map[string]*api.RunnerSlotsPolicy{
 		"wider":         {Min: 1, Max: api.MaxRunnerSlots + 4, RequiresLive: true},
-		"narrower":      {Min: 1, Max: api.MaxRunnerSlots - 1, RequiresLive: true},
+		"zero ceiling":  {Min: 1, Max: 0, RequiresLive: true},
 		"zero floor":    {Min: 0, Max: api.MaxRunnerSlots, RequiresLive: true},
 		"raised floor":  {Min: 2, Max: api.MaxRunnerSlots, RequiresLive: true},
 		"no live guard": {Min: 1, Max: api.MaxRunnerSlots, RequiresLive: false},

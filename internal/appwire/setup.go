@@ -182,6 +182,13 @@ type KeyParams struct {
 	Connection *Connection `json:"connection,omitempty"`
 }
 
+// KeyGitHub is keys.set's provider for the GitHub token of the factory on
+// this machine, which is no model provider. The app keeps a token pasted in
+// factory setup in its keychain beside the model keys and hands it back with
+// keys.set at every launch; codeaf holds it in memory for the factory to read
+// GitHub with, and nothing else hears of it.
+const KeyGitHub = "github"
+
 // ProviderParams is the params of a method that takes one provider.
 type ProviderParams struct {
 	Provider string `json:"provider"`

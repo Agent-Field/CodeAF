@@ -232,6 +232,9 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 	}
 	var errs []error
 	for _, in := range items {
+		if !factory.IsIssueJob(in) {
+			continue
+		}
 		in.SourceAssignees = factory.NormalizeSourceAssignees(in.SourceAssignees)
 		if old, ok := index[itemKey(in)]; ok {
 			if !forgeChanged(old, in) {
@@ -302,6 +305,9 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 			continue
 		}
 		in.ID = 0
+		if in.Autonomy == "" {
+			in.Autonomy = factory.AutonomyAuto
+		}
 		in.State = factory.StateNew
 		if len(in.Stages) == 0 {
 			in.Stages = factory.CopyStages(factory.DefaultRecipe().For(in.Kind))

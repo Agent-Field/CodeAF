@@ -1959,6 +1959,9 @@ func (c *Client) completeWithMessagesStreaming(
 			response.Created = chunk.Created
 		}
 		if chunk.Model != "" {
+			if response.Model != chunk.Model {
+				reportServedModel(ctx, chunk.Model)
+			}
 			response.Model = chunk.Model
 		}
 		if chunk.Provider != "" {

@@ -10,15 +10,14 @@ import (
 const (
 	FactorySolo        = "solo"
 	FactoryTeam        = "team"
-	DefaultRunnerSlots = 2
+	DefaultRunnerSlots = 15
 	// MaxRunnerSlots is the most jobs one runner may be told to run at once,
 	// and the one number the server, the worker and the local runner share.
-	// Eight is a DELIBERATE PRODUCT AND SAFETY POLICY, not a measurement: each
+	// One hundred is a bounded product policy, not a measured hardware limit: each
 	// slot is a credential, a git worktree and a stage conversation inside one
 	// process, and a bounded number keeps one owner's click from fanning a
-	// machine out without limit. It happens to equal surfaceMaxProcs in
-	// cmd/codeaf/main.go, but that is a CPU scheduler width and is NOT evidence
-	// that more jobs would run badly; no benchmark here says either way.
+	// machine out without limit. This is independent of CPU scheduler width;
+	// idle PR monitoring takes no slot and starts no stage conversation.
 	// Raising it is a decision about that policy, made in this one constant.
 	//
 	// COMPATIBILITY: before this ceiling existed a runner could save any
@@ -27,7 +26,7 @@ const (
 	// the worker all report the capacity that is actually granted. Leases
 	// already held above it are never cancelled; they finish and the extra
 	// slots do not refill.
-	MaxRunnerSlots  = 8
+	MaxRunnerSlots  = 100
 	RunnerThisMac   = "this_mac"
 	RunnerMac       = "mac"
 	RunnerCI        = "ci"

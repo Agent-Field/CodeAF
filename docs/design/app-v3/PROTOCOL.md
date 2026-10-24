@@ -38,8 +38,13 @@ state again first. An app that does not know the word treats it as a failure.
    The app refuses a `contract` it does not know and kills the child.
 3. Requests and events flow.
 4. codeaf exits cleanly (closing every agent engine it started) when its stdin
-   reaches EOF, on SIGTERM/SIGINT, or on request `shutdown`. The app closes
-   stdin to stop it, then kills after 8 s.
+   reaches EOF, when the process that started it ends (even while something
+   else still holds its pipes), on SIGTERM/SIGINT/SIGHUP, or on request
+   `shutdown`. The app closes stdin to stop it, then kills after 8 s. Leaving
+   lets go of this machine's factory first (its runner stopped as a quit stops
+   it, then its service, `serve.json` and `serve.lock`), so the next codeaf can
+   serve it. Leaving is bounded: a codeaf still wrapping up 30 s after it began
+   leaving ends anyway, and a second SIGTERM/SIGINT/SIGHUP ends it at once.
 5. QUIT PAUSES, REOPEN RESUMES. Before anything stops, codeaf writes down every
    agent in the middle of a reply and every task it had running. A reply is
    stopped where it stands; at the next start codeaf opens that agent, sends
@@ -53,7 +58,7 @@ state again first. An app that does not know the word treats it as a failure.
 ## Types
 
 ```
-Agent  { id, title, workspace, model?, effort?, state, updated_at?, crews?, line? }
+Agent  { id, title, workspace, model?, model_identity?, effort?, state, updated_at?, crews?, line? }
        id: stable string (the conversation's session file id/path key)
        state: "idle" | "working" | "needs_you" | "stopped" | "closed"
        "working" whenever a turn runs, on every agent.changed and every list, whichever window
@@ -104,12 +109,13 @@ Ask    { id, agent, kind, subkind?, title, detail?, options?: [{id, label}], irr
 | `shutdown` | – | `{}` then exit |
 | `agents.labels` | `{ids: string[]}` (at most 32) | `{labels:[{id,title}], incomplete?}`; optional metadata-only lookup, no transcript reads. Missing names stay unknown; incomplete means a scan bound was reached. |
 | `agents.list` | `{workspace?}` | `{agents: Agent[]}` (recent conversations, newest first); a blank conversation, one nobody has said anything in, is never listed (see "Blank conversations") |
-| `agents.create` | `{workspace?, model?, budget_usd?, text?}` | `{agent: Agent}`; with `text` the first turn starts at once (`turn.started` follows) and `title` is the opening name — the words of `text`, or the names of the files attached when there are none, cut to 40 characters with "…" — until the engine's own name arrives as `agent.changed`: one request to the model configured for titles, asked once from those words and file names only, which replaces it unless the person renamed the agent first. No workspace: the user's home folder. |
+| `agents.create` | `{workspace?, model?, automatic_models?, budget_usd?, text?}` | `{agent: Agent}`; with `text` the first turn starts at once (`turn.started` follows) and `title` is the opening name — the words of `text`, or the names of the files attached when there are none, cut to 40 characters with "…" — until the engine's own name arrives as `agent.changed`: one request to the model configured for titles, asked once from those words and file names only, which replaces it unless the person renamed the agent first. No workspace: the user's home folder. |
 | `agents.entries` | `{id, before?, limit?}` | `{entries: Entry[], more: bool}` (oldest first; works for agents not held) |
-| `agents.set_model` | `{id, model}` | `{agent: Agent}` |
+| `agents.set_model` | `{id, model, automatic?}` | `{agent: Agent}`; optional boolean selects automatic/fixed model fallback before changing the model. |
 | `agents.retry` | `{id}` | `{turn}` (re-run the last failed turn) |
 | `agents.open` | `{id}` | `{agent: Agent}` (attach an engine to a saved conversation; idempotent, one concurrent open per agent; call on chat display or hover to prefetch) |
 | `agents.send` | `{id, text}` | `{turn: <u64>}`; output arrives as events |
+| `agents.suggest_reply` | `{agent, context}` | `{text}`; optional `agents.suggest_reply` feature, empty when no suggestion is useful/available |
 | `agents.stop` | `{id}` | `{}` (interrupt the running turn) |
 | `agents.close` | `{id}` | `{}` (detach and stop its engine; conversation stays on disk) |
 | `asks.list` | `{agent}` | `{asks: Ask[]}` (open asks only) |
@@ -160,7 +166,7 @@ result or an event, `?` marks a field that may be absent.
 | `agents.budget.get` | `{id}` | `{budget}` |
 | `agents.budget.set` | `{id, usd}` | `{budget}` |
 | `agents.compact` | `{id}` | `{}` |
-| `agents.create` | `{attachments, budget_usd, client_id, model, said, text, workspace}` | `{agent}` |
+| `agents.create` | `{attachments, automatic_models, budget_usd, client_id, model, said, text, workspace}` | `{agent}` |
 | `agents.entries` | `{before, id, limit}` | `{entries, more}` |
 | `agents.idle` | `{days}` | `{ids}` |
 | `agents.labels` | `{ids}` | `{incomplete?, labels}` |
@@ -174,9 +180,10 @@ result or an event, `?` marks a field that may be absent.
 | `agents.retry` | `{id}` | `{turn}` |
 | `agents.send` | `{attachments, client_id, id, reads, said, text}` | `{turn}` |
 | `agents.set_effort` | `{effort, id}` — `auto`, `low`, `medium`, `high`, `xhigh`, `max` | `{agent}` |
-| `agents.set_model` | `{id, model}` | `{agent}` |
+| `agents.set_model` | `{id, model, automatic?}` | `{agent}` |
 | `agents.since` | `{after, id}` | `{at?, entries, files?, first?, found, last_at?, turns}` |
 | `agents.steer` | `{attachments, client_id, id, reads, said, text}` | `{}` |
+| `agents.suggest_reply` | `{agent, context}` | `{text}` |
 | `agents.stop` | `{id}` | `{}` |
 | `asks.answer` | `{agent, batch_item, id, later, option, scope, text, why, you_decide}` | `{}` |
 | `asks.defer` | `{agent, id}` | `{ask?}` |
@@ -439,6 +446,19 @@ result or an event, `?` marks a field that may be absent.
   is known (the next tool call or the turn's end).
 - Entry ids are stable: the id sent live in `entry.added` equals the id returned
   later by `agents.entries` for the same item.
+- A factory job's agent (`factory.job_chats`'s `agent`) holds the run's own
+  progress lines, written between turns as `answer` entries: `review started`,
+  `review done · 4m · …`, `asking you: …`, `stopped`, `landed · …`. Each arrives
+  live as `entry.added` the moment it is written, while the app holds that
+  conversation, with the id, words and facts `agents.entries` answers for it
+  afterwards. A line that reports one step's round carries
+  `progress: {step, round?, event}`, where `event` is `started` or `done` (the
+  round began or finished), `waiting` (the step waits on a question put to the
+  person), or `failed` or `stopped` (the run ended under the step, on its error
+  or on a person's stop or no); `round` is absent for an approve step. Lines about
+  the job as a whole (`landed`, `answered: …`, a steer, a stop that cut no step)
+  have no `progress`. It is the runner's own fact, never read out of `text`,
+  which keeps the line's words.
 - `turn.tool` and tool entries carry `title`: the same one-line label the TUI
   shows for that call (e.g. `read src/auth/session.ts`, `bash pnpm test`), and
   `detail?` (short result line). Never just the bare tool name.
@@ -556,7 +576,7 @@ forgotten.
 |---|---|---|
 | `providers.list` | – | `{providers: Provider[]}` |
 | `keys.check` | `{provider, key, region?, address?}` | `{ok, models?: Model[], status?, message?, connection?}`; OpenRouter: exactly one provider request; 10 s timeout → `{ok:false, status:"timeout", message:"No answer · couldn't reach <host> in 10s"}`; a rejection carries the provider's status code and own words. Others: see Providers above; `status` is the provider's code, `"unreachable"` (`message: "No answer · couldn't reach <host>"`), `"shape"` (codeaf refused the key's shape before asking; `message` says the shape), or `"payment"` (every billing road refused for money); a pass may carry `message` when the account cannot pay or its plan's window is spent. `key` may be empty for a `key_optional` provider. Keeps nothing |
-| `keys.set` | `{provider, key, connection?}` | `{}`; the key in memory only (models.list / turns use it); `connection` (from keys.check) kept in codeaf's profile; `key` may be empty for a `key_optional` provider, which is then connected with none; the provider's models are fetched in the background and reach `models.list`, which waits up to 3 s for that fetch. Before any provider is connected the engine's process cannot open: `models.list` answers `{models: []}` and a turn ends `ok:false` with `error: "no model provider is connected"`; the first connection opens it in the same launch |
+| `keys.set` | `{provider, key, connection?}` | `{}`; the key in memory only (models.list / turns use it); provider `github` is the factory's GitHub token, no model provider: held for the factory on this machine alone, never announced or listed, and refused empty; `connection` (from keys.check) kept in codeaf's profile; `key` may be empty for a `key_optional` provider, which is then connected with none; the provider's models are fetched in the background and reach `models.list`, which waits up to 3 s for that fetch. Before any provider is connected the engine's process cannot open: `models.list` answers `{models: []}` and a turn ends `ok:false` with `error: "no model provider is connected"`; the first connection opens it in the same launch |
 | `keys.remove` | `{provider}` | `{}`; a key is let go for this launch; an address is disconnected from the profile; the Codex account is signed out (a pending sign-in cancelled first; `busy` while one is being saved) |
 | `providers.sign_in` | `{provider}` | `{url}` browser sign-in for OpenRouter and Codex; completion arrives as `provider.changed` (with `key` for OpenRouter only); a Codex sign-in that finishes and cannot be kept ends `sign_in_state: "failed"` with `sign_in_error` |
 | `providers.sign_in_start` | `{provider}` | `{url, attempt}` starts/joins the one account sign-in, returning its non-secret operation identity |
@@ -638,8 +658,16 @@ Quick    { id, agent, title, files: [{path, add, del}], state: "running"|"done"|
            undone > promoted > settled (stopped or done) > running (grew only while awaiting promotion).
            A quick task promoted to a full task is sent as done. conflict is derived only from done,
            never from stopped; a state the engine adds later is sent as itself, never as done.
-Process  { id, agent, title, command, state: "running"|"ended"|"failed"|"stopped",
-           started_at, ended_at?, exit_code?, last_line?, reason? }
+Process  { id, agent, title, command?, state: "running"|"ended"|"failed"|"stopped",
+           started_at?, ended_at?, exit_code?, last_line?, reason? }
+           Replay and live updates use the same id and title = the job's Label().
+           Old records without a start use "<agent>:p<n>"; no timestamp is guessed.
+           command is "" and started_at the zero time when unknown (both always sent). ended_at is the recorded ending,
+           or start + saved elapsed for a settled job when both are known; never for a running job.
+           exit_code is absent when unknown, including failed old rows; failed remains failed.
+           Opening replays kept job rows even when the process shelf is empty; processes.list
+           includes those same rows. Old bash results naming job N supply that job's full
+           command and tool link from history once on open; without a matching call the command stays "".
            reason: why a stopped process stopped when a person did not stop it: "stopped by quit"
            id: "<agent>:p<n>.<start>" — the job's number and when it started, so a process stopped by
            a quit and one started after the restart never share an id; an id naming a process the
@@ -730,8 +758,10 @@ process?: string                 the processes.list / process.changed id of the 
                                  when this backend publishes that row. Absent on begin, ordinary
                                  foreground completion, failure, refusal, rejection and interruption.
                                  The engine carries the registry number and start (or service id) as
-                                 typed result metadata and keeps it in the journal; never inferred from
-                                 output text or ended_at. Older engines and records omit it = unknown.
+                                 typed result metadata and keeps it in the journal. For older records only,
+                                 a bash result beginning "still running as job N" or "job N" links that
+                                 occurrence to the kept job; its arguments supply the full command.
+                                 No matching result means unknown. Never infer a start from ended_at.
                                  A later begin reusing an ended call id starts fresh and has no process.
                                  In history, only process takes its exact source occurrence; existing
                                  facts retain their last same-id source selection for compatibility.
@@ -2648,12 +2678,12 @@ Feature `factory.remote` is present only when the engine serves the typed factor
 | method | params | result |
 |---|---|---|
 | `factory.capabilities` | none | FactoryCapabilities |
-| `factory.list` | none | FactoryList (state: ok, unreachable, signed_out, github_expired) |
+| `factory.list` | none | FactoryList (state: ok, unreachable, signed_out, github_expired; reason?) |
 | `factory.attach` | url, token? | FactoryConnection |
 | `factory.detach` | factory | empty |
 | `factory.me` | factory | FactoryMe (public identity, github_signed_in, can_sign_out, github_sign_in_available, invite_available) |
-| `factory.queue` | factory | api.Queue |
-| `factory.job` | factory, job | api.Job |
+| `factory.queue` | factory | api.Queue (a repository that is off takes its jobs out, in every state, and is not in `repos`; a listed repository's `watched` is true unless the factory keeps no watched list, and there is no `on`; `checked_out: true` when the factory's machine knows a checkout of it, absent (false) when it knows none, whose jobs the runner clones on their first step or a start refuses, as the job's own `checkout` says) |
+| `factory.job` | factory, job | api.Job (a job of a repository that is off is still answered, with `repo_off: true` and no `can.run`, `can.start_now`, `can.run_again`, `can.approve`, `can.retry_publish`, `can.merge`, `controls.rerun_step` or `controls.sync`; `checkout` says how a run of its repository gets a folder on the factory's machine, never a path: `here` (a checkout is known), `will_clone` (the runner clones it into the factory's own folder on the first step, over the factory's GitHub token and https, and the job's log says `cloning owner/name…`), `missing` (it cannot be cloned: Start is refused `needs_checkout`); absent when the job has no repository or the factory does not know its machine's checkouts (a team server, whose runners keep their own)) |
 | `factory.repos` | factory | FactoryRepos (no checkout path) |
 | `factory.pipeline` | factory, repo (owner/name) | FactoryPipeline |
 | `factory.runners` | factory | api.Runners |
@@ -2669,6 +2699,10 @@ Feature `factory.remote` is present only when the engine serves the typed factor
 
 `factory.me` never returns session identifiers, machines, runners or checkout paths. Its `github_signed_in` comes only from the serving factory's explicit attestation of a GitHub-verified caller profile; a credential ID, handle or operator flag cannot imply it. An older factory omitting the attestation yields no GitHub claim without changing the connection's actual authentication state. `can_sign_out` separately indicates a caller session that the session endpoint can end: a verified legacy access grant can identify a person without supporting that action. Desktops offer Sign out only with both explicit flags. `github_sign_in_available` and `invite_available` are the serving factory's own statement of its configuration (a GitHub client id is set; and, for the second, a tokens file exists to keep invitations in); they are never inferred from a role, an id or a mode, and an older factory omits them, which reads as `false`.
 
+**Step times.** Each of `job.steps[]` says when its latest round began, `started_at` (RFC 3339), beside `at`, when it ended: a running step has `started_at` once its round has begun, and no `at`, a finished one both, a pending one (including one sent back to run again) neither. A round that carries on in the chat a pause cut short keeps the start it had; a round in a fresh chat starts afresh. Each finished round in `steps[].rounds` (`{round, summary?, at}`) also carries its own `started_at`, so a surface can place every round of a step from the job alone. A job, step or round recorded before these were kept simply has no `started_at`. A round's conversation id (`rounds[].chat`, like `steps[].chat`) is a path on the machine that ran it and is withheld from every reader of the job; the app opens a round's chat through `factory.job_chats`, whose `steps[].rounds` names it as an agent.
+
+**Step reports.** `steps[].report?` (`{done, findings?, claims?, output?, exit?, notes?, cost?, chat?, tests?}`, a step's whole last report, the shape of a worker report's `steps[].result`) is in the schema because the same step type is what a factory hands the worker holding a job's lease on its pull, so the runner that takes a job on briefs the steps after it with everything the earlier ones reported. It is never on a job any reader receives, `factory.job` and `factory.queue` included: a surface reads `steps[].result`, `cost`, `tests`, `model` and the job's `claims`, as before. A worker reads `report` in preference to `result`, and a pull without it, from an older factory, is read from `result`.
+
 **Job size.** `job.size` is the size LABEL alone (`S`, `M`, `L`, `XS`, `XL`) and is the only size a start reads. `job.read_size` `{value: "S"|"M"|"L", from: "read"|"diff"}` is additive and display only: it is present only when `job.size` is absent and the engine has a size to show, the completed read's guess (`read`) or a pull request's measured lines (`diff`). Never both on one job; neither for a chat guess, an item with no recorded source, or a read the text has since outdated. A client that ignores `read_size` stays correct. `triage.size_from` (`read`, `diff`, `chat`, absent = unknown) carries the provenance between machines.
 
 Runner and activity reads optionally carry `people`, keyed by the normalized GitHub handles referenced in their returned rows. Names and photos come from recorded GitHub sign-ins; unknown handles have no invented profile. The activity limit also limits this profile map. Join previews optionally carry `factory.operator_name` and `factory.operator_avatar_url` after the access link matches.
@@ -2681,10 +2715,12 @@ Feature `factory.job_actions` is present only when the engine implements `Factor
 
 | method | params (all but create also `factory`, `job`, `expect`) | factory route |
 |---|---|---|
-| `factory.job_start` | | `POST /v1/jobs/{id}/start_now` (assignee only; queues, never asks a model here) |
+| `factory.job_start` | | `POST /v1/jobs/{id}/start_now` (assignee only; queues, never asks a model here; every refusal comes before any write, so a refused start leaves `version` where the person read it) |
 | `factory.job_stop` | | `…/stop` |
 | `factory.job_dismiss` | | `…/dismiss` (personal) |
-| `factory.job_drop` | words? | `…/drop` (assignee only; the branch is kept) |
+| `factory.job_drop` | discard? (bool, the person's yes to deleting work) | `…/drop` (assignee only; stops a running job, then throws away everything of its work on the factory's machine: its LOCAL worktree folder and local branch (a pull request's job keeps its branch), and its agent's and every step's conversations, every round's, with its factory-made crew; nothing on GitHub is touched. A job whose branch has commits beyond its start, or whose folder has uncommitted or untracked changes, or whose branch could not be read, is refused `has_work` unless `discard` is true; its conversations are never asked about. The answer waits for the deletes, which wait for a step running there to stop (up to about 8 s) and for each conversation's turn to stop (up to 30 s each). No event names a deleted conversation: the app learns of the drop from its next `factory.queue` or job read (the job's `version` moves), after which `factory.job_chats` refuses the job, and of a deleted crew as `crew.removed`. A delete that fails still drops the job, which no longer names what was kept, and is said on its activity. No words) |
+| `factory.job_restore` | | `…/restore` (Bring back: assignee only; only a dropped job, `can.restore`; back to Backlog as a fresh job, as if it had never run: no steps run, `cost` 0, no failure, change, head commit, runner or `pr`; its notes and its steps' edits are cleared (steps back to the repository's recipe), and a later `factory.job_chats` answers a new agent; its issue, assignee, priority, budget, model and activity stay; nothing starts. Before the job is reset, while it is still dropped, a folder or branch re-created since the drop is deleted again, and so are the conversations and crew a job dropped before drops deleted them still names (a crew is then `crew.removed`). A pull request it had opened is forgotten, never closed; the `restored` receipt's detail names it) |
+| `factory.job_run_again` | | `…/run_again` (Run again: assignee only; only a job carrying a failure, a person's stop that cut a step among them (`failure.code` `stopped`), or whose pull request was closed unmerged; the failure is cleared and a new run starts at the first step, in the worktree and branch the job's runner kept) |
 | `factory.job_unassign` | | `…/unassign` (assignee only) |
 | `factory.job_assign_to_me` | | `…/assign_to_me` (only an unassigned job) |
 | `factory.job_change_assignee` | assignee (login, `@` optional) | `…/change_assignee` (assignee only) |
@@ -2695,18 +2731,27 @@ Feature `factory.job_actions` is present only when the engine implements `Factor
 | `factory.job_request_changes` | words | `…/request_changes` |
 | `factory.job_retry_publish` | | `…/retry_publish` (assignee only; only after a failed publish) |
 | `factory.job_step_stop` | step | `…/steps/{step}/stop` (assignee only) |
-| `factory.job_step_rerun` | step | `…/steps/{step}/rerun` (assignee only) |
+| `factory.job_step_rerun` | step, words? (what to do differently; kept on the job's notes) | `…/steps/{step}/rerun` (assignee only) |
+| `factory.job_merge` | commit? (the pull request's head the person saw) | `…/merge` (assignee only; the factory's merge gate decides) |
+| `factory.job_control` | mode (`take_over` or `resume_pipeline`), optional words | `…/control`; normal job action receipt |
+| `factory.job_set_model` | model (a model id; empty for the factory's default), automatic? (boolean model selection policy) | `…/model` (assignee only; the next step opens on it and a running step switches at its next turn; `expect` is accepted and not checked, so a pick is never `stale`; a Done job is `conflict`) |
 | `factory.job_create` | factory, repo (owner/name), title, text?, assignee?, start? (`backlog`\|`now`) | `POST /v1/jobs` |
+
+**A stuck step.** A job waiting with `needs_you.kind` `out_of_rounds` is a step that stopped short (it never reported, ran out of time, or its until did not hold); `needs_you.question.text` says so in the factory's words and `state_presentation.title` is `Stuck`. Its recovery is `factory.job_step_rerun`: on the stuck step to try again, or on `needs_you.back_to`, the finished step before it, to send the work back (left out when there is none, as for the first step); `words` are kept on the job's notes, which every step's brief carries. Stopping is `factory.job_stop`. The question's own answers are not carried.
 
 **Result.** `FactoryJobActed {factory, action, job, approval?, undo_until?, event?, current?}`. `current` is the job as the factory shows it after the action (one extra GET, never a retry); when it is absent the action still happened. The next write on the job carries `current.version`.
 
-**Guards.** `expect.version` is required on every job write (`bad_params` without it); `expect.state` and `expect.step` are passed through. The factory refuses a mismatch, and the engine does not resend. `job_approve` carries `commit`, which the factory compares with the job's head: another head is `stale` (`detail.reason` `changed_since_opened`, `detail.head_commit`). Only the job's assignee (anyone while it has none) approves, publishes, starts, drops, raises the budget and stops or reruns a step; the factory answers anyone else `forbidden`.
+**Guards.** `expect.version` is required on every job write (`bad_params` without it); `expect.state` and `expect.step` are passed through. The factory refuses a mismatch, and the engine does not resend. The one exception is `job_set_model`: a model is a preference that commutes with every other write, so the factory accepts its `expect` without checking it. `job_approve` carries `commit`, which the factory compares with the job's head: another head is `stale` (`detail.reason` `changed_since_opened`, `detail.head_commit`). Only the job's assignee (anyone while it has none) approves, publishes, starts, runs again, drops, brings back a dropped job, raises the budget and stops or reruns a step; the factory answers anyone else `forbidden`.
 
 **Undo.** `job_approve` does not act at once. The factory holds the decision for 5 s (`approval.state` `approving`, `undo_until`) and acts when the window ends. `job_undo` by the same person inside the window withdraws it (or a stop, restoring the run); after the window, or by another person, it is `conflict`. Approval is per job: there is no bulk approve.
 
+**Merge.** `job_merge` merges the pull request the job opened, and only that one, through ONE gate in code (`factory.MergeGate`) that runs on the factory when the merge is asked for and again on the runner, on a fresh read, right before the forge is asked. It merges only the exact commit whose proof was approved, never a draft, a conflict, a failing or still-running check, or a branch still waiting on required reviews; a fact the factory has not read (the head, mergeability, checks, reviews) refuses. A refusal is `conflict` with the gate's own words (`detail.reason` `merge_refused`). A merge the gate takes waits 5 s with Undo (`job.merge.run.state` `asked`, `undo_until`; `job_undo` withdraws it), then is sent (`queued`, then `merging`); the forge is handed the exact commit, so a head that moves after both checks is refused there too. The job is done when its pull request reads `merged`; a merge that failed is `needs_you` with reason `merge_failed` and `job.merge.run.why`, and is never retried on its own. **Auto-merge** is the pipeline's alone: `.codeaf/factory.yaml` `merge: {auto: on|off, method: merge|squash|rebase}` (off unless the file turns it on; a personal file may only turn it off) is pinned on the job when its proof is approved (`job.merge.auto`, `job.merge.method`), and the factory sends a merge on its own only for a pinned `auto` that is on and only when the gate passes. There is no merge tool on any agent's belt.
+
+**Job merge fields.** `job.merge` is absent until the job has a pull request of its own: `{auto, method, run?, blocked?}`. `run` is the merge on its way or the last that failed: `{state: asked|queued|merging|failed, by, auto, rule, why, commit, method, at, undo_until}`. `blocked` is why Merge would be refused now, in the gate's words ("2 checks are still running"), and `can.merge` is the gate passing for the caller. `job.pr` gains `head_sha`, `mergeable` (`yes`, `no`, absent while the forge has not worked it out), `checks_read` and `reviews_read`. Running reasons gain `merging`; Needs-you reasons gain `merge_failed`.
+
 **New job.** `job_create` adds a backlog job: nothing starts, no model is asked, no GitHub issue is opened (the wire has no issue flag). `start: "now"` is the only way to also start it and requires `assignee` to be present (`""` for no one; a team factory refuses that with `bad_params`).
 
-**Errors.** `forbidden` and `stale` are new codes; both, and `conflict`, carry `detail` = `FactoryRefusal {reason, by, job_person, at, now_state, taker, machine, approved_by, event, commit, current_commit, head_commit, request_id}`. `stale` means read the job again and let the person decide again; nothing retries. `conflict` also covers a refusal like "already approved by @x" or "already taken". `uncertain` answers a write that may have reached the factory without an answer (dropped connection, timeout, any 5xx): read the job before doing anything. `unreachable` is only a connection that was never made. `signed_out`, `github_expired`, `not_found`, `busy` and `bad_params` map as for reads; a factory that lacks a verb answers `engine` ("this factory does not provide that action").
+**Errors.** `forbidden`, `stale` and `has_work` are new codes; all three, and `conflict`, carry `detail` = `FactoryRefusal {reason, by, job_person, at, now_state, taker, machine, approved_by, event, commit, current_commit, head_commit, request_id}`. `stale` means read the job again and let the person decide again; nothing retries. `has_work` answers only `job_drop` (`detail.reason` `has_work`): the message is the factory's sentence naming the work, such as `codeaf#1844's branch has 3 commits and uncommitted changes.`, and the same drop with `discard: true` is the person's yes; nothing sends it on their behalf. `conflict` also covers a refusal like "already approved by @x" or "already taken", a job whose repository is off (`detail.reason` `repo_off`, message `acme/api is off · turn it on in Repos to run its jobs.`), and a start (`job_start`, `job_run_again`, `job_create` with `start: "now"`) whose repository has no checkout on the factory's machine and cannot be cloned there (`detail.reason` `needs_checkout`, message `acme/api isn't checked out on this machine · connect GitHub so the factory can clone it.` or `notes isn't checked out on this machine · watch it in Repos so the factory can clone it, or open codeaf in its folder.`; nothing was written, and no job was made). `uncertain` answers a write that may have reached the factory without an answer (dropped connection, timeout, any 5xx): read the job before doing anything. A 5xx whose body carries the factory's own `error` sentence keeps it, in front of the warning: `<the factory's sentence> · the action may have happened, so read the job before trying again`; one with none says `the factory failed while acting; the action may have happened, so read the job before trying again`. `unreachable` is only a connection that was never made. `signed_out`, `github_expired`, `not_found`, `busy` and `bad_params` map as for reads; a factory that lacks a verb answers `engine` ("this factory does not provide that action").
 
 **Not carried:** sync (it opens a GitHub issue), hand-off cards (per-job step edits are the separate `factory.job_step_edit` feature below), the pipeline pull request, answering a question other than a plan (the one answer this wire carries is a plan sent back, the separate `factory.job_reject_plan` feature below), and any arbitrary job verb. `factory.job_request_changes` is the PROOF send-back of a landed job and never acts on a plan.
 
@@ -2814,13 +2859,15 @@ Feature `factory.repos_manage` is distinct from `factory.admin` and `factory.lin
 
 | method | params | result |
 |---|---|---|
-| `factory.repo_set` | `{factory, repo, on}` | `FactoryRepoSetDone {factory, repo, on}`: the same connection, repository and switch that were asked for, answered only after the factory answered 200 or 204. `repo` is `owner/name` (owner `[A-Za-z0-9_.-]` up to 39 characters, name `[A-Za-z0-9_.-]` up to 100, neither part `.` or `..`); `on` is required and has no default. Params are strict: a path, verb, body, folder or any other field is `bad_params`. |
+| `factory.repo_set` | `{factory, repo, on, stop?}` | `FactoryRepoSetDone {factory, repo, on}`: the same connection, repository and switch that were asked for, answered only after the factory answered 200 or 204. `repo` is `owner/name` (owner `[A-Za-z0-9_.-]` up to 39 characters, name `[A-Za-z0-9_.-]` up to 100, neither part `.` or `..`); `on` is required and has no default. `stop` (bool, only with `on: false`) is the person's yes to stopping the repository's jobs that are under way first; with `on: true` it is `bad_params`. Params are strict: a path, verb, body, folder or any other field is `bad_params`. |
 
 **Who may.** The OPERATOR, with the credential held now, resolved from `GET /v1/me` on every call (`forbidden` before any write otherwise; a member is `forbidden`). Unlike the sign-out and invitation methods this includes the machine's own factory (the local row and a solo factory), but only while the app HOLDS a live credential for it: the key the app made for the local factory, or a key the person attached. With none held, a team or attached factory is `signed_out` and the local row is `unreachable` ("the local factory is not running for this app"), before any request leaves. Nothing asks the factory with no bearer, nothing reads the host's key or the terminal's attach record, and a loopback team service therefore cannot hand its host's authority to this caller. A second call for the same connection while one is in flight is `busy`.
 
-**One write.** The engine sends exactly one `PUT /v1/repos/{owner}/{repo}` with `{"on": true|false}` (owner and name escaped; the path and verb are never taken from the app). It never retries, replays or tries another route, and it does not edit repository configuration or write to GitHub. Turning a repository off only removes it from the watched list: its jobs, checkouts and folders are left as they are, and no method deletes, moves or cleans up anything.
+**One write.** The engine sends exactly one `PUT /v1/repos/{owner}/{repo}` with `{"on": true|false}`, and `"stop": true` when the app sent `stop` (owner and name escaped; the path and verb are never taken from the app). It never retries, replays or tries another route, and it does not edit repository configuration or write to GitHub.
 
-**Outcomes.** 200 or 204 is completed (an unexpected 2xx such as 202 is `uncertain`). A refusal is definite only when it carries `X-Codeaf-Phase: pre-mutation` and is a 4xx or the documented 501; this route clears the marker immediately before the factory saves the list, so a failure of the save or of the event recorded after it has no marker and is `uncertain`. Definite refusals use fixed words: 403 `forbidden`, 404 `not_found` ("that repository is not one this factory can see"), 401 `signed_out` (or `github_expired`), 422 or 400 `bad_params`, 429 `busy`, 501 `conflict`. A connection that never opened is `unreachable` (nothing was sent). A dropped connection, a timeout, a redirect, a 5xx or any unmarked refusal is `uncertain`: the repository may or may not have changed, so read `factory.repos` before trying again. Nothing is repeated automatically.
+**Off stops the factory working on the repository.** Its jobs leave `factory.queue` in every state (`factory.job` still answers each, with `repo_off: true`); intake, triage and the pull-request follow pass them by; and the factory refuses run, start_now, run_again, a step's rerun, resume, approve, retry_publish, merge, request_changes, recheck and sync on them, and a new job on the repository, with 409 `reason` `repo_off` and `acme/api is off · turn it on in Repos to run its jobs.` (`conflict` on the wire). While any of its jobs is running, queued or waiting on a person (a job's Stop would end it), turning it off is refused with `has_running` and the factory's sentence naming them, such as `acme/api has 1 job running (api#12) and 1 waiting on you (api#7).`; nothing changed. With `stop` each of those jobs is first stopped as its own Stop stops it (work kept, the stop recorded, Undo offered), then the repository is turned off; a stop that fails leaves the repository on and is `has_running` naming that job (`api#12 could not be stopped, so acme/api is still on: <why>.`), and the jobs stopped before it stay stopped. Turning it back on brings every job back as it was: nothing is deleted or re-made, and the poll resumes from its cursor. Checkouts and folders are never touched.
+
+**Outcomes.** 200 or 204 is completed (an unexpected 2xx such as 202 is `uncertain`). A refusal is definite only when it carries `X-Codeaf-Phase: pre-mutation` and is a 4xx or the documented 501; this route clears the marker immediately before the factory saves the list, so a failure of the save or of the event recorded after it has no marker and is `uncertain`. Definite refusals use fixed words: 403 `forbidden`, 404 `not_found` ("that repository is not one this factory can see"), 401 `signed_out` (or `github_expired`), 422 or 400 `bad_params`, 429 `busy`, 501 `conflict`. The one refusal that carries the factory's own sentence is 409 `reason` `has_running`, answered `has_running`, and it is definite with or without the marker: the factory sends it only before it saves the list, so the repository did not change (a stop made first changed a job, which `factory.queue` shows). A connection that never opened is `unreachable` (nothing was sent). A dropped connection, a timeout, a redirect, a 5xx or any unmarked refusal is `uncertain`: the repository may or may not have changed, so read `factory.repos` before trying again. Nothing is repeated automatically.
 
 **Caller changes.** After each wait the engine checks that the connection still holds the credential it used. If it was replaced while a request was in flight, the answer is `conflict` (before the write, or after a refusal that proves nothing changed) or `uncertain` (the write may have completed), and in neither case does the reply carry the repository or the switch.
 
@@ -2930,8 +2977,8 @@ Feature `factory.local` is present only when the engine implements `FactoryLocal
 | method | params | result |
 |---|---|---|
 | `factory.local_start` | | `FactoryLocalStatus`. The only door that serves or joins the machine's factory; idempotent |
-| `factory.local_status` | | `FactoryLocalStatus` `{state: stopped\|running, authority?: this_app\|other_codeaf, factory?, name?, url?, runner, attachment}`; `runner` is true only after `factory.local_run` |
-| `factory.local_run` | | `FactoryLocalStatus`. The ONLY door that turns this engine's runner on; idempotent; starts no job. `not_found` before `factory.local_start`; `conflict` when another codeaf serves the factory (its runner takes the jobs) or when GitHub is not connected (the factory takes no worker without a handle); `closed` while the engine stops |
+| `factory.local_status` | | `FactoryLocalStatus` `{state: stopped\|running, authority?: this_app\|other_codeaf, factory?, name?, url?, runner, attachment}`; `runner` is true once this engine's runner is on |
+| `factory.local_run` | | `FactoryLocalStatus`. Starts this engine's runner and GitHub poll if they are not on already (the engine starts them itself; see below); idempotent; starts no job. `not_found` before `factory.local_start`; `conflict` when another codeaf serves the factory (its runner takes the jobs) or when GitHub is not connected (the factory takes no worker without a handle); `closed` while the engine stops |
 | `factory.local_adopt` | | `FactoryLocalStatus`. Shows the factory `codeaf attach` named in the app's list (bearer kept in memory) |
 | `factory.setup_read` | | `FactorySetupView` |
 | `factory.setup_discover` | | `FactorySetupView` (lists the repos GitHub shows; reads only) |
@@ -2948,13 +2995,15 @@ Feature `factory.local` is present only when the engine implements `FactoryLocal
 
 **GitHub identity.** Setup `handle`, `name` and `avatar_url` come from `/user` with the connected credential. `gh_login` describes the ambient CLI account and may differ; it is not the connected identity. After Back from repository selection, `setup_discover` continues the existing verified connection without another token or a new credential choice.
 
+**The connection outlives a launch.** codeaf holds the connected token in memory only, and each way of connecting is kept by its owner. `source: gh` keeps the person's yes to gh's own login in the factory's profile (gh keeps its token), and every later launch reads gh again. `source: token` takes that yes back, and the app keeps the pasted token in its keychain beside the model keys and hands it back at every launch with `keys.set {provider: "github", key}`, before the factory resumes. A finished setup (`state: done`) asks GitHub's `/user` once on `setup_read`; only a refusal (401) sends it back to `github` with `connected: false`, so a revoked or expired token is connected again by reopening setup. A GitHub that cannot be reached, or answers anything else, leaves it `done`.
+
 **Authority.** One factory serves per machine, elected through the same `serve.json`/`serve.lock` the terminal uses. If another codeaf serves, `authority` is `other_codeaf` and this engine opens no second service; otherwise it serves on `127.0.0.1` with a bearer made for the launch. The app's home, not the environment's profile, decides where GitHub custody and the floor live.
 
-The service is quiet: no triage (a model call), no GitHub poll, no runner election. Setup starts no job and spends nothing; a job starts only through `factory.job_start`, and it runs only once a person has turned the runner on with `factory.local_run`. Launch, `factory.local_start` and `factory.setup_done` start none. The runner is the worker loop terminal windows already use, behind the same worker lock (one runner per home), serving this factory with this engine's own keys (the app's memory) and the profile's model settings; a runner that waits behind another process's lock still reports `runner: true`. Quitting the engine stops the runner (waited for at most 10 s), the service and the bearer it held; a job the runner held returns to the queue when its lease expires.
+This machine's factory starts nothing by itself and asks no model by itself. Once the factory this engine serves knows whose GitHub it is, the engine turns its runner on, with no switch to find: on `factory.local_start`, on a resume, after a setup step and on `factory.local_status`; before then it has none. Beside the runner runs the GitHub poll alone, so issues filed after setup reach Backlog: no repository start rule launches a job here and no triage reads an item, so an arriving issue starts nothing and the model is asked only by work a person started. A job starts only through `factory.job_start`. The runner is the worker loop terminal windows already use, behind the same worker lock (one runner per home), serving this factory with this engine's own keys (the app's memory) and the profile's model settings; a runner that waits behind another process's lock still reports `runner: true`. Quitting the engine stops the runner and the poll (waited for at most 10 s), the service and the bearer it held; a job the runner held returns to the queue when its lease expires.
 
 The list marks the engine's own row (`local` in `<home>/app/factories.json`) and gives it the fixed id `factory_local`. The id is not derived from the address (the port is new at every launch), so a saved tab keeps naming it. A service the engine itself served on an explicit `factory.local_start` also marks the row `resume`: the person's standing choice, holding no credential. The row stays at quit whether or not it is marked `resume`, and `factory.detach` is the one thing that removes it; `factory.detach` of `factory_local` also ends the choice, and an explicit `factory.local_start` makes it again.
 
-Resume. When the app opens again, the first `factory.list`, `factory.local_status` or read of `factory_local` serves the same floor again, quietly (no runner, job, triage, model call or GitHub request), on a new port with a new bearer, and the row's url is refreshed before the answer. A profile with no `resume` row stays unstarted. A resume never joins or duplicates another codeaf's service: while one holds the election the row stays unreachable until the person starts again, which joins it as `other_codeaf` and neither sets nor clears `resume`. A row left by an earlier release, or one made by joining another codeaf, has no `resume` and is not resumed (it stays listed, unreachable until a start). A profile whose rows are already gone has nothing to resume: start again with `factory.local_start`; no old remote id is mapped to it.
+Resume. When the app opens again, the first `factory.list`, `factory.local_status` or read of `factory_local` serves the same floor again, on a new port with a new bearer, with its runner and GitHub poll (no job, triage or model call), and the row's url is refreshed before the answer. A profile with no `resume` row stays unstarted. A resume never joins or duplicates another codeaf's service: while one holds the election the row stays unreachable, and a `resume` row says why in its `reason`: "Another codeaf on this machine is still running this factory. It comes back here once that one stops." Every `factory.list` tries the resume again, so the first list after that codeaf lets go (its service closes, or its process is gone) serves the factory here. A person may instead start again, which joins it as `other_codeaf` and neither sets nor clears `resume`. A row left by an earlier release, or one made by joining another codeaf, has no `resume` and is not resumed (it stays listed, unreachable until a start). A profile whose rows are already gone has nothing to resume: start again with `factory.local_start`; no old remote id is mapped to it.
 
 One row per connected factory. `factory.attach`, an access link or `factory.local_adopt` for an address already listed (the live local service's included) resolves to that row's id and adds none. The local row is answered without a second probe. Attaching by address leaves `resume` and the engine's own bearer as they were: it keeps the bearer it holds. Only a completed explicit sign-in through an access link installs the verified caller grant, replacing that bearer for the row.
 
@@ -2994,6 +3043,42 @@ Setup after a restart. Saved setup progress is not proof of a live GitHub creden
 
 Available when hello includes `memory.applies`; other engines answer `unknown_method`. This reads the memory scope applicable to an existing agent.
 
+## Factory: naming a factory in the app (`factory.rename`)
+
+Feature `factory.rename` is present only when the engine implements `FactoryRenamer` on top of the factory interface. Other engines answer `unknown_method`.
+
+| method | params | answers |
+|---|---|---|
+| `factory.rename` | `{factory, name}` | `{}` |
+
+`name` (at most 60 characters; inner runs of space folded) is the person's own name for the connection. It is kept on the app's record of it (`<home>/app/factories.json`), never sent to the factory, and `factory.list` answers it as the connection's `name` over the factory's own. An empty `name` goes back to the default: the factory's own name, or for the factory on this Mac `<login>'s factory` once it knows whose GitHub it is (`Your factory` before). A factory that is not listed is `not_found`.
+
+## Factory: check GitHub now (`factory.refresh`)
+
+Feature `factory.refresh` is present only when the engine implements `FactoryRefresher` on top of the factory interface. Other engines answer `unknown_method`.
+
+| method | params | answers |
+|---|---|---|
+| `factory.refresh` | `{factory}` | `{}` |
+
+One `POST /v1/github/poll` to the factory, sent once. The factory wakes its GitHub poll and answers before the read; it never waits for it. The read's outcome is on the next `factory.queue`: the `desk.sources` row named `github` carries `polling` (a read in flight), `polled` (RFC 3339, when GitHub was last read without a failure; absent until one has) and `trouble` (the last failure in a few words). The row is absent while no poll is alive on the factory's machine. A factory without the route is `engine` ("this factory does not provide that action").
+
+**Start re-checks GitHub.** `factory.job_start` (and the factory's `run` and `run_again`) on a job that came from GitHub reads that one issue or pull request first. Closed or merged there, the job is not started: it is done (`done_how` `closed` or `merged`) and the start is `conflict` with `#12 was closed on GitHub, so it wasn't started.` (`detail.now_state` `done`). GitHub unreachable starts the job anyway.
+
+## Factory: a job's conversations (`factory.job_chats`)
+
+Feature `factory.job_chats` is present only when the engine implements `FactoryJobChatter` on top of the factory interface. Other engines answer `unknown_method`.
+
+| method | params | answers |
+|---|---|---|
+| `factory.job_chats` | `{factory, job}` | `FactoryJobChats {factory, job, agent, steps: [{step, agent, rounds?: [{round, agent}]}]}` |
+
+`agent` is the job's agent: the item's own conversation, which the run reports into and which reads what the person types as the brief before a run and the steer during one (and the answer while the job waits on a question). It is made when the job has none yet; that makes a conversation and its team on this machine, asks no model and starts no job. The agent's calls spend from the job's budget: each also goes on the job's `cost` (before any run it is the job's whole `cost`, and a start carries it into the run's), while the spend ledger keeps each call once, and once the budget is spent its next turn is refused with `job budget reached · $5.02 spent of $5 · raise the job's budget to go on` (a job waiting on its budget question still takes the person's answer there). `steps` is the latest chat of each step that ran, in the run's order; a step that has not run, or whose chat cannot be opened, is left out. A step's `rounds` names the chat of each of its finished rounds, oldest first, matched to `job.steps[].rounds` by `round` (the latest finished round's is usually the step's own `agent`); a round with no chat (a check step's), one recorded before round chats were kept, or one whose chat cannot be opened is left out, and a step with none has no `rounds`. Each `agent` is an ordinary agent id: the engine holds it open before answering (a running step is lent, as to any window), so the app opens and messages it as it does any conversation, and a message to a step's chat goes to that step directly. The chats are read from the factory's own record of the job, never from a team's names.
+
+Only the factory this engine serves (`factory_local`) is answered; any other is `not_found` ("this factory's chats are on the machine that runs its jobs"). A dropped job has no conversations (the drop deleted them) and is never given an agent: it is `not_found` with `the job's conversation could not be opened: #12 was dropped · Bring back returns it to Backlog`. A job dropped before drops deleted conversations still answers the ones it names, until Bring back deletes them. A job with a model of its own (`job.model`) puts its agent on that model, and `factory.job_set_model` moves the agent with the job, so every chat can change the job-wide selection. Each chat separately reports the model actually handling its request or used by its previous round; automatic fallback and pending changes do not rewrite that execution evidence.
+
+The factory's teams (`factory_managed`) are the job's and no longer appear in `crews.overview`'s team pages; reading one by id still answers it.
+
 ## Factory: changing a computer's slots (`factory.runner_manage`)
 
 Feature `factory.runner_manage` is distinct from every other factory feature and is present only when the engine implements `FactoryRunnerAdmin` on top of the factory interface; `FactoryCapabilities.runner_manage` is then `true`. It announces one method. Whether THIS factory and THIS computer can take the change is not in the capability: it is read from `factory.runners` (`slots_policy`, and each runner's `live_capacity`).
@@ -3009,6 +3094,10 @@ Feature `factory.runner_manage` is distinct from every other factory feature and
 **The write.** One `PUT /v1/runners/{runner}` with `{slots, require_live_capacity:true}` and no checkouts, never retried. The factory re-checks `live_capacity` of the machine's newest attach under the lock that writes, so a worker that restarted onto an older binary since the read is refused with 409 and nothing changes. Only a 4xx or 501 carrying `X-Codeaf-Phase: pre-mutation` is a definite refusal (fixed words); the marker is cleared immediately before the first change. A dropped connection, a timeout, a redirect, a 5xx, an unmarked refusal, or an unexpected success such as 202 is `uncertain`: read `factory.runners` for what is granted. If the sign-in changes during a wait, no computer or number is revealed; after the write the answer is a neutral `uncertain`.
 
 **Directory fields.** `factory.runners` now may carry `slots_policy {min, max, requires_live}` (only from a factory that enforces the guard) and per runner `live_capacity`, which is the NEWEST attach's attestation (attaches that cannot be ordered must all attest).
+
+### factory.job_control
+
+Optional feature `factory.job_control`. Parameters: `factory`, `job`, `expect.version`, `mode` (`take_over` or `resume_pipeline`), optional `words`. Takes manual control or resumes verification in the existing worktree. Returns the normal factory job action receipt. It does not approve initial publication or merge.
 
 ## Permission scopes in the decision dock (V68b)
 
@@ -3051,3 +3140,48 @@ the call. Equal lengths keep settings order. Absent with no such rule, and for
 non-bash calls or other kinds of ask. This explains an ask without changing
 approval: the desktop can show `Waiting on you: <call> · outside <outside>, so it asks`
 with code spans around the call and rule.
+
+### Execution model identity
+
+`mode` reports effective policy. Optional `chosen` (`fixed` or `automatic`)
+reports explicit persisted intent; omission means inherited. Optional
+`locked_reason` explains why Automatic is unavailable for this launch. Clients
+must disable Automatic under that lock even when the saved/job intent requests
+it. A launch constraint never becomes a fabricated saved preference. Unavailable
+factory policy requests log a notice and do not stop the stage.
+
+`Agent.model_identity` is optional for older engines. It carries `epoch`,
+`revision`, `selected`, `requested`, `active`, `last`, `provider`, `mode`,
+`request_mode` and `pending`. Selection is intent, never execution evidence.
+`requested` is the last dispatched id; `active`/`last` use a concrete provider id
+when reported. `mode` is the effective policy (`fixed` or `automatic`), while
+`request_mode` is the policy under which the active/last request began. Changes
+publish `agent.changed`, including stream-time alias resolution, before forwarding
+content. Restoration retains the last execution but clears an old active request;
+epoch/revision identify ordered snapshots. Background helper purposes do not own
+this foreground identity. Unknown fields remain additive for older peers.
+
+`agents.create.automatic_models` optionally sets the opening policy.
+`agents.set_model.automatic` optionally changes it; false is meaningful and must
+not be omitted. A host lacking the policy door refuses rather than silently
+ignoring that setting. Factory `job_set_model` accepts the same optional boolean;
+the job stores `automatic_models` and delivers model and policy together to its
+worker. Later rounds inherit the stored policy, and a completed round records
+its last execution model rather than its next preference. Approval automation
+is an independent setting.
+
+## Optional contextual reply drafts
+
+`agents.suggest_reply` accepts a visible conversation's semantic context (UTF-8,
+at most 12 KiB) and returns a single-line user-message draft, at most 240 Unicode
+characters, or an empty string. It uses an already-held local or remote owner;
+it never opens a conversation, sends a turn, runs tools or answers an approval.
+Old peers without this optional capability keep the ordinary placeholder.
+
+The naming-role request has an eight-second ceiling and one model rung, with no
+tools and at most 160 output tokens. Its detached usage is attributed to that
+conversation and the existing factory job budget. Closing/stopping the session
+or exhausting the job budget cancels it; depleted jobs admit no new calls. One
+request per agent may run at a time. A bounded cache includes empty/failed
+results so rendering or reopening the same context cannot buy repeated requests.
+Surfaces discard stale responses and never write an existing draft.

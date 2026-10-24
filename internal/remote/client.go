@@ -2115,6 +2115,33 @@ func (a *Agent) Detach() error {
 // PERF.md pins it: a View over --host issues zero far calls).
 func (a *Agent) Model() string { return a.c.facts.read().Model }
 
+// SetConversationModels is an acknowledged, non-interrupting conversation pick.
+func (a *Agent) SetConversationModels(pair session.ConversationModels) ([]session.ModelSwitch, error) {
+	raw, err := a.c.call(nil, MethodSetConversationModels, pair)
+	if err != nil {
+		return nil, err
+	}
+	var notes []session.ModelSwitch
+	if err := json.Unmarshal(raw, &notes); err != nil {
+		return nil, err
+	}
+	return notes, nil
+}
+
+func (a *Agent) SetAutomaticModels(enabled bool) error {
+	_, err := a.c.call(nil, MethodSetAutomaticModels, enabled)
+	return err
+}
+
+func (a *Agent) LastModel() string { return a.ModelIdentity().Last }
+
+func (a *Agent) ModelIdentity() session.ModelIdentity {
+	if state := a.c.facts.read().ModelIdentity; state != nil {
+		return *state
+	}
+	return session.ModelIdentity{Selected: a.Model()}
+}
+
 // SetModel swaps it, and the surface's own copy moves with it.
 //
 // THE LOCAL WRITE IS NOT A SECOND AUTHORITY. The engine announces the change to

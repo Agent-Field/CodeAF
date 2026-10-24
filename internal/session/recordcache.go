@@ -80,12 +80,15 @@ package session
 import (
 	"container/list"
 	"errors"
+	"maps"
 	"os"
 	"slices"
 	"strings"
 	"sync"
 	"time"
 	"unsafe"
+
+	"github.com/Agent-Field/codeaf/internal/factory"
 )
 
 // ErrRecordReadBusy is a reading refused because as many as may run at once
@@ -452,8 +455,10 @@ func recordReserve(size int64) int64 {
 // strings still shared.
 func recordVectors(record Record) int64 {
 	cost := int64(len(record.Entries)+len(record.Earlier)) * int64(unsafe.Sizeof(DisplayEntry{}))
+	cost += int64(len(record.ModelSwitches)) * int64(unsafe.Sizeof(ModelSwitch{}))
 	cost += int64(len(record.Requests.Recent)) * int64(unsafe.Sizeof(RequestLine{}))
 	cost += int64(len(record.Passes)) * int64(unsafe.Sizeof(CompactionFact{}))
+	cost += progressCost(record.Progress)
 	for _, entries := range [][]DisplayEntry{record.Entries, record.Earlier} {
 		for i := range entries {
 			entry := &entries[i]
@@ -494,6 +499,10 @@ func recordCost(record Record) int64 {
 	// retained allocation is still charged here, including spare capacity.
 	cost += int64(cap(record.userLines)) * int64(unsafe.Sizeof(recordUserLine{}))
 	cost += int64(len(record.Unreadable))
+	cost += int64(cap(record.ModelSwitches)) * int64(unsafe.Sizeof(ModelSwitch{}))
+	for _, n := range record.ModelSwitches {
+		cost += int64(len(n.ID) + len(n.Text))
+	}
 	cost += int64(cap(record.Requests.Recent)) * int64(unsafe.Sizeof(RequestLine{}))
 	// A pass's summary is the one long string it carries; the journal holds
 	// it on the marker line, so this is bounded by the file like the rest.
@@ -501,7 +510,17 @@ func recordCost(record Record) int64 {
 	for i := range record.Passes {
 		cost += int64(len(record.Passes[i].Summary) + len(record.Passes[i].Model) + len(record.Passes[i].Failed))
 	}
+	cost += progressCost(record.Progress)
+	for _, step := range record.Progress {
+		cost += int64(len(step.Step) + len(step.Event))
+	}
 	return cost
+}
+
+// progressCost is what a record's step marks hold beside its entries: a key
+// and a mark each, the strings still shared.
+func progressCost(progress map[int]factory.StepProgress) int64 {
+	return int64(len(progress)) * int64(unsafe.Sizeof(int(0))+unsafe.Sizeof(factory.StepProgress{}))
 }
 
 func entriesCost(entries []DisplayEntry) int64 {
@@ -576,10 +595,12 @@ func attachmentSizes(attachment MessageAttachment) int64 {
 // cloneRecord is a record no other reader can reach through: its own entry
 // slices, and its own copy of every slice and pointer inside an entry.
 func cloneRecord(record Record) Record {
+	record.ModelSwitches = append([]ModelSwitch(nil), record.ModelSwitches...)
 	record.Entries = cloneEntries(record.Entries)
 	record.Earlier = cloneEntries(record.Earlier)
 	record.Requests.Recent = slices.Clone(record.Requests.Recent)
 	record.Passes = slices.Clone(record.Passes)
+	record.Progress = maps.Clone(record.Progress)
 	return record
 }
 

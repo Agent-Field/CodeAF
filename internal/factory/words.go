@@ -117,7 +117,8 @@ func LiftChips(words string) (cap *float64, rounds *int, effort string, rest str
 
 // reSecurity is a request for a security pass: `security`, `with security`,
 // `a security review`. It is not one of the four chips because it is not a
-// knob on the item; it switches a banked stage on.
+// knob on the item; it switches a banked security stage on, or adds the
+// shipped one after review ([ShippedStage]), since no default list has it.
 var reSecurity = regexp.MustCompile(`(?i)\b(?:with |and |a |do )?security(?: review| pass| check)?\b`)
 
 // LiftSecurity says whether rest asks for a security pass and answers rest

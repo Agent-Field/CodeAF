@@ -85,7 +85,11 @@ func (d *Desk) write(doc document) error {
 	if err != nil {
 		return err
 	}
-	return writeAtomic(d.Path(), append(data, '\n'))
+	write := d.persist
+	if write == nil {
+		write = writeAtomic
+	}
+	return write(d.Path(), append(data, '\n'))
 }
 
 // writeAtomic publishes a complete synced document; a partial write can never

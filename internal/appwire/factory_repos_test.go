@@ -68,6 +68,8 @@ func TestFactoryRepoSetParamsAreStrict(t *testing.T) {
 		`{"factory":"f","repo":"a\\b/c","on":true}`, `{"factory":"f","repo":"a/b\n","on":true,"x":1}`, `{"factory":"f","repo":"a/é","on":true}`,
 		`{"factory":"f","repo":"a/b‮","on":true}`, `{"factory":"f","repo":"a/b\u0000","on":true}`,
 		`{"factory":"f","repo":"` + strings.Repeat("o", RepoOwnerMax+1) + `/b","on":true}`, `{"factory":"f","repo":"a/` + long + `","on":true}`,
+		// Stop is only the yes to turning a repository off, and only a bool.
+		`{"factory":"f","repo":"a/b","on":true,"stop":true}`, `{"factory":"f","repo":"a/b","on":false,"stop":"yes"}`,
 	}
 	eng := &repoEngine{}
 	for _, raw := range bad {
@@ -95,6 +97,10 @@ func TestFactoryRepoSetGoodParamsArePassedOnceAndOffIsNotADefault(t *testing.T) 
 	if len(keys) != 3 || keys["factory"] != "f" || keys["repo"] != "Acme/api-2.x_y" || keys["on"] != false {
 		t.Fatalf("receipt = %s", data)
 	}
+	// Turning off with stop passes the person's yes on, once.
+	if _, err := methods["factory.repo_set"].call(eng, json.RawMessage(`{"factory":"f","repo":"a/b","on":false,"stop":true}`)); err != nil || len(eng.calls) != 2 || !eng.calls[1].Stop {
+		t.Fatalf("stop: %v after %d calls", err, len(eng.calls))
+	}
 	// The longest names are accepted.
 	long := strings.Repeat("o", RepoOwnerMax) + "/" + strings.Repeat("n", RepoNameMax)
 	if _, err := methods["factory.repo_set"].call(eng, json.RawMessage(`{"factory":"f","repo":"`+long+`","on":true}`)); err != nil {
@@ -104,7 +110,7 @@ func TestFactoryRepoSetGoodParamsArePassedOnceAndOffIsNotADefault(t *testing.T) 
 
 // An engine's refusal is passed on whole, and the write is asked once.
 func TestFactoryRepoSetPassesTheEnginesWordsAndAsksOnce(t *testing.T) {
-	for _, code := range []string{CodeUncertain, CodeConflict, CodeForbidden, CodeSignedOut, CodeBusy, CodeUnreachable, CodeNotFound, CodeBadParams} {
+	for _, code := range []string{CodeUncertain, CodeConflict, CodeForbidden, CodeSignedOut, CodeBusy, CodeUnreachable, CodeNotFound, CodeBadParams, CodeHasRunning} {
 		eng := &repoEngine{err: Errorf(code, "words for %s", code)}
 		_, err := methods["factory.repo_set"].call(eng, json.RawMessage(`{"factory":"f","repo":"a/b","on":true}`))
 		if wireCode(t, err) != code || len(eng.calls) != 1 {
@@ -119,7 +125,7 @@ func TestFactoryRepoSetSchemaIsTheSwitchAndNothingElse(t *testing.T) {
 	if got := fieldNames(reflect.TypeFor[FactoryRepoSetDone]()); !reflect.DeepEqual(got, []string{"factory", "repo", "on"}) {
 		t.Fatalf("receipt fields: %v", got)
 	}
-	if got := fieldNames(reflect.TypeFor[FactoryRepoSetParams]()); !reflect.DeepEqual(got, []string{"factory", "repo", "on"}) {
+	if got := fieldNames(reflect.TypeFor[FactoryRepoSetParams]()); !reflect.DeepEqual(got, []string{"factory", "repo", "on", "stop"}) {
 		t.Fatalf("param fields: %v", got)
 	}
 	doc := Schema()["methods"].(map[string]any)

@@ -11,8 +11,10 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	preferences "github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
@@ -87,6 +89,14 @@ func New(config Config) (*Agent, error) {
 // parent's account-keyed pool and resolve their own model before their first
 // request, rather than inheriting whichever adapter the parent last used.
 func (a *Agent) newChildAgent(config Config) (*Agent, error) {
+	if pair, ok := a.ConversationModelPair(); ok && config.ConversationModels == nil {
+		pair.Main = config.Model
+		if config.OneModel || pair.Fallback == pair.Main {
+			pair.Fallback = ""
+		}
+		config.ConversationModels = &pair
+	}
+	config.JobBudget = a.jobBudgetOf()
 	client, account, pool, managed, err := a.childClient(config)
 	if err != nil {
 		return nil, err
@@ -148,6 +158,47 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// with the header's id, which survives every resume.
 		id: NewSessionID(),
 	}
+	if config.Place.Dir != "" {
+		if meta, err := LoadMeta(config.Place.Dir); err == nil {
+			if meta.ModelIdentity != nil {
+				agent.modelIdentity = *meta.ModelIdentity
+				agent.modelIdentity.Active, agent.modelIdentity.Pending = "", false
+			}
+			if meta.AutomaticModels != nil {
+				if *meta.AutomaticModels {
+					agent.automaticModels.Store(2)
+				} else {
+					agent.automaticModels.Store(1)
+				}
+			}
+		}
+	}
+	if config.AutomaticModels != nil {
+		if *config.AutomaticModels {
+			agent.automaticModels.Store(2)
+		} else {
+			agent.automaticModels.Store(1)
+		}
+	}
+	if agent.modelIdentity.Models != nil {
+		pair := *agent.modelIdentity.Models
+		agent.conversationModels = &pair
+		agent.model = pair.Main
+	} else if config.ConversationModels != nil {
+		pair := *config.ConversationModels
+		pair.Main = config.Model
+		agent.conversationModels = &pair
+	}
+	// Older desktop builds copied a settings display placeholder into this
+	// slot. It is not a callable model or an explicit user choice. Migrate only
+	// that exact legacy value; saved valid pairs and explicit None are untouched.
+	if pair := agent.conversationModels; pair != nil && pair.Fallback == "nearest in the catalog" {
+		pair.Fallback = preferences.DefaultFallbackModel
+		if pair.Fallback == pair.Main {
+			pair.Fallback = ""
+		}
+	}
+	agent.modelIdentity.Epoch = NewSessionID()
 	agent.presentation = &presentationIndex{}
 	agent.cacheKey = sessionCacheKey(agent.id)
 	// Start with no session-local endpoint limit; the provider applies its
@@ -185,6 +236,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// belongs beside the transcript of the conversation that commissioned it, not
 	// in the repository it borrowed to work in (landing.go).
 	agent.jobs = newJobRegistry(config.Workspace, config.droppingsPlace(), agent.enqueueJobNote, agent.enqueueWatchNote)
+	agent.jobs.stage = config.mayStage()
 	agent.jobs.notifyQuiet = agent.enqueueJobNoteQuiet
 	agent.jobs.notifyUnowed = agent.enqueueJobNoteUnowed
 	// And the registry gets the ROSTER lane as well as the waking one. A job is
@@ -444,6 +496,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// the frontier, but no ending or notice may run before the caller can hold
 	// the agent and a surface can subscribe to its standing lane.
 	agent.armWallClock()
+	agent.watchJobBudget()
 	// AND A CONVERSATION A TEAM'S MANAGER STARTED TAKES ITS FIRST TURN ON ITS
 	// OWN, once the interface has made it a member (team_wake.go).
 	agent.watchTeamStart()
@@ -679,6 +732,12 @@ func (a *Agent) SetModel(model string) { a.setModel(model) }
 // the exported one has nowhere to put. An empty model is no pick at all and
 // lands nothing.
 func (a *Agent) setModel(model string) ModelLanding {
+	if pair, ok := a.ConversationModelPair(); ok {
+		pair.Main = model
+		_, _ = a.SetConversationModels(pair)
+		return ModelLandsNextRequest
+	}
+
 	model = strings.TrimSpace(model)
 	if model == "" {
 		return ModelLandsNextRequest
@@ -729,6 +788,7 @@ func (a *Agent) setModel(model string) ModelLanding {
 	// Other windows read the conversation model from its saved configuration.
 	// A model choice exists before another turn is sent, so publish it now.
 	a.stampModel()
+	a.publishModelIdentity()
 	return landing
 }
 
@@ -987,6 +1047,15 @@ func (a *Agent) submitText(ctx context.Context, text string, person *messagePres
 	if text == "" {
 		return nil, errors.New("session: empty message")
 	}
+	if statusOnlyPresentation(person, text) {
+		if reply, handled, err := a.ReadFactoryStatus(ctx, text); handled {
+			if err != nil {
+				return nil, err
+			}
+			return factoryStatusStream(reply), nil
+		}
+	}
+
 	// A @ team or chat in the words is a reference, and the model needs a
 	// bounded digest of it (mention.go). The journal keeps the words as typed.
 	said := text
@@ -1209,6 +1278,7 @@ func (a *Agent) attachReplayLocked() (entries []DisplayEntry, events <-chan Even
 // Everything the person types is one of these. A text-only message has no
 // references and journals exactly as it always did.
 type userMessage struct {
+
 	// closeKey belongs only to the pending continuation this note consumes.
 	closeKey string
 	// bash is set only by the person's SubmitBash door; model output cannot enter it.
@@ -1307,6 +1377,11 @@ type userMessage struct {
 	// item now.`) are no request a skill serves; on the owner's run of
 	// 2026-10-09 every such turn arrived with a list of unrelated skills.
 	noSkills bool
+
+	// mustCall is the one tool the turn this message opens must call on its
+	// first answer, "" on every message but a factory stage's last reminder
+	// ([Agent.FollowUpRequiring]). [Agent.startTurnLocked] hands it to the turn.
+	mustCall string
 
 	// skills is the ordered shelf names this message's block carried
 	// (skillturn.go), set by [Agent.attachTurnSkillsLocked] and read by
@@ -1830,6 +1905,9 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	a.teamTurnAt = time.Now()
 	a.teamTurnSerial++
 	a.lastTurnTruncated = false
+	// WHAT THE TURN MUST CALL IS THE OPENING MESSAGE'S, and a turn opened on any
+	// other message owes nothing: a requirement never outlives its turn.
+	a.mustCall = user.mustCall
 	// AND ANOTHER WINDOW HEARS ABOUT IT NOW rather than at the next heartbeat
 	// (taskpresence.go). The nudge never blocks and never takes a lock, which is
 	// what lets it sit under a.mu here.
@@ -2122,7 +2200,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 // turn end coming to drain it, and a message that sat in a queue until the
 // person happened to ask something else would be a silent hold.
 func (a *Agent) FollowUp(text string) (<-chan Event, error) {
-	return a.followUpMarked(text, nil)
+	return a.followUpMarked(text, nil, "")
 }
 
 // FollowUpMessage is [Agent.FollowUp] for a door that knows more about the
@@ -2136,11 +2214,13 @@ func (a *Agent) FollowUpMessage(message Submission) (<-chan Event, error) {
 	if err != nil {
 		return nil, err
 	}
-	return a.followUpMarked(message.Text, mark)
+	return a.followUpMarked(message.Text, mark, "")
 }
 
-// followUpMarked is FollowUp's body with the person's mark beside the words.
-func (a *Agent) followUpMarked(text string, person *messagePresentation) (<-chan Event, error) {
+// followUpMarked is FollowUp's body with the person's mark beside the words,
+// and the one tool the turn must call first when it owes one
+// ([Agent.FollowUpRequiring]).
+func (a *Agent) followUpMarked(text string, person *messagePresentation, mustCall string) (<-chan Event, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil, errors.New("session: empty message")
@@ -2157,6 +2237,7 @@ func (a *Agent) followUpMarked(text string, person *messagePresentation) (<-chan
 	stream := newEventStream()
 	user := userText(text)
 	user.person = person
+	user.mustCall = mustCall
 	if a.running {
 		a.followups = append(a.followups, followUp{message: user, stream: stream})
 		return stream.out, nil
@@ -4282,7 +4363,7 @@ func (a *Agent) wakeAnsweringLocked(answersPerson bool, answersMessage string) b
 	// Steward's own wall and clock without asking its spend closure while this
 	// function holds a.mu.
 	wallGone := wallIsUp(a.steward())
-	if a.running || a.closed || a.workStopped || wallGone || (a.config.InTask && !a.config.roomThread) || !a.opened {
+	if a.stageSettled || a.running || a.closed || a.workStopped || wallGone || (a.config.InTask && !a.config.roomThread) || !a.opened {
 		return false
 	}
 	if err := a.railBlockLocked(); err != nil {
@@ -5256,6 +5337,21 @@ func displayEntries(messages []ai.Message) []DisplayEntry {
 // call's id. One pass to index, one pass to shape, so a batch of ten calls costs
 // one walk rather than ten.
 func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*presentationIndex) []DisplayEntry {
+	return shapeInto(messages, journal, nil, indexes...)
+}
+
+// shapeWithSteps is [shapeEntries] with each factory step line's mark
+// (its presentation's FactoryStep) by the index of its entry; nil when no line
+// has one. A record keeps the marks there ([Record.Progress]).
+func shapeWithSteps(messages []ai.Message, journal *sessionFile) ([]DisplayEntry, map[int]factory.StepProgress) {
+	var steps map[int]factory.StepProgress
+	entries := shapeInto(messages, journal, &steps)
+	return entries, steps
+}
+
+// shapeInto is the shaping, putting each step line's mark into steps when it
+// is given.
+func shapeInto(messages []ai.Message, journal *sessionFile, steps *map[int]factory.StepProgress, indexes ...*presentationIndex) []DisplayEntry {
 	var presentation *presentationIndex
 	if journal != nil {
 		presentation = journal.presentation
@@ -5297,6 +5393,7 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			}
 		}
 		interrupted, explicitlyHuman, progress := false, false, false
+		var step *factory.StepProgress
 		run := ""
 		routineCompletion := false
 		attention := false
@@ -5309,6 +5406,9 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 		if mark := presentation.of(msg); role == "assistant" && mark != nil {
 			run = mark.RunID
 			progress = mark.Kind == FactoryProgressKind
+			if progress {
+				step = mark.FactoryStep
+			}
 			interrupted = mark.Interrupted
 			explicitlyHuman = mark.Audience == "human"
 			if mark.Audience == "operational" {
@@ -5353,6 +5453,14 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			At:              journal.written(msg),
 			FactoryProgress: progress,
 		})
+		// A STEP LINE'S MARK GOES BESIDE THE ENTRY, never on it: nearly no
+		// entry has one, and an entry is paid for on every line of every record.
+		if step != nil && steps != nil {
+			if *steps == nil {
+				*steps = map[int]factory.StepProgress{}
+			}
+			(*steps)[len(entries)-1] = *step
+		}
 		var rejectionCounts map[string]int
 		for callIndex := range msg.ToolCalls {
 			call := &msg.ToolCalls[callIndex]

@@ -6,65 +6,39 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-// ── THE MANAGER SHAPES THE RUN ─────────────────────────────────────────────
+// ── THE MANAGER'S TURNS ────────────────────────────────────────────────────
 //
-// The manager is the author of the run (the owner's decision of 2026-10-08).
-// Two doors make it so, and this file is both:
+// The manager is the author of the run (the owner's decision of 2026-10-08),
+// on the person's word, and this file holds the two doors that make it so:
 //
 //   - `factory_run` on the manager's own belt ([runDoor]): what the manager
 //     sets while the person talks to it is made at once through the floor's
 //     edit door ([factory.Seam.Edit]), before a run or on the stages a run has
 //     not started;
-//   - the runner's shaping turn ([shapeTurns], wired as Options.Shape): at
-//     launch of an item the manager never shaped, the runner gives the
-//     manager ONE turn of its own conversation with an ask
-//     (`Shape the run for this item now. …`), at the cheap thinking unless the
-//     item reads as large (or, when a window here holds the conversation,
-//     through that window at the person's own thinking), and collects the edit its `factory_run` call made,
-//     for the runner to apply itself.
+//   - the turn a worker gives the manager on a step's question
+//     ([shapeTurns.through], the inbox in factory_inbox.go): through the
+//     window's conversation when this process holds it, else opened for the
+//     one turn, at the cheap thinking unless the item reads as large.
 //
-// THE SHAPING TURN COLLECTS, IT DOES NOT WRITE. Its `factory_run` door checks
-// the edit against the item in hand ([factory.Edit]) and answers the line, so
-// the manager is told what it set, but the item is changed only by the runner,
-// under its own write, with the phases rebuilt in the same step.
+// A LAUNCH GIVES THE MANAGER NO TURN, and nothing else asks it to reshape the
+// steps: ▶ run runs the item's stages as they stand (a turn before the first
+// stage held the plan behind a conversation nobody had asked anything of, the
+// owner's run of 2026-10-19), and the person who wants other steps says so in
+// the manager's chat or edits them on the job's page.
 
-// The runner's asks, said once so the manual and the tests quote the same
-// words. THERE IS NO ASK ON A STEER: what the person types in the manager's
-// chat is already a turn of the manager, which reshapes with `factory_run`
-// when that is what they meant; a second turn on the same words was the
-// doubled answer of the owner's run of 2026-10-09.
-const (
-	shapeAsk     = "Shape the run for this item now."
-	shapeAskSaid = " What the person said: %s"
-)
-
-// shapeAskFor is the launch's ask, with what the person typed before the run.
-func shapeAskFor(said []string) string {
-	var words []string
-	for _, s := range said {
-		if s = strings.Join(strings.Fields(s), " "); s != "" {
-			words = append(words, s)
-		}
-	}
-	if len(words) == 0 {
-		return shapeAsk
-	}
-	return shapeAsk + fmt.Sprintf(shapeAskSaid, strings.Join(words, " · "))
-}
-
-// managerTurn is what one shaping turn needs of an open conversation; the
+// managerTurn is what one manager turn needs of an open conversation; the
 // session's *Agent answers it, and a test hands in a fake.
 type managerTurn interface {
 	SubmitRunnerNote(ctx context.Context, text string) (<-chan session.Event, error)
@@ -78,7 +52,7 @@ type idleWaiter interface {
 	WaitIdle(ctx context.Context) error
 }
 
-// shapeTurns gives an item's manager one turn to shape its run.
+// shapeTurns gives an item's manager one turn of its conversation.
 type shapeTurns struct {
 	dirs func(repo string) string
 	// live answers the item's manager conversation when a window of THIS
@@ -92,18 +66,12 @@ type shapeTurns struct {
 	// saved Task models policy, nil when it was not or when no policy is kept.
 	refusal func() error
 	// liveOK says whether the window's conversation, on model, may carry a
-	// shaping turn. Nil allows every live conversation (Auto's road).
+	// manager turn. Nil allows every live conversation (Auto's road).
 	liveOK func(model string) bool
 }
 
-// factoryShapeTurns is this process's shaping turns, opened from parent, the
-// launch's own config.
-func factoryShapeTurns(st *store.Store, workspace, profileDir string, parent session.Config) *shapeTurns {
-	return factoryShapeTurnsFrom(st, workspace, profileDir, func() session.Config { return parent })
-}
-
 // factoryShapeTurnsFrom reads the launch when a manager opens, because the
-// worker survives the window whose launch first built its shaping door.
+// worker survives the window whose launch first built its turns.
 func factoryShapeTurnsFrom(st *store.Store, workspace, profileDir string, current func() session.Config) *shapeTurns {
 	turns := &shapeTurns{dirs: factoryRepoDirs(st, workspace)}
 	// UNDER A SAVED ONE MODEL THE WINDOW'S CONVERSATION IS NOT THE FACTORY'S: it
@@ -142,17 +110,17 @@ func factoryLiveOK(raw func() session.Config, profileDir string) func(model stri
 
 // ── THE LIVE ROAD: THE WINDOW HOLDS THE MANAGER ─────────────────────────────
 //
-// The most natural flow is the person opening the item, telling the manager
-// what they want in its window, going back to the floor and pressing `r`. The
-// window's conversation holds the journal's lock, so a second open is
-// refused. The shaping turn then runs AS A TURN OF THAT CONVERSATION: the
-// window shows the manager think, its `factory_run` on that one turn is the
-// collecting door (lent to the turn, [session.Agent.SubmitRunnerNoteThrough]),
-// and the runner applies the edit itself, as on the road that opens. The
-// thinking is the person's setting there: this road does not make it cheap.
+// The person often has the item's manager open in a window when a turn of the
+// runner's comes for it (a step's question for the inbox).
+// The window's conversation holds the journal's lock, so a second open is
+// refused. The turn then runs AS A TURN OF THAT CONVERSATION: the
+// window shows the manager think, and the turn's own door is lent to that one
+// turn ([session.Agent.SubmitRunnerNoteThrough]), as on the road that opens.
+// The thinking is the person's setting there: this road does not make it
+// cheap.
 // Closing the turn closes nothing; the window keeps its conversation.
 
-// liveManagerTurn is one shaping turn through a conversation open here.
+// liveManagerTurn is one manager turn through a conversation open here.
 type liveManagerTurn struct {
 	agent *session.Agent
 	door  session.RunDoor
@@ -176,29 +144,11 @@ func liveManagerTurnFor(transcript string, door session.RunDoor) (managerTurn, b
 	return liveManagerTurn{agent: agent, door: door}, true
 }
 
-// Shape is the runner's Options.Shape: the launch's one turn.
-func (s *shapeTurns) Shape(ctx context.Context, it factory.Item, said []string) (factory.RunEdit, string, error) {
-	return s.run(ctx, it, shapeAskFor(said), false)
-}
-
-// shapeCheap says whether the shaping turn thinks cheap: always, unless the
+// shapeCheap says whether a manager turn thinks cheap: always, unless the
 // item's shown size (a label, a measured diff or a completed read) is large.
 func shapeCheap(it factory.Item) bool {
 	shown, _ := factory.ShownSize(it)
 	return shown != "L"
-}
-
-// run is one turn: the ask in, the turn drained, and the edit collected.
-func (s *shapeTurns) run(ctx context.Context, it factory.Item, ask string, inRun bool) (factory.RunEdit, string, error) {
-	if s == nil || s.open == nil {
-		return factory.RunEdit{}, "", errors.New("no manager to ask")
-	}
-	door := &collectRunDoor{it: it, recipe: factoryItemRecipe(s.dirs, it), inRun: inRun}
-	reply, err := s.through(ctx, it, ask, door)
-	if err != nil {
-		return factory.RunEdit{}, "", err
-	}
-	return door.collected(), reply, nil
 }
 
 // through is one manager turn on ask with door as its `factory_run` (and, on
@@ -259,7 +209,7 @@ func (s *shapeTurns) through(ctx context.Context, it factory.Item, ask string, d
 
 // submit puts the ask in. A conversation the window holds that is in the
 // middle of a turn of its own is waited on, for at most half of what is left
-// of the shaping wait so the retry has the other half to answer, and asked
+// of the turn's wait so the retry has the other half to answer, and asked
 // ONCE more; busy again is [factoryrun.ErrManagerBusy].
 func (s *shapeTurns) submit(ctx context.Context, turn managerTurn, ask string) (<-chan session.Event, error) {
 	events, err := turn.SubmitRunnerNote(context.WithoutCancel(ctx), ask)
@@ -286,113 +236,6 @@ func (s *shapeTurns) submit(ctx context.Context, turn managerTurn, ask string) (
 	return events, err
 }
 
-// collectRunDoor is `factory_run` on a shaping turn: each call is checked
-// against the item as the calls before it left it, answered with its line,
-// and kept, and nothing is written.
-type collectRunDoor struct {
-	mu     sync.Mutex
-	it     factory.Item
-	recipe factory.Recipe
-	inRun  bool
-	got    factory.RunEdit
-}
-
-// EditRun checks and keeps one edit.
-func (d *collectRunDoor) EditRun(_ context.Context, _ string, e factory.RunEdit) (factory.Item, []string, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	var next factory.Item
-	var lines []string
-	var err error
-	if d.inRun {
-		next, lines, err = factory.Edit(d.it, e, d.recipe, factory.EditInRun)
-	} else {
-		next, lines, err = factory.Edit(d.it, e, d.recipe, factory.EditBeforeRun)
-	}
-	if err != nil {
-		return factory.Item{}, nil, err
-	}
-	d.it = next
-	d.got = mergeRunEdit(d.got, e)
-	return next, lines, nil
-}
-
-// Manages says the conversation on this turn manages an item: the shaping
-// turn is given only to an item's manager ([session.RunManagerDoor]).
-func (d *collectRunDoor) Manages(string) bool { return true }
-
-// collected is every edit the turn made, as one.
-func (d *collectRunDoor) collected() factory.RunEdit {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	return d.got
-}
-
-// mergeRunEdit is two edits as one, THE LATER WINNING wherever both touch a
-// stage: a later ask or thinking replaces the earlier one, and a later switch
-// undoes an earlier one, so a stage skipped and then switched on again in the
-// same turn is in neither list, and the edit applied to the item the turn
-// started from leaves it exactly as the manager's last call left it. (The
-// owner's run of 2026-10-09: skip then switch on was kept as both lists, which
-// [factory.Edit] applies on before skip, so the stages ended off while the
-// manager had been told they were on.)
-func mergeRunEdit(a, b factory.RunEdit) factory.RunEdit {
-	out := a
-	out.Add = append(append([]factory.Added(nil), a.Add...), b.Add...)
-	merge := func(x, y map[string]string) map[string]string {
-		if len(x) == 0 && len(y) == 0 {
-			return nil
-		}
-		m := map[string]string{}
-		for k, v := range x {
-			m[k] = v
-		}
-		for k, v := range y {
-			m[k] = v
-		}
-		return m
-	}
-	out.Ask = merge(a.Ask, b.Ask)
-	out.Thinking = merge(a.Thinking, b.Thinking)
-	out.On = switchList(a.On, b.Skip, b.On)
-	out.Skip = switchList(a.Skip, b.On, b.Skip)
-	if strings.TrimSpace(b.Why) != "" {
-		out.Why = b.Why
-	}
-	if strings.TrimSpace(b.By) != "" {
-		out.By = b.By
-	}
-	return out
-}
-
-// switchList is the earlier names with every one the later edit switched the
-// other way taken out, then the later names, each name once.
-func switchList(earlier, undone, later []string) []string {
-	gone := map[string]bool{}
-	for _, n := range undone {
-		gone[strings.ToLower(strings.TrimSpace(n))] = true
-	}
-	seen := map[string]bool{}
-	var out []string
-	keep := func(n string) {
-		k := strings.ToLower(strings.TrimSpace(n))
-		if k == "" || seen[k] {
-			return
-		}
-		seen[k] = true
-		out = append(out, n)
-	}
-	for _, n := range earlier {
-		if !gone[strings.ToLower(strings.TrimSpace(n))] {
-			keep(n)
-		}
-	}
-	for _, n := range later {
-		keep(n)
-	}
-	return out
-}
-
 // openManagerTurn opens the item's manager conversation for one turn. It is a
 // conversation nobody is at the keyboard of for this turn: no card door is on
 // its belt (a card nobody answers holds the turn until the wait ends), the
@@ -416,6 +259,11 @@ func openManagerTurn(parent session.Config, workspace, profileDir string, it fac
 	if where == "" {
 		where = workspace
 	}
+	fallback := appDefaultFallback(profileDir)
+	if cfg.OneModel || fallback == cfg.Model {
+		fallback = ""
+	}
+	cfg.ConversationModels = &session.ConversationModels{Main: cfg.Model, Fallback: fallback}
 	cfg.Interactive = false
 	cfg.AskConsent = false
 	cfg.Factory, cfg.Recipe, cfg.FactoryItem, cfg.Floor, cfg.Stage = nil, nil, nil, nil, nil
@@ -440,7 +288,7 @@ func openManagerTurn(parent session.Config, workspace, profileDir string, it fac
 // runDoor is `factory_run`'s door for a conversation the person talks to: the
 // floor's edit door over st, for the one item whose manager the asking
 // conversation is. A NIL STORE IS A NIL DOOR, for [factoryDoor]'s reason.
-func runDoor(st *store.Store, workspace string) session.RunDoor {
+func runDoor(st *store.Store, workspace, profileDir string) session.RunDoor {
 	if st == nil {
 		return nil
 	}
@@ -448,7 +296,7 @@ func runDoor(st *store.Store, workspace string) session.RunDoor {
 	if seam.Edit == nil {
 		return nil
 	}
-	return seamRunDoor{st: st, workspace: workspace, edit: seam.Edit}
+	return seamRunDoor{st: st, workspace: workspace, profileDir: profileDir, edit: seam.Edit}
 }
 
 // seamRunDoor finds the item a conversation manages and edits it through the
@@ -456,11 +304,14 @@ func runDoor(st *store.Store, workspace string) session.RunDoor {
 type seamRunDoor struct {
 	st        *store.Store
 	workspace string
-	edit      func(ctx context.Context, id int, e factory.RunEdit) (factory.Item, []string, error)
+	// profileDir is the profile whose GitHub token a start's checkout door
+	// reads, the one this machine's runner clones with.
+	profileDir string
+	edit       func(ctx context.Context, id int, e factory.RunEdit) (factory.Item, []string, error)
 }
 
 // errNotAManager is `factory_run` asked by a conversation that manages no item.
-var errNotAManager = errors.New("this conversation is not the manager of any item in the factory")
+var errNotAManager = factory.ErrNotManager
 
 // EditRun edits the item whose conversation is the asking one.
 func (d seamRunDoor) EditRun(ctx context.Context, conversation string, e factory.RunEdit) (factory.Item, []string, error) {
@@ -501,205 +352,50 @@ func sameFileKey(path string) string {
 	return filepath.Clean(path)
 }
 
-// ── `shape steps`: THE MANAGER SHAPES THE STEPS WHEN THE PERSON ASKS ─────────
-//
-// The owner's journey (2026-10-09): OPENING AN ISSUE RUNS NOTHING. The steps
-// an item shows are the recipe's until somebody asks the manager to shape
-// them: ▶ run on an item never shaped (the runner's own shaping turn), words
-// in the manager's chat (its `factory_run`), or `shape steps`, which is this
-// door ([factory.Seam.Shape]). It gives the manager one turn, the launch's own
-// ([shapeTurns.run], nothing said, through the window's conversation when this
-// process holds it, so it streams where the person is looking), and applies
-// its edit as the launch applies it ([factoryrun.ApplyShape]) under the
-// store's write: to every step before a run, and to the steps not yet started
-// during one. The conversation is made when the item has none
-// ([managerMaker]); making it asks no model anything.
-//
-// THE RECIPE STANDING IS A SHAPING TOO: an edit that changes nothing on an
-// item that never ran is recorded as [shapeKeptRecord], so ▶ run afterwards
-// knows the manager read it and does not spend a second turn on it. A turn
-// that did not answer, or an edit refused, records nothing. AN ITEM THE
-// MANAGER ALREADY SHAPED IS ANSWERED WITHOUT A TURN ([sayShapedAlready]): from
-// then on its steps change where the person talks to the manager.
-
-// shapeKeptRecord is [factoryrun.KeptRecipe], kept here so this file's
-// comments name the line the door writes.
-const shapeKeptRecord = factoryrun.KeptRecipe
-
-// shapeDoor is the floor's Shape door over one store.
-type shapeDoor struct {
-	st interface {
-		Get(id int) (factory.Item, error)
-		Update(id int, change func(*factory.Item) error) error
+// ManagerStatus reads the durable job and lease without opening another agent
+// or making a provider request. The saved transcript is not execution state.
+func (d seamRunDoor) ManagerStatus(ctx context.Context, conversation string) (factory.ManagerStatus, error) {
+	if err := ctx.Err(); err != nil {
+		return factory.ManagerStatus{}, err
 	}
-	// turn is the shaping turn ([shapeTurns.run]); inRun bounds its edit to
-	// the steps not yet started.
-	turn func(ctx context.Context, it factory.Item, inRun bool) (factory.RunEdit, string, error)
-	// make is the item's manager conversation, made when it has none.
-	make func(ctx context.Context, it factory.Item) (string, error)
-	// say writes a progress line into a conversation.
-	say func(transcript, line string) error
-	// recipe is the item's recipe.
-	recipe func(it factory.Item) factory.Recipe
-	wait   time.Duration
-	now    func() time.Time
-
-	mu     sync.Mutex
-	inTurn map[int]bool
+	it, err := d.managed(conversation)
+	if err != nil {
+		return factory.ManagerStatus{}, err
+	}
+	desk, err := lease.Open(d.st, lease.Options{})
+	if err != nil {
+		return factory.ManagerStatus{}, err
+	}
+	held, err := desk.HasLiveHold(it.ID)
+	if err != nil {
+		return factory.ManagerStatus{}, err
+	}
+	return factory.StatusForManager(it, held, time.Now()), nil
 }
 
-// factoryShapeDoor is this process's Shape door, over the shaping turns the
-// runner shapes with.
-func factoryShapeDoor(st *store.Store, workspace, profileDir string, turns *shapeTurns) func(ctx context.Context, id int) (string, error) {
-	if st == nil || turns == nil {
-		return nil
+func (d seamRunDoor) AnswerPending(ctx context.Context, conversation, questionID, answer string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
 	}
-	dirs := factoryRepoDirs(st, workspace)
-	d := &shapeDoor{
-		st: st,
-		turn: func(ctx context.Context, it factory.Item, inRun bool) (factory.RunEdit, string, error) {
-			return turns.run(ctx, it, shapeAsk, inRun)
-		},
-		make:   managerMaker(st, workspace, profileDir),
-		say:    sessionTalk{}.Say,
-		recipe: func(it factory.Item) factory.Recipe { return factoryItemRecipe(dirs, it) },
-	}
-	return d.Shape
-}
-
-// itemRan says whether an item's run has started: its edit is then bounded to
-// the steps not yet started.
-func itemRan(it factory.Item) bool {
-	s := it.Stream
-	return s != nil && (!s.Started.IsZero() || len(s.Phases) > 0)
-}
-
-// sayShapedAlready is [factoryrun.SayShapedAlready].
-const sayShapedAlready = factoryrun.SayShapedAlready
-
-// errNothingToShape is [factoryrun.ErrNothingToShape].
-var errNothingToShape = factoryrun.ErrNothingToShape
-
-// Shape is the door: one turn for item id, or [factory.ShapeAlready] while a
-// turn for it is already out.
-func (d *shapeDoor) Shape(ctx context.Context, id int) (string, error) {
-	// ONE TURN PER ITEM AT A TIME: two presses (or two windows) ask once; the
-	// second hears it already out.
-	if !d.begin(id) {
-		return factory.ShapeAlready, nil
-	}
-	defer d.end(id)
-
-	it, err := d.st.Get(id)
+	it, err := d.managed(conversation)
 	if err != nil {
 		return "", err
 	}
-	switch it.State {
-	case factory.StateLanded, factory.StateShipped:
-		return "", fmt.Errorf("%s: %w", it.Ref(), errNothingToShape)
-	}
-	// AN ITEM THE MANAGER ALREADY SHAPED IS NEVER SHAPED AGAIN UNASKED: the
-	// person changes its steps by saying so in the manager's chat, where the
-	// manager has its pen. A turn here would run on words nobody said (the
-	// owner's run of 2026-10-09 had two such turns undo the steps the person
-	// had just agreed with the manager).
-	if factoryrun.ShapedByManager(it) {
-		return sayShapedAlready, nil
-	}
-	chat := strings.TrimSpace(it.Talk)
-	if chat == "" {
-		made, err := d.make(ctx, it)
-		if err != nil {
-			return "", err
-		}
-		if made = strings.TrimSpace(made); made == "" {
-			return "", errors.New("the item's conversation could not be made")
-		}
-		// THE FIRST CONVERSATION WRITTEN IS THE ITEM'S, as the Talk door keeps it.
-		if err := d.st.Update(id, func(x *factory.Item) error {
-			if strings.TrimSpace(x.Talk) == "" {
-				x.Talk = made
-			}
-			return nil
-		}); err != nil {
-			return "", err
-		}
-		if it, err = d.st.Get(id); err != nil {
-			return "", err
-		}
-		chat = strings.TrimSpace(it.Talk)
-	}
-	wait := d.wait
-	if wait <= 0 {
-		wait = time.Minute
-	}
-	turnCtx, cancel := context.WithTimeout(ctx, wait)
-	defer cancel()
-	edit, _, err := d.turn(turnCtx, it, itemRan(it))
+	desk, err := lease.Open(d.st, lease.Options{})
 	if err != nil {
-		line := factoryrun.ShapeFailLine(err)
-		d.tell(chat, line)
-		return line, errors.New(line)
-	}
-	now := time.Now()
-	if d.now != nil {
-		now = d.now()
-	}
-	line := ""
-	var refused error
-	if err := d.st.Update(id, func(x *factory.Item) error {
-		// A RUN THAT STARTED DURING THE TURN bounds the edit to its tail.
-		inRun := itemRan(*x)
-		l, err := factoryrun.ApplyShape(x, edit, d.recipe(*x), inRun, now)
-		if err != nil {
-			refused = err
-			return nil
-		}
-		if l == "" {
-			if !inRun && !factoryrun.ShapedByManager(*x) {
-				x.Adapted = append(append([]string(nil), x.Adapted...), shapeKeptRecord)
-			}
-			l = factoryrun.SayShapeStands
-		}
-		line = l
-		return nil
-	}); err != nil {
 		return "", err
 	}
-	if refused != nil {
-		line := factoryrun.ShapeRefusedLine(refused)
-		d.tell(chat, line)
-		return line, errors.New(line)
-	}
-	d.tell(chat, line)
-	return line, nil
+	receipt, err := lease.NewDoors(desk).AnswerPending(it.ID, it.Talk, questionID, answer)
+	return managerAnswerResult(receipt, err)
 }
 
-// tell writes line into the conversation, once; a conversation that cannot
-// take it now misses it (the item's record keeps what was set).
-func (d *shapeDoor) tell(chat, line string) {
-	if d.say != nil && chat != "" && strings.TrimSpace(line) != "" {
-		_ = d.say(chat, line)
+func managerAnswerResult(receipt factory.ManagerAnswer, err error) (string, error) {
+	if receipt.QuestionID == "" {
+		return "", err
 	}
-}
-
-// begin marks item id's turn as in flight, and answers false when one is.
-func (d *shapeDoor) begin(id int) bool {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if d.inTurn == nil {
-		d.inTurn = map[int]bool{}
+	line := "Decision saved for " + receipt.Stage + ": " + receipt.Words + "."
+	if err != nil {
+		return line + " Worker notification could not be persisted: " + err.Error() + ". Retry factory_answer with the same question_id and answer to redeliver; the decision is already saved.", nil
 	}
-	if d.inTurn[id] {
-		return false
-	}
-	d.inTurn[id] = true
-	return true
-}
-
-// end lets item id's turn go.
-func (d *shapeDoor) end(id int) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	delete(d.inTurn, id)
+	return line + " The saved decision is confirmed. A newer pending question, if any, is unchanged.", nil
 }

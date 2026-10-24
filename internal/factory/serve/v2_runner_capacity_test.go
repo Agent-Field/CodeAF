@@ -67,6 +67,38 @@ func (c capacityRig) runner(t *testing.T, id string) api.Runner {
 	return api.Runner{}
 }
 
+// The default is admission capacity, not just a number reported by Settings.
+func TestFifteenDefaultJobsRunAndTheSixteenthWaitsForCapacity(t *testing.T) {
+	c := capacitySetup(t)
+	var credentials []api.RunnerAttached
+	for range 16 {
+		credentials = append(credentials, c.attach(t, c.priya, "priya", "mbp", 0))
+		if got := credentials[len(credentials)-1].Slots; got != 15 {
+			t.Fatalf("new computer default = %d, want 15", got)
+		}
+	}
+	var waitingID int
+	for range 16 {
+		waitingID = c.add(t, "priya").ID
+	}
+	for i := range 15 {
+		c.request(t, "GET", "/v1/runners/pull", credentials[i].Credential, nil, 200, nil)
+	}
+	c.request(t, "GET", "/v1/runners/pull", credentials[15].Credential, nil, 204, nil)
+	var waiting api.Job
+	c.request(t, "GET", fmt.Sprintf("/v1/jobs/%d", waitingID), c.priya, nil, 200, &waiting)
+	if waiting.StatePresentation.Kind != "waiting_for_capacity" || !strings.Contains(waiting.StatePresentation.Detail, "15/15 execution slots in use") {
+		t.Fatalf("sixteenth job: %+v", waiting.StatePresentation)
+	}
+	// The default is not the ceiling: increasing above fifteen admits it.
+	c.request(t, "PUT", "/v1/runners/mbp", c.priya, api.RunnerSettings{Slots: 16}, 200, nil)
+	var sixteenth api.RunnerPull
+	c.request(t, "GET", "/v1/runners/pull", credentials[15].Credential, nil, 200, &sixteenth)
+	if sixteenth.Lease.Job != waitingID {
+		t.Fatal("raising above the default did not admit the waiting job")
+	}
+}
+
 func TestRunnerSlotsRaiseAndLowerFollowTheOwnersSavedNumber(t *testing.T) {
 	c := capacitySetup(t)
 	var creds [3]api.RunnerAttached
@@ -77,6 +109,9 @@ func TestRunnerSlotsRaiseAndLowerFollowTheOwnersSavedNumber(t *testing.T) {
 	if creds[0].Slots != api.DefaultRunnerSlots {
 		t.Fatalf("attach answered %d slots, want the default %d", creds[0].Slots, api.DefaultRunnerSlots)
 	}
+	// This scenario deliberately tests a two-job configured limit, independently
+	// of the default used by a newly attached machine.
+	c.request(t, "PUT", "/v1/runners/mbp", c.priya, api.RunnerSettings{Slots: 2}, 200, nil)
 	var pulls [3]api.RunnerPull
 	for i := 0; i < 2; i++ {
 		c.request(t, "GET", "/v1/runners/pull", creds[i].Credential, nil, 200, &pulls[i])
@@ -166,7 +201,7 @@ func TestSavedSlotsSurviveRestartAndReattach(t *testing.T) {
 	if again := c.attach(t, c.priya, "priya", "mbp", 2); again.Slots != 5 {
 		t.Fatalf("reattach answered %d, want the saved 5", again.Slots)
 	}
-	if fresh := c.attach(t, c.priya, "priya", "laptop", 99); fresh.Slots != api.MaxRunnerSlots {
+	if fresh := c.attach(t, c.priya, "priya", "laptop", api.MaxRunnerSlots+1); fresh.Slots != api.MaxRunnerSlots {
 		t.Fatalf("an over-ceiling attach answered %d, want %d", fresh.Slots, api.MaxRunnerSlots)
 	}
 	reopened := New(c.seam, c.cfg)
@@ -219,7 +254,7 @@ func slotsToLegacy(t *testing.T, root string, n int) {
 	}
 }
 
-// A runner saved before the ceiling existed may hold 20. After a restart the
+// A runner saved before the ceiling existed may exceed the current ceiling. After a restart the
 // roster, the runner's own read and a reattach must all say the capacity that
 // is really granted (the ceiling), and a lease already held is not cancelled.
 func TestALegacySavedCapacityAboveTheCeilingIsGrantedTheCeilingEverywhere(t *testing.T) {
@@ -229,7 +264,7 @@ func TestALegacySavedCapacityAboveTheCeilingIsGrantedTheCeilingEverywhere(t *tes
 	var held api.RunnerPull
 	c.request(t, "GET", "/v1/runners/pull", first.Credential, nil, 200, &held)
 	c.h.Close()
-	slotsToLegacy(t, c.st.Root(), 20)
+	slotsToLegacy(t, c.st.Root(), api.MaxRunnerSlots+5)
 
 	reopened := New(c.seam, c.cfg)
 	defer reopened.Close()
@@ -244,14 +279,14 @@ func TestALegacySavedCapacityAboveTheCeilingIsGrantedTheCeilingEverywhere(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	if body, _ := json.Marshal(rows); len(rows) != 1 || !strings.Contains(string(body), want) || strings.Contains(string(body), `"slots":20`) {
+	if body, _ := json.Marshal(rows); len(rows) != 1 || !strings.Contains(string(body), want) || strings.Contains(string(body), fmt.Sprintf(`"slots":%d`, api.MaxRunnerSlots+5)) {
 		t.Fatalf("roster after restart: %s", body)
 	}
 	if w := identityRequest(reopened, "POST", "/v1/runners/leases/"+held.Lease.ID+"/heartbeat", "{}", first.Credential, nil); w.Code != 200 {
 		t.Fatalf("a lease held across the migration was lost: %d %s", w.Code, w.Body)
 	}
 	var again api.RunnerAttached
-	body, _ := json.Marshal(api.RunnerAttach{Runner: "mbp", Name: "mbp", Owner: "priya", Kind: api.RunnerMac, Slots: 20})
+	body, _ := json.Marshal(api.RunnerAttach{Runner: "mbp", Name: "mbp", Owner: "priya", Kind: api.RunnerMac, Slots: api.MaxRunnerSlots + 5})
 	w := identityRequest(reopened, "POST", "/v1/runners/attach", string(body), c.priya, nil)
 	if w.Code != 201 || json.Unmarshal(w.Body.Bytes(), &again) != nil || again.Slots != api.MaxRunnerSlots {
 		t.Fatalf("reattach: %d %s", w.Code, w.Body)
