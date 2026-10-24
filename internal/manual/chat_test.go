@@ -3219,6 +3219,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I take a chat back from my other computer", "continuing-a-chat-on-another-computer"},
 		{"what happens if two computers continue the same chat at once", "continuing-a-chat-on-another-computer"},
 		{"which computer coordinates cluster status cluster lead", "continuing-a-chat-on-another-computer"},
+		{"can a worker access all my chats or approve pairing", "continuing-a-chat-on-another-computer"},
+		{"worker restarts draining and learner metadata visibility", "continuing-a-chat-on-another-computer"},
 		{"why does it say this chat is arriving", "continuing-a-chat-on-another-computer"},
 		{"does /remember work on my other computer", "what-i-remember"},
 		{"are my memories shared across computers", "what-i-remember"},
