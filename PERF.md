@@ -6,6 +6,28 @@ two thirds off the embedded corpora. This file is what keeps it. Every win below
 is defended by something that goes red locally, in `go test` or in `make check`,
 with a message that says what happened.
 
+## Activity/history reading bounds
+
+The task reading stores each merged row once, with identities mapped to slice
+positions. Parent validity is memoized during each tree build, including cycles;
+roots and sibling slices are sized before filling them. Filtering shares the
+held task/chat slices until an actual deletion requires a copy. A body's paint
+shares its filtered reading and layouts by width between the list, cursor, and
+preview, then discards that scratch before the next input or engine update.
+There is no persistent layout cache that can hide changed folds, filters,
+deletions, live state, or terminal size. Layout capacity starts with visible
+tasks rather than allocating for every descendant hidden behind a fold.
+
+`TestActivityParentIndexPreservesMalformedGraphPolicy`, the Activity snapshot
+and paint-lifetime regressions, and the existing navigation/live-state suite
+defend these rules. `BenchmarkTasksConversationHistory` measures rebuilding and
+laying out 5,120 tasks; `BenchmarkActivityScaleFrame` measures painting that
+history. `TestActivityScaleTerminalLatency` exercises the actual terminal with
+40 project histories and 5,120 tasks, including pointer selection, filtering,
+folding and resizing. Its timings include input delivery and observed screen
+response, separate from fixture construction and first-page setup. These are
+diagnostic measurements, not universal latency promises or new product limits.
+
 ## Teams overview reading bounds
 
 Visible teams’ member previews and latest-message times are read once per conversation
@@ -54,6 +76,26 @@ path/theme/geometry invalidation, viewport equivalence and keyboard reveal;
 12-, 120- and 1,000-member overviews with approximately 48 KiB Markdown replies.
 Timing is diagnostic; regression gates assert reuse and rendered geometry,
 rather than a machine-dependent time limit.
+
+All teams shares one indexed reporting-home reading per paint, including the
+global manager card. Membership repair groups conversations once and retains
+the existing home/manager selection policy, instead of repeatedly searching
+every membership for every conversation. The paint reading is discarded before
+edits or actions; it is never an authority cache across frames.
+
+Spend reads share one immutable membership snapshot for the most recently used
+profile. Its primary/legacy file stamp is checked on every request, membership
+changes invalidate it immediately, and concurrent reads share the same load.
+Ledger appends still use the existing incremental ledger fold; there is no TTL,
+new model call, or change to cap enforcement. The retained snapshot is bounded
+to one profile, rather than an accumulating profile cache.
+
+`TestTeamsAllScaleTerminalLatency` measures input delivery through the real
+terminal's changed hover hint with 100 teams and 10,000 memberships; the separate
+large-capacity scenario uses 200 teams and 40,000 memberships. Fixture setup and
+first overview frame are reported separately, and model calls must remain zero.
+The snapshot, repair-policy equivalence, profile isolation and concurrent-read
+tests defend the algorithms independently of diagnostic wall-clock timings.
 
 ## Context recovery bounds
 
