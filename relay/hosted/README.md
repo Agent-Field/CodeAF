@@ -10,10 +10,12 @@ The relay sees only ciphertext and keeps no account table: an identity is the ha
 ```
 request --> Worker (stateless) --+--> /v1/pair*  --> PairGate (one object) --> Mailbox (one per nameplate)
                                  |
-                                 +--> /v1/store/*, /v1/dir/* --> IdentityDO (one per identity) --> R2
+                                 +--> identity ingress --> IdentityDO (router/blob index) --> R2
+                                                              |
+                                                              +--> RaftMemberDO A/B/C
 ```
 
-The Worker (`src/worker.js`) decides where a request goes and does nothing else. It reads the
+The Worker (`src/raft-worker.js`, exporting `src/worker.js`) decides where a request goes and does nothing else. It reads the
 identity from the unsigned `Codeaf-Identity` header, refuses an oversized `Content-Length` with 413
 before waking anything, and forwards the request, body unread, to that identity's Durable Object.
 Routing before reading is what keeps one identity's slow put from ever delaying another identity's
@@ -26,9 +28,13 @@ it, checks the device is not revoked, spends the caller's rate budget, and serve
 - `Has` never answers no while a put for the same identity is still being received. It waits for the
   puts in flight (`src/flight.js`, a port of `internal/blobstore/flight.go`) and fails with 503 after
   30 s rather than say no. A caller with no cert of the identity cannot hold a put open.
-- The directory lives in the object's SQLite (`src/directory.js`). The object is single-threaded and
-  every operation is one synchronous turn, which is the compare-and-swap the lease rules need. The
-  rules (`src/rules.js`) are a JS port of `internal/directory/rules.go`.
+- Directory and authority decisions live in three separately addressed `RaftMemberDO` SQLite
+  stores. `src/raft/hosted.js` freezes the original source on first use, streams P11's same
+  genesis to A/B/C and publishes ownership only after a fresh quorum read. Commands use the
+  original v1 proof and the shared Go state machine; JavaScript has no authoritative lease
+  writer. `src/directory.js` and its old rules remain only for immutable source conversion and
+  legacy fixture tests. Source backups are retained until explicit owner cleanup or retirement.
+  An absent quorum returns retryable 503 and never reopens the old writer.
 - Frames live in R2 at `<identity>/f/<FrameID>` (`src/store.js`), each validated (magics, header,
   `cell_key_id`) before it is stored. The index that finds an object inside its frame is rows in the
   object's SQLite (`objs`: rid -> frame, offset, length, primary key on rid), so it takes no memory
@@ -56,20 +62,20 @@ a device record cannot set or clear its own flag.
 
 Directory watch (contract 21) is `GET /v1/dir/watch`, a signed WebSocket upgrade on the same object
 (`src/watch.js`). It replaces the home screen's polling: the object keeps a durable version of the
-directory (`dirver` in its SQLite), bumps it on every change a person could see (a heartbeat that only
+directory (the replicated application version), bumps it on every change a person could see (a heartbeat that only
 moves a lease's expiry is not one), and sends `{"v":N}` to every socket. It accepts with the hibernation
 API and answers the client's `ping` with the platform's auto-response, so an open, quiet socket wakes
 nothing and bills nothing. `test/request-scoped.test.js` keeps the object free of timers (but `Has`'s
 bounded wait) and of outbound connections. `maxWatchers` (default 1000) caps sockets per identity.
 
-Rotation (contract 20) is `POST|GET /v1/identity/rotation` on the same object (`src/rotation.js`, a
-port of `internal/directory/rotation.go`). The state is the `rotation` field of the identity record in
-the object's SQLite. The first device to freeze owns the rotation, any device may thaw a frozen
+Rotation (contract 20) is `POST|GET /v1/identity/rotation` through the same coordinator.
+The shared Go state machine owns its `rotation` field in the replicated identity record. The first device to freeze owns the rotation, any device may thaw a frozen
 identity, nothing thaws a retired one. Routes marked `write` in `src/routes.js` (every directory verb
 that changes a record, and a frame put) are `410 rotated` once the identity is frozen or retired;
 reads stay open. A retire arms the object's alarm at its deadline. The alarm (`src/erasure.js`) writes
 the tombstone first (`gone` in the object's storage), deletes the identity's R2 prefix a page per turn,
-then drops the SQLite tables, so a crash half way is finished by the next alarm; afterwards every
+then erases all member copies/snapshots and source SQLite tables through a retained journal,
+so a crash half way is finished by the next alarm; afterwards every
 request is `410 gone` and makes no table and no R2 object. The one alarm slot is shared with the stats
 flush, so `#arm` only ever moves it earlier and the alarm handler re-arms the deadline.
 
@@ -137,7 +143,8 @@ canonical names, so the stricter side is the safe one.
 | Binding | Kind | Purpose |
 |---|---|---|
 | `FRAMES` | R2 bucket | frames and the object index, under `<identity>/` |
-| `IDENTITY` | Durable Object `IdentityDO` (SQLite) | directory, puts in flight, caps, one per identity |
+| `IDENTITY` | Durable Object `IdentityDO` (SQLite) | source gate/backup, coordinator, blob index, puts in flight, caps |
+| `RAFT_MEMBERS` | Durable Object `RaftMemberDO` (SQLite) | three independently addressed coordination stores per identity |
 | `NEWCOMERS` | Durable Object `NewcomerGate` (SQLite) | new identities per IP, one object |
 | `PAIR_GATE` | Durable Object `PairGate` (SQLite) | nameplates, per-IP counters, one object |
 | `MAILBOX` | Durable Object `Mailbox` | one pairing, one per nameplate |
@@ -149,7 +156,8 @@ canonical names, so the stricter side is the safe one.
 | `TRUST_PROXY` | var, optional | `1` takes the caller's network from the first `X-Forwarded-For` address (the self-hosted relay's `--trust-proxy`); for test rigs only, never production, where `CF-Connecting-IP` is the one truth |
 
 `wrangler.toml` declares all of them and the migration `v1` that creates the four classes as
-SQLite-backed; migration `v2` adds the link classes. The relay needs Workers Paid: the Free plan allows 10 ms of CPU a request and 100,000
+SQLite-backed; migration `v2` adds the link classes and `v3-raft-members` adds the three-anchor
+namespace. See DEPLOY.md for the irreversible first-use upgrade and staging-first procedure. The relay needs Workers Paid: the Free plan allows 10 ms of CPU a request and 100,000
 requests a day.
 
 ## Base path
