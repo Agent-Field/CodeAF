@@ -28,3 +28,17 @@ func (r *splitMix64) bounded(n int) int {
 		}
 	}
 }
+
+// electionRandom keeps anchor ranks in disjoint windows while leaving Raft's
+// quorum-check and leader-lease interval unchanged. Rank is immutable provisioned
+// configuration, never the current voter order after a personal-voter swap.
+// TIMING VERSION 2 consumes one bounded draw per timeout reset in every runtime.
+func (c *Core) electionRandom(bound int) int {
+	if c.cfg.TimingVersion == 1 {
+		return c.rng.bounded(bound)
+	}
+	if bound != ElectionRandomBound {
+		panic("raftcore: election timing version mismatch")
+	}
+	return c.electionRank*ElectionWindowTicks + c.rng.bounded(ElectionWindowTicks)
+}

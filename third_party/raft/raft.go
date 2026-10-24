@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// codeaf modifies election randomness and its offset bound for deterministic,
+// anchor-ranked timing; quorum checks and voting rules retain upstream behavior.
 package raft
 
 import (
@@ -131,6 +133,10 @@ type Config struct {
 	// It must return a value in [0, n) and must not be shared between nodes.
 	// A nil provider preserves the upstream default for existing callers.
 	ElectionRandom func(n int) int
+
+	// ElectionRandomBound optionally widens the bounded offset without changing
+	// ElectionTick's quorum and leader-lease timing. Zero retains upstream timing.
+	ElectionRandomBound int
 
 	// ElectionTick is the number of Node.Tick invocations that must pass between
 	// elections. That is, if a follower does not receive any message from the
@@ -296,6 +302,9 @@ type Config struct {
 }
 
 func (c *Config) validate() error {
+	if c.ElectionRandomBound < 0 || c.ElectionRandomBound > int(^uint(0)>>1)-c.ElectionTick {
+		return errors.New("invalid election random bound")
+	}
 	if c.ID == None {
 		return errors.New("cannot use none as id")
 	}
@@ -425,6 +434,7 @@ type raft struct {
 	// when raft changes its state to follower or candidate.
 	randomizedElectionTimeout int
 	electionRandom            func(int) int
+	electionRandomBound       int
 	disableProposalForwarding bool
 	stepDownOnRemoval         bool
 
@@ -455,6 +465,7 @@ func newRaft(c *Config) *raft {
 	r := &raft{
 		id:                          c.ID,
 		electionRandom:              c.ElectionRandom,
+		electionRandomBound:         c.ElectionRandomBound,
 		lead:                        None,
 		isLearner:                   false,
 		raftLog:                     raftlog,
@@ -2062,8 +2073,12 @@ func (r *raft) resetRandomizedElectionTimeout() {
 	if random == nil {
 		random = globalRand.Intn
 	}
-	v := random(r.electionTimeout)
-	if v < 0 || v >= r.electionTimeout {
+	bound := r.electionRandomBound
+	if bound == 0 {
+		bound = r.electionTimeout
+	}
+	v := random(bound)
+	if v < 0 || v >= bound {
 		panic("raft: election random value outside bound")
 	}
 	r.randomizedElectionTimeout = r.electionTimeout + v

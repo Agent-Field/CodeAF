@@ -46,17 +46,20 @@ type readRequest struct {
 // queued implicitly. Storage failure or an unknown committed command stops the
 // handle. Recovery always starts as a follower from supplied durable bytes.
 type Core struct {
-	cfg        Config
-	node       *raft.RawNode
-	store      *storage
-	rng        splitMix64
-	applied    uint64
-	serial     uint64
-	readSerial uint64
-	reads      map[string]readRequest
-	barriers   map[string]uint64
-	pending    *pending
-	stopped    bool
+	cfg          Config
+	node         *raft.RawNode
+	store        *storage
+	rng          splitMix64
+	electionRank int
+	applied      uint64
+	serial       uint64
+	quorumTerm   uint64
+	quorumIndex  uint64
+	readSerial   uint64
+	reads        map[string]readRequest
+	barriers     map[string]uint64
+	pending      *pending
+	stopped      bool
 }
 
 func clone[T proto.Message](v T) T {
@@ -91,6 +94,37 @@ func New(cfg Config, recovered RecoveredState) (core *Core, err error) {
 	if cfg.ClusterUUID == "" || cfg.NodeID == 0 || raft.IsLocalMsgTarget(cfg.NodeID) {
 		return nil, ErrConfig
 	}
+	if cfg.TimingVersion == 0 {
+		cfg.TimingVersion = ElectionTimingVersion
+	}
+	if cfg.TimingVersion != 1 && cfg.TimingVersion != ElectionTimingVersion {
+		return nil, ErrConfig
+	}
+	anchors := cfg.Anchors
+	if len(recovered.Anchors) != 0 {
+		if len(anchors) != 0 && !slices.Equal(anchors, recovered.Anchors) {
+			return nil, ErrConfig
+		}
+		anchors = recovered.Anchors
+	} else if len(anchors) == 0 && len(cfg.Bootstrap) == 3 {
+		anchors = slices.Clone(cfg.Bootstrap)
+		slices.Sort(anchors)
+	}
+	rank := 3
+	if len(anchors) != 0 {
+		if len(anchors) != 3 {
+			return nil, ErrConfig
+		}
+		for i, id := range anchors {
+			if id == 0 || raft.IsLocalMsgTarget(id) || i > 0 && id <= anchors[i-1] {
+				return nil, ErrConfig
+			}
+			if id == cfg.NodeID {
+				rank = i
+			}
+		}
+	}
+	cfg.Anchors = slices.Clone(anchors)
 	snapshot := clone(recovered.Snapshot)
 	snapIndex := snapshot.GetMetadata().GetIndex()
 	last := snapIndex
@@ -116,7 +150,7 @@ func New(cfg Config, recovered RecoveredState) (core *Core, err error) {
 	if conf == nil {
 		conf = &pb.ConfState{}
 	}
-	c := &Core{cfg: cfg, rng: splitMix64{state: cfg.Seed}, applied: recovered.Applied, reads: make(map[string]readRequest), barriers: make(map[string]uint64)}
+	c := &Core{cfg: cfg, electionRank: rank, rng: splitMix64{state: cfg.Seed}, applied: recovered.Applied, reads: make(map[string]readRequest), barriers: make(map[string]uint64)}
 	c.store = &storage{MemoryStorage: raft.NewMemoryStorage(), conf: conf}
 	if !raft.IsEmptySnap(snapshot) {
 		if err := c.store.ApplySnapshot(snapshot); err != nil {
@@ -131,9 +165,13 @@ func New(cfg Config, recovered RecoveredState) (core *Core, err error) {
 			return nil, ErrConfig
 		}
 	}
+	randomBound := ElectionRandomBound
+	if cfg.TimingVersion == 1 {
+		randomBound = ElectionTicks
+	}
 	c.node, err = raft.NewRawNode(&raft.Config{
 		ID: cfg.NodeID, ElectionTick: ElectionTicks, HeartbeatTick: HeartbeatTicks,
-		Storage: c.store, Applied: recovered.Applied, ElectionRandom: c.rng.bounded,
+		Storage: c.store, Applied: recovered.Applied, ElectionRandom: c.electionRandom, ElectionRandomBound: randomBound,
 		PreVote: true, CheckQuorum: true, ReadOnlyOption: raft.ReadOnlySafe,
 		DisableProposalForwarding: true, AsyncStorageWrites: false,
 		MaxSizePerMsg: MaxMessageBytes, MaxCommittedSizePerReady: MaxMessageBytes,
@@ -298,6 +336,7 @@ func (c *Core) Step(input Input) (effects Effects, err error) {
 			return effects, err
 		}
 	case Read:
+		c.quorumIndex, c.quorumTerm = 0, 0
 		if !c.leader() {
 			return effects, ErrLeader
 		}
@@ -514,6 +553,7 @@ func (c *Core) finish(e *Effects) {
 		if r.term == s.GetTerm() && c.leader() && c.applied >= index {
 			if !r.cancelled {
 				e.Reads = append(e.Reads, ReadBarrier{RequestID: r.id, Index: index})
+				c.quorumTerm, c.quorumIndex = s.GetTerm(), index
 			}
 			delete(c.reads, key)
 			delete(c.barriers, key)

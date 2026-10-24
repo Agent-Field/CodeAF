@@ -44,28 +44,32 @@ type Command struct {
 // their typed operations here; unknown fields fail decoding on older members.
 // There is no arbitrary JSON payload in which task text or secrets can hide.
 type Mutation struct {
-	InitMembership   *InitMembership   `json:"init_membership,omitempty"`
-	EnrollMember     *EnrollMember     `json:"enroll_member,omitempty"`
-	RemoveMember     *RemoveMember     `json:"remove_member,omitempty"`
-	SettleMembership *SettleMembership `json:"settle_membership,omitempty"`
-	RecordUpload     *UploadReceipt    `json:"record_upload,omitempty"`
-	AdmitJoin        *AdmitJoin        `json:"admit_join,omitempty"`
-	CompleteJoin     *CompleteJoin     `json:"complete_join,omitempty"`
-	Rotate           *RotateRequest    `json:"rotate,omitempty"`
-	CloseSession     *CloseSession     `json:"close_session,omitempty"`
-	DecideJoin       *JoinDecision     `json:"decide_join,omitempty"`
-	Create           *CreateCell       `json:"create,omitempty"`
-	Acquire          *AcquireCell      `json:"acquire,omitempty"`
-	Beat             *BeatCell         `json:"beat,omitempty"`
-	BeatBatch        *BeatBatch        `json:"beat_batch,omitempty"`
-	Publish          *PublishCell      `json:"publish,omitempty"`
-	Release          *ReleaseCell      `json:"release,omitempty"`
-	Archive          *CellID           `json:"archive,omitempty"`
-	PutDevice        *PutDevice        `json:"put_device,omitempty"`
-	Revoke           *DeviceID         `json:"revoke,omitempty"`
-	SetVault         *VaultCAS         `json:"set_vault,omitempty"`
-	AdvanceTime      *AdvanceTime      `json:"advance_time,omitempty"`
-	DeviceSeen       *DeviceSeen       `json:"device_seen,omitempty"`
+	CompleteLeadership *CompleteLeadership `json:"complete_leadership,omitempty"`
+	RequestLeadership  *RequestLeadership  `json:"request_leadership,omitempty"`
+	RestoreAnchors     *RestoreAnchors     `json:"restore_anchors,omitempty"`
+	SettleLeadership   *SettleLeadership   `json:"settle_leadership,omitempty"`
+	InitMembership     *InitMembership     `json:"init_membership,omitempty"`
+	EnrollMember       *EnrollMember       `json:"enroll_member,omitempty"`
+	RemoveMember       *RemoveMember       `json:"remove_member,omitempty"`
+	SettleMembership   *SettleMembership   `json:"settle_membership,omitempty"`
+	RecordUpload       *UploadReceipt      `json:"record_upload,omitempty"`
+	AdmitJoin          *AdmitJoin          `json:"admit_join,omitempty"`
+	CompleteJoin       *CompleteJoin       `json:"complete_join,omitempty"`
+	Rotate             *RotateRequest      `json:"rotate,omitempty"`
+	CloseSession       *CloseSession       `json:"close_session,omitempty"`
+	DecideJoin         *JoinDecision       `json:"decide_join,omitempty"`
+	Create             *CreateCell         `json:"create,omitempty"`
+	Acquire            *AcquireCell        `json:"acquire,omitempty"`
+	Beat               *BeatCell           `json:"beat,omitempty"`
+	BeatBatch          *BeatBatch          `json:"beat_batch,omitempty"`
+	Publish            *PublishCell        `json:"publish,omitempty"`
+	Release            *ReleaseCell        `json:"release,omitempty"`
+	Archive            *CellID             `json:"archive,omitempty"`
+	PutDevice          *PutDevice          `json:"put_device,omitempty"`
+	Revoke             *DeviceID           `json:"revoke,omitempty"`
+	SetVault           *VaultCAS           `json:"set_vault,omitempty"`
+	AdvanceTime        *AdvanceTime        `json:"advance_time,omitempty"`
+	DeviceSeen         *DeviceSeen         `json:"device_seen,omitempty"`
 }
 
 type CellID struct {

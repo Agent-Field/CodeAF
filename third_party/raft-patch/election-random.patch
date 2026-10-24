@@ -1,47 +1,40 @@
 --- a/raft.go
 +++ b/raft.go
-@@ -126,6 +126,11 @@
- type Config struct {
- 	// ID is the identity of the local raft. ID cannot be 0.
- 	ID uint64
-+
+@@ -14,0 +15,2 @@
++// codeaf modifies election randomness and its offset bound for deterministic,
++// anchor-ranked timing; quorum checks and voting rules retain upstream behavior.
+@@ -129,0 +132,9 @@
 +	// ElectionRandom optionally supplies per-node bounded election randomness.
 +	// It must return a value in [0, n) and must not be shared between nodes.
 +	// A nil provider preserves the upstream default for existing callers.
 +	ElectionRandom func(n int) int
- 
- 	// ElectionTick is the number of Node.Tick invocations that must pass between
- 	// elections. That is, if a follower does not receive any message from the
-@@ -419,6 +424,7 @@
- 	// [electiontimeout, 2 * electiontimeout - 1]. It gets reset
- 	// when raft changes its state to follower or candidate.
- 	randomizedElectionTimeout int
++
++	// ElectionRandomBound optionally widens the bounded offset without changing
++	// ElectionTick's quorum and leader-lease timing. Zero retains upstream timing.
++	ElectionRandomBound int
++
+@@ -293,0 +305,3 @@
++	if c.ElectionRandomBound < 0 || c.ElectionRandomBound > int(^uint(0)>>1)-c.ElectionTick {
++		return errors.New("invalid election random bound")
++	}
+@@ -421,0 +436,2 @@
 +	electionRandom            func(int) int
- 	disableProposalForwarding bool
- 	stepDownOnRemoval         bool
- 
-@@ -448,6 +454,7 @@
- 
- 	r := &raft{
- 		id:                          c.ID,
++	electionRandomBound       int
+@@ -450,0 +467,2 @@
 +		electionRandom:              c.ElectionRandom,
- 		lead:                        None,
- 		isLearner:                   false,
- 		raftLog:                     raftlog,
-@@ -2051,7 +2058,15 @@
- }
- 
- func (r *raft) resetRandomizedElectionTimeout() {
++		electionRandomBound:         c.ElectionRandomBound,
+@@ -2054 +2072,13 @@
 -	r.randomizedElectionTimeout = r.electionTimeout + globalRand.Intn(r.electionTimeout)
 +	random := r.electionRandom
 +	if random == nil {
 +		random = globalRand.Intn
 +	}
-+	v := random(r.electionTimeout)
-+	if v < 0 || v >= r.electionTimeout {
++	bound := r.electionRandomBound
++	if bound == 0 {
++		bound = r.electionTimeout
++	}
++	v := random(bound)
++	if v < 0 || v >= bound {
 +		panic("raft: election random value outside bound")
 +	}
 +	r.randomizedElectionTimeout = r.electionTimeout + v
- }
- 
- func (r *raft) sendTimeoutNow(to uint64) {

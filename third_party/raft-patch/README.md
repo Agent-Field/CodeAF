@@ -7,6 +7,13 @@ Only `raft.go` is modified. `election-random.patch` is the complete upstream
 diff, including the local-change comments; no election algorithm is rewritten.
 
 The added optional `Config.ElectionRandom func(int) int` belongs to one node.
+`ElectionRandomBound` optionally changes only that provider's bounded offset;
+zero retains upstream's bound. `ElectionTick`, CheckQuorum, PreVote lease checks,
+votes and transfer remain unchanged. codeaf uses bound eight and returns a
+ranked width-two draw so anchors ask before a promoted personal voter. Rank
+comes from the committed provisioned-anchor manifest. This timing extension
+also modifies only `raft.go`; the complete recorded patch reverses to the same
+independently hashed upstream bytes.
 It is consulted only by `resetRandomizedElectionTimeout`. Nil preserves the
 upstream behavior for upstream tests/users; invalid bounds panic. codeaf always
 sets it to the core-owned SplitMix64 provider, so the upstream global RNG is

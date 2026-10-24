@@ -37,6 +37,9 @@ func (c *Core) PlanMembership(h clusterstate.Membership) (MembershipPlan, error)
 	if h.Index > c.applied || h.Revision == 0 {
 		return p, ErrConfig
 	}
+	if h.Leadership != nil && !h.Leadership.Settled {
+		return p, ErrBusy
+	}
 	intent := h.Pending
 	if intent == nil {
 		return p, nil

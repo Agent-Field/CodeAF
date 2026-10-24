@@ -11,16 +11,19 @@ import (
 )
 
 const (
-	ProtocolVersion     uint16 = clusterstate.ClusterProtocol
-	ElectionTicks              = 6
-	HeartbeatTicks             = 1
-	MaxMessageBytes            = 64 << 10
-	MaxUncommittedBytes        = 1 << 20
-	MaxInflightBatches         = 8
-	MaxReadRequests            = 128
-	MaxRequestIDBytes          = 128
-	SnapshotEntries            = 1024
-	SnapshotLogBytes           = 4 << 20
+	ProtocolVersion       uint16 = clusterstate.ClusterProtocol
+	ElectionTicks                = 6
+	ElectionWindowTicks          = 2
+	ElectionTimingVersion        = 2
+	ElectionRandomBound          = 4 * ElectionWindowTicks
+	HeartbeatTicks               = 1
+	MaxMessageBytes              = 64 << 10
+	MaxUncommittedBytes          = 1 << 20
+	MaxInflightBatches           = 8
+	MaxReadRequests              = 128
+	MaxRequestIDBytes            = 128
+	SnapshotEntries              = 1024
+	SnapshotLogBytes             = 4 << 20
 )
 
 var (
@@ -47,6 +50,12 @@ type Config struct {
 	Seed        uint64
 	Protocol    uint16
 	Bootstrap   []uint64
+	// Anchors is the immutable provisioned manifest in committed rank order.
+	// Recovery supplies it from applied registry rows, never current voters.
+	Anchors []uint64
+	// TimingVersion is explicit replay compatibility, never a deployment switch.
+	// Zero selects the current version; version 1 reproduces recorded old inputs.
+	TimingVersion uint16
 }
 
 // RecoveredState is immutable input copied at construction. ConfState is the
@@ -54,6 +63,7 @@ type Config struct {
 // Entries contains the contiguous suffix after Snapshot, not just committed
 // entries. Applied belongs to the atomic application transaction.
 type RecoveredState struct {
+	Anchors   []uint64
 	HardState *pb.HardState
 	ConfState *pb.ConfState
 	Snapshot  *pb.Snapshot

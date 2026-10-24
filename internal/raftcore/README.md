@@ -94,10 +94,25 @@ needs ticks; the safe quiescence protocol belongs to P14.
 
 ## Replay contract
 
-Election timeout is 6–11 ticks, with a heartbeat every tick. Hosts currently
+Election timing version 2 gives provisioned anchors A/B/C disjoint randomized
+windows of 6–7/8–9/10–11 ticks; a personal voter uses 12–13. Rank is the index in
+the immutable, sorted `Membership.Anchors` manifest, not current ConfState voter
+order. Before registry initialization the same source-provisioned bootstrap
+manifest supplies it. Native recovery supplies `RecoveredState.Anchors` from the
+checksummed applied registry, including installed snapshots. Hosted create frames
+carry that same durable list. Conflicting host/recovered manifests are refused.
+An unprovisioned learner uses the personal window. Heartbeats remain every tick;
+CheckQuorum and PreVote leader leases retain their six-tick interval. Hosts currently
 schedule 5-second ticks (P14); no wall duration is read here. SplitMix64's exact
 64-bit constants, overflow and rejection sampling are specified in random.go;
-seed zero is valid. Every timeout reset consumes this per-node provider and
+seed zero is valid. Every version-2 timeout reset consumes one bounded draw of width two and adds
+twice the immutable rank through the existing provider. The library's separate
+`ElectionRandomBound=8` admits these offsets without changing `ElectionTick`.
+Version 1 remains available only as explicit internal replay compatibility for
+old recorded inputs; production defaults and the ABI always use version 2.
+The simulator writes its timing version and reads unversioned old recordings as
+version 1, preserving their exact event digests. Every timeout reset uses this
+per-node provider and
 never upstream global randomness. RNG state/draws appear only in diagnostics.
 Wire protobuf marshaling is deterministic. RawNode already orders meaningful
 peer traversal; preserve its per-peer message order. Completed read contexts
@@ -168,3 +183,25 @@ settle an existing intent or close their request session. They cannot enroll,
 remove, read directory content, mutate chats, pair or rotate. Thus a crashed
 requester need not return for an already authorized admission to finish. The
 settlement still requires the exact applied configuration and pending revision.
+
+P13 leadership hosts reconcile `Membership.Leadership` under their actor queue:
+obtain authenticated target `LeadershipEvidence` from its durable store at the
+intent barrier; call `PlanLeadership`; durably apply each explicit joint enter
+and separate leave; commit `SettleLeadership`; then execute the planned transfer.
+A zero-byte protobuf with `Configure=true` is the explicit leave, not no action.
+Only the elected target can issue `LeadershipReceipt`, after a new current-term
+ReadIndex response and durable apply. The read proof is consumed by that receipt;
+starting another read invalidates any previous proof. Commit `CompleteLeadership`
+through provisioned anchor authority after that observation, then obtain a new
+read/receipt before returning success. A completed intent never drives another
+automatic transfer after a later anchor election.
+
+An elected anchor's `Fallback` plan authorizes only housekeeping intent admission,
+not a voter mutation. Commit `RestoreAnchors` at the expected revision, obtain C's
+actual durable evidence, reconcile the reverse joint enter/leave, and commit its
+settlement. An interrupted joint state is finished before reversing. Concurrent
+fallback requests conflict on the same revision. Returning P stays a learner;
+only another personal request may promote it. Public handlers accept the typed
+signed request and never expose Configure or host-supplied readiness evidence.
+P14 schedules ticks/wake/housekeeping, and P17 assembles these host/control seams
+with the personal member lifecycle and the one production directory route.
