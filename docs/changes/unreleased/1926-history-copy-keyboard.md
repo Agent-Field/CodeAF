@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: History arrows walk multiline prompts and copy mode offers Enter
-pr: 1
+pr: 1926
 surface: [chat, docs]
 invalidates:
   - "After recalling a multiline prompt, Up moved the caret instead of reaching the older prompt. While browsing history, Up and Down now move whole entries in conversations and task rooms, and Down past the newest restores the draft."
