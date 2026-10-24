@@ -44,7 +44,7 @@ export function createFrame({ cluster, id, seed, bootstrap = [], anchors = [], h
 export function stepFrame(handle, tag, value) {
   const w = frame(3).u32(handle).u32(tag);
   if ([2, 3, 8, 11].includes(tag)) w.blob(value);
-  else if ([4, 10].includes(tag)) w.str(value);
+  else if ([4, 10, 15].includes(tag)) w.str(value);
   else if ([5, 6, 7, 9].includes(tag)) w.u64(value);
   if (tag === 12) w.u64(value.peer).u32(value.snapshot ? 1 : 0).u32(value.success ? 1 : 0);
   return w.finish();

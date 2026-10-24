@@ -110,11 +110,11 @@ export class Tenant {
   }
 
   /** watch opens a socket for `device` that is told the directory's version now and on every visible change, and that vouches for the leases it names in `holds`. `beat` is the period it declared its pings at (contract 21.12.3). */
-  watch(device, { holds, beat, events = false }) {
+  watch(device, { holds, beat, events = false, receipts = false }) {
     this.dir.assertLegacy();
     const now = this.clock();
     this.dir.seen(device, now);
-    return this.watchers.accept(device, this.dir.version, now, { holds, beat, events });
+    return this.watchers.accept(device, this.dir.version, now, { holds, beat, events, receipts });
   }
 
   /** join stores the device a paired device approved, and tells the identity's other sockets it joined. */

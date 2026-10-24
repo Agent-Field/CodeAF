@@ -141,6 +141,31 @@ export class MemberActor {
     const r = response(this.reactor.call(frame(18).blob(raw).blob(unb64(app.conf)).u64(app.applied).u64(advertised).finish()));
     const ready = r.u32() !== 0; r.end(); return { ready };
   }); }
+  // Timer decisions use the shared Go scheduler and paged Go activity rules.
+  // An internal caller supplies queued assignment/outbox work conservatively.
+  schedule(now, ingressNow, busy, acks = []) { acks = structuredClone(acks); return this.serial(() => this.scheduleInQueue(now,ingressNow,busy,acks)); }
+  async scheduleInQueue(now, ingressNow, busy, acks = []) {
+    busy = busy || this.pending > 1;
+    for (const row of this.store.rows("SELECT namespace,key FROM records WHERE namespace='state' OR (namespace='membership' AND key='registry') OR (namespace='outbox' AND key LIKE 'join/%') ORDER BY namespace,key")) {
+      const raw = this.store.read(row.namespace,row.key);
+      const r = response(this.reactor.call(frame(24).str(row.namespace).str(row.key).blob(raw).u64(ingressNow).finish()));
+      busy = (r.u32() !== 0) || busy; r.end();
+    }
+    const raw = this.store.read('membership','quiescence');
+    const marker = raw ? decodeCanonical(new TextDecoder().decode(raw)) : {index:'0',term:'0',barrier:'0',voters:null};
+    const request = new TextEncoder().encode(encodeCanonical({now,busy,marker,acks}));
+    const r = response(this.reactor.call(frame(23).u32(this.handle).blob(request).finish()));
+    const plan = decodeCanonical(new TextDecoder().decode(r.blob())); r.end();
+    const effects = plan.tick ? await this.drive(1) : {send:[],reads:[],status:this.status};
+    return { ...effects, plan };
+  }
+  // A final acknowledgment is local durable application, not transport receipt.
+  sleepAck(index, term) { return this.serial(() => {
+    const raw = this.store.read('membership','quiescence');
+    const m = raw && decodeCanonical(new TextDecoder().decode(raw));
+    if (!m || m.index !== String(index) || m.term !== String(term) || this.status.applied !== BigInt(index) || this.status.term !== BigInt(term)) throw new Error('raft member: sleep barrier not applied');
+    return {node:this.config.id,index:String(index),term:String(term)};
+  }); }
   begin(data) { data = data.slice(); return this.serial(() => this.store.beginSnapshot(data)); }
   chunk(id, offset, data, hash) { data = data.slice(); return this.serial(() => this.store.putChunk(id, offset, data, hash)); }
   complete(id) { return this.serial(() => this.store.completeSnapshot(id)); }

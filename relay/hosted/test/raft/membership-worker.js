@@ -5,6 +5,7 @@ import { RaftMemberDO } from '../../src/raft/member.js';
 import { installRaftModule, sharedRuntime } from '../../src/raft/actor.js';
 import { directoryEvaluator } from '../../src/raft/directory.js';
 import { committedRegistry } from '../../src/raft/membership.js';
+import { MemberAlarms, coordinationPolicy } from '../../src/raft/liveness.js';
 import { b64, unb64 } from '../../src/raft/storage.js';
 export class ProofStore {}
 installRaftModule(core);
@@ -26,6 +27,17 @@ export class ActorFixture extends RaftMemberDO {
    await this.load();
    if (b.op==='input') return reply(await this.actor.input(b.tag,[2,3,8].includes(b.tag)?unb64(b.value):b.value));
    if (b.op==='peer') return reply(await this.peer(unb64(b.value)));
+   if (b.op==='schedule') return reply(await this.schedule(b.elapsed,b.now,b.busy,b.acks));
+   if (b.op==='sleep-ack') return reply(await this.sleepAck(b.index,b.term));
+   if (b.op==='retain-fixture') return reply(await this.actor.serial(()=>this.retainScheduled({send:b.send.map(m=>({to:BigInt(m.to),bytes:unb64(m.bytes)})),plan:{wake:[]}},coordinationPolicy(sharedRuntime()))));
+   if (b.op==='scheduled') return reply(await this.scheduled());
+   if (b.op==='ack-scheduled') return reply(await this.acknowledgeScheduled(b.id));
+   if (b.op==='fire-alarm') return reply(await this.alarm());
+   if (b.op==='alarm-state') return reply(await this.ctx.storage.getAlarm());
+   if (b.op==='turn') {
+    const timer=new MemberAlarms(this.ctx.storage,this.actor,async()=>{},async()=>b.busy);
+    return reply(await timer.run(b.elapsed,b.now,b.acks));
+   }
    if (b.op==='membership') return reply(await this.membership());
    if (b.op==='checkpoint') return reply(await this.actor.checkpoint());
    if (b.op==='registry') return reply(await this.refreshEnrollment());

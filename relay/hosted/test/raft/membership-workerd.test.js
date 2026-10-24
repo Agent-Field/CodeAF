@@ -10,7 +10,7 @@ import { openWorkerd } from './workerd.js';
 
 // R11/R12/R16 exercise the ACTUAL hosted peer and committed-registry doors.
 // A learner remains absent during writes/compaction and both process restarts.
-test('R9 R11 R12 R13 R16 actual workerd admits only committed learners and retains retired authority across restarts',{timeout:45000},async()=>{
+test('R9 R11 R12 R13 R16 R26 R27 actual workerd admits only committed learners and retains retired authority across restarts',{timeout:45000},async()=>{
  const proof=process.env.CODEAF_RAFT_PROOF_DIR??'/tmp/codeaf-p12',out=await mkdtemp(join(tmpdir(),'p12-wasm-')),disk=await mkdtemp(join(tmpdir(),'p12-disk-'));
  const bundle=await build({entryPoints:['test/raft/membership-worker.js'],bundle:true,format:'esm',target:'es2022',external:['core.wasm','cloudflare:*'],write:false});
  await writeFile(join(out,'worker.js'),bundle.outputFiles[0].contents);await copyFile(join(proof,'core.wasm'),join(out,'core.wasm'));await writeFile(join(out,'storage-worker.js'),'export class ProofStore{}');
@@ -39,6 +39,29 @@ test('R9 R11 R12 R13 R16 actual workerd admits only committed learners and retai
   await pump();for(let n=0;n<30&&!leader();n++)await tick();assert(leader());
   await assert.rejects(call(leader(),'enrollment',{view:{},applied:'0'}),/absent/);
   await submit(command({init_membership:{anchors,limit:4096}}));
+  // R26/R27 use actual DO storage, committed Go markers and the production
+  // scheduler. Partial final delivery and process eviction cannot confer reads.
+  for(const id of [1,2,3])accept(id,await call(id,'schedule',{elapsed:0,now:1000,busy:false,acks:[]}));await pump();
+  const asleepLeader=leader();
+  accept(asleepLeader,await call(asleepLeader,'input',{tag:4,value:'idle-barrier'}));await pump();
+  await submit(command({prepare_quiescence:{barrier:status[leader()].applied,term:status[leader()].term,voters:['1','2','3']}},String(leader())));
+  await tick();
+  const marker=JSON.parse(Buffer.from(await call(leader(),'row',{namespace:'membership',key:'quiescence'}),'base64').toString());
+  const acks=[];for(const id of [1,2,3])acks.push(await call(id,'sleep-ack',{index:marker.index,term:marker.term}));
+  let timed=await call(leader(),'turn',{elapsed:60000,now:Date.now(),busy:false,acks:acks.slice(0,2)});accept(leader(),timed);await pump();assert.equal(timed.plan.sleeping,false);assert(await call(leader(),'alarm-state'));
+  for(const id of [1,2,3]){timed=await call(id,'turn',{elapsed:60000,now:Date.now(),busy:false,acks});accept(id,timed);assert.equal(timed.plan.sleeping,true);assert.equal(await call(id,'alarm-state'),null)}await pump();
+  for(const id of [1,2,3]){await call(id,'fire-alarm');assert.equal(await call(id,'alarm-state'),null)}
+  accept(leader(),await call(leader(),'input',{tag:4,value:'wake-before-alarm'}));await pump();
+  const queuedAt=leader();await call(queuedAt,'fire-alarm');const queued=await call(queuedAt,'scheduled');assert(queued?.id);assert.equal(queued.wake.length,3);
+  await call(queuedAt,'fire-alarm');assert.deepEqual(await call(queuedAt,'scheduled'),queued);
+  await call(queuedAt,'ack-scheduled',{id:'wrong'});assert.deepEqual(await call(queuedAt,'scheduled'),queued);
+  await restart();assert.deepEqual(await call(queuedAt,'scheduled'),queued);await call(queuedAt,'ack-scheduled',{id:queued.id});assert.equal(await call(queuedAt,'scheduled'),null);
+  const maxPacket=Buffer.alloc(64*1024,7).toString('base64');await call(queuedAt,'retain-fixture',{send:[{to:'1',bytes:maxPacket},{to:'2',bytes:maxPacket}]});
+  const large=await call(queuedAt,'scheduled');assert.equal(large.send.length,2);assert.equal(large.send[0].bytes,maxPacket);assert(JSON.stringify(large).length>64*1024);
+  await restart();assert.deepEqual(await call(queuedAt,'scheduled'),large);await call(queuedAt,'ack-scheduled',{id:large.id});assert.equal(await call(queuedAt,'scheduled'),null);
+for(const id of [1,2,3])accept(id,await call(id,'status'));await pump();
+  for(const id of [1,2,3]){timed=await call(id,'schedule',{elapsed:0,now:1000,busy:false,acks});accept(id,timed);assert.equal(timed.plan.sleeping,false)}await pump();
+  for(let n=0;n<30&&!leader();n++)await tick();assert(leader());
   let h=await header();const enrolled=command({enroll_member:{node:h.next_node,revision:h.revision,device:'b',protocol:1}});await submit(enrolled);await settle();
   let view=await call(leader(),'registry');assert.equal(view['4'].voter,false);assert.equal(view['4'].revoked,false);
   await submit(command({set_vault:{old:'',new:'sealed-ref'}}));await call(leader(),'checkpoint');
