@@ -20,7 +20,7 @@ import (
 // numbers were literals, and both answered the wrong question. A count per
 // window cannot tell the one request that needs a rescue from the nineteen that
 // do not, so it refuses by arrival order — and the measured case is what that
-// costs. On the owner's task that day the controller reached its ceiling and
+// costs. On the example task the controller reached its ceiling and
 // asked for a second machine; the allowance said no; one endpoint then wrote 604
 // tokens in 86 seconds with a person watching an empty line, and the row carried
 // `action report reason ceiling refused budget`. The rescue it refused would have

@@ -60,7 +60,7 @@ import (
 // install it was absent always, on the in-process road and the hosted one
 // alike, and the only person who ever saw a rung was one who already knew there
 // was a dial to turn. The tray chip this replaced had the same hole, and that
-// is exactly why the owner never learned the dial existed and asked for one to
+// can hide the dial from a person who needs to
 // be built.
 //
 // A CONTROL THAT IS INVISIBLE UNTIL YOU HAVE ALREADY USED IT IS NOT A CONTROL

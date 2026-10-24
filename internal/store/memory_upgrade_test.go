@@ -542,7 +542,7 @@ func TestOpeningADatabaseAPreOwnerBuildWroteIntoOwnsItsEmptyRows(t *testing.T) {
 }
 
 // A STORE WITH NO LEXICAL INDEX IS STILL THE PERSON'S MEMORY, and this is
-// PRE-EXISTING behavior, deliberately unchanged by the owner repair: the open
+// PRE-EXISTING behavior, deliberately unchanged by the schema repair: the open
 // builds the empty search view when FTS5 is available but does not re-index rows
 // the file already held, so search answers nothing while every note stays
 // readable and owner-scoped. A Rebuild replays the journal and fills the view.

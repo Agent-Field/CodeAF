@@ -23,7 +23,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
-// crewStub is the provider the owner's verification stood up: every paid id
+// crewStub is the provider the test provides: every paid id
 // answers 402 out of credit (or 401, a refused key), and each free pool
 // answers as the test says — 200, or 429 at its limit.
 type crewStub struct {
@@ -154,7 +154,7 @@ func askWorker(t *testing.T, agent *Agent, row uint64, freeRecovery ...bool) (*b
 	return run, err
 }
 
-// THE OWNER'S STUB SEQUENCE, end to end: every paid call is out of credit.
+// THE SCRIPTED PROVIDER SEQUENCE, end to end: every paid call is out of credit.
 // The worker's paid route refuses, the seat falls to the model's own free pool
 // and the task proceeds; the NEXT task is routed (the paid route probed again,
 // never refused at decision time) and, with that pool at its limit, falls to

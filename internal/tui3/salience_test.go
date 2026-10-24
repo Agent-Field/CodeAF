@@ -4,8 +4,7 @@ package tui3
 //
 //	THE LENS MAY LOWER SALIENCE; IT MAY NOT DROP A FACT.
 //
-// That sentence is the whole of the implementation's Decision 4, and
-// this file is the whole of its enforcement. A page may fold a fact away, dim
+// This file enforces that rule. A page may fold a fact away, dim
 // it, put it a keypress down or draw it somewhere else entirely — what it may
 // not do is fail to have it.
 //
@@ -22,7 +21,7 @@ package tui3
 // does. The enumeration is read back out of internal/session's own source, so a
 // kind added there and forgotten here fails this test rather than shipping.
 //
-// Lane L3 extends the same shape with the journal-role half — a steer mark, a
+// Journal replay extends the same shape with the journal-role half — a steer mark, a
 // note, a divider replayed through both shapers — which is why the case carries
 // a name and a reason rather than a bare pair of event kinds.
 
@@ -117,11 +116,11 @@ var salienceTable = []salienceCase{
 		"scroll",
 		ev: session.Event{Kind: session.EventTurnDone}},
 	{name: "EventSteerAccepted", chatOnly: "the elbow's landing clause is the chat's today; a room's steer " +
-		"becomes the same elbow in lane L3",
+		"uses the same elbow during journal replay",
 		ev: session.Event{Kind: session.EventSteerAccepted, Steer: &session.SteerNote{ID: 1, Words: "use the other file"}}},
-	{name: "EventSteerConsumed", chatOnly: "the other half of the elbow's lifecycle, and lane L3's for the same " +
+	{name: "EventSteerConsumed", chatOnly: "the other half of the elbow's lifecycle, and journal replay uses it for the same " +
 		"reason", ev: session.Event{Kind: session.EventSteerConsumed, Steer: &session.SteerNote{ID: 1, Words: "use the other file"}}},
-	{name: "EventSteerFellThrough", chatOnly: "the third half of the elbow's lifecycle, and lane L3's for the " +
+	{name: "EventSteerFellThrough", chatOnly: "the third half of the elbow's lifecycle, and journal replay uses it for the " +
 		"same reason", ev: session.Event{Kind: session.EventSteerFellThrough, Steer: &session.SteerNote{ID: 1, Words: "use the other file"}}},
 	{name: "EventConnectAsk", chatOnly: "connecting an account is a question, and a node cannot be asked one",
 		ev: session.Event{Kind: session.EventConnectAsk, Service: "google", ServiceName: "Google"}},

@@ -117,7 +117,7 @@ func TestEveryFunnelCallHasAController(t *testing.T) {
 	sender := waitingFunc(t, client, "completeWithMessagesStreaming")
 	if !waitingNames(sender, "Controller") {
 		t.Error("internal/provider/client.go: completeWithMessagesStreaming never asks for a controller, " +
-			"so a call the chooser had no opinion about is watched by nothing (lane W3)")
+			"so a call the chooser had no opinion about is watched by nothing")
 	}
 	fset, hedge := waitingFile(t, "internal/provider/hedge.go")
 	race := waitingFunc(t, hedge, "raceFor")
@@ -215,7 +215,7 @@ func TestAHeartbeatIsReportedAsAHeartbeat(t *testing.T) {
 	for _, needed := range []string{"Beat:", "Hidden:", "Visible:"} {
 		if !strings.Contains(text, needed) {
 			t.Errorf("the stream loop never fills %s on a reading — the controller cannot tell a heartbeat, "+
-				"a thought and a word apart (lane W3)", strings.TrimSuffix(needed, ":"))
+				"a thought and a word apart", strings.TrimSuffix(needed, ":"))
 		}
 	}
 }
@@ -276,7 +276,7 @@ func TestTheCallLogSaysWhyItWaitedAndWhatItDid(t *testing.T) {
 	row := reflect.TypeOf(calllog.Record{})
 	for _, field := range []string{"SilenceMs", "Action", "Arms", "WasteUSD"} {
 		if _, ok := row.FieldByName(field); !ok {
-			t.Errorf("calllog.Record carries no %s — an autopsy cannot say when the wait was acted on or what it cost (lane W3)", field)
+			t.Errorf("calllog.Record carries no %s — an autopsy cannot say when the wait was acted on or what it cost", field)
 		}
 	}
 }
@@ -314,7 +314,7 @@ func TestSetModelReachesTheBeat(t *testing.T) {
 		}
 	}
 	t.Error("internal/session/agent.go: SetModel never tells the lane beat about the new model, " +
-		"so a model picked after launch never gets a sheet (lane W4)")
+		"so a model picked after launch never gets a sheet")
 }
 
 // TestEveryStreamingRoleIsBoundedAndMediaIsNot is the funnel law, said about

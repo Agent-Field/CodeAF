@@ -971,8 +971,8 @@ func TestTheRestingBoxKeepsACaretOnTheCellTheFirstLetterLandsOn(t *testing.T) {
 // clause it deliberately leaves out (SCREEN 1a and 2b, FIDELITY.md item 3).
 //
 // It is pinned as a literal rather than against the constants alone because the
-// constants are what a careless edit changes: the owner's order was "follow the
-// exact design", and the only assertion that can catch a sentence drifting is
+// constants are what a careless edit changes: the only assertion that can
+// catch a sentence drifting is
 // one that carries the sentence.
 //
 // THE LAW THAT DIED IS `esc close` ON THE RESTING ROW. Home used to end every
@@ -2579,8 +2579,7 @@ func TestAnEmptyHomeKeepsItsShapeAtEveryWidth(t *testing.T) {
 			}
 		}
 		// AND AN EMPTY HOME HAS NO ROW TO STAND ON AT ALL: `projects` is never
-		// empty (DESIGN.md §4) but its rows are read and not stood on (owner,
-		// 2026-09-17), and every other panel whispers — a whisper names what
+		// empty (DESIGN.md §4) but its rows are read and not stood on, and every other panel whispers — a whisper names what
 		// arrives rather than a thing to open.
 		if stops := (placeHome{}).stops(a); len(stops) != 0 {
 			t.Fatalf("at %d columns an empty home offered rows to stand on: %v", tc.width, stops)

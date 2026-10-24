@@ -2,7 +2,7 @@ package tui3
 
 // THE EVIDENCE AN ANSWER BRINGS, WHEREVER A QUESTION IS DRAWN.
 //
-// These hold the owner's three picks of 2026-09-11 about evidence: at a hundred
+// These hold the evidence layout contract: at a hundred
 // columns and wider a panel whose answers brought something to look at lays
 // them in a list with the evidence of the one the pointer is on beside it
 // (preview A); narrower, that evidence unfolds under the pointer's row

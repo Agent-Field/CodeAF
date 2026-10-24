@@ -35,7 +35,7 @@ func TestC5OnlineContinueOpensTheArrivedCopy(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.machines = continueRows
-	a.taker = &fakeTaker{taken: Taken{Transcript: transcript, Elapsed: 3 * time.Second, Resume: machine.Resume{From: "studio", Now: work, Uncommitted: []string{"README.md"}}}, on: func(id string) {
+	a.taker = &fakeTaker{taken: Taken{Transcript: transcript, Elapsed: 3 * time.Second, Resume: machine.Resume{From: "host-a", Now: work, Uncommitted: []string{"README.md"}}}, on: func(id string) {
 		// This is the stale derived row read immediately after the handoff. It has
 		// the right transcript and an old or unavailable project path.
 		if err := session.SaveMeta(at, session.Meta{ID: id, Title: "Arrived", Workspace: filepath.Join(lab.root, "gone"), Created: time.Now(), LastUserAt: time.Now()}); err != nil {
@@ -51,7 +51,7 @@ func TestC5OnlineContinueOpensTheArrivedCopy(t *testing.T) {
 	if a.at(pageHome) || a.file != transcript || a.workspace != work {
 		t.Fatalf("continue here stayed on home or opened %s; wanted %s\n%s", a.file, transcript, homeText(a))
 	}
-	if got := plain(lastNote(t, a)); !strings.Contains(got, "Moved from studio in 3s") {
+	if got := plain(lastNote(t, a)); !strings.Contains(got, "Moved from host-a in 3s") {
 		t.Fatalf("no arrival banner: %s", got)
 	}
 	q := askedCard(t, a).question
@@ -87,7 +87,7 @@ func TestC5OwnershipReadKeepsDisplacedChords(t *testing.T) {
 		t.Run(chord, func(t *testing.T) {
 			a, agent := bargeable(t, "still answering")
 			a.file = filepath.Join(t.TempDir(), "current", ".cell", "transcript.jsonl")
-			a.machines = chatlist.Static{{Cell: "current", Device: "studio", Status: chatlist.Running}}
+			a.machines = chatlist.Static{{Cell: "current", Device: "host-a", Status: chatlist.Running}}
 			a.taker = &fakeTaker{}
 			typeInto(t, a, "keep my draft")
 			drive(t, a, key(chord))

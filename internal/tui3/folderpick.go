@@ -333,7 +333,7 @@ type folderGeom struct {
 	// directory you are standing in was drawn beside the row the cursor was on —
 	// which meant that with the cursor at the top of a folder, every sibling ABOVE
 	// that folder was off the top of the column and the ancestry showed one name.
-	// The owner's reference draws the parent as what it is: a list, with the one
+	// The browser draws the parent as what it is: a list, with the one
 	// you came out of marked in it.
 	upFrom int
 	// paneDir is the directory the preview pane is LISTING, absolute, or "" when
@@ -1684,8 +1684,7 @@ var folderHintFields = []rowField{
 // placeholder and [folderPick.controlLegend] under the columns — name every
 // chord the sheet owns exactly once, which is docs/DESIGN-LANGUAGE.md's rule
 // that a chord keeps a visible door beside it; naming them all in BOTH places
-// was the wall of shortcuts the owner's 2026-09-08 review asked us to stop
-// drawing. The fields go from the RIGHT, whole, on a frame too narrow for all of
+// would draw a distracting wall of shortcuts. The fields go from the RIGHT, whole, on a frame too narrow for all of
 // them (rowfit.go), so the line never draws a key spelled `alt+…`.
 var folderBrowseHintFields = []rowField{
 	rowSay("search folders and files"), rowSay("or type a path"),

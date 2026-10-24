@@ -560,7 +560,7 @@ func (a *app) hopTabbed(row hopRow) bool {
 // look for the conversation they were just looking at. Ordered by recency the
 // card put it somewhere else — the third tab could be the first row — so the two
 // lines disagreed about the same five conversations and neither position meant
-// anything. Asked for by the owner.
+// anything.
 //
 // THE STRIP'S ORDER IS FIRST-ENTERED AND IT NEVER MOVES (chattabs.go says why: a
 // person reaches for the position, not for the word). Taking that order here
@@ -1162,8 +1162,8 @@ func (a *app) hopTake() (cmd tea.Cmd) {
 // settings alike. The cost of that is that taking a row moved the conversation
 // UNDERNEATH a place and left the place in front: from home, `enter` looked like
 // a key that did nothing, while it had in fact quietly swapped the conversation
-// behind the screen the person was reading. Reported by the owner, who pressed
-// `ctrl+k` on home, chose a conversation, and stayed on home.
+// behind the screen the person was reading. Pressing
+// `ctrl+k` on home and choosing a conversation must leave home.
 //
 // EVERY OTHER DOOR BETWEEN CONVERSATIONS ALREADY DOES IT, and each spells it for
 // itself: home's own `enter` ends in [app.closeHome] (home.go's
@@ -1372,7 +1372,7 @@ func (a *app) hopCardLines(width, height int, pal palette) []string {
 	// on, it appeared on some rows and not others depending on how long that one
 	// name was, and it cost the rows underneath it their places on a short card.
 	// The name is worth more room on the row itself, which is what the subject
-	// column now takes ([hopLine]). Asked for by the owner.
+	// column now takes ([hopLine]).
 	// AND THE WORD THAT SAYS WHERE THE OPEN ONES STOP, which is the fold's own
 	// half of the head's `open` ([hopClosedLabel]).
 	//
@@ -1488,7 +1488,7 @@ func (a *app) hopFoot() string {
 // the head already carries — `3 of 12` says both halves of it — and then said
 // the same thing twice, once in a triangle nobody reads as a verb and once in
 // words. A foot is the one row a person looks at to find out what else they can
-// press; it is worth exactly one instruction. Asked for by the owner.
+// press; it is worth exactly one instruction.
 //
 // `closed` IS THE WORD FOR WHAT IS DOWN THERE. Every row behind the fold is a
 // conversation with no tab on the row above — one this terminal never opened,
@@ -1542,9 +1542,7 @@ const hopOpenWord = "open"
 // The head says `open` over the rows that are tabs. `→ show closed` then adds
 // rows that are not, and a conversation whose tab was closed a minute ago comes
 // back wearing the same `○` and the same live clause it had when it was open —
-// because it IS still open in every sense but the tab row's. Reported by the
-// owner, who read the `✕` on the rows below as "this tab is closed" and asked
-// why the ones they had closed did not have it. They do not: `✕` is
+// because it IS still open in every sense but the tab row's. The closed-tab marker must remain distinct from `✕` is
 // [tokens.GlyphFailed] and on this card it means the row REFUSES TO OPEN —
 // another window is holding that conversation, or its project folder has gone.
 // Two different facts, and only one of them had a mark.

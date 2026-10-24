@@ -338,8 +338,7 @@ var homeDescLeadBlank = strings.Repeat(" ", homeDescLeadCells)
 //
 // A HEADING THAT OPENS NOTHING IS DIM, word and explainer alike — `projects`
 // and `threads` name their own panel and no place, and a heading painted like
-// the five that are doors read as a door that did not work (owner,
-// 2026-09-17: "make the non-clickable projects heading grey"). The ground the
+// the five that are doors read as a door that did not work. The ground the
 // cursor's panel wears still lands on it, because that fact is about where the
 // cursor is and not about what the heading opens.
 func homeCellHead(cell *homeCell, width int, pal palette, marked, hovered bool) string {

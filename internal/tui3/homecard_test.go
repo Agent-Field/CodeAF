@@ -184,8 +184,7 @@ func TestARunningCardLeadsTheRowWithItsState(t *testing.T) {
 // band was a list of things that happened, name first, in the index's own order,
 // and what that produced on the one screen a person opens twenty times a day was
 // three pieces of ONE run standing beside each other as three peers — with the
-// order deciding which of them a reader thought was the whole story. The owner's
-// instruction is that the conversation is the parent and the work under it is a
+// order deciding which of them a reader thought was the whole story. The layout requires that the conversation is the parent and the work under it is a
 // TREE, at any depth, never a row of strangers.
 //
 // So the roster's own connectors are drawn here too (hometree.go, task.go's

@@ -276,7 +276,7 @@ func cachedTokens(id ID, req Request) int {
 // lowQuantAllowed is whether four-bit lanes may be chosen. It is package state
 // rather than a field on [Request] because it is a standing answer about this
 // machine's settings and not a fact about one call, and [Request] is the
-// wave-0 contract.
+// routing contract.
 var lowQuantAllowed struct {
 	mu      sync.RWMutex
 	allowed bool

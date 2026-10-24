@@ -1191,7 +1191,7 @@ var tuiWords = map[string]tuiWord{
 		why: "the keys the panel writes into its bottom edge, which is how a screen says a question " +
 			"is up and waiting on a person. It was `allow? [1] allow once` — the approval gate's own " +
 			"offer row — until the questions wave gave every question one frame, one key table and one " +
-			"spelling for a key (owner ruling 2026-09-11, hints pick A)",
+			"spelling for a key",
 	},
 	"consentOldCancelWord": {
 		key:    "esc",

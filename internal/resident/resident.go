@@ -1067,7 +1067,7 @@ func receiptAnchor(command store.Command, status store.CommandStatus) string {
 // "1": the standing-watch receipt was written, journaled, and rendered as a grey
 // line nobody reads, so the person who had just answered a question watched
 // silence and typed the answer again. Where the conversation already carries an
-// answer the receipt stays filed, because the wave-4 rule cuts both ways: one
+// answer the receipt stays filed, because the implementation rule cuts both ways: one
 // user action, exactly one visible response.
 //
 // A refusal is the one case where the head having spoken is not an answer, it

@@ -43,44 +43,44 @@ func TestHomeLiveSource(t *testing.T) {
 	ctx := context.Background()
 	clock := directorytest.NewFakeClock()
 	world := directory.NewMemory(clock.Now)
-	studio, here := world.For("dev_studio"), world.For("dev_here")
+	remote, here := world.For("dev_host-a"), world.For("dev_here")
 	key := directory.MetadataKey(bytes.Repeat([]byte{7}, 16))
 
-	name, _ := directory.SealName(key, "studio")
+	name, _ := directory.SealName(key, "host-a")
 	title, _ := directory.SealTitle(key, "Port the picker")
-	if err := studio.PutDevice(ctx, "dev_studio", directory.Device{V: 1, Name: name}); err != nil {
+	if err := remote.PutDevice(ctx, "dev_host-a", directory.Device{V: 1, Name: name}); err != nil {
 		t.Fatal(err)
 	}
 	init := directory.CellInit{Head: "h1", Class: "chat", Title: title, Keys: map[string]map[string]string{}}
-	if _, err := studio.Create(ctx, "c-live", init); err != nil {
+	if _, err := remote.Create(ctx, "c-live", init); err != nil {
 		t.Fatal(err)
 	}
 	live := &liveDirectory{dir: here, self: "dev_here", key: key}
 
 	a := machinesHome(t, live, 200)
-	if text := homeText(a); !strings.Contains(text, "Port the picker") || !strings.Contains(text, "running on studio") {
+	if text := homeText(a); !strings.Contains(text, "Port the picker") || !strings.Contains(text, "running on host-a") {
 		t.Fatalf("a chat running elsewhere is not listed as such:\n%s", text)
 	}
 
 	clock.Advance(directory.LeaseTTL + 1)
 	drain(t, a, a.askMachines())
-	if text := homeText(a); !strings.Contains(text, "studio offline") || strings.Contains(text, "running on studio") {
+	if text := homeText(a); !strings.Contains(text, "host-a offline") || strings.Contains(text, "running on host-a") {
 		t.Fatalf("the chat went quiet and home did not follow:\n%s", text)
 	}
 
 	branch := directory.CellInit{Head: "h2", Class: "chat", ParentCell: "c-live", OrphanTurns: 2, Title: title, Keys: map[string]map[string]string{}}
-	if _, err := studio.Create(ctx, "c-branch", branch); err != nil {
+	if _, err := remote.Create(ctx, "c-branch", branch); err != nil {
 		t.Fatal(err)
 	}
 	drain(t, a, a.askMachines())
-	if text := homeText(a); !strings.Contains(text, "2 turns from studio") {
+	if text := homeText(a); !strings.Contains(text, "2 turns from host-a") {
 		t.Fatalf("a branch that appeared is not listed:\n%s", text)
 	}
 
 	live.down = true
 	drain(t, a, a.askMachines())
 	text := homeText(a)
-	if !strings.Contains(text, chatlist.Unreachable) || !strings.Contains(text, "studio offline") {
+	if !strings.Contains(text, chatlist.Unreachable) || !strings.Contains(text, "host-a offline") {
 		t.Fatalf("with the directory out of reach the last listing must stay, under the sentence:\n%s", text)
 	}
 
@@ -90,7 +90,7 @@ func TestHomeLiveSource(t *testing.T) {
 	}
 	drain(t, a, a.askMachines())
 	text = homeText(a)
-	if strings.Contains(text, chatlist.Unreachable) || strings.Contains(text, "studio offline") {
+	if strings.Contains(text, chatlist.Unreachable) || strings.Contains(text, "host-a offline") {
 		t.Fatalf("the chat is held here now and the sentences must go:\n%s", text)
 	}
 }
@@ -101,7 +101,7 @@ func TestHomeLiveSource(t *testing.T) {
 func TestReleasedChatOnAnotherMachineOffersContinue(t *testing.T) {
 	taker := &fakeTaker{}
 	a := continueHome(t, taker, chatlist.Static{
-		{Cell: "c-idle", Title: "Notes on the migration", Device: "studio", Status: chatlist.Idle, DurableAgo: 26 * 3600e9},
+		{Cell: "c-idle", Title: "Notes on the migration", Device: "host-a", Status: chatlist.Idle, DurableAgo: 26 * 3600e9},
 	}, 200)
 	standOn(t, a, "c-idle")
 	if text := homeText(a); !strings.Contains(text, chatlist.OfferContinue) {
@@ -119,14 +119,14 @@ func TestReleasedChatOnAnotherMachineOffersContinue(t *testing.T) {
 func TestNoticeSeamSaysASentenceAtOnce(t *testing.T) {
 	a, _ := homeTabsFixture(t)
 	desk := NewNotices()
-	desk.Say("studio continued this chat; this window now only shows it")
+	desk.Say("host-a continued this chat; this window now only shows it")
 	a.useNotices(desk) // a sentence said before the surface listened waits for it
 	ringOf := func() tea.Msg { return a.noticeBell.waitRing()() }
 	if _, ok := ringOf().(noticesMsg); !ok {
 		t.Fatal("joining a desk that holds a sentence did not ring the door")
 	}
 	a.route(noticesMsg{})
-	if !saidNote(a, "studio continued this chat") {
+	if !saidNote(a, "host-a continued this chat") {
 		t.Fatal("the sentence said before the surface joined was lost")
 	}
 

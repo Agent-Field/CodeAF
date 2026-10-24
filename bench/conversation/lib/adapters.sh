@@ -219,7 +219,7 @@ arm_role_pin() {
 #
 # A harness that loads the machine's skills, extensions and MCP servers is not
 # running the task it was given: it is running that task plus whatever the
-# person who owns the machine installed. A live pane in this lane showed omp
+# person who owns the machine installed. A captured pane showed omp
 # mounting MCP tools and failing one of them from `~/.claude.json`, and pi
 # listing thirty-odd skills from `~/.agents/skills` — extra tools, extra system
 # prompt, extra latency, and none of it the same on two machines.

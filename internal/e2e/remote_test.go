@@ -569,7 +569,7 @@ func newRemoteWorld(t *testing.T) *remoteWorld {
 func requireDocker(t *testing.T) {
 	t.Helper()
 	if _, err := exec.LookPath("docker"); err != nil {
-		t.Skip("no docker on this machine: this lane needs two containers with two filesystems")
+		t.Skip("no docker on this machine: this test needs two containers with two filesystems")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

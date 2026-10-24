@@ -556,7 +556,7 @@ func TestAHeadingExplainerIsDimAndGivesWayBeforeTheHeadingIsCut(t *testing.T) {
 
 // A WHISPER NEVER OUTRANKS A ROW. When a short frame has to drop a whole
 // panel, the panels that are only whispering go first, whatever their keep:
-// a person can open a row and cannot open a whisper. Lane R2 found a 120×14
+// a person can open a row and cannot open a whisper. A 120×14
 // home that was two whispers and no conversation at all.
 func TestAShortFrameDropsWhisperingPanelsBeforeAnyPanelWithRows(t *testing.T) {
 	lab := newHomeLab(t)
@@ -663,8 +663,7 @@ func focusedTitle(a *app) string {
 	return ""
 }
 
-// THE ARROWS STAY IN THE FIELD AND THE FOOT IS THE RESTING SENTENCE (owner,
-// 2026-09-17). `→` on a field row opens that row's own strip rather than
+// THE ARROWS STAY IN THE FIELD AND THE FOOT IS THE RESTING SENTENCE. `→` on a field row opens that row's own strip rather than
 // crossing to the rail, `←` closes it, and `ctrl+o` still opens the row's
 // folder without the strip. A project's row is not a stop and has no folder
 // door of its own any more.

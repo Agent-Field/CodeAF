@@ -302,7 +302,7 @@ func e2eSkipWithoutAChooser(t *testing.T, now time.Time) Choice {
 	t.Helper()
 	choice := Default().Chooser().Choose(e2eTalk(now))
 	if choice.Empty() {
-		t.Skip("lane chooser not landed yet (wave 1 L-B): a primed ledger still chooses nothing")
+		t.Skip("lane chooser unavailable: a primed ledger still chooses nothing")
 	}
 	return choice
 }

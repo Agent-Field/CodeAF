@@ -60,7 +60,7 @@ type questionVerb struct {
 	// and whatever key is the ANSWER on a shape that has one (`space` on a
 	// checklist, `a`/`b` on a pair) — and the secondary tier is everything that
 	// says something ABOUT the decision rather than giving it. A row that mixed
-	// them was the owner's "no hierarchy": answers, navigation, dismissal, four
+	// them had no hierarchy: answers, navigation, dismissal, four
 	// meta-verbs and a clock at one hue and one weight.
 	tier keyTier
 	// giveUp is the order a narrow row surrenders its keys in — the HIGHEST
@@ -537,7 +537,7 @@ func questionKeyWord(key string) string {
 // wherever a person is standing — the status line's chip says it, and it works
 // on every page.
 //
-// The owner assigned `alt+a` to approvals and moved this door to `alt+y`.
+// Approvals uses `alt+a`; pending questions use `alt+y`.
 // It still works on every page, including while the draft has text in it.
 const questionChipKey = "alt+y"
 
@@ -835,7 +835,7 @@ func questionOwnsBox(q session.Question) bool {
 //
 // AIMING IS A KEY THAT COULD NEVER BE TEXT, or a click on the block's own rows:
 // `↑↓` choosing, `tab` walking, `enter` taking, `esc` putting it off, the mouse
-// landing on an answer. That is the owner's own grammar for this block read in
+// landing on an answer. That is the interaction order for this block, read in
 // the order a hand uses it — choose, then take it, then put it off
 // — and every one of those gestures is somebody
 // looking at the question rather than at the box.

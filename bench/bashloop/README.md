@@ -1,6 +1,6 @@
 # bashloop — the arm bench for the bash-only task loop
 
-Wave 3 of the bash-task-loop experiment
+A harness for the bash task loop
 (DESIGN.md): the same briefs run
 on both belts — arm A with `CODEAF_TASK_BELT=node` (the older belt),
 arm B with `CODEAF_TASK_BELT=bash` — n replicates, cells interleaved so the

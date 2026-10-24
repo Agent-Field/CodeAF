@@ -60,7 +60,7 @@ func frameOf(t *testing.T, a *app) []string {
 
 // BOTH DOORS OPEN THE SAME SHEET, BROWSING, IN THE SAME PLACE.
 //
-// This is the owner's first report in one test. `/attach` opened the columns
+// Both browsing commands must open the same surface. `/attach` opened the columns
 // immediately and `/folder` opened a flat list of remembered places, so the two
 // commands showed two different surfaces — and on a machine that remembered
 // nothing at all `/folder` refused with a sentence instead of opening.

@@ -20,7 +20,7 @@ package session
 //
 // A LIVE TASK'S ANSWER IS NEVER UNCHANGED and correctly never gets the line: it
 // carries how long the work has been going, which moves every second. The line
-// is for the shape the owner actually saw — the same list, asked for again.
+// is for the shape the person sees — the same list, asked for again.
 
 import (
 	"context"

@@ -61,7 +61,7 @@ import (
 //
 // ── THE CHORD IS alt+a ────────────────────────────────────────────────────
 //
-// Approvals takes `alt+a` at the owner's request; the pending-question door
+// Approvals takes `alt+a`; the pending-question door
 // moves to `alt+y`. The router, hints and manual exchange the roles together
 // so a question waiting in the background cannot intercept the approval key.
 //

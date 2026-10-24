@@ -3,7 +3,7 @@
 
 WHY THIS EXISTS. The settle rule was "the store has been quiet for 180 seconds",
 and that is correct for the WORDS road, where the only writer is the
-conversation. It is WRONG for the task road, and it destroyed six wave-1f cells:
+conversation. It is WRONG for the task road, and it destroyed recorded cells:
 a worker that has just typed `pytest` writes nothing at all for minutes, the
 store goes quiet, the cell is called settled, the tmux session is reaped and the
 task is killed in the middle of its test run. The rows came back with 0 files
@@ -30,20 +30,6 @@ Usage: tasklive.py <session-dir>   → JSON {live, landed, states, newest_journa
 """
 import glob, json, os, re, sys, time
 
-# A LIVE STATE IS NOT THE SAME AS A LIVE TASK. wave 1h's batch cells proved it:
-# part 2 made its last request at 09:23:46, reported "paused - it resumes", and
-# kept the state `running` for the next fifty minutes. The settle rule refused to
-# settle while anything was live, so the cell sat until the hard wall and 3100 of
-# its 3610 seconds were dead. The rule was right to refuse — that refusal is what
-# stopped us killing live workers — but "live" has to mean "still working", and
-# the evidence for that is a request, not a label.
-#
-# So a task in a live state whose own journal has not seen a request for this
-# long is STRANDED: counted out of the live set, named in the settle reason, and
-# the row marked STRANDED rather than passed off as a clean finish. Fifteen
-# minutes is comfortably longer than the slowest thing a worker legitimately
-# waits on here (a full test suite or a cold build ran 6-8 minutes on this
-# corpus) and far shorter than the wall it replaces.
 STRANDED_SECONDS = int(os.environ.get("ONEROAD_STRANDED_SECONDS", "900"))
 JOURNAL = re.compile(r"^(\d{8}-\d{6})_(\d+)(.*)\.jsonl$")
 
