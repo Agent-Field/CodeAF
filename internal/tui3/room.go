@@ -2216,7 +2216,7 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// session with no history at all — which is the same bargain the
 		// conversation struck, where ↑ has not been a one-row scroll since the day
 		// there was anything to recall.
-		if !a.input.onFirstLine() {
+		if !a.recalling() && !a.input.onFirstLine() {
 			return nil, false // the caret's, in input.go
 		}
 		if !a.recallBack() {
@@ -2225,7 +2225,7 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, true
 
 	case "down":
-		if !a.input.onLastLine() {
+		if !a.recalling() && !a.input.onLastLine() {
 			return nil, false
 		}
 		if !a.recallForward() {

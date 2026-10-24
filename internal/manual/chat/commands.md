@@ -585,7 +585,10 @@ nothing to rewind
 ## /copy — read the conversation back and copy from it
 
 `/copy` freezes the visible conversation and enters copy mode. It is the same thing
-ctrl+b does. In copy mode ↑↓ move, `v` marks, `a` takes the block, `y` yanks.
+ctrl+b does. In copy mode ↑↓ move, `v` marks, `a` takes the block, and `enter`
+copies the selection (`y` also works). The status says `COPY · clipboard sent`
+after the clipboard write is sent to your terminal; terminal clipboard permissions
+still apply. `esc` leaves copy mode.
 
 **`/copy` silently does nothing in two states**, with no message either way:
 
