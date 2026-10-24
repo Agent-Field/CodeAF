@@ -1103,7 +1103,7 @@ func helpText(file string, chords chordSpelling) string {
 		// rows at the foot of this list already use.
 		helpKeyRow(spellOutKey, "over a draft: spell it out · what it means · enter adds it to yours"),
 		"ctrl+o         expand this turn's tool calls · click one to open it · in a task, scroll up does too",
-		"ctrl+b         copy mode · ↑↓ move · v marks · a takes the block · y yanks",
+		"ctrl+b         copy mode · ↑↓ move · v marks · a takes the block · enter copies (or y)",
 		"ctrl+s         drag to select with your mouse · any key ends it",
 		"enter          mid-answer: stops the current reply and steers these words in",
 		// AND THE THIRD THING TO DO WITH A SENTENCE TYPED OVER A RUNNING ANSWER
