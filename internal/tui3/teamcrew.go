@@ -89,7 +89,6 @@ func (a *app) teamsCrewMembers(t team) []teamMember {
 
 // teamsCrew is every member of team t, the manager first. Memory only.
 func (a *app) teamsCrew(t team) []teamsCrewRow {
-	tree := a.teamTree()
 	members := a.teamsCrewMembers(t)
 	out := make([]teamsCrewRow, 0, len(members))
 	for pass := 0; pass < 2; pass++ {
@@ -100,15 +99,9 @@ func (a *app) teamsCrew(t team) []teamsCrewRow {
 			st := a.teamsMember(m)
 			r := teamsCrewRow{key: m.Key, handle: m.Handle, title: strings.TrimSpace(m.Word), word: "idle",
 				manager: m.Key == t.Manager, independent: m.Independent, held: a.trafficHeld(m.Key), at: st.at, file: m.File}
-			switch {
-			case st.asking:
-				r.word, r.asking = "asking", true
-			case st.word == "running":
-				r.word = "working"
-			case a.teamsFailed(t, m):
-				r.word = "failed"
-			}
-			if home, ok := tree.Home(m.Key); ok && home.Team != t.ID && home.Via != t.ID && !r.manager {
+			r.word, r.asking = a.teamsMemberWord(t, m, st), st.asking
+			home, hasHome := a.teamReportingHome(m.Key)
+			if hasHome && home.Team != t.ID && home.Via != t.ID && !r.manager {
 				r.also = a.teamNameOf(home.Team)
 			}
 			if row, known := a.tp.world[m.File]; known && strings.TrimSpace(row.Title) != "" {
@@ -118,6 +111,21 @@ func (a *app) teamsCrew(t team) []teamsCrewRow {
 		}
 	}
 	return out
+}
+
+// Summary cards need the same status as the member list, but not its title,
+// reporting relationship, or a full allocated crew row for every conversation.
+func (a *app) teamsMemberWord(t team, m teamMember, st teamsMemberState) string {
+	switch {
+	case st.asking:
+		return "asking"
+	case st.word == "running":
+		return "working"
+	case a.teamsFailed(t, m):
+		return "failed"
+	default:
+		return "idle"
+	}
 }
 
 // teamsFailed reports whether member m's newest event in team t's Traffic says

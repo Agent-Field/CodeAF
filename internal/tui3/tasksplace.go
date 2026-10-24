@@ -182,6 +182,9 @@ type tasksChatView struct {
 // tasksReading is everything drawing and routing need from one world reading.
 // The seen stamp travels with the snapshot across place adapters.
 type tasksReading struct {
+	// layouts is optional scratch owned by one body's paint, never a reading
+	// retained across input. Cursor, pane, and body readers share each width.
+	layouts    map[int][]tasksLine
 	chatViews  map[string]tasksChatView
 	items      []tasksItem
 	shape      *tasksTree
@@ -277,13 +280,28 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by 
 	// order keeps the pass stable: a map alone would re-order the page on every
 	// frame it was rebuilt, and the sections below are drawn in the order the
 	// rows arrived within each one.
-	var order []tasksKey
-	held := map[tasksKey]tasksItem{}
-	put := func(key tasksKey, item tasksItem) {
-		if _, seen := held[key]; !seen {
-			order = append(order, key)
+	// Store each large row once; the identity map holds only its position.
+	capacity := len(mine.rows) + len(mine.plan) + len(mine.away)
+	for _, project := range world.Projects {
+		for _, row := range project.Sessions {
+			capacity += len(row.Tasks.Rows)
 		}
-		held[key] = item
+	}
+	order := make([]tasksItem, 0, capacity)
+	held := make(map[tasksKey]int, capacity)
+	get := func(key tasksKey) tasksItem {
+		if i, ok := held[key]; ok {
+			return order[i]
+		}
+		return tasksItem{}
+	}
+	put := func(key tasksKey, item tasksItem) {
+		if i, seen := held[key]; seen {
+			order[i] = item
+		} else {
+			held[key] = len(order)
+			order = append(order, item)
+		}
 	}
 
 	for _, project := range world.Projects {
@@ -303,7 +321,7 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by 
 	}
 	for _, row := range mine.rows {
 		if row.entry.Parent == "" {
-			row.entry.Parent = held[tasksKeyOf(row.entry)].entry.Parent
+			row.entry.Parent = get(tasksKeyOf(row.entry)).entry.Parent
 		}
 		put(tasksKeyOf(row.entry), tasksItem{
 			entry: row.entry, row: tasksRowFor(world, mine, row.entry), runs: row.runs, live: row.live,
@@ -346,7 +364,7 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by 
 		// there is one: presence carries neither, and a row that dropped the
 		// program would open a page with no badge over a program's work
 		// ([taskGuestNode]).
-		entry.Parent, entry.Program = held[key].entry.Parent, held[key].entry.Program
+		entry.Parent, entry.Program = get(key).entry.Parent, get(key).entry.Program
 		put(key, tasksItem{
 			entry: entry, row: tasksRowFor(world, mine, entry), runs: true, away: true, window: task.Session,
 			here: mine.here[strings.TrimSpace(task.SessionID)],
@@ -388,14 +406,12 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by 
 	for _, row := range r.chats {
 		included[row.ID] = true
 	}
-	for _, key := range order {
-		item := held[key]
+	for _, item := range order {
 		if r.win.Holds(tasksEntryAt(item.entry, now)) {
 			included[tasksChatOf(item)] = true
 		}
 	}
-	for _, key := range order {
-		item := held[key]
+	for _, item := range order {
 		if !included[tasksChatOf(item)] {
 			continue
 		}
@@ -631,6 +647,17 @@ const tasksBareLead = placeLead
 // lay is the one walk of the reading: what line the page draws, in order, and
 // which of them a person can act on.
 func (r tasksReading) lay(width int) []tasksLine {
+	if lines, ok := r.layouts[width]; ok {
+		return lines
+	}
+	lines := r.layout(width)
+	if r.layouts != nil {
+		r.layouts[width] = lines
+	}
+	return lines
+}
+
+func (r tasksReading) layout(width int) []tasksLine {
 	// A MACHINE THAT HAS RUN NOTHING LAYS NOTHING OUT, and the place spends the
 	// frame on [tasksTeach] instead. A machine that HAS and whose window holds
 	// none of it still lays out its head line, because that line is the only
@@ -639,13 +666,17 @@ func (r tasksReading) lay(width int) []tasksLine {
 	if width <= 0 || r.held == 0 {
 		return nil
 	}
-	lines := make([]tasksLine, 0, len(r.items)+8)
+	tree := r.tree()
+	visible := 8
+	for _, section := range tasksSectionOrder {
+		visible += tree.shown(r, section)
+	}
+	lines := make([]tasksLine, 0, visible+len(tree.groups))
 	// THE FAMILY COLUMN APPEARS ONLY WHERE THERE IS A TREE TO DRAW. On a machine
 	// whose work this surface cannot place in any conversation, and that has never
 	// split a task up, every row is a root with nothing under it — and two cells
 	// of empty gutter in front of all of them would be a column saying "there is
 	// structure here" about a page that has none.
-	tree := r.tree()
 	column := tree.column()
 	levels := tasksKinRoom(width)
 	add := func(kind tasksLineKind, text string) {
@@ -1164,30 +1195,54 @@ func tasksTreeOf(items []tasksItem, now time.Time, order tasksSort, chats ...ses
 	// row with no parent is drawn, which loses the claimed nesting and keeps the
 	// work on the page rather than the other way round — and, more to the point,
 	// keeps this walk from being the thing that never returns.
+	ground := make(map[tasksKey]uint8, len(items))
+	var path []tasksKey
 	grounded := func(key tasksKey) bool {
-		seen := map[tasksKey]bool{key: true}
-		at := key
+		path = path[:0]
+		at, valid := key, true
 		for {
+			if state := ground[at]; state != 0 {
+				valid = state == 2
+				break
+			}
+			ground[at] = 1 // visiting, or invalid after this walk
+			path = append(path, at)
 			parent, ok := parentOf(at)
 			if !ok {
-				return true
+				break
 			}
-			if seen[parent] {
-				return false
-			}
-			seen[parent] = true
 			at = parent
 		}
+		if valid {
+			for _, key := range path {
+				ground[key] = 2
+			}
+		}
+		return valid
 	}
-	roots := make([]tasksItem, 0, len(items))
+	// Count first so roots and sibling slices do not repeatedly copy large rows.
+	counts := make(map[tasksKey]int)
+	rootCount := 0
 	for _, item := range items {
 		key := tasksKeyOf(item.entry)
 		if parent, ok := parentOf(key); ok && grounded(key) {
 			t.up[key] = parent
-			t.kids[parent] = append(t.kids[parent], item)
-			continue
+			counts[parent]++
+		} else {
+			rootCount++
 		}
-		roots = append(roots, item)
+	}
+	for parent, count := range counts {
+		t.kids[parent] = make([]tasksItem, 0, count)
+	}
+	roots := make([]tasksItem, 0, rootCount)
+	for _, item := range items {
+		key := tasksKeyOf(item.entry)
+		if parent, ok := t.up[key]; ok {
+			t.kids[parent] = append(t.kids[parent], item)
+		} else {
+			roots = append(roots, item)
+		}
 	}
 	// EVERY ROW'S RANK IS FOLDED BEFORE ANYTHING IS ORDERED, because a parent is
 	// compared by what is under it and a walk per comparison would be a walk per
