@@ -52,14 +52,15 @@ type MembershipIntent struct {
 	Revision uint64 `json:"revision"`
 }
 type Membership struct {
-	Revision uint64            `json:"revision"`
-	Index    uint64            `json:"index"`
-	NextNode uint64            `json:"next_node"`
-	Anchors  []uint64          `json:"anchors"`
-	Nodes    []uint64          `json:"nodes"`
-	Live     uint32            `json:"live"`
-	Limit    uint32            `json:"limit"`
-	Pending  *MembershipIntent `json:"pending,omitempty"`
+	Leadership *LeadershipIntent `json:"leadership,omitempty"`
+	Revision   uint64            `json:"revision"`
+	Index      uint64            `json:"index"`
+	NextNode   uint64            `json:"next_node"`
+	Anchors    []uint64          `json:"anchors"`
+	Nodes      []uint64          `json:"nodes"`
+	Live       uint32            `json:"live"`
+	Limit      uint32            `json:"limit"`
+	Pending    *MembershipIntent `json:"pending,omitempty"`
 }
 type InitMembership struct {
 	Anchors []MemberRecord `json:"anchors"`
@@ -104,6 +105,9 @@ func MemberTombstoneKey(node uint64) RecordKey {
 
 func membershipDependencies(m Mutation) []RecordKey {
 	keys := []RecordKey{}
+	if leadershipMutation(m) {
+		return leadershipDependencies(m)
+	}
 	switch {
 	case m.InitMembership != nil:
 		keys = append(keys, MembershipKey())
@@ -122,7 +126,7 @@ func membershipDependencies(m Mutation) []RecordKey {
 	return keys
 }
 func membershipMutation(m Mutation) bool {
-	return m.InitMembership != nil || m.EnrollMember != nil || m.RemoveMember != nil || m.SettleMembership != nil
+	return leadershipMutation(m) || m.InitMembership != nil || m.EnrollMember != nil || m.RemoveMember != nil || m.SettleMembership != nil
 }
 func validNode(id uint64) bool { return id > 0 && id < ^uint64(0)-1 }
 func applyMembership(c Command, meta ApplicationMeta, rows map[RecordKey][]byte, put func(RecordKey, any), result *Result) Code {
@@ -168,16 +172,10 @@ func applyMembership(c Command, meta ApplicationMeta, rows map[RecordKey][]byte,
 	if raw == nil || h.Revision == ^uint64(0) || meta.Index == 0 {
 		return Conflict
 	}
-	if meta.Configuration.Joint() {
-		return Conflict
+	if leadershipMutation(m) {
+		return applyLeadership(c, meta, rows, put, result, h)
 	}
-	// P12 only edits learners. A voter swap is a separate authorized P13 intent.
-	for _, id := range h.Anchors {
-		if !hasID(meta.Configuration.Voters, id) {
-			return Conflict
-		}
-	}
-	if len(meta.Configuration.Voters) != len(h.Anchors) {
+	if h.Leadership != nil && !h.Leadership.Settled || !h.StableTopology(meta.Configuration) {
 		return Conflict
 	}
 	switch {
@@ -243,7 +241,7 @@ func applyMembership(c Command, meta ApplicationMeta, rows map[RecordKey][]byte,
 		if Decode(rows[MemberKey(v.Node)], &member) != nil {
 			return NotFound
 		}
-		if member.Anchor || member.Retired || member.Node != v.Node || member.Device != v.Device {
+		if member.Anchor || member.Retired || member.Node != v.Node || member.Device != v.Device || hasID(meta.Configuration.Voters, v.Node) {
 			return Conflict
 		}
 		var mapping DeviceMember
@@ -379,6 +377,11 @@ func (h Membership) Validate() error {
 	}
 	if h.Pending != nil && (h.Pending.Revision != h.Revision || !hasID(h.Nodes, h.Pending.Node) || hasID(h.Anchors, h.Pending.Node)) {
 		return ErrDependency
+	}
+	if l := h.Leadership; l != nil {
+		if !hasID(h.Nodes, l.Node) || hasID(h.Anchors, l.Node) || !hasID(h.Anchors, l.Standby) || l.Revision > h.Revision || l.Term == 0 && !l.Restore || l.Completed && (!l.Settled || l.Restore) || l.Barrier == 0 || l.Barrier > h.Index || h.Pending != nil && !l.Settled {
+			return ErrDependency
+		}
 	}
 	return nil
 }

@@ -81,6 +81,7 @@ type JoinRequest struct {
 // ApplicationMeta is an immutable view at one applied index. Byte accounting
 // includes record framing and keys; capacity is a refusal, never an eviction.
 type ApplicationMeta struct {
+	Term          uint64        `json:"term,omitempty"`
 	Index         uint64        `json:"index"`
 	Configuration Configuration `json:"configuration"`
 	Cluster       string        `json:"cluster"`
@@ -308,7 +309,10 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 		return out, nil
 	}
 	service := c.Change.RecordUpload != nil || c.Change.AdmitJoin != nil || c.Change.CompleteJoin != nil
-	if service != auth.Effects || auth.Personal && auth.Effects || auth.Anchor && (auth.Personal || auth.Effects || c.Change.SettleMembership == nil && c.Change.CloseSession == nil) {
+	if service != auth.Effects || auth.Personal && auth.Effects || auth.Anchor && (auth.Personal || auth.Effects || c.Change.SettleMembership == nil && c.Change.SettleLeadership == nil && c.Change.CompleteLeadership == nil && c.Change.RestoreAnchors == nil && c.Change.CloseSession == nil) {
+		return out, nil
+	}
+	if (c.Change.RestoreAnchors != nil || c.Change.CompleteLeadership != nil) && !auth.Anchor {
 		return out, nil
 	}
 	var last session

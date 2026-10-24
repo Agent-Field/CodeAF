@@ -31,11 +31,13 @@ type testGroup struct {
 	drop     func(from, to uint64) bool
 }
 
-func newGroup(t *testing.T) *testGroup {
+func newGroup(t *testing.T) *testGroup { return newTimingGroup(t, ElectionTimingVersion) }
+
+func newTimingGroup(t *testing.T, version uint16) *testGroup {
 	t.Helper()
 	g := &testGroup{t: t, applied: make([][]*pb.Entry, 3), durable: make([]RecoveredState, 3)}
 	for id := uint64(1); id <= 3; id++ {
-		c, err := New(Config{ClusterUUID: "test-cluster", NodeID: id, Seed: 100 + id, Protocol: ProtocolVersion, Bootstrap: []uint64{3, 1, 2}}, RecoveredState{})
+		c, err := New(Config{TimingVersion: version, ClusterUUID: "test-cluster", NodeID: id, Seed: 100 + id, Protocol: ProtocolVersion, Bootstrap: []uint64{3, 1, 2}}, RecoveredState{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -172,7 +174,7 @@ func command(t *testing.T, sequence uint64) []byte {
 // pass a NEW read barrier before a host can report a completed transfer.
 func TestR14SeededReplayAndR6Transfer(t *testing.T) {
 	run := func() []byte {
-		g := newGroup(t)
+		g := newTimingGroup(t, 1)
 		leader := g.elect()
 		g.call(leader, Propose{command(t, 1)})
 		g.pump()
