@@ -164,6 +164,8 @@ func (r *Runtime) Call(b []byte) (out []byte) {
 func (r *Runtime) call(op uint32, d *decoder) ([]byte, error) {
 	e := encoder{}
 	switch op {
+	case 21, 22:
+		return r.leadership(d, op == 22)
 	case 20:
 		return configurationAtEntry(d)
 	case 19:
@@ -209,6 +211,15 @@ func (r *Runtime) call(op uint32, d *decoder) ([]byte, error) {
 		}
 		recovered.Entries = d.entries()
 		recovered.Applied = d.u64()
+		if len(d.b) != 0 {
+			n := d.u32()
+			if n != 3 {
+				return nil, errFrame
+			}
+			for range n {
+				recovered.Anchors = append(recovered.Anchors, d.u64())
+			}
+		}
 		if err := d.end(); err != nil {
 			return nil, err
 		}

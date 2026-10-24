@@ -57,7 +57,7 @@ func Apply(ctx context.Context, store *raftstore.SQLite, b raftcore.ApplyBatch, 
 		if entry.GetType() != pb.EntryNormal || len(entry.GetData()) == 0 {
 			continue
 		}
-		e, err := clusterstate.Evaluate(entry.GetData(), clusterstate.ApplicationMeta{Index: entry.GetIndex(), Configuration: raftcore.Configuration(conf), Cluster: cluster, Now: update.LogicalTime, Version: update.VisibleVersion, Bytes: size, Ceiling: ceiling}, read)
+		e, err := clusterstate.Evaluate(entry.GetData(), clusterstate.ApplicationMeta{Term: entry.GetTerm(), Index: entry.GetIndex(), Configuration: raftcore.Configuration(conf), Cluster: cluster, Now: update.LogicalTime, Version: update.VisibleVersion, Bytes: size, Ceiling: ceiling}, read)
 		if err != nil {
 			return nil, err
 		}

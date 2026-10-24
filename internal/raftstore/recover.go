@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 
+	"github.com/Agent-Field/codeaf/internal/clusterstate"
 	"github.com/Agent-Field/codeaf/internal/raftcore"
 	"github.com/Agent-Field/codeaf/internal/raftsnapshot"
 	"go.etcd.io/raft/v3"
@@ -221,7 +222,34 @@ func (s *SQLite) Recover(ctx context.Context) (Recovery, error) {
 		if a.RecordCount != appRows || a.RecordsHash != recordsHash || (a.Applied == 0 && appRows != 0) {
 			return ErrCorrupt
 		}
-		out.Core = raftcore.RecoveredState{HardState: h, ConfState: a.ConfState, Snapshot: snapshot, Entries: entries, Applied: a.Applied}
+		var anchors []uint64
+		var registry []byte
+		err = tx.QueryRowContext(ctx, `SELECT data FROM records WHERE namespace='membership' AND key='registry'`).Scan(&registry)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if registry != nil {
+			var membership clusterstate.Membership
+			if clusterstate.Decode(registry, &membership) != nil || membership.Validate() != nil || membership.Index > a.Applied {
+				return ErrCorrupt
+			}
+			anchors = membership.Anchors
+		}
+		if registry == nil {
+			var imported []byte
+			err = tx.QueryRowContext(ctx, `SELECT data FROM records WHERE namespace='membership' AND key='legacy-import'`).Scan(&imported)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
+			if imported != nil {
+				var manifest clusterstate.LegacyManifest
+				if clusterstate.Decode(imported, &manifest) != nil || manifest.Validate() != nil || manifest.Config.Cluster != s.identity.ClusterUUID {
+					return ErrCorrupt
+				}
+				anchors = manifest.Config.Anchors
+			}
+		}
+		out.Core = raftcore.RecoveredState{Anchors: anchors, HardState: h, ConfState: a.ConfState, Snapshot: snapshot, Entries: entries, Applied: a.Applied}
 		if snapIndex == 0 {
 			out.Core.Snapshot = nil
 		}

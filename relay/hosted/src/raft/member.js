@@ -74,6 +74,9 @@ export class RaftMemberDO extends DurableObject {
     const actor = new MemberActor(this.ctx.storage, sharedRuntime(), this.evaluator(config));
     this.recoveredEffects = await actor.init(config); this.config = config; this.registry = actor.store.read('membership', 'registry') ? committedRegistry(sharedRuntime(), actor.store) : await this.ctx.storage.get('raft-registry'); this.actor = actor;
   }
+  async leadershipEvidence(revision,barrier) { await this.load(); return this.actor.leadershipEvidence(revision,barrier); }
+  async leadership(evidence) { await this.load(); return this.actor.leadership(evidence); }
+  async leadershipReceipt() { await this.load(); return this.actor.leadershipReceipt(); }
   async membership() { await this.load(); return this.actor.membership(); }
   async joinStatus(advertised) { await this.load(); return this.actor.joinStatus(advertised); }
   async drainRecovery() {

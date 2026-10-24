@@ -1,5 +1,6 @@
 import { CORE_MEMORY_BUDGET, Reactor, HostCodec, createFrame, response, effects, frame, stepFrame } from './abi.js';
 import { MemberStorage, DEFAULT_ROWS_BYTES, unb64 } from './storage.js';
+import { decodeCanonical, encodeCanonical } from './codec.js';
 import { committedRegistry } from './membership.js';
 
 const RESERVATION = 6 * 1024 * 1024;
@@ -39,7 +40,12 @@ export class MemberActor {
       const recovered = await this.store.open({ cluster: config.cluster, id: String(config.id), protocol: 1 }, config.ceiling ?? DEFAULT_ROWS_BYTES);
       const cache = recovered.entries.reduce((n, b) => n + b.length, 0);
       if (cache > CACHE_BYTES) throw new Error('raft member: log cache capacity; recover with checkpoint');
-      const r = response(this.reactor.call(createFrame({ ...config, bootstrap: recovered.entries.length || recovered.snapshot.length || recovered.hard.length ? [] : config.bootstrap, ...recovered })));
+      const registry = this.store.read('membership', 'registry');
+      const imported = this.store.read('membership', 'legacy-import');
+      const provisioned = (config.anchors ?? config.bootstrap ?? []).map(a => String(typeof a === 'object' ? a.node : a));
+      const anchors = registry ? decodeCanonical(new TextDecoder().decode(registry)).anchors : imported ? decodeCanonical(new TextDecoder().decode(imported)).config.anchors : provisioned;
+      if (provisioned.length && anchors.join(',') !== provisioned.join(',')) throw new Error('raft member: conflicting anchor manifest');
+      const r = response(this.reactor.call(createFrame({ ...config, anchors, bootstrap: recovered.entries.length || recovered.snapshot.length || recovered.hard.length ? [] : config.bootstrap, ...recovered })));
       this.handle = r.u32(); r.end(); this.config = config; this.generation++; this.cache = cache;
       return this.drive(0);
     } catch (e) {
@@ -100,6 +106,33 @@ export class MemberActor {
       const snapshot = await this.store.checkpoint(); await this.drive(11, snapshot); this.checkpointIndex = this.status.applied;
     }
     return { send: [], reads: [], status: this.status, settle };
+  }); }
+  // Evidence is an internal authenticated target reply, derived under the
+  // durable member queue. No public request may set its own applied index.
+  leadershipEvidence(revision, barrier) { return this.serial(() => {
+    if(this.stopped||this.store.stopped||!this.handle)throw new Error('raft member: stopped; recover from durable storage');
+    const header = this.store.read('membership', 'registry');
+    if (!header) throw new Error('raft member: enrollment is absent');
+    const h = JSON.parse(new TextDecoder().decode(header)), app = this.store.application();
+    if (h.revision !== String(revision) || !h.leadership || h.leadership.barrier !== String(barrier) || BigInt(app.applied) < BigInt(barrier) || committedRegistry(this.reactor,this.store)[this.config.id]?.revoked !== false) throw new Error('raft member: leadership barrier not applied');
+    return {node:this.config.id,revision:String(revision),applied:String(app.applied),protocol:this.store.identity.protocol,durable:true};
+  }); }
+  leadership(evidence) { evidence = structuredClone(evidence); return this.serial(async () => {
+    const header = this.store.read('membership', 'registry');
+    if (!header) throw new Error('raft member: enrollment is absent');
+    if(BigInt(evidence.node)!==0n){const target=committedRegistry(this.reactor,this.store)[String(evidence.node)];if(!target||target.revoked)throw new Error('raft member: leadership target is unavailable');}
+    const raw = new TextEncoder().encode(encodeCanonical(evidence));
+    const r = response(this.reactor.call(frame(21).u32(this.handle).blob(header).blob(raw).finish()));
+    const plan = JSON.parse(new TextDecoder().decode(r.blob())); r.end();
+    if (plan.configure) return {...(await this.drive(8,unb64(plan.change ?? ''))),plan};
+    if (BigInt(plan.transfer)) return {...(await this.drive(7,BigInt(plan.transfer))),plan};
+    return {send:[],reads:[],status:this.status,plan};
+  }); }
+  leadershipReceipt() { return this.serial(() => {
+    const header = this.store.read('membership', 'registry');
+    if (!header) throw new Error('raft member: enrollment is absent');
+    const r = response(this.reactor.call(frame(22).u32(this.handle).blob(header).finish()));
+    const receipt = JSON.parse(new TextDecoder().decode(r.blob()));r.end();return receipt;
   }); }
   joinStatus(advertised) { return this.serial(() => {
     const raw = this.store.read('enrollment', 'node/' + this.config.id);

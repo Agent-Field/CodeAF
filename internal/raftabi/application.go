@@ -50,6 +50,9 @@ func applicationCodec(op uint32, d *decoder) ([]byte, error) {
 		conf := new(pb.ConfState)
 		d.message(conf)
 		meta.Configuration = raftcore.Configuration(conf)
+		if len(d.b) > 0 {
+			meta.Term = d.u64()
+		}
 	}
 	if err := d.end(); err != nil {
 		return nil, err
