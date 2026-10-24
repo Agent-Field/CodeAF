@@ -304,3 +304,7 @@ func slow(d time.Duration) error {
 	secs := int((d + time.Second - 1) / time.Second)
 	return wireauth.Wait(ErrRateLimited, http.Header{"Retry-After": {strconv.Itoa(max(secs, 1))}})
 }
+
+// WithLegacyGate finishes any admitted pairing decision before the source
+// freezes. A later legacy callback must recheck the durable source gate.
+func (l *Links) WithLegacyGate(fn func() error) error { l.mu.Lock(); defer l.mu.Unlock(); return fn() }

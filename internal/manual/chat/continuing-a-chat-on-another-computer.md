@@ -246,3 +246,7 @@ been uploaded and its new saved head has been accepted. If an upload fails, the
 other computer keeps seeing the previous saved head. Retry when the connection
 returns. Uploaded objects are kept for reuse if another device continued the
 chat first; this does not discard the work saved on your computer.
+
+## Relay directory upgrade pauses and saved chats
+
+A relay directory upgrade can briefly pause pairing and chat moves. Retry after the relay is ready. The upgrade refusal is `codeaf: directory upgrade is incomplete; retry shortly; saved chats are still here`. It does not delete saved chats, files, branches or the encrypted vault. The relay keeps the old directory as a backup and never makes it a second writer after the new directory takes over. A row that cannot be copied safely leaves the upgrade paused for the operator; it is never truncated to make it fit.

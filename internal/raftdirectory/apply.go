@@ -20,6 +20,11 @@ import (
 // overlay, all exact results and the applied header in one FULL transaction.
 // Returned results may escape only after this function returns successfully.
 func Apply(ctx context.Context, store *raftstore.SQLite, b raftcore.ApplyBatch, cluster string, ceiling uint64) ([]clusterstate.Result, error) {
+	if imported, err := store.ImportedLegacy(ctx); err != nil {
+		return nil, err
+	} else if imported != nil {
+		ceiling = imported.Ceiling
+	}
 	app, size, err := store.ApplicationView(ctx)
 	if err != nil {
 		return nil, err

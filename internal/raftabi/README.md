@@ -151,3 +151,10 @@ protobuf snapshot pointer. Step tag 12 carries peer ID plus snapshot/success
 flags for transport completion. These helpers provide framing and integrity,
 never authorization or application policy. The same codecs run in native proof
 peers and the bundled reactor.
+
+P11 adds op 12 (canonical LegacyConfig, kind, ID, original v1 JSON and sampled
+hold-until; returns canonical RecordWrite), op 13 (validated LegacyManifest;
+returns the shared genesis Entry/HardState/ConfState protobuf bytes), and op 14
+(validated public certificates/effects authority rows). These calls convert
+bounded bytes and establish no request authentication or successful coordination
+receipt. Source/target hosts own the irrevocable migration gate and durability.
