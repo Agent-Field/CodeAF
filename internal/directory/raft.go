@@ -65,7 +65,7 @@ func (c *raftClient) SetVault(ctx context.Context, old, next string) error {
 	return e
 }
 func (c *raftClient) Create(ctx context.Context, id string, in CellInit) (CellView, error) {
-	return c.change(ctx, clusterstate.Mutation{Create: &clusterstate.CreateCell{Cell: id, Init: in}})
+	return c.change(ctx, clusterstate.Mutation{Create: &clusterstate.CreateCell{Cell: id, Init: in, V1: true}})
 }
 func (c *raftClient) Acquire(ctx context.Context, id string, o AcquireOpts) (CellView, error) {
 	v := &clusterstate.AcquireCell{Cell: id, Force: o.Force, V1: true}
@@ -83,7 +83,7 @@ func (c *raftClient) Heartbeat(ctx context.Context, id string, b Beat) (CellView
 	return c.change(ctx, clusterstate.Mutation{Beat: &clusterstate.BeatCell{Cell: id, Beat: b}})
 }
 func (c *raftClient) Publish(ctx context.Context, id string, p Publish) (CellView, error) {
-	return c.change(ctx, clusterstate.Mutation{Publish: &clusterstate.PublishCell{Cell: id, Publish: p}})
+	return c.change(ctx, clusterstate.Mutation{Publish: &clusterstate.PublishCell{Cell: id, Publish: p, V1: true}})
 }
 func (c *raftClient) Release(ctx context.Context, id string, f uint64) error {
 	_, e := c.change(ctx, clusterstate.Mutation{Release: &clusterstate.ReleaseCell{Cell: id, Fence: f}})
@@ -113,8 +113,8 @@ func (c *raftClient) Rotation(ctx context.Context) (RotationView, error) {
 	return viewOf(l.Identity, l.Now, DefaultGraceBounds), e
 }
 
-// Pairing commits a sealed decision dependency; delivery belongs to P10's
-// durable outbox. There is no callback that can expose a grant before commit.
+// Pairing commits a sealed decision dependency; delivery follows through the
+// durable effects outbox. There is no callback that can expose a grant before commit.
 func (c *raftClient) ApproveRequest(ctx context.Context, code string, a Approval) error {
 	d, e := decisionOf(a)
 	if e != nil {

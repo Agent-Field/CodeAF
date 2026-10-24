@@ -5,6 +5,7 @@ package raftdirectory
 import (
 	"cmp"
 	"context"
+	"crypto/ed25519"
 	"errors"
 	"slices"
 
@@ -83,6 +84,15 @@ func Apply(ctx context.Context, store *raftstore.SQLite, b raftcore.ApplyBatch, 
 // AuthorizedRead runs only within the actor after its current-term quorum
 // barrier. Enrollment is not inferred from a device metadata upsert.
 func AuthorizedRead(ctx context.Context, store *raftstore.SQLite, cluster, actor string) (raftstore.Application, error) {
+	return authorizedRead(ctx, store, cluster, actor, false)
+}
+
+// AuthorizedEffectRead uses the same current-term barrier contract for the
+// restricted delivery service. Rotation does not discard a committed outbox.
+func AuthorizedEffectRead(ctx context.Context, store *raftstore.SQLite, cluster, actor string) (raftstore.Application, error) {
+	return authorizedRead(ctx, store, cluster, actor, true)
+}
+func authorizedRead(ctx context.Context, store *raftstore.SQLite, cluster, actor string, effects bool) (raftstore.Application, error) {
 	app, _, err := store.ApplicationView(ctx)
 	if err != nil {
 		return app, err
@@ -94,7 +104,7 @@ func AuthorizedRead(ctx context.Context, store *raftstore.SQLite, cluster, actor
 	}
 	var auth clusterstate.Authority
 	var device clusterstate.Device
-	if clusterstate.Decode(rows[keys[0]], &auth) != nil || auth.Cluster != cluster || !auth.Personal {
+	if clusterstate.Decode(rows[keys[0]], &auth) != nil || auth.Cluster != cluster || (auth.Personal == effects) || auth.Effects != effects || len(auth.Key) != ed25519.PublicKeySize {
 		return app, errors.New("raftdirectory: unauthorized")
 	}
 	if raw := rows[keys[1]]; raw != nil {

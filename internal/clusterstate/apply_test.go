@@ -32,7 +32,7 @@ func newApplication(t *testing.T) *application {
 		a.put(cs.AuthorityKey(id), cs.Authority{Cluster: "test", Key: actorKey(id).Public().(ed25519.PublicKey), Personal: true})
 		a.put(cs.DeviceKey(id), cs.Device{V: 1})
 	}
-	a.put(cs.IdentityKey(), cs.IdentityRec{V: 1})
+	a.put(cs.IdentityKey(), cs.IdentityRec{V: 1, Identity: cs.IdentityID(actorKey("root").Public().(ed25519.PublicKey)), SigningKey: actorKey("root").Public().(ed25519.PublicKey)})
 	return a
 }
 func (a *application) put(k cs.RecordKey, v any) {
@@ -43,6 +43,21 @@ func (a *application) put(k cs.RecordKey, v any) {
 	a.rows[k] = b
 }
 func (a *application) prepare(actor string, now int64, m cs.Mutation) cs.Command {
+	// The independent ownership campaign assumes completed uploads. Supply the
+	// corresponding committed receipt fixture; missing uploads have separate R21 vectors.
+	if m.Create != nil && m.Create.Receipt == "" {
+		r := cs.UploadReceipt{Device: actor, Head: m.Create.Init.Head, HeadRID: "fixture", Frames: m.Create.Init.Frames}
+		m.Create.Receipt = cs.UploadID(r)
+		a.put(cs.UploadKey(m.Create.Receipt), r)
+	}
+	if m.Publish != nil && m.Publish.Receipt == "" {
+		r := cs.UploadReceipt{Device: actor, Head: m.Publish.Publish.Head, HeadRID: "fixture", Frames: m.Publish.Publish.Frames}
+		m.Publish.Receipt = cs.UploadID(r)
+		a.put(cs.UploadKey(m.Publish.Receipt), r)
+	}
+	return a.prepareBare(actor, now, m)
+}
+func (a *application) prepareBare(actor string, now int64, m cs.Mutation) cs.Command {
 	a.seq[actor]++
 	seq := a.seq[actor]
 	c, e := cs.Sign(cs.Command{Schema: 1, Cluster: "test", Actor: actor, Session: "test", Sequence: seq, Ack: seq - 1, Now: now, Change: m}, actorKey(actor))
@@ -325,8 +340,10 @@ func TestR16R17R27DependencyAndSessionAdmissionFailures(t *testing.T) {
 
 func TestR16R30CommittedPairDecisionIsAtomicAndFirstWins(t *testing.T) {
 	a := newApplication(t)
-	a.put(cs.JoinKey("request"), cs.JoinRequest{Device: "new", Expires: 10000})
-	decision := cs.JoinDecision{Code: "request", Device: "new", Record: cs.Device{V: 1, Name: "sealed"}, Grant: "sealed-grant", Cert: "public-cert"}
+	public := actorKey("new").Public().(ed25519.PublicKey)
+	newID := cs.DeviceIDOfKey(public)
+	a.put(cs.JoinKey("request"), cs.JoinRequest{Device: newID, PublicKey: public, Expires: 10000})
+	decision := cs.JoinDecision{Code: "request", Device: newID, Record: cs.Device{V: 1, Name: "sealed"}, Grant: "c2VhbGVkLWdyYW50", Cert: joinCert(t, "new")}
 	if r := a.run("a", 1000, cs.Mutation{DecideJoin: &decision}); r.Code != cs.OK {
 		t.Fatal(r)
 	}
@@ -335,10 +352,10 @@ func TestR16R30CommittedPairDecisionIsAtomicAndFirstWins(t *testing.T) {
 		t.Fatal(e)
 	}
 	var device cs.Device
-	if e := cs.Decode(a.rows[cs.DeviceKey("new")], &device); e != nil {
+	if e := cs.Decode(a.rows[cs.DeviceKey(newID)], &device); e != nil {
 		t.Fatal(e)
 	}
-	if request.Decision == nil || request.Decision.Grant != "sealed-grant" || device.Created != 1000 {
+	if request.Decision == nil || request.Decision.Grant != "c2VhbGVkLWdyYW50" || device.Created != 1000 {
 		t.Fatal(request, device)
 	}
 	version := a.meta.Version
@@ -348,7 +365,7 @@ func TestR16R30CommittedPairDecisionIsAtomicAndFirstWins(t *testing.T) {
 	if r := a.run("b", 1002, cs.Mutation{DecideJoin: &cs.JoinDecision{Code: "request", Deny: true}}); r.Code != cs.AlreadyDecided {
 		t.Fatal(r)
 	}
-	if a.rows[cs.AuthorityKey("new")] != nil {
-		t.Fatal("pair decision bypassed P10 certificate admission")
+	if a.rows[cs.AuthorityKey(newID)] == nil {
+		t.Fatal("pair decision omitted committed certificate authorization")
 	}
 }

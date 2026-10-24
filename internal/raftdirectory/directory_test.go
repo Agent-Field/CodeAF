@@ -73,11 +73,12 @@ func newGroup(t *testing.T, clock func() time.Time, extra ...raftstore.Write) *g
 	for i := range 50 {
 		actors = append(actors, fmt.Sprintf("dev_%032x", i+1))
 	}
-	g.genesis = append(g.genesis, raftstore.Write{Key: raftstore.Key{Namespace: raftstore.State, Key: clusterstate.IdentityKey().Key}, Value: encoded(t, clusterstate.IdentityRec{V: 1})})
+	g.genesis = append(g.genesis, raftstore.Write{Key: raftstore.Key{Namespace: raftstore.State, Key: clusterstate.IdentityKey().Key}, Value: encoded(t, clusterstate.IdentityRec{V: 1, Identity: clusterstate.IdentityID(key("root").Public().(ed25519.PublicKey)), SigningKey: key("root").Public().(ed25519.PublicKey)})})
 	for _, actor := range actors {
 		k := clusterstate.AuthorityKey(actor)
 		g.genesis = append(g.genesis, raftstore.Write{Key: raftstore.Key{Namespace: raftstore.Enrollment, Key: k.Key}, Value: encoded(t, clusterstate.Authority{Cluster: cluster, Key: key(actor).Public().(ed25519.PublicKey), Personal: true})})
 	}
+	g.genesis = append(g.genesis, raftstore.Write{Key: raftstore.Key{Namespace: raftstore.Enrollment, Key: clusterstate.AuthorityKey("effects").Key}, Value: encoded(t, clusterstate.Authority{Cluster: cluster, Key: key("effects").Public().(ed25519.PublicKey), Effects: true})})
 	g.genesis = append(g.genesis, extra...)
 	for i := range 3 {
 		g.paths[i] = filepath.Join(t.TempDir(), "member.db")
@@ -390,13 +391,21 @@ func TestR16R30ApproveAndDenyCommitBeforeAnswer(t *testing.T) {
 	writes := []raftstore.Write{}
 	for _, code := range []string{"approve", "deny"} {
 		k := clusterstate.JoinKey(code)
-		writes = append(writes, raftstore.Write{Key: raftstore.Key{Namespace: raftstore.Outbox, Key: k.Key}, Value: encoded(t, clusterstate.JoinRequest{Device: device, Expires: clock.Now().UnixMilli() + 600000})})
+		writes = append(writes, raftstore.Write{Key: raftstore.Key{Namespace: raftstore.Outbox, Key: k.Key}, Value: encoded(t, clusterstate.JoinRequest{Device: device, PublicKey: pub, Expires: clock.Now().UnixMilli() + 600000})})
 	}
 	g := newGroup(t, clock.Now, writes...)
 	cl := directory.NewRaft(g).For("a")
-	raw, err := json.Marshal(map[string]any{"V": 1, "device": hex.EncodeToString(pub), "created": 1, "sig": "00"})
+	cert := struct {
+		V       uint16 `json:"V"`
+		Device  string `json:"device"`
+		Created int64  `json:"created"`
+		Sig     string `json:"sig"`
+	}{1, hex.EncodeToString(pub), 1, ""}
+	unsigned, _ := json.Marshal(cert)
+	cert.Sig = hex.EncodeToString(ed25519.Sign(key("root"), append([]byte("codeaf/device-cert/v1\n"), unsigned...)))
+	raw, err := json.Marshal(cert)
 	must(t, err)
-	approval := directory.Approval{Device: directory.Device{V: 1, Name: "sealed"}, Cert: base64.RawURLEncoding.EncodeToString(raw), Grant: "sealed-grant"}
+	approval := directory.Approval{Device: directory.Device{V: 1, Name: "sealed"}, Cert: base64.RawURLEncoding.EncodeToString(raw), Grant: "c2VhbGVkLWdyYW50"}
 	must(t, cl.ApproveRequest(ctx, "approve", approval))
 	must(t, cl.ApproveRequest(ctx, "approve", approval))
 	if err := cl.DenyRequest(ctx, "approve"); !errors.Is(err, directory.ErrAlreadyDecided) {
@@ -417,7 +426,7 @@ func TestR16R30ApproveAndDenyCommitBeforeAnswer(t *testing.T) {
 		must(t, err)
 		var request clusterstate.JoinRequest
 		must(t, clusterstate.Decode(rows[k], &request))
-		if request.Decision == nil || request.Decision.Grant != "sealed-grant" {
+		if request.Decision == nil || request.Decision.Grant != "c2VhbGVkLWdyYW50" {
 			t.Fatal("answer preceded committed sealed decision")
 		}
 	}

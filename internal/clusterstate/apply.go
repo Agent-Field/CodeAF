@@ -47,11 +47,13 @@ func SessionsKey() RecordKey        { return RecordKey{"sessions", "counts"} }
 func JoinKey(code string) RecordKey { return RecordKey{"outbox", "join/" + segment(code)} }
 
 // Authority is installed by authenticated genesis/enrollment, never PutDevice.
-// Scope is deliberately personal-only until delegated workers land in P15.
+// Personal directory authority and restricted effect authority are exclusive.
+// Delegated worker scopes are admitted separately.
 type Authority struct {
 	Cluster  string `json:"cluster"`
 	Key      []byte `json:"key"`
 	Personal bool   `json:"personal"`
+	Effects  bool   `json:"effects,omitempty"`
 }
 type session struct {
 	Sequence uint64 `json:"sequence"`
@@ -64,12 +66,15 @@ type sessionCounts struct {
 	Retained uint32 `json:"retained"`
 }
 
-// JoinRequest is a committed external-effect dependency, provisioned by P10.
+// JoinRequest is a committed dependency from a reserved public request.
 // An absent dependency cannot be manufactured by a decision request.
 type JoinRequest struct {
-	Device   string        `json:"device"`
-	Expires  int64         `json:"expires"`
-	Decision *JoinDecision `json:"decision,omitempty"`
+	Device    string        `json:"device"`
+	Expires   int64         `json:"expires"`
+	Platform  string        `json:"platform,omitempty"`
+	PublicKey []byte        `json:"public_key,omitempty"`
+	Decision  *JoinDecision `json:"decision,omitempty"`
+	Outcome   string        `json:"outcome,omitempty"`
 }
 
 // ApplicationMeta is an immutable view at one applied index. Byte accounting
@@ -139,8 +144,23 @@ func Dependencies(c Command) []RecordKey {
 	if m.DeviceSeen != nil {
 		keys = append(keys, DeviceKey(m.DeviceSeen.Device))
 	}
+	if m.RecordUpload != nil {
+		keys = append(keys, UploadKey(UploadID(*m.RecordUpload)), DeviceKey(m.RecordUpload.Device), AuthorityKey(m.RecordUpload.Device))
+	}
+	if m.Create != nil {
+		keys = append(keys, UploadKey(m.Create.Receipt))
+	}
+	if m.Publish != nil {
+		keys = append(keys, UploadKey(m.Publish.Receipt))
+	}
+	if m.AdmitJoin != nil {
+		keys = append(keys, JoinKey(m.AdmitJoin.Code))
+	}
+	if m.CompleteJoin != nil {
+		keys = append(keys, JoinKey(m.CompleteJoin.Code))
+	}
 	if m.DecideJoin != nil {
-		keys = append(keys, JoinKey(m.DecideJoin.Code), DeviceKey(m.DecideJoin.Device))
+		keys = append(keys, JoinKey(m.DecideJoin.Code), DeviceKey(m.DecideJoin.Device), AuthorityKey(m.DecideJoin.Device))
 	}
 	for _, id := range cellIDs(m) {
 		keys = append(keys, CellKey(id))
@@ -232,6 +252,8 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 			target = new(sessionCounts)
 		case k.Namespace == "sessions":
 			target = new(session)
+		case k.Namespace == "outbox" && len(k.Key) >= 7 && k.Key[:7] == "upload/":
+			target = new(UploadReceipt)
 		case k.Namespace == "outbox":
 			target = new(JoinRequest)
 		default:
@@ -262,13 +284,17 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 	}
 	digest, _ := Digest(c)
 	signed, e := SigningBytes(c)
-	if e != nil || c.Cluster != meta.Cluster || auth.Cluster != c.Cluster || !auth.Personal || len(auth.Key) != ed25519.PublicKeySize || !ed25519.Verify(auth.Key, signed, c.Signature) || digest != c.RequestDigest {
+	if e != nil || c.Cluster != meta.Cluster || auth.Cluster != c.Cluster || (!auth.Personal && !auth.Effects) || len(auth.Key) != ed25519.PublicKeySize || !ed25519.Verify(auth.Key, signed, c.Signature) || digest != c.RequestDigest {
 		return out, nil
 	}
 	// Revocation precedes dedup: a saved old response cannot authorize a revoked
 	// actor to resume activity. Other accepted retries preserve exact old bytes.
 	if actor.Revoked {
 		out.Result.Code = Revoked
+		return out, nil
+	}
+	service := c.Change.RecordUpload != nil || c.Change.AdmitJoin != nil || c.Change.CompleteJoin != nil
+	if service != auth.Effects || auth.Personal && auth.Effects {
 		return out, nil
 	}
 	var last session
@@ -285,10 +311,10 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 		out.Result = last.Result
 		return out, nil
 	}
-	if !known && (c.Sequence != 1 || c.Ack != 0) || known && (last.Sequence == ^uint64(0) || c.Sequence != last.Sequence+1 || c.Ack != last.Sequence) {
+	if !service && (!known && (c.Sequence != 1 || c.Ack != 0) || known && (last.Sequence == ^uint64(0) || c.Sequence != last.Sequence+1 || c.Ack != last.Sequence)) {
 		return refuse(Conflict)
 	}
-	if !known && (counts.Live >= MaxLiveSessions || counts.Retained >= MaxRetainedSessions) {
+	if !service && !known && (counts.Live >= MaxLiveSessions || counts.Retained >= MaxRetainedSessions) {
 		return refuse(Capacity)
 	}
 	if c.Now < 0 || c.Now > int64(MaxSafeInteger)-LeaseTTLMillis {
@@ -306,10 +332,14 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 		writes[k] = b
 	}
 	code := OK
-	if identity.Rotation != nil && c.Change.Rotate == nil && c.Change.AdvanceTime == nil && c.Change.DeviceSeen == nil && c.Change.CloseSession == nil {
+	if identity.Rotation != nil && c.Change.Rotate == nil && c.Change.AdvanceTime == nil && c.Change.DeviceSeen == nil && c.Change.CloseSession == nil && c.Change.CompleteJoin == nil {
 		code = Rotated
 	} else {
-		code = applyMutation(c, out.Now, identity, rows, put, &out.Result)
+		if service {
+			code = applyEffect(c, out.Now, rows, put)
+		} else {
+			code = applyMutation(c, out.Now, identity, rows, put, &out.Result)
+		}
 	}
 	if err != nil {
 		return out, err
@@ -344,6 +374,9 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 		counts.Live--
 	}
 	save := func() {
+		if service {
+			return
+		}
 		put(SessionKey(c.Actor, c.Session), session{Sequence: c.Sequence, Digest: c.RequestDigest, Closed: c.Change.CloseSession != nil, Result: out.Result})
 		put(SessionsKey(), counts)
 	}
@@ -505,7 +538,26 @@ func applyMutation(c Command, now int64, identity IdentityRec, rows map[RecordKe
 		}
 		if !v.Deny {
 			old, had := device(v.Device)
-			put(DeviceKey(v.Device), Stamped(old, had, v.Record, now))
+			if old.Revoked {
+				return Revoked
+			}
+			public, e := JoinCertificate(identity, request, v.Cert)
+			if e != nil || validGrant(v.Grant) == false {
+				return BadRequest
+			}
+			var prior Authority
+			if b := rows[AuthorityKey(v.Device)]; b != nil {
+				if Decode(b, &prior) != nil || prior.Cluster != c.Cluster || !prior.Personal || !bytes.Equal(prior.Key, public) {
+					return Unauthorized
+				}
+			}
+			put(AuthorityKey(v.Device), Authority{Cluster: c.Cluster, Key: public, Personal: true})
+			record := v.Record
+			if record.Platform == "" {
+				record.Platform = request.Platform
+			}
+			record.AddedBy = identity.Identity
+			put(DeviceKey(v.Device), Stamped(old, had, record, now))
 		}
 		request.Decision = v
 		put(JoinKey(v.Code), request)
@@ -538,6 +590,9 @@ func applyMutation(c Command, now int64, identity IdentityRec, rows map[RecordKe
 		if b != nil {
 			return Exists
 		}
+		if !m.Create.V1 && !validReceipt(rows, m.Create.Receipt, c.Actor, m.Create.Init.Head, m.Create.Init.Frames) {
+			return BadRequest
+		}
 		cell = Created(m.Create.Init, c.Actor, now)
 	} else {
 		if b == nil {
@@ -562,6 +617,9 @@ func applyMutation(c Command, now int64, identity IdentityRec, rows map[RecordKe
 			cell, err = Heartbeat(cell, c.Actor, m.Beat.Beat, now)
 		case m.Publish != nil:
 			cell, err = PublishTo(cell, c.Actor, m.Publish.Publish, now)
+			if err == nil && !m.Publish.V1 && !validReceipt(rows, m.Publish.Receipt, c.Actor, m.Publish.Publish.Head, m.Publish.Publish.Frames) {
+				return BadRequest
+			}
 		case m.Release != nil:
 			at := now
 			if m.Release.Quiet {

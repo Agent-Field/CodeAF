@@ -238,3 +238,11 @@ A running chat on the other computer never moves automatically. Neither does a n
 ## Why an older chat could not be copied
 
 An older chat whose folder is a symbolic link, or whose saved conversation state contains symbolic links, is left untouched. codeaf refuses to copy those links because writing through one could change the original. The original still opens with an older codeaf.
+
+## A save has not reached the other computer yet — upload failed or another device continued first
+
+A saved chat reaches your other computers only after its encrypted objects have
+been uploaded and its new saved head has been accepted. If an upload fails, the
+other computer keeps seeing the previous saved head. Retry when the connection
+returns. Uploaded objects are kept for reuse if another device continued the
+chat first; this does not discard the work saved on your computer.
