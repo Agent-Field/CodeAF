@@ -1,13 +1,9 @@
-// IdentityDO: one Durable Object per identity. It is the single writer of that identity's
-// directory (the compare-and-swap the lease rules need), the counter of its puts in flight, and
-// the place its caps are kept, because it already sees every request the identity makes.
-//
-// The front Worker forwards a request here on the identity named in the unsigned header, before
-// the body is read. The order inside is then: prove the caller holds a cert of this identity
-// (needs no body), count a put as in flight, read the body under its cap, verify the request
-// signature over it, and only then spend the caller's rate budget and serve.
+// IdentityDO retains the source backup, blob index and socket ingress. Its
+// irreversible migration gate routes coordination to three durable members;
+// none of its legacy directory methods are a production writer.
 import { DurableObject } from 'cloudflare:workers';
 import { LegacyAdmission } from './raft/legacy.js';
+import { HostedIdentity } from './raft/hosted.js';
 import { signedUri } from './base.js';
 import { readBody } from './body.js';
 import { dropTables, erasePage } from './erasure.js';
@@ -16,9 +12,9 @@ import { Lazy } from './lazy.js';
 import { limitsOf, RateLimit } from './limits.js';
 import { matchRoute } from './routes.js';
 import { policyOf } from './rules.js';
-import { Tenant } from './tenant.js';
+import { Tenant, HAS_WAIT_MS } from './tenant.js';
 import { finishClose, Watchers } from './watch.js';
-import { checkCert, checkRequest, Refusal } from './verify.js';
+import { checkCert, checkRequest } from './verify.js';
 import { gone, ipOf, rateLimited, respond, unwrap } from './wire.js';
 
 const SIGNED = { identity: 'codeaf-identity', cert: 'codeaf-cert', time: 'codeaf-time', sig: 'codeaf-sig' };
@@ -41,15 +37,16 @@ export class IdentityDO extends DurableObject {
       this.limits.maxWatchers,
       this.policy.ttlMs,
       (at) => this.ctx.waitUntil(this.#arm(at)),
-      // A sweep stamps last_seen through the tenant, which an alarm wake has built just before it (see alarm).
-      (device, at) => this.#tenant?.dir.seen(device, at),
+      // Old sockets contribute only their frozen import evidence; every later
+      // last-seen update belongs to the committed effects path.
+      () => {},
     );
     this.identityRate = new RateLimit(this.limits.requestsPerMinute);
     this.deviceRate = new RateLimit(this.limits.requestsPerMinutePerDevice);
   }
 
   fetch(request) {
-    return respond(() => this.legacyAdmission.run(() => this.#serve(request)));
+    return respond(() => this.#serve(request));
   }
 
   /** webSocketMessage runs only for a client frame that is not `ping` (the platform answers that without waking us); such a frame is ignored (contract 21.3). */
@@ -71,7 +68,7 @@ export class IdentityDO extends DurableObject {
   async #noteLeft(ws) {
     const device = this.watchers.left(ws);
     const identity = device && (await this.ctx.storage.get('identity'));
-    if (identity && !(await this.#isGone())) this.#tenantOf(identity).dir.seen(device, Date.now());
+    if (identity && !(await this.#isGone()) && this.host?.ready) await this.host.serial(() => this.host.commitEffect({device_seen:{device}},Date.now()));
   }
 
   async #serve(request) {
@@ -86,8 +83,9 @@ export class IdentityDO extends DurableObject {
       await this.#admitted.get(ipOf(request, this.env));
       const tenant = this.#tenantOf(who.identity);
       this.#admit(tenant, who.device);
-      if (route.write) tenant.assertWritable();
-      return await route.handler({ tenant, device: who.device, body, request, env: this.env }, route.args);
+      this.host ??= new HostedIdentity(this.ctx,this.env,tenant,this.legacyAdmission);
+      const reply=await this.host.dispatch({tenant,device:who.device,body,request,env:this.env},route);
+      this.watchers=this.host.watchers;return reply;
     } finally {
       leave();
     }
@@ -126,17 +124,26 @@ export class IdentityDO extends DurableObject {
    * may have stood in front of it.
    */
   async alarm() {
-    const identity = await this.ctx.storage.get('identity');
-    const retired = identity && (await this.#isGone());
-    if (identity && !retired) this.#tenantOf(identity);
-    this.watchers.expire();
-    if (!identity) return;
-    if (retired) return this.#erase(identity);
-    const tenant = this.#tenantOf(identity);
-    tenant.stats.flush();
-    const at = tenant.retireAt();
-    if (at === undefined) return;
-    return at <= Date.now() ? this.#erase(identity) : this.#arm(at);
+    const identity=await this.ctx.storage.get('identity');if(!identity)return;
+    if(await this.#isGone())return this.#erase(identity);
+    const provision=await this.ctx.storage.get('raft-provision');
+    if(!provision){
+      // An old source may know only the root hash. Its next authenticated
+      // request supplies the public root; an alarm cannot invent that key.
+      this.watchers.closeAll(1012,'reconnecting');return;
+    }
+    const tenant=this.#tenantOf(identity);this.host ??= new HostedIdentity(this.ctx,this.env,tenant,this.legacyAdmission);
+    const erase=await this.host.serial(async()=>{
+      await this.host.ensure(Uint8Array.from(atob(provision.config.signing_key),c=>c.charCodeAt(0)));
+      this.watchers=this.host.watchers;this.watchers.expire();tenant.stats.flush();
+      const raw=await this.host.barrierRecord({namespace:'state',key:'identity'});
+      const record=this.host.project('identity',raw),at=record.rotation?.retire_at;
+      if(at && at<=Date.now())return true;
+      if(at)await this.#arm(at);return false;
+    });
+    // Uploads must finish their post-I/O authority check before leaving
+    // Flight. Waiting for them while owning that queue would deadlock erasure.
+    if(erase)return this.#erase(identity);
   }
 
   /**
@@ -171,20 +178,29 @@ export class IdentityDO extends DurableObject {
   async #erase(identity) {
     await this.ctx.storage.put('gone', Date.now());
     this.#gone = true;
+    if(!await this.flight.idle(HAS_WAIT_MS))return this.#arm(Date.now()+this.limits.statsFlushMs);
     this.#tenant = null;
     if (await erasePage(this.env.FRAMES, `${identity}/`, this.limits.sweepPageSize)) return this.#arm(Date.now());
     unwrap(await this.#global().forget(identity));
+    const sourceGate=this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='legacy_gate'").toArray().length && this.ctx.storage.sql.exec('SELECT doc FROM legacy_gate WHERE one=1').toArray()[0];
+    let erasing=await this.ctx.storage.get('raft-erasure');
+    if(!erasing&&sourceGate){erasing=JSON.parse(sourceGate.doc).manifest;await this.ctx.storage.put('raft-erasure',erasing);await this.ctx.storage.sync();}
+    if(erasing){
+      try{for(const id of erasing.config.anchors)await this.env.RAFT_MEMBERS.get(this.env.RAFT_MEMBERS.idFromName(erasing.config.cluster+'/'+id)).eraseRetired(erasing);}
+      catch(error){await this.#arm(Date.now()+this.limits.statsFlushMs);throw error;}
+    }
     dropTables(this.ctx.storage.sql);
-    await this.ctx.storage.delete(['identity', 'admitted']);
+    await this.ctx.storage.delete(['identity', 'admitted','raft-provision']);
+    await this.ctx.storage.sync();this.host=null;
   }
 
   /**
-   * #admit turns away a revoked device, then charges the request to the device's rate and the
-   * identity's. The device goes first, so one noisy device that is refused spends none of the
+   * #admit charges the authenticated request to the device's rate and the
+   * identity's. Committed authorization follows inside the coordinator. The device goes first,
+   * so one noisy device that is refused spends none of the
    * identity's share, which its other devices still need.
    */
   #admit(tenant, device) {
-    if (tenant.dir.revoked(device)) throw new Refusal('revoked', 'device revoked');
     const now = Date.now();
     this.deviceRate.admit(device, now);
     this.identityRate.admit('', now);

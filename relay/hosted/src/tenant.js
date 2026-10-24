@@ -13,7 +13,7 @@ import { Wire } from './wire.js';
 
 // How long Has waits for the puts in flight before it fails: a stuck put must not hang Has,
 // and must not make it lie (a "no" would make the client send a frame that is about to land).
-const HAS_WAIT_MS = 30_000;
+export const HAS_WAIT_MS = 30_000;
 
 // The cell key id of the frame that answers a batch get: the answer belongs to no cell, so all zeros.
 const MANY_KEY_ID = '0'.repeat(32);

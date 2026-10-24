@@ -1,3 +1,4 @@
+import { APPLICATION_TABLES } from '../sql-schema.js';
 import { Writer } from './abi.js';
 
 export const CHUNK_BYTES = 256 * 1024;
@@ -45,7 +46,7 @@ export class MemberStorage {
   async open(identity, ceiling = DEFAULT_ROWS_BYTES) {
     const exists = this.one("SELECT name FROM sqlite_master WHERE type='table' AND name='meta'");
     if (!exists) {
-      check(this.one("SELECT count(*) AS n FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'").n === 0);
+      check(this.one(`SELECT count(*) AS n FROM sqlite_master WHERE ${APPLICATION_TABLES}`).n === 0);
       await this.transaction(() => {
         this.rows('CREATE TABLE meta (name TEXT PRIMARY KEY, data BLOB NOT NULL, hash TEXT NOT NULL)');
         this.rows('CREATE TABLE journal (idx TEXT PRIMARY KEY, data BLOB NOT NULL, hash TEXT NOT NULL)');

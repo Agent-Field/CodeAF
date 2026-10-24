@@ -4,17 +4,105 @@ import { MemberInbox, INBOX_BYTES } from './inbox.js';
 import { directoryEvaluator } from './directory.js';
 import { DEFAULT_ROWS_BYTES, MemberStorage, b64 } from './storage.js';
 import { HostCodec } from './abi.js';
+import { encodeCanonical, decodeCanonical } from './codec.js';
+import { dropTables } from '../erasure.js';
 import { committedRegistry, provisionedRegistry } from './membership.js';
 import { MemberAlarms, coordinationPolicy } from './liveness.js';
 import { stageLegacyImport, finishLegacyImport } from './legacy.js';
 export { installRaftModule, runtimeMetrics } from './actor.js';
 
 // Only internal namespace calls can initialize a provisioned member. The
-// public Worker exports this class but does not route directory traffic here.
+// public Worker routes identity coordination through its authenticated source.
 // Enrollment is derived from the durable Go registry; P09 supplies evaluation.
 export class RaftMemberDO extends DurableObject {
   constructor(ctx, env) { super(ctx, env); this.actor = null; this.loading = null; this.ctx = ctx; this.env = env; }
-  evaluator(config) { return directoryEvaluator(sharedRuntime(), config.cluster, config.ceiling ?? DEFAULT_ROWS_BYTES); }
+  evaluator(config) {
+    const evaluate=directoryEvaluator(sharedRuntime(),config.cluster,config.ceiling??DEFAULT_ROWS_BYTES);
+    this.results=new Map();this.resultBytes=0;
+    return (raw,read,app)=>{
+      const result=evaluate(raw,read,app),hash=new HostCodec(sharedRuntime()).hash(raw).digest;
+      const key=b64(hash),previous=this.results.get(key);
+      if(previous){this.resultBytes-=previous.raw.length;this.results.delete(key);}
+      this.results.set(key,{index:BigInt(app.index),raw:result.result});this.resultBytes+=result.result.length;
+      while(this.results.size>1 && (this.results.size>32||this.resultBytes>1024*1024)){
+        const first=this.results.keys().next().value;this.resultBytes-=this.results.get(first).raw.length;this.results.delete(first);
+      }
+      return result;
+    };
+  }
+  // These RPC methods have no public fetch route. The authenticated source
+  // coordinator alone provisions stores and drives the same durable actor.
+  async importReceipt(manifest) {
+    if(await this.ctx.storage.get('raft-erased'))throw new Error('raft member: identity retired');
+    const config=await this.ctx.storage.get('raft-config');
+    if(!config)return null;
+    const store=new MemberStorage(this.ctx.storage,new HostCodec(sharedRuntime()));
+    if(!store.one("SELECT name FROM sqlite_master WHERE type='table' AND name='meta'"))return null;
+    await store.open({cluster:config.cluster,id:config.id,protocol:1},config.ceiling);
+    const raw=store.read('membership','legacy-import');
+    if(!raw)return null;
+    if(new TextDecoder().decode(raw)!==encodeCanonical(manifest))throw new Error('raft member: import provenance differs');
+    return {node:config.id,applied:store.application().applied,manifest:decodeCanonical(new TextDecoder().decode(raw))};
+  }
+  async eraseRetired(manifest) {
+    const gone=await this.ctx.storage.get('raft-erased');
+    if(gone && gone!==manifest.config.cluster)throw new Error('raft member: wrong erased cluster');
+    if(!gone){
+      if(!await this.importReceipt(manifest))throw new Error('raft member: import provenance absent');
+      await this.load();
+      await this.actor.serial(async()=>{
+        const raw=this.actor.store.read('state','identity'),record=raw&&decodeCanonical(new TextDecoder().decode(raw));
+        if(record?.rotation?.state!=='retired'||record.rotation.retire_at>Date.now())throw new Error('raft member: erasure not authorized');
+        await this.ctx.storage.put('raft-erased',manifest.config.cluster);await this.ctx.storage.sync();this.erased=true;
+      });
+    }
+    if(this.actor?.handle)await this.actor.disposeErased();
+    dropTables(this.ctx.storage.sql);
+    // A retry after the tombstone must finish KV transport cleanup too. Parts
+    // may outlive a lost manifest reply; none are an owner-retained backup.
+    const keys=[...(await this.ctx.storage.list({prefix:'raft-'})).keys()].filter(key=>key!=='raft-erased');
+    if(keys.length)await this.ctx.storage.delete(keys);
+    await this.ctx.storage.delete('legacy-pending');await this.ctx.storage.sync();
+  }
+  async hostInput(tag,value) {
+    if(![0,1,3,4,10,12,16].includes(tag))throw new Error('raft member: unsupported coordinator input');
+    await this.load();
+    if(tag===3){
+      const raw=value.slice();return this.actor.serial(async()=>{
+        const proposalAfter=this.actor.status.applied;
+        return {...await this.actor.drive(tag,raw),proposalAfter};
+      });
+    }
+    return this.actor.input(tag,value);
+  }
+  async hostView(index,namespace,key,after=null) {
+    await this.load();return this.actor.serial(()=>{
+      if(this.actor.stopped||this.actor.store.stopped||this.actor.status.applied<BigInt(index))throw new Error('raft member: read barrier incomplete');
+      const app=this.actor.store.application();
+      if(after===null)return {app,raw:this.actor.store.read(namespace,key)};
+      const rows=[];let size=0;
+      for(const row of this.actor.store.rows('SELECT key FROM records WHERE namespace=? AND key>? ORDER BY key LIMIT 64',namespace,after)){
+        const raw=this.actor.store.read(namespace,row.key);if(rows.length&&size+raw.length>1024*1024)break;
+        rows.push({key:row.key,data:raw});size+=raw.length;
+      }
+      return {app,rows};
+    });
+  }
+  async hostResult(raw,after=0n) {
+    await this.load();return this.actor.serial(()=>{
+      if(this.actor.stopped||this.actor.store.stopped)throw new Error('raft member: stopped');
+      const value=this.results.get(b64(this.actor.codec.hash(raw).digest));
+      return value&&value.index>BigInt(after)&&value.index<=this.actor.status.applied?value:null;
+    });
+  }
+  async hostSnapshot(op,...args) {
+    await this.load();
+    if(op==='begin')return this.actor.begin(...args);
+    if(op==='chunk')return this.actor.chunk(...args);
+    if(op==='complete')return this.actor.complete(...args);
+    if(op==='read')return this.actor.serial(()=>this.actor.store.chunk(...args));
+    throw new Error('raft member: unsupported snapshot operation');
+  }
   // Source migration feeds bounded immutable rows before a core can activate.
   // The durable pending marker fences initialize/load across process death.
   legacyImport(config, manifest, row = null, finish = false) {
@@ -64,6 +152,7 @@ export class RaftMemberDO extends DurableObject {
   }
 
   async load() {
+    if(this.erased || await this.ctx.storage.get('raft-erased'))throw new Error('raft member: identity retired');
     if (this.actor) return;
     if(await this.ctx.storage.get('legacy-pending')||this.importPending)throw new Error('raft member: import incomplete; retry');
     if (this.loading) return this.loading;
