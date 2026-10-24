@@ -110,3 +110,19 @@ repeat the possible effect automatically. An answer that finished but lost its
 acknowledgement is acknowledged after restart without being run again. Gaps in
 the local sequence are refused; separate executors currently need distinct
 client pairings because the relay cannot explain skipped numbers to them.
+
+## List paired clients, pause a client, or unpair one
+
+The app backend provides `clients.list`, `clients.pair`, `clients.pause` and
+`clients.unpair` over appwire and advertises `clients.manage`. These are backend
+Settings controls; no new terminal slash command or desktop widget is added.
+Pairing requires approved signing and encryption public keys, requested snapshot
+reads and queued-call permissions. The returned grant contains public connection
+information only. The ordinary chat pairing commands still pair full devices.
+
+Pause stops this computer's snapshot refresh and queue execution and survives
+restart. It waits for a current round to finish. It does not erase slots the
+client already has. Resume uses `clients.pause` with `paused:false`. Unpair
+revokes the certificate at the relay, which deletes its slots and queue. Kept
+call receipts stay in the chat. These management mutations require a trusted
+live appwire connection; the v0 scoped queue does not grant them.
