@@ -18,6 +18,8 @@ const (
 	MaxInflightBatches         = 8
 	MaxReadRequests            = 128
 	MaxRequestIDBytes          = 128
+	SnapshotEntries            = 1024
+	SnapshotLogBytes           = 4 << 20
 )
 
 var (
@@ -30,6 +32,7 @@ var (
 	ErrLeader     = errors.New("raftcore: operation requires the elected leader")
 	ErrCommand    = errors.New("raftcore: invalid command or committed schema")
 	ErrRead       = errors.New("raftcore: invalid, duplicate or excess read request")
+	ErrSnapshot   = errors.New("raftcore: invalid durable snapshot checkpoint")
 	ErrTransfer   = errors.New("raftcore: transfer target is not a caught-up voter")
 )
 
@@ -59,6 +62,19 @@ type RecoveredState struct {
 
 // Input is closed so an untrusted peer cannot masquerade as a local completion.
 type Input interface{ coreInput() }
+
+// CompactSnapshot is supplied ONLY after the host has durably created and
+// compacted this exact applied checkpoint. It carries the portable manifest,
+// never application chunks. No outstanding Ready may overlap the operation.
+type CompactSnapshot struct{ Snapshot *pb.Snapshot }
+
+func (CompactSnapshot) coreInput() {}
+
+type SnapshotPoint struct {
+	Index uint64
+	Term  uint64
+}
+
 type Poll struct{}
 type Tick struct{}
 type PeerMessage struct{ Bytes []byte }
@@ -150,10 +166,11 @@ type Status struct {
 }
 
 type Effects struct {
-	Persist      *PersistBatch
-	Send         []Outbound
-	Apply        *ApplyBatch
-	Reads        []ReadBarrier
-	Status       Status
-	NeedNextTick bool
+	Persist        *PersistBatch
+	Send           []Outbound
+	Apply          *ApplyBatch
+	Reads          []ReadBarrier
+	Status         Status
+	NeedNextTick   bool
+	SnapshotNeeded *SnapshotPoint `json:",omitempty"`
 }

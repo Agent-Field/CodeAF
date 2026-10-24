@@ -9,6 +9,7 @@ import (
 	"errors"
 
 	"github.com/Agent-Field/codeaf/internal/raftcore"
+	"github.com/Agent-Field/codeaf/internal/raftsnapshot"
 	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
@@ -35,6 +36,13 @@ func decodeEntry(key, data, hash []byte) (*pb.Entry, error) {
 }
 
 func getEntry(ctx context.Context, tx *sql.Tx, index uint64) (*pb.Entry, error) {
+	p, err := getSnapshot(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	if index > 0 && p.GetMetadata().GetIndex() == index {
+		return &pb.Entry{Index: proto.Uint64(index), Term: proto.Uint64(p.GetMetadata().GetTerm())}, nil
+	}
 	var data, hash []byte
 	key := indexKey(index)
 	if err := tx.QueryRowContext(ctx, `SELECT data,checksum FROM raft_log WHERE idx=?`, key).Scan(&data, &hash); err != nil {
@@ -47,7 +55,11 @@ func lastEntry(ctx context.Context, tx *sql.Tx) (*pb.Entry, error) {
 	var key, data, hash []byte
 	err := tx.QueryRowContext(ctx, `SELECT idx,data,checksum FROM raft_log ORDER BY idx DESC LIMIT 1`).Scan(&key, &data, &hash)
 	if errors.Is(err, sql.ErrNoRows) {
-		return &pb.Entry{}, nil
+		p, e := getSnapshot(ctx, tx)
+		if e != nil {
+			return nil, e
+		}
+		return &pb.Entry{Index: proto.Uint64(p.GetMetadata().GetIndex()), Term: proto.Uint64(p.GetMetadata().GetTerm())}, nil
 	}
 	if err != nil {
 		return nil, err
@@ -58,7 +70,7 @@ func lastEntry(ctx context.Context, tx *sql.Tx) (*pb.Entry, error) {
 // Recover checks physical integrity, each record's checksum, member identity
 // and cross-record invariants in one consistent transaction. Corrupt evidence
 // stays in place; a missing log entry is never synthesized from an index.
-// P05 will replace the un-compacted suffix read with snapshot-backed recovery.
+// Only the suffix after the complete active checkpoint enters the core cache.
 func (s *SQLite) Recover(ctx context.Context) (Recovery, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -80,7 +92,7 @@ func (s *SQLite) Recover(ctx context.Context) (Recovery, error) {
 			return ErrIdentity
 		}
 		var count int
-		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM meta`).Scan(&count); err != nil || count != 5 {
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM meta`).Scan(&count); err != nil || count != 6 {
 			return ErrCorrupt
 		}
 		h := &pb.HardState{}
@@ -91,13 +103,65 @@ func (s *SQLite) Recover(ctx context.Context) (Recovery, error) {
 		if err != nil {
 			return err
 		}
-		rows, err := tx.QueryContext(ctx, `SELECT idx,data,checksum FROM raft_log ORDER BY idx`)
+		snapshot, err := getSnapshot(ctx, tx)
+		if err != nil {
+			return err
+		}
+		snapIndex := snapshot.GetMetadata().GetIndex()
+		if snapIndex > 0 {
+			if _, err = decodeSnapshot(snapshot, s.identity); err != nil {
+				return ErrCorrupt
+			}
+			id := raftsnapshot.ID(snapshot.Data)
+			_, data, complete, err := snapshotManifest(ctx, tx, id)
+			if err != nil || !complete || !bytes.Equal(data, snapshot.Data) {
+				return ErrCorrupt
+			}
+		} else if !proto.Equal(snapshot, &pb.Snapshot{}) {
+			return ErrCorrupt
+		}
+		// Incomplete staged transfers are ignored. Every retained complete
+		// generation is checked so damaged authoritative evidence is refused.
+		generations, err := tx.QueryContext(ctx, `SELECT id FROM snapshots WHERE complete=1`)
+		if err != nil {
+			return ErrCorrupt
+		}
+		var ids []string
+		for generations.Next() {
+			var id string
+			if err = generations.Scan(&id); err != nil {
+				generations.Close()
+				return err
+			}
+			ids = append(ids, id)
+		}
+		err = generations.Err()
+		generations.Close()
+		if err != nil {
+			return err
+		}
+		if len(ids) > raftsnapshot.RetainedGenerations {
+			return ErrCorrupt
+		}
+		for _, id := range ids {
+			m, _, _, err := snapshotManifest(ctx, tx, id)
+			if err != nil {
+				return ErrCorrupt
+			}
+			if err = walkSnapshot(ctx, tx, id, m, nil); err != nil {
+				return ErrCorrupt
+			}
+		}
+		if a.Applied < snapIndex {
+			return ErrCorrupt
+		}
+		rows, err := tx.QueryContext(ctx, `SELECT idx,data,checksum FROM raft_log WHERE idx>? ORDER BY idx`, indexKey(snapIndex))
 		if err != nil {
 			return ErrCorrupt
 		}
 		defer rows.Close()
 		var entries []*pb.Entry
-		var last, term uint64
+		last, term := snapIndex, snapshot.GetMetadata().GetTerm()
 		for rows.Next() {
 			var key, data, hash []byte
 			if err := rows.Scan(&key, &data, &hash); err != nil {
@@ -157,7 +221,10 @@ func (s *SQLite) Recover(ctx context.Context) (Recovery, error) {
 		if a.RecordCount != appRows || a.RecordsHash != recordsHash || (a.Applied == 0 && appRows != 0) {
 			return ErrCorrupt
 		}
-		out.Core = raftcore.RecoveredState{HardState: h, ConfState: a.ConfState, Entries: entries, Applied: a.Applied}
+		out.Core = raftcore.RecoveredState{HardState: h, ConfState: a.ConfState, Snapshot: snapshot, Entries: entries, Applied: a.Applied}
+		if snapIndex == 0 {
+			out.Core.Snapshot = nil
+		}
 		out.Application = a
 		out.Fresh = last == 0 && raft.IsEmptyHardState(h) && a.Applied == 0
 		if out.Fresh {

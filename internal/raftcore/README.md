@@ -62,7 +62,7 @@ cluster/protocol, enrollment and revocation generations before this call. Local
 signature or apply policy. P09 must recheck committed authorization and produce
 application results. Normal commands are bounded by the shared 64 KiB batch
 budget; uncommitted payload is bounded at 1 MiB and inflight append batches at 8.
-Transport chunking/snapshot admission remain P05/P07.
+Authenticated transport and per-identity snapshot byte admission remain P07/P08/P09.
 
 `Configure` and `Transfer` are mechanisms for authorized host intents, not
 public APIs. Transfer requires a caught-up incoming voter outside joint state.
@@ -110,3 +110,28 @@ not the later simulator, persistent power-loss, joint-swap, cross-runtime or
 real-client release proofs. The initial trace SHA-256 is a regression fixture;
 SplitMix64 vectors are independently published values. Full fault checking is
 P06 and the actual Worker stop/go measurement is P03.
+
+## Applied checkpoints and bounded history
+
+At 1,024 retained applied entries or 4 MiB of applied protobuf log, effects on an
+idle completion boundary carry `SnapshotNeeded{Index, Term}`. This is a pure
+maintenance hint; the host must service it before admitting further growth. It
+does not wait for learners or change membership. Quotas/backpressure and durable
+snapshot storage belong to the host. The core's separate uncommitted limit still
+applies. See `internal/raftsnapshot/README.md` for portable format 1.
+
+Serialize checkpoint creation with this actor. Create a durable checkpoint at the
+current applied index, compact its covered durable prefix, and only then supply
+`CompactSnapshot{Snapshot}`. The input refuses a pending Ready, wrong index/term,
+cluster/protocol, noncanonical manifest or incomplete configuration. It copies
+the manifest into MemoryStorage and compacts the in-memory prefix. A lagging
+member then receives a manifest-only MsgSnap; the host streams chunks separately.
+Never report successful snapshot transport until the destination has installed
+its application and durable pointer. Chunk upload/completion alone is insufficient.
+
+On incoming snapshots, install the application with the durable Raft batch before
+`Persisted`; native raftstore does this atomically. This permits the core's
+conservative persist-before-send protocol without sending an acknowledgment for
+an uninstalled snapshot. The later Apply effect confirms that installed index
+and applies any committed suffix before `Applied`. Recover the application before
+constructing a core; no application rows or chunks belong in its log cache.
