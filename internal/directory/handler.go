@@ -106,13 +106,18 @@ func refuse(w http.ResponseWriter, err error) {
 // headed is an answer that also sets headers, as a list sets its version.
 type headed interface{ header(http.Header) }
 
-func (l Listing) header(h http.Header) {
-	h.Set(VersionHeader, strconv.FormatUint(l.Version, 10))
-}
-
 func reply(w http.ResponseWriter, out any) {
-	if h, ok := out.(headed); ok {
-		h.header(w.Header())
+	// Listing is a shared record alias; keep its HTTP projection here rather
+	// than importing HTTP into the pure record package.
+	switch l := out.(type) {
+	case Listing:
+		w.Header().Set(VersionHeader, strconv.FormatUint(l.Version, 10))
+	case *Listing:
+		if l != nil {
+			w.Header().Set(VersionHeader, strconv.FormatUint(l.Version, 10))
+		}
+	case headed:
+		l.header(w.Header())
 	}
 	if out == nil {
 		w.WriteHeader(http.StatusNoContent)
