@@ -141,7 +141,9 @@ func ChatDefaultAt(profileDir string) string {
 
 // useFreeDefaultsAt is the single balance check for implicit chat and crew
 // bottom rungs. Both callers resolve explicit choices before asking it.
-func useFreeDefaultsAt(profileDir string) bool { return CreditsLowAt(profileDir) }
+func useFreeDefaultsAt(profileDir string) bool {
+	return CrewFreeRoutesAt(profileDir) && CreditsLowAt(profileDir)
+}
 
 // IsFreeModel accepts either the published free suffix or a catalog row whose
 // three charges are known zeros. An unknown price never claims to be free.

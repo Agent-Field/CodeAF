@@ -281,7 +281,7 @@ window and get on with something else on this machine.
 You get one sentence back from the machine holding the conversation:
 
 ```
-the keyboard is on spark right now — press enter here to take it back
+the keyboard is on spark right now — press enter here to move it here
 ```
 
 or, for a window on this same machine, `the keyboard is in another window right now — press
@@ -457,16 +457,33 @@ It asks the engine holding that workspace what it is, and stops nothing:
   binary     /home/you/.codeaf/bin/devaf
   build      a1b2c3d4 built 2026-09-21 09:00
   started    2026-09-21 09:12 (43h00m ago)
+  chat moves available
   windows    1 attached · 3 conversations open
   stop it    codeaf engine --stop --workspace /home/you/api
 ```
 
 The first line is the answer — `this build`, `an older build`, or `a newer build than this
 binary` — and each line under it is left off when the engine did not say it; an engine too
-old to answer the question at all is named by its pid and binary alone. With nothing there
+old to answer the question at all is named by its pid and binary alone. `chat moves` reports
+whether that engine can move new chats. Older chats keep their original layout. When no window is attached and nothing is running, a `holding` line says how
+long the engine keeps the conversations it still has open before it lets go of them. With nothing there
 it says `no engine is holding /home/you/api on this machine`. `--status-all` does every
 workspace this machine has an engine folder for. As with `--stop`, no `--workspace` means
 your home directory.
+
+## An older engine cannot move chats — what happens when a new window needs them
+
+Moving chats is available by default on Linux, macOS and native Windows with a compatible engine.
+An older engine may lack that capability. **An idle engine without it is restarted**,
+with one line saying so: `restarted the idle engine because it ran without moving chats; moving chats available now`.
+**An engine that is still working is left alone** and the window says what to do:
+let that finish, or run `codeaf engine --stop --workspace <folder>` and open again.
+
+**A chat can read as running after every window closed.** That is on purpose: the engine keeps
+a chat's lock so you can come back and be in it. It lets go on its own after the chat has
+been idle for 30 minutes, and the engine itself leaves two minutes after its last chat. Until
+then `codeaf cell gc` and the cell commands pass over that chat as running, and say how long
+the wait is; `codeaf engine --stop` lets go at once.
 
 ## Rebuilt codeaf but your conversation was still on the old engine — how codeaf tells you
 
@@ -474,7 +491,9 @@ A plain `codeaf` does not run your conversation inside the window — the sessio
 in a process of its own, so it survives the terminal closing. That process also outlives the
 build that started it.
 
-**An older engine holding work is joined, and steps aside at its first quiet moment.** Your
+**A new window can still use an old background engine. Restarting one window does not update that engine.**
+
+An older engine holding work is joined, and steps aside at its first quiet moment. Your
 window attaches and your work carries on; the old process keeps what it was holding and is
 asked to retire once nothing is in flight. If it was holding nothing, the workspace is handed
 over at once and you are told in one line:
@@ -489,6 +508,10 @@ at the next connection. **An attached idle window counts as holding work**, so t
 waits until you close it; only a stalled window whose link is gone is ignored. A host built
 before this ask ignores it, so for one of those the old process keeps its work and **your
 next safe launch — after the work is done and every window has left — opens from this build**.
+
+For a safe update, let active turns and tasks finish, close **every window for this workspace**, then reopen with the updated binary. `engine --status --workspace <path>` names the running build and attached windows. Attached windows count as in use even when no reply is running; status does not treat that alone as proof of an active turn.
+
+The startup note also gives an explicit, shell-quoted `engine --stop --workspace <path>` command using the installed executable (for example `devaf`). Run it on the named machine only when ready: **it interrupts active turns and tasks in that workspace**. Reconnect afterward with the updated build. Other workspace engines are unaffected.
 
 When both ends support restart detection, that reconnect retires the old reply channels
 before displaying new replies. If an answer was still open, the window says

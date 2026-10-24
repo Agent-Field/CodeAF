@@ -59,6 +59,8 @@ const (
 	// StopByWorkStopped is [Agent.StopWork]: everything this conversation had
 	// running was stopped at once (stopwork.go).
 	StopByWorkStopped StopDoor = "work stopped"
+	// StopByTimeLimit is the conversation wall ending its owned work.
+	StopByTimeLimit StopDoor = "conversation time limit"
 	// StopByRetired is a hosted session let go of for want of anybody attached
 	// to it (internal/remote).
 	StopByRetired StopDoor = "session retired"
@@ -167,6 +169,8 @@ func stopSentence(door StopDoor, name string) string {
 		return "the reply stopped when this conversation was left — ask again to pick it up"
 	case StopByAbandoned:
 		return "the reply was let go of after the stop took too long"
+	case StopByTimeLimit:
+		return "a time limit you set stopped it"
 	case StopByWorkStopped:
 		return "everything running here was stopped, the reply with it"
 	case StopByRetired:

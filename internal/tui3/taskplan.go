@@ -184,7 +184,7 @@ func planStateWord(row session.PlanTaskRow) string {
 		return "done"
 	case "failed", "cancelled":
 		return "incomplete"
-	case "paused":
+	case "paused", string(session.TaskUnverified):
 		return "your call"
 	}
 	// A status this build has never heard of draws NOTHING rather than a word it
@@ -249,7 +249,7 @@ func planStatus(row session.PlanTaskRow) session.TaskStatus {
 			Presence: session.TaskPresenceIncomplete,
 			Word:     planStateWord(row),
 		}
-	case "paused":
+	case "paused", string(session.TaskUnverified):
 		return session.TaskStatus{
 			Tier:      session.TaskTierYourCall,
 			Presence:  session.TaskPresenceNeedsLook,
@@ -268,6 +268,8 @@ func planEntryStatus(store string) string {
 	switch strings.TrimSpace(store) {
 	case "pending", "ready", "claimed", "running", "paused":
 		return string(session.TaskRunning)
+	case string(session.TaskUnverified):
+		return string(session.TaskUnverified)
 	case "done":
 		return string(session.TaskDone)
 	case "failed", "cancelled":
@@ -646,10 +648,11 @@ func planNamesOf(rows []tasksMineRow, chat string) map[string]bool {
 // landed yet, and the run's store is archived the moment a finished plan is
 // replaced ([session.Agent.openBeltRunStore]) — dropping a row on the strength
 // of an identity nothing answers for would take the run off the page
-// altogether, which is worse than the row it replaces.
-func planStoreDraws(rows []tasksMineRow, plan []session.PlanTaskRow) []tasksMineRow {
+// altogether, which is worse than the row it replaces. The returned identities
+// also suppress those same published rows from the persisted world scan.
+func planStoreDraws(rows []tasksMineRow, plan []session.PlanTaskRow) ([]tasksMineRow, map[tasksKey]bool) {
 	if len(rows) == 0 || len(plan) == 0 {
-		return rows
+		return rows, nil
 	}
 	held := make(map[string]bool, len(plan))
 	for _, task := range plan {
@@ -658,13 +661,15 @@ func planStoreDraws(rows []tasksMineRow, plan []session.PlanTaskRow) []tasksMine
 		}
 	}
 	kept := make([]tasksMineRow, 0, len(rows))
+	replaced := make(map[tasksKey]bool)
 	for _, row := range rows {
 		if held[strings.TrimSpace(row.planTask)] {
+			replaced[tasksKeyOf(row.entry)] = true
 			continue
 		}
 		kept = append(kept, row)
 	}
-	return kept
+	return kept, replaced
 }
 
 // ── THE PAGE ONE PLAN ROW OPENS ─────────────────────────────────────────────
@@ -909,6 +914,9 @@ func (a *app) tasksPlanKeyWords(row session.PlanTaskRow) []string {
 // row already draws for its state, so the key line and the page's sentences
 // cannot disagree about which tasks can still move.
 func planEnded(row session.PlanTaskRow) bool {
+	if row.Status == string(session.TaskUnverified) {
+		return true
+	}
 	switch planStateWord(row) {
 	case "done", "incomplete", "stopped":
 		return true

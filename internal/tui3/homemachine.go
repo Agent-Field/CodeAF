@@ -27,6 +27,7 @@ package tui3
 // nothing else, so a frame costs no file, however often it is painted.
 
 import (
+	tea "charm.land/bubbletea/v2"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
@@ -210,4 +211,21 @@ func (a *app) machineAllowance() float64 {
 		return 0
 	}
 	return rail
+}
+
+// Navigation uses the last money reading immediately and asks for a new one
+// beside it. A slow ledger or profile must not stand in front of any page.
+func (a *app) readMachineMoneyLater(now time.Time) tea.Cmd {
+	profile := a.profileDir
+	reader := &app{profileDir: profile, ledger: a.ledger, usageLedger: a.usageLedger}
+	return a.besideLine(func() func(bool) tea.Cmd {
+		reader.readMachineMoney(now)
+		return func(bool) tea.Cmd {
+			if a.profileDir == profile {
+				a.machine.spent, a.machine.ceiling = reader.machine.spent, reader.machine.ceiling
+				a.touch()
+			}
+			return nil
+		}
+	})
 }

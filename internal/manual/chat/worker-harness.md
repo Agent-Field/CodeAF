@@ -648,6 +648,12 @@ task no `p pause` is named.
 Closing the window, `ctrl+c` and `/quit` do NOT stop a run: it carries on without the
 window and its work lands by itself. Stop it first if you want it ended.
 
+Stopping a delegated run also stops its workers and prevents another checking or
+acceptance pass from starting. Its saved work and trace remain available. A request
+already sent can still return its final usage receipt; stopping does not erase costs
+already incurred. If bringing finished work home has already begun, that operation
+finishes and its actual result is preserved.
+
 ## What a stopped run keeps: its branch after you stop it, bring it in or drop it
 
 **Nothing a stopped run made goes into your folder.** What it had made so far is
@@ -798,6 +804,14 @@ beside each the command or test that proved it in that run. A requirement with
 no proof is not done: the worker proves it then, or reports it undone in its
 result. Reaching the end of the steps is not the same as having met every
 requirement in them, and speed is no permission to skip the walk.
+
+An up-to-date plan remains readable while another worker is writing: `plandb show`
+and the other read commands see the last committed state. Mutations wait for the
+writer within a bounded retry budget. If that wait expires, the command reports
+that no changes were made and asks you to retry after the other writer finishes.
+Creating or upgrading an older database still requires a write lock. Paths passed
+to `--db` name the literal file, including spaces, percent signs and punctuation;
+a relative path remains relative to the command's working folder.
 
 ## Costs and limits
 

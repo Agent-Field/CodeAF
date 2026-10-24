@@ -309,6 +309,9 @@ func (a *app) frameBody() (string, int, int) {
 	// [app.navPress]).
 	a.tabRow = -1
 	width, height := a.size()
+	if a.conversationOpening && a.conversationPreview != nil {
+		return a.conversationPreviewFrame(width, height)
+	}
 	if a.pasteEdit.open {
 		return a.pasteEditorFrame(width, height)
 	}
@@ -318,6 +321,14 @@ func (a *app) frameBody() (string, int, int) {
 	a.caret = true
 	if a.wall.on {
 		return strings.Join(a.wallFrame(width, height), "\n"), 0, 0
+	}
+	// AND THE MAP, on the same terms and for the same reason: a fullscreen
+	// sheet takes the frame WHOLE, with no composer under it and nothing of
+	// the conversation at the edges (atlascmd.go). There is nothing to type
+	// into, so the caret is hidden the way home at rest hides it.
+	if a.atlas.on {
+		a.caret = false
+		return strings.Join(a.atlasFrame(width, height), "\n"), 0, 0
 	}
 	// THE FIRST-RUN SETUP IS DECIDED BEFORE EVERY OTHER FULLSCREEN SURFACE,
 	// because it is the one that may be open before any of them exists and it

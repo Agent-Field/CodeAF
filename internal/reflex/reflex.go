@@ -24,9 +24,10 @@
 //
 //   - REFLEX NEVER BREAKS A TURN. A model that answers with prose, with a code
 //     fence, or with a word this package has never heard of costs ONE repair
-//     retry. A model that answers nothing gets the session's low-tier fallback.
-//     After that every failure is a zero result and [ErrReflexFailed], and every
-//     caller treats that as "nothing noticed".
+//     retry. An empty, unavailable or transiently failed model gets bounded
+//     recovery through the configured low tier and current conversation model.
+//     Remaining failures return [ErrReflexFailed]; the owner may retry the
+//     original exchange in the background without interrupting its turn.
 //
 // The package is the client only. It makes no decision about WHEN a call
 // happens and holds no store.
@@ -38,6 +39,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/lane"
@@ -62,10 +64,9 @@ type Completer interface {
 // usable: the provider refused, the model went quiet, or two attempts in a row
 // were not a JSON object this package could read.
 //
-// It is ONE error on purpose. A caller has exactly one thing to do with any of
-// those — nothing — and a taxonomy would invite a turn loop to handle a
-// provider timeout differently from a bad enum, which is the beginning of a
-// reflex that can break a turn.
+// The error remains recognizable without losing its wrapped provider cause.
+// The owner can recover a transient failure off the turn's path, while malformed
+// output and permanent refusals do not trigger another background pass.
 var ErrReflexFailed = errors.New("reflex: no usable answer")
 
 // messageLimit is how much of one side of an exchange the model is shown, in
@@ -167,10 +168,11 @@ func Bind(c Completer, model string) Completer {
 	return bound{inner: c, model: model, session: &Session{}}
 }
 
-// Bind returns a completer that starts on model and, once that model has
-// answered nothing at all, uses fallback for the rest of this session. notice is called only on the transition and never while a lock is
-// held.
-func (s *Session) Bind(c Completer, model, fallback string, notice func(string)) Completer {
+// Bind starts on model, recovering through fallback and the optional current
+// conversation model within one shared deadline. Empty or unavailable models
+// are skipped for this session; transient failures do not change preferences.
+// notice reports a substitute once after its answer validates, outside locks.
+func (s *Session) Bind(c Completer, model, fallback string, notice func(string), conversation ...string) Completer {
 	model = strings.TrimSpace(model)
 	if model == "" {
 		return c
@@ -178,15 +180,20 @@ func (s *Session) Bind(c Completer, model, fallback string, notice func(string))
 	if s == nil {
 		s = &Session{}
 	}
-	return bound{inner: c, model: model, fallback: strings.TrimSpace(fallback), session: s, notice: notice}
+	last := ""
+	if len(conversation) > 0 {
+		last = strings.TrimSpace(conversation[0])
+	}
+	return bound{inner: c, model: model, fallback: strings.TrimSpace(fallback), conversation: last, session: s, notice: notice}
 }
 
 type bound struct {
-	inner    Completer
-	model    string
-	fallback string
-	session  *Session
-	notice   func(string)
+	inner        Completer
+	model        string
+	fallback     string
+	conversation string
+	session      *Session
+	notice       func(string)
 }
 
 func (b bound) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
@@ -199,42 +206,70 @@ func (b bound) CompleteWithMessages(ctx context.Context, messages []ai.Message, 
 	return b.inner.CompleteWithMessages(ctx, messages, pinned...)
 }
 
-func (b bound) activeModel() string {
-	if b.session == nil {
-		return b.model
+// candidates preserves role preferences while skipping models proved unusable in
+// this conversation. No preference is overwritten by a temporary recovery.
+func (b bound) candidates() []string {
+	var models []string
+	seen := map[string]bool{}
+	if b.session != nil {
+		b.session.mu.Lock()
+		defer b.session.mu.Unlock()
 	}
-	b.session.mu.Lock()
-	defer b.session.mu.Unlock()
-	if b.session.unusable[normalizeModel(b.model)] && !sameModel(b.model, b.fallback) {
-		return b.fallback
+	for _, model := range []string{b.model, b.fallback, b.conversation} {
+		key := normalizeModel(model)
+		if key == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		if b.session != nil && b.session.unusable[key] {
+			continue
+		}
+		models = append(models, model)
+	}
+	return models
+}
+
+func (b bound) activeModel() string {
+	models := b.candidates()
+	if len(models) > 0 {
+		return models[0]
 	}
 	return b.model
 }
 
-// abandon moves this session off the primary model and reports whether there is
-// a distinct fallback to ask. The calm line is emitted once, after the state is
-// visible to every concurrent reflex call.
-func (b bound) abandon(model string) bool {
-	if b.session == nil || sameModel(model, b.fallback) || !sameModel(model, b.model) {
-		return false
+func (b bound) abandon(model string) {
+	if b.session == nil {
+		return
 	}
-	key := normalizeModel(b.model)
 	b.session.mu.Lock()
+	defer b.session.mu.Unlock()
 	if b.session.unusable == nil {
 		b.session.unusable = make(map[string]bool)
 	}
+	b.session.unusable[normalizeModel(model)] = true
+}
+
+// recovered is called only after a response passes the reflex JSON reader.
+// It reports model substitution, never claims that a memory has been stored.
+func (b bound) recovered(model string) {
+	if model == "" || b.session == nil || b.notice == nil || sameModel(model, b.model) {
+		return
+	}
+	key := normalizeModel(b.model) + ">" + normalizeModel(model)
+	b.session.mu.Lock()
 	if b.session.notified == nil {
 		b.session.notified = make(map[string]bool)
 	}
-	b.session.unusable[key] = true
 	say := !b.session.notified[key]
 	b.session.notified[key] = true
 	b.session.mu.Unlock()
-	if say && b.notice != nil {
-		b.notice("the reflex model answers nothing; using " + b.fallback + " for this session")
+	if say {
+		b.notice("memory helper recovered using " + model + "; your model settings are unchanged")
 	}
-	return true
 }
+
+type recoverySelection struct{ model string }
+type recoverySelectionKey struct{}
 
 func normalizeModel(model string) string {
 	return strings.ToLower(strings.TrimPrefix(strings.TrimSpace(model), "~"))
@@ -336,26 +371,32 @@ func validUsedMemoryIndices(indices []int, count int) []int {
 	return used
 }
 
-// ask makes one reflex call and, if the answer was not readable, exactly one
-// repair call. The answer-budget recovery lives inside [call], where the
-// response still carries its finish reason and usage.
+// ask allows one JSON repair per pass. A transport failure can separately use
+// the configured fallback inside [call], but all requests and the repair share
+// the same patience. The owner may retry a transiently failed pass off the turn's
+// path; malformed replies alone never start another pass.
 //
-// ONE retry, never a loop. The repair asks for the same thing in four words
-// with the model's own bad answer in front of it, which is what fixes a fenced
-// or prefaced reply; a model that misses twice is a model that is going to miss
-// again, and a third attempt on a per-turn call is a cost multiplier on a
-// feature whose whole claim is that it is nearly free.
+// The repair asks for the same thing with the unreadable answer in front of it.
+// A second malformed reply is returned to the owner rather than entering a loop.
 func ask(ctx context.Context, c Completer, system, user string, read func(reply string) error) error {
 	// Reflex bypasses the session's ordinary auxiliary adapter. It must still
 	// share the same tier patience across retries rather than wait on HTTP caps.
 	ctx, cancel := context.WithTimeout(ctx, roles.PatienceFor(roles.RoleReflex))
 	defer cancel()
+	selection := &recoverySelection{}
+	ctx = context.WithValue(ctx, recoverySelectionKey{}, selection)
+	announce := func() {
+		if b, ok := c.(bound); ok {
+			b.recovered(selection.model)
+		}
+	}
 	messages := []ai.Message{message("system", system), message("user", user)}
 	reply, err := call(ctx, c, messages)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrReflexFailed, err)
 	}
 	if read(reply) == nil {
+		announce()
 		return nil
 	}
 	if strings.TrimSpace(reply) == "" {
@@ -376,6 +417,7 @@ func ask(ctx context.Context, c Completer, system, user string, read func(reply 
 	if err := read(second); err != nil {
 		return fmt.Errorf("%w: %w", ErrReflexFailed, err)
 	}
+	announce()
 	return nil
 }
 
@@ -399,40 +441,100 @@ func ask(ctx context.Context, c Completer, system, user string, read func(reply 
 //
 // WHAT SURVIVES IS THE PART THAT WAS NEVER ABOUT GENERATION: an answer this
 // package cannot use must not break a turn. A model that says nothing at all
-// abandons this session's reflex model and asks the configured low tier once.
-// There is no loop.
+// skips that model for this session and tries the configured recovery models.
+// A transient failure also recovers without declaring the primary unusable.
+// Every attempt shares the same owner and overall deadline.
 func call(ctx context.Context, c Completer, messages []ai.Message) (string, error) {
 	// Every reflex request in the process passes through here, so this is the
 	// one place its rows in the model-call log get their word.
 	ctx = provider.WithCallTag(ctx, "reflex")
 	ctx = provider.WithoutStream(ctx)
-	response, err := c.CompleteWithMessages(ctx, messages)
+	response, err := completeWithRecovery(ctx, c, messages)
 	if err != nil {
 		return "", err
 	}
 	if response == nil {
 		return "", errors.New("the model answered nothing")
 	}
-	if !AnsweredNothing(response) {
-		return response.Text(), nil
-	}
-
-	pinned, ok := c.(bound)
-	if !ok || !pinned.abandon(boundModel(c)) {
-		return response.Text(), nil
-	}
-	response, err = c.CompleteWithMessages(ctx, messages)
-	if err != nil {
-		return "", err
-	}
-	if response == nil {
-		return "", errors.New("the fallback model answered nothing")
-	}
 	return response.Text(), nil
 }
 
-// AnsweredNothing is the one failure this package can do anything about: a call
-// that came back with no visible text at all.
+// completeWithRecovery shares the owner's deadline across at most three unique
+// configured models. Only transient and model-unavailable failures may advance;
+// account, payment, quota and policy refusals stay actionable failures.
+func completeWithRecovery(ctx context.Context, c Completer, messages []ai.Message) (*ai.Response, error) {
+	pinned, ok := c.(bound)
+	if !ok {
+		return c.CompleteWithMessages(ctx, messages)
+	}
+	models := pinned.candidates()
+	if len(models) == 0 {
+		return nil, errors.New("memory helper models are unavailable; choose a working memory model in model settings")
+	}
+	// Preserve one transient retry when both configured roles name the same model.
+	sameRetry := len(models) == 1 && pinned.fallback != "" && sameModel(models[0], pinned.fallback)
+	if sameRetry {
+		models = append(models, models[0])
+	}
+	var last error
+	for i, model := range models {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		response, err := pinned.completeAttempt(ctx, messages, model, len(models)-i)
+		// A completed usable answer may arrive as its owner shuts down. Finish
+		// processing it; cancellation forbids starting another paid attempt.
+		if err == nil && !AnsweredNothing(response) {
+			if selected, ok := ctx.Value(recoverySelectionKey{}).(*recoverySelection); ok {
+				selected.model = model
+			}
+			return response, nil
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		var next bool
+		next, last = pinned.recoverable(model, err, sameRetry)
+		if !next {
+			return nil, last
+		}
+	}
+	return nil, last
+}
+
+// completeAttempt reserves an equal share of the remaining owner deadline for
+// each remaining candidate; a cancelled child never contaminates its sibling.
+func (b bound) completeAttempt(ctx context.Context, messages []ai.Message, model string, remaining int) (*ai.Response, error) {
+	attemptCtx := ctx
+	cancel := func() {}
+	if deadline, ok := ctx.Deadline(); ok && remaining > 1 {
+		attemptCtx, cancel = context.WithTimeout(ctx, time.Until(deadline)/time.Duration(remaining))
+	}
+	defer cancel()
+	b.model, b.session = model, nil
+	return b.CompleteWithMessages(attemptCtx, messages)
+}
+
+// recoverable advances only for model availability or transient transport
+// failures. The same-model compatibility retry applies to transients alone.
+func (b bound) recoverable(model string, err error, sameRetry bool) (bool, error) {
+	if err == nil {
+		b.abandon(model)
+		return !sameRetry, errors.New("the memory helper answered nothing")
+	}
+	kind, _ := provider.RouteFailureOf(err)
+	switch kind {
+	case provider.RouteUnavailable:
+		b.abandon(model)
+		return !sameRetry, err
+	case provider.RouteTransient:
+		return true, err
+	default:
+		return false, err
+	}
+}
+
+// AnsweredNothing identifies a call that came back with no visible text at all.
 //
 // IT USED TO BE "EMPTY AT THE CEILING WE SENT", and that reading died with the
 // ceiling. What is left is the honest half of it — there is nothing to decode,
@@ -442,13 +544,6 @@ func call(ctx context.Context, c Completer, messages []ai.Message) (string, erro
 // disagree about what happened (internal/session's memory.go).
 func AnsweredNothing(response *ai.Response) bool {
 	return response == nil || strings.TrimSpace(response.Text()) == ""
-}
-
-func boundModel(c Completer) string {
-	if pinned, ok := c.(bound); ok {
-		return pinned.activeModel()
-	}
-	return ""
 }
 
 // decode reads the model's reply as one JSON object, through the shared

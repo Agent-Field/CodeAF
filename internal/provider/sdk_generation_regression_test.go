@@ -9,9 +9,9 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-// The SDK constructs its own defaults before applying options. Exercise that
-// real request builder so clearing its defaults cannot erase a caller's choice.
-func TestSDKLoopOmitsDefaultsAndPreservesExplicitGenerationOptions(t *testing.T) {
+// Custom OpenAI loops use the guarded transport without adding generation
+// defaults or erasing explicit caller choices.
+func TestCustomLoopOmitsDefaultsAndPreservesExplicitGenerationOptions(t *testing.T) {
 	for _, explicit := range []bool{false, true} {
 		name := "provider defaults"
 		if explicit {
@@ -30,7 +30,7 @@ func TestSDKLoopOmitsDefaultsAndPreservesExplicitGenerationOptions(t *testing.T)
 				t.Fatal(err)
 			}
 			if client.shippedRouterHint() {
-				t.Fatal("fixture must exercise the SDK request builder")
+				t.Fatal("fixture must exercise a custom endpoint")
 			}
 			var options []ai.Option
 			if explicit {
@@ -56,7 +56,7 @@ func TestSDKLoopOmitsDefaultsAndPreservesExplicitGenerationOptions(t *testing.T)
 			} else {
 				for _, key := range []string{"temperature", "max_tokens", "max_completion_tokens", "reasoning", "top_p"} {
 					if _, present := body[key]; present {
-						t.Errorf("SDK injected %s without a caller choice", key)
+						t.Errorf("custom loop injected %s without a caller choice", key)
 					}
 				}
 			}

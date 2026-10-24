@@ -709,6 +709,17 @@ func (a *app) openRoom(id uint64, title string) {
 		a.openProgramRoom(id, title, a.heldProgramPage(id))
 		return
 	}
+	// Tabs, task links and the arrow key must read the same stored page as a
+	// sidebar click. A run row has no ordinary node to retarget or journal to
+	// stream; opening that room hid its crew and offered a picker that refused.
+	if node := a.tasks[id]; node != nil && node.planTask != "" && a.roomPageAsked != id {
+		a.roomPump = a.openRailPlan(node.planTask, func() tea.Cmd {
+			a.roomPageAsked = id
+			a.openRoom(id, title)
+			return a.takeRoomPump()
+		})
+		return
+	}
 	doors, ok := a.roomDoors()
 	if !ok {
 		// Local engine windows use this same door without a remote host label.

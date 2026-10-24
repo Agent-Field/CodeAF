@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -282,15 +283,30 @@ func TestARefreshSaysWhyItFailedAndKeepsTheCache(t *testing.T) {
 	day := time.Date(2026, 9, 10, 9, 0, 0, 0, time.UTC)
 	fixtureCatalog(t, dir, Options{Now: func() time.Time { return day }})
 
+	dialFailure := &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("network unavailable at https://mock-user:mock-password@private.mock.test/?token=mock-query-secret")}
 	offline := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-		return nil, errors.New("offline")
+		return nil, dialFailure
 	})}
 	stale, err := Refresh(context.Background(), Options{
 		BaseURL: "https://openrouter.ai/api/v1", Dir: dir, HTTPClient: offline,
 		Now: func() time.Time { return day.Add(time.Hour) },
 	})
-	if err == nil || !strings.Contains(err.Error(), "offline") {
-		t.Fatalf("a refresh that could not reach the router said %v", err)
+	if err == nil {
+		t.Fatal("a refresh that could not reach the router returned no error")
+	}
+	for _, want := range []string{"openrouter.ai", "connection failed", "check the network and service address"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("refresh lost actionable connection failure %q: %v", want, err)
+		}
+	}
+	for _, secret := range []string{"mock-user", "mock-password", "private.mock.test", "mock-query-secret"} {
+		if strings.Contains(err.Error(), secret) {
+			t.Fatalf("refresh disclosed private transport details: %v", err)
+		}
+	}
+	var typed *net.OpError
+	if !errors.Is(err, dialFailure) || !errors.As(err, &typed) || typed != dialFailure {
+		t.Fatalf("refresh lost the original typed network failure: %v", err)
 	}
 	if _, ok := stale.Model("anthropic/claude-opus-5"); !ok || !stale.FetchedAt().Equal(day) {
 		t.Fatalf("a failed refresh lost the cache or its date (%v)", stale.FetchedAt())

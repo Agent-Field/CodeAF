@@ -54,7 +54,13 @@ func ParseReference(reference string) (ref Ref, originalPath string, ok bool) {
 	if !found || strings.TrimSpace(path) == "" {
 		return Ref(digest), "", true
 	}
-	return Ref(digest), filepath.FromSlash("/" + path), true
+	// K3/K4: the source machine owns this path's grammar. Prefixing a drive
+	// with a slash breaks it, and converting Unix origins to backslashes loses
+	// their recorded spelling when a chat arrives on Windows.
+	if len(path) >= 3 && path[1] == ':' && path[2] == '/' {
+		return Ref(digest), path, true
+	}
+	return Ref(digest), "/" + path, true
 }
 
 // SourcePath is what a reader that only understands paths should look at: the

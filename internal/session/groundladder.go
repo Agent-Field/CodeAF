@@ -342,8 +342,14 @@ var groundLadder = []groundRung{universeRung{}, snapshotRung{}, copyRung{}}
 // admitted and its first request, which were fifteen on a laptop for weeks with
 // nothing anywhere saying where they went.
 func carveGround(ctx context.Context, order groundOrder) (taskTree, error) {
+	return carveGroundDown(ctx, groundLadder, order)
+}
+
+// carveGroundDown is [carveGround] over the rungs it is handed, which is how a
+// copy that must be a particular kind of world comes back by the same walk.
+func carveGroundDown(ctx context.Context, ladder []groundRung, order groundOrder) (taskTree, error) {
 	var climb groundClimb
-	for _, rung := range groundLadder {
+	for _, rung := range ladder {
 		reaches, stood := rung.reach(order)
 		climb.stood(stood)
 		if !reaches {

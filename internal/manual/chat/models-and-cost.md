@@ -269,6 +269,10 @@ When a connected provider has an empty cached list, codeaf fetches its model lis
 at launch. `ctrl+r` in `/model` asks for a fresh list; the settings rows use the list
 already known.
 
+## How do I get back to editing the filter after the arrows started navigating
+
+Type a letter, use `backspace` or `ctrl+w`, or paste: any edit returns the caret to the filter. `ctrl+b` and `ctrl+f` move the caret without changing your query. The model picker's left/right arrows control providers after you stop typing; up/down navigate rows.
+
 ## Where the model picker cursor opens — Enter confirms, refresh and ctrl+u return
 
 Every model list opens on the model it holds. `/model` opens on the model in use,
@@ -915,10 +919,12 @@ the task stops on the one thing to do, which leads its line in place of `/redo s
 (a stronger crew would meet the same wall): `failed — add credit on openrouter to
 continue`, `reconnect openrouter with /connect`, or when the limit resets. What each route did is kept: a route
 that refused a model is left out for a week, one at its limit rests until its reset, an
-account out of credit is skipped until a paid call on it answers again, a positive balance
-is read after the refusal, or a different key is connected. Free routes are
-off unless you turn them on; when every paid route is out of reach they are used anyway,
-and the line says `free routes in use (may log prompts)`. A rescue never takes a model
+account out of credit is skipped until a paid call on it answers again. Free routes are
+off unless you enable them, including after a payment refusal or a low-balance reading.
+With free routes off, the task tries eligible connected alternatives or stops with
+`add credit on openrouter to continue`; your work stays saved. You can add credit,
+connect another provider, or explicitly enable free routes in `/crew`. When enabled,
+the line says `free routes in use (may log prompts)`. A rescue never takes a model
 whose name says it was tuned for one domain (finance, medicine, law) or is too small for
 a seat's work, and a seat tries at most three free pools in a task; a pool at its limit
 is not waited on — the seat moves on at once, and with nothing left the task stops on
@@ -968,9 +974,10 @@ logged with how it ended, and routes are weighed by it:
   that rarely answers can lose to a dearer one that does;
 - an **account out of credit** or a **key refused** is skipped by helpers, and the next
   task's first seat call asks it again, once: an answer puts it back at once;
-- an **OpenRouter balance read as low** (*OpenRouter credits and free models*) counts as out
-  of credit before any call is made and is not asked again by a task: with no other paid
-  provider connected, the crew goes to free routes and the line says
+- an **OpenRouter balance read as low** (*OpenRouter credits and free models*) steers
+  automatic seats toward free routes only if you enabled them. With free routes off,
+  a small positive balance remains usable until a payment refusal or a known-zero
+  account says otherwise. With free routes enabled, the crew may use them and its line says
   `free routes in use (may log prompts) · credit unavailable on openrouter`. The balance is
   read again at every launch while it is low, so a top-up puts routing back to ordinary.
 
@@ -1121,15 +1128,20 @@ provider's policy and your account's settings there. codeaf's own usage counts c
 content (`docs/TELEMETRY.md` in the repository lists every field they carry).
 
 **Free routes may log prompts.** A provider's free pool of a model (an OpenRouter `…:free`
-id) may log or train on what it is sent. The crew uses free routes only when you turn
-them on — the `free routes` switch at the end of `/crew`'s providers list — with one
-exception: when every paid route a seat could use is out of reach, a seat moves onto a
-free pool rather than leave the task unable to run. "Out of reach" is one of: your
-OpenRouter balance is known to be low, a paid call on that provider was refused for
-payment, or the provider reports its credit at zero. A seat tries at most three free pools
-in one task; your allowed models (`/crew models`) still limit which ones; and the task's
-crew line then says `free routes in use (may log prompts)`. A paid call answering again
-puts the next task back on paid routes.
+id) may log or train on what it is sent. The crew uses free routes only when you enable
+them — the `free routes` switch at the end of `/crew`'s providers list. A low balance,
+remembered payment refusal, or live payment refusal never enables that switch or
+sends a task to a free pool behind your back. Existing paid, subscription and local
+connections remain eligible. If none can serve the task, its work stays saved and
+its line explains how to continue: add credit or reconnect the provider. You can
+also explicitly enable free routes in `/crew` if their privacy tradeoff is acceptable.
+
+An explicit choice of a named `:free` model — in `/model`, a helper row, or a crew pin —
+permits that named route even with the automatic switch off. It does not permit
+other free fallback models. Disabling automatic free routes also excludes them from
+saved automatic fallback ladders. When free routes are enabled, a seat tries at
+most three pools per task, within your allowed models and spend limits, and the
+crew line says `free routes in use (may log prompts)`.
 
 ## Why does my OpenRouter activity say AgentField AI or codeaf dev — which app a request names
 
@@ -4053,6 +4065,8 @@ unchanged, and **without the path header in front of them**, because the reason 
 it is that another program — `jq`, a script, a spreadsheet — is reading what comes out. The
 filters apply first, so `--json --tag leaf` is exactly the leaf rows and nothing else.
 
+## Open one logged call’s body — the raw request and reply
+
 `--body` takes a call id and prints the request and reply that were recorded for it,
 looking first in the run trace (`~/.codeaf/logs/trace/<run>/calls/<id>.json`) and then in
 the kept-failure folder (`~/.codeaf/logs/failures/<id>.json`). **Neither is written yet.**
@@ -4066,6 +4080,8 @@ no body recorded for 4f2a91c7
 That is the truthful answer and not a fault. Until those land, the way to get the exact
 bytes is `CODEAF_CALL_LOG_BODIES=1`, described below, which puts them on the log line
 itself.
+
+## Read call log lines — in flight, missing numbers, and file rotation
 
 **A call still running shows as `⋯ in flight`.** That is the reason a line is written when
 a call goes *out* as well as when it comes back: a planning call four minutes into a
@@ -4486,3 +4502,17 @@ The execution snapshot reports effective `mode` separately from the explicit
 The temporary launch constraint is not saved as a new personal Fixed preference.
 An explicit Fixed preference remains saved; an explicit Automatic preference can
 apply again when the conversation is reopened without the launch constraint.
+## A provider redirects a request to another address
+
+codeaf follows a provider redirect only within the original scheme, hostname and
+effective port. A subdomain, a different port or a change between HTTP and HTTPS
+is another origin. That request is stopped, rather than sent with or without your
+key, and says `provider redirect to <host> refused; check the configured service address`.
+Check `/settings` → Providers for the intended API address. The notice names only
+the host and port; it does not print URL credentials or query values.
+
+This applies to chat, streamed replies, custom OpenAI-compatible tool loops,
+media, model lists, connection probes, credits and provider lane reads. A custom
+HTTP transport retains its own timeouts and can impose stricter redirects, but
+cannot allow a request outside the original origin. Same-origin redirects work;
+a chain ends after ten requests rather than waiting forever.

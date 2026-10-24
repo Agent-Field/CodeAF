@@ -207,9 +207,9 @@ func TestDevicesRevokeReadsAllInEitherPositionAndSaysSoInTheUsage(t *testing.T) 
 				t.Fatal(err)
 			}
 			if len(left) != 0 {
-				t.Fatalf("%d devices are still admitted after --all stopped them: %v\nsaid: %s", len(left), left, printed)
+				t.Fatalf("%d devices are still admitted after --all removed them: %v\nsaid: %s", len(left), left, printed)
 			}
-			if !strings.Contains(printed, "stopped") {
+			if !strings.Contains(printed, "removed") {
 				t.Fatalf("nothing said what happened:\n%s", printed)
 			}
 		})

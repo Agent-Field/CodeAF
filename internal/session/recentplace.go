@@ -25,6 +25,7 @@
 package session
 
 import (
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"os"
 	"path/filepath"
 	"sort"
@@ -66,7 +67,7 @@ func RecentSessions(dir string, limit int) []Summary {
 		// [Place] so that where a transcript lives inside a folder is decided in
 		// one file. Everything else under the v3 home — locks, the index, a
 		// directory somebody made by hand — simply has no transcript in it.
-		place := Place{Dir: filepath.Join(dir, name)}
+		place := Place{Dir: cell.Copied(filepath.Join(dir, name))}
 		info, err := os.Stat(place.Transcript())
 		if err != nil || info.IsDir() {
 			continue

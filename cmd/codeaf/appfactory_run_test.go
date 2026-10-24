@@ -362,7 +362,7 @@ func TestLocalConnectWritesNoProfileAndFillsTheCredentialMemory(t *testing.T) {
 	// in the process profile, unchanged behaviour; it holds no bytes of a secret.
 	delete(after, filepath.Join(decoy, "config.json.lock"))
 	if len(after) != len(before) {
-		t.Fatalf("the ambient profile gained or lost files: %v -> %v", keys(before), keys(after))
+		t.Fatalf("the ambient profile gained or lost files: %v -> %v", baseNames(before), baseNames(after))
 	}
 	// What the credential store's own bookkeeping may add to config.json: the
 	// day's budget defaults it writes whenever ANY key is handed to it (the app's
@@ -395,7 +395,7 @@ func TestLocalConnectWritesNoProfileAndFillsTheCredentialMemory(t *testing.T) {
 	}
 }
 
-func keys(m map[string]string) []string {
+func baseNames(m map[string]string) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
 		out = append(out, filepath.Base(k))

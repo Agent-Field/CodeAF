@@ -243,7 +243,7 @@ func TestARowSaysWhenItsDoorWillRefuseWithoutACardToSayIt(t *testing.T) {
 	lab.session("-beta", "bbbb000000000001", "somewhere else", filepath.Join(t.TempDir(), "deleted-since"), now.Add(-time.Hour))
 	a := lab.app(mine)
 	a.width, a.height = 120, 30
-	a.openHome()
+	spend(t, a, a.openHome())
 	if _, right := homeColumns(a.width); right != 0 {
 		t.Fatal("this test is about the width where there is no card")
 	}

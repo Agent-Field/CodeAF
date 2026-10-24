@@ -19,15 +19,16 @@ import (
 	"github.com/Agent-Field/codeaf/internal/lane/control"
 	"github.com/Agent-Field/codeaf/internal/paymentrefusal"
 	"github.com/Agent-Field/codeaf/internal/trace"
+
+	"github.com/Agent-Field/codeaf/internal/providerhttp"
 )
 
 // Config configures the adapter. It is deliberately the same shape the
 // AgentField SDK client takes, plus the two resolvers that let the adapter
 // decide a request's economics without ever performing I/O on the hot path —
 // and minus generation controls: absent sampling and output parameters are
-// omitted upstream and the provider's own defaults apply. The SDK's plain
-// OpenAI loop injects config defaults of its own; [withoutInjectedDefaults]
-// clears those before applying the caller's explicit options.
+// omitted upstream and the provider's own defaults apply. Tool loops use the
+// same guarded transport and preserve explicit caller options.
 // It carries no attribution fields on purpose: who this binary reports itself
 // as is a constant (attribution.go), and a config field for it is exactly how a
 // caller ends up sending a different app — or none.
@@ -148,7 +149,7 @@ type Client struct {
 	// stream is the same client with the total deadline removed. A streamed
 	// answer is bounded by silence, not by duration — see send.
 	stream *http.Client
-	// keyMu guards the two fields under it, which are the only part of the
+	// keyMu guards the field under it, which is the only part of the
 	// adapter that changes after construction: a key can arrive mid-session
 	// ([Client.SetAPIKey]) while a request on another goroutine is being
 	// encoded.
@@ -157,12 +158,6 @@ type Client struct {
 	// out of config so that a key handed over after construction reaches the
 	// very next call. Empty is a client that cannot send yet ([ErrNoAPIKey]).
 	apiKey string
-	// base is the pinned AgentField client retained for an operator's custom
-	// non-direct OpenAI-compatible endpoint. Connected direct services use this
-	// adapter's transport even through ExecuteToolCallLoop, because that is where
-	// their billing-door policy and codeaf attribution live. Nil while there is
-	// no key, because the SDK refuses to be built without one.
-	base *ai.Client
 	// wait is the retry backoff, seamed exactly like the media client's video
 	// poll: production sleeps, tests record what would have been slept and
 	// return, so how long a retry waits is assertable without waiting.
@@ -252,9 +247,10 @@ func NewClient(config Config) (*Client, error) {
 	}
 	httpClient, streamClient := config.HTTPClient, config.HTTPClient
 	if httpClient == nil {
-		httpClient = &http.Client{Transport: SharedTransport(), Timeout: config.Timeout}
-		streamClient = &http.Client{Transport: streamTransport()}
+		httpClient = &http.Client{Transport: SharedTransport(), Timeout: config.Timeout, CheckRedirect: providerhttp.CheckRedirect}
+		streamClient = &http.Client{Transport: streamTransport(), CheckRedirect: providerhttp.CheckRedirect}
 	}
+	httpClient, streamClient = providerhttp.Clone(httpClient), providerhttp.Clone(streamClient)
 	client := &Client{
 		config:   config,
 		http:     httpClient,
@@ -283,37 +279,12 @@ func NewClient(config Config) (*Client, error) {
 // person pasted on the first-run screen or into the settings row, arriving
 // while this client is already the conversation's.
 //
-// The SDK client under the plain-OpenAI loop is rebuilt here rather than
-// patched, because it validates its key at construction and holds it
-// privately; while there is no key it is simply absent, and the one path that
-// needs it says so (ExecuteToolCallLoop). The adapter's own transport reads the
-// key per request under the lock, so a request already in flight keeps the
-// bearer it was encoded with and the next one carries the new key.
+// Requests read the current key under the lock. Already encoded requests keep
+// their bearer; the next request uses the replacement.
 func (c *Client) SetAPIKey(key string) error {
-	key = strings.TrimSpace(key)
-	var base *ai.Client
-	if key != "" {
-		app := RunningApp()
-		siteName := app.Name
-		if c.config.Direct {
-			siteName = DirectUserAgent
-		}
-		built, err := ai.NewClient(&ai.Config{
-			APIKey:   key,
-			BaseURL:  c.config.BaseURL,
-			Model:    c.config.Model,
-			Timeout:  c.config.Timeout,
-			SiteURL:  app.URL,
-			SiteName: siteName,
-		})
-		if err != nil {
-			return err
-		}
-		base = built
-	}
 	c.keyMu.Lock()
 	defer c.keyMu.Unlock()
-	c.apiKey, c.base = key, base
+	c.apiKey = strings.TrimSpace(key)
 	return nil
 }
 
@@ -327,13 +298,6 @@ func (c *Client) apiKeyNow() (string, error) {
 	return c.apiKey, nil
 }
 
-// sdkClient is the pinned SDK client, or nil while there is no key.
-func (c *Client) sdkClient() *ai.Client {
-	c.keyMu.RLock()
-	defer c.keyMu.RUnlock()
-	return c.base
-}
-
 // Model reports the adapter's default model slug.
 func (c *Client) Model() string { return c.config.Model }
 
@@ -344,21 +308,10 @@ func (c *Client) OwnsToolLoop() bool { return true }
 
 // ExecuteToolCallLoop satisfies the harness's LoopClient interface. codeaf
 // ordinarily drives its own loop against this adapter, so this is a contract
-// detail rather than the live chat path — but it is a REACHABLE one, and where
-// it goes is the SDK boundary.
+// detail rather than the live chat path, but remains a reachable request path.
 //
-// ── THE SDK BOUNDARY ────────────────────────────────────────────────────────
-//
-// On OpenRouter nothing below this line is the SDK's. The loop runs over this
-// adapter's own transport (openrouter_client.go), which is the only way a
-// request can carry X-OpenRouter-Categories — the SDK's client has no field for
-// it — and the only way a refused belt reaches the endpoint-refusal ladder
-// instead of ending the turn on a 404.
-//
-// c.base is only for an operator's non-direct plain OpenAI-compatible endpoint.
-// A connected service is direct even when its wire happens to be compatible:
-// sending that loop through the SDK would bypass both its billing-door answer
-// and the User-Agent that identifies codeaf honestly.
+// All endpoints use this adapter's guarded transport; the SDK's internal
+// client has no HTTP-client injection seam and cannot enforce this boundary.
 func (c *Client) ExecuteToolCallLoop(
 	ctx context.Context,
 	messages []ai.Message,
@@ -367,35 +320,9 @@ func (c *Client) ExecuteToolCallLoop(
 	call ai.CallFunc,
 	options ...ai.Option,
 ) (*ai.Response, *ai.ToolCallTrace, error) {
-	// THE HINT AND NOT THE PREFERENCE ANSWER. Which of two transports drives
-	// the loop is a fact about the SHIPPED ROUTER's own dialect — the
-	// categories header, the refusal ladder — and not about whether some base
-	// carries a `provider` object (prefcarry.go).
-	if c.shippedRouterHint() || c.config.Direct || c.config.KeyOptional {
-		return c.executeOwnToolCallLoop(ctx, messages, tools, config, call, options...)
-	}
-	// The SDK client owns its own transport and never passes the attempt hook.
-	if err := refuseObserved(ctx, SurfaceToolLoop); err != nil {
-		return nil, nil, err
-	}
-	base := c.sdkClient()
-	if base == nil {
-		return nil, nil, ErrNoAPIKey
-	}
-	// The SDK installs generation defaults before applying options. Clear those
-	// first, so a caller's explicit choice, including zero temperature, survives.
-	cleanOptions := make([]ai.Option, 0, len(options)+1)
-	cleanOptions = append(cleanOptions, withoutInjectedDefaults)
-	cleanOptions = append(cleanOptions, options...)
-	return base.ExecuteToolCallLoop(ctx, messages, tools, config, call, cleanOptions...)
-}
-
-// withoutInjectedDefaults removes fields supplied by the SDK's config. It runs
-// before caller options; provenance comes from that order, not a field's value.
-func withoutInjectedDefaults(request *ai.Request) error {
-	request.Temperature = nil
-	request.MaxTokens = nil
-	return nil
+	// The SDK has no HTTP-client injection seam. Every loop must use this
+	// adapter's guarded transport, including custom OpenAI-compatible services.
+	return c.executeOwnToolCallLoop(ctx, messages, tools, config, call, options...)
 }
 
 // maxResponseBytes bounds what one completion may be believed to be. A

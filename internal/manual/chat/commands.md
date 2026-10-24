@@ -29,6 +29,8 @@ restores the ordinary prompt. Combined stdout/stderr appears as plain text while
 the command runs, preserving line breaks and indentation. Wide lines wrap; terminal
 control sequences are removed for safe display. The command and output remain in
 history after reopening. The model waits for your next message before responding.
+In a chat that can move between computers, file changes from `!` are included in
+its next saved turn, just like changes from the model's shell commands.
 A failed command keeps its output and exit status too. Shell paths, `@` names and
 slash words remain literal, not mentions or send tags.
 
@@ -331,10 +333,24 @@ command).
 | `/budget` | `/limits` | `<amount>` | sets the day's limit · `none` removes it |
 | `/budget` | `/limits` | `<row> <amount>` | sets one by name: `day`, `conversation`, `plan` |
 
+## Pairing commands — /pair, /pair <code>, /sync, /link and /laptop
+
+| Command | Aliases | Argument | Effect |
+|---|---|---|---|
+| `/pair` | `/sync`, `/link`, `/laptop` | — | shows a code like `42-715-302`, valid 10 minutes, that gives your chats to another computer, then asks `y / n` when that computer types it |
+| `/pair` | `/sync`, `/link`, `/laptop` | `<code>` | on the other computer: uses a code from `/pair` there, and shows three words to compare while it waits |
+| `/pair` | `/sync`, `/link`, `/laptop` | `<code> --replace` | on the other computer: like `<code>`, but a computer with chats of its own is asked first, and an explicit yes replaces them with the shared ones — chats sealed under the old identity cannot be read afterwards |
+| `/pair` | `/sync`, `/link`, `/laptop` | `<link>` | on a device that is already paired: opens a new device's request from the link it shows, with its name, system, time and a check number to compare, then `a` approves and `d` declines |
+| `/devices` | — | — | lists your devices with `●` online and `○` away; `n` renames this device, `r` removes the one under the cursor at once, and a removed device can only return as a new request you approve |
+
+The words to type are `/pair`, `/pair <code>`, `/sync`, `/link` and `/laptop`. All five open the same door. In a terminal `codeaf pair --code` shows a code and `codeaf pair <code>` uses one; bare `codeaf pair` requests approval by link instead. The page *Pairing your chats with a second computer* has the whole story: the three words, one attempt for each code, and what revoking cannot take back.
+
 ## Cache, display and export commands
 
 | Command | Aliases | Argument | Effect |
 |---|---|---|---|
+| `/setup` | — | — | prepare this machine: shows what this device lacks for the conversation (present, installable, impossible) and, for a chat that moved here, the folders it did not bring along, and does nothing else |
+| `/setup` | — | `now` | installs missing tools and rebuilds folders left behind by a move; asks first unless listed commands were approved or approvals are open |
 | `/cache` | — | — | how big the shared build cache is, and where |
 | `/cache` | — | `clean` | asks first, then deletes the cache to free disk — confirm with `/cache clean now` |
 | `/cache` | — | `clean now` | deletes the shared build cache now |
@@ -2266,3 +2282,20 @@ sending it twice still starts two runs when the conversation is free.
 
 Cache and saved-harness listing are machine-local. Running a saved harness uses
 the conversation's engine connection when that engine supports it.
+## /setup — prepare this machine so a conversation can run here
+
+A conversation carries a record of the tools and services it has used (codeaf builds it by
+watching what ran; the agent cannot write it). `/setup` compares that record with this
+machine and lists three kinds of line: what is already here, what the agent can install
+("needs jq — agent can set it up"), and what is impossible on this machine (a GPU, a
+Mac-only toolchain, a service on another network). Impossible lines are shown and never
+attempted. For a chat that moved here from another machine it also lists `not brought along:`
+the install folders a lockfile rebuilds (`node_modules`, `.venv`) with the command that brings
+each back (see "What a moved chat left behind" in home). When nothing is installable and
+nothing was left behind, `/setup` says so and does nothing.
+
+## /setup now — install missing tools after a move, with ordinary network access
+
+`/setup now` starts a **setup turn**: the agent installs the installable items and brings back what a move left behind, into user space. A new chat's commands already have the network and this computer's ordinary access; `/setup` is not needed to open the network or to install outside the workspace. Each setup call asks first unless approvals are open (`--yolo` or the allow posture), or the arrival card already approved that exact listed command. The setup approval floor still applies in a host-bound chat. Calls are recorded as external and the turn says `Setup` in `codeaf cell log`.
+
+Limits: a setup turn is never replayed on another machine (the agent does it again there), never attempts impossible items, and can be rewound like any turn. When it ends, codeaf looks at what is now on this machine and updates the record. Existing cells keep their declared class: an older sandboxed cell still has its folder limits and opens its network for the setup turn only. Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first. A compatible furrow engine is required. Without a cell there is nothing to set up.

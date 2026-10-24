@@ -203,6 +203,10 @@ const (
 	GFollowUp
 	// GTeamDot marks a team identity in the navigation tree.
 	GTeamDot
+	// Map arrowheads keep diagram direction available in every repertoire.
+	GMapLeft
+	GMapUp
+	GMapDown
 	glyphIDCount
 )
 

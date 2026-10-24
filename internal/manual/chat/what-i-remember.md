@@ -389,12 +389,19 @@ every line's words, where it came from and whether it was active. A line an old
 store kept as "project" without naming the project is kept under the Memories
 tab's `couldn't tell which project` group until you move it.
 
-A window held by an engine keeps that engine until a newer build replaces it.
-Update codeaf on the machine holding the workspace and reconnect; on that same
-machine a newer build replaces the older engine as the window connects. For an
-engine on another machine, update codeaf there too, then run
-`codeaf engine --stop --workspace <that folder>` there when its work is safe and
-reconnect. `codeaf engine --status` names the engine.
+The window and the background engine can be on different builds. Updating the
+executable and reopening one window does not replace an older engine while
+workspace windows remain attached. `/status` shows **window build** and **engine
+build**, and follows a replacement after reconnection. A newer window can still
+be served by old memory code until that engine changes.
+
+Let current work finish, then close all windows attached to that workspace and
+reopen codeaf. To restart explicitly, run the exact workspace-specific command
+shown by `codeaf engine --status --workspace <folder>` on the machine holding
+it. The command uses the installed executable, including `devaf` when that is
+what you installed. Stopping an engine interrupts its active turns and tasks;
+other workspaces keep their own engines. “In use” can mean attached windows,
+not necessarily a running turn.
 
 
 ## Does memory work on the ordinary launch, over --host, and on a smaller model?
@@ -436,8 +443,8 @@ them: a line for one project is only ever put in front of that project's
 conversations.
 
 `CODEAF_HOME` moves the whole folder. Copy the file to another machine and your
-memories go with it; delete it and they are gone, because nothing keeps a second
-copy. A line kept for **this machine** travels in the file too, so check that
+memories go with it. Deleting it loses lines that no chat kept in its sealed
+ledger; a continued chat rebuilds the lines its ledger holds. A line kept for **this machine** travels in the file too, so check that
 group after copying.
 
 
@@ -468,8 +475,15 @@ once, keeps the conversation's own running summary of where the work stands, and
 `/settings` → Models (`google/gemini-2.5-flash` by default; nothing set means the
 conversation's own model), sends no token ceiling or reasoning switch, and is
 charged to the session total, so `/cost` includes it. An answer it cannot read
-costs one retry; a model that answers nothing is replaced for the session by the
-**small work** model, with one line saying so. Turning noticing off does not
+costs one repair. An empty or unavailable helper is skipped for that chat;
+recovery tries the configured **small work** model, then the current chat model,
+without changing your saved preferences. Attempts share 45 seconds, reserving
+time for each remaining distinct model. A notice identifies a substitute only
+after it returns a readable answer. `/settings` → Models lets you fix the helper;
+the running engine picks up saved helper changes on its next call without a
+restart. If all attempts fail temporarily, the original exchange is tried once
+more after two seconds in the background. Authentication, payment, quota and
+policy refusals do not start another model chain. Turning noticing off does not
 remove the call, because the running summary still needs it; it only stops lines
 being kept.
 
@@ -487,10 +501,16 @@ and the import tries again on the next turn.
 
 A save, a forget or the noticing pass that cannot reach the store is written to
 the store's journal with its reason, and the conversation says so once every
-five minutes at most: `couldn't update memory just now · <reason>`. When the
+five minutes at most. A failed background reading says
+`couldn't save this exchange to memory · use /remember to save an important detail`;
+a failed direct update says `couldn't update memory just now · <reason>`. When the
 journal itself cannot be written, the reason goes to
 `~/.codeaf/v3/memory-failures.log` instead. The turn you were having is never
-affected.
+affected. Background recovery stays owned by the open chat: closing it cancels
+pending attempts, and failed exchanges are not queued across restarts. A recovered
+reading saves normally without showing a failure notice. If all bounded attempts
+fail, `/remember <detail>` saves the important statement directly without a model
+request; it does not depend on the failed background service.
 
 
 ## What did we decide last week — can you look up an earlier conversation or search old chats
@@ -624,3 +644,13 @@ drops out and something confirmed this morning rises. A suggestion that fails on
 the same error is counted against itself. There is no command or panel for it,
 it is not on the Memories tab, and the noticing setting does not turn it off: the
 one line on a failed row is the whole of what it says.
+
+## Does /remember work on my other computer — hand edited memories follow my paired computers, memory missing on the new laptop
+
+Person and project memory follow your paired computers through the encrypted vault within one sync round, including hand-edited lines in the Memories place and lines written by older chats. No chat needs to be continued first. Concurrent edits of different lines both survive; for the same line the later edit wins, including forgetting a line. The service receives ciphertext only.
+
+Machine-scoped memories describe one computer and stay there. An unpaired home sends nothing. Pairing a computer that has its own memory merges those lines and preferences; explicit `--replace` replaces them. Chat-written memory still rides in each chat's own saved ledger as well.
+
+## Memory in older local conversations and new moving chats
+
+Memories use the local store on each computer. After pairing, an older conversation gets an independent movable copy with its earlier memory history sealed into `.cell/memories.jsonl`; the original is untouched. Person and project memory also sync independently through the encrypted vault.

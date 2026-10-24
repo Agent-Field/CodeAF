@@ -14,6 +14,7 @@ import (
 	preferences "github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/env"
+	procexec "github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
@@ -219,6 +220,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// every prompt profile: a person's lines hold over a small model too.
 	if config.Memory != nil {
 		agent.memory = newMemoryBrain(config.Memory)
+		bindMemoryLedger(config.Place, agent.tellWrote)
 		agent.memoryCtx, agent.memoryStop = context.WithCancel(context.Background())
 	}
 	// AND THE NAMER'S OWN LIFETIME, minted for every session because every
@@ -239,6 +241,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	agent.jobs.stage = config.mayStage()
 	agent.jobs.notifyQuiet = agent.enqueueJobNoteQuiet
 	agent.jobs.notifyUnowed = agent.enqueueJobNoteUnowed
+	agent.jobs.seat = config.seat()
+	agent.jobs.degradedNotice = agent.sayJailLimit
+	agent.jobs.lifecycle = lifecycleOf(config.Machine)
 	// And the registry gets the ROSTER lane as well as the waking one. A job is
 	// work this conversation started, so it shows on the right the way every
 	// other kind of work does — a quiet row while it runs, settled when it ends
@@ -290,6 +295,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		}
 		restored := replayed.messages
 		agent.file = file
+		file.onWrite = agent.tellWrote
 		agent.presentation = file.presentation
 		agent.restoreProgramHold()
 		// AND WHAT AN EARLIER PROCESS OF THIS SESSION MADE. It is the one thing
@@ -1092,6 +1098,7 @@ func (a *Agent) submitText(ctx context.Context, text string, person *messagePres
 // steering rules and the rail are laws about a turn starting, and two functions
 // applying them separately is two chances for one of them to stop.
 func (a *Agent) submitUser(ctx context.Context, user userMessage) (<-chan Event, error) {
+	a.owedResumeNews(user)
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
@@ -1114,6 +1121,10 @@ func (a *Agent) submitUser(ctx context.Context, user userMessage) (<-chan Event,
 		if user.bash != "" {
 			a.mu.Unlock()
 			return nil, errors.New(BashBusyWord)
+		}
+		if user.setup {
+			a.mu.Unlock()
+			return nil, errors.New(setupBusyWord)
 		}
 		// Steering. The message is queued rather than appended here because
 		// the transcript's tail is mid-tool-batch: a user message spliced
@@ -1141,7 +1152,7 @@ func (a *Agent) submitUser(ctx context.Context, user userMessage) (<-chan Event,
 			return refusedStream(err), nil
 		}
 	}
-	events := a.startTurnLocked(ctx, user, nil)
+	events := a.startTurnLocked(user.turnContext(ctx), user, nil)
 	a.mu.Unlock()
 	return events, nil
 }
@@ -1281,6 +1292,11 @@ type userMessage struct {
 
 	// closeKey belongs only to the pending continuation this note consumes.
 	closeKey string
+	// setup marks the harness's own setup turn (setup.go); only SubmitSetup sets it.
+	setup bool
+	// grants are the commands the person consented to by starting the setup turn:
+	// exactly the ones the offer listed. Only SubmitSetup sets them.
+	grants []string
 	// bash is set only by the person's SubmitBash door; model output cannot enter it.
 	bash string
 	// person is what the door that sent this message said about it beyond its
@@ -1962,6 +1978,10 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	gone := make(chan struct{})
 	a.abandon = gone
 	turnCtx = withAbandon(turnCtx, gone)
+	// AND ITS TOOL CALLS RUN ON THE SESSION'S OWN EXECUTOR, carried the same way
+	// and for the same reason: the tools that spawn hold no reference to the agent.
+	turnCtx = procexec.With(turnCtx, a.config.seatFor(turnCtx))
+	turnCtx = procexec.WithDegradedNotice(turnCtx, a.sayJailLimit)
 	// AND THE TURN IS NUMBERED, so that a turn this session has DISOWNED cannot
 	// clean up after the turn that replaced it. See [Agent.Abandon]; the cleanup
 	// below is the only reader.
@@ -2851,13 +2871,31 @@ func (a *Agent) Close() error {
 	}
 	// Quit stays responsive, but another process must not claim this journal
 	// for deletion while a cancelled run still owns task record writers.
+	drainCtx, drainCancel := context.WithTimeout(context.Background(), procexec.DrainWithin)
+	defer drainCancel()
 	if !deleting && beltDone != nil {
 		select {
 		case <-beltDone:
 		default:
-			a.finishCloseWhenStopped()
-			return nil
+			// A capture seat must see the stopped worker's final transcript.
+			// Other seats keep their existing deferred journal close.
+			if _, saves := a.config.seat().(procexec.Drainer); !saves {
+				a.finishCloseWhenStopped()
+				return nil
+			}
+			select {
+			case <-beltDone:
+			case <-drainCtx.Done():
+				a.finishCloseWhenStopped()
+				return fmt.Errorf("still saving this chat while its workers stop: %w", drainCtx.Err())
+			}
 		}
+	}
+	if err := procexec.Drain(drainCtx, a.config.seat()); err != nil {
+		if file != nil {
+			_ = file.Close()
+		}
+		return err
 	}
 	if file == nil {
 		return nil
@@ -3208,6 +3246,8 @@ func (a *Agent) landVolatileLocked() {
 	// would re-send the card each time (team.go's [teamNoteOpening]). A
 	// conversation that manages nothing has an empty block and lands nothing.
 	a.landNoteLocked(teamNoteOpening, a.teamBlockLocked())
+	a.landMovedCopyLocked()
+	a.landInterruptedLocked()
 }
 
 // landNoteLocked appends one of the session's own notes when what it says has
@@ -3272,7 +3312,9 @@ func isVolatileNote(text string) bool {
 		strings.HasPrefix(text, bashBeltFrameOpening) ||
 		strings.HasPrefix(text, teamNoteOpening) ||
 		strings.HasPrefix(text, teamRoleNoteOpening) ||
-		strings.HasPrefix(text, helpersNoteOpening)
+		strings.HasPrefix(text, helpersNoteOpening) ||
+		strings.HasPrefix(text, movedCopyNoteOpening) ||
+		strings.HasPrefix(text, interruptedNoteOpening)
 }
 
 // mayBashBelt is [Config.mayBashBelt] asked of a live agent, so that the

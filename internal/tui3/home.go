@@ -3,6 +3,7 @@ package tui3
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/automation"
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
@@ -127,10 +129,22 @@ func homeTick(gen int) tea.Cmd {
 // been closed and reopened re-arms nothing either, which is how there stays one
 // clock.
 func (a *app) homeBeat(gen int) tea.Cmd {
-	if !a.at(pageHome) || gen != a.homeGen {
+	if !a.at(pageHome) {
+		if !a.watchesConversation() {
+			return a.tendWatch(a.devicesCardOpen())
+		}
+		// Closing home advances its generation once. Its one outstanding tick
+		// now belongs to the open conversation; older visits cannot start a
+		// second chain, and the directory keeps its adaptive polling pace.
+		if gen != a.homeGen && gen+1 != a.homeGen {
+			return nil
+		}
+		return tea.Batch(a.pollMachines(a.now()), homeTick(a.homeGen))
+	}
+	if gen != a.homeGen {
 		return nil
 	}
-	a.refreshHome()
+	refresh := a.refreshHomeLater()
 	a.refreshCreditWarnings()
 	// AND THE ROW A MOVE LEFT BEHIND IS AIMED AT AGAIN, because the reading above
 	// has just put the cursor back on this window's own conversation and the row
@@ -140,7 +154,7 @@ func (a *app) homeBeat(gen int) tea.Cmd {
 	// THE BEAT REBUILDS THE LIST AND THE CURSOR FOLLOWS ITS CONVERSATION
 	// ([homeView.build]), so the row the card is about may be a row nothing has
 	// read for. It is an arrival like a key (homecardread.go).
-	asked := tea.Batch(a.refreshHomeCard(a.now()), a.refreshGridReadings(a.now()), a.askEngines())
+	asked := tea.Batch(refresh, a.refreshHomeCard(a.now()), a.refreshGridReadings(a.now()), a.askEngines())
 	// A task starting in another window arrives on this beat, and the spinner it
 	// earns needs the fast clock — woken here because this is the only moment
 	// home learns anything ([app.homeAnimating]; paint keeps it turning and lets
@@ -413,6 +427,13 @@ type homeRowKind uint8
 // line that says nothing.
 const homeEmptyRow homeRowKind = 230
 
+// homeMachineRow is ONE CHAT ON ANOTHER MACHINE in the sessions panel
+// (homepanel_machines.go). It is numbered outside the iota block for
+// [homeEmptyRow]'s reason. A row that carries its chat ([homeLine.remote]) is a
+// cursor stop and enter runs the offer it makes ([app.homeMachineEnter]); the
+// dim `other machines unreachable` line under the list carries none and is not.
+const homeMachineRow homeRowKind = 231
+
 const (
 	// homeHeading is a project's name. It is not a cursor stop: there is
 	// nothing to do to a project, and a cursor that had to be walked past every
@@ -482,6 +503,9 @@ type homeLine struct {
 	says string
 	// row is the conversation, for [homeSession].
 	row session.SessionRow
+	// remote is the chat on another machine a [homeMachineRow] stands for, and
+	// nil on the line that only says the machines cannot be reached.
+	remote *chatlist.Row
 	// quiet is how many conversations the collapsed line stands for, and since
 	// when nobody has been in them. folded says the line is hiding them right
 	// now; an expanded project keeps the line as the way back.
@@ -792,6 +816,8 @@ type homeView struct {
 	// reading of them (automationwatch.go).
 	autos  []automation.Automation
 	active []automation.Run
+	// others holds the last listing of chats on other machines for redraws.
+	others machineReading
 
 	// The resting grid's own state (homegrid.go). cols is how many columns this
 	// frame has room for, settled by the draw before the lines are built exactly
@@ -870,21 +896,25 @@ func (a *app) openHome() tea.Cmd { return a.showPage(pageHome) }
 func (a *app) raiseHome() tea.Cmd {
 	a.closeLists()
 	a.dismissWelcome()
-	world, known := a.readWorldKnown()
+	world, known := a.homeReading.world, a.homeReading.known
 	// THE SAME VIEW THE GREETING BUILDS, BY THE SAME CONSTRUCTOR, AND THE SAME
 	// READINGS: [app.newHomeView] and [app.furnishHome] are the one list of each,
 	// and this road adds only what a door has that a greeting does not — the
 	// cursor's memory of where this window was before.
 	a.home = a.newHomeView(world, known)
-	a.furnishHome()
+	a.useHomeReading(a.homeReading)
+	a.furnishHomeCached()
 	a.home.openAt(a.file)
 	// AND THE CURSOR STANDS ON THE CONVERSATION BEFORE THIS ONE, where this
 	// window has one (homegrid.go's [app.homePreselect]).
 	a.homePreselect()
+	// OPENING HOME IS A PERSON ARRIVING: the directory is asked now and the wait
+	// starts over at the fast pace (machinepoll.go).
+	a.machinePoll.hurry()
 	// AND THE CARD'S OWN READINGS ARE TAKEN AT THE ARRIVAL, never in the draw
 	// (homecardread.go). The repository among them is a command, so it is asked
 	// for rather than waited on and comes back as a message.
-	asked := tea.Batch(a.refreshHomeCard(time.Now()), a.refreshGridReadings(time.Now()))
+	asked := tea.Batch(a.refreshHomeLater(), a.refreshHomeCard(time.Now()), a.refreshGridReadings(time.Now()))
 	a.touch()
 	// THE PAINT CLOCK JOINS THE SLOW TICK when a row on the column is running:
 	// the spinner and the count-up are claims about this instant, and a still
@@ -1081,10 +1111,17 @@ func (a *app) readWorldKnown() (session.World, bool) {
 		return session.World{}, false
 	}
 	if file := strings.TrimSpace(a.file); file != "" {
+		// A cache may hand the same slices to several readers. Adopt can insert and
+		// sort rows, so only the reader's own slices may be changed.
+		world.Projects = slices.Clone(world.Projects)
+		for i := range world.Projects {
+			world.Projects[i].Sessions = slices.Clone(world.Projects[i].Sessions)
+		}
 		world.Adopt(a.worldRoot(), session.SessionRow{
 			Transcript: file, Title: a.title, Workspace: a.workspace, Model: a.model,
 		}, time.Now())
 	}
+	a.homeReading.world, a.homeReading.known = world, true
 	return world, true
 }
 
@@ -1198,10 +1235,12 @@ func (a *app) dropHome() {
 // both roads get.
 func (a *app) newHomeView(world session.World, known bool) homeView {
 	return homeView{
+		msg:        a.homeAccountNotice,
 		tabs:       a.tabList,
 		holding:    a.holding,
 		closedTabs: func() []chatTab { return a.closedTabs },
 		why:        a.homeWhyEmpty(),
+		others:     a.othersNow(),
 		world:      world,
 		known:      known,
 		far:        a.hosted(),
@@ -1291,6 +1330,7 @@ func (a *app) furnishHome() {
 	// [homeView.build] is the one that keeps the cursor on its conversation, so
 	// on the beat this is a rescan and a rebuild and nothing else.
 	a.home.build()
+	a.rememberHomeReading()
 }
 
 // placesRoot is where the projects live. The field is the test's door and
@@ -1935,6 +1975,8 @@ func (l homeLine) sameRow(other homeLine) bool {
 		return l.project != "" && l.project == other.project && l.dir == other.dir
 	case homeAction, homeAskHere:
 		return true
+	case homeMachineRow:
+		return l.remote != nil && other.remote != nil && l.remote.Cell == other.remote.Cell
 	}
 	return false
 }
@@ -2229,6 +2271,10 @@ func (l homeLine) stop() bool {
 	// phone lane: the inbox's own two stops (homephone.go).
 	case homePhoneNews, homePhoneMore:
 		return true
+	// a chat on another machine is a door into what can be done with it; the
+	// sentence saying the machines cannot be reached is only read.
+	case homeMachineRow:
+		return l.remote != nil
 	// the switcher's own: a `since you left` line is a door into the place that
 	// owns it. Its headings are not, for [homeHeading]'s reason (place_home.go),
 	// and neither is a [homeReadout] — spend's lines are read, not stood on.
@@ -2900,6 +2946,11 @@ func (h *homeView) buildFor() {
 func (a *app) homeSubmit() tea.Cmd {
 	h := &a.home
 	typed := strings.TrimSpace(h.box.String())
+	if isPairLink(typed) {
+		h.box.reset()
+		h.build()
+		return a.openApprove(typed)
+	}
 	if _, bash := session.BashCommand(typed); bash {
 		return a.homeStart(typed)
 	}
@@ -3021,6 +3072,10 @@ func (a *app) homeEnter() tea.Cmd {
 		// here: there is no one conversation a project line stands for.
 		h.foldProject(line.dir, line.folded)
 		return nil
+	case homeMachineRow:
+		// A CHAT ON ANOTHER MACHINE ANSWERS WITH THE OFFER IT MAKES
+		// (homepanel_continue.go): continue it here, or what to do with a branch.
+		return a.homeMachineEnter(line)
 	case homeLedger:
 		// A `since you left` LINE IS A DOOR INTO THE PLACE THAT OWNS IT
 		// (place_home.go). It is the whole discoverability mechanism of this
@@ -3327,6 +3382,16 @@ func (a *app) homeGone(where string) bool {
 		return false
 	}
 	return a.home.gone[where]
+}
+
+// homeFolderHere is whether the last reading found this folder on this
+// machine. A folder the reading has not reached is not here: Home reads in
+// the background, and until it answers, a copy taken from another machine must
+// not be named for a folder that may exist only on the machine it left.
+func (a *app) homeFolderHere(where string) bool {
+	where = strings.TrimSpace(where)
+	gone, asked := a.home.gone[where]
+	return where != "" && asked && !gone
 }
 
 // homeRowGone is the same question asked about one conversation's row.
@@ -3710,6 +3775,9 @@ func (a *app) homeHeldNow(row session.SessionRow) bool {
 // homeWhere is the project a row belongs to, in the words a person would type:
 // the project's own path, and its bucket name when nothing recorded one.
 func homeWhere(line homeLine) string {
+	if line.row.Owned && strings.TrimSpace(line.row.Workspace) != "" {
+		return line.row.Workspace
+	}
 	if path := strings.TrimSpace(line.row.ProjectDir); path != "" {
 		return path
 	}
@@ -3724,7 +3792,7 @@ func homeSessionDirOf(transcript string) string {
 	if transcript == "" {
 		return ""
 	}
-	return filepath.Clean(filepath.Dir(transcript))
+	return filepath.Clean(session.DirOf(transcript))
 }
 
 // homeBucketOf is the project directory a transcript belongs to. A session
@@ -3736,11 +3804,7 @@ func homeBucketOf(transcript string) string {
 	if transcript == "" {
 		return ""
 	}
-	dir := filepath.Dir(transcript)
-	if filepath.Base(transcript) == "transcript.jsonl" {
-		return filepath.Clean(filepath.Dir(dir))
-	}
-	return filepath.Clean(dir)
+	return filepath.Clean(session.BucketOf(transcript))
 }
 
 // ── the door from inside a conversation ─────────────────────────────────────

@@ -115,8 +115,8 @@ func taskCheckpointPath(sessionFile string) string {
 	if sessionFile == "" {
 		return ""
 	}
-	if filepath.Base(sessionFile) == placeTranscript {
-		return filepath.Join(filepath.Dir(sessionFile), placeTasks)
+	if dir, ok := FolderOf(sessionFile); ok {
+		return truthPath(dir, placeTasks)
 	}
 	return strings.TrimSuffix(sessionFile, filepath.Ext(sessionFile)) + ".tasks.json"
 }
@@ -758,7 +758,8 @@ type runRecord struct {
 	JobCallID   string `json:"job_call_id,omitempty"`
 	JobExitCode *int   `json:"job_exit_code,omitempty"`
 
-	CrewState *TaskCrewRecord `json:"crewState,omitempty"`
+	RecoveredCompletion bool            `json:"recoveredCompletion,omitempty"`
+	CrewState           *TaskCrewRecord `json:"crewState,omitempty"`
 
 	ID     uint64 `json:"id"`
 	Run    string `json:"run,omitempty"`
@@ -957,6 +958,9 @@ func (s *taskStore) writeLocked(document taskDocument) error {
 		s.duringWrite()
 	}
 	document = filterDeletedDocument(document, taskDeletions(filepath.Join(filepath.Dir(s.path), placeTranscript)))
+	if codec, sealed := checkpointCodec(s.path); sealed {
+		document = document.mapPaths(codec.encode)
+	}
 	encoded, err := json.MarshalIndent(document, "", "  ")
 	if err != nil {
 		return err
@@ -1173,32 +1177,33 @@ func runRowRecord(notice TaskNotice) runRecord {
 	}
 	return runRecord{
 		JobCommand: notice.JobCommand, JobCallID: notice.JobCallID, JobExitCode: notice.JobExitCode,
-		CrewState:  notice.CrewState,
-		ID:         notice.ID,
-		Run:        notice.Run,
-		Node:       notice.Node,
-		Parent:     notice.Parent,
-		Title:      notice.Title,
-		Kind:       notice.Kind,
-		Program:    notice.Program,
-		Source:     cloneSource(notice.Source),
-		State:      state,
-		Stopped:    notice.Stopped,
-		Report:     notice.Report,
-		Model:      notice.Model,
-		CostUSD:    notice.CostUSD,
-		ElapsedMS:  notice.Elapsed.Milliseconds(),
-		StartedAt:  notice.StartedAt,
-		EndedAt:    notice.EndedAt,
-		Copy:       notice.Copy,
-		PendingRun: notice.PendingRun,
-		Park:       notice.park.bounded(),
-		Ending:     notice.Ending,
-		Branch:     notice.Branch,
-		Merge:      notice.Merge,
-		Result:     notice.Result,
-		Changed:    append([]string(nil), notice.Changed...),
-		PlanTask:   notice.PlanTask,
+		CrewState:           notice.CrewState,
+		ID:                  notice.ID,
+		Run:                 notice.Run,
+		Node:                notice.Node,
+		Parent:              notice.Parent,
+		Title:               notice.Title,
+		Kind:                notice.Kind,
+		Program:             notice.Program,
+		Source:              cloneSource(notice.Source),
+		State:               state,
+		Stopped:             notice.Stopped,
+		Report:              notice.Report,
+		Model:               notice.Model,
+		CostUSD:             notice.CostUSD,
+		ElapsedMS:           notice.Elapsed.Milliseconds(),
+		StartedAt:           notice.StartedAt,
+		EndedAt:             notice.EndedAt,
+		Copy:                notice.Copy,
+		PendingRun:          notice.PendingRun,
+		Park:                notice.park.bounded(),
+		Ending:              notice.Ending,
+		Branch:              notice.Branch,
+		Merge:               notice.Merge,
+		Result:              notice.Result,
+		Changed:             append([]string(nil), notice.Changed...),
+		PlanTask:            notice.PlanTask,
+		RecoveredCompletion: notice.RecoveredCompletion,
 	}
 }
 
@@ -1238,16 +1243,17 @@ func runRowNotice(record runRecord) TaskNotice {
 		CostUSD:   record.CostUSD,
 		Elapsed:   time.Duration(record.ElapsedMS) * time.Millisecond,
 
-		StartedAt:  record.StartedAt,
-		EndedAt:    record.EndedAt,
-		Copy:       record.Copy,
-		PendingRun: record.PendingRun,
-		Ending:     record.Ending,
-		Branch:     record.Branch,
-		Merge:      record.Merge,
-		Result:     record.Result,
-		Changed:    append([]string(nil), record.Changed...),
-		PlanTask:   record.PlanTask,
+		StartedAt:           record.StartedAt,
+		EndedAt:             record.EndedAt,
+		Copy:                record.Copy,
+		PendingRun:          record.PendingRun,
+		Ending:              record.Ending,
+		Branch:              record.Branch,
+		Merge:               record.Merge,
+		Result:              record.Result,
+		Changed:             append([]string(nil), record.Changed...),
+		PlanTask:            record.PlanTask,
+		RecoveredCompletion: record.RecoveredCompletion,
 	}
 	if record.CrewState != nil && record.CrewState.Routed {
 		decision := record.CrewState.Decision
@@ -1433,6 +1439,9 @@ func loadTaskCheckpoint(path string) (taskDocument, bool) {
 	if err != nil {
 		log.Printf("session: ignoring corrupt task checkpoint %s: %v", path, err)
 		return taskDocument{}, false
+	}
+	if codec, sealed := checkpointCodec(path); sealed {
+		document = document.mapPaths(codec.resolve)
 	}
 	return filterDeletedDocument(document, taskDeletions(filepath.Join(filepath.Dir(path), placeTranscript))), true
 }

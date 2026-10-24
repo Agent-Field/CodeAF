@@ -42,7 +42,16 @@ const sqliteBusyCode = 5
 // which a writer is free to retry.
 func isBusy(err error) bool {
 	var refusal *sqlite.Error
-	return errors.As(err, &refusal) && refusal.Code() == sqliteBusyCode
+	return errors.As(err, &refusal) && refusal.Code()&255 == sqliteBusyCode
+}
+
+// writeLockError preserves SQLite's typed cause and explains a safe retry.
+// It is used before a write transaction begins, so no mutation was applied.
+func writeLockError(err error) error {
+	if isBusy(err) {
+		return fmt.Errorf("plan store is busy with another writer; no changes were made; retry this command after the other writer finishes: %w", err)
+	}
+	return err
 }
 
 // errNoStore says the database has no meta row yet — a file that exists (or
@@ -233,9 +242,14 @@ func openDatabase(path string) (*sql.DB, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("open plan store database: %w", err)
 	}
-	if err := ensureSchema(db); err != nil {
-		_ = db.Close()
-		return nil, err
+	// Current WAL stores need no writer lock merely to be opened. Checking
+	// their idempotent schema on a read-only, deferred handle preserves the
+	// same migration definitions; only a missing/older schema takes the writer.
+	if err := checkSchemaReadOnly(path); err != nil {
+		if err := ensureSchema(db); err != nil {
+			_ = db.Close()
+			return nil, err
+		}
 	}
 	return db, nil
 }
@@ -248,7 +262,7 @@ func openDatabase(path string) (*sql.DB, error) {
 // for it. The write handle is always opened first, so the schema this one
 // reads already exists.
 func openReadDatabase(path string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite", StoreURI(path, "_pragma=busy_timeout(5000)"))
+	db, err := sql.Open("sqlite", StoreURI(path, "mode=ro&_pragma=busy_timeout(5000)"))
 	if err != nil {
 		return nil, err
 	}
@@ -272,7 +286,8 @@ func openReadDatabase(path string) (*sql.DB, error) {
 // EVERY STATEMENT IS IDEMPOTENT. Each table arrives IF NOT EXISTS and each
 // column is added only when the table does not already carry it, so a store
 // that is already current is rewritten to exactly the schema it holds and the
-// commit writes no page — an open of an existing plan makes no write at all.
+// commit writes no page. A current schema is checked first on a read-only
+// DEFERRED handle, so an ordinary open does not acquire a writer lock.
 // AND NOTHING IS DROPPED on this road: the schema is created and never torn
 // down, so the table a reader reaches for is present from the first commit and
 // stays present after.
@@ -284,9 +299,31 @@ func ensureSchema(db *sql.DB) error {
 	if err := enterWAL(db); err != nil {
 		return err
 	}
-	tx, err := db.Begin()
+	return schemaTransaction(db)
+}
+
+// checkSchemaReadOnly succeeds only when the existing schema and WAL mode
+// already satisfy this build. mode=ro forbids any accidental migration here.
+func checkSchemaReadOnly(path string) error {
+	db, err := openReadDatabase(path)
 	if err != nil {
 		return err
+	}
+	defer db.Close()
+	var mode string
+	if err := db.QueryRow("PRAGMA journal_mode").Scan(&mode); err != nil {
+		return err
+	}
+	if !strings.EqualFold(mode, "wal") {
+		return errors.New("plan store needs WAL initialization")
+	}
+	return schemaTransaction(db)
+}
+
+func schemaTransaction(db *sql.DB) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return writeLockError(err)
 	}
 	defer tx.Rollback()
 	for _, statement := range schemaStatements {

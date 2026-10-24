@@ -46,8 +46,9 @@ embed: manual-pack-law
 
 # ── the furrow that rides inside ────────────────────────────────────────────
 #
-# EVERY codeaf IS A codeaf WITH FURROW, so the build fetches furrow before it
-# can produce one. This step downloads the release pinned in
+# Unix builds carry furrow, so the build fetches it before producing codeaf.
+# Windows embeds the native engine through the same artifact door.
+# This step downloads the release pinned in
 # internal/furrowbin/pin.json for whatever platform is being built for, checks
 # it against the sha256 the pin names, keeps it in a gitignored third_party/
 # cache, and stages it gzipped where go:embed picks it up. Six megabytes of
@@ -60,7 +61,7 @@ embed: manual-pack-law
 # build that produced a codeaf without furrow inside it.
 #
 # On a machine with no network, point it at an artifact already on disk — the
-# sha256 is checked either way, so this is an offline road and not a looser one:
+# explicit artifact is a developer override; the normal fetch checks the pin:
 #
 #   make furrow FURROW_ARTIFACT=~/.agentfield/bin/furrow
 #
@@ -72,10 +73,22 @@ embed: manual-pack-law
 FURROW_GOOS := $(shell go env GOOS)
 FURROW_GOARCH := $(shell go env GOARCH)
 
+# Normal builds fetch the pinned release. Explicit artifacts and external source
+# checkouts are deliberate developer overrides, staged through the same door.
+FURROW_SOURCE ?=
+FURROW_SOURCE_TARGET = $(if $(CARGO_TARGET_DIR),$(CARGO_TARGET_DIR),$(FURROW_SOURCE)/target)
+
 furrow:
+ifneq ($(strip $(FURROW_SOURCE)),)
+	cd "$(FURROW_SOURCE)" && cargo build --release --locked -p furrow-cli
 	@env -u GOOS -u GOARCH go run ./internal/furrowbin/cmd/fetch \
 		-goos=$(FURROW_GOOS) -goarch=$(FURROW_GOARCH) \
-		$(if $(FURROW_ARTIFACT),-from "$(FURROW_ARTIFACT)")
+		-built "$(FURROW_SOURCE_TARGET)/release/furrow"
+else
+	@env -u GOOS -u GOARCH go run ./internal/furrowbin/cmd/fetch \
+		-goos=$(FURROW_GOOS) -goarch=$(FURROW_GOARCH) \
+		$(if $(FURROW_ARTIFACT),-built "$(FURROW_ARTIFACT)")
+endif
 
 # The symbol table and DWARF are a third of the shipped binary and nothing at
 # runtime reads them. Stripping costs symbolized panic traces, which is exactly

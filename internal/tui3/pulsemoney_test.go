@@ -138,9 +138,7 @@ func spendPlaceMoney(t *testing.T, a *app) string {
 // silently stayed where it was would prove nothing about anywhere.
 func walkTo(t *testing.T, a *app, id page) {
 	t.Helper()
-	if cmd := a.showPage(id); cmd != nil {
-		runCmd(cmd)
-	}
+	spend(t, a, a.showPage(id))
 	if !a.at(id) {
 		t.Fatalf("%s did not open", id.word())
 	}
@@ -245,7 +243,7 @@ func TestTheTopLineSpellsTheLimitTheWayEverySurfaceSpellsIt(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(lab.root, session.UsageLedgerName), append(raw, '\n'), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		a.openHome()
+		spend(t, a, a.openHome())
 
 		want := railFigure(rail)
 		drawn := ""

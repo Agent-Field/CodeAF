@@ -316,7 +316,13 @@ func renderSystemAt(config Config, now time.Time) string {
 	// ([renderBeltFacts]) or the shell, or the pages are the wrong shape's.
 	if config.mayBashBelt() {
 		var out strings.Builder
-		out.WriteString(bashWorkerPage())
+		if _, err := shell.Bash(); err != nil {
+			// A worker without its command tool must explain the missing
+			// requirement rather than follow a doctrine that promises it.
+			out.WriteString("You are codeaf. Shell commands are unavailable here. Explain the shell requirement from Project, and do not claim to run commands. The manual tool can explain Windows setup.\n")
+		} else {
+			out.WriteString(bashWorkerPage())
+		}
 		out.WriteString(workerFooter(config, now))
 		return out.String()
 	}
@@ -330,6 +336,11 @@ func renderSystemAt(config Config, now time.Time) string {
 	// the shape; this conditions the sentences INSIDE one, which is where five
 	// families of tools were being promised to workers that do not carry them.
 	page := strings.TrimRight(promptWithBeltFacts(config), "\n")
+	if _, err := shell.Bash(); err != nil {
+		// Unix keeps its exact prompt bytes. On Windows an absent command
+		// tool cannot inherit instructions that promise shell execution.
+		page = "Shell commands are unavailable here. Instructions below about bash apply only when that tool is present; explain the shell requirement from Project instead of promising commands.\n\n" + page
+	}
 	// AND THE PROFILE'S OWN CUT, WHICH IS THE ONE DOOR INTO IT. A lean prefix
 	// drops the sections [leanPageSections] names, by their `# ` heading, and
 	// gains the one line a shelved verb owes (promptprofile.go). A full prefix

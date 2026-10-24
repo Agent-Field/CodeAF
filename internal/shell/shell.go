@@ -29,7 +29,7 @@ import (
 )
 
 // NoBash is shared by every Windows command door so both remedies stay visible.
-const NoBash = "codeaf runs commands in Git for Windows' bash, and none was found: install Git for Windows, or set CODEAF_BASH to a bash.exe. WSL's bash.exe is not used."
+const NoBash = "codeaf runs commands in Git for Windows' bash, and none was found: install Git for Windows, or set CODEAF_BASH to a bash.exe; WSL's bash.exe is not used."
 
 // MissingBash and WSLBash distinguish an explicit choice that cannot work from
 // discovery finding nothing, so the remedy never contradicts the person's choice.
@@ -88,6 +88,13 @@ func IsWSL(name, systemRoot string) bool {
 	}
 	root := strings.ToLower(windowsClean(systemRoot))
 	if systemRoot == "" {
+		// A stripped environment cannot turn the ordinary Windows launchers
+		// into native shells merely by omitting SystemRoot.
+		for _, dir := range []string{"system32", "syswow64", "sysnative"} {
+			if strings.HasSuffix(name, `\windows\`+dir+`\bash.exe`) {
+				return true
+			}
+		}
 		return false
 	}
 	for _, dir := range []string{"system32", "syswow64", "sysnative"} {
@@ -169,6 +176,25 @@ func ResolveWindows(l Lookup) (string, error) {
 	}
 	if bash, err := l.LookPath("bash.exe"); err == nil && usable(bash) {
 		return bash, nil
+	}
+	// A WSL launcher early on PATH must not hide a native bash later on it.
+	// Split with Windows semantics even in pure Unix-host resolver tests.
+	for _, dir := range strings.Split(l.Env("PATH"), ";") {
+		dir = strings.Trim(dir, "\"")
+		if dir == "" || dir == "." {
+			continue
+		}
+		candidate := windowsClean(dir + `\bash.exe`)
+		if l.Abs != nil {
+			absolute, err := l.Abs(candidate)
+			if err != nil {
+				continue
+			}
+			candidate = absolute
+		}
+		if usable(candidate) {
+			return candidate, nil
+		}
 	}
 	return "", errors.New(NoBash)
 }
@@ -304,7 +330,7 @@ func PromptFact() string {
 	}
 	bash, err := Bash()
 	if err != nil {
-		return "- Shell: " + err.Error() + "\n"
+		return "- Shell commands are unavailable; there is no shell tool in this call. " + err.Error() + "\n"
 	}
 	return "- Shell: Git Bash (" + bash + "); Windows drives are /c/…, /d/…\n" + PathConversionFact
 }

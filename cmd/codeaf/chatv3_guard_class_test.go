@@ -19,6 +19,8 @@ import (
 // cancels and joins through Models.Close. chatv3/sweep-home is joined too, by
 // stopPlaceSweep since #1276. No row is known-open now; a new one that is must
 // name the later cell that owns it, and deleting it is part of landing that cell.
+// C29.2/C30.4 add surface-owned writers with cancellation and explicit joins.
+// C25 removes the budget worker entirely: opening a chat starts no collection.
 func TestV3ProcessGuardGoClass(t *testing.T) {
 	type class struct {
 		kind, stop, join, owner string
@@ -34,6 +36,8 @@ func TestV3ProcessGuardGoClass(t *testing.T) {
 		"chatv3/host-reap":        {kind: "one-shot", stop: "exec.Cmd.Wait returns when the replaced ssh child exits"},
 		"chatv3/host-follow":      {kind: "one-shot", stop: "remote Follow channel closes with the host connection"},
 		"chatv3/telemetry-events": {kind: "one-shot", stop: "source event channel closes and countedEvents returns"},
+		"sync/home-state":         {kind: "joined writer", stop: "surface stateCtx is cancelled on exit", join: "runSurface waits on stateDone before returning"},
+		"sync/older-chats":        {kind: "joined writer", stop: "surface stateCtx is cancelled on exit", join: "runSurface waits on copiesDone before returning"},
 		"memory/maintenance":      {kind: "joined writer", stop: "startClockMemoryMaintenance cancels its child of the clock context", join: "runClock defers stopMemoryMaintenance, which cancels and waits on done before the earlier openV3ClockProcess stop defer closes proc.Memory; TestClockMemoryMaintenanceStopsBeforeStoreCloses proves the join"},
 		"automations/retire":      {kind: "one-shot", stop: "the clock's own context ends when `codeaf clock` leaves, or the watcher cancels it on finding the binary replaced"},
 	}

@@ -1,0 +1,15 @@
+{
+  "request_pending": {"code":"k7m2q9xd","device":"dev_3Fq9","pubkey":"AAAA","x25519":"BBBB","name_sealed":"CCCC","platform":"linux","check":"4821","requested_at":1790000000000,"expires_at":1790000600000,"state":"pending","grant":null},
+  "create_answer": {"code":"k7m2q9xd","device":"dev_3Fq9","check":"4821","requested_at":1790000000000,"expires_at":1790000600000},
+  "device_legacy": {"V":1,"name":"bg==","added_by":"id_x","revoked":false,"caps":{"os":"linux","arch":"arm64","sandbox":null,"container":null,"gpu":null,"cow":"none"}},
+  "device_new": {"V":1,"name":"bg==","added_by":"id_x","revoked":false,"caps":{"os":"linux","arch":"arm64","sandbox":null,"container":null,"gpu":null,"cow":"none"},"platform":"linux","created":1790000123456,"last_seen":1790000999000},
+  "presence_list": {"now":1790000001000,"devices":{"dev_A":{"online":true,"last_seen":1790000001000},"dev_B":{"online":false,"last_seen":1789999000000}}},
+  "frames": [
+    {"v":42},
+    {"t":"joined","device":"dev_B","name":"bg==","platform":"linux","at":1790000123456},
+    {"t":"presence","device":"dev_B","online":true,"at":1790000123999},
+    {"t":"presence","device":"dev_B","online":false,"at":1790000555000},
+    {"t":"revoked","device":"dev_B","at":1790000700000}
+  ],
+  "error": {"err":"already_decided"}
+}

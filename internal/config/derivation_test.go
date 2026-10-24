@@ -115,12 +115,13 @@ func TestEveryRowIsGroupedNamedAndReadable(t *testing.T) {
 // wave apiece — so what is named here is the thing the reader touches, not the
 // spelling of the key.
 var settingReaders = map[string]string{
-	KeyWork:           "workMode",
-	KeyIcons:          "iconMode",
-	KeyDailyBudget:    "DailyBudgetUSD",
-	KeyPlanConsent:    "PlanConsentUSD",
-	KeyDocumentEngine: "DocumentEngine",
-	KeyVisionModel:    "VisionModel",
+	KeyChatModelRotation: "ChatModelRotationAt",
+	KeyWork:              "workMode",
+	KeyIcons:             "iconMode",
+	KeyDailyBudget:       "DailyBudgetUSD",
+	KeyPlanConsent:       "PlanConsentUSD",
+	KeyDocumentEngine:    "DocumentEngine",
+	KeyVisionModel:       "VisionModel",
 	// The model-name row names the one resolver every door turns it into a
 	// name through: the leaf loops' doors hand [AssistedByModelAt]'s answer to
 	// the attribution line.
@@ -248,6 +249,7 @@ var settingReaders = map[string]string{
 	KeyTaskParallel:  "TaskParallelAt",
 	KeyTaskMaxLoad:   "TaskMaxLoadAt",
 	KeyTaskMinFreeMB: "TaskMinFreeMBAt",
+	KeyCellBudget:    "CellBudgetGBAt",
 	// The task model is read by the v3 door and becomes session.Config.TaskModel,
 	// which a proposal that names no model of its own resolves through
 	// (internal/session's taskmodel.go). It names the accessor the door touches,

@@ -25,7 +25,7 @@ func init() {
 	}
 }
 
-// C1 and C6 prove the armed worker's real bash belt reaches its own native
+// N2 prove the armed worker's real bash belt reaches its own native
 // plandb and codeaf from another cwd, ahead of stale programs on PATH.
 func TestWindowsWorkerShims(t *testing.T) {
 	if _, err := commandshell.Bash(); err != nil {
@@ -98,7 +98,7 @@ func TestWindowsWorkerShims(t *testing.T) {
 	}
 }
 
-// C8 proves both rendered project-fact footers name the chosen Windows shell
+// N4 proves both rendered project-fact footers name the chosen Windows shell
 // and drive spelling, rather than only testing a detached formatting helper.
 func TestWindowsPromptFooter(t *testing.T) {
 	bash, err := commandshell.Bash()
@@ -112,5 +112,102 @@ func TestWindowsPromptFooter(t *testing.T) {
 		if !strings.Contains(page, "- Shell: Git Bash ("+bash+")") || !strings.Contains(page, "/c/…, /d/…") || !strings.Contains(page, commandshell.PathConversionFact) {
 			t.Fatalf("missing shell facts: %q", page)
 		}
+	}
+}
+
+// N1 omits bash from ordinary and task belts and stops before registering a job.
+func TestWindowsMissingShellBeltAndJobs(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_BASH", filepath.Join(t.TempDir(), "missing.exe"))
+	for _, task := range []bool{false, true} {
+		agent, err := newAgent(Config{Workspace: t.TempDir(), Model: "test/model", InTask: task, bashBelt: task}, &scriptedCompleter{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, tool := range agent.belt() {
+			if tool.Name == "bash" || tool.Name == "" || tool.Name == "watch" {
+				t.Fatalf("unusable tool %q", tool.Name)
+			}
+		}
+		if !task {
+			if _, err := agent.SubmitBash(context.Background(), "! echo WRONG > marker"); err == nil || !strings.Contains(err.Error(), "CODEAF_BASH") {
+				t.Fatalf("human shell did not explain missing bash: %v", err)
+			}
+		}
+		if _, err := agent.jobs.start("echo WRONG > marker"); err == nil {
+			t.Fatal("missing shell started a job")
+		}
+		page := renderSystemAt(agent.config, time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC))
+		if !strings.Contains(page, "Shell commands are unavailable") || !strings.Contains(page, "CODEAF_BASH") {
+			t.Fatalf("missing setup facts: %q", page)
+		}
+		agent.Close()
+	}
+}
+
+// N1 and N2 run session jobs, automations, watches and task checks through the
+// same native shell, preserving variables, cwd, exit status and the job log.
+func TestWindowsSessionCommandDoors(t *testing.T) {
+	if _, err := commandshell.Bash(); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	// This fixture owns its spending ledger as well as its agent; Windows
+	// cannot remove the temporary home while the ledger writer holds it open.
+	t.Cleanup(func() {
+		if !StopUsageWriter(UsageLedgerPath()) {
+			t.Error("fixture ledger did not close")
+		}
+	})
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "marker"), []byte("right"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	agent, err := newAgent(Config{Workspace: dir, Model: "test/model"}, &scriptedCompleter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer agent.Close()
+	command := `export PATH='/c/Program Files (x86)/fixture':$PATH; x=inner; printf '%s:' "$x"; cat marker`
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	sight, err := automationLookCommand(ctx, dir, command+"; exit 23")
+	if err != nil || sight.Text != "inner:right\n(exit status 23)" {
+		t.Fatalf("automation: %+v %v", sight, err)
+	}
+	output, failure := agent.jobs.runTick(ctx, watchSpec{command: command, every: 20 * time.Second})
+	if output != "inner:right" || failure != "" {
+		t.Fatalf("watch: %q %q", output, failure)
+	}
+	reading := runOneCheck(ctx, dir, command)
+	if !reading.Ran || !reading.Passed || reading.Tail != "inner:right" {
+		t.Fatalf("task check: %+v", reading)
+	}
+	stream, err := agent.SubmitBash(ctx, "!"+command+"; exit 23")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, event := range collect(t, stream) {
+		if event.Kind == EventToolFailed && strings.Contains(event.Output, "inner:right") && strings.Contains(event.Output, "23") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("the person's command lost its cwd, variables or exit status")
+	}
+
+	job, err := agent.jobs.start(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-job.done:
+	case <-ctx.Done():
+		t.Fatal("job did not finish")
+	}
+	body, err := os.ReadFile(job.logPath)
+	if err != nil || !strings.Contains(string(body), "inner:right") {
+		t.Fatalf("job log: %q %v", body, err)
 	}
 }

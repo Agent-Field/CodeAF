@@ -173,7 +173,7 @@ func ciCandidates(workspace string) []commandCandidate {
 		if yaml.Unmarshal([]byte(body), &document) != nil {
 			continue
 		}
-		candidates = appendYAMLCommandCandidates(candidates, &document, "", relative)
+		candidates = appendYAMLCommandCandidates(candidates, &document, "", filepath.ToSlash(relative))
 	}
 	return candidates
 }

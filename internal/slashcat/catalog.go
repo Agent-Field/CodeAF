@@ -381,6 +381,8 @@ var rows = []Row{
 	// /clean already means "start another conversation" there, and a word that
 	// sometimes cleared the screen and sometimes deleted half a gigabyte would
 	// be the most expensive pun on the surface.
+	{Name: "setup", Desc: "prepare this machine · what it lacks for this conversation"},
+	{Name: "setup", Args: "now", Desc: "…have the agent install what it can · asks first"},
 	{Name: "cache", Desc: "the shared build cache — how big, and where"},
 	{Name: "cache", Args: "clean", Desc: "…delete it to free disk · asks before anything is removed"},
 	{Name: "cache", Args: "clean now", Desc: "…delete the cache now"},
@@ -479,6 +481,27 @@ var rows = []Row{
 	// and position here is a claim about frequency — nobody turns the record on
 	// twice in a day, and a row inserted higher would push a daily command
 	// behind a scroll.
+	// SHARING YOUR CHATS WITH ANOTHER COMPUTER (pair.go). It is an errand nobody
+	// does twice in a day, so it stands below the daily eight with /update and
+	// /debug, where position in this table is the honest claim about frequency.
+	//
+	// TWO ROWS FOR ONE COMMAND, /export's reason exactly: the bare form is the one
+	// that can be run from the list, and the one that takes a code rides under it
+	// wearing the "…" of the other computer. The other words are what people say
+	// they want: "use this on my laptop", "sync my chats", "connect another
+	// computer".
+	{Name: "pair", Desc: "show a code that shares your chats with another computer",
+		Alias: []string{"sync", "link", "laptop"}},
+	{Name: "pair", Args: "<code>", Desc: "…join the chats of the computer that shows that code"},
+	{Name: "pair", Args: "<link>", Desc: "…approve a new computer from the link it shows"},
+	{Name: "pair", Args: "<code> --replace", Desc: "…join, replacing this computer's own chats with its chats"},
+	{Name: "devices", Desc: "list your devices · n renames this one, r removes one"},
+	// THE ARCHITECTURE MAP, INSIDE THE CONVERSATION (atlascmd.go). It rides
+	// beside the pair rows because it is a picture OF that work, and it is
+	// read-only and spends nothing — the same map `codeaf atlas` draws on its
+	// own terminal, opened here so a person mid-chat does not leave the window.
+	// esc or q hands the conversation back.
+	{Name: "atlas", Args: "<map>", Desc: "the architecture map · bare /atlas picks one"},
 	{Name: "debug", Desc: "keep the full record of this conversation · says where it goes"},
 	{Name: "update", Desc: "install the newest codeaf for the next launch", Alias: []string{"upgrade"}},
 	{Name: "update", Args: "<channel or tag>", Desc: "…that channel or exact tag; skip or never answer an open offer"},

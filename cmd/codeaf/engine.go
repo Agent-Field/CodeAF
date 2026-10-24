@@ -53,12 +53,15 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	factorystore "github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
 
 // A session agent is what the wire serves, and this is where the two are held
@@ -248,6 +251,9 @@ type engineBuild struct {
 	// Binary is the file this process runs from, "" when the platform will
 	// not say.
 	Binary string
+	// Cells is the cells mode this process runs in. A host answers with its
+	// own, and the door settles the two ([settleCellsMode]).
+	Cells bool
 }
 
 // thisEngineBuild is the build that is running, measured the way a host
@@ -257,6 +263,7 @@ func thisEngineBuild() engineBuild {
 		Build:   buildinfo.Identity(),
 		BuiltAt: enginehost.BuildMoment(),
 		Binary:  enginehost.ThisBinary(),
+		Cells:   cell.Available(),
 	}
 }
 
@@ -303,9 +310,20 @@ func clearStaleEngineHostAs(workspace string, me engineBuild) (string, error) {
 		return "", nil
 	}
 	host := held.Self
+	// A relay choice governs every session the host serves. Joining busy work
+	// with the old choice would ignore this terminal's off switch or address.
+	if held.Answered && host.Version == remote.Version && enginehost.SyncDiffers(workspace) {
+		if err := enginehost.Retire(workspace, false); err != nil {
+			if errors.Is(err, enginehost.ErrHostBusy) {
+				return "", &staleHost{reason: differentEngineEnvironmentSentence(hostWorkspace(host, workspace))}
+			}
+			return "", err
+		}
+		return "the engine restarted to pick up this terminal's sync setting", nil
+	}
 	if held.Answered && sameEngineBuild(host, me) {
 		if !enginehost.EnvironmentDiffers(workspace) {
-			return "", nil
+			return settleCellsMode(workspace, host, me)
 		}
 		// THE HOST DECIDES WHETHER IT CAN GO. Never send Anyway for an
 		// environment change: a window, turn, question or background work must
@@ -318,7 +336,7 @@ func clearStaleEngineHostAs(workspace string, me engineBuild) (string, error) {
 	if held.Answered && !host.BuiltAt.Before(me.BuiltAt) {
 		// A NEWER BUILD (or a tie) IS NOT REPLACED FROM HERE. Same wire: join it.
 		if host.Version == remote.Version {
-			return "", nil
+			return settleCellsMode(workspace, host, me)
 		}
 		return "", &staleHost{reason: newerEngineHostSentence(hostWorkspace(host, workspace))}
 	}
@@ -397,11 +415,74 @@ func nothingHolds(workspace string) bool {
 // differentEngineEnvironmentSentence names the host's workspace so the command
 // stops the folder actually holding the old environment, including from Home.
 func differentEngineEnvironmentSentence(workspace string) string {
+	stop := engineStopWords(workspace)
+	return "the background engine for this folder started with a different environment than this terminal and is still in use — after work finishes, close every window for this workspace and reopen. To stop now (interrupts active turns and tasks), run " + stop
+}
+
+// settleCellsMode checks the capability of an already-running host before
+// a new window relies on it. An idle older host can retire; a busy host keeps
+// its work until the person finishes it or explicitly stops that workspace.
+func settleCellsMode(workspace string, host remote.HostSelf, me engineBuild) (string, error) {
+	if host.Cells == me.Cells {
+		return "", nil
+	}
+	err := enginehost.Retire(workspace, false)
+	if errors.Is(err, enginehost.ErrHostBusy) {
+		return "", &staleHost{reason: cellsHostBusySentence(host.Cells, hostWorkspace(host, workspace))}
+	}
+	if err != nil {
+		return "", err
+	}
+	return cellsRestartedSentence(me.Cells), nil
+}
+
+// cellsMode describes the capability an older host reported.
+func cellsMode(on bool) string {
+	if on {
+		return "with moving chats"
+	}
+	return "without moving chats"
+}
+
+// cellsStatus describes actual support without suggesting a feature switch.
+func cellsStatus(available bool) string {
+	if available {
+		return "available"
+	}
+	return "unavailable"
+}
+
+// cellsRestartedSentence is the line owed for replacing an idle host.
+func cellsRestartedSentence(now bool) string {
+	return fmt.Sprintf("restarted the idle engine because it ran %s; %s available now", cellsMode(!now), cellsCapability(now))
+}
+
+// cellsCapability names the capability after an idle host has been replaced.
+func cellsCapability(available bool) string {
+	if available {
+		return "moving chats"
+	}
+	return "ordinary chats"
+}
+
+// cellsHostBusySentence is the refusal for a host in the other mode that is
+// still holding work. It names the workspace in the command, for the reason
+// [staleEngineHostSentence] gives.
+func cellsHostBusySentence(hostCells bool, workspace string) string {
 	stop := "codeaf engine --stop"
 	if workspace = strings.TrimSpace(workspace); workspace != "" {
-		stop += " --workspace " + shellQuote(workspace)
+		stop += " --workspace " + workspace
 	}
-	return "the engine for this folder started with a different environment than this terminal and is still in use — close its other windows or let its work finish, or run " + stop
+	return fmt.Sprintf("engine: the engine on %s runs %s and something is still going in it — let that finish, or run %s, then open again",
+		machineOrThis(), cellsMode(hostCells), stop)
+}
+
+// machineOrThis is this machine's name, or "this machine" when it has none.
+func machineOrThis() string {
+	if name := strings.TrimSpace(remote.MachineName()); name != "" {
+		return name
+	}
+	return "this machine"
 }
 
 // sameEngineBuild is the host being this build: the same wire, the same source,
@@ -462,14 +543,11 @@ func staleEngineHostSentence(busy bool, workspace string) string {
 	if strings.TrimSpace(name) == "" {
 		name = "that machine"
 	}
-	stop := "codeaf engine --stop"
-	if workspace = strings.TrimSpace(workspace); workspace != "" {
-		stop += " --workspace " + workspace
-	}
+	stop := engineStopWords(workspace)
 	if busy {
-		return fmt.Sprintf("engine: %s is still running an older codeaf and something is still going in it — let that finish, or run %s on %s", name, stop, name)
+		return fmt.Sprintf("engine: %s is still running an older codeaf and something is still going in it — let that finish, or run %s on %s (interrupts active turns and tasks)", name, stop, name)
 	}
-	return fmt.Sprintf("engine: %s is still holding this conversation on an older codeaf — run %s on %s", name, stop, name)
+	return fmt.Sprintf("engine: %s is still holding this conversation on an older codeaf — run %s on %s (interrupts active turns and tasks)", name, stop, name)
 }
 
 // unknownOlderEngineHostSentence is what a person reads when the process holding
@@ -486,7 +564,7 @@ func unknownOlderEngineHostSentence(workspace string) string {
 		name = "that machine"
 	}
 	stop := engineStopWords(workspace)
-	return fmt.Sprintf("engine: %s is holding this conversation on an older codeaf that cannot say what it is or what it is doing, and this build will not end work it cannot see — run %s on %s if you want it stopped", name, stop, name)
+	return fmt.Sprintf("engine: %s is holding this conversation on an older codeaf that cannot say what it is or what it is doing, and this build will not end work it cannot see — run %s on %s if you want it stopped (interrupts active turns and tasks)", name, stop, name)
 }
 
 // otherProtocolEngineHostSentence is the refusal for an older engine on a wire
@@ -500,14 +578,21 @@ func otherProtocolEngineHostSentence(workspace string) string {
 		name = "that machine"
 	}
 	stop := engineStopWords(workspace)
-	return fmt.Sprintf("engine: %s is holding this conversation on a codeaf that speaks a different protocol, and something is still going in it — let that finish, or run %s on %s", name, stop, name)
+	return fmt.Sprintf("engine: %s is holding this conversation on a codeaf that speaks a different protocol, and something is still going in it — let that finish, or run %s on %s (interrupts active turns and tasks)", name, stop, name)
 }
 
 // engineStopWords is the command a refusal tells a person to run: the explicit
 // stop, naming and quoting the workspace so a folder with a space in it survives
 // being copied out of a sentence and pasted into a shell.
 func engineStopWords(workspace string) string {
-	stop := "codeaf engine --stop"
+	return engineStopWordsAs(enginehost.ThisBinary(), workspace)
+}
+
+func engineStopWordsAs(binary, workspace string) string {
+	if strings.TrimSpace(binary) == "" {
+		binary = "codeaf"
+	}
+	stop := shellQuote(binary) + " engine --stop"
 	if workspace = strings.TrimSpace(workspace); workspace != "" {
 		stop += " --workspace " + shellQuote(workspace)
 	}
@@ -561,10 +646,11 @@ func busyEngineHostSentence(workspace string, waits bool) string {
 	if strings.TrimSpace(name) == "" {
 		name = "this machine"
 	}
+	note := fmt.Sprintf("this window is using an older codeaf background engine on %s; restarting one window does not update it. Attached windows count as in use. After work finishes, close every window for this workspace and reopen", name)
 	if waits {
-		return fmt.Sprintf("the engine on %s is an older codeaf and is still holding work — it keeps that work and picks up this build once it goes quiet", name)
+		note += " — the engine will step aside when all windows and work are gone"
 	}
-	return fmt.Sprintf("the engine on %s is an older codeaf and is still holding work — it keeps that work, and your next launch once the work is done opens from this build", name)
+	return note + ". Or run " + engineStopWords(workspace) + " on " + name + " (interrupts active turns and tasks); reconnect with this build"
 }
 
 // replacedEngineHostSentence is the ONE LINE a takeover owes: which engine was
@@ -659,10 +745,16 @@ func writeEngineStatus(out io.Writer, workspace string, held enginehost.Holder, 
 	verdict := "this build"
 	switch {
 	case !held.Answered:
-		verdict = "an older build — the next codeaf launched here replaces it"
+		verdict = "an older build — its activity is unknown; a new window will not replace it"
 	case sameEngineBuild(host, me):
 	case host.BuiltAt.Before(me.BuiltAt):
-		verdict = "an older build — the next codeaf launched here replaces it"
+		if host.Busy && host.Version != remote.Version {
+			verdict = "an older incompatible build — still in use; a new window cannot join it"
+		} else if host.Busy {
+			verdict = "an older build — still in use; a new window keeps using it"
+		} else {
+			verdict = "an older build — idle; the next launch replaces it"
+		}
 	default:
 		verdict = "a newer build than this binary"
 	}
@@ -680,19 +772,23 @@ func writeEngineStatus(out io.Writer, workspace string, held enginehost.Holder, 
 		fmt.Fprintf(out, "  started    %s (%s ago)\n", host.Started.Local().Format("2006-01-02 15:04"), roughAge(now.Sub(host.Started)))
 	}
 	if held.Answered {
+		fmt.Fprintf(out, "  chat moves %s\n", cellsStatus(host.Cells))
 		fmt.Fprintf(out, "  windows    %d attached · %s open\n", host.Surfaces, countWord(host.Conversations, "conversation", "conversations"))
 		if host.Busy {
-			fmt.Fprintln(out, "  working    yes — a turn, a task or a question is in flight")
+			fmt.Fprintln(out, "  in use     yes — an attached window, turn, task or question keeps it running")
+		} else if host.Conversations > 0 {
+			fmt.Fprintf(out, "  holding    idle chats keep their lock for %s after the last window closes, then the engine lets go\n", roughAge(enginehost.SessionIdleAfter()))
 		}
 	}
 	if enginehost.EnvironmentDiffers(workspace) {
 		fmt.Fprintln(out, "  environment differs from this terminal's")
 	}
-	stop := "codeaf engine --stop"
-	if strings.TrimSpace(workspace) != "" {
-		stop += " --workspace " + workspace
+	fmt.Fprintf(out, "  stop it    %s (interrupts active turns and tasks)\n", engineStopWords(workspace))
+	if !held.Answered {
+		fmt.Fprintln(out, "  update     activity is unknown; when ready, explicitly stop this workspace engine and reconnect with this build")
+	} else if !sameEngineBuild(host, me) && host.BuiltAt.Before(me.BuiltAt) && host.Busy {
+		fmt.Fprintln(out, "  update     after work finishes, close every window for this workspace and reopen with this build; restarting one window is insufficient")
 	}
-	fmt.Fprintf(out, "  stop it    %s\n", stop)
 }
 
 // roughAge is a duration the way a person reads one on a status line.
@@ -842,6 +938,7 @@ func runEngineHost(workspaceFlag, sessionFlag string) error {
 		return fmt.Errorf("open %s: %w", workspace, err)
 	}
 	err = enginehost.Run(workspace, enginehost.Options{
+		Cells: cell.Available(),
 		Boot: func(hello remote.Hello) (*remote.Engine, error) {
 			return bootEngine(hello, workspace, sessionFlag)
 		}, // usage writer owner: see CloseUsage after the host returns
@@ -1136,6 +1233,15 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 	proc.warmModels("engine/models", agent, launch.Model)
 
 	return &remote.Engine{
+		ReleaseOnLeave: func(current remote.WrappedAgent) bool {
+			built, ok := current.(*session.Agent)
+			if !ok {
+				return false
+			}
+			place := v3PlaceOf(built.SessionPath(), workspace)
+			_, err := cell.OpenAt(place.Dir, place.ID())
+			return err == nil && syncsetup.MayTalk(home.Dir())
+		},
 		Headless: hello.Headless,
 		Agent:    agent,
 		// A model picked through a linked-local surface arrives on the existing
@@ -1152,6 +1258,7 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 		Closed: func(closed remote.WrappedAgent) {
 			if built, ok := closed.(*session.Agent); ok {
 				proc.forget(built)
+				syncDrives.closeCell(v3PlaceOf(built.SessionPath(), workspace).ID())
 			}
 		},
 		// A linked-local surface writes a banked approval into this profile and
@@ -1166,7 +1273,7 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 		Workspace:         workspace,
 		SessionFile:       transcript,
 		Resumed:           resumed,
-		Note:              notice,
+		Note:              v3Interrupted(cfg, notice),
 		// The shape this conversation ended up with, for the surface to compare
 		// against what it asked for. It is the shape that was APPLIED, so a
 		// hello that joined a conversation somebody else opened reads the other

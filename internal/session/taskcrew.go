@@ -429,6 +429,9 @@ func (c crewSeatCompleter) CompleteWithMessages(ctx context.Context, messages []
 		return nil, err
 	}
 	if !crew.seats(key) {
+		if !c.agent.config.freeHelperAllowed(key) {
+			return nil, crewSeatEnd(freeRoutesOffAction, nil)
+		}
 		// NOT A SEAT OF THIS CREW: a tier the run asks for that the crew does
 		// not name (a probe, a small errand). It is an auxiliary call, and it
 		// goes through the route-health guard like every other one — never
@@ -451,6 +454,9 @@ func (c crewSeatCompleter) completeSeat(ctx context.Context, key string, message
 		// call that would ask it again, and nowhere else: this is the explicit
 		// ask, and nothing is sent because a refusal was lifted.
 		c.agent.liftAnsweredRefusals(c.run, current)
+		if c.freeRouteBlocked(ctx, current) {
+			return nil, crewSeatEnd(freeRoutesOffAction, nil)
+		}
 		if failed, ok := crew.failedHere(current); ok {
 			// A SEND THAT FAILED ON THIS TASK IS NOT ASKED AGAIN, by this seat
 			// or any other: a pool that answered 429 with an hour's
@@ -1295,7 +1301,7 @@ func (a *Agent) moveCrewSeat(run *beltRun, key, current string, kind provider.Ro
 			noteHeldFailureLocked(crew, seat, pick, kind)
 			continue
 		}
-		rung, ok := crew.takeRungLocked(seat, rescueLadderLocked(a, run, crew, decision, seat))
+		rung, ok := crew.takeRungLocked(seat, config.AutomaticCrewRungs(a.config.ProfileDir, rescueLadderLocked(a, run, crew, decision, seat)))
 		if !ok {
 			continue
 		}

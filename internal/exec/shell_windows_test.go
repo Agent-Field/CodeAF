@@ -16,7 +16,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
-// R1 proves the detached-service door gives Git Bash a writable output handle,
+// N2 proves the detached-service door gives Git Bash a writable output handle,
 // appending stdout and stderr after earlier bytes instead of dying silently.
 func TestWindowsDetachedServiceWritesLog(t *testing.T) {
 	requireWindowsBash(t)
@@ -87,7 +87,7 @@ func windowsBackgroundOutput(t *testing.T, box *Toolbox, command string) string 
 	return string(body)
 }
 
-// C1 proves both real Toolbox shell doors parse once and retain multiline text,
+// N2 proves both real Toolbox shell doors parse once and retain multiline text,
 // quotes, backslashes, percent signs, substitutions and non-ASCII bytes.
 func TestWindowsToolboxSingleParse(t *testing.T) {
 	requireWindowsBash(t)
@@ -104,7 +104,7 @@ func TestWindowsToolboxSingleParse(t *testing.T) {
 	}
 }
 
-// C7 proves skills and rtk shelf programs run by bare name through foreground
+// N2 proves skills and rtk shelf programs run by bare name through foreground
 // and background doors while their exported variables retain native paths.
 func TestWindowsToolboxShelves(t *testing.T) {
 	requireWindowsBash(t)
@@ -145,7 +145,7 @@ func TestWindowsToolboxShelves(t *testing.T) {
 	}
 }
 
-// C4 proves refusal happens before either real door starts a process or creates
+// N2 proves refusal happens before either real door starts a process or creates
 // a job. A marker would expose a command run despite the explicit bad choice.
 func TestWindowsToolboxRefusesMissingBash(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
@@ -153,6 +153,11 @@ func TestWindowsToolboxRefusesMissingBash(t *testing.T) {
 	box, space := backgroundToolbox(t)
 	missing := filepath.Join(t.TempDir(), "missing bash.exe")
 	t.Setenv("CODEAF_BASH", missing)
+	for _, definition := range box.Definitions() {
+		if definition.Function.Name == "sh" {
+			t.Fatal("unusable shell is advertised")
+		}
+	}
 	command := "echo WRONG > should-not-exist"
 	run := box.runShell(context.Background(), command, 20, "").result(20)
 	job := box.startBackground(context.Background(), command, map[string]any{})

@@ -13,6 +13,8 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/telemetry"
+
+	"github.com/Agent-Field/codeaf/internal/providerhttp"
 )
 
 // THE RECEIPT: MONEY A CUT STREAM LEFT OFF THE WIRE.
@@ -430,7 +432,7 @@ func (c *Client) readReceiptAt(ctx context.Context, ref, base string) receiptRea
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("Authorization", "Bearer "+key)
 	c.applyRequestIdentity(request)
-	response, err := c.http.Do(request)
+	response, err := providerhttp.Do(c.http, request)
 	if err != nil {
 		return receiptRead{}
 	}

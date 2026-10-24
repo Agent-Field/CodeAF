@@ -75,7 +75,8 @@ func TestTheLeafsWorkingDirectoryHoldsNoMachinery(t *testing.T) {
 	}
 	// The spill pointer is the one machinery path a leaf is deliberately sent to,
 	// so it has to name somewhere the leaf can actually open from its own cwd.
-	if !strings.Contains(spilled.Content, scratch) {
+	// K3 keeps the absolute scratch address in its serialized slash spelling.
+	if !strings.Contains(spilled.Content, filepath.ToSlash(scratch)) {
 		t.Fatalf("the spill pointer is not an absolute path into the scratch home: %q", spilled.Content)
 	}
 }

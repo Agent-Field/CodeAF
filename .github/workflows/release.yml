@@ -234,12 +234,10 @@ jobs:
             read -r goos goarch <<< "$target"
             extension=""
             if [ "$goos" = "windows" ]; then
-              rm -f internal/furrowbin/cache/furrow-*.gz
               extension=".exe"
-            else
-              env -u GOOS -u GOARCH go run ./internal/furrowbin/cmd/fetch \
-                -goos "$goos" -goarch "$goarch"
             fi
+            env -u GOOS -u GOARCH go run ./internal/furrowbin/cmd/fetch \
+              -goos "$goos" -goarch "$goarch"
             GOOS="$goos" GOARCH="$goarch" go build \
               -tags=codeaf_packed_manual \
               -trimpath \

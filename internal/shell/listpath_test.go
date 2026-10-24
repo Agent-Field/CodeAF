@@ -2,7 +2,7 @@ package shell
 
 import "testing"
 
-// F4 asks Windows to bind relative names before converting them, preserving
+// N2 and N3 ask Windows to bind relative names before converting them, preserving
 // drive-relative, root-relative and ordinary relative path semantics.
 func TestWindowsListPathBindsRelativeNames(t *testing.T) {
 	for _, tc := range []struct{ native, absolute, want string }{
@@ -25,7 +25,7 @@ func TestWindowsListPathBindsRelativeNames(t *testing.T) {
 	}
 }
 
-// F4 leaves absolute Windows, UNC, POSIX, empty and every Unix path independent
+// N2 and N3 leave absolute Windows, UNC, POSIX, empty and every Unix path independent
 // of the current directory, so they never invoke the injected absolutiser.
 func TestListPathOnlyBindsRelativeWindowsNames(t *testing.T) {
 	abs := func(name string) (string, error) {

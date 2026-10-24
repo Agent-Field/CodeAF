@@ -9,24 +9,39 @@ import (
 	"testing"
 )
 
-// F3 binds a relative override to its current directory, never the cached
+// N1 binds a relative override to its current directory, never the cached
 // choice from a former directory. No executable needs to run for this proof.
 func TestWindowsRelativeOverrideCacheFollowsDirectory(t *testing.T) {
 	a, b := t.TempDir(), t.TempDir()
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(previous); err != nil {
+			t.Error(err)
+		}
+	})
+	changeDir := func(dir string) {
+		t.Helper()
+		if err := os.Chdir(dir); err != nil {
+			t.Fatal(err)
+		}
+	}
 	candidate := filepath.Join(a, "bash.exe")
 	if err := os.WriteFile(candidate, []byte("resolver fixture"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("CODEAF_BASH", "bash.exe")
-	t.Chdir(a)
+	changeDir(a)
 	if got, err := Bash(); err != nil || got != candidate {
 		t.Fatalf("relative bash in A: %q, %v", got, err)
 	}
-	t.Chdir(b)
+	changeDir(b)
 	if got, err := Bash(); got != "" || err == nil || err.Error() != fmt.Sprintf(MissingBash, "bash.exe") {
 		t.Fatalf("relative bash in B: %q, %v", got, err)
 	}
-	t.Chdir(a)
+	changeDir(a)
 	if got, err := Bash(); err != nil || got != candidate {
 		t.Fatalf("relative bash back in A: %q, %v", got, err)
 	}
@@ -38,7 +53,7 @@ func TestWindowsRelativeOverrideCacheFollowsDirectory(t *testing.T) {
 	if err := os.Remove(candidate); err != nil {
 		t.Fatal(err)
 	}
-	t.Chdir(b)
+	changeDir(b)
 	if got, err := Bash(); err != nil || got != candidate {
 		t.Fatalf("absolute cache depended on cwd: %q, %v", got, err)
 	}

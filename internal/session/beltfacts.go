@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/exec"
+	"github.com/Agent-Field/codeaf/internal/shell"
 )
 
 // THE PROMPT NAMES EXACTLY THE TOOLS THE CALL CARRIES.
@@ -30,7 +31,7 @@ import (
 // composed at render time, each from THE PREDICATE THAT PUTS ITS TOOL ON THE
 // BELT. Where a tool is absent the fragment says what to do instead rather than
 // saying nothing, in the voice the page's own `remember` sentence already uses
-// ("Without `remember`, say you cannot keep it"): a worker told the
+// ("Without either, say saving is unavailable"): a worker told the
 // truth spends its turn on the work, and a worker told nothing spends it
 // guessing.
 //
@@ -80,7 +81,10 @@ func (c Config) shelvesCapabilities() bool { return !c.readingTask() && !c.InTas
 // mayWatch says whether `watch` belongs on this belt (tools.go). It comes off
 // inside a task because its whole delivery mechanism is a note arriving in a
 // conversation, and a node has none.
-func (c Config) mayWatch() bool { return !c.readingTask() && !c.InTask }
+func (c Config) mayWatch() bool {
+	_, err := shell.Bash()
+	return !c.readingTask() && !c.InTask && err == nil
+}
 
 // mayAsk says whether `ask` belongs on this belt. It is unconditional on the
 // conversation's belt — only the shelf changes whether the schema is carried now
@@ -889,8 +893,8 @@ func promptWithBeltFacts(config Config) string {
 // honest:
 //
 //   - WRITTEN FOR BOTH CASES ALREADY. The page names the tool and, in the same
-//     breath, says what to do without it — "Without `remember`, say you cannot
-//     keep it". prompt_belt_test.go holds these to that: where the belt
+//     breath, says what to do without it — "Without either, say saving is
+//     unavailable". prompt_belt_test.go holds these to that: where the belt
 //     lacks the tool, the sentence stating the absence must be in the rendered
 //     prompt.
 //
@@ -901,7 +905,7 @@ func promptWithBeltFacts(config Config) string {
 //
 // The value is the marker the test looks for in the absent case.
 var promptNamesBeyondTheBelt = map[string]string{
-	"remember": "Without `remember`, say you cannot keep it",
+	"remember": "Without either, say saving is unavailable",
 	// A hand inherits the caller's page but intentionally carries a smaller,
 	// closed belt; its appended tail is the truthful capability account.
 	"ask": "Use `ask` only as the last rung",

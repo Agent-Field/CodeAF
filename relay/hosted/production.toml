@@ -1,0 +1,75 @@
+# Production deployment, served at https://codeaf.agentfield.ai/fabric and the pairing link page
+# at https://codeaf.agentfield.ai/p/<code>, and nowhere else.
+#
+# The hostname already answers other things, so the Worker owns only two paths: /fabric*, the wire,
+# and /p/*, the page a pairing link opens in a browser. That page lives on the bare host, outside
+# BASE_PATH, so it needs its own route. The routes below leave every other path on
+# codeaf.agentfield.ai exactly as it is, and BASE_PATH makes the Worker serve its wire beneath
+# /fabric and answer 404 for every other path that reaches it.
+#
+# Nothing here deploys by itself. Create what it names once, from a machine logged in to the
+# Cloudflare account that holds the agentfield.ai zone:
+#
+#   npx wrangler r2 bucket create caf-fabric-frames
+#   npx wrangler deploy -c production.toml
+#
+# The Durable Object namespaces are created by the first deploy, from the migrations below, and are
+# named after this Worker (caf-fabric-IdentityDO and so on), so they share nothing with staging.
+#
+# What staging sets and production must not: TRUST_PROXY (production's one truth for a caller's
+# network is CF-Connecting-IP) and a CAF_LIMITS override (the new-identity cap per address and the
+# pairing time to live stay at the contract defaults). `LEASE_POLICY` is the amended law the clients
+# implement. Observability stays off: the relay keeps no request log, as its README states.
+name = "caf-fabric"
+main = "src/worker.js"
+compatibility_date = "2026-09-01"
+workers_dev = false
+preview_urls = false
+
+routes = [
+  { pattern = "codeaf.agentfield.ai/fabric*", zone_name = "agentfield.ai" },
+  { pattern = "codeaf.agentfield.ai/p/*", zone_name = "agentfield.ai" },
+]
+
+[observability]
+enabled = false
+
+[[r2_buckets]]
+binding = "FRAMES"
+bucket_name = "caf-fabric-frames"
+
+[[durable_objects.bindings]]
+name = "IDENTITY"
+class_name = "IdentityDO"
+
+[[durable_objects.bindings]]
+name = "PAIR_GATE"
+class_name = "PairGate"
+
+[[durable_objects.bindings]]
+name = "NEWCOMERS"
+class_name = "NewcomerGate"
+
+[[durable_objects.bindings]]
+name = "MAILBOX"
+class_name = "Mailbox"
+
+[[durable_objects.bindings]]
+name = "LINK_GATE"
+class_name = "LinkGate"
+
+[[durable_objects.bindings]]
+name = "LINK_REQUEST"
+class_name = "LinkRequest"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["IdentityDO", "PairGate", "Mailbox", "NewcomerGate"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["LinkGate", "LinkRequest"]
+
+[vars]
+LEASE_POLICY = "amended"
+BASE_PATH = "/fabric"

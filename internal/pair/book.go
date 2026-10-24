@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"os"
 	"path/filepath"
 	"sort"
@@ -229,7 +230,8 @@ func (b *Book) RevokeAll(label string) (int, error) {
 // ── the disk ────────────────────────────────────────────────────────────────
 
 func (b *Book) read(into any) error {
-	raw, err := os.ReadFile(b.path)
+	var raw []byte
+	err := fsreplace.Retry(func() error { var err error; raw, err = os.ReadFile(b.path); return err })
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
@@ -260,7 +262,7 @@ func (b *Book) write(what any) error {
 	if err := os.WriteFile(temporary, append(raw, '\n'), 0o600); err != nil {
 		return err
 	}
-	return os.Rename(temporary, b.path)
+	return fsreplace.Rename(temporary, b.path)
 }
 
 func (b *Book) update(change func([]Known) []Known) error {

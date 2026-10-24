@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"runtime"
@@ -8,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/furrow"
 	"github.com/Agent-Field/codeaf/internal/packed"
 )
 
@@ -145,6 +147,9 @@ func TestAColdCatalogCannotHoldLaunch(t *testing.T) {
 	t.Setenv("CODEAF_BASE_URL", server.URL)
 	proc := v3TestProcess(t)
 	workspace := t.TempDir()
+	// C4 holds the catalog response, not an unrelated engine process. Resolve
+	// the real local capability before starting this catalog-only deadline.
+	_ = furrow.Detect(context.Background(), workspace)
 	done := make(chan error, 1)
 	go func() {
 		launch, err := openV3Launch(proc, v3Options{Model: "test/model", Workspace: workspace})

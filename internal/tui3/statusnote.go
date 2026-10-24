@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -122,9 +123,7 @@ func (a *app) statusItems() []deckItem {
 	// row and phone sheet, where an immutable revision would spend a row all
 	// session, and appears here whole when a person asks which codeaf is
 	// holding this conversation.
-	if a.build != "" {
-		items = append(items, deckItem{label: "build", value: a.build})
-	}
+	items = append(items, a.statusBuildItems()...)
 	if a.file != "" {
 		// AND THE JOURNAL IS ON WHOSE DISK. A session file is the one path on
 		// this list a person is actively invited to copy, and over a connection it
@@ -133,6 +132,23 @@ func (a *app) statusItems() []deckItem {
 		items = append(items, deckItem{label: "file", value: a.hostedPath(a.file)})
 	}
 	return items
+}
+
+// statusBuildItems distinguishes the program drawing the window from the
+// background process serving it. A reconnect may replace that process without
+// rebuilding the window, so the current welcome wins over launch-time facts.
+func (a *app) statusBuildItems() []deckItem {
+	if a.link.EngineBuild != nil {
+		items := []deckItem{{label: "window build", value: buildinfo.String()}}
+		if held := strings.TrimSpace(a.link.EngineBuild()); held != "" {
+			items = append(items, deckItem{label: "engine build", value: held})
+		}
+		return items
+	}
+	if a.build != "" {
+		return []deckItem{{label: "build", value: a.build}}
+	}
+	return nil
 }
 
 // statusJSON is /status --json: [app.statusItems] serialized as ONE JSON object

@@ -587,6 +587,8 @@ func RecordAttachment(index, sessionID, path string) string {
 // agent's own.
 func (a *Agent) recordMedia(artifact Artifact, fact MediaFact) {
 	artifact.Session = a.journalID()
+	// The sealed copy a place keeps beside the index (artifactcell.go).
+	RecordSealedArtifact(a.config.Place, artifact)
 	if fact.Origin == "" || fact.Origin == MediaGenerated {
 		artifact.Deliver = a.generatedDeliverable(artifact.Path, fact)
 	}

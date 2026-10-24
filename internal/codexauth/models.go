@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/providerhttp"
 )
 
 // Model is one model the signed-in account may choose, with how many tokens it
@@ -55,7 +57,7 @@ func List(ctx context.Context, profileDir string, options Options) ([]Model, err
 	if err != nil {
 		return nil, err
 	}
-	response, err := ClientWithOptions(profileDir, options).Do(request)
+	response, err := providerhttp.Do(ClientWithOptions(profileDir, options), request)
 	if err != nil {
 		return nil, err
 	}

@@ -1033,6 +1033,9 @@ func hostAttachedNote(attached int, driving bool) string {
 // of facts rather than as an argument: the surface has grown
 // [tui3.LinkSeam] and hostOptions hands all four straight into it.
 type hostSeams struct {
+	// EngineBuild follows the client's latest welcome, including replacements.
+	EngineBuild func() string
+
 	// Link is the quiet sentence about the connection right now — empty
 	// whenever there is nothing to say, which is what a status-line segment
 	// draws as nothing at all. It reads `reconnecting to devbox — trying for up
@@ -1072,6 +1075,7 @@ func newHostSeams(client *remote.Client) hostSeams {
 	var readInitial atomic.Bool
 	return hostSeams{
 		Link: client.LinkNote, Ping: client.Ping, Notice: client.TakeNotice,
+		EngineBuild: func() string { return client.Welcome().Build },
 		Held: func() ([]remote.HeldQuestion, error) {
 			// Arrival and replay share one snapshot. Re-querying before drawing
 			// it could hide a question re-emitted since arrival: the server has

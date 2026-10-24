@@ -4,6 +4,7 @@ package processgroup
 
 import (
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -82,4 +83,25 @@ func processStateAndGroup(raw string) (state byte, pgrp int, ok bool) {
 		return 0, 0, false
 	}
 	return fields[0][0], pgrp, true
+}
+
+// Members lists the running processes of group pgid in ascending pid order, so
+// the leader comes first when it is still alive. Zombies are not members.
+func Members(pgid int) []int {
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return nil
+	}
+	var pids []int
+	for _, entry := range entries {
+		pid, err := strconv.Atoi(entry.Name())
+		if err != nil || pid <= 0 {
+			continue
+		}
+		if state, pgrp, ok := processStateAndGroup(readStat(pid)); ok && pgrp == pgid && running(state) {
+			pids = append(pids, pid)
+		}
+	}
+	sort.Ints(pids)
+	return pids
 }

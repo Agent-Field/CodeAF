@@ -64,5 +64,5 @@ func (sessionsPanel) rows(in *homeGridInput) homePanelRows {
 		lines = append(lines, switcherRowLine(row, cell))
 	}
 	homeDecorateQuestions(in, lines)
-	return homePanelCut(in, panelSessions, lines)
+	return in.others.into(in, lines)
 }

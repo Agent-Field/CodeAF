@@ -19,11 +19,11 @@ Windows commands use Git Bash or another MSYS2-family bash. Setting `CODEAF_BASH
 
 ## Why do my commands fail on Windows when no bash was found?
 
-codeaf needs Git for Windows' bash or another MSYS2-family bash to run commands on Windows. If none is found, no command runs, and the answer is:
+codeaf needs Git for Windows' bash or another MSYS2-family bash to run commands on Windows. If none is found, the `bash` shell tool is absent from the model’s tools, no command runs, and the project facts explain:
 
-"codeaf runs commands in Git for Windows' bash, and none was found: install Git for Windows, or set CODEAF_BASH to a bash.exe. WSL's bash.exe is not used."
+"codeaf runs commands in Git for Windows' bash, and none was found: install Git for Windows, or set CODEAF_BASH to a bash.exe; WSL's bash.exe is not used."
 
-Install Git for Windows, or set `CODEAF_BASH` to its bash.exe. WSL's bash.exe runs in a different system from codeaf's file tools and is never used.
+Install Git for Windows and restart codeaf, or set `CODEAF_BASH` to its bash.exe before starting codeaf. WSL's bash.exe runs in a different system from codeaf's file tools and is never used.
 
 ## CODEAF_BASH does not exist or names WSL's launcher
 
@@ -46,3 +46,11 @@ When Git Bash starts a Windows program, it normally converts arguments beginning
 Git Bash normally rewrites arguments beginning with `/` into Windows paths when it starts a Windows program. Thus `gh api /repos/owner/project` can send a Windows path instead of an API route. This is Git Bash's default behavior, also used by commands in codeaf on Windows.
 
 Write the API route without its leading slash: `gh api repos/owner/project`. Or disable conversion for that command: `MSYS_NO_PATHCONV=1 gh api /repos/owner/project`. Keep the default conversion for commands that need Git Bash's `/c/…` drive paths translated for a Windows program.
+
+## Can I run codeaf inside WSL on Windows?
+
+Yes. Run the Linux build of codeaf inside WSL and its commands use Linux bash, beside the Linux files its file tools read and write. The Git for Windows requirement applies to the native Windows build. Native Windows codeaf never selects the WSL launcher as its shell.
+
+## How do I read the rest of a long command output on Windows
+
+When a command prints more than fits, the notice offers an exact `sh` command to read the saved output. It uses Git Bash paths and quotes Windows scratch folders, including folders with spaces or an apostrophe. Run that offered command to read the saved bytes instead of running the original command again.

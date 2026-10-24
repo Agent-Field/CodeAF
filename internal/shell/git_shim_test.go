@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// F2 follows a shim's real Git installation, preserves bin-before-usr/bin and
+// N1 follows a shim's real Git installation, preserves bin-before-usr/bin and
 // WSL rejection, bounds the ancestor walk, and falls through on probe failure.
 func TestWindowsGitShimResolution(t *testing.T) {
 	const shim = `D:\tools\shims\git.exe`
@@ -51,7 +51,7 @@ func TestWindowsGitShimResolution(t *testing.T) {
 	}
 }
 
-// F2 keeps known Git layouts free of process probes, even when their bash is
+// N1 keeps known Git layouts free of process probes, even when their bash is
 // absent and the resolver must continue through the ordinary fallback rules.
 func TestWindowsKnownGitLayoutsNeverProbe(t *testing.T) {
 	for _, suffix := range []string{`cmd\git.exe`, `bin\git.exe`, `mingw64\bin\git.exe`} {

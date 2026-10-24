@@ -3,11 +3,9 @@ package exec
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -22,8 +20,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/guard"
-	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/rtk"
 	commandshell "github.com/Agent-Field/codeaf/internal/shell"
 	"github.com/Agent-Field/codeaf/internal/store"
@@ -293,20 +291,30 @@ func (c truncation) notice() string {
 // the window that was kept, so a model that keeps issuing it walks the file at
 // a pace its context can hold.
 func (c truncation) command() string {
+	// K3/I0: the notice is shell input. Native separators otherwise disappear
+	// as escapes, and a separate scratch folder may contain shell punctuation.
+	// Unix command bytes stay unchanged at this platform conversion door.
+	path := filepath.ToSlash(c.spill.path)
+	if filepath.IsAbs(c.spill.path) {
+		path = commandshell.ListPath(c.spill.path)
+	}
+	if path != c.spill.path || filepath.Separator == '\\' && strings.ContainsAny(path, " \t\r\n'\"`$;&|<>()[]{}*?!#~") {
+		path = "'" + strings.ReplaceAll(path, "'", "'\"'\"'") + "'"
+	}
 	switch {
 	case c.keptLines == 0 && c.tail:
 		return fmt.Sprintf("read that line from the start with sh: sed -n '%dp' %s | head -c %d",
-			c.totalLines, c.spill.path, c.byteWindow)
+			c.totalLines, path, c.byteWindow)
 	case c.keptLines == 0:
 		return fmt.Sprintf("read on with sh: sed -n '1p' %s | cut -b %d-%d",
-			c.spill.path, len(c.kept)+1, len(c.kept)+c.byteWindow)
+			path, len(c.kept)+1, len(c.kept)+c.byteWindow)
 	case c.tail:
 		first := c.totalLines - c.keptLines + 1
 		window := min(c.lineWindow, first-1)
-		return fmt.Sprintf("read the start with sh: sed -n '1,%dp' %s", window, c.spill.path)
+		return fmt.Sprintf("read the start with sh: sed -n '1,%dp' %s", window, path)
 	default:
 		return fmt.Sprintf("continue with sh: sed -n '%d,%dp' %s",
-			c.keptLines+1, c.keptLines+c.lineWindow, c.spill.path)
+			c.keptLines+1, c.keptLines+c.lineWindow, path)
 	}
 }
 
@@ -808,6 +816,11 @@ func (t *Toolbox) Definitions() []ai.ToolDefinition {
 			"urls": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "page urls to fetch"},
 			"n":    prop("integer", "max search results, default 6"),
 		}),
+	}
+	// An unavailable shell has no schema; direct callers still get the shared
+	// installation remedy before a process or background job can be created.
+	if _, err := commandshell.Bash(); err != nil {
+		definitions = definitions[1:]
 	}
 	// Stratum 2: the door to the optional families. Its presence follows the
 	// machine's wiring and nothing else, so it is in the same slot on every turn
@@ -1377,7 +1390,7 @@ func (t *Toolbox) openSpill() (io.WriteCloser, string, bool) {
 	if err != nil {
 		return nil, "", false
 	}
-	return file, shown, true
+	return file, filepath.ToSlash(shown), true
 }
 
 // decaySpill preserves a decaying observation's full body under the
@@ -1402,7 +1415,7 @@ func (t *Toolbox) writeObs(name, content string) (string, bool) {
 	if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
 		return "", false
 	}
-	return shown, true
+	return filepath.ToSlash(shown), true
 }
 
 var unsafeName = regexp.MustCompile(`[^A-Za-z0-9_-]+`)
@@ -1607,24 +1620,14 @@ func (t *Toolbox) runShell(ctx context.Context, command string, seconds int, rtk
 	// names a private socket directory even in that nil case (tools.go).
 	environment = JobShellEnv(environment)
 
-	cmd := exec.CommandContext(runCtx, bash, "-o", "pipefail", "-lc", command)
-	cmd.Dir = t.workspace.Root()
-	cmd.Env = environment
 	// A command that leaves a background child sharing its stdout used to hang
 	// the whole run: killing bash at the timeout is not enough, because Wait
 	// blocks until every inherited pipe writer exits, and a scheduler goroutine
-	// stuck there wedges the graph silently and forever. The process group
-	// makes the timeout kill reach grandchildren, and WaitDelay force-closes
-	// the pipes shortly after bash itself is gone for anything that survives —
-	// a stuck tool call must cost its timeout, never the run.
-	processgroup.Configure(cmd)
-	cmd.Cancel = func() error {
-		if cmd.Process == nil {
-			return os.ErrProcessDone
-		}
-		return processgroup.Kill(cmd.Process.Pid)
-	}
-	cmd.WaitDelay = 3 * time.Second
+	// stuck there wedges the graph silently and forever. The executor puts the
+	// command in its own process group so the timeout kill reaches grandchildren,
+	// and WaitDelay force-closes the pipes shortly after bash itself is gone for
+	// anything that survives — a stuck tool call must cost its timeout, never
+	// the run.
 	// Collected rather than read whole. A command inside a fifteen-minute call
 	// may print hundreds of megabytes and all but twelve kilobytes of them are
 	// discarded a line later; the collector keeps only the part that survives,
@@ -1642,25 +1645,28 @@ func (t *Toolbox) runShell(ctx context.Context, command string, seconds int, rtk
 	// than that. Everything past the first is teed to a file as it arrives, so
 	// the notice that ends up in context names a command that actually works.
 	collected := newCappedOutput(strip, t.budgets.spill, t.budgets.preview, t.openSpill)
-	cmd.Stdout, cmd.Stderr = collected, collected
-	err = cmd.Run()
+	res, err := executor.For(runCtx).In(t.workspace.Root()).Exec(runCtx, executor.ExecRequest{
+		Argv: []string{bash, "-o", "pipefail", "-lc", command}, Env: environment,
+		WaitDelay: 3 * time.Second, Combined: true, Stream: true,
+	}, func(c executor.Chunk) { _, _ = collected.Write(c.Data) })
+	if res.Status != "" {
+		err = res.Failure() // the process ran: its own status is the outcome
+	}
 	run := shellRun{body: collected.String(), bounded: collected.truncated(),
-		err: err, exitCode: exitCode(cmd, err)}
+		err: err, exitCode: exitCode(res, err)}
 	run.timedOut = runCtx.Err() == context.DeadlineExceeded
-	run.detached = errors.Is(err, exec.ErrWaitDelay)
+	run.detached = res.PipesForced
 	return run
 }
 
-func exitCode(cmd *exec.Cmd, err error) int {
-	if err == nil {
+func exitCode(res executor.ExecResult, err error) int {
+	switch {
+	case err == nil:
 		return 0
+	case res.Status == "":
+		return -1 // never started
 	}
-	if cmd.ProcessState != nil {
-		if code := cmd.ProcessState.ExitCode(); code >= 0 {
-			return code
-		}
-	}
-	return -1
+	return res.Exit
 }
 
 func (t *Toolbox) write(args map[string]any) Result {

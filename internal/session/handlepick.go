@@ -88,6 +88,12 @@ func (a *Agent) chooseTeamHandlesLater(title string, roles []teamRole) {
 	if !rolesWantHandle(roles) {
 		return
 	}
+	a.mu.Lock()
+	stopped := a.closed || a.workStopped
+	a.mu.Unlock()
+	if stopped {
+		return
+	}
 	a.team.mu.Lock()
 	if a.team.handleTried {
 		a.team.mu.Unlock()
@@ -97,7 +103,7 @@ func (a *Agent) chooseTeamHandlesLater(title string, roles []teamRole) {
 	a.team.mu.Unlock()
 	a.mu.Lock()
 	ctx, model, closed := a.titleCtx, a.model, a.closed
-	if ctx == nil || closed {
+	if ctx == nil || closed || a.workStopped {
 		a.mu.Unlock()
 		return
 	}

@@ -43,8 +43,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	procexec "github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/lane"
-	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
@@ -172,15 +172,14 @@ func automationLookCommand(ctx context.Context, workspace, command string) (auto
 	if shellErr != nil {
 		return automation.Sight{}, shellErr
 	}
-	process := exec.CommandContext(ctx, shell, append(args, command)...)
-	process.Dir = workspace
-	process.Env = bare.StreamingEnv()
-	processgroup.ConfigureDetached(process)
-	process.Cancel = func() error {
-		_ = processgroup.Kill(process.Process.Pid)
-		return nil
+	// I0: an automation look has host access but still uses the command runner.
+	process, err := procexec.Host.In(workspace).Command(ctx, procexec.ExecRequest{
+		Argv: append([]string{shell}, append(args, command)...), Env: bare.StreamingEnv(),
+		Group: procexec.GroupSession, WaitDelay: 2 * time.Second,
+	})
+	if err != nil {
+		return automation.Sight{}, fmt.Errorf("could not run the command: %w", err)
 	}
-	process.WaitDelay = 2 * time.Second
 	output, err := process.CombinedOutput()
 	seen := string(output)
 	switch {
@@ -393,6 +392,9 @@ func (r *automationRunner) lookTool(ctx context.Context, item automation.Automat
 	agent.jobs.notifyQuiet = agent.enqueueJobNoteQuiet
 	agent.jobs.notifyUnowed = agent.enqueueJobNoteUnowed
 	agent.jobs.renderNotify = agent.emitRenderUpdate
+	agent.jobs.seat = cfg.seat()
+	agent.jobs.lifecycle = lifecycleOf(cfg.Machine)
+	ctx = procexec.With(ctx, cfg.seatFor(ctx))
 	agent.connect = newConnectHub(cfg)
 	agent.tools = agent.belt()
 	defer agent.jobs.closeRenders()

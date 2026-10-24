@@ -312,6 +312,8 @@ type homeGridInput struct {
 	last map[string]session.Summary
 	// repos is each workspace's last `git status` reading (homeband_repo.go).
 	repos map[string]homeRepoReading
+	// others is the last listing of chats on other machines.
+	others machineReading
 	// spend is the day's figure and the fortnight behind it (homepanel_spend.go).
 	spend homeSpendReading
 	seen  time.Time
@@ -350,7 +352,7 @@ func (h *homeView) gridInput() homeGridInput {
 		opened: h.opened, openedOn: h.openedOn,
 		desc: homeDescOn(h.cols), world: world, autos: h.autos, active: h.active,
 		errands: h.switchExchanges(), bucket: h.bucket, launch: h.launch, tilde: h.tilde, last: h.last,
-		repos: h.repos, spend: h.spend, seen: h.seen, now: h.world.Read}
+		repos: h.repos, others: h.others, spend: h.spend, seen: h.seen, now: h.world.Read}
 }
 
 // ── what a panel hands back ────────────────────────────────────────────────
@@ -462,6 +464,12 @@ type homeCell struct {
 	// note is a dim clause after the title; tag and right are the dim facts
 	// at the right margin, the tag giving way first.
 	note, tag, right string
+	// noteShort is the note's narrower spelling, taken before the note gives
+	// way whole ([homeCellBody]); "" for a note with only one.
+	noteShort string
+	// keepNote says the note outranks the title's tail: the title is cut with an
+	// ellipsis before the note is dropped ([homeCell.giveWay]).
+	keepNote bool
 	// bold is this window's own conversation.
 	bold bool
 	// underline marks a hovered project name without lighting its facts.
@@ -1538,6 +1546,7 @@ func (a *app) refreshGridReadings(now time.Time) tea.Cmd {
 			asked = append(asked, a.askHomeLeftOff(line.row.Transcript))
 		}
 	}
+	asked = append(asked, a.pollMachines(now))
 	return tea.Batch(asked...)
 }
 

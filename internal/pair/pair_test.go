@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -61,7 +62,7 @@ func TestADeviceKeyIsMadeOnceAndKeptForEver(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A KEY THAT WAS EVER WORLD-READABLE IS A KEY THAT HAS TO BE ASSUMED READ.
-	if mode := info.Mode().Perm(); mode != 0o600 {
+	if mode := info.Mode().Perm(); runtime.GOOS != "windows" && mode != 0o600 {
 		t.Fatalf("the device key file is %o, not 0600", mode)
 	}
 }
@@ -207,13 +208,19 @@ func TestACodeExpires(t *testing.T) {
 func TestTheServeLinesReadTheWayTheyWereDesigned(t *testing.T) {
 	code := &Code{digits: "715302"}
 	got := Lines("otter-lamp-42", code)
-	want := "  this machine is reachable as  otter-lamp-42\n  pair a new device with code   715 302   (valid 10 minutes)\n"
+	want := "  this machine is reachable as  otter-lamp-42\n  let a device use this machine with code   715 302   (valid 10 minutes)\n"
 	if got != want {
 		t.Fatalf("serve prints\n%q\nand should print\n%q", got, want)
 	}
 }
 
 // ── pairing ─────────────────────────────────────────────────────────────────
+
+// approved is a person who says yes to whatever they are shown, and sawWords is
+// a screen that shows nothing; the tests that are about the words say otherwise.
+func approved(string, string) error { return nil }
+
+func sawWords(string) {}
 
 func aDevice(t *testing.T) Device {
 	t.Helper()
@@ -238,7 +245,7 @@ func TestPairingCarriesBothKeysPastTheMiddle(t *testing.T) {
 			failed <- err
 			return
 		}
-		one, err := pairAsMachine(machineEnd, machine.Name(), "715302", machine, now, func(Paired) error { return nil })
+		one, err := pairAsMachine(machineEnd, machine.Name(), "715302", machine, now, approved, func(Paired) error { return nil })
 		if err != nil {
 			failed <- err
 			return
@@ -246,7 +253,7 @@ func TestPairingCarriesBothKeysPastTheMiddle(t *testing.T) {
 		admitted <- one
 	}()
 
-	learned, err := pairAsSurface(surfaceEnd, "http://relay", machine.Name(), "715302", "laptop", surface, now)
+	learned, err := pairAsSurface(surfaceEnd, "http://relay", machine.Name(), "715302", "laptop", surface, now, sawWords)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +305,7 @@ func TestTheMachineWritesTheDeviceDownBeforeItSaysThePairingHeld(t *testing.T) {
 			failed <- err
 			return
 		}
-		_, err := pairAsMachine(machineEnd, machine.Name(), "715302", machine, now, func(one Paired) error {
+		_, err := pairAsMachine(machineEnd, machine.Name(), "715302", machine, now, approved, func(one Paired) error {
 			// The disk this stands in for is a directory create, a write and a
 			// rename, and on a loaded machine that is not instant.
 			time.Sleep(50 * time.Millisecond)
@@ -307,7 +314,7 @@ func TestTheMachineWritesTheDeviceDownBeforeItSaysThePairingHeld(t *testing.T) {
 		failed <- err
 	}()
 
-	if _, err := pairAsSurface(surfaceEnd, "http://relay", machine.Name(), "715302", "laptop", surface, now); err != nil {
+	if _, err := pairAsSurface(surfaceEnd, "http://relay", machine.Name(), "715302", "laptop", surface, now, sawWords); err != nil {
 		t.Fatal(err)
 	}
 	// Not "eventually" and not after a wait: the assertion is about this instant,
@@ -348,12 +355,12 @@ func TestAPairingTheMachineCannotWriteDownIsRefusedAndNotAnnounced(t *testing.T)
 		_, _ = io.ReadFull(machineEnd, intent[:])
 		// The book is never written, which is the failure this stands in for:
 		// the device must not come away paired against a book like this one.
-		_, err := pairAsMachine(machineEnd, machine.Name(), "715302", machine, now, func(Paired) error { return disk })
+		_, err := pairAsMachine(machineEnd, machine.Name(), "715302", machine, now, approved, func(Paired) error { return disk })
 		machineSaid <- err
 		_ = machineEnd.Close()
 	}()
 
-	if _, err := pairAsSurface(surfaceEnd, "http://relay", machine.Name(), "715302", "laptop", surface, now); err == nil {
+	if _, err := pairAsSurface(surfaceEnd, "http://relay", machine.Name(), "715302", "laptop", surface, now, sawWords); err == nil {
 		t.Fatal("a pairing the machine could not write down was reported to the device as a pairing")
 	} else if !errors.Is(err, ErrWrongCode) {
 		t.Fatalf("the device was told %v", err)
@@ -392,12 +399,12 @@ func TestTheWrongCodePairsNothing(t *testing.T) {
 	go func() {
 		var intent [1]byte
 		_, _ = io.ReadFull(machineEnd, intent[:])
-		_, err := pairAsMachine(machineEnd, machine.Name(), "715302", machine, now, func(Paired) error { return nil })
+		_, err := pairAsMachine(machineEnd, machine.Name(), "715302", machine, now, approved, func(Paired) error { return nil })
 		machineSaid <- err
 		_ = machineEnd.Close()
 	}()
 
-	_, err := pairAsSurface(surfaceEnd, "http://relay", machine.Name(), "000000", "laptop", surface, now)
+	_, err := pairAsSurface(surfaceEnd, "http://relay", machine.Name(), "000000", "laptop", surface, now, sawWords)
 	if !errors.Is(err, ErrWrongCode) {
 		t.Fatalf("a wrong code gave %v", err)
 	}
@@ -528,7 +535,7 @@ func TestEveryWayThisFailsSaysWhichWayItFailed(t *testing.T) {
 		if err == nil {
 			t.Fatal("--at opened with no relay set up")
 		}
-		if !strings.Contains(err.Error(), "no relay is set up on this machine") {
+		if !strings.Contains(err.Error(), "no service address is set up on this machine") {
 			t.Fatalf("with no relay, --at said %q", err)
 		}
 		if !strings.Contains(err.Error(), "--host over ssh") {
@@ -553,7 +560,7 @@ func TestEveryWayThisFailsSaysWhichWayItFailed(t *testing.T) {
 		_, address := liveRelay(t)
 		t.Setenv(RelayEnv, address)
 		_, err := asking.Open(context.Background())
-		if err == nil || !strings.Contains(err.Error(), "is not connected to the relay right now") {
+		if err == nil || !strings.Contains(err.Error(), "is not connected to the service right now") {
 			t.Fatalf("with nothing registered, --at said %v", err)
 		}
 		if !strings.Contains(err.Error(), "codeaf serve") {

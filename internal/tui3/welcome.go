@@ -568,7 +568,7 @@ func (a *app) openSession(chosen Session) (tea.Cmd, string) {
 		// The door had something to say about how this conversation came to be
 		// open, and the entry line is where the first one's notice lands too
 		// ([Options.Notice]).
-		a.note(conv.Notice)
+		eachLine(conv.Notice, a.note)
 	}
 	return cmd, ""
 }

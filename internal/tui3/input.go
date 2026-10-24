@@ -381,6 +381,13 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	if a.wall.on && !door {
 		return a.wallKey(msg)
 	}
+	// AND THE MAP, on the same terms: /atlas's sheet takes the whole keyboard
+	// while it is up, esc and q hand it back, and ctrl+c keeps its meaning
+	// (atlascmd.go). It reads above the first-run setup because it cannot be
+	// open at the same time as anything else that owns the frame.
+	if a.atlas.on && !door {
+		return a.atlasKey(msg)
+	}
 	if !door && wallOpenPressed(msg) {
 		return a.openWall()
 	}
@@ -617,6 +624,13 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.permPanelKey(msg)
 	}
 
+	// And the pairing panel, on the same terms (pair.go): opened by a command,
+	// nothing typed under it, and while it asks a question the only keys it reads
+	// are the answer and esc.
+	if a.pair.open && msg.String() != "ctrl+c" {
+		return a.pairKey(msg)
+	}
+
 	// And /subharness, which is those panels' twin in every respect that matters
 	// here: opened by a command, nothing being typed under it, and esc leaving
 	// the conversation exactly as it was (subharness.go). Being modal is what
@@ -696,6 +710,13 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// ctrl+c is read above it and stays the door.
 	if cmd, taken := a.rewindKey(msg); taken {
 		return cmd
+	}
+
+	// The rotation key is below every modal so it never changes a model while
+	// a person is answering a different question in a panel.
+	if msg.String() == modelCycleKey && a.at(pageNone) && !a.roomOpen() && !a.linear {
+		a.cycleChatModel()
+		return nil
 	}
 
 	// The welcome box reads two keys and gives every other one back (welcome.go):
@@ -1382,59 +1403,65 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return tea.Batch(a.edited(), a.homeByTwoSpaces())
 	}
 	if text := msg.Key().Text; text != "" {
-		// The ordinary case: a key that carries text types it.
-		//
-		// This line used to claim it also caught a paste that arrived as
-		// keystrokes, and it could not: a pasted newline arrives as a key named
-		// "enter", which the switch above matches and SUBMITS on, so a paste on a
-		// terminal whose brackets leaked was sent to the model a line at a time.
-		// The bracket is what catches that now, before this router is reached at
-		// all (app.go's [app.pasteKey]).
-		// A CHARACTER TYPED OVER A SELECTED RUN REPLACES IT, which is what every
-		// text field does and what the pointer's own gesture promises
-		// (editselect.go). The tags are moved for the removal first, so the
-		// insertion below is measured against the text that is actually there.
-		a.dropDraftPick()
-		at := a.input.cursor
-		a.input.insert(text)
-		a.editTags(at, at, len([]rune(text)))
-		// THE FIRST RUNE HOLDS AN OPEN TASK PROPOSAL. This is the typed-character
-		// door; app.paste applies the same hold after the clipboard changes this
-		// box, so both roads share the engine-owned clock policy. The question
-		// block holds it too, off any key it reads (question.go's
-		// [app.holdQuestionClocks]) — this is the half that fires for a rune the
-		// question never sees, which is every rune once the box has words in it.
-		if a.task != nil {
-			a.holdTask(a.task.id)
-		}
-		// AND THE ENGINE IS TOLD SOMEBODY IS WRITING (internal/session's Typing).
-		// It is here, on the one line every typed character passes through,
-		// because that is exactly what it is for: seconds before a request is
-		// made we know one is coming and roughly where it will go, and a
-		// one-token measurement of the two machines it would go to costs about
-		// two hundredths of a cent and takes a stale half-hour aggregate out of
-		// the wait a person is about to sit through.
-		//
-		// EVERY CHARACTER CALLS IT AND ALMOST NONE OF THEM BUY ANYTHING. The
-		// debounce is the engine's — at most one pair every twenty seconds per
-		// model, none at all when the speed guard is off or nobody is waiting —
-		// so a composer has no first-keystroke state to keep and cannot get it
-		// wrong. Nothing waits for it: it returns before anything is sent.
-		a.laneTyping()
-		cmd := a.edited()
-		// AND A DROP TYPED IN CHARACTER BY CHARACTER IS WATCHED FOR HERE, which
-		// is the one line every typed character in this program passes through
-		// (dropkeys.go). Some terminals deliver a dragged file as KEYSTROKES
-		// rather than as the bracketed paste [app.paste] already understands, and
-		// nothing above this line is looking at keys. Ordinary typing pays two
-		// integer comparisons for it and nothing else — no clock, no syscall, no
-		// frame — and a run that could not be a path closes the fold at once.
-		if wake := a.dropWatch(&a.input, &a.chips, at, text); wake != nil {
-			return tea.Batch(cmd, wake)
-		}
-		return cmd
+		return a.typeCharacter(text)
 	}
 	return nil
+}
+
+// typeCharacter is the composer's ordinary text door. An unasked arrival
+// card reaches it before any empty-box shortcut can consume the first letter.
+func (a *app) typeCharacter(text string) tea.Cmd {
+	// The ordinary case: a key that carries text types it.
+	//
+	// This line used to claim it also caught a paste that arrived as
+	// keystrokes, and it could not: a pasted newline arrives as a key named
+	// "enter", which the switch above matches and SUBMITS on, so a paste on a
+	// terminal whose brackets leaked was sent to the model a line at a time.
+	// The bracket is what catches that now, before this router is reached at
+	// all (app.go's [app.pasteKey]).
+	// A CHARACTER TYPED OVER A SELECTED RUN REPLACES IT, which is what every
+	// text field does and what the pointer's own gesture promises
+	// (editselect.go). The tags are moved for the removal first, so the
+	// insertion below is measured against the text that is actually there.
+	a.dropDraftPick()
+	at := a.input.cursor
+	a.input.insert(text)
+	a.editTags(at, at, len([]rune(text)))
+	// THE FIRST RUNE HOLDS AN OPEN TASK PROPOSAL. This is the typed-character
+	// door; app.paste applies the same hold after the clipboard changes this
+	// box, so both roads share the engine-owned clock policy. The question
+	// block holds it too, off any key it reads (question.go's
+	// [app.holdQuestionClocks]) — this is the half that fires for a rune the
+	// question never sees, which is every rune once the box has words in it.
+	if a.task != nil {
+		a.holdTask(a.task.id)
+	}
+	// AND THE ENGINE IS TOLD SOMEBODY IS WRITING (internal/session's Typing).
+	// It is here, on the one line every typed character passes through,
+	// because that is exactly what it is for: seconds before a request is
+	// made we know one is coming and roughly where it will go, and a
+	// one-token measurement of the two machines it would go to costs about
+	// two hundredths of a cent and takes a stale half-hour aggregate out of
+	// the wait a person is about to sit through.
+	//
+	// EVERY CHARACTER CALLS IT AND ALMOST NONE OF THEM BUY ANYTHING. The
+	// debounce is the engine's — at most one pair every twenty seconds per
+	// model, none at all when the speed guard is off or nobody is waiting —
+	// so a composer has no first-keystroke state to keep and cannot get it
+	// wrong. Nothing waits for it: it returns before anything is sent.
+	a.laneTyping()
+	cmd := a.edited()
+	// AND A DROP TYPED IN CHARACTER BY CHARACTER IS WATCHED FOR HERE, which
+	// is the one line every typed character in this program passes through
+	// (dropkeys.go). Some terminals deliver a dragged file as KEYSTROKES
+	// rather than as the bracketed paste [app.paste] already understands, and
+	// nothing above this line is looking at keys. Ordinary typing pays two
+	// integer comparisons for it and nothing else — no clock, no syscall, no
+	// frame — and a run that could not be a path closes the fold at once.
+	if wake := a.dropWatch(&a.input, &a.chips, at, text); wake != nil {
+		return tea.Batch(cmd, wake)
+	}
+	return cmd
 }
 
 // enter is the submit key, and it has one first meaning: send the draft.
@@ -1445,11 +1472,21 @@ func (a *app) enter() tea.Cmd { return a.enterLine() }
 // (followup.go), and the marked reading went with standing orders; everything a
 // message does to this surface — the transcript line, the turn number, the
 // recall history, the draft file — is the same whichever way the sentence was
-// handed over.
+// handed over. A pair link typed where a message would go opens the
+// approval screen instead (pairlink.go).
 func (a *app) enterLine() tea.Cmd {
+	return a.enterCheckedLine(false)
+}
+
+// enterCheckedLine keeps the send road whole after its off-loop ownership read.
+// Re-entering with the same draft preserves every attachment and local gate.
+func (a *app) enterCheckedLine(ownershipRead bool) tea.Cmd {
 	if a.tmemberStart.key == a.frontTabKey() && a.tmemberStart.said.pending {
 		a.note("The member is still being added")
 		return nil
+	}
+	if cmd, took := a.takePairLink(); took {
+		return cmd
 	}
 	if a.startingChat() {
 		return a.startChatEnter()
@@ -1501,6 +1538,17 @@ func (a *app) enterLine() tea.Cmd {
 	}
 	if _, bash := session.BashCommand(a.pastesUnfolded(line)); bash {
 		return a.enterBash(line)
+	}
+	// Continuing is a local choice, so a displaced window offers it before
+	// asking for a provider connection or a model. The move may bring the
+	// saved connection this computer needs along with the chat.
+	if !strings.HasPrefix(line, "/") && (line != "" || held) {
+		if door, shown := a.heldElsewhereDoor(); shown {
+			return door
+		}
+		if !ownershipRead && a.watchesConversation() {
+			return a.checkBeforeSend()
+		}
 	}
 	// A MODEL MESSAGE THAT STILL NEEDS THE DEFAULT PROVIDER OPENS ITS CONNECTION
 	// BEFORE THE DRAFT IS CLEARED. This is the returning half of the key gate: a
@@ -1630,6 +1678,11 @@ func (a *app) completePath() tea.Cmd {
 		return nil
 	}
 	a.touch()
+	if a.comp.words != nil {
+		// A word argument's catalog was named at the door: there is no walk to
+		// wait for, and the list is already on the screen.
+		return nil
+	}
 	return a.loadFiles()
 }
 
