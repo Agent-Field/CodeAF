@@ -588,11 +588,13 @@ type tasksLine struct {
 	kind      tasksLineKind
 	// text is the words on a prose line.
 	text string
+	// Payloads refer to immutable tree slots so each layout line keeps only its
+	// own geometry instead of copying both complete record types.
 	// item is the work a task line and its tail are about.
-	item tasksItem
-	// chat is the conversation a [tasksLineChat] is about, and the zero value
+	item *tasksItem
+	// chat is the conversation a [tasksLineChat] is about, and nil
 	// everywhere else.
-	chat tasksChat
+	chat *tasksChat
 	// under says THE CONVERSATION THIS ROW CAME OUT OF IS ALREADY NAMED ABOVE IT,
 	// by the chat row it hangs under or by the piece of work it was cut out of.
 	// The row then spends those cells on its own name instead ([tasksChatRow]).
@@ -704,8 +706,8 @@ func (r tasksReading) layout(width int) []tasksLine {
 	// lines under it carry the rule of every ancestor that still has a sibling
 	// to come, so a family's line is one unbroken stroke from its first row to
 	// its last, however many live lines and grandchildren stand between them.
-	var work func(item tasksItem, depth int, last, named, nested bool, rails, branches []bool)
-	work = func(item tasksItem, depth int, last, named, nested bool, rails, branches []bool) {
+	var work func(item *tasksItem, depth int, last, named, nested bool, rails, branches []bool)
+	work = func(item *tasksItem, depth int, last, named, nested bool, rails, branches []bool) {
 		key := tasksKeyOf(item.entry)
 		kids := tree.kids[key]
 		own := len(lines)
@@ -740,7 +742,7 @@ func (r tasksReading) layout(width int) []tasksLine {
 		lines = append(lines, line)
 		// phone lane: a row becomes a two-line card a thumb goes into
 		// (taskphone.go), and the second line belongs to the first.
-		if phone && tasksCardTail(item, r.now) != "" {
+		if phone && tasksCardTail(*item, r.now) != "" {
 			lines = append(lines, tasksLine{
 				kind: tasksLineTail, item: item, owner: own,
 				kin:      line.underKin,
@@ -764,8 +766,8 @@ func (r tasksReading) layout(width int) []tasksLine {
 			return
 		}
 		below := append(append([]bool(nil), rails...), nested && !last)
-		for at, kid := range kids {
-			work(kid, depth+1, at == len(kids)-1, named, true, below, append(append([]bool(nil), branches...), !last))
+		for at := range kids {
+			work(&kids[at], depth+1, at == len(kids)-1, named, true, below, append(append([]bool(nil), branches...), !last))
 		}
 	}
 
@@ -788,8 +790,9 @@ func (r tasksReading) layout(width int) []tasksLine {
 			depth := 0
 			named := g.named
 			if named {
+				chat := g.chat
 				line := tasksLine{
-					kind: tasksLineChat, chat: g.chat, owner: len(lines),
+					kind: tasksLineChat, chat: &chat, owner: len(lines),
 					folds: len(g.roots) > 0, family: g.chat.key, kids: g.chat.kids,
 					open: r.opens(g.chat.key), rank: g.chat.rank,
 				}
@@ -804,8 +807,8 @@ func (r tasksReading) layout(width int) []tasksLine {
 				}
 				depth = 1
 			}
-			for at, root := range g.roots {
-				work(root, depth, at == len(g.roots)-1, named, false, make([]bool, depth), nil)
+			for at := range g.roots {
+				work(&g.roots[at], depth, at == len(g.roots)-1, named, false, make([]bool, depth), nil)
 			}
 		}
 	}
@@ -1652,7 +1655,7 @@ func (r tasksReading) paint(lines []tasksLine, i, width int, pal palette, lit bo
 		if tail < 1 {
 			tail = 1
 		}
-		return lead + pal.dim(kin) + indent + placeFactInk(lit, pal)(fit(tasksCardTail(line.item, r.now), tail))
+		return lead + pal.dim(kin) + indent + placeFactInk(lit, pal)(fit(tasksCardTail(*line.item, r.now), tail))
 	case tasksLinePlanUnder:
 		// THE LIVE STEP LINE AND THE FIGURES UNDER IT, hung where the phone
 		// card's second line hangs so a plan row's block reads at the same
@@ -1663,7 +1666,7 @@ func (r tasksReading) paint(lines []tasksLine, i, width int, pal palette, lit bo
 		if under < 1 {
 			under = 1
 		}
-		rows := planUnderRows(line.item, under, pal)
+		rows := planUnderRows(*line.item, under, pal)
 		if line.planUnder >= len(rows) {
 			return ""
 		}
@@ -1679,7 +1682,7 @@ func (r tasksReading) paint(lines []tasksLine, i, width int, pal palette, lit bo
 		if card < 1 {
 			card = 1
 		}
-		name := tasksCardHead(line.item, card, pal, lit)
+		name := tasksCardHead(*line.item, card, pal, lit)
 		fold := tasksFoldMark(line, pal)
 		return lead + pal.dim(kin) + name + " " + pal.dim(fold) + pad(card-ansi.StringWidth(name)) + pad(1-ansi.StringWidth(fold)) + pad(tasksColumnAir)
 	}
@@ -1706,7 +1709,7 @@ func (r tasksReading) at(lines []tasksLine, i int) (tasksItem, bool) {
 	if !lines[i].item.pick() {
 		return tasksItem{}, false
 	}
-	return lines[i].item, true
+	return *lines[i].item, true
 }
 
 // chatAt is the CONVERSATION drawn on one painted line, and whether the cursor
@@ -1720,7 +1723,7 @@ func (r tasksReading) chatAt(lines []tasksLine, i int) (tasksChat, bool) {
 	if i < 0 || i >= len(lines) || lines[i].kind != tasksLineChat {
 		return tasksChat{}, false
 	}
-	return lines[i].chat, true
+	return *lines[i].chat, true
 }
 
 // picks is whether the cursor may stand on one painted line AT ALL — a row of
@@ -1981,7 +1984,7 @@ func tasksLabel(entry session.TaskIndexEntry) string {
 //
 // Project identity has its own column, leaving the title identical to Home.
 func tasksChatRow(line tasksLine, width int, now time.Time, folder, tilde string, by tasksSort, pal palette, lit bool) string {
-	chat := line.chat
+	chat := *line.chat
 	name := chat.title
 	project := strings.TrimSpace(chat.row.Project)
 	if project == "" {
@@ -2011,7 +2014,7 @@ func tasksChatRow(line tasksLine, width int, now time.Time, folder, tilde string
 // [tasksCardHead]'s ([tasksReading.paint] routes to it before this is called),
 // so the tier question is settled before we are here.
 func tasksRow(line tasksLine, width int, now time.Time, by tasksSort, pal palette, lit bool) string {
-	item := line.item
+	item := *line.item
 	glyph, glyphInk := tasksGlyph(item, pal)
 	lead := tasksBareLead + pal.dim(tasksTreeLead(line, width, pal)) + glyphInk(glyph) + " "
 	cells := ansi.StringWidth(lead)

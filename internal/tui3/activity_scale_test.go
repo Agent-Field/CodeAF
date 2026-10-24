@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -108,13 +109,35 @@ func TestActivityParentIndexPreservesMalformedGraphPolicy(t *testing.T) {
 	}
 }
 
-func BenchmarkActivityScaleFrame(b *testing.B) {
+// Repainting a large history must spend memory on layout facts, not another
+// complete copy of every task and conversation record on the page.
+func TestActivityScalePaintAllocationBudget(t *testing.T) {
+	a := activityScaleApp()
+	a.taskSheetBody(160, 45)
+	const budget = 4 << 20
+	least := allocatedBytes(func() {
+		rows := a.taskSheetBody(160, 45)
+		if len(rows) == 0 || !strings.Contains(rows[0].text, "chats") {
+			t.Fatal("large history did not paint its conversation count")
+		}
+	})
+	if least > budget {
+		t.Fatalf("Activity paint allocated %d bytes for 5,120 tasks; budget is %d", least, budget)
+	}
+}
+
+func activityScaleApp() *app {
 	world, now := activityScaleWorld(40, 128)
 	a := &app{pal: newPalette(tokens.NoColor, false), width: 160, height: 55, clock: func() time.Time { return now }}
 	a.raisePlace(pageTasks)
 	a.taskSheet.world = world
 	a.taskSheet.reading = readTasks(world, tasksMine{}, session.LastDays(now, 14), tasksSort{}, time.Time{}, now)
 	a.taskSheet.awayAt = a.elsewhere().Read
+	return a
+}
+
+func BenchmarkActivityScaleFrame(b *testing.B) {
+	a := activityScaleApp()
 	a.taskSheetBody(160, 45)
 	b.ReportAllocs()
 	b.ResetTimer()

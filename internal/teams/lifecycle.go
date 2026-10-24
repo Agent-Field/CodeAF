@@ -72,9 +72,11 @@ func (f *File) Disband(id string, at time.Time, report string) error {
 		ids[d.ID] = true
 	}
 	independent := map[string]bool{}
+	// Read reporting before closing any team, once for the whole roster.
+	homes := f.Homes()
 	for _, t := range f.Teams {
 		for _, m := range t.Members {
-			if home, ok := f.Home(m.Key); ok && (ids[home.Via] || ids[home.Team]) {
+			if home, ok := homes[m.Key]; m.Key != "" && ok && (ids[home.Via] || ids[home.Team]) {
 				independent[m.Key] = true
 			}
 		}

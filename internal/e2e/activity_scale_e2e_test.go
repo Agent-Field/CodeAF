@@ -145,4 +145,5 @@ func TestActivityScaleTerminalLatency(t *testing.T) {
 	}
 	sort.Float64s(samples)
 	t.Logf("chats=40 tasks=5120 setup=%s first_screen=%s hover_ms p50=%.3f p95=%.3f samples=%v model_calls=0", setup, opening, samples[len(samples)/2], samples[len(samples)-1], samples)
+	r.quit()
 }
