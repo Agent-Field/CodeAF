@@ -609,6 +609,10 @@ denied, a tool a task does not have), `Unknown tool: …`, and a program that is
 not on this machine (`git: command not found`). A refused call is also never
 answered with a suggestion.
 
+Invalid tool arguments are not command failures either. A call rejected before
+its command runs neither records a fix nor receives a suggestion, even if an
+older build saved advice for that same argument error.
+
 
 ## Remembering a failed method or tool — will codeaf avoid trying that tool again, and what if the inputs change?
 

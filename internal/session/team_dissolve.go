@@ -57,7 +57,7 @@ func (a *Agent) dissolveTools() []bare.Tool {
 func (a *Agent) teamDissolveTool(ctx context.Context, args json.RawMessage) (string, bool, error) {
 	var p struct{ Team string }
 	if err := decodeToolArguments(args, &p); err != nil {
-		return invalidArgumentsPrefix + err.Error(), true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+err.Error()), true, nil
 	}
 	t, role, refusal := a.teamTarget(p.Team, true)
 	if refusal != "" {

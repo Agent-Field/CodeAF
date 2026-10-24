@@ -14,15 +14,17 @@ import (
 // I0 and N3 pin unchanged argv through the executor at every shell door. Together with the
 // injected Unix preference tests, this does not require an installed /bin/bash.
 func TestUnixDoorArgv(t *testing.T) {
+	// Bash doors keep pipefail so a failed pipeline stage cannot look successful.
 	for _, tc := range []struct{ file, function, call string }{
-		{"exec/tools.go", "runShell", `[]string{bash, "-lc", command}`},
+		{"exec/tools.go", "runShell", `[]string{bash, "-o", "pipefail", "-lc", command}`},
 		{"exec/jobs.go", "startBackground", `detachedCommand(executor.For(ctx), jobCtx, r.workspace.Root(), command, environment, logFile, 3*time.Second)`},
-		{"exec/services.go", "detachedCommand", `[]string{bash, "-lc", command}`},
+		{"exec/services.go", "detachedCommand", `[]string{bash, "-o", "pipefail", "-lc", command}`},
 		{"exec/bare/tools.go", "getShellConfig", `shell.Preferred()`},
 		{"exec/bare/tools.go", "newBashTool", `append([]string{shell}, shellArgs...)`},
 		{"exec/bare/streaming.go", "StreamingShell", `append(append([]string{}, shellArgs...), command)`},
 		{"session/jobs.go", "jobShell", `shell.Preferred()`},
-		{"session/jobs.go", "start", `append([]string{program}, shellArgs...)`},
+		// Job spawning moved under the cancellable admission door without changing its argv.
+		{"session/jobs.go", "startInUnder", `append([]string{program}, shellArgs...)`},
 		{"session/tools_watch.go", "runTick", `append([]string{shell}, append(shellArgs, spec.command)...)`},
 		{"session/automation_run.go", "automationLookCommand", `append([]string{shell}, append(args, command)...)`},
 		{"session/principal_audit.go", "runOneCheck", `[]string{bash, "-c", check}`},

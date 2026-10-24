@@ -150,7 +150,7 @@ func appSourceRows(rows []PersistedSource) []PersistedSource {
 // which is also how a ChatGPT sign-in the terminal kept, its row carrying the
 // sign-in's marker for a key, survives the app's rewrite. The app's own
 // sign-in writes its row with no key at all ([ConnectCodex]).
-func refuseAppCredentialUpdates(profileDir string, updates map[string]any) error {
+func refuseAppCredentialUpdates(held map[string]json.RawMessage, change profileChange) error {
 	if !AppMode() {
 		return nil
 	}
@@ -160,25 +160,26 @@ func refuseAppCredentialUpdates(profileDir string, updates map[string]any) error
 			secretFields[row.Key] = true
 		}
 	}
-	for name, value := range updates {
+	for _, name := range change.removed {
+		if secretFields[name] {
+			return ErrAppKeys
+		}
+	}
+	for name, raw := range change.set {
 		if secretFields[name] {
 			return ErrAppKeys
 		}
 		if name == keyModelSources {
-			raw, err := json.Marshal(value)
-			if err != nil {
-				return err
-			}
 			var rows []PersistedSource
 			if json.Unmarshal(raw, &rows) != nil {
 				return ErrAppKeys
 			}
-			held := make(map[string]string)
-			for _, row := range PersistedSources(profileDir) {
-				held[strings.ToLower(strings.TrimSpace(row.ID))] = row.Key
+			keys := make(map[string]string)
+			for _, row := range persistedSourcesFrom(held) {
+				keys[strings.ToLower(strings.TrimSpace(row.ID))] = row.Key
 			}
 			for _, row := range rows {
-				if row.Key == "" || row.Key == held[strings.ToLower(strings.TrimSpace(row.ID))] {
+				if row.Key == "" || row.Key == keys[strings.ToLower(strings.TrimSpace(row.ID))] {
 					continue
 				}
 				return ErrAppKeys

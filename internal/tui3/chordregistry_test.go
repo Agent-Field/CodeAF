@@ -127,7 +127,8 @@ func declaredChords(t *testing.T) map[string]string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	found := map[string]string{}
+	// The shared effort chord is an imported alias, so the literal scan needs its compiled value.
+	found := map[string]string{"effortKey": effortKey}
 	for _, pkg := range pkgs {
 		for _, f := range pkg.Files {
 			collectChordConsts(f, found)
