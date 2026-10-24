@@ -2,7 +2,7 @@
 kind: fixed
 title: Keep large teams overviews responsive
 pr: 1919
-surface: [tui]
+surface: [chat]
 invalidates:
   - "Hovering All teams previously repeated membership searches across every team for each crew member. Each paint now shares one indexed reporting-home reading, and summaries avoid building full crew rows."
   - "Background spend reads previously reloaded and repaired unchanged team membership once per pool. They now share one immutable membership snapshot for the most recent profile, invalidated when its primary or legacy membership file changes."
