@@ -19,6 +19,11 @@ import (
 
 // Config is everything a relay is told. The zero Store is the blind pipe.
 type Config struct {
+	// Cluster is supplied by the persistent member host after loading its
+	// committed enrollment view. Its handler is an internal assembly seam, not a
+	// rollout switch or an alternative directory writer.
+	Cluster http.Handler
+
 	Store  string           // directory holding directory/ and blobs/; empty serves the pipe only
 	Status bool             // answer GET /status with what is connected right now
 	Now    func() time.Time // the relay's clock; nil is the wall clock
@@ -103,6 +108,7 @@ func New(cfg Config) *Service {
 	}
 	mux := pipeMux(&relay.Server{Note: cfg.Note}, cfg.Status)
 	mountPairing(mux, cfg, now)
+	mountCluster(mux, cfg.Cluster)
 	mux.HandleFunc("/p/", servePairPage)
 	svc := &Service{Handler: stamped(now, mux)}
 	if cfg.Store == "" {
