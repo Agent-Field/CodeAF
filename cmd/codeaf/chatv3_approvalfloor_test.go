@@ -209,13 +209,14 @@ func TestTheFloorDoesNotWidenAnySafetyFloor(t *testing.T) {
 // THE TEAM VERBS SPLIT READ AND MESSAGE FROM START (internal/session's
 // tools_team.go). A manager looking at its team, sending it a line, ending a
 // member's turn and a member posting to its room stay inside the team the person
-// made and are logged in its traffic, so they sit on the floor; a new member is a
+// made and are logged in its traffic, so they sit on the floor, and so does a
+// manager taking back a team that never held anyone; a new member is a
 // new conversation that spends money, so team_start is the blanket mode's and
 // asks under the shipped default.
 func TestTheTeamVerbsAreAllowedAndTeamStartAsks(t *testing.T) {
 	dir := v3Profile(t, map[string]any{"tools.approvalMode": "prompt"})
 	policy := gateOf(t, dir)
-	for _, tool := range []string{"team_status", "team_read", "team_send", "team_stop", "team_post", "team_decide", "team_escalate", "team_close_report", "team_raise"} {
+	for _, tool := range []string{"team_status", "team_read", "team_send", "team_stop", "team_post", "team_decide", "team_escalate", "team_close_report", "team_raise", "team_dissolve"} {
 		wantAction(t, policy, tool, `{"to":"web","text":"x","handle":"web"}`, approval.ActionAllow)
 	}
 	wantAction(t, policy, "team_start", `{"handle":"docs","brief":"write the README"}`, approval.ActionPrompt)

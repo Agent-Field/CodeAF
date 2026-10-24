@@ -115,6 +115,41 @@ The repository is public now, so the free plan's former private-repository
 restriction no longer prevents branch rules. `.github/rulesets/` holds the
 intended rules; inspect live enforcement before assuming they were applied.
 
+## What you are running on — CI is real, Spark is not yours, no key is normal
+
+Agents keep reporting three absences that are not problems. None of them belongs
+in a summary or a pull request.
+
+- **CI exists and runs on every pull request.** It is GitHub Actions: `PR gate`
+  (`ci.yml`, whose `check` is the one required status) on every pull request and
+  every push to `dev`, `Full check` (`ci-full.yml`) nightly, `Release` on every
+  push. A failing `gh` is your credentials, not the repository: in a claude.ai
+  cloud container `gh` is installed but its `GH_TOKEN` does not authenticate, so
+  read runs, jobs and logs with the GitHub MCP tools (`actions_list`,
+  `get_job_logs`, `pull_request_read`). Never write "there is no CI" or "could not
+  check CI" without having tried them.
+- **Spark is the owner's own build machine**, reachable only from the owner's
+  laptop. Design notes say "measured on Spark" because that is where they were
+  measured — a record, never a step you owe. For everyone else its work is done by
+  CI: `touched packages` on every pull request and `Full check` nightly.
+- **No provider key is the normal state** away from the owner's laptop. The tagged
+  e2e suites, `TestRealRouter` and `internal/lane`'s `TestReal` SKIP green without
+  one, by design. Say "e2e not run: no key" once under "How it was checked" and
+  move on — do not ask for a key and do not go looking for one.
+
+**Spend the box on the change, not the ritual.** CI's `touched packages` runs the
+same selector as `make pr-ready`, on the same four-core runner size, in parallel
+legs, and it blocks the merge — so running it twice buys nothing.
+
+| When | Run |
+| --- | --- |
+| while editing | `make test-focus PKGS=… RUN=…` on the tests you wrote or touched |
+| before every push | `make test-quick` — build, vet, fmt, corpora, change entry, manual gates, laws; about a minute and a half warm, seven in a fresh cloud container (the first module download and build) |
+| before the pull request, on the owner's laptop | `make pr-ready` (below) |
+| before the pull request, in a cloud container | `make test-quick` plus your focused tests; then push and let `touched packages` be the full proof |
+| after the push | read `check` through the GitHub MCP tools; a red `touched packages` is yours to read before anything else |
+| never as routine | `make check`, `make test-e2e`, bare `go test ./...`, a full `tui3` or `session` suite |
+
 ## Build and ship — the owner's standing orders
 
 - **Always build with `make build`**, which writes `bin/codeaf`. Never a bare
@@ -139,8 +174,8 @@ run `make check`, bare `go test ./...`, or a full `go test ./internal/tui3` /
 `./internal/session` as the merge ritual — those thrash the box and are not what
 the pull-request gate demands. Edit with `make test-focus`; prove the change
 with `make test-touched` or `make pr-ready`. `make check` remains the full-tree
-build, test and size ritual for Spark, staging, or an intentional full laptop
-run. Concurrent full runs of `tui3` or `session` share one per-box lock so two
+build, test and size ritual for staging, the owner's Spark box, or an
+intentional full laptop run. Concurrent full runs of `tui3` or `session` share one per-box lock so two
 agents cannot stack those binaries. The performance laws those targets enforce —
 and the rule that changing any cap changes the doc in the same commit — are in
 [PERF.md](PERF.md).

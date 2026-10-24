@@ -4,24 +4,14 @@ package session
 // to be told again: a preference, a standing rule, a correction, a decision, a
 // lasting fact about the person, their machine or their project.
 //
-// IT IS THE SIMPLEST THING THAT WORKS, AND THAT IS THE DESIGN.
+//   - STORAGE IS NOT THE PROMPT BUDGET. Writes remain available after the
+//     working set fills. Local activation selects relevant lines, and explicit
+//     person pins always ride. The footer names how many other lines remain
+//     searchable, so admission never hides the existence of saved knowledge.
 //
-//   - A MEMORY IS ONE LINE WITH ONE STRENGTH. Every line a conversation can see —
-//     the person's, this machine's, and this project's — rides one <memory>
-//     block in message[0], in front of every turn, every task brief and every
-//     automation run. There is no router choosing which lines a message needs,
-//     no ranking, and no flag that makes one line weigh more than another: a
-//     line the person typed and a line that was noticed for them are the same
-//     thing once kept, and the person can see and take back either.
-//
-//   - WHAT IS SAVED IS WHAT THE MODEL SEES. The block is bounded
-//     ([store.MemoryBlockRunes]), and the store refuses — inside the write that
-//     would do it — any change that would carry ANY conversation's block past
-//     the bound, with a sentence saying so. Only a store an earlier build filled
-//     with no bound can hold more than a block fits; then [store.FitMemories]
-//     chooses what rides and the conversation says, once, how many lines did
-//     not. The block has no clock in it, so it renders byte for byte — and the
-//     provider's cached prefix stays warm — until somebody changes a line.
+//   - RETRIEVAL IS LOCAL. Project, current brief and message cues assemble the
+//     block without a model request. Surfacing is recorded once per session;
+//     the existing post-turn call identifies actual use and durable captures.
 //
 //   - THERE IS ONE WRITE DOOR ([Agent.keep]) and three ways to it: the person
 //     (/remember, /always, the Memories tab), the model's own `remember`, and
@@ -38,8 +28,8 @@ package session
 //     for in words.
 //
 //   - THE SWITCH GOVERNS NOTICING, NOT MEMORY. The person's `memory.enabled`
-//     row turns the noticing pass off; the lines already kept go on riding every
-//     turn, and /remember goes on working. It is read live, at the end of every
+//     row turns the noticing pass off; saved lines remain available and
+//     /remember goes on working. It is read live, at the end of every
 //     turn, so a long-lived engine follows a change without a restart.
 //
 // A READ-ONLY POSTURE (an automation's run, [Config.bindingOnlyMemory]) reads
@@ -189,6 +179,14 @@ type memoryBrain struct {
 	typed atomic.Bool
 	// failureSaid is when the last failure line went out.
 	failureSaid time.Time
+	// surfaced prevents a cache refresh from rehearsing the same line repeatedly.
+	surfaced         map[string]bool
+	selected         []store.Memory
+	selection        *store.MemoryBlock
+	selectionContext store.MemoryContext
+	contextWords     string
+	mutationSeq      int64
+	dwellContext     store.MemoryContext
 }
 
 func newMemoryBrain(s *store.Store) *memoryBrain {
@@ -302,7 +300,7 @@ func memoryReach(owner string, widened bool) string {
 // day be written two ways.
 const (
 	memoryHeading  = "Memory"
-	memoryPreamble = "What the person has had you keep. Each line holds in every conversation in its scope until it is forgotten; the person's own words in this conversation outrank a line. A line you keep or forget is shown to the person."
+	memoryPreamble = "Respect saved conditions: must/only/never bind; preferences are optional. Current user instructions win; current authoritative evidence corrects stale facts. Narrow exceptions don't revoke broader rules. Other lines: search_memories. Changes are shown."
 	// memoryReport is the closing line a task's or a run's section carries and
 	// a conversation's does not: a node works with nobody to ask, so a line it
 	// cannot honour has exactly one place to be said.
@@ -314,11 +312,15 @@ const (
 //
 // THE EMPTINESS LAW: no lines is NO SECTION — not an empty heading.
 //
-// NO AGES, AND THE ORDER IS THE STORE'S ([store.Store.MemoriesFor]): the block
-// rides the cached prefix, so nothing here may depend on a clock. Which lines
-// ride when they do not all fit is [store.FitMemories]'s, in that same order.
+// The compatibility renderer uses the store budget. Live prompt composition
+// uses renderMemorySelection after activation admission instead.
 func renderMemory(memories []store.Memory, closing string) string {
-	fit, _ := store.FitMemories(memories)
+	fit, omitted := store.FitMemories(memories)
+	return renderMemorySelection(fit, omitted, closing)
+}
+
+// renderMemorySelection renders the admitted set without imposing a second budget on pins.
+func renderMemorySelection(fit []store.Memory, omitted int, closing string) string {
 	var lines strings.Builder
 	shown, group := 0, ""
 	for _, memory := range fit {
@@ -329,14 +331,14 @@ func renderMemory(memories []store.Memory, closing string) string {
 		shown++
 		lines.WriteString("- " + store.MemoryQuote(memory.Text) + "\n")
 	}
-	if shown == 0 {
+	if shown == 0 && omitted == 0 {
 		return ""
 	}
 	var out strings.Builder
 	out.WriteString(memoryHeading + ":\n\n" + memoryPreamble + "\n\n")
 	out.WriteString(lines.String())
-	if more := len(memories) - shown; more > 0 {
-		out.WriteString("…" + strconv.Itoa(more) + " more kept lines did not fit here\n")
+	if omitted > 0 {
+		out.WriteString("· " + strconv.Itoa(omitted) + " more in memory\n")
 	}
 	if closing != "" {
 		out.WriteString("\n" + closing + "\n")
@@ -369,26 +371,92 @@ func MemoryWorld(st *store.Store, owners []string) string {
 	if st == nil || len(owners) == 0 {
 		return ""
 	}
-	memories, err := st.MemoriesFor(owners)
+	ctx := store.MemoryContext{Owners: owners}
+	for _, owner := range owners {
+		if store.OwnerKindOf(owner) != store.OwnerUser && store.OwnerKindOf(owner) != store.OwnerMachine {
+			ctx.Project = owner
+		}
+	}
+	return memoryWorldForContext(st, ctx)
+}
+
+func memoryWorldForContext(st *store.Store, ctx store.MemoryContext) string {
+	if st == nil || len(ctx.Owners) == 0 {
+		return ""
+	}
+	block, err := st.AssembleMemoryBlock(ctx)
 	if err != nil {
 		return ""
 	}
-	return renderMemory(memories, memoryReport)
+	return renderMemorySelection(block.Memories, block.Omitted, memoryReport)
 }
 
 // memoryWorld is the conversation answering for a piece of its own work, from
 // the brain a read may use, for the owners this conversation sees — so a
 // conversation and the work it hands out cannot disagree about what is kept.
 func (a *Agent) memoryWorld() string {
-	return MemoryWorld(a.config.bindingBrain(), a.memoryOwners())
+	return a.memoryWorldFor("")
 }
 
-// memoryWorld is the section a starting node's brief closes on.
+// memoryWorldFor admits memories using the worker's actual assignment. Read
+// conversation metadata under its lock, then do local retrieval off that lock.
+func (a *Agent) memoryWorldFor(brief string) string {
+	st, ctx := a.snapshotMemoryContext(brief)
+	return memoryWorldForContext(st, ctx)
+}
+
+func (a *Agent) snapshotMemoryContext(brief string) (*store.Store, store.MemoryContext) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	ctx := store.MemoryContext{Owners: MemoryOwners(a.config.MemoryProjectKey), Project: a.config.MemoryProjectKey, Session: a.sessionID(), Brief: brief + " " + a.cardText}
+	return a.config.bindingBrain(), ctx
+}
+
+// memoryWorld is retained for callers asking for the conversation's context.
 func (g *TaskGraph) memoryWorld() string {
 	if g.home == nil {
 		return ""
 	}
 	return g.home.memoryWorld()
+}
+
+// memoryWorldsForFrontier snapshots queued assignments under the graph lock,
+// then resolves their distinct memory contexts outside both graph and agent
+// locks. A rule for one task must not disappear behind another task's topic.
+func (g *TaskGraph) memoryWorldsForFrontier() map[uint64]string {
+	if g.home == nil {
+		return nil
+	}
+	briefs := g.snapshotQueuedMemoryBriefs()
+	worlds := make(map[uint64]string, len(briefs))
+	for id, brief := range briefs {
+		worlds[id] = g.home.memoryWorldFor(brief)
+	}
+	return worlds
+}
+
+// queuedWithMemoryContext leaves a node admitted after the snapshot for its
+// own admission's frontier pass; it must not start with an unrelated fallback.
+func queuedWithMemoryContext(node *TaskNode, worlds map[uint64]string) bool {
+	if node == nil || node.state != TaskQueued {
+		return false
+	}
+	_, ready := worlds[node.id]
+	return worlds == nil || ready
+}
+
+// snapshotQueuedMemoryBriefs never takes the agent lock or touches storage.
+func (g *TaskGraph) snapshotQueuedMemoryBriefs() map[uint64]string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	briefs := map[uint64]string{}
+	for _, id := range g.order {
+		node := g.nodes[id]
+		if node != nil && node.state == TaskQueued {
+			briefs[id] = g.inheritedLocked(node)
+		}
+	}
+	return briefs
 }
 
 // refreshMemoryLocked puts what this conversation keeps in front of the model.
@@ -408,22 +476,46 @@ func (a *Agent) refreshMemoryLocked() {
 		a.memoryText = ""
 		return
 	}
-	memories, err := st.MemoriesFor(MemoryOwners(a.config.MemoryProjectKey))
+	ctx := store.MemoryContext{Owners: MemoryOwners(a.config.MemoryProjectKey), Project: a.config.MemoryProjectKey, Session: a.sessionID(), Brief: a.cardText, Tasks: memoryInflightTasks(a.cardText)}
+	if a.memory != nil {
+		ctx.Keywords = strings.Fields(a.memory.contextWords)
+	}
+	revision, err := st.MemoryMutationSeq(ctx.Owners)
 	if err != nil {
 		return
 	}
-	a.memoryText = memoryBlock(memories)
+	if a.reuseMemoryDwell(&ctx, revision) {
+		return
+	}
+	block, err := st.AssembleMemoryBlock(ctx)
+	if err != nil {
+		return
+	}
+	store.LogMemoryAssembly(block, "conversation")
+	section := renderMemorySelection(block.Memories, block.Omitted, "")
+	a.memoryText = ""
+	if section != "" {
+		a.memoryText = "\n<memory>\n" + section + "</memory>\n"
+	}
 	a.noteMemoryOffUpgradeLocked()
-	// A STORE AN EARLIER BUILD FILLED PAST THE BOUND IS SAID ONCE, in this
-	// conversation, rather than only to the model: the person is the one who
-	// can choose what to forget. The line is held for the stream the turn is
-	// about to open ([Agent.flushMemoryNotices]) — this runs under a.mu, where
-	// saying it here would take the lock twice.
-	if _, left := store.FitMemories(memories); left > 0 && a.memory != nil && !a.config.bindingOnlyMemory {
+	if a.memory != nil && !a.config.bindingOnlyMemory {
 		a.memory.mu.Lock()
-		if !a.memory.overflowSaid {
-			a.memory.overflowSaid = true
-			a.memory.said = append(a.memory.said, memoryOverflowWords(left))
+		a.memory.selected = append([]store.Memory(nil), block.Memories...)
+		a.memory.selection = &block
+		a.memory.selectionContext = ctx
+		a.memory.mutationSeq = revision
+		if len(ctx.DwellIDs) == 0 {
+			a.memory.dwellContext = ctx
+		}
+		if a.memory.surfaced == nil {
+			a.memory.surfaced = map[string]bool{}
+		}
+		for _, memory := range block.Memories {
+			if !a.memory.surfaced[memory.ID] {
+				if err := st.RecordMemoryEvent(memory.ID, "surfaced", ctx.Session); err == nil {
+					a.memory.surfaced[memory.ID] = true
+				}
+			}
 		}
 		a.memory.mu.Unlock()
 	}
@@ -487,7 +579,7 @@ func memoryOverflowWords(left int) string {
 	if left == 1 {
 		lines = "1 remembered line doesn't"
 	}
-	return lines + " fit in front of the model here · forget some on the Memories tab"
+	return lines + " ride this conversation · find them on the Memories tab or with search_memories"
 }
 
 // memoryBlock is the <memory> block message[0] carries, or "" when nothing is
@@ -512,16 +604,21 @@ func memoryBlock(memories []store.Memory) string {
 // The answer is the line as kept, where it holds in receipt words, and whether
 // it was new.
 func (a *Agent) keep(text, scope, origin string, replaced *store.Memory) (store.Memory, string, bool, error) {
-	return a.keepLine(text, scope, origin, replaced, false)
+	return a.keepDurable(text, scope, origin, replaced, false, "")
 }
 
-// keepLine is [Agent.keep] with the one exception spelled out: unbounded is the
-// legacy import's, whose lines were the person's before the bound existed
-// ([store.WriteRequest.Unbounded]). Every other caller is measured, by the
-// store, inside the write.
+// keepLine retains the legacy import signature. Storage is unbounded; only
+// admission to a model request applies the prompt budget.
 func (a *Agent) keepLine(text, scope, origin string, replaced *store.Memory, unbounded bool) (store.Memory, string, bool, error) {
+	return a.keepDurable(text, scope, origin, replaced, unbounded, "")
+}
+
+func (a *Agent) keepDurable(text, scope, origin string, replaced *store.Memory, unbounded bool, durability string) (store.Memory, string, bool, error) {
 	if !a.memoryWritable() {
 		return store.Memory{}, "", false, errors.New("this conversation keeps no memory")
+	}
+	if durability == "ephemeral" {
+		return store.Memory{}, "", false, nil
 	}
 	// EVERY DOOR REDACTS. A person pasting a token beside what they want kept
 	// must not have it stored and rendered in front of every later turn.
@@ -540,7 +637,7 @@ func (a *Agent) keepLine(text, scope, origin string, replaced *store.Memory, unb
 	reach := memoryReach(owner, widened)
 	if replaced != nil {
 		fresh, added, err := a.memory.store.SupersedeMemoryForOwners(a.memoryOwners(), replaced.ID, store.Memory{
-			Owner: owner, Type: memoryTypeOf(text), Text: text,
+			Owner: owner, Type: memoryTypeForDurability(text, durability), Text: text,
 			Origin: origin, ProjectName: projectName, SourceSession: a.memorySourceSession(),
 		})
 		if err != nil {
@@ -549,9 +646,9 @@ func (a *Agent) keepLine(text, scope, origin string, replaced *store.Memory, unb
 		return fresh, reach, added, nil
 	}
 	result, err := a.memory.store.Write(store.WriteRequest{
-		Owner: owner, Type: memoryTypeOf(text), Text: text,
+		Owner: owner, Type: memoryTypeForDurability(text, durability), Text: text,
 		Origin: origin, ProjectName: projectName, SourceSession: a.memorySourceSession(),
-		Unbounded: unbounded,
+		Unbounded: unbounded, Durability: durability,
 	})
 	if err != nil {
 		return store.Memory{}, "", false, err
@@ -778,29 +875,24 @@ func (a *Agent) learnFromTurn(user userMessage, answer string) {
 	if !a.startMemoryJob() {
 		return
 	}
+	a.memory.mu.Lock()
+	kept := append([]store.Memory(nil), a.memory.selected...)
+	usedContext := a.memory.selectionContext
+	a.memory.mu.Unlock()
 	go func() {
 		defer a.memoryJobs.Done()
 		a.importMemoryFile()
-		a.noticeTurn(words, answer, askMemory)
+		a.noticeTurn(words, answer, askMemory, kept, usedContext, personTyped(user))
 	}()
 }
 
 // noticeTurn is the reading itself: the lines this conversation can see,
 // numbered so the reading can say one is corrected, the one call, and the
 // state card it always answers.
-func (a *Agent) noticeTurn(words, answer string, askMemory bool) {
+func (a *Agent) noticeTurn(words, answer string, askMemory bool, kept []store.Memory, usedContext store.MemoryContext, personAuthored bool) {
 	client := a.reflexClient()
 	if client == nil {
 		return
-	}
-	var kept []store.Memory
-	if askMemory {
-		visible, err := a.memory.store.MemoriesFor(a.memoryOwners())
-		if err != nil {
-			a.journalMemoryFailure("notice", err)
-			askMemory = false
-		}
-		kept = visible
 	}
 	texts := make([]string, len(kept))
 	for index, memory := range kept {
@@ -814,7 +906,17 @@ func (a *Agent) noticeTurn(words, answer string, askMemory bool) {
 	if found.State != nil {
 		a.mergeStateCard(*found.State)
 	}
-	if found.Keep == "" {
+	for _, index := range found.Used {
+		if index > 0 && index <= len(kept) && !memoryFeedbackContradicts(found, index) {
+			if err := a.memory.store.RecordMemoryContextEvent(kept[index-1].ID, "used", usedContext); err != nil {
+				a.journalMemoryFailure("used", err)
+			}
+		}
+	}
+	if personAuthored {
+		a.recordMemoryContradictions(found, kept, usedContext)
+	}
+	if found.Keep == "" || found.Durability == "ephemeral" {
 		return
 	}
 	var replaced *store.Memory
@@ -822,13 +924,17 @@ func (a *Agent) noticeTurn(words, answer string, askMemory bool) {
 		line := kept[found.Replaces-1]
 		replaced = &line
 	}
-	a.keepNoticed(found.Keep, found.Scope, replaced)
+	a.keepNoticedDurable(found.Keep, found.Scope, replaced, found.Durability)
 }
 
 // keepNoticed writes what the reading found through the one door and SAYS SO:
 // a line kept on the person's behalf is never kept in silence.
 func (a *Agent) keepNoticed(text, scope string, replaced *store.Memory) {
-	memory, reach, added, err := a.keep(text, scope, store.OriginNoticed, replaced)
+	a.keepNoticedDurable(text, scope, replaced, "")
+}
+
+func (a *Agent) keepNoticedDurable(text, scope string, replaced *store.Memory, durability string) {
+	memory, reach, added, err := a.keepDurable(text, scope, store.OriginNoticed, replaced, false, durability)
 	switch {
 	case errors.Is(err, store.ErrMemoryFull):
 		a.sayMemory("noticed something worth keeping, but memory is full " +
@@ -907,10 +1013,10 @@ func (b billedCompleter) CompleteWithMessages(ctx context.Context, messages []ai
 // time sentence is the mirror of the automation tool's: a timeless rule is a
 // memory, and anything with a time component is an automation.
 const (
-	rememberDescription = "Keep one line in memory: a preference, standing rule, correction, decision or lasting fact the person wants in every future conversation. It rides every conversation in its scope and the person is shown it. Anything with a time component (a reminder, a schedule, a watch) is an automation, not a memory."
-	rememberSchemaJSON  = `{"type":"object","properties":{"text":{"type":"string","description":"The one line, in the person's terms"},"scope":{"type":"string","enum":["user","project","env"],"description":"project by default; user only for a rule the person gave for all their work; env for this machine"}},"required":["text"],"additionalProperties":false}`
-	forgetDescription   = "Forget one remembered line, named by its words under Memory. The person is shown it and can put it back."
-	forgetSchemaJSON    = `{"type":"object","properties":{"text":{"type":"string","description":"The line's words"}},"required":["text"],"additionalProperties":false}`
+	rememberDescription = "Keep durable statements the person stated/accepted, no inferred details; a time component needs automation."
+	rememberSchemaJSON  = `{"type":"object","properties":{"text":{"type":"string"},"scope":{"type":"string","enum":["user","project","env"],"description":"project default; user for all work; env for this machine"},"durability":{"type":"string","enum":["standing_rule","decision","durable_fact","project_state"],"description":"For new captures"}},"required":["text"],"additionalProperties":false}`
+	forgetDescription   = "Forget revoked lines; exceptions keep broader rules."
+	forgetSchemaJSON    = `{"type":"object","properties":{"text":{"type":"string"}},"required":["text"],"additionalProperties":false}`
 )
 
 func init() {
@@ -970,14 +1076,15 @@ func (a *Agent) memoryTools() []bare.Tool {
 	if !a.memoryWritable() || a.config.promptProfile().lean() {
 		return nil
 	}
-	return []bare.Tool{{
+	return []bare.Tool{a.memorySearchTool(), {
 		Name:        "remember",
 		Description: rememberDescription,
 		Schema:      json.RawMessage(rememberSchemaJSON),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed struct {
-				Text  string `json:"text"`
-				Scope string `json:"scope"`
+				Text       string `json:"text"`
+				Scope      string `json:"scope"`
+				Durability string `json:"durability"`
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
 				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
@@ -985,7 +1092,12 @@ func (a *Agent) memoryTools() []bare.Tool {
 			if !a.memory.typed.Load() {
 				return memoryNotTypedWords, true, nil
 			}
-			memory, reach, added, err := a.keep(parsed.Text, parsed.Scope, store.OriginModel, nil)
+			switch parsed.Durability {
+			case "", "standing_rule", "decision", "durable_fact", "project_state":
+			default:
+				return "Invalid durability", true, nil
+			}
+			memory, reach, added, err := a.keepDurable(parsed.Text, parsed.Scope, store.OriginModel, nil, false, parsed.Durability)
 			if errors.Is(err, store.ErrMemoryFull) {
 				return a.memoryFullError(err).Error(), true, nil
 			}
@@ -1226,14 +1338,30 @@ func memoryTypeOf(text string) string {
 	return store.MemoryFact
 }
 
+// memoryTypeForDurability preserves the capture class for inspection and
+// consolidation rather than storing every progress update as a lasting fact.
+func memoryTypeForDurability(text, durability string) string {
+	switch durability {
+	case "durable_fact":
+		return store.MemoryFact
+	case "project_state":
+		return store.MemoryProjectState
+	case "decision":
+		return store.MemoryDecision
+	case "standing_rule":
+		return store.MemoryPreference
+	default:
+		return memoryTypeOf(text)
+	}
+}
+
 // ── message[0], the state card, and close ───────────────────────────────────
 
 // refreshSystemLocked rebuilds message[0] from the base prompt, the folders
 // somebody attached, what this conversation keeps, and its record of what it
 // has decided.
 //
-// WHAT LIVES HERE IS WHAT MOVES ONLY ON A DELIBERATE ACT, and that is the whole
-// rule. message[0] sits in front of every message there is, so one changed byte
+// Context admission and deliberate changes determine the memory prefix. message[0] sits in front of every message there is, so one changed byte
 // in it re-prices the entire transcript at the uncached rate on the very next
 // request. The base prompt never moves; a folder holds until it is removed; a
 // memory line moves when somebody keeps or forgets one; a decision is recorded

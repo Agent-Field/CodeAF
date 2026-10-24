@@ -1350,6 +1350,11 @@ func (s *sessionFile) isNote(message ai.Message) bool {
 	if s == nil {
 		return false
 	}
+	if mark := s.presentation.of(message); mark != nil && message.Role == "user" && mark.Audience == "human" {
+		// A person's quotation cannot inherit a runtime receipt's text hash
+		// when compaction writes the two occurrences back to the journal.
+		return false
+	}
 	key := noteKey(message)
 	if key == "" {
 		return false

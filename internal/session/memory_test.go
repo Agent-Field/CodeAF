@@ -316,7 +316,7 @@ func TestTheBlockCarriesWhatTheStoreFits(t *testing.T) {
 	if got := strings.Count(block, line); got != len(fit) {
 		t.Fatalf("the block carried %d lines and the store fit %d", got, len(fit))
 	}
-	if !strings.Contains(block, "more kept lines did not fit here") {
+	if !strings.Contains(block, "more in memory") {
 		t.Fatal("an overflowing block did not say lines were left out")
 	}
 }
@@ -355,23 +355,19 @@ func TestRememberKeepsForThisProjectAndWidensWithoutOne(t *testing.T) {
 	}
 }
 
-func TestAFullBlockRefusesASaveAndSaysHow(t *testing.T) {
-	agent, _ := brainAgent(t, &reflexScript{}, nil)
-	line := strings.Repeat("word ", 90)
-	for i := 0; ; i++ {
-		_, err := agent.Remember(line + string(rune('a'+i%26)) + string(rune('a'+i/26)))
-		if errors.Is(err, store.ErrMemoryFull) {
-			if !strings.Contains(err.Error(), "Memories tab") {
-				t.Fatalf("the refusal does not say how to make room: %v", err)
-			}
-			return
-		}
-		if err != nil {
+func TestAFullBlockKeepsSavingExplicitPins(t *testing.T) {
+	agent, brain := brainAgent(t, &reflexScript{}, nil)
+	for i := 0; i < 25; i++ {
+		if _, err := agent.Remember(fmt.Sprintf("Pinned rule %d: %s", i, strings.Repeat(string(rune('a'+i)), 300))); err != nil {
 			t.Fatal(err)
 		}
-		if i > 200 {
-			t.Fatal("the block never filled")
-		}
+	}
+	if got, err := brain.ActiveMemoryCount(); err != nil || got != 25 {
+		t.Fatalf("saved %d pins: %v", got, err)
+	}
+	collect(t, mustSubmit(t, agent, "hello"))
+	if !strings.Contains(agent.memoryText, "Pinned rule 24:") || !strings.Contains(agent.memoryText, "Pinned rule 0:") {
+		t.Fatal("explicit pins were budget truncated")
 	}
 }
 
@@ -469,7 +465,7 @@ func TestANoticedReplacementReplacesAndTheOldLineCanComeBack(t *testing.T) {
 // it corrects is let go and nothing new is written, and the person is told
 // both halves — before, nothing at all was said.
 func TestANoticedCorrectionAlreadyKeptLetsTheOldLineGoAndSaysSo(t *testing.T) {
-	script := &reflexScript{notice: `{"keep":"deploys on Tuesdays","scope":"user","replaces":1}`}
+	script := &reflexScript{notice: `{"keep":"deploys on Tuesdays","scope":"user","replaces":2}`}
 	agent, brain := brainAgent(t, script, nil)
 	remember(t, brain, "", "deploys on Fridays")
 	remember(t, brain, "", "deploys on Tuesdays")
@@ -809,28 +805,17 @@ func TestAnErrandIsNotNoticed(t *testing.T) {
 	}
 }
 
-// A BLOCK AN EARLIER BUILD FILLED PAST THE BOUND IS SAID ONCE.
-func TestAnOverflowingBlockIsSaidOnce(t *testing.T) {
+// A store larger than the working set stays visible without an overflow refusal.
+func TestAnOverflowingBlockShowsSearchableRemainder(t *testing.T) {
 	agent, brain := brainAgent(t, &reflexScript{}, nil)
 	for i := 0; i < 70; i++ {
-		if _, err := brain.AddMemory(store.Memory{Owner: store.OwnerUser, Type: store.MemoryFact, Text: fmt.Sprintf("line %02d %s", i, strings.Repeat("w", 80))}); err != nil {
+		if _, err := brain.AddMemory(store.Memory{Owner: store.OwnerUser, Type: store.MemoryFact, Text: fmt.Sprintf("line %02d %s", i, strings.Repeat(string(rune('a'+i%26)), 80))}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	first := noticeLines(collect(t, mustSubmit(t, agent, "hello")))
-	said := 0
-	for _, line := range first {
-		if strings.Contains(line, "don't fit in front of the model here") {
-			said++
-		}
-	}
-	if said != 1 {
-		t.Fatalf("the first turn said the overflow %d times: %q", said, first)
-	}
-	for _, line := range noticeLines(collect(t, mustSubmit(t, agent, "again"))) {
-		if strings.Contains(line, "don't fit") {
-			t.Fatalf("the overflow was said again: %q", line)
-		}
+	collect(t, mustSubmit(t, agent, "hello"))
+	if !strings.Contains(agent.memoryText, "more in memory") {
+		t.Fatalf("missing visible remainder: %s", agent.memoryText)
 	}
 }
 
@@ -944,8 +929,7 @@ func TestAWorkersBriefClosesOnTheSameSection(t *testing.T) {
 
 // THE OLD FILE IS IMPORTED WHOLE, PAST THE BOUND: those lines were the
 // person's before the bound existed, and an import that refused the tail would
-// lose it. What then rides is chosen ([store.FitMemories]); a line kept after
-// it is measured and refused.
+// lose it. Imported person pins ride, and later writes remain available.
 func TestTheOldMemoryFileIsImportedWholePastTheBound(t *testing.T) {
 	legacy := filepath.Join(t.TempDir(), "memory.md")
 	var file strings.Builder
@@ -964,8 +948,8 @@ func TestTheOldMemoryFileIsImportedWholePastTheBound(t *testing.T) {
 	if got := activeTexts(t, brain, store.OwnerUser); len(got) != n {
 		t.Fatalf("imported %d of the file's %d lines", len(got), n)
 	}
-	if _, err := agent.RememberAlways("one more", true); !errors.Is(err, store.ErrMemoryFull) {
-		t.Fatalf("a line kept after the import = %v; want memory full", err)
+	if _, err := agent.RememberAlways("one more", true); err != nil {
+		t.Fatalf("a line kept after the import was refused: %v", err)
 	}
 }
 

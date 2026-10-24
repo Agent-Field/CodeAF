@@ -800,6 +800,31 @@ done so far. The checker's own ceiling still applies inside it.
 without a routed crew; the flag answers the day's questions and the plan-price question,
 not this one.
 
+### The selector snapshot — when the crew is picked by the pareto engine
+
+The crew is normally routed by the learned router, and **nothing else seats a crew unless
+you configured it**. There is one extra hand on the picker: a `selector snapshot` row in the
+profile's settings (`models.crew.selector_snapshot`), a path to a fitted snapshot file.
+Configured, it points the pareto selection engine at the same models your providers reach,
+and it picks one model per unpinned seat — the worker seat from its worker class, the
+checker from its checker class, the planner from its planner class.
+
+What stays yours, whatever the file says: **a pin always wins** — a seat you pinned never
+reads the engine; **a redo routes as before** — `redo stronger` and a redo of a task that
+never started are the learned router's to seat; **a learned offset still applies** — a
+repository whose class was redone starts above the engine's pick; and **the engine can
+only seat what you allow** — its pool is exactly the candidate list the router already
+priced and health-checked, so a demoted route, a turned-off provider and an out-of-credit
+account all hold for it too.
+
+What happens when the file is missing or bad: the crew is routed **exactly as if no
+snapshot were configured** — no half-crew, no refusal, no note. A path that does not load
+is refused when you write it (`that snapshot does not load: …`); one that stops loading
+later silently falls back. A seat the engine cannot seat (no allowed model passes its
+capability gate for that seat) keeps the router's own pick for that seat alone. With no
+snapshot row the engine never runs at all, and every crew is byte for byte the crew the
+router picked before it existed.
+
 ### How hard to try one task — --best and --cheap
 
 The panel says what persists. **How hard to try one task is said in the ask, and sticks to
@@ -1109,10 +1134,9 @@ A task you hand off does not run on it. Each task gets a **crew** — a worker, 
 a checker — picked for each task from what kind of work it is; `/crew` shows the seats and
 `/crew pin` fixes one.
 
-What a task costs is on its crew line. When it starts, the line gives the estimate —
-`task 2 crew · bugfix · worker glm-5.3-flash (openrouter) · checker glm-5.3-flash · est $0.013`
-— and when it lands the line moves to the end of the conversation with what it actually
-cost beside the estimate. Every task is held to the per-task limit, and all crews together
+What a task costs is on its result page in Tasks, together with the routed crew,
+its estimate and actual spending. Starting or finishing does not append a separate
+crew receipt to chat. Every task is held to the per-task limit, and all crews together
 to the crew daily cap when one is set (both on `/crew`'s cap row). `/cost` says what this
 conversation has spent, and `/spend` the whole machine.
 
@@ -1125,8 +1149,8 @@ conversation has spent, and `/spend` the whole machine.
 3. the crew's **worker** — your pin, or the model the crew picked for this task;
 4. the model you are talking to, only when nothing above answers.
 
-The task's crew line, its row on the roster, its room's status line and its finished card
-all name the model it actually ran on. The seats are settled when the task starts, so
+The task's result details, its row on the roster and its room's status line
+name the model it actually ran on. The seats are settled when the task starts, so
 changing the crew — or `/model` — half way through does not move work already going. A
 second task handed off while one is still running joins it and rides its crew.
 
@@ -4276,7 +4300,10 @@ estimated cost. Other conversations' completed usage receipts are read on each
 check, and completed spending resets at the local date boundary. Calls already
 in flight may finish; this is not an atomic reservation across processes.
 Use `/budget` to change the limit. Per-conversation and per-task limits still
-apply separately.
+apply separately. The default profile and home errands follow the saved
+or environment daily limit too; `/budget day` changes apply on the next turn.
+Task checks use the same selected daily limit and spending permission as the work
+they check.
 
 ## Is the desktop day cap the same limit as /budget?
 
@@ -4412,3 +4439,10 @@ crew daily cap, including open models, price rules and incremental +model/-model
 forms. The crew daily cap is separate from the machine spending limit and member
 conversation budgets. Crew settings are machine-local; a client using `--host`
 must change those on that machine.
+## Where are the logs
+
+The model-call log is `~/.codeaf/logs/calls.jsonl`, under `CODEAF_PROFILE_DIR` if
+you moved the profile. Run `codeaf logs` to read recent calls, `codeaf logs --follow`
+to follow them, or `codeaf logs --path` to print the exact path. Each call records
+its model, timing, token use and cost. Background process output is separate: open
+`/processes` in the conversation and choose a process to read its log.

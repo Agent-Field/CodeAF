@@ -168,8 +168,13 @@ func TestAHostedRosterListsTheFarConversationsTasks(t *testing.T) {
 		t.Fatalf("the far row did not become a roster node: %#v", node)
 	}
 	railOpenAll(a)
-	if entries := a.railEntries(); len(entries) != 2 || !entries[0].head || entries[1].node == nil || entries[1].node.id != 9 {
-		t.Fatalf("the hosted roster stayed empty: %#v", entries)
+	if entries := a.railEntries(); len(entries) != 0 {
+		t.Fatalf("completed remote work leaked into sidebar: %#v", entries)
+	}
+	// The same hosted record remains available through the Tasks history door.
+	rows := a.taskSheetOwnRows()
+	if len(rows) != 1 || rows[0].ID != "9" || rows[0].Title != entry.Title {
+		t.Fatalf("quiet remote task lost its history: %#v", rows)
 	}
 }
 

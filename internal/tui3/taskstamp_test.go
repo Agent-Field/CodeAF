@@ -149,7 +149,7 @@ func TestACompletionCardDrawsTheRecordsOwnSpan(t *testing.T) {
 		t.Fatal("the restored task did not draw a completion card")
 	}
 	card.open = true
-	text := taskText(a)
+	text := retainedLandingText(t, a, 14)
 	want := doneSpanLabel + "14:02 → 14:14"
 	if !strings.Contains(text, want) {
 		t.Fatalf("the completion card does not draw the record's span %q:\n%s", want, text)

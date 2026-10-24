@@ -20,11 +20,12 @@ func TestMemberRoundTripPreservesFutureFieldsAndAbsentJoinBoundary(t *testing.T)
 		must(t, json.Unmarshal(data, &member))
 	}
 	member.JoinedAt = time.Unix(42, 0).UTC()
+	member.StartID = "000000000042"
 	data, err := json.Marshal(member)
 	must(t, err)
 	var back Member
 	must(t, json.Unmarshal(data, &back))
-	if !back.JoinedAt.Equal(member.JoinedAt) {
+	if !back.JoinedAt.Equal(member.JoinedAt) || back.StartID != member.StartID {
 		t.Fatalf("join boundary: %s", data)
 	}
 }

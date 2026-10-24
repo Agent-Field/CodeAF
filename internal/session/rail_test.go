@@ -190,6 +190,128 @@ func TestSpendRailRefusesTurnWhenDailyBudgetExceeded(t *testing.T) {
 	}
 }
 
+// TestTheDailyCeilingBindsTaskAndErrandTurnsToo guards #1546: the daily budget
+// is a machine-wide ceiling, and before this fix [Agent.railBlockLocked] skipped
+// it for an InTask runner (a task node, including one under `--one-model`, which
+// has no crew guard behind it) and for the home Errand. Each of those is now
+// held to the day's allowance exactly as a chat turn is: a conversation past the
+// ceiling starts no new turn, however the work was asked for.
+func TestTheDailyCeilingBindsTaskAndErrandTurnsToo(t *testing.T) {
+	for _, posture := range []struct {
+		what   string
+		config func(*Config)
+	}{
+		{"a task node runner", func(cfg *Config) { cfg.InTask = true }},
+		{"a task node under one-model", func(cfg *Config) { cfg.InTask = true; cfg.OneModel = true }},
+		{"the home errand", func(cfg *Config) { cfg.Errand = true }},
+	} {
+		t.Run(posture.what, func(t *testing.T) {
+			profileDir := t.TempDir()
+			if err := config.WriteDailyBudgetUSD(profileDir, 1.00); err != nil {
+				t.Fatalf("write daily budget: %v", err)
+			}
+			agent, _ := newTestAgent(t, &scriptedCompleter{}, func(cfg *Config) {
+				cfg.ProfileDir = profileDir
+				posture.config(cfg)
+			})
+			// The day's spend is over the ceiling, read the way the rail reads it.
+			agent.crewDayHeld = NewSpendDay(1.50)
+
+			err := agent.railBlockLocked()
+			if err == nil {
+				t.Fatalf("%s past the daily ceiling was allowed to start a turn", posture.what)
+			}
+			if !errors.Is(err, ErrSpendRail) {
+				t.Fatalf("the refusal must carry the sentinel: %v", err)
+			}
+			if !strings.Contains(err.Error(), "daily limit reached") {
+				t.Fatalf("error = %v, want it to say the daily limit was reached", err)
+			}
+		})
+	}
+
+	// And under the ceiling, each posture still starts: the fix refuses only the
+	// turn the day's allowance cannot pay for.
+	profileDir := t.TempDir()
+	if err := config.WriteDailyBudgetUSD(profileDir, 1.00); err != nil {
+		t.Fatalf("write daily budget: %v", err)
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(cfg *Config) {
+		cfg.ProfileDir = profileDir
+		cfg.InTask = true
+	})
+	agent.crewDayHeld = NewSpendDay(0.50)
+	if err := agent.railBlockLocked(); err != nil {
+		t.Fatalf("a task turn under the daily ceiling was refused: %v", err)
+	}
+}
+
+// TestAWorkerIsHeldToTheSelectedBudgetItCarriesNotTheDefault covers the #1842
+// review: a worker is handed no ProfileDir (it would open the settings door), so
+// the daily check must read the figure the root resolved and carried
+// ([Config.DailyBudgetUSD]), never a profile at an empty path - which returns
+// the default profile's limit and would refuse a worker under a higher selected limit and
+// let it spend past a lower one.
+func TestAWorkerIsHeldToTheSelectedBudgetItCarriesNotTheDefault(t *testing.T) {
+	// A worker: no ProfileDir, the selected limit carried down as $1.
+	worker := &Agent{}
+	worker.config.DailyBudgetUSD = 1.00
+	worker.config.DailyBudgetResolved = true
+	worker.crewDayHeld = NewSpendDay(1.50)
+	if err := worker.railBlockLocked(); err == nil {
+		t.Fatal("a worker past its carried $1 ceiling was allowed to start")
+	} else if !strings.Contains(err.Error(), "daily limit reached") {
+		t.Fatalf("error = %v, want the daily limit", err)
+	}
+
+	// The same spend ($600) under a HIGHER selected limit ($1000) carried down
+	// must NOT refuse - the bug was reading the default $500 and refusing here.
+	high := &Agent{}
+	high.config.DailyBudgetUSD = 1000.00
+	high.config.DailyBudgetResolved = true
+	high.crewDayHeld = NewSpendDay(600.00)
+	if err := high.railBlockLocked(); err != nil {
+		t.Fatalf("a worker under its carried $1000 ceiling was refused: %v", err)
+	}
+
+	// An explicitly unlimited worker keeps its selected zero ceiling.
+	none := &Agent{config: Config{DailyBudgetResolved: true}}
+	none.crewDayHeld = NewSpendDay(1000.00)
+	if err := none.railBlockLocked(); err != nil {
+		t.Fatalf("an explicitly unlimited worker was refused: %v", err)
+	}
+}
+
+// TestSpendPreauthorizationLiftsTheDailyCeiling covers the #1842 review's second
+// case: `--yes-spend` / `CODEAF_PREAUTHORIZE_SPEND=1` is the person's standing
+// permission to spend past the daily limit, so a preauthorized worker past the
+// ceiling runs rather than refusing - the same authority the crew guard already
+// honours. A separate conversation limit is NOT lifted by it.
+func TestSpendPreauthorizationLiftsTheDailyCeiling(t *testing.T) {
+	pre := &Agent{}
+	pre.config.DailyBudgetUSD = 1.00
+	pre.config.DailyBudgetResolved = true
+	pre.config.SpendPreauthorized = true
+	pre.crewDayHeld = NewSpendDay(1.50)
+	if err := pre.railBlockLocked(); err != nil {
+		t.Fatalf("a preauthorized worker past the daily ceiling was refused: %v", err)
+	}
+
+	// But a conversation limit stands even under preauthorization: --yes-spend
+	// lifts the day, not a ceiling the person put on this one conversation.
+	bounded := &Agent{}
+	bounded.config.DailyBudgetUSD = 1.00
+	bounded.config.DailyBudgetResolved = true
+	bounded.config.SpendPreauthorized = true
+	bounded.config.SpendRailUSD = 0.50
+	bounded.usage.CostUSD = 0.60
+	if err := bounded.railBlockLocked(); err == nil {
+		t.Fatal("preauthorization lifted a conversation limit it should not")
+	} else if !strings.Contains(err.Error(), "conversation limit reached") {
+		t.Fatalf("error = %v, want the conversation limit", err)
+	}
+}
+
 // Raising the day's allowance does not remove a conversation's separate cap.
 // The named conversation setting must release the same live agent on retry.
 func TestBudgetScopeAndLiveConversationRecovery(t *testing.T) {

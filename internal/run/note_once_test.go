@@ -104,7 +104,7 @@ func TestAPlanBornWorkerIsHandedThePersonsRules(t *testing.T) {
 	store := runOpenStore(t)
 	const rules = "Rules that always hold here:\n\n- never force-push a shared branch"
 	seat := &seat{ever: echoesUntilTheCap()}
-	factory := run.CrewFactory(store, filepath.Dir(store.Path()), t.TempDir(), run.Seats{One: "test/model"}, rules,
+	factory := run.CrewFactory(store, filepath.Dir(store.Path()), t.TempDir(), run.Seats{One: "test/model"}, rules, false,
 		func(string) session.Completer { return seat })
 	worker := factory(*store.Task(store.RootID()))
 	if worker == nil {

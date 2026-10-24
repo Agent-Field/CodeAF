@@ -25,6 +25,13 @@ type teamAskDoor interface {
 	ProposeTeams(ctx context.Context, in session.TeamProposalInput) (session.TeamProposal, error)
 }
 
+// teamAskWordsDoor is the naming ask with a word limit, which the engine
+// answers when a request carries one ([TeamNameArgs.Words]). An agent without
+// it is asked the group's question, as before.
+type teamAskWordsDoor interface {
+	NameTeamWords(ctx context.Context, titles []string, words int) (string, error)
+}
+
 // teamAskKnown is [Welcome.TeamAsk]: whether the agent this engine has open
 // answers both asks.
 func teamAskKnown(agent any) bool { _, ok := agent.(teamAskDoor); return ok }
@@ -69,7 +76,12 @@ func teamAskCall(agent WrappedAgent, call Frame) (json.RawMessage, bool, error) 
 		}
 		ctx, cancel := teamAskWithin(args.Budget)
 		defer cancel()
-		name, err := door.NameTeam(ctx, args.Titles)
+		var name string
+		if worded, ok := agent.(teamAskWordsDoor); ok && args.Words > 0 {
+			name, err = worded.NameTeamWords(ctx, args.Titles, args.Words)
+		} else {
+			name, err = door.NameTeam(ctx, args.Titles)
+		}
 		if err != nil {
 			return nil, true, err
 		}
@@ -121,6 +133,28 @@ func (a *Agent) NameTeam(ctx context.Context, titles []string) (string, error) {
 		return "", context.DeadlineExceeded
 	}
 	payload, err := a.c.call(ctx, MethodTeamsName, TeamNameArgs{Titles: titles, Budget: budget})
+	if err != nil {
+		return "", err
+	}
+	var name string
+	if err := json.Unmarshal(payload, &name); err != nil {
+		return "", err
+	}
+	return name, nil
+}
+
+// NameTeamWords is [Agent.NameTeam] for a name of at most words words. The
+// limit rides the request; an engine from before it answers the group's
+// question, and the caller cuts that answer to the words it asked for.
+func (a *Agent) NameTeamWords(ctx context.Context, titles []string, words int) (string, error) {
+	if !a.c.Welcome().TeamAsk {
+		return "", errors.New(teamAskOffWord)
+	}
+	budget, ok := teamAskBudget(ctx)
+	if !ok {
+		return "", context.DeadlineExceeded
+	}
+	payload, err := a.c.call(ctx, MethodTeamsName, TeamNameArgs{Titles: titles, Budget: budget, Words: words})
 	if err != nil {
 		return "", err
 	}

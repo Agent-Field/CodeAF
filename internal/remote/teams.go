@@ -130,6 +130,7 @@ func teamsUpdate(dir string, args TeamsUpdateArgs) (TeamsReading, error) {
 				member := &args.Teams[i].Members[j]
 				if old, exists := previous.Member(member.Key); exists {
 					member.JoinedAt = old.JoinedAt
+					member.StartID = old.StartID
 				} else {
 					member.JoinedAt = time.Now()
 				}

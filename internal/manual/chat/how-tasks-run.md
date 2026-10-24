@@ -3407,3 +3407,13 @@ a failed observation, never evidence that a page was read.
 A child reads the overall ask for requirements it owns. Delegation instructions
 for the parent remain the parent's coordination work; a child repeats them only
 when its own work order assigns coordination.
+
+## Where does my task work
+
+An ordinary code task works in its own copy of the repository the work is about,
+on its own branch, so you can continue editing your working copy. Its task page
+and history record show the resolved folder. A quick task instead works in the
+conversation's own folder, with file reservations rather than a separate branch.
+If the request explicitly names a plain folder outside a repository, that exact
+folder is used. The resolved place is a fact on the task, not guessed from your
+terminal's current folder after the task has started.

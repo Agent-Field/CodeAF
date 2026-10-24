@@ -191,3 +191,40 @@ func TestAnOlderEngineIsNotAskedForATeamName(t *testing.T) {
 // The actual engine, rather than only a fixture, must answer both asks, or the
 // flag would be false on every real engine and the wall would never ask.
 var _ teamAskDoor = (*session.Agent)(nil)
+
+// And the word-limited ask, which a team made from one conversation is named
+// through (internal/tui3's helpers.go).
+var _ teamAskWordsDoor = (*session.Agent)(nil)
+
+// wordsAgent is [askAgent] with the word-limited ask, which remembers the
+// limit it was given.
+type wordsAgent struct {
+	*askAgent
+	words int
+}
+
+func (a *wordsAgent) NameTeamWords(ctx context.Context, titles []string, words int) (string, error) {
+	a.titles, a.words = titles, words
+	a.note(ctx)
+	return "pickups", nil
+}
+
+// THE WORD LIMIT CROSSES, AND AN ENGINE WITHOUT IT IS ASKED THE GROUP'S
+// QUESTION. A request with Words reaches an engine's NameTeamWords with that
+// limit; the same request to an engine whose agent has only NameTeam is
+// answered by NameTeam, whose answer the surface cuts down.
+func TestTheTeamNameWordLimitCrossesAndFallsBack(t *testing.T) {
+	worded := &wordsAgent{askAgent: &askAgent{fakeAgent: &fakeAgent{model: "m"}}}
+	loop := askLoop(t, worded)
+	name, err := loop.Client.Agent().NameTeamWords(context.Background(), []string{"guitar pickups"}, 2)
+	if err != nil || name != "pickups" || worded.words != 2 || len(worded.titles) != 1 {
+		t.Fatalf("the limit did not cross: %q, %v, words %d, titles %q", name, err, worded.words, worded.titles)
+	}
+
+	plain := &askAgent{fakeAgent: &fakeAgent{model: "m"}}
+	loop = askLoop(t, plain)
+	name, err = loop.Client.Agent().NameTeamWords(context.Background(), []string{"guitar pickups"}, 2)
+	if err != nil || name != "harbor" || plain.calls != 1 {
+		t.Fatalf("an engine without the limit was not asked the group's question: %q, %v", name, err)
+	}
+}

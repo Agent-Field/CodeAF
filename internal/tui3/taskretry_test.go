@@ -71,7 +71,7 @@ func TestTaskRetryEnterUpdatesEveryViewWithoutAnotherTask(t *testing.T) {
 			t.Fatal(text)
 		}
 		painted := ansi.Strip(strings.Join(a.doneRows(a.entries[at].done, 120, false), "\n"))
-		if strings.Contains(painted, "old failure") || !strings.Contains(painted, a.taskStatus(node).Word) {
+		if painted != "" {
 			t.Fatal(painted)
 		}
 		if a.entries[at].done.status.Word != a.taskStatus(node).Word {

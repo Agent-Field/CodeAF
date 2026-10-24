@@ -151,7 +151,7 @@ func TestCrewSegment(t *testing.T) {
 
 // A ROUTED TASK SAYS ITS CREW when it starts, with the estimate, and when it
 // lands, with the actual beside the estimate and the door to asking again.
-func TestARoutedTaskSaysItsCrewTwice(t *testing.T) {
+func TestARoutedTaskKeepsItsCrewWithoutTranscriptReceipts(t *testing.T) {
 	a, _ := sheetApp(t)
 	crew := &crewroute.Decision{Class: crewroute.Bugfix, EstUSD: 0.02, Crew: []crewroute.Pick{
 		{Seat: crewroute.Worker, Model: "z-ai/glm-5.3-flash", Provider: "openrouter"},
@@ -160,7 +160,7 @@ func TestARoutedTaskSaysItsCrewTwice(t *testing.T) {
 	}}
 	a.sayTaskCrew(session.TaskNotice{ID: 7, State: session.TaskRunning, Crew: crew})
 	a.sayTaskCrew(session.TaskNotice{ID: 7, State: session.TaskRunning, Crew: crew})
-	started := lastNote(t, a)
+	started := a.crewSaid[7].text
 	if !strings.Contains(started, "task 7 crew · bugfix · worker glm-5.3-flash (openrouter)") || !strings.Contains(started, "est $0.020") {
 		t.Fatalf("the start line reads %q", started)
 	}
@@ -173,11 +173,11 @@ func TestARoutedTaskSaysItsCrewTwice(t *testing.T) {
 			count++
 		}
 	}
-	if count != 1 {
-		t.Fatalf("the start line was said %d times", count)
+	if count != 0 {
+		t.Fatalf("crew details leaked %d transcript receipts", count)
 	}
 	a.sayTaskCrew(session.TaskNotice{ID: 7, State: session.TaskDone, Crew: crew, CostUSD: 0.018})
-	if landed := lastNote(t, a); !strings.Contains(landed, "$0.018 (est $0.020)") || !strings.Contains(landed, "/redo stronger") {
+	if landed := a.crewSaid[7].text; !strings.Contains(landed, "$0.018 (est $0.020)") || !strings.Contains(landed, "/redo stronger") {
 		t.Fatalf("the landing line reads %q", landed)
 	}
 }
@@ -189,7 +189,7 @@ func TestAStoppedTaskCrewLineDoesNotOfferRedo(t *testing.T) {
 	}}
 	a.sayTaskCrew(session.TaskNotice{ID: 8, State: session.TaskRunning, Crew: crew})
 	a.sayTaskCrew(session.TaskNotice{ID: 8, State: session.TaskFailed, Stopped: true, Crew: crew})
-	line := lastNote(t, a)
+	line := a.crewSaid[8].text
 	if !strings.Contains(line, "task 8 crew · stopped") || strings.Contains(line, "/redo stronger") {
 		t.Fatalf("stopped crew line = %q", line)
 	}
@@ -271,7 +271,7 @@ func TestAStoppedTaskLeadsWithItsOneAction(t *testing.T) {
 		{Seat: crewroute.Checker, Model: "moonshotai/kimi-k3", Provider: "openrouter"},
 	}}
 	a.sayTaskCrew(session.TaskNotice{ID: 3, State: session.TaskFailed, Crew: crew})
-	line := lastNote(t, a)
+	line := a.crewSaid[3].text
 	if !strings.HasPrefix(line, "task 3 crew · failed — add credit on openrouter to continue · ") {
 		t.Errorf("the stopped line reads %q", line)
 	}
@@ -292,8 +292,8 @@ func TestANewConversationsTaskSaysItsCrew(t *testing.T) {
 	a.dropTasks()
 	before := len(a.entries)
 	a.sayTaskCrew(session.TaskNotice{ID: 1, State: session.TaskRunning, Crew: crew})
-	if len(a.entries) == before || !strings.Contains(lastNote(t, a), "task 1 crew · bugfix") {
-		t.Fatalf("the new conversation's task 1 said no crew line")
+	if len(a.entries) != before || !strings.Contains(a.crewSaid[1].text, "task 1 crew · bugfix") {
+		t.Fatalf("the new conversation's crew facts were lost or added a transcript receipt")
 	}
 }
 
@@ -327,7 +327,7 @@ func TestCrewMoneyDrawsNoZero(t *testing.T) {
 // stronger` where nobody was looking (the fresh-install check saw a 22-minute
 // task land with no crew line in view). The landing moves the one line to the
 // end of the thread — still one line per task, never two.
-func TestTheLandingCrewLineIsSaidWhereTheTaskLands(t *testing.T) {
+func TestTheLandingCrewFactsDoNotDisplaceTheConversation(t *testing.T) {
 	a, _ := sheetApp(t)
 	crew := &crewroute.Decision{Class: crewroute.Bugfix, EstUSD: 0.013, Crew: []crewroute.Pick{
 		{Seat: crewroute.Worker, Model: "z-ai/glm-5.3-flash", Provider: "openrouter"},
@@ -340,16 +340,15 @@ func TestTheLandingCrewLineIsSaidWhereTheTaskLands(t *testing.T) {
 	}
 	a.sayTaskCrew(session.TaskNotice{ID: 2, State: session.TaskDone, Crew: crew, CostUSD: 0.004, Merge: "kept", Branch: "task/fix"})
 	last := a.entries[len(a.entries)-1]
-	if last.kind != entryNote || !strings.Contains(last.text, "task 2 crew · ") || !strings.Contains(last.text, "$0.004 (est $0.013) · not right? /redo stronger") {
-		t.Fatalf("the thread ends on %q, not the landing crew line", last.text)
+	if last.text != "an answer to is my code sent anywhere that logs it?" {
+		t.Fatalf("crew receipt displaced the conversation: %q", last.text)
 	}
-	count := 0
+	if !strings.Contains(a.crewSaid[2].text, "$0.004 (est $0.013)") {
+		t.Fatal("completion spending was lost")
+	}
 	for _, e := range a.entries {
 		if strings.Contains(e.text, "task 2 crew") {
-			count++
+			t.Fatal("crew receipt appeared in the conversation")
 		}
-	}
-	if count != 1 {
-		t.Fatalf("the task's crew is said %d times, want once", count)
 	}
 }

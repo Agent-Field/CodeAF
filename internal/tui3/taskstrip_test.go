@@ -433,7 +433,7 @@ func TestAPartThatAskedHereLandsItsAnswerHereToo(t *testing.T) {
 	}
 	card.open = true
 	a.touch()
-	if text := taskText(a); !strings.Contains(text, took) {
+	if text := retainedLandingText(t, a, 2); !strings.Contains(text, took) {
 		t.Fatalf("the conversation does not say the part was decided:\n%s", text)
 	}
 }

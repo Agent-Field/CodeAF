@@ -243,6 +243,15 @@ type Request struct {
 	// ([Lineage]). An unpinned seat is not given one while anything else can
 	// sit it; a pin is never overruled.
 	Avoid map[string]bool
+	// Chosen seats the models a caller has ALREADY PICKED, by seat, for the
+	// unpinned seats: the pareto selector's crew (internal/config's wiring of
+	// internal/selector), handed over so the decision, its estimates, its
+	// ladder and its log are all still this engine's. A seat the person
+	// pinned never reads it, and a redo ignores it — a redo routes by this
+	// engine alone. A model nobody offers cannot be seated, so a picked model
+	// outside the request's candidates leaves the seat as this engine chose
+	// it.
+	Chosen map[Seat]string
 	// Learned is this install's move to a model's quality in a seat, by
 	// [LearnKey]: what its tasks kept or redid there ([router.CrewLog]).
 	Learned map[string]float64
@@ -434,6 +443,15 @@ func Decide(r Request) (Decision, error) {
 	crew, err := pickCrew(t, d.Class, candidates, pins, lambda)
 	if err != nil {
 		return Decision{}, err
+	}
+	// THE CALLER'S PICK, WHERE THIS ENGINE HAS ONE: a seat the request named
+	// is seated on the same machinery a pin is ([pinned]) — quality, cost and
+	// route all read the same way — but it is NOT a pin, so the seat keeps
+	// its ladder, its rescue and its `routed` receipt. Applied before the
+	// learned steps, so a repository's offset moves the crew it will
+	// actually run, whatever seated it.
+	if len(r.Chosen) > 0 && r.Stronger == nil && r.Again == nil {
+		crew = applyChosen(t, d.Class, crew, candidates, pins, r.Chosen)
 	}
 	// A LEARNED OFFSET IS RUNGS, NOT A PRICE: each step is one rung up the
 	// front from the crew the knee picks ([stronger]), so a repository whose

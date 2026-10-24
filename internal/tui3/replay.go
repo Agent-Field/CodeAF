@@ -710,6 +710,7 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 				continue // a step that only called tools; its calls follow
 			}
 			if len(e.ReplyTags) > 0 {
+				associateReplayCompletionSources(blocks, e.ReplyTags)
 				blocks = append(blocks, taskReplySourceEntry(e.ReplyTags, turn))
 			}
 			blocks = append(blocks, entry{
@@ -811,6 +812,10 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 			case asideHidden:
 				continue
 			}
+			if e.RoutineCompletion {
+				blocks = append(blocks, replayCompletionEntries(e, blocks, turn)...)
+				continue
+			}
 			// A LINE THE SESSION WROTE GOES IN THE SESSION'S OWN LANE — the dim
 			// "· " row this surface says everything of its own in ([feed.note]) —
 			// and NOT above a "›" as though somebody had typed it.
@@ -826,6 +831,7 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 			// draws exactly as it always did.
 			blocks = append(blocks, entry{
 				kind: entryNote, text: text, turn: turn, cut: e.Interrupted,
+				told: e.Addressed || session.LegacyWatchAlert(text) || strings.HasPrefix(text, "while you worked:"),
 			})
 		}
 	}

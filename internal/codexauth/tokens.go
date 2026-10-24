@@ -21,7 +21,7 @@ const (
 	ClientID       = "app_EMoamEEZ73f0CkXaXp7hrann"
 	Sentinel       = "chatgpt"
 	Originator     = "codex_cli_rs"
-	clientVersion  = "0.144.1"
+	clientVersion  = "0.162.1"
 )
 
 // signInExpiredError is terminal before the provider's ordinary transport

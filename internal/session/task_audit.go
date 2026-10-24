@@ -3168,6 +3168,11 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor, on str
 		judge = named
 	}
 	auditor, err := a.newChildAgent(Config{
+		// Checking spends under the same daily authority as the work it checks,
+		// without gaining access to the person's profile or settings tools.
+		DailyBudgetUSD:      a.dailyCeilingUSD(),
+		DailyBudgetResolved: true,
+		SpendPreauthorized:  parent.SpendPreauthorized,
 		// A checker can independently read the source a worker cited, without
 		// gaining the writable memory store or any additional mutation tool.
 		ConversationHistory: parent.conversationHistory(),

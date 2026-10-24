@@ -154,6 +154,8 @@ const (
 	sideActHide
 	// sideActTeams opens the teams page, where a packet is answered.
 	sideActTeams
+	// sideActTasks opens the existing task history on demand.
+	sideActTasks
 )
 
 // sideAct is what a press does.
@@ -332,16 +334,23 @@ func (a *app) sideHeadRow(width int) (string, *sideRow) {
 	// always dim and a count of new rows (fresh) is always ink, so what arrived
 	// behind the other word is still read.
 	word := func(label, count string, fresh bool, current bool, act sideAct, hint string) {
-		text := label + " " + count
+		text := label
+		if count != "" {
+			text += " " + count
+		}
 		if fresh {
 			text += " " + sideNewWord
 		}
 		var painted string
+		shownLabel := label
+		if count != "" {
+			shownLabel += " "
+		}
 		switch {
 		case current:
-			painted = a.pal.bold(a.pal.ink(label + " "))
+			painted = a.pal.bold(a.pal.ink(shownLabel))
 		default:
-			painted = a.pal.dim(label + " ")
+			painted = a.pal.dim(shownLabel)
 		}
 		switch {
 		case count == "0":
@@ -364,12 +373,16 @@ func (a *app) sideHeadRow(width int) (string, *sideRow) {
 		used += w
 	}
 	team := kind != sideKindPlain
-	tasksAct, trafficAct := sideAct{}, sideAct{}
+	tasksAct, trafficAct := sideAct{kind: sideActTasks}, sideAct{}
+	tasksHint := "Open task results and history"
 	if team {
-		tasksAct = sideAct{kind: sideActView, view: sideTasks}
+		if view != sideTasks {
+			tasksAct = sideAct{kind: sideActView, view: sideTasks}
+			tasksHint = "Show active tasks"
+		}
 		trafficAct = sideAct{kind: sideActView, view: sideTraffic}
 	}
-	word(sideTasksWord, itoa(len(a.taskOrder)), false, view == sideTasks, tasksAct, "Show this chat's tasks"+hintSegment+"click")
+	word(sideTasksWord, "", false, view == sideTasks, tasksAct, tasksHint+hintSegment+"click")
 	if team {
 		n, fresh := a.sideTrafficCount(t, kind, handle)
 		// WITH THE TRAFFIC IN FRONT NOTHING IN IT IS NEW TO THE WORD: the `new`
@@ -534,6 +547,9 @@ func (a *app) sideBand() []sideBandItem {
 		if word := status.RowWord(); word != "" {
 			words += railSep + word
 		}
+		if action := node.actionNeeded(); action != "" {
+			words += railSep + action
+		}
 		// A RUN HELD AT ITS GATE WEARS THE GATE'S MARK here as in the list
 		// ([app.railTreeGlyph]).
 		mark := a.taskStateMark(node)
@@ -543,17 +559,7 @@ func (a *app) sideBand() []sideBandItem {
 		out = append(out, sideBandItem{key: "task/" + itoa(int(node.id)), ask: true, mark: mark, words: words,
 			act: sideAct{kind: sideActOpen, id: node.id}})
 	}
-	for _, node := range members[railDone] {
-		if !a.sideBandFails(node) {
-			continue
-		}
-		words := node.title
-		if word := a.taskStatus(node).Word; word != "" {
-			words += " " + word
-		}
-		out = append(out, sideBandItem{key: "fail/" + itoa(int(node.id)), mark: a.taskStateMark(node), words: words,
-			act: sideAct{kind: sideActOpen, id: node.id}})
-	}
+
 	return out
 }
 
@@ -834,6 +840,9 @@ func (a *app) sideDo(act sideAct) tea.Cmd {
 		a.sideSetView(act.view)
 	case sideActHide:
 		a.sideToggle()
+	case sideActTasks:
+		a.railTake(false)
+		return a.showPage(pageTasks)
 	case sideActTeams:
 		a.railTake(false)
 		return a.showPage(pageTeams)

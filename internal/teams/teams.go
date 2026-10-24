@@ -37,6 +37,9 @@ type Member struct {
 	// JoinedAt bounds delivery for a conversation added through membership editing.
 	// An ended membership cannot regain directives from its previous lifetime.
 	JoinedAt time.Time `json:"joined_at,omitempty"`
+	// StartID is the Traffic start admitted when this membership was created.
+	// Only that brief may cross its join boundary; handles can be reused.
+	StartID string `json:"start_id,omitempty"`
 	// Started says this membership was made by the team manager's team_start
 	// (a [KindStart] the interface carried out), which is the second rule a
 	// home is picked by.

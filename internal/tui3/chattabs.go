@@ -348,7 +348,7 @@ func (a *app) tabList() []chatTab {
 	front := a.frontTabKey()
 	tabs := a.chatTabs[:0]
 	for _, tab := range a.chatTabs {
-		if tab.start || tab.key == "" || tabsHold(tabs, tab.key) {
+		if tab.start || tab.work || tab.key == "" || tabsHold(tabs, tab.key) {
 			continue
 		}
 		held := a.behind[tab.key]
@@ -1474,6 +1474,9 @@ func (a *app) tabGo(tab chatTab) (cmd tea.Cmd) {
 // about at all: there is nothing to decide, and a question with one useful answer
 // is friction.
 func (a *app) tabDismiss(tab chatTab) (cmd tea.Cmd) {
+	if tab.work {
+		return a.tabDismissNow(tab)
+	}
 	if t, ok := a.teamActive(); ok && !a.wall.on && teamHolds(t, tab.key) {
 		a.note("Team tabs stay visible; remove membership from Teams")
 		return nil
@@ -1494,6 +1497,20 @@ func (a *app) tabDismiss(tab chatTab) (cmd tea.Cmd) {
 // tabDismissNow is the act itself, with the question already answered or never
 // worth asking. Every road to a tab leaving the row ends here.
 func (a *app) tabDismissNow(tab chatTab) (cmd tea.Cmd) {
+	if tab.work {
+		// A task tab is a view of its owner, never another conversation to
+		// switch to or put on the conversation reopen stack.
+		if a.tabShut == nil {
+			a.tabShut = map[string]bool{}
+		}
+		a.tabShut[tab.key] = true
+		if tab.here {
+			a.closeRoom()
+		}
+		a.chatTabBar = tabBar{}
+		a.touch()
+		return nil
+	}
 	if t, ok := a.teamActive(); ok && !a.wall.on && teamHolds(t, tab.key) {
 		return nil
 	}
@@ -1542,7 +1559,7 @@ func (a *app) tabDismissNow(tab chatTab) (cmd tea.Cmd) {
 // tab has not acquired a recency entry yet.
 func (a *app) lastVisibleTab() (chatTab, bool) {
 	eligible := func(tab chatTab) bool {
-		return !tab.start && tab.key != "" && tab.key != a.frontTabKey() && !a.tabShut[tab.key]
+		return !tab.start && !tab.work && tab.key != "" && tab.key != a.frontTabKey() && !a.tabShut[tab.key]
 	}
 	for at := len(a.prev) - 1; at >= 0; at-- {
 		for _, tab := range a.chatTabs {

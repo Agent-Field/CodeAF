@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // ── THE ENGINE HALF OF THE THREE LATE PLACES, AND THE SURFACE HALF ──────────
@@ -176,6 +177,19 @@ func (s *server) placesCall(call Frame) (json.RawMessage, bool, error) {
 			return nil, true, errors.New(engineOffWord + memoryGoneWord)
 		}
 		payload, err := memoryCall(engine.Memory, call)
+		return payload, true, err
+	case MethodMemorySelection:
+		selection, ok := sess.current().(interface {
+			MemorySelection() (store.MemoryBlock, error)
+		})
+		if !ok {
+			return nil, true, errors.New(engineOffWord + "memory selection is unavailable")
+		}
+		block, err := selection.MemorySelection()
+		if err != nil {
+			return nil, true, err
+		}
+		payload, err := json.Marshal(block)
 		return payload, true, err
 	case MethodMemoryRemember, MethodMemoryMemories,
 		MethodMemoryRememberAlways, MethodMemoryAlways, MethodMemoryMove, MethodMemoryProject:

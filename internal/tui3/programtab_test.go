@@ -54,14 +54,42 @@ func newProgramTabLab(t *testing.T, status string) *tabLab {
 	return lab
 }
 
+// Finished program output is opened from history; active rows keep their direct
+// sidebar door. Both gestures reach the same canonical stored program page.
+func programTabHistoryDoor(t *testing.T, l *tabLab) bool {
+	t.Helper()
+	if l.a.tasks[7].state != session.TaskDone {
+		return false
+	}
+	l.a.showPage(pageTasks)
+	l.a.taskSheet.regroup(l.a)
+	l.a.taskSheet.cursor = l.a.tasksSettle(0)
+	for i := 0; i < 20; i++ {
+		if item, ok := l.a.taskSheetCurrent(); ok && (item.entry.ID == "7" || item.plan != nil && item.plan.ID == "7") {
+			drive(t, l.a, runCmd(l.a.taskSheet.enter(l.a))...)
+			return true
+		}
+		l.a.taskSheetMove(1)
+	}
+	t.Fatal("finished program unavailable in task history")
+	return true
+}
+
 // programTabDoors is every door onto the program's task a test can drive
 // through the loop, each named for what a person does.
 var programTabDoors = []struct {
 	name string
 	open func(t *testing.T, l *tabLab)
 }{
-	{"a press on its rail row", func(t *testing.T, l *tabLab) { clickRail(t, l.a, 0) }},
-	{"enter on its rail row", func(t *testing.T, l *tabLab) {
+	{"a press on active row or task history", func(t *testing.T, l *tabLab) {
+		if !programTabHistoryDoor(t, l) {
+			clickRail(t, l.a, 0)
+		}
+	}},
+	{"enter on active row or task history", func(t *testing.T, l *tabLab) {
+		if programTabHistoryDoor(t, l) {
+			return
+		}
 		l.a.side.open[railDone] = true
 		l.a.railWhere = railSpot{id: 7}
 		l.a.railHold = true

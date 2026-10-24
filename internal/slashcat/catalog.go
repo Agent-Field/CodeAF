@@ -133,6 +133,7 @@ var rows = []Row{
 	// looking, /compact is one of them, and a row inserted above it would push
 	// the daily command behind a scroll (deliverables_test.go pins exactly
 	// that). So it lands as close to its pair as the law allows (home.go).
+	{Name: "processes", Desc: "open this conversation's processes and logs"},
 	{Name: "dismiss", Desc: "hide settled task notifications here"},
 	{Name: "dismiss", Args: "undo", Desc: "restore dismissed task notifications"},
 	{Name: "home", Desc: "every project and conversation on this machine"},
@@ -156,6 +157,13 @@ var rows = []Row{
 	// conversations big, and this is the team-level view, every member open or
 	// not, the manager's conversation and what waits on you (place_teams.go).
 	{Name: "teams", Desc: "your teams, their managers and what waits on you", Place: "teams"},
+	// AND THE ASK A MANAGER IS GIVEN FOR HELPERS, under the page its team is on
+	// (helpers.go): the team is made by the Teams menu's `+ New from this
+	// session`, and this sends the manager the words after the command. Two
+	// rows, the way /manual has two, because bare it sends a default ask,
+	// written out in the transcript, and with words it sends those instead.
+	{Name: "helpers", Desc: "asks the team this conversation manages to suggest helpers · make the team with + New from this session in the Teams menu"},
+	{Name: "helpers", Args: "<what to ask the manager>", Desc: "…the same, sending your own words instead of the default ask"},
 	{Name: "spend", Desc: "what this machine has cost, by the day", Place: "spend"},
 	// It sits AFTER /compact and before /help because those two are the pair a
 	// person reads together when a conversation has gone wrong: compacting is

@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
@@ -148,6 +150,9 @@ func (c *taskCard) settled() bool { return c.verdict != "" }
 // elapsed clock counts on the frame tick instead of freezing at whatever the
 // last update happened to say. Everything else is the notice, kept.
 type taskNode struct {
+	// workTurn records the request that admitted this live work, independently of completion time.
+	workTurn  int
+	workOwned bool
 	// retried keeps the conversation card in its original position across attempts.
 	retried bool
 	id      uint64
@@ -170,7 +175,9 @@ type taskNode struct {
 	// (session's TaskNotice.Model). Empty means nobody said — a scripted agent,
 	// an older engine — and every row that draws it draws nothing instead, the
 	// way the spend does.
-	model     string
+	model string
+	// crew is the routed run information disclosed on the task result page.
+	crew      *crewroute.Decision
 	nextModel string
 	thinking  string
 	state     session.TaskState
@@ -2503,7 +2510,7 @@ func (a *app) railGroupOf(node *taskNode) railGroup {
 	// a queued node behind a full machine is never filed as work in flight.
 	status := a.taskStatus(node)
 	switch {
-	case status.Attention:
+	case status.Attention || node.actionNeeded() != "":
 		// A parent's running is a FOLD, not a mute. While the parent lives it is
 		// the one being asked, so the top of the family is what a person reads
 		// first — but the demand stays visible here, because filing it under
@@ -2527,6 +2534,14 @@ func (a *app) railGroupOf(node *taskNode) railGroup {
 		return railRunning
 	}
 	return railDone
+}
+
+// actionNeeded names a routed stop whose remedy requires the person's intervention.
+func (node *taskNode) actionNeeded() string {
+	if node == nil || node.crew == nil || node.state != session.TaskFailed || node.stopped {
+		return ""
+	}
+	return strings.TrimSpace(node.crew.Stopped)
 }
 
 // taskAwaitsPerson reports whether this node's only remaining step is a
@@ -2697,7 +2712,7 @@ func (a *app) railKin() (kids map[string][]*taskNode, byKey map[string]*taskNode
 // band: work waiting on the person, and a failure they have not opened, are
 // the band's (sidecol.go).
 func (a *app) railListed(node *taskNode, g railGroup) bool {
-	return g != railAttention && !(g == railDone && a.sideBandFails(node))
+	return g != railAttention && g != railDone
 }
 
 // railEntries is the roster's row model: each group that has anything in it,
@@ -3279,7 +3294,7 @@ func (a *app) railDrawnView(height int) ([]railLine, int) {
 	// THE TREES COME OUT OF THE READING THE PLACE ALREADY HOLDS, never out of the
 	// store: this is a frame, and a frame never reads the disk. The reading is
 	// refreshed on the paint clock ([tasksPlace.regroup]).
-	forest := a.tasksFiltered().planRailForest(a.taskSheet.mine.plan)
+	forest := activePlanForest(a.tasksFiltered().planRailForest(a.taskSheet.mine.plan))
 	if len(forest) == 0 {
 		return view, focus
 	}
@@ -5192,9 +5207,14 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 			notice.Decider == node.decider && notice.NextModel == node.nextModel && notice.Thinking == node.thinking &&
 			(notice.Brief == "" || notice.Brief == node.brief) &&
 			(notice.Acceptance == "" || notice.Acceptance == node.acceptance) &&
-			(notice.Program == "" || notice.Program == node.program)) {
+			(notice.Program == "" || notice.Program == node.program) &&
+			(notice.Crew == nil || reflect.DeepEqual(notice.Crew, node.crew))) {
 			return nil
 		}
+	}
+	wasLive := false
+	if old := a.tasks[notice.ID]; old != nil {
+		wasLive = old.state == session.TaskRunning || old.state == session.TaskQueued
 	}
 	if a.taskSeen == nil {
 		a.taskSeen = map[uint64]session.TaskState{}
@@ -5352,6 +5372,10 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	if model := strings.TrimSpace(notice.Model); model != "" {
 		node.model = model
 	}
+	if notice.Crew != nil {
+		crew := *notice.Crew
+		node.crew = &crew
+	}
 	node.nextModel = strings.TrimSpace(notice.NextModel)
 	node.thinking = notice.Thinking
 	if len(notice.Changed) > 0 {
@@ -5444,9 +5468,10 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		a.landedCard(node)
 	}
 	var pilot tea.Cmd
-	// A ROUTED TASK SAYS ITS CREW TWICE: which crew it got and the estimate
-	// when it starts, and what it cost beside the estimate when it lands
-	// (crew.go's [app.sayTaskCrew], once per end per task).
+	if !node.workOwned {
+		node.workTurn, node.workOwned = a.workCompletionTurn(node.id)
+	}
+	// Crew facts remain with the task rather than producing transcript receipts.
 	a.sayTaskCrew(*notice)
 	switch notice.State {
 	case session.TaskRunning:
@@ -5497,6 +5522,13 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		}
 	}
 	a.touch()
+	if wasLive && taskCompletionState(notice.State) && node.parent == "" {
+		if turn, owned := a.workCompletionTurn(node.id); !a.completionIdentityVisible(node.id, 0, turn, owned) {
+			if card := a.doneCardFor(node.id); card == nil || card.quiet {
+				a.queueCompletionToast(a.file, turn, node.id, 0, notice.State == session.TaskFailed)
+			}
+		}
+	}
 	if node.retried && a.taskSheet.detailOn && a.taskSheetNodeFor(&a.taskSheet.detail) == node &&
 		notice.State != session.TaskRunning && notice.State != session.TaskQueued {
 		a.taskSheet.detail = a.currentTaskEntry(a.taskSheet.detail)
