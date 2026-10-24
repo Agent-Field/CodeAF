@@ -6,7 +6,7 @@
 // armed under a six-item floor, and a designed experiment — four planner arms
 // against four readings of this gate, 273 judged draws on the plan door — put
 // the planner with the gate OFF on the front and left every armed reading
-// behind it (docs/design/plan-gate-doe/REPORT.md). So an unpinned binary keeps
+// behind it. So an unpinned binary keeps
 // every division the planner drew, and the counting below decides only where
 // somebody has pinned `CODEAF_SPLITGATE=1` or `judgment`. modes.go holds the
 // pin and the reasoning; everything else in this file is the counting itself,
@@ -271,7 +271,7 @@ func WorthIt(evidence string) bool {
 // switch meant until 2026-09-02. The gate shipped armed and rolled back with
 // the literal "0"; a designed experiment then measured four planner arms
 // against four readings of it and the front it drew is the planner with this
-// gate having no say (docs/design/plan-gate-doe/REPORT.md). So the arming moved
+// gate having no say. So the arming moved
 // into the pin: `1` for the count below, `judgment` for the plan's own sizing,
 // and everything else — an unset pin included — for the gate keeping quiet.
 // modes.go's [Mode] is where that is read, and this is one bit of it.

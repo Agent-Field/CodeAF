@@ -12,7 +12,7 @@ package session
 // green — and a summary is a lossy narration of a trajectory, not a record of
 // state.
 //
-// The research (harness-research-notes.md §4, EvoHarness-RL's BPE abstraction)
+// The research
 // says all harness external state reduces to three roles: BELIEF (what is
 // currently true in the environment), PROGRESS (subgoal statuses), EXPERIENCE
 // (cross-episode priors). Experience is memory.go and is not duplicated here.
@@ -34,7 +34,7 @@ package session
 // actions (the BPE paper's point — bookkeeping that is free is bookkeeping that
 // is done compulsively). The tool descriptions say so in one line each.
 //
-// WHAT THIS IS NOT. It is not a todo list (docs/CHAT-V3.md Decision 11 refused
+// WHAT THIS IS NOT. It is not a todo list (the implementation Decision 11 refused
 // one, and still does): a todo list is a plan the person is meant to read, and
 // work big enough to decompose belongs to the workforce. These records are the
 // model's own working state, sized for surviving a compaction, and no surface

@@ -141,7 +141,7 @@ func TestATurnUnderTheShareOfTheWallIsLeftAlone(t *testing.T) {
 // A TURN THAT CANNOT BE CHECKED BEFORE THE WALL IS NOT MOVED: THE SEAM HANDS OVER
 // ONLY WHAT A TASK CAN STILL BE SET UP AND CHECKED ON.
 //
-// THE BEFORE, from the record in docs/design/turn-wall-share-doe: on a 900 s wall
+// THE BEFORE, from the record in the implementation: on a 900 s wall
 // the reef cell's turn began with 310 s left, was allowed the full 300 s share
 // because the share was read off the whole wall from the turn's own start, and
 // handed over at 894 s — six seconds before the wall, the exact shape #546

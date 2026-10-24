@@ -1,7 +1,7 @@
 package session
 
 // The laws of the ask lane: an answer is a message, and the three things that
-// fall out of that (docs/design/questions/DESIGN.md, "An answer is a message").
+// fall out of that.
 
 import (
 	"context"

@@ -1733,7 +1733,7 @@ func TestAnAnswerTheDoorNeverAcknowledgedIsStillThisWindowsAnswer(t *testing.T) 
 
 // TestAnAnswerThisWindowLostStillWearsTheOtherWindowsName is the other half of
 // that law, and the one the guard must not break: FIRST ANSWER WINS
-// (docs/design/questions/DESIGN.md). Two people pressed two different keys, the
+// . Two people pressed two different keys, the
 // engine took the other one, and the receipt this window draws is about a
 // decision it did not make.
 func TestAnAnswerThisWindowLostStillWearsTheOtherWindowsName(t *testing.T) {

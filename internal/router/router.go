@@ -639,7 +639,7 @@ func (r *Router) leafLadder(class provider.CallClass) []*rung {
 // the cascade is supposed to be able to escalate away from.
 //
 // `role: top` is a claim the operator is making about where the ceiling is, and
-// the panel is written so that claim is true — bench/routerlab picked its top
+// the panel is written so that claim is true — the benchmark harness picked its top
 // model as "the terminal cascade rung" on an anchor battery, offline, before any
 // of this ran. Honouring it costs nothing when it is right and is correctable by
 // measuring the model, which is what the exploration budget is for. Within a

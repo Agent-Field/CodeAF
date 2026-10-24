@@ -2,7 +2,7 @@ package session
 
 // The subharness contract, session side: the three doors every surface in the
 // subharness v2 wave opens, and the types they hand over
-// (docs/SUBHARNESS-PRD.md, docs/SUBHARNESS-CONTRACT.md). It is written by hand
+//. It is written by hand
 // before the lanes start, in the shape standing_contract.go and
 // standing_orders.go already proved.
 //

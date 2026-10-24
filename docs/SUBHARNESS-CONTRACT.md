@@ -1,9 +1,6 @@
 # The subharness contract, as landed
 
-*Build map for the subharness v2 wave. `docs/SUBHARNESS-PRD.md` is the
-authority on what is being built and why; this page is what the contract lane
-actually put in the tree, where each other lane plugs in, and the three places
-the build had to decide something the PRD left open.*
+This page describes the implemented subharness contract.
 
 Everything below is in `internal/exec` unless it says otherwise. Nothing is in
 `internal/subharness`: the old package is untouched, exactly as PRD §2 requires.

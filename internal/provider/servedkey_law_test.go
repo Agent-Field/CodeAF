@@ -12,7 +12,7 @@ import (
 
 // ── THE LAW: A BELIEF IS FILED AGAINST THE MACHINE THAT ANSWERED ────────────
 //
-// THE MEASURED FAILURE (docs/design/recovery/census-20260910.md §8, finding 4).
+// THE MEASURED FAILURE.
 // Over ten days, 3,728 of 10,107 finished attempts came back from a machine that
 // was not the lane this process had chosen, and on 358 of the errors that named
 // a provider the `(via X)` contradicted the chosen lane outright: `lane:

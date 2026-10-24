@@ -1,8 +1,6 @@
 # Remote access — the architecture
 
-How a v3 session runs on one machine and is used from another. Written as
-decisions with the alternative that was rejected, in the manner of
-`ARCHITECTURE.md` and `CHAT-V3.md`.
+How a v3 session runs on one machine and is used from another. The transport and session lifetime are described below.
 
 This is the **v3 surface's** remote story. The v1 resident (`internal/head`,
 `internal/resident`) is a different product in the same binary and shares none
@@ -10,9 +8,7 @@ of this vocabulary — see CLAUDE.md. In particular the "session host" below is
 **not** the resident: it is a lifetime for a conversation you sit in front of,
 not an employee that works while you are away.
 
-Product framing, the personas, and the road not taken live in
-`docs/remote-access-design.md`; the build order lives in
-`docs/remote-access-plan.md`. This document is what the code actually is.
+This document describes the implemented protocol.
 
 ## The one-sentence design
 

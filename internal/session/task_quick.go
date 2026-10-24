@@ -819,7 +819,7 @@ func (n *TaskNode) quickDoor() func(int, []string) string {
 // shape for "read a fact, then tell the world about it".
 //
 // AND THE LIST REACHES THE DISK IN THE SAME BREATH. The checklist IS this node's
-// graph (docs/design/quick-task/DESIGN.md), and every other transition a node
+// graph, and every other transition a node
 // makes is checkpointed as it happens; a tick that lived only in memory and in
 // the row's rendered word was a tick a restart could not report, so a quick
 // task that got three items down a list of four came back saying nothing about

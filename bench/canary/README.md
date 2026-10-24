@@ -5,8 +5,7 @@ canary answers that on a schedule: a fixed pool of real issues, both doors, one
 pinned model, and a grade nobody in the run gets to write. It spends real money
 and is on demand — nothing in `make check` reaches it.
 
-The scoreboard is issue #407, one comment per run. Read `PICKS.md` for how the
-pool is chosen and `pool.json` for the pool itself.
+`pool.json` contains the issue pool.
 
 ## Shape
 

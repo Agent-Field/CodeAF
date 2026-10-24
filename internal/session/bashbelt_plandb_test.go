@@ -1,6 +1,6 @@
 package session
 
-// THE PLAN PULSE, AS TESTS (docs/design/plandb-cli/DESIGN.md, the wiring
+// THE PLAN PULSE, AS TESTS (the implementation, the wiring
 // section). Behind CODEAF_TASK_BELT=bash
 // the worker's `plandb` calls and the runtime share one store, and the pulse
 // is the two moments the two roads meet: a node that lands writes its ending

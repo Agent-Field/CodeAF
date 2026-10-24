@@ -180,7 +180,7 @@ type Facts struct {
 	// publishes the column for every row: a row that omits it is a row the
 	// router is not derating. The gate that ignored this column was the second
 	// of the two reasons the reference model and the shipped build did not
-	// admit the same lanes (bench/lanelab/REPORT.md, "the two capability gates
+	// admit the same lanes (the implementation, "the two capability gates
 	// do not admit the same lanes").
 	Status int
 }
@@ -344,7 +344,7 @@ const ReadRate = 18.0
 // every ratio a simulator or a ship gate computed from these numbers — "the
 // wait improved by 30%" — a ratio of mostly reading, which is how a router with
 // no effect at all can be reported as a 5% win. The correction was found by
-// `bench/lanelab`; see docs/design/routing/provider-routing.md, Part III.
+// `the benchmark harness`; see the implementation, Part III.
 //
 // ttft is in SECONDS and rate in TOKENS PER SECOND. A rate of zero or less is
 // a lane that never finishes, and it is reported as such rather than as a large

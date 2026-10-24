@@ -52,7 +52,7 @@ func TestAHaltedNodeSaysWhyAndIsNotCalledStopped(t *testing.T) {
 		// fuse them into `lost the connection — branch kept`, which is a state, a
 		// reason and a source-control fact in one phrase; the head carries the word
 		// and the branch and the row under it carries why
-		// (docs/design/task-states/DESIGN.md).
+		//.
 		if compact := retainedLandingText(t, a, 7); !strings.Contains(compact, "branch · task/parser") {
 			t.Fatalf("compact receipt lost its kept branch: %s", compact)
 		}
@@ -137,7 +137,7 @@ func TestARefusedNodeIsIncompleteAndBrokenOrOldNodesStillFail(t *testing.T) {
 		// AND THE LANDING CARD SAYS `incomplete` FOR ALL THREE. `failed` is deleted
 		// as a landing's word: a fault is `incomplete` plus `a fault: <line>` on the
 		// row under it, and the record page above is the last reader that still
-		// tells the two apart in one word (docs/design/task-states/DESIGN.md).
+		// tells the two apart in one word.
 		tail := a.doneTail(&taskDone{status: doneStatus(session.TaskFacts{
 			State: session.TaskFailed, Ending: tc.ending})})
 		if !strings.Contains(tail, " · "+taskIncompleteState) {
@@ -191,7 +191,7 @@ func TestAWorkerThatWouldNotWriteItsNotesSaysSoOnTheRailAndInTheRoom(t *testing.
 	}
 	// THE CARD SAYS THE SAME THING ON TWO ROWS, which is its own law: the word and
 	// the branch on the head, the reason under it, and nothing fused
-	// (docs/design/task-states/DESIGN.md).
+	//.
 	if compact := retainedLandingText(t, a, 7); !strings.Contains(compact, "branch · task/parser") {
 		t.Fatalf("compact receipt lost its kept branch: %s", compact)
 	}

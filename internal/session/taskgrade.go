@@ -403,7 +403,7 @@ func taskKindWordSet(kind string) map[string]bool {
 // string — it goes into a file a person may open, and the tier's own word
 // ([taskWordYourCall]) is read from where every surface reads it rather than
 // spelled a second time here. `needs your look`, which this line used to write,
-// is deleted (CLAUDE.md's vocabulary law, docs/design/task-states/DESIGN.md).
+// is deleted (CLAUDE.md's vocabulary law, the implementation).
 //
 // THE ENDING IS READ AND NOT ONLY THE STATE, because a node fails for two
 // completely different reasons and one of them is not about the work at all. A

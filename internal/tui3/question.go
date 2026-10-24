@@ -20,7 +20,7 @@ import (
 // harness offer, the task proposal, the standing card, the fuel gate, the stop
 // card, the tab-close card — each with its own layout loop, its own key set, its
 // own idea of what esc means, and three of them with no drawing at all, so work
-// stopped on questions nobody in the product could see. docs/design/questions/
+// stopped on questions nobody in the product could see. the implementation
 // DESIGN.md is the contract; this is the block half of it.
 //
 // THE ROWS, EXACTLY AS THEY ARE DRAWN.
@@ -85,7 +85,7 @@ import (
 const (
 	// questionSettle is how long a question must have been ON SCREEN before it
 	// will take a key. 250ms is the settle guard's own number from
-	// docs/design/questions/DESIGN.md, and it is about the hand rather than the
+	// the implementation, and it is about the hand rather than the
 	// eye: it is roughly one keystroke at a fast typing speed, which is exactly
 	// the window in which a question can arrive between a person deciding to
 	// press a key and the key landing.
@@ -228,7 +228,7 @@ type questionShown struct {
 	// ruled says this question's SHAPE is answered by a rule this project has
 	// written down (`/autonomy`), which is what puts `· your rule` on the row.
 	//
-	// NEVER A HIDDEN RULE (docs/design/questions/DESIGN.md). A clock ticking on
+	// NEVER A HIDDEN RULE. A clock ticking on
 	// a question because of a setting somebody made three weeks ago, with
 	// nothing on the row saying so, is exactly the thing that law forbids.
 	ruled bool
@@ -1303,7 +1303,7 @@ func (a *app) questionMark() string {
 // took for granted and goes on after its clock; a ratify line says what it has
 // already done. Drawing either in amber tells a person to answer something that
 // is not asking them anything — and amber on this surface means waiting-on-you
-// and nothing else (docs/design/questions/DESIGN.md's HUE), so a mark that
+// and nothing else, so a mark that
 // spends it on a card nobody has to touch is a mark that spends it everywhere.
 func questionAskSlot(ask session.AskKind) (tokens.GlyphID, bool) {
 	switch ask {
@@ -3572,7 +3572,7 @@ func (a *app) questionOptionKey(head questionShown, key string) (tea.Cmd, bool) 
 			return a.questionWiden(head, key), true
 		}
 		// AND `[s] tell it` ANSWERS NOTHING AND OPENS A PAGE. A steer never
-		// resolves a task by itself (docs/design/task-states/DESIGN.md), so the
+		// resolves a task by itself, so the
 		// landing's third column points the box at the node's own room and leaves
 		// the question standing exactly where it was (tasksettle.go's
 		// [app.landingTell]).
@@ -4288,7 +4288,7 @@ func (a *app) questionFold(ev session.Event) tea.Cmd {
 // questionRaceFor is how long after this window's own answer another window's
 // answer to the same question is still worth a row.
 //
-// A SECOND, WHICH IS THE LAW'S OWN NUMBER (docs/design/questions/DESIGN.md:
+// A SECOND, WHICH IS THE LAW'S OWN NUMBER (the implementation:
 // "a differing answer inside a second is shown, not merged"). Past it the other
 // window was simply late, and answers.go's own first law — late answers are
 // ignored and nothing says so — is the honest reading: somebody who answered a

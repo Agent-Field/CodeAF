@@ -852,7 +852,7 @@ func TestTheCapabilityTableIsWellFormed(t *testing.T) {
 
 // A GROUP'S LONG MECHANICS ARE BOUGHT BY WHOEVER PULLS THEM, and this is the
 // both-ways proof of the delivery the prompt diet moved them to
-// (docs/design/prompt-diet/DESIGN.md §2, the ON DEMAND class).
+// .
 //
 // FORWARD: the paragraph that used to sit in prompts/system.md for every request
 // of every turn — how to write a media prompt that does not come back average,

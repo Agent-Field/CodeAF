@@ -12,7 +12,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// THE TOOL CLUSTER (docs/CHAT-V3.md D11).
+// THE TOOL CLUSTER.
 //
 // A turn's calls are one object on the screen, not a stream of them: a rail
 // down the left, one row per call, the elbow closing the run.
@@ -1427,7 +1427,7 @@ func (a *app) toolLimit(e *entry) time.Duration {
 // where every other figure obeys the emptiness law — a task's record card read
 // `done · landed 1h ago · ran 6m 0s` beside a row that had just said `42m`, so
 // the same clock changed grain across one keypress
-// (docs/design/polish/audit-tasks.md row 17). It is the law
+// . It is the law
 // [reltime.Elapsed] already states for the settled figure, said here for the
 // live one; `4m 30s` is untouched.
 func countUpWord(d time.Duration) string {

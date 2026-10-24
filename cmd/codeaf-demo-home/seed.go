@@ -162,7 +162,7 @@ func seedDemoHome(dir string, now time.Time) (builtHome, error) {
 	// one thing this fixture exists to prevent.
 	//
 	// TWELVE HOURS IS THE FIGURE THE DESIGN DRAWS (`since you left · 12h`,
-	// docs/design/home-mission-control/DESIGN.md §1) and it is far enough back
+	// docs/example-report.md §1) and it is far enough back
 	// that the landed work and the made files above it are all inside the
 	// window.
 	session.NoteLook(filepath.Join(root, "v3", "projects"), now.Add(-demoLastLook))

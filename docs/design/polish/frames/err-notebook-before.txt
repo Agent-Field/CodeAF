@@ -1,3 +1,0 @@
-$ ./bin/aforge notebook --db /nope/graph.db
-error: open notebook: stat /nope/graph.db: no such file or directory
-exit=1

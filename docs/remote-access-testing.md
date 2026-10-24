@@ -3,9 +3,7 @@
 Self-contained. Everything a person (or an agent) needs to exercise this wave by hand,
 what each thing should look like on screen, and an honest list of what still needs work.
 
-Nothing here assumes you read the other documents. If you want the *why*, that is
-`docs/REMOTE.md` (architecture), `docs/remote-access-design.md` (product), and
-`docs/remote-access-plan.md` (how it was built).
+See [remote access architecture](REMOTE.md) for the protocol and session lifetime.
 
 ---
 

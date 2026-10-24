@@ -9,7 +9,7 @@ package session
 //
 //   - A worker has to know that a note on a SIBLING'S task reaches that task's
 //     worker, or it will not write one, and the channel has no writer. That is
-//     problem 1 of docs/design/chat-coordination/DESIGN.md: a task that found
+//     problem 1 of the implementation: a task that found
 //     another task's premise wrong, with nowhere to say it.
 //   - A worker has to know that a note is NOT a direction, or it will change
 //     what its task is judged by on a sibling's word, with none of the version

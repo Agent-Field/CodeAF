@@ -152,10 +152,10 @@ func TestARescueThatFailsWithdrawsTheClaimItMade(t *testing.T) {
 // A TASK TURN IS WORTH A PERSON'S ATTENTION WHILE A PERSON IS HERE, and a
 // quarter of it when they are not. Every task turn this build once ran declared
 // the full second — a fifth off the money for nearly four times the wait, which
-// is not a trade anybody chose (bench/lanelab/REPORT.md) — and then none at all,
+// is not a trade anybody chose — and then none at all,
 // which routed every unwatched task on dollars alone into the two cheapest lanes
 // of deepseek-v4.1-flash, one answering 17% of the time
-// (docs/design/routing/ASSESSMENT-20260911.md). [lane.UnattendedValue] is the
+// . [lane.UnattendedValue] is the
 // floor between the two.
 func TestATaskTurnIsWorthSomethingOnlyWhileSomebodyIsWatching(t *testing.T) {
 	watched := &Agent{config: Config{InTask: true}}

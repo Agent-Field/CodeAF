@@ -3,7 +3,7 @@ package delegate
 // The launch: one program as a child process, in its own process group, its
 // stdout read as the records and its stderr kept in a file for a person, ended
 // by SIGTERM with a grace and then SIGKILL when the caller's context ends
-// (docs/design/delegate/PROTOCOL.md). The process is codeaf's own executable
+//. The process is codeaf's own executable
 // running the program's verb ([ChildArgs]); what it is started with is the
 // caller's to say, so a test can start a script that speaks the records.
 

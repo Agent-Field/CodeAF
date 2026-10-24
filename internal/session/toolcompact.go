@@ -522,7 +522,7 @@ func compactLeaveVerbatim(text string) bool {
 // conversation behind it re-billed at the uncached rate on that request and
 // every one after it until the next break. It was measured on this wave's own
 // branch and is written up with its numbers in
-// docs/design/prompt-diet/BENCH.md §1c.
+// the implementation §1c.
 //
 // So a reclaim smaller than a [stubPrefixShare] share of what it disturbs is
 // declined and the result is left exactly as it is. That is stub.go's law, and

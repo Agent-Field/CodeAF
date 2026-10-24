@@ -23,7 +23,7 @@ import (
 // the one door the roster's column has onto here.
 //
 // The methods on [tasksPlace] are shaped for the `place` contract the switcher is
-// settling into (docs/design/home-rethink/ARCHITECTURE.md): close, body, stops,
+// settling into: close, body, stops,
 // enter, window, note, hint, changed. Where the rest of the surface already
 // spells one of them under an older name, that name survives beside it as a
 // one-line call — the seam the refactor lane deletes when the interface lands,

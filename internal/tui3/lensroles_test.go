@@ -13,7 +13,7 @@ import (
 // A PAGE MAY LOWER SALIENCE; IT MAY NEVER DROP A FACT.
 //
 // The conversation and a task's page are one transcript grammar pointed at two
-// speakers (docs/design/lens/DESIGN.md). They are allowed to draw the same fact
+// speakers. They are allowed to draw the same fact
 // at different sizes — folded, clause-sized, in the header instead of inline —
 // and they are not allowed to make one disappear.
 //

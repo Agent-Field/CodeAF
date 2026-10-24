@@ -18,7 +18,7 @@ import (
 // THE HEADLESS ENV: the six host doors with nobody standing behind them.
 //
 // This is the whole capability surface a subharness gets from `codeaf run
-// subharness` (docs/SUBHARNESS-PRD.md §9, the "Headless" bullet). It implements
+// subharness`. It implements
 // [exec.Env] and NOTHING IN THIS FILE MAY REACH THE TASK SYSTEM — the PRD says
 // it in one sentence, "the headless path must not import the task system", and
 // the reason is structural rather than tidy: a run's roster row, its room and

@@ -3,7 +3,7 @@
 // questions_e2e_test.go is THE QUESTIONS WAVE, DRIVEN THROUGH THE REAL BINARY
 // IN A REAL TERMINAL AGAINST A REAL MODEL.
 //
-// docs/design/questions/DESIGN.md is a contract about what a person sees when
+// the implementation is a contract about what a person sees when
 // this engine hands them a decision: a line, a card, a room, a sheet; a chip
 // that counts what is waiting; `esc` that means later and never cancel; a
 // receipt that stays where the question was. Six lanes built that in eleven
@@ -232,7 +232,7 @@ func type_(t *testing.T, r *rig, text string) {
 // THE .ansi IS THE EVIDENCE AND THE .png IS THE GALLERY. capture-pane -e keeps
 // every colour byte, so the file is what the terminal held; the png is that file
 // through freeze, with the runs of blank rows collapsed so a mostly-empty screen
-// does not cost half a megabyte. Both land under docs/design/questions/screens/
+// does not cost half a megabyte. Both land under the implementation
 // because a picture nobody committed is a picture nobody looked at.
 func shot(t *testing.T, r *rig, moment string) {
 	t.Helper()
@@ -1209,7 +1209,7 @@ func questionsOlderBlocks(t *testing.T) {
 		"`cancel` is the word this wave retired: nothing is cancelled by putting a question off")
 }
 
-// questionAssumptionMark is docs/design/questions/DESIGN.md's own spelling for
+// questionAssumptionMark is the implementation's own spelling for
 // the assumption kind: "assumptions ≈". Nothing in internal/tui2/tokens carries
 // it, which is why it is a literal here — see the comment at its one use.
 const questionAssumptionMark = "≈"

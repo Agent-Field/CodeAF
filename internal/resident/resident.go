@@ -59,7 +59,7 @@ type Compiled struct {
 	// compiled goal, which is this program's reading of the ask rather than the
 	// ask — and a checklist derived from our own reading is a checklist we wrote
 	// for ourselves, which is precisely what the gate may not hold anybody to.
-	// See plan.Acceptance and docs/design/gate/ACCEPTANCE.md.
+	// See plan.Acceptance and the implementation.
 	Accept []plan.Point
 	// Constraints are the rules the person's REQUEST states about what the run
 	// may or may not DO, in their own words, kept only where the compiler could

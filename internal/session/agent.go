@@ -2851,7 +2851,7 @@ func (a *Agent) snapshot() []ai.Message {
 const volatileNoteOpening = "A note from the session, not from the person: where the work stands right now. Facts, not requests — and the last such note is the one that holds."
 
 // bashBeltFrameOpening is the first line of the note the bash belt's per-step
-// frame rides in (docs/design/bash-task-loop/DESIGN.md, "The per-step frame").
+// frame rides in.
 //
 // It is a third opening rather than a paragraph of [volatileNoteOpening]
 // because the two move on different beats: the card moves when work lands, and
@@ -3023,7 +3023,7 @@ func (a *Agent) mayBashBelt() bool {
 // has left, the run's spend against the conversation's spend rail (or, with no
 // rail set, the node's spend so far), the fan-out slots still free, one line of
 // family news and one line of child news — or "" when there is nothing to say.
-// docs/design/bash-task-loop/DESIGN.md, "The per-step frame", is the shape's
+// the implementation, "The per-step frame", is the shape's
 // authority and this is its whole mechanism: a rendering at the drain, and
 // nothing else.
 //

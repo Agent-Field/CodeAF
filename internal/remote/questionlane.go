@@ -3,7 +3,7 @@ package remote
 // questionlane.go is the surface's half of version 14's QUESTIONS LANE.
 //
 // A question is one decision handed to a person with its evidence attached
-// (docs/design/questions/DESIGN.md), and internal/session speaks every one of
+//, and internal/session speaks every one of
 // them on a subscription that outlives the turn — [session.Agent.WatchQuestions]
 // — which replays whatever is still open the moment a surface attaches. Until
 // this file that subscription had no frame on this wire, and the consequence was

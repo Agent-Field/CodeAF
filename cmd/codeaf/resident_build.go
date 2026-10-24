@@ -116,7 +116,7 @@ func rethinkAfterCancel(settings config.Config, planClient *liveClient,
 // holds the compiled goal, which is this program's reading of the ask. A
 // checklist of what the person asked for has to be read off the person's own
 // words or it is a standard we wrote for ourselves, and the gate may not hold
-// anybody to one of those (docs/design/gate/ACCEPTANCE.md, and the grounding
+// anybody to one of those (the implementation, and the grounding
 // invariant in internal/revision/grounding.go that says the same thing about a
 // review's findings).
 func compileIntent(settings config.Config, compiler *head.Compiler, taskClient, planClient *liveClient,

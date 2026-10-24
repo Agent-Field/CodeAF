@@ -11,7 +11,7 @@ package session
 // repository with somebody's half-finished work on it and nothing left alive
 // that knows why. The worktree survived; the knowledge of it did not.
 //
-// The research names the contract exactly (harness-research-notes.md §7, Resume
+// The research names the contract exactly (the implementation §7, Resume
 // semantics, arXiv:2608.03836): SCHEMA-VALID CHECKPOINTS, CONSUME-ONCE
 // INTERRUPTS, RECOVERY AS A PURE FUNCTION OF DURABLE STATE. They machine-checked
 // real frameworks against it and found violations, which is a good reason to
@@ -532,7 +532,7 @@ type taskRecord struct {
 	// list and the files it claimed ([quickRecord]) — and absent on every other
 	// kind of node.
 	//
-	// THE CHECKLIST IS THE GRAPH (docs/design/quick-task/DESIGN.md), and until this
+	// THE CHECKLIST IS THE GRAPH, and until this
 	// field existed the graph's own file could label a quick node and not rebuild
 	// it: the kind was written and the body was not, so a node read back came home
 	// with nothing telling [Agent.runTaskNode] it was quick, nothing a restart

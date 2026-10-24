@@ -544,7 +544,7 @@ func TestNoSurfaceDrawsTheEnginesOwnMergeWord(t *testing.T) {
 	// AND THE LANDING CARD'S HEAD SAYS NOTHING AT ALL ABOUT IT. The head carries
 	// the merge as a FACT — `merged`, `branch kept`, or nothing — and work done in
 	// the person's own folder has no delivery to report: it is already where they
-	// are (docs/design/task-states/DESIGN.md). The expansion above still names the
+	// are. The expansion above still names the
 	// place beside the branch, which is where somebody looks it up.
 	card.open = false
 	if tail := plain(a.doneTail(card)); strings.Contains(tail, taskInPlaceLanding) ||

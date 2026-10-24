@@ -180,7 +180,7 @@ type Profile struct {
 	// nothing about when to come back, which is the commoner shape.
 	//
 	// IT IS THE ONLY THING THAT MAKES A SECOND SEND TO THE SAME MACHINE LEGAL
-	// (docs/design/recovery/DESIGN.md §3), so it is what a scenario about
+	//, so it is what a scenario about
 	// repeating a request has to be able to state.
 	PacedFor time.Duration
 

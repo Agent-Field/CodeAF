@@ -13,7 +13,7 @@ import (
 
 // ── THE HOME PLACE ──────────────────────────────────────────────────────────
 //
-// THIS FILE IS HOME AS A PLACE (docs/design/home-rethink/ARCHITECTURE.md): the
+// THIS FILE IS HOME AS A PLACE: the
 // switcher it reads, the verbs its rows offer, and the card beside a typed
 // search. The reading is switcher.go's and is PURE; the frame
 // around it is the router's and knows no place by name; nothing here switches on

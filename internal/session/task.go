@@ -367,7 +367,7 @@ type taskSpec struct {
 	checks    []string
 	dependsOn []uint64
 	// planID is THE TASK'S ID IN THE PLAN STORE (internal/plandb), set only on
-	// a node the bash belt's plandb loop drives (docs/design/plandb-cli/
+	// a node the bash belt's plandb loop drives (the implementation
 	// DESIGN.md, the wiring section). It is what makes a node and its plan
 	// task one thing: the runtime claims the store task under this id when it
 	// dispatches the node, the node's work order is composed FROM the store

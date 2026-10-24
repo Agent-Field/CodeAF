@@ -196,7 +196,7 @@ func TestASessionNamedWithTheInstructionKeepsThePlaceholder(t *testing.T) {
 // Invalid replies have a bounded LADDER, and later turns do not reset it.
 //
 // WHAT BOUNDS IT IS [titleWindow] AND NOT A COUNT (`titleAttempts`, deleted —
-// docs/design/recovery/DESIGN.md §7). The asks are the window divided by the
+// the implementation §7). The asks are the window divided by the
 // doubling wait in front of each of them: nothing, then 1s, 2s, 4s … so the
 // eighth would be asked 127 seconds in, past the two minutes, and seven are
 // asked. The clock is the test's ([onATestClock]), so none of that is spent.

@@ -68,7 +68,7 @@ func testRefusedAcceptAsks(t *testing.T) {
 	screen := r.waitFor(45*time.Second, refusedGroundReason, refusedYesWord)
 	t.Logf("a landing whose merge was refused by the person's own copies:\n%s", screen)
 
-	// THE THREE COLUMNS, ALWAYS THE SAME THREE (docs/design/task-states/DESIGN.md).
+	// THE THREE COLUMNS, ALWAYS THE SAME THREE.
 	for _, want := range []string{refusedYesWord, refusedNoWord, refusedTellWord} {
 		if !strings.Contains(screen, want) {
 			t.Errorf("the screen offers no %q, so the person is told what is wrong and given "+

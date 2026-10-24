@@ -178,7 +178,7 @@ var demoGraph = []demoNode{
 			Brief:      "Measure how long a frame costs in each package that draws a row, and write down which are over the cap in SIZE-BUDGET.",
 			Acceptance: "A table of every package with a measured figure, and a named order for the ones over the cap.",
 			Report:     "Eleven packages measured. Four are over the cap; the plan takes the tab bar first because everything else reads its counts.",
-			Changed:    []string{"docs/design/polish/budget.md"},
+			Changed:    []string{"docs/example-report.md"},
 			Merge:      "merged", Model: "anthropic/claude-sonnet-4",
 			ElapsedMS: 4 * 60 * 1000, CostUSD: 0.21, Input: 24_100, Output: 3_900,
 			Noted: true,
@@ -229,7 +229,7 @@ var demoGraph = []demoNode{
 			ID: 5, Parent: 1, Depth: 2, DependsOn: []uint64{1}, State: session.TaskFailed,
 			Title:      "Rebuild the frame budget report",
 			Brief:      "Regenerate the report the plan measured against, so the numbers in it are this week's.",
-			Acceptance: "docs/design/polish/budget.md carries a figure for every package, dated today.",
+			Acceptance: "docs/example-report.md carries a figure for every package, dated today.",
 			Report:     "The sweep it re-runs needs a build that is not on this machine, so the report could not be regenerated. Nothing was written.",
 			Merge:      "aborted", Model: "anthropic/claude-sonnet-4",
 			ElapsedMS: 60 * 1000, CostUSD: 0.04, Input: 5_400, Output: 700,
@@ -421,8 +421,8 @@ var roomPlanJournal = []journalLine{
 		ToolCalls: []ai.ToolCall{call("c2", "bash", map[string]any{"command": "go test -run TestFrameBudget -bench . ./internal/... | tee /tmp/budget.txt"})}},
 	answer("c2", "internal/tui3      14.2ms/frame  OVER\ninternal/tui2       5.9ms/frame\ninternal/session    4.1ms/frame\ninternal/automation 3.0ms/frame\ninternal/head      11.8ms/frame  OVER\ninternal/resident  10.4ms/frame  OVER\ninternal/remote     9.7ms/frame  OVER\nok\n"),
 	{Type: "message", Role: "assistant", Content: "Four are over. Writing the order down: the tab bar first, because every other count on the surface is read from it.",
-		ToolCalls: []ai.ToolCall{call("c3", "write", map[string]any{"path": "docs/design/polish/budget.md"})}},
-	answer("c3", "wrote docs/design/polish/budget.md (48 lines)"),
+		ToolCalls: []ai.ToolCall{call("c3", "write", map[string]any{"path": "docs/example-report.md"})}},
+	answer("c3", "wrote docs/example-report.md (48 lines)"),
 	{Type: "message", Role: "assistant", Content: "Eleven packages measured. Four are over the cap; the plan takes the tab bar first because everything else reads its counts."},
 }
 

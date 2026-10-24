@@ -2,7 +2,7 @@ package session
 
 // automation_run.go is what one run of an automation does, as
 // [automation.Runner]: a watch's look and its judgment, and a piece of work run
-// unattended. docs/design/automations/DESIGN.md, "A run".
+// unattended. the implementation, "A run".
 //
 // A RUN IS THE PERSON'S OWN CONVERSATION, DONE LATER. Its configuration is built
 // by the same assembly a conversation's is (the door hands it in), so it has

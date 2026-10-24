@@ -16,7 +16,7 @@ import (
 
 // ── ONE DEADLINE BOUNDS EVERYTHING ──────────────────────────────────────────
 //
-// docs/design/recovery/DESIGN.md §7's acceptance, said as a scenario rather than
+// the implementation §7's acceptance, said as a scenario rather than
 // as an argument. The worst case of the eleven controllers was a product nobody
 // could state — 3 models × 4 attempts × 5 arms × 6 paced sends × 9 rungs — and
 // what replaced it is one figure a person could be told: `lane.Role.GiveUp`.
@@ -98,7 +98,7 @@ func (p *scriptedPool) sends() []string {
 }
 
 // TestOneDeadlineBoundsEverything is the acceptance of
-// docs/design/recovery/DESIGN.md §7: over three hundred scripted pools, mixed
+// the implementation §7: over three hundred scripted pools, mixed
 // however the census mixes them, NO CALL OUTLIVES ITS PLAN'S DEADLINE BY MORE
 // THAN ONE [maxProviderWait] — the longest single wait this build will ever
 // take — and no call sends more than its own machines and shapes can account for.
@@ -171,7 +171,7 @@ func TestOneDeadlineBoundsEverything(t *testing.T) {
 }
 
 // TestTheScreenshotScenarioAnswersThroughTheFourthMachine is the run that opened
-// this design (docs/design/recovery/DESIGN.md §1, the 2026-09-10 screenshot),
+// this design,
 // staged: an account-policy 404, a machine that rate limits, a second that rate
 // limits, and a healthy fourth the sheet doubts.
 //
