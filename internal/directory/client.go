@@ -77,7 +77,7 @@ type Directory interface {
 // two missed beats.
 const (
 	LeaseTTL       = time.Duration(clusterstate.LeaseTTLMillis) * time.Millisecond
-	HeartbeatEvery = 30 * time.Second
+	HeartbeatEvery = time.Duration(clusterstate.RenewEveryMillis) * time.Millisecond
 )
 
 // The errors a Client returns. Callers compare with errors.Is.

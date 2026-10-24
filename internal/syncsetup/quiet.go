@@ -17,6 +17,7 @@ import (
 	"net/http"
 
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/dirwatch"
 	"github.com/Agent-Field/codeaf/internal/identity"
 )
 
@@ -65,3 +66,37 @@ func (s *Sync) list(ctx context.Context) (directory.Listing, error) {
 	}
 	return s.Dir.List(ctx)
 }
+
+// ClusterHTTP supplies the same use-time quiet gate for enrollment, discovery,
+// exchange and socket upgrades. Constructing it performs no network operation;
+// handles created before pairing or sync-off recheck the decision on every use.
+func (s *Sync) ClusterHTTP(client *http.Client) *http.Client {
+	if client == nil {
+		client = &http.Client{}
+	}
+	copyClient := *client
+	return gated(s.Home, &copyClient)
+}
+
+// quietStream rechecks an existing socket at every read/ping, so a later off
+// decision cannot retain a second transport path around quietWire.
+type quietStream struct {
+	dirwatch.Stream
+	home string
+}
+
+func (s quietStream) Next(ctx context.Context) (dirwatch.Frame, error) {
+	if Quiet(s.home) {
+		s.Stream.Close()
+		return dirwatch.Frame{}, ErrQuiet
+	}
+	return s.Stream.Next(ctx)
+}
+func (s quietStream) Ping(ctx context.Context) error {
+	if Quiet(s.home) {
+		s.Stream.Close()
+		return ErrQuiet
+	}
+	return s.Stream.Ping(ctx)
+}
+func (s quietStream) Vouching() bool { return !Quiet(s.home) && s.Stream.Vouching() }

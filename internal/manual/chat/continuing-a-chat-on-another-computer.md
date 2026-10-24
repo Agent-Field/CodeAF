@@ -287,3 +287,12 @@ Network partitions or scheduling stalls can take longer. If the personal leader
 and either remaining relay voter are both unavailable before the third anchor
 is restored, writes wait for a majority to return. Returning computers stay
 learners; leadership returns only when you request it again.
+
+
+## Does an open connection keep my chat running on this computer?
+
+The sync connection carries presence hints and committed lease acknowledgments. An open socket or an answered ping alone cannot keep ownership of a chat. codeaf skips an ordinary heartbeat only while it has a recent acknowledgment for that exact chat and ownership number, with enough time left before expiry. Without that acknowledgment it keeps sending ordinary heartbeats. A delayed acknowledgment for an earlier owner cannot take the chat back, and a delayed renewal cannot undo a clean quit.
+
+## Does syncing keep sending requests when nothing is happening?
+
+A home that has never paired sends no sync traffic. `CODEAF_SYNC_URL=off` also blocks new sync requests from clients that were opened before the setting changed. Presence pings on an open view are hints; they do not write chat ownership. On the consensus directory, a group with no work or held chats can stop its periodic coordination timer after an idle barrier has reached every voter. The first operation wakes coordination and must obtain a fresh majority response. A saved leader address cannot answer that operation by itself. Losing the majority leaves syncing unavailable and keeps local work intact.

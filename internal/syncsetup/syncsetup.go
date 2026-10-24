@@ -214,7 +214,16 @@ func (s *Sync) Follow() dirwatch.Follower {
 	if !ok {
 		return nil
 	}
-	return dirwatch.Follow(s.Ledger, w.Watch)
+	return dirwatch.Follow(s.Ledger, func(ctx context.Context) (dirwatch.Stream, error) {
+		if Quiet(s.Home) {
+			return nil, ErrQuiet
+		}
+		stream, err := w.Watch(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return quietStream{Stream: stream, home: s.Home}, nil
+	})
 }
 
 // holdKey keeps the holding socket's feed apart from the home screen's, which
@@ -222,7 +231,7 @@ func (s *Sync) Follow() dirwatch.Follower {
 func (s *Sync) holdKey() string { return s.Ledger + "#holding" }
 
 // Liveness is the process's holding socket for this identity, which lets the
-// chats it holds stop heartbeating while the relay vouches for them. It answers
+// chats it holds stop heartbeating while committed hold receipts cover them. It answers
 // nil when the directory client cannot name holds (a self-hosted directory), so
 // those chats heartbeat as they always did.
 func (s *Sync) Liveness() cellsync.Liveness {
@@ -230,7 +239,16 @@ func (s *Sync) Liveness() cellsync.Liveness {
 	if !ok {
 		return nil
 	}
-	return holdSocket{dirwatch.Hold(s.holdKey(), directory.MaxHolds, w.WatchHolding)}
+	return holdSocket{dirwatch.Hold(s.holdKey(), directory.MaxHolds, func(ctx context.Context, holds []directory.Hold) (dirwatch.Stream, error) {
+		if Quiet(s.Home) {
+			return nil, ErrQuiet
+		}
+		stream, err := w.WatchHolding(ctx, holds)
+		if err != nil {
+			return nil, err
+		}
+		return quietStream{Stream: stream, home: s.Home}, nil
+	})}
 }
 
 // holdSocket adapts the holding socket to the Batcher's view of it.
