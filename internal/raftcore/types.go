@@ -86,6 +86,12 @@ type SnapshotPoint struct {
 	Term  uint64
 }
 
+// Campaign starts an explicit host-requested election without inventing elapsed ticks.
+// It is a local input and can never arrive through authenticated peer bytes.
+type Campaign struct{}
+
+func (Campaign) coreInput() {}
+
 type Poll struct{}
 type Tick struct{}
 type PeerMessage struct{ Bytes []byte }

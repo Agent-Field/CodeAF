@@ -240,3 +240,10 @@ commit completion and obtain a new receipt. Returning completed intents never
 regain leadership automatically. `QuiescenceCoordinator` sequences the idle
 part without adding another coordination writer. P17 supplies the sole product
 host and the outbound router assembly; no deployment or rollout switch exists.
+
+Portable snapshot metadata keeps the manifest's exact protobuf field presence.
+The pinned library fills omitted default fields such as `auto_leave:false` in
+memory. The wrapper checks the complete effective configuration, index and term,
+then restores the manifest's canonical presence on storage reads and incoming
+Ready snapshots. This prevents a real transfer from disagreeing with its durable
+chunk manifest without changing any voter, learner or joint-consensus value.

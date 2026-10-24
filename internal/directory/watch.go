@@ -95,6 +95,11 @@ func subscribe(c call) (*Sub, error) {
 	if err != nil {
 		return nil, err
 	}
+	if authenticated, ok := c.dir.(interface {
+		SubscribeWatch(string, *http.Request, []Hold, time.Duration) (*Sub, error)
+	}); ok {
+		return authenticated.SubscribeWatch(c.device, c.r, holds, beat)
+	}
 	return feed.Feed().SubscribeBeat(c.device, holds, beat)
 }
 
@@ -203,7 +208,9 @@ func answerPings(ctx context.Context, conn *websocket.Conn, sub *Sub) {
 			return
 		}
 		if kind == websocket.MessageText && string(msg) == "ping" {
-			sub.Ping()
+			if sub.PingCommitted() != nil {
+				return
+			}
 			if sendText(ctx, conn, "pong") != nil {
 				return
 			}

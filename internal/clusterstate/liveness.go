@@ -14,6 +14,10 @@ const (
 // authenticating fresh socket evidence. Evidence time fixes the expiry: replay
 // can never turn an old ping into another ninety seconds of ownership.
 type RenewHolds struct {
+	// Certificate carries an original root-signed personal certificate for a
+	// legacy holder whose public authority was never retained in the old store.
+	// It authorizes this evidence only and never creates an enrollment record.
+	Certificate       string      `json:"certificate,omitempty"`
 	WorkerIncarnation uint64      `json:"worker_incarnation,omitempty"`
 	Device            string      `json:"device"`
 	SeenAt            int64       `json:"seen_at"`
@@ -47,7 +51,22 @@ func renewHolds(c Command, now int64, rows map[RecordKey][]byte, put func(Record
 	}
 	var actor Device
 	var auth Authority
-	if Decode(rows[AuthorityKey(v.Device)], &auth) != nil || !auth.ValidRole() || auth.Cluster != c.Cluster || !auth.Personal && auth.Worker == nil {
+	if rows[AuthorityKey(v.Device)] == nil && v.Certificate != "" {
+		var identity IdentityRec
+		if Decode(rows[IdentityKey()], &identity) != nil {
+			return BadRequest
+		}
+		key, err := legacyCertificate(LegacyConfig{Identity: identity.Identity, SigningKey: identity.SigningKey}, v.Certificate)
+		if err != nil || DeviceIDOfKey(key) != v.Device {
+			return Unauthorized
+		}
+		auth = Authority{Cluster: c.Cluster, Key: key, Personal: true}
+	} else if raw := rows[AuthorityKey(v.Device)]; raw != nil {
+		if Decode(raw, &auth) != nil {
+			return BadRequest
+		}
+	}
+	if !auth.ValidRole() || auth.Cluster != c.Cluster || !auth.Personal && auth.Worker == nil {
 		return Unauthorized
 	}
 	if raw := rows[DeviceKey(v.Device)]; raw != nil && Decode(raw, &actor) != nil {

@@ -42,10 +42,14 @@ func conditionalForcedTakeOneWins(t *testing.T, e env) {
 // RunConsensus uses every existing verb case, with the R25 compatibility
 // contract at the one place where blind legacy force deliberately changes.
 func RunConsensus(t *testing.T, factory Factory) {
+	RunConsensusRigs(t, func(t *testing.T) Rig { clock := NewFakeClock(); return Rig{Clock: clock, Devices: factory(t, clock)} })
+}
+
+// RunConsensusRigs retains every wire case while asserting R25 at blind force.
+func RunConsensusRigs(t *testing.T, factory RigFactory) {
 	for name, fn := range cases {
 		t.Run(name, func(t *testing.T) {
-			clock := NewFakeClock()
-			e := envOf(Rig{Clock: clock, Devices: factory(t, clock)})
+			e := envOf(factory(t))
 			if name == "C7ConditionalForcedTakeOneWins" {
 				conditionalForcedTakeRace(t, e)
 				_, err := e.as(devA).Acquire(ctx, cell, directory.AcquireOpts{Force: true})
