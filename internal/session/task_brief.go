@@ -1029,6 +1029,7 @@ func (a *Agent) rememberAskLocked(user userMessage) {
 		return
 	}
 	if text := strings.TrimSpace(user.text()); text != "" {
+		a.proposalDeclined = false
 		a.personAsk = text
 		// AND WHICH TURN THEY TYPED IT INTO, which is the difference between words
 		// the person is saying now and words they said before the last thing that

@@ -863,9 +863,14 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 		// question and got a plain no; handing it a failure would put a red row
 		// in the transcript for a conversation working exactly as intended.
 		if reason := strings.TrimSpace(answer.Redirect); reason != "" {
-			return withElsewhere("the person declined this task: "+reason, elsewhere), false, nil
+			return withElsewhere("the person declined this task: "+reason+"; "+declinedProposalRefusal, elsewhere), false, nil
 		}
-		return withElsewhere("the person declined this task", elsewhere), false, nil
+		return withElsewhere("the person declined this task; "+declinedProposalRefusal, elsewhere), false, nil
+	}
+	// A sibling can have passed pre-action while this card was still open.
+	// Recheck at admission so an early-staged call cannot start after a no.
+	if a.taskWorkDeclined() {
+		return declinedProposalRefusal, true, nil
 	}
 	if redirect := strings.TrimSpace(answer.Redirect); redirect != "" {
 		// APPENDED, never merged into the brief's prose. The person's words
@@ -1249,6 +1254,11 @@ func (a *Agent) ResolveTask(id uint64, answer TaskAnswer) {
 	question, waiting := a.taskAnswers[id]
 	if waiting {
 		delete(a.taskAnswers, id)
+		// THE NO TAKES EFFECT BEFORE ITS RESULT. A card can be answered while
+		// its call is still streaming or a sibling is waiting to be admitted.
+		if !answer.Approved {
+			a.proposalDeclined = true
+		}
 	}
 	a.mu.Unlock()
 	if !waiting {

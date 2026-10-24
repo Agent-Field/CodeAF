@@ -48,6 +48,18 @@ was, and that proposal passes.
 card. Work codeaf moves to a task on its own, because a reply ran long or looked like
 work, goes to codeaf's own worker, never to senior-dev.
 
+## If I decline senior-dev, does the chat fix it anyway
+
+Press `2` with the message box empty to decline a senior-dev proposal. The card
+says `no · declined`, and no run starts. The chat cannot then edit your files,
+run shell commands, or hand that work out again while answering the same request.
+It can explain that the work was not started and ask or offer in words.
+
+A new message from you can ask for a direct fix, and normal work is allowed
+again. An automatic task or job ending does not lift the refusal. The exact
+refusal sentence and the limit on all shell commands are in the task manual's
+“After I say no, can codeaf fix it itself” section.
+
 ## Watching senior-dev work — open its task, what it is doing step by step, how long it has run, stop it
 
 A senior-dev run is a task of the conversation that started it. Its compact side-list
