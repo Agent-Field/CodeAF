@@ -296,3 +296,15 @@ The sync connection carries presence hints and committed lease acknowledgments. 
 ## Does syncing keep sending requests when nothing is happening?
 
 A home that has never paired sends no sync traffic. `CODEAF_SYNC_URL=off` also blocks new sync requests from clients that were opened before the setting changed. Presence pings on an open view are hints; they do not write chat ownership. On the consensus directory, a group with no work or held chats can stop its periodic coordination timer after an idle barrier has reached every voter. The first operation wakes coordination and must obtain a fresh majority response. A saved leader address cannot answer that operation by itself. Losing the majority leaves syncing unavailable and keeps local work intact.
+
+## Can a worker access all my chats or approve pairing?
+
+A delegated worker uses its own key and an expiring certificate naming selected chats. It receives only sealed grants for those chats, rather than the full exported identity. It cannot approve pairing, rotate the identity, read the identity vault, enroll other devices or request leadership. Richer capabilities, worker labels and execution credentials stay encrypted; only the existing platform and sandbox capability shape is readable by the relay.
+
+Worker setup and assignment execution are not available as a terminal command yet. Registration and a fresh signed heartbeat only record availability; they never start tools or give the worker ownership of a chat. Removing a worker blocks later requests after that removal commits. Expiry and removal cannot take back bytes the worker already downloaded.
+
+## Worker restarts, draining and learner metadata visibility
+
+A worker restart registers a newer process number. Delayed requests and heartbeats from its previous process cannot refresh availability or save work. A drained worker cannot receive new claims; already held work can still save and let go. Restarting does not clear draining. Expired and removed enrollment records remain retained; reaching their capacity limit refuses new enrollment instead of deleting records or saved chats.
+
+A scoped API worker does not join the coordination log. Joining as a learner requires explicit consent in its certificate: the full log reveals identity-wide routing and ownership metadata, while chat content, names and task instructions remain encrypted. Use scoped API access for an untrusted third-party worker. A delegated learner gets no vote and cannot become leader. Existing paired personal computers keep their shared-root trust model.
