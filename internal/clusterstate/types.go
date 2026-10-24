@@ -44,6 +44,8 @@ type Command struct {
 // their typed operations here; unknown fields fail decoding on older members.
 // There is no arbitrary JSON payload in which task text or secrets can hide.
 type Mutation struct {
+	RenewHolds         *RenewHolds         `json:"renew_holds,omitempty"`
+	PrepareQuiescence  *PrepareQuiescence  `json:"prepare_quiescence,omitempty"`
 	CompleteLeadership *CompleteLeadership `json:"complete_leadership,omitempty"`
 	RequestLeadership  *RequestLeadership  `json:"request_leadership,omitempty"`
 	RestoreAnchors     *RestoreAnchors     `json:"restore_anchors,omitempty"`
@@ -144,6 +146,7 @@ type DeviceSeen struct {
 // no free-form diagnostic text, so logging a refusal cannot disclose payloads.
 // Now and Version are application time/version, never a local clock/Raft index.
 type Result struct {
+	Index      uint64            `json:"index,omitempty"`
 	Membership *MembershipResult `json:"membership,omitempty"`
 	Schema     uint16            `json:"schema"`
 	Code       Code              `json:"code"`

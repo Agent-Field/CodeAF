@@ -90,7 +90,7 @@ Do not use this package to load a full application identity into wasm: P01 rows
 and P09 paged apply remain outside the consensus cache. Quiescence scheduling,
 clock samples, retry deadlines and application logical time are explicit host
 inputs in later packets. `NeedNextTick` currently means every non-stopped handle
-needs ticks; the safe quiescence protocol belongs to P14.
+needs ticks unless the explicit committed quiescence protocol below stops them.
 
 ## Replay contract
 
@@ -205,3 +205,38 @@ only another personal request may promote it. Public handlers accept the typed
 signed request and never expose Configure or host-supplied readiness evidence.
 P14 schedules ticks/wake/housekeeping, and P17 assembles these host/control seams
 with the personal member lifecycle and the one production directory route.
+
+## Committed liveness and idle scheduling (P14)
+
+`Schedule` takes monotonic elapsed milliseconds, conservative host activity,
+its durable `clusterstate.Quiescence` row and authenticated applied voter
+acknowledgments. It returns at most one tick, the next delay, wake destinations,
+or a barrier/prepare plan. Run it under the member queue. The host includes
+queued commands, outboxes, assignments, holds and membership/transfer work in
+activity; `raftdirectory.Schedule` and `MemberActor.schedule` page the current
+application's hold/intent dependencies using the same Go activity rule.
+
+After sixty idle seconds the elected leader needs an internal `IdleRead` before
+preparing a marker bound to its applied index, term and exact current voters.
+`IdleRead` preserves elapsed idle time but still performs the ordinary safe
+quorum read. Only a committed, durably applied anchor command creates the marker.
+Every current voter must acknowledge that exact durable index/term before any
+reached member can stop its timer. Unreached members remain active. Operations
+cancel the generation; delayed final delivery cannot put it back to sleep.
+Recovery always starts awake as a follower. An elapsed-hours sample yields one
+tick, never hours of tick debt. A remembered leader never bypasses ReadIndex.
+
+Application `RenewHolds` is restricted ingress authority, with exact device and
+fence and a fresh ingress sample. Its expiry is sample + ordinary lease TTL,
+never receipt-time + TTL. Released leases remain released. A recent publish can
+cover a sample; the authoritative read plus shared `RenewalCovered` helper skips
+that item before logging. Successful receipt indexes escape only after durable
+application. Presence pongs alone do not suppress client heartbeats.
+
+The router's timer driver must resume the existing P12/P13 committed workflow
+and P10 outboxes before idle preparation. It must authenticate target evidence,
+finish joint stages, settle, transfer, obtain the elected target's fresh read,
+commit completion and obtain a new receipt. Returning completed intents never
+regain leadership automatically. `QuiescenceCoordinator` sequences the idle
+part without adding another coordination writer. P17 supplies the sole product
+host and the outbound router assembly; no deployment or rollout switch exists.

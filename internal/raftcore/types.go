@@ -96,6 +96,12 @@ type Propose struct{ Command []byte }
 type Configure struct{ Change []byte }
 type Read struct{ RequestID string }
 
+// IdleRead is an internal quiescence barrier; it cannot authorize a client
+// operation and preserves only the already elapsed idle interval.
+type IdleRead struct{ RequestID string }
+
+func (IdleRead) coreInput() {}
+
 // CancelRead marks a host timeout without producing a successful read. A
 // submitted context retains its admission slot until Raft finishes that round;
 // otherwise repeated cancellation could create unbounded hidden work.

@@ -164,6 +164,14 @@ func (r *Runtime) Call(b []byte) (out []byte) {
 func (r *Runtime) call(op uint32, d *decoder) ([]byte, error) {
 	e := encoder{}
 	switch op {
+	case 23:
+		return r.schedule(d)
+	case 24:
+		return activeRecord(d)
+	case 25:
+		return coordinationPolicy(d)
+	case 26:
+		return renewalCovered(d)
 	case 21, 22:
 		return r.leadership(d, op == 22)
 	case 20:
@@ -272,6 +280,8 @@ func (r *Runtime) call(op uint32, d *decoder) ([]byte, error) {
 			return legacyAuthorities(d)
 		case 13:
 			return legacyGenesis(d)
+		case 15:
+			in = raftcore.IdleRead{RequestID: d.str()}
 		case 12:
 			in = raftcore.TransportResult{Peer: d.u64(), Snapshot: d.u32() != 0, Success: d.u32() != 0}
 		case 11:

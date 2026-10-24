@@ -16,12 +16,13 @@ import (
 // authorized writer. Session policy here is a contract fixture, not a second
 // production implementation. The checker uses its own rules and state types.
 type ProbeApplication struct {
-	Now      int64
-	Vault    string
-	Cells    map[string]clusterstate.Cell
-	Revoked  map[string]bool
-	Sessions map[string]probeSession
-	Padding  []byte
+	Coordination map[string][]byte `json:",omitempty"`
+	Now          int64
+	Vault        string
+	Cells        map[string]clusterstate.Cell
+	Revoked      map[string]bool
+	Sessions     map[string]probeSession
+	Padding      []byte
 }
 type probeSession struct {
 	Sequence uint64
@@ -35,6 +36,12 @@ func freshApp() ProbeApplication {
 }
 func (a ProbeApplication) copy() ProbeApplication {
 	out := ProbeApplication{Now: a.Now, Vault: a.Vault, Cells: map[string]clusterstate.Cell{}, Revoked: map[string]bool{}, Sessions: map[string]probeSession{}, Padding: bytes.Clone(a.Padding)}
+	if a.Coordination != nil {
+		out.Coordination = map[string][]byte{}
+		for k, v := range a.Coordination {
+			out.Coordination[k] = bytes.Clone(v)
+		}
+	}
 	for key, cell := range a.Cells {
 		cell.Frames = slices.Clone(cell.Frames)
 		if cell.Keys != nil {

@@ -2,6 +2,7 @@ package raftsim
 
 import (
 	"container/heap"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -38,6 +39,7 @@ type Config struct {
 	Broken        string
 }
 type Action struct {
+	Schedule   *raftcore.ScheduleInput      `json:",omitempty"`
 	Leadership *clusterstate.Membership     `json:",omitempty"`
 	Evidence   *raftcore.LeadershipEvidence `json:",omitempty"`
 	Kind       string
@@ -64,6 +66,7 @@ type client struct {
 	Lost    bool
 }
 type member struct {
+	SchedulePlan   raftcore.SchedulePlan
 	SnapshotSource *origin
 
 	Core         *raftcore.Core
@@ -389,6 +392,37 @@ func (s *Simulator) apply(node int, batch *raftcore.ApplyBatch) (image, map[stri
 		if entry.GetType() != pb.EntryNormal || len(entry.Data) == 0 {
 			continue
 		}
+		cmd, err := clusterstate.DecodeCommand(entry.Data)
+		if err != nil {
+			s.fail("command decode: %v", err)
+			return d, results
+		}
+		if cmd.Change.PrepareQuiescence != nil {
+			if d.App.Coordination == nil {
+				d.App.Coordination = map[string][]byte{}
+			}
+			read := func(k clusterstate.RecordKey) ([]byte, error) {
+				if k == clusterstate.AuthorityKey("anchor") {
+					b, _ := clusterstate.Encode(clusterstate.Authority{Cluster: clusterUUID, Key: quiescenceKey().Public().(ed25519.PublicKey), Anchor: true})
+					return b, nil
+				}
+				return d.App.Coordination[k.Namespace+"/"+k.Key], nil
+			}
+			meta := clusterstate.ApplicationMeta{Cluster: clusterUUID, Index: entry.GetIndex(), Term: entry.GetTerm(), Configuration: raftcore.Configuration(batch.ConfState), Now: d.App.Now, Ceiling: clusterstate.DefaultApplicationBytes}
+			out, err := clusterstate.Evaluate(entry.Data, meta, read)
+			if err != nil || out.Result.Code != clusterstate.OK {
+				s.fail("quiescence apply: %v %v", out.Result.Code, err)
+				return d, results
+			}
+			for _, w := range out.Writes {
+				d.App.Coordination[w.Namespace+"/"+w.Key] = w.Data
+			}
+			continue
+		}
+		if d.App.Coordination != nil {
+			b, _ := clusterstate.Encode(clusterstate.Quiescence{})
+			d.App.Coordination["membership/quiescence"] = b
+		}
 		call, ok := s.catalog[string(entry.Data)]
 		if !ok {
 			s.fail("uncatalogued committed command")
@@ -631,6 +665,12 @@ func (s *Simulator) Do(a Action) int {
 		e := *a.Evidence
 		a.Evidence = &e
 	}
+	if a.Schedule != nil {
+		v := *a.Schedule
+		v.Acks = slices.Clone(v.Acks)
+		v.Marker.Voters = slices.Clone(v.Marker.Voters)
+		a.Schedule = &v
+	}
 	s.Actions = append(s.Actions, a)
 	s.stamp()
 	if s.Err != nil {
@@ -672,6 +712,36 @@ func (s *Simulator) Do(a Action) int {
 		s.crash(a.Node, a.Value != 0)
 	case "restart":
 		s.start(a.Node)
+	case "schedule":
+		if a.Schedule == nil {
+			s.fail("missing schedule input")
+			return -1
+		}
+		p, err := s.Nodes[a.Node].Core.Schedule(*a.Schedule)
+		if err != nil {
+			s.fail("schedule: %v", err)
+			return -1
+		}
+		s.Nodes[a.Node].SchedulePlan = p
+		b, _ := json.Marshal(p)
+		s.record(a.Node, "schedule", 0, raftMessageDigest(b))
+		if p.Tick {
+			s.step(a.Node, raftcore.Tick{})
+		}
+	case "quiesce":
+		n := s.Nodes[a.Node]
+		voters := raftcore.Configuration(n.Stable.Conf).Voters
+		c, err := clusterstate.Sign(clusterstate.Command{Schema: 1, Cluster: clusterUUID, Actor: "anchor", Session: fmt.Sprintf("idle-%d", n.Stable.Applied), Sequence: 1, Now: a.Value, Change: clusterstate.Mutation{PrepareQuiescence: &clusterstate.PrepareQuiescence{Barrier: n.Stable.Applied, Term: n.Status.Term, Voters: voters}}}, quiescenceKey())
+		if err != nil {
+			s.fail("sleep command: %v", err)
+			return -1
+		}
+		raw, err := clusterstate.EncodeCommand(c)
+		if err != nil {
+			s.fail("sleep encode: %v", err)
+			return -1
+		}
+		s.step(a.Node, raftcore.Propose{Command: raw})
 	case "block":
 		s.Blocked[[2]int{a.Node, a.Other}] = a.Value != 0
 	case "stall":
