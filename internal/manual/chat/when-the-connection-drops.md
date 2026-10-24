@@ -269,7 +269,7 @@ A connection coming back is not somebody arriving, so a redial does **not** take
 keyboard off the machine you walked to. The returning window rejoins as a watcher and says
 
 ```
-typing from spark now                                     enter takes it back
+typing from tower now                                     enter takes it back
 ```
 
 Press `enter` there if you want it back. If nothing else had the keyboard while you were

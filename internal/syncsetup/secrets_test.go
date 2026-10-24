@@ -19,7 +19,7 @@ import (
 
 // TestC9RelayReceivesNoPlaintextSecretsAndTakeUsesTheVault proves C9's
 // working-tree law at the upload and continue-here doors on both transports.
-// Under Abir's 2026-10-21 contract amendment, history travels sealed; only the
+// Under dev's 2026-10-21 contract amendment, history travels sealed; only the
 // non-secret file is committed here so Git does not independently carry a key.
 func TestC9RelayReceivesNoPlaintextSecretsAndTakeUsesTheVault(t *testing.T) {
 	for _, transport := range []string{"spawn", "daemon"} {

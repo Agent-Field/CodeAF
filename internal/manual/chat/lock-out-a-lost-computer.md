@@ -87,7 +87,7 @@ a rotation of this identity is already under way; if it is yours and was cut off
 
 A relay that does not know how to do this says `this relay cannot replace an identity: it is too old for that`. Nothing has been fetched or changed when you read either sentence.
 
-A way to prove you are the owner with a written recovery phrase is not built.
+A way to prove your identity with a written recovery phrase is not built.
 
 ## What it costs — every chat goes up again
 

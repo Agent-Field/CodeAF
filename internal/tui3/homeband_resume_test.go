@@ -20,16 +20,16 @@ func TestResumePicksTheNewestRecentChatOnAnOfflineDevice(t *testing.T) {
 		state resumeState
 		want  string
 	}{
-		{"off without a feed", resumeState{rows: []chatlist.Row{leftOffRow("a", "spark", chatlist.Off, time.Hour)}}, "a"},
-		{"running without a feed is busy", resumeState{rows: []chatlist.Row{leftOffRow("a", "spark", chatlist.Running, time.Minute)}}, ""},
-		{"running on an offline device", resumeState{feedUp: true, rows: []chatlist.Row{leftOffRow("a", "spark", chatlist.Running, time.Minute)}}, "a"},
-		{"online and busy", resumeState{feedUp: true, online: []string{"dev_spark"}, rows: []chatlist.Row{leftOffRow("a", "spark", chatlist.Running, time.Minute)}}, ""},
-		{"online with a lapsed lease", resumeState{feedUp: true, online: []string{"dev_spark"}, rows: []chatlist.Row{leftOffRow("a", "spark", chatlist.Off, time.Minute)}}, "a"},
-		{"online and let go", resumeState{feedUp: true, online: []string{"dev_spark"}, rows: []chatlist.Row{leftOffRow("a", "spark", chatlist.Idle, time.Minute)}}, "a"},
-		{"too old", resumeState{rows: []chatlist.Row{leftOffRow("a", "spark", chatlist.Off, 3*resumeRecent)}}, ""},
+		{"off without a feed", resumeState{rows: []chatlist.Row{leftOffRow("a", "tower", chatlist.Off, time.Hour)}}, "a"},
+		{"running without a feed is busy", resumeState{rows: []chatlist.Row{leftOffRow("a", "tower", chatlist.Running, time.Minute)}}, ""},
+		{"running on an offline device", resumeState{feedUp: true, rows: []chatlist.Row{leftOffRow("a", "tower", chatlist.Running, time.Minute)}}, "a"},
+		{"online and busy", resumeState{feedUp: true, online: []string{"dev_tower"}, rows: []chatlist.Row{leftOffRow("a", "tower", chatlist.Running, time.Minute)}}, ""},
+		{"online with a lapsed lease", resumeState{feedUp: true, online: []string{"dev_tower"}, rows: []chatlist.Row{leftOffRow("a", "tower", chatlist.Off, time.Minute)}}, "a"},
+		{"online and let go", resumeState{feedUp: true, online: []string{"dev_tower"}, rows: []chatlist.Row{leftOffRow("a", "tower", chatlist.Idle, time.Minute)}}, "a"},
+		{"too old", resumeState{rows: []chatlist.Row{leftOffRow("a", "tower", chatlist.Off, 3*resumeRecent)}}, ""},
 		{"this device", resumeState{rows: []chatlist.Row{leftOffRow("a", "mac", chatlist.Here, time.Minute)}}, ""},
 		{"newest wins", resumeState{rows: []chatlist.Row{
-			leftOffRow("old", "dumb", chatlist.Off, 5*time.Hour), leftOffRow("new", "spark", chatlist.Off, time.Hour)}}, "new"},
+			leftOffRow("old", "desk", chatlist.Off, 5*time.Hour), leftOffRow("new", "tower", chatlist.Off, time.Hour)}}, "new"},
 	}
 	for _, c := range cases {
 		got := c.state.pick()
@@ -54,20 +54,20 @@ func leftOffFrame(a *app) string {
 }
 
 func TestResumeIsDecidedAgainWhenTheFeedSaysTheDeviceWentOffline(t *testing.T) {
-	a, feed := devicesRig("dev_spark")
+	a, feed := devicesRig("dev_tower")
 	a.taker = &fakeTaker{}
-	a.tookMachines(homeMachinesMsg{rows: []chatlist.Row{leftOffRow("a", "spark", chatlist.Running, time.Minute)}})
+	a.tookMachines(homeMachinesMsg{rows: []chatlist.Row{leftOffRow("a", "tower", chatlist.Running, time.Minute)}})
 	if leftOffFrame(a) != "" {
 		t.Fatal("offered a chat on a device that is still online")
 	}
 	// D6: The relay's offline debounce is over: the feed drops the device.
 	feed.state.Online = nil
 	a.tookWatch(dirWatchMsg{from: feed})
-	if got := leftOffFrame(a); !strings.Contains(got, "Continue spark's latest chat here?") {
+	if got := leftOffFrame(a); !strings.Contains(got, "Continue tower's latest chat here?") {
 		t.Fatalf("no card after the device went offline:\n%s", got)
 	}
 	// It comes back: the reason is gone and the card with it.
-	feed.state.Online = []string{"dev_spark"}
+	feed.state.Online = []string{"dev_tower"}
 	a.tookWatch(dirWatchMsg{from: feed})
 	if leftOffFrame(a) != "" {
 		t.Fatal("the card stayed after the device came back")
@@ -76,11 +76,11 @@ func TestResumeIsDecidedAgainWhenTheFeedSaysTheDeviceWentOffline(t *testing.T) {
 
 func TestResumeFollowsALapsedLeaseWhenTheFeedIsDown(t *testing.T) {
 	a := leftOffApp(&fakeTaker{})
-	a.tookMachines(homeMachinesMsg{rows: []chatlist.Row{leftOffRow("a", "spark", chatlist.Running, time.Minute)}})
+	a.tookMachines(homeMachinesMsg{rows: []chatlist.Row{leftOffRow("a", "tower", chatlist.Running, time.Minute)}})
 	if leftOffFrame(a) != "" {
 		t.Fatal("offered a chat whose lease is held")
 	}
-	a.tookMachines(homeMachinesMsg{rows: []chatlist.Row{leftOffRow("a", "spark", chatlist.Off, time.Minute)}})
+	a.tookMachines(homeMachinesMsg{rows: []chatlist.Row{leftOffRow("a", "tower", chatlist.Off, time.Minute)}})
 	if leftOffFrame(a) == "" {
 		t.Fatal("a lapsed lease did not raise the card on the next listing")
 	}
@@ -89,10 +89,10 @@ func TestResumeFollowsALapsedLeaseWhenTheFeedIsDown(t *testing.T) {
 func TestResumeStaysAnsweredOncePutOff(t *testing.T) {
 	a, feed := devicesRig()
 	a.taker = &fakeTaker{}
-	a.tookMachines(homeMachinesMsg{rows: []chatlist.Row{leftOffRow("a", "spark", chatlist.Off, time.Hour)}})
+	a.tookMachines(homeMachinesMsg{rows: []chatlist.Row{leftOffRow("a", "tower", chatlist.Off, time.Hour)}})
 	a.resumeKeyHandler(resumeSkipKey)
 	a.tookWatch(dirWatchMsg{from: feed})
-	a.tookMachines(homeMachinesMsg{rows: []chatlist.Row{leftOffRow("a", "spark", chatlist.Off, time.Hour)}})
+	a.tookMachines(homeMachinesMsg{rows: []chatlist.Row{leftOffRow("a", "tower", chatlist.Off, time.Hour)}})
 	if leftOffFrame(a) != "" {
 		t.Fatal("a device put off was offered again")
 	}
@@ -101,9 +101,9 @@ func TestResumeStaysAnsweredOncePutOff(t *testing.T) {
 // C27.7 exercises this behaviour without an opt-in switch.
 func TestResumeOffersOnceAndLeadsToTheTakeoverCard(t *testing.T) {
 	a := leftOffApp(&fakeTaker{})
-	a.tookMachines(homeMachinesMsg{rows: []chatlist.Row{leftOffRow("a", "spark", chatlist.Off, time.Hour)}})
+	a.tookMachines(homeMachinesMsg{rows: []chatlist.Row{leftOffRow("a", "tower", chatlist.Off, time.Hour)}})
 	got := leftOffFrame(a)
-	for _, want := range []string{"Continue spark's latest chat here?", resumeYes, resumeNo} {
+	for _, want := range []string{"Continue tower's latest chat here?", resumeYes, resumeNo} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("card lacks %q:\n%s", want, got)
 		}
@@ -126,7 +126,7 @@ func TestResumeOffersOnceAndLeadsToTheTakeoverCard(t *testing.T) {
 
 func TestResumeCanBeDismissedAndIsAbsentWithoutATaker(t *testing.T) {
 	a := leftOffApp(&fakeTaker{})
-	a.tookMachines(homeMachinesMsg{rows: []chatlist.Row{leftOffRow("a", "spark", chatlist.Off, time.Hour)}})
+	a.tookMachines(homeMachinesMsg{rows: []chatlist.Row{leftOffRow("a", "tower", chatlist.Off, time.Hour)}})
 	if _, took := a.resumeKeyHandler(resumeSkipKey); !took || leftOffFrame(a) != "" {
 		t.Fatal("not now did not dismiss the offer")
 	}
@@ -134,7 +134,7 @@ func TestResumeCanBeDismissedAndIsAbsentWithoutATaker(t *testing.T) {
 		t.Fatal("a dismissed offer still claims its chord")
 	}
 	b := leftOffApp(nil)
-	b.tookMachines(homeMachinesMsg{rows: []chatlist.Row{leftOffRow("a", "spark", chatlist.Off, time.Hour)}})
+	b.tookMachines(homeMachinesMsg{rows: []chatlist.Row{leftOffRow("a", "tower", chatlist.Off, time.Hour)}})
 	if leftOffFrame(b) != "" {
 		t.Fatal("offered a takeover nothing is behind")
 	}
@@ -148,7 +148,7 @@ func TestResumeAppearsWithinTheBoundWhenTheLeaseLapses(t *testing.T) {
 	a, src, now := pollHome(t)
 	a.taker = &fakeTaker{}
 	row := func(s chatlist.Status) chatlist.Static {
-		return chatlist.Static{leftOffRow("c1", "spark", s, time.Minute)}
+		return chatlist.Static{leftOffRow("c1", "tower", s, time.Minute)}
 	}
 	src.rows = row(chatlist.Running)
 	for i := 0; i < 200; i++ { // the pace settles at its slowest
@@ -159,7 +159,7 @@ func TestResumeAppearsWithinTheBoundWhenTheLeaseLapses(t *testing.T) {
 	}
 	src.rows = row(chatlist.Off)
 	lapsed := *now
-	for !strings.Contains(leftOffFrame(a), "Continue spark's latest chat here?") {
+	for !strings.Contains(leftOffFrame(a), "Continue tower's latest chat here?") {
 		if waited := now.Sub(lapsed); waited > machinesCap+homeEvery {
 			t.Fatalf("no card %s after the lease lapsed, want within %s", waited, machinesCap)
 		}
@@ -171,20 +171,20 @@ func TestResumeAppearsWithinTheBoundWhenTheLeaseLapses(t *testing.T) {
 // screen pair: online and busy (filled dot, no card), killed (hollow dot,
 // "(offline)", card), back online (filled dot, card withdrawn).
 func TestPresenceIsReadOffTheRowAndTheCardTogether(t *testing.T) {
-	a, feed := devicesRig("dev_spark")
-	a.tookMachines(homeMachinesMsg{rows: []chatlist.Row{leftOffRow("c1", "spark", chatlist.Running, time.Minute)}})
+	a, feed := devicesRig("dev_tower")
+	a.tookMachines(homeMachinesMsg{rows: []chatlist.Row{leftOffRow("c1", "tower", chatlist.Running, time.Minute)}})
 	rowOf := func() string { return devicesFrame(a, 80) }
-	if !strings.Contains(rowOf(), "● spark") || leftOffFrame(a) != "" {
+	if !strings.Contains(rowOf(), "● tower") || leftOffFrame(a) != "" {
 		t.Fatalf("online and busy:\n%s\n%s", rowOf(), leftOffFrame(a))
 	}
 	feed.state.Online = nil
 	a.tookWatch(dirWatchMsg{from: feed})
-	if !strings.Contains(rowOf(), "○ spark (offline)") || leftOffFrame(a) == "" {
+	if !strings.Contains(rowOf(), "○ tower (offline)") || leftOffFrame(a) == "" {
 		t.Fatalf("killed:\n%s\n%s", rowOf(), leftOffFrame(a))
 	}
-	feed.state.Online = []string{"dev_spark"}
+	feed.state.Online = []string{"dev_tower"}
 	a.tookWatch(dirWatchMsg{from: feed})
-	if !strings.Contains(rowOf(), "● spark") || leftOffFrame(a) != "" {
+	if !strings.Contains(rowOf(), "● tower") || leftOffFrame(a) != "" {
 		t.Fatalf("back online:\n%s\n%s", rowOf(), leftOffFrame(a))
 	}
 }
@@ -192,13 +192,13 @@ func TestPresenceIsReadOffTheRowAndTheCardTogether(t *testing.T) {
 // TestPresenceDotsDifferInColourToo checks the row paints a device that is
 // here and one that is away with different inks, where the terminal has any.
 func TestPresenceDotsDifferInColourToo(t *testing.T) {
-	a, _ := devicesRig("dev_spark")
+	a, _ := devicesRig("dev_tower")
 	ctx := ambientBandContext(a, session.SessionRow{}, a.now(), 80)
 	pal := ctx.pal
 	if pal.add("x") == pal.dim("x") {
 		t.Skip("this palette paints no colour")
 	}
-	if paintPresence(pal, "● spark", true) == paintPresence(pal, "○ dumb", false) ||
+	if paintPresence(pal, "● tower", true) == paintPresence(pal, "○ desk", false) ||
 		paintPresence(pal, "x", true) == paintPresence(pal, "x", false) {
 		t.Fatal("online and away are painted alike")
 	}

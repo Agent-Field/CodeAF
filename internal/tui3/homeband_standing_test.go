@@ -12,11 +12,11 @@ import (
 // cursor (an empty home, or a chat that lives on another device).
 // C27.7 exercises this behaviour without an opt-in switch.
 func TestDevicesRowAndRescueStandOnAnEmptyHome(t *testing.T) {
-	a, _ := devicesRig("dev_spark")
-	a.tookMachines(homeMachinesMsg{rows: []chatlist.Row{leftOffRow("a", "dumb", chatlist.Off, time.Hour)}})
+	a, _ := devicesRig("dev_tower")
+	a.tookMachines(homeMachinesMsg{rows: []chatlist.Row{leftOffRow("a", "desk", chatlist.Off, time.Hour)}})
 	a.openHome()
 	got := strings.Join(strings.Fields(homeText(a)), " ")
-	for _, want := range []string{"● This Mac ● spark ○ dumb (offline)", "Continue dumb's latest chat here?"} {
+	for _, want := range []string{"● This Mac ● tower ○ desk (offline)", "Continue desk's latest chat here?"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("empty home lacks %q:\n%s", want, homeText(a))
 		}

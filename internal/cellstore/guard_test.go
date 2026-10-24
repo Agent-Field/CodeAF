@@ -169,8 +169,8 @@ func TestScopeIsTheNormalizedRemoteElseTheCell(t *testing.T) {
 	}
 }
 
-// TestL3_SecretsNeverEnterTheStore proves C9's working-tree law as amended by
-// Abir on 2026-10-21: committed history travels sealed, so this fixture commits
+// TestL3_SecretsNeverEnterTheStore proves that committed history travels sealed,
+// so this fixture commits
 // only non-secret files. The secrets remain untracked rather than ignored to
 // prove the guard, independently of Git's ignore rules. After two seals no
 // store object holds the key, and the next tool call still gets the .env value.

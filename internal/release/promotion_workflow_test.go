@@ -9,10 +9,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -54,53 +52,17 @@ func stringField(t *testing.T, value any) string {
 	return result
 }
 
-// C16: The schedule and the dispatch are the only triggers, and the parsed cron follows the parsed cutoff in both Toronto offsets.
+// C16: Promotion requires an explicit dispatch and retains safe concurrency.
 func TestC16PromotionTriggerAndCutoff(t *testing.T) {
 	doc := workflowDocument(t, "promote-staging.yml")
 	on := obj(t, doc["on"])
-	if len(on) != 2 {
-		t.Fatalf("triggers = %v", on)
+	if len(on) != 1 {
+		t.Fatalf("triggers = %v; want explicit dispatch only", on)
 	}
-	schedule := list(t, on["schedule"])
-	if len(schedule) != 1 {
-		t.Fatalf("schedule = %v", schedule)
-	}
-	cron := strings.Fields(stringField(t, obj(t, schedule[0])["cron"]))
-	if len(cron) != 5 {
-		t.Fatalf("cron = %v", cron)
-	}
-	minute, e1 := strconv.Atoi(cron[0])
-	hour, e2 := strconv.Atoi(cron[1])
-	if e1 != nil || e2 != nil || cron[2] != "*" || cron[3] != "*" {
-		t.Fatalf("cron = %v", cron)
-	}
-	dispatch := obj(t, on["workflow_dispatch"])
-	inputs := obj(t, dispatch["inputs"])
-	if len(inputs) != 3 {
-		t.Fatalf("inputs = %v", inputs)
-	}
+	inputs := obj(t, obj(t, on["workflow_dispatch"])["inputs"])
 	for _, name := range []string{"target", "dry_run", "signal"} {
 		if _, ok := inputs[name]; !ok {
 			t.Errorf("missing %s", name)
-		}
-	}
-	env := obj(t, doc["env"])
-	zone := stringField(t, env["CUTOFF_ZONE"])
-	weekday := stringField(t, env["CUTOFF_WEEKDAY"])
-	clock := stringField(t, env["CUTOFF_CLOCK"])
-	loc, err := time.LoadLocation(zone)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cutParts := strings.Split(clock, ":")
-	cutHour, _ := strconv.Atoi(cutParts[0])
-	cutMinute, _ := strconv.Atoi(cutParts[1])
-	for _, day := range []time.Time{time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC), time.Date(2026, 11, 6, 0, 0, 0, 0, time.UTC)} {
-		run := time.Date(day.Year(), day.Month(), day.Day(), hour, minute, 0, 0, time.UTC)
-		local := run.In(loc)
-		cut := time.Date(local.Year(), local.Month(), local.Day(), cutHour, cutMinute, 0, 0, loc)
-		if local.Weekday().String() != weekday || cron[4] != strconv.Itoa(int(local.Weekday())) || !run.After(cut) {
-			t.Errorf("cron %v run %s before cutoff %s", cron, run, cut)
 		}
 	}
 	concurrency := obj(t, doc["concurrency"])
@@ -109,14 +71,14 @@ func TestC16PromotionTriggerAndCutoff(t *testing.T) {
 	}
 }
 
-// F8: The workflow explains why a late cron is safe and why each job exists.
+// F8: The workflow documents the validation and push safety boundaries.
 func TestPromotionWorkflowExplainsItsSafetyLaws(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "promote-staging.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(raw)
-	for _, want := range []string{"# THE CUTOFF IS A COMMIT TIME, NOT THE RUN TIME.", "12:59Z and 15:46Z", "PROMOTION_TOKEN", "SLACK_RELEASE_WEBHOOK", "forward-only", "persist-credentials"} {
+	for _, want := range []string{"Validate the selected dev commit", "PROMOTION_TOKEN", "SLACK_RELEASE_WEBHOOK", "forward-only", "persist-credentials"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("workflow lacks explanation %q", want)
 		}
@@ -129,36 +91,16 @@ func TestPromotionWorkflowExplainsItsSafetyLaws(t *testing.T) {
 	}
 }
 
-// R5, R6, and R8: Setup and manual copy must describe the token and weekly outcome truthfully.
+// Promotion instructions must preserve candidate validation and forward-only updates.
 func TestPromotionDocsDescribeLiveSetupAndConditionalCadence(t *testing.T) {
-	root := repositoryRoot(t)
-	read := func(path string) string {
-		t.Helper()
-		raw, err := os.ReadFile(filepath.Join(root, path))
-		if err != nil {
-			t.Fatal(err)
-		}
-		return string(raw)
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), "docs/rules/promotion.md"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	runbook := read("docs/rules/promotion.md")
-	for _, want := range []string{"fine-grained\npersonal access token", "Contents: read and", "Workflows: read and write", ".current_user_can_bypass", "always", "expire after one hour", "token-minting step"} {
-		if !strings.Contains(runbook, want) {
+	for _, want := range []string{"dry_run=true", "Full check", "exact candidate", "git merge-base --is-ancestor", "git push origin $SHA:staging", "Never\nforce a promotion"} {
+		if !strings.Contains(string(raw), want) {
 			t.Errorf("runbook lacks %q", want)
 		}
-	}
-	if strings.Contains(runbook, "installation token with those permissions and bypass\nrights also works") {
-		t.Error("runbook presents an expiring App token as a static secret")
-	}
-	rules := read(".github/rulesets/README.md")
-	for _, want := range []string{"repository is public", "live `protection` ruleset", "`main`, `dev`,", "`staging`", "`PROMOTION_TOKEN`", "bypass list"} {
-		if !strings.Contains(rules, want) {
-			t.Errorf("ruleset README lacks %q", want)
-		}
-	}
-	manual := read("internal/manual/chat/running-from-the-terminal.md")
-	section := strings.SplitN(strings.SplitN(manual, "## What is stageaf", 2)[1], "\n## ", 2)[0]
-	if len(section) >= 2000 || strings.Contains(section, "Staging moves once a week") || !strings.Contains(section, "The promotion runs once a week") || !strings.Contains(section, "When the check\nfails or there is nothing new, staging stays where it was") {
-		t.Fatalf("stageaf manual overpromises or exceeds section limit: %s", section)
 	}
 }
 
