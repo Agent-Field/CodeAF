@@ -22,14 +22,25 @@ export async function hostedFixture({fixture=false,base='',go=false}={}) {
     return {key,cert,device:'dev_'+sha(pub).slice(0,32)};
   };
   await copyFile(join(out,'core.wasm'),join(dir,'core.wasm'));
-  let mf;
+  let mf, compiledCut;
+  const bundles=new Map();
   const compile=async(cut)=>{
+    // A restart must retain the same program and storage. Cache each injected
+    // crash variant separately so recovery restores the ordinary bundle too.
+    const variant=JSON.stringify(cut??null);
+    if(compiledCut===variant)return;
+    if(bundles.has(variant)){
+      await copyFile(bundles.get(variant),join(dir,'worker.js'));
+      compiledCut=variant;return;
+    }
     const plugins=[{name:'local-wasm',setup(b){b.onResolve({filter:/\.wasm$/},()=>({path:'core.wasm',external:true}));}}];
     if(cut)plugins.push({name:'process-cut',setup(b){b.onLoad({filter:/\/src\/raft\/hosted.js$/},async args=>{
       let text=await readFile(args.path,'utf8');const needle=cut.needle;assert.equal(text.split(needle).length,2,'cut must identify exactly one boundary');
       text=text.replace(needle,needle+(cut.after??"throw new Error('H2 injected crash after durable boundary');"));return {contents:text,loader:'js'};
     });}});
     await build({entryPoints:[fixture?'test/raft/hosted-worker.js':'src/raft-worker.js'],bundle:true,format:'esm',target:'es2022',external:['cloudflare:*'],plugins,outfile:join(dir,'worker.js')});
+    const saved=join(dir,'bundle-'+bundles.size+'.js');
+    await copyFile(join(dir,'worker.js'),saved);bundles.set(variant,saved);compiledCut=variant;
   };
   const start=async(cut)=>{
     if(mf)await mf.dispose();await compile(cut);
