@@ -19,7 +19,7 @@ func hostedEffect(d *decoder) ([]byte, error) {
 	var change cs.Mutation
 	j := json.NewDecoder(bytes.NewReader(raw))
 	j.DisallowUnknownFields()
-	if j.Decode(&change) != nil || j.Decode(new(any)) != io.EOF {
+	if cs.Decode(raw, &change) != nil && (j.Decode(&change) != nil || j.Decode(new(any)) != io.EOF) {
 		return nil, errFrame
 	}
 	if change.DeviceSeen == nil && change.RenewHolds == nil && change.AdmitJoin == nil && change.CompleteJoin == nil && change.RecordUpload == nil {
@@ -100,5 +100,37 @@ func hostedAuthority(d *decoder) ([]byte, error) {
 	}
 	e := encoder{}
 	e.str(string(code))
+	return e.b, nil
+}
+
+// Only a provisioned anchor key can produce these restricted host commands.
+// The evaluator checks authority and the actual applied configuration again.
+func hostedAnchor(d *decoder) ([]byte, error) {
+	cluster, node, now, seed, saved, raw := d.str(), d.u64(), d.u64(), d.blob(), d.blob(), d.blob()
+	if d.end() != nil || len(seed) != ed25519.SeedSize || now > cs.MaxSafeInteger {
+		return nil, errFrame
+	}
+	var change cs.Mutation
+	if cs.Decode(raw, &change) != nil {
+		return nil, errFrame
+	}
+	if change.InitMembership == nil && change.PrepareQuiescence == nil && change.SettleMembership == nil && change.SettleLeadership == nil && change.CompleteLeadership == nil && change.RestoreAnchors == nil {
+		return nil, errFrame
+	}
+	sequence, ack, err := cs.NextSession(saved)
+	if err != nil {
+		return nil, err
+	}
+	key := ed25519.NewKeyFromSeed(seed)
+	command, err := cs.Sign(cs.Command{Schema: cs.SchemaVersion, Cluster: cluster, Actor: cs.AnchorActor(node), Session: "maintenance", Sequence: sequence, Ack: ack, Now: int64(now), Change: change}, key)
+	if err != nil {
+		return nil, err
+	}
+	encoded, err := cs.EncodeCommand(command)
+	if err != nil {
+		return nil, err
+	}
+	e := encoder{}
+	e.blob(encoded)
 	return e.b, nil
 }

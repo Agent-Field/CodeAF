@@ -164,6 +164,12 @@ func (r *Runtime) Call(b []byte) (out []byte) {
 func (r *Runtime) call(op uint32, d *decoder) ([]byte, error) {
 	e := encoder{}
 	switch op {
+	case 35:
+		return configurationView(d)
+	case 34:
+		return hostedAnchor(d)
+	case 33:
+		return clusterIngress(d)
 	case 30:
 		return hostedEffect(d)
 	case 31:

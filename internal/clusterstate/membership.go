@@ -146,6 +146,17 @@ func applyMembership(c Command, meta ApplicationMeta, rows map[RecordKey][]byte,
 		if len(v.Anchors) != 3 || meta.Configuration.Joint() || len(meta.Configuration.Voters) != 3 || len(meta.Configuration.Learners) != 0 || v.Limit < 3 || v.Limit > MaxMemberRecords || meta.Index == 0 {
 			return BadRequest
 		}
+		if raw := rows[LegacyImportKey()]; raw != nil {
+			var manifest LegacyManifest
+			if Decode(raw, &manifest) != nil || manifest.Validate() != nil || manifest.Config.Cluster != c.Cluster || len(manifest.Config.AnchorKeys) != len(v.Anchors) {
+				return BadRequest
+			}
+			for i, anchor := range v.Anchors {
+				if anchor.Node != manifest.Config.Anchors[i] || !bytes.Equal(anchor.Key, manifest.Config.AnchorKeys[i]) {
+					return Unauthorized
+				}
+			}
+		}
 		seen := map[string]bool{}
 		h = Membership{Revision: 1, Index: meta.Index, Limit: v.Limit}
 		for i, a := range v.Anchors {
@@ -192,7 +203,20 @@ func applyMembership(c Command, meta ApplicationMeta, rows map[RecordKey][]byte,
 		var authority Authority
 		var device Device
 		var prior DeviceMember
-		if Decode(rows[AuthorityKey(v.Device)], &authority) != nil || authority.Cluster != c.Cluster || !authority.ValidRole() || !authority.Personal && authority.Worker == nil || len(authority.Key) != ed25519.PublicKeySize {
+		if rows[AuthorityKey(v.Device)] == nil && v.Device == c.Actor && c.Certificate != "" {
+			var identity IdentityRec
+			if Decode(rows[IdentityKey()], &identity) != nil {
+				return BadRequest
+			}
+			var err error
+			authority, err = PersonalCommandAuthority(c, identity)
+			if err != nil {
+				return Unauthorized
+			}
+		} else if Decode(rows[AuthorityKey(v.Device)], &authority) != nil {
+			return Unauthorized
+		}
+		if authority.Cluster != c.Cluster || !authority.ValidRole() || !authority.Personal && authority.Worker == nil || len(authority.Key) != ed25519.PublicKeySize {
 			return Unauthorized
 		}
 		if b := rows[DeviceKey(v.Device)]; b != nil {
@@ -246,6 +270,9 @@ func applyMembership(c Command, meta ApplicationMeta, rows map[RecordKey][]byte,
 		h.Live++
 		h.Nodes = append(h.Nodes, node)
 		h.Pending = &MembershipIntent{Node: node, Revision: h.Revision}
+		if rows[AuthorityKey(v.Device)] == nil {
+			put(AuthorityKey(v.Device), authority)
+		}
 		put(MemberKey(node), MemberRecord{Node: node, Device: v.Device, Key: bytes.Clone(authority.Key), Incarnation: incarnation, Protocol: ClusterProtocol, Worker: authority.Worker != nil, WorkerExpires: workerExpires})
 		put(MemberDeviceKey(v.Device), DeviceMember{Node: node})
 		put(MembershipKey(), h)

@@ -57,3 +57,23 @@ func assignmentRead(d *decoder) ([]byte, error) {
 	e.blob(raw)
 	return e.b, nil
 }
+
+// clusterIngress uses the same closed Go verifier on both runtimes. The caller
+// repeats this verification with committed logical time after its read barrier.
+func clusterIngress(d *decoder) ([]byte, error) {
+	raw, now := d.blob(), d.u64()
+	if d.end() != nil || now > clusterstate.MaxSafeInteger || len(raw) > clusterstate.MaxCommandBytes {
+		return nil, errFrame
+	}
+	var request clusterstate.ClusterRequest
+	if err := clusterstate.Decode(raw, &request); err != nil {
+		return nil, err
+	}
+	actor, err := clusterstate.VerifyClusterRequest(request, int64(now))
+	if err != nil {
+		return nil, err
+	}
+	e := encoder{}
+	e.str(actor)
+	return e.b, nil
+}

@@ -28,6 +28,7 @@ var (
 // client sequence. Signature authentication and committed authorization belong
 // to ingress and apply respectively; decoding alone grants no authority.
 type Command struct {
+	Certificate       string     `json:"certificate,omitempty"`
 	V1                *V1Request `json:"v1_request,omitempty"`
 	WorkerIncarnation uint64     `json:"worker_incarnation,omitempty"`
 	Schema            uint16     `json:"schema"`
