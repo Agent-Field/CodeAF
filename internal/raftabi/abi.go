@@ -164,6 +164,12 @@ func (r *Runtime) Call(b []byte) (out []byte) {
 func (r *Runtime) call(op uint32, d *decoder) ([]byte, error) {
 	e := encoder{}
 	switch op {
+	case 30:
+		return hostedEffect(d)
+	case 31:
+		return hostedProjection(d)
+	case 32:
+		return hostedAuthority(d)
 	case 29:
 		return v1Command(d)
 	case 28:
@@ -286,6 +292,8 @@ func (r *Runtime) call(op uint32, d *decoder) ([]byte, error) {
 			return legacyAuthorities(d)
 		case 13:
 			return legacyGenesis(d)
+		case 16:
+			in = raftcore.Campaign{}
 		case 15:
 			in = raftcore.IdleRead{RequestID: d.str()}
 		case 12:

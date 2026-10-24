@@ -217,11 +217,15 @@ func (p V1Request) Mutation() (Mutation, error) {
 		return Mutation{SetVault: &v}, nil
 	}
 	if path == "/v1/identity/rotation" && p.Method == "POST" {
-		var v RotateRequest
-		if !decode(&v, false) {
+		var v struct {
+			V       uint16 `json:"V,omitempty"`
+			Op      string `json:"op"`
+			GraceMS int64  `json:"grace_ms,omitempty"`
+		}
+		if !decode(&v, false) || v.V > 1 {
 			return bad()
 		}
-		return Mutation{Rotate: &v}, nil
+		return Mutation{Rotate: &RotateRequest{Op: v.Op, GraceMS: v.GraceMS}}, nil
 	}
 	s := strings.Split(strings.TrimPrefix(path, "/v1/dir/"), "/")
 	if len(s) < 2 || len(s) > 3 || path == strings.TrimPrefix(path, "/v1/dir/") {
@@ -282,6 +286,11 @@ func (p V1Request) Mutation() (Mutation, error) {
 		if !decode(&v, false) {
 			return bad()
 		}
+		// Empty and absent frame plans both replace the previous hint. Normalize
+		// before signing so canonical omitempty survives original-proof replay.
+		if len(v.Frames) == 0 {
+			v.Frames = nil
+		}
 		return Mutation{Create: &CreateCell{Cell: id, Init: v, V1: true}}, nil
 	case "acquire":
 		var v struct {
@@ -309,6 +318,9 @@ func (p V1Request) Mutation() (Mutation, error) {
 		var v Publish
 		if !decode(&v, false) || v.Fence > MaxSafeInteger {
 			return bad()
+		}
+		if len(v.Frames) == 0 {
+			v.Frames = nil
 		}
 		return Mutation{Publish: &PublishCell{Cell: id, Publish: v, V1: true}}, nil
 	case "release":
