@@ -459,7 +459,7 @@ func TestARetryAfterNamesTheWindowAndTheBurstInsideItCutsOnce(t *testing.T) {
 // request reaches the wire, and until this wave not one of them said anything —
 // the stream's own phases had not started, so the person read a blank line for
 // the length of somebody else's burst. A wait that is real is reported
-// (`docs/design/waiting/DESIGN.md`).
+// (`the implementation`).
 //
 // The ceiling is set to one and two calls are made, so the second is genuinely
 // starved rather than merely slow. [limiterSpokenWithin] is shortened the way

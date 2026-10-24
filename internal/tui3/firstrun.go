@@ -30,7 +30,7 @@ import (
 // chooser followed by a rails screen carrying three money rows, which is five
 // answers from somebody who has not yet run the program once — and four of them
 // about limits they cannot have an opinion on yet. The rule that decided what
-// survived is in docs/design/onboarding/DESIGN.md, and onboarding.go holds the
+// survived is in the implementation, and onboarding.go holds the
 // screen itself. The rails this no longer asks about — the per-plan question and
 // the conversation ceiling — keep the defaults docs/LIMITS.md states and are
 // changed with /budget, beside the spending page that explains them.

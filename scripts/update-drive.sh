@@ -24,7 +24,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BIN="${UPDATE_BIN:-$ROOT/bin/codeaf}"
-OUT="${UPDATE_OUT:-$ROOT/docs/design/background-updates-frames}"
+OUT="${UPDATE_OUT:-/tmp/codeaf-update-frames}"
 CASES=(offer downloading ready ready-working manual off failure)
 WIDTHS=(80 120)
 

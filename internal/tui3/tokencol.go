@@ -65,7 +65,7 @@ import (
 //
 // ONE COLUMN, EVERY PAGE THAT STREAMS. The state lives on [feed] — the ONE
 // reducer both the conversation and a task room grow their transcripts with
-// (feed.go, and docs/design/lens/DESIGN.md's Decision 1 on why there is not a
+// (feed.go, and the implementation's Decision 1 on why there is not a
 // second one) — so a node's page draws the same column by the same code, from
 // its own sources:
 //

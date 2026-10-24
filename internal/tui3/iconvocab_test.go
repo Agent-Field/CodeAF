@@ -19,7 +19,7 @@ import (
 // literal used to live here and covered internal/tui3 alone, which left the
 // older window and the resident free to spell their own — and they did.
 // internal/iconlaw is where it lives now, walking every surface package on one
-// list; docs/design/icons/DESIGN.md is the law's own page.
+// list; the implementation is the law's own page.
 
 // The task-state marks as the PLAIN tier spells them, which is the tier a test
 // palette draws in ([newPalette] leaves [palette.icons] at [tokens.Plain]).

@@ -154,7 +154,6 @@ on the same model, DeepSeek V4 Flash: 113 real GitHub issues from DeepSWE, grade
 by the official verifiers. It solved the most issues and paid the least for each
 one it solved.
 
-Every number, the method and the limits: [docs/benchmarks/deepswe](docs/benchmarks/deepswe/).
 
 ## The right model for each call
 
@@ -170,8 +169,7 @@ is — a bug fix, a complex fix, open-ended work, or something else:
 
 The crew is auto by default. Each seat is scored from its catalog metadata by
 learned weights, moved by how this install's own tasks ended, over every model your
-connected providers serve. The method is in the paper,
-[Pareto Crewing](docs/design/model-pool/pareto-crewing.pdf). `/crew` shows it: the seats, the allowed models, the
+connected providers serve. `/crew` shows it: the seats, the allowed models, the
 providers, a per-task limit ($5 unless set) and an optional daily cap, and today's
 spend. `/crew pin checker <model>` pins one seat, `/crew models open` limits every
 seat to open-weight models, and `/task --best` or `/task --cheap` moves one task.
@@ -199,9 +197,7 @@ waiting to go. Turn it off with `model_pool = off` on the settings sheet or
 `CODEAF_MODEL_POOL=off`; `read` uses the pool and sends nothing, and
 `CODEAF_TELEMETRY=off` caps it at `read` along with the usage counts. The relay
 publishes a signed index of what the installs measured. The index is mirrored on the `model-pool` branch at
-`pool/index.json`. The design is [Pareto Crewing](docs/design/model-pool/pareto-crewing.pdf);
-the relay's code is under `relay/`, with a [runbook](docs/design/model-pool/RUNBOOK.md)
-that includes running your own.
+`pool/index.json`. See [the relay guide](docs/relay.md) for running your own.
 
 [![pool updated](https://img.shields.io/github/last-commit/Agent-Field/CodeAF/model-pool?label=pool%20updated)](https://github.com/Agent-Field/CodeAF/tree/model-pool)
 
@@ -285,7 +281,6 @@ One Go binary, 53 MB on disk: up to 21x smaller than the field.
 
 Sixteen of ours fit in half a gigabyte; claude's fourth tab alone needs more.
 
-Harness, method and every table: [docs/benchmarks/performance](docs/benchmarks/performance/).
 
 ## Docs
 

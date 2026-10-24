@@ -23,7 +23,7 @@ import (
 // then a rails screen with three money rows on it. Five answers, four of which a
 // person who has never run the program cannot have an opinion about yet. This is
 // the one screen that replaced them, and the rule that decided its contents is
-// written in docs/design/onboarding/DESIGN.md: a control belongs here when it is
+// written in the implementation: a control belongs here when it is
 // NECESSARY TO WORK, MATERIALLY CHANGES THE FIRST EXPERIENCE, and CAN BE
 // UNDERSTOOD BEFORE THE PERSON HAS USED codeaf. Two pass — the day's limit
 // (money is consequential and an amount can be chosen with no knowledge of the
@@ -744,7 +744,7 @@ func (a *app) setupLimitReading() string {
 // re-read afterwards, because a form that reseeded on the way back from the step
 // behind it would throw away the amount somebody had typed and the crew they had
 // picked before they went to look at something (the design's own back/return
-// rule, docs/design/onboarding/DESIGN.md).
+// rule, the implementation).
 func (a *app) startSetupControls() {
 	s := &a.setup
 	if s.seeded {

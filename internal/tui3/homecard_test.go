@@ -265,7 +265,7 @@ func TestTheFirstLookMarksNothing(t *testing.T) {
 	}
 	// A WINDOW WITH NO ORIGIN HAS NO LEDGER, because there is no since. The
 	// `since you left` panel keeps its heading and whispers what arrives there
-	// (docs/design/home-mission-control/DESIGN.md §4), and no line of it counts
+	//, and no line of it counts
 	// anything that landed.
 	if strings.Contains(text, "landed") {
 		t.Fatalf("a first look invented a ledger:\n%s", text)

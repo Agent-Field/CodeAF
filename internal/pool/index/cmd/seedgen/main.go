@@ -57,7 +57,7 @@ import (
 // address for the same signed document.
 const (
 	defaultOut   = "internal/pool/index/seed.json"
-	defaultCells = "docs/design/model-pool/data/seed-cells.csv"
+	defaultCells = "docs/model-pool-cells.csv"
 )
 
 // maxSeed bounds the document this command will write. It sits well under the

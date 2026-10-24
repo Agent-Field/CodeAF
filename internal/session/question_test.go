@@ -578,7 +578,7 @@ func TestTheOneDoorReachesTheLanesThatHadNoCaller(t *testing.T) {
 	}
 }
 
-// A STEER NEVER RESOLVES A TASK BY ITSELF (docs/design/task-states/DESIGN.md).
+// A STEER NEVER RESOLVES A TASK BY ITSELF.
 // "Looks good" typed on a landing card must not silently become accept, so the
 // key that sends words leaves the question exactly where it was.
 func TestTellingTheWorkSomethingLeavesTheQuestionOpen(t *testing.T) {

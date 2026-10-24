@@ -1,7 +1,7 @@
 package main
 
 // chatv3_clock.go is the process side of automations (internal/automation;
-// docs/design/automations/DESIGN.md): `codeaf clock`, the one process that runs
+// the implementation): `codeaf clock`, the one process that runs
 // them while a codeaf window is open, and the window's half — holding presence
 // for as long as it is open and starting a clock when none is running.
 //

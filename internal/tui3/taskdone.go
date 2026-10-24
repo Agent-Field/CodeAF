@@ -38,7 +38,7 @@ type taskDone struct {
 	// the card, `incomplete` on the record page and `stopped` on the roster. The
 	// tier is the glyph, [session.TaskStatus.Word] is the word, and
 	// [session.TaskStatus.Ask] is the question and its two answers
-	// (docs/design/task-states/DESIGN.md).
+	//.
 	status session.TaskStatus
 	// span is the node's own age at its final state. started is the record's start
 	// or the live surface's established fallback, and landed is the record's
@@ -115,7 +115,7 @@ type taskDone struct {
 // `your call` are [session.TaskStatus.Word], spelled once in internal/session's
 // task_status.go and read off the reading — because a state with two spellings
 // is two states to whoever is reading it, and this card used to hold four of its
-// own (docs/design/task-states/DESIGN.md).
+// own.
 const (
 	// doneWord is the record page's own reading of a landed row (taskstatus.go)
 	// and no longer this card's head: the head takes its word from the reading.
@@ -762,7 +762,7 @@ func (a *app) doneUnder(card *taskDone, width int) string {
 // the half a person can do without; the clause naming what to press is the half
 // they cannot. So the room is spent on the key first and the reason is cut into
 // whatever is left, which is the reverse of every other fit on this card and the
-// reason this has a function of its own (docs/design/task-states/DESIGN.md).
+// reason this has a function of its own.
 //
 // A row with no room for even the key drops the key rather than the reason: half
 // a key is a press that does nothing.

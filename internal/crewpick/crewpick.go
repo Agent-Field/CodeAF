@@ -20,7 +20,7 @@
 // one failed task costs them, in dollars. A crew's loss at a stake is its
 // expected bill for a task plus the stake times the chance the task is not
 // accepted, and the pick at a stake is the crew on the front with the least
-// loss. The three named presets are three stakes (docs/design/model-pool/
+// loss. The three named presets are three stakes (the implementation
 // pareto-crewing.tex, the decision section): the knee of the front that
 // balanced used to name implied a stake nobody was shown, and one that moved
 // with the price level while a person's stake does not.
@@ -187,7 +187,7 @@ const ShapeWeightAt = 30
 // not the typical task, and a bill priced from it is wrong on nearly every
 // task. On 132 measured runs the arithmetic shape predicted bills no better
 // than the fixed default (median error a factor of 2.9 against 3.4) while the
-// log-scale shape brought it to 1.5 (docs/design/model-pool/pareto-crewing.tex,
+// log-scale shape brought it to 1.5 (the implementation,
 // the cost experiment).
 func ShapesFrom(defaults map[Seat]SeatShape, tasks []TaskUsage) map[Seat]SeatShape {
 	type tally struct {
@@ -523,7 +523,7 @@ func FrontWith(candidates []Candidate, shapes map[Seat]SeatShape, fam Family, pr
 }
 
 // Two of the three named presets are stakes, in dollars — what one failed
-// task costs the person. The words are the paper's (docs/design/model-pool/
+// task costs the person. The words are the paper's (the implementation
 // pareto-crewing.tex, product semantics): frugal is a failed task that is an
 // annoyance, balanced one that costs about ten minutes of a person. Max is
 // not a stake: it is the best crew on the front whatever it bills, the one

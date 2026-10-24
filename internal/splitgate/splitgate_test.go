@@ -10,7 +10,7 @@ import (
 //
 // The eight tasks in bench/swarm/tasks are what this gate was measured against,
 // and the table below is the decision it made on each of them — the same
-// decision the empirically best arm of the A/B made (bench/swarm/AB-REPORT.md).
+// decision the empirically best arm of the A/B made.
 // It used to be logged and not asserted, which meant the counting could be
 // changed by anybody and nothing would go red; now that a second product asks
 // this same question (internal/session's task_divide.go) an unasserted table is
@@ -136,7 +136,7 @@ func TestTheFloorIsWhereDivisionStartedPaying(t *testing.T) {
 // THIS PIN FLIPPED, AND THE COMMENT IT REPLACES SAID THE OPPOSITE: the gate was
 // armed unless somebody wrote the literal `0`. A designed experiment then ran
 // four planner arms against four readings of it and put the arm with the gate
-// OFF on the front (docs/design/plan-gate-doe/REPORT.md), so on 2026-09-02 the
+// OFF on the front, so on 2026-09-02 the
 // default moved and the two words that arm it became exact. `0` still turns it
 // off, because that is what the switch has always meant and a rollback somebody
 // took must not become a no-op that reads as an arming.

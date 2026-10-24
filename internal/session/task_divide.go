@@ -23,7 +23,7 @@ package session
 // and the swarm bench measured what that costs when it buys nothing: on the
 // eight-task corpus, dividing work that was never wide lost outright, and
 // dividing work that was wide won by 1.15× to 1.95× of wall clock
-// (bench/swarm/AB-REPORT.md). Two gates came out of it, and both of them are
+//. Two gates came out of it, and both of them are
 // asked here, in this order:
 //
 //   - THE EVIDENCE GATE. Does what the worker found actually enumerate enough
@@ -625,7 +625,7 @@ func (n *TaskNode) armAfterAdmission(word string) bool {
 // AND THIS COUNT IS ARMING, NOT THE GATE, which since 2026-09-02 is the whole
 // difference between them. The gate now keeps every division unless somebody
 // pinned CODEAF_SPLITGATE on (splitgate's modes.go, and the experiment behind
-// it in docs/design/plan-gate-doe/REPORT.md), so on an unpinned binary this is
+// it in the implementation), so on an unpinned binary this is
 // the only place the six-item floor still decides anything: it asks whether
 // work looks wide enough to be handed the verb at all, not whether a division
 // somebody already drew is allowed to stand. Reading the pin here would make

@@ -131,7 +131,7 @@ type conversationTitle struct{ full string }
 //
 // AND IT IS THE WHOLE OF THE BOUND. There was a `titleAttempts = 3` beside it
 // until 2026-09-11 — one of the six session-side ladders
-// docs/design/recovery/DESIGN.md §7 names — and two bounds on one axis is the
+// the implementation §7 names — and two bounds on one axis is the
 // shape this wave deleted everywhere else: the count ended the errand early on a
 // provider that was merely slow, and the window ended it anyway on one that was
 // down. What is left is this deadline and the doubling wait under it, which is

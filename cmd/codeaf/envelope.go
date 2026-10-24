@@ -109,7 +109,7 @@ const (
 
 // exitRung is one row of the table. The meaning is a full sentence because it
 // is the sentence: `internal/manual/chat/running-from-the-terminal.md` prints
-// these words and so does docs/design/polish/envelope-and-exits.md.
+// these words and so does the implementation.
 type exitRung struct {
 	Code exitStatus
 	// Meaning is what the number means, in the words a person reads.
@@ -527,7 +527,7 @@ var envelopeContract = []string{
 
 // legacyErrandFields are `codeaf do --json`'s field names as they were before
 // the envelope. Every one of them is going away after one release; the new
-// spelling for each is named in docs/design/polish/envelope-and-exits.md.
+// spelling for each is named in the implementation.
 //
 // `settled`, `spend_work`, `spend_overhead`, `blocked_on`, `learned`,
 // `plan_model`, the two `*_source` fields, `subharness` and `workspace` are NOT

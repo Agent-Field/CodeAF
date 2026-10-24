@@ -10,7 +10,7 @@ package tui3
 // pressing enter started a whole conversation, and home's list filled up with
 // one-off errands that were finished; a chat that was simply not stored would
 // have been worse, because "why did I get this reminder?" must open the thing
-// that made it (docs/AMBIENT.md Part 5).
+// that made it.
 //
 // So there is a THIRD door, and this file is all of it:
 //
@@ -1320,7 +1320,7 @@ func errandSentence(text string, chips []chip) string {
 // errandPlace is which project an errand belongs to, and which bucket a
 // promotion of it would land in.
 //
-// It is docs/AMBIENT.md Part 5's proposal in both of its halves. THE PROJECT
+// It is the implementation Part 5's proposal in both of its halves. THE PROJECT
 // UNDER THE CURSOR is the first: walking ↑ onto a project's row and pressing the
 // chord is how somebody says "this one", and it is the same gesture that already
 // means "this one" everywhere else on this column. AND THE `elsewhere` LIMIT IS
@@ -2389,7 +2389,7 @@ func (a *app) exchangeTail(ex *homeExchange, spins bool) string {
 		return mark + " " + word
 	default:
 		// AN EXCHANGE THAT IS OVER WEARS THE SETTLED MARK, through the one door
-		// every mark comes through (docs/design/icons/DESIGN.md).
+		// every mark comes through.
 		glyph := a.icon(tokens.GSettled)
 		word := homeAskAnsweredTail
 		if ex.saved {

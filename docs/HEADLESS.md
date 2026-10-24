@@ -201,8 +201,7 @@ launched from. `do --json` carries the same facts as fields.
 from "nothing was attempted" to "it asked a question" to "the price was refused",
 and `2` meant both "the delivery did not land whole" and "the wall came first".
 Those are five different situations and a script could branch on none of them.
-The whole before-and-after, per command, is
-`docs/design/polish/envelope-and-exits.md`.
+The exit codes are described below.
 
 `2`'s causes are one fact: **the deliverable did not land whole.** The delivery
 gate — the judge that asks whether the person who asked would accept this —
@@ -524,8 +523,7 @@ wrote two readers and the second one was written wrong.
 
 **Every old name is still printed beside the new one for one release** — `text`,
 `turns`, `elapsed_ms`, `artifacts`, and the whole `usage` object — so nothing
-that reads them breaks today. The full before-and-after is
-`docs/design/polish/envelope-and-exits.md`.
+that reads them breaks today.
 
 **One value moved and was not preserved.** `exec` used to report
 `"stop": "done"` for a run that finished having produced no text at all. It says

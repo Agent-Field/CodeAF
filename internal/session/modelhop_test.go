@@ -298,7 +298,7 @@ func refusedStep(status int, message, upstream string) step {
 //
 // It used to hand the agent `Limits{TransportAttempts: n}` and a one-millisecond
 // wait: the ladder was bounded by a number, so shortening the schedule in front
-// of it was enough. The number is gone (docs/design/recovery/DESIGN.md §4) and
+// of it was enough. The number is gone and
 // the bound is the deadline — so a wait that returns at once does not shorten
 // the ladder, it makes the deadline UNREACHABLE, which is the same fiction
 // internal/provider's own scenarios keep honestly (`owed` in dispatch.go).

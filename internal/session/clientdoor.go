@@ -497,7 +497,7 @@ func (a *Agent) completerFor(model string) (Completer, string, string, error) {
 // saved program's own step all reached the wire with no tag at all. That is
 // 2,309 of the 2,839 untagged finishes in the ten days to 2026-09-10, and with
 // them the answer to "what was this build spending that model on all night"
-// (docs/design/recovery/census-20260910.md §8, finding 9). A tag that can be
+// . A tag that can be
 // forgotten is a tag that will be, so it is spelled where it cannot be: a call
 // with no purpose does not compile.
 //

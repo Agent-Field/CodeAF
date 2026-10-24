@@ -540,8 +540,7 @@ do not jump sideways as they update.
 **Where a label does hold ground over nothing, it teaches.** Home's panels are
 the one place on this surface that keep a heading with no rows under it — a map
 that redraws itself is not a map — and each carries one dim line naming what
-arrives there and the one thing that puts it there (the copy of record is
-docs/design/home-mission-control/DESIGN.md §4). That line says what the region
+arrives there and the one thing that puts it there. That line says what the region
 is FOR; it never says that the region is empty. `no tasks yet` and every
 sentence like it are the emptiness law inverted into words and they stay
 banned. The exception is the label, not the announcement.
@@ -694,4 +693,4 @@ keeps any later content aligned. A slow decoding ripple changes one letter
 at a time into symbols before restoring it, with readable pauses between passes. The row scrolls with the question and
 disappears on completion; it adds nothing to the input chrome. Chevrons and a
 gold dot use native glyphs. Accessible and small-window views retain text.
-See `docs/design/work-logo.md` for the shared geometry contract.
+The shared geometry is implemented in `internal/tui3`.

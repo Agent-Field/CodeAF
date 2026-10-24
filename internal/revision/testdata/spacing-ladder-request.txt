@@ -1,7 +1,7 @@
-Implement the spacing ladder and home layout change described in docs/design/theme/CONTRACT.md, section "THE SPACING LADDER IS OURS".
+Implement the spacing ladder and home layout change described in the implementation, section "THE SPACING LADDER IS OURS".
 
 Read first, they are the spec and they are dense:
-- docs/design/theme/CONTRACT.md (your spec)
+- the implementation (your spec)
 - docs/DESIGN-LANGUAGE.md, sections "THE SPACING LADDER", "PRESENCE OVER LABELS", "WHAT WE REFUSED"
 - internal/tui3/spacing.go (29 lines, the whole current ladder; read its doctrine comment)
 - internal/tui3/home.go (homeGutter at line 172, homeColumns at line 3496)

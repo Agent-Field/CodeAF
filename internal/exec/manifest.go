@@ -10,7 +10,7 @@ import (
 
 // THE MANIFEST: everything about a subharness that is true before it runs.
 //
-// docs/SUBHARNESS-PRD.md §3 asks for one language-agnostic description shared by
+// the implementation §3 asks for one language-agnostic description shared by
 // the subharnesses compiled into this binary and the ones a person writes as a
 // JavaScript bundle, and it asks for it as a GROWTH of [SubharnessInfo] rather
 // than as a second type beside it. That is what the embedding below is. Every

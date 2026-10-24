@@ -1,6 +1,6 @@
 package session
 
-// The plan side of the bash belt (docs/design/plandb-cli/DESIGN.md, the
+// The plan side of the bash belt (the implementation, the
 // wiring section): the store the worker's `plandb` calls write, and the two
 // pulse points that make the graph and the store one thing. THE STORE IS THE
 // WORKER'S CLI's STORE and this file's store at once — one SQLite database in

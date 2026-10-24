@@ -135,7 +135,7 @@ func TestTheEvidenceBlockSettlesTheNamedFilesAndCarriesTheCriterion(t *testing.T
 
 // The gate could not previously tell a check this work broke from a check that
 // was broken when the work arrived, and it convicted correct patches for the
-// second (audit-notes §14.4.1). The block states the difference as fact.
+// second (the implementation §14.4.1). The block states the difference as fact.
 func TestTheEvidenceBlockCarriesWhatWasAlreadyBroken(t *testing.T) {
 	note := "`make all` exited 2, and every failing test it reports " +
 		"(TestFailGenFishCompletionFile) was ALREADY failing at this commit " +
@@ -167,7 +167,7 @@ func TestTheEvidenceBlockCarriesWhatWasAlreadyBroken(t *testing.T) {
 // writes it, relative, against a record holding the absolute path a workspace
 // records — so that fixing the record upstream cannot be undone by a comparison
 // downstream that is string equality wearing a path's clothes.
-// See docs/design/gate/SETTLEMENT.md §5.
+// See the implementation §5.
 func TestTheRecordSaysProducedForAFileTheRequestNamedRelatively(t *testing.T) {
 	workspace := t.TempDir()
 	produced := filepath.Join(workspace, "examples", "rich_log_follow_state.py")

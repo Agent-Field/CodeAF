@@ -274,7 +274,7 @@ func TestTheHandoffPriceStaysAFloorAndTheLadderStaysShort(t *testing.T) {
 // THE ASK IS THE MEASURED WORDING, PINNED WORD FOR WORD.
 //
 // It is variant C of four scored off-policy over 240 completions
-// (bench/oneroad/replay/RESULTS.md), and it won on the one thing that matters
+// , and it won on the one thing that matters
 // here: it left nothing unanswered on either model, where every phrasing that
 // asked for a JUDGEMENT was ignored on a quarter to a half of the turns. The
 // harness parses what comes back, so a reworded ask is a contract with one party.
@@ -345,7 +345,7 @@ func TestTheSketchAskIsTheMeasuredWording(t *testing.T) {
 // AND THE PARTS-THEN-GATHER SHAPE IS A SPLIT, which is the reading the replay
 // bought: `(A | B | C) > D` is what kimi actually draws for a batch of jobs, 6 of
 // 6 at round ten, and reading it as one bracketed group took the batch's recall to
-// 2 of 12 (bench/oneroad/replay/RESULTS-2.md).
+// 2 of 12.
 func TestTheShapeIsReadAsWhatCouldBeStartedNow(t *testing.T) {
 	for _, c := range []struct {
 		shape string
