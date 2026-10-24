@@ -239,6 +239,8 @@ func (r *Runtime) call(op uint32, d *decoder) ([]byte, error) {
 			in = raftcore.StorageFailed{BatchID: d.u64()}
 		case 10:
 			in = raftcore.CancelRead{RequestID: d.str()}
+		case 12:
+			in = raftcore.TransportResult{Peer: d.u64(), Snapshot: d.u32() != 0, Success: d.u32() != 0}
 		case 11:
 			p := &pb.Snapshot{}
 			d.message(p)
@@ -293,6 +295,8 @@ func (r *Runtime) call(op uint32, d *decoder) ([]byte, error) {
 			e.u64(point.Index)
 			e.u64(point.Term)
 		}
+	case 7, 8, 9:
+		return hostCodec(op, d)
 	default:
 		return nil, errFrame
 	}

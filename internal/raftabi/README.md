@@ -142,3 +142,12 @@ stores and snapshot/compaction, P08 supplies production actors/admission and
 serialization, and P09/P11 supply complete policy and migration. P08/P18 must
 repeat the size/memory gate with those later components. Application rows are
 paged; no production route or feature toggle was added by this proof.
+
+P08 adds stateless host codecs without changing the existing operations: op 7
+inspects Entry/HardState/Snapshot/peer Message (kind 1/2/3/4); op 8 hashes a
+bounded block with an explicit serialized SHA-256 state and returns the next
+state/digest; op 9 validates a canonical portable manifest and constructs its
+protobuf snapshot pointer. Step tag 12 carries peer ID plus snapshot/success
+flags for transport completion. These helpers provide framing and integrity,
+never authorization or application policy. The same codecs run in native proof
+peers and the bundled reactor.

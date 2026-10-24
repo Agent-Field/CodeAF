@@ -11,6 +11,13 @@ import (
 )
 
 func main() {
+	if len(os.Args) == 3 && os.Args[1] == "actors" {
+		if err := actorProof(os.Args[2]); err != nil {
+			os.Stderr.WriteString(err.Error() + "\n")
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) == 5 && os.Args[1] == "measure" {
 		if err := measureRows(os.Args[2], os.Args[3], os.Args[4]); err != nil {
 			os.Stderr.WriteString(err.Error() + "\n")
