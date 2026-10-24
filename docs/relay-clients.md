@@ -100,3 +100,28 @@ Expiry is evaluated on reads and writes with the relay clock. Identity retiremen
 erases fabric data with the existing directory and blobs.
 
 The Go relay and the Worker implement this contract.
+
+## Full-device executor snapshots
+
+The app backend keeps locally approved client encryption keys and requested
+snapshot methods beside its own state. It dispatches reads through `appwire`;
+chat results include only live leases held by this device. The v0 snapshot set is
+`agents.list`, `asks.list`, `tasks.list`, `inbox.list`, and `spend.today`.
+Unsupported read names are refused when pairing rather than invoked as reads.
+The method allowlist remains separate from the snapshot subscription list.
+
+One slot per method and writer is named `<method>.<writer-device-id>`. Its
+NaCl anonymous-box plaintext is a JSON array of envelopes:
+`[{"writer":"dev_…","at":"RFC3339Nano","agent":"chat-id","result":{…}}]`.
+Global results omit `agent`; every chat result, including an empty list, includes
+it. Client encryption keys are independent X25519 keys supplied during local
+pairing. The grant includes this executor's public X25519 key for queued calls,
+the writer id, relay URL, identity public key and certificate, never shared
+identity secrets. Client keys and subscriptions currently enroll on each
+executor locally; the relay directory does not distribute encryption keys.
+
+Completed sync publishes and app turn/ask/task events schedule coalesced refreshes.
+The runner also refreshes every five seconds while active, backing off failures
+to five minutes. Identical results retain their ciphertext and publication time;
+unchanged slots refresh after twelve hours so they do not expire at the relay.
+No active clients means no snapshot reads, relay requests or refresh timer.

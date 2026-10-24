@@ -43,7 +43,7 @@ certificate. A client receives no cell key, dedup secret, identity private key o
 vault. It cannot read the directory or the blob store, change leases, pair another
 device or change its own permissions. Revocation stops that certificate across
 relay restarts. This is a relay protocol capability; the chat pairing commands do
-not yet create scoped clients. The hosted Worker does not yet support this protocol.
+not yet create scoped clients. The hosted Worker supports the same protocol.
 
 The HTTP contract is `docs/relay-clients.md` in the source tree. An empty method
 list allows offline reads only; adding methods requires a new paired key.
@@ -74,3 +74,19 @@ chat lease. Revoking a client deletes its queue. An executor must verify the
 retained original request proof, permissions, age and any required biometric
 confirmation inside the encrypted call, use durable execution idempotency and
 log executed calls. The relay cannot read the call or verify biometric evidence.
+
+## Paired client snapshots from the app backend
+
+The app backend keeps snapshots fresh for locally paired scoped clients. It uses
+the desktop app methods `agents.list`, `asks.list`, `tasks.list`, `inbox.list`,
+and `spend.today`; chat results cover only chats whose live lease this computer
+holds. Each client decrypts its own snapshots with its independent encryption
+key. Snapshots say which computer wrote them and when. Empty chat lists retain
+their chat identity so they can replace older results.
+
+Publishing a turn and app changes schedule a refresh. An active client also gets
+a five-second refresh timer, backing off failures to five minutes. Unchanged
+results are skipped until their twelve-hour renewal. With no active client,
+there are no extra snapshot reads, relay requests or refresh timers. Encryption
+keys and read subscriptions are enrolled locally on each executing computer;
+they are not yet distributed by the directory.

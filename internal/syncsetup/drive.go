@@ -160,6 +160,7 @@ func (d *Drive) flushed() func(cellsync.Flush) {
 			d.notice("could not record which turns reached your other devices: " + err.Error())
 		}
 		d.scope.Flushed(f)
+		published()
 		ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 		defer cancel()
 		d.syncVault(ctx)
