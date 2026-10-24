@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/ed25519"
 	"os"
+	"strconv"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/clientrun"
@@ -59,7 +61,7 @@ func (b *appBackend) clients() (*clientrun.Runner, error) {
 	if err != nil {
 		return nil, err
 	}
-	r, err := clientrun.Open(clientrun.Config{Home: s.Home, Relay: s.Relay, Signer: appClientSigner{s.Identity, s.Device}, Directory: s.Dir, Engine: b, Now: b.now})
+	r, err := clientrun.Open(clientrun.Config{Home: s.Home, Relay: s.Relay, Signer: appClientSigner{s.Identity, s.Device}, Directory: s.Dir, Engine: b, Now: b.now, Log: b.logClientCall})
 	if err != nil {
 		return nil, err
 	}
@@ -79,4 +81,39 @@ func (b *appBackend) clients() (*clientrun.Runner, error) {
 		r.Run(ctx)
 	})
 	return r, nil
+}
+
+// logClientCall emits a receipt already durably kept by the runner. Entries
+// reads that same history, so reconnecting never loses the who/when/method.
+func (b *appBackend) logClientCall(receipt clientrun.Receipt) error {
+	if receipt.Agent != "" {
+		b.emit.Emit(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appClientEntry(receipt)})
+	}
+	return nil
+}
+func appClientEntry(receipt clientrun.Receipt) appwire.Entry {
+	at, _ := time.Parse(time.RFC3339Nano, receipt.At)
+	state := "your call"
+	switch receipt.Status {
+	case "started":
+		state = "running"
+	case "done":
+		state = "done"
+	case "failed":
+		state = "incomplete"
+	}
+	return appwire.Entry{ID: "client-" + receipt.Client + "-" + strconv.FormatInt(receipt.Number, 10), Agent: receipt.Agent, Kind: appwire.EntryNotice, At: at, Text: "Paired client " + receipt.Client + " · " + receipt.Method + " · " + state}
+}
+func (b *appBackend) clientEntries(agent string) []appwire.Entry {
+	r := b.clientRunner.Load()
+	if r == nil {
+		return nil
+	}
+	var entries []appwire.Entry
+	for _, receipt := range r.Receipts() {
+		if receipt.Agent == agent {
+			entries = append(entries, appClientEntry(receipt))
+		}
+	}
+	return entries
 }

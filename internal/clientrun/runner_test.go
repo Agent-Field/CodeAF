@@ -28,6 +28,7 @@ func (s signer) Cert() identity.Cert            { return s.dev.Cert }
 func (s signer) Sign(p []byte) []byte           { return s.dev.Sign(p) }
 
 type engine struct {
+	answers int
 	appwire.Engine
 	reads int
 	asks  []appwire.Ask
@@ -90,7 +91,7 @@ func newRig(t *testing.T) *rig {
 	}
 	e := &engine{}
 	state := t.TempDir()
-	r, err := clientrun.Open(clientrun.Config{Home: state, Relay: srv.URL, Signer: s, Directory: dir, Engine: e, Now: func() time.Time { return now }, HTTP: srv.Client()})
+	r, err := clientrun.Open(clientrun.Config{Home: state, Relay: srv.URL, Signer: s, Directory: dir, Engine: e, Log: func(clientrun.Receipt) error { return nil }, Now: func() time.Time { return now }, HTTP: srv.Client()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +116,7 @@ func TestNoPairedClientDoesNoWork(t *testing.T) {
 }
 func TestSlotsUseDesktopDispatchAndKeepEmptyChatScope(t *testing.T) {
 	g := newRig(t)
-	g.pair(t, "asks.list", "asks.answer")
+	g.pair(t, "asks.answer")
 	if err := g.r.Step(context.Background()); err != nil {
 		t.Fatal(err)
 	}

@@ -96,5 +96,10 @@ func (r *Runner) checkPairing(p Pairing) error {
 			return errors.New("unsupported snapshot method: " + name)
 		}
 	}
+	for _, name := range p.Methods {
+		if !slices.Contains([]string{"asks.answer", "agents.send", "agents.stop", "agents.create"}, name) {
+			return errors.New("unsupported queued method: " + name)
+		}
+	}
 	return nil
 }

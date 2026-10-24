@@ -2960,7 +2960,7 @@ func (b *appBackend) Entries(id, before string, limit int) ([]appwire.Entry, boo
 		record.Entries = appLinkJobHistory(record.Entries, jobs)
 		page, more, err = appEntryPageOf(id, record, at, marks, notes, before, limit, func(item session.DisplayEntry) appwire.ToolFacts {
 			return b.appEntryFacts(a, item)
-		}, b.crewFormedEntries(id), footers)
+		}, append(b.crewFormedEntries(id), b.clientEntries(id)...), footers)
 		return err
 	})
 	if err != nil {

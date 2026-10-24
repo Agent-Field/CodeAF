@@ -90,3 +90,23 @@ results are skipped until their twelve-hour renewal. With no active client,
 there are no extra snapshot reads, relay requests or refresh timers. Encryption
 keys and read subscriptions are enrolled locally on each executing computer;
 they are not yet distributed by the directory.
+
+## Queued answers, Face ID and interrupted delivery
+
+The app backend executes locally paired clients' queued `asks.answer`,
+`agents.send`, `agents.stop` and `agents.create` calls through the desktop
+methods. Other queue methods are refused at pairing. Chat calls run only where
+this computer already holds the chat's live lease; they never take it from
+another computer. Starting new work targets `any` and has one claim winner.
+
+An irreversible ask requires the queued call's signed `face_id` flag. This is
+the client's assertion that it obtained biometric confirmation. The computer
+checks the ask again rather than trusting the snapshot the client saw. It also
+checks the retained signature, identity, sequence, age and method permission.
+
+Every executed call leaves who, when and method in its chat. A receipt is kept
+before execution. If delivery is interrupted at that point, codeaf does not
+repeat the possible effect automatically. An answer that finished but lost its
+acknowledgement is acknowledged after restart without being run again. Gaps in
+the local sequence are refused; separate executors currently need distinct
+client pairings because the relay cannot explain skipped numbers to them.
