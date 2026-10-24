@@ -31,6 +31,7 @@ suites=(
 	"bigtake:^TestBigTakeBack$"
 	"watch:^TestWatchConformance$"
 	"lease:^TestLeaseConformance$"
+	"fabric:^TestFabricConformance$"
 )
 
 pids=()
@@ -86,7 +87,7 @@ gotest() {
 	if [[ $relay == worker ]]; then worker_concurrency=${CONFORMANCE_HTTP_CONCURRENCY:-$CODEAF_RELAYCONF_CONCURRENCY}; fi
 	if [[ $relay == worker ]]; then retries_before=$(proxy_retries); fi
 	CODEAF_RELAYCONF_CONCURRENCY=$worker_concurrency \
-		go test -p=2 -parallel="$test_parallel" -json -count=1 -timeout 25m "$pkg" -run "$pat" "$@" >"$log" 2>"$log.err"
+		go test -p=2 -parallel="$test_parallel" -json -count=1 -timeout 15m "$pkg" -run "$pat" "$@" >"$log" 2>"$log.err"
 	local code=$? counts note=""
 	counts=$(tally "$log")
 	read -r p s f <<<"$counts"
@@ -126,6 +127,8 @@ conf_live() { # relay, url, small-url or "", expiry-url or ""
 	local relay=$1 url=$2 small=${3:-} expiry=${4:-}
 	for s in "${suites[@]}"; do
 		local cap_url= cap_pid=
+		local fabric_flag=
+		if [[ $relay == worker ]]; then fabric_flag=-relay-fabric-unsupported; fi
 		# The cap case still opens all thousand sockets. Its proxy gets a
 		# private runtime so teardown cannot stall the next case's upgrade.
 		if [[ $relay == worker && ${s%%:*} == watch ]]; then
@@ -133,7 +136,7 @@ conf_live() { # relay, url, small-url or "", expiry-url or ""
 			wrangler "$cap_port" "$work/persist-$cap_port" "$OPEN" || { row worker watch 0 0 1 0 "watch-cap wrangler did not start"; continue; }
 			cap_url=http://127.0.0.1:$cap_port; cap_pid=$started
 		fi
-		gotest "$relay" "${s%%:*}" ./internal/relayconf "${s#*:}" -tags relayurl -args -relay-url="$url" ${small:+-relay-small-url="$small"} ${expiry:+-relay-expiry-url="$expiry"} ${cap_url:+-relay-watch-cap-url="$cap_url"}
+		gotest "$relay" "${s%%:*}" ./internal/relayconf "${s#*:}" -tags relayurl -args -relay-url="$url" ${fabric_flag:+$fabric_flag} ${small:+-relay-small-url="$small"} ${expiry:+-relay-expiry-url="$expiry"} ${cap_url:+-relay-watch-cap-url="$cap_url"}
 		if [[ -n $cap_pid ]]; then kill "$cap_pid" 2>/dev/null; fi
 	done
 }
@@ -147,6 +150,7 @@ track_go() {
 	gotest go-inproc rotation ./internal/relayserve 'Rotated|Frozen|Retire|Sweep'
 	gotest go-inproc watch ./internal/relayserve '^TestWatch'
 	gotest go-inproc lease ./internal/relayserve '^TestLease'
+	gotest go-inproc fabric ./internal/relayserve '^TestFabricConformance$'
 	fi
 	local relay_bin=${CONFORMANCE_CODEAF:-$root/bin/codeaf}
 	# An explicit candidate avoids rebuilding a binary the caller has already prepared with make build.
