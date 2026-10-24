@@ -64,6 +64,9 @@ func (s *Sync) list(ctx context.Context) (directory.Listing, error) {
 	if Quiet(s.Home) {
 		return directory.Listing{}, nil
 	}
+	if l, local, err := s.displayListing(ctx); local || err != nil {
+		return l, err
+	}
 	return s.Dir.List(ctx)
 }
 
@@ -75,6 +78,11 @@ func (s *Sync) ClusterHTTP(client *http.Client) *http.Client {
 		client = &http.Client{}
 	}
 	copyClient := *client
+	next := copyClient.Transport
+	if next == nil {
+		next = http.DefaultTransport
+	}
+	copyClient.Transport = relayCountingWire{s: s, next: next}
 	return gated(s.Home, &copyClient)
 }
 
@@ -100,3 +108,15 @@ func (s quietStream) Ping(ctx context.Context) error {
 	return s.Stream.Ping(ctx)
 }
 func (s quietStream) Vouching() bool { return !Quiet(s.home) && s.Stream.Vouching() }
+
+// relayCountingWire counts actual relay attempts inside the quiet gate.
+// Frame attempts are counted at their separate guarded socket write boundary.
+type relayCountingWire struct {
+	s    *Sync
+	next http.RoundTripper
+}
+
+func (w relayCountingWire) RoundTrip(r *http.Request) (*http.Response, error) {
+	w.s.relayAttempts.Add(1)
+	return w.next.RoundTrip(r)
+}

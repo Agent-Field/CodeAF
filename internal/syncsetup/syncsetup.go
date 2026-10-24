@@ -16,6 +16,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
@@ -51,14 +53,25 @@ var ErrNoIdentity = errors.New(chatlist.NoIdentity)
 
 // Sync is everything that talks to the relay, bound to this device.
 type Sync struct {
-	stateSent string           // The last completed home-state round, guarded by stateMu.
-	Dir       directory.Client // bound to this device by its signer
-	Store     blobstore.Store  // the bare store wire; every use of it goes through a Scope so it is counted
-	Device    identity.Dev
-	Identity  identity.Identity
-	Relay     string // the normalized relay address every client and the ledger name are built from
-	Hosted    bool   // Relay is the hosted default, which the first-run line speaks of
-	Home      string // the codeaf home: where the branch map and the stats files live
+	memberRetries     uint64
+	clock             func() time.Time
+	relayAttempts     atomic.Uint64
+	clusterFrames     atomic.Uint64
+	memberMu          sync.Mutex
+	member            *personalMember
+	memberUnsupported bool
+	memberRetry       time.Time
+	memberBackoff     time.Duration
+	stateVault        string
+	stateVaultKnown   bool
+	stateSent         string           // The last completed home-state round, guarded by stateMu.
+	Dir               directory.Client // bound to this device by its signer
+	Store             blobstore.Store  // the bare store wire; every use of it goes through a Scope so it is counted
+	Device            identity.Dev
+	Identity          identity.Identity
+	Relay             string // the normalized relay address every client and the ledger name are built from
+	Hosted            bool   // Relay is the hosted default, which the first-run line speaks of
+	Home              string // the codeaf home: where the branch map and the stats files live
 	// ProfileDir is where the product keeps its profile files (config.json,
 	// credentials.json): CODEAF_PROFILE_DIR when set, else empty, which means Home.
 	ProfileDir string
@@ -161,11 +174,14 @@ func flushInterval() (time.Duration, error) {
 
 // build binds both wires to one signer and one client, and leaves the store to be counted by scope.
 func build(home, base string, id identity.Identity, dev identity.Dev, interval time.Duration) *Sync {
-	sign := reqsign.SignFor(deviceSigner{id, dev}, time.Now)
-	hc := gated(home, &http.Client{Timeout: requestTimeout})
-	return &Sync{
-		Dir:        directory.NewHTTP(base, sign, hc),
-		Store:      blobstore.NewHTTP(base, sign, gated(home, &http.Client{})),
+	return buildAt(home, base, id, dev, interval, time.Now)
+}
+
+// buildAt supplies the host clock for deterministic lifetime and wake proofs.
+func buildAt(home, base string, id identity.Identity, dev identity.Dev, interval time.Duration, now func() time.Time) *Sync {
+	sign := reqsign.SignFor(deviceSigner{id, dev}, now)
+	s := &Sync{
+		clock:      now,
 		Device:     dev,
 		Identity:   id,
 		Relay:      base,
@@ -174,6 +190,9 @@ func build(home, base string, id identity.Identity, dev identity.Dev, interval t
 		Ledger:     cellstore.LedgerName(base, id.ID()),
 		Interval:   interval,
 	}
+	s.Dir = directory.NewHTTP(base, sign, s.ClusterHTTP(&http.Client{Timeout: requestTimeout}))
+	s.Store = blobstore.NewHTTP(base, sign, s.ClusterHTTP(&http.Client{}))
+	return s
 }
 
 // deviceSigner is the reqsign.Signer of this machine: the device key signs,
@@ -196,6 +215,13 @@ func (s *Sync) Rows(ctx context.Context) ([]chatlist.Row, error) {
 
 // RowsAt is Rows and the directory version the listing was read at.
 func (s *Sync) RowsAt(ctx context.Context) ([]chatlist.Row, uint64, error) {
+	current, err := s.currentDisplaySync()
+	if err != nil {
+		return nil, 0, err
+	}
+	if current != s {
+		return current.RowsAt(ctx)
+	}
 	l, err := s.list(ctx)
 	if err != nil {
 		return nil, 0, err
@@ -214,11 +240,23 @@ func (s *Sync) Follow() dirwatch.Follower {
 	if !ok {
 		return nil
 	}
-	return dirwatch.Follow(s.Ledger, func(ctx context.Context) (dirwatch.Stream, error) {
+	return dirwatch.Follow(s.Ledger+"#home:"+s.Home, func(ctx context.Context) (dirwatch.Stream, error) {
 		if Quiet(s.Home) {
 			return nil, ErrQuiet
 		}
-		stream, err := w.Watch(ctx)
+		current, err := s.currentDisplaySync()
+		if err != nil {
+			return nil, err
+		}
+		watcher := w
+		if current != s {
+			var ok bool
+			watcher, ok = current.Dir.(directory.Watcher)
+			if !ok {
+				return nil, dirwatch.ErrNoRoute
+			}
+		}
+		stream, err := current.followStream(ctx, watcher)
 		if err != nil {
 			return nil, err
 		}
@@ -266,3 +304,10 @@ var (
 	// The engine glue is the sync seam by method set: no adapter between them.
 	_ cellsync.Engine = cellstore.SyncEngine{}
 )
+
+func (s *Sync) now() time.Time {
+	if s.clock != nil {
+		return s.clock()
+	}
+	return time.Now()
+}

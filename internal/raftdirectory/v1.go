@@ -2,10 +2,8 @@ package raftdirectory
 
 import (
 	"context"
-	"encoding/hex"
 	"net/http"
 	"reflect"
-	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/clusterstate"
@@ -133,48 +131,11 @@ func authorizeV1Read(ctx context.Context, s *raftstore.SQLite, app raftstore.App
 }
 
 func (b *v1Backend) Listing(ctx context.Context, actor string) (directory.Listing, error) {
-	l := directory.Listing{Devices: map[string]directory.Device{}, Cells: map[string]directory.Cell{}}
+	var l directory.Listing
 	err := b.read(ctx, actor, func(ctx context.Context, s *raftstore.SQLite, app raftstore.Application) error {
-		l.Now, l.Version = app.LogicalTime, app.VisibleVersion
-		after := ""
-		for {
-			rows, _, err := s.ScanPage(ctx, app.Applied, raftstore.State, after)
-			if err != nil {
-				return err
-			}
-			if len(rows) == 0 {
-				return nil
-			}
-			for _, r := range rows {
-				after = r.Key.Key
-				switch {
-				case after == "identity":
-					if err := clusterstate.Decode(r.Value, &l.Identity); err != nil {
-						return err
-					}
-				case strings.HasPrefix(after, "device/"):
-					id, e := hex.DecodeString(strings.TrimPrefix(after, "device/"))
-					if e != nil {
-						return clusterstate.ErrDependency
-					}
-					var v directory.Device
-					if e = clusterstate.Decode(r.Value, &v); e != nil {
-						return e
-					}
-					l.Devices[string(id)] = v
-				case strings.HasPrefix(after, "cell/"):
-					id, e := hex.DecodeString(strings.TrimPrefix(after, "cell/"))
-					if e != nil {
-						return clusterstate.ErrDependency
-					}
-					var v directory.Cell
-					if e = clusterstate.Decode(r.Value, &v); e != nil {
-						return e
-					}
-					l.Cells[string(id)] = v
-				}
-			}
-		}
+		var err error
+		l, err = DisplayListing(ctx, s, app)
+		return err
 	})
 	return l, err
 }
