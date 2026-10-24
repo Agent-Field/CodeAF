@@ -113,6 +113,7 @@ func newRig(t *testing.T) *rig {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = r.Close() })
 	return &rig{r: r, e: e, s: s, client: signer{id, c}, pub: pub, priv: priv, url: srv.URL, now: now, dir: dir, state: state, clock: clock}
 }
 func (g *rig) pair(t *testing.T, methods ...string) clientrun.Grant {

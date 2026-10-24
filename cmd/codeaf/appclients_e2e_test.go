@@ -234,6 +234,9 @@ func TestScopedClientReadsAnswersAndAcksThroughTheAppBackend(t *testing.T) {
 	if _, err := appwire.Call(backend, "clients.unpair", json.RawMessage(`{"id":"`+clientDev.ID()+`"}`)); err != nil {
 		t.Fatal(err)
 	}
+	if err := runner.Close(); err != nil {
+		t.Fatal(err)
+	}
 	nextRec := newAppRecorder()
 	next := newAppBackend(nextRec, nil)
 	defer next.Close()

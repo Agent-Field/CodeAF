@@ -236,12 +236,13 @@ export class Fabric {
     this.#prune(targetDevice);
     const rows = this.sql
       .exec(
-        'SELECT number, at, method, target, sealed, signature, cert, identity, request_time, request_uri, body FROM fabric_queue WHERE device = ? AND (target = ? OR target = ?) AND (claimed_by = ? OR claimed_by = ?) ORDER BY number',
+        'SELECT number, at, method, target, sealed, signature, cert, identity, request_time, request_uri, body FROM fabric_queue WHERE device = ? AND (target = ? OR target = ?) AND (claimed_by = ? OR claimed_by = ? OR claimed_by GLOB ?) ORDER BY number',
         targetDevice,
         'any',
         caller,
         '',
         caller,
+        caller + ':*',
       )
       .toArray();
     return rows.map((row) => ({
@@ -263,7 +264,13 @@ export class Fabric {
     ensureDevice(targetDevice);
     this.#requireFullCaller(caller);
     this.#requireTargetClient(targetDevice);
-    if (body.length !== 0) throw badRequest();
+    let token = '';
+    if (body.length !== 0) {
+      if (ack) throw badRequest();
+      const params = expectKeys(body, ['token']);
+      if (typeof params.token !== 'string' || !/^[0-9a-f]{64}$/.test(params.token)) throw badRequest();
+      token = params.token;
+    }
     const number = parseEntryNumber(numberText);
     this.#prune(targetDevice);
     const row = this.sql
@@ -271,9 +278,11 @@ export class Fabric {
       .toArray()[0];
     if (!row) throw notFound();
     if (row.target !== 'any' && row.target !== caller) throw unauthorized();
-    if ((row.claimed_by !== '' && row.claimed_by !== caller) || (ack && row.claimed_by !== caller)) throw claimed();
+    const owner = row.claimed_by.split(':')[0];
+    const claim = token === '' ? caller : caller + ':' + token;
+    if ((!ack && row.claimed_by !== '' && (token === '' || row.claimed_by !== claim)) || (ack && owner !== caller)) throw claimed();
     if (ack) this.sql.exec('DELETE FROM fabric_queue WHERE device = ? AND number = ?', targetDevice, number);
-    else this.sql.exec('UPDATE fabric_queue SET claimed_by = ? WHERE device = ? AND number = ?', caller, targetDevice, number);
+    else this.sql.exec('UPDATE fabric_queue SET claimed_by = ? WHERE device = ? AND number = ?', claim, targetDevice, number);
   }
 
   #requireFullCaller(caller) {
