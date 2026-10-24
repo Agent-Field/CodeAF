@@ -20,3 +20,20 @@ func CommittedView(scope Scope, generation, applied uint64, conf clusterstate.Co
 	}
 	return v, nil
 }
+
+// CommittedViewAt must be used by hosts admitting delegated learner workers.
+// Time was committed before the actor barrier; a local clock grants nothing.
+func CommittedViewAt(scope Scope, generation, applied uint64, conf clusterstate.Configuration, now int64, read clusterstate.ReadRecord) (View, error) {
+	_, peers, err := clusterstate.MembershipViewAt(read, conf, applied, now)
+	if err != nil {
+		return View{}, err
+	}
+	if len(peers) == 0 || applied == 0 {
+		return View{}, ErrAuth
+	}
+	v := View{Scope: scope, Generation: generation, Revision: applied}
+	for _, p := range peers {
+		v.Members = append(v.Members, Member{Node: p.Node, Incarnation: p.Incarnation, Key: p.Key, Voter: p.Voter, Revoked: p.Revoked})
+	}
+	return v, nil
+}

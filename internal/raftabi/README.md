@@ -183,3 +183,11 @@ bootstrap manifest before initialization. They must never use the current voter
 list, which changes when C becomes a standby. The core uses election timing
 version 2 in native and WASI. Rank survives snapshots and restarts as registry
 state; absent provisioning identifies a personal learner, never an invented rank.
+
+P15 adds operation 27: cluster/worker/cell strings, incarnation/committed-time
+uint64s, then five blobs in WorkerReadKeys order (empty means absent). It returns
+one canonical WorkerRead blob. The host must pass its fresh current-term quorum
+barrier before returning these bytes; the ABI supplies policy, not consensus.
+Operation 16 accepts an optional tail: committed time uint64, then identity,
+authority and worker-record blobs. It is required for delegated peers; the old
+metadata-only form returns them revoked. Personal/anchor encodings are unchanged.
