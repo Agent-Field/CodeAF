@@ -151,7 +151,7 @@ func TestEveryRowOfOneFramePutsItsColumnsInTheSameCells(t *testing.T) {
 			case tasksLineTask:
 				want = rowTail([]rowField{tasksStateField(line)}, stateCells)
 			case tasksLineChat:
-				want = rowTail([]rowField{tasksChatStateField(line.chat)}, stateCells)
+				want = rowTail([]rowField{tasksChatStateField(*line.chat)}, stateCells)
 			default:
 				continue
 			}
@@ -189,7 +189,7 @@ func TestEveryRowOfWorkSaysWhatItIs(t *testing.T) {
 		if line.kind != tasksLineChat {
 			continue
 		}
-		got := rowTail([]rowField{tasksChatStateField(line.chat)}, tasksStateCells)
+		got := rowTail([]rowField{tasksChatStateField(*line.chat)}, tasksStateCells)
 		if strings.TrimSpace(got) == "" {
 			t.Fatalf("the conversation %q drew nothing in the state column", line.chat.title)
 		}

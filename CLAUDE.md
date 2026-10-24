@@ -38,6 +38,17 @@ and obsolete assumptions in the entry; see [changelog rules](docs/rules/changelo
 
 ## Build and test
 
+Apply [Matt Pocock's engineering skills](https://github.com/mattpocock/skills)
+when writing code: diagnose unexplained failures before changing code, use TDD
+for fixes and features at agreed observable interfaces, and review the final
+diff against both repository standards and the request. Pass these practices
+to coding delegates. Claude can load them with
+`claude plugin install mattpocock-skills@claude-plugins-official`.
+
+Keep module interfaces small and concentrate related behavior behind them.
+Prefer reusing an existing module over adding a pass-through abstraction.
+Measure performance before and after; preserve behavior during cleanup.
+
 Use `make build` for the runnable binary at `bin/codeaf`. Rebuild after merging.
 Do not overwrite a running executable in place; use the installation/update path.
 

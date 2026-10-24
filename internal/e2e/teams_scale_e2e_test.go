@@ -36,30 +36,7 @@ func runTeamsScaleTerminal(t *testing.T, count, members int) {
 	began := time.Now()
 	home := newHome(t, map[string]any{"model_pool": "off", "memory.enabled": false})
 	ws := newWorkspace(t, "teams-scale", false)
-	var teams []teamstore.Team
-	for i := 0; i < count; i++ {
-		tm := teamstore.Team{ID: fmt.Sprintf("%012x", i+1), Name: fmt.Sprintf("Scale team %03d", i)}
-		for j := 0; j < members; j++ {
-			sid := fmt.Sprintf("%016x", 0x6000000000000000+i*members+j)
-			dir := filepath.Join(home, "v3", "projects", strings.ReplaceAll(ws, string(filepath.Separator), "-"), sid)
-			if err := os.MkdirAll(dir, 0o700); err != nil {
-				t.Fatal(err)
-			}
-			at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-			writeJSON(t, filepath.Join(dir, "meta.json"), map[string]any{"id": sid, "title": fmt.Sprintf("Mock member %03d %03d", i, j), "workspace": ws, "created": at, "lastUserAt": at})
-			file := filepath.Join(dir, "transcript.jsonl")
-			journal := fmt.Sprintf("{\"type\":\"session\",\"version\":1,\"id\":%q,\"cwd\":%q}\n{\"type\":\"message\",\"role\":\"user\",\"content\":\"Review this mock change\",\"timestamp\":\"2026-01-01T00:00:00Z\"}\n{\"type\":\"message\",\"role\":\"assistant\",\"content\":\"Mock change reviewed\",\"timestamp\":\"2026-01-01T00:00:01Z\"}\n", sid, ws)
-			if err := os.WriteFile(file, []byte(journal), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			tm.Members = append(tm.Members, teamstore.Member{Key: file, File: file, Where: ws, Handle: fmt.Sprintf("mock-%03d-%03d", i, j), Word: "Mock member", Home: j != 0, HandleBy: teamstore.HandleByTyped})
-			if j == 0 {
-				tm.Manager = file
-			}
-		}
-		teams = append(teams, tm)
-	}
-	writeJSON(t, teamstore.Path(home), teamstore.File{Version: teamstore.Version, Teams: teams})
+	seedTeamsScale(t, count, members, home, ws)
 	seed := time.Since(began)
 	var chats atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -128,4 +105,32 @@ func runTeamsScaleTerminal(t *testing.T, count, members int) {
 		t.Fatalf("pointer navigation made %d model calls", chats.Load())
 	}
 	t.Logf("teams=%d memberships=%d setup=%s first_screen=%s hover_ms p50=%.3f p95=%.3f max=%.3f samples=%v model_calls=0", count, count*members, seed, opening, samples[len(samples)/2], samples[len(samples)-1], samples[len(samples)-1], samples)
+}
+
+func seedTeamsScale(t *testing.T, count, members int, home, ws string) {
+	t.Helper()
+	var teams []teamstore.Team
+	for i := 0; i < count; i++ {
+		tm := teamstore.Team{ID: fmt.Sprintf("%012x", i+1), Name: fmt.Sprintf("Scale team %03d", i)}
+		for j := 0; j < members; j++ {
+			sid := fmt.Sprintf("%016x", 0x6000000000000000+i*members+j)
+			dir := filepath.Join(home, "v3", "projects", strings.ReplaceAll(ws, string(filepath.Separator), "-"), sid)
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+			writeJSON(t, filepath.Join(dir, "meta.json"), map[string]any{"id": sid, "title": fmt.Sprintf("Mock member %03d %03d", i, j), "workspace": ws, "created": at, "lastUserAt": at})
+			file := filepath.Join(dir, "transcript.jsonl")
+			journal := fmt.Sprintf("{\"type\":\"session\",\"version\":1,\"id\":%q,\"cwd\":%q}\n{\"type\":\"message\",\"role\":\"user\",\"content\":\"Review this mock change\",\"timestamp\":\"2026-01-01T00:00:00Z\"}\n{\"type\":\"message\",\"role\":\"assistant\",\"content\":\"Mock change reviewed\",\"timestamp\":\"2026-01-01T00:00:01Z\"}\n", sid, ws)
+			if err := os.WriteFile(file, []byte(journal), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			tm.Members = append(tm.Members, teamstore.Member{Key: file, File: file, Where: ws, Handle: fmt.Sprintf("mock-%03d-%03d", i, j), Word: "Mock member", Home: j != 0, HandleBy: teamstore.HandleByTyped})
+			if j == 0 {
+				tm.Manager = file
+			}
+		}
+		teams = append(teams, tm)
+	}
+	writeJSON(t, teamstore.Path(home), teamstore.File{Version: teamstore.Version, Teams: teams})
 }
