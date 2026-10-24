@@ -16,6 +16,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/clusterstate"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/dirwatch"
 	"github.com/Agent-Field/codeaf/internal/raftdirectory"
 	"github.com/Agent-Field/codeaf/internal/raftstore"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
@@ -31,6 +32,7 @@ type nativeProvision struct {
 	Anchors [3][]byte `json:"anchors"`
 }
 type nativeNamespace struct {
+	timer memberTimer
 	*raftdirectory.V1Directory
 	host     *raftdirectory.Native
 	feed     *directory.Feed
@@ -42,7 +44,7 @@ type nativeNamespace struct {
 }
 
 func (d *nativeNamespace) Feed() *directory.Feed { return d.feed }
-func (d *nativeNamespace) Close() error          { d.feed.Close(); return d.host.Close() }
+func (d *nativeNamespace) Close() error          { d.stopMembers(); d.feed.Close(); return d.host.Close() }
 
 // activate runs outside every legacy admission lock. The frozen source drains
 // admitted writes itself and can never become a fallback directory afterward.
@@ -189,7 +191,18 @@ func (n *namespaces) activate(ctx context.Context, id string, root []byte) (*nat
 	}
 	d = &nativeNamespace{V1Directory: &raftdirectory.V1Directory{Host: host, Cluster: cfg.Cluster, Now: n.now, Grace: grace}, identity: clusterstate.IdentityRec{V: 1, Identity: id, SigningKey: cfg.SigningKey}, host: host, feed: feed, links: n.links.(*directory.Links), now: n.now, grace: grace}
 	d.effects = raftdirectory.Effects{Host: host, Cluster: cfg.Cluster, Actor: clusterstate.DeviceIDOfKey(cfg.EffectsKey), Key: ed25519.PrivateKey(provision.Effects)}
-	host.Changed = d.project
+	if err = host.InitializeMembership(ctx, ed25519.PrivateKey(provision.Anchors[0])); err != nil {
+		d.Close()
+		return nil, err
+	}
+	d.timer = memberTimer{started: n.now(), anchor: ed25519.PrivateKey(provision.Anchors[0]), after: func(delay time.Duration, fn func()) func() bool { return time.AfterFunc(delay, fn).Stop }}
+	if n.after != nil {
+		d.timer.after = n.after
+	}
+	host.Changed = func(store *raftstore.SQLite, app raftstore.Application) error {
+		d.armMembers()
+		return d.project(store, app)
+	}
 	feed.OnSeen(func(device string, at int64) { _ = d.seen(device, at) })
 	if err = host.Inspect(ctx, func(ctx context.Context, s *raftstore.SQLite, a raftstore.Application) error { return d.project(s, a) }); err != nil {
 		d.Close()
@@ -202,6 +215,7 @@ func (n *namespaces) activate(ctx context.Context, id string, root []byte) (*nat
 		return nil, err
 	}
 	n.mu.Lock()
+	d.armMembers()
 	n.groups[id] = d
 	n.mu.Unlock()
 	return d, nil
@@ -290,14 +304,18 @@ func (d *nativeNamespace) SubscribeWatch(device string, r *http.Request, holds [
 	if clusterstate.PersonalCertificate(d.identity, device, certificate) != nil {
 		return nil, directory.ErrBadRequest
 	}
-	return d.feed.SubscribeBeatWithEvidence(device, holds, beat, func(device string, holds []directory.Hold, at int64) error {
+	return d.feed.SubscribeCommitted(device, holds, beat, func(device string, holds []directory.Hold, at int64) ([]dirwatch.HoldReceipt, error) {
 		return d.renew(device, holds, at, certificate)
 	})
 }
-func (d *nativeNamespace) renew(device string, holds []directory.Hold, at int64, certificate string) error {
+func (d *nativeNamespace) renew(device string, holds []directory.Hold, at int64, certificate string) ([]dirwatch.HoldReceipt, error) {
+	// Idle presence never wakes consensus just because a hibernating socket pings.
+	if len(holds) == 0 {
+		return nil, nil
+	}
 	ctx := context.Background()
 	if err := d.authority(ctx, device, false); err != nil {
-		return err
+		return nil, err
 	}
 	// Old sockets may name zero, missing or several historical fences. Only
 	// their one current held tuple is evidence; none of the others can renew it.
@@ -309,14 +327,14 @@ func (d *nativeNamespace) renew(device string, holds []directory.Hold, at int64,
 		}
 		raw, err := d.host.ReadEffect(ctx, clusterstate.CellKey(h.Cell))
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if raw == nil {
 			continue
 		}
 		var cell clusterstate.Cell
 		if err = clusterstate.Decode(raw, &cell); err != nil {
-			return err
+			return nil, err
 		}
 		if cell.Lease.Device != device || cell.Lease.Fence != h.Fence || cell.Lease.Expires == 0 {
 			continue
@@ -325,10 +343,9 @@ func (d *nativeNamespace) renew(device string, holds []directory.Hold, at int64,
 		items = append(items, clusterstate.HoldFence{Cell: h.Cell, Fence: h.Fence})
 	}
 	if len(items) == 0 {
-		return nil
+		return nil, nil
 	}
-	_, err := d.effects.Renew(ctx, at, clusterstate.RenewHolds{Certificate: certificate, Device: device, SeenAt: at, Items: items})
-	return err
+	return d.effects.Renew(ctx, at, clusterstate.RenewHolds{Certificate: certificate, Device: device, SeenAt: at, Items: items})
 }
 
 func (d *nativeNamespace) seen(device string, at int64) error {
