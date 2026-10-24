@@ -53,3 +53,6 @@ relay/hosted/.wrangler/
 
 # Native Windows test executables are local acceptance artifacts.
 .wintest/
+
+# The hosted reactor is generated from the shared, pinned Go core.
+/relay/hosted/src/raft/core.wasm
