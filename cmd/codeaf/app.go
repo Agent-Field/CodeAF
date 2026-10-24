@@ -46,6 +46,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/clientrun"
 	"github.com/Agent-Field/codeaf/internal/clipboard"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/effort"
@@ -130,6 +131,7 @@ func runApp(args []string) error {
 	defer config.UseAppCredentials(config.NewAppCredentials())()
 	server := appwire.NewServer(wire)
 	backend := newAppBackend(server, appOpenInProcess)
+	backend.startPairedClients()
 	guard.Go("app/leave", func() { leaveWithin(ctx, backend.left, appLeaveWait, appLeaveNow) })
 	// Capture the previous holders before crews, quit resumes or client calls
 	// can open a journal and overwrite the evidence with this process's claim.
@@ -428,6 +430,10 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 
 // appBackend is the [appwire.Engine] over this process's conversations.
 type appBackend struct {
+	// clientRunner is absent until local pairing state exists or Settings pairs a client.
+	clientRunner atomic.Pointer[clientrun.Runner]
+	clientInit   sync.Mutex
+
 	// organizeProposer supplies a naming door when the backend is embedded without held conversations.
 	organizeProposer session.TeamProposer
 
@@ -818,7 +824,7 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 		left:      make(chan struct{}),
 		mint:      appMint,
 	}
-	b.emit = b.newAppInbox(emit)
+	b.emit = appClientEmitter{b: b, next: b.newAppInbox(emit)}
 	b.stopPhases = b.listenPhases()
 	b.stopProgress = b.listenProgress()
 	guard.Go("app/sweep", b.sweep)
