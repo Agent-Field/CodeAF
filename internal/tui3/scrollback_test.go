@@ -84,7 +84,7 @@ func TestAResumedConversationOpensOnItsTail(t *testing.T) {
 	}
 }
 
-// SCROLLING UP REACHES THE BEGINNING. This is the bug Santosh reported: he
+// SCROLLING UP REACHES THE BEGINNING. This is the bug dev reported: he
 // resumed a chat, scrolled up, and hit a wall a long way short of where the
 // conversation actually started.
 func TestScrollingUpReachesTheBeginningOfAResumedConversation(t *testing.T) {

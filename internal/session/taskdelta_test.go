@@ -302,7 +302,7 @@ func TestACloseLandsTheStampTheReadingOwedBeforeIt(t *testing.T) {
 //
 // It is held on a channel until the close has returned, and the watch
 // [readBeside] tells about its own landings is what says the reading is done —
-// not a guess about the scheduler (sidecar.go). Measured on the Spark,
+// not a guess about the scheduler (sidecar.go). Measured on the tower,
 // 2026-09-12: without the refusal, thirteen runs in five thousand of one
 // `internal/session` fixture failed as `TempDir RemoveAll cleanup: directory not
 // empty`, and the file left behind in every one of them was this stamp — a red

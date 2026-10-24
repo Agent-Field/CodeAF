@@ -101,8 +101,8 @@ func TestAYoloRunDoesNotPushToABranchItDidNotCreate(t *testing.T) {
 	// branch after a rebase. The third pushed a second branch out of a
 	// directory the door created for the purpose.
 	commands := []string{
-		"cd /home/santosh/src/hint-fix && git push origin santos/dev 2>&1 | tail -3",
-		"cd /home/santosh/src/hint-fix && git rebase origin/santos/dev 2>&1 | tail -2 && git log --oneline -3 && git push origin santos/dev 2>&1 | tail -3",
+		"cd /home/dev/src/hint-fix && git push origin santos/dev 2>&1 | tail -3",
+		"cd /home/dev/src/hint-fix && git rebase origin/santos/dev 2>&1 | tail -2 && git log --oneline -3 && git push origin santos/dev 2>&1 | tail -3",
 		"cd /tmp/hint-fix-pr && git switch -c fix/opening-hint-test-owns-profile && git push -u origin fix/opening-hint-test-owns-profile",
 	}
 	for _, command := range commands {

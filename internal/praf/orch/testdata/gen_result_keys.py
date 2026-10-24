@@ -6,7 +6,7 @@ asserts the key set at each level matches these Python-derived keys exactly —
 catching any accidental omitempty (dropped key) or stray extra field.
 
 Regenerate:
-  PYTHONPATH=/home/abir/gb/pr-af/src <venv>/bin/python \
+  PYTHONPATH=/home/dev/gb/pr-af/src <venv>/bin/python \
     go/internal/orch/testdata/gen_result_keys.py
 """
 from __future__ import annotations
@@ -15,7 +15,7 @@ import json
 import os
 import sys
 
-sys.path.insert(0, "/home/abir/gb/pr-af/src")
+sys.path.insert(0, "/home/dev/gb/pr-af/src")
 
 from pr_af.schemas.input import GitHubPRData
 from pr_af.schemas.output import (

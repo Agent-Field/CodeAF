@@ -437,7 +437,7 @@ func TestPlanTaskRootCarriesProgressWhenTheRootIsATaskNumber(t *testing.T) {
 }
 
 func TestPlanStepDisplayFactsKeepRecordedCommand(t *testing.T) {
-	const copy = "/home/santosh/src/doe/peer/c319/v3/projects/p/r/trees/1"
+	const copy = "/home/dev/src/doe/peer/c319/v3/projects/p/r/trees/1"
 	tests := []struct {
 		command string
 		record  []int
@@ -455,12 +455,12 @@ func TestPlanStepDisplayFactsKeepRecordedCommand(t *testing.T) {
 		{"(cd " + copy + " && make)", nil, nil},
 		// An ended run's copy has been given back; a folder directly under the
 		// conversation's folder of copies is still a run's copy.
-		{"cd /home/santosh/src/doe/peer/c319/v3/projects/p/r/trees/7 && go vet ./...", nil, []int{0}},
+		{"cd /home/dev/src/doe/peer/c319/v3/projects/p/r/trees/7 && go vet ./...", nil, []int{0}},
 		// The same change joined so that the work runs even when it fails is still
 		// the prefix, and it withholds the head: its failure would not end the line.
-		{"cd /home/santosh/src/doe/peer/c319/v3/projects/p/r/trees/7; go vet ./...", nil, []int{0}},
+		{"cd /home/dev/src/doe/peer/c319/v3/projects/p/r/trees/7; go vet ./...", nil, []int{0}},
 		// Further down is somewhere the work went, and that is the work.
-		{"cd /home/santosh/src/doe/peer/c319/v3/projects/p/r/trees/7/internal && go vet ./...", nil, nil},
+		{"cd /home/dev/src/doe/peer/c319/v3/projects/p/r/trees/7/internal && go vet ./...", nil, nil},
 		{"cat calc.go go.mod notes.txt", nil, nil},
 		{"plandb done t-1 --agent 1 --result 'Added Mul and Div in muldiv.go …'", []int{0}, nil},
 		{"cd " + copy + " && ls && cat muldiv.go && go vet ./... && go test -count=1 ./...", nil, []int{0}},

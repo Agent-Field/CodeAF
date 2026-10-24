@@ -31,7 +31,7 @@ answering one question you would ask walking up to a colleague's desk:
    Benchmark the Sieve                       1h
 
  since you left · 12h
-   Spark Fleet Ssh Audit · 2 hosts up, 1 not
+   Server connection check · 2 hosts up, 1 not
    made apartments-minto-street.md
 
  automations
@@ -287,7 +287,7 @@ before choosing the fifteen most recent, so each conversation appears once.
 The `opt+k` chats menu still lists open tabs; dismissing or reopening a tab
 updates the tab and the row in Sessions together.
 
-## A chat is running on my other computer — how does home show it, chats on my other machines, "running on studio", "studio offline", why does it say running on build-box offline, merge / discard
+## A chat is running on my other computer — how does home show it, chats on my other machines, "running on tower", "tower offline", why does it say running on build-box offline, merge / discard
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -329,7 +329,7 @@ If the other machines cannot be reached, the last list stays on screen and the l
 extra is drawn and the panel is exactly the local list. `codeaf cell list --all` prints the
 same rows in a terminal (see "The cell verbs" in running-from-the-terminal).
 
-## Continue a chat here that another machine left — "studio offline", takeover, "continue here", the chat is running on another computer
+## Continue a chat here that another machine left — "tower offline", takeover, "continue here", the chat is running on another computer
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -510,7 +510,7 @@ up again (say its branch is checked out somewhere else), the sentence `a task's 
 could not be set up again here` names why, and the task's files are still in its folder under
 the chat's `trees` folder.
 
-## Open separately or discard the turns of a branch — "2 turns from studio", archive a branch, can I merge
+## Open separately or discard the turns of a branch — "2 turns from tower", archive a branch, can I merge
 
 A chat that was moved to another machine while another machine still held unsent turns leaves those turns
 as a branch. Press enter on its row to be asked **What should happen to these turns?** and
@@ -566,7 +566,7 @@ away:
 ```
  since you left · 12h
    weekly update · done · drafted it                                           1h
-   Spark Fleet Ssh Audit · 2 hosts up, 1 not                                   3h
+   Server connection check · 2 hosts up, 1 not                                   3h
    made apartments-minto.md                                                    5h
 ```
 

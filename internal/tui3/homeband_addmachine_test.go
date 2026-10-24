@@ -81,7 +81,7 @@ func TestAddMachineOpensTwoStepsAndAPasteField(t *testing.T) {
 }
 
 func TestAddMachinePasteGoesToTheApproveScreenAndApproveEndsTheCard(t *testing.T) {
-	door := &fakeApprovals{pending: spark(time.Now())}
+	door := &fakeApprovals{pending: tower(time.Now())}
 	a, r := approveApp(t, door)
 	a.addMachine = addMachine{size: 1, known: true}
 	a.openHome()
@@ -103,7 +103,7 @@ func TestAddMachinePasteGoesToTheApproveScreenAndApproveEndsTheCard(t *testing.T
 	if !strings.Contains(door.did(), "approve:k7m2q9xd") {
 		t.Fatalf("not approved: %s", door.did())
 	}
-	if !strings.Contains(plain(frame(a)), "spark is now paired") {
+	if !strings.Contains(plain(frame(a)), "tower is now paired") {
 		t.Fatalf("no toast:\n%s", plain(frame(a)))
 	}
 	if a.addMachineWanted() {
@@ -127,7 +127,7 @@ func TestPairLinkOnBareHomeShowsTheApproveScreen(t *testing.T) {
 		"fleet unknown": func(a *app) {},
 	} {
 		t.Run(name, func(t *testing.T) {
-			door := &fakeApprovals{pending: spark(time.Now())}
+			door := &fakeApprovals{pending: tower(time.Now())}
 			a, r := approveApp(t, door)
 			setup(a)
 			a.openHome()
@@ -141,7 +141,7 @@ func TestPairLinkOnBareHomeShowsTheApproveScreen(t *testing.T) {
 }
 
 func TestPairLinkTypedAndEnteredOnHomeShowsTheApproveScreen(t *testing.T) {
-	door := &fakeApprovals{pending: spark(time.Now())}
+	door := &fakeApprovals{pending: tower(time.Now())}
 	a, r := approveApp(t, door)
 	a.openHome()
 	typeText(t, a, testLink)
@@ -270,7 +270,7 @@ func TestAddMachineCardShowsOnAnEmptyHome(t *testing.T) {
 // A LINK PASTED ON HOME'S OPEN CARD SHOWS THE APPROVE SCREEN: home draws no
 // panel, so the card must take the frame from it (the e2e journey, step 3a).
 func TestAddMachinePasteOnHomeShowsTheApproveScreen(t *testing.T) {
-	door := &fakeApprovals{pending: spark(time.Now())}
+	door := &fakeApprovals{pending: tower(time.Now())}
 	a, r := approveApp(t, door)
 	a.addMachine = addMachine{size: 1, known: true}
 	a.openHome()

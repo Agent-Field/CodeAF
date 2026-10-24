@@ -165,7 +165,7 @@ func TestTheUsageLineNamesOnlyTheTwoForms(t *testing.T) {
 func TestHostedTaskUsesTheAgentDoor(t *testing.T) {
 	f := &taskCommandFake{Agent: &fakeAgent{model: "m"}}
 	a := newTestApp(f)
-	a.host = "spark"
+	a.host = "tower"
 	cmd := a.runTaskCommand("solo fix the far parser")
 	if cmd == nil {
 		t.Fatal("the hosted command opened no task door")

@@ -226,6 +226,9 @@ func TestFailedCreditReadKeepsThePreviousSurfaceState(t *testing.T) {
 
 func TestLowCreditReadSwapsOnlyAnUntouchedImplicitConversation(t *testing.T) {
 	a := placeApp(t)
+	if err := config.SetCrewFreeRoutes(a.profileDir, true); err != nil {
+		t.Fatal(err)
+	}
 	a.readCredits = func(context.Context) (credits.Reading, error) { return credits.Reading{Known: true, Low: true}, nil }
 	seedLowCredits(t, a)
 	a.implicitTalk = true
