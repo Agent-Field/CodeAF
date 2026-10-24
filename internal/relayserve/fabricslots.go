@@ -5,6 +5,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/fsreplace"
@@ -27,7 +29,9 @@ type fabricSlot struct {
 // clientState is replaced durably as one file; readers never see half a write.
 // Slots and queue share the same lifetime and revocation boundary.
 type clientState struct {
-	Slots map[string]fabricSlot `json:"slots"`
+	Slots      map[string]fabricSlot `json:"slots"`
+	Queue      []queueEntry          `json:"queue"`
+	LastNumber int64                 `json:"last_number"`
 }
 
 func (c fabricCall) statePath() string {
@@ -52,6 +56,7 @@ func (c fabricCall) load() (clientState, error) {
 			delete(s.Slots, name)
 		}
 	}
+	s.Queue = slices.DeleteFunc(s.Queue, func(e queueEntry) bool { return e.At <= now-FabricMaxAge.Milliseconds() })
 	return s, nil
 }
 
@@ -163,4 +168,38 @@ func revokeClient(c fabricCall) (any, error) {
 		err = nil
 	}
 	return nil, err
+}
+
+// cleanRevoked completes deletion if the process stopped between committing a
+// revoke and removing its client file. The sweep already holds the fabric lock.
+func (f *fabric) cleanRevoked() error {
+	ids, err := f.ns.known()
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if f.ns.gone(id) {
+			continue
+		}
+		d, err := f.ns.sqlite(id)
+		if err != nil {
+			return err
+		}
+		entries, err := os.ReadDir(filepath.Join(f.ns.root, "fabric", id))
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		for _, entry := range entries {
+			dev, ok := strings.CutSuffix(entry.Name(), ".json")
+			if ok && fabricDevice.MatchString(dev) && d.Revoked(dev) {
+				if err := os.Remove(filepath.Join(f.ns.root, "fabric", id, entry.Name())); err != nil && !errors.Is(err, os.ErrNotExist) {
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }

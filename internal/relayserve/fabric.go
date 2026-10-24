@@ -132,6 +132,7 @@ type fabricRoute func(fabricCall) (any, error)
 
 func (f *fabric) handler() http.Handler {
 	mux := http.NewServeMux()
+	f.mountQueue(mux)
 	mux.HandleFunc("PUT /v1/clients/{device}", f.serve(registerClient))
 	mux.HandleFunc("PUT /v1/clients/{device}/slots/{name}", f.serve(putSlot))
 	mux.HandleFunc("GET /v1/clients/{device}/slots/{name}", f.serve(getSlot))

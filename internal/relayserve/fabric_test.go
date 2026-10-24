@@ -130,3 +130,125 @@ func TestFabricSlotCapacityAndClientIsolation(t *testing.T) {
 	r.clock.Advance(24 * time.Hour)
 	fabricCall(t, r, full, "PUT", path+"/slots/extra", map[string]any{"sealed": []byte("sealed")}, 204)
 }
+
+func TestFabricQueueClaimsAndProof(t *testing.T) {
+	r := newRig(t)
+	full, client, path := pairClient(t, r)
+	second := newDevice(t, full.id, t.TempDir())
+	queue := path + "/queue"
+	body := map[string]any{"number": 1, "at": r.clock.Now().UnixMilli(), "method": "chat.send", "target": "any", "sealed": []byte("sealed call")}
+	fabricCall(t, r, client, "POST", queue, body, 204)
+	raw := fabricCall(t, r, full, "GET", queue, nil, 200)
+	var got struct {
+		Entries []struct {
+			Number      int64
+			Sealed      []byte
+			Body        []byte
+			Signature   string
+			Cert        string
+			Identity    string
+			RequestTime string `json:"request_time"`
+			RequestURI  string `json:"request_uri"`
+		}
+	}
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Entries) != 1 || got.Entries[0].Number != 1 || string(got.Entries[0].Sealed) != "sealed call" {
+		t.Fatalf("queue: %s", raw)
+	}
+	e := got.Entries[0]
+	req, _ := http.NewRequest("POST", r.srv.URL+e.RequestURI, bytes.NewReader(e.Body))
+	req.Header.Set(reqsign.HeaderIdentity, e.Identity)
+	req.Header.Set(reqsign.HeaderCert, e.Cert)
+	req.Header.Set(reqsign.HeaderTime, e.RequestTime)
+	req.Header.Set(reqsign.HeaderSig, e.Signature)
+	if _, dev, err := reqsign.Verify(req, e.Body, r.clock.Now()); err != nil || dev != client.dev.ID() {
+		t.Fatalf("entry proof: %s %v", dev, err)
+	}
+	fabricCall(t, r, full, "DELETE", queue+"/1", nil, 409)
+	fabricCall(t, r, full, "POST", queue+"/1/claim", nil, 204)
+	r.restart()
+	fabricCall(t, r, full, "POST", queue+"/1/claim", nil, 204)
+	fabricCall(t, r, second, "POST", queue+"/1/claim", nil, 409)
+	fabricCall(t, r, second, "DELETE", queue+"/1", nil, 409)
+	fabricCall(t, r, full, "DELETE", queue+"/1", nil, 204)
+	raw = fabricCall(t, r, full, "GET", queue, nil, 200)
+	if string(raw) != "{\"entries\":[]}\n" {
+		t.Fatalf("acked queue: %s", raw)
+	}
+	fabricCall(t, r, client, "POST", queue, body, 409)
+	body["number"] = 3
+	fabricCall(t, r, client, "POST", queue, body, 409)
+	body["number"] = 2
+	fabricCall(t, r, client, "POST", queue, body, 204)
+}
+
+func TestFabricQueueLimitsRoutingAndExpiry(t *testing.T) {
+	r := newRig(t)
+	full, client, path := pairClient(t, r)
+	queue := path + "/queue"
+	in := map[string]any{"number": 1, "at": r.clock.Now().UnixMilli(), "method": "chat.send", "target": "any", "sealed": []byte("sealed")}
+	in["method"] = "shell.run"
+	fabricCall(t, r, client, "POST", queue, in, 403)
+	in["method"] = "chat.send"
+	in["at"] = r.clock.Now().Add(-24 * time.Hour).UnixMilli()
+	fabricCall(t, r, client, "POST", queue, in, 400)
+	in["at"] = r.clock.Now().Add(5*time.Minute + time.Millisecond).UnixMilli()
+	fabricCall(t, r, client, "POST", queue, in, 400)
+	in["at"] = r.clock.Now().UnixMilli()
+	in["sealed"] = make([]byte, 4097)
+	fabricCall(t, r, client, "POST", queue, in, 413)
+	in["sealed"] = []byte("sealed")
+	in["target"] = full.dev.ID()
+	fabricCall(t, r, client, "POST", queue, in, 400)
+	fabricCall(t, r, full, "PUT", "/v1/dir/devices/"+full.dev.ID(), map[string]any{"V": 1}, 204)
+	fabricCall(t, r, client, "POST", queue, in, 204)
+	other := newDevice(t, full.id, t.TempDir())
+	raw := fabricCall(t, r, other, "GET", queue, nil, 200)
+	if string(raw) != "{\"entries\":[]}\n" {
+		t.Fatalf("target isolation: %s", raw)
+	}
+	fabricCall(t, r, other, "POST", queue+"/1/claim", nil, 401)
+	fabricCall(t, r, full, "POST", queue+"/1/claim", nil, 204)
+	fabricCall(t, r, full, "DELETE", queue+"/1", nil, 204)
+	in["target"] = "any"
+	for number := 2; number <= 129; number++ {
+		in["number"] = number
+		fabricCall(t, r, client, "POST", queue, in, 204)
+	}
+	in["number"] = 130
+	fabricCall(t, r, client, "POST", queue, in, 429)
+	r.clock.Advance(24 * time.Hour)
+	fabricCall(t, r, full, "POST", queue+"/2/claim", nil, 404)
+	in["at"] = r.clock.Now().UnixMilli()
+	fabricCall(t, r, client, "POST", queue, in, 204)
+	r.restart()
+	in["number"] = 129
+	fabricCall(t, r, client, "POST", queue, in, 409)
+}
+
+func TestFabricQueueOneClaimer(t *testing.T) {
+	r := newRig(t)
+	full, client, path := pairClient(t, r)
+	other := newDevice(t, full.id, t.TempDir())
+	fabricCall(t, r, client, "POST", path+"/queue", map[string]any{"number": 1, "at": r.clock.Now().UnixMilli(), "method": "chat.send", "target": "any", "sealed": []byte("sealed")}, 204)
+	statuses := make(chan int, 2)
+	for _, d := range []device{full, other} {
+		go func(d device) {
+			req, _ := http.NewRequest("POST", r.srv.URL+path+"/queue/1/claim", nil)
+			reqsign.Sign(req, nil, d, r.clock.Now())
+			resp, err := r.srv.Client().Do(req)
+			if err != nil {
+				statuses <- 0
+				return
+			}
+			resp.Body.Close()
+			statuses <- resp.StatusCode
+		}(d)
+	}
+	a, b := <-statuses, <-statuses
+	if !((a == 204 && b == 409) || (a == 409 && b == 204)) {
+		t.Fatalf("claim race: %d %d", a, b)
+	}
+}
