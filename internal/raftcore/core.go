@@ -3,6 +3,7 @@ package raftcore
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"slices"
 
 	"github.com/Agent-Field/codeaf/internal/clusterstate"
@@ -269,7 +270,10 @@ func (c *Core) Step(input Input) (effects Effects, err error) {
 		if len(in.Bytes) > MaxUncommittedBytes || proto.Unmarshal(in.Bytes, m) != nil || !c.validPeer(m) {
 			return effects, ErrPeer
 		}
-		if err = c.node.Step(m); err != nil {
+		// A delayed response can outlive committed learner removal. RawNode
+		// refuses it before changing consensus; discard that stale delivery rather
+		// than treating ordinary membership churn as a failed member.
+		if err = c.node.Step(m); err != nil && !errors.Is(err, raft.ErrStepPeerNotFound) {
 			return effects, err
 		}
 	case Propose:

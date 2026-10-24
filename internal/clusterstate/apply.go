@@ -54,6 +54,7 @@ type Authority struct {
 	Key      []byte `json:"key"`
 	Personal bool   `json:"personal"`
 	Effects  bool   `json:"effects,omitempty"`
+	Anchor   bool   `json:"anchor,omitempty"`
 }
 type session struct {
 	Sequence uint64 `json:"sequence"`
@@ -80,11 +81,13 @@ type JoinRequest struct {
 // ApplicationMeta is an immutable view at one applied index. Byte accounting
 // includes record framing and keys; capacity is a refusal, never an eviction.
 type ApplicationMeta struct {
-	Cluster string `json:"cluster"`
-	Now     int64  `json:"now"`
-	Version uint64 `json:"version"`
-	Bytes   uint64 `json:"bytes"`
-	Ceiling uint64 `json:"ceiling"`
+	Index         uint64        `json:"index"`
+	Configuration Configuration `json:"configuration"`
+	Cluster       string        `json:"cluster"`
+	Now           int64         `json:"now"`
+	Version       uint64        `json:"version"`
+	Bytes         uint64        `json:"bytes"`
+	Ceiling       uint64        `json:"ceiling"`
 }
 type Evaluation struct {
 	Now     int64         `json:"now"`
@@ -135,6 +138,7 @@ func Sign(c Command, key ed25519.PrivateKey) (Command, error) {
 func Dependencies(c Command) []RecordKey {
 	keys := []RecordKey{IdentityKey(), DeviceKey(c.Actor), AuthorityKey(c.Actor), SessionKey(c.Actor, c.Session), SessionsKey()}
 	m := c.Change
+	keys = append(keys, membershipDependencies(m)...)
 	if m.PutDevice != nil {
 		keys = append(keys, DeviceKey(m.PutDevice.ID))
 	}
@@ -246,6 +250,16 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 			target = new(Device)
 		case k.Namespace == "state" && len(k.Key) >= 5 && k.Key[:5] == "cell/":
 			target = new(Cell)
+		case k == MembershipKey():
+			var h Membership
+			if Decode(b, &h) != nil || h.Validate() != nil {
+				return out, ErrDependency
+			}
+			target = new(Membership)
+		case k.Namespace == "membership":
+			target = new(DeviceMember)
+		case k.Namespace == "tombstones" || k.Namespace == "enrollment" && len(k.Key) > 5 && k.Key[:5] == "node/":
+			target = new(MemberRecord)
 		case k.Namespace == "enrollment":
 			target = new(Authority)
 		case k == SessionsKey():
@@ -284,7 +298,7 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 	}
 	digest, _ := Digest(c)
 	signed, e := SigningBytes(c)
-	if e != nil || c.Cluster != meta.Cluster || auth.Cluster != c.Cluster || (!auth.Personal && !auth.Effects) || len(auth.Key) != ed25519.PublicKeySize || !ed25519.Verify(auth.Key, signed, c.Signature) || digest != c.RequestDigest {
+	if e != nil || c.Cluster != meta.Cluster || auth.Cluster != c.Cluster || (!auth.Personal && !auth.Effects && !auth.Anchor) || len(auth.Key) != ed25519.PublicKeySize || !ed25519.Verify(auth.Key, signed, c.Signature) || digest != c.RequestDigest {
 		return out, nil
 	}
 	// Revocation precedes dedup: a saved old response cannot authorize a revoked
@@ -294,7 +308,7 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 		return out, nil
 	}
 	service := c.Change.RecordUpload != nil || c.Change.AdmitJoin != nil || c.Change.CompleteJoin != nil
-	if service != auth.Effects || auth.Personal && auth.Effects {
+	if service != auth.Effects || auth.Personal && auth.Effects || auth.Anchor && (auth.Personal || auth.Effects || c.Change.SettleMembership == nil && c.Change.CloseSession == nil) {
 		return out, nil
 	}
 	var last session
@@ -338,7 +352,11 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 		if service {
 			code = applyEffect(c, out.Now, rows, put)
 		} else {
-			code = applyMutation(c, out.Now, identity, rows, put, &out.Result)
+			if membershipMutation(c.Change) {
+				code = applyMembership(c, meta, rows, put, &out.Result)
+			} else {
+				code = applyMutation(c, out.Now, identity, rows, put, &out.Result)
+			}
 		}
 	}
 	if err != nil {

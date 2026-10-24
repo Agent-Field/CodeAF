@@ -12,6 +12,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/clusterstate"
 	"github.com/Agent-Field/codeaf/internal/raftcore"
 	"github.com/Agent-Field/codeaf/internal/raftsnapshot"
 	"go.etcd.io/raft/v3"
@@ -24,7 +25,7 @@ const (
 	MaxBatchBytes  = raftcore.MaxMessageBytes
 	MaxChunkBytes  = raftsnapshot.ChunkBytes
 	MaxInflight    = raftcore.MaxInflightBatches
-	MaxLearners    = 32
+	MaxLearners    = clusterstate.MaxLearners
 	MaxMessages    = 64
 	MaxQueuedBytes = 1 << 20
 	// Encoded envelopes include base64 payloads, signatures and bounded IDs.

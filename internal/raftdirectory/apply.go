@@ -48,11 +48,16 @@ func Apply(ctx context.Context, store *raftstore.SQLite, b raftcore.ApplyBatch, 
 		return v, nil
 	}
 	results := []clusterstate.Result{}
+	conf := app.ConfState
 	for _, entry := range b.Entries {
+		conf, err = raftcore.AdvanceConfiguration(conf, entry)
+		if err != nil {
+			return nil, err
+		}
 		if entry.GetType() != pb.EntryNormal || len(entry.GetData()) == 0 {
 			continue
 		}
-		e, err := clusterstate.Evaluate(entry.GetData(), clusterstate.ApplicationMeta{Cluster: cluster, Now: update.LogicalTime, Version: update.VisibleVersion, Bytes: size, Ceiling: ceiling}, read)
+		e, err := clusterstate.Evaluate(entry.GetData(), clusterstate.ApplicationMeta{Index: entry.GetIndex(), Configuration: raftcore.Configuration(conf), Cluster: cluster, Now: update.LogicalTime, Version: update.VisibleVersion, Bytes: size, Ceiling: ceiling}, read)
 		if err != nil {
 			return nil, err
 		}
@@ -109,7 +114,7 @@ func authorizedRead(ctx context.Context, store *raftstore.SQLite, cluster, actor
 	}
 	var auth clusterstate.Authority
 	var device clusterstate.Device
-	if clusterstate.Decode(rows[keys[0]], &auth) != nil || auth.Cluster != cluster || (auth.Personal == effects) || auth.Effects != effects || len(auth.Key) != ed25519.PublicKeySize {
+	if clusterstate.Decode(rows[keys[0]], &auth) != nil || auth.Cluster != cluster || (auth.Personal == effects) || auth.Effects != effects || auth.Anchor || len(auth.Key) != ed25519.PublicKeySize {
 		return app, errors.New("raftdirectory: unauthorized")
 	}
 	if raw := rows[keys[1]]; raw != nil {
