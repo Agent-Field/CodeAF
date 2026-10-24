@@ -3,7 +3,7 @@ package session
 import (
 	"os"
 	"path/filepath"
-	"strings"
+	"runtime"
 	"testing"
 	"time"
 
@@ -18,25 +18,33 @@ func TestSessionPlanReadersUseWriterURI(t *testing.T) {
 
 func testSessionPlanReadersUseWriterURI(t *testing.T) {
 	t.Helper()
-	// Keep metacharacters out of the subtest name: TempDir includes that name
-	// before its unique suffix, which a raw URI fragment would otherwise cut off.
-	for _, tc := range []struct{ name, directory string }{
-		{"fragment in directory", "dir with space é %20 #"},
-		{"fragment in filename", "dir with space é %20"},
+	// Dev's literal-path contract supersedes the raw writer's decoded-path fixture.
+	for _, tc := range []struct {
+		name, directory string
+		relative        bool
+	}{
+		{"fragment in directory", "dir with space é %20 #", false},
+		{"fragment in filename", "dir with space é %20", false},
+		{"relative path", "dir with space é %20 #", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			path := filepath.Join(t.TempDir(), tc.directory, "plan with space %20 #.db")
-			// The raw writer decodes %20. Prepare that existing-store parent too,
-			// so the second case reaches the filename's # rather than stopping
-			// at the directory's #. Both spellings stay under this test's temp dir.
-			if err := os.MkdirAll(strings.ReplaceAll(filepath.Dir(path), "%20", " "), 0o700); err != nil {
-				t.Fatal(err)
+			name := "plan with space %20 #.db"
+			if runtime.GOOS != "windows" {
+				name = "plan with space %20 #?.db"
+			}
+			path := filepath.Join(t.TempDir(), tc.directory, name)
+			if tc.relative {
+				t.Chdir(t.TempDir())
+				path = filepath.Join(tc.directory, name)
 			}
 			s, err := plandb.Open(path, "uri", "root", "héllo", "read spending", "chat")
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer s.Close()
+			if _, err := os.Stat(path); err != nil {
+				t.Fatalf("literal database missing: %v", err)
+			}
 			if _, err := s.AddMany([]plandb.TaskSpec{{ID: "work", ParentID: "root", Title: "do the work"}}); err != nil {
 				t.Fatal(err)
 			}
