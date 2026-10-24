@@ -4,6 +4,7 @@ title: paired computers continue the same chat with its workspace and history
 pr: 1888
 surface: [chat, engine, remote, build, docs]
 invalidates:
+  - "Builds pinned furrow v0.1.0, whose Linux engine needs glibc 2.39 (so it cannot run on Ubuntu 22.04, Debian 12 or RHEL 9) and which had no Windows engine, so Windows builds carried none. Builds now pin furrow v0.2.0 for Linux (glibc 2.17), macOS and Windows, and the release workflow embeds the Windows engine too."
   - "Older chats used to remain local forever. Paired homes now prepare independent movable copies without changing the originals; this build lists the copy once and preserves the earlier conversation, dials, task journals and memories. File rewind begins at the copy's first current-folder save. Local Home reads its initial rows before the engine cache answers, so a cold cache cannot leave a returning person in a blank chat."
   - "Memory outside a chat and all preferences used to stay on one computer. Person/project memory and stored model, display, approval and limit defaults now merge through the encrypted vault; machine facts, automations and spending counted against limits stay local."
   - "A released chat used to require Home's continuation card. A bare launch now continues a recently released chat automatically when local work and other windows permit it; a sleeping computer needs alt+c, with a card only for a real local choice."

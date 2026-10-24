@@ -101,10 +101,9 @@ func (p Pin) DownloadURL(artifact Artifact) string {
 }
 
 // Windows release assets are furrow-windows-amd64.exe and
-// furrow-windows-arm64.exe, matching the engine release workflow (K1).
-// TODO(K1): The driver must add both v0.2.0 Windows assets and their real
-// SHA256SUMS to pin.json after that release is tagged. Missing pins stay absent;
-// developer builds can stage the reviewed candidate through FURROW_ARTIFACT.
+// furrow-windows-arm64.exe, matching the engine release workflow (K1). A
+// platform the pin does not name stays absent; developer builds can stage a
+// candidate through FURROW_ARTIFACT.
 
 // AssetName is the release workflow's spelling, also before a pin is published
 // so offline build instructions name the native Windows executable (K1).
