@@ -306,3 +306,18 @@ Worker setup and assignment execution are not available as a terminal command ye
 A worker restart registers a newer process number. Delayed requests and heartbeats from its previous process cannot refresh availability or save work. A drained worker cannot receive new claims; already held work can still save and let go. Restarting does not clear draining. Expired and removed enrollment records remain retained; reaching their capacity limit refuses new enrollment instead of deleting records or saved chats.
 
 A scoped API worker does not join the coordination log. Joining as a learner requires explicit consent in its certificate: the full log reveals identity-wide routing and ownership metadata, while chat content, names and task instructions remain encrypted. Use scoped API access for an untrusted third-party worker. A delegated learner gets no vote and cannot become leader. Existing paired personal computers keep their shared-root trust model.
+
+
+## How does a worker claim an assignment or run parallel tasks?
+
+The coordination service accepts an explicit selected chat and target worker. Instructions and credentials stay encrypted. Registration and availability alone cannot start work: the worker first downloads the saved chat, then commits a conditional claim for the assigned chat's observed holder and fence. Continuing that same observed chat elsewhere competes with the claim; only one can win. A changed assignment, expired delegation, drained worker or newer worker process can refuse the claim. A claim returns the committed head, which the worker finishes downloading before opening it.
+
+Parallel tasks use distinct child chats, each with its own holder. Finishing a child records its already published result; incorporating that result into the parent still requires the parent's current holder and fence. The worker uploads the complete saved result before publishing its head. Leadership needs neither those files nor their keys.
+
+Worker setup and assignment execution are not available as a terminal command yet. The internal worker adapter supports a small scripted worker; phone controls and creating remote machines come later.
+
+## Will an interrupted worker replay tools after a crash or reassignment?
+
+No. The worker saves its claim request before sending it and records an execution intent before invoking tools. A lost coordination reply can retry that same request, retaining its original fence. Once execution may have started, reopening keeps the records and reports `this work may be incomplete; its saved records have been kept`. It never invokes that attempt again automatically. A recorded finish can retry its coordination acknowledgment without running tools.
+
+Reassignment changes the run revision and requires a new conditional claim. The replacement can recover saved records, but the scripted adapter refuses automatic execution of a reassigned run. Missing or incomplete calls are not instructions to execute them. Cancellation prevents future claims; stopping a claimed assignment does not cancel an already running shell process. Another take changes the fence and blocks the displaced holder from publishing. Already downloaded bytes and uploaded frames stay retained.

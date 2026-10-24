@@ -95,3 +95,30 @@ pages on activation/wake; no periodic network loop starts here. Delivery of a
 grant approved before revocation cannot restore authority after it: every
 subsequent operation still checks the committed device record. Already delivered
 sealed bytes cannot be recalled, as with existing personal pairing.
+
+P16 supplies Assign/Reassign/ClaimAssignment/CancelAssignment/FinishAssignment in
+the shared Go evaluator. AssignmentRef declares every routing dependency before
+application. Only an explicit current scoped worker/incarnation with recent
+committed availability can claim; claim and ordinary fenced acquire commit in
+one application transaction. Per-cell slots exclude overlapping active runs.
+Finishing references an already published ordinary head and never writes a
+parent. Assign/Reassign bind the existing child's ParentCell and refuse aliases.
+Opaque payloads share the existing 4 KiB worker sealed-data limit. Admission
+refuses growth at the persisted identity ceiling without deleting runs.
+
+AuthorizedWorkerAssignment and hosted workerAssignment have the SAME
+actor-queue/current-committed-time/fresh-quorum prerequisite as the selected chat
+read. Recheck current target authorization at that view before execution; a saved
+claim response alone cannot reopen a displaced or superseded run. A revoked
+pending run is permanently unclaimable and its raw history remains retained.
+An owner can explicitly cancel it to reuse the per-cell slot.
+
+syncsetup.WorkerAdapter accepts scoped content dependencies and a selected
+quorum-backed directory. It uses handoff.Taker for stage/claim/reconcile/install,
+saves original signed claim/finish requests and durably records execution intent
+before its callback. Completed attempts return locally; a recorded finish retries
+only coordination. Interrupted attempts and reassigned revisions return incomplete
+without invoking tools. Execute must use the ordinary call recorder and
+cellsync.Publisher; it returns only an already published head. The adapter never
+loads a personal identity, discovers a relay, provisions a box or adds a public
+command. P17/P18 retain public client assembly and operator journeys.

@@ -191,3 +191,11 @@ barrier before returning these bytes; the ABI supplies policy, not consensus.
 Operation 16 accepts an optional tail: committed time uint64, then identity,
 authority and worker-record blobs. It is required for delegated peers; the old
 metadata-only form returns them revoked. Personal/anchor encodings are unchanged.
+
+P16 adds operation 28: cluster/worker strings, incarnation/committed-time uint64s,
+canonical AssignmentRef blob, then six blobs in AssignmentReadKeys order. It
+returns one canonical AssignmentRead blob. Like operation 27, it runs under the
+member queue after current ingress time commits and a fresh quorum barrier
+passes; the ABI never supplies a local success path. Assignments, per-cell active
+slots and incarnation-bound holds use the existing state namespace and survive
+ordinary native/hosted snapshots. No storage format or old ABI tag changes.
