@@ -359,8 +359,12 @@ func realSleep(ctx context.Context, d time.Duration) error {
 func (b *Batcher) Close(ctx context.Context) error {
 	b.flushMu.Lock()
 	defer b.flushMu.Unlock()
-	err := b.drain(ctx)
-	return errors.Join(err, b.release(ctx))
+	// A release is the cross-computer clean-quit signal. Publishing must finish
+	// first; otherwise another home could automatically open an older head.
+	if err := b.drain(ctx); err != nil {
+		return err
+	}
+	return b.release(ctx)
 }
 
 // release gives the lease up so another device can take over at once. A lease
