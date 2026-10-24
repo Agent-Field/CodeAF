@@ -207,7 +207,7 @@ func runSubharnessCommand(args []string) error {
 	// The run's own reasoning economy, layered the way every executing surface
 	// layers it: the planning level is wrong for work, and a model with reasoning
 	// suppressed stops writing anything down.
-	ctx := settings.ExecContext(settings.Context(context.Background(), name))
+	ctx := settings.ExecContext(settings.Context(hostSeated(context.Background()), name))
 	return runSubharness(ctx, subharnessRun{
 		registry: registry, name: name, input: material, journal: journal,
 		stdout: os.Stdout, stderr: os.Stderr,

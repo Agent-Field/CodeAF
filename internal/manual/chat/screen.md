@@ -28,6 +28,8 @@ line above the message box* below, and *The thinking chip above the message box*
 keys page). The tray is drawn only when it has something on it: with nothing attached, the
 row is not there and the box sits straight under the gap.
 
+## The right-hand task column — when it appears and alt+l
+
 Beside the conversation, on the right, the column (the right-hand bar, sidebar, task
 panel, whatever you call it) takes a quarter of the frame, 28 to 40 columns (30 at 120),
 from the session's first keystroke, before any tasks exist. It is the same column in every
@@ -47,6 +49,8 @@ column closed the conversation is laid out at the full width of the terminal, ru
 still draws the strip along the top, and the keys row under the box reads `alt+l tasks`
 once the session has tasks to come back to and no running-turn line owns that row.
 
+## Which places take the whole frame — the tab bar, rewind and architecture map
+
 **Seven places take the whole frame instead of sharing it**, at every width: home, AI
 teams, activity, automations, memory, spend and settings. All seven are on the tab bar with
 the way back to the chats, `Home  Chats  AI teams  Activity  Memories  Automations  Spend
@@ -57,13 +61,19 @@ by position on the bar, so memories, the fifth word, is `alt+8`, and automations
 each has commands of its own (`/home`, `/teams`, `/history`,
 `/automations`, `/memory`, `/settings`). The rewind timeline (`/rewind`) takes the frame the same way and is
 deliberately not one of the seven: it is something you do to this conversation rather than
-a room in the machine.
+a room in the machine. The architecture map (`/atlas`, or `codeaf atlas` from the shell)
+takes the frame the same way and is not one of the seven either: it is a map you read, and
+`esc` or `q` gives the frame back. Bare `/atlas` opens a picker first — every map with its
+name and its one-line description; `enter` opens the one the cursor is on, `esc` or `q`
+leaves and gives the chat back exactly as it was.
 
 While any of them is up nothing else is drawn — no conversation, no box, no status line —
 and `esc` gives the frame back. **Only one is ever up:** opening any one closes the rest.
 
+## Full-page navigation and the home message box
+
 Every place is drawn in one frame, top to bottom: the top line (the `codeaf` wordmark, the
-six places with the one you stand in lit, and the machine's own signs on the far end), the
+place names with the one you stand in lit, and the machine's own signs on the far end), the
 tab strip of your chats, a dim rule, the place's body, a rule carrying the place's own count
 or note, and the hint line last. See the **Places** page.
 
@@ -265,7 +275,7 @@ words supply the name until the generated title arrives. The project is a separa
 
 Answers to questions, including credential prompts, never supply a draft tab title.
 
-## Closing a tab — the × on a tab, Ctrl+W, where do I go next
+## How do I stop just this chat without touching the others — closing one tab with Ctrl+W or ×
 
 **`×` or `ctrl+w` closes the tab in front.** Closing another tab leaves the
 current chat selected. Closing the current tab selects the most recently used
@@ -288,6 +298,8 @@ shortcut needs a terminal that distinguishes Ctrl+Shift+T from Ctrl+T.
 every door — the ordinary socket, `--host`, `--at` and `--no-host` alike. Selecting the
 next tab replaces nothing: that chat has its own connection and carries on. Closing the
 last tab to Home leaves its connection in place.
+
+## Closing a tab versus quitting codeaf — /quit and ctrl+c
 
 **Quitting is a different act from closing a tab.** `ctrl+w` and `×` take a view off the
 row, and a working one is answered by the card below. `/quit` and `ctrl+c` end the whole
@@ -1167,6 +1179,23 @@ redial the existing sentence — `reconnecting to devbox — trying for up to 5 
 takes the segment. `/status` spells the healthy fact out as `the round trip to devbox is
 about 3ms` under `connection`.
 
+## Why does the status line say not sealed — calls that rewind cannot reach
+
+While a conversation's calls are being sealed and the last seal failed, the status line
+carries `✗ not sealed` beside the state word. It is drawn for as long as it is true and it
+goes the moment a seal holds; a conversation whose calls are sealing normally, or whose
+folder is not sealed at all, draws nothing. Each conversation shows its own: another chat's failure never appears on this one. It shows on every launch, including the ordinary one where the conversation runs in a separate engine process, because the engine states the fact to the screen. A failed seal never fails the call or stops
+the conversation, so this segment is the only sign that rewind cannot reach what came
+after the failure.
+
+Three changes are also said once in the conversation: sealing starting to fail, with the
+cause; its cause changing while it is still failing; and sealing working again. The same
+failure repeating says nothing more, because the segment already does. The calls made
+while sealing was down are not lost: they ride the next seal that holds, and `codeaf cell
+log` lists them as `unsealed  <n> call(s) since <time>` until then, including after the
+conversation has closed. `/status` prints the segment under `sealing`. A narrow terminal
+drops it only after the connection and before the question chip.
+
 ## Why the numbers on the status line fade
 
 The telemetry cluster on the right of the status line is painted by how recently each
@@ -1349,7 +1378,7 @@ The **state word, the `YOLO` badge and the connection are not in that list**. On
 you are looking at the line, the second is why you should be, and the third is the reason
 none of the numbers beside it are moving. On the rule they still have to fit beside the
 conversation's name, so once every figure above is gone they go too, in this order —
-the connection, the badge, the question chip — and the state word is the last thing
+the connection, the badge, the `not sealed` mark, the question chip — and the state word is the last thing
 standing. The name and the model are cut or dropped only when not even the state word fits
 beside them whole.
 
@@ -3798,7 +3827,7 @@ and then a slow answer is simply waited out — the status line still says what 
 and how long it has been, and draws no countdown, because nothing is going to happen at
 the end of one.
 
-## Why did the reply restart, what does "trying again" mean, and where did the text that was on screen go — the text it was writing disappeared
+## It says trying again — why did the reply restart, what does "trying again" mean, and where did the text that was on screen go — the text it was writing disappeared
 
 Sometimes the wait line stops naming a model and reads this instead:
 
@@ -3831,6 +3860,8 @@ One more row reads the same way and is not a cut request: `the reply stopped whe
 conversation moved — asking again` is a whole turn being asked again, in the window a
 conversation was moved to, because the turn it left behind had said nothing at all.
 
+
+## Does trying again change my model — the endpoint and fallback
 
 The model is **not** named on `trying again`. The name was on the line that was just cut,
 and the retry still asks that same model. When the router identified an endpoint that went

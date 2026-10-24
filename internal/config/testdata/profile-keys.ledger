@@ -16,6 +16,7 @@ attribution
 attribution.model
 bash.background_after_seconds
 brief_after
+cell.budget_gb
 completion_reserve
 context_fill_pct
 context_reuse_pct
@@ -120,3 +121,4 @@ update.auto
 vision_model
 work.workers
 working_set_tokens
+sync.preference_times

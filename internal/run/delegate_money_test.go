@@ -1,5 +1,7 @@
 //go:build !windows
 
+// K6 keeps the Unix shell child harness on its supported platforms.
+
 package run_test
 
 import (

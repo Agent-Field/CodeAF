@@ -31,6 +31,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -230,7 +231,8 @@ func locate() (string, bool) {
 
 func executable(path string) bool {
 	info, err := os.Stat(path)
-	return err == nil && !info.IsDir() && info.Mode()&0o111 != 0
+	// Windows has no Unix execute bits; its native binaries are regular files.
+	return err == nil && !info.IsDir() && (runtime.GOOS == "windows" || info.Mode()&0o111 != 0)
 }
 
 // BinDir is where a bootstrapped rtk lives. It is codeaf's own shelf, not the

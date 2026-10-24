@@ -1,0 +1,6 @@
+#!/bin/sh
+# One policy keeps the Node smoke checks and Go matrix on the same local proxy bounds.
+: "${CODEAF_RELAYCONF_RETRIES:=2}"
+: "${CODEAF_RELAYCONF_CONCURRENCY:=2}"
+: "${CONFORMANCE_TEST_PARALLEL:=2}"
+export CODEAF_RELAYCONF_RETRIES CODEAF_RELAYCONF_CONCURRENCY CONFORMANCE_TEST_PARALLEL

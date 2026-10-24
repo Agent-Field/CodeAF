@@ -22,6 +22,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 )
 
@@ -118,7 +119,6 @@ var ErrNoTerminal = errors.New("the program exited without a terminal record")
 // terminal. The error answered is the context's own, so a run supervisor that
 // reads `context.Canceled` off a worker knows its own ending cut the task.
 func Run(ctx context.Context, launch Launch, sink Sink) (Result, error) {
-	cmd := exec.Command(launch.Bin, launch.Args...)
 	// The marker is a last-resort Linux sweep after SIGKILL stops the engine
 	// before its own subreaper can clean up its descendants.
 	markerBytes := make([]byte, 16)
@@ -130,14 +130,22 @@ func Run(ctx context.Context, launch Launch, sink Sink) (Result, error) {
 	if baseEnv == nil {
 		baseEnv = os.Environ()
 	}
-	cmd.Env = append(append([]string(nil), baseEnv...), processgroup.RunMarkerEnv+"="+marker)
+	cmd, err := executor.For(ctx).In(launch.Dir).Command(context.Background(), executor.ExecRequest{
+		Argv: append([]string{launch.Bin}, launch.Args...),
+		Env:  append(append([]string(nil), baseEnv...), processgroup.RunMarkerEnv+"="+marker),
+	})
+	if err != nil {
+		return Result{ExitCode: -1}, fmt.Errorf("start %s: %w", launch.Name, err)
+	}
+	// THE HOLD RIDES WITH THE PROGRAM. The executor builds and confines the
+	// command; the hold is this launch's own, handed to the child as an extra
+	// descriptor so it outlives a host that dies ([HoldEnv]). The executor's
+	// own stream wiring leaves ExtraFiles to the caller, which is exactly what
+	// a caller-owned hold is.
 	if launch.Hold != nil && runtime.GOOS != "windows" {
 		cmd.ExtraFiles = []*os.File{launch.Hold}
 		cmd.Env = append(cmd.Env, HoldEnv+"=3")
 	}
-	cmd.Dir = launch.Dir
-	cmd.Stdin = nil
-	processgroup.Configure(cmd)
 	stderr, err := openStderr(launch.StderrPath)
 	if err != nil {
 		return Result{ExitCode: -1}, err

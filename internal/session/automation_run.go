@@ -43,8 +43,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	procexec "github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/lane"
-	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
@@ -168,16 +168,18 @@ func (r *automationRunner) Look(ctx context.Context, item automation.Automation)
 // it replaces did not do. A failing command is evidence, not an error: "is CI
 // red" is often answered by an exit status.
 func automationLookCommand(ctx context.Context, workspace, command string) (automation.Sight, error) {
-	shell, args := jobShell()
-	process := exec.CommandContext(ctx, shell, append(args, command)...)
-	process.Dir = workspace
-	process.Env = bare.StreamingEnv()
-	processgroup.ConfigureDetached(process)
-	process.Cancel = func() error {
-		_ = processgroup.Kill(process.Process.Pid)
-		return nil
+	shell, args, shellErr := jobShell()
+	if shellErr != nil {
+		return automation.Sight{}, shellErr
 	}
-	process.WaitDelay = 2 * time.Second
+	// I0: an automation look has host access but still uses the command runner.
+	process, err := procexec.Host.In(workspace).Command(ctx, procexec.ExecRequest{
+		Argv: append([]string{shell}, append(args, command)...), Env: bare.StreamingEnv(),
+		Group: procexec.GroupSession, WaitDelay: 2 * time.Second,
+	})
+	if err != nil {
+		return automation.Sight{}, fmt.Errorf("could not run the command: %w", err)
+	}
 	output, err := process.CombinedOutput()
 	seen := string(output)
 	switch {
@@ -387,6 +389,9 @@ func (r *automationRunner) lookTool(ctx context.Context, item automation.Automat
 	cfg.automationID = item.ID
 	agent := &Agent{config: cfg, model: cfg.Model, id: NewSessionID()}
 	agent.jobs = newJobRegistry(cfg.Workspace, cfg.droppingsPlace(), agent.enqueueJobNote, agent.enqueueWatchNote)
+	agent.jobs.seat = cfg.seat()
+	agent.jobs.lifecycle = lifecycleOf(cfg.Machine)
+	ctx = procexec.With(ctx, cfg.seatFor(ctx))
 	agent.connect = newConnectHub(cfg)
 	agent.tools = agent.belt()
 	defer agent.jobs.shutdown(jobShutdownGrace)

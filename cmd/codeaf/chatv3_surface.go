@@ -6,8 +6,11 @@ import (
 	"os"
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/config"
 	internalenv "github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
 )
@@ -55,6 +58,23 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 	if restart == nil {
 		restart = &codeupdate.Plan{}
 		options.Restart = restart
+	}
+	options.CellsUnavailable = cell.UnavailableReason()
+	if options.CellsUnavailable == "" {
+		wireSync(&options)
+		stateCtx, stopState := context.WithCancel(ctx)
+		stateDone := make(chan struct{})
+		guard.Go("sync/home-state", func() {
+			defer close(stateDone)
+			if s, err := syncOf(); err == nil {
+				s.RunState(stateCtx)
+			}
+		})
+		copiesDone := make(chan struct{})
+		guard.Go("sync/older-chats", func() { defer close(copiesDone); runOlderChats(stateCtx) })
+		defer func() { stopState(); <-stateDone; <-copiesDone }()
+		options.Pairing = chatPairDoor{}
+		options.Approvals = newApprovalsDoor(home.Dir())
 	}
 	options.UpdateRunning = revision
 	options.UpdateCurl = curl

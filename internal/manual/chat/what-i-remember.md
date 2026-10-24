@@ -443,8 +443,8 @@ them: a line for one project is only ever put in front of that project's
 conversations.
 
 `CODEAF_HOME` moves the whole folder. Copy the file to another machine and your
-memories go with it; delete it and they are gone, because nothing keeps a second
-copy. A line kept for **this machine** travels in the file too, so check that
+memories go with it. Deleting it loses lines that no chat kept in its sealed
+ledger; a continued chat rebuilds the lines its ledger holds. A line kept for **this machine** travels in the file too, so check that
 group after copying.
 
 
@@ -644,3 +644,13 @@ drops out and something confirmed this morning rises. A suggestion that fails on
 the same error is counted against itself. There is no command or panel for it,
 it is not on the Memories tab, and the noticing setting does not turn it off: the
 one line on a failed row is the whole of what it says.
+
+## Does /remember work on my other computer — hand edited memories follow my paired computers, memory missing on the new laptop
+
+Person and project memory follow your paired computers through the encrypted vault within one sync round, including hand-edited lines in the Memories place and lines written by older chats. No chat needs to be continued first. Concurrent edits of different lines both survive; for the same line the later edit wins, including forgetting a line. The service receives ciphertext only.
+
+Machine-scoped memories describe one computer and stay there. An unpaired home sends nothing. Pairing a computer that has its own memory merges those lines and preferences; explicit `--replace` replaces them. Chat-written memory still rides in each chat's own saved ledger as well.
+
+## Memory in older local conversations and new moving chats
+
+Memories use the local store on each computer. After pairing, an older conversation gets an independent movable copy with its earlier memory history sealed into `.cell/memories.jsonl`; the original is untouched. Person and project memory also sync independently through the encrypted vault.

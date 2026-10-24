@@ -154,6 +154,13 @@ func readEvents(tx *sql.Tx) ([]Event, error) {
 }
 
 func replayEvent(tx *sql.Tx, event Event) error {
+	if ledgered[event.Kind] {
+		skip, err := prepareSharedMemoryReplay(tx, event)
+		if err != nil || skip {
+			return err
+		}
+	}
+
 	switch event.Kind {
 	case EventSpineCreated:
 		var payload spinePayload
@@ -613,6 +620,10 @@ func replayEvent(tx *sql.Tx, event Event) error {
 			return err
 		}
 		return applyQuestionPracticeCompleted(tx, payload, event.Seq)
+
+	case EventMemoryReset:
+		_, err := tx.Exec(`DELETE FROM memories WHERE owner<>?`, OwnerMachine)
+		return err
 
 	case EventMemoryAdd:
 		var payload memoryPayload

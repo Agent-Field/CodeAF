@@ -23,6 +23,15 @@
  "nf-fa-bolt": {
   "code": "f0e7"
  },
+ "nf-fa-caret_down": {
+  "code": "f0d7"
+ },
+ "nf-fa-caret_left": {
+  "code": "f0d9"
+ },
+ "nf-fa-caret_up": {
+  "code": "f0d8"
+ },
  "nf-fa-caret_right": {
   "code": "f0da"
  },

@@ -156,6 +156,9 @@ type Engine struct {
 	// conversation in it. Nil for a door that retains nothing. It changes no
 	// wire shape — a conversation ending is already the end of its stream.
 	Closed func(agent WrappedAgent)
+	// ReleaseOnLeave enables immediate idle retirement after the last deliberate
+	// detach for a paired movable chat. Torn links retain their existing grace.
+	ReleaseOnLeave func(WrappedAgent) bool
 	// ProfileDir is the profile directory this engine process resolved. It is
 	// carried in Welcome so a linked-local surface writes every local row back
 	// to the profile the running conversation actually reads. A remote surface
@@ -398,7 +401,10 @@ type Session struct {
 	engine     *Engine
 	agent      WrappedAgent
 	persistent bool
-	instance   string
+	// releaseOnIdle remembers a paired window's clean departure while its last
+	// stream finishes. A new attached window cancels that departure (C31.1).
+	releaseOnIdle bool
+	instance      string
 
 	// generation counts the session swaps. Every pump remembers the generation
 	// it was born in and goes quiet the moment it is not the current one — see
@@ -764,6 +770,9 @@ func (sess *Session) lastWatched() string {
 // interrupted with its journal flushed, exactly as a person's own /quit would.
 // The window is that walk, not the whole idle span.
 func (sess *Session) RetireIfIdle(olderThan time.Duration) bool {
+	if sess.releasePending() {
+		olderThan = 0
+	}
 	idle := sess.IdleSince()
 	if idle.IsZero() || time.Since(idle) <= olderThan {
 		return false
@@ -1069,6 +1078,7 @@ func (sess *Session) attach(s *server, hello Hello) error {
 	welcome.Attached = len(sess.surfaces)
 	sess.surfaces[s] = struct{}{}
 	sess.empty = time.Time{}
+	sess.releaseOnIdle = false
 	// THE NEWEST WINDOW DRIVES, and a window that merely lost its link is not a
 	// new one (driver.go states the whole rule, [Hello.Back] states why the
 	// difference is load-bearing). A WATCHER IS NEITHER: it never drives, and the
@@ -1278,6 +1288,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// survive every swap (wire_automations.go).
 		Automations:     sess.engine.Automations.on(),
 		AutomationsZone: sess.engine.Automations.zone(),
+		Setup:           setupKnown(sess.agent),
 	}
 }
 
@@ -1553,6 +1564,9 @@ func (sess *Session) finish(id, generation uint64) {
 	frame := Frame{Kind: "closed", ID: id, Seq: last}
 	for _, surface := range watching {
 		_ = surface.send(frame)
+	}
+	if sess.releasePending() {
+		sess.RetireIfIdle(0)
 	}
 }
 
@@ -1847,6 +1861,14 @@ func (s *server) leave() {
 		return
 	}
 	sess.detach(s, s.detached.Load())
+	if s.detached.Load() {
+		sess.mu.Lock()
+		engine, agent := sess.engine, sess.agent
+		sess.mu.Unlock()
+		if engine != nil && engine.ReleaseOnLeave != nil && engine.ReleaseOnLeave(agent) {
+			sess.releaseAfterLeave()
+		}
+	}
 	if s.goodbye.Load() {
 		_ = sess.closeLeaving()
 		return
@@ -2075,7 +2097,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	// card, switching a model, interrupting a turn — stays open to every surface
 	// in the room: a watcher is a person watching their own work, not a guest.
 	switch call.Method {
-	case MethodSubmitBash, MethodSubmit, MethodFollowUp, MethodUnqueueFollowUp, MethodSteer, MethodQuestionReplace, MethodSubmitImage, MethodSubmitFiles,
+	case MethodSubmitBash, MethodSubmitSetup, MethodSubmit, MethodFollowUp, MethodUnqueueFollowUp, MethodSteer, MethodQuestionReplace, MethodSubmitImage, MethodSubmitFiles,
 		MethodTaskSteer, MethodTaskStop, MethodTaskRetry:
 		if err := s.mayDrive(); err != nil {
 			return nil, err
@@ -2516,6 +2538,13 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		}
 		events, err := door.SubmitBash(context.Background(), args.Text)
 		return s.stream(MethodSubmitBash, args.Text, events, err)
+
+	case MethodSetupPlan:
+		return serveSetupPlan(agent)
+
+	case MethodSubmitSetup:
+		events, err := submitSetup(agent)
+		return s.stream(MethodSubmitSetup, setupSaid, events, err)
 
 	case MethodSubmit:
 		args, err := arg[SubmitArgs](call)
@@ -3376,4 +3405,21 @@ func mustJSON(value any) json.RawMessage {
 		return nil
 	}
 	return encoded
+}
+
+// releaseAfterLeave retains a clean departure until the final stream ends.
+// The idle decision still checks attached windows and unfinished work together.
+func (sess *Session) releaseAfterLeave() {
+	func() {
+		sess.mu.Lock()
+		defer sess.mu.Unlock()
+		sess.releaseOnIdle = len(sess.surfaces) == 0
+	}()
+	sess.RetireIfIdle(0)
+}
+
+func (sess *Session) releasePending() bool {
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+	return sess.releaseOnIdle
 }

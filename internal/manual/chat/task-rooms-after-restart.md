@@ -1,6 +1,6 @@
 # A task's room after a restart
 
-## See what a task did after restarting — a finished task's room shows its whole transcript
+## Inside a task I cannot see the chat session or the output — see its whole transcript after restarting
 
 Close codeaf, open the same conversation again, and walk into a task that finished in the
 earlier life of it — `enter` on its roster row, a click on its strip chip, a `task 7`
@@ -12,7 +12,9 @@ and where the task was spawned under another task it names that too:
 `this task has finished — say it to main, or open its parent, Ship the port`.
 
 That works because the task's transcript is a real file on disk, kept beside the
-conversation that commissioned it — `<session folder>/tasks/<YYYYMMDD-HHMMSS>_<task id>.jsonl`
+conversation that commissioned it — `<session folder>/.cell/tasks/<YYYYMMDD-HHMMSS>_<task id>.jsonl`
+for a cell, or `<session folder>/tasks/<YYYYMMDD-HHMMSS>_<task id>.jsonl` for a
+older conversation that keeps its original layout
 — and the conversation's task checkpoint remembers which file is which. A checkpoint
 written by an older codeaf that did not remember is no worse off: the file is named with
 the task's id, so the room finds it by that id in the same directory, and remembers it from
@@ -41,9 +43,10 @@ this task's transcript is not here any more
 this task has finished — say it to main
 ```
 
-That line means the file itself is gone: a session folder you deleted, or work that
-happened on another machine. It is a fact about the disk, not a fault in the task. A room
-with even one block in it never shows the line.
+That line means the journal is absent on this computer: a session folder you deleted,
+or work on another machine whose chat has not been brought here. Continuing a chat
+carries its task journals too, so a normal move alone is not a reason for a missing
+transcript. A room with even one block in it never shows the line.
 
 ## Nothing on this page yet: a queued or newly started task
 

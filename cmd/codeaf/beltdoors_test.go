@@ -27,7 +27,8 @@ import (
 // a command that scrolled off a person's screen.
 // Part A's terminal connect door adds its two required forms and descriptions.
 // The cap moves by exactly those seven lines; unrelated help growth still fails.
-const helpLineCap = 117
+// The pairing door adds its two forms and their descriptions, four lines more.
+const helpLineCap = 121
 
 // doorsOffThePage are the command words main.go dispatches that `codeaf --help`
 // deliberately does NOT name, so the check below does not demand a line for
@@ -39,11 +40,13 @@ const helpLineCap = 117
 //   - `tick` and `wake` do nothing: they are kept only for the
 //     operating-system timers an older build installed, which run them until
 //     this build removes them (main.go, wake.go).
+//   - `cell`, `identity` and `relay` are the cell, identity and relay doors
+//     documented in the terminal and pairing manuals.
 //   - `show` and `revise` are the old top-level spellings of `plan show` and
 //     `plan revise`; the page names the commands they became.
 //   - `help` is the alias for `--help` itself.
 var doorsOffThePage = map[string]bool{
-	"engine": true, "tick": true, "clock": true, "wake": true, "show": true, "revise": true, "help": true,
+	"cell": true, "identity": true, "relay": true, "engine": true, "tick": true, "clock": true, "wake": true, "show": true, "revise": true, "help": true,
 }
 
 // THE FIRST GESTURE ON AN UNFAMILIAR DOOR IS `-h`, and it must not be a

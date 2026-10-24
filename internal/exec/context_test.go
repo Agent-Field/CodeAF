@@ -466,7 +466,8 @@ func TestRepeatedBytesBecomeAPointerToTheFirstCopy(t *testing.T) {
 	}
 	// Every pointer names a durable address, even while the target is still
 	// quoted above it — see the dangling-pointer test below for why.
-	wantPath := filepath.Join(obsDir, "2-decay-c1.txt")
+	// K3: a durable observation address sent in chat uses slash paths on every host.
+	wantPath := obsDir + "/2-decay-c1.txt"
 	if !strings.Contains(second, wantPath) {
 		t.Fatalf("the pointer names no durable address: %q", second)
 	}
@@ -510,7 +511,8 @@ func TestARereadOfRetiredBytesIsAnsweredWithTheBytes(t *testing.T) {
 	if decayed := fade.decay(messages, observationBudget); decayed != 1 {
 		t.Fatalf("decayed = %d, want the older result stubbed", decayed)
 	}
-	wantPath := filepath.Join(obsDir, "2-decay-c7.txt")
+	// K3: a durable observation address sent in chat uses slash paths on every host.
+	wantPath := obsDir + "/2-decay-c7.txt"
 	if stub := contentOf(messages[0]); !strings.Contains(stub, wantPath) {
 		t.Fatalf("the stub does not say where the bytes went: %q", stub)
 	}
@@ -592,7 +594,8 @@ func TestADecayTimeWriteFailureCannotStrandAPointer(t *testing.T) {
 	if !strings.Contains(pointer, "identical to the result of") {
 		t.Fatalf("the repeat was not pointed at all: %q", clipForTest(pointer))
 	}
-	wantPath := filepath.Join(obsDir, "2-decay-c7.txt")
+	// K3: a durable observation address sent in chat uses slash paths on every host.
+	wantPath := obsDir + "/2-decay-c7.txt"
 	if !strings.Contains(pointer, wantPath) {
 		t.Fatalf("the pointer named no durable address while its target was live: %q", pointer)
 	}
@@ -1111,7 +1114,8 @@ func TestDecaySpillsLosslessly(t *testing.T) {
 	if !strings.Contains(stub, "sh cat foo") || !strings.Contains(stub, "20480 bytes") {
 		t.Errorf("stub %q does not identify what was decayed", stub)
 	}
-	wantPath := filepath.Join(obsDir, "2-decay-c7.txt")
+	// K3: a durable observation address sent in chat uses slash paths on every host.
+	wantPath := obsDir + "/2-decay-c7.txt"
 	if !strings.Contains(stub, "spilled to "+wantPath) {
 		t.Fatalf("stub %q does not carry the spill path %q", stub, wantPath)
 	}

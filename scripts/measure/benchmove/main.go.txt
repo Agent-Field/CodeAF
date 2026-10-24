@@ -1,0 +1,715 @@
+// Command benchmove is the move benchmark's one probe: it seals, takes and
+// moves identities for scripts/bench-move.sh. It is NOT product code:
+// bench-move.sh copies this one file (kept as main.go.txt here) into a private copy of the product tree
+// (never the product worktree) and builds it there, because the sync client
+// lives in internal/ packages. It changes no product code and calls no model.
+//
+//	benchmove id-export -home H -pass P -out FILE      write this home's identity
+//	benchmove id-import -home H -pass P -in FILE       adopt it (a second device)
+//	benchmove create    -root R -work W                new chat over project W; prints its id
+//	benchmove seal      -root R -cell ID -work W -kind K -n N   mutate, seal, wait durable, N turns
+//	benchmove take      -root R -cell ID                continue the chat here (cold or warm)
+//	benchmove wipe      -root R -cell ID                forget the chat on this device
+//
+// -root holds home/, stores/ and chats/ of one device. Every verb prints one
+// JSON object on stdout. CODEAF_SYNC_URL names the relay. Kinds: tiny (one
+// transcript line), one (1 file), fifty (50 files), big (a -mb MB random file).
+package main
+
+import (
+	"bufio"
+	"context"
+	crand "crypto/rand"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"hash/fnv"
+	"io"
+	"io/fs"
+	"math/rand/v2"
+	"net/http"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+	"unicode/utf8"
+
+	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cellstats"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/identity"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/syncsetup"
+)
+
+func main() {
+	if len(os.Args) < 2 {
+		fail(errors.New("usage: benchmove id-export|id-import|create|seal|take|wipe [flags]"))
+	}
+	var err error
+	switch os.Args[1] {
+	case "id-export":
+		err = idExport(os.Args[2:])
+	case "id-import":
+		err = idImport(os.Args[2:])
+	case "create":
+		err = create(os.Args[2:])
+	case "seal":
+		err = sealCmd(os.Args[2:])
+	case "take":
+		err = takeCmd(os.Args[2:])
+	case "wipe":
+		err = wipe(os.Args[2:])
+	default:
+		err = fmt.Errorf("unknown verb %q", os.Args[1])
+	}
+	if err != nil {
+		fail(err)
+	}
+}
+
+func fail(err error) {
+	fmt.Fprintln(os.Stderr, "benchmove:", err)
+	os.Exit(1)
+}
+
+func emit(v any) error { return json.NewEncoder(os.Stdout).Encode(v) }
+
+func ms(d time.Duration) float64 { return float64(d.Microseconds()) / 1000 }
+
+// ---- wire meter: every request to the relay, by kind, with its time ----
+
+type stat struct {
+	N    int64   `json:"n"`
+	Ms   float64 `json:"ms"` // summed request time, first byte sent to body read
+	Up   int64   `json:"up"`
+	Down int64   `json:"down"`
+}
+
+type meter struct {
+	inner http.RoundTripper
+	mu    sync.Mutex
+	cats  map[string]*stat
+}
+
+func newMeter() *meter { return &meter{inner: http.DefaultTransport, cats: map[string]*stat{}} }
+
+// kind names a request the way the hosted price table counts it.
+func kind(r *http.Request) string {
+	p := r.URL.Path
+	switch {
+	case strings.HasPrefix(p, "/v1/store/"):
+		switch {
+		case r.Method == http.MethodGet && strings.Contains(p, "/objects/"):
+			return "store_get"
+		case r.Method == http.MethodPost && strings.HasSuffix(p, "/has"):
+			return "store_has"
+		case r.Method == http.MethodPost:
+			return "store_put"
+		}
+		return "store_other"
+	case strings.HasPrefix(p, "/v1/dir"):
+		seg := p[strings.LastIndex(p, "/")+1:]
+		if len(seg) >= 20 { // a chat id
+			seg = "cell"
+		}
+		return "dir_" + r.Method[:1] + "_" + seg
+	}
+	return "other"
+}
+
+func (m *meter) add(k string, n int64, d time.Duration, up, down int64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.cats[k]
+	if s == nil {
+		s = &stat{}
+		m.cats[k] = s
+	}
+	s.N += n
+	s.Ms += ms(d)
+	s.Up += up
+	s.Down += down
+}
+
+func (m *meter) RoundTrip(r *http.Request) (*http.Response, error) {
+	k, t0 := kind(r), time.Now()
+	var up int64
+	if r.ContentLength > 0 {
+		up = r.ContentLength
+	}
+	resp, err := m.inner.RoundTrip(r)
+	if err != nil {
+		m.add(k, 1, time.Since(t0), up, 0)
+		return resp, err
+	}
+	resp.Body = &timedBody{ReadCloser: resp.Body, done: func(n int64) { m.add(k, 1, time.Since(t0), up, n) }}
+	return resp, nil
+}
+
+type timedBody struct {
+	io.ReadCloser
+	n    int64
+	once sync.Once
+	done func(int64)
+}
+
+func (b *timedBody) Read(p []byte) (int, error) {
+	k, err := b.ReadCloser.Read(p)
+	b.n += int64(k)
+	if err != nil {
+		b.once.Do(func() { b.done(b.n) })
+	}
+	return k, err
+}
+
+func (b *timedBody) Close() error {
+	err := b.ReadCloser.Close()
+	b.once.Do(func() { b.done(b.n) })
+	return err
+}
+
+type cats map[string]stat
+
+func (m *meter) snap() cats {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := cats{}
+	for k, v := range m.cats {
+		out[k] = *v
+	}
+	return out
+}
+
+func (a cats) minus(b cats) cats {
+	out := cats{}
+	for k, v := range a {
+		o := b[k]
+		if d := (stat{v.N - o.N, v.Ms - o.Ms, v.Up - o.Up, v.Down - o.Down}); d.N != 0 {
+			out[k] = d
+		}
+	}
+	return out
+}
+
+// ---- engine verbs: what the engine spends, by verb ----
+
+type verbStat struct {
+	N    int     `json:"n"`
+	Ms   float64 `json:"ms"`
+	Want []int   `json:"want_sizes,omitempty"` // objects each `want` round asked for
+}
+
+type tracer struct {
+	mu    sync.Mutex
+	verbs map[string]*verbStat
+}
+
+type tracedTransport struct {
+	inner cellstore.Transport
+	t     *tracer
+}
+
+func (x tracedTransport) Do(ctx context.Context, tg cellstore.Target, op cellstore.Op) ([]byte, error) {
+	t0 := time.Now()
+	out, err := x.inner.Do(ctx, tg, op)
+	d := time.Since(t0)
+	x.t.mu.Lock()
+	defer x.t.mu.Unlock()
+	v := x.t.verbs[op.Verb()]
+	if v == nil {
+		v = &verbStat{}
+		x.t.verbs[op.Verb()] = v
+	}
+	v.N++
+	v.Ms += ms(d)
+	if op.Verb() == "want" {
+		var w struct {
+			Want []string `json:"want"`
+		}
+		if json.Unmarshal(out, &w) == nil {
+			v.Want = append(v.Want, len(w.Want))
+		}
+	}
+	return out, err
+}
+
+func (t *tracer) snap() map[string]verbStat {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	out := map[string]verbStat{}
+	for k, v := range t.verbs {
+		out[k] = verbStat{v.N, v.Ms, append([]int(nil), v.Want...)}
+	}
+	return out
+}
+
+func verbsMinus(a, b map[string]verbStat) map[string]verbStat {
+	out := map[string]verbStat{}
+	for k, v := range a {
+		o := b[k]
+		if v.N == o.N {
+			continue
+		}
+		out[k] = verbStat{v.N - o.N, v.Ms - o.Ms, v.Want[len(o.Want):]}
+	}
+	return out
+}
+
+// ---- one device ----
+
+type dev struct {
+	root, home, stores, chats, furrow string
+	name                              string
+	m                                 *meter
+	tr                                *tracer
+	s                                 *syncsetup.Sync
+}
+
+type common struct {
+	root, furrow, name string
+}
+
+func (c *common) flags(fs *flag.FlagSet) {
+	fs.StringVar(&c.root, "root", "", "this device's bench folder (holds home/, stores/, chats/)")
+	fs.StringVar(&c.furrow, "furrow", os.Getenv("BENCH_FURROW"), "engine binary")
+	fs.StringVar(&c.name, "device", "bench", "device name")
+}
+
+func (c common) dev(needSync bool) (*dev, error) {
+	if c.root == "" {
+		return nil, errors.New("-root is required")
+	}
+	d := &dev{root: c.root, home: filepath.Join(c.root, "home"), stores: filepath.Join(c.root, "stores"),
+		chats: filepath.Join(c.root, "chats"), furrow: c.furrow, name: c.name, m: newMeter(), tr: &tracer{verbs: map[string]*verbStat{}}}
+	http.DefaultTransport = d.m
+	if needSync {
+		s, ok, err := syncsetup.Open(d.home)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, errors.New("CODEAF_SYNC_URL is not set")
+		}
+		d.s = s
+	}
+	return d, nil
+}
+
+func (d *dev) engine(workspace string) cellstore.Engine {
+	e := cellstore.EngineFor(workspace)
+	e.DataRoot, e.Binary = d.stores, d.furrow
+	e.Transport = tracedTransport{inner: cellstore.Spawn{Binary: d.furrow}, t: d.tr}
+	e.Guard.Home, e.Guard.Notify = d.home, func(string) {}
+	return e
+}
+
+func (d *dev) chatRoot(id string) string { return filepath.Join(d.chats, id) }
+
+// ---- identity ----
+
+func idExport(args []string) error {
+	fs := flag.NewFlagSet("id-export", flag.ExitOnError)
+	home, pass, out := fs.String("home", "", ""), fs.String("pass", "bench", ""), fs.String("out", "", "")
+	fs.Parse(args)
+	if _, err := identity.Ensure(*home); err != nil {
+		return err
+	}
+	id, err := identity.Load(*home)
+	if err != nil {
+		return err
+	}
+	blob, err := identity.Export(id, *pass)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(*out, blob, 0o600)
+}
+
+func idImport(args []string) error {
+	fs := flag.NewFlagSet("id-import", flag.ExitOnError)
+	home, pass, in := fs.String("home", "", ""), fs.String("pass", "bench", ""), fs.String("in", "", "")
+	fs.Parse(args)
+	blob, err := os.ReadFile(*in)
+	if err != nil {
+		return err
+	}
+	id, err := identity.Import(blob, *pass)
+	if err != nil {
+		return err
+	}
+	_, err = identity.Adopt(*home, id, false)
+	return err
+}
+
+// ---- create ----
+
+func create(args []string) error {
+	var c common
+	fs := flag.NewFlagSet("create", flag.ExitOnError)
+	c.flags(fs)
+	work := fs.String("work", "", "project folder the chat works in")
+	fs.Parse(args)
+	d, err := c.dev(false)
+	if err != nil {
+		return err
+	}
+	cl, err := cell.CreateIn(d.chats, cell.Options{Class: cell.HostBound})
+	if err != nil {
+		return err
+	}
+	meta := session.Meta{ID: cl.ID, Title: "bench move", Workspace: *work, Created: time.Now()}
+	if err := session.SaveMeta(cl.Root, meta); err != nil {
+		return err
+	}
+	header := fmt.Sprintf(`{"type":"session","version":3,"id":%q,"cwd":%q,"timestamp":"2026-09-29T10:00:00Z"}`+"\n", cl.ID, *work)
+	if err := appendTo(transcriptOf(cl), header); err != nil {
+		return err
+	}
+	return emit(map[string]string{"cell": cl.ID, "root": cl.Root})
+}
+
+func transcriptOf(c cell.Cell) string { return session.Place{Dir: c.Root}.Transcript() }
+
+func appendTo(path, text string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o600)
+	if err != nil {
+		return err
+	}
+	_, err = f.WriteString(text)
+	return errors.Join(err, f.Close())
+}
+
+// ---- seal ----
+
+type turnRow struct {
+	Turn      int                 `json:"turn"`
+	Kind      string              `json:"kind"`
+	Changed   int                 `json:"changed_files"`
+	MutateMs  float64             `json:"mutate_ms"`
+	SealMs    float64             `json:"seal_ms"`    // Seal returns: the tool call is free to go on
+	PushMs    float64             `json:"push_ms"`    // Seal returned until the directory holds the head
+	DurableMs float64             `json:"durable_ms"` // seal + push
+	BytesUp   int64               `json:"bytes_up"`
+	Objects   int                 `json:"objects"`
+	Frames    int                 `json:"frames"`
+	Wire      cats                `json:"wire"`
+	Engine    map[string]verbStat `json:"engine"`
+}
+
+func sealCmd(args []string) error {
+	var c common
+	fs := flag.NewFlagSet("seal", flag.ExitOnError)
+	c.flags(fs)
+	id := fs.String("cell", "", "chat id")
+	work := fs.String("work", "", "tree the chat works in")
+	kd := fs.String("kind", "tiny", "tiny|one|fifty|big")
+	n := fs.Int("n", 1, "turns to seal in one open chat")
+	mb := fs.Int("mb", 100, "size of the big file")
+	seed := fs.Int("seed", 0, "advances which files are edited")
+	wait := fs.Duration("flush-wait", 30*time.Minute, "longest wait for a turn to become durable")
+	fs.Parse(args)
+	d, err := c.dev(true)
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
+	cl, err := cell.OpenAt(d.chatRoot(*id), *id)
+	if err != nil {
+		return err
+	}
+	eng := d.engine(*work)
+	title := func() string { m, _ := session.LoadMeta(cl.Root); return m.Title }
+	m0, t0 := d.m.snap(), time.Now()
+	drive, err := d.s.Drive(ctx, eng, cl, syncsetup.DriveOptions{DeviceName: d.name, Title: title, OnNotice: func(string) {}})
+	if err != nil {
+		return err
+	}
+	openMs, openWire := ms(time.Since(t0)), d.m.snap().minus(m0)
+	store := drive.Store(eng)
+	mut := newMutator(*work, *seed)
+	var rows []turnRow
+	// BENCHMOVE_GAP spaces the turns out, so each one is an isolated tool call and
+	// not one that lands inside the window the previous upload opened.
+	gap, _ := time.ParseDuration(os.Getenv("BENCHMOVE_GAP"))
+	for i := 1; i <= *n; i++ {
+		if i > 1 {
+			time.Sleep(gap)
+		}
+		row, err := oneTurn(ctx, d, store, cl, mut, *kd, *mb, *seed*1000+i, *wait)
+		rows = append(rows, row)
+		if err != nil {
+			_ = drive.Close(ctx)
+			return errors.Join(err, emit(map[string]any{"error": err.Error(), "turns": rows}))
+		}
+	}
+	m1, tc := d.m.snap(), time.Now()
+	err = drive.Close(ctx)
+	out := map[string]any{"cell": *id, "kind": *kd, "drive_open_ms": openMs, "drive_open_wire": openWire,
+		"turns": rows, "close_ms": ms(time.Since(tc)), "close_wire": d.m.snap().minus(m1)}
+	if err != nil {
+		out["error"] = err.Error()
+	}
+	return emit(out)
+}
+
+func oneTurn(ctx context.Context, d *dev, store cellstore.Store, cl cell.Cell, mut *mutator, kd string, mb, turn int, wait time.Duration) (turnRow, error) {
+	row := turnRow{Turn: turn, Kind: kd}
+	tm := time.Now()
+	changed, err := mut.apply(kd, turn, mb)
+	if err != nil {
+		return row, err
+	}
+	row.Changed, row.MutateMs = changed, ms(time.Since(tm))
+	line := fmt.Sprintf(`{"type":"message","role":"assistant","turn":%d,"content":%q}`+"\n", turn, strings.Repeat("x", 500))
+	if err := appendTo(transcriptOf(cl), line); err != nil {
+		return row, err
+	}
+	m0, v0, t0 := d.m.snap(), d.tr.snap(), time.Now()
+	sealed, err := store.Seal(ctx, cl, cellstore.TurnInfo{})
+	t1 := time.Now()
+	row.SealMs = ms(t1.Sub(t0))
+	if err != nil {
+		return row, err
+	}
+	flush, err := waitFlush(ctx, cellstats.Path(d.home, cl.ID), sealed.Turn.ID, wait)
+	row.PushMs = ms(time.Since(t1))
+	row.DurableMs = row.SealMs + row.PushMs
+	row.Wire, row.Engine = d.m.snap().minus(m0), verbsMinus(d.tr.snap(), v0)
+	if err != nil {
+		return row, err
+	}
+	row.BytesUp, row.Objects, row.Frames = flush.BytesUp, flush.Objects, flush.Frames
+	return row, nil
+}
+
+func waitFlush(ctx context.Context, path, turn string, limit time.Duration) (cellstats.Line, error) {
+	deadline := time.Now().Add(limit)
+	for time.Now().Before(deadline) {
+		if l, ok := findLine(path, turn); ok {
+			return l, nil
+		}
+		select {
+		case <-ctx.Done():
+			return cellstats.Line{}, ctx.Err()
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+	return cellstats.Line{}, fmt.Errorf("turn %s not durable after %s", turn, limit)
+}
+
+func findLine(path, turn string) (cellstats.Line, bool) {
+	f, err := os.Open(path)
+	if err != nil {
+		return cellstats.Line{}, false
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 1<<20), 1<<20)
+	for sc.Scan() {
+		var l cellstats.Line
+		if json.Unmarshal(sc.Bytes(), &l) == nil && l.Turn == turn {
+			return l, true
+		}
+	}
+	return cellstats.Line{}, false
+}
+
+// ---- mutations: scripted, deterministic, no model ----
+
+type mutator struct {
+	wd    string
+	files []string // small text files, in a fixed shuffled order
+	pos   int
+}
+
+func newMutator(wd string, seed int) *mutator {
+	m := &mutator{wd: wd}
+	_ = filepath.WalkDir(wd, func(p string, e fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if e.IsDir() {
+			switch e.Name() {
+			case ".git", "node_modules", ".cell", ".furrow", "target", "vendor":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if strings.HasPrefix(e.Name(), "bench-") || len(m.files) >= 5000 {
+			return nil
+		}
+		if info, err := e.Info(); err == nil && info.Mode().IsRegular() && info.Size() > 0 && info.Size() < 100_000 && isText(p) {
+			m.files = append(m.files, p)
+		}
+		return nil
+	})
+	sort.Strings(m.files)
+	h := fnv.New64a()
+	h.Write([]byte(filepath.Base(wd)))
+	rng := rand.New(rand.NewPCG(h.Sum64(), 11))
+	rng.Shuffle(len(m.files), func(i, j int) { m.files[i], m.files[j] = m.files[j], m.files[i] })
+	m.pos = seed * 50
+	return m
+}
+
+func isText(p string) bool {
+	raw, err := os.ReadFile(p)
+	return err == nil && !strings.ContainsRune(string(raw), 0) && utf8.Valid(raw)
+}
+
+func (m *mutator) apply(kd string, turn, mb int) (int, error) {
+	switch kd {
+	case "tiny":
+		return 0, nil
+	case "one":
+		return m.edit(1, turn)
+	case "fifty":
+		return m.edit(50, turn)
+	case "big":
+		return 1, m.blob(turn, mb)
+	}
+	return 0, fmt.Errorf("unknown kind %q", kd)
+}
+
+func (m *mutator) edit(k, turn int) (int, error) {
+	if len(m.files) == 0 {
+		return 0, errors.New("no editable text file in the tree")
+	}
+	k = min(k, len(m.files))
+	for i := 0; i < k; i++ {
+		p := m.files[(m.pos+i)%len(m.files)]
+		if err := appendTo(p, fmt.Sprintf("\n// bench edit %d\n", turn)); err != nil {
+			return i, err
+		}
+	}
+	m.pos += k
+	return k, nil
+}
+
+// blob writes mb MB of random bytes: the worst case for compression and dedup.
+func (m *mutator) blob(turn, mb int) error {
+	f, err := os.Create(filepath.Join(m.wd, fmt.Sprintf("bench-blob-%d.bin", turn)))
+	if err != nil {
+		return err
+	}
+	_, err = io.CopyN(f, crand.Reader, int64(mb)<<20)
+	return errors.Join(err, f.Close())
+}
+
+// ---- take ----
+
+type takeOut struct {
+	Cell      string              `json:"cell"`
+	Warm      bool                `json:"warm"` // this device held the chat's store before the take
+	TotalMs   float64             `json:"total_ms"`
+	Phases    map[string]float64  `json:"phases_ms"`
+	Engine    map[string]verbStat `json:"engine"`
+	Wire      cats                `json:"wire"`
+	Tree      string              `json:"tree"`
+	Kept      string              `json:"kept"`
+	StoreDir  int64               `json:"store_bytes_before"`
+	ReleaseMs float64             `json:"release_ms"`
+}
+
+func takeCmd(args []string) error {
+	var c common
+	fs := flag.NewFlagSet("take", flag.ExitOnError)
+	c.flags(fs)
+	id := fs.String("cell", "", "chat id")
+	fs.Parse(args)
+	d, err := c.dev(true)
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
+	out := takeOut{Cell: *id, StoreDir: dirBytes(filepath.Join(d.stores, *id))}
+	out.Warm = out.StoreDir > 0
+	eng := d.engine("")
+	cont := d.s.Continuer(eng, syncsetup.TakeOptions{DeviceName: d.name, Notify: func(string) {},
+		RootFor: func(id string) string { return d.chatRoot(id) }})
+	m0, v0, t0 := d.m.snap(), d.tr.snap(), time.Now()
+	got, err := cont.Take(ctx, *id)
+	out.TotalMs = ms(time.Since(t0))
+	out.Wire, out.Engine = d.m.snap().minus(m0), verbsMinus(d.tr.snap(), v0)
+	if err != nil {
+		return errors.Join(err, emit(map[string]any{"error": err.Error(), "take": out}))
+	}
+	out.Tree = session.Place{Dir: got.Taken.Cell.Root, Owned: true}.Work()
+	if m, e := session.LoadMeta(got.Taken.Cell.Root); e == nil && m.Workspace != "" && !m.Owned {
+		out.Tree = m.Workspace
+	}
+	out.Kept = got.Taken.Kept
+	out.Phases = phases(out)
+	t1 := time.Now()
+	_ = d.s.Dir.Release(ctx, *id, got.Taken.Driving.Fence) // not timed as part of the take: a device that leaves
+	out.ReleaseMs = ms(time.Since(t1))
+	return emit(out)
+}
+
+// phases splits a take into the parts the engine and the wire account for; the
+// rest (keep-local check, staging swap, vault pull, index rebuild) is "other".
+// The take is sequential, so the parts add up.
+func phases(o takeOut) map[string]float64 {
+	p := map[string]float64{}
+	dir := 0.0
+	for k, v := range o.Wire {
+		switch {
+		case k == "store_get":
+			p["fetch_get"] = v.Ms
+		case strings.HasPrefix(k, "dir_"):
+			dir += v.Ms
+		case strings.HasPrefix(k, "store_"):
+			p["store_other"] += v.Ms
+		}
+	}
+	p["directory"] = dir
+	for _, verb := range []string{"dirty", "seal", "want", "import", "materialize"} {
+		p["engine_"+verb] = o.Engine[verb].Ms
+	}
+	sum := 0.0
+	for _, v := range p {
+		sum += v
+	}
+	p["other"] = o.TotalMs - sum
+	return p
+}
+
+func dirBytes(p string) int64 {
+	var n int64
+	_ = filepath.WalkDir(p, func(_ string, e fs.DirEntry, err error) error {
+		if err == nil && !e.IsDir() {
+			if i, err := e.Info(); err == nil {
+				n += i.Size()
+			}
+		}
+		return nil
+	})
+	return n
+}
+
+// ---- wipe: the device forgets the chat (the way a cold take starts) ----
+
+func wipe(args []string) error {
+	var c common
+	fs := flag.NewFlagSet("wipe", flag.ExitOnError)
+	c.flags(fs)
+	id := fs.String("cell", "", "chat id")
+	fs.Parse(args)
+	d, err := c.dev(false)
+	if err != nil {
+		return err
+	}
+	for _, p := range []string{d.chatRoot(*id), d.chatRoot(*id) + ".taking", d.chatRoot(*id) + ".replaced", filepath.Join(d.stores, *id)} {
+		if err := os.RemoveAll(p); err != nil {
+			return err
+		}
+	}
+	return emit(map[string]any{"wiped": *id})
+}

@@ -232,8 +232,11 @@ func TestNothingInTheTreeNamesARemovedWorker(t *testing.T) {
 		if relErr != nil {
 			return relErr
 		}
+		// K6: the skip table uses repository paths on every host. Normalize the
+		// walk's native spelling so the law excludes its own required examples.
+		relative = filepath.ToSlash(relative)
 		for skipped := range namesLawSkipped {
-			if relative == skipped || strings.HasPrefix(relative, skipped+string(filepath.Separator)) {
+			if relative == skipped || strings.HasPrefix(relative, skipped+"/") {
 				if entry.IsDir() {
 					return filepath.SkipDir
 				}

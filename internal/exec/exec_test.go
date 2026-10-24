@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/plan"
+	commandshell "github.com/Agent-Field/codeaf/internal/shell"
 	graphstore "github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -132,7 +133,7 @@ func TestShPrependsSkillPathOnlyWithStore(t *testing.T) {
 	if !ok {
 		t.Fatalf("store-attached sh: PATH_HEAD marker line missing from capture (truncated?): %q", attachedResult.Content)
 	}
-	if got != bin {
+	if got != commandshell.ListPath(bin) {
 		t.Fatalf("store-attached PATH starts with %q, want %q: %q", got, bin, attachedResult.Content)
 	}
 }

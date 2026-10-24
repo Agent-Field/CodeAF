@@ -106,4 +106,4 @@ When the review found something, the chat also offers to hand the blocking findi
 - **It runs nothing**: no tests, builds or your app. What it finds, it finds by reading.
 - **It cannot be told anything while it runs.** Stop it and start it again with other words.
 - **It never posts on its own**: posting is its own run, on your yes.
-- **It is absent on Windows**, as every program codeaf carries is there.
+- **It is absent on Windows**.

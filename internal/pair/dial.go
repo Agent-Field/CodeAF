@@ -49,6 +49,12 @@ func PairedLine(name string) string {
 	return "paired. this device is now a key to " + name + "."
 }
 
+// WaitingLine is what the joining device shows while a person on the other one
+// decides: the words that screen should be showing.
+func WaitingLine(name, words string) string {
+	return "waiting for approval on " + name + "; it should show: " + words
+}
+
 // Reach is one attempt to open a connection to a named machine.
 type Reach struct {
 	// Name is what the person typed after --at.
@@ -157,18 +163,35 @@ func (r Reach) pair(ctx context.Context, service string) (Known, error) {
 	}
 
 	withDeadline(stream, r.now().Add(HandshakeWithin))
-	learned, err := pairAsSurface(stream, service, r.Name, code, r.Label, r.Device, r.now())
+	learned, err := pairAsSurface(stream, service, r.Name, code, r.Label, r.Device, r.now(), r.waitForApproval(stream))
 	if err != nil {
-		if errors.Is(err, ErrWrongCode) {
-			return Known{}, WrongCode(r.Name)
-		}
-		return Known{}, err
+		return Known{}, r.phrase(err)
 	}
 	if err := r.Machines.Remember(learned); err != nil {
 		return Known{}, err
 	}
 	r.say(PairedLine(r.Name))
 	return learned, nil
+}
+
+// waitForApproval shows the join words and holds the connection's deadline open
+// for as long as the person on the machine is given to look.
+func (r Reach) waitForApproval(stream io.ReadWriteCloser) func(words string) {
+	return func(words string) {
+		withDeadline(stream, r.now().Add(ConfirmWithin+HandshakeWithin))
+		r.say(WaitingLine(r.Name, words))
+	}
+}
+
+// phrase turns what a pairing returned into the sentence a person reads.
+func (r Reach) phrase(err error) error {
+	switch {
+	case errors.Is(err, ErrWrongCode):
+		return WrongCode(r.Name)
+	case errors.Is(err, ErrRefused):
+		return fmt.Errorf("%s did not let this device in — it was refused there", r.Name)
+	}
+	return err
 }
 
 // dial reaches the relay and turns its facts into this package's sentences.

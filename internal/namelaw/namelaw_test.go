@@ -37,6 +37,14 @@ const legacyMarker = "legacy-name"
 
 var retiredName = regexp.MustCompile(`(?i)aforge|openaf`)
 
+// hostedSrc is the page and handlers the hosted relay serves to people.
+const hostedSrc = "relay/hosted/src"
+
+// capitalised is the spelling a person must never read. The protocol headers
+// (Codeaf-Now, Codeaf-Vouch) are wire names, not prose, so a hyphen after
+// Codeaf is the one allowed form.
+var capitalised = regexp.MustCompile(`CodeAF|Codeaf([^-]|$)`)
+
 var rootFiles = map[string]bool{
 	"go.mod": true, "Makefile": true, ".gitignore": true, "SIZE-BUDGET": true,
 	"README.md": true, "CLAUDE.md": true, "AGENTS.md": true, "PERF.md": true,
@@ -254,6 +262,44 @@ func TestW7ThePromptNamesCodeafOnceAndNamesNoRetiredProduct(t *testing.T) {
 	}
 }
 
+// TestHostedPageSpellsTheProductLowercase refuses the capitalised spelling in
+// every hosted relay source line, and proves headers stay allowed.
+func TestHostedPageSpellsTheProductLowercase(t *testing.T) {
+	root := repoRoot(t)
+	for _, line := range capitalisedLines(root) {
+		t.Error(line)
+	}
+	fixture := fixtureTree(t, map[string]string{
+		hostedSrc + "/page.js": "const a = 'Open in CodeAF';\nconst h = 'Codeaf-Now';\nconst b = 'Codeaf';\n",
+	})
+	got := capitalisedLines(fixture)
+	if len(got) != 2 || !strings.Contains(got[0], "page.js:1") || !strings.Contains(got[1], "page.js:3") {
+		t.Fatalf("want page.js lines 1 and 3 refused, headers allowed; got %v", got)
+	}
+}
+
+func capitalisedLines(root string) []string {
+	var found []string
+	_ = filepath.WalkDir(filepath.Join(root, filepath.FromSlash(hostedSrc)), func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() || filepath.Ext(path) != ".js" {
+			return err
+		}
+		body, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		rel, _ := filepath.Rel(root, path)
+		for index, line := range strings.Split(string(body), "\n") {
+			if capitalised.MatchString(line) {
+				found = append(found, fmt.Sprintf("%s:%d spells the product with capitals; it is codeaf\n  %s", filepath.ToSlash(rel), index+1, strings.TrimSpace(line)))
+			}
+		}
+		return nil
+	})
+	sort.Strings(found)
+	return found
+}
+
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	here, err := filepath.Abs("../..")
@@ -365,6 +411,9 @@ func coveredFile(rel string) bool {
 		return true
 	}
 	if rel == ".github/PULL_REQUEST_TEMPLATE.md" || rel == ".github/rulesets/README.md" {
+		return true
+	}
+	if hasPathPrefix(rel, hostedSrc) && ext == ".js" {
 		return true
 	}
 	if dir == "scripts" && (ext == ".sh" || ext == ".py") {

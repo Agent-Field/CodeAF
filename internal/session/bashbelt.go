@@ -59,7 +59,10 @@ func bashBeltSourceCaps() bare.Caps {
 // in the order [Agent.belt] composes today's node belt so a worker sees the
 // same list minus what came off.
 func (a *Agent) bashBelt() []bare.Tool {
-	tools := []bare.Tool{a.branchBash()}
+	var tools []bare.Tool
+	if hand := a.branchBash(); hand.Name != "" {
+		tools = append(tools, hand)
+	}
 	tools = append(tools, a.documentTool(), a.jobsTool(), a.manualTool())
 	// ASK IS OFF THIS BELT. A bash-belt worker coordinates through the plan CLI
 	// and reports through `plandb done`; there is no consent gate to reach the
@@ -119,6 +122,9 @@ func (a *Agent) branchBash() bare.Tool {
 			hand = tool
 			break
 		}
+	}
+	if hand.Name == "" {
+		return hand
 	}
 	// THE DESCRIPTION IS THE BRANCH'S OWN, because the cut it names is: the
 	// model reads a description that promises the last N lines and plans
