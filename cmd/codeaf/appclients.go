@@ -44,16 +44,31 @@ func (s appClientSigner) Sign(p []byte) []byte           { return s.dev.Sign(p) 
 // startPairedClients preserves the unpaired startup: it does not open sync,
 // make keys, or start a timer when no local client record exists.
 func (b *appBackend) startPairedClients() {
-	if _, err := os.Stat(clientrun.StatePath(home.Dir())); err == nil {
-		if _, err := b.clients(); err != nil {
-			b.emit.Emit(appwire.EventLog, appwire.Log{Level: "warn", Message: "paired clients could not start"})
-		}
+	if _, err := os.Stat(clientrun.StatePath(home.Dir())); err != nil {
+		return
+	}
+	local, err := clientrun.Open(clientrun.Config{Home: home.Dir()})
+	if err != nil {
+		b.emit.Emit(appwire.EventLog, appwire.Log{Level: "warn", Message: "paired client records could not be read"})
+		return
+	}
+	if len(local.Clients()) == 0 {
+		b.clientArchive.Store(local)
+		return
+	}
+	if _, err := b.clients(); err != nil {
+		b.emit.Emit(appwire.EventLog, appwire.Log{Level: "warn", Message: "paired clients could not start"})
 	}
 }
 
 func (b *appBackend) clients() (*clientrun.Runner, error) {
 	b.clientInit.Lock()
 	defer b.clientInit.Unlock()
+	select {
+	case <-b.left:
+		return nil, appwire.Errorf(appwire.CodeClosed, "codeaf is shutting down")
+	default:
+	}
 	if r := b.clientRunner.Load(); r != nil {
 		return r, nil
 	}
@@ -65,19 +80,14 @@ func (b *appBackend) clients() (*clientrun.Runner, error) {
 	if err != nil {
 		return nil, err
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+	b.clientCancel = cancel
+	b.clientDone = make(chan struct{})
 	b.clientRunner.Store(r)
 	guard.Go("app/clients", func() {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		defer close(b.clientDone)
 		stop := syncsetup.WatchPublishes(r.Changed)
 		defer stop()
-		guard.Go("app/clients-stop", func() {
-			select {
-			case <-b.left:
-				cancel()
-			case <-ctx.Done():
-			}
-		})
 		r.Run(ctx)
 	})
 	return r, nil
@@ -102,10 +112,17 @@ func appClientEntry(receipt clientrun.Receipt) appwire.Entry {
 	case "failed":
 		state = "incomplete"
 	}
-	return appwire.Entry{ID: "client-" + receipt.Client + "-" + strconv.FormatInt(receipt.Number, 10), Agent: receipt.Agent, Kind: appwire.EntryNotice, At: at, Text: "Paired client " + receipt.Client + " · " + receipt.Method + " · " + state}
+	suffix := ""
+	if receipt.SkippedFrom > 0 {
+		suffix = " · skipped missing calls " + strconv.FormatInt(receipt.SkippedFrom, 10) + "–" + strconv.FormatInt(receipt.SkippedThrough, 10)
+	}
+	return appwire.Entry{ID: "client-" + receipt.Client + "-" + strconv.FormatInt(receipt.Number, 10), Agent: receipt.Agent, Kind: appwire.EntryNotice, At: at, Text: "Paired client " + receipt.Client + " · " + receipt.Method + " · " + state + suffix}
 }
 func (b *appBackend) clientEntries(agent string) []appwire.Entry {
 	r := b.clientRunner.Load()
+	if r == nil {
+		r = b.clientArchive.Load()
+	}
 	if r == nil {
 		return nil
 	}
@@ -158,4 +175,19 @@ func (b *appBackend) UnpairClient(id string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	return r.Unpair(ctx, id)
+}
+
+// stopClients joins the executor before any engine it may call is closed.
+func (b *appBackend) stopClients() {
+	done := func() chan struct{} {
+		b.clientInit.Lock()
+		defer b.clientInit.Unlock()
+		if b.clientCancel != nil {
+			b.clientCancel()
+		}
+		return b.clientDone
+	}()
+	if done != nil {
+		<-done
+	}
 }

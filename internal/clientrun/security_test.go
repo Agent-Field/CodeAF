@@ -3,8 +3,10 @@ package clientrun_test
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"golang.org/x/crypto/nacl/box"
 	"io"
 	"net/http"
 	"strings"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/clientrun"
+	"github.com/Agent-Field/codeaf/internal/reqsign"
 )
 
 type transport func(*http.Request) (*http.Response, error)
@@ -119,12 +122,58 @@ func TestExpiredQueuedCallIsRejectedLocally(t *testing.T) {
 	g.e.asks = []appwire.Ask{{ID: "consent:1", Agent: chat}}
 	grant := g.pair(t, "asks.answer")
 	g.enqueue(t, grant, 1, false)
+	signedAt := g.now
 	g.now = g.now.Add(24 * time.Hour)
-	g.reopen(t, nil, noopLog)
-	if err := g.r.Step(context.Background()); err == nil {
-		t.Fatal("stale call accepted locally")
+	// Keep transport authentication on the relay clock so this proves the
+	// executor's offline-entry age check, rather than HTTP skew rejection.
+	g.reopen(t, transport(func(req *http.Request) (*http.Response, error) {
+		var body []byte
+		if req.GetBody != nil {
+			reader, err := req.GetBody()
+			if err != nil {
+				return nil, err
+			}
+			body, err = io.ReadAll(reader)
+			reader.Close()
+			if err != nil {
+				return nil, err
+			}
+		}
+		reqsign.Sign(req, body, g.s, signedAt)
+		return http.DefaultTransport.RoundTrip(req)
+	}), noopLog)
+	if err := g.r.Step(context.Background()); err == nil || !strings.Contains(err.Error(), "queued call expired") {
+		t.Fatalf("local age refusal = %v", err)
 	}
 	if g.e.answers != 0 {
 		t.Fatal("stale call ran")
+	}
+}
+
+func TestFullQueueCanMakeProgressPastOneMiBOfSignedProofs(t *testing.T) {
+	g := newRig(t)
+	grant := g.pair(t, "agents.create")
+	payload, _ := json.Marshal(clientrun.Call{Method: "agents.create", Params: json.RawMessage(`{"text":"` + strings.Repeat("x", 3800) + `"}`)})
+	sealed, err := box.SealAnonymous(nil, payload, (*[32]byte)(grant.BoxKey), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for number := 1; number <= 128; number++ {
+		g.request(t, g.client, "POST", "/v1/clients/"+g.client.dev.ID()+"/queue", map[string]any{"number": number, "at": g.now.UnixMilli(), "method": "agents.create", "target": "any", "sealed": sealed}, nil, 204)
+	}
+	stopped := errors.New("stop after first acknowledgement")
+	g.reopen(t, nil, func(receipt clientrun.Receipt) error {
+		if receipt.Number == 2 {
+			return stopped
+		}
+		return nil
+	})
+	if err := g.r.Step(context.Background()); !errors.Is(err, stopped) {
+		t.Fatalf("full queue did not reach second entry: %v", err)
+	}
+	var queue struct{ Entries []json.RawMessage }
+	g.request(t, g.s, "GET", "/v1/clients/"+g.client.dev.ID()+"/queue", nil, &queue, 200)
+	if g.e.created != 1 || len(queue.Entries) != 127 {
+		t.Fatalf("executed %d; remaining %d", g.e.created, len(queue.Entries))
 	}
 }

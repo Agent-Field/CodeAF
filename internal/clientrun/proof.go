@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/clientproto"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
 )
 
@@ -30,11 +31,11 @@ type Queued struct {
 }
 
 func (r *Runner) verify(c Client, e Queued) error {
-	if e.Number <= 0 || len(e.Sealed) == 0 || len(e.Sealed) > 4096 {
+	if e.Number <= 0 || len(e.Body) > clientproto.MaxFabricBody || len(e.Sealed) == 0 || len(e.Sealed) > clientproto.MaxQueueBytes {
 		return errors.New("invalid queued call")
 	}
 	now := r.cfg.Now().UnixMilli()
-	if e.At <= now-(24*time.Hour).Milliseconds() || e.At > now+reqsign.Skew.Milliseconds() {
+	if e.At <= now-clientproto.MaxAge.Milliseconds() || e.At > now+reqsign.Skew.Milliseconds() {
 		return errors.New("queued call expired or is from the future")
 	}
 	req, err := http.NewRequest("POST", strings.TrimRight(r.cfg.Relay, "/")+clientPath(c.ID)+"/queue", nil)

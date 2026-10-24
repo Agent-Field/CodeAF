@@ -7,7 +7,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"time"
+
+	"github.com/Agent-Field/codeaf/internal/clientproto"
 
 	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
@@ -15,9 +16,9 @@ import (
 
 // Slot limits are the same for every client and implementation.
 const (
-	MaxSlotBytes   = 64 << 10
-	MaxClientSlots = 64
-	FabricMaxAge   = 24 * time.Hour
+	MaxSlotBytes   = clientproto.MaxSlotBytes
+	MaxClientSlots = clientproto.MaxClientSlots
+	FabricMaxAge   = clientproto.MaxAge
 )
 
 type fabricSlot struct {

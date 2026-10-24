@@ -55,14 +55,12 @@ func (r *Runner) Pair(ctx context.Context, p Pairing) (Grant, error) {
 	if err := r.save(); err != nil {
 		return Grant{}, err
 	}
-	body := struct {
-		Cert    identity.Cert `json:"cert"`
-		Methods []string      `json:"methods"`
-		Name    string        `json:"name"`
-	}{p.Cert, p.Methods, ""}
-	if err := r.request(ctx, "PUT", clientPath(p.Cert.DeviceID()), body, nil); err != nil {
+	if err := r.register(ctx, p); err != nil {
 		return Grant{}, err
 	}
+	p.BoxKey = slices.Clone(p.BoxKey)
+	p.Methods = slices.Clone(p.Methods)
+	p.Reads = slices.Clone(p.Reads)
 	c := Client{Pairing: p, ID: p.Cert.DeviceID()}
 	r.state.Clients[c.ID] = c
 	if err := r.save(); err != nil {
@@ -88,6 +86,10 @@ func (r *Runner) checkPairing(p Pairing) error {
 	if err != nil || len(pub) != 32 || len(p.BoxKey) != 32 {
 		return errors.New("client keys must be 32 bytes")
 	}
+	probe := [32]byte{1}
+	if _, err := curve25519.X25519(probe[:], p.BoxKey); err != nil {
+		return errors.New("client encryption key cannot receive sealed data")
+	}
 	if len(p.Reads) == 0 || len(p.Reads) > 8 {
 		return errors.New("choose one to eight snapshot methods")
 	}
@@ -102,4 +104,48 @@ func (r *Runner) checkPairing(p Pairing) error {
 		}
 	}
 	return nil
+}
+
+// register permits a second trusted executor to enroll the same client locally
+// without changing the relay's immutable method scope or sharing private keys.
+func (r *Runner) register(ctx context.Context, p Pairing) error {
+	exists, err := r.registered(ctx, p)
+	if err != nil || exists {
+		return err
+	}
+	body := struct {
+		Cert    identity.Cert `json:"cert"`
+		Methods []string      `json:"methods"`
+		Name    string        `json:"name"`
+	}{p.Cert, p.Methods, ""}
+	if err := r.request(ctx, "PUT", clientPath(p.Cert.DeviceID()), body, nil); err != nil {
+		// Another executor may have registered it, or the acknowledgement may
+		// have been lost. Only the exact existing client scope permits recovery.
+		exists, checkErr := r.registered(ctx, p)
+		if checkErr == nil && exists {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+func (r *Runner) registered(ctx context.Context, p Pairing) (bool, error) {
+	listing, err := r.cfg.Directory.List(ctx)
+	if err != nil {
+		return false, err
+	}
+	d, exists := listing.Devices[p.Cert.DeviceID()]
+	if !exists {
+		return false, nil
+	}
+	if d.Revoked || d.Kind != "client" {
+		return false, errors.New("device is not an active scoped client")
+	}
+	allowed, requested := slices.Clone(d.Methods), slices.Clone(p.Methods)
+	slices.Sort(allowed)
+	slices.Sort(requested)
+	if !slices.Equal(allowed, requested) {
+		return false, errors.New("client permissions differ; pair a new key to change scope")
+	}
+	return true, nil
 }

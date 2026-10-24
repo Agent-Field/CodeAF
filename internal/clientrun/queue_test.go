@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/clientrun"
+	"github.com/Agent-Field/codeaf/internal/directory"
 	"golang.org/x/crypto/nacl/box"
 )
 
@@ -115,5 +117,52 @@ func TestPairingRefusesQueueMethodsWithoutASafeRoutingRule(t *testing.T) {
 	_, err := g.r.Pair(context.Background(), clientrun.Pairing{Cert: g.client.Cert(), BoxKey: g.pub[:], Reads: []string{"asks.list"}, Methods: []string{"inbox.answer"}})
 	if err == nil {
 		t.Fatal("paired a mutation that bypasses queued ask checks")
+	}
+}
+
+func (e *engine) CreateAgent(appwire.CreateAsk) (appwire.Agent, error) {
+	e.created++
+	return appwire.Agent{ID: otherChat}, nil
+}
+func TestAnyTargetCreatesWorkThroughTheDesktopMethod(t *testing.T) {
+	g := newRig(t)
+	grant := g.pair(t, "agents.create")
+	payload, _ := json.Marshal(clientrun.Call{Method: "agents.create", Params: json.RawMessage(`{"text":"start new work"}`)})
+	sealed, err := box.SealAnonymous(nil, payload, (*[32]byte)(grant.BoxKey), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.request(t, g.client, "POST", "/v1/clients/"+g.client.dev.ID()+"/queue", map[string]any{"number": 1, "at": g.now.UnixMilli(), "method": "agents.create", "target": "any", "sealed": sealed}, nil, 204)
+	if err := g.r.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if g.e.created != 1 || g.r.Receipts()[0].Agent != otherChat {
+		t.Fatal("creation did not run or was not logged to its chat")
+	}
+}
+
+func TestSignedSkipRecoversAfterAnUnexecutedEntryExpires(t *testing.T) {
+	g := newRig(t)
+	grant := g.pair(t, "asks.answer")
+	g.e.asks = []appwire.Ask{{ID: "consent:1", Agent: chat}}
+	g.enqueue(t, grant, 1, false)
+	g.now = g.now.Add(24 * time.Hour)
+	g.clock.Store(g.now.UnixMilli())
+	if _, err := g.dir.Acquire(context.Background(), chat, directory.AcquireOpts{}); err != nil {
+		t.Fatal(err)
+	}
+	through := int64(1)
+	payload, _ := json.Marshal(clientrun.Call{Method: "asks.answer", Params: json.RawMessage(`{"agent":"` + chat + `","id":"consent:1","option":"allow"}`), SkipThrough: &through})
+	sealed, err := box.SealAnonymous(nil, payload, (*[32]byte)(grant.BoxKey), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.request(t, g.client, "POST", "/v1/clients/"+g.client.dev.ID()+"/queue", map[string]any{"number": 2, "at": g.now.UnixMilli(), "method": "asks.answer", "target": g.s.dev.ID(), "sealed": sealed}, nil, 204)
+	if err := g.r.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	receipts := g.r.Receipts()
+	if g.e.answers != 1 || len(receipts) != 1 || receipts[0].Number != 2 || receipts[0].SkippedFrom != 1 || receipts[0].SkippedThrough != 1 {
+		t.Fatalf("recovery = %+v; answers %d", receipts, g.e.answers)
 	}
 }

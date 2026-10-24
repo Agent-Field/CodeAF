@@ -12,6 +12,8 @@ import (
 	"regexp"
 	"sync"
 
+	"github.com/Agent-Field/codeaf/internal/clientproto"
+
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
@@ -20,8 +22,8 @@ import (
 
 // Fabric limits bound the opaque data held for each client.
 const (
-	MaxFabricBody    = 96 << 10
-	MaxClientMethods = 64
+	MaxFabricBody    = clientproto.MaxFabricBody
+	MaxClientMethods = clientproto.MaxClientMethods
 )
 
 var fabricName = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,128}$`)

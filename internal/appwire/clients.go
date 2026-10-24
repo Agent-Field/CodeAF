@@ -51,13 +51,23 @@ func pairedClientManager(e Engine) (PairedClientManager, error) {
 func init() {
 	methods["clients.list"] = typed(func(e Engine, _ struct{}) (*struct {
 		Clients []PairedClient `json:"clients"`
-	}, error) { manager, err := pairedClientManager(e); if err != nil {
-		return nil, err
-	}; list, err := manager.ListPairedClients(); if err != nil {
-		return nil, err
-	}; return &struct {
-		Clients []PairedClient `json:"clients"`
-	}{nonNil(list)}, nil })
+	}, error) {
+		manager, err := pairedClientManager(e)
+		if err != nil {
+			return nil, err
+		}
+		list, err := manager.ListPairedClients()
+		if err != nil {
+			return nil, err
+		}
+		for i := range list {
+			list[i].Methods = nonNil(list[i].Methods)
+			list[i].Reads = nonNil(list[i].Reads)
+		}
+		return &struct {
+			Clients []PairedClient `json:"clients"`
+		}{nonNil(list)}, nil
+	})
 	methods["clients.pair"] = typed(func(e Engine, p PairClientParams) (*ClientGrant, error) {
 		manager, err := pairedClientManager(e)
 		if err != nil {
@@ -72,11 +82,16 @@ func init() {
 	methods["clients.pause"] = typed(func(e Engine, p struct {
 		ID     string `json:"id"`
 		Paused *bool  `json:"paused"`
-	}) (*Empty, error) { manager, err := pairedClientManager(e); if err != nil {
-		return nil, err
-	}; if p.ID == "" || p.Paused == nil {
-		return nil, Errorf(CodeBadParams, "clients.pause needs an id and paused flag")
-	}; return done(manager.PausePairedClient(p.ID, *p.Paused)) })
+	}) (*Empty, error) {
+		manager, err := pairedClientManager(e)
+		if err != nil {
+			return nil, err
+		}
+		if p.ID == "" || p.Paused == nil {
+			return nil, Errorf(CodeBadParams, "clients.pause needs an id and paused flag")
+		}
+		return done(manager.PausePairedClient(p.ID, *p.Paused))
+	})
 	methods["clients.unpair"] = typed(func(e Engine, p IDParams) (*Empty, error) {
 		manager, err := pairedClientManager(e)
 		if err != nil {

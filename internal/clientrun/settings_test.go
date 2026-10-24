@@ -2,6 +2,7 @@ package clientrun_test
 
 import (
 	"context"
+	"github.com/Agent-Field/codeaf/internal/clientrun"
 	"testing"
 )
 
@@ -40,5 +41,13 @@ func TestPausedClientDoesNoReadsAndUnpairRevokesItsKey(t *testing.T) {
 	g.reopen(t, nil, noopLog)
 	if len(g.r.Clients()) != 0 {
 		t.Fatal("restart restored revoked pairing")
+	}
+}
+
+func TestPairingRejectsAnUnusableEncryptionKey(t *testing.T) {
+	g := newRig(t)
+	_, err := g.r.Pair(context.Background(), clientrun.Pairing{Cert: g.client.Cert(), BoxKey: make([]byte, 32), Reads: []string{"asks.list"}})
+	if err == nil {
+		t.Fatal("paired a key that cannot receive encrypted slots")
 	}
 }

@@ -432,7 +432,11 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 type appBackend struct {
 	// clientRunner is absent until local pairing state exists or Settings pairs a client.
 	clientRunner atomic.Pointer[clientrun.Runner]
-	clientInit   sync.Mutex
+	// clientArchive keeps old chat receipts without starting an executor.
+	clientArchive atomic.Pointer[clientrun.Runner]
+	clientInit    sync.Mutex
+	clientCancel  context.CancelFunc
+	clientDone    chan struct{}
 
 	// organizeProposer supplies a naming door when the backend is embedded without held conversations.
 	organizeProposer session.TeamProposer
@@ -845,6 +849,9 @@ func appMint(workspace string) (string, error) {
 
 // appAgentID is a conversation's id from its transcript: the folder's name.
 func appAgentID(transcript string) string {
+	if folder, ok := session.FolderOf(filepath.Clean(transcript)); ok {
+		return filepath.Base(folder)
+	}
 	return filepath.Base(filepath.Dir(filepath.Clean(transcript)))
 }
 
@@ -3859,6 +3866,7 @@ func (b *appBackend) Close() error {
 	if already {
 		return nil
 	}
+	b.stopClients()
 	// THIS MACHINE'S FACTORY IS LET GO BEFORE ANYTHING THAT WAITS ON A
 	// CONVERSATION. Stopping the close watch waits for a carry-on that may be
 	// opening a conversation, and nothing below it is the factory's business;

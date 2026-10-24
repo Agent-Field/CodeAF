@@ -30,7 +30,9 @@ type Config struct {
 	Engine    appwire.Engine
 	HTTP      *http.Client
 	Now       func() time.Time
-	Log       func(Receipt) error
+	// After supplies the refresh clock; nil uses time.After.
+	After func(time.Duration) <-chan time.Time
+	Log   func(Receipt) error
 }
 
 // Runner serializes rounds while keeping settings available during a call.
@@ -53,6 +55,9 @@ type publication struct {
 func Open(cfg Config) (*Runner, error) {
 	if cfg.Now == nil {
 		cfg.Now = time.Now
+	}
+	if cfg.After == nil {
+		cfg.After = time.After
 	}
 	if cfg.HTTP == nil {
 		cfg.HTTP = &http.Client{Timeout: 30 * time.Second}
@@ -104,19 +109,19 @@ func (r *Runner) Run(ctx context.Context) {
 			}
 			continue
 		}
+		changes := r.changed
 		if err := r.Step(ctx); err != nil {
 			delay = min(delay*2, 5*time.Minute)
+			// Change notifications cannot defeat network backoff during an outage.
+			changes = nil
 		} else {
 			delay = 5 * time.Second
 		}
-		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
-			timer.Stop()
 			return
-		case <-r.changed:
-			timer.Stop()
-		case <-timer.C:
+		case <-changes:
+		case <-r.cfg.After(delay):
 		}
 	}
 }

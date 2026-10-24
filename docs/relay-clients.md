@@ -117,8 +117,10 @@ Global results omit `agent`; every chat result, including an empty list, include
 it. Client encryption keys are independent X25519 keys supplied during local
 pairing. The grant includes this executor's public X25519 key for queued calls,
 the writer id, relay URL, identity public key and certificate, never shared
-identity secrets. Client keys and subscriptions currently enroll on each
-executor locally; the relay directory does not distribute encryption keys.
+identity secrets. Client keys and subscriptions enroll on each executor locally; a second trusted
+executor can enroll the existing client only with the exact same relay method
+scope. Each grant supplies that executor's distinct encryption public key. The
+relay directory does not distribute encryption keys.
 
 Completed sync publishes and app turn/ask/task events schedule coalesced refreshes.
 The runner also refreshes every five seconds while active, backing off failures
@@ -149,13 +151,26 @@ uncertain. A lost acknowledgement is retried from the receipt, without dispatch.
 Receipts include who, when, method and chat; the app exposes them in that chat's
 history. The created chat receives the final receipt for new work.
 
-Local sequence numbers start at one and must be contiguous. The current relay
-list filters entries targeted at other boxes and omits expired entries, without
-a signed explanation of missing numbers. The executor therefore refuses those
-gaps instead of guessing or replaying work. Use distinct client pairings for
-distinct executors in v0; a shared multi-executor sequence needs a future proof
-of skipped numbers. Uncertain calls need a person to inspect the chat; they are
-acknowledged without an automatic retry of their possible effect.
+Local sequence numbers start at one and must be contiguous unless the client
+explicitly authorizes missing numbers. The relay filters calls targeted at other
+boxes and omits expired calls. To resume after such a gap, the sealed call may
+include `skip_through: number-1`. Its original client signature covers that
+instruction. The executor records the skipped local range in its receipt and
+chat entry. It never skips an earlier eligible entry still present in its queue
+list; a refused pending entry stops the round. Without that explicit instruction,
+gaps remain refused. Numbers already executed or recorded as started are never
+executed again, including when a skip instruction is present. Uncertain calls
+need a person to inspect the chat; they are acknowledged without an automatic
+retry of their possible effect.
+
+An `any` call can address several enrolled executors without sharing their
+private keys. The sealed bytes start with ASCII `codeaf-client-boxes-v1` and a
+newline, followed by a JSON object mapping executor device ids to base64 NaCl
+anonymous boxes of the same call. A box opens only its own member, then competes
+for the relay's atomic claim. `clientrun.SealForExecutors` builds this format;
+the complete payload still fits the 4096-byte queue limit. Single-executor raw
+anonymous boxes remain supported. Enroll the client on each eligible executor
+and retain its public grant before constructing a multi-executor call.
 
 ## Settings over appwire
 
@@ -176,3 +191,14 @@ history. Methods are available through the same table for every appwire client.
 They add no desktop Settings widget by themselves; UI callers render the list
 and controls using this interface. A scoped client's v0 queue does not expose
 management mutations; those require a trusted live desktop connection.
+
+## Snapshot capacity and independent failures
+
+The complete encrypted method/writer snapshot must fit the relay's 64 KiB slot
+limit. An oversized method is refused before upload, retaining its previous
+snapshot and its original timestamp. The round reports the size refusal and
+continues updating the client's other subscribed methods. Snapshots are not
+silently truncated or split into an unadvertised paging format. Large result
+pagination remains outside v0; clients must treat the retained timestamp as stale.
+After the last unpair, startup reads only the archived call receipts and does
+not open sync, start an executor or install its publish watcher.
