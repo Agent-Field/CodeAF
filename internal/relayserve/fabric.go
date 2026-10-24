@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -111,12 +112,49 @@ func (f *fabric) fullAuth(r *http.Request, body []byte) (string, string, error) 
 // Watch upgrades stay outside the lock because they can last for hours.
 func (f *fabric) directoryHandler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			f.mu.Lock()
-			defer f.mu.Unlock()
+		if r.Method == http.MethodGet {
+			next.ServeHTTP(w, r)
+			return
 		}
-		next.ServeHTTP(w, r)
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, directory.MaxBody))
+		if err != nil {
+			fabricReply(w, nil, badFabric(413, "too_large"))
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		reply := &fabricResponse{headers: make(http.Header)}
+		func() { f.mu.Lock(); defer f.mu.Unlock(); next.ServeHTTP(reply, r) }()
+		for key, values := range reply.headers {
+			w.Header()[key] = values
+		}
+		if reply.status != 0 {
+			w.WriteHeader(reply.status)
+		}
+		if reply.body.Len() != 0 {
+			_, _ = w.Write(reply.body.Bytes())
+		}
 	})
+}
+
+// fabricResponse keeps network writes outside the mutation lock. Directory
+// writes have bounded JSON answers; streaming watch replies never pass here.
+type fabricResponse struct {
+	headers http.Header
+	status  int
+	body    bytes.Buffer
+}
+
+func (w *fabricResponse) Header() http.Header { return w.headers }
+func (w *fabricResponse) WriteHeader(status int) {
+	if w.status == 0 {
+		w.status = status
+	}
+}
+func (w *fabricResponse) Write(p []byte) (int, error) {
+	if w.status == 0 {
+		w.status = 200
+	}
+	return w.body.Write(p)
 }
 
 type fabricCall struct {
@@ -141,25 +179,27 @@ func (f *fabric) handler() http.Handler {
 
 func (f *fabric) serve(route fabricRoute) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		f.mu.Lock()
-		defer f.mu.Unlock()
-		c, err := f.admit(w, r)
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, MaxFabricBody))
 		if err != nil {
-			fabricReply(w, nil, err)
+			fabricReply(w, nil, badFabric(413, "too_large"))
 			return
 		}
-		out, err := route(c)
+		out, err := func() (any, error) {
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			c, err := f.admit(r, body)
+			if err != nil {
+				return nil, err
+			}
+			return route(c)
+		}()
 		fabricReply(w, out, err)
 	}
 }
 
-func (f *fabric) admit(w http.ResponseWriter, r *http.Request) (fabricCall, error) {
-	c := fabricCall{f: f, r: r}
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, MaxFabricBody))
-	if err != nil {
-		return c, badFabric(413, "too_large")
-	}
-	c.body = body
+func (f *fabric) admit(r *http.Request, body []byte) (fabricCall, error) {
+	c := fabricCall{f: f, r: r, body: body}
+	var err error
 	c.id, c.dev, err = f.auth(r, body)
 	if err != nil {
 		return c, err
@@ -200,6 +240,10 @@ func registerClient(c fabricCall) (any, error) {
 		}
 		seen[method] = true
 	}
+	pub, keyErr := hex.DecodeString(in.Cert.Device)
+	if keyErr != nil || len(pub) != ed25519.PublicKeySize {
+		return nil, badFabric(400, "bad_request")
+	}
 	key, err := base64.RawURLEncoding.DecodeString(c.r.Header.Get(reqsign.HeaderIdentity))
 	if err != nil || len(key) != ed25519.PublicKeySize || in.Cert.Verify(key) != nil || in.Cert.DeviceID() != c.r.PathValue("device") {
 		return nil, badFabric(400, "bad_request")
@@ -207,6 +251,6 @@ func registerClient(c fabricCall) (any, error) {
 	if _, exists := c.listing.Devices[in.Cert.DeviceID()]; exists {
 		return nil, badFabric(409, "exists")
 	}
-	d := directory.Device{V: 1, Kind: "client", Methods: in.Methods, Name: in.Name, AddedBy: c.dev}
+	d := directory.Device{V: 1, Kind: "client", Methods: in.Methods, Name: in.Name, AddedBy: c.id}
 	return nil, c.dir.For(in.Cert.DeviceID()).PutDevice(c.r.Context(), in.Cert.DeviceID(), d)
 }
