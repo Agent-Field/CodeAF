@@ -108,3 +108,9 @@ artifact. The reference target is darwin/amd64 with its own pinned artifact stag
 other platforms can have different absolute sizes. Reduce unnecessary code, data
 or dependencies first. A justified cap adjustment belongs in the same change as
 the feature and its measurements; keep `SIZE-BUDGET` explicit and reviewable.
+
+Every build links the Raft coordination core: the modified Raft copy, protobuf,
+the signed state machine and its SQLite snapshot host. The relay and devices
+always coordinate through it, so no build leaves it out. On linux/amd64 it added
+2,519,040 bytes to the stripped binary (75,268,361 to 77,787,401), and the cap
+moved by the same amount, from 75,811,848 to 78,330,888.
