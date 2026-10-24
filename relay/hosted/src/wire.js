@@ -56,7 +56,7 @@ export function wireOf(e) {
 }
 
 export const json = (value, status = 200) =>
-  new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
+  new Response(JSON.stringify(value) + '\n', { status, headers: { 'content-type': 'application/json' } });
 export const empty = () => new Response(null, { status: 204 });
 
 function refusal(w) {
