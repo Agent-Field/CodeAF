@@ -44,6 +44,7 @@ export function stepFrame(handle, tag, value) {
   if ([2, 3, 8, 11].includes(tag)) w.blob(value);
   else if ([4, 10].includes(tag)) w.str(value);
   else if ([5, 6, 7, 9].includes(tag)) w.u64(value);
+  if (tag === 12) w.u64(value.peer).u32(value.snapshot ? 1 : 0).u32(value.success ? 1 : 0);
   return w.finish();
 }
 export function effects(bytes) {
@@ -98,4 +99,25 @@ export function snapshotNeeded(bytes) {
   const r = response(bytes);
   const point = r.u32() ? { index: r.u64(), term: r.u64() } : null;
   r.end(); return point;
+}
+
+// Storage uses the Go codec to inspect consensus bytes without implementing
+// protobuf or directory policy in JavaScript. Each call owns its result.
+export class HostCodec {
+  constructor(runtime) { this.runtime = runtime; }
+  call(w) { return response(this.runtime.call(w.finish())); }
+  inspect(kind, bytes) {
+    const r = this.call(frame(7).u32(kind).blob(bytes));
+    let v;
+    if (kind === 1) v = { type: r.u32(), index: r.u64(), term: r.u64(), data: r.blob() };
+    if (kind === 2) v = { term: r.u64(), vote: r.u64(), commit: r.u64() };
+    if (kind === 3) v = { index: r.u64(), term: r.u64(), conf: r.blob(), data: r.blob() };
+    if (kind === 4) v = { type: r.u32(), from: r.u64(), to: r.u64(), snapshot: r.blob() };
+    r.end(); return v;
+  }
+  hash(block, state = new Uint8Array()) {
+    const r = this.call(frame(8).blob(state).blob(block));
+    const v = { state: r.blob(), digest: r.blob() }; r.end(); return v;
+  }
+  snapshot(data) { const r = this.call(frame(9).blob(data)); const b = r.blob(); r.end(); return b; }
 }
