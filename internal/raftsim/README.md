@@ -20,13 +20,34 @@ sh scripts/raft-proof-footprint.sh nice -n 5 env GOMEMLIMIT=128MiB \
 
 The wrapper admits work only at I/O `some avg10 <= 40`, uses GOMAXPROCS=2,
 GOFLAGS=-buildvcs=false, one compiler worker and effective nice 15. The campaign
-uses seeds 0–99 serially, at most 2,000 processed events per seed, 2 cells and
+uses seeds 0–499 serially, at most 2,000 processed events per seed, 2 cells and
 fewer than 100 operations. One whole-identity Porcupine check gets at most one
 second; timeout/Unknown fails the proof. No checker partition hides cross-cell
 vault/revocation/session dependencies. No HTML or large fixture is generated.
 Supplementary bounded cases cover all 16 surviving joint-majority subsets,
 every enter/leave Ready boundary, 100 minority flaps, every snapshot chunk and
 install boundary, both retained generations and native SQLite parity.
+
+Set `RAFTSIM_SEEDS=<n>` to run seeds 0 through n−1 in both the fault campaign
+and the election-timeout campaign. Unset means 500; empty, zero, negative and
+noninteger values fail. For the larger serial soak, use the same footprint:
+
+```sh
+sh scripts/raft-proof-footprint.sh nice -n 5 env GOMEMLIMIT=128MiB RAFTSIM_SEEDS=5000 \
+  /usr/bin/time -v go test -p=1 ./internal/raftsim/... \
+  -run '^TestR' -count=1 -timeout=180s -v
+```
+
+The 6–12 tick election timeout bounds one attempt. Split votes and omitted
+messages can require several attempts; the campaign allows eight maximum
+timeout windows while retaining the 2,000-event ceiling. A separate seeded
+check asserts one delivered tick per live node per round and each election
+attempt within 6–12 ticks. This budget is not a phone-fallback latency claim.
+Lost-reply retries first wait for the original request's durable session result
+without submitting a second proposal. An absent result after a timeout remains
+unknown; it cannot be compared to a later successful retry as an empty result.
+Portable replay fixtures retain the original split-vote and uncommitted-timeout
+prefixes that exposed these two harness mistakes.
 
 To keep exact negative counterexamples, pass the simulator package alone:
 

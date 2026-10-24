@@ -7,15 +7,34 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/raftcore"
 	"github.com/Agent-Field/codeaf/internal/raftsim/model"
 	"github.com/anishathalye/porcupine"
 	"go.etcd.io/raft/v3"
 )
 
 var evidenceDir = flag.String("raftsim-evidence-dir", "", "write synthetic replay evidence outside the repository")
+
+// A randomized timeout bounds one attempt, not the number of split votes or
+// omitted election messages. Keep several attempts within the event ceiling.
+const electionWaitTicks = 8 * 2 * raftcore.ElectionTicks
+
+func seedCount(t *testing.T) int {
+	t.Helper()
+	value, set := os.LookupEnv("RAFTSIM_SEEDS")
+	if !set {
+		return 500
+	}
+	count, err := strconv.Atoi(value)
+	if err != nil || count <= 0 {
+		t.Fatalf("RAFTSIM_SEEDS must be a positive integer, got %q", value)
+	}
+	return count
+}
 
 func group(t *testing.T, c Config) *Simulator {
 	t.Helper()
@@ -41,7 +60,7 @@ func group(t *testing.T, c Config) *Simulator {
 }
 func elect(t *testing.T, s *Simulator) int {
 	t.Helper()
-	for range 25 {
+	for range electionWaitTicks {
 		if s.Err != nil {
 			finish(t, s)
 		}
@@ -50,7 +69,7 @@ func elect(t *testing.T, s *Simulator) int {
 		}
 		s.Ticks(1)
 	}
-	t.Fatal("no leader within bounded healthy ticks")
+	t.Fatalf("no leader within %d election ticks", electionWaitTicks)
 	return -1
 }
 func finish(t *testing.T, s *Simulator) {
@@ -107,7 +126,7 @@ func isolate(s *Simulator, node int, blocked bool) {
 }
 func freshLeader(t *testing.T, s *Simulator, old int) int {
 	t.Helper()
-	for range 25 {
+	for range electionWaitTicks {
 		s.Ticks(1)
 		if l := s.Leader(); l >= 0 && l != old {
 			return l
@@ -116,15 +135,44 @@ func freshLeader(t *testing.T, s *Simulator, old int) int {
 			finish(t, s)
 		}
 	}
-	t.Fatal("healthy majority failed to elect")
+	t.Fatalf("healthy majority failed to elect within %d ticks", electionWaitTicks)
 	return -1
+}
+
+// A timeout is unknown, so draining messages cannot establish a committed
+// result. Drive retransmission until the original result is durably applied.
+func lostResult(t *testing.T, s *Simulator, id int) model.Outcome {
+	t.Helper()
+	c := s.Clients[id]
+	if !c.Lost || c.Done || c.History.Input.Session == "" {
+		t.Fatal("R17: expected a lost session request")
+	}
+	key := c.History.Input.Actor + "/" + c.History.Input.Session
+	s.Drain()
+	for ticks := 0; ticks <= 2*raftcore.ElectionTicks; ticks++ {
+		if s.Err != nil {
+			finish(t, s)
+		}
+		if result, ok := s.Nodes[c.Node].Stable.App.Sessions[key]; ok {
+			if result.Sequence != c.History.Input.Sequence || result.Digest != c.History.Input.Digest || s.Clients[id].Done {
+				t.Fatal("R17: lost request did not retain its exact committed session")
+			}
+			return result.Result
+		}
+		if ticks < 2*raftcore.ElectionTicks {
+			s.Ticks(1)
+		}
+	}
+	t.Fatal("R17: original lost request did not durably apply")
+	return model.Outcome{}
 }
 
 // R1–R5/R13/R17 share one whole-identity history per seed, including unknown
 // outcomes. Each run stays below 2,000 effect events and 100 operations.
 func TestR1R2R3R4R5R13R17SeededFaultCampaign(t *testing.T) {
 	total, maxEvents := 0, 0
-	for seed := uint64(0); seed < 100; seed++ {
+	count := seedCount(t)
+	for seed := uint64(0); seed < uint64(count); seed++ {
 		t.Run(fmt.Sprintf("seed-%03d", seed), func(t *testing.T) {
 			s := group(t, Config{Seed: seed, Nodes: 4, Drop: 10, Duplicate: 100, Delay: 3})
 			a := create(t, s, "a")
@@ -153,8 +201,7 @@ func TestR1R2R3R4R5R13R17SeededFaultCampaign(t *testing.T) {
 			take := model.Call{Kind: "acquire", Actor: "retry", Cell: "b", Expected: observed(s.Nodes[leader].Stable.App.Cells["b"]), Force: true, At: 3_600_001, Session: "durable", Sequence: 1, Digest: "opaque-1"}
 			dropped := s.Submit(leader, take)
 			s.Do(Action{Kind: "timeout", Node: dropped})
-			s.Drain()
-			first := s.Nodes[leader].Stable.App.Sessions["retry/durable"].Result
+			first := lostResult(t, s, dropped)
 			again := submit(t, s, leader, take)
 			if again != first || again.Code != "ok" || again.Cell.Fence != 2 {
 				t.Fatalf("R17: retry changed result %+v %+v", first, again)
@@ -243,7 +290,7 @@ func TestR1R2R3R4R5R13R17SeededFaultCampaign(t *testing.T) {
 			}
 		})
 	}
-	t.Logf("100 fixed seeds, %d events, maximum %d/2000 per seed", total, maxEvents)
+	t.Logf("%d seeds (0–%d), %d events, maximum %d/%d per seed", count, count-1, total, maxEvents, MaxEvents)
 }
 
 func TestR5HundredMinorityFlapsKeepHealthyTerm(t *testing.T) {
