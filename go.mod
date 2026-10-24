@@ -8,6 +8,7 @@ require (
 	github.com/Agent-Field/agentfield/sdk/go v0.0.0-20260801225427-e6587ade0886
 	github.com/alecthomas/chroma/v2 v2.27.0
 	github.com/amp-labs/connectors v0.0.0-20260814231226-e12d95c297eb
+	github.com/anishathalye/porcupine v1.1.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/ultraviolet v0.0.0-20260703014108-f5a850f9c2b7
