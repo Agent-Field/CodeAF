@@ -41,7 +41,7 @@ export function createFrame({ cluster, id, seed, bootstrap = [], hard = new Uint
 }
 export function stepFrame(handle, tag, value) {
   const w = frame(3).u32(handle).u32(tag);
-  if ([2, 3, 8].includes(tag)) w.blob(value);
+  if ([2, 3, 8, 11].includes(tag)) w.blob(value);
   else if ([4, 10].includes(tag)) w.str(value);
   else if ([5, 6, 7, 9].includes(tag)) w.u64(value);
   return w.finish();
@@ -90,4 +90,12 @@ export class Reactor {
     finally { this.exports.codeaf_free(); }
   }
   metrics() { return { memory: this.memory, peakMemory: this.peakMemory, wasi: { ...this.wasi.calls } }; }
+}
+
+// Maintenance is queried separately so ABI-1 effect frames stay byte compatible.
+// Call tag 11 only after the host has durably checkpointed and compacted storage.
+export function snapshotNeeded(bytes) {
+  const r = response(bytes);
+  const point = r.u32() ? { index: r.u64(), term: r.u64() } : null;
+  r.end(); return point;
 }

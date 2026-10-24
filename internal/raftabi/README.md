@@ -75,10 +75,11 @@ a mutated core blindly.
 | 3 step | handle, input tag, tag-specific data | effects |
 | 4 lease feasibility probe | command blob, optional one-row blob | next canonical row blob |
 | 5 row representation probe | canonical row blob | same canonical row blob |
+| 6 snapshot maintenance query | handle | present flag, then index/term uint64 when present |
 
 Step tags: 0 Poll, 1 Tick, 2 PeerMessage blob, 3 Propose blob, 4 Read string,
 5 Persisted batch ID, 6 Applied batch ID, 7 Transfer target, 8 Configure blob,
-9 StorageFailed batch ID, 10 CancelRead string. The core enforces the one-Ready
+9 StorageFailed batch ID, 10 CancelRead string, 11 CompactSnapshot protobuf blob. The core enforces the one-Ready
 completion order, leader-only admission and peer-local-control refusal.
 
 Effects are: optional persist flag and [ID, hard state, entries, snapshot];
@@ -88,9 +89,12 @@ index] tuples; status [node, leader, term, commit, applied uint64, role uint32,
 RNG state/draws uint64, stopped flag]; need-tick flag. Preserve send order.
 
 The build manifest binds the ABI version, core protocol, row schema, source
-inventory hash and wasm SHA-256. P05 must add the actual snapshot schema/hash
-before snapshot interoperability can be claimed. No snapshot wire compatibility
-is claimed by the P03 opaque checkpoint fixture.
+inventory hash and wasm SHA-256. It also pins portable snapshot schema 1 and the
+SHA-256 of `internal/raftsnapshot/format.go`. Operation 6 exposes the core's
+SnapshotNeeded maintenance hint without changing ABI-1 effect framing; tag 11
+completes a host's durable local checkpoint/compaction. Actual hosted chunk
+storage and bidirectional native/wasm installation are P08's gate; the P03 opaque
+checkpoint fixture alone does not establish that interoperability.
 
 ## Oversized legacy representation decision
 
