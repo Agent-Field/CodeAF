@@ -1,6 +1,7 @@
 ---
 kind: changed
 title: Tidy contributor guides and examples
+pr: 1922
 surface: [docs, build]
 invalidates: []
 ---
