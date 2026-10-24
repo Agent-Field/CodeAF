@@ -6,6 +6,8 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -28,14 +30,26 @@ func (s signer) Cert() identity.Cert            { return s.dev.Cert }
 func (s signer) Sign(p []byte) []byte           { return s.dev.Sign(p) }
 
 type engine struct {
+	agents  []appwire.Agent
+	onRead  func()
+	created int
 	answers int
 	appwire.Engine
 	reads int
 	asks  []appwire.Ask
 }
 
-func (e *engine) ListAsks(agent string) ([]appwire.Ask, error) { e.reads++; return e.asks, nil }
+func (e *engine) ListAsks(agent string) ([]appwire.Ask, error) {
+	e.reads++
+	if e.onRead != nil {
+		e.onRead()
+	}
+	return e.asks, nil
+}
 func (e *engine) ListAgents(string) ([]appwire.Agent, error) {
+	if e.agents != nil {
+		return e.agents, nil
+	}
 	return []appwire.Agent{{ID: chat}, {ID: otherChat}}, nil
 }
 
@@ -52,12 +66,16 @@ type rig struct {
 	now       time.Time
 	dir       directory.Client
 	state     string
+	clock     *atomic.Int64
 }
 
 func newRig(t *testing.T) *rig {
 	t.Helper()
 	now := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
-	relay := relayserve.New(relayserve.Config{Store: t.TempDir(), Now: func() time.Time { return now }})
+	clock := new(atomic.Int64)
+	clock.Store(now.UnixMilli())
+	wall := func() time.Time { return time.UnixMilli(clock.Load()) }
+	relay := relayserve.New(relayserve.Config{Store: t.TempDir(), Now: wall})
 	srv := httptest.NewServer(relay.Handler)
 	t.Cleanup(func() { srv.Close(); _ = relay.Close() })
 	home := t.TempDir()
@@ -70,7 +88,7 @@ func newRig(t *testing.T) *rig {
 		t.Fatal(err)
 	}
 	s := signer{id, dev}
-	dir := directory.NewHTTP(srv.URL, reqsign.SignFor(s, func() time.Time { return now }), srv.Client())
+	dir := directory.NewHTTP(srv.URL, reqsign.SignFor(s, wall), srv.Client())
 	if err := dir.PutDevice(context.Background(), dev.ID(), directory.Device{V: 1}); err != nil {
 		t.Fatal(err)
 	}
@@ -91,11 +109,11 @@ func newRig(t *testing.T) *rig {
 	}
 	e := &engine{}
 	state := t.TempDir()
-	r, err := clientrun.Open(clientrun.Config{Home: state, Relay: srv.URL, Signer: s, Directory: dir, Engine: e, Log: func(clientrun.Receipt) error { return nil }, Now: func() time.Time { return now }, HTTP: srv.Client()})
+	r, err := clientrun.Open(clientrun.Config{Home: state, Relay: srv.URL, Signer: s, Directory: dir, Engine: e, Log: func(clientrun.Receipt) error { return nil }, Now: wall, HTTP: srv.Client()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &rig{r: r, e: e, s: s, client: signer{id, c}, pub: pub, priv: priv, url: srv.URL, now: now, dir: dir, state: state}
+	return &rig{r: r, e: e, s: s, client: signer{id, c}, pub: pub, priv: priv, url: srv.URL, now: now, dir: dir, state: state, clock: clock}
 }
 func (g *rig) pair(t *testing.T, methods ...string) clientrun.Grant {
 	t.Helper()
@@ -184,4 +202,32 @@ func TestSnapshotsOnlyContainLeasedChats(t *testing.T) {
 	if g.e.reads != reads {
 		t.Fatal("read a chat after releasing its lease")
 	}
+}
+
+func TestSnapshotsDiscardResultsIfLeaseChangesDuringRead(t *testing.T) {
+	g := newRig(t)
+	g.pair(t, "asks.answer")
+	g.e.onRead = func() {
+		if err := g.dir.Release(context.Background(), chat, 1); err != nil {
+			t.Error(err)
+		}
+	}
+	if err := g.r.Step(context.Background()); err == nil {
+		t.Fatal("accepted snapshot after losing lease during read")
+	}
+	g.request(t, g.client, "GET", "/v1/clients/"+g.client.dev.ID()+"/slots/"+clientrun.SlotName("asks.list", g.s.dev.ID()), nil, nil, 404)
+}
+
+func TestOversizedSnapshotDoesNotStarveOtherSubscribedReads(t *testing.T) {
+	g := newRig(t)
+	g.e.agents = []appwire.Agent{{ID: chat, Title: strings.Repeat("x", 65536)}}
+	_, err := g.r.Pair(context.Background(), clientrun.Pairing{Cert: g.client.Cert(), BoxKey: g.pub[:], Reads: []string{"agents.list", "asks.list"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := g.r.Step(context.Background()); err == nil {
+		t.Fatal("oversized snapshot not reported")
+	}
+	var slot struct{ Sealed []byte }
+	g.request(t, g.client, "GET", "/v1/clients/"+g.client.dev.ID()+"/slots/"+clientrun.SlotName("asks.list", g.s.dev.ID()), nil, &slot, 200)
 }

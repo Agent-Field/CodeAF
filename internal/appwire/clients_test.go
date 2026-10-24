@@ -31,7 +31,7 @@ func TestPairedClientsAreManagedThroughTheDesktopTable(t *testing.T) {
 	if err := json.Unmarshal(raw, &got); err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Clients) != 1 || !got.Clients[0].Paused {
+	if len(got.Clients) != 1 || !got.Clients[0].Paused || got.Clients[0].Methods == nil || got.Clients[0].Reads == nil {
 		t.Fatalf("%s", raw)
 	}
 	if _, err := Call(e, "clients.unpair", json.RawMessage(`{"id":"client"}`)); err != nil {

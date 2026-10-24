@@ -17,13 +17,15 @@ type state struct {
 // Receipt is durable before dispatch and finished afterward. A begun call is
 // never dispatched again after a crash: its effect may already have happened.
 type Receipt struct {
-	Digest string `json:"digest"`
-	Client string `json:"client"`
-	Number int64  `json:"number"`
-	Agent  string `json:"agent"`
-	Method string `json:"method"`
-	At     string `json:"at"`
-	Status string `json:"status"`
+	SkippedFrom    int64  `json:"skipped_from,omitempty"`
+	SkippedThrough int64  `json:"skipped_through,omitempty"`
+	Digest         string `json:"digest"`
+	Client         string `json:"client"`
+	Number         int64  `json:"number"`
+	Agent          string `json:"agent"`
+	Method         string `json:"method"`
+	At             string `json:"at"`
+	Status         string `json:"status"`
 }
 
 // save replaces the state durably. The caller holds mu, so settings and

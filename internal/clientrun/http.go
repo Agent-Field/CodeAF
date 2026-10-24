@@ -10,12 +10,13 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/clientproto"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
 )
 
 func clientPath(id string) string { return "/v1/clients/" + url.PathEscape(id) }
 
-func (r *Runner) request(ctx context.Context, method, path string, in, out any) error {
+func (r *Runner) request(ctx context.Context, method, path string, in any, read func(io.Reader) error) error {
 	var body []byte
 	var err error
 	if in != nil {
@@ -37,8 +38,12 @@ func (r *Runner) request(ctx context.Context, method, path string, in, out any) 
 	if resp.StatusCode != 200 && resp.StatusCode != 204 {
 		return fmt.Errorf("client relay request: HTTP %d", resp.StatusCode)
 	}
-	if out == nil {
+	if read == nil {
 		return nil
 	}
-	return json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(out)
+	// Original request bodies are returned as base64 beside the ciphertext.
+	// Noncanonical certificate JSON can fill a server's header allowance too.
+	// The queue is streamed, so the total bound need not be held in memory.
+	const maxQueueReply = clientproto.MaxClientQueue * (http.DefaultMaxHeaderBytes + 3*clientproto.MaxFabricBody)
+	return read(io.LimitReader(resp.Body, maxQueueReply))
 }

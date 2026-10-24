@@ -8,5 +8,8 @@ invalidates:
 
 Irreversible asks require the signed client Face ID assertion. Durable started
 receipts prevent replay after an interrupted dispatch or lost acknowledgement.
-Chat calls never acquire a lease. Unsupported mutation routing and unexplained
-sequence gaps fail closed; distinct executors currently need distinct pairings.
+Chat calls never acquire a lease. Unsupported mutation routing and unexplained sequence gaps fail closed. A client
+can explicitly sign skip_through to resume after missing numbers; the skipped
+local range is kept in its chat receipt. The same client can enroll on several
+executors without changing its relay permissions; multi-recipient sealed calls
+let any eligible executor compete for the atomic claim without sharing keys.

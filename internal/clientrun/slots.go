@@ -5,12 +5,14 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"net/url"
 	"slices"
 	"sort"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/clientproto"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"golang.org/x/crypto/nacl/box"
 )
@@ -29,43 +31,65 @@ type Envelope struct {
 func SlotName(method, writer string) string { return method + "." + writer }
 
 func (r *Runner) publish(ctx context.Context, c Client, l directory.Listing) error {
-	held := r.held(l)
-	for _, method := range c.Reads {
-		results, err := r.snapshots(method, held)
-		if err != nil {
-			return err
-		}
-		content, err := json.Marshal(results)
-		if err != nil {
-			return err
-		}
-		key := c.ID + "/" + method
-		hash := sha256.Sum256(content)
-		previous := r.hashes[key]
-		// Refresh before the relay's 24-hour expiry even when data is unchanged.
-		if previous.hash == hash && r.cfg.Now().Sub(previous.at) < 12*time.Hour {
-			continue
-		}
-		envelopes := make([]Envelope, 0, len(results))
-		for _, result := range results {
-			envelopes = append(envelopes, Envelope{r.cfg.Signer.Cert().DeviceID(), r.cfg.Now(), result.Agent, result.Result})
-		}
-		plain, err := json.Marshal(envelopes)
-		if err != nil {
-			return err
-		}
-		pub := (*[32]byte)(c.BoxKey)
-		sealed, err := box.SealAnonymous(nil, plain, pub, rand.Reader)
-		if err != nil {
-			return err
-		}
-		if err := r.request(ctx, "PUT", clientPath(c.ID)+"/slots/"+url.PathEscape(SlotName(method, r.cfg.Signer.Cert().DeviceID())), struct {
-			Sealed []byte `json:"sealed"`
-		}{sealed}, nil); err != nil {
-			return err
-		}
-		r.hashes[key] = publication{hash, r.cfg.Now()}
+	if len(c.BoxKey) != 32 {
+		return errors.New("client encryption key is malformed")
 	}
+	var errs []error
+	for _, method := range c.Reads {
+		if err := r.publishMethod(ctx, c, l, method); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func (r *Runner) publishMethod(ctx context.Context, c Client, l directory.Listing, method string) error {
+	held := r.held(l)
+
+	results, err := r.snapshots(method, held)
+	if err != nil {
+		return err
+	}
+	content, err := json.Marshal(results)
+	if err != nil {
+		return err
+	}
+	current, err := r.cfg.Directory.List(ctx)
+	if err != nil {
+		return err
+	}
+	if !slices.Equal(held, r.held(current)) {
+		return errors.New("chat leases changed during snapshot read")
+	}
+	key := c.ID + "/" + method
+	hash := sha256.Sum256(content)
+	previous := r.hashes[key]
+	// Refresh before the relay's 24-hour expiry even when data is unchanged.
+	if previous.hash == hash && r.cfg.Now().Sub(previous.at) < clientproto.MaxAge/2 {
+		return nil
+	}
+	envelopes := make([]Envelope, 0, len(results))
+	for _, result := range results {
+		envelopes = append(envelopes, Envelope{r.cfg.Signer.Cert().DeviceID(), r.cfg.Now(), result.Agent, result.Result})
+	}
+	plain, err := json.Marshal(envelopes)
+	if err != nil {
+		return err
+	}
+	pub := (*[32]byte)(c.BoxKey)
+	if len(plain)+box.AnonymousOverhead > clientproto.MaxSlotBytes {
+		return appwire.Errorf(appwire.CodeTooLarge, "%s snapshot exceeds the %d KiB slot limit", method, clientproto.MaxSlotBytes/1024)
+	}
+	sealed, err := box.SealAnonymous(nil, plain, pub, rand.Reader)
+	if err != nil {
+		return err
+	}
+	if err := r.request(ctx, "PUT", clientPath(c.ID)+"/slots/"+url.PathEscape(SlotName(method, r.cfg.Signer.Cert().DeviceID())), struct {
+		Sealed []byte `json:"sealed"`
+	}{sealed}, nil); err != nil {
+		return err
+	}
+	r.hashes[key] = publication{hash, r.cfg.Now()}
 	return nil
 }
 

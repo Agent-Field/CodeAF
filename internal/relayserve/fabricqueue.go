@@ -5,14 +5,16 @@ import (
 	"slices"
 	"strconv"
 
+	"github.com/Agent-Field/codeaf/internal/clientproto"
+
 	"github.com/Agent-Field/codeaf/internal/reqsign"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // Queue limits bound both the number of calls and each sealed payload.
 const (
-	MaxQueueBytes  = 4096
-	MaxClientQueue = 128
+	MaxQueueBytes  = clientproto.MaxQueueBytes
+	MaxClientQueue = clientproto.MaxClientQueue
 )
 
 type queuedCall struct {

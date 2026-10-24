@@ -107,9 +107,15 @@ checks the retained signature, identity, sequence, age and method permission.
 Every executed call leaves who, when and method in its chat. A receipt is kept
 before execution. If delivery is interrupted at that point, codeaf does not
 repeat the possible effect automatically. An answer that finished but lost its
-acknowledgement is acknowledged after restart without being run again. Gaps in
-the local sequence are refused; separate executors currently need distinct
-client pairings because the relay cannot explain skipped numbers to them.
+acknowledgement is acknowledged after restart without being run again. Gaps in the local sequence are refused unless the client explicitly signs a
+`skip_through` instruction for the missing numbers. That skipped local range
+is kept in the chat receipt. A refused earlier pending entry still stops the
+round. Started or completed calls are never replayed by a skip instruction.
+
+The same client can enroll locally on several computers with the same allowed
+methods. Each computer has its own encryption key. An `any` call may contain a
+sealed copy for each eligible computer; the relay's atomic claim still chooses
+only one to execute it.
 
 ## List paired clients, pause a client, or unpair one
 
@@ -126,3 +132,20 @@ client already has. Resume uses `clients.pause` with `paused:false`. Unpair
 revokes the certificate at the relay, which deletes its slots and queue. Kept
 call receipts stay in the chat. These management mutations require a trusted
 live appwire connection; the v0 scoped queue does not grant them.
+
+## Chat identity in app snapshots and queued answers
+
+A cell-backed chat keeps its transcript inside `.cell/`, but its app identity is
+the enclosing conversation folder's ID. That same ID scopes snapshots and
+queued answers and names its relay lease. The app resolves both cell and older
+transcript layouts through the shared session layout reader. Closing the app
+cancels and joins its client runner before closing the conversations it uses.
+
+## Snapshot too large or one subscribed read fails
+
+Each encrypted method snapshot must fit the relay's 64 KiB slot limit. If it
+cannot fit, codeaf refuses that update and keeps the old snapshot and timestamp.
+It continues updating other subscribed methods; a failed read does not stop
+all the client's snapshots. v0 does not paginate or silently truncate large
+snapshots. After the last client is unpaired, startup retains old call receipts
+without opening sync or starting a client refresh loop.

@@ -7,11 +7,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"slices"
 	"strconv"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/clientproto"
 	"golang.org/x/crypto/curve25519"
 	"golang.org/x/crypto/nacl/box"
 )
@@ -22,19 +24,61 @@ type Call struct {
 	Method string          `json:"method"`
 	Params json.RawMessage `json:"params"`
 	FaceID bool            `json:"face_id,omitempty"`
+	// SkipThrough explicitly authorizes missing earlier numbers for this executor.
+	SkipThrough *int64 `json:"skip_through,omitempty"`
 }
 
 func (r *Runner) drain(ctx context.Context, c Client) error {
-	var queue struct {
-		Entries []Queued `json:"entries"`
-	}
-	if err := r.request(ctx, "GET", clientPath(c.ID)+"/queue", nil, &queue); err != nil {
-		return err
-	}
-	for _, entry := range queue.Entries {
-		if err := r.execute(ctx, c, entry); err != nil {
+	return r.request(ctx, "GET", clientPath(c.ID)+"/queue", nil, func(reader io.Reader) error {
+		dec := json.NewDecoder(reader)
+		if err := queueStart(dec); err != nil {
 			return err
 		}
+		var last int64
+		for count := 0; dec.More(); count++ {
+			if count >= clientproto.MaxClientQueue {
+				return errors.New("relay queue exceeds its entry limit")
+			}
+			var entry Queued
+			if err := dec.Decode(&entry); err != nil {
+				return err
+			}
+			if entry.Number <= last {
+				return errors.New("relay queue is not in sequence order")
+			}
+			last = entry.Number
+			if err := r.execute(ctx, c, entry); err != nil {
+				return err
+			}
+		}
+		return queueEnd(dec)
+	})
+}
+
+func queueStart(dec *json.Decoder) error {
+	for _, want := range []any{json.Delim('{'), "entries", json.Delim('[')} {
+		token, err := dec.Token()
+		if err != nil {
+			return err
+		}
+		if token != want {
+			return errors.New("malformed relay queue")
+		}
+	}
+	return nil
+}
+func queueEnd(dec *json.Decoder) error {
+	for _, want := range []json.Delim{']', '}'} {
+		token, err := dec.Token()
+		if err != nil {
+			return err
+		}
+		if token != want {
+			return errors.New("malformed relay queue")
+		}
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return errors.New("trailing relay queue data")
 	}
 	return nil
 }
@@ -44,7 +88,7 @@ func (r *Runner) execute(ctx context.Context, c Client, e Queued) error {
 	if err != nil {
 		return err
 	}
-	receipt, known, err := r.previous(c.ID, e)
+	receipt, known, err := r.previous(c.ID, e, call.SkipThrough)
 	if err != nil {
 		return err
 	}
@@ -62,7 +106,7 @@ func (r *Runner) execute(ctx context.Context, c Client, e Queued) error {
 		if err := r.admit(ctx, c, e, agent); err != nil {
 			return err
 		}
-		receipt, err = r.dispatch(c, e, call, agent)
+		receipt, err = r.dispatch(c, e, call, agent, receipt)
 		if err != nil {
 			return err
 		}
@@ -95,8 +139,8 @@ func (r *Runner) prepare(ctx context.Context, c Client, e Queued) (Call, string,
 	return call, agent, r.admit(ctx, c, e, agent)
 }
 
-func (r *Runner) dispatch(c Client, e Queued, call Call, agent string) (Receipt, error) {
-	receipt := Receipt{Client: c.ID, Number: e.Number, Agent: agent, Method: call.Method, At: r.cfg.Now().UTC().Format(time.RFC3339Nano), Status: "started", Digest: proofDigest(e)}
+func (r *Runner) dispatch(c Client, e Queued, call Call, agent string, skipped Receipt) (Receipt, error) {
+	receipt := Receipt{SkippedFrom: skipped.SkippedFrom, SkippedThrough: skipped.SkippedThrough, Client: c.ID, Number: e.Number, Agent: agent, Method: call.Method, At: r.cfg.Now().UTC().Format(time.RFC3339Nano), Status: "started", Digest: proofDigest(e)}
 	if err := r.keep(receipt); err != nil {
 		return receipt, err
 	}
@@ -132,7 +176,11 @@ func (r *Runner) openCall(e Queued) (Call, error) {
 	if err != nil {
 		return Call{}, err
 	}
-	plain, ok := box.OpenAnonymous(nil, e.Sealed, (*[32]byte)(pub), (*[32]byte)(r.state.Secret))
+	sealed, err := executorBox(e.Sealed, r.cfg.Signer.Cert().DeviceID())
+	if err != nil {
+		return Call{}, err
+	}
+	plain, ok := box.OpenAnonymous(nil, sealed, (*[32]byte)(pub), (*[32]byte)(r.state.Secret))
 	if !ok {
 		return Call{}, errors.New("queued call could not be opened")
 	}
@@ -224,7 +272,7 @@ func receiptKey(client string, number int64) string {
 }
 func proofDigest(e Queued) string { sum := sha256.Sum256(e.Body); return hex.EncodeToString(sum[:]) }
 
-func (r *Runner) previous(client string, e Queued) (Receipt, bool, error) {
+func (r *Runner) previous(client string, e Queued, skip *int64) (Receipt, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if previous, ok := r.state.Receipts[receiptKey(client, e.Number)]; ok {
@@ -240,6 +288,9 @@ func (r *Runner) previous(client string, e Queued) (Receipt, bool, error) {
 		}
 	}
 	if e.Number != last+1 {
+		if e.Number > last+1 && skip != nil && *skip == e.Number-1 {
+			return Receipt{SkippedFrom: last + 1, SkippedThrough: e.Number - 1}, false, nil
+		}
 		return Receipt{}, false, fmt.Errorf("queued sequence gap: got %d, expected %d", e.Number, last+1)
 	}
 	return Receipt{}, false, nil
