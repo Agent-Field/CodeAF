@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/clusterstate"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
@@ -14,13 +15,8 @@ const (
 	StateRetired = "retired" // read-only until RetireAt, then deleted by the relay
 )
 
-// Rotation is what an identity's record says about its replacement.
-type Rotation struct {
-	State    string `json:"state"`
-	By       string `json:"by"` // the device that froze it; only it may retire
-	At       int64  `json:"at"` // directory ms of the freeze
-	RetireAt int64  `json:"retire_at,omitempty"`
-}
+// Rotation retains the shared record without importing the directory into wasm.
+type Rotation = clusterstate.Rotation
 
 // RotationOp is one move of the rotation state machine.
 type RotationOp string

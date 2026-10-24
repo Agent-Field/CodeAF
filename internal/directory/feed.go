@@ -316,25 +316,29 @@ func (s *Sub) leave() {
 	}
 }
 
-// visible is a record that can say which of its fields a person sees.
-type visible interface{ visibleAt(now int64) any }
-
-// visibleAt is the Cell as the home list shows it: whether the lease is held
-// counts, and when it runs out does not, so a heartbeat that only pushes the
-// expiry later changes nothing a person could see.
-func (c Cell) visibleAt(now int64) any {
-	if c.Lease.Expires > now {
-		c.Lease.Expires = 1
-	} else {
-		c.Lease.Expires = 0
-	}
-	return c
-}
-
 // fingerprint is the bytes two records are compared by.
 func fingerprint(v any, now int64) []byte {
-	if p, ok := v.(visible); ok {
-		v = p.visibleAt(now)
+	// Aliased shared records cannot carry private directory methods. Keep the
+	// presentation projection here so it never becomes replicated authority.
+	switch r := v.(type) {
+	case Device:
+		r.LastSeen = 0
+		v = r
+	case *Device:
+		if r != nil {
+			return fingerprint(*r, now)
+		}
+	case Cell:
+		if r.Lease.Expires > now {
+			r.Lease.Expires = 1
+		} else {
+			r.Lease.Expires = 0
+		}
+		v = r
+	case *Cell:
+		if r != nil {
+			return fingerprint(*r, now)
+		}
 	}
 	b, _ := json.Marshal(v)
 	return b
