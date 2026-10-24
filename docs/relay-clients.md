@@ -99,5 +99,4 @@ owns a store directory, as with its in-memory directory revocation feed.
 Expiry is evaluated on reads and writes with the relay clock. Identity retirement
 erases fabric data with the existing directory and blobs.
 
-The Go relay implements this contract. The Worker does not yet implement fabric;
-conformance's Worker fabric row explicitly skips until that implementation lands.
+The Go relay and the Worker implement this contract.
