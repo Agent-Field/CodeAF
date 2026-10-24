@@ -150,3 +150,8 @@ export class Tenant {
     return this.dir.rotation()?.retire_at;
   }
 }
+
+// This facade is assembled only for a Raft-owned namespace after migration.
+// Keeping it separate prevents constructing or invoking the legacy SQL writer
+// while the integration harness exercises the authoritative application path.
+export { RaftDirectoryFacade } from './raft/directory.js';

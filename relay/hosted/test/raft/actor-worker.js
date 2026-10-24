@@ -15,7 +15,7 @@ const evaluate = (command, read, app) => {
   const data = r.blob(); r.end(); return { writes: [{ namespace: 'state', key: 'cell', data }], version: BigInt(app.version) + 1n };
 };
 export class ActorFixture extends RaftMemberDO {
-  constructor(ctx, env) { super(ctx, { ...env, raftEvaluate: evaluate }); }
+  evaluator() { return evaluate; }
   async fetch(request) {
     const url = new URL(request.url), b = request.method === 'POST' ? await request.json() : {};
     try {
