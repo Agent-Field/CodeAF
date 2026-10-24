@@ -169,6 +169,13 @@ export class MemberActor {
   begin(data) { data = data.slice(); return this.serial(() => this.store.beginSnapshot(data)); }
   chunk(id, offset, data, hash) { data = data.slice(); return this.serial(() => this.store.putChunk(id, offset, data, hash)); }
   complete(id) { return this.serial(() => this.store.completeSnapshot(id)); }
+  // Explicit owner erasure has already durably fenced every ingress. Dropping
+  // this handle reclaims memory; it is never a pressure eviction of a leader.
+  disposeErased() { return this.serial(() => {
+    this.stopped=true;
+    if(this.handle){const r=response(this.reactor.call(frame(2).u32(this.handle).finish()));r.end();}
+    this.handle=0;active.delete(this);
+  }); }
   close() { return this.serial(() => {
     if (this.status?.role === 2 || this.pending > 1) throw new Error('raft member: active member cannot be evicted');
     if (this.handle) { const r = response(this.reactor.call(frame(2).u32(this.handle).finish())); r.end(); }
