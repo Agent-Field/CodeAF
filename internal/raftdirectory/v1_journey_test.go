@@ -6,6 +6,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -82,7 +84,31 @@ func TestR1R2R23R25R29V1TwoHomesContinueTakeBackQuitOffRevoke(t *testing.T) {
 	mux.Handle("/v1/store/", blobstore.Handler(auth, func(string) (blobstore.Store, error) { return disk, nil }))
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits.Add(1); mux.ServeHTTP(w, r) }))
 	defer srv.Close()
-	t.Setenv(syncsetup.URLVar, srv.URL)
+	runV1TwoHomeJourney(t, srv.URL, &hits)
+}
+
+// R1/R2/R23/R25/R29 repeat the same real handoff, files, quit, off and
+// revocation assertions through a local Worker's public HTTP door.
+func TestR1R2R23R25R29HostedTwoHomes(t *testing.T) {
+	endpoint := os.Getenv("CODEAF_HOSTED_PROOF_URL")
+	if endpoint == "" {
+		t.Skip("local hosted proof runner only")
+	}
+	target, err := url.Parse(endpoint)
+	if err != nil || target.Scheme != "http" || target.Hostname() != "127.0.0.1" {
+		t.Fatal("hosted proof requires loopback HTTP")
+	}
+	celltest.Available(t)
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	var hits atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits.Add(1); proxy.ServeHTTP(w, r) }))
+	defer server.Close()
+	runV1TwoHomeJourney(t, server.URL, &hits)
+}
+
+func runV1TwoHomeJourney(t *testing.T, endpoint string, hits *atomic.Int64) {
+	t.Helper()
+	t.Setenv(syncsetup.URLVar, endpoint)
 	id, e := identity.Unmarshal([]byte(`{"V":1,"signing_seed":"` + hex.EncodeToString(key("root").Seed()) + `","dedup_secret":"` + hex.EncodeToString(key("dedup").Seed()) + `","cell_key":"` + hex.EncodeToString(key("content").Seed()) + `"}`))
 	must(t, e)
 	open := func() *syncsetup.Sync {

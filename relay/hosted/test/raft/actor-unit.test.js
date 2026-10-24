@@ -146,3 +146,17 @@ test('R27 isolate activation refuses before allocating a new member store and re
     for (const actor of actors) assert.equal((await actor.input(0)).status.applied, 3n);
   } finally { for (const actor of actors) await actor.close(); for (const host of hosts) host.db.close(); }
 });
+
+// R3/R27 distinguish the local platform's name index from unknown retained
+// application data. An explorer-created table cannot block first activation,
+// and it never licenses resetting an unrelated authoritative table.
+test('R3 R27 a fresh hosted store accepts platform name metadata and refuses unknown tables',async()=>{
+ const host=new Host();host.db.exec('CREATE TABLE __miniflare_do_name(name TEXT); INSERT INTO __miniflare_do_name VALUES(\'anchor-a\')');
+ try{
+  const store=new MemberStorage(host,codec);const recovered=await store.open(identity(1));assert.equal(recovered.applied,0n);
+  assert.equal(host.db.prepare('SELECT name FROM __miniflare_do_name').get().name,'anchor-a');
+  assert.equal(store.application().count,0);
+ }finally{host.db.close();}
+ const unknown=new Host();unknown.db.exec('CREATE TABLE evidence(body TEXT);INSERT INTO evidence VALUES(\'retained\')');
+ try{await assert.rejects(new MemberStorage(unknown,codec).open(identity(2)),/invalid|damaged/);assert.equal(unknown.db.prepare('SELECT body FROM evidence').get().body,'retained');}finally{unknown.db.close();}
+});
