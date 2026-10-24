@@ -559,8 +559,6 @@ var settingUI = map[string]settingMeta{
 	// this door and `codeaf config` say the same word.
 	config.KeyHints: {
 		tab: tabWorkspace, label: "disable hints", widget: widgetToggle,
-		// NO `about` OF ITS OWN: the line under the row is the registry's hint,
-		// the owner's own wording (2026-09-24), said once ([settingMetaFor]).
 	},
 	config.KeySplitPct: {
 		tab: tabDisplay, label: "chat width", widget: widgetText,

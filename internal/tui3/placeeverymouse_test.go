@@ -52,9 +52,6 @@ func TestClickingATabWordWorksFromEveryPlace(t *testing.T) {
 }
 
 // THE WHEEL IS `↑↓` UNDER THE POINTER, on every place and by the same distance.
-// A wheel that moved a different number of rows per room — or none at all in
-// some of them — would be one gesture with seven meanings, which is what the
-// owner met when they turned it over the built binary.
 func TestTheWheelMovesListPlacesCursorAndLeavesTeamsFocusAlone(t *testing.T) {
 	for _, place := range everyPlaceTable() {
 		t.Run(place.id.word(), func(t *testing.T) {

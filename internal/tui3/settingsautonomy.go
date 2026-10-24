@@ -11,11 +11,10 @@ import (
 
 // ── WHAT THIS PROJECT DOES WHILE NOBODY IS THERE, ON THE SETTINGS PAGE ──────
 //
-// A SETTING THAT CHANGES WHAT THE PROGRAM DOES ON ITS OWN IS NEVER REACHABLE
-// ONLY BY A SLASH COMMAND (owner ruling 2026-09-11). `/autonomy` has been the
-// only door to these rules since they landed, and slash commands are invisible:
-// a person who has never been told the word cannot find it, and this is the one
-// setting that decides whether their work is answered without them.
+// A SETTING THAT CHANGES WHAT THE PROGRAM DOES ON ITS OWN IS NEVER REACHABLE ONLY BY A
+// SLASH COMMAND. `/autonomy` has been the only door to these rules since they landed, and
+// slash commands are invisible: a person who has never been told the word cannot find it,
+// and this is the one setting that decides whether their work is answered without them.
 //
 // So the rules have a row where settings are browsed. It is the SAME reader and
 // the SAME writer as the command — [app.autonomySheetText] prints what these

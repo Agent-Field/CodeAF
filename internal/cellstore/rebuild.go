@@ -47,8 +47,7 @@ func (s Screened) paths() []string {
 }
 
 // leftOut is the install folders this seal leaves out because a lockfile that
-// travels rebuilds them. It is the rule of docs/STAGE-1-CONTRACTS.md section
-// 19.4, and each folder that fails any test of it travels with the seal exactly
+// travels rebuilds them. Each folder that fails any test of it travels with the seal exactly
 // as before, so being wrong costs the bytes the seal would have carried anyway.
 func (g Guard) leftOut(tree string, changed, locks []string, policy policyFile) Screened {
 	personal := policy

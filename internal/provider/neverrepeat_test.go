@@ -332,11 +332,10 @@ func alonePool(t *testing.T) (*Client, func() int, *[]time.Duration) {
 
 // A CONVERSATION NEVER WAITS OUT A WINDOW WHILE ANOTHER MODEL EXISTS.
 //
-// THE OWNER'S RULING, 2026-09-10: nobody should ever work around a `too many
-// requests` by switching models themselves. When every machine this request may
-// go to is being held, the call gives the refusal straight back — `pacingExhausted`
-// reads it as the pacing door it is (endpoints.go) and the session offers the
-// next model, which beats any window.
+// The recovery rule: nobody should ever work around a `too many requests` by switching
+// models themselves. When every machine this request may go to is being held, the call
+// gives the refusal straight back — `pacingExhausted` reads it as the pacing door it is
+// (endpoints.go) and the session offers the next model, which beats any window.
 func TestAWatchedCallWithEveryMachineHeldGivesUpAtOnce(t *testing.T) {
 	client, served, waits := alonePool(t)
 	ctx := WithLaneChoice(context.Background(), lanes.Choice{Only: []string{"Alone"}})

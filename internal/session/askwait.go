@@ -252,8 +252,7 @@ func (asked *askedOfThePerson) answerLocked(id uint64, answer Answer) (*askOpen,
 	// channel afterwards, so a correction that arrives once the call has taken
 	// its answer and gone is a MESSAGE rather than a send into a channel nobody
 	// reads — which is measurable: without it, a change to a question the turn
-	// had waited for was recorded, drawn, and never heard by the model
-	// (the Spark, 2026-09-11).
+	// had waited for was recorded, drawn, and never heard by the model.
 	wait := open.wait
 	open.wait = nil
 	if wait != nil {

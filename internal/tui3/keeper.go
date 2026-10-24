@@ -31,12 +31,9 @@ import (
 // window. `behind` describes a position on a screen nobody can see, which makes
 // it furniture; `open` describes what is true.
 
-// NO DOOR ONTO A CONVERSATION IS EVER REFUSED FOR HOW MANY ARE ALREADY OPEN.
-// There was a cap — eight — and its own comment said that a cap hit in practice
-// by somebody who was not testing it is evidence the number is wrong. It was hit
-// in a day of ordinary use, and the owner's ruling on 2026-08-31 was to remove
-// the limit rather than to raise it: "that is pointless". That ruling stands, and
-// nothing below is a limit: the fiftieth `/new` opens exactly like the first.
+// NO DOOR ONTO A CONVERSATION IS REFUSED FOR HOW MANY ARE ALREADY OPEN.
+// Quiet conversations can be released to bound resources without imposing a
+// limit on the number of conversations a person can start.
 //
 // WHAT ONE OPEN CONVERSATION COSTS is what it always was — a few goroutines, its
 // transcript, one file descriptor, a five-second presence tick and its

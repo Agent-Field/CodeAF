@@ -2,7 +2,7 @@
 
 // THE MANUAL, REACHED THE WAY A PERSON REACHES IT.
 //
-// WHAT THIS LANE PROVES. The manual is the only thing in this program that says
+// WHAT this test PROVES. The manual is the only thing in this program that says
 // what the program is, and issue #293 measured three ways it was unreachable: a
 // person had no door onto it at all, a plain question did not arrive at the page
 // that answers it, and a page asked for by name arrived whole and unbounded. The
@@ -84,7 +84,7 @@ const (
 	// becoming UNREACHABLE, which is the regression they are for. A third miss is
 	// the finding, and it fails with the journal under it.
 	manualAttempts = 3
-	// manualCap is what one scenario may spend before this lane says something
+	// manualCap is what one scenario may spend before this test says something
 	// is wrong with the RUN rather than with the manual. A two-turn conversation
 	// on a cheap model is a fraction of a cent; a quarter of a dollar is a
 	// runaway worth failing on.
@@ -622,7 +622,7 @@ func newManualWorld(t *testing.T) *world {
 // instructively so: the model read every file and then answered about THOSE
 // files — unix modes, shell access, `chmod 600` — instead of about codeaf. The
 // question is about the product, the material is a prompt to answer about the
-// material, and this lane is not the place to discover which.
+// material, and this test is not the place to discover which.
 func aPlainWorkspace(t *testing.T) string {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "quarterly-report")
@@ -632,7 +632,7 @@ func aPlainWorkspace(t *testing.T) string {
 	return dir
 }
 
-// manualConfig is the departure this lane makes from an ordinary conversation:
+// manualConfig is the departure this test makes from an ordinary conversation:
 // nobody is watching, so nothing a turn does may stop on a question — a call
 // that would ask is refused instead (AskConsent false), and there is no card
 // for anybody to press. The person's own approval rules already allow `manual`.

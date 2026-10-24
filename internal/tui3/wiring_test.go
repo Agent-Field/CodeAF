@@ -463,7 +463,7 @@ func TestTheWideningYesTakesItsOwnRoad(t *testing.T) {
 // The line puts the question and its answers on one row, and on a frame with no
 // room for that the honest shape is the card — an offer with its tail truncated
 // is an offer that hides an answer, and the answer it hides is the last one,
-// which on this lane is `deny`. Forms promote and never demote
+// which on this test is `deny`. Forms promote and never demote
 // (docs/design/questions/DESIGN.md).
 func TestANarrowFrameGivesEveryAnswerARowRatherThanCuttingOne(t *testing.T) {
 	_, a := wired([]session.Event{
@@ -593,11 +593,7 @@ func TestCtrlEnterQueuesAMessageForAfterTheTurnAndDrawsTheQueue(t *testing.T) {
 	if a.input.String() != "" {
 		t.Fatalf("the box kept %q", a.input.String())
 	}
-	// THE QUEUE IS DRAWN MESSAGE BY MESSAGE, in a register nothing sent wears:
-	// the row sits above the box led by the return arrow in dim ink, and
-	// NOTHING is drawn under it — the line that once explained the block is
-	// gone by the owner's call (followup.go). A count alone made a person guess
-	// which of their sentences were still queued.
+	// A count alone made a person guess which of their sentences were still queued.
 	w, _ := a.size()
 	rows := a.followRows(w)
 	if len(rows) != 1 {

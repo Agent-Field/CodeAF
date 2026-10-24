@@ -537,7 +537,7 @@ func ObservationBytes(contextTokens int) int {
 // most a TENTH of the window it has to fit in.
 //
 // The number is not invented here, it is read off the caps that were already in
-// force. pi's 2000 lines / 50KB were measured against a 128,000-token window,
+// force. The default 2000 lines / 50KB were measured against a 128,000-token window,
 // which is the window this program assumes when a model card says nothing
 // (internal/session's defaultContextWindow), and 50KB is exactly a tenth of
 // 128,000 tokens in transport bytes. So a tenth reproduces today's numbers

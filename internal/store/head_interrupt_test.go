@@ -9,7 +9,7 @@ import (
 
 // TestHeadInterruptKindMatchesHeadPackage pins 12.8.10's two halves together.
 // internal/head/interrupt.go declares its own HeadInterruptKind because the
-// store's kind list was closed to that lane; now that this lane has opened it,
+// store's kind list was closed to that lane; now that this test has opened it,
 // store.CommandHeadInterrupt must stay byte-identical to head.HeadInterruptKind
 // or the door (RequestInterrupt) and the arm (ApplyInterrupt) would be talking
 // about two different commands. This is a cross-package test on purpose: it

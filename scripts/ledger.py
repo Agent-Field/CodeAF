@@ -1,18 +1,7 @@
 #!/usr/bin/env python3
-"""Assemble docs/design/polish/LEDGER.md from the per-surface audits beside it.
+"""Assemble an ordered report from the adjacent surface reports.
 
-The audits are where a defect is written down in full: what it is, the line
-that decides it, why it costs a developer something, the fix shape, the
-severity and the frames it was seen on. The ledger is the one ORDERED list the
-owner reads, so it is GENERATED from them and never edited by hand — an edit
-here would be a second copy of a number that is already written down somewhere
-else, and a second copy is a copy that will drift.
-
-A row CLOSES when the audit that holds it names its number under `## fixed`,
-which is the same thing as saying it closes on a captured before/after pair,
-because that is what a lane has to put there. The spellings below are the ones
-the lanes actually write — a table row, a bolded number, a `Row N` heading —
-and a spelling nobody uses is not worth matching.
+Rows close when their source report lists them under the fixed heading.
 """
 
 import datetime
@@ -43,7 +32,7 @@ PREFIX = {
 ROW = re.compile(r"^(\d+)\. (.*)$")
 # A `## fixed` SECTION IS NOT ALL CLOSURES. Every lane writes its own account of
 # what it did NOT do under a sub-heading — `### skipped, and why`, `### Not fixed
-# here`, `### Not done by this lane` — and those paragraphs name row numbers too.
+# here` and deferred-work sections — and those paragraphs name row numbers too.
 # Reading them as closures counted twenty-eight rows as done that their own audit
 # says are open, in a ledger whose whole purpose is to be believable. So the
 # closures are the sub-blocks that are not disclaimers, and a heading has to earn
@@ -102,7 +91,7 @@ def closures_only(fixed: str) -> str:
     for line in fixed.splitlines():
         # A `##` OPENS A NEW SECTION AND CLEARS BOTH GATES. A lane that comes back
         # for a second pass writes `## fixed — the second pass` under the first
-        # pass's closing `### Not done by this lane`, and a gate that only ever
+        # pass's closing deferred-work section, and a gate that only ever
         # reset on `###` swallowed the entire second pass — four rows of real work
         # read as nothing at all. A ledger errs in both directions or it is not a
         # ledger, so this is checked the same way the generous direction is.

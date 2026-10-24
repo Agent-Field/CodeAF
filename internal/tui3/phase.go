@@ -100,18 +100,15 @@ type newsMsg struct{}
 // an address, which is why keying by it let two nodes on one model id overwrite
 // each other (see the header).
 //
-// THE CONVERSATION'S OWN NEWS IS FILED UNDER THE CONVERSATION, AND UNDER ITS
-// MODEL BESIDE IT. The conversation is the empty subject by the engine's own
-// compatibility bargain ([provider.PhaseNews.Subject]), and it used to be filed
-// under its model and nothing else. That was an address again, and the address
-// moved while the identity did not: a model picked mid-turn changes this
-// window's id at once while the engine finishes the turn on the old one, a
-// stream-cut hop answers on another model, and a model changed from another
-// window reaches the connection without reaching this window's field. Each
-// filed the rate and the machine under a name nobody here was asking for, and
-// the owner read it as `via` and tok/s vanishing at random. The conversation's
-// id ([provider.PhaseNews.Session], the engine's own [session.Agent.NewsKey]) is
-// what every one of those keeps, so it is the first name.
+// THE CONVERSATION'S OWN NEWS IS FILED UNDER THE CONVERSATION, AND UNDER ITS MODEL BESIDE
+// IT. The conversation is the empty subject by the engine's own compatibility bargain
+// ([provider.PhaseNews.Subject]), and it used to be filed under its model and nothing
+// else. That was an address again, and the address moved while the identity did not: a
+// model picked mid-turn changes this window's id at once while the engine finishes the
+// turn on the old one, a stream-cut hop answers on another model, and a model changed from
+// another window reaches the connection without reaching this window's field. The
+// conversation's id ([provider.PhaseNews.Session], the engine's own
+// [session.Agent.NewsKey]) is what every one of those keeps, so it is the first name.
 //
 // THE MODEL COPY IS THE COMPATIBILITY BARGAIN AND NOT A SECOND OPINION. An older
 // peer across a connection sends no conversation at all, and a window that
@@ -487,12 +484,9 @@ func phaseWords(news PhaseNews, now time.Time) string {
 // in one place: a phase's parts, which of them leads, and what each of them is
 // worth when the row runs out.
 //
-// THE ORDER IS THE DATA HIERARCHY the owner asked for — the machine's name, then
-// the phase and its clock and whatever the build will do about it, then the
-// rate. A field is never cut, only said shorter: "3.1s" is "first word 3.1s"
-// with the label taken off, where a clip at the same width would leave
-// "first word 3.…", which is a fact about nothing. The fitting itself belongs to
-// rowfit.go and is not repeated here.
+// A field is never cut, only said shorter: "3.1s" is "first word 3.1s" with the label
+// taken off, where a clip at the same width would leave "first word 3.…", which is a fact
+// about nothing. The fitting itself belongs to rowfit.go and is not repeated here.
 //
 // TWO SPELLINGS OF A CLOCK, and the difference is what the number is for. The
 // phases a person is WAITING THROUGH with nothing arriving — the handshake and

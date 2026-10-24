@@ -157,7 +157,7 @@ func (a *app) stripPhoneState() string {
 // PAGE and reads the project's record in behind it, exactly the door
 // [app.taskSheetKeyPress] opens on its key. It answers whether it took the press.
 //
-// IT IS THE PAGE AND NOT THE OVERLAY COLUMN. The page is the surface this lane
+// IT IS THE PAGE AND NOT THE OVERLAY COLUMN. The page is the surface this implementation
 // shaped into cards a thumb goes into, with a `‹ back` bar at its foot
 // (taskview.go); the overlay column ([app.railTake]) is a keyboard list under a
 // key legend, and a door that landed there would open the very thing this tier

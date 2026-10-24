@@ -281,12 +281,10 @@ func (a *app) folderConfirm() tea.Cmd {
 // the next conversation's ([homeTarget.where]) and the files go on the tray home
 // is already carrying, with home back on the frame under both.
 //
-// A PIN IS NOT A ROUND TRIP. Registering a folder with an agent is a write and a
-// wire call, which is why the ordinary confirm runs off the loop; setting a
-// string on this window is neither, and it is the same act `alt+p` performs
-// synchronously one keystroke away (homedraft.go's [app.moveTarget]). So the
-// rule above home's box says the new folder on the very next frame — which is
-// the whole of what the owner asked to be able to see.
+// A PIN IS NOT A ROUND TRIP. Registering a folder with an agent is a write and a wire
+// call, which is why the ordinary confirm runs off the loop; setting a string on this
+// window is neither, and it is the same act `alt+p` performs synchronously one keystroke
+// away (homedraft.go's [app.moveTarget]).
 //
 // THE FILES STILL GO THE LONG WAY ROUND, because a file is a stat and a stat is
 // a disk: they ride the same command every other confirm fires, and land on the

@@ -9,15 +9,12 @@ import (
 
 // ── HOW LONG AN ANSWER LASTS, ON THE FRAME THAT ASKS FOR IT ─────────────────
 //
-// "STOP ASKING ME FOR THIS" IS A THING PEOPLE SAY AT A PERMISSION GATE, and
-// until this row there was nowhere to say it. The question already carried the
-// answer — [session.Question.Scope] is the lifetimes the lane said an answer
-// could have, and [session.Answer.Scope] is the one it went out with — but the
-// only way to reach a wider one from the block was the `always` ANSWER, which
-// grants a different thing (every later call of that tool) and is the lane's
-// choice rather than the person's. The owner ruled one row (2026-09-11): the
-// offered lifetimes drawn under the answers, cycled by a key, defaulting to the
-// narrowest, and OFFERED NOWHERE ELSE.
+// "STOP ASKING ME FOR THIS" IS A THING PEOPLE SAY AT A PERMISSION GATE, and until this row
+// there was nowhere to say it. The question already carried the answer —
+// [session.Question.Scope] is the lifetimes the lane said an answer could have, and
+// [session.Answer.Scope] is the one it went out with — but the only way to reach a wider
+// one from the block was the `always` ANSWER, which grants a different thing (every later
+// call of that tool) and is the lane's choice rather than the person's.
 //
 //	│ which store should the ledger sit on?
 //	│
@@ -96,10 +93,10 @@ func questionScopeNow(q questionShown) session.AnswerScope {
 // questionScopeRow is the row itself: every offered lifetime in the person's
 // own words, with the one that is on wearing the vocabulary's tick.
 //
-// THE TICK IS THE MARK AND THE HUE IS NOT. Colour is stroke and never fill on
-// this block (the owner's colour ruling), so the lifetime that is on is ordinary
-// ink beside a tick and the rest are dim — which is the same drawing a checklist
-// gives an item that is ticked, and it survives a terminal with no colour at all.
+// THE TICK IS THE MARK AND THE HUE IS NOT. Colour is stroke and never fill on this block,
+// so the lifetime that is on is ordinary ink beside a tick and the rest are dim — which is
+// the same drawing a checklist gives an item that is ticked, and it survives a terminal
+// with no colour at all.
 func (a *app) questionScopeRow(q questionShown, room int) string {
 	scopes := questionScopes(q.question)
 	if len(scopes) == 0 {

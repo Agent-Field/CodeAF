@@ -44,7 +44,6 @@ func clampArgs(field, value string) string {
 	return string(b)
 }
 
-// The command from the owner's report, which is the length this is all about.
 const clampCommand = `gh api "search/issues?q=repo:Agent-Field/codeaf+commenter:AbirAbbas&sort=created&order=desc&per_page=30" -q '.items[] | .number'`
 
 // callRowsOf is every row the transcript draws for a tool call — the line and

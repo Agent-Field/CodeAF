@@ -664,10 +664,7 @@ func attachedLate(t *testing.T, agent *Agent) []Event {
 	return collect(t, stream.out)
 }
 
-// TestAnAnsweredProposalIsNotAskedAgainOfASurfaceThatArrivesLater is the defect
-// the owner met: approve a task, look at another tab, come back, and be asked
-// the same question again — every time, for as long as the turn ran. The answer
-// was recorded and the engine knew it; the REPLAY did not consult it, so the
+// The answer was recorded and the engine knew it; the REPLAY did not consult it, so the
 // card that raised the question went out again as though nobody had decided.
 func TestAnAnsweredProposalIsNotAskedAgainOfASurfaceThatArrivesLater(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {

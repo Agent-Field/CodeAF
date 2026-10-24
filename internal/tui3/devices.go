@@ -2,8 +2,8 @@ package tui3
 
 // ── THE DEVICE LIST, AND ONE KEY TO REVOKE ──────────────────────────────────
 //
-// `/devices` lists the fleet: `● spark  Linux` for a device with a watch
-// socket open now, `○ dumb  Mac  seen 3h ago` for one without. `r` revokes the
+// `/devices` lists the fleet: `● laptop  Linux` for a device with a watch
+// socket open now, `○ desktop  Mac  seen 3h ago` for one without. `r` revokes the
 // device under the cursor, at once and without a second question: the row is
 // the choice, a revoked device is refused by the relay from that moment, and
 // it can only come back as a new request that this fleet approves again.

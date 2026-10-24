@@ -11,11 +11,10 @@ import (
 
 // ── THE PANEL ───────────────────────────────────────────────────────────────
 //
-// A QUESTION HANGS ABOVE THE BOX AS ONE OBJECT (owner ruling 2026-09-11, frame
-// pick A). It is the one drawing every question with anything to weigh gets —
-// the model's own `ask`, a permission, a task proposal, an automation card, a
-// landing, a confirmation — and the chooser (questionchooser.go) is what decides
-// that a question has anything to weigh.
+// A QUESTION HANGS ABOVE THE BOX AS ONE OBJECT. It is the one drawing every question with
+// anything to weigh gets — the model's own `ask`, a permission, a task proposal, an
+// automation card, a landing, a confirmation — and the chooser (questionchooser.go) is
+// what decides that a question has anything to weigh.
 //
 //	╭─ ? Which storage for the session index? ─────────────── model asks ─╮
 //	│                                                                     │
@@ -391,14 +390,13 @@ func (a *app) questionPanelBodyIn(q questionShown, inner, evidence int) []string
 	// reaches, and a row a person could land the pointer on would make `enter`
 	// mean two things.
 	//
-	// THIS IS WHERE A QUESTION'S OWN DIM LINES GO, and the reason is the second
-	// key tier. The row UNDER the frame carries the quieter keys and nothing
-	// else — the owner's hints ruling put exactly `↑↓ choose · enter take it ·
-	// esc later` in the bottom edge and the dropped keys on one dim row below —
-	// so a sentence mixed in there is the "no hierarchy in the hints" that ruling
-	// exists to prevent. A line about the question belongs inside the object: one
-	// blank row, then `questionPanelGap + a.pal.dim(fit(line, room))`, which
-	// framed.draw then sets to the frame's one width.
+	// THIS IS WHERE A QUESTION'S OWN DIM LINES GO, and the reason is the second key tier. The
+	// row UNDER the frame carries the quieter keys and nothing else — put exactly `↑↓ choose
+	// · enter take it · esc later` in the bottom edge and the dropped keys on one dim row
+	// below — so a sentence mixed in there is the "no hierarchy in the hints" that ruling
+	// exists to prevent. A line about the question belongs inside the object: one blank row,
+	// then `questionPanelGap + a.pal.dim(fit(line, room))`, which framed.draw then sets to
+	// the frame's one width.
 	if row := a.questionScopeRow(q, room); row != "" {
 		rows = append(rows, "", row)
 	}
@@ -415,18 +413,10 @@ func (a *app) questionPanelBodyIn(q questionShown, inner, evidence int) []string
 			}
 		}
 	}
-	// AND A QUESTION WHOSE CLOCK ANSWERS SAYS WHAT A PERSON CAN DO ABOUT IT, on
-	// one dim line, INSIDE the frame (#954, and this is the place lane A and I
-	// agreed it goes).
-	//
-	// IT IS A SENTENCE, AND THE ROW UNDER THE FRAME IS THE SECOND TIER OF KEYS.
-	// The owner's hints ruling is that the bottom edge carries exactly
-	// `↑↓ choose · enter take it · esc later` and one dim row under it carries
-	// the rest of the KEYS, dropped right-to-left — so a sentence appended to
-	// that region is a third kind of thing in a place with a stated grammar, and
-	// the hierarchy it creates is the one that ruling exists to prevent. Inside
-	// the frame it is what it is: a fact about this question, under this
-	// question, in the same dim the panel's other asides wear.
+	// A question answered by its clock names the available action on a dim line
+	// inside the frame. The bottom edge carries the primary keys, and the row below
+	// carries secondary keys; mixing a sentence into either would obscure that
+	// hierarchy.
 	if aside := a.questionClockAside(q, room); aside != "" {
 		rows = append(rows, questionPanelGap+aside)
 	}

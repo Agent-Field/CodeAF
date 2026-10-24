@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// SharedSnapshot mirrors the lane B snapshot fields the selector reads.
+// SharedSnapshot mirrors the shared component snapshot fields the selector reads.
 // parameters carry quality/ROLE/MODEL keys: the posterior mean q (0..1);
 // uncertainty carries quality/ROLE/MODEL: the posterior variance (sigma^2);
 // counts is the observation count N; model_ids is the scored set. The
@@ -29,7 +29,7 @@ type SharedSnapshot struct {
 // hot path, so a refuse-to-load beats a multi-gigabyte pause per route.
 const maxSnapshotBytes = 64 << 20
 
-// LoadSnapshot reads a lane B SharedSnapshot file.
+// LoadSnapshot reads a SharedSnapshot file.
 func LoadSnapshot(path string) (*SharedSnapshot, error) {
 	fi, err := os.Stat(path)
 	if err != nil {

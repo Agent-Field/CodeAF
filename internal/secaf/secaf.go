@@ -58,9 +58,9 @@ var Stages = []string{stageStarting, stageRecon, stageHunt, stageProve, stageRem
 
 // stageWords is the stages in a person's words, for the task's row.
 //
-// THEY ARE sec-af's OWN PHASE NAMES, the words its notes on the page already
-// use (`RECON phase complete`), so the row, the page's step headings and the
-// notes under them say one thing (the owner's call, 2026-10-05).
+// THEY ARE sec-af's OWN PHASE NAMES, the words its notes on the page already use (`RECON
+// phase complete`), so the row, the page's step headings and the notes under them say one
+// thing.
 var stageWords = map[string]string{
 	stageStarting:    "starting",
 	stageRecon:       "recon",

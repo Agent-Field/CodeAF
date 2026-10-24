@@ -198,7 +198,7 @@ func (a *app) dropHarnessStep() {
 // ending is a settle card in the transcript with the outcome on it (taskdone.go).
 // A note beside that card would be the same news drawn twice.
 
-// designAgent is the slice of *session.Agent this lane needs, asserted rather
+// designAgent is the slice of *session.Agent this implementation needs, asserted rather
 // than added to [Agent] for [taskAgent]'s reason: the harness designer is
 // OPTIONAL. Every scripted agent in this package's own tests has never heard of
 // one, and widening the package interface would make a session without a
@@ -273,7 +273,7 @@ func (a *app) designEvent(ev session.Event) tea.Cmd {
 		a.askHarnessDesign(ev)
 	case session.EventSubharnessProposal:
 		// CHAT OFFERING A SAVED PROGRAM, and it arrives HERE because it is raised
-		// on this lane and no other (session's tools_subharness.go calls
+		// on this implementation and no other (session's tools_subharness.go calls
 		// emitHarness): the turn that asked is parked inside its own batch, so
 		// the question cannot ride the turn's stream the way an approval does.
 		// A surface that only read the turn's events would never see it, which

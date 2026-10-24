@@ -149,7 +149,7 @@ type gateOnly struct {
 	recordingGate
 }
 
-// THE BUG THIS LANE FIXES, at the door's end.
+// THE BUG this test FIXES, at the door's end.
 //
 // The three approval seams used to be minted once, at boot, around the boot
 // agent, and the surface went on holding them through every /new and every

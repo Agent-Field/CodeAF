@@ -141,7 +141,7 @@ func (l e2eLane) priceOut() float64 { return l.dollars / 1e6 }
 // priceIn is the lane's input tariff. See the note on [e2eLane].
 func (l e2eLane) priceIn() float64 { return 0.4 * l.priceOut() }
 
-// row is the sheet row this lane publishes: the prior the ledger is primed
+// row is the sheet row this test publishes: the prior the ledger is primed
 // from, in the router's own units.
 func (l e2eLane) row() Row {
 	return Row{

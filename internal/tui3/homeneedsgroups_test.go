@@ -91,9 +91,8 @@ func TestTheAnswerChipsAreOnOneRowOfTheFrame(t *testing.T) {
 		Question: consentQuestionAt(9, "needs your ok to run write", l.now.Add(-5*time.Minute))})
 	l.landed("4", "fix the flaky sieve", 30*time.Minute)
 	a := l.open()
-	// AT REST NO ROW DRAWS ITS SENTENCE, so no chips are on the frame at all
-	// (owner, 2026-09-17: the description shows under the pointer or the
-	// cursor); the digit still answers the top question ([app.homeAnswerAt]).
+	// AT REST NO ROW DRAWS ITS SENTENCE, so no chips are on the frame at all; the digit still
+	// answers the top question ([app.homeAnswerAt]).
 	frame := homeText(a)
 	if got := strings.Count(frame, "1 allow once") + strings.Count(frame, needsYesKey+" accept"); got != 0 {
 		t.Fatalf("a row nobody is reading drew its answers:\n%s", frame)
@@ -127,12 +126,8 @@ func TestTheAnswerChipsAreOnOneRowOfTheFrame(t *testing.T) {
 	}
 }
 
-// NO QUESTION SAYS `enter`. On a two-column frame every question draws its
-// second line, and every one of them used to end in `enter` — a column of
-// legends for a key only one row is about to take (owner, 2026-09-16); then
-// only the cursor's row said it, and the owner ruled (2026-09-17) that the
-// word beside a description was noise wherever it stood. The answering row
-// keeps its chips; every other question says nothing at its right.
+// NO QUESTION SAYS `enter`. The answering row keeps its chips; every other question says
+// nothing at its right.
 func TestNoQuestionSaysEnter(t *testing.T) {
 	l := newLiveLab(t)
 	l.live("-beta", "bbbb000000000001", session.SessionPresence{State: session.PresenceWaiting,

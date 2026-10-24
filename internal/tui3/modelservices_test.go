@@ -738,8 +738,8 @@ func renamedRelistedApp(t *testing.T, model string) *app {
 	a.adoptModelConnectResult(a.beginModelConnect(first)().(modelConnectResultMsg))
 	a.switchModel("homelab/"+model, 0)
 
-	// THE RENAME: an edit draft whose Written moved, exactly what the name step
-	// builds on an answer that differs from the stored one.
+	// THE RENAME: an edit draft whose Written moved, exactly what the name
+	// step builds on an answer that differs from the stored one.
 	persisted := config.PersistedSources(dir)
 	if len(persisted) != 1 {
 		t.Fatalf("the connect did not persist exactly one row: %+v", persisted)
@@ -1908,7 +1908,7 @@ func TestASettleWithNothingToSpendLeavesTheConnectPanelWhereItWas(t *testing.T) 
 }
 
 // customConnectionApp is the picker-grouping fixture: the default service plus
-// the two custom connections homelab (id custom) and studio (id custom-studio),
+// the two custom connections homelab (id custom) and a second custom service (id custom-studio),
 // in persisted order, with each connection's own model list served from held by
 // the connection id. A connection missing from held has no model list, which is
 // the empty group the notice row stands for.

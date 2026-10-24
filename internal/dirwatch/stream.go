@@ -53,14 +53,13 @@ const (
 	CloseRevoked = 4401
 	CloseRotated = 4410
 	// CloseSilent ends a socket whose last sign of life was too old; the
-	// device is announced offline and must redial (STAGE-1-CONTRACTS.md 21.12.4).
+	// device is announced offline and must redial.
 	CloseSilent = 4408
 )
 
 // The pace of the feed. Each number is here once.
 const (
-	// KeepEvery is how often a quiet socket pings: every 10 s, the beat
-	// STAGE-1-CONTRACTS.md 21.12 gives. The relay derives the window in which
+	// KeepEvery is how often a quiet socket pings: every 10 s. The relay derives the window in which
 	// it counts this device online from the beat the dial declares, and the
 	// directory package derives that declaration from this constant, so the
 	// two halves cannot drift. The relay answers a ping without waking

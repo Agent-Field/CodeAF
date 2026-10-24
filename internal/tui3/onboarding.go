@@ -1869,15 +1869,11 @@ func setupShowcaseCount(at, count int) string {
 // beats of typing and one per line. It plays when an example arrives — on
 // reaching this screen, on ←/→, and on the turn — and then it is still.
 //
-// THE TURN is the second clock. Left alone, the panel shows the next example
-// every [setupTurnEvery], round and round, so a person reading the form sees
-// all five without touching anything; ←/→ browse them by hand. ANY KEY HOLDS
-// THE CLOCK for a full [setupTurnEvery] from that key, so the panel never
-// turns under a person who is typing an amount or walking the rows, and
-// browsing by hand is not raced by the clock. Until 2026-10-01 the design
-// refused a carousel here and moved the example with the focus instead; new
-// people read that as the panel jumping about as they walked the rows, and
-// the owner asked for the clock.
+// THE TURN is the second clock. Left alone, the panel shows the next example every
+// [setupTurnEvery], round and round, so a person reading the form sees all five without
+// touching anything; ←/→ browse them by hand. ANY KEY HOLDS THE CLOCK for a full
+// [setupTurnEvery] from that key, so the panel never turns under a person who is typing an
+// amount or walking the rows, and browsing by hand is not raced by the clock.
 //
 // AND ANY OTHER KEY SETTLES IT AT ONCE. Typing an amount, narrowing the model
 // list, opening a chooser — every one of those jumps the panel straight to its

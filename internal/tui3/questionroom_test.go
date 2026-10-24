@@ -833,10 +833,7 @@ func TestTheLanesNewsAboutAnAnswerGivenHereAddsNoSecondLine(t *testing.T) {
 
 // ── THE POINTER ON THE PAGE, AND WHAT IT LOOKS LIKE ─────────────────────────
 //
-// The owner opened a question out on 2026-09-10 and reported two things about
-// the page it opened into: "no arrow or click", and "make sure there is some
-// textual hierarchy in design in options like the same line and next line in
-// options look same and a bit weird". These are what closes both.
+// These are what closes both.
 
 // pagePlainRows is the page, a row at a time, with every escape taken off — for
 // the assertions that are about WHICH ROW a thing landed on.
@@ -1052,9 +1049,8 @@ func TestAnAnswersLabelBodyAndAsidesAreThreeDifferentInks(t *testing.T) {
 	if head == "" || body == "" || aside == "" {
 		t.Fatalf("the open answer should draw a heading, a body and an aside:\n%s", pageText(a))
 	}
-	// THE KEY IS THE PAYLOAD HUE AND THE WORD IS INK, which is the panel's own
-	// grammar for an answer (owner ruling 2026-09-11, colour pick C: the amber
-	// stays on the marks) — the page's rows ARE the panel's.
+	// THE KEY IS THE PAYLOAD HUE AND THE WORD IS INK, which is the panel's own grammar for an
+	// answer — the page's rows ARE the panel's.
 	inkOpen := strings.SplitN(a.pal.ink("x"), "x", 2)[0]
 	if !strings.Contains(head, a.pal.data("1")) || !strings.Contains(head, inkOpen+"postgres") {
 		t.Errorf("the label is not the key in the payload hue and the word in ink: %q", head)

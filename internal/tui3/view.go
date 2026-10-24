@@ -1023,7 +1023,7 @@ func (a *app) chromeBaseHeight() int {
 // the status line, where a place draws one blank, its rule, its box and its hint
 // on the same clearance ([spacingRuleClearance], pages.go's [placeFrame]). It
 // used to keep a second blank under the box that no place has, so `esc` from
-// home into a chat moved the box and the rule up a row (PLACES-AUDIT.md, lane K).
+// home into a chat moved the box and the rule up a row.
 //
 // AND A QUESTION'S PAGE BRINGS ITS OWN RULE (questionroom.go's
 // [app.questionFootRows]): the rule that closes its two panes meets their seam
@@ -1258,8 +1258,7 @@ func (a *app) viewHeight() int {
 // that cannot honestly act. So the rows the block is holding are rows the page
 // is about to reclaim, and measuring the frame as it stands would refuse the
 // page over its own space: on a twenty-row terminal with a permission waiting,
-// `ctrl+t` did exactly nothing, and said nothing either (#677, found on the
-// taller frame lane P draws a consent in).
+// `ctrl+t` did exactly nothing, and said nothing either.
 //
 // IT IS THE ONLY QUESTION THIS ANSWERS. A page whose own content will not fit is
 // still the page's business ([startTinyWord]); what is settled here is whether

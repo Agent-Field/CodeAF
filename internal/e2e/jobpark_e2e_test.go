@@ -2,7 +2,7 @@
 
 // A TASK WORKER WAITS OUT THE COMMAND IT STARTED (#568).
 //
-// WHAT THIS LANE PROVES, AND WHAT IT COST NOT TO HAVE IT. A worker ran a suite
+// WHAT this test PROVES, AND WHAT IT COST NOT TO HAVE IT. A worker ran a suite
 // in the foreground, the command crossed the session's background-after clock,
 // and [session.BashPromotedLead] answered the call — `still running as job 3;
 // log at …`. That is a true sentence and, before the fix, a terrible question:
@@ -149,7 +149,7 @@ func jobParkConfig(w *world) func(*session.Config) {
 		cfg.AskConsent = false
 		cfg.TaskAutoApproveSeconds = 0
 		// THE CHECK AND THE REPAIR ROUNDS ARE OFF, and it is a scope ruling: what
-		// this lane measures is what one worker does between a promotion and an
+		// this test measures is what one worker does between a promotion and an
 		// ending, and a cheap checker's opinion between the worker and rest would
 		// put turns in the transcript that are about something else.
 		cfg.TaskAudit = false

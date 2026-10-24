@@ -175,7 +175,7 @@ type questionDoor interface {
 }
 
 // questionDialDoor is `D`: let it decide every question of THIS SHAPE from now
-// on ([session.Agent.SetAutonomy], lane E2).
+// on ([session.Agent.SetAutonomy]).
 //
 // IT IS A SECOND OPTIONAL INTERFACE AND NOT A METHOD ON THE ONE ABOVE, for
 // room.go's stated reason about widening an interface: a session that can
@@ -472,12 +472,9 @@ func questionConfidenceWord(c session.Confidence) string {
 // questionAfterIf makes the asker's own sentence read as the tail of `would
 // switch if `.
 //
-// IT EXISTS BECAUSE A MODEL WRITES A SENTENCE AND THIS ROW IS A CLAUSE. Asked
-// what would change its mind, a model answers "If you are targeting a calm
-// audience…" — and the row drew `would switch if If you are targeting…`, which
-// is what the owner saw on 2026-09-10. So a leading `if` the person is about to
-// read twice is dropped, and the capital that opened a sentence is lowered,
-// because what follows the word `if` is mid-sentence wherever it came from.
+// IT EXISTS BECAUSE A MODEL WRITES A SENTENCE AND THIS ROW IS A CLAUSE. So a leading `if`
+// the person is about to read twice is dropped, and the capital that opened a sentence is
+// lowered, because what follows the word `if` is mid-sentence wherever it came from.
 //
 // A WORD WHOSE SECOND LETTER IS ALSO A CAPITAL IS LEFT ALONE — `SQLite`, `HRV`,
 // an acronym the asker meant — because lowering one of those is changing what

@@ -343,11 +343,10 @@ type questionShown struct {
 
 // questionOther is the answer that is not on the list, being written.
 //
-// THE ROW IS THE BOX AND THERE IS NO MODE. Before the owner's ruling of
-// 2026-09-11 a person had to press `c` first — a letter nothing on screen named,
-// which pointed the MESSAGE BOX at the question and said so in a row where the
-// answers had been. The last row is `something else…` now, the pointer arriving
-// on it is what opens it, and the message box below stays the person's.
+// THE ROW IS THE BOX AND THERE IS NO MODE. Previously a person had to press `c` first — a
+// letter nothing on screen named, which pointed the MESSAGE BOX at the question and said
+// so in a row where the answers had been. The last row is `something else…` now, the
+// pointer arriving on it is what opens it, and the message box below stays the person's.
 type questionOther struct {
 	// words is the sentence being typed, in the surface's own one-line editor,
 	// so the caret, the word jumps and the undo stack are the ones every other
@@ -763,14 +762,12 @@ func questionPointerStart(q session.Question) int {
 			}
 		}
 	}
-	// AND WHERE NOBODY RECOMMENDED ANYTHING AND NOBODY BUT A PERSON MAY ANSWER,
-	// THE STAKES SAY WHERE `enter` LANDS (owner ruling, 2026-09-11, shipped as
-	// #953). The gate now grades its own questions — internal/approval's
-	// always-ask shapes come through as [session.StakesIrreversible] and every
-	// other consent stays [session.StakesCostly] — so the pointer opens on the
-	// answer that loses nothing for a grave call and on the first answer for an
-	// ordinary one. `enter` takes the answer the pointer is on: `deny` over
-	// `rm -rf` or a force-push, `allow once` over an `ls`.
+	// AND WHERE NOBODY RECOMMENDED ANYTHING AND NOBODY BUT A PERSON MAY ANSWER, THE STAKES
+	// SAY WHERE `enter` LANDS. The gate now grades its own questions — internal/approval's
+	// always-ask shapes come through as [session.StakesIrreversible] and every other consent
+	// stays [session.StakesCostly] — so the pointer opens on the answer that loses nothing
+	// for a grave call and on the first answer for an ordinary one. `enter` takes the answer
+	// the pointer is on: `deny` over `rm -rf` or a force-push, `allow once` over an `ls`.
 	//
 	// THE KEY IS THE STAKES AND ONLY THE STAKES. Reading the command's text or
 	// the tool's name here would be a second judgement beside internal/approval's
@@ -1043,9 +1040,8 @@ func (a *app) questionRows(width int) []string {
 	}
 	head, ok := a.questionHead()
 	if !ok {
-		// A QUESTION PUT OFF FOLDS IN PLACE AND NOT TO THE FAR SIDE OF THE
-		// FRAME (owner ruling 2026-09-11, fold pick A): one titled rule where
-		// the panel was, saying what is waiting and how to open it again.
+		// A QUESTION PUT OFF FOLDS IN PLACE AND NOT TO THE FAR SIDE OF THE FRAME: one titled
+		// rule where the panel was, saying what is waiting and how to open it again.
 		//
 		// AND NOT UNDER THE PAGE THAT IS SHOWING IT. `o` folds the question it
 		// opens, so the block will not draw it a second time with keys of its
@@ -1143,12 +1139,9 @@ func (a *app) questionRows(width int) []string {
 	// AND A RATIFY LINE IS NEVER COUNTED HERE: nothing waits on it, so a queue
 	// count that included one would put a number on the block no key can clear.
 	//
-	// (#954's clock aside is NOT appended here. It is a sentence, and the row
-	// under the frame is the second tier of KEYS and nothing else — a sentence
-	// mixed into it is the hierarchy the owner's hints ruling exists to prevent.
-	// It is drawn as the panel's own last body row instead, inside the frame:
-	// questionpanel.go's [app.questionPanelBody]. Agreed with lane A before
-	// either landed.)
+	// (#954's clock aside is NOT appended here. It is a sentence, and the row under the frame
+	// is the second tier of KEYS and nothing else — a sentence mixed into it breaks that hierarchy. It is drawn as the panel's own last body row instead, inside the
+	// frame: questionpanel.go's [app.questionPanelBody].)
 	if more := a.questionWaitingCount() - 1; more > 0 {
 		if _, panel := a.questionDialog(width); !panel {
 			out = append(out, a.pal.dim(fit("  "+itoa(more)+" more", width)))
@@ -1284,13 +1277,12 @@ func questionWaits(q session.Question) bool {
 // "waiting on a human (always amber)" in the vocabulary itself, and amber on
 // this surface means that and nothing else.
 //
-// THE BLOCK'S WORDS ARE ORDINARY INK, and that is the half of this comment the
-// owner's colour ruling of 2026-09-11 rewrote. They kept a question hue of their
-// own — a violet spent on the head, every answer label and every key — while
-// home, the places and the chip said the same "waiting on you" in this amber, so
-// one meaning wore two colours and whole rows stood in a status hue. The violet
-// is retired from both ladders (docs/DESIGN-LANGUAGE.md), and the marks carry
-// the meaning: this one, the pointer and the recommended diamond.
+// THE BLOCK'S WORDS ARE ORDINARY INK. They
+// kept a question hue of their own — a violet spent on the head, every answer label and
+// every key — while home, the places and the chip said the same "waiting on you" in this
+// amber, so one meaning wore two colours and whole rows stood in a status hue. The violet
+// is retired from both ladders (docs/DESIGN-LANGUAGE.md), and the marks carry the meaning:
+// this one, the pointer and the recommended diamond.
 func (a *app) questionMark() string {
 	return a.pal.warnBold(a.icon(tokens.GNeedsHuman))
 }
@@ -2237,13 +2229,9 @@ func (a *app) questionHint() string {
 	if !ok {
 		return ""
 	}
-	// THE SLOT ABOVE THE BLOCK DOES NOT RE-LIST THE ANSWERS (owner ruling
-	// 2026-09-11, hints pick A). Every view but the chip's draws the answers and
-	// their keys itself, two rows below this one, and a rule that spelled them
-	// again — in a second order, with its own idea of which keys exist — was the
-	// owner's "the hint line names keys that are not there". Where the question
-	// is NOT on this screen the slot is the only place its keys can be said, and
-	// there it still says them.
+	// THE SLOT ABOVE THE BLOCK DOES NOT RE-LIST THE ANSWERS. Where the question is NOT on
+	// this screen the slot is the only place its keys can be said, and there it still says
+	// them.
 	if width, _ := a.size(); a.questionViewOf(head, width) != viewNone {
 		return ""
 	}
@@ -2430,13 +2418,12 @@ func (a *app) questionReceiptLine(record questionRecord, width int) string {
 // questionReceiptTail is what the receipt says after the decision's own words:
 // that the turn is moving again.
 //
-// THE WORK RESUMES ON THE ANSWER AND THE ROW SAYS SO UNTIL THE MODEL'S FIRST
-// OUTPUT (owner ruling 2026-09-11). A block that vanished into a still line left
-// a person watching an unmoving screen wondering whether their key had landed;
-// the tail is that key's receipt, in the one moving glyph this surface spends
-// ([tokens.Spinner], on the house grid so it never beats against another).
-// It is derived and never a timer: the moment there is anything to read the
-// conversation is drawing it, and this stops.
+// THE WORK RESUMES ON THE ANSWER AND THE ROW SAYS SO UNTIL THE MODEL'S FIRST OUTPUT. A
+// block that vanished into a still line left a person watching an unmoving screen
+// wondering whether their key had landed; the tail is that key's receipt, in the one
+// moving glyph this surface spends ([tokens.Spinner], on the house grid so it never beats
+// against another). It is derived and never a timer: the moment there is anything to read
+// the conversation is drawing it, and this stops.
 func (a *app) questionReceiptTail(record questionRecord) string {
 	if record.withdrawn != "" || a.state != stateWorking || !a.questionQuietSince(record) {
 		return ""
@@ -2519,8 +2506,7 @@ type questionAnswer struct {
 // second answering path.
 //
 // IT TAKES A LIST BECAUSE ONE FRAME CAN HOLD SEVERAL QUESTIONS. A step that
-// asks for three permissions at once is drawn as one thing to decide (the
-// grouped frame, lane P), and the person answering it is making one gesture; a
+// asks for three permissions at once is drawn as one thing to decide, and the person answering it is making one gesture; a
 // loop of single answers would be as many round trips as there are rows, each
 // one a separate command, with the refusals arriving over several frames. Here
 // every row settles on the keystroke, the doors are asked in order on ONE
@@ -3262,14 +3248,10 @@ func (a *app) questionEnter(head questionShown, typing bool) (tea.Cmd, bool) {
 	// answer that says so ([questionOwnsBox] is the same fact from the other
 	// side, and takes this key while there ARE words).
 	//
-	// AND THE WAY OUT IS NOT THE WHOLE QUESTION. A correction, a connect key or
-	// an automation card is still a question WITH ANSWERS, and every question
-	// with answers has a pointer the arrows walk ([questionPointerStart]) — a
-	// standing card whose Enter did nothing while the pointer stood on
-	// `1 keep this rule` was the owner, 2026-09-25 (#1506). So the give-up below
-	// yields to a pointer: enter over an empty box takes the answer the pointer
-	// is on, and only a question with nothing under the pointer — and no
-	// asker's pick beside it — hands the key back untouched.
+	// AND THE WAY OUT IS NOT THE WHOLE QUESTION. So the give-up below yields to a pointer:
+	// enter over an empty box takes the answer the pointer is on, and only a question with
+	// nothing under the pointer — and no asker's pick beside it — hands the key back
+	// untouched.
 	if head.question.Input.Kind == session.InputText {
 		// THE POINTER STANDS FOR A PICK ONLY WHERE A PICK EXISTS. A connect
 		// question keeps exactly one answer, the way out, and that answer is
@@ -3465,16 +3447,14 @@ func (a *app) questionWriting() bool {
 	return false
 }
 
-// questionWritingRow is the answers row while the box is writing to the
-// question: what the box means now, which answer the words go with, and the
-// way back. It replaces the keys, because the keys are letters and every
-// letter types while this row is up.
-// TWO KEYS REACH IT NOW AND NOT FOUR. `?` asks the asker back, where there is
-// no answer to attach the words to; `c` reaches it only on a question that asked
-// for WORDS, where there is no `something else…` row to write them in — the
-// owner's ruling of 2026-09-11 (your own answer, pick A) gave every other
-// question that row instead, and the row says which answer the words go with
-// rather than a sentence three rows below the pointer.
+// questionWritingRow is the answers row while the box is writing to the question: what the
+// box means now, which answer the words go with, and the way back. It replaces the keys,
+// because the keys are letters and every letter types while this row is up. TWO KEYS REACH
+// IT NOW AND NOT FOUR. `?` asks the asker back, where there is no answer to attach the
+// words to; `c` reaches it only on a question that asked for WORDS, where there is no
+// `something else…` row to write them in — (your own answer, pick A) gave every other
+// question that row instead, and the row says which answer the words go with rather than a
+// sentence three rows below the pointer.
 func (a *app) questionWritingRow(q questionShown) string {
 	if q.writing == questionNoteKey {
 		return "write your change, then enter" + questionWritingGap + "esc back"
@@ -4023,7 +4003,7 @@ func (a *app) dialKind(kind session.AskKind) tea.Cmd {
 // how to take it back.
 const questionDialFromNowWord = " from now on · /autonomy to change it"
 
-// openQuestionRoom walks into the room over this question — lane S2's page.
+// openQuestionRoom walks into the room over this question in its own page.
 //
 // THE DOOR IS CALLED AND NEVER RE-IMPLEMENTED. The page is questionroom.go's,
 // and everything it needs travels in the [questionShown] this block was already
@@ -4105,10 +4085,10 @@ func (a *app) questionRowMark(i int) chromeRow {
 // has no block to look at. The chip is the one thing that is always there while
 // anything is waiting.
 //
-// IT CARRIES THE QUESTION'S OWN WORDS (owner ruling 2026-09-11). `1 question`
-// says that something is waiting and nothing about whether it is worth crossing
-// the room for; the head says which decision is parked, and a person who can
-// read it from the status row does not have to open anything to know.
+// IT CARRIES THE QUESTION'S OWN WORDS. `1 question` says that something is waiting and
+// nothing about whether it is worth crossing the room for; the head says which decision is
+// parked, and a person who can read it from the status row does not have to open anything
+// to know.
 //
 // AND IT NEVER COUNTS A LINE THAT IS NOT WAITING. A ratify line is a statement
 // about something already done ([questionWaits]); counting it put a number on

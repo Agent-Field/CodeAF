@@ -2635,11 +2635,10 @@ func (s *Settings) build() []Setting {
 			read:  func() string { return formatBool(DraftPersistAt(dir)) },
 			write: func(raw string) error { return writeBool(dir, KeyDraftPersist, raw) },
 		},
-		// THE ROW READS THE OTHER WAY UP FROM ITS KEY. `ui.hints` persists
-		// whether tips are SHOWN, and keeps doing so — a persisted identifier keeps
-		// its bytes — while the row a person reads is `disable hints`, off by
-		// default (the owner's word for it, 2026-09-22). The inversion lives here,
-		// once, so the chat's settings panel and `codeaf config` cannot disagree.
+		// THE ROW READS THE OTHER WAY UP FROM ITS KEY. `ui.hints` persists whether tips are
+		// SHOWN, and keeps doing so — a persisted identifier keeps its bytes — while the row a
+		// person reads is `disable hints`, off by default. The inversion lives here, once, so
+		// the chat's settings panel and `codeaf config` cannot disagree.
 		Setting{
 			Key: KeyHints, Category: CategoryInterface, Kind: SettingBool,
 			Label: "disable hints",

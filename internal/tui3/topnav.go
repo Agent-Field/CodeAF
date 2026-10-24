@@ -262,7 +262,7 @@ func (a *app) navTails(pal palette, mode pulseMode) [7]string {
 	if name := strings.TrimSpace(a.host); name != "" {
 		// THE MACHINE THESE PAGES ARE ABOUT, dim, and nothing at all on a local
 		// session: it is invisible when there is nothing to say (host.go). It is
-		// `on spark` rather than a bare `spark` so it cannot read as a place.
+		// `on laptop` rather than a bare `laptop` so it cannot read as a place.
 		host = pal.dim(placeMachineLead + name)
 	}
 	rung := func(parts ...string) string {

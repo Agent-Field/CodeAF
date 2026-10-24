@@ -114,7 +114,7 @@ func (a *Agent) resultCaps() bare.Caps { return bare.CapsFor(a.window()) }
 // briefed to do one piece of work, not to retune the product around it.
 //
 // AND ON THE EXPERIMENT BRANCH THERE IS A THIRD ANSWER: THE SIX FILE TOOLS
-// COME OFF ENTIRELY. spark/bash-task-loop hands a task worker ONE bash tool —
+// COME OFF ENTIRELY. The bash task belt hands a task worker ONE bash tool —
 // bare's, with the branch's head+tail+path cut and the session's background
 // argument — and the kept hands that cannot be a shell command, under a strict
 // one-action-per-response envelope (bashbelt.go, bashbelt_envelope.go). It is

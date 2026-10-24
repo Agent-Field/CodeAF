@@ -12,7 +12,7 @@ import (
 
 // A second window in the same directory resumes the same transcript, which the
 // first one is holding open. It used to be handed a NEW conversation and one
-// sentence about it, which is the defect this lane ends: the chat the person
+// sentence about it, which is the defect this test ends: the chat the person
 // came back for was still running, and nothing led them to it. Now it is a
 // refusal that says where the conversation is and what lets go of it.
 func TestASecondWindowOnALockedSessionIsRefusedAndNamesTheWayOut(t *testing.T) {

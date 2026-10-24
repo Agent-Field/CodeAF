@@ -453,11 +453,9 @@ var commands = []command{
 	// characters with /files one row above, and a word that narrowed the list to
 	// both errands at once is the near-miss /history was named to avoid.
 	//
-	// TWO ROWS, /folder'S REASON EXACTLY: the bare form is the browser and
-	// enter on its row opens it at once, where one row with a placeholder
-	// left `/attach ` in the box waiting for a path nobody had — a second
-	// enter to reach the sheet the word already meant (the owner met it,
-	// 2026-09-22).
+	// TWO ROWS, /folder'S REASON EXACTLY: the bare form is the browser and enter on its row
+	// opens it at once, where one row with a placeholder left `/attach ` in the box waiting
+	// for a path nobody had — a second enter to reach the sheet the word already meant.
 	{name: "attach", desc: "choose a file to attach · the browser opens", alias: []string{"upload"}},
 	{name: "attach", args: "<path>", desc: "…attach that file · tab completes the path"},
 	// AND DIRECTLY ABOVE /help, THE OTHER QUESTION SOMEBODY HAS WHEN THEY ARE

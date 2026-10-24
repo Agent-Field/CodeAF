@@ -5372,8 +5372,8 @@ const foldMarkerPrefix = "[folded "
 // a dead one. The original lines stay above the compaction marker in that
 // file; the path is the recovery floor.
 //
-//	[folded 31 messages · grep or read /home/x/.codeaf/v3/sessions/abc.jsonl, lines 12..40]
-//	[folded 31 messages · grep or read /home/x/.codeaf/v3/sessions/abc.jsonl]
+//	[folded 31 messages · grep or read /workspace/.codeaf/v3/sessions/abc.jsonl, lines 12..40]
+//	[folded 31 messages · grep or read /workspace/.codeaf/v3/sessions/abc.jsonl]
 //	[folded 31 messages · full record in the store]
 //	[folded 31 messages · full record in the session journal]
 //

@@ -2,14 +2,11 @@ package remote
 
 // A STANDING RAIL BELONGS TO THE CONVERSATION IT WAS OPENED ON.
 //
-// [Session.serving] closed the wrong-owner hole for CALLS: a joined reader
-// asking about task 7 after the owner opened something else is refused rather
-// than answered by the replacement's task 7. The standing lane had the same hole
-// and no such guard, and it was worse in two ways — nobody asks for the frames,
-// and [Session.retakeTaskLanes] reopens every subscribed surface on the
-// replacement agent by itself. So a guest sat there being pushed another
-// conversation's rows, under the name of the one it joined, with no call
-// anywhere to be refused.
+// The standing lane had the same hole and no such guard, and it was worse in two ways —
+// nobody asks for the frames, and [Session.retakeTaskLanes] reopens every subscribed
+// surface on the replacement agent by itself. So a guest sat there being pushed another
+// conversation's rows, under the name of the one it joined, with no call anywhere to be
+// refused.
 //
 // The task ids below are 7 in BOTH conversations on purpose. That collision is
 // the whole failure: the rows are indistinguishable on the wire, and the only

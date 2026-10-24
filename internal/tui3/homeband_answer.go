@@ -207,14 +207,13 @@ func answerChips(question session.PresenceQuestion) []answerChip {
 // in ordinary ink. Whole chips move to following rows when needed; a card never
 // hides an answer merely because the answers cannot share a row.
 //
-// IT IS THE PANEL'S GRAMMAR ON A CARD (owner ruling 2026-09-11, colour pick C).
-// The whole chip used to be amber, on the argument that home's one meaning of
-// "waiting on you" is the warn hue — and the result was a card where the words a
-// person has to READ were the same colour as the mark that says to read them.
-// The amber stays on the marks: home's `?` on the row, the pointer, the pick.
-// consent.go's [app.paintOffer] draws the same shape and cannot be borrowed — it
-// asks whether the pointer is over the block it belongs to, and there is no
-// block here, only a card in a column.
+// IT IS THE PANEL'S GRAMMAR ON A CARD. The whole chip used to be amber, on the argument
+// that home's one meaning of "waiting on you" is the warn hue — and the result was a card
+// where the words a person has to READ were the same colour as the mark that says to read
+// them. The amber stays on the marks: home's `?` on the row, the pointer, the pick.
+// consent.go's [app.paintOffer] draws the same shape and cannot be borrowed — it asks
+// whether the pointer is over the block it belongs to, and there is no block here, only a
+// card in a column.
 func (a *app) answerChipLines(question session.PresenceQuestion, width int, pal palette) []string {
 	chips := answerChips(question)
 	if len(chips) == 0 {

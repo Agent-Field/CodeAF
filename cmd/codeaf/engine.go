@@ -990,7 +990,7 @@ func runEngineHost(workspaceFlag, sessionFlag string) error {
 //
 // A NAMED SESSION IS SPELLED THE WAY THE BOOT WILL SPELL IT, through the same
 // [engineSessionPath] every other door reads a --session with, so two surfaces
-// that named one file two ways ("~/x", "/home/you/x") are asking for one
+// that named one file two ways ("~/x", "/workspace/x") are asking for one
 // conversation rather than two.
 func engineHelloKey(hello remote.Hello, workspaceFlag, sessionFlag string) string {
 	if named := firstEngineWord(hello.Session, sessionFlag); named != "" {

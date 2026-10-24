@@ -61,12 +61,11 @@ func TestDoRunHonoursProfileMachineFloor(t *testing.T) {
 	}
 }
 
-// THE CONTRACT, from the owner's ruling on #1410 (2026-09-24): when `codeaf do`
-// is held by the machine, the person sees why on stderr, once, in the rail's
-// own words and naming the limit that held it; and a run whose --timeout
-// arrives before anything started says, in its --json stop, that the machine
-// held it. Before this, a held run waited in silence and ended `deadline` with
-// nothing to say why nothing had happened.
+// THE CONTRACT, from on #1410 (2026-09-24): when `codeaf do` is held by the machine, the
+// person sees why on stderr, once, in the rail's own words and naming the limit that held
+// it; and a run whose --timeout arrives before anything started says, in its --json stop,
+// that the machine held it. Before this, a held run waited in silence and ended `deadline`
+// with nothing to say why nothing had happened.
 func TestDoHeldByTheMachineSaysWhyOnStderrAndInItsStop(t *testing.T) {
 	if _, err := os.Stat("/proc/meminfo"); err != nil {
 		t.Skip("host has no proc memory reading")

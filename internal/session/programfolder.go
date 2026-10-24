@@ -47,20 +47,6 @@ package session
 //     (programhold.go). A run in a copy holds only its
 //     copy, which is why runs on one repository never wait for each other.
 //
-// WHY THERE IS SO LITTLE HERE. Until 2026-09-24 a program ran through the
-// general task machinery: a copy of the folder cut for every run, the brief's
-// paths rewritten to name the copy, the program's commits squashed and its
-// HEAD put back at the landing, and a ladder of placement rules, each layer
-// patching the one before it. The owner asked why it was so hard to have
-// senior-dev just work on the problem — "if it's in a git repo, great - if
-// not, just do it" — and the answer was that codeaf had made it hard. The
-// copy, the rewriting, the squash and the ladder went. Until 2026-09-28 the
-// program then worked in the person's checkout itself, switched onto its
-// branch, which held the whole repository for one run at a time; the owner
-// asked for runs side by side, and the copy came back as a worktree the
-// program's run owns start to end — with no squash, no landing and no
-// rewriting, only a line at the head of the brief ([ProgramFolder.BriefNote]).
-//
 // ONE ROAD FOR BOTH DOORS. The conversation's run (task_run_belt.go) and the
 // shell's `codeaf senior-dev` (cmd/codeaf/carried.go) prepare a folder with
 // [PrepareProgramFolder] and finish it with [ProgramFolder.Finish], so a

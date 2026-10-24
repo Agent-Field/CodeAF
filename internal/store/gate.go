@@ -70,7 +70,7 @@ type DeliveryGate struct {
 	// unaffordable: the thing it named is still missing, and a run that hands
 	// that over is handing over less than it promised. One measured run shipped
 	// "Deliverable is empty - contains no implementation" over exit 0 because
-	// the two were one field (2026-08-28, meta/muse-spark-1.1).
+	// the two were one field (2026-08-28, a model response).
 	Unclosed bool `json:"unclosed,omitempty"`
 
 	// Unjudged says NOBODY EVER READ THIS DELIVERY. The gate was asked and could

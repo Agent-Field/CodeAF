@@ -185,7 +185,7 @@ func TestStoppedWorkIsCommittedToTheBranchItsReportNames(t *testing.T) {
 // turn with its own account of the work.
 //
 // It is written this way rather than positionally for [nodeLane]'s reason: the
-// harness's own title call speaks on this lane too, and a script that counted
+// harness's own title call speaks on this test too, and a script that counted
 // turns would be asserting the order those happen to fall in.
 //
 // THE SPIN IS FINITE. The counter cancels the run, and the cancel is a message

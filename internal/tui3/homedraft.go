@@ -40,8 +40,6 @@ import (
 // which is what closes the disagreement. `alt+p` and `/model` pin it, and a pin
 // is a decision a person made.
 //
-// ── OWNER RULING: WHAT PERSISTS AND WHAT IS SPENT ───────────────────────────
-//
 // BOTH PINS SURVIVE `esc` AND A REOPEN OF HOME. They are the session's, not the
 // screen's: "let me set the model before I start" is worth nothing if walking
 // into a conversation and back out forgets it.
@@ -129,12 +127,9 @@ func (a *app) targetModelPinned() bool {
 // two of them did nothing whatever anybody typed ([app.openTargetPicker] arms
 // the fold now, and [targetDraft.levels] holds the rung).
 //
-// `enter choose` and not `enter switch`, because nothing switches here: a choice
-// made on this list is a pin on the NEXT conversation ([app.pinTargetModel]). The
-// picker's own middle says `enter switch`, so the verb is swapped and home's own
-// ending put back on. It said `use it` until the owner asked for one verb across
-// the levels — every other row of this same fold already said `choose`, so `use
-// it` was a second word for one gesture on one rung of it.
+// `enter choose` and not `enter switch`, because nothing switches here: a choice made on
+// this list is a pin on the NEXT conversation ([app.pinTargetModel]). The picker's own
+// middle says `enter switch`, so the verb is swapped and home's own ending put back on.
 func (a *app) targetPickFoot() string {
 	before, enter, after := a.target.pick.keysParts()
 	// `choose` AND NOT `switch`, because nothing switches here: a choice made on
@@ -494,13 +489,12 @@ func (a *app) pinTargetModel(id string) {
 	if a.homeCreditWarning != "" {
 		a.askCredits(credits.PaidSwitch)
 	}
-	// NO NOTE. This used to say `model · <name> · for the next conversation you
-	// start here` on the line under the box, and the line it was answering —
-	// "did that change the conversation behind home?" — is answered better by the
-	// SEAM, which carries the pinned model beside the folder and carries it for as
-	// long as the pin lasts rather than until the next note replaces it. A
-	// sentence that repeats what is already on the screen is a sentence that costs
-	// the row something else could have used (the owner's ruling).
+	// NO NOTE. This used to say `model · <name> · for the next conversation you start here`
+	// on the line under the box, and the line it was answering — "did that change the
+	// conversation behind home?" — is answered better by the SEAM, which carries the pinned
+	// model beside the folder and carries it for as long as the pin lasts rather than until
+	// the next note replaces it. A sentence that repeats what is already on the screen is a
+	// sentence that costs the row something else could have used.
 	a.touch()
 }
 

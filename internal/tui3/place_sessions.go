@@ -1550,11 +1550,10 @@ func tasksTop(lines []tasksLine, cursor, top, room int) int {
 // note is the one line the place says on its rule, and it says ONE THING: that
 // the query has emptied the page.
 //
-// THE COUNT IS OFF THE RULE. It used to read `9 finished today · 191 earlier`
-// there, and the body already says every one of those numbers on its section
-// headings — the same partition, a few rows up, on a page a person is looking
-// at (the owner's ruling, 2026-09-17). A figure said twice on one frame is the
-// defect the model's colon suffix made once (effortchip.go).
+// THE COUNT IS OFF THE RULE. It used to read `9 finished today · 191 earlier` there, and
+// the body already says every one of those numbers on its section headings — the same
+// partition, a few rows up, on a page a person is looking at. A figure said twice on one
+// frame is the defect the model's colon suffix made once (effortchip.go).
 //
 // THE FILTER IS NOT SAID BACK HERE EITHER. This line used to carry `filter ·
 // zzz` because the box a person was typing into was invisible, so the only

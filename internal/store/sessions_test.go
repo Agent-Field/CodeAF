@@ -564,7 +564,7 @@ func TestSessionRenameSurvivesARebuild(t *testing.T) {
 // Replay-compat: a journal written before session_renamed existed contains
 // only message_posted (and, after the sibling lane landed, session_opened)
 // events, and replays to the byte-identical sessions table it always
-// replayed to. Nothing this lane added may appear in, or change, an old
+// replayed to. Nothing this test added may appear in, or change, an old
 // journal.
 func TestOldJournalsReplayToIdenticalSessionsAcrossRename(t *testing.T) {
 	s := openThreadStore(t)
@@ -596,7 +596,7 @@ func TestOldJournalsReplayToIdenticalSessionsAcrossRename(t *testing.T) {
 // Replay-compat: a journal written before this event existed contains only the
 // kinds it always contained, and replays to the byte-identical sessions table
 // it always replayed to. The proof is the whole projection compared row for
-// row, plus the journal itself compared event for event — nothing this lane
+// row, plus the journal itself compared event for event — nothing this test
 // added may appear in, or change, an old journal.
 func TestOldJournalsReplayToIdenticalSessions(t *testing.T) {
 	s := openThreadStore(t)

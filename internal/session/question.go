@@ -210,7 +210,7 @@ var questionForms = []QuestionForm{FormLine, FormCard, FormRoom, FormSheet}
 type AskerKind string
 
 const (
-	// AskerModel is the model, through the `ask` tool (lane E2 owns that door).
+	// AskerModel is the model, through the `ask` tool.
 	AskerModel AskerKind = "model"
 	// AskerEngine is codeaf itself: the approval gate, the fuel gate, a merge
 	// conflict — questions no model chose to ask.
@@ -1061,7 +1061,7 @@ type DecisionRecord struct {
 	// with the same head and different answers is exactly what a person changing
 	// their mind leaves behind, and a reader — the model, the mark reader, the
 	// person three days later — cannot tell that from the program having asked
-	// the same thing twice and got two answers. Measured on the Spark,
+	// the same thing twice and got two answers. Measured in a test run,
 	// 2026-09-11: a side-call read the record, found "Hello" and a file saying
 	// "Hola", and set about "fixing" the file.
 	Was []string `json:"was,omitempty"`

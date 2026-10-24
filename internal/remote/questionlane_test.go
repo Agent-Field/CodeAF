@@ -161,7 +161,7 @@ func wholeQuestion() session.Question {
 }
 
 // A question raised with no turn running reaches a hosted surface WHOLE. Before
-// this lane it reached nothing at all: the event was emitted onto a subscription
+// this test it reached nothing at all: the event was emitted onto a subscription
 // this wire did not carry, so the road a plain `codeaf` takes drew no block, no
 // chip and no row, and the turn simply stopped.
 func TestAQuestionReachesAHostedSurfaceWhole(t *testing.T) {

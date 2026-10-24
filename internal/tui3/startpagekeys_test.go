@@ -91,7 +91,7 @@ func TestTheQuestionIsAnsweredAgainOnceTheStartPageIsClosed(t *testing.T) {
 
 // AND THE PAGE IS NOT REFUSED OVER THE ROWS IT WAS ABOUT TO RECLAIM.
 //
-// WHAT WAS MEASURED, on a merge of this branch with lane P's. A permission was
+// THE REGRESSION SCENARIO. A permission was
 // waiting on a twenty-row terminal, and `ctrl+t` did nothing at all — no page,
 // no word. [app.openChatStart] asks whether there is a body region to stand the
 // page in, and it was asking [app.viewHeight], which is charged for the question
