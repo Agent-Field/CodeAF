@@ -50,7 +50,7 @@ func newLinkRig(t *testing.T) *linkRig {
 		t.Fatal(err)
 	}
 	r.oldDir = directory.NewHTTP(srv.URL, reqsign.SignFor(testSigner{id, dev}, time.Now), srv.Client())
-	sealed, _ := directory.SealName(directory.MetadataKey(id.CellKey()), "spark")
+	sealed, _ := directory.SealName(directory.MetadataKey(id.CellKey()), "tower")
 	if err := r.oldDir.PutDevice(context.Background(), dev.ID(), directory.Device{V: 1, Name: sealed, AddedBy: id.ID()}); err != nil {
 		t.Fatal(err)
 	}

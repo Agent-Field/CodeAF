@@ -29,7 +29,7 @@ func TestAdoptedHeadIsTheHeadUntilTheNextSeal(t *testing.T) {
 	if err := noteAdopted(c, "snap-2"); err != nil {
 		t.Fatal(err)
 	}
-	if err := AdoptedFrom(c, "spark"); err != nil {
+	if err := AdoptedFrom(c, "tower"); err != nil {
 		t.Fatal(err)
 	}
 	head, err := Head(c)
@@ -37,8 +37,8 @@ func TestAdoptedHeadIsTheHeadUntilTheNextSeal(t *testing.T) {
 		t.Fatalf("Head = %+v, %v; want the adopted head on top of the log", head, err)
 	}
 	entries, err := Log(c)
-	if err != nil || len(entries) == 0 || !entries[0].IsAdopted || entries[0].Adopted != "spark" || entries[0].Turn.ID != "snap-2" {
-		t.Fatalf("Log = %+v, %v; want the adopted head first, sealed on spark", entries, err)
+	if err != nil || len(entries) == 0 || !entries[0].IsAdopted || entries[0].Adopted != "tower" || entries[0].Turn.ID != "snap-2" {
+		t.Fatalf("Log = %+v, %v; want the adopted head first, sealed on tower", entries, err)
 	}
 	if turns, _ := Turns(c); len(turns) != 1 {
 		t.Fatalf("a turn record was invented: %+v", turns)

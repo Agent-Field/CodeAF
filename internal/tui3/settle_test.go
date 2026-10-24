@@ -207,7 +207,7 @@ func TestBelowThe256RungAStreamingReplyIsUnpainted(t *testing.T) {
 		}
 		for _, row := range a.assistantRows(at, e, 60) {
 			// The head is prose's, and prose answers the profile question for
-			// itself; only the tail is this lane's to leave alone.
+			// itself; only the tail is this test's to leave alone.
 			if strings.Contains(plain(row), "length prefix") && row != plain(row) {
 				t.Fatalf("at %v the streaming tail carries SGR: %q", profile, row)
 			}

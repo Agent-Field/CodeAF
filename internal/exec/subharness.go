@@ -16,7 +16,7 @@ import (
 // a surface builds its worker with its own clients and workspaces while this
 // description is a fact about the process.
 //
-// The manifest table below is the SAVED-PROGRAM contract (docs/SUBHARNESS-PRD.md):
+// The manifest table below is the SAVED-PROGRAM contract:
 // a bundle or a Go-native program registers its typed front door through
 // [RegisterManifest]. A program is a named piece of work somebody saved, not a
 // second worker, and nothing here puts a name in front of a model to pick.

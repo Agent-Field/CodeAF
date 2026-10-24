@@ -97,7 +97,7 @@ func TestADirectoryBlockedByAFileSaysSoPlainly(t *testing.T) {
 }
 
 // The path in the sentence is spelled the way the person would write it down,
-// because `/home/them/.codeaf/graph.db` is a path they have to translate and
+// because `/workspace/.codeaf/graph.db` is a path they have to translate and
 // `~/.codeaf/graph.db` is one they can paste.
 func TestThePathIsSpelledTheWayAPersonWouldWriteIt(t *testing.T) {
 	house := t.TempDir()

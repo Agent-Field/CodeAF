@@ -188,7 +188,7 @@ var tuiWords = map[string]tuiWord{
 		why:    "the other half of that rule, which is how a conversation is told from home",
 	},
 
-	// ── home's panels (docs/design/home-mission-control/DESIGN.md) ────────────
+	// ── home's panels ────────────
 	//
 	// THE FLAT RANKED LIST IS GONE, and with it the section line, `alt+g`,
 	// `alt+q` and the `quiet since` fold the suite used to wait for. Home is seven
@@ -400,7 +400,7 @@ var tuiWords = map[string]tuiWord{
 
 	// ── automations: the card, the place and the clock ────────────────────────
 	//
-	// docs/design/automations/DESIGN.md is the design and automations_e2e_test.go
+	// the implementation is the design and automations_e2e_test.go
 	// reads it off a real screen. What an automation is CALLED and what it SAYS
 	// are the scenario's own words (its scripted model chose them, or its typed
 	// command did), so they are typed there; what is here is what the surface
@@ -540,7 +540,7 @@ var tuiWords = map[string]tuiWord{
 		why:    "the first option on that question, which the ENGINE writes and home only relays",
 	},
 
-	// ── a landing that is the person's call (#268, docs/design/task-states) ───
+	// ── a landing that is the person's call (#268, the implementation) ───
 	"settleAskWord": {
 		screen: "nobody could check it",
 		pkg:    "internal/session",
@@ -820,7 +820,7 @@ var tuiWords = map[string]tuiWord{
 		pkg:    "internal/session",
 		why: "the tier word on the head of a landing that is waiting on a person. It replaced `needs your look`, " +
 			"`awaiting review` and `unverified` — one word for one state, spelled in the engine and drawn by " +
-			"every surface (docs/design/task-states/DESIGN.md)",
+			"every surface",
 	},
 	"unverifiedGlyph": {
 		screen: "?",
@@ -834,7 +834,7 @@ var tuiWords = map[string]tuiWord{
 
 	// ── the three tiers, one glyph and one word each (task-states) ───────────
 	//
-	// docs/design/task-states/DESIGN.md is the ruling and these are its words on a
+	// the implementation is the ruling and these are its words on a
 	// real screen. THE WORDS ARE THE ENGINE'S and the KEYS ARE THE SURFACE'S,
 	// which is why several rows here name a `key` and a `source`: a card that
 	// reads `a resolve it` on the same column where another reads `a accept` is
@@ -853,7 +853,7 @@ var tuiWords = map[string]tuiWord{
 		why: "the `over` tier's cell for work that did not finish — GlyphFailed. It is NOT the cell a " +
 			"person's own stop wears, which is GlyphStopped, because nobody found anything wrong with work " +
 			"somebody ended. It was `✗` in internal/tui3 until the icons wave moved every mark into one " +
-			"vocabulary (docs/design/icons/DESIGN.md)",
+			"vocabulary",
 	},
 	"taskDoneWord": {
 		screen: " · done",
@@ -963,7 +963,7 @@ var tuiWords = map[string]tuiWord{
 	},
 	// ── questions: one object, drawn at the size the evidence needs ──────────
 	//
-	// docs/design/questions/DESIGN.md is a contract about what a person SEES when
+	// the implementation is a contract about what a person SEES when
 	// this engine hands them a decision, and questions_e2e_test.go is the only
 	// place that drives it through a real binary. Every sentence below is a
 	// product sentence; the heads, labels and bodies in those scenarios are the
@@ -1192,7 +1192,7 @@ var tuiWords = map[string]tuiWord{
 		why: "the keys the panel writes into its bottom edge, which is how a screen says a question " +
 			"is up and waiting on a person. It was `allow? [1] allow once` — the approval gate's own " +
 			"offer row — until the questions wave gave every question one frame, one key table and one " +
-			"spelling for a key (owner ruling 2026-09-11, hints pick A)",
+			"spelling for a key",
 	},
 	"consentOldCancelWord": {
 		key:    "esc",

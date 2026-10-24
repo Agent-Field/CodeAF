@@ -194,7 +194,7 @@ var resolveTranscript = filepath.EvalSymlinks
 // over --host the paths in a row are THE ENGINE MACHINE'S and resolving them
 // here walks this laptop's disk for a file that was never on it. That walk is
 // not merely useless: on macOS `/home` is an automounter's mount point, so
-// `Lstat("/home/<name>")` on the Mac waits on autofs for a quarter of a second
+// looking up a child of that directory can wait on autofs for a quarter of a second
 // or more — and home asked it for every row on every frame, which is why typing
 // on a hosted home took a second per key (2026-08-27). A hosted key is the
 // cleaned spelling and nothing else; the far machine's `/tmp`-versus-

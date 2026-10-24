@@ -1,4 +1,4 @@
-// artifacts.go is the global deliverables index (docs/CHAT-V3.md, Decision
+// artifacts.go is the global deliverables index (the implementation, Decision
 // 26): one append-only JSONL file under the v3 home, one row per thing the
 // harness produced FOR the person — a generated image, an export, a finished
 // document. It is a citation, not an archive, in exactly the sense

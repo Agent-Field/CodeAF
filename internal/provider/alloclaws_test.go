@@ -228,7 +228,7 @@ func TestTheWarmTranscriptEncodeCostsTheSameAtEightyTurnsAsAtEight(t *testing.T)
 		{"breakpoints", cacheDialectBreakpoints, resultSliceCost + systemJSON + partsSliceCost + tailJSON + toolOverhead},
 	} {
 		t.Run(dialect.name, func(t *testing.T) {
-			// 8 and 81 turns are the ends of the range BENCHMARKS.md records for
+			// 8 and 81 turns are the ends of the range the implementation records for
 			// real runs, and they are 25 and 244 messages long.
 			small, large := warmEncode(t, 8, dialect.d), warmEncode(t, 81, dialect.d)
 			t.Logf("warm %s encode: 8 turns=%.0f 81 turns=%.0f law=%.0f",

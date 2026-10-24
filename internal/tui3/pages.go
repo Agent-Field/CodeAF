@@ -247,13 +247,12 @@ type place interface {
 	caretRow(a *app, width int, rows []placeRow) (row, column int, drawn bool)
 	// box is the editor this place types into, and nil where it has none.
 	//
-	// ONLY HOME HAS A BOX THAT SENDS ANYTHING (the owner's ruling, 2026-09-17).
-	// Tasks and memory keep an editor because typing there FILTERS or
-	// SEARCHES, and each of them draws its own letters in its own body; the
-	// automations and spend places take no text at all, and the foot under
-	// every place but home draws no box. The shared composer that used to sit under
-	// all seven — `enter talk about it · alt+enter send it off as a task` — was a
-	// box on six pages where `enter` opened a row and the sentence went nowhere.
+	// ONLY HOME HAS A BOX THAT SENDS ANYTHING. Tasks and memory keep an editor because typing
+	// there FILTERS or SEARCHES, and each of them draws its own letters in its own body; the
+	// automations and spend places take no text at all, and the foot under every place but
+	// home draws no box. The shared composer that used to sit under all seven — `enter talk
+	// about it · alt+enter send it off as a task` — was a box on six pages where `enter`
+	// opened a row and the sentence went nowhere.
 	box(a *app) *editor
 	// note is the one line a place may say about what it is HOLDING, drawn under
 	// the rule and above the composer.
@@ -651,7 +650,7 @@ func (a *app) barChipWord(id page, numbered bool) string {
 }
 
 // placeMachineLead is the word in front of the machine's name on the nav's far
-// end. It is there so that a bare `spark` on the row the places are drawn in
+// end. It is there so that a bare `laptop` on the row the places are drawn in
 // cannot be read as one more place.
 const placeMachineLead = "on "
 
@@ -808,10 +807,9 @@ func (a *app) barReach() bool {
 	if pl == nil || a.bar.on || a.tabRow < 0 {
 		return false
 	}
-	// HOME'S COLUMN HAS NO WAY UP ONTO THE BAR (owner, 2026-09-17: "don't let
-	// users scroll up out of the left column onto the tabs"). `↑` at the top of
-	// the field stays where it is; the bar is reached by a press on it, `tab`,
-	// or a place's own chord. Every other place keeps the walk.
+	// HOME'S COLUMN HAS NO WAY UP ONTO THE BAR. `↑` at the top of the field stays where it
+	// is; the bar is reached by a press on it, `tab`, or a place's own chord. Every other
+	// place keeps the walk.
 	if pl.id() == pageHome {
 		return false
 	}
@@ -1490,12 +1488,11 @@ func scopeAddress(line homeLine) string {
 // The sentences the router says. Each is quoted in the manual exactly as it is
 // spelled here.
 const (
-	// placeRestWord is what home's box row says with nothing typed into it: the
-	// promise the foot used to open with. It said `say what you want done` on
-	// every place until 2026-09-17, when the box came off every place but home
-	// and the owner ruled that the one box left says what it is for — both of
-	// its readings, the search and the start — and the foot under it keeps
-	// only the draft controls ([app.targetChordWords]).
+	// placeRestWord is what home's box row says with nothing typed into it: the promise the
+	// foot used to open with. It said `say what you want done` on every place until
+	// 2026-09-17, when the box came off every place but home and the one box left says what
+	// it is for — both of its readings, the search and the start — and the foot under it
+	// keeps only the draft controls ([app.targetChordWords]).
 	placeRestWord = "type to search or start something new"
 	// placeHintWords is the second line of the composer, AND IT IS THE DESIGN'S
 	// OWN SENTENCE WORD FOR WORD (SCREEN 2b, and FIDELITY.md item 3 quotes it as
@@ -2056,12 +2053,9 @@ func (a *app) placeMsgLine(width int) (string, bool) {
 //
 // ── EVERY PLACE OPENS, ALWAYS ───────────────────────────────────────────────
 //
-// This function used to have a second half: a place that refused to open put
-// back whatever was standing, and three places refused — tasks with no task in
-// the world, standing with nothing standing, memory with no store behind it. The
-// owner ran the binary on a fresh machine and found that `alt+2`, `alt+3` and
-// `alt+4` did nothing at all, because on a fresh machine all three of those are
-// exactly the state a new person is in.
+// This function used to have a second half: a place that refused to open put back whatever
+// was standing, and three places refused — tasks with no task in the world, standing with
+// nothing standing, memory with no store behind it.
 //
 // SCREEN 1f'S PREAMBLE IS THE LAW NOW: an almost-empty place is the best teacher
 // on the machine, so it always opens and spends the whole frame saying what it

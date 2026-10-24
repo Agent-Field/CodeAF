@@ -162,7 +162,7 @@ type chat struct {
 func (r *driveRig) startChat(notices *noticeLog) *chat {
 	r.t.Helper()
 	drive, err := r.a.Drive(context.Background(), r.engine, r.cell, DriveOptions{
-		DeviceName: "spark",
+		DeviceName: "tower",
 		OnNotice:   notices.add,
 	})
 	if err != nil {
@@ -294,7 +294,7 @@ func TestDriveSideSupersededStopsTools(t *testing.T) {
 	durable := r.head()
 	waitFor(t, "the first two turns to be durable", func() bool { return r.directoryHead(r.cell.ID) == durable })
 
-	if err := r.b.putDevice(ctx, "blackmac"); err != nil {
+	if err := r.b.putDevice(ctx, "laptop"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := r.b.Dir.Acquire(ctx, r.cell.ID, directory.AcquireOpts{}); !errors.Is(err, directory.ErrLeaseHeld) {
@@ -306,13 +306,13 @@ func TestDriveSideSupersededStopsTools(t *testing.T) {
 	}
 
 	c.mustSay() // A does not know yet; this turn is unpublished
-	want := chatlist.Superseded("blackmac")
+	want := chatlist.Superseded("laptop")
 	waitFor(t, "A to learn it was superseded", func() bool { _, viewer := c.drive.Viewer(); return viewer })
 	if line, _ := c.drive.Viewer(); line != want {
 		t.Fatalf("line = %q, want %q", line, want)
 	}
 	waitFor(t, "the superseded line to be shown", func() bool { return notices.last() == want })
-	if kept := chatlist.KeptEdits(1, "spark"); !notices.has(kept) {
+	if kept := chatlist.KeptEdits(1, "tower"); !notices.has(kept) {
 		t.Fatalf("the displaced window silently kept a branch; notices = %v, want %q", notices.all(), kept)
 	}
 
@@ -424,12 +424,12 @@ func TestDriveSideStartsAsViewerWhenHeld(t *testing.T) {
 	c.mustSay()
 	waitFor(t, "the first turn to be durable", func() bool { return r.directoryHead(r.cell.ID) == r.head() })
 
-	viewer, err := r.b.Drive(context.Background(), r.engine, r.cell, DriveOptions{DeviceName: "blackmac"})
+	viewer, err := r.b.Drive(context.Background(), r.engine, r.cell, DriveOptions{DeviceName: "laptop"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if line, ok := viewer.Viewer(); !ok || line != chatlist.Superseded("spark") {
-		t.Fatalf("viewer = %q, %v; want the line naming spark", line, ok)
+	if line, ok := viewer.Viewer(); !ok || line != chatlist.Superseded("tower") {
+		t.Fatalf("viewer = %q, %v; want the line naming tower", line, ok)
 	}
 	if err := viewer.Gate(); err == nil {
 		t.Fatal("a viewer's tool calls are not refused")

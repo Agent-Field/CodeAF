@@ -6,7 +6,7 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
-Every screen that names a device uses one name for it: the home rows (`running on spark`, `spark offline`), `Continue spark's latest chat here?`, the approve screen, `spark is now paired. Your chats can continue there.`, `/devices`, and the line after a move, `Moved from spark in 4s`. A device is called by its host name, the word your operating system already uses for it, until you give it a name. A name is only a label. It is not a key and it signs nothing, and renaming a device changes nothing about what it can reach.
+Every screen that names a device uses one name for it: the home rows (`running on tower`, `tower offline`), `Continue tower's latest chat here?`, the approve screen, `tower is now paired. Your chats can continue there.`, `/devices`, and the line after a move, `Moved from tower in 4s`. A device is called by its host name, the word your operating system already uses for it, until you give it a name. A name is only a label. It is not a key and it signs nothing, and renaming a device changes nothing about what it can reach.
 
 Because you never named this device, it kept the default. Name it and every other device shows the new name.
 
@@ -15,7 +15,7 @@ Because you never named this device, it kept the default. Name it and every othe
 On the new device, type `codeaf pair`. In a terminal it asks once, with the host name filled in:
 
 ```
-Your other devices will call this computer "spark". Press Enter to keep that, or type another name:
+Your other devices will call this computer "tower". Press Enter to keep that, or type another name:
 ```
 
 Press Enter to keep the host name, or type a name and press Enter. To say it without being asked, type `codeaf pair --name "atlas"`. It works with a typed code too: `codeaf pair 42-715-302 --name "atlas"`. The device that approves shows that name when it asks you to approve.
@@ -59,4 +59,4 @@ One to 32 characters you can see. Spaces at the start and end are dropped. A nam
 - `a device name is at most 32 characters`
 - `a device name cannot hold control characters or line breaks`
 
-Two devices may have the same name. `/devices` then adds a short tail, such as `spark #a1b2`, so you can tell them apart.
+Two devices may have the same name. `/devices` then adds a short tail, such as `tower #a1b2`, so you can tell them apart.

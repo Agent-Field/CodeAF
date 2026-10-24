@@ -1014,7 +1014,7 @@ func (a *Agent) waitingOnPerson() personAsk {
 	// AND A LANDED TASK'S `YOUR CALL` IS A QUESTION LIKE ANY OTHER, which for a
 	// long time this did not count. Work that finished and that nobody could
 	// check waits on a person's word and moves for nothing else — it is the
-	// third tier of docs/design/task-states/DESIGN.md and the whole content of
+	// third tier of the implementation and the whole content of
 	// pending.go's registry — and yet it lived outside every lane above, so a
 	// session sitting on one said `idle` to home, to the switcher and to the tab
 	// signal. A person was told there was nothing to do about work that could

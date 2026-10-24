@@ -23,7 +23,7 @@ import (
 // then a rails screen with three money rows on it. Five answers, four of which a
 // person who has never run the program cannot have an opinion about yet. This is
 // the one screen that replaced them, and the rule that decided its contents is
-// written in docs/design/onboarding/DESIGN.md: a control belongs here when it is
+// written in the implementation: a control belongs here when it is
 // NECESSARY TO WORK, MATERIALLY CHANGES THE FIRST EXPERIENCE, and CAN BE
 // UNDERSTOOD BEFORE THE PERSON HAS USED codeaf. Two pass — the day's limit
 // (money is consequential and an amount can be chosen with no knowledge of the
@@ -744,7 +744,7 @@ func (a *app) setupLimitReading() string {
 // re-read afterwards, because a form that reseeded on the way back from the step
 // behind it would throw away the amount somebody had typed and the crew they had
 // picked before they went to look at something (the design's own back/return
-// rule, docs/design/onboarding/DESIGN.md).
+// rule, the implementation).
 func (a *app) startSetupControls() {
 	s := &a.setup
 	if s.seeded {
@@ -1869,15 +1869,11 @@ func setupShowcaseCount(at, count int) string {
 // beats of typing and one per line. It plays when an example arrives — on
 // reaching this screen, on ←/→, and on the turn — and then it is still.
 //
-// THE TURN is the second clock. Left alone, the panel shows the next example
-// every [setupTurnEvery], round and round, so a person reading the form sees
-// all five without touching anything; ←/→ browse them by hand. ANY KEY HOLDS
-// THE CLOCK for a full [setupTurnEvery] from that key, so the panel never
-// turns under a person who is typing an amount or walking the rows, and
-// browsing by hand is not raced by the clock. Until 2026-10-01 the design
-// refused a carousel here and moved the example with the focus instead; new
-// people read that as the panel jumping about as they walked the rows, and
-// the owner asked for the clock.
+// THE TURN is the second clock. Left alone, the panel shows the next example every
+// [setupTurnEvery], round and round, so a person reading the form sees all five without
+// touching anything; ←/→ browse them by hand. ANY KEY HOLDS THE CLOCK for a full
+// [setupTurnEvery] from that key, so the panel never turns under a person who is typing an
+// amount or walking the rows, and browsing by hand is not raced by the clock.
 //
 // AND ANY OTHER KEY SETTLES IT AT ONCE. Typing an amount, narrowing the model
 // list, opening a chooser — every one of those jumps the panel straight to its

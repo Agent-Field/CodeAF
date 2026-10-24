@@ -224,7 +224,7 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 	// There was an inner loop here, `for tries := 1; tries <= errandTriesPerRung`
 	// with the constant pinned at one — a budget of one, walked as a loop, which
 	// is a shape that reads as though somebody could raise it and is the last
-	// count in this file (docs/design/recovery/DESIGN.md §7). What bounds an
+	// count in this file. What bounds an
 	// errand is `patience` above, a DEADLINE on the whole ladder, and what bounds
 	// one rung is the reserve the rungs below it are owed
 	// ([errandRungContext]). The rung below is a better move than another try —

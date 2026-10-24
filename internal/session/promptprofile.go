@@ -536,7 +536,7 @@ func (c Config) instructionLimit() int {
 // carries both is carrying two copies of one set of house rules. On a full
 // prefix both are quoted, because a frontier model can hold them and the rules
 // the person actually edits are the highest-value text in the prefix
-// (docs/design/prompt-diet/DESIGN.md §7 says so in as many words). On a lean one
+// . On a lean one
 // the second copy is the first thing to go — and it is the second FOUND rather
 // than a named file, so a project that has only CLAUDE.md still gets its rules.
 func (c Config) onlyOneInstructionFile() bool { return c.promptProfile().lean() }

@@ -531,7 +531,7 @@ func (a *Agent) deliverTaskDirection(node *TaskNode, text string, origin message
 	// RECORD — it reaches the worker when the worker next assembles a request —
 	// and until this call the record was the whole of it: a `continue` typed at a
 	// step thirteen minutes into a pace was drained when that request ended and
-	// not before, which is the other half of the owner's 14:40:10 evidence and
+	// not before, which is the second half of the model-change reproduction and
 	// the half that was still broken after the model half was fixed.
 	//
 	// IT IS THE SAME DOOR THE PICK GOES THROUGH (steer.go's [Agent.hearTheWord]),

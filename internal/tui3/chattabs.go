@@ -686,7 +686,7 @@ func (a *app) tabsRow(width int) string {
 // THERE IS NO GLYPH-ALONE RUNG ANY MORE. Between sixty and eighty columns the
 // door used to be a bare ` ▦ `, a lone mark a person had to press to learn
 // about; four cells taken from the tabs is the price of it saying what it is,
-// and the owner's bar is word buttons, never lone glyphs. tabWallWordFrom is
+// and the tab bar is word buttons, never lone glyphs. tabWallWordFrom is
 // kept equal to tabWallFrom so the two rungs cannot drift apart again.
 const (
 	tabWallFrom     = roomHeadFloor

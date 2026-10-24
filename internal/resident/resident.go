@@ -59,7 +59,7 @@ type Compiled struct {
 	// compiled goal, which is this program's reading of the ask rather than the
 	// ask — and a checklist derived from our own reading is a checklist we wrote
 	// for ourselves, which is precisely what the gate may not hold anybody to.
-	// See plan.Acceptance and docs/design/gate/ACCEPTANCE.md.
+	// See plan.Acceptance and the implementation.
 	Accept []plan.Point
 	// Constraints are the rules the person's REQUEST states about what the run
 	// may or may not DO, in their own words, kept only where the compiler could
@@ -1067,7 +1067,7 @@ func receiptAnchor(command store.Command, status store.CommandStatus) string {
 // "1": the standing-watch receipt was written, journaled, and rendered as a grey
 // line nobody reads, so the person who had just answered a question watched
 // silence and typed the answer again. Where the conversation already carries an
-// answer the receipt stays filed, because the wave-4 rule cuts both ways: one
+// answer the receipt stays filed, because the implementation rule cuts both ways: one
 // user action, exactly one visible response.
 //
 // A refusal is the one case where the head having spoken is not an answer, it

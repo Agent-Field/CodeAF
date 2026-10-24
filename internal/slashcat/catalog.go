@@ -226,7 +226,7 @@ var rows = []Row{
 	// `/subharness` AND `/sub` USED TO BE WORDS FOR THE ROW ABOVE and are not any
 	// more, because they now name something else. A subharness is a typed program
 	// with an input schema, a cost shape and a card you settle before it runs
-	// (docs/SUBHARNESS-PRD.md §2 fixes the person-facing name); a harness is the
+	//; a harness is the
 	// older saved shape of work that row opens. They are two things, so they are
 	// two rows — a word that reached whichever of them the table happened to list
 	// first is a word nobody could rely on.
@@ -452,11 +452,9 @@ var rows = []Row{
 	// characters with /files one row above, and a word that narrowed the list to
 	// both errands at once is the near-miss /history was named to avoid.
 	//
-	// TWO ROWS, /folder'S REASON EXACTLY: the bare form is the browser and
-	// enter on its row opens it at once, where one row with a placeholder
-	// left `/attach ` in the box waiting for a path nobody had — a second
-	// enter to reach the sheet the word already meant (the owner met it,
-	// 2026-09-22).
+	// TWO ROWS, /folder'S REASON EXACTLY: the bare form is the browser and enter on its row
+	// opens it at once, where one row with a placeholder left `/attach ` in the box waiting
+	// for a path nobody had — a second enter to reach the sheet the word already meant.
 	{Name: "attach", Desc: "choose a file to attach · the browser opens", Alias: []string{"upload"}},
 	{Name: "attach", Args: "<path>", Desc: "…attach that file · tab completes the path"},
 	// AND DIRECTLY ABOVE /help, THE OTHER QUESTION SOMEBODY HAS WHEN THEY ARE

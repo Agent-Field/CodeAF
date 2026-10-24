@@ -23,12 +23,7 @@ type needsPanel struct{ homePanelBase }
 // question with more draws the first ones and stops; every answer is still one
 // enter away, and the row does not say so.
 //
-// NO ROW OF THIS PANEL NAMES THE ENTER KEY. A question row used to say `enter`
-// at the right of its sentence when its answers were not drawn, and a watch
-// with no conversation behind it `enter on standing`; the owner ruled
-// (2026-09-17) that the word beside every description was noise — the foot
-// under the grid already says `enter open` once for every row, and a row that
-// can be stood on is a row enter does something with.
+// NO ROW OF THIS PANEL NAMES THE ENTER KEY.
 const needsAnswersCap = 3
 
 // needsItem is one row before the panel orders it: when it was asked, and the
@@ -72,14 +67,9 @@ func (needsPanel) rows(in *homeGridInput) homePanelRows {
 		lines = append(lines, item.line)
 	}
 	out := homePanelCut(in, panelNeeds, lines)
-	// NEITHER THE HEADING NOR THE GROUP LINE CARRIES A COUNT. The heading used
-	// to count the live questions (`needs you · 2`) and the group line the
-	// landings (`to check · 8`); the owner cut both on 2026-09-15, because the
-	// rows are right there under the words and a figure beside them is a second
-	// thing to read that says nothing the rows do not. The fold still counts what
-	// it hides (`3 unread`, `N more`), which is the one place a count stands for
-	// rows that are NOT on the screen. The aged-out landings are counted on the
-	// same fold ([needsFresh]).
+	// NEITHER THE HEADING NOR THE GROUP LINE CARRIES A COUNT. The fold still counts what it
+	// hides (`3 unread`, `N more`), which is the one place a count stands for rows that are
+	// NOT on the screen. The aged-out landings are counted on the same fold ([needsFresh]).
 	out.older = in.callsOlder
 	if len(calls) > 0 {
 		out.group = &homePanelGroup{at: len(asked), word: needsCheckWord}
@@ -90,10 +80,8 @@ func (needsPanel) rows(in *homeGridInput) homePanelRows {
 // needsFresh is the task calls that are still worth checking, and how many are
 // history.
 //
-// A YOUR-CALL OLDER THAN [homeNeedsTaskFresh] IS HISTORY, NOT A QUESTION (owner,
-// 2026-09-10: a machine with twenty-four week-old landings drew twenty-four rows
-// over rows nobody was going to answer, and a live question arriving under them
-// would have been the twenty-fifth). They stay one press away — the fold counts
+// A YOUR-CALL OLDER THAN [homeNeedsTaskFresh] IS HISTORY, NOT A QUESTION.
+// They stay one press away — the fold counts
 // them and opening the panel shows them. The tasks place also keeps every
 // record. Only a task's
 // call ages: a conversation stopped on a question and a watch that needs
@@ -134,18 +122,17 @@ func needsAsked(in *homeGridInput) []needsItem {
 			needsLandingsSpeakFor(row.session, needsCallTitlesOn(in, row.session.ID))) {
 			continue
 		}
-		// THE MARK ALWAYS SHOWS AND THE SENTENCE SHOWS UNDER THE POINTER OR THE
-		// CURSOR (owner, 2026-09-17): a row is its title and its wait at rest,
-		// like every row of the field, and grows the question when it is read.
+		// THE MARK ALWAYS SHOWS AND THE SENTENCE SHOWS UNDER THE POINTER OR THE CURSOR: a row is
+		// its title and its wait at rest, like every row of the field, and grows the question
+		// when it is read.
 		cell := &homeCell{panel: panelNeeds, mark: cellMarkNeeds, title: row.title, grows: true}
 		homeLiveMargin(cell, row, sinceAt(row.at, in.now))
 		item := needsItem{asked: row.at}
 		switch row.kind {
 		case switcherConversation:
-			// THE DESCRIPTION IS HEADED BY THE THREAD (owner, 2026-09-17), which
-			// for a stopped conversation is the row's own title — the label
-			// `threads` draws for it — said once more as the description's
-			// title line so every row of the panel reads the same way.
+			// THE DESCRIPTION IS HEADED BY THE THREAD, which for a stopped conversation is the
+			// row's own title — the label `threads` draws for it — said once more as the
+			// description's title line so every row of the panel reads the same way.
 			cell.thread = row.title
 			head, whole := needsSentence(row.session)
 			cell.sub = head
@@ -321,13 +308,12 @@ func needsCall(project session.Project, row session.SessionRow, entry session.Ta
 		program = strings.TrimSpace(entry.Program)
 	}
 	asked := needsCallAt(entry)
-	// A LANDING WEARS NO MARK (law 8). The amber `?` means a thing has stopped
-	// and will not move until somebody answers it; a landing has already
-	// finished, and a column of question marks over work that is DONE was the
-	// screen saying the opposite of what was true.
-	// THE THREAD IT BELONGS TO HEADS THE DESCRIPTION (owner, 2026-09-17),
-	// spelled as `threads` spells the same conversation ([homeName]); under
-	// that title line come the files and what the work came to.
+	// A LANDING WEARS NO MARK (law 8). The amber `?` means a thing has stopped and will not
+	// move until somebody answers it; a landing has already finished, and a column of
+	// question marks over work that is DONE was the screen saying the opposite of what was
+	// true. THE THREAD IT BELONGS TO HEADS THE DESCRIPTION, spelled as `threads` spells the
+	// same conversation ([homeName]); under that title line come the files and what the work
+	// came to.
 	cell := &homeCell{panel: panelNeeds, mark: cellMarkNeeds, title: title, program: program, right: sinceAt(asked, now),
 		key: needsCallKey + entry.ID, thread: homeName(row),
 		grows: true, sub: rowClauses(needsCallFiles(entry), needsCallSub(entry, status)), answers: needsCallAnswers(status)}
@@ -354,11 +340,10 @@ func needsCallSub(entry session.TaskIndexEntry, status session.TaskStatus) strin
 // description — `3 files · <what it came to>` — and "" for one that wrote none,
 // never `0 files` (the emptiness law).
 //
-// IT USED TO BE THE RIGHT MARGIN, as one clause with the age (`3 files · 1d`),
-// so a landing that wrote nothing read `10h` beside one that read `1 file · 1d`
-// — two shapes in one column for one kind of row. THE RIGHT MARGIN OF EVERY ROW
-// OF THE FIELD IS A TIME (owner, 2026-09-15), and everything that is not a time
-// is in the description column ([homeDescLines]).
+// IT USED TO BE THE RIGHT MARGIN, as one clause with the age (`3 files · 1d`), so a
+// landing that wrote nothing read `10h` beside one that read `1 file · 1d` — two shapes in
+// one column for one kind of row. THE RIGHT MARGIN OF EVERY ROW OF THE FIELD IS A TIME,
+// and everything that is not a time is in the description column ([homeDescLines]).
 func needsCallFiles(entry session.TaskIndexEntry) string {
 	if entry.FilesChanged <= 0 {
 		return ""

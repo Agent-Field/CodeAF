@@ -19,13 +19,11 @@ import (
 // rather than stopwatches for the reason that file's doctrine gives: a count is
 // a fact about the code and the same fact on a loaded laptop as on idle CI.
 //
-// WHAT THEY WERE WRITTEN AFTER. The owner reported that over a connection
-// "even hover seems to slow everything down", and that clicks and keys felt
-// dead. Both were one defect: the status row asked the agent what the model was
-// dialled to while it was DRAWING (view.go's [app.statusRow]), a hover below
-// the conversation rebuilds the chrome to find its row (view.go's
-// [app.chromeAt]), and over a connection that read is a round trip on the ssh
-// pipe. Measured on the loopback client at the commit before this file:
+// WHAT THEY WERE WRITTEN AFTER. Both were one defect: the status row asked the agent what
+// the model was dialled to while it was DRAWING (view.go's [app.statusRow]), a hover below
+// the conversation rebuilds the chrome to find its row (view.go's [app.chromeAt]), and
+// over a connection that read is a round trip on the ssh pipe. Measured on the loopback
+// client at the commit before this file:
 //
 //	100 frames                        100 far calls
 //	200 pointer motions over the foot  200 far calls

@@ -129,12 +129,13 @@ func (a *app) takeMouseBack() bool {
 // copyKeysWord is the keys row while the viewport is frozen, under either box:
 // the reader's keys are the only keys that work, so they are the only keys the
 // row may name.
-const copyKeysWord = "v select · a block · y yank · esc"
+const copyKeysWord = "↑↓ move · v select · a block · enter copy · esc"
 
 // copyMode is the frozen viewport's whole state. The zero value is off, except
 // for mark, which [newApp] sets to -1 — nothing is marked.
 type copyMode struct {
-	on bool
+	on            bool
+	clipboardSent bool
 	// The reading gutter belongs to the snapshot, even after a resize.
 	gutter int
 	// rows is the snapshot as it is drawn, and text the same rows stripped of
@@ -236,7 +237,7 @@ func (a *app) copyKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.copyMark()
 	case "a":
 		a.copyBlock()
-	case "y":
+	case "enter", "y":
 		return a.copyYank(), true
 	}
 	return nil, true
@@ -247,6 +248,7 @@ func (a *app) copyKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // in step, so there is nothing for the two to disagree about.
 func (a *app) copyScroll(delta int) {
 	c := &a.copy
+	c.clipboardSent = false
 	c.at = clampInt(c.at+delta, 0, len(c.rows)-1)
 	height := a.viewHeight()
 	if height < 1 {
@@ -266,6 +268,7 @@ func (a *app) copyScroll(delta int) {
 // the NEAR end: v then ↓↓↓ grows the span downward, exactly as it does in every
 // other reader that has this key.
 func (a *app) copyMark() {
+	a.copy.clipboardSent = false
 	if a.copy.mark >= 0 {
 		a.copy.mark = -1
 	} else {
@@ -288,6 +291,7 @@ func (a *app) copyMark() {
 // which neighbour was meant.
 func (a *app) copyBlock() {
 	c := &a.copy
+	c.clipboardSent = false
 	if c.at < 0 || c.at >= len(c.text) {
 		return
 	}
@@ -382,6 +386,7 @@ func (a *app) copyYank() tea.Cmd {
 		lines = append(lines, copyClean(line, a.copy.gutter))
 	}
 	a.copy.mark = -1
+	a.copy.clipboardSent = true
 	a.touch()
 	return tea.Raw(osc52(strings.Join(lines, "\n"), a.tmux))
 }
@@ -463,6 +468,9 @@ func (a *app) copyRows(width, height int) ([]row, int) {
 // as well as the mode, because a marked span longer than the screen is a span a
 // person cannot otherwise measure.
 func (a *app) copyWord() string {
+	if a.copy.clipboardSent {
+		return "COPY · clipboard sent"
+	}
 	from, to := a.copySpan()
 	if n := to - from + 1; n > 1 {
 		return "COPY · " + itoa(n) + " lines"

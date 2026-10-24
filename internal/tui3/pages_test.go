@@ -66,7 +66,7 @@ func TestThePlacesAreOneList(t *testing.T) {
 	}
 	// AND alt+0 IS NOTHING, rather than a tenth place: the eight digits are the
 	// seven rooms and the way back to the chats, teams second and the chats
-	// third (the owner's order).
+	// third (the specified order).
 	if _, ok := placeDigit("alt+0"); ok {
 		t.Fatal("alt+0 reaches a place that does not exist")
 	}
@@ -670,11 +670,10 @@ func TestAnAmbiguousPrefixOffersNoPlaceAtAll(t *testing.T) {
 
 // ── the palette ─────────────────────────────────────────────────────────────
 
-// WAITING ON YOU IS ONE COLOUR ON EVERY SCREEN. Home used to say it in two — a
-// violet question hue on the strip and the amber on the finished-needs-your-look
-// glyph — and it settled on the amber; since the owner's colour ruling of
-// 2026-09-11 the CONVERSATION says it in the same amber too, so `ask` and `warn`
-// are one hue wherever either is asked for (styles.go's [palette.ask]).
+// WAITING ON YOU IS ONE COLOUR ON EVERY SCREEN. Home used to say it in two — a violet
+// question hue on the strip and the amber on the finished-needs-your-look glyph — and it
+// settled on the amber; since the CONVERSATION says it in the same amber too, so `ask` and
+// `warn` are one hue wherever either is asked for (styles.go's [palette.ask]).
 func TestWaitingOnYouIsOneColourOnHome(t *testing.T) {
 	a := placeApp(t)
 	pal := a.pal

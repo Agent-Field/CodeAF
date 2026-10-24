@@ -34,7 +34,7 @@ import (
 // next, and the one place a request for a completion reaches the wire
 // (`TestOneDispatcherSendsForACompletion`).
 //
-// WHAT IT REPLACED (docs/design/recovery/DESIGN.md §2 problem 1 and §4). Eleven
+// WHAT IT REPLACED. Eleven
 // controllers on one request path each owned a budget none of the others could
 // see — three transport faults here, six or sixty paced sends here, two minutes
 // or ten of pacing here, eight free moves here, four arms in hedge.go, seven
@@ -69,7 +69,7 @@ const (
 
 // ── THE BODY IS WRITTEN PER ATTEMPT, NOT PER CALL ───────────────────────────
 //
-// THE MEASURED FAILURE (the census, docs/design/recovery/census-20260910.md §6).
+// THE MEASURED FAILURE (the census, the implementation §6).
 // This loop used to be handed one encoded body above it and send those same
 // bytes again on every attempt. The bytes carry `provider.order`, `provider.only`
 // and `provider.ignore`, so "again" meant "to the same machine": 53 % of the
@@ -808,15 +808,13 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// ── A REFUSAL THAT NAMED A MACHINE IS THAT MACHINE'S, AND THE OTHERS
 		// HAVE SAID NOTHING ─────────────────────────────────────────────────
 		//
-		// THE OWNER'S RULING, 2026-09-10: "that is in OpenRouter, that does not
-		// matter — if we get any such error or error in general we need to
-		// recover." An account-policy 404 and a 400 the router RELAYED from the
-		// endpoint it picked are neither a person's mistake nor a fact about the
-		// model: they are one machine saying no, and the answer to them is the
-		// same walk a 429 gets. Until this line they ended the call, and the
-		// rotation that eventually moved was the SESSION's — three whole turns
-		// apart, each learning the same fact over again through the ledger
-		// (refusal_test.go's `TestThreeAttemptsAfterAnUpstreamRefusalReach…`).
+		// An account-policy 404 and a 400 the
+		// router RELAYED from the endpoint it picked are neither a person's mistake nor a fact
+		// about the model: they are one machine saying no, and the answer to them is the same
+		// walk a 429 gets. Until this line they ended the call, and the rotation that eventually
+		// moved was the SESSION's — three whole turns apart, each learning the same fact over
+		// again through the ledger (refusal_test.go's
+		// `TestThreeAttemptsAfterAnUpstreamRefusalReach…`).
 		//
 		// A REFUSAL THAT NAMED NOBODY IS NOT THIS. That one is the router
 		// reading our own bytes and saying no, and every machine alive will say
@@ -955,7 +953,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		//
 		// THE COMEBACK TIME GOES ON IT TOO, because it is the only thing that
 		// makes a repeated send to a refusing machine legal
-		// (docs/design/recovery/DESIGN.md §3). It was recorded on not one row in
+		//. It was recorded on not one row in
 		// the ten days to 2026-09-10, so eleven hundred paced refusals could not
 		// be checked against what the provider itself had asked for.
 		c.record(recordFacts{
@@ -994,8 +992,8 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		}
 		// ── "NOT YET" IS ANSWERED BY GOING SOMEWHERE ELSE ───────────────────
 		//
-		// THE OWNER'S RULING, 2026-09-10: a person must never work around a 429
-		// by switching models themselves. So the three moves, in this order.
+		// The recovery rule: a person must never work around a 429 by switching models themselves.
+		// So the three moves, in this order.
 		//
 		// FIRST, ANOTHER MACHINE, AT ONCE. The refusing machine is off the next
 		// body and the next body goes out with no backoff at all — see [moved].
@@ -1208,7 +1206,7 @@ func demandedThisOne(knobs callKnobs, lane string) bool {
 //
 // IT ASKS [control.Next] FOR EACH RUNG AND WALKS NOTHING ITSELF. It used to be
 // endpoints.go's own `for _, step := range c.relaxationPlan(...)`, which is the
-// seventh of the eleven budgets docs/design/recovery/DESIGN.md §2 counts: a loop
+// seventh of the eleven budgets the implementation §2 counts: a loop
 // with a private length, under a deadline that could not see it, beside a move
 // generator that already knew the rungs. The rungs are the plan's
 // ([control.Plan.Shapes], written from [Client.relaxationPlan], which is still
@@ -1506,7 +1504,7 @@ func attemptContext(ctx context.Context, stream bool) (context.Context, context.
 // are worth asking again.
 //
 // IT IS NO LONGER THE WHOLE ANSWER FOR A 4XX, and that is the change of
-// docs/design/recovery/DESIGN.md §3: "a 4xx is a request we built wrong" is true
+// the implementation §3: "a 4xx is a request we built wrong" is true
 // only of a 4xx the ROUTER answered for itself. One it RELAYED is an endpoint's
 // verdict on this request, and the model's other endpoints have said nothing —
 // see [relayedByAMachine] and the walk in [Client.send].

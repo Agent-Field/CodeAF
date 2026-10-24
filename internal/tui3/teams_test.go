@@ -131,8 +131,7 @@ func TestTeamTabsMergeLiveAndKeepStoredOrder(t *testing.T) {
 	}
 }
 
-// A MEMBER THIS WINDOW DOES NOT HAVE OPEN GETS NO TAB. The strip is what is
-// open here, narrowed to the team; the owner saw three tabs over a wall of one.
+// A MEMBER THIS WINDOW DOES NOT HAVE OPEN GETS NO TAB.
 func TestTeamTabsDrawNoTabForAMemberNotOpenHere(t *testing.T) {
 	sp := team{Name: "test", Members: []teamMember{
 		{Key: "a", File: "fa", Word: "alpha"},

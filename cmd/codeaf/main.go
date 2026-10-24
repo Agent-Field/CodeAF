@@ -370,7 +370,7 @@ func run() error {
 		return runPlanCommand(os.Args[2:])
 	case "plandb":
 		// The plan store's CLI, through the same Main cmd/plandb builds into
-		// bin/plandb (docs/design/plandb-cli/DESIGN.md). This door is the
+		// bin/plandb. This door is the
 		// fallback road when the sibling binary is not where a bash-belt
 		// worker's shell can find it; Main answers the exit code directly.
 		return exitStatus(plandb.Main(os.Args[2:]))

@@ -118,7 +118,7 @@ const (
 // one-line JSON dump is the opposite — a single line of megabytes, inside any
 // line cap, which the byte cap is the only thing standing in front of.
 //
-// Two thousand is the number pi settled on independently, and it is where a
+// Two thousand lines is where a
 // listing stops being read and starts being searched: past it the right move is
 // never "read more", it is grep, and the notice says where to grep.
 const maxResultLines = 2000
@@ -1704,8 +1704,7 @@ type replacement struct {
 // model was remembering. Batched, it is one call, one read, one write, and one
 // sentence back.
 //
-// The semantics that make batching safe are the ones pi settled on and they are
-// all consequences of a single rule: every old is matched against the ORIGINAL
+// Batching is safe because of a single rule: every old is matched against the ORIGINAL
 // file, never against the file as the previous edits in this same call left it.
 // A model writing five edits is looking at one file — the one it read — and
 // matching against a moving target would mean the third edit had to be written

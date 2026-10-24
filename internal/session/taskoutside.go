@@ -8,7 +8,7 @@ package session
 // against a repository somewhere else. The brief named that repository by its
 // full path, so both workers ran
 //
-//	cd /Users/…/code/agentfield && git checkout -b fix/…
+//	cd /workspace/code/agentfield && git checkout -b fix/…
 //
 // and the guard next door (taskgit.go) answered with the sentence it has always
 // answered `checkout` with: "this is your own copy of the repository and it

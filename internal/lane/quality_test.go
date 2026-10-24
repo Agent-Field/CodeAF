@@ -6,9 +6,9 @@ package lane
 // way no unit test of a seam could show, because both failures are about what
 // happens over a WHOLE SESSION: a gate that refuses on the first request and
 // then never gets the evidence that would reverse it, and a ledger that gets
-// faster the more often a lane returns nothing. `bench/lanelab` found both, and
+// faster the more often a lane returns nothing. `the benchmark harness` found both, and
 // the tests here are what they became. The argument is in
-// docs/design/routing/provider-routing.md, Part III, and in the doc comments on
+// the implementation, Part III, and in the doc comments on
 // [Beta.Upper], [Beta.Toward] and [Ledger.Note].
 
 import (
@@ -276,7 +276,7 @@ func TestTheGateStillFiresWhenEveryRequestTakesMinutes(t *testing.T) {
 	l.Prime(row, SheetWeight)
 
 	// A tool loop on a slow lane: one answer every five minutes and forty
-	// seconds, which is what `bench/lanelab`'s `work` scenario measures, and one
+	// seconds, which is what `the benchmark harness`'s `work` scenario measures, and one
 	// refusal in every six.
 	const cadence = 340 * time.Second
 	at := noon

@@ -19,7 +19,7 @@ func sentAnywhere(lab *startLab) []string { return append(lab.agent.sent, lab.ne
 func TestPairLinkOnTheStartPageShowsTheApproveScreenAndMakesNoChat(t *testing.T) {
 	lab := newStartLab(t)
 	a := lab.app()
-	a.approvals = &fakeApprovals{pending: spark(time.Now())}
+	a.approvals = &fakeApprovals{pending: tower(time.Now())}
 	r := newPairRig(t, a)
 	t.Cleanup(a.pair.close)
 	openStart(t, a)
@@ -58,7 +58,7 @@ func TestPairLinkOnTheStartPageWithNoDoorSendsNothing(t *testing.T) {
 // A RUNNING CONVERSATION'S BOX IS NO DIFFERENT.
 // C27.7 exercises this behaviour without an opt-in switch.
 func TestPairLinkInARunningChatShowsTheApproveScreenAndIsNotSent(t *testing.T) {
-	door := &fakeApprovals{pending: spark(time.Now())}
+	door := &fakeApprovals{pending: tower(time.Now())}
 	a, r := approveApp(t, door)
 	agent := a.agent.(*fakeAgent)
 	typeText(t, a, testLink)

@@ -39,7 +39,7 @@ func enterAwayPumped(t *testing.T, a *app) {
 	drain(t, a, a.tookTaskOwner(msg))
 }
 
-// guestProgramLab is [guestLab] with the owner's task 7 handed to senior-dev:
+// guestProgramLab is [guestLab] with an example task 7 handed to senior-dev:
 // its store answers the program's page for it.
 func guestProgramLab(t *testing.T) (*app, *guestDoor) {
 	t.Helper()

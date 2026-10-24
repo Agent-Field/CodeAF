@@ -1426,7 +1426,7 @@ type app struct {
 	hud      hudStats
 	hudStale bool
 	// nodeHud is what each of this session's NODES has added to those same two
-	// questions (docs/design/lens/DESIGN.md, Decision 4). A task's `bash` with
+	// questions. A task's `bash` with
 	// background:true starts a process on this machine exactly as the
 	// conversation's does, and until it was counted the Σ segment and the quit
 	// guard were silent about every one of them.
@@ -2525,11 +2525,10 @@ type app struct {
 	// ([app.homeSlash]), and it is what tells a command's answer apart from every
 	// other note this surface writes ([app.noteWritten] holds the argument).
 	echoHome bool
-	// target is the draft home's box is FOR: which folder the next conversation
-	// opens in and which model it answers on (homedraft.go). It lives on the app
-	// rather than on [homeView] because both pins survive `esc` and a reopen of
-	// home — the owner's ruling, and homeView is rebuilt every time the screen is
-	// raised.
+	// target is the draft home's box is FOR: which folder the next conversation opens in and
+	// which model it answers on (homedraft.go). It lives on the app rather than on [homeView]
+	// because both pins survive `esc` and a reopen of home —, and homeView is rebuilt every
+	// time the screen is raised.
 	target homeTarget
 	// targetRow is which row of the frame home's rule was drawn on, and
 	// targetFolderSpan and targetModelSpan are the columns its two doors landed
@@ -2973,8 +2972,8 @@ type app struct {
 	// (homeband_repo.go's [app.repoAsking] states this law).
 	folderAsking map[string]bool
 	// placeChosen is the last directory this conversation chose, whichever road
-	// it came in by ([app.referPlace]). It is what P1 keeps; lane P2 is what
-	// turns it into a remembered set on the conversation's meta.
+	// it came in by ([app.referPlace]). It is persisted as part of the
+	// remembered set on the conversation metadata.
 	placeChosen string
 	// recentSessions answers the box's right column and the picker's rows, and
 	// resume opens one of them. Both are nil on a surface the door did not wire,
@@ -8442,7 +8441,7 @@ func (a *app) slash(line string) tea.Cmd {
 
 	case "resume":
 		// Two words for one list, the way /settings also answers to /set and
-		// /config: docs/CHAT-V3.md calls this the sessions picker and a person
+		// /config: the implementation calls this the sessions picker and a person
 		// coming back to work calls it resuming, and neither of them should have
 		// to find out which word this build chose.
 		//
@@ -10256,7 +10255,7 @@ func (a *app) computeStats() hudStats {
 		walk.fold(&a.entries[i])
 	}
 	// AND WHAT THE SESSION'S NODES STARTED, which is the other half of the same
-	// sentence (docs/design/lens/DESIGN.md, Decision 4). A node runs `bash` with
+	// sentence. A node runs `bash` with
 	// background:true exactly as the conversation does, on this machine, out of
 	// this session — and until this landed the Σ segment said nothing about it at
 	// all, and a person could walk away from three servers a task had started
@@ -10286,7 +10285,7 @@ func (a *app) computeStats() hudStats {
 // ([statWalk.fold]) and a room's header counts calls with it (room.go's
 // [roomWorkOf]), and a header that said `14 tool calls` beside a Σ segment
 // summing a different fourteen would be the surface keeping two clocks about
-// one fact (docs/design/lens/DESIGN.md, Decision 4).
+// one fact.
 func callClosed(e *entry) bool {
 	return e.kind == entryTool && (e.status == toolOK || e.status == toolFailed)
 }

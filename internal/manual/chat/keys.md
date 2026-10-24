@@ -696,7 +696,7 @@ cannot send it delivers plain enter on many keyboards, or a newline on some.
 
 | Chord | What it does |
 |---|---|
-| `up` | Four meanings, tried in this order: move the caret up inside a multi-line message; walk back through history; over an empty box, select the previous tool row; scroll up one row |
+| `up` | While browsing history, recall the previous whole entry. Otherwise move the caret up inside a multi-line message; at the first line, walk back through history; over an empty box with no history, select the previous tool row; otherwise scroll up one row |
 | `down` | The mirror of `up` |
 | `left` | Empty box: step back a level — close the room, else clear the selection. Two `left` presses inside about 600ms go home to the live edge. Non-empty box: move the caret left |
 | `right` | Empty box: go into the next running task's room. Non-empty box: move the caret right |
@@ -718,8 +718,12 @@ cannot send it delivers plain enter on many keyboards, or a newline on some.
 | any printing key | Types the character — over a selection it replaces it |
 
 `home`, `end`, `up` and `down` work on the logical line — the run between newlines —
-not on the row your terminal wrapped it onto. `up` only reaches history when the
-caret is on the first logical line, and `down` only when it is on the last.
+not on the row your terminal wrapped it onto. `up` enters history when the
+caret is on the first logical line. Once browsing, `up` and `down` move whole
+entries, including multiline prompts, in both the conversation and task rooms.
+`down` past the newest entry restores your draft and caret; `esc` restores them
+immediately. The conversation hint says `↑ older · ↓ newer · esc restore draft · enter send`.
+Narrow terminals shorten this to `↑↓ history · esc draft` or `↑↓ history`.
 
 A word jump crosses the same boundary the word kill deletes: spaces first, then
 the run of non-spaces, so `alt+left` then `alt+backspace` always deletes exactly
@@ -3203,7 +3207,7 @@ own screen; it was taken out the same day.)
 
 Freezing looks like nothing when nothing is moving — the rows stay where they are on
 purpose. What tells you the freeze is on is the keys row, which reads exactly
-`v select · a block · y yank · esc`, the highlighted cursor row, and the status word
+`↑↓ move · v select · a block · enter copy · esc`, the highlighted cursor row, and the status word
 `COPY`. `esc` always leaves.
 
 | Chord | What it does |
@@ -3213,7 +3217,7 @@ purpose. What tells you the freeze is on is the keys row, which reads exactly
 | `home`, `end` | Jump to top or bottom |
 | `v` | Drop or lift the mark |
 | `a` | Take the block under the cursor |
-| `y` | Yank the selection |
+| `enter`, `y` | Copy the selection, or the cursor's line when no range is marked |
 | `esc`, `ctrl+b`, `q` | Leave |
 
 Copy mode takes **every other key too**, and does nothing with them.
@@ -3222,11 +3226,15 @@ Copy mode takes **every other key too**, and does nothing with them.
 to widen to the whole answer around it. A blank row belongs to nothing, and `a` there
 does nothing.
 
-`y` **stays** in copy mode and lifts the mark, so a second `y` cannot copy the same
+Copying **stays** in copy mode and lifts the mark, so a second copy cannot copy the same
 span by accident.
 
 The status line reads exactly `COPY`, or `COPY · N lines` when more than one line is
-selected. The row under the box reads `v select · a block · y yank · esc`.
+selected. After copying it reads `COPY · clipboard sent` until you move or change
+the selection. This confirms that codeaf sent the clipboard write; your terminal
+must permit clipboard access. The row under the box reads
+`↑↓ move · v select · a block · enter copy · esc`.
+Narrow terminals keep `enter copy` visible while dropping the other clauses.
 
 ## What copy mode copies, and what it refuses
 

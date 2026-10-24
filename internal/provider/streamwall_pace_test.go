@@ -28,7 +28,7 @@ import (
 // wire: a `write` streaming at its lane's own rate for three times its wall is
 // long, not wedged. The wall fires, finds the stream kept pace, and re-arms; the
 // call lands whole. And the ledger learns the long reply it could never have
-// learned before — the wall this lane is given next is derived from it.
+// learned before — the wall this test is given next is derived from it.
 func TestAToolCallKeepingItsLanesPaceOutlivesItsWall(t *testing.T) {
 	const wall = 300 * time.Millisecond
 	defer shortenWall(t, wall, time.Minute)()

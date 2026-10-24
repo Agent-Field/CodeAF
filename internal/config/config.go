@@ -252,7 +252,7 @@ type Config struct {
 	//
 	// WHY ON IS THE DEFAULT NOW. It shipped off because nobody had measured
 	// what a division costs when it does not pay. The bench corpus then
-	// measured it (bench/swarm/AB-REPORT.md), and the answer was that the
+	// measured it, and the answer was that the
 	// expense is not division — it is division of work that was never wide. So
 	// the wave that landed the mode also landed the gate that refuses narrow
 	// work (internal/splitgate), and with the gate in front of it the mode
@@ -399,7 +399,7 @@ var retiredProfileKeys = map[string]bool{
 	// The v1 resident's scheduler knobs: the practice carve-out and its quiet
 	// period, the arrival brief's absence (whose value Load copied onto a field
 	// nothing read), and the clean-firing count that earned a charter tenure.
-	// The scheduler went on 2026-10-10 (docs/design/automations/DESIGN.md).
+	// The scheduler went on 2026-10-10.
 	"practice_budget_usd": true, // reader removed on 2026-10-10: the practice loop is gone
 	"practice_idle":       true, // reader removed on 2026-10-10: the practice loop is gone
 	"brief_after":         true, // reader removed on 2026-10-10: nothing read the field

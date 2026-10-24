@@ -10,7 +10,7 @@ package plan
 // was no checklist for a deliverable to be short against, and the gate weighed
 // the only account of coverage it had: the worker's own sentence about the tests
 // the worker had itself written. Two graded runs shipped at exit 0 that way, one
-// of them a single hidden test short of a solve (docs/design/gate/ACCEPTANCE.md).
+// of them a single hidden test short of a solve.
 //
 // It reads the request and nothing else, and it runs before any work exists, so
 // nothing it says can have moved in response to what the work turned out to be —

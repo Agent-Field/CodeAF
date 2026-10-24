@@ -211,7 +211,7 @@ func TestTheUngroundedGapNoteComesAfterTheWorkAndOnlyOnce(t *testing.T) {
 	// Exit 2. The note is kept and moved; what it is NOT is a clean settlement.
 	// A finding refused for where its words came from has been checked against
 	// nothing in the world, so it still stands, and the run is handing over less
-	// than it promised. See deliveredWhole and docs/design/gate/SETTLEMENT.md §2.
+	// than it promised. See deliveredWhole and the implementation §2.
 	err := doErrand(doRequest{
 		task: "write the release note and include the migration steps", keep: true,
 		timeout: 60 * time.Second, stdout: &stdout, stderr: &stderr, newClient: script.client,

@@ -1,6 +1,6 @@
 // place.go is the one answer to "where does this conversation keep things".
 //
-// A v3 session is a FOLDER (docs/CHAT-V3.md, Decision 26): the transcript, the
+// A v3 session is a FOLDER: the transcript, the
 // working state, the task checkpoint, the node journals, the droppings, the
 // worktrees and — for an owned session — the workspace itself all live inside
 // one directory, so deleting a session is removing one folder and exporting

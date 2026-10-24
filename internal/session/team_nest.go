@@ -2,7 +2,7 @@ package session
 
 // ── NESTED TEAMS: SUB-TEAMS, CONFLICTS, ONE LEVEL, AND THE GLOBAL MANAGER ────
 //
-// The rulings (c-5, c-6, c-7; docs/design/conversations-and-teams/DESIGN.md,
+// The rulings (c-5, c-6, c-7; the implementation,
 // section 8): work is handed down a tree of teams and decisions travel up it.
 // This file is the session's half of the tree:
 //

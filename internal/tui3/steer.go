@@ -427,11 +427,8 @@ func (a *app) tookSteer(msg steeredMsg) tea.Cmd {
 // typingHint is the send half of the running-turn hint while there is something
 // in the box or on the tray.
 //
-// It teaches plain enter first, then the queue key where the terminal can send
-// it and there are words to queue. THE STOP-AND-SEND CHORD IS NOT NAMED HERE,
-// by the owner's call (2026-09-30): `ctrl+shift+enter` still stops and sends
-// (bargein.go) and the key sheet lists it, but the slot it held on this line
-// went to the queue key, which is pressed far more often.
+// It teaches plain enter first, then the queue key where the terminal can send it and
+// there are words to queue.
 //
 //	enter steers it in · ctrl+enter queue
 var steerShortHint = "enter " + steerSendWord
@@ -495,6 +492,16 @@ func (a *app) runHint() string {
 // Idle controls yield from the left to commands and home; running hints keep
 // their existing priority from the left. Every step removes at least one clause.
 func (a *app) hintShorter(slot string) string {
+	switch slot {
+	case recallKeysWord:
+		return "↑↓ history · esc draft"
+	case "↑↓ history · esc draft":
+		return "↑↓ history"
+	case copyKeysWord:
+		return "v select · enter copy · esc"
+	case "v select · enter copy · esc":
+		return "enter copy · esc"
+	}
 	// THE OFFER'S OWN CLAUSE SURVIVES THE TURN'S. It is appended to a running
 	// turn's keys, and the generic rule below cannot shorten a line that extends
 	// the run hint without deleting the whole row. So while the grace is open the

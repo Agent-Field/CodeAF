@@ -298,7 +298,7 @@ func TestWhoIsWaitingDecidesWhatASecondIsWorth(t *testing.T) {
 	// AND A BACKGROUND CALL THAT STATED ONE IS BELIEVED. The default for a call
 	// nobody is watching is the price row, and reading that default as "a person
 	// said speed is worthless" is what made λ a dead letter on every task turn
-	// this build ever ran (bench/lanelab/REPORT.md, "the λ = 0 row").
+	// this build ever ran.
 	background := knobsFrom(WithValueOfTime(context.Background(), 12))
 	background.intent = IntentBackground
 	if got := client.laneValueOfTime(background); got != 12 {

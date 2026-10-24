@@ -94,7 +94,7 @@ func TestAJoinAsksForANameAndEnterKeepsTheHostName(t *testing.T) {
 		chosen      bool
 	}{
 		{"\n", devname.Default(), false},
-		{"studio\n", "studio", true},
+		{"host-a\n", "host-a", true},
 		{"bad\x00\ngood name\n", "good name", true},
 	}
 	for _, c := range cases {

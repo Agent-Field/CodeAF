@@ -15,7 +15,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-// The wave-2 surface: what a resumed session shows, what ctrl+c means, how a
+// The resumed-session surface: what a resumed session shows, what ctrl+c means, how a
 // draft is composed, recalled, completed and kept.
 
 // keyed spells the keys this file presses that the shared helper does not know.

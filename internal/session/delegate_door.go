@@ -1,7 +1,7 @@
 package session
 
 // THE DELEGATE DOOR: how a conversation hands a task to a program codeaf
-// carries — senior-dev first (internal/delegate, docs/design/delegate/). A
+// carries — senior-dev first (internal/delegate, the implementation). A
 // program is one more worker kind behind the run engine, and this file is the
 // half a conversation needs of it: which programs this build carries, the door
 // `/<name> <brief>` and `propose_task`'s `via` both open, and the landing of a
@@ -124,20 +124,18 @@ func (c Config) mayDelegate() bool {
 // description, and that small work is never handed off is this section's
 // own; neither is said a second time here.
 //
-// AND CODEAF PREFERS A PROGRAM FOR THE WORK IT IS FOR. The paragraph said a
-// large task "can" go to one, which is a permission, and a permission loses
-// to the two roads the rest of the section teaches: an issue in a mature
-// project is worked through inline, or handed to codeaf's own worker, which
-// has none of a program's machinery for that work. The owner's call of
-// 2026-09-24 is that codeaf reach for a program by itself on complicated,
-// many-sided coding work, and almost always when the person asks for one. So
-// the first sentence is a preference over both of those roads, the program's
-// guide under it says which work that is, and WHATEVER ITS CRITICAL PATH is
-// said because the section's own test for a hand-off is the critical path:
-// one hard fix has a single one, and a model holding that test alone would
-// keep the fix. The second sentence is the person's ask, which outranks the
-// section's floor on small work; code holds both halves of it, where a prompt
-// would be forgotten (delegate_asked.go).
+// AND CODEAF PREFERS A PROGRAM FOR THE WORK IT IS FOR. The paragraph said a large task
+// "can" go to one, which is a permission, and a permission loses to the two roads the rest
+// of the section teaches: an issue in a mature project is worked through inline, or handed
+// to codeaf's own worker, which has none of a program's machinery for that work. codeaf
+// reaches for a program by itself on complicated, many-sided coding work, and almost
+// always when the person asks for one. So the first sentence is a preference over both of
+// those roads, the program's guide under it says which work that is, and WHATEVER ITS
+// CRITICAL PATH is said because the section's own test for a hand-off is the critical
+// path: one hard fix has a single one, and a model holding that test alone would keep the
+// fix. The second sentence is the person's ask, which outranks the section's floor on
+// small work; code holds both halves of it, where a prompt would be forgotten
+// (delegate_asked.go).
 //
 // THE TWO SENTENCES STAND APART FROM THE FOLDER RULE, which is spliced in
 // after them, so either can be reworded without touching the other.

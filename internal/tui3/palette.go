@@ -620,8 +620,7 @@ func (p *picker) rowUnavailable(at int) bool {
 // list rows — because the drawing spends extra lines on a group's heading, on
 // the machines' heading and on a why line, and a window counted in rows
 // handed the cursor a place the frame never drew: the highlight vanished at
-// the bottom of the list and on the frame the menu opened with (owner's
-// report, 2026-09-30). [listTop]'s item arithmetic is the other lists' law;
+// the bottom of the list and on the frame the menu opened with. [listTop]'s item arithmetic is the other lists' law;
 // this one is the picker's, because the picker is the list that grows headings.
 //
 // THE DRAW'S OWN CALL OWNS THE FINAL PLACEMENT. The keystroke-time calls pass
@@ -730,12 +729,11 @@ func (p *picker) rowLines(at int, atTop bool) int {
 // place saying why there are none yet ([laneUnmeasured]). It draws no number:
 // the emptiness law is about figures nobody took, and it is kept.
 //
-// It used to refuse to open at all, on the argument that a fold with one dim
-// line in it punishes the person for trying. The gesture that punished was the
-// one that did NOTHING: the row said `via together` and the key that should
-// have shown that machine was dead, while the settings panel's `lane` row
-// offered `auto` and `openrouter` for the very same model — two doors onto one
-// list disagreeing about what it could do. Owner's report, 2026-09-10.
+// It used to refuse to open at all, on the argument that a fold with one dim line in it
+// punishes the person for trying. The gesture that punished was the one that did NOTHING:
+// the row said `via together` and the key that should have shown that machine was dead,
+// while the settings panel's `lane` row offered `auto` and `openrouter` for the very same
+// model — two doors onto one list disagreeing about what it could do.
 //
 // AND OPENING ONE ASKS FOR ITS SHEET. [lane.WantSheet] hands the name to the
 // beat that already runs and returns at once — the same door [Agent.SetModel]
@@ -2751,12 +2749,10 @@ const (
 // the row the cursor is on and the caret in the box — the two things
 // [picker.foldKey] reads before it decides what `→`, `←` and `tab` mean.
 //
-// IT IS CURSOR-AWARE BECAUSE THE FOLD WAS INVISIBLE WITHOUT IT. The slot used to
-// read `enter switch · esc` wherever the cursor stood, and the only mention of
-// `→ lanes` was the filter box's placeholder — which vanishes on the first
-// typed character, exactly when a person has found their model and wants its
-// machines. The owner opened /model, pressed `←` and `→`, and asked how anybody
-// changes the provider of a model (2026-09-10). The placeholder has since given
+// IT IS CURSOR-AWARE BECAUSE THE FOLD WAS INVISIBLE WITHOUT IT. The slot used to read
+// `enter switch · esc` wherever the cursor stood, and the only mention of `→ lanes` was
+// the filter box's placeholder — which vanishes on the first typed character, exactly when
+// a person has found their model and wants its machines. The placeholder has since given
 // the keys up altogether ([pickerHint]) and this line carries them.
 func (p *picker) keysHint() string {
 	before, enter, after := p.keysParts()

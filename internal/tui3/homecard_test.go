@@ -184,8 +184,7 @@ func TestARunningCardLeadsTheRowWithItsState(t *testing.T) {
 // band was a list of things that happened, name first, in the index's own order,
 // and what that produced on the one screen a person opens twenty times a day was
 // three pieces of ONE run standing beside each other as three peers — with the
-// order deciding which of them a reader thought was the whole story. The owner's
-// instruction is that the conversation is the parent and the work under it is a
+// order deciding which of them a reader thought was the whole story. The layout requires that the conversation is the parent and the work under it is a
 // TREE, at any depth, never a row of strangers.
 //
 // So the roster's own connectors are drawn here too (hometree.go, task.go's
@@ -265,7 +264,7 @@ func TestTheFirstLookMarksNothing(t *testing.T) {
 	}
 	// A WINDOW WITH NO ORIGIN HAS NO LEDGER, because there is no since. The
 	// `since you left` panel keeps its heading and whispers what arrives there
-	// (docs/design/home-mission-control/DESIGN.md §4), and no line of it counts
+	//, and no line of it counts
 	// anything that landed.
 	if strings.Contains(text, "landed") {
 		t.Fatalf("a first look invented a ledger:\n%s", text)

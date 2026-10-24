@@ -292,7 +292,7 @@ type Provenance struct {
 	// self-maintenance inquiry admitted it. It is empty for ordinary user work.
 	//
 	// NOTHING SETS IT ANY MORE. The v1 resident's charters went with its
-	// scheduler (docs/design/automations/DESIGN.md), but the field is part of
+	// scheduler, but the field is part of
 	// every splice event a store already holds and the nodes column replay
 	// writes it into, so it stays: dropping it would need a migration to say
 	// nothing new, and an old journal must still replay byte for byte.
@@ -649,7 +649,7 @@ func probeOpen(path string) error {
 
 // pathReason strips an operating-system error down to its reason alone.
 // [openFailure] has already named the path, and `could not open ~/.codeaf/graph.db:
-// open /home/you/.codeaf/graph.db: permission denied` says it twice.
+// open /workspace/.codeaf/graph.db: permission denied` says it twice.
 func pathReason(err error) error {
 	var failure *fs.PathError
 	if errors.As(err, &failure) && failure.Err != nil {

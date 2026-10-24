@@ -570,7 +570,7 @@ type Item struct {
 	Talk string
 	// ChatSpent is what Talk spent while the job had no run: the job's chat
 	// before its first Start, in dollars. A JOB'S CHAT SPENDS FROM THE JOB'S
-	// BUDGET (the owner's ruling of 2026-10-20), and with no run there is no
+	// BUDGET, and with no run there is no
 	// Stream to hold it; the next start carries it into the run's Spent and
 	// zeroes it (run's freshStream). A job with a stream books its chat's
 	// spend there instead ([AddChatSpend]), so [JobSpent] reads one figure.

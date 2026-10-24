@@ -52,9 +52,6 @@ func TestClickingATabWordWorksFromEveryPlace(t *testing.T) {
 }
 
 // THE WHEEL IS `↑↓` UNDER THE POINTER, on every place and by the same distance.
-// A wheel that moved a different number of rows per room — or none at all in
-// some of them — would be one gesture with seven meanings, which is what the
-// owner met when they turned it over the built binary.
 func TestTheWheelMovesListPlacesCursorAndLeavesTeamsFocusAlone(t *testing.T) {
 	for _, place := range everyPlaceTable() {
 		t.Run(place.id.word(), func(t *testing.T) {
@@ -129,8 +126,8 @@ func placeWalkToTop(t *testing.T, a *app) {
 // THE POINTER PREVIEWS AND THE CURSOR SELECTS, AND THE MOTION MESSAGE IS WHAT
 // CARRIES IT. homehover_test.go proves home's card follows the pointer by
 // calling [app.homeHover] itself, which is the right test of the law and no
-// test at all of the road: the owner drove the built binary and reported that
-// nothing previewed under the pointer, and a motion message swallowed on its
+// test at all of the road: if nothing previews under the pointer, a motion
+// message swallowed on its
 // way through [app.Update] would look exactly like that with every hover test
 // in this package still green.
 func TestAMotionMessageMovesHomesCardAndSelection(t *testing.T) {
@@ -656,8 +653,7 @@ func homeFoldDoor(t *testing.T, a *app, panel homePanelID) int {
 // [placeHeadingInk]), so every heading on home THAT IS A DOOR opens with
 // exactly the ink [placeHeading] opens a place's section word with. A heading
 // that opens nothing — `projects`, `threads` — is dim instead, word and
-// explainer in one ink, so it cannot be mistaken for a door (owner,
-// 2026-09-17). The panel holding the cursor wears the cursor's ground over its
+// explainer in one ink, so it cannot be mistaken for a door. The panel holding the cursor wears the cursor's ground over its
 // heading and is left out.
 func TestHomesHeadingsWearThePlacesHeadingInk(t *testing.T) {
 	a := newSwitchLab(t).open(120, 45)

@@ -11,7 +11,7 @@ import (
 //
 // pi's bash truncates tail-only inside its own accumulator: the head of a big
 // output is gone by the time the tool returns, and the model reads only the
-// last 50KB of whatever it ran. The experiment's loop (docs/design/
+// last 50KB of whatever it ran. The experiment's loop (the implementation
 // bash-task-loop/DESIGN.md, Decision 3) adopts miniplan's shape instead —
 // head + tail + path — because the two halves of a build log answer different
 // questions: the head says what the command started with, the tail says how it

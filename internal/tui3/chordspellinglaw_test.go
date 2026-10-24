@@ -26,8 +26,7 @@ import (
 //
 // So a person moving between two screens one keystroke apart was shown one
 // modifier under two names and had no way to know it was one key. That is the
-// question this law was written from, asked by the owner looking at the two
-// spellings side by side.
+// ambiguity this law prevents when the two spellings appear side by side.
 //
 // IT IS A FRAME TEST AND NOT A SOURCE TEST ON PURPOSE. What is wrong is never
 // the constant — every one of them is SUPPOSED to say `alt+` — it is the path

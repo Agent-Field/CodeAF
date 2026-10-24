@@ -351,7 +351,7 @@ func (a *Agent) groundLadder(spec taskSpec, workspace string) taskStand {
 		weights := groundWeights(touchedPaths(a.snapshot()), workspace)
 		// AND THE PLACES THIS CONVERSATION IS ABOUT ANSWER AT SAID, above the
 		// evidence they were mostly resolved out of. That is the ruling this feed
-		// was built under (docs/design/places/DESIGN.md): a conversation-level
+		// was built under: a conversation-level
 		// place is EVIDENCE for the one ladder and never a second resolver, so it
 		// arrives here as a said-level answer rather than as a mechanism of its
 		// own — and the question that was asked once is not asked again.
@@ -400,7 +400,7 @@ func saidGround(said, workspace string) taskStand {
 // made ~/Desktop/pong, named it as ground and said `in place` handed senior-dev
 // the whole home folder; senior-dev, finding no git history there, began to
 // snapshot all of it and died on the first folder macOS keeps to itself
-// (`open /Users/…/.Trash: operation not permitted`). So a program's placement
+// (`open /workspace/.Trash: operation not permitted`). So a program's placement
 // is its own (programfolder.go) and `where` is not read for it.
 //
 // THE FOLDER IS READ BEFORE THE CARD, as the run will read it: snapped to its

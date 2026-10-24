@@ -14,8 +14,8 @@ whole conversations. A member of a team with a manager is told the same way whic
 in, its handle, and that it reports with `team_post`.
 
 Every member has a **handle**: one lowercase word that says what the conversation is about,
-like `@security` for `santosh dev2 branch code complexity & security review`, `@milestones`
-for `CodeAF repo issue tags & milestones` or `@gravity` for `quantum gravity research updates`.
+like `@security` for `project branch code complexity & security review`, `@milestones`
+for `codeaf repo issue tags & milestones` or `@gravity` for `quantum gravity research updates`.
 The moment a member has a title it gets a quick guess from the title's words, so it can be
 addressed at once; then, when the conversation's title is made, the same cheap model that
 names conversations chooses the word, once, for a few tokens. A timeout or a dropped

@@ -25,8 +25,8 @@ import (
 // a path that already looks outside is ever resolved on disk.
 const (
 	theGround           = "/work/trees/1"
-	thePersonsCheckout  = "/Users/santoshkumar/Documents/agentfield/code/agentfield"
-	theOtherCheckout    = "/Users/santoshkumar/Documents/agentfield/code/codeaf"
+	thePersonsCheckout  = "/Users/dev/Documents/agentfield/code/agentfield"
+	theOtherCheckout    = "/Users/dev/Documents/agentfield/code/codeaf"
 	outsideYourCopy     = "is outside your copy"
 	worksInTheGroundNow = "this task works in " + theGround
 )
@@ -216,7 +216,7 @@ func TestAWorkerIsRefusedOnTheSeamForWritingOutsideItsGround(t *testing.T) {
 	}
 
 	// AND A BASH AIMED OUT OF THE GROUND IS REFUSED WITH THE PATH LAW'S SENTENCE
-	// AND NOT THE VERB GUARD'S, which is the defect this lane exists for.
+	// AND NOT THE VERB GUARD'S, which is the defect this test exists for.
 	command := `{"command":"cd ` + elsewhere + ` && git checkout -b fix/codeql-54"}`
 	shell := worker.executeTool(context.Background(), episode, nil, withdrawnCall("c3", "bash", command), "")
 	if !shell.isError || !strings.Contains(shell.text, outsideYourCopy) {

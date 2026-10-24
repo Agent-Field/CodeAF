@@ -81,7 +81,7 @@ func TestATurnTheConversationStartsOnItsOwnCrossesToEveryWindow(t *testing.T) {
 	desk := dialSession(t, sess)
 	desk.hello(Hello{Version: Version, Surface: "macbook"})
 	away := dialSession(t, sess)
-	away.hello(Hello{Version: Version, Surface: "spark"})
+	away.hello(Hello{Version: Version, Surface: "tower"})
 
 	events := agent.wake(t)
 	events <- session.Event{Kind: session.EventTextDelta, Text: "task 1 done"}

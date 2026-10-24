@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# build.sh — build the wave-2 images this machine could not build, from the
-# patched arm64 Dockerfiles in envs/. Detached, parallel, one log per task.
 set -uo pipefail
 SWE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOGS="${LOGS:-$HOME/af-bench/swe-builds}"

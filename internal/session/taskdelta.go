@@ -616,7 +616,7 @@ func (a *Agent) refreshElsewhere(ctx context.Context) {
 	// (steer_grace.go) true of this goroutine: a reading still in flight when
 	// [Agent.Close] runs either owes its stamp BEFORE `closed` is set — and the
 	// close's own settle then lands it — or finds the door shut and leaves the
-	// folder alone. Measured on the Spark, 2026-09-12: thirteen runs in five
+	// folder alone. Measured in a test run, 2026-09-12: thirteen runs in five
 	// thousand of one asklane fixture failed as `TempDir RemoveAll cleanup:
 	// directory not empty`, and the file left behind was this stamp.
 	//

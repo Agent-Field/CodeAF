@@ -325,7 +325,7 @@ func TestAPacedRefusalCarriesTheRoutersNamedPool(t *testing.T) {
 
 // ── THE LEDGER IS KEYED ON WHO SERVED, NEVER ON WHO WE CHOSE ────────────────
 //
-// THE MEASURED FAILURE (docs/design/recovery/census-20260910.md §8, finding 4).
+// THE MEASURED FAILURE.
 // 3,728 of 10,107 finished attempts have a serving machine that is not the lane
 // this process chose, and on 358 of the errors that name a provider the `(via
 // X)` contradicts the lane outright — `lane: Fireworks` / `via DeepInfra` 104
@@ -372,7 +372,7 @@ func TestARefusalIsPacedAgainstTheMachineThatServedIt(t *testing.T) {
 
 // AND A LEDGER THAT CONFIGURATION USED TO SWITCH OFF IS A LEDGER THAT CANNOT
 // TELL THE NEXT ATTEMPT WHERE NOT TO GO. Three gates stood on this door
-// (docs/design/recovery/DESIGN.md §2, problem 9); what is configured now is only
+// ; what is configured now is only
 // what is EMITTED, which [TestRoutingOffSendsNoPreferencesAndMeasuresNothing]
 // still holds to.
 func TestTheLedgerRecordsWithRoutingOff(t *testing.T) {
@@ -544,7 +544,7 @@ func TestRequestSortsOnPriceWhenAsked(t *testing.T) {
 // for no routing asked for no ledger" was the old sentence here, and it left the
 // one thing that could tell a failed attempt where not to go switched off while
 // every other controller on the path went on acting
-// (docs/design/recovery/DESIGN.md §2, problem 9). The reading is kept; only the
+// . The reading is kept; only the
 // steering is refused, which is what the person actually asked for.
 func TestRoutingOffSendsNoPreferencesAndStillMeasures(t *testing.T) {
 	client, recorded := routedClient(t, RoutingOff, answered(plainAnswer))
@@ -666,7 +666,7 @@ func TestUnnamedCutNotesNothing(t *testing.T) {
 
 // A CUT THAT NAMED NOBODY STILL NAMES THE MACHINE WE ASKED FOR.
 //
-// THE ONE STALL SHAPE THAT COULD NOT REROUTE (docs/design/recovery/DESIGN.md §2,
+// THE ONE STALL SHAPE THAT COULD NOT REROUTE (the implementation §2,
 // problem 11). A stream that died before any chunk said who was serving it
 // struck nothing at all, so `StreamCut.Rerouted` was false, the taxonomy
 // shortened the allowance rather than forcing a different machine, and the next
@@ -705,7 +705,7 @@ func TestABlindCutIsFiledAgainstTheMachineWeAskedFor(t *testing.T) {
 
 // A cut IS recorded with routing off, and nothing is asked for on the wire.
 //
-// THE LAW MOVED HERE (docs/design/recovery/DESIGN.md §2, problem 9). A ledger a
+// THE LAW MOVED HERE. A ledger a
 // configuration row switches off is a ledger that cannot tell the next attempt
 // where not to go, and a machine that went quiet mid-answer is exactly the fact
 // the next attempt most needs. What `routing off` means is that nothing derived

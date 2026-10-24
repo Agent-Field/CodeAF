@@ -2,7 +2,7 @@ package tokens
 
 // The glyph vocabulary (5.17, 5.21), and the whole of what a person sees drawn
 // as a mark anywhere in this product. Its law, its three tiers, the table as it
-// landed and how to add to it are docs/design/icons/DESIGN.md; the short of it
+// landed and how to add to it are the implementation; the short of it
 // is that every mark is a SLOT with a plain, a nerd-font and an ASCII spelling,
 // that GlyphSet.Glyph(id) is the one door to them, and that a surface spelling a
 // mark as a literal is a build failure rather than a matter of taste.
@@ -46,7 +46,7 @@ const (
 	GlyphWaitsOn    = "⚑" // waiting on a sibling (waits-on edge)
 	// GlyphWithdrawn is a question that STOPPED BEING A QUESTION — its subject
 	// went away, the plan changed, or another answer made it moot, so the asker
-	// took it back (docs/design/questions/DESIGN.md's WITHDRAWN, WITH A REASON).
+	// took it back.
 	//
 	// It is deliberately none of the three marks it sits nearest. A tick says
 	// somebody decided; a cross says the answer was no; a filled square says a
@@ -57,7 +57,7 @@ const (
 	GlyphWithdrawn = "⊘"
 	// GlyphAssumed is the ladder's SECOND rung drawn: the asker has taken
 	// something for granted, said so, and gone on — and everything on the card
-	// stands until somebody strikes it (docs/design/questions/DESIGN.md names
+	// stands until somebody strikes it (the implementation names
 	// this mark for the assumption kind).
 	//
 	// IT IS NOT [GlyphNeedsHuman], and that is the whole reason the slot exists.
@@ -88,7 +88,7 @@ const (
 	// own because a question's pointer is amber and moves under a hand, where a
 	// fold mark is a dim fact about a section; one slot for both was the
 	// question's page drawing `▸` for "folded" beside `▸` for "you are here"
-	// (docs/design/questions/DESIGN.md, 2026-09-11).
+	//.
 	GlyphPointer = "▸"
 	// GlyphRecommended is THE ASKER'S PICK: the answer the thing asking would
 	// take, drawn at the right edge of that answer's row with the word
@@ -162,7 +162,7 @@ const (
 	GlyphPromptSteer = "↦"
 	// GlyphReplyIn is AN ANSWER DRAWN UNDER THE THING IT ANSWERS: the reply to a
 	// question a person put back to the asker, the response landing on the row
-	// that asked for it (docs/design/questions/DESIGN.md's room form). It is a
+	// that asked for it. It is a
 	// prompt mark in the same family as the two above — punctuation saying whose
 	// turn a line is — which is why it is geometry and neither tier swaps it.
 	//
@@ -171,16 +171,13 @@ const (
 	// exchange unreadable at exactly the moment it matters. U+21B3 is
 	// East_Asian_Width=Neutral and one cell under both shipping rulers.
 	GlyphReplyIn = "↳"
-	// GlyphFollowUp is A MESSAGE QUEUED FOR AFTER THE CURRENT TURN — one row of
-	// the block the session is holding above the box, put there by ctrl+enter
-	// (internal/tui3's followup.go). It is the reply arrow, [GlyphReplyIn]'s
-	// byte, by the owner's pick (2026-09-30): a line of the person's own words
-	// that comes AFTER what is running, the way a reply comes after what it
-	// answers. The two are told apart by position — the reply mark is drawn
-	// only under a question in its room, this one only in the block above the
-	// message box — which is the argument glyphvocab_test.go's table records.
-	// It is deliberately not [GlyphQueued], the circle a waiting TASK wears: a
-	// queued message read as a task would be a row promising work it is not.
+	// GlyphFollowUp is A MESSAGE QUEUED FOR AFTER THE CURRENT TURN — one row of the block the
+	// session is holding above the box, put there by ctrl+enter (internal/tui3's
+	// followup.go). The two are told apart by position — the reply mark is drawn only under a
+	// question in its room, this one only in the block above the message box — which is the
+	// argument glyphvocab_test.go's table records. It is deliberately not [GlyphQueued], the
+	// circle a waiting TASK wears: a queued message read as a task would be a row promising
+	// work it is not.
 	GlyphFollowUp = "↳"
 	// GlyphDraftUnsent is a message a person typed and then CLEARED the whole
 	// box into — the mark the /drafts page draws in front of each line that

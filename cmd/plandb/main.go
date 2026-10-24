@@ -1,4 +1,4 @@
-// Command plandb is the plan store's command line (docs/design/plandb-cli
+// Command plandb is the plan store's command line (the implementation
 // /DESIGN.md): the coordination verbs a bash-belt worker runs through its one
 // bash tool, over the same store the runtime dispatches from. The whole
 // runner lives in internal/plandb so `codeaf plandb` reaches the identical

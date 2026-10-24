@@ -1,8 +1,6 @@
 # Remote access — the architecture
 
-How a v3 session runs on one machine and is used from another. Written as
-decisions with the alternative that was rejected, in the manner of
-`ARCHITECTURE.md` and `CHAT-V3.md`.
+How a v3 session runs on one machine and is used from another. The transport and session lifetime are described below.
 
 This is the **v3 surface's** remote story. The v1 resident (`internal/head`,
 `internal/resident`) is a different product in the same binary and shares none
@@ -10,9 +8,7 @@ of this vocabulary — see CLAUDE.md. In particular the "session host" below is
 **not** the resident: it is a lifetime for a conversation you sit in front of,
 not an employee that works while you are away.
 
-Product framing, the personas, and the road not taken live in
-`docs/remote-access-design.md`; the build order lives in
-`docs/remote-access-plan.md`. This document is what the code actually is.
+This document describes the implemented protocol.
 
 ## The one-sentence design
 
@@ -208,7 +204,7 @@ the engine resolve its own context window, and a remote surface's context-window
 ignored, so compaction cannot be sized by a stale or different laptop cache.
 
 **Why it is stated as an architecture decision and not left to taste.** Every
-honesty bug this lane has had came from a screen answering for the wrong
+display correctness bug came from a screen answering for the wrong
 machine. The YOLO badge is drawn from the engine's own profile because a badge
 read off the laptop would be a safety claim about a machine nobody consulted.
 Automations are listed off the engine's disk because they run there.
@@ -277,7 +273,7 @@ command to diff against it, and what reading it turned up.
 
 **Why not write the PAKE.** For the same reason nothing else here is hand-rolled: a
 plausible-looking PAKE that is subtly wrong is indistinguishable from a correct one until
-somebody attacks it. The house rule for this lane was that a hand-rolled primitive which
+somebody attacks it. The implementation rule is that a hand-rolled primitive which
 *looks* like it works is the worst available outcome — worse than the capability being
 absent.
 
@@ -452,8 +448,7 @@ know on its own.
 
 **Why not leave them as questions.** Because a question asked while drawing is a
 question asked thirty times a second, and over an ssh pipe that is the repaint
-rate of the terminal set to the round-trip time of the link. The owner met this
-as "even hover seems to slow everything down": the status row asked the agent
+rate of the terminal set to the round-trip time of the link. Pointer movement exposed this delay: the status row asked the agent
 for the reasoning rung while it was painting, and a pointer below the
 conversation rebuilds the chrome per cell, so a two-hundred-cell sweep queued
 seven seconds of keystrokes behind two hundred round trips. PERF.md's connection

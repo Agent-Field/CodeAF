@@ -51,10 +51,10 @@ func needsNode() Report {
 }
 
 func TestBriefTellsWhatWasLeftOutWhatWasRunningAndWhatIsNeeded(t *testing.T) {
-	r := Compare("blackmac", webRecord(), here{}, needsNode())
+	r := Compare("laptop", webRecord(), here{}, needsNode())
 	r.Now = "/home/me/app"
 	want := strings.Join([]string{
-		"This chat moved here from blackmac. This machine has none of what it left out or left running. Bring back only what is listed, then stop; do not explore the machine.",
+		"This chat moved here from laptop. This machine has none of what it left out or left running. Bring back only what is listed, then stop; do not explore the machine.",
 		"Not brought along (rebuild from the file named):",
 		"- web/node_modules: from web/package-lock.json; it was made with `npm ci` in web/",
 		"- .venv: from uv.lock; usually `uv sync`",
@@ -72,10 +72,10 @@ func TestBriefTellsWhatWasLeftOutWhatWasRunningAndWhatIsNeeded(t *testing.T) {
 }
 
 func TestNewsIsOneParagraphThatAsksForNothing(t *testing.T) {
-	r := Compare("blackmac", webRecord(), here{}, Report{})
+	r := Compare("laptop", webRecord(), here{}, Report{})
 	got := r.News()
 	for _, part := range []string{
-		"This chat moved here from blackmac.",
+		"This chat moved here from laptop.",
 		"Not running here: `npm run dev` in web/ (was on port 3000).",
 		"Not brought along, so absent: web/node_modules (npm ci), .venv (uv sync).",
 		"This is news and asks for nothing",
@@ -92,7 +92,7 @@ func TestNewsIsOneParagraphThatAsksForNothing(t *testing.T) {
 
 func TestNoOfferWhenNothingToRestore(t *testing.T) {
 	inv := webRecord()
-	r := Compare("blackmac", inv, here{folders: []string{"web/node_modules", ".venv"}, ports: []int{3000}}, Report{})
+	r := Compare("laptop", inv, here{folders: []string{"web/node_modules", ".venv"}, ports: []int{3000}}, Report{})
 	r.Detached = nil
 	if !r.Empty() || r.Brief() != "" || r.News() != "" {
 		t.Fatalf("a takeover with nothing to say said something: %+v", r)
@@ -115,7 +115,7 @@ func TestBriefOmitsAnsweringPort(t *testing.T) {
 }
 
 func TestBriefSkipsFolderPresentHere(t *testing.T) {
-	r := Compare("blackmac", webRecord(), here{folders: []string{"web/node_modules"}}, Report{})
+	r := Compare("laptop", webRecord(), here{folders: []string{"web/node_modules"}}, Report{})
 	if len(r.Missing) != 1 || r.Missing[0].Path != ".venv" {
 		t.Fatalf("missing = %+v: the machine that kept its own folder is not told to rebuild it", r.Missing)
 	}
@@ -126,14 +126,14 @@ func TestBriefSkipsFolderPresentHere(t *testing.T) {
 
 func TestBriefNamesFolderChange(t *testing.T) {
 	inv := inventory.Inventory{Workspace: "/Users/me/app", Running: []inventory.Running{{Command: "python /Users/me/app/serve.py"}}}
-	r := Compare("blackmac", inv, here{}, Report{})
+	r := Compare("laptop", inv, here{}, Report{})
 	r.Now = "/home/me/app"
 	for _, got := range []string{r.Brief(), r.News()} {
 		if !strings.Contains(got, "The folder was /Users/me/app; here it is /home/me/app.") || !strings.Contains(got, "python /Users/me/app/serve.py") {
 			t.Fatalf("the change is not said once beside the command as recorded:\n%s", got)
 		}
 	}
-	quiet := Compare("blackmac", inventory.Inventory{Workspace: "/Users/me/app", Running: []inventory.Running{{Command: "npm run dev"}}}, here{}, Report{})
+	quiet := Compare("laptop", inventory.Inventory{Workspace: "/Users/me/app", Running: []inventory.Running{{Command: "npm run dev"}}}, here{}, Report{})
 	quiet.Now = "/home/me/app"
 	if strings.Contains(quiet.Brief(), "The folder was") {
 		t.Fatalf("a folder change is said although no command names the old one:\n%s", quiet.Brief())
@@ -148,7 +148,7 @@ func TestBriefAndRecordBounded(t *testing.T) {
 	}
 	inv.SetWithheld(func(string) bool { return true }, inv.Withheld)
 	inv.SetRunning(inv.Running)
-	r := Compare("blackmac", inv, here{}, Report{})
+	r := Compare("laptop", inv, here{}, Report{})
 	for name, text := range map[string]string{"brief": r.Brief(), "news": r.News()} {
 		lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
 		if len(lines) > maxLines || len(text) > maxChars {
@@ -162,7 +162,7 @@ func TestBriefAndRecordBounded(t *testing.T) {
 
 func TestPlatformAloneIsNotSomethingToSetUp(t *testing.T) {
 	report := Report{Items: []Item{{Bucket: Present, Severity: Advisory, Name: "platform", Want: "darwin/arm64", Have: "linux/amd64"}}}
-	if !Compare("blackmac", inventory.Inventory{}, here{}, report).Empty() {
+	if !Compare("laptop", inventory.Inventory{}, here{}, report).Empty() {
 		t.Fatal("a different operating system raised an offer")
 	}
 	mismatch := Report{Items: []Item{{Bucket: Present, Severity: Advisory, Name: "node", Want: "22.4.0", Have: "20.1.0"}}}
@@ -179,7 +179,7 @@ func arrived(t *testing.T) (*Machine, Resume, string) {
 	if err := inventory.Record(root, func(inv *inventory.Inventory) { *inv = webRecord(); inv.V = 1 }); err != nil {
 		t.Fatal(err)
 	}
-	r, err := Arrive(root, workspace, "blackmac")
+	r, err := Arrive(root, workspace, "laptop")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,13 +215,13 @@ func TestBriefSaidOncePerTakeover(t *testing.T) {
 		t.Fatal("a chat closed and reopened after one takeover said it again")
 	}
 	// A takeover with nothing to say clears what an earlier one left.
-	if _, err := Arrive(root, m.workspace, "blackmac"); err != nil {
+	if _, err := Arrive(root, m.workspace, "laptop"); err != nil {
 		t.Fatal(err)
 	}
 	if err := inventory.Record(root, func(inv *inventory.Inventory) { *inv = inventory.Inventory{V: 1} }); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Arrive(root, m.workspace, "blackmac"); err != nil {
+	if _, err := Arrive(root, m.workspace, "laptop"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(root, stashName)); err == nil {
@@ -233,7 +233,7 @@ func TestBriefSaidOncePerTakeover(t *testing.T) {
 func TestPlanCarriesWhatOnlyTheTakeoverSawUntilSetupSettles(t *testing.T) {
 	m, _, _ := arrived(t)
 	plan := m.Plan()
-	if len(plan.Resume.Stopped) != 1 || plan.Resume.From != "blackmac" || len(plan.Resume.Missing) != 2 {
+	if len(plan.Resume.Stopped) != 1 || plan.Resume.From != "laptop" || len(plan.Resume.Missing) != 2 {
 		t.Fatalf("plan.Resume = %+v", plan.Resume)
 	}
 	if plan.Idle() {

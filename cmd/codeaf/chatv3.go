@@ -1436,7 +1436,7 @@ func v3Connections(manager *connect.Manager) tui3.Connections {
 // since two writers on one journal is a corrupted journal.
 //
 // SILENTLY STARTING A NEW CONVERSATION IS DEAD, and killing it is the point of
-// this lane. This door used to mint a sibling session and say "session open
+// this implementation. This door used to mint a sibling session and say "session open
 // elsewhere — started a new one", which sounds like an explanation and is
 // actually the defect: the conversation the person came back for was still
 // running a few inches away, in another terminal or in this workspace's session

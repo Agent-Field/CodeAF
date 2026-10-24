@@ -335,12 +335,8 @@ const newsSilenceNote = "this window uses an older background engine; host and t
 // sayNewsSilence says [newsSilenceNote] once per window, the first time a turn
 // that produced an answer ends on an engine that has sent no news.
 //
-// THE DEFECT IT ANSWERS. The news frames rode an existing wire version on
-// purpose, so a surface attached to an engine from before them — which the door
-// does, rather than retire a busy one — drew no `via` and no rate and nothing
-// saying why, and the owner read the gap as those two vanishing at random. The
-// engine's version is not the question; whether the news arrives is, so that is
-// what is asked ([LinkSeam.NewsSilent]).
+// THE DEFECT IT ANSWERS. The engine's version is not the question; whether the news
+// arrives is, so that is what is asked ([LinkSeam.NewsSilent]).
 //
 // AN ANSWER HAS TO HAVE ARRIVED, because that is what makes silence a fact. An
 // engine with the news posts a phase on every request it makes, so a turn that

@@ -11,8 +11,7 @@ import (
 //
 // A process that holds chats keeps one socket of its own that names them, so
 // the relay can take the socket's pings as proof that the holder is alive and
-// the holder need not send a heartbeat while it is (STAGE-1-CONTRACTS.md
-// §21.11). It is kept apart from the home screen's feed on purpose: the home
+// the holder need not send a heartbeat while it is. It is kept apart from the home screen's feed on purpose: the home
 // socket names no holds, so it vouches for nothing and a screen that is only
 // looked at cannot be mistaken for a holder.
 //

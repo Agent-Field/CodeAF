@@ -1031,15 +1031,13 @@ func (c *Client) call(ctx context.Context, method string, args any) (json.RawMes
 // today — somebody is writing, which is true whether the engine acts on it or
 // not — and a door that needs to know it was heard must use [Client.call].
 //
-// AND IT NEVER BLOCKS THE CALLER, WHICH IS A LAW AND NOT AN ASPIRATION.
-// [Client.write] holds the writer's lock across a `Write` and a flush, and over
-// `--host` that pipe is an ssh process's stdin — so writing here would put a
-// blocking socket write on whatever goroutine sent the hint. The one caller is
-// a keystroke, on internal/tui3's update loop, which is the goroutine that
-// draws: a wedged-but-not-dead link would stop the terminal echoing what the
-// person types. That is the defect family this wave exists to remove, and it is
-// not being reintroduced one layer down (the owner's ruling: the only wait a
-// person feels is the main model generating).
+// AND IT NEVER BLOCKS THE CALLER, WHICH IS A LAW AND NOT AN ASPIRATION. [Client.write]
+// holds the writer's lock across a `Write` and a flush, and over `--host` that pipe is an
+// ssh process's stdin — so writing here would put a blocking socket write on whatever
+// goroutine sent the hint. The one caller is a keystroke, on internal/tui3's update loop,
+// which is the goroutine that draws: a wedged-but-not-dead link would stop the terminal
+// echoing what the person types. That is the defect family this wave exists to remove, and
+// it is not being reintroduced one layer down.
 //
 // SO THE WRITE HAPPENS ON A GOROUTINE, AND AT MOST ONE IS EVER IN FLIGHT. A
 // hint is free to lose — the person will send another with their next character

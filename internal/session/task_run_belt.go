@@ -608,7 +608,7 @@ func (a *Agent) startOrJoinTaskRunVia(ctx context.Context, id uint64, title, bri
 	// approved at once, commits eight hand-offs at the same moment, and without
 	// this each of them found no live run — the run is registered only after its
 	// store is open and its copy is cut, which takes seconds — and each opened or
-	// set aside the same store. Measured on the owner's own session: two started
+	// set aside the same store. Observed in a session: two started
 	// runs over one path, one run's worker filed its children into the other's
 	// store, and the other six fell through to the older engine. Held here, the
 	// first hand-off opens the run and the other seven find it live and join it

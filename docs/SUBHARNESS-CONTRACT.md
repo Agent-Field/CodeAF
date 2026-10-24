@@ -1,9 +1,6 @@
 # The subharness contract, as landed
 
-*Build map for the subharness v2 wave. `docs/SUBHARNESS-PRD.md` is the
-authority on what is being built and why; this page is what the contract lane
-actually put in the tree, where each other lane plugs in, and the three places
-the build had to decide something the PRD left open.*
+This page describes the implemented subharness contract.
 
 Everything below is in `internal/exec` unless it says otherwise. Nothing is in
 `internal/subharness`: the old package is untouched, exactly as PRD §2 requires.
@@ -323,11 +320,3 @@ appears on nothing a person picks from. That is the same law
 `internal/exec/subharness.go` already states — the baseline is what every node
 is judged against, not an entry on a menu — and it is why `Manifest.Validate`
 exempts exactly one name from needing a purpose.
-
-## 8. Gates
-
-`gofmt -l` clean on every touched file. `go build ./...` clean.
-`go test ./internal/exec/ ./internal/session/ ./internal/subharness/ -count=1`
-green, as are `./cmd/codeaf/` and `./internal/resident/`. No manual page yet:
-this lane landed no slash command, no belt verb and no person-facing surface —
-the pages come with the surfaces, per the manual law.

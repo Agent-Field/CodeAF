@@ -215,7 +215,7 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 // unannounced facts about the disk: files it saved, edits it half-made, a build
 // it left mid-run. miniplan checkpoints a trajectory and replays it; codeaf's
 // recovery unit is the node and the tree is the record
-// (docs/design/task-continue/DESIGN.md §D), so the only thing that ports of
+// , so the only thing that ports of
 // that machinery is the sentence that makes its resume safe, and it is said
 // here, once, to the one worker that is about to act on the tree it describes.
 func (r *childRun) open(instruction string) error {
@@ -250,7 +250,7 @@ func (r *childRun) open(instruction string) error {
 
 // taskResumeClause is the resume sentence a bash-belt worker reads when the
 // worker before it was interrupted mid-work in this same tree
-// (docs/design/bash-task-loop/DESIGN.md, Decision 4).
+// .
 const taskResumeClause = "your predecessor was interrupted mid-work; effects may exist in the tree — inspect before repeating anything."
 
 // resumeNote is the clause a resumed node's opening carries, or "" when this

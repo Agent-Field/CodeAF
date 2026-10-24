@@ -8,7 +8,7 @@ import (
 // WHAT KIND OF WORK A TASK IS, READ OFF ITS OWN WORDS.
 //
 // The router routes on a task's CLASS and on nothing finer, by design
-// (docs/design/model-pool/pareto-crewing.pdf): the class decides the crew. A
+//: the class decides the crew. A
 // narrow fix goes to the cheapest qualified crew, and open-ended work (a
 // feature, a refactor, docs, a design) gets a strong checker behind it. So the
 // question this file answers is the only one the router asks of the text:

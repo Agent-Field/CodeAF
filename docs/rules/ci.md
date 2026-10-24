@@ -1,312 +1,67 @@
-# The checks
+# Continuous integration
 
-## Two gates, and the heavy one is not on your pull request
+## Pull request checks
 
-| Where | Workflow | What runs | Roughly |
-| --- | --- | --- | --- |
-| pull request into `dev`, and every push to `dev` | `.github/workflows/ci.yml` | `light gate`: build, gofmt, vet, the packed corpora, the change entry, the manual law, the laws. `touched packages`: the full selected suites in concurrent legs with bounded failure attribution. `check`: green only when both are | `light gate` a few minutes; `touched packages` as long as the slowest touched package; `check` when both are in |
-| pull request into `staging` or `main`, every push to either, and nightly at 09:00 UTC | `.github/workflows/ci-full.yml` | the whole suite, six-platform cross build, the two-machine remote test | tens of minutes |
-| Friday after the 17:00 Toronto cutoff, or a manual dispatch | `.github/workflows/promote-staging.yml` | plan the cutoff commit, call Full check on that commit, fast-forward staging if it passes, and report the release and production signal | Full check plus the release build |
-| every push to `dev`, `staging` or `main`; a manual stable or channel dispatch | `.github/workflows/release.yml` | resolve and guard the tag, test the release surface except on dev, build six binaries with furrow, publish | — |
+`PR gate` (`ci.yml`) runs on pull requests and pushes to `dev`. The required
+`check` status combines the light gate and successful touched-package checks.
 
-**The light gate is deliberately light.** Work reaches `dev` many times a day,
-much of it written by agents, and a gate that takes fifteen minutes is a gate
-people learn to route around. So the pull-request gate asks only the questions
-whose answer is the same on every machine and whose failure always means
-somebody broke something.
+The light gate builds and vets all Go packages, checks formatting, generates
+and tests packed manuals, validates change entries, and runs manual coverage,
+structural laws, carried-program help and belt-page checks. Structural laws are
+selected through `go/ast` or `go/parser` imports by `scripts/laws.sh`.
 
-**The price of that trade is that `dev` is not trustworthy on its own.** That is
-not a flaw in the arrangement, it is the arrangement: `dev` is where things are
-allowed to be briefly wrong, `staging` is where they are not. The full suite is
-paid for once, on the way into `staging`, instead of on every pull request.
-`Full check` is also called by the weekly promotion with the chosen commit as
-its `ref`; that run is the check the promotion uses before moving staging.
+Touched packages use `scripts/touched-packages.sh` to map the committed diff to
+root-module packages. Module changes select the whole tree; changes without Go
+or module edits select no package leg. Tests run fresh with `-count=1` in
+separate chat, session, command and remaining-package jobs. Heavy packages are
+sharded from one compiled test binary, with a 15-minute timeout per shard.
 
-**But "light" never meant "runs a filter nobody remembers".** Until 2026-09-02
-the gate's one test step over the engine was `go test -run 'Manual'`, and the
-endings ratchet in `internal/session` went red on `dev` through two merged pull
-requests with every check green (#372). A structural test — one that reads the
-tree and refuses a shape — decides in under a second and the same on every
-machine, which is the light gate's own definition of what belongs on it. So the
-gate now runs every one of them, found by what they do rather than by a list,
-and runs the packages a change touched in full beside them — on the pull
-request, where a red can still be read before it is on the trunk. `check`, the
-one required name, is green only when both halves are.
-
-## What the light gate actually checks
-
-Nine things in `ci.yml`, job name `light gate`, then the touched packages, then `check`:
-
-- **`go build ./...`** — several sessions work this tree at once and a
-  half-finished file breaks the build for everybody. Cheapest possible answer to
-  the most blocking possible failure.
-- **`make fmt-check`** — a file gofmt would rewrite is a file the next editor's
-  save rewrites, and that diff lands in somebody else's pull request.
-- **`go vet ./...`** — the class of bug agents produce most: a `printf` verb that
-  does not match, a cancel that is never called, a result that is thrown away.
-- **The packed corpora build from their folders.** `go generate` on the packed
-  package (`internal/manual`), then compile and test the manual's packed release path. Its
-  archives are ignored build products, avoiding one binary merge hotspot; the
-  other packed corpora remain tracked, so the tree must still come back clean.
-- **The change is written down.** A new file in `docs/changes/unreleased/`,
-  well formed. Two seconds. It carries the one thing a diff cannot — which of
-  the things somebody believes about this repository stopped being true — and it
-  is asked for here because it is worth nothing written later. A one-line
-  `kind: internal` entry is a legitimate answer and the `no-changelog` label is
-  the way out; [changelog.md](changelog.md) is the rule.
-- **The manual law.** `internal/manual`, plus the `Manual` tests in
-  `internal/tui3` and `internal/session` — every slash command and alias, every
-  tool on the belt, and every probe question still reaching the page that answers
-  it. Six seconds, and it is the law that gets broken most.
-- **The laws hold.** `make test-laws`: every test in the tree that opens the
-  repository's own source with `go/ast` or `go/parser` — the endings ratchet,
-  the guard, the taxonomy, the words the e2e suite waits
-  for. `scripts/laws.sh` finds them by that import, so a new law is on the gate
-  the day it is written and there is no list to forget. About twenty seconds
-  after the link. Every test in a file that carries the marker runs, so a file
-  whose behavioural half is slow should move its laws out rather than argue with
-  the script.
-- **Carried program help fits eighty columns.** `make test-carried-help` runs
-  the existing width test against every registered program and command, with
-  the shared flags included. It runs on every light gate and in `test-quick`,
-  because the touched-package selector does not follow reverse dependencies
-  from a program's flags to the registry's help test.
-- **The belt worker reads only its pages and stays below sixteen KiB.**
-  `make test-belt-pages` runs the existing composed-page test with fresh results
-  on every light gate and in `test-quick`. Embedded Markdown changes do not
-  select `internal/session` through the Go-only touched-package gate, so this
-  one focused test also checks the belt's required rules and absent chat words
-  before merging, without running the whole session suite.
-
-**`touched packages`** is the aggregate job: the full suite of every package
-this change touched runs with `-count=1` in concurrent tui3, session, codeaf and
-rest legs on separate runners, beside the light gate. `scripts/touched-packages.sh`
-is the ONE selector shared with `make test-touched`; it compares `BASE..HEAD`,
-maps changed `.go` files to surviving root-module packages, excludes nested
-modules and emptied directories, and expands root `go.mod` or `go.sum` changes
-to the whole tree. No Go or module change means no test leg. **It blocks.** It
-was neutral for a day, then off pull requests for a day (#499), and in that day
-#523 merged red on `cmd/codeaf` with `check` green, as #437, #439 and #483 had
-before the job existed. The owner's ruling is that it runs on the pull request
-and `check` needs it.
-
-The public standard Ubuntu runner has 4 vCPU and 16 GB; each leg prints `nproc`
-and `free -g` so a run records its actual capacity. `-p 2` allows concurrent
-compilation/testing in rest while leaving linker headroom. `make test` compiles
-`internal/tui3` and `internal/session` once each, then runs sorted top-level
-tests as round-robin concurrent shards: four in CI, locally at most eight by
-default, or `SHARDS=1` for the serial outcome. Their complete runs still hold
-the one-suite-per-box lock. Sharding `cmd/codeaf` was tried and its sharded runs
-failed, so it is not sharded. Its codeaf leg still runs beside tui3 and session
-on a separate runner. Each suite/shard and focused probe gets 15 minutes; a
-leg's 60-minute ceiling leaves room for bounded diagnosis.
-
-`scripts/touched-verdict.sh` reads the plain output of the same `make test` run
-everyone else gets, including package lines and the shard runner's summaries.
-The initial run, head retry and base probe all avoid `-json`: Go 1.26 replaces
-`os.Stderr` under that flag, and helpers re-executing the test binary inherit
-`-test.v=test2json` and print framing that changes their output. Those changes
-can manufacture failures at both head and base and hide a real regression.
-Focused probes use ordinary `-v` to distinguish a pass from an absent or skipped
-test. The job log is the original text. Every test runs in the initial selected
-suites: the classifier disables the shared Makefile's ledger skip flags.
-Each named failing test gets ONE focused retry on
-head, then, if it fails again, ONE focused probe at the exact base (PR base SHA,
-previous push tip, or `HEAD~1` for a first push or dispatch). Subtests use their
-full names so passing siblings are not retried; a temporary detached base
-worktree is created only when needed and removed afterward.
-
-- A passing head retry is **flaky**; another failure at base is **already failing
-  on the base**. Both warn with package/test names, appear in the step summary,
-  and stay green. The first failure remains in the log.
-- A base pass or a test/package absent at base makes the failure this change's
-  own and stays red. A skipped test or unbuildable base is inconclusive and red.
-- Build/setup failures, timeout panics, panics outside a test, killed processes,
-  shard errors and other unnamed failures stay red without retries, even beside
-  named failures. Plain text cannot prove a panic's test ownership, so all
-  panics stay red; missing package lines or shard summaries also stay red.
-  **More than five failed tests per leg** fail with their list
-  and no probes; ten focused runs is the maximum diagnostic budget.
-
-A flaky test is still a bug with an owner; it just is not evidence that this PR
-introduced it. The aggregate appends ONE comment per same-repository run with
-warnings (run link, SHA, package, test, classification) to the lowest-numbered
-open issue with the exact title **touched packages: flaky or already-failing
-tests**, creating it if absent. A rare find-or-create race may create duplicates;
-later runs converge on the lowest number. The issue is never closed automatically.
-Forks make no issue call; API/artifact-reporting errors do not change the result.
-
-**`check`** remains the only required name: it needs the light gate and the
-`touched packages` aggregate and is green only when both are. The aggregate
-requires a successful selector and every needed leg; an empty selection is
-green, while failed selection or failed/cancelled needed legs stay red. Matrix
-fail-fast is disabled so one leg cannot cancel another's evidence.
-
-Run the same thing before you push:
+## Local verification
 
 ```sh
+make test-focus PKGS=./internal/pkg RUN='^TestRegression$$'
+make test-quick
 make pr-ready
 ```
 
-`make pr-ready` runs the light-gate pieces above, tooling acceptance only when
-scripts/, the Makefile or the covered benchmark paths changed, then
-`make test-touched`. The touched target uses the same selector, partitions and
-classifier as CI with `-count=1 -p 2`; local legs run sequentially on one box,
-preserving the per-leg failure cap. It refuses staged, unstaged or untracked Go
-or module files: commit the candidate so the proof sees exactly what CI sees,
-without absorbing another session's work. Pass `BASE=<commit>` for the exact
-PR base; locally it defaults to `origin/dev`. A docs-only change still runs the
-light half. Local classification makes no issue API call. `test-quick` keeps
-its existing prerequisites; tooling is not an unconditional light-gate step.
+Use focused tests during editing. `test-quick` is the light gate. `pr-ready`
+adds touched-package tests and, when applicable, tooling acceptance. Commit Go
+and module edits first; the selector compares committed history against
+`origin/dev`, or `BASE=<commit>`. Complete heavy suites take a shared per-machine
+lock; use focused checks while another full suite is running.
 
-setup-go's implicit cache is disabled in `ci.yml`. Build keys are
-`codeaf-go-v1-<namespace>-build-<os>-<arch>-<go version>-<UTC date>` for light,
-tui3, session, codeaf and rest, with no SHA. The undated restore prefix chooses
-the newest compatible cache, whatever its age; legs then fall back to light's
-prefix. The first dev push of each UTC day that misses the exact key saves;
-later exact hits do not, and PRs never save. Modules use
-`codeaf-go-v1-modules-<os>-<arch>-<go version>-<hashFiles(go.sum)>`, restore
-without the hash, and are saved only by light on a dev push that misses the key.
-Every touched leg runs `go mod download` after restoring caches and before
-testing: it compiles only part of the tree, but offline module-listing tests
-such as codeaf-notices need all dependencies available. Light builds the whole
-tree and continues saving the shared module cache.
-At most five build namespaces a day plus one module entry per go.sum cost about
-2 GB a day at the measured ~385 MB; GitHub's least-recently-used eviction at the
-10 GB repository limit removes old days without any pruning script. Cache
-saves remain useful even after a test failure. Hosted scheduling, cache hits
-and archive sizes still need an actual workflow run to confirm.
+Use `make check` for intentional full-tree validation. It runs the tests,
+builds the shipped binary and enforces the size budget described in `PERF.md`.
 
-This is pull-request parity, not the full-tree ritual. `make check` remains for
-staging, the owner's Spark box (a private machine; nobody else is expected to
-reach it), or an intentional full laptop run; it runs the whole test tree,
-builds the shipped binary and enforces its size budget.
+## Diagnose failures
 
-## What the full gate checks
+Read failing job logs before merging. The touched-package classifier uses plain
+Go test output, including package results and shard summaries. It retries a
+named failure once at the candidate; a repeat failure is probed once at the
+exact base. A passing retry is reported as flaky. A failure also present at base
+is reported as already failing. Both remain visible as warnings in logs and a
+tracking issue; neither is evidence the candidate introduced the failure.
 
-`ci-full.yml`, seven jobs (three test shards and their one name, the six-target cross build and its one name, `remote`, `size`, and the page):
+A failure at the candidate with a passing base blocks the check. Build failures,
+timeouts, panics, missing results and inconclusive probes stay red. More than
+five failed tests in a job stop diagnosis without retries. Fork runs do not
+create tracking issues. Local classification makes no issue API calls.
 
-- **`full tests`** — every package, minus the ledger below, split round-robin
-  across three runners. Within each runner, `make test` also runs
-  `internal/tui3` and `internal/session` as concurrent test-binary shards from
-  one compile; the outer three-way split still assigns each package to only one
-  runner. The outer split and `-p 1` remain unchanged: they were introduced
-  when the private free-plan runner had two cores and seven gigabytes and died
-  under link load. The repository is public now, but this change reworks the
-  PR gate rather than remeasuring the full gate.
-  It runs through `make test`, so the ledger it skips and the per-shard timeout
-  it carries are the Makefile's and the same as a laptop's. The timeout is
-  measured, not guessed: `internal/tui3` once took about 485 seconds serial on
-  this runner, and the old `8m` cut it off at the finish line and reported a
-  test that had been running for two seconds as a hang (#372).
-- **`page on a red nightly`** — a scheduled run reports to nobody, and every
-  nightly before 2026-09-02 had been red unseen. So a red night opens one issue,
-  or adds the night's run to the one already open, and that issue is what
-  somebody sees in the morning. Whoever makes the nightly green closes it.
-- **`cross build`** — all six shipped targets compile. The only job here whose
-  answer is identical on every machine and every run, which is why it is the one
-  that blocks a promotion.
-- **`remote`** — `make test-remote`, three containers sharing no path, no home
-  and no credential. Skips green where there is no docker.
-- **`size (informational)`** — prints the binary's weight next to `SIZE-BUDGET`
-  and does not fail. The budget was set on linux/arm64 and the runner is
-  linux/amd64, so the two numbers are not comparable; making this block means
-  first agreeing which architecture the budget is measured on. `make check` on
-  your own machine still enforces it, and `PERF.md` still governs changing it.
+Fix the underlying test or implementation. Do not hide failures with skips,
+retry loops or wider timeouts. Use deterministic clocks, scripted providers and
+explicit synchronization to reproduce concurrency failures. There is no list
+of tests exempted from passing on a clean checkout.
 
-## The race detector, which no gate runs
+## Full and release checks
 
-No gate in this repository runs `go test -race`. Not the light gate, not
-`touched packages` (so not `check`), not `full tests` on the nightly or on the
-way into `staging`, not the release surface tests. The greps say so plainly:
-`grep -rn race .github/workflows/ Makefile scripts/laws.sh` finds the word only
-inside "traces", in a comment about panic output — there is no `-race` flag in
-CI to find, and no gate to name.
+`Full check` (`ci-full.yml`) runs nightly and validates promotion candidates.
+It runs full tests, cross builds and container-based remote checks; binary size
+is reported separately. `Promote to staging` requires a successful fresh Full
+check on its exact candidate before moving the pointer. `Release` guards branch
+ancestry, tests the applicable release surface and publishes platform builds.
+Inspect workflow definitions and live branch rules for current required checks.
 
-**So a green gate proves nothing about data races, and this page is where that
-is said rather than assumed.** The detector makes a test run two to twenty
-times slower and five to ten times fatter, by Go's own estimate, and `full
-tests` retains its conservative three-way split from the private-runner era.
-It is also not the light gate's kind of question: a race is a window
-between two goroutines, so its answer is not the same on every machine — #957
-needed `-count=5` to be sure its quiet first run was quiet. What that trade
-cost is on the record there: the detector went red on clean `dev`, on a fixture
-that moved the goal owner's clock past its lock while the wall clock read it
-under the lock, through a merge whose every check was green. That race was
-test-only, and no gate output anywhere said so or said otherwise.
-
-So the detector is run by hand, over the package and the tests a report names:
-
-```sh
-go test -race -count=5 -run '^TestADoneEndingNamesTheCheckItCouldNotRun$' ./internal/session/
-```
-
-It answers for that package at that moment and nothing else. The known-red
-ledger below does not cover this either: it holds tests that fail, not checks
-that never run.
-
-## The known-red ledger — burned to zero
-
-There is no ledger any more. `.github/known-red.txt` listed tests that failed on
-a clean tree so `make test` could skip them by name and red could still mean
-this change did it. Ruled 2026-09-02 that it only shrank, in its own wave, every
-entry fixed for real or deleted with a written ruling, and no new entry allowed
-after; #408 took the first five out, and the burn finished on 2026-09-12 when
-the last entry — the lockdefer scan — was fixed and the file and its
-`internal/ci` ratchet test were deleted together (#1012).
-
-The Makefile and laws runner still read the ledger's old location as the
-owner's guard, with their existing comments and skip flags; the file remains
-absent and skips nothing. The touched classifier explicitly clears those flags
-and never skips by name, using bounded attribution instead. Full/nightly runs
-retain their strict first-run result. A failure on a clean tree today is a bug
-report, not a line to add back — the ledger does not return.
-
-## A test that fails only beside another suite
-
-It is a bug report, and it never goes on the ledger above. Reproduce it under
-load — a focused `-count=50` at `GOMAXPROCS=2` with a few `yes > /dev/null`
-beside it, **on the bench host and never on a work machine**, since the point is to starve
-the machine — and fix the CAUSE, which is almost always that the test measured
-the SCHEDULER and called it the road:
-
-- **Wait on the fact, never on a figure.** A fixed number of scripted rounds, a
-  margin between two wall-clock numbers, slack "to one short of the next mark" —
-  each of those is green on a quiet machine and red beside another suite, and
-  widening one is not a fix.
-- **A reading beside the work is waited on through the door that owns it.** A
-  scripted conversation answers in no time and never blocks, so a reading the
-  turn has just started may not have been scheduled at all; `internal/session`'s
-  `besideWatch` (sidecar.go) is told by `readBeside` itself when each reading
-  under a turn's context starts and lands, and a fixture that opts in
-  (`watchReadings`) answers only once none is in flight. The product carries no
-  watch, and a law test fails the build if it ever does.
-- **A scripted arm orders itself by a signal.** `internal/lane/lanestub`'s
-  `StallUntil` holds a stalled answer on a channel and `FirstTokenUntil` holds
-  the first word the same way, both after the scripted wait is spent — so a
-  primary that must answer *after* the caller has acted says exactly that,
-  rather than being scripted a few milliseconds past a bound a busy machine
-  eats.
-- **Never fix a test with `t.Skip`, a retry loop or a wider timeout.** A bound
-  is for failing honestly when the fact never arrives. The touched gate's ONE
-  diagnostic retry and base probe attribute the failure while keeping it owned;
-  they do not repair a test or authorize rerunning until green.
-
-## What blocks a merge
-
-Required today: **`check`** on `dev`, **`cross build`** on `staging` and `main`.
-Those are the two check names whose green is trustworthy right now.
-
-`full tests` and `remote` run and report, and are deliberately not required yet —
-neither has been seen green in this repository's CI twice in a row, and a
-required check that has never passed blocks all work on its first day.
-`touched packages` is required through `check` since 2026-09-03. **Promote them by
-adding their job names to `required_status_checks` in
-`.github/rulesets/promotion-pointers.json` as soon as each has been green twice
-in a row.** That is the next piece of work here, not a someday.
-
-## When GitHub enforces it
-
-The repository is now public, so the free plan's former private-repository
-restriction no longer prevents branch rules. `.github/rulesets/` holds the
-intended rules; inspect live enforcement before assuming they were applied.
+CI does not run the race detector. Run `go test -race` on the affected package
+when investigating a concurrency issue. A green ordinary test run does not
+establish absence of data races. Live-provider tests skip when credentials are
+unavailable; container-based remote tests skip without Docker.

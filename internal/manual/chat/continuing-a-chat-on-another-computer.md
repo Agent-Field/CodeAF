@@ -1,6 +1,6 @@
 # Continuing a chat that one of your machines holds
 
-To continue on this machine, select the chat on home and choose `continue here`. When your paired computer is offline or has let go of its latest chat, home can ask `Continue spark's latest chat here?`: `alt+c` continues immediately when there is no local choice to make, and `alt+x` dismisses the offer. Moving chats is available by default on Linux, macOS and native Windows with a compatible engine. Older chats become movable through independent copies after pairing.
+To continue on this machine, select the chat on home and choose `continue here`. When your paired computer is offline or has let go of its latest chat, home can ask `Continue tower's latest chat here?`: `alt+c` continues immediately when there is no local choice to make, and `alt+x` dismisses the offer. Moving chats is available by default on Linux, macOS and native Windows with a compatible engine. Older chats become movable through independent copies after pairing.
 
 ## Why can't I type in this chat — my message did not send and home opened with a question
 
@@ -12,7 +12,7 @@ A chat can be worked on by one device at a time. If you open a chat here that an
 
 ```
 Continue this chat here?
-running on spark; last saved turn 4s ago
+running on tower; last saved turn 4s ago
 1 continue here
 2 leave it there
 ```
@@ -29,7 +29,7 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 On `Continue this chat here?`, `leave it there` closes the question without moving the chat. Your typed words stay in the box and nothing is sent. If the question opened because you tried to send from an older window, this answer is already selected. Choose `1 continue here` to bring the chat here before sending.
 
-## What does running on spark mean — a row on home and the verb it offers
+## What does running on tower mean — a row on home and the verb it offers
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -44,7 +44,7 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 If you open codeaf and a chat on another device was running or went off in the last 24 hours, and that device is offline now (its lid is closed) or has let go of the chat, home offers it first of all:
 
 ```
-Continue spark's latest chat here?
+Continue tower's latest chat here?
 alt+c continue here · alt+x not now
 ```
 
@@ -55,20 +55,20 @@ The line follows the devices row: it stands while the device is offline or has l
 
 To bring work from a device that is online, use the devices row: `alt+m bring work here`. The page *Adding a device to your devices, approving it, and removing it* shows the row and the dots.
 
-## What happens when the chat arrives — the banner Moved from spark, and what was not brought
+## What happens when the chat arrives — the banner Moved from tower, and what was not brought
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 When the chat opens on this device it starts with one line that says how long the move took:
 
 ```
-Moved from spark in 3.2s. Everything as you left it.
+Moved from tower in 3.2s. Everything as you left it.
 ```
 
 If a command was running on the other device, the line goes on:
 
 ```
-Moved from spark in 3.2s. Everything as you left it. What was running there can start again here.
+Moved from tower in 3.2s. Everything as you left it. What was running there can start again here.
 ```
 
 When the other device's name is not known it reads `Moved here in 3.2s. Everything as you left it.`
@@ -76,7 +76,7 @@ When the other device's name is not known it reads `Moved here in 3.2s. Everythi
 Right after, a card opens that says where the chat stands. It is the first thing on the screen of the chat. When something has to be set up here, the card asks whether to bring this device to the state the other one was in (the page *Home* has that question). When nothing has to be set up, the card only reports, with one answer that closes it:
 
 ```
-Moved from spark. Here is where it stands.
+Moved from tower. Here is where it stands.
 not committed yet: main.go, util.go · last tests: passed
 got it
 ```

@@ -466,7 +466,7 @@ The file itself is a real session journal at
 ## it could not be read on that machine — a run's transcript over --host
 
 A run's rows on the task page each name a transcript, and over `--host` that name is drawn
-with the far machine in front of it — `spark:/home/you/.codeaf/v3/runs/<session>/<run>/n3.jsonl`.
+with the far machine in front of it — `tower:/home/you/.codeaf/v3/runs/<session>/<run>/n3.jsonl`.
 The card then peeks the end of that file over the connection.
 
 Two things used to go wrong here and both are fixed:

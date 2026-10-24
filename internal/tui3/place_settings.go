@@ -18,7 +18,7 @@ import (
 // lines of what a SETTING is — and none of it is about being a place. What is
 // here is the place: the handle the registry files, and the dozen answers the
 // frame asks of it. The same split every other room keeps
-// (docs/design/home-rethink/ARCHITECTURE.md's three layers).
+//.
 //
 // IT IS THE ONE PLACE WITH A SECOND BAR INSIDE IT, and the two are not a
 // repetition: the nav at the top is the places and the bar in the body is this

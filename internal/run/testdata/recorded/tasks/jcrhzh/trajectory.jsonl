@@ -1,0 +1,38 @@
+{"kind":"step","step":1,"command":"cd /workspace/sample && git status --short","observation":"Catalog validation completed.\n","writes":["catalog update"]}
+{"kind":"step","step":2,"command":"cd /workspace/sample && cat README.md","observation":"Catalog validation completed.\n","full_output":"/workspace/sample/results/action-000001.txt"}
+{"kind":"step","step":3,"command":"cd /workspace/sample && go test ./catalog","observation":"Catalog validation completed.\n","full_output":"/workspace/sample/results/action-000002.txt"}
+{"kind":"step","step":4,"command":"cd /workspace/sample && go vet ./...","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":5,"command":"cd /workspace/sample && git status --short","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":6,"command":"cd /workspace/sample && cat README.md","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":7,"command":"cd /workspace/sample && go test ./catalog","observation":"Catalog validation completed.\n","full_output":"/workspace/sample/results/action-000006.txt"}
+{"kind":"step","step":8,"command":"cd /workspace/sample && go vet ./...","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":9,"command":"cd /workspace/sample && git status --short","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":10,"command":"cd /workspace/sample && cat README.md","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":11,"command":"cd /workspace/sample && go test ./catalog","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":12,"command":"cd /workspace/sample && go vet ./...","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":13,"command":"cd /workspace/sample && git status --short","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":14,"command":"cd /workspace/sample && cat README.md","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":15,"command":"cd /workspace/sample && go test ./catalog","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":16,"command":"cd /workspace/sample && go vet ./...","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":17,"command":"cd /workspace/sample && git status --short","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":18,"command":"cd /workspace/sample && cat README.md","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":19,"command":"cd /workspace/sample && go test ./catalog","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":20,"command":"cd /workspace/sample && go vet ./...","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":21,"command":"cd /workspace/sample && git status --short","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":22,"command":"cd /workspace/sample && cat README.md","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":23,"command":"cd /workspace/sample && go test ./catalog","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":24,"command":"cd /workspace/sample && go vet ./...","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":25,"command":"cd /workspace/sample && git status --short","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":26,"command":"cd /workspace/sample && cat README.md","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":27,"command":"cd /workspace/sample && go test ./catalog","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":28,"command":"cd /workspace/sample && go vet ./...","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":29,"command":"cd /workspace/sample && git status --short","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":30,"command":"cd /workspace/sample && cat README.md","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":31,"command":"cd /workspace/sample && go test ./catalog","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":32,"command":"cd /workspace/sample && go vet ./...","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":33,"command":"cd /workspace/sample && git status --short","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":34,"command":"cd /workspace/sample && cat README.md","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":35,"command":"cd /workspace/sample && go test ./catalog","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":36,"command":"cd /workspace/sample && go vet ./...","observation":"Catalog validation completed.\n"}
+{"kind":"step","step":37,"command":"cd /workspace/sample && git status --short","observation":"Catalog validation completed.\n","writes":["catalog update"]}
+{"kind":"end","step":0,"command":"","steps":37,"result":"Catalog behavior checked.","reason":"finished in the store"}

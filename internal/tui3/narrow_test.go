@@ -168,7 +168,7 @@ func TestTheNarrowFootDropsWholeHintsAndNeverSlicesOne(t *testing.T) {
 // IT IS EMPTY, and the two entries it opened with are gone rather than
 // forgotten: `jobpage.go` and `taskrecord.go` both went onto [hintFit] with the
 // way out moved to the end of their key rows, where the ranked-clause fitter
-// keeps it (docs/design/polish/audit-jobs.md's hint rows). The map stays so the
+// keeps it. The map stays so the
 // second half of the law below — a file fixed but still named here — has
 // something to guard the day somebody needs the ledger again.
 var hintsStillCutByCharacter = map[string]string{}
@@ -305,20 +305,15 @@ func pulseLab(t *testing.T) (*app, time.Time) {
 	return a, now
 }
 
-// THE TOP LINE GIVES THINGS UP IN THE OWNER'S ORDER.
+// THE TOP LINE GIVES THINGS UP IN PRIORITY ORDER.
 //
-// The places and the pulse share the first row now, and the owner ruled the
-// order a narrowing row gives things up in (2026-09-24): the clock first, with
-// the machine's name, then the counts (the moving one before the one that
-// wants you), then the allowance behind the day's figure, then the trailing
-// places fold into `more ▾`, and the day's figure is the last clause standing.
-// Every width is checked: a thing given up early may never be on the row while
-// a thing given up later is gone, and every rung of the ladder is met.
+// Every width is checked: a thing given up early may never be on the row while a thing
+// given up later is gone, and every rung of the ladder is met.
 func TestTheTopLineGivesThingsUpInTheOwnersOrder(t *testing.T) {
 	a, now := pulseLab(t)
 	a.showPage(pageNone)
 	a.machine = machineFacts{wants: 12, hands: 4, spent: 123.45, ceiling: 500}
-	a.host = "spark"
+	a.host = "tower"
 	clock := pulseClock(now)
 	type state struct{ clock, host, hands, wants, allowance, unfolded, spend bool }
 	seen := map[state]bool{}
@@ -331,7 +326,7 @@ func TestTheTopLineGivesThingsUpInTheOwnersOrder(t *testing.T) {
 			t.Fatalf("at %d columns the top line lost the wordmark or the lit place:\n\t%q", width, line)
 		}
 		s := state{
-			clock: strings.Contains(line, clock), host: strings.Contains(line, "on spark"),
+			clock: strings.Contains(line, clock), host: strings.Contains(line, "on tower"),
 			hands: strings.Contains(line, "4 moving"), wants: strings.Contains(line, "12 want you"),
 			allowance: strings.Contains(line, "/ "+railFigure(500)), unfolded: !a.navMore.span.pressable(),
 			spend: strings.Contains(line, "$123.45"),

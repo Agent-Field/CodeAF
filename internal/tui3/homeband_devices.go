@@ -2,7 +2,7 @@ package tui3
 
 // ── THE DEVICES ROW: WHO IS ONLINE, AND A WAY TO BRING THEIR WORK HERE ──────
 //
-//	● This Mac  ● spark  ○ dumb (offline)
+//	● This Mac  ● laptop  ○ simple (offline)
 //
 // The row is a home band. WHO IS ONLINE IS NEVER ASKED: it is read from the
 // change feed home already follows (machinewatch.go), whose presence set the

@@ -1,12 +1,73 @@
 package teams
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"sync"
 	"testing"
 )
+
+func TestTeamSpendSharesMembershipReadAndInvalidatesOnChanges(t *testing.T) {
+	dir, other := t.TempDir(), t.TempDir()
+	ledger := filepath.Join(dir, "usage.jsonl")
+	key := filepath.Join("/srv/sessions", "0123456789abcdef", "transcript.jsonl")
+	must(t, Save(dir, []Team{{ID: "aaaaaaaaaaaa", Members: []Member{{Key: key}}}, {ID: "bbbbbbbbbbbb"}}))
+	writeLedger(t, ledger, line("2026-09-24", 1, keySessionForTest(key), ""))
+	spendTeams.Lock()
+	before := spendTeams.reads
+	spendTeams.Unlock()
+	var wg sync.WaitGroup
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := TeamSpendIn(dir, ledger, "aaaaaaaaaaaa", "2026-09-24"); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	spendTeams.Lock()
+	reads := spendTeams.reads - before
+	spendTeams.Unlock()
+	if reads != 1 {
+		t.Fatalf("unchanged membership snapshot loaded %d times, want once", reads)
+	}
+	must(t, Save(dir, []Team{{ID: "aaaaaaaaaaaa"}, {ID: "bbbbbbbbbbbb", Members: []Member{{Key: key}}}}))
+	old, err := TeamSpendIn(dir, ledger, "aaaaaaaaaaaa", "2026-09-24")
+	must(t, err)
+	new, err := TeamSpendIn(dir, ledger, "bbbbbbbbbbbb", "2026-09-24")
+	must(t, err)
+	if old.USD != 0 || new.USD != 1 {
+		t.Fatalf("membership change kept stale spend: old=%g new=%g", old.USD, new.USD)
+	}
+	appendLedger(t, ledger, line("2026-09-24", 2, keySessionForTest(key), ""))
+	new, err = TeamSpendIn(dir, ledger, "bbbbbbbbbbbb", "2026-09-24")
+	must(t, err)
+	if new.USD != 3 {
+		t.Fatal("ledger append retained stale price", new.USD)
+	}
+	// A different profile must not inherit the previous profile's membership.
+	new, err = TeamSpendIn(other, ledger, "bbbbbbbbbbbb", "2026-09-24")
+	must(t, err)
+	if new.USD != 0 {
+		t.Fatal("membership snapshot crossed profile boundary")
+	}
+	// A legacy file arriving after a missing-profile reading must still migrate.
+	legacy, err := json.Marshal(map[string]any{"spaces": []Team{{ID: "bbbbbbbbbbbb", Members: []Member{{Key: key}}}}})
+	must(t, err)
+	must(t, os.WriteFile(legacyPath(other), legacy, 0o600))
+	new, err = TeamSpendIn(other, ledger, "bbbbbbbbbbbb", "2026-09-24")
+	must(t, err)
+	if new.USD != 3 {
+		t.Fatal("cached absence hid the legacy membership file", new.USD)
+	}
+}
+
+func keySessionForTest(key string) string { return filepath.Base(filepath.Dir(key)) }
 
 // A TEAM'S DAY IS ITS SUBTREE'S LEDGER LINES, EACH ONCE. harbor holds one
 // conversation, dock under it another; a third is in neither. A task's line

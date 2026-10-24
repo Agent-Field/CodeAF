@@ -19,9 +19,8 @@ import (
 
 // ── THE JOB'S CHAT SPENDS FROM THE JOB'S BUDGET ─────────────────────────────
 //
-// "Everything done for the job spends from the one budget" (the owner's
-// ruling of 2026-10-20). A step's rounds always did: the runner books each
-// round's dollars on the job. The job's own conversation, its manager, is an
+// Everything done for the job spends from the one budget. A step's rounds
+// always did: the runner books each round's dollars on the job. The job's own conversation, its manager, is an
 // ordinary conversation, and until now its turns reached only the person's
 // spend ledger. [session.JobChatDoor] is how they reach the job too, and this
 // is that door over this machine's floor.

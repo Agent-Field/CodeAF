@@ -1233,7 +1233,7 @@ func JobPace(graph *store.Store, jobRoot string) time.Duration {
 // the first outlier rather than at the wall. What makes it safe to relax is
 // that the guarantee no longer rests on it: the settlement watch forces a
 // verdict at this same distance from the wall whether or not any rule here
-// noticed (docs/design/failsafe/FAILSAFE.md, the twenty-first chapter).
+// noticed.
 //
 // A round is not the whole of what another round costs. What follows it is a
 // reading of the tree and a judgement on it, and the reading is the one thing

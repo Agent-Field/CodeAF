@@ -1,5 +1,5 @@
-// Package selector implements the pareto selector (lane C): a deterministic
-// crew picker built on lane B's SharedSnapshot (posterior quality means and
+// Package selector implements the pareto selector : a deterministic
+// crew picker built on SharedSnapshot (posterior quality means and
 // variances), reading the live model catalog through its own input struct so
 // it uses the schema fields (canonical_slug, created, alias_target) only —
 // never name-parsing heuristics. It emits contract.DecisionEvents for every

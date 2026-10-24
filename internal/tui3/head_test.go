@@ -120,7 +120,7 @@ var headFrameSizes = []struct{ w, h int }{{80, 24}, {120, 45}, {180, 45}}
 // row under them. A place spends four rows and no strip, so its body starts
 // one row above a conversation's. The room used to lay the trail where the
 // rule stands
-// (PLACES-AUDIT.md, lane K).
+// .
 func TestATaskRoomSpendsThePlacesHeadAboveItsBody(t *testing.T) {
 	room, chat := crumbApp(t), headLab(t)
 	for _, size := range headFrameSizes {
@@ -189,7 +189,7 @@ func footOf(rows []string) footEdges {
 // the status line where a place draws its hint. The chat used to keep a second
 // blank between the box and the status line, so `esc` from home into a chat
 // moved the rule and the box up a row and walking back moved them down again
-// (PLACES-AUDIT.md, lane K). Walked chat → home → chat at three sizes, and the
+// . Walked chat → home → chat at three sizes, and the
 // rule, the box and the last row never move. Tasks is no longer on the walk:
 // a place that is not home draws no box (pages.go's [place.box]), so its foot
 // is its own three rows and [TestEveryPlaceSpendsTheSameHeadAndFoot] holds it

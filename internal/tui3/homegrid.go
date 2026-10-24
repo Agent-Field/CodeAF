@@ -15,7 +15,7 @@ import (
 // ── THE GRID ────────────────────────────────────────────────────────────────
 //
 // HOME IS A FIXED SET OF PANELS, EACH ANSWERING ONE QUESTION A PERSON HAS WHEN
-// THEY WALK UP TO A COLLEAGUE'S DESK (docs/design/home-mission-control/DESIGN.md
+// THEY WALK UP TO A COLLEAGUE'S DESK (the implementation
 // §1). The chat list is one of them. This file is the arrangement: which panel
 // stands in which column at which width, how a short terminal gives way, and
 // what an empty panel says. What each panel HOLDS is its own file
@@ -165,13 +165,11 @@ type homePanelSlot struct {
 //	field (panels with rows)   recent · needs · running · left · next
 //	rail (pinned, then quiet)  projects · spend  ·  the quiet ones in the same rank
 //
-// The keep column is the order a short frame takes rows away in and a tall one
-// hands them out in, and rest and most are each panel's natural height and its
-// growth budget (owner, 2026-09-10: a fifty-five-row terminal was two short
-// columns over thirty rows of air). Spend's budget is its rest: it never grows.
-// The head column is where a press on a heading goes. The conversation list
-// has no heading; the projects heading opens nothing. The explainer is the dim clause a
-// heading may carry after its word — see [homePanelSlot.explainer].
+// The keep column is the order a short frame takes rows away in and a tall one hands them
+// out in, and rest and most are each panel's natural height and its growth budget. Spend's
+// budget is its rest: it never grows. The head column is where a press on a heading goes.
+// The conversation list has no heading; the projects heading opens nothing. The explainer
+// is the dim clause a heading may carry after its word — see [homePanelSlot.explainer].
 var homePanelOrder = []homePanelSlot{
 	{panel: sessionsPanel{homePanelBase{panelSessions}}, word: sessionsWord, keep: 7, least: 4, rest: homeSessionsLimit, most: homeSessionsLimit, place: pageTasks, head: pageTasks},
 	{panel: recentPanel{homePanelBase{panelRecent}}, keep: 5, least: 3, rest: tabsCap + homeClosedLimit, most: tabsCap + homeClosedLimit},
@@ -399,11 +397,9 @@ type homePanelGroup struct {
 	// at is where the group's rows begin in [homePanelRows.lines]; everything
 	// before it is the panel's own.
 	at int
-	// word is the group's name — the whole of its line, and the word the
-	// panel's fold uses instead of `more` while the group is shut. A group line
-	// carries no count and no clause: the rows are under it, and the fold counts
-	// what it hides (owner, 2026-09-15; it used to say `to check · 8` with
-	// `finished, nobody has checked it` at its right).
+	// word is the group's name — the whole of its line, and the word the panel's fold uses
+	// instead of `more` while the group is shut. A group line carries no count and no clause:
+	// the rows are under it, and the fold counts what it hides.
 	word string
 }
 
@@ -486,12 +482,11 @@ type homeCell struct {
 	// held row grows into under the cursor ([app.homeCellDoor]).
 	hold bool
 	door string
-	// thread is the conversation the row belongs to, spelled as `threads`
-	// spells it, and it heads the row's description as its own title line —
-	// `thread: <name>`, then a blank line, then [sub] (owner, 2026-09-17). It
-	// is drawn wherever the description is: in the description column, or
-	// under the row on a frame without one, where the row grows three lines
-	// rather than one ([homeCell.grownLines]).
+	// thread is the conversation the row belongs to, spelled as `threads` spells it, and it
+	// heads the row's description as its own title line — `thread: <name>`, then a blank
+	// line, then [sub]. It is drawn wherever the description is: in the description column,
+	// or under the row on a frame without one, where the row grows three lines rather than
+	// one ([homeCell.grownLines]).
 	thread string
 	// sub is the line under the row, and subRight what that line carries at
 	// its right — the answers a key sends.
@@ -885,8 +880,7 @@ func (p *homeGridPanel) shrink() {
 // at every width ([homeView.placesTop], homebridge.go): a landing that moved
 // with the frame is a landing nobody can build a habit on.
 //
-// AND THE COLUMN IT NO LONGER SPILLS INTO IS THE DESCRIPTION'S (owner,
-// 2026-09-15). A field that could take the middle when it ran out of room made
+// AND THE COLUMN IT NO LONGER SPILLS INTO IS THE DESCRIPTION'S. A field that could take the middle when it ran out of room made
 // the middle a column that was a description sometimes and a panel other times;
 // reserving it costs a squeeze on a short frame and buys a column that means one
 // thing at every size ([homeDescCol]).
@@ -922,10 +916,10 @@ func homeGridLayout(in *homeGridInput, cols, width, room int) [][]*homeGridPanel
 // homeDescCol is the column the selected row's description stands in, and
 // [homeNoLine] where this frame has no room for one.
 //
-// IT IS THE MIDDLE COLUMN AND ONLY EXISTS AT THREE (owner, 2026-09-15). Two
-// columns are the field and the rail with nothing between them, and one column
-// is the whole screen read top to bottom — so at both of those a row keeps its
-// description under itself, exactly as every row did before this column existed.
+// IT IS THE MIDDLE COLUMN AND ONLY EXISTS AT THREE. Two columns are the field and the rail
+// with nothing between them, and one column is the whole screen read top to bottom — so at
+// both of those a row keeps its description under itself, exactly as every row did before
+// this column existed.
 func homeDescCol(cols int) int {
 	if !homeDescOn(cols) {
 		return homeNoLine
@@ -1089,12 +1083,11 @@ func (p homeGridPanel) lines() []homeLine {
 	return out
 }
 
-// fold is the panel's last line, and IT IS A TOGGLE (owner, 2026-09-15). Shut,
-// it is `N more`, counting everything the panel is not showing — the rows past
-// its budget, the rows the squeeze took, and the landings `needs you` aged out
-// — and enter opens the panel: its cap is lifted, the other panels squeeze to
-// their floors (law 5), and it takes the column. Open, it is `N fewer`, and
-// enter shuts it again.
+// fold is the panel's last line, and IT IS A TOGGLE. Shut, it is `N more`, counting
+// everything the panel is not showing — the rows past its budget, the rows the squeeze
+// took, and the landings `needs you` aged out — and enter opens the panel: its cap is
+// lifted, the other panels squeeze to their floors (law 5), and it takes the column. Open,
+// it is `N fewer`, and enter shuts it again.
 //
 // IT WEARS NO MARK. The places' fold doors are `▸ 11 more` and `▾ 11 fewer`
 // ([foldDoor]); this one is the words alone, because the grid has two marks and
@@ -1250,16 +1243,12 @@ func (h *homeView) rowOf(at int) int {
 	return row
 }
 
-// THE ARROWS STAY IN THEIR COLUMN. `←` and `→` used to cross into the
-// neighbouring column, onto the row nearest the one they left (DESIGN §6 ruling
-// 6, "columns win the arrow"), and the foot named `ctrl+o open folder` on every
-// field row because the strip was then not one arrow away. The owner ruled
-// (2026-09-17) that nothing outside the left column is to be walked at all: the
-// rail is read, not stood on — `projects` and `spend` have no stops — and a
-// person on a field row who pressed `→` landed on a project and then opened its
-// strip under the row they had just left. So the two arrows are the router's
-// again on every column, as they are at one column: `→` opens the row's verbs
-// and `←` closes them, and the foot is the resting sentence alone.
+// THE ARROWS STAY IN THEIR COLUMN. `←` and `→` used to cross into the neighbouring column,
+// onto the row nearest the one they left (DESIGN §6 ruling 6, "columns win the arrow"),
+// and the foot named `ctrl+o open folder` on every field row because the strip was then
+// not one arrow away. So the two arrows are the router's again on every column, as they
+// are at one column: `→` opens the row's verbs and `←` closes them, and the foot is the
+// resting sentence alone.
 
 // homeRowFolder is the folder `ctrl+o` opens for a row, and "" for a row that
 // belongs to no folder — a spend row, a fold.
@@ -1504,11 +1493,9 @@ func (a *app) homeRowOffer(line homeLine) string {
 // this window has already answered it, and the row's own door word — `enter`,
 // `enter on standing` — on the row the cursor is standing on.
 //
-// THE DOOR WORD IS SAID ONCE, UNDER THE CURSOR. It is a key legend, and a legend
-// is for the key a person is about to press; drawn on every question at once it
-// was a column of `enter`s that told nobody anything (owner, 2026-09-16, seen on
-// a narrow frame where the second line is under every question rather than
-// beside the cursor's). The description column already drew it only for the
+// THE DOOR WORD IS SAID ONCE, UNDER THE CURSOR. It is a key legend, and a legend is for
+// the key a person is about to press; drawn on every question at once it was a column of
+// `enter`s that told nobody anything. The description column already drew it only for the
 // selected row ([app.homeDescNote]); this makes the second-line shape agree.
 func (a *app) homeRowAnswers(line homeLine, at int) string {
 	// The option menu owns the letters while open; normal answer hints would

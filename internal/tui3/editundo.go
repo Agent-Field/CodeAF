@@ -2,13 +2,11 @@ package tui3
 
 // ── TAKING BACK WHAT YOU JUST TYPED ─────────────────────────────────────────
 //
-// `ctrl+z` puts the box back the way it was, and `ctrl+shift+z` puts it forward
-// again. Every text field a person has ever used answers those two, and no box
-// on this surface answered either: a sentence rewritten by a `ctrl+u` that went
-// one word too far, a paste that landed in the wrong draft, a word kill on the
-// wrong side of the caret — all of them were gone, and the only way back was to
-// type the words again. The owner asked for it in as many words ("maybe even
-// ctrl+z as well like undo or redo like shift z").
+// `ctrl+z` puts the box back the way it was, and `ctrl+shift+z` puts it forward again.
+// Every text field a person has ever used answers those two, and no box on this surface
+// answered either: a sentence rewritten by a `ctrl+u` that went one word too far, a paste
+// that landed in the wrong draft, a word kill on the wrong side of the caret — all of them
+// were gone, and the only way back was to type the words again.
 //
 // ── ctrl+z REACHES US, AND THAT IS NOT AN ACCIDENT ──
 //

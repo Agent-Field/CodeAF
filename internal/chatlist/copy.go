@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// The frozen sentences (STAGE-1-CONTRACTS §8.1). Every surface takes its words
+// The frozen sentences. Every surface takes its words
 // from here so a respelling happens once.
 const (
 	OfferContinue = "continue here"

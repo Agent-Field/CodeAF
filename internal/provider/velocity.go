@@ -1417,7 +1417,7 @@ func (c *Client) refuseUpstream(request *ai.Request, knobs callKnobs, err error,
 // NOTHING was paced, struck or learned — while every other controller on the
 // path went on acting, so the one thing that could tell the next attempt where
 // not to go was the one thing that had been silenced
-// (docs/design/recovery/DESIGN.md §2, problem 9).
+// .
 //
 // THE LAW: THE LEDGER ALWAYS RECORDS; ONLY WHAT IS EMITTED FROM IT IS
 // CONFIGURED. A base that is not a router gets a ledger with one row in it, not

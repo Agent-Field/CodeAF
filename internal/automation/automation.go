@@ -1,6 +1,6 @@
 // Package automation is the work codeaf does on a clock: a reminder at six, the
 // weekly update every Monday at nine, a watch on CI that speaks when it goes
-// red. docs/design/automations/DESIGN.md is the design; this package is the
+// red. the implementation is the design; this package is the
 // object, the store, the schedule and the clock. What a run actually DOES —
 // a look, a judgment, a piece of unattended work — is the session's business
 // and arrives through [Runner].
@@ -29,7 +29,7 @@
 //   - AN OUTCOME IS A FACT, NEVER A GUESS FROM PROSE. Work says how it went by
 //     reporting it ([Report]); a run that ends without a report, runs out of
 //     time, hits its cap or loses its provider is `incomplete` with the reason.
-//     The words are the task-state words (docs/design/task-states/DESIGN.md):
+//     The words are the task-state words:
 //     done, stopped, incomplete, your call — never "failed".
 //
 //   - NOTHING IS SAVED UNTIL THE PERSON SAYS YES. [Store.Create] is called after

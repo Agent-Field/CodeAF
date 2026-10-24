@@ -122,7 +122,7 @@ func (g *TaskGraph) depthLocked(node *TaskNode) int {
 // that this list and the card the row draws cannot be two accounts of one node.
 // The vocabulary law bans the machinery word for this state from anything
 // anybody reads, and `needs your look` — the word this list used to spell — is
-// deleted with it (docs/design/task-states/DESIGN.md).
+// deleted with it.
 const taskUnverifiedNews = taskWordYourCall
 
 // ── re-addressing, which is not re-delivering ───────────────────────────────

@@ -9,8 +9,6 @@ One page that says where everything is. Start here.
 | **Drive it from a script, CI, or a benchmark** | [HEADLESS.md](HEADLESS.md) — `codeaf do` and `codeaf exec`, exit codes, the `--json` objects, environment, and the rules for measuring it |
 | **Know what it can do, feature by feature** | [FEATURES.md](FEATURES.md) — the master catalog, one entry per capability |
 | **Understand how it is built** | [ARCHITECTURE.md](ARCHITECTURE.md) — the store, the event log, the permanent spine, the resident role |
-| **Know what it promises a person** | [JOURNEY.md](JOURNEY.md) — the product law: one mouth, and the journeys we hold ourselves to |
-| **Measure it** | [../BENCHMARKS.md](../BENCHMARKS.md) — the record of what came back, with its caveats |
 | **Know what it may spend** | [LIMITS.md](LIMITS.md) — every money rail, its default, what fires when it is reached, and where `0` means no limit |
 | **Profile a slow run (developers)** | [DIAGNOSTIC-PROFILE.md](DIAGNOSTIC-PROFILE.md) — opt-in bounded CPU and heap capture of any command |
 | **Keep it fast** | [../PERF.md](../PERF.md) — the size ratchet, the allocation laws, the launch-path pins, and why none of them is a stopwatch |
@@ -19,9 +17,7 @@ One page that says where everything is. Start here.
 
 | Doc | What it covers |
 | --- | --- |
-| [STANDING.md](STANDING.md) | Standing goals — history: the v1 machinery is removed; see [automations](design/automations/DESIGN.md) |
-| [LEARNING.md](LEARNING.md) | Learning that compounds — the notebook, the skill forge, experiments, playbooks, the router |
-| [META.md](META.md) | Meta-learning — the journal as training data about the learning itself |
+| [STANDING.md](STANDING.md) | Standing goals — history: the v1 machinery is removed; see automations |
 | [JOBS.md](JOBS.md) | Background jobs — two primitives, turn-boundary reporting, nothing outlives its leaf |
 | [SERVICES.md](SERVICES.md) | Services — long-running processes the user meant to keep; promotion is consent |
 | [MULTIMODAL.md](MULTIMODAL.md) | Voice, images, documents, media generation — capability for the graph, presence for the chat |

@@ -8,7 +8,7 @@ package session
 // worker cannot wait on a job in somebody else's registry. The stopped-turn door
 // already knows this ([Agent.turnIsWaitingOnItsOwnWork]); the running-turn
 // handover door could not see it, and made a task out of the wait. The measured
-// cell is written up in the review under docs/design/conversation-runtime.
+// cell is written up in the review under the implementation
 //
 // The runtime knows WHICH operations are outstanding and cannot know whether the
 // rest of the request is done, so the dowry ask the handover already makes

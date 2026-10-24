@@ -154,7 +154,7 @@ func (a *Agent) guardianAllows(ctx context.Context, hub *eventHub, call ai.ToolC
 	// WHAT IT OWES INSTEAD IS A WORD, and until now it had none: the batch parks,
 	// the status line says the tool is running, and up to ten seconds pass with a
 	// model being asked a question the person can neither see nor answer. A wait
-	// that is real is reported (docs/design/waiting/DESIGN.md), and this one is as
+	// that is real is reported, and this one is as
 	// real as any. It comes off on every way out, which is what the defer is for.
 	//
 	// AND IT IS SAID OVER THE TOP OF THE BATCH'S OWN WORD RATHER THAN INSTEAD OF

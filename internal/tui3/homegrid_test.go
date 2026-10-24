@@ -12,7 +12,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// ── THE GRID'S LAWS (docs/design/home-mission-control/DESIGN.md §1) ──────────
+// ── THE GRID'S LAWS ──────────
 
 // homeRowOf is the BODY row a word first appears on — the frame's four head
 // rows are the router's, and the tab bar spells three of the panels' words —
@@ -134,10 +134,9 @@ func TestTheRailKeepsTheQuietPanelsAnExtraRowBelowThePinnedPair(t *testing.T) {
 // flush with the right edge at every width it exists at, and no panel is ever
 // drawn between them.
 //
-// THE FIELD NEVER SPILLS SIDEWAYS (owner, 2026-09-15). What will not fit in one
-// column folds, the way it always has at the widths with no second column, so
-// the middle means one thing at every size instead of being a description
-// sometimes and a panel other times.
+// THE FIELD NEVER SPILLS SIDEWAYS. What will not fit in one column folds, the way it
+// always has at the widths with no second column, so the middle means one thing at every
+// size instead of being a description sometimes and a panel other times.
 func TestAtOneEightyTheFieldIsOneColumnAndTheMiddleIsNoPanels(t *testing.T) {
 	a := newSwitchLab(t).open(180, 45)
 	frame := homeText(a)
@@ -222,12 +221,9 @@ func TestTheDescriptionColumnCarriesTheSelectedRowsOwnSentence(t *testing.T) {
 	}
 }
 
-// `needs you` DRAWS ITS QUESTION IN THE DESCRIPTION COLUMN ONLY WHILE ITS ROW IS
-// BEING READ — under the pointer, or under the cursor — on its own row's line,
-// and once; the `?` stays beside the title on every frame. It used to stand in
-// the column whether or not the row was selected (owner, 2026-09-15), and the
-// owner reversed that on 2026-09-17: the mark always shows, the description
-// only under the mouse.
+// `needs you` DRAWS ITS QUESTION IN THE DESCRIPTION COLUMN ONLY WHILE ITS ROW IS BEING
+// READ — under the pointer, or under the cursor — on its own row's line, and once; the `?`
+// stays beside the title on every frame.
 func TestTheNeedsYouQuestionIsInTheColumnOnlyWhileItsRowIsRead(t *testing.T) {
 	lab := newAnswerLab(t, consentQuestion(7, "needs your ok to run bash"), time.Now())
 	a := lab.a
@@ -280,11 +276,10 @@ func TestTheNeedsYouQuestionIsInTheColumnOnlyWhileItsRowIsRead(t *testing.T) {
 // A QUESTION HOME RAISES IS DRAWN IN THE DESCRIPTION COLUMN, beside the row
 // whose `enter` raised it — and the foot does not say it a second time.
 //
-// Until the column existed the grid had nowhere to put the card: it belongs to
-// the detail column beside the typed search, which is not up at rest, so a
-// raised question left only its one-line foot version appended to the resting
-// sentence. A person pressing enter saw the bottom of the screen change and read
-// it as noise (owner, 2026-09-15).
+// Until the column existed the grid had nowhere to put the card: it belongs to the detail
+// column beside the typed search, which is not up at rest, so a raised question left only
+// its one-line foot version appended to the resting sentence. A person pressing enter saw
+// the bottom of the screen change and read it as noise.
 func TestARaisedQuestionIsDrawnInTheDescriptionColumnAndNotOnTheFoot(t *testing.T) {
 	lab := newAnswerLab(t, consentQuestion(7, "needs your ok to run bash"), time.Now())
 	a := lab.a
@@ -316,11 +311,7 @@ func TestARaisedQuestionIsDrawnInTheDescriptionColumnAndNotOnTheFoot(t *testing.
 	}
 }
 
-// THE `?` LEADS THE ROW, ALWAYS, and the question in the description column
-// wears none. The mark used to move beside the question on a frame whose column
-// drew the question permanently (owner, 2026-09-15); the question is drawn only
-// while the row is being read now, and the owner asked (2026-09-17) that the
-// mark always show — so it stands beside the title on every frame.
+// THE `?` LEADS THE ROW, ALWAYS, and the question in the description column wears none.
 func TestTheNeedsMarkLeadsTheRowAndNotTheQuestion(t *testing.T) {
 	lab := newAnswerLab(t, consentQuestion(7, "needs your ok to run bash"), time.Now())
 	a := lab.a
@@ -361,12 +352,10 @@ func TestTheNeedsMarkLeadsTheRowAndNotTheQuestion(t *testing.T) {
 	}
 }
 
-// AND A FRAME TOO SHORT FOR THE CARD FALLS BACK TO THE FOOT rather than drawing
-// a cut one. A card with its closing edge, its keys and usually an answer off
-// the bottom of the screen is a decision a person cannot answer; the one-line
-// foot version exists for exactly the frames with no room for a card, and this
-// is one of them (owner, 2026-09-15: "what happens if we run out of vertical
-// space?").
+// AND A FRAME TOO SHORT FOR THE CARD FALLS BACK TO THE FOOT rather than drawing a cut one.
+// A card with its closing edge, its keys and usually an answer off the bottom of the
+// screen is a decision a person cannot answer; the one-line foot version exists for
+// exactly the frames with no room for a card, and this is one of them.
 func TestAFrameTooShortForTheQuestionCardSaysItOnTheFootInstead(t *testing.T) {
 	lab := newAnswerLab(t, consentQuestion(7, "needs your ok to run bash"), time.Now())
 	a := lab.a
@@ -567,7 +556,7 @@ func TestAHeadingExplainerIsDimAndGivesWayBeforeTheHeadingIsCut(t *testing.T) {
 
 // A WHISPER NEVER OUTRANKS A ROW. When a short frame has to drop a whole
 // panel, the panels that are only whispering go first, whatever their keep:
-// a person can open a row and cannot open a whisper. Lane R2 found a 120×14
+// a person can open a row and cannot open a whisper. A 120×14
 // home that was two whispers and no conversation at all.
 func TestAShortFrameDropsWhisperingPanelsBeforeAnyPanelWithRows(t *testing.T) {
 	lab := newHomeLab(t)
@@ -674,8 +663,7 @@ func focusedTitle(a *app) string {
 	return ""
 }
 
-// THE ARROWS STAY IN THE FIELD AND THE FOOT IS THE RESTING SENTENCE (owner,
-// 2026-09-17). `→` on a field row opens that row's own strip rather than
+// THE ARROWS STAY IN THE FIELD AND THE FOOT IS THE RESTING SENTENCE. `→` on a field row opens that row's own strip rather than
 // crossing to the rail, `←` closes it, and `ctrl+o` still opens the row's
 // folder without the strip. A project's row is not a stop and has no folder
 // door of its own any more.
@@ -748,7 +736,7 @@ func TestASinceYouLeftRowRestsOnTheOneFootAndOpensItsConversationsFolder(t *test
 	t.Cleanup(func() { processOpener = was })
 
 	l := newLiveLab(t)
-	l.task("-alpha", session.TaskIndexEntry{ID: "1", SessionID: "aaaa000000000002", Label: "spark fleet ssh audit", Title: "spark fleet ssh audit",
+	l.task("-alpha", session.TaskIndexEntry{ID: "1", SessionID: "aaaa000000000002", Label: "tower fleet ssh audit", Title: "tower fleet ssh audit",
 		Status: string(session.TaskDone), Outcome: "all up", EndedAt: l.now.Add(-time.Hour)})
 	a := l.open()
 	a.width, a.height = 180, 45
@@ -764,10 +752,9 @@ func TestASinceYouLeftRowRestsOnTheOneFootAndOpensItsConversationsFolder(t *test
 	}
 }
 
-// THE ARROWS WALK THE FIELD AND NEVER LEAVE IT (owner, 2026-09-17): `↓` is
-// the next row of the column, `→` is the row's own strip and not the rail,
-// `←` closes it, and `↑` off the top row stays there rather than climbing onto
-// the tab bar.
+// THE ARROWS WALK THE FIELD AND NEVER LEAVE IT: `↓` is the next row of the column, `→` is
+// the row's own strip and not the rail, `←` closes it, and `↑` off the top row stays there
+// rather than climbing onto the tab bar.
 func TestTheArrowsWalkTheFieldAndNeverLeaveIt(t *testing.T) {
 	a := newSwitchLab(t).open(120, 45)
 	if got := focusedTitle(a); got != "Porting the Resume Picker" {
@@ -829,11 +816,11 @@ func TestALongTitleIsCutBeforeItsAge(t *testing.T) {
 	}
 }
 
-// A PANEL'S FOLD IS A TOGGLE (owner, 2026-09-15). `66 more` under `where you
-// were` is a stop; enter on it opens the panel — every conversation the column
-// can hold, the other panels squeezed to their floors — and the fold now reads
-// `N fewer`, with the cursor still on it. Enter again shuts it. It used to be
-// `66 more · type to find one`, which could not be stood on at all.
+// A PANEL'S FOLD IS A TOGGLE. `66 more` under `where you were` is a stop; enter on it
+// opens the panel — every conversation the column can hold, the other panels squeezed to
+// their floors — and the fold now reads `N fewer`, with the cursor still on it. Enter
+// again shuts it. It used to be `66 more · type to find one`, which could not be stood on
+// at all.
 func TestEnterOnAFoldOpensThePanelAndAgainShutsIt(t *testing.T) {
 	a, _ := homeTabsFixture(t)
 	a.height = 14

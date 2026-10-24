@@ -559,8 +559,6 @@ var settingUI = map[string]settingMeta{
 	// this door and `codeaf config` say the same word.
 	config.KeyHints: {
 		tab: tabWorkspace, label: "disable hints", widget: widgetToggle,
-		// NO `about` OF ITS OWN: the line under the row is the registry's hint,
-		// the owner's own wording (2026-09-24), said once ([settingMetaFor]).
 	},
 	config.KeySplitPct: {
 		tab: tabDisplay, label: "chat width", widget: widgetText,
@@ -3875,7 +3873,7 @@ func (s *sheet) footNote() string {
 		}
 	}
 	// The path is READ from internal/config rather than spelled here, so the one
-	// late rename (docs/CHAT-V3.md, Decision 26) moves the sentence a person
+	// late rename moves the sentence a person
 	// reads along with the directory it names.
 	return "saved to your profile · a project's own " + config.ProjectConfigDir + "/" + config.ProjectConfigFile + " is a hand edit"
 }

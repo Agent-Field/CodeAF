@@ -113,7 +113,7 @@ func engineDoors(t *testing.T) map[string]bool {
 
 // doorsStillOnTheLoop is the DEBT this law NAMES rather than hides.
 //
-// THE ANSWER ROAD IS CLOSED AND THE REST OF THE SURFACE IS NOT. This lane fixed
+// THE ANSWER ROAD IS CLOSED AND THE REST OF THE SURFACE IS NOT. this test fixed
 // the road a QUESTION'S ANSWER travels — every `Resolve…`, the dial, the record
 // a switch rebuilds from — because that is where the ten-second freeze was
 // measured and where a stalled call costs a person a decision rather than a

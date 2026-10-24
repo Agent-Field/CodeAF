@@ -107,7 +107,7 @@ package session
 // ── AND A PAUSE THAT BOUGHT NOTHING IS PAID ONCE, NOT ON EVERY TASK ──
 //
 // That bargain was written for a pause that happens once. Measured on the
-// owner's laptop, 2026-09-11: ninety-three nodes admitted over three days, every
+// regression scenario: ninety-three nodes admitted over three days, every
 // one of them grounded on the snapshot rung, and every one of them had first
 // attached, sealed and forked its whole workspace and thrown the fork away —
 // about fifteen seconds in front of each task's first request, for a rung that

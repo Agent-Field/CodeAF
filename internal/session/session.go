@@ -13,7 +13,7 @@
 // schedule, tool parallelism — follows internal/exec/bare, with
 // three deliberate differences: it is interactive (Submit between turns, not
 // one task to the end), interruptible (Interrupt cancels the in-flight turn
-// and keeps the partial), and its compaction follows docs/CHAT-V3.md
+// and keeps the partial), and its compaction follows the implementation
 // Decision 9 (omp's architecture: threshold = window − max(15%, 16k), keep
 // 20k tokens verbatim, one LLM summary with omp's section contract, the pass
 // journaled as a transcript marker).
@@ -451,7 +451,7 @@ const (
 	// APPROVES. A task proposal's countdown ends in a yes because it is a window
 	// to redirect ordinary work; this one may not, because a program that ran
 	// because nobody answered would be exactly the silent auto-execution the
-	// whole path is built to prevent (docs/SUBHARNESS-PRD.md §9). It is answered
+	// whole path is built to prevent. It is answered
 	// through [Agent.ResolveSubharness] — true runs it, with the form as the
 	// person left it — and a surface that ignores this kind runs nothing at all,
 	// which is the correct behaviour rather than a degradation.
@@ -2401,7 +2401,7 @@ type Config struct {
 	// conversation — the conversation and every subharness leaf keep the
 	// seven file tools whatever the variable says, which is what lets both
 	// arms of the comparison run from one binary
-	// (docs/design/bash-task-loop/DESIGN.md).
+	//.
 	bashBelt bool
 
 	// reviseDesign is the one extra hand a design thread has, and the whole of

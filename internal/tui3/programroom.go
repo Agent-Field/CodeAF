@@ -649,21 +649,14 @@ func (a *app) programRoomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 
 // ── THE HEAD: ONE TITLE, AND THE BRIEF BEHIND A DROPDOWN ─────────────────────
 //
-// A program's room used to open under two titles: the trail's crumb — the
-// conversation's name, which a conversation named after its work spells the
-// same as the task — and the task's own bold title under it, and a third in the
-// box's `Reading:` label. The owner asked on 2026-09-25 for one: the head is
-// the title row alone (the task's name, its badge, the dropdown, the pinned
-// facts), and the brief the program was handed is behind the dropdown. The
-// way back is `esc`, named on the key line, and the side list's `‹ Back to
-// main`.
+// A program's room used to open under two titles: the trail's crumb — the conversation's
+// name, which a conversation named after its work spells the same as the task — and the
+// task's own bold title under it, and a third in the box's `Reading:` label. The way back
+// is `esc`, named on the key line, and the side list's `‹ Back to main`.
 //
-// THE OPEN BRIEF IS THE BODY, NOT THE HEAD. It was drawn between the head's
-// rules, pinned and cut to half the frame, and a brief of a few thousand words
-// — which is what codeaf hands a program — was mostly a count of lines not
-// shown. The owner asked on 2026-09-28 for all of it, scrollable: so it takes
-// the body the steps were in, the room's wheel and page keys read it, and the
-// steps come back where they were (programbrief.go).
+// THE OPEN BRIEF IS THE BODY, NOT THE HEAD. It was drawn between the head's rules, pinned
+// and cut to half the frame, and a brief of a few thousand words — which is what codeaf
+// hands a program — was mostly a count of lines not shown.
 
 // programBriefChevron is the dropdown on the title row: shut, or open.
 func programBriefChevron(open bool) string {

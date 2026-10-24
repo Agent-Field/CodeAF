@@ -58,7 +58,7 @@ import (
 // restrictions and data policy" — rather than the price that did it. Adding
 // that sentence to the list bought exactly one more sentence of coverage; the
 // next unfamiliar phrasing is the same outage again. Rule 1 of
-// docs/design/failsafe/FAILSAFE.md is the general form of that lesson: a
+// the implementation is the general form of that lesson: a
 // fail-safe detects by STRUCTURE or it is decoration.
 //
 // The structural facts are all available without reading a word of the message:
@@ -104,7 +104,7 @@ func endpointRefusalStatus(status int) bool {
 // endpointRefusalPhrases is the vocabulary a router has been SEEN to refuse a
 // parameter combination in. It is a HINT and no longer the gate — the header
 // above says what replaced it and what its remaining job is. Rule 1 of
-// docs/design/failsafe/FAILSAFE.md is why it is a hint: a phrase list is
+// the implementation is why it is a hint: a phrase list is
 // evidence, never the classification.
 var endpointRefusalPhrases = []string{
 	"no endpoints found",
@@ -172,7 +172,7 @@ func ignoredEverything(body []byte) bool {
 // and it is one the router states on every model, which is why it is kept for
 // every model (internal/lane's account.go).
 //
-// IT IS DECIDED BY STRUCTURE FIRST (docs/design/failsafe/FAILSAFE.md rule 1).
+// IT IS DECIDED BY STRUCTURE FIRST.
 // The live router's body carries `error.metadata.ineligibility_reasons`, one
 // object per reason a machine was removed, and a reason that is the account's
 // is one the person can CHANGE — it carries the `configure_url` of the setting
@@ -336,7 +336,7 @@ const overflowCode = "context_length_exceeded"
 
 // overflowPhrases is what a body that carries no code and no status says
 // instead. It is a HINT and never the gate, in [endpointRefusalPhrases]'s sense
-// and for docs/design/failsafe/FAILSAFE.md rule 1's reason: the phrases are
+// and for the implementation rule 1's reason: the phrases are
 // evidence that something structural is true, and the day a provider rewords one
 // the code and the status still answer.
 //
@@ -667,7 +667,7 @@ const maxFallbackModels = 2
 // counted its OWN hops and read `options[len(hopped)]`, so a chain the adapter
 // had already walked was re-walked from the top.
 //
-// ONE MODEL HOP, AND IT BELONGS TO THE SESSION (docs/design/recovery §4, "what
+// ONE MODEL HOP, AND IT BELONGS TO THE SESSION (the implementation §4, "what
 // the session keeps"). The adapter owns the request's SHAPE — which machine,
 // which knobs, which ceiling — and hands back a refusal naming what it tried; the
 // layer that owns the turn decides whether a different model is worth asking,
@@ -684,7 +684,7 @@ const maxFallbackModels = 2
 // rungs this request has, in which order, spelled how — because that is a fact
 // about the request's shape and the encoder is the only layer that knows it. The
 // walk moved because a second loop counting its own rungs is a second budget,
-// which is the shape docs/design/recovery/DESIGN.md §4 deleted: the rungs reach
+// which is the shape the implementation §4 deleted: the rungs reach
 // [control.Next] as [control.Plan.Shapes] and come back one at a time.
 
 // widenPastTheUncarriedPreference is the ONE retry that finds out whether a
@@ -854,7 +854,7 @@ func (c *Client) attemptShaped(
 // THAT CHOICE IS NOT THIS LAYER'S TO MAKE AND NO LONGER IS. `recoverFromPacing`
 // walked [Client.fallbackChain] here, silently, on a budget nobody above could
 // see, while internal/session's turn loop walked the same list for the same
-// reason — the second of the two model-hop mechanisms docs/design/recovery §2.2
+// reason — the second of the two model-hop mechanisms the implementation §2.2
 // counts. The paced error now travels back whole: the boundary reads it as the
 // wire ([taxonomy.Transport]), the turn spends its own budget on it, and if that
 // budget runs out the ONE model hop in this build takes it to the next model,
@@ -1035,7 +1035,7 @@ func (c *Client) sentParams(request *ai.Request, knobs callKnobs, model string) 
 	if request == nil {
 		return nil
 	}
-	// NAMES AND NEVER VALUES. The pi-derived retry taxonomies above this adapter
+	// NAMES AND NEVER VALUES. The retry taxonomies above this adapter
 	// (internal/session's loop.go, internal/exec/bare's) classify an error by
 	// grepping its TEXT for "429", "500", "503" — so an honest "max_tokens(500)"
 	// in this sentence would make a permanent, already-exhausted refusal look

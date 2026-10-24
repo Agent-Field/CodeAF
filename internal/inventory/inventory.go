@@ -94,7 +94,7 @@ type Inventory struct {
 	Lockfiles   []string `json:"lockfiles,omitempty"`
 	EnvVarNames []string `json:"env_var_names,omitempty"`
 	// Running, Withheld and Detached are what the chat left behind that a seal
-	// does not carry (docs/STAGE-1-CONTRACTS.md section 19). The harness writes
+	// does not carry. The harness writes
 	// them from what it sees and nothing else does (L13); Omitted counts, per
 	// list, the entries a bound cut.
 	Running  []Running      `json:"running,omitempty"`

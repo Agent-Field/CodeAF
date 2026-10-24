@@ -255,7 +255,7 @@ import (
 // only the door can tell those two builds apart.
 // VERSION 14 CARRIES THE QUESTIONS LANE, and it is the last of the standing
 // lanes to cross. A question is one decision handed to a person with its
-// evidence attached (docs/design/questions/DESIGN.md), and internal/session
+// evidence attached, and internal/session
 // speaks every one of them on a subscription of its own that outlives the turn
 // — [session.Agent.WatchQuestions], which replays everything still open the
 // moment a surface attaches. That subscription had no frame here, so a hosted
@@ -288,7 +288,7 @@ import (
 // permanently dark, with nothing on the screen saying why. Refused at the door,
 // a person is told their engine is an older codeaf; accepted, they would be told
 // nothing at all and their turn would simply stop. NEVER TO SILENCE.
-// VERSION 15 IS AN ANSWER THAT IS A MESSAGE (docs/design/questions/DESIGN.md).
+// VERSION 15 IS AN ANSWER THAT IS A MESSAGE.
 // A question the model asks no longer exists only for as long as the call that
 // asked is parked on it: the answer is delivered to the conversation, which is
 // what lets the model carry on while somebody decides, lets a clock take the
@@ -530,7 +530,7 @@ const (
 	MethodConsent               = "ResolveConsent"         // ConsentArgs → nothing
 	MethodConsentRemember       = "ResolveConsentRemember" // ConsentArgs → nothing
 	// MethodQuestionResolve is the ONE door for an answer to any question, over
-	// the wire (docs/design/questions/DESIGN.md). It carries
+	// the wire. It carries
 	// [session.Answer] whole — the lane, the token, the keys, the words beside
 	// them, the notes on parts, the exchanges, the blanks, the dial, the scope —
 	// and the engine reads the lane off it and applies it through that lane's own
@@ -947,12 +947,12 @@ type Hello struct {
 
 	// ── version 4 ───────────────────────────────────────────────────────────
 
-	// Surface is this machine's short name — `macbook`, `spark` — as
+	// Surface is this machine's short name — `macbook`, `laptop` — as
 	// [MachineName] reads it off os.Hostname.
 	//
 	// IT EXISTS SO A SCREEN CAN NAME THE WINDOW THAT HAS THE KEYBOARD. "somebody
-	// else is typing" is a sentence that makes a person hunt; "typing from spark
-	// now" is one they can act on, because they know where spark is. Two windows
+	// else is typing" is a sentence that makes a person hunt; "typing from laptop
+	// now" is one they can act on, because they know where laptop is. Two windows
 	// on ONE machine send the same name, which is how the engine can tell the
 	// far desk from the forgotten terminal behind this one.
 	//
@@ -1492,7 +1492,7 @@ type SkillShelfArgs struct {
 // rather than one broadcast fact. "The driver is macbook" means two different
 // sentences depending on who hears it: to the window sitting on macbook beside
 // it, the honest word is the one codeaf already uses at home — `another window`
-// — and to a surface on spark it is the machine's name. Only the engine knows
+// — and to a surface on laptop it is the machine's name. Only the engine knows
 // both names, so only the engine can answer that; and the SURFACE still owns
 // the words, because the rest of the line it goes in is about keys on this
 // keyboard (Decision 6: the engine machine is the authority, the surface owns

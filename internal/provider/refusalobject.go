@@ -47,7 +47,7 @@ import (
 //
 // The refusal above names the lane twice in English, and reading it out of
 // there would work until the day the router rewords it — which is exactly the
-// failure docs/design/failsafe/FAILSAFE.md rule 1 is about, and exactly what
+// failure the implementation rule 1 is about, and exactly what
 // endpoints.go's phrase list was demoted to a hint for. THE LANE A REFUSAL IS
 // ABOUT IS THE LANE OUR REQUEST DEMANDED, which this process wrote itself, knows
 // exactly, and can read with no parsing at all ([Client.onlyLane]).
@@ -355,7 +355,7 @@ func (c *Client) laneRefusalFor(model, demanded string, err error) laneRefusal {
 		//
 		// AND A POOL THAT NAMED NOBODY IS THE MACHINE WE DEMANDED, when the
 		// request demanded exactly one. The ledger is keyed on WHO SERVED
-		// (docs/design/recovery/DESIGN.md §3 clause 4), and the honest order of
+		//, and the honest order of
 		// answers to that is: the wire's own name, else the one machine this
 		// request permitted, else nothing. A demand of one machine is the whole
 		// serving set, so there is no other machine the queue could have been.

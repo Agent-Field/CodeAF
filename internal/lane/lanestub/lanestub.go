@@ -180,7 +180,7 @@ type Profile struct {
 	// nothing about when to come back, which is the commoner shape.
 	//
 	// IT IS THE ONLY THING THAT MAKES A SECOND SEND TO THE SAME MACHINE LEGAL
-	// (docs/design/recovery/DESIGN.md §3), so it is what a scenario about
+	//, so it is what a scenario about
 	// repeating a request has to be able to state.
 	PacedFor time.Duration
 
@@ -241,7 +241,7 @@ type Lane struct {
 
 	// AccountExcluded is a lane the router SERVES this model from and that the
 	// ACCOUNT'S OWN SETTINGS take away — the paid-model-training privacy switch
-	// on openrouter.ai/settings/privacy, measured against the owner's account on
+	// on openrouter.ai/settings/privacy, observed with an account on
 	// 2026-09-10 for DeepSeek, Fireworks and Wafer.
 	//
 	// IT IS A FACT ABOUT THE ACCOUNT AND THE MACHINE, NOT ABOUT ONE MODEL. The

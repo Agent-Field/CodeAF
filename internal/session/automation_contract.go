@@ -3,7 +3,7 @@ package session
 // automation_contract.go is the shape the engine and a surface agree on for
 // automations: the card a proposal raises, the answer it waits for, the door a
 // conversation's config carries, and the question the card is on the block as.
-// docs/design/automations/DESIGN.md is the design.
+// the implementation is the design.
 //
 // THE QUESTION IS BUILT ONCE, HERE. The standing card it replaces was built in
 // the engine AND again in the surface, and the two copies disagreed about

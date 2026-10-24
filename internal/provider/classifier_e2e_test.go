@@ -10,7 +10,7 @@ import (
 
 // ── FIVE REFUSALS, ONE CALL SITE, ONE VERDICT EACH ──────────────────────────
 //
-// These are the five shapes docs/design/recovery/DESIGN.md §7 R2 names, staged
+// These are the five shapes the implementation §7 R2 names, staged
 // against a REAL router (internal/lane/lanestub) and a real [Client], because
 // what is being proved is the whole road: the refusal door reading the wire into
 // typed facts, [Evidence] carrying them, and [taxonomy.Classify] turning them

@@ -4,9 +4,7 @@ package tui3
 // it on a screen that is not a conversation, read off the row BEFORE the key is
 // pressed, and done by the same table that drew it (homeslash.go's [homeFate]).
 //
-// The owner's ask, in their words: "see what other slash commands need clear
-// indication like that even if it's not usable". So the two claims under test
-// are that every command has a fate, and that the fate on the row is the road
+// The two claims under test are that every command has a fate, and that the fate on the row is the road
 // the dispatch actually takes.
 
 import (
@@ -97,10 +95,8 @@ func TestTheFateReadsTheArgumentWhereItChangesTheAnswer(t *testing.T) {
 
 // ── /project: the pin, and the browser behind it ────────────────────────────
 
-// BARE /project OPENS THE ONE BROWSER, AIMED AT THE TARGET, and a folder
-// confirmed there PINS THE NEXT CONVERSATION'S FOLDER rather than moving the
-// conversation behind home. Home comes back under it with the rule already
-// saying the new folder, which is the whole of what the owner asked to see.
+// BARE /project OPENS THE ONE BROWSER, AIMED AT THE TARGET, and a folder confirmed there
+// PINS THE NEXT CONVERSATION'S FOLDER rather than moving the conversation behind home.
 func TestProjectAtHomeBrowsesForTheTargetAndPinsIt(t *testing.T) {
 	a, _, root := mixedLab(t)
 	runCmd(a.openHome())

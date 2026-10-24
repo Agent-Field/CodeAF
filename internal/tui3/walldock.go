@@ -11,10 +11,8 @@ import (
 
 // ── THE DOCK: EVERY OPEN CONVERSATION, UNDER THE BOX ────────────────────────
 //
-// The wall's door used to be a `⊞` at the right end of the tab strip, which is
-// the far end of the frame from where a person's hands are. The owner asked for
-// it to come down to where people type, so the row under the box ends in a
-// small map of every conversation this window has open:
+// The wall's door used to be a `⊞` at the right end of the tab strip, which is the far end
+// of the frame from where a person's hands are.
 //
 //	› say what you want done
 //	  alt+k chats · / commands                              ▦ All ▪▪▣▪

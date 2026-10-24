@@ -8,7 +8,7 @@
 // unexported inside a package the plain `codeaf do` path could not import, the
 // repository was never photographed, two readings of it were never compared,
 // and patches shipped that deleted attributes the repository already had while
-// their own narrow tests stayed green (docs/design/gate/SETTLEMENT.md §4).
+// their own narrow tests stayed green.
 //
 // Nothing here knows what language the workspace is in, and nothing here is a
 // gate. It discovers, it runs, it reads, and it subtracts; what a caller does

@@ -170,7 +170,7 @@ import (
 //	                  the one that may type (internal/remote's driver.go). A
 //	                  window that is not it becomes a WATCHER: its transcript
 //	                  keeps arriving live, its composer is replaced by one dim
-//	                  line reading `typing from spark now` and
+//	                  line reading `typing from laptop now` and
 //	                  `enter takes it back`, and its draft is KEPT — not
 //	                  cleared, not sent. Enter takes the keyboard back in one
 //	                  round trip and the other window is told in the same

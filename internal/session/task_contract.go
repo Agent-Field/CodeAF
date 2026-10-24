@@ -121,7 +121,7 @@ const TaskKindAdaptive TaskKind = "adaptive"
 // A quick task is the one row today. Nothing checks a quick task — its last
 // message is its answer — so its builder leaves deliverable and acceptance EMPTY
 // rather than inventing a "DONE WHEN" no reader will ever read
-// ([Agent.newQuickSpec], and docs/design/quick-task/DESIGN.md §the judge). Every
+// ([Agent.newQuickSpec], and the implementation §the judge). Every
 // other kind fills one: a design promises a page the person approves
 // (harness_task.go), a run promises the answer its program declares
 // (subharness_run.go), and ordinary work is groomed into one before it is ever

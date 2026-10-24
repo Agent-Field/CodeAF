@@ -211,7 +211,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why does /connect say connections are unavailable", "accounts"},
 		{"connect says unavailable on my own machine", "accounts"},
 		{"credentials.json is damaged but where are my models", "accounts"},
-		// The questions object (docs/design/questions/DESIGN.md), asked the
+		// The questions object, asked the
 		// six ways somebody meets it: the shapes, the clock, the record, the
 		// refusals, answering from elsewhere, and what is not built.
 		{"what kinds of questions does it ask me", "questions"},
@@ -224,7 +224,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it went ahead by itself", "questions"},
 		{"make it ask me every time", "questions"},
 		{"it assumed something wrong", "questions"},
-		// An answer is a message now (docs/design/questions/DESIGN.md), and the
+		// An answer is a message now, and the
 		// three things that fall out of it are asked in the words somebody
 		// reaches for: the work going on around a question, changing their mind
 		// afterwards, and a clock that went with the recommendation.
@@ -243,7 +243,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// And the receipt on a window too narrow for it, asked by somebody who
 		// has just noticed half of their own sentence is not on the line.
 		{"the decided line is missing what I typed", "questions"},
-		// The block (docs/design/questions/DESIGN.md, internal/tui3's
+		// The block (the design notes, internal/tui3's
 		// question.go), asked the five ways somebody meets it: putting one off,
 		// finding it again, what happened when nobody pressed anything, taking
 		// an approval back, and making the asking stop.
@@ -252,11 +252,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did it decide by itself", "questions"},
 		{"undo what I just approved", "questions"},
 		{"stop asking me about rm", "questions"},
-		// And the room form (lane S2): the page a question opens into, and the
+		// And the room form: the page a question opens into, and the
 		// nine things a person does on it. Each one is asked in the words
 		// somebody would actually type rather than in the key's own name.
 		{"can I open a question up to read it properly", "questions"},
-		// And lane R's three, in the asker's own words: the owner asked for
+		// Option comparisons, in the asker's own words: the conversation asked for
 		// exactly these sentences (2026-09-11) and each one is a person
 		// describing the drawing rather than naming a key.
 		{"show me the options side by side", "questions"},
@@ -271,7 +271,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I just let it decide", "questions"},
 		{"stop asking me this kind of thing", "questions"},
 		{"none of the answers it offered are right", "questions"},
-		// Reach (docs/design/questions/DESIGN.md's PRESENCE-AWARE DELIVERY,
+		// Reach (the design notes PRESENCE-AWARE DELIVERY,
 		// ONE STEP ONE PANEL, WITHDRAWN WITH A REASON and FIRST ANSWER WINS), asked the way somebody meets each of them: answering somewhere
 		// else, coming back to a window nobody was at, a pile of them arriving
 		// together, one vanishing, two windows racing, and the setting that
@@ -288,8 +288,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did several questions arrive at once", "questions"},
 		{"answer a whole batch of questions at once", "questions"},
 		{"same answer for all of these", "questions"},
-		// Several questions from one step are tabs with a review (lane T of the
-		// question-views wave), asked the ways somebody meets them: moving
+		// Several questions from one step are tabs with a review, asked the ways somebody meets them: moving
 		// between them, sending them together, and a batch of approvals.
 		{"go back to the previous question", "questions"},
 		{"answer them all at once", "questions"},
@@ -337,7 +336,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"stop adding a co-author trailer to my commits", "permissions"},
 		{"does it sign every comment it leaves on my pull request", "permissions"},
 		{"what is the small drafted with line under its comment", "permissions"},
-		// The owner's rulings on #1410 (2026-09-24): signing has no off, a
+		// the user’s rulings on #1410 (2026-09-24): signing has no off, a
 		// person who had turned it off is told so, and a task landed on the
 		// worker harness, the belt tasks run on by default, names no model.
 		{"I turned attribution off before, why are my commits signed again", "permissions"},
@@ -362,7 +361,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I typed no to the task and it started anyway", "tasks"},
 		{"where did the model chips on the proposal go", "tasks"},
 		{"change which model a task runs on before it starts", "tasks"},
-		// The wire (docs/design/questions/DESIGN.md, internal/remote's
+		// The wire (the design notes, internal/remote's
 		// questionlane.go). Somebody who has just met a question that did not
 		// appear asks about the ROAD, in the words the road is spelled in on
 		// each of them, and about the page that reads another conversation.
@@ -737,7 +736,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"ctrl+b on home does nothing", "keys"},
 		{"can I copy text off the home screen", "keys"},
 		// Copy mode, asked by somebody who wants to get words off the screen.
-		// It was taken out on 2026-09-22 and put back on 2026-09-23 — the owner
+		// It was taken out on 2026-09-22 and put back on 2026-09-23 — the user
 		// wanted the feature kept and only its tip dropped — so these have to
 		// reach the pages that describe it working.
 		{"how do I copy text out of the conversation", "keys"},
@@ -824,7 +823,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what do the up and down arrows next to working mean", "screen"},
 		{"how many tokens is this turn using right now", "screen"},
 		{"do the token arrows show inside a task room", "screen"},
-		// The owner's own words for the gap, 2026-09-10: "at some times I don't see
+		// the user’s own words for the gap, 2026-09-10: "at some times I don't see
 		// infra provider and tok/sec … maybe when I have follow up".
 		{"provider missing", "screen"},
 		{"tok/s not showing", "screen"},
@@ -1485,11 +1484,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// meant it to.
 		{"select a word with the mouse", "keys"},
 		{"why did copying take the whole line instead of the words I dragged over", "keys"},
-		// Selecting inside the BOX, and taking back what was typed there. The
-		// owner asked for both in one sentence — "i am unable to select text
-		// with highlight from input bar in all places … maybe even ctrl+z as
-		// well like undo or redo like shift z" — and the words people reach for
-		// are "input bar", "highlight", "undo", and the chord itself.
+		// Selection and undo in the message box use familiar editing words.
 		{"how do I select text in the message box", "keys"},
 		{"I cannot highlight text in the input bar", "keys"},
 		{"can I drag to select what I typed in the input box", "keys"},
@@ -1648,7 +1643,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"set my daily budget to 5", "what-i-can-do"},
 
 		// THE SPENDING WAVE, in the words of the person asking
-		// (docs/design/spending/DESIGN.md acceptance 9). Money has one editor
+		//. Money has one editor
 		// and many doors, and every one of these is somebody standing at a
 		// different door asking the same question.
 		{"how do I remove the daily limit", "models-and-cost"},
@@ -2005,7 +2000,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// longer to speak up", which is a row in the settings panel and a page
 		// that has to name the right tab of it.
 		{"where is the setting for how long a proposal waits", "tasks"},
-		// And the same state met from inside the task's room, where the owner sat
+		// And the same state met from inside the task's room, where the conversation sat
 		// with `look it over` on the roster and nothing to press on the page.
 		{"how do I approve a task", "tasks"},
 		{"task needs my look but there is no button", "tasks"},
@@ -2104,7 +2099,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// chat will go on describing it from a version that no longer exists.
 		{"what is the diamond symbol next to each task", "tasks"},
 
-		// AND THE ONE THE OWNER ACTUALLY ASKED, in their own words: the column of
+		// AND THE ONE THE USER ASKED, in their own words: the column of
 		// work on the right, and a press on it that opened nothing. Three cells
 		// answered a click and changed nothing on screen — the seam at a width
 		// with no wider tier, the state glyph on a row that could fold, and every
@@ -2166,7 +2161,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"undo started a task", "tasks"},
 		{"fix this one line became a task", "tasks"},
 
-		// The quick task (docs/design/quick-task/DESIGN.md), asked the ten ways
+		// The quick task, asked the ten ways
 		// somebody meets it. Nobody types the word `quick_task`: they describe
 		// the shape of what they wanted or read the row back off the screen, so
 		// each probe is the sentence somebody actually says at the surface —
@@ -2514,7 +2509,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"continue this chat in another terminal", "home"},
 		{"move the conversation to this window", "home"},
 		{"it says open in another window", "home"},
-		// The self-collision wave: the owner's own two sentences on the day a
+		// The self-collision wave: the user’s own two sentences on the day a
 		// plain launch was refused by the engine that was holding the
 		// conversation. The first is what the screen said; the second is what
 		// actually happened next.
@@ -2539,7 +2534,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I bring a conversation back to this window", "home"},
 		// The move wave: the conversation lives in the engine, so a second
 		// terminal opens it rather than asking anybody for it. The first two are
-		// the owner's own words on the day the old road waited ten minutes.
+		// the user’s own words on the day the old road waited ten minutes.
 		{"why does moving a conversation here take so long", "home"},
 		{"it is still running in the other shell can I bring it here", "home"},
 		{"the row says open in the engine", "home"},
@@ -2688,7 +2683,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// looking at the page, at the card's `where` band, or at the one line a
 		// conversation opens with.
 		// A RULE IS A MEMORY MARKED ALWAYS NOW (what-i-remember.md's `Always`
-		// sections; docs/design/automations/DESIGN.md), so the questions about
+		// sections), so the questions about
 		// making one, which rules hold here and how far one reaches are answered
 		// on the memory page. What stood on a clock is an automation, and the
 		// standing page's own words — the page, the count, the line a
@@ -2733,7 +2728,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I make this permanent", "what-i-remember"},
 		{"it didn't notice this was a rule and did it once", "what-i-remember"},
 		{"can I click keeping an eye on 2", "automations"},
-		// THE AUTOMATIONS WAVE (automations.md, docs/design/automations/DESIGN.md):
+		// THE AUTOMATIONS WAVE (automations.md):
 		// a reminder, scheduled work or a watch, on a clock, only while a codeaf
 		// window is open. Asked the ways people meet them — saying one, typing
 		// one exactly, finding the list, a card in front of them, a line or a
@@ -2880,15 +2875,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"is a retired tip gone for good", "hints-and-tips"},
 		{"a tip appeared in my conversation after a while", "hints-and-tips"},
 		{"why does the hint only show up when I stop typing", "hints-and-tips"},
-		// The showing rule, and the day the row went blank: asked by the
-		// owner, whose afternoon of stepping through home had spent the table.
+		// Hints count as shown after enough time on screen; exhausted hints leave no row.
 		{"how long does a tip have to be on screen to count", "hints-and-tips"},
 		{"no hints at all any more, home's row is blank", "hints-and-tips"},
 		{"can I search my conversations with memory off", "places"},
 		{"search says what was said is not indexed", "places"},
 
 		// The wave that made the places follow the session's machine. These are
-		// the owner's own sentences, from the report that started it: they
+		// the user’s own sentences, from the report that started it: they
 		// attached over --host, pressed space-space, got one dim line, and said
 		// "i thought we can open multiple terminals and things would just auto
 		// transfer and work". Every one of these has to land somewhere that
@@ -2900,7 +2894,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"whose projects am I looking at over --host", "places"},
 		{"does the tasks page show the other machine's work", "places"},
 		{"the tasks tab showed work that is not on this machine", "places"},
-		{"what does on spark at the end of the tab bar mean", "places"},
+		{"what does on tower at the end of the tab bar mean", "places"},
 		{"which places work over --host", "places"},
 		{"why does spend say this session is on another machine", "places"},
 		{"can I search my old chats over --host", "places"},
@@ -2922,7 +2916,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I updated codeaf on that machine and it still says the versions differ", "running-on-another-machine"},
 		{"I rebuilt codeaf on my dev box and --host still refuses", "running-on-another-machine"},
 		{"it says the two halves have to be the same build but they are", "running-on-another-machine"},
-		{"it says spark is still running an older codeaf", "running-on-another-machine"},
+		{"it says tower is still running an older codeaf", "running-on-another-machine"},
 		{"how do I stop the thing holding my session on that machine", "staying-on-that-machine"},
 		{"what does codeaf engine --stop do", "staying-on-that-machine"},
 		{"does the session host notice when I rebuild codeaf", "staying-on-that-machine"},
@@ -2936,7 +2930,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I tab complete a path for /attach", "attaching-files"},
 		{"where does an attached file go over --host", "attaching-files"},
 		{"I dropped a file and nothing happened", "attaching-files"},
-		// The wave that made a KEYSTROKE-shaped drop land. The owner met both of
+		// The wave that made a KEYSTROKE-shaped drop land. the conversation met both of
 		// these on a real terminal over --host, and both are asked in the words
 		// they used: the refusal they were given, and what they were looking at
 		// when they gave up on it.
@@ -3009,7 +3003,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"is alt the same as option on a mac", "screen"},
 		{"does ctrl+1 go to a place", "keys"},
 
-		// THE OWNER'S OWN WORDS, on the day the jumps were dead everywhere but
+		// the user’s OWN WORDS, on the day the jumps were dead everywhere but
 		// the message box: "option left right and cmd and clicking does not seem
 		// to work". A person reports the KEY they pressed, never the name the
 		// terminal sent it under, so the page has to answer `option+←` and
@@ -3116,7 +3110,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I turn off endpoint routing", "lanes"},
 		// The picker's lanes, asked by somebody who pressed the arrows and saw
 		// nothing move, and by somebody reading `@cloudflare` on the name
-		// (docs/design/lanes-picker/DESIGN.md).
+		//.
 		{"how do I change the host for a model", "lanes"},
 		{"which host am I pinned to", "lanes"},
 		{"left and right arrows in the model picker do nothing", "lanes"},
@@ -3254,7 +3248,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I list my chats on every machine from the terminal", "running-from-the-terminal"},
 		{"codeaf cell list --all", "running-from-the-terminal"},
 		{"a chat is running on my other computer how does home show it", "home"},
-		{"what does studio offline mean on a chat row", "home"},
+		{"what does tower offline mean on a chat row", "home"},
 		{"home says other machines unreachable", "home"},
 		{"how do I turn on sync between my machines", "running-from-the-terminal"},
 		{"what is CODEAF_SYNC_URL", "running-from-the-terminal"},
@@ -3266,7 +3260,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"is my code private when my chats sync", "use-this-on-another-computer"},
 		{"which relay do my chats sync through by default", "use-this-on-another-computer"},
 		{"how do I continue a chat here that my other computer left", "home"},
-		{"what does last durable turn ago up to turns may still be on studio mean", "home"},
+		{"what does last durable turn ago up to turns may still be on tower mean", "home"},
 		{"my unsaved edits here were kept as turns", "home"},
 		{"how do I discard the turns from a branch row", "home"},
 		{"can I merge a branch from another machine", "home"},
@@ -4537,9 +4531,9 @@ func TestTheDeviceQuestionsReachTheirPages(t *testing.T) {
 	for _, probe := range []struct{ asked, page, says string }{
 		{"why can't I type in this chat", cont, "Your words stay in the box"},
 		{"my message did not send and home opened with a question", cont, "Continue this chat here?"},
-		{"continue on this machine", cont, "Continue spark's latest chat here?"},
-		{"what does running on spark mean", cont, "Move here"},
-		{"what does moved from spark in 3.2s mean", cont, "Everything as you left it."},
+		{"continue on this machine", cont, "Continue tower's latest chat here?"},
+		{"what does running on tower mean", cont, "Move here"},
+		{"what does moved from tower in 3.2s mean", cont, "Everything as you left it."},
 		{"what is the card that says set this machine up", cont, "set up"},
 		{"what does the hollow dot next to a device mean", add, "(offline)"},
 		{"how do I add another computer", add, "On the new device, install and run: codeaf pair"},
@@ -4549,7 +4543,7 @@ func TestTheDeviceQuestionsReachTheirPages(t *testing.T) {
 		{"what is the check number on the new device", add, "Check number 4821. Approve only if"},
 		{"what does codeaf pair --code do", add, "codeaf pair --code"},
 		{"how do I remove a computer", add, "r remove"},
-		{"what does the dot next to a computer mean", add, "○ dumb (offline)"},
+		{"what does the dot next to a computer mean", add, "○ desk (offline)"},
 		{"I was told this computer was removed", add, "this device was removed by another of your devices"},
 		{"how do I rename this computer", naming, "codeaf devices rename \"atlas\""},
 		{"why does it show my hostname", naming, "Because you never named this device"},

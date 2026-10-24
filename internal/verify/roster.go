@@ -7,7 +7,7 @@ package verify
 // THIS CHANGE ADDED OR REMOVED. Both were unanswerable, and the cost of that is
 // measured: two graded runs shipped at exit 0 on deliverables claiming every
 // test passed, over hidden failures in behaviours the request stated and the
-// leaf's own test file never exercised (docs/design/gate/ACCEPTANCE.md).
+// leaf's own test file never exercised.
 //
 // Nothing here knows what language the workspace is in, and nothing here is a
 // gate. A check is recognised by SHAPE — the punctuation and keywords a check
@@ -197,7 +197,7 @@ func DeclaredChecks(source string) []string {
 // two files is added and removed in the same patch and cancels here, which is
 // the honest reading of a move. A check that is only removed is a check that
 // stopped existing, and that is the whole finding
-// docs/design/gate/ACCEPTANCE.md §3 is about — deleting the failing test is the
+// the implementation §3 is about — deleting the failing test is the
 // cheapest way there is to make a suite green.
 //
 // The diff's own headers are skipped: "+++ b/test/foo.test.ts" begins with a

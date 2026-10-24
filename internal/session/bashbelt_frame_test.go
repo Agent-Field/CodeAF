@@ -2,8 +2,7 @@ package session
 
 // THE BASH BELT'S PER-STEP FRAME AND ITS RESUME CLAUSE, AS TESTS.
 //
-// Wave 2 of the bash-only task-loop experiment
-// (docs/design/bash-task-loop/DESIGN.md): the frame a bash-belt worker reads at
+// The bash-belt worker reads a frame at
 // each step boundary, and the one sentence a resumed node's opening carries.
 // What is scripted is only the provider and, for the resume, the flag the
 // interrupt door leaves behind; everything the assertions read — the room's

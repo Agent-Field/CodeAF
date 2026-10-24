@@ -36,14 +36,13 @@ import (
 
 // homeTipLead is the bulb before a tip on the row.
 //
-// IT IS AN EMOJI, AND THAT IS THE OWNER'S RULING (2026-09-22) against the
-// vocabulary's own no-emoji-in-chrome law (internal/tui2/tokens's glyph.go):
-// one bulb, on one row, asked for by name. It is not a slot in the vocabulary
-// because the vocabulary refuses the emoji planes on purpose and its width
-// gate would refuse this one; and it is not the icon law's to own, because the
-// law owns the vocabulary's runes and no other. It measures two cells
-// everywhere the renderer measures, and the row is laid out from that
-// measurement rather than from a guess.
+// IT IS AN EMOJI (2026-09-22) against the vocabulary's own no-emoji-in-chrome law
+// (internal/tui2/tokens's glyph.go): one bulb, on one row, asked for by name. It is not a
+// slot in the vocabulary because the vocabulary refuses the emoji planes on purpose and
+// its width gate would refuse this one; and it is not the icon law's to own, because the
+// law owns the vocabulary's runes and no other. It measures two cells everywhere the
+// renderer measures, and the row is laid out from that measurement rather than from a
+// guess.
 const homeTipLead = "💡"
 
 // homeTipGap is the cell between the bulb and the tip, and between the tip and

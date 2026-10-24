@@ -72,18 +72,16 @@ var Program = delegate.Delegate{
 	// folder is codeaf's to choose and to read: a plain one is handed over
 	// with PlainFolder on the line, so the guide says nothing about git.
 	//
-	// IT CLAIMS THE HARD CODING WORK, BECAUSE THAT IS WHAT IT IS FOR. It said
-	// "one large code change worth an hour", a price no piece of work seems to
-	// clear before it is opened: an issue in a mature project whose cause runs
-	// through several files reads, from its report, as a few edits the chat
-	// could make itself. The owner asked on 2026-09-24 that codeaf reach for
-	// senior-dev by itself on complicated, many-sided coding work, the kind a
-	// hard software-engineering benchmark is made of, so the guide names that
-	// work, and the paragraph it is printed under says codeaf prefers a program
-	// for whatever its guide claims (internal/session/delegate_door.go). THE
-	// BRIEF CARRIES THE ISSUE IN FULL: a summary of a bug report is the one
-	// thing senior-dev cannot check against, since there is nobody it can ask
-	// what the report said.
+	// IT CLAIMS THE HARD CODING WORK, BECAUSE THAT IS WHAT IT IS FOR. It said "one large code
+	// change worth an hour", a price no piece of work seems to clear before it is opened: an
+	// issue in a mature project whose cause runs through several files reads, from its
+	// report, as a few edits the chat could make itself. codeaf reaches for senior-dev by
+	// itself on complicated, many-sided coding work, the kind a hard software-engineering
+	// benchmark is made of, so the guide names that work, and the paragraph it is printed
+	// under says codeaf prefers a program for whatever its guide claims
+	// (internal/session/delegate_door.go). THE BRIEF CARRIES THE ISSUE IN FULL: a summary of
+	// a bug report is the one thing senior-dev cannot check against, since there is nobody it
+	// can ask what the report said.
 	Guide: programguide.SeniorDev,
 	Lands: delegate.LandsTree,
 	// Its recorder is git unless it is told --in-place, which keeps its

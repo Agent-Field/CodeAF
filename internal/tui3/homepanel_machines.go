@@ -14,7 +14,7 @@ import (
 //
 // A chat somebody left running on another computer is a row like any other, in
 // the place they look for their chats. Its words come whole from [chatlist]
-// (`running on studio`, `studio offline`, `2 turns from studio: merge / discard`),
+// (`running on desktop`, `desktop offline`, `2 turns from desktop: merge / discard`),
 // so this screen and `codeaf cell list --all` never spell them twice.
 //
 // THE EMPTINESS LAW DECIDES WHAT IS SAID. A chat this machine holds says
@@ -113,7 +113,7 @@ func (m machineReading) into(in *homeGridInput, own []homeLine) homePanelRows {
 
 // lines are the rows to draw: none of the kind that only this machine can hold,
 // and none for a chat this machine already lists unless another machine holds it
-// live. That one is drawn WITH its door (`running on studio`, enter takes it),
+// live. That one is drawn WITH its door (`running on desktop`, enter takes it),
 // because the local row of a chat taken elsewhere is a stale window, and the way
 // back to it is the same take the cold path runs.
 func (m machineReading) lines(in *homeGridInput, own []homeLine) []homeLine {

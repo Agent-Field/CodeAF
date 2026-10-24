@@ -258,20 +258,6 @@ def escalations(session):
 # the assistant's reply and can be read back rather than caught on a frame.
 PRE_TURN_LINE = re.compile(r"this looked like work, so task (\d+) (started|queued)")
 
-# Wave 1d's three mechanisms, each by its own exact bytes (internal/session's
-# route_judge.go and checkpoint.go). They are kept as separate constants rather
-# than one alternation because WHICH of them fired is the measurement: they are
-# three different answers to the same failure and a row that merged them would
-# say only "something happened".
-# WAVE 1E RENAMED MOST OF THESE, AND THE RENAME COST A WHOLE WAVE'S READING.
-# The 1d detectors matched the exact sentences of the 1d binary; c0e4f5a7 changed
-# the raced screen to TRIAGE (it no longer converts with a note of its own) and
-# rewrote the checkpoint ask, so every 1e cell read `route=none, marks=0` over
-# mechanisms that may well have run. The lesson is in the matching now: the mark
-# is counted by the STABLE `[checkpoint]` PREFIX the harness itself keys on
-# (checkpoint.go's isCheckpointNote), not by the sentence after it, and every
-# conversion note is listed so a future rename shows up as a new value rather
-# than as silence.
 RACE_NOTE = "this reads like work · moving it to a task that is watched and can split"   # 1d only
 SPLIT_NOTE = "this has parts · handing it to a task that can take them side by side"      # 1e
 CEILING_NOTE = "this is running long · moving it to a task that is watched and can split"
@@ -286,16 +272,7 @@ HANDOFF_OPEN = "[handing over]"
 
 
 def mark_lines(session):
-    """Wave 1f journals its own decisions, so they are READ rather than inferred.
-
-    Every mark writes a `mark` line (n, rounds, model, costUsd, sketch, decision)
-    and the last one writes a `ceiling` line (rounds, decision, taskId). Until 1f
-    the sidecar was invisible — it is an auxiliary call, never a message — and
-    wave 1e had to be reconstructed from the SHAPE of untagged usage records.
-    That heuristic is now retired: where the journal states the decision, the
-    journal is the source, and the shape-based reader below stays only as the
-    fallback for the older waves whose stores predate these lines.
-    """
+    """Read checkpoint decisions from journal marks and ceiling records."""
     marks, ceiling = [], None
     for entry in transcripts(session):
         kind = entry.get("type")
@@ -314,21 +291,7 @@ def mark_lines(session):
 
 
 def divisions_journaled(session):
-    """Every division PUT TO THE ROAD, from wave 1g's own `division` lines.
-
-    Until 1g a division could only be seen indirectly — a divide_work call in a
-    worker's journal, or children appearing under a parent — and a division that
-    was REFUSED left almost nothing to read. The line now states all of it:
-    who asked (`sketch` when the harness submitted it on the worker's behalf
-    before its first request, `worker` when the worker reached for the verb
-    itself), how many parts were requested, how many were admitted, and the
-    decision, which is `admitted` or `refused:<gate>`.
-
-    Both sources matter and they are different claims. A `sketch` division is the
-    harness acting on the mark reader's drawing; a `worker` division is the model
-    doing what four earlier waves could not make it do. A row that merged them
-    would lose exactly the distinction wave 1g exists to test.
-    """
+    """Read admitted divisions and distinguish sketch and worker sources."""
     out = []
     for entry in transcripts(session):
         if entry.get("type") != "division" or not entry.get("division"):
@@ -337,13 +300,6 @@ def divisions_journaled(session):
         out.append({"task_id": d.get("taskId"), "source": d.get("source"),
                     "requested": d.get("requested"), "admitted": d.get("admitted"),
                     "decision": d.get("decision"),
-                    # WHY, and WHAT IT WAS ABOUT. Wave 1h carries the reviewer's
-                    # own reason and the titles it was asked to approve, which is
-                    # the difference between "refused" and a refusal a person can
-                    # argue with. `refused:review-unreached` is its own decision:
-                    # the adjudicating reviewer was never called at all, which is
-                    # what 1g turned out to be doing and what no counter could
-                    # have told us.
                     "error": d.get("error") or "",
                     "parts": d.get("parts") or []})
     return out
@@ -400,21 +356,8 @@ def mark_reader(session):
 
 
 def call_lines(session):
-    """The per-request `call` lines wave 1e added, summed and grouped.
-
-    Each is one request: model, ENDPOINT, tokens and the billed costUsd. Two
-    things come out of it that no earlier wave could see. The bill is now a sum
-    of requests rather than one rolled-up usage record, so `cost_usd_calls` can
-    be checked against the usage total instead of trusted. And the endpoint is
-    named, which is the only way to see what the new latency-under-a-price-
-    ceiling routing actually DID — a routing default is a claim about which
-    endpoint served the turn, and this is the evidence for it.
-    """
+    """Sum per-request call records by endpoint and role."""
     total, endpoints, tok, n = 0.0, {}, {"input": 0, "output": 0, "cache_read": 0}, 0
-    # WAVE 1F MADE THE SUM OF CALL LINES THE BILL. Every auxiliary call now
-    # writes one with its `role`, so the gap wave 1e measured — $0.62 of
-    # mastermind sidecar that the call lines did not carry — is closed, and the
-    # spend can be attributed to the role that caused it rather than to a total.
     by_role = {}
     for entry in transcripts(session):
         if entry.get("type") != "call":
@@ -439,15 +382,7 @@ def call_lines(session):
 
 
 def mechanisms(session):
-    """Which of wave 1d's three doors fired, and how far the turn got.
-
-    The order below is the order the harness itself would reach them, and it is
-    also the order of decreasing "the model was given a chance": the raced screen
-    converts before the model answers, a checkpoint converts a turn the model was
-    already grinding, and the ceiling is the harness giving up on asking. A
-    propose_task with no checkpoint before it is the model reaching for the verb
-    on its own, which is the thing every earlier wave failed to produce.
-    """
+    """Read which routing mechanisms fired and how far the turn progressed."""
     entries = transcripts(session)
     marks = 0
     race = ceiling = handoff = split = nothing_left = False
@@ -703,11 +638,6 @@ def main():
     else:
         route = "none"
 
-    # THE BILL. From wave 1f every auxiliary call writes a `call` line with its
-    # role, so their sum IS the bill and is preferred. Older stores have no call
-    # lines and fall back to the usage records, which is what every earlier wave
-    # was measured on — both figures stay in the row so the two can be compared
-    # rather than silently swapped.
     spend_calls = calls["cost_usd_calls"]
     if calls["calls"] > 0 and spend_calls > 0:
         billed, billed_source = spend_calls, "call-lines"

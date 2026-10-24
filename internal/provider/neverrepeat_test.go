@@ -19,7 +19,7 @@ import (
 
 // ── NEVER REPEAT ────────────────────────────────────────────────────────────
 //
-// The census (docs/design/recovery/census-20260910.md) counted 226 of 428
+// The census counted 226 of 428
 // multi-attempt chains that never left the lane they started on, and three that
 // spent sixteen and seventeen consecutive sends on one machine over eleven
 // minutes. Every one of those was this transport re-sending bytes it had
@@ -332,11 +332,10 @@ func alonePool(t *testing.T) (*Client, func() int, *[]time.Duration) {
 
 // A CONVERSATION NEVER WAITS OUT A WINDOW WHILE ANOTHER MODEL EXISTS.
 //
-// THE OWNER'S RULING, 2026-09-10: nobody should ever work around a `too many
-// requests` by switching models themselves. When every machine this request may
-// go to is being held, the call gives the refusal straight back — `pacingExhausted`
-// reads it as the pacing door it is (endpoints.go) and the session offers the
-// next model, which beats any window.
+// The recovery rule: nobody should ever work around a `too many requests` by switching
+// models themselves. When every machine this request may go to is being held, the call
+// gives the refusal straight back — `pacingExhausted` reads it as the pacing door it is
+// (endpoints.go) and the session offers the next model, which beats any window.
 func TestAWatchedCallWithEveryMachineHeldGivesUpAtOnce(t *testing.T) {
 	client, served, waits := alonePool(t)
 	ctx := WithLaneChoice(context.Background(), lanes.Choice{Only: []string{"Alone"}})

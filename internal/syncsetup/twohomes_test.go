@@ -28,12 +28,12 @@ import (
 
 // The two-home rig: one identity on two machines that share nothing but a relay
 // with a store, in this process, with the real engine over spawn and a scripted
-// model. Machine A is "spark", machine B is "blackmac". B never sees A's disk,
+// model. Machine A is "laptop", machine B is "desktop". B never sees A's disk,
 // git remote or credentials: everything it gets, it gets from the relay.
 
 const (
-	nameA = "spark"
-	nameB = "blackmac"
+	nameA = "tower"
+	nameB = "laptop"
 )
 
 // twoHomes is a driveRig with what the take side needs on top of it.

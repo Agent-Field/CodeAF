@@ -3,7 +3,7 @@
 // one input line — the person types, the agent works, and what it does streams
 // back as it happens.
 //
-// It is deliberately less than docs/CHAT-V3.md describes. The rooms,
+// It is deliberately less than the implementation describes. The rooms,
 // the cards and the node drill-in all belong to the tasker, and the tasker is
 // not attached yet: when it is, it arrives as extra tools inside the session
 // and extra panes beside this one. Until then a surface that draws a rail
@@ -728,7 +728,7 @@ type Options struct {
 	// the door only has to point a config at it.
 	//
 	// The workspace is the project the cursor was on, or the person's home
-	// directory when it was on none (docs/AMBIENT.md Part 5).
+	// directory when it was on none.
 	//
 	// IT TAKES ONE STRUCT AND NOT FOUR ARGUMENTS. The composer layer settles
 	// three things before a sentence leaves it — where it runs, what the work

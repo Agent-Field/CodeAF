@@ -37,10 +37,10 @@ func TestTypingANameSavesItThroughTheDoorAndTheRowShowsIt(t *testing.T) {
 	door := devicesFake()
 	a, r := renameApp(t, door)
 	r.press("n", "ctrl+u")
-	r.typeText("studio r")
+	r.typeText("host-a r")
 	r.press("enter")
-	r.until("saved", func() bool { return strings.Contains(plain(frame(a)), "● studio r") })
-	if door.did() != "rename:studio r" {
+	r.until("saved", func() bool { return strings.Contains(plain(frame(a)), "● host-a r") })
+	if door.did() != "rename:host-a r" {
 		t.Fatalf("door: %s", door.did())
 	}
 	if c := a.pair.card.(*deviceCard); c.typing() {
@@ -92,14 +92,14 @@ func TestRenameFieldGolden(t *testing.T) {
 	golden := map[int][]string{
 		80: {
 			"› ● this mac  Mac    this device",
-			"  ○ dumb      Mac    seen 3h ago",
-			"  ○ spark     Linux  offline",
+			"  ○ desk      Mac    seen 3h ago",
+			"  ○ tower     Linux  offline",
 			"name this device: this mac▏",
 		},
 		40: {
 			"› ● this mac  Mac    this device",
-			"  ○ dumb      Mac    seen 3h ago",
-			"  ○ spark     Linux  offline",
+			"  ○ desk      Mac    seen 3h ago",
+			"  ○ tower     Linux  offline",
 			"name this device: this mac▏",
 		},
 	}

@@ -16,7 +16,7 @@ import (
 // A member's handle, chosen by the conversation's own title model.
 //
 // A handle is ONE lowercase word naming what the conversation is about:
-// @security for "santosh dev2 branch code complexity & security review",
+// @security for "example dev2 branch code complexity & security review",
 // @milestones for "CodeAF repo issue tags & milestones", @gravity for "quantum
 // gravity research updates / session monitor". The word list in internal/teams
 // ([teams.DeriveHandle]) guesses one at once, so a member is addressable the

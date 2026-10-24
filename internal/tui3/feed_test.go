@@ -29,7 +29,7 @@ func TestFinalTruncatedErrorWithdrawsOnlyItsUnfinishedReply(t *testing.T) {
 }
 
 // TestOneCallBecomesOneRowFromTheFirstFragmentToTheResult drives the reducer
-// with NO VIEW BEHIND IT AT ALL, which is the half of the law this lane is for:
+// with NO VIEW BEHIND IT AT ALL, which is the half of the law this test is for:
 // a transcript is grown by [feed] and by nothing else, so a feed with no hooks
 // installed has to produce the same one row a chat does — arriving, queued,
 // running, resolved — rather than four.
