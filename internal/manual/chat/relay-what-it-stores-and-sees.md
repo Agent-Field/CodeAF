@@ -47,3 +47,13 @@ not yet create scoped clients. The hosted Worker does not yet support this proto
 
 The HTTP contract is `docs/relay-clients.md` in the source tree. An empty method
 list allows offline reads only; adding methods requires a new paired key.
+
+## Client slots and offline snapshots
+
+A full device can replace a named sealed slot for one scoped client of the same
+identity. Only that client reads the slot. The relay adds the writer device and
+write time; readers can show when a snapshot was last refreshed. Each client has
+at most 64 slots, each at most 64 KiB, expiring after 24 hours. Revoking the client
+deletes its slots. The relay sees ciphertext and slot names, so names must not
+contain private content. Slots persist across relay restarts. The publishing box
+must seal to the client's current key and respect chat lease ownership.

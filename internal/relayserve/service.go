@@ -117,6 +117,7 @@ func New(cfg Config) *Service {
 	fullAuth := fabric.fullAuth
 	dirs := logged(cfg.Logf, fabric.directoryHandler(directory.Handler(fullAuth, svc.ns.directory)))
 	mux.Handle("/v1/clients/", logged(cfg.Logf, fabric.handler()))
+	mux.Handle("POST /v1/dir/devices/{device}/revoke", logged(cfg.Logf, fabric.serve(revokeClient)))
 	mux.Handle("/v1/dir/", dirs)
 	mux.Handle("/v1/identity/", dirs)
 	mux.Handle(directory.LinkPath+"/", logged(cfg.Logf, directory.LinkHandler(links, peerOf(cfg))))
