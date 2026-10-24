@@ -16,7 +16,7 @@ import (
 )
 
 func (s *Sync) clusterClient() clusterctl.Client {
-	return clusterctl.Client{Base: s.Relay, Sign: reqsign.SignFor(deviceSigner{s.Identity, s.Device}, time.Now), HTTP: gated(s.Home, &http.Client{Timeout: 30 * time.Second})}
+	return clusterctl.Client{Base: s.Relay, Sign: reqsign.SignFor(deviceSigner{s.Identity, s.Device}, time.Now), HTTP: s.ClusterHTTP(&http.Client{Timeout: 30 * time.Second})}
 }
 func (s *Sync) ClusterStatus(ctx context.Context) (clusterctl.Status, error) {
 	return s.clusterClient().Status(ctx)

@@ -5,6 +5,8 @@ import (
 	"math/rand/v2"
 	"slices"
 	"sync"
+
+	"github.com/Agent-Field/codeaf/internal/clusterstate"
 )
 
 // ── THE HOLDING SOCKET ──────────────────────────────────────────────────────
@@ -129,22 +131,42 @@ func (h *Holder[H]) Take(hold H) *Holding[H] {
 	return w
 }
 
-// Healthy says whether the relay is vouching for the hold: the socket is open,
-// its server said it vouches, the socket was dialled naming this hold, and it
-// showed a sign of life within DeadAfter. Every part matters. A socket that is
-// down proves nothing; a server that did not say so is an old one; a socket
-// dialled before the hold was taken does not name it; and a link that went
-// quiet may be half open, which the feed only notices at its own deadline.
+// Healthy requires a committed exact-fence receipt. Ping/pong and the old
+// upgrade header alone are advisory presence and cannot suppress heartbeats.
 func (w *Holding[H]) Healthy() bool {
 	st := w.feed.snapshot()
-	if !st.Up || !st.Vouching {
+	if !st.Up {
 		return false
 	}
+	identity, ok := any(w.hold).(HoldIdentity)
+	if !ok {
+		return false
+	}
+	cell, fence := identity.HoldIdentity()
 	h := w.holder
 	h.mu.Lock()
 	named := slices.Contains(h.dialled, w.hold)
 	h.mu.Unlock()
-	return named && h.clock.Now().Sub(w.feed.lastHeard()) <= DeadAfter
+	if !named {
+		return false
+	}
+	w.feed.mu.Lock()
+	receipts, received := slices.Clone(w.feed.receipts), w.feed.receiptAt
+	w.feed.mu.Unlock()
+	now := h.clock.Now()
+	if now.Before(received) || now.Sub(w.feed.lastHeard()) > DeadAfter {
+		return false
+	}
+	for _, r := range receipts {
+		if r.Cell != cell || r.Fence != fence || r.Index == 0 || r.At <= 0 || r.Until <= r.At || r.Until-r.At > clusterstate.LeaseTTLMillis {
+			continue
+		}
+		// The receipt's absolute expiry and a bounded local lifetime both apply.
+		// Falling back one renewal period early leaves time for an ordinary beat.
+		remaining := min(r.Until-now.UnixMilli(), r.Until-r.At-now.Sub(received).Milliseconds())
+		return remaining > clusterstate.RenewEveryMillis
+	}
+	return false
 }
 
 // Changes signals that the socket's state changed, coalesced as a Follower's
