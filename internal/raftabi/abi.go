@@ -164,6 +164,8 @@ func (r *Runtime) Call(b []byte) (out []byte) {
 func (r *Runtime) call(op uint32, d *decoder) ([]byte, error) {
 	e := encoder{}
 	switch op {
+	case 10, 11:
+		return applicationCodec(op, d)
 	case 1:
 		cfg := raftcore.Config{ClusterUUID: d.str(), NodeID: d.u64(), Seed: d.u64()}
 		protocol := d.u32()

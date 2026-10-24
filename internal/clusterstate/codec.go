@@ -336,7 +336,7 @@ func (r Result) Validate() error {
 func (c Code) valid() bool {
 	switch c {
 	case OK, NotFound, Exists, LeaseHeld, FenceStale, HeadMoved, CAS, Revoked,
-		SelfRevoke, Unauthorized, Rotated, Conflict, Capacity:
+		SelfRevoke, Unauthorized, Rotated, Conflict, Capacity, RotationStep, BadGrace, RequestGone, AlreadyDecided, BadRequest:
 		return true
 	}
 	return false
