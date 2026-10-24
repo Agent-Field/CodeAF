@@ -13,7 +13,7 @@ async function port() {
   const s=createServer();await new Promise((resolve,reject)=>{s.on('error',reject);s.listen(0,'127.0.0.1',resolve);});
   const n=s.address().port;await new Promise(resolve=>s.close(resolve));return n;
 }
-export async function openWorkerd(out,persist) {
+export async function openWorkerd(out,persist, actors = false) {
   await mkdir(persist,{recursive:true});
   const httpPort=await port(),inspectorPort=await port();
   const quote=JSON.stringify;
@@ -25,7 +25,8 @@ const config :Workerd.Config = (
    compatibilityDate = "2026-09-01",
    modules = [(name = "worker.js", esModule = embed ${quote(join(out,'worker.js'))}),
               (name = "core.wasm", wasm = embed ${quote(join(out,'core.wasm'))})],
-   bindings = [(name = "PROOF_STORE", durableObjectNamespace = (className = "ProofStore", serviceName = "proof-storage"))],
+   ${actors ? `durableObjectNamespaces = [(className = "ActorFixture", uniqueKey = "p08-actors", enableSql = true)], durableObjectStorage = (localDisk = "storage"),` : ""}
+   bindings = [${actors ? `(name = "ACTORS", durableObjectNamespace = (className = "ActorFixture")),` : ""}(name = "PROOF_STORE", durableObjectNamespace = (className = "ProofStore", serviceName = "proof-storage"))],
    globalOutbound = "blocked"
   )),
   (name = "proof-storage", worker = (
