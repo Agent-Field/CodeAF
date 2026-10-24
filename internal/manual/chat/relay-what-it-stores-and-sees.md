@@ -34,3 +34,16 @@ No. Turns, tool output and files are sealed on your computer before they are sen
 Your saved keys are sealed too, as said above.
 
 Continuing a chat on another computer brings its saved workspace files with its conversation, tool output and task journals. Rebuildable install folders and withheld files are listed on the arrival card. Secret files travel separately in the sealed vault between paired devices. See *Continuing a chat that one of your machines holds* and "What comes with a continued chat" on *Home*. It does not keep two arbitrary project folders mirrored while you edit them.
+
+## Scoped clients, slots and queued calls
+
+The Go relay supports a client device kind with its own key pair and a list of
+allowed methods. Full devices register the client before handing it its signed
+certificate. A client receives no cell key, dedup secret, identity private key or
+vault. It cannot read the directory or the blob store, change leases, pair another
+device or change its own permissions. Revocation stops that certificate across
+relay restarts. This is a relay protocol capability; the chat pairing commands do
+not yet create scoped clients. The hosted Worker does not yet support this protocol.
+
+The HTTP contract is `docs/relay-clients.md` in the source tree. An empty method
+list allows offline reads only; adding methods requires a new paired key.
