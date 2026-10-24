@@ -7,7 +7,6 @@
 package plandbtest
 
 import (
-	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -15,6 +14,7 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/Agent-Field/codeaf/internal/sqlitefile"
 	"modernc.org/libc"
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
@@ -88,7 +88,9 @@ func GateTask(t testing.TB, path, words string) *Gate {
 	return armCommitGate(t, &Gate{dsn: commitGateDSN(path), table: "tasks", key: words, prefix: true})
 }
 
-func commitGateDSN(path string) string { return "file:" + filepath.ToSlash(path) + "?" }
+// The prefix is the write handle's own URI for path (plandb.StoreURI), query
+// separator included, so a path with %, # or ? is gated at the name it opens.
+func commitGateDSN(path string) string { return strings.TrimSuffix(sqlitefile.URI(path, "x"), "x") }
 
 func armCommitGate(t testing.TB, gate *Gate) *Gate {
 	t.Helper()
