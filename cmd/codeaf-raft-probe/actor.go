@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"github.com/Agent-Field/codeaf/internal/clusterstate"
 	"github.com/Agent-Field/codeaf/internal/raftabi"
 	"github.com/Agent-Field/codeaf/internal/raftcore"
 	"github.com/Agent-Field/codeaf/internal/raftsnapshot"
@@ -19,15 +20,16 @@ import (
 )
 
 type actorRequest struct {
-	Op         string          `json:"op"`
-	Cluster    string          `json:"cluster"`
-	ID         uint64          `json:"id,string"`
-	Tag        uint32          `json:"tag"`
-	Value      json.RawMessage `json:"value"`
-	Data       []byte          `json:"data"`
-	Generation string          `json:"generation"`
-	Offset     uint64          `json:"offset"`
-	Hash       string          `json:"hash"`
+	Rows       []clusterstate.RecordWrite `json:"rows"`
+	Op         string                     `json:"op"`
+	Cluster    string                     `json:"cluster"`
+	ID         uint64                     `json:"id,string"`
+	Tag        uint32                     `json:"tag"`
+	Value      json.RawMessage            `json:"value"`
+	Data       []byte                     `json:"data"`
+	Generation string                     `json:"generation"`
+	Offset     uint64                     `json:"offset"`
+	Hash       string                     `json:"hash"`
 }
 type probeActor struct {
 	core  *raftcore.Core
@@ -121,6 +123,39 @@ func (a *probeActor) open() error {
 func (a *probeActor) call(r actorRequest, dir string) (any, error) {
 	ctx := context.Background()
 	switch r.Op {
+	case "legacy-import":
+		var m clusterstate.LegacyManifest
+		if err := clusterstate.Decode(r.Value, &m); err != nil {
+			return nil, err
+		}
+		if a.store == nil {
+			a.cfg = raftcore.Config{ClusterUUID: r.Cluster, NodeID: r.ID, Seed: 100 + r.ID, Protocol: 1}
+			a.path = filepath.Join(dir, fmt.Sprintf("%s-%d.db", r.Cluster, r.ID))
+			s, err := raftstore.Open(a.path, raftstore.Identity{ClusterUUID: r.Cluster, NodeID: r.ID, Protocol: 1})
+			if err != nil {
+				return nil, err
+			}
+			a.store = s
+		}
+		if err := a.store.ImportLegacy(ctx, m, func(visit func(clusterstate.RecordWrite) error) error {
+			for _, row := range r.Rows {
+				if e := visit(row); e != nil {
+					return e
+				}
+			}
+			return nil
+		}); err != nil {
+			return nil, err
+		}
+		recovered, err := a.store.Recover(ctx)
+		if err != nil {
+			return nil, err
+		}
+		snapshot, err := actorWire.Marshal(recovered.Core.Snapshot)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"snapshot": snapshot, "applied": fmt.Sprint(recovered.Application.Applied)}, nil
 	case "init":
 		if a.store != nil {
 			if err := a.store.Close(); err != nil {

@@ -7,6 +7,7 @@
 // (needs no body), count a put as in flight, read the body under its cap, verify the request
 // signature over it, and only then spend the caller's rate budget and serve.
 import { DurableObject } from 'cloudflare:workers';
+import { LegacyAdmission } from './raft/legacy.js';
 import { signedUri } from './base.js';
 import { readBody } from './body.js';
 import { dropTables, erasePage } from './erasure.js';
@@ -32,6 +33,7 @@ export class IdentityDO extends DurableObject {
 
   constructor(ctx, env) {
     super(ctx, env);
+    this.legacyAdmission = new LegacyAdmission(ctx.storage);
     this.limits = limitsOf(env);
     this.policy = policyOf(env.LEASE_POLICY);
     this.watchers = new Watchers(
@@ -47,7 +49,7 @@ export class IdentityDO extends DurableObject {
   }
 
   fetch(request) {
-    return respond(() => this.#serve(request));
+    return respond(() => this.legacyAdmission.run(() => this.#serve(request)));
   }
 
   /** webSocketMessage runs only for a client frame that is not `ping` (the platform answers that without waking us); such a frame is ignored (contract 21.3). */
@@ -103,6 +105,7 @@ export class IdentityDO extends DurableObject {
     if (!this.#tenant) this.ctx.storage.put('identity', identity); // the alarm wakes with no request to name it
     this.#tenant ??= new Tenant({
       identity,
+      legacyAdmission: this.legacyAdmission,
       sql: this.ctx.storage.sql,
       bucket: this.env.FRAMES,
       clock: Date.now,
