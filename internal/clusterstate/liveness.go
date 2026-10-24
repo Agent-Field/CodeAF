@@ -14,9 +14,10 @@ const (
 // authenticating fresh socket evidence. Evidence time fixes the expiry: replay
 // can never turn an old ping into another ninety seconds of ownership.
 type RenewHolds struct {
-	Device string      `json:"device"`
-	SeenAt int64       `json:"seen_at"`
-	Items  []HoldFence `json:"items"`
+	WorkerIncarnation uint64      `json:"worker_incarnation,omitempty"`
+	Device            string      `json:"device"`
+	SeenAt            int64       `json:"seen_at"`
+	Items             []HoldFence `json:"items"`
 }
 type HoldFence struct {
 	Cell  string `json:"cell"`
@@ -46,7 +47,7 @@ func renewHolds(c Command, now int64, rows map[RecordKey][]byte, put func(Record
 	}
 	var actor Device
 	var auth Authority
-	if Decode(rows[AuthorityKey(v.Device)], &auth) != nil || !auth.Personal || auth.Cluster != c.Cluster {
+	if Decode(rows[AuthorityKey(v.Device)], &auth) != nil || !auth.ValidRole() || auth.Cluster != c.Cluster || !auth.Personal && auth.Worker == nil {
 		return Unauthorized
 	}
 	if raw := rows[DeviceKey(v.Device)]; raw != nil && Decode(raw, &actor) != nil {
@@ -54,6 +55,24 @@ func renewHolds(c Command, now int64, rows map[RecordKey][]byte, put func(Record
 	}
 	if actor.Revoked {
 		return Revoked
+	}
+	if auth.Worker != nil {
+		var identity IdentityRec
+		if Decode(rows[IdentityKey()], &identity) != nil {
+			return BadRequest
+		}
+		a, w, code := workerFromRows(c.Cluster, v.Device, now, identity, rows)
+		if code != OK {
+			return code
+		}
+		if v.WorkerIncarnation == 0 || v.WorkerIncarnation != w.Incarnation {
+			return Conflict
+		}
+		for _, h := range v.Items {
+			if !a.Worker.Allows(h.Cell) {
+				return Unauthorized
+			}
+		}
 	}
 	seen := map[string]bool{}
 	for _, h := range v.Items {
@@ -96,6 +115,14 @@ func renewHolds(c Command, now int64, rows map[RecordKey][]byte, put func(Record
 // RecordActive is evaluated one immutable row at a time so large imported
 // identities never have to be materialized to decide whether they may sleep.
 func RecordActive(key RecordKey, raw []byte, now int64) (bool, error) {
+	if key.Namespace == "state" && len(key.Key) > 7 && key.Key[:7] == "worker/" {
+		var worker WorkerRecord
+		if Decode(raw, &worker) != nil {
+			return false, ErrDependency
+		}
+		return len(worker.Work) > 0 && worker.AvailableUntil > now, nil
+	}
+
 	if key.Namespace == "state" && len(key.Key) >= 5 && key.Key[:5] == "cell/" {
 		var c Cell
 		if Decode(raw, &c) != nil {
