@@ -119,7 +119,7 @@ func TestAPathInTheBoxIsNeverChipped(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 
 	for _, line := range []string{
-		"/Users/santosh/notes.md",
+		"/Users/dev/notes.md",
 		"read /tmp/task and say what it does",
 		"look at cmd/codeaf/main.go",
 		"https://example.com/help",
@@ -459,7 +459,7 @@ func TestAnAbsolutePathDoesNotHoldTheCommandListOpen(t *testing.T) {
 	if a.menu.open {
 		t.Fatalf("typing a path left the list up over %q", a.input.String())
 	}
-	typeInto(t, a, "/santosh/notes.md")
+	typeInto(t, a, "/dev/notes.md")
 	if a.menu.open {
 		t.Fatalf("the rest of a path reopened the list over %q", a.input.String())
 	}

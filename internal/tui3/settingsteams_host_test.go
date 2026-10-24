@@ -15,7 +15,7 @@ func TestTeamsSettingsOverAHostSeamLandInTheFarProfile(t *testing.T) {
 	a := placeApp(t)
 	laptop := a.profileDir
 	far := t.TempDir()
-	a.host = "spark"
+	a.host = "tower"
 	a.teamsDisk.door = localTeams(far, &a.teamsDisk.watch)
 	before := teamstore.DefaultsAt(laptop)
 	drive(t, a, key(placeChord(pageSettings)))
@@ -23,7 +23,7 @@ func TestTeamsSettingsOverAHostSeamLandInTheFarProfile(t *testing.T) {
 	if a.sheet.farTeams == nil || !a.sheet.teamDefaultsWrite {
 		t.Fatal("the Teams tab did not take the far defaults as editable")
 	}
-	if note := a.sheet.footNote(); !strings.Contains(note, "saved on spark") {
+	if note := a.sheet.footNote(); !strings.Contains(note, "saved on tower") {
 		t.Fatalf("the Teams tab says %q", note)
 	}
 	if screen := placeFrameText(a); !strings.Contains(screen, "from Settings") {
@@ -61,7 +61,7 @@ func TestTeamsSettingsOverAnOlderEngineStayReadOnly(t *testing.T) {
 	far := t.TempDir()
 	door := localTeams(far, &a.teamsDisk.watch)
 	door.ApplyDefault = nil
-	a.host = "spark"
+	a.host = "tower"
 	a.teamsDisk.door = door
 	beforeLap := teamstore.DefaultsAt(laptop)
 	beforeFar := teamstore.DefaultsAt(far)
@@ -95,14 +95,14 @@ func TestTeamsSettingsOverAnOlderEngineStayReadOnly(t *testing.T) {
 func TestSettingsNoteFollowsTheTabOverAHostSeam(t *testing.T) {
 	a := placeApp(t)
 	far := t.TempDir()
-	a.host = "spark"
+	a.host = "tower"
 	a.teamsDisk.door = localTeams(far, &a.teamsDisk.watch)
 	drive(t, a, key(placeChord(pageSettings)))
 	local := lastNote(t, a)
 	if local != settingsLocalWord {
 		t.Fatalf("local tab note = %q", local)
 	}
-	if strings.Contains(local, "spark") {
+	if strings.Contains(local, "tower") {
 		t.Fatalf("the local tab named the far machine: %q", local)
 	}
 	for settingTabs[a.sheet.tab] != tabTeams {
@@ -112,7 +112,7 @@ func TestSettingsNoteFollowsTheTabOverAHostSeam(t *testing.T) {
 		t.Fatal("the seam did not make the Teams tab writable")
 	}
 	got := lastNote(t, a)
-	if got != "these rows are saved on spark." {
+	if got != "these rows are saved on tower." {
 		t.Fatalf("Teams tab note = %q", got)
 	}
 	if strings.Contains(got, "this machine") {

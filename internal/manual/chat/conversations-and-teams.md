@@ -275,7 +275,7 @@ In a conversation that is in a team, every **handle** of a member of that team, 
 surface's own notes and in a team tool's call such as `team_send @security`. So is a team's
 name where it is written as a team: `team harbor`, `the harbor team` or `"harbor"`. The
 pointer on one puts a ground under it and the hint line says what a press does, like
-`Open @security · santosh dev2 branch code… · click`. A press opens that member, resuming it
+`Open @security · project branch code… · click`. A press opens that member, resuming it
 first when this window does not have it open. A press on a team's name opens the **teams
 page** with that team selected: the rail's cursor on it and the pane showing it. The hint
 says `Open harbor on the teams page · click`. A closed team is selected with Show closed enabled. Over `--host`, against an engine that has no teams doors, the teams page
@@ -414,7 +414,7 @@ The confirmation names every affected team. Deleting a conversation itself is se
 
 ## Incomplete conversation deletion: retry and recovery
 
-Permanent conversation deletion waits for the owner and its task-run writers to stop before
+Permanent conversation deletion waits for the conversation and its task-run writers to stop before
 removing records. If they cannot stop within the deletion grace, the transcript and memberships
 remain and you can retry. A local owner without the safe deletion stop capability refuses:
 `This conversation cannot be safely stopped for deletion`. Symlinked task records that point elsewhere are refused before deletion.

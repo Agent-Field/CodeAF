@@ -255,7 +255,6 @@ func TestPublishedPinExamplesGiveVersionToBash(t *testing.T) {
 		// into docs/GUIDE.md when the README became the launch page; the README
 		// now points at the releases page for pinning and carries no example.
 		filepath.Join(root, "docs", "GUIDE.md"),
-		filepath.Join(root, "docs", "rules", "promotion.md"),
 		filepath.Join(root, "internal", "manual", "chat", "running-from-the-terminal.md"),
 	}
 	broken := regexp.MustCompile(`(?m)VERSION=[^ \n]+[ \t]+curl`)

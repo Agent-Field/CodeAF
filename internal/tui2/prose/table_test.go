@@ -19,7 +19,7 @@ import (
 const wideTable = "" +
 	"| id | title | owner | status | notes |\n" +
 	"| -- | ----- | ----- | ------ | ----- |\n" +
-	"| 1 | a reasonably long title for a row | santosh | running | this cell is deliberately far longer than any terminal is wide, so that fitting it is impossible and truncation is the only honest answer |\n" +
+	"| 1 | a reasonably long title for a row | dev | running | this cell is deliberately far longer than any terminal is wide, so that fitting it is impossible and truncation is the only honest answer |\n" +
 	"| 2 | short | ada | done | fine |\n"
 
 // tableRows returns the plain rows a table rendered to, and the count of source

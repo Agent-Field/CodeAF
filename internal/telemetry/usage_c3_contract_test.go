@@ -119,7 +119,7 @@ func TestK13UsageReceiptEmitsOnlyRelayValidComponents(t *testing.T) {
 }
 
 // relayUsageC3 mirrors validateTokenUsage and its scalar schemas in
-// /home/abir/woi-82/site/src/lib/telemetry-usage.ts, including safe sums,
+// /home/dev/woi-82/site/src/lib/telemetry-usage.ts, including safe sums,
 // presence-based status, disjoint components, and estimate receipt metadata.
 func relayUsageC3(p map[string]any) error {
 	fail := func(s string) error { return fmt.Errorf("%s: %v", s, p) }

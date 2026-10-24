@@ -852,7 +852,7 @@ walk in.
 one of the eight. It is something you do to *this conversation*: pick a point and cut back
 to it — rather than a room in the machine, so it has no tab and `tab` does not walk to it.
 
-## The places over --host: whose machine am I looking at, and what `on spark` at the end of the tab bar means
+## The places over --host: whose machine am I looking at, and what `on tower` at the end of the tab bar means
 
 **A place is a listing of one machine's disk, and over `--host` that machine is the one your
 session runs on.** Home lists the conversations under `~/.codeaf/v3`; tasks lists the work
@@ -879,7 +879,7 @@ the split as it opens. Spend never substitutes local rows when its remote store 
 sentence is better than eight rows and a total in dollars that belong to somebody else's
 afternoon.
 
-**The top line says whose machine it is: `on spark` at the end of the tab bar.** Over a
+**The top line says whose machine it is: `on tower` at the end of the tab bar.** Over a
 connection the far end of the top line, where the places are, reads `on <machine>`, just
 before the clock: the same name you typed after `--host`, and the same
 one the status line's place segment and the legend under the box already carry. On a local

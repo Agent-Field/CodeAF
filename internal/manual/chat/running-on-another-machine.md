@@ -174,7 +174,7 @@ as another build. Four things can be true:
   and **your next safe launch once the work is done and every window has left** opens from
   the new build. An attached idle window counts as holding work. After turns and tasks finish, close every window for that workspace and reopen. Restarting just one window keeps joining the old engine while another window remains. The startup note names the machine and an explicit stop command using its installed executable; that command interrupts active turns and tasks, so use it only when ready.
 - **It is an older build, holding nothing.** It hands the workspace over at once and the
-  window says `replaced the older engine on spark (pid <n>, <build>, <binary>) — this build
+  window says `replaced the older engine on tower (pid <n>, <build>, <binary>) — this build
   holds the workspace now`.
 - **It is a newer build.** Your window joins it. If its wire is one this binary cannot
   speak, the connection is refused, naming this binary as the older one and
@@ -186,7 +186,7 @@ An older engine on another wire, or one too old to be asked at all, is refused, 
 words:
 
 ```
-engine: spark is still holding this conversation on an older codeaf — run codeaf engine --stop --workspace /home/you/project on spark
+engine: tower is still holding this conversation on an older codeaf — run codeaf engine --stop --workspace /home/you/project on tower
 ```
 
 **The `--workspace` in that line is not decoration — type it.** `codeaf engine --stop`
@@ -263,7 +263,7 @@ devbox is about 3ms` under `connection`.
 
 **And if another window is on the same conversation, you can tell from the input box.** A
 window that does not hold the keyboard draws one dim line where its box was —
-`typing from spark now` on the left, `enter takes it back` on the right — and nothing else
+`typing from tower now` on the left, `enter takes it back` on the right — and nothing else
 about the screen changes. A window that does hold it says nothing at all. See *Staying on
 that machine* for the whole of how two terminals on one chat behave.
 

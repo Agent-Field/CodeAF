@@ -166,7 +166,7 @@ func TestAHostedSurfaceInstallsTheFarMachinesDelegateRows(t *testing.T) {
 	fake := &delegateFake{fakeAgent: &fakeAgent{}, report: session.DelegateReport{Rows: []session.DelegateRow{{Name: "fake", Description: "a fake delegate"}}}}
 	a := newTestApp(fake)
 	t.Cleanup(func() { installDelegateCommands(nil) })
-	a.host = "spark"
+	a.host = "tower"
 	settleDoor(t, a, a.installDelegates())
 	if !isDelegateCommand("fake") {
 		t.Fatal("a hosted surface did not install the far machine's delegate row")

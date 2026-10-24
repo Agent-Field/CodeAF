@@ -31,11 +31,11 @@ func TestFingerprintReadsFunctionNamesOnly(t *testing.T) {
 	// prints them: arguments on the frame line, file and line beneath.
 	printed := strings.Join([]string{
 		"github.com/Agent-Field/codeaf/internal/session.(*Runner).step(0xc0001, 0x2)",
-		"\t/Users/santosh/secret-project/internal/session/runner.go:412 +0x88",
+		"\t/Users/dev/secret-project/internal/session/runner.go:412 +0x88",
 		"github.com/Agent-Field/codeaf/internal/model.(*Client).call(...)",
-		"\t/Users/santosh/secret-project/internal/model/client.go:97 +0x1c",
+		"\t/Users/dev/secret-project/internal/model/client.go:97 +0x1c",
 		"github.com/Agent-Field/codeaf/cmd/codeaf.runChat()",
-		"\t/Users/santosh/secret-project/cmd/codeaf/main.go:201 +0x64",
+		"\t/Users/dev/secret-project/cmd/codeaf/main.go:201 +0x64",
 	}, "\n")
 	bare := Fingerprint(codeafStack(
 		"internal/session.(*Runner).step",
@@ -51,7 +51,7 @@ func TestFingerprintIgnoresForeignFramesAndPanicText(t *testing.T) {
 	core := codeafStack("internal/session.(*Runner).step", "internal/model.(*Client).call")
 	noisy := strings.Join([]string{
 		"panic: the deploy froze mid-write for person@example.com",
-		"/Users/santosh/secret-project/leaky.go:7 +0x10",
+		"/Users/dev/secret-project/leaky.go:7 +0x10",
 		"some.dependency/pkg.(*Thing).Do(0x1)",
 		"github.com/Agent-Field/codeaf/internal/session.(*Runner).step(0x1, 0x2)",
 		"\t/tmp/whatever/runner.go:1",
@@ -90,7 +90,7 @@ func TestFingerprintOfAForeignStackGroupsAsEmpty(t *testing.T) {
 	// crash there groups by its function names, not as an empty fingerprint.
 	mainOnly := strings.Join([]string{
 		"main.execute(0x14000010350)",
-		"\t/Users/santosh/secret-project/cmd/codeaf/main.go:31 +0x4",
+		"\t/Users/dev/secret-project/cmd/codeaf/main.go:31 +0x4",
 	}, "\n")
 	if got := Fingerprint([]byte(mainOnly)); got == Fingerprint(nil) {
 		t.Error("a crash in cmd/codeaf must carry its main frames, not group as empty")
@@ -103,17 +103,17 @@ func TestFingerprintOfAForeignStackGroupsAsEmpty(t *testing.T) {
 // file halves ALSO start with the module path). The frames are identical.
 const stackAbsPaths = `goroutine 18 [running]:
 github.com/Agent-Field/codeaf/internal/session.(*Runner).Step(0x14000106008, {0x1400011a090, 0x2})
-	/Users/santosh/secret-project/internal/session/runner.go:212 +0x104
+	/Users/dev/secret-project/internal/session/runner.go:212 +0x104
 github.com/Agent-Field/codeaf/internal/session.Run(0x14000106008, 0x1)
-	/Users/santosh/secret-project/internal/session/session.go:88 +0x9c
+	/Users/dev/secret-project/internal/session/session.go:88 +0x9c
 created by github.com/Agent-Field/codeaf/internal/session.(*Runner).Start in goroutine 1
-	/Users/santosh/secret-project/internal/session/start.go:41 +0x1d4
+	/Users/dev/secret-project/internal/session/start.go:41 +0x1d4
 
 goroutine 1 [chan receive]:
 github.com/Agent-Field/codeaf/cmd/codeaf.runTask(0x14000010350, {0x1400012a008, 0x3, 0x4})
-	/Users/santosh/secret-project/cmd/codeaf/main.go:140 +0xd8
+	/Users/dev/secret-project/cmd/codeaf/main.go:140 +0xd8
 main.main()
-	/Users/santosh/secret-project/cmd/codeaf/main.go:64 +0x228
+	/Users/dev/secret-project/cmd/codeaf/main.go:64 +0x228
 runtime.goexit()
 	/usr/local/go/src/runtime/asm_amd64.s:1650 +0xbe`
 

@@ -2129,16 +2129,16 @@ func TestTheContextSparklineNeedsTwoReadingsAndScalesToTheThreshold(t *testing.T
 	}
 
 	a.ctxRing = []int{threshold / 10, threshold / 2, threshold}
-	spark := a.ctxSpark()
-	bars := []rune(spark)
+	tower := a.ctxSpark()
+	bars := []rune(tower)
 	if len(bars) != 3 {
-		t.Fatalf("three readings drew %d bars: %q", len(bars), spark)
+		t.Fatalf("three readings drew %d bars: %q", len(bars), tower)
 	}
 	if !(bars[0] < bars[1] && bars[1] < bars[2]) {
-		t.Fatalf("a climbing conversation did not draw a climbing line: %q", spark)
+		t.Fatalf("a climbing conversation did not draw a climbing line: %q", tower)
 	}
 	if top := []rune(sparkBars); bars[2] != top[len(top)-1] {
-		t.Fatalf("a reading at the threshold is not the top bar: %q", spark)
+		t.Fatalf("a reading at the threshold is not the top bar: %q", tower)
 	}
 
 	// IT RIDES THE METER ON THE PAGE AND NOT ON THE ROW. It was beside the meter
@@ -2147,12 +2147,12 @@ func TestTheContextSparklineNeedsTwoReadingsAndScalesToTheThreshold(t *testing.T
 	// where somebody who wants the shape asks for it (statusdeck.go).
 	a.ctxTokens = threshold / 2
 	for _, width := range []int{200, hudWide, hudTight - 1} {
-		if line := plain(a.legend(width)); strings.Contains(line, spark) {
+		if line := plain(a.legend(width)); strings.Contains(line, tower) {
 			t.Fatalf("a %d-column row kept the sparkline:\n%q", width, line)
 		}
 	}
 	meter := deckValue(a.deckItems(), deckSegWords[segCtx])
-	if !strings.HasSuffix(meter, " "+spark) {
+	if !strings.HasSuffix(meter, " "+tower) {
 		t.Fatalf("the sheet's meter reads %q, want the sparkline riding it", meter)
 	}
 

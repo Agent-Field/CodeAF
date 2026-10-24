@@ -225,16 +225,16 @@ conversation is already running under another, codeaf says so in one line and op
 conversation in this terminal instead, where the flag is real. That one ends when the
 terminal does.
 
-## What typing from spark now means, and why my input box is one line
+## What typing from tower now means, and why my input box is one line
 
 It means another window on this conversation has the keyboard, and this one is watching.
 Where your input box was, there is one dim line instead:
 
 ```
-typing from spark now                                     enter takes it back
+typing from tower now                                     enter takes it back
 ```
 
-`spark` is the machine the other window is on — the name that machine calls itself, with
+`tower` is the machine the other window is on — the name that machine calls itself, with
 any domain trimmed off it. A second window on **this** machine reads as `another window`
 instead, which is what codeaf calls a conversation open somewhere else everywhere. A
 machine that could not say its own name gets `another window` too.
@@ -281,7 +281,7 @@ window and get on with something else on this machine.
 You get one sentence back from the machine holding the conversation:
 
 ```
-the keyboard is on spark right now — press enter here to move it here
+the keyboard is on tower right now — press enter here to move it here
 ```
 
 or, for a window on this same machine, `the keyboard is in another window right now — press

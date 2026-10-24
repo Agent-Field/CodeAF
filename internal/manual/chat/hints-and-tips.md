@@ -191,10 +191,8 @@ build if the two disagree), so a tip you saw is on it word for word.
 
 - `using enter steers conversations · use ctrl+enter to queue messages` — after the first
   exchange, after the terminal replies that it can distinguish keys. Retired the first
-  time you queue a message. It was two rows until 2026-09-22
-  — one for the steer and one for the queue — and the owner folded them into one; the
-  queue half named `ctrl+q` until 2026-09-30, when the chord moved onto `ctrl+enter`. On a
-  terminal that has not replied the tip is absent, even if it can send a decoded
+  time you queue a message. On a terminal that has not replied the tip is absent, even if
+  it can send a decoded
   ctrl+enter through modifyOtherKeys. The chord queues only non-empty words mid-turn
   from this conversation's composer; at rest, on the start page or over a `/command` it
   is plain enter. A terminal that cannot send it delivers plain enter or a newline on
@@ -237,8 +235,8 @@ of the commands they named still works** — only the tips about them are gone.
   file or folder" now and this one is gone.
 - `/attach lets you browse anywhere for files` was a second row about one command, which
   is one row too many.
-- `ctrl+. sees every task this project has run` came off on the owner's word, the last of
-  the three reads. The chord still opens the activity page, `/history` still opens it too, and
+- `ctrl+. sees every task this project has run` is no longer a tip. The chord still opens
+  the activity page, `/history` still opens it too, and
   the *tasks* manual page still says so.
 
 Unless a line above says otherwise, a tip is true from the first minute on home and after

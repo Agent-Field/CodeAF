@@ -92,14 +92,14 @@ func TestRenameFieldGolden(t *testing.T) {
 	golden := map[int][]string{
 		80: {
 			"› ● this mac  Mac    this device",
-			"  ○ dumb      Mac    seen 3h ago",
-			"  ○ spark     Linux  offline",
+			"  ○ desk      Mac    seen 3h ago",
+			"  ○ tower     Linux  offline",
 			"name this device: this mac▏",
 		},
 		40: {
 			"› ● this mac  Mac    this device",
-			"  ○ dumb      Mac    seen 3h ago",
-			"  ○ spark     Linux  offline",
+			"  ○ desk      Mac    seen 3h ago",
+			"  ○ tower     Linux  offline",
 			"name this device: this mac▏",
 		},
 	}

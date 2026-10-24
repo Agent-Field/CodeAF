@@ -9,11 +9,11 @@ import (
 )
 
 const (
-	windowsPictureForward   = "c:/Users/abira/Pictures/Screenshots/Screenshot (1).png"
-	windowsPictureBackward  = `C:\Users\abira\Pictures\Screenshots\Screenshot (1).png`
-	windowsPictureFileURL   = "file:///C:/Users/abira/Pictures/Screenshots/Screenshot%20(1).png"
-	windowsOrdinaryForward  = "c:/Users/abira/Documents/server.log"
-	windowsMissingForward   = "c:/Users/abira/Pictures/Screenshots/missing.png"
+	windowsPictureForward   = "c:/Users/dev/Pictures/Screenshots/Screenshot (1).png"
+	windowsPictureBackward  = `C:\Users\dev\Pictures\Screenshots\Screenshot (1).png`
+	windowsPictureFileURL   = "file:///C:/Users/dev/Pictures/Screenshots/Screenshot%20(1).png"
+	windowsOrdinaryForward  = "c:/Users/dev/Documents/server.log"
+	windowsMissingForward   = "c:/Users/dev/Pictures/Screenshots/missing.png"
 	windowsPictureName      = "Screenshot (1).png"
 	windowsOrdinaryFileName = "server.log"
 )
@@ -22,7 +22,7 @@ func wslPathLab(t *testing.T, picture, ordinary bool) (*app, string) {
 	t.Helper()
 	mount := t.TempDir()
 	if picture {
-		path := filepath.Join(mount, "c", "Users", "abira", "Pictures", "Screenshots", windowsPictureName)
+		path := filepath.Join(mount, "c", "Users", "dev", "Pictures", "Screenshots", windowsPictureName)
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -31,7 +31,7 @@ func wslPathLab(t *testing.T, picture, ordinary bool) (*app, string) {
 		}
 	}
 	if ordinary {
-		path := filepath.Join(mount, "c", "Users", "abira", "Documents", windowsOrdinaryFileName)
+		path := filepath.Join(mount, "c", "Users", "dev", "Documents", windowsOrdinaryFileName)
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -190,7 +190,7 @@ func assertMissingWindowsDrop(t *testing.T, a *app, agent *imageAgent, path stri
 
 // V6: WSL UNC paths resolve only when their distro names this WSL instance.
 func TestWSLUNCPathsResolveForThisDistro(t *testing.T) {
-	local := filepath.Join(t.TempDir(), "home", "abir", "pic.png")
+	local := filepath.Join(t.TempDir(), "home", "dev", "pic.png")
 	if err := os.MkdirAll(filepath.Dir(local), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -231,10 +231,10 @@ func wslUNCForLocalPath(host, distro, local string) string {
 // V6 supplement: Forward-slash UNC input and an unnamed WSL distro retain the pure translation contract.
 func TestWSLUNCForwardSlashesAndAnUnnamedDistroTranslate(t *testing.T) {
 	for _, path := range []string{
-		`//wsl.localhost/Ubuntu/home/abir/pic.png`,
-		`//wsl$/Ubuntu/home/abir/pic.png`,
+		`//wsl.localhost/Ubuntu/home/dev/pic.png`,
+		`//wsl$/Ubuntu/home/dev/pic.png`,
 	} {
-		if got := windowsPathHere(path, wslPaths{inside: true, root: "/mnt"}); got != "/home/abir/pic.png" {
+		if got := windowsPathHere(path, wslPaths{inside: true, root: "/mnt"}); got != "/home/dev/pic.png" {
 			t.Errorf("an unnamed WSL distro resolved %q to %q", path, got)
 		}
 	}
@@ -277,7 +277,7 @@ func TestAWindowsDriveDropPaysOneBoundedDiskReading(t *testing.T) {
 	a, _ := wslPathLab(t, false, true)
 	at := a.now()
 	a.clock = func() time.Time { return at }
-	typeBurst(a, `C:\Users\abira\Documents\server.log`)
+	typeBurst(a, `C:\Users\dev\Documents\server.log`)
 	if a.drop.armed != 1 || a.drop.looked != 0 {
 		t.Fatalf("the arriving drive path armed %d wakeups and made %d looks, want 1 and 0", a.drop.armed, a.drop.looked)
 	}

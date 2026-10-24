@@ -58,7 +58,7 @@ func TestALocalSurfaceNeverDrawsTheRoundTripSegment(t *testing.T) {
 // written as a sentence by /status.
 func TestAHostedSurfaceDrawsLatencyOnlyAfterAReply(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
-	a.host = "spark"
+	a.host = "tower"
 	a.link = LinkSeam{Ping: func() (time.Duration, error) { return 3 * time.Millisecond, nil }}
 	a.width = 200
 
@@ -66,10 +66,10 @@ func TestAHostedSurfaceDrawsLatencyOnlyAfterAReply(t *testing.T) {
 		t.Fatalf("the hosted seam guessed before a reply:\n%s", got)
 	}
 	a.linkPingBack(linkPingMsg{elapsed: 3 * time.Millisecond})
-	if got := plain(a.legend(a.width)); !strings.Contains(got, "spark · 3ms") {
+	if got := plain(a.legend(a.width)); !strings.Contains(got, "tower · 3ms") {
 		t.Fatalf("the hosted status line missed the answered round trip:\n%s", got)
 	}
-	if got := a.statusText(); !strings.Contains(got, "the round trip to spark is about 3ms") {
+	if got := a.statusText(); !strings.Contains(got, "the round trip to tower is about 3ms") {
 		t.Fatalf("/status does not say the measured fact in a sentence:\n%s", got)
 	}
 }
@@ -78,7 +78,7 @@ func TestAHostedSurfaceDrawsLatencyOnlyAfterAReply(t *testing.T) {
 // new eight-millisecond answer moves a four-millisecond reading to five.
 func TestTheRoundTripEstimateRollsOverAHandful(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
-	a.host = "spark"
+	a.host = "tower"
 	a.linkPingBack(linkPingMsg{elapsed: 4 * time.Millisecond})
 	a.linkPingBack(linkPingMsg{elapsed: 8 * time.Millisecond})
 	if got := latencyWord(a.linkLatency); got != "5ms" {
@@ -89,10 +89,10 @@ func TestTheRoundTripEstimateRollsOverAHandful(t *testing.T) {
 // THE RECONNECTING SENTENCE WINS AND THE METER STAYS OFF THE WIRE. The old
 // estimate is hidden, and a cadence landing during the gap schedules no ping.
 func TestReconnectingWinsOverLatencyAndSkipsPing(t *testing.T) {
-	const note = "reconnecting to spark — trying for up to 5 minutes"
+	const note = "reconnecting to tower — trying for up to 5 minutes"
 	called := 0
 	a := newTestApp(&fakeAgent{model: "m"})
-	a.host = "spark"
+	a.host = "tower"
 	a.linkLatency = 3 * time.Millisecond
 	a.link = LinkSeam{
 		Note: func() string { return note },

@@ -20,7 +20,7 @@ package e2e
 //
 // Forty minutes is enough for TestTUIE2E alone. The FULL
 // tagged package — ManualOnTheWire, QuestionsE2E, roomfeed, families, custody,
-// contracts — does not fit in forty: Spark's #807 run hit the ceiling before
+// contracts — does not fit in forty: tower's #807 run hit the ceiling before
 // TestTUIE2E started. Prefer `make test-e2e-tui` for the ambient surface, or
 // give the whole package two hours. It needs a provider key and tmux, costs a
 // few cents. The key is resolved the way the product resolves one ([liveKey]:

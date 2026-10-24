@@ -267,10 +267,9 @@ A stageaf launch checks the staging channel hourly; bare `/update` follows stagi
 Like devaf it is never updated on its own; `stageaf update` installs the newest
 staging build when you ask.
 
-The promotion runs once a week and moves staging to the newest dev commit at
-the Friday 17:00 Toronto-time cutoff when the full check passes. When the check
-fails or there is nothing new, staging stays where it was. A person still
-decides when main moves.
+Promotion runs when dispatched and moves staging to the selected dev commit
+after the full check passes. When the check fails or there is nothing new,
+staging stays where it was. Moving main is a separate release decision.
 
 ## Why codeaf do may download rtk — compressed shell output and how to turn it off
 

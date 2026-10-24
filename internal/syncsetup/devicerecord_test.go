@@ -16,7 +16,7 @@ func TestDeviceRecordCarriesThePlatform(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec, err := deviceRecord(id, "spark")
+	rec, err := deviceRecord(id, "tower")
 	if err != nil {
 		t.Fatal(err)
 	}

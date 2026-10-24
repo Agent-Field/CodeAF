@@ -451,7 +451,7 @@ func questionsCard(t *testing.T) {
 
 // questionsBlocksUnderAnswers is the call a model could not make. On 2026-09-10
 // deepseek-v4-flash was given the message below — a person's own words, on the
-// Spark, in a real terminal — and three calls running it sent the answers list
+// tower, in a real terminal — and three calls running it sent the answers list
 // as a JSON STRING holding the list; every one was refused with `options takes
 // a list`, the turn ended on the loop guard and the person never saw a
 // question. Two things changed (session/toolargs.go, session/tools_ask.go), and

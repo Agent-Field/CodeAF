@@ -555,7 +555,7 @@ func TestPinningWritesOnTheProfilePathNobodySet(t *testing.T) {
 func TestAHostedSurfacePinsNothing(t *testing.T) {
 	laneLab(t, threeLanes())
 	a := laneApp(t)
-	a.host = "blackmac"
+	a.host = "laptop"
 	typeLine(t, a, "/model")
 
 	drive(t, a, key("right"), key("down"), key("right"), key("enter"))
@@ -974,7 +974,7 @@ func TestTheSparklineIsOurOwnLastAnswersAndNothingUntilThereAreTwo(t *testing.T)
 // not: EVERY first-token wait this file draws is said in SECONDS with one
 // decimal ([laneSecondsWord]), and there is no path from a belief or from
 // [LaneNews] to a millisecond word at all. `2ms` on that line is the CONNECTION
-// segment of a `--host` session — `spark · 2ms`, the round trip to the machine
+// segment of a `--host` session — `tower · 2ms`, the round trip to the machine
 // the conversation is running on (hostlink.go's latencyWord, the only `ms` on
 // this surface) — which sits immediately before the state word and is true of
 // the whole line rather than of the answer.

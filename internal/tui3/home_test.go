@@ -162,7 +162,7 @@ func (l *homeLab) app(standing string) *app {
 	// falls back to the package's one shared test home, which every /export
 	// test writes into — so `since you left` in one lab read the files another
 	// test made, and a firing folded under `3 more` only when the whole suite
-	// ran (a red the Spark found twice and a lone run never could).
+	// ran (a red the tower found twice and a lone run never could).
 	a.artifacts = filepath.Join(l.root, "v3", session.ArtifactsIndexName)
 	// THE LEDGER IS THE LAB'S TOO. An empty path is the door's way of saying
 	// "this machine's" (usage_ledger.go's [UsageCache] falls back to
@@ -3363,7 +3363,7 @@ func TestALetterAlwaysTypesWhateverIsChosen(t *testing.T) {
 // asked whether this process holds it ([app.homeTrue]), and the key that answers
 // is a transcript path with its symlinks walked ([convKey]) — a walk of THIS
 // laptop for a file on the far machine. That walk is not free: on macOS `/home`
-// is an automounter's mount point, so each row's `Lstat("/home/santosh")` waited
+// is an automounter's mount point, so each row's `Lstat("/home/dev")` waited
 // on autofs, and home over --host cost up to a second per frame with the keys
 // queued behind it. A hosted key is the cleaned spelling and the disk is never
 // asked ([app.convKey]); this counts the asking so it cannot come back.
