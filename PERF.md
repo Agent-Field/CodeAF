@@ -55,6 +55,26 @@ path/theme/geometry invalidation, viewport equivalence and keyboard reveal;
 Timing is diagnostic; regression gates assert reuse and rendered geometry,
 rather than a machine-dependent time limit.
 
+All teams shares one indexed reporting-home reading per paint, including the
+global manager card. Membership repair groups conversations once and retains
+the existing home/manager selection policy, instead of repeatedly searching
+every membership for every conversation. The paint reading is discarded before
+edits or actions; it is never an authority cache across frames.
+
+Spend reads share one immutable membership snapshot for the most recently used
+profile. Its primary/legacy file stamp is checked on every request, membership
+changes invalidate it immediately, and concurrent reads share the same load.
+Ledger appends still use the existing incremental ledger fold; there is no TTL,
+new model call, or change to cap enforcement. The retained snapshot is bounded
+to one profile, rather than an accumulating profile cache.
+
+`TestTeamsAllScaleTerminalLatency` measures input delivery through the real
+terminal's changed hover hint with 100 teams and 10,000 memberships; the separate
+large-capacity scenario uses 200 teams and 40,000 memberships. Fixture setup and
+first overview frame are reported separately, and model calls must remain zero.
+The snapshot, repair-policy equivalence, profile isolation and concurrent-read
+tests defend the algorithms independently of diagnostic wall-clock timings.
+
 ## Context recovery bounds
 
 Conversation request admission sums the existing encoded messages and tool schemas;
