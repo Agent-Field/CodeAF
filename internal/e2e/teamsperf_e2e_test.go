@@ -99,7 +99,9 @@ func TestTeamsLargeOverviewPointerAndLivePreview(t *testing.T) {
 	r.lit(wheel.String())
 	r.waitFor(20*time.Second, "@member-010")
 	r.resize(90, 32)
-	screen = r.waitFor(20*time.Second, "Performance fixture", "@member-")
+	// These labels also exist in the previous wide frame. Wait for the narrow
+	// navigation before using its row coordinates to open a member.
+	screen = r.waitFor(20*time.Second, "More ▾", "Performance fixture", "@member-")
 	if evidence := os.Getenv("CODEAF_E2E_EVIDENCE_DIR"); evidence != "" {
 		frame, err := exec.Command("tmux", "capture-pane", "-p", "-e", "-t", r.name).Output()
 		if err != nil {

@@ -91,7 +91,9 @@ func TestActivityScaleTerminalLatency(t *testing.T) {
 	}
 	r.lit("/history")
 	opened := time.Now()
-	r.keys("Enter")
+	if out, err := exec.Command("tmux", "send-keys", "-t", r.name, "Enter").CombinedOutput(); err != nil {
+		t.Fatalf("open history: %v %s", err, out)
+	}
 	r.waitFor(30*time.Second, "Mock History Chat 000", "Mock parser repair 000")
 	opening := time.Since(opened)
 	// Select different kinds of rows and observe their distinct door hints.
@@ -137,7 +139,7 @@ func TestActivityScaleTerminalLatency(t *testing.T) {
 	r.waitFor(30*time.Second, "Mock History Chat 000", "Mock parser repair 000")
 	r.keys("Right", "Down", "Left")
 	r.resize(160, 55)
-	r.waitFor(30*time.Second, "Mock History Chat")
+	r.waitFor(30*time.Second, strings.Repeat("─", 160), "Mock History Chat")
 	if calls.Load() != 0 {
 		t.Fatalf("navigation made %d model calls", calls.Load())
 	}
