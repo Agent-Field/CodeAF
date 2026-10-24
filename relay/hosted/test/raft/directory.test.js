@@ -7,6 +7,10 @@ import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { Reactor } from '../../src/raft/abi.js';
 import { encodeCanonical, decodeCanonical } from '../../src/raft/codec.js';
 import { MemberActor } from '../../src/raft/actor.js';
+import { RaftEffectsFacade } from '../../src/raft/effects.js';
+import { R2Store, sealFrame } from '../../src/store.js';
+import { boundLink, deliveredLink } from '../../src/link/effects.js';
+import { encode as encodeFrame } from '../../src/frame.js';
 import { directoryEvaluator, RaftDirectoryFacade } from '../../src/raft/directory.js';
 
 const out = process.env.CODEAF_RAFT_PROOF_DIR ?? '/tmp/codeaf-p09';
@@ -30,12 +34,13 @@ class Native {
   async close() { this.child.stdin.end(); if (this.child.exitCode === null) await new Promise(resolve => this.child.once('exit', resolve)); }
 }
 
-test('R1 R2 R4 R14 R16 R17 hosted facade uses committed Go policy and native-identical application bytes', { timeout: 30000 }, async () => {
+test('R1 R2 R4 R14 R16 R17 R21 hosted facade uses committed Go policy and native-identical application bytes', { timeout: 30000 }, async () => {
   const reactor = new Reactor(new WebAssembly.Module(readFileSync(out + '/core.wasm'))), native = new Native();
   const commands = [], calls = [], hostStores = [], actors = [], queue = [], reads = [];
-  const cluster = 'directory-p09', keys = Object.fromEntries(['a','b'].map(id => [id, generateKeyPairSync('ed25519')])), sequences = { a: 0, b: 0 };
-  const initial = [{ namespace: 'state', key: 'identity', data: bytes({ V: 1, identity: '' }) }];
-  for (const id of ['a','b']) initial.push({ namespace: 'enrollment', key: 'actor/' + segment(id), data: bytes({ cluster, key: keys[id].publicKey.export({ format: 'der', type: 'spki' }).subarray(-32).toString('base64'), personal: true }) });
+  const cluster = 'directory-p09', keys = Object.fromEntries(['a','b','effects','root','joiner'].map(id => [id, generateKeyPairSync('ed25519')])), sequences = { a: 0, b: 0, effects:0, joiner:0 };
+  const root = keys.root.publicKey.export({format:'der',type:'spki'}).subarray(-32);
+  const initial = [{ namespace:'state',key:'identity',data:bytes({V:1,identity:'id_'+sha(root).slice(0,32),signing_key:root.toString('base64')}) }];
+  for (const id of ['a','b','effects']) initial.push({ namespace: 'enrollment', key: 'actor/' + segment(id), data: bytes({ cluster, key: keys[id].publicKey.export({ format: 'der', type: 'spki' }).subarray(-32).toString('base64'), personal: id !== 'effects', ...(id === 'effects' ? {effects:true} : {}) }) });
   const size = writes => writes.reduce((n, r) => n + 12 + enc.encode(r.namespace).length + enc.encode(r.key).length + r.data.length, 0);
   const evaluate = directoryEvaluator(reactor, cluster, 8 * 1024 * 1024);
   const results = [[],[],[]];
@@ -73,7 +78,20 @@ test('R1 R2 R4 R14 R16 R17 hosted facade uses committed Go policy and native-ide
       async commit(raw) { const id = leader(), before = results[id - 1].length; commands.push(raw); accept(id, await actors[id - 1].input(3, raw)); await pump(blocked); if (results[id - 1].length === before) throw new Error('unavailable'); return results[id - 1].at(-1); },
       async barrierRead(id) { const l = leader(); accept(l, await actors[l - 1].input(4, id)); await pump(blocked); if (!reads.find(r => r.id === id)) throw new Error('unavailable'); return actors[l - 1].store.read('state', 'cell/' + segment('chat')); },
     });
-    let r = await facade.command(command('a', { create: { cell: 'chat', init: { head: 'sealed-one', class: 'chat', size: '1', keys: {} }, receipt: '' } })); assert.equal(r.code, 'ok'); assert.equal(r.view.cell.lease.fence, '1');
+    const effects = new RaftEffectsFacade({
+      commitEffect: (change,now) => facade.command(command('effects',change,now)),
+      async barrierRecord(key) { await facade.read('effect-read-'+commands.length); return actors[leader()-1].store.read(key.namespace,key.key); },
+    }, cluster);
+    const stored=new Map(); let failPut=true;
+    const bucket={async put(id,b) {if(failPut) throw new Error('blob write failed');stored.set(id,b.slice());},async get(id,opts) {const b=stored.get(id);if(!b)return null;const offset=opts?.range?.offset??0,length=opts?.range?.length??b.length;return {arrayBuffer:async()=>b.slice(offset,offset+length).buffer};}};
+    const sqlHost=new Host();hostStores.push(sqlHost);const store=new R2Store(bucket,sqlHost.sql,cluster);
+    const rid='1'.repeat(64), f=await sealFrame(encodeFrame('0'.repeat(32),[{rid,bytes:enc.encode('AGEO\x01sealed-object')}]));
+    const receipt={device:'a',head:'sealed-one',head_rid:rid};let durable=0;
+    await assert.rejects(store.put(f),/blob write failed/);
+    await assert.rejects(effects.upload(store,receipt,async()=>{durable++;},1000));
+    assert.equal(durable,0);failPut=false;await store.put(f);
+    const receiptID=await effects.upload(store,receipt,async()=>{durable++;},1000);assert.equal(durable,1);
+    let r = await facade.command(command('a', { create: { cell: 'chat', init: { head: 'sealed-one', class: 'chat', size: '1', keys: {} }, receipt: receiptID } })); assert.equal(r.code, 'ok'); assert.equal(r.view.cell.lease.fence, '1');
     const take = command('b', { acquire: { cell: 'chat', force: true, expect: { device: 'a', fence: '1' } } });
     r = await facade.command(take); assert.equal(r.code, 'ok'); assert.equal(r.view.cell.lease.fence, '2');
     assert.deepEqual(await facade.command(take), r, 'exact retry');
@@ -87,6 +105,19 @@ test('R1 R2 R4 R14 R16 R17 hosted facade uses committed Go policy and native-ide
     r = await facade.command(command('a', { put_device: { id: 'b', device: { V: 1, name: 'c2VhbGVk', added_by: '', revoked: false, caps: { os: '', arch: '', sandbox: null, container: null, gpu: null, cow: '' } } } })); assert.equal(r.code, 'ok');
     r = await facade.command(command('a', { revoke: { device: 'b' } })); assert.equal(r.code, 'ok');
     r = await facade.command(delayed); assert.equal(r.code, 'revoked');
+    const publicKey=keys.joiner.publicKey.export({format:'der',type:'spki'}).subarray(-32), device='dev_'+sha(publicKey).slice(0,32);
+    let pending={code:'k7m2q9xd',device,pubkey:publicKey.toString('base64url'),expires_at:10000,platform:'linux',state:'pending',grant:null,decided_at:0};
+    let loseDelivery=true;
+    const box={async bind(c){pending=boundLink(pending,c);return {ok:pending};},async deliver(c,id,state,grant,target){pending=deliveredLink(pending,c,id,state,grant,1000,target);if(loseDelivery){loseDelivery=false;throw new Error('lost delivery reply');}return {ok:null};}};
+    await effects.admit(box,'k7m2q9xd',1000);
+    await assert.rejects(effects.deliver(box,'k7m2q9xd',1000),/request_gone/);assert.equal(pending.state,'pending');
+    const cert={V:1,device:publicKey.toString('hex'),created:1,sig:''};cert.sig=sign(null,Buffer.from('codeaf/device-cert/v1\n'+JSON.stringify(cert)),keys.root.privateKey).toString('hex');
+    const decision={code:'k7m2q9xd',device,record:{V:1,name:'c2VhbGVk',added_by:'',revoked:false,caps:{os:'',arch:'',sandbox:null,container:null,gpu:null,cow:''}},grant:'c2VhbGVk',cert:Buffer.from(JSON.stringify(cert)).toString('base64url'),deny:false};
+    r=await facade.command(command('a',{decide_join:decision}));assert.equal(r.code,'ok');
+    assert(actors[leader()-1].store.read('enrollment','actor/'+segment(device)));
+    await assert.rejects(effects.deliver(box,'k7m2q9xd',1000),/lost delivery reply/);assert.equal(pending.grant,decision.grant);
+    await effects.deliver(box,'k7m2q9xd',1000);await effects.deliver(box,'k7m2q9xd',1000);
+    const outbox=decodeCanonical(dec.decode(actors[leader()-1].store.read('outbox','join/'+segment(decision.code))));assert.equal(outbox.outcome,'delivered');
     const row = await facade.read('fresh'); assert.equal(decodeCanonical(dec.decode(row)).head, 'sealed-one');
     for (const actor of actors) assert.deepEqual(actor.store.read('state', 'cell/' + segment('chat')), row);
     blocked = true; await assert.rejects(facade.read('minority'), /unavailable/);

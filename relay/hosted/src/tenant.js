@@ -155,3 +155,4 @@ export class Tenant {
 // Keeping it separate prevents constructing or invoking the legacy SQL writer
 // while the integration harness exercises the authoritative application path.
 export { RaftDirectoryFacade } from './raft/directory.js';
+export { RaftEffectsFacade, RaftBlobTenant } from './raft/effects.js';
