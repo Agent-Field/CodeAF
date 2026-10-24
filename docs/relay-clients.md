@@ -202,3 +202,12 @@ silently truncated or split into an unadvertised paging format. Large result
 pagination remains outside v0; clients must treat the retained timestamp as stale.
 After the last unpair, startup reads only the archived call receipts and does
 not open sync, start an executor or install its publish watcher.
+
+## Face ID for a whole consent batch
+
+A queued answer requires the signed `face_id` assertion when any open ask it
+resolves is irreversible. The check uses the fixed targets in the actual answer
+path, after claiming, so a sibling arriving during the claim is covered too.
+This includes a whole consent batch and a different
+ask selected by `batch_item`. Without it the call is refused before any consent
+is answered, and the paired-client refusal is kept in the chat with “Face ID”.

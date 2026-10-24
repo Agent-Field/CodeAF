@@ -94,7 +94,8 @@ func (r *Runner) execute(ctx context.Context, c Client, e Queued) error {
 	}
 	if !known {
 		if err := r.checkAsk(call, agent); err != nil {
-			return err
+			refusal := Receipt{Client: c.ID, Number: e.Number, Agent: agent, Method: call.Method, At: r.cfg.Now().UTC().Format(time.RFC3339Nano), Status: "refused", Reason: err.Error()}
+			return errors.Join(err, r.log(refusal))
 		}
 	}
 	if err := r.request(ctx, "POST", queuePath(c.ID, e.Number)+"/claim", nil, nil); err != nil {
@@ -115,7 +116,11 @@ func (r *Runner) execute(ctx context.Context, c Client, e Queued) error {
 	if err := r.log(receipt); err != nil {
 		return err
 	}
-	return r.request(ctx, "DELETE", queuePath(c.ID, e.Number), nil, nil)
+	ackErr := r.request(ctx, "DELETE", queuePath(c.ID, e.Number), nil, nil)
+	if receipt.Status == "failed" {
+		return errors.Join(errors.New(receipt.Reason), ackErr)
+	}
+	return ackErr
 }
 
 func (r *Runner) prepare(ctx context.Context, c Client, e Queued) (Call, string, error) {
@@ -147,10 +152,16 @@ func (r *Runner) dispatch(c Client, e Queued, call Call, agent string, skipped R
 	if err := r.log(receipt); err != nil {
 		return receipt, err
 	}
-	result, callErr := appwire.Call(r.cfg.Engine, call.Method, call.Params)
+	engine := r.cfg.Engine
+	if talker, ok := engine.(appwire.Talker); ok && call.Method == "asks.answer" {
+		engine = answerGuard{Engine: engine, Talker: talker, faceID: call.FaceID}
+	}
+
+	result, callErr := appwire.Call(engine, call.Method, call.Params)
 	receipt.Status = "done"
 	if callErr != nil {
 		receipt.Status = "failed"
+		receipt.Reason = callErr.Error()
 	}
 	if call.Method == "agents.create" && callErr == nil {
 		// Creation has no prior chat. Its returned chat receives the final log;
@@ -245,11 +256,19 @@ func (r *Runner) checkAsk(call Call, agent string) error {
 	if call.Method != "asks.answer" {
 		return nil
 	}
+	// The selected ask gets a preflight check; Talker additionally checks its
+	// fixed batch through answerGuard during dispatch, after the claim trip.
 	var params struct {
-		ID string `json:"id"`
+		ID        string `json:"id"`
+		BatchItem string `json:"batch_item"`
+		Later     bool   `json:"later"`
+		YouDecide bool   `json:"you_decide"`
 	}
 	if err := json.Unmarshal(call.Params, &params); err != nil {
 		return err
+	}
+	if params.BatchItem != "" && !params.Later && !params.YouDecide {
+		params.ID = params.BatchItem
 	}
 	result, err := appwire.Call(r.cfg.Engine, "asks.list", mustJSON(appwire.AgentParams{Agent: agent}))
 	if err != nil {
@@ -257,13 +276,30 @@ func (r *Runner) checkAsk(call Call, agent string) error {
 	}
 	for _, ask := range result.(*appwire.AsksResult).Asks {
 		if ask.ID == params.ID {
-			if ask.Irreversible && !call.FaceID {
-				return errors.New("irreversible ask requires Face ID")
-			}
-			return nil
+			return requireFaceID([]appwire.Ask{ask}, call.FaceID)
 		}
 	}
 	return errors.New("queued ask is no longer open")
+}
+
+type answerGuard struct {
+	appwire.Engine
+	appwire.Talker
+	faceID bool
+}
+
+func (e answerGuard) AnswerAskWith(agent, id string, answer appwire.AskAnswer) error {
+	answer.BeforeResolve = func(asks []appwire.Ask) error { return requireFaceID(asks, e.faceID) }
+	return e.Talker.AnswerAskWith(agent, id, answer)
+}
+
+func requireFaceID(asks []appwire.Ask, faceID bool) error {
+	for _, ask := range asks {
+		if ask.Irreversible && !faceID {
+			return errors.New("irreversible ask requires Face ID")
+		}
+	}
+	return nil
 }
 
 func mustJSON(value any) json.RawMessage { raw, _ := json.Marshal(value); return raw }

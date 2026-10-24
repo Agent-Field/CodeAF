@@ -97,6 +97,16 @@ func (b *appBackend) clients() (*clientrun.Runner, error) {
 // reads that same history, so reconnecting never loses the who/when/method.
 func (b *appBackend) logClientCall(receipt clientrun.Receipt) error {
 	if receipt.Agent != "" {
+		if receipt.Status == "refused" {
+			a, err := b.findCrewOwner(receipt.Agent)
+			if err != nil {
+				return err
+			}
+			entry := appClientEntry(receipt)
+			if err := b.keepAppEntry(a, entry, ""); err != nil {
+				return err
+			}
+		}
 		b.emit.Emit(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appClientEntry(receipt)})
 	}
 	return nil
@@ -113,10 +123,17 @@ func appClientEntry(receipt clientrun.Receipt) appwire.Entry {
 		state = "incomplete"
 	}
 	suffix := ""
+	if receipt.Reason != "" {
+		suffix = " · " + receipt.Reason
+	}
 	if receipt.SkippedFrom > 0 {
 		suffix = " · skipped missing calls " + strconv.FormatInt(receipt.SkippedFrom, 10) + "–" + strconv.FormatInt(receipt.SkippedThrough, 10)
 	}
-	return appwire.Entry{ID: "client-" + receipt.Client + "-" + strconv.FormatInt(receipt.Number, 10), Agent: receipt.Agent, Kind: appwire.EntryNotice, At: at, Text: "Paired client " + receipt.Client + " · " + receipt.Method + " · " + state + suffix}
+	id := "client-" + receipt.Client + "-" + strconv.FormatInt(receipt.Number, 10)
+	if receipt.Status == "refused" {
+		id += "-refused"
+	}
+	return appwire.Entry{ID: id, Agent: receipt.Agent, Kind: appwire.EntryNotice, At: at, Text: "Paired client " + receipt.Client + " · " + receipt.Method + " · " + state + suffix}
 }
 func (b *appBackend) clientEntries(agent string) []appwire.Entry {
 	r := b.clientRunner.Load()

@@ -6,6 +6,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -254,3 +255,153 @@ func TestScopedClientReadsAnswersAndAcksThroughTheAppBackend(t *testing.T) {
 	}
 
 }
+
+func TestQueuedFaceIDCoversTheResolvedConsentSet(t *testing.T) {
+	for _, scenario := range []struct {
+		name            string
+		batchItem, late bool
+	}{{"batch", false, false}, {"batch_item", true, false}, {"sibling_during_claim", false, true}} {
+		t.Run(scenario.name, func(t *testing.T) {
+			root := t.TempDir()
+			t.Setenv(home.EnvVar, root)
+			t.Setenv("CODEAF_PROFILE_DIR", "")
+			t.Setenv("CODEAF_SYNC_URL", "off")
+			c, err := cell.CreateIn(filepath.Join(session.PlacesRoot(), "phone-test"), cell.Options{Class: cell.HostBound})
+			if err != nil {
+				t.Fatal(err)
+			}
+			transcript, err := c.Path(cell.TranscriptPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(transcript, nil, 0600); err != nil {
+				t.Fatal(err)
+			}
+			conv := &fakeConversation{}
+			conv.onAnswer = func(a session.Answer) {
+				q := session.Question{Kind: a.Kind, ID: a.ID}
+				conv.raise(session.Event{Kind: session.EventQuestionAnswered, Question: &q, Answer: &a})
+			}
+			rec := newAppRecorder()
+			backend := newAppBackend(rec, func(ask appOpenAsk) (*appConn, error) {
+				return &appConn{Conv: conv, Workspace: ask.Workspace, Transcript: transcript, Release: func() {}}, nil
+			})
+			defer backend.Close()
+			backend.mint = func(string) (string, error) { return transcript, nil }
+			agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: t.TempDir()})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if agent.ID != c.ID {
+				t.Fatalf("app chat id = %q; directory lease uses %q", agent.ID, c.ID)
+			}
+
+			relay := relayserve.New(relayserve.Config{Store: t.TempDir()})
+			srv := httptest.NewServer(relay.Handler)
+			defer relay.Close()
+			defer srv.Close()
+			id, err := identity.Ensure(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			dev, err := identity.Device(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			full := appClientSigner{id, dev}
+			dir := directory.NewHTTP(srv.URL, reqsign.SignFor(full, time.Now), srv.Client())
+			ctx := context.Background()
+			if err := dir.PutDevice(ctx, dev.ID(), directory.Device{V: 1}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := dir.Create(ctx, c.ID, directory.CellInit{Head: strings.Repeat("1", 64), Class: "chat"}); err != nil {
+				t.Fatal(err)
+			}
+			runner, err := clientrun.Open(clientrun.Config{Home: root, Relay: srv.URL, Signer: full, Directory: dir, Engine: backend, Log: backend.logClientCall, HTTP: srv.Client()})
+			if err != nil {
+				t.Fatal(err)
+			}
+			backend.clientRunner.Store(runner)
+			seed, err := identity.NewSeed()
+			if err != nil {
+				t.Fatal(err)
+			}
+			pub, priv, err := box.GenerateKey(rand.Reader)
+			if err != nil {
+				t.Fatal(err)
+			}
+			params, _ := json.Marshal(appwire.PairClientParams{SigningKey: seed.Public(), BoxKey: pub[:], Methods: []string{"asks.answer"}, Reads: []string{"asks.list"}})
+			result, err := appwire.Call(backend, "clients.pair", params)
+			if err != nil {
+				t.Fatal(err)
+			}
+			grant := result.(*appwire.ClientGrant)
+			clientDev, err := seed.Join(grant.Cert)
+			if err != nil {
+				t.Fatal(err)
+			}
+			client := scopedSigner{grant.Identity, clientDev}
+
+			_ = priv
+			raise := func(i int, stakes session.Stakes) {
+				q := session.Question{ID: uint64(i + 1), Kind: session.QuestionConsent, Head: []string{"ls", "rm -rf"}[i], Stakes: stakes, Batch: "step-1", Options: session.AnswerOptions(session.QuestionConsent)}
+				conv.raise(session.Event{Kind: session.EventQuestion, Question: &q})
+				rec.waitFor(t, 5*time.Second, func(name string, data any) bool {
+					e, ok := data.(appwire.AskOpened)
+					return name == appwire.EventAskOpened && ok && e.Ask.ID == fmt.Sprintf("consent:%d", i+1)
+				})
+			}
+			raise(0, session.StakesCostly)
+			if !scenario.late {
+				raise(1, session.StakesIrreversible)
+			}
+			if scenario.late {
+				srv.Client().Transport = appClientTransport(func(req *http.Request) (*http.Response, error) {
+					resp, err := http.DefaultTransport.RoundTrip(req)
+					if err == nil && req.Method == "POST" && strings.HasSuffix(req.URL.Path, "/claim") {
+						raise(1, session.StakesIrreversible)
+					}
+					return resp, err
+				})
+			}
+			answerParams := map[string]any{"agent": agent.ID, "id": "consent:1", "option": "allow_once"}
+			if scenario.batchItem {
+				answerParams["batch_item"] = "consent:2"
+			}
+			rawParams, _ := json.Marshal(answerParams)
+			payload, _ := json.Marshal(clientrun.Call{Method: "asks.answer", Params: rawParams})
+			sealed, err := box.SealAnonymous(nil, payload, (*[32]byte)(grant.BoxKey), rand.Reader)
+			if err != nil {
+				t.Fatal(err)
+			}
+			clientWire(t, srv.URL, client, "POST", "/v1/clients/"+clientDev.ID()+"/queue", map[string]any{"number": 1, "at": time.Now().UnixMilli(), "method": "asks.answer", "target": dev.ID(), "sealed": sealed}, nil)
+			err = runner.Step(ctx)
+			if err == nil || !strings.Contains(err.Error(), "Face ID") {
+				t.Errorf("consent set accepted without Face ID: %v", err)
+			}
+			conv.mu.Lock()
+			answers := len(conv.answers)
+			conv.mu.Unlock()
+			if answers != 0 {
+				t.Errorf("resolved %d consents without Face ID", answers)
+			}
+			entries, _, err := backend.Entries(agent.ID, "", 200)
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, e := range entries {
+				if strings.Contains(e.Text, "Face ID") && strings.Contains(e.Text, clientDev.ID()) {
+					found = true
+				}
+			}
+			if !found {
+				t.Error("chat has no paired-client Face ID refusal")
+			}
+		})
+	}
+}
+
+type appClientTransport func(*http.Request) (*http.Response, error)
+
+func (f appClientTransport) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
