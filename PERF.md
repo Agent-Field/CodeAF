@@ -17,6 +17,27 @@ is diagnostic; regression gates count deterministic work, bytes, allocations,
 request fanout, retained data and cache reuse. Do not gate on wall-clock thresholds.
 Use scripted providers and explicit synchronization rather than real sleeps.
 
+Activity layout lines share immutable task records instead of copying both task
+and conversation payloads into every line. Conversation overlays keep their own
+copy, so live titles do not mutate the held reading. Paint scratch still expires
+before the next input. `TestActivityScalePaintAllocationBudget` exercises the
+actual body with 5,120 tasks and enforces a 4 MiB allocation budget per paint;
+`BenchmarkActivityScaleFrame` and `TestActivityScaleTerminalLatency` measure the
+same workload at the body and real-terminal interfaces.
+
+Team disbanding reads reporting homes once through the existing batch reader
+before changing memberships. `BenchmarkDisbandScale` covers 10,000 and 40,000
+memberships; the batch trades temporary indexed storage for repeated scans.
+`TestTeamsDisbandScaleTerminalLatency` measures confirmation through the visible
+saved result, including persistence and redraw work.
+
+Store reopening probes distinct nonempty session IDs through the existing
+message index before checking for missing session rows. It still scans message
+IDs, and still discovers older writers' missing rows on a later open; no cached
+migration flag skips that check. `BenchmarkOpenSettledSessions` measures the
+whole public open/close operation. `TestSettledStoreTerminalStartup` separates
+fixture construction from the first interactive frame of the running terminal.
+
 ## What the gates check
 
 `make test-quick` checks compilation, vet, formatting, packed manuals, change
