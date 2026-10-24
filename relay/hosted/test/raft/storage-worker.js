@@ -1,5 +1,5 @@
-// The proof uses a deliberately tiny opaque checkpoint store, not P08's
-// production member schema. Its awaited transaction demonstrates the actual
+// The proof uses a deliberately tiny opaque checkpoint store, separate from
+// the production member schema. Its awaited transaction demonstrates the actual
 // workerd durability boundary before the harness supplies completions.
 export class ProofStore {
   constructor(state) { this.state = state; }

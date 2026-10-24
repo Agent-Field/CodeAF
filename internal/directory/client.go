@@ -85,7 +85,7 @@ var (
 	ErrNotFound     = clusterstate.ErrNotFound
 	ErrExists       = clusterstate.ErrExists
 	ErrLeaseHeld    = clusterstate.ErrLeaseHeld
-	ErrFenceStale   = clusterstate.ErrFenceStale // L7
+	ErrFenceStale   = clusterstate.ErrFenceStale
 	ErrHeadMoved    = clusterstate.ErrHeadMoved
 	ErrCAS          = clusterstate.ErrCAS
 	ErrRevoked      = wireauth.ErrRevoked // every verb of a revoked device; the wires share this one sentinel

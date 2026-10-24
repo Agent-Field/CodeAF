@@ -28,8 +28,8 @@ type Caps struct {
 	OS        string  `json:"os"`        // runtime.GOOS
 	Arch      string  `json:"arch"`      // runtime.GOARCH
 	Sandbox   *string `json:"sandbox"`   // "seatbelt" | "landlock" | null
-	Container *string `json:"container"` // null in Stage 1
-	GPU       *string `json:"gpu"`       // null in Stage 1
+	Container *string `json:"container"` // null if unreported
+	GPU       *string `json:"gpu"`       // null if unreported
 	Cow       string  `json:"cow"`       // "apfs" | "btrfs" | "xfs-reflink" | "overlayfs" | "none"
 }
 

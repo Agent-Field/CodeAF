@@ -47,7 +47,7 @@ class Native {
 }
 
 // Protobuf inspection is transport/storage framing only. Application meaning
-// is evaluated by Go, and the independent consensus checker remains P06.
+// is evaluated by Go; raftsim supplies the independent consensus checker.
 function fields(bytes) {
   let at = 0; const result = new Map();
   const vint = () => { let n=0n, shift=0n; for(let i=0;i<10;i++){assert(at<bytes.length);const b=bytes[at++];n|=BigInt(b&127)<<shift;if(!(b&128))return n;shift+=7n;}throw new Error('protobuf varint'); };
@@ -220,7 +220,7 @@ test('R3 R4 R14 R27 mixed Worker/native command, ReadIndex and durable restart',
 
 async function proveCoResident(worker,native,inspect,samples){
  // Admission preserves an imported ceiling, never truncating or discarding
- // rows. This fixture exercises the representation, not P11 migration policy.
+ // rows. This fixture exercises the representation, not migration policy.
  const group=new Group(worker,native,await mkdtemp(join(tmpdir(),'codeaf-p03-extra-')),[1,2,3],'p03-other-identity');
  for(let id=1;id<=3;id++)await group.create(id);
  for(let id=1;id<=3;id++)await group.step(id,0);

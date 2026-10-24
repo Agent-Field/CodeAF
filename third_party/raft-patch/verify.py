@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the R14 source boundary without git, downloads or the caller's home."""
+"""Check pinned source integrity without git, downloads or the caller's home."""
 import hashlib
 import json
 from pathlib import Path

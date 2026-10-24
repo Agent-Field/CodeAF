@@ -293,7 +293,7 @@ func (a *probeActor) call(r actorRequest, dir string) (any, error) {
 }
 
 // actorProof uses actual native SQLite stores beside hosted actors. The only
-// application is the explicit development lease probe, never production policy.
+// application is the narrow lease probe, never production policy.
 func actorProof(dir string) error {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err

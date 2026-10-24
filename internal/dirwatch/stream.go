@@ -24,7 +24,8 @@ type Stream interface {
 	Close()
 }
 
-// Frame is what arrived: the directory's version, an event, or only a pong.
+// HoldReceipt is a committed renewal receipt for one exact lease: its cell,
+// fence and log index, with its validity window.
 type HoldReceipt struct {
 	Cell  string `json:"cell"`
 	Fence uint64 `json:"fence,string"`
@@ -36,6 +37,7 @@ type HoldReceipt struct {
 // HoldIdentity identifies the exact lease named by a committed receipt.
 type HoldIdentity interface{ HoldIdentity() (string, uint64) }
 
+// Frame is what arrived: the directory's version, an event, or only a pong.
 type Frame struct {
 	Holds   []HoldReceipt
 	Version uint64

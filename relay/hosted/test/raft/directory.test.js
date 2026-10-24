@@ -57,7 +57,7 @@ test('R1 R2 R4 R14 R16 R17 R21 hosted facade uses committed Go policy and native
   try {
     for (let i = 0; i < 3; i++) {
       const host = new Host(); hostStores.push(host);
-      // P11 owns genesis import. This test-only genesis is supplied at the
+      // This test-only genesis is supplied at the
       // first committed application entry, identically on all three stores.
       const evaluator = (raw, read, app) => {
         let base = [];

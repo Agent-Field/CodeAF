@@ -1,12 +1,12 @@
 # Deterministic fault gate
 
-This development package runs 3–5 **production** `raftcore` instances on one
+This fault-testing package runs 3–5 **production** `raftcore` instances on one
 virtual-time event queue. It adds no product route, environment switch, socket,
-clock read or background consensus loop. P09 owns the authorized production
-application adapter; this packet's `ProbeApplication` exercises the real pure
-lease rules and a small session-policy fixture. The independent oracle in
-`model` uses neither those rules nor production state types. Assignment policy
-extends that oracle in P16; it is not advertised as implemented here.
+clock read or background consensus loop. `ProbeApplication` exercises the real
+pure lease rules and a small session-policy fixture, separate from the authorized
+production application adapter. The independent oracle in `model` uses neither
+those rules nor production state types. A separate assignment model extends the
+independent domain.
 
 ## Run the bounded gate
 
@@ -43,13 +43,13 @@ anchors and 12–13 for personal voters). Split votes and omitted
 messages can require several attempts; the campaign allows eight maximum
 timeout windows while retaining the 2,000-event ceiling. A separate seeded
 check asserts one delivered tick per live node per round and each election
-anchor attempt within 6–12 ticks. The separate R7 campaign measures the
+anchor attempt within 6–12 ticks. The separate leadership campaign measures the
 phone-fallback deadline through a committed conditional operation.
 Lost-reply retries first wait for the original request's durable session result
 without submitting a second proposal. An absent result after a timeout remains
 unknown; it cannot be compared to a later successful retry as an empty result.
 Portable replay fixtures retain the original split-vote and uncommitted-timeout
-prefixes that exposed these two harness mistakes.
+prefixes for regression coverage.
 
 To keep exact negative counterexamples, pass the simulator package alone:
 
@@ -93,20 +93,20 @@ against its flush, and every state transition checks leader-per-term, committed
 log agreement, monotonic indexes/fences and application equivalence.
 
 The disk model is a fault model, not another durable storage implementation.
-P04/P05 prove SQLite process cuts and actual WAL flushes. The native parity test
-replays the simulator's exact production batches into real SQLite stores and
-compares recovery bytes, application state and portable snapshots; simulated
-snapshot chunks are also installed through the real store's API. The simulated
-one-row application stays below the portable 1 MiB row envelope; it is not the
-paged production directory evaluator or a migration representation.
+Native store tests prove SQLite process cuts and actual WAL flushes. The native
+parity test replays the simulator's exact production batches into real SQLite
+stores and compares recovery bytes, application state and portable snapshots;
+simulated snapshot chunks are also installed through the real store's API. The
+simulated one-row application stays below the portable 1 MiB row envelope; it is
+not the paged production directory evaluator or a migration representation.
 
-## Constraints subsequent packets must keep
+## Host constraints
 
 Create a new checkpoint **after committed learner admission** when catch-up
 requires a compacted prefix. etcd refuses an older snapshot whose configuration
 omits the recipient. Wait until the learner applies the advertised barrier
-before proposing its promotion. This test host supplies the mechanism; P12 owns
-the durable enrollment/intent and policy workflow.
+before proposing its promotion. This test host supplies the mechanism; the
+production host owns the durable enrollment/intent and policy workflow.
 
 Snapshot transfer completion is separate from Raft installation. Chunks stage
 without changing application authority, complete streams are checksummed,
@@ -117,18 +117,17 @@ so RawNode can retry. A transport receipt alone is never an append acknowledgmen
 
 The fixture session contract keeps one exact result per live session, requires
 an acknowledgment to advance, retains closed-ID tombstones, refuses conflicting
-digests and caps live sessions at 128. Acks/close are replay-catalog inputs until
-P09 supplies their real schema; no public protocol for them is invented here.
-Authentication, durable upload receipts, complete directory verbs, assignments,
-learner quotas/transport queues, hosted actors and client journeys remain the
-packets that own them. R1's displayed sentence, unsent local branches and the
-other X/J requirements are not claimed by a metadata simulator.
+digests and caps live sessions at 128. Acks/close are replay-catalog inputs,
+not a public protocol. Authentication, durable upload receipts, complete
+directory verbs, assignments, learner quotas/transport queues, hosted actors
+and client journeys require separate tests. A metadata simulator does not prove
+visible refusal wording, unsent local branches or chat/workspace behavior.
 
 Porcupine v1.1.0 is MIT licensed and only imported by the simulator checker.
 Neither this dependency nor the simulator is linked into `bin/codeaf`.
 
 
-P12 extends the bounded topology to three voters plus at most 32 learner cores.
+The bounded topology supports three voters plus at most 32 learner cores.
 Its full-fanout case admits the learners in one internal configuration batch,
 sleeps all of them, commits writes, compacts, restores a lagging learner through
 a fresh snapshot and removes it with delayed responses. The unchanged 2,000-event
@@ -143,10 +142,10 @@ recordings selects their original version 1, including exact RNG consumption
 and event digests. This compatibility is internal replay input, never a product
 feature switch. New groups always default to version 2 in both runtimes.
 
-R7 keeps all 190 original split-vote seeds in testdata/leadership. The seeded
+All 190 original split-vote seeds remain in testdata/leadership. The seeded
 leadership campaign measures through a real committed conditional acquire and
 reports p50/p95/max; it never accepts an elected role alone as successful
 fallback. The B+C campaign separately requires a conditional operation within
 50 seconds after A and learner P disappear in restored anchor topology. If
 C is still a learner and the voter set is A+B+P, simultaneous P+A loss remains
-unavailable under R8: no election window can replace a missing majority.
+unavailable: no election window can replace a missing majority.

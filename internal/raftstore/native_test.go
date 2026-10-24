@@ -17,7 +17,7 @@ import (
 
 // nativeGroup is a bounded, socket-free host fixture using REAL per-member
 // SQLite databases and production cores. Its one-cell rule evaluator is not
-// P09's authorized directory writer or P06's independent history oracle.
+// the authorized directory writer or the independent history oracle.
 type nativeGroup struct {
 	t             *testing.T
 	nodes         [3]*raftcore.Core

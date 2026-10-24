@@ -7,7 +7,7 @@ import (
 )
 
 // R30 forbids another lease writer on the authoritative hosted path. Existing
-// pre-cutover legacy rules remain tested until P11 freezes that source.
+// pre-cutover legacy rules remain tested until migration freezes that source.
 func TestR30HostedDirectoryRoutesOnlyThroughGoPolicy(t *testing.T) {
 	b, err := os.ReadFile("../../relay/hosted/src/raft/directory.js")
 	must(t, err)

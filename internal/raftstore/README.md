@@ -42,12 +42,13 @@ never permission to acknowledge a client or send a Raft append response.
    Applied reaching that barrier. The host serializes all core work and storage
    completions; the database mutex alone does not serialize a whole actor.
 
-P09 owns signatures, authorization, declared read dependencies, deterministic
-evaluation, response encoding, dedup sequencing and admission policy. This adapter
-does not infer these from stored bytes. It accepts opaque records with a 1 MiB
-per-record and aggregate read-set envelope. A missing key is absent from the map;
-an existing empty record remains present. `Update.Delete` is for an explicitly
-authorized application change; no consensus maintenance path deletes records.
+The application owns signatures, authorization, declared read dependencies,
+deterministic evaluation, response encoding, dedup sequencing and admission
+policy. This adapter does not infer these from stored bytes. It accepts opaque
+records with a 1 MiB per-record and aggregate read-set envelope. A missing key
+is absent from the map; an existing empty record remains present.
+`Update.Delete` is for an explicitly authorized application change; no consensus
+maintenance path deletes records.
 
 ## Format and corruption checks
 
@@ -75,8 +76,8 @@ here that deletes chats, frames, branches, saved heads or legacy original stores
 
 Storage format 2 adds a checksummed `meta.snapshot` pointer, `snapshots` manifests
 and `snapshot_chunks`, with full-width big-endian chunk numbers. Format-1 stores
-from the earlier development packet are refused, retained and never upgraded in
-place; this is an internal pre-cutover format, not a legacy directory migration.
+are refused, retained and never upgraded in place; this is an internal
+pre-cutover format, not a legacy directory migration.
 The cross-runtime stream is format 1 in `internal/raftsnapshot/README.md`.
 
 For a local checkpoint, serialize the actor, call `CreateSnapshot`, then
@@ -97,7 +98,7 @@ consensus bytes. A completed transfer awaiting installation keeps that slot.
 application hash and returns the portable protobuf pointer. This publishes a
 complete transfer, not application authority. The active pointer remains old.
 The host must enforce the imported/application byte ceiling and transport quota
-before staging; this adapter does not choose P09/P11's admission policy.
+before staging; this adapter does not choose application/import admission policy.
 
 Only `Persist` of the real incoming Ready atomically replaces application rows,
 header/ConfState, active snapshot pointer, log prefix and hard state. Successful
@@ -124,13 +125,13 @@ existing policy boundary. No frame garbage collection is introduced here.
 
 ## Focused proof
 
-Run through the wave's pressure/CPU wrapper:
+Run through `scripts/raft-proof-footprint.sh` for pressure and CPU limits:
 
 ```sh
 sh scripts/raft-proof-footprint.sh go test -p=1 ./internal/raftstore ./internal/raftcore -run '^TestR' -count=1 -timeout=120s -v
 ```
 
-The R3/R12/R17 transaction tests terminate subprocesses without Close/rollback at
+The transaction tests terminate subprocesses without Close/rollback at
 every Ready/application statement and both sides of COMMIT. They recover copies
 of only the database and WAL, excluding process memory and the shared-memory index.
 The Linux `strace` probe asserts successful WAL fsync/fdatasync between invocation
@@ -141,30 +142,32 @@ Physical power cuts or hardware that lies about flushes are not simulated.
 The bounded three-native-node fixture runs real cores/stores and real create/
 publish lease rules, then loses a leader and recovers another member from durable
 bytes before a quorum read. It also recovers and leaves real joint membership.
-Its one-cell evaluator is test-only, not P09's authorized directory writer or the
-independent P06 history oracle. Full simulator fault schedules, hosted snapshot interoperability, transport,
-membership policy, cross-runtime storage and real-client journeys remain later
-packets; these mechanism tests do not claim complete R1–R30 release proof.
+Its one-cell evaluator is test-only, separate from the authorized directory
+writer and independent history oracle. Full simulator fault schedules, hosted
+snapshot interoperability, transport, membership policy, cross-runtime storage
+and real-client journeys need separate proofs.
 
-The P05 R13 tests cut real subprocesses at staging/chunk/completion, each
+The snapshot tests cut real subprocesses at staging/chunk/completion, each
 source/install row and created chunk, application/pointer/log publication,
 compaction and both sides of COMMIT. They retain database/WAL only. Missing and
 corrupt chunk tests cover every chunk in a near-limit record, plus canonical
-manifest refusals. The R11 native fixture demotes a member to learner, disconnects
-it, commits more than the 4 MiB trigger through the majority, compacts both stores
-and caches, and then installs/replays/restarts the learner. The pure format tests
-pin full-width integer and binary framing vectors independently of the encoder.
-These are the P05 mechanism gates; P06/P08 own simulator/cross-runtime campaigns.
+manifest refusals. The native learner fixture demotes a member to learner,
+disconnects it, commits more than the 4 MiB trigger through the majority,
+compacts both stores and caches, and then installs/replays/restarts the learner.
+The pure format tests pin full-width integer and binary framing vectors
+independently of the encoder. These storage mechanism tests complement the
+separate simulator/cross-runtime campaigns.
 
 ## Legacy directory import
 
-P11 freezes the source with `directory.SQLite.FreezeLegacy`, waits for admitted
-legacy writes and pairing decisions, samples hold evidence, then inventories the
-original rows through the shared Go converter. `InventoryLegacy` is resumable;
-`ExportLegacy` streams canonical rows in namespace/key order. Unknown fields or
-rows above the existing one-row envelope refuse the import and retain the frozen
-source. It never truncates records or rewrites original JSON. Erased namespaces
-remain refused by the existing namespace tombstone before opening the source.
+The migration host freezes the source with `directory.SQLite.FreezeLegacy`,
+waits for admitted legacy writes and pairing decisions, samples hold evidence,
+then inventories the original rows through the shared Go converter.
+`InventoryLegacy` is resumable; `ExportLegacy` streams canonical rows in
+namespace/key order. Unknown fields or rows above the existing one-row envelope
+refuse the import and retain the frozen source. It never truncates records or
+rewrites original JSON. Erased namespaces remain refused by the existing
+namespace tombstone before opening the source.
 
 The source allocates ONE UUID/generation and ordered three-anchor configuration.
 Each target calls `ImportLegacy` on its own fresh store, streams the same export,
@@ -180,11 +183,11 @@ The `membership/legacy-import` row retains provenance and the byte ceiling
 at least two distinct configured anchors; the host obtains them through a fresh
 current-term quorum barrier. Only then does `MigrationRoute` return the Raft
 facade. Freeze, inventory and ownership never reopen the old writer, including
-stale handles and restarts. The full production host/client routing is assembled
-in P17. No API caller may submit import receipts or allocate replacement UUIDs.
+stale handles and restarts. Production host/client routing uses this migration
+boundary. No API caller may submit import receipts or allocate replacement UUIDs.
 Public root and original authenticated device certificates install authority;
 metadata alone cannot enroll a device. Previously unseen personal devices must
 present their root-signed certificate at the later enrollment/ingress door.
 Legacy public link decisions drain before freeze and remain in their original
-request store through its existing TTL; pending codes enter P10's reserved
+request store through its existing TTL; pending codes enter the reserved
 outbox after cutover. No grant is regenerated or automatically replayed as work.

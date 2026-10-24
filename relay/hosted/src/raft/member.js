@@ -15,7 +15,7 @@ export { installRaftModule, runtimeMetrics } from './actor.js';
 
 // Only internal namespace calls can initialize a provisioned member. The
 // public Worker routes identity coordination through its authenticated source.
-// Enrollment is derived from the durable Go registry; P09 supplies evaluation.
+// Enrollment and evaluation use the durable Go registry and shared Go policy.
 export class RaftMemberDO extends DurableObject {
   constructor(ctx, env) { super(ctx, env); this.actor = null; this.loading = null; this.ctx = ctx; this.env = env; }
   evaluator(config) {

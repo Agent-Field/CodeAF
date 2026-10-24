@@ -1,13 +1,11 @@
 # Pure coordination boundary
 
-`clusterstate` is shared by native members and the future WASI reactor. It has
+`clusterstate` is shared by native members and the WASI reactor. It has
 no directory, HTTP, database, identity-key, wall-clock or random-source imports.
 `directory` keeps aliases to its records/errors and forwards its existing rules.
 The old v1 JSON representation and pure rule behavior remain unchanged.
 
-P01 defines schema 1 for commands, results and individual application rows. This
-is internal development scaffolding, not a production routing change. Later
-packets add their typed operation/row variants before the single feature ships.
+Schema 1 covers commands, results and individual application rows.
 An older member must reject unknown versions and variants and stop applying;
 it cannot turn an unknown committed entry into a successful empty operation.
 
@@ -17,8 +15,8 @@ it cannot turn an unknown committed entry into a successful empty operation.
 verify a signature, validate upload receipts, implement deduplication, or apply a
 mutation. The host still authenticates the original signed request, and apply
 must check committed enrollment, revocation, rotation, dependencies and scope.
-`RequestDigest` and `Signature` are original authentication/session inputs; P07
-and P09 supply their cryptographic and deduplication validation.
+`RequestDigest` and `Signature` are original authentication/session inputs;
+ingress and apply supply their cryptographic and deduplication validation.
 
 The v2 canonical encoding has these rules:
 
@@ -44,17 +42,17 @@ read by the targeted hosted codec test. The existing relay rule vectors are
 consumed unchanged by the pure Go test and the hosted vector test.
 
 `Row` holds one record, so a host can supply bounded read-sets and stream sorted
-rows at a fixed applied index. It is not a whole-identity snapshot format. P04/P05
+rows at a fixed applied index. It is not a whole-identity snapshot format. Hosts
 must atomically persist applied index, visible version, logical time, dedup and
 membership metadata alongside rows. They must not use `Listing` JSON as a state
 export: its visible version deliberately lives outside the v1 body.
 
-`raftsim/model` is an independent sequential ownership/vault skeleton. It imports
-no production types or apply functions. P06 adds the Porcupine adapter, unknown
-timeout outcomes and replay/history machinery; later assignment packets extend
-the independent domain. P01 does not claim simulator or consensus proof.
+`raftsim/model` is an independent sequential ownership/vault model. It imports
+no production types or apply functions. The simulator uses Porcupine, unknown
+timeout outcomes and replay/history machinery; a separate assignment model
+extends the independent domain. Encoding tests alone do not prove consensus.
 
-Worker delegation (P15) is a fourth exclusive Authority role. Personal pairing
+Worker delegation is a fourth exclusive Authority role. Personal pairing
 Cert remains unchanged; WorkerCertificate uses its own signed domain and binds
 the root public identity, cluster UUID, worker key, sorted selected cell IDs,
 exclusive expiry and explicit learner consent. EnrollWorker commits only sealed
@@ -74,15 +72,15 @@ or renew a chat. RenewHolds and upload receipts bind worker scopes/incarnations.
 A delegated worker may beat/publish/release an already held selected chat, close
 its request session, register, heartbeat or drain itself. It cannot use ordinary
 Acquire, create/archive, pairing, vault, rotation or membership/leadership doors.
-P16 supplies the conditional assignment claim and must extend the allowlist and
-assignment dependencies there; it must bind an assignment's claimant incarnation
-before granting execution, even when a chat fence survives a worker restart.
+Conditional assignment claims require their own allowlist and declared
+dependencies. They bind an assignment's claimant incarnation before granting
+execution, even when a chat fence survives a worker restart.
 
 ReadWorkerCell returns one selected chat and its sealed grant after the host
 commits current ingress time and passes a fresh quorum ReadIndex barrier. The
 native AuthorizedWorkerRead and hosted workerCell adapters have the SAME host
 prerequisite, not a follower/local read path. Identity-wide AuthorizedRead still
-refuses workers. The public setup/client/provisioning lifecycle remains P17.
+refuses workers. Public worker setup and provisioning are not available yet.
 
 Scoped API workers never receive the identity log. Explicit learner consent
 permits its routing metadata, never content keys outside selected sealed grants.

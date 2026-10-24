@@ -1,5 +1,5 @@
 #!/bin/sh
-# The shared laptop is in use; pressure admission precedes every heavy step.
+# Pressure admission precedes every heavy step to bound resource contention.
 set -eu
 while ! awk '/^some / {split($2,a,"="); exit !(a[2]<=40)}' /proc/pressure/io; do
   cat /proc/pressure/io

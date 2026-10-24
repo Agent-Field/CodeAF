@@ -1,10 +1,10 @@
 # Worker reactor ABI, version 1
 
-P03 is an internal feasibility boundary. Neither the local proof Worker nor the
-stdio peer is a production directory or a new codeaf command. P08 owns the hosted
-actor/queue/storage adapter; P09 owns complete paged application evaluation,
+`raftabi` defines the internal reactor boundary. Neither the local proof Worker
+nor the stdio peer is a production directory or a new codeaf command. Host and
+application adapters supply actor queues, storage, complete paged evaluation,
 authorization, monotonic time, dedup and conditional transaction policy. No
-JavaScript lease or consensus rules are added here.
+JavaScript lease or consensus rules are implemented here.
 
 Build/run the bounded local proof from the repository root:
 
@@ -44,7 +44,7 @@ a core. Handles are monotonic uint32 values and are never reused within a
 runtime; a new runtime discards all old completions.
 
 The JS guard stops the whole instance if linear memory exceeds 64 MiB or a call
-traps. This is a fail-closed guard, not a substitute for P08's preallocation
+traps. This is a fail-closed guard, not a substitute for the host's preallocation
 admission/cache/eviction policy. `GOMEMLIMIT=48MiB`, `GOGC=50` and
 `GOMAXPROCS=1` are the entire runtime environment. Empty args, unsupported fd/
 socket operations, runtime-only clock/entropy and discarded failure output are
@@ -58,8 +58,8 @@ counter/node ID/index/seed is little-endian uint64 (BigInt in JS). A blob is
 uint32 length followed by exact bytes; a string is a UTF-8 blob. A protobuf
 field is an optional deterministic protobuf blob, with zero length for absent.
 An entry list is count plus one blob per entry. Bytes cross this boundary
-without JSON/base64 wrapping. Application command/row blobs retain P01's
-canonical schema inside the binary envelope.
+without JSON/base64 wrapping. Application command/row blobs retain the
+canonical application schema inside the binary envelope.
 
 Every request starts with ABI version and operation. Every response starts
 with ABI version and an error string; empty means success and the remaining
@@ -93,41 +93,42 @@ inventory hash and wasm SHA-256. It also pins portable snapshot schema 1 and the
 SHA-256 of `internal/raftsnapshot/format.go`. Operation 6 exposes the core's
 SnapshotNeeded maintenance hint without changing ABI-1 effect framing; tag 11
 completes a host's durable local checkpoint/compaction. Actual hosted chunk
-storage and bidirectional native/wasm installation are P08's gate; the P03 opaque
-checkpoint fixture alone does not establish that interoperability.
+storage and bidirectional native/wasm installation need separate verification;
+the opaque checkpoint fixture alone does not establish that interoperability.
 
 ## Oversized legacy representation decision
 
-Keep each existing canonical row in host storage and pass only one immutable
-row (at most the existing 1 MiB legacy envelope) to Go. Inventory/import and
+Keep each existing canonical row in host storage and pass only one immutable row
+(at most the existing 1 MiB legacy envelope) to Go. Inventory/import and
 snapshot creation enumerate sorted rows at a fixed applied index, with no
 whole-identity listing or JSON string in wasm. Persist the imported byte ceiling
 `max(8 MiB, imported application bytes)` outside the reactor alongside the
 applied metadata. Preserve every row, sealed title/key and frame plan. Do not
-truncate to make import fit. P05 supplies chunk/checksum/install generations;
-P09/P11 supply complete read-sets, atomic row/byte accounting and growth policy.
+truncate to make import fit. Snapshot and application hosts supply
+chunk/checksum/ install generations, complete read-sets, atomic row/byte
+accounting and growth policy.
 
 The proof uses 129 separately persisted rows totaling over 8 MiB, including one
 near-limit row and 128 smaller pages. A small native driver compares every row
 with wasm and verifies every stored byte on reread, then evaluates a real
 release over the large row. Six production handles remain resident while the
-engine is sampled through its loopback inspector. This establishes representation/runtime feasibility; it is
-not a claim that migration, snapshots, complete policy or production admission
-have already shipped. A legacy row over 1 MiB remains a migration refusal until
-an owner-approved streaming row extension exists, as the design requires.
+engine is sampled through its loopback inspector. This establishes
+representation/runtime feasibility; it does not establish migration, snapshots,
+complete policy or production admission. A legacy row over 1 MiB remains a
+migration refusal; a streaming row extension is not part of this build.
 
 
-## P03 stop/go measurement
+## Local runtime measurements
 
-The final local proof on Go 1.26.5 and pinned workerd 1.20260926.1 passed. The
-full existing relay plus reactor/shim/storage fixture/manifest is 2,248,258 bytes
-compressed (3 MiB gate); wasm is 9,285,637 bytes raw. All 26 distinct imports are
-covered by the closed shim. The mixed phase compared 743 effect responses
+A local proof on Go 1.26.5 and pinned workerd 1.20260926.1 passed. The full
+existing relay plus reactor/shim/storage fixture/manifest is 2,248,258 bytes
+compressed (3 MiB gate); wasm is 9,285,637 bytes raw. All 26 distinct imports
+are covered by the closed shim. The mixed phase compared 743 effect responses
 byte-for-byte, including RNG state/draws, committed a real create, passed a
-quorum ReadIndex, refused a partitioned read, fell back to native peers and recovered
-from an actual workerd process kill with disk-backed DO state.
+quorum ReadIndex, refused a partitioned read, fell back to native peers and
+recovered from an actual workerd process kill with disk-backed DO state.
 
-The final mixed phase took 5.85 s, observed 230,334,464 bytes combined RSS and
+The mixed phase took 5.85 s, observed 230,334,464 bytes combined RSS and
 12,949,979 bytes of isolate components, and cold first call was 32.33 ms.
 The sequential six-handle/two-identity memory phase took 3.75 s, observed
 207,298,560 bytes combined RSS and 39,200,796 bytes of isolate components,
@@ -136,14 +137,12 @@ workerd startup was 145.90 ms. The 129 rows contain 9,205,245 bytes; largest row
 is 786,665 bytes. These are observed local samples, not production allocation
 admission guarantees or cloud percentiles.
 
-This is a **go** for the measured shared-Go Worker boundary; no Go-host topology
-alternative needs an owner decision at P03. P04/P05 still supply real member
-stores and snapshot/compaction, P08 supplies production actors/admission and
-serialization, and P09/P11 supply complete policy and migration. P08/P18 must
-repeat the size/memory gate with those later components. Application rows are
-paged; no production route or feature toggle was added by this proof.
+The measured shared-Go Worker boundary meets the local size and memory gates.
+Repeat those gates with real member stores, snapshot/compaction, production
+actors/admission/serialization, complete policy and migration. Application rows
+are paged; the proof exposes no production route or feature toggle.
 
-P08 adds stateless host codecs without changing the existing operations: op 7
+Stateless host codecs preserve the existing operations: op 7
 inspects Entry/HardState/Snapshot/peer Message (kind 1/2/3/4); op 8 hashes a
 bounded block with an explicit serialized SHA-256 state and returns the next
 state/digest; op 9 validates a canonical portable manifest and constructs its
@@ -152,14 +151,15 @@ flags for transport completion. These helpers provide framing and integrity,
 never authorization or application policy. The same codecs run in native proof
 peers and the bundled reactor.
 
-P11 adds op 12 (canonical LegacyConfig, kind, ID, original v1 JSON and sampled
-hold-until; returns canonical RecordWrite), op 13 (validated LegacyManifest;
-returns the shared genesis Entry/HardState/ConfState protobuf bytes), and op 14
-(validated public certificates/effects authority rows). These calls convert
-bounded bytes and establish no request authentication or successful coordination
-receipt. Source/target hosts own the irrevocable migration gate and durability.
+Migration uses op 12 (canonical LegacyConfig, kind, ID, original v1 JSON and
+sampled hold-until; returns canonical RecordWrite), op 13 (validated
+LegacyManifest; returns the shared genesis Entry/HardState/ConfState protobuf
+bytes), and op 14 (validated public certificates/effects authority rows). These
+calls convert bounded bytes and establish no request authentication or
+successful coordination receipt. Source/target hosts own the irrevocable
+migration gate and durability.
 
-P13 adds op 21 (node handle, canonical Membership header, canonical target
+Leadership uses op 21 (node handle, canonical Membership header, canonical target
 LeadershipEvidence; returns a canonical LeadershipPlan) and op 22 (node handle,
 canonical Membership header; returns a consumed current-term LeadershipReceipt).
 These are internal host calls, never public configuration or readiness inputs.
@@ -174,7 +174,7 @@ of the unchanged 256 MiB combined RSS gate. The same six hosted handles, native
 process death, both personal-leader roles and all snapshot/configuration steps
 remain in the workload; production isolate/core ceilings are unchanged.
 
-## Ranked election timing (R7/R14)
+## Ranked election timing
 
 ABI 1 create optionally appends an anchor count (exactly three) and three uint64
 IDs after the applied index. Old mechanism frames may omit it. Hosts obtain the
@@ -184,18 +184,20 @@ list, which changes when C becomes a standby. The core uses election timing
 version 2 in native and WASI. Rank survives snapshots and restarts as registry
 state; absent provisioning identifies a personal learner, never an invented rank.
 
-P15 adds operation 27: cluster/worker/cell strings, incarnation/committed-time
-uint64s, then five blobs in WorkerReadKeys order (empty means absent). It returns
-one canonical WorkerRead blob. The host must pass its fresh current-term quorum
-barrier before returning these bytes; the ABI supplies policy, not consensus.
-Operation 16 accepts an optional tail: committed time uint64, then identity,
-authority and worker-record blobs. It is required for delegated peers; the old
-metadata-only form returns them revoked. Personal/anchor encodings are unchanged.
+Selected worker reads use operation 27: cluster/worker/cell strings,
+incarnation/committed-time uint64s, then five blobs in WorkerReadKeys order
+(empty means absent). It returns one canonical WorkerRead blob. The host must
+pass its fresh current-term quorum barrier before returning these bytes; the ABI
+supplies policy, not consensus. Operation 16 accepts an optional tail: committed
+time uint64, then identity, authority and worker-record blobs. It is required
+for delegated peers; the old metadata-only form returns them revoked.
+Personal/anchor encodings are unchanged.
 
-P16 adds operation 28: cluster/worker strings, incarnation/committed-time uint64s,
-canonical AssignmentRef blob, then six blobs in AssignmentReadKeys order. It
-returns one canonical AssignmentRead blob. Like operation 27, it runs under the
-member queue after current ingress time commits and a fresh quorum barrier
-passes; the ABI never supplies a local success path. Assignments, per-cell active
-slots and incarnation-bound holds use the existing state namespace and survive
-ordinary native/hosted snapshots. No storage format or old ABI tag changes.
+Selected assignment reads use operation 28: cluster/worker strings,
+incarnation/committed-time uint64s, canonical AssignmentRef blob, then six blobs
+in AssignmentReadKeys order. It returns one canonical AssignmentRead blob. Like
+operation 27, it runs under the member queue after current ingress time commits
+and a fresh quorum barrier passes; the ABI never supplies a local success path.
+Assignments, per-cell active slots and incarnation-bound holds use the existing
+state namespace and survive ordinary native/hosted snapshots. No storage format
+or old ABI tag changes.

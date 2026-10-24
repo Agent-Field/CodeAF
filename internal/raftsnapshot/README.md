@@ -3,8 +3,9 @@
 This pure package is shared by native Go and the WASI core. SQLite and DO hosts
 own chunk staging, durable generation publication and installation. The format
 contains coordination only, with no plaintext chat content or private keys. It
-copies every opaque application row without interpreting its policy. P09 owns
-complete authorization/evaluation; P08 owns the hosted storage implementation.
+copies every opaque application row without interpreting its policy. The
+application supplies complete authorization/evaluation; host adapters supply
+storage.
 
 `raftpb.Snapshot.Data` is a canonical manifest, at most 16 KiB. Its metadata index,
 term and complete ConfState must match that manifest. It never embeds chunks or

@@ -1,11 +1,12 @@
 # Committed directory application
 
-`clusterstate.Evaluate` is the single directory application evaluator for native and
-WASI members. It takes a signed canonical command, immutable application metadata
-and the complete declared dependency read-set. Missing and unread records differ.
-The evaluator verifies the original signature against committed personal enrollment,
-checks revocation at that log position, then applies the directory rules. Metadata
-upserts cannot create signing authority. Delegated worker policy remains P15.
+`clusterstate.Evaluate` is the single directory application evaluator for native
+and WASI members. It takes a signed canonical command, immutable application
+metadata and the complete declared dependency read-set. Missing and unread
+records differ. The evaluator verifies the original signature against committed
+personal enrollment, checks revocation at that log position, then applies the
+directory rules. Metadata upserts cannot create signing authority. Delegated
+worker policy uses a separate role and scope.
 
 Every accepted session keeps its exact last result until an acknowledged sequence
 advance or explicit close; closed IDs remain tombstoned. There are 128 live sessions
@@ -27,13 +28,13 @@ an authority response. The integration harness proves this through `directory.Ra
 and its real HTTP handler; the backend interface is an assembly boundary.
 
 The hosted member chooses `directoryEvaluator`, which calls Go through additive
-ABI-1 operations 11 (dependencies) and 10 (evaluation). JS copies immutable bytes,
-persists the returned writes and advances the core after durable completion. It
-contains no lease, CAS, revocation, clock or sequence decisions. `RaftDirectoryFacade`
-forwards original signed bytes to a host's commit and barrierRead operations. The
-old hosted directory is still solely the pre-migration path; P11 must irrevocably
-freeze it before routing a namespace to this facade. No production cutover or
-feature toggle is introduced here.
+ABI-1 operations 11 (dependencies) and 10 (evaluation). JS copies immutable
+bytes, persists the returned writes and advances the core after durable
+completion. It contains no lease, CAS, revocation, clock or sequence decisions.
+`RaftDirectoryFacade` forwards original signed bytes to a host's commit and
+barrierRead operations. The old hosted directory is solely the pre-migration
+path; migration must irrevocably freeze it before routing a namespace to this
+facade. The facade itself neither performs cutover nor selects a feature toggle.
 
 The Client facade exposes all existing directory verbs. Its v1 acquire normalization
 never manufactures an observed tuple: a missing expectation disables force, and a
@@ -41,21 +42,24 @@ required conditional take without an observation refuses. v1 fences cannot excee
 the exact JSON-integer limit; direct v2 commands retain full uint64 fences and refuse
 overflow. Pure rules retain their legacy behavior for pre-cutover stores.
 
-Pairing commands require an existing committed request dependency, atomically write
-the device metadata and sealed decision, and retain the first decision. The native
-and hosted tests provision genesis/request dependencies explicitly. The effects adapter below supplies
-external request/certificate admission, authorization installation, outbox delivery,
-blob receipts and v2 upload-before-head. P11 owns actual genesis/import; P12 owns peer
-registry; P14 owns watch presence and committed renewal scheduling. No socket can
-extend a lease through this evaluator. The v1 adapter below retains original HTTP authentication proof; production
-member/client routing still requires the complete namespace assembly. These boundaries are internal, not new manual claims.
+Pairing commands require an existing committed request dependency, atomically
+write the device metadata and sealed decision, and retain the first decision.
+The native and hosted tests provision genesis/request dependencies explicitly.
+The effects adapter below supplies external request/certificate admission,
+authorization installation, outbox delivery, blob receipts and v2
+upload-before-head. Separate host adapters supply genesis/import, peer registry,
+watch presence and committed renewal scheduling. No socket can extend a lease
+through this evaluator. The v1 adapter below retains original HTTP
+authentication proof; production member/client routing requires the complete
+namespace assembly.
 
-P10 adds `Effects` and the equivalent hosted `RaftEffectsFacade`. Provision a
-separate `Authority{Effects:true}` protocol key; it must not be personal. It can
-only record upload evidence, reserve a join dependency, or complete a delivery.
-These commands are idempotent by immutable effect keys and do not consume client
-sessions. All effect rows count against the identity's application ceiling;
-capacity refuses further growth without removing receipts, decisions or blobs.
+`Effects` and the equivalent hosted `RaftEffectsFacade` bridge external
+delivery. Provision a separate `Authority{Effects:true}` protocol key; it must
+not be personal. It can only record upload evidence, reserve a join dependency,
+or complete a delivery. These commands are idempotent by immutable effect keys
+and do not consume client sessions. All effect rows count against the identity's
+application ceiling; capacity refuses further growth without removing receipts,
+decisions or blobs.
 
 Before issuing a receipt, call `Effects.Upload` with the local head ID, its
 **different encrypted remote object ID**, and the existing incremental frame
@@ -64,15 +68,17 @@ confirmation awaits R2, its complete index and the supplied storage durability
 boundary. A client still uploads its entire encrypted closure before requesting
 this receipt: a relay cannot decrypt or traverse it, and an empty frame hint
 never proves an empty closure. The receipt binds actor, both head IDs and the
-exact frame hint. V2 Create/Publish require the committed receipt, and still report
-stale fences/heads before missing upload evidence. The existing Client facade explicitly identifies v1 Create/Publish, as it
-already identifies v1 Acquire. Old clients cannot supply the encrypted head RID;
-they retain the existing upload-before-publish client ordering and their existing
-safe API semantics. This is protocol compatibility in the same evaluator, never
-a second writer. V1Directory selects this marker only from the original authenticated v1
-ingress; ClientCommand rejects compatibility markers at a public v2 boundary. A v2 body cannot become
-v1 merely by requesting it. The production writer remains unchanged until namespace migration and host
-assembly install the adapter. No internal facade activates that route by itself. Never derive an encrypted remote
+exact frame hint. V2 Create/Publish require the committed receipt, and still
+report stale fences/heads before missing upload evidence. The existing Client
+facade explicitly identifies v1 Create/Publish, as it already identifies v1
+Acquire. Old clients cannot supply the encrypted head RID; they retain the
+existing upload-before-publish client ordering and their existing safe API
+semantics. This is protocol compatibility in the same evaluator, never a second
+writer. V1Directory selects this marker only from the original authenticated v1
+ingress; ClientCommand rejects compatibility markers at a public v2 boundary. A
+v2 body cannot become v1 merely by requesting it. Namespace migration and host
+assembly must install the adapter before it serves production requests. No
+internal facade activates that route by itself. Never derive an encrypted remote
 object ID from a local turn ID. Receipts admit at most 512 declared frame hints;
 a frame plan remains optional and partial.
 
@@ -81,22 +87,22 @@ other identities and legacy decision paths. Failed admission retains it until
 the ordinary public request expires. Approval verifies the original existing
 certificate under `IdentityRec.SigningKey`, checks that its device key matches
 the bound request, and installs personal authorization, device metadata and the
-sealed decision atomically. P11 must populate that **public** root key from
-authenticated genesis/import. An upsert never installs authorization. Peer/node
-membership is still P12, and delegated workers remain P15.
+sealed decision atomically. Genesis/import must populate that **public** root key
+from authenticated input. An upsert never installs authorization. Peer/node
+membership and delegated workers use separate committed policies.
 
 Replay scans at most 64 retained outbox rows per call, from a quorum-authorized
 view. Deliver reads the decision through another fresh barrier, sends its hash
 as the destination's idempotency key, then commits `CompleteJoin`. A crash at
 any boundary repeats only that same decision. A public request that expired
 records `gone`; a lost destination reply retries without changing its grant.
-Restarting a scan at the beginning is safe. P11/P14 must schedule these bounded
+Restarting a scan at the beginning is safe. The host must schedule these bounded
 pages on activation/wake; no periodic network loop starts here. Delivery of a
 grant approved before revocation cannot restore authority after it: every
 subsequent operation still checks the committed device record. Already delivered
 sealed bytes cannot be recalled, as with existing personal pairing.
 
-P16 supplies Assign/Reassign/ClaimAssignment/CancelAssignment/FinishAssignment in
+Assign/Reassign/ClaimAssignment/CancelAssignment/FinishAssignment run in
 the shared Go evaluator. AssignmentRef declares every routing dependency before
 application. Only an explicit current scoped worker/incarnation with recent
 committed availability can claim; claim and ordinary fenced acquire commit in
@@ -114,14 +120,15 @@ pending run is permanently unclaimable and its raw history remains retained.
 An owner can explicitly cancel it to reuse the per-cell slot.
 
 syncsetup.WorkerAdapter accepts scoped content dependencies and a selected
-quorum-backed directory. It uses handoff.Taker for stage/claim/reconcile/install,
-saves original signed claim/finish requests and durably records execution intent
-before its callback. Completed attempts return locally; a recorded finish retries
-only coordination. Interrupted attempts and reassigned revisions return incomplete
-without invoking tools. Execute must use the ordinary call recorder and
-cellsync.Publisher; it returns only an already published head. The adapter never
-loads a personal identity, discovers a relay, provisions a box or adds a public
-command. P17/P18 retain public client assembly and operator journeys.
+quorum-backed directory. It uses handoff.Taker for
+stage/claim/reconcile/install, saves original signed claim/finish requests and
+durably records execution intent before its callback. Completed attempts return
+locally; a recorded finish retries only coordination. Interrupted attempts and
+reassigned revisions return incomplete without invoking tools. Execute must use
+the ordinary call recorder and cellsync.Publisher; it returns only an already
+published head. The adapter never loads a personal identity, discovers a relay,
+provisions a box or adds a public command. Public worker setup and assignment
+execution commands are not available yet.
 
 The native `V1Directory` implements `directory.RequestDirectory`. The HTTP
 handler first authenticates, then binds the exact request to its client. The
@@ -139,11 +146,9 @@ rotation view passes another barrier without repeating the mutation. The
 adapter checks current root/device authority inside that callback. Missing
 request proof is refused; no in-process `For` call can bypass authentication.
 
-This adapter is an integration boundary, not the production cutover. It does
-not yet supply watches, personal-member lifecycle, worker/v2 HTTP ingress, or
-the wake/outbox coordinator. Encoded commands remain bounded at 64 KiB, so
-large legacy HTTP bodies need a supported representation before full legacy
-compatibility can be claimed. The production relay contract test intentionally
-remains red until persistent namespace assembly routes its real HTTP doors
-through consensus. Do not enable a second writer or weaken a quorum to make
-that test pass.
+The host supplies watches, personal-member lifecycle, worker/v2 HTTP ingress
+and the wake/outbox coordinator around this translation adapter. Encoded
+commands remain bounded at 64 KiB, so large legacy HTTP bodies need a supported
+representation before full legacy compatibility can be claimed. Persistent
+namespace assembly must route the real HTTP doors through consensus, with one
+writer and an unchanged quorum.

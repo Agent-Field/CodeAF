@@ -97,7 +97,7 @@ type Tick struct{}
 type PeerMessage struct{ Bytes []byte }
 type Propose struct{ Command []byte }
 
-// Configure is a mechanism for later authorized membership intents, not a
+// Configure is a mechanism for committed authorized membership intents, not a
 // public enrollment door. The bytes encode a ConfChangeV2.
 type Configure struct{ Change []byte }
 type Read struct{ RequestID string }

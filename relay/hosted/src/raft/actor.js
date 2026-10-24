@@ -11,7 +11,7 @@ const active = new Set();
 
 // A compiled module and runtime are shared by every object in this isolate.
 // Reservations precede allocation; pressure refuses activation, never evicts a
-// serving leader. Quiescent eviction is an explicit later scheduler decision.
+// serving leader. Quiescent eviction requires an explicit scheduler decision.
 export function installRaftModule(compiled) {
   if (module && module !== compiled) throw new Error('raft member: core module already installed');
   module = compiled;

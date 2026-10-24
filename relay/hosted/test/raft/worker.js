@@ -1,5 +1,5 @@
 // This local-only door measures the actual Worker runtime. No production route
-// imports it; P08 supplies authenticated actors and persistent host adapters.
+// imports it. Authenticated actors and persistent host adapters live in src/raft.
 import core from './core.wasm';
 import { Reactor } from '../../src/raft/abi.js';
 export { IdentityDO, NewcomerGate, LinkGate, LinkRequest, PairGate, Mailbox } from '../../src/worker.js';

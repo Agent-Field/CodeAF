@@ -57,12 +57,12 @@ private and back up its provisioning file together with its databases.
 
 ## Upgrade
 
-Stop it, replace the `codeaf` binary, start it with the same `--store`. Back up first.
-There is no migration command or feature switch. First use freezes an existing identity,
-imports the same rows into three local anchors, checks a fresh majority and publishes
-one durable owner. Interrupted imports resume with the same UUID, keys and ceiling;
-they never reopen the legacy writer. The original source stays as a backup until an
-explicit owner cleanup or retirement.
+Stop it, replace the `codeaf` binary, start it with the same `--store`. Back up
+first. There is no migration command or feature switch. First use freezes an
+existing identity, imports the same rows into three local anchors, checks a
+fresh majority and publishes one durable owner. Interrupted imports resume with
+the same UUID, keys and ceiling; they never reopen the legacy writer. The
+original source stays as a backup until the identity is retired.
 
 All directory, rotation and blob authority requests use consensus. Three local voters
 still share one host and disk: losing that host loses service. This setup does not

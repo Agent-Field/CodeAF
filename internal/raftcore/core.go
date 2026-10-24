@@ -118,7 +118,7 @@ func copyEntries(entries []*pb.Entry) []*pb.Entry {
 
 // New refuses inconsistent recovery rather than manufacturing missing committed
 // bytes. The caller validates durable checksums and cluster/format manifests
-// before supplying this state; those storage formats belong to P04/P05.
+// before supplying this state; storage formats are the host adapters' responsibility.
 func New(cfg Config, recovered RecoveredState) (core *Core, err error) {
 	defer func() {
 		if recover() != nil {

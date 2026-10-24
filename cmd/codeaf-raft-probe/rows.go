@@ -18,10 +18,10 @@ import (
 	"github.com/Agent-Field/codeaf/internal/raftabi"
 )
 
-// rowProof keeps the oversized R14/R27/R28 fixture in a bounded native driver.
+// rowProof keeps the oversized-row memory fixture in a bounded native driver.
 // The Worker still evaluates every row and its actual heap is sampled without
 // forcing collection. Keeping HTTP/JSON copies out of the Node coordinator is
-// necessary for the shared-laptop budget, not an alternative application rule.
+// necessary for the combined RSS budget, not an alternative application rule.
 func rowProof(origin string, result io.Writer) error {
 	u, err := url.Parse(origin)
 	if err != nil || u.Scheme != "http" || u.Hostname() != "127.0.0.1" || u.Port() == "" || u.Path != "" {

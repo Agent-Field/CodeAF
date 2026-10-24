@@ -1,7 +1,7 @@
 // Package model is the independent sequential ownership/vault oracle for the
 // fault simulator. It deliberately imports no production state types or rules.
-// Histories include timed-out requests as unknown outcomes; assignments extend
-// this domain when their production adapter lands.
+// Histories include timed-out requests as unknown outcomes. The assignment
+// model covers assignment policy separately.
 package model
 
 // State describes observable coordination, independent of Raft internals.

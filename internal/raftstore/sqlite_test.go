@@ -554,8 +554,8 @@ func TestR3ShorterConflictingSuffixSurvivesRestart(t *testing.T) {
 	}
 }
 
-// R13's snapshot lifecycle belongs to P05. Until then a snapshot cannot receive
-// a false success that would permit dependent replication acknowledgments.
+// R13 forbids acknowledging a snapshot before its staged chunks are complete;
+// a false success would permit dependent replication acknowledgments.
 func TestR13SnapshotInputFailsClosed(t *testing.T) {
 	s := openTest(t, filepath.Join(t.TempDir(), "member.sqlite"))
 	seed(t, s)

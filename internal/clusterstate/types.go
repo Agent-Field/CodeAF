@@ -43,8 +43,8 @@ type Command struct {
 	Signature         []byte     `json:"signature"`
 }
 
-// Mutation is a closed union: exactly one field is present. Future packets add
-// their typed operations here; unknown fields fail decoding on older members.
+// Mutation is a closed union: exactly one typed operation field is present.
+// Unknown fields fail decoding on older members.
 // There is no arbitrary JSON payload in which task text or secrets can hide.
 type Mutation struct {
 	Assign             *Assign             `json:"assign,omitempty"`

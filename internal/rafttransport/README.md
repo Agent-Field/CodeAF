@@ -29,18 +29,19 @@ configuration changes, tombstones and registry persistence.
 
 The routing inbox is expendable memory. Before restoring service after loss of
 that memory, increment and durably store the view's router `Generation`, then
-install it. That fences all old delivery cursors and sockets. Member incarnations
-also come from durable enrollment. Do not replace either number with a random
-connection ID. A router has no automatic bootstrap, singleton fallback or authority
-read. P12 must enforce a single durable epoch for each identity; registering two
-unrelated scopes is not migration or permission to run two writable clusters.
+install it. That fences all old delivery cursors and sockets. Member
+incarnations also come from durable enrollment. Do not replace either number
+with a random connection ID. A router has no automatic bootstrap, singleton
+fallback or authority read. Membership policy must enforce a single durable
+epoch for each identity; registering two unrelated scopes is not migration or
+permission to run two writable clusters.
 
 ## Exchanges and sockets
 
 `POST /v2/cluster/exchange` takes one canonical `Request` and returns `Response`.
 `Client.Exchange` makes one bounded outbound request, refuses HTTP redirects and
 starts no background work, listeners, retries or discovery. Hosts enforce paired
-and sync-off policy **before** creating/using this client; P14/P17 own that wiring.
+and sync-off policy **before** creating/using this client.
 Use HTTPS with the configured relay's authenticated TLS endpoint (loopback HTTP is
 used by the hermetic tests). Keep protocol admission separate from the public
 application-command limiter, and configure an operator ingress rate/connection
@@ -64,7 +65,7 @@ committed peer key and incarnation, its expected identity/cluster/epoch/protocol
 and its own destination/incarnation. Remote hosts must not trust a stale cached
 registry to authorize traffic. Recheck after asynchronous waits; discard callbacks
 from an old actor generation. Only step a message once the receiver is available
-for it. Keep/retry `ErrBusy` input. Keep all P04 persistence/application boundaries:
+for it. Keep/retry `ErrBusy` input. Keep all persistence/application boundaries:
 `Persist -> Persisted -> Apply -> Applied`; a relay receipt completes none of them.
 
 ## Wire version 1
@@ -76,14 +77,16 @@ are 1–128 ASCII letters, digits, hyphen, underscore or dot. Digests are lowerc
 SHA-256 hex. Strict decoding requires exact re-encoding: unknown/duplicate fields,
 extra array elements, alternate numbers, whitespace and trailing bytes are refused.
 
-Envelope field order is `scope,from,to,incarnation,destination,sequence,chunk,digest,
-payload,signature`; scope is `identity,cluster,epoch,protocol`; a non-null chunk is
-`generation,offset,hash`. Request order is `scope,node,incarnation,generation,
-messages,signature,ack`. Signing replaces signature with JSON null and prepends
-`codeaf/raft/envelope/1\n` or `codeaf/raft/exchange/1\n` respectively. No JSON object
-key sorting or JS Number conversion is allowed. The committed independently
-Node-signed `testdata/exchange-v1.json` is checked by Go and the targeted hosted
-Node test. P08 can use that vector before implementing its host-side codec.
+Envelope field order is
+`scope,from,to,incarnation,destination,sequence,chunk,digest,
+payload,signature`; scope is `identity,cluster,epoch,protocol`; a non-null chunk
+is `generation,offset,hash`. Request order is
+`scope,node,incarnation,generation, messages,signature,ack`. Signing replaces
+signature with JSON null and prepends `codeaf/raft/envelope/1\n` or
+`codeaf/raft/exchange/1\n` respectively. No JSON object key sorting or JS Number
+conversion is allowed. The committed independently Node-signed
+`testdata/exchange-v1.json` is checked by Go and the targeted hosted Node test.
+Hosted codecs must preserve that same wire representation.
 
 ## Bounds, priority and retry
 
@@ -116,35 +119,38 @@ seeded jitter and a 60-second ceiling. Buffers expire after 30 seconds of monoto
 sampled host time, lazily on activity, requiring no idle alarm. Raft retransmits;
 lease renewal and snapshots retain their own durable semantics.
 
-Default operator admission is 1,024 scopes, 4,096 retained enrollment records per
-scope, at most 32 live learners and six live voter IDs (room for both sides of a
-three-voter joint change). `Limits` makes scope/retained-record/voter ceilings
-explicit operator choices; exceeding one refuses growth. Larger topology policy
-belongs to P12, not transport. Tombstones and application records are not deleted
-to regain admission. `Stats` reports counts/bytes/socket usage only, never payloads.
+Default operator admission is 1,024 scopes, 4,096 retained enrollment records
+per scope, at most 32 live learners and six live voter IDs (room for both sides
+of a three-voter joint change). `Limits` makes scope/retained-record/voter
+ceilings explicit operator choices; exceeding one refuses growth. Larger
+topology policy belongs to membership policy, not transport. Tombstones and
+application records are not deleted to regain admission. `Stats` reports
+counts/bytes/socket usage only, never payloads.
 
-## Snapshots and next hosts
+## Snapshot host responsibilities
 
-A `MsgSnap` contains P05's small portable manifest pointer. Chunk envelopes carry
+A `MsgSnap` contains a small portable manifest pointer. Chunk envelopes carry
 that manifest's generation ID, zero-based chunk number and SHA-256. The receiver
-must verify generation, offset, expected length and manifest totals before P05's
+must verify generation, offset, expected length and manifest totals before
 `BeginSnapshot/PutSnapshotChunk/CompleteSnapshot`. A queued chunk or completed
 stream is **not** installation: host success is reported through
 `raftcore.TransportResult{Snapshot:true,Success:true}` only after the actual
 snapshot Ready has installed durably. A timeout/interruption reports failure so
 Raft can retry. Do not feed `MsgSnap` into the core before its chunks are ready.
-P08 owns those hosted actor/storage operations and native/wasm lifecycle proof.
+Hosted actor/storage adapters own those operations and native/wasm lifecycle
+verification.
 
-P07's tests use real cores and three SQLite stores behind the actual relay route,
-with only outbound member HTTP, intentional duplicate/reorder, create, ReadIndex,
-leader death/restart, joint demotion and writes with an absent learner. Transport
-unit tests pin auth, generation, socket revocation and all queue reservations.
-P06/P06b's 2,000-seed simulator soak remains a required regression gate. Full
-R10 enrollment/worker journeys, R11 churn/snapshot interoperability, application
-revocation and the R15 full-state sentinel campaign remain later packet gates.
+The transport tests use real cores and three SQLite stores behind the actual
+relay route, with only outbound member HTTP, intentional duplicate/reorder,
+create, ReadIndex, leader death/restart, joint demotion and writes with an
+absent learner. Transport unit tests pin auth, generation, socket revocation and
+all queue reservations. The 2,000-seed simulator soak remains a required
+regression gate. Full enrollment/worker journeys, churn/snapshot
+interoperability, application revocation and full-state sentinel campaigns
+require separate verification.
 
 
-P12's `CommittedView` derives protocol authority from the applied registry and
+`CommittedView` derives protocol authority from the applied registry and
 current device revocations. Hold the actor lock while reading and installing
 that view, before acknowledging the command. Use the applied index as its
 revision, so a device revoke updates routing even without a membership edit.
@@ -154,7 +160,7 @@ An authenticated source's three provisioned anchor keys may bootstrap protocol
 traffic before registry commitment. A personal key requires committed enrollment;
 never accept a caller's arbitrary view as an enrollment grant.
 
-P15 adds `CommittedViewAt` for delegated worker learners. Commit current ingress
+`CommittedViewAt` supports delegated worker learners. Commit current ingress
 time and supply the applied configuration/read-set under the actor lock, then
 Install before acknowledging the result. It checks the worker's explicit learner
 consent, exclusive certificate expiry, revocation, rotation and current process

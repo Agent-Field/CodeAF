@@ -8,9 +8,9 @@ import (
 )
 
 // ProbeApply exercises real lease rules over one immutable host-supplied row.
-// It is a feasibility seam, NOT an authorized directory writer: P09 must add
-// the complete dependency read-set, committed policy, dedup and atomic writes.
-// Keeping this probe narrow avoids treating prototype policy as production.
+// It is a feasibility seam. An authorized directory writer also needs the
+// complete dependency read-set, committed policy, dedup and atomic writes.
+// Keeping this probe narrow avoids treating fixture policy as production.
 func ProbeApply(command, row []byte) ([]byte, error) {
 	if len(command) > raftcore.MaxMessageBytes || len(row) > 1<<20 {
 		return nil, errFrame

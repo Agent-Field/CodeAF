@@ -1,5 +1,5 @@
 // Package raftsim drives production consensus cores with explicit virtual time,
-// durability and faults. It is a development gate, never a directory writer.
+// durability and faults. It is a fault-testing harness, never a directory writer.
 package raftsim
 
 import (
@@ -12,9 +12,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/raftsim/model"
 )
 
-// ProbeApplication exercises real pure lease rules while P09 supplies the full
-// authorized writer. Session policy here is a contract fixture, not a second
-// production implementation. The checker uses its own rules and state types.
+// ProbeApplication exercises real pure lease rules without the full authorized
+// writer. Session policy here is a contract fixture, not a second production
+// implementation. The checker uses its own rules and state types.
 type ProbeApplication struct {
 	Coordination map[string][]byte `json:",omitempty"`
 	Now          int64

@@ -25,7 +25,7 @@ root and isolated module requirements and sums. It is the unmodified Go module,
 not a second copy/fork; Go downloads exactly that checksummed source for either
 target. `PROTOBUF-LICENSE` and `PROTOBUF-PATENTS` retain its notices. Do not
 silently upgrade either source or apply a runtime-only replacement for wasm.
-A future separately built ABI module must use these same requirements and local
+Any separately built ABI module must use these same requirements and local
 Raft replacement; a replacement in a dependency's go.mod is not inherited.
 
 `SOURCES.json` records upstream module sums, archive SHA-256 values, and hashes
@@ -37,5 +37,5 @@ The source archive can be obtained by `go mod download -json
 Replay compatibility comprises this patch, the raft/protobuf source versions,
 the deterministic protobuf marshal mode, and the SplitMix64 algorithm and
 consumption order in `internal/raftcore`. The fixed core trace and published
-PRNG vectors intentionally fail if that behavior changes. P03 owns the actual
-wasm runtime comparison; native replay alone does not prove it.
+PRNG vectors intentionally fail if that behavior changes. The local Worker proof
+compares actual wasm runtime behavior; native replay alone does not prove it.

@@ -160,6 +160,6 @@ export class Tenant {
 
 // This facade is assembled only for a Raft-owned namespace after migration.
 // Keeping it separate prevents constructing or invoking the legacy SQL writer
-// while the integration harness exercises the authoritative application path.
+// on the authoritative application path.
 export { RaftDirectoryFacade } from './raft/directory.js';
 export { RaftEffectsFacade, RaftBlobTenant } from './raft/effects.js';

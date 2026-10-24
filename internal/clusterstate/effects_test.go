@@ -73,7 +73,7 @@ func TestR21UploadReceiptBeforeHeadAndFenceBeforeReceipt(t *testing.T) {
 }
 
 // R16/R17/R21 enumerate authorization orderings with independently selected
-// expected outcomes. Every seed honors the wave's 2,000-seed soak lever.
+// expected outcomes. The soak supports 2,000 seeds through RAFTSIM_SEEDS.
 func TestR16R17R21EffectsAuthorizationCampaign(t *testing.T) {
 	for seed := 0; seed < seedCount(t); seed++ {
 		t.Run(fmt.Sprintf("seed-%04d", seed), func(t *testing.T) {
@@ -147,7 +147,7 @@ func TestR16PairingCertificateAndStickyRevocation(t *testing.T) {
 
 // R25 preserves real old-client requests that cannot name an encrypted head
 // RID, while R21 requires evidence at the distinct v2 command door. Ingress
-// supplies protocol provenance; P17 must never copy compatibility flags from v2.
+// supplies protocol provenance; v2 input must never supply compatibility flags.
 func TestR21R25LegacyProtocolKeepsExistingUploadOrdering(t *testing.T) {
 	a := newApplication(t)
 	m := cs.Mutation{Create: &cs.CreateCell{Cell: "chat", Init: cs.CellInit{Head: "legacy"}, V1: true}}

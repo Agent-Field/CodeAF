@@ -311,7 +311,7 @@ func TestR5HundredMinorityFlapsKeepHealthyTerm(t *testing.T) {
 	t.Logf("100 flaps, %d events, stable term %d", s.Events, term)
 }
 
-// These deliberate faults live only in the development harness. The same
+// These deliberate faults live only in the fault harness. The same
 // checker/ordering monitor must reject each, otherwise the gate proves little.
 func TestR1R3R4BrokenFenceReadAndFlushAreDetected(t *testing.T) {
 	for _, variant := range []string{"fence", "read", "flush"} {

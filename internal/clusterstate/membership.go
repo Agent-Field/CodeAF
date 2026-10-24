@@ -490,7 +490,7 @@ func (h Membership) Validate() error {
 	return nil
 }
 
-// EnrollmentMessage is shared by later ingress adapters and the manual. The
+// EnrollmentMessage is shared by ingress adapters and the manual. The
 // protocol refusal distinguishes an old build from missing saved content.
 func EnrollmentMessage(code Code) string {
 	switch code {

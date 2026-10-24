@@ -18,8 +18,8 @@ import (
 )
 
 // R25/R30 pin the real persistent relay door, independently of an adapter or
-// fixture backend. This gate must stay red until the sole production route
-// actually commits requests through the migrated namespace.
+// fixture backend. The sole production route must commit requests through
+// the migrated namespace.
 func TestR25R30ProductionRelayRefusesLegacyBlindForce(t *testing.T) {
 	raw, err := os.ReadFile("../raftdirectory/testdata/v1-requests.json")
 	if err != nil {
@@ -69,7 +69,7 @@ func TestR25R30ProductionRelayRefusesLegacyBlindForce(t *testing.T) {
 		}
 	}
 	// A legacy writer could be taught only the blind-force refusal. The durable
-	// source ownership receipt independently requires the actual P11 cutover.
+	// source ownership receipt independently requires the actual migration cutover.
 	root, err := base64.RawURLEncoding.DecodeString(f.Cases[0].Headers[reqsign.HeaderIdentity])
 	if err != nil {
 		t.Fatal(err)

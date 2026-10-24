@@ -23,9 +23,9 @@ import (
 	"github.com/coder/websocket/wsjson"
 )
 
-// measureRows runs the R27/R28 memory gate without retaining the Node consensus
+// measureRows runs the memory gate without retaining the Node consensus
 // test coordinator. Six production handles and real disk-backed DOs remain in
-// workerd; only the bulk driver changes. Inspector sampling never forces GC.
+// workerd; the bulk driver streams input. Inspector sampling never forces GC.
 func measureRows(out, binaryPath, schema string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 110*time.Second)
 	defer cancel()

@@ -12,7 +12,7 @@ import (
 // await durable application, and recheck committed authorization at that view.
 // The host authenticates the original ingress and preserves its request ID;
 // forwarding through this facade never chooses a new expectation or retries a
-// tool. P11 installs this boundary only after the legacy writer is frozen.
+// tool. Install this boundary only after the legacy writer is frozen.
 type RaftBackend interface {
 	Change(context.Context, string, clusterstate.Mutation) (clusterstate.Result, error)
 	Listing(context.Context, string) (Listing, error)

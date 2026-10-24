@@ -396,7 +396,7 @@ func publicCaps(c Caps) bool {
 	return allowed(c.OS, "", "linux", "darwin", "windows", "ios", "android", "other") && allowed(c.Arch, "", "amd64", "arm64", "386", "arm", "wasm", "other") && pointer(c.Sandbox, "seatbelt", "landlock") && pointer(c.Container, "none", "container") && pointer(c.GPU, "none", "present") && allowed(c.Cow, "", "apfs", "btrfs", "xfs-reflink", "overlayfs", "none")
 }
 
-// WorkerCanClaim is the common P16 prerequisite at the claim's log position.
+// WorkerCanClaim checks worker eligibility at the claim's log position.
 // A registry row, socket or downloaded grant alone never starts work.
 func WorkerCanClaim(cluster, worker, cell string, incarnation uint64, now int64, identity IdentityRec, a Authority, d Device, w WorkerRecord) Code {
 	if code := workerAuthority(cluster, worker, now, identity, a, d); code != OK {

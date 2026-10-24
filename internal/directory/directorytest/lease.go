@@ -349,7 +349,7 @@ func (w watchEnv) wantHoldQuery(query string, status int) {
 	wantRefusal(w.t, conn, resp, err, status, "bad_request")
 }
 
-// R22 supersedes the old socket-authority advertisement on consensus routes.
+// Committed receipts replace the old socket-authority advertisement on consensus routes.
 // The same suite still exercises the original legacy directory protocol.
 func upgradeAnnouncesVouching(w watchEnv) {
 	want := "1"

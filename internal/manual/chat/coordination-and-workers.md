@@ -50,7 +50,7 @@ The coordination service accepts an explicit selected chat and target worker. In
 
 Parallel tasks use distinct child chats, each with its own holder. Finishing a child records its already published result; incorporating that result into the parent still requires the parent's current holder and fence. The worker uploads the complete saved result before publishing its head. Leadership needs neither those files nor their keys.
 
-Worker setup and assignment execution are not available as a terminal command yet. The internal worker adapter supports a small scripted worker; phone controls and creating remote machines come later.
+Worker setup and assignment execution are not available as a terminal command yet. The internal worker adapter supports a small scripted worker; phone controls and creating remote machines are not available yet.
 
 ## Will an interrupted worker replay tools after a crash or reassignment?
 

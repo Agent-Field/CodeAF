@@ -24,7 +24,7 @@ import (
 
 // clusterFixture drives actual native stores and cores. The only listener is
 // the relay; members can only make outbound exchange requests. Application is
-// P03's narrow real-rule probe, never the future authorized directory writer.
+// the narrow real-rule probe, never the authorized directory writer.
 type clusterFixture struct {
 	t         *testing.T
 	ctx       context.Context

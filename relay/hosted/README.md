@@ -29,11 +29,11 @@ it, checks the device is not revoked, spends the caller's rate budget, and serve
   puts in flight (`src/flight.js`, a port of `internal/blobstore/flight.go`) and fails with 503 after
   30 s rather than say no. A caller with no cert of the identity cannot hold a put open.
 - Directory and authority decisions live in three separately addressed `RaftMemberDO` SQLite
-  stores. `src/raft/hosted.js` freezes the original source on first use, streams P11's same
+  stores. `src/raft/hosted.js` freezes the original source on first use, streams the same
   genesis to A/B/C and publishes ownership only after a fresh quorum read. Commands use the
   original v1 proof and the shared Go state machine; JavaScript has no authoritative lease
   writer. `src/directory.js` and its old rules remain only for immutable source conversion and
-  legacy fixture tests. Source backups are retained until explicit owner cleanup or retirement.
+  legacy fixture tests. Source backups are retained until the identity is retired.
   An absent quorum returns retryable 503 and never reopens the old writer.
 - Frames live in R2 at `<identity>/f/<FrameID>` (`src/store.js`), each validated (magics, header,
   `cell_key_id`) before it is stored. The index that finds an object inside its frame is rows in the

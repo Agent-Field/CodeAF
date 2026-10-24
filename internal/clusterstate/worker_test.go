@@ -123,7 +123,7 @@ func TestR15R16R18WorkerScopeAndAuthorityDoors(t *testing.T) {
 			}
 		})
 	}
-	// The worker may save/release a fence obtained through P16's future claim.
+	// The worker may save/release a fence obtained through an assignment claim.
 	f.a.put(cs.CellKey("chat"), cs.Created(cs.CellInit{Head: "old"}, f.id, 1000))
 	receipt := cs.UploadReceipt{Device: f.id, Cell: "chat", WorkerIncarnation: 1, Head: "new", HeadRID: "opaque-rid"}
 	f.a.put(cs.UploadKey(cs.UploadID(receipt)), receipt)

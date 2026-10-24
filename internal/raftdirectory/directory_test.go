@@ -366,7 +366,7 @@ func TestR3R13R17DirectoryRetryAfterSnapshotAndNativeRestart(t *testing.T) {
 }
 
 // R30 covers the remaining Client verbs at the actual committed adapter door.
-// External LinkRequest delivery and certificate admission remain P10's gate.
+// External LinkRequest delivery and certificate admission have separate effects tests.
 func TestR16R30PresenceAndPairDecisionDependencies(t *testing.T) {
 	clock := directorytest.NewFakeClock()
 	g := newGroup(t, clock.Now)

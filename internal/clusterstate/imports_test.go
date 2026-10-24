@@ -11,7 +11,7 @@ import (
 
 // R14 needs the same application package in the native and wasm builds. Keep
 // its import boundary explicit so a storage/auth/HTTP helper cannot silently
-// enter the pure graph when another packet adds a record or rule.
+// enter the pure graph when records or rules change.
 func TestR14PureImportBoundary(t *testing.T) {
 	allowed := map[string]bool{
 		"io": true, "bytes": true, "encoding/json": true, "errors": true, "fmt": true,

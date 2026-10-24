@@ -79,7 +79,7 @@ func TestR17LostReplyReplayWaitsForOriginalCommit(t *testing.T) {
 	finish(t, s)
 }
 
-// R4/R5 and design §7 bound each election timeout at 6–12 ticks. Check the
+// R4/R5 bound each election timeout at 6–12 ticks. Check the
 // observable election messages, separately from eventual election of a leader.
 func TestR4R5SeededElectionTimeoutAndTickPacing(t *testing.T) {
 	for seed := 0; seed < seedCount(t); seed++ {

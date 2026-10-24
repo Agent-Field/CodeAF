@@ -31,21 +31,21 @@ func conditionalForcedTakeRace(t *testing.T, e env) {
 	}
 }
 
-// Legacy stores still prove their historical blind-force behavior until P11
-// freezes them. The consensus suite below proves R25's safe normalization.
+// Legacy stores retain blind-force behavior until migration freezes them.
+// The consensus suite below proves safe normalization of old requests.
 func conditionalForcedTakeOneWins(t *testing.T, e env) {
 	conditionalForcedTakeRace(t, e)
 	_, err := e.as(devA).Acquire(ctx, cell, directory.AcquireOpts{Force: true})
 	must(t, err)
 }
 
-// RunConsensus uses every existing verb case, with the R25 compatibility
-// contract at the one place where blind legacy force deliberately changes.
+// RunConsensus uses every existing verb case, with the compatibility
+// rule at the one place where blind legacy force deliberately changes.
 func RunConsensus(t *testing.T, factory Factory) {
 	RunConsensusRigs(t, func(t *testing.T) Rig { clock := NewFakeClock(); return Rig{Clock: clock, Devices: factory(t, clock)} })
 }
 
-// RunConsensusRigs retains every wire case while asserting R25 at blind force.
+// RunConsensusRigs retains every wire case while refusing blind force on a live lease.
 func RunConsensusRigs(t *testing.T, factory RigFactory) {
 	for name, fn := range cases {
 		t.Run(name, func(t *testing.T) {
