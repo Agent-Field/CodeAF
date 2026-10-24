@@ -1088,7 +1088,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// of the draft it walks history, after taking back a parked message;
 		// with nothing typed and calls on screen it selects one; and past all
 		// of those it scrolls.
-		if !a.input.onFirstLine() {
+		if !a.recalling() && !a.input.onFirstLine() {
 			a.input.up()
 			a.touch()
 			return a.syncLists()
@@ -1118,7 +1118,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.scroll(-1)
 
 	case "down":
-		if !a.input.onLastLine() {
+		if !a.recalling() && !a.input.onLastLine() {
 			a.input.down()
 			a.touch()
 			return a.syncLists()

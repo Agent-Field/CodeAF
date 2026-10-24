@@ -4141,6 +4141,8 @@ func (a *app) hintWord() string {
 		// room is open, esc leaves the page and does not touch the conversation's
 		// turn, so "esc interrupt" would be naming a key that is spoken for.
 		return a.roomHint()
+	case a.recalling():
+		return "↑ older · ↓ newer · esc restore draft · enter send"
 	case a.state == stateWorking:
 		// ONE RUNNING STATE, ONE COMPOSED LINE (steer.go's [app.runHint]). Its
 		// clauses ask their keys' own guards and remain in one fixed order, so the
