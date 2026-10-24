@@ -3,10 +3,12 @@
 // is refused with, and the handler. Handlers get {tenant, device, body} and the path's captures,
 // and answer a Response or throw a refusal; the Durable Object does everything around them.
 import { MAX_FRAME } from './frame.js';
+import { MAX_FABRIC_BODY } from './fabric.js';
 import { approve, deny } from './link/decide.js';
 import { parseBeat, presenceOf } from './presence.js';
 import { parseHolds } from './vouch.js';
 import { Wire, badRequest, json, empty, notFound } from './wire.js';
+import { signedUri } from './base.js';
 
 const MAX_SMALL = 1 << 20; // directory.MaxBody, and every store body but a frame
 const MAX_HAS = 1000;
@@ -86,13 +88,59 @@ async function frameOf(c, [id]) {
 // a put in flight, which Has must not overtake.
 const STORE = { over: 'bad_frame' };
 const DIR = { over: 'too_large' };
+const FABRIC = { over: 'too_large', limit: MAX_FABRIC_BODY, fabric: true };
 // `write` marks a route a replaced identity refuses: every verb that changes a record or a frame, and
 // the watch, which a replaced identity could only ever hear a thaw on (contract 21.2).
 const LINK = { over: 'too_big', limit: 16 << 10, write: true }; // an approve body: a device record, a cert and a grant of at most 4 KiB
 const STORE_WRITE = { ...STORE, write: true };
 const DIR_WRITE = { ...DIR, write: true };
+const FABRIC_WRITE = { ...FABRIC, write: true };
 
 const ROUTES = [
+  ['PUT', /^\/v1\/clients\/([^/]+)$/, FABRIC_WRITE, async (c, [device]) => {
+    await c.tenant.fabric.registerClient({
+      caller: c.device,
+      targetDevice: device,
+      body: c.body,
+      identityHeader: c.request.headers.get('codeaf-identity'),
+      identity: c.tenant.identity,
+    });
+    return empty();
+  }],
+  ['PUT', /^\/v1\/clients\/([^/]+)\/slots\/([^/]+)$/, FABRIC_WRITE, (c, [device, name]) => {
+    c.tenant.fabric.putSlot({ caller: c.device, targetDevice: device, name, body: c.body });
+    return empty();
+  }],
+  ['GET', /^\/v1\/clients\/([^/]+)\/slots\/([^/]+)$/, FABRIC, (c, [device, name]) =>
+    json(c.tenant.fabric.getSlot({ caller: c.device, targetDevice: device, name, body: c.body })),
+  ],
+  ['POST', /^\/v1\/clients\/([^/]+)\/queue$/, FABRIC_WRITE, (c, [device]) => {
+    c.tenant.fabric.appendQueue({
+      caller: c.device,
+      targetDevice: device,
+      body: c.body,
+      proof: {
+        signature: c.request.headers.get('codeaf-sig') ?? '',
+        cert: c.request.headers.get('codeaf-cert') ?? '',
+        identity: c.request.headers.get('codeaf-identity') ?? '',
+        requestTime: c.request.headers.get('codeaf-time') ?? '',
+        requestUri: signedUri(c.env, new URL(c.request.url)),
+        bodyBytes: c.body,
+      },
+    });
+    return empty();
+  }],
+  ['GET', /^\/v1\/clients\/([^/]+)\/queue$/, FABRIC, (c, [device]) =>
+    json({ entries: c.tenant.fabric.listQueue({ caller: c.device, targetDevice: device, body: c.body }) }),
+  ],
+  ['POST', /^\/v1\/clients\/([^/]+)\/queue\/([^/]+)\/claim$/, FABRIC_WRITE, (c, [device, number]) => {
+    c.tenant.fabric.claimQueue({ caller: c.device, targetDevice: device, numberText: number, body: c.body, ack: false });
+    return empty();
+  }],
+  ['DELETE', /^\/v1\/clients\/([^/]+)\/queue\/([^/]+)$/, FABRIC_WRITE, (c, [device, number]) => {
+    c.tenant.fabric.claimQueue({ caller: c.device, targetDevice: device, numberText: number, body: c.body, ack: true });
+    return empty();
+  }],
   ['POST', /^\/v1\/store\/frames$/, { ...STORE_WRITE, limit: MAX_FRAME, frames: true }, async (c) => json(await c.tenant.putFrame(c.body))],
   ['GET', /^\/v1\/store\/objects\/([^/]+)$/, STORE, async (c, [rid]) => {
     if (!isRid(rid)) throw new Wire('bad_rid', 400);
@@ -116,7 +164,7 @@ const ROUTES = [
     c.tenant.dir.putDevice(id, object(c.body));
     return empty();
   }],
-  ['POST', /^\/v1\/dir\/devices\/([^/]+)\/revoke$/, DIR_WRITE, (c, [id]) => (c.tenant.dir.revoke(id, c.device), empty())],
+  ['POST', /^\/v1\/dir\/devices\/([^/]+)\/revoke$/, DIR_WRITE, (c, [id]) => (c.tenant.revoke(id, c.device), empty())],
   ['GET', /^\/v1\/dir\/presence$/, DIR, presence],
   ['POST', /^\/v1\/dir\/requests\/([^/]+)\/approve$/, LINK, async (c, args) => (await approve(c, args), empty())],
   ['POST', /^\/v1\/dir\/requests\/([^/]+)\/deny$/, LINK, async (c, args) => (await deny(c, args), empty())],
@@ -140,9 +188,9 @@ const ROUTES = [
 
 /** matchRoute answers {limit, over, frames, write, handler, args} for a request, or throws not_found. */
 export function matchRoute(method, path) {
-  for (const [m, pattern, { limit = MAX_SMALL, over, frames = false, write = false }, handler] of ROUTES) {
+  for (const [m, pattern, { limit = MAX_SMALL, over, frames = false, write = false, fabric = false }, handler] of ROUTES) {
     const hit = m === method && pattern.exec(path);
-    if (hit) return { limit, over, frames, write, handler, args: hit.slice(1) };
+    if (hit) return { limit, over, frames, write, fabric, handler, args: hit.slice(1) };
   }
   throw notFound();
 }

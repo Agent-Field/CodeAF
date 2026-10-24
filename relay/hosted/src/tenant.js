@@ -1,6 +1,7 @@
 // One identity's namespace: its directory, its frames, its quota, and the relay's own count of
 // what the identity asked of it. Route handlers talk to this and to nothing beneath it.
 import { Directory } from './directory.js';
+import { Fabric } from './fabric.js';
 import { Quota } from './limits.js';
 import { Meta } from './meta.js';
 import { Stats } from './stats.js';
@@ -31,6 +32,7 @@ export class Tenant {
     this.flight = flight;
     this.watchers = watchers;
     this.dir = new Directory(sql, identity, clock, policy, watchers);
+    this.fabric = new Fabric(sql, clock, this.dir);
     this.quota = new Quota(sql, limits);
     this.store = new R2Store(bucket, sql, identity);
     this.meta = new Meta(sql);
@@ -122,6 +124,16 @@ export class Tenant {
    */
   announce(frame, except) {
     this.watchers.announce?.(frame, except);
+  }
+
+  isClient(device) {
+    return this.fabric.isClient(device);
+  }
+
+  revoke(device, caller) {
+    const wasClient = this.isClient(device);
+    this.dir.revoke(device, caller);
+    if (wasClient) this.fabric.revokeClient(device);
   }
 
   /** assertWritable refuses a write to an identity a rotation has replaced, whichever device asks. */
