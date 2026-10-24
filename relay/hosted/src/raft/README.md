@@ -142,3 +142,28 @@ never append or application success. The sole P17 router must consume those
 original peer bytes through the authenticated exchange bridge, propagate wake to
 current voters, and supply queued assignment/outbox activity conservatively.
 No host listener, provider service or alternate directory writer is added here.
+
+## Hosted public assembly
+
+`HostedIdentity` now runs at every authenticated public identity request. The
+source object keeps blob/index/quota/socket admission and its irreversible P11
+gate; all directory, authority, rotation and blob authorization goes through
+three separately addressed `RaftMemberDO` actors. Imports advance bounded pages,
+reuse source UUID/keys/ceiling and require an actual quorum ReadIndex before
+ownership publication. After publication, only stores with durable matching
+provenance can participate. A missing quorum refuses; it never reimports a lost
+voter under its former ID or reopens the source writer.
+
+ABI 30 prepares restricted effects using the source's protocol seed (never a
+command field), 31 projects typed canonical rows to legacy numeric JSON, and 32
+checks committed personal certificate/revocation/rotation. Step 16 requests an
+explicit real campaign instead of fabricating ticks. Original v1 mutations still
+use ABI 29 and the same deterministic evaluation. Empty legacy frame plans are
+normalized before original-proof comparison, preserving replacement semantics.
+
+Public source serialization spans coordination, while external blob I/O leaves
+that queue and passes a new authority barrier afterward. Public watch sockets
+carry presence without the legacy socket-vouch promise; v1 clients keep ordinary
+beats. P17C retains personal/worker transport, leadership maintenance and the full
+committed-hold/quiescence assembly. Explicit retirement has its own retained
+all-replica erasure journal and never serves as pressure cleanup.

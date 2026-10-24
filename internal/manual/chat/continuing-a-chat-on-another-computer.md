@@ -348,3 +348,18 @@ blob store. No switch selects the former directory writer.
 
 Encoded directory commands currently have a 64 KiB limit; a larger older request
 can be refused before it changes ownership. Larger imported records stay retained.
+
+## Hosted relay directory upgrade and older clients
+
+The hosted relay records directory changes on three persistent members. Two must
+agree before a take, publish or fresh listing succeeds. Pairing one or two
+computers does not require either computer to stay awake. The three hosted copies
+still depend on the same hosting provider and relay connection.
+
+An existing identity upgrades on first authenticated use. An interrupted upgrade
+can briefly ask you to retry; it keeps the saved directory and encrypted frames.
+The old directory never becomes a second writer. Older clients keep pairing,
+listing, publishing, releasing and continuing a chat they observed. A very old
+client that blindly forces a live chat receives `another device continued this chat first`.
+Quit on the holder first, or update that client before continuing a live chat.
+Watch sockets show presence; older clients still send their normal heartbeats.
