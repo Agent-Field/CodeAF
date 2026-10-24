@@ -44,7 +44,7 @@ export class CommittedHolds {
       } } catch {socket.failed?.();continue;}
       if(!items.length)continue;
       let result;
-      try { result=await this.host.commitEffect({renew_holds:{device:socket.device,seen_at:socket.seenAt,items}},now); }
+      try { result=await this.host.commitEffect({renew_holds:{device:socket.device,seen_at:socket.seenAt,items,...(socket.certificate?{certificate:socket.certificate}:{})}},now); }
       catch {socket.failed?.();continue;}
       if(result.code!=='ok'||!result.index||result.index==='0'){socket.failed?.();continue;}
       const holds=(result.items??[]).filter(item=>item.code==='ok'&&item.view).map(item=>({cell:item.cell,fence:item.view.cell.lease.fence,index:result.index,at:result.now,until:item.view.cell.lease.expires}));

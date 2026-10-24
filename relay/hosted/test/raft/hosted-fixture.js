@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { prefixOf } from '../../src/base.js';
+import { encodeCanonical } from '../../src/raft/codec.js';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 import { build } from 'esbuild';
 import { mkdtemp, copyFile, rm, readFile } from 'node:fs/promises';
@@ -43,5 +44,16 @@ export async function hostedFixture({fixture=false,base='',go=false}={}) {
   };
   const call=async(...args)=>{const response=await request(...args),text=await response.text();return {status:response.status,body:text?JSON.parse(text):null};};
   const control=async value=>{assert(fixture);const r=await mf.dispatchFetch('http://local/fixture',{method:'POST',body:JSON.stringify({identity,...value})});assert.equal(r.status,200,await r.clone().text());return r.json();};
-  return {identity,client,dir,start,request,call,control,get mf(){return mf;},async close(){if(mf)await mf.dispose();await rm(dir,{recursive:true,force:true});}};
+  const api=async(c,q)=>{
+    q={identity_key:rootKey.toString('base64'),...q,at:q.at??Date.now(),signature:null};
+    if(!q.worker)q.certificate=Buffer.from(JSON.stringify(c.cert)).toString('base64url');
+    q.signature=sign(null,Buffer.from('codeaf/cluster-api/1\n'+encodeCanonical(q)),c.key.privateKey).toString('base64');
+    const r=await mf.dispatchFetch('http://local'+prefix+'/v2/cluster/api',{method:'POST',headers:{'Codeaf-Identity':rootKey.toString('base64url')},body:encodeCanonical(q)});
+    const text=await r.text();return {status:r.status,body:text?JSON.parse(text):null};
+  };
+  const delegate=certificate=>{
+    certificate={v:1,identity,...certificate,signature:null};
+    certificate.signature=sign(null,Buffer.from('codeaf/worker-cert/v1\0'+encodeCanonical(certificate)),root.privateKey).toString('base64');return certificate;
+  };
+  return {identity,client,dir,start,request,call,control,api,delegate,get mf(){return mf;},async close(){if(mf)await mf.dispose();await rm(dir,{recursive:true,force:true});}};
 }
