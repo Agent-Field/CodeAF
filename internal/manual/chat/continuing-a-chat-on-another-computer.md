@@ -137,7 +137,7 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 A chat has one holder at a time. To take a chat back from the computer that took it, continue it there the same way: press enter on its row on that computer and choose `continue here`. Nothing has to be returned or switched off first. A computer with the chat open when another takes it says `<device> continued this chat; this window now only shows it`, stops taking new turns, and keeps what it had not yet sent as a branch (`<K> turns from <device>: open separately / discard`). A tool call the model tries there answers with that same line. Taking the chat back leaves a `node_modules` or other install folder that computer already has alone.
 
-The choice covers the holder and turn of ownership shown on the card. If another computer continues the chat before you confirm or while the copy is arriving, your choice cannot take it from that new holder. The slower one sees `another device continued this chat first`, its local copy is not replaced, and its row goes back to `running on <device>`. Older clients that do not send this condition keep their earlier behavior. No turn is lost on either side: whatever the earlier holder had not sent is kept for you as the branch above. This build offers discard, which archives a branch, and opening the branch as a separate chat; merging it into the original chat is unavailable. Pressing `2` (`leave it there`) on the question, or `esc`, changes nothing and leaves the chat where it is.
+The choice covers the holder and turn of ownership shown on the card. If another computer continues the chat before you confirm or while the copy is arriving, your choice cannot take it from that new holder. The slower one sees `another device continued this chat first`, its local copy is not replaced, and its row goes back to `running on <device>`. No turn is lost on either side: whatever the earlier holder had not sent is kept for you as the branch above. This build offers discard, which archives a branch, and opening the branch as a separate chat; merging it into the original chat is unavailable. Pressing `2` (`leave it there`) on the question, or `esc`, changes nothing and leaves the chat where it is.
 
 ## I reopened an old local chat after the other computer let go — where are the newer turns
 
@@ -244,7 +244,7 @@ An older chat whose folder is a symbolic link, or whose saved conversation state
 A saved chat reaches your other computers only after its encrypted objects have
 been uploaded and its new saved head has been accepted. If an upload fails, the
 other computer keeps seeing the previous saved head. Retry when the connection
-returns. Uploaded objects are kept for reuse if another device continued the
+returns. If the final save fails during quit, the work stays local and that computer does not announce a clean release; another computer does not automatically open that incomplete save. Uploaded objects are kept for reuse if another device continued the
 chat first; this does not discard the work saved on your computer.
 
 ## Relay directory upgrade pauses and saved chats
@@ -321,3 +321,7 @@ Worker setup and assignment execution are not available as a terminal command ye
 No. The worker saves its claim request before sending it and records an execution intent before invoking tools. A lost coordination reply can retry that same request, retaining its original fence. Once execution may have started, reopening keeps the records and reports `this work may be incomplete; its saved records have been kept`. It never invokes that attempt again automatically. A recorded finish can retry its coordination acknowledgment without running tools.
 
 Reassignment changes the run revision and requires a new conditional claim. The replacement can recover saved records, but the scripted adapter refuses automatic execution of a reassigned run. Missing or incomplete calls are not instructions to execute them. Cancellation prevents future claims; stopping a claimed assignment does not cancel an already running shell process. Another take changes the fence and blocks the displaced holder from publishing. Already downloaded bytes and uploaded frames stay retained.
+
+## Why can an older computer list chats but not continue a chat that is still running?
+
+Older builds can still list, save, publish and release chats through a compatible relay. A relay using quorum-backed coordination refuses an older request that tries to take a live chat without naming its observed holder and ownership number. It uses the existing refusal, `another device continued this chat first`; an old build does not necessarily show an extra update hint. Quit on the computer holding the chat before continuing it elsewhere, or update codeaf on the computer trying to continue. A released or expired chat can still be taken. A conditional choice never silently changes to a newer holder.

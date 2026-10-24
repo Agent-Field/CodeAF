@@ -33,6 +33,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		question string
 		page     string
 	}{
+		// R25/R29 keep older-client refusals and failed quit saves reachable.
+		{"why can an older computer list chats but not continue a chat that is still running", "continuing-a-chat-on-another-computer"},
+		{"what happens if the final save fails during quit", "continuing-a-chat-on-another-computer"},
 		// C29.4/C30.2/C31.5 must be reachable in the person's own words.
 		{"can I rewind an old chat on my new laptop", "continuing-a-chat-on-another-computer"},
 		{"I quit on my laptop and opened my desktop", "continuing-a-chat-on-another-computer"},
