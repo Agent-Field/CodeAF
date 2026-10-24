@@ -68,6 +68,25 @@ export class R2Store {
     });
   }
 
+  /** checkReferences waits for indexing and durability before an upload receipt is proposed. */
+  checkReferences(headRID, frames, durable) {
+    return this.#writes.run(async () => {
+      if (typeof durable !== 'function' || !/^[0-9a-f]{64}$/.test(headRID)) throw new Damaged();
+      const head = await this.get(headRID);
+      if (!head || head.length !== this.#locate(headRID).len) throw new Damaged();
+      for (const id of new Set([this.#locate(headRID).frame, ...frames])) {
+        if (!/^[0-9a-f]{64}$/.test(id) || !this.#indexed(id)) throw new Damaged();
+        const object = await this.bucket.get(this.prefix + id);
+        if (!object) throw new Damaged();
+        const bytes = new Uint8Array(await object.arrayBuffer());
+        if (await frameIdOf(bytes) !== id) throw new Damaged();
+        const frame = decode(bytes);
+        for (const ref of frame.objects) if (!this.#locate(ref.rid)) throw new Damaged();
+      }
+      await durable();
+    });
+  }
+
   /** get answers one object's bytes, or null. */
   async get(rid) {
     const at = this.#locate(rid);
@@ -170,7 +189,9 @@ export class R2Store {
   // #index is one synchronous turn, so no request sees a frame half indexed. An object already held
   // (the same rid in an earlier frame, with the same bytes) keeps its first place.
   #index({ id, base, objects }) {
-    this.sql.exec('INSERT OR IGNORE INTO frames VALUES (?)', id);
     for (const { rid, off, len } of objects) this.sql.exec('INSERT OR IGNORE INTO objs VALUES (?,?,?,?)', rid, id, base + off, len);
+    // The completion marker comes last so an interrupted index is repaired
+    // by the next immutable put, rather than being mistaken for completion.
+    this.sql.exec('INSERT OR IGNORE INTO frames VALUES (?)', id);
   }
 }
