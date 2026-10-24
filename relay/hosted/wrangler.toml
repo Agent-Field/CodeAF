@@ -42,6 +42,5 @@ tag = "v2"
 new_sqlite_classes = ["LinkGate", "LinkRequest"]
 
 [vars]
-# The lease law: "amended" is contract 8.7 of the stage 1H decision (90 s, a publish renews) and is
-# what the client and the Go relay implement; "stage1" is the frozen 30 s law, kept for reference.
+# "amended": 90-second leases, renewed by publish; "stage1": 30-second leases.
 LEASE_POLICY = "amended"

@@ -6,7 +6,7 @@
 #
 # Two relays, the Go one and the Worker, are run through the same suites: in process for the Go relay,
 # as a live process for both. The Worker runs under `wrangler dev --local` on free ports and never
-# against staging, so a billing window stays clean. Tracks run sequentially on the shared box;
+# against a deployed relay. Tracks run sequentially on the shared box;
 # CONFORMANCE_PARALLEL=1 opts into separate concurrent tracks. Their suites run one after another, because the watch suite's thousand
 # sockets would otherwise stall a Worker that a lease case is waiting on. Cases default to two
 # at a time (watch cases run alone), and the local Worker transport bounds requests, retrying only the
