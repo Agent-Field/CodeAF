@@ -57,6 +57,9 @@ type deviceCard struct {
 	loaded   bool
 	cursor   int
 	line     string
+	// A list read cannot undo the outcome of a completed rename or removal.
+	// Keep its failure separately so both facts survive delayed feed callbacks.
+	readErr error
 	// naming is the name being typed, and nil when no name is being typed.
 	naming *string
 	// read is the newest directory version the rows were read at, so a change another computer
@@ -87,9 +90,14 @@ func (m devicesMsg) land(a *app) tea.Cmd {
 		return nil
 	}
 	if m.err != nil {
-		m.card.line = m.err.Error()
+		if !m.card.loaded {
+			m.card.line = m.err.Error()
+		} else {
+			m.card.readErr = m.err
+		}
 		return nil
 	}
+	m.card.readErr = nil
 	online, _ := m.card.livePresence()
 	for i := range m.rows {
 		m.rows[i].Online = online[m.rows[i].ID] && !m.rows[i].Revoked
@@ -321,6 +329,9 @@ func (c *deviceCard) rows(width int, now time.Time, pal palette) []string {
 	if c.line != "" {
 		out = append(out, dressed(wrap(c.line, max(width, 4)), pal.accent)...)
 	}
+	if c.readErr != nil {
+		out = append(out, dressed(wrap(c.readErr.Error(), max(width, 4)), pal.accent)...)
+	}
 	return out
 }
 
@@ -328,6 +339,9 @@ func (c *deviceCard) rows(width int, now time.Time, pal palette) []string {
 // once the look has failed, why. A failure that landed on a card still saying
 // "looking up" would never be read.
 func (c *deviceCard) waiting() string {
+	if c.readErr != nil {
+		return c.readErr.Error()
+	}
 	if c.line != "" {
 		return c.line
 	}
