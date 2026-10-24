@@ -2,6 +2,7 @@ package clusterstate_test
 
 import (
 	"crypto/ed25519"
+	"encoding/base64"
 	"fmt"
 	"math/rand"
 	"testing"
@@ -139,6 +140,78 @@ func TestR26R27CommittedOutboxPreventsSleep(t *testing.T) {
 		active, err := cs.RecordActive(key, raw, 1000)
 		if err != nil || active != v.active {
 			t.Fatal(v, active, err)
+		}
+	}
+}
+
+// R16/R22 require an ingress presence stamp to remain advisory and scoped. A
+// watch may precede metadata; absence is neither corrupt state nor enrollment.
+func TestR16R22IngressPresenceDoesNotGrantDirectoryAuthority(t *testing.T) {
+	a := newApplication(t)
+	a.put(cs.AuthorityKey("ingress"), cs.Authority{Cluster: "test", Key: actorKey("ingress").Public().(ed25519.PublicKey), Effects: true})
+	for _, device := range []string{"missing", "a"} {
+		r := a.run("ingress", 1001, cs.Mutation{DeviceSeen: &cs.DeviceSeen{Device: device}})
+		if r.Code != cs.OK {
+			t.Fatal("presence refused without a metadata row", r)
+		}
+	}
+	for _, m := range []cs.Mutation{{Create: &cs.CreateCell{Cell: "chat", Init: cs.CellInit{Head: "sealed"}}}, {SetVault: &cs.VaultCAS{New: "forged"}}, {PutDevice: &cs.PutDevice{ID: "missing", Device: cs.Device{V: 1}}}} {
+		r := a.run("ingress", 1002, m)
+		if r.Code != cs.Unauthorized {
+			t.Fatal("presence service gained personal authority", r)
+		}
+	}
+	if a.meta.Version != 0 {
+		t.Fatal("advisory presence moved the visible directory")
+	}
+}
+
+// R16/R22/R24 use a returning holder's original public certificate without
+// growing an imported identity's retained rows or granting peer membership.
+func TestR16R22R24LegacyHoldCertificateDoesNotConsumeEnrollmentCapacity(t *testing.T) {
+	a := newApplication(t)
+	public := actorKey("returning").Public().(ed25519.PublicKey)
+	device := cs.DeviceIDOfKey(public)
+	a.put(cs.DeviceKey(device), cs.Device{V: 1})
+	a.put(cs.CellKey("chat"), cs.Cell{V: 1, Head: "sealed", Lease: cs.Lease{Device: device, Fence: 1, Expires: 91000}})
+	before := len(a.rows)
+	evidence := cs.RenewHolds{Certificate: joinCert(t, "returning"), Device: device, SeenAt: 2000, Items: []cs.HoldFence{{Cell: "chat", Fence: 1}}}
+	r := service(a, 2000, cs.Mutation{RenewHolds: &evidence})
+	if r.Code != cs.OK || len(r.Items) != 1 || r.Items[0].Code != cs.OK || a.cell().Lease.Expires != 92000 {
+		t.Fatal(r, a.cell())
+	}
+	// service adds its fixture authority once; the holder adds no retained row.
+	if len(a.rows) != before+1 || a.rows[cs.AuthorityKey(device)] != nil {
+		t.Fatal("legacy renewal enrolled authority or grew history")
+	}
+	evidence.Certificate = joinCert(t, "other")
+	if r = service(a, 2001, cs.Mutation{RenewHolds: &evidence}); r.Code != cs.Unauthorized {
+		t.Fatal("another certificate renewed the holder", r)
+	}
+	evidence.Certificate = joinCert(t, "returning")
+	a.put(cs.DeviceKey(device), cs.Device{V: 1, Revoked: true})
+	if r = service(a, 2002, cs.Mutation{RenewHolds: &evidence}); r.Code != cs.Revoked {
+		t.Fatal("retained certificate bypassed revocation", r)
+	}
+}
+
+// R15 requires discarded certificate fields to stay out of a retained watch
+// witness; a valid signature over known fields cannot authorize extra text.
+func TestR15LegacyWatchCertificateRejectsHiddenFieldsBeforeRetention(t *testing.T) {
+	cert := joinCert(t, "returning")
+	identity := cs.IdentityRec{V: 1, Identity: cs.IdentityID(actorKey("root").Public().(ed25519.PublicKey)), SigningKey: actorKey("root").Public().(ed25519.PublicKey)}
+	device := cs.DeviceIDOfKey(actorKey("returning").Public().(ed25519.PublicKey))
+	if e := cs.PersonalCertificate(identity, device, cert); e != nil {
+		t.Fatal(e)
+	}
+	raw, e := base64.RawURLEncoding.DecodeString(cert)
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, injected := range []string{`"private":"sentinel",`, `"device":"sentinel",`} {
+		bad := base64.RawURLEncoding.EncodeToString(append([]byte("{"+injected), raw[1:]...))
+		if e := cs.PersonalCertificate(identity, device, bad); e == nil {
+			t.Fatal("ignored or duplicate certificate text may enter the log")
 		}
 	}
 }

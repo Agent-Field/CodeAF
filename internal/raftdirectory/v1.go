@@ -18,16 +18,19 @@ import (
 // Commit returns only a durable applied result. Read commits the GET command's
 // ingress time, obtains a fresh current-term ReadIndex and waits for durable
 // application before calling inspect. A POST already committed by this request
-// uses that time and a NEW barrier without repeating its mutation.
+// uses that time and a NEW barrier without repeating its mutation. Callbacks
+// receive the actor-owned context: a caller losing its response cannot cancel
+// durability or poison a healthy member while committed work is completing.
 type V1Host interface {
 	CommitV1(context.Context, clusterstate.Command) (clusterstate.Result, error)
-	ReadV1(context.Context, clusterstate.Command, bool, func(*raftstore.SQLite, raftstore.Application) error) error
+	ReadV1(context.Context, clusterstate.Command, bool, func(context.Context, *raftstore.SQLite, raftstore.Application) error) error
 }
 
 // V1Directory is the authenticated legacy HTTP adapter for one frozen namespace.
 // It has no key with which to impersonate a personal device. ForRequest receives
 // exactly the proof admitted by directory.Handler, including archived bodies.
 type V1Directory struct {
+	Grace   directory.GraceBounds
 	Host    V1Host
 	Cluster string
 	Now     func() time.Time
@@ -62,7 +65,11 @@ func (d *V1Directory) ForRequest(actor string, r *http.Request, raw []byte) dire
 			b.err = directory.ErrUnauthorized
 		}
 	}
-	return directory.NewRaft(b).For(actor)
+	adapter := directory.NewRaft(b)
+	if d.Grace != (directory.GraceBounds{}) {
+		adapter.SetGraceBounds(d.Grace)
+	}
+	return adapter.For(actor)
 }
 
 type v1Backend struct {
@@ -85,18 +92,18 @@ func (b *v1Backend) Change(ctx context.Context, actor string, m clusterstate.Mut
 	return r, err
 }
 
-func (b *v1Backend) read(ctx context.Context, actor string, fn func(*raftstore.SQLite, raftstore.Application) error) error {
+func (b *v1Backend) read(ctx context.Context, actor string, fn func(context.Context, *raftstore.SQLite, raftstore.Application) error) error {
 	if b.err != nil {
 		return b.err
 	}
 	if b.owner.Host == nil || actor != b.actor {
 		return directory.ErrUnauthorized
 	}
-	return b.owner.Host.ReadV1(ctx, b.command, b.committed, func(s *raftstore.SQLite, app raftstore.Application) error {
+	return b.owner.Host.ReadV1(ctx, b.command, b.committed, func(ctx context.Context, s *raftstore.SQLite, app raftstore.Application) error {
 		if err := authorizeV1Read(ctx, s, app, b.command); err != nil {
 			return err
 		}
-		return fn(s, app)
+		return fn(ctx, s, app)
 	})
 }
 
@@ -127,7 +134,7 @@ func authorizeV1Read(ctx context.Context, s *raftstore.SQLite, app raftstore.App
 
 func (b *v1Backend) Listing(ctx context.Context, actor string) (directory.Listing, error) {
 	l := directory.Listing{Devices: map[string]directory.Device{}, Cells: map[string]directory.Cell{}}
-	err := b.read(ctx, actor, func(s *raftstore.SQLite, app raftstore.Application) error {
+	err := b.read(ctx, actor, func(ctx context.Context, s *raftstore.SQLite, app raftstore.Application) error {
 		l.Now, l.Version = app.LogicalTime, app.VisibleVersion
 		after := ""
 		for {
@@ -173,7 +180,7 @@ func (b *v1Backend) Listing(ctx context.Context, actor string) (directory.Listin
 }
 func (b *v1Backend) ReadCell(ctx context.Context, actor, id string) (directory.CellView, error) {
 	var v directory.CellView
-	err := b.read(ctx, actor, func(s *raftstore.SQLite, app raftstore.Application) error {
+	err := b.read(ctx, actor, func(ctx context.Context, s *raftstore.SQLite, app raftstore.Application) error {
 		k := raftstore.Key{Namespace: raftstore.State, Key: clusterstate.CellKey(id).Key}
 		rows, _, err := s.Read(ctx, app.Applied, []raftstore.Key{k})
 		if err != nil {

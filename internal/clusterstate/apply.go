@@ -349,7 +349,7 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 			return out, nil
 		}
 	}
-	service := c.Change.RenewHolds != nil || c.Change.RecordUpload != nil || c.Change.AdmitJoin != nil || c.Change.CompleteJoin != nil || auth.Effects && c.Change.WorkerBeatBatch != nil
+	service := c.Change.RenewHolds != nil || c.Change.RecordUpload != nil || c.Change.AdmitJoin != nil || c.Change.CompleteJoin != nil || auth.Effects && (c.Change.WorkerBeatBatch != nil || c.Change.DeviceSeen != nil)
 	if service != auth.Effects || auth.Personal && auth.Effects || auth.Anchor && (auth.Personal || auth.Effects || c.Change.PrepareQuiescence == nil && c.Change.SettleMembership == nil && c.Change.SettleLeadership == nil && c.Change.CompleteLeadership == nil && c.Change.RestoreAnchors == nil && c.Change.CloseSession == nil) {
 		return out, nil
 	}
@@ -406,6 +406,17 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 			out.Result.Index = meta.Index
 		} else if c.Change.WorkerBeatBatch != nil {
 			code = applyWorker(c, out.Now, identity, rows, put, &out.Result)
+		} else if service && c.Change.DeviceSeen != nil {
+			if d := rows[DeviceKey(c.Change.DeviceSeen.Device)]; d != nil {
+				var seen Device
+				if Decode(d, &seen) != nil {
+					return out, ErrDependency
+				}
+				if !seen.Revoked {
+					seen.LastSeen = out.Now
+					put(DeviceKey(c.Change.DeviceSeen.Device), seen)
+				}
+			}
 		} else if service {
 			code = applyEffect(c, out.Now, rows, put)
 		} else {
@@ -581,11 +592,15 @@ func applyMutation(c Command, now int64, identity IdentityRec, rows map[RecordKe
 				return Rotated
 			}
 			if r.State != "retired" {
+				policy := GracePolicy{Min: MinGraceMillis, Max: MaxGraceMillis, Default: DefaultGraceMillis}
+				if identity.Grace != nil {
+					policy = *identity.Grace
+				}
 				g := v.GraceMS
 				if g == 0 {
-					g = DefaultGraceMillis
+					g = policy.Default
 				}
-				if g < MinGraceMillis || g > MaxGraceMillis || now > int64(MaxSafeInteger)-g {
+				if g < policy.Min || g > policy.Max || now > int64(MaxSafeInteger)-g {
 					return BadGrace
 				}
 				r = &Rotation{State: "retired", By: r.By, At: r.At, RetireAt: now + g}

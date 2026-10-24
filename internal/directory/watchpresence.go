@@ -317,6 +317,10 @@ func (f *Feed) announceJoin(j Joined) {
 	f.pres.announce(dirwatch.JoinedEvent(j.Device, j.Name, j.Platform, j.At), j.Device)
 }
 
+// AnnounceJoin publishes an advisory event only after a consensus host has
+// committed the device and completed its pairing delivery.
+func (f *Feed) AnnounceJoin(j Joined) { f.announceJoin(j) }
+
 // OnSeen registers fn to stamp a device's last_seen: it is called with the
 // directory time (unix ms) at each watch connect and when a device closes its
 // last socket, never per ping and never while the feed holds a lock. A

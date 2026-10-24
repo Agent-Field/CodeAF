@@ -30,7 +30,8 @@ func (g *group) CommitV1(_ context.Context, c cs.Command) (cs.Result, error) {
 	defer g.mu.Unlock()
 	return g.submit(c)
 }
-func (g *group) ReadV1(ctx context.Context, c cs.Command, committed bool, inspect func(*raftstore.SQLite, raftstore.Application) error) error {
+func (g *group) ReadV1(ctx context.Context, c cs.Command, committed bool, inspect func(context.Context, *raftstore.SQLite, raftstore.Application) error) error {
+	ctx = context.WithoutCancel(ctx)
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if !committed {
@@ -63,7 +64,7 @@ func (g *group) ReadV1(ctx context.Context, c cs.Command, committed bool, inspec
 	if e != nil {
 		return e
 	}
-	return inspect(g.stores[i], app)
+	return inspect(ctx, g.stores[i], app)
 }
 
 type v1Fixture struct {

@@ -19,9 +19,16 @@ type RaftBackend interface {
 	ReadCell(context.Context, string, string) (CellView, error)
 }
 
-type Raft struct{ backend RaftBackend }
+type Raft struct {
+	backend RaftBackend
+	grace   GraceBounds
+}
 
-func NewRaft(backend RaftBackend) *Raft  { return &Raft{backend: backend} }
+func NewRaft(backend RaftBackend) *Raft { return &Raft{backend: backend, grace: DefaultGraceBounds} }
+
+// SetGraceBounds installs the durable namespace policy before serving requests.
+func (r *Raft) SetGraceBounds(g GraceBounds) { r.grace = g }
+
 func (r *Raft) For(device string) Client { return &raftClient{r: r, device: device} }
 
 type raftClient struct {
@@ -37,7 +44,7 @@ func (c *raftClient) change(ctx context.Context, m clusterstate.Mutation) (CellV
 	if err != nil {
 		return CellView{}, err
 	}
-	if err = resultError(r.Code); err != nil {
+	if err = ResultError(r.Code); err != nil {
 		return CellView{}, err
 	}
 	if r.View != nil {
@@ -110,7 +117,7 @@ func (c *raftClient) Rotate(ctx context.Context, req RotationReq) (RotationView,
 }
 func (c *raftClient) Rotation(ctx context.Context) (RotationView, error) {
 	l, e := c.List(ctx)
-	return viewOf(l.Identity, l.Now, DefaultGraceBounds), e
+	return viewOf(l.Identity, l.Now, c.r.grace), e
 }
 
 // Pairing commits a sealed decision dependency; delivery follows through the
@@ -130,7 +137,8 @@ func (c *raftClient) DenyRequest(ctx context.Context, code string) error {
 
 var errRaftConflict = errors.New("directory: request sequence conflict")
 
-func resultError(code clusterstate.Code) error {
+// ResultError preserves the existing wire refusals at host read boundaries.
+func ResultError(code clusterstate.Code) error {
 	switch code {
 	case clusterstate.OK:
 		return nil

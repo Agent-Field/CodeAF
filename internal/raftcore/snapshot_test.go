@@ -77,3 +77,51 @@ func TestR11R12R13SnapshotHintAndDurableCompactInput(t *testing.T) {
 		t.Fatal("R13 snapshot retained caller aliases")
 	}
 }
+
+// R13/R14 preserve the portable manifest when the library fills an omitted
+// default ConfState field. Every effective configuration field remains bound.
+func TestR13R14PortableSnapshotDefaultPresenceThroughRealCore(t *testing.T) {
+	conf := &pb.ConfState{Voters: []uint64{1, 2, 3}}
+	pointer := func(index, term uint64) *pb.Snapshot {
+		encoded, e := raftsnapshot.Configuration(conf)
+		if e != nil {
+			t.Fatal(e)
+		}
+		m := raftsnapshot.Manifest{Version: 1, Cluster: "snapshot-default", Protocol: 1, Index: index, Term: term, Conf: encoded, RecordsHash: strings.Repeat("0", 64), Digest: raftsnapshot.ID(nil)}
+		data, e := m.Encode()
+		if e != nil {
+			t.Fatal(e)
+		}
+		return &pb.Snapshot{Data: data, Metadata: &pb.SnapshotMetadata{Index: proto.Uint64(index), Term: proto.Uint64(term), ConfState: clone(conf)}}
+	}
+	saved := pointer(5, 1)
+	c, e := New(Config{ClusterUUID: "snapshot-default", NodeID: 1, Seed: 1, Protocol: 1, Anchors: []uint64{1, 2, 3}}, RecoveredState{HardState: &pb.HardState{Term: proto.Uint64(1), Commit: proto.Uint64(5)}, ConfState: conf, Snapshot: saved, Applied: 5})
+	if e != nil {
+		t.Fatal(e)
+	}
+	retained, e := c.store.Snapshot()
+	if e != nil || !proto.Equal(retained, saved) {
+		t.Fatal("library default changed durable snapshot", retained.GetMetadata(), e)
+	}
+	incoming := pointer(7, 2)
+	raw, e := wire.Marshal(&pb.Message{Type: pb.MsgSnap.Enum(), From: proto.Uint64(2), To: proto.Uint64(1), Term: proto.Uint64(2), Snapshot: incoming})
+	if e != nil {
+		t.Fatal(e)
+	}
+	effects, e := c.Step(PeerMessage{Bytes: raw})
+	if e != nil || effects.Persist == nil || !proto.Equal(effects.Persist.Snapshot, incoming) {
+		t.Fatal("received snapshot lost its manifest-bound presence", effects, e)
+	}
+	effects, e = c.Step(Persisted{BatchID: effects.Persist.ID})
+	if e != nil || effects.Apply == nil || !proto.Equal(effects.Apply.Snapshot, incoming) || !proto.Equal(effects.Apply.ConfState, conf) {
+		t.Fatal("apply changed portable snapshot", effects, e)
+	}
+	if _, e = c.Step(Applied{BatchID: effects.Apply.ID}); e != nil {
+		t.Fatal(e)
+	}
+	bad := clone(incoming)
+	bad.Metadata.ConfState.AutoLeave = proto.Bool(true)
+	if _, e = canonicalSnapshot(bad); !errors.Is(e, ErrSnapshot) {
+		t.Fatal("changed effective joint policy accepted", e)
+	}
+}

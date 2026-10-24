@@ -4,11 +4,20 @@
 package clusterstate
 
 // IdentityRec is the per-identity root record.
+// GracePolicy is an operator-provisioned rotation policy preserved by import.
+// Requests cannot change it or choose a weaker policy during evaluation.
+type GracePolicy struct {
+	Min     int64 `json:"min"`
+	Max     int64 `json:"max"`
+	Default int64 `json:"default"`
+}
+
 type IdentityRec struct {
-	V          uint16 `json:"V"`
-	Identity   string `json:"identity"`              // id_…, derived from the signing key
-	SigningKey []byte `json:"signing_key,omitempty"` // Public identity key for committed certificate checks.
-	Vault      string `json:"vault,omitempty"`       // rid of the current vault object
+	Grace      *GracePolicy `json:"grace,omitempty"`
+	V          uint16       `json:"V"`
+	Identity   string       `json:"identity"`              // id_…, derived from the signing key
+	SigningKey []byte       `json:"signing_key,omitempty"` // Public identity key for committed certificate checks.
+	Vault      string       `json:"vault,omitempty"`       // rid of the current vault object
 	// Rotation is set once the identity has been replaced by a rotation: it
 	// takes no writes from then on. Nil means live.
 	Rotation *Rotation `json:"rotation,omitempty"`

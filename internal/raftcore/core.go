@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"reflect"
 	"slices"
 
 	"github.com/Agent-Field/codeaf/internal/clusterstate"
@@ -26,6 +27,41 @@ type storage struct {
 func (s *storage) InitialState() (*pb.HardState, *pb.ConfState, error) {
 	h, _, err := s.MemoryStorage.InitialState()
 	return h, s.conf, err
+}
+
+// Snapshot returns the exact portable configuration encoding. The library
+// fills optional zero fields in memory; that presence must not change the
+// manifest-bound bytes which the durable store and another runtime compare.
+func (s *storage) Snapshot() (*pb.Snapshot, error) {
+	p, err := s.MemoryStorage.Snapshot()
+	if err != nil {
+		return nil, err
+	}
+	return canonicalSnapshot(p)
+}
+
+// canonicalSnapshot accepts only equal effective configurations and restores
+// the manifest's exact protobuf presence. It never changes a voter, learner,
+// joint field, term or index, and rejects unknown snapshot metadata.
+func canonicalSnapshot(p *pb.Snapshot) (*pb.Snapshot, error) {
+	if raft.IsEmptySnap(p) {
+		return p, nil
+	}
+	m, err := raftsnapshot.Decode(p.GetData())
+	if err != nil {
+		return nil, ErrSnapshot
+	}
+	conf, err := m.Configuration()
+	if err != nil {
+		return nil, ErrSnapshot
+	}
+	meta := p.GetMetadata()
+	if meta == nil || len(p.ProtoReflect().GetUnknown()) != 0 || len(meta.ProtoReflect().GetUnknown()) != 0 || meta.GetConfState() == nil || len(meta.GetConfState().ProtoReflect().GetUnknown()) != 0 || meta.GetIndex() != m.Index || meta.GetTerm() != m.Term || !reflect.DeepEqual(Configuration(meta.GetConfState()), Configuration(conf)) {
+		return nil, ErrSnapshot
+	}
+	p = clone(p)
+	p.Metadata.ConfState = conf
+	return p, nil
 }
 
 type pending struct {
@@ -318,6 +354,10 @@ func (c *Core) Step(input Input) (effects Effects, err error) {
 				return effects, ErrSnapshot
 			}
 		}
+	case Campaign:
+		if err = c.node.Campaign(); err != nil {
+			return effects, err
+		}
 	case Poll:
 	case Tick:
 		if !c.schedule.sleeping {
@@ -486,6 +526,14 @@ func (c *Core) collect(e *Effects) error {
 	}
 	c.serial++
 	rd := c.node.Ready()
+	if !raft.IsEmptySnap(rd.Snapshot) {
+		var err error
+		rd.Snapshot, err = canonicalSnapshot(rd.Snapshot)
+		if err != nil {
+			c.stopped = true
+			return err
+		}
+	}
 	c.pending = &pending{id: c.serial, ready: rd}
 	e.Persist = &PersistBatch{ID: c.serial, HardState: clone(rd.HardState), Entries: copyEntries(rd.Entries), Snapshot: clone(rd.Snapshot)}
 	return nil

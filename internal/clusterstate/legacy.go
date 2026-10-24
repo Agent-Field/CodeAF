@@ -16,23 +16,40 @@ var ErrMigration = errors.New("codeaf: directory upgrade is incomplete; retry sh
 // LegacyConfig is allocated once at the source gate. Only public protocol keys
 // belong here; content keys and private signing keys never enter an import.
 type LegacyConfig struct {
-	Cluster      string   `json:"cluster"`
-	Generation   uint64   `json:"generation"`
-	Identity     string   `json:"identity"`
-	SigningKey   []byte   `json:"signing_key"`
-	Anchors      []uint64 `json:"anchors"`
-	EffectsKey   []byte   `json:"effects_key"`
-	Now          int64    `json:"now"`
-	Certificates []string `json:"certificates,omitempty"`
+	Grace        *GracePolicy `json:"grace,omitempty"`
+	Cluster      string       `json:"cluster"`
+	Generation   uint64       `json:"generation"`
+	Identity     string       `json:"identity"`
+	SigningKey   []byte       `json:"signing_key"`
+	Anchors      []uint64     `json:"anchors"`
+	AnchorKeys   [][]byte     `json:"anchor_keys,omitempty"`
+	EffectsKey   []byte       `json:"effects_key"`
+	Now          int64        `json:"now"`
+	Certificates []string     `json:"certificates,omitempty"`
 }
 
 func (c LegacyConfig) Validate() error {
+	if c.Grace != nil && (c.Grace.Min <= 0 || c.Grace.Max < c.Grace.Min || c.Grace.Default < c.Grace.Min || c.Grace.Default > c.Grace.Max || c.Grace.Max > int64(MaxSafeInteger)) {
+		return ErrMigration
+	}
 	if c.Cluster == "" || c.Generation != 1 || len(c.SigningKey) != ed25519.PublicKeySize || IdentityID(c.SigningKey) != c.Identity || len(c.EffectsKey) != ed25519.PublicKeySize || bytes.Equal(c.EffectsKey, c.SigningKey) || len(c.Anchors) != 3 || c.Now < 0 || c.Now > int64(MaxSafeInteger) {
 		return ErrMigration
 	}
 	for i, id := range c.Anchors {
 		if id == 0 || id >= ^uint64(0)-1 || (i > 0 && id <= c.Anchors[i-1]) {
 			return ErrMigration
+		}
+	}
+	if len(c.AnchorKeys) != 0 {
+		if len(c.AnchorKeys) != len(c.Anchors) {
+			return ErrMigration
+		}
+		seen := map[string]bool{}
+		for _, key := range c.AnchorKeys {
+			if len(key) != ed25519.PublicKeySize || seen[string(key)] || bytes.Equal(key, c.SigningKey) || bytes.Equal(key, c.EffectsKey) {
+				return ErrMigration
+			}
+			seen[string(key)] = true
 		}
 	}
 	if len(c.Certificates) > MaxLiveSessions {
@@ -50,11 +67,9 @@ func (c LegacyConfig) Validate() error {
 }
 
 func legacyCertificate(c LegacyConfig, text string) ([]byte, error) {
-	var cert struct {
-		Device string `json:"device"`
-	}
+	var cert v1Certificate
 	raw, e := base64.RawURLEncoding.DecodeString(text)
-	if e != nil || len(raw) > 1024 || json.Unmarshal(raw, &cert) != nil {
+	if e != nil || len(raw) > 1024 || legacyBody(raw, &cert, false) != nil {
 		return nil, ErrMigration
 	}
 	public, e := hex.DecodeString(cert.Device)
@@ -105,6 +120,7 @@ func LegacyRow(c LegacyConfig, kind, id string, raw []byte, holdUntil int64) (Re
 		if legacyDecode(raw, &v) != nil || v.V != 1 || (v.Identity != "" && v.Identity != c.Identity) || (len(v.SigningKey) > 0 && !bytes.Equal(v.SigningKey, c.SigningKey)) {
 			return RecordWrite{}, ErrMigration
 		}
+		v.Grace = c.Grace
 		v.Identity = c.Identity
 		v.SigningKey = c.SigningKey
 		key = IdentityKey()
@@ -191,4 +207,15 @@ func LegacyAuthorities(c LegacyConfig) ([]RecordWrite, error) {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
 	return out, nil
+}
+
+// PersonalCertificate checks only the existing closed public certificate
+// vocabulary. Hosts call it before retaining a certificate in an effects log,
+// where ignored or duplicate fields could otherwise carry private plaintext.
+func PersonalCertificate(identity IdentityRec, device, text string) error {
+	key, err := legacyCertificate(LegacyConfig{Identity: identity.Identity, SigningKey: identity.SigningKey}, text)
+	if err != nil || DeviceIDOfKey(key) != device {
+		return ErrCodec
+	}
+	return nil
 }
