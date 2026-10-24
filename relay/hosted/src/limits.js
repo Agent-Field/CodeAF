@@ -1,6 +1,6 @@
 // Every number the relay enforces, in one table, and the two small mechanisms that enforce them.
-// Free forever needs ceilings: the money-bearing ones (bytes, objects, frames a day) are kept in
-// the identity's Durable Object storage and survive eviction; the per-minute rates are kept in
+// Stored quotas (bytes, objects, frames a day) survive eviction in the identity's Durable Object
+// storage; the per-minute rates are kept in
 // memory, because an eviction can only forgive a burst, never let a stored quota be exceeded.
 import { full, rateLimited } from './wire.js';
 
@@ -8,7 +8,7 @@ const GiB = 1 << 30;
 const MiB = 1 << 20;
 
 /**
- * The numbers of presence (contract 21.12.3), each said once. A client declares the beat it pings at; a socket that
+ * Presence timing defaults, each said once. A client declares the beat it pings at; a socket that
  * declares none is a pre-presence client, which was told to ping every 30 s. The window is how many beats of silence
  * the relay allows before the socket stops counting as proof that its device is alive.
  */
@@ -19,27 +19,27 @@ export const windowMs = (beat) => beat * 1000 * PRESENCE.windowFactor;
 
 export const DEFAULTS = {
   // One identity.
-  storeBytes: 5 * GiB, // stored bytes; the cost ceiling
+  storeBytes: 5 * GiB, // Maximum stored bytes per identity.
   storeObjects: 5_000_000, // the index is rows in the identity's SQLite, so this is a backstop; the byte cap rules
-  framesPerDay: 5_000, // R2 writes, the dearest operation
+  framesPerDay: 5_000, // Maximum new frames stored per identity per day.
   requestsPerMinute: 1_200, // all devices of one identity together
   requestsPerMinutePerDevice: 600,
   statsFlushMs: 5_000, // how long a count may wait in memory before it is written (see stats.js)
   concurrentPuts: 2, // a 16 MiB frame costs the isolate 2 to 3 times its size while it arrives
-  // Rotation (contract 20.3): how long a retired identity stays readable before it is deleted.
+  // Rotation: how long a retired identity stays readable before it is deleted.
   // The minimum and the page size are the test hooks, like the self-hosted relay's --min-grace.
   minGraceMs: 3_600_000,
   maxGraceMs: 30 * 86_400_000,
   defaultGraceMs: 7 * 86_400_000,
-  maxWatchers: 1_000, // directory watch sockets one identity may hold (contract 21.8); the Go relay's directory.MaxWatchers
-  maxHolds: 16, // cells one watch socket may vouch for (contract 21.11.1); the Go relay's directory.MaxHolds
+  maxWatchers: 1_000, // directory watch sockets one identity may hold; the Go relay's directory.MaxWatchers
+  maxHolds: 16, // cells one watch socket may vouch for; the Go relay's directory.MaxHolds
   sweepPageSize: 1_000, // R2 objects deleted per alarm turn (R2's own limit per list and per delete)
-  // The whole relay, by caller IP: how many identities one address may bring in (contract 6: no accounts).
+  // The whole relay, by caller IP: how many identities one address may bring in.
   newIdentitiesPerIpPerDay: 200,
-  // Deployment-wide brakes remain effective when a caller spreads across networks.
-  globalNewIdentitiesPerDay: 10_000,
-  globalStoreBytes: 1024 * GiB,
-  // The pairing mailbox (contract 18.4), for callers that have no identity yet.
+  // Deployment-wide brakes are opt-in through CAF_LIMITS; zero closes the corresponding door.
+  globalNewIdentitiesPerDay: Infinity,
+  globalStoreBytes: Infinity,
+  // The pairing mailbox, for callers that have no identity yet.
   pairTtlMs: 10 * 60_000,
   pairMaxMsg: 4 << 10,
   pairMaxMsgsPerSide: 4,
@@ -49,7 +49,7 @@ export const DEFAULTS = {
   pairMaxBoxes: 2_000, // at 32 KiB each this is also the 64 MiB ceiling in all
   // How long an ended mailbox's nameplate waits before it can be drawn again; null means pairTtlMs (see pair/plates.js).
   plateQuarantineMs: null,
-  // Link requests (docs/ux-pairing-contract.md 3.6), for a new device that has no identity yet. The
+  // Link requests, for a new device that has no identity yet. The
   // time to live is pairTtlMs, shared with the mailbox.
   linkCreatePerHour: 10,
   linkPendingPerIp: 3,
@@ -98,7 +98,7 @@ const DAY_MS = 86_400_000;
 /**
  * Quota is one identity's stored totals, kept in its Durable Object's SQLite: bytes and objects
  * held, and the frames stored today. admit refuses a frame that would pass a ceiling, before
- * it costs anything; record counts a frame once R2 has confirmed it is new.
+ * it is written; record counts a frame once R2 has confirmed it is new.
  */
 export class Quota {
   constructor(sql, limits) {
