@@ -409,17 +409,23 @@ func (a *toolCallAccumulator) current() (formingCall, bool) {
 //
 // The last call of a message has no such successor and is reported by
 // [toolCallAccumulator.flush] instead, at the clean end of the stream.
-func (a *toolCallAccumulator) add(fragment toolCallDelta) (ai.ToolCall, bool) {
+// toolCallIndex keeps observation and assembly on the same call boundaries.
+func toolCallIndex(fragment toolCallDelta, order []int) int {
 	index := 0
 	switch {
 	case fragment.Index != nil:
 		index = *fragment.Index
-	case len(a.order) > 0 && fragment.ID == "":
+	case len(order) > 0 && fragment.ID == "":
 		// A continuation of the call already open.
-		index = a.order[len(a.order)-1]
+		index = order[len(order)-1]
 	default:
-		index = len(a.order)
+		index = len(order)
 	}
+	return index
+}
+
+func (a *toolCallAccumulator) add(fragment toolCallDelta) (ai.ToolCall, bool) {
+	index := toolCallIndex(fragment, a.order)
 	if a.calls == nil {
 		a.calls, a.args = make(map[int]*ai.ToolCall, 2), make(map[int]*strings.Builder, 2)
 		a.reported = make(map[int]bool, 2)

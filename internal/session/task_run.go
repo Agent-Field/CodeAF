@@ -1603,10 +1603,9 @@ func (g *TaskGraph) runFrontier() {
 	// ([TaskGraph.holdOnStartingLocked]), because the answer for the second
 	// node of a fan depends on the first one having started.
 	g.governor.observe(g.lanesTaken())
-	// AND WHAT THE CONVERSATION REMEMBERS IS RESOLVED BEFORE THE LOCK TOO, and at
-	// most once a pass, for the reading's reason: every node in one graph sits in
-	// one place, so the answer is the same for all of them (memory.go).
-	orders := g.memoryWorld()
+	// Resolve each queued assignment's contextual memory before the scheduler
+	// lock. The owners are shared; the relevant facts depend on the task.
+	orders := g.memoryWorldsForFrontier()
 
 	g.mu.Lock()
 	// A CLOSED SESSION HAS NO RUNNING NODES, so a pass that arrives after the
@@ -1623,7 +1622,7 @@ func (g *TaskGraph) runFrontier() {
 	machineHeld := false
 	for _, id := range g.order {
 		node := g.nodes[id]
-		if node == nil || node.state != TaskQueued {
+		if !queuedWithMemoryContext(node, orders) {
 			continue
 		}
 		ready, blocked := g.readinessLocked(node)
@@ -1653,7 +1652,7 @@ func (g *TaskGraph) runFrontier() {
 		}
 		// JIT: the brief is assembled here, with the prerequisites' reports in
 		// hand, and never at proposal time when they did not exist yet.
-		node.brief = g.briefLocked(node, orders)
+		node.brief = g.briefLocked(node, orders[node.id])
 		node.state = TaskRunning
 		node.started = time.Now()
 		node.stateAt = node.started
@@ -1984,7 +1983,8 @@ func (g *TaskGraph) readinessLocked(node *TaskNode) (bool, string) {
 // told by the work ahead of it are the job; the rules are the conditions the
 // job is done under, and a brief that opened with them would read as the job
 // being about the conditions. `orders` is the conversation's memory section
-// ([TaskGraph.memoryWorld]), resolved ONCE per frontier pass outside this lock.
+// ([TaskGraph.memoryWorldsForFrontier]), resolved for this assignment outside
+// this lock.
 func (g *TaskGraph) briefLocked(node *TaskNode, orders string) string {
 	brief := g.inheritedLocked(node)
 	if finding := strings.TrimSpace(node.finding); finding != "" {
@@ -4195,6 +4195,7 @@ func (n *TaskNode) settlesNote(claim noteClaim) durableDelivery {
 // written by the caller, after the seam.
 func (a *Agent) postTaskMessage(node *TaskNode, tag TaskReplyTag, note, record string, durable []durableDelivery, settle settleMark, mark func()) deliveryReceipt {
 	message := wakeNote(note)
+	message.completionOnly = true
 	// AND A LANDING THAT HANDS THE MODEL THE DECISION MARKS ITS WAKE A SETTLE ONE,
 	// so the turn it starts runs under the checker's own bound rather than the
 	// run's wall ([settleWake], agent.go's [Agent.wakeLocked]).
@@ -7724,6 +7725,15 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// else, and a rollup over the family then found half of it
 		// (usage_ledger.go).
 		usageLedger: parent.usageLedger,
+		// AND THE DAILY CEILING IT SPENDS UNDER, resolved by the root door and
+		// carried because a worker is handed no ProfileDir to read it from
+		// (session.go's [Config.DailyBudgetUSD], rail.go's [Agent.dailyCeilingUSD]).
+		// Without this a worker read the DEFAULT profile's limit, refusing under a
+		// higher selected one and spending past a lower one. The person's standing
+		// `--yes-spend` travels with it, lifting that one limit and no other.
+		DailyBudgetUSD:      a.dailyCeilingUSD(),
+		DailyBudgetResolved: true,
+		SpendPreauthorized:  a.config.SpendPreauthorized,
 		// AND WHOSE MONEY IT IS. Every line this worker records names the
 		// conversation the work is rooted in, however deep the family goes.
 		rootSession: root,

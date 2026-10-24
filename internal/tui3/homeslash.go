@@ -209,7 +209,7 @@ func homeFate(word, rest string) string {
 	case "land", "workspace", "dismiss", "delete":
 		return fateBehind
 	case "files", "permissions", "connect", "harness", "subharness", "skill",
-		"autonomy", "copy", "select", "rewind", "compact", "export", "drafts", "manual", "folder":
+		"autonomy", "copy", "select", "rewind", "compact", "export", "drafts", "manual", "folder", "processes":
 		// /manual IS HERE SINCE 2026-09-22 and not among the answers: it is a
 		// turn of a conversation now (manualcmd.go), and a turn needs one. As
 		// an answer it printed the pages into the conversation BEHIND home,
@@ -272,6 +272,14 @@ func homeFate(word, rest string) string {
 	case "always":
 		// BOTH FORMS ANSWER HERE, and home is where a rule is the person's
 		// everywhere rather than one project's (memory.go's [app.runAlways]).
+		return fateAnswers
+	case "helpers":
+		// IT ANSWERS HERE, AND DOES NOTHING ELSE. /helpers makes a team of the
+		// conversation a person has been working in (helpers.go), and home has
+		// none in front: opening a fresh one would make a manager of a
+		// conversation that knows nothing, which is `+ AI manager`'s job, and
+		// acting on the one behind home would send its ask where nobody can
+		// read it. So it says where it works.
 		return fateAnswers
 	}
 	return ""

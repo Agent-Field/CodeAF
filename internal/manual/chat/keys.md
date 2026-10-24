@@ -3708,3 +3708,20 @@ Press `alt+k` (`opt+k` on macOS) to open the chats menu from a conversation.
 It lists the same open tabs as Home, in the tab strip's order. Select one and press
 Enter. Closed conversations are behind the menu's fold; Home also keeps up to
 three recently closed conversations dimmed below the open list.
+
+## How do I make this one chat think harder
+
+Press `alt+e` (`opt+e` on a Mac) or click the effort word beside the model above
+the message box. It cycles `auto`, `low`, `medium`, `high`, `xhigh`, `max`, then
+back to `auto`, without changing your draft. `/effort high` sets a rung directly.
+This changes the current conversation's effort; it does not move other chats or
+a task that has already started.
+
+## How do I stop a task from the chat without opening it
+
+With an empty message box, press `x` when exactly one stoppable task row is
+visible. With more than one, press `alt+t` (`opt+t` on a Mac), select the task
+in the roster, and press `x`. Neither route opens the task room. The stop card
+opens on `keep going`: choose `stop it` and press Enter to confirm, or click
+that answer. Escape cancels the card. A half-typed message is preserved; with
+text in the box, an ordinary `x` types the letter instead.

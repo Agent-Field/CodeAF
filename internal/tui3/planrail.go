@@ -272,3 +272,20 @@ func (a *app) planRailRoot(twig *planTwig, width int) []railLine {
 	out := []railLine{{text: text, entry: -1, plan: twig.row.ID, head: true}}
 	return append(out, a.planRailLines(twig.kids, 1, width)...)
 }
+
+// The sidebar keeps only work still running or waiting for a decision; history stays in Tasks.
+func activePlanForest(forest []*planTwig) []*planTwig {
+	var out []*planTwig
+	for _, twig := range forest {
+		kids := activePlanForest(twig.kids)
+		state := planNodeState(twig.row)
+		if state == session.TaskDone || state == session.TaskFailed {
+			out = append(out, kids...)
+			continue
+		}
+		kept := *twig
+		kept.kids = kids
+		out = append(out, &kept)
+	}
+	return out
+}

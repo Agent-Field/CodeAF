@@ -74,6 +74,14 @@ type BashWorker struct {
 	// The web pair uses the run profile and resolves its settings per operation.
 	searchProvider search.Provider
 	searchFetcher  search.Fetcher
+	// dailyBudgetUSD is the machine-wide daily ceiling this run was started under,
+	// resolved once by the factory from the run's profile (the worker's own
+	// session carries no ProfileDir, so [Agent.railBlockLocked] cannot read it).
+	// Zero is no ceiling. spendPreauthorized is the person's `--yes-spend` /
+	// `CODEAF_PREAUTHORIZE_SPEND=1` standing permission to spend past it, lifting
+	// that one limit the same way `doSpendGuard` lifts it from the crew guard.
+	dailyBudgetUSD     float64
+	spendPreauthorized bool
 }
 
 // NewBashWorker builds the seat the run's factory hands each claimed task to.
@@ -127,6 +135,12 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 		AuthKeySource:    w.authKeySource,
 		SearchProvider:   w.searchProvider,
 		SearchFetcher:    w.searchFetcher,
+		// The run's daily ceiling and the person's standing permission to spend
+		// past it travel to the worker's session, which carries no ProfileDir to
+		// read them from (session.go's [Config.DailyBudgetUSD], #1546).
+		DailyBudgetUSD:      w.dailyBudgetUSD,
+		DailyBudgetResolved: true,
+		SpendPreauthorized:  w.spendPreauthorized,
 	}, w.completer, &task, w.store.Path(), w.store.RootID())
 	if err != nil {
 		return Report{}, err

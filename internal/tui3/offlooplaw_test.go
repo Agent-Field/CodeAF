@@ -456,6 +456,7 @@ var doorsBesideTheLine = map[string]string{
 	"NameTeam":          "asks a model for a suggested team name under a budget of seconds; it changes nothing on the engine, typing overrides it, and a message sent while it thinks must not wait behind it",
 	"ProposeTeams":      "asks a model for Organize's proposals under a budget of seconds; it changes nothing on the engine (Apply writes through the teams store), and nothing after it depends on the engine having seen it",
 	"SkillFolders":      "scans the far engine's skill folders for the /skill list, the same read as the local disk scan (skillpick.go readSkillDisk); it changes nothing, and the list opens on what is known before it answers",
+	"NameTeamWords":     "asks a model for the name of a team the Teams row just made, under a budget of seconds; it changes nothing on the engine (the rename is a teams-store edit, and only while the team keeps its first name), and the /helpers sent right after the click must not wait behind it",
 }
 
 func TestOnlyReadsNobodyPressedForAreAskedBesideTheLine(t *testing.T) {

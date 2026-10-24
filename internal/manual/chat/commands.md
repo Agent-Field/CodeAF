@@ -323,6 +323,7 @@ command).
 | `/spend` | none | none | opens the spend place, what this machine has cost, by the day (also `alt+5`) |
 | `/wall` | | | every saved conversation at once, with live or saved previews and card-based team creation (also `alt+v`, or `▦` under the box) |
 | `/teams` | | | the teams page: your teams as a tree, what waits on you, member previews and the selected team's interaction table (also `alt+2`, or `teams` on the tab bar) |
+| `/helpers` | | `<what to ask the manager>` | asks the team this conversation manages to suggest helpers: sends your words after it, or bare a one-sentence default ask, shown in full; makes no team, and in a conversation that manages none it says to make one with `+ New from this session`, last in the Teams dropdown while no team is selected, which makes the team at once and puts `/helpers` and the ask in the box; on home it says to open that conversation first |
 | `/cost` | `/usage`, `/tokens` | — | prints what this conversation has spent, and on what |
 | `/effort` | `/think`, `/thinking` | — | opens this conversation's thinking levels; says it is unavailable when the session has no dial |
 | `/effort` | `/think`, `/thinking` | `<rung>` | sets this conversation's thinking level; an unknown rung lists the accepted levels and changes nothing |
@@ -2225,11 +2226,20 @@ tabs included, and opening a row brings the tab and its draft back too.
 
 ## Dismiss task notifications
 
-`/dismiss` hides settled task notifications in the current conversation window.
-`/dismiss undo` restores them. With an empty message box, select a task
-notification and press `delete` to dismiss just that notification. Pending
-`your call` decisions stay visible. Dismissal does not stop work, accept a
-result, delete a task, or remove its output from Sessions.
+Routine task completions stay in Tasks automatically, including older conversations.
+`/dismiss` hides manually dismissible settled notifications; `/dismiss undo` restores
+those dismissals without making routine task completions appear in chat. Pending
+`your call` decisions stay visible. Dismissal does not stop work, accept a result,
+delete a task, or remove its output. Open Tasks to read results and run details.
+With an empty message box, select a task notification and press `delete` to dismiss
+just that notification.
+
+## Process history and logs — /processes
+
+`/processes` opens this conversation's running and finished processes. Click a row or
+select it with the arrow keys and press Enter to read its log. `/processes <id>` opens
+a known process directly. Escape returns from a log to the list, then back to chat.
+The sidebar itself only shows running processes, without a completed count.
 
 ## Desktop engine methods for cache, autonomy and harnesses
 

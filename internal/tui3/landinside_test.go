@@ -26,41 +26,23 @@ func landingUpdate1556(id uint64, title string, state session.TaskState) session
 	})
 }
 
+// A landing keeps its durable facts while the meaningful answer is the only
+// completion content occupying the conversation.
 func assertLandingAfterProse1556(t *testing.T, a *app, title, prose string, id uint64, crewRequired bool) {
 	t.Helper()
 	view := taskText(a)
-	card := "◆ " + title
-	crew := "task " + itoa(int(id)) + " crew · "
-	t.Run("card follows final prose once", func(t *testing.T) {
-		for _, want := range []string{prose, card} {
-			if !strings.Contains(view, want) {
-				t.Fatalf("the settled conversation is missing %q:\n%s", want, view)
-			}
-		}
-		if got := strings.Count(view, card); got != 1 {
-			t.Fatalf("the landing has %d cards, want one:\n%s", got, view)
-		}
-		if strings.Index(view, card) <= strings.Index(view, prose) {
-			t.Fatalf("the card did not move after the turn's final prose:\n%s", view)
-		}
-	})
-	if crewRequired {
-		t.Run("crew follows final prose once", func(t *testing.T) {
-			for _, want := range []string{crew} {
-				if !strings.Contains(view, want) {
-					t.Fatalf("the settled conversation is missing %q:\n%s", want, view)
-				}
-			}
-			if !strings.Contains(strings.Join(strings.Fields(view), " "), "not right? /redo stronger") {
-				t.Fatalf("the crew line lost its redo action:\n%s", view)
-			}
-			if got := strings.Count(view, crew); got != 1 || strings.Index(view, crew) <= strings.Index(view, prose) {
-				t.Fatalf("the crew line appears %d times or precedes the final prose:\n%s", got, view)
-			}
-		})
-		if strings.Index(view, crew) >= strings.Index(view, card) {
-			t.Fatalf("the crew line no longer precedes its card:\n%s", view)
-		}
+	if !strings.Contains(view, prose) {
+		t.Fatalf("meaningful answer disappeared: %s", view)
+	}
+	if strings.Contains(view, "◆ "+title) || strings.Contains(view, "task "+itoa(int(id))+" crew · ") {
+		t.Fatalf("routine completion duplicated the answer: %s", view)
+	}
+	card := a.doneCardFor(id)
+	if card == nil || card.title != title || !card.hidden() {
+		t.Fatalf("quiet landing lost its retained identity: %+v", card)
+	}
+	if crewRequired && (a.tasks[id] == nil || a.tasks[id].crew == nil) {
+		t.Fatal("quiet landing lost crew details")
 	}
 }
 
@@ -90,16 +72,12 @@ func TestATaskThatLandsInsideItsTurnGetsItsCardAtTheTurnsEnd(t *testing.T) {
 		const later = "Count words in store.py"
 		drive(t, a, taskEventMsg{gen: a.taskGen, ev: landingUpdate1556(3, later, session.TaskRunning)})
 		drive(t, a, taskEventMsg{gen: a.taskGen, ev: landingUpdate1556(3, later, session.TaskDone)})
-		view := taskText(a)
-		first, second := "◆ "+title, "◆ "+later
-		if strings.Count(view, first) != 1 || strings.Count(view, second) != 1 ||
-			strings.Index(view, first) >= strings.Index(view, second) ||
-			strings.Index(view, second) <= strings.Index(view, prose) ||
-			strings.Count(view, "task 2 crew · ") != 1 || strings.Count(view, "task 3 crew · ") != 1 ||
-			strings.Index(view, "task 3 crew · ") <= strings.Index(view, prose) ||
-			strings.Index(view, "task 3 crew · ") >= strings.Index(view, second) {
-			t.Fatalf("the two tasks lost their one-card landing order:\n%s", view)
+		assertLandingAfterProse1556(t, a, title, prose, 2, true)
+		assertLandingAfterProse1556(t, a, later, prose, 3, true)
+		if a.doneEntryFor(2) >= a.doneEntryFor(3) {
+			t.Fatal("retained landing order changed")
 		}
+
 	})
 }
 

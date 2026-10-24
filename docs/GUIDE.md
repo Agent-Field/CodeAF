@@ -119,7 +119,7 @@ curl -fsSL https://agentfield.ai/get/codeaf | VERSION=<tag> bash
 | `--no-modify-path` | Print the PATH line without editing a shell file or linking into a folder on PATH. |
 | `--no-start` or `CODEAF_NO_START=1` | Do not ask to start codeaf when the install ends. |
 | `--verbose` | Print each GET. |
-| `GITHUB_TOKEN` or `GH_TOKEN` | Raise GitHub's anonymous API limit. |
+| `GITHUB_TOKEN` or `GH_TOKEN` | Raise GitHub's API limit; a token GitHub refuses is set aside for one anonymous try. |
 
 The script needs `curl` or `wget`, plus `sha256sum` or `shasum`. It downloads
 `checksums.txt` and refuses a sha256 mismatch. Unless `--no-modify-path` is set, it

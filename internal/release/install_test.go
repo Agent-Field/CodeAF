@@ -1,10 +1,12 @@
 package release
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 type fakeRelease struct {
@@ -34,11 +37,19 @@ type fakeTiming struct {
 	published any
 }
 
+type apiRefusal struct {
+	status    int
+	headers   map[string]string
+	body      string
+	tokenOnly bool
+}
+
 type installGitHub struct {
 	server            *httptest.Server
 	releases          []string
 	timings           map[string]fakeTiming
 	badChecksum       bool
+	refuse            *apiRefusal
 	failAPI           bool
 	notFound          bool
 	oldRepositoryOnly bool
@@ -60,6 +71,15 @@ func (github *installGitHub) serve(w http.ResponseWriter, request *http.Request)
 	github.mu.Lock()
 	github.requests = append(github.requests, request.Clone(request.Context()))
 	github.mu.Unlock()
+	if refusal := github.refuse; refusal != nil && strings.HasPrefix(request.URL.Path, "/repos/") &&
+		(!refusal.tokenOnly || request.Header.Get("Authorization") != "") {
+		for name, value := range refusal.headers {
+			w.Header().Set(name, value)
+		}
+		w.WriteHeader(refusal.status)
+		_, _ = w.Write([]byte(refusal.body))
+		return
+	}
 	if github.notFound {
 		http.NotFound(w, request)
 		return
@@ -193,6 +213,7 @@ func contains(values []string, value string) bool {
 type installRun struct {
 	code       int
 	output     string
+	stderr     string
 	home       string
 	installDir string
 }
@@ -218,7 +239,10 @@ func runInstaller(t *testing.T, github *installGitHub, arguments []string, extra
 		"PATH=" + path,
 		"SHELL=/bin/bash",
 	}, extraEnv...)
-	output, runErr := command.CombinedOutput()
+	var stdout, stderr bytes.Buffer
+	command.Stdout = &stdout
+	command.Stderr = &stderr
+	runErr := command.Run()
 	code := 0
 	if runErr != nil {
 		var exitErr *exec.ExitError
@@ -227,7 +251,7 @@ func runInstaller(t *testing.T, github *installGitHub, arguments []string, extra
 		}
 		code = exitErr.ExitCode()
 	}
-	return installRun{code: code, output: string(output), home: home, installDir: installDir}
+	return installRun{code: code, output: stdout.String() + stderr.String(), stderr: stderr.String(), home: home, installDir: installDir}
 }
 
 func asExitError(err error, target **exec.ExitError) bool {
@@ -241,7 +265,7 @@ func asExitError(err error, target **exec.ExitError) bool {
 func minimalPath(t *testing.T, withCurl bool) string {
 	t.Helper()
 	dir := t.TempDir()
-	commands := []string{"awk", "basename", "cat", "chmod", "cp", "dirname", "grep", "ln", "mkdir", "mktemp", "mv", "rm", "sed", "sha256sum", "shasum", "tr", "uname", "wget"}
+	commands := []string{"awk", "basename", "cat", "chmod", "cp", "date", "dirname", "grep", "ln", "mkdir", "mktemp", "mv", "rm", "sed", "sha256sum", "shasum", "tr", "uname", "wget"}
 	if withCurl {
 		commands = append(commands, "curl")
 	}
@@ -805,39 +829,42 @@ func TestInstallerHelpUnknownFlagsAndAPIFailures(t *testing.T) {
 	}
 	github.failAPI = true
 	failure := runInstaller(t, github, nil)
-	if failure.code != 1 || !strings.Contains(failure.output, "GITHUB_TOKEN") || !strings.Contains(failure.output, "VERSION=") {
+	if failure.code != 1 || !strings.Contains(failure.output, "GitHub's API rate limit for this address is used up for up to an hour; export GITHUB_TOKEN to use your own, or pin VERSION=<tag>") {
 		t.Fatalf("API failure exit %d:\n%s", failure.code, failure.output)
 	}
 }
 
-// Contract: an API refusal names rate limiting and an unreadable repository,
-// while retaining both available recovery actions.
+// C8: Anonymous refusals name the reason and retain the version escape hatch.
 func TestInstallerNamesBothReasonsWhenTheAPIRefuses(t *testing.T) {
 	for _, test := range []struct {
-		name     string
-		prepare  func(*installGitHub)
-		wantLine bool
+		name    string
+		prepare func(*installGitHub)
+		want    string
 	}{
-		{name: "rate limit", prepare: func(github *installGitHub) { github.failAPI = true }, wantLine: true},
-		{name: "private repository", prepare: func(github *installGitHub) { github.notFound = true }},
+		{
+			name: "429 quota", prepare: func(github *installGitHub) { github.failAPI = true },
+			want: "GitHub's API rate limit for this address is used up for up to an hour; export GITHUB_TOKEN to use your own, or pin VERSION=<tag>",
+		},
+		{
+			name: "403 quota", prepare: func(github *installGitHub) {
+				github.refuse = &apiRefusal{status: 403, headers: map[string]string{"X-RateLimit-Remaining": "0"}}
+			},
+			want: "GitHub's API rate limit for this address is used up for up to an hour; export GITHUB_TOKEN to use your own, or pin VERSION=<tag>",
+		},
+		{
+			name: "private repository", prepare: func(github *installGitHub) { github.notFound = true },
+			want: "GitHub's API cannot find Agent-Field/codeaf (404), which is also its answer for a repository you cannot read; export GITHUB_TOKEN, or pin VERSION=<tag>",
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			github := newInstallGitHub(t, "dev-20260915-aaaaaaaaaaaa")
 			test.prepare(github)
 			run := runInstaller(t, github, []string{"--dev"})
-			if run.code != 1 {
-				t.Fatalf("exit %d, want 1:\n%s", run.code, run.output)
+			if run.code != 1 || !strings.Contains(run.stderr, "codeaf: "+test.want+"\n") {
+				t.Fatalf("exit %d, want refusal %q:\n%s", run.code, test.want, run.output)
 			}
-			for _, want := range []string{"a rate limit", "a repository you cannot read", "VERSION=", "GITHUB_TOKEN"} {
-				if !strings.Contains(run.output, want) {
-					t.Errorf("output does not contain %q:\n%s", want, run.output)
-				}
-			}
-			if test.wantLine {
-				const want = "GitHub's API could not be reached or refused (a rate limit, or a repository you cannot read?); pin VERSION=<tag>, or export GITHUB_TOKEN"
-				if !strings.Contains(run.output, want) {
-					t.Errorf("output does not contain pinned refusal:\n%s", run.output)
-				}
+			if requests := installerAPIRequests(github); len(requests) != 1 {
+				t.Fatalf("anonymous API requests = %d, want 1", len(requests))
 			}
 		})
 	}
@@ -1097,5 +1124,525 @@ func TestInstallerLinksIntoAFolderAlreadyOnPath(t *testing.T) {
 	}
 	if !strings.Contains(again.output, `export PATH="$HOME/.codeaf/bin:$PATH"`) {
 		t.Fatalf("a shadowed install does not give the PATH line:\n%s", again.output)
+	}
+}
+
+func installerAPIRequests(github *installGitHub) []*http.Request {
+	github.mu.Lock()
+	defer github.mu.Unlock()
+	var requests []*http.Request
+	for _, request := range github.requests {
+		if strings.HasPrefix(request.URL.Path, "/repos/") {
+			requests = append(requests, request)
+		}
+	}
+	return requests
+}
+
+func assertInstallerAnonymousRetry(t *testing.T, github *installGitHub, token, path string) {
+	t.Helper()
+	requests := installerAPIRequests(github)
+	if len(requests) != 2 {
+		t.Fatalf("API requests = %d, want one token attempt and one anonymous retry", len(requests))
+	}
+	for i, wantAuth := range []string{"Bearer " + token, ""} {
+		if requests[i].URL.RequestURI() != path || requests[i].Header.Get("Authorization") != wantAuth {
+			t.Errorf("request %d: %s, Authorization %q; want %s, %q", i,
+				requests[i].URL.RequestURI(), requests[i].Header.Get("Authorization"), path, wantAuth)
+		}
+	}
+}
+
+// C1: Both discovery paths and both transports can use the free anonymous bucket.
+func TestInstallerC1RetriesSpentTokenQuotaAnonymously(t *testing.T) {
+	reset := time.Now().Unix() + 60
+	for _, transport := range []string{"curl", "wget"} {
+		t.Run(transport, func(t *testing.T) {
+			if _, err := exec.LookPath(transport); err != nil {
+				t.Skip(transport + " is not installed")
+			}
+			for _, channel := range []struct {
+				name, tag, path string
+				arguments       []string
+			}{
+				{"stable", "v1.2.3", "/repos/Agent-Field/codeaf/releases/latest", nil},
+				{"dev", "dev-20260915-aaaaaaaaaaaa", "/repos/Agent-Field/codeaf/releases?per_page=100", []string{"--dev"}},
+			} {
+				t.Run(channel.name, func(t *testing.T) {
+					github := newInstallGitHub(t, channel.tag)
+					github.refuse = &apiRefusal{
+						status: 403, tokenOnly: true,
+						headers: map[string]string{
+							"X-RateLimit-Remaining": "0", "X-RateLimit-Limit": "5000",
+							"X-RateLimit-Reset": fmt.Sprint(reset), "X-OAuth-Scopes": "repo, workflow",
+						},
+						body: `{"message":"API rate limit exceeded for user ID 1."}`,
+					}
+					const token = "spent-installer-token"
+					run := runInstaller(t, github, channel.arguments,
+						"GITHUB_TOKEN="+token, "PATH="+minimalPath(t, transport == "curl"), "CODEAF_NO_MODIFY_PATH=1")
+					if run.code != 0 || !strings.Contains(run.output, "Installed   codeaf "+channel.tag+"\n") {
+						t.Fatalf("exit %d without installed receipt:\n%s", run.code, run.output)
+					}
+					if _, err := os.Stat(filepath.Join(run.installDir, "codeaf")); err != nil {
+						t.Fatal(err)
+					}
+					if !strings.Contains(run.stderr, "codeaf: GitHub refused GITHUB_TOKEN (its rate limit is used up until ") ||
+						!strings.Contains(run.stderr, "); continuing without it\n") || strings.Count(run.stderr, "GitHub refused GITHUB_TOKEN") != 1 {
+						t.Fatalf("missing recovery note:\n%s", run.output)
+					}
+					assertInstallerAnonymousRetry(t, github, token, channel.path)
+					for _, request := range github.requests {
+						if strings.Contains(request.URL.Path, "/releases/download/") && request.Header.Get("Authorization") != "" {
+							t.Errorf("download carries Authorization: %s", request.URL.Path)
+						}
+					}
+				})
+			}
+		})
+	}
+}
+
+// C2 and C3: A second refusal explains both attempts and gives token-specific advice.
+func TestInstallerC2C3NamesRejectedCredentialsAndAccess(t *testing.T) {
+	for _, test := range []struct {
+		name, message, want, absent string
+		status                      int
+	}{
+		{
+			name: "C2 credentials", status: 401, message: "Bad credentials",
+			want: "GitHub rejected GITHUB_TOKEN (401: Bad credentials), and the request without it failed too (401: Bad credentials); replace or unset GITHUB_TOKEN, or pin VERSION=<tag>",
+		},
+		{
+			name: "C3 access", status: 403, message: "Resource not accessible by personal access token", absent: "rate limit",
+			want: "GitHub refused GITHUB_TOKEN access to Agent-Field/codeaf (403: Resource not accessible by personal access token), and the request without it failed too (403: Resource not accessible by personal access token); check what GITHUB_TOKEN may read, or pin VERSION=<tag>",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			github := newInstallGitHub(t, "v1.2.3")
+			body, err := json.Marshal(map[string]string{"message": test.message})
+			if err != nil {
+				t.Fatal(err)
+			}
+			github.refuse = &apiRefusal{status: test.status, body: string(body)}
+			const token = "refused-installer-token"
+			run := runInstaller(t, github, nil, "GITHUB_TOKEN="+token)
+			if run.code != 1 || !strings.Contains(run.stderr, "codeaf: "+test.want+"\n") {
+				t.Fatalf("exit %d, want %q:\n%s", run.code, test.want, run.output)
+			}
+			if strings.Contains(run.output, "export GITHUB_TOKEN") || (test.absent != "" && strings.Contains(run.output, test.absent)) {
+				t.Fatalf("misleading recovery advice:\n%s", run.output)
+			}
+			assertInstallerAnonymousRetry(t, github, token, "/repos/Agent-Field/codeaf/releases/latest")
+		})
+	}
+}
+
+// C4: GitHub's reset epoch is rendered in the machine's local zone for either bucket.
+func TestInstallerC4NamesQuotaResetInLocalTime(t *testing.T) {
+	const reset = int64(1800000000)
+	wait := "until " + time.Unix(reset, 0).In(time.FixedZone("IST", 19800)).Format("15:04") + " IST"
+	for _, withToken := range []bool{false, true} {
+		t.Run(fmt.Sprint("token=", withToken), func(t *testing.T) {
+			github := newInstallGitHub(t, "v1.2.3")
+			github.refuse = &apiRefusal{status: 403, headers: map[string]string{
+				"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": fmt.Sprint(reset),
+			}, body: `{"message":"API rate limit exceeded"}`}
+			env := []string{"TZ=IST-5:30"}
+			want := "GitHub's API rate limit for this address is used up " + wait + "; export GITHUB_TOKEN to use your own, or pin VERSION=<tag>"
+			if withToken {
+				env = append(env, "GITHUB_TOKEN=spent-installer-token")
+				want = "GitHub's API rate limit for GITHUB_TOKEN is used up " + wait + ", and the request without it failed too (this address's rate limit is used up " + wait + "); wait, or pin VERSION=<tag>"
+			}
+			run := runInstaller(t, github, nil, env...)
+			if run.code != 1 || !strings.Contains(run.stderr, "codeaf: "+want+"\n") {
+				t.Fatalf("exit %d, want %q:\n%s", run.code, want, run.output)
+			}
+			if withToken && strings.Contains(run.output, "export GITHUB_TOKEN") {
+				t.Fatalf("a configured token was answered with export advice:\n%s", run.output)
+			}
+		})
+	}
+}
+
+// C5 and C6: The supplying variable is named and its value stays private, even on recovery.
+func TestInstallerC5C6NamesTheTokenVariableWithoutPrintingItsValue(t *testing.T) {
+	for _, test := range []struct {
+		name, variable string
+		env            []string
+	}{
+		{"GH_TOKEN alone", "GH_TOKEN", nil},
+		{"empty GITHUB_TOKEN", "GH_TOKEN", []string{"GITHUB_TOKEN="}},
+		{"GITHUB_TOKEN wins", "GITHUB_TOKEN", []string{"GH_TOKEN=unused-token"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for _, recover := range []bool{false, true} {
+				t.Run(fmt.Sprint("recover=", recover), func(t *testing.T) {
+					github := newInstallGitHub(t, "v1.2.3")
+					github.refuse = &apiRefusal{status: 401, body: `{"message":"Bad credentials"}`, tokenOnly: recover}
+					const token = "private-refused-installer-token"
+					env := append([]string{"VERBOSE=1", "CODEAF_NO_MODIFY_PATH=1"}, test.env...)
+					env = append(env, test.variable+"="+token)
+					run := runInstaller(t, github, nil, env...)
+					wantCode := 1
+					want := "GitHub rejected " + test.variable + " (401: Bad credentials)"
+					if recover {
+						wantCode = 0
+						want = "GitHub refused " + test.variable + " (401: Bad credentials); continuing without it"
+					}
+					if run.code != wantCode || !strings.Contains(run.stderr, want) {
+						t.Fatalf("exit %d, want %d and %q:\n%s", run.code, wantCode, want, run.output)
+					}
+					if strings.Contains(run.output, token) || strings.Contains(run.output, "unused-token") || strings.Contains(run.output, "export GITHUB_TOKEN") ||
+						(test.variable == "GH_TOKEN" && strings.Contains(run.output, "GITHUB_TOKEN")) {
+						t.Fatalf("token leaked or the wrong variable was named:\n%s", run.output)
+					}
+					assertInstallerAnonymousRetry(t, github, token, "/repos/Agent-Field/codeaf/releases/latest")
+				})
+			}
+		})
+	}
+}
+
+// C7: Only 401, 403 and 429 spend the single anonymous retry.
+func TestInstallerC7DoesNotRetryOtherTokenFailures(t *testing.T) {
+	for _, status := range []int{404, 500, 502, 302, 400, 418} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			github := newInstallGitHub(t, "v1.2.3")
+			github.refuse = &apiRefusal{status: status, body: `{"message":"A response"}`}
+			run := runInstaller(t, github, []string{"--dev"}, "GITHUB_TOKEN=installer-token")
+			want := fmt.Sprintf("GitHub's API answered %d (A response); pin VERSION=<tag>", status)
+			if status == 404 {
+				want = "GitHub's API cannot find Agent-Field/codeaf with GITHUB_TOKEN (404), which is also its answer for a repository the token cannot read; check what GITHUB_TOKEN may read, or pin VERSION=<tag>"
+			} else if status >= 500 {
+				want = fmt.Sprintf("GitHub's API answered %d and may be having trouble; try again in a minute, or pin VERSION=<tag>", status)
+			}
+			if run.code != 1 || !strings.Contains(run.stderr, "codeaf: "+want+"\n") || strings.Contains(run.output, "export GITHUB_TOKEN") {
+				t.Fatalf("exit %d, want %q:\n%s", run.code, want, run.output)
+			}
+			if requests := installerAPIRequests(github); len(requests) != 1 || requests[0].Header.Get("Authorization") != "Bearer installer-token" {
+				t.Fatalf("API requests = %v, want one token request", requests)
+			}
+		})
+	}
+}
+
+func TestInstallerC7NamesTheUnreachableAPIHost(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	host := listener.Addr().String()
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	github := newInstallGitHub(t, "v1.2.3")
+	for _, token := range []string{"", "GITHUB_TOKEN=installer-token"} {
+		run := runInstaller(t, github, nil, "CODEAF_GITHUB_API=http://"+host+"/api", token)
+		want := "GitHub's API could not be reached at " + host + "; check the connection, or pin VERSION=<tag>"
+		if run.code != 1 || !strings.Contains(run.stderr, want) || strings.Contains(run.output, "export GITHUB_TOKEN") {
+			t.Fatalf("exit %d, want %q:\n%s", run.code, want, run.output)
+		}
+	}
+}
+
+// D12: A retry's 404 describes both attempts, while a first 404 keeps the stable answer.
+func TestInstallerKeepsStable404UnlessTheTokenWasRefused(t *testing.T) {
+	for _, status := range []int{401, 403, 429} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			github := newInstallGitHub(t)
+			github.refuse = &apiRefusal{status: status, tokenOnly: true}
+			run := runInstaller(t, github, nil, "GITHUB_TOKEN=installer-token")
+			if run.code != 1 || !strings.Contains(run.stderr, "and the request without it failed too (404);") ||
+				strings.Contains(run.output, "no stable build") || strings.Contains(run.output, "export GITHUB_TOKEN") {
+				t.Fatalf("anonymous 404 lost the token refusal (exit %d):\n%s", run.code, run.output)
+			}
+			assertInstallerAnonymousRetry(t, github, "installer-token", "/repos/Agent-Field/codeaf/releases/latest")
+		})
+	}
+	github := newInstallGitHub(t)
+	run := runInstaller(t, github, nil, "GITHUB_TOKEN=installer-token")
+	if run.code != 1 || !strings.Contains(run.stderr, "codeaf: no stable build has been published yet\n") || len(installerAPIRequests(github)) != 1 {
+		t.Fatalf("first stable 404 changed (exit %d):\n%s", run.code, run.output)
+	}
+}
+
+func TestInstallerNamesAnAnswerWithoutAReleaseTag(t *testing.T) {
+	github := newInstallGitHub(t, "v1.2.3")
+	github.refuse = &apiRefusal{status: 200, body: `{}`}
+	run := runInstaller(t, github, nil)
+	if run.code != 1 || !strings.Contains(run.stderr, "codeaf: GitHub's API answered without a release tag; pin VERSION=<tag>\n") {
+		t.Fatalf("exit %d without the missing-tag answer:\n%s", run.code, run.output)
+	}
+}
+
+func installerPureFunctions(t *testing.T) string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), "scripts", "install.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const begin = "# BEGIN api refusal: pure functions, read by internal/release/install_test.go\n"
+	const end = "# END api refusal\n"
+	_, rest, ok := strings.Cut(string(raw), begin)
+	if !ok || strings.Count(string(raw), begin) != 1 || strings.Count(string(raw), end) != 1 {
+		t.Fatal("the installer must expose exactly one pure refusal block")
+	}
+	block, _, ok := strings.Cut(rest, end)
+	if !ok {
+		t.Fatal("the pure refusal block has no end")
+	}
+	path := filepath.Join(t.TempDir(), "api-functions.sh")
+	if err := os.WriteFile(path, []byte(block), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func runInstallerPureFunction(t *testing.T, block, function string, arguments []string, env ...string) string {
+	t.Helper()
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash is not installed")
+	}
+	command := exec.Command(bash, append([]string{"--noprofile", "--norc", "-c", `set -eu; source "$1"; shift; "$@"`, "api-test", block, function}, arguments...)...)
+	command.Env = append([]string{"PATH=" + minimalPath(t, true), "TZ=IST-5:30"}, env...)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("%s: %v\n%s", function, err, output)
+	}
+	return string(output)
+}
+
+func installerResponseFile(t *testing.T, name, body string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// C9: Classification depends only on the status, the final header block and the body.
+func TestInstallerC9APIReason(t *testing.T) {
+	block := installerPureFunctions(t)
+	for _, test := range []struct{ name, status, headers, body, want string }{
+		{"401 before quota", "401", "x-ratelimit-remaining: 0\n", `{"message":"rate limit"}`, "rejected"},
+		{"spent quota", "403", "x-ratelimit-remaining: 0\n", "", "quota"},
+		{"body quota", "403", "", `{"message":"API rate limit exceeded"}`, "quota"},
+		{"secondary quota", "403", "", `{"message":"You have exceeded a secondary rate limit"}`, "quota"},
+		{"case insensitive body", "403", "", `{"message":"RATE LIMIT"}`, "quota"},
+		{"429", "429", "", "", "quota"},
+		{"quota still available", "403", "x-ratelimit-remaining: 4999\n", "", "access"},
+		{"no quota evidence", "403", "", "", "access"},
+		{"404", "404", "", "", "missing"},
+		{"500", "500", "", "", "server"},
+		{"503", "503", "", "", "server"},
+		{"no status", "", "", "", "unreachable"},
+		{"418", "418", "", "", "other"},
+		{"mixed case", "403", "X-RateLimit-Remaining: 0\n", "", "quota"},
+		{"CRLF and wget indentation", "403", "  HTTP/1.1 403 Forbidden\r\n  x-RATELIMIT-remaining: 0\r\n\r\n", "", "quota"},
+		{"last block spent", "403", "HTTP/1.1 301 Moved\r\nx-ratelimit-remaining: 4999\r\n\r\nHTTP/2 403\r\nX-RateLimit-Remaining: 0\r\n\r\n", "", "quota"},
+		{"last block available", "403", "HTTP/1.1 301 Moved\nx-ratelimit-remaining: 0\n\nHTTP/1.1 403 Forbidden\nx-ratelimit-remaining: 4999\n\n", "", "access"},
+		{"last block absent", "403", "HTTP/1.1 301 Moved\nx-ratelimit-remaining: 0\n\nHTTP/1.1 403 Forbidden\n\n", "", "access"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			headers := installerResponseFile(t, "headers", test.headers)
+			body := installerResponseFile(t, "body", test.body)
+			if got := runInstallerPureFunction(t, block, "api_reason", []string{test.status, headers, body}); got != test.want {
+				t.Errorf("api_reason = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestInstallerC9APIWait(t *testing.T) {
+	block := installerPureFunctions(t)
+	const reset = int64(1800000000)
+	local := time.Unix(reset, 0).In(time.FixedZone("IST", 19800)).Format("15:04")
+	for _, test := range []struct{ name, headers, want string }{
+		{"local reset", fmt.Sprintf("x-ratelimit-reset: %d\nRetry-After: 600\n", reset), "until " + local + " IST"},
+		{"30 seconds", "retry-after: 30\n", "for about a minute"},
+		{"600 seconds", "retry-after: 600\n", "for about 10 minutes"},
+		{"61 seconds", "retry-after: 61\n", "for about a minute"},
+		{"90 seconds", "retry-after: 90\n", "for about a minute"},
+		{"91 seconds", "retry-after: 91\n", "for about 2 minutes"},
+		{"zero seconds", "retry-after: 0\n", "for about a minute"},
+		{"leading zeros", "retry-after: 0091\n", "for about 2 minutes"},
+		{"neither", "", "for up to an hour"},
+		{"invalid reset", "x-ratelimit-reset: tomorrow\n", "for up to an hour"},
+		{"invalid reset with retry", "x-ratelimit-reset: invalid\nretry-after: 600\n", "for about 10 minutes"},
+		{"invalid retry", "retry-after: 2 minutes\n", "for up to an hour"},
+		{"oversized reset", "x-ratelimit-reset: " + strings.Repeat("9", 38) + "\n", "for up to an hour"},
+		{"oversized reset with retry", "x-ratelimit-reset: " + strings.Repeat("9", 38) + "\nretry-after: 600\n", "for about 10 minutes"},
+		{"oversized retry", "retry-after: " + strings.Repeat("9", 38) + "\n", "for up to an hour"},
+		{"largest retry", "retry-after: 999999\n", "for about 16667 minutes"},
+		{"final block only", "HTTP/1.1 301 Moved\nx-ratelimit-reset: 1800000000\n\n  HTTP/1.1 403 Forbidden\r\n  Retry-After: 91\r\n", "for about 2 minutes"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			headers := installerResponseFile(t, "headers", test.headers)
+			if got := runInstallerPureFunction(t, block, "api_wait", []string{headers}); got != test.want {
+				t.Errorf("api_wait = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestInstallerC9APIMessage(t *testing.T) {
+	block := installerPureFunctions(t)
+	for _, test := range []struct{ name, body, want string }{
+		{"message", `{"message":"Bad credentials"}`, "Bad credentials"},
+		{"escaped quotes", `{"message":"Say \"no\", then \\ and \/"}`, `Say "no", then \ and /`},
+		{"control bytes", "{\"message\":\"a\x01b\x1b[31m\tc\rd\ne\"}", "ab[31mcde"},
+		{"JSON controls and unicode", `{"message":"a\nb\rc\td\u0000e\u0021é\u00e9"}`, "abcde!"},
+		{"collapse spaces", `{"message":"Bad    credentials"}`, "Bad credentials"},
+		{"cap", `{"message":"` + strings.Repeat("a", 101) + `"}`, strings.Repeat("a", 100) + "..."},
+		{"at cap", `{"message":"` + strings.Repeat("a", 100) + `"}`, strings.Repeat("a", 100)},
+		{"first message", `{"message":"first","other":{"message":"second"}}`, "first"},
+		{"missing", `{}`, ""},
+		{"empty", `{"message":""}`, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := installerResponseFile(t, "body", test.body)
+			if got := runInstallerPureFunction(t, block, "api_message", []string{body}); got != test.want {
+				t.Errorf("api_message = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+// The remaining anonymous sentences distinguish access, credentials and server failures.
+func TestInstallerNamesAnonymousFailuresExactly(t *testing.T) {
+	for _, test := range []struct {
+		name, body, want string
+		status           int
+	}{
+		{"access", `{"message":"Access denied"}`, "GitHub's API refused access to Agent-Field/codeaf (403: Access denied); pin VERSION=<tag>", 403},
+		{"access without message", `{}`, "GitHub's API refused access to Agent-Field/codeaf (403); pin VERSION=<tag>", 403},
+		{"credentials", `{"message":"Bad credentials"}`, "GitHub's API refused the request (401: Bad credentials); pin VERSION=<tag>", 401},
+		{"server", `{}`, "GitHub's API answered 503 and may be having trouble; try again in a minute, or pin VERSION=<tag>", 503},
+		{"other", `{"message":"A teapot"}`, "GitHub's API answered 418 (A teapot); pin VERSION=<tag>", 418},
+		{"other without message", `{}`, "GitHub's API answered 418; pin VERSION=<tag>", 418},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			github := newInstallGitHub(t, "v1.2.3")
+			github.refuse = &apiRefusal{status: test.status, body: test.body}
+			run := runInstaller(t, github, nil)
+			if run.code != 1 || run.stderr != "codeaf: "+test.want+"\n" {
+				t.Fatalf("exit %d, stderr %q; want %q", run.code, run.stderr, test.want)
+			}
+			if len(installerAPIRequests(github)) != 1 {
+				t.Fatal("an anonymous failure was retried")
+			}
+		})
+	}
+}
+
+// Wget's error body is kept where --content-on-error is supported.
+func TestInstallerWgetKeepsTheAccessRefusalBody(t *testing.T) {
+	wget, err := exec.LookPath("wget")
+	if err != nil {
+		t.Skip("wget is not installed")
+	}
+	help, _ := exec.Command(wget, "--help").CombinedOutput()
+	if !strings.Contains(string(help), "--content-on-error") {
+		t.Skip("wget cannot retain error bodies")
+	}
+	github := newInstallGitHub(t, "v1.2.3")
+	github.refuse = &apiRefusal{status: 403, body: `{"message":"Resource not accessible by personal access token"}`}
+	run := runInstaller(t, github, nil, "GITHUB_TOKEN=installer-token", "PATH="+minimalPath(t, false))
+	const want = "GitHub refused GITHUB_TOKEN access to Agent-Field/codeaf (403: Resource not accessible by personal access token), and the request without it failed too (403: Resource not accessible by personal access token); check what GITHUB_TOKEN may read, or pin VERSION=<tag>"
+	if run.code != 1 || run.stderr != "codeaf: "+want+"\n" {
+		t.Fatalf("exit %d, want %q:\n%s", run.code, want, run.output)
+	}
+	assertInstallerAnonymousRetry(t, github, "installer-token", "/repos/Agent-Field/codeaf/releases/latest")
+}
+
+// D3: A wget without the advertised option must never be given that option.
+func TestInstallerUsesWgetWithoutContentOnErrorSupport(t *testing.T) {
+	wget, err := exec.LookPath("wget")
+	if err != nil {
+		t.Skip("wget is not installed")
+	}
+	path := minimalPath(t, false)
+	wrapper := filepath.Join(path, "wget")
+	if err := os.Remove(wrapper); err != nil {
+		t.Fatal(err)
+	}
+	// The wrapper rejects the optional flag and otherwise uses a real transport.
+	script := "#!/bin/sh\n" +
+		"if [ \"$1\" = --help ]; then printf '%s\\n' 'minimal wget'; exit 0; fi\n" +
+		"for arg do if [ \"$arg\" = --content-on-error ]; then exit 64; fi; done\n" +
+		"exec '" + strings.ReplaceAll(wget, "'", "'\\''") + "' \"$@\"\n"
+	if err := os.WriteFile(wrapper, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	github := newInstallGitHub(t, "v1.2.3")
+	github.refuse = &apiRefusal{status: 403, tokenOnly: true, headers: map[string]string{"X-RateLimit-Remaining": "0"}}
+	run := runInstaller(t, github, nil, "GITHUB_TOKEN=installer-token", "PATH="+path, "CODEAF_NO_MODIFY_PATH=1")
+	const want = "GitHub refused GITHUB_TOKEN (its rate limit is used up for up to an hour); continuing without it"
+	if run.code != 0 || !strings.Contains(run.stderr, want) || !strings.Contains(run.output, "Installed   codeaf v1.2.3\n") {
+		t.Fatalf("exit %d without the wget fallback:\n%s", run.code, run.output)
+	}
+	assertInstallerAnonymousRetry(t, github, "installer-token", "/repos/Agent-Field/codeaf/releases/latest")
+}
+
+// D7: Failed or unparseable GNU output gives BSD date its turn; the zone may be empty.
+func TestInstallerEpochRenderingTriesHostDateSyntaxInOrder(t *testing.T) {
+	block := installerPureFunctions(t)
+	for _, test := range []struct{ name, date, want, calls string }{
+		{"GNU", "printf '12:34 GNU\\n'", "12:34 GNU", "-d\n"},
+		{"BSD after failure", "if [ \"$1\" = -d ]; then exit 1; fi\nprintf '12:35 BSD\\n'", "12:35 BSD", "-d\n-r\n"},
+		{"BSD after invalid output", "if [ \"$1\" = -d ]; then printf 'invalid\\n'; else printf '12:36 BSD\\n'; fi", "12:36 BSD", "-d\n-r\n"},
+		{"empty zone", "printf '12:37 \\n'", "12:37", "-d\n"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			path := t.TempDir()
+			log := filepath.Join(t.TempDir(), "date-calls")
+			script := "#!/bin/sh\nprintf '%s\\n' \"$1\" >> \"$DATE_CALLS\"\n" + test.date + "\n"
+			if err := os.WriteFile(filepath.Join(path, "date"), []byte(script), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if got := runInstallerPureFunction(t, block, "api_epoch", []string{"1800000000"}, "PATH="+path, "DATE_CALLS="+log); got != test.want {
+				t.Errorf("api_epoch = %q, want %q", got, test.want)
+			}
+			calls, err := os.ReadFile(log)
+			if err != nil || string(calls) != test.calls {
+				t.Errorf("date calls = %q, %v; want %q", calls, err, test.calls)
+			}
+		})
+	}
+}
+
+func TestInstallerRunsWhenDateIsAbsent(t *testing.T) {
+	github := newInstallGitHub(t, "v1.2.3")
+	path := minimalPath(t, true)
+	if err := os.Remove(filepath.Join(path, "date")); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	github.refuse = &apiRefusal{status: 429, tokenOnly: true, headers: map[string]string{"X-RateLimit-Reset": "1800000000"}}
+	run := runInstaller(t, github, nil, "GITHUB_TOKEN=installer-token", "PATH="+path, "CODEAF_NO_MODIFY_PATH=1")
+	if run.code != 0 || !strings.Contains(run.stderr, "its rate limit is used up for up to an hour") {
+		t.Fatalf("a missing optional date broke the install (exit %d):\n%s", run.code, run.output)
+	}
+}
+
+func TestInstallerEpochRenderingFallsBackToBashWhenDateCannotRender(t *testing.T) {
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash is not installed")
+	}
+	probe := exec.Command(bash, "--noprofile", "--norc", "-c", `printf '%(%H:%M %Z)T' 1800000000`)
+	if _, err := probe.Output(); err != nil {
+		t.Skip("bash predates the time-format printf fallback")
+	}
+	block := installerPureFunctions(t)
+	path := t.TempDir()
+	if err := os.WriteFile(filepath.Join(path, "date"), []byte("#!/bin/sh\nprintf 'cannot render\\n' >&2\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	want := time.Unix(1800000000, 0).In(time.FixedZone("IST", 19800)).Format("15:04") + " IST"
+	if got := runInstallerPureFunction(t, block, "api_epoch", []string{"1800000000"}, "PATH="+path); got != want {
+		t.Errorf("api_epoch = %q, want %q", got, want)
 	}
 }

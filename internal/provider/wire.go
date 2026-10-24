@@ -261,7 +261,7 @@ func refusesDisabledReasoning(payload []byte) bool {
 
 // wireRequest is the serialized body. It shadows the SDK's max_tokens so the
 // adapter, not the SDK, decides which output-limit field a given endpoint gets,
-// and adds the three fields the SDK's Request type has no home for.
+// and adds fields the SDK's Request type has no home for.
 type wireRequest struct {
 	*requestAlias
 
@@ -278,6 +278,10 @@ type wireRequest struct {
 	// request with no messages at all.
 	Messages []json.RawMessage `json:"messages"`
 	Tools    []json.RawMessage `json:"tools,omitempty"`
+
+	// StreamOptions asks compatible servers for their terminal token receipt.
+	// OpenRouter's usage.include alone does not opt local APIs into this frame.
+	StreamOptions *streamOptions `json:"stream_options,omitempty"`
 
 	MaxTokens           *int `json:"max_tokens,omitempty"`
 	MaxCompletionTokens *int `json:"max_completion_tokens,omitempty"`
@@ -300,6 +304,10 @@ type wireRequest struct {
 	// measured as slow (velocity.go). Nil on every non-router endpoint and
 	// whenever the routing row is off.
 	Provider *providerPrefs `json:"provider,omitempty"`
+}
+
+type streamOptions struct {
+	IncludeUsage bool `json:"include_usage"`
 }
 
 type requestAlias ai.Request
@@ -385,6 +393,9 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 		Tools:          tools,
 		PromptCacheKey: knobs.cacheKey,
 	}
+	if scrubbed.Stream && c.streamUsageSupported(knobs) {
+		wire.StreamOptions = &streamOptions{IncludeUsage: true}
+	}
 	// The knob is decided here and written after the context budget below,
 	// which may shrink the thinking budget to what the window leaves.
 	sentEffort, thinking := EffortNone, 0
@@ -442,7 +453,13 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 			wire.MaxTokens = &ceiling
 		}
 	}
-	return json.Marshal(wire)
+	encoded, err := json.Marshal(wire)
+	if err == nil && knobs.trace != nil {
+		// The next attempt's input count is taken from the encoded messages and
+		// tools, after repairs and cache annotations, without retaining the body.
+		knobs.trace.usageObservation.inputBytes, knobs.trace.usageObservation.inputTextOnly = usageInputBytes(messages, tools, scrubbed.Messages)
+	}
+	return encoded, err
 }
 
 // effortAsked is what this call really asks for after the client's own pinned

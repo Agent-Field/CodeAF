@@ -422,3 +422,12 @@ func TestNewAtHomeSaysItWasTheConversationBehindHome(t *testing.T) {
 		t.Fatalf("/new said %q, want %q", a.home.msg, homeFreshBehindWord)
 	}
 }
+
+// Process logs are conversation-owned, so home must not inspect a hidden chat.
+func TestProcessesAtHomeNeedsTheTargetConversation(t *testing.T) {
+	for _, arg := range []string{"", "7"} {
+		if got := homeFate("processes", arg); got != fateNeedsChat {
+			t.Fatalf("/processes %s targets hidden conversation: %q", arg, got)
+		}
+	}
+}

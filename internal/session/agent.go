@@ -1232,6 +1232,14 @@ type userMessage struct {
 	// otherResults preserves untagged background outcomes when a batch also
 	// carries task results. Their reply obligation must not be lost in folding.
 	otherResults bool
+	// nonTaskNews preserves untagged news inside a batch for the conservative
+	// stopped-result routing guard, without changing the turn's owed asks.
+	nonTaskNews bool
+	// completionOnly distinguishes task/job delivery receipts from requested
+	// watch alerts and mixed background batches. It never changes model delivery.
+	completionOnly bool
+	// attention is a requested alert, independent of its model-facing wake.
+	attention bool
 
 	// wake marks a note the model OWES AN ANSWER FOR: a task's completion
 	// (task_run.go's reportTaskNode), a background job's exit (jobs.go's reap),
@@ -1486,6 +1494,7 @@ func jobNote(text string) userMessage {
 	// ([userMessage.ending]).
 	note.ending = true
 	note.otherResults = true
+	note.completionOnly = true
 	return note
 }
 
@@ -1832,6 +1841,9 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// AND SO IS WHAT THIS CONVERSATION REMEMBERS, on the same trigger and for
 	// the same reason the clock has one: a line kept from another window, or by
 	// /remember a moment ago, holds over the very next turn (memory.go).
+	if a.memory != nil {
+		a.memory.contextWords = user.text()
+	}
 	a.refreshMemoryLocked()
 	a.refreshSystemLocked()
 	hub := a.newReplayHubLocked()
@@ -2804,6 +2816,25 @@ func (a *Agent) recordLocked(message ai.Message) {
 // through recordLocked exactly as before.
 func (a *Agent) recordUserLocked(user userMessage) {
 	user = ensureUserIdentity(user)
+	if user.person == nil && (!user.authored || user.completionOnly || user.attention) {
+		// Presentation follows this occurrence, not equal words a person might
+		// later quote. The model still receives the complete original payload.
+		mark := a.presentation.of(user.message)
+		user.message.Content = append([]ai.ContentPart(nil), user.message.Content...)
+		if a.presentation == nil {
+			a.presentation = &presentationIndex{}
+		}
+		if user.authored {
+			mark = &messagePresentation{Audience: "operational", RoutineCompletion: user.completionOnly, Attention: user.attention, CompletionTasks: append([]TaskReplyTag(nil), user.replyTags...)}
+		} else if mark == nil {
+			mark = &messagePresentation{Audience: "human"}
+		} else {
+			mark.Audience = "human"
+			mark.RoutineCompletion = false
+			mark.Attention = false
+		}
+		a.presentation.remember(user.message, mark)
+	}
 	// AND WHOEVER SENT IT IS OWED AN ANSWER ONLY IF THE RECORD REALLY HOLDS IT.
 	// `durable` is set by each road below: the journal write answers whether the
 	// line reached the file, and a write that failed may not settle a delivery —
@@ -3086,6 +3117,10 @@ func (a *Agent) landVolatileLocked() {
 	// read made before this request ([Agent.teamBoundary]) rather than beside
 	// the work, so it is never a step late (team.go's [teamRoleNoteOpening]).
 	a.landTeamRoleLocked()
+	// AND, ONCE, IN A CONVERSATION IN NO TEAM THAT HAS GONE ON, leave to
+	// suggest /helpers (helpersnote.go). After the role, which is what says
+	// whether there is a team.
+	a.landHelpersNoteLocked()
 	a.landNoteLocked(volatileNoteOpening, a.volatileBlockLocked())
 	// AND A MANAGER'S TEAM, in a note of its own: a team moves whenever a member
 	// does, and riding the card's note
@@ -3155,7 +3190,8 @@ func isVolatileNote(text string) bool {
 	return strings.HasPrefix(text, volatileNoteOpening) ||
 		strings.HasPrefix(text, bashBeltFrameOpening) ||
 		strings.HasPrefix(text, teamNoteOpening) ||
-		strings.HasPrefix(text, teamRoleNoteOpening)
+		strings.HasPrefix(text, teamRoleNoteOpening) ||
+		strings.HasPrefix(text, helpersNoteOpening)
 }
 
 // mayBashBelt is [Config.mayBashBelt] asked of a live agent, so that the
@@ -3623,15 +3659,22 @@ func batchSessionNotes(notes []userMessage) userMessage {
 	repeats := make(map[string]*repeated)
 	order := make([]string, 0, len(notes))
 	parts := make([]string, 0, len(notes))
+	completionOnly := len(notes) > 0
+	hasCompletion, attention := false, false
 	var (
 		wake         bool
 		otherResults bool
+		nonTaskNews  bool
 		tags         []TaskReplyTag
 		delivered    []durableDelivery
 	)
 	for _, note := range notes {
+		completionOnly = completionOnly && note.completionOnly
+		hasCompletion = hasCompletion || note.completionOnly
+		attention = attention || note.attention
 		wake = wake || note.wake
 		otherResults = otherResults || note.otherResults
+		nonTaskNews = nonTaskNews || note.nonTaskNews || len(note.replyTags) == 0
 		tags = append(tags, note.replyTags...)
 		// The batch is the record these notes end up in, so it carries what
 		// settles each of them ([durableDelivery]); dropped here, every landing in
@@ -3673,12 +3716,15 @@ func batchSessionNotes(notes []userMessage) userMessage {
 		text = "while you worked:\n\n" + strings.Join(rendered, "\n\n")
 	}
 	return userMessage{
-		message:      textMessage("user", text),
-		replyTags:    tags,
-		otherResults: otherResults,
-		delivered:    delivered,
-		wake:         wake,
-		authored:     true,
+		message:        textMessage("user", text),
+		completionOnly: completionOnly,
+		attention:      attention || hasCompletion && !completionOnly,
+		replyTags:      tags,
+		otherResults:   otherResults,
+		nonTaskNews:    nonTaskNews,
+		delivered:      delivered,
+		wake:           wake,
+		authored:       true,
 	}
 }
 
@@ -3802,6 +3848,7 @@ func (a *Agent) enqueueWatchNote(name, text string, fired bool) {
 	if fired {
 		note := wakeNote(text)
 		note.otherResults = true
+		note.attention = true
 		a.enqueueNote(note)
 		return
 	}
@@ -4885,6 +4932,11 @@ type DisplayEntry struct {
 	// Pass is a compaction pass a READER placed in a listing it built from a
 	// [Record] ([Record.Passes]); this package's own shaping never sets it.
 	Pass *CompactionFact
+	// RoutineCompletion is a delivery receipt whose full result belongs to
+	// its task or process. It is retained as data rather than another chat row.
+	RoutineCompletion bool
+	// CompletionTasks keeps the receipt's original task identities independently of the later answer's attribution.
+	CompletionTasks []TaskReplyTag
 	// Answer marks a completed tool-free response or an explicit human update. This
 	// boundary survives replay so a later response cannot demote its message.
 	Answer bool
@@ -5246,6 +5298,14 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 		}
 		interrupted, explicitlyHuman, progress := false, false, false
 		run := ""
+		routineCompletion := false
+		attention := false
+		if mark := presentation.of(msg); mark != nil {
+			attention = mark.Attention
+		}
+		if mark := presentation.of(msg); mark != nil && msg.Role == "user" && mark.RoutineCompletion {
+			role, routineCompletion = "aside", true
+		}
 		if mark := presentation.of(msg); role == "assistant" && mark != nil {
 			run = mark.RunID
 			progress = mark.Kind == FactoryProgressKind
@@ -5272,15 +5332,17 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			displayText, update = UserFacingUpdate(displayText)
 		}
 		entries = append(entries, DisplayEntry{
-			Role:        role,
-			RunID:       run,
-			Answer:      role == "assistant" && !interrupted && (len(msg.ToolCalls) == 0 || update),
-			Addressed:   role == "assistant" && (update || interrupted && explicitlyHuman),
-			Interrupted: interrupted,
-			Text:        displayText,
-			ImageRefs:   journal.imageRefs(msg),
-			Person:      person,
-			ReplyTags:   tags,
+			Role:              role,
+			RunID:             run,
+			RoutineCompletion: routineCompletion,
+			CompletionTasks:   completionTaskTags(journal, msg, routineCompletion, presentation),
+			Answer:            role == "assistant" && !interrupted && (len(msg.ToolCalls) == 0 || update),
+			Addressed:         role == "aside" && attention || role == "assistant" && (update || interrupted && explicitlyHuman),
+			Interrupted:       interrupted,
+			Text:              displayText,
+			ImageRefs:         journal.imageRefs(msg),
+			Person:            person,
+			ReplyTags:         tags,
 			// The journal is the only thing that remembers a user line was typed
 			// INTO the turn above it rather than opening one of its own: the
 			// message itself is an ordinary user message, because that is what the

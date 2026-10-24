@@ -266,9 +266,9 @@ func fadeColumnApp(t *testing.T, count int) *app {
 	a, _, _ := taskApp(t)
 	a.width, a.height = 100, 24
 	for i := 0; i < count; i++ {
-		a.taskUpdate(update(uint64(i+1), "The "+fadeWord(i)+" errand", session.TaskDone, session.TaskNotice{}))
+		a.taskUpdate(update(uint64(i+1), "The "+fadeWord(i)+" errand", session.TaskRunning, session.TaskNotice{}))
 	}
-	// The finished work opened, so it is longer than the frame.
+	// Active work exceeds the frame; completed history is absent from this sidebar.
 	railOpenAll(a)
 	a.paints = 0
 	return a

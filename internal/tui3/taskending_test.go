@@ -12,9 +12,9 @@ import (
 // row, and the hint line over it, which is where the finished report went when
 // every row became one line.
 func endedRailText(a *app) string {
-	railOpenAll(a)
-	rows := plain(strings.Join(a.railRows(12), "\n")) + " " + railHint(a, 7)
-	return strings.Join(strings.Fields(strings.ReplaceAll(rows, "│", " ")), " ")
+	node := a.tasks[7]
+	rows := a.railEntryRow(railEntry{node: node, group: a.railGroupOf(node)}, 120) + " " + strings.Join(a.railUnder(node, 120), " ")
+	return strings.Join(strings.Fields(plain(rows)), " ")
 }
 
 func endedNotice(ending session.TaskEnding, report string) session.TaskNotice {
@@ -53,11 +53,11 @@ func TestAHaltedNodeSaysWhyAndIsNotCalledStopped(t *testing.T) {
 		// reason and a source-control fact in one phrase; the head carries the word
 		// and the branch and the row under it carries why
 		// (docs/design/task-states/DESIGN.md).
-		if compact := taskText(a); !strings.Contains(compact, " · "+taskBranchKept+" · task/parser") {
+		if compact := retainedLandingText(t, a, 7); !strings.Contains(compact, "branch · task/parser") {
 			t.Fatalf("compact receipt lost its kept branch: %s", compact)
 		}
 		a.toggleDoneAt(a.doneEntryFor(7))
-		text := taskText(a)
+		text := retainedLandingText(t, a, 7)
 		for _, want := range []string{
 			" · " + taskIncompleteState + " · ",
 			"branch · task/parser",
@@ -192,11 +192,11 @@ func TestAWorkerThatWouldNotWriteItsNotesSaysSoOnTheRailAndInTheRoom(t *testing.
 	// THE CARD SAYS THE SAME THING ON TWO ROWS, which is its own law: the word and
 	// the branch on the head, the reason under it, and nothing fused
 	// (docs/design/task-states/DESIGN.md).
-	if compact := taskText(a); !strings.Contains(compact, taskBranchKept) {
+	if compact := retainedLandingText(t, a, 7); !strings.Contains(compact, "branch · task/parser") {
 		t.Fatalf("compact receipt lost its kept branch: %s", compact)
 	}
 	a.toggleDoneAt(a.doneEntryFor(7))
-	card := taskText(a)
+	card := retainedLandingText(t, a, 7)
 	for _, want := range []string{
 		" · " + taskIncompleteState + " · ", "would not write its notes down", "branch · task/parser",
 	} {
@@ -206,7 +206,7 @@ func TestAWorkerThatWouldNotWriteItsNotesSaysSoOnTheRailAndInTheRoom(t *testing.
 	}
 	// The landing card keeps the card lane's own sentence for the same ending
 	// until that lane lands.
-	if room := taskText(a); !strings.Contains(room, "would not write its notes down") {
+	if room := retainedLandingText(t, a, 7); !strings.Contains(room, "would not write its notes down") {
 		t.Fatalf("the room does not say why the worker stopped:\n%s", room)
 	}
 	// AND IT IS THE OVER-TIER CELL, DIM. Nobody found anything wrong with the

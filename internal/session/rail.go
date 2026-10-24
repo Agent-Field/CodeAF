@@ -58,6 +58,31 @@ func (a *Agent) spendRailUSD() float64 {
 	return a.config.SpendRailUSD
 }
 
+// dailyCeilingUSD is the machine-wide daily limit this session is held to, and
+// zero when there is none.
+//
+// A ROOT reads its profile live, including the ordinary empty default-profile
+// path, so a `/budget day` change takes effect on the next turn. A WORKER carries
+// the value resolved by its parent without gaining the profile's settings door.
+// [Config.DailyBudgetResolved] distinguishes that authority from an unset root
+// field; neither an empty path nor a zero amount can make that distinction.
+func (a *Agent) dailyCeilingUSD() float64 {
+	daily, err := a.dailyCeiling()
+	if err != nil {
+		return 0
+	}
+	return daily
+}
+
+// dailyCeiling is [Agent.dailyCeilingUSD] with the profile's read error kept,
+// for the turn gate that must not start work on a limit it could not read.
+func (a *Agent) dailyCeiling() (float64, error) {
+	if a.config.DailyBudgetResolved {
+		return a.config.DailyBudgetUSD, nil
+	}
+	return config.DailyBudgetUSDAt(a.config.ProfileDir)
+}
+
 // ErrSpendRail is what a refused turn carries in its EventError. It is a named
 // sentinel so a surface can match it with errors.Is and say the one thing worth
 // saying — the rail, not a provider fault — instead of matching on words.
@@ -69,11 +94,27 @@ func (a *Agent) railBlockLocked() error {
 	if err := a.launchBudgetBlockLocked(); err != nil {
 		return err
 	}
-	if !a.config.InTask && !a.config.Errand {
+	// THE DAILY CEILING BINDS EVERY TURN-STARTING PATH, not interactive chat
+	// alone. It is the machine-wide limit over a day (internal/config), so a task
+	// node's runner (InTask) and the home errand (Errand) are held to it exactly
+	// as a chat turn is: a conversation that has spent the day's allowance must
+	// start no new work, however the work was asked for. Checking it here rather
+	// than only in the crew guard is what closes the two roads that had no guard
+	// behind them - a task under `--one-model`, which has no crew, and an InTask
+	// turn, which skipped this block. It is a CEILING READ and never a tally, so
+	// a path already guarded by the crew's own day cap is refused in two places,
+	// never charged twice (#1546).
+	//
+	// `--yes-spend` / `CODEAF_PREAUTHORIZE_SPEND=1` is the person's standing
+	// permission to spend past the day, carried into workers as [Config.SpendPreauthorized];
+	// it lifts THIS limit and nothing else, the same authority `doSpendGuard`
+	// lifts from the crew guard (cmd/codeaf's do.go). A per-conversation or
+	// per-task limit stays in force below.
+	if !a.config.SpendPreauthorized {
 		// A DAILY LIMIT NOBODY CAN READ STOPS THE TURN: it is neither the
 		// default nor no limit, and a turn that might spend is not started
 		// on a guess.
-		daily, err := config.DailyBudgetUSDAt(a.config.ProfileDir)
+		daily, err := a.dailyCeiling()
 		if err != nil {
 			return spendUnverified{said: "daily limit could not be read · /budget day sets it"}
 		}

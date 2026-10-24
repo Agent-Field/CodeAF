@@ -159,8 +159,7 @@ func (a *Agent) teamStarts(profile string) []teamRole {
 			continue
 		}
 		for _, entry := range tail {
-			if entry.Kind == teams.KindStart && entry.To == role.handle &&
-				!entry.At.Before(a.startedAt.Add(-teamStartGrace)) {
+			if a.teamOwnStart(role, entry) {
 				started = append(started, role)
 				break
 			}

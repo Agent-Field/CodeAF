@@ -79,6 +79,9 @@ func (a *app) notifyBody() string {
 // construction not the one being read.
 func (a *app) notifyDone() tea.Cmd {
 	if a.focused {
+		if !a.workTurnVisible(a.turn) {
+			a.queueReplyToast(a.file)
+		}
 		return nil
 	}
 	return tea.Raw(a.pingSeq(notifyTitle, a.notifyBody()))

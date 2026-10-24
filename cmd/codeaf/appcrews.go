@@ -838,7 +838,7 @@ func (b *appBackend) crewStart(t teamstore.Team, manager teamstore.Member, e tea
 	// Only a manager's start of this crew is recorded; the terminal's start
 	// writes the same field (internal/tui3/teamtraffic.go).
 	if e.Kind == teamstore.KindStart && e.From == teamstore.FromManager && (e.Team == "" || e.Team == t.ID) {
-		member.StartEntry = e.ID
+		member.StartEntry, member.StartID = e.ID, e.ID
 	}
 	err = teamstore.Update(b.crewProfile(), func(f *teamstore.File) error {
 		if err := f.AddMember(t.ID, member); err != nil {

@@ -378,6 +378,8 @@ func teamCaptionGloss(e entry) string {
 		return "passing a decision up"
 	case "team_close_report":
 		return "writing the closing report"
+	case "team_dissolve":
+		return "dissolving the team"
 	}
 	return ""
 }
@@ -478,7 +480,7 @@ func captionVerb(tool string) string {
 		return "listing"
 	case "team_send", "team_post":
 		return "sending"
-	case "team_start", "team_stop", "team_read", "team_status", "team_raise", "team_decide", "team_escalate", "team_close_report":
+	case "team_start", "team_stop", "team_read", "team_status", "team_raise", "team_decide", "team_escalate", "team_close_report", "team_dissolve":
 		return "managing"
 	default:
 		return firstNonEmpty(tool, "working")
@@ -494,27 +496,28 @@ func captionVerb(tool string) string {
 // change, and guessing one would garble the only part of the row that is quoted
 // rather than composed.
 var captionPastVerbs = map[string]string{
-	"asking":    "asked",
-	"building":  "built",
-	"checking":  "checked",
-	"deciding":  "decided",
-	"editing":   "edited",
-	"fetching":  "fetched",
-	"listing":   "listed",
-	"looking":   "looked",
-	"managing":  "managed",
-	"messaging": "messaged",
-	"passing":   "passed",
-	"posting":   "posted",
-	"raising":   "raised",
-	"reading":   "read",
-	"running":   "ran",
-	"searching": "searched",
-	"sending":   "sent",
-	"starting":  "started",
-	"stopping":  "stopped",
-	"working":   "worked",
-	"writing":   "wrote",
+	"asking":     "asked",
+	"building":   "built",
+	"checking":   "checked",
+	"deciding":   "decided",
+	"dissolving": "dissolved",
+	"editing":    "edited",
+	"fetching":   "fetched",
+	"listing":    "listed",
+	"looking":    "looked",
+	"managing":   "managed",
+	"messaging":  "messaged",
+	"passing":    "passed",
+	"posting":    "posted",
+	"raising":    "raised",
+	"reading":    "read",
+	"running":    "ran",
+	"searching":  "searched",
+	"sending":    "sent",
+	"starting":   "started",
+	"stopping":   "stopped",
+	"working":    "worked",
+	"writing":    "wrote",
 }
 
 // captionPast is the one door onto that table: a floor caption composed in the

@@ -3159,28 +3159,26 @@ quiet ones. This is its Tasks view; *What is that column on the right* has the w
 and the team manager page has its Traffic view.
 
 ```
-Tasks 14 · Traffic 3 new              alt+l
+Tasks · Traffic 3 new              alt+l
 ? Port the parser · your call · nobod…
-✕ parser bench incomplete
 ──────────────────────────────────────
 Running 4
   ⠙ rebase the parser onto dev      2m
   ⠙ bench the lexer at p99
 Queued 3 ▸
-Done 6 ▸
 + /task
 ```
 
 - **The header** is the column's two words in a chat in a team, one word elsewhere. The
-  word in front is bold ink and the other is dim, and each keeps its count; a count of `0`
-  is dim, and a count of new traffic, `3 new`, is in ink. The `alt+l` at the right is dim.
+  word in front is bold ink and the other is dim. Tasks opens history on demand, without
+  a completed count; new traffic, `3 new`, is in ink. The `alt+l` at the right is dim.
 - **The needs-you band** is the one place with colour of its own: what is waiting on you
-  leads with its `?` in the needs-you amber, and a failure nobody has opened leads with its
-  `✕` in ordinary ink. A thin dim rule closes it. With nothing waiting it is not drawn.
-- **Group headings** (`Running 4`, `Done 6 ▸`) are muted with a dim count; the `▸` of a
+  leads with its `?` in the needs-you amber. A key or credit stop keeps its concrete remedy
+  visible; ordinary failures stay in task history. A thin dim rule closes it. With nothing waiting it is not drawn.
+- **Group headings** (`Running 4`, `Queued 3 ▸`) are muted with a dim count; the `▸` of a
   folded group and the `▾` of an open one are muted too. `Running` wears no mark, because
   it does not fold.
-- A **running** task's name is in ink, the body colour. **Queued, waiting and finished**
+- A **running** task's name is in ink, the body colour. **Queued and waiting**
   names are muted, a step quieter, and the room you are standing in is the one name in the
   accent and bold, with a colour band across its whole row. The time at the right of a row
   is dim.
@@ -3190,7 +3188,7 @@ Done 6 ▸
 **The header and the band never scroll**, however long the list gets: they are pinned to
 the top of the column and everything under them scrolls.
 
-**Every task is one line**, running or finished. What a row used to carry underneath
+**Every active task is one line**. What a row used to carry underneath
 (what it is doing, what it is costing, what it waits on, the reason it is your call, the
 merge word, the branch) is on the hint line while the pointer is on the row, with the whole
 name first. So the column's height goes to rows rather than to a day's history. Nothing is
@@ -3228,22 +3226,12 @@ colour the band leans on, and where there is none the `?` still says it.
 
 ## Opening a finished row on the task column: how to see the log path of a job that already finished, and where the merge word, price or branch went
 
-A finished task's row is one line, and the line it used to carry underneath is **on the hint
-line, not deleted**. Point at the row and the hint line under the message box says the
-whole of it: the whole name, then that task's own last word (`merged · $0.42` for work that
-came home clean, the branch it kept, the reason it is your call), then `click opens it`.
-There is no fold on a task row and no `▸` in its state cell; the cell is the task's state,
-and a press on it opens the task's room like the rest of the row.
+Finished tasks leave the sidebar. Click its `Tasks` heading to open their results and
+history on demand. Existing outputs, reports, branches and run details remain there.
+The sidebar has no Done or Ended fold and no completed-work total.
 
-With the keyboard, `alt+t` hands the column the keyboard and `↑` `↓` walk to the row; the
-room behind `enter` has everything the row does and more.
-
-Finished work sits under `Done`, which starts folded to its heading: press `Done 6 ▸`, or
-`enter` on it, to open it, and it stays open for the session.
-
-A background job is not a finished task row: it lives in the `jobs` section, and its log
-path is on the job's page. The full record of any task is on the activity page (`ctrl+.`,
-`/history`).
+Background processes stay in the `jobs` section while running. Use `/processes` to
+open running and finished processes on demand; click a row to read its log.
 
 ## Scrolling the task column: the mouse wheel over the sidebar, and the keys that walk it
 
@@ -3286,12 +3274,11 @@ untouched empty conversation has no column until the first keystroke or a task; 
 empty screen* page says why.)
 
 ```
-Tasks 3                                alt+l
+Tasks                                  alt+l
 ? Port the parser · your call · nobo…
 ──────────────────────────────────────
 Running 1
   ⠙ Fix the nil-map                  4m
-Done 1 ▸
 + /task
 
 automations
@@ -3304,16 +3291,13 @@ automations
 ctrl+. earlier
 ```
 
-- **`jobs`** is this conversation's background work (a server, a build, a watch, a
-  render), one line — `jobs · 2 running`, `jobs · 1 running · 4m12s`, `jobs · 6 ran` —
-  that enter or a click opens and closes. Open, running jobs come first, then finished
-  ones, newest first, with an `N earlier` line counting what did not fit; a row opens that
-  job's page, not a chat. Zero jobs draws nothing (*Background jobs on the column*, on the
-  tasks page).
+- **`jobs`** is this conversation's running background work: a server, build, watch
+  or render. Enter or a click expands it; a row opens that process's page. Finished
+  processes leave the sidebar, with no ended count. Their logs remain accessible.
 - **The roster scrolls; the sections under it do not.** It is given what is left after
   the doors, the automations rows and the jobs section are reserved.
 - **An idle column draws nothing to mark an absence**: no `none` rows, no empty group
-  headings, no band. The header keeps its words with a dim `0`, and `+ /task` and
+  headings, no band. The Tasks header remains a clickable door to task history, and `+ /task` and
   `+ /automations` remain as the doors. Jobs have no `+` door; a tool starts a job.
 - **The `+` rows type, they do not arm.** Pressing one puts that command and a space at
   the head of your message box and hands the keyboard back: plain text you can edit or

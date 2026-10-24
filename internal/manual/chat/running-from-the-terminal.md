@@ -197,6 +197,33 @@ in the repository, and the `telemetry` switch in `/settings` turns them off.
 running the install line again works too. With `automatic updates` on, a codeaf
 installed this way also installs each new stable release itself as it opens.
 
+## The installer stopped — GitHub API rate limit used up, curl install fails with 403, 401 Bad credentials, GitHub rejected GITHUB_TOKEN, token refused, repository you cannot read
+
+The installer names GitHub's refusal. These are example messages; `HH:MM ZONE`
+stands for the reset time GitHub supplies:
+
+- `GitHub's API rate limit for this address is used up until HH:MM ZONE; export GITHUB_TOKEN to use your own, or pin VERSION=<tag>`
+- `GitHub rejected GITHUB_TOKEN (401: Bad credentials), and the request without it failed too (401: Bad credentials); replace or unset GITHUB_TOKEN, or pin VERSION=<tag>`
+- `GitHub refused GITHUB_TOKEN access to Agent-Field/codeaf (403: Resource not accessible by personal access token), and the request without it failed too (403: Resource not accessible by personal access token); check what GITHUB_TOKEN may read, or pin VERSION=<tag>`
+
+A token GitHub refuses with 401, 403 or 429 is set aside for the rest of the run,
+and the same lookup is asked once without it. If that works, installation
+continues with a note: `GitHub refused GITHUB_TOKEN (its rate limit is used up until HH:MM ZONE); continuing without it`.
+Other token failures get no retry. `GITHUB_TOKEN` supplies the token when
+non-empty; otherwise `GH_TOKEN` does, and the message names `GH_TOKEN` instead.
+Downloads never carry the token.
+
+The reset time comes from GitHub's header in this machine's local time, with
+no zone suffix if the machine supplies none. Without a renderable reset, a
+numeric Retry-After header gives `for about a minute` or `for about M minutes`;
+with neither it says `for up to an hour`. A 403 without quota evidence means
+access was refused. A 404 can also mean a repository you cannot read. Some wget
+builds discard error bodies or headers, so a refusal can lack its message or
+quota details.
+
+Pinning a complete release tag bypasses the API lookup for any of these failures:
+`curl -fsSL https://agentfield.ai/get/codeaf | VERSION=<tag> bash`.
+
 ## What is devaf — dev build beside codeaf — side by side — two versions — install under a different file name — --name
 
 `devaf` is the file name for a codeaf dev-channel build, not another product.
@@ -795,6 +822,10 @@ climbs its own ladder — the flag, then its variable, then a `/crew pin` in the
 then the crew picked for this task — and the rung that answered is named beside the seat
 (`--model`, `CODEAF_MODEL`, `pinned`, `routed`). **The checker never inherits the planner:**
 a `--plan-model` says who plans and nothing about who checks.
+
+`codeaf chat --one-model` and `codeaf resume --one-model` keep text calls on the
+session model; with that flag, an explicit media-model pin that cannot handle
+the operation leaves it unavailable rather than switching models.
 
 `codeaf do` takes three more, all for this one task:
 
@@ -1407,7 +1438,11 @@ codeaf sends anonymous usage counts to AgentField, **on by default**: version, O
 mode (chat or task), session counts and errors in bands, and the tokens each provider
 call used. Never prompts, code, file names, paths, repo names, keys, email, IP or
 machine name, and no model names. Each completed provider call queues a `usage_delta`
-with exact input, output and total tokens. The queue is sent every 30 seconds while
+with provider-reported token counts when available and separate estimates for missing
+text counts. A hashed receipt key pairs an estimate with a later provider receipt,
+so analytics select reported counts per component instead of adding both. A recovered
+receipt with just one token count leaves the other component's estimate available;
+a cost-only receipt adds no token measurement. No text is sent. The queue is sent every 30 seconds while
 the session stays open and once more when it ends; `session_ended` carries the outcome
 and bucketed counts without repeating those tokens.
 
@@ -1416,6 +1451,25 @@ The relay is `https://agentfield.ai/api/oss/codeaf/telemetry`;
 `docs/TELEMETRY.md` in the repository, linked from the README's *Telemetry* section.
 The product prints no notice. With `model_pool` on, one scored row per crew seat also
 leaves for the Model Pool after a task lands (*Model Pool* above).
+
+## Missing streaming token counts — connected services and refused usage options
+
+Connected services ask for streaming token counts with `stream_options.include_usage`.
+If a service explicitly refuses that option with HTTP 400 or 422, codeaf retries
+once without it and omits it on later calls to that endpoint. An unrelated error
+does not turn usage reporting off. The default router uses its existing usage
+request without the extra option.
+The usage-option repair can follow or precede an independent reasoning repair;
+each distinct repair is used once in that chain.
+
+Missing text counts may have separately labelled estimates in anonymous usage
+events. Estimates never change spending, prices or token limits. An interrupted
+answer estimates only what arrived. Provider-reported counts, including explicit
+zeroes, remain measurements. Separate answers keep separate hashed receipts even
+if a connected service repeats its own answer id.
+Opaque reasoning replay in the input leaves its input estimate unknown. Role or
+metadata frames alone do not establish output on a cut stream; a normally
+finished empty answer can honestly estimate zero output.
 
 ## How to turn telemetry off now — /settings stops sending immediately
 
@@ -1629,3 +1683,13 @@ before opening its conversation or starting a turn. This applies to creating an
 agent, sending, queueing and steering. An id must be valid UTF-8, at most 256
 bytes, with no control characters. Client ids correlate entries with messages;
 they are not idempotency keys, and repeated ids are allowed.
+## What background processes are still running
+
+Run `codeaf services` in the terminal to list long-running services started here
+and not yet stopped, with each name, status, age, health check and log path.
+`codeaf services stop <name>` stops a named service. If none are running, the
+command says `nothing is being kept running.`
+
+For the current chat's background commands, watches or renders, use `/processes`
+in that chat. Click a process to open its log. The sidebar shows only running
+processes; finished logs remain available on demand without an ended count.

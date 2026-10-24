@@ -139,7 +139,7 @@ func TestARollupWithAnUnverifiedNodeStopsSayingDone(t *testing.T) {
 			unverifiedNotice("finished, but needs your look — nobody could say either way"))},
 	)
 	text := taskText(a)
-	if !strings.Contains(text, glyphAsk+" 3"+doneRollupMix) {
+	if !strings.Contains(text, "Port the parser") || !strings.Contains(text, askCheckReason) {
 		t.Fatalf("the rollup head does not carry the question:\n%s", text)
 	}
 	if strings.Contains(text, doneRollupWord) {
@@ -167,7 +167,7 @@ func TestARollupCountsADecidedNodeOnceByItsNewestCard(t *testing.T) {
 		})},
 	)
 	text := taskText(a)
-	if !strings.Contains(text, "2"+doneRollupWord) {
+	if strings.Contains(text, doneRollupWord) || a.doneCardFor(1) == nil || a.doneCardFor(2) == nil {
 		t.Fatalf("the rollup does not count two tasks done:\n%s", text)
 	}
 	if strings.Contains(text, glyphAsk) {
@@ -175,7 +175,7 @@ func TestARollupCountsADecidedNodeOnceByItsNewestCard(t *testing.T) {
 	}
 	// Settled batches keep their task list behind the expansion.
 	a.openDone(a.doneEntryFor(1))
-	text = taskText(a)
+	text = retainedLandingText(t, a, 2)
 	if n := strings.Count(text, "Port the parser"); n != 1 {
 		t.Fatalf("the decided node is drawn %d times in its batch, want once:\n%s", n, text)
 	}

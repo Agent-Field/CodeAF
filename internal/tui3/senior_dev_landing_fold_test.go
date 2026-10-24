@@ -8,9 +8,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-// The standing task lane is the engine road: its landing arrives while the
-// chat's wake turn is being drawn. The first frame and the settled reply must
-// both show the program's card without opening the wake turn's work fold.
+// The engine landing retains its result while the wake answer owns the chat.
+// Neither delivery order nor an open task room raises a duplicate receipt.
 func TestSeniorDevEngineLandingStandsOutsideWakeFold(t *testing.T) {
 	for _, roomOpen := range []bool{false, true} {
 		a := newTestApp(&fakeAgent{model: "m"})
@@ -30,16 +29,15 @@ func TestSeniorDevEngineLandingStandsOutsideWakeFold(t *testing.T) {
 		if roomOpen {
 			a.closeRoom()
 		}
-		// The compact receipt identifies the task; its explanation remains inspectable.
+		// The program's account remains in its task while the answer owns chat.
 		cardInfo := a.doneCardFor(7)
-		cardInfo.open = true
-		if detail := strings.Join(a.doneRows(cardInfo, a.width, false), "\n"); !strings.Contains(detail, "senior-dev's ending went to the chat") {
-			t.Fatalf("program landing lost its retained explanation: %s", detail)
+		if cardInfo == nil || cardInfo.report != "submitted a change" || !cardInfo.hidden() {
+			t.Fatalf("landing lost its quiet account: %+v", cardInfo)
 		}
-		cardInfo.open = false
+
 		first := taskText(a)
-		if !strings.Contains(first, "Repair the parser") {
-			t.Fatalf("room open %t: the first conversation frame hid the landing:\n%s", roomOpen, first)
+		if strings.Contains(first, "Repair the parser") {
+			t.Fatalf("room open %t: the first conversation frame duplicated the landing:\n%s", roomOpen, first)
 		}
 		a.entries = append(a.entries,
 			entry{kind: entryTool, tool: "read", turn: 2, status: toolOK},
@@ -49,7 +47,7 @@ func TestSeniorDevEngineLandingStandsOutsideWakeFold(t *testing.T) {
 		card := strings.Index(settled, "Repair the parser")
 		fold := strings.LastIndex(settled, "worked")
 		answer := strings.Index(settled, "The change is on its branch.")
-		if card < 0 || fold < 0 || answer < 0 || !(card < fold && fold < answer) {
+		if card >= 0 || fold < 0 || answer < 0 || fold >= answer {
 			t.Fatalf("room open %t: the card, folded wake work and answer are out of order:\n%s", roomOpen, settled)
 		}
 		if strings.Contains(settled, "reading the ending") || strings.Contains(settled, "read") {
@@ -62,14 +60,14 @@ func TestSeniorDevEngineLandingStandsOutsideWakeFold(t *testing.T) {
 		reopened.touch()
 		again := taskText(reopened)
 		if card, fold, answer := strings.Index(again, "Repair the parser"),
-			strings.LastIndex(again, "worked"), strings.Index(again, "The change is on its branch."); card < 0 || fold < 0 || answer < 0 || !(card < fold && fold < answer) {
+			strings.LastIndex(again, "worked"), strings.Index(again, "The change is on its branch."); card >= 0 || fold < 0 || answer < 0 || fold >= answer {
 			t.Fatalf("room open %t: reopened conversation changed the landing order:\n%s", roomOpen, again)
 		}
 	}
 }
 
 // The direct session event lane used by --no-host carries the same program
-// landing and must draw the card before the reply on that road too.
+// landing and must retain it quietly on that road too.
 func TestSeniorDevNoHostLandingStandsOutsideWakeFold(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.width, a.height = 110, 40
@@ -88,13 +86,13 @@ func TestSeniorDevNoHostLandingStandsOutsideWakeFold(t *testing.T) {
 	a.touch()
 	text := taskText(a)
 	if card, fold, answer := strings.Index(text, "Repair the parser"),
-		strings.LastIndex(text, "worked"), strings.Index(text, "The change is on its branch."); card < 0 || fold < 0 || answer < 0 || !(card < fold && fold < answer) {
+		strings.LastIndex(text, "worked"), strings.Index(text, "The change is on its branch."); card >= 0 || fold < 0 || answer < 0 || fold >= answer {
 		t.Fatalf("direct session lane hid the landing or wake fold:\n%s", text)
 	}
 }
 
 // The engine can deliver the settled wake reply before its task subscription
-// sends the landing. That order must still leave a visible, durable card.
+// sends the landing. That order must retain the result without another row.
 func TestSeniorDevLandingAfterWakeReplyStaysVisible(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.width, a.height = 110, 40
@@ -110,7 +108,7 @@ func TestSeniorDevLandingAfterWakeReplyStaysVisible(t *testing.T) {
 		session.TaskNotice{Program: "senior-dev"})})
 	a.Update(taskEventMsg{gen: a.taskGen, ev: update(7, "Repair the parser", session.TaskDone,
 		session.TaskNotice{Program: "senior-dev", Report: "submitted a change"})})
-	if got := taskText(a); !strings.Contains(got, "Repair the parser") {
+	if got := taskText(a); strings.Contains(got, "Repair the parser") {
 		t.Fatalf("landing behind the settled wake disappeared:\n%s", got)
 	}
 	reopened := newTestApp(&fakeAgent{model: "m"})
@@ -118,13 +116,13 @@ func TestSeniorDevLandingAfterWakeReplyStaysVisible(t *testing.T) {
 	reopened.workMode = config.WorkFold
 	reopened.entries = append([]entry(nil), a.entries...)
 	reopened.touch()
-	if got := taskText(reopened); !strings.Contains(got, "Repair the parser") {
+	if got := taskText(reopened); strings.Contains(got, "Repair the parser") {
 		t.Fatalf("reopening hid a landing delivered after the wake:\n%s", got)
 	}
 }
 
-// An ordinary task still writes its landing after the starting turn and before
-// the later chat turn, as it did before the program card needed a fold boundary.
+// An ordinary task retains its original event position without rendering a
+// completion receipt between the conversation's answers.
 func TestOrdinaryTaskLandingKeepsItsConversationPosition(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.width, a.height = 110, 40
@@ -146,7 +144,7 @@ func TestOrdinaryTaskLandingKeepsItsConversationPosition(t *testing.T) {
 	text := taskText(a)
 	card := strings.Index(text, "Repair the parser")
 	answer := strings.Index(text, "The task is done.")
-	if card < 0 || answer < 0 || card >= answer {
+	if card >= 0 || answer < 0 {
 		t.Fatalf("ordinary card is not before the later answer:\n%s", text)
 	}
 }

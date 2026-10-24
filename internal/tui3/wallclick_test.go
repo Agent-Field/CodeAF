@@ -159,12 +159,13 @@ func TestWallKeepsTeamControlsOnTeamsPage(t *testing.T) {
 }
 
 // WHILE A TEAM NARROWS THE STRIP, THE STRIP SAYS WHICH: a chip at its left
-// end, which opens the team switcher (teammenu.go).
+// end, which opens the team switcher (teammenu.go). With none shown, and none
+// made yet, the chip is the quiet `Teams ▾`, whose last row makes one.
 func TestTabTeamChipNamesTheShownTeam(t *testing.T) {
 	a, _, _ := tabApp(t)
 	plainRow := plain(a.tabsRow(a.width))
-	if strings.Contains(plainRow, "▾") {
-		t.Fatalf("a chip with no team shown: %q", plainRow)
+	if !strings.Contains(plainRow, " Teams ▾ ") || strings.Contains(plainRow, "●") {
+		t.Fatalf("the chip with no team shown: %q", plainRow)
 	}
 	tabs := a.tabList()
 	i, err := a.teamMake("harbor", tabs[:1])

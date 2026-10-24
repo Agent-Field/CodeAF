@@ -446,6 +446,19 @@ func (a *app) teamCreateIn(name string, tabs []chatTab, hue teamHueSpec, parent 
 }
 
 func (a *app) teamMakeInChecked(name string, tabs []chatTab, hue teamHueSpec, parent string, freshOnly bool) (string, error) {
+	return a.teamMakeLed(name, tabs, hue, parent, freshOnly, "")
+}
+
+// teamCreateLed is [app.teamCreateIn] at the top level with manager, one of
+// tabs' keys, made the new team's manager IN THE SAME EDIT, so no reader of the
+// store ever sees the team without it and a refusal of either refuses both. It
+// is `/helpers`'s door (helpers.go); every rule a team made on the Teams page
+// meets is met here, because it is the same edit with one more line.
+func (a *app) teamCreateLed(name string, tabs []chatTab, hue teamHueSpec, manager string) (string, error) {
+	return a.teamMakeLed(name, tabs, hue, "", true, manager)
+}
+
+func (a *app) teamMakeLed(name string, tabs []chatTab, hue teamHueSpec, parent string, freshOnly bool, manager string) (string, error) {
 	a.teamsEnsure()
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -486,6 +499,9 @@ func (a *app) teamMakeInChecked(name string, tabs []chatTab, hue teamHueSpec, pa
 			}
 			f.Teams = append(f.Teams, made)
 			id = fresh
+			if manager != "" {
+				return f.SetManager(fresh, manager)
+			}
 			return nil
 		}
 		// A team remade under its name keeps what its members already had (a

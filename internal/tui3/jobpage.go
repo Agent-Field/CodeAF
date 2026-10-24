@@ -85,7 +85,7 @@ const jobPageFoot = 3
 // jobPageHit is what one row of the page answers to a click. It is the card's
 // own two-edge bargain ([taskCardHit]): the head and the foot are the way
 // back, and everything between them is read.
-type jobPageHit uint8
+type jobPageHit int
 
 const (
 	jobPageHitNone jobPageHit = iota
@@ -179,6 +179,9 @@ func (a *app) jobPageKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // map ([app.taskCardKey]): esc is one layer, the letters that are verbs on this
 // page, and the scroll the card already taught.
 func (a *app) jobPageKey(key string) tea.Cmd {
+	if a.jobPage == processListPage {
+		return a.processListKey(key)
+	}
 	job := a.jobPageJob()
 	if job == nil {
 		a.closeJobPage()
@@ -189,6 +192,7 @@ func (a *app) jobPageKey(key string) tea.Cmd {
 		a.closeJobPage()
 	case "m":
 		a.jobPagePutInMessage(*job)
+		a.jobList = false
 		a.closeJobPage()
 	case "c":
 		return a.jobPageCopyPath(*job)
@@ -247,16 +251,25 @@ func (a *app) jobPageScroll(delta int) {
 
 // jobPagePress resolves a click on the page. Its edges are the way back and
 // its body is read, which is [app.taskCardPress]'s own shape.
-func (a *app) jobPagePress(x, y int) {
+func (a *app) jobPagePress(x, y int) tea.Cmd {
 	width, height := a.size()
 	_, hits, _, _ := a.jobPageFrame(width, height)
 	if y < 0 || y >= len(hits) {
-		return
+		return nil
+	}
+	if a.jobPage == processListPage && hits[y] >= 1000 {
+		at := int(hits[y]) - 1000
+		rows := a.processRows()
+		if at < len(rows) {
+			a.jobCursor = at
+			return a.openJobPage(rows[at].ID)
+		}
 	}
 	if !hits[y].back() {
-		return
+		return nil
 	}
 	a.closeJobPage()
+	return nil
 }
 
 // ── the three verbs ─────────────────────────────────────────────────────────
@@ -332,6 +345,9 @@ func jobPageHandle(id int) string { return jobPageHandleLead + itoa(id) }
 // The caret is reported as (0, 0) and never moves, because nothing on this
 // page is typed into.
 func (a *app) jobPageFrame(width, height int) ([]string, []jobPageHit, int, int) {
+	if a.jobPage == processListPage {
+		return a.processListFrame(width, height)
+	}
 	pal := a.pal
 	lines := make([]string, 0, height)
 	hits := make([]jobPageHit, 0, height)

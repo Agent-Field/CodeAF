@@ -245,7 +245,7 @@ func TestTheColumnFilesYourCallFirstThenMovingThenOver(t *testing.T) {
 		streamEventMsg{gen: a.gen, ev: update(5, "Port the parser", session.TaskUnverified, session.TaskNotice{Merge: mergeWordAborted, Branch: "task/parser"})},
 	)
 	band := a.sideBand()
-	if len(band) != 2 || band[0].key != "task/5" || !band[0].ask || band[1].key != "fail/4" || band[1].ask {
+	if len(band) != 1 || band[0].key != "task/5" || !band[0].ask {
 		t.Fatalf("the band is not the question in amber then the failure in ink: %+v", band)
 	}
 	railOpenAll(a)
@@ -255,8 +255,8 @@ func TestTheColumnFilesYourCallFirstThenMovingThenOver(t *testing.T) {
 			order = append(order, e.node.id)
 		}
 	}
-	if len(order) != 3 || order[0] != 3 || order[1] != 2 || order[2] != 1 {
-		t.Fatalf("the list is %v, want running 3, queued 2, done 1, and nothing the band holds", order)
+	if len(order) != 2 || order[0] != 3 || order[1] != 2 {
+		t.Fatalf("the list is %v, want running 3 and queued 2; decisions stay in their band and finished results stay in history", order)
 	}
 }
 

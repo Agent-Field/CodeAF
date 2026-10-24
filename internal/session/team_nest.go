@@ -218,7 +218,7 @@ func (a *Agent) teamStartSubTeam(ctx context.Context, team teams.Team, role team
 		}
 		for _, m := range members {
 			reporting := m.Home
-			m.Home, m.Started = false, false
+			m.Home, m.Started, m.StartEntry, m.StartID = false, false, "", ""
 			if err := f.AddMember(child.ID, m); err != nil {
 				return err
 			}
@@ -317,7 +317,7 @@ func (a *Agent) claimSubTeams(profile string, claims []subTeamClaim) {
 			if !ok {
 				m = teams.Member{Key: claim.key}
 			}
-			m.Home, m.Started = false, false
+			m.Home, m.Started, m.StartEntry, m.StartID = false, false, "", ""
 			if err := f.AddMember(child.ID, m); err != nil {
 				return err
 			}

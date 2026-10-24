@@ -183,6 +183,8 @@ const (
 	// foot's place at that width, so it is NOT one of the two edges [back]
 	// answers for — a thumb on that band is aiming at a chip, not at the door.
 	taskCardHitMention
+	taskCardHitStronger
+	taskCardHitOutput
 )
 
 // back reports whether a row of the card is the way back to the list.
@@ -434,6 +436,10 @@ func (a *app) taskCardKey(key string) tea.Cmd {
 		return cmd
 	}
 	switch key {
+	case "o":
+		return a.openTaskResultOutput(entry)
+	case "r":
+		return a.redoTaskStronger(entry)
 	case "enter":
 		return a.retryTask(entry)
 	case "esc", "left":
@@ -500,21 +506,28 @@ func (a *app) taskCardScroll(delta int) {
 
 // taskCardPress resolves a click on the card. Its edges are the way back and
 // its body is read, which is [app.expandPress]'s own shape.
-func (a *app) taskCardPress(x, y int) {
+func (a *app) taskCardPress(x, y int) tea.Cmd {
 	width, height := a.size()
 	_, hits, _, _ := a.taskCardFrame(width, height)
 	if y < 0 || y >= len(hits) {
-		return
+		return nil
+	}
+	if hits[y] == taskCardHitOutput {
+		return a.openTaskResultOutput(a.taskSheet.detail)
+	}
+	if hits[y] == taskCardHitStronger {
+		return a.redoTaskStronger(a.taskSheet.detail)
 	}
 	// phone lane: the foot is two bands rather than one way out (taskphone.go).
 	if hits[y] == taskCardHitMention {
 		a.taskCardBarPress(x)
-		return
+		return nil
 	}
 	if !hits[y].back() {
-		return
+		return nil
 	}
 	a.closeTaskRecord()
+	return nil
 }
 
 // taskCardHitAt is that hit-test with nothing done about it: which of the card's
@@ -572,6 +585,14 @@ func (a *app) taskCardFrame(width, height int) ([]string, []taskCardHit, int, in
 
 	head := len(lines)
 	room := height - head - taskCardFoot
+	stronger := a.taskCanRedoStronger(entry) && width-2 >= len(taskStrongerWord)
+	if stronger {
+		room--
+	}
+	output := a.taskResultHasOutput(entry) && width-2 >= len(taskResultOutputWord)
+	if output {
+		room--
+	}
 	if room < 1 {
 		room = 1
 	}
@@ -600,6 +621,12 @@ func (a *app) taskCardFrame(width, height int) ([]string, []taskCardHit, int, in
 	}
 	for i := 0; i < drawn; i++ {
 		add(" "+body[a.taskSheet.detailTop+i], taskCardHitNone)
+	}
+	if stronger {
+		add(" "+pal.underline(taskStrongerWord), taskCardHitStronger)
+	}
+	if output {
+		add(" "+pal.underline(taskResultOutputWord), taskCardHitOutput)
 	}
 
 	add(pal.dim(rule(width)), taskCardHitNone)
@@ -980,13 +1007,25 @@ func (a *app) taskCardBody(entry session.TaskIndexEntry, width int) []string {
 	// THE OUTCOME IS THE SENTENCE THE PERSON CAME FOR, so it is the first thing
 	// under the state and it is drawn in ink rather than in the dim every other
 	// fact here wears.
-	if outcome := strings.TrimSpace(entry.Outcome); outcome != "" {
+	displayedResult := ""
+	if node := a.taskSheetNodeFor(&entry); node != nil && node.crew != nil && strings.TrimSpace(node.produced) != "" {
+		displayedResult = strings.TrimSpace(node.produced)
+		var result []string
+		for _, line := range wrap(node.produced, width) {
+			result = append(result, pal.ink(line))
+		}
+		bands = append(bands, result)
+	}
+	// Identical result and landing prose needs one paragraph; both original fields remain intact.
+	if outcome := strings.TrimSpace(entry.Outcome); outcome != "" && outcome != displayedResult {
 		var said []string
 		for _, wrapped := range wrap(outcome, width) {
 			said = append(said, pal.ink(wrapped))
 		}
 		bands = append(bands, said)
 	}
+
+	bands = append(bands, a.taskCrewRows(entry, width))
 
 	var facts []string
 	// WHERE IT CAME OUT OF, because the page a person opens to learn MORE may

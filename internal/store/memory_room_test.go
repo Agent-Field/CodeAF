@@ -8,12 +8,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 )
 
-// THE BOUND IS THE STORE'S, AND IT IS HELD INSIDE THE WRITE. Every door that
-// makes a line active is measured against every block the line's owner
-// reaches, in the transaction that makes it active.
+// Prompt capacity limits admission, never storage. Every mutation remains
+// transactional while permitting a working set smaller than the database.
 
 // roomLine is a line of about ninety runes, numbered so no two are the same
 // words.
@@ -36,186 +34,92 @@ func fillTo(t *testing.T, s *Store, owner, name, prefix string, want int) int {
 	return cost
 }
 
-// A LINE KEPT EVERYWHERE FROM ONE PROJECT IS MEASURED AGAINST EVERY PROJECT'S
-// BLOCK: it rides beta's conversations too, so a nearly full beta refuses it —
-// and names beta — while alpha's own project lines still fit.
-func TestAnEverywhereLineIsMeasuredAgainstEveryProjectsBlock(t *testing.T) {
+func TestAnEverywhereLineIsIndependentOfOtherProjectsCapacity(t *testing.T) {
 	s := openTestStore(t, filepath.Join(t.TempDir(), "graph.db"))
-	fillTo(t, s, OwnerProject("beta"), "beta-repo", "beta", MemoryBlockRunes-60)
-	_, err := s.Write(WriteRequest{Owner: OwnerUser, Type: MemoryPreference, Text: roomLine("everywhere", 1)})
-	var full *MemoryFullError
-	if !errors.As(err, &full) || full.Project != "beta-repo" || full.Owner != OwnerProject("beta") {
-		t.Fatalf("an everywhere line that overflows beta = %v, want memory full in beta-repo", err)
-	}
-	if _, err := s.Write(WriteRequest{Owner: OwnerProject("alpha"), Type: MemoryFact, Text: roomLine("alpha", 1)}); err != nil {
-		t.Fatalf("alpha's own line was refused for beta's room: %v", err)
+	fillTo(t, s, OwnerProject("beta"), "beta-repo", "beta", 2*MemoryBlockRunes)
+	for _, owner := range []string{OwnerUser, OwnerMachine, OwnerProject("alpha")} {
+		if _, err := s.Write(WriteRequest{Owner: owner, Type: MemoryPreference, Text: roomLine("new", 1)}); err != nil {
+			t.Fatalf("write for %s: %v", owner, err)
+		}
 	}
 }
 
-// THE SAME WORDS UNDER ANOTHER OWNER ARE ANOTHER LINE. The write door's
-// duplicate rule is the target owner's, so a line already kept for a project
-// still needs room when it is kept everywhere.
-func TestADuplicateUnderAnotherOwnerStillNeedsRoom(t *testing.T) {
+func TestDuplicateOwnershipIsIndependentOfPromptCapacity(t *testing.T) {
 	s := openTestStore(t, filepath.Join(t.TempDir(), "graph.db"))
 	text := roomLine("shared", 1)
 	if _, err := s.AddMemory(Memory{Owner: OwnerProject("alpha"), Type: MemoryFact, Text: text}); err != nil {
 		t.Fatal(err)
 	}
-	fillTo(t, s, OwnerUser, "", "person", MemoryBlockRunes-60)
-	if _, err := s.Write(WriteRequest{Owner: OwnerUser, Type: MemoryFact, Text: text}); !errors.Is(err, ErrMemoryFull) {
-		t.Fatalf("the same words for another owner skipped the bound: %v", err)
+	fillTo(t, s, OwnerUser, "", "person", 2*MemoryBlockRunes)
+	if got, err := s.Write(WriteRequest{Owner: OwnerUser, Type: MemoryFact, Text: text}); err != nil || got.Outcome != WriteOutcomeAdded {
+		t.Fatalf("other owner: %+v %v", got, err)
 	}
-	// AND THE SAME WORDS FOR THE SAME OWNER NEED NONE: that is a skip.
 	if got, err := s.Write(WriteRequest{Owner: OwnerProject("alpha"), Type: MemoryFact, Text: text}); err != nil || got.Outcome != WriteOutcomeSkipped {
-		t.Fatalf("a duplicate in its own owner = %+v, %v; want a skip that needs no room", got, err)
+		t.Fatalf("same owner: %+v %v", got, err)
 	}
 }
 
-// TWO WRITERS WITH ROOM FOR ONE ADMIT ONE. The measure is inside the write's
-// immediate transaction, so the second writer reads the first one's line.
-func TestTwoWritersWithRoomForOneAdmitOne(t *testing.T) {
+func TestConcurrentWritersBothSucceedBeyondPromptCapacity(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "graph.db")
 	first := openTestStore(t, path)
 	second := openTestStore(t, path)
-	used := fillTo(t, first, OwnerUser, "", "person", MemoryBlockRunes-200)
-	room := MemoryBlockRunes - used
-	text := func(who string) string {
-		// One line that fits the room, and two that do not fit together.
-		body := who + " " + strings.Repeat("r", room/2+20)
-		for MemoryLineCost(body) > room {
-			body = body[:len(body)-1]
-		}
-		return body
-	}
+	fillTo(t, first, OwnerUser, "", "person", 2*MemoryBlockRunes)
 	var wg sync.WaitGroup
 	errs := make([]error, 2)
 	for i, s := range []*Store{first, second} {
 		wg.Add(1)
 		go func(i int, s *Store) {
 			defer wg.Done()
-			_, errs[i] = s.Write(WriteRequest{Owner: OwnerUser, Type: MemoryFact, Text: text(fmt.Sprint("writer", i))})
+			_, errs[i] = s.Write(WriteRequest{Owner: OwnerUser, Type: MemoryFact, Text: roomLine("writer", i)})
 		}(i, s)
 	}
 	wg.Wait()
-	ok, full := 0, 0
 	for _, err := range errs {
-		switch {
-		case err == nil:
-			ok++
-		case errors.Is(err, ErrMemoryFull):
-			full++
-		default:
-			t.Fatalf("a writer failed for another reason: %v", err)
+		if err != nil {
+			t.Fatalf("concurrent writer: %v", err)
 		}
 	}
-	if ok != 1 || full != 1 {
-		t.Fatalf("two writers with room for one: %d admitted, %d refused (%v)", ok, full, errs)
+	block, err := first.AssembleMemoryBlock(MemoryContext{Owners: []string{OwnerUser}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cost := 0
+	for _, m := range block.Memories {
+		cost += MemoryLineCost(m.Text)
+	}
+	if cost > MemoryBlockRunes || block.Omitted == 0 {
+		t.Fatalf("admitted cost=%d omitted=%d", cost, block.Omitted)
 	}
 }
 
-// A SECOND WRITER READS THE ROOM ONLY AFTER THE FIRST HAS COMMITTED. The check
-// runs inside the write's own immediate transaction, so while one writer holds
-// its answer the other cannot even ask. Here the first is held inside its
-// transaction, past its check: the second must not reach its own check until
-// the first lets go, and then it finds no room. A check read outside the lock
-// would let both through, which is the race the other test can only hope to
-// land on.
-func TestASecondWriterReadsTheRoomOnlyAfterTheFirstCommits(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "graph.db")
-	first := openTestStore(t, path)
-	second := openTestStore(t, path)
-	used := fillTo(t, first, OwnerUser, "", "person", MemoryBlockRunes-200)
-	room := MemoryBlockRunes - used
-	line := func(who string) string {
-		body := who + " " + strings.Repeat("r", room/2+20)
-		for MemoryLineCost(body) > room {
-			body = body[:len(body)-1]
-		}
-		return body
-	}
-	read := make(chan string, 4)
-	release := make(chan struct{})
-	memoryRoomRead = func(text string, _ error) {
-		read <- text
-		if strings.HasPrefix(text, "first") {
-			<-release
-		}
-	}
-	t.Cleanup(func() { memoryRoomRead = nil })
-
-	var wg sync.WaitGroup
-	var firstErr, secondErr error
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		_, firstErr = first.Write(WriteRequest{Owner: OwnerUser, Type: MemoryFact, Text: line("first")})
-	}()
-	if got := <-read; !strings.HasPrefix(got, "first") {
-		t.Fatalf("the first room check was %q", got)
-	}
-	go func() {
-		defer wg.Done()
-		_, secondErr = second.Write(WriteRequest{Owner: OwnerUser, Type: MemoryFact, Text: line("second")})
-	}()
-	select {
-	case got := <-read:
-		close(release)
-		wg.Wait()
-		t.Fatalf("the second writer read the room while the first's line was uncommitted (%q)", got)
-	case <-time.After(150 * time.Millisecond):
-	}
-	close(release)
-	wg.Wait()
-	if firstErr != nil {
-		t.Fatalf("the first writer, which had room, was refused: %v", firstErr)
-	}
-	if !errors.Is(secondErr, ErrMemoryFull) {
-		t.Fatalf("the second writer, reading after the first committed, = %v; want memory full", secondErr)
-	}
-}
-
-// A REPLACEMENT IS MEASURED TOO: a correction longer than the line it replaces
-// is refused when the block has no room for the difference, and the line it
-// would have replaced is still kept.
-func TestAReplacementIsMeasured(t *testing.T) {
+func TestAReplacementCanGrowBeyondPromptCapacity(t *testing.T) {
 	s := openTestStore(t, filepath.Join(t.TempDir(), "graph.db"))
 	old, err := s.AddMemory(Memory{Owner: OwnerUser, Type: MemoryFact, Text: "short"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Between 105 and 200 runes of room are left: never enough for 250 more.
-	fillTo(t, s, OwnerUser, "", "person", MemoryBlockRunes-200)
-	owners := []string{OwnerUser, OwnerMachine}
-	_, _, err = s.SupersedeMemoryForOwners(owners, old.ID, Memory{Owner: OwnerUser, Type: MemoryFact, Text: strings.Repeat("longer ", 36)})
-	if !errors.Is(err, ErrMemoryFull) {
-		t.Fatalf("a longer replacement past the bound = %v", err)
+	fillTo(t, s, OwnerUser, "", "person", 2*MemoryBlockRunes)
+	replacement, added, err := s.SupersedeMemoryForOwners([]string{OwnerUser}, old.ID, Memory{Owner: OwnerUser, Type: MemoryFact, Text: strings.Repeat("longer ", 36)})
+	if err != nil || !added {
+		t.Fatalf("replacement: added=%v err=%v", added, err)
 	}
-	active, err := s.MemoriesFor([]string{OwnerUser})
-	if err != nil {
-		t.Fatal(err)
+	prior, found, err := s.MemoryRecord(old.ID)
+	if err != nil || !found || prior.Status != MemorySuperseded {
+		t.Fatalf("previous status=%s found=%v err=%v", prior.Status, found, err)
 	}
-	if indexOf(active, old.ID) < 0 {
-		t.Fatal("a refused replacement let the old line go")
-	}
-	// AND ONE NO LONGER THAN WHAT IT REPLACES ALWAYS FITS: the old line's room
-	// is the new one's.
-	if _, added, err := s.SupersedeMemoryForOwners(owners, old.ID, Memory{Owner: OwnerUser, Type: MemoryFact, Text: "brief"}); err != nil || !added {
-		t.Fatalf("a replacement the same size = %v, %v", added, err)
+	if replacement.Status != MemoryActive {
+		t.Fatal("replacement not active")
 	}
 }
 
-// THE LEGACY IMPORT IS THE ONE WRITE THE BOUND DOES NOT MEASURE: those lines
-// were the person's before the bound existed, and refusing them would lose
-// them. Every other write is still refused once the block is past it.
-func TestAnUnboundedWriteIsKeptPastTheBound(t *testing.T) {
+func TestAllWritesAreUnboundedRegardlessOfLegacyFlag(t *testing.T) {
 	s := openTestStore(t, filepath.Join(t.TempDir(), "graph.db"))
-	fillTo(t, s, OwnerUser, "", "person", MemoryBlockRunes-40)
-	got, err := s.Write(WriteRequest{Owner: OwnerUser, Type: MemoryFact, Text: roomLine("imported", 1), Unbounded: true})
-	if err != nil || got.Outcome == WriteOutcomeSkipped {
-		t.Fatalf("an unbounded write past the bound = %+v, %v; want it kept", got, err)
-	}
-	if _, err := s.Write(WriteRequest{Owner: OwnerUser, Type: MemoryFact, Text: roomLine("after", 1)}); !errors.Is(err, ErrMemoryFull) {
-		t.Fatalf("a measured write after it = %v; want memory full", err)
+	fillTo(t, s, OwnerUser, "", "person", 2*MemoryBlockRunes)
+	for i, legacy := range []bool{true, false} {
+		got, err := s.Write(WriteRequest{Owner: OwnerUser, Type: MemoryFact, Text: roomLine("imported", i), Unbounded: legacy})
+		if err != nil || got.Outcome != WriteOutcomeAdded {
+			t.Fatalf("legacy=%v result=%+v err=%v", legacy, got, err)
+		}
 	}
 }
 
@@ -264,8 +168,8 @@ func TestPuttingBackOrRewordingOntoWordsAlreadyKeptKeepsOneLine(t *testing.T) {
 	}
 }
 
-// PUT BACK, MOVE AND REWORD MAKE A LINE ACTIVE OR BIGGER, and each is measured.
-func TestPutBackMoveAndRewordAreMeasured(t *testing.T) {
+// Restore, move and reword remain available when the store exceeds the prompt budget.
+func TestPutBackMoveAndRewordAreIndependentOfPromptCapacity(t *testing.T) {
 	s := openTestStore(t, filepath.Join(t.TempDir(), "graph.db"))
 	gone, err := s.AddMemory(Memory{Owner: OwnerUser, Type: MemoryFact, Text: roomLine("gone", 1)})
 	if err != nil {
@@ -280,17 +184,17 @@ func TestPutBackMoveAndRewordAreMeasured(t *testing.T) {
 	}
 	fillTo(t, s, OwnerUser, "", "person", MemoryBlockRunes-40)
 
-	if err := s.RestoreMemory(gone.ID); !errors.Is(err, ErrMemoryFull) {
+	if err := s.RestoreMemory(gone.ID); err != nil {
 		t.Fatalf("putting a line back past the bound = %v", err)
 	}
-	if err := s.UpdateMemory(short.ID, roomLine("longer", 1)); !errors.Is(err, ErrMemoryFull) {
+	if err := s.UpdateMemory(short.ID, roomLine("longer", 1)); err != nil {
 		t.Fatalf("rewording a line past the bound = %v", err)
 	}
 	big, err := s.AddMemory(Memory{Owner: OwnerProject("gamma"), Type: MemoryFact, Text: roomLine("gamma", 1)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.MoveMemory(big.ID, OwnerMachine, ""); !errors.Is(err, ErrMemoryFull) {
+	if _, err := s.MoveMemory(big.ID, OwnerMachine, ""); err != nil {
 		t.Fatalf("moving a line onto every block past the bound = %v", err)
 	}
 }
@@ -434,8 +338,8 @@ CREATE TABLE memories (
 	if !rule || !project {
 		t.Fatalf("the rule rode %v and the project line rode %v; both must ride before old person lines", rule, project)
 	}
-	// AND A NEW LINE IS REFUSED UNTIL SOME ARE FORGOTTEN.
-	if _, err := s.Write(WriteRequest{Owner: OwnerProject("alpha"), Type: MemoryFact, Text: "one more"}); !errors.Is(err, ErrMemoryFull) {
+	// New writes are admitted without forcing the person to forget anything.
+	if _, err := s.Write(WriteRequest{Owner: OwnerProject("alpha"), Type: MemoryFact, Text: "one more"}); err != nil {
 		t.Fatalf("a new line on an overflowing store = %v", err)
 	}
 }

@@ -12,7 +12,6 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/guard"
-	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/telemetry"
 )
 
@@ -101,7 +100,7 @@ type receiptWork struct {
 	result Reconciled
 	sink   ReconcileSink
 	queued time.Time
-	usage  func(int, int)
+	usage  func(int, int, bool, bool)
 	base   string
 	// attempt is the send this receipt prices, captured when the receipt was
 	// owed (attemptobserver.go). It is NOT read from the trace at arrival: by
@@ -183,10 +182,12 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 		c.bankBilledUsage(ctx, model, response, traces...)
 	}
 	// A DIRECT SERVICE HAS NO OPENROUTER GENERATION ROUTE TO ASK. Its missing
-	// usage block supplies no measured figures to record, and calling the
-	// router's route on the vendor would send that vendor a request and bearer
-	// for a fact this client already knows cannot be there.
-	if c.config.Direct && (base == c.config.BaseURL || telemetry.RoutingProvider(base) != modelsource.DefaultID) {
+	// usage block supplies no measured figures to record. An overflow route
+	// does not change which service owns this client's credential, so it must
+	// not carry that credential to a router's generation route either, and
+	// calling the router's route on the vendor would send that vendor a
+	// request and bearer for a fact this client already knows cannot be there.
+	if c.config.Direct {
 		handle.unknown()
 		return
 	}
@@ -212,7 +213,7 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 		Hedged: hedgeLaneFrom(ctx) != "",
 	}
 	if response != nil {
-		result.Ref = strings.TrimSpace(response.ID)
+		result.Ref = canonicalGenerationID(response.ID)
 	}
 	// NO ID MEANS NO REQUEST. Text still proves that the call got somewhere and
 	// may be charged, so its missing price is said; without text there is no
@@ -224,10 +225,14 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 		handle.unknown()
 		return
 	}
-	work := receiptWork{result: result, sink: sink, base: base, attempt: handle, usage: telemetry.CaptureUsageRecorder(telemetry.UsageDimensions{
-		RoutingProvider: telemetry.RoutingProvider(base),
+	attemptID := ""
+	if len(traces) > 0 && traces[0] != nil {
+		attemptID = traces[0].attemptID
+	}
+	work := receiptWork{result: result, sink: sink, base: base, attempt: handle, usage: telemetry.CaptureUsageRecorderWithPresence(telemetry.UsageDimensions{
+		RoutingProvider: c.usageRoutingProvider(base),
 		ModelFamily:     telemetry.ModelFamily(result.Model), UsageStatus: "reported",
-		AccountingSource: "provider", ReceiptID: "generation:" + result.Ref,
+		AccountingSource: "provider", ReceiptID: usageReceiptID(base, result.Ref, attemptID),
 	})}
 	if bankedUsage {
 		// This is new observer-only coverage of an already banked response;
@@ -328,6 +333,12 @@ func (c *Client) reconcile(work receiptWork) {
 		if read.parsed {
 			last = read.financial
 		}
+		// Explicit zero counts are measurements even when the old money door
+		// still considers this an empty, unpriced receipt. Keep its price and
+		// ledger behavior while allowing those counts to replace estimates.
+		if work.usage != nil && (read.presence[0] || read.presence[1]) {
+			work.usage(billed.PromptTokens, billed.CompletionTokens, read.presence[0], read.presence[1])
+		}
 		if noRoute {
 			receiptRoutes.heard(base, time.Now())
 			work.attempt.unknown()
@@ -343,12 +354,6 @@ func (c *Client) reconcile(work receiptWork) {
 			billed.Billing = result.Billing
 			result.Billed = billed
 			result.Found = true
-			// Recovery is reached only when the stream had no usage block, so
-			// these tokens replace an unknown receipt rather than add to a
-			// previously reported total.
-			if work.usage != nil {
-				work.usage(billed.PromptTokens, billed.CompletionTokens)
-			}
 			work.sink(result)
 			return
 		}
@@ -383,8 +388,11 @@ func (c *Client) fetchReceipt(ctx context.Context, ref string) (Billed, bool, bo
 }
 
 // fetchReceiptAt follows the route the generation actually used.
-func (c *Client) fetchReceiptAt(ctx context.Context, ref, base string) (Billed, bool, bool) {
+func (c *Client) fetchReceiptAt(ctx context.Context, ref, base string, observed ...*[2]bool) (Billed, bool, bool) {
 	read := c.readReceiptAt(ctx, ref, base)
+	if len(observed) > 0 && observed[0] != nil {
+		*observed[0] = read.presence
+	}
 	return read.billed, read.found, read.noRoute
 }
 
@@ -396,6 +404,7 @@ type receiptRead struct {
 	billed    Billed
 	found     bool
 	noRoute   bool
+	presence  [2]bool
 	parsed    bool
 	financial FinancialObservation
 }
@@ -442,10 +451,13 @@ func (c *Client) readReceiptAt(ctx context.Context, ref, base string) receiptRea
 	if wire.Data.TotalCost != nil {
 		billed.Cost = *wire.Data.TotalCost
 	}
+	presence := [2]bool{}
 	if wire.Data.TokensPrompt != nil || wire.Data.TokensCompletion != nil {
+		presence = [2]bool{wire.Data.TokensPrompt != nil, wire.Data.TokensCompletion != nil}
 		billed.PromptTokens = valueOrZero(wire.Data.TokensPrompt)
 		billed.CompletionTokens = valueOrZero(wire.Data.TokensCompletion)
 	} else {
+		presence = [2]bool{wire.Data.NativeTokensPrompt != nil, wire.Data.NativeTokensCompletion != nil}
 		billed.PromptTokens = valueOrZero(wire.Data.NativeTokensPrompt)
 		billed.CompletionTokens = valueOrZero(wire.Data.NativeTokensCompletion)
 	}
@@ -454,9 +466,9 @@ func (c *Client) readReceiptAt(ctx context.Context, ref, base string) receiptRea
 		// An all-zero generation document may still be a not-ready placeholder.
 		// A zero price remains valid with actual token counts, or in a completed
 		// answer's final usage block; this empty document proves neither.
-		return receiptRead{parsed: true, financial: UnknownCost()}
+		return receiptRead{parsed: true, presence: presence, financial: UnknownCost()}
 	}
-	return receiptRead{billed: billed, found: true, parsed: true, financial: financial}
+	return receiptRead{billed: billed, found: true, parsed: true, presence: presence, financial: financial}
 }
 
 // receiptRouteMissing reads the same two meanings of a 404 as the lane sheet:

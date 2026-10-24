@@ -79,23 +79,22 @@ func TestSeniorDevEndedCardNamesProgramOnBothChatRoads(t *testing.T) {
 			if card == nil || card.program != "senior-dev" {
 				t.Fatalf("the landing lost the program identity: %+v", card)
 			}
-			if got := taskText(a); !strings.Contains(got, "Repair the parser [senior-dev]") {
-				t.Fatalf("the compact landing has no badge:\n%s", got)
+			if got := taskText(a); strings.Contains(got, "Repair the parser [senior-dev]") {
+				t.Fatalf("program completion duplicated chat: %s", got)
 			}
-			if rows := a.doneRows(card, 160, false); len(rows) != 1 {
-				t.Fatalf("the compact landing stopped being one row: %v", rows)
+			if !card.hidden() || card.report != "submitted a change" {
+				t.Fatalf("quiet program ending lost account: %+v", card)
 			}
-			card.open = true
-			if got := plain(strings.Join(a.doneRows(card, 160, false), "\n")); !strings.Contains(got, "senior-dev's ending went to the chat") || !strings.Contains(got, "submitted a change") {
-				t.Fatalf("the opened program card lost its ending:\n%s", got)
+			if rows := a.doneRows(card, 160, false); len(rows) != 0 {
+				t.Fatalf("quiet program consumes rows: %v", rows)
 			}
-			card.open = false
+
 			a.turn = 2
 			a.entries = append(a.entries,
 				entry{kind: entryTool, tool: "read", status: toolOK, turn: 2},
 				entry{kind: entryAssistant, text: "Its work is on its branch.", settled: true, turn: 2})
 			a.touch()
-			if got := taskText(a); !strings.Contains(got, "Repair the parser [senior-dev]") || !strings.Contains(got, "worked") {
+			if got := taskText(a); strings.Contains(got, "Repair the parser [senior-dev]") || !strings.Contains(got, "Its work is on its branch.") || !strings.Contains(got, "worked") {
 				t.Fatalf("the wake reply hid the program's badge:\n%s", got)
 			}
 		})
@@ -149,16 +148,15 @@ func seniorDevBatchApp(t *testing.T, road, title string) *app {
 	if first < 0 || a.doneEntryFor(8) != first+1 {
 		t.Fatalf("the landings are not adjacent: %+v", a.entries)
 	}
-	if got := taskText(a); !strings.Contains(got, "2 tasks done") || strings.Contains(got, title) {
-		t.Fatalf("the settled batch is not compact:\n%s", got)
+	if got := taskText(a); strings.Contains(got, "tasks done") || strings.Contains(got, title) {
+		t.Fatalf("batch leaked routine receipts: %s", got)
 	}
-	// Use the key the real conversation advertises, rather than setting open
-	// or drawing either card through doneRows directly.
-	a.sel = first
-	drive(t, a, key("ctrl+o"))
-	if !a.doneCardFor(7).open || a.doneCardFor(8).open {
-		t.Fatal("expanding the batch changed the ordinary card's own open state")
+	for _, id := range []uint64{7, 8} {
+		if card := a.doneCardFor(id); card == nil || !card.hidden() {
+			t.Fatalf("quiet batch lost record %d: %+v", id, card)
+		}
 	}
+
 	return a
 }
 
@@ -166,7 +164,7 @@ func TestSeniorDevBatchKeepsProgramBadgeOnBothChatRoads(t *testing.T) {
 	for _, road := range []string{"engine", "no-host"} {
 		t.Run(road, func(t *testing.T) {
 			a := seniorDevBatchApp(t, road, "Repair the parser")
-			if got := taskText(a); !strings.Contains(got, "Repair the parser [senior-dev]") || !strings.Contains(got, "Read the guide") {
+			if got := taskText(a); strings.Contains(got, "Repair the parser [senior-dev]") || strings.Contains(got, "Read the guide") {
 				t.Fatalf("the expanded batch lost the program identity or its ordinary sibling:\n%s", got)
 			}
 			a.doneCardFor(7).title = strings.Repeat("Repair the parser ", 8)
@@ -176,7 +174,7 @@ func TestSeniorDevBatchKeepsProgramBadgeOnBothChatRoads(t *testing.T) {
 			}{{160, "[senior-dev]"}, {40, "[sd]"}, {24, "[sd]"}} {
 				a.width = tc.width
 				a.touch()
-				if got := taskText(a); !strings.Contains(got, tc.badge) {
+				if got := taskText(a); strings.Contains(got, tc.badge) {
 					t.Fatalf("width %d: the expanded batch cut off its badge:\n%s", tc.width, got)
 				}
 				// Check the row's painter and width as well as the whole surface.
@@ -199,23 +197,19 @@ func TestSeniorDevBatchOpenedCardRetainsEndingOnBothChatRoads(t *testing.T) {
 			a := seniorDevBatchApp(t, road, "Repair the parser")
 			assertEnding := func() {
 				t.Helper()
-				got := taskText(a)
-				for _, want := range []string{"senior-dev's ending went to the chat", "submitted the parser change"} {
-					if !strings.Contains(got, want) {
-						t.Fatalf("the opened card in the batch lost %q:\n%s", want, got)
-					}
+				card := a.doneCardFor(7)
+				if card == nil || card.program != "senior-dev" || card.report != "submitted the parser change" || !card.hidden() {
+					t.Fatalf("quiet program lost ending: %+v", card)
 				}
-				if strings.Contains(got, "the guide was read") {
-					t.Fatalf("opening senior-dev's card opened its sibling's output:\n%s", got)
+				if sibling := a.doneCardFor(8); sibling == nil || sibling.report != "the guide was read" {
+					t.Fatal("quiet batch lost sibling output")
+				}
+				if got := taskText(a); strings.Contains(got, "submitted the parser change") || strings.Contains(got, "the guide was read") {
+					t.Fatalf("batch outputs duplicated chat: %s", got)
 				}
 			}
 			assertEnding()
-			drive(t, a, key("ctrl+o"))
-			if got := taskText(a); strings.Contains(got, "submitted the parser change") || !strings.Contains(got, "2 tasks done") {
-				t.Fatalf("closing the batch did not restore its compact row:\n%s", got)
-			}
-			drive(t, a, key("ctrl+o"))
-			assertEnding()
+
 			a.turn = 2
 			a.entries = append(a.entries,
 				entry{kind: entryTool, tool: "read", status: toolOK, turn: 2},

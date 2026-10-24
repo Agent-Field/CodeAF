@@ -74,6 +74,8 @@ func (a *app) openPlanRoom(page session.PlanTaskPage) tea.Cmd {
 	if a.startingChat() {
 		a.parkChatStart()
 	}
+	// Opening a task explicitly restores its run view after a tab dismissal.
+	delete(a.tabShut, a.frontTabKey()+"#work")
 	id := strings.TrimSpace(page.Row.ID)
 	title := strings.TrimSpace(page.Row.Title)
 	room := a.newRoom(planRailNodeID(id), title)
