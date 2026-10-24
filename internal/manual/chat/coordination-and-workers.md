@@ -1,0 +1,106 @@
+# Coordination and workers
+
+## Relay directory upgrade pauses and saved chats
+
+A relay directory upgrade can briefly pause pairing and chat moves. Retry after the relay is ready. The upgrade refusal is `codeaf: directory upgrade is incomplete; retry shortly; saved chats are still here`. It does not delete saved chats, files, branches or the encrypted vault. The relay keeps the old directory as a backup and never makes it a second writer after the new directory takes over. A row that cannot be copied safely leaves the upgrade paused for the operator; it is never truncated to make it fit.
+
+
+## Joined computers, learner capacity and an outdated build
+
+An open, paired home with sync on joins a self-hosted `codeaf relay --store <dir>` as a durable learner. Its store lives under the home, and reopening reuses its node. Losing that store enrolls a fresh node and retires the old authority. The three anchors remain the only voters, so neither laptop needs to stay awake. Joining starts while the paired home is open, or when you ask for `codeaf cluster status`.
+
+If joining has no new data to apply, the client keeps its store for the next retry round instead of polling continuously. A status activation can say `this computer is still joining the cluster; retry shortly; your saved chats are still here`.
+
+The membership protocol admits at most 32 live learners and retains retired records instead of reusing their authority. A protocol mismatch says `this codeaf build must be updated before it can join this cluster; your saved chats are still here`. Its capacity refusal is `this cluster has reached its enrollment limit; remove a joined computer or ask the relay operator for capacity`. A worker setup command is not available through the production client yet.
+
+## Which computer coordinates: cluster status and cluster lead
+
+`codeaf cluster status` on a self-hosted `codeaf relay` with storage reports the committed voters and current leader after a fresh majority read. A paired computer joins as a learner with persistent storage before status shows its node. Readiness requires its own durable application through the advertised join position. Status names `this computer`, `learning computers` and `ready computers` when known, alongside `voting computers` and the coordinator. `codeaf cluster lead` on an unjoined computer says `this computer must join the cluster with persistent storage before it can lead`.
+
+Leadership is not offered yet on any relay. A direct leadership request to the self-hosted relay is refused without changing membership. The hosted relay has no cluster control door and says `this relay does not offer cluster leadership yet; your saved chats are still here`. Ordinary chat sync remains available.
+
+Do not treat pairing or a saved leadership request as a successful transfer. Success requires the selected computer to be elected, commit its current term and pass a fresh majority read; its receipt names the computer, term, revision and read barrier. Retrying `codeaf cluster lead` preserves an already saved signed request. Continue chats through the ordinary continue door.
+
+Three voters tolerate one unavailable member. Losing a majority pauses coordination; saved chats remain. The refusal is `this cluster cannot coordinate right now; reconnect enough of its voting computers and try again; your saved chats are still here`.
+
+## Does an open connection keep my chat running on this computer?
+
+The sync connection carries presence hints and committed lease acknowledgments. An open socket or an answered ping alone cannot keep ownership of a chat. codeaf skips an ordinary heartbeat only while it has a recent acknowledgment for that exact chat and ownership number, with enough time left before expiry. Without that acknowledgment it keeps sending ordinary heartbeats. A delayed acknowledgment for an earlier owner cannot take the chat back, and a delayed renewal cannot undo a clean quit.
+
+## Does syncing keep sending requests when nothing is happening?
+
+A home that has never paired sends no sync traffic. `CODEAF_SYNC_URL=off` also blocks new sync requests from clients that were opened before the setting changed. Presence pings on an open view are hints; they do not write chat ownership. On the native relay, an open idle home uses its learner’s applied vault pointer to notice shared memory and preference changes. Local edits are detected locally and pushed on the next state round. A caught-up idle home sends no recurring state polls or peer keepalives. Home also follows its local applied directory for display changes; its roster and backstop read that same local hint. Quiet neighbours’ presence can age out without forcing a network ping. Continuing a chat and all ownership decisions still use fresh majority reads. A committed change wakes peer delivery and the next state round pulls the changed vault. The hosted relay has no learner door and keeps its existing five-second state polling. On the consensus directory, a group with no work or held chats can stop its periodic coordination timer after an idle barrier has reached every voter. The first operation wakes coordination and must obtain a fresh majority response. A saved leader address cannot answer that operation by itself. Losing the majority leaves syncing unavailable and keeps local work intact.
+
+## Can a worker access all my chats or approve pairing?
+
+A delegated worker uses its own key and an expiring certificate naming selected chats. It receives only sealed grants for those chats, rather than the full exported identity. It cannot approve pairing, rotate the identity, read the identity vault, enroll other devices or request leadership. Richer capabilities, worker labels and execution credentials stay encrypted; only the existing platform and sandbox capability shape is readable by the relay.
+
+Worker setup and assignment execution are not available as a terminal command yet. Registration and a fresh signed heartbeat only record availability; they never start tools or give the worker ownership of a chat. Removing a worker blocks later requests after that removal commits. Expiry and removal cannot take back bytes the worker already downloaded.
+
+## Worker restarts, draining and learner metadata visibility
+
+A worker restart registers a newer process number. Delayed requests and heartbeats from its previous process cannot refresh availability or save work. A drained worker cannot receive new claims; already held work can still save and let go. Restarting does not clear draining. Expired and removed enrollment records remain retained; reaching their capacity limit refuses new enrollment instead of deleting records or saved chats.
+
+A scoped API worker does not join the coordination log. Joining as a learner requires explicit consent in its certificate: the full log reveals identity-wide routing and ownership metadata, while chat content, names and task instructions remain encrypted. Use scoped API access for an untrusted third-party worker. A delegated learner gets no vote and cannot become leader. The production client does not yet activate delegated learners; selected API access is available without joining the log. Existing paired personal computers keep their shared-root trust model.
+
+
+## How does a worker claim an assignment or run parallel tasks?
+
+The coordination service accepts an explicit selected chat and target worker. Instructions and credentials stay encrypted. Registration and availability alone cannot start work: the worker first downloads the saved chat, then commits a conditional claim for the assigned chat's observed holder and fence. Continuing that same observed chat elsewhere competes with the claim; only one can win. A changed assignment, expired delegation, drained worker or newer worker process can refuse the claim. A claim returns the committed head, which the worker finishes downloading before opening it.
+
+Parallel tasks use distinct child chats, each with its own holder. Finishing a child records its already published result; incorporating that result into the parent still requires the parent's current holder and fence. The worker uploads the complete saved result before publishing its head. Leadership needs neither those files nor their keys.
+
+Worker setup and assignment execution are not available as a terminal command yet. The internal worker adapter supports a small scripted worker; phone controls and creating remote machines come later.
+
+## Will an interrupted worker replay tools after a crash or reassignment?
+
+No. The worker saves its claim request before sending it and records an execution intent before invoking tools. A lost coordination reply can retry that same request, retaining its original fence. Once execution may have started, reopening keeps the records and reports `this work may be incomplete; its saved records have been kept`. It never invokes that attempt again automatically. A recorded finish can retry its coordination acknowledgment without running tools.
+
+Reassignment changes the run revision and requires a new conditional claim. The replacement can recover saved records, but the scripted adapter refuses automatic execution of a reassigned run. Missing or incomplete calls are not instructions to execute them. Cancellation prevents future claims; stopping a claimed assignment does not cancel an already running shell process. Another take changes the fence and blocks the displaced holder from publishing. Already downloaded bytes and uploaded frames stay retained.
+
+## Why can an older computer list chats but not continue a chat that is still running?
+
+Older builds can still list, save, publish and release chats through a compatible relay. A relay using quorum-backed coordination refuses an older request that tries to take a live chat without naming its observed holder and ownership number. It uses the existing refusal, `another device continued this chat first`; an old build does not necessarily show an extra update hint. Quit on the computer holding the chat before continuing it elsewhere, or update codeaf on the computer trying to continue. A released or expired chat can still be taken. A conditional choice never silently changes to a newer holder.
+
+
+## Hosting a relay with persistent storage
+
+`codeaf relay --store <dir>` serves pairing, encrypted files and the chat directory
+with one command. Each identity uses three local persistent coordination copies,
+with separate databases under `<dir>/raft/`. Changes and authority reads require
+a fresh majority response. All three copies still depend on this computer and
+its disk; this setup does not survive losing the relay host. Without `--store`,
+the relay is only a transport and pairing mailbox.
+
+On first use, an existing directory is frozen, copied into the three stores and
+checked through a majority before requests resume. The original directory stays
+as a frozen backup under `<dir>/directory/`. An interrupted upgrade resumes with
+the same identity and stores; an incomplete or damaged import refuses requests
+instead of reopening the old writer. Keep the whole store directory when
+restarting or backing up the relay. Chat content stays encrypted in the existing
+blob store. No switch selects the former directory writer.
+
+Encoded directory commands currently have a 64 KiB limit; a larger older request
+can be refused before it changes ownership. Larger imported records stay retained.
+
+## Hosted relay directory upgrade and older clients
+
+The hosted relay records directory changes on three persistent members. Two must
+agree before a take, publish or fresh listing succeeds. Pairing one or two
+computers does not require either computer to stay awake. The three hosted copies
+still depend on the same hosting provider and relay connection.
+
+An existing identity upgrades on first authenticated use. An interrupted upgrade
+can briefly ask you to retry; it keeps the saved directory and encrypted frames.
+The old directory never becomes a second writer. Older clients keep pairing,
+listing, publishing, releasing and continuing a chat they observed. A very old
+client that blindly forces a live chat receives `another device continued this chat first`.
+Quit on the holder first, or update that client before continuing a live chat.
+Watch sockets show presence; older clients still send their normal heartbeats.
+
+
+## Scoped worker requests and committed watch receipts
+
+The relay's selected-worker API accepts an original signed command or a signed request for one chat or assignment. A delegated worker receives only its selected sealed grant. Each read commits current time, waits for a fresh majority response and checks its current scope and process number. A retained claim alone cannot authorize execution after another computer takes the chat. A worker cannot use this API to pair computers, rotate the identity or promote itself.
+
+Native and hosted watch connections carry committed receipts to clients that ask for them. Each receipt names the exact chat and ownership number, durable position and hold-until time. Older clients receive their original version and presence frames and keep ordinary heartbeats. A ping without a receipt cannot suppress those heartbeats. A released chat cannot be revived by a delayed ping. Idle presence pings do not start a recurring directory request loop.
