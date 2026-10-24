@@ -71,8 +71,11 @@ Only entries targeted at the caller, unclaimed `any` entries, or `any` entries
 claimed by the caller are listed. A list does not claim or change a chat lease.
 
 `POST /v1/clients/{device}/queue/{number}/claim` by a full device atomically
-claims an `any` entry; success 204, same claimer repeat 204, another claimer
-409 `claimed`. A targeted entry is claimable only by its target. Claims persist
+claims an `any` entry; success 204. An optional signed JSON body
+`{"token":"64 lowercase hexadecimal characters"}` binds ownership to one process.
+Only that same device/token can recover its claim (204); a fresh token or a
+repeat without a token returns 409 `claimed`. Queue listings never disclose the
+token. A targeted entry is claimable only by its target. Claims persist
 until ack or expiry; the relay never automatically reassigns work after a crash.
 An executor must claim before running. This prevents competing boxes executing
 the same entry; durable executor-side idempotency is still required after a crash.
@@ -211,3 +214,13 @@ path, after claiming, so a sibling arriving during the claim is covered too.
 This includes a whole consent batch and a different
 ask selected by `batch_item`. Without it the call is refused before any consent
 is answered, and the paired-client refusal is kept in the chat with “Face ID”.
+
+## One local runner at a time
+
+The runner holds an exclusive OS lock beside its state file until it closes.
+Another process using that home fails immediately with “client runner state
+already open”. The runner persists a random ownership token in a `claiming`
+receipt before requesting the claim. If the reply is lost, restart recovers
+with that token; another process with separate state cannot reuse the claim.
+After ownership is confirmed, a durable `started` receipt precedes dispatch.
+Restart acknowledges a started call without executing it again.

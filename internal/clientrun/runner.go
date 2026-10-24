@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
 	"golang.org/x/crypto/nacl/box"
 )
@@ -38,6 +40,7 @@ type Config struct {
 // Runner serializes rounds while keeping settings available during a call.
 // No paired clients means no directory reads, engine calls, or running timers.
 type Runner struct {
+	lock    *os.File
 	cfg     Config
 	run     sync.Mutex
 	mu      sync.Mutex
@@ -63,6 +66,28 @@ func Open(cfg Config) (*Runner, error) {
 		cfg.HTTP = &http.Client{Timeout: 30 * time.Second}
 	}
 	r := &Runner{cfg: cfg, changed: make(chan struct{}, 1), hashes: map[string]publication{}}
+	if err := os.MkdirAll(filepath.Dir(StatePath(cfg.Home)), 0700); err != nil {
+		return nil, err
+	}
+	lock, err := os.OpenFile(StatePath(cfg.Home)+".lock", os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return nil, err
+	}
+	if err := filelock.Lock(lock, true, true); err != nil {
+		lock.Close()
+		if filelock.IsBusy(err) {
+			return nil, fmt.Errorf("client runner state already open: %s", StatePath(cfg.Home))
+		}
+		return nil, err
+	}
+	// The separate lock inode survives atomic replacement of runner.json.
+	r.lock = lock
+	opened := false
+	defer func() {
+		if !opened {
+			_ = r.Close()
+		}
+	}()
 	raw, err := os.ReadFile(StatePath(cfg.Home))
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
@@ -78,7 +103,23 @@ func Open(cfg Config) (*Runner, error) {
 	if r.state.Receipts == nil {
 		r.state.Receipts = map[string]Receipt{}
 	}
+	opened = true
 	return r, nil
+}
+
+// Close waits for the current round and releases the process lock. The caller
+// cancels and joins Run first so no later round can use the closed state.
+func (r *Runner) Close() error {
+	r.run.Lock()
+	defer r.run.Unlock()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.lock == nil {
+		return nil
+	}
+	err := r.lock.Close()
+	r.lock = nil
+	return err
 }
 
 // StatePath names the executor's local pairing and receipt file.
@@ -131,6 +172,9 @@ func (r *Runner) Run(ctx context.Context) {
 func (r *Runner) Step(ctx context.Context) error {
 	r.run.Lock()
 	defer r.run.Unlock()
+	if r.lock == nil {
+		return errors.New("client runner is closed")
+	}
 	clients := r.active()
 	if len(clients) == 0 {
 		return nil

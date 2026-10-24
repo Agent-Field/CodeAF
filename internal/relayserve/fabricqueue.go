@@ -1,9 +1,11 @@
 package relayserve
 
 import (
+	"encoding/hex"
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/clientproto"
 
@@ -99,7 +101,10 @@ func listQueue(c fabricCall) (any, error) {
 	}
 	entries := []queueEntry{}
 	for _, e := range s.Queue {
-		if (e.Target == "any" || e.Target == c.dev) && (e.ClaimedBy == "" || e.ClaimedBy == c.dev) {
+		owner, _, _ := strings.Cut(e.ClaimedBy, ":")
+		if (e.Target == "any" || e.Target == c.dev) && (owner == "" || owner == c.dev) {
+			// Ownership tokens stay private to the original claiming process.
+			e.ClaimedBy = owner
 			entries = append(entries, e)
 		}
 	}
@@ -115,8 +120,22 @@ func changeQueue(c fabricCall, ack bool) (any, error) {
 	if err := c.target(false); err != nil {
 		return nil, err
 	}
+	token := ""
 	if len(c.body) != 0 {
-		return nil, badFabric(400, "bad_request")
+		var claim struct {
+			Token string `json:"token"`
+		}
+		if ack {
+			return nil, badFabric(400, "bad_request")
+		}
+		if err := decodeFabric(c.body, &claim); err != nil {
+			return nil, err
+		}
+		decoded, err := hex.DecodeString(claim.Token)
+		if err != nil || len(decoded) != 32 || hex.EncodeToString(decoded) != claim.Token {
+			return nil, badFabric(400, "bad_request")
+		}
+		token = claim.Token
 	}
 	text := c.r.PathValue("number")
 	number, err := strconv.ParseInt(text, 10, 64)
@@ -135,13 +154,18 @@ func changeQueue(c fabricCall, ack bool) (any, error) {
 	if e.Target != "any" && e.Target != c.dev {
 		return nil, wireauth.ErrUnauthorized
 	}
-	if (e.ClaimedBy != "" && e.ClaimedBy != c.dev) || (ack && e.ClaimedBy != c.dev) {
+	owner, _, _ := strings.Cut(e.ClaimedBy, ":")
+	claim := c.dev
+	if token != "" {
+		claim += ":" + token
+	}
+	if (!ack && e.ClaimedBy != "" && (token == "" || e.ClaimedBy != claim)) || (ack && owner != c.dev) {
 		return nil, badFabric(409, "claimed")
 	}
 	if ack {
 		s.Queue = slices.Delete(s.Queue, index, index+1)
 	} else {
-		e.ClaimedBy = c.dev
+		e.ClaimedBy = claim
 	}
 	return nil, c.save(s)
 }

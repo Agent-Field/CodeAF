@@ -15,10 +15,14 @@ func TestRunnerBacksOffFailuresUsingItsClock(t *testing.T) {
 	g.pair(t, "asks.answer")
 	durations := make(chan time.Duration, 4)
 	ticks := make(chan time.Time)
+	if err := g.r.Close(); err != nil {
+		t.Fatal(err)
+	}
 	r, err := clientrun.Open(clientrun.Config{Home: g.state, Relay: g.url, Signer: g.s, Directory: g.dir, Engine: g.e, Log: noopLog, Now: func() time.Time { return g.now }, HTTP: &http.Client{Transport: transport(func(*http.Request) (*http.Response, error) { return nil, errors.New("offline") })}, After: func(d time.Duration) <-chan time.Time { durations <- d; return ticks }})
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = r.Close() })
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	done := make(chan struct{})

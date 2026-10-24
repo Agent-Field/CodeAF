@@ -23,10 +23,14 @@ type transport func(*http.Request) (*http.Response, error)
 func (f transport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 func (g *rig) reopen(t *testing.T, tr http.RoundTripper, log func(clientrun.Receipt) error) {
 	t.Helper()
+	if err := g.r.Close(); err != nil {
+		t.Fatal(err)
+	}
 	r, err := clientrun.Open(clientrun.Config{Home: g.state, Relay: g.url, Signer: g.s, Directory: g.dir, Engine: g.e, HTTP: &http.Client{Transport: tr}, Now: func() time.Time { return g.now }, Log: log})
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = r.Close() })
 	g.r = r
 }
 func noopLog(clientrun.Receipt) error { return nil }

@@ -2,6 +2,7 @@ package clientrun
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 
@@ -17,6 +18,7 @@ type state struct {
 // Receipt is durable before dispatch and finished afterward. A begun call is
 // never dispatched again after a crash: its effect may already have happened.
 type Receipt struct {
+	ClaimToken     string `json:"claim_token,omitempty"`
 	SkippedFrom    int64  `json:"skipped_from,omitempty"`
 	SkippedThrough int64  `json:"skipped_through,omitempty"`
 	Digest         string `json:"digest"`
@@ -32,6 +34,9 @@ type Receipt struct {
 // save replaces the state durably. The caller holds mu, so settings and
 // receipts cannot overwrite each other's update.
 func (r *Runner) save() error {
+	if r.lock == nil {
+		return errors.New("client runner is closed")
+	}
 	path := StatePath(r.cfg.Home)
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err

@@ -56,6 +56,7 @@ func (b *appBackend) startPairedClients() {
 		b.clientArchive.Store(local)
 		return
 	}
+	_ = local.Close()
 	if _, err := b.clients(); err != nil {
 		b.emit.Emit(appwire.EventLog, appwire.Log{Level: "warn", Message: "paired clients could not start"})
 	}
@@ -206,5 +207,11 @@ func (b *appBackend) stopClients() {
 	}()
 	if done != nil {
 		<-done
+	}
+	if r := b.clientRunner.Load(); r != nil {
+		_ = r.Close()
+	}
+	if r := b.clientArchive.Load(); r != nil {
+		_ = r.Close()
 	}
 }

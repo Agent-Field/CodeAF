@@ -2,6 +2,7 @@ package clientrun
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -92,16 +93,26 @@ func (r *Runner) execute(ctx context.Context, c Client, e Queued) error {
 	if err != nil {
 		return err
 	}
-	if !known {
+	if !known || receipt.Status == "claiming" {
 		if err := r.checkAsk(call, agent); err != nil {
 			refusal := Receipt{Client: c.ID, Number: e.Number, Agent: agent, Method: call.Method, At: r.cfg.Now().UTC().Format(time.RFC3339Nano), Status: "refused", Reason: err.Error()}
 			return errors.Join(err, r.log(refusal))
 		}
 	}
-	if err := r.request(ctx, "POST", queuePath(c.ID, e.Number)+"/claim", nil, nil); err != nil {
-		return err
-	}
-	if !known {
+	if !known || receipt.Status == "claiming" {
+		if !known {
+			token := make([]byte, 32)
+			if _, err := rand.Read(token); err != nil {
+				return err
+			}
+			receipt = Receipt{Client: c.ID, Number: e.Number, Agent: agent, Method: call.Method, At: r.cfg.Now().UTC().Format(time.RFC3339Nano), Status: "claiming", Digest: proofDigest(e), ClaimToken: hex.EncodeToString(token), SkippedFrom: receipt.SkippedFrom, SkippedThrough: receipt.SkippedThrough}
+			if err := r.keep(receipt); err != nil {
+				return err
+			}
+		}
+		if err := r.request(ctx, "POST", queuePath(c.ID, e.Number)+"/claim", map[string]string{"token": receipt.ClaimToken}, nil); err != nil {
+			return err
+		}
 		// Claims do not authorize a displaced or revoked executor. Check again
 		// after the round trip before recording and dispatching the mutation.
 		if err := r.admit(ctx, c, e, agent); err != nil {
@@ -117,10 +128,11 @@ func (r *Runner) execute(ctx context.Context, c Client, e Queued) error {
 		return err
 	}
 	ackErr := r.request(ctx, "DELETE", queuePath(c.ID, e.Number), nil, nil)
+	var callErr error
 	if receipt.Status == "failed" {
-		return errors.Join(errors.New(receipt.Reason), ackErr)
+		callErr = errors.New(receipt.Reason)
 	}
-	return ackErr
+	return errors.Join(callErr, ackErr)
 }
 
 func (r *Runner) prepare(ctx context.Context, c Client, e Queued) (Call, string, error) {
@@ -145,7 +157,7 @@ func (r *Runner) prepare(ctx context.Context, c Client, e Queued) (Call, string,
 }
 
 func (r *Runner) dispatch(c Client, e Queued, call Call, agent string, skipped Receipt) (Receipt, error) {
-	receipt := Receipt{SkippedFrom: skipped.SkippedFrom, SkippedThrough: skipped.SkippedThrough, Client: c.ID, Number: e.Number, Agent: agent, Method: call.Method, At: r.cfg.Now().UTC().Format(time.RFC3339Nano), Status: "started", Digest: proofDigest(e)}
+	receipt := Receipt{ClaimToken: skipped.ClaimToken, SkippedFrom: skipped.SkippedFrom, SkippedThrough: skipped.SkippedThrough, Client: c.ID, Number: e.Number, Agent: agent, Method: call.Method, At: r.cfg.Now().UTC().Format(time.RFC3339Nano), Status: "started", Digest: proofDigest(e)}
 	if err := r.keep(receipt); err != nil {
 		return receipt, err
 	}
