@@ -114,6 +114,9 @@ func applyLeadership(c Command, meta ApplicationMeta, rows map[RecordKey][]byte,
 		if Decode(rows[MemberKey(v.Node)], &member) != nil {
 			return NotFound
 		}
+		if member.Worker {
+			return Unauthorized
+		}
 		if member.Anchor || member.Retired || member.Protocol != ClusterProtocol || member.ReadyIndex == 0 || member.Node != v.Node || member.Device != v.Device {
 			return Conflict
 		}
@@ -121,7 +124,7 @@ func applyLeadership(c Command, meta ApplicationMeta, rows map[RecordKey][]byte,
 		// checked independently of the owner who requests the transfer.
 		var auth Authority
 		var device Device
-		if Decode(rows[AuthorityKey(member.Device)], &auth) != nil || !auth.Personal || auth.Anchor || auth.Effects || auth.Cluster != c.Cluster {
+		if Decode(rows[AuthorityKey(member.Device)], &auth) != nil || !auth.ValidRole() || !auth.Personal || auth.Anchor || auth.Effects || auth.Cluster != c.Cluster {
 			return Unauthorized
 		}
 		if b := rows[DeviceKey(member.Device)]; b != nil {

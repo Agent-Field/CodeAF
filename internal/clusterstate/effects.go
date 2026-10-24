@@ -19,10 +19,12 @@ const (
 // store before proposing it; neither a personal device nor a worker can mint it.
 // Frames remain the existing incremental hint, not a plaintext closure manifest.
 type UploadReceipt struct {
-	Device  string   `json:"device"`
-	Head    string   `json:"head"`
-	HeadRID string   `json:"head_rid"`
-	Frames  []string `json:"frames,omitempty"`
+	Cell              string   `json:"cell,omitempty"`
+	WorkerIncarnation uint64   `json:"worker_incarnation,omitempty"`
+	Device            string   `json:"device"`
+	Head              string   `json:"head"`
+	HeadRID           string   `json:"head_rid"`
+	Frames            []string `json:"frames,omitempty"`
 }
 type AdmitJoin struct {
 	Code      string `json:"code"`
@@ -56,9 +58,9 @@ func IdentityID(public []byte) string {
 	return "id_" + hex.EncodeToString(h[:16])
 }
 
-func validReceipt(rows map[RecordKey][]byte, id, actor, head string, frames []string) bool {
+func validReceipt(rows map[RecordKey][]byte, id, actor, head string, frames []string, cell string, incarnation uint64) bool {
 	var r UploadReceipt
-	return id != "" && Decode(rows[UploadKey(id)], &r) == nil && UploadID(r) == id && r.Device == actor && r.Head == head && reflect.DeepEqual(normalFrames(r.Frames), normalFrames(frames))
+	return id != "" && Decode(rows[UploadKey(id)], &r) == nil && UploadID(r) == id && r.Device == actor && r.Head == head && (incarnation == 0 || r.Cell == cell && r.WorkerIncarnation == incarnation) && reflect.DeepEqual(normalFrames(r.Frames), normalFrames(frames))
 }
 func normalFrames(f []string) []string {
 	if len(f) == 0 {
@@ -119,8 +121,24 @@ func applyEffect(c Command, now int64, rows map[RecordKey][]byte, put func(Recor
 		if d.Revoked {
 			return Revoked
 		}
-		if Decode(rows[AuthorityKey(r.Device)], &auth) != nil || !auth.Personal || auth.Cluster != c.Cluster {
+		if Decode(rows[AuthorityKey(r.Device)], &auth) != nil || !auth.ValidRole() || auth.Cluster != c.Cluster || !auth.Personal && auth.Worker == nil {
 			return Unauthorized
+		}
+		if auth.Worker != nil {
+			var identity IdentityRec
+			if Decode(rows[IdentityKey()], &identity) != nil {
+				return BadRequest
+			}
+			a, w, code := workerFromRows(c.Cluster, r.Device, now, identity, rows)
+			if code != OK {
+				return code
+			}
+			if r.WorkerIncarnation == 0 || r.WorkerIncarnation != w.Incarnation {
+				return Conflict
+			}
+			if !a.Worker.Allows(r.Cell) {
+				return Unauthorized
+			}
 		}
 		k := UploadKey(UploadID(r))
 		if rows[k] == nil {

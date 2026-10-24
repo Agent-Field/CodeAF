@@ -28,22 +28,27 @@ var (
 // client sequence. Signature authentication and committed authorization belong
 // to ingress and apply respectively; decoding alone grants no authority.
 type Command struct {
-	Schema        uint16   `json:"schema"`
-	Cluster       string   `json:"cluster"`
-	Actor         string   `json:"actor"`
-	Session       string   `json:"session"`
-	Sequence      uint64   `json:"sequence"`
-	RequestDigest string   `json:"request_digest"`
-	Ack           uint64   `json:"ack,omitempty"`
-	Now           int64    `json:"now"`
-	Change        Mutation `json:"change"`
-	Signature     []byte   `json:"signature"`
+	WorkerIncarnation uint64   `json:"worker_incarnation,omitempty"`
+	Schema            uint16   `json:"schema"`
+	Cluster           string   `json:"cluster"`
+	Actor             string   `json:"actor"`
+	Session           string   `json:"session"`
+	Sequence          uint64   `json:"sequence"`
+	RequestDigest     string   `json:"request_digest"`
+	Ack               uint64   `json:"ack,omitempty"`
+	Now               int64    `json:"now"`
+	Change            Mutation `json:"change"`
+	Signature         []byte   `json:"signature"`
 }
 
 // Mutation is a closed union: exactly one field is present. Future packets add
 // their typed operations here; unknown fields fail decoding on older members.
 // There is no arbitrary JSON payload in which task text or secrets can hide.
 type Mutation struct {
+	EnrollWorker       *EnrollWorker       `json:"enroll_worker,omitempty"`
+	RegisterWorker     *RegisterWorker     `json:"register_worker,omitempty"`
+	WorkerBeatBatch    *WorkerBeatBatch    `json:"worker_beat_batch,omitempty"`
+	DrainWorker        *DrainWorker        `json:"drain_worker,omitempty"`
 	RenewHolds         *RenewHolds         `json:"renew_holds,omitempty"`
 	PrepareQuiescence  *PrepareQuiescence  `json:"prepare_quiescence,omitempty"`
 	CompleteLeadership *CompleteLeadership `json:"complete_leadership,omitempty"`
@@ -146,6 +151,7 @@ type DeviceSeen struct {
 // no free-form diagnostic text, so logging a refusal cannot disclose payloads.
 // Now and Version are application time/version, never a local clock/Raft index.
 type Result struct {
+	Workers    []WorkerResult    `json:"workers,omitempty"`
 	Index      uint64            `json:"index,omitempty"`
 	Membership *MembershipResult `json:"membership,omitempty"`
 	Schema     uint16            `json:"schema"`

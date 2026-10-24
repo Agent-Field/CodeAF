@@ -37,14 +37,16 @@ func hasID(ids []uint64, id uint64) bool {
 // MemberRecord contains protocol authority only. Retired IDs are never deleted;
 // a device that rejoins receives a fresh ID and a fresh transport incarnation.
 type MemberRecord struct {
-	Node        uint64 `json:"node"`
-	Device      string `json:"device"`
-	Key         []byte `json:"key"`
-	Incarnation uint64 `json:"incarnation"`
-	Protocol    uint16 `json:"protocol"`
-	Anchor      bool   `json:"anchor"`
-	Retired     bool   `json:"retired"`
-	ReadyIndex  uint64 `json:"ready_index"`
+	Worker        bool   `json:"worker,omitempty"`
+	WorkerExpires int64  `json:"worker_expires,omitempty"`
+	Node          uint64 `json:"node"`
+	Device        string `json:"device"`
+	Key           []byte `json:"key"`
+	Incarnation   uint64 `json:"incarnation"`
+	Protocol      uint16 `json:"protocol"`
+	Anchor        bool   `json:"anchor"`
+	Retired       bool   `json:"retired"`
+	ReadyIndex    uint64 `json:"ready_index"`
 }
 type MembershipIntent struct {
 	Node     uint64 `json:"node"`
@@ -147,12 +149,12 @@ func applyMembership(c Command, meta ApplicationMeta, rows map[RecordKey][]byte,
 		seen := map[string]bool{}
 		h = Membership{Revision: 1, Index: meta.Index, Limit: v.Limit}
 		for i, a := range v.Anchors {
-			if !validNode(a.Node) || !validNode(a.Node+1) || i > 0 && a.Node <= v.Anchors[i-1].Node || !hasID(meta.Configuration.Voters, a.Node) || len(a.Key) != ed25519.PublicKeySize || seen[string(a.Key)] || a.Device != "" || !a.Anchor || a.Retired || a.Incarnation != 1 || a.Protocol != ClusterProtocol || a.ReadyIndex != 0 || rows[MemberKey(a.Node)] != nil {
+			if !validNode(a.Node) || !validNode(a.Node+1) || i > 0 && a.Node <= v.Anchors[i-1].Node || !hasID(meta.Configuration.Voters, a.Node) || len(a.Key) != ed25519.PublicKeySize || seen[string(a.Key)] || a.Device != "" || !a.Anchor || a.Worker || a.WorkerExpires != 0 || a.Retired || a.Incarnation != 1 || a.Protocol != ClusterProtocol || a.ReadyIndex != 0 || rows[MemberKey(a.Node)] != nil {
 				return BadRequest
 			}
 			var old Authority
 			if b := rows[AuthorityKey(AnchorActor(a.Node))]; b != nil {
-				if Decode(b, &old) != nil || !old.Anchor || old.Personal || old.Effects || old.Cluster != c.Cluster || !bytes.Equal(old.Key, a.Key) {
+				if Decode(b, &old) != nil || !old.ValidRole() || !old.Anchor || old.Personal || old.Effects || old.Cluster != c.Cluster || !bytes.Equal(old.Key, a.Key) {
 					return Conflict
 				}
 			}
@@ -190,7 +192,7 @@ func applyMembership(c Command, meta ApplicationMeta, rows map[RecordKey][]byte,
 		var authority Authority
 		var device Device
 		var prior DeviceMember
-		if Decode(rows[AuthorityKey(v.Device)], &authority) != nil || authority.Cluster != c.Cluster || !authority.Personal || authority.Effects || len(authority.Key) != ed25519.PublicKeySize {
+		if Decode(rows[AuthorityKey(v.Device)], &authority) != nil || authority.Cluster != c.Cluster || !authority.ValidRole() || !authority.Personal && authority.Worker == nil || len(authority.Key) != ed25519.PublicKeySize {
 			return Unauthorized
 		}
 		if b := rows[DeviceKey(v.Device)]; b != nil {
@@ -200,6 +202,23 @@ func applyMembership(c Command, meta ApplicationMeta, rows map[RecordKey][]byte,
 			if device.Revoked {
 				return Revoked
 			}
+		}
+		incarnation := uint64(1)
+		workerExpires := int64(0)
+		if authority.Worker != nil {
+			var identity IdentityRec
+			if Decode(rows[IdentityKey()], &identity) != nil {
+				return BadRequest
+			}
+			_, w, code := workerFromRows(c.Cluster, v.Device, result.Now, identity, rows)
+			if code != OK {
+				return code
+			}
+			if !authority.Worker.Learner || w.Incarnation == 0 || w.Draining {
+				return Unauthorized
+			}
+			incarnation = w.Incarnation
+			workerExpires = authority.Worker.Expires
 		}
 		if b := rows[MemberDeviceKey(v.Device)]; b != nil {
 			if Decode(b, &prior) != nil {
@@ -227,7 +246,7 @@ func applyMembership(c Command, meta ApplicationMeta, rows map[RecordKey][]byte,
 		h.Live++
 		h.Nodes = append(h.Nodes, node)
 		h.Pending = &MembershipIntent{Node: node, Revision: h.Revision}
-		put(MemberKey(node), MemberRecord{Node: node, Device: v.Device, Key: bytes.Clone(authority.Key), Incarnation: 1, Protocol: ClusterProtocol})
+		put(MemberKey(node), MemberRecord{Node: node, Device: v.Device, Key: bytes.Clone(authority.Key), Incarnation: incarnation, Protocol: ClusterProtocol, Worker: authority.Worker != nil, WorkerExpires: workerExpires})
 		put(MemberDeviceKey(v.Device), DeviceMember{Node: node})
 		put(MembershipKey(), h)
 		result.Membership = &MembershipResult{Node: node, Revision: h.Revision}
@@ -352,7 +371,7 @@ func AnchorEnrollments(anchors []MemberRecord, voters []uint64) ([]PeerEnrollmen
 	seen := map[string]bool{}
 	peers := []PeerEnrollment{}
 	for i, m := range anchors {
-		if !validNode(m.Node) || i > 0 && anchors[i-1].Node >= m.Node || !hasID(voters, m.Node) || !m.Anchor || m.Device != "" || m.Retired || m.ReadyIndex != 0 || m.Protocol != ClusterProtocol || m.Incarnation != 1 || len(m.Key) != ed25519.PublicKeySize || seen[string(m.Key)] {
+		if !validNode(m.Node) || i > 0 && anchors[i-1].Node >= m.Node || !hasID(voters, m.Node) || !m.Anchor || m.Worker || m.WorkerExpires != 0 || m.Device != "" || m.Retired || m.ReadyIndex != 0 || m.Protocol != ClusterProtocol || m.Incarnation != 1 || len(m.Key) != ed25519.PublicKeySize || seen[string(m.Key)] {
 			return nil, ErrDependency
 		}
 		seen[string(m.Key)] = true
@@ -404,7 +423,7 @@ func PeerFromRecord(m MemberRecord, device []byte, conf Configuration) (PeerEnro
 	if !validNode(m.Node) || m.Protocol != ClusterProtocol || len(m.Key) != ed25519.PublicKeySize || m.Incarnation == 0 {
 		return PeerEnrollment{}, ErrDependency
 	}
-	revoked := m.Retired
+	revoked := m.Retired || m.Worker
 	if m.Device != "" && device != nil {
 		var d Device
 		if Decode(device, &d) != nil {
@@ -413,4 +432,71 @@ func PeerFromRecord(m MemberRecord, device []byte, conf Configuration) (PeerEnro
 		revoked = revoked || d.Revoked
 	}
 	return PeerEnrollment{Node: m.Node, Incarnation: m.Incarnation, Key: bytes.Clone(m.Key), Voter: hasID(conf.Voters, m.Node) || hasID(conf.Outgoing, m.Node), Revoked: revoked}, nil
+}
+
+// PeerFromRecordAt narrows worker routing using the same committed scope and
+// incarnation as application commands. A worker can never be a voting peer.
+func PeerFromRecordAt(m MemberRecord, device []byte, conf Configuration, now int64, identity IdentityRec, authority Authority, worker WorkerRecord) (PeerEnrollment, error) {
+	p, err := PeerFromRecord(m, device, conf)
+	if err != nil || !m.Worker {
+		return p, err
+	}
+	var d Device
+	if device != nil && Decode(device, &d) != nil {
+		return p, ErrDependency
+	}
+	p.Revoked = m.Retired || p.Voter || worker.Incarnation != m.Incarnation || m.WorkerExpires != authorityExpiry(authority) || workerAuthority(authority.Cluster, m.Device, now, identity, authority, d) != OK || authority.Worker == nil || !authority.Worker.Learner || !bytes.Equal(m.Key, authority.Key)
+	return p, nil
+}
+func authorityExpiry(a Authority) int64 {
+	if a.Worker != nil {
+		return a.Worker.Expires
+	}
+	return 0
+}
+
+// MembershipViewAt includes expiring delegated peers; the old metadata-only
+// view deliberately refuses them until its host supplies committed time.
+func MembershipViewAt(read ReadRecord, conf Configuration, applied uint64, now int64) (Membership, []PeerEnrollment, error) {
+	h, peers, err := MembershipView(read, conf, applied)
+	if err != nil {
+		return h, peers, err
+	}
+	for i, p := range peers {
+		var m MemberRecord
+		b, e := read(MemberKey(p.Node))
+		if e != nil {
+			return h, nil, e
+		}
+		if Decode(b, &m) != nil {
+			return h, nil, ErrDependency
+		}
+		if !m.Worker {
+			continue
+		}
+		var identity IdentityRec
+		var a Authority
+		var w WorkerRecord
+		for _, v := range []struct {
+			k    RecordKey
+			into any
+		}{{IdentityKey(), &identity}, {AuthorityKey(m.Device), &a}, {WorkerKey(m.Device), &w}} {
+			b, e = read(v.k)
+			if e != nil {
+				return h, nil, e
+			}
+			if Decode(b, v.into) != nil {
+				return h, nil, ErrDependency
+			}
+		}
+		d, e := read(DeviceKey(m.Device))
+		if e != nil {
+			return h, nil, e
+		}
+		peers[i], e = PeerFromRecordAt(m, d, conf, now, identity, a, w)
+		if e != nil {
+			return h, nil, e
+		}
+	}
+	return h, peers, nil
 }

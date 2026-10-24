@@ -50,11 +50,12 @@ func JoinKey(code string) RecordKey { return RecordKey{"outbox", "join/" + segme
 // Personal directory authority and restricted effect authority are exclusive.
 // Delegated worker scopes are admitted separately.
 type Authority struct {
-	Cluster  string `json:"cluster"`
-	Key      []byte `json:"key"`
-	Personal bool   `json:"personal"`
-	Effects  bool   `json:"effects,omitempty"`
-	Anchor   bool   `json:"anchor,omitempty"`
+	Worker   *WorkerCertificate `json:"worker,omitempty"`
+	Cluster  string             `json:"cluster"`
+	Key      []byte             `json:"key"`
+	Personal bool               `json:"personal"`
+	Effects  bool               `json:"effects,omitempty"`
+	Anchor   bool               `json:"anchor,omitempty"`
 }
 type session struct {
 	Sequence uint64 `json:"sequence"`
@@ -101,12 +102,13 @@ type Evaluation struct {
 // newer ingress time; its operation and durable sequence must remain identical.
 func Digest(c Command) (string, error) {
 	b, err := Encode(struct {
-		Cluster  string   `json:"cluster"`
-		Actor    string   `json:"actor"`
-		Session  string   `json:"session"`
-		Sequence uint64   `json:"sequence"`
-		Change   Mutation `json:"change"`
-	}{c.Cluster, c.Actor, c.Session, c.Sequence, c.Change})
+		WorkerIncarnation uint64   `json:"worker_incarnation,omitempty"`
+		Cluster           string   `json:"cluster"`
+		Actor             string   `json:"actor"`
+		Session           string   `json:"session"`
+		Sequence          uint64   `json:"sequence"`
+		Change            Mutation `json:"change"`
+	}{c.WorkerIncarnation, c.Cluster, c.Actor, c.Session, c.Sequence, c.Change})
 	if err != nil {
 		return "", err
 	}
@@ -146,6 +148,7 @@ func Dependencies(c Command) []RecordKey {
 		keys = append(keys, MembershipKey())
 	}
 	keys = append(keys, membershipDependencies(m)...)
+	keys = append(keys, workerDependencies(c)...)
 	if m.PutDevice != nil {
 		keys = append(keys, DeviceKey(m.PutDevice.ID))
 	}
@@ -263,6 +266,10 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 			target = new(Device)
 		case k.Namespace == "state" && len(k.Key) >= 5 && k.Key[:5] == "cell/":
 			target = new(Cell)
+		case k == WorkerRegistryKey():
+			target = new(WorkerRegistry)
+		case k.Namespace == "state" && len(k.Key) > 7 && k.Key[:7] == "worker/":
+			target = new(WorkerRecord)
 		case k == QuiescenceKey():
 			target = new(Quiescence)
 		case k == MembershipKey():
@@ -313,7 +320,7 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 	}
 	digest, _ := Digest(c)
 	signed, e := SigningBytes(c)
-	if e != nil || c.Cluster != meta.Cluster || auth.Cluster != c.Cluster || (!auth.Personal && !auth.Effects && !auth.Anchor) || len(auth.Key) != ed25519.PublicKeySize || !ed25519.Verify(auth.Key, signed, c.Signature) || digest != c.RequestDigest {
+	if e != nil || c.Cluster != meta.Cluster || auth.Cluster != c.Cluster || !auth.ValidRole() || len(auth.Key) != ed25519.PublicKeySize || !ed25519.Verify(auth.Key, signed, c.Signature) || digest != c.RequestDigest {
 		return out, nil
 	}
 	// Revocation precedes dedup: a saved old response cannot authorize a revoked
@@ -322,7 +329,16 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 		out.Result.Code = Revoked
 		return out, nil
 	}
-	service := c.Change.RenewHolds != nil || c.Change.RecordUpload != nil || c.Change.AdmitJoin != nil || c.Change.CompleteJoin != nil
+	// Worker incarnation and scope precede dedup so an old successful result
+	// cannot restart activity after a process replacement, expiry or revocation.
+	if auth.Worker != nil {
+		code := authorizeWorkerCommand(c, max(meta.Now, c.Now), identity, auth, rows)
+		if code != OK {
+			out.Result.Code = code
+			return out, nil
+		}
+	}
+	service := c.Change.RenewHolds != nil || c.Change.RecordUpload != nil || c.Change.AdmitJoin != nil || c.Change.CompleteJoin != nil || auth.Effects && c.Change.WorkerBeatBatch != nil
 	if service != auth.Effects || auth.Personal && auth.Effects || auth.Anchor && (auth.Personal || auth.Effects || c.Change.PrepareQuiescence == nil && c.Change.SettleMembership == nil && c.Change.SettleLeadership == nil && c.Change.CompleteLeadership == nil && c.Change.RestoreAnchors == nil && c.Change.CloseSession == nil) {
 		return out, nil
 	}
@@ -377,10 +393,14 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 		} else if c.Change.RenewHolds != nil {
 			code = renewHolds(c, out.Now, rows, put, &out.Result)
 			out.Result.Index = meta.Index
+		} else if c.Change.WorkerBeatBatch != nil {
+			code = applyWorker(c, out.Now, identity, rows, put, &out.Result)
 		} else if service {
 			code = applyEffect(c, out.Now, rows, put)
 		} else {
-			if membershipMutation(c.Change) {
+			if workerMutation(c.Change) {
+				code = applyWorker(c, out.Now, identity, rows, put, &out.Result)
+			} else if membershipMutation(c.Change) {
 				code = applyMembership(c, meta, rows, put, &out.Result)
 			} else {
 				code = applyMutation(c, out.Now, identity, rows, put, &out.Result)
@@ -639,7 +659,7 @@ func applyMutation(c Command, now int64, identity IdentityRec, rows map[RecordKe
 		if b != nil {
 			return Exists
 		}
-		if !m.Create.V1 && !validReceipt(rows, m.Create.Receipt, c.Actor, m.Create.Init.Head, m.Create.Init.Frames) {
+		if !m.Create.V1 && !validReceipt(rows, m.Create.Receipt, c.Actor, m.Create.Init.Head, m.Create.Init.Frames, id, c.WorkerIncarnation) {
 			return BadRequest
 		}
 		cell = Created(m.Create.Init, c.Actor, now)
@@ -666,7 +686,7 @@ func applyMutation(c Command, now int64, identity IdentityRec, rows map[RecordKe
 			cell, err = Heartbeat(cell, c.Actor, m.Beat.Beat, now)
 		case m.Publish != nil:
 			cell, err = PublishTo(cell, c.Actor, m.Publish.Publish, now)
-			if err == nil && !m.Publish.V1 && !validReceipt(rows, m.Publish.Receipt, c.Actor, m.Publish.Publish.Head, m.Publish.Publish.Frames) {
+			if err == nil && !m.Publish.V1 && !validReceipt(rows, m.Publish.Receipt, c.Actor, m.Publish.Publish.Head, m.Publish.Publish.Frames, id, c.WorkerIncarnation) {
 				return BadRequest
 			}
 		case m.Release != nil:
@@ -704,6 +724,9 @@ func visibleChange(k RecordKey, old, next []byte, now int64) bool {
 		return true
 	}
 	switch {
+	case k == WorkerRegistryKey() || len(k.Key) > 7 && k.Key[:7] == "worker/":
+		// Availability is advisory and does not repaint the chat listing.
+		return false
 	case len(k.Key) > 5 && k.Key[:5] == "cell/":
 		var a, b Cell
 		if Decode(old, &a) != nil || Decode(next, &b) != nil {

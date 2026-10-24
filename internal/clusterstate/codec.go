@@ -325,6 +325,11 @@ func (r Result) Validate() error {
 	if !r.Code.valid() {
 		return ErrCodec
 	}
+	for _, worker := range r.Workers {
+		if !worker.Code.valid() {
+			return ErrCodec
+		}
+	}
 	for _, item := range r.Items {
 		if !item.Code.valid() {
 			return ErrCodec
