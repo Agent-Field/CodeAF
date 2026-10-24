@@ -164,6 +164,8 @@ func (r *Runtime) Call(b []byte) (out []byte) {
 func (r *Runtime) call(op uint32, d *decoder) ([]byte, error) {
 	e := encoder{}
 	switch op {
+	case 28:
+		return assignmentRead(d)
 	case 27:
 		return workerRead(d)
 	case 23:

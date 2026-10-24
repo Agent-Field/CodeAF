@@ -1,4 +1,5 @@
 import { frame, response } from './abi.js';
+import { encodeCanonical } from './codec.js';
 
 const segment = s => [...new TextEncoder().encode(s)].map(b => b.toString(16).padStart(2, '0')).join('');
 
@@ -11,4 +12,12 @@ export function workerCell(runtime, store, cluster, worker, cell, incarnation) {
   for (const [namespace,key] of keys) w.blob(store.read(namespace,key) ?? new Uint8Array());
   const r = response(runtime.call(w.finish())), raw = r.blob(); r.end();
   return raw;
+}
+
+// The same actor-queue/current-time/quorum prerequisite as workerCell applies.
+export function workerAssignment(runtime, store, cluster, worker, incarnation, ref) {
+  const app = store.application(), w = frame(28).str(cluster).str(worker).u64(incarnation).u64(app.now).blob(new TextEncoder().encode(encodeCanonical(ref)));
+  const keys = [['state','identity'], ['enrollment','actor/' + segment(worker)], ['state','device/' + segment(worker)], ['state','worker/' + segment(worker)], ['state','cell/' + segment(ref.cell)], ['state','assignment/' + segment(ref.id)]];
+  for (const [namespace,key] of keys) w.blob(store.read(namespace,key) ?? new Uint8Array());
+  const r = response(runtime.call(w.finish())), raw = r.blob(); r.end(); return raw;
 }
