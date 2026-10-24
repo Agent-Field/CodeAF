@@ -68,6 +68,9 @@ func (s *Sync) LeadCluster(ctx context.Context, node uint64) (cs.LeadershipRecei
 		if node == 0 {
 			return receipt, errors.New("this computer must join the cluster with persistent storage before it can lead")
 		}
+		if status.LeadershipUnavailable {
+			return receipt, clusterctl.ErrUnsupported
+		}
 		if saved.Sequence == ^uint64(0) {
 			return receipt, errors.New("this computer's leadership request sequence is full")
 		}

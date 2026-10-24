@@ -260,7 +260,9 @@ The membership protocol admits at most 32 live learners and retains retired reco
 
 ## Which computer coordinates: cluster status and cluster lead
 
-`codeaf cluster status` and `codeaf cluster lead` exist, but the production personal-member door is not connected yet. The relay currently says `this relay does not offer cluster leadership yet; your saved chats are still here`. A paired API client cannot lead. A relay that provides status without a joined member says `this computer must join the cluster with persistent storage before it can lead`.
+`codeaf cluster status` on a self-hosted `codeaf relay` with storage reports the committed voters and current leader after a fresh majority read. Personal-member activation is not connected yet: pairing alone does not give this computer a node in that list. `codeaf cluster lead` on an unjoined computer says `this computer must join the cluster with persistent storage before it can lead`.
+
+Leadership is not offered yet on any relay. A direct leadership request to the self-hosted relay is refused without changing membership. The hosted relay has no cluster control door and says `this relay does not offer cluster leadership yet; your saved chats are still here`. Ordinary chat sync remains available.
 
 Do not treat pairing or a saved leadership request as a successful transfer. Success requires the selected computer to be elected, commit its current term and pass a fresh majority read; its receipt names the computer, term, revision and read barrier. Retrying `codeaf cluster lead` preserves an already saved signed request. Continue chats through the ordinary continue door.
 
