@@ -140,6 +140,9 @@ func Sign(c Command, key ed25519.PrivateKey) (Command, error) {
 // these immutable records, but must distinguish absent rows from unread rows.
 func Dependencies(c Command) []RecordKey {
 	keys := []RecordKey{QuiescenceKey(), IdentityKey(), DeviceKey(c.Actor), AuthorityKey(c.Actor), SessionKey(c.Actor, c.Session), SessionsKey()}
+	if c.Change.InitMembership != nil {
+		keys = append(keys, LegacyImportKey())
+	}
 	m := c.Change
 	if m.RenewHolds != nil {
 		keys = append(keys, DeviceKey(m.RenewHolds.Device), AuthorityKey(m.RenewHolds.Device))
@@ -279,6 +282,8 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 			target = new(WorkerRecord)
 		case k == QuiescenceKey():
 			target = new(Quiescence)
+		case k == LegacyImportKey():
+			target = new(LegacyManifest)
 		case k == MembershipKey():
 			var h Membership
 			if Decode(b, &h) != nil || h.Validate() != nil {
@@ -325,10 +330,38 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 	if decode(AuthorityKey(c.Actor), &auth) != nil || decode(DeviceKey(c.Actor), &actor) != nil || decode(IdentityKey(), &identity) != nil {
 		return out, ErrDependency
 	}
+	// Old imported groups retain their exact manifest and rows. Their FIRST
+	// registry command may use only a manifest-provisioned anchor key; it logs
+	// the authority installation instead of rewriting a frozen import snapshot.
+	if rows[AuthorityKey(c.Actor)] == nil && c.Change.InitMembership != nil {
+		var manifest LegacyManifest
+		if raw := rows[LegacyImportKey()]; raw != nil && Decode(raw, &manifest) == nil && manifest.Validate() == nil && manifest.Config.Cluster == c.Cluster && bytes.Equal(manifest.Config.SigningKey, identity.SigningKey) {
+			for i, node := range manifest.Config.Anchors {
+				if c.Actor == AnchorActor(node) && i < len(manifest.Config.AnchorKeys) {
+					auth = Authority{Cluster: c.Cluster, Key: manifest.Config.AnchorKeys[i], Anchor: true}
+				}
+			}
+		}
+	}
 	digest, _ := Digest(c)
 	signed, e := SigningBytes(c)
 	authenticated := e == nil && len(auth.Key) == ed25519.PublicKeySize && ed25519.Verify(ed25519.PublicKey(auth.Key), signed, c.Signature)
+	if c.Certificate != "" {
+		certificateAuth, err := PersonalCommandAuthority(c, identity)
+		if err != nil {
+			return out, nil
+		}
+		// A retained role takes precedence over a certificate. A scoped or retired
+		// protocol key cannot turn itself into a personal device at this seam.
+		if rows[AuthorityKey(c.Actor)] == nil {
+			auth = certificateAuth
+		}
+		authenticated = e == nil && bytes.Equal(auth.Key, certificateAuth.Key) && auth.Personal && ed25519.Verify(auth.Key, signed, c.Signature)
+	}
 	if c.V1 != nil {
+		if c.Certificate != "" {
+			return out, nil
+		}
 		auth, authenticated = V1AuthorityAt(c, identity, meta.Now)
 	}
 	if !authenticated || c.Cluster != meta.Cluster || auth.Cluster != c.Cluster || !auth.ValidRole() || len(auth.Key) != ed25519.PublicKeySize || digest != c.RequestDigest {
@@ -350,7 +383,7 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 		}
 	}
 	service := c.Change.RenewHolds != nil || c.Change.RecordUpload != nil || c.Change.AdmitJoin != nil || c.Change.CompleteJoin != nil || auth.Effects && (c.Change.WorkerBeatBatch != nil || c.Change.DeviceSeen != nil)
-	if service != auth.Effects || auth.Personal && auth.Effects || auth.Anchor && (auth.Personal || auth.Effects || c.Change.PrepareQuiescence == nil && c.Change.SettleMembership == nil && c.Change.SettleLeadership == nil && c.Change.CompleteLeadership == nil && c.Change.RestoreAnchors == nil && c.Change.CloseSession == nil) {
+	if service != auth.Effects || auth.Personal && auth.Effects || auth.Anchor && (auth.Personal || auth.Effects || c.Change.InitMembership == nil && c.Change.PrepareQuiescence == nil && c.Change.SettleMembership == nil && c.Change.SettleLeadership == nil && c.Change.CompleteLeadership == nil && c.Change.RestoreAnchors == nil && c.Change.CloseSession == nil) {
 		return out, nil
 	}
 	if (c.Change.PrepareQuiescence != nil || c.Change.RestoreAnchors != nil || c.Change.CompleteLeadership != nil) && !auth.Anchor {

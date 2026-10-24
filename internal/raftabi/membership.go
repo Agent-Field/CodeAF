@@ -87,3 +87,18 @@ func configurationAtEntry(d *decoder) ([]byte, error) {
 	e.message(after)
 	return e.b, nil
 }
+
+func configurationView(d *decoder) ([]byte, error) {
+	conf := new(pb.ConfState)
+	d.message(conf)
+	if d.end() != nil {
+		return nil, errFrame
+	}
+	raw, err := clusterstate.Encode(raftcore.Configuration(conf))
+	if err != nil {
+		return nil, err
+	}
+	e := encoder{}
+	e.blob(raw)
+	return e.b, nil
+}

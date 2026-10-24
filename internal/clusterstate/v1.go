@@ -107,6 +107,18 @@ func V1SigningMessage(method, uri, at string, body []byte) []byte {
 // ClientCommand refuses protocol provenance on the public v2 door. Only an
 // original v1 HTTP proof may select the compatibility rules at that ingress.
 func ClientCommand(c Command) error {
+	if c.Certificate != "" {
+		var cert v1Certificate
+		raw, err := base64.RawURLEncoding.DecodeString(c.Certificate)
+		if err != nil || len(raw) > 1024 || legacyBody(raw, &cert, false) != nil {
+			return ErrCodec
+		}
+		key, err := hex.DecodeString(cert.Device)
+		signature, sigErr := hex.DecodeString(cert.Signature)
+		if err != nil || sigErr != nil || len(key) != ed25519.PublicKeySize || len(signature) != ed25519.SignatureSize || cert.V != 1 || cert.Created < 0 || DeviceIDOfKey(key) != c.Actor || c.WorkerIncarnation != 0 {
+			return ErrCodec
+		}
+	}
 	if c.V1 != nil || c.Change.Create != nil && c.Change.Create.V1 || c.Change.Publish != nil && c.Change.Publish.V1 || c.Change.Acquire != nil && (c.Change.Acquire.V1 || c.Change.Acquire.Legacy) {
 		return ErrCodec
 	}
