@@ -212,10 +212,13 @@ func (g *Native) pumpPeers(request rafttransport.Request, now int64) error {
 		}
 		p.applied[request.Node] = max(p.applied[request.Node], request.Applied)
 	}
-	// Empty polls of a sleeping learner must not manufacture heartbeats or wake
-	// work. A peer frame is real ingress and wakes on the ordinary Step path.
-	if len(request.Messages) > 0 {
-		p.sleeping = false
+	// A final learner response can arrive after all voters agreed to sleep.
+	// It has no quorum weight and must not restart periodic work. New requests
+	// and higher-term evidence still wake through the ordinary peer path.
+	for _, envelope := range request.Messages {
+		if !g.idleLearnerResponse(envelope) {
+			p.sleeping = false
+		}
 	}
 	for round := 0; round < rafttransport.MaxInflight; round++ {
 		progressed := false
@@ -233,8 +236,10 @@ func (g *Native) pumpPeers(request rafttransport.Request, now int64) error {
 				if !ok || e.Scope != p.view.Scope || e.Destination != 1 || e.Verify(member.Key) != nil || e.Chunk != nil {
 					return rafttransport.ErrAuth
 				}
-				if err = g.drive(ctx, i, raftcore.PeerMessage{Bytes: e.Payload}); err != nil {
-					return err
+				if !g.idleLearnerResponse(e) {
+					if err = g.drive(ctx, i, raftcore.PeerMessage{Bytes: e.Payload}); err != nil {
+						return err
+					}
 				}
 				p.ack[i][delivery.Lane] = max(p.ack[i][delivery.Lane], delivery.Cursor)
 				progressed = true
@@ -331,4 +336,25 @@ func (g *Native) checkpointExternal(ctx context.Context) error {
 	}
 	g.peers.checkpoint = false
 	return g.drain(ctx)
+}
+
+// idleLearnerResponse discards only response traffic rendered unnecessary by
+// the completed all-voter sleep barrier. It cannot hide a newer term or a vote.
+func (g *Native) idleLearnerResponse(e rafttransport.Envelope) bool {
+	if !g.peers.sleeping {
+		return false
+	}
+	member, ok := g.peer(e.From)
+	if !ok || member.Voter {
+		return false
+	}
+	leader := g.leader()
+	if leader < 0 {
+		return false
+	}
+	message := new(pb.Message)
+	if proto.Unmarshal(e.Payload, message) != nil || message.GetTerm() > g.status[leader].Term {
+		return false
+	}
+	return message.GetType() == pb.MsgAppResp || message.GetType() == pb.MsgHeartbeatResp
 }
