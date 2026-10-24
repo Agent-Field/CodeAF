@@ -86,3 +86,32 @@ After fresh quorum readback, `LegacySource.own` publishes `raft-owned`; `route`
 then resolves only that UUID. There is no rollback to a legacy writer. P17
 assembles the complete facade, receipt ingress and existing-client doors; P14
 owns continuing watch renewal/scheduling. Source backup cleanup is explicit.
+
+
+P12 adds membership-aware evaluation (ABI op 15), paged peer derivation (16),
+core reconciliation (17), local learner catch-up (18) and provisioned-anchor
+manifest validation (19). Original ABI operations remain unchanged. Native and
+hosted application adapters supply the entry index and its exact configuration
+as trusted host metadata. Operation 20 replays each committed configuration
+entry with the pinned library changer, so batching cannot alter policy. No request may supply those fields.
+
+Provision `config.anchors` with the same three public protocol records and IDs
+used by the source manifest/InitMembership. Only these anchors can bootstrap
+peer traffic before the registry commits. Once present, every peer check derives
+from the durable registry and current device revocations, including after awaits.
+`enrollment(view, applied)` only publishes an identical committed view; it cannot
+introduce a member. The old probe fixture's arbitrary registry is test-only.
+`membership()` resumes the recorded intent, refreshes an obsolete checkpoint and
+reports whether a signed settlement may be proposed. It never synthesizes that
+settlement signature or declares a join successful. `joinStatus(barrier)` additionally
+checks current authorization and the learner's own applied index.
+
+P17 still assembles authenticated client enrollment, registry publication and
+quiet-mode guards. P13 owns voter swaps; P15 owns delegated worker certificates.
+Do not advertise a public leader/worker command from these internal methods.
+
+Provisioned anchor keys receive a restricted committed authority that can only
+settle an existing intent or close their request session. They cannot enroll,
+remove, read directory content, mutate chats, pair or rotate. Thus a crashed
+requester need not return for an already authorized admission to finish. The
+settlement still requires the exact applied configuration and pending revision.

@@ -252,3 +252,19 @@ chat first; this does not discard the work saved on your computer.
 ## Relay directory upgrade pauses and saved chats
 
 A relay directory upgrade can briefly pause pairing and chat moves. Retry after the relay is ready. The upgrade refusal is `codeaf: directory upgrade is incomplete; retry shortly; saved chats are still here`. It does not delete saved chats, files, branches or the encrypted vault. The relay keeps the old directory as a backup and never makes it a second writer after the new directory takes over. A row that cannot be copied safely leaves the upgrade paused for the operator; it is never truncated to make it fit.
+
+
+## Joined computers, learner capacity and an outdated build
+
+Joining the relay's coordination group does not make a computer a voter. Its
+learner role does not require other laptops to stay awake, and a slow learner
+cannot hold back relay writes or keep old coordination logs forever. A learner
+is ready only after it has applied the committed join barrier. Removing one
+retires its node ID permanently; joining again allocates a fresh ID.
+
+The group admits at most 32 live learners. Retired enrollment records are kept,
+with a separate operator capacity limit; reaching either limit refuses new
+enrollment instead of deleting saved chats or old records. The capacity sentence
+is `this cluster has reached its enrollment limit; remove a joined computer or ask the relay operator for capacity`.
+An unsupported protocol says `this codeaf build must be updated before it can join this cluster; your saved chats are still here`.
+This does not add a leadership command or a worker setup command.

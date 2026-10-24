@@ -1,5 +1,6 @@
 import { CORE_MEMORY_BUDGET, Reactor, HostCodec, createFrame, response, effects, frame, stepFrame } from './abi.js';
-import { MemberStorage, DEFAULT_ROWS_BYTES } from './storage.js';
+import { MemberStorage, DEFAULT_ROWS_BYTES, unb64 } from './storage.js';
+import { committedRegistry } from './membership.js';
 
 const RESERVATION = 6 * 1024 * 1024;
 const CACHE_BYTES = 2 * 1024 * 1024;
@@ -85,6 +86,27 @@ export class MemberActor {
   checkpoint() { return this.serial(async () => {
     try { const snapshot = await this.store.checkpoint(); await this.drive(11, snapshot); this.checkpointIndex = this.status.applied; return snapshot; }
     catch (error) { this.stopped = true; throw error; }
+  }); }
+  // Reconcile only the committed intent. Core planning prevents a second
+  // configuration while the first is uncommitted and refreshes snapshots that
+  // would otherwise exclude the newly admitted learner.
+  membership() { return this.serial(async () => {
+    const header = this.store.read('membership', 'registry');
+    if (!header) throw new Error('raft member: enrollment is absent');
+    let r = response(this.reactor.call(frame(17).u32(this.handle).blob(header).finish()));
+    const change = r.blob(), checkpoint = r.u32() !== 0, settle = r.u32() !== 0; r.end();
+    if (change.length) return { ...(await this.drive(8, change)), settle: false };
+    if (checkpoint) {
+      const snapshot = await this.store.checkpoint(); await this.drive(11, snapshot); this.checkpointIndex = this.status.applied;
+    }
+    return { send: [], reads: [], status: this.status, settle };
+  }); }
+  joinStatus(advertised) { return this.serial(() => {
+    const raw = this.store.read('enrollment', 'node/' + this.config.id);
+    if (!raw || committedRegistry(this.reactor, this.store)[this.config.id]?.revoked) return { ready: false };
+    const app = this.store.application();
+    const r = response(this.reactor.call(frame(18).blob(raw).blob(unb64(app.conf)).u64(app.applied).u64(advertised).finish()));
+    const ready = r.u32() !== 0; r.end(); return { ready };
   }); }
   begin(data) { data = data.slice(); return this.serial(() => this.store.beginSnapshot(data)); }
   chunk(id, offset, data, hash) { data = data.slice(); return this.serial(() => this.store.putChunk(id, offset, data, hash)); }
