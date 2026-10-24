@@ -29,7 +29,7 @@ class Native {
   async close() { this.child.stdin.end(); if (this.child.exitCode === null) await new Promise(r => this.child.once('exit',r)); }
 }
 
-test('R9 R11 R12 R13 R14 R16 R17 hosted learner intents, exact retries, tombstones and native policy parity', { timeout:30000 }, async () => {
+test('R6 R7 R9 R11 R12 R13 R14 R16 R17 hosted learner intents, exact retries, tombstones and native policy parity', { timeout:30000 }, async () => {
  const reactor = new Reactor(new WebAssembly.Module(readFileSync(out + '/core.wasm'))), native = new Native(), calls = [];
  const policy = { call(b) { const result = reactor.call(b); calls.push([b.slice(),result.slice()]); return result; } };
  const keys = Object.fromEntries(['a','b','x1','x2','x3'].map(id => [id,generateKeyPairSync('ed25519')]));
@@ -45,7 +45,7 @@ test('R9 R11 R12 R13 R14 R16 R17 hosted learner intents, exact retries, tombston
  const configs = [], absent = new Set();
  const accept = e => queue.push(...e.send);
  const pump = async () => { for (let n=0;queue.length;n++) { assert(n<2000); const m=queue.shift(), id=Number(m.to); if (!actors[id-1] || absent.has(id)) continue; accept(await actors[id-1].input(2,m.bytes)); } };
- const leader = () => actors.findIndex(a => a.status.role===2);
+ const leader = () => actors.findIndex((a,i) => !absent.has(i+1) && a.status.role===2);
  const add = async id => {
   const host = new Host(); hosts.push(host);
   const evaluator = (raw,read,app) => {
@@ -54,13 +54,14 @@ test('R9 R11 R12 R13 R14 R16 R17 hosted learner intents, exact retries, tombston
    if (!results[id-1]) results[id-1]=[]; results[id-1].push(JSON.parse(dec.decode(r.result))); return {...r,writes:[...base,...r.writes]};
   };
   const config = {cluster,id:String(id),seed:String(id+44),bootstrap:id<=3?['1','2','3']:[]}; configs[id-1]=config;
-  const actor = new MemberActor(host,reactor,evaluator); actors[id-1]=actor; accept(await actor.init(config));
+  const actor = new MemberActor(host,policy,evaluator); actors[id-1]=actor; accept(await actor.init(config));
  };
- const command = change => {
-  const sequence=++seq.a, c={schema:1,cluster,actor:'a',session:'api',sequence:String(sequence),request_digest:'',now:1000,change,signature:null};
+ const command = (change,signer='a') => {
+  const actor=signer.startsWith('x')?'anchor/'+signer.slice(1):signer;
+  const sequence=seq[actor]=(seq[actor]??0)+1, c={schema:1,cluster,actor,session:'api',sequence:String(sequence),request_digest:'',now:1000,change,signature:null};
   if (sequence>1)c.ack=String(sequence-1);
   c.request_digest=sha(bytes({cluster,actor:c.actor,session:c.session,sequence:c.sequence,change}));
-  c.signature=sign(null,Buffer.concat([Buffer.from('codeaf.directory.command.v1\0'),bytes(c)]),keys.a.privateKey).toString('base64');return bytes(c);
+  c.signature=sign(null,Buffer.concat([Buffer.from('codeaf.directory.command.v1\0'),bytes(c)]),keys[signer].privateKey).toString('base64');return bytes(c);
  };
  const submit = async raw => {const i=leader(),n=results[i]?.length??0;accept(await actors[i].input(3,raw));await pump();assert.equal(results[i].length,n+1);return results[i].at(-1);};
  const registry = () => committedRegistry(policy,actors[leader()].store);
@@ -87,11 +88,36 @@ test('R9 R11 R12 R13 R14 R16 R17 hosted learner intents, exact retries, tombston
   for(let n=0;n<12&&actors[3].status.applied<actors[i].status.applied;n++){accept(await actors[i].input(1));await pump();}
   assert.deepEqual(await actors[3].joinStatus(r.membership.barrier),{ready:true});
   // Recover the learner from its SQLite bytes into a new runtime handle.
-  await actors[3].close();const restored=new MemberActor(hosts[3],reactor,directoryEvaluator(policy,cluster,8*1024*1024));actors[3]=restored;accept(await restored.init(configs[3]));await pump();assert.deepEqual(await restored.joinStatus(r.membership.barrier),{ready:true});
+  await actors[3].close();const restoredEvaluate=(...args)=>{const r=directoryEvaluator(policy,cluster,8*1024*1024)(...args);results[3]??=[];results[3].push(JSON.parse(dec.decode(r.result)));return r;};const restored=new MemberActor(hosts[3],policy,restoredEvaluate);actors[3]=restored;accept(await restored.init(configs[3]));await pump();assert.deepEqual(await restored.joinStatus(r.membership.barrier),{ready:true});
+  // R6/R7 use actual Go policy, persisted wasm actors and the production
+  // planner. The native peer replays every signed application evaluation.
+  h=header();r=await submit(command({request_leadership:{revision:h.revision,node:'4',device:'b'}}));assert.equal(r.code,'ok');
+  const tickAll=async()=>{for(let n=0;n<actors.length;n++)if(!absent.has(n+1))accept(await actors[n].input(1));await pump();};
+  const reconcileLead=async()=>{
+   for(let n=0;n<40;n++){
+    if(leader()<0){await tickAll();continue;}
+    const h=header(),l=h.leadership;if(!l)return;
+    if(!l.restore&&l.settled&&leader()===3){
+     accept(await actors[3].input(4,'leadership-proof'));await pump();assert.equal((await actors[3].leadershipReceipt()).node,'4');
+     const r=await submit(command({complete_leadership:{revision:h.revision}},'x1'));assert.equal(r.code,'ok');return;
+    }
+    const target=Number(l.restore?l.standby:l.node)-1;let evidence;
+    try{evidence=await actors[target].leadershipEvidence(h.revision,l.barrier);}catch{await tickAll();continue;}
+    const e=await actors[leader()].leadership(evidence);accept(e);await pump();
+    if(e.plan.settle){const r=await submit(command({settle_leadership:{revision:h.revision}},'x1'));assert.equal(r.code,'ok');}
+   }
+   assert.fail('leadership did not finish');
+  };
+  await reconcileLead();assert.equal(leader(),3);assert.equal(registry()['3'].voter,false);assert(header().leadership.completed);
+  absent.add(4);for(let n=0;n<30&&leader()<0;n++)await tickAll();assert([0,1].includes(leader()));
+  h=header();let plan=await actors[leader()].leadership({node:'0',revision:h.revision,applied:'0',protocol:1,durable:false});assert(plan.plan.fallback);assert.equal(plan.plan.transfer,'0');
+  r=await submit(command({restore_anchors:{revision:h.revision}},'x1'));assert.equal(r.code,'ok');await tickAll();await reconcileLead();assert.equal(registry()['4'].voter,false);assert.equal(header().leadership,undefined);
+  absent.delete(4);await tickAll();assert.notEqual(leader(),3);
   h=header();absent.add(4);r=await submit(command({remove_member:{revision:h.revision,node:'4',device:'b'}}));assert.equal(r.code,'ok');await settle();assert.equal(registry()['4'].revoked,true);
   await actors[leader()].checkpoint();assert(actors[leader()].store.read('tombstones','node/4'));
   h=header();r=await submit(command({enroll_member:{node:h.next_node,revision:h.revision,device:'b',protocol:1}}));assert.equal(r.code,'ok');assert.equal(r.membership.node,'5');
   r=await submit(command({revoke:{device:'b'}}));assert.equal(r.code,'ok');assert.equal(registry()['5'].revoked,true);
+  await assert.rejects(actors[leader()].leadership({node:'5',revision:header().revision,applied:'0',protocol:1,durable:true}),/leadership target is unavailable/);
   for(const [b,expected] of calls)assert.deepEqual(await native.call(b),expected);
   assert(calls.length>30);
  } finally {await native.close();for(const h of hosts)h.db.close();}

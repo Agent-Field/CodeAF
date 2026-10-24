@@ -13,7 +13,7 @@ const sha = b => createHash('sha256').update(b).digest('hex');
 const b64 = b => Buffer.from(b).toString('base64');
 const unb64 = s => Buffer.from(s, 'base64');
 const clockTicks = Number(execFileSync('getconf', ['CLK_TCK'], { encoding: 'utf8' }).trim());
-const report = { calls: [], requirements: ['R3','R4','R10','R12','R13','R14','R16','R27'], samples: [], phases: [] };
+const report = { calls: [], requirements: ['R3','R4','R6','R7','R8','R10','R12','R13','R14','R16','R27'], samples: [], phases: [] };
 async function sample() {
   const ids = [process.pid, ...(await readFile(`/proc/${process.pid}/task/${process.pid}/children`, 'utf8')).trim().split(/\s+/).filter(Boolean).map(Number)];
   const processes = [];
@@ -47,6 +47,7 @@ class Group {
     for (let i = 1; i <= 4; i++) { const k = generateKeyPairSync('ed25519'); this.keys[i] = k.privateKey; this.view[i] = { key: k.publicKey.export({ format: 'der', type: 'spki' }).subarray(-32).toString('base64'), incarnation: '1', revoked: false, voter: true }; }
   }
   async call(id, op, value = {}) {
+    if(op==='leadership-plan')value={...value,value:JSON.parse(encodeCanonical(value.value))};
     let r; const start = performance.now();
     if (this.wasm.includes(id)) {
       const res = await this.worker.dispatchFetch(`http://proof/actor/${this.cluster}-${id}/${op}`, { method: 'POST', body: JSON.stringify(value), signal: AbortSignal.timeout(5000) }); assert.equal(res.status, 200, await res.clone().text()); r = await res.json();
@@ -58,7 +59,7 @@ class Group {
   accept(id, r) { if (!r) return; if (r.status) this.nodes.set(id, r.status); this.queue.push(...(r.send ?? []).map(m => ({ ...m, from: id }))); this.reads.push(...(r.reads ?? []).map(r => ({ ...r, node: id }))); }
   async init() {
     for (let id = 1; id <= 3; id++) this.accept(id, await this.call(id, 'init', { cluster: this.cluster, id: String(id), seed: String(100 + id), bootstrap: ['1','2','3'], scope: this.scope }));
-    for (const id of this.wasm) await this.call(id, 'enrollment', { view: this.view, applied: this.nodes.get(id).applied });
+    for (const id of this.wasm.filter(id=>this.nodes.has(id))) await this.call(id, 'enrollment', { view: this.view, applied: this.nodes.get(id).applied });
     await this.pump(); await this.tick(16); assert(this.leader(), JSON.stringify([...this.nodes]));
   }
   envelope(from, to, payload, chunk = null) {
@@ -94,8 +95,8 @@ class Group {
   async sameRows() { const rows = []; for (const id of this.nodes.keys()) rows.push(await this.call(id, 'row')); assert(rows[0]); assert.equal(rows[0], rows[1]); assert.equal(rows[0], rows[2]); for (const row of rows) assert.equal(row, rows[0]); return rows[0]; }
 }
 
-test('R3 R4 R10 R13 R14 R27 hosted actors commit, ReadIndex, crash and snapshot in both directions', { timeout: 120000 }, async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'p08-')), native = new Native(join(dir, 'native'));
+test('R3 R4 R6 R7 R8 R10 R13 R14 R27 hosted actors commit, ReadIndex, crash and snapshot in both directions', { timeout: 120000 }, async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'p08-')); let native = new Native(join(dir, 'native'));
   let worker, inspector, samplingTask, samplingError, samplingPaused = false; const heaps = [];
   // A sample owns its inspector call until completion. Drain it before each
   // intentional process death so a late timeout cannot escape the test.
@@ -148,6 +149,47 @@ test('R3 R4 R10 R13 R14 R27 hosted actors commit, ReadIndex, crash and snapshot 
     await j.step(j.leader(), 8, ''); await j.pump(); await j.tick(2); assert(await j.read(j.leader(), 'left-joint')); await j.sameRows();
     const left = unb64(await j.call(1, 'checkpoint')); const leftConf = fields(unb64(JSON.parse(fields(left).get(1).toString()).conf)); assert(!leftConf.has(3)); assert(!leftConf.has(4));
     assert.notEqual(j.leader(), 3, 'removed voter remains a learner after leave/restart');
+    // R6/R7/R8/R12 use the production planner, not literal voter edits, for
+    // transfer completion and reverse restoration with P absent. The synthetic
+    // policy header belongs only to this host-mechanism fixture; signed policy
+    // application is covered separately by the actual directory evaluator.
+    let header={revision:'3',index:j.nodes.get(j.leader()).applied,next_node:'5',anchors:['1','2','3'],nodes:['1','2','3','4'],live:1,limit:4096,leadership:{node:'4',standby:'3',revision:'3',barrier:j.nodes.get(j.leader()).applied,term:j.nodes.get(j.leader()).term,restore:false,settled:true,completed:false}};
+    const plan=async(node,target)=>j.call(node,'leadership-plan',{header:b64(Buffer.from(encodeCanonical(header))),value:{node:String(target),revision:header.revision,applied:j.nodes.get(target).applied,protocol:1,durable:true}});
+    const receipt=async node=>j.call(node,'leadership-receipt',{header:b64(Buffer.from(encodeCanonical(header)))});
+    await j.tick(1);
+    let p=await plan(j.leader(),4);assert.equal(p.transfer,'4');await j.step(j.leader(),7,p.transfer);await j.pump();assert.equal(j.leader(),4);
+    await assert.rejects(receipt(4),/caught-up voter/);assert(await j.read(4,'native-personal-leader'));assert.equal((await receipt(4)).node,'4');
+    header.leadership.completed=true;
+    j.block.add(4);j.block.add(3);native.child.kill('SIGKILL');await new Promise(r=>native.child.once('exit',r));
+    j.block.add(2);await j.tick(13);assert.equal(j.leader(),undefined,'R8 personal plus anchor loss must be unavailable');j.block.delete(2);
+    for(let n=0;n<24&&!j.leader();n++)await j.tick(1);assert([1,2].includes(j.leader()));
+    report.phases.push('R8 personal + anchor loss unavailable; no second writable cluster');
+    const beforeFallbackWrite=j.nodes.get(j.leader()).applied;await j.mutate(3);assert(BigInt(j.nodes.get(j.leader()).applied)>BigInt(beforeFallbackWrite),'R7 A+B conditional operation did not commit');
+    p=await plan(j.leader(),3);assert.equal(p.fallback,true);assert.equal(p.transfer,'0');
+    native=new Native(join(dir,'native'));j.native=native;g.native=native;
+    j.accept(3,await j.call(3,'init',{cluster:'joint',seed:'103',bootstrap:['1','2','3']}));j.block.delete(3);await j.pump();
+    // C catches up through the committed restore barrier while P remains
+    // absent. A+B alone decide both sides of the reverse joint transition.
+    header={...header,revision:'4',index:j.nodes.get(j.leader()).applied,leadership:{...header.leadership,revision:'4',barrier:j.nodes.get(j.leader()).applied,restore:true,settled:false,completed:false}};
+    await j.tick(1);
+    p=await plan(j.leader(),3);assert(p.configure);await j.step(j.leader(),8,p.change);await j.pump();
+    p=await plan(j.leader(),3);assert(p.configure);await j.step(j.leader(),8,p.change??'');await j.pump();
+    p=await plan(j.leader(),3);assert(p.settle);assert(await j.read(j.leader(),'restored-without-personal'));
+    const reverse=JSON.parse(fields(unb64(await j.call(1,'checkpoint'))).get(1).toString());
+    assert(!fields(unb64(reverse.conf)).has(3));
+    j.accept(4,await j.call(4,'init',{cluster:'joint',seed:'104',bootstrap:['1','2','3']}));j.block.delete(4);await j.tick(2);assert.notEqual(j.leader(),4);
+    report.phases.push('R6 native P elected + current-term read; R7 A+B restore C with P absent');
+    await j.transfer(3);await j.call(1,'close');await j.call(2,'close');
+    // R6 reverses the runtime roles: P is WASI and two anchors are native.
+    const k=new Group(worker,native,'wasm-personal',[1,4]);await k.init();
+    k.accept(4,await k.call(4,'init',{cluster:k.cluster,id:'4',seed:'104',bootstrap:[],scope:k.scope}));await k.call(4,'enrollment',{view:k.view,applied:k.nodes.get(4).applied});
+    await k.step(k.leader(),8,b64(Uint8Array.of(18,4,8,3,16,4)));await k.pump();await k.tick(2);
+    let kh={revision:'3',index:k.nodes.get(k.leader()).applied,next_node:'5',anchors:['1','2','3'],nodes:['1','2','3','4'],live:1,limit:4096,leadership:{node:'4',standby:'3',revision:'3',barrier:k.nodes.get(k.leader()).applied,term:k.nodes.get(k.leader()).term,restore:false,settled:false,completed:false}};
+    const kp=async()=>k.call(k.leader(),'leadership-plan',{header:b64(Buffer.from(encodeCanonical(kh))),value:{node:'4',revision:'3',applied:k.nodes.get(4).applied,protocol:1,durable:true}});
+    p=await kp();assert(p.configure);await k.step(k.leader(),8,p.change);await k.pump();p=await kp();assert(p.configure);await k.step(k.leader(),8,p.change??'');await k.pump();await k.tick(2);for(let n=0;n<24&&!k.leader();n++)await k.tick(1);assert(k.leader());
+    p=await kp();assert(p.settle);kh.leadership.settled=true;p=await kp();assert.equal(p.transfer,'4');await k.step(k.leader(),7,'4');await k.pump();assert.equal(k.leader(),4);assert(await k.read(4,'wasm-personal-read'));
+    assert.equal((await k.call(4,'leadership-receipt',{header:b64(Buffer.from(encodeCanonical(kh)))})).node,'4');
+    report.phases.push('R6 WASI P promoted + elected + current-term read');
     report.phases.push('two wasm + native peers; full joint checkpoint/restart/leave');
     // All three anchors plus two other identities share exactly one runtime.
     const h = new Group(worker, native, 'co-resident', [1,2,3]); await h.init(); await h.create(); assert(await h.read(h.leader(), 'all-hosted')); await h.sameRows();
