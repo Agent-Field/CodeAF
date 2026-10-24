@@ -18,6 +18,10 @@ const Path = "/v2/cluster/control"
 
 var ErrUnavailable = errors.New(cs.LeadershipUnavailable)
 
+// ErrUnsupported distinguishes an absent leadership capability from a lost
+// quorum. Clients can refuse before saving an intent the relay cannot finish.
+var ErrUnsupported = errors.New("this relay does not offer cluster leadership yet; your saved chats are still here")
+
 type CommittedRefusal struct {
 	Code     cs.Code `json:"code"`
 	Sequence uint64  `json:"sequence"`
@@ -28,11 +32,12 @@ func (e CommittedRefusal) Error() string {
 }
 
 type Status struct {
-	Cluster       string           `json:"cluster"`
-	Self          uint64           `json:"self"`
-	Leader        uint64           `json:"leader"`
-	Membership    cs.Membership    `json:"membership"`
-	Configuration cs.Configuration `json:"configuration"`
+	LeadershipUnavailable bool             `json:"leadership_unavailable,omitempty"`
+	Cluster               string           `json:"cluster"`
+	Self                  uint64           `json:"self"`
+	Leader                uint64           `json:"leader"`
+	Membership            cs.Membership    `json:"membership"`
+	Configuration         cs.Configuration `json:"configuration"`
 }
 
 // Backend must authorize against committed state after a fresh quorum read.
@@ -83,6 +88,10 @@ func Handler(auth wireauth.Authenticate, open func(string) (Backend, error)) htt
 			result, err = backend.Lead(r.Context(), c)
 		}
 		if err != nil {
+			if errors.Is(err, ErrUnsupported) {
+				http.Error(w, ErrUnsupported.Error(), http.StatusNotFound)
+				return
+			}
 			var refused CommittedRefusal
 			if errors.As(err, &refused) {
 				b, _ := cs.Encode(refused)
@@ -147,7 +156,7 @@ func (c Client) request(ctx context.Context, method string, body []byte, out any
 	}
 	if res.StatusCode != 200 {
 		if res.StatusCode == 404 {
-			return errors.New("this relay does not offer cluster leadership yet; your saved chats are still here")
+			return ErrUnsupported
 		}
 		return ErrUnavailable
 	}
