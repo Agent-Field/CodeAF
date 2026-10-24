@@ -38,11 +38,13 @@ sh scripts/raft-proof-footprint.sh nice -n 5 env GOMEMLIMIT=128MiB RAFTSIM_SEEDS
   -run '^TestR' -count=1 -timeout=180s -v
 ```
 
-The 6–12 tick election timeout bounds one attempt. Split votes and omitted
+Each ranked election window bounds one attempt (6–7/8–9/10–11 ticks for
+anchors and 12–13 for personal voters). Split votes and omitted
 messages can require several attempts; the campaign allows eight maximum
 timeout windows while retaining the 2,000-event ceiling. A separate seeded
 check asserts one delivered tick per live node per round and each election
-attempt within 6–12 ticks. This budget is not a phone-fallback latency claim.
+anchor attempt within 6–12 ticks. The separate R7 campaign measures the
+phone-fallback deadline through a committed conditional operation.
 Lost-reply retries first wait for the original request's durable session result
 without submitting a second proposal. An absent result after a timeout remains
 unknown; it cannot be compared to a later successful retry as an empty result.
@@ -133,3 +135,18 @@ a fresh snapshot and removes it with delayed responses. The unchanged 2,000-even
 ceiling still applies. Separate signed-policy tests prove sequential admission,
 its 33rd-learner refusal, revision races and retained ID tombstones; the raw
 simulator configuration action is not a public admission policy.
+
+## Ranked fallback timing
+
+Current recordings explicitly carry TimingVersion=2. Reading older unversioned
+recordings selects their original version 1, including exact RNG consumption
+and event digests. This compatibility is internal replay input, never a product
+feature switch. New groups always default to version 2 in both runtimes.
+
+R7 keeps all 190 original split-vote seeds in testdata/leadership. The seeded
+leadership campaign measures through a real committed conditional acquire and
+reports p50/p95/max; it never accepts an elected role alone as successful
+fallback. The B+C campaign separately requires a conditional operation within
+50 seconds after A and learner P disappear in restored anchor topology. If
+C is still a learner and the voter set is A+B+P, simultaneous P+A loss remains
+unavailable under R8: no election window can replace a missing majority.

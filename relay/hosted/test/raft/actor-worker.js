@@ -3,6 +3,7 @@
 import core from './core.wasm';
 import { installRaftModule, runtimeMetrics, MemberActor, sharedRuntime } from '../../src/raft/actor.js';
 import { RaftMemberDO } from '../../src/raft/member.js';
+import { encodeCanonical } from '../../src/raft/codec.js';
 import { frame, response } from '../../src/raft/abi.js';
 import { MemberInbox } from '../../src/raft/inbox.js';
 import { b64, unb64 } from '../../src/raft/storage.js';
@@ -58,6 +59,12 @@ export class ActorFixture extends RaftMemberDO {
       if (url.pathname === '/init') return reply(await this.initialize(b));
       await this.load();
       if (url.pathname === '/input') return reply(await this.actor.input(b.tag, [2,3,8,11].includes(b.tag) ? unb64(b.value) : [5,6,7,9].includes(b.tag) ? BigInt(b.value) : b.value));
+      if (url.pathname === '/leadership-plan' || url.pathname === '/leadership-receipt') {
+        const w=frame(url.pathname.endsWith('-plan')?21:22).u32(this.actor.handle).blob(unb64(b.header));
+        if(url.pathname.endsWith('-plan'))w.blob(new TextEncoder().encode(encodeCanonical(b.value)));
+        const r=response(sharedRuntime().call(w.finish())),v=JSON.parse(new TextDecoder().decode(r.blob()));r.end();return reply(v);
+      }
+      if (url.pathname === '/close') return reply(await this.actor.close());
       if (url.pathname === '/row') return reply(this.actor.store.read('state', 'cell'));
       if (url.pathname === '/application') return reply(this.actor.store.application());
       if (url.pathname === '/checkpoint') return reply(await this.actor.checkpoint());

@@ -38,7 +38,7 @@ async function walk(path) {
 for (const p of ['../../internal/raftsnapshot', '../../internal/raftcore', '../../internal/raftabi', '../../internal/clusterstate', '../../cmd/codeaf-raft-wasm', '../../third_party/raft', '../../third_party/raft-patch', 'src/raft']) await walk(resolve(p));
 for (const p of ['../../go.mod','../../go.sum']) source.push([relative(resolve('../..'),resolve(p)),sha(await readFile(p))]);
 source.sort((a,b)=>a[0].localeCompare(b[0]));
-const manifest = { abi: 1, coreProtocol: 1, rowSchema: 1, snapshotSchema: 1, snapshotFormatSHA256: sha(await readFile('../../internal/raftsnapshot/format.go')), go: 'go1.26.5', sourceHash: sha(JSON.stringify(source)), wasmSHA256: sha(wasm), sources: source };
+const manifest = { abi: 1, coreProtocol: 1, electionTiming: 2, rowSchema: 1, snapshotSchema: 1, snapshotFormatSHA256: sha(await readFile('../../internal/raftsnapshot/format.go')), go: 'go1.26.5', sourceHash: sha(JSON.stringify(source)), wasmSHA256: sha(wasm), sources: source };
 await writeFile(resolve(out, 'manifest.json'), JSON.stringify(manifest, null, 2)+'\n');
 const compressed = { wasm: gzipSync(wasm,{level:9}).length, javascript: Math.max(gzipSync(js,{level:9}).length, gzipSync(productionJS,{level:9}).length), storageFixture:gzipSync(storage,{level:9}).length, manifest: gzipSync(JSON.stringify(manifest),{level:9}).length };
 const report = { imports, rawWasm: wasm.length, rawJavascript: js.length, rawProductionJavascript: productionJS.length, productionJavascriptCompressed: gzipSync(productionJS,{level:9}).length, compressed, totalCompressed: Object.values(compressed).reduce((a,b)=>a+b,0), limit: 3*1024*1024, wasmSHA256: manifest.wasmSHA256, sourceHash: manifest.sourceHash };

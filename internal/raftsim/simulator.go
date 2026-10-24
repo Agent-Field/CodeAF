@@ -21,12 +21,13 @@ const clusterUUID = "raftsim-contract"
 const MaxEvents = 2000
 
 type Config struct {
-	PaddingBytes int
-	CutSnapshot  bool
-	RecordDisk   bool
-	Seed         uint64
-	Nodes        int
-	MaxEvents    int
+	TimingVersion uint16
+	PaddingBytes  int
+	CutSnapshot   bool
+	RecordDisk    bool
+	Seed          uint64
+	Nodes         int
+	MaxEvents     int
 	// Fault rates are per thousand and apply only to network messages.
 	Drop          int
 	Duplicate     int
@@ -37,12 +38,14 @@ type Config struct {
 	Broken        string
 }
 type Action struct {
-	Kind    string
-	Node    int
-	Other   int
-	Count   int
-	Value   int64
-	Request model.Call
+	Leadership *clusterstate.Membership     `json:",omitempty"`
+	Evidence   *raftcore.LeadershipEvidence `json:",omitempty"`
+	Kind       string
+	Node       int
+	Other      int
+	Count      int
+	Value      int64
+	Request    model.Call
 }
 type Trace struct {
 	Order      int64
@@ -152,6 +155,9 @@ type Simulator struct {
 }
 
 func New(config Config) (*Simulator, error) {
+	if config.TimingVersion == 0 {
+		config.TimingVersion = raftcore.ElectionTimingVersion
+	}
 	if config.Nodes == 0 {
 		config.Nodes = 3
 	}
@@ -203,7 +209,7 @@ func (s *Simulator) start(node int) {
 		s.fail("recovery: %v", err)
 		return
 	}
-	cfg := raftcore.Config{ClusterUUID: clusterUUID, NodeID: uint64(node + 1), Protocol: raftcore.ProtocolVersion, Seed: s.random(^uint64(0))}
+	cfg := raftcore.Config{TimingVersion: s.initial.TimingVersion, Anchors: []uint64{1, 2, 3}, ClusterUUID: clusterUUID, NodeID: uint64(node + 1), Protocol: raftcore.ProtocolVersion, Seed: s.random(^uint64(0))}
 	if n.Stable.Hard == nil && len(n.Stable.Entries) == 0 && n.Stable.Snapshot == nil && node < 3 {
 		cfg.Bootstrap = []uint64{1, 2, 3}
 	}
@@ -605,6 +611,26 @@ func (s *Simulator) run(count int, until int64) {
 // Do records every external input for exact replay. Network deliveries and disk
 // completions are derived from the recorded seed and these ordered actions.
 func (s *Simulator) Do(a Action) int {
+	// Replay owns immutable input bytes. A host updating the next leadership
+	// stage must not rewrite the intent that drove an earlier configuration.
+	if a.Leadership != nil {
+		h := *a.Leadership
+		h.Anchors = slices.Clone(h.Anchors)
+		h.Nodes = slices.Clone(h.Nodes)
+		if h.Leadership != nil {
+			l := *h.Leadership
+			h.Leadership = &l
+		}
+		if h.Pending != nil {
+			p := *h.Pending
+			h.Pending = &p
+		}
+		a.Leadership = &h
+	}
+	if a.Evidence != nil {
+		e := *a.Evidence
+		a.Evidence = &e
+	}
 	s.Actions = append(s.Actions, a)
 	s.stamp()
 	if s.Err != nil {
@@ -658,6 +684,22 @@ func (s *Simulator) Do(a Action) int {
 		s.Config.Delay = a.Value
 	case "snapshot":
 		s.checkpoint(a.Node)
+	case "leadership":
+		if a.Leadership == nil || a.Evidence == nil {
+			s.fail("missing leadership action evidence")
+			return -1
+		}
+		plan, err := s.Nodes[a.Node].Core.PlanLeadership(*a.Leadership, *a.Evidence)
+		if err != nil {
+			s.fail("leadership plan: %v", err)
+			return -1
+		}
+		if plan.Configure {
+			s.step(a.Node, raftcore.Configure{Change: plan.Change})
+		}
+		if plan.Transfer != 0 {
+			s.step(a.Node, raftcore.Transfer{Target: plan.Transfer})
+		}
 	case "configure":
 		var change *pb.ConfChangeV2
 		switch a.Count {

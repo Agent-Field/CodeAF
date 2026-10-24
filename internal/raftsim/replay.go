@@ -28,6 +28,11 @@ type Evidence struct {
 }
 
 func Run(replay Replay) (*Simulator, error) {
+	// Unversioned evidence predates ranked election windows. Preserve those
+	// bytes and event digests; new recordings always carry their timing version.
+	if replay.Config.TimingVersion == 0 {
+		replay.Config.TimingVersion = 1
+	}
 	s, err := New(replay.Config)
 	if err != nil {
 		return s, err
