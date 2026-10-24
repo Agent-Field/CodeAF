@@ -137,8 +137,14 @@ func Sign(c Command, key ed25519.PrivateKey) (Command, error) {
 // Dependencies declares every possible row before evaluation. Hosts may page
 // these immutable records, but must distinguish absent rows from unread rows.
 func Dependencies(c Command) []RecordKey {
-	keys := []RecordKey{IdentityKey(), DeviceKey(c.Actor), AuthorityKey(c.Actor), SessionKey(c.Actor, c.Session), SessionsKey()}
+	keys := []RecordKey{QuiescenceKey(), IdentityKey(), DeviceKey(c.Actor), AuthorityKey(c.Actor), SessionKey(c.Actor, c.Session), SessionsKey()}
 	m := c.Change
+	if m.RenewHolds != nil {
+		keys = append(keys, DeviceKey(m.RenewHolds.Device), AuthorityKey(m.RenewHolds.Device))
+	}
+	if m.PrepareQuiescence != nil {
+		keys = append(keys, MembershipKey())
+	}
 	keys = append(keys, membershipDependencies(m)...)
 	if m.PutDevice != nil {
 		keys = append(keys, DeviceKey(m.PutDevice.ID))
@@ -186,6 +192,12 @@ func Dependencies(c Command) []RecordKey {
 }
 func cellIDs(m Mutation) []string {
 	switch {
+	case m.RenewHolds != nil:
+		out := []string{}
+		for _, h := range m.RenewHolds.Items {
+			out = append(out, h.Cell)
+		}
+		return out
 	case m.Create != nil:
 		return []string{m.Create.Cell}
 	case m.Acquire != nil:
@@ -251,6 +263,8 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 			target = new(Device)
 		case k.Namespace == "state" && len(k.Key) >= 5 && k.Key[:5] == "cell/":
 			target = new(Cell)
+		case k == QuiescenceKey():
+			target = new(Quiescence)
 		case k == MembershipKey():
 			var h Membership
 			if Decode(b, &h) != nil || h.Validate() != nil {
@@ -308,11 +322,11 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 		out.Result.Code = Revoked
 		return out, nil
 	}
-	service := c.Change.RecordUpload != nil || c.Change.AdmitJoin != nil || c.Change.CompleteJoin != nil
-	if service != auth.Effects || auth.Personal && auth.Effects || auth.Anchor && (auth.Personal || auth.Effects || c.Change.SettleMembership == nil && c.Change.SettleLeadership == nil && c.Change.CompleteLeadership == nil && c.Change.RestoreAnchors == nil && c.Change.CloseSession == nil) {
+	service := c.Change.RenewHolds != nil || c.Change.RecordUpload != nil || c.Change.AdmitJoin != nil || c.Change.CompleteJoin != nil
+	if service != auth.Effects || auth.Personal && auth.Effects || auth.Anchor && (auth.Personal || auth.Effects || c.Change.PrepareQuiescence == nil && c.Change.SettleMembership == nil && c.Change.SettleLeadership == nil && c.Change.CompleteLeadership == nil && c.Change.RestoreAnchors == nil && c.Change.CloseSession == nil) {
 		return out, nil
 	}
-	if (c.Change.RestoreAnchors != nil || c.Change.CompleteLeadership != nil) && !auth.Anchor {
+	if (c.Change.PrepareQuiescence != nil || c.Change.RestoreAnchors != nil || c.Change.CompleteLeadership != nil) && !auth.Anchor {
 		return out, nil
 	}
 	var last session
@@ -353,7 +367,17 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 	if identity.Rotation != nil && c.Change.Rotate == nil && c.Change.AdvanceTime == nil && c.Change.DeviceSeen == nil && c.Change.CloseSession == nil && c.Change.CompleteJoin == nil {
 		code = Rotated
 	} else {
-		if service {
+		if c.Change.PrepareQuiescence != nil {
+			v := c.Change.PrepareQuiescence
+			if meta.Index == 0 || v.Barrier != meta.Index-1 || v.Term != meta.Term || len(v.Voters) == 0 || !reflect.DeepEqual(v.Voters, meta.Configuration.Voters) || meta.Configuration.Joint() {
+				code = Conflict
+			} else {
+				put(QuiescenceKey(), Quiescence{Index: meta.Index, Term: meta.Term, Barrier: v.Barrier, Voters: v.Voters})
+			}
+		} else if c.Change.RenewHolds != nil {
+			code = renewHolds(c, out.Now, rows, put, &out.Result)
+			out.Result.Index = meta.Index
+		} else if service {
 			code = applyEffect(c, out.Now, rows, put)
 		} else {
 			if membershipMutation(c.Change) {
@@ -387,6 +411,9 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 		writes = map[RecordKey][]byte{}
 		out.Version = meta.Version
 		out.Result.Version = meta.Version
+	}
+	if rows[QuiescenceKey()] != nil && c.Change.PrepareQuiescence == nil {
+		put(QuiescenceKey(), Quiescence{})
 	}
 	if !known {
 		counts.Live++

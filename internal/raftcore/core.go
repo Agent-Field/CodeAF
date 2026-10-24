@@ -46,6 +46,7 @@ type readRequest struct {
 // queued implicitly. Storage failure or an unknown committed command stops the
 // handle. Recovery always starts as a follower from supplied durable bytes.
 type Core struct {
+	schedule     scheduling
 	cfg          Config
 	node         *raft.RawNode
 	store        *storage
@@ -150,7 +151,7 @@ func New(cfg Config, recovered RecoveredState) (core *Core, err error) {
 	if conf == nil {
 		conf = &pb.ConfState{}
 	}
-	c := &Core{cfg: cfg, electionRank: rank, rng: splitMix64{state: cfg.Seed}, applied: recovered.Applied, reads: make(map[string]readRequest), barriers: make(map[string]uint64)}
+	c := &Core{schedule: scheduling{cancelled: recovered.Applied}, cfg: cfg, electionRank: rank, rng: splitMix64{state: cfg.Seed}, applied: recovered.Applied, reads: make(map[string]readRequest), barriers: make(map[string]uint64)}
 	c.store = &storage{MemoryStorage: raft.NewMemoryStorage(), conf: conf}
 	if !raft.IsEmptySnap(snapshot) {
 		if err := c.store.ApplySnapshot(snapshot); err != nil {
@@ -216,11 +217,20 @@ func (c *Core) Step(input Input) (effects Effects, err error) {
 			err = ErrStopped
 		}
 		effects.Status = c.status()
-		effects.NeedNextTick = !c.stopped
+		effects.NeedNextTick = !c.stopped && !c.schedule.sleeping
 		if !c.stopped && c.pending == nil {
 			effects.SnapshotNeeded = c.SnapshotNeeded()
 		}
 	}()
+	if idle, ok := input.(IdleRead); ok {
+		active, sleeping := c.schedule.active, c.schedule.sleeping
+		input = Read{RequestID: idle.RequestID}
+		defer func() {
+			if err == nil && !sleeping {
+				c.schedule.active = active
+			}
+		}()
+	}
 	if c.stopped {
 		return effects, ErrStopped
 	}
@@ -268,6 +278,14 @@ func (c *Core) Step(input Input) (effects Effects, err error) {
 	if c.pending != nil {
 		return effects, ErrBusy
 	}
+	switch input.(type) {
+	case Read, Propose, Configure, Transfer:
+		c.wakeScheduling()
+	case PeerMessage:
+		if c.schedule.sleeping {
+			c.wakeScheduling()
+		}
+	}
 	switch in := input.(type) {
 	case CompactSnapshot:
 		p := in.Snapshot
@@ -302,7 +320,9 @@ func (c *Core) Step(input Input) (effects Effects, err error) {
 		}
 	case Poll:
 	case Tick:
-		c.node.Tick()
+		if !c.schedule.sleeping {
+			c.node.Tick()
+		}
 	case PeerMessage:
 		m := &pb.Message{}
 		if len(in.Bytes) > MaxUncommittedBytes || proto.Unmarshal(in.Bytes, m) != nil || !c.validPeer(m) {
