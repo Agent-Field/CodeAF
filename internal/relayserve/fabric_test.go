@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/reqsign"
 )
@@ -75,4 +77,56 @@ func TestFabricClientScope(t *testing.T) {
 	fabricCall(t, r, client, "GET", "/v1/dir/list", nil, 401)
 	fabricCall(t, r, full, "POST", "/v1/dir/devices/"+client.dev.ID()+"/revoke", nil, 204)
 	fabricCall(t, r, client, "PUT", path, nil, 401)
+}
+
+func TestFabricSlots(t *testing.T) {
+	r := newRig(t)
+	full, client, path := pairClient(t, r)
+	slot := path + "/slots/home"
+	fabricCall(t, r, full, "PUT", slot, map[string]any{"sealed": []byte("first")}, 204)
+	raw := fabricCall(t, r, client, "GET", slot, nil, 200)
+	var got struct {
+		Sealed []byte
+		Writer string
+		At     int64
+	}
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	if string(got.Sealed) != "first" || got.Writer != full.dev.ID() || got.At != r.clock.Now().UnixMilli() {
+		t.Fatalf("slot: %+v", got)
+	}
+	fabricCall(t, r, full, "PUT", slot, map[string]any{"sealed": []byte("replacement")}, 204)
+	r.restart()
+	raw = fabricCall(t, r, client, "GET", slot, nil, 200)
+	if err := json.Unmarshal(raw, &got); err != nil || string(got.Sealed) != "replacement" {
+		t.Fatalf("after restart: %s %v", raw, err)
+	}
+	fabricCall(t, r, client, "PUT", slot, map[string]any{"sealed": []byte("forged")}, 401)
+	fabricCall(t, r, full, "GET", slot, nil, 401)
+	_, other := newIdentity(t)
+	fabricCall(t, r, other, "PUT", slot, map[string]any{"sealed": []byte("foreign")}, 404)
+	fabricCall(t, r, full, "PUT", slot, map[string]any{"sealed": make([]byte, 65537)}, 413)
+	r.clock.Advance(24 * time.Hour)
+	fabricCall(t, r, client, "GET", slot, nil, 404)
+	fabricCall(t, r, full, "PUT", slot, map[string]any{"sealed": []byte("fresh")}, 204)
+	fabricCall(t, r, full, "POST", "/v1/dir/devices/"+client.dev.ID()+"/revoke", nil, 204)
+	fabricCall(t, r, client, "GET", slot, nil, 401)
+}
+
+func TestFabricSlotCapacityAndClientIsolation(t *testing.T) {
+	r := newRig(t)
+	full, client, path := pairClient(t, r)
+	other := newDevice(t, full.id, t.TempDir())
+	otherPath := "/v1/clients/" + other.dev.ID()
+	fabricCall(t, r, full, "PUT", otherPath, map[string]any{"cert": other.Cert(), "methods": []string{}}, 204)
+	for n := 0; n < 64; n++ {
+		fabricCall(t, r, full, "PUT", path+"/slots/"+strconv.Itoa(n), map[string]any{"sealed": []byte("sealed")}, 204)
+	}
+	fabricCall(t, r, full, "PUT", path+"/slots/extra", map[string]any{"sealed": []byte("sealed")}, 429)
+	fabricCall(t, r, full, "PUT", path+"/slots/0", map[string]any{"sealed": []byte("replaced")}, 204)
+	fabricCall(t, r, other, "GET", path+"/slots/0", nil, 401)
+	fabricCall(t, r, client, "GET", otherPath+"/slots/0", nil, 401)
+	r.clock.Advance(24 * time.Hour)
+	fabricCall(t, r, full, "PUT", path+"/slots/extra", map[string]any{"sealed": []byte("sealed")}, 204)
 }

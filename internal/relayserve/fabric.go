@@ -55,6 +55,10 @@ func fabricReply(w http.ResponseWriter, out any, err error) {
 				e = fabricError{401, "unauthorized"}
 			case errors.Is(err, wireauth.ErrGone):
 				e = fabricError{410, "gone"}
+			case errors.Is(err, directory.ErrNotFound):
+				e = fabricError{404, "not_found"}
+			case errors.Is(err, directory.ErrSelfRevoke):
+				e = fabricError{400, "self_revoke"}
 			case errors.Is(err, wireauth.ErrRotated):
 				e = fabricError{410, "rotated"}
 			}
@@ -129,6 +133,8 @@ type fabricRoute func(fabricCall) (any, error)
 func (f *fabric) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("PUT /v1/clients/{device}", f.serve(registerClient))
+	mux.HandleFunc("PUT /v1/clients/{device}/slots/{name}", f.serve(putSlot))
+	mux.HandleFunc("GET /v1/clients/{device}/slots/{name}", f.serve(getSlot))
 	return mux
 }
 
