@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
 
@@ -98,12 +99,32 @@ func (b *appBackend) clients() (*clientrun.Runner, error) {
 // reads that same history, so reconnecting never loses the who/when/method.
 func (b *appBackend) logClientCall(receipt clientrun.Receipt) error {
 	if receipt.Agent != "" {
-		if receipt.Status == "refused" {
-			a, err := b.findCrewOwner(receipt.Agent)
-			if err != nil {
+		// A reserved creation may have died before its folder existed, or
+		// before best-effort session metadata was written. Its durable path
+		// lets us recover the latter without inventing a nonexistent chat.
+		if receipt.Transcript != "" {
+			folder, ok := session.FolderOf(receipt.Transcript)
+			if !ok {
+				return appwire.Errorf(appwire.CodeBadParams, "client receipt has no chat folder")
+			}
+			if _, err := os.Stat(folder); os.IsNotExist(err) {
+				return nil
+			} else if err != nil {
 				return err
 			}
-			entry := appClientEntry(receipt)
+			a := b.agent(receipt.Agent)
+			b.locked(func() {
+				if a.transcript == "" {
+					a.transcript = receipt.Transcript
+				}
+			})
+		}
+		a, err := b.findCrewOwner(receipt.Agent)
+		if err != nil {
+			return err
+		}
+		entry := appClientEntry(receipt)
+		if receipt.Status == "refused" || receipt.Method == "agents.create" {
 			if err := b.keepAppEntry(a, entry, ""); err != nil {
 				return err
 			}
@@ -131,8 +152,8 @@ func appClientEntry(receipt clientrun.Receipt) appwire.Entry {
 		suffix = " · skipped missing calls " + strconv.FormatInt(receipt.SkippedFrom, 10) + "–" + strconv.FormatInt(receipt.SkippedThrough, 10)
 	}
 	id := "client-" + receipt.Client + "-" + strconv.FormatInt(receipt.Number, 10)
-	if receipt.Status == "refused" {
-		id += "-refused"
+	if receipt.Status == "refused" || receipt.Method == "agents.create" {
+		id += "-" + receipt.Status
 	}
 	return appwire.Entry{ID: id, Agent: receipt.Agent, Kind: appwire.EntryNotice, At: at, Text: "Paired client " + receipt.Client + " · " + receipt.Method + " · " + state + suffix}
 }

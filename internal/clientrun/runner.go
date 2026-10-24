@@ -103,6 +103,13 @@ func Open(cfg Config) (*Runner, error) {
 	if r.state.Receipts == nil {
 		r.state.Receipts = map[string]Receipt{}
 	}
+	for _, receipt := range r.state.Receipts {
+		if cfg.Log != nil && receipt.Status != "claiming" {
+			if err := r.log(receipt); err != nil {
+				return nil, err
+			}
+		}
+	}
 	opened = true
 	return r, nil
 }

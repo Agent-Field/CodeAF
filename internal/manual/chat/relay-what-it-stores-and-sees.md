@@ -167,3 +167,12 @@ already open”. The runner saves a private claim token before claiming. A resta
 can recover a lost claim reply with that token; a second process cannot make a
 fresh claim. After execution starts, restart only acknowledges without running
 again.
+
+## Interrupted new work keeps its chat receipt
+
+For queued `agents.create`, the app reserves the chat id and transcript path in
+the started receipt before creating its folder. The paired-client line is written
+before the first turn starts. Restart repairs that line if delivery stopped
+immediately after the folder was created, even before the create result. If the
+folder was never created, recovery invents no chat. It acknowledges the uncertain
+call without creating another chat.
