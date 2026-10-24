@@ -134,7 +134,7 @@ func (r *Runner) execute(ctx context.Context, c Client, e Queued) error {
 	if receipt.Status == "failed" {
 		callErr = errors.New(receipt.Reason)
 	}
-	return errors.Join(callErr, ackErr)
+	return errors.Join(callErr, ackErr, r.trim(receipt))
 }
 
 func (r *Runner) prepare(ctx context.Context, c Client, e Queued) (Call, string, error) {

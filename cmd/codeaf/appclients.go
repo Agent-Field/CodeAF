@@ -48,13 +48,13 @@ func (b *appBackend) startPairedClients() {
 	if _, err := os.Stat(clientrun.StatePath(home.Dir())); err != nil {
 		return
 	}
-	local, err := clientrun.Open(clientrun.Config{Home: home.Dir()})
+	local, err := clientrun.Open(clientrun.Config{Home: home.Dir(), Log: b.logClientCall})
 	if err != nil {
 		b.emit.Emit(appwire.EventLog, appwire.Log{Level: "warn", Message: "paired client records could not be read"})
 		return
 	}
 	if len(local.Clients()) == 0 {
-		b.clientArchive.Store(local)
+		_ = local.Close()
 		return
 	}
 	_ = local.Close()
@@ -95,8 +95,8 @@ func (b *appBackend) clients() (*clientrun.Runner, error) {
 	return r, nil
 }
 
-// logClientCall emits a receipt already durably kept by the runner. Entries
-// reads that same history, so reconnecting never loses the who/when/method.
+// logClientCall keeps chat history independently of replay watermarks, so
+// acknowledgement and unpair can discard runner receipts without losing lines.
 func (b *appBackend) logClientCall(receipt clientrun.Receipt) error {
 	if receipt.Agent != "" {
 		// A reserved creation may have died before its folder existed, or
@@ -124,10 +124,8 @@ func (b *appBackend) logClientCall(receipt clientrun.Receipt) error {
 			return err
 		}
 		entry := appClientEntry(receipt)
-		if receipt.Status == "refused" || receipt.Method == "agents.create" {
-			if err := b.keepAppEntry(a, entry, ""); err != nil {
-				return err
-			}
+		if err := b.keepAppEntry(a, entry, ""); err != nil {
+			return err
 		}
 		b.emit.Emit(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appClientEntry(receipt)})
 	}
@@ -152,28 +150,9 @@ func appClientEntry(receipt clientrun.Receipt) appwire.Entry {
 		suffix = " · skipped missing calls " + strconv.FormatInt(receipt.SkippedFrom, 10) + "–" + strconv.FormatInt(receipt.SkippedThrough, 10)
 	}
 	id := "client-" + receipt.Client + "-" + strconv.FormatInt(receipt.Number, 10)
-	if receipt.Status == "refused" || receipt.Method == "agents.create" {
-		id += "-" + receipt.Status
-	}
+	id += "-" + receipt.Status
 	return appwire.Entry{ID: id, Agent: receipt.Agent, Kind: appwire.EntryNotice, At: at, Text: "Paired client " + receipt.Client + " · " + receipt.Method + " · " + state + suffix}
 }
-func (b *appBackend) clientEntries(agent string) []appwire.Entry {
-	r := b.clientRunner.Load()
-	if r == nil {
-		r = b.clientArchive.Load()
-	}
-	if r == nil {
-		return nil
-	}
-	var entries []appwire.Entry
-	for _, receipt := range r.Receipts() {
-		if receipt.Agent == agent {
-			entries = append(entries, appClientEntry(receipt))
-		}
-	}
-	return entries
-}
-
 func (b *appBackend) ListPairedClients() ([]appwire.PairedClient, error) {
 	r := b.clientRunner.Load()
 	if r == nil {
@@ -230,9 +209,6 @@ func (b *appBackend) stopClients() {
 		<-done
 	}
 	if r := b.clientRunner.Load(); r != nil {
-		_ = r.Close()
-	}
-	if r := b.clientArchive.Load(); r != nil {
 		_ = r.Close()
 	}
 }

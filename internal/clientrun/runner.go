@@ -6,7 +6,6 @@ package clientrun
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -88,27 +87,10 @@ func Open(cfg Config) (*Runner, error) {
 			_ = r.Close()
 		}
 	}()
-	raw, err := os.ReadFile(StatePath(cfg.Home))
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
+	r.state.Clients = map[string]Client{}
+	r.state.Receipts = map[string]Receipt{}
+	if err := r.load(); err != nil {
 		return nil, err
-	}
-	if err == nil {
-		if err := json.Unmarshal(raw, &r.state); err != nil {
-			return nil, err
-		}
-	}
-	if r.state.Clients == nil {
-		r.state.Clients = map[string]Client{}
-	}
-	if r.state.Receipts == nil {
-		r.state.Receipts = map[string]Receipt{}
-	}
-	for _, receipt := range r.state.Receipts {
-		if cfg.Log != nil && receipt.Status != "claiming" {
-			if err := r.log(receipt); err != nil {
-				return nil, err
-			}
-		}
 	}
 	opened = true
 	return r, nil

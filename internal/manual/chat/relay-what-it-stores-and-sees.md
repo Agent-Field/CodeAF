@@ -176,3 +176,13 @@ before the first turn starts. Restart repairs that line if delivery stopped
 immediately after the folder was created, even before the create result. If the
 folder was never created, recovery invents no chat. It acknowledges the uncertain
 call without creating another chat.
+
+## Receipt retention and unpair history
+
+Acknowledgement keeps only the latest call’s proof and sequence watermark for
+each paired client; older numbers still cannot run again. An in-flight call may
+also retain the preceding watermark until acknowledgement. Lost acknowledgement
+responses do not accumulate history. Unpair removes that client’s runner receipts.
+Chat lines are saved separately in the conversation and survive both trimming
+and unpair. Older state files are streamed one receipt at a time into chat logs,
+then compacted, instead of loading their whole history into memory.

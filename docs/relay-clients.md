@@ -203,8 +203,8 @@ snapshot and its original timestamp. The round reports the size refusal and
 continues updating the client's other subscribed methods. Snapshots are not
 silently truncated or split into an unadvertised paging format. Large result
 pagination remains outside v0; clients must treat the retained timestamp as stale.
-After the last unpair, startup reads only the archived call receipts and does
-not open sync, start an executor or install its publish watcher.
+After the last unpair, startup does not open sync, start an executor or install
+its publish watcher. Chat lines remain in each conversation’s history.
 
 ## Face ID for a whole consent batch
 
@@ -234,3 +234,13 @@ the first turn starts. Restart repairs the line if death happened immediately
 after minting, even before the create result or derived session metadata exists.
 If the reserved folder was never created, recovery invents no chat. Both cases
 acknowledge the uncertain call without creating another chat.
+
+## Receipt retention and unpair history
+
+Acknowledgement keeps only the latest call’s proof and sequence watermark for
+each paired client; older numbers still cannot run again. An in-flight call may
+also retain the preceding watermark until acknowledgement. Lost acknowledgement
+responses do not accumulate history. Unpair removes that client’s runner receipts.
+Chat lines are saved separately in the conversation and survive both trimming
+and unpair. Older state files are streamed one receipt at a time into chat logs,
+then compacted, instead of loading their whole history into memory.

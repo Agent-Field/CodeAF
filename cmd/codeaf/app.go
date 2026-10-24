@@ -432,11 +432,9 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 type appBackend struct {
 	// clientRunner is absent until local pairing state exists or Settings pairs a client.
 	clientRunner atomic.Pointer[clientrun.Runner]
-	// clientArchive keeps old chat receipts without starting an executor.
-	clientArchive atomic.Pointer[clientrun.Runner]
-	clientInit    sync.Mutex
-	clientCancel  context.CancelFunc
-	clientDone    chan struct{}
+	clientInit   sync.Mutex
+	clientCancel context.CancelFunc
+	clientDone   chan struct{}
 
 	// organizeProposer supplies a naming door when the backend is embedded without held conversations.
 	organizeProposer session.TeamProposer
@@ -2979,7 +2977,7 @@ func (b *appBackend) Entries(id, before string, limit int) ([]appwire.Entry, boo
 		record.Entries = appLinkJobHistory(record.Entries, jobs)
 		page, more, err = appEntryPageOf(id, record, at, marks, notes, before, limit, func(item session.DisplayEntry) appwire.ToolFacts {
 			return b.appEntryFacts(a, item)
-		}, append(b.crewFormedEntries(id), b.clientEntries(id)...), footers)
+		}, b.crewFormedEntries(id), footers)
 		return err
 	})
 	if err != nil {
