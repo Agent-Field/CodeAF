@@ -114,6 +114,9 @@ func workerDependencies(c Command) []RecordKey {
 	}
 	if v := c.Change.RenewHolds; v != nil {
 		add(v.Device)
+		for _, h := range v.Items {
+			keys = append(keys, WorkerHoldKey(v.Device, h.Cell))
+		}
 	}
 	if v := c.Change.EnrollMember; v != nil {
 		add(v.Device)
@@ -181,7 +184,21 @@ func authorizeWorkerCommand(c Command, now int64, identity IdentityRec, a Author
 		}
 		return OK
 	}
-	// Ownership acquisition is reserved for P16's committed conditional claim.
+	if c.Change.ClaimAssignment != nil {
+		r := c.Change.ClaimAssignment.Ref
+		if r.Target != c.Actor || r.Incarnation != w.Incarnation || !a.Worker.Allows(r.Cell) {
+			return Unauthorized
+		}
+		return OK
+	}
+	if c.Change.FinishAssignment != nil {
+		r := c.Change.FinishAssignment.Ref
+		if r.Target != c.Actor || r.Incarnation != w.Incarnation || !a.Worker.Allows(r.Cell) {
+			return Unauthorized
+		}
+		return OK
+	}
+	// Ownership acquisition uses only the committed conditional claim.
 	// Drain does not block saving/releasing a fence already held by this worker.
 	if c.Change.Publish == nil && c.Change.Beat == nil && c.Change.BeatBatch == nil && c.Change.Release == nil {
 		return Unauthorized
@@ -189,6 +206,15 @@ func authorizeWorkerCommand(c Command, now int64, identity IdentityRec, a Author
 	for _, cell := range cellIDs(c.Change) {
 		if !a.Worker.Allows(cell) {
 			return Unauthorized
+		}
+		if b := rows[WorkerHoldKey(c.Actor, cell)]; b != nil {
+			var hold WorkerHold
+			if Decode(b, &hold) != nil {
+				return BadRequest
+			}
+			if hold.Incarnation != w.Incarnation {
+				return Conflict
+			}
 		}
 	}
 	if c.Change.Publish != nil && c.Change.Publish.V1 {

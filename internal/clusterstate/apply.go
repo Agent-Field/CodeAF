@@ -149,6 +149,7 @@ func Dependencies(c Command) []RecordKey {
 	}
 	keys = append(keys, membershipDependencies(m)...)
 	keys = append(keys, workerDependencies(c)...)
+	keys = append(keys, assignmentDependencies(c)...)
 	if m.PutDevice != nil {
 		keys = append(keys, DeviceKey(m.PutDevice.ID))
 	}
@@ -266,6 +267,12 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 			target = new(Device)
 		case k.Namespace == "state" && len(k.Key) >= 5 && k.Key[:5] == "cell/":
 			target = new(Cell)
+		case k.Namespace == "state" && len(k.Key) > 11 && k.Key[:11] == "assignment/":
+			target = new(Assignment)
+		case k.Namespace == "state" && len(k.Key) > 16 && k.Key[:16] == "assignment-slot/":
+			target = new(AssignmentSlot)
+		case k.Namespace == "state" && len(k.Key) > 12 && k.Key[:12] == "worker-hold/":
+			target = new(WorkerHold)
 		case k == WorkerRegistryKey():
 			target = new(WorkerRegistry)
 		case k.Namespace == "state" && len(k.Key) > 7 && k.Key[:7] == "worker/":
@@ -398,7 +405,9 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 		} else if service {
 			code = applyEffect(c, out.Now, rows, put)
 		} else {
-			if workerMutation(c.Change) {
+			if assignmentMutation(c.Change) {
+				code = applyAssignment(c, out.Now, identity, rows, put, &out.Result)
+			} else if workerMutation(c.Change) {
 				code = applyWorker(c, out.Now, identity, rows, put, &out.Result)
 			} else if membershipMutation(c.Change) {
 				code = applyMembership(c, meta, rows, put, &out.Result)

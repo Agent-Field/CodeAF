@@ -72,6 +72,15 @@ func renewHolds(c Command, now int64, rows map[RecordKey][]byte, put func(Record
 			if !a.Worker.Allows(h.Cell) {
 				return Unauthorized
 			}
+			if b := rows[WorkerHoldKey(v.Device, h.Cell)]; b != nil {
+				var hold WorkerHold
+				if Decode(b, &hold) != nil {
+					return BadRequest
+				}
+				if hold.Incarnation != v.WorkerIncarnation {
+					return Conflict
+				}
+			}
 		}
 	}
 	seen := map[string]bool{}
@@ -115,6 +124,14 @@ func renewHolds(c Command, now int64, rows map[RecordKey][]byte, put func(Record
 // RecordActive is evaluated one immutable row at a time so large imported
 // identities never have to be materialized to decide whether they may sleep.
 func RecordActive(key RecordKey, raw []byte, now int64) (bool, error) {
+	if key.Namespace == "state" && len(key.Key) > 11 && key.Key[:11] == "assignment/" {
+		var a Assignment
+		if Decode(raw, &a) != nil {
+			return false, ErrDependency
+		}
+		return (a.Status == "pending" || a.Status == "claimed") && a.Spec.Expires > now, nil
+	}
+
 	if key.Namespace == "state" && len(key.Key) > 7 && key.Key[:7] == "worker/" {
 		var worker WorkerRecord
 		if Decode(raw, &worker) != nil {
