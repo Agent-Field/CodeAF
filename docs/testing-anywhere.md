@@ -273,6 +273,4 @@ Known limits, from the measured runs (the benchmark notes of the program have th
 - **The pairing rate limit.** The hosted relay allows about 12 pairings per 40 minutes from one
   network (staging says `too many pairings from this network; wait N min`). Pair once and reuse
   the homes; do not run `continuity.py pair` in a loop.
-- **The conformance suite and load runs against staging** cost real requests; run them with
-  the owner's agreement, not by habit.
 - **Only the Mac and Linux pairs were tested.** The fidelity runs were Linux to a Mac on APFS.

@@ -12,13 +12,12 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-// The wave-4 surface: the approval question, the session's name, ctrl+enter's
+// The conversation controls: the approval question, the session's name, ctrl+enter's
 // queue, and the model's own thinking.
 
-// ── the scripted agent's wave-4 methods ─────────────────────────────────────
+// ── the scripted agent's control methods ─────────────────────────────────────
 //
-// They live here rather than beside [fakeAgent] because they arrived with this
-// wave: the plain fake answers them the way a session with nothing to say does,
+// They live here rather than beside [fakeAgent] because they cover these controls: the plain fake answers them the way a session with nothing to say does,
 // and [wiredAgent] below is the one that records.
 
 func (f *fakeAgent) FollowUp(string) (<-chan session.Event, error) {

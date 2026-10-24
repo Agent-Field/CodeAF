@@ -293,7 +293,7 @@ func TestNoProbeRidesARoleSomebodyIsWaitingOn(t *testing.T) {
 	}
 }
 
-// TestTheChoiceNamesNoRoleAndNoMachine is the owner's architecture bar written
+// TestTheChoiceNamesNoRoleAndNoMachine is the routing architecture contract written
 // as a law the build holds, and it is the one this file exists to keep.
 //
 // BEHAVIOUR IS DERIVED FROM DECLARED PROPERTIES AND FROM MEASURED BELIEFS. Not

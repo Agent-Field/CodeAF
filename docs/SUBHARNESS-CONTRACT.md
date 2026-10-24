@@ -320,11 +320,3 @@ appears on nothing a person picks from. That is the same law
 `internal/exec/subharness.go` already states — the baseline is what every node
 is judged against, not an entry on a menu — and it is why `Manifest.Validate`
 exempts exactly one name from needing a purpose.
-
-## 8. Gates
-
-`gofmt -l` clean on every touched file. `go build ./...` clean.
-`go test ./internal/exec/ ./internal/session/ ./internal/subharness/ -count=1`
-green, as are `./cmd/codeaf/` and `./internal/resident/`. No manual page yet:
-this lane landed no slash command, no belt verb and no person-facing surface —
-the pages come with the surfaces, per the manual law.

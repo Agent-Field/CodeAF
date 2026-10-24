@@ -97,8 +97,7 @@ type switcherRow struct {
 	// [app.homeLedgerEnter]). note is the one fact such a line carries besides
 	// its title — a task's cost, the conversation a file was made in — and it is
 	// the line's DESCRIPTION, drawn under the cursor, and not its margin: the
-	// margin is when it happened, like every row of the field (owner,
-	// 2026-09-15).
+	// margin is when it happened, like every row of the field.
 	task *session.TaskIndexEntry
 	path string
 }

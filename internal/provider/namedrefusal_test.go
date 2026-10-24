@@ -13,8 +13,7 @@ import (
 
 // ── A NAMED REFUSAL IS A MOVE, AND A VETO THAT DID NOT TAKE IS NOT ──────────
 //
-// THE LIVE CHAIN (2026-09-11 14:39:17 – 14:40:47, the owner's own task, tag
-// `task` node 2, deepseek/deepseek-v4.1-flash). The router answered eight
+// THE REFUSAL CHAIN. The router answered eight
 // consecutive sends with `(via Wafer: … is temporarily rate-limited upstream)`,
 // every one of them carrying `retry_after: 2`, while six other machines on the
 // same model were answering inside five seconds — one of them thirty seconds

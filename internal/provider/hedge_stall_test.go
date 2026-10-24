@@ -84,8 +84,7 @@ func unattended() context.Context {
 	return WithRole(context.Background(), lanes.RoleLeafUnattended)
 }
 
-// TestAWireBelowItsPromisedPaceIsRescuedOnAnUnattendedTask is the owner's own
-// call, staged. The machine writes — there is no silence and no error — and it
+// TestAWireBelowItsPromisedPaceIsRescuedOnAnUnattendedTask stages a slow call. The machine writes — there is no silence and no error — and it
 // writes an eighth as fast as the machine the question was sent to. The rescue
 // costs about what the call was going to cost anyway, and the call's own budget
 // affords it; under the deleted window it did not, and a person watched 604

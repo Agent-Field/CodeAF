@@ -11,7 +11,7 @@ package tui3
 // Every road that ends in "this directory" ends in [app.referPlace] with a
 // [chosenPlace]: the picker's enter, `/attach` handed a folder, and — when the
 // forming card's ground row lands — its `g`. There is ONE such method on
-// purpose. Lane P2 is what makes a chosen place PERSIST (a `Places` list on the
+// purpose. The place list makes a chosen place PERSIST (a `Places` list on the
 // conversation's meta, feeding the ground ladder's SAID rung); it replaces the
 // body of that one method and does not have to go and find the doors again.
 // What P1 does there is real and not a placeholder: it writes the pick down for
@@ -307,8 +307,7 @@ func (a *app) closeFolderSheet() tea.Cmd {
 //
 // ── WHAT THE INTENT DECIDES, AND WHAT IT DOES NOT ──────────────────────────
 //
-// ONE SHEET SHOWS BOTH KINDS WHICHEVER DOOR OPENED IT, which is the owner's
-// requirement in as many words: a person deciding what this conversation is
+// ONE SHEET SHOWS BOTH KINDS WHICHEVER DOOR OPENED IT: a person deciding what this conversation is
 // about is looking at a repository and a log inside it at the same time, and two
 // browsers would have made them choose the door before they had seen the thing.
 // So the intent decides exactly one thing — WHETHER A FOLDER DOOR IS REQUIRED

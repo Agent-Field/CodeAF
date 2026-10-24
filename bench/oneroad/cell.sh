@@ -29,29 +29,13 @@ ISSUES="${ISSUES:-20 21 22 23}"
 MODEL="${MODEL:-deepseek/deepseek-v4-flash}"
 NEW_BIN="${NEW_BIN:-$HOME/af-oneroad/bin/codeaf}"
 OLD_BIN="${OLD_BIN:-$HOME/af-oldbase/bin/codeaf}"
-# WAVE 1B'S BINARY, AND IT IS A SNAPSHOT RATHER THAN THE LIVE PATH ON PURPOSE.
-# bin/codeaf is rebuilt in place by whoever is working the tree, and wave 1's
-# batch cells landed two minutes before one such rebuild — which is luck, not a
-# protocol. A wave measured against "whatever bin/codeaf was at the moment each
-# cell happened to launch" is a wave whose arm has no single identity, so the
-# bytes are copied once, sha'd into results/BINARIES, and every cell of the arm
-# runs that copy.
 ESC_BIN="${ESC_BIN:-$ONEROAD/bin/codeaf-esc-b70de31c}"
-# Wave 1c's binary, snapshotted for the same reason ESC_BIN is.
 PRE_BIN="${PRE_BIN:-$ONEROAD/bin/codeaf-pre-9b9a4c92}"
-# Wave 1d: the raced screen, the ski-rental checkpoints and the ceiling, together.
 CKPT_BIN="${CKPT_BIN:-$ONEROAD/bin/codeaf-ckpt-6b9809e9}"
-# Wave 1e: the finalist. Everything at once.
 FINAL_BIN="${FINAL_BIN:-$ONEROAD/bin/codeaf-final-c0e4f5a7}"
 PI_BIN="${PI_BIN:-pi}"
 OPENCODE_BIN="${OPENCODE_BIN:-$HOME/.opencode/bin/opencode}"
 
-# The wall. bench/run.sh's forty minutes, in seconds, because a cell past it is
-# recorded as DNF rather than left to spend.
-# Raised from 2400 after wave 1g: its task-road cells ran 2126-2315s, close
-# enough to the old wall that the number being measured was starting to be the
-# wall rather than the work. A wall has to sit far enough above the work that a
-# row hitting it means something went wrong, not that the task was ordinary.
 CELL_SECONDS="${CELL_SECONDS:-3600}"
 # How long the surface must be completely silent before the turn is called
 # settled. A task thinking between tool calls is silent for tens of seconds, so
@@ -211,26 +195,6 @@ PY
     else
       quiet=0
     fi
-    # THE STORE IS AUTHORITATIVE PAST A HARD MULTIPLE OF THE WINDOW, and this is
-    # the second half of a lesson that cost two cells. The footer's hint was
-    # wrong in one direction ('esc interrupt' outliving the turn) and the spinner
-    # is wrong in the other: a cell whose store had been silent for sixteen
-    # minutes was still drawing 'working' and would have run to the wall. A pane
-    # is a rendering, not a fact. So the screen may DELAY a settle but it may not
-    # prevent one — past 3x the silence window the store's own silence decides.
-    # A LIVE TASK VETOES THE SETTLE, AND NO AMOUNT OF SILENCE OVERRIDES IT.
-    #
-    # This is the rule that was missing, and its absence destroyed six wave-1f
-    # cells. The quiet window is evidence about the CONVERSATION and says nothing
-    # whatever about a task: a worker that has just typed `pytest` writes nothing
-    # anywhere for minutes. The old rule read that silence as "finished", reaped
-    # the tmux session, and killed the worker in the middle of its test run —
-    # eighteen minutes of real work, nought files landed, judges scoring the
-    # emptiness. THE STORE GOING QUIET IS NOT A TASK FINISHING.
-    #
-    # lib/tasklive.py counts any state it does not recognise as LIVE, so the way
-    # this rule fails is by waiting — bounded by the hard wall above — rather
-    # than by killing, which is bounded by nothing and loses the work.
     sess="$(find "$CELL/profile/v3/projects" -mindepth 2 -maxdepth 2 -type d 2>/dev/null | head -1)"
     live=0; stranded_ids=""
     if [ -n "$sess" ]; then
@@ -238,11 +202,6 @@ PY
       live="$(printf '%s' "$tl" | python3 -c 'import json,sys
 try:  print(json.load(sys.stdin)["live"])
 except Exception: print(0)' 2>/dev/null)"
-      # STRANDED IS NOT LIVE. A task in a live state whose own journal has not
-      # seen a request for the stranded window has stopped working without
-      # landing; counting it live pinned wave 1h's batch cells to the hard wall
-      # for 3100 dead seconds apiece. It is named here so the row can say WHICH
-      # task stranded rather than just that the cell ended badly.
       stranded_ids="$(printf '%s' "$tl" | python3 -c 'import json,sys
 try:  print(",".join(str(i) for i in json.load(sys.stdin).get("stranded_ids") or []))
 except Exception: print("")' 2>/dev/null)"
@@ -274,14 +233,6 @@ except Exception: print("")' 2>/dev/null)"
   done
   tmux capture-pane -t "$SESSION_NAME" -p > "$CELL/tmux-final.txt"
   tmux capture-pane -t "$SESSION_NAME" -p -S -4000 > "$CELL/tmux-scrollback.txt"
-  # THE SESSION IS REAPED ONCE ITS EVIDENCE IS CAPTURED, and forgetting this cost
-  # wave 1 real money in contention: `codeaf chat` is an interactive surface that
-  # never exits on its own, so every settled cell left a live process and a live
-  # tmux session behind it. Fourteen of them were still resident when wave 1b
-  # fired, competing for the same CPU as the cells being measured — which makes
-  # every wall clock after the first wave quietly worse than the harness it is
-  # supposed to be measuring. Capture first, then reap: the panes above are the
-  # only thing in the session worth keeping, and the store is on disk already.
   tmux kill-session -t "$SESSION_NAME" 2>/dev/null
   if [ -f "$CELL/outcome_override" ]; then cp "$CELL/outcome_override" "$CELL/outcome"; else echo OK > "$CELL/outcome"; fi
   return 0
@@ -314,28 +265,12 @@ case "$ARM" in
   codeaf-new-flash) run_codeaf "$NEW_BIN" 1; CODE=$? ;;
   codeaf-new-crew)  run_codeaf "$NEW_BIN" 0; CODE=$? ;;
   codeaf-old-flash) run_codeaf "$OLD_BIN" 1; CODE=$? ;;
-  # Wave 1b. Same two configurations as the new-* arms, same protocol, different
-  # bytes: the question is whether the mid-turn escalation teaching moves the
-  # road column, so everything except the binary has to be held still.
   codeaf-esc-flash) run_codeaf "$ESC_BIN" 1; CODE=$? ;;
   codeaf-esc-crew)  run_codeaf "$ESC_BIN" 0; CODE=$? ;;
-  # Wave 1c. The pre-turn route judge resolves the screen and the confirm
-  # through the TIER ROWS, so the all-flash arm runs both readings on flash and
-  # the crew arm runs the screen on the shipped low tier and the confirm on the
-  # kimi mastermind. That difference is not noise to be controlled away — it is
-  # what the two arms are FOR, and it is recorded as part of the arm.
   codeaf-pre-flash) run_codeaf "$PRE_BIN" 1; CODE=$? ;;
   codeaf-pre-crew)  run_codeaf "$PRE_BIN" 0; CODE=$? ;;
   codeaf-ckpt-flash) run_codeaf "$CKPT_BIN" 1; CODE=$? ;;
   codeaf-ckpt-crew)  run_codeaf "$CKPT_BIN" 0; CODE=$? ;;
-  # Wave 1e. crew is the intended default — the mark-reader sidecar and the
-  # confirm are mastermind calls and are simply ABSENT on the all-flash pin,
-  # which is why that arm is the cost ablation and not a second opinion.
-  #
-  # NEITHER ARM WRITES A `routing` ROW. The new default is latency under a price
-  # ceiling for the turn and price for background calls, and pinning the row
-  # would measure the pin instead of the default. The profile writer below has
-  # never written that key; this comment is here so nobody adds it.
   codeaf-final-crew)  run_codeaf "$FINAL_BIN" 0; CODE=$? ;;
   codeaf-1f-crew)     run_codeaf "$ONEROAD/bin/codeaf-1f-0fabf058" 0; CODE=$? ;;
   codeaf-1g-crew)     run_codeaf "$ONEROAD/bin/codeaf-1g-ec52e7ae" 0; CODE=$? ;;
@@ -352,14 +287,6 @@ WALL=$(( $(date +%s) - STARTED ))
 cut -d' ' -f1-3 /proc/loadavg > "$CELL/loadavg-after"
 say "$ARM/$TASK: harness finished, exit $CODE, ${WALL}s"
 
-# ── what it actually did ────────────────────────────────────────────────────
-#
-# THE PATCH IS THE LANDED DIFF, AND IT IS BUILT HERE RATHER THAN BY A LATER PASS.
-# lib/landed.py existed since wave 1d but was only ever run as a one-off script
-# afterwards, so wave 1h's cells were recorded with `git diff` alone — which is
-# EMPTY once a task has committed and merged. Six landed files read as "no
-# changes", the judges were handed that, and they scored the cells zero. Any
-# measurement a row depends on has to be taken by the runner that writes the row.
 CHANGED="$(changed_files "$DIR")"
 python3 - "$DIR" "$BASE_COMMIT" "$CELL" "$ONEROAD/lib" <<'LANDED'
 import os, sys

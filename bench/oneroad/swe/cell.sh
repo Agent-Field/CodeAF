@@ -1,34 +1,4 @@
 #!/usr/bin/env bash
-# swe/cell.sh — ONE Senior SWE-Bench cell: one arm, one task, one container.
-#
-# Usage: swe/cell.sh <arm> <task>
-#
-# THE SHAPE, AND WHY IT IS THIS SHAPE.
-#
-# The task's repository only exists inside its Docker image, with the toolchain
-# the repo needs already built (better-auth's image carries a full pnpm build).
-# So the harness has to run IN the container. Two ways to get a real TUI in
-# there, and this takes the second:
-#
-#   a thin derived image per task with tmux apt-installed into it — seven builds,
-#   seven images to keep in step with the dataset's own, and a benchmark that
-#   measures a container it built rather than the one the dataset ships;
-#
-#   TMUX ON THE HOST, driving `docker exec -it` — no image is modified, the
-#   dataset's container is the one under test, and the pane is a real TTY on a
-#   real terminal exactly as wave 1's was.
-#
-# The second also buys the thing that makes the road columns work: the profile
-# directory is a BIND MOUNT from the cell's own host directory, so the journal
-# the settle detector polls and lib/road.py reads is on the host, at a path the
-# existing readers already understand. Nothing about the autopsy changes.
-#
-# ORACLE SAFETY. solution/oracle.patch, tests/judge/ and task.toml (whose
-# [metadata] carries the canonical fix IN PROSE) must never reach a harness or a
-# judge. Only tests/ is mounted, at /tests, and tests/judge is masked with an
-# empty read-only directory over it. The prompt is instruction.md's `## Task`
-# section alone — not the file, which also carries the general instructions, and
-# never task.toml.
 set -uo pipefail
 
 ARM="${1:?usage: cell.sh <arm> <task>}"
@@ -211,19 +181,6 @@ PY
   tmux send-keys -t "$SESSION_NAME" Enter
   say "$ARM/$TASK: sent ($(wc -c < "$CELL/prompt.txt") bytes), wall ${CELL_SECONDS}s"
 
-  # Settlement, and BOTH READINGS ARE TAKEN INSIDE THE CONTAINER.
-  #
-  # The obvious thing — read the bind mount from the host — is silently wrong
-  # here, and it would have made every SWE row meaningless. The harness runs as
-  # root in the container and creates its session folder mode 700, so from the
-  # host `$CELL/profile/v3` is unreadable: `find` returns nothing, with no error,
-  # and a fingerprint of nothing is perfectly stable from the very first poll.
-  # The cell would settle blind after one window no matter what the agent was
-  # doing. The container is the only vantage point that can see its own store.
-  #
-  # The rest is wave 1's rule, including the correction that cost six 1f cells:
-  # a live task VETOES the settle, because a worker running a build or a test
-  # suite writes nothing for minutes and silence is not a task finishing.
   local started elapsed stable=0 quiet=0 last="" now screen sess live
   started=$(date +%s)
   while :; do
@@ -249,7 +206,6 @@ PY
       live="$(printf '%s' "$tl" | python3 -c 'import json,sys
 try:  print(json.load(sys.stdin)["live"])
 except Exception: print(0)' 2>/dev/null)"
-      # See the wave-1 runner: a live STATE is not a live task.
       stranded_ids="$(printf '%s' "$tl" | python3 -c 'import json,sys
 try:  print(",".join(str(i) for i in json.load(sys.stdin).get("stranded_ids") or []))
 except Exception: print("")' 2>/dev/null)"
@@ -292,8 +248,6 @@ run_peer() {
     opencode) inner="opencode run --auto -m 'openrouter/$MODEL' \"\$(cat /oneroad-prompt.txt)\"" ;;
   esac
   docker cp "$CELL/prompt.txt" "$CONTAINER:/oneroad-prompt.txt" >/dev/null
-  # Their state dirs are bind-mounted out so competitor_cost.py can read the
-  # session stores afterwards, exactly as it does on the host in wave 1.
   timeout "$CELL_SECONDS" docker exec -w "/repo/$REPO_NAME" \
     -e HOME=/peer -e "OPENROUTER_API_KEY=$OPENROUTER_API_KEY" \
     "$CONTAINER" bash -lc "$inner"
@@ -333,9 +287,6 @@ docker exec "$CONTAINER" chown -R "$HOST_UID:$HOST_GID" /prof /chome /logs /peer
 
 python3 "$SWE/record.py" "$CELL" "$ARM" "$TASK" "$SEED" "$WALL" "$CODE" "$VWALL" "$MODEL" "$TASKDIR" \
   "$(cat "$CELL/settle_reason" 2>/dev/null || echo n/a)"
-# The SWE bundle, not lib/judge_bundle.py: this track's ISSUE is issue.txt (the
-# Task section alone) and its PATCH is the dataset's agent.patch, neither of
-# which the wave-1 builder knows about.
 python3 "$SWE/judge_bundle_swe.py" "$CELL"
 cleanup
 say "$ARM/$TASK: done — $CELL"

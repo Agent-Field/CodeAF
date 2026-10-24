@@ -175,7 +175,7 @@ func TestABankedRuleReachesTheAgentItWasMintedWith(t *testing.T) {
 		t.Fatalf("the always was not saved: %v", err)
 	}
 	if len(closed.pushed) != 0 {
-		t.Fatal("the rebuilt gate went into the conversation that was closed — the bug this lane fixes")
+		t.Fatal("the rebuilt gate went into the conversation that was closed")
 	}
 	if len(front.pushed) != 1 || front.pushed[0] == nil {
 		t.Fatalf("the conversation in front was handed %d gates", len(front.pushed))

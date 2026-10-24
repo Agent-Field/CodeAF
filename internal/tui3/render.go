@@ -3246,8 +3246,7 @@ func (a *app) warmSegment() string {
 	if !ok {
 		return ""
 	}
-	// The word rides with the rate because the rate alone was the owner's own
-	// stumble: two percentages share this line, and the one that means "of the
+	// The word rides with the rate to distinguish the two readings: two percentages share this line, and the one that means "of the
 	// window" and the one that means "served from the cache" are told apart by
 	// a word, not by position. It is the same word the per-turn note spends on
 	// the same subject ("⟲ 9.8k cached"), so the running share and the turn

@@ -183,7 +183,7 @@ func TestTheSheetDecodesEveryLaneTheRouterPublished(t *testing.T) {
 	if atlas := by["AtlasCloud"]; atlas.Facts.Tools || atlas.Facts.Quant != "fp4" {
 		t.Fatalf("AtlasCloud's facts read %+v", atlas.Facts)
 	}
-	// THE ROUTER'S OWN HEALTH WORD ARRIVES, which it did not until wave 2b: the
+	// THE ROUTER'S OWN HEALTH WORD ARRIVES: the
 	// column was published, undecoded, and a lane the router had marked down was
 	// invisible to the gate that should have refused it.
 	if atlas := by["AtlasCloud"]; atlas.Facts.Status != -2 {

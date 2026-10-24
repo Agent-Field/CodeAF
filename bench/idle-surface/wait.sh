@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 # wait.sh - idle CPU of a chat surface that WAITS ON WORK IN FLIGHT, by K.
 # Usage: wait.sh K:MODE [K:MODE ...]   e.g. wait.sh 5:nodelta 5:stream 200:nodelta
+# Env: TAR is required; REPO defaults to the repository root and BASE to
+# $REPO/bench/idle-surface/runs. WIN is the sampling window in seconds.
 # One row per point: K, mode, threads, idle %core (two 30s windows), RSS before
 # and after the windows, stub POST counts (requests in flight during sampling),
 # first-delta count (0 means no output arrived), pane state word.
 set -u
-REPO="/home/santosh/src/c286tree"
+REPO="${REPO:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)}"
 BIN="$REPO/bin/codeaf"
-TAR="${TAR:-/home/santosh/src/profiles/fresh-codeaf.tar}"
+: "${TAR:?Set TAR to a profile tar archive}"
 STUB="$REPO/bench/idle-surface/stub-tunable.py"
-BASE="${BASE:-/home/santosh/src/c286tree/bench/idle-surface/runs}"
+BASE="${BASE:-$REPO/bench/idle-surface/runs}"
 PORT="${PORT:-8099}"
 WIN="${WIN:-30}"
 CLK_TCK=$(getconf CLK_TCK)

@@ -274,7 +274,7 @@ type Alternative struct {
 // twenty requests and a tenth of the last hour's bill — and that shape is the
 // measured defect. A count per window cannot tell the request that needs a
 // rescue from the nineteen that do not, so it refuses by arrival order: on the
-// owner's task that day the hazard said act at its ceiling, the allowance said
+// example task the hazard said act at its ceiling, the allowance said
 // no, and one machine wrote 604 tokens in 86 seconds with a person watching.
 // What a rescue costs is a fact about THIS call — the prompt at this model's
 // price plus what the second arm may write, which [Alternative.Extra] already

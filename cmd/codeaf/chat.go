@@ -3336,9 +3336,7 @@ func withDocumentAttachmentBrief(brief string, paths []string) string {
 }
 
 // liveClient and messageClientPool are internal/provider/pool's Client and
-// Pool. The provider seam moved out of this file in the Wave 1 dissolution;
-// these names stay because they are what this package's own prose has always
-// called them, and an alias is the whole of the difference.
+// Pool. These aliases keep the local names consistent with the provider pool.
 type (
 	liveClient        = pool.Client
 	messageClientPool = pool.Pool

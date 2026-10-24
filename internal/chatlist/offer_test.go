@@ -11,9 +11,9 @@ func TestOfferCopy(t *testing.T) {
 		row  Row
 		want Offer
 	}{
-		{Row{Status: Off, Device: "studio"}, Offer{ContinueHere, "continue here"}},
-		{Row{Status: Running, Device: "studio"}, Offer{ContinueHere, "continue here"}},
-		{Row{Status: Branch, Device: "studio", OrphanTurns: 3}, Offer{Merge, "3 turns from studio: merge / discard"}},
+		{Row{Status: Off, Device: "host-a"}, Offer{ContinueHere, "continue here"}},
+		{Row{Status: Running, Device: "host-a"}, Offer{ContinueHere, "continue here"}},
+		{Row{Status: Branch, Device: "host-a", OrphanTurns: 3}, Offer{Merge, "3 turns from host-a: merge / discard"}},
 		{Row{Status: Idle}, Offer{Kind: Open}},
 		{Row{Status: Here}, Offer{Kind: Open}},
 	}
@@ -26,22 +26,22 @@ func TestOfferCopy(t *testing.T) {
 
 func TestStatusLineCopy(t *testing.T) {
 	cases := map[Status]string{
-		Running: "running on studio",
-		Off:     "studio offline",
-		Branch:  "2 turns from studio: merge / discard",
+		Running: "running on host-a",
+		Off:     "host-a offline",
+		Branch:  "2 turns from host-a: merge / discard",
 		Idle:    "",
 		Here:    "",
 	}
 	for st, want := range cases {
-		if got := StatusLine(Row{Status: st, Device: "studio", OrphanTurns: 2}); got != want {
+		if got := StatusLine(Row{Status: st, Device: "host-a", OrphanTurns: 2}); got != want {
 			t.Errorf("%s: got %q, want %q", st, got, want)
 		}
 	}
 }
 
 func TestTakeoverLineOmitsClauseAtZero(t *testing.T) {
-	r := Row{Device: "studio", DurableAgo: 42*time.Second + 900*time.Millisecond, Pending: 3}
-	if got, want := TakeoverLine(r), "last saved turn 42s ago; up to 3 turns may still be on studio"; got != want {
+	r := Row{Device: "host-a", DurableAgo: 42*time.Second + 900*time.Millisecond, Pending: 3}
+	if got, want := TakeoverLine(r), "last saved turn 42s ago; up to 3 turns may still be on host-a"; got != want {
 		t.Fatalf("got %q", got)
 	}
 	r.Pending = 0
@@ -53,8 +53,8 @@ func TestTakeoverLineOmitsClauseAtZero(t *testing.T) {
 // A chat that runs now says where before how fresh the copy is, because
 // continuing it here stops it there.
 func TestTakeoverLineNamesTheDeviceARunningChatIsOn(t *testing.T) {
-	r := Row{Status: Running, Device: "studio", DurableAgo: 12 * time.Second}
-	if got, want := TakeoverLine(r), "running on studio; last saved turn 12s ago"; got != want {
+	r := Row{Status: Running, Device: "host-a", DurableAgo: 12 * time.Second}
+	if got, want := TakeoverLine(r), "running on host-a; last saved turn 12s ago"; got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 }
@@ -76,10 +76,10 @@ func TestCopiesCameSaysNothingForNone(t *testing.T) {
 }
 
 func TestFrozenSentences(t *testing.T) {
-	if got := KeptEdits(2, "studio"); got != "your unsaved edits here were kept as 2 turns from studio" {
+	if got := KeptEdits(2, "host-a"); got != "your unsaved edits here were kept as 2 turns from host-a" {
 		t.Error(got)
 	}
-	if got := Superseded("studio"); got != "studio continued this chat; this window now only shows it" {
+	if got := Superseded("host-a"); got != "host-a continued this chat; this window now only shows it" {
 		t.Error(got)
 	}
 	for got, want := range map[string]string{

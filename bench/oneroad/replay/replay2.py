@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
 """REPLAY-2: off-policy test of a DIGEST-based mark reader.
 
-Live wave 1e failure: the mastermind mark reader read the RAW transcript at
-rounds 10/20/40 on the four-issue batch cell (57k/65k/91k tokens) and answered
-CONTINUE all three times, at $0.62. Hypothesis: raw, result-heavy context drowns
-the ask. This script builds a compact DIGEST instead - the person's ask verbatim,
-a ledger of tool calls with NO results, the last thing said, and the files
-touched - bounds it to ~6k tokens, and asks the same sketch question.
+This script builds a compact digest of the request, tool calls, latest reply
+and changed files, then asks the checkpoint sketch question.
 
 The first line of every answer is parsed exactly as
 internal/session/checkpoint.go's parseCheckpointSketch + topLevelParts do.
@@ -474,13 +470,7 @@ def score():
     L.append(f"Generated {time.strftime('%Y-%m-%d %H:%M')} | {len(recs)} completions "
              f"| temp {TEMPERATURE} | {SAMPLES} samples per cell x cut x model")
     L.append("")
-    L.append("**What this tests.** In live wave 1e the mastermind mark reader read "
-             "the RAW transcript at rounds 10/20/40 of the four-issue batch cell "
-             "(57k / 65k / 91k tokens) and answered CONTINUE all three times, at "
-             "$0.62. Here the same question is asked of a deterministic DIGEST "
-             "instead: the person's ask verbatim, one line per tool call with NO "
-             "results, the last thing said (600 chars), and the files touched - "
-             "bounded to ~6k tokens.")
+    L.append("**What this tests.** Checkpoint sketches from bounded transcript digests.")
     L.append("")
     L.append("Answers are parsed exactly as `internal/session/checkpoint.go` parses "
              "them: first non-empty line, stripped of `` ` ``/`*`/`_`, split on "
@@ -764,12 +754,9 @@ def score():
         L.append(f"- {m}: ${c:.4f} over {n} reads (${c/n:.5f} per read)")
     L.append("- roughly $0.31 more went on probes and two runs that wedged before "
              "the deadlock in this script's own progress line was found (their "
-             "completed reads were resumed, not repaid). Lane total under $1.05 "
+             "completed reads were resumed, not repaid). Replay total under $1.05 "
              f"against the ${BUDGET_CAP:.0f} cap.")
     L.append("")
-    L.append("For scale: the live wave-1e reader spent **$0.62 on three raw reads** "
-             "of one cell. Sixty kimi reads of the digest - every cell, every cut, "
-             "three samples - cost $0.71.")
     L.append("")
 
     L.append("## Recommendation")

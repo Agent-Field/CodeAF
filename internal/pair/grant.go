@@ -5,7 +5,7 @@ package pair
 //
 // THE GRANT IS THE WHOLE IDENTITY, and the words say so. A device that is
 // paired holds the same root as the one that paired it: same chats, same vault,
-// same relay account. That is the owner's shape for "your chats on every machine
+// same relay account. That provides "your chats on every machine
 // you own", and it is why revoking a device cuts its relay access and cannot
 // take back what it already holds.
 

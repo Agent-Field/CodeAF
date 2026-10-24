@@ -241,7 +241,7 @@ type Lane struct {
 
 	// AccountExcluded is a lane the router SERVES this model from and that the
 	// ACCOUNT'S OWN SETTINGS take away — the paid-model-training privacy switch
-	// on openrouter.ai/settings/privacy, measured against the owner's account on
+	// on openrouter.ai/settings/privacy, observed with an account on
 	// 2026-09-10 for DeepSeek, Fireworks and Wafer.
 	//
 	// IT IS A FACT ABOUT THE ACCOUNT AND THE MACHINE, NOT ABOUT ONE MODEL. The

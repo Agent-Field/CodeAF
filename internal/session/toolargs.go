@@ -355,7 +355,7 @@ func coerceList(raw json.RawMessage, text string, t reflect.Type, path string) (
 	return remarshal(rebuilt, raw)
 }
 
-// coerceWholeNumber is THE FIX the owner's screen was asking for. A whole-valued
+// coerceWholeNumber accepts only whole numbers. A whole-valued
 // float becomes the integer it already is; anything else is refused by name.
 func coerceWholeNumber(raw json.RawMessage, text, path string) (json.RawMessage, error) {
 	switch shape(text) {

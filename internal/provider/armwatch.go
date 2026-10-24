@@ -191,7 +191,7 @@ func streamWatchFrom(ctx context.Context) *streamWatch {
 // one controller built at the moment the arm started. That is not a watch, it is
 // a watch of the first attempt with the rest of them inside its shadow.
 //
-// THE MEASURED CASE (2026-09-11 14:32, the owner's task). Attempt 1 drew a
+// THE MEASURED CASE (2026-09-11 14:32, an example task). Attempt 1 drew a
 // relayed refusal; attempt 2 asked GMICloud, was served by another machine, and
 // ran 363 SECONDS — and its row carried no action, no reason and no silence at
 // all, while the 86-second attempt before it had at least said `ceiling`. Three
