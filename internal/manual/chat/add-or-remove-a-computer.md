@@ -164,6 +164,10 @@ desk was removed — it can no longer reach your chats.
 
 The list is in a fixed order: this device first, then devices that are online, then the rest, each by name. Two devices with the same name show a short tail, such as `tower #a1b2`, so you can tell them apart. Your own computer has no `r`: it cannot remove itself, and if you press `r` there the list says `this device cannot remove itself — choose another row.` A computer that is already removed does nothing when you press `r`. A removed computer can only come back as a new request that you approve. If you remove a computer from another of your devices while this list is open, its row changes to `removed` here too, without closing the list. Removing a computer does not undo what it already holds: for a lost computer read the page *Locking out a lost computer for good*.
 
+## A device was removed but refreshing the list failed
+
+After a successful removal, its confirmation stays visible even if refreshing the device list fails. The card shows the refresh error too, then clears that error when a later refresh succeeds. A failed refresh does not restore the removed computer's access. If the removal itself fails, the card shows that error and does not confirm a removal.
+
 ## I was told this device was removed — how to bring it back
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
