@@ -12,8 +12,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/directory"
 )
 
-// TestC7OldServiceRefusesTakesAcrossClients proves C7 at the HTTP door:
-// capability absence is cached per service, while ordinary reads still work.
+// TestC7OldServiceRefusesTakesAcrossClients proves C7 at the HTTP door: a
+// service without the promise never receives a take, from any client, and its
+// absence is read again before each attempt (one read per refused take).
 func TestC7OldServiceRefusesTakesAcrossClients(t *testing.T) {
 	reads, takes := 0, 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -32,7 +33,7 @@ func TestC7OldServiceRefusesTakesAcrossClients(t *testing.T) {
 			t.Fatalf("take = %v", err)
 		}
 	}
-	if reads != 1 || takes != 0 {
+	if reads != 2 || takes != 0 {
 		t.Fatalf("requests: reads=%d takes=%d", reads, takes)
 	}
 }
@@ -54,5 +55,37 @@ func TestC7OldServiceStillAllowsAnOrdinaryResume(t *testing.T) {
 	_, err := client.Acquire(context.Background(), cellX, directory.AcquireOpts{Expect: &directory.LeaseExpectation{Device: devA, Fence: 1}})
 	if err != nil || resumes != 1 || reads != 0 {
 		t.Fatalf("ordinary resume: err=%v resumes=%d reads=%d", err, resumes, reads)
+	}
+}
+
+// TestC7AServiceUpdatedWhileRunningMovesChatsAtTheNextAttempt proves C7's
+// update boundary: a hosted service redeployed while codeaf runs is trusted at
+// the next take, without a restart, and its promise is then kept.
+func TestC7AServiceUpdatedWhileRunningMovesChatsAtTheNextAttempt(t *testing.T) {
+	updated, reads, takes := false, 0, 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if updated {
+			w.Header().Set(directory.ConditionalTakeHeader, "1")
+		}
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/acquire") {
+			takes++
+		} else {
+			reads++
+		}
+		_ = json.NewEncoder(w).Encode(directory.CellView{})
+	}))
+	defer srv.Close()
+	client := directory.NewHTTP(srv.URL, fakeSign("id_one", devA), srv.Client())
+	if _, err := client.Acquire(context.Background(), cellX, directory.AcquireOpts{Force: true}); !errors.Is(err, directory.ErrConditionalTake) {
+		t.Fatalf("take before the update = %v", err)
+	}
+	updated = true
+	for range 2 {
+		if _, err := client.Acquire(context.Background(), cellX, directory.AcquireOpts{Force: true}); err != nil {
+			t.Fatalf("take after the update = %v", err)
+		}
+	}
+	if reads != 2 || takes != 2 {
+		t.Fatalf("requests: reads=%d takes=%d; want one read before each refused or first trusted take", reads, takes)
 	}
 }

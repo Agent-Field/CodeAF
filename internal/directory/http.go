@@ -52,7 +52,7 @@ func (h *HTTP) List(ctx context.Context) (l Listing, err error) {
 func (h *HTTP) Cell(ctx context.Context, id string) (v CellView, err error) {
 	hdr, err := h.doHeader(ctx, http.MethodGet, cellPath(id, ""), nil, &v)
 	if err == nil {
-		conditionalServices.LoadOrStore(h.serviceKey(), hdr.Get(ConditionalTakeHeader) == "1")
+		conditionalServices.Store(h.serviceKey(), hdr.Get(ConditionalTakeHeader) == "1")
 	}
 	return v, err
 }
@@ -86,21 +86,23 @@ func (h *HTTP) Acquire(ctx context.Context, id string, o AcquireOpts) (v CellVie
 // expected holder and fence atomically. Older services omit it.
 const ConditionalTakeHeader = "codeaf-conditional-takes"
 
-// conditionalServices caches the promise per service for this process, across
-// device clients. Failed reads are never cached as capability answers.
+// conditionalServices holds each service's latest promise for this process,
+// across device clients. Every successful read refreshes it and failed reads
+// never count as an answer. A promise is trusted until a read says otherwise;
+// its absence is checked again before each take, so a service updated while
+// codeaf runs moves chats at the next attempt instead of after a restart.
 var conditionalServices sync.Map
 
 func (h *HTTP) serviceKey() string { return strings.TrimRight(h.base, "/") }
 
 func (h *HTTP) requireConditionalTake(ctx context.Context, id string) error {
-	answer, known := conditionalServices.Load(h.serviceKey())
-	if !known {
-		if _, err := h.Cell(ctx, id); err != nil {
-			return err
-		}
-		answer, _ = conditionalServices.Load(h.serviceKey())
+	if answer, _ := conditionalServices.Load(h.serviceKey()); answer == true {
+		return nil
 	}
-	if answer != true {
+	if _, err := h.Cell(ctx, id); err != nil {
+		return err
+	}
+	if answer, _ := conditionalServices.Load(h.serviceKey()); answer != true {
 		return ErrConditionalTake
 	}
 	return nil
