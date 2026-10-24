@@ -34,6 +34,7 @@ type Command struct {
 	Session       string   `json:"session"`
 	Sequence      uint64   `json:"sequence"`
 	RequestDigest string   `json:"request_digest"`
+	Ack           uint64   `json:"ack,omitempty"`
 	Now           int64    `json:"now"`
 	Change        Mutation `json:"change"`
 	Signature     []byte   `json:"signature"`
@@ -43,18 +44,21 @@ type Command struct {
 // their typed operations here; unknown fields fail decoding on older members.
 // There is no arbitrary JSON payload in which task text or secrets can hide.
 type Mutation struct {
-	Create      *CreateCell  `json:"create,omitempty"`
-	Acquire     *AcquireCell `json:"acquire,omitempty"`
-	Beat        *BeatCell    `json:"beat,omitempty"`
-	BeatBatch   *BeatBatch   `json:"beat_batch,omitempty"`
-	Publish     *PublishCell `json:"publish,omitempty"`
-	Release     *ReleaseCell `json:"release,omitempty"`
-	Archive     *CellID      `json:"archive,omitempty"`
-	PutDevice   *PutDevice   `json:"put_device,omitempty"`
-	Revoke      *DeviceID    `json:"revoke,omitempty"`
-	SetVault    *VaultCAS    `json:"set_vault,omitempty"`
-	AdvanceTime *AdvanceTime `json:"advance_time,omitempty"`
-	DeviceSeen  *DeviceSeen  `json:"device_seen,omitempty"`
+	Rotate       *RotateRequest `json:"rotate,omitempty"`
+	CloseSession *CloseSession  `json:"close_session,omitempty"`
+	DecideJoin   *JoinDecision  `json:"decide_join,omitempty"`
+	Create       *CreateCell    `json:"create,omitempty"`
+	Acquire      *AcquireCell   `json:"acquire,omitempty"`
+	Beat         *BeatCell      `json:"beat,omitempty"`
+	BeatBatch    *BeatBatch     `json:"beat_batch,omitempty"`
+	Publish      *PublishCell   `json:"publish,omitempty"`
+	Release      *ReleaseCell   `json:"release,omitempty"`
+	Archive      *CellID        `json:"archive,omitempty"`
+	PutDevice    *PutDevice     `json:"put_device,omitempty"`
+	Revoke       *DeviceID      `json:"revoke,omitempty"`
+	SetVault     *VaultCAS      `json:"set_vault,omitempty"`
+	AdvanceTime  *AdvanceTime   `json:"advance_time,omitempty"`
+	DeviceSeen   *DeviceSeen    `json:"device_seen,omitempty"`
 }
 
 type CellID struct {
@@ -77,6 +81,8 @@ type AcquireCell struct {
 	Cell   string           `json:"cell"`
 	Force  bool             `json:"force"`
 	Expect LeaseExpectation `json:"expect"`
+	Legacy bool             `json:"legacy,omitempty"`
+	V1     bool             `json:"v1,omitempty"`
 }
 
 type BeatCell struct {
@@ -140,19 +146,24 @@ type ItemResult struct {
 type Code string
 
 const (
-	OK           Code = "ok"
-	NotFound     Code = "not_found"
-	Exists       Code = "exists"
-	LeaseHeld    Code = "lease_held"
-	FenceStale   Code = "fence_stale"
-	HeadMoved    Code = "head_moved"
-	CAS          Code = "cas"
-	Revoked      Code = "revoked"
-	SelfRevoke   Code = "self_revoke"
-	Unauthorized Code = "unauthorized"
-	Rotated      Code = "rotated"
-	Conflict     Code = "conflict"
-	Capacity     Code = "capacity"
+	OK             Code = "ok"
+	NotFound       Code = "not_found"
+	Exists         Code = "exists"
+	LeaseHeld      Code = "lease_held"
+	FenceStale     Code = "fence_stale"
+	HeadMoved      Code = "head_moved"
+	CAS            Code = "cas"
+	Revoked        Code = "revoked"
+	SelfRevoke     Code = "self_revoke"
+	Unauthorized   Code = "unauthorized"
+	Rotated        Code = "rotated"
+	Conflict       Code = "conflict"
+	RotationStep   Code = "rotation_step"
+	BadGrace       Code = "bad_grace"
+	RequestGone    Code = "request_gone"
+	AlreadyDecided Code = "already_decided"
+	BadRequest     Code = "bad_request"
+	Capacity       Code = "capacity"
 )
 
 // Row encodes one application record for paged reads and streamed snapshots.
@@ -164,4 +175,24 @@ type Row struct {
 	Identity *IdentityRec `json:"identity,omitempty"`
 	Device   *Device      `json:"device,omitempty"`
 	Cell     *Cell        `json:"cell,omitempty"`
+}
+
+// CloseSession retains a tombstone so an old sequence can never execute again.
+type CloseSession struct{}
+
+// RotateRequest uses milliseconds so the shared evaluator needs no time package.
+type RotateRequest struct {
+	Op      string `json:"op"`
+	GraceMS int64  `json:"grace_ms,omitempty"`
+}
+
+// JoinDecision records only sealed pairing data. P10 supplies a committed request
+// dependency and delivers the outbox after this transaction has committed.
+type JoinDecision struct {
+	Code   string `json:"code"`
+	Device string `json:"device"`
+	Record Device `json:"record"`
+	Grant  string `json:"grant"`
+	Cert   string `json:"cert"`
+	Deny   bool   `json:"deny"`
 }
