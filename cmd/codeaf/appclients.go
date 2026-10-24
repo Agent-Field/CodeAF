@@ -117,3 +117,45 @@ func (b *appBackend) clientEntries(agent string) []appwire.Entry {
 	}
 	return entries
 }
+
+func (b *appBackend) ListPairedClients() ([]appwire.PairedClient, error) {
+	r := b.clientRunner.Load()
+	if r == nil {
+		return []appwire.PairedClient{}, nil
+	}
+	out := make([]appwire.PairedClient, 0)
+	for _, c := range r.Clients() {
+		out = append(out, appwire.PairedClient{ID: c.ID, Name: c.Name, Methods: c.Methods, Reads: c.Reads, Paused: c.Paused})
+	}
+	return out, nil
+}
+func (b *appBackend) PairClient(p appwire.PairClientParams) (appwire.ClientGrant, error) {
+	r, err := b.clients()
+	if err != nil {
+		return appwire.ClientGrant{}, err
+	}
+	id, err := identity.Load(home.Dir())
+	if err != nil {
+		return appwire.ClientGrant{}, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	grant, err := r.Pair(ctx, clientrun.Pairing{Cert: identity.IssueCert(id, p.SigningKey, b.now()), BoxKey: p.BoxKey, Methods: p.Methods, Reads: p.Reads, Name: p.Name})
+	return appwire.ClientGrant{Cert: grant.Cert, Identity: grant.Identity, Relay: grant.Relay, Writer: grant.Writer, BoxKey: grant.BoxKey}, err
+}
+func (b *appBackend) PausePairedClient(id string, paused bool) error {
+	r := b.clientRunner.Load()
+	if r == nil {
+		return appwire.Errorf(appwire.CodeNotFound, "paired client not found")
+	}
+	return r.Pause(id, paused)
+}
+func (b *appBackend) UnpairClient(id string) error {
+	r := b.clientRunner.Load()
+	if r == nil {
+		return appwire.Errorf(appwire.CodeNotFound, "paired client not found")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return r.Unpair(ctx, id)
+}

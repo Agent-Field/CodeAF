@@ -156,3 +156,23 @@ gaps instead of guessing or replaying work. Use distinct client pairings for
 distinct executors in v0; a shared multi-executor sequence needs a future proof
 of skipped numbers. Uncertain calls need a person to inspect the chat; they are
 acknowledged without an automatic retry of their possible effect.
+
+## Settings over appwire
+
+Engines implementing scoped-client management advertise `clients.manage` in
+hello. `clients.list {}` returns `{clients:[{id,name,methods,reads,paused}]}`
+with no secrets. `clients.pair {signing_key,box_key,methods,reads,name}` takes
+base64 public keys, issues and registers the scoped certificate, and returns the
+public grant described above. Pair only after the person has approved the
+public keys and requested scope through a trusted local desktop connection.
+The chat's ordinary full-device pairing command remains separate.
+
+`clients.pause {id,paused:true}` stops this box's snapshots and queue execution
+without revoking access to existing slots. `paused:false` resumes. Pause persists
+across restart and waits for an in-flight round before returning.
+`clients.unpair {id}` revokes the certificate at the relay, deleting slots and
+queue, then removes the local enrollment; execution receipts remain in chat
+history. Methods are available through the same table for every appwire client.
+They add no desktop Settings widget by themselves; UI callers render the list
+and controls using this interface. A scoped client's v0 queue does not expose
+management mutations; those require a trusted live desktop connection.

@@ -146,6 +146,9 @@ type request struct {
 // before it returns.
 func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine Engine) error {
 	hello.Contract = Contract
+	if _, ok := engine.(PairedClientManager); ok {
+		hello = withFeature(hello, "clients.manage")
+	}
 	hello = withFeature(hello, FeatureAgentEffortRungs)
 	hello = withCollectionsFeature(hello, engine)
 	hello = withMessageReadsFeature(hello, engine)
