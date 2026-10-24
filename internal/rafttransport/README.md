@@ -4,8 +4,7 @@ This is the authenticated peer bridge, separate from application ingress. The
 persistent native relay assembles its router from committed membership and serves
 personal admission, HTTP exchange and the outbound push socket on its ordinary
 listener. `relayserve.Config.Cluster` is the internal custom-host handler seam.
-The hosted relay's member/control doors remain absent, and the codeaf client does
-not yet activate its own learner. No environment switch selects another writer.
+The hosted relay's member/control doors remain absent, and a paired codeaf home runs its durable learner inside the terminal state-sync lifetime. No environment switch selects another writer.
 
 ## Host ordering and authorization
 
@@ -54,8 +53,9 @@ use the same node/scope/incarnation/router generation and receive responses;
 queued traffic also pushes a response without requiring a poll. Each frame and
 push rechecks enrollment. The channel carries no lease or append acknowledgment.
 Compression is disabled. Initial/body/frame/write/read bounds apply, and at most
-eight sockets per member can be open. Send an authenticated frame within 30 seconds
-or reconnect using HTTP fallback/backoff. No socket is required on a member.
+eight sockets per member can be open. A delivery awaiting acknowledgment has a 30-second response deadline. An empty
+subscription needs no keepalive: the socket stays passive until committed work
+wakes it. Reconnect failures use HTTP fallback/backoff. No socket is required on a member.
 Hibernation is a hosted-runtime responsibility; the Go server has ordinary sockets.
 
 Responses are hints to transport delivery, not proof of persistence. Before core
@@ -207,8 +207,10 @@ of learner lag. All-voter quiescence discards expendable learner deliveries and
 stops scheduling without learner acknowledgments. Fresh public read/write input
 wakes the ordinary quorum path.
 
-The codeaf client does not start its own learner yet. This server assembly adds
-no automatic client discovery, network attempts, worker setup or leadership.
+The codeaf client starts its personal learner only inside the existing terminal
+state-sync lifetime, or a scoped status activation, after current quiet guards.
+Open remains local. Hosted relays offer neither enrollment nor control. Worker
+setup and leadership remain unavailable.
 
 The native host advances its checksummed `transport-generation` file with atomic
 rename and directory fsync before opening its router; it never mutates the source

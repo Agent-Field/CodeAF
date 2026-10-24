@@ -14,12 +14,11 @@ import (
 )
 
 const clusterHelp = `codeaf cluster status
-  Show the voting computers and the current coordinator.
+  Show this joined computer, learners, voters and the current coordinator.
 codeaf cluster lead
-  Ask this joined computer to coordinate. Keep its persistent store available.
-  Success includes the elected computer, term and quorum read barrier.
-  Three voters tolerate one unavailable member. A sleeping personal leader is
-  replaced by the relay anchors; it leads again only after another request.
+  Leadership is not offered yet; your saved chats are still here.
+  A paired home on a self-hosted relay with storage joins as a learner.
+  Three voters tolerate one unavailable member.
 `
 
 type clusterDoor interface {
@@ -67,6 +66,15 @@ func clusterCommand(ctx context.Context, c clusterDoor, verb string, out io.Writ
 	}
 	if len(s.Configuration.Voters) > 0 {
 		fmt.Fprintf(out, "voting computers %v\n", s.Configuration.Voters)
+	}
+	if s.Self != 0 {
+		fmt.Fprintf(out, "this computer %d\n", s.Self)
+	}
+	if len(s.Configuration.Learners) > 0 {
+		fmt.Fprintf(out, "learning computers %v\n", s.Configuration.Learners)
+	}
+	if len(s.Ready) > 0 {
+		fmt.Fprintf(out, "ready computers %v\n", s.Ready)
 	}
 	if len(s.Configuration.Outgoing) > 0 {
 		fmt.Fprintf(out, "finishing the change from %v\n", s.Configuration.Outgoing)

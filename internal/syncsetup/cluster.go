@@ -16,9 +16,29 @@ import (
 )
 
 func (s *Sync) clusterClient() clusterctl.Client {
-	return clusterctl.Client{Base: s.Relay, Sign: reqsign.SignFor(deviceSigner{s.Identity, s.Device}, time.Now), HTTP: s.ClusterHTTP(&http.Client{Timeout: 30 * time.Second})}
+	return clusterctl.Client{Base: s.Relay, Sign: reqsign.SignFor(deviceSigner{s.Identity, s.Device}, s.now), HTTP: s.ClusterHTTP(&http.Client{Timeout: 30 * time.Second})}
 }
 func (s *Sync) ClusterStatus(ctx context.Context) (clusterctl.Status, error) {
+	if !s.memberAllowed() {
+		return clusterctl.Status{}, ErrQuiet
+	}
+	status, err := s.clusterClient().Status(ctx)
+	if err != nil {
+		return status, err
+	}
+	s.memberMu.Lock()
+	defer s.memberMu.Unlock()
+	if s.member != nil {
+		return status, nil
+	}
+	m, e := s.openMember(ctx)
+	if errors.Is(e, clusterctl.ErrUnsupported) || filelock.IsBusy(e) {
+		return status, nil
+	}
+	if e != nil {
+		return status, e
+	}
+	m.close()
 	return s.clusterClient().Status(ctx)
 }
 
@@ -115,7 +135,7 @@ func (s *Sync) LeadCluster(ctx context.Context, node uint64) (cs.LeadershipRecei
 	}
 	return receipt, nil
 }
-func saveLeadership(path string, v leadershipSession) error {
+func saveLeadership(path string, v any) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
