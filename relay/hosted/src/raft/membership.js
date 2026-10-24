@@ -15,7 +15,11 @@ export function committedRegistry(runtime, store) {
     const raw = store.read('enrollment', 'node/' + node);
     if (!raw) throw new Error('raft member: enrollment is incomplete');
     const m = decode(raw), device = m.device ? store.read('state', 'device/' + segment(m.device)) : null;
-    const r = response(runtime.call(frame(16).u64(node).u64(app.applied).blob(unb64(app.conf)).blob(header).blob(raw).blob(device ?? new Uint8Array()).finish()));
+    const w = frame(16).u64(node).u64(app.applied).blob(unb64(app.conf)).blob(header).blob(raw).blob(device ?? new Uint8Array());
+    // Worker policy is Go's decision at committed time. JavaScript supplies
+    // only immutable rows, including the current incarnation after restart.
+    if (m.worker) w.u64(app.now).blob(store.read('state', 'identity') ?? new Uint8Array()).blob(store.read('enrollment', 'actor/' + segment(m.device)) ?? new Uint8Array()).blob(store.read('state', 'worker/' + segment(m.device)) ?? new Uint8Array());
+    const r = response(runtime.call(w.finish()));
     const peer = decode(r.blob()); r.end();
     view[peer.node] = { incarnation: peer.incarnation, key: peer.key, voter: peer.voter, revoked: peer.revoked };
   }

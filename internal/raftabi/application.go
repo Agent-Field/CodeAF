@@ -93,6 +93,15 @@ func registryCodec(d *decoder) ([]byte, error) {
 	conf := new(pb.ConfState)
 	d.message(conf)
 	header, member, device := d.blob(), d.blob(), d.blob()
+	supplied := len(d.b) > 0
+	now := int64(0)
+	var identity, authority, worker []byte
+	if supplied {
+		now = int64(d.u64())
+		identity = d.blob()
+		authority = d.blob()
+		worker = d.blob()
+	}
 	if err := d.end(); err != nil {
 		return nil, err
 	}
@@ -112,6 +121,15 @@ func registryCodec(d *decoder) ([]byte, error) {
 		return nil, clusterstate.ErrDependency
 	}
 	peer, err := clusterstate.PeerFromRecord(m, device, raftcore.Configuration(conf))
+	if supplied && m.Worker {
+		var id clusterstate.IdentityRec
+		var a clusterstate.Authority
+		var w clusterstate.WorkerRecord
+		if clusterstate.Decode(identity, &id) != nil || clusterstate.Decode(authority, &a) != nil || clusterstate.Decode(worker, &w) != nil {
+			return nil, clusterstate.ErrDependency
+		}
+		peer, err = clusterstate.PeerFromRecordAt(m, device, raftcore.Configuration(conf), now, id, a, w)
+	}
 	if err != nil {
 		return nil, err
 	}

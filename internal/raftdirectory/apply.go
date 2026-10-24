@@ -114,7 +114,7 @@ func authorizedRead(ctx context.Context, store *raftstore.SQLite, cluster, actor
 	}
 	var auth clusterstate.Authority
 	var device clusterstate.Device
-	if clusterstate.Decode(rows[keys[0]], &auth) != nil || auth.Cluster != cluster || (auth.Personal == effects) || auth.Effects != effects || auth.Anchor || len(auth.Key) != ed25519.PublicKeySize {
+	if clusterstate.Decode(rows[keys[0]], &auth) != nil || auth.Cluster != cluster || !auth.ValidRole() || (auth.Personal == effects) || auth.Effects != effects || auth.Anchor || len(auth.Key) != ed25519.PublicKeySize {
 		return app, errors.New("raftdirectory: unauthorized")
 	}
 	if raw := rows[keys[1]]; raw != nil {

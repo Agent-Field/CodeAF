@@ -152,3 +152,11 @@ and persist router generation before admitting exchanges after inbox loss.
 An authenticated source's three provisioned anchor keys may bootstrap protocol
 traffic before registry commitment. A personal key requires committed enrollment;
 never accept a caller's arbitrary view as an enrollment grant.
+
+P15 adds `CommittedViewAt` for delegated worker learners. Commit current ingress
+time and supply the applied configuration/read-set under the actor lock, then
+Install before acknowledging the result. It checks the worker's explicit learner
+consent, exclusive certificate expiry, revocation, rotation and current process
+incarnation. The old metadata-only CommittedView marks workers revoked, so a
+host that has not supplied these dependencies fails closed. Worker restarts
+cannot resurrect a retired peer: remove/re-enroll with a fresh node ID.
