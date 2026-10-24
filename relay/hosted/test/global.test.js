@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { GlobalBudget } from '../src/global.js';
-import { DEFAULTS } from '../src/limits.js';
+import { DEFAULTS, limitsOf } from '../src/limits.js';
 import { Tenant } from '../src/tenant.js';
 import { Flight } from '../src/flight.js';
 import { policyOf } from '../src/rules.js';
@@ -12,6 +12,20 @@ import { frame, rid, openBucket } from './helpers.js';
 const empty = { list: async () => ({ objects: [], truncated: false }) };
 const refusal = (code, status) => (e) => e.code === code && e.status === status;
 const limits = (overrides) => ({ ...DEFAULTS, ...overrides });
+
+test('deployment defaults allow admission and storage above the former global limits', async () => {
+  const sql = memorySql();
+  const budget = new GlobalBudget(sql, empty, limitsOf({}));
+  await budget.reserve('a', 'large', 2 ** 41);
+  for (let i = 0; i <= 10_000; i++) await budget.admit(`network-${i}`, 0);
+  await new GlobalBudget(sql, empty, limitsOf({})).admit('another', 0);
+});
+
+test('a zero storage override closes both admission and new writes', async () => {
+  const budget = new GlobalBudget(memorySql(), empty, limitsOf({ CAF_LIMITS: '{"globalStoreBytes":0}' }));
+  await assert.rejects(budget.admit('a', 0), refusal('relay_storage_full', 507));
+  await assert.rejects(budget.reserve('a', 'f', 1), refusal('relay_storage_full', 507));
+});
 
 // C20 bounds successful new identities across networks and keeps the count after restart.
 test('global admission has one durable daily ceiling across networks', async () => {
