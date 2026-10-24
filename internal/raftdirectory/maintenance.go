@@ -1,0 +1,214 @@
+package raftdirectory
+
+import (
+	"context"
+	"crypto/ed25519"
+	"fmt"
+
+	cs "github.com/Agent-Field/codeaf/internal/clusterstate"
+	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/raftcore"
+	"github.com/Agent-Field/codeaf/internal/raftstore"
+)
+
+// InitializeMembership records the provisioned manifest's anchors through the
+// ordinary log. It never edits a voter list or invents missing authoritative
+// stores. Existing committed registry rows are left intact on every activation.
+func (g *Native) InitializeMembership(ctx context.Context, key ed25519.PrivateKey) error {
+	ctx = context.WithoutCancel(ctx)
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	i, app, err := g.barrier(ctx)
+	if err != nil {
+		return err
+	}
+	k := raftstore.Key{Namespace: raftstore.Membership, Key: cs.MembershipKey().Key}
+	rows, _, err := g.stores[i].Read(ctx, app.Applied, []raftstore.Key{k})
+	if err != nil {
+		return err
+	}
+	if rows[k] != nil {
+		return nil
+	}
+	if len(g.manifest.Config.AnchorKeys) != len(g.manifest.Config.Anchors) {
+		return cs.ErrMigration
+	}
+	anchors := make([]cs.MemberRecord, len(g.manifest.Config.Anchors))
+	for j, id := range g.manifest.Config.Anchors {
+		anchors[j] = cs.MemberRecord{Node: id, Key: g.manifest.Config.AnchorKeys[j], Incarnation: 1, Protocol: raftcore.ProtocolVersion, Anchor: true}
+	}
+	c, err := cs.Sign(cs.Command{Schema: cs.SchemaVersion, Cluster: g.manifest.Config.Cluster, Actor: cs.AnchorActor(g.manifest.Config.Anchors[0]), Session: "initialize-membership", Sequence: 1, Now: app.LogicalTime, Change: cs.Mutation{InitMembership: &cs.InitMembership{Anchors: anchors, Limit: cs.MaxMemberRecords}}}, key)
+	if err != nil {
+		return err
+	}
+	r, err := g.submit(ctx, c)
+	if err != nil {
+		return err
+	}
+	return directory.ResultError(r.Code)
+}
+
+// Maintain connects the production host to the shared scheduler. Every final
+// sleep acknowledgment is a local durable marker, and an incomplete delivery
+// keeps ordinary ticks. Reads still need their own fresh quorum on wake.
+func (g *Native) Maintain(ctx context.Context, elapsed, now int64, key ed25519.PrivateKey) (int64, error) {
+	ctx = context.WithoutCancel(ctx)
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	after := cs.TickEveryMillis
+	// Election ticks must run before requiring an authority read. A missing
+	// leader is exactly when the surviving followers need this clock.
+	plans := make([]raftcore.SchedulePlan, len(g.nodes))
+	for i, node := range g.nodes {
+		if node == nil {
+			continue
+		}
+		p, err := Schedule(ctx, g.stores[i], node, elapsed, now, false, nil)
+		if err != nil {
+			return after, err
+		}
+		plans[i] = p
+		if p.Tick {
+			if err = g.drive(ctx, i, raftcore.Tick{}); err != nil {
+				return after, err
+			}
+		}
+	}
+	if err := g.drain(ctx); err != nil {
+		return after, err
+	}
+	leader := g.leader()
+	if leader < 0 {
+		return after, directory.ErrUnreachable
+	}
+	plan := plans[leader]
+	if plan.Barrier {
+		id := fmt.Sprintf("idle-%d", g.serial)
+		g.serial++
+		if err := g.drive(ctx, leader, raftcore.IdleRead{RequestID: id}); err != nil {
+			return after, err
+		}
+		if err := g.drain(ctx); err != nil {
+			return after, err
+		}
+		ok := g.reads[id]
+		delete(g.reads, id)
+		if !ok {
+			return after, directory.ErrUnreachable
+		}
+		var err error
+		plan, err = Schedule(ctx, g.stores[leader], g.nodes[leader], elapsed, now, false, nil)
+		if err != nil {
+			return after, err
+		}
+	}
+	if plan.Prepare {
+		app, _, err := g.stores[leader].ApplicationView(ctx)
+		if err != nil {
+			return after, err
+		}
+		c, err := cs.Sign(cs.Command{Schema: cs.SchemaVersion, Cluster: g.manifest.Config.Cluster, Actor: cs.AnchorActor(g.manifest.Config.Anchors[0]), Session: "sleep", Sequence: 1, Now: now, Change: cs.Mutation{PrepareQuiescence: &cs.PrepareQuiescence{Barrier: app.Applied, Term: g.status[leader].Term, Voters: raftcore.Configuration(app.ConfState).Voters}}}, key)
+		if err != nil {
+			return after, err
+		}
+		sk := cs.SessionKey(c.Actor, c.Session)
+		keys := []raftstore.Key{{Namespace: raftstore.Namespace(sk.Namespace), Key: sk.Key}}
+		records, _, err := g.stores[leader].Read(ctx, app.Applied, keys)
+		if err != nil {
+			return after, err
+		}
+		c.Sequence, c.Ack, err = cs.NextSession(records[keys[0]])
+		if err != nil {
+			return after, err
+		}
+		c, err = cs.Sign(c, key)
+		if err != nil {
+			return after, err
+		}
+		r, err := g.submit(ctx, c)
+		if err != nil {
+			return after, err
+		}
+		if err = directory.ResultError(r.Code); err != nil {
+			return after, err
+		}
+		// Deliver the committed marker to every reachable follower before collecting
+		// durable acknowledgments. Missing voters remain active and prevent sleep.
+		if err = g.drive(ctx, leader, raftcore.Tick{}); err != nil {
+			return after, err
+		}
+		if err = g.drain(ctx); err != nil {
+			return after, err
+		}
+	}
+	acks := []raftcore.SleepAck{}
+	for i, store := range g.stores {
+		if store == nil {
+			continue
+		}
+		app, _, err := store.ApplicationView(ctx)
+		if err != nil {
+			return after, err
+		}
+		k := raftstore.Key{Namespace: raftstore.Membership, Key: cs.QuiescenceKey().Key}
+		rows, _, err := store.Read(ctx, app.Applied, []raftstore.Key{k})
+		if err != nil {
+			return after, err
+		}
+		var m cs.Quiescence
+		if rows[k] != nil && cs.Decode(rows[k], &m) == nil && app.Applied == m.Index && g.status[i].Term == m.Term {
+			acks = append(acks, raftcore.SleepAck{Node: g.manifest.Config.Anchors[i], Index: m.Index, Term: m.Term})
+		}
+	}
+	allSleep := true
+	for i, node := range g.nodes {
+		if node == nil {
+			allSleep = false
+			continue
+		}
+		p, err := Schedule(ctx, g.stores[i], node, elapsed, now, false, acks)
+		if err != nil {
+			return after, err
+		}
+		allSleep = allSleep && p.Sleeping
+	}
+	if allSleep {
+		return 0, nil
+	}
+	return after, nil
+}
+
+// PendingEffects is only a timer hint. Actual delivery still uses Effects.Replay
+// and its fresh authorization barrier; an idle scan grants no capability.
+func (g *Native) PendingEffects(ctx context.Context) (bool, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	i := g.leader()
+	if i < 0 {
+		return false, directory.ErrUnreachable
+	}
+	app, _, err := g.stores[i].ApplicationView(ctx)
+	if err != nil {
+		return false, err
+	}
+	after := ""
+	for {
+		rows, _, err := g.stores[i].ScanPage(ctx, app.Applied, raftstore.Outbox, after)
+		if err != nil {
+			return false, err
+		}
+		if len(rows) == 0 {
+			return false, nil
+		}
+		for _, row := range rows {
+			active, err := cs.RecordActive(cs.RecordKey{Namespace: string(row.Namespace), Key: row.Key.Key}, row.Value, app.LogicalTime)
+			if err != nil {
+				return false, err
+			}
+			if active {
+				return true, nil
+			}
+			after = row.Key.Key
+		}
+	}
+}

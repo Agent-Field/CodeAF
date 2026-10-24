@@ -49,6 +49,7 @@ func (r *rig) signer(d device) wireauth.Sign { return reqsign.SignFor(d, r.clock
 func (r *rig) watchRig(t *testing.T) directorytest.WatchRig {
 	home := newHousehold(t)
 	return directorytest.WatchRig{
+		Committed: true,
 		Rig: directorytest.Rig{
 			Clock:   r.clock,
 			Devices: func(name string) directory.Client { return r.dir(home.device(name)) },

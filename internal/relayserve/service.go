@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
+	"github.com/Agent-Field/codeaf/internal/clusterstate"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/pairbox"
 	"github.com/Agent-Field/codeaf/internal/relay"
@@ -117,6 +118,7 @@ func New(cfg Config) *Service {
 	svc.ns = newNamespaces(cfg.Store, now, cfg.Grace, cfg.MaxWatchers)
 	svc.ns.after = cfg.After
 	svc.ns.links = links
+	mux.HandleFunc(clusterstate.ClusterAPIPath, svc.ns.clusterAPI)
 	auth := noting(svc.ns.authenticate)
 	dirs := logged(cfg.Logf, directory.Handler(auth, svc.ns.directory))
 	mux.Handle("/v1/dir/", dirs)

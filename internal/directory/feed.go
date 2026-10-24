@@ -169,6 +169,23 @@ func (f *Feed) SubscribeBeatWithEvidence(device string, holds []Hold, beat time.
 	return s, nil
 }
 
+// SubscribeCommitted carries only durable exact-fence receipts. It deliberately
+// leaves socket vouching disabled: a pong cannot authorize a lease extension.
+func (f *Feed) SubscribeCommitted(device string, holds []Hold, beat time.Duration, renew func(string, []Hold, int64) ([]dirwatch.HoldReceipt, error)) (*Sub, error) {
+	s, err := f.subscribe(device, holds, beat)
+	if err != nil {
+		return nil, err
+	}
+	s.committed = true
+	s.renew = renew
+	if err = s.PingCommitted(); err != nil {
+		s.leave()
+		return nil, err
+	}
+	f.pres.opened(s)
+	return s, nil
+}
+
 func (f *Feed) SubscribeBeat(device string, holds []Hold, beat time.Duration) (*Sub, error) {
 	return f.SubscribeBeatWithEvidence(device, holds, beat, nil)
 }
@@ -249,11 +266,15 @@ func (f *Feed) differs(id string, old, next any, now int64) bool {
 // Sub is one watcher. It keeps no queue: it always reads the newest Status, so
 // a slow watcher skips intermediate versions and never sees one go down.
 type Sub struct {
-	evidence func(string, []Hold, int64) error
-	f        *Feed
-	poke     chan struct{}
-	sent     uint64
-	started  bool
+	evidence  func(string, []Hold, int64) error
+	committed bool
+	renew     func(string, []Hold, int64) ([]dirwatch.HoldReceipt, error)
+	receiptMu sync.Mutex
+	receipts  []dirwatch.HoldReceipt
+	f         *Feed
+	poke      chan struct{}
+	sent      uint64
+	started   bool
 
 	device string
 	shut   atomic.Bool
@@ -291,17 +312,35 @@ func (s *Sub) Ping() { _ = s.PingCommitted() }
 // PingCommitted withholds a pong when a consensus renewal cannot commit.
 func (s *Sub) PingCommitted() error {
 	at := s.f.clock().UnixMilli()
-	if s.evidence != nil {
+	if s.evidence != nil || s.renew != nil {
 		holds := make([]Hold, len(s.keys))
 		for i, k := range s.keys {
 			holds[i] = Hold{Cell: k.cell, Fence: k.fence}
 		}
-		if err := s.evidence(s.device, holds, at); err != nil {
+		if s.renew != nil {
+			receipts, err := s.renew(s.device, holds, at)
+			if err != nil {
+				return err
+			}
+			s.receiptMu.Lock()
+			s.receipts = receipts
+			s.receiptMu.Unlock()
+		} else if err := s.evidence(s.device, holds, at); err != nil {
 			return err
 		}
 	}
 	s.alive.Store(at)
 	return nil
+}
+
+// takeReceipts transfers the last committed batch to the socket writer. Only
+// the bounded set returned by the renewal callback is retained per socket.
+func (s *Sub) takeReceipts() []dirwatch.HoldReceipt {
+	s.receiptMu.Lock()
+	defer s.receiptMu.Unlock()
+	receipts := s.receipts
+	s.receipts = nil
+	return receipts
 }
 
 func (s *Sub) wake() {

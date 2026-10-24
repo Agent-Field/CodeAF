@@ -349,11 +349,17 @@ func (w watchEnv) wantHoldQuery(query string, status int) {
 	wantRefusal(w.t, conn, resp, err, status, "bad_request")
 }
 
+// R22 supersedes the old socket-authority advertisement on consensus routes.
+// The same suite still exercises the original legacy directory protocol.
 func upgradeAnnouncesVouching(w watchEnv) {
+	want := "1"
+	if w.rig.Committed {
+		want = ""
+	}
 	for _, holds := range [][]directory.Hold{nil, {hold(cell, 1)}} {
 		s := w.dialHolding(devA, holds)
-		if got := s.resp.Header.Get(directory.VouchHeader); got != "1" {
-			w.t.Fatalf("101 answer has %s=%q with holds %v, want 1", directory.VouchHeader, got, holds)
+		if got := s.resp.Header.Get(directory.VouchHeader); got != want {
+			w.t.Fatalf("101 answer has %s=%q with holds %v, want %q", directory.VouchHeader, got, holds, want)
 		}
 	}
 }
