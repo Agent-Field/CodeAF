@@ -55,7 +55,7 @@ observed reactor memory must fit 64 MiB. Retained core log cache is capped at
 2 MiB, with lossless checkpoints at 1 MiB or 1,024 applied entries. This earlier
 local checkpoint keeps the cache below the shared 4 MiB retained-log ceiling.
 A leader is never evicted to meet admission. Only an explicitly quiescent,
-nonleader, drained actor may close; P14 must coordinate actual quiescence/wake
+nonleader, drained actor may close; the P14 scheduler coordinates quiescence/wake
 and alarm scheduling. `drainRecovery` exposes recovered dependent effects for
 an internal router to deliver rather than silently dropping them.
 
@@ -115,3 +115,30 @@ settle an existing intent or close their request session. They cannot enroll,
 remove, read directory content, mutate chats, pair or rotate. Thus a crashed
 requester need not return for an already authorized admission to finish. The
 settlement still requires the exact applied configuration and pending revision.
+
+
+## Committed holds, timers and wake
+
+ABI operations 23–26 supply scheduling, one-row activity checks, shared periods
+and covered-renewal checks; step tag 15 is the internal idle ReadIndex. Copy all
+ABI results before awaits. `CommittedHolds` samples authenticated watch evidence,
+pages at most the Go batch limit per turn, skips publish-covered items after a
+fresh authoritative read and emits exact-fence/index/hold-until receipts only
+after application commit. `CommittedWatchers` supplies advisory presence without
+the old socket-vouch header or lifted expiry. A failed renewal emits no receipt.
+
+`MemberAlarms` holds the member queue across the timer decision, durable dispatch
+and alarm update. Dispatch enqueues messages; it must never await their Raft
+responses while holding that queue. `QuiescenceCoordinator` performs host
+maintenance, internal safe read, bound marker commit, durable applied acks and
+final sleep delivery. Lost final delivery leaves that member active. A wake or
+new command invalidates the old generation, and recovered handles start awake.
+
+The DO alarm handler retains at most one bounded durable transport batch, with a
+monotonic batch ID. `scheduled` rereads that same batch after a lost reply;
+`acknowledgeScheduled` removes only the matching ID. A stalled router backpressures
+further turns with bounded retry delay. Draining this batch is transport delivery,
+never append or application success. The sole P17 router must consume those
+original peer bytes through the authenticated exchange bridge, propagate wake to
+current voters, and supply queued assignment/outbox activity conservatively.
+No host listener, provider service or alternate directory writer is added here.

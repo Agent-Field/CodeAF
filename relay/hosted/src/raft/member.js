@@ -1,10 +1,11 @@
 import { DurableObject } from 'cloudflare:workers';
 import { MemberActor, sharedRuntime } from './actor.js';
-import { MemberInbox } from './inbox.js';
+import { MemberInbox, INBOX_BYTES } from './inbox.js';
 import { directoryEvaluator } from './directory.js';
-import { DEFAULT_ROWS_BYTES, MemberStorage } from './storage.js';
+import { DEFAULT_ROWS_BYTES, MemberStorage, b64 } from './storage.js';
 import { HostCodec } from './abi.js';
 import { committedRegistry, provisionedRegistry } from './membership.js';
+import { MemberAlarms, coordinationPolicy } from './liveness.js';
 import { stageLegacyImport, finishLegacyImport } from './legacy.js';
 export { installRaftModule, runtimeMetrics } from './actor.js';
 
@@ -74,6 +75,68 @@ export class RaftMemberDO extends DurableObject {
     const actor = new MemberActor(this.ctx.storage, sharedRuntime(), this.evaluator(config));
     this.recoveredEffects = await actor.init(config); this.config = config; this.registry = actor.store.read('membership', 'registry') ? committedRegistry(sharedRuntime(), actor.store) : await this.ctx.storage.get('raft-registry'); this.actor = actor;
   }
+  // Alarm effects wait in one bounded durable transport batch. The router
+  // drains original bytes and acknowledges the batch ID; arrival is never an
+  // append acknowledgment. A stalled router backpressures further alarm turns.
+  async scheduled() { await this.load(); return this.actor.serial(async()=>{
+    const manifest=await this.ctx.storage.get('raft-scheduled');if(!manifest)return null;
+    const policy=coordinationPolicy(sharedRuntime());
+    if(manifest.bytes>INBOX_BYTES||manifest.parts!==Math.ceil(manifest.bytes/policy.max_message_bytes))throw new Error('raft member: damaged scheduled batch');
+    const raw=new Uint8Array(manifest.bytes);
+    for(let n=0;n<manifest.parts;n++){
+      const part=await this.ctx.storage.get('raft-scheduled-part/'+manifest.id+'/'+n);
+      if(!part||part.length!==Math.min(policy.max_message_bytes,raw.length-n*policy.max_message_bytes))throw new Error('raft member: incomplete scheduled batch');
+      raw.set(part,n*policy.max_message_bytes);
+    }
+    if(this.actor.store.hash(raw)!==manifest.hash)throw new Error('raft member: damaged scheduled batch');
+    return JSON.parse(new TextDecoder().decode(raw));
+  }); }
+  async acknowledgeScheduled(id) { await this.load(); return this.actor.serial(async()=>{
+    await this.ctx.storage.transaction(async tx=>{
+      const batch=await tx.get('raft-scheduled');if(batch?.id!==String(id))return;
+      for(let n=0;n<batch.parts;n++)await tx.delete('raft-scheduled-part/'+batch.id+'/'+n);
+      await tx.delete('raft-scheduled');
+    });await this.ctx.storage.sync();
+  }); }
+  // Chunking preserves valid maximum-sized Raft messages beneath the KV value
+  // limit. Voters take the reservation first; lagging learners cannot block it.
+  async retainScheduled(effects,policy) {
+    const recovered=this.recoveredEffects;
+    const sends=[...(recovered?.send??[]),...effects.send];
+    if(!sends.length&&!effects.plan.wake?.length)return [];
+    const view=this.actor.store.read('membership','registry')?committedRegistry(sharedRuntime(),this.actor.store):provisionedRegistry(sharedRuntime(),this.config);
+    sends.sort((a,b)=>Number(!view[String(a.to)]?.voter)-Number(!view[String(b.to)]?.voter));
+    const id=String(BigInt(await this.ctx.storage.get('raft-scheduled-sequence')??'0')+1n);
+    const batch={id,send:[],wake:effects.plan.wake},dropped=[];
+    let size=new TextEncoder().encode(JSON.stringify(batch)).length;
+    for(const m of sends){
+      const entry={to:String(m.to),bytes:b64(m.bytes)},cost=new TextEncoder().encode(JSON.stringify(entry)).length+1;
+      if(size+cost>INBOX_BYTES){dropped.push(m);continue;}
+      batch.send.push(entry);size+=cost;
+    }
+    const raw=new TextEncoder().encode(JSON.stringify(batch));
+    const manifest={id,bytes:raw.length,parts:Math.ceil(raw.length/policy.max_message_bytes),hash:this.actor.store.hash(raw)};
+    await this.ctx.storage.transaction(async tx=>{
+      for(let n=0;n<manifest.parts;n++)await tx.put('raft-scheduled-part/'+id+'/'+n,raw.slice(n*policy.max_message_bytes,(n+1)*policy.max_message_bytes));
+      await tx.put({'raft-scheduled':manifest,'raft-scheduled-sequence':id});
+    });await this.ctx.storage.sync();this.recoveredEffects=null;return dropped;
+  }
+  async alarm() {
+    await this.load();
+    const policy=coordinationPolicy(sharedRuntime()),now=Date.now();
+    const dispatch=async effects=>{
+      const dropped=await this.retainScheduled(effects,policy);
+      for(const m of dropped){const inspected=this.actor.codec.inspect(4,m.bytes);await this.actor.drive(12,{peer:BigInt(m.to),snapshot:inspected.snapshot.length>0,success:false});}
+    };
+    const ready=async()=>{
+      if(await this.ctx.storage.get('raft-scheduled')){await this.ctx.storage.setAlarm(now+policy.idle_after);return false;}
+      return true;
+    };
+    const timer=new MemberAlarms(this.ctx.storage,this.actor,dispatch,async()=>false,ready);
+    await timer.run(Math.floor(performance.now()),now);
+  }
+  async schedule(elapsed, ingressNow, busy, acks=[]) { await this.load(); return this.actor.schedule(elapsed, ingressNow, busy, acks); }
+  async sleepAck(index,term) { await this.load(); return this.actor.sleepAck(index,term); }
   async leadershipEvidence(revision,barrier) { await this.load(); return this.actor.leadershipEvidence(revision,barrier); }
   async leadership(evidence) { await this.load(); return this.actor.leadership(evidence); }
   async leadershipReceipt() { await this.load(); return this.actor.leadershipReceipt(); }

@@ -18,7 +18,7 @@ export const CLOSE_SILENT = 4408;
 const ANSWER_HEADERS = { 'Codeaf-Vouch': '1', 'Codeaf-Presence': '1' };
 
 /** What a socket carries through hibernation; an attachment from before a field existed reads as its default. */
-const FRESH = { at: 0, holds: [], events: false, beat: PRESENCE.defaultBeat, lapsed: false };
+const FRESH = { receipts: false, at: 0, holds: [], events: false, beat: PRESENCE.defaultBeat, lapsed: false };
 const attachmentOf = (ws) => ({ ...FRESH, ...ws.deserializeAttachment() });
 
 /**
@@ -82,11 +82,11 @@ export class Watchers {
    * it is also the viewer that makes the presence sweep worth arming (contract 21.12.4). `beat` is the ping period the
    * client declared, from which the socket's window follows.
    */
-  accept(device, version, now, { holds, beat, events = false }) {
+  accept(device, version, now, { holds, beat, events = false, receipts = false }) {
     if (this.ctx.getWebSockets().length >= this.cap) throw new Wire('too_many_watchers', 429);
     const { 0: client, 1: server } = new WebSocketPair();
     this.ctx.acceptWebSocket(server, [device]);
-    server.serializeAttachment({ ...FRESH, at: now, holds, events, beat });
+    server.serializeAttachment({ ...FRESH, at: now, holds, events, beat, receipts });
     server.send(frame(version));
     if (events) for (const text of this.liveness.snapshot(device)) server.send(text);
     this.liveness.opened(device);
@@ -102,6 +102,21 @@ export class Watchers {
   vouchedUntil(device, cell, fence) {
     const sockets = this.ctx.getWebSockets(device).map((ws) => this.#evidence(ws));
     return vouchedUntil(sockets, cell, fence, this.ttlMs);
+  }
+
+  // Only the committed-renewal bridge consumes this snapshot. The platform's
+  // hibernating ping timestamp remains advisory until its exact holds commit.
+  holdEvidence(now) {
+    return this.ctx.getWebSockets().map(ws => {
+      const att = attachmentOf(ws);
+      // Presence may forgive a closing socket, but renewal evidence must
+      // fail closed when the platform cannot supply its timestamp.
+      let seenAt=0;
+      try {seenAt=Math.max(att.at,this.ctx.getWebSocketAutoResponseTimestamp(ws)?.getTime()??0);} catch {}
+      return {device:this.ctx.getTags(ws)[0],holds:att.lapsed ? [] : att.holds.map(([cell,fence])=>({cell,fence:String(fence)})),
+        seenAt,
+        send:text=>{if(att.receipts)attempt(()=>ws.send(text));},failed:()=>attempt(()=>ws.close(1013,'retry'))};
+    });
   }
 
   /** broadcast tells every socket of the identity the new version. */
@@ -180,5 +195,16 @@ function attempt(fn) {
     fn();
   } catch {
     /* already closing */
+  }
+}
+
+// Consensus watches never derive a lease from a socket. V1 callers keep normal
+// beats; updated callers may suppress them only after a committed hold receipt.
+export class CommittedWatchers extends Watchers {
+  vouchedUntil() { return 0; }
+  accept(...args) {
+    const reply=super.accept(...args);
+    const headers=new Headers(reply.headers);headers.delete('Codeaf-Vouch');
+    return new Response(null,{status:101,webSocket:reply.webSocket,headers});
   }
 }
