@@ -3,6 +3,7 @@ package clientrun
 import (
 	"context"
 	"errors"
+	"maps"
 	"slices"
 	"sort"
 )
@@ -63,8 +64,15 @@ func (r *Runner) Unpair(ctx context.Context, id string) error {
 		return err
 	}
 	delete(r.state.Clients, id)
+	receipts := maps.Clone(r.state.Receipts)
+	for key, receipt := range r.state.Receipts {
+		if receipt.Client == id {
+			delete(r.state.Receipts, key)
+		}
+	}
 	if err := r.save(); err != nil {
 		c.Paused = true
+		r.state.Receipts = receipts
 		r.state.Clients[id] = c
 		return err
 	}

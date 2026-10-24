@@ -2,8 +2,8 @@ package clientrun
 
 import "sort"
 
-// Receipts returns the executor's durable call history, including calls whose
-// outcome is uncertain after an interrupted dispatch. It contains no keys.
+// Receipts returns retained replay watermarks and in-flight calls, including
+// uncertain dispatches. Chat history belongs to Log, not this bounded set.
 func (r *Runner) Receipts() []Receipt {
 	r.mu.Lock()
 	defer r.mu.Unlock()

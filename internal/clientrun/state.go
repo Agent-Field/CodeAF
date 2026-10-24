@@ -3,6 +3,8 @@ package clientrun
 import (
 	"encoding/json"
 	"errors"
+	"io"
+	"maps"
 	"os"
 	"path/filepath"
 
@@ -74,4 +76,129 @@ func (r *Runner) save() error {
 	}
 	defer d.Close()
 	return d.Sync()
+}
+
+// load streams old receipt maps one record at a time. Chat logging precedes
+// compaction, so moving history out of the replay file cannot lose chat lines.
+func (r *Runner) load() error {
+	f, err := os.Open(StatePath(r.cfg.Home))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	dec := json.NewDecoder(f)
+	token, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	if token != json.Delim('{') {
+		return errors.New("invalid client runner state")
+	}
+	for dec.More() {
+		key, err := dec.Token()
+		if err != nil {
+			return err
+		}
+		switch key {
+		case "secret":
+			err = dec.Decode(&r.state.Secret)
+		case "clients":
+			err = dec.Decode(&r.state.Clients)
+		case "receipts":
+			err = r.loadReceipts(dec)
+		default:
+			var ignored json.RawMessage
+			err = dec.Decode(&ignored)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	if _, err := dec.Token(); err != nil {
+		return err
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return errors.New("trailing client runner state")
+	}
+	if r.state.Clients == nil {
+		r.state.Clients = map[string]Client{}
+	}
+	for key, receipt := range r.state.Receipts {
+		if _, ok := r.state.Clients[receipt.Client]; !ok {
+			delete(r.state.Receipts, key)
+		}
+	}
+	// Only a logger may compact an installation's old on-disk history. Read-
+	// only callers keep its file intact until a logger can archive the lines.
+	if r.cfg.Log != nil {
+		return r.save()
+	}
+	return nil
+}
+
+func (r *Runner) loadReceipts(dec *json.Decoder) error {
+	token, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	if token == nil {
+		return nil
+	}
+	if token != json.Delim('{') {
+		return errors.New("invalid client receipts")
+	}
+	for dec.More() {
+		if _, err := dec.Token(); err != nil {
+			return err
+		}
+		var receipt Receipt
+		if err := dec.Decode(&receipt); err != nil {
+			return err
+		}
+		if r.cfg.Log != nil && receipt.Status != "claiming" {
+			if err := r.log(receipt); err != nil {
+				return err
+			}
+		}
+		// Keep only the highest number: all older numbers are rejected by
+		// previous's contiguous-sequence check even without their full proof.
+		key := receipt.Client
+		previous, ok := r.state.Receipts[key]
+		if !ok || previous.Number < receipt.Number {
+			r.state.Receipts[key] = receipt
+		}
+	}
+	if _, err := dec.Token(); err != nil {
+		return err
+	}
+	kept := r.state.Receipts
+	r.state.Receipts = map[string]Receipt{}
+	for _, receipt := range kept {
+		r.state.Receipts[receiptKey(receipt.Client, receipt.Number)] = receipt
+	}
+	return nil
+}
+
+// trim keeps the current proof and sequence watermark even when the relay's
+// acknowledgement response was lost. Older effects already reached chat logs.
+func (r *Runner) trim(receipt Receipt) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	old := maps.Clone(r.state.Receipts)
+	for key, previous := range r.state.Receipts {
+		if previous.Client == receipt.Client && previous.Number < receipt.Number {
+			delete(r.state.Receipts, key)
+		}
+	}
+	if len(old) == len(r.state.Receipts) {
+		return nil
+	}
+	if err := r.save(); err != nil {
+		r.state.Receipts = old
+		return err
+	}
+	return nil
 }

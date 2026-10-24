@@ -80,8 +80,11 @@ func TestScopedClientReadsAnswersAndAcksThroughTheAppBackend(t *testing.T) {
 	t.Setenv(home.EnvVar, root)
 	t.Setenv("CODEAF_PROFILE_DIR", "")
 	t.Setenv("CODEAF_SYNC_URL", "off")
-	c, err := cell.CreateIn(filepath.Join(root, "sessions"), cell.Options{Class: cell.HostBound})
+	c, err := cell.CreateIn(filepath.Join(session.PlacesRoot(), "phone-test"), cell.Options{Class: cell.HostBound})
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := session.SaveMeta(c.Root, session.Meta{ID: c.ID, Workspace: root, Created: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
 	transcript, err := c.Path(cell.TranscriptPath)
@@ -237,10 +240,39 @@ func TestScopedClientReadsAnswersAndAcksThroughTheAppBackend(t *testing.T) {
 	if err := runner.Close(); err != nil {
 		t.Fatal(err)
 	}
+	entries, _, err = backend.Entries(agent.ID, "", 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retained := false
+	for _, entry := range entries {
+		if strings.Contains(entry.Text, clientDev.ID()) && strings.Contains(entry.Text, "asks.answer") {
+			retained = true
+		}
+	}
+	if !retained {
+		t.Error("unpair removed the paired-client chat line")
+	}
+	if len(runner.Receipts()) != 0 {
+		t.Error("unpair retained executor receipts")
+	}
 	nextRec := newAppRecorder()
 	next := newAppBackend(nextRec, nil)
 	defer next.Close()
 	next.startPairedClients()
+	reopened, _, err := next.Entries(agent.ID, "", 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retained = false
+	for _, entry := range reopened {
+		if strings.Contains(entry.Text, clientDev.ID()) && strings.Contains(entry.Text, "asks.answer") {
+			retained = true
+		}
+	}
+	if !retained {
+		t.Error("chat line disappeared after unpair and backend restart")
+	}
 	list, err := appwire.Call(next, "clients.list", nil)
 	if err != nil {
 		t.Fatal(err)
