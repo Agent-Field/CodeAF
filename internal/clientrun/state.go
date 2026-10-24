@@ -17,6 +17,7 @@ type state struct {
 // Receipt is durable before dispatch and finished afterward. A begun call is
 // never dispatched again after a crash: its effect may already have happened.
 type Receipt struct {
+	Digest string `json:"digest"`
 	Client string `json:"client"`
 	Number int64  `json:"number"`
 	Agent  string `json:"agent"`

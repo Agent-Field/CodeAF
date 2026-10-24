@@ -140,6 +140,9 @@ func (r *Runner) Step(ctx context.Context) error {
 		if !ok || d.Revoked || d.Kind != "client" {
 			continue
 		}
+		if err := r.drain(ctx, c); err != nil {
+			errs = append(errs, err)
+		}
 		if err := r.publish(ctx, c, listing); err != nil {
 			errs = append(errs, err)
 		}

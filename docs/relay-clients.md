@@ -125,3 +125,34 @@ The runner also refreshes every five seconds while active, backing off failures
 to five minutes. Identical results retain their ciphertext and publication time;
 unchanged slots refresh after twelve hours so they do not expire at the relay.
 No active clients means no snapshot reads, relay requests or refresh timer.
+
+## Executor queue payload and receipts
+
+The queued ciphertext is a NaCl anonymous box sealed to the executor's public
+box key from its grant. The plaintext is
+`{"method":"asks.answer","params":{"agent":"chat-id","id":"ask-id","option":"option-id"},"face_id":true}`.
+`face_id` is optional for reversible asks and mandatory for irreversible asks;
+it is the client's signed assertion, not server-side biometric attestation.
+The plaintext method must match the signed outer method exactly.
+
+The v0 executor accepts `asks.answer`, `agents.send`, `agents.stop`, and
+`agents.create` in a pairing's queue allowlist. Other mutation names are refused
+at pairing because their routing and approval rules are not defined here.
+Chat calls require this executor's current unexpired lease. Creation targets
+`any` and is atomically claimed. The queue never takes a lease.
+
+Executors independently verify the retained exact HTTP body and signature,
+identity, client id, route, age, method scope, target, sequence and ask's current
+irreversibility. A durable started receipt precedes dispatch, and a done or failed
+receipt follows it. Restart never repeats a started call: its outcome is
+uncertain. A lost acknowledgement is retried from the receipt, without dispatch.
+Receipts include who, when, method and chat; the app exposes them in that chat's
+history. The created chat receives the final receipt for new work.
+
+Local sequence numbers start at one and must be contiguous. The current relay
+list filters entries targeted at other boxes and omits expired entries, without
+a signed explanation of missing numbers. The executor therefore refuses those
+gaps instead of guessing or replaying work. Use distinct client pairings for
+distinct executors in v0; a shared multi-executor sequence needs a future proof
+of skipped numbers. Uncertain calls need a person to inspect the chat; they are
+acknowledged without an automatic retry of their possible effect.
