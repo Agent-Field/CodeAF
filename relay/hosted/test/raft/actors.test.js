@@ -96,10 +96,17 @@ class Group {
 
 test('R3 R4 R10 R13 R14 R27 hosted actors commit, ReadIndex, crash and snapshot in both directions', { timeout: 120000 }, async () => {
   const dir = await mkdtemp(join(tmpdir(), 'p08-')), native = new Native(join(dir, 'native'));
-  let worker, inspector, sampling = false; const heaps = [];
-  const timer = setInterval(async () => { if (sampling) return; sampling = true; try { await sample(); if (inspector) heaps.push(await inspector.call('Runtime.getHeapUsage')); } finally { sampling = false; } }, 100);
+  let worker, inspector, samplingTask, samplingError, samplingPaused = false; const heaps = [];
+  // A sample owns its inspector call until completion. Drain it before each
+  // intentional process death so a late timeout cannot escape the test.
+  const timer = setInterval(() => {
+    if (samplingTask || samplingPaused) return;
+    samplingTask = (async () => { await sample(); if (inspector) heaps.push(await inspector.call('Runtime.getHeapUsage')); })()
+      .catch(error => { samplingError ??= error; }).finally(() => { samplingTask = null; });
+  }, 100);
+  const closeInspector = async () => { samplingPaused = true; await samplingTask; inspector?.close(); inspector = null; };
   try {
-    worker = await openWorkerd(out, join(dir, 'do'), true); inspector = await inspect(worker);
+    worker = await openWorkerd(out, join(dir, 'do'), true); inspector = await inspect(worker); samplingPaused = false;
     const g = new Group(worker, native, 'mixed', [1]); await g.init(); await g.transfer(1); await g.create();
     assert(await g.read(1, 'after-create')); const row = await g.sameRows();
     await g.call(1, 'init', { cluster: 'mixed', id: '1', seed: '101', bootstrap: ['1','2','3'], scope: g.scope });
@@ -114,8 +121,8 @@ test('R3 R4 R10 R13 R14 R27 hosted actors commit, ReadIndex, crash and snapshot 
     await g.transfer(2); g.block.add(1); await g.mutate(3); await g.call(2, 'checkpoint'); g.block.clear(); await g.tick(4); const latest = await g.sameRows();
     assert(report.phases.includes('native snapshot -> wasm'));
     await g.read(g.leader(), 'after-snapshots'); await g.transfer(1); await sample(); heaps.push(await inspector.call('Runtime.getHeapUsage'));
-    inspector.close(); inspector = null; await worker.dispose(); worker = null;
-    worker = await openWorkerd(out, join(dir, 'do'), true); g.worker = worker; inspector = await inspect(worker);
+    await closeInspector(); await worker.dispose(); worker = null;
+    worker = await openWorkerd(out, join(dir, 'do'), true); g.worker = worker; inspector = await inspect(worker); samplingPaused = false;
     // A new workerd process loads the actor and validates durable rows and
     // snapshot chunks. Recovery does not restore a leader or prior read lease.
     assert.equal(await g.call(1, 'row'), latest);
@@ -132,8 +139,8 @@ test('R3 R4 R10 R13 R14 R27 hosted actors commit, ReadIndex, crash and snapshot 
     const jointSnapshot = unb64(await j.call(1, 'checkpoint'));
     const jointManifest = JSON.parse(fields(jointSnapshot).get(1).toString());
     const jointConf = fields(unb64(jointManifest.conf)); assert(jointConf.has(3)); assert(jointConf.has(4));
-    inspector.close(); inspector = null; await worker.dispose(); worker = null;
-    worker = await openWorkerd(out, join(dir, 'do'), true); inspector = await inspect(worker); j.worker = worker; g.worker = worker;
+    await closeInspector(); await worker.dispose(); worker = null;
+    worker = await openWorkerd(out, join(dir, 'do'), true); inspector = await inspect(worker); samplingPaused = false; j.worker = worker; g.worker = worker;
     for (const id of [1,2]) { await j.call(id, 'row'); j.accept(id, await j.call(id, 'input', { tag: 0 })); }
     for (const id of [3,4]) j.accept(id, await j.call(id, 'restart'));
     await j.tick(16); assert(await j.read(j.leader(), 'joint-restart'));
@@ -158,13 +165,14 @@ test('R3 R4 R10 R13 R14 R27 hosted actors commit, ReadIndex, crash and snapshot 
     assert(report.isolateBytes <= 96 * 1024 * 1024); assert(metrics.peakMemory <= 64 * 1024 * 1024); assert.equal(metrics.active, 6);
     report.phases.push('three hosted anchors plus mixed identity in same isolate');
   } finally {
-    clearInterval(timer); await sample(); inspector?.close(); if (worker) await worker.dispose(); await native.close();
+    clearInterval(timer); await closeInspector(); await sample(); if (worker) await worker.dispose(); await native.close();
     report.combinedRSS = Math.max(...report.samples.map(s => s.combinedRSS));
     const cpu = new Map(); for (const sample of report.samples) for (const p of sample.processes) cpu.set(p.pid, Math.max(cpu.get(p.pid) ?? 0, p.cpuSeconds)); report.sampledCPUSeconds = [...cpu.values()].reduce((a, b) => a + b, 0);
     const times = report.calls.filter(c => c.wasm).map(c => c.ms).sort((a, b) => a - b); report.callMs = { p50: times[Math.floor(times.length * .5)], p95: times[Math.floor(times.length * .95)], p99: times[Math.floor(times.length * .99)] };
     report.coldFirstInitMs = report.calls.find(c => c.wasm && c.op === 'init')?.ms;
     await writeFile(join(out, 'actors-runtime.json'), JSON.stringify(report, null, 2) + '\n');
   }
+  if (samplingError) throw samplingError;
   assert(report.coldFirstInitMs < 1000, 'R27 cold member activation stays within one second');
   assert(report.combinedRSS <= 256 * 1024 * 1024, `R27 combined RSS ${report.combinedRSS}`);
 });

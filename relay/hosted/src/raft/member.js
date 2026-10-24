@@ -1,6 +1,8 @@
 import { DurableObject } from 'cloudflare:workers';
 import { MemberActor, sharedRuntime } from './actor.js';
 import { MemberInbox } from './inbox.js';
+import { directoryEvaluator } from './directory.js';
+import { DEFAULT_ROWS_BYTES } from './storage.js';
 export { installRaftModule, runtimeMetrics } from './actor.js';
 
 // Only internal namespace calls can initialize a provisioned member. The
@@ -8,6 +10,7 @@ export { installRaftModule, runtimeMetrics } from './actor.js';
 // P12 supplies the durable committed enrollment view and P09 the evaluator.
 export class RaftMemberDO extends DurableObject {
   constructor(ctx, env) { super(ctx, env); this.actor = null; this.loading = null; this.ctx = ctx; this.env = env; }
+  evaluator(config) { return directoryEvaluator(sharedRuntime(), config.cluster, config.ceiling ?? DEFAULT_ROWS_BYTES); }
   async initialize(config) {
     config = { ...config, id: String(config.id), seed: String(config.seed), bootstrap: config.bootstrap.map(String) };
     if (this.loading) {
@@ -27,7 +30,7 @@ export class RaftMemberDO extends DurableObject {
     const previous = await this.ctx.storage.get('raft-config');
     if (previous && JSON.stringify(previous) !== JSON.stringify(canonical)) throw new Error('raft member: provisioned identity cannot change');
     if (!previous) { await this.ctx.storage.put('raft-config', canonical); await this.ctx.storage.sync(); }
-    const actor = new MemberActor(this.ctx.storage, sharedRuntime(), this.env.raftEvaluate);
+    const actor = new MemberActor(this.ctx.storage, sharedRuntime(), this.evaluator(config));
     const result = await actor.init(canonical);
     this.config = canonical; this.registry = await this.ctx.storage.get('raft-registry'); this.actor = actor;
     return result;
@@ -41,7 +44,7 @@ export class RaftMemberDO extends DurableObject {
   }
   async restore() {
     const config = await this.ctx.storage.get('raft-config'); if (!config) throw new Error('raft member: not provisioned');
-    const actor = new MemberActor(this.ctx.storage, sharedRuntime(), this.env.raftEvaluate);
+    const actor = new MemberActor(this.ctx.storage, sharedRuntime(), this.evaluator(config));
     this.recoveredEffects = await actor.init(config); this.config = config; this.registry = await this.ctx.storage.get('raft-registry'); this.actor = actor;
   }
   async drainRecovery() {
