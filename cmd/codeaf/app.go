@@ -46,6 +46,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/clientrun"
 	"github.com/Agent-Field/codeaf/internal/clipboard"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/effort"
@@ -130,6 +131,7 @@ func runApp(args []string) error {
 	defer config.UseAppCredentials(config.NewAppCredentials())()
 	server := appwire.NewServer(wire)
 	backend := newAppBackend(server, appOpenInProcess)
+	backend.startPairedClients()
 	guard.Go("app/leave", func() { leaveWithin(ctx, backend.left, appLeaveWait, appLeaveNow) })
 	// Capture the previous holders before crews, quit resumes or client calls
 	// can open a journal and overwrite the evidence with this process's claim.
@@ -428,6 +430,12 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 
 // appBackend is the [appwire.Engine] over this process's conversations.
 type appBackend struct {
+	// clientRunner is absent until local pairing state exists or Settings pairs a client.
+	clientRunner atomic.Pointer[clientrun.Runner]
+	clientInit   sync.Mutex
+	clientCancel context.CancelFunc
+	clientDone   chan struct{}
+
 	// organizeProposer supplies a naming door when the backend is embedded without held conversations.
 	organizeProposer session.TeamProposer
 
@@ -500,7 +508,7 @@ type appBackend struct {
 	spent float64
 	// mint makes a new conversation's folder and answers its transcript path:
 	// the one piece of agents.create that happens before the answer.
-	mint func(workspace string) (string, error)
+	mint func(workspace string, before ...func(string) error) (string, error)
 	// unmint takes back a folder mint made when what it was made for was
 	// refused (appteamstart.go); nil is [appUnmint].
 	unmint func(transcript string)
@@ -818,7 +826,7 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 		left:      make(chan struct{}),
 		mint:      appMint,
 	}
-	b.emit = b.newAppInbox(emit)
+	b.emit = appClientEmitter{b: b, next: b.newAppInbox(emit)}
 	b.stopPhases = b.listenPhases()
 	b.stopProgress = b.listenProgress()
 	guard.Go("app/sweep", b.sweep)
@@ -829,8 +837,8 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 // host's new conversation is minted as, with the workspace stamped as where the
 // person stood. It is a directory and a small file, so agents.create can answer
 // with the agent's lasting id before anything slow happens.
-func appMint(workspace string) (string, error) {
-	place, err := v3NextSessionFrom(session.Place{}, workspace, workspace)
+func appMint(workspace string, before ...func(string) error) (string, error) {
+	place, err := v3NextSessionFrom(session.Place{}, workspace, workspace, before...)
 	if err != nil {
 		return "", err
 	}
@@ -839,6 +847,9 @@ func appMint(workspace string) (string, error) {
 
 // appAgentID is a conversation's id from its transcript: the folder's name.
 func appAgentID(transcript string) string {
+	if folder, ok := session.FolderOf(filepath.Clean(transcript)); ok {
+		return filepath.Base(folder)
+	}
 	return filepath.Base(filepath.Dir(filepath.Clean(transcript)))
 }
 
@@ -1069,9 +1080,21 @@ func (b *appBackend) CreateAgent(ask appwire.CreateAsk) (appwire.Agent, error) {
 	if err != nil {
 		return appwire.Agent{}, err
 	}
-	view, launch, err := b.createAgentHeld(prep, "")
+	minted := ""
+	if ask.BeforeMint != nil {
+		minted, err = b.mint(prep.resolved, ask.BeforeMint)
+		if err != nil {
+			return appwire.Agent{}, err
+		}
+	}
+	view, launch, err := b.createAgentHeld(prep, minted)
 	if err != nil {
 		return appwire.Agent{}, err
+	}
+	if ask.BeforeStart != nil {
+		if err := ask.BeforeStart(view); err != nil {
+			return view, err
+		}
 	}
 	launch()
 	return view, nil
@@ -3853,6 +3876,7 @@ func (b *appBackend) Close() error {
 	if already {
 		return nil
 	}
+	b.stopClients()
 	// THIS MACHINE'S FACTORY IS LET GO BEFORE ANYTHING THAT WAITS ON A
 	// CONVERSATION. Stopping the close watch waits for a carry-on that may be
 	// opening a conversation, and nothing below it is the factory's business;

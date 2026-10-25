@@ -74,3 +74,115 @@ chat lease. Revoking a client deletes its queue. An executor must verify the
 retained original request proof, permissions, age and any required biometric
 confirmation inside the encrypted call, use durable execution idempotency and
 log executed calls. The relay cannot read the call or verify biometric evidence.
+
+## Paired client snapshots from the app backend
+
+The app backend keeps snapshots fresh for locally paired scoped clients. It uses
+the desktop app methods `agents.list`, `asks.list`, `tasks.list`, `inbox.list`,
+and `spend.today`; chat results cover only chats whose live lease this computer
+holds. Each client decrypts its own snapshots with its independent encryption
+key. Snapshots say which computer wrote them and when. Empty chat lists retain
+their chat identity so they can replace older results.
+
+Publishing a turn and app changes schedule a refresh. An active client also gets
+a five-second refresh timer, backing off failures to five minutes. Unchanged
+results are skipped until their twelve-hour renewal. With no active client,
+there are no extra snapshot reads, relay requests or refresh timers. Encryption
+keys and read subscriptions are enrolled locally on each executing computer;
+they are not yet distributed by the directory.
+
+## Queued answers, Face ID and interrupted delivery
+
+The app backend executes locally paired clients' queued `asks.answer`,
+`agents.send`, `agents.stop` and `agents.create` calls through the desktop
+methods. Other queue methods are refused at pairing. Chat calls run only where
+this computer already holds the chat's live lease; they never take it from
+another computer. Starting new work targets `any` and has one claim winner.
+
+An irreversible ask requires the queued call's signed `face_id` flag. This is
+the client's assertion that it obtained biometric confirmation. The computer
+checks the ask again rather than trusting the snapshot the client saw. It also
+checks the retained signature, identity, sequence, age and method permission.
+
+Every executed call leaves who, when and method in its chat. A receipt is kept
+before execution. If delivery is interrupted at that point, codeaf does not
+repeat the possible effect automatically. An answer that finished but lost its
+acknowledgement is acknowledged after restart without being run again. Gaps in the local sequence are refused unless the client explicitly signs a
+`skip_through` instruction for the missing numbers. That skipped local range
+is kept in the chat receipt. A refused earlier pending entry still stops the
+round. Started or completed calls are never replayed by a skip instruction.
+
+The same client can enroll locally on several computers with the same allowed
+methods. Each computer has its own encryption key. An `any` call may contain a
+sealed copy for each eligible computer; the relay's atomic claim still chooses
+only one to execute it.
+
+## List paired clients, pause a client, or unpair one
+
+The app backend provides `clients.list`, `clients.pair`, `clients.pause` and
+`clients.unpair` over appwire and advertises `clients.manage`. These are backend
+Settings controls; no new terminal slash command or desktop widget is added.
+Pairing requires approved signing and encryption public keys, requested snapshot
+reads and queued-call permissions. The returned grant contains public connection
+information only. The ordinary chat pairing commands still pair full devices.
+
+Pause stops this computer's snapshot refresh and queue execution and survives
+restart. It waits for a current round to finish. It does not erase slots the
+client already has. Resume uses `clients.pause` with `paused:false`. Unpair
+revokes the certificate at the relay, which deletes its slots and queue. Kept
+call receipts stay in the chat. These management mutations require a trusted
+live appwire connection; the v0 scoped queue does not grant them.
+
+## Chat identity in app snapshots and queued answers
+
+A cell-backed chat keeps its transcript inside `.cell/`, but its app identity is
+the enclosing conversation folder's ID. That same ID scopes snapshots and
+queued answers and names its relay lease. The app resolves both cell and older
+transcript layouts through the shared session layout reader. Closing the app
+cancels and joins its client runner before closing the conversations it uses.
+
+## Snapshot too large or one subscribed read fails
+
+Each encrypted method snapshot must fit the relay's 64 KiB slot limit. If it
+cannot fit, codeaf refuses that update and keeps the old snapshot and timestamp.
+It continues updating other subscribed methods; a failed read does not stop
+all the client's snapshots. v0 does not paginate or silently truncate large
+snapshots. After the last client is unpaired, startup retains old call receipts
+without opening sync or starting a client refresh loop.
+
+## Face ID for a whole consent batch
+
+A queued answer requires the signed `face_id` assertion when any open ask it
+resolves is irreversible. The real answer path checks the fixed target set, so
+a sibling arriving during claiming is covered too. This includes a whole consent
+batch and a different
+ask selected by `batch_item`. Without it the call is refused before any consent
+is answered, and the paired-client refusal is kept in the chat as incomplete, with “Face ID”.
+
+## Client runner state already open
+
+The runner holds an exclusive OS lock beside its state file until it closes.
+Another process using that home fails immediately with “client runner state
+already open”. The runner saves a private claim token before claiming. A restart
+can recover a lost claim reply with that token; a second process cannot make a
+fresh claim. After execution starts, restart only acknowledges without running
+again.
+
+## Interrupted new work keeps its chat receipt
+
+For queued `agents.create`, the app reserves the chat id and transcript path in
+the started receipt before creating its folder. The paired-client line is written
+before the first turn starts. Restart repairs that line if delivery stopped
+immediately after the folder was created, even before the create result. If the
+folder was never created, recovery invents no chat. It acknowledges the uncertain
+call without creating another chat.
+
+## Receipt retention and unpair history
+
+Acknowledgement keeps only the latest call’s proof and sequence watermark for
+each paired client; older numbers still cannot run again. An in-flight call may
+also retain the preceding watermark until acknowledgement. Lost acknowledgement
+responses do not accumulate history. Unpair removes that client’s runner receipts.
+Chat lines are saved separately in the conversation and survive both trimming
+and unpair. Older state files are streamed one receipt at a time into chat logs,
+then compacted, instead of loading their whole history into memory.

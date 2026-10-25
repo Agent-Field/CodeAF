@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -178,11 +179,18 @@ func testFabricQueueClaimsAndProof(t *testing.T, r *Rig) {
 		t.Fatalf("entry proof: %s %v", dev, err)
 	}
 	fabricCall(t, r, full, "DELETE", queue+"/1", nil, 409)
-	fabricCall(t, r, full, "POST", queue+"/1/claim", nil, 204)
+	token := map[string]string{"token": strings.Repeat("a", 64)}
+	fabricCall(t, r, full, "POST", queue+"/1/claim", token, 204)
+	fabricCall(t, r, full, "POST", queue+"/1/claim", map[string]string{"token": strings.Repeat("b", 64)}, 409)
+	raw = fabricCall(t, r, full, "GET", queue, nil, 200)
+	if bytes.Contains(raw, []byte(strings.Repeat("a", 64))) {
+		t.Fatal("queue disclosed its private ownership token")
+	}
 	if r.Restart != nil {
 		r.Restart()
 	}
-	fabricCall(t, r, full, "POST", queue+"/1/claim", nil, 204)
+	fabricCall(t, r, full, "POST", queue+"/1/claim", token, 204)
+	fabricCall(t, r, full, "POST", queue+"/1/claim", nil, 409)
 	fabricCall(t, r, second, "POST", queue+"/1/claim", nil, 409)
 	fabricCall(t, r, second, "DELETE", queue+"/1", nil, 409)
 	fabricCall(t, r, full, "DELETE", queue+"/1", nil, 204)

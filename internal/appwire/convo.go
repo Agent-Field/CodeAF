@@ -346,6 +346,10 @@ type FileStat struct {
 // AskAnswer is the whole of an asks.answer: the option, the words, a reason,
 // which call of a batch, or putting it aside or handing it back.
 type AskAnswer struct {
+	// BeforeResolve checks the exact fixed target set before any answer is
+	// delivered. It is an in-process authorization hook, never wire data.
+	BeforeResolve func([]Ask) error
+
 	Scope     string
 	Option    string
 	Text      string

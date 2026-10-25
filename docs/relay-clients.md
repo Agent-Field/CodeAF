@@ -71,8 +71,11 @@ Only entries targeted at the caller, unclaimed `any` entries, or `any` entries
 claimed by the caller are listed. A list does not claim or change a chat lease.
 
 `POST /v1/clients/{device}/queue/{number}/claim` by a full device atomically
-claims an `any` entry; success 204, same claimer repeat 204, another claimer
-409 `claimed`. A targeted entry is claimable only by its target. Claims persist
+claims an `any` entry; success 204. An optional signed JSON body
+`{"token":"64 lowercase hexadecimal characters"}` binds ownership to one process.
+Only that same device/token can recover its claim (204); a fresh token or a
+repeat without a token returns 409 `claimed`. Queue listings never disclose the
+token. A targeted entry is claimable only by its target. Claims persist
 until ack or expiry; the relay never automatically reassigns work after a crash.
 An executor must claim before running. This prevents competing boxes executing
 the same entry; durable executor-side idempotency is still required after a crash.
@@ -100,3 +103,144 @@ Expiry is evaluated on reads and writes with the relay clock. Identity retiremen
 erases fabric data with the existing directory and blobs.
 
 The Go relay and the Worker implement this contract.
+
+## Full-device executor snapshots
+
+The app backend keeps locally approved client encryption keys and requested
+snapshot methods beside its own state. It dispatches reads through `appwire`;
+chat results include only live leases held by this device. The v0 snapshot set is
+`agents.list`, `asks.list`, `tasks.list`, `inbox.list`, and `spend.today`.
+Unsupported read names are refused when pairing rather than invoked as reads.
+The method allowlist remains separate from the snapshot subscription list.
+
+One slot per method and writer is named `<method>.<writer-device-id>`. Its
+NaCl anonymous-box plaintext is a JSON array of envelopes:
+`[{"writer":"dev_…","at":"RFC3339Nano","agent":"chat-id","result":{…}}]`.
+Global results omit `agent`; every chat result, including an empty list, includes
+it. Client encryption keys are independent X25519 keys supplied during local
+pairing. The grant includes this executor's public X25519 key for queued calls,
+the writer id, relay URL, identity public key and certificate, never shared
+identity secrets. Client keys and subscriptions enroll on each executor locally; a second trusted
+executor can enroll the existing client only with the exact same relay method
+scope. Each grant supplies that executor's distinct encryption public key. The
+relay directory does not distribute encryption keys.
+
+Completed sync publishes and app turn/ask/task events schedule coalesced refreshes.
+The runner also refreshes every five seconds while active, backing off failures
+to five minutes. Identical results retain their ciphertext and publication time;
+unchanged slots refresh after twelve hours so they do not expire at the relay.
+No active clients means no snapshot reads, relay requests or refresh timer.
+
+## Executor queue payload and receipts
+
+The queued ciphertext is a NaCl anonymous box sealed to the executor's public
+box key from its grant. The plaintext is
+`{"method":"asks.answer","params":{"agent":"chat-id","id":"ask-id","option":"option-id"},"face_id":true}`.
+`face_id` is optional for reversible asks and mandatory for irreversible asks;
+it is the client's signed assertion, not server-side biometric attestation.
+The plaintext method must match the signed outer method exactly.
+
+The v0 executor accepts `asks.answer`, `agents.send`, `agents.stop`, and
+`agents.create` in a pairing's queue allowlist. Other mutation names are refused
+at pairing because their routing and approval rules are not defined here.
+Chat calls require this executor's current unexpired lease. Creation targets
+`any` and is atomically claimed. The queue never takes a lease.
+
+Executors independently verify the retained exact HTTP body and signature,
+identity, client id, route, age, method scope, target, sequence and ask's current
+irreversibility. A durable started receipt precedes dispatch, and a done or failed
+receipt follows it. Restart never repeats a started call: its outcome is
+uncertain. A lost acknowledgement is retried from the receipt, without dispatch.
+Receipts include who, when, method and chat; the app exposes them in that chat's
+history. The created chat receives the final receipt for new work.
+
+Local sequence numbers start at one and must be contiguous unless the client
+explicitly authorizes missing numbers. The relay filters calls targeted at other
+boxes and omits expired calls. To resume after such a gap, the sealed call may
+include `skip_through: number-1`. Its original client signature covers that
+instruction. The executor records the skipped local range in its receipt and
+chat entry. It never skips an earlier eligible entry still present in its queue
+list; a refused pending entry stops the round. Without that explicit instruction,
+gaps remain refused. Numbers already executed or recorded as started are never
+executed again, including when a skip instruction is present. Uncertain calls
+need a person to inspect the chat; they are acknowledged without an automatic
+retry of their possible effect.
+
+An `any` call can address several enrolled executors without sharing their
+private keys. The sealed bytes start with ASCII `codeaf-client-boxes-v1` and a
+newline, followed by a JSON object mapping executor device ids to base64 NaCl
+anonymous boxes of the same call. A box opens only its own member, then competes
+for the relay's atomic claim. `clientrun.SealForExecutors` builds this format;
+the complete payload still fits the 4096-byte queue limit. Single-executor raw
+anonymous boxes remain supported. Enroll the client on each eligible executor
+and retain its public grant before constructing a multi-executor call.
+
+## Settings over appwire
+
+Engines implementing scoped-client management advertise `clients.manage` in
+hello. `clients.list {}` returns `{clients:[{id,name,methods,reads,paused}]}`
+with no secrets. `clients.pair {signing_key,box_key,methods,reads,name}` takes
+base64 public keys, issues and registers the scoped certificate, and returns the
+public grant described above. Pair only after the person has approved the
+public keys and requested scope through a trusted local desktop connection.
+The chat's ordinary full-device pairing command remains separate.
+
+`clients.pause {id,paused:true}` stops this box's snapshots and queue execution
+without revoking access to existing slots. `paused:false` resumes. Pause persists
+across restart and waits for an in-flight round before returning.
+`clients.unpair {id}` revokes the certificate at the relay, deleting slots and
+queue, then removes the local enrollment; execution receipts remain in chat
+history. Methods are available through the same table for every appwire client.
+They add no desktop Settings widget by themselves; UI callers render the list
+and controls using this interface. A scoped client's v0 queue does not expose
+management mutations; those require a trusted live desktop connection.
+
+## Snapshot capacity and independent failures
+
+The complete encrypted method/writer snapshot must fit the relay's 64 KiB slot
+limit. An oversized method is refused before upload, retaining its previous
+snapshot and its original timestamp. The round reports the size refusal and
+continues updating the client's other subscribed methods. Snapshots are not
+silently truncated or split into an unadvertised paging format. Large result
+pagination remains outside v0; clients must treat the retained timestamp as stale.
+After the last unpair, startup does not open sync, start an executor or install
+its publish watcher. Chat lines remain in each conversation’s history.
+
+## Face ID for a whole consent batch
+
+A queued answer requires the signed `face_id` assertion when any open ask it
+resolves is irreversible. The check uses the fixed targets in the actual answer
+path, after claiming, so a sibling arriving during the claim is covered too.
+This includes a whole consent batch and a different
+ask selected by `batch_item`. Without it the call is refused before any consent
+is answered, and the paired-client refusal is kept in the chat with “Face ID”.
+
+## One local runner at a time
+
+The runner holds an exclusive OS lock beside its state file until it closes.
+Another process using that home fails immediately with “client runner state
+already open”. The runner persists a random ownership token in a `claiming`
+receipt before requesting the claim. If the reply is lost, restart recovers
+with that token; another process with separate state cannot reuse the claim.
+After ownership is confirmed, a durable `started` receipt precedes dispatch.
+Restart acknowledges a started call without executing it again.
+
+## Interrupted new work keeps its chat receipt
+
+For queued `agents.create`, the app reserves the generated chat id and transcript
+path with the runner before creating the folder. That association reaches the
+started receipt durably before minting. The paired-client line is written before
+the first turn starts. Restart repairs the line if death happened immediately
+after minting, even before the create result or derived session metadata exists.
+If the reserved folder was never created, recovery invents no chat. Both cases
+acknowledge the uncertain call without creating another chat.
+
+## Receipt retention and unpair history
+
+Acknowledgement keeps only the latest call’s proof and sequence watermark for
+each paired client; older numbers still cannot run again. An in-flight call may
+also retain the preceding watermark until acknowledgement. Lost acknowledgement
+responses do not accumulate history. Unpair removes that client’s runner receipts.
+Chat lines are saved separately in the conversation and survive both trimming
+and unpair. Older state files are streamed one receipt at a time into chat logs,
+then compacted, instead of loading their whole history into memory.

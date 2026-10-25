@@ -996,6 +996,15 @@ type ProviderConnector interface {
 //
 // It answers at once: the conversation is assembled behind the answer.
 type CreateAsk struct {
+	// BeforeMint reserves the transcript path durably before any chat folder
+	// is created. It is paired with BeforeStart for in-process crash recovery.
+	BeforeMint func(string) error `json:"-"`
+
+	// BeforeStart lets an in-process caller durably associate its request with
+	// the created chat before work starts or CreateAgent returns. A failure
+	// does not release the first turn. Wire callers cannot supply executable hooks.
+	BeforeStart func(Agent) error `json:"-"`
+
 	Models          *session.ConversationModels `json:"models,omitempty"`
 	AutomaticModels *bool                       `json:"automatic_models,omitempty"`
 	Workspace       string                      `json:"workspace"`

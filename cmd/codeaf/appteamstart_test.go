@@ -46,7 +46,7 @@ func newStartHarness(t *testing.T) *startHarness {
 	t.Cleanup(func() { h.b.Close() })
 	h.b.state = &appState{path: filepath.Join(t.TempDir(), appStateName)}
 	h.b.profileDir = t.TempDir()
-	h.b.mint = func(string) (string, error) {
+	h.b.mint = func(string, ...func(string) error) (string, error) {
 		h.mu.Lock()
 		defer h.mu.Unlock()
 		dir := filepath.Join(h.places, "conv-"+strconv.Itoa(len(h.minted)+1))
@@ -875,7 +875,7 @@ func TestStartRealJournalRepeatAfterRestartSendsNothing(t *testing.T) {
 	defer second.Close()
 	minted := 0
 	mint := second.mint
-	second.mint = func(w string) (string, error) {
+	second.mint = func(w string, _ ...func(string) error) (string, error) {
 		minted++
 		return mint(w)
 	}
@@ -940,7 +940,7 @@ func TestStartLosingTheClaimToAnotherStartMakesNothing(t *testing.T) {
 	h := newStartHarness(t)
 	ask := appwire.CrewCreate{Name: "Raced", StartManager: true, ManagerStartsMembers: true, RequestID: "r-race", Goal: "g"}
 	mint := h.b.mint
-	h.b.mint = func(w string) (string, error) {
+	h.b.mint = func(w string, _ ...func(string) error) (string, error) {
 		a := ask
 		a.Name, a.Goal = strings.TrimSpace(a.Name), strings.TrimSpace(a.Goal)
 		if made, err := h.b.startClaims().create(appStartClaim{V: appStartClaimV, RequestID: "r-race", Fingerprint: appStartFingerprint(a),
