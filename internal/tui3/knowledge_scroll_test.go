@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func knowledgeLongTreeApp(t *testing.T) *app {
@@ -76,12 +77,32 @@ func TestKnowledgeArticleWheelKeepsSidebarPosition(t *testing.T) {
 	if !strings.Contains(before, "Storage") {
 		t.Fatal("article heading not visible before scroll: " + before)
 	}
-	drive(t, a, tea.MouseWheelMsg{X: 85, Y: 12, Button: tea.MouseWheelDown})
-	after := placeFrameText(a)
-	if strings.Contains(after, "Storage") {
-		t.Fatal("wheel over article did not scroll article: " + after)
+	sidebarBefore := knowledgeVisibleTree(a)
+	wheelArticle := func() {
+		t.Helper()
+		lines, _, _, _ := a.placeDraw(placeMemory{}, a.width, a.height)
+		for y, line := range lines {
+			plain := ansi.Strip(line)
+			if at := strings.Index(plain, "Durable storage"); at >= 0 {
+				drive(t, a, tea.MouseWheelMsg{X: ansi.StringWidth(plain[:at]) + 2, Y: y, Button: tea.MouseWheelDown})
+				return
+			}
+		}
+		t.Fatal("no visible article paragraph to scroll")
 	}
-	if !strings.Contains(after, "▾ Project") || !strings.Contains(after, "Topic 000") {
+	wheelArticle()
+	after := placeFrameText(a)
+	if before == after || strings.Contains(after, "│ Architecture") {
+		t.Fatal("wheel over article did not move its title out of view: " + after)
+	}
+	// Edit/Delete add a header row. One tick now moves the article title off
+	// screen; another moves the following section heading off screen as well.
+	wheelArticle()
+	after = placeFrameText(a)
+	if strings.Contains(after, "Storage") {
+		t.Fatal("continued wheel did not move the section heading: " + after)
+	}
+	if sidebarAfter := knowledgeVisibleTree(a); sidebarBefore != sidebarAfter {
 		t.Fatal("article wheel moved sidebar: " + after)
 	}
 }

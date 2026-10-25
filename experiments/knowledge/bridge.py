@@ -13,7 +13,10 @@ from workspace import Workspace
 from workflow import extend
 from provider import OpenRouter, MODEL
 from topics import reconcile, publish
-from storage import save, viewer, write_json
+from storage import save, viewer, write_json, _save
+from wikilinks import link_vault
+from human import apply
+from human import overrides
 
 
 def compile_workspace(root, project, *, force=False, model=None, model_id=MODEL):
@@ -62,8 +65,12 @@ def compile_workspace(root, project, *, force=False, model=None, model_id=MODEL)
             projection_file = root / 'projection.json'
             from knowledge import identity
             input_hash = identity(vault)
+            override_hash = identity(overrides(root / 'overrides'))
             previous_projection = json.loads(projection_file.read_text()) if projection_file.exists() else {}
             if previous_projection.get('input_hash') == input_hash and (root / 'knowledge' / 'vault.json').exists():
+                if previous_projection.get('override_hash') != override_hash:
+                    publish_overrides(root)
+                    write_json(projection_file, {'input_hash': input_hash, 'override_hash': override_hash})
                 return status(needs_update=False)
             state_file = root / 'learning.json'
             learning = json.loads(state_file.read_text()) if state_file.exists() else {'subjects': []}
@@ -76,15 +83,31 @@ def compile_workspace(root, project, *, force=False, model=None, model_id=MODEL)
             save(projected, root / 'knowledge')
             write_json(state_file, current)
             write_json(registry_file, registry)
-            report = status()
-            viewer({'reconciled': projected}, report,
-                   {'architecture': 'Project-scoped incremental knowledge; saved memory remains separate.'}, root / 'viewer')
-            write_json(projection_file, {'input_hash': input_hash})
+            status()
+            publish_overrides(root, refresh=False)
+            write_json(projection_file, {'input_hash': input_hash, 'override_hash': override_hash})
             return status(needs_update=False)
         except Exception as error:
             # No credentials/source text in the visible status; provider receipts remain private.
             status(type(error).__name__ + ': knowledge compilation failed; pending sources are retained')
             raise
+
+
+def publish_overrides(root, *, refresh=True):
+    root = Path(root)
+    path = root / 'knowledge' / 'vault.json'
+    if not path.exists():
+        return {'published': False}
+    directory = root / 'knowledge'
+    with (directory / '.writer.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        previous = json.loads(path.read_text())
+        published = link_vault(apply(previous, root / 'overrides'))
+        if refresh or published != previous:
+            _save(published, directory)
+        viewer({'reconciled': published}, {}, {'architecture': 'Human page changes; original sources are retained.'}, root / 'viewer')
+
+    return {'published': True}
 
 
 def main():
@@ -94,8 +117,12 @@ def main():
     parser.add_argument('--project', required=True)
     parser.add_argument('--force', action='store_true')
     parser.add_argument('--model', default=MODEL)
+    parser.add_argument('--publish-overrides', action='store_true')
     args = parser.parse_args()
     try:
+        if args.publish_overrides:
+            print(json.dumps(publish_overrides(args.root)))
+            return
         print(json.dumps(compile_workspace(args.root, args.project, force=args.force, model_id=args.model)))
     except Exception as error:
         # Provider exceptions may contain untrusted response content. Keep CLI errors bounded.

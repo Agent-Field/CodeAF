@@ -9455,6 +9455,16 @@ func (a *app) paste(text string) tea.Cmd {
 	// at the door — CRLF first, then bare CR.
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	text = strings.ReplaceAll(text, "\r", "\n")
+	// A place editor owns paste just as it owns keys, before any hidden draft.
+	if pl := a.showing(); pl != nil {
+		if target, ok := pl.(interface {
+			paste(*app, string) (tea.Cmd, bool)
+		}); ok {
+			if cmd, took := target.paste(a, text); took {
+				return cmd
+			}
+		}
+	}
 	// Creation and the grid own their clipboard input just as they own keys.
 	// A paste must never spill into the conversation draft behind them.
 	if a.tmembers.on {

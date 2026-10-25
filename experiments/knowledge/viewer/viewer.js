@@ -396,11 +396,14 @@
     el.mainInner.appendChild(crumb);
 
     el.mainInner.appendChild(mk('h1', 'note-title', note.title || note.id));
+    if(note.human_edited){
+      el.mainInner.appendChild(mk('p', 'detail-empty', 'Edited by you. Original source history is kept separately and does not verify your changes.'));
+    }
 
     var meta = mk('div', 'note-meta');
     meta.appendChild(mk('span', null, scopeOf(note)));
     meta.appendChild(mk('span', 'dot', '\u00b7'));
-    meta.appendChild(mk('span', null, (note.claims ? note.claims.length : 0) + ' claims'));
+    meta.appendChild(mk('span', null, note.human_edited ? 'Human edit' : (note.claims ? note.claims.length : 0) + ' claims'));
     if(note.links && note.links.length){
       meta.appendChild(mk('span', 'dot', '\u00b7'));
       meta.appendChild(mk('span', null, note.links.length + ' linked notes'));
@@ -426,10 +429,12 @@
         (section.paragraphs || []).forEach(function(paragraph){
           var p = mk('p', 'article-paragraph');
           p.appendChild(articleText(paragraph));
-          var citation = btn('article-citation', 'Sources', 'Open supporting sources');
-          citation.addEventListener('click', function(){openParagraphSources(paragraph.claims || [], paragraph.evidence || []);});
-          p.appendChild(document.createTextNode(' '));
-          p.appendChild(citation);
+          if(!note.human_edited && ((paragraph.claims || []).length || (paragraph.evidence || []).length)){
+            var citation = btn('article-citation', 'Sources', 'Open supporting sources');
+            citation.addEventListener('click', function(){openParagraphSources(paragraph.claims || [], paragraph.evidence || []);});
+            p.appendChild(document.createTextNode(' '));
+            p.appendChild(citation);
+          }
           var basis = paragraph.evidence_basis;
           if(basis){
             var roles = basis.source_roles || [];
@@ -596,8 +601,9 @@
 
     // source quotes
     var quoteSec = mk('div', 'detail-section');
-    quoteSec.appendChild(mk('h3', null, 'Source quotes'));
-    var quotes = [];
+    quoteSec.appendChild(mk('h3', null, note.human_edited ? 'Original source history' : 'Source quotes'));
+    if(note.human_edited) quoteSec.appendChild(mk('p', 'detail-empty', 'Historical material, not citations for the edited text.'));
+    var quotes = note.human_edited ? (note.original_evidence || []).slice() : [];
     var cs = note.claims || [];
     for(var k=0;k<cs.length;k++){
       var c = claimById(cs[k]);

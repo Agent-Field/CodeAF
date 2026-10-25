@@ -65,6 +65,11 @@ type Section struct {
 	Paragraphs []Paragraph `json:"paragraphs"`
 }
 type Page struct {
+	OriginalEvidence     []Evidence `json:"original_evidence,omitempty"`
+	Revision             string     `json:"revision,omitempty"`
+	HumanEditedAt        string     `json:"human_edited_at,omitempty"`
+	HumanEdited          bool       `json:"human_edited,omitempty"`
+	Markdown             string     `json:"manual_markdown,omitempty"`
 	ID                   string     `json:"id"`
 	Title                string     `json:"title"`
 	Scope                string     `json:"scope"`
@@ -356,6 +361,9 @@ func (v *Vault) Snapshot() (Snapshot, error) {
 			}
 			p.Evidence = append(p.Evidence, e)
 		}
+		for _, e := range p.OriginalEvidence {
+			add(e)
+		}
 		for si := range p.Sections {
 			for pi := range p.Sections[si].Paragraphs {
 				para := &p.Sections[si].Paragraphs[pi]
@@ -407,6 +415,10 @@ func (v *Vault) Snapshot() (Snapshot, error) {
 		}
 	}
 
+	s.Pages, e = v.applyOverrides(s.Pages)
+	if e != nil {
+		return s, e
+	}
 	sort.SliceStable(s.Pages, func(i, j int) bool { return s.Pages[i].Title < s.Pages[j].Title })
 	return s, nil
 }

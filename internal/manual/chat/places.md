@@ -659,6 +659,15 @@ same source are grouped. Click Return to article or press Escape to restore the 
 position. `pgup` and `pgdn` scroll the reader. Tab keeps its normal meaning of
 moving to the next main place.
 
+Click **Edit** on an article, or press `ctrl+e`, to edit its Markdown and
+`[[Topic]]` links. `ctrl+s` saves; Escape cancels. Saved edits are marked
+**Edited by you** and remain separate from machine-written updates. Original
+sources describe the article's background and do not verify your additions.
+
+Click **Delete**, or press `ctrl+d`, to review a named deletion confirmation.
+Enter or Escape cancels by default. Click **Delete page** or press `ctrl+d`
+again to confirm. Deletion removes the knowledge page; original chats remain.
+
 ## memories — what is held true, and the Memories tab (it was called Memory)
 
 The lines codeaf keeps in front of every conversation — what you told it, what the model

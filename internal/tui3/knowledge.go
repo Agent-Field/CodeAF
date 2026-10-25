@@ -36,6 +36,8 @@ type knowledgePlace struct {
 	targets             []knowledgeTarget
 	hitRows             []placeHit
 	sourceRender        knowledgeSourceRender
+	edit                *knowledgePageEdit
+	markdownRender      knowledgeMarkdownRender
 }
 
 type knowledgeTarget struct {
@@ -47,10 +49,13 @@ type knowledgeCellLink struct {
 	id         string
 }
 type knowledgeHit struct {
-	tree    int
-	article bool
-	links   []knowledgeCellLink
-	create  bool
+	tree       int
+	article    bool
+	links      []knowledgeCellLink
+	create     bool
+	editor     bool
+	editOffset int
+	editLine   string
 }
 
 // Wrapping carries canonical link spans into terminal cell coordinates, including
@@ -97,9 +102,11 @@ func knowledgeParagraph(p knowledge.Paragraph, width int) ([]string, [][]knowled
 }
 
 type knowledgeReadingMsg struct {
-	vault   *knowledge.Vault
-	reading knowledge.Snapshot
-	err     error
+	vault            *knowledge.Vault
+	reading          knowledge.Snapshot
+	err              error
+	mutation, editID string
+	mutationApplied  bool
 }
 
 func (a *app) knowledgeVault() *knowledge.Vault {
@@ -159,11 +166,13 @@ func (a *app) adoptKnowledge(msg knowledgeReadingMsg) {
 		return
 	}
 	p.loading = false
+	a.knowledgeAdoptEdit(msg)
 	if msg.err != nil {
 		p.footer = "Knowledge could not be read: " + msg.err.Error()
 	} else {
 		p.reading = msg.reading
 		p.sourceRender = knowledgeSourceRender{}
+		p.markdownRender = knowledgeMarkdownRender{}
 		p.indexKnowledge()
 		p.footer = ""
 		p.rank()
@@ -283,6 +292,9 @@ func (p *knowledgePlace) navigate(id string) {
 
 func (a *app) knowledgeOwns(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	p := &a.kb
+	if p.open && p.edit != nil {
+		return a.knowledgeEditKey(msg), true
+	}
 	k := msg.String()
 	if k == "alt+u" && a.mem.edit == nil {
 		p.open = !p.open
@@ -299,6 +311,10 @@ func (a *app) knowledgeOwns(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	switch k {
+	case "ctrl+e":
+		return a.knowledgeEditAction("@edit")
+	case "ctrl+d":
+		return a.knowledgeEditAction("@delete")
 	case "ctrl+left":
 		p.foldAll(true)
 	case "ctrl+right":
@@ -466,6 +482,9 @@ func (p *knowledgePlace) pageLinks() []knowledge.Link {
 
 func (a *app) knowledgeBody(width, room int) []placeRow {
 	p := &a.kb
+	if p.edit != nil {
+		return a.knowledgeEditBody(width, room)
+	}
 	left := max(24, min(42, width/3))
 	narrow := width < 85
 	if narrow {
@@ -560,7 +579,13 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 	articleHits := map[int][]knowledgeCellLink{}
 	selectedConnection := -1
 	if n, ok := p.page(); ok {
-		article = append(article, a.pal.muted(n.Title), "")
+		article = append(article, a.pal.muted(n.Title))
+		actions, hits := knowledgeActionRow(a.pal, p.hoverLink, "Edit", "@edit", "Delete", "@delete")
+		articleHits[len(article)] = hits
+		article = append(article, actions, "")
+		if n.HumanEdited {
+			article = append(article, a.pal.dim("Edited by you · additions are not source-verified"), "")
+		}
 		if n.NeedsEditorialUpdate {
 			article = append(article, a.pal.dim("New evidence appears under Recent knowledge; guide integration is pending."), "")
 		}
@@ -569,13 +594,23 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 			rightWidth = width - 4
 		}
 		rightWidth = min(rightWidth, 100)
-		for _, s := range n.Sections {
+		for section, s := range n.Sections {
 			if s.Heading != "" {
 				article = append(article, a.pal.muted(s.Heading), "")
 			}
-			for _, para := range s.Paragraphs {
-				lines, cells := knowledgeParagraph(para, max(1, rightWidth))
+			for paragraph, para := range s.Paragraphs {
+				var lines []string
+				var cells [][]knowledgeCellLink
+				if n.HumanEdited {
+					lines, cells = a.knowledgeHumanParagraph(n, section, paragraph, max(1, rightWidth))
+				} else {
+					lines, cells = knowledgeParagraph(para, max(1, rightWidth))
+				}
 				for i, line := range lines {
+					if len(cells[i]) == 0 {
+						article = append(article, line)
+						continue
+					}
 					articleHits[len(article)] = cells[i]
 					var painted strings.Builder
 					at := 0
@@ -629,17 +664,24 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 			}
 		}
 		if len(n.Evidence) > 0 && !p.links {
+			sourceHeading := "Sources"
+			if n.HumanEdited {
+				sourceHeading = "Original sources"
+			}
 			if p.sources {
 				back := taskLinkInk(a.pal, "Return to article")
 				if p.hoverLink == "@sources" {
 					back = taskLinkHotInk(a.pal, "Return to article")
 				}
-				article = []string{a.pal.muted(n.Title), "", a.pal.muted("Sources"), back + a.pal.dim(a.chords.say(" · esc")), ""}
+				article = []string{a.pal.muted(n.Title), "", a.pal.muted(sourceHeading), back + a.pal.dim(a.chords.say(" · esc")), ""}
 				articleHits = map[int][]knowledgeCellLink{3: {{0, 17, "@sources"}}}
+				if n.HumanEdited {
+					article = append(article, a.pal.dim("Background only · does not verify your edits."), "")
+				}
 				article = append(article, a.knowledgeSourceRows(n, rightWidth)...)
 
 			} else {
-				label := fmt.Sprintf("Sources · %d", len(knowledgeSources(n.Evidence)))
+				label := fmt.Sprintf("%s · %d", sourceHeading, len(knowledgeSources(n.Evidence)))
 				article = append(article, "")
 				articleHits[len(article)] = []knowledgeCellLink{{0, ansi.StringWidth(label), "@sources"}}
 				painted := taskLinkInk(a.pal, label)
@@ -739,6 +781,9 @@ func (placeMemory) pressAt(a *app, x, y int) (tea.Cmd, bool) {
 		}
 		for _, link := range hit.links {
 			if x >= link.start && x < link.end {
+				if cmd, took := a.knowledgeEditAction(link.id); took {
+					return cmd, true
+				}
 				if link.id == "@switch" {
 					return a.knowledgeOwnsSwitch(), true
 				} else if link.id == "@search" {
@@ -757,6 +802,10 @@ func (placeMemory) pressAt(a *app, x, y int) (tea.Cmd, bool) {
 			}
 		}
 		left := max(24, min(42, a.width/3))
+		if hit.editor && p.edit != nil {
+			a.knowledgeEditorCaret(hit, x)
+			return nil, true
+		}
 		if (a.width < 85 || x <= left) && hit.tree >= 0 && hit.tree < len(p.targets) {
 			p.cursor = hit.tree
 			return a.knowledgeOwnsEnter(), true

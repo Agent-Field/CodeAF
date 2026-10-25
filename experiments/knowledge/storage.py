@@ -26,7 +26,8 @@ def save(vault, directory):
     with (directory / ".writer.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         try:
-            _save(link_vault(vault), directory)
+            from human import apply
+            _save(link_vault(apply(vault, directory.parent / "overrides")), directory)
         finally:
             fcntl.flock(lock, fcntl.LOCK_UN)
 
@@ -157,7 +158,18 @@ def export_markdown(vault, directory):
     directory.mkdir(exist_ok=True)
     claims = {c["id"]: c for c in vault["claims"]}
     notes = {n["id"]: n for n in vault["notes"]}
+    for path in directory.glob('*.md'):
+        if path.stem not in notes:
+            path.unlink()
     for note in notes.values():
+        if note.get('human_edited'):
+            lines = ['# ' + note['title'], '', '> Edited by you. This text has not been verified against the original sources.', '', note['manual_markdown'], '']
+            if note.get('original_evidence'):
+                lines += ['## Original source history', '', 'These sources supported the earlier generated page, not the edited prose.', '']
+                for evidence in note['original_evidence']:
+                    lines.append('- ' + evidence['source'] + ' — ' + evidence['quote'])
+            (directory / (note['id'] + '.md')).write_text('\n'.join(lines))
+            continue
         lines = ["---", "id: " + note["id"], "title: " + json.dumps(note["title"]),
                  "scope: " + json.dumps(note["scope"]), "folder: " + json.dumps(note["folder"]),
                  "---", "", "# " + note["title"], ""]

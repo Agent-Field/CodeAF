@@ -10,6 +10,9 @@ func (placeMemory) wheelAt(a *app, x, y, delta int) (tea.Cmd, bool) {
 		return placeMemory{}.wheel(a, delta)
 	}
 	p := &a.kb
+	if p.edit != nil {
+		return a.knowledgeEditorWheel(delta), true
+	}
 	if y < 0 || y >= len(p.hitRows) {
 		return nil, true
 	}

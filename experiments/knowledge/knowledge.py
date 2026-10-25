@@ -436,6 +436,19 @@ def recall(vault, question, model, scope=None, limit=16, retrieval="lexical"):
         selected_notes = set(plan.get("notes", [])) & {n["id"] for n in eligible_notes}
     candidates = [c for c in vault["claims"] if c["status"] == "active" and
                   visible(c["scope"])]
+    # Human prose is a reported assertion with its own explicit origin, never
+    # a generated fact certified by the page's previous source citations.
+    vault = {**vault, 'sources': dict(vault.get('sources', {}))}
+    for note in eligible_notes:
+        if not note.get('human_edited') or not note.get('manual_markdown'):
+            continue
+        text = note['manual_markdown']
+        source_id = 'human-edit:' + identity([note['id'], text])
+        vault['sources'][source_id] = {'id': source_id, 'role': 'user', 'text': text, 'ts': note.get('human_edited_at', '1970-01-01T00:00:00Z'),
+                                      'provenance': {'kind': 'human_edit'}}
+        candidates.append({'id': source_id, 'text': text, 'scope': note['scope'],
+                           'kind': 'reported', 'status': 'active', 'human_edited': True,
+                           'evidence': [{'source': source_id, 'quote': text, 'origin': 'human_edit'}]})
     # Reviewed answer projections can supply evidence the first extractor omitted.
     # They remain derived context rather than new canonical source claims.
     derived_ids = defaultdict(list)

@@ -783,6 +783,12 @@ func (a *app) memoryListRows(width, room int) []placeRow {
 // written on the add row, or a line being reworded in its own row.
 func (placeMemory) caretRow(a *app, width int, rows []placeRow) (int, int, bool) {
 	if a.kb.open {
+		if edit := a.kb.edit; edit != nil {
+			if edit.deleting || edit.busy {
+				return -1, 0, true
+			}
+			return edit.caretRow, edit.caretCol, true
+		}
 		for i, row := range rows {
 			if hit, ok := row.hit.(knowledgeHit); ok {
 				for _, link := range hit.links {
@@ -1222,6 +1228,9 @@ func (placeMemory) alt(a *app, letter rune) bool { return false }
 // box is the filter, or the words being written while the editor is open.
 func (placeMemory) box(a *app) *editor {
 	if a.kb.open {
+		if a.kb.edit != nil {
+			return &a.kb.edit.text
+		}
 		return &a.kb.filter
 	}
 	if a.mem.edit != nil {
@@ -1246,6 +1255,12 @@ func (placeMemory) about() string { return "what codeaf remembers" }
 // hint is WHAT THE ROW UNDER THE CURSOR CAN BE ASKED FOR.
 func (placeMemory) hint(a *app) string {
 	if a.kb.open {
+		if edit := a.kb.edit; edit != nil {
+			if edit.deleting {
+				return "enter cancel · ctrl+d delete · esc cancel"
+			}
+			return "ctrl+s save · esc cancel · enter newline"
+		}
 		return "↑↓ select · enter open · ctrl+l links · ctrl+o sources · pgup/pgdn read · esc back · alt+u saved memory"
 	}
 	p := &a.mem

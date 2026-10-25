@@ -461,3 +461,56 @@ func TestKnowledgeSavedTurnsUseThePersistedCompilerModel(t *testing.T) {
 		t.Fatalf("existing vault kept stale model: %q", status.Model)
 	}
 }
+
+func TestKnowledgeRecallLabelsHumanEditsWithoutOldCitations(t *testing.T) {
+	profile := t.TempDir()
+	client := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("human-read", "read_knowledge", `{"id":"routing"}`), nil
+		},
+		func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			found := false
+			for _, message := range messages {
+				if message.Role != "tool" {
+					continue
+				}
+				text := messageContentText(message)
+				if strings.Contains(text, "Human corrected routing") {
+					found = true
+					if !strings.Contains(text, `"human_edited":true`) || strings.Contains(text, `"source":"s1"`) {
+						t.Error("manual prose was presented as verified by old evidence: " + text)
+					}
+				}
+			}
+			if !found {
+				t.Error("human correction was absent from agent recall")
+			}
+			return textResponse("The human-edited note describes corrected routing."), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, client, func(c *Config) {
+		c.ProfileDir = profile
+		c.SessionFile = filepath.Join(t.TempDir(), "chat.jsonl")
+		c.usageLedger = filepath.Join(t.TempDir(), "usage.jsonl")
+	})
+	vault := agent.Knowledge()
+	if err := vault.Create(); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(vault.Directory(), "knowledge")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	fixture := `{"sources":{"s1":{"role":"user","ts":"2026-10-25T12:00:00Z"}},"claims":[{"id":"c1","kind":"fact","text":"Old routing","status":"active","evidence":[{"source":"s1","quote":"Old routing"}]}],"notes":[{"id":"routing","title":"Routing","claims":["c1"]}]}`
+	if err := os.WriteFile(filepath.Join(dir, "vault.json"), []byte(fixture), 0600); err != nil {
+		t.Fatal(err)
+	}
+	page, err := vault.Read("routing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = vault.EditPage(page.ID, page.Revision, "Human corrected routing"); err != nil {
+		t.Fatal(err)
+	}
+	collect(t, mustSubmit(t, agent, "Read the corrected routing note"))
+}
