@@ -644,11 +644,12 @@ conversations are not imported automatically.
 
 The knowledge reader has a folder tree and articles. Underlined `[[Topic]]`
 references open linked pages when clicked. `ctrl+l` lists connected pages; arrows
-choose one and Enter opens it. Left returns to the previous page.
+choose one and Enter opens it. Left returns to the previous page. Hover highlights
+tree rows and brightens linked text; a click or Enter opens the selected page.
 
 Sources stay folded behind a clickable `Sources` row. Press `ctrl+o` to read the
 original quotations with speaker and readable date; repeated references to the
-same source are grouped. Escape returns to your article at the same reading
+same source are grouped. Click Return to article or press Escape to restore the reading
 position. `pgup` and `pgdn` scroll the reader. Tab keeps its normal meaning of
 moving to the next main place.
 

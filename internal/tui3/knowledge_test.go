@@ -297,3 +297,79 @@ func TestKnowledgeHostedConversationNeverShowsLocalVault(t *testing.T) {
 		t.Fatal("hosted conversation exposed a local knowledge vault: " + got)
 	}
 }
+
+func TestKnowledgeHoverRepaintsVisibleControls(t *testing.T) {
+	for _, name := range []string{"tree", "related", "return"} {
+		t.Run(name, func(t *testing.T) {
+			a := knowledgeArticleApp(t)
+			a.pal = newPalette(tokens.TrueColor, false)
+			label := "Architecture"
+			if name == "related" {
+				label = "1. SQLite"
+			}
+			if name == "return" {
+				drive(t, a, key("ctrl+o"))
+				label = "Return to article"
+			}
+			before := a.View().Content
+			lines := strings.Split(before, "\n")
+			for y, line := range lines {
+				plain := ansi.Strip(line)
+				at := strings.Index(plain, label)
+				if at < 0 || (name == "tree" && at > 40) {
+					continue
+				}
+				drive(t, a, tea.MouseMotionMsg{X: ansi.StringWidth(plain[:at]) + 2, Y: y})
+				if after := a.View().Content; after == before {
+					t.Fatal("hover failed to repaint visible " + name + " control")
+				}
+				return
+			}
+			t.Fatal("missing hover control: " + label)
+		})
+	}
+}
+
+func TestKnowledgeLinkedPagePickerHoverSelectsEnterTarget(t *testing.T) {
+	a := knowledgeArticleApp(t)
+	path := filepath.Join(a.agent.(*knowledgeTestAgent).vault.Directory(), "knowledge", "vault.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var data map[string]any
+	if err = json.Unmarshal(raw, &data); err != nil {
+		t.Fatal(err)
+	}
+	notes := data["notes"].([]any)
+	first := notes[0].(map[string]any)
+	first["links"] = append(first["links"].([]any), map[string]any{"id": "cache", "kind": "mention"})
+	data["notes"] = append(notes, map[string]any{"id": "cache", "title": "Cache", "kind": "subject", "sections": []any{map[string]any{"heading": "Retention"}}})
+	raw, err = json.Marshal(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	drive(t, a, key("ctrl+r"), key("ctrl+l"))
+	a.pal = newPalette(tokens.TrueColor, false)
+	before := a.View().Content
+	for y, line := range strings.Split(before, "\n") {
+		plain := ansi.Strip(line)
+		at := strings.Index(plain, "2. Cache")
+		if at < 0 {
+			continue
+		}
+		drive(t, a, tea.MouseMotionMsg{X: ansi.StringWidth(plain[:at]) + 3, Y: y})
+		if after := a.View().Content; after == before {
+			t.Fatal("linked-page picker has no visible hover")
+		}
+		drive(t, a, key("enter"))
+		if got := placeFrameText(a); !strings.Contains(got, "Retention") {
+			t.Fatal("Enter ignored hovered connection: " + got)
+		}
+		return
+	}
+	t.Fatal("missing second connection")
+}

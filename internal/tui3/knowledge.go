@@ -381,6 +381,7 @@ func (a *app) knowledgeOwns(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 }
 
 func (p *knowledgePlace) toggleSources() {
+	p.hoverLink = ""
 	if p.sources {
 		p.sources = false
 		p.scroll = p.sourceScroll
@@ -547,14 +548,22 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 				}
 				articleHits[len(article)] = []knowledgeCellLink{{0, max(1, rightWidth), l.ID}}
 				if !p.links {
-					text = taskLinkInk(a.pal, text)
+					if p.hoverLink == l.ID {
+						text = taskLinkHotInk(a.pal, text)
+					} else {
+						text = taskLinkInk(a.pal, text)
+					}
 				}
 				article = append(article, fit(text, max(1, rightWidth)))
 			}
 		}
 		if sources := knowledgeSources(n.Evidence); len(sources) > 0 && !p.links {
 			if p.sources {
-				article = []string{a.pal.muted(n.Title), "", a.pal.muted("Sources"), taskLinkInk(a.pal, "Return to article") + a.pal.dim(a.chords.say(" · esc")), ""}
+				back := taskLinkInk(a.pal, "Return to article")
+				if p.hoverLink == "@sources" {
+					back = taskLinkHotInk(a.pal, "Return to article")
+				}
+				article = []string{a.pal.muted(n.Title), "", a.pal.muted("Sources"), back + a.pal.dim(a.chords.say(" · esc")), ""}
 				articleHits = map[int][]knowledgeCellLink{3: {{0, 17, "@sources"}}}
 				for _, e := range sources {
 					article = append(article, a.pal.data(knowledgeSourceLabel(e)))
@@ -673,21 +682,37 @@ func (placeMemory) hoverAt(a *app, x, y int) bool {
 		return placeMemory{}.hover(a, y)
 	}
 	hits := a.kb.hitRows
+	moved := false
 	next := ""
 	if y >= 0 && y < len(hits) {
 		if hit, ok := hits[y].(knowledgeHit); ok {
+			left := max(24, min(42, a.width/3))
+			if (a.width < 85 || x <= left) && hit.tree >= 0 && hit.tree < len(a.kb.targets) {
+				moved = a.selectPlaceRow(&a.kb.cursor, hit.tree)
+			}
 			for _, link := range hit.links {
 				if x >= link.start && x < link.end {
 					next = link.id
+					if a.kb.links {
+						for i, target := range a.kb.pageLinks() {
+							if target.ID == link.id {
+								moved = a.selectPlaceRow(&a.kb.linkCursor, i) || moved
+								break
+							}
+						}
+					}
 					break
 				}
 			}
 		}
 	}
-	if next == a.kb.hoverLink {
-		return false
+	if next != a.kb.hoverLink {
+		a.kb.hoverLink = next
+		moved = true
 	}
-	a.kb.hoverLink = next
+	if moved {
+		a.touch()
+	}
 	return true
 }
 
