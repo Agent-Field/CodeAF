@@ -89,6 +89,7 @@ import (
 	"unsafe"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/filememo"
 )
 
 // ErrRecordReadBusy is a reading refused because as many as may run at once
@@ -130,7 +131,7 @@ const (
 	recordCacheBytes      = 256 << 20
 	recordCacheEntries    = 8
 	recordCacheFileBytes  = 16 << 20
-	recordCacheSettle     = 2 * time.Second
+	recordCacheSettle     = filememo.TimestampSettle
 	// A page asked for again comes within seconds; a journal nobody has read
 	// for this long is read again for the price of one parse.
 	recordCacheIdle = 30 * time.Second
@@ -160,8 +161,11 @@ type RecordCache struct {
 	retained   int64
 	reserved   int64
 	stats      RecordCacheStats
-	// sweeping is true while a timer is armed to look for idle records.
-	sweeping bool
+	// The timer always targets the earliest unleased record's deadline.
+	sweepAt         time.Time
+	stopSweep       func()
+	sweepGeneration uint64
+	after           func(time.Duration, func()) func()
 }
 
 // recordSlot is one kept reading. A slot evicted while copies of it are out is
@@ -208,7 +212,11 @@ func NewRecordCache(limits RecordCacheLimits) *RecordCache {
 		limits.Now = time.Now
 	}
 	return &RecordCache{
-		limits:  limits,
+		limits: limits,
+		after: func(delay time.Duration, f func()) func() {
+			timer := time.AfterFunc(delay, f)
+			return func() { timer.Stop() }
+		},
 		order:   list.New(),
 		kept:    map[string]*list.Element{},
 		flights: map[string]*recordFlight{},
@@ -309,6 +317,7 @@ func (c *RecordCache) leaseLocked(element *list.Element) (Record, func(), error)
 	}
 	c.order.MoveToFront(element)
 	slot.used = c.limits.Now()
+	c.watchIdleLocked()
 	c.stats.Hits++
 	c.mu.Unlock()
 	record := cloneRecord(slot.record)
@@ -334,7 +343,7 @@ func (c *RecordCache) parseLocked(path string, size int64, stamp recordStamp, st
 	}
 	var flight *recordFlight
 	if stamped && c.flights[path] == nil && size <= c.limits.FileBytes && estimate <= c.limits.Bytes &&
-		c.limits.Now().Sub(time.Unix(0, stamp.ctime)) >= c.limits.Settle {
+		filememo.TimestampsSettled(c.limits.Now(), time.Unix(0, stamp.mtime), time.Unix(0, stamp.ctime), c.limits.Settle) {
 		flight = &recordFlight{stamp: stamp, done: make(chan struct{})}
 		c.flights[path] = flight
 	}
@@ -413,7 +422,11 @@ func (c *RecordCache) reserveLocked(n int64) bool {
 func (c *RecordCache) Expire() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.sweeping = false
+	c.expireLocked()
+}
+
+func (c *RecordCache) expireLocked() {
+	c.cancelSweepLocked()
 	now := c.limits.Now()
 	for element := c.order.Back(); element != nil; {
 		prev := element.Prev()
@@ -425,13 +438,42 @@ func (c *RecordCache) Expire() {
 	c.watchIdleLocked()
 }
 
-// watchIdleLocked arms the next look for idle records while any are kept.
+func (c *RecordCache) cancelSweepLocked() {
+	if c.stopSweep != nil {
+		c.stopSweep()
+		c.stopSweep = nil
+	}
+	c.sweepAt = time.Time{}
+	c.sweepGeneration++
+}
+
+// watchIdleLocked schedules the earliest unleased deadline, including the
+// remainder after a sweep. Leased records are reconsidered when returned.
 func (c *RecordCache) watchIdleLocked() {
-	if c.sweeping || c.order.Len() == 0 {
+	var deadline time.Time
+	for element := c.order.Back(); element != nil; element = element.Prev() {
+		slot := element.Value.(*recordSlot)
+		due := slot.used.Add(c.limits.Idle)
+		if slot.leases == 0 && (deadline.IsZero() || due.Before(deadline)) {
+			deadline = due
+		}
+	}
+	if deadline.Equal(c.sweepAt) {
 		return
 	}
-	c.sweeping = true
-	time.AfterFunc(c.limits.Idle, c.Expire)
+	c.cancelSweepLocked()
+	if deadline.IsZero() {
+		return
+	}
+	c.sweepAt = deadline
+	generation := c.sweepGeneration
+	c.stopSweep = c.after(max(0, deadline.Sub(c.limits.Now())), func() {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if c.sweepGeneration == generation {
+			c.expireLocked()
+		}
+	})
 }
 
 // dropLocked forgets one kept reading; its bytes stay counted while a copy of
@@ -452,6 +494,7 @@ func (c *RecordCache) unleaseLocked(slot *recordSlot) {
 	if slot.dropped && slot.leases == 0 {
 		c.retained -= slot.cost
 	}
+	c.watchIdleLocked()
 }
 
 // readSettled is the plain reading of the journal at path, through the one

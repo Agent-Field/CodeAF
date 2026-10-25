@@ -43,6 +43,7 @@ func TestAppTasksOpensThePlanOnceForAllTheRunRows(t *testing.T) {
 	runtime.ReadMemStats(&before)
 	views, err := agent.AppTasks()
 	runtime.ReadMemStats(&after)
+	t.Logf("listing %d run rows allocated %d bytes", runs, after.TotalAlloc-before.TotalAlloc)
 	if err != nil {
 		t.Fatal(err)
 	}

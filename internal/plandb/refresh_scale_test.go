@@ -41,6 +41,7 @@ func TestRepeatedReadsOfAnUnchangedPlanLoadItOnce(t *testing.T) {
 		}
 	}
 	runtime.ReadMemStats(&after)
+	t.Logf("%d unchanged plan reads allocated %d bytes", tasks, after.TotalAlloc-before.TotalAlloc)
 	const budget = 3 << 20
 	if spent := after.TotalAlloc - before.TotalAlloc; spent > budget {
 		t.Fatalf("%d reads of an unchanged plan allocated %d bytes, want under %d", tasks, spent, budget)

@@ -73,6 +73,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/delegate"
+	"github.com/Agent-Field/codeaf/internal/filememo"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/reportline"
 )
@@ -1350,6 +1351,7 @@ type taskIndexKept struct {
 }
 
 type taskIndexCache struct {
+	now  func() time.Time
 	mu   sync.Mutex
 	kept []taskIndexKept // most recently read last
 }
@@ -1361,8 +1363,12 @@ func (c *taskIndexCache) read(path string) ([]TaskIndexEntry, bool) {
 	if err != nil || !info.Mode().IsRegular() {
 		return parseTaskIndex(path)
 	}
+	now := time.Now()
+	if c.now != nil {
+		now = c.now()
+	}
 	stamp, stamped := recordStampOf(info)
-	if !stamped || info.Size() > taskIndexKeptBytes {
+	if !stamped || info.Size() > taskIndexKeptBytes || !filememo.TimestampsSettled(now, info.ModTime(), time.Unix(0, stamp.ctime), recordCacheSettle) {
 		return parseTaskIndex(path)
 	}
 	c.mu.Lock()
@@ -1388,7 +1394,9 @@ func (c *taskIndexCache) read(path string) ([]TaskIndexEntry, bool) {
 	c.kept = slices.DeleteFunc(c.kept, func(entry taskIndexKept) bool { return entry.path == path })
 	c.kept = append(c.kept, taskIndexKept{path: path, stamp: stamp, rows: rows})
 	if len(c.kept) > taskIndexKeptPaths {
-		c.kept = c.kept[len(c.kept)-taskIndexKeptPaths:]
+		discard := len(c.kept) - taskIndexKeptPaths
+		clear(c.kept[:discard])
+		c.kept = c.kept[discard:]
 	}
 	return rows, true
 }

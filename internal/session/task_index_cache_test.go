@@ -17,6 +17,12 @@ func writeIndexRows(t *testing.T, path string, from, to int) {
 		t.Fatal(err)
 	}
 	defer file.Close()
+	defer func() {
+		old := time.Now().Add(-time.Hour)
+		if err := os.Chtimes(path, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	for i := from; i < to; i++ {
 		row := fmt.Sprintf(`{"id":"%d","sessionId":"s%d","name":"task-%d","label":"task %d","title":"task number %d, groomed","status":"done","endedAt":%q}`+"\n",
 			i, i%40, i, i, i, time.Unix(1_700_000_000+int64(i), 0).UTC().Format(time.RFC3339))
@@ -31,6 +37,9 @@ func writeIndexRows(t *testing.T, path string, from, to int) {
 // hundred times. An index nobody has appended to since it was read is answered
 // from that reading; a row appended after it is read.
 func TestAnUnchangedTaskIndexIsDecodedOnce(t *testing.T) {
+	// Move only the cache clock; changing mtime cannot age the inode's ctime.
+	taskIndexParsed.now = func() time.Time { return time.Now().Add(time.Hour) }
+	t.Cleanup(func() { taskIndexParsed.now = nil })
 	path := filepath.Join(t.TempDir(), taskIndexName)
 	writeIndexRows(t, path, 0, 1500)
 	want := ReadTaskIndex(path)
@@ -46,6 +55,7 @@ func TestAnUnchangedTaskIndexIsDecodedOnce(t *testing.T) {
 		got[0], got[len(got)-1] = got[len(got)-1], got[0]
 	}
 	runtime.ReadMemStats(&after)
+	t.Logf("40 readings of a 1,500-row index allocated %d bytes", after.TotalAlloc-before.TotalAlloc)
 	const budget = 64 << 20
 	if spent := after.TotalAlloc - before.TotalAlloc; spent > budget {
 		t.Fatalf("40 readings of an unchanged index allocated %d bytes, want under %d", spent, budget)
@@ -57,5 +67,55 @@ func TestAnUnchangedTaskIndexIsDecodedOnce(t *testing.T) {
 	writeIndexRows(t, path, 1500, 1501)
 	if got := ReadTaskIndex(path); len(got) != 1501 {
 		t.Fatalf("after an append the index has %d rows, want 1501", len(got))
+	}
+}
+
+func TestTaskIndexEvictionClearsRetainedRows(t *testing.T) {
+	cache := taskIndexCache{now: func() time.Time { return time.Now().Add(time.Hour) }, kept: make([]taskIndexKept, 0, 8)}
+	paths := make([]string, 8)
+	for i := range paths {
+		paths[i] = filepath.Join(t.TempDir(), taskIndexName)
+		writeIndexRows(t, paths[i], i, i+1)
+	}
+	for _, path := range paths[:4] {
+		cache.read(path)
+	}
+	backing := cache.kept[:cap(cache.kept)]
+	for _, path := range paths[4:] {
+		cache.read(path)
+	}
+	for _, entry := range backing[:4] {
+		if entry.rows != nil {
+			t.Fatal("evicted index still reachable through discarded backing array")
+		}
+	}
+}
+
+func TestTaskIndexRejectsUnsettledChangeTime(t *testing.T) {
+	path := filepath.Join(t.TempDir(), taskIndexName)
+	writeIndexRows(t, path, 0, 1)
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stamp, ok := recordStampOf(info)
+	if !ok {
+		t.Skip("file identity is unavailable")
+	}
+	now := time.Unix(0, stamp.ctime).Add(time.Second)
+	cache := taskIndexCache{now: func() time.Time { return now }}
+	for range 2 {
+		rows, ok := cache.read(path)
+		if !ok || len(rows) != 1 {
+			t.Fatalf("unsettled file was not read: %+v %v", rows, ok)
+		}
+		if len(cache.kept) != 0 {
+			t.Fatal("index with old mtime but unsettled ctime was cached")
+		}
+	}
+	now = now.Add(2 * time.Second)
+	cache.read(path)
+	if len(cache.kept) != 1 {
+		t.Fatal("settled index did not enter cache")
 	}
 }

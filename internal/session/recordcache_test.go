@@ -701,3 +701,34 @@ func TestAKeptRecordNobodyAsksForIsDroppedWhenItIdles(t *testing.T) {
 		t.Fatalf("parses = %d, want two first readings and the expired journal read afresh", s.Parses)
 	}
 }
+
+func TestRecordExpirySchedulesTheEarliestRemainingDeadline(t *testing.T) {
+	first := filepath.Join(t.TempDir(), "first.jsonl")
+	second := filepath.Join(t.TempDir(), "second.jsonl")
+	writeRecord(t, first, recordJournal(1, false))
+	writeRecord(t, second, recordJournal(1, false))
+	now := time.Now().Add(time.Hour)
+	cache := NewRecordCache(RecordCacheLimits{Now: func() time.Time { return now }})
+	var delay time.Duration
+	var fire func()
+	cache.after = func(d time.Duration, f func()) func() { delay, fire = d, f; return func() {} }
+	read(t, cache, first)
+	if delay != 30*time.Second {
+		t.Fatalf("first deadline in %s, want 30s", delay)
+	}
+	now = now.Add(time.Second)
+	read(t, cache, second)
+	now = now.Add(29 * time.Second)
+	fire()
+	if got := cache.Stats().Entries; got != 1 {
+		t.Fatalf("first deadline kept %d entries, want 1", got)
+	}
+	if delay != time.Second {
+		t.Fatalf("next expiry in %s, want the remaining 1s", delay)
+	}
+	now = now.Add(time.Second)
+	fire()
+	if got := cache.Stats().Entries; got != 0 {
+		t.Fatalf("second deadline kept %d entries, want 0", got)
+	}
+}
