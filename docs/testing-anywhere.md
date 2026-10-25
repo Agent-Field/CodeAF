@@ -4,10 +4,11 @@ This page says how to test every path a chat takes between two computers, from t
 fastest check to a walk by hand. Run the sections in order. Each one costs more than the
 one before it and proves more.
 
-Moving chats is off on every build unless `CODEAF_CELLS=1` is set when codeaf starts
-on both computers. Add `export CODEAF_CELLS=1` to each shell profile to keep it on;
-unset, `0` or any other value leaves it off. It needs a compatible configured or embedded
-furrow engine and Unix; Windows users run codeaf in WSL.
+Moving chats and pairing are available by default on Linux, macOS and native
+Windows builds with a compatible engine. Pair both computers first. See the
+[product manual](../internal/manual/chat/use-this-on-another-computer.md) for
+platform requirements. The SSH-based procedures below require hosts that support
+those commands; they are not native Windows acceptance coverage.
 
 Settings. Every script that names a machine, a folder or a relay reads it from an
 environment variable (through `scripts/measure/rigenv.py`) and stops with a message that
