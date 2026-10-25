@@ -179,15 +179,21 @@ func liveFactoryDiscovery() (factoryTarget, bool) {
 		return factoryTarget{}, false
 	}
 	t := factoryTarget{url: factoryDialable(base), token: d.Token}
-	// THE RECEIPT NAMES THIS PROCESS, so the worker already holds the server.
-	// Confirming it with GET /v1/queue renders every job, and the worker asks
-	// which factory to use again every second. A receipt naming another live
-	// process is still checked, because a live pid is not proof that its
-	// listener answers.
-	if d.PID == os.Getpid() {
+	// Only a running server owned by this process makes the HTTP probe
+	// redundant. PIDs in persisted receipts can be reused after a restart.
+	if d.PID == os.Getpid() && ownsFactoryTarget(t) {
 		return t, true
 	}
 	return t, factoryAnswers(t)
+}
+
+// ownsFactoryTarget checks service ownership while leaving network probes
+// outside the serving-state lock.
+func ownsFactoryTarget(t factoryTarget) bool {
+	factoryServingHere.mu.Lock()
+	defer factoryServingHere.mu.Unlock()
+	s := factoryServingHere.service
+	return s != nil && s.running.Load() && s.url == t.url && filepath.Dir(s.discovery) == v3FactoryRoot()
 }
 
 // factoryDialable turns a wildcard listen address into the loopback one this

@@ -75,24 +75,16 @@ func loadTitles(t *testing.T, seam factory.Seam) []string {
 // renders every stored job on each pass.
 func TestThisProcessDoesNotReadItsOwnQueueToFindTheFactory(t *testing.T) {
 	st := attachLab(t)
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	var hits atomic.Int32
+	seam := factory.LocalSeam(st, time.Now())
+	load := seam.Load
+	seam.Load = func() (factory.Snapshot, error) { hits.Add(1); return load() }
+	target, err := serveFactoryHere(st, seam)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var hits atomic.Int32
-	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/queue" {
-			hits.Add(1)
-		}
-		w.WriteHeader(http.StatusOK)
-	})}
-	go func() { _ = server.Serve(listener) }()
-	t.Cleanup(func() { _ = server.Close() })
-	address := "http://" + listener.Addr().String()
-	body, _ := json.Marshal(factoryDiscovery{URL: address, PID: os.Getpid()})
-	if err := writeFactoryPrivate(filepath.Join(st.Root(), "serve.json"), append(body, '\n')); err != nil {
-		t.Fatal(err)
-	}
+	address := target.url
+	hits.Store(0)
 	for range 5 {
 		target, ok := liveFactoryDiscovery()
 		if !ok || target.url != address {
@@ -278,4 +270,18 @@ func sealFactoryPeople(t *testing.T) {
 			delete(factoryPeopleCaches.profiles, profile)
 		}
 	})
+}
+
+func TestDiscoveryRejectsAReusedPIDWithoutAnOwnedServer(t *testing.T) {
+	st := attachLab(t)
+	body, err := json.Marshal(factoryDiscovery{URL: "http://127.0.0.1:1", PID: os.Getpid()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFactoryPrivate(filepath.Join(st.Root(), "serve.json"), body); err != nil {
+		t.Fatal(err)
+	}
+	if target, ok := liveFactoryDiscovery(); ok {
+		t.Fatalf("reused PID trusted a dead server: %+v", target)
+	}
 }
