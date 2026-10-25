@@ -3,29 +3,26 @@ package session
 import (
 	"errors"
 	"io/fs"
+	"strings"
 	"time"
 )
 
-// These hooks let tests control lookup and lock contention without sleeps.
-var writtenAfterLookup = func() {}
-var writtenWaiting = func() {}
+// These hooks let tests control write ordering and bounded lookup progress.
+var writtenBeforeRecord = func() {}
 var writtenRead = func(n int) {}
 var writtenDeadline = func() time.Time { return time.Now().Add(2 * time.Second) }
 
 // recordWrittenArtifact updates the latest deliverable for this session,
 // path and source. The ledger lock makes identity selection and append atomic,
-// including writers that entered different file mutation queues through aliases.
+// after the mutation queue has serialized writes through directory aliases.
 func recordWrittenArtifact(index string, artifact Artifact) (Artifact, bool) {
-	if !artifactsMu.TryLock() {
-		writtenWaiting()
-		artifactsMu.Lock()
-	}
+	writtenBeforeRecord()
+	artifactsMu.Lock()
 	defer artifactsMu.Unlock()
 	previous, err := latestWrittenArtifact(index, artifact)
 	if err != nil {
 		return Artifact{}, false
 	}
-	writtenAfterLookup()
 	if previous.Deliver != nil {
 		artifact.Created = previous.Created
 		artifact.Deliver.ID = previous.Deliver.ID
@@ -33,6 +30,11 @@ func recordWrittenArtifact(index string, artifact Artifact) (Artifact, bool) {
 		artifact.Deliver.MediaUpdate = artifact.Media != nil
 		artifact.Deliver.State = previous.Deliver.State
 		artifact.Deliver.Kept = previous.Deliver.Kept
+		if file, prior := artifact.Deliver.File, previous.Deliver.File; artifact.Kind == shareKindFile && file != nil && prior != nil && prior.MIME != "" {
+			if file.MIME == "application/octet-stream" || strings.HasPrefix(file.MIME, "text/plain") {
+				file.MIME = prior.MIME
+			}
+		}
 	}
 	return recordArtifactRowLocked(index, artifact)
 }
@@ -52,14 +54,4 @@ func latestWrittenArtifact(index string, artifact Artifact) (Artifact, error) {
 	}
 	defer release()
 	return paths.latest(file, artifact)
-}
-
-// sameWrittenSource distinguishes checkout identities from unmerged branches.
-// A settled row retains its branch provenance, but its canonical file identifies
-// the checkout source that later owner writes refresh.
-func sameWrittenSource(previous, next DeliverableFact) bool {
-	if next.File != nil && next.File.Canonical != "" {
-		return previous.Branch == "" || (previous.File != nil && previous.File.Canonical == next.File.Canonical)
-	}
-	return previous.Branch == next.Branch && (previous.File == nil || previous.File.Canonical == "")
 }

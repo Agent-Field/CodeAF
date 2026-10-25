@@ -166,7 +166,9 @@ func (a *Agent) belt() []bare.Tool {
 		case "read":
 			tools[index] = a.pdfRead(tool)
 		case "edit":
-			tools[index] = a.deliverableWrite(tool)
+			if !a.config.InTask {
+				tools[index] = a.deliverableWrite(tool)
+			}
 		case "write":
 			// write is WRAPPED so a file can be continued rather than only
 			// replaced (tools_write.go): append:true is the one argument the

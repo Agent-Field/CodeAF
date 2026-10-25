@@ -15,6 +15,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -91,6 +92,9 @@ func (a *Agent) recordWritten(ctx context.Context, event bare.WriteEvent) {
 		return
 	}
 	if a.config.InTask {
+		if !event.Created {
+			return
+		}
 		// A worker has no session of its own: only the sink its owning
 		// conversation gave it can record, and as that conversation.
 		a.recordTaskWritten(ctx, writtenFile(event))
@@ -157,6 +161,7 @@ type writtenFile = bare.WriteEvent
 
 // attachWrittenMedia publishes facts from the exact authored bytes and descriptor.
 func attachWrittenMedia(ctx context.Context, artifact *Artifact, file *DeliverableFile, content []byte) {
+	file.MIME = http.DetectContentType(content[:min(len(content), 512)])
 	switch artifact.Kind {
 	case "image", "audio", "video":
 		// A media file is also a media source, from the SAME row: its facts come

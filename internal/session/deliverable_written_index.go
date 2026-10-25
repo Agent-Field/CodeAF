@@ -128,30 +128,10 @@ func (p *writtenPaths) latest(file *os.File, artifact Artifact) (Artifact, error
 		if err != nil {
 			return Artifact{}, err
 		}
-		if sameWrittenSource(row.Fact, *artifact.Deliver) {
+		if row.Fact.Task == "" {
 			found, newest = row.Artifact, at.off
 			found.Deliver = &row.Fact
 		}
 	}
 	return found, nil
-}
-
-// latestDeliverableForUpdate refreshes a caller's possibly stale snapshot at
-// the same atomic seam as write upserts. State changes cannot restore old bytes.
-func latestDeliverableForUpdate(index string, base DeliverableRow) (DeliverableRow, error) {
-	file, now, err := openIndex(index)
-	if err != nil {
-		return DeliverableRow{}, err
-	}
-	defer file.Close()
-	paths, release, err := writtenIndex(index, file, now)
-	if err != nil {
-		return DeliverableRow{}, err
-	}
-	defer release()
-	at, ok := paths.paths[base.Artifact.Path][writtenIdentity{base.Artifact.Session, base.ID}]
-	if !ok {
-		return DeliverableRow{}, ErrMediaNotFound
-	}
-	return readWrittenRow(file, at)
 }

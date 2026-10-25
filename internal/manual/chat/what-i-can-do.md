@@ -102,9 +102,14 @@ with the new content hash; it does not add another card. Files of other types,
 such as text, source code and PDFs, are recorded as files too.
 
 A desktop conversation has a deliverables index and a journal even when its
-folder is a home directory or another folder outside Git. A task worker records
-through its owning conversation. Writing outside these roots does not claim a
-deliverable.
+folder is a home directory or another folder outside Git. These rules cover the
+conversation's own tools. Writing outside these roots does not claim a deliverable.
+Task workers retain creation-only recording for supported file kinds; media
+created in a task worktree is not automatically recorded.
+
+Chat `/files` counts up to 200 distinct paths from recent index rows. Repeated
+edits to one file do not consume that 200-path limit. Generic files use a bounded
+header sniff for MIME, retaining a known MIME when the new sniff is generic.
 
 Shell commands have a narrower signal: pictures declared in `bash`'s `outputs`
 are already inspected and recorded. Other shell-made files are not discovered

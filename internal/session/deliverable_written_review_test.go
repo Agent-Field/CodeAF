@@ -7,174 +7,165 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
-func TestKeepMergesStateIntoConcurrentWrite(t *testing.T) {
-	agent, workspace, index := deliverableAgent(t, true)
-	writeNewFile(t, agent, "voice.wav", string(wavFile(1, 8, 4, 4)))
-	base := listDeliverables(t, index, DeliverableQuery{}, 10)[0]
-	published, resume := make(chan struct{}), make(chan struct{})
-	old := keepAfterPublish
-	keepAfterPublish = func(string) { close(published); <-resume }
-	defer func() { keepAfterPublish = old }()
-	dest, home := t.TempDir(), t.TempDir()
-	done := make(chan error, 1)
-	go func() {
-		_, _, err := KeepDeliverable(context.Background(), index, base, []string{workspace}, home, KeepRequest{Dir: dest})
-		done <- err
-	}()
-	<-published
-	writeNewFile(t, agent, "voice.wav", string(append(wavFile(1, 8, 4, 4), 0, 0)))
-	fresh := listDeliverables(t, index, DeliverableQuery{}, 10)[0]
-	close(resume)
-	if err := <-done; err != nil {
-		t.Fatal(err)
-	}
-	got, err := FindDeliverable(index, agent.journalID(), base.ID, time.Time{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Fact.Version != fresh.Fact.Version || fmt.Sprint(got.Fact.File) != fmt.Sprint(fresh.Fact.File) || got.Artifact.Media.ID != fresh.Artifact.Media.ID {
-		t.Fatalf("Keep restored stale content: got %+v media %s; want %+v media %s", got.Fact.File, got.Artifact.Media.ID, fresh.Fact.File, fresh.Artifact.Media.ID)
-	}
-	if got.Fact.State != DeliverKept || got.Fact.Kept.Path != filepath.Join(canonicalFile(dest), "voice.wav") {
-		t.Fatalf("Keep state lost: %+v", got.Fact)
-	}
-}
-
 func TestConcurrentAliasWritesHaveOneDeliverable(t *testing.T) {
-	agent, workspace, index := deliverableAgent(t, false)
-	real := filepath.Join(workspace, "real")
-	if err := os.Mkdir(real, 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(real, filepath.Join(workspace, "link")); err != nil {
-		t.Fatal(err)
-	}
-	firstLookup, secondReady, resume := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	oldLookup, oldWaiting := writtenAfterLookup, writtenWaiting
-	defer func() { writtenAfterLookup, writtenWaiting = oldLookup, oldWaiting }()
-	var lookups atomic.Int32
-	var ready sync.Once
-	writtenAfterLookup = func() {
-		if lookups.Add(1) == 1 {
-			close(firstLookup)
-			<-resume
-		} else {
-			ready.Do(func() { close(secondReady) })
-		}
-	}
-	writtenWaiting = func() { ready.Do(func() { close(secondReady) }) }
-	write := beltTool(t, agent, "write")
-	done := make(chan error, 2)
-	run := func(path string) {
-		args, _ := json.Marshal(map[string]string{"path": path, "content": "same bytes"})
-		out, bad, err := write.Execute(context.Background(), args)
-		if bad && err == nil {
-			err = fmt.Errorf("write: %s", out)
-		}
-		done <- err
-	}
-	go run("link/new.md")
-	<-firstLookup
-	go run("real/new.md")
-	<-secondReady
-	close(resume)
-	for range 2 {
-		if err := <-done; err != nil {
-			t.Fatal(err)
-		}
-	}
-	rows := listDeliverables(t, index, DeliverableQuery{}, 10)
-	if len(rows) != 1 {
-		t.Fatalf("alias writes minted %d deliverables", len(rows))
-	}
-	if rows[0].Artifact.Path != filepath.Join(canonicalFile(real), "new.md") {
-		t.Fatalf("noncanonical path: %s", rows[0].Artifact.Path)
-	}
-}
-
-func TestCheckoutRewriteReusesSettledTaskDeliverable(t *testing.T) {
-	const branch = "task/landed-document"
-	w := newTaskWorld(t, branch)
-	w.writeFile(t, "plan.md", "first")
-	base := w.byTitle(t)["plan.md"]
-	w.land(t, branch)
-	if n := w.node.settleDeliverablesIn(context.Background(), mergeMerged); n != 1 {
-		t.Fatalf("settled %d", n)
-	}
-	writeNewFile(t, w.owner, "plan.md", "second")
-	args := []byte(`{"path":"plan.md","oldText":"second","newText":"third"}`)
-	if out, bad, err := beltTool(t, w.owner, "edit").Execute(context.Background(), args); err != nil || bad {
-		t.Fatalf("edit: %v %s", err, out)
-	}
-	rows := w.byTitleAll(t)
-	if len(rows) != 1 || rows[0].ID != base.ID {
-		t.Fatalf("checkout rewrites created new identities: %+v", rows)
-	}
-	if rows[0].Fact.State != DeliverKept || rows[0].Fact.File.SHA256 != fmt.Sprintf("%x", sha256.Sum256([]byte("third"))) {
-		t.Fatalf("stale checkout fact: %+v", rows[0].Fact)
-	}
-}
-
-func TestCheckoutWritesRemainSeparateFromUnmergedTask(t *testing.T) {
-	w := newTaskWorld(t, "task/unmerged-document")
-	w.writeFile(t, "plan.md", "branch first")
-	branchID := w.byTitle(t)["plan.md"].ID
-	writeNewFile(t, w.owner, "plan.md", "checkout")
-	w.writeFile(t, "plan.md", "branch second")
-	rows := w.byTitleAll(t)
-	if len(rows) != 2 {
-		t.Fatalf("checkout and branch conflated: %+v", rows)
-	}
-	found := false
-	for _, row := range rows {
-		if row.ID == branchID {
-			found = true
-			if row.Fact.Branch == "" || row.Fact.File.Canonical != "" {
-				t.Fatalf("branch claimed checkout identity: %+v", row.Fact)
+	for _, relative := range []string{"new.md", filepath.Join("newdir", "new.md")} {
+		t.Run(relative, func(t *testing.T) {
+			agent, workspace, index := deliverableAgent(t, false)
+			real := filepath.Join(workspace, "real")
+			if err := os.Mkdir(real, 0700); err != nil {
+				t.Fatal(err)
 			}
-		}
-	}
-	if !found {
-		t.Fatal("branch identity lost")
+			if err := os.Symlink(real, filepath.Join(workspace, "link")); err != nil {
+				t.Fatal(err)
+			}
+			old, registry := writtenBeforeRecord, deliverRegistry
+			defer func() { writtenBeforeRecord, deliverRegistry = old, registry }()
+			write := beltTool(t, agent, "write")
+			synctest.Test(t, func(t *testing.T) {
+				// Registry notifications and tracker channels must stay in the bubble.
+				deliverRegistry = &trackerRegistry{live: map[string]*deliverTracker{}, freed: make(chan struct{})}
+				defer forgetTracker(index)
+				firstWritten, resume := make(chan struct{}), make(chan struct{})
+				var records atomic.Int32
+				writtenBeforeRecord = func() {
+					if records.Add(1) == 1 {
+						close(firstWritten)
+						<-resume
+					}
+				}
+				done := make(chan error, 2)
+				run := func(path, content string) {
+					args, _ := json.Marshal(map[string]string{"path": path, "content": content})
+					out, bad, err := write.Execute(context.Background(), args)
+					if bad && err == nil {
+						err = fmt.Errorf("write: %s", out)
+					}
+					done <- err
+				}
+				// The alias is absent when its queue key is chosen. Pause after its
+				// disk write, BEFORE the ledger lock, so a separate queue could let
+				// the second writer both overwrite and record ahead of the first.
+				go run(filepath.Join("link", relative), "first writer")
+				<-firstWritten
+				go run(filepath.Join("real", relative), "second writer has different bytes")
+				synctest.Wait()
+				close(resume)
+				for range 2 {
+					if err := <-done; err != nil {
+						t.Fatal(err)
+					}
+				}
+				rows := listDeliverables(t, index, DeliverableQuery{}, 10)
+				if len(rows) != 1 {
+					t.Fatalf("alias writes minted %d deliverables", len(rows))
+				}
+				path := filepath.Join(canonicalFile(real), relative)
+				if rows[0].Artifact.Path != path {
+					t.Fatalf("noncanonical path: %s", rows[0].Artifact.Path)
+				}
+				content, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				want := fmt.Sprintf("%x", sha256.Sum256(content))
+				if string(content) != "second writer has different bytes" || rows[0].Fact.File.SHA256 != want {
+					t.Fatalf("ledger has stale alias bytes: disk %q, recorded hash %s, want %s", content, rows[0].Fact.File.SHA256, want)
+				}
+				if live := ResolveDeliverable(rows[0], []string{workspace}); live.State != MediaAvailable {
+					t.Fatalf("ledger has stale alias identity: %s", live.State)
+				}
+			})
+		})
 	}
 }
 
-func TestInPlaceWorkerOverwritePublishesResolvableMedia(t *testing.T) {
-	w := newTaskWorld(t, "task/media-writer")
-	data := wavFile(1, 8, 4, 4)
-	writeNewFile(t, w.owner, "voice.wav", string(data))
-	base := w.byTitle(t)["voice.wav"]
-	w.owner.mu.Lock()
-	sink := w.owner.deliverSinkLocked(w.checkout, w.node)
-	w.owner.mu.Unlock()
-	worker, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.Workspace = w.checkout; c.InTask = true; c.deliverSink = sink })
-	data[len(data)-1] = 1
-	writeNewFile(t, worker, "voice.wav", string(data))
+func TestWrittenGenericFilesSniffMIMEAndPreserveKnownTypes(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		shared  bool
+		content string
+		want    string
+	}{
+		{name: "new PDF", content: "%PDF-1.7\nnew document\n%%EOF\n"},
+		{name: "shared PDF overwrite", shared: true, content: "%PDF-1.7\nrevised document\n%%EOF\n"},
+		{name: "shared PDF generic binary", shared: true, content: "\x00\x01\x02\x03"},
+		{name: "shared PDF generic text", shared: true, content: "unrecognized header"},
+		{name: "shared PDF replaced by HTML", shared: true, content: "<!DOCTYPE HTML><html>new document</html>", want: "text/html; charset=utf-8"},
+		{name: "new generic binary", content: "\x00\x01\x02\x03", want: "application/octet-stream"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			w := newShareWorld(t)
+			var id string
+			if test.shared {
+				w.file(t, "report.pdf", []byte("%PDF-1.7\noriginal\n%%EOF\n"))
+				result, bad := w.share(t, w.shareCall(t, "share-pdf"), "share-pdf", "report.pdf")
+				if bad || len(result.RecordedIDs) != 1 {
+					t.Fatalf("share PDF: %+v", result)
+				}
+				id = result.RecordedIDs[0]
+			}
+			writeNewFile(t, w.agent, "report.pdf", test.content)
+			rows := listDeliverables(t, w.index, DeliverableQuery{}, 10)
+			if len(rows) != 1 || (id != "" && rows[0].ID != id) {
+				t.Fatalf("PDF rewrite changed identity: %+v", rows)
+			}
+			wantMIME := test.want
+			if wantMIME == "" {
+				wantMIME = "application/pdf"
+			}
+			if rows[0].Kind != shareKindFile || rows[0].Fact.File.MIME != wantMIME {
+				t.Fatalf("PDF MIME lost: kind %s, MIME %q", rows[0].Kind, rows[0].Fact.File.MIME)
+			}
+			want := fmt.Sprintf("%x", sha256.Sum256([]byte(test.content)))
+			if rows[0].Fact.File.SHA256 != want {
+				t.Fatalf("MIME preservation restored old bytes: %+v", rows[0].Fact.File)
+			}
+		})
+	}
+}
+
+func TestWorkerDeliverablesRetainCreationOnlyScope(t *testing.T) {
+	w := newTaskWorld(t, "task/creation-only-scope")
+	w.writeFile(t, "plan.md", "original authored bytes")
+	base := w.byTitle(t)["plan.md"]
+	worker, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace, c.InTask, c.deliverSink = w.worktree, true, w.sink
+	})
+	mutate := func(tool string, args map[string]any) {
+		t.Helper()
+		raw, _ := json.Marshal(args)
+		if out, bad, err := beltTool(t, worker, tool).Execute(withRunIdentity(t.Context()), raw); err != nil || bad {
+			t.Fatalf("worker %s: %v %s", tool, err, out)
+		}
+	}
+	mutate("edit", map[string]any{"path": "plan.md", "oldText": "original", "newText": "edited"})
+	mutate("write", map[string]any{"path": "plan.md", "content": "overwritten bytes"})
+	mutate("write", map[string]any{"path": "plan.md", "content": "appended bytes", "append": true})
+	mutate("write", map[string]any{"path": "source.go", "content": "package main"})
+	mutate("write", map[string]any{"path": "voice.wav", "content": string(wavFile(1, 8, 4, 4))})
 	rows := w.byTitleAll(t)
-	if len(rows) != 1 || rows[0].ID != base.ID {
-		t.Fatalf("worker changed identity: %+v", rows)
+	if len(rows) != 1 || rows[0].ID != base.ID || rows[0].Fact.File.SHA256 != base.Fact.File.SHA256 || rows[0].Fact.File.Canonical != "" || rows[0].Artifact.Media != nil {
+		t.Fatalf("worker recording changed from creation-only behavior: %+v", rows)
 	}
-	preview := rows[0].Artifact
-	preview.Deliver = nil
-	id, ok := MediaSourceOf(preview)
-	if !ok {
-		t.Fatal("no preview advertised")
+	w.land(t, "task/creation-only-scope")
+	if n := w.node.settleDeliverablesIn(t.Context(), mergeMerged); n != 0 {
+		t.Fatalf("settled %d worker files after their creation bytes changed", n)
 	}
-	media, err := FindMedia(w.index, w.sessionID, id, time.Time{})
-	if err != nil || media.Fact.SHA256 != fmt.Sprintf("%x", sha256.Sum256(data)) {
-		t.Fatalf("advertised preview is missing or stale: %+v %v", media.Fact, err)
+	writeNewFile(t, w.owner, "plan.md", "conversation's own bytes")
+	rows = w.byTitleAll(t)
+	if len(rows) != 2 {
+		t.Fatalf("conversation write consumed a task-owned row: %+v", rows)
 	}
-	if media.Fact.ID == base.Artifact.Media.ID {
-		t.Fatal("worker reused stale preview")
-	}
-	if live := ResolveMedia(media, []string{w.checkout}); live.State != MediaAvailable {
-		t.Fatalf("worker preview is %s", live.State)
+	for _, row := range rows {
+		if row.ID == base.ID && (row.Fact.State != "" || row.Fact.File.SHA256 != base.Fact.File.SHA256) {
+			t.Fatalf("conversation write changed the task row: %+v", row.Fact)
+		}
 	}
 }
 

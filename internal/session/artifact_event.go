@@ -21,7 +21,7 @@ type ArtifactChange struct {
 // has no deliverable id to name, so it announces nothing: an event is never
 // invented for an append that did not make a deliverable.
 func (a *Agent) emitArtifactChange(written Artifact) {
-	if written.Deliver == nil || !ValidDeliverableID(written.Deliver.ID) {
+	if written.Deliver == nil || (written.Deliver.Update && written.Deliver.Task != "") || !ValidDeliverableID(written.Deliver.ID) {
 		return
 	}
 	change := ArtifactChange{ID: written.Deliver.ID, Kind: written.Kind}

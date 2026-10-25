@@ -108,11 +108,12 @@ shared capacity, canceled waiter/holder separation and truthful refusal laws.
 
 ## Deliverable write recording
 
-Write and edit recording hashes the exact bytes already held by the mutation
-tool and uses its descriptor metadata; it does not reread or discover files.
-Canonical-path identity selection, state changes and append share the ledger
-lock. Keep merges its state into the latest snapshot instead of restoring the
-content metadata it checked before copying.
+Conversation write and edit recording hashes the exact bytes already held by
+the mutation tool and uses its descriptor metadata; it does not reread or
+discover files. MIME sniffing reads at most 512 of those authored bytes. An absent
+file's mutation queue resolves its parent directory before writing, so directory
+aliases share the same queue. Canonical-path identity selection and append share
+the ledger lock. Task/worker recording and settlement retain their base behavior.
 
 The path lookup index is built once per retained ledger tracker, then catches up
 from its last byte offset, including external appends. It holds one offset and

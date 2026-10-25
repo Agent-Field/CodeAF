@@ -1,42 +1,37 @@
 ---
 kind: fixed
-title: Written and edited files appear in deliverables with stable identities
+title: Conversation writes and edits record deliverables with stable identities
 pr: 0
 surface: [engine, chat, docs]
 invalidates:
-  - "The write observer discarded overwrites, and edit had no observer, so a successful mutation could leave Files empty or leave its content hash stale. Both tools now record their exact authored bytes inside deliverable roots, updating the existing identity on rewrites."
-  - "Automatic recording accepted only named document and media extensions. Other file types are now recorded as files, including task-owned writes, while paths outside deliverable roots remain excluded."
+  - "The conversation's write observer discarded overwrites, and edit had no observer, so a successful mutation could leave Files empty or its content hash stale. Its own writes, appends and edits now record their exact authored bytes inside deliverable roots and retain the ID on rewrites."
+  - "Automatic conversation recording accepted only named document and media extensions. Other file types are now recorded as files, while paths outside deliverable roots remain excluded."
+  - "Chat /files limited raw rows before deduplicating paths, so repeated rewrites hid other files. Its 200-item limit now counts distinct paths from the recent index rows."
 ---
 
-Diagnosis: the desktop opener already carries the process-wide artifacts index
-and creates a journal for a plain home-folder conversation; neither requires
-Git. The missing paths were the creation-only guard in `recordWritten`, the
-absent observer on `edit`, and the extension filter. Index and journal wiring
-are pinned by a startup regression rather than duplicated with a fallback.
+The desktop opener already carries the process-wide artifacts index and creates
+a journal for a plain home-folder conversation; neither requires Git. The
+creation-only guard, missing edit observer and extension filter prevented that
+conversation's own authored files from reaching Files.
 
-Successful writes, appends and edits append a full-snapshot update for the same
-session, path and source, retaining the deliverable ID, creation time and kept
-state while refreshing the hash and descriptor identity. Updates notify the
-surface after the index append. Workers use their owning conversation's index.
-Media rewrites publish their current preview source on the update row; Keep and
-Remove restate that source without publishing it twice.
+Successful conversation writes, appends and edits record the same session and
+canonical path, retaining the deliverable ID, creation time and kept state while
+refreshing the hash and descriptor identity. Task-owned rows remain separate.
+Media rewrites publish a current preview source. Generic files sniff at most 512
+authored bytes for MIME; a generic binary or text sniff retains a known MIME.
 
-Shell coverage stays limited to the existing reliable signal: pictures declared
-in `bash.outputs`. Ordinary shell-created documents and undeclared outputs are
-left unrecorded; no filesystem scan is added.
+An absent file used to choose a lexical mutation queue, so a symlinked directory
+and its target could write and record out of order. Resolving the parent directory
+before disk mutation serializes those aliases. The regression pauses the first
+writer before ledger acquisition and uses different bytes for the second writer.
 
-Review diagnosis: Keep and writes selected snapshots outside the append lock;
-directory aliases could therefore also mint duplicate identities. State changes
-must merge into the latest snapshot atomically. Settlement keeps branch
-provenance but adds a checkout identity, which later checkout writes must match.
-In-place worker media writes need the same fresh preview facts as owner writes.
-First writes must use an incremental canonical-path index rather than rescan
-history, and an expired lookup attempt must retain progress and finish recording.
+Chat /files deduplicates paths before applying its 200-item limit, preserving
+other files after repeated rewrites. The existing recent-index window remains.
+An incremental path index avoids rescanning history on every new authored path;
+expired bounded lookups retain progress and finish recording.
 
+Shell coverage remains pictures declared in `bash.outputs`; no filesystem scan
+is added. Task recording, worktree media and landing/settlement retain their
+creation-only behavior from the base branch.
 
-The fixes serialize write upserts and state merges at the ledger seam. Settled
-checkout identities match later owner writes without combining unmerged branch
-sources. Owner and in-place worker writes share byte-based media fact creation.
-A path-keyed offset index reads history once, incrementally catches up and retries
-expired bounded attempts until recording completes. Deterministic regressions
-cover all five findings, and first-write benchmarks include unrelated history.
+Out of scope: task/worker deliverables unchanged from app/v3

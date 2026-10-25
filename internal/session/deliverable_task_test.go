@@ -105,11 +105,11 @@ func TestATaskWorkersNewDocumentIsRecordedUnderItsOwner(t *testing.T) {
 	w.writeFile(t, "docs/plan.md", "# plan edited\\n") // an overwrite
 	w.writeFile(t, "main.go", "package main\\n")       // another kind
 	rows := listDeliverables(t, w.index, DeliverableQuery{Sessions: map[string]bool{w.sessionID: true}}, 10)
-	said := laneArtifacts(t, lane, 3)
-	if len(rows) != 2 || len(said) != 3 || said[0].ID != said[1].ID {
+	said := laneArtifacts(t, lane, 1)
+	if len(rows) != 1 || len(said) != 1 {
 		t.Fatalf("rows=%d events=%d", len(rows), len(said))
 	}
-	row := rows[1]
+	row := rows[0]
 	f := row.Fact
 	if f.Task == "" || f.Turn != "scope#3" || f.Run == "" || f.Branch != "task/write-the-plan-abc123" || f.Rel != "docs/plan.md" ||
 		f.State != "" || f.Kept != nil || !f.Authored || said[0].ID != row.ID {
@@ -122,14 +122,14 @@ func TestATaskWorkersNewDocumentIsRecordedUnderItsOwner(t *testing.T) {
 		t.Fatalf("worktree identity leaked into the row: %+v", f.File)
 	}
 	// nothing was written under the worker's own journal id
-	if all := ReadArtifacts(w.index); len(all) != 3 || all[0].Session != w.sessionID {
+	if all := ReadArtifacts(w.index); len(all) != 1 || all[0].Session != w.sessionID {
 		t.Fatalf("rows under the wrong session: %+v", all)
 	}
 	// a path outside the worker's directory is not the worker's to claim
 	outside := filepath.Join(t.TempDir(), "x.md")
 	args := []byte(`{"path":"` + outside + `","content":"x"}`)
 	w.write.Execute(context.Background(), args)
-	if len(listDeliverables(t, w.index, DeliverableQuery{}, 10)) != 2 {
+	if len(listDeliverables(t, w.index, DeliverableQuery{}, 10)) != 1 {
 		t.Fatal("a file outside the worktree was claimed")
 	}
 }
@@ -158,7 +158,7 @@ func TestLandingKeepsOnlyTheExactAuthoredBytes(t *testing.T) {
 	w.writeFile(t, "arrived.md", "# a\\n")
 	w.writeFile(t, "docs/nested.md", "# n\\n")
 	w.writeFile(t, "edited.md", "# e\\n")
-	w.writeFile(t, "edited.md", "# e changed\\n") // latest authored bytes
+	w.writeFile(t, "edited.md", "# e changed\\n") // accepted after creation: not the authored bytes
 	w.writeFile(t, "lost.md", "# l\\n")
 	os.Remove(filepath.Join(w.worktree, "lost.md")) // never committed: never arrives
 	os.Remove(filepath.Join(w.worktree, "old.md"))  // a file that was there at the cut ...
@@ -178,11 +178,11 @@ func TestLandingKeepsOnlyTheExactAuthoredBytes(t *testing.T) {
 	os.WriteFile(same, []byte("# linked\n"), 0o644)
 	os.Remove(filepath.Join(w.checkout, "linked.md"))
 	os.Symlink(same, filepath.Join(w.checkout, "linked.md"))
-	if n := w.node.settleDeliverablesIn(context.Background(), mergeMerged); n != 3 {
-		t.Fatalf("settled %d, want 3", n)
+	if n := w.node.settleDeliverablesIn(context.Background(), mergeMerged); n != 2 {
+		t.Fatalf("settled %d, want 2", n)
 	}
 	rows := w.byTitle(t)
-	for _, title := range []string{"arrived.md", "nested.md", "edited.md"} {
+	for _, title := range []string{"arrived.md", "nested.md"} {
 		f := rows[title].Fact
 		want := filepath.Join(w.checkout, filepath.FromSlash(f.Rel))
 		if f.State != DeliverKept || f.Kept == nil || f.Kept.How != KeptCreatedInRepo || f.Kept.Path != want ||
@@ -193,7 +193,7 @@ func TestLandingKeepsOnlyTheExactAuthoredBytes(t *testing.T) {
 			t.Fatalf("%s: a settled file is %s", title, live.State)
 		}
 	}
-	for _, title := range []string{"lost.md", "old.md", "later.md", "linked.md", "gone.md"} {
+	for _, title := range []string{"edited.md", "lost.md", "old.md", "later.md", "linked.md", "gone.md"} {
 		if f := rows[title].Fact; f.State != "" || f.Kept != nil {
 			t.Fatalf("%s was claimed without proof: %+v", title, f)
 		}

@@ -1129,9 +1129,8 @@ func releaseMutationQueue(key string, ch chan struct{}) {
 	}
 }
 
-// mutationQueueKey mirrors pi's getMutationQueueKey: resolve the path, then
-// realpath it; if the file does not exist yet, fall back to the resolved
-// path.
+// mutationQueueKey resolves aliases before mutation, including a file that
+// does not exist yet whose parent directory is reached through a symlink.
 func mutationQueueKey(filePath string) string {
 	resolved := filepath.Clean(filePath)
 	abs, err := filepath.Abs(resolved)
@@ -1141,7 +1140,21 @@ func mutationQueueKey(filePath string) string {
 	if real, err := filepath.EvalSymlinks(abs); err == nil {
 		return real
 	}
-	return abs
+	parent, tail := filepath.Dir(abs), filepath.Base(abs)
+	for {
+		if real, err := filepath.EvalSymlinks(parent); err == nil {
+			return filepath.Join(real, tail)
+		} else if !os.IsNotExist(err) {
+			return abs
+		}
+		// write can create missing parent folders. Resolve the nearest existing
+		// ancestor so those new folders do not hide a directory alias either.
+		next := filepath.Dir(parent)
+		if next == parent {
+			return abs
+		}
+		tail, parent = filepath.Join(filepath.Base(parent), tail), next
+	}
 }
 
 // ── bash output accumulator ────────────────────────────────────────────────

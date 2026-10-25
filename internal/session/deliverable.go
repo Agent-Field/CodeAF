@@ -810,9 +810,9 @@ func FindDeliverable(index, sessionID, id string, deadline time.Time) (Deliverab
 
 // ── appending ───────────────────────────────────────────────────────────────
 
-// AppendDeliverableUpdate merges change into the latest snapshot of base
-// under the ledger lock, then appends it. It preserves creation time and
-// identity so state changes cannot restore stale content or change ordering.
+// AppendDeliverableUpdate appends a full-snapshot update of base with change
+// applied, and answers whether the row was written. It copies the base's path,
+// title, session, kind and Created so older readers keep their ordering.
 func AppendDeliverableUpdate(index string, base DeliverableRow, change func(*DeliverableFact)) bool {
 	_, ok := appendDeliverableUpdate(index, base, change)
 	return ok
@@ -821,14 +821,6 @@ func AppendDeliverableUpdate(index string, base DeliverableRow, change func(*Del
 // appendDeliverableUpdate is [AppendDeliverableUpdate] that answers the
 // deliverable as the row it wrote now states it.
 func appendDeliverableUpdate(index string, base DeliverableRow, change func(*DeliverableFact)) (DeliverableRow, bool) {
-	artifactsMu.Lock()
-	defer artifactsMu.Unlock()
-	latest, err := latestDeliverableForUpdate(index, base)
-	if err != nil {
-		return DeliverableRow{}, false
-	}
-	latest.Start, latest.Len = base.Start, base.Len
-	base = latest
 	row := base.Artifact
 	fact := base.Fact
 	fact.ID, fact.Update, fact.At = base.ID, true, time.Now().UTC()
@@ -836,7 +828,7 @@ func appendDeliverableUpdate(index string, base DeliverableRow, change func(*Del
 	fact.From = append([]string(nil), base.Fact.From...)
 	change(&fact)
 	row.Deliver = &fact
-	written, ok := recordArtifactRowLocked(index, row)
+	written, ok := recordArtifactRow(index, row)
 	if !ok {
 		return DeliverableRow{}, false
 	}

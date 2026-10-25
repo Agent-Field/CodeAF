@@ -1,6 +1,6 @@
 package session
 
-// deliverable_task.go is how a TASK WORKER's written files reach the deliverables
+// deliverable_task.go is how a TASK WORKER's new files reach the deliverables
 // index, under the conversation that owns the work.
 //
 // OWNERSHIP IS PROVED BY CONSTRUCTION, never by looking at a path or a clock. A
@@ -30,9 +30,9 @@ package session
 //     Anything short of that proof leaves the row as it was: unknown, never a
 //     guess, and settling again later is safe.
 //
-// A worker on the bash belt creates files with a shell, which nothing observes.
-// Media written in a worktree is indexed as a file until it has a checkout
-// identity; the worktree's inode is never claimed as the checkout's.
+// WHAT IS NOT COVERED: a worker on the bash belt creates files with a shell,
+// which nothing observes; a media file made in a worktree is not recorded
+// (its identity would be the worktree's, not the checkout's).
 
 import (
 	"context"
@@ -97,7 +97,7 @@ func (n *TaskNode) setDeliverSink(sink *deliverableSink) {
 	n.graph.mu.Unlock()
 }
 
-// recordTaskWritten records bytes a task worker's write or edit tool authored.
+// recordTaskWritten records a file a task worker's write tool just created.
 func (a *Agent) recordTaskWritten(ctx context.Context, event writtenFile) {
 	sink := a.config.deliverSink
 	if sink == nil || sink.node == nil {
@@ -105,11 +105,8 @@ func (a *Agent) recordTaskWritten(ctx context.Context, event writtenFile) {
 	}
 	canonical := canonicalFile(event.Path)
 	kind := deliverableKindExt(canonical)
-	if !withinAny([]string{sink.dir}, canonical) {
+	if kind == "" || !withinAny([]string{sink.dir}, canonical) {
 		return
-	}
-	if kind == "" {
-		kind = shareKindFile
 	}
 	rel, err := filepath.Rel(sink.dir, canonical)
 	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
@@ -118,7 +115,6 @@ func (a *Agent) recordTaskWritten(ctx context.Context, event writtenFile) {
 	source := sink.node.source()
 	fact := DeliverableFact{
 		ID: NewDeliverableID(), At: time.Now().UTC(), Run: runIdentity(ctx), Task: strconv.FormatUint(sink.node.id, 10),
-		Call:   callIDFrom(ctx),
 		Origin: DeliverOriginAgent, Authored: true,
 	}
 	if source.valid() && source.Kind == TaskSourceMessage {
@@ -132,14 +128,12 @@ func (a *Agent) recordTaskWritten(ctx context.Context, event writtenFile) {
 		artifact.Path = canonical
 		fact.File = identityOf(canonical, event.Info)
 		fact.File.SHA256 = hexsum
-		attachWrittenMedia(ctx, &artifact, fact.File, event.Content)
 		if sink.createdInRepo(ctx, canonical) {
 			fact.State, fact.Kept = DeliverKept, &DeliverableKept{Path: canonical, At: time.Now().UTC(), How: KeptCreatedInRepo}
 		}
 	} else {
 		if kind == "image" || kind == "audio" || kind == "video" {
-			// A branch file has no live media identity in the checkout yet.
-			artifact.Kind = shareKindFile
+			return // a worktree's inode is not the checkout's: not recorded
 		}
 		// The path it will have once merged is the repository's, so without a
 		// repository there is no path to name and nothing is recorded. Its
@@ -155,7 +149,7 @@ func (a *Agent) recordTaskWritten(ctx context.Context, event writtenFile) {
 		fact.Branch = sink.node.currentBranch()
 	}
 	artifact.Deliver = &fact
-	written, ok := recordWrittenArtifact(sink.index, artifact)
+	written, ok := recordArtifactRow(sink.index, artifact)
 	if !ok {
 		return
 	}
