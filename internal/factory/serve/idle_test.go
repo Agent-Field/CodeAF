@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -440,5 +441,69 @@ func TestWaitingWorkerUsesAShortenedRunnerTimeout(t *testing.T) {
 	}
 	if w.Code != 204 {
 		t.Fatalf("shortened pull: HTTP %d", w.Code)
+	}
+}
+
+func TestWaitingWorkerFallsBackAfterWatchFailure(t *testing.T) {
+	for _, failure := range []string{"closed", "error"} {
+		t.Run(failure, func(t *testing.T) {
+			st, err := store.Open(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			job, err := st.Create(factory.Item{Title: "arriving", State: factory.StateLanded, Assignee: "sam"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			h := New(factory.Seam{}, Config{Version: "test", Store: st, PullWait: 5 * time.Second})
+			t.Cleanup(h.Close)
+			if h.watch.fs == nil {
+				t.Fatal("fixture requires installed watch")
+			}
+			worker := attachIdleWorker(t, h)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			req := httptest.NewRequest("GET", "/v1/workers/pull", nil).WithContext(ctx)
+			req.Header.Set("Authorization", "Bearer "+worker.Credential)
+			w := httptest.NewRecorder()
+			done := make(chan struct{})
+			go func() { h.ServeHTTP(w, req); close(done) }()
+			defer func() { cancel(); <-done }()
+			select {
+			case <-done:
+				t.Fatal("empty worker did not wait")
+			case <-time.After(250 * time.Millisecond):
+			}
+			if failure == "closed" {
+				if err := h.watch.fs.Close(); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if err := h.watch.fs.Remove(st.Root()); err != nil {
+					t.Fatal(err)
+				}
+				h.watch.fs.Errors <- errors.New("watch failed")
+			}
+			path := st.ItemPath(job.ID)
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			data = bytes.ReplaceAll(data, []byte(`"landed"`), []byte(`"queued"`))
+			began := time.Now()
+			if err := os.WriteFile(path, data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case <-done:
+			case <-time.After(time.Second - time.Since(began)):
+				t.Fatal("watch failure hid in-place enqueue for over one second")
+			}
+			var pulled api.WorkerPull
+			if err := json.Unmarshal(w.Body.Bytes(), &pulled); err != nil || w.Code != 200 || pulled.Job.ID != job.ID {
+				t.Fatalf("pickup: %d %s, %v", w.Code, w.Body.String(), err)
+			}
+			t.Logf("pickup after %s: %s", failure, time.Since(began))
+		})
 	}
 }

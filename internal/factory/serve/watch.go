@@ -5,12 +5,12 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/fsnotify/fsnotify"
 )
 
@@ -31,16 +31,17 @@ const changePoll = 500 * time.Millisecond
 
 // rootWatch tells subscribers when the factory root's files change.
 type rootWatch struct {
-	root   string
-	ctx    context.Context
-	cancel context.CancelFunc
-	once   sync.Once
-	fs     *fsnotify.Watcher
-	hub    *hub
-	kick   chan struct{}
-	due    chan struct{}
-	timer  *time.Timer
-	snap   fileSnap
+	root    string
+	ctx     context.Context
+	cancel  context.CancelFunc
+	once    sync.Once
+	fs      *fsnotify.Watcher
+	healthy atomic.Bool
+	hub     *hub
+	kick    chan struct{}
+	due     chan struct{}
+	timer   *time.Timer
+	snap    fileSnap
 	// full is set when a filesystem event asked for a real read. The
 	// fallback tick leaves it false and may then skip the read.
 	full bool
@@ -70,6 +71,7 @@ func watchRoot(root string) *rootWatch {
 			_ = fs.Close()
 		} else {
 			w.fs = fs
+			w.healthy.Store(true)
 			go w.readFS()
 		}
 	}
@@ -87,6 +89,9 @@ func (w *rootWatch) stop() {
 }
 
 func (w *rootWatch) readFS() {
+	// A failed stream no longer proves that in-place writes are announced.
+	// Keep the pointer for shutdown, but restore stat polling immediately.
+	defer func() { w.healthy.Store(false); w.nudge() }()
 	for {
 		select {
 		case <-w.ctx.Done():
@@ -101,10 +106,8 @@ func (w *rootWatch) readFS() {
 				continue
 			}
 			w.nudge()
-		case _, ok := <-w.fs.Errors:
-			if !ok {
-				return
-			}
+		case <-w.fs.Errors:
+			return
 		}
 	}
 }
@@ -162,7 +165,7 @@ func (w *rootWatch) publish() {
 	// The fallback tick, while notifications are working, stats the
 	// directory once. A rename moves that mtime; a quiet floor does not,
 	// so the tick does not read every job file.
-	if !full && w.fs != nil && !w.rootMoved() {
+	if !full && w.healthy.Load() && !w.rootMoved() {
 		return
 	}
 	w.looks.Add(1)
@@ -199,7 +202,7 @@ func snapshot(root string) fileSnap {
 		if err != nil {
 			continue
 		}
-		files[name] = strconv.FormatInt(info.Size(), 10) + " " + strconv.FormatInt(info.ModTime().UnixNano(), 10)
+		files[name] = store.FileStamp(info).String()
 		names = append(names, name)
 	}
 	sort.Strings(names)
