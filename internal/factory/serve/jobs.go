@@ -828,7 +828,7 @@ func (h *Handler) settleJobs(approvalsOnly ...bool) {
 		// Nothing to settle, so the next request can skip the decode until
 		// a document this look depends on changes or a deadline arrives.
 		// A signature that moved during the read is left unremembered.
-		if after := h.floorSignature(); after != "" && after == before {
+		if after := h.floorSignature(); sweep && after != "" && after == before {
 			h.rememberFloor(pending, after)
 		}
 		return

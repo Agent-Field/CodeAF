@@ -261,3 +261,23 @@ func TestApprovingTheProofPinsTheMergePolicy(t *testing.T) {
 		t.Fatalf("pinned = %+v", saved.MergePolicy)
 	}
 }
+
+func TestPostDoesNotSuppressTheNextAutoMergeSweep(t *testing.T) {
+	f, it := mergeFixture(t, &factory.MergePolicy{Auto: true})
+	f.request(t, "POST", "/v1/about", "operator-secret", nil, 405, nil)
+	saved, err := f.st.Get(it.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Merging != nil {
+		t.Fatal("POST unexpectedly swept auto-merges")
+	}
+	f.request(t, "GET", fmt.Sprintf("/v1/jobs/%d", it.ID), "operator-secret", nil, 200, nil)
+	saved, err = f.st.Get(it.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Merging == nil || saved.Merging.State != factory.MergeQueued {
+		t.Fatalf("GET after POST skipped auto-merge: %+v", saved.Merging)
+	}
+}
