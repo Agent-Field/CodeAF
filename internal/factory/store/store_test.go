@@ -4,12 +4,51 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
+
+// TestListDoesNotDecodeAnUnchangedFloor is the idle-engine read. Triage,
+// intake and a poll each ask for every job on their own clocks. Asking
+// again while the files are the same must not open them again. An edit
+// still shows up on the next ask.
+func TestListDoesNotDecodeAnUnchangedFloor(t *testing.T) {
+	st := open(t)
+	created, err := st.Create(factory.Item{Title: "finished", State: factory.StateShipped})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := st.List()
+	if err != nil || len(first) != 1 || first[0].Title != "finished" {
+		t.Fatalf("first list: %+v %v", first, err)
+	}
+	path := filepath.Join(st.Root(), "1.json")
+	if err := os.Chmod(path, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o600) })
+	second, err := st.List()
+	if err != nil || len(second) != 1 || second[0].Title != "finished" {
+		t.Fatalf("unchanged list reread the file: %+v %v", second, err)
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Update(created.ID, func(it *factory.Item) error {
+		it.Title = "edited"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	third, err := st.List()
+	if err != nil || len(third) != 1 || third[0].Title != "edited" {
+		t.Fatalf("edited list: %+v %v", third, err)
+	}
+}
 
 func open(t *testing.T) *Store {
 	t.Helper()

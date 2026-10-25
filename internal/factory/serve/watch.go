@@ -3,10 +3,12 @@ package serve
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -20,7 +22,11 @@ const changeDebounce = 100 * time.Millisecond
 
 // changePoll is the fallback when the filesystem watch is missing or silent.
 // The poll asks the same question the watch does — did the root change —
-// and sends a tick only when the answer is yes.
+// and sends a tick only when the answer is yes. While the watch is
+// installed, that question is the directory's own mtime: a rename changes
+// it, and a quiet floor is not read file by file. Without a watch, each
+// tick reads the files, so a missed notification still arrives inside one
+// second.
 const changePoll = 500 * time.Millisecond
 
 // rootWatch tells subscribers when the factory root's files change.
@@ -35,6 +41,16 @@ type rootWatch struct {
 	due    chan struct{}
 	timer  *time.Timer
 	snap   fileSnap
+	// full is set when a filesystem event asked for a real read. The
+	// fallback tick leaves it false and may then skip the read.
+	full bool
+	// rootMark is the directory mtime of the last full read. seenRoot is
+	// false until that read managed to stat the directory.
+	rootMark int64
+	seenRoot bool
+	// looks counts full reads of the directory. A quiet floor must not
+	// add to it on the fallback tick.
+	looks atomic.Int64
 }
 
 func watchRoot(root string) *rootWatch {
@@ -46,8 +62,9 @@ func watchRoot(root string) *rootWatch {
 		hub:    newHub(),
 		kick:   make(chan struct{}, 1),
 		due:    make(chan struct{}, 1),
-		snap:   snapshot(root),
 	}
+	w.noteRoot()
+	w.snap = snapshot(root)
 	if fs, err := fsnotify.NewWatcher(); err == nil {
 		if err := fs.Add(root); err != nil {
 			_ = fs.Close()
@@ -74,9 +91,14 @@ func (w *rootWatch) readFS() {
 		select {
 		case <-w.ctx.Done():
 			return
-		case _, ok := <-w.fs.Events:
+		case ev, ok := <-w.fs.Events:
 			if !ok {
 				return
+			}
+			// A heartbeat rewrites runners.json. That is not a job, and
+			// reading the whole floor to confirm it would be the idle cost.
+			if !w.worthEvent(ev.Name) {
+				continue
 			}
 			w.nudge()
 		case _, ok := <-w.fs.Errors:
@@ -103,6 +125,7 @@ func (w *rootWatch) loop() {
 		case <-w.ctx.Done():
 			return
 		case <-w.kick:
+			w.full = true
 			w.arm()
 		case <-tick.C:
 			w.arm()
@@ -134,7 +157,17 @@ func (w *rootWatch) stopTimer() {
 
 func (w *rootWatch) publish() {
 	w.timer = nil
+	full := w.full
+	w.full = false
+	// The fallback tick, while notifications are working, stats the
+	// directory once. A rename moves that mtime; a quiet floor does not,
+	// so the tick does not read every job file.
+	if !full && w.fs != nil && !w.rootMoved() {
+		return
+	}
+	w.looks.Add(1)
 	next := snapshot(w.root)
+	w.noteRoot()
 	if next.sig == w.snap.sig {
 		return
 	}
@@ -180,11 +213,39 @@ func snapshot(root string) fileSnap {
 	return fileSnap{sig: b.String(), files: files}
 }
 
+func (w *rootWatch) noteRoot() {
+	info, err := os.Stat(w.root)
+	if err != nil {
+		w.seenRoot = false
+		return
+	}
+	w.rootMark = info.ModTime().UnixNano()
+	w.seenRoot = true
+}
+
+func (w *rootWatch) rootMoved() bool {
+	info, err := os.Stat(w.root)
+	if err != nil {
+		return true
+	}
+	mark := info.ModTime().UnixNano()
+	return !w.seenRoot || mark != w.rootMark
+}
+
+func (w *rootWatch) worthEvent(name string) bool {
+	base := filepath.Base(name)
+	if base == filepath.Base(w.root) {
+		return true
+	}
+	return worthWatching(base)
+}
+
 // worthWatching drops the store's own scratch. A document is written as a
 // dotfile and renamed, and a flock sits beside it; neither is a change a
-// client re-reads.
+// client re-reads. runners.json is presence: an idle heartbeat rewrites it,
+// and treating that as a job change wakes every pull.
 func worthWatching(name string) bool {
-	return name != "" && !strings.HasPrefix(name, ".") && !strings.HasSuffix(name, ".lock")
+	return name != "" && name != "runners.json" && !strings.HasPrefix(name, ".") && !strings.HasSuffix(name, ".lock")
 }
 
 // changedData is the tick body: one job id when a single job file is the

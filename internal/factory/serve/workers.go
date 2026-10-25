@@ -22,6 +22,12 @@ import (
 
 const workerPollLimit = 30 * time.Second
 
+// presenceSaveEvery is how long a heartbeat may live only in memory before
+// it has to reach the runner file. Writing the file on every request wakes
+// every pull that is waiting on that directory. The silence deadline is
+// longer than this, so a crash still looks live until the next save.
+const presenceSaveEvery = 15 * time.Second
+
 type workerService struct {
 	st          *store.Store
 	desk        *lease.Desk
@@ -30,6 +36,9 @@ type workerService struct {
 	wait        time.Duration
 	mu          sync.RWMutex
 	credentials map[[32]byte]registeredWorker
+	// savedFile is when the runner file last took a heartbeat. One stamp
+	// covers every row, so a burst of idle pulls writes the file once.
+	savedFile time.Time
 }
 
 // registeredWorker retains the machine beside its identity without putting
@@ -52,8 +61,8 @@ type registeredWorker struct {
 	Name      string
 	OS        string
 	Version   string
-	Last      time.Time
-	Worker    lease.Worker
+	Last   time.Time
+	Worker lease.Worker
 }
 
 type workerKey struct{}
@@ -135,8 +144,15 @@ func (s *workerService) heard(id string, at time.Time) {
 		}
 		row.Last = at
 		s.credentials[key] = row
-		if err := s.saveRegistry(); err != nil {
-			s.err = err
+		// THE FILE WAKES EVERY WAITER when the watch is paying attention
+		// to it. Last is what this process answers presence from, so it
+		// moves on every request. One write per interval records every
+		// row's heartbeat together.
+		if s.savedFile.IsZero() || !at.Before(s.savedFile.Add(presenceSaveEvery)) {
+			s.savedFile = at
+			if err := s.saveRegistry(); err != nil {
+				s.err = err
+			}
 		}
 		return
 	}

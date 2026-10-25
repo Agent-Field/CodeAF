@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -66,6 +67,41 @@ func loadTitles(t *testing.T, seam factory.Seam) []string {
 		titles = append(titles, it.Title)
 	}
 	return titles
+}
+
+// TestThisProcessDoesNotReadItsOwnQueueToFindTheFactory: the worker asks
+// which factory to pull from every second. When the receipt names this
+// process, that question is the file. Reading /v1/queue to confirm it
+// renders every stored job on each pass.
+func TestThisProcessDoesNotReadItsOwnQueueToFindTheFactory(t *testing.T) {
+	st := attachLab(t)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hits atomic.Int32
+	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/queue" {
+			hits.Add(1)
+		}
+		w.WriteHeader(http.StatusOK)
+	})}
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(func() { _ = server.Close() })
+	address := "http://" + listener.Addr().String()
+	body, _ := json.Marshal(factoryDiscovery{URL: address, PID: os.Getpid()})
+	if err := writeFactoryPrivate(filepath.Join(st.Root(), "serve.json"), append(body, '\n')); err != nil {
+		t.Fatal(err)
+	}
+	for range 5 {
+		target, ok := liveFactoryDiscovery()
+		if !ok || target.url != address {
+			t.Fatalf("discovery = %+v %v, want %s", target, ok, address)
+		}
+	}
+	if got := hits.Load(); got != 0 {
+		t.Fatalf("finding this process's factory read the queue %d times", got)
+	}
 }
 
 // WITH NOTHING SERVING, THE WINDOW SERVES: a loopback service in this

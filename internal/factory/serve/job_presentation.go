@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"time"
@@ -8,6 +9,30 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 )
+
+// hostGitHubToken is the host's token answer for one request. A queue presents
+// every job, and each presentation asks the same question; resolving it inside
+// that loop starts one gh process per stored item.
+type hostGitHubToken struct{ has bool }
+
+type hostGitHubTokenKey struct{}
+
+// rememberHostToken resolves the solo host token at most once and returns the
+// request that carries the answer. Later presentations of the same request
+// read it instead of asking again.
+func (h *Handler) rememberHostToken(r *http.Request) *http.Request {
+	if _, ok := r.Context().Value(hostGitHubTokenKey{}).(hostGitHubToken); ok {
+		return r
+	}
+	has := false
+	if h.mode() == api.FactorySolo && h.config.GitHubToken != nil {
+		session, _ := h.credential(r)
+		if session.githubToken == "" {
+			has = h.config.GitHubToken(r.Context()) != ""
+		}
+	}
+	return r.WithContext(context.WithValue(r.Context(), hostGitHubTokenKey{}, hostGitHubToken{has}))
+}
 
 // presentJob is the job as a READER sees it: the worker's view below with the
 // runner-local conversation paths withheld. Every queue, job and mutation
@@ -113,8 +138,12 @@ func (h *Handler) presentWorkerJob(r *http.Request, j *api.Job) {
 	local := j.Desk != nil && j.Desk.Origin != string(factory.OriginForge)
 	session, _ := h.credential(r)
 	hasToken := session.githubToken != ""
-	if !hasToken && h.mode() == api.FactorySolo && h.config.GitHubToken != nil {
-		hasToken = h.config.GitHubToken(r.Context()) != ""
+	if !hasToken {
+		if answer, ok := r.Context().Value(hostGitHubTokenKey{}).(hostGitHubToken); ok {
+			hasToken = answer.has
+		} else if h.mode() == api.FactorySolo && h.config.GitHubToken != nil {
+			hasToken = h.config.GitHubToken(r.Context()) != ""
+		}
 	}
 	j.Controls.Sync = owner && ((local && hasToken && h.config.Store != nil) || (!local && h.seam.Refresh != nil))
 }

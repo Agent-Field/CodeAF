@@ -179,6 +179,14 @@ func liveFactoryDiscovery() (factoryTarget, bool) {
 		return factoryTarget{}, false
 	}
 	t := factoryTarget{url: factoryDialable(base), token: d.Token}
+	// THE RECEIPT NAMES THIS PROCESS, so the worker already holds the server.
+	// Confirming it with GET /v1/queue renders every job, and the worker asks
+	// which factory to use again every second. A receipt naming another live
+	// process is still checked, because a live pid is not proof that its
+	// listener answers.
+	if d.PID == os.Getpid() {
+		return t, true
+	}
 	return t, factoryAnswers(t)
 }
 

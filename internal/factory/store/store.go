@@ -23,6 +23,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -58,6 +59,12 @@ type Store struct {
 	// clock is the store's now. A test may hold it still; it is nil in every
 	// real build, which reads as time.Now.
 	clock func() time.Time
+	// listMu guards the decoded floor. List keeps it so an idle reader does
+	// not unmarshal every job again while the files are unchanged.
+	listMu    sync.Mutex
+	listOK    bool
+	listSig   string
+	listItems []factory.Item
 }
 
 // Open answers the store at root, creating the directory. It holds no handles.
@@ -220,7 +227,32 @@ func (st *Store) Get(id int) (factory.Item, error) {
 // List reads every item, newest first by Created. An unreadable or
 // newer-schema document is skipped rather than fatal: ONE DOCUMENT FROM THE
 // FUTURE, OR ONE TORN BY A FULL DISK, MUST NOT EMPTY THE WHOLE FLOOR.
+//
+// An unchanged floor is not decoded again. Triage, intake and the poll each
+// ask for every job on their own clock, and the idle engine was spending
+// that decode even when no file had moved. runners.json is not part of the
+// answer, so a heartbeat does not force a new decode. The caller gets its
+// own slice and must not keep it across a later write.
 func (st *Store) List() ([]factory.Item, error) {
+	sig, ok := st.itemSignature()
+	if ok {
+		if items, hit := st.cachedList(sig); hit {
+			return st.finishList(items), nil
+		}
+	}
+	items, err := st.listFromDisk()
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		if after, ok2 := st.itemSignature(); ok2 && after == sig {
+			st.storeList(sig, items)
+		}
+	}
+	return st.finishList(items), nil
+}
+
+func (st *Store) listFromDisk() ([]factory.Item, error) {
 	entries, err := os.ReadDir(st.root)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -257,7 +289,6 @@ func (st *Store) List() ([]factory.Item, error) {
 		if err != nil {
 			return nil, err
 		}
-		st.retainOutput(&d.Item)
 		items = append(items, d.Item)
 	}
 	sort.SliceStable(items, func(a, b int) bool {
@@ -267,6 +298,71 @@ func (st *Store) List() ([]factory.Item, error) {
 		return items[a].Created.After(items[b].Created)
 	})
 	return items, nil
+}
+
+func (st *Store) finishList(items []factory.Item) []factory.Item {
+	for i := range items {
+		st.retainOutput(&items[i])
+	}
+	return items
+}
+
+func (st *Store) cachedList(sig string) ([]factory.Item, bool) {
+	st.listMu.Lock()
+	defer st.listMu.Unlock()
+	if !st.listOK || st.listSig != sig {
+		return nil, false
+	}
+	return cloneItems(st.listItems), true
+}
+
+func (st *Store) storeList(sig string, items []factory.Item) {
+	st.listMu.Lock()
+	st.listOK = true
+	st.listSig = sig
+	st.listItems = cloneItems(items)
+	st.listMu.Unlock()
+}
+
+func cloneItems(items []factory.Item) []factory.Item {
+	if items == nil {
+		return nil
+	}
+	return append([]factory.Item(nil), items...)
+}
+
+// itemSignature names the JSON documents List's answer comes from. A
+// heartbeat rewrites runners.json and is ignored: that file is presence,
+// not a job. ok is false when the directory could not be read, which must
+// not be cached as an empty floor.
+func (st *Store) itemSignature() (string, bool) {
+	entries, err := os.ReadDir(st.root)
+	if err != nil {
+		return "", false
+	}
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		name := entry.Name()
+		if name == "runners.json" || strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".lock") || !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var b strings.Builder
+	for _, name := range names {
+		info, err := os.Stat(filepath.Join(st.root, name))
+		if err != nil {
+			return "", false
+		}
+		b.WriteString(name)
+		b.WriteByte(' ')
+		b.WriteString(strconv.FormatInt(info.Size(), 10))
+		b.WriteByte(' ')
+		b.WriteString(strconv.FormatInt(info.ModTime().UnixNano(), 10))
+		b.WriteByte('\n')
+	}
+	return b.String(), true
 }
 
 // Save rewrites one item's whole document, temp+rename under its flock. The

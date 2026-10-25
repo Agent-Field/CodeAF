@@ -126,6 +126,52 @@ func TestAQueueOfManyAuthorsNeverWaitsOnTheirProfiles(t *testing.T) {
 	}
 }
 
+// TestQueueAsksForTheGitHubTokenOnce is the idle-engine half of the same
+// shape: a solo queue with no signed-in session asks the host whether a
+// token exists, and it asks once for the whole list. Asking once per job
+// starts one gh process per stored item on every refresh.
+func TestQueueAsksForTheGitHubTokenOnce(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetRepos([]string{"acme/api"}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= 3; i++ {
+		if _, err := st.Create(factory.Item{Repo: "acme/api", Num: i, Kind: factory.KindIssue, Origin: factory.OriginForge, Title: "open", State: factory.StateNew, Created: now, Changed: now}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var calls atomic.Int32
+	h := serve.New(factory.LocalSeam(st, now), serve.Config{
+		Mode: api.FactorySolo, Store: st, Root: st.Root(), Address: config.Address, Version: "test",
+		Now: func() time.Time { return now },
+		GitHubToken: func(context.Context) string {
+			calls.Add(1)
+			return "host-token"
+		},
+	})
+	t.Cleanup(h.Close)
+	r := httptest.NewRequest("GET", "/v1/queue", nil)
+	r.RemoteAddr = "127.0.0.1:1234"
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatalf("queue answered %d: %s", w.Code, w.Body.String())
+	}
+	var q api.Queue
+	if err := json.Unmarshal(w.Body.Bytes(), &q); err != nil {
+		t.Fatal(err)
+	}
+	if len(q.Jobs) != 3 {
+		t.Fatalf("queue listed %d jobs, want 3", len(q.Jobs))
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("queue asked for the GitHub token %d times, want 1", got)
+	}
+}
+
 // BenchmarkQueue800 is a queue read of 800 open issues and pull requests,
 // the size of a busy public repository, through the store, seam, handler and
 // codec a solo host serves.

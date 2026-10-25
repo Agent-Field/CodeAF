@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -766,17 +769,47 @@ func (h *Handler) approve(w http.ResponseWriter, r *http.Request, it factory.Ite
 	}{h.factory, a, a.UndoUntil})
 }
 
+// listFloor reads every job. A test may count those reads; the handler
+// itself always uses the store.
+func (h *Handler) listFloor() ([]factory.Item, error) {
+	if h.config.Store == nil {
+		return nil, nil
+	}
+	if h.floorList != nil {
+		return h.floorList(h.config.Store)
+	}
+	return h.config.Store.List()
+}
+
+// floorLook is one observation that nothing needed settling. sig names the
+// documents that observation read; next is the earliest deadline that can
+// come due without those documents changing. A zero next means there is none.
+type floorLook struct {
+	sig  string
+	next time.Time
+}
+
 // settleJobs is run at deadlines, before reads and after a restart. Consent is
 // locked across processes so two servers cannot open the same decision twice.
+// An unchanged floor with nothing due is not decoded again: every factory
+// request used to read every job first, and an idle runner asks often.
 func (h *Handler) settleJobs(approvalsOnly ...bool) {
 	if h.config.Store == nil {
+		return
+	}
+	if h.floorUnchanged() {
 		return
 	}
 	// One listing serves every scan for due work. Each scan only picks
 	// candidates from it and reads every candidate again under its lock
 	// before acting, so sharing it changes nothing but the number of times
 	// every document on the floor is read before each request.
-	pending, err := h.config.Store.List()
+	// The signature is taken on both sides of the read. A job that changes
+	// while the read is in progress must not be remembered as idle: the
+	// signature would name the new files while the deadlines came from
+	// the old ones.
+	before := h.floorSignature()
+	pending, err := h.listFloor()
 	if err != nil {
 		return
 	}
@@ -792,6 +825,12 @@ func (h *Handler) settleJobs(approvalsOnly ...bool) {
 		}
 	}
 	if !due {
+		// Nothing to settle, so the next request can skip the decode until
+		// a document this look depends on changes or a deadline arrives.
+		// A signature that moved during the read is left unremembered.
+		if after := h.floorSignature(); after != "" && after == before {
+			h.rememberFloor(pending, after)
+		}
 		return
 	}
 	unlock, err := h.lockConsent()
@@ -799,7 +838,7 @@ func (h *Handler) settleJobs(approvalsOnly ...bool) {
 		return
 	}
 	defer unlock()
-	items, err := h.config.Store.List()
+	items, err := h.listFloor()
 	if err != nil {
 		return
 	}
@@ -849,6 +888,91 @@ func (h *Handler) settleJobs(approvalsOnly ...bool) {
 			return nil
 		})
 	}
+}
+
+// floorUnchanged reports that the previous idle look is still true.
+// A runner heartbeat rewrites runners.json and must not count: that file
+// is how presence is saved, and it changes while the jobs do not.
+func (h *Handler) floorUnchanged() bool {
+	h.jobsMu.Lock()
+	kept := h.floorKept
+	h.jobsMu.Unlock()
+	if kept.sig == "" {
+		return false
+	}
+	if !kept.next.IsZero() && !h.clock().Before(kept.next) {
+		return false
+	}
+	return h.floorSignature() == kept.sig
+}
+
+func (h *Handler) rememberFloor(items []factory.Item, sig string) {
+	h.jobsMu.Lock()
+	defer h.jobsMu.Unlock()
+	if sig == "" {
+		h.floorKept = floorLook{}
+		return
+	}
+	h.floorKept = floorLook{sig: sig, next: floorNext(items)}
+}
+
+// floorSignature is the identity of every JSON document settle consults.
+// runners.json is omitted on purpose. Presence writes it on each request,
+// and treating that as a job change would decode the floor for every heartbeat.
+func (h *Handler) floorSignature() string {
+	root := h.config.Store.Root()
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return ""
+	}
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		name := entry.Name()
+		if name == "runners.json" || strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".lock") || !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var b strings.Builder
+	for _, name := range names {
+		info, err := os.Stat(filepath.Join(root, name))
+		if err != nil {
+			return ""
+		}
+		fmt.Fprintf(&b, "%s %d %d\n", name, info.Size(), info.ModTime().UnixNano())
+	}
+	return b.String()
+}
+
+// floorNext is the earliest moment a saved deadline can come due on this
+// set of jobs. It is zero when only a document change can make work due.
+func floorNext(items []factory.Item) time.Time {
+	var next time.Time
+	consider := func(at time.Time) {
+		if at.IsZero() {
+			return
+		}
+		if next.IsZero() || at.Before(next) {
+			next = at
+		}
+	}
+	for _, it := range items {
+		if rec := it.Recovery; rec != nil && (rec.State == "waiting" || rec.State == "queued") {
+			at := rec.Deadline
+			if rec.State == "waiting" {
+				at = rec.NextAt
+			}
+			consider(at)
+		}
+		if a := it.Approval; a != nil && a.State == "approving" {
+			consider(a.UndoUntil)
+		}
+		if m := it.Merging; m != nil && m.State == factory.MergeAsked {
+			consider(m.UndoUntil)
+		}
+	}
+	return next
 }
 
 func (h *Handler) scheduleJobTimer() {

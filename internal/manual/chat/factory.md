@@ -22,8 +22,20 @@ again after the deadline. The service uses the same filesystem notifications
 as the live factory view; it does not repeatedly decode finished jobs while
 waiting. Filesystem changes are batched for 100 milliseconds. If filesystem
 notifications are unavailable, a fallback checks for changes every 500
-milliseconds. Ownership, consent and capacity are checked again
-before any job is handed out.
+milliseconds and reads each job file. While notifications are working, that
+fallback only checks whether the directory itself changed, so a quiet floor
+is not read file by file. Ownership, consent and capacity are checked again
+before any job is handed out. A runner in the same process as the service
+does not re-read the job list just to find that service. Reading the job
+list asks once whether this machine has a GitHub token, not once per job.
+A request does not decode every job just to see that nothing is due. It
+looks again when a job, a lease, or the repository list changes, or when a
+saved deadline arrives. A runner heartbeat is kept in memory and is not
+rewritten to the runner file on every check, and that write is not
+announced as a job change, so it does not wake the other pulls. The file
+still updates within 15 seconds. Slots and sleep are read on the next pull.
+A job list that has not
+changed is not decoded again.
 
 ## codeaf factory serve — host a team factory, listen address and HTTPS
 
