@@ -167,7 +167,7 @@ func classify(method string) callClass {
 		MethodAutomationsList, MethodAutomationsRuns, MethodAutomationsChanges,
 		MethodAutomationsCursor, MethodAutomationsActive, MethodAutomationsWindows:
 		return classGetter
-	case MethodClaimChatStart, MethodQuestionResolve, MethodQuestionHold,
+	case MethodTaskWorkspaceCancel, MethodClaimChatStart, MethodQuestionResolve, MethodQuestionHold,
 		MethodConsent, MethodConsentRemember,
 		MethodHarness, MethodConnect, MethodConnectKey,
 		MethodNoteConnected,
@@ -185,7 +185,7 @@ func classify(method string) callClass {
 		MethodAutomationsDelete, MethodAutomationsRunNow, MethodAutomationsStopRun,
 		MethodAutomationsClaim:
 		return classAct
-	case MethodCompact, MethodOpenPlanTaskWork:
+	case MethodTaskWorkspaceReview, MethodTaskWorkspaceApply, MethodCompact, MethodOpenPlanTaskWork:
 		return classWork
 	default:
 		return classOrdered

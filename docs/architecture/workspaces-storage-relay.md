@@ -19,6 +19,7 @@ profile/
   workspace-identities/       local opaque-URI bindings and ownership
   workspace-runtime/<id>/     owned temporary storage
   workspace-caches/<id>/      explicitly shared project cache
+  workspace-apply/<id>/       local reviewed snapshots and operation receipts
 chat/
   .cell/                     portable chat truth and task carriers
   trees/<run-id>/
@@ -70,6 +71,34 @@ Equal folder names and Git remotes do not merge identities. URI records are
 local authority and are not copied between devices as a path database. Result
 application must be explicit for each writable root, with conflicts retained;
 receiving a root does not authorize applying changes to it.
+
+## Review and apply one root
+
+Use `/task review <task number> <root slot>` after the task and its cooperating
+writers/checkers finish. The terminal shows the private copy, receiver-local
+application destination, exact snapshot identity, and diff. Large previews show
+a command for inspecting the complete immutable diff. Review does not change
+the original project or the retained private working copy.
+
+`/task apply <task number> <root slot>` applies that reviewed snapshot only.
+Changes arriving in the private copy after review are retained there and do not
+enter this application. Every writable root has a separate operation; read-only
+roots cannot be applied. Conflicts preserve both versions. Successful application
+records its outcome and prevents a duplicate apply. The original private copy
+and its URI remain available after restart.
+
+Reviewed staging and its receipt are local profile assets, separate from the
+portable conversation. A replacement review retires only its verified previous
+staging after the new receipt is durable. Invalid ownership, destination,
+baseline, or snapshot bindings refuse before application. Uncertain writers still
+prevent destructive retirement; they do not authorize deleting the retained
+original during a snapshot application.
+
+The terminal enters these operations through the resident engine, with the
+conversation's driver/session binding and cancellable operation deadline. An
+older engine without the capability asks for an engine update and reconnect. A
+disconnect after application begins can leave an unknown outcome: inspect the
+recorded result before retrying.
 
 ## Relay: fetch, map roots, acquire, restore
 

@@ -12,6 +12,10 @@ versioned directory metadata, restart receipts and independent fork history.
 Ask for receiver-local folders before acquiring the source lease; cancellation
 and invalid mappings preserve the existing holder and allow a valid retry.
 
+Review and apply each writable root explicitly through the terminal. Application
+uses the exact reviewed snapshot and retains the original private copy; edits
+after review do not land. Conflicts preserve both versions.
+
 Local archive recovery requires the separately reviewed native dependency.
 Uncertain writers and multi-root reclamation remain excluded. Existing
 conversations require compatibility safeguards; this change does not silently

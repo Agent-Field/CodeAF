@@ -226,3 +226,24 @@ this recovered task has no final check receipt and asks you to inspect and accep
 refute it. A missing copy or changed branch is refused with its location; nothing is
 recreated in its place. If saving a receipt fails after a merge, the error reports the
 actual commit and which record could not be saved. Inspect that outcome before retrying.
+
+## Review and apply an owned task root
+
+Completed tasks keep their output in their private working copies. Starting a
+copy, sharing it or mapping a received copy to a local folder does not give it
+permission to write the original folder.
+
+Use `/task review <task number> <root slot>` to capture an immutable local snapshot
+and read its changes, private copy and locally mapped apply destination. For an ordinary one-root task,
+the slot is `work`; a multi-root task uses its declared slots.
+
+After reviewing, `/task apply <task number> <root slot>` applies only that root
+through the existing conflict checks. The apply uses exactly the reviewed snapshot;
+edits made in the original private copy after review stay there. Review again to
+select a newer snapshot. Read roots cannot be applied. A known live run, checker
+or cooperator blocks apply until it is idle.
+Conflicts retain the original and the private result for review. The original
+private copy and its identity remain available after a successful apply too.
+Uncertain writers continue to prevent destructive retirement of that copy. Applying one root
+does not authorize another root or give later tasks automatic landing permission.
+A received root stays private until this explicit local action.
