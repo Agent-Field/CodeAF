@@ -125,6 +125,7 @@ func New(cfg Config) *Service {
 	if cfg.Cluster == nil {
 		mux.HandleFunc(rafttransport.ExchangePath, svc.ns.exchangePersonal)
 		mux.HandleFunc(rafttransport.SocketPath, svc.ns.exchangePersonal)
+		mux.HandleFunc(clusterctl.ForwardPath, svc.ns.exchangePersonal)
 	}
 	mux.Handle(clusterctl.Path, clusterctl.Handler(svc.ns.controlAuthenticate, svc.ns.controlBackend))
 	auth := noting(svc.ns.authenticate)

@@ -36,6 +36,7 @@ import (
 // peerFrameCounter observes actual socket bytes at the relay, independently of
 // client counters. It parses complete masked/unmasked frames across I/O splits.
 type peerFrameCounter struct {
+	total *peerFrameCounter
 	mu    sync.Mutex
 	b     []byte
 	count atomic.Uint64
@@ -72,6 +73,9 @@ func (c *peerFrameCounter) add(b []byte) {
 			return
 		}
 		c.count.Add(1)
+		if c.total != nil {
+			c.total.count.Add(1)
+		}
 		c.b = c.b[header+int(n):]
 	}
 }
@@ -102,13 +106,16 @@ func (w peerCountWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	if e != nil {
 		return nil, nil, e
 	}
-	wrapped := peerCountConn{c, w.in, w.out}
+	// Each socket owns its framing buffer; independent streams can split frames
+	// concurrently while contributing to the same aggregate counters.
+	wrapped := peerCountConn{c, &peerFrameCounter{total: w.in}, &peerFrameCounter{total: w.out}}
 	// The HTTP handshake already flushed through ResponseWriter before Hijack.
 	rw.Writer.Reset(wrapped)
 	return wrapped, rw, nil
 }
 
 type memberRig struct {
+	departures    chan struct{}
 	parkExchanges atomic.Bool
 	storage       string
 	t             *testing.T
@@ -124,12 +131,20 @@ type memberRig struct {
 func newMemberRig(t *testing.T) *memberRig {
 	t.Helper()
 	t.Setenv(config.ProfileDirEnv, "")
-	r := &memberRig{t: t, clock: directorytest.NewFakeClock()}
+	r := &memberRig{t: t, clock: directorytest.NewFakeClock(), departures: make(chan struct{}, rafttransport.MaxInflight)}
 	r.clock.Advance(time.Now().Sub(r.clock.Now()))
 	r.storage = t.TempDir()
 	r.svc = relayserve.New(relayserve.Config{Store: r.storage, Now: r.clock.Now, After: r.clock.After})
 	r.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, q *http.Request) {
 		r.requests.Add(1)
+		if q.URL.Path == clusterctl.ForwardPath {
+			defer func() {
+				select {
+				case r.departures <- struct{}{}:
+				default:
+				}
+			}()
+		}
 		if q.URL.Path == "/v2/cluster/enroll" && r.interrupt.Swap(false) {
 			// Commit admission and lose its reply before the client's store is opened.
 			recorder := httptest.NewRecorder()
@@ -262,8 +277,12 @@ func TestR9PersonalHomesJoinAsDurableLearners(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
-	if _, e = a.LeadCluster(t.Context(), 0); !errors.Is(e, clusterctl.ErrUnsupported) {
-		t.Fatal("R6 leadership was offered", e)
+	// R6 now offers leadership to this caught-up home; the earlier slice's
+	// unsupported boundary must not contradict the production contract.
+	receipt, e := a.LeadCluster(t.Context(), 0)
+	mustNil(t, e)
+	if receipt.Node != nodeOf(a) || receipt.Barrier == 0 {
+		t.Fatal("R6 joined home did not receive its elected read receipt", receipt)
 	}
 }
 

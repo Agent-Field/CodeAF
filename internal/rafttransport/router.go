@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"math"
+	"slices"
 	"sync"
 )
 
@@ -61,6 +62,7 @@ type inbox struct {
 	next, issued, acked [laneCount]uint64
 	sockets             int
 	changed             chan struct{}
+	chunks              map[uint64]uint64
 }
 type group struct {
 	view    View
@@ -148,6 +150,12 @@ func (r *Router) Install(v View) error {
 				if v.Generation == old.view.Generation && m.Incarnation == old.members[id].Incarnation {
 					box.next, box.issued, box.acked = prev.next, prev.issued, prev.acked
 					box.sockets = prev.sockets
+					box.chunks = map[uint64]uint64{}
+					for destination, sequence := range prev.chunks {
+						if peer, ok := members[destination]; ok && !peer.Revoked {
+							box.chunks[destination] = sequence
+						}
+					}
 				}
 			}
 		}
@@ -206,7 +214,17 @@ type Delivery struct {
 	Cursor   uint64   `json:"cursor,string"`
 	Envelope Envelope `json:"envelope"`
 }
+type ChunkAck struct {
+	Node     uint64 `json:"node,string"`
+	Sequence uint64 `json:"sequence,string"`
+}
+
 type Response struct {
+	Chunks []ChunkAck `json:"chunks,omitempty"`
+	// Accepted/Rejected describe SOCKET admission only. Neither means a peer
+	// persisted an append; a busy learner must not close its sender's voter path.
+	Accepted   []string   `json:"accepted,omitempty"`
+	Rejected   []string   `json:"rejected,omitempty"`
 	Generation uint64     `json:"generation,string"`
 	Messages   []Delivery `json:"messages"`
 }
@@ -304,6 +322,17 @@ func (r *Router) route(req Request, now int64, receiveOnly bool) (Response, erro
 				keep = append(keep, q)
 			} else {
 				g.bytes[lane] -= q.size
+				if q.Envelope.Chunk != nil {
+					if source := g.inboxes[q.Envelope.From]; source != nil {
+						if source.chunks == nil {
+							source.chunks = map[uint64]uint64{}
+						}
+						if q.Envelope.Sequence > source.chunks[req.Node] {
+							source.chunks[req.Node] = q.Envelope.Sequence
+							signal(source)
+						}
+					}
+				}
 			}
 		}
 		clear(box.queues[lane][len(keep):])
@@ -361,6 +390,14 @@ func (r *Router) route(req Request, now int64, receiveOnly bool) (Response, erro
 		signal(target)
 	}
 	response := Response{Generation: g.view.Generation, Messages: []Delivery{}}
+	destinations := make([]uint64, 0, len(box.chunks))
+	for id := range box.chunks {
+		destinations = append(destinations, id)
+	}
+	slices.Sort(destinations)
+	for _, id := range destinations {
+		response.Chunks = append(response.Chunks, ChunkAck{Node: id, Sequence: box.chunks[id]})
+	}
 	size := 0
 	normal := 0
 	snapshot := false

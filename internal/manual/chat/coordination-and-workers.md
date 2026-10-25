@@ -7,7 +7,7 @@ A relay directory upgrade can briefly pause pairing and chat moves. Retry after 
 
 ## Joined computers, learner capacity and an outdated build
 
-An open, paired home with sync on joins a self-hosted `codeaf relay --store <dir>` as a durable learner. Its store lives under the home, and reopening reuses its node. Losing that store enrolls a fresh node and retires the old authority. The three anchors remain the only voters, so neither laptop needs to stay awake. Joining starts while the paired home is open, or when you ask for `codeaf cluster status`.
+An open, paired home with sync on joins a self-hosted `codeaf relay --store <dir>` as a durable learner. Its store lives under the home, and reopening reuses its node. Losing that store enrolls a fresh node and retires the old authority. Three anchors vote until a personal computer is explicitly asked to lead, so pairing alone never requires either laptop to stay awake. Joining starts while the paired home is open, or when you ask for `codeaf cluster status`.
 
 If joining has no new data to apply, the client keeps its store for the next retry round instead of polling continuously. A status activation can say `this computer is still joining the cluster; retry shortly; your saved chats are still here`.
 
@@ -15,13 +15,30 @@ The membership protocol admits at most 32 live learners and retains retired reco
 
 ## Which computer coordinates: cluster status and cluster lead
 
-`codeaf cluster status` on a self-hosted `codeaf relay` with storage reports the committed voters and current leader after a fresh majority read. A paired computer joins as a learner with persistent storage before status shows its node. Readiness requires its own durable application through the advertised join position. Status names `this computer`, `learning computers` and `ready computers` when known, alongside `voting computers` and the coordinator. `codeaf cluster lead` on an unjoined computer says `this computer must join the cluster with persistent storage before it can lead`.
+`codeaf cluster status` on a self-hosted `codeaf relay` with storage reports the committed voters and current leader after a fresh majority read. A paired computer joins with persistent storage as a learner before status shows its node. Readiness requires its own durable application through the advertised join position. Status names `this computer`, `learning computers`, `ready computers` and `voting computers` when known. `codeaf cluster lead` on an unjoined computer says `this computer must join the cluster with persistent storage before it can lead`.
 
-Leadership is not offered yet on any relay. A direct leadership request to the self-hosted relay is refused without changing membership. The hosted relay has no cluster control door and says `this relay does not offer cluster leadership yet; your saved chats are still here`. Ordinary chat sync remains available.
+On a self-hosted `codeaf relay` with storage, run `codeaf cluster lead` on the joined computer that should coordinate. It first catches up, replaces the third anchor’s vote through a joint change, durably finishes that change with the third anchor still learning, and transfers leadership. The voters are then two anchors and this computer. Keep codeaf open to keep its member running; a command used with no open terminal runs its member only for that command. Leadership moves coordination metadata, never chat content or chat ownership.
+
+The hosted relay has no cluster control door and says `this relay does not offer cluster leadership yet; your saved chats are still here`. Ordinary hosted chat sync remains available.
 
 Do not treat pairing or a saved leadership request as a successful transfer. Success requires the selected computer to be elected, commit its current term and pass a fresh majority read; its receipt names the computer, term, revision and read barrier. Retrying `codeaf cluster lead` preserves an already saved signed request. Continue chats through the ordinary continue door.
 
 Three voters tolerate one unavailable member. Losing a majority pauses coordination; saved chats remain. The refusal is `this cluster cannot coordinate right now; reconnect enough of its voting computers and try again; your saved chats are still here`.
+
+## Pending leadership request, retry and refusal
+
+A lost reply or restarted home keeps the original signed leadership request. Retry `codeaf cluster lead` to resume it; a pending request cannot choose a different computer. A completed refusal says `the leadership request could not complete; refresh cluster status and try again` and is acknowledged before another request is saved. Only one configuration change can run at a time. A different personal coordinator cannot directly replace an active personal coordinator; let the anchors resume, then request leadership again.
+
+## Sleeping coordinator, fallback timing and no automatic regain
+
+When a personal coordinator sleeps, exits or turns sync off, the two remaining anchor voters can elect a coordinator and restore the third anchor after it catches up. The missing computer need not approve its removal. A returning computer catches up as a learner and does not automatically regain leadership: request `codeaf cluster lead` again.
+
+Coordination uses five-second ticks. The provisioned anchors’ ranked election windows are six–seven, eight–nine and ten–eleven ticks (30–35, 40–45 and 50–55 seconds); other computers use twelve–thirteen ticks (60–65 seconds). Healthy fallback targets about 65 seconds. Scheduling delays or a partition can take longer. Fully idle groups stop periodic ticks only after every voter has applied the same idle barrier; a new operation or a leading computer’s disconnection wakes coordination and needs a fresh majority response.
+
+## Coordinator and anchor both unavailable, lost majority
+
+While a personal computer leads, the voters are that computer and two anchors. Losing that computer and either voting anchor leaves no majority, even though the third anchor retains its learning copy. The response is `this cluster cannot coordinate right now; reconnect enough of its voting computers and try again; your saved chats are still here`. codeaf preserves the existing cluster and saved work; it cannot make a writable minority or remove voters to manufacture a majority.
+
 
 ## Does an open connection keep my chat running on this computer?
 

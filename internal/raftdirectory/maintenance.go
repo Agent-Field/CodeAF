@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/ed25519"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/clusterctl"
+	"slices"
 
 	cs "github.com/Agent-Field/codeaf/internal/clusterstate"
 	"github.com/Agent-Field/codeaf/internal/directory"
@@ -15,7 +17,10 @@ import (
 // ordinary log. It never edits a voter list or invents missing authoritative
 // stores. Existing committed registry rows are left intact on every activation.
 func (g *Native) InitializeMembership(ctx context.Context, key ed25519.PrivateKey) error {
-	ctx = context.WithoutCancel(ctx)
+	g.opMu.Lock()
+	defer g.opMu.Unlock()
+	ctx, cancel := boundedCall(ctx)
+	defer cancel()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	i, app, err := g.barrier(ctx)
@@ -52,7 +57,10 @@ func (g *Native) InitializeMembership(ctx context.Context, key ed25519.PrivateKe
 // sleep acknowledgment is a local durable marker, and an incomplete delivery
 // keeps ordinary ticks. Reads still need their own fresh quorum on wake.
 func (g *Native) Maintain(ctx context.Context, elapsed, now int64, key ed25519.PrivateKey) (int64, error) {
-	ctx = context.WithoutCancel(ctx)
+	g.opMu.Lock()
+	defer g.opMu.Unlock()
+	ctx, cancel := boundedCall(ctx)
+	defer cancel()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	after := cs.TickEveryMillis
@@ -78,34 +86,77 @@ func (g *Native) Maintain(ctx context.Context, elapsed, now int64, key ed25519.P
 		return after, err
 	}
 	leader := g.leader()
-	if leader < 0 {
-		return after, directory.ErrUnreachable
+	remote := uint64(0)
+	var remotePlan raftcore.SchedulePlan
+	var remoteStatus clusterctl.ForwardStatus
+	var remoteAck *raftcore.SleepAck
+	scheduleRemote := func(acks []raftcore.SleepAck) (raftcore.SchedulePlan, error) {
+		reply, err := g.forward(ctx, remote, clusterctl.Forward{Action: "schedule", Now: now, Schedule: &raftcore.ScheduleInput{Now: elapsed, Acks: acks}})
+		if err != nil || reply.Plan == nil {
+			return raftcore.SchedulePlan{}, directory.ErrUnreachable
+		}
+		remoteStatus = reply.Status
+		remoteAck = reply.SleepAck
+		return *reply.Plan, nil
 	}
+	if leader < 0 {
+		remote = g.leaderID()
+		leader = g.replica()
+		if remote == 0 || leader < 0 || g.forwarders[remote] == nil {
+			return after, directory.ErrUnreachable
+		}
+		var err error
+		remotePlan, err = scheduleRemote(nil)
+		if err != nil {
+			return after, err
+		}
+	}
+
 	if g.peers != nil {
 		g.peers.now = max(g.peers.now, now)
 		if err := g.reconcileMembership(ctx); err != nil {
 			return after, err
 		}
+		if _, err := g.reconcileLeadership(ctx); err != nil {
+			return after, err
+		}
 	}
 	plan := plans[leader]
+	if remote != 0 {
+		plan = remotePlan
+	}
 	if plan.Barrier {
 		id := fmt.Sprintf("idle-%d", g.serial)
 		g.serial++
-		if err := g.drive(ctx, leader, raftcore.IdleRead{RequestID: id}); err != nil {
-			return after, err
-		}
-		if err := g.drain(ctx); err != nil {
-			return after, err
-		}
-		ok := g.reads[id]
-		delete(g.reads, id)
-		if !ok {
-			return after, directory.ErrUnreachable
-		}
-		var err error
-		plan, err = Schedule(ctx, g.stores[leader], g.nodes[leader], elapsed, now, false, nil)
-		if err != nil {
-			return after, err
+		if remote != 0 {
+			reply, err := g.forward(ctx, remote, clusterctl.Forward{Action: "idle-read", ID: id})
+			if err != nil || reply.Barrier == 0 {
+				return after, directory.ErrUnreachable
+			}
+			if _, _, err = g.appliedReplica(ctx, reply.Barrier); err != nil {
+				return after, err
+			}
+			plan, err = scheduleRemote(nil)
+			if err != nil {
+				return after, err
+			}
+		} else {
+			if err := g.drive(ctx, leader, raftcore.IdleRead{RequestID: id}); err != nil {
+				return after, err
+			}
+			if err := g.drain(ctx); err != nil {
+				return after, err
+			}
+			ok := g.reads[id]
+			delete(g.reads, id)
+			if !ok {
+				return after, directory.ErrUnreachable
+			}
+			var err error
+			plan, err = Schedule(ctx, g.stores[leader], g.nodes[leader], elapsed, now, false, nil)
+			if err != nil {
+				return after, err
+			}
 		}
 	}
 	if plan.Prepare {
@@ -113,7 +164,12 @@ func (g *Native) Maintain(ctx context.Context, elapsed, now int64, key ed25519.P
 		if err != nil {
 			return after, err
 		}
-		c, err := cs.Sign(cs.Command{Schema: cs.SchemaVersion, Cluster: g.manifest.Config.Cluster, Actor: cs.AnchorActor(g.manifest.Config.Anchors[0]), Session: "sleep", Sequence: 1, Now: now, Change: cs.Mutation{PrepareQuiescence: &cs.PrepareQuiescence{Barrier: app.Applied, Term: g.status[leader].Term, Voters: raftcore.Configuration(app.ConfState).Voters}}}, key)
+		c, err := cs.Sign(cs.Command{Schema: cs.SchemaVersion, Cluster: g.manifest.Config.Cluster, Actor: cs.AnchorActor(g.manifest.Config.Anchors[0]), Session: "sleep", Sequence: 1, Now: now, Change: cs.Mutation{PrepareQuiescence: &cs.PrepareQuiescence{Barrier: app.Applied, Term: func() uint64 {
+			if remote != 0 {
+				return remoteStatus.Term
+			}
+			return g.status[leader].Term
+		}(), Voters: raftcore.Configuration(app.ConfState).Voters}}}, key)
 		if err != nil {
 			return after, err
 		}
@@ -140,16 +196,23 @@ func (g *Native) Maintain(ctx context.Context, elapsed, now int64, key ed25519.P
 		}
 		// Deliver the committed marker to every reachable follower before collecting
 		// durable acknowledgments. Missing voters remain active and prevent sleep.
-		if err = g.drive(ctx, leader, raftcore.Tick{}); err != nil {
-			return after, err
+		if remote == 0 {
+			if err = g.drive(ctx, leader, raftcore.Tick{}); err != nil {
+				return after, err
+			}
 		}
 		if err = g.drain(ctx); err != nil {
 			return after, err
 		}
 	}
 	acks := []raftcore.SleepAck{}
+	app, _, err := g.stores[leader].ApplicationView(ctx)
+	if err != nil {
+		return after, err
+	}
+	voters := raftcore.Configuration(app.ConfState).Voters
 	for i, store := range g.stores {
-		if store == nil {
+		if store == nil || !slices.Contains(voters, g.manifest.Config.Anchors[i]) {
 			continue
 		}
 		app, _, err := store.ApplicationView(ctx)
@@ -166,7 +229,22 @@ func (g *Native) Maintain(ctx context.Context, elapsed, now int64, key ed25519.P
 			acks = append(acks, raftcore.SleepAck{Node: g.manifest.Config.Anchors[i], Index: m.Index, Term: m.Term})
 		}
 	}
+	if remote != 0 {
+		if _, err := scheduleRemote(nil); err != nil {
+			return after, err
+		}
+		if remoteAck != nil {
+			acks = append(acks, *remoteAck)
+		}
+	}
 	allSleep := true
+	if remote != 0 {
+		p, err := scheduleRemote(acks)
+		if err != nil {
+			return after, err
+		}
+		allSleep = p.Sleeping
+	}
 	for i, node := range g.nodes {
 		if node == nil {
 			allSleep = false
@@ -194,7 +272,7 @@ func (g *Native) Maintain(ctx context.Context, elapsed, now int64, key ed25519.P
 func (g *Native) PendingEffects(ctx context.Context) (bool, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	i := g.leader()
+	i := g.replica()
 	if i < 0 {
 		return false, directory.ErrUnreachable
 	}

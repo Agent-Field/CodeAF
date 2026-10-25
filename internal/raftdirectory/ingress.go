@@ -12,7 +12,10 @@ import (
 // read. Caller cancellation cannot interrupt an admitted durability transaction.
 // The restricted effects witness advances time; it cannot authorize the caller.
 func (g *Native) ClusterAPI(ctx context.Context, request cs.ClusterRequest, clock cs.Command) (cs.ClusterResponse, error) {
-	ctx = context.WithoutCancel(ctx)
+	g.opMu.Lock()
+	defer g.opMu.Unlock()
+	ctx, cancel := boundedCall(ctx)
+	defer cancel()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	var out cs.ClusterResponse

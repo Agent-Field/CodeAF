@@ -35,37 +35,51 @@ import (
 
 var errMemberWaiting = errors.New("this computer is still joining the cluster; retry shortly; your saved chats are still here")
 
-// memberRecord belongs to the store, rather than the device's pairing. Losing
-// an initialized store must retire its old authority instead of bootstrapping
-// another log under the same node. Pending admission keeps its token on retry.
+// A durable reservation avoids fsync per frame while keeping sequences unique
+// across process death, including deliveries still buffered for a sleeping peer.
+const memberSequenceBlock uint64 = 1 << 32
+
+// memberRecord belongs to the store rather than the device's pairing. Losing
+// an initialized store retires its authority instead of bootstrapping another
+// log under the same node. Pending admission keeps its token on retry.
 type memberRecord struct {
-	Store       string
-	Grant       raftdirectory.PersonalEnrollment
-	Initialized bool
-	Seed        uint64
+	SequenceCeiling uint64
+	Store           string
+	Grant           raftdirectory.PersonalEnrollment
+	Initialized     bool
+	Seed            uint64
 }
 
 type personalMember struct {
-	closed   bool
-	changed  chan struct{}
-	idle     bool
-	mu       sync.Mutex
-	owner    *Sync
-	record   memberRecord
-	path     string
-	lock     *os.File
-	store    *raftstore.SQLite
-	core     *raftcore.Core
-	status   raftcore.Status
-	pending  []rafttransport.Envelope
-	sequence uint64
-	ack      [3]uint64
-	snapshot *pb.Message
-	chunks   map[uint64]bool
-	conn     *websocket.Conn
-	cancel   context.CancelFunc
-	done     chan struct{}
-	failure  error
+	chunkWaiting   map[uint64]uint64
+	sleeping       bool
+	outSnapshots   map[uint64]*memberSnapshot
+	forwardConn    *websocket.Conn
+	forwardDone    chan struct{}
+	forwardReplies chan clusterctl.Forward
+	forwardPending map[string]clusterctl.Forward
+	forwardStarted map[string]time.Time
+	closed         bool
+	changed        chan struct{}
+	idle           bool
+	mu             sync.Mutex
+	owner          *Sync
+	record         memberRecord
+	path           string
+	lock           *os.File
+	store          *raftstore.SQLite
+	core           *raftcore.Core
+	status         raftcore.Status
+	pending        []rafttransport.Envelope
+	sent           map[uint64]rafttransport.Envelope
+	sequence       uint64
+	ack            [3]uint64
+	snapshot       *pb.Message
+	chunks         map[uint64]bool
+	conn           *websocket.Conn
+	cancel         context.CancelFunc
+	done           chan struct{}
+	failure        error
 }
 
 func (s *Sync) memberPath() string {
@@ -213,6 +227,11 @@ func (s *Sync) openMember(ctx context.Context) (_ *personalMember, err error) {
 		return nil, err
 	}
 	m.record.Seed = binary.LittleEndian.Uint64(entropy[:])
+	if m.record.SequenceCeiling > ^uint64(0)-memberSequenceBlock {
+		return nil, rafttransport.ErrGeneration
+	}
+	m.sequence = m.record.SequenceCeiling
+	m.record.SequenceCeiling += memberSequenceBlock
 	if err = saveLeadership(filepath.Join(path, "identity.json"), m.record); err != nil {
 		return nil, err
 	}
@@ -227,6 +246,9 @@ func (s *Sync) openMember(ctx context.Context) (_ *personalMember, err error) {
 		beforeApplied, beforeAck := m.status.Applied, m.ack
 		sent := len(m.pending) != 0
 		if err = m.exchange(ctx); err != nil {
+			if errors.Is(err, errMemberWaiting) && m.snapshot != nil {
+				break
+			}
 			return nil, err
 		}
 		if m.status.Applied >= g.Barrier && len(m.pending) == 0 {
@@ -239,6 +261,12 @@ func (s *Sync) openMember(ctx context.Context) (_ *personalMember, err error) {
 		// An unavailable leader must not turn activation into an empty hot poll.
 		// Retain the same durable store and resume at the owner's next retry round.
 		if !sent && beforeApplied == m.status.Applied && beforeAck == m.ack && len(m.pending) == 0 {
+			// A staged snapshot may need the sender's next asynchronous chunk credit.
+			// Keep this actor and subscribe passively instead of losing its manifest
+			// between HTTP rounds. Readiness still requires durable application.
+			if m.snapshot != nil {
+				break
+			}
 			return nil, errMemberWaiting
 		}
 	}
@@ -255,6 +283,21 @@ func (m *personalMember) step(ctx context.Context, input raftcore.Input) error {
 			return err
 		}
 		m.status = effects.Status
+		if proposal, ok := input.(raftcore.Propose); ok && effects.Persist != nil {
+			for id, work := range m.forwardPending {
+				if work.Action == "submit" && work.Barrier == 0 && bytes.Equal(work.Command, proposal.Command) {
+					for _, entry := range effects.Persist.Entries {
+						if bytes.Equal(entry.GetData(), proposal.Command) {
+							work.Barrier = entry.GetIndex()
+						}
+					}
+					m.forwardPending[id] = work
+				}
+			}
+		}
+		for _, read := range effects.Reads {
+			m.readForward(ctx, read.RequestID, read.Index)
+		}
 		for _, out := range effects.Send {
 			var destination uint64
 			for _, peer := range m.record.Grant.Members {
@@ -262,8 +305,23 @@ func (m *personalMember) step(ctx context.Context, input raftcore.Input) error {
 					destination = peer.Incarnation
 				}
 			}
+			// Revocation can precede configuration removal. Dropping that
+			// unreachable delivery must not stop replication to other voters.
+			if destination == 0 {
+				continue
+			}
+			if err = m.rememberSnapshot(out.To, out.Bytes); err != nil {
+				return err
+			}
+			if m.sequence == m.record.SequenceCeiling {
+				return rafttransport.ErrGeneration
+			}
 			m.sequence++
 			e := rafttransport.Envelope{Scope: m.record.Grant.Scope, From: m.record.Grant.Node, To: out.To, Incarnation: m.record.Grant.Incarnation, Destination: destination, Sequence: m.sequence, Payload: out.Bytes}
+			if len(out.Bytes) > rafttransport.MaxBatchBytes {
+				hash := raftsnapshot.ID(out.Bytes)
+				e.Chunk = &rafttransport.Chunk{Generation: hash, Hash: hash}
+			}
 			if err = e.SignWith(m.owner.Device.Sign); err != nil {
 				return err
 			}
@@ -277,7 +335,20 @@ func (m *personalMember) step(ctx context.Context, input raftcore.Input) error {
 			continue
 		}
 		if effects.Apply != nil {
-			if _, err = raftdirectory.Apply(ctx, m.store, *effects.Apply, m.record.Grant.Scope.Cluster, 0); err != nil {
+			results, applyErr := raftdirectory.Apply(ctx, m.store, *effects.Apply, m.record.Grant.Scope.Cluster, 0)
+			if err = applyErr; err != nil {
+				return err
+			}
+			entries := [][]byte{}
+			indices := []uint64{}
+			for _, entry := range effects.Apply.Entries {
+				if entry.GetType() == pb.EntryNormal && len(entry.GetData()) != 0 {
+					entries = append(entries, entry.GetData())
+					indices = append(indices, entry.GetIndex())
+				}
+			}
+			m.appliedForward(entries, indices, results)
+			if err = m.refreshPeers(ctx); err != nil {
 				return err
 			}
 			input = raftcore.Applied{BatchID: effects.Apply.ID}
@@ -316,6 +387,12 @@ func (m *personalMember) exchange(ctx context.Context) error {
 		return err
 	}
 	response, err := (rafttransport.Client{URL: m.owner.Relay, HTTP: m.owner.ClusterHTTP(nil)}).Exchange(ctx, req)
+	// Startup retains its durable store and admission token on transient inbox
+	// pressure. The existing owner retries with bounded backoff instead of
+	// reporting a permanently unusable member or starting an empty hot poll.
+	if errors.Is(err, rafttransport.ErrCapacity) {
+		return errMemberWaiting
+	}
 	if err != nil {
 		return err
 	}
@@ -334,6 +411,9 @@ func (m *personalMember) receive(ctx context.Context, response rafttransport.Res
 	}
 	if len(response.Messages) > rafttransport.MaxMessages {
 		return rafttransport.ErrWire
+	}
+	if err := m.socketAdmission(ctx, response); err != nil {
+		return err
 	}
 	for _, delivery := range response.Messages {
 		if delivery.Cursor == 0 {
@@ -374,9 +454,15 @@ func (m *personalMember) receive(ctx context.Context, response rafttransport.Res
 		if e.Verify(source) != nil || e.Scope != m.record.Grant.Scope || e.To != m.record.Grant.Node || e.Destination != m.record.Grant.Incarnation {
 			return rafttransport.ErrAuth
 		}
+		if e.AppendChunk() {
+			e.Chunk = nil
+		}
 		if e.Chunk != nil {
 			if m.snapshot == nil || e.Chunk.Generation != raftsnapshot.ID(m.snapshot.GetSnapshot().GetData()) {
-				return rafttransport.ErrWire
+				// A reconnect may outlive its expendable snapshot receiver. Drain
+				// orphaned chunks; only a fresh signed manifest can start installation.
+				m.ack[delivery.Lane] = delivery.Cursor
+				continue
 			}
 			if err = m.store.PutSnapshotChunk(ctx, e.Chunk.Generation, e.Chunk.Offset, e.Payload, e.Chunk.Hash); err != nil {
 				return err
@@ -416,13 +502,38 @@ func (m *personalMember) receive(ctx context.Context, response rafttransport.Res
 					m.snapshot = message
 					m.chunks = map[uint64]bool{}
 				}
-			} else if err = m.step(ctx, raftcore.PeerMessage{Bytes: e.Payload}); err != nil {
-				return err
+			} else {
+				obsolete := false
+				if m.sleeping && message.GetTerm() <= m.status.Term && (message.GetType() == pb.MsgAppResp || message.GetType() == pb.MsgHeartbeatResp) {
+					for _, peer := range peers {
+						if peer.Node == e.From && !peer.Voter {
+							obsolete = true
+						}
+					}
+				}
+				if !obsolete {
+					m.sleeping = false
+					if err = m.step(ctx, raftcore.PeerMessage{Bytes: e.Payload}); err != nil {
+						return err
+					}
+				}
+			}
+		}
+		if e.Chunk == nil {
+			message := new(pb.Message)
+			if proto.Unmarshal(e.Payload, message) == nil && message.GetType() == pb.MsgAppResp && !message.GetReject() {
+				if transfer := m.outSnapshots[e.From]; transfer != nil && message.GetIndex() >= transfer.manifest.Index {
+					delete(m.outSnapshots, e.From)
+					delete(m.chunkWaiting, e.From)
+					if err = m.step(ctx, raftcore.TransportResult{Peer: e.From, Snapshot: true, Success: true}); err != nil {
+						return err
+					}
+				}
 			}
 		}
 		m.ack[delivery.Lane] = delivery.Cursor
 	}
-	return nil
+	return m.finishSchedules(ctx)
 }
 
 func (m *personalMember) start(ctx context.Context) error {
@@ -433,7 +544,8 @@ func (m *personalMember) start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	// Upgrade authentication carries no outbound messages. Catch-up flushed them.
+	// Upgrade authentication carries no outbound messages. The peer writer
+	// flushes pending work after the initial subscription response.
 	req.Messages = nil
 	if err = req.SignWith(m.owner.Device.Sign); err != nil {
 		return err
@@ -470,38 +582,13 @@ func (m *personalMember) start(ctx context.Context) error {
 			}
 			// An empty push is only a subscription acknowledgment. Answering it would
 			// create an endless empty frame loop and wake an otherwise idle group.
-			if err == nil && (len(response.Messages) > 0 || len(m.pending) > 0) {
-				for {
-					req, e := m.request()
-					if e != nil {
-						err = e
-						break
-					}
-					data, _ := rafttransport.Encode(req)
-					if !m.owner.memberAllowed() {
-						err = ErrQuiet
-						break
-					}
-					writeCtx, cancel := context.WithTimeout(ctx, requestTimeout)
-					m.owner.clusterFrames.Add(1)
-					err = conn.Write(writeCtx, websocket.MessageBinary, data)
-					cancel()
-					if err != nil {
-						break
-					}
-					if len(req.Messages) == 0 {
-						break
-					}
-					m.pending = m.pending[1:]
-					if len(m.pending) == 0 {
-						break
-					}
-				}
+			if err == nil && (len(response.Messages) > 0 || len(m.pending) > 0 || m.hasSnapshotWork()) {
+				err = m.flushPeer(ctx)
 			}
 			if err != nil {
 				m.failure = err
 			}
-			m.idle = err == nil && len(response.Messages) == 0 && len(m.pending) == 0
+			m.idle = err == nil && len(response.Messages) == 0 && len(m.pending) == 0 && len(m.sent) == 0
 			close(m.changed)
 			m.changed = make(chan struct{})
 			m.mu.Unlock()
@@ -511,7 +598,7 @@ func (m *personalMember) start(ctx context.Context) error {
 			}
 		}
 	}()
-	return nil
+	return m.startForward(ctx)
 }
 
 func (m *personalMember) close() {
@@ -528,6 +615,12 @@ func (m *personalMember) close() {
 	}
 	if m.conn != nil {
 		m.conn.CloseNow()
+	}
+	if m.forwardConn != nil {
+		m.forwardConn.CloseNow()
+	}
+	if m.forwardDone != nil {
+		<-m.forwardDone
 	}
 	if m.done != nil {
 		<-m.done

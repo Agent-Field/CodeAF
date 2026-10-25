@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Agent-Field/codeaf/internal/clusterctl"
 	cs "github.com/Agent-Field/codeaf/internal/clusterstate"
 	"github.com/Agent-Field/codeaf/internal/raftdirectory"
 	"github.com/Agent-Field/codeaf/internal/rafttransport"
@@ -69,7 +70,7 @@ func (n *namespaces) enrollPersonal(w http.ResponseWriter, r *http.Request) {
 func (n *namespaces) exchangePersonal(w http.ResponseWriter, r *http.Request) {
 	var raw []byte
 	var err error
-	if r.URL.Path == rafttransport.SocketPath {
+	if r.URL.Path == rafttransport.SocketPath || r.URL.Path == clusterctl.ForwardPath {
 		raw, err = base64.RawURLEncoding.DecodeString(r.Header.Get(rafttransport.SocketAuthHeader))
 	} else {
 		raw, err = io.ReadAll(http.MaxBytesReader(w, r.Body, rafttransport.MaxExchangeBytes))
@@ -94,7 +95,14 @@ func (n *namespaces) exchangePersonal(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "member authorization refused", 403)
 		return
 	}
-	d.peers.ServeHTTP(w, r)
+	if r.URL.Path == clusterctl.ForwardPath {
+		d.host.ForwardHTTP(w, r)
+		if d.host.PersonalDeparted(request.Node) {
+			d.armMembers()
+		}
+	} else {
+		d.peers.ServeHTTP(w, r)
+	}
 	// Merely polling an idle learner does not arm recurring work. Actual peer
 	// ingress wakes the same scheduler as every other consensus input.
 	if len(request.Messages) > 0 {

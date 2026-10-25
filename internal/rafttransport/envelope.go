@@ -130,6 +130,14 @@ func (e Envelope) Verify(key ed25519.PublicKey) error {
 	}
 	return nil
 }
+
+// AppendChunk carries one framed append whose command already fits the normal
+// proposal budget. The payload hash as generation distinguishes it from a
+// snapshot manifest; both retain the existing chunk byte and queue limits.
+func (e Envelope) AppendChunk() bool {
+	return e.Chunk != nil && e.Chunk.Offset == 0 && e.Chunk.Generation == e.Chunk.Hash
+}
+
 func (e Envelope) validate() error {
 	if !e.Scope.valid() || !node(e.From) || !node(e.To) || e.From == e.To || e.Incarnation == 0 || e.Destination == 0 || e.Sequence == 0 || e.Digest != digest(e.Payload) {
 		return ErrWire
@@ -138,13 +146,20 @@ func (e Envelope) validate() error {
 		if len(e.Payload) == 0 || len(e.Payload) > MaxChunkBytes || !hash(e.Chunk.Generation) || e.Chunk.Hash != e.Digest {
 			return ErrWire
 		}
-		return nil
-	}
-	if len(e.Payload) == 0 || len(e.Payload) > MaxBatchBytes {
+		if !e.AppendChunk() {
+			return nil
+		}
+		if len(e.Payload) <= MaxBatchBytes {
+			return ErrWire
+		}
+	} else if len(e.Payload) == 0 || len(e.Payload) > MaxBatchBytes {
 		return ErrWire
 	}
 	m := &pb.Message{}
 	if proto.Unmarshal(e.Payload, m) != nil || m.Type == nil || m.GetFrom() != e.From || m.GetTo() != e.To || m.GetTerm() == 0 || len(m.GetResponses()) != 0 || len(m.ProtoReflect().GetUnknown()) != 0 {
+		return ErrWire
+	}
+	if e.AppendChunk() && m.GetType() != pb.MsgApp {
 		return ErrWire
 	}
 	switch m.GetType() {

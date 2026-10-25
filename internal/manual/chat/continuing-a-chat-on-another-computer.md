@@ -251,7 +251,7 @@ chat first; this does not discard the work saved on your computer.
 
 ## Which computer coordinates: cluster status and cluster lead
 
-On a self-hosted service with persistent storage, an open paired home joins as a learner. Three persistent voters keep coordination available when your laptops sleep. `codeaf cluster status` shows this computer after joining. Leadership is not offered yet; continue chats through the ordinary continue door. See the coordination and workers page for command refusals and setup details.
+On a self-hosted service with persistent storage, an open paired home joins as a learner. Three persistent voters keep coordination available when your laptops sleep. `codeaf cluster status` shows this computer after joining. Continue chats through the ordinary continue door. See the coordination and workers page for command refusals and setup details.
 
 ## Can a worker access all my chats or approve pairing?
 

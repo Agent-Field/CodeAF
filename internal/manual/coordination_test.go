@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// R9/R23/R27 keep the moved coordination material reachable while device pages
+// R6/R9/R23/R27 keep the moved coordination material reachable while device pages
 // keep their own vocabulary and the existing retrieval probes stay intact.
 func TestR9R23R27LearnerAndIdleAnswersRemainReachable(t *testing.T) {
 	for _, q := range []string{
@@ -25,7 +25,7 @@ func TestR9R23R27LearnerAndIdleAnswersRemainReachable(t *testing.T) {
 		}
 	}
 	page, _ := Chat().Page("coordination-and-workers")
-	for _, claim := range []string{"durable learner", "The three anchors remain the only voters", "Leadership is not offered yet on any relay", "hosted relay has no learner door"} {
+	for _, claim := range []string{"durable learner", "Three anchors vote until a personal computer is explicitly asked to lead", "run `codeaf cluster lead`", "does not automatically regain leadership", "hosted relay has no learner door"} {
 		if !strings.Contains(page, claim) {
 			t.Errorf("R9 missing current capability: %q", claim)
 		}

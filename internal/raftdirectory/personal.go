@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strconv"
 
+	"github.com/Agent-Field/codeaf/internal/clusterctl"
 	"github.com/Agent-Field/codeaf/internal/clusterstate"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/raftcore"
@@ -38,7 +39,7 @@ func recordReader(ctx context.Context, s *raftstore.SQLite, app raftstore.Applic
 	}
 }
 func (g *Native) membership(ctx context.Context) (int, raftstore.Application, clusterstate.Membership, clusterstate.ReadRecord, error) {
-	i := g.leader()
+	i := g.replica()
 	if i < 0 {
 		return i, raftstore.Application{}, clusterstate.Membership{}, nil, directory.ErrUnreachable
 	}
@@ -89,7 +90,22 @@ func (g *Native) reconcileMembership(ctx context.Context) error {
 		if h.Pending == nil {
 			return g.installPeers(ctx)
 		}
-		plan, err := g.nodes[i].PlanMembership(h)
+		var plan raftcore.MembershipPlan
+		if g.leader() < 0 {
+			reply, e := g.forward(ctx, g.leaderID(), clusterctl.Forward{Action: "membership"})
+			if reply.Membership == nil {
+				return directory.ErrUnreachable
+			}
+			if e != nil {
+				return nil
+			}
+			plan = *reply.Membership
+			if len(plan.Change) > 0 {
+				return nil
+			}
+		} else {
+			plan, err = g.nodes[i].PlanMembership(h)
+		}
 		if errors.Is(err, raftcore.ErrBusy) {
 			return nil
 		}
@@ -111,7 +127,7 @@ func (g *Native) reconcileMembership(ctx context.Context) error {
 		if _, err = g.controlChange(ctx, clusterstate.Mutation{SettleMembership: &clusterstate.SettleMembership{Revision: h.Revision, Node: h.Pending.Node}}, app.LogicalTime); err != nil {
 			return err
 		}
-		if plan.Checkpoint {
+		if plan.Checkpoint && g.leader() >= 0 {
 			p, err := g.stores[i].CreateSnapshot(ctx)
 			if err != nil {
 				return err
@@ -130,7 +146,10 @@ func (g *Native) reconcileMembership(ctx context.Context) error {
 // EnrollPersonal serializes allocation, replacement and the original signed
 // proof with all other member input. No public call waits on the learner.
 func (g *Native) EnrollPersonal(ctx context.Context, proof clusterstate.V1Request) (PersonalEnrollment, error) {
-	ctx = context.WithoutCancel(ctx)
+	g.opMu.Lock()
+	defer g.opMu.Unlock()
+	ctx, cancel := boundedCall(ctx)
+	defer cancel()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	var out PersonalEnrollment

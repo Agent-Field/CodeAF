@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -310,6 +311,7 @@ func serveSocket(ctx context.Context, conn *websocket.Conn, router *Router, init
 		return
 	}
 	arm(response, true)
+	lastChunks := response.Chunks
 	for {
 		receiveOnly := false
 		select {
@@ -335,15 +337,27 @@ func serveSocket(ctx context.Context, conn *websocket.Conn, router *Router, init
 			return
 		}
 		response, err = router.exchange(req, now().UnixMilli(), receiveOnly)
+		rejected := err == ErrCapacity && !receiveOnly
+		if rejected {
+			response, err = router.exchange(req, now().UnixMilli(), true)
+			for _, envelope := range req.Messages {
+				response.Rejected = append(response.Rejected, decimal(envelope.Sequence))
+			}
+		} else if err == nil && !receiveOnly {
+			for _, envelope := range req.Messages {
+				response.Accepted = append(response.Accepted, decimal(envelope.Sequence))
+			}
+		}
 		if err != nil {
 			return
 		}
-		if receiveOnly && len(response.Messages) == 0 {
+		if receiveOnly && len(response.Messages) == 0 && slices.Equal(lastChunks, response.Chunks) {
 			continue
 		}
 		if !writeSocket(ctx, conn, response) {
 			return
 		}
+		lastChunks = response.Chunks
 		arm(response, !receiveOnly)
 	}
 }

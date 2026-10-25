@@ -12,11 +12,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"time"
 )
 
 func (s *Sync) clusterClient() clusterctl.Client {
-	return clusterctl.Client{Base: s.Relay, Sign: reqsign.SignFor(deviceSigner{s.Identity, s.Device}, s.now), HTTP: s.ClusterHTTP(&http.Client{Timeout: 30 * time.Second})}
+	return clusterctl.Client{Base: s.Relay, Sign: reqsign.SignFor(deviceSigner{s.Identity, s.Device}, s.now), HTTP: s.ClusterHTTP(&http.Client{Timeout: clusterctl.ForwardTimeout})}
 }
 func (s *Sync) ClusterStatus(ctx context.Context) (clusterctl.Status, error) {
 	if !s.memberAllowed() {
@@ -94,7 +93,7 @@ func (s *Sync) LeadCluster(ctx context.Context, node uint64) (cs.LeadershipRecei
 		if saved.Sequence == ^uint64(0) {
 			return receipt, errors.New("this computer's leadership request sequence is full")
 		}
-		c := cs.Command{Schema: cs.SchemaVersion, Cluster: status.Cluster, Actor: s.Device.ID(), Session: "leadership", Sequence: saved.Sequence + 1, Ack: saved.Sequence, Now: time.Now().UnixMilli(), Change: cs.Mutation{RequestLeadership: &cs.RequestLeadership{Revision: status.Membership.Revision, Node: node, Device: s.Device.ID()}}}
+		c := cs.Command{Schema: cs.SchemaVersion, Cluster: status.Cluster, Actor: s.Device.ID(), Session: "leadership", Sequence: saved.Sequence + 1, Ack: saved.Sequence, Now: s.now().UnixMilli(), Change: cs.Mutation{RequestLeadership: &cs.RequestLeadership{Revision: status.Membership.Revision, Node: node, Device: s.Device.ID()}}}
 		// A personal device may request another enrolled target, but must bind its
 		// committed device ID rather than guessing it from a node number.
 		if node != status.Self {
@@ -115,6 +114,23 @@ func (s *Sync) LeadCluster(ctx context.Context, node uint64) (cs.LeadershipRecei
 		}
 	} else if node != 0 && saved.Pending.Change.RequestLeadership.Node != node {
 		return receipt, errors.New("a leadership request is still pending; retry it before choosing another computer")
+	}
+	// A closed terminal may use a scoped lifetime over its existing member store.
+	// Another open window already owns that store and keeps serving independently.
+	var scoped *personalMember
+	if s.displayMember() == nil {
+		if _, e := os.Stat(filepath.Join(s.memberPath(), "identity.json")); e == nil {
+			scoped, e = s.openMember(ctx)
+			if e != nil && !filelock.IsBusy(e) {
+				return receipt, e
+			}
+			if scoped != nil {
+				defer scoped.close()
+				if e = scoped.start(ctx); e != nil {
+					return receipt, e
+				}
+			}
+		}
 	}
 	receipt, err = client.Lead(ctx, *saved.Pending)
 	if err != nil {

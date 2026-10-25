@@ -53,7 +53,7 @@ func (g *Native) PersonalStatus(ctx context.Context, actor, certificate string) 
 		if err != nil || membership.Revision == 0 {
 			return cs.ErrDependency
 		}
-		out = clusterctl.Status{Cluster: g.manifest.Config.Cluster, Leader: g.status[g.leader()].NodeID, Membership: membership, Configuration: conf, LeadershipUnavailable: true}
+		out = clusterctl.Status{Cluster: g.manifest.Config.Cluster, Leader: g.leaderID(), Membership: membership, Configuration: conf, LeadershipUnavailable: true}
 		if g.peers != nil {
 			for _, id := range conf.Learners {
 				raw, err := read(cs.MemberKey(id))
@@ -91,6 +91,7 @@ func (g *Native) PersonalStatus(ctx context.Context, actor, certificate string) 
 		if !member.Retired {
 
 			out.Self = member.Node
+			out.LeadershipUnavailable = false
 		}
 		return nil
 	})

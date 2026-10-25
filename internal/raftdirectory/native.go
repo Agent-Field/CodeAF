@@ -1,6 +1,7 @@
 package raftdirectory
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/binary"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/Agent-Field/codeaf/internal/clusterctl"
 	"github.com/Agent-Field/codeaf/internal/clusterstate"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/raftcore"
@@ -20,24 +22,35 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// Native owns three independent durable actors on one host. The queue covers
-// each persistence completion, authenticated local delivery and read callback;
-// no caller can inspect a replica between its barrier and its application read.
-// Peer bytes reach a core only inside this queue, after committed enrollment
-// authenticates external input. Public operations never wait on a learner.
+type appliedCommand struct {
+	result clusterstate.Result
+	index  uint64
+}
+
+// Native owns three independently durable anchors and bridges external members.
+// opMu orders public operations; mu serializes persistence, application and
+// authenticated delivery. Waiting callers release only mu so peers can finish
+// their quorum. An authority callback retains mu from its fresh barrier through
+// its application read, preventing an intervening state change.
 type Native struct {
-	mu       sync.Mutex
-	peers    *nativePeers
-	manifest clusterstate.LegacyManifest
-	stores   [3]*raftstore.SQLite
-	nodes    [3]*raftcore.Core
-	status   [3]raftcore.Status
-	queue    []raftcore.Outbound
-	reads    map[string]bool
-	results  [3][]clusterstate.Result
-	serial   uint64
-	failed   error
-	closed   bool
+	mu               sync.Mutex
+	opMu             sync.Mutex
+	changed          chan struct{}
+	forwarders       map[uint64]*forwardLink
+	pendingCommand   []byte
+	pendingAdmission uint64
+	outcome          *appliedCommand
+	peers            *nativePeers
+	manifest         clusterstate.LegacyManifest
+	stores           [3]*raftstore.SQLite
+	nodes            [3]*raftcore.Core
+	status           [3]raftcore.Status
+	queue            []raftcore.Outbound
+	reads            map[string]bool
+	results          [3][]clusterstate.Result
+	serial           uint64
+	failed           error
+	closed           bool
 	// Changed projects durable rows into advisory notifications under the queue.
 	Changed func(*raftstore.SQLite, raftstore.Application) error
 }
@@ -184,6 +197,10 @@ func (g *Native) Close() error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.closed = true
+	g.signal()
+	for _, link := range g.forwarders {
+		link.conn.CloseNow()
+	}
 	var err error
 	for _, s := range g.stores {
 		if s != nil {
@@ -204,12 +221,23 @@ func (g *Native) leader() int {
 	return -1
 }
 func (g *Native) drive(ctx context.Context, i int, input raftcore.Input) error {
+	// An admitted Ready finishes atomically even if the waiting HTTP deadline
+	// expires. Only an actual storage error may stop this durable actor.
+	ctx = context.WithoutCancel(ctx)
+	defer g.signal()
 	for n := 0; n < 10000; n++ {
 		e, err := g.nodes[i].Step(input)
 		if err != nil {
 			return err
 		}
 		g.status[i] = e.Status
+		if proposal, ok := input.(raftcore.Propose); ok && bytes.Equal(proposal.Command, g.pendingCommand) && e.Persist != nil {
+			for _, entry := range e.Persist.Entries {
+				if bytes.Equal(entry.GetData(), g.pendingCommand) {
+					g.pendingAdmission = entry.GetIndex()
+				}
+			}
+		}
 		g.queue = append(g.queue, e.Send...)
 		for _, r := range e.Reads {
 			app, _, err := g.stores[i].ApplicationView(ctx)
@@ -233,8 +261,27 @@ func (g *Native) drive(ctx context.Context, i int, input raftcore.Input) error {
 				_, _ = g.nodes[i].Step(raftcore.StorageFailed{BatchID: e.Apply.ID})
 				return fmt.Errorf("raftdirectory: apply member %d index %d: %w", g.manifest.Config.Anchors[i], e.Apply.Index, err)
 			}
-			g.results[i] = append(g.results[i], results...)
+			g.results[i] = results
+			resultIndex := 0
+			for _, entry := range e.Apply.Entries {
+				if entry.GetType() != pb.EntryNormal || len(entry.GetData()) == 0 {
+					continue
+				}
+				if len(g.pendingCommand) > 0 && bytes.Equal(entry.GetData(), g.pendingCommand) && entry.GetIndex() == g.pendingAdmission && g.pendingAdmission != 0 && g.outcome == nil {
+					g.outcome = &appliedCommand{result: results[resultIndex], index: entry.GetIndex()}
+				}
+				resultIndex++
+			}
 			input = raftcore.Applied{BatchID: e.Apply.ID}
+		} else if e.SnapshotNeeded != nil {
+			snapshot, err := g.stores[i].CreateSnapshot(ctx)
+			if err != nil {
+				return err
+			}
+			if err = g.stores[i].Compact(ctx, snapshot.GetMetadata().GetIndex()); err != nil {
+				return err
+			}
+			input = raftcore.CompactSnapshot{Snapshot: snapshot}
 		} else {
 			return nil
 		}
@@ -242,6 +289,7 @@ func (g *Native) drive(ctx context.Context, i int, input raftcore.Input) error {
 	return directory.ErrUnreachable
 }
 func (g *Native) drain(ctx context.Context) error {
+	ctx = context.WithoutCancel(ctx)
 	for n := 0; len(g.queue) > 0; n++ {
 		if n >= 10000 {
 			return directory.ErrUnreachable
@@ -334,18 +382,62 @@ func (g *Native) stageSnapshot(ctx context.Context, target int, message *pb.Mess
 }
 
 func (g *Native) submit(ctx context.Context, c clusterstate.Command) (clusterstate.Result, error) {
+	if ctx.Err() != nil {
+		return clusterstate.Result{}, directory.ErrUnreachable
+	}
 	if g.peers != nil {
 		g.peers.sleeping = false
 		g.peers.now = max(g.peers.now, c.Now)
 	}
-	i := g.leader()
-	if i < 0 {
-		return clusterstate.Result{}, directory.ErrUnreachable
-	}
+	ctx, cancel := context.WithTimeout(ctx, clusterctl.ForwardTimeout)
+	defer cancel()
 	raw, err := clusterstate.EncodeCommand(c)
 	if err != nil {
 		return clusterstate.Result{}, err
 	}
+	i := g.leader()
+	if i < 0 {
+		node := g.leaderID()
+		reply, e := g.forward(ctx, node, clusterctl.Forward{Action: "submit", Command: raw})
+		if e != nil {
+			if err := g.refreshHint(ctx); err != nil {
+				return clusterstate.Result{}, err
+			}
+			if g.leader() >= 0 {
+				return g.submit(ctx, c)
+			}
+			// A stale hint retries the SAME signed request and forwarding ID.
+			newer := g.leaderID()
+			if newer != 0 && newer != node {
+				reply, e = g.forward(ctx, newer, clusterctl.Forward{ID: reply.ID, Action: "submit", Command: raw})
+			}
+		}
+		if e != nil || reply.Result == nil {
+			return clusterstate.Result{}, directory.ErrUnreachable
+		}
+		if _, _, e = g.appliedReplica(ctx, reply.Applied); e != nil {
+			return clusterstate.Result{}, e
+		}
+		if g.peers != nil {
+			if e = g.installPeers(ctx); e != nil {
+				return clusterstate.Result{}, e
+			}
+		}
+		if g.Changed != nil {
+			j, app, e := g.appliedReplica(ctx, reply.Applied)
+			if e != nil {
+				return clusterstate.Result{}, e
+			}
+			if e = g.Changed(g.stores[j], app); e != nil {
+				return clusterstate.Result{}, e
+			}
+		}
+		return *reply.Result, nil
+	}
+	g.pendingCommand = raw
+	g.pendingAdmission = 0
+	g.outcome = nil
+	defer func() { g.pendingCommand = nil; g.pendingAdmission = 0; g.outcome = nil }()
 	for j := range g.results {
 		g.results[j] = nil
 	}
@@ -356,10 +448,22 @@ func (g *Native) submit(ctx context.Context, c clusterstate.Command) (clustersta
 		g.failed = err
 		return clusterstate.Result{}, err
 	}
-	if len(g.results[i]) != 1 {
-		return clusterstate.Result{}, directory.ErrUnreachable
+	for g.outcome == nil {
+		if g.leader() != i {
+			return g.submit(ctx, c)
+		}
+		if g.peers == nil || len(g.forwarders) == 0 {
+			return clusterstate.Result{}, directory.ErrUnreachable
+		}
+		if err = g.waitProgress(ctx); err != nil {
+			return clusterstate.Result{}, err
+		}
 	}
-	r := g.results[i][0]
+	r := g.outcome.result
+	if _, _, err := g.appliedReplica(ctx, g.outcome.index); err != nil {
+		return clusterstate.Result{}, err
+	}
+	ctx = context.WithoutCancel(ctx)
 	// Compaction follows complete local delivery so every local voter has the
 	// checkpoint's prefix. It removes only redundant consensus history.
 	for j, s := range g.stores {
@@ -408,12 +512,49 @@ func (g *Native) submit(ctx context.Context, c clusterstate.Command) (clustersta
 	return r, nil
 }
 func (g *Native) barrier(ctx context.Context) (int, raftstore.Application, error) {
+	if ctx.Err() != nil {
+		return -1, raftstore.Application{}, directory.ErrUnreachable
+	}
 	if g.peers != nil {
 		g.peers.sleeping = false
 	}
+	ctx, cancel := context.WithTimeout(ctx, clusterctl.ForwardTimeout)
+	defer cancel()
 	i := g.leader()
 	if i < 0 {
-		return i, raftstore.Application{}, directory.ErrUnreachable
+		node := g.leaderID()
+		g.serial++
+		id := fmt.Sprintf("read-%d", g.serial)
+		reply, e := g.forward(ctx, node, clusterctl.Forward{ID: id, Action: "read"})
+		if e != nil {
+			if err := g.refreshHint(ctx); err != nil {
+				return i, raftstore.Application{}, err
+			}
+			if local := g.leader(); local >= 0 {
+				if err := g.drive(ctx, local, raftcore.Read{RequestID: id}); err != nil {
+					return local, raftstore.Application{}, err
+				}
+				if err := g.drain(ctx); err != nil {
+					return local, raftstore.Application{}, err
+				}
+				defer delete(g.reads, id)
+				for !g.reads[id] {
+					if err := g.waitProgress(ctx); err != nil {
+						return local, raftstore.Application{}, err
+					}
+				}
+				app, _, err := g.stores[local].ApplicationView(ctx)
+				return local, app, err
+			}
+			newer := g.leaderID()
+			if newer != 0 && newer != node {
+				reply, e = g.forward(ctx, newer, clusterctl.Forward{ID: id, Action: "read"})
+			}
+		}
+		if e != nil || reply.Barrier == 0 {
+			return i, raftstore.Application{}, directory.ErrUnreachable
+		}
+		return g.appliedReplica(ctx, reply.Barrier)
 	}
 	g.serial++
 	id := fmt.Sprintf("native-%d", g.serial)
@@ -424,22 +565,39 @@ func (g *Native) barrier(ctx context.Context) (int, raftstore.Application, error
 		g.failed = err
 		return i, raftstore.Application{}, err
 	}
-	ok := g.reads[id]
-	delete(g.reads, id)
-	if !ok {
-		return i, raftstore.Application{}, directory.ErrUnreachable
+	defer delete(g.reads, id)
+	for !g.reads[id] {
+		if node := g.leaderID(); node != 0 && node != g.manifest.Config.Anchors[i] {
+			reply, err := g.forward(ctx, node, clusterctl.Forward{ID: id, Action: "read"})
+			if err != nil || reply.Barrier == 0 {
+				return i, raftstore.Application{}, directory.ErrUnreachable
+			}
+			return g.appliedReplica(ctx, reply.Barrier)
+		}
+		if g.peers == nil || len(g.forwarders) == 0 {
+			return i, raftstore.Application{}, directory.ErrUnreachable
+		}
+		if err := g.waitProgress(ctx); err != nil {
+			return i, raftstore.Application{}, err
+		}
 	}
 	app, _, err := g.stores[i].ApplicationView(ctx)
 	return i, app, err
 }
 func (g *Native) CommitV1(ctx context.Context, c clusterstate.Command) (clusterstate.Result, error) {
-	ctx = context.WithoutCancel(ctx)
+	g.opMu.Lock()
+	defer g.opMu.Unlock()
+	ctx, cancel := boundedCall(ctx)
+	defer cancel()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.submit(ctx, c)
 }
 func (g *Native) ReadV1(ctx context.Context, c clusterstate.Command, committed bool, inspect func(context.Context, *raftstore.SQLite, raftstore.Application) error) error {
-	ctx = context.WithoutCancel(ctx)
+	g.opMu.Lock()
+	defer g.opMu.Unlock()
+	ctx, cancel := boundedCall(ctx)
+	defer cancel()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if !committed {
@@ -461,7 +619,10 @@ func (g *Native) ReadV1(ctx context.Context, c clusterstate.Command, committed b
 	return inspect(ctx, g.stores[i], app)
 }
 func (g *Native) CommitEffect(ctx context.Context, c clusterstate.Command) (clusterstate.Result, error) {
-	ctx = context.WithoutCancel(ctx)
+	g.opMu.Lock()
+	defer g.opMu.Unlock()
+	ctx, cancel := boundedCall(ctx)
+	defer cancel()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.submit(ctx, c)
@@ -471,7 +632,10 @@ func (g *Native) CommitEffect(ctx context.Context, c clusterstate.Command) (clus
 // quorum barrier and gives the callback its actor-owned context. A disconnected
 // HTTP request cannot turn a healthy durable read into a storage failure.
 func (g *Native) Inspect(ctx context.Context, inspect func(context.Context, *raftstore.SQLite, raftstore.Application) error) error {
-	ctx = context.WithoutCancel(ctx)
+	g.opMu.Lock()
+	defer g.opMu.Unlock()
+	ctx, cancel := boundedCall(ctx)
+	defer cancel()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	i, app, err := g.barrier(ctx)

@@ -114,7 +114,19 @@ A batch with an invalid member/signature admits no outbound message. Backpressur
 admits no part of an otherwise valid batch; valid incoming acks still drain that
 caller's inbox to avoid a circular queue-full stall. Copy retained bytes before
 returning. `ErrCapacity`/HTTP 429 means retain/retry or report failed transport to
-the core, never a successful append. Retry with host-owned exponential backoff,
+the core, never a successful append. Socket responses carry optional `accepted`
+and `rejected` arrays of canonical decimal envelope sequences. They describe
+transient routing admission only, never Raft persistence. A rejected batch leaves
+the socket usable for other voters. Senders retain at most eight outstanding
+socket sends until that response and report failure to the core on rejection.
+Optional `chunks` credit lists the target node and canonical envelope sequence
+after that target acknowledges staging a chunk. A personal snapshot sender keeps
+one chunk outstanding per target and advances on this pushed credit, so a large
+snapshot cannot overrun the unchanged chunk reservation. Credit is transient
+flow control; only the actual durable snapshot append reply completes Raft
+snapshot delivery. A partially staged joining member keeps its actor while
+subscribing passively for the next chunk; readiness still requires application.
+Retry with host-owned exponential backoff,
 seeded jitter and a 60-second ceiling. Buffers expire after 30 seconds of monotonic
 sampled host time, lazily on activity, requiring no idle alarm. Raft retransmits;
 lease renewal and snapshots retain their own durable semantics.
@@ -216,7 +228,7 @@ wakes the ordinary quorum path.
 The codeaf client starts its personal learner only inside the existing terminal
 state-sync lifetime, or a scoped status activation, after current quiet guards.
 Open remains local. Hosted relays offer neither enrollment nor control. Worker
-setup and leadership remain unavailable.
+setup remains unavailable. Native personal leadership uses the separate application ingress below; hosted leadership remains unavailable.
 
 The native host advances its checksummed `transport-generation` file with atomic
 rename and directory fsync before opening its router; it never mutates the source
@@ -226,3 +238,60 @@ is installed. A maximum-sized legal command can acquire protobuf framing larger
 than the normal peer budget. In that case the host checkpoints only the applied
 prefix and uses snapshot chunks for catch-up, keeping both existing byte limits
 and successful voter operations intact.
+
+
+## Native personal leaders and application forwarding
+
+A native personal member also opens `/v2/cluster/forward` outward. This is a
+separate application connection, never a Raft peer envelope. The upgrade uses
+the same enrolled, signed scope/node/incarnation/router-generation proof. Every
+application frame signs its scope, generation, source/destination, request ID,
+action and complete body under `codeaf/cluster/forward/1`. Only the immutable
+provisioned anchor keys route work; each reply uses the actual personal key.
+Current committed revocation/generation is checked on every send and receive.
+The existing eight-inflight and 512 KiB frame limits bound this channel, with
+the ordinary 30-second control deadline and no idle keepalive.
+
+The relay forwards the original signed command unchanged or a request-specific
+ReadIndex operation. The elected personal core persists/applies it normally and
+returns its actual admission/read index; the relay independently waits for its
+own durable application through that index. A prior dedup result alone cannot
+acknowledge a newly forwarded proposal. Public calls retain their operation
+serialization but release the member queue while waiting, so authenticated peer
+traffic and per-member persistence stay live. Calls canceled while still queued
+are refused before admission; an admitted disk transaction finishes despite a
+lost HTTP reply. A changed leader hint retries the
+same original request, never a cached successful response.
+
+Native leadership reconciles only committed owner intent through explicit joint
+entry, durable leave, settlement and actual transfer. Target evidence comes from
+its own durable store and actual recent reverse replication. Success follows a
+current-term commit, fresh read, durable completion and another fresh receipt.
+A+B restore C using the same planner after winning a new term; P is never asked
+for removal consent and never automatically regains leadership. Disconnecting a
+voting member wakes the ordinary scheduler, including after all-voter sleep.
+Personal snapshot senders stream the same portable manifest/chunks to anchors
+and learners; receivers stage and checksum chunks before stepping the pointer.
+Committed revocation may precede removal from the Raft configuration. Senders
+discard traffic lacking a currently authorized destination, preserving other
+voters rather than failing the whole member.
+The member and both connections share the existing terminal/scoped lifetime and
+all use-time quiet guards. No content route or new daemon is involved.
+
+A maximum-sized legal proposal can acquire protobuf framing larger than the
+normal peer envelope. A personal leader sends that one `MsgApp` in the existing
+chunk lane: offset zero and generation equal to the payload hash identify the
+complete framed append, independently of any snapshot manifest. The envelope
+checks its actual inner from/to/type and only permits `MsgApp` in this mode.
+Snapshot generations remain hashes of manifests, not chunk payloads. Recipients
+step the authenticated append normally, and only actual Raft persistence and
+application acknowledgments count; routing/chunk credit cannot commit it. The
+64 KiB proposal/normal-envelope, 256 KiB chunk and all queue caps are unchanged.
+
+The personal store reserves an outbound sequence range in its existing durable
+per-open identity write before any frame can escape. A process restart skips the
+unused remainder, so an old unacknowledged learner delivery cannot collide with
+new bytes under the same node/incarnation. No fsync per peer frame is needed.
+Final sleep also waits for the member's bounded sends to be admitted. After the
+all-voter marker, obsolete nonvoter append/heartbeat responses cannot wake the
+leader; actual work, read requests and higher-term messages still do.

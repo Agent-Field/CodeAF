@@ -11,7 +11,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 )
 
 const Path = "/v2/cluster/control"
@@ -129,12 +128,12 @@ func (c Client) request(ctx context.Context, method string, body []byte, out any
 		return wireauth.ErrUnauthorized
 	}
 	c.Sign(req, body)
-	hc := http.Client{Timeout: 30 * time.Second}
+	hc := http.Client{Timeout: ForwardTimeout}
 	if c.HTTP != nil {
 		hc = *c.HTTP
 	}
-	if hc.Timeout <= 0 || hc.Timeout > 30*time.Second {
-		hc.Timeout = 30 * time.Second
+	if hc.Timeout <= 0 || hc.Timeout > ForwardTimeout {
+		hc.Timeout = ForwardTimeout
 	}
 	hc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	res, err := hc.Do(req)

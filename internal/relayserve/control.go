@@ -39,8 +39,9 @@ func (b nativeControl) Status(ctx context.Context, actor string) (clusterctl.Sta
 	return b.owner.host.PersonalStatus(ctx, actor, certificate)
 }
 
-// Lead cannot create an intent until the production personal-member lifecycle
-// can finish it. In particular, refusal never proposes a configuration change.
-func (b nativeControl) Lead(context.Context, cs.Command) (cs.LeadershipReceipt, error) {
-	return cs.LeadershipReceipt{}, clusterctl.ErrUnsupported
+// Lead runs the native committed promotion workflow with the original proof.
+func (b nativeControl) Lead(ctx context.Context, c cs.Command) (cs.LeadershipReceipt, error) {
+	b.owner.armMembers()
+	certificate, _ := ctx.Value(controlCertificateKey{}).(string)
+	return b.owner.host.PersonalLead(ctx, c, certificate)
 }

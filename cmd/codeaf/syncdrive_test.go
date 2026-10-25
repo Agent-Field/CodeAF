@@ -365,7 +365,12 @@ func TestAChatTakenAndTakenBackGetsADriveSideOfItsOwn(t *testing.T) {
 		if err != nil || !ok {
 			t.Fatalf("Open(%s) = %v, %v", dir, ok, err)
 		}
-		if _, err := s.Dir.Acquire(context.Background(), c.ID, directory.AcquireOpts{Force: true}); err != nil {
+		// R25/C7 require the tuple the person observed; blind force is refused.
+		view, err := s.Dir.Cell(context.Background(), c.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Dir.Acquire(context.Background(), c.ID, directory.AcquireOpts{Force: true, Expect: &directory.LeaseExpectation{Device: view.Cell.Lease.Device, Fence: view.Cell.Lease.Fence}}); err != nil {
 			t.Fatal(err)
 		}
 	}

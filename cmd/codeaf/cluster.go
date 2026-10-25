@@ -10,14 +10,13 @@ import (
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"io"
 	"os"
-	"time"
 )
 
 const clusterHelp = `codeaf cluster status
   Show this joined computer, learners, voters and the current coordinator.
 codeaf cluster lead
-  Leadership is not offered yet; your saved chats are still here.
-  A paired home on a self-hosted relay with storage joins as a learner.
+  Ask this joined computer to coordinate through a self-hosted relay.
+  Persistent storage is required; hosted leadership is not available yet.
   Three voters tolerate one unavailable member.
 `
 
@@ -44,7 +43,7 @@ func runCluster(args []string) error {
 	if !ok {
 		return errors.New("sync is off on this computer")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), clusterctl.ForwardTimeout)
 	defer cancel()
 	return clusterCommand(ctx, s, args[0], os.Stdout)
 }

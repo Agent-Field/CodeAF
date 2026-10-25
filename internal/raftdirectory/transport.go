@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/ed25519"
 	"errors"
+	"fmt"
 	"reflect"
 
+	"github.com/Agent-Field/codeaf/internal/clusterctl"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/raftcore"
 	"github.com/Agent-Field/codeaf/internal/raftsnapshot"
@@ -23,6 +25,7 @@ type snapshotTransfer struct {
 	started    int64
 }
 type nativePeers struct {
+	incoming   map[int]*incomingSnapshot
 	router     *rafttransport.Router
 	view       rafttransport.View
 	keys       [3]ed25519.PrivateKey
@@ -49,7 +52,7 @@ func (g *Native) AttachTransport(ctx context.Context, generation uint64, keys [3
 			return nil, rafttransport.ErrAuth
 		}
 	}
-	g.peers = &nativePeers{router: router, keys: keys, view: rafttransport.View{Scope: rafttransport.Scope{Identity: g.manifest.Config.Identity, Cluster: g.manifest.Config.Cluster, Epoch: g.manifest.Config.Generation, Protocol: raftcore.ProtocolVersion}, Generation: generation}, applied: map[uint64]uint64{}, snapshots: map[uint64]*snapshotTransfer{}}
+	g.peers = &nativePeers{router: router, keys: keys, view: rafttransport.View{Scope: rafttransport.Scope{Identity: g.manifest.Config.Identity, Cluster: g.manifest.Config.Cluster, Epoch: g.manifest.Config.Generation, Protocol: raftcore.ProtocolVersion}, Generation: generation}, incoming: map[int]*incomingSnapshot{}, applied: map[uint64]uint64{}, snapshots: map[uint64]*snapshotTransfer{}}
 	if err = g.installPeers(ctx); err != nil {
 		return nil, err
 	}
@@ -79,6 +82,35 @@ func (g *Native) installPeers(ctx context.Context) error {
 		return err
 	}
 	p.view = v
+	// Installing a changed voter class discards expendable deliveries. Start a
+	// real read round so append progress is retried immediately, including while
+	// a public transfer owns opMu and the periodic maintenance turn is waiting.
+	if i := g.leader(); i >= 0 {
+		g.serial++
+		id := fmt.Sprintf("routing-%d", g.serial)
+		if err = g.drive(ctx, i, raftcore.IdleRead{RequestID: id}); err != nil {
+			return err
+		}
+		if err = g.drain(ctx); err != nil {
+			return err
+		}
+		if err = g.drive(ctx, i, raftcore.CancelRead{RequestID: id}); err != nil {
+			return err
+		}
+		delete(g.reads, id)
+	} else if target := g.leaderID(); target != 0 {
+		if link := g.forwarders[target]; link != nil {
+			g.serial++
+			work := clusterctl.Forward{Scope: p.view.Scope, Generation: p.view.Generation, From: g.manifest.Config.Anchors[0], To: target, ID: fmt.Sprintf("routing-%d", g.serial), Action: "poke"}
+			work.Sign(func(b []byte) []byte { return ed25519.Sign(p.keys[0], b) })
+			// A pump must never await this application callback. The elected member
+			// starts a real read round to retry deliveries discarded by the new view.
+			select {
+			case link.send <- work:
+			default:
+			}
+		}
+	}
 	// Registry changes discard expendable inboxes. Report an unfinished snapshot
 	// as failed so Raft can restart it under the new committed transport view.
 	for to, transfer := range p.snapshots {
@@ -129,13 +161,11 @@ func (g *Native) queueExternal(from int, to uint64, payload []byte, chunk *raftt
 }
 func (g *Native) sendExternal(ctx context.Context, m raftcore.Outbound) error {
 	p := g.peers
-	target, ok := g.peer(m.To)
+	_, ok := g.peer(m.To)
 	if !ok {
 		return nil
 	}
-	if target.Voter {
-		return directory.ErrUnreachable
-	}
+
 	if p.sleeping {
 		return nil
 	}
@@ -207,7 +237,8 @@ func (g *Native) pumpPeers(request rafttransport.Request, now int64) error {
 		if err != nil {
 			return err
 		}
-		if request.Applied > app.Applied {
+		peer, _ := g.peer(request.Node)
+		if !peer.Voter && request.Applied > app.Applied {
 			return rafttransport.ErrWire
 		}
 		p.applied[request.Node] = max(p.applied[request.Node], request.Applied)
@@ -233,11 +264,11 @@ func (g *Native) pumpPeers(request rafttransport.Request, now int64) error {
 			for _, delivery := range response.Messages {
 				e := delivery.Envelope
 				member, ok := g.peer(e.From)
-				if !ok || e.Scope != p.view.Scope || e.Destination != 1 || e.Verify(member.Key) != nil || e.Chunk != nil {
+				if !ok || e.Scope != p.view.Scope || e.Destination != 1 || e.Verify(member.Key) != nil {
 					return rafttransport.ErrAuth
 				}
 				if !g.idleLearnerResponse(e) {
-					if err = g.drive(ctx, i, raftcore.PeerMessage{Bytes: e.Payload}); err != nil {
+					if err = g.receivePeer(ctx, i, e); err != nil {
 						return err
 					}
 				}
