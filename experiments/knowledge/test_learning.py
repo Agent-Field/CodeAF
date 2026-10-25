@@ -144,3 +144,35 @@ class LearningTests(unittest.TestCase):
         self.assertEqual(subject['conflicts'], [])
         self.assertEqual(learn(vault, model, previous=result), result)
         self.assertEqual(calls, ['discover', 'understand', 'review_understanding'])
+
+    def test_incremental_subject_exposes_new_sourced_claims_without_rewriting_guide(self):
+        import copy
+        from workflow import extend
+        from topics import reconcile, publish
+        from test_maintenance import fixture
+        vault, learning = fixture()
+        subject = learning['subjects'][0]
+        original = copy.deepcopy(subject['sections'])
+        vault['sources']['new'] = {'id': 'new', 'session': 'chat', 'role': 'user',
+            'ts': '2026-10-25T14:00:00Z', 'text': 'Cedar may retain jobs for seven days.'}
+        claim = {**vault['claims'][0], 'id': 'new-claim', 'kind': 'proposal',
+            'text': vault['sources']['new']['text'], 'evidence': [{'source': 'new', 'quote': vault['sources']['new']['text']}]}
+        vault['claims'].append(claim)
+        vault['notes'][0]['claims'].append(claim['id'])
+        def no_model(*args):
+            self.fail('Known subject update called model')
+        updated = extend(vault, learning, no_model)
+        self.assertEqual(updated['subjects'][0]['sections'], original)
+        page = next(n for n in publish(vault, updated, reconcile(updated))['notes'] if n.get('kind') == 'subject')
+        self.assertTrue(page['needs_editorial_update'])
+        recent = next(s for s in page['sections'] if s['heading'] == 'Recent knowledge')
+        self.assertEqual(len(recent['paragraphs']), 1)
+        paragraph = recent['paragraphs'][0]
+        self.assertEqual(paragraph['text'], '[proposal] Cedar may retain jobs for seven days.')
+        self.assertEqual(paragraph['claims'], ['new-claim'])
+        self.assertEqual(paragraph['evidence'][0]['source'], 'new')
+        self.assertFalse(paragraph['evidence_basis']['independently_verified'])
+        vault['claims'][-1]['status'] = 'superseded'
+        retired = next(n for n in publish(vault, updated, reconcile(updated))['notes'] if n.get('kind') == 'subject')
+        self.assertFalse(any(s['heading'] == 'Recent knowledge' for s in retired['sections']))
+        self.assertFalse(retired['needs_editorial_update'])

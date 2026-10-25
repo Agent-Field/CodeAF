@@ -1,7 +1,7 @@
 # Memory and connected knowledge in the experimental binary
 
-Checkpoint: `77fba969c1f29066f34cb3cd4826e89e8199a141`.
-This document describes the requested next integration, not completed behavior.
+Checkpoint: `219588e` (inline links); previous complete workflow: `77fba96`.
+This branch implements the local persisted-chat integration described below.
 
 ## User experience
 
@@ -25,8 +25,8 @@ open questions, disagreements and source evidence. A useful article is not
 automatically a standing instruction. Preserve both stores and their semantics;
 retrieve knowledge when relevant rather than inject the whole vault each turn.
 
-Currently the experiment is not connected to binary capture or chat retrieval.
-Do not describe the browser projection as installed agent memory.
+The experimental binary now captures opted-in local chats and exposes cited
+knowledge tools. This does not install or enable knowledge in the default binary.
 
 ## Implementation constraints
 
@@ -63,7 +63,7 @@ zero model requests. Do not use the OpenRouter Batch API.
 
 ## Acceptance and rollout
 
-Additional proposed test interfaces: Memory actions to vault creation and linked
+Approved test interfaces: Memory actions to vault creation and linked
 navigation; committed conversations to incremental capture and cited retrieval.
 Earlier approved extraction/recall contracts continue to apply.
 
@@ -71,5 +71,27 @@ Validate no capture before opt-in, durable retry without duplicate publication,
 project isolation, self/ambiguous/missing-link handling, keyboard navigation,
 and retention of ordinary saved memory. Verify actual live TUI plus chat
 retrieval with the pinned model, record usage, and review against the checkpoint.
-Build a separate experimental binary on Spark; preserve the installed default.
+Build a separate experimental binary; preserve the installed default.
 Keep recordings and generated knowledge outside source control.
+
+## Implemented limits
+
+The adapter needs Python 3 on Linux or macOS. Compilation runs while a persisted
+local chat is active; pending journals recover when their chat reopens. There is
+no always-on global service scanning dormant chats. New guide discovery is
+bounded; existing guide prose is retained, with newly captured member claims
+exposed under sourced **Recent knowledge** until editorial integration. This
+avoids full-guide model rewrites on each turn. Superseded support is withheld.
+
+Normal and bash-belt chats plus their session child workers can retrieve pages.
+Standalone `codeaf do`, remote knowledge transport and the desktop are not wired
+by this experiment. Hosted windows explicitly refuse local-vault fallback.
+Tool responses are capped at 12,000 bytes; long reads provide versioned cursors.
+
+Knowledge search/read make no extra model calls. Their small tool schemas remain
+in the persisted chat's cached tool belt before opt-in so creation becomes usable
+without restarting; those schema tokens are part of ordinary chat cost. The
+metadata-only status poll does not hydrate articles. Imported sources are archived
+by identity, indexed pending counts avoid rescanning their contents, and unchanged
+projections skip export. Vault JSON hydration and lexical search still grow with
+collection size; large-scale throughput and long-running quality remain work.

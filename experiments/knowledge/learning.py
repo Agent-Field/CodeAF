@@ -224,6 +224,20 @@ def project(vault, learning, *, as_of=None, stale_after_seconds=None):
                      'question': question['id'], 'partial': question['state'] == 'partially_answered',
                      'derivation': 'gap_answer', 'review': answer['review'], 'depends_on': question['claims']}]})
                 answer_claims.extend(answer['claims'])
+        # Append exact captured statements, preserving modality, while the retained
+        # narrative awaits bounded editorial review. Older omitted claims are not
+        # called recent: only the incremental compiler's explicit added set qualifies.
+        pending = set(subject.get('editorial_pending_claims', [])) & active
+        represented = {cid for section in sections for paragraph in section['paragraphs']
+                       for cid in paragraph.get('claims', [])}
+        recent = []
+        for cid in sorted(pending - represented):
+            claim = active_claims[cid]
+            recent.append({'text': '[' + claim['kind'] + '] ' + claim['text'],
+                           'claims': [cid], 'evidence': copy.deepcopy(claim.get('evidence', [])),
+                           'derivation': 'recent_captured_claim'})
+        if recent:
+            sections.append({'heading': 'Recent knowledge', 'paragraphs': recent})
         conflict_claims = {cid for conflict in subject.get('conflicts', [])
                            if conflict.get('state') == 'unresolved' and set(conflict['claims']) <= active
                            for cid in conflict['claims']}
@@ -252,7 +266,7 @@ def project(vault, learning, *, as_of=None, stale_after_seconds=None):
             'folder': [root], 'claims': list(dict.fromkeys(subject['claims'] + answer_claims)),
             'sections': sections, 'questions': questions, 'aliases': subject.get('aliases', []),
             'conflicts': subject.get('conflicts', []), 'learning_state': 'needs_review' if stale else subject['state'],
-            'kind': 'subject', 'links': links})
+            'kind': 'subject', 'links': links, 'needs_editorial_update': bool(pending)})
     return result
 
 

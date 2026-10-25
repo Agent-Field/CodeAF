@@ -1727,6 +1727,7 @@ type app struct {
 	// mem is the Memories tab's state: the snapshot it is drawing, the groups
 	// that are open, and the filter (place_memories.go).
 	mem memoryPlace
+	kb  knowledgePlace
 	// memory is the store the tab reads and changes. It is optional because a
 	// session whose memory store could not be opened has no capability behind
 	// the tab.
@@ -4706,7 +4707,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// through to the conversation underneath would open a tool call
 			// nobody can see. A press on one of their rows is `enter` on it
 			// (pages.go's [app.placeBodyPress]).
-			if cmd, took := a.placeBodyPress(msg.Mouse().Y); took {
+			if cmd, took := a.placeBodyPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
 			// And a background job's page at the same rung and for the same
@@ -5662,6 +5663,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case memoryPlaceDoneMsg:
 		a.adoptMemoryPlaceDone(msg)
+		return a, nil
+	case knowledgeReadingMsg:
+		a.adoptKnowledge(msg)
 		return a, nil
 
 	case memoryOriginMsg:

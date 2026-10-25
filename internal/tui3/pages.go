@@ -2210,7 +2210,7 @@ func (a *app) pageShowing() bool { return a.showing() != nil }
 
 // placeBodyPress is a press on one place's own rows: the row under it is
 // entered, exactly as `enter` on it would (the law is [place.press]'s).
-func (a *app) placeBodyPress(y int) (tea.Cmd, bool) {
+func (a *app) placeBodyPress(x, y int) (tea.Cmd, bool) {
 	pl := a.showing()
 	// AND NO GESTURE REACHES A PAGE THAT IS UNDER THE COMPOSER LAYER. Its rows are
 	// drawn at the faintest tier precisely to say they are not the subject any
@@ -2218,6 +2218,11 @@ func (a *app) placeBodyPress(y int) (tea.Cmd, bool) {
 	// can see they are changing.
 	if pl == nil || a.composer.open {
 		return nil, false
+	}
+	if point, ok := pl.(interface {
+		pressAt(*app, int, int) (tea.Cmd, bool)
+	}); ok {
+		return point.pressAt(a, x, y)
 	}
 	return pl.press(a, y)
 }

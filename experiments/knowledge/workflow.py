@@ -28,6 +28,7 @@ def extend(vault, learning, model):
         if added:
             subject['claims'] = sorted(set(subject['claims'])|added)
             subject['needs_editorial_update'] = True
+            subject['editorial_pending_claims'] = sorted(set(subject.get('editorial_pending_claims', [])) | added)
             dirty.append(subject['id'])
     if notes:
         ids = {c for n in notes for c in n['claims']if c in active}
@@ -38,6 +39,8 @@ def extend(vault, learning, model):
             if subject['id'] in by_subject:
                 old = by_subject[subject['id']]
                 old['notes'] = sorted(set(old['notes']+subject['notes']))
+                added = set(subject['claims']) - set(old['claims'])
+                old['editorial_pending_claims'] = sorted(set(old.get('editorial_pending_claims', [])) | added)
                 old['claims'] = sorted(set(old['claims']+subject['claims']))
                 old['sections'] += subject['sections']
                 old['needs_editorial_update'] = True

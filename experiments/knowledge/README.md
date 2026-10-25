@@ -3,7 +3,29 @@
 An experiment on the `knowledge-base` branch of codeaf, starting from `dev`.
 It reads an existing message database, extracts sourced claims, compares direct
 topic notes with reconciled notes, and exports a local wiki for human inspection.
-It does not change the installed binary, desktop UI, live memory store or schedules.
+The branch now includes opt-in knowledge capture and browsing in the experimental
+binary. It leaves the installed default binary and desktop UI alone; ordinary
+saved memory retains its own rules and controls.
+
+## Experimental binary
+
+Build with `make build` (includes the pinned execution engine), then launch a local persisted
+chat using `bin/codeaf chat --no-host --model deepseek/deepseek-v4.1-flash --one-model`.
+Python 3 and an existing OpenRouter credential are required for compilation.
+In **Memory**, press **alt+u** to open Knowledge and **Enter** on **Create
+knowledge base** to opt in for that project. Older conversations are not imported
+automatically. On macOS the key label follows the terminal's Option spelling.
+
+Use arrows and Enter to open articles, click inline `[[Topic]]` references, or
+press **ctrl+l** to select linked pages and backlinks. **Left** or **Escape**
+returns; **Page Up/Page Down** reads longer articles. **alt+u** returns to saved
+memory. Narrow terminals switch between tree and article views.
+
+Completed future local chat turns queue durably. Background extraction combines
+eligible updates after 30 seconds quiet or 120 seconds maximum age, subject to
+the bounded context limits. Agents search and read cited pages without a second
+answer-generation model call. See [BINARY-INTEGRATION.md](BINARY-INTEGRATION.md)
+for scope, scheduling, cost accounting and remaining limits.
 
 ## Run a private replay
 

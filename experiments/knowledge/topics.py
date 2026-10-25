@@ -129,7 +129,8 @@ def publish(vault, learning, registry, *, as_of=None, stale_after_seconds=None):
         subjects.append({**copy.deepcopy(parts[0]), 'id': concept['id'], 'title': concept['title'],
                          'scope': concept['scope'], 'aliases': concept['aliases'], 'notes': notes,
                          'claims': claims, 'sections': sections, 'questions': questions, 'conflicts': conflicts,
-                         'state':parts[0]['state'] if sections else 'needs_evidence'})
+                         'state':parts[0]['state'] if sections else 'needs_evidence',
+                         'editorial_pending_claims': sorted({cid for part in parts for cid in part.get('editorial_pending_claims', []) if cid in allowed})})
     result = project(vault, {'subjects': subjects}, as_of=as_of, stale_after_seconds=stale_after_seconds)
     groups = defaultdict(list)
     for note in result['notes']:
