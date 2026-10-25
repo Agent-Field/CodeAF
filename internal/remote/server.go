@@ -1901,18 +1901,9 @@ func (s *server) handshake(line []byte) error {
 		return s.refuse("engine: the hello did not parse")
 	}
 	if hello.Version != Version {
-		reason := fmt.Sprintf("engine: this build speaks protocol %d and the surface speaks %d — the two halves have to be the same build", Version, hello.Version)
-		if s.host != nil {
-			// THE CLAUSE THAT WAS MISSING THE DAY THIS SENTENCE LIED. A host
-			// outlives the connection, so the process saying this may be an
-			// older codeaf that is still running on a machine whose binary was
-			// updated an hour ago — and the sentence above sent the person off
-			// to update something that was already updated. When there is a
-			// host behind this connection, say the other thing that is true.
-			reason += ", and this machine is still running the older one — run codeaf engine --stop here to retire it"
-		}
-		return s.refuse(reason)
+		return s.refuse(wireMismatchSentence(MachineName(), Version, hello.Version, buildinfo.String()))
 	}
+
 	if supportsEncoding(hello.Encodings, frameEncodingGzip) {
 		s.encoding = frameEncodingGzip
 	}

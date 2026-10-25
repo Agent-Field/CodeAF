@@ -159,14 +159,8 @@ func TestTheMismatchRefusalNamesTheOlderBuildStillRunningHere(t *testing.T) {
 		Host: func(WhoIs) HostSelf { return HostSelf{} },
 	})
 	reason := helloRefusal(t, conn, Hello{Version: Version + 1})
-	if !strings.Contains(reason, "still running the older one") {
-		t.Fatalf("the refusal from a host said %q", reason)
-	}
-	if !strings.Contains(reason, "codeaf engine --stop") {
-		t.Fatalf("the refusal named no way out: %q", reason)
-	}
-	if !strings.Contains(reason, "the two halves have to be the same build") {
-		t.Fatalf("the refusal lost the fact it always stated: %q", reason)
+	if !strings.Contains(reason, "older build") || !strings.Contains(reason, " update") || strings.Contains(reason, "--stop") {
+		t.Fatalf("the refusal gives no safe update road: %q", reason)
 	}
 }
 
@@ -212,4 +206,12 @@ func helloRefusal(t *testing.T, conn net.Conn, hello Hello) string {
 		t.Fatalf("the far end answered with a %q where a refusal belongs", frame.Kind)
 	}
 	return frame.Error
+}
+
+func TestWireMismatchDoesNotRecommendStoppingAttachedWindows(t *testing.T) {
+	conn := answered(t, AttachOptions{Open: func(Hello) (*Session, error) { t.Fatal("mismatch opened session"); return nil, nil }, Host: func(WhoIs) HostSelf { return HostSelf{Busy: true} }})
+	reason := helloRefusal(t, conn, Hello{Version: Version - 1})
+	if strings.Contains(reason, "--stop") || !strings.Contains(reason, " update") || !strings.Contains(reason, "newer build") {
+		t.Fatalf("unhelpful refusal: %s", reason)
+	}
 }

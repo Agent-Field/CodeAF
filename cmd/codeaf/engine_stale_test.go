@@ -269,7 +269,7 @@ func TestAnOlderEngineHoldingWorkKeepsItAndIsJoined(t *testing.T) {
 	if err != nil {
 		t.Fatalf("an older engine holding work was refused rather than joined: %v", err)
 	}
-	for _, want := range []string{"older codeaf background engine", "Attached windows count as in use", "all windows and work are gone", "interrupts active turns and tasks", engineStopWords(workspace)} {
+	for _, want := range []string{"older " + programName() + " background engine", "Attached windows count as in use", "all windows and work are gone"} {
 		if !strings.Contains(note, want) {
 			t.Fatalf("the busy line %q does not say %q", note, want)
 		}
@@ -405,7 +405,7 @@ func TestALaunchRefusesAnIncompatibleBusyEngineRatherThanFallingBack(t *testing.
 	if !errors.As(err, &refusal) {
 		t.Fatalf("the launch answered %v, want the host's own refusal", err)
 	}
-	if !strings.Contains(refusal.sentence, "different protocol") || !strings.Contains(refusal.sentence, "engine --stop") {
+	if !strings.Contains(refusal.sentence, "different protocol") || !strings.Contains(refusal.sentence, "close every window") {
 		t.Fatalf("the refusal %q does not say what is holding it and the way out", refusal.sentence)
 	}
 	// AND NOTHING WAS OPENED IN THIS PROCESS: no project tree, no journal.
@@ -509,14 +509,14 @@ func TestANewerEngineIsJoinedAndNeverReplacedByAnOlderWindow(t *testing.T) {
 func TestANewerEngineOnAnotherWireIsRefusedAndLeftAlone(t *testing.T) {
 	shortEngineHome(t)
 	workspace := "/home/somebody/api"
-	standIn(t, workspace, remote.HostSelf{Version: remote.Version + 1, Build: "tomorrow", BuiltAt: later, Workspace: workspace}, false)
+	standIn(t, workspace, remote.HostSelf{Version: remote.Version + 1, Build: "tomorrow", BuiltAt: later, Workspace: workspace, Binary: "/missing/newer-program"}, false)
 
 	_, err := clearStaleEngineHostAs(workspace, window("today", earlier))
 	var stale *staleHost
 	if !errors.As(err, &stale) {
 		t.Fatalf("a newer engine on another wire answered %v, want a refusal", err)
 	}
-	if !strings.Contains(stale.reason, "newer codeaf") || !strings.Contains(stale.reason, "codeaf engine --status --workspace "+workspace) {
+	if !strings.Contains(stale.reason, "newer ") || !strings.Contains(stale.reason, " update") {
 		t.Fatalf("the refusal does not say this binary is the older one and how to see which is newer: %q", stale.reason)
 	}
 	if !hostAnswers(workspace) {
@@ -542,7 +542,7 @@ func TestAnOlderEngineOnAnotherWireHoldingWorkIsRefusedNotKilled(t *testing.T) {
 	}
 	// AND THE COMMAND IS COPY-PASTEABLE: the folder is quoted, because a path
 	// with a space in it typed out of a sentence has to be one argument.
-	for _, want := range []string{"different protocol", "engine --stop", "--workspace " + shellQuote(workspace)} {
+	for _, want := range []string{"different protocol", "close every window", "--workspace " + shellQuote(workspace)} {
 		if !strings.Contains(stale.reason, want) {
 			t.Fatalf("the refusal %q does not say %q", stale.reason, want)
 		}
@@ -741,7 +741,7 @@ func TestAnEngineTooOldToBeAskedIsRefusedAndTheExplicitStopStillEndsIt(t *testin
 	if !errors.As(err, &stale) {
 		t.Fatalf("a too-old engine answered %v, want a refusal in words", err)
 	}
-	for _, want := range []string{"cannot say what it is", "engine --stop", "--workspace " + shellQuote(workspace)} {
+	for _, want := range []string{"cannot say what it is", "close every window", "--workspace " + shellQuote(workspace)} {
 		if !strings.Contains(stale.reason, want) {
 			t.Fatalf("the refusal %q does not say %q", stale.reason, want)
 		}
@@ -846,5 +846,78 @@ func TestEngineStatusUpgradeGuidanceMatchesAdmission(t *testing.T) {
 				t.Fatal("attached windows falsely reported as active work")
 			}
 		})
+	}
+}
+
+// Re-execute a helper process so the production exec preserves real argv and
+// stdio rather than replacing a function with a mock.
+func TestNewerHolderHandsOffToItsExecutable(t *testing.T) {
+	if os.Getenv("CODEAF_TEST_HANDOFF_CHILD") == "1" {
+		shortEngineHome(t)
+		workspace := t.TempDir()
+		target := filepath.Join(t.TempDir(), "newer-program")
+		body := "#!/bin/sh\nprintf 'holder-exec:%s\\n' \"$CODEAF_ENGINE_HANDOFF\"\nprintf '%s\\n' \"$@\"\n"
+		if err := os.WriteFile(target, []byte(body), 0700); err != nil {
+			t.Fatal(err)
+		}
+		standIn(t, workspace, remote.HostSelf{Version: remote.Version + 1, Build: "newer", BuiltAt: later, Binary: target}, false)
+		_, err := clearStaleEngineHostAs(workspace, window("older", earlier))
+		t.Fatalf("handoff returned: %v", err)
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestNewerHolderHandsOffToItsExecutable$")
+	cmd.Env = append(os.Environ(), "CODEAF_TEST_HANDOFF_CHILD=1")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("handoff: %v: %s", err, out)
+	}
+	if !strings.Contains(string(out), "holder-exec:1\n-test.run=^TestNewerHolderHandsOffToItsExecutable$\n") {
+		t.Fatalf("argv or guard lost: %s", out)
+	}
+}
+
+func TestNewerHolderHandoffCannotLoopOrUseAMissingExecutable(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		mode  os.FileMode
+		guard bool
+	}{
+		{"missing", 0, false}, {"not-executable", 0600, false}, {"guarded", 0700, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			shortEngineHome(t)
+			workspace := t.TempDir()
+			target := filepath.Join(t.TempDir(), "devaf")
+			if tc.mode != 0 {
+				if err := os.WriteFile(target, []byte("#!/bin/sh\nexit 9\n"), tc.mode); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.guard {
+				t.Setenv(engineHandoffEnv, "1")
+			}
+			standIn(t, workspace, remote.HostSelf{Version: remote.Version + 1, Build: "newer", BuiltAt: later, Binary: target, Busy: true}, false)
+			_, err := clearStaleEngineHostAs(workspace, window("older", earlier))
+			if err == nil || !strings.Contains(err.Error(), target) || !strings.Contains(err.Error(), " update") || strings.Contains(err.Error(), "--stop") {
+				t.Fatalf("unsafe refusal: %v", err)
+			}
+			if !hostAnswers(workspace) {
+				t.Fatal("holder was stopped")
+			}
+		})
+	}
+}
+
+func TestChannelsShareOneWorkspaceAndTheNewerBuildWins(t *testing.T) {
+	shortEngineHome(t)
+	workspace := t.TempDir()
+	host := standIn(t, workspace, remote.HostSelf{Version: remote.Version, Build: "newer", BuiltAt: later, Binary: "/bin/devaf", Busy: true}, false)
+	for _, name := range []string{"/bin/codeaf", "/bin/devaf", "/bin/custom-af"} {
+		note, err := clearStaleEngineHostAs(workspace, engineBuild{Build: "older", BuiltAt: earlier, Binary: name})
+		if err != nil || note != "" {
+			t.Fatalf("%s could not join: %q %v", name, note, err)
+		}
+		if !hostAnswers(workspace) || host.forced() {
+			t.Fatalf("%s replaced newer holder", name)
+		}
 	}
 }
