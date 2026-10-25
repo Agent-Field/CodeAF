@@ -441,7 +441,9 @@ name is refused before any chat opens. The new chat opens behind the current one
 with its model and approval posture set before its first message. Your focus stays
 in the original chat. Its receipt confirms the request; the terminal reports whether
 it actually opened. This needs an attached interactive terminal that can open chats.
-A new independent chat does not report its answer back here automatically; use a task
+Only one attached window can claim each request, so delivery to several windows or
+replay does not open copies. A failed launcher is not retried automatically; ask again
+to issue a new request. A new independent chat does not report its answer back here automatically; use a task
 when that is the desired handoff.
 
 For a teammate, the manager's `team_start` also takes `model`, including for a new

@@ -32,7 +32,10 @@ func TestChatLaunchModels(t *testing.T) {
 			if kind == "quick_task" {
 				launch = start
 			}
-			args := []string{"chat", "--model", chat, "--no-host", "--debug"}
+			args := []string{"chat", "--model", chat, "--debug"}
+			if kind != "start_chat" {
+				args = append(args, "--no-host")
+			}
 			if kind == "team_start" {
 				sid := "55aa55aa55aa55aa"
 				bucket := strings.ReplaceAll(filepath.Clean(ws), string(filepath.Separator), "-")
@@ -143,15 +146,22 @@ func TestChatLaunchModels(t *testing.T) {
 // launchJournalEvidence distinguishes the child model from a parent quoting its
 // instructions. For a new chat, the target model must occur in another journal.
 func launchJournalEvidence(home, tool, model string) (matching int, reported, joined bool) {
+	sourceFiles := map[string]bool{}
+	resultFiles := map[string]bool{}
 	_ = filepath.WalkDir(home, func(path string, entry os.DirEntry, err error) error {
 		if err != nil || entry.IsDir() || !strings.HasSuffix(path, ".jsonl") {
 			return nil
 		}
 		raw, _ := os.ReadFile(path)
 		currentModel := ""
+		childReported := false
 		for _, line := range strings.Split(string(raw), "\n") {
 			var row struct {
-				Type      string `json:"type"`
+				Type string `json:"type"`
+				Call struct {
+					Model string `json:"model"`
+					Role  string `json:"role"`
+				} `json:"call"`
 				Model     string `json:"model"`
 				Role      string `json:"role"`
 				Content   string `json:"content"`
@@ -164,6 +174,9 @@ func launchJournalEvidence(home, tool, model string) (matching int, reported, jo
 			}
 			if json.Unmarshal([]byte(line), &row) != nil {
 				continue
+			}
+			if row.Type == "call" && row.Call.Role == "" && row.Call.Model != "" {
+				currentModel = row.Call.Model
 			}
 			if row.Model != "" && (row.Type == "session" || row.Type == "model") {
 				currentModel = row.Model
@@ -178,16 +191,25 @@ func launchJournalEvidence(home, tool, model string) (matching int, reported, jo
 				_ = json.Unmarshal([]byte(call.Function.Arguments), &params)
 				if call.Function.Name == tool && params.Model == model {
 					matching++
+					sourceFiles[path] = true
 				}
 				if currentModel == model && call.Function.Name == "bash" && strings.Contains(call.Function.Arguments, "plandb done") && strings.Contains(call.Function.Arguments, "LAUNCH_MODEL_VERIFIED") {
-					reported = true
+					childReported = true
 				}
 			}
 			if currentModel == model && row.Role == "assistant" && strings.Contains(row.Content, "LAUNCH_MODEL_VERIFIED") && len(row.ToolCalls) == 0 {
-				reported = true
+				childReported = true
 			}
+		}
+		if childReported {
+			resultFiles[path] = true
 		}
 		return nil
 	})
+	for path := range resultFiles {
+		if (tool != "start_chat" && tool != "team_start") || !sourceFiles[path] {
+			reported = true
+		}
+	}
 	return
 }

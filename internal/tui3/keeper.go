@@ -690,12 +690,15 @@ func (a *app) stirLane() tea.Cmd {
 // a stir about it is to do nothing.
 func (a *app) behindStir(note behindStirMsg) tea.Cmd {
 	next := waitStir(a.stirs)
-	if note.chatStart != nil {
-		return tea.Batch(next, a.startRequestedChat(note.chatStart))
-	}
 	held := a.behind[note.key]
+	if note.chatStart != nil && note.key == a.frontTabKey() {
+		return tea.Batch(next, a.startRequestedChat(note.chatStart, a.agent))
+	}
 	if held == nil {
 		return next
+	}
+	if note.chatStart != nil {
+		return tea.Batch(next, a.startRequestedChat(note.chatStart, held.conv.Agent))
 	}
 	a.keepHeldNotices(held)
 	// A CONVERSATION THAT HAS JUST NAMED ITSELF IS A REDRAW AND NOTHING ELSE.

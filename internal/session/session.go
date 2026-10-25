@@ -2392,6 +2392,7 @@ type Config struct {
 // events — every Submit streams, whether it started the turn or steered it.
 // The methods live in agent.go; the loop they drive lives in loop.go.
 type Agent struct {
+	chatStarts map[string]bool
 	// jailNotice keeps a host limit from becoming noise on every tool call.
 	jailNotice sync.Once
 

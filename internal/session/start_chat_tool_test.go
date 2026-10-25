@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -52,5 +54,53 @@ func TestStartChatRefusesUnknownAndAmbiguousModels(t *testing.T) {
 		if err != nil || !failed || strings.Contains(answer, "Requested a new chat") {
 			t.Fatalf("%s: %s %v", word, answer, err)
 		}
+	}
+}
+
+func TestChatStartClaimHasOneWinner(t *testing.T) {
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("new-chat", "start_chat", `{"brief":"Read README"}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("Requested."), nil },
+	}}
+	agent, _ := newTestAgent(t, completer, func(c *Config) { c.Interactive = true; c.Place = Place{Dir: t.TempDir()} })
+	_, _ = agent.loadCapability("chats")
+	stream, err := agent.Submit(t.Context(), "Start another chat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var request *ChatStart
+	for _, event := range collect(t, stream) {
+		if event.Kind == EventChatStart {
+			request = event.ChatStart
+		}
+	}
+	if request == nil {
+		t.Fatal("no request")
+	}
+	door, ok := any(agent).(interface{ ClaimChatStart(string) (bool, error) })
+	if !ok {
+		t.Fatal("no shared chat-start claim door")
+	}
+	var winners atomic.Int32
+	var group sync.WaitGroup
+	for range 8 {
+		group.Go(func() {
+			claimed, err := door.ClaimChatStart(request.ID)
+			if err != nil {
+				t.Error(err)
+			}
+			if claimed {
+				winners.Add(1)
+			}
+		})
+	}
+	group.Wait()
+	if winners.Load() != 1 {
+		t.Fatalf("launch winners=%d", winners.Load())
+	}
+	if claimed, err := door.ClaimChatStart("unknown"); err == nil || claimed {
+		t.Fatal("unknown request claimed")
 	}
 }
