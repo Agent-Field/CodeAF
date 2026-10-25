@@ -27,6 +27,7 @@ type appClientPartial struct {
 	current      appwire.Entry
 	visible      appwire.Entry
 	at           time.Time
+	lastToken    time.Time
 	cancel       func()
 	text         strings.Builder
 }
@@ -63,6 +64,8 @@ func (s *appClientStream) delta(d appwire.TurnDelta, changed func()) {
 		msg := d.Msg
 		p.current = appwire.Entry{ID: fmt.Sprintf("live-%d-%d", d.Turn, d.Msg), Agent: d.Agent, Turn: d.Turn, Msg: &msg, Kind: appwire.EntryAnswer, At: s.now()}
 	}
+	quiet := s.now().Sub(p.lastToken) >= phonePartialInterval
+	p.lastToken = s.now()
 	p.text.WriteString(d.Text)
 	publish := func() {
 		p.current.Text = p.text.String()
@@ -70,7 +73,7 @@ func (s *appClientStream) delta(d appwire.TurnDelta, changed func()) {
 		p.at = s.now()
 		changed()
 	}
-	if wait := phonePartialInterval - s.now().Sub(p.at); first || wait <= 0 {
+	if wait := phonePartialInterval - s.now().Sub(p.at); first || quiet || wait <= 0 {
 		// A token can obtain the lock before a delayed timer callback. Cancel
 		// that timer and invalidate callbacks already waiting for this lock.
 		if p.cancel != nil {

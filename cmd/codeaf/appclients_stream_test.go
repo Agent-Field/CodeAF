@@ -143,3 +143,25 @@ func TestPhoneStreamPublishesImmediatelyAfterQuietGap(t *testing.T) {
 		})
 	}
 }
+
+func TestPhoneStreamQuietGapStartsAtLastToken(t *testing.T) {
+	now := time.Unix(1, 0)
+	var callback func()
+	wakes := 0
+	stream := appClientStream{now: func() time.Time { return now }, after: func(_ time.Duration, fn func()) func() { callback = fn; return func() {} }}
+	defer stream.stop()
+	d := appwire.TurnDelta{Agent: "chat", Turn: 1, Kind: appwire.DeltaText, Text: "p"}
+	changed := func() { wakes++ }
+	stream.delta(d, changed)
+	now = now.Add(100 * time.Millisecond)
+	d.Text = "o"
+	stream.delta(d, changed)
+	now = now.Add(150 * time.Millisecond)
+	callback()
+	now = now.Add(100 * time.Millisecond)
+	d.Text = "ng"
+	stream.delta(d, changed)
+	if wakes != 3 || stream.entry("chat").Text != "pong" {
+		t.Fatal("trailing publication delayed the first token after a 250 ms quiet gap")
+	}
+}
