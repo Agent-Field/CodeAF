@@ -108,6 +108,15 @@ export function snapshotNeeded(bytes) {
 export class HostCodec {
   constructor(runtime) { this.runtime = runtime; }
   call(w) { return response(this.runtime.call(w.finish())); }
+  stagingPolicy() {
+    if (!this.staging) {
+      const r=this.call(frame(46));
+      const max=Number(r.u64()),keys=new Map();
+      for(let n=r.u32();n>0;n--)keys.set(r.str()+'\0'+r.str(),r.u32());
+      r.end();this.staging={max,keys};
+    }
+    return this.staging;
+  }
   inspect(kind, bytes) {
     const r = this.call(frame(7).u32(kind).blob(bytes));
     let v;

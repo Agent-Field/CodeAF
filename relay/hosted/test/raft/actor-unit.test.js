@@ -160,3 +160,37 @@ test('R3 R27 a fresh hosted store accepts platform name metadata and refuses unk
  const unknown=new Host();unknown.db.exec('CREATE TABLE evidence(body TEXT);INSERT INTO evidence VALUES(\'retained\')');
  try{await assert.rejects(new MemberStorage(unknown,codec).open(identity(2)),/invalid|damaged/);assert.equal(unknown.db.prepare('SELECT body FROM evidence').get().body,'retained');}finally{unknown.db.close();}
 });
+
+// R25/R27 keep temporary body pages separate from retained capacity through
+// snapshots, while unrelated growth still refuses without deleting records.
+test('R25 R27 staged legacy requests preserve retained capacity across snapshots', async () => {
+  const host=new Host(),source=await seeded(host);let index=1;
+  const apply=async(store,writes)=>{
+    index++;const entries=[entry(index)];
+    await store.persist({hard:hard(index),entries,snapshot:empty});
+    await store.apply({index:BigInt(index),entries,conf,snapshot:empty},()=>({writes}));
+  };
+  while(source.application().size<source.identity.ceiling){
+    const name=`retained-${index}`,cost=12+text.encode('state'+name).length;
+    const length=Math.min(900000,source.identity.ceiling-source.application().size-cost);
+    assert(length>0);await apply(source,[{namespace:'state',key:name,data:new Uint8Array(length).fill(19)}]);
+  }
+  const retained=source.application().size;
+  const policy=codec.stagingPolicy(),keys=[...policy.keys.keys()].map(pair=>pair.split('\0'));
+  const staged=keys.slice(0,2).map(([namespace,key],n)=>({namespace,key,data:n?new Uint8Array(32768).fill(31):text.encode('{"id":"staged","next":32768}')}));
+  await apply(source,staged);
+  assert(source.application().size>retained);assert.equal(source.stagingBytes(),source.application().size-retained);
+  const snapshot=await source.checkpoint(),info=codec.inspect(3,snapshot),manifest=JSON.parse(new TextDecoder().decode(info.data)),id=sha(info.data);
+  const destHost=new Host(),dest=new MemberStorage(destHost,codec);await dest.open(identity(2));await dest.beginSnapshot(info.data);
+  for(let n=0;n<Number(manifest.chunks);n++){const data=source.chunk(id,n);await dest.putChunk(id,n,data,sha(data));}
+  assert.deepEqual(await dest.completeSnapshot(id),snapshot);
+  await dest.persist({hard:hard(index),entries:[],snapshot});assert.equal(dest.recover().applied,BigInt(index));
+  assert.equal(dest.application().size-dest.stagingBytes(),retained);
+  const original=dest.read('state','opaque-0');
+  await apply(dest,[{namespace:'state',key:'opaque-0',data:original},...staged.map(row=>({...row,data:empty,delete:true}))]);
+  assert.equal(dest.stagingBytes(),0);assert.equal(dest.application().size,retained);assert.deepEqual(dest.read('state','opaque-0'),original);
+  const before=dest.application().applied;
+  await assert.rejects(apply(dest,[{namespace:'state',key:'extra',data:Uint8Array.of(1)}]),/application capacity/);
+  assert.equal(dest.application().applied,before);assert.deepEqual(dest.read('state','opaque-0'),original);
+  host.db.close();destHost.db.close();
+});

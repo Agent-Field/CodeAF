@@ -7,14 +7,15 @@ import { build } from 'esbuild';
 import { mkdtemp, copyFile, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { generateKeyPairSync, createHash, sign } from 'node:crypto';
+import { generateKeyPairSync, createHash, createPrivateKey, createPublicKey, sign } from 'node:crypto';
 
 const sha=b=>createHash('sha256').update(b).digest('hex');
-export async function hostedFixture({fixture=false,base='',go=false}={}) {
+export async function hostedFixture({fixture=false,base='',go=false,rootLabel,now}={}) {
   const prefix=prefixOf({BASE_PATH:base});
   const out=process.env.CODEAF_RAFT_PROOF_DIR;assert(out,'build the native/WASI proof first');
   const dir=await mkdtemp(join(tmpdir(),'p17b-'));
-  const root=generateKeyPairSync('ed25519'),rootKey=root.publicKey.export({format:'der',type:'spki'}).subarray(-32);
+  const privateKey=rootLabel&&createPrivateKey({key:Buffer.concat([Buffer.from('302e020100300506032b657004220420','hex'),createHash('sha256').update(rootLabel).digest()]),format:'der',type:'pkcs8'});
+  const root=privateKey?{privateKey,publicKey:createPublicKey(privateKey)}:generateKeyPairSync('ed25519'),rootKey=root.publicKey.export({format:'der',type:'spki'}).subarray(-32);
   const identity='id_'+sha(rootKey).slice(0,32);
   const client=()=>{
     const key=generateKeyPairSync('ed25519'),pub=key.publicKey.export({format:'der',type:'spki'}).subarray(-32);
@@ -40,7 +41,7 @@ export async function hostedFixture({fixture=false,base='',go=false}={}) {
       let text=await readFile(args.path,'utf8');const needle=cut.needle;assert.equal(text.split(needle).length,2,'cut must identify exactly one boundary');
       text=text.replace(needle,needle+(cut.after??"throw new Error('H2 injected crash after durable boundary');"));return {contents:text,loader:'js'};
     });}});
-    await build({entryPoints:[fixture?'test/raft/hosted-worker.js':'src/raft-worker.js'],bundle:true,format:'esm',target:'es2022',external:['cloudflare:*'],plugins,outfile:join(dir,'worker.js')});
+    await build({entryPoints:[fixture?'test/raft/hosted-worker.js':'src/raft-worker.js'],bundle:true,format:'esm',target:'es2022',external:['cloudflare:*'],banner:now===undefined?undefined:{js:`const realNow=Date.now;Date.now=()=>{const value=realNow();if(value===0)return ${now};globalThis.fixtureClockOffset??=${now}-value;return value+globalThis.fixtureClockOffset;};`},plugins,outfile:join(dir,'worker.js')});
     const saved=join(dir,'bundle-'+bundles.size+'.js');
     await copyFile(join(dir,'worker.js'),saved);bundles.set(variant,saved);compiledCut=variant;
   };

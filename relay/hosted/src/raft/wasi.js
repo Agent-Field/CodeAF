@@ -10,7 +10,8 @@ export function wasiPreview1() {
     return new Uint8Array(memory.buffer, p, n);
   };
   const u32 = (p, n) => { bytes(p, 4); view().setUint32(p, n, true); };
-  const env = new TextEncoder().encode('GOMEMLIMIT=48MiB\0GOGC=50\0GOMAXPROCS=1\0');
+  // Dense metadata needs earlier collection of temporary trees between calls.
+  const env = new TextEncoder().encode('GOMEMLIMIT=48MiB\0GOGC=10\0GOMAXPROCS=1\0');
   const offsets = [0];
   for (let i = 0; i < env.length - 1; i++) if (env[i] === 0) offsets.push(i + 1);
   const implemented = {

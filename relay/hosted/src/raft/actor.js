@@ -19,10 +19,17 @@ export function installRaftModule(compiled) {
 export function sharedRuntime() { if (!module) throw new Error('raft member: core unavailable'); return runtime ??= new Reactor(module); }
 export function runtimeMetrics() { return { ...sharedRuntime().metrics(), active: active.size, reservedBytes: active.size * RESERVATION }; }
 
+// A new durable-object constructor proves its previous activation is gone.
+// Retire only that object's stale handle, independently of memory pressure.
+export function replaceMemberActivation(identity) {
+  for(const actor of active)if(actor.activation===identity)actor.replaced();
+}
+
 // A member queue spans awaits and remains bounded even when storage stalls.
 // Rejected inputs are retryable; a failed persistence stops this handle.
 export class MemberActor {
-  constructor(storage, reactor, evaluate) {
+  constructor(storage, reactor, evaluate, activation = null) {
+    this.activation=activation;
     this.reactor = reactor; this.codec = new HostCodec(reactor); this.store = new MemberStorage(storage, this.codec);
     this.evaluate = evaluate; this.tail = Promise.resolve(); this.pending = 0; this.handle = 0; this.stopped = false; this.generation = 0; this.checkpointIndex = 0n;
   }
@@ -38,6 +45,7 @@ export class MemberActor {
     active.add(this);
     try {
       const recovered = await this.store.open({ cluster: config.cluster, id: String(config.id), protocol: 1 }, config.ceiling ?? DEFAULT_ROWS_BYTES);
+      if(this.stopped)throw new Error('raft member: activation replaced; recover from durable storage');
       const cache = recovered.entries.reduce((n, b) => n + b.length, 0);
       if (cache > CACHE_BYTES) throw new Error('raft member: log cache capacity; recover with checkpoint');
       const registry = this.store.read('membership', 'registry');
@@ -172,6 +180,13 @@ export class MemberActor {
   begin(data) { data = data.slice(); return this.serial(() => this.store.beginSnapshot(data)); }
   chunk(id, offset, data, hash) { data = data.slice(); return this.serial(() => this.store.putChunk(id, offset, data, hash)); }
   complete(id) { return this.serial(() => this.store.completeSnapshot(id)); }
+  // An exclusive object replacement cannot resume its former volatile actor.
+  // Fence pending continuations before recovering the same durable identity.
+  replaced() {
+    this.stopped=true;this.store.stopped=true;this.generation++;
+    if(this.handle){const r=response(this.reactor.call(frame(2).u32(this.handle).finish()));r.end();this.handle=0;}
+    active.delete(this);
+  }
   // Explicit owner erasure has already durably fenced every ingress. Dropping
   // this handle reclaims memory; it is never a pressure eviction of a leader.
   disposeErased() { return this.serial(() => {

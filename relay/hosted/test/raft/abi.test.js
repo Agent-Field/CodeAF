@@ -16,7 +16,7 @@ test('R27 WASI shim has fixed environment, no I/O and rejects blocking schedulin
  assert.equal(wasi.imports.environ_sizes_get(0,4),0);assert.equal(v.getUint32(0,true),3);
  const size=v.getUint32(4,true);assert.equal(wasi.imports.environ_get(8,32),0);
  assert.deepEqual([...Array(3)].map((_,i)=>v.getUint32(8+i*4,true)),[32,49,57]);
- assert.equal(new TextDecoder().decode(new Uint8Array(memory.buffer,32,size)),'GOMEMLIMIT=48MiB\0GOGC=50\0GOMAXPROCS=1\0');
+ assert.equal(new TextDecoder().decode(new Uint8Array(memory.buffer,32,size)),'GOMEMLIMIT=48MiB\0GOGC=10\0GOMAXPROCS=1\0');
  assert.throws(()=>wasi.imports.poll_oneoff(),/blocking poll/);assert.throws(()=>wasi.imports.sched_yield(),/scheduler yield/);
  assert.equal(wasi.imports.fd_read(),8);assert.equal(wasi.imports.sock_accept(),8);assert.equal(wasi.imports.fd_write(9),8);
  assert.throws(()=>wasi.imports.random_get(65536,1),/bounds/);

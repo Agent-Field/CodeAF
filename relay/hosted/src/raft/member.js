@@ -1,9 +1,9 @@
 import { clusterIngress } from './ingress.js';
 import { workerCell,workerAssignment } from './worker.js';
 import { DurableObject } from 'cloudflare:workers';
-import { MemberActor, sharedRuntime } from './actor.js';
+import { MemberActor, sharedRuntime,replaceMemberActivation } from './actor.js';
 import { MemberInbox, INBOX_BYTES } from './inbox.js';
-import { directoryEvaluator } from './directory.js';
+import { directoryEvaluator,projectRecord } from './directory.js';
 import { DEFAULT_ROWS_BYTES, MemberStorage, b64 } from './storage.js';
 import { HostCodec,frame,response } from './abi.js';
 import { encodeCanonical, decodeCanonical } from './codec.js';
@@ -17,7 +17,7 @@ export { installRaftModule, runtimeMetrics } from './actor.js';
 // public Worker routes identity coordination through its authenticated source.
 // Enrollment and evaluation use the durable Go registry and shared Go policy.
 export class RaftMemberDO extends DurableObject {
-  constructor(ctx, env) { super(ctx, env); this.actor = null; this.loading = null; this.ctx = ctx; this.env = env; }
+  constructor(ctx, env) { super(ctx, env); replaceMemberActivation(ctx.id.toString()); this.actor = null; this.loading = null; this.ctx = ctx; this.env = env; }
   evaluator(config) {
     const evaluate=directoryEvaluator(sharedRuntime(),config.cluster,config.ceiling??DEFAULT_ROWS_BYTES);
     this.results=new Map();this.resultBytes=0;
@@ -53,7 +53,7 @@ export class RaftMemberDO extends DurableObject {
       if(!await this.importReceipt(manifest))throw new Error('raft member: import provenance absent');
       await this.load();
       await this.actor.serial(async()=>{
-        const raw=this.actor.store.read('state','identity'),record=raw&&decodeCanonical(new TextDecoder().decode(raw));
+        const raw=this.actor.store.read('state','identity'),record=raw&&JSON.parse(projectRecord(sharedRuntime(),'identity',raw));
         if(record?.rotation?.state!=='retired'||record.rotation.retire_at>Date.now())throw new Error('raft member: erasure not authorized');
         await this.ctx.storage.put('raft-erased',manifest.config.cluster);await this.ctx.storage.sync();this.erased=true;
       });
@@ -174,8 +174,9 @@ export class RaftMemberDO extends DurableObject {
     const previous = await this.ctx.storage.get('raft-config');
     if (previous && JSON.stringify(previous) !== JSON.stringify(canonical)) throw new Error('raft member: provisioned identity cannot change');
     if (!previous) { await this.ctx.storage.put('raft-config', canonical); await this.ctx.storage.sync(); }
-    const actor = new MemberActor(this.ctx.storage, sharedRuntime(), this.evaluator(config));
+    const actor = new MemberActor(this.ctx.storage, sharedRuntime(), this.evaluator(config),this.ctx.id.toString());
     const result = await actor.init(canonical);
+    if(actor.stopped)throw new Error('raft member: activation replaced; recover from durable storage');
     this.config = canonical; this.registry = actor.store.read('membership', 'registry') ? committedRegistry(sharedRuntime(), actor.store) : await this.ctx.storage.get('raft-registry'); this.actor = actor;
     return result;
   }
@@ -190,8 +191,8 @@ export class RaftMemberDO extends DurableObject {
   }
   async restore() {
     const config = await this.ctx.storage.get('raft-config'); if (!config) throw new Error('raft member: not provisioned');
-    const actor = new MemberActor(this.ctx.storage, sharedRuntime(), this.evaluator(config));
-    this.recoveredEffects = await actor.init(config); this.config = config; this.registry = actor.store.read('membership', 'registry') ? committedRegistry(sharedRuntime(), actor.store) : await this.ctx.storage.get('raft-registry'); this.actor = actor;
+    const actor = new MemberActor(this.ctx.storage, sharedRuntime(), this.evaluator(config),this.ctx.id.toString());
+    this.recoveredEffects = await actor.init(config);if(actor.stopped)throw new Error('raft member: activation replaced; recover from durable storage'); this.config = config; this.registry = actor.store.read('membership', 'registry') ? committedRegistry(sharedRuntime(), actor.store) : await this.ctx.storage.get('raft-registry'); this.actor = actor;
   }
   // Alarm effects wait in one bounded durable transport batch. The router
   // drains original bytes and acknowledges the batch ID; arrival is never an

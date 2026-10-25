@@ -134,17 +134,23 @@ export class MemberStorage {
         if (e.type === 0 && e.data.length) {
           check(evaluate, 'raft storage: application evaluator is absent');
           let readBytes = 0, writeBytes = 0;
-          const change = evaluate(e.data, (ns, k) => { const data = this.read(ns, k); readBytes += data?.length ?? 0; check(readBytes <= ROW_BYTES, 'raft storage: evaluation read-set capacity'); return data; }, { ...app, index: e.index, term: e.term });
+          const read=(ns,k)=>{const data=this.read(ns,k);readBytes+=data?.length??0;check(readBytes<=ROW_BYTES,'raft storage: evaluation read-set capacity');return data;};
+          read.page=(ns,k)=>{const data=this.read(ns,k);check((data?.length??0)<=ROW_BYTES,'raft storage: evaluation record-page capacity');return data;};
+          const change = evaluate(e.data, read, { ...app, index: e.index, term: e.term });
           check(change && !change.then && Array.isArray(change.writes));
+          const retainedBefore=app.size>this.identity.ceiling?app.size-this.stagingBytes():app.size;
           for (const r of change.writes) {
             check(namespaces.includes(r.namespace) && typeof r.key === 'string' && enc.encode(r.key).length > 0 && enc.encode(r.key).length <= ROW_BYTES && r.data instanceof Uint8Array && r.data.length <= ROW_BYTES);
             writeBytes += rowSize(r.namespace, r.key, r.data); check(writeBytes <= ROW_BYTES, 'raft storage: evaluation write-set capacity');
             const before = this.read(r.namespace, r.key);
-            if (before) { xor(aggregate, this.checksum('records', r.namespace, r.key, before)); app.size -= rowSize(r.namespace, r.key, before); } else app.count++;
+            if (before) { xor(aggregate, this.checksum('records', r.namespace, r.key, before)); app.size -= rowSize(r.namespace, r.key, before); }
+            if(r.delete){check(r.data.length===0);if(before)app.count--;this.rows('DELETE FROM records WHERE namespace=? AND key=?',r.namespace,r.key);continue;}
+            if(!before)app.count++;
             xor(aggregate, this.checksum('records', r.namespace, r.key, r.data)); app.size += rowSize(r.namespace, r.key, r.data);
             this.rows('INSERT OR REPLACE INTO records VALUES (?,?,?,?)', r.namespace, r.key, r.data, hex(this.checksum('records', r.namespace, r.key, r.data)));
           }
-          check(app.size <= this.identity.ceiling || app.size <= this.application().size, 'raft storage: application capacity; retry after capacity is raised');
+          const retained=app.size>this.identity.ceiling?app.size-this.stagingBytes():app.size;
+          check(retained <= this.identity.ceiling || retained <= retainedBefore, 'raft storage: application capacity; retry after capacity is raised');
           if (change.version !== undefined) { check(BigInt(change.version) >= BigInt(app.version)); app.version = String(change.version); }
           if (change.now !== undefined) { check(BigInt(change.now) >= BigInt(app.now)); app.now = String(change.now); }
         }
@@ -155,6 +161,21 @@ export class MemberStorage {
       app.applied = String(index); app.conf = b64(a.conf); app.hash = hex(aggregate); this.put('application', app);
     });
   }
+  stagingCost(namespace,name,data) {
+    const policy=this.codec.stagingPolicy(),limit=policy.keys.get(namespace+'\0'+name);
+    if(limit===undefined)return 0;
+    check(data.length<=limit,'raft storage: temporary command record capacity');
+    return rowSize(namespace,name,data);
+  }
+  stagingBytes() {
+    let size=0;
+    for(const pair of this.codec.stagingPolicy().keys.keys()){
+      const [namespace,name]=pair.split('\0'),data=this.read(namespace,name);
+      if(data)size+=this.stagingCost(namespace,name,data);
+    }
+    check(size<=this.codec.stagingPolicy().max,'raft storage: temporary command capacity');
+    return size;
+  }
   generation(id) {
     const r = this.one('SELECT data,hash,complete FROM snapshots WHERE id=?', id); check(r);
     const data = bytes(r.data); check(this.hash(data) === id && this.hash(data) === r.hash);
@@ -162,7 +183,7 @@ export class MemberStorage {
   }
   async beginSnapshot(data) {
     const p = this.codec.snapshot(data), s = this.codec.inspect(3, p), m = JSON.parse(dec.decode(data)), id = this.hash(data);
-    check(m.cluster === this.identity.cluster && m.protocol === '1' && BigInt(m.bytes) <= BigInt(this.identity.ceiling), 'raft storage: snapshot capacity or identity mismatch');
+    check(m.cluster === this.identity.cluster && m.protocol === '1' && BigInt(m.bytes) <= BigInt(this.identity.ceiling)+BigInt(this.codec.stagingPolicy().max), 'raft storage: snapshot capacity or identity mismatch');
     await this.transaction(() => {
       const active = unb64(this.get('snapshot')), at = active.length ? this.codec.inspect(3, active).index : 0n;
       check(s.index >= at);
@@ -185,7 +206,7 @@ export class MemberStorage {
   chunk(id, offset) { const r = this.one('SELECT data,hash FROM chunks WHERE generation=? AND offset=?', id, offset); check(r); const b = bytes(r.data); check(this.hash(b) === r.hash); return b; }
   walk(id, visit) {
     const { manifest: m } = this.generation(id);
-    let state = EMPTY, digest = this.codec.hash(EMPTY).digest, pending = EMPTY, count = 0, total = 0, size = 0, lastNS = '', lastKey = '';
+    let state = EMPTY, digest = this.codec.hash(EMPTY).digest, pending = EMPTY, count = 0, total = 0, size = 0, staging = 0, lastNS = '', lastKey = '';
     const aggregate = new Uint8Array(32);
     const chunks = Number(m.chunks); check(Number.isSafeInteger(chunks) && chunks >= 0);
     check(this.one('SELECT count(*) AS n FROM chunks WHERE generation=?', id).n === chunks);
@@ -199,13 +220,13 @@ export class MemberStorage {
         if (pending.length < length) break;
         const namespace = dec.decode(pending.subarray(12, 12 + n)), name = dec.decode(pending.subarray(12 + n, 12 + n + k));
         check(namespaces.includes(namespace) && (count === 0 || compare(namespace, lastNS) > 0 || (namespace === lastNS && compare(name, lastKey) > 0)));
-        const data = pending.slice(12 + n + k, length); xor(aggregate, this.checksum('records', namespace, name, data)); count++; size += rowSize(namespace, name, data);
+        const data = pending.slice(12 + n + k, length); xor(aggregate, this.checksum('records', namespace, name, data)); count++; size += rowSize(namespace, name, data); staging += this.stagingCost(namespace,name,data);
         visit?.({ namespace, key: name, data }); lastNS = namespace; lastKey = name; pending = pending.slice(length);
       }
       check(pending.length <= 2 * ROW_BYTES + 28);
     }
     check(pending.length === 0 && String(count) === m.records && String(total) === m.bytes && hex(digest) === m.digest && hex(aggregate) === m.records_hash);
-    check(size <= this.identity.ceiling, 'raft storage: snapshot exceeds retained identity capacity');
+    check(staging<=this.codec.stagingPolicy().max && size-staging <= this.identity.ceiling, 'raft storage: snapshot exceeds retained identity capacity');
   }
   retain(id) {
     const others = this.rows('SELECT id FROM snapshots WHERE complete=1 AND id<>?', id).toArray().map(r => this.generation(r.id)).sort((a, b) => BigInt(a.manifest.index) > BigInt(b.manifest.index) ? -1 : 1);

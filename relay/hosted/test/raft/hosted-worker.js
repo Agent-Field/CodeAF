@@ -16,6 +16,7 @@ import { policyOf } from '../../src/rules.js';
 
 export class IdentityDO extends Source {
   constructor(ctx,env){
+    Date.now();if(globalThis.fixtureClockOffset){const setAlarm=ctx.storage.setAlarm.bind(ctx.storage);ctx.storage.setAlarm=at=>setAlarm(Number(at)-globalThis.fixtureClockOffset);}
     super(ctx,env);
     const accept=ctx.acceptWebSocket.bind(ctx);
     ctx.acceptWebSocket=(ws,tags)=>{accept(ws,tags);const send=ws.send.bind(ws);ws.send=raw=>{if(ws.deserializeAttachment()?.clusterPeer)measurements.peerOut++;return send(raw);};};
@@ -148,12 +149,30 @@ export class IdentityDO extends Source {
     for(let n=21;n<=140;n++)await host.maintenance(base+n*host.policy.tick_every,host.started+offset+n*host.policy.tick_every);
     return {sleeping,membershipCalls:measurements.membership-membershipBefore,appliedBefore:String(before),appliedAfter:String(host.states.get(id).applied),recurringMemberCalls:measurements.turns-turns,idleMilliseconds:120*host.policy.tick_every};
   });}
+  forgetFollowerHints(){
+    const host=this.current.host,before=host.leaderID();
+    for(const [node,state]of host.states)if(state.role===0)host.states.set(node,{...state,leader:0n});
+    return {before,after:host.leaderID()};
+  }
+  progressState(){
+    const host=this.current.host;if(!host)return {ready:false};
+    return {ready:host.ready,leader:host.leaderID(),members:[...host.members.keys()],states:[...host.states].map(([node,state])=>({node,role:state.role,term:String(state.term),commit:String(state.commit),applied:String(state.applied)})),forwarding:host.forwarding.pending.size,queue:host.queue.length,reads:host.reads.length,pumping:!!host.pumping};
+  }
   inspect() {
     return {gate:this.ctx.storage.sql.exec('SELECT doc FROM legacy_gate WHERE one=1').toArray()[0]?.doc,
       originals:this.ctx.storage.sql.exec('SELECT kind,id,doc FROM dir ORDER BY kind,id').toArray()};
   }
 }
 export class RaftMemberDO extends Member {
+ constructor(ctx,env){Date.now();if(globalThis.fixtureClockOffset){const setAlarm=ctx.storage.setAlarm.bind(ctx.storage);ctx.storage.setAlarm=at=>setAlarm(Number(at)-globalThis.fixtureClockOffset);}super(ctx,env);}
+ async staging(){await this.load();return this.actor.serial(()=>({rows:this.ctx.storage.sql.exec("SELECT count(*) AS n, coalesce(sum(length(data)),0) AS bytes FROM records WHERE namespace='outbox' AND key LIKE 'v1-stage/%'").toArray()[0],app:this.actor.store.application()}));}
+  async replaceActivation(){
+    await this.load();const old=this.actor,before=old.store.application().applied;
+    const restored=new Member(this.ctx,this.env);await restored.load();
+    let refused=false;try{await old.input(1);}catch{refused=true;}
+    for(const key of ['actor','config','registry','results','resultBytes','recoveredEffects'])this[key]=restored[key];
+    return {before,after:this.actor.store.application().applied,refused,oldHandle:old.handle,active:runtimeMetrics().active};
+  }
   alarmState(){return this.ctx.storage.getAlarm();}
   alarm(...args){return measured(()=>super.alarm(...args));}
   importReceipt(...args){return measured(()=>super.importReceipt(...args));}
@@ -205,6 +224,8 @@ export default {
       if(op==='member-alarm')return Response.json(await env.RAFT_MEMBERS.get(env.RAFT_MEMBERS.idFromName(cluster+'/'+node)).alarmState());
       if(op==='peer-idle')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).peerIdle());
       if(op==='sequence-proof')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).sequenceProof());
+      if(op==='forget-follower-hints')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).forgetFollowerHints());
+      if(op==='progress-state')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).progressState());
       if(op==='transport-state')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).transportState());
       if(op==='pause-public'){await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).pausePublic();return Response.json(true);}
       if(op==='resume-public'){await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).resumePublic();return Response.json(true);}
@@ -222,6 +243,8 @@ export default {
       if(op==='retained-control')return Response.json(await env.RAFT_MEMBERS.get(env.RAFT_MEMBERS.idFromName(cluster+'/'+node)).retainedControl());
       if(op==='discard-member'){await env.RAFT_MEMBERS.get(env.RAFT_MEMBERS.idFromName(cluster+'/'+node)).discardStore();return Response.json(true);}
       if(op==='has-member')return Response.json(await env.RAFT_MEMBERS.get(env.RAFT_MEMBERS.idFromName(cluster+'/'+node)).hasStore());
+      if(op==='replace-activation')return Response.json(await env.RAFT_MEMBERS.get(env.RAFT_MEMBERS.idFromName(cluster+'/'+node)).replaceActivation());
+      if(op==='staging')return Response.json(await env.RAFT_MEMBERS.get(env.RAFT_MEMBERS.idFromName(cluster+'/'+node)).staging());
       if(op==='member')return Response.json(await env.RAFT_MEMBERS.get(env.RAFT_MEMBERS.idFromName(cluster+'/'+node)).inspect());
       return new Response(null,{status:404});
     }

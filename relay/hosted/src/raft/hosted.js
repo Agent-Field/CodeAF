@@ -8,6 +8,7 @@ import { sharedRuntime } from './actor.js';
 import { encodeCanonical, decodeCanonical } from './codec.js';
 import { b64, unb64, bytes } from './storage.js';
 import { v1Command } from './v1.js';
+import { projectRecord } from './directory.js';
 import { RaftEffectsFacade } from './effects.js';
 import { Wire, empty, json, unwrap } from '../wire.js';
 import { signedUri } from '../base.js';
@@ -62,6 +63,12 @@ export class HostedIdentity {
   async forward(node,work){
     const token=await this.serial(()=>this.forwarding.begin(node,work));
     const reply=await token.promise;
+    // Cold followers may temporarily lose their leader hint. An authenticated
+    // forwarding reply preserves routing, while every operation still requires
+    // its ordinary quorum barrier and exact durable result.
+    const hint=String(reply?.status?.Leader??'0'),term=BigInt(reply?.status?.Term??0);
+    const known=[...this.states.values()].reduce((max,state)=>state.term>max?state.term:max,this.routeTerm??0n);
+    if(hint!=='0'&&term>=known){this.routeHint=hint;this.routeTerm=term;}
     if(!reply||reply.error)throw Object.assign(unavailable(),{forwardID:token.id});
     return reply;
   }
@@ -279,7 +286,15 @@ export class HostedIdentity {
     await this.elect();const id=this.leader();
     if(!id){
       let reply;try{reply=await this.remote({action:'submit',command:b64(raw)});}catch(error){if(this.leader())return this.commit(raw,deadline);throw error;}
-      if(!reply.result)throw unavailable();await this.appliedReplica(reply.applied,deadline);
+      if(!reply.result)throw unavailable();const replica=await this.appliedReplica(reply.applied,deadline);
+      if(reply.result.view_index){
+        if(BigInt(reply.result.view_index)!==BigInt(reply.applied))throw unavailable();
+        const result=await this.members.get(replica.node).hostResult(raw,BigInt(reply.applied)-1n);
+        if(!result||BigInt(result.index)!==BigInt(reply.applied))throw unavailable();
+        const value=this.project('typed_result',result.raw);
+        if(value.code!==reply.result.code||value.now!==reply.result.now||value.version!==reply.result.version)throw unavailable();
+        await this.peers.refresh();return {raw:result.raw,value,index:BigInt(reply.applied)};
+      }
       await this.peers.refresh();return {raw:data(reply.result),value:reply.result,index:BigInt(reply.applied)};
     }
     let proposal;
@@ -288,12 +303,21 @@ export class HostedIdentity {
     for(;;){
       if(this.leader()!==id){await this.refreshRoute();if(this.leader()!==id)return this.commit(raw,deadline);}
       const version=this.progressVersion,result=await this.members.get(id)?.hostResult(raw,proposal.proposalAfter);
-      if(result){if(this.peers)await this.peers.refresh();return {raw:result.raw,value:decodeCanonical(dec.decode(result.raw)),index:result.index};}
+      if(result){if(this.peers)await this.peers.refresh();return {raw:result.raw,value:this.project('typed_result',result.raw),index:result.index};}
       // All hosted persistence and replies have drained. Only an external
       // voter can still make progress without another input to this operation.
       if(!this.externalVoter())throw unavailable();
       await this.progress(deadline,version);
     }
+  }
+  async commitV1(raw){
+    const commands=Array.isArray(raw)?raw:[raw],width=this.peers.limits.Slots[0];
+    for(let offset=0;offset<commands.length-1;offset+=width){
+      await Promise.all(commands.slice(offset,Math.min(commands.length-1,offset+width)).map(async command=>{
+        const result=await this.commit(command);requireOK(result.value.code);return result;
+      }));
+    }
+    const result=await this.commit(commands.at(-1));requireOK(result.value.code);return result;
   }
   async commitEffect(change,now=Date.now()){
     const r=response(this.runtime.call(frame(30).str(this.manifest.config.cluster).u64(now).blob(unb64(this.provisioning.effects)).blob(data(change)).finish()));
@@ -301,7 +325,7 @@ export class HostedIdentity {
   }
   async barrierRecord({namespace,key}){const b=await this.barrier();return (await this.members.get(b.node).hostView(b.index,namespace,key)).raw;}
   async barrierOutbox(after,limit){const b=await this.barrier();return (await this.members.get(b.node).hostView(b.index,'outbox','',after)).rows.slice(0,limit);}
-  projectJSON(kind,raw){const r=response(this.runtime.call(frame(31).str(kind).blob(raw).finish())),value=dec.decode(r.blob());r.end();return value;}
+  projectJSON(kind,raw){return projectRecord(this.runtime,kind,raw);}
   project(kind,raw){return JSON.parse(this.projectJSON(kind,raw));}
   async authorize(device,certificate,write=false){
     await this.wakeMaintenance();
@@ -602,7 +626,7 @@ export class HostedIdentity {
     const join=/^\/v1\/dir\/requests\/([^/]+)\/(approve|deny)$/.exec(path);
     if(join){await this.authorize(device,cert,true);const code=decodeURIComponent(join[1]).trim().toLowerCase();const box=this.env.LINK_REQUEST.get(this.env.LINK_REQUEST.idFromName(code));await this.effects.admit(box,code,Date.now());}
     let raw;try{raw=v1Command(this.runtime,this.manifest.config.cluster,Date.now(),this.proof(request,body));}catch{throw new Wire('bad_request',400);}
-    const result=await this.commit(raw);requireOK(result.value.code);
+    const result=await this.commitV1(raw);
     const b=await this.barrier(),snapshot=await this.members.get(b.node).hostView(b.index,'state','identity'),identity=this.project('identity',snapshot.raw),version=snapshot.app.version;
     await this.rememberRetirement(identity);
     this.watchers.broadcast(version);
