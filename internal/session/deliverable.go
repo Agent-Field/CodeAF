@@ -810,9 +810,8 @@ func FindDeliverable(index, sessionID, id string, deadline time.Time) (Deliverab
 
 // ── appending ───────────────────────────────────────────────────────────────
 
-// AppendDeliverableUpdate appends a full-snapshot update of base with change
-// applied, and answers whether the row was written. It copies the base's path,
-// title, session, kind and Created so older readers keep their ordering.
+// AppendDeliverableUpdate merges change onto the latest snapshot of base's id
+// and answers whether the row was written. Only base's identity is used.
 func AppendDeliverableUpdate(index string, base DeliverableRow, change func(*DeliverableFact)) bool {
 	_, ok := appendDeliverableUpdate(index, base, change)
 	return ok
@@ -821,18 +820,44 @@ func AppendDeliverableUpdate(index string, base DeliverableRow, change func(*Del
 // appendDeliverableUpdate is [AppendDeliverableUpdate] that answers the
 // deliverable as the row it wrote now states it.
 func appendDeliverableUpdate(index string, base DeliverableRow, change func(*DeliverableFact)) (DeliverableRow, bool) {
-	row := base.Artifact
-	fact := base.Fact
-	fact.ID, fact.Update, fact.At = base.ID, true, time.Now().UTC()
-	fact.MediaUpdate = false
-	fact.From = append([]string(nil), base.Fact.From...)
-	change(&fact)
-	row.Deliver = &fact
-	written, ok := recordArtifactRow(index, row)
+	written, ok := mutateDeliverable(index, base, func(row *Artifact) {
+		fact := *row.Deliver
+		fact.Update, fact.At, fact.MediaUpdate = true, time.Now().UTC(), false
+		fact.From = append([]string(nil), fact.From...)
+		change(&fact)
+		row.Deliver = &fact
+	})
 	if !ok {
 		return DeliverableRow{}, false
 	}
-	return DeliverableRow{Artifact: written, Fact: fact, Recorded: true, ID: base.ID, Kind: base.Kind, Start: base.Start, Len: base.Len}, true
+	return DeliverableRow{Artifact: written, Fact: *written.Deliver, Recorded: true, ID: base.ID, Kind: written.Kind, Start: base.Start, Len: base.Len}, true
+}
+
+// mutateDeliverable is the single writer for deliverable state: Keep and write
+// recording both hold artifactsMu from latest-snapshot lookup through field
+// merge and append. Callers supply identity and a field mutation, never a
+// snapshot to append, so a paused caller cannot restore stale source metadata.
+func mutateDeliverable(index string, identity DeliverableRow, change func(*Artifact)) (Artifact, bool) {
+	artifactsMu.Lock()
+	defer artifactsMu.Unlock()
+	latest, err := currentDeliverable(index, identity)
+	if err != nil {
+		return Artifact{}, false
+	}
+	change(&latest)
+	return recordArtifactRowLocked(index, latest)
+}
+
+func currentDeliverable(index string, identity DeliverableRow) (Artifact, error) {
+	if identity.ID == "" {
+		return latestWrittenArtifact(index, identity.Artifact)
+	}
+	latest, err := FindDeliverable(index, identity.Artifact.Session, identity.ID, time.Time{})
+	if err != nil {
+		return Artifact{}, err
+	}
+	latest.Artifact.Deliver = &latest.Fact
+	return latest.Artifact, nil
 }
 
 // deliverRowFits says whether a row is within what this engine writes for a

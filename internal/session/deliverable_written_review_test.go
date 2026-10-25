@@ -7,11 +7,107 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
 )
+
+func TestOverwritePrefersAuthoredIdentityOverNewerShare(t *testing.T) {
+	w := newShareWorld(t)
+	writeNewFile(t, w.agent, "plan.md", "original authored bytes")
+	authored := listDeliverables(t, w.index, DeliverableQuery{}, 10)[0]
+	result, bad := w.share(t, w.shareCall(t, "share-plan"), "share-plan", "plan.md")
+	if bad || len(result.RecordedIDs) != 1 || result.RecordedIDs[0] == authored.ID {
+		t.Fatalf("share did not create an independent identity: %+v", result)
+	}
+	shared, err := FindDeliverable(w.index, w.session, result.RecordedIDs[0], time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeNewFile(t, w.agent, "plan.md", "new authored bytes")
+	updated, err := FindDeliverable(w.index, w.session, authored.ID, time.Time{})
+	want := fmt.Sprintf("%x", sha256.Sum256([]byte("new authored bytes")))
+	if err != nil || updated.Fact.File.SHA256 != want || !updated.Fact.Authored || !updated.Artifact.Created.Equal(authored.Artifact.Created) {
+		t.Fatalf("authored identity was not refreshed: %+v, %v", updated.Fact, err)
+	}
+	after, err := FindDeliverable(w.index, w.session, shared.ID, time.Time{})
+	if err != nil || !reflect.DeepEqual(after.Fact, shared.Fact) {
+		t.Fatalf("overwrite changed independent share: %+v, %v", after.Fact, err)
+	}
+	if rows := listDeliverables(t, w.index, DeliverableQuery{}, 10); len(rows) != 2 {
+		t.Fatalf("overwrite minted another identity: %d rows", len(rows))
+	}
+}
+
+func TestKeepMergesOntoConcurrentWrittenRefresh(t *testing.T) {
+	agent, workspace, index := deliverableAgent(t, true)
+	original := wavFile(1, 8, 4, 4)
+	writeNewFile(t, agent, "voice.wav", string(original))
+	base := listDeliverables(t, index, DeliverableQuery{}, 10)[0]
+	published, resume := make(chan struct{}), make(chan struct{})
+	old := keepAfterPublish
+	keepAfterPublish = func(string) { close(published); <-resume }
+	defer func() { keepAfterPublish = old }()
+	type result struct {
+		row  DeliverableRow
+		path string
+		err  error
+	}
+	done := make(chan result, 1)
+	dest, home := t.TempDir(), t.TempDir()
+	go func() {
+		row, path, err := KeepDeliverable(t.Context(), index, base, []string{workspace}, home, KeepRequest{Dir: dest})
+		done <- result{row, path, err}
+	}()
+	select {
+	case <-published:
+	case early := <-done:
+		t.Fatalf("Keep stopped before publishing: %v", early.err)
+	}
+	// Keep has copied A and is paused outside the ledger lock. Record B fully
+	// before letting Keep update the same id, without scheduling assumptions.
+	current := wavFile(1, 8, 8, 8)
+	writeNewFile(t, agent, "voice.wav", string(current))
+	refreshed, err := FindDeliverable(index, agent.journalID(), base.ID, time.Time{})
+	close(resume)
+	kept := <-done
+	if err != nil || kept.err != nil {
+		t.Fatalf("refresh: %v, Keep: %v", err, kept.err)
+	}
+	latest, err := FindDeliverable(index, agent.journalID(), base.ID, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range []DeliverableRow{kept.row, latest} {
+		if !reflect.DeepEqual(row.Fact.File, refreshed.Fact.File) || row.Fact.Version != refreshed.Fact.Version || !reflect.DeepEqual(row.Artifact.Media, refreshed.Artifact.Media) || row.Fact.Run != refreshed.Fact.Run {
+			t.Fatalf("Keep restored stale source metadata: got %+v, want %+v", row.Fact, refreshed.Fact)
+		}
+		wantCopy := fmt.Sprintf("%x", sha256.Sum256(original))
+		if row.Fact.State != DeliverKept || row.Fact.Kept == nil || row.Fact.Kept.SHA256 != wantCopy || row.Fact.Kept.Path != kept.path {
+			t.Fatalf("Keep lost its own copy metadata: %+v", row.Fact)
+		}
+	}
+	if copied, err := os.ReadFile(kept.path); err != nil || string(copied) != string(original) {
+		t.Fatalf("kept copy changed: %q, %v", copied, err)
+	}
+	preview := latest.Artifact
+	preview.Deliver = nil
+	id, ok := MediaSourceOf(preview)
+	if !ok {
+		t.Fatal("refreshed source has no preview")
+	}
+	media, err := FindMedia(index, agent.journalID(), id, time.Time{})
+	want := fmt.Sprintf("%x", sha256.Sum256(current))
+	if err != nil || media.Fact.SHA256 != want {
+		t.Fatalf("stale preview: %+v, %v", media.Fact, err)
+	}
+	listed, err := ListMedia(index, agent.journalID(), "", 10, time.Time{})
+	if err != nil || len(listed.Rows) != 2 {
+		t.Fatalf("Keep duplicated a media source: %d rows, %v", len(listed.Rows), err)
+	}
+}
 
 func TestConcurrentAliasWritesHaveOneDeliverable(t *testing.T) {
 	for _, relative := range []string{"new.md", filepath.Join("newdir", "new.md")} {

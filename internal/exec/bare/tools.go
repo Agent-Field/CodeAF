@@ -1129,8 +1129,8 @@ func releaseMutationQueue(key string, ch chan struct{}) {
 	}
 }
 
-// mutationQueueKey resolves aliases before mutation, including a file that
-// does not exist yet whose parent directory is reached through a symlink.
+// mutationQueueKey resolves aliases before mutation, including dangling leaf
+// symlinks and absent files whose parent directory is reached through a symlink.
 func mutationQueueKey(filePath string) string {
 	resolved := filepath.Clean(filePath)
 	abs, err := filepath.Abs(resolved)
@@ -1140,21 +1140,48 @@ func mutationQueueKey(filePath string) string {
 	if real, err := filepath.EvalSymlinks(abs); err == nil {
 		return real
 	}
-	parent, tail := filepath.Dir(abs), filepath.Base(abs)
-	for {
-		if real, err := filepath.EvalSymlinks(parent); err == nil {
-			return filepath.Join(real, tail)
-		} else if !os.IsNotExist(err) {
+	return mutationDanglingKey(abs)
+}
+
+// mutationDanglingKey walks components even past an absent target. A symlink's
+// parent is resolved before its relative target, and target components stay
+// uncleaned so dir/.. follows dir's real parent rather than its lexical parent.
+func mutationDanglingKey(abs string) string {
+	const maxSymlinkHops = 40
+	volume := filepath.VolumeName(abs)
+	resolved := volume + string(filepath.Separator)
+	pending := strings.Split(filepath.ToSlash(strings.TrimPrefix(abs, volume)), "/")
+	hops := 0
+	for len(pending) > 0 {
+		part := pending[0]
+		pending = pending[1:]
+		switch part {
+		case "", ".":
+			continue
+		case "..":
+			resolved = filepath.Dir(resolved)
+			continue
+		}
+		next := filepath.Join(resolved, part)
+		target, err := os.Readlink(next)
+		if err != nil {
+			resolved = next
+			continue
+		}
+		// The file operation will refuse loops and excessive chains. Bound
+		// queue-key traversal too, so those paths cannot strand the caller.
+		if hops == maxSymlinkHops {
 			return abs
 		}
-		// write can create missing parent folders. Resolve the nearest existing
-		// ancestor so those new folders do not hide a directory alias either.
-		next := filepath.Dir(parent)
-		if next == parent {
-			return abs
+		hops++
+		if filepath.IsAbs(target) {
+			volume = filepath.VolumeName(target)
+			resolved = volume + string(filepath.Separator)
+			target = strings.TrimPrefix(target, volume)
 		}
-		tail, parent = filepath.Join(filepath.Base(parent), tail), next
+		pending = append(strings.Split(filepath.ToSlash(target), "/"), pending...)
 	}
+	return resolved
 }
 
 // ── bash output accumulator ────────────────────────────────────────────────

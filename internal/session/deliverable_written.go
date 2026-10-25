@@ -12,31 +12,31 @@ var writtenBeforeRecord = func() {}
 var writtenRead = func(n int) {}
 var writtenDeadline = func() time.Time { return time.Now().Add(2 * time.Second) }
 
-// recordWrittenArtifact updates the latest deliverable for this session,
-// path and source. The ledger lock makes identity selection and append atomic,
-// after the mutation queue has serialized writes through directory aliases.
+// recordWrittenArtifact merges authored fields into this session's existing
+// path identity, after the mutation queue has serialized writes through aliases.
 func recordWrittenArtifact(index string, artifact Artifact) (Artifact, bool) {
 	writtenBeforeRecord()
-	artifactsMu.Lock()
-	defer artifactsMu.Unlock()
-	previous, err := latestWrittenArtifact(index, artifact)
-	if err != nil {
-		return Artifact{}, false
-	}
-	if previous.Deliver != nil {
-		artifact.Created = previous.Created
-		artifact.Deliver.ID = previous.Deliver.ID
-		artifact.Deliver.Update = true
-		artifact.Deliver.MediaUpdate = artifact.Media != nil
-		artifact.Deliver.State = previous.Deliver.State
-		artifact.Deliver.Kept = previous.Deliver.Kept
-		if file, prior := artifact.Deliver.File, previous.Deliver.File; artifact.Kind == shareKindFile && file != nil && prior != nil && prior.MIME != "" {
+	return mutateDeliverable(index, DeliverableRow{Artifact: artifact}, func(latest *Artifact) {
+		if latest.Deliver == nil {
+			*latest = artifact
+			return
+		}
+		fact := *latest.Deliver
+		written := artifact.Deliver
+		fact.Update, fact.MediaUpdate = true, artifact.Media != nil
+		fact.At, fact.Turn, fact.Run, fact.Call = written.At, written.Turn, written.Run, written.Call
+		fact.From, fact.Origin, fact.Authored = written.From, written.Origin, written.Authored
+		fact.Version = written.Version
+		file := written.File
+		if prior := fact.File; artifact.Kind == shareKindFile && file != nil && prior != nil && prior.MIME != "" {
 			if file.MIME == "application/octet-stream" || strings.HasPrefix(file.MIME, "text/plain") {
 				file.MIME = prior.MIME
 			}
 		}
-	}
-	return recordArtifactRowLocked(index, artifact)
+		fact.File = file
+		latest.Title, latest.Kind, latest.Media = artifact.Title, artifact.Kind, artifact.Media
+		latest.Deliver = &fact
+	})
 }
 
 func latestWrittenArtifact(index string, artifact Artifact) (Artifact, error) {

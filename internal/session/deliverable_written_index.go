@@ -121,17 +121,27 @@ func (p *writtenPaths) latest(file *os.File, artifact Artifact) (Artifact, error
 	var found Artifact
 	var newest int64 = -1
 	for key, at := range p.paths[artifact.Path] {
-		if key.session != artifact.Session || at.off <= newest {
+		if key.session != artifact.Session {
 			continue
 		}
 		row, err := readWrittenRow(file, at)
 		if err != nil {
 			return Artifact{}, err
 		}
-		if row.Fact.Task == "" {
-			found, newest = row.Artifact, at.off
-			found.Deliver = &row.Fact
+		if row.Fact.Task != "" {
+			continue
 		}
+		if found.Deliver != nil {
+			// A later share is an independent identity, not the authored file.
+			if found.Deliver.Authored && !row.Fact.Authored {
+				continue
+			}
+			if found.Deliver.Authored == row.Fact.Authored && at.off <= newest {
+				continue
+			}
+		}
+		found, newest = row.Artifact, at.off
+		found.Deliver = &row.Fact
 	}
 	return found, nil
 }
