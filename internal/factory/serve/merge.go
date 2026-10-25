@@ -96,9 +96,9 @@ func mergeMethod(it factory.Item) string {
 // settleMerges sends every pressed Merge whose Undo window has passed, and,
 // when sweep is set, every merge the pipeline's auto-merge may make now.
 // Both run the gate again first: facts read since the press win.
-func (h *Handler) settleMerges(sweep bool, items []factory.Item) {
+func (h *Handler) settleMerges(sweep bool, items []factory.Item) error {
 	if h.config.Store == nil || h.workers == nil || h.workers.desk == nil {
-		return
+		return nil
 	}
 	now := h.clock().UTC()
 	var due []factory.Item
@@ -112,25 +112,28 @@ func (h *Handler) settleMerges(sweep bool, items []factory.Item) {
 		}
 	}
 	if len(due) == 0 {
-		return
+		return nil
 	}
 	unlock, err := h.lockConsent()
 	if err != nil {
-		return
+		return err
 	}
 	defer unlock()
 	doors := lease.NewDoors(h.workers.desk)
 	for _, stale := range due {
 		it, err := h.config.Store.Get(stale.ID)
 		if err != nil {
-			continue
+			return err
 		}
-		h.sendMerge(doors, it, now)
+		if err := h.sendMerge(doors, it, now); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 // sendMerge runs the gate once more and hands a passing merge to the lease.
-func (h *Handler) sendMerge(doors *lease.Doors, it factory.Item, now time.Time) {
+func (h *Handler) sendMerge(doors *lease.Doors, it factory.Item, now time.Time) error {
 	ctx := context.Background()
 	var ask factory.MergeAsk
 	var run factory.MergeRun
@@ -142,7 +145,7 @@ func (h *Handler) sendMerge(doors *lease.Doors, it factory.Item, now time.Time) 
 		ask = factory.MergeAsk{Auto: true}
 		run = factory.MergeRun{Auto: true, Method: mergeMethod(it), At: now}
 	default:
-		return
+		return nil
 	}
 	check := it
 	check.Merging = nil
@@ -151,9 +154,9 @@ func (h *Handler) sendMerge(doors *lease.Doors, it factory.Item, now time.Time) 
 		if run.By == "" {
 			// An auto-merge the gate does not pass yet simply waits: nothing
 			// was asked, so nothing is refused.
-			return
+			return nil
 		}
-		_ = h.config.Store.Update(it.ID, func(cur *factory.Item) error {
+		err := h.config.Store.Update(it.ID, func(cur *factory.Item) error {
 			if cur.Merging == nil || cur.Merging.State != factory.MergeAsked {
 				return nil
 			}
@@ -162,18 +165,22 @@ func (h *Handler) sendMerge(doors *lease.Doors, it factory.Item, now time.Time) 
 			cur.Merging = &cp
 			return nil
 		})
+		if err != nil {
+			return err
+		}
 		if h.config.Record != nil {
 			_, _ = h.config.Record.Append(ctx, record.Event{Kind: record.MergeRefused, Job: it.ID, Handle: run.By, Detail: v.Why})
 		}
-		return
+		return nil
 	}
 	run.Rule, run.Commit = v.Rule, v.Commit
 	if err := doors.Merge(it.ID, run); err != nil {
-		return
+		return err
 	}
 	if h.config.Record != nil {
 		_, _ = h.config.Record.Append(ctx, record.Event{Kind: record.MergeQueued, Job: it.ID, Handle: run.By, Detail: v.Rule})
 	}
+	return nil
 }
 
 // pinnedMerge is the job's pipeline merge settings as they stand now, pinned

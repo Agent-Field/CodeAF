@@ -809,15 +809,24 @@ func (h *Handler) settleJobs(approvalsOnly ...bool) {
 	// while the read is in progress must not be remembered as idle: the
 	// signature would name the new files while the deadlines came from
 	// the old ones.
+	h.rememberFloor(nil, "")
 	before := h.floorSignature()
 	pending, err := h.listFloor()
 	if err != nil {
 		return
 	}
-	pending = h.prepareStepRecoveries(pending)
-	pending = h.prepareAutomaticApprovals(pending)
+	pending, err = h.prepareStepRecoveries(pending)
+	if err != nil {
+		return
+	}
+	pending, err = h.prepareAutomaticApprovals(pending)
+	if err != nil {
+		return
+	}
 	sweep := len(approvalsOnly) == 0 || !approvalsOnly[0]
-	h.settleMerges(sweep, pending)
+	if err := h.settleMerges(sweep, pending); err != nil {
+		return
+	}
 	due := false
 	for _, it := range pending {
 		if a := it.Approval; a != nil && a.State == "approving" && !h.clock().Before(a.UndoUntil) {
