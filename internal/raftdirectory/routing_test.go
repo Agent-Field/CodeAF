@@ -12,7 +12,11 @@ func TestR30HostedDirectoryRoutesOnlyThroughGoPolicy(t *testing.T) {
 	b, err := os.ReadFile("../../relay/hosted/src/raft/directory.js")
 	must(t, err)
 	s := string(b)
-	for _, needle := range []string{"frame(10)", "frame(11)", "this.host.commit(originalSignedBytes)", "this.host.barrierRead(authenticatedRequest)"} {
+	// The hosted directory evaluates and projects through the reactor's paged
+	// Go operations, which keep large legacy requests inside the command and
+	// buffer limits: 41 starts the shared Go evaluation and 45 projects its
+	// public result.
+	for _, needle := range []string{"frame(41)", "frame(45)", "this.host.commit(originalSignedBytes)", "this.host.barrierRead(authenticatedRequest)"} {
 		if !strings.Contains(s, needle) {
 			t.Fatalf("missing policy boundary %s", needle)
 		}
