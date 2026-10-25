@@ -901,6 +901,9 @@ it with `alt+a` and all three move on the keystroke; change "ask before running"
 `/settings` and they move together for a conversation that follows the rows, or the panel
 says `saved · from the next session`.
 
+A running engine reading the same settings picks up the changed rules before
+its next tool decision even when the panel could not push them immediately.
+
 The one session with no `approvals` line is a remote one whose engine carried no posture
 over the wire. The gate there is the far machine's, and a line drawn from this laptop's
 settings would be a claim about a machine nobody consulted.

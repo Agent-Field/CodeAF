@@ -1,6 +1,8 @@
 package main
 
 import (
+	"sync"
+
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -59,9 +61,13 @@ func v3Rebuilt(agent v3Gate) (bool, error) {
 type v3ApprovalGate struct {
 	workspace, profileDir string
 	headless              bool
+
+	mu     sync.Mutex
+	rows   v3ApprovalRows
+	policy *approval.Policy
 }
 
-func (g v3ApprovalGate) Build(posture string) (*approval.Policy, bool, error) {
+func (g *v3ApprovalGate) Build(posture string) (*approval.Policy, bool, error) {
 	mode := ""
 	guardian := config.GuardianEnabledAt(g.profileDir)
 	switch posture {
@@ -81,17 +87,27 @@ func (g v3ApprovalGate) Build(posture string) (*approval.Policy, bool, error) {
 			return nil, false, err
 		}
 	}
-	policy, err := v3PolicyMode(g.workspace, g.profileDir, mode)
+	rows, err := v3ApprovalRowsAt(g.workspace, g.profileDir, mode)
 	if err != nil {
 		return nil, false, err
 	}
-	return policy, guardian, nil
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.policy != nil && g.rows == rows {
+		return g.policy, guardian, nil
+	}
+	policy, err := rows.build()
+	if err != nil {
+		return nil, false, err
+	}
+	g.rows, g.policy = rows, policy
+	return g.policy, guardian, nil
 }
 
 // Standing is the rows as they stand, said in the ladder's words. An unreadable
 // mode row reads as the strictest answer it could be, which is internal/config's
 // own law for that row and the one direction a garbled setting may be wrong in.
-func (g v3ApprovalGate) Standing() string {
+func (g *v3ApprovalGate) Standing() string {
 	mode, err := config.ProjectStringAt(g.workspace, g.profileDir, config.KeyToolApprovalMode)
 	if g.headless {
 		mode, err = config.HeadlessToolApprovalModeAt(g.workspace, g.profileDir)

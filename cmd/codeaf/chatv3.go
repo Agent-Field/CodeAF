@@ -1211,7 +1211,7 @@ func v3ConfigFor(proc *v3Process, opts v3Options, workspace string, place sessio
 	cfg.Unattended = opts.Yolo
 	cfg.Interactive = opts.Interactive
 	if !opts.Interactive {
-		gate := v3ApprovalGate{workspace: cfg.Workspace, profileDir: settings.ProfileDir, headless: true}
+		gate := &v3ApprovalGate{workspace: cfg.Workspace, profileDir: settings.ProfileDir, headless: true}
 		cfg.ApprovalGate = gate
 		cfg.ApprovalPolicy, cfg.Guardian, err = gate.Build(cfg.ApprovalPosture)
 		if err != nil {
@@ -1747,7 +1747,7 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	// posture an untouched conversation starts at rather than only as the
 	// policy it starts on, so the seam can say what it is and the wheel can
 	// walk away from it (internal/session's approvalposture.go).
-	cfg.ApprovalGate = v3ApprovalGate{workspace: workspace, profileDir: profileDir}
+	cfg.ApprovalGate = &v3ApprovalGate{workspace: workspace, profileDir: profileDir}
 	if yolo {
 		cfg.ApprovalPosture = session.PostureAllow
 	}
@@ -1983,25 +1983,51 @@ func v3Policy(workspace, profileDir string, yolo bool) (*approval.Policy, error)
 // ordinary launch — so the exceptions, the shell rules and the floor cannot
 // differ between them.
 func v3PolicyMode(workspace, profileDir, mode string) (*approval.Policy, error) {
-	if mode == "" {
-		row, err := config.ProjectStringAt(workspace, profileDir, config.KeyToolApprovalMode)
-		if err != nil {
-			return nil, err
-		}
-		mode = row
-	}
-	raw := map[string]any{"default": mode}
-	text, err := config.ProjectStringAt(workspace, profileDir, config.KeyToolApprovals)
+	rows, err := v3ApprovalRowsAt(workspace, profileDir, mode)
 	if err != nil {
 		return nil, err
 	}
+	return rows.build()
+}
+
+// v3ApprovalRows is the complete input to an immutable policy. Comparing the
+// resolved rows lets a live gate reuse its policy without duplicating the
+// configuration reader's file freshness rules.
+type v3ApprovalRows struct {
+	mode, tools, bash string
+}
+
+func v3ApprovalRowsAt(workspace, profileDir, mode string) (v3ApprovalRows, error) {
+	project, err := config.LoadProjectConfig(workspace)
+	if err != nil {
+		return v3ApprovalRows{}, err
+	}
+	if mode == "" {
+		mode, err = project.ResolveString(profileDir, config.KeyToolApprovalMode)
+		if err != nil {
+			return v3ApprovalRows{}, err
+		}
+	}
+	tools, err := project.ResolveString(profileDir, config.KeyToolApprovals)
+	if err != nil {
+		return v3ApprovalRows{}, err
+	}
+	bash, err := project.ResolveString(profileDir, config.KeyBashApprovals)
+	if err != nil {
+		return v3ApprovalRows{}, err
+	}
+	return v3ApprovalRows{mode: mode, tools: tools, bash: bash}, nil
+}
+
+func (rows v3ApprovalRows) build() (*approval.Policy, error) {
+	raw := map[string]any{"default": rows.mode}
 	// The repository's exceptions REPLACE the person's, whole (internal/config
 	// states the merge law): a rule set assembled from two files is a rule set
 	// neither file's reader could read back. Whichever file wins, what it says
 	// lands ON TOP of the built-in floor below rather than instead of it.
 	exceptions := v3BuiltinApprovals()
-	if text != "" {
-		tools, err := config.ParseToolApprovals(text)
+	if rows.tools != "" {
+		tools, err := config.ParseToolApprovals(rows.tools)
 		if err != nil {
 			return nil, fmt.Errorf("settings row %q: %w", config.KeyToolApprovals, err)
 		}
@@ -2016,12 +2042,8 @@ func v3PolicyMode(workspace, profileDir, mode string) (*approval.Policy, error) 
 	// the top of the row outranks anything a consent card appended below it.
 	// --yolo does not touch them either — the flag replaces the default and
 	// nothing a person wrote down.
-	rules, err := config.ProjectStringAt(workspace, profileDir, config.KeyBashApprovals)
-	if err != nil {
-		return nil, err
-	}
-	if rules != "" {
-		parsed, err := config.ParseBashApprovals(rules)
+	if rows.bash != "" {
+		parsed, err := config.ParseBashApprovals(rows.bash)
 		if err != nil {
 			return nil, fmt.Errorf("settings row %q: %w", config.KeyBashApprovals, err)
 		}

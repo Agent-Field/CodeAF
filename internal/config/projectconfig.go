@@ -323,12 +323,8 @@ func (p ProjectConfig) ResolveString(profileDir, key string) (string, error) {
 		return value, nil
 	}
 	switch key {
-	case KeyToolApprovalMode:
-		return ToolApprovalModeAt(profileDir), nil
-	case KeyToolApprovals:
-		return ToolApprovalsAt(profileDir), nil
-	case KeyBashApprovals:
-		return BashApprovalsAt(profileDir), nil
+	case KeyToolApprovalMode, KeyToolApprovals, KeyBashApprovals:
+		return profileApprovalString(profileDir, key)
 	case KeyTierLowModel:
 		return TierModelAt(profileDir, ModelTierLow), nil
 	case KeyTierHighModel:
@@ -337,6 +333,27 @@ func (p ProjectConfig) ResolveString(profileDir, key string) (string, error) {
 		return ModelRolesAt(profileDir), nil
 	}
 	return "", fmt.Errorf("%q is not a text row", key)
+}
+
+// profileApprovalString distinguishes an absent preference from a failed read.
+// Live gates must keep their last policy when the profile cannot be read.
+func profileApprovalString(profileDir, key string) (string, error) {
+	values, err := readProfileConfig(profileDir)
+	if err != nil {
+		return "", err
+	}
+	if key == KeyToolApprovalMode {
+		return toolApprovalMode(values, DefaultToolApprovalMode), nil
+	}
+	encoded, found := values[key]
+	if !found {
+		return "", nil
+	}
+	var value string
+	if err := json.Unmarshal(encoded, &value); err != nil {
+		return "", fmt.Errorf("settings row %q: %w", key, err)
+	}
+	return strings.TrimSpace(value), nil
 }
 
 // ResolveBool answers one on/off row through the ladder.

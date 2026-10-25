@@ -3591,16 +3591,22 @@ func knownDocumentEngine(engine string) bool {
 // absent setting uses YOLO; an unrecognised persisted value still asks, so a
 // garbled setting does not widen a previously selected posture.
 func ToolApprovalModeAt(profileDir string) string {
-	if value, ok := persistedString(profileDir, KeyToolApprovalMode); ok {
+	values, _ := readProfileConfig(profileDir)
+	return toolApprovalMode(values, DefaultToolApprovalMode)
+}
+
+func toolApprovalMode(values map[string]json.RawMessage, fallback string) string {
+	encoded, found := values[KeyToolApprovalMode]
+	if !found {
+		return fallback
+	}
+	var value string
+	if err := json.Unmarshal(encoded, &value); err == nil {
 		if mode := strings.ToLower(strings.TrimSpace(value)); knownToolApprovalMode(mode) {
 			return mode
 		}
-		return "prompt"
 	}
-	if _, found := persistedValue(profileDir, KeyToolApprovalMode); found {
-		return "prompt"
-	}
-	return DefaultToolApprovalMode
+	return "prompt"
 }
 
 // HeadlessToolApprovalModeAt requires an explicit setting to open an unwatched gate.
@@ -3615,13 +3621,11 @@ func HeadlessToolApprovalModeAt(workspace, profileDir string) (string, error) {
 	} else if found {
 		return project.ResolveString(profileDir, KeyToolApprovalMode)
 	}
-	if _, found := persistedValue(profileDir, KeyToolApprovalMode); found {
-		if _, text := persistedString(profileDir, KeyToolApprovalMode); !text {
-			return "prompt", nil
-		}
-		return ToolApprovalModeAt(profileDir), nil
+	values, err := readProfileConfig(profileDir)
+	if err != nil {
+		return "", err
 	}
-	return "prompt", nil
+	return toolApprovalMode(values, "prompt"), nil
 }
 
 // GuardianAt resolves whether a small model answers a tool prompt before the

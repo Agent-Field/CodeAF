@@ -271,7 +271,7 @@ func openManagerTurn(parent session.Config, workspace, profileDir string, it fac
 	if cheap {
 		cfg.Effort = effort.Low
 	}
-	gate := v3ApprovalGate{workspace: where, profileDir: profileDir, headless: true}
+	gate := &v3ApprovalGate{workspace: where, profileDir: profileDir, headless: true}
 	cfg.ApprovalGate = gate
 	cfg.ApprovalPosture = session.PostureAsk
 	if cfg.ApprovalPolicy, cfg.Guardian, err = gate.Build(session.PostureAsk); err != nil {

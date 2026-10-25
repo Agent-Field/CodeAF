@@ -1631,9 +1631,10 @@ type Config struct {
 	ApprovalPolicy *approval.Policy
 
 	// ApprovalGate is the door onto the settings rows the gate is built from,
-	// so this conversation can move its own posture from inside itself
-	// (approvalposture.go). Nil is a session with no such dial — a test, a
-	// worker, a headless run — and the surface then draws no control for it.
+	// refreshed before tool decisions and used to move this conversation's own
+	// posture (approvalposture.go). Build must be safe for concurrent calls and
+	// cheap when settings are unchanged. Nil is a session with no such dial,
+	// and the surface then draws no control for it.
 	ApprovalGate ApprovalGate
 	// ApprovalPosture is the posture the LAUNCH handed down — `--yolo` says
 	// [PostureAllow] here — for a conversation nobody has moved yet. It is in
@@ -4023,18 +4024,21 @@ type Agent struct {
 	// ordinary case — nobody has replaced anything — and Config.ApprovalPolicy
 	// still answers.
 	//
-	// It is under mu with everything else here, and it is the ONLY approval
-	// state that is: Config.ApprovalPolicy is written once before New returns
-	// and never again, which is what lets task_run.go copy the whole config
-	// without a lock and still be right.
+	// Mutable approval state is under mu. Config.ApprovalPolicy is written
+	// once before New returns and never again, which lets task_run.go copy
+	// the whole config without a lock.
 	approvalPolicy *approval.Policy
+	// approvalVersion invalidates older settings reads when a refresh starts
+	// or a surface publishes a policy or posture. It is guarded by mu.
+	approvalVersion uint64
 	// approvalPosture is the posture THIS conversation was set to
 	// (approvalposture.go), kept in the session folder's meta.json so it
 	// survives a restart the way the rung below does. "" is nobody has set one.
 	approvalPosture string
 	// guardianOverride is whether the small model stands in, as the
 	// conversation's own posture decided it; nil leaves Config.Guardian to
-	// answer. It is set only by [Agent.SetApprovalPosture].
+	// answer. Explicit posture changes and refreshes of them update it together
+	// with the policy.
 	guardianOverride *bool
 
 	// attachedSkills is the ordered set of skill names a person has put in front
