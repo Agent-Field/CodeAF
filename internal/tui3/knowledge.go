@@ -5,10 +5,12 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -18,16 +20,21 @@ type knowledgePlace struct {
 	open, loading       bool
 	vault               *knowledge.Vault
 	reading             knowledge.Snapshot
+	index               knowledgeIndex
 	filter              editor
 	cursor, top, scroll int
 	selected            string
+	hoverLink           string
 	history             []string
 	folded              map[string]bool
 	links               bool
+	sources             bool
+	sourceScroll        int
 	article             bool
 	linkCursor          int
 	footer              string
 	targets             []knowledgeTarget
+	hitRows             []placeHit
 }
 
 type knowledgeTarget struct {
@@ -154,6 +161,7 @@ func (a *app) adoptKnowledge(msg knowledgeReadingMsg) {
 		p.footer = "Knowledge could not be read: " + msg.err.Error()
 	} else {
 		p.reading = msg.reading
+		p.indexKnowledge()
 		p.footer = ""
 		p.rank()
 	}
@@ -225,15 +233,14 @@ func knowledgePageText(n knowledge.Page) string {
 }
 
 func (p *knowledgePlace) page() (knowledge.Page, bool) {
-	for _, n := range p.reading.Pages {
-		if n.ID == p.selected {
-			return n, true
-		}
-	}
-	return knowledge.Page{}, false
+	return p.indexedPage(p.selected)
 }
 
 func (p *knowledgePlace) navigate(id string) {
+	if p.sources {
+		p.toggleSources()
+	}
+	p.hoverLink = ""
 	if id == "" {
 		return
 	}
@@ -242,15 +249,14 @@ func (p *knowledgePlace) navigate(id string) {
 		p.links = false
 		return
 	}
-	for _, n := range p.reading.Pages {
-		if n.ID == id {
-			p.history = append(p.history, p.selected)
-			p.selected = id
-			p.scroll = 0
-			p.links = false
-			p.article = true
-			return
-		}
+	if _, ok := p.indexedPage(id); ok {
+		p.history = append(p.history, p.selected)
+		p.selected = id
+		p.syncCursor()
+		p.scroll = 0
+		p.links = false
+		p.article = true
+		return
 	}
 	p.footer = "That linked page is no longer available."
 }
@@ -275,6 +281,8 @@ func (a *app) knowledgeOwns(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	switch k {
 	case "esc":
 		switch {
+		case p.sources:
+			p.toggleSources()
 		case p.links:
 			p.links = false
 		case !p.filter.empty():
@@ -284,6 +292,7 @@ func (a *app) knowledgeOwns(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			p.selected = p.history[len(p.history)-1]
 			p.history = p.history[:len(p.history)-1]
 			p.scroll = 0
+			p.syncCursor()
 		case p.article:
 			p.article = false
 		default:
@@ -309,7 +318,12 @@ func (a *app) knowledgeOwns(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 				p.navigate(n.id)
 			}
 		}
+	case "ctrl+o":
+		p.toggleSources()
 	case "ctrl+l":
+		if p.sources {
+			p.toggleSources()
+		}
 		p.links = !p.links
 		p.linkCursor = 0
 		p.scroll = 0
@@ -330,10 +344,15 @@ func (a *app) knowledgeOwns(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "pgup":
 		p.scroll = max(0, p.scroll-12)
 	case "left":
+		if p.sources {
+			p.toggleSources()
+			break
+		}
 		if len(p.history) > 0 {
 			p.selected = p.history[len(p.history)-1]
 			p.history = p.history[:len(p.history)-1]
 			p.scroll = 0
+			p.syncCursor()
 		}
 	case "right":
 		if len(p.targets) > 0 {
@@ -361,32 +380,70 @@ func (a *app) knowledgeOwns(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	return nil, true
 }
 
-func (p *knowledgePlace) pageLinks() []knowledge.Link {
+func (p *knowledgePlace) toggleSources() {
+	if p.sources {
+		p.sources = false
+		p.scroll = p.sourceScroll
+		return
+	}
 	n, ok := p.page()
-	if !ok {
-		return nil
+	if !ok || len(n.Evidence) == 0 {
+		return
 	}
-	links := append([]knowledge.Link(nil), n.Links...)
-	seen := map[string]bool{}
-	for _, l := range links {
-		seen[l.ID] = true
-	}
-	for _, other := range p.reading.Pages {
-		for _, l := range other.Links {
-			if l.ID == n.ID && !seen[other.ID] {
-				links = append(links, knowledge.Link{ID: other.ID, Kind: "backlink"})
-				seen[other.ID] = true
-			}
+	p.sources, p.article, p.links = true, true, false
+	p.sourceScroll, p.scroll = p.scroll, 0
+}
+
+// Multiple claims may quote the same source. Present that source once while
+// retaining its distinct quotations; identifiers remain an implementation detail.
+func knowledgeSources(evidence []knowledge.Evidence) []knowledge.Evidence {
+	var out []knowledge.Evidence
+	indexes := map[string]int{}
+	quotes := map[string]map[string]bool{}
+	for _, e := range evidence {
+		id := e.Source
+		if id == "" {
+			id = e.Role + "\x00" + e.TS + "\x00" + e.Quote
 		}
+		if i, ok := indexes[id]; ok {
+			if e.Quote != "" && !quotes[id][e.Quote] {
+				out[i].Quote += "\n\n" + e.Quote
+				quotes[id][e.Quote] = true
+			}
+			continue
+		}
+		indexes[id] = len(out)
+		quotes[id] = map[string]bool{e.Quote: true}
+		out = append(out, e)
 	}
-	return links
+	return out
+}
+
+func knowledgeSourceLabel(e knowledge.Evidence) string {
+	role := "Conversation"
+	switch e.Role {
+	case "user", "human":
+		role = "You"
+	case "assistant", "agent":
+		role = "Assistant"
+	case "tool":
+		role = "Tool result"
+	}
+	if date, err := time.Parse(time.RFC3339Nano, e.TS); err == nil {
+		return role + " · " + date.Format("Jan 2, 2006")
+	}
+	return role
+}
+
+func (p *knowledgePlace) pageLinks() []knowledge.Link {
+	return p.index.links[p.selected]
 }
 
 func (a *app) knowledgeBody(width, room int) []placeRow {
 	p := &a.kb
 	var rows []placeRow
 	add := func(s string) { rows = append(rows, placeRow{text: " " + fit(s, max(1, width-2)), hit: -1}) }
-	add(a.pal.muted("Knowledge") + a.pal.dim("  · alt+u Saved memory"))
+	add(a.pal.muted("Knowledge") + a.pal.dim(a.chords.say("  · alt+u Saved memory")))
 	if p.vault == nil {
 		add("")
 		add("Knowledge is available in a local project conversation.")
@@ -427,17 +484,6 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 	if narrow {
 		left = width - 2
 	}
-	leftRows := []string{}
-	for _, n := range p.targets {
-		mark := "◇ "
-		if n.folder != "" {
-			mark = "▾ "
-			if p.folded[n.folder] {
-				mark = "▸ "
-			}
-		}
-		leftRows = append(leftRows, strings.Repeat("  ", n.depth)+mark+n.title)
-	}
 	article := []string{}
 	articleHits := map[int][]knowledgeCellLink{}
 	selectedConnection := -1
@@ -450,6 +496,7 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 		if narrow {
 			rightWidth = width - 4
 		}
+		rightWidth = min(rightWidth, 100)
 		for _, s := range n.Sections {
 			if s.Heading != "" {
 				article = append(article, a.pal.muted(s.Heading), "")
@@ -458,7 +505,20 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 				lines, cells := knowledgeParagraph(para, max(1, rightWidth))
 				for i, line := range lines {
 					articleHits[len(article)] = cells[i]
-					article = append(article, line)
+					var painted strings.Builder
+					at := 0
+					for _, cell := range cells[i] {
+						painted.WriteString(ansi.Cut(line, at, cell.start))
+						label := ansi.Cut(line, cell.start, cell.end)
+						if p.hoverLink == cell.id {
+							painted.WriteString(taskLinkHotInk(a.pal, label))
+						} else {
+							painted.WriteString(taskLinkInk(a.pal, label))
+						}
+						at = cell.end
+					}
+					painted.WriteString(ansi.Cut(line, at, ansi.StringWidth(line)))
+					article = append(article, painted.String())
 				}
 				article = append(article, "")
 			}
@@ -469,32 +529,49 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 			articleHits = map[int][]knowledgeCellLink{}
 		}
 		if len(links) > 0 {
-			article = append(article, a.pal.muted("Linked pages · ctrl+l to follow"))
+			if !p.links {
+				article = append(article, a.pal.muted("Linked pages")+a.pal.dim(a.chords.say(" · ctrl+l")))
+			}
 			for i, l := range links {
 				title := l.ID
-				for _, target := range p.reading.Pages {
-					if target.ID == l.ID {
-						title = target.Title
-						break
-					}
+				if target, ok := p.indexedPage(l.ID); ok {
+					title = target.Title
 				}
 				text := fmt.Sprintf("%d. %s", i+1, title)
 				if l.Kind == "backlink" {
-					text += " ←"
+					text += " · backlink"
 				}
 				if p.links && i == p.linkCursor {
 					selectedConnection = len(article)
 					text = a.pal.accent("› " + text)
 				}
 				articleHits[len(article)] = []knowledgeCellLink{{0, max(1, rightWidth), l.ID}}
+				if !p.links {
+					text = taskLinkInk(a.pal, text)
+				}
 				article = append(article, fit(text, max(1, rightWidth)))
 			}
 		}
-		if len(n.Evidence) > 0 && !p.links {
-			article = append(article, "", a.pal.muted("Sources"))
-			for _, e := range n.Evidence {
-				article = append(article, a.pal.dim(e.Role+" · "+e.TS+" · "+e.Source))
-				article = append(article, wrapText("“"+e.Quote+"”", max(1, rightWidth))...)
+		if sources := knowledgeSources(n.Evidence); len(sources) > 0 && !p.links {
+			if p.sources {
+				article = []string{a.pal.muted(n.Title), "", a.pal.muted("Sources"), taskLinkInk(a.pal, "Return to article") + a.pal.dim(a.chords.say(" · esc")), ""}
+				articleHits = map[int][]knowledgeCellLink{3: {{0, 17, "@sources"}}}
+				for _, e := range sources {
+					article = append(article, a.pal.data(knowledgeSourceLabel(e)))
+					for _, quote := range strings.Split(e.Quote, "\n\n") {
+						article = append(article, wrapText("“"+quote+"”", max(1, rightWidth))...)
+					}
+					article = append(article, "")
+				}
+			} else {
+				label := fmt.Sprintf("Sources · %d", len(sources))
+				article = append(article, "")
+				articleHits[len(article)] = []knowledgeCellLink{{0, ansi.StringWidth(label), "@sources"}}
+				painted := taskLinkInk(a.pal, label)
+				if p.hoverLink == "@sources" {
+					painted = taskLinkHotInk(a.pal, label)
+				}
+				article = append(article, painted+a.pal.dim(a.chords.say(" · ctrl+o open")))
 			}
 		}
 	}
@@ -510,10 +587,11 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 				rows[len(rows)-1].hit = knowledgeHit{tree: -1, links: knowledgeShift(articleHits[p.scroll+i], 1)}
 			}
 		} else {
-			p.top = placeTop(p.top, p.cursor, len(leftRows), bodyRoom)
-			for i, line := range leftRows[p.top:] {
+			p.top = placeTop(p.top, p.cursor, len(p.targets), bodyRoom)
+			for i := 0; i < bodyRoom && p.top+i < len(p.targets); i++ {
+				line := p.treeLine(p.top + i)
 				if p.top+i == p.cursor {
-					line = a.pal.accent("› " + line)
+					line = knowledgeTreeSelection(line, left, a.pal)
 				}
 				add(line)
 				rows[len(rows)-1].hit = knowledgeHit{tree: p.top + i}
@@ -521,13 +599,13 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 		}
 	} else {
 		p.scroll = min(p.scroll, max(0, len(article)-bodyRoom))
-		p.top = placeTop(p.top, p.cursor, len(leftRows), bodyRoom)
+		p.top = placeTop(p.top, p.cursor, len(p.targets), bodyRoom)
 		for i := 0; i < bodyRoom; i++ {
 			l, r := "", ""
-			if j := p.top + i; j < len(leftRows) {
-				l = leftRows[j]
+			if j := p.top + i; j < len(p.targets) {
+				l = p.treeLine(j)
 				if j == p.cursor {
-					l = a.pal.accent("› " + l)
+					l = knowledgeTreeSelection(l, left, a.pal)
 				}
 			}
 			if j := p.scroll + i; j < len(article) {
@@ -567,7 +645,11 @@ func (placeMemory) pressAt(a *app, x, y int) (tea.Cmd, bool) {
 		}
 		for _, link := range hit.links {
 			if x >= link.start && x < link.end {
-				p.navigate(link.id)
+				if link.id == "@sources" {
+					p.toggleSources()
+				} else {
+					p.navigate(link.id)
+				}
 				a.touch()
 				return nil, true
 			}
@@ -583,4 +665,48 @@ func (placeMemory) pressAt(a *app, x, y int) (tea.Cmd, bool) {
 func (a *app) knowledgeOwnsEnter() tea.Cmd {
 	cmd, _ := a.knowledgeOwns(tea.KeyPressMsg{Code: tea.KeyEnter})
 	return cmd
+}
+
+// Pointer affordances use the same cell map as clicks, including wrapped links.
+func (placeMemory) hoverAt(a *app, x, y int) bool {
+	if !a.kb.open {
+		return placeMemory{}.hover(a, y)
+	}
+	hits := a.kb.hitRows
+	next := ""
+	if y >= 0 && y < len(hits) {
+		if hit, ok := hits[y].(knowledgeHit); ok {
+			for _, link := range hit.links {
+				if x >= link.start && x < link.end {
+					next = link.id
+					break
+				}
+			}
+		}
+	}
+	if next == a.kb.hoverLink {
+		return false
+	}
+	a.kb.hoverLink = next
+	return true
+}
+
+func (p *knowledgePlace) syncCursor() {
+	for i, target := range p.targets {
+		if target.id == p.selected {
+			p.cursor = i
+			return
+		}
+	}
+}
+func knowledgeTreeSelection(line string, width int, pal palette) string {
+	if pal.profile < tokens.ANSI256 || pal.linear {
+		return fit("> "+line, width)
+	}
+	return placeBand(fit(line, width), width, pal)
+}
+func (placeMemory) rememberHits(a *app, hits []placeHit) {
+	if a.kb.open {
+		a.kb.hitRows = hits
+	}
 }

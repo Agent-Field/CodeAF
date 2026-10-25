@@ -636,6 +636,22 @@ saved the place is its heading over
 It has the slot the standing orders page had: standing orders are gone, `/standing` is not a
 command any more, and *Automations* has the whole of what replaced them.
 
+## Project knowledge inside Memory
+
+Open Memory and press `alt+u` to switch between saved preferences and project
+knowledge. Creating a knowledge base starts learning from future chats; existing
+conversations are not imported automatically.
+
+The knowledge reader has a folder tree and articles. Underlined `[[Topic]]`
+references open linked pages when clicked. `ctrl+l` lists connected pages; arrows
+choose one and Enter opens it. Left returns to the previous page.
+
+Sources stay folded behind a clickable `Sources` row. Press `ctrl+o` to read the
+original quotations with speaker and readable date; repeated references to the
+same source are grouped. Escape returns to your article at the same reading
+position. `pgup` and `pgdn` scroll the reader. Tab keeps its normal meaning of
+moving to the next main place.
+
 ## memories — what is held true, and the Memories tab (it was called Memory)
 
 The lines codeaf keeps in front of every conversation — what you told it, what the model

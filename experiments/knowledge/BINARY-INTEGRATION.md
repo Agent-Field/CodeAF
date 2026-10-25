@@ -95,3 +95,29 @@ metadata-only status poll does not hydrate articles. Imported sources are archiv
 by identity, indexed pending counts avoid rescanning their contents, and unchanged
 projections skip export. Vault JSON hydration and lexical search still grow with
 collection size; large-scale throughput and long-running quality remain work.
+
+## Reader polish checkpoint
+
+The reader uses the chat UI's underlined link treatment for `[[topic]]` references,
+with the same canonical target for mouse clicks and the Ctrl+L link list. Tree
+selection uses the shared cursor ground, with a textual marker on terminals that
+cannot paint it. Leaf rows omit decorative diamonds. Paragraphs wrap at at most
+100 cells, while narrow terminals keep the existing tree/article navigation.
+
+Sources are a compact clickable disclosure (Ctrl+O), grouped by original source,
+with readable speaker/date and quotations. Return restores the article's reading
+position; source identities remain in the vault rather than repeated in prose.
+The reader changes require no extraction, reconciliation, or model requests;
+incremental model cost for this UI iteration is $0. Infrastructure and ordinary
+chat/extraction costs are separate.
+
+Snapshot adoption builds page and connection indexes. Steady frames format only
+visible tree rows; hover reads the displayed frame's hit map. A synthetic
+120×40-terminal benchmark with short articles and one edge per page measured
+about 55 µs/frame at 1,000 pages and 46 µs at 10,000 pages (sampling noise; neither
+includes terminal/network delivery). All-match filtering measured 0.49 ms and
+4.82 ms respectively. Filtering and snapshot hydration still grow with corpus
+size, and dense links or long articles need separate measurements. These are
+layout measurements, not end-to-end SSH latency guarantees. Remote `--host`
+knowledge transport remains unsupported; ordinary SSH runs the vault reader on
+the machine where the binary executes.

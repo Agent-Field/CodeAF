@@ -5201,7 +5201,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// The other list pages share home's single selection: pointer motion
 		// selects the row that keyboard actions use.
-		if a.placeBodyHover(msg.Mouse().Y) {
+		if a.placeBodyHover(msg.Mouse().X, msg.Mouse().Y) {
 			return a, nil
 		}
 		if a.rewSheet.open {

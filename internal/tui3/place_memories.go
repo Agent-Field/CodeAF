@@ -1218,7 +1218,7 @@ func (placeMemory) about() string { return "what codeaf remembers" }
 // hint is WHAT THE ROW UNDER THE CURSOR CAN BE ASKED FOR.
 func (placeMemory) hint(a *app) string {
 	if a.kb.open {
-		return "↑↓ select · enter open · ctrl+l links · pgup/pgdn read · esc back · alt+u saved memory"
+		return "↑↓ select · enter open · ctrl+l links · ctrl+o sources · pgup/pgdn read · esc back · alt+u saved memory"
 	}
 	p := &a.mem
 	switch {

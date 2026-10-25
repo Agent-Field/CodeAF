@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	"github.com/charmbracelet/x/ansi"
 	"os"
 	"path/filepath"
@@ -139,9 +140,11 @@ func TestKnowledgeKeepsTheSharedNavigationBarUsable(t *testing.T) {
 
 func TestKnowledgeWheelMovesTheVisibleTree(t *testing.T) {
 	a := knowledgeArticleApp(t)
-	before := placeFrameText(a)
+	beforeRows, _, _, _ := a.placeDraw(placeMemory{}, a.width, a.height)
+	before := strings.Join(beforeRows, "\n")
 	drive(t, a, tea.MouseWheelMsg{X: 5, Y: 9, Button: tea.MouseWheelDown}, pointerMsg{})
-	if after := placeFrameText(a); after == before {
+	afterRows, _, _, _ := a.placeDraw(placeMemory{}, a.width, a.height)
+	if after := strings.Join(afterRows, "\n"); after == before {
 		t.Fatal("wheel did not move knowledge selection")
 	}
 }
@@ -224,5 +227,73 @@ func TestKnowledgeKeepsSelectedConnectionVisible(t *testing.T) {
 	}
 	if got := placeFrameText(a); !strings.Contains(got, "› 31. Topic 29") {
 		t.Fatal("selected connection scrolled offscreen: " + got)
+	}
+}
+
+func TestKnowledgeInlineLinksHaveVisibleLinkAffordance(t *testing.T) {
+	a := knowledgeArticleApp(t)
+	a.pal = newPalette(tokens.TrueColor, false)
+	lines, _, _, _ := a.placeDraw(placeMemory{}, a.width, a.height)
+	for _, line := range lines {
+		if strings.Contains(ansi.Strip(line), "Uses [[SQLite]].") {
+			if !strings.Contains(line, "\x1b[4m") {
+				t.Fatal("inline navigation must be underlined like existing UI links")
+			}
+			return
+		}
+	}
+	t.Fatal("article link missing")
+}
+
+func TestKnowledgeTreeHasNoDecorativePageGlyphs(t *testing.T) {
+	a := knowledgeArticleApp(t)
+	if got := placeFrameText(a); strings.Contains(got, "◇") {
+		t.Fatal("page tree repeats decorative icons: " + got)
+	}
+}
+
+func TestKnowledgeLinkHoverUsesExistingLinkHighlight(t *testing.T) {
+	a := knowledgeArticleApp(t)
+	a.pal = newPalette(tokens.TrueColor, false)
+	lines, _, _, _ := a.placeDraw(placeMemory{}, a.width, a.height)
+	for y, line := range lines {
+		text := ansi.Strip(line)
+		if at := strings.Index(text, "[[SQLite]]"); at >= 0 {
+			drive(t, a, tea.MouseMotionMsg{X: ansi.StringWidth(text[:at]) + 3, Y: y}, pointerMsg{})
+			after, _, _, _ := a.placeDraw(placeMemory{}, a.width, a.height)
+			if after[y] == line {
+				t.Fatal("hover did not highlight the link")
+			}
+			return
+		}
+	}
+	t.Fatal("no link to hover")
+}
+
+func TestKnowledgeFollowingLinkKeepsTreeSelectionOnDestination(t *testing.T) {
+	a := knowledgeArticleApp(t)
+	drive(t, a, key("ctrl+l"), key("enter"), key("enter"))
+	if got := placeFrameText(a); !strings.Contains(got, "Durability") {
+		t.Fatal("Enter reopened the previous tree item: " + got)
+	}
+}
+
+func TestKnowledgeBackKeepsTreeAndArticleTogether(t *testing.T) {
+	a := knowledgeArticleApp(t)
+	drive(t, a, key("ctrl+l"), key("enter"), key("left"), key("enter"))
+	if got := placeFrameText(a); !strings.Contains(got, "Storage") {
+		t.Fatal("Enter after Back opened a different tree page: " + got)
+	}
+}
+
+func TestKnowledgeHostedConversationNeverShowsLocalVault(t *testing.T) {
+	a := knowledgeArticleApp(t)
+	drive(t, a, key(placeChord(pageHome)))
+	a.agent = &fakeAgent{model: "m"}
+	a.host = "remote-box"
+	drive(t, a, key(placeChord(pageMemory)))
+	got := placeFrameText(a)
+	if strings.Contains(got, "Architecture") || strings.Contains(got, "SQLite") || strings.Contains(got, "Create knowledge base") || !strings.Contains(got, "local project conversation") {
+		t.Fatal("hosted conversation exposed a local knowledge vault: " + got)
 	}
 }
