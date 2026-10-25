@@ -5,6 +5,12 @@
 A relay directory upgrade can briefly pause pairing and chat moves. Retry after the relay is ready. The upgrade refusal is `codeaf: directory upgrade is incomplete; retry shortly; saved chats are still here`. It does not delete saved chats, files, branches or the encrypted vault. The relay keeps the old directory as a backup and never makes it a second writer after the new directory takes over. A row that cannot be copied safely leaves the upgrade paused for the operator; it is never truncated to make it fit.
 
 
+## Can my phone lead, be the leader or coordinate my computers?
+
+There is no codeaf phone app yet, so a phone cannot lead yet. A phone browser's pairing page only helps approve a computer; it does not join the phone to the cluster. A joined laptop or desktop with persistent storage and sync on can lead: run `codeaf cluster lead` on that computer and keep codeaf open. `codeaf cluster status` shows its joined node and the current coordinator.
+
+A phone would need a supported client, persistent storage, enrollment and a live connection before it could take this role. Those requirements are not a working phone capability today. Leadership coordinates metadata; it does not move a chat or run its tools.
+
 ## Joined computers, learner capacity and an outdated build
 
 An open, paired home with sync on joins the hosted relay, or a self-hosted `codeaf relay --store <dir>`, as a durable learner. Its store lives under the home, and reopening reuses its node. Losing that store enrolls a fresh node and retires the old authority. Three anchors vote until a personal computer is explicitly asked to lead, so pairing alone never requires either laptop to stay awake. Joining starts while the paired home is open, or when you ask for `codeaf cluster status`.
@@ -13,7 +19,7 @@ If joining has no new data to apply, the client keeps its store for the next ret
 
 The membership protocol admits at most 32 live learners and retains retired records instead of reusing their authority. A protocol mismatch says `this codeaf build must be updated before it can join this cluster; your saved chats are still here`. Its capacity refusal is `this cluster has reached its enrollment limit; remove a joined computer or ask the relay operator for capacity`. A worker setup command is not available through the production client yet.
 
-## Which computer coordinates: cluster status and cluster lead
+## What is cluster lead — what does codeaf cluster lead do, make this computer the leader
 
 `codeaf cluster status` on the hosted relay, or a self-hosted `codeaf relay` with storage, reports the committed voters and current leader after a fresh majority read. A paired computer joins with persistent storage as a learner before status shows its node. Readiness requires its own durable application through the advertised join position. Status names `this computer`, `learning computers`, `ready computers` and `voting computers` when known. `codeaf cluster lead` on an unjoined computer says `this computer must join the cluster with persistent storage before it can lead`.
 
@@ -31,11 +37,11 @@ The hosted relay keeps serving directory requests, watches, pairing decisions an
 
 A lost reply or restarted home keeps the original signed leadership request. Retry `codeaf cluster lead` to resume it; a pending request cannot choose a different computer. A completed refusal says `the leadership request could not complete; refresh cluster status and try again` and is acknowledged before another request is saved. Only one configuration change can run at a time. A different personal coordinator cannot directly replace an active personal coordinator; let the anchors resume, then request leadership again.
 
-## Sleeping coordinator, fallback timing and no automatic regain
+## What happens if my leader goes away — my leading laptop went to sleep or the leader computer was turned off
 
-On the hosted relay and a self-hosted relay with storage, when a personal coordinator sleeps, exits or turns sync off, the two remaining anchor voters can elect a coordinator and restore the third anchor after it catches up. The missing computer need not approve its removal. A returning computer catches up as a learner and does not automatically regain leadership: request `codeaf cluster lead` again.
+On the hosted relay and a self-hosted relay with storage, when a personal coordinator sleeps, exits or turns sync off, the two remaining anchor voters can elect a coordinator and restore the third anchor after it catches up. The missing computer need not approve its removal. A returning computer catches up as a learner and does not automatically regain leadership: request `codeaf cluster lead` again. Losing a majority pauses coordination and keeps saved chats. The refusal is `this cluster cannot coordinate right now; reconnect enough of its voting computers and try again; your saved chats are still here`.
 
-Coordination uses five-second ticks. The provisioned anchors’ ranked election windows are six–seven, eight–nine and ten–eleven ticks (30–35, 40–45 and 50–55 seconds); other computers use twelve–thirteen ticks (60–65 seconds). Healthy fallback targets about 65 seconds. Scheduling delays or a partition can take longer. Fully idle groups stop periodic ticks only after every voter has applied the same idle barrier; a new operation or a leading computer’s disconnection wakes coordination and needs a fresh majority response.
+Coordination ticks every 5 seconds. The provisioned anchors’ ranked election windows are 6–7 ticks (30–35 seconds), 8–9 ticks (40–45 seconds) and 10–11 ticks (50–55 seconds); other computers use 12–13 ticks (60–65 seconds). Healthy fallback targets about 65 seconds. Scheduling delays or a partition can take longer. Fully idle groups stop periodic ticks only after every voter has applied the same idle barrier; a new operation or a leading computer’s disconnection wakes coordination and needs a fresh majority response.
 
 ## Coordinator and anchor both unavailable, lost majority
 
@@ -58,7 +64,7 @@ A compatibility events viewer pings every 10 seconds. The platform answers witho
 
 A connection naming held chats still renews through committed changes every 30 seconds while fresh hold evidence is available. Presence alone never renews a chat.
 
-## Can a worker access all my chats or approve pairing?
+## What can a worker do — can a worker read all my chats or approve pairing?
 
 A delegated worker uses its own key and an expiring certificate naming selected chats. It receives only sealed grants for those chats, rather than the full exported identity. It cannot approve pairing, rotate the identity, read the identity vault, enroll other devices or request leadership. Richer capabilities, worker labels and execution credentials stay encrypted; only the existing platform and sandbox capability shape is readable by the relay.
 
@@ -107,8 +113,13 @@ instead of reopening the old writer. Keep the whole store directory when
 restarting or backing up the relay. Chat content stays encrypted in the existing
 blob store. No switch selects the former directory writer.
 
-Encoded directory commands currently have a 64 KiB limit; a larger older request
-can be refused before it changes ownership. Larger imported records stay retained.
+Legal directory requests from older builds up to 1 MiB keep their original HTTP
+limit on both relays. Large signed metadata is staged in bounded pieces and becomes
+visible atomically, after the complete original proof and current authority are
+checked. Interrupted requests can recover without exposing partial changes. All
+frame hints, sealed names and key wraps are preserved; over 1 MiB is refused. The
+identity’s storage capacity still applies, and existing records are never removed
+to make room.
 
 ## Hosted relay directory upgrade and older clients
 

@@ -33,6 +33,19 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		question string
 		page     string
 	}{
+		// R6/R7/R8/R15/R30 keep leadership, fallback and worker limits reachable.
+		{"can my phone lead", "coordination-and-workers"},
+		{"can my phone be the leader", "coordination-and-workers"},
+		{"can my phone coordinate my computers", "coordination-and-workers"},
+		{"what is cluster lead", "coordination-and-workers"},
+		{"what does codeaf cluster lead do", "coordination-and-workers"},
+		{"make this computer the leader", "coordination-and-workers"},
+		{"what happens if my leader goes away", "coordination-and-workers"},
+		{"my leading laptop went to sleep", "coordination-and-workers"},
+		{"the leader computer was turned off", "coordination-and-workers"},
+		{"what can a worker do", "coordination-and-workers"},
+		{"can a worker approve pairing", "coordination-and-workers"},
+		{"can a worker read all my chats", "coordination-and-workers"},
 		// R25/R29 keep older-client refusals and failed quit saves reachable.
 		{"why can an older computer list chats but not continue a chat that is still running", "continuing-a-chat-on-another-computer"},
 		{"what happens if the final save fails during quit", "continuing-a-chat-on-another-computer"},

@@ -15,8 +15,8 @@ import (
 const clusterHelp = `codeaf cluster status
   Show this joined computer, learners, voters and the current coordinator.
 codeaf cluster lead
-  Ask this joined computer to coordinate through a self-hosted relay.
-  Persistent storage is required; hosted leadership is not available yet.
+  Ask this joined computer to coordinate through a hosted or self-hosted relay.
+  Persistent storage is required; keep codeaf open while this computer leads.
   Three voters tolerate one unavailable member.
 `
 

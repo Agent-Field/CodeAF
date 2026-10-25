@@ -51,3 +51,15 @@ func TestR6R8R30ClusterCommandReceiptAndRefusal(t *testing.T) {
 		}
 	}
 }
+
+// R6/R30 require command help to offer the leadership that both relays serve.
+func TestR6R30ClusterHelpOffersHostedLeadership(t *testing.T) {
+	for _, phrase := range []string{"hosted or self-hosted relay", "Persistent storage is required", "Three voters tolerate one unavailable member"} {
+		if !strings.Contains(clusterHelp, phrase) {
+			t.Errorf("cluster help omits %q", phrase)
+		}
+	}
+	if strings.Contains(clusterHelp, "not available yet") {
+		t.Fatal("cluster help denies available leadership")
+	}
+}
