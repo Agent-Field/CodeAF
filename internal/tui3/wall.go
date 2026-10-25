@@ -142,6 +142,7 @@ func (a *app) closeWall() {
 		a.tabView = a.wall.returnView
 	}
 	a.wall.on = false
+	a.wall.openTabs = false
 	a.wall.catalogGen++
 	a.wall.catalogBusy, a.wall.savedReading = false, false
 	a.wall.selecting = false
