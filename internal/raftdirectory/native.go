@@ -17,6 +17,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/raftcore"
 	"github.com/Agent-Field/codeaf/internal/raftsnapshot"
 	"github.com/Agent-Field/codeaf/internal/raftstore"
+	"github.com/Agent-Field/codeaf/internal/rafttransport"
 	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
@@ -39,6 +40,8 @@ type Native struct {
 	forwarders       map[uint64]*forwardLink
 	pendingCommand   []byte
 	pendingAdmission uint64
+	pendingAfter     uint64
+	pendingForward   bool
 	outcome          *appliedCommand
 	peers            *nativePeers
 	manifest         clusterstate.LegacyManifest
@@ -267,7 +270,7 @@ func (g *Native) drive(ctx context.Context, i int, input raftcore.Input) error {
 				if entry.GetType() != pb.EntryNormal || len(entry.GetData()) == 0 {
 					continue
 				}
-				if len(g.pendingCommand) > 0 && bytes.Equal(entry.GetData(), g.pendingCommand) && entry.GetIndex() == g.pendingAdmission && g.pendingAdmission != 0 && g.outcome == nil {
+				if len(g.pendingCommand) > 0 && bytes.Equal(entry.GetData(), g.pendingCommand) && entry.GetIndex() > g.pendingAfter && (g.pendingForward || entry.GetIndex() == g.pendingAdmission && g.pendingAdmission != 0 && g.outcome == nil) {
 					g.outcome = &appliedCommand{result: results[resultIndex], index: entry.GetIndex()}
 				}
 				resultIndex++
@@ -395,8 +398,27 @@ func (g *Native) submit(ctx context.Context, c clusterstate.Command) (clustersta
 	if err != nil {
 		return clusterstate.Result{}, err
 	}
+	g.pendingCommand = raw
+	g.pendingAdmission = 0
+	g.pendingForward = false
+	g.pendingAfter = 0
+	for _, status := range g.status {
+		g.pendingAfter = max(g.pendingAfter, status.Commit)
+	}
+	g.outcome = nil
+	defer func() {
+		g.pendingCommand = nil
+		g.pendingAdmission = 0
+		g.pendingAfter = 0
+		g.pendingForward = false
+		g.outcome = nil
+	}()
+	for j := range g.results {
+		g.results[j] = nil
+	}
 	i := g.leader()
 	if i < 0 {
+		g.pendingForward = true
 		node := g.leaderID()
 		reply, e := g.forward(ctx, node, clusterctl.Forward{Action: "submit", Command: raw})
 		if e != nil {
@@ -432,14 +454,13 @@ func (g *Native) submit(ctx context.Context, c clusterstate.Command) (clustersta
 				return clusterstate.Result{}, e
 			}
 		}
+		if reply.Result.ViewIndex != 0 {
+			if reply.Result.ViewIndex != reply.Applied || g.outcome == nil || g.outcome.index != reply.Applied || g.outcome.result.Code != reply.Result.Code || g.outcome.result.Now != reply.Result.Now || g.outcome.result.Version != reply.Result.Version {
+				return clusterstate.Result{}, directory.ErrUnreachable
+			}
+			return g.outcome.result, nil
+		}
 		return *reply.Result, nil
-	}
-	g.pendingCommand = raw
-	g.pendingAdmission = 0
-	g.outcome = nil
-	defer func() { g.pendingCommand = nil; g.pendingAdmission = 0; g.outcome = nil }()
-	for j := range g.results {
-		g.results[j] = nil
 	}
 	if err = g.drive(ctx, i, raftcore.Propose{Command: raw}); err == nil {
 		err = g.drain(ctx)
@@ -591,7 +612,25 @@ func (g *Native) CommitV1(ctx context.Context, c clusterstate.Command) (clusters
 	defer cancel()
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	return g.submit(ctx, c)
+	parts, err := clusterstate.V1Commands(c)
+	if err != nil {
+		return clusterstate.Result{}, err
+	}
+	var result clusterstate.Result
+	for offset := 0; offset < len(parts); {
+		end := offset + 1
+		if len(parts) > 1 && parts[offset].Change.StageV1 != nil && !parts[offset].Change.StageV1.Commit && g.leader() < 0 && g.forwarders[g.leaderID()] != nil {
+			end = min(len(parts)-1, offset+rafttransport.MaxInflight/2)
+			result, err = g.forwardV1Pages(ctx, parts[offset:end])
+		} else {
+			result, err = g.submit(ctx, parts[offset])
+		}
+		if err != nil || result.Code != clusterstate.OK {
+			return result, err
+		}
+		offset = end
+	}
+	return result, nil
 }
 func (g *Native) ReadV1(ctx context.Context, c clusterstate.Command, committed bool, inspect func(context.Context, *raftstore.SQLite, raftstore.Application) error) error {
 	g.opMu.Lock()

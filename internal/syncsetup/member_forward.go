@@ -270,7 +270,8 @@ func (m *personalMember) appliedForward(entries [][]byte, indices []uint64, resu
 		}
 		for i, raw := range entries {
 			if bytes.Equal(raw, work.Command) && work.Barrier != 0 && indices[i] == work.Barrier {
-				work.Result = &results[i]
+				result := cs.BoundedV1Result(raw, results[i], indices[i])
+				work.Result = &result
 				work.Applied = indices[i]
 				m.answerForward(work)
 				delete(m.forwardPending, id)

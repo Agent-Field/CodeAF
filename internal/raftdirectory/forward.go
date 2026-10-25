@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/Agent-Field/codeaf/internal/clusterctl"
+	"github.com/Agent-Field/codeaf/internal/clusterstate"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/raftcore"
 	"github.com/Agent-Field/codeaf/internal/raftstore"
@@ -70,44 +71,116 @@ func (g *Native) leaderID() uint64 {
 	}
 	return g.status[i].Leader
 }
-func (g *Native) forward(ctx context.Context, node uint64, work clusterctl.Forward) (clusterctl.Forward, error) {
-	var empty clusterctl.Forward
+
+type forwardCall struct {
+	id     string
+	link   *forwardLink
+	result chan clusterctl.Forward
+}
+
+func (g *Native) beginForward(node uint64, work clusterctl.Forward) (forwardCall, error) {
 	if work.ID == "" {
 		g.serial++
 		work.ID = fmt.Sprintf("forward-%d", g.serial)
 	}
-	empty.ID = work.ID
-	link := g.forwarders[node]
-	if link == nil || len(link.pending) >= rafttransport.MaxInflight {
-		return empty, directory.ErrUnreachable
+	call := forwardCall{id: work.ID, link: g.forwarders[node]}
+	if call.link == nil || len(call.link.pending) >= rafttransport.MaxInflight {
+		return call, directory.ErrUnreachable
 	}
-
 	work.Scope = g.peers.view.Scope
 	work.Generation = g.peers.view.Generation
 	work.From = g.manifest.Config.Anchors[0]
 	work.To = node
 	work.Sign(func(b []byte) []byte { return ed25519.Sign(g.peers.keys[0], b) })
-	result := make(chan clusterctl.Forward, 1)
-	link.pending[work.ID] = result
-	defer delete(link.pending, work.ID)
+	call.result = make(chan clusterctl.Forward, 1)
+	call.link.pending[work.ID] = call.result
 	select {
-	case link.send <- work:
+	case call.link.send <- work:
 	default:
-		return empty, directory.ErrUnreachable
+		delete(call.link.pending, call.id)
+		return call, directory.ErrUnreachable
 	}
+	return call, nil
+}
+func (g *Native) waitForward(ctx context.Context, call forwardCall) (clusterctl.Forward, error) {
+	reply := clusterctl.Forward{ID: call.id}
 	g.mu.Unlock()
 	select {
-	case empty = <-result:
+	case reply = <-call.result:
 	case <-ctx.Done():
 	}
 	g.mu.Lock()
-	if ctx.Err() != nil {
-		return empty, directory.ErrUnreachable
+	delete(call.link.pending, call.id)
+	if ctx.Err() != nil || reply.ID != call.id || reply.Error != "" {
+		return reply, directory.ErrUnreachable
 	}
-	if empty.ID != work.ID || empty.Error != "" {
-		return empty, directory.ErrUnreachable
+	return reply, nil
+}
+func (g *Native) forward(ctx context.Context, node uint64, work clusterctl.Forward) (clusterctl.Forward, error) {
+	call, err := g.beginForward(node, work)
+	if err != nil {
+		return clusterctl.Forward{ID: call.id}, err
 	}
-	return empty, nil
+	return g.waitForward(ctx, call)
+}
+
+// Body pages have no directory effect. Pipeline only the existing voter
+// reservation, then wait for every durable reply before submitting the final
+// mutation. No single proposal or transport envelope grows with the body.
+func (g *Native) forwardV1Pages(ctx context.Context, commands []clusterstate.Command) (clusterstate.Result, error) {
+	calls := []forwardCall{}
+	defer func() {
+		for _, call := range calls {
+			delete(call.link.pending, call.id)
+		}
+	}()
+	if g.peers != nil {
+		g.peers.sleeping = false
+		g.peers.now = max(g.peers.now, commands[0].Now)
+	}
+	node := g.leaderID()
+	for _, c := range commands {
+		raw, err := clusterstate.EncodeCommand(c)
+		if err != nil {
+			return clusterstate.Result{}, err
+		}
+		call, err := g.beginForward(node, clusterctl.Forward{Action: "submit", Command: raw})
+		if err != nil {
+			return clusterstate.Result{}, err
+		}
+		calls = append(calls, call)
+	}
+	var result clusterstate.Result
+	var applied uint64
+	for _, call := range calls {
+		reply, err := g.waitForward(ctx, call)
+		if err != nil || reply.Result == nil {
+			return result, directory.ErrUnreachable
+		}
+		result = *reply.Result
+		if result.Code != clusterstate.OK {
+			return result, nil
+		}
+		applied = max(applied, reply.Applied)
+	}
+	if _, _, err := g.appliedReplica(ctx, applied); err != nil {
+		return result, err
+	}
+	if g.peers != nil {
+		if err := g.installPeers(ctx); err != nil {
+			return result, err
+		}
+	}
+	if g.Changed != nil {
+		index, app, err := g.appliedReplica(ctx, applied)
+		if err != nil {
+			return result, err
+		}
+		if err = g.Changed(g.stores[index], app); err != nil {
+			return result, err
+		}
+	}
+	return result, nil
 }
 
 // ForwardHTTP authorizes every frame against CURRENT committed enrollment.

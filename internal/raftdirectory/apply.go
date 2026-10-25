@@ -69,7 +69,9 @@ func Apply(ctx context.Context, store *raftstore.SQLite, b raftcore.ApplyBatch, 
 			if old != nil {
 				size -= clusterstate.RecordBytes(w.RecordKey, old)
 			}
-			size += clusterstate.RecordBytes(w.RecordKey, w.Data)
+			if !w.Delete {
+				size += clusterstate.RecordBytes(w.RecordKey, w.Data)
+			}
 			overlay[w.RecordKey] = w.Data
 		}
 		update.LogicalTime = e.Now
@@ -77,7 +79,7 @@ func Apply(ctx context.Context, store *raftstore.SQLite, b raftcore.ApplyBatch, 
 		results = append(results, e.Result)
 	}
 	for k, v := range overlay {
-		update.Writes = append(update.Writes, raftstore.Write{Key: raftstore.Key{Namespace: raftstore.Namespace(k.Namespace), Key: k.Key}, Value: v})
+		update.Writes = append(update.Writes, raftstore.Write{Key: raftstore.Key{Namespace: raftstore.Namespace(k.Namespace), Key: k.Key}, Value: v, Delete: v == nil})
 	}
 	slices.SortFunc(update.Writes, func(a, b raftstore.Write) int {
 		if v := cmp.Compare(a.Namespace, b.Namespace); v != 0 {

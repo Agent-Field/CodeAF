@@ -42,7 +42,10 @@ func (d *V1Directory) For(actor string) directory.Client {
 func (d *V1Directory) ForRequest(actor string, r *http.Request, raw []byte) directory.Client {
 	p, err := reqsign.Capture(r, raw)
 	b := &v1Backend{owner: d, actor: actor, err: err}
-	if err == nil {
+	if err == nil && len(raw) > clusterstate.MaxV1BodyBytes {
+		b.err = directory.ErrTooBig
+	}
+	if err == nil && b.err == nil {
 		now := time.Now()
 		if d.Now != nil {
 			now = d.Now()
@@ -51,14 +54,7 @@ func (d *V1Directory) ForRequest(actor string, r *http.Request, raw []byte) dire
 		if b.err != nil {
 			b.err = directory.ErrBadRequest
 		}
-		if b.err == nil {
-			encoded, e := clusterstate.EncodeCommand(b.command)
-			if e != nil {
-				b.err = directory.ErrBadRequest
-			} else if len(encoded) > clusterstate.MaxCommandBytes {
-				b.err = directory.ErrTooBig
-			}
-		}
+
 		if b.err == nil && b.command.Actor != actor {
 			b.err = directory.ErrUnauthorized
 		}
