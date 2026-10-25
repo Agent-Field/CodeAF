@@ -375,7 +375,7 @@ func TestAJoinOrWatchHelloFromAnotherProtocolIsRefusedBeforeAnythingOpens(t *tes
 	if frame.Kind != "fatal" {
 		t.Fatalf("a hello from another protocol was answered with %q, want a refusal", frame.Kind)
 	}
-	if !strings.Contains(frame.Error, "protocol") {
+	if !strings.Contains(frame.Error, "matching versions") {
 		t.Fatalf("the refusal does not say what was wrong with the hello: %q", frame.Error)
 	}
 	if got := opened.Load(); got != 0 {

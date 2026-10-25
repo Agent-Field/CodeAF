@@ -27,7 +27,7 @@ Add `bin/codeaf` to the PATH of **both** machines you test with. The two halves 
 the same protocol version: that version is checked at the door and a mismatch is refused with
 
 ```
-<dest> runs a different version of codeaf than this machine does — update the older one so both ends speak the same protocol
+<dest> is on a newer build (<build>); <program> update to match — this connection needs matching versions
 ```
 
 ---

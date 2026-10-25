@@ -346,7 +346,7 @@ func (c *Client) attach(conn io.ReadWriteCloser) (Welcome, error) {
 		// [spokenError] is for: the door prints the reason unchanged, and a
 		// redial that meets it stops trying rather than spending its whole
 		// window rediscovering the same no (redial.go).
-		return Welcome{}, spokenError{reason: strings.TrimSpace(frame.Error)}
+		return Welcome{}, spokenError{reason: callingProgramMismatch(strings.TrimSpace(frame.Error))}
 	default:
 		return Welcome{}, fmt.Errorf("%s answered with a %q where a welcome belongs", c.where(), frame.Kind)
 	}
@@ -359,7 +359,7 @@ func (c *Client) attach(conn io.ReadWriteCloser) (Welcome, error) {
 	// turns into a conversation, and the sentence names the fix — one machine
 	// has an older codeaf on it, and the person knows which machine is which.
 	if welcome.Version != Version {
-		return Welcome{}, spokenError{reason: fmt.Sprintf("%s runs a different version of codeaf than this machine does — update the older one so both ends speak the same protocol", c.where())}
+		return Welcome{}, spokenError{reason: wireMismatchSentence(c.where(), welcome.Version, Version, welcome.Build)}
 	}
 	if welcome.Encoding != "" && welcome.Encoding != frameEncodingGzip {
 		return Welcome{}, spokenError{reason: fmt.Sprintf("%s selected a frame encoding this build cannot read", c.where())}
