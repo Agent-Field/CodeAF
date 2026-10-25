@@ -3903,8 +3903,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// A repeated enter keeps the pending conversation; ctrl+enter does
 		// the same only on the start page, where it is another enter spelling.
-		// Any other key cancels the transition before editing or navigating.
+		// Draft edits stay with the pending chat; navigation cancels the transition.
 		if a.conversationOpening {
+			if a.openingDraftKey(msg) {
+				return a, nil
+			}
 			if msg.String() == "enter" || (a.startingChat() && msg.String() == "ctrl+enter") {
 				return a, nil
 			}
@@ -4059,14 +4062,26 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.dropSettled()
 
 	case tea.PasteStartMsg:
+		if a.conversationOpening && a.conversationPreview != nil {
+			view := a.conversationPreview.view
+			view.pasting, view.pasted, view.pasteAt = true, view.pasted[:0], a.now()
+			return a, nil
+		}
 		// The terminal said a paste is starting. Everything until the close is
 		// text, whatever shape it arrives in.
 		a.pasting, a.pasted, a.pasteAt = true, a.pasted[:0], a.now()
 		return a, nil
 
 	case tea.PasteMsg:
-		if a.conversationOpening {
-			a.cancelConversationOpening()
+		if a.conversationOpening && a.conversationPreview != nil {
+			view := a.conversationPreview.view
+			if view.pasting {
+				view.pasted = append(view.pasted, []rune(msg.Content)...)
+			} else {
+				view.paste(msg.Content)
+			}
+			a.touch()
+			return a, nil
 		}
 		a.stirred()
 		// Bracketed paste, whole, in one message — the parser coalesced the keys
@@ -4088,6 +4103,16 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.paste(msg.Content)
 
 	case tea.PasteEndMsg:
+		if a.conversationOpening && a.conversationPreview != nil {
+			view := a.conversationPreview.view
+			if view.pasting {
+				view.pasting = false
+				view.paste(string(view.pasted))
+				view.pasted = view.pasted[:0]
+				a.touch()
+			}
+			return a, nil
+		}
 		// The bracket closes, and everything inside it goes in as ONE edit: one
 		// insert, one list sync, one debounce — the same door the coalesced form
 		// goes through, so a terminal that leaks keys and a terminal that does
@@ -6030,7 +6055,7 @@ func (a *app) paint() tea.Cmd {
 	// same expression without it, and so does `waitLive || otherLive`. The forming-task
 	// wait therefore keeps the full cadence, which is what it does today.
 	waitLive := a.state == stateWorking
-	otherLive := a.welcome.animating() || a.tasksAnimating() ||
+	otherLive := (a.conversationOpening && a.conversationPreview != nil) || a.welcome.animating() || a.tasksAnimating() ||
 		// The question block's own clocks, on the same terms: a policy line
 		// counting down and a reading clock running out are the two things on
 		// that block that change without a key being pressed (question.go).
