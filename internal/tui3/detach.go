@@ -29,11 +29,9 @@ import (
 // an in-flight turn from its first token ([session.Agent.Attach]) and puts the
 // sidecar's readings back.
 //
-// EVERYTHING NOT IN THE SIDECAR IS REBUILT FROM THE AGENT OR FORGOTTEN. That is
-// the bargain that makes this a third of the size of a surface that held N
-// conversations: the transcript, the rail, the meters, the pending cards, the
-// model and the title are all facts about the agent, and the agent still has
-// them.
+// The last drawn transcript stays in the sidecar as a preview while the
+// authoritative record is fetched again. The rail, meters, and pending cards
+// are rebuilt from the agent, which owns their current state.
 
 // aside is a detached conversation's PERSON-SIDE readings: the few things on
 // screen that are not facts about the agent and would therefore be lost when
@@ -44,6 +42,8 @@ import (
 // keep correct while it is not drawing it, which is the expensive kind of
 // state; the test is "would a person notice it was gone", not "could we".
 type aside struct {
+	// preview keeps the last drawn words visible until the atomic replay arrives.
+	preview []entry
 	// A send held behind an atomic replay remains with its conversation.
 	hostDeferred []func() tea.Cmd
 	// openingPrompt survives a switch while the title and transcript arrive.
@@ -266,6 +266,7 @@ func (a *app) front() Conversation {
 func (a *app) detachConversation() *aside {
 	main := a.mainComposer()
 	side := &aside{
+		preview:      a.entries,
 		hostDeferred: a.hostDeferred,
 		// The box and the parked messages are separate while this process can
 		// keep the conversation alive. The shared-handle exception below folds
@@ -580,10 +581,15 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	// machine entirely — so this door is a call over a pipe, and a switch that
 	// made it from Update was a window that could not draw, could not take a key
 	// and could not read its own conversation's news for as long as the far end
-	// took. What it costs is one frame of an empty transcript, which is the
-	// frame the person is switching away from anyway.
+	// took. A returning conversation keeps its last drawn words visible until
+	// that reading arrives, even when the engine takes more than one frame.
 	var joined tea.Cmd
 	if door, ok := agent.(attachReplayer); ok {
+		if side != nil {
+			a.entries = side.preview
+			// Replayed rows replace this preview rather than appending to it.
+			a.recordRows = len(a.entries)
+		}
 		a.hostReplayLoading = true
 		joined = a.offLoop(func() func(bool) tea.Cmd {
 			entries, events, stop := door.AttachReplay()

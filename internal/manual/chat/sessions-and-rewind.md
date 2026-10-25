@@ -964,10 +964,13 @@ file is not recreated silently; add a new conversation and choose it as manager 
 ## Starting a new chat without waiting for the first token
 
 Sending a first message from Home or the new-chat page (`+` or `ctrl+t`) shows
-its own `new chat` screen immediately, with your message and
-`opening conversation… · esc cancels`. The conversation opens in the background;
-the message reaches its new conversation only after opening succeeds. This
-screen acknowledges your action before the model starts answering. The previous
-chat keeps its draft and attachments. Escape cancels the pending opening;
-typing also cancels it and edits the original draft. An opening failure returns
-to that draft with the error, so your message is not lost or sent to the old chat.
+the ordinary chat immediately, with your message, working indicator and composer.
+The conversation opens in the background; the message reaches its new conversation
+only after opening succeeds. You can type a follow-up while it opens; that draft
+stays in the new chat's composer when opening finishes. The previous chat keeps
+its draft and attachments. Escape cancels the pending opening and restores your
+first message and any follow-up draft. An opening failure returns those words
+with the error, so your message is not lost or sent to the old chat.
+
+Returning to an already open chat keeps its last displayed text visible while
+its current history refreshes. The refreshed history replaces that preview.

@@ -29,7 +29,7 @@ func TestFirstMessageHasItsOwnScreenBeforeTheConversationOpens(t *testing.T) {
 				a.startChatEnter()
 			}
 			frame := plain(mustFrame(a))
-			if a.navLit() != pageChats || !strings.Contains(frame, "\nnew chat\n") || !strings.Contains(frame, text) || !strings.Contains(frame, conversationOpeningWord) {
+			if a.navLit() != pageChats || !strings.Contains(frame, text) || strings.Contains(frame, conversationOpeningWord) || strings.Contains(frame, "\nnew chat\n") || !strings.Contains(frame, "esc") {
 				t.Fatalf("first message has no immediate screen: %s", frame)
 			}
 			if len(a.agent.(*fakeAgent).sent) != 0 {
