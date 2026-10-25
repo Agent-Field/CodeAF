@@ -1,19 +1,27 @@
 # Skills from Claude Code, Codex, OpenCode, Goose and other tools
 
-## Can you use my Claude Code, Codex, OpenCode or Goose skills
+## What is a skill — skills in codeaf
 
-Yes, directly. Any skill you already installed for Claude Code, Codex, Cursor,
-Gemini, OpenCode, Goose or another agentskills.io tool — a folder holding a `SKILL.md` whose
-frontmatter has a `name` and a `description` — is read where it lives. Nothing
-is copied or reinstalled. Each launch reads the folders again before the first
-message, so a skill you add or edit shows up the next time you open codeaf.
+A skill is a reusable set of instructions for a kind of work, such as reviewing
+code or extracting PDF tables. Its folder holds a `SKILL.md` with a name,
+description and instructions, plus any scripts or references it needs.
 
-Once found, a skill is used two ways. Automatically: the model is shown every
-skill's name and what it is for, and when a request fits one it opens it with
-`use_skill` and follows it, even when your words share none with the skill's
-description. A message whose words do match a skill's description also carries
-that skill with it, and a dim `skills ·` line in the turn names it. By hand: `/skill` puts one in front of the conversation until you take it
-off.
+Type `/skill` to choose a skill for this conversation, or `/skill <folder>` to
+attach one. The model can also open a relevant skill through `use_skill`.
+Skills work with automatic memory saving off: `memory.enabled` does not turn
+skills off.
+
+## Can you use skills — do you have skills from other tools
+
+Yes. codeaf can use skills installed for Claude Code, Codex, Cursor, Gemini,
+OpenCode, Goose and other agentskills.io tools. A skill folder holds a `SKILL.md`
+with a name and description; it is read in place, never copied or reinstalled.
+New and edited skills are discovered at the next launch.
+
+Use `/skill` to choose a skill for this conversation. The model can also use
+`use_skill` to open one that fits your request. Matching words in its description
+carry the skill automatically, and the dim `skills ·` line names it. Automatic
+memory saving can be off: `memory.enabled` does not disable skills.
 
 ## Which folders are read
 
