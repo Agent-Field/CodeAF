@@ -94,12 +94,12 @@ func (r *Runner) checkPairing(p Pairing) error {
 		return errors.New("choose one to eight snapshot methods")
 	}
 	for _, name := range p.Reads {
-		if !slices.Contains([]string{"agents.list", "asks.list", "tasks.list", "inbox.list", "spend.today"}, name) {
+		if !slices.Contains([]string{"agents.entries", "agents.list", "asks.list", "tasks.list", "inbox.list", "spend.today"}, name) {
 			return errors.New("unsupported snapshot method: " + name)
 		}
 	}
 	for _, name := range p.Methods {
-		if !slices.Contains([]string{"asks.answer", "agents.send", "agents.stop", "agents.create"}, name) {
+		if !slices.Contains([]string{"asks.answer", "agents.send", "agents.stop", "agents.create", "inbox.answer", "tasks.start"}, name) {
 			return errors.New("unsupported queued method: " + name)
 		}
 	}

@@ -207,18 +207,19 @@ func startPhoneRelay(t *testing.T, bin, store string) (string, *exec.Cmd) {
 	return "", nil
 }
 
-func startPhoneApp(t *testing.T, bin, homeDir, relay string) (*phoneApp, *lockedLog) {
+func startPhoneApp(t *testing.T, bin, homeDir, relay string, extra ...string) (*phoneApp, *lockedLog) {
 	t.Helper()
 	cmd := exec.Command(bin, "app", "--home", homeDir)
-	cmd.Env = phoneChildEnv(homeDir,
-		"CODEAF_SYNC_URL="+relay,
+	env := []string{
+		"CODEAF_SYNC_URL=" + relay,
 		"CODEAF_PHONE_FIXTURE=1",
 		"CODEAF_NO_AUTOMATIONS=1",
 		"CODEAF_TELEMETRY=off",
-		"CODEAF_PROFILE_DIR="+homeDir,
+		"CODEAF_PROFILE_DIR=" + homeDir,
 		"OPENROUTER_API_KEY=",
 		"OPENAI_API_KEY=",
-	)
+	}
+	cmd.Env = phoneChildEnv(homeDir, append(env, extra...)...)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		t.Fatal(err)

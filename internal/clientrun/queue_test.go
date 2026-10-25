@@ -112,14 +112,6 @@ func TestAQueuedAnswerNeverTakesAChatLease(t *testing.T) {
 	}
 }
 
-func TestPairingRefusesQueueMethodsWithoutASafeRoutingRule(t *testing.T) {
-	g := newRig(t)
-	_, err := g.r.Pair(context.Background(), clientrun.Pairing{Cert: g.client.Cert(), BoxKey: g.pub[:], Reads: []string{"asks.list"}, Methods: []string{"inbox.answer"}})
-	if err == nil {
-		t.Fatal("paired a mutation that bypasses queued ask checks")
-	}
-}
-
 func (e *engine) CreateAgent(appwire.CreateAsk) (appwire.Agent, error) {
 	e.created++
 	return appwire.Agent{ID: otherChat}, nil
@@ -135,6 +127,14 @@ func TestAnyTargetCreatesWorkThroughTheDesktopMethod(t *testing.T) {
 	g.request(t, g.client, "POST", "/v1/clients/"+g.client.dev.ID()+"/queue", map[string]any{"number": 1, "at": g.now.UnixMilli(), "method": "agents.create", "target": "any", "sealed": sealed}, nil, 204)
 	if err := g.r.Step(context.Background()); err != nil {
 		t.Fatal(err)
+	}
+	listing, err := g.dir.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, ok := listing.Cells[otherChat]
+	if !ok || created.Lease.Device != g.s.dev.ID() || created.Lease.Expires <= listing.Now {
+		t.Fatalf("created chat has no desktop lease: %+v", created)
 	}
 	if g.e.created != 1 || g.r.Receipts()[0].Agent != otherChat {
 		t.Fatal("creation did not run or was not logged to its chat")

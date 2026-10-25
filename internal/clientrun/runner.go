@@ -34,6 +34,9 @@ type Config struct {
 	// After supplies the refresh clock; nil uses time.After.
 	After func(time.Duration) <-chan time.Time
 	Log   func(Receipt) error
+	// LeaseCreated publishes a new chat's real initial head and holds it on
+	// this executor before its first turn. Nil is for engines without sync.
+	LeaseCreated func(context.Context, appwire.Agent) error
 }
 
 // Runner serializes rounds while keeping settings available during a call.
@@ -181,7 +184,14 @@ func (r *Runner) Step(ctx context.Context) error {
 		if err := r.drain(ctx, c); err != nil {
 			errs = append(errs, err)
 		}
-		if err := r.publish(ctx, c, listing); err != nil {
+		// A queued creation can add a held chat during drain. Refresh ownership
+		// before snapshotting so it is visible in this same publication round.
+		current, err := r.cfg.Directory.List(ctx)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		if err := r.publish(ctx, c, current); err != nil {
 			errs = append(errs, err)
 		}
 	}

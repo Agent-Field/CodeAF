@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -120,7 +121,10 @@ func (r *Runner) execute(ctx context.Context, c Client, e Queued) error {
 		if err := r.admit(ctx, c, e, agent); err != nil {
 			return err
 		}
-		receipt, err = r.dispatch(c, e, call, agent, receipt)
+		if err := r.checkAsk(call, agent); err != nil {
+			return err
+		}
+		receipt, err = r.dispatch(ctx, c, e, call, agent, receipt)
 		if err != nil {
 			return err
 		}
@@ -158,7 +162,7 @@ func (r *Runner) prepare(ctx context.Context, c Client, e Queued) (Call, string,
 	return call, agent, r.admit(ctx, c, e, agent)
 }
 
-func (r *Runner) dispatch(c Client, e Queued, call Call, agent string, skipped Receipt) (Receipt, error) {
+func (r *Runner) dispatch(ctx context.Context, c Client, e Queued, call Call, agent string, skipped Receipt) (Receipt, error) {
 	receipt := Receipt{ClaimToken: skipped.ClaimToken, SkippedFrom: skipped.SkippedFrom, SkippedThrough: skipped.SkippedThrough, Client: c.ID, Number: e.Number, Agent: agent, Method: call.Method, At: r.cfg.Now().UTC().Format(time.RFC3339Nano), Status: "started", Digest: proofDigest(e)}
 	if err := r.keep(receipt); err != nil {
 		return receipt, err
@@ -169,6 +173,17 @@ func (r *Runner) dispatch(c Client, e Queued, call Call, agent string, skipped R
 	engine := r.cfg.Engine
 	if talker, ok := engine.(appwire.Talker); ok && call.Method == "asks.answer" {
 		engine = answerGuard{Engine: engine, Talker: talker, faceID: call.FaceID}
+	}
+	leased := false
+	lease := func(agent appwire.Agent) error {
+		if leased || r.cfg.LeaseCreated == nil {
+			return nil
+		}
+		if err := r.cfg.LeaseCreated(ctx, agent); err != nil {
+			return err
+		}
+		leased = true
+		return nil
 	}
 	if call.Method == "agents.create" {
 		engine = creationRecorder{Engine: engine, reserve: func(transcript string) error {
@@ -184,7 +199,10 @@ func (r *Runner) dispatch(c Client, e Queued, call Call, agent string, skipped R
 			if err := r.keep(receipt); err != nil {
 				return err
 			}
-			return r.log(receipt)
+			if err := r.log(receipt); err != nil {
+				return err
+			}
+			return lease(agent)
 		}}
 	}
 	result, callErr := appwire.Call(engine, call.Method, call.Params)
@@ -203,6 +221,10 @@ func (r *Runner) dispatch(c Client, e Queued, call Call, agent string, skipped R
 			return receipt, err
 		}
 		receipt.Agent = created.Agent.ID
+		if err := lease(created.Agent); err != nil {
+			receipt.Status = "failed"
+			receipt.Reason = err.Error()
+		}
 	}
 	return receipt, r.keep(receipt)
 }
@@ -265,6 +287,16 @@ func callAgent(call Call) (string, error) {
 		if p.ID != "" {
 			return p.ID, nil
 		}
+	case "inbox.answer":
+		owner, ask, ok := strings.Cut(p.ID, "/")
+		if ok && owner != "" && ask != "" {
+			return owner, nil
+		}
+	case "tasks.start":
+		i := strings.LastIndex(p.ID, ":")
+		if i > 0 && i < len(p.ID)-1 {
+			return p.ID[:i], nil
+		}
 	case "agents.create":
 		return "", nil
 	}
@@ -297,6 +329,36 @@ func (r *Runner) admit(ctx context.Context, c Client, e Queued, agent string) er
 }
 
 func (r *Runner) checkAsk(call Call, agent string) error {
+	if call.Method == "tasks.start" {
+		var p appwire.IDParams
+		if err := json.Unmarshal(call.Params, &p); err != nil {
+			return err
+		}
+		rows, err := r.cfg.Engine.ListTasks(agent)
+		if err != nil {
+			return err
+		}
+		for _, row := range rows {
+			if row.ID == p.ID && row.Agent == agent {
+				return requireFaceID([]appwire.Ask{{Irreversible: row.Irreversible}}, call.FaceID)
+			}
+		}
+		return errors.New("queued task is no longer available")
+	}
+	if call.Method == "inbox.answer" {
+		var p map[string]json.RawMessage
+		if err := json.Unmarshal(call.Params, &p); err != nil {
+			return err
+		}
+		var id string
+		if err := json.Unmarshal(p["id"], &id); err != nil {
+			return err
+		}
+		_, ask, _ := strings.Cut(id, "/")
+		p["id"] = mustJSON(ask)
+		call.Method = "asks.answer"
+		call.Params = mustJSON(p)
+	}
 	if call.Method != "asks.answer" {
 		return nil
 	}

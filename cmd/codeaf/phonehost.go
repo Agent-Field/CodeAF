@@ -437,10 +437,10 @@ func runPhone(args []string) error {
 		return fmt.Errorf("codeaf phone pair: read the client's public keys on stdin: %w", err)
 	}
 	if len(in.Methods) == 0 {
-		in.Methods = []string{"asks.answer"}
+		in.Methods = []string{"agents.create", "agents.send", "agents.stop", "asks.answer", "inbox.answer", "tasks.start"}
 	}
 	if len(in.Reads) == 0 {
-		in.Reads = []string{"asks.list"}
+		in.Reads = []string{"agents.entries", "asks.list", "agents.list", "inbox.list", "tasks.list", "spend.today"}
 	}
 	if strings.TrimSpace(in.Name) == "" {
 		in.Name = "phone"

@@ -78,11 +78,19 @@ log executed calls. The relay cannot read the call or verify biometric evidence.
 ## Paired client snapshots from the app backend
 
 The app backend keeps snapshots fresh for locally paired scoped clients. It uses
-the desktop app methods `agents.list`, `asks.list`, `tasks.list`, `inbox.list`,
+the desktop app methods `agents.entries`, `agents.list`, `asks.list`, `tasks.list`, `inbox.list`,
 and `spend.today`; chat results cover only chats whose live lease this computer
 holds. Each client decrypts its own snapshots with its independent encryption
 key. Snapshots say which computer wrote them and when. Empty chat lists retain
 their chat identity so they can replace older results.
+
+Entry, ask, agent and task changes schedule a refresh. Streamed answer text is
+published at most twice per second per chat, including a trailing partial when
+no further token arrives. `agents.entries` keeps the newest 40 entries per chat,
+newest last. Oldest whole entries are dropped until the complete sealed slot
+fits 64 KiB; `more` reports omitted history. An entry is never split.
+`tasks.list` requires an agent and returns per-agent rows, so the desktop reads
+each held chat and filters those rows into chat envelopes.
 
 Publishing a turn and app changes schedule a refresh. An active client also gets
 a five-second refresh timer, backing off failures to five minutes. Unchanged
@@ -94,12 +102,15 @@ they are not yet distributed by the directory.
 ## Queued answers, Face ID and interrupted delivery
 
 The app backend executes locally paired clients' queued `asks.answer`,
-`agents.send`, `agents.stop` and `agents.create` calls through the desktop
+`agents.send`, `agents.stop`, `agents.create`, `inbox.answer` and `tasks.start` calls through the desktop
 methods. Other queue methods are refused at pairing. Chat calls run only where
 this computer already holds the chat's live lease; they never take it from
 another computer. Starting new work targets `any` and has one claim winner.
 
-An irreversible ask requires the queued call's signed `face_id` flag. This is
+New work receives a real sealed initial head and a lease on the executing
+computer before its first turn, making it available in the next snapshots.
+
+An irreversible ask or task start requires the queued call's signed `face_id` flag. This is
 the client's assertion that it obtained biometric confirmation. The computer
 checks the ask again rather than trusting the snapshot the client saw. It also
 checks the retained signature, identity, sequence, age and method permission.
@@ -139,7 +150,10 @@ live appwire connection; the v0 scoped queue does not grant them.
 listens on a socket at `app/phone.sock` inside its state folder, mode 0600.
 Write the phone's public JSON on stdin: `signing_key` and `box_key`, each 32
 bytes. `methods`, `reads` and `name` are optional. When they are left out, the
-grant allows `asks.answer`, reads `asks.list`, and the client is named `phone`.
+grant reads `agents.entries`, `asks.list`, `agents.list`, `inbox.list`,
+`tasks.list` and `spend.today`. Queued writes allow `agents.create`, `agents.send`,
+`agents.stop`, `asks.answer`, `inbox.answer` and `tasks.start`. The client is named
+`phone`. Explicit nonempty `methods` and `reads` replace their respective defaults.
 The command prints the grant and nothing else. If the app is not running it
 says `codeaf app is not running`.
 

@@ -30,10 +30,16 @@ func (s signer) Cert() identity.Cert            { return s.dev.Cert }
 func (s signer) Sign(p []byte) []byte           { return s.dev.Sign(p) }
 
 type engine struct {
-	agents  []appwire.Agent
-	onRead  func()
-	created int
-	answers int
+	appwire.Inboxer
+	appwire.Worker
+	inboxAnswers     int
+	taskStarts       int
+	taskIrreversible bool
+	entryBytes       int
+	agents           []appwire.Agent
+	onRead           func()
+	created          int
+	answers          int
 	appwire.Engine
 	reads int
 	asks  []appwire.Ask
@@ -109,7 +115,10 @@ func newRig(t *testing.T) *rig {
 	}
 	e := &engine{}
 	state := t.TempDir()
-	r, err := clientrun.Open(clientrun.Config{Home: state, Relay: srv.URL, Signer: s, Directory: dir, Engine: e, Log: func(clientrun.Receipt) error { return nil }, Now: wall, HTTP: srv.Client()})
+	r, err := clientrun.Open(clientrun.Config{Home: state, Relay: srv.URL, Signer: s, Directory: dir, Engine: e, LeaseCreated: func(ctx context.Context, a appwire.Agent) error {
+		_, err := dir.Create(ctx, a.ID, directory.CellInit{Head: strings.Repeat("1", 64), Class: "chat"})
+		return err
+	}, Log: func(clientrun.Receipt) error { return nil }, Now: wall, HTTP: srv.Client()})
 	if err != nil {
 		t.Fatal(err)
 	}

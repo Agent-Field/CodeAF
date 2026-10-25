@@ -444,6 +444,7 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 type appBackend struct {
 	// clientRunner is absent until local pairing state exists or Settings pairs a client.
 	clientRunner atomic.Pointer[clientrun.Runner]
+	clientStream appClientStream
 	clientInit   sync.Mutex
 	clientCancel context.CancelFunc
 	clientDone   chan struct{}

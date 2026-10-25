@@ -3,6 +3,10 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
+	"errors"
+	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/directory"
 	"os"
 	"strconv"
 	"time"
@@ -24,12 +28,32 @@ type appClientEmitter struct {
 }
 
 func (e appClientEmitter) Emit(name string, data any) {
-	e.next.Emit(name, data)
-	switch name {
-	case appwire.EventTurnDone, appwire.EventAskOpened, appwire.EventAskClosed, appwire.EventTaskChanged, appwire.EventAgentChanged:
-		if r := e.b.clientRunner.Load(); r != nil {
-			r.Changed()
+	// Update the phone's partial before notifying either reader. The ordinary
+	// app event remains unchanged and is still delivered through its outbox.
+	r := e.b.clientRunner.Load()
+	if r != nil {
+		switch v := data.(type) {
+		case appwire.TurnDelta:
+			e.b.clientStream.delta(v, r.Changed)
+		case appwire.EntryAdded:
+			if v.Entry.Msg != nil {
+				e.b.clientStream.clear(v.Entry.Agent)
+			}
+		case appwire.TurnDone:
+			e.b.clientStream.clear(v.Agent)
+		case appwire.TurnRetrying:
+			e.b.clientStream.clear(v.Agent)
 		}
+	}
+	e.next.Emit(name, data)
+	if r == nil {
+		return
+	}
+	switch name {
+	case appwire.EventEntryAdded, appwire.EventTurnDone, appwire.EventTurnRetrying,
+		appwire.EventAskOpened, appwire.EventAskClosed, appwire.EventTaskChanged,
+		appwire.EventAgentChanged, appwire.EventSpendChanged:
+		r.Changed()
 	}
 }
 
@@ -78,7 +102,7 @@ func (b *appBackend) clients() (*clientrun.Runner, error) {
 	if err != nil {
 		return nil, err
 	}
-	r, err := clientrun.Open(clientrun.Config{Home: s.Home, Relay: s.Relay, Signer: appClientSigner{s.Identity, s.Device}, Directory: s.Dir, Engine: b, Now: b.now, Log: b.logClientCall})
+	r, err := clientrun.Open(clientrun.Config{Home: s.Home, Relay: s.Relay, Signer: appClientSigner{s.Identity, s.Device}, Directory: s.Dir, Engine: appClientEngine{b}, Now: b.now, Log: b.logClientCall, LeaseCreated: b.leaseClientChat})
 	if err != nil {
 		return nil, err
 	}
@@ -197,6 +221,7 @@ func (b *appBackend) UnpairClient(id string) error {
 
 // stopClients joins the executor before any engine it may call is closed.
 func (b *appBackend) stopClients() {
+	b.clientStream.stop()
 	done := func() chan struct{} {
 		b.clientInit.Lock()
 		defer b.clientInit.Unlock()
@@ -211,4 +236,34 @@ func (b *appBackend) stopClients() {
 	if r := b.clientRunner.Load(); r != nil {
 		_ = r.Close()
 	}
+}
+
+// leaseClientChat seals and uploads the initial chat before queued creation
+// releases its first turn. The ordinary drive then renews this real head's
+// lease; no placeholder head can strand a phone-created conversation.
+func (b *appBackend) leaseClientChat(ctx context.Context, agent appwire.Agent) error {
+	a := b.agent(agent.ID)
+	var transcript string
+	b.locked(func() { transcript = a.transcript })
+	folder, ok := session.FolderOf(transcript)
+	if !ok {
+		return errors.New("created chat has no cell folder")
+	}
+	c, err := cell.OpenAt(folder, agent.ID)
+	if err != nil {
+		return err
+	}
+	eng := cellstore.Engine{Workspace: agent.Workspace}
+	if _, err = eng.Seal(ctx, c, cellstore.TurnInfo{}); err != nil {
+		return err
+	}
+	s, err := syncOf()
+	if err != nil {
+		return err
+	}
+	if err = s.PublishCopy(ctx, eng, c, "", agent.Title); err != nil {
+		return err
+	}
+	_, err = s.Dir.Acquire(ctx, agent.ID, directory.AcquireOpts{})
+	return err
 }
