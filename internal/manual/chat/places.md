@@ -643,9 +643,10 @@ command any more, and *Automations* has the whole of what replaced them.
 ## Project knowledge inside Memory
 
 Open Memory and click **Knowledge** or press `alt+u` to switch from saved
-preferences to project knowledge. Click **Saved memory** to return. Creating a
-knowledge base starts learning from future chats; existing
-conversations are not imported automatically.
+preferences to project knowledge. Click **Saved memory** to return. Choose
+**Create knowledge base** once for this project and profile. Learning then starts
+from future eligible messages, including continuations of already-open chats;
+existing conversation history is not imported automatically.
 
 The knowledge reader has a folder tree and articles. Underlined `[[Topic]]`
 references open linked pages when clicked. `ctrl+l` lists connected pages; arrows
@@ -671,6 +672,36 @@ sources describe the article's background and do not verify your additions.
 Click **Delete**, or press `ctrl+d`, to review a named deletion confirmation.
 Enter or Escape cancels by default. Click **Delete page** or press `ctrl+d`
 again to confirm. Deletion removes the knowledge page; original chats remain.
+
+## Automatic project knowledge capture and updates
+
+After creation, saved local chats in the same project directory and profile
+contribute to one shared knowledge base automatically. Other projects and
+profiles have separate vaults. Eligible saved user messages and human-facing
+assistant replies are captured; tool calls, harness notes and compaction replays
+are excluded. No manual save is needed after each conversation.
+
+Keep at least one saved local chat session in that project running for
+background compilation. If those sessions stop, pending sources stay on disk;
+processing resumes when a saved chat in that project runs again. There is no
+separate knowledge scheduler, and the Knowledge view over `--host` is not yet
+supported.
+
+Updates from multiple chats are combined into bounded normal model requests,
+without OpenRouter's Batch API. A batch becomes eligible after 30 seconds with
+no new captures or when its oldest pending source reaches 120 seconds, whichever
+comes first; reaching the context limit can trigger it earlier. These are
+scheduling thresholds, not a promise that articles appear within 120 seconds:
+compilation time, queued work and retries also count.
+
+Settings → Models → **knowledge** (`knowledge.model`) selects the OpenRouter
+model for the next compilation. The default is `deepseek/deepseek-v4.1-flash`.
+The compiler checks the returned model ID and rejects substitutions.
+
+Failures retain pending work and retry automatically, with backoff up to 120
+seconds. Stable source IDs prevent duplicate records during retry or journal
+recovery. A failed or interrupted provider request can still incur charges;
+retry safety does not mean every network request is billed only once.
 
 ## memories — what is held true, and the Memories tab (it was called Memory)
 
