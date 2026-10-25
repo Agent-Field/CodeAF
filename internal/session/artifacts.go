@@ -73,6 +73,13 @@ func RecordArtifact(path string, artifact Artifact) bool {
 
 // recordArtifactRow is [RecordArtifact] that answers the row as it was written.
 func recordArtifactRow(path string, artifact Artifact) (Artifact, bool) {
+	artifactsMu.Lock()
+	defer artifactsMu.Unlock()
+	return recordArtifactRowLocked(path, artifact)
+}
+
+// recordArtifactRowLocked appends while the caller holds artifactsMu.
+func recordArtifactRowLocked(path string, artifact Artifact) (Artifact, bool) {
 	if strings.TrimSpace(path) == "" {
 		return Artifact{}, false
 	}
@@ -97,8 +104,6 @@ func recordArtifactRow(path string, artifact Artifact) (Artifact, bool) {
 			return Artifact{}, false
 		}
 	}
-	artifactsMu.Lock()
-	defer artifactsMu.Unlock()
 	if directory := filepath.Dir(path); directory != "" && directory != "." {
 		if err := os.MkdirAll(directory, 0o700); err != nil {
 			return Artifact{}, false

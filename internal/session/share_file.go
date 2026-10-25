@@ -24,9 +24,8 @@ var (
 	errShareBudgetSpent = fmt.Errorf("%w: the files together are over the share size limit", ErrShareOpInvalid)
 )
 
-// shareKindFile is the kind of a shared file that is neither media nor named
-// Markdown or Mermaid text: a PDF, an archive, a spreadsheet, anything. Its type
-// is its sniffed MIME, and it is never a media source.
+// shareKindFile is the common kind for a shared or authored file that is neither
+// media nor named Markdown or Mermaid text. It is never a media source.
 const shareKindFile = "file"
 const shareFileChunk = 64 << 10
 

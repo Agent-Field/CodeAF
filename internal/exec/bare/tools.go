@@ -869,8 +869,12 @@ func newEditTool(cwd string) Tool {
 				}
 
 				finalContent := bom + restoreLineEndings(result.newContent, originalEnding)
-				if err := os.WriteFile(absPath, []byte(finalContent), 0644); err != nil {
+				written, err := writeFileObserved(absPath, []byte(finalContent))
+				if err != nil {
 					return fmt.Sprintf("Could not process edit: %s. %s", path, err.Error()), true, nil
+				}
+				if observe := writeObserverFrom(ctx); observe != nil {
+					observe(written)
 				}
 				if ctx.Err() != nil {
 					return "Operation aborted", true, nil
@@ -994,7 +998,7 @@ func newWriteTool(cwd string) Tool {
 	}
 }
 
-// WriteEvent is what one successful write tool call did to the disk, observed
+// WriteEvent is what one successful write or edit tool call did to the disk, observed
 // inside the file's mutation queue by the writer itself.
 //
 // Created is true ONLY when this call made the file: the path was absent when
@@ -1012,7 +1016,7 @@ type WriteEvent struct {
 
 type writeObserverKey struct{}
 
-// WithWriteObserver returns a context whose write tool calls report each
+// WithWriteObserver returns a context whose write and edit tool calls report each
 // successful write to observe, inside the file mutation queue. It is generic:
 // the tool neither knows nor cares what the observer is for.
 func WithWriteObserver(ctx context.Context, observe func(WriteEvent)) context.Context {

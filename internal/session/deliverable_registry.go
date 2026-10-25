@@ -26,7 +26,9 @@ var (
 	// process reads one artifacts index of its own and a few more at most, so
 	// this is room, not a quota. Every one in use is bounded too: an active
 	// tracker holds at most one pending line head (mediaRowMax), an idle one
-	// none, so the heads are at most deliverIndexMax x 256 KiB.
+	// none, so listing heads are at most deliverIndexMax x 256 KiB. The
+	// path index adds one active head process-wide under artifactsMu, and
+	// drops it before releasing its lease.
 	deliverIndexMax = 64
 	// deliverLeaseWaitMax is the longest a caller with no deadline of its own
 	// waits for a tracker to come free when every one is in use.

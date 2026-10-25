@@ -1,7 +1,7 @@
 package session
 
 // ArtifactChange invalidates a deliverables listing after one actual append of
-// a CREATION row to the artifacts index. It is generic on purpose: it names the
+// an authored row to the artifacts index. It is generic on purpose: it names the
 // deliverable the row recorded, its kind, and the run and call that made it,
 // and nothing else. No path, no file bytes, no card text: a surface that wants
 // the descriptor asks for it by id, which is how it learns whether the file is
@@ -21,7 +21,7 @@ type ArtifactChange struct {
 // has no deliverable id to name, so it announces nothing: an event is never
 // invented for an append that did not make a deliverable.
 func (a *Agent) emitArtifactChange(written Artifact) {
-	if written.Deliver == nil || written.Deliver.Update || written.Deliver.ID == "" || len(written.Deliver.ID) > 128 {
+	if written.Deliver == nil || !ValidDeliverableID(written.Deliver.ID) {
 		return
 	}
 	change := ArtifactChange{ID: written.Deliver.ID, Kind: written.Kind}

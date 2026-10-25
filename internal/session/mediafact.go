@@ -637,9 +637,10 @@ func (r MediaRow) Version() string {
 // one (an export, a document, a row with no media kind).
 func mediaRowOf(row Artifact) (MediaRow, bool) {
 	out := MediaRow{Artifact: row}
-	if row.Deliver != nil && row.Deliver.Update {
+	if row.Deliver != nil && row.Deliver.Update && !row.Deliver.MediaUpdate {
 		// An appended update restates a deliverable; the media source it
-		// restates is the base row, and listing both would be two sources.
+		// restates was already published. A write can instead publish a fresh
+		// source, while preserving the deliverable's identity.
 		return MediaRow{}, false
 	}
 	if row.Media != nil {

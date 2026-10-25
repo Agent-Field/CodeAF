@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -72,9 +73,9 @@ func listDeliverables(t *testing.T, index string, q DeliverableQuery, limit int)
 	}
 }
 
-// A NEW supported file is a deliverable; an edit, a log and an unsupported
-// kind are not. The check goes write tool -> index -> a fresh reader.
-func TestWriteSeamRecordsOnlyGenuineCreations(t *testing.T) {
+// Every written file in the roots is indexed, including ordinary files.
+// The check goes write tool -> index -> a fresh reader.
+func TestWriteSeamRecordsEveryWrittenFile(t *testing.T) {
 	agent, workspace, index := deliverableAgent(t, false)
 	session := agent.journalID()
 	writeNewFile(t, agent, "notes.md", "# one\n")
@@ -84,8 +85,8 @@ func TestWriteSeamRecordsOnlyGenuineCreations(t *testing.T) {
 	writeNewFile(t, agent, "notes.md", "# one edited\n") // an edit
 
 	rows := listDeliverables(t, index, DeliverableQuery{Sessions: map[string]bool{session: true}}, 50)
-	if len(rows) != 2 {
-		t.Fatalf("want 2 deliverables, got %d: %+v", len(rows), rows)
+	if len(rows) != 4 {
+		t.Fatalf("want 4 deliverables, got %d: %+v", len(rows), rows)
 	}
 	byKind := map[string]DeliverableRow{}
 	for _, row := range rows {
@@ -357,7 +358,7 @@ func FindDeliverableAfter(t *testing.T, index, id string) (DeliverableRow, error
 }
 
 // Two writers racing to create ONE path make ONE authored deliverable: the
-// exclusive create inside the write tool's queue decides who created it.
+// ledger lock makes path lookup and append one transition.
 func TestConcurrentWritersToOnePathRecordOneCreation(t *testing.T) {
 	agent, workspace, index := deliverableAgent(t, false)
 	session := agent.journalID()
@@ -392,15 +393,141 @@ func TestConcurrentWritersToOnePathRecordOneCreation(t *testing.T) {
 	_ = workspace
 }
 
-// A file that already exists - made by anyone, before the call - is an edit.
-func TestAnOverwriteOfAPrecreatedFileRecordsNothing(t *testing.T) {
+// A successful overwrite records the authored bytes, even for a file that
+// predates the conversation. Later writes update that deliverable's identity.
+func TestOverwritesRecordAndUpdateOneDeliverable(t *testing.T) {
 	agent, workspace, index := deliverableAgent(t, false)
 	if err := os.WriteFile(filepath.Join(workspace, "mine.md"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	writeNewFile(t, agent, "mine.md", "# written over\n")
-	if rows := listDeliverables(t, index, DeliverableQuery{}, 10); len(rows) != 0 {
-		t.Fatalf("an overwrite of someone's empty file became a deliverable: %+v", rows)
+	rows := listDeliverables(t, index, DeliverableQuery{}, 10)
+	if len(rows) != 1 {
+		t.Fatalf("want one overwritten deliverable, got %d", len(rows))
+	}
+	first := rows[0]
+	writeNewFile(t, agent, "mine.md", "# revised\n")
+	rows = listDeliverables(t, index, DeliverableQuery{}, 10)
+	if len(rows) != 1 || rows[0].ID != first.ID || rows[0].Artifact.Created != first.Artifact.Created {
+		t.Fatalf("overwrite changed identity: %+v", rows)
+	}
+	want := fmt.Sprintf("%x", sha256.Sum256([]byte("# revised\n")))
+	if rows[0].Fact.File.SHA256 != want || rows[0].Fact.Version != "sha256:"+want {
+		t.Fatalf("overwrite left stale bytes: %+v", rows[0].Fact)
+	}
+}
+
+func TestEditsRecordExactBytesAndKeepDeliverableIdentity(t *testing.T) {
+	agent, workspace, index := deliverableAgent(t, false)
+	if err := os.WriteFile(filepath.Join(workspace, "notes.md"), []byte("\xef\xbb\xbf# before\r\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	edit := func(old, replacement string) {
+		t.Helper()
+		args, _ := json.Marshal(map[string]string{"path": "notes.md", "oldText": old, "newText": replacement})
+		out, bad, err := beltTool(t, agent, "edit").Execute(withRunIdentity(t.Context()), args)
+		if err != nil || bad {
+			t.Fatalf("edit: %v %s", err, out)
+		}
+	}
+	edit("before", "after")
+	rows := listDeliverables(t, index, DeliverableQuery{}, 10)
+	if len(rows) != 1 {
+		t.Fatalf("want one edited deliverable, got %d", len(rows))
+	}
+	id := rows[0].ID
+	edit("after", "final")
+	rows = listDeliverables(t, index, DeliverableQuery{}, 10)
+	want := fmt.Sprintf("%x", sha256.Sum256([]byte("\xef\xbb\xbf# final\r\n")))
+	if len(rows) != 1 || rows[0].ID != id || rows[0].Fact.File.SHA256 != want {
+		t.Fatalf("edit lost identity or exact bytes: %+v", rows)
+	}
+}
+
+func TestWrittenDeliverableIdentitySurvivesLongHistoryAndLegacyRows(t *testing.T) {
+	agent, workspace, index := deliverableAgent(t, false)
+	session := agent.journalID()
+	path := filepath.Join(canonicalFile(workspace), "notes.md")
+	if !RecordArtifact(index, Artifact{Path: path, Session: session, Title: "notes.md", Kind: DeliverableMarkdown, Created: time.Unix(1, 0)}) {
+		t.Fatal("legacy row not recorded")
+	}
+	first := listDeliverables(t, index, DeliverableQuery{}, 10)[0]
+	for i := 0; i < artifactRows+1; i++ {
+		if !RecordArtifact(index, Artifact{Path: "/work/other.md", Session: "another-session", Title: "other.md", Kind: DeliverableMarkdown, Created: time.Now()}) {
+			t.Fatal("history row not recorded")
+		}
+	}
+	forgetTracker(index)
+	writeNewFile(t, agent, "notes.md", "# revised\n")
+	rows := listDeliverables(t, index, DeliverableQuery{Sessions: map[string]bool{session: true}}, 10)
+	if len(rows) != 1 || rows[0].ID != first.ID || !rows[0].Recorded || !rows[0].Fact.Authored {
+		t.Fatalf("legacy identity lost beyond recent history: %+v", rows)
+	}
+}
+
+func TestWrittenFilesStayWithinDeliverableRoots(t *testing.T) {
+	agent, workspace, index := deliverableAgent(t, true)
+	paths := []string{filepath.Join(workspace, "notes.txt"), filepath.Join(agent.config.Place.Artifacts(), "data.csv")}
+	for _, path := range paths {
+		writeNewFile(t, agent, path, "before\n")
+	}
+	outside := filepath.Join(t.TempDir(), "outside.md")
+	writeNewFile(t, agent, outside, "before\n")
+	if err := os.Symlink(outside, filepath.Join(workspace, "linked.md")); err != nil {
+		t.Fatal(err)
+	}
+	writeNewFile(t, agent, "linked.md", "after\n")
+	args := []byte(`{"path":"notes.txt","content":"after\n","append":true}`)
+	if out, bad, err := beltTool(t, agent, "write").Execute(t.Context(), args); err != nil || bad {
+		t.Fatalf("append: %v %s", err, out)
+	}
+	rows := listDeliverables(t, index, DeliverableQuery{}, 10)
+	if len(rows) != len(paths) {
+		t.Fatalf("outside file recorded or root file missing: %+v", rows)
+	}
+	want := fmt.Sprintf("%x", sha256.Sum256([]byte("before\nafter\n")))
+	for _, row := range rows {
+		if row.Kind != shareKindFile || row.Fact.State != DeliverDraft {
+			t.Fatalf("ordinary root file: %+v", row)
+		}
+		if row.Artifact.Path == canonicalFile(paths[0]) && row.Fact.File.SHA256 != want {
+			t.Fatalf("append left stale hash: %+v", row.Fact)
+		}
+	}
+}
+
+func TestMediaOverwriteKeepsItsDeliverableAndPublishesTheCurrentSource(t *testing.T) {
+	agent, workspace, index := deliverableAgent(t, false)
+	data := wavFile(1, 8, 4, 4)
+	writeNewFile(t, agent, "voice.wav", string(data))
+	first := listDeliverables(t, index, DeliverableQuery{}, 10)[0]
+	data[len(data)-1] = 1
+	writeNewFile(t, agent, "voice.wav", string(data))
+	rows := listDeliverables(t, index, DeliverableQuery{}, 10)
+	if len(rows) != 1 || rows[0].ID != first.ID {
+		t.Fatalf("media overwrite changed deliverable identity: %+v", rows)
+	}
+	preview := rows[0].Artifact
+	preview.Deliver = nil // Files asks for the projected row's media source.
+	id, ok := MediaSourceOf(preview)
+	if !ok {
+		t.Fatal("no preview source")
+	}
+	want := fmt.Sprintf("%x", sha256.Sum256(data))
+	media, err := FindMedia(index, agent.journalID(), id, time.Time{})
+	if err != nil || media.Fact.SHA256 != want {
+		t.Fatalf("preview source missing or stale: %+v, %v", media.Fact, err)
+	}
+	media, err = FindMediaByPath(t.Context(), index, agent.journalID(), filepath.Join(canonicalFile(workspace), "voice.wav"), time.Time{})
+	if err != nil || media.Fact.SHA256 != want {
+		t.Fatalf("path source missing or stale: %+v, %v", media.Fact, err)
+	}
+	if !AppendDeliverableUpdate(index, rows[0], func(f *DeliverableFact) { f.State = DeliverKept }) {
+		t.Fatal("state update not recorded")
+	}
+	scan, err := ListMedia(index, agent.journalID(), "", 10, time.Time{})
+	if err != nil || len(scan.Rows) != 2 {
+		t.Fatalf("a state update duplicated a source: %+v, %v", scan.Rows, err)
 	}
 }
 

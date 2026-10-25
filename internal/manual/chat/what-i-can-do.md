@@ -93,6 +93,24 @@ adds the content to the end of the file instead of replacing it and reports
 `Appended N lines to <path>; the file now has M lines.` — appending to a file
 that does not exist yet simply creates it.
 
+## Why is a written or edited file missing from Files — deliverables in a plain folder
+
+Successful `write` and `edit` calls record files inside the conversation's
+workspace, its own `work/`, or its `artifacts/` folder. This includes overwriting
+an existing file and appending to it. A rewrite updates the same deliverable ID
+with the new content hash; it does not add another card. Files of other types,
+such as text, source code and PDFs, are recorded as files too.
+
+A desktop conversation has a deliverables index and a journal even when its
+folder is a home directory or another folder outside Git. A task worker records
+through its owning conversation. Writing outside these roots does not claim a
+deliverable.
+
+Shell commands have a narrower signal: pictures declared in `bash`'s `outputs`
+are already inspected and recorded. Other shell-made files are not discovered
+automatically; there is no filesystem scan. `share_deliverable` can explicitly
+hand over an existing file.
+
 ## Can you append to a file, or add to the end without rewriting it?
 
 Yes. `write` takes an optional `append:true`, which adds the new content after
