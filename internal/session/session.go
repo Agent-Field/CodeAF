@@ -4018,6 +4018,10 @@ type Agent struct {
 	// outlives its turn has no turn stream left to land on.
 	titleWatchers []*eventStream
 
+	// approvalMu serializes gate builds, publication and snapshot selection.
+	// Always acquire approvalMu before mu, never the reverse; Build runs without mu.
+	approvalMu sync.Mutex
+
 	// approvalPolicy is the gate as it stands NOW, when a surface has replaced
 	// the one this session launched on ([Agent.SetApprovalPolicy], and the prose
 	// in approvalgate.go for why that is a thing a surface may do). Nil is the

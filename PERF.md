@@ -45,9 +45,11 @@ reuse parsed files until metadata or the settings generation changes; the gate
 holds one compiled policy and reuses it while its three resolved rows match.
 There is no watcher, polling loop or per-call policy compilation for unchanged
 settings. Clarification conversations follow their parent's gate; ordinary task
-workers use a fixed allow policy. One mutex serializes settings builds,
-publication, policy pushes and conversation posture changes. Each decision's
+workers use a fixed allow policy. A dedicated approval mutex serializes settings
+builds, publication, policy pushes and conversation posture changes. Each decision's
 immutable snapshot is selected under that lock before another build can start.
+The general agent mutex only protects state reads and writes, so filesystem
+work inside a gate build cannot block interruption, stopping or consent answers.
 
 Factory stages also reuse their fixed allow policy. `TestStageAllowPolicyReuse`
 checks policy identity and zero allocations per unchanged build (100 builds per

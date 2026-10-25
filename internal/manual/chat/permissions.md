@@ -596,7 +596,8 @@ that is already running and Settings changes made in the desktop app or another
 window. No relaunch is needed. The next tool decision reads current settings,
 including tool exceptions and shell command rules.
 Concurrent refreshes wait their turn; each decision uses the policy built from
-the settings it read.
+the settings it read. A stalled settings read does not block interrupting or
+stopping work, answering an existing consent question, or closing the session.
 
 A question already waiting for your answer keeps waiting. Project rules,
 conversation postures, `--yolo` and dangerous-command floors keep their

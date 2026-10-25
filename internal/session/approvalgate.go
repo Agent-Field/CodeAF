@@ -45,6 +45,8 @@ func (a *Agent) SetApprovalPolicy(policy *approval.Policy) {
 	if policy == nil {
 		return
 	}
+	a.approvalMu.Lock()
+	defer a.approvalMu.Unlock()
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.approvalPolicy = policy
@@ -75,13 +77,15 @@ func (a *Agent) baseApprovalGate() *approval.Policy {
 		policy, _ := a.refreshApprovalGate()
 		return policy
 	}
+	a.approvalMu.Lock()
+	defer a.approvalMu.Unlock()
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.approvalPolicyLocked()
 }
 
-// approvalPolicyLocked returns the immutable decision snapshot while mu still
-// protects the build and publication that selected it.
+// approvalPolicyLocked returns the immutable decision snapshot while mu
+// protects the policy pointer.
 func (a *Agent) approvalPolicyLocked() *approval.Policy {
 	if a.approvalPolicy != nil {
 		return a.approvalPolicy

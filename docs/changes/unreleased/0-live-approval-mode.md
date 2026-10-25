@@ -20,9 +20,11 @@ for approval keeps its existing question.
 Concurrent refreshes previously checked only the conversation posture, so an
 older settings read could reopen a newer prompt gate. Versioned publication
 still let a tool that read prompt fall back to an old allow policy when a
-replacement refresh had started but not finished. One mutex now serializes
-each settings build through publication and decision snapshot selection;
+replacement refresh had started but not finished. A dedicated approval mutex now
+serializes each settings build through publication and decision snapshot selection;
 conversation posture changes and explicit policy pushes use the same mutex.
+The general agent mutex is released during builds, so stalled settings reads
+no longer block Interrupt, StopWork, consent resolution or Close.
 Unchanged settings still reuse the content-keyed policy cache.
 Profile read and JSON errors now reach the gate builder instead of becoming
 absent settings, so a failed refresh retains the previous policy.

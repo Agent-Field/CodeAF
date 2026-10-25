@@ -81,13 +81,62 @@ func (g *controlledApprovalGate) Build(posture string) (*approval.Policy, bool, 
 	return policy, guardian, err
 }
 
+func TestApprovalBuildDoesNotBlockStoppingWork(t *testing.T) {
+	for _, postureChange := range []bool{false, true} {
+		build := "refresh"
+		if postureChange {
+			build = "posture"
+		}
+		for _, operation := range []string{"Interrupt", "StopWork"} {
+			t.Run(build+"/"+operation, func(t *testing.T) {
+				gate := &controlledApprovalGate{
+					ApprovalGate: &fakeApprovalGate{},
+					entered:      make(chan chan struct{}),
+				}
+				ctx, cancel := context.WithCancelCause(context.Background())
+				defer cancel(nil)
+				agent := &Agent{config: Config{ApprovalGate: gate}, cancel: cancel}
+				built := make(chan error, 1)
+				go func() {
+					if postureChange {
+						built <- agent.SetApprovalPosture(PostureAsk)
+					} else {
+						built <- agent.RebuildApprovalGate()
+					}
+				}()
+				release := <-gate.entered
+				defer func() {
+					close(release)
+					if err := <-built; err != nil {
+						t.Errorf("approval build: %v", err)
+					}
+				}()
+				// Fail deterministically instead of hanging in the stop call when
+				// Build owns the general mutex. No other goroutine uses it here.
+				if !agent.mu.TryLock() {
+					t.Fatalf("%s cannot return: blocked approval Build holds Agent.mu", operation)
+				}
+				agent.mu.Unlock()
+				if operation == "Interrupt" {
+					agent.Interrupt()
+				} else if err := agent.StopWork(); err != nil {
+					t.Fatal(err)
+				}
+				if context.Cause(ctx) == nil {
+					t.Fatalf("%s returned without cancelling work while Build remains blocked", operation)
+				}
+			})
+		}
+	}
+}
+
 func (g *controlledApprovalGate) waitForBuild(t *testing.T, agent *Agent) chan struct{} {
 	t.Helper()
 	release := <-g.entered
 	// These bare agents have no other lock users. This assertion makes a build
 	// outside the publication lock fail regardless of contender scheduling.
-	if agent.mu.TryLock() {
-		agent.mu.Unlock()
+	if agent.approvalMu.TryLock() {
+		agent.approvalMu.Unlock()
 		t.Error("approval Build must hold the publication mutex")
 	}
 	return release
