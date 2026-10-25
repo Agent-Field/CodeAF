@@ -30,6 +30,7 @@ func TestSkillManualOnTheTerminal(t *testing.T) {
 			t.Run(memory+"/"+question.query, func(t *testing.T) {
 				home := newHome(t, map[string]any{"memory.enabled": memory, "models.fallbacks": "", "model_pool": "off"})
 				workspace := newWorkspace(t, "skill-manual", false)
+				stopRecoveryEngineOnCleanup(t, nil, home, workspace)
 				stage := fmt.Sprintf("skill-manual-%s-%d", memory, index)
 				r := startDefault(t, stage, home, workspace, 140, 42,
 					"chat", "--model", model, "--one-model", "--debug")
