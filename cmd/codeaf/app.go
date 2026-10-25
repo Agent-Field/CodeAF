@@ -130,7 +130,12 @@ func runApp(args []string) error {
 	defer config.UseAppCredentials(config.NewAppCredentials())()
 	server := appwire.NewServer(wire)
 	backend := newAppBackend(server, appOpenInProcess)
-	guard.Go("app/leave", func() { leaveWithin(ctx, backend.left, appLeaveWait, appLeaveNow) })
+	// Deferred here, before the cleanups below are, so it closes only after
+	// they have run: the bound still covers every one of them, and stands down
+	// once the door has returned (appleave.go).
+	returned := make(chan struct{})
+	defer close(returned)
+	guard.Go("app/leave", func() { leaveWithin(ctx, backend.left, returned, appLeaveWait, appLeaveNow) })
 	// Capture the previous holders before crews, quit resumes or client calls
 	// can open a journal and overwrite the evidence with this process's claim.
 	backend.snapshotCloseClaims()
