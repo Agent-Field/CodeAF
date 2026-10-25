@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>codeaf / Knowledge lab</title>
+<link rel="stylesheet" href="viewer.css">
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar" aria-label="Navigation">
+    <div class="brand">
+      <div class="brand-name">codeaf</div>
+      <div class="brand-sub">Knowledge lab</div>
+    </div>
+
+    <div class="exp-switch" role="group" aria-label="Experiment">
+      <button type="button" class="exp-btn" data-exp="direct" aria-pressed="true">direct</button>
+      <button type="button" class="exp-btn" data-exp="reconciled" aria-pressed="false">reconciled</button>
+    </div>
+
+    <div class="search-wrap">
+      <label class="sr-only" for="search-input">Search notes</label>
+      <input id="search-input" type="search" placeholder="Search notes…" autocomplete="off" spellcheck="false">
+      <kbd class="search-kbd" aria-hidden="true">⌘K</kbd>
+    </div>
+
+    <nav class="nav" aria-label="Sections">
+      <button type="button" class="nav-item" data-view="home">Home</button>
+      <button type="button" class="nav-item" data-view="compare">Compare experiments</button>
+      <button type="button" class="nav-item" data-view="research">Algorithm ideas</button>
+    </nav>
+
+    <div class="tree-head">
+      <span>Notes</span>
+      <span id="tree-count" class="tree-count"></span>
+    </div>
+    <div id="folder-tree" class="folder-tree" role="tree" aria-label="Folder tree"></div>
+  </aside>
+
+  <main id="main" tabindex="-1" aria-label="Reading canvas">
+    <div id="main-inner"></div>
+  </main>
+
+  <aside id="details" aria-label="Details">
+    <div id="details-inner"></div>
+  </aside>
+</div>
+
+<div id="overlay" class="overlay" hidden>
+  <div class="overlay-panel" role="dialog" aria-modal="true" aria-labelledby="overlay-title">
+    <div class="overlay-head">
+      <h2 id="overlay-title">Source</h2>
+      <button type="button" id="overlay-close" class="icon-btn" aria-label="Close">✕</button>
+    </div>
+    <div id="overlay-body" class="overlay-body"></div>
+  </div>
+</div>
+
+<div id="live" class="sr-only" aria-live="polite"></div>
+
+<script src="data.js"></script>
+<script src="viewer.js"></script>
+</body>
+</html>
