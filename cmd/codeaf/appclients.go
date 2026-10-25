@@ -139,7 +139,7 @@ func appClientEntry(receipt clientrun.Receipt) appwire.Entry {
 		state = "running"
 	case "done":
 		state = "done"
-	case "failed":
+	case "failed", "refused":
 		state = "incomplete"
 	}
 	suffix := ""

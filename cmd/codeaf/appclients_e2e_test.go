@@ -426,7 +426,7 @@ func TestQueuedFaceIDCoversTheResolvedConsentSet(t *testing.T) {
 			}
 			found := false
 			for _, e := range entries {
-				if strings.Contains(e.Text, "Face ID") && strings.Contains(e.Text, clientDev.ID()) {
+				if strings.Contains(e.Text, "Face ID") && strings.Contains(e.Text, clientDev.ID()) && strings.Contains(e.Text, "incomplete") {
 					found = true
 				}
 			}

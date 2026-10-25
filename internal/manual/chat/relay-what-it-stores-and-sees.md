@@ -157,9 +157,9 @@ resolves is irreversible. The real answer path checks the fixed target set, so
 a sibling arriving during claiming is covered too. This includes a whole consent
 batch and a different
 ask selected by `batch_item`. Without it the call is refused before any consent
-is answered, and the paired-client refusal is kept in the chat with “Face ID”.
+is answered, and the paired-client refusal is kept in the chat as incomplete, with “Face ID”.
 
-## One local runner at a time
+## Client runner state already open
 
 The runner holds an exclusive OS lock beside its state file until it closes.
 Another process using that home fails immediately with “client runner state
