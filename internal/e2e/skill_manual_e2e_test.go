@@ -36,12 +36,12 @@ func TestSkillManualOnTheTerminal(t *testing.T) {
 				r.lit(fmt.Sprintf("Look up this question with the manual tool, setting query to exactly %q, then answer it briefly in your own words. Explain whether automatic memory saving being off disables skills. Finish with SKILL_MANUAL_CHECK_DONE. Do not change files.", question.query))
 				r.keys("Enter")
 				cleanChatWaitAnswer(t, r, "SKILL_MANUAL_CHECK_DONE", 2*time.Minute)
-				journals, err := filepath.Glob(filepath.Join(home, "v3", "projects", "*", "*", "transcript.jsonl"))
-				if err != nil || len(journals) != 1 {
-					t.Fatalf("want one conversation journal, got %v: %v", journals, err)
+				places, err := filepath.Glob(filepath.Join(home, "v3", "projects", "*", "*"))
+				if err != nil || len(places) != 1 {
+					t.Fatalf("want one conversation place, got %v: %v", places, err)
 				}
 				matched := false
-				for _, call := range manualCalls(t, session.Place{Dir: filepath.Dir(journals[0])}) {
+				for _, call := range manualCalls(t, session.Place{Dir: places[0]}) {
 					if call.Query != question.query {
 						continue
 					}
