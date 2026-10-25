@@ -1052,6 +1052,8 @@ var OperatorEnvPins = []string{
 	// of asking its long-lived daemon (internal/cellstore). It is an escape
 	// hatch that changes speed and never results, so it is plumbing.
 	"CODEAF_ENGINE_DAEMON",
+	// Marks the one permitted executable handoff so a bridge cannot exec in a loop.
+	"CODEAF_ENGINE_HANDOFF",
 	// CODEAF_BASH names the bash native Windows runs commands in when Git for
 	// Windows is not where codeaf looks (internal/shell). A path to a program
 	// is plumbing for the same reason CODEAF_FURROW is.

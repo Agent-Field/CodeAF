@@ -131,6 +131,8 @@ func hostedTaskFrame(t *testing.T, lane <-chan session.Event, id uint64, stopped
 // A fake remote agent would only prove its own Cancel method; this test keeps
 // session.Agent, Serve, Dial, the task lane and the plan store in the path.
 func TestHostedTasksToolStopEndsTheRunAndReportsWhatHappened(t *testing.T) {
+	// Stopping a run must not wait for unrelated optional workspace discovery.
+	t.Setenv("CODEAF_FURROW", filepath.Join(t.TempDir(), "not-installed"))
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	started := make(chan struct{})
 	session.RegisterRunEngine(hostedSlowRun{started: started})

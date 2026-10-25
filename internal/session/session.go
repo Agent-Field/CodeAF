@@ -643,6 +643,8 @@ const (
 	// in this turn — saved, paused, resumed, deleted, asked to run now. It is a
 	// report and never a question.
 	EventAutomationUpdate
+	// EventChatStart asks the attached terminal to open an independent chat.
+	EventChatStart
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -684,6 +686,7 @@ type TaskReplyTag struct {
 // today — sees all of it in order and needs no second rule; a caller that stops
 // at the terminal event stops at the terminal event of the FIRST turn.
 type Event struct {
+	ChatStart      *ChatStart   `json:",omitempty"`
 	ReplayCursor   ReplayCursor `json:",omitempty"`
 	ReplayObserved bool         `json:"-"`
 
@@ -2398,6 +2401,7 @@ type Agent struct {
 	knowledgeVault   *knowledge.Vault
 	knowledgeJournal *knowledgeJournal
 
+	chatStarts map[string]bool
 	// jailNotice keeps a host limit from becoming noise on every tool call.
 	jailNotice sync.Once
 

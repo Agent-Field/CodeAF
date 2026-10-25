@@ -183,7 +183,7 @@ func TestAnEngineOnAnotherProtocolRefusesRatherThanDroppingFrames(t *testing.T) 
 	if answer.Kind != "fatal" {
 		t.Fatalf("an engine speaking another protocol answered a %q frame", answer.Kind)
 	}
-	if !strings.Contains(answer.Error, "speaks protocol") {
+	if !strings.Contains(answer.Error, "matching versions") {
 		t.Fatalf("the refusal reads %q", answer.Error)
 	}
 	if far.opened() != 0 {

@@ -163,14 +163,14 @@ func TestDockHoverNamesAndPressGoes(t *testing.T) {
 		}
 	}
 	a.setHover(a.dock.wall.from, y)
-	if row := screenLines(a)[y]; !strings.HasPrefix(row, " "+dockChatsWord) {
+	if row := screenLines(a)[y]; !strings.HasPrefix(row, " "+dockWallWord) {
 		t.Fatalf("the hovered wall mark: %q", row)
 	}
 	a.setHover(a.dock.label.from, y)
 	if a.hot.kind != hoverDockLabel {
 		t.Fatalf("the hover on the word is %+v", a.hot)
 	}
-	if row := screenLines(a)[y]; !strings.HasPrefix(row, " "+dockChatsWord) {
+	if row := screenLines(a)[y]; !strings.HasPrefix(row, " "+dockWallWord) {
 		t.Fatalf("the hovered word: %q", row)
 	}
 	for _, cell := range a.dock.cells {
@@ -193,14 +193,14 @@ func TestDockHoverNamesAndPressGoes(t *testing.T) {
 	}
 	_ = frame(a)
 	y = dockRowY(t, a)
-	if _, took := a.dockPress(a.dock.label.from+2, y); !took || !a.wall.on {
-		t.Fatal("the word did not open the wall")
+	if _, took := a.dockPress(a.dock.label.from+2, y); !took || !a.wall.on || !a.wall.openTabs {
+		t.Fatal("the word did not open the wall on the open tabs")
 	}
 	a.closeWall()
 	_ = frame(a)
 	y = dockRowY(t, a)
-	if _, took := a.dockPress(a.dock.wall.from, y); !took || !a.wall.on {
-		t.Fatal("the wall's mark did not open the wall")
+	if _, took := a.dockPress(a.dock.wall.from, y); !took || !a.wall.on || !a.wall.openTabs {
+		t.Fatal("the wall's mark did not open the wall on the open tabs")
 	}
 	// A press on the blank between the keys and the dock is nothing.
 	a.closeWall()
@@ -292,8 +292,8 @@ func TestDockHoverHintPerCellKind(t *testing.T) {
 	if got := dockCellHint(here); got != "Shipping the parser"+hintSegment+"you are here" {
 		t.Fatalf("here: %q", got)
 	}
-	if dockChatsWord != dockWallWord {
-		t.Fatalf("the word and the glyph say %q", dockChatsWord)
+	if dockChatsWord == dockWallWord || !strings.Contains(dockWallWord, "tabs in this view") {
+		t.Fatal("the library and All hints do not distinguish their scopes")
 	}
 }
 

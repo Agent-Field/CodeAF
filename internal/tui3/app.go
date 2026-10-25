@@ -885,6 +885,7 @@ type (
 )
 
 type app struct {
+	chatStarts          map[string]bool
 	conversationRequest uint64
 	conversationOpening bool
 	conversationPreview *conversationPreview
@@ -6445,6 +6446,8 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 	// reducer would pass tests and the task room and never reach the chat.
 	a.ingestStream(ev, lump)
 	switch ev.Kind {
+	case session.EventChatStart:
+		after = a.startRequestedChat(ev.ChatStart, a.agent)
 	case session.EventTextDelta, session.EventThinking, session.EventReasoning:
 		a.lastDelta = time.Now()
 
