@@ -193,14 +193,14 @@ func TestDockHoverNamesAndPressGoes(t *testing.T) {
 	}
 	_ = frame(a)
 	y = dockRowY(t, a)
-	if _, took := a.dockPress(a.dock.label.from+2, y); !took || !a.wall.on {
-		t.Fatal("the word did not open the wall")
+	if _, took := a.dockPress(a.dock.label.from+2, y); !took || !a.wall.on || !a.wall.openTabs {
+		t.Fatal("the word did not open the wall on the open tabs")
 	}
 	a.closeWall()
 	_ = frame(a)
 	y = dockRowY(t, a)
-	if _, took := a.dockPress(a.dock.wall.from, y); !took || !a.wall.on {
-		t.Fatal("the wall's mark did not open the wall")
+	if _, took := a.dockPress(a.dock.wall.from, y); !took || !a.wall.on || !a.wall.openTabs {
+		t.Fatal("the wall's mark did not open the wall on the open tabs")
 	}
 	// A press on the blank between the keys and the dock is nothing.
 	a.closeWall()
