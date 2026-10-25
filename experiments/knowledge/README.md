@@ -174,3 +174,6 @@ means no accepted answer in the inspected attempt, including review rejection;
 it is not proof the complete corpus lacks an answer. Guide caching rechecks read
 sources, not newly available unread sources. Proposal collection currently stages
 pending items only; production acceptance and bounded outbox retention are deferred.
+
+[The critical review](CRITICAL-REVIEW.md) records current weaknesses, changes and
+the next measurable experiments. Source-basis labels do not certify truth.

@@ -4,6 +4,25 @@ from learning import learn, project
 
 
 class LearningTests(unittest.TestCase):
+    def test_subject_prose_exposes_source_authority_and_unresolved_conflicts(self):
+        from test_maintenance import fixture
+        from knowledge import identity
+        vault, learning = fixture()
+        subject = learning['subjects'][0]
+        cid = subject['claims'][0]
+        vault['claims'].append({**vault['claims'][0], 'id': 'other', 'text': 'Cedar routing is unresolved.'})
+        subject['conflicts'] = [{'claims': [cid, 'other'], 'state': 'unresolved', 'reason': 'Candidate discrepancy'}]
+        subject['sections'] = [{'heading': 'Purpose', 'paragraphs': [
+            {'text': 'Cedar routes jobs.', 'claims': [cid]},
+            {'text': 'A report describes two retries.', 'claims': [], 'derivation': 'subject_guide',
+             'review': 'reviewed', 'evidence': [{'source': 's2', 'quote': vault['sources']['s2']['text'],
+              'source_hash': identity(vault['sources']['s2']['text'])}]}]}]
+        paragraphs = project(vault, learning)['notes'][-1]['sections'][0]['paragraphs']
+        self.assertEqual(paragraphs[0]['evidence_basis']['source_roles'], ['user'])
+        self.assertTrue(paragraphs[0]['evidence_basis']['unresolved_conflict'])
+        self.assertEqual(paragraphs[1]['evidence_basis']['source_roles'], ['agent'])
+        self.assertFalse(paragraphs[1]['evidence_basis']['independently_verified'])
+
     def test_subject_navigation_preserves_real_connections_and_withholds_retired_prose(self):
         vault = {'sources': {}, 'claims': [
             {'id': 'c', 'text': 'Routing selects a worker.', 'status': 'active', 'kind': 'fact'},

@@ -392,6 +392,19 @@
           citation.addEventListener('click', function(){openParagraphSources(paragraph.claims || [], paragraph.evidence || []);});
           p.appendChild(document.createTextNode(' '));
           p.appendChild(citation);
+          var basis = paragraph.evidence_basis;
+          if(basis){
+            var roles = basis.source_roles || [];
+            var kinds = basis.claim_kinds || [];
+            var label = basis.unresolved_conflict ? 'Unresolved conflict' :
+              (kinds.length && kinds.every(function(k){ return k === 'proposal'; }) ? 'Proposed' :
+              (roles.length === 1 && roles[0] === 'agent' ? 'Reported · not independently checked' : ''));
+            if(label){
+              var badge = mk('span', 'backlink-reason evidence-basis', label);
+              badge.title = 'Source roles: ' + (roles.join(', ') || 'unknown') + '. A citation or model review does not independently verify a statement.';
+              p.appendChild(document.createTextNode(' ')); p.appendChild(badge);
+            }
+          }
           if(paragraph.partial) p.appendChild(mk('span', 'backlink-reason', 'Partial evidence — this question remains open.'));
           el.mainInner.appendChild(p);
         });

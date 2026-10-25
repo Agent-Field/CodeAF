@@ -381,7 +381,7 @@ def recall(vault, question, model, scope=None, limit=16, retrieval="lexical"):
                 claim_id = "derived:" + identity([note["id"], paragraph["text"], evidence])
                 candidates.append({"id": claim_id, "text": paragraph["text"], "topic": section["heading"],
                                    "scope": note["scope"], "status": "active", "kind": "reported",
-                                   "partial": paragraph.get("partial", False), "evidence": evidence})
+                                   "partial": paragraph.get("partial", False), "evidence_basis": paragraph.get("evidence_basis", {}), "evidence": evidence})
                 derived_ids[note["id"]].append(claim_id)
     counts = {t: sum(t in words(c["text"]) for c in candidates) for t in terms}
     def score(claim):

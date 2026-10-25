@@ -178,7 +178,8 @@ def project(vault, learning):
     """Project subject maps and reviewed gap answers without changing source claims."""
     result = copy.deepcopy(vault)
     original = {n['id']: n for n in result['notes']}
-    active = {c['id'] for c in vault['claims'] if c['status'] == 'active'}
+    active_claims = {c['id']: c for c in vault['claims'] if c['status'] == 'active'}
+    active = set(active_claims)
     memberships = {}
     for subject in learning['subjects']:
         if subject['id'] in original:
@@ -222,6 +223,18 @@ def project(vault, learning):
                      'question': question['id'], 'partial': question['state'] == 'partially_answered',
                      'derivation': 'gap_answer', 'review': answer['review'], 'depends_on': question['claims']}]})
                 answer_claims.extend(answer['claims'])
+        conflict_claims = {cid for conflict in subject.get('conflicts', [])
+                           if conflict.get('state') == 'unresolved' and set(conflict['claims']) <= active
+                           for cid in conflict['claims']}
+        for section in sections:
+            for paragraph in section['paragraphs']:
+                supporting = [active_claims[cid] for cid in paragraph.get('claims', []) if cid in active_claims]
+                evidence = paragraph.get('evidence', []) + [e for c in supporting for e in c.get('evidence', [])]
+                roles = sorted({vault['sources'][e['source']]['role'] for e in evidence if e['source'] in vault['sources']})
+                paragraph['evidence_basis'] = {
+                    'source_roles': roles, 'claim_kinds': sorted({c['kind'] for c in supporting}),
+                    'unresolved_conflict': bool(set(paragraph.get('claims', [])) & conflict_claims),
+                    'independently_verified': False}
         roots = Counter(original[i]['folder'][0] for i in subject['notes'] if i in original and original[i].get('folder'))
         root = sorted(roots, key=lambda k: (-roots[k], k))[0] if roots else subject['scope']
         links = [{'id': i, 'kind': 'explains', 'reason': 'Detailed evidence for this subject'} for i in subject['notes'] if i in original]
