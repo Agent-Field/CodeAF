@@ -15,7 +15,7 @@ import (
 // of this gate over 273 judged plan draws, and the front it drew is the stages
 // planner with the gate having NO SAY — same quality as the best armed cell,
 // a third of its unrecoverable draws, the lowest cost of the front
-// (docs/design/plan-gate-doe/REPORT.md). So the default is off, and the count
+// . So the default is off, and the count
 // is what somebody opts into.
 func TestTheUnpinnedBinaryKeepsEveryDivisionThePlannerDrew(t *testing.T) {
 	t.Setenv("CODEAF_SPLITGATE", "")

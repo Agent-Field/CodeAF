@@ -2,7 +2,7 @@ package tui3
 
 // THE EVIDENCE AN ANSWER BRINGS, WHEREVER A QUESTION IS DRAWN.
 //
-// These hold the owner's three picks of 2026-09-11 about evidence: at a hundred
+// These hold the evidence layout contract: at a hundred
 // columns and wider a panel whose answers brought something to look at lays
 // them in a list with the evidence of the one the pointer is on beside it
 // (preview A); narrower, that evidence unfolds under the pointer's row
@@ -179,7 +179,7 @@ func TestAPressOnTheEvidenceBesideTheListPressesNothing(t *testing.T) {
 
 // THE ANSWER THE POINTER IS ON IS ALWAYS ON SCREEN, in one column and in two
 // panes, however far down the arrows walk and however tall the evidence under
-// it — the defect lane F measured on the old page, where the window moved only
+// it — the regression on the old page, where the window moved only
 // under the wheel.
 func TestTheAnswerThePointerIsOnIsAlwaysOnScreen(t *testing.T) {
 	q := tallEvidence()

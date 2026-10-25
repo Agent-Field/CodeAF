@@ -90,7 +90,7 @@ type teamRole struct {
 	// managed says the team has a manager at all, its own or, for a sub-team
 	// with none, the nearest one above it (boss). A member's `team_post` is
 	// offered only in a team that has one, because the manager is the one the
-	// room is run by (docs/design/conversations-and-teams/DESIGN.md, section 5).
+	// room is run by.
 	managed bool
 	// boss is the managed team whose manager this membership answers to: the
 	// team itself when it has a manager, and otherwise the nearest open

@@ -22,7 +22,7 @@ import (
 // (skillturn.go) are picked by the words the message shares with a skill's
 // description, which is cheap and literal: "make me a deck for the board"
 // shares no word with "create and edit presentation slides". A model reading
-// the whole catalog makes that connection itself, the way Claude Code's own
+// the whole catalog makes that connection itself, so the
 // skill list works — the description is in front of it on every request, it
 // decides a skill applies, and it fetches the body with `use_skill`. So the
 // catalog names EVERY skill, rather than the few a path-based score guessed at,

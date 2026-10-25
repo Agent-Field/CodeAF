@@ -3,7 +3,7 @@ package secaf
 // Each of sec's agents is bounded by what its own work takes.
 //
 // sec-af gave every agent one cap, fifty turns and thirty minutes
-// (SEC_AF_MAX_TURNS, the harness's wait). The owner's whole-repository audit of
+// (SEC_AF_MAX_TURNS, the harness's wait). A whole-repository audit of
 // a mid-sized Rust repository on 2026-10-05 measured what each agent actually
 // used, and the figures below are that measurement with headroom: about half
 // again over the longest session seen, more where a session was cut at the

@@ -355,12 +355,12 @@ var quickTaskDescription = "Quick work runs here; its last message is the answer
 // their model is already holding.
 const quickTaskSchemaJSON = `{"type":"object","properties":{` +
 	`"line":{"type":"string","description":"What to do, one sentence"},` +
-	`"items":{"type":"array","items":{"type":"string"},"description":"Ordered steps it works through and ticks off"},` +
+	`"items":{"type":"array","items":{"type":"string"},"description":"Ordered steps to complete and tick"},` +
 	`"files":{"type":"array","items":{"type":"string"},"description":"Paths it will write. Two claiming one path run one after the other; named none, it writes anywhere"},` +
 	`"inherit":{"type":"boolean","description":"Opens on this conversation"},` +
 	`"depends_on":{"type":"array","items":{"type":"integer"},"description":"Ids whose result it needs"},` +
-	`"title":{"type":"string","description":"Row title; the line is used without one"},` +
-	`"model":{"type":"string","description":"ONLY where the person named a model"}` +
+	`"title":{"type":"string","description":"Row title; defaults to line"},` +
+	`"model":{"type":"string","description":"Overrides task.model/crew on request"}` +
 	`},"required":["line"],"additionalProperties":false}`
 
 // quickArguments is the wire form.
@@ -832,7 +832,7 @@ func (n *TaskNode) quickDoor() func(int, []string) string {
 // shape for "read a fact, then tell the world about it".
 //
 // AND THE LIST REACHES THE DISK IN THE SAME BREATH. The checklist IS this node's
-// graph (docs/design/quick-task/DESIGN.md), and every other transition a node
+// graph, and every other transition a node
 // makes is checkpointed as it happens; a tick that lived only in memory and in
 // the row's rendered word was a tick a restart could not report, so a quick
 // task that got three items down a list of four came back saying nothing about

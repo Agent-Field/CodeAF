@@ -323,7 +323,7 @@ command).
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
 | `/status` | `/info`, `/context` | `--json` | prints the same facts as one JSON object, keys in the same order |
 | `/spend` | none | none | opens the spend place, what this machine has cost, by the day (also `alt+5`) |
-| `/wall` | | | every saved conversation at once, with live or saved previews and card-based team creation (also `alt+v`, or `▦` under the box) |
+| `/wall` | | | every saved conversation at once, with live or saved previews and card-based team creation (also `alt+v`; `▦ All` shows only current tabs) |
 | `/teams` | | | the teams page: your teams as a tree, what waits on you, member previews and the selected team's interaction table (also `alt+2`, or `teams` on the tab bar) |
 | `/helpers` | | `<what to ask the manager>` | asks the team this conversation manages to suggest helpers: sends your words after it, or bare a one-sentence default ask, shown in full; makes no team, and in a conversation that manages none it says to make one with `+ New from this session`, last in the Teams dropdown while no team is selected, which makes the team at once and puts `/helpers` and the ask in the box; on home it says to open that conversation first |
 | `/cost` | `/usage`, `/tokens` | — | prints what this conversation has spent, and on what |
@@ -585,7 +585,10 @@ nothing to rewind
 ## /copy — read the conversation back and copy from it
 
 `/copy` freezes the visible conversation and enters copy mode. It is the same thing
-ctrl+b does. In copy mode ↑↓ move, `v` marks, `a` takes the block, `y` yanks.
+ctrl+b does. In copy mode ↑↓ move, `v` marks, `a` takes the block, and `enter`
+copies the selection (`y` also works). The status says `COPY · clipboard sent`
+after the clipboard write is sent to your terminal; terminal clipboard permissions
+still apply. `esc` leaves copy mode.
 
 **`/copy` silently does nothing in two states**, with no message either way:
 
@@ -897,6 +900,9 @@ The cell, the badge and the line always agree, because all three read one postur
 it with `alt+a` and all three move on the keystroke; change "ask before running" in
 `/settings` and they move together for a conversation that follows the rows, or the panel
 says `saved · from the next session`.
+
+A running engine reading the same settings picks up the changed rules before
+its next tool decision even when the panel could not push them immediately.
 
 The one session with no `approvals` line is a remote one whose engine carried no posture
 over the wire. The gate there is the far machine's, and a line drawn from this laptop's

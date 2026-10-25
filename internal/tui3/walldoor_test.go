@@ -79,7 +79,7 @@ func TestTabWallDoorHover(t *testing.T) {
 	if !strings.Contains(cell, "\x1b[48;") || cell == ansi.Cut(rest, door.from, door.to) {
 		t.Fatalf("the hovered door wears no ground: %q", cell)
 	}
-	if got := a.dockHoverWords(); got != dockWallWord || !strings.Contains(got, "all your conversations") || !strings.HasSuffix(got, wallOpenKey) {
+	if got := a.dockHoverWords(); got != dockWallWord || !strings.Contains(got, "tabs in this view") {
 		t.Fatalf("the hint slot says %q", got)
 	}
 	t.Logf("120 columns at rest:\n%q\nhovered:\n%q", plain(rest), plain(lit))
@@ -109,6 +109,118 @@ func TestTabWallDoorOpensAndCloses(t *testing.T) {
 	clickTab(t, a, door.from+1)
 	if a.wall.on {
 		t.Fatal("the strip's press on the door did not close the view")
+	}
+}
+
+func TestTabWallDoorShowsOpenTabsInsteadOfSavedConversations(t *testing.T) {
+	a, _ := catalogLab(t, 5)
+	a.width, a.height = 120, 40
+	_ = a.tabsRow(a.width)
+	command, took := a.tabPress(a.wall.door.from+1, tabStripRow)
+	if !took {
+		t.Fatal("All did not take the click")
+	}
+	spend(t, a, command)
+	tiles := a.wallShown(a.now())
+	if len(tiles) != 3 {
+		t.Fatalf("All should show the three open tabs, got %d cards", len(tiles))
+	}
+	if frame := plain(strings.Join(a.wallFrame(a.width, a.height), "\n")); !strings.Contains(frame, "open tabs") || strings.Contains(frame, "all saved conversations") {
+		t.Fatal("All did not label its open-tab scope")
+	}
+	for _, tile := range tiles {
+		if strings.HasPrefix(tile.name, "Saved conversation") {
+			t.Fatalf("saved conversation leaked into open tabs: %q", tile.name)
+		}
+	}
+}
+
+func TestTabWallDoorKeepsTheSelectedTeamWhenOpeningACard(t *testing.T) {
+	a, harbor, orbit := menuApp(t)
+	_ = a.tabsRow(a.width)
+	command, _ := a.tabPress(a.wall.door.from+1, tabStripRow)
+	spend(t, a, command)
+	tiles := a.wallShown(a.now())
+	if len(tiles) != 2 || a.wall.activeID != harbor {
+		t.Fatalf("All lost the selected team's two tabs: cards=%d team=%q", len(tiles), a.wall.activeID)
+	}
+	if frame := plain(strings.Join(a.wallFrame(a.width, a.height), "\n")); !strings.Contains(frame, "open tabs · in harbor") {
+		t.Fatal("All did not name the selected team in its scope")
+	}
+	for _, tile := range tiles {
+		if teamHolds(mustTeam(t, a, orbit), tile.tab.key) {
+			t.Fatal("another team's chat appeared in this team's All view")
+		}
+	}
+	spend(t, a, a.wallOpen(tiles, 1))
+	if a.wall.on || a.teamViews.id != harbor || a.wall.activeID != harbor {
+		t.Fatal("opening a team card lost its tab scope")
+	}
+}
+
+// A PICK MADE IN THE WALL DOES NOT SURVIVE LEAVING IT: the next overview opens
+// unpicked, so its first press on a card opens it. Marks used to outlive a close
+// that was not esc, which was invisible while every open showed the same
+// library; All draws the strip's cards, and a kept key there leaves the grid in
+// selection mode over a card nobody chose in it.
+func TestTabWallDoorOpensUnpickedAfterAPickWasLeftInIt(t *testing.T) {
+	a, _ := catalogLab(t, 5)
+	a.width, a.height = 120, 40
+	_ = a.tabsRow(a.width)
+	if command, took := a.tabPress(a.wall.door.from+1, tabStripRow); !took {
+		t.Fatal("All did not take the click")
+	} else {
+		spend(t, a, command)
+	}
+	_ = a.wallFrame(a.width, a.height)
+	picked := a.wallShown(a.now())[0].tab.key
+	body := wallHitFor(t, a, wallHitTile, 0)
+	a.wallMotion(body.x0+4, body.y0+2)
+	_ = a.wallFrame(a.width, a.height)
+	wallClick(t, a, wallHitFor(t, a, wallHitSelect, 0))
+	if !a.wall.marked[picked] {
+		t.Fatalf("the pick did not take: %v", a.wall.marked)
+	}
+	// Leaving by the strip is not esc: nothing about it is a decision to keep
+	// the pick, and the person has not asked to remember one.
+	a.closeWall()
+	_ = a.tabsRow(a.width)
+	if command, took := a.tabPress(a.wall.door.from+1, tabStripRow); !took {
+		t.Fatal("All did not take the second click")
+	} else {
+		spend(t, a, command)
+	}
+	_ = a.wallFrame(a.width, a.height)
+	tiles := a.wallShown(a.now())
+	for i, tile := range tiles {
+		if tile.tab.key != picked {
+			continue
+		}
+		if tile.marked {
+			t.Fatal("All opened wearing the pick from the wall before it")
+		}
+		wallClick(t, a, wallHitFor(t, a, wallHitTile, i))
+		if a.wall.on {
+			t.Fatal("the first press on a card picked it instead of opening it")
+		}
+		return
+	}
+	t.Fatalf("All lost the conversation that was picked: %d cards", len(tiles))
+}
+
+func TestTabWallDoorDropsAClosedTab(t *testing.T) {
+	a := wallDoorApp(t, 120)
+	for _, tab := range a.tabList() {
+		if !tab.here {
+			spend(t, a, a.tabDismiss(tab))
+			break
+		}
+	}
+	_ = a.tabsRow(a.width)
+	command, _ := a.tabPress(a.wall.door.from+1, tabStripRow)
+	spend(t, a, command)
+	if got := len(a.wallShown(a.now())); got != 2 {
+		t.Fatalf("All retained a closed tab: got %d cards, want 2", got)
 	}
 }
 

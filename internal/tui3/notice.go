@@ -34,17 +34,15 @@ import (
 //     The channel exists and is empty; a wave that ships something registers a
 //     row with [notice.news] set and writes nothing else.
 //
-// ONE TABLE, TWO BOXES, TWO RULES. Until 2026-09-22 a hint row named which box
-// it could draw beside; the owner ruled that there is ONE set of tips, and the
-// two boxes say them by rules of their own, because a conversation is a screen
-// you sit in and home is a screen you pass through. A CONVERSATION RANKS: the
-// first eligible row in the table's order takes the foot, so a tip that has
-// just become true is said at once — `/compact summarizes the conversation
-// now` when the window crosses half, not forty minutes later — and
-// [noticeGap] keeps a busy first session from reading as a slideshow
-// ([noticeBoard.rank]). HOME TAKES TURNS: every tip that is true gets one, the
-// row moving on with every visit and every [hintEvery] at rest
-// ([noticeBoard.rotate]). Both go through [noticeBoard.pick].
+// ONE TABLE, TWO BOXES, TWO RULES. Until 2026-09-22 a hint row named which box it could
+// draw beside; there is ONE set of tips, and the two boxes say them by rules of their own,
+// because a conversation is a screen you sit in and home is a screen you pass through. A
+// CONVERSATION RANKS: the first eligible row in the table's order takes the foot, so a tip
+// that has just become true is said at once — `/compact summarizes the conversation now`
+// when the window crosses half, not forty minutes later — and [noticeGap] keeps a busy
+// first session from reading as a slideshow ([noticeBoard.rank]). HOME TAKES TURNS: every
+// tip that is true gets one, the row moving on with every visit and every [hintEvery] at
+// rest ([noticeBoard.rotate]). Both go through [noticeBoard.pick].
 //
 // THE TABLE BELOW IS THE ONE PLACE A NOTICE IS WRITTEN DOWN, the way commands.go
 // is the one place a command is. [checkNotices] runs over it at init and fails
@@ -324,20 +322,10 @@ var (
 // and the page say the same words — and notice_test.go holds the page to every
 // line here, so the table cannot say a thing the manual does not.
 //
-// TWENTY-THREE ROWS, AND EVERY CUT WAS DELIBERATE. A survey of the surface on
-// 2026-09-21 turned up forty-eight lines worth saying; thirty of those shipped,
-// /project made thirty-one when it became a command of its own on 2026-09-22,
-// and three reads of the whole list by the owner that same day took it to
-// twenty-two; the way home by two spaces made it twenty-three on 2026-09-24,
-// at the owner's word. `alt+3`, `alt+1`–`alt+7`, `/search` and `/subharness` came off
-// as rows the foot or the tab bar already teaches; the two lines about a
-// running answer became one; `/ask`'s came off ahead of the door it taught;
-// `/folder`'s came off because it was not true and /attach's line now covers
-// both kinds; the second /attach row was one row too many about one command;
-// and `ctrl+.` came off on the owner's word. What was left out is
-// what the foot already names — `alt+p`, `alt+e`, `alt+a`, `alt+k`, `/` — and
-// the second spelling of anything already here. `/ shows every command` was a
-// row until both feet started saying `/ commands` outright (footswap.go).
+// TWENTY-THREE ROWS, AND EVERY CUT WAS DELIBERATE. What was left out is what the foot
+// already names — `alt+p`, `alt+e`, `alt+a`, `alt+k`, `/` — and the second spelling of
+// anything already here. `/ shows every command` was a row until both feet started saying
+// `/ commands` outright (footswap.go).
 var notices = []notice{
 	// ── the rows this surface shipped with ─────────────────────────────────
 	{
@@ -405,15 +393,13 @@ var notices = []notice{
 	// until 2026-09-22 and came off with the command it taught. Asking from
 	// home now uses the ask-here row, so that tip would point at a dead door.
 	{
-		// THE WAY BACK, AT THE OWNER'S WORD ON 2026-09-24. The controls name
-		// the door as `space space home` ([app.idleHint]), but a label of three
-		// words reads as chrome after the first day, and this
-		// row says what it is in a sentence. It is never armed on home, where
-		// there is nowhere to go back to, and it retires on the gesture itself
-		// rather than on reaching home by `/home` or the tab. IT RANKS FIRST of
-		// the rows a conversation earns by talking, because a person who does
-		// not know the way back out of a conversation has no use yet for any
-		// of the commands below it.
+		// The controls name the door as `space space home` ([app.idleHint]), but a label of
+		// three words reads as chrome after the first day, and this row says what it is in a
+		// sentence. It is never armed on home, where there is nowhere to go back to, and it
+		// retires on the gesture itself rather than on reaching home by `/home` or the tab. IT
+		// RANKS FIRST of the rows a conversation earns by talking, because a person who does not
+		// know the way back out of a conversation has no use yet for any of the commands below
+		// it.
 		id: "home-by-two-spaces", slot: slotHint,
 		armed:  awayFromHome,
 		text:   "space space takes you back to home",
@@ -426,15 +412,10 @@ var notices = []notice{
 		retire: eventTaskTyped,
 	},
 	{
-		// THE BIGGER HALF OF HANDING WORK OUT, at the owner's word on
-		// 2026-10-19: /task sends one piece of the work away, and the Teams
-		// dropdown's `+ New from this session` keeps this conversation and makes
-		// it the manager of a team for the rest (helpers.go). It names the row
-		// and not /helpers, because /helpers asks a team that already exists. It
-		// is armed only where the row would act: a conversation that has been
-		// spoken to, no team selected on the strip, and not already a manager
-		// ([helpersTipArmed]). It retires the first time the row is chosen or
-		// /helpers is typed.
+		// It names the row and not /helpers, because /helpers asks a team that already exists.
+		// It is armed only where the row would act: a conversation that has been spoken to, no
+		// team selected on the strip, and not already a manager ([helpersTipArmed]). It retires
+		// the first time the row is chosen or /helpers is typed.
 		id: "helpers-team", slot: slotHint,
 		armed:  helpersTipArmed,
 		text:   "+ New from this session in the Teams menu makes this chat a team's manager",
@@ -574,11 +555,7 @@ var notices = []notice{
 		// the keyboard is the one setting a person cannot guess exists until
 		// it has already decided something for them (autonomysheet.go).
 		//
-		// COPY MODE ITSELF IS NOT GONE, and this row is the only reason to
-		// think it might be. It was taken out on 2026-09-22 and put back on
-		// 2026-09-23 at the owner's word — "we don't need a hint, but don't
-		// remove the feature" — so `ctrl+b`, `/copy` and the frozen viewport
-		// all work and simply have no row here.
+		// COPY MODE ITSELF IS NOT GONE, and this row is the only reason to think it might be.
 		id: "autonomy-rule", slot: slotHint,
 		armed:  spoken,
 		text:   "/autonomy sets how questions are handled while you are away",
@@ -709,14 +686,13 @@ type noticeBoard struct {
 	// counted from it when the tip leaves or the row goes out of sight
 	// ([noticeBoard.settle]), and only if it stood [noticeReadTime].
 	since [noticeSlots]time.Time
-	// hidden is the cross on a tip row having been pressed: the row draws
-	// nothing at all until HOME ITSELF GOES OUT OF VIEW ([app.dropHome]), or
-	// for a conversation's row until the conversation does
-	// ([app.liftChatTipCross]), which is the only thing that lifts it. Deciding the slot again does not
-	// lift it, and neither does the two-minute beat: a cross answered with
-	// another sentence on the same screen is the surface talking over somebody
-	// who asked it to stop (the owner's ruling, 2026-09-22). It is this
-	// session's and never the ledger's — putting a tip away is not using it.
+	// hidden is the cross on a tip row having been pressed: the row draws nothing at all
+	// until HOME ITSELF GOES OUT OF VIEW ([app.dropHome]), or for a conversation's row until
+	// the conversation does ([app.liftChatTipCross]), which is the only thing that lifts it.
+	// Deciding the slot again does not lift it, and neither does the two-minute beat: a cross
+	// answered with another sentence on the same screen is the surface talking over somebody
+	// who asked it to stop. It is this session's and never the ledger's — putting a tip away
+	// is not using it.
 	hidden [noticeSlots]bool
 
 	// ── THE CONVERSATION'S HALF ────────────────────────────────────────────
@@ -815,13 +791,12 @@ type noticeCandidate struct {
 // returns "" for nothing, and it changes nothing on the board but the
 // [noticeBoard.advance] it spends — [noticeBoard.take] records the decision.
 //
-// TWO BOXES, TWO RULES, ONE LIST (the owner's ruling, 2026-09-22). Home's row
-// is a ROTATION and the conversation's is a RANKING, because the two rows are
-// read in different ways: home is a screen somebody passes through, where
-// every tip should get its turn; a conversation is a screen somebody sits in,
-// where the tip worth saying is the one about what is happening RIGHT NOW.
-// The conversation's rule is the one this surface shipped with and is restored
-// here after a build that put it on the rotation with home.
+// TWO BOXES, TWO RULES, ONE LIST. Home's row is a ROTATION and the conversation's is a
+// RANKING, because the two rows are read in different ways: home is a screen somebody
+// passes through, where every tip should get its turn; a conversation is a screen somebody
+// sits in, where the tip worth saying is the one about what is happening RIGHT NOW. The
+// conversation's rule is the one this surface shipped with and is restored here after a
+// build that put it on the rotation with home.
 func (b *noticeBoard) pick(slot noticeSlot, cands []noticeCandidate, turn int) string {
 	if slot == slotHint {
 		return b.rank(cands, turn)
@@ -1192,24 +1167,9 @@ func (a *app) noticeHomeQuiet() bool {
 		a.paneExchange() == nil && !a.targetPickShowing() && !a.composer.open && !a.hopShowing()
 }
 
-// noticeDismiss is the cross on a tip row, and what it means is ENOUGH OF
-// THESE FOR NOW — not "say something else". The row goes blank and STAYS
-// blank for the rest of this sitting: on home, until home is left and come
-// back to; in a conversation, until the conversation is left and come back to
-// ([noticeBoard.hidden] names both, and they are the same law — the cross is
-// lifted by the row's screen going out of view).
-//
-// THE OWNER'S RULING, 2026-09-22: "do not show another hint until the user
-// comes back to the home tab after leaving it". A cross answered with a second
-// sentence in the same breath is the surface talking over somebody who has
-// just asked it to stop.
-//
-// AND THE TIP THAT WAS PUT AWAY KEEPS ITS WHOLE ALLOWANCE. Its standing is
-// thrown away rather than counted: a person who pressed the cross was telling
-// the surface they did not want to read that line now, which is the opposite
-// of having read it, and spending a showing on the gesture would retire a tip
-// six dismissals in. The slot is asked to advance, so the row that comes back
-// is a different one and this tip takes its turn again later in the ring.
+// A new hint is shown only after the person returns home or sends another
+// message. Updating the hint every few seconds would distract from the current
+// work.
 func (a *app) noticeDismiss(slot noticeSlot) {
 	b := &a.notices
 	if b.seen == nil {
@@ -1295,10 +1255,9 @@ func (a *app) chatTipReady() string {
 	if a.notices.hidden[slotHint] || a.at(pageHome) {
 		return ""
 	}
-	// THE CLOSED SIDE COLUMN IS NOT ONE OF THOSE STATES. `alt+l tasks` is what
-	// the keys row says at rest once the column is put away ([app.sideBackHint]),
-	// and a tip that went quiet whenever it did was a tip that only ever
-	// appeared with the sidebar open (the owner's report, 2026-09-24).
+	// THE CLOSED SIDE COLUMN IS NOT ONE OF THOSE STATES. `alt+l tasks` is what the keys row
+	// says at rest once the column is put away ([app.sideBackHint]), and a tip that went
+	// quiet whenever it did was a tip that only ever appeared with the sidebar open.
 	if word := a.hintWord(); a.questionRoomOpen() || (word != "" && word != a.sideBackHint()) ||
 		(a.chordLost && a.chords.meta == chordMetaWord) {
 		return ""

@@ -12,7 +12,7 @@ import (
 )
 
 // The experiment belt: one honest shell and the few hands that cannot be a
-// shell command (docs/design/bash-task-loop/DESIGN.md, Decision 1).
+// shell command.
 //
 // THE EXPERIMENT IS A SECOND BELT, NOT AN ENGINE CHANGE. A task worker's belt
 // is composed by the same [Agent.belt] as the conversation's, differentiated by

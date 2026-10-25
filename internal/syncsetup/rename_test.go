@@ -27,12 +27,12 @@ func TestRenameOnOneHomeShowsOnTheOther(t *testing.T) {
 		t.Fatalf("B sees A as %q before the rename, want %q", got, nameA)
 	}
 
-	if err := r.a.Rename(ctx, "the studio desk"); err != nil {
+	if err := r.a.Rename(ctx, "the host-a desk"); err != nil {
 		t.Fatal(err)
 	}
 
 	names := rosterNames(t, ctx, r.b)
-	if names[r.a.Device.ID()] != "the studio desk" || names[r.b.Device.ID()] != nameB {
+	if names[r.a.Device.ID()] != "the host-a desk" || names[r.b.Device.ID()] != nameB {
 		t.Fatalf("B's device list = %v, want A renamed and B itself unchanged", names)
 	}
 	list, err := r.b.Dir.List(ctx)
@@ -42,7 +42,7 @@ func TestRenameOnOneHomeShowsOnTheOther(t *testing.T) {
 	open := func(sealed string) (string, error) {
 		return directory.OpenName(directory.MetadataKey(r.b.Identity.CellKey()), sealed)
 	}
-	if got := chatlist.DeviceName(list.Devices, r.a.Device.ID(), open); got != "the studio desk" {
+	if got := chatlist.DeviceName(list.Devices, r.a.Device.ID(), open); got != "the host-a desk" {
 		t.Fatalf("the home row names A %q, want the new name", got)
 	}
 }

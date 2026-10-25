@@ -439,7 +439,7 @@ func TestConversationWorkEdgesAndObservedRootCompletionsAreWorthAStir(t *testing
 }
 
 // A STATE THIS SURFACE CANNOT READ IS NOT EVIDENCE THAT WORK STOPPED. A
-// proposal arrives on this lane before its node exists and carries no state at
+// proposal arrives on this test before its node exists and carries no state at
 // all; treating "not a state I know" as settled is how a strip goes dark on a
 // conversation that is still working. A background job is left out for the
 // reason the roster leaves it out — it is counted in its own place.

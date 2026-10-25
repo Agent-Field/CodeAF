@@ -458,15 +458,10 @@ type Session struct {
 	// a status line may not be able to stall the turn it is measuring.
 	newsfeeds map[*server]*newsFeed
 
-	// lastLane is the last finished answer's sighting this conversation
-	// produced — which machine answered — kept so that a window arriving
-	// AFTER the answer is told who answered (news.go's [Session.watchNews]).
-	// Without it a window attached to a conversation the host had been
-	// holding for an hour drew the model and no machine until the next
-	// answer, which the owner read as the provider having gone missing
-	// (2026-09-17). Rescues in flight and withdrawals are not kept: they are
-	// claims about a moment, and only a landed answer is a fact about the
-	// conversation.
+	// lastLane is the last finished answer's sighting this conversation produced — which
+	// machine answered — kept so that a window arriving AFTER the answer is told who answered
+	// (news.go's [Session.watchNews]). Rescues in flight and withdrawals are not kept: they
+	// are claims about a moment, and only a landed answer is a fact about the conversation.
 	lastLane *session.LaneNews
 
 	// lanes is the same arrangement for the harness subscription version 11
@@ -2000,18 +1995,9 @@ func (s *server) handshake(line []byte) error {
 		return s.refuse("engine: the hello did not parse")
 	}
 	if hello.Version != Version {
-		reason := fmt.Sprintf("engine: this build speaks protocol %d and the surface speaks %d — the two halves have to be the same build", Version, hello.Version)
-		if s.host != nil {
-			// THE CLAUSE THAT WAS MISSING THE DAY THIS SENTENCE LIED. A host
-			// outlives the connection, so the process saying this may be an
-			// older codeaf that is still running on a machine whose binary was
-			// updated an hour ago — and the sentence above sent the person off
-			// to update something that was already updated. When there is a
-			// host behind this connection, say the other thing that is true.
-			reason += ", and this machine is still running the older one — run codeaf engine --stop here to retire it"
-		}
-		return s.refuse(reason)
+		return s.refuse(wireMismatchSentence(MachineName(), Version, hello.Version, buildinfo.String()))
 	}
+
 	if supportsEncoding(hello.Encodings, frameEncodingGzip) {
 		s.encoding = frameEncodingGzip
 	}
@@ -2415,6 +2401,20 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		// including the one it is already carrying (standinglane.go).
 		sess.watchLane(s, laneTitle)
 		return nil, nil
+	case MethodClaimChatStart:
+		id, err := arg[string](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface{ ClaimChatStart(string) (bool, error) })
+		if !ok {
+			return nil, errors.New("engine: this session cannot claim new-chat requests")
+		}
+		claimed, err := door.ClaimChatStart(id)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(claimed)
 	case MethodQuestionResolve:
 		args, err := arg[QuestionArgs](call)
 		if err != nil {

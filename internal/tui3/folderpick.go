@@ -54,12 +54,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-// folderRows is how many rows of DIRECTORIES this browser wants at once. The
-// owner asked for a spacious sheet rather than the model picker's twelve, and
-// eighteen is what a full-height terminal gives back after the status line, the
-// box and one row of conversation — [app.overlayHeight] clamps it down on
-// anything smaller, and the browser follows whatever it is actually given
-// ([folderPick.page]).
+// folderRows reserves eighteen directory rows on a full-height terminal, leaving
+// room for the status line, composer and conversation. overlayHeight clamps
+// smaller windows and the browser follows the space it receives.
 const folderRows = 18
 
 // folderPaneFloorRows is the least the sheet is drawn at while a preview is
@@ -231,10 +228,9 @@ type folderPick struct {
 	// of the browser, and win is where that layout was put.
 	win contextWin
 
-	// marks are the things a person has CHOSEN and not yet confirmed, in the
-	// order they chose them — the deliberate multiselect the owner asked for
-	// (folderact.go). Browsing, focusing and previewing put nothing in here;
-	// only alt+m and a press on a tray cell do.
+	// marks holds selections in the order they were chosen. Browsing, focusing and
+	// previewing add nothing; only alt+m and a press on a tray cell change this
+	// set.
 	marks []folderMark
 	// trayHot is which mark cell the pointer is over, or -1. It is answered
 	// where the pointer is resolved ([app.folderHoverColumn]) and read where the
@@ -271,11 +267,8 @@ type folderPick struct {
 
 // folderCols is the browse state: one readdir per level, and nothing deep.
 //
-// THE COLUMNS ARE PARENT, HERE, AND THE CHILDREN OF THE ROW UNDER THE CURSOR.
-// That is Finder's arrangement and it is what the owner asked for: a directory
-// tree is walked by moving right, and the level you are about to walk into is
-// already drawn when you get there. The parent stays on the left so that where
-// you are standing is visible without reading the path.
+// THE COLUMNS ARE PARENT, HERE, AND THE CHILDREN OF THE ROW UNDER THE CURSOR. The parent
+// stays on the left so that where you are standing is visible without reading the path.
 type folderCols struct {
 	// dir is the directory the middle column lists, absolute and cleaned.
 	dir string
@@ -340,7 +333,7 @@ type folderGeom struct {
 	// directory you are standing in was drawn beside the row the cursor was on —
 	// which meant that with the cursor at the top of a folder, every sibling ABOVE
 	// that folder was off the top of the column and the ancestry showed one name.
-	// The owner's reference draws the parent as what it is: a list, with the one
+	// The browser draws the parent as what it is: a list, with the one
 	// you came out of marked in it.
 	upFrom int
 	// paneDir is the directory the preview pane is LISTING, absolute, or "" when
@@ -691,14 +684,8 @@ func pathHead(typed string) (string, string) {
 	return head, typed[cut+1:]
 }
 
-// descend is `→` in the columns: walk into the directory under the cursor. It
-// answers false when there is nowhere to go, so the key can fall through to the
-// filter box's own right.
-//
-// A FILE IS NOT SOMEWHERE TO GO. `→` on one does nothing rather than opening
-// anything: this browser reads a file into the pane beside the list and never
-// runs it, and a key that sometimes navigated and sometimes opened a document
-// would be the ambiguous gesture the owner asked us not to build.
+// A FILE IS NOT SOMEWHERE TO GO. The right arrow navigates directories; a file
+// is previewed beside the list rather than opened by a navigation key.
 func (f *folderPick) descend() bool {
 	if !f.browsing || !f.cols.here.isDir(f.cols.cursor) {
 		return false
@@ -823,21 +810,13 @@ func (f *folderPick) height(width int) int {
 	case !f.open:
 		return 0
 	case f.browsing:
-		// A SHEET WITH A PREVIEW ON IT ASKS FOR THE WHOLE ALLOWANCE, because the
-		// pane is what the extra rows are for: a four-row preview of a
-		// six-hundred-line file is a pane nobody can read, and the owner asked
-		// for the reference screenshot's spacious hierarchy rather than a strip.
-		// A sheet with the preview off follows its own rows, so a folder with
-		// three things in it is still three rows and not eighteen.
+		// A sheet with a preview uses the available height so the document remains
+		// readable. Without a preview, the sheet follows the number of directory rows.
 		rows := f.cols.here.rows()
 		if folderDivide(width, f.pane).pane > 0 {
-			// A SHEET WITH A PREVIEW ON IT HAS A FLOOR AND NOT A FIXED HEIGHT. It
-			// used to ask for the whole allowance whatever was in the folder, so a
-			// directory with four things in it drew four names and fourteen blank
-			// rows inside a frame — which reads as a broken sheet rather than as a
-			// spacious one, and is what the owner met. The floor is what the PREVIEW
-			// needs to be worth reading; past it the middle column's own length is
-			// the honest height.
+			// A SHEET WITH A PREVIEW ON IT HAS A FLOOR AND NOT A FIXED HEIGHT. The floor is what
+			// the PREVIEW needs to be worth reading; past it the middle column's own length is the
+			// honest height.
 			//
 			// IT IS THE MIDDLE COLUMN'S LENGTH AND NEVER THE PREVIEW'S, deliberately:
 			// the preview changes as the cursor moves and a sheet that resized under
@@ -1216,9 +1195,9 @@ func (f *folderPick) hereText(row, room int, pal palette, hovered bool) string {
 // has CHOSEN is neither of these — it is the persistent mark in the lead, and it
 // survives moving off the row, which a ground cannot.
 //
-// AND THE BAND IS THE COLUMN'S WIDTH, NEVER THE TERMINAL'S. A stripe across the
-// whole frame would light the ancestry and the preview beside a row that has
-// nothing to do with either [owner review 2026-09-08 §1].
+// AND THE BAND IS THE COLUMN'S WIDTH, NEVER THE TERMINAL'S. A stripe across the whole
+// frame would light the ancestry and the preview beside a row that has nothing to do with
+// either.
 func folderCellBand(painted string, room int, pal palette, cursor, hovered bool) string {
 	cell := folderCell(painted, room)
 	switch {
@@ -1356,13 +1335,8 @@ const (
 	folderUnreadableWord = "this folder cannot be read"
 )
 
-// actionRow is the one row on this sheet that ADDS a folder, with what the
-// machine knows about that folder dim at the right end of it.
-//
-// IT IS A ROW AND NOT A LEGEND because navigating and choosing are two different
-// acts, and the owner asked for the second to be its own thing rather than a
-// meaning `enter` happens to carry. A person who has never pressed `enter` here
-// can read what it would do and click it.
+// Navigating and choosing are separate actions. The action row makes selection
+// visible before a person presses enter and provides a clickable target.
 func (f *folderPick) actionRow(width int, pal palette, hover int) string {
 	room := width - folderPadCells - 1
 	if room < 1 {
@@ -1710,8 +1684,7 @@ var folderHintFields = []rowField{
 // placeholder and [folderPick.controlLegend] under the columns — name every
 // chord the sheet owns exactly once, which is docs/DESIGN-LANGUAGE.md's rule
 // that a chord keeps a visible door beside it; naming them all in BOTH places
-// was the wall of shortcuts the owner's 2026-09-08 review asked us to stop
-// drawing. The fields go from the RIGHT, whole, on a frame too narrow for all of
+// would draw a distracting wall of shortcuts. The fields go from the RIGHT, whole, on a frame too narrow for all of
 // them (rowfit.go), so the line never draws a key spelled `alt+…`.
 var folderBrowseHintFields = []rowField{
 	rowSay("search folders and files"), rowSay("or type a path"),
@@ -1747,19 +1720,17 @@ func (f *folderPick) controlLegend(room int) string {
 	if f.pane == folderPaneWide {
 		return rowTail([]rowField{rowSay("esc cancel"), rowSay("alt+o back"), rowSay("↑↓ scroll"), rowSay("←→ slide")}, room)
 	}
-	// FIVE CLAUSES AND NOT EIGHT. This row used to name every chord the sheet
-	// owns, which made the one line under the columns a wall of shortcuts that
-	// read as noise and taught nothing [owner review 2026-09-08 §5]. What is left
-	// is the four things a person actually reaches for and the way out; the rest
-	// live in the box's own placeholder, which is on screen whenever the box is
-	// empty — which is now its resting state — and in the manual.
-	// THE PREVIEW'S DOOR IS ALWAYS NAMED AND THE WORD FOR IT IS CONTEXTUAL. On a
-	// narrow frame the pane has been given up for the names (folderpane.go) and
-	// `alt+o` is the only way to read a file at all; on a wide one it is the way to
-	// give the file the whole sheet. Either way it is a door a person cannot guess,
-	// and docs/DESIGN-LANGUAGE.md's rule is that every chord keeps a visible one
-	// beside it — so it is one clause here rather than a clause that comes and
-	// goes as the terminal is dragged.
+	// FIVE CLAUSES AND NOT EIGHT. This row used to name every chord the sheet owns, which
+	// made the one line under the columns a wall of shortcuts that read as noise and taught
+	// nothing. What is left is the four things a person actually reaches for and the way out;
+	// the rest live in the box's own placeholder, which is on screen whenever the box is
+	// empty — which is now its resting state — and in the manual. THE PREVIEW'S DOOR IS
+	// ALWAYS NAMED AND THE WORD FOR IT IS CONTEXTUAL. On a narrow frame the pane has been
+	// given up for the names (folderpane.go) and `alt+o` is the only way to read a file at
+	// all; on a wide one it is the way to give the file the whole sheet. Either way it is a
+	// door a person cannot guess, and docs/DESIGN-LANGUAGE.md's rule is that every chord
+	// keeps a visible one beside it — so it is one clause here rather than a clause that
+	// comes and goes as the terminal is dragged.
 	door := "alt+o preview"
 	if f.paneWide(room) {
 		door = "alt+o wide"

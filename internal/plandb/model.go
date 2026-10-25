@@ -3,7 +3,7 @@ package plandb
 import "time"
 
 // The model is the earlier store's own shape, carried over rather than
-// reinvented (docs/design/plandb-cli/DESIGN.md): one Status ladder, one
+// reinvented: one Status ladder, one
 // dependency vocabulary, and the two graphs — containment and dependency —
 // every law in store.go is written against. What changed in the adaptation is
 // written at the field or the function that changed it, not here.
@@ -62,9 +62,12 @@ const (
 )
 
 type TaskSpec struct {
-	ID           string          `json:"id"`
-	Title        string          `json:"title"`
-	Description  string          `json:"description,omitempty"`
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+	// Model overrides the work seat for this task and its descendants.
+	// Planning and checks keep their seats; a nearer override wins.
+	Model        string          `json:"model,omitempty"`
 	Question     string          `json:"question,omitempty"`
 	Kind         string          `json:"kind,omitempty"`
 	ParentID     string          `json:"parent_id,omitempty"`

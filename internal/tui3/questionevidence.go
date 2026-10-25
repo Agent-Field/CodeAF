@@ -9,12 +9,10 @@ import (
 
 // ── ONE ANSWER'S CASE, AND THE EVIDENCE IT BROUGHT ──────────────────────────
 //
-// A QUESTION IS A DECISION HANDED TO THE PERSON WITH ITS EVIDENCE ATTACHED
-// (owner ruling 2026-09-09), and the evidence is per answer: what it means, what
-// taking it leaves true, why the asker would take it, what would change its
-// mind, how sure it is, and whatever it drew — a diagram, a diff, a table, a
-// layout, a picture. The owner's picks of 2026-09-11 draw that evidence in three
-// places:
+// A QUESTION IS A DECISION HANDED TO THE PERSON WITH ITS EVIDENCE ATTACHED, and the
+// evidence is per answer: what it means, what taking it leaves true, why the asker would
+// take it, what would change its mind, how sure it is, and whatever it drew — a diagram, a
+// diff, a table, a layout, a picture.
 //
 //   - beside the list, in a pane that follows the pointer (preview A, a panel at
 //     a hundred columns and wider, and page A, the page `o` opens);

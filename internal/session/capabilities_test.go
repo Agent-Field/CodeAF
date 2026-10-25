@@ -824,6 +824,8 @@ func TestTheCapabilityTableIsWellFormed(t *testing.T) {
 	// name nothing produces.
 	built := map[string]bool{}
 	wide := shelfAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Interactive = true
+		config.Place = Place{Dir: t.TempDir()}
 		config.Media = &scriptedMedia{}
 		config.MediaModel = allMediaModels()
 		config.Memory = openTestBrain(t)
@@ -852,7 +854,7 @@ func TestTheCapabilityTableIsWellFormed(t *testing.T) {
 
 // A GROUP'S LONG MECHANICS ARE BOUGHT BY WHOEVER PULLS THEM, and this is the
 // both-ways proof of the delivery the prompt diet moved them to
-// (docs/design/prompt-diet/DESIGN.md §2, the ON DEMAND class).
+// .
 //
 // FORWARD: the paragraph that used to sit in prompts/system.md for every request
 // of every turn — how to write a media prompt that does not come back average,
@@ -868,6 +870,8 @@ func TestTheCapabilityTableIsWellFormed(t *testing.T) {
 // first and the parse is re-run here on the real answer.
 func TestALoadAnswersWithItsGroupsProseUnderAnUnchangedLoadedLine(t *testing.T) {
 	agent := shelfAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Interactive = true
+		config.Place = Place{Dir: t.TempDir()}
 		config.Media = &scriptedMedia{}
 		config.MediaModel = allMediaModels()
 		config.HarnessCards = true

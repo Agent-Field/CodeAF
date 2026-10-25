@@ -76,6 +76,9 @@ type capabilityGroup struct {
 // stays carried and the other making verbs do not: looking at something the
 // person has just put in front of you is ordinary work, and making a film is not.
 var capabilityGroups = []capabilityGroup{{
+	name:    "chats",
+	members: []string{"start_chat"},
+}, {
 	name:    questionsGroup,
 	members: []string{"ask"},
 }, {

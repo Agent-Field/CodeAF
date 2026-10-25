@@ -13,7 +13,7 @@ package session
 // was deliberately demoted to triage, and the post-turn judge excuses any turn
 // that used tools.
 //
-// ── THE RULING (owner, 2026-09-01, issue #272) ──
+// ── THE RULING ──
 //
 // A turn may make A SMALL BOUNDED EDIT INLINE — of the order of
 // [writeAllowanceCalls] write calls — and then the next workspace write promotes

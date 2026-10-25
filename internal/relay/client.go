@@ -1,7 +1,7 @@
 package relay
 
 // The two client halves. Both dial OUT and neither listens, which is the whole
-// reason this lane exists: a machine behind a router with no forwarded port and
+// reason this implementation exists: a machine behind a router with no forwarded port and
 // a laptop on a café network can reach each other because they both walked out
 // to the same door.
 //

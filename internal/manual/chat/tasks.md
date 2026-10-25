@@ -2784,8 +2784,8 @@ change on it either: those act on work, and this window is looking at somebody e
 Nothing about opening it takes control away from the window that owns the work, and closing
 the page gives the connection back.
 
-**When the work on a reading page lands, the foot names the owner and never main.** It
-says `this task has finished — say it in docs pass` — the owner's own name, the same one
+**When the work on a reading page lands, the foot names the conversation and never main.** It
+says `this task has finished — say it in docs pass` — the conversation’s own name, the same one
 the trail carries — and `this task has finished — say it in the conversation that owns it`
 where nothing has named that conversation. `say it to main` is what an ordinary finished
 task's page says, and it would be the wrong sentence here: main is this window's own
@@ -2793,8 +2793,8 @@ conversation, whose task of the same number is different work. The box goes on s
 `Reading this task… (esc: main)`, because reading is what the page still is.
 
 **What the page says about the work is what that conversation says about it.** The reading
-opens a standing subscription to the owner's own task list — the same one every window
-attached to a conversation gets — so the state on the page is the owner's, live: work that
+opens a standing subscription to the conversation’s own task list — the same one every window
+attached to a conversation gets — so the state on the page is the conversation’s, live: work that
 lands while you are reading it stops saying it is running, and the page stops asking for more
 of a journal that has ended. Nothing is inferred from files on this machine. If the door
 that opened the page cannot offer that subscription, the page still shows the transcript and
@@ -3261,7 +3261,7 @@ piece of work in each of them, and the tasks page can be holding several rows nu
 once — one this window is running, one an earlier conversation ran, one a window next door
 has out.
 
-Pressing a row opens **that row's** task, and the owner is what decides which door it gets:
+Pressing a row opens **that row's** task, and the conversation is what decides which door it gets:
 
 - a row this conversation is holding opens its **room** — the live page, with the box
   talking to it;
@@ -3788,7 +3788,7 @@ what you see on screen is exactly what went on the wire. It never inlines the wo
 travels is six facts and two addresses, and the model follows either address if it needs
 more.
 
-Unknown tokens are left alone in silence — `@santosh` is a person, `@internal/x.go` is a
+Unknown tokens are left alone in silence — `@dev` is a person, `@internal/x.go` is a
 path. A task mentioned twice gets one block. A slug pasted whole and submitted in the same
 beat resolves against what is already in memory, so it may stay the plain word you typed.
 
@@ -4378,6 +4378,13 @@ today's crew spend ($5.01) has reached the daily cap of $5.00 · raise it or tur
 The day turns over at midnight on this machine's clock, and the spend starts again from nothing.
 
 ## Naming a model for one task
+
+The chat sets `model` on `propose_task` (or `quick_task` on the node task engine).
+That argument overrides `task.model` and the crew worker for this task only; it does
+not change a profile pin or the conversation model. Work descendants inherit the
+nearest named model if the task splits; planning and checking keep their crew seats.
+Ask for a model in the task request,
+not a global `/crew pin` workaround.
 
 You ask in words — "let opus do this one", "run that on gpt-5". There is no key, command or
 field for it: the model that grooms the work sets the model on the proposal. The word may
@@ -5522,7 +5529,7 @@ row merely because both tasks have the same number.
 
 ## Why another conversation could not open
 
-If the owner refuses the connection or answers for a different conversation, codeaf
+If the conversation refuses the connection or answers for a different conversation, codeaf
 opens the task's read-only card with the reason and the owning window's details.
 Return to the list to retry, or go to that window. Local design progress never
 updates a foreign task page with the same number. The next-running-task arrow

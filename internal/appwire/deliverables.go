@@ -51,7 +51,7 @@ type DeliverableKept struct {
 type Deliverable struct {
 	ID    string `json:"id"`
 	Agent string `json:"agent"`
-	// Kind file is a shared file that is neither media nor named Markdown or
+	// Kind file is a file that is neither media nor named Markdown or
 	// Mermaid text — a PDF, an archive, anything; its type is MIME.
 	Kind  string `json:"kind" enum:"markdown,mermaid,image,audio,video,export,document,file"`
 	Title string `json:"title"`

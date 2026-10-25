@@ -446,7 +446,7 @@ func (c *Client) applyLaneChoice(prefs *providerPrefs, model string, knobs callK
 		// of a model is its CHEAPEST endpoint, so the ceiling vetoed every lane
 		// more than a quarter dearer than the cheapest — before the router had
 		// read the order at all. Recorded on 2026-09-11
-		// (docs/design/routing/ASSESSMENT-20260911.md): the belief asked for
+		//: the belief asked for
 		// GMICloud, Novita, Fireworks; the ceiling of $0.75 left one of them;
 		// the account's data policy excluded that one; 404. The frontier has
 		// already priced every lane it named with the person's own λ

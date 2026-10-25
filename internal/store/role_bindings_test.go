@@ -194,8 +194,8 @@ func TestRoleBindingPrecedence(t *testing.T) {
 	assert("and the machine is silent again", "stage", "", RoleUnbound)
 }
 
-// TestSetModelAndRoleBindingsTellOneStory is the composition Wave 0's subtree
-// sweep and this table have to agree on: SetModel is a node-level pin sweep
+// TestSetModelAndRoleBindingsTellOneStory proves the composition that the subtree
+// sweep and this table must agree on: SetModel is a node-level pin sweep
 // over the live subtree, a binding is the inheritable default, and pins win —
 // including for work admitted after the sweep, which carries no pin and
 // therefore inherits.

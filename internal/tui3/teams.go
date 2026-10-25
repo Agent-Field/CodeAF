@@ -80,6 +80,19 @@ func (a *app) teamTree() *teamstore.File {
 // teamByID is the team with id. Frame-safe: memory only.
 func (a *app) teamByID(id string) (team, bool) { return a.teamTree().Team(id) }
 
+// teamReportingHome shares the frame's membership reading with every team
+// card, including the global manager. Actions outside paint read fresh state.
+func (a *app) teamReportingHome(key string) (teamstore.Report, bool) {
+	if a.tp.homesPending {
+		a.tp.homes, a.tp.homesPending = a.teamTree().Homes(), false
+	}
+	if a.tp.homes != nil {
+		r, ok := a.tp.homes[key]
+		return r, ok
+	}
+	return a.teamTree().Home(key)
+}
+
 // teamChildren is every team whose parent is id, in stored order; id "" is
 // the top level.
 func (a *app) teamChildren(id string) []team { return a.teamTree().Children(id) }

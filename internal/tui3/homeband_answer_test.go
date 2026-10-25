@@ -121,11 +121,10 @@ func TestHomeDrawsTheAnswersToAnotherWindowsQuestion(t *testing.T) {
 			t.Fatalf("the card does not offer %q:\n%s", chip, text)
 		}
 	}
-	// AND ONCE, ON THE ROW, and only while the row is being read. The grid
-	// draws a question's answers on its `needs you` row under the pointer or
-	// the cursor (owner, 2026-09-17), never a second time at the foot — and a
-	// digit answers the top one from anywhere whether or not its chips are on
-	// the screen (homegrid.go's [app.homeGridAnswer]).
+	// AND ONCE, ON THE ROW, and only while the row is being read. The grid draws a question's
+	// answers on its `needs you` row under the pointer or the cursor, never a second time at
+	// the foot — and a digit answers the top one from anywhere whether or not its chips are
+	// on the screen (homegrid.go's [app.homeGridAnswer]).
 	if n := strings.Count(text, "3 deny"); n != 1 {
 		t.Fatalf("the chips are drawn %d times with the cursor on their row:\n%s", n, text)
 	}

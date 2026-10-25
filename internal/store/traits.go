@@ -16,7 +16,7 @@ const (
 
 // The measured traits. There was a fifth, "proposal-appetite": the share of
 // the standing rules the retrospective offered that the person took. Those
-// offers went with the v1 scheduler (docs/design/automations/DESIGN.md), so
+// offers went with the v1 scheduler, so
 // nothing measures it and nothing reads it; a store that recorded one keeps
 // the fact, which ordinary retrieval was never allowed to see anyway.
 const (

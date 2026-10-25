@@ -46,11 +46,11 @@ func (v *verbs) actions(merge bool) BranchActions {
 // continueRows is a chat that went off, one that went off with nothing left
 // behind it, and a branch.
 var continueRows = chatlist.Static{
-	{Cell: "c-off", Title: "Port the picker", Device: "studio", Status: chatlist.Off, DurableAgo: 3 * time.Hour, Pending: 3},
-	{Cell: "c-clean", Title: "Tidy the docs", Device: "studio", Status: chatlist.Off, DurableAgo: 90 * time.Second},
+	{Cell: "c-off", Title: "Port the picker", Device: "host-a", Status: chatlist.Off, DurableAgo: 3 * time.Hour, Pending: 3},
+	{Cell: "c-clean", Title: "Tidy the docs", Device: "host-a", Status: chatlist.Off, DurableAgo: 90 * time.Second},
 	{Cell: "c-branch", Title: "Fix the flaky test", Device: "laptop", Status: chatlist.Branch, OrphanTurns: 2, DurableAgo: 5 * time.Hour},
 	{Cell: "c-short", Title: "Trim logs", Device: "mac", Status: chatlist.Branch, OrphanTurns: 4, DurableAgo: 6 * time.Hour},
-	{Cell: "c-run", Title: "Nightly index rebuild", Device: "studio", Status: chatlist.Running, DurableAgo: 2 * time.Minute},
+	{Cell: "c-run", Title: "Nightly index rebuild", Device: "host-a", Status: chatlist.Running, DurableAgo: 2 * time.Minute},
 }
 
 // standOn puts the cursor on the chat from another machine and presses enter.
@@ -85,7 +85,7 @@ func TestTakeoverScreenCopy(t *testing.T) {
 	standOn(t, a, "c-off")
 	text := homeText(a)
 	for _, want := range []string{
-		"last saved turn 3h ago; up to 3 turns may still be on studio",
+		"last saved turn 3h ago; up to 3 turns may still be on host-a",
 		chatlist.OfferContinue,
 	} {
 		if !strings.Contains(text, want) {
@@ -106,7 +106,7 @@ func TestTakeoverScreenOffersARunningChat(t *testing.T) {
 	taker := &fakeTaker{}
 	a := continueHome(t, taker, continueRows, 200)
 	standOn(t, a, "c-run")
-	if text := homeText(a); !strings.Contains(text, "running on studio; last saved turn 2m ago") {
+	if text := homeText(a); !strings.Contains(text, "running on host-a; last saved turn 2m ago") {
 		t.Fatalf("the screen does not name where the chat runs:\n%s", text)
 	}
 	confirm(t, a)
@@ -391,7 +391,7 @@ func TestTakeoverScreenGolden(t *testing.T) {
 	golden := map[int][]string{
 		80: {
 			"╭─ ? Continue this chat here? ────────────────────────────────────────────────╮",
-			"│ last saved turn 3h ago; up to 3 turns may still be on studio                │",
+			"│ last saved turn 3h ago; up to 3 turns may still be on host-a                │",
 			"│                                                                             │",
 			"│ ▸ 1  continue here                                                          │",
 			"│   2  leave it there                                            safe answer  │",
@@ -401,7 +401,7 @@ func TestTakeoverScreenGolden(t *testing.T) {
 		40: {
 			"╭─ ? Continue this chat here? ────────╮",
 			"│ last saved turn 3h ago; up to 3     │",
-			"│ turns may still be on studio        │",
+			"│ turns may still be on host-a        │",
 			"│                                     │",
 			"│ ▸ 1  continue here                  │",
 			"│   2  leave it there    safe answer  │",

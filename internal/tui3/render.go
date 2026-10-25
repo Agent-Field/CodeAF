@@ -237,7 +237,7 @@ func (a *app) visible(width int) []row {
 	return a.rows
 }
 
-// layout is THE SPACING LAW (docs/CHAT-V3.md D11), and it is a law because it
+// layout is THE SPACING LAW, and it is a law because it
 // is enforced in exactly one place. Every blank row on this surface is emitted
 // by the four rules below and by nothing else — no entry appends one, no
 // renderer leaves one behind (see [trimBlanks]):
@@ -2452,24 +2452,22 @@ func (a *app) servedRiderAt(width int) string {
 // It never carries a rate. How fast the machine is writing is a claim about now
 // and stands beside the state word instead ([app.liveRiderAt]).
 //
-// IT IS WHOLE OR NOTHING, AND IT DOES NOT AGE OUT. Until 2026-09-17 it was
-// ` · via deepinfra`, said as `· deepinfra` on a tight line and gone ten
-// minutes after the last answer ([servedWindow]). The owner ruled that the
-// machine is written beside the model as one word — `deepseek-v4.1-flash
-// (baidu)` — and that the last machine to answer stays named until another
-// does: a conversation read half an hour later still ran on that machine.
-// The sheet's `served` row keeps the window, because the figures beside its
-// name are about one answer ([app.servedRiderAt]).
+// IT IS WHOLE OR NOTHING, AND IT DOES NOT AGE OUT. Until 2026-09-17 it was ` · via
+// deepinfra`, said as `· deepinfra` on a tight line and gone ten minutes after the last
+// answer ([servedWindow]). The machine is written beside the model as one word —
+// `deepseek-v4.1-flash (baidu)` — and that the last machine to answer stays named until
+// another does: a conversation read half an hour later still ran on that machine. The
+// sheet's `served` row keeps the window, because the figures beside its name are about one
+// answer ([app.servedRiderAt]).
 //
-// IT IS DRAWN WHOEVER SERVED, AND THAT IS THE OWNER'S OWN RULING (2026-09-09).
-// It used to go silent when the server's name was already inside the model id —
-// `z-ai/glm-5.3-flash` answered by z-ai — on the argument that the reader
-// already had the word. On this line they do not: the seam spells the model as
-// its BASENAME ([modelBase]), so the vendor half of the id is not on the screen
-// at all, and a rider that appeared for one endpoint and vanished for another
-// read as the sighting having been lost rather than as the vendor having served
-// its own model. The sheet's `served` row keeps the old rule, because the row
-// above it there is the model's WHOLE routing address (statusdeck.go).
+// IT IS DRAWN WHOEVER SERVED (2026-09-09). It used to go silent when the server's name was
+// already inside the model id — `z-ai/glm-5.3-flash` answered by z-ai — on the argument
+// that the reader already had the word. On this line they do not: the seam spells the
+// model as its BASENAME ([modelBase]), so the vendor half of the id is not on the screen
+// at all, and a rider that appeared for one endpoint and vanished for another read as the
+// sighting having been lost rather than as the vendor having served its own model. The
+// sheet's `served` row keeps the old rule, because the row above it there is the model's
+// WHOLE routing address (statusdeck.go).
 //
 // THE RULING WAS KEPT HERE AND BROKEN ONE CALL DOWN until 2026-09-10: the lane
 // layer's rider, which speaks first, still went silent for a vendor serving its
@@ -2508,15 +2506,13 @@ func (a *app) modelRiderAt(width int) string {
 // so it is drawn ONLY while it is being measured, and the line is empty the
 // moment it is not.
 //
-// TWO OTHER FIGURES WERE HERE AND BOTH WERE ABOUT THE PAST. The served
-// sighting's rate is what SOME answer within the last ten minutes averaged, and
-// it sat on an idle line as a live figure nobody was producing; the per-turn
-// burn ([app.burnSegment]) is a turn's whole output over a turn's whole wall
-// time, waits and tool calls included, which is a different quantity from "how
-// fast is this writing" and reads low by a factor of several on any turn that
-// ran a tool. The owner rejected both on 2026-09-09. The burn is still on
-// /status and the phone sheet under its own label, where it is not claiming to
-// be now.
+// TWO OTHER FIGURES WERE HERE AND BOTH WERE ABOUT THE PAST. The served sighting's rate is
+// what SOME answer within the last ten minutes averaged, and it sat on an idle line as a
+// live figure nobody was producing; the per-turn burn ([app.burnSegment]) is a turn's
+// whole output over a turn's whole wall time, waits and tool calls included, which is a
+// different quantity from "how fast is this writing" and reads low by a factor of several
+// on any turn that ran a tool. The burn is still on /status and the phone sheet under its
+// own label, where it is not claiming to be now.
 //
 // WHILE IT WRITES, THE RATE IS THE WHOLE SEGMENT. `writing · 4s · friendli 61
 // t/s` said three things a person already had: the state word two runs to the
@@ -3250,8 +3246,7 @@ func (a *app) warmSegment() string {
 	if !ok {
 		return ""
 	}
-	// The word rides with the rate because the rate alone was the owner's own
-	// stumble: two percentages share this line, and the one that means "of the
+	// The word rides with the rate to distinguish the two readings: two percentages share this line, and the one that means "of the
 	// window" and the one that means "served from the cache" are told apart by
 	// a word, not by position. It is the same word the per-turn note spends on
 	// the same subject ("⟲ 9.8k cached"), so the running share and the turn
@@ -3946,7 +3941,7 @@ func (a *app) idleHint() string {
 // name a key that works.
 //
 // THE NOUN IS `chats` AND IT USED TO BE THE VERB `switch`. One word for one door
-// is the rule the audit-words pass was written to keep (docs/design/polish/
+// is the rule the audit-words pass was written to keep (the implementation
 // audit-words.md found `esc` spelled three ways across two panels), and this
 // door had picked up two: the tab row's own control said `Chats`, home's rule
 // says `alt+k chats`, and this line said `switch`. The noun is the one that
@@ -4146,6 +4141,8 @@ func (a *app) hintWord() string {
 		// room is open, esc leaves the page and does not touch the conversation's
 		// turn, so "esc interrupt" would be naming a key that is spoken for.
 		return a.roomHint()
+	case a.recalling():
+		return recallKeysWord
 	case a.state == stateWorking:
 		// ONE RUNNING STATE, ONE COMPOSED LINE (steer.go's [app.runHint]). Its
 		// clauses ask their keys' own guards and remain in one fixed order, so the

@@ -536,7 +536,7 @@ func TestToolOutputIsCappedWithAByteCount(t *testing.T) {
 // edit's "+N −M" and its unified diff from the old/new strings and from nothing
 // else — the tool's own result is one sentence saying it worked. A cap that cut
 // a real edit off mid-string would not shorten the diff; it would produce the
-// wrong number (docs/CHAT-V3.md D11, rendered in internal/tui3).
+// wrong number.
 func TestToolArgsCarryAWholeEditPayload(t *testing.T) {
 	// A replacement the size of a function: far past the old 400-byte cap, and
 	// an ordinary thing for a model to send.

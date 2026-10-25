@@ -279,13 +279,10 @@ func TestTheRoomPanelAndItsTitleWearTheBadge(t *testing.T) {
 	}
 }
 
-// A PAGE ONTO ANOTHER CONVERSATION'S WORK WEARS THAT WORK'S BADGE, AND NEVER THE
-// ONE A LOCAL TASK OF THE SAME NUMBER WEARS. Task ids restart with every
-// conversation, so the page onto their task 7 stands beside this window's own
-// task 7 — here a senior-dev run, whose plan row the surface holds. The page's
-// header used to fall through to that row by the bare number and draw
-// `[senior-dev]` over work no program had; and when the owner said its own work
-// was a program's, the page dropped it.
+// A PAGE ONTO ANOTHER CONVERSATION'S WORK WEARS THAT WORK'S BADGE, AND NEVER THE ONE A
+// LOCAL TASK OF THE SAME NUMBER WEARS. Task ids restart with every conversation, so the
+// page onto their task 7 stands beside this window's own task 7 — here a senior-dev run,
+// whose plan row the surface holds.
 func TestAGuestPageWearsItsOwnWorksBadgeAndNeverTheLocalTasks(t *testing.T) {
 	a, _ := planAppWith(t, []session.PlanTaskRow{programRow()}, nil)
 	a.width, a.height = 120, 30

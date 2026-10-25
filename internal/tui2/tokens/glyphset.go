@@ -8,11 +8,8 @@ import (
 
 // The glyph repertoire tier (12.7).
 //
-// One axis, [GlyphSet], swaps the CHARACTERS used for meanings 5.17 already
-// fixed — 1:1, inside our own language. It is not a skin: 8.3's refusal of
-// oh-my-pi's nerd-font PRESET (its colours, its brackets, its powerline chrome,
-// its status-bar layout) is untouched, and nothing here changes a hue, a
-// separator, a bracket, a breakpoint or a line grammar.
+// One axis, [GlyphSet], swaps the characters used for a meaning without
+// changing the palette, spacing or layout.
 //
 // The governing invariant, stated once: the tier changes which glyph is drawn
 // in a cell; it never changes how many cells a line occupies, which token tints

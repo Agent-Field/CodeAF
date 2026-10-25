@@ -23,7 +23,7 @@ import (
 //
 // It was written for the standing card and was meant to be spread. What happened
 // instead is that every question on this surface moved onto ONE RENDERER
-// (question.go, docs/design/questions/DESIGN.md), which draws its answers in the
+// (question.go, the implementation), which draws its answers in the
 // block's own spelling — `[1] allow once · [2] always` on a line, and one answer
 // per row with its consequence beside it on a card. The standing card, the
 // approval gate, the task proposal and both of the harness lane's questions have

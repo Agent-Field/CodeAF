@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -19,9 +21,8 @@ import (
 
 // ── THE JOB'S CHAT SPENDS FROM THE JOB'S BUDGET ─────────────────────────────
 //
-// "Everything done for the job spends from the one budget" (the owner's
-// ruling of 2026-10-20). A step's rounds always did: the runner books each
-// round's dollars on the job. The job's own conversation, its manager, is an
+// Everything done for the job spends from the one budget. A step's rounds
+// always did: the runner books each round's dollars on the job. The job's own conversation, its manager, is an
 // ordinary conversation, and until now its turns reached only the person's
 // spend ledger. [session.JobChatDoor] is how they reach the job too, and this
 // is that door over this machine's floor.
@@ -112,6 +113,29 @@ type jobChat struct {
 	id     int
 	talk   talkKey
 	failed atomic.Bool
+
+	// read is what each holder's document last answered, keyed by its path.
+	// THE BUDGET IS WATCHED TEN TIMES A SECOND FOR AS LONG AS THE CHAT IS OPEN
+	// (session.watchJobBudget), and a job's document carries its whole step
+	// log, so decoding it on every look kept an idle engine busy. A document
+	// is decoded again only when the file itself has changed.
+	mu   sync.Mutex
+	read map[string]chatRead
+}
+
+// chatRead is one holder's document as Refusal last read it: the file it
+// was, and whether that document is this chat's job and, if so, its line.
+type chatRead struct {
+	file    os.FileInfo
+	ours    bool
+	refusal string
+}
+
+// sameFile is whether info is still the document read was taken from. Every
+// store write renames a fresh file into place, so a write always shows as a
+// different file; size and modification time also catch a write in place.
+func (r chatRead) sameFile(info os.FileInfo) bool {
+	return os.SameFile(r.file, info) && r.file.Size() == info.Size() && r.file.ModTime().Equal(info.ModTime())
 }
 
 // Spend books usd on the job where its budget is checked now.
@@ -137,13 +161,56 @@ func (c *jobChat) Refusal() string {
 		return "job spending could not be recorded; work stopped"
 	}
 	for _, st := range c.holders() {
-		it, err := st.Get(c.id)
-		if err != nil || (!c.talk.is(it.Talk) && !ownsStageChat(it, c.talk)) {
-			continue
+		if r, ok := c.readOf(st); ok && r.ours {
+			return r.refusal
 		}
-		return factoryrun.ChatRefusal(it)
 	}
 	return "job budget could not be read; work stopped"
+}
+
+// readOf is st's document for this job, decoded again only when its file has
+// changed since the last look. A document that cannot be read is not
+// remembered, so the next look tries it again, as every look used to.
+func (c *jobChat) readOf(st *store.Store) (chatRead, bool) {
+	path := st.ItemPath(c.id)
+	info, err := os.Stat(path)
+	if err != nil {
+		return chatRead{}, false
+	}
+	if last, seen := c.remembered(path); seen && last.sameFile(info) {
+		return last, true
+	}
+	// The file is stat'd before it is read, so a write landing between the two
+	// leaves the newer document under the older file's identity, and the next
+	// look reads it again rather than keeping a stale answer.
+	it, err := st.Get(c.id)
+	if err != nil {
+		return chatRead{}, false
+	}
+	r := chatRead{file: info, ours: c.talk.is(it.Talk) || ownsStageChat(it, c.talk)}
+	if r.ours {
+		r.refusal = factoryrun.ChatRefusal(it)
+	}
+	c.remember(path, r)
+	return r, true
+}
+
+// remembered is the last read of the document at path, if there was one.
+func (c *jobChat) remembered(path string) (chatRead, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	r, ok := c.read[path]
+	return r, ok
+}
+
+// remember keeps r as the last read of the document at path.
+func (c *jobChat) remember(path string, r chatRead) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.read == nil {
+		c.read = map[string]chatRead{}
+	}
+	c.read[path] = r
 }
 
 // holders is where the job's money may be, in the order it is looked for: the

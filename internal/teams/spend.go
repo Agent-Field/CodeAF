@@ -78,7 +78,7 @@ func TeamSpendIn(profileDir, ledger, teamID, day string) (Spend, error) {
 }
 
 func readTeamSpend(profileDir, ledger, teamID, day string) (Spend, error) {
-	f, err := Load(profileDir)
+	f, err := spendTeamsFile(profileDir)
 	if err != nil {
 		return Spend{}, err
 	}
@@ -135,6 +135,41 @@ func sumTeamSpend(out *Spend, ids map[string]string, totals map[spendPair]spendS
 		}
 		out.ByMember[key] += sum.usd
 	}
+}
+
+// All team pools read the same immutable membership snapshot. Keep only the
+// most recently used profile, and reload when its membership stamp changes;
+// a ledger append still uses the existing incremental ledger reader below.
+var spendTeams struct {
+	sync.Mutex
+	path, stamp string
+	file        *File
+	reads       int
+}
+
+func spendTeamsFile(profileDir string) (*File, error) {
+	spendTeams.Lock()
+	defer spendTeams.Unlock()
+	path, before := Path(profileDir), spendMembershipStamp(profileDir)
+	if spendTeams.file != nil && spendTeams.path == path && spendTeams.stamp == before {
+		return spendTeams.file, nil
+	}
+	f, err := Load(profileDir)
+	spendTeams.reads++
+	spendTeams.path, spendTeams.stamp, spendTeams.file = "", "", nil
+	if err == nil && spendMembershipStamp(profileDir) == before {
+		spendTeams.path, spendTeams.stamp, spendTeams.file = path, before, f
+	}
+	return f, err
+}
+
+func spendMembershipStamp(profileDir string) string {
+	stamp := Stamp(profileDir)
+	if stamp == MissingStamp {
+		// An older installation can acquire its legacy file before migration.
+		return stamp + "|" + stampOf(legacyPath(profileDir))
+	}
+	return stamp
 }
 
 // SpendStamp is one stamp over what a team's spend is read from: the teams

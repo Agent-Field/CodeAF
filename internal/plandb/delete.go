@@ -94,6 +94,6 @@ func (s *Store) DeleteSubtree(id string) ([]string, error) {
 	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
-	s.data = fresh
+	s.adopt(fresh)
 	return ids, nil
 }

@@ -11,29 +11,24 @@ import (
 )
 
 // The sweep follows elapsed time, sampled by the existing paint clock. A busy
-// terminal may skip pictures without slowing the sign of life. The two-second
-// travel and cosine feather follow Codex's terminal summary shimmer; keeping
-// the crest at ordinary reading ink makes the movement visible without a flash.
-// https://github.com/openai/codex/blob/main/codex-rs/tui/src/summary_shimmer.rs
+// terminal may skip pictures without slowing the sign of life. Keeping the
+// crest at ordinary reading ink makes the movement visible without a flash.
 const (
 	shimmerPeriod     = 2 * time.Second
 	shimmerMinRadius  = 6.0
 	shimmerWidthRatio = 0.20
 )
 
-// shimmer paints the one moving highlight a collapsed live caption owns.
-//
-// THE SHIMMER IS THE SPINNER, RELOCATED. Opening the work returns its animation
-// budget to the tool rows immediately. The letters never move, and the smooth
-// bell reaches ordinary answer ink only at its crest. Measuring whole graphemes
-// in terminal cells keeps accents and joined emoji intact under the highlight.
+// The sweep follows elapsed time, sampled by the existing paint clock. A busy
+// terminal may skip pictures without slowing the sign of life. Keeping the
+// crest at ordinary reading ink makes the movement visible without a flash.
 func (a *app) shimmer(text string) string {
 	if text == "" || a.anyWorkLogoVisible() || a.linear || a.pal.linear || a.pal.profile < tokens.TrueColor {
 		return a.pal.narr(text)
 	}
-	// A turn supplies a stable origin when it has one. Rooms can run while the
-	// conversation is idle, so they use the same clock's absolute phase instead.
-	// Neither rendering nor opening a disclosure starts another timer.
+	// The sweep follows elapsed time, sampled by the existing paint clock. A busy
+	// terminal may skip pictures without slowing the sign of life. Keeping the
+	// crest at ordinary reading ink makes the movement visible without a flash.
 	elapsed := time.Duration(a.now().UnixNano())
 	if !a.turnBegan.IsZero() {
 		elapsed = a.now().Sub(a.turnBegan)
@@ -41,8 +36,9 @@ func (a *app) shimmer(text string) string {
 	return a.shimmerAt(text, elapsed, shimmerPeriod, 1)
 }
 
-// shimmerAt shares the same feather and palette ladder across caption owners.
-// Activity phrases use a separate decoding ripple instead of a light sweep.
+// The sweep follows elapsed time, sampled by the existing paint clock. A busy
+// terminal may skip pictures without slowing the sign of life. Keeping the
+// crest at ordinary reading ink makes the movement visible without a flash.
 func (a *app) shimmerAt(text string, elapsed, period time.Duration, strength float64) string {
 	if text == "" || a.linear || a.pal.linear || a.pal.profile < tokens.TrueColor {
 		return a.pal.narr(text)
@@ -64,9 +60,9 @@ func (a *app) shimmerAt(text string, elapsed, period time.Duration, strength flo
 			amount = (1 + math.Cos(math.Pi*distance/radius)) / 2
 		}
 		color := a.pal.shimmerHue(amount * strength)
-		// Adjacent clusters with the same colour share one escape pair. Most of
-		// the line is the quiet prefix or suffix, so per-character escapes there
-		// would spend terminal bandwidth on pixels that have not changed.
+		// The sweep follows elapsed time, sampled by the existing paint clock. A busy
+		// terminal may skip pictures without slowing the sign of life. Keeping the
+		// crest at ordinary reading ink makes the movement visible without a flash.
 		if offset > start && color != previous {
 			b.WriteString(a.pal.paint(text[start:offset], previous))
 			start = offset
@@ -79,10 +75,9 @@ func (a *app) shimmerAt(text string, elapsed, period time.Duration, strength flo
 	return b.String()
 }
 
-// shimmerHue follows the current theme's reading ladder rather than flashing
-// white. Its feather is continuous in truecolour. Lower-colour and accessible
-// tiers stay still: nearest 256-colour matches can jump between unrelated hues,
-// and a switch in font weight cannot express a gentle colour transition either.
+// The sweep follows elapsed time, sampled by the existing paint clock. A busy
+// terminal may skip pictures without slowing the sign of life. Keeping the
+// crest at ordinary reading ink makes the movement visible without a flash.
 func (p palette) shimmerHue(amount float64) hue {
 	base, ink := p.ramp.narr, p.ramp.ink
 	mix := func(a, b uint8) uint8 {

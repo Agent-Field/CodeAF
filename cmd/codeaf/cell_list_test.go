@@ -22,8 +22,8 @@ func withListSource(t *testing.T, src chatlist.Source, err error) {
 
 func TestCellListAll(t *testing.T) {
 	withListSource(t, chatlist.Static{
-		{Cell: "01AAA", Title: "Nightly index rebuild", Device: "studio", Status: chatlist.Running, DurableAgo: 2 * time.Minute},
-		{Cell: "01BBB", Title: "Port the picker", Device: "studio", Status: chatlist.Off, DurableAgo: 3 * time.Hour},
+		{Cell: "01AAA", Title: "Nightly index rebuild", Device: "host-a", Status: chatlist.Running, DurableAgo: 2 * time.Minute},
+		{Cell: "01BBB", Title: "Port the picker", Device: "host-a", Status: chatlist.Off, DurableAgo: 3 * time.Hour},
 		{Cell: "01CCC", Title: "Fix the flaky test", Device: "laptop", Status: chatlist.Branch, OrphanTurns: 2, DurableAgo: 5 * time.Hour},
 		{Cell: "01DDD", Title: "Notes", Device: "laptop", Status: chatlist.Idle, DurableAgo: 26 * time.Hour},
 	}, nil)
@@ -32,8 +32,8 @@ func TestCellListAll(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{
-		"01AAA  Nightly index rebuild  studio  running on studio             2m",
-		"01BBB  Port the picker        studio  studio offline                3h",
+		"01AAA  Nightly index rebuild  host-a  running on host-a             2m",
+		"01BBB  Port the picker        host-a  host-a offline                3h",
 		"01CCC  Fix the flaky test     laptop  2 turns from laptop: discard  5h",
 		"01DDD  Notes                  laptop  -                             1d 2h",
 	}

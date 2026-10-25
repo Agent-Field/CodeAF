@@ -13,7 +13,7 @@
 // schedule, tool parallelism — follows internal/exec/bare, with
 // three deliberate differences: it is interactive (Submit between turns, not
 // one task to the end), interruptible (Interrupt cancels the in-flight turn
-// and keeps the partial), and its compaction follows docs/CHAT-V3.md
+// and keeps the partial), and its compaction follows the implementation
 // Decision 9 (omp's architecture: threshold = window − max(15%, 16k), keep
 // 20k tokens verbatim, one LLM summary with omp's section contract, the pass
 // journaled as a transcript marker).
@@ -451,7 +451,7 @@ const (
 	// APPROVES. A task proposal's countdown ends in a yes because it is a window
 	// to redirect ordinary work; this one may not, because a program that ran
 	// because nobody answered would be exactly the silent auto-execution the
-	// whole path is built to prevent (docs/SUBHARNESS-PRD.md §9). It is answered
+	// whole path is built to prevent. It is answered
 	// through [Agent.ResolveSubharness] — true runs it, with the form as the
 	// person left it — and a surface that ignores this kind runs nothing at all,
 	// which is the correct behaviour rather than a degradation.
@@ -725,6 +725,8 @@ const (
 	EventConsentAllowed = EventCloseContinued + 1
 	// EventModelIdentity updates execution facts without adding a transcript note.
 	EventModelIdentity = EventConsentAllowed + 1
+	// EventChatStart asks the attached terminal to open an independent chat.
+	EventChatStart EventKind = iota
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -766,6 +768,7 @@ type TaskReplyTag struct {
 // today — sees all of it in order and needs no second rule; a caller that stops
 // at the terminal event stops at the terminal event of the FIRST turn.
 type Event struct {
+	ChatStart      *ChatStart     `json:",omitempty"`
 	ModelIdentity  *ModelIdentity `json:"ModelIdentity,omitempty"`
 	ModelSwitch    *ModelSwitch   `json:"ModelSwitch,omitempty"`
 	RunID          string         `json:"RunID,omitempty"`
@@ -1631,9 +1634,10 @@ type Config struct {
 	ApprovalPolicy *approval.Policy
 
 	// ApprovalGate is the door onto the settings rows the gate is built from,
-	// so this conversation can move its own posture from inside itself
-	// (approvalposture.go). Nil is a session with no such dial — a test, a
-	// worker, a headless run — and the surface then draws no control for it.
+	// refreshed before tool decisions and used to move this conversation's own
+	// posture (approvalposture.go). Build must be safe for concurrent calls and
+	// cheap when settings are unchanged. Nil is a session with no such dial,
+	// and the surface then draws no control for it.
 	ApprovalGate ApprovalGate
 	// ApprovalPosture is the posture the LAUNCH handed down — `--yolo` says
 	// [PostureAllow] here — for a conversation nobody has moved yet. It is in
@@ -2401,7 +2405,7 @@ type Config struct {
 	// conversation — the conversation and every subharness leaf keep the
 	// seven file tools whatever the variable says, which is what lets both
 	// arms of the comparison run from one binary
-	// (docs/design/bash-task-loop/DESIGN.md).
+	//.
 	bashBelt bool
 
 	// reviseDesign is the one extra hand a design thread has, and the whole of
@@ -2708,6 +2712,7 @@ type Agent struct {
 	// for a shell call's output as it arrives ([Agent.WantLiveToolOutput]),
 	// beside the window that opened it with [Config.LiveToolOutput].
 	liveOutputWanted atomic.Int32
+	chatStarts       map[string]bool
 	// jailNotice keeps a host limit from becoming noise on every tool call.
 	jailNotice sync.Once
 
@@ -4017,16 +4022,19 @@ type Agent struct {
 	// outlives its turn has no turn stream left to land on.
 	titleWatchers []*eventStream
 
+	// approvalMu serializes gate builds, publication and snapshot selection.
+	// Always acquire approvalMu before mu, never the reverse; Build runs without mu.
+	approvalMu sync.Mutex
+
 	// approvalPolicy is the gate as it stands NOW, when a surface has replaced
 	// the one this session launched on ([Agent.SetApprovalPolicy], and the prose
 	// in approvalgate.go for why that is a thing a surface may do). Nil is the
 	// ordinary case — nobody has replaced anything — and Config.ApprovalPolicy
 	// still answers.
 	//
-	// It is under mu with everything else here, and it is the ONLY approval
-	// state that is: Config.ApprovalPolicy is written once before New returns
-	// and never again, which is what lets task_run.go copy the whole config
-	// without a lock and still be right.
+	// Mutable approval state is under mu. Config.ApprovalPolicy is written
+	// once before New returns and never again, which lets task_run.go copy
+	// the whole config without a lock.
 	approvalPolicy *approval.Policy
 	// approvalPosture is the posture THIS conversation was set to
 	// (approvalposture.go), kept in the session folder's meta.json so it
@@ -4034,7 +4042,8 @@ type Agent struct {
 	approvalPosture string
 	// guardianOverride is whether the small model stands in, as the
 	// conversation's own posture decided it; nil leaves Config.Guardian to
-	// answer. It is set only by [Agent.SetApprovalPosture].
+	// answer. Explicit posture changes and refreshes of them update it together
+	// with the policy.
 	guardianOverride *bool
 
 	// attachedSkills is the ordered set of skill names a person has put in front

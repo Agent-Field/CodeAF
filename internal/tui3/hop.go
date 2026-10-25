@@ -54,14 +54,12 @@ import (
 //
 // ── THE CARD WEARS THE ONE FRAME, AND THE DEPTH IS WHAT SAYS `LAYER` ────────
 //
-// This header used to say the card had no border, while the card drew one — a
-// dim rounded box of its own, one of three copies of the same six pieces on this
-// surface. It is drawn by the one frame now (frame.go, owner ruling 2026-09-11),
-// dim, on the card's own raised ground. What says `layer` is still the depth:
-// the body behind it is repainted at the FAINTEST stop of the depth ladder
-// ([composerFade], depthfade.go) and the card's own rows are left at full ink.
-// That is the same move SCREEN 2e's composer layer makes over a place, one
-// mechanism rather than two, and the frame only says where the card ends.
+// This header used to say the card had no border, while the card drew one — a dim rounded
+// box of its own, one of three copies of the same six pieces on this surface. What says
+// `layer` is still the depth: the body behind it is repainted at the FAINTEST stop of the
+// depth ladder ([composerFade], depthfade.go) and the card's own rows are left at full
+// ink. That is the same move SCREEN 2e's composer layer makes over a place, one mechanism
+// rather than two, and the frame only says where the card ends.
 //
 // The rows themselves are home's rows — the same glyph door, the same bold
 // subject, the same dim tail dropped in the same order (switcher.go's
@@ -562,7 +560,7 @@ func (a *app) hopTabbed(row hopRow) bool {
 // look for the conversation they were just looking at. Ordered by recency the
 // card put it somewhere else — the third tab could be the first row — so the two
 // lines disagreed about the same five conversations and neither position meant
-// anything. Asked for by the owner.
+// anything.
 //
 // THE STRIP'S ORDER IS FIRST-ENTERED AND IT NEVER MOVES (chattabs.go says why: a
 // person reaches for the position, not for the word). Taking that order here
@@ -660,11 +658,7 @@ func (a *app) hopRest(open []hopRow, now time.Time) []hopRow {
 		if len(open)+len(rest) >= hopShown {
 			break
 		}
-		// THE FOLDER IS ASKED ABOUT ONCE AND BOTH READINGS TAKE THAT ANSWER. It
-		// used to be asked here for the GLYPH and left false on the row
-		// [hopRestNote] reads, so a conversation whose project had gone was drawn
-		// with the refusing `✕` and no clause saying why — a mark a person cannot
-		// account for, which is the whole of what the owner's report was about.
+		// THE FOLDER IS ASKED ABOUT ONCE AND BOTH READINGS TAKE THAT ANSWER.
 		row.gone = !homeFolderThere(row.place)
 		rest = append(rest, hopRow{
 			file: row.session.Transcript, title: row.title, project: row.project,
@@ -1168,8 +1162,8 @@ func (a *app) hopTake() (cmd tea.Cmd) {
 // settings alike. The cost of that is that taking a row moved the conversation
 // UNDERNEATH a place and left the place in front: from home, `enter` looked like
 // a key that did nothing, while it had in fact quietly swapped the conversation
-// behind the screen the person was reading. Reported by the owner, who pressed
-// `ctrl+k` on home, chose a conversation, and stayed on home.
+// behind the screen the person was reading. Pressing
+// `ctrl+k` on home and choosing a conversation must leave home.
 //
 // EVERY OTHER DOOR BETWEEN CONVERSATIONS ALREADY DOES IT, and each spells it for
 // itself: home's own `enter` ends in [app.closeHome] (home.go's
@@ -1247,14 +1241,11 @@ func (a *app) hopOpenRows() int { return a.hop.tabs }
 
 // ── what the card looks like ────────────────────────────────────────────────
 //
-// THE CARD IS A BOX, AND IT IS THE ONE ON THIS SURFACE. The house rule is that
-// nothing is outlined — emphasis is a raised ground and an accent, never a ring
-// drawn round a thing (harnesscard.go states it) — and this is the deliberate
-// exception, ruled by the owner off SCREEN 3b's own drawing. The reason it earns
-// the exception is that it is the only thing here that FLOATS: every other panel
-// on this surface takes the frame or hangs off an edge, so its bounds are the
-// screen's. A list dropped into the middle of a dimmed transcript has no edge of
-// its own, and without one the eye reads it as text that happens to be brighter.
+// THE CARD IS A BOX, AND IT IS THE ONE ON THIS SURFACE. The reason it earns the exception
+// is that it is the only thing here that FLOATS: every other panel on this surface takes
+// the frame or hangs off an edge, so its bounds are the screen's. A list dropped into the
+// middle of a dimmed transcript has no edge of its own, and without one the eye reads it
+// as text that happens to be brighter.
 //
 // THE COLUMNS ARE FIXED AND THAT IS THE WHOLE OF WHY IT SCANS. Glyph, subject,
 // one clause, project, clock — the subjects form a straight edge you read down
@@ -1288,11 +1279,8 @@ const (
 	// hopTightNote is what the clause narrows to on the way down, which is
 	// `3 tasks running` whole.
 	hopTightNote = 16
-	// hopGutter is the air kept at the right-hand end of the subject column, so a
-	// name that fills its column does not touch the clause beside it. Without it
-	// the two run together as one word — `…parsing regres…nothing new` — which is
-	// the reading the owner reported, and no amount of extra column width fixes
-	// it, because a long enough name fills whatever it is given.
+	// hopGutter is the air kept at the right-hand end of the subject column, so a name that
+	// fills its column does not touch the clause beside it.
 	hopGutter = 2
 )
 
@@ -1384,7 +1372,7 @@ func (a *app) hopCardLines(width, height int, pal palette) []string {
 	// on, it appeared on some rows and not others depending on how long that one
 	// name was, and it cost the rows underneath it their places on a short card.
 	// The name is worth more room on the row itself, which is what the subject
-	// column now takes ([hopLine]). Asked for by the owner.
+	// column now takes ([hopLine]).
 	// AND THE WORD THAT SAYS WHERE THE OPEN ONES STOP, which is the fold's own
 	// half of the head's `open` ([hopClosedLabel]).
 	//
@@ -1500,7 +1488,7 @@ func (a *app) hopFoot() string {
 // the head already carries — `3 of 12` says both halves of it — and then said
 // the same thing twice, once in a triangle nobody reads as a verb and once in
 // words. A foot is the one row a person looks at to find out what else they can
-// press; it is worth exactly one instruction. Asked for by the owner.
+// press; it is worth exactly one instruction.
 //
 // `closed` IS THE WORD FOR WHAT IS DOWN THERE. Every row behind the fold is a
 // conversation with no tab on the row above — one this terminal never opened,
@@ -1554,9 +1542,7 @@ const hopOpenWord = "open"
 // The head says `open` over the rows that are tabs. `→ show closed` then adds
 // rows that are not, and a conversation whose tab was closed a minute ago comes
 // back wearing the same `○` and the same live clause it had when it was open —
-// because it IS still open in every sense but the tab row's. Reported by the
-// owner, who read the `✕` on the rows below as "this tab is closed" and asked
-// why the ones they had closed did not have it. They do not: `✕` is
+// because it IS still open in every sense but the tab row's. The closed-tab marker must remain distinct from `✕` is
 // [tokens.GlyphFailed] and on this card it means the row REFUSES TO OPEN —
 // another window is holding that conversation, or its project folder has gone.
 // Two different facts, and only one of them had a mark.

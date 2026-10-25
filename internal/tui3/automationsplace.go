@@ -15,7 +15,7 @@ package tui3
 // title is the person's own name for it, and one dim sentence says when it runs
 // and how it last went — in the schedule's own words (internal/automation's
 // words.go) and the task-state words a run's outcome is spelled in
-// (docs/design/task-states/DESIGN.md).
+//.
 
 import (
 	"fmt"

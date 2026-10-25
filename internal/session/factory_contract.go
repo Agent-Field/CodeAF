@@ -209,7 +209,7 @@ type ItemDoor interface {
 
 // JobChatDoor is how a factory job's own conversation (its manager, the
 // item's Talk) spends from the job's budget. EVERYTHING DONE FOR THE JOB
-// SPENDS FROM ITS ONE BUDGET (the owner's ruling of 2026-10-20): its steps'
+// SPENDS FROM ITS ONE BUDGET: its steps'
 // rounds always did, and its chat's calls do through this door.
 type JobChatDoor interface {
 	// Chat is the job transcript is the own conversation of, or nil when it

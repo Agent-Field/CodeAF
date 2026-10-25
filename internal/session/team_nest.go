@@ -2,7 +2,7 @@ package session
 
 // ── NESTED TEAMS: SUB-TEAMS, CONFLICTS, ONE LEVEL, AND THE GLOBAL MANAGER ────
 //
-// The rulings (c-5, c-6, c-7; docs/design/conversations-and-teams/DESIGN.md,
+// The rulings (c-5, c-6, c-7; the implementation,
 // section 8): work is handed down a tree of teams and decisions travel up it.
 // This file is the session's half of the tree:
 //
@@ -146,7 +146,7 @@ func (e errNest) Error() string { return string(e) }
 // teamStartSubTeam makes the child team under team, moves in the members
 // named, and writes the start that opens its manager. It answers what to hand
 // the model and whether that is a refusal.
-func (a *Agent) teamStartSubTeam(ctx context.Context, team teams.Team, role teamRole, handle, brief, name string, moving []string, prov teams.Provenance) (string, bool) {
+func (a *Agent) teamStartSubTeam(ctx context.Context, team teams.Team, role teamRole, handle, brief, name string, moving []string, model string, prov teams.Provenance) (string, bool) {
 	profile := a.config.teamProfile()
 	name = strings.Join(strings.Fields(name), " ")
 	if name == "" {
@@ -248,7 +248,7 @@ func (a *Agent) teamStartSubTeam(ctx context.Context, team teams.Team, role team
 	// here, where the membership was written. A refusal returned above and
 	// wrote nothing.
 	_ = teams.WriteMoveNotices(profile, movedIn)
-	start := teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: handle, Text: brief, Team: childID, Approval: a.ResolvedApprovalPosture(), Provenance: prov}
+	start := teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: handle, Text: brief, Team: childID, Approval: a.ResolvedApprovalPosture(), Provenance: prov, Model: model}
 	startID, err := teams.AppendTrafficID(profile, team.ID, start)
 	if err != nil {
 		return "The team " + strconv.Quote(name) + " was made, but its manager's start could not be written to the traffic: " + err.Error(), true

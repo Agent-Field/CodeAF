@@ -1,7 +1,7 @@
 package delegate
 
 // The records: one JSON object per line on the program's stdout, the types
-// below read, everything else ignored (docs/design/delegate/PROTOCOL.md).
+// below read, everything else ignored.
 // Ignoring the rest is what makes the reader generic — a program's own records
 // pass straight through — and it is also why a line that is not JSON at all is
 // dropped and counted rather than failing the run: a program that printed one

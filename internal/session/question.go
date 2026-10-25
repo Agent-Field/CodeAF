@@ -54,7 +54,7 @@ package session
 //
 // ── THE LADDER, AND WHY THE GATE REFUSES RATHER THAN REPAIRS ──
 //
-// docs/design/questions/DESIGN.md states the ladder an asker climbs before it
+// the implementation states the ladder an asker climbs before it
 // puts a question to anybody: read the record, assume and say so, act then
 // ratify, show outcomes, offer structured input, and only then ask. [Question.Check]
 // is where the last rung is defended, and it REFUSES rather than filling
@@ -88,7 +88,7 @@ import (
 
 // AskKind is what SHAPE of decision is being handed over. It decides how a
 // question is drawn, what a safe answer is, and whether anything but a person
-// may answer it (docs/design/questions/DESIGN.md's table of kinds and their
+// may answer it (the implementation's table of kinds and their
 // defaults).
 //
 // It is a string and not an iota for the reason [QuestionKind] is: these values
@@ -118,7 +118,7 @@ const (
 	// and the destructive answer never shares a key with a routine one.
 	AskConfirmation AskKind = "confirmation"
 	// AskLanding is a landed task's `your call` — work that finished and that
-	// nobody could check (docs/design/task-states/DESIGN.md's third tier). Its
+	// nobody could check. Its
 	// answers keep that design's keys exactly: `a` accept, `n` do not, `s` tell
 	// it something.
 	AskLanding AskKind = "landing"
@@ -211,7 +211,7 @@ var questionForms = []QuestionForm{FormLine, FormCard, FormRoom, FormSheet}
 type AskerKind string
 
 const (
-	// AskerModel is the model, through the `ask` tool (lane E2 owns that door).
+	// AskerModel is the model, through the `ask` tool.
 	AskerModel AskerKind = "model"
 	// AskerEngine is codeaf itself: the approval gate, the fuel gate, a merge
 	// conflict — questions no model chose to ask.
@@ -643,7 +643,7 @@ const (
 	// the surface that LEARNS of an answer rather than by the one that gave it
 	// — the giver knows perfectly well it was a person, and the value is there
 	// so the second window's receipt does not say `you` about a key somebody
-	// pressed on a different screen (docs/design/questions/DESIGN.md's FIRST
+	// pressed on a different screen (the implementation's FIRST
 	// ANSWER WINS).
 	DecidedByWindow DecidedBy = "window"
 )
@@ -1072,7 +1072,7 @@ type DecisionRecord struct {
 	// with the same head and different answers is exactly what a person changing
 	// their mind leaves behind, and a reader — the model, the mark reader, the
 	// person three days later — cannot tell that from the program having asked
-	// the same thing twice and got two answers. Measured on the Spark,
+	// the same thing twice and got two answers. Measured in a test run,
 	// 2026-09-11: a side-call read the record, found "Hello" and a file saying
 	// "Hola", and set about "fixing" the file.
 	Was []string `json:"was,omitempty"`
@@ -2125,7 +2125,7 @@ func answerToken(answer Answer) string {
 // resolvesQuestion reports whether this answer ENDS the question it was given
 // to.
 //
-// A STEER NEVER RESOLVES A TASK BY ITSELF (docs/design/task-states/DESIGN.md),
+// A STEER NEVER RESOLVES A TASK BY ITSELF,
 // and that is the whole of what this function is for: `tell it` sends words to
 // the work and the question stays exactly where it was, because "looks good"
 // typed on a card must not silently become accept.
@@ -2145,7 +2145,7 @@ func resolvesQuestion(answer Answer) bool { return AnswerResolves(answer) }
 // words are how you ask for something different rather than how you settle.
 //
 //   - `tell it` on a landed task steers the work and leaves the `your call`
-//     exactly where it was (docs/design/task-states/DESIGN.md).
+//     exactly where it was.
 //   - `change it` on a finished design hands the page back to the designer, which
 //     rewrites it and puts it in front of you again ([HarnessChangeKey]).
 func AnswerResolves(answer Answer) bool {
@@ -2417,7 +2417,7 @@ func (a *Agent) applyLanding(answer Answer, key, words string) error {
 	// lanes part. `[a] resolve it` on a branch that would not fasten spends the
 	// merge round or the carry ([Agent.ResolveConflict]); accepting would offer
 	// the same branch to the same ground and be refused in the same words, which
-	// is what it did (docs/design/task-states/DESIGN.md's conflict row).
+	// is what it did.
 	if answer.Kind == QuestionConflict && key == LandingYesKey {
 		return a.ResolveConflict(answer.ID)
 	}
@@ -3172,7 +3172,7 @@ func (a *Agent) landingQuestion(pending PendingDecision) Question {
 // landingForm is which shape a landing asks to be drawn in, and it is decided
 // by HOW MUCH EVIDENCE THIS PARTICULAR LANDING CARRIES rather than by the kind.
 //
-// THE TASK-STATES ROW IS UNCHANGED (docs/design/questions/DESIGN.md's defaults
+// THE TASK-STATES ROW IS UNCHANGED (the implementation's defaults
 // table says exactly that beside this kind): `[a] <yes> · [n] <no> · [s] tell
 // it`, one row, the three columns in the one order — which is the line form,
 // because the card form spends a row per answer and never composes that row.
@@ -3197,7 +3197,7 @@ func landingForm(ask TaskAsk) QuestionForm {
 // landingReason is the row's own sentence, plus WHO IS DECIDING where that is
 // not the person.
 //
-// THE CARD MUST SAY SO ON THE REASON LINE (docs/design/task-states/DESIGN.md).
+// THE CARD MUST SAY SO ON THE REASON LINE.
 // Under `task.settle = auto`, and after somebody hands one card over, the model
 // is reading the work and will spend a verb on it — and a row that said nothing
 // about that is a person answering a question somebody else is already
@@ -3248,7 +3248,7 @@ func landingPolicy(owner TaskAskOwner) Policy {
 
 // landingOptions dresses one [TaskAsk] as the three answers the row draws:
 // `[a] <yes> · [n] <no> · [s] tell it`, always the same three columns in the
-// same order with the same keys (docs/design/task-states/DESIGN.md).
+// same order with the same keys.
 //
 // THE WORDS ARE THE ASK'S OWN and are never invented here — a row whose yes
 // reads `bring it home` on the card and `accept` on home would be two names for

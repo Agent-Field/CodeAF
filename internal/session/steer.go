@@ -391,12 +391,9 @@ var errPersonCut = errors.New("let go of because you chose another model")
 // and can be twenty minutes long, and a person watching a step wait thirteen
 // minutes on a pace they cannot see is a person whose word did nothing.
 //
-// THE MEASURED FAILURE (2026-09-11, 14:40:10). A task step sat on `waiting ·
-// rate limited · 13m 37s`. The owner picked another model in the room and typed
-// `continue`; the room answered `its next turn takes it`, and the step was still
-// talking to the model they had moved off at 14:41:00. The pick was real and
-// landed on the agent — what was missing was anything to make the request in
-// flight let go of it.
+// THE MEASURED FAILURE (2026-09-11, 14:40:10). A task step sat on `waiting · rate limited
+// · 13m 37s`. The pick was real and landed on the agent — what was missing was anything to
+// make the request in flight let go of it.
 
 // ModelLanding is WHEN a model a person just named reaches the work, and it is
 // the only thing a surface has to know to say something true about the pick.
@@ -419,10 +416,7 @@ const (
 // the person, and let go of it when it has not, so the loop comes back to a
 // boundary and assembles the next request carrying what they said.
 //
-// ONE DOOR BECAUSE IT IS ONE RULE. A model, a `continue`, a `stop`: the product
-// rule the owner ruled on 2026-09-11 gives all three the same clock and the same
-// question, and a second reading of it somewhere else is how the model half came
-// to work while the direction half still waited out thirteen minutes.
+// ONE DOOR BECAUSE IT IS ONE RULE.
 //
 // THE CAUSE IS THE CALLER'S BECAUSE IT NAMES WHICH BOUNDARY THE WORD NEEDS, and
 // that is the one thing that genuinely differs between two words. A model

@@ -11,10 +11,6 @@ import (
 )
 
 // ── THE TWO LAWS OF THE QUESTION VIEWS ──────────────────────────────────────
-//
-// Both are owner rulings of 2026-09-11, and both are the kind of law that is
-// kept by a test or not at all: one is about a colour that is easy to reach for
-// and the other is about a ladder that is easy to grow an `if` on.
 
 // COLOUR IS STROKE AND NEVER FILL: NO ROW OF A QUESTION IS PAINTED IN THE
 // QUESTION HUE (colour pick C).

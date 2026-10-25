@@ -13,7 +13,7 @@ import (
 //
 // NOTHING ADMITS PRACTICE WORK ANY MORE. The practice loop that spliced these
 // jobs went with the rest of the v1 resident's scheduler (see
-// docs/design/automations/DESIGN.md), but a store written before that still
+// the implementation), but a store written before that still
 // holds practice jobs, and every reader that keeps them out of the person's
 // own work — the runner's priority, the fold, the history and territory
 // walks — has to go on recognising them by this mark.

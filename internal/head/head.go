@@ -138,7 +138,7 @@ type Head struct {
 	// wrote is every artifact this head has written, so it can open one again to
 	// repair it. It shares turnMu because it is small, rarely touched, and the
 	// alternative is a second lock guarding one map. write.go records the
-	// shortfall: the durable form is a message part, which is Wave 2's.
+	// shortfall: durable tracking needs a message part.
 	wrote map[string]bool
 	// namesRooms is the room-naming clerk, off unless a window asks for it. See
 	// WithRoomNaming.

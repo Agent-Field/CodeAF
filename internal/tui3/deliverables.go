@@ -24,7 +24,7 @@ import (
 // of them lands at a path that scrolled off the screen an hour ago. "The
 // report from Tuesday" is then a question nobody can answer without knowing
 // which directory that conversation was about, which is the question this list
-// exists to remove (docs/CHAT-V3.md, Decision 26).
+// exists to remove.
 //
 // It reads the GLOBAL index and not a directory, and that is the whole of why
 // it is worth having: what was made lives in as many places as there were
@@ -70,7 +70,7 @@ import (
 // carries an id.
 const filesRows = 10
 
-// filesKept is how many rows of the index this list reads back. The file holds
+// filesKept is how many distinct file paths this list keeps. The file holds
 // everything ever made and is capped in the thousands (internal/session's
 // artifactRows); two hundred is far past what a person scrolls or filters down
 // and is the bound on the stats — one per row, on the keystroke that opens the
@@ -435,11 +435,8 @@ func (a *app) openFiles() {
 // keeps about its own repeats.
 func readDeliverables(index string) []deliverable {
 	rows := session.ReadArtifacts(index)
-	if len(rows) > filesKept {
-		rows = rows[:filesKept]
-	}
 	seen := make(map[string]bool, len(rows))
-	list := make([]deliverable, 0, len(rows))
+	list := make([]deliverable, 0, min(len(rows), filesKept))
 	for _, row := range rows {
 		path := strings.TrimSpace(row.Path)
 		if seen[path] {
@@ -456,6 +453,9 @@ func readDeliverables(index string) []deliverable {
 			at:    row.Created,
 			gone:  err != nil || info.IsDir(),
 		})
+		if len(list) == filesKept {
+			break
+		}
 	}
 	return list
 }

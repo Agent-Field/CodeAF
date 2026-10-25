@@ -10,19 +10,17 @@ package session
 // same question. The one keystroke whose entire purpose is to be asked less did
 // not reduce the asking at all until somebody quit and came back.
 //
-// This file is the seam that fixes that, and it is deliberately a PUSH rather
-// than a re-read. The policy is built from three settings rows resolved through
-// the project layer (cmd/codeaf's v3Policy), and a gate that re-read them on the
-// tool path would put a file walk in front of every call and would change its
-// mind halfway through a batch. What a surface does instead is rebuild the
-// policy at the moment somebody asked for a change and hand the finished thing
-// over.
+// Surfaces can push a finished policy after changing a rule. Sessions with a
+// door onto settings also refresh at the decision point, so changes made in
+// another window reach the next tool call. The settings adapter owns caching;
+// no watcher or polling loop belongs to a session.
 //
 // THE POINTER IS GUARDED AND THE POLICY IS NOT. approval.Policy is read-only
-// once built, so the lock here covers a pointer copy and nothing else: a call
-// already inside Policy.Check can never see a rule set change underneath it, and
-// a decision taken a moment before a push is still a decision about a rule set
-// that really was in force. This is the same bargain the belt makes under armMu
+// once built. The lock serializes builds and publication, then copies the
+// snapshot for the decision: a call already inside Policy.Check can never see
+// a rule set change underneath it, and a decision taken a moment before a push
+// is still a decision about a rule set that really was in force. This is the
+// same bargain the belt makes under armMu
 // (session.go) — swap the header, never edit what a reader is walking.
 
 import "github.com/Agent-Field/codeaf/internal/approval"
@@ -47,6 +45,8 @@ func (a *Agent) SetApprovalPolicy(policy *approval.Policy) {
 	if policy == nil {
 		return
 	}
+	a.approvalMu.Lock()
+	defer a.approvalMu.Unlock()
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.approvalPolicy = policy
@@ -72,8 +72,21 @@ func (a *Agent) baseApprovalGate() *approval.Policy {
 	if a.approvalParent != nil {
 		return a.approvalParent.baseApprovalGate()
 	}
+	if a.config.ApprovalGate != nil {
+		// A failed read keeps the last working gate, just as a failed push does.
+		policy, _ := a.refreshApprovalGate()
+		return policy
+	}
+	a.approvalMu.Lock()
+	defer a.approvalMu.Unlock()
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	return a.approvalPolicyLocked()
+}
+
+// approvalPolicyLocked returns the immutable decision snapshot while mu
+// protects the policy pointer.
+func (a *Agent) approvalPolicyLocked() *approval.Policy {
 	if a.approvalPolicy != nil {
 		return a.approvalPolicy
 	}

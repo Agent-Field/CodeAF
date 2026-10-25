@@ -18,7 +18,7 @@ import (
 //
 // ── THE MEASURED FAILURE (2026-09-09 → 2026-09-10) ──────────────────────────
 //
-// The owner's account has the router's "paid model training" privacy switch
+// An account can have the router's "paid model training" privacy switch
 // off, which removes every machine that trains on paid inputs from EVERY
 // request the account makes, whatever the model. The router says so when a
 // request's whole set was such a machine:

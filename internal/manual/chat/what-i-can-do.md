@@ -93,6 +93,38 @@ adds the content to the end of the file instead of replacing it and reports
 `Appended N lines to <path>; the file now has M lines.` — appending to a file
 that does not exist yet simply creates it.
 
+## Why is a written or edited file missing from Files — deliverables in a plain folder
+
+Successful `write` and `edit` calls record files inside the conversation's
+workspace, its own `work/`, or its `artifacts/` folder. This includes overwriting
+an existing file and appending to it. A rewrite updates the same deliverable ID
+with the new content hash; it does not add another card. Files of other types,
+such as text, source code and PDFs, are recorded as files too.
+
+If the same path has both an authored card and an independently shared card,
+rewrites update the authored card. If it has only a shared card, a write or edit
+creates a separate authored card; the shared identity and version stay unchanged
+so an interrupted share can still be retried. Legacy cards with unknown authorship
+also stay unchanged. Keeping a copy while the source is rewritten
+retains the copy's recorded bytes and the source's latest hash and preview.
+This also holds when the desktop keeps locally while another process hosts
+the conversation and records its writes.
+
+A desktop conversation has a deliverables index and a journal even when its
+folder is a home directory or another folder outside Git. These rules cover the
+conversation's own tools. Writing outside these roots does not claim a deliverable.
+Task workers retain creation-only recording for supported file kinds; media
+created in a task worktree is not automatically recorded.
+
+Chat `/files` counts up to 200 distinct paths from recent index rows. Repeated
+edits to one file do not consume that 200-path limit. Generic files use a bounded
+header sniff for MIME, retaining a known MIME when the new sniff is generic.
+
+Shell commands have a narrower signal: pictures declared in `bash`'s `outputs`
+are already inspected and recorded. Other shell-made files are not discovered
+automatically; there is no filesystem scan. `share_deliverable` can explicitly
+hand over an existing file.
+
 ## Can you append to a file, or add to the end without rewriting it?
 
 Yes. `write` takes an optional `append:true`, which adds the new content after

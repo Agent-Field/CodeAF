@@ -26,9 +26,8 @@ import (
 //
 //	unknown command: /var/folders/…/Screenshot · try /help
 //
-// That is what the owner met on a real terminal over `--host`, twice, on the
-// same screenshot. The parsing was never the problem — the same bytes delivered
-// as a paste attach perfectly. THE DELIVERY SHAPE WAS.
+// The parsing was never the problem — the same bytes delivered as a paste attach
+// perfectly. THE DELIVERY SHAPE WAS.
 //
 // So this file gives the keystroke shape the same door. It watches for a run of
 // characters that spells a path, and when the run goes quiet it hands what it

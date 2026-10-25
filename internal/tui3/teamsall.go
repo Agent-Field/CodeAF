@@ -62,8 +62,8 @@ func (a *app) teamsAncestryName(t team) string {
 // can also have unread messages. Counts describe this team's own memberships.
 func (a *app) teamsOverviewState(t team) string {
 	working, asking, failed, unread := 0, 0, 0, 0
-	for _, r := range a.teamsCrew(t) {
-		switch r.word {
+	for _, m := range a.teamsCrewMembers(t) {
+		switch a.teamsMemberWord(t, m, a.teamsMember(m)) {
 		case "working":
 			working++
 		case "asking":
@@ -71,7 +71,7 @@ func (a *app) teamsOverviewState(t team) string {
 		case "failed":
 			failed++
 		}
-		if a.unreadChats[r.key] {
+		if a.unreadChats[m.Key] {
 			unread++
 		}
 	}
@@ -218,11 +218,9 @@ func (a *app) teamsOverviewCard(d *teamsDraw, t team, width, x, y int, compact b
 		if m.Handle != "" {
 			name = "@" + m.Handle
 		}
-		title := m.Word
-		for _, r := range a.teamsCrew(t) {
-			if r.manager {
-				title = r.title
-			}
+		title := strings.TrimSpace(m.Word)
+		if row, known := a.tp.world[m.File]; known && strings.TrimSpace(row.Title) != "" {
+			title = row.Title
 		}
 		word := a.pal.dim("Manager ") + a.teamsConversationLabel(name, m.Key, m.File, inner-8)
 		if !t.Closed() && !a.tp.previews[m.Key].missing {

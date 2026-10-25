@@ -542,7 +542,7 @@ changelog:
 # ── THE CALL CENSUS ─────────────────────────────────────────────────────────
 #
 # `make census` reads the model-call log this build always writes and prints
-# docs/design/recovery/DESIGN.md §1 as markdown. It is the instrument that
+# a Markdown summary. It is the instrument that
 # design's §8 asks for: five waves of recovery work each move a number in that
 # table, and without a committed measurement every one of them is an argument
 # about anecdotes.
@@ -568,7 +568,7 @@ census:
 # by the regret it would have paid over ten days of the model-call log this build
 # already writes. Every change to the machine chooser in the week to 2026-09-11
 # was argued from a screenshot and a ten-row grep; this is the instrument that
-# ends that, and docs/design/recovery/DESIGN.md §8 is where a change is required
+# ends that, and a change is required
 # to cite it.
 #
 #   make replay                             this machine's own log and journal

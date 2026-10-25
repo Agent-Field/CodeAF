@@ -153,8 +153,8 @@ func tasksCursorOn(a *app, name string) (int, bool) {
 // THE WORK HANGS UNDER THE CHAT THAT ASKED FOR IT, and the chat is a row.
 func TestEveryPieceOfWorkIsDrawnUnderItsOwnConversation(t *testing.T) {
 	r := tasksChatReading()
-	// EVERY CONVERSATION OPENS SHUT (the owner's ruling, 2026-09-11) and what this
-	// test is about is the SHAPE behind that fold, so it reads the page after `→`.
+	// EVERY CONVERSATION OPENS SHUT and what this test is about is the SHAPE behind that
+	// fold, so it reads the page after `→`.
 	if shut := tasksLineOf(t, r.lay(120), "Shipping the Gate"); !shut.folds || !shut.open {
 		t.Fatalf("a conversation came out folds=%v open=%v, and every fold on this page opens open",
 			shut.folds, shut.open)

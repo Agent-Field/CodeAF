@@ -203,7 +203,7 @@ func newLaneRigWithPrice(
 // seconds is a statement about how long a person is asked to watch an empty
 // line, and a wire test that really waited it would take ten seconds to prove
 // something about a channel. So the scenarios below state the ceiling they are
-// about and prove what this lane owns — that the ceiling is what acts when
+// about and prove what this test owns — that the ceiling is what acts when
 // nothing at all is believed, and that it acts through the wire.
 //
 // IT IS ALSO WHERE A HELD FIRST WORD IS BOUNDED. The ceiling stated here is the
@@ -421,7 +421,7 @@ const rigScale = 20
 
 // rigTimeline is how many times faster this rig's wire runs than the world the
 // design's figures are written about. It is the same hundred `internal/lane`'s
-// own e2e scenarios and `bench/lanelab/gosim` use.
+// own e2e scenarios and `the benchmark harness` use.
 //
 // IT IS WHAT λ IS BROUGHT ONTO, AND THE REASON IS THAT MONEY DOES NOT COMPRESS.
 // λ is SECONDS PER DOLLAR, so on a timeline a hundred times shorter one dollar
@@ -1387,7 +1387,7 @@ func TestTheRowSaysWhyItWaitedAndWhatWasDone(t *testing.T) {
 	}
 }
 
-// TestAtTheCeilingAnErrandNobodyIsWatchingIsStillRescued is the owner's order,
+// TestAtTheCeilingAnErrandNobodyIsWatchingIsStillRescued is the required behavior,
 // stated as a scenario: ALL of this build's calls answer promptly, not only the
 // ones a person is reading.
 //

@@ -12,6 +12,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -48,6 +49,9 @@ type Store struct {
 	path string
 	now  func() time.Time
 	data state
+	// seen is what the database looked like when data was last read from it, so
+	// a read of a plan nobody has written does not read it again (refresh).
+	seen readStamp
 	// closed is set by Close under the lock. Every method asks it there before
 	// it touches a handle Close may already have released — the nil `db` and
 	// `rdb` below, which used to be what a late write found.
@@ -109,6 +113,9 @@ func Open(path, project, rootID, rootTitle, rootDescription string, chat ...stri
 		return nil, err
 	}
 	store.rdb = rdb
+	// The stamp is taken before the plan is read, so a store that had to seed
+	// its root (a write the stamp does not know) is read once more, never less.
+	seen := store.currentStamp()
 	loaded, err := store.loadOrCreate(project, rootID, rootTitle, rootDescription, tag)
 	if err != nil {
 		_ = rdb.Close()
@@ -116,6 +123,7 @@ func Open(path, project, rootID, rootTitle, rootDescription string, chat ...stri
 		return nil, err
 	}
 	store.data = loaded
+	store.seen = seen
 	return store, nil
 }
 
@@ -1820,7 +1828,7 @@ func (s *Store) Archive(olderThan time.Duration) ([]*Task, error) {
 	now := s.now().UTC()
 	doomed, moved := archiveSelection(fresh, now.Add(-olderThan))
 	if len(moved) == 0 {
-		s.data = fresh
+		s.adopt(fresh)
 		return nil, nil
 	}
 	for _, task := range moved {
@@ -1842,7 +1850,7 @@ func (s *Store) Archive(olderThan time.Duration) ([]*Task, error) {
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	s.data = fresh
+	s.adopt(fresh)
 	return moved, nil
 }
 
@@ -2314,7 +2322,7 @@ func (s *Store) transact(change func(*state, time.Time) error) error {
 	if err != nil {
 		return err
 	}
-	s.data = fresh
+	s.adopt(fresh)
 	next := cloneState(fresh)
 	if err := change(&next, s.now().UTC()); err != nil {
 		if errors.Is(err, errNoChange) {
@@ -2333,7 +2341,7 @@ func (s *Store) transact(change func(*state, time.Time) error) error {
 		// error; this one wears [ErrCommitUncertain] and the original cause.
 		return fmt.Errorf("%w: %w", ErrCommitUncertain, err)
 	}
-	s.data = next
+	s.adopt(next)
 	return nil
 }
 
@@ -2378,11 +2386,61 @@ func (s *Store) refresh() {
 		return
 	}
 	defer tx.Rollback()
+	// THE STAMP IS READ BEFORE THE PLAN, so a commit between the two leaves a
+	// stamp older than the data and costs one more read, never a stale answer.
+	stamp := s.stampOf(tx)
+	if stamp.known && stamp == s.seen {
+		return
+	}
 	fresh, err := loadState(tx)
 	if err != nil {
 		return
 	}
 	s.data = fresh
+	s.seen = stamp
+}
+
+// readStamp is what says the database has not changed since a read: SQLite's
+// own counter of commits by other connections, and the size and modification
+// time of the database and its log. Either moving is a change; both standing
+// still across a write would need the counter and two clocks to agree on it.
+type readStamp struct {
+	known   bool
+	version int64
+	db, wal fileStamp
+}
+
+type fileStamp struct {
+	size  int64
+	mtime int64
+	inode uint64
+}
+
+// currentStamp is the stamp of the database as it stands.
+func (s *Store) currentStamp() readStamp {
+	tx, err := s.rdb.Begin()
+	if err != nil {
+		return readStamp{}
+	}
+	defer tx.Rollback()
+	return s.stampOf(tx)
+}
+
+func (s *Store) stampOf(tx *sql.Tx) readStamp {
+	var stamp readStamp
+	if err := tx.QueryRow("PRAGMA data_version").Scan(&stamp.version); err != nil {
+		return readStamp{}
+	}
+	stamp.db, stamp.wal = statStamp(s.path), statStamp(s.path+"-wal")
+	stamp.known = true
+	return stamp
+}
+
+// adopt takes a plan this handle has just written as what it holds. The next
+// read looks at the database again, whatever it last saw.
+func (s *Store) adopt(data state) {
+	s.data = data
+	s.seen = readStamp{}
 }
 
 // Close releases the store's database handles and marks the handle closed
@@ -2435,6 +2493,7 @@ func (s *Store) changeTask(id string, change func(*state, *Task, time.Time) erro
 }
 
 func normalizeSpec(spec TaskSpec, rootID string) TaskSpec {
+	spec.Model = strings.TrimSpace(spec.Model)
 	spec.ID = strings.TrimSpace(strings.TrimPrefix(spec.ID, "t-"))
 	spec.Title = strings.TrimSpace(spec.Title)
 	spec.ParentID = strings.TrimSpace(strings.TrimPrefix(spec.ParentID, "t-"))
@@ -3259,14 +3318,17 @@ func cloneTask(task *Task) *Task {
 		return nil
 	}
 	copyTask := *task
-	copyTask.Dependencies = append([]Dependency(nil), task.Dependencies...)
-	copyTask.Capabilities = append([]string(nil), task.Capabilities...)
-	copyTask.Resources = append([]ResourceClaim(nil), task.Resources...)
-	copyTask.ContextInputs = append([]string(nil), task.ContextInputs...)
-	copyTask.Deliverables = append([]string(nil), task.Deliverables...)
-	copyTask.EvidenceRequirements = append([]string(nil), task.EvidenceRequirements...)
-	copyTask.Artifacts = append([]string(nil), task.Artifacts...)
-	copyTask.Evidence = append([]string(nil), task.Evidence...)
+	copyTask.Dependencies = slices.Clip(slices.Clone(task.Dependencies))
+	copyTask.Capabilities = slices.Clip(slices.Clone(task.Capabilities))
+	copyTask.Resources = slices.Clip(slices.Clone(task.Resources))
+	copyTask.ContextInputs = slices.Clip(slices.Clone(task.ContextInputs))
+	copyTask.Deliverables = slices.Clip(slices.Clone(task.Deliverables))
+	copyTask.EvidenceRequirements = slices.Clip(slices.Clone(task.EvidenceRequirements))
+	copyTask.Checks = slices.Clip(slices.Clone(task.Checks))
+	copyTask.Artifacts = slices.Clip(slices.Clone(task.Artifacts))
+	copyTask.Evidence = slices.Clip(slices.Clone(task.Evidence))
+	copyTask.VerdictBasis.Runs = slices.Clip(slices.Clone(task.VerdictBasis.Runs))
+	copyTask.VerdictBasis.Unobserved = slices.Clip(slices.Clone(task.VerdictBasis.Unobserved))
 	return &copyTask
 }
 

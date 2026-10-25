@@ -733,7 +733,7 @@ func mergeScreenWord(merge string) string {
 // `stopped — branch kept`, which welded the two together and made the branch
 // unsayable about any other landing; where the work was left is now its own
 // clause on the row ([taskBranchKept], and the landing card's fact line), and
-// the state is one word (docs/design/task-states/DESIGN.md).
+// the state is one word.
 const taskStoppedWord = "stopped"
 
 // taskBranchKept is WHERE THE WORK WAS LEFT, and it is a fact about source
@@ -744,7 +744,7 @@ const taskStoppedWord = "stopped"
 // `finished, but needs your look` and `finished — look it over` were three
 // spellings of one reading — the machine has done what it can, and somebody has
 // to say something — which internal/session now spells once as `your call` plus
-// the reason for it (docs/design/task-states/DESIGN.md). They were this file's
+// the reason for it. They were this file's
 // own vocabulary, and the roster, the record and home each had a different one.
 const taskBranchKept = "branch kept"
 
@@ -5363,7 +5363,7 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	// that handed a question back both publish a row that stops carrying what the
 	// last one did — so keeping either past the notice that dropped it would be
 	// this surface asking a question somebody has already answered
-	// (docs/design/task-states/DESIGN.md).
+	//.
 	node.conflicts, node.decider = notice.Conflicts, notice.Decider
 	node.shifted, node.groundHeld = notice.Shifted, notice.GroundHeld
 	// The model is kept whenever an update carries one and never overwritten

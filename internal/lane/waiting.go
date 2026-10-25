@@ -41,7 +41,7 @@ import (
 // and for which of them are priors to be learned.
 //
 // The equations, the priors, the borrowing rule, the change-point test and the
-// file format are all in `docs/design/waiting/DESIGN.md`. This file is the
+// file format are all in `the implementation`. This file is the
 // contract they are written against.
 
 // Level names one term of the sum above, and the order is the order of the
@@ -128,7 +128,7 @@ func (c Chain) Predict() (mu, variance float64) {
 // p50 and p90, which is that lane's measured variability — and [SpreadFloor] is
 // the prior for a pair nothing has been published about. One figure under every
 // lane said instead that every lane's tail is the worst tail on the sheet: the
-// lane `bench/lanelab` proves this against publishes 0.577 nats, and was waited
+// lane `the benchmark harness` proves this against publishes 0.577 nats, and was waited
 // against one.
 //
 // unit is how many of the chain's own units make a second: the first-token

@@ -343,8 +343,8 @@ func TestEachStepInTheOpenWindowStillOpensItsOwnCalls(t *testing.T) {
 
 // ── COMPLETION ALWAYS COLLAPSES THE WORK ────────────────────────────────────
 
-// The owner's ruling, and the one place a reader's expansion does not outlive
-// what it was about: a turn that is over is an exchange again.
+// The, and the one place a reader's expansion does not outlive what it was about: a turn
+// that is over is an exchange again.
 func TestCompletionCollapsesWorkTheReaderOpenedWhileItRan(t *testing.T) {
 	a := liveStepsApp(t)
 	a.toggleLatestWorkfold()

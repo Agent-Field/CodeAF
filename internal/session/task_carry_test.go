@@ -3,9 +3,8 @@ package session
 // WHAT THE PRODUCTION CONSTRUCTOR CARRIES DOWN, PROVED THROUGH THE PRODUCTION
 // CONSTRUCTOR.
 //
-// docs/TRAJECTORIES.md's C1 was one missing field in a literal that copies about
-// thirty, and the reason eighteen tests missed it was that every one of them
-// hand-built the worker's Config. So nothing in this file writes a Config
+// A missing field in the worker Config can evade tests that hand-build the
+// same Config. So nothing in this file writes a Config
 // literal for a worker: each test asks [Agent.newTaskAgent] for one, exactly as
 // [Agent.workTaskNode] does, and asks the worker what it actually has.
 //
@@ -102,7 +101,7 @@ func TestTheProductionConstructorCarriesTheProviderRepairOntoEveryWorker(t *test
 
 // THE NO-TOOLS RESCUE MUST WORK AT EVERY DEPTH. [Agent.newTaskAgent] reads
 // SupportsParameter off the parent's config to refuse a model that cannot hold a
-// tool at all — and until this lane it did not carry the answer down, so the
+// tool at all — and until this test it did not carry the answer down, so the
 // check ran for a conversation's own task and for nothing below it. C1 made that
 // reachable far more often: every part division hands out is built by a worker.
 func TestAPartIsBuiltWithTheSameNoToolsRescueItsParentHad(t *testing.T) {

@@ -22,11 +22,10 @@ const awayAfter = 10 * time.Minute
 // after exactly as long as it would take to decide they are not coming, and
 // there is no second figure anywhere that could drift from it.
 //
-// A CLOCK IS OPT-IN AND STAYS OPT-IN (owner ruling, 2026-09-11): nothing here
-// gives a question a clock. [Agent.autonomyFor] decides WHETHER there is one —
-// only where the person set a rule, plus the assumption kind, whose whole shape
-// is that its options stand unless somebody strikes them — and this decides only
-// how long.
+// A CLOCK IS OPT-IN AND STAYS OPT-IN: nothing here gives a question a clock.
+// [Agent.autonomyFor] decides WHETHER there is one — only where the person set a rule,
+// plus the assumption kind, whose whole shape is that its options stand unless somebody
+// strikes them — and this decides only how long.
 func autonomyClock(set time.Duration) time.Duration {
 	if set > 0 {
 		return set
@@ -139,7 +138,7 @@ func (a *Agent) autonomyFor(kind AskKind) Policy {
 		// THE ONE KIND WITH A CLOCK NOBODY ASKED FOR, and it is the kind whose
 		// own shape is that nothing is decided at the end of it: an assumptions
 		// card's options STAND unless they are struck, so the clock ends a
-		// reading and not a decision (docs/design/questions/DESIGN.md's table).
+		// reading and not a decision.
 		return Policy{Kind: PolicyRecommendThenAuto, After: autonomyClock(0)}
 	}
 	return Policy{Kind: PolicyAsk}

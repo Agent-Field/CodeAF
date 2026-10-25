@@ -19,7 +19,7 @@ import (
 // doctorSnapshot is everything doctor reports.
 //
 // Two rows it used to carry are gone with the v1 resident's scheduler
-// (docs/design/automations/DESIGN.md): `background timer`, which read the
+// : `background timer`, which read the
 // operating-system timer that scheduler installed, and `standing`, which
 // counted its charters beside the questions still waiting on an answer.
 // Nothing installs a timer any more and nothing makes a charter, so a row

@@ -6,7 +6,7 @@ package provider_test
 //
 // recovery_test.go proves the law against lanestub, whose account-excluded lane
 // answers with a body copied from the live router. This file asks the live
-// router itself, on the owner's account, which on 2026-09-10 excludes the
+// router itself, using an account configured to exclude the
 // DeepSeek first-party machine under the "paid model training" privacy switch —
 // for deepseek/deepseek-v4.1-flash AND for deepseek/deepseek-v4-pro-0813, which
 // is the whole claim: the exclusion is the account's and the machine's, not a

@@ -77,7 +77,7 @@
   "price_note": "prices are pinned from the live catalog on 2026-08-05 rather than left for the router to fetch. The rung ordering is this experiment's independent variable, so it must not depend on a catalog fetch that could fail or drift between the sequential runs and the fresh-ledger control.",
   "order_note": "written cheapest-first, which is the router's tie-break of last resort when nothing has been measured \u2014 i.e. the state run 1 starts in.",
   "measurement": {
-    "battery": "bench/routerlab's 10-task anchor block, 2 replicates, deterministic graders only, no LLM judge",
+    "battery": "the benchmark harness's 10-task anchor block, 2 replicates, deterministic graders only, no LLM judge",
     "why": "that block is what pinned Phase A's Rasch scale, so a candidate's score on it is directly comparable to the seven models already measured",
     "reasoning_mode": "off matches aforge production (DefaultReasoning and DefaultExecReasoning are both EffortOff in internal/config/config.go); the `on` arms exist because Phase A's report flagged reasoning-off as unfair to reasoning-first models and asked for the re-run",
     "max_tokens": "4096 for reasoning-off arms (identical to Phase A, so the controls are comparable); 16384 for reasoning-on arms, because at 4096 a reasoning-first model spends the whole budget thinking and the cell measures the ceiling instead of the model",

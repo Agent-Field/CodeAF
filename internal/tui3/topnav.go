@@ -43,7 +43,7 @@ import (
 //
 // ── THE WIDTH LADDER ──
 //
-// A row too narrow for everything gives things up IN THE OWNER'S ORDER
+// A row too narrow for everything gives things up IN PRIORITY ORDER
 // (2026-09-24): the clock goes first (and the machine's name with it, the
 // other fact every terminal title already carries), then the moving count,
 // then the words of `2 want you`, which shortens to `2 ?` in the same amber,
@@ -262,7 +262,7 @@ func (a *app) navTails(pal palette, mode pulseMode) [7]string {
 	if name := strings.TrimSpace(a.host); name != "" {
 		// THE MACHINE THESE PAGES ARE ABOUT, dim, and nothing at all on a local
 		// session: it is invisible when there is nothing to say (host.go). It is
-		// `on spark` rather than a bare `spark` so it cannot read as a place.
+		// `on laptop` rather than a bare `laptop` so it cannot read as a place.
 		host = pal.dim(placeMachineLead + name)
 	}
 	rung := func(parts ...string) string {

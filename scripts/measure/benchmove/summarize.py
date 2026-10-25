@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
-"""summarize.py <out dir>: rows.jsonl -> summary.json and summary.md (median [min-max] of the reps).
-
-Dollars use the hosted price table of docs/STAGE-1H-DECISION.md (marginal, beyond every free tier), rule (a):
-  Worker request $0.30/M (every relay request), Worker CPU 3 ms assumed per request at $0.02/M ms,
-  Durable Object request $0.15/M (every directory request), R2 Class A $4.50/M (a frame put),
-  R2 Class B $0.36/M (an object get; one B per get is a lower bound), R2 storage $0.015/GB-month.
-Operation counts come from the client's own wire meter, so they are what the Worker would be asked, not
-what the docker relay did.
-"""
+"""Summarize repeated runs from rows.jsonl into summary.json and summary.md."""
 import json, statistics, sys
 from collections import defaultdict
 from pathlib import Path
@@ -115,7 +107,7 @@ PROFILE = dict(sessions=8, publishes_per_session=60, heartbeats_per_session=30, 
 
 
 def usermonth(rows):
-    """dollars per active user-month for the STAGE-1H session shape (8 sessions of 30 minutes, a publish every 30 s,
+    """dollars per active user-month for the sampled session shape (8 sessions of 30 minutes, a publish every 30 s,
     30 lease keepalives, 20% of sessions end in a move) from the measured per-operation counts."""
     g = group(rows)
     env = sorted({k[0] for k in g}, key=lambda e: (e != "same-box", e))[0]

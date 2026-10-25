@@ -29,7 +29,7 @@ import (
 // the page. Two: `esc back` was drawn TWICE on every frame of these pages, once
 // in the head's right corner and once at the end of the foot, which on a
 // six-line card spent two of its sixteen words repeating one instruction
-// (docs/design/polish/audit-tasks.md row 15).
+// .
 //
 // They do not actually conflict, and this is the resolution: THE FOOT CARRIES
 // THE WAY OUT ONLY WHERE THE HEAD DOES NOT. The head keeps its corner at almost

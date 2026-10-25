@@ -9,7 +9,7 @@ package lane
 // use, and never goes to the network to decide any of it.
 //
 // Those are the five sentences the design is sold on
-// (`docs/design/routing/provider-routing.md`, "Proof plan"), and they are written here as
+// (`the implementation`, "Proof plan"), and they are written here as
 // five scenarios rather than as unit tests because every one of them is a
 // statement about the seams TOGETHER: a chooser that picks well over a ledger
 // that forgets is worth nothing, and so is a ledger that learns for a chooser
@@ -91,7 +91,7 @@ const e2ePromptTokens = 4000
 
 // ── THE WORLD, AS IT WAS MEASURED ───────────────────────────────────────────
 
-// e2eLane is one row of the table in `docs/design/routing/provider-routing.md`, "The
+// e2eLane is one row of the table in `the implementation`, "The
 // world, measured (2026-08-30, one model, 30-minute window)". Six of the
 // seventeen lanes are here, chosen because between them they carry every shape
 // the design has to get right: the one that is fastest at the median and among
@@ -141,7 +141,7 @@ func (l e2eLane) priceOut() float64 { return l.dollars / 1e6 }
 // priceIn is the lane's input tariff. See the note on [e2eLane].
 func (l e2eLane) priceIn() float64 { return 0.4 * l.priceOut() }
 
-// row is the sheet row this lane publishes: the prior the ledger is primed
+// row is the sheet row this test publishes: the prior the ledger is primed
 // from, in the router's own units.
 func (l e2eLane) row() Row {
 	return Row{
@@ -182,7 +182,7 @@ func (l e2eLane) stub() lanestub.Lane {
 			// timer's own overshoot is about half a millisecond for any sleep
 			// under two. A rate read off this socket is a measurement of the
 			// scheduler. Scripting longer answers therefore buys a belief about
-			// the machine and costs a tenfold slower suite. `bench/lanelab/gosim`
+			// the machine and costs a tenfold slower suite. `the benchmark harness`
 			// is where the rate half is exercised: it takes the first token off
 			// the wire and carries the drawn rate beside the stream, which is the
 			// change this file would need before it could make a claim about
@@ -302,7 +302,7 @@ func e2eSkipWithoutAChooser(t *testing.T, now time.Time) Choice {
 	t.Helper()
 	choice := Default().Chooser().Choose(e2eTalk(now))
 	if choice.Empty() {
-		t.Skip("lane chooser not landed yet (wave 1 L-B): a primed ledger still chooses nothing")
+		t.Skip("lane chooser unavailable: a primed ledger still chooses nothing")
 	}
 	return choice
 }
@@ -423,7 +423,7 @@ func TestS2TheDefaultGoesSlowAndTheRouterMoves(t *testing.T) {
 	// ── HOW THE TWO ARMS ARE SCORED, AND WHY IT IS THE SCRIPTED FIRST TOKEN ──
 	//
 	// The design's ship gate for a talk turn is p90 TIME TO FIRST TOKEN
-	// (`docs/design/routing/provider-routing.md`, C3: "for the talk scenario the prize is
+	// (`the implementation`, C3: "for the talk scenario the prize is
 	// the FIRST TOKEN only, because above the reading rate every lane is the
 	// same speed to a person, so talk gates on p90 TTFT"), and this scenario is
 	// a talk turn. The victim is scripted to go slow in exactly that way, four
@@ -513,7 +513,7 @@ func TestS2TheDefaultGoesSlowAndTheRouterMoves(t *testing.T) {
 // and asserting that one snapshot of Order (at most three names, Thompson-
 // sampled) contains it is the same coin toss wearing different clothes. The
 // honest claim is that the belief came down and the recovered lane is on the
-// frontier. See docs/design/routing/provider-routing.md, Part III.
+// frontier. See the implementation, Part III.
 func TestS3ItComesBack(t *testing.T) {
 	ledger := e2ePrimed(t)
 	e2eSkipWithoutAChooser(t, e2eMoment)
@@ -720,7 +720,7 @@ type e2eRouter struct {
 	//
 	// Both are kept because they answer different questions and only one of
 	// them is a ship gate. THE DESIGN GATES A TALK SCENARIO ON p90 TTFT
-	// (`docs/design/routing/provider-routing.md`, C3: "for the talk scenario the prize is
+	// (`the implementation`, C3: "for the talk scenario the prize is
 	// the FIRST TOKEN only, because above the reading rate every lane is the
 	// same speed to a person"), and `firsts` is that quantity. `answers` is
 	// what the world's clock advances by and what a scenario asserting that an

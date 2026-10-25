@@ -62,11 +62,10 @@ import (
 // it again.
 //
 // AND COMPLETION ALWAYS COLLAPSES IT, whatever the reader chose while it ran
-// ([app.collapseLiveWork], called at the settle). The expansion is a thing a
-// person wanted WHILE the work was happening; a turn that is over is an exchange
-// again — a question and an answer — and the machinery behind it goes back
-// behind the chip. This is the owner's ruling and it is the one place on this
-// surface where a reader's expansion does not outlive what it was about.
+// ([app.collapseLiveWork], called at the settle). The expansion is a thing a person wanted
+// WHILE the work was happening; a turn that is over is an exchange again — a question and
+// an answer — and the machinery behind it goes back behind the chip. and it is the one
+// place on this surface where a reader's expansion does not outlive what it was about.
 //
 // WHAT IT MAY NEVER COVER is [liveWorkKeeps], and the list is the conversation's
 // own: the person's words, a question waiting to be answered, an explicit

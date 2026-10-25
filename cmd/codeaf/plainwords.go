@@ -56,7 +56,7 @@ func plainWords(sentence string) string {
 // A filesystem failure arrives as an [os.PathError] wrapped on every floor it
 // passed on the way up:
 //
-//	open notebook: stat /home/x/.codeaf/graph.db: no such file or directory
+//	open notebook: stat /workspace/.codeaf/graph.db: no such file or directory
 //	create chat workspace: mkdir /nope: permission denied
 //
 // `stat`, `mkdir` and `open` are the names of system calls — a library's words

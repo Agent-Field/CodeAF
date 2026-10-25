@@ -34,7 +34,7 @@ const askBlockSchemaJSON = `{"type":"object","properties":{"kind":{"type":"strin
 // askSchemaTemplate is the schema with BLOCK where the evidence block goes.
 //
 // EVERY DESCRIPTION HERE IS A CONTRACT AND NOT A GLOSS (schemalaw_test.go states
-// the law; docs/design/prompt-diet/BENCH.md §4a is the bill). `ask` is shelved on
+// the law; the implementation §4a is the bill). `ask` is shelved on
 // a full belt and PRE-ARMED on a lean one (promptprofile.go), which makes this
 // the one schema a small model pays for on every request of every turn: it was
 // four thousand two hundred and seventy-seven bytes, thirty percent of the whole
@@ -250,7 +250,7 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 		// Nothing was asked, so there is nothing in the book and nothing to
 		// deliver: the answer is this call's own result, rendered the one way
 		// every answer is rendered ([askAnswerText]).
-		// AND THE LINE LEAVES THE ENGINE. docs/design/questions/DESIGN.md's
+		// AND THE LINE LEAVES THE ENGINE. the implementation's
 		// HEADLESS law is that the policy applies AND IS PRINTED — a run that
 		// took a default silently is a run whose decision nobody can find
 		// afterwards. The engine does not print; the answer carries the sentence

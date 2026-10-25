@@ -31,12 +31,9 @@ import (
 // window. `behind` describes a position on a screen nobody can see, which makes
 // it furniture; `open` describes what is true.
 
-// NO DOOR ONTO A CONVERSATION IS EVER REFUSED FOR HOW MANY ARE ALREADY OPEN.
-// There was a cap — eight — and its own comment said that a cap hit in practice
-// by somebody who was not testing it is evidence the number is wrong. It was hit
-// in a day of ordinary use, and the owner's ruling on 2026-08-31 was to remove
-// the limit rather than to raise it: "that is pointless". That ruling stands, and
-// nothing below is a limit: the fiftieth `/new` opens exactly like the first.
+// NO DOOR ONTO A CONVERSATION IS REFUSED FOR HOW MANY ARE ALREADY OPEN.
+// Quiet conversations can be released to bound resources without imposing a
+// limit on the number of conversations a person can start.
 //
 // WHAT ONE OPEN CONVERSATION COSTS is what it always was — a few goroutines, its
 // transcript, one file descriptor, a five-second presence tick and its
@@ -100,7 +97,8 @@ type kept struct {
 // since been closed finds nothing in the map and does nothing at all — the same
 // shape a stale generation has, needing no new rule.
 type behindStirMsg struct {
-	key string
+	key       string
+	chatStart *session.ChatStart
 	// quiet is a stir that is ONLY a redraw: the conversation said something
 	// that changes what it is CALLED and nothing about what it is doing. It is a
 	// separate bit rather than a second lane because the banner rules
@@ -618,6 +616,13 @@ func (w *behindWatch) run() {
 			// session's own arrangement: a wake is handed over between turns.
 			replaceTurn(stream, nil)
 		case ev, ok := <-turn:
+			if ok && ev.Kind == session.EventChatStart && ev.ChatStart != nil {
+				select {
+				case w.out <- behindStirMsg{key: w.key, chatStart: ev.ChatStart}:
+				case <-w.quit:
+					return
+				}
+			}
 			if ok && ev.Kind == session.EventNotice && ev.Unrecorded && ev.Text != "" {
 				w.holdTurnNotice(ev.Text)
 			}
@@ -686,8 +691,14 @@ func (a *app) stirLane() tea.Cmd {
 func (a *app) behindStir(note behindStirMsg) tea.Cmd {
 	next := waitStir(a.stirs)
 	held := a.behind[note.key]
+	if note.chatStart != nil && note.key == a.frontTabKey() {
+		return tea.Batch(next, a.startRequestedChat(note.chatStart, a.agent))
+	}
 	if held == nil {
 		return next
+	}
+	if note.chatStart != nil {
+		return tea.Batch(next, a.startRequestedChat(note.chatStart, held.conv.Agent))
 	}
 	a.keepHeldNotices(held)
 	// A CONVERSATION THAT HAS JUST NAMED ITSELF IS A REDRAW AND NOTHING ELSE.

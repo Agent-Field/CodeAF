@@ -371,7 +371,7 @@ func TestAWalkWithNoBaseDoesNothingRatherThanWalkingTheDisk(t *testing.T) {
 // to stop only BETWEEN DIRECTORIES. The directory that ends a home walk on a
 // Mac is `~/Library/Caches`, which is one directory holding hundreds of
 // thousands of files, and a bound that is never read while those stream past is
-// not a bound. Measured on the owner's laptop before this change:
+// not a bound. Measured before this change:
 // `scanFolderRoots` took 5m58s under a three-second budget, which is what took
 // the folder picker's background read past the test driver's own budget and
 // panicked `TestThePicksLandingMidBrowseKeepTheChoicesAndThePreview`.

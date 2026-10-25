@@ -14,7 +14,7 @@ package session
 // A dropping — a job log, a stubbed tool result — is
 // re-creatable, carries the sweep's 7-day TTL, and is never something anybody
 // asked for. It belongs beside the transcript that explains what it was for, so
-// that deleting a session is removing one folder (docs/CHAT-V3.md, Decision 26)
+// that deleting a session is removing one folder
 // and so that NOTHING OF OURS LIVES IN THE PERSON'S FOLDER.
 //
 // A deliverable is the opposite claim: somebody may want it back. An OWNED

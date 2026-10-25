@@ -14,10 +14,10 @@ import (
 
 // otherMachines is one chat in each state a person can find on another machine.
 var otherMachines = chatlist.Static{
-	{Cell: "c-run", Title: "Nightly index rebuild", Device: "studio", Status: chatlist.Running, DurableAgo: 2 * time.Minute},
-	{Cell: "c-off", Title: "Port the picker", Device: "studio", Status: chatlist.Off, DurableAgo: 3 * time.Hour},
+	{Cell: "c-run", Title: "Nightly index rebuild", Device: "host-a", Status: chatlist.Running, DurableAgo: 2 * time.Minute},
+	{Cell: "c-off", Title: "Port the picker", Device: "host-a", Status: chatlist.Off, DurableAgo: 3 * time.Hour},
 	{Cell: "c-branch", Title: "Fix the flaky test", Device: "laptop", Status: chatlist.Branch, OrphanTurns: 2, DurableAgo: 5 * time.Hour},
-	{Cell: "c-idle", Title: "Notes on the migration", Device: "studio", Status: chatlist.Idle, DurableAgo: 26 * time.Hour},
+	{Cell: "c-idle", Title: "Notes on the migration", Device: "host-a", Status: chatlist.Idle, DurableAgo: 26 * time.Hour},
 	{Cell: "c-here", Title: "Held by this machine", Device: "here", Status: chatlist.Here, DurableAgo: time.Minute},
 }
 
@@ -53,8 +53,8 @@ func TestHomeRowsFromOtherMachines(t *testing.T) {
 	a := machinesHome(t, otherMachines, 200)
 	text := homeText(a)
 	for _, want := range []string{
-		"Nightly index rebuild", "running on studio",
-		"Port the picker", "studio offline",
+		"Nightly index rebuild", "running on host-a",
+		"Port the picker", "host-a offline",
 		"Fix the flaky test", "2 turns from laptop: merge / discard",
 		"Notes on the migration",
 	} {
@@ -68,7 +68,7 @@ func TestHomeRowsFromOtherMachines(t *testing.T) {
 		t.Errorf("a chat held here is drawn again as another machine's")
 	}
 	for _, line := range linesWith(a, "Notes on the migration") {
-		for _, banned := range []string{"idle", "here", "studio"} {
+		for _, banned := range []string{"idle", "here", "host-a"} {
 			if strings.Contains(line, banned) {
 				t.Errorf("an idle chat says %q: %q", banned, line)
 			}
@@ -105,7 +105,7 @@ func TestUnreachableKeepsLastListing(t *testing.T) {
 	if !strings.Contains(text, chatlist.Unreachable) {
 		t.Fatalf("no unreachable line:\n%s", text)
 	}
-	if !strings.Contains(text, "Nightly index rebuild") || !strings.Contains(text, "running on studio") {
+	if !strings.Contains(text, "Nightly index rebuild") || !strings.Contains(text, "running on host-a") {
 		t.Fatalf("the last listing was dropped:\n%s", text)
 	}
 }
@@ -115,14 +115,14 @@ func TestUnreachableKeepsLastListing(t *testing.T) {
 func TestHomeMachineRowsGolden(t *testing.T) {
 	golden := map[int][]string{
 		80: {
-			"   Nightly index rebuild  running on studio                                   2m",
-			"   Port the picker  studio offline                                            3h",
+			"   Nightly index rebuild  running on host-a                                   2m",
+			"   Port the picker  host-a offline                                            3h",
 			"   Fix the flaky test  2 turns from laptop: merge / discard                   5h",
 			"   Notes on the migration                                                     1d",
 		},
 		40: {
-			"  Nightly index...  running on studio 2m",
-			"  Port the picker  studio offline     3h",
+			"  Nightly index...  running on host-a 2m",
+			"  Port the picker  host-a offline     3h",
 			"  Fix the flaky ...  2 turns · laptop 5h",
 			"  Notes on the migration              1d",
 		},
@@ -148,7 +148,7 @@ func TestFreshHomeListsRowsFromOtherMachines(t *testing.T) {
 			a.width, a.height = width, 40
 			a.taker = &fakeTaker{}
 			a.machines = chatlist.Static{
-				{Cell: "c-off", Title: "Port the picker", Device: "studio", Status: chatlist.Off, DurableAgo: 3 * time.Hour, Pending: 2},
+				{Cell: "c-off", Title: "Port the picker", Device: "host-a", Status: chatlist.Off, DurableAgo: 3 * time.Hour, Pending: 2},
 			}
 			a.branches = BranchActions{Merge: func(context.Context, string) error { return nil }}
 			drain(t, a, a.openHome())
@@ -157,7 +157,7 @@ func TestFreshHomeListsRowsFromOtherMachines(t *testing.T) {
 				t.Fatalf("a fresh home does not list the chat on another machine:\n%s", text)
 			}
 			standOn(t, a, "c-off")
-			if text := homeText(a); !strings.Contains(text, "studio") || strings.Contains(text, homeEmptyWord) {
+			if text := homeText(a); !strings.Contains(text, "host-a") || strings.Contains(text, homeEmptyWord) {
 				t.Fatalf("enter on the row raised no takeover question:\n%s", text)
 			}
 		})
@@ -177,7 +177,7 @@ func TestAChatHeldElsewhereIsDrawnAsSuchWhicheverReadingComesFirst(t *testing.T)
 				lab := newHomeLab(t)
 				workspace := lab.workspace("project")
 				id := "0000000000000001"
-				src := chatlist.Static{{Cell: id, Title: "Port the picker", Device: "studio", DeviceID: "dev_studio",
+				src := chatlist.Static{{Cell: id, Title: "Port the picker", Device: "host-a", DeviceID: "dev_host-a",
 					Status: status, DurableAgo: time.Minute}}
 				var a *app
 				if readingFirst {
@@ -194,7 +194,7 @@ func TestAChatHeldElsewhereIsDrawnAsSuchWhicheverReadingComesFirst(t *testing.T)
 					a.machines = src
 					drain(t, a, a.askMachines())
 				}
-				if got := linesWith(a, "studio"); len(got) == 0 {
+				if got := linesWith(a, "host-a"); len(got) == 0 {
 					t.Fatalf("the chat is drawn as a plain local row:\n%s", homeText(a))
 				}
 			})
@@ -223,12 +223,12 @@ func TestAChatThisMachineLetLapseStaysLocal(t *testing.T) {
 // it: the row says the device is off, not that the chat runs there now.
 func TestARowOnAnOfflineDeviceDoesNotSayRunning(t *testing.T) {
 	a := machinesHome(t, chatlist.Static{
-		{Cell: "c-run", Title: "Nightly index rebuild", Device: "studio", DeviceID: "dev_studio", Status: chatlist.Running, DurableAgo: time.Minute},
+		{Cell: "c-run", Title: "Nightly index rebuild", Device: "host-a", DeviceID: "dev_host-a", Status: chatlist.Running, DurableAgo: time.Minute},
 	}, 200)
-	feed := &fakeFeed{state: dirwatch.State{Up: true, Online: []string{"dev_studio"}}}
+	feed := &fakeFeed{state: dirwatch.State{Up: true, Online: []string{"dev_host-a"}}}
 	a.dirFeed = feed
 	a.rebuildMachines()
-	if got := linesWith(a, "running on studio"); len(got) != 1 {
+	if got := linesWith(a, "running on host-a"); len(got) != 1 {
 		t.Fatalf("an online device's chat should say running:\n%s", homeText(a))
 	}
 	feed.state.Online = nil
@@ -236,7 +236,7 @@ func TestARowOnAnOfflineDeviceDoesNotSayRunning(t *testing.T) {
 	if got := linesWith(a, "running on"); len(got) != 0 {
 		t.Fatalf("an offline device's chat still says running: %q", got)
 	}
-	if got := linesWith(a, "studio offline"); len(got) != 1 {
+	if got := linesWith(a, "host-a offline"); len(got) != 1 {
 		t.Fatalf("an offline device's chat does not say it is off:\n%s", homeText(a))
 	}
 }
@@ -244,14 +244,14 @@ func TestARowOnAnOfflineDeviceDoesNotSayRunning(t *testing.T) {
 // A presence change redraws the rows without waiting for a new listing.
 func TestAPresenceSignalRedrawsTheRow(t *testing.T) {
 	a := machinesHome(t, chatlist.Static{
-		{Cell: "c-run", Title: "Nightly index rebuild", Device: "studio", DeviceID: "dev_studio", Status: chatlist.Running, DurableAgo: time.Minute},
+		{Cell: "c-run", Title: "Nightly index rebuild", Device: "host-a", DeviceID: "dev_host-a", Status: chatlist.Running, DurableAgo: time.Minute},
 	}, 200)
-	feed := &fakeFeed{state: dirwatch.State{Up: true, Online: []string{"dev_studio"}}}
+	feed := &fakeFeed{state: dirwatch.State{Up: true, Online: []string{"dev_host-a"}}}
 	a.dirFeed = feed
 	a.rebuildMachines()
 	feed.state.Online = nil
 	a.tookWatch(dirWatchMsg{from: feed})
-	if got := linesWith(a, "studio offline"); len(got) != 1 {
+	if got := linesWith(a, "host-a offline"); len(got) != 1 {
 		t.Fatalf("a presence signal left the row stale:\n%s", homeText(a))
 	}
 }

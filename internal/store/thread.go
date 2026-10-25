@@ -1184,7 +1184,7 @@ func validCommandKind(kind CommandKind) bool {
 // two that answered the offer to keep watching with no terminal open.
 //
 // THEY ARE NOT COMMAND KINDS ANY MORE. The scheduler they drove is gone
-// (docs/design/automations/DESIGN.md), so validCommandKind refuses a new one
+// , so validCommandKind refuses a new one
 // at the door. They are written down here, once, for the one place they can
 // still turn up — a store an older build left holding one unresolved — so the
 // resident can settle it with a sentence a person can read instead of the

@@ -1,28 +1,10 @@
 package session
 
-// A PROGRAM'S ENDING IS FOR CODEAF TO ACT ON, NOT FOR THE PERSON TO DECODE.
-//
-// senior-dev ends with a status — its change passed the project's own build and
-// tests, nothing finished checking it, it did not pass, it hit a ceiling, it
-// broke — and until this file that status was a sentence on a row and in the
-// conversation's record, read by the model only if the person happened to ask
-// something next. The owner asked on 2026-09-25 that the status inform codeaf
-// rather than the person: the chat reads it the moment the run ends, checks
-// what it can, sends senior-dev back with a sharper brief when the work did not
-// stand, and tells the person where the work is in one plain summary.
-//
-// So every program run's landing WAKES a bounded turn ([Agent.deliverBeltRunLanding])
-// carrying the ending as a fact ([programVerdict]) and the one line of what to
-// do about it, under a role page that says the whole playbook
-// (prompts/program-outcome.md) — the per-event vehicle, which costs the fixed
-// prefix nothing.
-//
-// TWO BOUNDS ARE CODE, NOT ADVICE. codeaf sends a program back on its own at
-// most [programAutoRetries] times in a line of runs on one piece of work, and
-// never after a run that ended on a dollar or time ceiling: that re-run spends
-// more of the person's money, so it waits for their word ([Agent.programRetryRefusal]).
-// A hand-off the person asks for in their own turn is theirs, and starts the
-// count again.
+// A program ending wakes a bounded conversation turn so codeaf can check the
+// result, request a repair when needed and explain the outcome. The ending
+// travels as a fact under prompts/program-outcome.md instead of expanding every
+// request. Automatic repairs are bounded by programAutoRetries and never follow
+// a time or spending ceiling without the person asking.
 
 import (
 	"encoding/json"
@@ -475,23 +457,11 @@ func programLimitLine(run *beltRun, summary RunSummary, landing RunLanding) stri
 	return fmt.Sprintf("%s stopped at %s %s limit · %s · its work is %s", programName(run.delegate), scope, limit, spentWord, where)
 }
 
-// programOutcomeUnansweredLocked writes a program's own account of its ending
-// into the conversation when the turn its ending woke did not finish an answer.
-// The caller holds a.mu, at the end of that turn.
-//
-// A PROGRAM'S ENDING IS NEVER LOST TO A FAILED REPLY. On 2026-10-05 a two-hour
-// sec run ended, the turn it woke read its report and began a good summary,
-// and every model it was offered was cut mid-reply; the partial summary was
-// kept as an interrupted message the chat does not draw, and the person saw
-// a done card and nothing else. The program's account is what the turn was
-// woken to relay, so when the turn could not, the conversation says that it
-// could not and gives the account itself — once per run, as an authored line,
-// the way a run's limit line is written ([Agent.recordProgramLimit]).
-//
-// AND IT SAYS WHY THE ANSWER IS MISSING. A turn the person stopped did not
-// complete either, and telling them the chat "could not" finish would be the
-// record misdescribing their own key: their stop keeps the account and names
-// itself instead.
+// A program ending wakes a bounded conversation turn so codeaf can check the
+// result, request a repair when needed and explain the outcome. The ending
+// travels as a fact under prompts/program-outcome.md instead of expanding every
+// request. Automatic repairs are bounded by programAutoRetries and never follow
+// a time or spending ceiling without the person asking.
 func (a *Agent) programOutcomeUnansweredLocked(hub *eventHub, completed, personStopped bool) {
 	outcome := a.programOutcomeNow
 	if completed || outcome == nil || outcome.account == "" || a.programAnsweredFor == outcome.row {

@@ -19,7 +19,7 @@ import (
 // tree with go/ast and refuse a SHAPE, so they are on the pull-request gate the
 // day they land (scripts/laws.sh finds them by the import).
 //
-// They exist because the defect docs/design/recovery/DESIGN.md was written about
+// They exist because the defect the implementation was written about
 // is not a wrong line anywhere. It is that four waves in two weeks each added a
 // correct special case to a DIFFERENT rule about what a failed call meant, and
 // the shape that allows that is what these two refuse:
@@ -113,7 +113,7 @@ func TestOnlyOneVerdictTypeExists(t *testing.T) {
 		t.Fatalf("the module declares %d types named Verdict (%s), want exactly one — "+
 			"a verdict is what the harness DOES about a failed call, and a second "+
 			"meaning of the word is how three rules come to answer one question "+
-			"(docs/design/recovery/DESIGN.md §2.7)", len(declared), strings.Join(declared, ", "))
+			"", len(declared), strings.Join(declared, ", "))
 	}
 	if !strings.HasPrefix(declared[0], "internal/taxonomy/") {
 		t.Fatalf("Verdict is declared in %s, want internal/taxonomy — the one place "+
@@ -140,7 +140,7 @@ var factPackages = []string{"internal/taxonomy/", "internal/provider/"}
 // IT IS EMPTY, AND THAT IS THE POINT OF IT. The one entry was
 // internal/session/auxiliary.go's `errandWalksOn`, which spelled `Status >= 400
 // && Status < 500 && Upstream == ""` by hand; it reads `!evidence.OurBytes &&
-// !evidence.Overflow` since the dispatcher wave (docs/design/recovery/DESIGN.md
+// !evidence.Overflow` since the dispatcher wave (the implementation
 // §4), so the carve-out came off with it. An empty list means the law below
 // covers every file in the module outside the two fact packages — leave it that
 // way.
@@ -195,7 +195,7 @@ func TestOnlyTheTaxonomyTurnsAStatusIntoAMove(t *testing.T) {
 		t.Fatalf("a provider status is read as a decision outside internal/taxonomy at %s — "+
 			"ask taxonomy.Classify and do what the verdict says, or read the fact "+
 			"internal/provider stamped on the error (provider.Evidence). "+
-			"docs/design/recovery/DESIGN.md §2.6 counts what happens otherwise",
+			"the implementation §2.6 counts what happens otherwise",
 			strings.Join(stray, ", "))
 	}
 	// AND THE DEBT ONLY SHRINKS. An entry that no longer names a real site is a
@@ -246,7 +246,7 @@ func namesAFailureStatus(expr ast.Expr) bool {
 // Two mechanisms drew from one `FallbackModels` list — the endpoint ladder's own
 // walk and the pacing door's, both inside the adapter, plus internal/session's
 // turn loop — and none of them knew the others had already tried a model
-// (docs/design/recovery/DESIGN.md §2.2). Live evidence from 2026-09-10 22:32 says
+// . Live evidence from 2026-09-10 22:32 says
 // what that cost beyond the double spend: the adapter's hop carried the ORIGINAL
 // model's `provider.only` across to the new model and was answered `404 No
 // allowed providers are available for the selected model`, because a lane pin is

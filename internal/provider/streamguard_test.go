@@ -797,7 +797,7 @@ func TestAStreamThatNeverStopsIsCutAtTheCeiling(t *testing.T) {
 // the one that keeps the wall from being a new way to fail: a reply that writes
 // for a long time and then FINISHES is an answer, and it must land untouched —
 // and what it took must be remembered, because that is what the next wall on
-// this lane is derived from.
+// this test is derived from.
 func TestALongHealthyReplyUnderTheWallIsNotCut(t *testing.T) {
 	defer shortenWall(t, 2*time.Second, 4*time.Second)()
 
@@ -989,7 +989,7 @@ func shortenWall(t *testing.T, floor, ceiling time.Duration) func() {
 
 // ── A STREAM PRODUCING TOKENS IS NOT CUT FOR ELAPSED TIME ───────────────────
 //
-// The recovery design's one law from the census (`docs/design/recovery/
+// The recovery design's one law from the census (`the implementation
 // DESIGN.md` §5): silence is bounded relative to the lane's own measured rate,
 // and the only DURATION bound a producing stream may meet is the twenty-minute
 // absolute ceiling from #786.
@@ -1044,7 +1044,7 @@ func TestNoFixedDurationEverBoundsAProducingStream(t *testing.T) {
 func TestADripAtItsLanesPaceOutlivesEveryDurationBound(t *testing.T) {
 	const wall = 200 * time.Millisecond
 	defer shortenWall(t, wall, time.Minute)()
-	// Forty bytes — ten tokens — every twenty-five milliseconds is this lane's
+	// Forty bytes — ten tokens — every twenty-five milliseconds is this test's
 	// own four hundred a second, and ten walls of it.
 	piece := strings.Repeat("a", 40)
 	server := httptest.NewServer(writeCallStream("steady", piece, 25*time.Millisecond, 10*wall))

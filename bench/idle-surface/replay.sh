@@ -15,13 +15,14 @@
 # this run started, after reading the proc cmdline of each; never pkill/killall.
 #
 # Usage: replay.sh K [K ...]        e.g. replay.sh 5 50 200
-# Env:   BASE (scratch root, default /tmp/codeaf-idle-runs), WIN (window secs).
+# Env:   TAR and STUB are required. REPO defaults to the repository root.
+#        BASE defaults to $REPO/bench/idle-surface/runs; WIN is window seconds.
 set -u
-REPO="/home/santosh/src/c286tree"
+REPO="${REPO:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)}"
 BIN="$REPO/bin/codeaf"
-TAR="${TAR:-/home/santosh/src/profiles/fresh-codeaf.tar}"
-STUB="${STUB:-/home/santosh/src/stub.py}"
-BASE="${BASE:-/home/santosh/src/c286tree/bench/idle-surface/runs}"
+: "${TAR:?Set TAR to a profile tar archive}"
+: "${STUB:?Set STUB to a canned-stream server script}"
+BASE="${BASE:-$REPO/bench/idle-surface/runs}"
 PORT="${PORT:-8099}"
 WIN="${WIN:-30}"
 CLK_TCK=$(getconf CLK_TCK)

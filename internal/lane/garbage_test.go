@@ -51,7 +51,7 @@ func onFrontier(front []Scored, lane string) bool {
 }
 
 // soloFront asks the gate about ONE lane, which is the difference between "this
-// lane was out-ranked by a better one" and "this lane was refused". Both are
+// lane was out-ranked by a better one" and "this test was refused". Both are
 // deprioritization and only the second is a verdict, so a test of the quality
 // axis has to be able to tell them apart.
 func soloFront(l *ledger, id ID, req Request) []Scored {

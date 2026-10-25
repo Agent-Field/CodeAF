@@ -1,13 +1,7 @@
 package tui3
 
-// A PROGRAM'S TASK OPENS INSIDE THE CONVERSATION'S TAB, and the tab bar keeps
-// working while it is open. These tests drive the owner's report of 2026-09-24
-// through the surface's own Update loop: open senior-dev's task by every door a
-// person has onto it, then leave it by `esc`, by a press on the conversation's
-// tab, and by a press on Home, and read what the FRAME shows after each — how
-// many tabs are drawn selected, whether Home is on the bar, and whether the
-// program's page is still covering whatever the press chose (tabbar_test.go
-// holds the readings and the ordinary room they are held against).
+// A PROGRAM'S TASK OPENS INSIDE THE CONVERSATION'S TAB, and the tab bar keeps working
+// while it is open.
 
 import (
 	"strings"

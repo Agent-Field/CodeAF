@@ -45,7 +45,7 @@ const (
 // why, and [TestTheSharedTransportStatesEveryValueItRelieson] fails the build
 // if one of them goes back to being inherited.
 //
-// ── THE MEASUREMENT, 2026-09-11, against the live router from the Spark ─────
+// ── THE MEASUREMENT, 2026-09-11, against the live router from the test machine ─────
 //
 // A connection was opened, held idle for a fixed interval, and used again with
 // `httptrace` watching `GotConn`. Each hold had a pool of its own, so the only

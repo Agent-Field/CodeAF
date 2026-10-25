@@ -262,16 +262,20 @@ func (a *Agent) AppTasks() ([]AppTaskView, error) {
 	cap, _ := config.CrewTaskSpendCap(a.config.ProfileDir)
 	graphIDs := map[string]bool{}
 	out = a.appGraphTasks(out, cap, graphIDs)
-	// A HANDED-OVER TASK is a run's row, not a node (task_app_runs.go).
-	for _, row := range a.appRunRows() {
+	// Both projections share the plan gate and each trajectory for this listing.
+	rows := a.appRunRows()
+	stores, plan, closeStores := a.openPlanReadHandles()
+	defer closeStores()
+	read := &planTaskRead{stores: stores, plan: plan}
+	for _, row := range rows {
 		id := strconv.FormatUint(row.ID, 10)
 		if graphIDs[id] {
 			continue
 		}
 		graphIDs[id] = true
-		out = append(out, a.appRunView(row, cap))
+		out = append(out, a.appRunViewIn(row, cap, read))
 	}
-	for _, row := range a.PlanTasks() {
+	for _, row := range a.planTasksIn(read) {
 		if graphIDs[row.ID] {
 			continue
 		}

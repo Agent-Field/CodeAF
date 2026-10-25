@@ -155,13 +155,8 @@ var backgroundAuthors = map[string]string{
 // Every tinted run on this surface therefore comes through the ladder, and
 // "which step is this" is a question with three answers rather than forty.
 //
-// FIDELITY.md item 13 briefly made the places an exception: home and the six
-// paint #12121A over every cell of the frame, so rest gained a floor step there.
-// The owner tested it on 2026-08-25 and reversed it — "i want bg color and text
-// color to be same as in inside chat please this new bg looks weird i think we
-// were taking user terminal stuff or something previously" — so there is one
-// ladder again, with three drawable steps and a fourth that is the absence of a
-// paint, on every surface this program draws.
+// FIDELITY.md item 13 briefly made the places an exception: home and the six paint #12121A
+// over every cell of the frame, so rest gained a floor step there.
 func TestOnlyTheGroundLadderPaintsABackground(t *testing.T) {
 	entries, err := os.ReadDir(".")
 	if err != nil {

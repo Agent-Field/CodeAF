@@ -8,8 +8,7 @@ import (
 
 // THE POINTER ON A PLACE, AS A PERSON MEETS IT.
 //
-// Three gestures, one law each, and every one of them was reported broken by
-// the owner against the real binary: a tab word is a door, the wheel moves the
+// Three gestures, one law each: a tab word is a door, the wheel moves the
 // list under the pointer, and mouse and keyboard share the selected row.
 
 // autoPlaceLab is the automations place open over three automations.

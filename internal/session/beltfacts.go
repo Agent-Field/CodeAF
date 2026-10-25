@@ -130,15 +130,14 @@ func (c Config) mayQuickTask() bool {
 // oneTaskRoad says whether this agent is a conversation whose hand-offs are
 // runs in the plan store: the bash belt is asked for and a run engine is wired.
 //
-// THERE IS ONE WAY TO PUT WORK OUT UNDER THE BELT, AND IT IS `propose_task`.
-// The owner's words, 2026-09-18: one way, a task; the model launches several
-// when it needs to, and each is more of the plan. So `quick_task` is ABSENT
-// here, not refusing: it runs on the session tree, outside the plan store, where
-// no tree on the screen can show it and no check reads it, and a belt that
-// carried it would be offering a second engine under the first one's name. The
-// predicate is [stagedProposal.Commit]'s own guard, so the verb leaves the belt
-// exactly where a proposal starts a run and nowhere else; with no engine wired
-// a proposal still runs on the session tree and both verbs stay.
+// THERE IS ONE WAY TO PUT WORK OUT UNDER THE BELT, AND IT IS `propose_task`. one way, a
+// task; the model launches several when it needs to, and each is more of the plan. So
+// `quick_task` is ABSENT here, not refusing: it runs on the session tree, outside the plan
+// store, where no tree on the screen can show it and no check reads it, and a belt that
+// carried it would be offering a second engine under the first one's name. The predicate
+// is [stagedProposal.Commit]'s own guard, so the verb leaves the belt exactly where a
+// proposal starts a run and nowhere else; with no engine wired a proposal still runs on
+// the session tree and both verbs stay.
 func (c Config) oneTaskRoad() bool {
 	return !c.InTask && bashBeltAsked() && chatRunEngine != nil
 }
@@ -294,7 +293,7 @@ func (c Config) mayProposeSubharness() bool {
 }
 
 // mayBashBelt says whether this agent's belt is the experiment's bash belt
-// (bashbelt.go, docs/design/bash-task-loop/DESIGN.md): the one `bash` tool
+// (bashbelt.go, the implementation): the one `bash` tool
 // plus the hands that cannot be a shell command. InTask is half of the
 // predicate so no road can hand the experiment to a conversation, and the
 // flag is asked ONLY here — the one-reading law every belt verb follows —
@@ -397,7 +396,7 @@ var beltFacts = []beltFact{{
 	present: "- ON `propose_task` NEVER NAME THE METHOD: a task is always given its own copy, so \"work in this repo directly\", a branch or a checkout is never yours to specify.\n" +
 		"- Earlier work referred to but not pointed at (\"the reconciler task\", \"same as before\"): call `tasks` with their words BEFORE answering.\n" +
 		// AND THE TWO TRIGGERS THAT LOST THEIR HOME when the tool descriptions
-		// gave up their routing prose (docs/design/prompt-diet/DESIGN.md §4).
+		// gave up their routing prose.
 		// [tasksDescription] says what an id DOES; what it cannot say is when to
 		// reach for one, and the second half is a refusal: "continue task N" is
 		// the `continue` field on a task that already exists, and a model that
@@ -427,7 +426,7 @@ var beltFacts = []beltFact{{
 		// [shiftNotYours]), and a verb reaching for a graph that has closed is
 		// refused in the tool's own reply (tools_tasks.go). Every one of those was
 		// bought on each request of every turn in order to be told a second time on
-		// the one turn it mattered (docs/design/prompt-diet/DESIGN.md §2).
+		// the one turn it mattered.
 		"- To send the person's current correction to a running task, use `tasks` with `id` and `forward: true`. `say` is your own coordination and ends nothing; `stop` ends a task.",
 	absent: "- THE RECORD OF EARLIER WORK IS NOT REACHABLE FROM HERE and none of this work goes to anybody else: answer from the brief and from what is in front of you, and say plainly when something earlier is referred to that you cannot see. A `[Task reference: ...]` block you were handed carries transcript URIs, and `read` takes one exactly as printed, `file://` and all: `grep` a journal or `read` it with `offset`/`limit`, and never expand an outcome line into work you did not read.",
 }, {
@@ -490,7 +489,7 @@ var beltFacts = []beltFact{{
 	// prose (tools_capabilities.go), read by the turn that fetched the pair,
 	// because it is not a fact anybody needs before there is a refusal to relay,
 	// and what `load_capability` does once it is called is that verb's own
-	// description (lane C's registry files it there).
+	// description.
 	present: "- A preference changed goes through `settings` for the row and `change_setting` for the write, never `edit` or `write` on a config file.",
 	shelved: "- A preference changed goes through `settings` for the row and `change_setting` for the write, never `edit` or `write` on a config file. Both wait in the `settings` group and `load_capability` fetches them.",
 	absent:  "- YOU CANNOT CHANGE A PREFERENCE FROM INSIDE A TASK: say so and point at `/settings`, and never `edit` or `write` a config file instead.",
@@ -521,16 +520,14 @@ var beltFacts = []beltFact{{
 // handoffFacts is `## Work or words`: the ways work leaves this turn, composed
 // from the belt so that what a model reads is what it actually has.
 //
-// IT IS A PICTURE AND NOT A RULE LIST, which is the owner's ruling of
-// 2026-09-10 and a reversal of how this section was written. What it hands the
-// model is what it HAS and what each thing COSTS — one mind with a clock; a
-// quick task that is a copy of its abilities where it stands; a task that is a
-// worker in a copy of the folder, checked and merged; the arithmetic that
-// pieces kept cost their sum and pieces handed out cost the longest of them —
-// and the model does its own reasoning from that. There are no shapes of work
-// enumerated here, because a list of shapes is a list somebody has to keep
-// true: the moment it says "a survey is quick" it has stopped teaching and
-// started matching, and the next request is one nobody wrote a row for.
+// IT IS A PICTURE AND NOT A RULE LIST. What it hands the model is what it HAS and what
+// each thing COSTS — one mind with a clock; a quick task that is a copy of its abilities
+// where it stands; a task that is a worker in a copy of the folder, checked and merged;
+// the arithmetic that pieces kept cost their sum and pieces handed out cost the longest of
+// them — and the model does its own reasoning from that. There are no shapes of work
+// enumerated here, because a list of shapes is a list somebody has to keep true: the
+// moment it says "a survey is quick" it has stopped teaching and started matching, and the
+// next request is one nobody wrote a row for.
 //
 // IT REPLACED A LIST THAT SORTED ON WIDTH, and the list was measurably wrong.
 // Until this ruling the first bullet read "WIDE WORK — a sweep across many
@@ -732,7 +729,7 @@ var programFacts = []beltFact{{
 //
 // EXISTENCE IS THE PAGE'S; MECHANICS RIDE WITH THE VERB; CONSEQUENCES RIDE WITH
 // THE EVENT. Those are the three classes the prompt diet files every law under
-// (docs/design/prompt-diet/DESIGN.md §2):
+// :
 //
 //   - EXISTENCE — that a sentence can be left behind rather than done — is the
 //     only part needed BEFORE the model plans, because "remind me at 6" has to

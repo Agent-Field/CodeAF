@@ -9,14 +9,12 @@ package tui3
 //
 // ── WHAT THIS REPLACED, AND WHY ─────────────────────────────────────────────
 //
-// The browser used to be BOTTOM CHROME. [app.overlayHeight] answered the
-// picker's want and view.go appended its rows between the draft and the status
-// line, the same slot the model picker and the command list live in. On a
-// two-hundred-column terminal that meant a column of folder names with a
-// hundred cells of dead space beside it, the previous turn's error line still on
-// screen above it, no framing of any kind, and nothing to say a chooser had
-// opened at all — the conversation simply grew a list. The owner's own word for
-// it was that they expected to have opened something.
+// The browser used to be BOTTOM CHROME. [app.overlayHeight] answered the picker's want and
+// view.go appended its rows between the draft and the status line, the same slot the model
+// picker and the command list live in. On a two-hundred-column terminal that meant a
+// column of folder names with a hundred cells of dead space beside it, the previous turn's
+// error line still on screen above it, no framing of any kind, and nothing to say a
+// chooser had opened at all — the conversation simply grew a list.
 //
 // So the chooser is now what every other deliberate surface in this package is:
 // a frame taken WHOLE at the top of [app.frameBody], beside the places, the
@@ -79,7 +77,7 @@ import (
 // wide screen — two things a person's eye cannot associate, which is the defect
 // the screenshot shows. A hundred and twenty-eight cells is about as wide as
 // three columns of paths stay readable, and it is close to the proportion the
-// owner's reference (../reference-yazi.png) keeps on a large display.
+// column browser layout keeps on a large display.
 const (
 	// contextSheetWide is the widest the sheet is ever drawn.
 	contextSheetWide = 128
@@ -326,7 +324,7 @@ func contextGlyphs(pal palette) contextGlyph {
 	// THE PIECES ARE THE VOCABULARY'S, through this surface's one glyph door.
 	// They were literals until the frame primitive claimed the same six slots
 	// (frame.go), and a literal cannot know which repertoire the terminal is on
-	// — which is the whole of docs/design/icons/DESIGN.md's law, and what
+	// — which is the whole of the implementation's law, and what
 	// internal/iconlaw walks this package for.
 	return contextGlyph{
 		pal.glyph(tokens.GFrameTopLeft), pal.glyph(tokens.GFrameTopRight),

@@ -551,14 +551,12 @@ func TestProposeTaskOffersViaOnlyWhenTheLaunchCarriesAProgram(t *testing.T) {
 	}
 }
 
-// CODEAF PREFERS A PROGRAM FOR THE WORK IT IS FOR, AND USES ONE WHEN ASKED.
-// The paragraph said a large task "can" go to a program, and the model took a
-// permission for no reason to: the owner's call of 2026-09-24 is that it
-// reach for one by itself on the work the program's guide claims, over its
-// own hands and its own worker, and whenever the person names one. Both
-// sentences are said whatever the program lands, before the folder rule and
-// apart from it, so either can be reworded without the other; and `via`
-// says the same when the proposal is being written.
+// CODEAF PREFERS A PROGRAM FOR THE WORK IT IS FOR, AND USES ONE WHEN ASKED. The paragraph
+// said a large task "can" go to a program, and the model took a permission for no reason
+// to: it reaches for one by itself on the work the program's guide claims, over its own
+// hands and its own worker, and whenever the person names one. Both sentences are said
+// whatever the program lands, before the folder rule and apart from it, so either can be
+// reworded without the other; and `via` says the same when the proposal is being written.
 func TestThePagePrefersAProgramForItsWorkAndForTheAsk(t *testing.T) {
 	preference := []string{
 		"AND WORK A PROGRAM BUILT INTO CODEAF IS FOR GOES TO IT WHOLE, named in\n`propose_task`'s `via`",

@@ -2,7 +2,7 @@ package run
 
 // A PROGRAM CODEAF CARRIES IS ONE MORE WORKER KIND. A program that does a
 // whole task on its own — senior-dev first (internal/delegate,
-// docs/design/delegate/PROTOCOL.md) — is seated on a task exactly where the
+// the implementation) — is seated on a task exactly where the
 // bash worker is: it reads the same context for its limits, banks its dollars
 // into the same account, publishes the same live step, appends to the same
 // trajectory, and comes home with the same Report. Nothing above the factory

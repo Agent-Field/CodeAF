@@ -101,9 +101,8 @@ func TestAConversationsTipCoversTheProjectOnTheKeysRow(t *testing.T) {
 	}
 }
 
-// THE TIP STANDS WITH THE TASK COLUMN OPEN OR PUT AWAY (the owner's report,
-// 2026-09-24): a column put away — whose keys row then says `ctrl+g tasks` —
-// does not silence it.
+// THE TIP STANDS WITH THE TASK COLUMN OPEN OR PUT AWAY: a column put away — whose keys row
+// then says `ctrl+g tasks` — does not silence it.
 func TestTheConversationsTipStandsWithTheColumnOpenOrAway(t *testing.T) {
 	a, _, _ := taskApp(t)
 	a.profileDir = t.TempDir()

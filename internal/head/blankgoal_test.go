@@ -48,7 +48,7 @@ func TestAWrittenGoalCarriesNoNote(t *testing.T) {
 // field after the cut. The continuation goes out without a shape hint now, and
 // even when a model restarts anyway the run keeps the person's words.
 func TestALongBriefCutInsideTheGoalStillCompiles(t *testing.T) {
-	brief, err := os.ReadFile("testdata/brief-335.txt")
+	brief, err := os.ReadFile("testdata/library-brief.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,8 +57,8 @@ func TestALongBriefCutInsideTheGoalStillCompiles(t *testing.T) {
 		t.Fatalf("the fixture has %d words, want the several-hundred-word brief", words)
 	}
 	client := &formatClient{replies: []string{
-		`{"structure":"stratifies","goal":"Land lanes L2, L3 and L4 of the lens issue so that the repository builds and every named test`,
-		`{"title":"Lens lanes L2 to L4","scale":"project","contract":"","parts":[],"builds_on":[],"assumptions":["The branch is the one already carrying L1."],"question":"","question_options":[],"trial_of":0}`,
+		`{"structure":"stratifies","goal":"Build the library catalog application so that the repository builds and every named test`,
+		`{"title":"Library catalog application","scale":"project","contract":"","parts":[],"builds_on":[],"assumptions":["The existing catalog format remains compatible."],"question":"","question_options":[],"trial_of":0}`,
 	}}
 	compiled, err := NewCompiler(client).WithOneShotErrands().Compile(context.Background(), instruction, "")
 	if err != nil {
@@ -67,7 +67,7 @@ func TestALongBriefCutInsideTheGoalStillCompiles(t *testing.T) {
 	if !strings.HasSuffix(compiled.Goal, "Verbatim request:\n"+instruction) {
 		t.Fatalf("the goal lost the person's words:\n%s", compiled.Goal)
 	}
-	if compiled.Note != NoGlossNote || compiled.Title != "Lens lanes L2 to L4" || compiled.Scale != ScaleProject {
+	if compiled.Note != NoGlossNote || compiled.Title != "Library catalog application" || compiled.Scale != ScaleProject {
 		t.Fatalf("brief = %+v, want the restarted fields kept and the note set", compiled)
 	}
 	// The attempt asks for JSON on the wire; the continuation of a fragment

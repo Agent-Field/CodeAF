@@ -2,16 +2,13 @@ name = "codeaf-pool"
 main = "src/worker.js"
 compatibility_date = "2026-09-01"
 
-# A route on the path prefix, not a custom domain: the Worker owns only
-# codeaf.agentfield.ai/pool/* and the host can carry other services.
-routes = [
-  { pattern = "codeaf.agentfield.ai/pool/*", zone_name = "agentfield.ai" }
-]
+# Optional route for a domain you control.
+# routes = [{ pattern = "relay.example.com/pool/*", zone_name = "example.com" }]
 
 [[kv_namespaces]]
 binding = "POOL"
-# The runbook fills this id: `cd relay && wrangler kv namespace create POOL`.
-id = "REDACTED"
+# Create a namespace and replace this placeholder: `cd relay && wrangler kv namespace create POOL`.
+id = "<your-kv-namespace-id>"
 
 # Observability as set in the dashboard, kept here so a redeploy does not
 # silently change it. The Worker itself logs nothing; what these persist are

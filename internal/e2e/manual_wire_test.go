@@ -9,7 +9,7 @@
 // was asked — it composes a query of its own, and on a corpus of a few dozen
 // short sections two words nobody said move the ranking off the page (#307).
 //
-// So this lane asks the SAME forty-seven questions through the surface a person
+// So this test asks the SAME forty-seven questions through the surface a person
 // uses, one fresh conversation each, on `deepseek/deepseek-v4-flash`, and reads
 // off transcript.jsonl three things for every one of them: the query the model
 // composed, whether it opened the manual at all, and which pages came back. The
@@ -164,7 +164,7 @@ type wireRun []wireAsk
 // ledger as each question is asked.
 //
 // IT IS SUMMED HERE BECAUSE IT CANNOT BE SUMMED AFTERWARDS. The ledger lives
-// under the throwaway home this lane runs on ([newWorld]), which goes with the
+// under the throwaway home this test runs on ([newWorld]), which goes with the
 // test, and a lane that reports a measurement without its price is a lane whose
 // next pass has to be argued for from memory. The figure was recoverable
 // nowhere at all until this line existed (#321).
@@ -185,7 +185,7 @@ func (r wireRun) count() (opened, first, within int) {
 	return opened, first, within
 }
 
-// report prints the table a reader of this lane came for: every question with
+// report prints the table a reader of this test came for: every question with
 // the words the model actually searched, so a miss can be read rather than
 // guessed at.
 func (r wireRun) report(t *testing.T, name string) {

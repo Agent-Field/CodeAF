@@ -324,8 +324,7 @@ answered that with a strike table: two slow answers demote, three refuse for
 five minutes, and slow means a fixed two seconds. That is reactive, blind on the
 first call of every process, forgotten at exit, unable to rescue a request that
 is already slow, and invisible in the picker. Every one of those five is a
-consequence of having a *table* where a *belief* belongs. `docs/design/routing/provider-routing.md`
-is the full design and the measurements it was drawn from.
+consequence of having a *table* where a *belief* belongs.
 
 ### The boundary
 
@@ -393,21 +392,9 @@ stream   →  Watch.Token / Silence     →  a verdict, and at most one hedge
 - **The choice is pure.** `lane.Request` carries its own `Now`. A structural
   test fails the build when a choosing file names `time.Now`.
 
-### The file map, and who owns which file
+### Routing implementation
 
-Wave 0 landed the contract and the instrument. The five wave-1 lanes each own a
-disjoint set of files, so no two of them edit the same one.
-
-| lane | owns | delivers |
-| --- | --- | --- |
-| — (wave 0) | `internal/lane/{lane,posterior,contract,registry}.go`, `internal/lane/lanestub/` | the types, the five interfaces, the registry, the fake router |
-| L-A | `internal/lane/sheet*.go`, `belief*.go`, `store*.go` | the endpoints client and its beat, the Kalman ledger, `~/.codeaf/v3/lanes.json` |
-| L-B | `internal/lane/choose*.go`, `frontier*.go`, `value*.go`; `internal/provider/lanes.go`; λ plumbing in `internal/session` | the gate, the Pareto prune, the scalar, and the adapter that replaces the velocity ledger's order and ignore |
-| L-C | `internal/lane/watch*.go`, `hedge*.go`, `probe*.go`; `internal/provider/hedge.go`, `probe.go`; the stream loop in `internal/provider/client.go` | the derived deadline, the heartbeat and drift tests, the budgeted hedge, the probe on typing |
-| L-D | `internal/tui3/lanes*.go` and the picker, settings and HUD edits; the lane keys in `internal/config`; the manual pages | the speed column, the lane unfold, the filter grammar, the settings rows |
-| L-E | the new fields in `internal/session/usage_ledger.go` and `internal/calllog`; `bench/lanelab/`; `internal/lane/e2e_test.go` | the ledger fields, the simulator and the live A/B, and the real-key proof under `-tags e2e` |
-
-Two practical notes for the lanes. `internal/provider` already has an unexported
+Two integration details. `internal/provider` already has an unexported
 type called `lane` (`velocity.go`), so the adapter file imports this package
 under a name — the collision is real and the compiler will not warn about the
 shadowing, it will simply resolve to the wrong one. And the transport only sends
@@ -415,11 +402,9 @@ a routing preference to something it believes is a router, from the base URL or
 the configured model, so a test that wants to see `provider.order` on the wire
 against `lanestub` configures its client with a model spelled `openrouter/…`.
 
-### The four seams wave 2b joined
+### Routing integration boundaries
 
-The five lanes each left a socket. Wave 2b is where they were plugged in, and
-four of the joins are worth stating because each one is a place two layers had
-to agree without either importing the other.
+Four boundaries connect the routing layers without circular imports.
 
 | what | where it lives | how it crosses |
 | --- | --- | --- |
@@ -437,8 +422,8 @@ row attributing one machine's measurement to another the day it landed.
 ### The instrument
 
 `internal/lane/lanestub` is a fake router with lanes of a scripted speed, and it
-is shared by all five lanes for the reason a shared fixture usually is not: five
-private routers would differ, and the first disagreement between them would look
+is shared across routing tests: separate
+routers would differ, and the first disagreement between them would look
 like a bug in the code under test. It serves the endpoints sheet in the router's
 own field names, a minimal catalog, and a streamed completion that honours
 `provider.order` / `only` / `ignore`, emits the router's heartbeat comments,
@@ -450,8 +435,7 @@ a scenario scripted in minutes finishes in microseconds.
 
 **Decision.** *When* to act on a silence is decided by ONE controller, for every
 token-generating call, in every phase. `internal/lane/control` holds it: pure
-functions over a moment and a belief, no clock, no connection, no surface. The
-design is `docs/design/waiting/DESIGN.md`; this is the shape of it.
+functions over a moment and a belief, no clock, no connection, no surface.
 
 **Why one and not three.** A request is silent for one of three reasons —
 nothing has arrived, the endpoint is writing a run of thought nobody can read,
@@ -545,7 +529,7 @@ pay before it rescues anything. `internal/provider/streamguard_ceiling_test.go`
 walks every role in `lane.Roles()` at every rate `gapFor` can be handed and
 fails the build if any bound falls to or below a ceiling.
 
-**ROWS 1–6 WERE REWRITTEN BY THE WAITING POLICY** (`docs/design/waiting/DESIGN.md`).
+**ROWS 1–6 WERE REWRITTEN BY THE WAITING POLICY**.
 What they replace, and why each is retired:
 
 | retired | was | why it is gone |

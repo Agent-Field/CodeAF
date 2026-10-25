@@ -24,7 +24,7 @@ import (
 // meaning two things, and that spelling still works for one release
 // (rename.go).
 //
-// It is the third of the three doors docs/SUBHARNESS-PRD.md §9 names, and it is
+// It is the third of the three doors the implementation §9 names, and it is
 // the one with NO TASK SURFACE AT ALL — no roster row, no room, no intake card,
 // no ✕. The PRD says why in one sentence: the task surface is a PRESENTATION of
 // a run, not its definition, so a headless door that reached for it would make

@@ -170,7 +170,7 @@ endpoint until a music model earns a schema of its own).
 
 ### Decision 9 — Perception is `read`'s job: a file is a file, in every modality
 
-Decision 20 of CHAT-V3.md refused an `extract_pdf` tool because a belt with
+There is no separate `extract_pdf` tool because a belt with
 two hands for one intention makes the model choose, and what it chooses is
 wrong. That law generalizes, and it is the whole answer to "how does the
 model know it can look and listen": the model's most natural instinct — "I

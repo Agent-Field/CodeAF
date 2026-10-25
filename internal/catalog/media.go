@@ -168,7 +168,7 @@ type mediaKindCache struct {
 
 // mediaEligible is the one gate on every dedicated request. These two paths
 // exist on OpenRouter and are not an OpenAI-compatible convention, so a custom
-// endpoint, another source, and a Codex compartment never see them.
+// endpoint, another source, and a ChatGPT-account compartment never see them.
 func mediaEligible(options Options, source, base string) bool {
 	if options.NoDedicatedMedia || base != DefaultBaseURL {
 		return false

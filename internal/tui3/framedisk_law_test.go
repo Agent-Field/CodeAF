@@ -39,7 +39,7 @@ package tui3
 //     the package function of that name;
 //   - a func-typed FIELD, through whatever function this package assigns to it.
 //     `a.gitProbe = gitHead` is what made `a.gitProbe(dir)` two `git` processes,
-//     and without this edge the one call that started this lane would not have
+//     and without this edge the one call that started this test would not have
 //     been on the graph at all.
 //
 // WHAT IT DOES NOT WALK, SAID OUT LOUD, because a law whose reach a reader

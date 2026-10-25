@@ -274,7 +274,7 @@ type Alternative struct {
 // twenty requests and a tenth of the last hour's bill — and that shape is the
 // measured defect. A count per window cannot tell the request that needs a
 // rescue from the nineteen that do not, so it refuses by arrival order: on the
-// owner's task that day the hazard said act at its ceiling, the allowance said
+// example task the hazard said act at its ceiling, the allowance said
 // no, and one machine wrote 604 tokens in 86 seconds with a person watching.
 // What a rescue costs is a fact about THIS call — the prompt at this model's
 // price plus what the second arm may write, which [Alternative.Extra] already
@@ -296,7 +296,7 @@ type Purse interface {
 // dispatch.go) reads the same object to decide WHAT to do when a call has
 // failed, and writes its moves back into [Plan.Moves]. One plan, one deadline,
 // one list of what has been tried — which is the whole of
-// docs/design/recovery/DESIGN.md §3 clause 1, and the reason the eleven budgets
+// the implementation §3 clause 1, and the reason the eleven budgets
 // of its §2 could be deleted rather than tuned.
 type Plan struct {
 	// Lane is the machine expected to serve, empty when nobody was named. It is
@@ -305,7 +305,7 @@ type Plan struct {
 	Lane string
 	// Model is what is being asked, and every move of one plan carries it. The
 	// dispatcher NEVER changes it: there is exactly one model hop in this build
-	// and it belongs to the session (docs/design/recovery/DESIGN.md §4).
+	// and it belongs to the session.
 	Model string
 	// Deadline is when this call stops trying, in the person's own time, and it
 	// is the ONLY bound on how long a failed call may go on recovering.

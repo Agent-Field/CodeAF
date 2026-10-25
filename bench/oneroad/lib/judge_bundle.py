@@ -83,11 +83,6 @@ def main():
     meta = json.load(open(os.path.join(cell, "meta.json")))
     fixed, broken = changed_tests(cell)
     patch = read(os.path.join(cell, "diff.patch"), PATCH_CAP).strip() or "no changes"
-    # STRANDED WORK IS SHOWN, AND IT IS SHOWN APART. A part that worked in its own
-    # worktree and never merged has delivered nothing, so it must not sit inside
-    # PATCH where it reads as the attempt's output — wave 1h put raw conflict
-    # markers in front of a judge that way. It is still worth showing: "the work
-    # exists and did not land" is a different verdict from "nothing was done".
     stranded = read(os.path.join(cell, "stranded.patch"), PATCH_CAP).strip()
     report = report_of(cell, meta).strip() or "(the attempt said nothing)"
 

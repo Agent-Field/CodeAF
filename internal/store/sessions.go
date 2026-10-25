@@ -503,19 +503,18 @@ func (s *Store) SessionLastNonUserMessageSeq(sessionID string) (int64, error) {
 // construction: the anti-join leaves it a no-op once every session has its row,
 // and it runs at open rather than on any read path.
 //
-// Idempotent is not free, though. The insert groups every message in the store
-// to decide it has nothing to do, and it decides that on every open but the
-// first — so the ordinary case pays a full scan of the thread to write nothing
-// at all. The probe below asks the same question with the same anti-join and
-// stops at the first row that answers it, which on a settled store is no rows
-// and an index seek.
+// Probe distinct room ids through the covering message index before looking
+// for a missing session. A settled store still reads that index, but it pays
+// one session lookup per room rather than one per message. Keep this probe on
+// every open: an older writer can introduce missing rows after migration.
 func backfillSessions(db *sql.DB) error {
 	var pending bool
 	if err := db.QueryRow(`
 		SELECT EXISTS (
-			SELECT 1 FROM messages m
-			WHERE m.session_id <> ''
-			  AND NOT EXISTS (SELECT 1 FROM sessions s WHERE s.id = m.session_id)
+			SELECT 1 FROM (
+				SELECT DISTINCT session_id FROM messages WHERE session_id <> ''
+			) m
+			WHERE NOT EXISTS (SELECT 1 FROM sessions s WHERE s.id = m.session_id)
 		)`).Scan(&pending); err != nil {
 		return err
 	}

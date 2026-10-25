@@ -85,7 +85,7 @@ func TestTheNewestWindowTakesTheKeyboardAndTheOlderOneIsTold(t *testing.T) {
 	desk.hello(Hello{Version: Version, Surface: "macbook"})
 
 	away := dialSession(t, sess)
-	welcome := decode[Welcome](t, away.hello(Hello{Version: Version, Surface: "spark"}).Payload)
+	welcome := decode[Welcome](t, away.hello(Hello{Version: Version, Surface: "tower"}).Payload)
 	if !welcome.Driver.Yours {
 		t.Fatalf("the window that just arrived was not given the keyboard: %+v", welcome.Driver)
 	}
@@ -96,8 +96,8 @@ func TestTheNewestWindowTakesTheKeyboardAndTheOlderOneIsTold(t *testing.T) {
 	if told.Yours {
 		t.Fatalf("the older window still believed it was driving")
 	}
-	if told.Machine != "spark" {
-		t.Fatalf("the older window was told the keyboard is on %q, want spark", told.Machine)
+	if told.Machine != "tower" {
+		t.Fatalf("the older window was told the keyboard is on %q, want tower", told.Machine)
 	}
 	if told.Here {
 		t.Fatalf("a window on another machine was reported as one on this one")
@@ -137,7 +137,7 @@ func TestAWindowWithoutTheKeyboardIsRefusedInWordsAndNotInSilence(t *testing.T) 
 	desk := dialSession(t, sess)
 	desk.hello(Hello{Version: Version, Surface: "macbook"})
 	away := dialSession(t, sess)
-	away.hello(Hello{Version: Version, Surface: "spark"})
+	away.hello(Hello{Version: Version, Surface: "tower"})
 
 	for _, door := range []struct {
 		method  string
@@ -151,7 +151,7 @@ func TestAWindowWithoutTheKeyboardIsRefusedInWordsAndNotInSilence(t *testing.T) 
 		{MethodSubmitFiles, SubmitFilesArgs{Text: "here"}},
 	} {
 		result := desk.call(1, door.method, door.payload)
-		want := "the keyboard is on spark right now — press enter here to move it here"
+		want := "the keyboard is on tower right now — press enter here to move it here"
 		if result.Error != want {
 			t.Fatalf("%s from a watcher answered %q, want %q", door.method, result.Error, want)
 		}
@@ -175,7 +175,7 @@ func TestTakingTheKeyboardBackMovesItAndTellsTheOtherWindow(t *testing.T) {
 	desk := dialSession(t, sess)
 	desk.hello(Hello{Version: Version, Surface: "macbook"})
 	away := dialSession(t, sess)
-	away.hello(Hello{Version: Version, Surface: "spark"})
+	away.hello(Hello{Version: Version, Surface: "tower"})
 	if told := driverOf(desk); told.Yours {
 		t.Fatalf("the desk was not made a watcher to begin with")
 	}
@@ -204,7 +204,7 @@ func TestTheDriverCanSteerWithoutBroadcastingAFreshTurn(t *testing.T) {
 	desk := dialSession(t, sess)
 	desk.hello(Hello{Version: Version, Surface: "macbook"})
 	away := dialSession(t, sess)
-	away.hello(Hello{Version: Version, Surface: "spark"})
+	away.hello(Hello{Version: Version, Surface: "tower"})
 	driverOf(desk)
 
 	desk.ok(1, MethodTake, nil)
@@ -247,7 +247,7 @@ func TestClosingTheDrivingWindowHandsTheKeyboardOnToTheNewestLeft(t *testing.T) 
 	desk := dialSession(t, sess)
 	desk.hello(Hello{Version: Version, Surface: "macbook"})
 	away := dialSession(t, sess)
-	away.hello(Hello{Version: Version, Surface: "spark"})
+	away.hello(Hello{Version: Version, Surface: "tower"})
 	driverOf(desk)
 
 	if err := away.end(); err != nil {
@@ -269,7 +269,7 @@ func TestALinkComingBackDoesNotStealTheKeyboardFromWhereThePersonWent(t *testing
 	desk := dialSession(t, sess)
 	desk.hello(Hello{Version: Version, Surface: "macbook"})
 	away := dialSession(t, sess)
-	away.hello(Hello{Version: Version, Surface: "spark"})
+	away.hello(Hello{Version: Version, Surface: "tower"})
 	driverOf(desk)
 
 	// The desk's link dies and comes back, saying it has been here before.
@@ -281,8 +281,8 @@ func TestALinkComingBackDoesNotStealTheKeyboardFromWhereThePersonWent(t *testing
 	if welcome.Driver.Yours {
 		t.Fatalf("a link coming back took the keyboard off the machine the person walked to")
 	}
-	if welcome.Driver.Machine != "spark" {
-		t.Fatalf("the returning window was told the keyboard is on %q, want spark", welcome.Driver.Machine)
+	if welcome.Driver.Machine != "tower" {
+		t.Fatalf("the returning window was told the keyboard is on %q, want tower", welcome.Driver.Machine)
 	}
 
 	// And a returning link that finds the keyboard going spare does take it,
@@ -375,7 +375,7 @@ func TestAJoinOrWatchHelloFromAnotherProtocolIsRefusedBeforeAnythingOpens(t *tes
 	if frame.Kind != "fatal" {
 		t.Fatalf("a hello from another protocol was answered with %q, want a refusal", frame.Kind)
 	}
-	if !strings.Contains(frame.Error, "protocol") {
+	if !strings.Contains(frame.Error, "matching versions") {
 		t.Fatalf("the refusal does not say what was wrong with the hello: %q", frame.Error)
 	}
 	if got := opened.Load(); got != 0 {
@@ -520,7 +520,7 @@ func TestTheSurfaceLearnsItHasBecomeAWatcherWithNobodyTouchingIt(t *testing.T) {
 	// to stop drawing a composer.
 	woken := first.Client.DriverChanged()
 
-	second, err := loopSession(sess, Hello{Surface: "spark"})
+	second, err := loopSession(sess, Hello{Surface: "tower"})
 	if err != nil {
 		t.Fatalf("second dial: %v", err)
 	}
@@ -532,7 +532,7 @@ func TestTheSurfaceLearnsItHasBecomeAWatcherWithNobodyTouchingIt(t *testing.T) {
 		t.Fatalf("the surface was never woken when the keyboard moved")
 	}
 	driver := first.Client.Driver()
-	if driver.Yours || driver.Machine != "spark" {
+	if driver.Yours || driver.Machine != "tower" {
 		t.Fatalf("the watching surface holds %+v", driver)
 	}
 
@@ -574,10 +574,10 @@ func loopSession(sess *Session, hello Hello) (*Loop, error) {
 // sequence in it would be an escape sequence in their terminal.
 func TestAMachineNameFromTheWireIsMadeSafeToDraw(t *testing.T) {
 	for _, probe := range []struct{ said, want string }{
-		{"spark", "spark"},
-		{"  spark  ", "spark"},
+		{"tower", "tower"},
+		{"  tower  ", "tower"},
 		{"spa\x1b[2Jrk", "spa[2Jrk"},
-		{"spark\nmacbook", "sparkmacbook"},
+		{"tower\nmacbook", "towermacbook"},
 		{strings.Repeat("x", 200), strings.Repeat("x", machineNameMost)},
 		{"", ""},
 	} {
@@ -618,7 +618,7 @@ func TestAWatcherKeepsReceivingTheTurnItCannotStart(t *testing.T) {
 	desk := dialSession(t, sess)
 	desk.hello(Hello{Version: Version, Surface: "macbook"})
 	away := dialSession(t, sess)
-	away.hello(Hello{Version: Version, Surface: "spark"})
+	away.hello(Hello{Version: Version, Surface: "tower"})
 	driverOf(desk)
 
 	ref := decode[StreamRef](t, away.ok(1, MethodSubmit, SubmitArgs{Text: "go"}).Payload)
@@ -680,7 +680,7 @@ func TestAWatchingSurfaceIsHandedTheTurnItDidNotStart(t *testing.T) {
 		t.Fatalf("dial: %v", err)
 	}
 	defer watcher.Close()
-	driver, err := loopSession(sess, Hello{Surface: "spark"})
+	driver, err := loopSession(sess, Hello{Surface: "tower"})
 	if err != nil {
 		t.Fatalf("second dial: %v", err)
 	}

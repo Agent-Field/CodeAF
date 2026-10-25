@@ -235,7 +235,7 @@ var taskSchemaJSON = `{"type":"object","properties":{` +
 	`"depends_on":{"type":"array","items":{"type":"integer"},"description":"Ids that must finish first, only ones propose_task returned in this session. Its brief is given their reports; an unknown or failed id refuses the proposal"},` +
 	`"irreversible":{"type":"boolean","description":"True for work that cannot be undone; it never starts on a clock"},` +
 	`"wide":{"type":"boolean","description":"Optional. True when the work is wider than one pair of hands. Say true whenever you judged it broad; a wrong true costs nothing"},` +
-	`"model":{"type":"string","description":"Optional, only where the person asked for one: a catalog id or part of one, never a class word, so resolve \"fast\" to a concrete model. A word fitting several is shown to the person to settle"},` +
+	`"model":{"type":"string","description":"One-task override of task.model and crew. Catalog ID or unique name, only when requested; ambiguous names are offered for confirmation."},` +
 	`"effort":{"type":"string","enum":["best","cheap"],"description":"Only when the person asked"},` +
 	taskViaSchemaJSON +
 	`"max_steps":{"type":"integer","description":"Optional. Finished tool calls per progress checkpoint (default ` + strconv.Itoa(taskMaxSteps) + `); work still advancing is given more."},` +
@@ -377,7 +377,7 @@ type taskSpec struct {
 	checks    []string
 	dependsOn []uint64
 	// planID is THE TASK'S ID IN THE PLAN STORE (internal/plandb), set only on
-	// a node the bash belt's plandb loop drives (docs/design/plandb-cli/
+	// a node the bash belt's plandb loop drives (the implementation
 	// DESIGN.md, the wiring section). It is what makes a node and its plan
 	// task one thing: the runtime claims the store task under this id when it
 	// dispatches the node, the node's work order is composed FROM the store

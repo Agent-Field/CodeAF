@@ -2930,12 +2930,12 @@ func (w *settlementWatch) checklistFor(nodeID string, wrote []string) (rows []re
 // The measured cost of collapsing those into one field is the whole DeepSWE
 // sweep: seven of eight graded runs exited 0 — "delivered whole" — with reward
 // 0, each of them after its own review had named the missing work and been
-// refused on provenance (2026-08-28, bench/deepswe/AUTOPSY.md; the reasoning is
-// docs/design/gate/SETTLEMENT.md §2). Before that, one run shipped "Deliverable
+// refused on provenance (2026-08-28, the implementation; the reasoning is
+// the implementation §2). Before that, one run shipped "Deliverable
 // is empty - contains no implementation" over exit 0 for want of the Unclosed
 // field, and another produced no file at all and reported settled, done, success
 // under a note explaining that the review had overreached
-// (2026-08-28, meta/muse-spark-1.1). Exit 2, partial, is the honest code for a
+// (2026-08-28, a model response). Exit 2, partial, is the honest code for a
 // job that delivered less than it promised.
 //
 // THE READING IS store.DeliveryGate.Whole AND IT IS NOT REPEATED HERE. This

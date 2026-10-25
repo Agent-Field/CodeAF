@@ -451,12 +451,9 @@ func TestATaskRoomCarriesItsOwnColumn(t *testing.T) {
 	}
 }
 
-// OPENING A TASK PAGE DOES NOT REPLAY THE CLIMB. The owner's report: every
-// time a task was taken from the rail, its page counted `↑ 79.6k  ↓ 37.6k` up
-// from zero and lit both figures, then did the same climb to the same figures
-// on the next visit — a page being built, drawn as a task being busy. A room is
-// a new page with its column at nothing, so its first reading ARRIVES: whole,
-// on the first frame, and at rest. The next visit is the same.
+// OPENING A TASK PAGE DOES NOT REPLAY THE CLIMB. A room is a new page with its column at
+// nothing, so its first reading ARRIVES: whole, on the first frame, and at rest. The next
+// visit is the same.
 func TestOpeningATaskPageShowsItsFiguresWholeAndUnlit(t *testing.T) {
 	a, fake, _ := roomApp(t)
 	a.agent = &weighedRoomFake{roomFake: fake, weight: 79600}
@@ -787,13 +784,10 @@ func TestASplitTurnCarriesTheColumnOnItsFrontierAlone(t *testing.T) {
 	}
 }
 
-// AND THE RUN ABOVE THE SPLIT DRAWS NO DOOR OF ITS OWN. It holds nothing but
-// reasoning that is over — no step — and a window with no steps in it draws
-// itself as `▸ Work · ctrl+e` (livesteps.go). Two of those on one page, keyed
-// alike, is one turn claiming to be two pieces of running work; the owner read
-// it as "things opening that don't need to". The reasoning goes back under the
-// ordinary `thought for …` row, which is the chip a finished turn draws and
-// which carries its own door onto the working.
+// AND THE RUN ABOVE THE SPLIT DRAWS NO DOOR OF ITS OWN. It holds nothing but reasoning
+// that is over — no step — and a window with no steps in it draws itself as `▸ Work ·
+// ctrl+e` (livesteps.go). The reasoning goes back under the ordinary `thought for …` row,
+// which is the chip a finished turn draws and which carries its own door onto the working.
 //
 // Every `ctrl+e` on the page is counted and named, because the defect was not a
 // missing row but a second one that looked exactly like the right one.

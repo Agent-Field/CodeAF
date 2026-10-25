@@ -149,7 +149,7 @@ type gateOnly struct {
 	recordingGate
 }
 
-// THE BUG THIS LANE FIXES, at the door's end.
+// THE BUG this test FIXES, at the door's end.
 //
 // The three approval seams used to be minted once, at boot, around the boot
 // agent, and the surface went on holding them through every /new and every
@@ -175,7 +175,7 @@ func TestABankedRuleReachesTheAgentItWasMintedWith(t *testing.T) {
 		t.Fatalf("the always was not saved: %v", err)
 	}
 	if len(closed.pushed) != 0 {
-		t.Fatal("the rebuilt gate went into the conversation that was closed — the bug this lane fixes")
+		t.Fatal("the rebuilt gate went into the conversation that was closed")
 	}
 	if len(front.pushed) != 1 || front.pushed[0] == nil {
 		t.Fatalf("the conversation in front was handed %d gates", len(front.pushed))

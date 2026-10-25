@@ -297,6 +297,12 @@ const planTrajectoryFile = "trajectory.jsonl"
 func (a *Agent) PlanTasks() []PlanTaskRow {
 	stores, plan, closeStores := a.openPlanReadHandles()
 	defer closeStores()
+	return a.planTasksIn(&planTaskRead{stores: stores, plan: plan})
+}
+
+// planTasksIn projects plan rows using the handles and trajectories of one listing.
+func (a *Agent) planTasksIn(read *planTaskRead) []PlanTaskRow {
+	stores, plan := read.stores, read.plan
 	if len(stores) == 0 {
 		return nil
 	}
@@ -326,7 +332,7 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 		}
 		linked := func(token string) (*TaskSource, bool) { source, ok := links[token]; return source, ok }
 		for _, task := range tasks {
-			row := planTaskRow(store, dir, task, spend, live)
+			row := planTaskRow(store, dir, task, spend, live, read.trajectory(planTrajectoryPath(dir, task.ID), false).steps)
 			row.Source = cloneSource(planRowSource(task.ID, func(id string) string { return parents[id] }, linked))
 			planCarriedRow(&row, carried[task.ID])
 			clocks.apply(&row, dir, task, root)
@@ -418,7 +424,7 @@ func (a *Agent) planTaskPageFor(id string, withProgram bool) (PlanTaskPage, plan
 	var children []PlanTaskRow
 	depths := map[string]int{task.ID: -1}
 	for _, child := range all {
-		row := planTaskRow(store, dir, child, spend, live)
+		row := planTaskRow(store, dir, child, spend, live, len(planTrajectory(dir, child.ID)))
 		planCarriedRow(&row, carried[child.ID])
 		clocks.apply(&row, dir, child, store.RootID())
 		a.markPlanInterrupted(&row)
@@ -517,24 +523,38 @@ func (a *Agent) markPlanInterrupted(row *PlanTaskRow) {
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	for _, notice := range g.runRowsLocked() {
-		if notice.PlanTask != row.ID {
-			continue
-		}
-		if notice.State == TaskInterrupted {
-			row.Interrupted = true
-		}
-		if notice.RecoveredCompletion {
-			row.Status = string(notice.State)
-			row.Ended = notice.EndedAt
-			if notice.CostUSD > row.USD {
-				row.USD = notice.CostUSD
+	// The rows are walked where they are kept: copying them all for every plan
+	// row made one listing of a conversation's tasks quadratic in its runs.
+	for _, root := range g.runRuns {
+		for i := range g.runs[root] {
+			notice := &g.runs[root][i]
+			if g.deleted[notice.ID] || g.deleted[notice.Parent] || notice.PlanTask != row.ID {
+				continue
 			}
-			row.Note = notice.Report
+			if notice.State == TaskInterrupted {
+				row.Interrupted = true
+			}
+			if notice.RecoveredCompletion {
+				row.Status = string(notice.State)
+				row.Ended = notice.EndedAt
+				if notice.CostUSD > row.USD {
+					row.USD = notice.CostUSD
+				}
+				row.Note = notice.Report
+			}
+			return
 		}
-		return
 	}
 }
+
+// These file seams let read-count gates exercise real stores and trajectories.
+var openPlanReadStore = func(path string) *plandb.Store {
+	store, _ := plandb.Open(path, "", "", "", "")
+	return store
+}
+
+var readPlanTrajectoryFile = os.ReadFile
+var openPlanTrajectoryFile = os.Open
 
 // openPlanReadHandles opens every ended run oldest-first and then the live run.
 // Ended handles stay cached because an ended store never changes; only the live
@@ -556,8 +576,8 @@ func (a *Agent) openPlanReadHandles() ([]*plandb.Store, *planState, func()) {
 	for _, path := range planArchivePaths(plan.path) {
 		store := plan.archives[path]
 		if store == nil {
-			opened, err := plandb.Open(path, "", "", "", "")
-			if err != nil {
+			opened := openPlanReadStore(path)
+			if opened == nil {
 				continue
 			}
 			plan.archives[path] = opened
@@ -565,7 +585,7 @@ func (a *Agent) openPlanReadHandles() ([]*plandb.Store, *planState, func()) {
 		}
 		stores = append(stores, store)
 	}
-	live := plan.open()
+	live := openPlanReadStore(plan.path)
 	if live != nil {
 		stores = append(stores, live)
 	}
@@ -802,7 +822,7 @@ func applyPlanRootProgress(row *PlanTaskRow, tasks []*plandb.Task, root string) 
 // not on the task: the dollars its spend rows carry, already summed, and its
 // steps, already read. The live step is the third: the store's live rows, read
 // whole in one pass by the caller, keyed by the task's own bare id.
-func planTaskRow(store *plandb.Store, dir string, task *plandb.Task, spend map[string]float64, live map[string]plandb.LiveStep) PlanTaskRow {
+func planTaskRow(store *plandb.Store, dir string, task *plandb.Task, spend map[string]float64, live map[string]plandb.LiveStep, steps int) PlanTaskRow {
 	seat, _ := store.RoleOf(task.ID)
 	// A HELD TASK WEARS THE HOLD'S OWN WORD. Pause is status-independent in the
 	// store — a held task keeps the rung it reached — while the row says what a
@@ -820,7 +840,7 @@ func planTaskRow(store *plandb.Store, dir string, task *plandb.Task, spend map[s
 		Stopped:        planTaskStopped(store, task),
 		Interrupted:    planTaskInterrupted(task),
 		Seat:           seat,
-		Steps:          len(planTrajectory(dir, task.ID)),
+		Steps:          steps,
 		USD:            spend[task.ID],
 		Started:        task.CreatedAt,
 		Ended:          task.CompletedAt,
@@ -969,10 +989,14 @@ func planTrajectoryPath(dir, id string) string {
 // skipped — the record is about the steps, and an interrupted append leaves a
 // half-written last line behind.
 func planTrajectory(dir, id string) []PlanStep {
-	data, err := os.ReadFile(planTrajectoryPath(dir, id))
+	data, err := readPlanTrajectoryFile(planTrajectoryPath(dir, id))
 	if err != nil {
 		return nil
 	}
+	return parsePlanTrajectory(data)
+}
+
+func parsePlanTrajectory(data []byte) []PlanStep {
 	var steps []PlanStep
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)

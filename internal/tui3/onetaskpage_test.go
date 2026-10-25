@@ -1,11 +1,7 @@
 package tui3
 
-// ONE TASK PAGE. The owner's ruling on the two pages a task could open — the
-// task room for a node of this window's graph, and a store-backed page for a
-// task on the run engine that looked like the room and was not one — was that
-// they should be the same. These tests hold the ruling: a task on either
-// engine opens the same room with the same two tabs, and a line typed into a
-// run's task's room reaches its store as a note.
+// A task on either engine opens the same room with the same two tabs. A line
+// typed into a run task room reaches its store as a note.
 
 import (
 	"strings"
@@ -14,7 +10,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// roomTrailText is the room's trail row as it is drawn, without its inks.
+// A task on either engine opens the same room with the same two tabs. A line
+// typed into a run task room reaches its store as a note.
 func roomTrailText(t *testing.T, a *app) string {
 	t.Helper()
 	frame, _, _ := a.frame()
@@ -32,11 +29,11 @@ func TestANewEngineTaskAndAnOlderEngineTaskOpenTheSameRoomWithTheSameTabs(t *tes
 		stored bool
 		work   string
 	}{
-		// A task on the run engine has a page in the store; its work tab reads
-		// the run's working copy, which this fixture's engine has no door onto.
+		// A task on either engine opens the same room with the same two tabs. A line
+		// typed into a run task room reaches its store as a note.
 		{name: "new engine", stored: true, work: "this engine does not read the run's working copy"},
-		// A task on the older engine has none, and opens the room it always did;
-		// its work tab lists the files its record says it wrote.
+		// A task on either engine opens the same room with the same two tabs. A line
+		// typed into a run task room reaches its store as a note.
 		{name: "older engine", stored: false, work: "the files this task changes are listed here when it lands"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

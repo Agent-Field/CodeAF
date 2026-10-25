@@ -21,7 +21,7 @@ import (
 // Two implementations are real and the contract permits no more than it has to:
 //
 //   - A GO RUNNER implements this natively and is registered at compile time.
-//     The owner's custom Go subharnesses land here first-class with zero porting,
+//     Custom Go subharnesses land here first-class with zero porting,
 //     and the worker itself is re-fronted through it ([ExecutorRunner]).
 //   - THE JS RUNNER IS ONE GENERIC GO RUNNER parameterized by a bundle. There is
 //     not one runner per bundle: there is one goja host, and a bundle is its
@@ -358,7 +358,7 @@ func LeafManifest(info SubharnessInfo) Manifest {
 //
 // IT IS GENERIC AND MUST STAY SO. Nothing in it may ask which worker it is
 // wrapping — that is the same law that keeps the leaf table a table, and it is
-// what makes the owner's next Go subharness a registration instead of an edit to
+// what makes a new Go subharness a registration instead of an edit to
 // this file. The executor's own manifest carries the purpose, the ruler and the
 // budget shape; this type carries the translation and nothing else.
 //

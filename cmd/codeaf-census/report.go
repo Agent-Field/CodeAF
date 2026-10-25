@@ -9,7 +9,7 @@ import (
 )
 
 // report prints the whole census as markdown, in the order
-// docs/design/recovery/DESIGN.md §1 and §8 ask for.
+// the implementation §1 and §8 ask for.
 //
 // MARKDOWN AND NOT A TABLE LIBRARY, because the output's destination is a
 // document beside the design it argues with — census-20260910.md is the first

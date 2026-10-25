@@ -116,7 +116,7 @@ var demoTasks = []demoTask{
 			ID: "1", Title: "Measure the frame budget in every package that draws a row",
 			Status:       string(session.TaskDone),
 			Outcome:      "Eleven packages measured. Four are over the cap; the plan takes the tab bar first because everything else reads its counts.",
-			Files:        []string{"docs/design/polish/budget.md"},
+			Files:        []string{"docs/example-report.md"},
 			FilesChanged: 1, Cost: 0.21, Model: "anthropic/claude-sonnet-4", Tokens: 28_000,
 			DurationMS: 4 * 60 * 1000,
 		},
@@ -194,7 +194,7 @@ var demoTasks = []demoTask{
 		entry: session.TaskIndexEntry{
 			ID: "1", Title: "Take the fortnight's spend apart by model", Status: string(session.TaskUnverified),
 			Outcome:      "Opus is four fifths of the fortnight and nearly all of it is one conversation; the split is in the page.",
-			Files:        []string{"docs/design/spend/fortnight.md"},
+			Files:        []string{"docs/example-report.md"},
 			FilesChanged: 1, Cost: 0.19, Model: "anthropic/claude-sonnet-4", Tokens: 24_400,
 			DurationMS: 5 * 60 * 1000,
 		},

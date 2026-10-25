@@ -46,7 +46,9 @@ page instead, so the word never leads nowhere.
 It is not a room. It is the lit word while you are in a conversation, because that is where
 the tab strip of your chats is drawn; `tab` and `shift+tab` step over it (they walk the rooms), and it has
 no count. Its hint says `every conversation, one at a time`, which is how it differs from
-`▦ All` on the strip: that one is the grid of all saved conversations. `esc` still goes to home, as on every place.
+`▦ All` on the strip: that one is the grid of the conversations open in the view you are in,
+all at once. `/wall` and `alt+v` open the library of saved conversations instead, with the
+teams beside it. `esc` still goes to home, as on every place.
 `alt+k` is a different key: it opens the chats switcher to choose *which* conversation, while
 `chats` on the bar goes straight back to the one you were in.
 
@@ -149,7 +151,9 @@ back.
 **The hint line says what the word opens and its key** while the pointer rests on it:
 `alt+2 teams · the teams you hand work to`, `alt+3 chats · every conversation, one at a
 time`. On `more ▾` it says `more · the places this row has no room for`; on the strip's
-`▦ All` it says `The grid of all your conversations · alt+v`.
+`▦ All`, and on the same door under the box, it says `The grid of tabs in this view`.
+`/wall` and `alt+v` open the library of saved conversations instead, so neither hint
+promises saved ones.
 
 **A resize drops that hint.** Widening the window so `more ▾` is no longer drawn clears
 the hover, and the hint line stops saying `more · the places this row has no room for`
@@ -852,7 +856,7 @@ walk in.
 one of the eight. It is something you do to *this conversation*: pick a point and cut back
 to it — rather than a room in the machine, so it has no tab and `tab` does not walk to it.
 
-## The places over --host: whose machine am I looking at, and what `on spark` at the end of the tab bar means
+## The places over --host: whose machine am I looking at, and what `on tower` at the end of the tab bar means
 
 **A place is a listing of one machine's disk, and over `--host` that machine is the one your
 session runs on.** Home lists the conversations under `~/.codeaf/v3`; tasks lists the work
@@ -879,7 +883,7 @@ the split as it opens. Spend never substitutes local rows when its remote store 
 sentence is better than eight rows and a total in dollars that belong to somebody else's
 afternoon.
 
-**The top line says whose machine it is: `on spark` at the end of the tab bar.** Over a
+**The top line says whose machine it is: `on tower` at the end of the tab bar.** Over a
 connection the far end of the top line, where the places are, reads `on <machine>`, just
 before the clock: the same name you typed after `--host`, and the same
 one the status line's place segment and the legend under the box already carry. On a local

@@ -265,7 +265,7 @@ func TestRealRouterServesASheetAndHonoursAPreference(t *testing.T) {
 	}
 	if chose == 0 {
 		t.Logf("the chooser had no opinion on any of the five calls " +
-			"(lane chooser not landed yet, wave 1 L-B) — the preference half of this test " +
+			"(lane chooser unavailable) — the preference half of this test " +
 			"observed the router's own default instead")
 	}
 
@@ -276,7 +276,7 @@ func TestRealRouterServesASheetAndHonoursAPreference(t *testing.T) {
 	// says — under the temporary home above, which is what makes its presence
 	// evidence about this run.
 	if err := lane.Default().Store().Save(ledger.Beliefs(realModel)); err != nil {
-		t.Logf("beliefs were not written (%v) — the store is lane L-A's and is not in this tree yet", err)
+		t.Logf("beliefs were not written (%v) — the belief store is unavailable", err)
 	} else if info, err := os.Stat(lane.StorePath()); err != nil {
 		t.Fatalf("the store reported a write and %s is not there: %v", lane.StorePath(), err)
 	} else {

@@ -2,7 +2,7 @@ package session
 
 // PROMOTION: THIS TURN, CARRIED ON BY SOMEBODY WHO ALREADY HOLDS WHAT IT READ.
 //
-// ── THE MEASURED FAILURE (owner's laptop, 2026-09-11, conversation 7598fe73) ──
+// ── THE MEASURED FAILURE (context transfer) ──
 //
 // A one-line read-only design question. The chat read home-panel files for ten
 // rounds in 48 seconds. The round-ten mark fired: a second model was shown an

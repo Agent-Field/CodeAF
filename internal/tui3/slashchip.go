@@ -94,8 +94,8 @@ func knownCommand(word string) bool {
 // left to right.
 //
 // A CANDIDATE STARTS AT A WORD BOUNDARY and runs to the next space or newline.
-// That one rule is what keeps a path out of this: "/Users/example" is a single
-// candidate whose word is "Users/santosh" and matches nothing, rather than two
+// That one rule is what keeps a path out of this: an absolute path is a single
+// candidate whose whole word matches no command, rather than two
 // candidates one of which might. A slash with a letter in front of it — the one
 // in "http://", the one in "cmd/codeaf" — is not a candidate at all. A QUOTE IS
 // A WORD BOUNDARY TOO, on either side: prose that says '/budget 50' is naming
@@ -136,7 +136,7 @@ func scanCommandSpans(value []rune, boundary, quoted bool) []segment {
 		}
 		// Everything up to the end of this token has been decided, chip or no
 		// chip: the slashes inside a path are not boundaries, and re-examining
-		// them is how "/Users/example" would grow a chip on its second half.
+		// them is how "/workspace" would grow a chip on its second half.
 		i = end
 	}
 	return out

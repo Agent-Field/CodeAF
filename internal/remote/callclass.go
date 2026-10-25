@@ -124,7 +124,7 @@ func (c callClass) road() road {
 // loop exactly as a getter is: internal/tui3's [app.answerQuestion] calls its
 // door straight from Update rather than from a command, so the window is also
 // the longest that terminal can sit without repainting after a key is pressed.
-// Measured on the Spark, eighteen copies of the ordinary road's own e2e run six
+// Measured in a test run, eighteen copies of the ordinary road's own e2e run six
 // at a time: with thirty seconds, two copies took 53 seconds where every other
 // copy took 22, and both lost the receipt — the surface was not drawing. Twelve
 // copies of the same commit's parent produced no copy over 33 seconds.
@@ -170,7 +170,7 @@ func classify(method string) callClass {
 		MethodAutomationsList, MethodAutomationsRuns, MethodAutomationsChanges,
 		MethodAutomationsCursor, MethodAutomationsActive, MethodAutomationsWindows:
 		return classGetter
-	case MethodAppTaskRoutingAct, MethodAppTaskAction, MethodAppQuickTaskAction, MethodAppMoveToTask, MethodAppResumeAfterQuit, MethodAppResumeAfterClose, MethodAppRename, MethodProcessRerun, MethodProcessRerunAt, MethodProcessStopAt, MethodProcessStopAll, MethodRenderCancel, MethodQuestionResolve, MethodQuestionHold, MethodQuestionClock,
+	case MethodClaimChatStart, MethodAppTaskRoutingAct, MethodAppTaskAction, MethodAppQuickTaskAction, MethodAppMoveToTask, MethodAppResumeAfterQuit, MethodAppResumeAfterClose, MethodAppRename, MethodProcessRerun, MethodProcessRerunAt, MethodProcessStopAt, MethodProcessStopAll, MethodRenderCancel, MethodQuestionResolve, MethodQuestionHold, MethodQuestionClock,
 		MethodConsent, MethodConsentRemember,
 		MethodHarness, MethodConnect, MethodConnectKey,
 		MethodNoteConnected,

@@ -5,7 +5,7 @@
 // chrome — and it lives in internal/tui2/tokens with three spellings per slot:
 // the Font Awesome 4 icon a patched font draws, the geometric floor every
 // terminal draws, and the one ASCII character a screen reader can name.
-// docs/design/icons/DESIGN.md is the law's own page; what follows is the part a
+// the implementation is the law's own page; what follows is the part a
 // build can fail on.
 //
 // IT LIVES IN ITS OWN PACKAGE BECAUSE IT IS NOT ONE SURFACE'S LAW. It landed as
@@ -81,13 +81,11 @@ var ownedRunes = map[rune]string{
 	'✎': "tokens.GWrite",
 	'⌾': "tokens.GFileImage",
 	'♪': "tokens.GFileAudio",
-	// THE RIGHT-HAND CORNERS ARE THE ONE FRAME'S (internal/tui3/frame.go). A
-	// right-hand corner is a box CLOSING, and there is one box on these
-	// surfaces: three shipped with a copy of the pieces each before the
-	// question views wave drew all of them with one frame (owner ruling
-	// 2026-09-11). The left-hand corners are not claimed, because a half-open
-	// bracket down a block's left edge (a task's `╭─`, a call's `╰─▶`) is a
-	// connector and not a box.
+	// THE RIGHT-HAND CORNERS ARE THE ONE FRAME'S (internal/tui3/frame.go). A right-hand
+	// corner is a box CLOSING, and there is one box on these surfaces: three shipped with a
+	// copy of the pieces each before the question views wave drew all of them with one frame.
+	// The left-hand corners are not claimed, because a half-open bracket down a block's left
+	// edge (a task's `╭─`, a call's `╰─▶`) is a connector and not a box.
 	'╮': "tokens.GFrameTopRight (internal/tui3/frame.go draws the one frame)",
 	'╯': "tokens.GFrameBottomRight (internal/tui3/frame.go draws the one frame)",
 	'◌': "tokens.GWaitsOn (retired: v1's own dotted circle for work waiting on a sibling)",
@@ -171,8 +169,7 @@ func TestNoSurfaceSpellsAnIconItself(t *testing.T) {
 					}
 					t.Errorf("%s: the literal %s spells %U, which is %s. Ask for the slot through "+
 						"this surface's own glyph door — palette.glyph or app.icon in internal/tui3 — "+
-						"so the line gets this terminal's repertoire "+
-						"(docs/design/icons/DESIGN.md)",
+						"so the line gets this terminal's repertoire",
 						fset.Position(lit.Pos()), lit.Value, r, slot)
 				}
 				return true

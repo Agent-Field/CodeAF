@@ -94,7 +94,7 @@ func (f *recordingFiller) fill(_ context.Context, instruction string, workflow *
 	return filled, nil
 }
 
-// THE INCIDENT (owner's journal, 2026-08-12), reconstructed.
+// THE INCIDENT (a sample journal), reconstructed.
 //
 // "lets start a research on understanding jepa models help me think through it"
 // was typed into a room that had spent the morning on multi-level DAGs. The

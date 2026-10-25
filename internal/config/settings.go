@@ -58,7 +58,7 @@ const (
 // different questions — what may it spend, what may it run without asking, how
 // does it run tasks, and which workers exist — so a person looking for "how much
 // may it spend" read about load averages and repair rounds first. The three
-// questions are three sections now, and docs/design/spending/DESIGN.md is the
+// questions are three sections now, and the implementation is the
 // argument: a category is what a row is ABOUT, and a category that answers four
 // questions is a drawer rather than a section.
 const (
@@ -1060,6 +1060,8 @@ var OperatorEnvPins = []string{
 	// of asking its long-lived daemon (internal/cellstore). It is an escape
 	// hatch that changes speed and never results, so it is plumbing.
 	"CODEAF_ENGINE_DAEMON",
+	// Marks the one permitted executable handoff so a bridge cannot exec in a loop.
+	"CODEAF_ENGINE_HANDOFF",
 	// CODEAF_BASH names the bash native Windows runs commands in when Git for
 	// Windows is not where codeaf looks (internal/shell). A path to a program
 	// is plumbing for the same reason CODEAF_FURROW is.
@@ -1260,7 +1262,7 @@ var OperatorEnvPins = []string{
 	// THE DEFAULT MOVED ON MEASUREMENT, not on argument: a designed experiment
 	// ran four planner arms against four readings of this gate over 273 judged
 	// plan draws, and the front it drew is the planner with the gate off —
-	// docs/design/plan-gate-doe/REPORT.md, issues #418 and #384. It is plumbing
+	// the implementation, issues #418 and #384. It is plumbing
 	// for the reason CODEAF_SWARM is — it picks which decomposition doctrine the
 	// binary runs, not something the product has an opinion about — and it has
 	// the same lifetime: it disappears when nobody has a reason to reach for a
@@ -1317,7 +1319,7 @@ var OperatorEnvPins = []string{
 	// And the update offer's own fixture states (internal/tui3/updatedemo.go).
 	"CODEAF_UPDATE_DEMO",
 	// CODEAF_TASK_BELT sends a task worker BACK to the older node belt
-	// (internal/session's bashbelt.go, docs/design/worker-harness/DESIGN.md).
+	// (internal/session's bashbelt.go, the implementation).
 	// The bash belt is the shipped default, so the variable is an escape
 	// hatch rather than the way in: `node`, `legacy` and `off` are the only
 	// words that turn it off, and one binary still runs both roads. It stays
@@ -2650,11 +2652,10 @@ func (s *Settings) build() []Setting {
 			read:  func() string { return formatBool(DraftPersistAt(dir)) },
 			write: func(raw string) error { return writeBool(dir, KeyDraftPersist, raw) },
 		},
-		// THE ROW READS THE OTHER WAY UP FROM ITS KEY. `ui.hints` persists
-		// whether tips are SHOWN, and keeps doing so — a persisted identifier keeps
-		// its bytes — while the row a person reads is `disable hints`, off by
-		// default (the owner's word for it, 2026-09-22). The inversion lives here,
-		// once, so the chat's settings panel and `codeaf config` cannot disagree.
+		// THE ROW READS THE OTHER WAY UP FROM ITS KEY. `ui.hints` persists whether tips are
+		// SHOWN, and keeps doing so — a persisted identifier keeps its bytes — while the row a
+		// person reads is `disable hints`, off by default. The inversion lives here, once, so
+		// the chat's settings panel and `codeaf config` cannot disagree.
 		Setting{
 			Key: KeyHints, Category: CategoryInterface, Kind: SettingBool,
 			Label: "disable hints",
@@ -3592,16 +3593,22 @@ func knownDocumentEngine(engine string) bool {
 // absent setting uses YOLO; an unrecognised persisted value still asks, so a
 // garbled setting does not widen a previously selected posture.
 func ToolApprovalModeAt(profileDir string) string {
-	if value, ok := persistedString(profileDir, KeyToolApprovalMode); ok {
+	values, _ := readProfileConfig(profileDir)
+	return toolApprovalMode(values, DefaultToolApprovalMode)
+}
+
+func toolApprovalMode(values map[string]json.RawMessage, fallback string) string {
+	encoded, found := values[KeyToolApprovalMode]
+	if !found {
+		return fallback
+	}
+	var value string
+	if err := json.Unmarshal(encoded, &value); err == nil {
 		if mode := strings.ToLower(strings.TrimSpace(value)); knownToolApprovalMode(mode) {
 			return mode
 		}
-		return "prompt"
 	}
-	if _, found := persistedValue(profileDir, KeyToolApprovalMode); found {
-		return "prompt"
-	}
-	return DefaultToolApprovalMode
+	return "prompt"
 }
 
 // HeadlessToolApprovalModeAt requires an explicit setting to open an unwatched gate.
@@ -3616,13 +3623,11 @@ func HeadlessToolApprovalModeAt(workspace, profileDir string) (string, error) {
 	} else if found {
 		return project.ResolveString(profileDir, KeyToolApprovalMode)
 	}
-	if _, found := persistedValue(profileDir, KeyToolApprovalMode); found {
-		if _, text := persistedString(profileDir, KeyToolApprovalMode); !text {
-			return "prompt", nil
-		}
-		return ToolApprovalModeAt(profileDir), nil
+	values, err := readProfileConfig(profileDir)
+	if err != nil {
+		return "", err
 	}
-	return "prompt", nil
+	return toolApprovalMode(values, "prompt"), nil
 }
 
 // GuardianAt resolves whether a small model answers a tool prompt before the
@@ -4127,7 +4132,7 @@ func ResponseLimitsAt(profileDir string) taxonomy.Limits {
 // ── WHAT N MEANS CHANGED, AND THE ROW DID NOT ───────────────────────────────
 //
 // It was a count of sends and it is a MULTIPLIER ON THE DEADLINE
-// (docs/design/recovery/DESIGN.md §4, [taxonomy.Limits.Patience]): `3` is three
+// : `3` is three
 // times the role's own give-up — four and a half minutes on a conversation's
 // turn rather than ninety seconds — and never three identical requests. The key
 // keeps its name because the QUESTION a person is answering when they turn it is

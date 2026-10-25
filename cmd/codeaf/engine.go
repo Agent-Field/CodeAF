@@ -56,6 +56,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
+	"github.com/Agent-Field/codeaf/internal/env"
 	factorystore "github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/remote"
@@ -300,8 +301,8 @@ func clearStaleEngineHost(workspace string) (string, error) {
 // WHICH IS OLDER IS THE BUILD MOMENT AND NOTHING ELSE, and a tie is never a
 // replacement, so two windows on two builds agree and the slot cannot go back
 // and forth. A NEWER ENGINE IS JOINED when it speaks this build's wire and
-// refused in words when it does not — the older half of that pair is this
-// binary, and the sentence names it.
+// handed to its executable when it does not. If that file cannot be used,
+// the older half of the pair is this binary, and the sentence names its update.
 func clearStaleEngineHostAs(workspace string, me engineBuild) (string, error) {
 	held, err := enginehost.Inspect(workspace)
 	if err != nil {
@@ -338,7 +339,15 @@ func clearStaleEngineHostAs(workspace string, me engineBuild) (string, error) {
 		if host.Version == remote.Version {
 			return settleCellsMode(workspace, host, me)
 		}
-		return "", &staleHost{reason: newerEngineHostSentence(hostWorkspace(host, workspace))}
+		if _, handedOff := env.Lookup(engineHandoffEnv); !handedOff && host.BuiltAt.After(me.BuiltAt) {
+			if info, err := os.Stat(host.Binary); err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0111 != 0 {
+				environment := append(os.Environ(), engineHandoffEnv+"=1")
+				if err := execEngineHolder(host.Binary, os.Args, environment); err != nil {
+					return "", &staleHost{reason: newerEngineHolderSentence(host, workspace) + " (" + err.Error() + ")"}
+				}
+			}
+		}
+		return "", &staleHost{reason: newerEngineHolderSentence(host, workspace)}
 	}
 	// Too old to answer at all: it cannot say whether it is holding work, so
 	// nothing here may decide for it. Words, and the explicit stop.
@@ -349,6 +358,12 @@ func clearStaleEngineHostAs(workspace string, me engineBuild) (string, error) {
 		return olderEngineOnAnotherWire(workspace, held)
 	}
 	return olderEngineOnThisWire(workspace, held)
+}
+
+const engineHandoffEnv = "CODEAF_ENGINE_HANDOFF"
+
+func newerEngineHolderSentence(host remote.HostSelf, workspace string) string {
+	return newerEngineHostSentence(hostWorkspace(host, workspace)) + "; the holder's executable " + shellQuote(host.Binary) + " is unavailable or cannot be used"
 }
 
 // olderEngineOnThisWire is an older engine that speaks this build's protocol:
@@ -545,9 +560,9 @@ func staleEngineHostSentence(busy bool, workspace string) string {
 	}
 	stop := engineStopWords(workspace)
 	if busy {
-		return fmt.Sprintf("engine: %s is still running an older codeaf and something is still going in it — let that finish, or run %s on %s (interrupts active turns and tasks)", name, stop, name)
+		return fmt.Sprintf("engine: %s is still running an older %s — after work finishes, close every window for --workspace %s and reopen", name, programName(), shellQuote(workspace))
 	}
-	return fmt.Sprintf("engine: %s is still holding this conversation on an older codeaf — run %s on %s (interrupts active turns and tasks)", name, stop, name)
+	return fmt.Sprintf("engine: %s is still holding this conversation on an older %s — run %s on %s", name, programName(), stop, name)
 }
 
 // unknownOlderEngineHostSentence is what a person reads when the process holding
@@ -563,8 +578,7 @@ func unknownOlderEngineHostSentence(workspace string) string {
 	if strings.TrimSpace(name) == "" {
 		name = "that machine"
 	}
-	stop := engineStopWords(workspace)
-	return fmt.Sprintf("engine: %s is holding this conversation on an older codeaf that cannot say what it is or what it is doing, and this build will not end work it cannot see — run %s on %s if you want it stopped (interrupts active turns and tasks)", name, stop, name)
+	return fmt.Sprintf("engine: %s is holding this conversation on an older %s that cannot say what it is or what it is doing — after work finishes, close every window for --workspace %s and reopen", name, programName(), shellQuote(workspace))
 }
 
 // otherProtocolEngineHostSentence is the refusal for an older engine on a wire
@@ -577,8 +591,7 @@ func otherProtocolEngineHostSentence(workspace string) string {
 	if strings.TrimSpace(name) == "" {
 		name = "that machine"
 	}
-	stop := engineStopWords(workspace)
-	return fmt.Sprintf("engine: %s is holding this conversation on a codeaf that speaks a different protocol, and something is still going in it — let that finish, or run %s on %s (interrupts active turns and tasks)", name, stop, name)
+	return fmt.Sprintf("engine: %s is holding this conversation on a %s that speaks a different protocol — after work finishes, close every window for --workspace %s and reopen", name, programName(), shellQuote(workspace))
 }
 
 // engineStopWords is the command a refusal tells a person to run: the explicit
@@ -608,15 +621,7 @@ func newerEngineHostSentence(workspace string) string {
 	if strings.TrimSpace(name) == "" {
 		name = "that machine"
 	}
-	self := enginehost.ThisBinary()
-	if strings.TrimSpace(self) == "" {
-		self = "this codeaf"
-	}
-	stop := "codeaf engine --status"
-	if workspace = strings.TrimSpace(workspace); workspace != "" {
-		stop += " --workspace " + workspace
-	}
-	return fmt.Sprintf("engine: %s is holding this conversation on a newer codeaf than %s — use the newer binary (%s on %s shows which one it is)", name, self, stop, name)
+	return fmt.Sprintf("engine: %s is holding this conversation on a newer %s — run %s update on this machine", name, programName(), programName())
 }
 
 // hostWorkspace is what the host says it is holding, and what this process asked
@@ -646,11 +651,11 @@ func busyEngineHostSentence(workspace string, waits bool) string {
 	if strings.TrimSpace(name) == "" {
 		name = "this machine"
 	}
-	note := fmt.Sprintf("this window is using an older codeaf background engine on %s; restarting one window does not update it. Attached windows count as in use. After work finishes, close every window for this workspace and reopen", name)
+	note := fmt.Sprintf("this window is using an older %s background engine on %s; restarting one window does not update it. Attached windows count as in use. After work finishes, close every window for this workspace and reopen", programName(), name)
 	if waits {
 		note += " — the engine will step aside when all windows and work are gone"
 	}
-	return note + ". Or run " + engineStopWords(workspace) + " on " + name + " (interrupts active turns and tasks); reconnect with this build"
+	return note
 }
 
 // replacedEngineHostSentence is the ONE LINE a takeover owes: which engine was
@@ -993,7 +998,7 @@ func runEngineHost(workspaceFlag, sessionFlag string) error {
 //
 // A NAMED SESSION IS SPELLED THE WAY THE BOOT WILL SPELL IT, through the same
 // [engineSessionPath] every other door reads a --session with, so two surfaces
-// that named one file two ways ("~/x", "/home/you/x") are asking for one
+// that named one file two ways ("~/x", "/workspace/x") are asking for one
 // conversation rather than two.
 func engineHelloKey(hello remote.Hello, workspaceFlag, sessionFlag string) string {
 	if named := firstEngineWord(hello.Session, sessionFlag); named != "" {

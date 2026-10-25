@@ -334,7 +334,7 @@ type taskRoom struct {
 	// feed is this page's transcript and the reducer that grows it (feed.go).
 	//
 	// IT IS THE CONVERSATION'S OWN REDUCER AND NOT A SECOND ONE, which is the
-	// whole of docs/design/lens/DESIGN.md's Decision 1: this file used to hold a
+	// whole of the implementation's Decision 1: this file used to hold a
 	// hand-copy of eleven of its methods, and being the copy is why a node's row
 	// never said "took 4s", why a retry inside a task was invisible, and why an
 	// end event paired by a different rule in here than out there. It is
@@ -1390,7 +1390,7 @@ func (a *app) openRoomAt(i int) bool {
 // hand-copy of the reducer instead — eleven functions that agreed with the
 // conversation's on the day they were written and had fallen behind by six event
 // kinds — which is the whole reason the reducer exists (feed.go states the law,
-// docs/design/lens/DESIGN.md's Decision 1 states the design).
+// the implementation's Decision 1 states the design).
 //
 // THE SPEND IS NOT COUNTED HERE, AND THE OMISSION IS THE DESIGN. A node's turn
 // totals are folded by its PILOT (task.go's [app.pilotEvent]), which keeps flying
@@ -2216,7 +2216,7 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// session with no history at all — which is the same bargain the
 		// conversation struck, where ↑ has not been a one-row scroll since the day
 		// there was anything to recall.
-		if !a.input.onFirstLine() {
+		if !a.recalling() && !a.input.onFirstLine() {
 			return nil, false // the caret's, in input.go
 		}
 		if !a.recallBack() {
@@ -2225,7 +2225,7 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, true
 
 	case "down":
-		if !a.input.onLastLine() {
+		if !a.recalling() && !a.input.onLastLine() {
 			return nil, false
 		}
 		if !a.recallForward() {
@@ -3375,7 +3375,7 @@ func (a *app) roomGuestTail(inner int) []row {
 	// (taskowner.go's questions lane).
 	//
 	// IT IS DIM AND NOT AMBER, AND THAT IS THE HUE LAW RATHER THAN AN OVERSIGHT.
-	// Amber is waiting on YOU and nothing else (docs/design/questions/DESIGN.md);
+	// Amber is waiting on YOU and nothing else;
 	// this question is waiting on the window that owns the work, this page has no
 	// key that would answer it, and a row here in the colour that means "press
 	// something" would be asking a person for a keystroke that does not exist.
@@ -3440,7 +3440,7 @@ func (a *app) roomStateWord(node *taskNode) string {
 	// the model, which was a fourth word for one reading and said nothing about
 	// what the question actually was. The header reads the reading's own sentence
 	// — `your call · nobody could check it` — and WHO is holding it is the card's
-	// to say, one keypress away (tasksettle.go, docs/design/task-states/DESIGN.md).
+	// to say, one keypress away (tasksettle.go, the implementation).
 	switch node.state {
 	case session.TaskRunning:
 		// A NODE A PERSON HAS ENDED IS STOPPING, AND IT OUTRANKS EVERY PHASE
@@ -3536,7 +3536,7 @@ func (a *app) roomStateWord(node *taskNode) string {
 		// AND `failed` IS GONE. The engine keeps the state's name and a person
 		// reads the reading's own word — `incomplete` — because "failed" sends
 		// somebody looking for a fault and four of the five ways a run ends this
-		// way are not one (docs/design/task-states/DESIGN.md). The reason itself is
+		// way are not one. The reason itself is
 		// on the rail's row under the node; the header has one line and spends it
 		// on the state.
 		return a.taskStatus(node).Word

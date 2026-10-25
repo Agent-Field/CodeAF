@@ -198,7 +198,7 @@ func TestAStaleBeliefIsMovedFurtherByTheSameAnswer(t *testing.T) {
 }
 
 // TestAProbeTouchesTheFirstTokenAndNeverTheRate is the probe's whole claim: it
-// measured exactly our path to this lane just now, and it measured nothing at
+// measured exactly our path to this test just now, and it measured nothing at
 // all about how fast the lane writes.
 func TestAProbeTouchesTheFirstTokenAndNeverTheRate(t *testing.T) {
 	l := newLedger()

@@ -19,7 +19,7 @@ import (
 
 // ── THE WAITING LAWS, AT THE SEAM THAT SENDS ────────────────────────────────
 //
-// `docs/design/waiting/DESIGN.md` states the design; `internal/lane/law_test.go`
+// `the implementation` states the design; `internal/lane/law_test.go`
 // holds the half of it that is arithmetic; this file holds the half that is
 // wiring. Every law here is about a place two layers have to agree, which is
 // exactly the set of places the reported defect was hiding in: the funnel built
@@ -117,7 +117,7 @@ func TestEveryFunnelCallHasAController(t *testing.T) {
 	sender := waitingFunc(t, client, "completeWithMessagesStreaming")
 	if !waitingNames(sender, "Controller") {
 		t.Error("internal/provider/client.go: completeWithMessagesStreaming never asks for a controller, " +
-			"so a call the chooser had no opinion about is watched by nothing (lane W3)")
+			"so a call the chooser had no opinion about is watched by nothing")
 	}
 	fset, hedge := waitingFile(t, "internal/provider/hedge.go")
 	race := waitingFunc(t, hedge, "raceFor")
@@ -215,7 +215,7 @@ func TestAHeartbeatIsReportedAsAHeartbeat(t *testing.T) {
 	for _, needed := range []string{"Beat:", "Hidden:", "Visible:"} {
 		if !strings.Contains(text, needed) {
 			t.Errorf("the stream loop never fills %s on a reading — the controller cannot tell a heartbeat, "+
-				"a thought and a word apart (lane W3)", strings.TrimSuffix(needed, ":"))
+				"a thought and a word apart", strings.TrimSuffix(needed, ":"))
 		}
 	}
 }
@@ -276,7 +276,7 @@ func TestTheCallLogSaysWhyItWaitedAndWhatItDid(t *testing.T) {
 	row := reflect.TypeOf(calllog.Record{})
 	for _, field := range []string{"SilenceMs", "Action", "Arms", "WasteUSD"} {
 		if _, ok := row.FieldByName(field); !ok {
-			t.Errorf("calllog.Record carries no %s — an autopsy cannot say when the wait was acted on or what it cost (lane W3)", field)
+			t.Errorf("calllog.Record carries no %s — an autopsy cannot say when the wait was acted on or what it cost", field)
 		}
 	}
 }
@@ -314,7 +314,7 @@ func TestSetModelReachesTheBeat(t *testing.T) {
 		}
 	}
 	t.Error("internal/session/agent.go: SetModel never tells the lane beat about the new model, " +
-		"so a model picked after launch never gets a sheet (lane W4)")
+		"so a model picked after launch never gets a sheet")
 }
 
 // TestEveryStreamingRoleIsBoundedAndMediaIsNot is the funnel law, said about
@@ -379,7 +379,7 @@ var spokenWaitExceptions = map[string]string{
 
 // TestEveryWaitInTheRequestPathIsSpoken is the recovery design's clause 4 as a
 // law: `no select on a timer in the request path without a notePhase`
-// (`docs/design/recovery/DESIGN.md` §3).
+// (`the implementation` §3).
 //
 // FOUR WAITS WERE SILENT and the census could not see any of them, because a
 // wait with no phase leaves no row and no line — it is indistinguishable, from
@@ -428,7 +428,7 @@ func TestEveryWaitInTheRequestPathIsSpoken(t *testing.T) {
 				continue
 			}
 			t.Errorf("internal/provider/%s: %s parks on a timer and says nothing — "+
-				"a wait that is real is reported (docs/design/waiting/DESIGN.md). "+
+				"a wait that is real is reported. "+
 				"Post a notePhase with an honest deadline, or name it in spokenWaitExceptions "+
 				"with the sentence that says why nobody is waiting on it.",
 				name, spelled)

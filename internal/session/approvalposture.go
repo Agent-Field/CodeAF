@@ -37,9 +37,8 @@ import (
 //
 // THE ENGINE HOLDS THE WORD AND SOMEBODY ELSE BUILDS THE GATE. A policy is built
 // from three settings rows resolved through the project layer, which is
-// cmd/codeaf's knowledge and not this package's (approvalgate.go says why the
-// gate is pushed rather than re-read). So the door onto the rows is handed in
-// as [Config.ApprovalGate], and [Agent.SetApprovalPosture] asks it for the
+// cmd/codeaf's knowledge and not this package's. So the door onto the rows is
+// handed in as [Config.ApprovalGate], and [Agent.SetApprovalPosture] asks it for the
 // finished policy the way a consent card's banked rule already does — the same
 // v3Policy, the same rows, the same floors. A session with no such door has no
 // dial: the surface asks [Agent.ApprovalDial] and draws no control, which is
@@ -168,6 +167,8 @@ func (a *Agent) SetApprovalPosture(posture string) error {
 	if build == PostureAuto {
 		build = ""
 	}
+	a.approvalMu.Lock()
+	defer a.approvalMu.Unlock()
 	policy, guardian, err := gate.Build(build)
 	if err != nil {
 		return err
@@ -195,10 +196,19 @@ func (a *Agent) SetApprovalPosture(posture string) error {
 // the rows' own, and a rule banked under `--yolo` keeps the flag's open gate
 // exactly as it did before this scope existed.
 func (a *Agent) RebuildApprovalGate() error {
+	_, err := a.refreshApprovalGate()
+	return err
+}
+
+func (a *Agent) refreshApprovalGate() (*approval.Policy, error) {
 	gate := a.config.ApprovalGate
 	if gate == nil {
-		return errNoApprovalDial
+		return nil, errNoApprovalDial
 	}
+	a.approvalMu.Lock()
+	defer a.approvalMu.Unlock()
+	// Serialize the settings read through publication and snapshot selection.
+	// A tool must not fall back to an older policy while another build waits.
 	a.mu.Lock()
 	stored := a.approvalPosture
 	a.mu.Unlock()
@@ -210,19 +220,18 @@ func (a *Agent) RebuildApprovalGate() error {
 		build = ""
 	}
 	policy, guardian, err := gate.Build(build)
-	if err != nil {
-		return err
-	}
-	if policy == nil {
-		return errors.New("the rules could not be rebuilt")
+	if err == nil && policy == nil {
+		err = errors.New("the rules could not be rebuilt")
 	}
 	a.mu.Lock()
-	a.approvalPolicy = policy
-	if stored != "" {
-		a.guardianOverride = &guardian
+	defer a.mu.Unlock()
+	if err == nil {
+		a.approvalPolicy = policy
+		if stored != "" {
+			a.guardianOverride = &guardian
+		}
 	}
-	a.mu.Unlock()
-	return nil
+	return a.approvalPolicyLocked(), err
 }
 
 // guardianOn is whether the small model stands in on this session right now:

@@ -740,7 +740,7 @@ func TestAppCrewStartRecordsTheStartLineAndTheBriefFollowsIt(t *testing.T) {
 		if ask.Transcript == "" {
 			return nil, errors.New("opened without a transcript")
 		}
-		return &appConn{Conv: &fakeConversation{}, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() { mu.Lock(); release++; mu.Unlock() }}, nil
+		return &appConn{Conv: &fakeConversation{model: ask.Model}, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() { mu.Lock(); release++; mu.Unlock() }}, nil
 	}
 	t.Cleanup(func() { backend.Close() })
 	backend.state = &appState{path: filepath.Join(t.TempDir(), appStateName)}
@@ -767,7 +767,7 @@ func TestAppCrewStartRecordsTheStartLineAndTheBriefFollowsIt(t *testing.T) {
 	}
 	start := func(brief string) string {
 		t.Helper()
-		sid, err := teamstore.AppendTrafficID(backend.profileDir, id, teamstore.Entry{Kind: teamstore.KindStart, From: teamstore.FromManager, FromKey: leadMember.Key, To: "web", Text: brief})
+		sid, err := teamstore.AppendTrafficID(backend.profileDir, id, teamstore.Entry{Kind: teamstore.KindStart, From: teamstore.FromManager, FromKey: leadMember.Key, To: "web", Text: brief, Model: "moonshotai/kimi-k3"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -782,6 +782,22 @@ func TestAppCrewStartRecordsTheStartLineAndTheBriefFollowsIt(t *testing.T) {
 		team, _ := file.Team(id)
 		manager, _ := team.Member(team.Manager)
 		backend.crewStart(team, manager, e)
+		listed, err := backend.ListAgents("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, agent := range listed {
+			if agent.Title == session.FirstMessageName(brief) {
+				found = true
+				if agent.Model != "moonshotai/kimi-k3" {
+					t.Fatalf("started model = %q", agent.Model)
+				}
+			}
+		}
+		if !found {
+			t.Fatal("started member not listed")
+		}
 		return sid
 	}
 	const (
