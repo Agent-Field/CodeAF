@@ -183,6 +183,8 @@ var salienceTable = []salienceCase{
 		Compaction: &session.CompactionFact{Seq: 1, TokensBefore: 120000}}},
 	{name: "EventSummaryFailed", ev: session.Event{Kind: session.EventSummaryFailed,
 		Compaction: &session.CompactionFact{Seq: 1, Failed: session.SummaryFailedError}}},
+	{name: "EventChatStart", chatOnly: "only interactive conversations request new chats; task workers carry no start_chat tool",
+		ev: session.Event{Kind: session.EventChatStart}},
 	{name: "EventQuestionDiscussion", chatOnly: "a clarification belongs to the person's pending decision and arrives on the conversation's question subscription",
 		ev: session.Event{Kind: session.EventQuestionDiscussion, Discussion: &session.QuestionDiscussion{
 			ID: "clarify-1", Seq: 1, Event: &session.Event{Kind: session.EventTextDelta, Text: "the command only reads the report"},

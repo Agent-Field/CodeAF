@@ -179,6 +179,11 @@ func crewFactory(store *plandb.Store, workspace, profileDir string, seats Seats,
 		role, _ := store.RoleOf(task.ID)
 		tier := SeatFor(role)
 		model := seatModel(profileDir, tier, seats)
+		if tier == config.ModelTierWorker {
+			if named := taskWorkModel(store, task); named != "" {
+				model = named
+			}
+		}
 		if model == "" {
 			return seatlessWorker{tier: tier}
 		}
@@ -189,6 +194,20 @@ func crewFactory(store *plandb.Store, workspace, profileDir string, seats Seats,
 		seat, _ := config.CrewTierSeat(tier)
 		return workerFor(model, session.SeatCompleter(seat, completerFor(model)))
 	}
+}
+
+// taskWorkModel keeps a named work model through splits. Coordinators and checks
+// retain their own seats; work leaves use the nearest explicit ancestor override.
+func taskWorkModel(store *plandb.Store, task plandb.Task) string {
+	for current := &task; current != nil; current = store.Task(current.ParentID) {
+		if current.Model != "" {
+			return current.Model
+		}
+		if current.ParentID == "" {
+			break
+		}
+	}
+	return ""
 }
 
 // seatModel is the model a task riding tier is seated on, and the one answer

@@ -50,6 +50,24 @@ and `/skill` still attaches them. The procedures codeaf saved after watching
 them run live in that database, so without it only the skills in folders are on
 the shelf.
 
+## Why can't you use my skills
+
+Skills work with automatic memory saving off: `memory.enabled` does not disable
+them. If a skill is missing, open `/skill` and check its row for a warning, or
+type `/skill <folder>` to attach it directly. The folder needs a readable
+`SKILL.md` with a name and description. A missing file or invalid frontmatter
+can keep it off the shelf. After adding or editing a skill in a scanned folder,
+open a new conversation so discovery reads it again.
+
+For a Claude Code plugin skill, the plugin must be installed and enabled in
+Claude Code; browsing a marketplace is not installation. If two skills share a
+name, the higher-precedence copy wins. The page `skills-from-other-tools`
+explains those folders and precedence rules.
+
+A message with a picture does not automatically carry skill instructions, even
+for an attached skill. Send the picture, then send the instruction in a message
+of its own; the model can still open the skill with `use_skill`.
+
 ## Where the shelf comes from
 
 Every launch reads the skill folders before the first message is built and

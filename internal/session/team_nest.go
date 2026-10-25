@@ -146,7 +146,7 @@ func (e errNest) Error() string { return string(e) }
 // teamStartSubTeam makes the child team under team, moves in the members
 // named, and writes the start that opens its manager. It answers what to hand
 // the model and whether that is a refusal.
-func (a *Agent) teamStartSubTeam(ctx context.Context, team teams.Team, role teamRole, handle, brief, name string, moving []string, prov teams.Provenance) (string, bool) {
+func (a *Agent) teamStartSubTeam(ctx context.Context, team teams.Team, role teamRole, handle, brief, name string, moving []string, model string, prov teams.Provenance) (string, bool) {
 	profile := a.config.teamProfile()
 	name = strings.Join(strings.Fields(name), " ")
 	if name == "" {
@@ -248,7 +248,7 @@ func (a *Agent) teamStartSubTeam(ctx context.Context, team teams.Team, role team
 	// here, where the membership was written. A refusal returned above and
 	// wrote nothing.
 	_ = teams.WriteMoveNotices(profile, movedIn)
-	start := teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: handle, Text: brief, Team: childID, Approval: a.ResolvedApprovalPosture(), Provenance: prov}
+	start := teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: handle, Text: brief, Team: childID, Approval: a.ResolvedApprovalPosture(), Provenance: prov, Model: model}
 	startID, err := teams.AppendTrafficID(profile, team.ID, start)
 	if err != nil {
 		return "The team " + strconv.Quote(name) + " was made, but its manager's start could not be written to the traffic: " + err.Error(), true

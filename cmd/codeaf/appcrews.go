@@ -785,7 +785,11 @@ func (b *appBackend) crewStart(t teamstore.Team, manager teamstore.Member, e tea
 	var pending appPendingStart
 	_ = b.crewLayer().read(func(f *appCrewLayerFile) { pending = f.Pending[appPendingKey(t.ID, handle)] })
 	where := appCrewWhere(t)
-	agent, err := b.CreateAgent(appwire.CreateAsk{Workspace: where, Model: pending.Model})
+	model := e.Model
+	if model == "" {
+		model = pending.Model
+	}
+	agent, err := b.CreateAgent(appwire.CreateAsk{Workspace: where, Model: model})
 	if err != nil {
 		b.crewNote(manager, "could not start @"+handle+": "+err.Error())
 		return

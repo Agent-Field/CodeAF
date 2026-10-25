@@ -1,6 +1,6 @@
 # Commands you type in a terminal
 
-## Is there a newer version — update a dev build — keep a dev build up to date — latest dev — /update — why does it say this every time I start
+## Is there a newer version — update codeaf — update a dev build — /update
 
 Every launch of a release build checks the newest release of the channel it
 follows, and what happens next depends on the build:

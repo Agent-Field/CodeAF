@@ -66,17 +66,29 @@ func watchAppParent(ctx context.Context, parent func() int, every time.Duration,
 
 // leaveWithin waits for the engine to start leaving, by a signal or the
 // app's going (ctx) or by its Close beginning (left), and calls end once wait
-// has passed after that. A process that finished leaving sooner has already
-// exited, so end is reached only by a wrap-up that outran its bound.
-func leaveWithin(ctx context.Context, left <-chan struct{}, wait time.Duration, end func()) {
+// has passed after that. end is reached only by a wrap-up that outran its
+// bound.
+//
+// A WRAP-UP THAT FINISHED IS NOT ENDED. returned closes when the door that
+// started this watch has done its wrap-up and returned; after that the process
+// is on its way out through main, and there is nothing left to bound. Without
+// it, the door's own deferred cancel started the clock as it returned, and a
+// process that went on living after the door, as a test binary does, was
+// ended thirty seconds later in the middle of whatever it was doing.
+func leaveWithin(ctx context.Context, left, returned <-chan struct{}, wait time.Duration, end func()) {
 	select {
 	case <-ctx.Done():
 	case <-left:
+	case <-returned:
+		return
 	}
 	timer := time.NewTimer(wait)
 	defer timer.Stop()
-	<-timer.C
-	end()
+	select {
+	case <-timer.C:
+		end()
+	case <-returned:
+	}
 }
 
 // appLeaveNow is how the engine ends when its wrap-up outran [appLeaveWait].
