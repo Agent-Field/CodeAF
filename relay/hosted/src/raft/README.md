@@ -184,9 +184,10 @@ upgrade is authenticated and passive until hosted leadership is available.
 
 The router's durable generation advances before its volatile queues reopen.
 Peer and application sockets use the hibernation API with a separate tag and
-serialized attachment containing their signed connection proof. Coordinator
-eviction fences those old connections; the unchanged client refreshes the same
-store's grant and reconnects. Watch presence and broadcasts filter these sockets.
+serialized attachment containing their signed connection proof. A cold presence
+sweep preserves those connections without opening coordination or advancing the
+generation. A real request reactivates the coordinator with fresh quorum reads,
+fences the lost queues, and lets the client refresh the same store's grant. Watch presence and broadcasts filter these sockets.
 Protocol queues use their own admission and reservations, outside public rates.
 
 ABI 36 supplies admission plans, enrollment bytes and control status from an
@@ -196,3 +197,17 @@ transport limits and response encoding. Routing owns per-lane delivery cursors,
 acks and chunk credits. One outstanding chunk per target bounds catch-up, and
 only its signed durable applied evidence completes snapshot delivery. Public
 coordination never waits for a learner; peer frames bypass its public queue.
+
+
+## Sleeping accounts and advisory presence
+
+The coordinator persists an outstanding-maintenance hint only while consensus
+work is scheduled. All-voter sleep removes it and clears stale peer retention
+deadlines before cancelling the maintenance alarm. Presence and explicit
+retirement deadlines are then rearmed independently. An alarm on a cold sleeping
+object reads socket attachments and that hint without constructing a tenant,
+loading member handles, acquiring a read barrier or reopening peer queues.
+Platform auto-response timestamps supply presence without data writes. Real
+application input still activates coordination and takes a fresh quorum barrier;
+a remembered leader never authorizes a reply. Watch hold renewals retain their
+committed path and shared renewal period.

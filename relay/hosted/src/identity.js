@@ -3,7 +3,7 @@
 // none of its legacy directory methods are a production writer.
 import { DurableObject } from 'cloudflare:workers';
 import { LegacyAdmission } from './raft/legacy.js';
-import { peerPath,peerSocket,peerRefusal } from './raft/peers.js';
+import { peerPath,peerSocket,peerRefusal,expirePeerSockets } from './raft/peers.js';
 import { HostedIdentity } from './raft/hosted.js';
 import { clusterIngress,clusterRequestLimit } from './raft/ingress.js';
 import { sharedRuntime } from './raft/actor.js';
@@ -75,7 +75,7 @@ export class IdentityDO extends DurableObject {
   async #noteLeft(ws) {
     const device = this.watchers.left(ws);
     const identity = device && (await this.ctx.storage.get('identity'));
-    if (identity && !(await this.#isGone()) && this.host?.ready) await this.host.serial(() => this.host.commitEffect({device_seen:{device}},Date.now()));
+    if (identity && !(await this.#isGone()) && this.host?.ready) await this.host.serial(async()=>{await this.host.wakeMaintenance();await this.host.commitEffect({device_seen:{device}},Date.now());});
   }
 
   async #serve(request) {
@@ -196,14 +196,29 @@ export class IdentityDO extends DurableObject {
       // request supplies the public root; an alarm cannot invent that key.
       this.watchers.closeAll(1012,'reconnecting');return;
     }
+    // Presence is advisory and survives hibernation in socket attachments. A
+    // sweep cannot acquire authority or reopen a sleeping replication group.
+    this.watchers.expire();
+    const now=Date.now();
+    await expirePeerSockets(this.ctx,now,at=>this.#arm(at));
+    const maintenance=await this.ctx.storage.get('raft-maintenance');
+    const retirement=await this.ctx.storage.get('raft-retire-at');
+    const retireDue=retirement&&retirement<=now;
+    if(retirement&&!retireDue)await this.#arm(retirement);
+    if(!maintenance&&!retireDue)return;
     const tenant=this.#tenantOf(identity);this.host ??= new HostedIdentity(this.ctx,this.env,tenant,this.legacyAdmission,at=>this.#arm(at));
     const erase=await this.host.serial(async()=>{
       await this.host.ensure(Uint8Array.from(atob(provision.config.signing_key),c=>c.charCodeAt(0)));
-      this.watchers=this.host.watchers;this.watchers.expire();tenant.stats.flush();
-      await this.host.peers.deadlines(Date.now());
-      await this.host.maintenance(Date.now());
+      this.watchers=this.host.watchers;tenant.stats.flush();
+      // A retained deadline is only a wake hint. Retirement still needs the
+      // current committed identity before any irreversible erasure starts.
+      if(retireDue||!this.host.retirementKnown){
+        const root=await this.host.barrierRecord({namespace:'state',key:'identity'});
+        await this.host.rememberRetirement(this.host.project('identity',root));
+      }
+      await this.host.maintenance(now);
       const at=this.host.retireAt;
-      if(at && at<=Date.now())return true;
+      if(at && at<=now)return true;
       if(at)await this.#arm(at);return false;
     });
     // Uploads must finish their post-I/O authority check before leaving
@@ -212,7 +227,8 @@ export class IdentityDO extends DurableObject {
   }
 
   /**
-   * #arm wakes the object at `at` unless it is already set to wake sooner, so no caller can push another's alarm later.
+   * #arm wakes the object at `at` unless it is already set to wake sooner. Final
+   * all-voter sleep passes null before rearming independent presence deadlines.
    * Calls run one after another: two that overlapped would both read the same alarm and the later write would win.
    */
   #arm(at) {
@@ -222,6 +238,7 @@ export class IdentityDO extends DurableObject {
   }
 
   async #armSooner(at) {
+    if(at===null){await this.ctx.storage.deleteAlarm();return;}
     const set = await this.ctx.storage.getAlarm();
     if (set === null || at < set) await this.ctx.storage.setAlarm(at);
   }

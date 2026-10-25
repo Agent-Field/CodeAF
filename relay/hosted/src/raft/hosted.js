@@ -34,8 +34,8 @@ async function keypair(){
 // replies below depend on the members' actual durable application and quorum.
 export class HostedIdentity {
   constructor(ctx,env,tenant,admission,arm){
-    this.armAlarm=arm??(async at=>{const old=await ctx.storage.getAlarm();if(old===null||at<old)await ctx.storage.setAlarm(at)});
-    this.policy=coordinationPolicy(sharedRuntime());this.started=Math.floor(performance.now());this.elapsed=0;this.asleep=false;
+    this.armAlarm=arm??(async at=>{if(at===null){await ctx.storage.deleteAlarm();return;}const old=await ctx.storage.getAlarm();if(old===null||at<old)await ctx.storage.setAlarm(at)});
+    this.policy=coordinationPolicy(sharedRuntime());this.started=Math.floor(performance.now());this.elapsed=0;this.asleep=false;this.wakeVersion=0;this.alarmTail=Promise.resolve();
     this.ctx=ctx;this.env=env;this.tenant=tenant;this.runtime=sharedRuntime();this.codec=new HostCodec(this.runtime);
     this.source=tenant.migration(ctx.storage,this.runtime);this.tail=Promise.resolve();this.pending=0;this.members=new Map();this.states=new Map();this.queue=[];this.reads=[];
   }
@@ -100,7 +100,7 @@ export class HostedIdentity {
     await this.pump();await this.elect();await this.barrier();
     if(!owned)await this.source.own(receipts);
     this.source.route(()=>true);
-    this.watchers=new CommittedWatchers(this.ctx,this.tenant.limits.maxWatchers,this.tenant.watchers.ttlMs,at=>this.ctx.waitUntil(this.ctx.storage.setAlarm(at)));
+    this.watchers=new CommittedWatchers(this.ctx,this.tenant.limits.maxWatchers,this.tenant.watchers.ttlMs,at=>this.ctx.waitUntil(this.armAlarm(at)));
     this.tenant.watchers=this.watchers;
     this.effects=new RaftEffectsFacade(this,this.manifest.config.cluster);
     this.holds=new CommittedHolds(this,this.policy);
@@ -111,7 +111,7 @@ export class HostedIdentity {
       requireOK((await this.anchorCommand({init_membership:{anchors,limit:this.policy.max_member_records}},Date.now())).value.code);
     }
     const root=await this.barrierRecord({namespace:'state',key:'identity'});
-    this.retireAt=this.project('identity',root).rotation?.retire_at;
+    await this.rememberRetirement(this.project('identity',root));
     const generation=await this.ctx.storage.get('raft-router-generation')??'0';
     if(typeof generation!=='string'||!/^(0|[1-9][0-9]*)$/.test(generation)||BigInt(generation)>=(1n<<64n)-1n)throw unavailable();
     const next=String(BigInt(generation)+1n);
@@ -214,6 +214,7 @@ export class HostedIdentity {
   projectJSON(kind,raw){const r=response(this.runtime.call(frame(31).str(kind).blob(raw).finish())),value=dec.decode(r.blob());r.end();return value;}
   project(kind,raw){return JSON.parse(this.projectJSON(kind,raw));}
   async authorize(device,certificate,write=false){
+    await this.wakeMaintenance();
     requireOK((await this.commitEffect({device_seen:{device}},Date.now())).code);
     const b=await this.barrier(),member=this.members.get(b.node),root=await member.hostView(b.index,'state','identity'),actor=await member.hostView(b.index,'state','device/'+segment(device));
     const r=response(this.runtime.call(frame(32).blob(root.raw).blob(actor.raw??new Uint8Array()).str(device).str(certificate).u32(write?1:0).finish()));requireOK(r.str());r.end();return {barrier:b,app:root.app,identity:this.project('identity',root.raw)};
@@ -242,9 +243,39 @@ export class HostedIdentity {
     const r=response(this.runtime.call(frame(34).str(this.manifest.config.cluster).u64(id).u64(now).blob(pkcs8.slice(-32)).blob(saved??new Uint8Array()).blob(data(change)).finish()));
     const command=r.blob();r.end();return this.commit(command);
   }
-  async wakeMaintenance(){this.asleep=false;await this.armAlarm(Date.now()+this.policy.tick_every);}
+  async rememberRetirement(identity){
+    const at=identity.rotation?.retire_at;
+    if(this.retirementKnown&&at===this.retireAt)return;
+    // Cache only confirmed storage so an interrupted write remains repairable.
+    this.retirementKnown=false;
+    if(at)await this.ctx.storage.put('raft-retire-at',at);
+    else await this.ctx.storage.delete('raft-retire-at');
+    this.retireAt=at;this.retirementKnown=true;
+  }
+  wakeMaintenance(){
+    this.asleep=false;this.wakeVersion++;
+    // Peer ingress has its own queue. Serialize only timer transitions so a
+    // wake racing the final sleep cannot lose its durable maintenance hint.
+    const task=this.alarmTail.then(async()=>{
+      if(!this.maintaining){await this.ctx.storage.put('raft-maintenance',true);await this.ctx.storage.sync();this.maintaining=true;}
+      await this.armAlarm(Date.now()+this.policy.tick_every);
+    });
+    this.alarmTail=task.catch(()=>{});return task;
+  }
+  sleepMaintenance(version){
+    const task=this.alarmTail.then(async()=>{
+      if(version!==this.wakeVersion){this.asleep=false;return;}
+      await this.ctx.storage.delete('raft-maintenance');await this.ctx.storage.sync();this.maintaining=false;
+      await this.armAlarm(null);
+      this.watchers.liveness.rearm();
+      if(this.retireAt)await this.armAlarm(this.retireAt);
+      if(this.holds.next!==null)await this.armAlarm(this.holds.next);
+    });
+    this.alarmTail=task.catch(()=>{});return task;
+  }
   async maintenance(now=Date.now(),elapsed=Math.floor(performance.now())){
     if(this.asleep)return;
+    const wakeVersion=this.wakeVersion;
     if(this.membershipPending)await this.reconcileMembership();
     this.elapsed=Math.max(this.elapsed,elapsed-this.started);
     // Alarm/recovery effects are retained until their exact batch is consumed.
@@ -294,8 +325,8 @@ export class HostedIdentity {
         const acks=[];for(const voter of marker.voters)acks.push(await this.members.get(voter).sleepAck(marker.index,marker.term));
         let sleeping=true;
         for(const [node,member]of this.members){const effects=await member.schedule(this.elapsed,now,false,acks);this.accept(node,effects);sleeping&&=effects.plan.sleeping;}
-        await this.pump();this.asleep=sleeping;
-        if(sleeping&&this.peers){await this.peers.quiesce();await this.pump();}
+        await this.pump();this.asleep=sleeping&&wakeVersion===this.wakeVersion;
+        if(this.asleep&&this.peers){await this.peers.quiesce();await this.pump();await this.sleepMaintenance(wakeVersion);}
       }catch{this.asleep=false;}
     }
     if(!this.asleep)await this.armAlarm(now+this.policy.tick_every);
@@ -355,7 +386,7 @@ export class HostedIdentity {
       const result=await this.commit(data(q.command));
       if(result.value.code==='ok'){
         const b=await this.barrier(),row=await this.members.get(b.node).hostView(b.index,'state','identity');
-        const identity=this.project('identity',row.raw);this.retireAt=identity.rotation?.retire_at;
+        const identity=this.project('identity',row.raw);await this.rememberRetirement(identity);
         this.watchers.broadcast(row.app.version);
         if(identity.rotation)this.watchers.closeAll(CLOSE_ROTATED,'rotated');
         if(this.retireAt)await this.armAlarm(this.retireAt);
@@ -401,7 +432,7 @@ export class HostedIdentity {
     let raw;try{raw=v1Command(this.runtime,this.manifest.config.cluster,Date.now(),this.proof(request,body));}catch{throw new Wire('bad_request',400);}
     const result=await this.commit(raw);requireOK(result.value.code);
     const b=await this.barrier(),snapshot=await this.members.get(b.node).hostView(b.index,'state','identity'),identity=this.project('identity',snapshot.raw),version=snapshot.app.version;
-    this.retireAt=identity.rotation?.retire_at;
+    await this.rememberRetirement(identity);
     this.watchers.broadcast(version);
     if(join){const code=decodeURIComponent(join[1]).trim().toLowerCase();await this.effects.deliver(this.env.LINK_REQUEST.get(this.env.LINK_REQUEST.idFromName(code)),code,Date.now());unwrap(await this.env.LINK_GATE.get(this.env.LINK_GATE.idFromName('gate')).decided(code));}
     if(request.method==='GET'){

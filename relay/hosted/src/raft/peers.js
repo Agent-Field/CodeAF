@@ -10,6 +10,16 @@ export const peerPath=path=>['/v2/cluster/exchange','/v2/cluster/socket','/v2/cl
 export function peerLimits(runtime){const r=response(runtime.call(frame(38).u32(0).finish()));const limits=JSON.parse(dec.decode(r.blob()));r.end();return limits;}
 export const peerSocket=ws=>ws.deserializeAttachment()?.clusterPeer===true;
 
+// Retention belongs to the socket attachment, so an alarm can expire lost
+// delivery without activating coordination or replacing an idle generation.
+export async function expirePeerSockets(ctx,now,arm){
+ for(const ws of ctx.getWebSockets('cluster-peer')){
+  const at=ws.deserializeAttachment()?.deadline;
+  if(at&&at<=now){try{ws.close(1012,'reconnecting');}catch{}}
+  else if(at)await arm(at);
+ }
+}
+
 // Routing memory is expendable. A durable generation fences all old cursors
 // before a recovered coordinator can serve another exchange or socket frame.
 export class PersonalPeers {
@@ -179,8 +189,10 @@ export class PersonalPeers {
    const result=await this.exchange(bytes);ws.send(result.raw);const deadline=JSON.parse(dec.decode(result.raw)).messages.length?Date.now()+this.limits.Retention:null;ws.serializeAttachment({...att,last:this.host.hash(result.raw),deadline});if(deadline)await this.host.armAlarm(deadline);
   }catch{this.close(ws);}
  }
- async deadlines(now){for(const ws of this.sockets()){const at=ws.deserializeAttachment().deadline;if(at&&at<=now)this.close(ws);else if(at)await this.host.armAlarm(at);}}
  async quiesce(){
+  // Final voter acknowledgments discard learner delivery. Its old retention
+  // deadline must not wake a cold router merely to reconnect idle sockets.
+  for(const ws of this.sockets()){const a=ws.deserializeAttachment();if(a.deadline)ws.serializeAttachment({...a,deadline:null});}
   for(const [node,box]of this.boxes)if(!this.view[node]?.voter)for(let lane=0;lane<3;lane++){for(const q of box.queues[lane])this.used[lane]-=q.size;box.queues[lane]=[];}
   for(const [to,s]of this.snapshots){this.snapshots.delete(to);await this.host.input(s.from,12,{peer:to,snapshot:true,success:false});}
  }
