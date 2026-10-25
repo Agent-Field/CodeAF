@@ -431,8 +431,8 @@ func TestAnOlderBuildWithNoStampHoldingWorkIsJoined(t *testing.T) {
 	if !strings.Contains(note, "older codeaf") {
 		t.Fatalf("the notice did not say which engine this is: %q", note)
 	}
-	if !strings.Contains(note, "After work finishes, close every window") || !strings.Contains(note, "interrupts active turns and tasks") {
-		t.Fatalf("the notice does not offer a safe update and warn about explicit stop: %q", note)
+	if !strings.Contains(note, "After work finishes, close every window") || strings.Contains(note, "--stop") {
+		t.Fatalf("the notice does not offer a safe update: %q", note)
 	}
 	if !hostAnswers(workspace) || !host.waitingSaid() || host.forced() {
 		t.Fatal("a stampless older build was ended rather than joined")

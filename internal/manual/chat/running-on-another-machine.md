@@ -160,7 +160,7 @@ as another build. Four things can be true:
 - **It is an older build, holding nothing.** It hands the workspace over at once and the
   window says `replaced the older engine on tower (pid <n>, <build>, <binary>) — this build
   holds the workspace now`.
-- **It is a newer build.** Your window joins it. If the bridge speaks an older version, it hands over to the newer engine's executable, keeping the same arguments and connection. It tries once. If that file is missing, not executable, or still incompatible, the refusal names the file and the update command.
+- **It is a newer build.** Your window joins it. If the bridge speaks an older version, on Unix it hands over to the newer engine's executable, keeping the same arguments and connection. It tries once. If that file is missing, not executable, or still incompatible, the refusal names the file and the update command.
 
 ## Which program runs on the far machine — devaf, codeaf, and custom names
 
@@ -936,3 +936,9 @@ opener are on that server. The original-file action explains how to use the loca
 not launch a viewer on a machine you are not sitting at. The optional cell preview
 still scrolls as ordinary terminal text; it cannot display screenshot text at full
 resolution. This distinction applies inside tmux too.
+
+## Executable handoff on Windows
+
+Windows cannot replace the running bridge in place. When a newer engine needs a
+different version, this launch stops cleanly and names the installed program’s
+update command. It leaves the existing conversation and its windows running.

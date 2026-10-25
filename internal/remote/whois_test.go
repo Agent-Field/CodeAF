@@ -11,6 +11,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"io"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -213,5 +215,22 @@ func TestWireMismatchDoesNotRecommendStoppingAttachedWindows(t *testing.T) {
 	reason := helloRefusal(t, conn, Hello{Version: Version - 1})
 	if strings.Contains(reason, "--stop") || !strings.Contains(reason, " update") || !strings.Contains(reason, "newer build") {
 		t.Fatalf("unhelpful refusal: %s", reason)
+	}
+}
+
+func TestCrossChannelMismatchNamesTheCallingProgram(t *testing.T) {
+	surface, engine := net.Pipe()
+	defer surface.Close()
+	go func() {
+		defer engine.Close()
+		var hello Frame
+		_ = json.NewDecoder(engine).Decode(&hello)
+		_ = json.NewEncoder(engine).Encode(Frame{Kind: "fatal", Error: "tower is on a newer build (rev-new); other-program update to match — this connection needs matching versions"})
+	}()
+	_, err := Dial(surface, "tower", Hello{})
+	self, _ := os.Executable()
+	want := filepath.Base(self) + " update"
+	if err == nil || !strings.Contains(err.Error(), want) || strings.Contains(err.Error(), "other-program update") {
+		t.Fatalf("wrong update road: %v, want %s", err, want)
 	}
 }

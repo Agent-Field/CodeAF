@@ -523,7 +523,7 @@ loss to the same running engine still resumes its existing answer.
 days ago is older, and so is one too old to say. **A newer engine is never replaced** by an
 older codeaf — that window joins it — and two copies of one build never take the slot from
 each other. An older engine on another wire, or one too old to be asked at all, is refused
-with advice to finish work and close every window for that workspace before reopening. A newer incompatible engine hands the bridge to its own executable once; if the file cannot be used, the refusal names that file and the installed program's update command. Nothing is signalled behind your back. It used to be the other way round for a busy engine: it was killed and replaced, which
+with advice to finish work and close every window for that workspace before reopening. On Unix, a newer incompatible engine hands the bridge to its own executable once; if the file cannot be used, the refusal names that file and the installed program's update command. Nothing is signalled behind your back. It used to be the other way round for a busy engine: it was killed and replaced, which
 is the rule this page no longer states.
 
 ## What still does not work, even though the session stays open
@@ -664,3 +664,9 @@ machine's memory store could not be opened, the page and the commands say so
 here, `memory is unavailable on this machine · …` from a far engine). The
 `notice things to remember` row is read on every turn, so even an engine that
 has been running for days follows a change from the next turn.
+
+## Executable handoff on Windows
+
+Windows cannot replace the running bridge in place. When a newer engine needs a
+different version, this launch stops cleanly and names the installed program’s
+update command. It leaves the existing conversation and its windows running.

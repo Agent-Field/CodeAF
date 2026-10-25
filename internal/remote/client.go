@@ -346,7 +346,7 @@ func (c *Client) attach(conn io.ReadWriteCloser) (Welcome, error) {
 		// [spokenError] is for: the door prints the reason unchanged, and a
 		// redial that meets it stops trying rather than spending its whole
 		// window rediscovering the same no (redial.go).
-		return Welcome{}, spokenError{reason: strings.TrimSpace(frame.Error)}
+		return Welcome{}, spokenError{reason: callingProgramMismatch(strings.TrimSpace(frame.Error))}
 	default:
 		return Welcome{}, fmt.Errorf("%s answered with a %q where a welcome belongs", c.where(), frame.Kind)
 	}
