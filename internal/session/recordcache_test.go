@@ -663,3 +663,41 @@ func BenchmarkRecordCache(b *testing.B) {
 		})
 	}
 }
+
+// A KEPT RECORD THAT NOBODY ASKS FOR GOES BACK TO THE HEAP. Paging a long
+// conversation wants the next page from the same parse, a few seconds later;
+// nothing wants a journal's whole reading an hour after the last page, and
+// eight of them held for the life of a desktop engine were most of its
+// resident set. Reading it again later is one parse.
+func TestAKeptRecordNobodyAsksForIsDroppedWhenItIdles(t *testing.T) {
+	clock := time.Now().Add(time.Hour)
+	dir := t.TempDir()
+	cache := NewRecordCache(RecordCacheLimits{Settle: time.Nanosecond, Now: func() time.Time { return clock }})
+	var paths []string
+	for _, name := range []string{"a.jsonl", "b.jsonl"} {
+		path := filepath.Join(dir, name)
+		writeRecord(t, path, recordJournal(6, false))
+		paths = append(paths, path)
+		read(t, cache, path)
+	}
+	if s := cache.Stats(); s.Entries != 2 || s.Retained == 0 {
+		t.Fatalf("stats = %+v, want both journals kept", s)
+	}
+	clock = clock.Add(recordCacheIdle / 2)
+	read(t, cache, paths[0]) // a hit: this one is in use again
+	clock = clock.Add(recordCacheIdle/2 + time.Second)
+	cache.Expire()
+	s := cache.Stats()
+	if s.Entries != 1 {
+		t.Fatalf("after the idle time %d records are kept, want only the one read since", s.Entries)
+	}
+	clock = clock.Add(recordCacheIdle)
+	cache.Expire()
+	if s := cache.Stats(); s.Entries != 0 || s.Retained != 0 {
+		t.Fatalf("stats = %+v, want an empty cache once nothing was read for the idle time", s)
+	}
+	read(t, cache, paths[1])
+	if s := cache.Stats(); s.Parses != 3 {
+		t.Fatalf("parses = %d, want two first readings and the expired journal read afresh", s.Parses)
+	}
+}

@@ -117,6 +117,8 @@ type RecordCacheLimits struct {
 	// Settle is how old a file's change time must be before its reading is
 	// kept.
 	Settle time.Duration
+	// Idle is how long a kept record may go unread before it is dropped.
+	Idle time.Duration
 	// Now is the clock the change time is measured against.
 	Now func() time.Time
 }
@@ -126,9 +128,12 @@ type RecordCacheLimits struct {
 const (
 	recordCacheOperations = 2
 	recordCacheBytes      = 256 << 20
-	recordCacheEntries    = 32
+	recordCacheEntries    = 8
 	recordCacheFileBytes  = 16 << 20
 	recordCacheSettle     = 2 * time.Second
+	// A page asked for again comes within seconds; a journal nobody has read
+	// for this long is read again for the price of one parse.
+	recordCacheIdle = 30 * time.Second
 )
 
 // RecordCacheStats is what a cache holds and has done, for a test or a bench.
@@ -155,6 +160,8 @@ type RecordCache struct {
 	retained   int64
 	reserved   int64
 	stats      RecordCacheStats
+	// sweeping is true while a timer is armed to look for idle records.
+	sweeping bool
 }
 
 // recordSlot is one kept reading. A slot evicted while copies of it are out is
@@ -166,6 +173,8 @@ type recordSlot struct {
 	cost    int64
 	leases  int
 	dropped bool
+	// used is when the record was kept or last handed out.
+	used time.Time
 }
 
 // recordFlight is one parse that may be kept, and whether a reader waits on it.
@@ -191,6 +200,9 @@ func NewRecordCache(limits RecordCacheLimits) *RecordCache {
 	}
 	if limits.Settle <= 0 {
 		limits.Settle = recordCacheSettle
+	}
+	if limits.Idle <= 0 {
+		limits.Idle = recordCacheIdle
 	}
 	if limits.Now == nil {
 		limits.Now = time.Now
@@ -296,6 +308,7 @@ func (c *RecordCache) leaseLocked(element *list.Element) (Record, func(), error)
 		return Record{}, nil, ErrRecordReadBusy
 	}
 	c.order.MoveToFront(element)
+	slot.used = c.limits.Now()
 	c.stats.Hits++
 	c.mu.Unlock()
 	record := cloneRecord(slot.record)
@@ -347,9 +360,10 @@ func (c *RecordCache) parseLocked(path string, size int64, stamp recordStamp, st
 		}
 		if c.reserveLocked(cost + vectors) {
 			c.reserved -= cost
-			slot := &recordSlot{path: path, stamp: stamp, record: record, cost: cost, leases: 1}
+			slot := &recordSlot{path: path, stamp: stamp, record: record, cost: cost, leases: 1, used: c.limits.Now()}
 			c.kept[path] = c.order.PushFront(slot)
 			c.retained += cost
+			c.watchIdleLocked()
 			copied := cloneRecord(record)
 			return copied, func() {
 				c.mu.Lock()
@@ -391,6 +405,33 @@ func (c *RecordCache) reserveLocked(n int64) bool {
 	}
 	c.reserved += n
 	return true
+}
+
+// Expire drops the kept records nobody has read for the idle time. A record a
+// callback still holds stays until the next look. It runs by itself while
+// anything is kept; calling it is only for a test.
+func (c *RecordCache) Expire() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.sweeping = false
+	now := c.limits.Now()
+	for element := c.order.Back(); element != nil; {
+		prev := element.Prev()
+		if slot := element.Value.(*recordSlot); slot.leases == 0 && now.Sub(slot.used) >= c.limits.Idle {
+			c.dropLocked(element)
+		}
+		element = prev
+	}
+	c.watchIdleLocked()
+}
+
+// watchIdleLocked arms the next look for idle records while any are kept.
+func (c *RecordCache) watchIdleLocked() {
+	if c.sweeping || c.order.Len() == 0 {
+		return
+	}
+	c.sweeping = true
+	time.AfterFunc(c.limits.Idle, c.Expire)
 }
 
 // dropLocked forgets one kept reading; its bytes stay counted while a copy of

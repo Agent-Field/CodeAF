@@ -60,9 +60,11 @@ package session
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -501,33 +503,10 @@ func readTaskIndexRows(path string, limit int, filter bool) []TaskIndexEntry {
 	if strings.TrimSpace(path) == "" {
 		return nil
 	}
-	file, err := os.Open(path)
-	if err != nil {
+	rows, ok := taskIndexParsed.read(path)
+	if !ok {
 		return nil
 	}
-	defer file.Close()
-
-	var rows []TaskIndexEntry
-	scanner := bufio.NewScanner(file)
-	// A row is small by construction, but an outcome plus two URIs plus a title
-	// can pass the scanner's default line budget on a pathological title.
-	scanner.Buffer(make([]byte, 0, 4<<10), 256<<10)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
-		}
-		var entry TaskIndexEntry
-		if err := json.Unmarshal([]byte(line), &entry); err != nil {
-			continue
-		}
-		if strings.TrimSpace(entry.Title) == "" {
-			continue
-		}
-		rows = append(rows, entry)
-	}
-	// scanner.Err() is deliberately unread: a truncated tail is the same
-	// tolerated case as an unparseable line, and the rows before it are good.
 	rows = lastPerNode(rows)
 	if filter {
 		rows = filterDeletedTaskIndex(path, rows)
@@ -562,7 +541,7 @@ func lastPerNode(rows []TaskIndexEntry) []TaskIndexEntry {
 		}
 		last[row.SessionID+"\x00"+id] = index
 	}
-	kept := rows[:0]
+	kept := make([]TaskIndexEntry, 0, len(rows))
 	for index, row := range rows {
 		id := strings.TrimSpace(row.ID)
 		if id == "" {
@@ -1316,4 +1295,100 @@ func LookupTask(rows []TaskIndexEntry, token string) (TaskIndexEntry, bool) {
 		}
 	}
 	return TaskIndexEntry{}, false
+}
+
+// parseTaskIndex decodes every row of the index at path in file order, and
+// whether the file could be opened at all.
+func parseTaskIndex(path string) ([]TaskIndexEntry, bool) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, false
+	}
+	defer file.Close()
+
+	var rows []TaskIndexEntry
+	scanner := bufio.NewScanner(file)
+	// A row is small by construction, but an outcome plus two URIs plus a title
+	// can pass the scanner's default line budget on a pathological title.
+	scanner.Buffer(make([]byte, 0, 4<<10), 256<<10)
+	for scanner.Scan() {
+		line := bytes.TrimSpace(scanner.Bytes())
+		if len(line) == 0 {
+			continue
+		}
+		var entry TaskIndexEntry
+		if err := json.Unmarshal(line, &entry); err != nil {
+			continue
+		}
+		if strings.TrimSpace(entry.Title) == "" {
+			continue
+		}
+		rows = append(rows, entry)
+	}
+	// scanner.Err() is deliberately unread: a truncated tail is the same
+	// tolerated case as an unparseable line, and the rows before it are good.
+	return rows, true
+}
+
+// A PROJECT'S INDEX IS READ BY EVERY CONVERSATION IN IT, and a view of a
+// hundred conversations used to decode the same file a hundred times. The
+// decoded rows of the last few indexes are kept for as long as the file has
+// the stamp they were read under; an append moves its size and time, and the
+// next reading decodes it again. The kept rows are shared and never written:
+// [lastPerNode] builds the slice every caller then orders and thins.
+const (
+	taskIndexKeptPaths = 4
+	// taskIndexKeptBytes is the largest file whose decoding is kept, the
+	// decoded rows being several times the file.
+	taskIndexKeptBytes = 4 << 20
+)
+
+type taskIndexKept struct {
+	path  string
+	stamp recordStamp
+	rows  []TaskIndexEntry
+}
+
+type taskIndexCache struct {
+	mu   sync.Mutex
+	kept []taskIndexKept // most recently read last
+}
+
+var taskIndexParsed taskIndexCache
+
+func (c *taskIndexCache) read(path string) ([]TaskIndexEntry, bool) {
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return parseTaskIndex(path)
+	}
+	stamp, stamped := recordStampOf(info)
+	if !stamped || info.Size() > taskIndexKeptBytes {
+		return parseTaskIndex(path)
+	}
+	c.mu.Lock()
+	for i, entry := range c.kept {
+		if entry.path == path && entry.stamp == stamp {
+			c.kept = append(append(c.kept[:i:i], c.kept[i+1:]...), entry)
+			c.mu.Unlock()
+			return entry.rows, true
+		}
+	}
+	c.mu.Unlock()
+	rows, ok := parseTaskIndex(path)
+	if !ok {
+		return nil, false
+	}
+	// A FILE THAT CHANGED WHILE IT WAS READ IS NOT KEPT: the stamp taken
+	// before the reading must still be the file's after it.
+	if after, err := os.Stat(path); err != nil || !sameStamp(after, stamp) {
+		return rows, true
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.kept = slices.DeleteFunc(c.kept, func(entry taskIndexKept) bool { return entry.path == path })
+	c.kept = append(c.kept, taskIndexKept{path: path, stamp: stamp, rows: rows})
+	if len(c.kept) > taskIndexKeptPaths {
+		c.kept = c.kept[len(c.kept)-taskIndexKeptPaths:]
+	}
+	return rows, true
 }

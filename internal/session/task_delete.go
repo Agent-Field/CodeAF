@@ -436,7 +436,8 @@ func filterDeletedTaskIndex(path string, rows []TaskIndexEntry) []TaskIndexEntry
 		}
 		deletions[row.SessionID] = ids
 	}
-	kept := rows[:0:0]
+	// The caller owns rows (lastPerNode built them), so they are thinned in place.
+	kept := rows[:0]
 	for _, row := range rows {
 		if !gone[row.SessionID] && !deletions[row.SessionID][row.ID] {
 			kept = append(kept, row)

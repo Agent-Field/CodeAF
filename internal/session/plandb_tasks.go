@@ -517,22 +517,27 @@ func (a *Agent) markPlanInterrupted(row *PlanTaskRow) {
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	for _, notice := range g.runRowsLocked() {
-		if notice.PlanTask != row.ID {
-			continue
-		}
-		if notice.State == TaskInterrupted {
-			row.Interrupted = true
-		}
-		if notice.RecoveredCompletion {
-			row.Status = string(notice.State)
-			row.Ended = notice.EndedAt
-			if notice.CostUSD > row.USD {
-				row.USD = notice.CostUSD
+	// The rows are walked where they are kept: copying them all for every plan
+	// row made one listing of a conversation's tasks quadratic in its runs.
+	for _, root := range g.runRuns {
+		for i := range g.runs[root] {
+			notice := &g.runs[root][i]
+			if g.deleted[notice.ID] || g.deleted[notice.Parent] || notice.PlanTask != row.ID {
+				continue
 			}
-			row.Note = notice.Report
+			if notice.State == TaskInterrupted {
+				row.Interrupted = true
+			}
+			if notice.RecoveredCompletion {
+				row.Status = string(notice.State)
+				row.Ended = notice.EndedAt
+				if notice.CostUSD > row.USD {
+					row.USD = notice.CostUSD
+				}
+				row.Note = notice.Report
+			}
+			return
 		}
-		return
 	}
 }
 
