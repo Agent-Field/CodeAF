@@ -43,11 +43,13 @@ const helpLineCap = 121
 //     this build removes them (main.go, wake.go).
 //   - `cell`, `identity` and `relay` are the cell, identity and relay doors
 //     documented in the terminal and pairing manuals.
+//   - `phone` is the local grant door for a running app. The relay manual
+//     names `codeaf phone pair`, and the help page is already at its line cap.
 //   - `show` and `revise` are the old top-level spellings of `plan show` and
 //     `plan revise`; the page names the commands they became.
 //   - `help` is the alias for `--help` itself.
 var doorsOffThePage = map[string]bool{
-	"cell": true, "identity": true, "relay": true, "engine": true, "app": true, "tick": true, "clock": true, "wake": true, "show": true, "revise": true, "help": true,
+	"cell": true, "identity": true, "relay": true, "phone": true, "engine": true, "app": true, "tick": true, "clock": true, "wake": true, "show": true, "revise": true, "help": true,
 }
 
 // THE FIRST GESTURE ON AN UNFAMILIAR DOOR IS `-h`, and it must not be a

@@ -133,6 +133,41 @@ revokes the certificate at the relay, which deletes its slots and queue. Kept
 call receipts stay in the chat. These management mutations require a trusted
 live appwire connection; the v0 scoped queue does not grant them.
 
+## codeaf phone pair
+
+`codeaf phone pair` asks the running `codeaf app` for a phone grant. The app
+listens on a socket at `app/phone.sock` inside its state folder, mode 0600.
+Write the phone's public JSON on stdin: `signing_key` and `box_key`, each 32
+bytes. `methods`, `reads` and `name` are optional. When they are left out, the
+grant allows `asks.answer`, reads `asks.list`, and the client is named `phone`.
+The command prints the grant and nothing else. If the app is not running it
+says `codeaf app is not running`.
+
+The socket is a trusted local door. It is not a relay method, and a phone's
+queue cannot call it. The grant is the same public grant `clients.pair` returns.
+It does not include the identity's signing seed.
+
+## Open one test ask without a model
+
+A normal app does not open an ask on its own, and it does not print a step
+address. `testing.open_ask` is an unknown method. The app says `this engine
+does not serve testing.open_ask`.
+
+Set `CODEAF_PHONE_FIXTURE=1` and call `testing.open_ask`, or start `codeaf app
+--phone-fixture`. The flag sets that switch and opens the ask when the app
+starts. The switch by itself does not open the ask. It allows the method, and
+the app prints `PHONE_READY` followed by a `127.0.0.1` address. `POST /step`
+runs one client round and answers `{"entries":N}`. `GET /ready` names the ask
+once it is open.
+
+The ask is `Apply the selected change?`. The first answer is `Allow once`. It
+does not call a model and does not need a provider key. A second open returns
+the same ask.
+
+The open is refused when sync is off: `sync is off: set CODEAF_SYNC_URL to your
+sync address`. It is refused when this build cannot move chats: `moving chats
+needs a newer furrow engine than this build carries`.
+
 ## Chat identity in app snapshots and queued answers
 
 A cell-backed chat keeps its transcript inside `.cell/`, but its app identity is

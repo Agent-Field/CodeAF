@@ -1231,6 +1231,9 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 	}
 
 	proc.warmModels("engine/models", agent, launch.Model)
+	// A phone fixture, when one was asked for, parks its ask before the app
+	// replays open questions. Every other boot finds the flag clear.
+	phoneFixtureOnBoot(agent, transcript)
 
 	return &remote.Engine{
 		ReleaseOnLeave: func(current remote.WrappedAgent) bool {
@@ -1507,10 +1510,11 @@ func engineLaunchOptions(hello remote.Hello, workspace, sessionFlag string) v3Op
 // replaced, and mu makes every opener wait for the one in flight, so two
 // callers can never build two process halves.
 var engineProcess struct {
-	mu    sync.Mutex
-	tried bool
-	proc  *v3Process
-	err   error
+	mu           sync.Mutex
+	tried        bool
+	fixtureTried bool
+	proc         *v3Process
+	err          error
 }
 
 func openEngineProcess() (*v3Process, error) { return openEngineProcessRetrying(false) }
@@ -1523,6 +1527,15 @@ func openAppEngineProcess() (*v3Process, error) { return openEngineProcessRetryi
 func openEngineProcessRetrying(retryFailed bool) (*v3Process, error) {
 	engineProcess.mu.Lock()
 	defer engineProcess.mu.Unlock()
+	// A phone fixture has no provider key and never calls a model. The process
+	// half still has to exist so the conversation can hold the ask. One retry
+	// uses the keyless open; a normal app never takes this branch.
+	if phoneFixtureKeyless.Load() && engineProcess.proc == nil && !engineProcess.fixtureTried {
+		engineProcess.fixtureTried = true
+		engineProcess.proc, engineProcess.err = openV3ProcessWith("engine", true)
+		engineProcess.tried = true
+		return engineProcess.proc, engineProcess.err
+	}
 	if !engineProcess.tried || (retryFailed && engineProcess.proc == nil) {
 		engineProcess.proc, engineProcess.err = openV3Process("engine")
 		engineProcess.tried = true

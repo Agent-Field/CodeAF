@@ -341,6 +341,12 @@ func run() error {
 		// whoever hosts the relay and not typed in a conversation, so like
 		// `engine` it is absent from the usage text.
 		return relayserve.Main(os.Args[2:])
+	case "phone":
+		// `codeaf phone pair` asks the running app for a phone grant. The app
+		// holds the client runner, so a second process cannot pair on its own.
+		// It is absent from the usage text: the relay manual names it, and the
+		// help page is already at its line cap.
+		return runPhone(os.Args[2:])
 	case "devices":
 		// Who is allowed to open a conversation here, and the door for taking
 		// that back. REVOKING IS THIS MACHINE'S DECISION AND ONLY THIS

@@ -195,6 +195,12 @@ They add no desktop Settings widget by themselves; UI callers render the list
 and controls using this interface. A scoped client's v0 queue does not expose
 management mutations; those require a trusted live desktop connection.
 
+`codeaf phone pair` is the command form of `clients.pair`. It dials the running
+app's `app/phone.sock` and prints the public grant. The app must already be
+running. `testing.open_ask` and `codeaf app --phone-fixture` open one durable
+ask without a model call, and only when `CODEAF_PHONE_FIXTURE=1` is set (the
+flag sets it). A normal app answers `testing.open_ask` as an unknown method.
+
 ## Snapshot capacity and independent failures
 
 The complete encrypted method/writer snapshot must fit the relay's 64 KiB slot

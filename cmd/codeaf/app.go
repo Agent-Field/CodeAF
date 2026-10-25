@@ -88,11 +88,12 @@ func runApp(args []string) error {
 	homeFlag := flags.String("home", "", "codeaf's state folder for this app, instead of CODEAF_HOME or ~/.codeaf")
 	turnLong := flags.Duration("turn-long", appTurnLong, "how long a reply runs before the app is told it is running long")
 	schema := flags.Bool("schema", false, "print the wire's JSON Schema, generated from its Go types, and exit")
+	phoneFixture := flags.Bool("phone-fixture", false, "open one durable ask with no model call, for a test")
 	if err := parseCommandFlags(flags, args); err != nil {
 		return err
 	}
 	if flags.NArg() > 0 {
-		return fmt.Errorf("usage: codeaf app [--home dir] [--schema]")
+		return fmt.Errorf("usage: codeaf app [--home dir] [--schema] [--phone-fixture]")
 	}
 	if *schema {
 		out, err := appwire.SchemaJSON()
@@ -101,6 +102,14 @@ func runApp(args []string) error {
 		}
 		_, err = os.Stdout.Write(out)
 		return err
+	}
+	if *phoneFixture {
+		if err := os.Setenv(phoneFixtureEnv, "1"); err != nil {
+			return err
+		}
+	}
+	if phoneFixtureEnabled() {
+		phoneFixtureKeyless.Store(true)
 	}
 	if dir := strings.TrimSpace(*homeFlag); dir != "" {
 		abs, err := filepath.Abs(dir)
@@ -174,6 +183,9 @@ func runApp(args []string) error {
 	// And what the last quit stopped in the middle of a reply carries on.
 	guard.Go("app/resume-after-quit", backend.resumeAfterQuit)
 	backend.startCloseWatch()
+	if err := startPhoneHost(backend, *phoneFixture); err != nil {
+		return err
+	}
 	err := server.Serve(ctx, os.Stdin, appwire.Hello{Version: resolvedVersion(), PID: os.Getpid(), Home: home.Dir(), Features: []string{"agents.create.attachments", "crews.message.attachments"}}, backend)
 	if backend.assembled.Load() {
 		// The process half every conversation shared, closed the way the pipe
@@ -1264,6 +1276,11 @@ func (b *appBackend) bootAgent(a *appAgent, first appFirst) {
 	view, opened, err := b.ensureLocked(a)
 	b.locked(func() { a.opening = false })
 	if err != nil {
+		// A blank fixture open has no words to keep, so the failure would
+		// otherwise be dropped. The opener is waiting on this sentence.
+		if phoneFixturePending.CompareAndSwap(true, false) {
+			phoneFixtureFail(err)
+		}
 		b.bootFailed(a, first, err)
 		return
 	}
