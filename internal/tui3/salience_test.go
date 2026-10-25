@@ -179,6 +179,8 @@ var salienceTable = []salienceCase{
 	{name: "EventAutomationUpdate", chatOnly: "automations belong to the machine and the conversation that made " +
 		"them, not to one node's work: the line is the conversation's (automation.go)",
 		ev: session.Event{Kind: session.EventAutomationUpdate}},
+	{name: "EventChatStart", chatOnly: "only interactive conversations request new chats; task workers carry no start_chat tool",
+		ev: session.Event{Kind: session.EventChatStart}},
 	{name: "EventQuestionDiscussion", chatOnly: "a clarification belongs to the person's pending decision and arrives on the conversation's question subscription",
 		ev: session.Event{Kind: session.EventQuestionDiscussion, Discussion: &session.QuestionDiscussion{
 			ID: "clarify-1", Seq: 1, Event: &session.Event{Kind: session.EventTextDelta, Text: "the command only reads the report"},

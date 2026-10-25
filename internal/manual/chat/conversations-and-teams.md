@@ -430,3 +430,22 @@ cleanup is omitted from the saved conversation grid and membership pickers.
 No. Deleting a conversation removes its transcript, task records and team memberships. Memories
 already saved for a user, project or machine remain available, with their source identity.
 Use the Memories tab to forget a saved memory separately. Deleting a team also preserves those memories.
+
+
+## Ask the chat to start another chat on a different model
+
+Ask “start another chat on kimi-k3 to read the README.” Load the `chats` capability group if needed. The `start_chat` tool takes
+`brief`, the complete first message, and `model`, a catalog ID or unique model name.
+Omitting `model` uses the requesting chat's current model. An unknown or ambiguous
+name is refused before any chat opens. The new chat opens behind the current one,
+with its model and approval posture set before its first message. Your focus stays
+in the original chat. Its receipt confirms the request; the terminal reports whether
+it actually opened. This needs an attached interactive terminal that can open chats.
+Only one attached window can claim each request, so delivery to several windows or
+replay does not open copies. A failed launcher is not retried automatically; ask again
+to issue a new request. A new independent chat does not report its answer back here automatically; use a task
+when that is the desired handoff.
+
+For a teammate, the manager's `team_start` also takes `model`, including for a new
+sub-team's manager. Omitting it keeps the profile default. Neither tool rewrites the
+profile or changes the requesting chat's model.

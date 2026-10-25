@@ -62,9 +62,12 @@ const (
 )
 
 type TaskSpec struct {
-	ID           string          `json:"id"`
-	Title        string          `json:"title"`
-	Description  string          `json:"description,omitempty"`
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+	// Model overrides the work seat for this task and its descendants.
+	// Planning and checks keep their seats; a nearer override wins.
+	Model        string          `json:"model,omitempty"`
 	Question     string          `json:"question,omitempty"`
 	Kind         string          `json:"kind,omitempty"`
 	ParentID     string          `json:"parent_id,omitempty"`
