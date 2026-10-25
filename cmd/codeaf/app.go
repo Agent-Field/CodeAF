@@ -125,6 +125,7 @@ func runApp(args []string) error {
 	defer leaving()
 	defer leave.On(leaving, nil)()
 	guard.Go("app/parent", func() { watchAppParent(ctx, os.Getppid, appParentPoll, leaving) })
+	startHeapTrimmer(ctx)
 	// THE APP'S KEYS LIVE IN THIS PROCESS'S MEMORY, installed before anything
 	// can read a key, and no profile write may put one on disk while they are.
 	defer config.UseAppCredentials(config.NewAppCredentials())()
@@ -433,6 +434,11 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 
 // appBackend is the [appwire.Engine] over this process's conversations.
 type appBackend struct {
+	// restMemo is the task lists of members at rest, so reading them does not
+	// hold their conversations (apprestmemo.go).
+	restMemo  appRestMemo
+	restSlots chan struct{}
+
 	// organizeProposer supplies a naming door when the backend is embedded without held conversations.
 	organizeProposer session.TeamProposer
 
@@ -818,6 +824,7 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 			return func() { t.Stop() }
 		},
 		agents:    map[string]*appAgent{},
+		restSlots: make(chan struct{}, appRestReads),
 		sweepStop: make(chan struct{}),
 		sweepDone: make(chan struct{}),
 		left:      make(chan struct{}),
@@ -2783,7 +2790,9 @@ func (b *appBackend) finish(live *appLive) {
 // ListAsks answers the agent's open asks. An agent with no conversation held
 // has none this process can answer.
 func (b *appBackend) ListAsks(id string) ([]appwire.Ask, error) {
-	a, err := b.findCrewOwner(id)
+	// A member at rest has no question a held conversation would add: one
+	// waiting on the person says so in its presence and is not at rest.
+	a, err := b.findCrewReader(id)
 	if err != nil {
 		return nil, err
 	}
@@ -3681,6 +3690,15 @@ func (b *appBackend) spendMoved(after func(appwire.Spend)) {
 // checkpoint does not name — and lays over them what a held conversation has
 // said since.
 func (b *appBackend) ListTasks(id string) ([]appwire.Task, error) {
+	if a, err := b.find(id); err == nil && b.crewKeeps(id) && b.memberRests(a) {
+		return b.restingTasks(a, id)
+	}
+	return b.listTasksOf(id)
+}
+
+// listTasksOf is ListTasks for a conversation the crew keeps held when it is
+// busy, and the files' answer otherwise.
+func (b *appBackend) listTasksOf(id string) ([]appwire.Task, error) {
 	a, err := b.findCrewOwner(id)
 	if err != nil {
 		return nil, err
@@ -3983,10 +4001,13 @@ func (b *appBackend) sweepAgent(a *appAgent, now time.Time) {
 		live = a.live
 		keep = live == nil || live.running || now.Sub(live.lastUse) < appAgentIdle
 	})
-	// A member of an open crew stays held while the crew is open.
-	if !keep && !b.liveNeedsYou(live) && !b.crewKeeps(a.view.ID) && !b.serviceKeeps(a.view.ID) {
+	// A member of an open crew stays held while it has work in flight or a
+	// reason the crew would open it again at once; one with nothing to do goes
+	// like any other, and the crew opens it when traffic comes (applazy.go).
+	if !keep && !b.liveNeedsYou(live) && !b.serviceKeeps(a.view.ID) && (!b.crewKeeps(a.view.ID) || b.memberQuiet(a)) {
 		// The state the app reads does not move: the conversation is as
 		// idle on disk as it was in memory.
+		b.locked(func() { a.crewHeld = false })
 		b.release(a)
 	}
 }

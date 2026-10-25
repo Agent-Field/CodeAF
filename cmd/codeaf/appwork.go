@@ -1248,7 +1248,7 @@ func (b *appBackend) processMoved(agent string, live *appLive, job *session.JobN
 // processRows is an agent's processes: the live registry's while its
 // conversation is held, its record on disk otherwise.
 func (b *appBackend) processRows(agent string) ([]session.JobNotice, *appLive, error) {
-	a, err := b.findCrewOwner(agent)
+	a, err := b.findCrewReader(agent)
 	if err != nil {
 		return nil, nil, err
 	}

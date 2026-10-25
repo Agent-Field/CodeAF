@@ -239,3 +239,39 @@ bounded to 2000 bytes. This adds no model call, polling timer or unbounded retry
 the existing GitHub read retry and factory poll remain the only retry owners.
 Policy capability failures are not cached, so subsequent polls observe plan or
 permission changes. Readiness keys are issued only for complete snapshots.
+
+## Resident memory of the desktop engine
+
+`codeaf app` holds a conversation in memory only while something needs it. The
+method and measurements are in [docs/perf/memory-2026-10-24.md](docs/perf/memory-2026-10-24.md).
+
+- **Members at rest are read, not held.** `tasks.list`, `asks.list` and
+  `processes.list` on a member of an open crew answer from its files when its
+  presence shows no working turn, question, task or process, no service is kept
+  and no stage is lent. `tasks.list` builds the owner-backed list by holding the
+  conversation for the length of one read (at most `appRestReads` = 2 at once),
+  then keeps it under a stamp of the files it was built from: in memory up to
+  `appRestMemoBytes` = 24 MiB (least recently read first; a list larger than
+  that is not kept), and as `<home>/cache/app-tasks/<agent>.json` for the
+  next launch, valid for the same build and the same stamp only.
+  `TestAppReadingAnIdleCrewMemberDoesNotKeepItsConversation` and
+  `TestAppReadsARestingMembersTasksFromTheCacheAfterARelaunch` pin the opens.
+- **A crew member with nothing in flight is let go after `appAgentIdle`** like any
+  other conversation; the crew opens it again for traffic.
+- **Journal records** (`RecordCache`) keep at most `recordCacheEntries` = 8
+  records and drop one not read for `recordCacheIdle` = 30 s. The 256 MiB byte
+  budget and the 16 MiB per-file limit are unchanged.
+- **The project task index** keeps the decoded rows of the last
+  `taskIndexKeptPaths` = 4 indexes of at most `taskIndexKeptBytes` = 4 MiB each.
+- **Plan reads** (`plandb.Store`) reload the plan only when SQLite's
+  `data_version` or the database/log stamp moved.
+  `TestRepeatedReadsOfAnUnchangedPlanLoadItOnce` allows 3 MiB for 200 reads.
+  `TestAppTasksOpensThePlanOnceForAllTheRunRows` allows 16 MiB to list 150 rows.
+- **The collector percent follows the live heap** (`memtrim.go`): the surface's
+  `GOGC=400` is kept for a small heap, and a larger one is given the percent that
+  lets about `heapHeadroom` = 32 MiB of garbage build up, never below
+  `heapGCMin` = 10. An explicit `GOGC` decides instead. When more than 48 MiB
+  and half of the live heap is held and unused, `debug.FreeOSMemory` runs, at most
+  once a minute. macOS keeps freed pages in a process's resident size until it
+  needs them (`MADV_FREE_REUSABLE`), so `ps` RSS shows the peak of a burst while
+  the footprint (`vmmap --summary`, Activity Monitor) shows what is held.

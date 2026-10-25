@@ -101,7 +101,7 @@ func (b *appBackend) needsLazyOpen(run *appCrewRun, read appCrewRead, row sessio
 	if recovered && !(presence.Fresh(b.now()) && session.InUse(row.Transcript)) {
 		return false
 	}
-	busy := presence.State == session.PresenceWorking || presence.NeedsPerson() || len(presence.RunningTasks) > 0 || len(presence.Jobs) > 0
+	busy := memberBusy(presence)
 	return busy || b.serviceKeeps(row.ID) || session.NeedsTaskRecovery(row.Transcript) || session.NeedsProcessRecovery(row.Transcript)
 }
 
@@ -213,4 +213,49 @@ func (b *appBackend) findCrewOwner(id string) (*appAgent, error) {
 		_, _, err = b.heldLive(id)
 	}
 	return a, err
+}
+
+// findCrewReader is findCrewOwner for a read that a member at rest answers from
+// its files: the conversation is held only when the member is doing something.
+func (b *appBackend) findCrewReader(id string) (*appAgent, error) {
+	a, err := b.find(id)
+	if err != nil {
+		return nil, err
+	}
+	if b.crewKeeps(id) && !b.memberRests(a) {
+		_, _, err = b.heldLive(id)
+	}
+	return a, err
+}
+
+// memberRests is true for a member whose conversation is not held and has
+// nothing a held conversation would answer differently from its files: no
+// working turn, question, task or process in its presence, no kept service, no
+// lent stage. The crew beat opens it for new traffic; a person's view or send
+// opens it through [appBackend.ensure].
+func (b *appBackend) memberRests(a *appAgent) bool {
+	var held bool
+	b.locked(func() { held = a.live != nil })
+	return !held && b.memberQuiet(a)
+}
+
+// memberQuiet is true for a member, held or not, whose files and services show
+// nothing in flight, so letting its conversation go loses nothing the crew
+// would not open it again for.
+func (b *appBackend) memberQuiet(a *appAgent) bool {
+	var id, transcript string
+	b.locked(func() { id, transcript = a.view.ID, a.transcript })
+	if transcript == "" {
+		return false
+	}
+	if _, staged := liveStageFor(transcript); staged || b.serviceKeeps(id) {
+		return false
+	}
+	presence, _ := session.ReadSessionPresenceAnyAge(filepath.Dir(transcript))
+	return !memberBusy(presence)
+}
+
+// memberBusy is what a presence record says about work in flight.
+func memberBusy(presence session.SessionPresence) bool {
+	return presence.State == session.PresenceWorking || presence.NeedsPerson() || len(presence.RunningTasks) > 0 || len(presence.Jobs) > 0
 }
