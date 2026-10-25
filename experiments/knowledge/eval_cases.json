@@ -1,0 +1,155 @@
+[
+  {
+    "id": "explicit-correction",
+    "scope": "Luma",
+    "batches": [
+      [
+        {
+          "id": "r1",
+          "session": "one",
+          "role": "user",
+          "ts": "2026-10-25T10:00:00Z",
+          "text": "Luma retains audit events for 30 days."
+        }
+      ],
+      [
+        {
+          "id": "r2",
+          "session": "two",
+          "role": "user",
+          "ts": "2026-10-25T10:01:00Z",
+          "text": "Correction for Luma audit retention: replace the earlier 30-day setting with 7 days. The 30-day setting is superseded."
+        }
+      ]
+    ],
+    "question": "What is Luma's audit retention?",
+    "required_sources": [
+      "r2"
+    ],
+    "forbidden_sources": [
+      "r1"
+    ],
+    "retire_source": "r1"
+  },
+  {
+    "id": "proposed-not-shipped",
+    "scope": "Juniper",
+    "batches": [
+      [
+        {
+          "id": "p1",
+          "session": "one",
+          "role": "user",
+          "ts": "2026-10-25T10:00:00Z",
+          "text": "Proposed Juniper design: exports will use the west gateway. This is only a proposal and has not been implemented."
+        }
+      ]
+    ],
+    "question": "Is Juniper's west export gateway implemented or proposed?",
+    "required_sources": [
+      "p1"
+    ],
+    "required_kind": "proposal",
+    "answer_must_include_any": [
+      "propos",
+      "not implemented"
+    ]
+  },
+  {
+    "id": "copied-agent-reports",
+    "scope": "Nimbus",
+    "batches": [
+      [
+        {
+          "id": "a1",
+          "session": "one",
+          "role": "agent",
+          "ts": "2026-10-25T10:00:00Z",
+          "text": "Nimbus benchmark: I measured throughput at 900 jobs per second."
+        },
+        {
+          "id": "a2",
+          "session": "two",
+          "role": "agent",
+          "ts": "2026-10-25T10:01:00Z",
+          "text": "Repeating the earlier Nimbus agent report, without a new measurement: throughput was 900 jobs per second."
+        }
+      ]
+    ],
+    "question": "What throughput was reported for Nimbus?",
+    "reported_only": true,
+    "any_required_sources": [
+      "a1",
+      "a2"
+    ]
+  },
+  {
+    "id": "scope-isolation",
+    "scope": "Oriole",
+    "batches": [
+      [
+        {
+          "id": "x1",
+          "session": "one",
+          "role": "user",
+          "ts": "2026-10-25T10:00:00Z",
+          "text": "Oriole uses the east gateway for exports."
+        },
+        {
+          "id": "x2",
+          "session": "two",
+          "role": "user",
+          "ts": "2026-10-25T10:00:00Z",
+          "text": "Finch uses the south gateway for exports. Finch is a separate project from Oriole."
+        }
+      ]
+    ],
+    "question": "Which gateway does Oriole use for exports?",
+    "required_sources": [
+      "x1"
+    ],
+    "forbidden_sources": [
+      "x2"
+    ]
+  },
+  {
+    "id": "explicit-negation",
+    "scope": "Kestrel",
+    "batches": [
+      [
+        {
+          "id": "n1",
+          "session": "one",
+          "role": "user",
+          "ts": "2026-10-25T10:00:00Z",
+          "text": "Kestrel does not upload credentials to a server. It stores credentials only on the local device."
+        }
+      ]
+    ],
+    "question": "Does Kestrel upload credentials or keep them locally?",
+    "required_sources": [
+      "n1"
+    ],
+    "answer_must_include_any": [
+      "local",
+      "not upload"
+    ]
+  },
+  {
+    "id": "unknown-abstention",
+    "scope": "Kestrel",
+    "batches": [
+      [
+        {
+          "id": "u1",
+          "session": "one",
+          "role": "user",
+          "ts": "2026-10-25T10:00:00Z",
+          "text": "Kestrel stores credentials on the local device."
+        }
+      ]
+    ],
+    "question": "What is Kestrel's annual subscription price in euros?",
+    "abstain": true
+  }
+]
