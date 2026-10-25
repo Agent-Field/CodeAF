@@ -1,7 +1,8 @@
 ---
 kind: fixed
 title: Keep the created chat in an interrupted paired-client receipt
-surface: [engine, app, chat]
+pr: 1929
+surface: [engine, chat]
 invalidates:
   - "A process death after agents.create returned could leave a started receipt with no chat id or chat line. The create handoff now reserves the chat identity and path before its folder exists, and records its line before the first turn starts."
 ---

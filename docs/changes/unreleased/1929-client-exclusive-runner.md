@@ -1,7 +1,8 @@
 ---
 kind: fixed
 title: Exclude concurrent scoped-client executors sharing state or identity
-surface: [engine, app, chat]
+pr: 1929
+surface: [engine, chat]
 invalidates:
   - "Two live runners could open the same state and reuse the same device claim. An OS lock now excludes shared state and the relay rejects fresh repeated claims; a persisted process token recovers lost claim replies, and started receipts acknowledge without reclaiming."
 ---

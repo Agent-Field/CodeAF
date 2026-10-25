@@ -1,7 +1,8 @@
 ---
 kind: fixed
 title: Scoped client answers cross the app backend and relay end to end
-surface: [engine, app, chat]
+pr: 1929
+surface: [engine, chat]
 invalidates:
   - "The app derived a cell-backed conversation's id from the transcript's immediate parent and called it .cell. It now uses the shared session layout resolver, so app methods and relay leases refer to the same chat."
 ---

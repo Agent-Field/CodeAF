@@ -1,7 +1,8 @@
 ---
 kind: added
 title: Execute signed scoped-client calls through desktop methods
-surface: [engine, app, chat]
+pr: 1929
+surface: [engine, chat]
 invalidates:
   - "Scoped clients could enqueue calls but no binary drained them. The app backend now checks original request proofs, scope, routing, sequence and age locally, claims work, dispatches through appwire, records chat receipts and acknowledges it."
 ---

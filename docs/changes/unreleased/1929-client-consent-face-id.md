@@ -1,7 +1,8 @@
 ---
 kind: fixed
 title: Require Face ID for every consent a queued answer resolves
-surface: [engine, app, chat]
+pr: 1929
+surface: [engine, chat]
 invalidates:
   - "Checking only the named reversible ask could approve an irreversible batch sibling. Queued answers now check the whole resolved set and keep a refusal in the chat."
 ---
