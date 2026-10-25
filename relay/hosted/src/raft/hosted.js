@@ -58,7 +58,7 @@ export class HostedIdentity {
     finally{release();this.waiters.delete(release);}
   }
   replica(){return [...this.states].filter(([id])=>this.members.has(id)).sort(([,a],[,b])=>a.applied===b.applied?Number(b.term-a.term):a.applied>b.applied?-1:1)[0]?.[0];}
-  leaderID(){const hints=[...this.states].filter(([id])=>this.members.has(id)).sort(([,a],[,b])=>a.term===b.term?(a.applied>b.applied?-1:a.applied<b.applied?1:0):a.term>b.term?-1:1);return this.leader()??String(hints[0]?.[1].leader??0);}
+  leaderID(){const hints=[...this.states].filter(([id])=>this.members.has(id)).sort(([,a],[,b])=>a.term===b.term?(a.applied>b.applied?-1:a.applied<b.applied?1:0):a.term>b.term?-1:1);const hint=String(hints[0]?.[1].leader??0);return this.leader()??(hint!=='0'?hint:this.routeHint??'0');}
   async forward(node,work){
     const token=await this.serial(()=>this.forwarding.begin(node,work));
     const reply=await token.promise;
@@ -101,6 +101,7 @@ export class HostedIdentity {
   }
   async ensure(identityKey){
     if(this.ready)return;
+    if(this.initialized)return this.completeEnsure();
     this.provisioning=await this.provision(identityKey);
     if(!this.source.gate())await this.source.freeze(this.provisioning.config);
     this.manifest=await this.source.inventory();
@@ -133,19 +134,27 @@ export class HostedIdentity {
       try{
         const receipt=await this.member(id).importReceipt(this.manifest);if(!receipt)continue;
         const member=this.member(id);this.members.set(id,member);receipts.push(receipt);
-        this.accept(id,await member.initialize(this.config(id)));
+        const initialized=await member.initialize(this.config(id));this.accept(id,initialized);this.elapsed=Math.max(this.elapsed,initialized.elapsed??0);
         this.accept(id,await member.drainRecovery());
       }catch(error){this.members.delete(id);this.states.delete(id);if(!owned)throw error;}
     }
     if(this.members.size<2)throw unavailable();
-    await this.pump();if(owned)await this.restorePeers();await this.elect();await this.barrier();
+    if(owned){await this.pump();await this.restorePeers();}
+    else{await this.pump();await this.elect();await this.barrier();}
     if(!owned)await this.source.own(receipts);
+    this.started=Math.floor(performance.now())-this.elapsed;
     this.source.route(()=>true);
     this.watchers=new CommittedWatchers(this.ctx,this.tenant.limits.maxWatchers,this.tenant.watchers.ttlMs,at=>this.ctx.waitUntil(this.armAlarm(at)));
     this.tenant.watchers=this.watchers;
     this.effects=new RaftEffectsFacade(this,this.manifest.config.cluster);
     this.holds=new CommittedHolds(this,this.policy);
     this.holds.opened(Date.now(),this.watchers.holdEvidence(Date.now()).some(socket=>socket.holds.length));
+    // Transport and follower clocks remain available while a cold cluster
+    // cannot yet answer authority reads. Publication still needs a quorum.
+    this.initialized=true;await this.wakeMaintenance(true);
+    return this.completeEnsure();
+  }
+  async completeEnsure(){
     const b=await this.barrier(),header=await this.members.get(b.node).hostView(b.index,'membership','registry');
     if(!header.raw){
       const anchors=this.config(this.manifest.config.anchors[0]).anchors;
@@ -161,6 +170,21 @@ export class HostedIdentity {
   async restorePeers(){
     const generation=await this.ctx.storage.get('raft-router-generation')??'0';
     if(typeof generation!=='string'||!/^(0|[1-9][0-9]*)$/.test(generation)||BigInt(generation)>=(1n<<64n)-1n)throw unavailable();
+    const saved=await this.ctx.storage.get('raft-router-sleep'),active=await this.ctx.storage.get('raft-maintenance');
+    if(Number.isSafeInteger(saved?.elapsed)&&saved.elapsed>=0)this.elapsed=Math.max(this.elapsed,saved.elapsed);
+    if(saved?.generation===generation&&!active){
+      const peers=new PersonalPeers(this,generation);peers.restoring=true;await peers.refresh();
+      const live=Object.fromEntries(Object.entries(peers.view).filter(([,peer])=>!peer.revoked));
+      const external=Object.keys(live).filter(node=>live[node].voter&&!this.members.has(node));
+      if(external.length&&encodeCanonical(live)===encodeCanonical(saved.view)&&external.every(node=>['peer','forward'].every(kind=>peers.sockets().some(ws=>{const a=ws.deserializeAttachment();return a.node===node&&a.kind===kind&&a.generation===generation;})))){
+        for(const [node,cursors]of Object.entries(saved.cursors)){
+          const box=peers.boxes.get(node);if(!box)throw unavailable();
+          for(const key of ['next','issued','acked']){if(cursors[key].length!==peers.limits.Slots.length)throw unavailable();box[key]=cursors[key].map(BigInt);}
+          peers.acks.set(node,box.acked.map(String));
+        }
+        peers.progress=new Map(saved.progress);peers.restoring=false;this.peers=peers;this.routeHint=saved.leader;return;
+      }
+    }
     const next=String(BigInt(generation)+1n);
     await this.ctx.storage.put('raft-router-generation',next);await this.ctx.storage.sync();
     this.peers=new PersonalPeers(this,next);
@@ -234,7 +258,8 @@ export class HostedIdentity {
   externalVoter(){return Object.entries(this.peers?.view??{}).some(([node,peer])=>peer.voter&&!peer.revoked&&!this.manifest.config.anchors.includes(node));}
   async elect(){
     if(this.leader()||(this.leaderID()!=='0'&&!this.members.has(this.leaderID())))return;
-    if(this.transferTarget){const deadline=Date.now()+this.peers.limits.ForwardTimeout;while(!this.leader()&&(this.leaderID()==='0'||this.members.has(this.leaderID())))await this.progress(deadline);return;}
+    if(this.transferTarget&&this.forwarding.socket(this.transferTarget.node)){const deadline=Date.now()+this.peers.limits.ForwardTimeout;while(!this.leader()&&(this.leaderID()==='0'||this.members.has(this.leaderID())))await this.progress(deadline);return;}
+    if(this.externalVoter())throw unavailable();
     for(const id of this.members.keys()){await this.input(id,16);await this.pump();if(this.leader())return;}
     throw unavailable();
   }
@@ -317,8 +342,8 @@ export class HostedIdentity {
     else await this.ctx.storage.delete('raft-retire-at');
     this.retireAt=at;this.retirementKnown=true;
   }
-  wakeMaintenance(){
-    this.asleep=false;this.wakeVersion++;
+  wakeMaintenance(wake=false){
+    this.wakePending=this.wakePending||this.asleep||wake;this.asleep=false;this.wakeVersion++;
     // Peer ingress has its own queue. Serialize only timer transitions so a
     // wake racing the final sleep cannot lose its durable maintenance hint.
     const task=this.alarmTail.then(async()=>{
@@ -338,72 +363,102 @@ export class HostedIdentity {
     });
     this.alarmTail=task.catch(()=>{});return task;
   }
+  coordinationBusy(){
+    if(this.forwarding.pending.size||this.queue.length||this.peers.pending)return true;
+    for(const [node,peer]of Object.entries(this.peers.view))if(peer.voter&&!peer.revoked){
+      if(this.peers.retryTargets.has(node)||this.peers.boxes.get(node)?.queues.some(q=>q.length)||this.peers.snapshots.has(node))return true;
+    }
+    return false;
+  }
+  // Replies produced by this turn must drain before sleep without becoming
+  // another application activity sample that cancels the new marker.
+  async drainCoordination(){
+    const deadline=Date.now()+this.peers.limits.ForwardTimeout;
+    while(this.coordinationBusy()){
+      const version=this.progressVersion;
+      if([...this.members.keys()].some(node=>this.peers.boxes.get(node)?.queues.some(q=>q.length)))await this.peers.serial(()=>this.peers.anchors());
+      await this.pump();
+      if(!this.coordinationBusy())return;
+      await this.progress(deadline,version);
+    }
+  }
   async maintenance(now=Date.now(),elapsed=Math.floor(performance.now())){
     if(this.asleep)return;
-    const wakeVersion=this.wakeVersion;
-    if(this.membershipPending)await this.reconcileMembership();
+    const wakeVersion=this.wakeVersion,busy=this.coordinationBusy()||!!this.wakePending;
+    this.wakePending=false;
     this.elapsed=Math.max(this.elapsed,elapsed-this.started);
-    // Alarm/recovery effects are retained until their exact batch is consumed.
+    // Followers must advance their election clocks before any authority read:
+    // an absent leader cannot answer membership or hold-renewal requests.
+    const plans=new Map();
     for(const [id,member]of this.members){
-      this.accept(id,await member.drainRecovery());
-      const batch=await member.scheduled();if(!batch)continue;
-      this.accept(id,{send:batch.send.map(m=>({to:m.to,bytes:unb64(m.bytes)}))});await this.pump();await member.acknowledgeScheduled(batch.id);
-    }
-    if(this.holds.next!==null)await this.holds.renew(now,this.watchers.holdEvidence(now));
-    // Scanning is an internal activity hint only. Delivery obtains its own
-    // fresh barrier and authority check before touching a public link request.
-    const leader=this.leader();
-    if(!leader&&this.leaderID()!=='0'&&!this.members.has(this.leaderID())){
-      for(const [id,member]of this.members){this.accept(id,await member.schedule(this.elapsed,now,this.forwarding.pending.size>0));}
-      await this.pump();
-      // External leadership keeps its ordinary clock until every voting
-      // member can participate in a completed sleep transition.
-      if(this.forwarding.socket(this.leaderID()))await this.forward(this.leaderID(),{action:'schedule',now,schedule:{now:this.elapsed,busy:true,marker:{index:'0',term:'0',barrier:'0',voters:null},acks:null}});
-      await this.armAlarm(now+this.policy.tick_every);return;
-    }
-    if(!leader){
-      // A missing leader still needs ordinary follower election ticks. An
-      // unavailable authority read cannot be a reason to cancel that clock.
-      for(const [id,member]of this.members){const effects=await member.schedule(this.elapsed,now,this.forwarding.pending.size>0);this.accept(id,effects);}
-      await this.pump();await this.armAlarm(now+this.policy.tick_every);return;
-    }
-    let scan=this.outboxScan??'';
-    const app=await this.members.get(leader).hostView(this.states.get(leader).applied,'outbox','',scan);
-    this.outboxScan=app.rows.at(-1)?.key??'';
-    if(app.rows.some(row=>{const value=decodeCanonical(dec.decode(row.data));return value.decision&&!value.outcome})){
-      await this.effects.replay(code=>this.env.LINK_REQUEST.get(this.env.LINK_REQUEST.idFromName(code)),scan,now);
-    }
-    let plan;
-    for(const [id,member]of this.members){const effects=await member.schedule(this.elapsed,now,this.forwarding.pending.size>0);this.accept(id,effects);if(id===this.leader())plan=effects.plan;}
-    await this.pump();
-    if(plan?.barrier){
-      const id=crypto.randomUUID();this.reads=[];await this.input(this.leader(),15,id);await this.pump();
-      if(!this.reads.some(r=>r.id===id))throw unavailable();this.reads=[];
-      const effects=await this.members.get(this.leader()).schedule(this.elapsed,now,false);this.accept(this.leader(),effects);await this.pump();plan=effects.plan;
-    }
-    if(plan?.prepare){
-      const id=this.leader(),s=this.states.get(id),view=await this.members.get(id).hostView(s.applied,'state','identity');
-      // The IdleRead freshness is consumed at the SAME applied position. Read
-      // the anchor session locally so command construction does not wake it.
-      const saved=await this.members.get(id).hostView(s.applied,'sessions',segment('anchor/'+this.manifest.config.anchors[0])+'/'+segment('maintenance'));
-      const pkcs8=unb64(this.provisioning.anchors[0]);
-      const r=response(this.runtime.call(frame(34).str(this.manifest.config.cluster).u64(this.manifest.config.anchors[0]).u64(now).blob(pkcs8.slice(-32)).blob(saved.raw??new Uint8Array()).blob(data({prepare_quiescence:{barrier:String(s.applied),term:String(s.term),voters:this.configuration(view.app.conf).voters}})).finish()));
-      const raw=r.blob();r.end();requireOK((await this.commit(raw)).value.code);
-      await this.input(this.leader(),1);await this.pump();
-    }
-    const id=this.leader(),s=this.states.get(id),row=await this.members.get(id).hostView(s.applied,'membership','quiescence');
-    if(row.raw){
-      const marker=decodeCanonical(dec.decode(row.raw));
       try{
-        const acks=[];for(const voter of marker.voters)acks.push(await this.members.get(voter).sleepAck(marker.index,marker.term));
-        let sleeping=true;
-        for(const [node,member]of this.members){const effects=await member.schedule(this.elapsed,now,false,acks);this.accept(node,effects);sleeping&&=effects.plan.sleeping;}
-        await this.pump();this.asleep=sleeping&&this.forwarding.pending.size===0&&wakeVersion===this.wakeVersion;
-        if(this.asleep&&this.peers){await this.peers.quiesce();await this.pump();await this.sleepMaintenance(wakeVersion);}
-      }catch{this.asleep=false;}
+        this.accept(id,await member.drainRecovery());
+        const batch=await member.scheduled();
+        if(batch){this.accept(id,{send:batch.send.map(m=>({to:m.to,bytes:unb64(m.bytes)}))});await this.pump();await member.acknowledgeScheduled(batch.id);}
+        const effects=await member.schedule(this.elapsed,now,busy);this.accept(id,effects);plans.set(id,effects.plan);
+      }catch{this.members.delete(id);this.states.delete(id);}
     }
-    if(!this.asleep)await this.armAlarm(now+this.policy.tick_every);
-    if(this.holds.next!==null)await this.armAlarm(this.holds.next);
+    await this.pump();
+    try{
+      const leader=this.leader(),remote=leader?null:this.leaderID();
+      if(!leader&&(remote==='0'||this.members.has(remote)||!this.forwarding.socket(remote)))return;
+      if(this.membershipPending)await this.reconcileMembership();
+      // Local durable state is only a work hint. The shared planner obtains
+      // its own quorum read before proposing the reverse joint swap.
+      if(leader){
+        const row=await this.members.get(leader).hostView(this.states.get(leader).applied,'membership','registry');
+        if(row.raw&&decodeCanonical(dec.decode(row.raw)).leadership)await this.reconcileLeadership();
+      }
+      if(this.holds.next!==null)await this.holds.renew(now,this.watchers.holdEvidence(now));
+      const replica=this.leader()??this.replica(),member=this.members.get(replica);
+      let scan=this.outboxScan??'';
+      const app=await member.hostView(this.states.get(replica).applied,'outbox','',scan);
+      this.outboxScan=app.rows.at(-1)?.key??'';
+      if(app.rows.some(row=>{const value=decodeCanonical(dec.decode(row.data));return value.decision&&!value.outcome;}))await this.effects.replay(code=>this.env.LINK_REQUEST.get(this.env.LINK_REQUEST.idFromName(code)),scan,now);
+      let remoteAck,remoteStatus;
+      const schedule=async(acks=[])=>{
+        if(remote){
+          const reply=await this.forward(remote,{action:'schedule',now,schedule:{now:this.elapsed,busy,marker:{index:'0',term:'0',barrier:'0',voters:null},acks}});
+          if(!reply.plan)throw unavailable();remoteAck=reply.sleep_ack;remoteStatus=reply.status;return reply.plan;
+        }
+        const id=this.leader(),effects=await this.members.get(id).schedule(this.elapsed,now,busy,acks);this.accept(id,effects);await this.pump();return effects.plan;
+      };
+      let plan=remote?await schedule():plans.get(this.leader());
+      if(plan?.barrier){
+        const id=crypto.randomUUID();
+        if(remote){const reply=await this.forward(remote,{action:'idle-read',id});await this.appliedReplica(reply.barrier);}
+        else{const leader=this.leader();await this.input(leader,15,id);await this.pump();if(!this.reads.some(r=>r.node===leader&&r.id===id))throw unavailable();this.reads=this.reads.filter(r=>r.id!==id);}
+        plan=await schedule();
+      }
+      if(plan?.prepare){
+        await this.drainCoordination();
+        const id=this.leader()??this.replica(),s=this.states.get(id),view=await this.members.get(id).hostView(s.applied,'state','identity');
+        // IdleRead freshness is consumed at the same applied position. Building
+        // this restricted command locally must not replace it with a user read.
+        const saved=await this.members.get(id).hostView(s.applied,'sessions',segment('anchor/'+this.manifest.config.anchors[0])+'/'+segment('maintenance'));
+        const pkcs8=unb64(this.provisioning.anchors[0]);
+        const r=response(this.runtime.call(frame(34).str(this.manifest.config.cluster).u64(this.manifest.config.anchors[0]).u64(now).blob(pkcs8.slice(-32)).blob(saved.raw??new Uint8Array()).blob(data({prepare_quiescence:{barrier:String(s.applied),term:String(remote?remoteStatus.Term:s.term),voters:this.configuration(view.app.conf).voters}})).finish()));
+        const raw=r.blob();r.end();requireOK((await this.commit(raw)).value.code);
+        if(!remote){await this.input(this.leader(),1);await this.pump();}
+      }
+      const id=this.leader()??this.replica(),s=this.states.get(id),row=await this.members.get(id).hostView(s.applied,'membership','quiescence');
+      const marker=row.raw&&decodeCanonical(dec.decode(row.raw));
+      if(marker&&marker.index!=='0'){
+        try{
+          const acks=[];
+          for(const voter of marker.voters)if(this.members.has(voter))acks.push(await this.members.get(voter).sleepAck(marker.index,marker.term));
+          await this.drainCoordination();
+          if(remote){await schedule();if(remoteAck)acks.push(remoteAck);}
+          let sleeping=remote?(await schedule(acks)).sleeping:true;
+          for(const [node,member]of this.members){const effects=await member.schedule(this.elapsed,now,busy,acks);this.accept(node,effects);sleeping&&=effects.plan.sleeping;}
+          await this.pump();this.asleep=sleeping&&!this.coordinationBusy()&&wakeVersion===this.wakeVersion;
+          if(this.asleep){await this.peers.quiesce();await this.pump();await this.sleepMaintenance(wakeVersion);}
+        }catch{this.asleep=false;}
+      }
+    }finally{
+      if(!this.asleep)await this.armAlarm(now+this.policy.tick_every);
+      if(this.holds.next!==null)await this.armAlarm(this.holds.next);
+    }
   }
   async personal(action,{proof,actor='',certificate=''}={}){
     const b=await this.barrier();
@@ -445,13 +500,24 @@ export class HostedIdentity {
   personalRefusal(out){const r=response(this.runtime.call(frame(38).u32(2).str(out.code).finish())),message=r.str();r.end();return new Response(out.message||message||'this computer is not allowed to join this cluster',{status:out.code==='capacity'?429:out.code==='update_required'?409:403,headers:{'cache-control':'no-store'}});}
   async reconcileLeadership(){
     const raw=await this.barrierRecord({namespace:'membership',key:'registry'}),h=decodeCanonical(dec.decode(raw)),l=h.leadership,id=this.leader();
-    if(!l||!id)return false;
-    const target=l.restore?l.standby:l.node;let evidence={node:'0',revision:'0',applied:'0',protocol:0,durable:false};
+    if(!l||!id){if(!l)this.transferTarget=null;return false;}
+    if(l.restore||l.completed||this.transferTarget?.revision!==h.revision)this.transferTarget=null;
+    const empty={node:'0',revision:'0',applied:'0',protocol:0,durable:false};
     try{
-      if(this.members.has(target))evidence=await this.members.get(target).leadershipEvidence(h.revision,l.barrier);
-      else {try{evidence=(await this.forward(target,{action:'evidence',revision:h.revision,barrier:l.barrier})).evidence??evidence;}catch{const request=crypto.randomUUID();await this.input(id,15,request);await this.input(id,10,request);await this.pump();return false;}}
-      if(this.leader()!==id)return true;
-      const result=await this.members.get(id).leadership(evidence);if(result.plan.transfer!=='0')this.transferTarget=result.plan.transfer;this.accept(id,result);await this.pump();const plan=result.plan;
+      let result;
+      try{result=await this.members.get(id).leadership(empty);}
+      catch(error){
+        if(!/target|transfer/.test(error.message))throw error;
+        const target=l.restore?l.standby:l.node;let evidence;
+        if(this.members.has(target))evidence=await this.members.get(target).leadershipEvidence(h.revision,l.barrier);
+        else {try{evidence=(await this.forward(target,{action:'evidence',revision:h.revision,barrier:l.barrier})).evidence??empty;}catch{const request=crypto.randomUUID();await this.input(id,15,request);await this.input(id,10,request);await this.pump();return false;}}
+        if(this.leader()!==id)return true;
+        result=await this.members.get(id).leadership(evidence);
+      }
+      const plan=result.plan;
+      if(plan.transfer!=='0')this.transferTarget={node:plan.transfer,revision:h.revision};
+      this.accept(id,result);await this.pump();
+      if(plan.fallback){this.transferTarget=null;requireOK((await this.anchorCommand({restore_anchors:{revision:h.revision}},Date.now())).value.code);return true;}
       if(plan.configure){await this.peers.refresh();return true;}
       if(plan.settle){requireOK((await this.anchorCommand({settle_leadership:{revision:h.revision}},Date.now())).value.code);return true;}
       return false;
@@ -474,7 +540,7 @@ export class HostedIdentity {
       if(this.leaderID()===l.node&&!this.leader()&&l.settled){
         if(!l.completed){const reply=await this.forward(l.node,{action:'receipt'});if(!reply.receipt)throw unavailable();await this.appliedReplica(reply.barrier,deadline);requireOK((await this.anchorCommand({complete_leadership:{revision:h.revision}},Date.now())).value.code);}
         const reply=await this.forward(l.node,{action:'receipt'});if(!reply.receipt||reply.receipt.node!==l.node||reply.receipt.revision!==h.revision)throw unavailable();
-        await this.appliedReplica(reply.barrier,deadline);return this.jsonBytes(encodeCanonical(reply.receipt));
+        await this.appliedReplica(reply.barrier,deadline);this.transferTarget=null;return this.jsonBytes(encodeCanonical(reply.receipt));
       }
       const version=this.progressVersion;if(!await this.reconcileLeadership())await this.progress(deadline,version);
     }

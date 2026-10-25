@@ -156,6 +156,9 @@ export class MemberActor {
     const request = new TextEncoder().encode(encodeCanonical({now,busy,marker,acks}));
     const r = response(this.reactor.call(frame(23).u32(this.handle).blob(request).finish()));
     const plan = decodeCanonical(new TextDecoder().decode(r.blob())); r.end();
+    // A replacement coordinator resumes this clock so retained cores do not
+    // wait for its new origin to catch up.
+    this.elapsed=Math.max(this.elapsed??0,now);
     const effects = plan.tick ? await this.drive(1) : {send:[],reads:[],status:this.status};
     return { ...effects, plan };
   }

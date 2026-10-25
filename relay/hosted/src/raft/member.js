@@ -162,7 +162,7 @@ export class RaftMemberDO extends DurableObject {
       return this.loading;
     }
     this.loadingConfig = JSON.stringify(config);
-    this.loading = this.activate(config);
+    this.loading = this.activate(config).then(effects=>({...effects,elapsed:this.actor.elapsed??0}));
     try { return await this.loading; } finally { this.loading = null; this.loadingConfig = null; }
   }
   async activate(config) {

@@ -189,12 +189,16 @@ on its independent queue. Original signed commands remain unchanged. Fresh read
 and admission indices must reach an anchor’s durable application before replies.
 ABI 39 preserves the native signed application wire without network imports.
 
-The router's durable generation advances before its volatile queues reopen.
+The router's durable generation advances before lost volatile queues reopen.
 Peer and application sockets use the hibernation API with a separate tag and
 serialized attachment containing their signed connection proof. A cold presence
 sweep preserves those connections without opening coordination or advancing the
-generation. A real request reactivates the coordinator with fresh quorum reads,
-fences the lost queues, and lets the client refresh the same store's grant. Watch presence and broadcasts filter these sockets.
+generation. Completed sleep retains the empty queues' cursor limits. With the same
+committed membership and retained personal voter connections, a real request can
+restore that progress and obtain a fresh quorum read without reconnecting the
+leader. Otherwise it fences lost queues and lets the client refresh the same
+store's grant. A saved leader is only a route for that new read. Watch presence
+and broadcasts filter these sockets.
 Protocol queues use their own admission and reservations, outside public rates.
 
 ABI 36 supplies admission plans, enrollment bytes and control status from an
@@ -209,7 +213,7 @@ coordination never waits for a learner; peer frames bypass its public queue.
 ## Sleeping accounts and advisory presence
 
 The coordinator persists an outstanding-maintenance hint only while consensus
-work is scheduled. With the anchor topology, all-voter sleep removes it and clears stale peer retention
+work is scheduled. With an anchor or a personal leader, all-voter sleep removes it and clears stale peer retention
 deadlines before cancelling the maintenance alarm. Presence and explicit
 retirement deadlines are then rearmed independently. An alarm on a cold sleeping
 object reads socket attachments and that hint without constructing a tenant,
@@ -218,3 +222,20 @@ Platform auto-response timestamps supply presence without data writes. Real
 application input still activates coordination and takes a fresh quorum barrier;
 a remembered leader never authorizes a reply. Watch hold renewals retain their
 committed path and shared renewal period.
+
+
+## Personal leader departure and anchor restoration
+
+Follower election clocks advance before membership and hold-renewal authority
+reads. A personal voter's disconnection wakes ordinary ranked election timers;
+it never triggers an explicit campaign or changes a voter list. A newly elected
+anchor uses the shared leadership planner and its committed current-term evidence
+to restore the standby through a reverse joint swap. The absent voter need not
+approve its removal. A returning personal store remains a learner until another
+explicit leadership request. Losing two voters leaves the existing cluster
+unavailable without creating a replacement cluster.
+
+Remote idle scheduling uses the same safe idle read, durable marker and final
+all-voter sleep acknowledgments as local leadership. Forwarding waits, voting
+delivery and retry hints retain active work. A final sleep clears maintenance
+only if no newer ingress has woken the coordinator.

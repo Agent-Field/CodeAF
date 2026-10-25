@@ -218,15 +218,17 @@ export class IdentityDO extends DurableObject {
     if(!maintenance&&!retireDue)return;
     const tenant=this.#tenantOf(identity);this.host ??= new HostedIdentity(this.ctx,this.env,tenant,this.legacyAdmission,at=>this.#arm(at));
     const erase=await this.host.operation(async()=>{
-      await this.host.ensure(Uint8Array.from(atob(provision.config.signing_key),c=>c.charCodeAt(0)));
+      try{await this.host.ensure(Uint8Array.from(atob(provision.config.signing_key),c=>c.charCodeAt(0)));}
+      catch(error){if(!this.host.initialized)throw error;await this.host.maintenance(now);return false;}
       this.watchers=this.host.watchers;tenant.stats.flush();
+      if(retireDue||!this.host.retirementKnown)await this.host.wakeMaintenance();
+      await this.host.maintenance(now);
       // A retained deadline is only a wake hint. Retirement still needs the
       // current committed identity before any irreversible erasure starts.
       if(retireDue||!this.host.retirementKnown){
         const root=await this.host.barrierRecord({namespace:'state',key:'identity'});
         await this.host.rememberRetirement(this.host.project('identity',root));
       }
-      await this.host.maintenance(now);
       const at=this.host.retireAt;
       if(at && at<=now)return true;
       if(at)await this.#arm(at);return false;
@@ -282,7 +284,7 @@ export class IdentityDO extends DurableObject {
       catch(error){await this.#arm(Date.now()+this.limits.statsFlushMs);throw error;}
     }
     dropTables(this.ctx.storage.sql);
-    await this.ctx.storage.delete(['identity', 'admitted','raft-provision']);
+    await this.ctx.storage.delete(['identity', 'admitted','raft-provision','raft-router-sleep']);
     await this.ctx.storage.sync();this.host=null;
   }
 

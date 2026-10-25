@@ -27,7 +27,7 @@ export class PersonalPeers {
   this.host=host;this.generation=generation;this.scope=host.config('1').scope;this.view={};this.boxes=new Map();this.used=[0,0,0];this.progress=new Map();this.snapshots=new Map();this.acks=new Map();this.tail=Promise.resolve();this.pending=0;this.blocked=new Set();this.retryTargets=new Set();this.checkpoints=new Map();
   this.limits=peerLimits(host.runtime);
  }
- serial(fn){if(this.pending>=64)return Promise.reject(refused('busy'));this.pending++;const p=this.tail.then(fn);this.tail=p.catch(()=>{});return p.finally(()=>this.pending--);}
+ serial(fn){if(this.pending>=64)return Promise.reject(refused('busy'));this.pending++;const p=this.tail.then(fn);this.tail=p.catch(()=>{});return p.finally(()=>{this.pending--;this.host.signal?.();});}
  members(){return Object.entries(this.view).map(([node,p])=>({node,...p}));}
  // Public and peer turns publish in order, so a delayed member read cannot
  // restore an older transport authority after another turn has advanced it.
@@ -59,6 +59,7 @@ export class PersonalPeers {
   }
   for(const [to,s]of this.snapshots)if(!unchanged(to)||!unchanged(s.from)){this.snapshots.delete(to);await this.host.input(s.from,12,{peer:to,snapshot:true,success:false});}
   for(const ws of this.sockets())if(this.view[ws.deserializeAttachment().node]?.revoked)this.close(ws);
+  if(this.restoring)return;
   const leader=this.host.leader();
   if(leader){const request=crypto.randomUUID();await this.host.input(leader,15,request);await this.host.input(leader,10,request);}
   else {const target=this.host.leaderID();if(this.host.forwarding.socket(target)){const token=await this.host.forwarding.begin(target,{action:'poke'});token.promise.catch(()=>{});}}
@@ -124,19 +125,22 @@ export class PersonalPeers {
  async send(m){
   await this.refresh();
   if(this.host.asleep||!this.view[m.to]||this.view[m.to].revoked)return;
-  if(this.blocked.has(m.to)){this.retryTargets.add(m.to);return;}
+  // Only a dropped voting round needs a fresh quorum poke. Learner
+  // backpressure must not invalidate the elected member's idle marker.
+  const voterRound=this.view[m.from]?.voter&&this.view[m.to]?.voter;
+  if(this.blocked.has(m.to)){if(voterRound)this.retryTargets.add(m.to);return;}
   const inspected=this.host.codec.inspect(4,m.bytes),snapshot=inspected.snapshot;
   if(m.bytes.length>this.limits.Batch){
-   this.blocked.add(m.to);this.retryTargets.add(m.to);const applied=String(this.host.states.get(m.from).applied);
+   this.blocked.add(m.to);if(voterRound)this.retryTargets.add(m.to);const applied=String(this.host.states.get(m.from).applied);
    if(this.checkpoints.get(m.from)!==applied){await this.host.members.get(m.from).hostCheckpoint();this.checkpoints.set(m.from,applied);}
    await this.host.input(m.from,12,{peer:m.to,snapshot:false,success:false});return;
   }
   const lane=this.view[m.from]?.voter&&this.view[m.to]?.voter?0:1;
-  if(this.boxes.get(m.to).queues[lane].length>=this.limits.Slots[lane]){this.blocked.add(m.to);this.retryTargets.add(m.to);await this.host.input(m.from,12,{peer:m.to,snapshot:snapshot.length>0,success:false});return;}
+  if(this.boxes.get(m.to).queues[lane].length>=this.limits.Slots[lane]){this.blocked.add(m.to);if(voterRound)this.retryTargets.add(m.to);await this.host.input(m.from,12,{peer:m.to,snapshot:snapshot.length>0,success:false});return;}
   try{
    this.enqueue([JSON.parse(dec.decode(await this.host.envelope(m.from,m.to,m.bytes)))]);
    if(snapshot.length){const meta=this.host.codec.inspect(3,snapshot),manifest=JSON.parse(dec.decode(meta.data));this.snapshots.set(m.to,{from:m.from,manifest,generation:this.host.hash(meta.data),offset:0,waiting:null,started:Date.now()});}
-  }catch(e){if(e.peerCode!=='busy')throw e;this.blocked.add(m.to);this.retryTargets.add(m.to);await this.host.input(m.from,12,{peer:m.to,snapshot:snapshot.length>0,success:false});}
+  }catch(e){if(e.peerCode!=='busy')throw e;this.blocked.add(m.to);if(voterRound)this.retryTargets.add(m.to);await this.host.input(m.from,12,{peer:m.to,snapshot:snapshot.length>0,success:false});}
  }
  // A full voter queue can drop every response to one fresh read. Retry only
  // after its acknowledgments free the reservation, using the elected member's
@@ -236,7 +240,7 @@ export class PersonalPeers {
  }
  async departed(ws){
   this.host.forwarding.departed(ws);
-  if(this.view[ws.deserializeAttachment()?.node]?.voter){await this.host.wakeMaintenance();this.host.signal();}
+  if(this.view[ws.deserializeAttachment()?.node]?.voter){await this.host.wakeMaintenance(true);this.host.signal();}
  }
  async quiesce(){
   // Final voter acknowledgments discard learner delivery. Its old retention
@@ -244,6 +248,11 @@ export class PersonalPeers {
   for(const ws of this.sockets()){const a=ws.deserializeAttachment();if(a.deadline)ws.serializeAttachment({...a,deadline:null});}
   for(const [node,box]of this.boxes)if(!this.view[node]?.voter)for(let lane=0;lane<3;lane++){for(const q of box.queues[lane])this.used[lane]-=q.size;box.queues[lane]=[];}
   for(const [to,s]of this.snapshots){this.snapshots.delete(to);await this.host.input(s.from,12,{peer:to,snapshot:true,success:false});}
+  // Empty routing queues can resume after hibernation only when their exact
+  // cursor high-water marks survive with the completed all-voter sleep.
+  const view=Object.fromEntries(Object.entries(this.view).filter(([,peer])=>!peer.revoked)),cursors={};
+  for(const node of Object.keys(view)){const box=this.boxes.get(node);cursors[node]=Object.fromEntries(['next','issued','acked'].map(key=>[key,box[key].map(String)]));}
+  await this.host.ctx.storage.put('raft-router-sleep',{generation:this.generation,leader:this.host.leaderID(),elapsed:this.host.elapsed,view,cursors,progress:[...this.progress].filter(([node])=>view[node])});await this.host.ctx.storage.sync();
  }
 }
 export function peerRefusal(e){const code=e.peerCode??'invalid',status={unauthorized:403,generation:409,cursor:409,busy:429}[code]??400;return new Response(JSON.stringify({error:code}),{status,headers:{'content-type':'application/json','cache-control':'no-store',...(code==='busy'?{'retry-after':'1'}:{})}});}

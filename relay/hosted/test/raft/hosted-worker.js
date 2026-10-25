@@ -6,9 +6,11 @@ import { IdentityDO as Source } from '../../src/identity.js';
 import { RaftMemberDO as Member } from '../../src/raft/member.js';
 import { Directory } from '../../src/directory.js';
 import { unb64 } from '../../src/raft/storage.js';
+import {encodeCanonical} from '../../src/raft/codec.js';
+import {CORE_MEMORY_BUDGET} from '../../src/raft/abi.js';
 import { runtimeMetrics,sharedRuntime } from '../../src/raft/actor.js';
 import {coordinationPolicy} from '../../src/raft/liveness.js';
-const measurements={turns:0,wall:[],membership:0,http:0,peerIn:0,peerOut:0,sweeps:0,writes:0};
+const measurements={turns:0,wall:[],membership:0,campaigns:0,http:0,peerIn:0,peerOut:0,sweeps:0,writes:0};
 async function measured(fn){const start=performance.now();measurements.turns++;try{return await fn();}finally{measurements.wall.push(performance.now()-start);}}
 import { policyOf } from '../../src/rules.js';
 
@@ -114,18 +116,36 @@ export class IdentityDO extends Source {
       this.host.queue.push({from,to,bytes:raw});await this.host.pump();return this.host.members.size;
     });
   }
+  async leadershipTicks(count,missing){
+    if(!this.current.host)await this.current.alarm();
+    const host=this.current.host;
+    return host.operation(async()=>{
+      if(missing){host.members.delete(missing);host.states.delete(missing);}
+      const errors=[],leaders=[],base=Date.now();
+      for(let n=0;n<count;n++){
+        const elapsed=Math.max(host.elapsed,this.virtualElapsed??0)+host.policy.tick_every;
+        this.virtualElapsed=elapsed;
+        try{await host.maintenance(base+elapsed,host.started+elapsed);}catch(error){errors.push(error.message);}
+        leaders.push(host.leader()??'0');
+      }
+      const id=host.replica(),state=host.states.get(id),view=await host.members.get(id).hostView(state.applied,'membership','registry');
+      return {leaders,errors,leader:host.leaderID(),cluster:host.manifest.config.cluster,configuration:host.configuration(view.app.conf),membership:JSON.parse(new TextDecoder().decode(view.raw)),campaigns:measurements.campaigns};
+    });
+  }
   async idleSchedule(){
     // The object may hibernate between the HTTP request and this fixture RPC.
     // Restore through the production alarm before driving its virtual clock.
     if(!this.current.host)await this.current.alarm();
     const host=this.current.host;
     return host.operation(async()=>{
-    const base=Date.now(),membershipBefore=measurements.membership;
-    for(let n=1;n<=20;n++)await host.maintenance(base+n*host.policy.tick_every,host.started+n*host.policy.tick_every);
-    const id=host.leader(),before=host.states.get(id).applied;
+    const base=Date.now(),offset=host.elapsed,membershipBefore=measurements.membership;
+    const settle=()=>host.drainCoordination();
+    await settle();
+    for(let n=1;n<=20;n++){await host.maintenance(base+n*host.policy.tick_every,host.started+offset+n*host.policy.tick_every);await settle();}
+    const id=host.leader()??host.replica(),before=host.states.get(id).applied;
     const sleeping=host.asleep;
     const turns=measurements.turns;
-    for(let n=21;n<=140;n++)await host.maintenance(base+n*host.policy.tick_every,host.started+n*host.policy.tick_every);
+    for(let n=21;n<=140;n++)await host.maintenance(base+n*host.policy.tick_every,host.started+offset+n*host.policy.tick_every);
     return {sleeping,membershipCalls:measurements.membership-membershipBefore,appliedBefore:String(before),appliedAfter:String(host.states.get(id).applied),recurringMemberCalls:measurements.turns-turns,idleMilliseconds:120*host.policy.tick_every};
   });}
   inspect() {
@@ -148,7 +168,7 @@ export class RaftMemberDO extends Member {
   refreshEnrollment(...args){return measured(()=>super.refreshEnrollment(...args));}
   hostPersonal(...args){return measured(()=>super.hostPersonal(...args));}
   membership(...args){measurements.membership++;return measured(()=>super.membership(...args));}
-  hostInput(...args){return measured(()=>super.hostInput(...args));}
+  hostInput(...args){if(args[0]===16)measurements.campaigns++;return measured(()=>super.hostInput(...args));}
   peer(...args){return measured(()=>super.peer(...args));}
   hostView(...args){return measured(()=>super.hostView(...args));}
   hostResult(...args){return measured(()=>super.hostResult(...args));}
@@ -173,7 +193,8 @@ export default {
   async fetch(request,env) {
     const url=new URL(request.url);
     if(url.pathname==='/fixture'){
-      const {op,identity,records,node,cluster}=await request.json();
+      const {op,identity,records,node,cluster,ticks,missing}=await request.json();
+      if(op==='leadership-ticks')return new Response(encodeCanonical(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).leadershipTicks(ticks,missing)));
       if(op==='stale-retirement')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).staleRetirement());
       if(op==='diagnostic'){console.warn('local runtime warning capture');console.error('local runtime error capture');return Response.json(true);}
       if(op==='evict-minority')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).evictMinority());
@@ -188,7 +209,7 @@ export default {
       if(op==='pause-public'){await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).pausePublic();return Response.json(true);}
       if(op==='resume-public'){await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).resumePublic();return Response.json(true);}
       if(op==='checkpoint-state')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).checkpointState());
-      if(op==='metrics')return Response.json({...runtimeMetrics(),...measurements});
+      if(op==='metrics')return Response.json({coreBudget:CORE_MEMORY_BUDGET,...runtimeMetrics(),...measurements});
       if(op==='reset-metrics'){for(const key of Object.keys(measurements))measurements[key]=key==='wall'?[]:0;return Response.json(true);}
       if(op==='seed'){await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).seed(identity,records);return Response.json(true);}
       if(op==='hold-upload'){await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).holdUpload();return Response.json(true);}
