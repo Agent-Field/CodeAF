@@ -131,6 +131,9 @@ func hostedTaskFrame(t *testing.T, lane <-chan session.Event, id uint64, stopped
 // A fake remote agent would only prove its own Cancel method; this test keeps
 // session.Agent, Serve, Dial, the task lane and the plan store in the path.
 func TestHostedTasksToolStopEndsTheRunAndReportsWhatHappened(t *testing.T) {
+	// This run fixture uses git working copies. A built machine helper must
+	// not turn its admission into a real snapshot-engine startup.
+	t.Setenv("CODEAF_FURROW", filepath.Join(t.TempDir(), "absent-furrow"))
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	started := make(chan struct{})
 	session.RegisterRunEngine(hostedSlowRun{started: started})
