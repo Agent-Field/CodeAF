@@ -49,7 +49,7 @@ func TestAllShowsTheCurrentTabsOnTheTerminal(t *testing.T) {
 	}
 	stopRecoveryEngineOnCleanup(t, nil, home, workspace)
 	r := startDefault(t, "open-tabs-wall", home, workspace, 140, 42, "chat", "--session", members[0].File, "--model", model, "--one-model", "--debug")
-	if out, err := exec.Command("tmux", "set-option", "-t", r.name, "status", "off").CombinedOutput(); err != nil {
+	if out, err := guardedCommand(t, context.Background(), home, os.Environ(), "tmux", "set-option", "-t", r.name, "status", "off").CombinedOutput(); err != nil {
 		t.Fatalf("terminal status: %v: %s", err, out)
 	}
 	r.lit("Reply with only OPEN_TABS_READY. Do not change files.")
