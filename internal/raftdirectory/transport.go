@@ -11,6 +11,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/raftcore"
 	"github.com/Agent-Field/codeaf/internal/raftsnapshot"
+	"github.com/Agent-Field/codeaf/internal/raftstore"
 	"github.com/Agent-Field/codeaf/internal/rafttransport"
 	pb "go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
@@ -25,17 +26,19 @@ type snapshotTransfer struct {
 	started    int64
 }
 type nativePeers struct {
-	incoming   map[int]*incomingSnapshot
-	router     *rafttransport.Router
-	view       rafttransport.View
-	keys       [3]ed25519.PrivateKey
-	sequence   [3]uint64
-	ack        [3][3]uint64
-	applied    map[uint64]uint64
-	snapshots  map[uint64]*snapshotTransfer
-	now        int64
-	sleeping   bool
-	checkpoint bool
+	viewStore   *raftstore.SQLite
+	viewApplied uint64
+	incoming    map[int]*incomingSnapshot
+	router      *rafttransport.Router
+	view        rafttransport.View
+	keys        [3]ed25519.PrivateKey
+	sequence    [3]uint64
+	ack         [3][3]uint64
+	applied     map[uint64]uint64
+	snapshots   map[uint64]*snapshotTransfer
+	now         int64
+	sleeping    bool
+	checkpoint  bool
 }
 
 // AttachTransport restores authority from applied membership before exposing
@@ -67,21 +70,33 @@ func (g *Native) installPeers(ctx context.Context) error {
 	if p == nil {
 		return nil
 	}
-	_, app, _, read, err := g.membership(ctx)
+	i := g.replica()
+	if i < 0 {
+		return directory.ErrUnreachable
+	}
+	// Peer authority changes only with durable application. Acknowledgements
+	// and read barriers reuse the view for that same store and applied index.
+	if p.viewStore == g.stores[i] && p.viewApplied == g.status[i].Applied {
+		return nil
+	}
+	app, _, err := g.stores[i].ApplicationView(ctx)
 	if err != nil {
 		return err
 	}
+	read := recordReader(ctx, g.stores[i], app)
 	v, err := rafttransport.CommittedView(p.view.Scope, p.view.Generation, app.Applied, raftcore.Configuration(app.ConfState), read)
 	if err != nil {
 		return err
 	}
 	if reflect.DeepEqual(v.Members, p.view.Members) {
+		p.viewStore, p.viewApplied = g.stores[i], app.Applied
 		return nil
 	}
 	if err = p.router.Install(v); err != nil {
 		return err
 	}
 	p.view = v
+	p.viewStore, p.viewApplied = g.stores[i], app.Applied
 	// Installing a changed voter class discards expendable deliveries. Start a
 	// real read round so append progress is retried immediately, including while
 	// a public transfer owns opMu and the periodic maintenance turn is waiting.
@@ -233,7 +248,11 @@ func (g *Native) pumpPeers(request rafttransport.Request, now int64) error {
 		return rafttransport.ErrAuth
 	}
 	if request.Applied != 0 {
-		_, app, _, _, err := g.membership(ctx)
+		i := g.replica()
+		if i < 0 {
+			return directory.ErrUnreachable
+		}
+		app, _, err := g.stores[i].ApplicationView(ctx)
 		if err != nil {
 			return err
 		}

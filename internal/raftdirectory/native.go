@@ -639,9 +639,33 @@ func (g *Native) ReadV1(ctx context.Context, c clusterstate.Command, committed b
 	defer cancel()
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	if ctx.Err() != nil {
+		return directory.ErrUnreachable
+	}
 	if !committed {
 		if c.Change.AdvanceTime == nil {
 			return directory.ErrUnauthorized
+		}
+		if c.V1 != nil {
+			if i := g.replica(); i >= 0 {
+				app, _, err := g.stores[i].ApplicationView(ctx)
+				if err != nil {
+					return err
+				}
+				if c.Now <= app.LogicalTime {
+					i, app, err = g.barrier(ctx)
+					if err != nil {
+						return err
+					}
+					unchanged, err := g.unchangedReadTime(ctx, i, app, c)
+					if err != nil {
+						return err
+					}
+					if unchanged {
+						return inspect(ctx, g.stores[i], app)
+					}
+				}
+			}
 		}
 		r, e := g.submit(ctx, c)
 		if e != nil {
@@ -657,6 +681,39 @@ func (g *Native) ReadV1(ctx context.Context, c clusterstate.Command, committed b
 	}
 	return inspect(ctx, g.stores[i], app)
 }
+
+// A read whose time is already durable still authenticates its original proof
+// against the fresh quorum view. Only an identical evaluator result can avoid
+// an append; time advances and quiescence changes retain their durable writes.
+func (g *Native) unchangedReadTime(ctx context.Context, i int, app raftstore.Application, c clusterstate.Command) (bool, error) {
+	raw, err := clusterstate.EncodeCommand(c)
+	if err != nil {
+		return false, err
+	}
+	_, size, err := g.stores[i].ApplicationView(ctx)
+	if err != nil {
+		return false, err
+	}
+	read := recordReader(ctx, g.stores[i], app)
+	e, err := clusterstate.Evaluate(raw, clusterstate.ApplicationMeta{Term: g.status[i].Term, Index: app.Applied, Configuration: raftcore.Configuration(app.ConfState), Cluster: g.manifest.Config.Cluster, Now: app.LogicalTime, Version: app.VisibleVersion, Bytes: size, Ceiling: g.manifest.Ceiling}, read)
+	if err != nil {
+		return false, err
+	}
+	if e.Result.Code != clusterstate.OK || e.Now != app.LogicalTime || e.Version != app.VisibleVersion {
+		return false, nil
+	}
+	for _, w := range e.Writes {
+		old, err := read(w.RecordKey)
+		if err != nil {
+			return false, err
+		}
+		if w.Delete && old != nil || !w.Delete && !bytes.Equal(old, w.Data) {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
 func (g *Native) CommitEffect(ctx context.Context, c clusterstate.Command) (clusterstate.Result, error) {
 	g.opMu.Lock()
 	defer g.opMu.Unlock()

@@ -47,7 +47,13 @@ func (g *Native) membership(ctx context.Context) (int, raftstore.Application, cl
 		return i, app, clusterstate.Membership{}, nil, err
 	}
 	read := recordReader(ctx, g.stores[i], app)
-	h, _, err := clusterstate.MembershipView(read, raftcore.Configuration(app.ConfState), app.Applied)
+	// Membership planning needs the registry. Routing separately validates
+	// each peer before installing its authority at this applied index.
+	var h clusterstate.Membership
+	raw, err := read(clusterstate.MembershipKey())
+	if err == nil && raw != nil && (clusterstate.Decode(raw, &h) != nil || h.Validate() != nil || h.Index > app.Applied) {
+		err = clusterstate.ErrDependency
+	}
 	return i, app, h, read, err
 }
 func (g *Native) controlChange(ctx context.Context, change clusterstate.Mutation, now int64) (clusterstate.Result, error) {

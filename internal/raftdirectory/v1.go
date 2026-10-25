@@ -13,8 +13,8 @@ import (
 )
 
 // V1Host holds its actor queue through commit and through the read callback.
-// Commit returns only a durable applied result. Read commits the GET command's
-// ingress time, obtains a fresh current-term ReadIndex and waits for durable
+// Commit returns only a durable applied result. Read ensures the GET command's
+// ingress time is durable, obtains a fresh current-term ReadIndex and waits for
 // application before calling inspect. A POST already committed by this request
 // uses that time and a NEW barrier without repeating its mutation. Callbacks
 // receive the actor-owned context: a caller losing its response cannot cancel

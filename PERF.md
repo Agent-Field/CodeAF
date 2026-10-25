@@ -83,6 +83,18 @@ migration flag skips that check. `BenchmarkOpenSettledSessions` measures the
 whole public open/close operation. `TestSettledStoreTerminalStartup` separates
 fixture construction from the first interactive frame of the running terminal.
 
+Native peer acknowledgements reuse the validated routing view only for the same
+store and durably applied index. Every applied change, including revocation,
+invalidates that view. `TestR11R27UnchangedPeerAcknowledgementWork` exercises the
+real transport and caps an unchanged acknowledgement at 1,000 allocations with
+no application append; the measured cost fell from 3,273 allocations to 192.
+
+An authenticated native directory read with already durable ingress time uses a
+fresh quorum view and the normal state evaluator before omitting an identical
+append. New time and changed records still commit before inspection.
+`TestR4R26R27ReadCommitsOnlyChangedTime` counts applied entries for unchanged,
+advanced and repeated time, and requires invalid original authority to fail.
+
 ## What the gates check
 
 `make test-quick` checks compilation, vet, formatting, packed manuals, change

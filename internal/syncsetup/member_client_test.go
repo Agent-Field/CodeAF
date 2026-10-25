@@ -180,7 +180,9 @@ func newMemberRig(t *testing.T) *memberRig {
 			s.stopMember()
 		}
 		r.server.Close()
-		r.svc.Close()
+		if r.svc != nil {
+			r.svc.Close()
+		}
 	})
 	return r
 }
@@ -233,6 +235,37 @@ func readyMember(t *testing.T, s *Sync) {
 	t.Helper()
 	mustNil(t, s.memberRound(t.Context()))
 	waitMember(t, s, func(m *personalMember) bool { return m.idle && m.status.Applied >= m.record.Grant.Barrier })
+}
+
+// R16 denies a saved peer request as soon as device revocation commits, even
+// when the membership revision and transport generation have not changed.
+func TestR16CommittedRevocationInvalidatesPeerView(t *testing.T) {
+	r := newMemberRig(t)
+	a := r.home(nil)
+	id := a.Identity
+	b := r.home(&id)
+	mustNil(t, b.Dir.PutDevice(t.Context(), b.Device.ID(), directory.Device{V: 1, Name: "c2VhbGVk"}))
+	readyMember(t, b)
+	m := b.member
+	m.mu.Lock()
+	request, err := m.request()
+	m.mu.Unlock()
+	mustNil(t, err)
+	b.stopMember()
+	client := rafttransport.Client{URL: r.server.URL, HTTP: r.server.Client()}
+	_, err = client.Exchange(t.Context(), request)
+	mustNil(t, err)
+	before, err := a.clusterClient().Status(t.Context())
+	mustNil(t, err)
+	mustNil(t, a.Dir.Revoke(t.Context(), b.Device.ID()))
+	after, err := a.clusterClient().Status(t.Context())
+	mustNil(t, err)
+	if after.Membership.Revision != before.Membership.Revision {
+		t.Fatal("revocation fixture changed the membership revision")
+	}
+	if _, err = client.Exchange(t.Context(), request); !errors.Is(err, rafttransport.ErrAuth) {
+		t.Fatalf("saved peer request after committed revocation = %v, want refused authority", err)
+	}
 }
 func nodeOf(s *Sync) uint64 {
 	s.memberMu.Lock()
