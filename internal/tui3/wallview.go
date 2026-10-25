@@ -430,8 +430,8 @@ func wallInset(width, c, tileW int) int {
 // a count growing a digit moves only what is left of it. The count waiting on
 // a person is a button: it goes to the next one, as ? does.
 //
-// The title says that the grid contains all saved conversations. Team overlays
-// never filter this library; the counts describe the cards currently shown.
+// The title identifies the saved library or current tab strip, including the
+// selected team for scoped tabs; counts describe the cards currently shown.
 func wallTitleRow(pal palette, g wallGlyphs, v wallView, width, inset, y int) (string, []wallHit) {
 	mark := "▦"
 	run := "⠿"

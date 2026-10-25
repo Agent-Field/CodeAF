@@ -3,10 +3,10 @@
 package e2e
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -68,7 +68,7 @@ func TestAllShowsTheCurrentTabsOnTheTerminal(t *testing.T) {
 		t.Helper()
 		cleanChatCapture(t, r, stage)
 		if hook := os.Getenv("CODEAF_E2E_SCREENSHOT_HOOK"); hook != "" {
-			if out, err := exec.Command(hook, r.name, stage).CombinedOutput(); err != nil {
+			if out, err := guardedCommand(t, context.Background(), home, os.Environ(), hook, r.name, stage).CombinedOutput(); err != nil {
 				t.Fatalf("screenshot: %v: %s", err, out)
 			}
 		}
@@ -105,7 +105,7 @@ func TestAllShowsTheCurrentTabsOnTheTerminal(t *testing.T) {
 	r.waitFor(10*time.Second, "Product")
 	r.keys("Enter")
 	r.mouseClick(138, 3)
-	team := r.waitFor(20*time.Second, "open tabs", "in Product", "2 conversations")
+	team := r.waitFor(20*time.Second, "open tabs", "in Product", keyedWord("2", "conversations"))
 	if !strings.Contains(team, "in Product") || !strings.Contains(team, "2 conversations") {
 		t.Fatal("All did not show the selected team's two tabs")
 	}
