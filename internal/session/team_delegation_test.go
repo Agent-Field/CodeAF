@@ -759,3 +759,27 @@ func TestTeamACapHoldsAWake(t *testing.T) {
 	}
 	onlyPacket(t, fixture.profile, teams.Person)
 }
+
+func TestTeamQuestionPreservesIrreversibleStakesThroughEscalation(t *testing.T) {
+	fixture := newTeamFixture(t, true)
+	web := teamAgent(t, fixture, fixture.web, nil, nil)
+	manager := teamAgent(t, fixture, fixture.manager, nil, nil)
+	web.teamBoundary()
+	manager.teamBoundary()
+	said, failed := callTool(t, web.executeAsk, strings.Replace(clarifying, `"stakes":"reversible"`, `"stakes":"irreversible"`, 1))
+	if failed {
+		t.Fatalf("ask: %s", said)
+	}
+	packet := onlyPacket(t, fixture.profile, fixture.teamID)
+	if !packet.Irreversible {
+		t.Fatal("irreversible question lost its stakes when raised as a decision")
+	}
+	said, failed = callTool(t, manager.teamEscalateTool, `{"packet":"`+packet.ID+`","to":"you","reason":"needs the person"}`)
+	if failed {
+		t.Fatalf("escalate: %s", said)
+	}
+	packet = onlyPacket(t, fixture.profile, teams.Person)
+	if !packet.Irreversible {
+		t.Fatal("escalation lost irreversible stakes")
+	}
+}

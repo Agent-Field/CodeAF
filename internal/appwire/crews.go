@@ -277,6 +277,7 @@ type CrewCap struct {
 
 // Decision is one decision packet, as stored.
 type Decision struct {
+	Irreversible   bool             `json:"irreversible,omitempty"`
 	ID             string           `json:"id"`
 	Crew           string           `json:"crew"`
 	WaitsOn        string           `json:"waits_on"`

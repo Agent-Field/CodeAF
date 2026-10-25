@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"slices"
 
 	"github.com/Agent-Field/codeaf/internal/identity"
@@ -91,7 +92,7 @@ func (r *Runner) checkPairing(p Pairing) error {
 		return errors.New("client encryption key cannot receive sealed data")
 	}
 	if len(p.Reads) == 0 || len(p.Reads) > len(PhoneReads()) {
-		return errors.New("choose one to ten snapshot methods")
+		return fmt.Errorf("choose one to %d snapshot methods", len(PhoneReads()))
 	}
 	for _, name := range p.Reads {
 		if !slices.Contains(PhoneReads(), name) {

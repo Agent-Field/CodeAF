@@ -1003,7 +1003,8 @@ func appDecisionOf(f *teamstore.File, p teamstore.Packet) appwire.Decision {
 		return id
 	}
 	d := appwire.Decision{
-		ID: p.ID, Crew: p.Origin, WaitsOn: p.Team, Kind: p.Kind, RaisedBy: p.RaisedBy, Question: redact.Secrets(p.Question),
+		Irreversible: p.Irreversible,
+		ID:           p.ID, Crew: p.Origin, WaitsOn: p.Team, Kind: p.Kind, RaisedBy: p.RaisedBy, Question: redact.Secrets(p.Question),
 		State: p.State, DecidedBy: p.DecidedBy, Decision: p.Decision, Reason: p.Reason, Raised: p.Raised, At: p.At,
 	}
 	for _, party := range p.Parties {
@@ -1061,7 +1062,7 @@ func appDecisionAsk(f *teamstore.File, p teamstore.Packet) appwire.Ask {
 	d := appDecisionOf(f, p)
 	ask := appwire.Ask{
 		ID: appCrewAskPrefix + p.ID, Agent: decisionAgent(f, p), Kind: appwire.AskQuestion, Subkind: appwire.SubkindCrewDecision,
-		Title: d.Question, Path: d.Path, SayWhy: true, DecisionKind: d.Kind,
+		Title: d.Question, Path: d.Path, SayWhy: true, DecisionKind: d.Kind, Irreversible: d.Irreversible,
 		Subject: &appwire.AskSubject{Kind: appwire.SubjectCrewDecision, Ref: p.ID},
 	}
 	if d.Recommendation != nil {

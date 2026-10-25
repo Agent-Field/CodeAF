@@ -15,21 +15,7 @@ func testSlotWaitCancellation(t *testing.T, r *Rig) {
 	defer cancel()
 	results := make(chan int, 3)
 	for range 3 {
-		go func() {
-			req, err := http.NewRequestWithContext(ctx, "GET", r.URL()+path+"/slots?since=0&wait=25", nil)
-			if err != nil {
-				results <- 0
-				return
-			}
-			reqsign.Sign(req, nil, client, r.Now())
-			resp, err := r.Client.Do(req)
-			if err != nil {
-				results <- 0
-				return
-			}
-			defer resp.Body.Close()
-			results <- resp.StatusCode
-		}()
+		go func() { result := pollSlots(ctx, r, client, path+"/slots?since=0&wait=25"); results <- result.status }()
 	}
 	select {
 	case status := <-results:

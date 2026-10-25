@@ -111,7 +111,11 @@ func (b *appBackend) CrewStart(ask appwire.CrewCreate) (appwire.CrewStartResult,
 		members = append(members, m)
 	}
 	words := prep.text != "" || len(prep.kept) > 0
-	transcript, err := b.mint(workspace, ask.BeforeMint)
+	var beforeMint []func(string) error
+	if ask.BeforeMint != nil {
+		beforeMint = append(beforeMint, ask.BeforeMint)
+	}
+	transcript, err := b.mint(workspace, beforeMint...)
 	if err != nil {
 		return appwire.CrewStartResult{}, appEngineError(err)
 	}

@@ -177,6 +177,9 @@ type ClosingReport struct {
 
 // Packet is one decision, as it stands.
 type Packet struct {
+	// Irreversible preserves the original question's stakes as the packet
+	// travels between managers and the person.
+	Irreversible bool `json:"irreversible,omitempty"`
 	// ID is minted by [Raise].
 	ID string `json:"id"`
 	// Team is who decides it now: a team id, whose manager decides, or

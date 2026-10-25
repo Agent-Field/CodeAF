@@ -200,7 +200,7 @@ func (a *Agent) askUp(ctx context.Context, q Question) (string, bool) {
 // happens, and the asker's pick with its reason. The caller fills in who
 // decides, where it is from and who raised it.
 func askPacket(q Question) teams.Packet {
-	p := teams.Packet{Kind: teams.PacketQuestion, Question: strings.TrimSpace(q.Head)}
+	p := teams.Packet{Kind: teams.PacketQuestion, Question: strings.TrimSpace(q.Head), Irreversible: q.Stakes == StakesIrreversible}
 	byKey := map[string]string{}
 	for _, option := range q.Options {
 		label := strings.TrimSpace(option.Label)

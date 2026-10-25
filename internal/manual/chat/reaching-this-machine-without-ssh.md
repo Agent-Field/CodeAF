@@ -507,7 +507,9 @@ A snapshot exceeding that limit is refused rather than split.
 Queued crew writes are signed and sealed. The desktop checks actual ownership of the
 manager, selected members, parent and decision ask before dispatch. A newly started
 crew's manager is leased before its first turn. An irreversible decision requires
-the phone's signed Face ID assertion, just like an irreversible ask answer. Queued
+the phone's signed Face ID assertion, just like an irreversible ask answer. Team
+questions preserve their irreversible stakes through manager escalation and into
+the decision ask. Queued
 work waits for an eligible desktop to wake; a queued receipt does not mean it ran.
 
 ## Phone relay push and long-poll slot changes

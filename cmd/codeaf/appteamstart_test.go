@@ -992,3 +992,13 @@ func TestStartCrewKeepsManagerBeforeLaunchingItsGoal(t *testing.T) {
 		t.Fatalf("goal: %v", sent)
 	}
 }
+
+func TestStartCrewWithRealMintAndNoPhoneHooks(t *testing.T) {
+	_, workspace := wakeEnvironment(t, resolvedTempDir(t))
+	h := newStartHarness(t)
+	h.b.mint = appMint
+	got, err := h.b.CrewStart(appwire.CrewCreate{Name: "desktop", StartManager: true, ManagerStartsMembers: true, RequestID: "desktop-no-hooks", Workspace: workspace})
+	if err != nil || got.Crew.Manager == "" {
+		t.Fatalf("ordinary desktop crew start: %+v %v", got, err)
+	}
+}

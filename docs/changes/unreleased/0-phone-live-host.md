@@ -15,7 +15,8 @@ no model call. Without that switch, `testing.open_ask` is an unknown method.
 The default phone grant includes `crews.list/get/items/log` and queued
 `crews.create/message/decide`. A crew belongs to the executor leasing its manager;
 queued mutations check actual chat ownership and irreversible decisions require the
-signed Face ID assertion. Newly started managers are kept and leased before launch.
+signed Face ID assertion. Team question stakes survive packet escalation and reach
+the crew decision ask. Newly started managers are kept and leased before launch.
 Crew changes wake the scoped snapshot publisher.
 
 `GET /v1/clients/{id}/slots?since=<version>&wait=25` returns a durable per-client
