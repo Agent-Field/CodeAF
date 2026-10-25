@@ -60,17 +60,28 @@ func (a *Agent) ReviewTaskWorkspaceRoot(ctx context.Context, id uint64, slot str
 	if review.DiffTruncated {
 		review.Diff += "\nComplete reviewed diff: git -C " + quoteShWord(tree.dir) + " diff --no-ext-diff --no-textconv " + quoteShWord(tree.checkBase) + " " + quoteShWord(ticket.Snapshot) + " --\n"
 	}
-	raw, err := json.Marshal(ticket)
-	if err != nil {
+	if err := persistTaskWorkspaceReview(taskWorkspaceReviewPath(id, use), ticket); err != nil {
 		return review, err
 	}
-	path := taskWorkspaceReviewPath(id, use)
+	published = true
+	if priorErr == nil {
+		cleanupTaskWorkspaceReview(prior)
+	}
+	return review, nil
+}
+
+// Persist the replacement before retiring the prior reviewed snapshot.
+func persistTaskWorkspaceReview(path string, ticket taskWorkspaceReviewTicket) error {
+	raw, err := json.Marshal(ticket)
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return review, err
+		return err
 	}
 	temporary, err := os.CreateTemp(filepath.Dir(path), ".review-")
 	if err != nil {
-		return review, err
+		return err
 	}
 	defer os.Remove(temporary.Name())
 	if _, err = temporary.Write(raw); err == nil {
@@ -92,13 +103,9 @@ func (a *Agent) ReviewTaskWorkspaceRoot(ctx context.Context, id uint64, slot str
 		}
 	}
 	if err != nil {
-		return review, err
+		return err
 	}
-	published = true
-	if priorErr == nil {
-		cleanupTaskWorkspaceReview(prior)
-	}
-	return review, nil
+	return nil
 }
 
 func (a *Agent) taskWorkspaceRoot(id uint64, slot string) (*TaskGraph, TaskNotice, WorkspaceRootUse, taskTree, error) {
@@ -120,27 +127,8 @@ func (a *Agent) taskWorkspaceRoot(id uint64, slot string) (*TaskGraph, TaskNotic
 		if use.Slot != slot {
 			continue
 		}
-		if use.Copy == nil || use.Copy.URI == "" || use.Copy.ChatURI == "" {
-			return fail(errors.New("this root has no owned working copy"))
-		}
-		tree, err := runCopyTree(use.Copy, a.config.Place)
+		tree, err := adoptTaskWorkspaceRoot(use, a.config.Place)
 		if err != nil {
-			return fail(err)
-		}
-		if use.Copy.Branch != "" && currentBranch(tree.dir) != use.Copy.Branch {
-			return fail(errors.New("the saved working copy now stands on another branch"))
-		}
-		if tree.checkBase == "" {
-			return fail(errors.New("the saved working copy has no review baseline"))
-		}
-		destination := tree.ground
-		if tree.mode != TaskModeMirror {
-			destination = tree.root
-		}
-		if destination == "" || canonicalPath(destination) == canonicalPath(tree.dir) {
-			return fail(errors.New("this root has no separate locally mapped destination"))
-		}
-		if err := workspacePathWithoutSymlinks(destination); err != nil {
 			return fail(err)
 		}
 		return g, kept, use, tree, nil
@@ -234,6 +222,11 @@ func (a *Agent) ApplyTaskWorkspaceRoot(ctx context.Context, id uint64, slot stri
 	// The existing landing checks changed originals and preserves both versions on
 	// conflict. This local tree already resolves the receiver's chosen binding.
 	outcome, detail, _, _ := stage.comeHome(kept.Title, review.Changed, a.signsGitWork())
+	return a.recordTaskWorkspaceApplication(g, kept, use, ticket, outcome, detail)
+}
+
+func (a *Agent) recordTaskWorkspaceApplication(g *TaskGraph, kept TaskNotice, use WorkspaceRootUse, ticket taskWorkspaceReviewTicket, outcome, detail string) (string, error) {
+	id, slot := kept.ID, use.Slot
 	kept.WorkspaceSet = cloneWorkspaceSet(kept.WorkspaceSet)
 	for i := range kept.WorkspaceSet.Roots {
 		if kept.WorkspaceSet.Roots[i].Slot == slot {
@@ -267,17 +260,9 @@ func (a *Agent) taskWorkspaceApplyIdle(g *TaskGraph, selected TaskNotice, tree t
 	if selected.Settling != "" || selected.Mending != "" {
 		return blocked()
 	}
-	g.mu.Lock()
-	for _, node := range g.nodes {
-		if node.state.settled() && !node.resolving {
-			continue
-		}
-		if taskStorageOverlaps(node.worktree, tree.dir) || taskStorageOverlaps(node.Ground, tree.dir) {
-			g.mu.Unlock()
-			return blocked()
-		}
+	if taskWorkspaceNodesBusy(g, tree.dir) {
+		return blocked()
 	}
-	g.mu.Unlock()
 	a.beltMu.Lock()
 	live := a.beltRun != nil
 	a.beltMu.Unlock()
@@ -286,36 +271,8 @@ func (a *Agent) taskWorkspaceApplyIdle(g *TaskGraph, selected TaskNotice, tree t
 	if live {
 		return blocked()
 	}
-	g.mu.Lock()
-	rows := g.runRowsLocked()
-	g.mu.Unlock()
-	base := filepath.Dir(tree.dir)
-	for _, row := range rows {
-		if row.ID == selected.ID {
-			continue
-		}
-		if row.State.settled() && row.Settling == "" && row.Mending == "" {
-			continue
-		}
-		copies := []*TaskCopyRecord{row.Copy}
-		if row.WorkspaceSet != nil {
-			for _, root := range row.WorkspaceSet.Roots {
-				copies = append(copies, root.Copy)
-			}
-		}
-		identified := false
-		for _, copy := range copies {
-			if copy == nil {
-				continue
-			}
-			identified = true
-			if copy.URI == tree.uri || copy.Dir != "" && (filepath.Dir(copy.Dir) == base || taskStorageOverlaps(copy.Dir, tree.dir)) {
-				return blocked()
-			}
-		}
-		if !identified {
-			return blocked()
-		}
+	if taskWorkspaceRowsBusy(g, selected.ID, tree) {
+		return blocked()
 	}
 	for _, job := range a.jobs.all() {
 		if (job.running() || job.group.Alive()) && (taskStorageOverlaps(job.dir, tree.dir) || taskStorageOverlaps(job.dir, tree.ground)) {
@@ -374,33 +331,13 @@ func stageTaskWorkspaceReview(ctx context.Context, id uint64, use WorkspaceRootU
 	stage.place = place
 	stage.uri, stage.chatURI, stage.projectURI, stage.groundURI, stage.rootURI = "", "", "", "", ""
 	stage.universe = ""
-	baselineDigest := ""
-	var baseline []byte
-	if original.mode == TaskModeMirror {
-		baseline, err = readTaskDropping(original.dir, groundBaselineRecord)
-		if err != nil {
-			_ = os.RemoveAll(owned)
-			return fail(fmt.Errorf("the folder's original comparison baseline is unavailable: %w", err))
-		}
-		sum := sha256.Sum256(baseline)
-		baselineDigest = hex.EncodeToString(sum[:])
-	}
-	destination := original.ground
-	if original.mode != TaskModeMirror {
-		destination = original.root
-	}
-	treeID, err := gitContext(ctx, original.dir, nil, "rev-parse", snapshot+"^{tree}")
+	bound, err := bindTaskWorkspaceSnapshot(ctx, use, original, snapshot)
 	if err != nil {
 		_ = os.RemoveAll(owned)
 		return fail(err)
 	}
-	message := taskWorkspaceSnapshotMessage(use.Copy.URI, destination, original.checkBase, baselineDigest)
-	commit, err := gitContext(ctx, original.dir, nil, append(codeafGitIdentity(), "commit-tree", strings.TrimSpace(treeID), "-p", snapshot, "-m", message)...)
-	if err != nil {
-		_ = os.RemoveAll(owned)
-		return fail(err)
-	}
-	snapshot = strings.TrimSpace(commit)
+	snapshot = bound.commit
+	baseline, baselineDigest, destination := bound.baseline, bound.baselineDigest, bound.destination
 	ready := false
 	defer func() {
 		if !ready {
@@ -418,13 +355,8 @@ func stageTaskWorkspaceReview(ctx context.Context, id uint64, use WorkspaceRootU
 	if output, err := gitContext(ctx, original.dir, nil, "worktree", "add", "-b", stage.branch, stage.dir, snapshot); err != nil {
 		return fail(fmt.Errorf("stage reviewed snapshot: %s: %w", output, err))
 	}
-	if original.mode == TaskModeMirror {
-		if err := os.MkdirAll(filepath.Join(stage.dir, codeafDroppings), 0700); err != nil {
-			return fail(err)
-		}
-		if err := os.WriteFile(filepath.Join(stage.dir, codeafDroppings, groundBaselineRecord), baseline, 0600); err != nil {
-			return fail(err)
-		}
+	if err := materializeTaskWorkspaceBaseline(stage, baseline); err != nil {
+		return fail(err)
 	}
 	stage, err = registerOwnedWorkspace(stage, place)
 	if err != nil {
@@ -451,50 +383,24 @@ func loadTaskWorkspaceReview(id uint64, use WorkspaceRootUse, original taskTree)
 	if original.mode != TaskModeMirror {
 		destination = original.root
 	}
-	if ticket.TaskID != id || ticket.Slot != use.Slot || ticket.CopyURI != use.Copy.URI || ticket.Destination != destination || ticket.Origin != original.dir || filepath.Dir(ticket.Place) != strings.TrimSuffix(taskWorkspaceReviewPath(id, use), ".json") || ticket.Stage == nil {
-		return ticket, taskTree{}, errors.New("the reviewed root or its local mapping changed; review it again before applying")
+	if err := validateTaskWorkspaceReviewTicket(id, use, original, ticket, destination); err != nil {
+		return ticket, taskTree{}, err
 	}
 	stage, err := runCopyTree(ticket.Stage, Place{Dir: ticket.Place, Workspace: destination})
 	if err != nil {
 		return ticket, stage, err
 	}
-	stageDestination := stage.ground
-	if stage.mode != TaskModeMirror {
-		stageDestination = stage.root
-	}
-	if ticket.Stage.Dir != stage.dir || stage.dir != filepath.Join((Place{Dir: ticket.Place}).Trees(), "1", use.Slot) || ticket.Stage.Branch != currentBranch(stage.dir) || stageDestination != destination || stage.ground != original.ground || stage.root != original.root || stage.projectURI != original.projectURI || stage.checkBase != original.checkBase || stage.mode != original.mode || stage.home != original.home || stage.homeSha != original.homeSha {
-		return ticket, stage, errors.New("the reviewed staging identity or destination changed; review this root again")
-	}
-	message, err := git(stage.dir, "show", "-s", "--format=%B", ticket.Snapshot)
-	if err != nil || strings.TrimSpace(message) != taskWorkspaceSnapshotMessage(use.Copy.URI, destination, original.checkBase, ticket.BaselineDigest) {
-		return ticket, stage, errors.New("the reviewed snapshot binding does not match this task root")
-	}
-	if original.mode == TaskModeMirror {
-		baseline, err := readTaskDropping(stage.dir, groundBaselineRecord)
-		if err != nil {
-			return ticket, stage, errors.New("the reviewed comparison baseline is missing")
-		}
-		sum := sha256.Sum256(baseline)
-		if hex.EncodeToString(sum[:]) != ticket.BaselineDigest {
-			return ticket, stage, errors.New("the reviewed comparison baseline changed")
-		}
-	}
-	head, err := git(stage.dir, "rev-parse", "HEAD")
-	if err != nil || strings.TrimSpace(head) != ticket.Snapshot {
-		return ticket, stage, errors.New("the reviewed snapshot changed; review this root again")
-	}
-	dirty, err := git(stage.dir, "status", "--porcelain", "--untracked-files=all")
-	if err != nil {
+	if err := validateTaskWorkspaceReviewStage(use, original, ticket, stage, destination); err != nil {
 		return ticket, stage, err
 	}
-	// The mirror's baseline is harness metadata, deliberately outside the commit.
-	for _, line := range strings.Split(strings.TrimSpace(dirty), "\n") {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		if len(line) < 4 || !harnessWrote(strings.TrimSpace(line[3:])) {
-			return ticket, stage, errors.New("the reviewed staging copy changed; review this root again")
-		}
+	if err := validateTaskWorkspaceSnapshotBinding(use, original, ticket, stage, destination); err != nil {
+		return ticket, stage, err
+	}
+	if err := validateTaskWorkspaceComparisonBaseline(original, ticket, stage); err != nil {
+		return ticket, stage, err
+	}
+	if err := verifyTaskWorkspaceSnapshotFiles(ticket, stage); err != nil {
+		return ticket, stage, err
 	}
 	return ticket, stage, nil
 }
@@ -521,4 +427,191 @@ func cleanupTaskWorkspaceReview(ticket taskWorkspaceReviewTicket) {
 func taskWorkspaceSnapshotMessage(copyURI, destination, base, baselineDigest string) string {
 	sum := sha256.Sum256([]byte(copyURI + "\x00" + destination + "\x00" + base + "\x00" + baselineDigest))
 	return "CodeAF reviewed workspace snapshot\n\nReview-binding: " + hex.EncodeToString(sum[:])
+}
+
+func adoptTaskWorkspaceRoot(use WorkspaceRootUse, place Place) (taskTree, error) {
+	if use.Copy == nil || use.Copy.URI == "" || use.Copy.ChatURI == "" {
+		return taskTree{}, errors.New("this root has no owned working copy")
+	}
+	tree, err := runCopyTree(use.Copy, place)
+	if err != nil {
+		return taskTree{}, err
+	}
+	if use.Copy.Branch != "" && currentBranch(tree.dir) != use.Copy.Branch {
+		return taskTree{}, errors.New("the saved working copy now stands on another branch")
+	}
+	if tree.checkBase == "" {
+		return taskTree{}, errors.New("the saved working copy has no review baseline")
+	}
+	destination := tree.ground
+	if tree.mode != TaskModeMirror {
+		destination = tree.root
+	}
+	if destination == "" || canonicalPath(destination) == canonicalPath(tree.dir) {
+		return taskTree{}, errors.New("this root has no separate locally mapped destination")
+	}
+	if err := workspacePathWithoutSymlinks(destination); err != nil {
+		return taskTree{}, err
+	}
+	return tree, nil
+}
+
+func taskWorkspaceNodesBusy(g *TaskGraph, path string) bool {
+	g.mu.Lock()
+	for _, node := range g.nodes {
+		if node.state.settled() && !node.resolving {
+			continue
+		}
+		if taskStorageOverlaps(node.worktree, path) || taskStorageOverlaps(node.Ground, path) {
+			g.mu.Unlock()
+			return true
+		}
+	}
+	g.mu.Unlock()
+	return false
+}
+
+func taskWorkspaceRowsBusy(g *TaskGraph, selected uint64, tree taskTree) bool {
+	g.mu.Lock()
+	rows := g.runRowsLocked()
+	g.mu.Unlock()
+	for _, row := range rows {
+		if taskWorkspaceRowBusy(row, selected, tree) {
+			return true
+		}
+	}
+	return false
+}
+func taskWorkspaceRowBusy(row TaskNotice, selected uint64, tree taskTree) bool {
+	if row.ID == selected {
+		return false
+	}
+	if row.State.settled() && row.Settling == "" && row.Mending == "" {
+		return false
+	}
+	copies := taskWorkspaceRowCopies(row)
+	identified := false
+	for _, copy := range copies {
+		if copy == nil {
+			continue
+		}
+		identified = true
+		if copy.URI == tree.uri || copy.Dir != "" && (filepath.Dir(copy.Dir) == filepath.Dir(tree.dir) || taskStorageOverlaps(copy.Dir, tree.dir)) {
+			return true
+		}
+	}
+	return !identified
+}
+func taskWorkspaceRowCopies(row TaskNotice) []*TaskCopyRecord {
+	copies := []*TaskCopyRecord{row.Copy}
+	if row.WorkspaceSet != nil {
+		for _, root := range row.WorkspaceSet.Roots {
+			copies = append(copies, root.Copy)
+		}
+	}
+	return copies
+}
+
+func validateTaskWorkspaceReviewTicket(id uint64, use WorkspaceRootUse, original taskTree, ticket taskWorkspaceReviewTicket, destination string) error {
+	if ticket.TaskID != id || ticket.Slot != use.Slot || ticket.CopyURI != use.Copy.URI || ticket.Destination != destination || ticket.Origin != original.dir || filepath.Dir(ticket.Place) != strings.TrimSuffix(taskWorkspaceReviewPath(id, use), ".json") || ticket.Stage == nil {
+		return errors.New("the reviewed root or its local mapping changed; review it again before applying")
+	}
+	return nil
+}
+func validateTaskWorkspaceReviewStage(use WorkspaceRootUse, original taskTree, ticket taskWorkspaceReviewTicket, stage taskTree, destination string) error {
+	stageDestination := stage.ground
+	if stage.mode != TaskModeMirror {
+		stageDestination = stage.root
+	}
+	if ticket.Stage.Dir != stage.dir || stage.dir != filepath.Join((Place{Dir: ticket.Place}).Trees(), "1", use.Slot) || ticket.Stage.Branch != currentBranch(stage.dir) || stageDestination != destination || stage.ground != original.ground || stage.root != original.root || stage.projectURI != original.projectURI || stage.checkBase != original.checkBase || stage.mode != original.mode || stage.home != original.home || stage.homeSha != original.homeSha {
+		return errors.New("the reviewed staging identity or destination changed; review this root again")
+	}
+	return nil
+}
+func validateTaskWorkspaceSnapshotBinding(use WorkspaceRootUse, original taskTree, ticket taskWorkspaceReviewTicket, stage taskTree, destination string) error {
+	message, err := git(stage.dir, "show", "-s", "--format=%B", ticket.Snapshot)
+	if err != nil || strings.TrimSpace(message) != taskWorkspaceSnapshotMessage(use.Copy.URI, destination, original.checkBase, ticket.BaselineDigest) {
+		return errors.New("the reviewed snapshot binding does not match this task root")
+	}
+	return nil
+}
+func validateTaskWorkspaceComparisonBaseline(original taskTree, ticket taskWorkspaceReviewTicket, stage taskTree) error {
+	if original.mode == TaskModeMirror {
+		baseline, err := readTaskDropping(stage.dir, groundBaselineRecord)
+		if err != nil {
+			return errors.New("the reviewed comparison baseline is missing")
+		}
+		sum := sha256.Sum256(baseline)
+		if hex.EncodeToString(sum[:]) != ticket.BaselineDigest {
+			return errors.New("the reviewed comparison baseline changed")
+		}
+	}
+	return nil
+}
+
+func verifyTaskWorkspaceSnapshotFiles(ticket taskWorkspaceReviewTicket, stage taskTree) error {
+	head, err := git(stage.dir, "rev-parse", "HEAD")
+	if err != nil || strings.TrimSpace(head) != ticket.Snapshot {
+		return errors.New("the reviewed snapshot changed; review this root again")
+	}
+	dirty, err := git(stage.dir, "status", "--porcelain", "--untracked-files=all")
+	if err != nil {
+		return err
+	}
+	// The mirror's baseline is harness metadata, deliberately outside the commit.
+	for _, line := range strings.Split(strings.TrimSpace(dirty), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if len(line) < 4 || !harnessWrote(strings.TrimSpace(line[3:])) {
+			return errors.New("the reviewed staging copy changed; review this root again")
+		}
+	}
+	return nil
+}
+
+type taskWorkspaceSnapshot struct {
+	commit, baselineDigest, destination string
+	baseline                            []byte
+}
+
+func bindTaskWorkspaceSnapshot(ctx context.Context, use WorkspaceRootUse, original taskTree, snapshot string) (taskWorkspaceSnapshot, error) {
+	var err error
+	baselineDigest := ""
+	var baseline []byte
+	if original.mode == TaskModeMirror {
+		baseline, err = readTaskDropping(original.dir, groundBaselineRecord)
+		if err != nil {
+			return taskWorkspaceSnapshot{}, fmt.Errorf("the folder's original comparison baseline is unavailable: %w", err)
+		}
+		sum := sha256.Sum256(baseline)
+		baselineDigest = hex.EncodeToString(sum[:])
+	}
+	destination := original.ground
+	if original.mode != TaskModeMirror {
+		destination = original.root
+	}
+	treeID, err := gitContext(ctx, original.dir, nil, "rev-parse", snapshot+"^{tree}")
+	if err != nil {
+		return taskWorkspaceSnapshot{}, err
+	}
+	message := taskWorkspaceSnapshotMessage(use.Copy.URI, destination, original.checkBase, baselineDigest)
+	commit, err := gitContext(ctx, original.dir, nil, append(codeafGitIdentity(), "commit-tree", strings.TrimSpace(treeID), "-p", snapshot, "-m", message)...)
+	if err != nil {
+		return taskWorkspaceSnapshot{}, err
+	}
+	snapshot = strings.TrimSpace(commit)
+	return taskWorkspaceSnapshot{commit: snapshot, baseline: baseline, baselineDigest: baselineDigest, destination: destination}, nil
+}
+
+func materializeTaskWorkspaceBaseline(stage taskTree, baseline []byte) error {
+	if stage.mode == TaskModeMirror {
+		if err := os.MkdirAll(filepath.Join(stage.dir, codeafDroppings), 0700); err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(stage.dir, codeafDroppings, groundBaselineRecord), baseline, 0600); err != nil {
+			return err
+		}
+	}
+	return nil
 }
