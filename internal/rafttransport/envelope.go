@@ -26,8 +26,8 @@ const (
 	MaxChunkBytes  = raftsnapshot.ChunkBytes
 	MaxInflight    = raftcore.MaxInflightBatches
 	MaxLearners    = clusterstate.MaxLearners
-	MaxMessages    = 64
-	MaxQueuedBytes = 1 << 20
+	MaxMessages    = clusterstate.MaxPeerMessages
+	MaxQueuedBytes = clusterstate.MaxPeerQueuedBytes
 	// Encoded envelopes include base64 payloads, signatures and bounded IDs.
 	MaxExchangeBytes = 2 * MaxChunkBytes
 )

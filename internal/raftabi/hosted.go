@@ -114,7 +114,7 @@ func hostedAnchor(d *decoder) ([]byte, error) {
 	if cs.Decode(raw, &change) != nil {
 		return nil, errFrame
 	}
-	if change.InitMembership == nil && change.PrepareQuiescence == nil && change.SettleMembership == nil && change.SettleLeadership == nil && change.CompleteLeadership == nil && change.RestoreAnchors == nil {
+	if (change.EnrollMember == nil || change.EnrollMember.Admission == nil) && (change.RemoveMember == nil || change.RemoveMember.Admission == nil) && change.InitMembership == nil && change.PrepareQuiescence == nil && change.SettleMembership == nil && change.SettleLeadership == nil && change.CompleteLeadership == nil && change.RestoreAnchors == nil {
 		return nil, errFrame
 	}
 	sequence, ack, err := cs.NextSession(saved)

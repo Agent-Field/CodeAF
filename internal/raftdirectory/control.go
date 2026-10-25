@@ -20,79 +20,19 @@ func (g *Native) PersonalStatus(ctx context.Context, actor, certificate string) 
 			rows, _, err := store.Read(ctx, app.Applied, []raftstore.Key{key})
 			return rows[key], err
 		}
-		var identity cs.IdentityRec
-		raw, err := read(cs.IdentityKey())
+		progress := map[uint64]uint64{}
+		if g.peers != nil {
+			progress = g.peers.applied
+		}
+		status, code, err := cs.PersonalControlView(g.manifest.Config.Cluster, actor, certificate, raftcore.Configuration(app.ConfState), app.Applied, g.leaderID(), app.LogicalTime, progress, read)
 		if err != nil {
 			return err
 		}
-		if cs.Decode(raw, &identity) != nil || cs.PersonalCertificate(identity, actor, certificate) != nil {
+		if code != cs.OK {
 			return directory.ErrUnauthorized
 		}
-		raw, err = read(cs.DeviceKey(actor))
-		if err != nil {
-			return err
-		}
-		if raw != nil {
-			var device cs.Device
-			if cs.Decode(raw, &device) != nil || device.Revoked {
-				return directory.ErrUnauthorized
-			}
-		}
-		raw, err = read(cs.AuthorityKey(actor))
-		if err != nil {
-			return err
-		}
-		if raw != nil {
-			var authority cs.Authority
-			if cs.Decode(raw, &authority) != nil || !authority.ValidRole() || !authority.Personal || authority.Cluster != g.manifest.Config.Cluster {
-				return directory.ErrUnauthorized
-			}
-		}
-		conf := raftcore.Configuration(app.ConfState)
-		membership, _, err := cs.MembershipView(read, conf, app.Applied)
-		if err != nil || membership.Revision == 0 {
-			return cs.ErrDependency
-		}
-		out = clusterctl.Status{Cluster: g.manifest.Config.Cluster, Leader: g.leaderID(), Membership: membership, Configuration: conf, LeadershipUnavailable: true}
-		if g.peers != nil {
-			for _, id := range conf.Learners {
-				raw, err := read(cs.MemberKey(id))
-				if err != nil {
-					return err
-				}
-				var record cs.MemberRecord
-				if cs.Decode(raw, &record) != nil {
-					return cs.ErrDependency
-				}
-				if peer, ok := g.peer(id); ok && !peer.Revoked && cs.LearnerReady(record, conf, g.peers.applied[id], record.ReadyIndex) {
-					out.Ready = append(out.Ready, id)
-				}
-			}
-		}
-		raw, err = read(cs.MemberDeviceKey(actor))
-		if err != nil || raw == nil {
-			return err
-		}
-		var mapping cs.DeviceMember
-		if cs.Decode(raw, &mapping) != nil {
-			return cs.ErrDependency
-		}
-		if mapping.Node == 0 {
-			return nil
-		}
-		raw, err = read(cs.MemberKey(mapping.Node))
-		if err != nil {
-			return err
-		}
-		var member cs.MemberRecord
-		if cs.Decode(raw, &member) != nil || member.Node != mapping.Node || member.Device != actor || member.Anchor || member.Worker {
-			return cs.ErrDependency
-		}
-		if !member.Retired {
+		out = clusterctl.Status{Ready: status.Ready, LeadershipUnavailable: status.Self == 0, Cluster: status.Cluster, Self: status.Self, Leader: status.Leader, Membership: status.Membership, Configuration: status.Configuration}
 
-			out.Self = member.Node
-			out.LeadershipUnavailable = false
-		}
 		return nil
 	})
 	if err != nil {

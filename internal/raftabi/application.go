@@ -93,6 +93,11 @@ func registryCodec(d *decoder) ([]byte, error) {
 	conf := new(pb.ConfState)
 	d.message(conf)
 	header, member, device := d.blob(), d.blob(), d.blob()
+	// A missing metadata row is not an empty committed record. Personal
+	// certificate admission does not require a prior device-name write.
+	if len(device) == 0 {
+		device = nil
+	}
 	supplied := len(d.b) > 0
 	now := int64(0)
 	var identity, authority, worker []byte

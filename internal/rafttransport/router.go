@@ -6,6 +6,8 @@ import (
 	"math"
 	"slices"
 	"sync"
+
+	"github.com/Agent-Field/codeaf/internal/clusterstate"
 )
 
 // Lane reservations are charged by encoded envelope bytes, including metadata.
@@ -17,7 +19,7 @@ const (
 	Learner
 	Snapshot
 	laneCount
-	RetentionMillis int64 = 30_000
+	RetentionMillis int64 = clusterstate.PeerRetentionMillis
 )
 
 // Slot reservations bound the whole member inbox to eight outstanding

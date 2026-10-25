@@ -2,7 +2,6 @@ package raftdirectory
 
 import (
 	"context"
-	"crypto/ed25519"
 	"errors"
 	"strconv"
 
@@ -162,90 +161,51 @@ func (g *Native) EnrollPersonal(ctx context.Context, proof clusterstate.V1Reques
 	if err := g.reconcileMembership(ctx); err != nil {
 		return out, err
 	}
-	_, app, h, read, err := g.membership(ctx)
-	if err != nil {
-		return out, err
-	}
-	var identity clusterstate.IdentityRec
-	raw, err := read(clusterstate.IdentityKey())
-	if err != nil || clusterstate.Decode(raw, &identity) != nil {
-		return out, clusterstate.ErrDependency
-	}
 	at, _ := strconv.ParseInt(proof.At, 10, 64)
-	now := max(at, app.LogicalTime)
-	request, granted, actor, err := clusterstate.VerifyPersonalAdmission(proof, identity, now)
-	if err != nil {
-		return out, directory.ErrUnauthorized
-	}
-	var device clusterstate.Device
-	raw, err = read(clusterstate.DeviceKey(actor))
-	if err != nil {
-		return out, err
-	}
-	if raw != nil && (clusterstate.Decode(raw, &device) != nil || device.Revoked) {
-		return out, directory.ErrUnauthorized
-	}
-	var authority clusterstate.Authority
-	raw, err = read(clusterstate.AuthorityKey(actor))
-	if err != nil {
-		return out, err
-	}
-	if raw != nil && (clusterstate.Decode(raw, &authority) != nil || !authority.ValidRole() || !authority.Personal || authority.Cluster != g.manifest.Config.Cluster || !ed25519.PublicKey(authority.Key).Equal(ed25519.PublicKey(granted.Key))) {
-		return out, directory.ErrUnauthorized
-	}
-	if request.Protocol != raftcore.ProtocolVersion {
-		return out, EnrollmentRefusal{clusterstate.UpdateRequired}
-	}
-	var mapping clusterstate.DeviceMember
-	raw, err = read(clusterstate.MemberStoreKey(actor, request.Store))
-	if err != nil {
-		return out, err
-	}
-	if raw != nil {
-		if clusterstate.Decode(raw, &mapping) != nil {
-			return out, clusterstate.ErrDependency
-		}
-	} else {
-		if len(h.Nodes) >= int(h.Limit) {
-			return out, EnrollmentRefusal{clusterstate.Capacity}
-		}
-		raw, err = read(clusterstate.MemberDeviceKey(actor))
+	var node uint64
+	for stage := 0; stage < 3; stage++ {
+		_, app, _, read, err := g.membership(ctx)
 		if err != nil {
 			return out, err
 		}
-		if raw != nil && clusterstate.Decode(raw, &mapping) != nil {
-			return out, clusterstate.ErrDependency
-		}
-		if mapping.Node != 0 {
-			if _, err = g.controlChange(ctx, clusterstate.Mutation{RemoveMember: &clusterstate.RemoveMember{Node: mapping.Node, Device: actor, Revision: h.Revision, Admission: &proof}}, now); err != nil {
-				return out, err
-			}
-			if err = g.reconcileMembership(ctx); err != nil {
-				return out, err
-			}
-			_, app, h, read, err = g.membership(ctx)
-			if err != nil {
-				return out, err
-			}
-		}
-		r, err := g.controlChange(ctx, clusterstate.Mutation{EnrollMember: &clusterstate.EnrollMember{Node: h.NextNode, Revision: h.Revision, Device: actor, Protocol: request.Protocol, Store: request.Store, Admission: &proof}}, now)
+		plan, err := clusterstate.PlanPersonalAdmission(g.manifest.Config.Cluster, proof, max(at, app.LogicalTime), read)
 		if err != nil {
 			return out, err
 		}
-		mapping.Node = r.Membership.Node
+		if plan.Code != clusterstate.OK {
+			if plan.Code == clusterstate.Capacity || plan.Code == clusterstate.UpdateRequired {
+				return out, EnrollmentRefusal{plan.Code}
+			}
+			return out, directory.ErrUnauthorized
+		}
+		node = plan.Node
+		if plan.Change == nil {
+			break
+		}
+		result, err := g.controlChange(ctx, *plan.Change, max(at, app.LogicalTime))
+		if err != nil {
+			return out, err
+		}
+		node = result.Membership.Node
+		if plan.Change.EnrollMember != nil {
+			break
+		}
+		if err = g.reconcileMembership(ctx); err != nil {
+			return out, err
+		}
 	}
 	// Configuration is a separate maintenance stage. The enrollment reply can
 	// survive a crash with Barrier=0; activation repairs that committed intent.
-	_, app, _, read, err = g.membership(ctx)
+	_, _, _, read, err := g.membership(ctx)
 	if err != nil {
 		return out, err
 	}
-	raw, err = read(clusterstate.MemberKey(mapping.Node))
+	raw, err := read(clusterstate.MemberKey(node))
 	if err != nil {
 		return out, err
 	}
 	var member clusterstate.MemberRecord
-	if clusterstate.Decode(raw, &member) != nil || member.Device != actor || member.Store != request.Store || member.Retired || member.Worker || member.Anchor {
+	if clusterstate.Decode(raw, &member) != nil || member.Retired || member.Worker || member.Anchor {
 		return out, directory.ErrUnauthorized
 	}
 	out = PersonalEnrollment{Scope: g.peers.view.Scope, Generation: g.peers.view.Generation, Node: member.Node, Incarnation: member.Incarnation, Barrier: member.ReadyIndex, Members: g.peers.view.Members}

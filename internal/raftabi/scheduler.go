@@ -50,15 +50,16 @@ func coordinationPolicy(d *decoder) ([]byte, error) {
 		return nil, err
 	}
 	b, err := clusterstate.Encode(struct {
-		TickEvery        int64  `json:"tick_every"`
-		RenewEvery       int64  `json:"renew_every"`
-		PresenceEvery    int64  `json:"presence_every"`
-		EvidenceWindow   int64  `json:"evidence_window"`
-		IdleAfter        int64  `json:"idle_after"`
-		MaxRenewHolds    int    `json:"max_renew_holds"`
-		MaxMessageBytes  int    `json:"max_message_bytes"`
-		MaxMemberRecords uint32 `json:"max_member_records"`
-	}{clusterstate.TickEveryMillis, clusterstate.RenewEveryMillis, clusterstate.PresenceEveryMillis, clusterstate.EvidenceWindowMillis, clusterstate.IdleAfterMillis, clusterstate.MaxRenewHolds, clusterstate.MaxCommandBytes, clusterstate.MaxMemberRecords})
+		TickEvery           int64  `json:"tick_every"`
+		RenewEvery          int64  `json:"renew_every"`
+		PresenceEvery       int64  `json:"presence_every"`
+		EvidenceWindow      int64  `json:"evidence_window"`
+		IdleAfter           int64  `json:"idle_after"`
+		MaxRenewHolds       int    `json:"max_renew_holds"`
+		MaxMessageBytes     int    `json:"max_message_bytes"`
+		MaxMemberRecords    uint32 `json:"max_member_records"`
+		SequenceReservation int    `json:"sequence_reservation"`
+	}{clusterstate.TickEveryMillis, clusterstate.RenewEveryMillis, clusterstate.PresenceEveryMillis, clusterstate.EvidenceWindowMillis, clusterstate.IdleAfterMillis, clusterstate.MaxRenewHolds, clusterstate.MaxCommandBytes, clusterstate.MaxMemberRecords, peerMaxMessages * peerMaxInflight})
 	if err != nil {
 		return nil, err
 	}

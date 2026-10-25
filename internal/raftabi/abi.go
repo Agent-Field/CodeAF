@@ -164,6 +164,12 @@ func (r *Runtime) Call(b []byte) (out []byte) {
 func (r *Runtime) call(op uint32, d *decoder) ([]byte, error) {
 	e := encoder{}
 	switch op {
+	case 36:
+		return hostedPersonal(d)
+	case 37:
+		return hostedPeer(d)
+	case 38:
+		return hostedPeerWire(d)
 	case 35:
 		return configurationView(d)
 	case 34:
