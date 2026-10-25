@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {FixtureLog} from './fixture-log.js';
 import { prefixOf } from '../../src/base.js';
 import { encodeCanonical } from '../../src/raft/codec.js';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
@@ -23,6 +24,7 @@ export async function hostedFixture({fixture=false,base='',go=false}={}) {
   };
   await copyFile(join(out,'core.wasm'),join(dir,'core.wasm'));
   let mf, compiledCut;
+  const diagnostics=new FixtureLog();
   const bundles=new Map();
   const compile=async(cut)=>{
     // A restart must retain the same program and storage. Cache each injected
@@ -45,7 +47,7 @@ export async function hostedFixture({fixture=false,base='',go=false}={}) {
   const start=async(cut)=>{
     if(mf)await mf.dispose();await compile(cut);
     const worker={name:'hosted-proof',modulesRoot:dir,modules:[{type:'ESModule',path:join(dir,'worker.js')},{type:'CompiledWasm',path:join(dir,'core.wasm')}],compatibilityDate:'2026-09-01',durableObjects:Object.fromEntries(Object.entries({IDENTITY:'IdentityDO',RAFT_MEMBERS:'RaftMemberDO',NEWCOMERS:'NewcomerGate',PAIR_GATE:'PairGate',MAILBOX:'Mailbox',LINK_GATE:'LinkGate',LINK_REQUEST:'LinkRequest'}).map(([binding,className])=>[binding,{className,useSQLite:true}])),r2Buckets:['FRAMES'],bindings:{BASE_PATH:base,LEASE_POLICY:'amended',CAF_LIMITS:JSON.stringify({requestsPerMinute:100000,requestsPerMinutePerDevice:100000,minGraceMs:2000})},outboundService:()=>{throw Error('H4 outbound network forbidden');}};
-    mf=new Miniflare(convertV4MiniflareOptions({host:'127.0.0.1',inspectorPort:0,resourcePersistencePath:join(dir,'persist'),telemetry:{enabled:false},cf:false,workers:[worker]}));
+    mf=new Miniflare(convertV4MiniflareOptions({log:diagnostics,handleStructuredLogs:entry=>diagnostics.capture(entry.level,entry.message),host:'127.0.0.1',inspectorPort:0,resourcePersistencePath:join(dir,'persist'),telemetry:{enabled:false},cf:false,workers:[worker]}));
     await mf.ready;return mf;
   };
   const request=async(c,method,path,body)=>{
@@ -66,5 +68,5 @@ export async function hostedFixture({fixture=false,base='',go=false}={}) {
     certificate={v:1,identity,...certificate,signature:null};
     certificate.signature=sign(null,Buffer.from('codeaf/worker-cert/v1\0'+encodeCanonical(certificate)),root.privateKey).toString('base64');return certificate;
   };
-  return {identity,client,dir,start,request,call,control,api,delegate,get mf(){return mf;},async close(){if(mf)await mf.dispose();await rm(dir,{recursive:true,force:true});}};
+  return {identity,client,dir,start,request,call,control,api,delegate,diagnostics,get mf(){return mf;},async close(){if(mf)await mf.dispose();await rm(dir,{recursive:true,force:true});}};
 }

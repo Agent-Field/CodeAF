@@ -100,7 +100,19 @@ func TestR1R2R23R25R29HostedTwoHomes(t *testing.T) {
 	}
 	celltest.Available(t)
 	proxy := httputil.NewSingleHostReverseProxy(target)
+	// The counting hop must not reuse a connection as the local runtime closes
+	// its idle pipeline. Real clients retain their own ordinary pooled transport.
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DisableKeepAlives = true
+	proxy.Transport = transport
+	defer transport.CloseIdleConnections()
 	var hits atomic.Int64
+	// Preserve the failing route and request count because a helper's caller
+	// line alone cannot distinguish bootstrap from a later connection failure.
+	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		t.Logf("R27 hosted proxy failure: request=%d method=%s path=%s error=%v", hits.Load(), r.Method, r.URL.Path, err)
+		http.Error(w, http.StatusText(http.StatusBadGateway), http.StatusBadGateway)
+	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits.Add(1); proxy.ServeHTTP(w, r) }))
 	defer server.Close()
 	runV1TwoHomeJourney(t, server.URL, &hits)

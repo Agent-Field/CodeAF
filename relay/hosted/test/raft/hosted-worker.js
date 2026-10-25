@@ -6,14 +6,61 @@ import { IdentityDO as Source } from '../../src/identity.js';
 import { RaftMemberDO as Member } from '../../src/raft/member.js';
 import { Directory } from '../../src/directory.js';
 import { unb64 } from '../../src/raft/storage.js';
-import { runtimeMetrics } from '../../src/raft/actor.js';
-const measurements={turns:0,wall:[],membership:0};
+import { runtimeMetrics,sharedRuntime } from '../../src/raft/actor.js';
+import {coordinationPolicy} from '../../src/raft/liveness.js';
+const measurements={turns:0,wall:[],membership:0,http:0,peerIn:0,peerOut:0,sweeps:0,writes:0};
 async function measured(fn){const start=performance.now();measurements.turns++;try{return await fn();}finally{measurements.wall.push(performance.now()-start);}}
 import { policyOf } from '../../src/rules.js';
 
 export class IdentityDO extends Source {
+  constructor(ctx,env){
+    super(ctx,env);
+    const accept=ctx.acceptWebSocket.bind(ctx);
+    ctx.acceptWebSocket=(ws,tags)=>{accept(ws,tags);const send=ws.send.bind(ws);ws.send=raw=>{if(ws.deserializeAttachment()?.clusterPeer)measurements.peerOut++;return send(raw);};};
+    for(const key of ['put','delete']){const call=ctx.storage[key].bind(ctx.storage);ctx.storage[key]=(...args)=>{measurements.writes++;return call(...args);};}
+    for(const key of ['put','delete']){const call=ctx.storage.kv[key].bind(ctx.storage.kv);ctx.storage.kv[key]=(...args)=>{measurements.writes++;return call(...args);};}
+    const exec=ctx.storage.sql.exec.bind(ctx.storage.sql);
+    ctx.storage.sql.exec=(query,...args)=>{if(!/^\s*(SELECT|PRAGMA)/i.test(query))measurements.writes++;return exec(query,...args);};
+  }
+  get current(){return this.rebuilt??this;}
+  async evictIdle(){
+    const old=this.current.host;
+    if(old){old.ready=false;old.members.clear();old.states.clear();old.queue=[];old.reads=[];old.peers=null;old.holds=null;}
+    this.current.host=null;this.host=null;this.capturing=false;
+    this.rebuilt=new Source(this.ctx,this.env);return this.quietState();
+  }
+  async quietState(){
+    const config=await this.ctx.storage.get('raft-provision'),alarms={};
+    if(config)for(const node of config.config.anchors)alarms[node]=await this.env.RAFT_MEMBERS.get(this.env.RAFT_MEMBERS.idFromName(config.config.cluster+'/'+node)).alarmState();
+    return {ready:!!this.current.host?.ready,generation:await this.ctx.storage.get('raft-router-generation'),maintenance:await this.ctx.storage.get('raft-maintenance')??false,alarm:await this.ctx.storage.getAlarm(),memberAlarms:alarms,sockets:this.ctx.getWebSockets().map(ws=>({peer:!!ws.deserializeAttachment()?.clusterPeer,kind:ws.deserializeAttachment()?.kind,deadline:ws.deserializeAttachment()?.deadline}))};
+  }
+  async staleRetirement(){await this.ctx.storage.put('raft-retire-at',Date.now()-1);try{await this.presenceTurn();}catch{}return true;}
+  async evictMinority(){
+    const config=await this.ctx.storage.get('raft-provision'),namespace=this.env.RAFT_MEMBERS;
+    const missing=new Set(config.config.anchors.slice(1).map(node=>namespace.idFromName(config.config.cluster+'/'+node).toString()));
+    const unavailable=new Proxy({},{get:()=>async()=>{throw new Error('anchor unavailable');}});
+    this.rebuilt=new Source(this.ctx,{...this.env,RAFT_MEMBERS:{idFromName:name=>namespace.idFromName(name),get:id=>missing.has(id.toString())?unavailable:namespace.get(id)}});
+    return true;
+  }
+  async presenceSchedule(){
+    const watchers=this.current.watchers,clock=watchers.liveness.clock,timestamp=this.ctx.getWebSocketAutoResponseTimestamp.bind(this.ctx),base=Date.now();let now=base,sweeps=0;
+    const period=coordinationPolicy(sharedRuntime()).presence_every;
+    // Only the loopback clock advances. Socket metadata and the production
+    // alarm path still choose every sweep; no consensus timer is substituted.
+    watchers.liveness.clock=()=>now;
+    this.ctx.getWebSocketAutoResponseTimestamp=ws=>ws.deserializeAttachment()?.clusterPeer?timestamp(ws):new Date(base+Math.floor((now-base)/period)*period);
+    try{
+      for(;;){const at=watchers.liveness.nextSweep();if(at===undefined||at>base+600000)break;now=at;await this.presenceTurn();sweeps++;}
+      return {milliseconds:600000,sweeps};
+    }finally{watchers.liveness.clock=clock;this.ctx.getWebSocketAutoResponseTimestamp=timestamp;await this.ctx.storage.deleteAlarm();watchers.liveness.rearm();}
+  }
+  async presenceTurn(){measurements.sweeps++;return this.rebuilt?this.rebuilt.alarm():super.alarm();}
+  alarm(){return this.presenceTurn();}
+  webSocketMessage(ws,raw){if(ws.deserializeAttachment()?.clusterPeer)measurements.peerIn++;return this.rebuilt?this.rebuilt.webSocketMessage(ws,raw):super.webSocketMessage(ws,raw);}
+  webSocketClose(ws,code){return this.rebuilt?this.rebuilt.webSocketClose(ws,code):super.webSocketClose(ws,code);}
+  webSocketError(ws){return this.rebuilt?this.rebuilt.webSocketError(ws):super.webSocketError(ws);}
   async fetch(request){
-    const result=await measured(()=>super.fetch(request));
+    const result=await measured(()=>this.rebuilt?this.rebuilt.fetch(request):super.fetch(request));
     if(this.host&&!this.capturing){
       const commit=this.host.commit.bind(this.host);this.host.commit=async raw=>{this.lastCommand=raw.slice();return commit(raw);};this.capturing=true;
     }
@@ -70,15 +117,16 @@ export class IdentityDO extends Source {
   async idleSchedule(){
     // The object may hibernate between the HTTP request and this fixture RPC.
     // Restore through the production alarm before driving its virtual clock.
-    if(!this.host)await super.alarm();
-    return this.host.serial(async()=>{
+    if(!this.current.host)await this.current.alarm();
+    const host=this.current.host;
+    return host.serial(async()=>{
     const base=Date.now(),membershipBefore=measurements.membership;
-    for(let n=1;n<=20;n++)await this.host.maintenance(base+n*this.host.policy.tick_every,this.host.started+n*this.host.policy.tick_every);
-    const id=this.host.leader(),before=this.host.states.get(id).applied;
-    const sleeping=this.host.asleep;
+    for(let n=1;n<=20;n++)await host.maintenance(base+n*host.policy.tick_every,host.started+n*host.policy.tick_every);
+    const id=host.leader(),before=host.states.get(id).applied;
+    const sleeping=host.asleep;
     const turns=measurements.turns;
-    for(let n=21;n<=140;n++)await this.host.maintenance(base+n*this.host.policy.tick_every,this.host.started+n*this.host.policy.tick_every);
-    return {sleeping,membershipCalls:measurements.membership-membershipBefore,appliedBefore:String(before),appliedAfter:String(this.host.states.get(id).applied),recurringMemberCalls:measurements.turns-turns,idleMilliseconds:120*this.host.policy.tick_every};
+    for(let n=21;n<=140;n++)await host.maintenance(base+n*host.policy.tick_every,host.started+n*host.policy.tick_every);
+    return {sleeping,membershipCalls:measurements.membership-membershipBefore,appliedBefore:String(before),appliedAfter:String(host.states.get(id).applied),recurringMemberCalls:measurements.turns-turns,idleMilliseconds:120*host.policy.tick_every};
   });}
   inspect() {
     return {gate:this.ctx.storage.sql.exec('SELECT doc FROM legacy_gate WHERE one=1').toArray()[0]?.doc,
@@ -86,6 +134,19 @@ export class IdentityDO extends Source {
   }
 }
 export class RaftMemberDO extends Member {
+  alarmState(){return this.ctx.storage.getAlarm();}
+  alarm(...args){return measured(()=>super.alarm(...args));}
+  importReceipt(...args){return measured(()=>super.importReceipt(...args));}
+  hostSnapshot(...args){return measured(()=>super.hostSnapshot(...args));}
+  hostCheckpoint(...args){return measured(()=>super.hostCheckpoint(...args));}
+  acknowledgeScheduled(...args){return measured(()=>super.acknowledgeScheduled(...args));}
+  schedule(...args){return measured(()=>super.schedule(...args));}
+  initialize(...args){return measured(()=>super.initialize(...args));}
+  drainRecovery(...args){return measured(()=>super.drainRecovery(...args));}
+  scheduled(...args){return measured(()=>super.scheduled(...args));}
+  sleepAck(...args){return measured(()=>super.sleepAck(...args));}
+  refreshEnrollment(...args){return measured(()=>super.refreshEnrollment(...args));}
+  hostPersonal(...args){return measured(()=>super.hostPersonal(...args));}
   membership(...args){measurements.membership++;return measured(()=>super.membership(...args));}
   hostInput(...args){return measured(()=>super.hostInput(...args));}
   peer(...args){return measured(()=>super.peer(...args));}
@@ -113,6 +174,14 @@ export default {
     const url=new URL(request.url);
     if(url.pathname==='/fixture'){
       const {op,identity,records,node,cluster}=await request.json();
+      if(op==='stale-retirement')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).staleRetirement());
+      if(op==='diagnostic'){console.warn('local runtime warning capture');console.error('local runtime error capture');return Response.json(true);}
+      if(op==='evict-minority')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).evictMinority());
+      if(op==='presence-schedule')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).presenceSchedule());
+      if(op==='quiet-state')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).quietState());
+      if(op==='evict-idle')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).evictIdle());
+      if(op==='presence-turn')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).presenceTurn()??true);
+      if(op==='member-alarm')return Response.json(await env.RAFT_MEMBERS.get(env.RAFT_MEMBERS.idFromName(cluster+'/'+node)).alarmState());
       if(op==='peer-idle')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).peerIdle());
       if(op==='sequence-proof')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).sequenceProof());
       if(op==='transport-state')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).transportState());
@@ -120,7 +189,7 @@ export default {
       if(op==='resume-public'){await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).resumePublic();return Response.json(true);}
       if(op==='checkpoint-state')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).checkpointState());
       if(op==='metrics')return Response.json({...runtimeMetrics(),...measurements});
-      if(op==='reset-metrics'){measurements.turns=0;measurements.wall=[];measurements.membership=0;return Response.json(true);}
+      if(op==='reset-metrics'){for(const key of Object.keys(measurements))measurements[key]=key==='wall'?[]:0;return Response.json(true);}
       if(op==='seed'){await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).seed(identity,records);return Response.json(true);}
       if(op==='hold-upload'){await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).holdUpload();return Response.json(true);}
       if(op==='release-upload'){await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).releaseHeldUpload();return Response.json(true);}
@@ -135,6 +204,6 @@ export default {
       if(op==='member')return Response.json(await env.RAFT_MEMBERS.get(env.RAFT_MEMBERS.idFromName(cluster+'/'+node)).inspect());
       return new Response(null,{status:404});
     }
-    return production.fetch(request,env);
+    measurements.http++;return production.fetch(request,env);
   }
 };
