@@ -179,6 +179,9 @@ func crewFactory(store *plandb.Store, workspace, profileDir string, seats Seats,
 		role, _ := store.RoleOf(task.ID)
 		tier := SeatFor(role)
 		model := seatModel(profileDir, tier, seats)
+		if tier == config.ModelTierWorker && task.Model != "" {
+			model = task.Model
+		}
 		if model == "" {
 			return seatlessWorker{tier: tier}
 		}

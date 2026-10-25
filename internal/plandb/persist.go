@@ -379,6 +379,9 @@ func migrateColumns(tx *sql.Tx) error {
 		return err
 	}
 	for _, table := range []string{"tasks", "archived_tasks"} {
+		if err := ensureColumn(tx, table, "model", "TEXT", "''"); err != nil {
+			return err
+		}
 		if err := ensureColumn(tx, table, "owner", "TEXT", "''"); err != nil {
 			return err
 		}
@@ -532,7 +535,7 @@ const taskColumns = `id, title, description, question, kind, parent_id, priority
 	parallel, isolation, role, agent, acceptance, checks, capabilities, resources, context_inputs,
 	deliverables, evidence_requirements, status, composite, claimed_by, result, err,
 	artifacts, evidence, created_at, updated_at, completed_at, project, chat, paused, owner, seen_at,
-	waiting, waited_at, verdict_basis`
+	waiting, waited_at, verdict_basis, model`
 
 // rowQuerier is the read half both the database handle and a transaction
 // carry, so the archive reader can share the task scan with the loader
@@ -562,7 +565,7 @@ func scanTask(row *sql.Rows, extra ...any) (*Task, error) {
 		&checks, &capabilities, &resources, &contextInputs, &deliverables, &evidenceRequirements,
 		&task.Status, &composite, &task.ClaimedBy, &task.Result, &task.Error,
 		&artifacts, &evidence, &createdAt, &updatedAt, &completedAt, &task.Project, &task.Chat, &paused,
-		&task.Owner, &seenAt, &waiting, &waitedAt, &basis,
+		&task.Owner, &seenAt, &waiting, &waitedAt, &basis, &task.Model,
 	}
 	dest = append(dest, extra...)
 	if err := row.Scan(dest...); err != nil {
@@ -669,7 +672,7 @@ func insertArchived(tx *sql.Tx, tasks []*Task, now time.Time) error {
 		id, ord, title, description, question, kind, parent_id, priority, effect, parallel, isolation,
 		role, agent, acceptance, checks, capabilities, resources, context_inputs, deliverables,
 		evidence_requirements, status, composite, claimed_by, result, err, artifacts, evidence,
-		created_at, updated_at, completed_at, project, chat, paused, owner, seen_at, waiting, waited_at, archived_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		created_at, updated_at, completed_at, project, chat, paused, owner, seen_at, waiting, waited_at, archived_at, model) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -713,7 +716,7 @@ func insertArchived(tx *sql.Tx, tasks []*Task, now time.Time) error {
 			evidenceRequirements, string(task.Status), boolInt(task.Composite), task.ClaimedBy,
 			task.Result, task.Error, artifacts, evidence, formatTime(task.CreatedAt),
 			formatTime(task.UpdatedAt), formatTime(task.CompletedAt), task.Project, task.Chat,
-			boolInt(task.Paused), task.Owner, formatTime(task.SeenAt), boolInt(task.Waiting), formatTime(task.WaitedAt), formatTime(now)); err != nil {
+			boolInt(task.Paused), task.Owner, formatTime(task.SeenAt), boolInt(task.Waiting), formatTime(task.WaitedAt), formatTime(now), task.Model); err != nil {
 			return err
 		}
 	}
@@ -828,7 +831,7 @@ func saveTasks(tx *sql.Tx, value state) error {
 		role, agent, acceptance, checks, capabilities, resources, context_inputs, deliverables,
 		evidence_requirements, status, composite, claimed_by, result, err, artifacts, evidence,
 		created_at, updated_at, completed_at, project, chat, paused, owner, seen_at, waiting, waited_at,
-		verdict_basis) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		verdict_basis, model) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -877,7 +880,7 @@ func saveTasks(tx *sql.Tx, value state) error {
 			evidenceRequirements, string(task.Status), boolInt(task.Composite), task.ClaimedBy,
 			task.Result, task.Error, artifacts, evidence, formatTime(task.CreatedAt),
 			formatTime(task.UpdatedAt), formatTime(task.CompletedAt), task.Project, task.Chat, boolInt(task.Paused),
-			task.Owner, formatTime(task.SeenAt), boolInt(task.Waiting), formatTime(task.WaitedAt), basis); err != nil {
+			task.Owner, formatTime(task.SeenAt), boolInt(task.Waiting), formatTime(task.WaitedAt), basis, task.Model); err != nil {
 			return err
 		}
 	}
