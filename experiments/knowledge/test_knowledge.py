@@ -11,6 +11,59 @@ from editor import compose_notes, review_articles
 
 
 class ReplayTests(unittest.TestCase):
+    def test_published_articles_have_safe_canonical_wikilinks_and_backlinks(self):
+        import copy, json
+        text = 'Atlas uses Vector Search, not Vector Searchable. `Vector Search` and [Vector Search](https://example.org) stay literal. Shared is ambiguous.'
+        notes = [{'id': key, 'title': title, 'scope': 'Atlas', 'folder': [], 'claims': [], 'links': [],
+                  'aliases': aliases, 'sections': []} for key, title, aliases in
+                 [('a', 'Atlas', []), ('v', 'Vector Search', ['Vectors']),
+                  ('x', 'One', ['Shared']), ('y', 'Two', ['Shared'])]]
+        notes[0]['sections'] = [{'heading': 'Design', 'paragraphs': [{'text': text, 'claims': []}]}]
+        vault = {'sources': {}, 'claims': [], 'relations': [], 'notes': notes}
+        original = copy.deepcopy(vault)
+        with tempfile.TemporaryDirectory() as directory:
+            save(vault, directory)
+            published = json.loads((Path(directory) / 'vault.json').read_text())
+            paragraph = published['notes'][0]['sections'][0]['paragraphs'][0]
+            self.assertEqual(paragraph['inline_links'], [{'start': 11, 'end': 24, 'id': 'v'}])
+            self.assertEqual(paragraph['text'], text)
+            self.assertEqual(published['notes'][1]['backlinks'], [{'id': 'a', 'kind': 'mention'}])
+            markdown = (Path(directory) / 'markdown/a.md').read_text()
+            self.assertIn('uses [[v|Vector Search]], not Vector Searchable.', markdown)
+            self.assertIn('`Vector Search`', markdown)
+            self.assertIn('[[a|Atlas]]', (Path(directory) / 'markdown/v.md').read_text())
+            self.assertEqual(vault, original)
+
+    def test_unicode_titles_and_aliases_link_without_losing_exact_spellings(self):
+        import json
+        notes = [{'id': key, 'title': title, 'scope': 'World', 'folder': [], 'claims': [], 'links': [],
+                  'aliases': aliases, 'sections': []} for key, title, aliases in
+                 [('a', 'Overview', []), ('s', 'Straße', []), ('i', 'City', ['İstanbul'])]]
+        notes[0]['sections'] = [{'heading': 'Places', 'paragraphs': [{'text': 'Straße and İstanbul.', 'claims': []}]}]
+        with tempfile.TemporaryDirectory() as directory:
+            save({'sources': {}, 'claims': [], 'relations': [], 'notes': notes}, directory)
+            published = json.loads((Path(directory) / 'vault.json').read_text())
+            self.assertEqual(published['notes'][0]['sections'][0]['paragraphs'][0]['inline_links'],
+                             [{'start': 0, 'end': 6, 'id': 's'}, {'start': 11, 'end': 19, 'id': 'i'}])
+            self.assertIn('[[s|Straße]] and [[i|İstanbul]]', (Path(directory) / 'markdown/a.md').read_text())
+
+    def test_explicit_wikilinks_resolve_aliases_and_ids_without_guessing(self):
+        import json
+        notes = [{'id': key, 'title': title, 'scope': 'Atlas', 'folder': [], 'claims': [], 'links': [],
+                  'aliases': aliases, 'sections': []} for key, title, aliases in
+                 [('a', 'Atlas', []), ('v', 'Vector Search', ['Vectors']), ('x', 'One', ['Shared']), ('y', 'Two', ['Shared'])]]
+        text = '🧠 [[Vectors]] and [[v|the index]]; [[Shared]] stays unresolved. `[[Vectors]]` stays code.'
+        notes[0]['sections'] = [{'heading': 'Design', 'paragraphs': [{'text': text, 'claims': []}]}]
+        with tempfile.TemporaryDirectory() as directory:
+            save({'sources': {}, 'claims': [], 'relations': [], 'notes': notes}, directory)
+            published = json.loads((Path(directory) / 'vault.json').read_text())
+            spans = published['notes'][0]['sections'][0]['paragraphs'][0]['inline_links']
+            self.assertEqual(spans, [{'start': 2, 'end': 13, 'id': 'v', 'label': 'Vectors'},
+                                     {'start': 18, 'end': 33, 'id': 'v', 'label': 'the index'}])
+            markdown = (Path(directory) / 'markdown/a.md').read_text()
+            self.assertIn('🧠 [[v|Vectors]] and [[v|the index]]', markdown)
+            self.assertIn('`[[Vectors]]`', markdown)
+
     def test_a_later_human_reversion_creates_a_new_active_version_without_reviving_history(self):
         vault=None
         for i,value in enumerate(['Redis','SQLite','Redis']):

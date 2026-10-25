@@ -372,3 +372,7 @@ mark{background:#f0d9a8;color:var(--canvas-ink);padding:0 2px;border-radius:2px}
  .article-paragraph { font-size: 18px; line-height: 1.8; margin: 0 0 18px; max-width: 76ch; }
  .article-citation { border: 0; background: none; color: #8c6932; padding: 2px 4px; font: 11px system-ui, sans-serif; cursor: pointer; border-radius: 4px; }
  .article-citation:hover, .article-citation:focus-visible { background: #eee2cb; outline: 1px solid #b58c47; }
+
+/* Canonical links in prose remain native links for keyboard and open-in-tab. */
+.wiki-link { color: var(--accent, #a99af5); text-decoration: underline; text-decoration-style: dotted; text-underline-offset: .18em; }
+.wiki-link:hover, .wiki-link:focus-visible { text-decoration-style: solid; outline-offset: 3px; }

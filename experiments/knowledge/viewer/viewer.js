@@ -59,6 +59,26 @@
     if(label) b.setAttribute('aria-label', label);
     return b;
   }
+  function articleText(paragraph){
+    var fragment = document.createDocumentFragment();
+    // Python span offsets count Unicode code points, rather than UTF-16 units.
+    var chars = Array.from(paragraph.text || '');
+    var cursor = 0;
+    (paragraph.inline_links || []).forEach(function(span){
+      if(span.start < cursor || span.end <= span.start || span.end > chars.length || !noteById(span.id)) return;
+      fragment.appendChild(document.createTextNode(chars.slice(cursor, span.start).join('')));
+      var link = document.createElement('a');
+      link.className = 'wiki-link';
+      link.href = '#' + encodeURIComponent(span.id);
+      link.textContent = span.label != null ? span.label : chars.slice(span.start, span.end).join('');
+      link.title = 'Open ' + noteById(span.id).title;
+      fragment.appendChild(link);
+      cursor = span.end;
+    });
+    fragment.appendChild(document.createTextNode(chars.slice(cursor).join('')));
+    return fragment;
+  }
+
   function announce(msg){ el.live.textContent = msg; }
 
   function escapeRegExp(s){ return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
@@ -404,7 +424,8 @@
           }
         }
         (section.paragraphs || []).forEach(function(paragraph){
-          var p = mk('p', 'article-paragraph', paragraph.text);
+          var p = mk('p', 'article-paragraph');
+          p.appendChild(articleText(paragraph));
           var citation = btn('article-citation', 'Sources', 'Open supporting sources');
           citation.addEventListener('click', function(){openParagraphSources(paragraph.claims || [], paragraph.evidence || []);});
           p.appendChild(document.createTextNode(' '));

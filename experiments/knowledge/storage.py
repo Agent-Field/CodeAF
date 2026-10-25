@@ -9,6 +9,7 @@ import tempfile
 import fcntl
 
 from knowledge import identity
+from wikilinks import link_vault, markdown_text
 
 
 def write_json(path, value):
@@ -25,7 +26,7 @@ def save(vault, directory):
     with (directory / ".writer.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         try:
-            _save(vault, directory)
+            _save(link_vault(vault), directory)
         finally:
             fcntl.flock(lock, fcntl.LOCK_UN)
 
@@ -151,6 +152,7 @@ def _save(vault, directory):
 
 def export_markdown(vault, directory):
     """Use stable IDs as file names so model-generated titles cannot escape the vault."""
+    vault = link_vault(vault)
     directory = Path(directory)
     directory.mkdir(exist_ok=True)
     claims = {c["id"]: c for c in vault["claims"]}
@@ -172,7 +174,7 @@ def export_markdown(vault, directory):
                         key = "source-" + identity([evidence["source"], evidence["quote"]])
                         article_evidence[key] = evidence
                         refs += " [^" + key + "]"
-                    lines.append(paragraph["text"] + " " + refs + "\n")
+                    lines.append(markdown_text(paragraph) + " " + refs + "\n")
         else:
             for claim in active:
                 prefix = "Not sure: " if claim.get("unsure") else ""
@@ -195,6 +197,11 @@ def export_markdown(vault, directory):
             lines += ["## Related notes", ""]
             for link in note["links"]:
                 lines.append(f"- [[{link['id']}|{notes[link['id']]['title']}]] — {link['reason']}")
+        if note.get("backlinks"):
+            lines += ["", "## Mentioned by", ""]
+            for backlink in note["backlinks"]:
+                source = notes[backlink["id"]]
+                lines.append(f"- [[{source['id']}|{source['title']}]]")
         if history:
             lines += ["", "## History", ""]
             lines += [f"- {c['status']}: {c['text']} [^{c['id']}]" for c in history]
@@ -217,7 +224,7 @@ def viewer(vaults, comparison, research, directory):
     source = Path(__file__).parent / "viewer"
     for name in ("index.html", "viewer.css", "viewer.js"):
         shutil.copyfile(source / name, directory / name)
-    data = json.dumps({"vaults": vaults, "comparison": comparison, "research": research}, ensure_ascii=False)
+    data = json.dumps({"vaults": {key: link_vault(value) for key, value in vaults.items()}, "comparison": comparison, "research": research}, ensure_ascii=False)
     script = "window.KNOWLEDGE_LAB=" + data.replace("<", "\\u003c") + ";\n"
     (directory / "data.js").write_text(script)
     standalone = (directory / "index.html").read_text()
