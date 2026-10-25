@@ -1,10 +1,12 @@
 package tui3
 
 import (
+	"path/filepath"
+	"sync"
+	"testing"
+
 	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
-	"path/filepath"
-	"testing"
 )
 
 func TestStartedTeammateUsesNamedModelBeforeWaking(t *testing.T) {
@@ -25,12 +27,13 @@ func TestStartedTeammateUsesNamedModelBeforeWaking(t *testing.T) {
 func TestRequestedChatKeepsFocusAndUsesNamedModel(t *testing.T) {
 	a, _, _ := tabApp(t)
 	front := a.frontTabKey()
+	owner := &claimingChatAgent{Agent: a.agent, claimed: &sync.Map{}}
 	fresh := &postureTestAgent{fakeAgent: fakeAgent{model: "deepseek/deepseek-v4.1-flash"}}
 	a.start = func(where string) (Conversation, error) {
 		return Conversation{Agent: fresh, SessionFile: filepath.Join(t.TempDir(), "transcript.jsonl"), Workspace: where}, nil
 	}
 	request := &session.ChatStart{ID: "request-one", Workspace: a.workspace, Model: "moonshotai/kimi-k3", Brief: "Report ready", Approval: session.PostureAllow}
-	drive(t, a, runCmd(a.startRequestedChat(request))...)
+	drive(t, a, runCmd(a.startRequestedChat(request, owner))...)
 	if fresh.Model() != request.Model {
 		t.Fatalf("new chat model = %s", fresh.Model())
 	}
@@ -40,7 +43,38 @@ func TestRequestedChatKeepsFocusAndUsesNamedModel(t *testing.T) {
 	if fresh.posture != session.PostureAllow {
 		t.Fatal("start lost approvals")
 	}
-	if a.startRequestedChat(request) != nil {
+	if a.startRequestedChat(request, owner) != nil {
 		t.Fatal("duplicate request started another chat")
+	}
+}
+
+// The session owns this claim; multiple terminal adapters share the same door.
+type claimingChatAgent struct {
+	Agent
+	claimed *sync.Map
+}
+
+func (a *claimingChatAgent) ClaimChatStart(id string) (bool, error) {
+	_, loaded := a.claimed.LoadOrStore(id, true)
+	return !loaded, nil
+}
+
+func TestTwoWindowsOpenOnlyOneRequestedChat(t *testing.T) {
+	a, _, _ := tabApp(t)
+	b, _, _ := tabApp(t)
+	replay, _, _ := tabApp(t)
+	owner := &claimingChatAgent{Agent: a.agent, claimed: &sync.Map{}}
+	started := 0
+	start := func(where string) (Conversation, error) {
+		started++
+		return Conversation{Agent: &fakeAgent{}, SessionFile: filepath.Join(t.TempDir(), "transcript.jsonl"), Workspace: where}, nil
+	}
+	request := &session.ChatStart{ID: "shared-request", Workspace: a.workspace, Model: "moonshotai/kimi-k3", Brief: "Report ready"}
+	for _, window := range []*app{a, b, replay} {
+		window.start = start
+		drive(t, window, runCmd(window.startRequestedChat(request, owner))...)
+	}
+	if started != 1 {
+		t.Fatalf("one request opened %d chats", started)
 	}
 }

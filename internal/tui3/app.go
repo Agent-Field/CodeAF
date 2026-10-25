@@ -6443,7 +6443,7 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 	a.ingestStream(ev, lump)
 	switch ev.Kind {
 	case session.EventChatStart:
-		after = a.startRequestedChat(ev.ChatStart)
+		after = a.startRequestedChat(ev.ChatStart, a.agent)
 	case session.EventTextDelta, session.EventThinking, session.EventReasoning:
 		a.lastDelta = time.Now()
 

@@ -10,7 +10,7 @@ import (
 
 // startRequestedChat keeps the requesting conversation in front. The new model
 // and approvals are applied off the UI loop before the first message is sent.
-func (a *app) startRequestedChat(request *session.ChatStart) tea.Cmd {
+func (a *app) startRequestedChat(request *session.ChatStart, owner Agent) tea.Cmd {
 	if request == nil || request.ID == "" {
 		return nil
 	}
@@ -27,6 +27,17 @@ func (a *app) startRequestedChat(request *session.ChatStart) tea.Cmd {
 	}
 	start := a.start
 	return a.besideLine(func() func(bool) tea.Cmd {
+		claimer, ok := owner.(interface{ ClaimChatStart(string) (bool, error) })
+		if !ok {
+			return func(bool) tea.Cmd { a.note("could not start chat · launch ownership unavailable"); return nil }
+		}
+		claimed, claimErr := claimer.ClaimChatStart(request.ID)
+		if claimErr != nil {
+			return func(bool) tea.Cmd { a.note("could not start chat · " + claimErr.Error()); return nil }
+		}
+		if !claimed {
+			return func(bool) tea.Cmd { return nil }
+		}
 		conv, err := start(request.Workspace)
 		var events <-chan session.Event
 		if err == nil && conv.Agent == nil {

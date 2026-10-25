@@ -58,6 +58,29 @@ func (a *Agent) startChatTool(ctx context.Context, args json.RawMessage) (string
 		return "No attached turn can deliver a new-chat request.", true, nil
 	}
 	request := &ChatStart{ID: a.journalID() + ":" + strconv.FormatInt(time.Now().UnixNano(), 10), Workspace: a.config.Workspace, Model: model, Brief: brief, Approval: a.ResolvedApprovalPosture()}
+	a.mu.Lock()
+	if a.chatStarts == nil {
+		a.chatStarts = map[string]bool{}
+	}
+	a.chatStarts[request.ID] = false
+	a.mu.Unlock()
 	hub.send(Event{Kind: EventChatStart, ChatStart: request})
 	return fmt.Sprintf("Requested a new chat on %s. The attached terminal will report whether it opened.", model), false, nil
+}
+
+// ClaimChatStart admits one terminal to open an issued request. The claim lives
+// with the source session, so broadcast delivery and replay cannot create copies.
+// A lost launcher is not retried automatically: another user request can try again.
+func (a *Agent) ClaimChatStart(id string) (bool, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	claimed, known := a.chatStarts[id]
+	if !known {
+		return false, fmt.Errorf("unknown new-chat request")
+	}
+	if claimed {
+		return false, nil
+	}
+	a.chatStarts[id] = true
+	return true, nil
 }
