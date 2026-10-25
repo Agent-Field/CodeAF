@@ -42,6 +42,15 @@ func hostedEffect(d *decoder) ([]byte, error) {
 // Projection uses the declared Go shape so sealed map values named fence or
 // size remain opaque and v1 integer fields keep their original numeric wire.
 func hostedProjection(d *decoder) ([]byte, error) {
+	raw, err := hostedProjectionBytes(d)
+	if err != nil {
+		return nil, err
+	}
+	e := encoder{}
+	e.blob(raw)
+	return e.b, nil
+}
+func hostedProjectionBytes(d *decoder) ([]byte, error) {
 	kind, raw := d.str(), d.blob()
 	if d.end() != nil {
 		return nil, errFrame
@@ -54,7 +63,7 @@ func hostedProjection(d *decoder) ([]byte, error) {
 		value = new(cs.Device)
 	case "cell", "list_cell":
 		value = new(cs.Cell)
-	case "result", "view":
+	case "result", "view", "typed_result":
 		value = new(cs.Result)
 	default:
 		return nil, errFrame
@@ -68,13 +77,53 @@ func hostedProjection(d *decoder) ([]byte, error) {
 	if kind == "view" {
 		value = value.(*cs.Result).View
 	}
-	wire, err := json.Marshal(value)
+	var wire []byte
+	var err error
+	if kind == "typed_result" {
+		wire, err = cs.ProjectionJSON(value)
+	} else {
+		wire, err = legacyProjectionJSON(value)
+	}
 	if err != nil {
 		return nil, err
 	}
-	e := encoder{}
-	e.blob(wire)
-	return e.b, nil
+	return wire, nil
+}
+
+// Preserve legacy field order and escaping without retaining an expanded
+// encoder buffer alongside the complete public response.
+func legacyProjectionJSON(value any) ([]byte, error) {
+	var compact bytes.Buffer
+	encoder := json.NewEncoder(&compact)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(value); err != nil {
+		return nil, err
+	}
+	raw := bytes.TrimSuffix(compact.Bytes(), []byte("\n"))
+	count := bytes.Count(raw, []byte{'<'}) + bytes.Count(raw, []byte{'>'}) + bytes.Count(raw, []byte{'&'})
+	if count == 0 {
+		return raw, nil
+	}
+	var out bytes.Buffer
+	out.Grow(len(raw) + 5*count)
+	for len(raw) > 0 {
+		at := bytes.IndexAny(raw, "<>&")
+		if at < 0 {
+			out.Write(raw)
+			break
+		}
+		out.Write(raw[:at])
+		switch raw[at] {
+		case '<':
+			out.WriteString("\\u003c")
+		case '>':
+			out.WriteString("\\u003e")
+		case '&':
+			out.WriteString("\\u0026")
+		}
+		raw = raw[at+1:]
+	}
+	return out.Bytes(), nil
 }
 
 // Ingress proves the original signature before external I/O. Every later

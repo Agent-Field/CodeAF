@@ -38,6 +38,17 @@ const V1SkewMillis int64 = 5 * 60 * 1000
 // V1Command translates only the request the device actually signed. It never
 // reads a new holder to manufacture an expectation or signs on the device's behalf.
 func V1Command(cluster string, now int64, p V1Request) (Command, error) {
+	c, err := translateV1(cluster, now, p)
+	if err != nil {
+		return Command{}, err
+	}
+	c.RequestDigest, err = Digest(c)
+	return c, err
+}
+func translateV1(cluster string, now int64, p V1Request) (Command, error) {
+	if len(p.Body) > MaxV1BodyBytes {
+		return Command{}, ErrCodec
+	}
 	m, err := p.Mutation()
 	if err != nil {
 		return Command{}, err
@@ -52,8 +63,7 @@ func V1Command(cluster string, now int64, p V1Request) (Command, error) {
 		return Command{}, ErrCodec
 	}
 	c := Command{V1: &p, Schema: SchemaVersion, Cluster: cluster, Actor: DeviceIDOfKey(pub), Session: "v1", Sequence: 1, Now: now, Change: m}
-	c.RequestDigest, err = Digest(c)
-	return c, err
+	return c, nil
 }
 
 // V1Authority checks the root, certificate, exact HTTP signing domain and the
@@ -67,6 +77,19 @@ func V1Authority(c Command, identity IdentityRec) (Authority, bool) {
 // time has advanced. A sender cannot make stale ingress evidence fresh again
 // by placing its original timestamp in an unsigned host field.
 func V1AuthorityAt(c Command, identity IdentityRec, committedNow int64) (Authority, bool) {
+	if c.V1 == nil {
+		return Authority{}, false
+	}
+	h := sha256.Sum256(c.V1.Body)
+	auth, ok := v1ProofAuthority(c, identity, committedNow, hex.EncodeToString(h[:]))
+	m, err := c.V1.Mutation()
+	if !ok || err != nil || !reflect.DeepEqual(m, c.Change) || m.PutDevice != nil && m.PutDevice.ID != c.Actor {
+		return Authority{}, false
+	}
+	return auth, true
+}
+
+func v1ProofAuthority(c Command, identity IdentityRec, committedNow int64, bodyHash string) (Authority, bool) {
 	p := c.V1
 	if p == nil || c.WorkerIncarnation != 0 || c.Session != "v1" || c.Sequence != 1 || c.Ack != 0 || len(c.Signature) != 0 || !bytes.Equal(p.IdentityKey, identity.SigningKey) {
 		return Authority{}, false
@@ -89,9 +112,8 @@ func V1AuthorityAt(c Command, identity IdentityRec, committedNow int64) (Authori
 	if err != nil {
 		return Authority{}, false
 	}
-	msg := V1SigningMessage(p.Method, p.URI, p.At, p.Body)
-	m, err := p.Mutation()
-	if err != nil || !reflect.DeepEqual(m, c.Change) || m.PutDevice != nil && m.PutDevice.ID != c.Actor || !ed25519.Verify(pub, msg, p.Signature) {
+	msg := []byte("codeaf-req-v1\n" + p.Method + "\n" + p.URI + "\n" + p.At + "\n" + bodyHash)
+	if !ed25519.Verify(pub, msg, p.Signature) {
 		return Authority{}, false
 	}
 	return Authority{Cluster: c.Cluster, Key: pub, Personal: true}, true
@@ -119,7 +141,7 @@ func ClientCommand(c Command) error {
 			return ErrCodec
 		}
 	}
-	if c.V1 != nil || c.Change.Create != nil && c.Change.Create.V1 || c.Change.Publish != nil && c.Change.Publish.V1 || c.Change.Acquire != nil && (c.Change.Acquire.V1 || c.Change.Acquire.Legacy) {
+	if c.Change.StageV1 != nil || c.V1 != nil || c.Change.Create != nil && c.Change.Create.V1 || c.Change.Publish != nil && c.Change.Publish.V1 || c.Change.Acquire != nil && (c.Change.Acquire.V1 || c.Change.Acquire.Legacy) {
 		return ErrCodec
 	}
 	return nil

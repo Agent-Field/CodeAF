@@ -14,7 +14,7 @@ import (
 // enter the pure graph when records or rules change.
 func TestR14PureImportBoundary(t *testing.T) {
 	allowed := map[string]bool{
-		"io": true, "bytes": true, "encoding/json": true, "errors": true, "fmt": true,
+		"compress/gzip": true, "io": true, "bytes": true, "encoding/json": true, "errors": true, "fmt": true,
 		// Signature verification, hashing, key encoding and ordering are pure.
 		"encoding/base64": true, "crypto/ed25519": true, "crypto/sha256": true, "encoding/hex": true, "sort": true,
 		"reflect": true, "strconv": true, "strings": true, "unicode/utf8": true,

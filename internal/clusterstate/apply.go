@@ -31,7 +31,8 @@ type RecordKey struct {
 }
 type RecordWrite struct {
 	RecordKey
-	Data []byte `json:"data"`
+	Data   []byte `json:"data"`
+	Delete bool   `json:"delete,omitempty"`
 }
 type ReadRecord func(RecordKey) ([]byte, error)
 
@@ -101,7 +102,8 @@ type Evaluation struct {
 // Digest excludes time, signature and acknowledgement. A retry may arrive at a
 // newer ingress time; its operation and durable sequence must remain identical.
 func Digest(c Command) (string, error) {
-	b, err := Encode(struct {
+	h := sha256.New()
+	err := encodeCanonicalTo(h, struct {
 		WorkerIncarnation uint64   `json:"worker_incarnation,omitempty"`
 		Cluster           string   `json:"cluster"`
 		Actor             string   `json:"actor"`
@@ -112,8 +114,7 @@ func Digest(c Command) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	h := sha256.Sum256(b)
-	return hex.EncodeToString(h[:]), nil
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // SigningBytes binds all routing, sequence and time fields to this protocol.
@@ -136,8 +137,9 @@ func Sign(c Command, key ed25519.PrivateKey) (Command, error) {
 	return c, nil
 }
 
-// Dependencies declares every possible row before evaluation. Hosts may page
-// these immutable records, but must distinguish absent rows from unread rows.
+// Dependencies declares ordinary operation rows before evaluation. Staging
+// requests its fixed temporary slot separately. Hosts must distinguish absent
+// immutable records from unread records.
 func Dependencies(c Command) []RecordKey {
 	keys := []RecordKey{QuiescenceKey(), IdentityKey(), DeviceKey(c.Actor), AuthorityKey(c.Actor), SessionKey(c.Actor, c.Session), SessionsKey()}
 	if c.Change.InitMembership != nil {
@@ -242,6 +244,15 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 	if err != nil {
 		return out, err
 	}
+	if c.Change.StageV1 != nil {
+		return evaluateV1Stage(c, meta, read)
+	}
+	return evaluateCommand(c, meta, read, false)
+}
+
+func evaluateCommand(c Command, meta ApplicationMeta, read ReadRecord, paged bool) (Evaluation, error) {
+	out := Evaluation{Now: meta.Now, Version: meta.Version, Writes: []RecordWrite{}, Result: Result{Schema: SchemaVersion, Code: Unauthorized, Now: meta.Now, Version: meta.Version}}
+	var err error
 	rows := map[RecordKey][]byte{}
 	n := 0
 	for _, k := range Dependencies(c) {
@@ -250,12 +261,14 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 			return out, e
 		}
 		n += len(k.Namespace) + len(k.Key) + len(b)
-		if n > MaxEvaluationBytes {
+		if !paged && n > MaxEvaluationBytes || paged && len(b) > MaxEvaluationBytes {
 			return out, ErrDependency
 		}
 		rows[k] = bytes.Clone(b)
 	}
 
+	cacheCellRecords := len(cellIDs(c.Change)) == 1
+	var decodedCells map[RecordKey]Cell
 	// Corrupt dependency bytes are storage evidence, never a not-found or policy
 	// refusal. Validate every declared present row before interpreting any rule.
 	for k, b := range rows {
@@ -310,6 +323,12 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 		if Decode(b, target) != nil {
 			return out, ErrDependency
 		}
+		if cell, ok := target.(*Cell); ok && cacheCellRecords && (len(b) >= MaxEvaluationBytes/2 || bytes.HasPrefix(b, compressedRecordPrefix)) {
+			if decodedCells == nil {
+				decodedCells = make(map[RecordKey]Cell)
+			}
+			decodedCells[k] = *cell
+		}
 	}
 	if meta.Now < 0 || meta.Now > int64(MaxSafeInteger)-LeaseTTLMillis {
 		return out, ErrDependency
@@ -343,9 +362,19 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 			}
 		}
 	}
-	digest, _ := Digest(c)
-	signed, e := SigningBytes(c)
-	authenticated := e == nil && len(auth.Key) == ed25519.PublicKeySize && ed25519.Verify(ed25519.PublicKey(auth.Key), signed, c.Signature)
+	// A staged final operation has already rebuilt its digest from the complete
+	// original proof, after all immutable dependencies became available.
+	digest := c.RequestDigest
+	if !paged {
+		digest, _ = Digest(c)
+	}
+	var signed []byte
+	var e error
+	authenticated := false
+	if c.V1 == nil {
+		signed, e = SigningBytes(c)
+		authenticated = e == nil && len(auth.Key) == ed25519.PublicKeySize && ed25519.Verify(ed25519.PublicKey(auth.Key), signed, c.Signature)
+	}
 	if c.Certificate != "" {
 		certificateAuth, err := PersonalCommandAuthority(c, identity)
 		if err != nil {
@@ -415,13 +444,23 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 	out.Now = max(meta.Now, c.Now)
 	out.Result.Now = out.Now
 	writes := map[RecordKey][]byte{}
+	var writtenCells map[RecordKey]Cell
 	put := func(k RecordKey, v any) {
-		b, e := Encode(v)
+		b, e := encodeRecord(v)
 		if e != nil {
 			err = e
 			return
 		}
 		writes[k] = b
+		if cell, ok := v.(Cell); ok {
+			if _, cached := decodedCells[k]; !cached {
+				return
+			}
+			if writtenCells == nil {
+				writtenCells = make(map[RecordKey]Cell)
+			}
+			writtenCells[k] = cell
+		}
 	}
 	code := OK
 	if identity.Rotation != nil && c.Change.Rotate == nil && c.Change.AdvanceTime == nil && c.Change.DeviceSeen == nil && c.Change.CloseSession == nil && c.Change.CompleteJoin == nil {
@@ -460,7 +499,7 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 			} else if membershipMutation(c.Change) {
 				code = applyMembership(c, meta, rows, put, &out.Result)
 			} else {
-				code = applyMutation(c, out.Now, identity, rows, put, &out.Result)
+				code = applyMutation(c, out.Now, identity, rows, put, &out.Result, decodedCells)
 			}
 		}
 	}
@@ -468,9 +507,20 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 		return out, err
 	}
 	changed := false
+	// Reuse the validated cell for mutation and visibility. Re-decoding the
+	// same retained frame plan creates several complete JSON trees per update.
 	for k, b := range writes {
-		if k.Namespace == "state" && visibleChange(k, rows[k], b, out.Now) {
-			changed = true
+		if k.Namespace != "state" {
+			continue
+		}
+		if old, ok := decodedCells[k]; ok {
+			if next, present := writtenCells[k]; present {
+				changed = changed || visibleCellChange(old, next, out.Now)
+			} else {
+				changed = changed || visibleChange(k, rows[k], b, out.Now)
+			}
+		} else {
+			changed = changed || visibleChange(k, rows[k], b, out.Now)
 		}
 	}
 	if c.Change.DeviceSeen != nil {
@@ -508,7 +558,7 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 	}
 	save()
 
-	fits := func() bool {
+	fits := func() (bool, error) {
 		size := meta.Bytes
 		budget := 0
 		for k, b := range writes {
@@ -517,7 +567,7 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 			if old := rows[k]; old != nil {
 				oldSize := RecordBytes(k, old)
 				if oldSize > size {
-					return false
+					return false, nil
 				}
 				size -= oldSize
 			}
@@ -527,19 +577,39 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 		if ceiling == 0 {
 			ceiling = DefaultApplicationBytes
 		}
-		return budget <= MaxEvaluationBytes && (size <= ceiling || size <= meta.Bytes)
+		if budget > MaxEvaluationBytes {
+			return false, nil
+		}
+		if size <= ceiling || size <= meta.Bytes {
+			return true, nil
+		}
+		if paged {
+			return false, nil
+		}
+		scratch, err := V1StagingBytes(read)
+		if err != nil {
+			return false, err
+		}
+		if scratch > meta.Bytes {
+			return false, ErrDependency
+		}
+		return size-scratch <= ceiling, nil
 	}
-	if !fits() {
+	if ok, err := fits(); err != nil {
+		return out, err
+	} else if !ok {
 		writes = map[RecordKey][]byte{}
 		out.Version = meta.Version
 		out.Result = Result{Schema: SchemaVersion, Code: Capacity, Now: out.Now, Version: meta.Version}
 		save()
-		if !fits() {
+		if ok, err := fits(); err != nil {
+			return out, err
+		} else if !ok {
 			return out, ErrDependency
 		}
 	}
 	for k, b := range writes {
-		out.Writes = append(out.Writes, RecordWrite{k, b})
+		out.Writes = append(out.Writes, RecordWrite{RecordKey: k, Data: b})
 	}
 	sort.Slice(out.Writes, func(i, j int) bool {
 		a, b := out.Writes[i].RecordKey, out.Writes[j].RecordKey
@@ -551,7 +621,7 @@ func Evaluate(raw []byte, meta ApplicationMeta, read ReadRecord) (Evaluation, er
 	return out, err
 }
 
-func applyMutation(c Command, now int64, identity IdentityRec, rows map[RecordKey][]byte, put func(RecordKey, any), result *Result) Code {
+func applyMutation(c Command, now int64, identity IdentityRec, rows map[RecordKey][]byte, put func(RecordKey, any), result *Result, decodedCells map[RecordKey]Cell) Code {
 	m := c.Change
 	device := func(id string) (Device, bool) {
 		var d Device
@@ -701,7 +771,7 @@ func applyMutation(c Command, now int64, identity IdentityRec, rows map[RecordKe
 			sub := c
 			sub.Change = Mutation{Beat: &b}
 			r := Result{}
-			code := applyMutation(sub, now, identity, batchRows, func(k RecordKey, v any) { put(k, v); data, _ := Encode(v); batchRows[k] = data }, &r)
+			code := applyMutation(sub, now, identity, batchRows, func(k RecordKey, v any) { put(k, v); data, _ := Encode(v); batchRows[k] = data }, &r, nil)
 			result.Items = append(result.Items, ItemResult{Cell: b.Cell, Code: code, View: r.View})
 		}
 		return OK
@@ -713,7 +783,9 @@ func applyMutation(c Command, now int64, identity IdentityRec, rows map[RecordKe
 	id := ids[0]
 	var cell Cell
 	b := rows[CellKey(id)]
-	if b != nil && Decode(b, &cell) != nil {
+	if cached, ok := decodedCells[CellKey(id)]; ok {
+		cell = cached
+	} else if b != nil && Decode(b, &cell) != nil {
 		return BadRequest
 	}
 	if m.Create != nil {
@@ -780,6 +852,20 @@ func applyMutation(c Command, now int64, identity IdentityRec, rows map[RecordKe
 
 // Visible versions follow the existing projection: renewed expiry within the
 // same held state and advisory last-seen timestamps do not repaint Home.
+func visibleCellChange(a, b Cell, now int64) bool {
+	if a.Lease.Expires > now {
+		a.Lease.Expires = 1
+	} else {
+		a.Lease.Expires = 0
+	}
+	if b.Lease.Expires > now {
+		b.Lease.Expires = 1
+	} else {
+		b.Lease.Expires = 0
+	}
+	return !reflect.DeepEqual(a, b)
+}
+
 func visibleChange(k RecordKey, old, next []byte, now int64) bool {
 	if old == nil {
 		return true
@@ -793,17 +879,7 @@ func visibleChange(k RecordKey, old, next []byte, now int64) bool {
 		if Decode(old, &a) != nil || Decode(next, &b) != nil {
 			return true
 		}
-		if a.Lease.Expires > now {
-			a.Lease.Expires = 1
-		} else {
-			a.Lease.Expires = 0
-		}
-		if b.Lease.Expires > now {
-			b.Lease.Expires = 1
-		} else {
-			b.Lease.Expires = 0
-		}
-		return !reflect.DeepEqual(a, b)
+		return visibleCellChange(a, b, now)
 	case len(k.Key) > 7 && k.Key[:7] == "device/":
 		var a, b Device
 		if Decode(old, &a) != nil || Decode(next, &b) != nil {

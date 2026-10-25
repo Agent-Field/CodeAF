@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/clusterstate"
 	"io"
 	"net/http"
 	"strconv"
@@ -15,7 +16,7 @@ import (
 // MaxBody caps a request body. The largest honest body is a CellInit with its
 // key map, far below this; the cap keeps an anonymous caller from making the
 // relay buffer more, since the body must be read whole before it can be verified.
-const MaxBody = 1 << 20
+const MaxBody = clusterstate.MaxV1BodyBytes
 
 // call is everything one route needs: the Client of the verified device and
 // the request it answers. Routes never see an identity or a device to trust.
@@ -145,7 +146,7 @@ func send(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-// routes is the §4.4 table, one entry per method and path.
+// Each method and path has one route so legacy request decoding stays closed.
 var routes = map[string]route{
 	"GET " + dirBase + "/list":                     func(c call) (any, error) { return pair(c.cl.List(c.ctx())) },
 	"GET " + dirBase + "/presence":                 func(c call) (any, error) { return pair(c.cl.Presence(c.ctx())) },

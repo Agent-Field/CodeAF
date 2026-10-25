@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 
+	cs "github.com/Agent-Field/codeaf/internal/clusterstate"
 	"github.com/Agent-Field/codeaf/internal/raftcore"
 	pb "go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
@@ -118,11 +119,15 @@ func (e *encoder) flag(v bool) {
 // so a delayed completion cannot accidentally address a replacement member.
 // Hosts still serialize each member across asynchronous durability operations.
 type Runtime struct {
-	nodes  map[uint32]*raftcore.Core
-	serial uint32
+	evaluationSerial uint32
+	evaluations      map[uint32]*pagedEvaluation
+	nodes            map[uint32]*raftcore.Core
+	serial           uint32
 }
 
-func New() *Runtime { return &Runtime{nodes: make(map[uint32]*raftcore.Core)} }
+func New() *Runtime {
+	return &Runtime{nodes: make(map[uint32]*raftcore.Core), evaluations: make(map[uint32]*pagedEvaluation)}
+}
 
 // Call consumes one complete frame and returns owned bytes. The header is a
 // version and operation, followed by length-prefixed binary/protobuf fields.
@@ -164,6 +169,27 @@ func (r *Runtime) Call(b []byte) (out []byte) {
 func (r *Runtime) call(op uint32, d *decoder) ([]byte, error) {
 	e := encoder{}
 	switch op {
+	case 46:
+		if d.end() != nil {
+			return nil, errFrame
+		}
+		e.u64(cs.MaxV1StagingBytes)
+		keys := cs.V1StagingKeys()
+		e.u32(uint32(len(keys)))
+		for i, k := range keys {
+			e.str(k.Namespace)
+			e.str(k.Key)
+			limit := cs.V1PageBytes
+			if i == 0 {
+				limit = cs.MaxCommandBytes
+			}
+			e.u32(uint32(limit))
+		}
+		return e.b, nil
+	case 40:
+		return v1Commands(d)
+	case 41, 42, 43, 44, 45:
+		return r.pagedApplication(op, d)
 	case 39:
 		return hostedForward(d)
 	case 36:

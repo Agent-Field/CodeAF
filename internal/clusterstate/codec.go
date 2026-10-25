@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -22,24 +24,244 @@ var (
 // opaque, and byte slices use Go's padded standard base64. HTML and U+2028/2029
 // escaping follows encoding/json. Hosts must pass these bytes without rewriting.
 func Encode(v any) ([]byte, error) {
-	b, err := json.Marshal(v)
+	tree, _, err := canonicalTree(v)
 	if err != nil {
-		return nil, ErrCodec
+		return nil, err
 	}
-	if !validStrings(reflect.ValueOf(v)) {
-		return nil, ErrCodec
+	if hasLargeString(tree) {
+		var out bytes.Buffer
+		if err := writeCanonicalTree(&out, tree, true); err != nil {
+			return nil, err
+		}
+		return out.Bytes(), nil
+	}
+	return json.Marshal(tree)
+}
+
+// ProjectionJSON retains typed decimal counters in JSON consumed by a host.
+// Compact HTML spelling avoids an expanded intermediate string; it is not a
+// replacement for canonical protocol bytes.
+func ProjectionJSON(v any) ([]byte, error) {
+	tree, _, err := canonicalTree(v)
+	if err != nil {
+		return nil, err
+	}
+	var out bytes.Buffer
+	if err = encodeCanonicalTreeTo(&out, tree, false); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
+}
+
+func canonicalTree(v any) (any, int, error) {
+	b, err := marshalIntermediate(v)
+	if err != nil || !validStrings(reflect.ValueOf(v)) {
+		return nil, 0, ErrCodec
 	}
 	var tree any
 	d := json.NewDecoder(bytes.NewReader(b))
 	d.UseNumber()
 	if err = d.Decode(&tree); err != nil {
-		return nil, ErrCodec
+		return nil, 0, ErrCodec
 	}
 	tree, err = integers(tree, reflect.TypeOf(v), true)
+	return tree, len(b), err
+}
+
+// Canonical sinks hash, compare or compress the final bytes without retaining
+// another expanded copy. The encoder's sole trailing newline is not canonical.
+func encodeCanonicalTo(w io.Writer, v any) error {
+	return encodeCanonicalValueTo(w, v, true)
+}
+func encodeCanonicalValueTo(w io.Writer, v any, escapeHTML bool) error {
+	tree, _, err := canonicalTree(v)
 	if err != nil {
+		return err
+	}
+	return encodeCanonicalTreeTo(w, tree, escapeHTML)
+}
+func encodeCanonicalTreeTo(w io.Writer, tree any, escapeHTML bool) error {
+	if hasLargeString(tree) {
+		return writeCanonicalTree(w, tree, escapeHTML)
+	}
+	sink := &canonicalSink{writer: w}
+	encoder := json.NewEncoder(sink)
+	encoder.SetEscapeHTML(escapeHTML)
+	if err := encoder.Encode(tree); err != nil {
+		return err
+	}
+	if !sink.pending || sink.last != '\n' {
+		return ErrCodec
+	}
+	return nil
+}
+
+// Large opaque strings are escaped in bounded pieces. Small subtrees retain
+// the standard JSON encoder, including its established Unicode spelling.
+func hasLargeString(tree any) bool {
+	switch v := tree.(type) {
+	case string:
+		return len(v) > MaxCommandBytes
+	case map[string]any:
+		for key, value := range v {
+			if len(key) > MaxCommandBytes || hasLargeString(value) {
+				return true
+			}
+		}
+	case []any:
+		for _, value := range v {
+			if hasLargeString(value) {
+				return true
+			}
+		}
+	}
+	return false
+}
+func writeCanonicalBytes(w io.Writer, b []byte) error {
+	n, err := w.Write(b)
+	if err == nil && n != len(b) {
+		return io.ErrShortWrite
+	}
+	return err
+}
+func writeCanonicalTree(w io.Writer, tree any, escapeHTML bool) error {
+	if !hasLargeString(tree) {
+		var b []byte
+		var err error
+		if escapeHTML {
+			b, err = json.Marshal(tree)
+		} else {
+			b, err = marshalIntermediate(tree)
+		}
+		if err != nil {
+			return err
+		}
+		return writeCanonicalBytes(w, b)
+	}
+	switch v := tree.(type) {
+	case string:
+		if err := writeCanonicalBytes(w, []byte{'"'}); err != nil {
+			return err
+		}
+		for start := 0; start < len(v); {
+			end := min(start+V1PageBytes/8, len(v))
+			for end < len(v) && !utf8.RuneStart(v[end]) {
+				end--
+			}
+			var b []byte
+			var err error
+			if escapeHTML {
+				b, err = json.Marshal(v[start:end])
+			} else {
+				b, err = marshalIntermediate(v[start:end])
+			}
+			if err != nil {
+				return err
+			}
+			if err = writeCanonicalBytes(w, b[1:len(b)-1]); err != nil {
+				return err
+			}
+			start = end
+		}
+		return writeCanonicalBytes(w, []byte{'"'})
+	case map[string]any:
+		keys := make([]string, 0, len(v))
+		for key := range v {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		if err := writeCanonicalBytes(w, []byte{'{'}); err != nil {
+			return err
+		}
+		for i, key := range keys {
+			if i > 0 {
+				if err := writeCanonicalBytes(w, []byte{','}); err != nil {
+					return err
+				}
+			}
+			if err := writeCanonicalTree(w, key, escapeHTML); err != nil {
+				return err
+			}
+			if err := writeCanonicalBytes(w, []byte{':'}); err != nil {
+				return err
+			}
+			if err := writeCanonicalTree(w, v[key], escapeHTML); err != nil {
+				return err
+			}
+		}
+		return writeCanonicalBytes(w, []byte{'}'})
+	case []any:
+		if err := writeCanonicalBytes(w, []byte{'['}); err != nil {
+			return err
+		}
+		for i, value := range v {
+			if i > 0 {
+				if err := writeCanonicalBytes(w, []byte{','}); err != nil {
+					return err
+				}
+			}
+			if err := writeCanonicalTree(w, value, escapeHTML); err != nil {
+				return err
+			}
+		}
+		return writeCanonicalBytes(w, []byte{']'})
+	}
+	return ErrCodec
+}
+
+type canonicalSink struct {
+	writer  io.Writer
+	pending bool
+	last    byte
+}
+
+func (s *canonicalSink) Write(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	if s.pending {
+		if n, err := s.writer.Write([]byte{s.last}); err != nil {
+			return 0, err
+		} else if n != 1 {
+			return 0, io.ErrShortWrite
+		}
+	}
+	n, err := s.writer.Write(p[:len(p)-1])
+	if err != nil {
+		return n, err
+	}
+	if n != len(p)-1 {
+		return n, io.ErrShortWrite
+	}
+	s.pending = true
+	s.last = p[len(p)-1]
+	return len(p), nil
+}
+
+type canonicalComparison struct {
+	want   []byte
+	offset int
+}
+
+func (c *canonicalComparison) Write(p []byte) (int, error) {
+	if len(p) > len(c.want)-c.offset || !bytes.Equal(p, c.want[c.offset:c.offset+len(p)]) {
+		return 0, ErrCodec
+	}
+	c.offset += len(p)
+	return len(p), nil
+}
+
+// Intermediate JSON only feeds the typed codec. Avoid expanding opaque HTML
+// characters until the final canonical write, so legal legacy rows do not
+// retain several escaped copies inside the bounded reactor.
+func marshalIntermediate(v any) ([]byte, error) {
+	var out bytes.Buffer
+	encoder := json.NewEncoder(&out)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(v); err != nil {
 		return nil, err
 	}
-	return json.Marshal(tree)
+	return bytes.TrimSuffix(out.Bytes(), []byte("\n")), nil
 }
 
 // JSON's replacement of invalid UTF-8 would alter an opaque field. Reject it
@@ -77,11 +299,24 @@ func validStrings(v reflect.Value) bool {
 
 // Decode accepts only canonical bytes into a typed destination. Re-encoding
 // rejects duplicate/unknown/missing fields, alternate integer spellings, lossy
-// Unicode, and trailing data. It updates the destination only after validation.
+// Unicode, and trailing data. Internal compressed records use compact HTML
+// escaping; public canonical bytes retain their established escaping. The
+// destination changes only after validation.
 func Decode(b []byte, into any) error {
+	compact := bytes.HasPrefix(b, compressedRecordPrefix)
+	var err error
+	b, err = recordBytes(b)
+	if err != nil {
+		return err
+	}
 	v := reflect.ValueOf(into)
 	if v.Kind() != reflect.Pointer || v.IsNil() {
 		return ErrCodec
+	}
+	if compact {
+		if handled, err := decodeRetainedRecord(b, v); handled {
+			return err
+		}
 	}
 	d := json.NewDecoder(bytes.NewReader(b))
 	d.UseNumber()
@@ -89,11 +324,11 @@ func Decode(b []byte, into any) error {
 	if err := d.Decode(&tree); err != nil {
 		return ErrCodec
 	}
-	tree, err := integers(tree, v.Type().Elem(), false)
+	tree, err = integers(tree, v.Type().Elem(), false)
 	if err != nil {
 		return err
 	}
-	plain, err := json.Marshal(tree)
+	plain, err := marshalIntermediate(tree)
 	if err != nil {
 		return ErrCodec
 	}
@@ -103,8 +338,9 @@ func Decode(b []byte, into any) error {
 	if err = d.Decode(candidate.Interface()); err != nil {
 		return ErrCodec
 	}
-	canonical, err := Encode(candidate.Elem().Interface())
-	if err != nil || !bytes.Equal(b, canonical) {
+	comparison := canonicalComparison{want: b}
+	err = encodeCanonicalValueTo(&comparison, candidate.Elem().Interface(), !compact)
+	if err != nil || comparison.offset != len(b) {
 		return ErrCodec
 	}
 	v.Elem().Set(candidate.Elem())
@@ -228,6 +464,9 @@ func EncodeCommand(c Command) ([]byte, error) {
 }
 
 func DecodeCommand(b []byte) (Command, error) {
+	if bytes.HasPrefix(b, compressedRecordPrefix) {
+		return Command{}, ErrCodec
+	}
 	var c Command
 	if err := Decode(b, &c); err != nil {
 		return Command{}, err
@@ -319,6 +558,9 @@ func DecodeResult(b []byte) (Result, error) {
 }
 
 func (r Result) Validate() error {
+	if r.ViewIndex != 0 && r.View != nil {
+		return ErrCodec
+	}
 	if r.Schema != SchemaVersion {
 		return ErrSchema
 	}

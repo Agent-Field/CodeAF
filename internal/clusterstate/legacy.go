@@ -149,7 +149,7 @@ func LegacyRow(c LegacyConfig, kind, id string, raw []byte, holdUntil int64) (Re
 	if e != nil || len(data)+len(key.Key) > MaxEvaluationBytes {
 		return RecordWrite{}, ErrMigration
 	}
-	return RecordWrite{key, data}, nil
+	return RecordWrite{RecordKey: key, Data: data}, nil
 }
 func legacyDecode(raw []byte, v any) error {
 	d := json.NewDecoder(bytes.NewReader(raw))
@@ -166,7 +166,7 @@ func legacyDecode(raw []byte, v any) error {
 }
 func LegacyEffects(c LegacyConfig) RecordWrite {
 	b, _ := Encode(Authority{Cluster: c.Cluster, Key: c.EffectsKey, Effects: true})
-	return RecordWrite{AuthorityKey(DeviceIDOfKey(c.EffectsKey)), b}
+	return RecordWrite{RecordKey: AuthorityKey(DeviceIDOfKey(c.EffectsKey)), Data: b}
 }
 
 // SealLegacyManifest counts its own retained provenance in the imported state.
@@ -203,7 +203,7 @@ func LegacyAuthorities(c LegacyConfig) ([]RecordWrite, error) {
 		if e != nil {
 			return nil, e
 		}
-		out = append(out, RecordWrite{AuthorityKey(DeviceIDOfKey(public)), b})
+		out = append(out, RecordWrite{RecordKey: AuthorityKey(DeviceIDOfKey(public)), Data: b})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
 	return out, nil

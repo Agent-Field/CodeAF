@@ -47,6 +47,7 @@ type Command struct {
 // Unknown fields fail decoding on older members.
 // There is no arbitrary JSON payload in which task text or secrets can hide.
 type Mutation struct {
+	StageV1            *V1Stage            `json:"stage_v1,omitempty"`
 	Assign             *Assign             `json:"assign,omitempty"`
 	Reassign           *Assign             `json:"reassign,omitempty"`
 	ClaimAssignment    *ClaimAssignment    `json:"claim_assignment,omitempty"`
@@ -158,6 +159,7 @@ type DeviceSeen struct {
 // no free-form diagnostic text, so logging a refusal cannot disclose payloads.
 // Now and Version are application time/version, never a local clock/Raft index.
 type Result struct {
+	ViewIndex  uint64            `json:"view_index,omitempty"`
 	Assignment *Assignment       `json:"assignment,omitempty"`
 	Workers    []WorkerResult    `json:"workers,omitempty"`
 	Index      uint64            `json:"index,omitempty"`
