@@ -323,7 +323,7 @@ command).
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
 | `/status` | `/info`, `/context` | `--json` | prints the same facts as one JSON object, keys in the same order |
 | `/spend` | none | none | opens the spend place, what this machine has cost, by the day (also `alt+5`) |
-| `/wall` | | | every saved conversation at once, with live or saved previews and card-based team creation (also `alt+v`, or `▦` under the box) |
+| `/wall` | | | every saved conversation at once, with live or saved previews and card-based team creation (also `alt+v`; `▦ All` shows only current tabs) |
 | `/teams` | | | the teams page: your teams as a tree, what waits on you, member previews and the selected team's interaction table (also `alt+2`, or `teams` on the tab bar) |
 | `/helpers` | | `<what to ask the manager>` | asks the team this conversation manages to suggest helpers: sends your words after it, or bare a one-sentence default ask, shown in full; makes no team, and in a conversation that manages none it says to make one with `+ New from this session`, last in the Teams dropdown while no team is selected, which makes the team at once and puts `/helpers` and the ask in the box; on home it says to open that conversation first |
 | `/cost` | `/usage`, `/tokens` | — | prints what this conversation has spent, and on what |

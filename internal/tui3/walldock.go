@@ -61,16 +61,14 @@ const dockFloor = 2
 const dockLabel = tabWallWord
 
 // dockWallWord is what the hint slot says while the pointer rests on the
-// strip's own door to the wall (`▦ All`), and the dock's `▦ All` says
-// [dockChatsWord], which is the same sentence: they are the same door.
+// strip's and dock's `▦ All` buttons, which share the current tab scope.
 //
 // The hint names conversations open here because saved sessions belong to
 // Home and Sessions, while this button shows this window's tiles side by side.
-const dockWallWord = "The grid of all your conversations" + hintSegment + wallOpenKey
+const dockWallWord = "The grid of tabs in this view"
 
-// dockChatsWord is what the hint slot says while the pointer rests on the
-// dock's `▦ All`.
-const dockChatsWord = dockWallWord
+// dockChatsWord names the broader conversation library in navigation hints.
+const dockChatsWord = "The grid of all your conversations"
 
 // dockCell is one conversation's cell as it was drawn: its column and its tab.
 type dockCell struct {
@@ -318,7 +316,7 @@ func (a *app) dockHoverWords() string {
 		}
 	case hoverDockLabel, hoverDockWall:
 		if (a.hot.kind == hoverDockLabel && a.dock.label.pressable()) || (a.hot.kind == hoverDockWall && a.dock.wall.pressable()) {
-			return dockChatsWord
+			return dockWallWord
 		}
 	case hoverDockCell:
 		for _, cell := range a.dock.cells {
@@ -402,7 +400,7 @@ func (a *app) dockPress(x, y int) (tea.Cmd, bool) {
 		return nil, false
 	}
 	if a.dock.label.holds(x) || a.dock.wall.holds(x) {
-		return a.openWall(), true
+		return a.openTabsWall(), true
 	}
 	for _, cell := range a.dock.cells {
 		if !cell.span.holds(x) {

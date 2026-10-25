@@ -439,6 +439,9 @@ func wallTitleRow(pal palette, g wallGlyphs, v wallView, width, inset, y int) (s
 		mark, run = "#", "*"
 	}
 	sub := wallOpenHereWord
+	if v.openTabs {
+		sub = "open tabs"
+	}
 	teamName := ""
 	if i := v.teamRow(v.team); i >= 0 {
 		teamName = v.teams[i].name

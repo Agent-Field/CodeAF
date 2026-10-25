@@ -78,6 +78,14 @@ func wallOpenPressed(msg tea.KeyPressMsg) bool {
 // first frame draws whatever the cache already holds; the readings land a
 // moment later and the tiles fill in.
 func (a *app) openWall() tea.Cmd {
+	return a.openWallFor(false)
+}
+
+func (a *app) openTabsWall() tea.Cmd {
+	return a.openWallFor(true)
+}
+
+func (a *app) openWallFor(openTabs bool) tea.Cmd {
 	a.teamsEnsure()
 	if a.pageShowing() {
 		a.leavePlace()
@@ -86,12 +94,16 @@ func (a *app) openWall() tea.Cmd {
 	now := a.now()
 	a.wall.returnTeam, a.wall.returnView = a.teamViews.id, a.tabView
 	a.wall.on = true
+	a.wall.openTabs = openTabs
 	a.wall.catalogGen++
-	a.wall.catalogBusy, a.wall.savedReading, a.wall.catalogKnown = false, false, false
+	a.wall.catalogBusy, a.wall.savedReading, a.wall.catalogKnown = false, false, openTabs
 	a.wall.catalogAt = time.Time{}
 	a.wall.catalog = a.conversationCatalog(session.World{})
 	a.wall.selecting = false
 	a.wall.activeID = ""
+	if openTabs {
+		a.wall.activeID = a.wall.returnTeam
+	}
 	a.wall.openedAt = now
 	a.wall.naming, a.wall.filterOn = false, false
 	a.wall.places = nil
@@ -147,8 +159,7 @@ func (a *app) closeWall() {
 	a.touch()
 }
 
-// wallShown reads the full saved catalog and live tabs. Team overlays
-// select Chats tabs only; they cannot hide an unrelated conversation in the grid.
+// The library reads saved conversations; All reads only the current strip's tabs.
 func (a *app) wallShown(now time.Time) []wallTile {
 	return a.wallTiles(now)
 }
@@ -207,6 +218,7 @@ func (a *app) wallFrame(width, height int) []string {
 		a.wall.spinning = false
 	}
 	view := wallView{
+		openTabs:  a.wall.openTabs,
 		tiles:     tiles,
 		focus:     a.wall.focus,
 		scroll:    a.wall.scroll,
@@ -239,6 +251,9 @@ func (a *app) wallFrame(width, height int) []string {
 		doorHot:   a.hot.kind == hoverTab && a.wall.door.pressable() && a.hot.index == a.wall.door.from,
 	}
 	view.total = len(a.wallCandidates())
+	if a.wall.openTabs {
+		view.team = a.wall.activeID
+	}
 	for _, tab := range a.wallMarkedTabs(tiles) {
 		view.selectedNames = append(view.selectedNames, tab.word)
 	}
@@ -524,7 +539,9 @@ func (a *app) wallOpen(tiles []wallTile, i int) tea.Cmd {
 	if a.teamViews.id == a.wall.returnTeam {
 		a.tabView = a.wall.returnView
 	}
-	a.teamViewSet("")
+	if !a.wall.openTabs {
+		a.teamViewSet("")
+	}
 	a.closeWall()
 	a.wallZoomDone()
 	return a.hopLand(a.tabGo(tab))
