@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Chats can name models for new chats and tasks that join an existing run
-pr: 1934
+pr: 1935
 surface: [chat, engine, docs]
 invalidates:
   - "A proposal joining a running task discarded its requested model and used the run's worker instead; the joined task now retains and uses its own work model."
