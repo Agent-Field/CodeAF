@@ -57,6 +57,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -338,7 +339,7 @@ func clearStaleEngineHostAs(workspace string, me engineBuild) (string, error) {
 		if host.Version == remote.Version {
 			return settleCellsMode(workspace, host, me)
 		}
-		if os.Getenv(engineHandoffEnv) == "" && host.BuiltAt.After(me.BuiltAt) {
+		if env.Get(engineHandoffEnv) == "" && host.BuiltAt.After(me.BuiltAt) {
 			if info, err := os.Stat(host.Binary); err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0111 != 0 {
 				environment := append(os.Environ(), engineHandoffEnv+"=1")
 				if err := execEngineHolder(host.Binary, os.Args, environment); err != nil {
