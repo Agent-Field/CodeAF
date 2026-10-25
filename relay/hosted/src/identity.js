@@ -64,18 +64,28 @@ export class IdentityDO extends DurableObject {
   /** webSocketClose completes the close handshake the client started, and notes when a device's last socket went. */
   async webSocketClose(ws, code) {
     finishClose(ws, code);
-    if(!peerSocket(ws))await this.#noteLeft(ws);
+    if(peerSocket(ws))await this.#peerDeparted(ws);else await this.#noteLeft(ws);
   }
 
   webSocketError(ws) {
-    if(!peerSocket(ws))return this.#noteLeft(ws);
+    if(peerSocket(ws))return this.#peerDeparted(ws);return this.#noteLeft(ws);
+  }
+
+  async #peerDeparted(ws){
+    if(this.host?.peers)return this.host.peers.departed(ws);
+    // A retained voter list is only a wake hint. Disconnection grants no
+    // leadership or membership authority, including after hibernation.
+    const voters=await this.ctx.storage.get('raft-router-voters');
+    if(voters?.includes(ws.deserializeAttachment()?.node)){
+      await this.ctx.storage.put('raft-maintenance',true);await this.ctx.storage.sync();await this.#arm(Date.now());
+    }
   }
 
   /** #noteLeft records last_seen of a device that holds no socket now; the offline frame follows 15 s later, by alarm. */
   async #noteLeft(ws) {
     const device = this.watchers.left(ws);
     const identity = device && (await this.ctx.storage.get('identity'));
-    if (identity && !(await this.#isGone()) && this.host?.ready) await this.host.serial(async()=>{await this.host.wakeMaintenance();await this.host.commitEffect({device_seen:{device}},Date.now());});
+    if (identity && !(await this.#isGone()) && this.host?.ready) await this.host.operation(async()=>{await this.host.wakeMaintenance();await this.host.commitEffect({device_seen:{device}},Date.now());});
   }
 
   async #serve(request) {
@@ -89,7 +99,7 @@ export class IdentityDO extends DurableObject {
         const raw=socket?fromBase64Url(request.headers.get('Codeaf-Cluster-Auth')):await readBody(request,host.peers.limits.Exchange,'too_large');
         if(!raw)return peerRefusal({peerCode:'invalid'});
         if(socket)return await host.peers.accept(request,raw,url.pathname.endsWith('/forward')?'forward':'peer');
-        const result=await host.peers.exchange(raw);if(result.rejected)return peerRefusal({peerCode:'busy'});
+        const result=await host.peers.httpExchange(raw);if(result.rejected)return peerRefusal({peerCode:'busy'});
         return new Response(result.raw,{headers:{'content-type':'application/json','cache-control':'no-store'}});
       }catch(error){return peerRefusal(error);}
     }
@@ -103,10 +113,10 @@ export class IdentityDO extends DurableObject {
       if(request.method==='GET'&&body.length)return new Response('unexpected request body',{status:400});
       const tenant=this.#tenantOf(who.identity);this.#admit(tenant,who.device);
       this.host??=new HostedIdentity(this.ctx,this.env,tenant,this.legacyAdmission,at=>this.#arm(at));
-      const reply=await this.host.serial(async()=>{
+      const reply=await this.host.operation(async()=>{
         await this.host.ensure(fromBase64Url(request.headers.get('codeaf-identity')));
         await this.host.wakeMaintenance();
-        return enrolling?this.host.enroll(this.host.proof(request,body)):this.host.control(request.method,who.device,request.headers.get('codeaf-cert'));
+        return enrolling?this.host.enroll(this.host.proof(request,body)):this.host.control(request.method,who.device,request.headers.get('codeaf-cert'),this.host.proof(request,body));
       });this.watchers=this.host.watchers;reply.headers.set('cache-control','no-store');return reply;
     }
     if(url.pathname==='/v2/cluster/api'){
@@ -121,7 +131,7 @@ export class IdentityDO extends DurableObject {
       const identity=await identityOf(request.headers.get('codeaf-identity'));
       const tenant=this.#tenantOf(identity);this.#admit(tenant,actor);
       this.host??=new HostedIdentity(this.ctx,this.env,tenant,this.legacyAdmission,at=>this.#arm(at));
-      const reply=await this.host.serial(()=>this.host.api(raw,proof,actor));
+      const reply=await this.host.operation(()=>this.host.api(raw,proof,actor));
       this.watchers=this.host.watchers;return reply;
     }
     const route = matchRoute(request.method, url.pathname);
@@ -148,9 +158,9 @@ export class IdentityDO extends DurableObject {
     await this.#refuseGone();
     const provision=await this.ctx.storage.get('raft-provision'),identity=await this.ctx.storage.get('identity');
     if(!provision||!identity)throw Object.assign(new Error('member authorization refused'),{peerCode:'unauthorized'});
-    if(!this.host?.ready){
+    if(!this.host?.ready&&!this.host?.peers){
       const tenant=this.#tenantOf(identity);this.host??=new HostedIdentity(this.ctx,this.env,tenant,this.legacyAdmission,at=>this.#arm(at));
-      await this.host.serial(()=>this.host.ensure(unb64(provision.config.signing_key)));this.watchers=this.host.watchers;
+      await this.host.operation(()=>this.host.ensure(unb64(provision.config.signing_key)));this.watchers=this.host.watchers;
     }
     return this.host;
   }
@@ -207,7 +217,7 @@ export class IdentityDO extends DurableObject {
     if(retirement&&!retireDue)await this.#arm(retirement);
     if(!maintenance&&!retireDue)return;
     const tenant=this.#tenantOf(identity);this.host ??= new HostedIdentity(this.ctx,this.env,tenant,this.legacyAdmission,at=>this.#arm(at));
-    const erase=await this.host.serial(async()=>{
+    const erase=await this.host.operation(async()=>{
       await this.host.ensure(Uint8Array.from(atob(provision.config.signing_key),c=>c.charCodeAt(0)));
       this.watchers=this.host.watchers;tenant.stats.flush();
       // A retained deadline is only a wake hint. Retirement still needs the

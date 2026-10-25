@@ -94,7 +94,7 @@ func NewRouter(limits Limits) (*Router, error) {
 // the exchange lock fences requests authenticated before a committed revoke.
 // Hosts must reload durable views before accepting traffic after a restart.
 func (r *Router) Install(v View) error {
-	if !v.Scope.valid() || v.Revision == 0 || v.Generation == 0 || len(v.Members) > r.limits.Records {
+	if !validScope(v.Scope) || v.Revision == 0 || v.Generation == 0 || len(v.Members) > r.limits.Records {
 		return ErrWire
 	}
 	members := make(map[uint64]Member, len(v.Members))

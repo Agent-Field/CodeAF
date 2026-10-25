@@ -15,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/codeaf/internal/clusterctl"
 	cs "github.com/Agent-Field/codeaf/internal/clusterstate"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
@@ -80,7 +79,7 @@ func hostedReady(t *testing.T, s *Sync) uint64 {
 	for time.Now().Before(deadline) {
 		status, e := s.clusterClient().Status(t.Context())
 		mustNil(t, e)
-		if len(status.Configuration.Voters) != 3 || !status.LeadershipUnavailable {
+		if len(status.Configuration.Voters) != 3 || status.LeadershipUnavailable {
 			t.Fatalf("R9 hosted voter/leadership policy: %+v", status)
 		}
 		if status.Self != 0 && slices.Contains(status.Ready, status.Self) && slices.Contains(status.Configuration.Learners, status.Self) {
@@ -123,12 +122,11 @@ func TestR9R23HostedLearnerRunStateReopenAndWipe(t *testing.T) {
 	if !slices.Contains(status.Configuration.Learners, node) || !slices.Contains(status.Configuration.Learners, otherNode) {
 		t.Fatal("R9 both homes must remain learners")
 	}
-	_, e = a.LeadCluster(t.Context(), 0)
-	if !errors.Is(e, clusterctl.ErrUnsupported) {
-		t.Fatalf("R9 leadership refusal: %v", e)
+	if status.LeadershipUnavailable {
+		t.Fatal("R6 joined hosted home cannot request leadership")
 	}
 	if _, e = os.Stat(filepath.Join(home, "cluster-leadership-"+a.Device.ID()+".json")); !errors.Is(e, os.ErrNotExist) {
-		t.Fatal("R9 unsupported lead wrote an intent", e)
+		t.Fatal("R9 joining allocated a leadership request", e)
 	}
 	stop()
 	reopened, _, e := Open(home)

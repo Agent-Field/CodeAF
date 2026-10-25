@@ -35,7 +35,7 @@ async function walk(path) {
     else if ((/\.(go|js|json|mod|sum|patch)$/.test(p) && !p.endsWith('_test.go')) || entry.name === 'LICENSE') source.push([relative(resolve('../..'), p), sha(await readFile(p))]);
   }
 }
-for (const p of ['../../internal/raftsnapshot', '../../internal/raftcore', '../../internal/raftabi', '../../internal/clusterstate', '../../cmd/codeaf-raft-wasm', '../../third_party/raft', '../../third_party/raft-patch', 'src/raft']) await walk(resolve(p));
+for (const p of ['../../internal/raftsnapshot', '../../internal/raftcore', '../../internal/raftabi', '../../internal/clusterstate', '../../internal/clusterwire', '../../cmd/codeaf-raft-wasm', '../../third_party/raft', '../../third_party/raft-patch', 'src/raft']) await walk(resolve(p));
 for (const p of ['../../go.mod','../../go.sum']) source.push([relative(resolve('../..'),resolve(p)),sha(await readFile(p))]);
 source.sort((a,b)=>a[0].localeCompare(b[0]));
 const manifest = { abi: 1, coreProtocol: 1, electionTiming: 2, rowSchema: 1, snapshotSchema: 1, snapshotFormatSHA256: sha(await readFile('../../internal/raftsnapshot/format.go')), go: 'go1.26.5', sourceHash: sha(JSON.stringify(source)), wasmSHA256: sha(wasm), sources: source };

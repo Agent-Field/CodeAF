@@ -205,6 +205,7 @@ func PersonalControlView(cluster, actor, certificate string, conf Configuration,
 	}
 	if !m.Retired {
 		out.Self = m.Node
+		out.LeadershipUnavailable = false
 	}
 	return out, OK, nil
 }

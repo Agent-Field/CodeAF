@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	cs "github.com/Agent-Field/codeaf/internal/clusterstate"
+	"github.com/Agent-Field/codeaf/internal/clusterwire"
 	pb "go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
 )
@@ -124,10 +125,10 @@ func hostedPeerWire(d *decoder) ([]byte, error) {
 			return nil, errFrame
 		}
 		raw, err := json.Marshal(struct {
-			Batch, Chunk, Exchange, Messages, Inflight, Retention int
-			Slots                                                 [3]int
-			Budget                                                [3]int
-		}{peerMaxBatchBytes, peerMaxChunkBytes, peerMaxExchangeBytes, peerMaxMessages, peerMaxInflight, int(cs.PeerRetentionMillis), [3]int{peerMaxInflight / 2, peerMaxInflight / 4, peerMaxInflight / 4}, [3]int{3 * peerMaxQueuedBytes / 8, peerMaxQueuedBytes / 8, peerMaxQueuedBytes / 2}})
+			Batch, Chunk, Exchange, Messages, Inflight, Retention, ForwardTimeout int
+			Slots                                                                 [3]int
+			Budget                                                                [3]int
+		}{peerMaxBatchBytes, peerMaxChunkBytes, peerMaxExchangeBytes, peerMaxMessages, peerMaxInflight, int(cs.PeerRetentionMillis), int(clusterwire.ForwardTimeout.Milliseconds()), [3]int{peerMaxInflight / 2, peerMaxInflight / 4, peerMaxInflight / 4}, [3]int{3 * peerMaxQueuedBytes / 8, peerMaxQueuedBytes / 8, peerMaxQueuedBytes / 2}})
 		if err != nil {
 			return nil, err
 		}

@@ -110,8 +110,8 @@ settlement signature or declares a join successful. `joinStatus(barrier)` additi
 checks current authorization and the learner's own applied index.
 
 The identity coordinator exposes personal learner admission, committed registry
-routing and status through public authenticated doors. Voter swaps, personal
-leadership and delegated learner activation are not available here yet.
+routing, status and personal leadership through public authenticated doors.
+Delegated learner activation is not available here yet.
 
 Provisioned anchor keys receive restricted committed authority for membership
 maintenance and request-session closure. Personal enrollment or retirement still
@@ -169,8 +169,8 @@ Public source serialization spans coordination, while external blob I/O leaves
 that queue and passes a new authority barrier afterward. Public watch sockets
 carry presence without the legacy socket-vouch promise; v1 clients keep ordinary
 beats. The hosted relay admits personal learners and serves their status, exchange
-and hibernating sockets. Leadership requests remain unavailable; its committed
-holds and idle maintenance follow the shared Go policy. Explicit retirement has its own retained
+and hibernating sockets. Joined computers can explicitly request leadership;
+committed holds and idle maintenance follow the shared Go policy. Explicit retirement has its own retained
 all-replica erasure journal and never serves as pressure cleanup.
 
 
@@ -179,8 +179,15 @@ all-replica erasure journal and never serves as pressure cleanup.
 `POST /v2/cluster/enroll` retains the original personal certificate and signed
 store token. Shared Go admission allocates from committed state; configuration
 is a separate resumable stage. Status uses a fresh quorum read and Go projection.
-An unsupported leadership request creates no intent. The application forwarding
-upgrade is authenticated and passive until hosted leadership is available.
+Leadership sequences the shared Go planner through catch-up, joint configuration,
+durable leave and settlement before transfer. A receipt requires the elected
+personal core’s current-term commit, a fresh read, durable completion and another
+fresh receipt. The application forwarding connection authenticates every frame
+with provisioned anchor keys and the current personal member key. Bounded pending
+requests release the coordinator turn while waiting, and peer traffic continues
+on its independent queue. Original signed commands remain unchanged. Fresh read
+and admission indices must reach an anchor’s durable application before replies.
+ABI 39 preserves the native signed application wire without network imports.
 
 The router's durable generation advances before its volatile queues reopen.
 Peer and application sockets use the hibernation API with a separate tag and
@@ -202,7 +209,7 @@ coordination never waits for a learner; peer frames bypass its public queue.
 ## Sleeping accounts and advisory presence
 
 The coordinator persists an outstanding-maintenance hint only while consensus
-work is scheduled. All-voter sleep removes it and clears stale peer retention
+work is scheduled. With the anchor topology, all-voter sleep removes it and clears stale peer retention
 deadlines before cancelling the maintenance alarm. Presence and explicit
 retirement deadlines are then rearmed independently. An alarm on a cold sleeping
 object reads socket attachments and that hint without constructing a tenant,

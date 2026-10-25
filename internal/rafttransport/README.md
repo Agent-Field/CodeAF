@@ -228,7 +228,7 @@ wakes the ordinary quorum path.
 The codeaf client starts its personal learner only inside the existing terminal
 state-sync lifetime, or a scoped status activation, after current quiet guards.
 Open remains local. Hosted relays offer enrollment and control status. Worker
-setup remains unavailable. Native personal leadership uses the separate application ingress below; hosted leadership remains unavailable.
+setup remains unavailable. Personal leadership uses the separate application ingress below on native and hosted relays.
 
 The native host advances its checksummed `transport-generation` file with atomic
 rename and directory fsync before opening its router; it never mutates the source
@@ -242,7 +242,7 @@ and successful voter operations intact.
 
 ## Native personal leaders and application forwarding
 
-A native personal member also opens `/v2/cluster/forward` outward. This is a
+A personal member also opens `/v2/cluster/forward` outward. This is a
 separate application connection, never a Raft peer envelope. The upgrade uses
 the same enrolled, signed scope/node/incarnation/router-generation proof. Every
 application frame signs its scope, generation, source/destination, request ID,
@@ -301,7 +301,7 @@ leader; actual work, read requests and higher-term messages still do.
 The hosted coordinator publishes routing only from committed anchor records.
 Its generation is durably advanced before restoring expendable inboxes, so old
 cursors and socket proofs cannot survive coordinator memory loss. Hibernating
-peer and passive application sockets retain separate tags and attachments;
+peer and application sockets retain separate tags and attachments;
 watch presence, broadcasts and watcher admission never count them. A stale
 connection closes and the same durable home refreshes its enrollment grant.
 The relay never opens an outbound connection to a personal member.
@@ -311,8 +311,10 @@ admission survives a lost reply before configuration; activation or maintenance
 reconciles only pending intent. The original signed device request remains in
 the enrollment command. A fresh quorum status reports readiness only after the
 enrolled key signs durable application through its advertised join barrier.
-Leadership remains unavailable on the hosted relay, and application sockets
-stay passive. Peer ingress progresses independently of the public request queue.
+Personal leadership uses the same Go planner for the joint swap, durable leave,
+settlement and actual transfer. Application sockets carry original signed commands
+and fresh reads; completion waits for an anchor to apply through each returned
+index. Peer ingress progresses independently of the public operation queue.
 
 Snapshots send a manifest followed by chunks on their reserved transport lane.
 Each target has one outstanding chunk and advances only on signed delivery

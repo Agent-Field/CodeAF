@@ -5,10 +5,9 @@ import (
 	"testing"
 )
 
-// R9/R23 keep current hosted enrollment and status distinct from the older
-// relay fallback, while leaving leadership availability explicit.
-func TestR9R23HostedLearnerManualTruth(t *testing.T) {
-	for _, query := range []string{"hosted relay learner cluster status", "paired open home hosted learner leadership"} {
+// R6/R9/R23 keep hosted enrollment, personal leadership and forwarding reachable.
+func TestR6R9R23HostedPersonalManualTruth(t *testing.T) {
+	for _, query := range []string{"hosted relay learner cluster status", "paired open home hosted learner leadership", "hosted relay personal leader forwarding"} {
 		found := false
 		for _, section := range Chat().Search(query, DefaultResults) {
 			found = found || section.Page == "coordination-and-workers"
@@ -23,15 +22,18 @@ func TestR9R23HostedLearnerManualTruth(t *testing.T) {
 	}
 	for _, claim := range []string{
 		"joins the hosted relay",
-		"hosted relay admits paired computers as learners",
+		"as a durable learner",
+		"`codeaf cluster lead`",
+		"The voters are then two anchors and this computer",
+		"routes signed coordination requests",
+		"waits for its own durable copy before replying",
 		"`codeaf cluster status`",
-		"this relay does not offer cluster leadership yet; your saved chats are still here",
 	} {
 		if !strings.Contains(page, claim) {
 			t.Errorf("R9/R23 current hosted capability missing: %q", claim)
 		}
 	}
-	for _, obsolete := range []string{"The hosted relay has no learner door", "The hosted relay has no cluster control door"} {
+	for _, obsolete := range []string{"The hosted relay has no learner door", "The hosted relay has no cluster control door", "this relay does not offer cluster leadership yet"} {
 		if strings.Contains(page, obsolete) {
 			t.Errorf("R9 obsolete current-hosted denial: %q", obsolete)
 		}

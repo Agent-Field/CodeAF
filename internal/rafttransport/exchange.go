@@ -111,7 +111,7 @@ func (r Request) Verify(key ed25519.PublicKey) error {
 	return nil
 }
 func (r Request) validate() error {
-	if !r.Scope.valid() || !node(r.Node) || r.Incarnation == 0 || r.Generation == 0 || len(r.Messages) > MaxMessages {
+	if !validScope(r.Scope) || !node(r.Node) || r.Incarnation == 0 || r.Generation == 0 || len(r.Messages) > MaxMessages {
 		return ErrWire
 	}
 	normal, chunks := 0, 0

@@ -66,7 +66,7 @@ export class IdentityDO extends Source {
     }
     return result;
   }
-  async sequenceProof(){return this.host.serial(async()=>{
+  async sequenceProof(){return this.host.operation(async()=>{
     const from=this.host.manifest.config.anchors[0],to=this.host.manifest.config.anchors[1],term=Number(this.host.states.get(this.host.leader()).term);
     const payload=Uint8Array.of(8,8,16,Number(to),24,Number(from),32,term);
     const messages=await Promise.all(Array.from({length:16},()=>this.host.envelope(from,to,payload)));
@@ -76,7 +76,7 @@ export class IdentityDO extends Source {
   transportState(){return {keys:[...this.ctx.storage.kv.list()].map(([key])=>key),tables:this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'").toArray().map(r=>r.name)};}
   async pausePublic(){
     let began;const started=new Promise(resolve=>{began=resolve;});
-    this.ctx.waitUntil(this.host.serial(async()=>{began();await new Promise(resolve=>{this.releasePublic=resolve;});}));await started;
+    this.ctx.waitUntil(this.host.operation(async()=>{began();await new Promise(resolve=>{this.releasePublic=resolve;});}));await started;
   }
   resumePublic(){this.releasePublic?.();}
   async checkpointState(){
@@ -90,7 +90,7 @@ export class IdentityDO extends Source {
   }
   releaseHeldUpload(){this.releaseUpload?.();}
   async retryWithoutQuorum(){
-    return this.host.serial(async()=>{
+    return this.host.operation(async()=>{
       const leader=this.host.leader();for(const id of [...this.host.members.keys()])if(id!==leader)this.host.members.delete(id);
       this.host.queue=[];
       try{await this.host.commit(this.lastCommand);return 'acknowledged';}catch{return 'unavailable';}
@@ -105,7 +105,7 @@ export class IdentityDO extends Source {
     await this.ctx.storage.put({identity,admitted:true});await this.ctx.storage.sync();
   }
   async replayStale() {
-    return this.host.serial(async()=>{
+    return this.host.operation(async()=>{
       const from=this.host.leader(),to=this.host.manifest.config.anchors.find(id=>id!==from);
       const member=this.host.member(to),snapshot=await member.oldSnapshotAndCheckpoint();
       const uint=v=>{let n=BigInt(v),b=[];do{const x=Number(n&127n);n>>=7n;b.push(x|(n?128:0));}while(n);return b;};
@@ -119,7 +119,7 @@ export class IdentityDO extends Source {
     // Restore through the production alarm before driving its virtual clock.
     if(!this.current.host)await this.current.alarm();
     const host=this.current.host;
-    return host.serial(async()=>{
+    return host.operation(async()=>{
     const base=Date.now(),membershipBefore=measurements.membership;
     for(let n=1;n<=20;n++)await host.maintenance(base+n*host.policy.tick_every,host.started+n*host.policy.tick_every);
     const id=host.leader(),before=host.states.get(id).applied;

@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/clusterstate"
+	"github.com/Agent-Field/codeaf/internal/clusterwire"
 	"github.com/Agent-Field/codeaf/internal/raftcore"
 	"github.com/Agent-Field/codeaf/internal/raftsnapshot"
 	"go.etcd.io/raft/v3"
@@ -40,14 +41,8 @@ var (
 	ErrCursor     = errors.New("rafttransport: invalid delivery cursor")
 )
 
-// Scope binds every signature to an identity, cluster epoch and protocol. All
-// uint64 fields cross JavaScript as canonical unsigned decimal strings.
-type Scope struct {
-	Identity string `json:"identity"`
-	Cluster  string `json:"cluster"`
-	Epoch    uint64 `json:"epoch,string"`
-	Protocol uint16 `json:"protocol"`
-}
+// Scope binds peer and application signatures to the same cluster.
+type Scope = clusterwire.Scope
 
 func token(s string) bool {
 	if len(s) == 0 || len(s) > 128 {
@@ -60,7 +55,7 @@ func token(s string) bool {
 	}
 	return true
 }
-func (s Scope) valid() bool {
+func validScope(s Scope) bool {
 	return token(s.Identity) && token(s.Cluster) && s.Epoch != 0 && s.Protocol == Protocol
 }
 func node(id uint64) bool { return id != 0 && !raft.IsLocalMsgTarget(id) }
@@ -139,7 +134,7 @@ func (e Envelope) AppendChunk() bool {
 }
 
 func (e Envelope) validate() error {
-	if !e.Scope.valid() || !node(e.From) || !node(e.To) || e.From == e.To || e.Incarnation == 0 || e.Destination == 0 || e.Sequence == 0 || e.Digest != digest(e.Payload) {
+	if !validScope(e.Scope) || !node(e.From) || !node(e.To) || e.From == e.To || e.Incarnation == 0 || e.Destination == 0 || e.Sequence == 0 || e.Digest != digest(e.Payload) {
 		return ErrWire
 	}
 	if e.Chunk != nil {

@@ -9,7 +9,7 @@ JavaScript lease or consensus rules are implemented here.
 Build/run the bounded local proof from the repository root:
 
 ```sh
-sh relay/hosted/test/raft/run.sh /tmp/codeaf-p03
+sh relay/hosted/test/raft/run.sh /tmp/codeaf-raft-proof
 ```
 
 Install the hosted relay's pinned npm lockfile first if needed. It uses the installed
@@ -201,3 +201,12 @@ and a fresh quorum barrier passes; the ABI never supplies a local success path.
 Assignments, per-cell active slots and incarnation-bound holds use the existing
 state namespace and survive ordinary native/hosted snapshots. No storage format
 or old ABI tag changes.
+## Signed application forwarding
+
+Operation 39 signs a canonical typed host request or authenticates an exact
+native application reply. The signed frame retains the established transport
+encoding; a separate canonical projection keeps reply indices lossless in
+JavaScript. Scope, router generation, connection and request token are checked
+before dispatching completion. Hosts use only provisioned anchor keys to route
+original signed commands, reads and member coordination. The reactor imports no
+network client, and application frames never enter the Raft peer message path.

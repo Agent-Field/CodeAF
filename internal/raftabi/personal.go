@@ -83,7 +83,7 @@ func hostedPersonal(d *decoder) ([]byte, error) {
 	want(cs.IdentityKey())
 	want(cs.MembershipKey())
 	actor := in.Actor
-	if in.Action != "status" {
+	if in.Action != "status" && in.Action != "lead" {
 		var identity cs.IdentityRec
 		if cs.Decode(rows[cs.IdentityKey()], &identity) == nil {
 			request, _, who, e := cs.VerifyPersonalAdmission(in.Proof, identity, in.Now)
@@ -101,7 +101,7 @@ func hostedPersonal(d *decoder) ([]byte, error) {
 		if cs.Decode(rows[cs.MemberDeviceKey(actor)], &mapping) == nil && mapping.Node != 0 {
 			want(cs.MemberKey(mapping.Node))
 		}
-		if in.Action != "status" {
+		if in.Action != "status" && in.Action != "lead" {
 			var identity cs.IdentityRec
 			if cs.Decode(rows[cs.IdentityKey()], &identity) == nil {
 				request, _, _, e := cs.VerifyPersonalAdmission(in.Proof, identity, in.Now)
@@ -111,7 +111,7 @@ func hostedPersonal(d *decoder) ([]byte, error) {
 			}
 		}
 	}
-	if in.Action == "status" || in.Action == "grant" {
+	if in.Action == "status" || in.Action == "lead" || in.Action == "grant" {
 		var h cs.Membership
 		if cs.Decode(rows[cs.MembershipKey()], &h) == nil {
 			for _, node := range h.Nodes {
@@ -176,7 +176,7 @@ func hostedPersonal(d *decoder) ([]byte, error) {
 				}
 			}
 		}
-	case "status":
+	case "status", "lead":
 		progress := map[uint64]uint64{}
 		for _, p := range in.Progress {
 			progress[p.Node] = p.Applied
@@ -185,6 +185,18 @@ func hostedPersonal(d *decoder) ([]byte, error) {
 		status, out.Code, err = cs.PersonalControlView(in.Cluster, in.Actor, in.Certificate, raftcore.Configuration(conf), in.Applied, in.Leader, in.CommittedNow, progress, read)
 		if err == nil && out.Code == cs.OK {
 			out.Wire, err = cs.Encode(status)
+			if in.Action == "lead" {
+				c, e := cs.DecodeCommand(in.Proof.Body)
+				if e != nil || cs.ClientCommand(c) != nil || c.Actor != in.Actor || c.Change.RequestLeadership == nil {
+					out.Code = cs.BadRequest
+					out.Wire = nil
+				} else if status.Self == 0 {
+					out.Code = cs.Unauthorized
+					out.Wire = nil
+				} else {
+					out.Wire = in.Proof.Body
+				}
+			}
 		}
 	default:
 		return nil, errFrame
