@@ -114,6 +114,7 @@ const teamStartDescription = "Start a new member conversation in this team with 
 
 const teamStartSchema = `{"type":"object","properties":{"handle":{"type":"string","description":"2 to 12 lowercase letters or digits, unique in the team. For kind team, the new team's manager."},` +
 	`"brief":{"type":"string","description":"The whole assignment, as its first message."},` +
+	`"model":{"type":"string","description":"Model for this new conversation, when the person names one; catalog ID or unique name. Omit for the profile default."},` +
 	`"kind":{"type":"string","enum":["member","team"],"description":"Default member."},` +
 	`"name":{"type":"string","description":"kind team: the new team's name."},` +
 	`"members":{"type":"array","items":{"type":"string"},"description":"kind team: handles of your members to move into it."},` +
@@ -657,6 +658,7 @@ func (a *Agent) teamStartTool(ctx context.Context, args json.RawMessage) (string
 		Kind    string   `json:"kind"`
 		Name    string   `json:"name"`
 		Members []string `json:"members"`
+		Model   string   `json:"model"`
 		Team    string   `json:"team"`
 	}
 	if err := decodeToolArguments(args, &parsed); err != nil {
@@ -679,8 +681,19 @@ func (a *Agent) teamStartTool(ctx context.Context, args json.RawMessage) (string
 	if refusal != "" {
 		return refusal, true, nil
 	}
+	model := ""
+	if word := strings.TrimSpace(parsed.Model); word != "" {
+		choice := a.resolveTaskModel(word)
+		if choice.problem != "" {
+			return choice.problem, true, nil
+		}
+		if len(choice.options) > 0 {
+			return "Name one exact model: " + strings.Join(choice.options, ", "), true, nil
+		}
+		model = choice.model
+	}
 	if strings.TrimSpace(parsed.Kind) == "team" {
-		said, failed := a.teamStartSubTeam(team, role, handle, brief, parsed.Name, parsed.Members)
+		said, failed := a.teamStartSubTeam(team, role, handle, brief, parsed.Name, parsed.Members, model)
 		return said, failed, nil
 	}
 	if strings.TrimSpace(parsed.Name) != "" || len(parsed.Members) > 0 {
@@ -692,7 +705,7 @@ func (a *Agent) teamStartTool(ctx context.Context, args json.RawMessage) (string
 	if _, taken := team.ByHandle(handle); taken {
 		return fmt.Sprintf("@%s is already a member of %q. Pick another handle, or team_send it the work.", handle, team.Name), true, nil
 	}
-	entry := teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: handle, Text: brief, Approval: a.ResolvedApprovalPosture()}
+	entry := teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: handle, Text: brief, Approval: a.ResolvedApprovalPosture(), Model: model}
 	id, err := teams.AppendTrafficID(a.config.teamProfile(), team.ID, entry)
 	if err != nil {
 		return "The start could not be written to the team's traffic: " + err.Error(), true, nil

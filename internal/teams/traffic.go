@@ -115,6 +115,8 @@ type Entry struct {
 	// Approval is, on a [KindStart], the approval posture the started
 	// conversation inherits from the manager unless overridden.
 	Approval string `json:"approval,omitempty"`
+	// Model is the resolved model requested for this new conversation.
+	Model string `json:"model,omitempty"`
 }
 
 // trafficRotateBytes is the size past which the log starts a new file.

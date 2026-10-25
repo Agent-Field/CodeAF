@@ -376,3 +376,17 @@ func TestCrewFactorySeatsTheChatDoorsCheckOnTheCrewsChecker(t *testing.T) {
 		}
 	}
 }
+
+func TestCrewFactoryHonorsAJoinedTasksOwnModel(t *testing.T) {
+	store := runOpenStore(t)
+	if _, err := store.AddMany([]plandb.TaskSpec{{ID: "named", Title: "Read", ParentID: store.RootID(), Model: "moonshotai/kimi-k3"}}); err != nil {
+		t.Fatal(err)
+	}
+	dir := crewProfile(t, map[string]string{config.KeyTierWorkerModel: "deepseek/deepseek-v4.1-flash"})
+	recorder := &recordingCompleter{}
+	factory := run.CrewFactory(store, t.TempDir(), dir, run.Seats{Work: "deepseek/deepseek-v4.1-flash"}, "", false, recorder.forModel)
+	factory(*store.Task("named"))
+	if len(recorder.models) != 1 || recorder.models[0] != "moonshotai/kimi-k3" {
+		t.Fatalf("models = %v", recorder.models)
+	}
+}

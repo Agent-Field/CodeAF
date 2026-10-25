@@ -432,6 +432,8 @@ type beltRun struct {
 	thinking   effort.Rung
 	carry      *programCarry
 	crewEffort crewroute.Effort
+	// worker is the explicit per-task choice, retained even without a router.
+	worker string
 	// crew is routed for an ordinary task. A program keeps its requested
 	// models and run ceiling instead of receiving a task router's seats.
 	crew          *taskCrew
@@ -797,6 +799,7 @@ func (a *Agent) prepareBeltRunStart(ctx context.Context, id uint64, title, brief
 // beyond its brief ([programWish]) and the crew word it carried ([crewWish]),
 // so a held run that is readied later still has them.
 func (run *beltRun) wishedFrom(ctx context.Context) {
+	run.worker = crewWishOf(ctx).worker
 	if run.delegate == nil {
 		return
 	}
@@ -904,7 +907,7 @@ func (a *Agent) joinOrWait(ctx context.Context, stand taskStand, id uint64, titl
 				return nil, standsElsewhereError{underway: live.ground, asked: canonicalPath(stand.dir)}
 			}
 			_, err := live.store.AddMany([]plandb.TaskSpec{{
-				ID: storeID, ParentID: live.root, Title: title, Description: brief, Dependencies: dependencies,
+				ID: storeID, ParentID: live.root, Title: title, Description: brief, Dependencies: dependencies, Model: crewWishOf(ctx).worker,
 			}})
 			if err == nil {
 				live.joined = append(live.joined, id)
@@ -1021,6 +1024,9 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 	programCrew := a.delegateCrew(run)
 	if run.delegate != nil && workSeat == "" {
 		workSeat = programCrew.Hands
+	}
+	if run.worker != "" {
+		workSeat = run.worker
 	}
 	checkSeat := ""
 	// A ROUTED RUN IS SEATED ON ITS OWN CREW, all three seats, and the check
@@ -2630,12 +2636,12 @@ func (run *beltRun) crewDecision() *crewroute.Decision {
 }
 
 // crewWorker is the routed worker's id, the model the run's row names; empty
-// when the run was not routed.
+// when neither routing nor a proposal named one.
 func (run *beltRun) crewWorker() string {
 	if d := run.crewDecision(); d != nil {
 		return d.Seat(crewroute.Worker).Model
 	}
-	return ""
+	return run.worker
 }
 
 // initialCrewRecord records the accepted seats even when routing is disabled.
@@ -2643,7 +2649,11 @@ func (a *Agent) initialCrewRecord(run *beltRun) *TaskCrewRecord {
 	if run.crew != nil {
 		return run.crew.record()
 	}
-	return a.unroutedCrewRecord()
+	record := a.unroutedCrewRecord()
+	if run.worker != "" && record.OneModel == "" {
+		record.Work = run.worker
+	}
+	return record
 }
 
 // carryRunIdentity fills only absent identity fields from the matching row.
