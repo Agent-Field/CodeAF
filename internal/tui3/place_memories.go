@@ -683,6 +683,18 @@ func (placeMemory) body(a *app, width, room int) []placeRow {
 	if a.kb.open {
 		return a.knowledgeBody(width, room)
 	}
+	if room < 1 {
+		return nil
+	}
+	header := savedMemorySwitchRow(a, width)
+	rows := []placeRow{header}
+	if room > 1 {
+		rows = append(rows, placeRow{text: "", hit: -1})
+	}
+	return append(rows, savedMemoryBody(a, width, max(0, room-savedMemoryHeadRows))...)
+}
+
+func savedMemoryBody(a *app, width, room int) []placeRow {
 	p := &a.mem
 	if p.expanded != "" {
 		p.top = 0
@@ -770,6 +782,22 @@ func (a *app) memoryListRows(width, room int) []placeRow {
 // that box is one of the rows just built: the filter row, the new line being
 // written on the add row, or a line being reworded in its own row.
 func (placeMemory) caretRow(a *app, width int, rows []placeRow) (int, int, bool) {
+	if a.kb.open {
+		for i, row := range rows {
+			if hit, ok := row.hit.(knowledgeHit); ok {
+				for _, link := range hit.links {
+					if link.id == "@search" {
+						plain := ansi.Strip(row.text)
+						if at := strings.Index(plain, "Search: "); at >= 0 {
+							column := ansi.StringWidth(plain[:at]+"Search: ") + ansi.StringWidth(string(a.kb.filter.value[:a.kb.filter.cursor]))
+							return i, min(column, max(0, link.end-1)), true
+						}
+					}
+				}
+			}
+		}
+		return -1, 0, true
+	}
 	p := &a.mem
 	if p.expanded != "" || p.reading.bare() {
 		return 0, 0, false
@@ -1208,9 +1236,9 @@ func (placeMemory) note(a *app, width int) []string {
 		return []string{" " + a.pal.dim(fit(a.kb.footer, width-2))}
 	}
 	if a.mem.footer == "" {
-		return []string{" " + a.pal.dim(fit(a.chords.say("Saved memory · alt+u Knowledge"), width-2))}
+		return nil
 	}
-	return []string{" " + a.pal.dim(fit(a.chords.say("alt+u Knowledge · "+a.mem.footer), width-2))}
+	return []string{" " + a.pal.dim(fit(a.mem.footer, width-2))}
 }
 
 func (placeMemory) about() string { return "what codeaf remembers" }
@@ -1267,7 +1295,7 @@ func (placeMemory) press(a *app, y int) (tea.Cmd, bool) {
 	if p.expanded != "" || p.edit != nil {
 		return nil, true
 	}
-	at, ok := placeBodyLine(y, p.top, p.shown)
+	at, ok := placeBodyLine(y-savedMemoryHeadRows, p.top, p.shown)
 	if !ok {
 		return nil, true
 	}
@@ -1289,7 +1317,7 @@ func (placeMemory) hover(a *app, y int) bool {
 		return false
 	}
 	next := -1
-	if at, ok := placeBodyLine(y, a.mem.top, a.mem.shown); ok && a.mem.expanded == "" {
+	if at, ok := placeBodyLine(y-savedMemoryHeadRows, a.mem.top, a.mem.shown); ok && a.mem.expanded == "" {
 		if _, stop := a.mem.reading.at(at); stop {
 			next = at
 		}

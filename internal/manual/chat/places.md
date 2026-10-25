@@ -638,8 +638,9 @@ command any more, and *Automations* has the whole of what replaced them.
 
 ## Project knowledge inside Memory
 
-Open Memory and press `alt+u` to switch between saved preferences and project
-knowledge. Creating a knowledge base starts learning from future chats; existing
+Open Memory and click **Knowledge** or press `alt+u` to switch from saved
+preferences to project knowledge. Click **Saved memory** to return. Creating a
+knowledge base starts learning from future chats; existing
 conversations are not imported automatically.
 
 The knowledge reader has a folder tree and articles. Underlined `[[Topic]]`

@@ -77,3 +77,32 @@ class BridgeTests(unittest.TestCase):
             self.assertFalse(result['needs_update'])
             self.assertEqual(result['last_error'], '')
             self.assertTrue((root / 'knowledge' / 'vault.json').exists())
+
+    def test_selected_model_is_used_for_extraction_and_composition(self):
+        import io
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'queue').mkdir()
+            source = {'id': 'source', 'session': 'chat', 'role': 'user',
+                      'ts': '2026-10-25T12:00:00Z', 'text': 'Cedar queues jobs.', 'kind': 'user_statement'}
+            (root / 'queue' / 'source.json').write_text(json.dumps(source))
+            requests = []
+            def respond(request, **kwargs):
+                body = json.loads(request.data)
+                requests.append(body)
+                if len(requests) == 1:
+                    result = {'claims': [{'local_id': 'c', 'text': source['text'], 'topic': 'Queues',
+                              'scope': 'Cedar', 'kind': 'fact', 'evidence': [{'source': 'source', 'quote': source['text']}]}],
+                              'notes': [], 'relations': [], 'aliases': []}
+                else:
+                    result = {'subjects': []}
+                return io.BytesIO(json.dumps({'model': 'example/knowledge-model',
+                    'choices': [{'finish_reason': 'stop', 'message': {'content': json.dumps(result)}}]}).encode())
+            with patch.dict('os.environ', {'OPENROUTER_API_KEY': 'fixture-only'}), patch('provider.urllib.request.urlopen', side_effect=respond):
+                status = compile_workspace(root, '/project/a', force=True, model_id='example/knowledge-model')
+            self.assertEqual(len(requests), 2)
+            self.assertEqual([r['model'] for r in requests], ['example/knowledge-model', 'example/knowledge-model'])
+            self.assertEqual(status['model'], 'example/knowledge-model')
+            self.assertEqual(status['pending'], 0)
+            self.assertFalse(status['needs_update'])

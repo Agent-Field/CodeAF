@@ -17,9 +17,7 @@ func (placeMemory) wheelAt(a *app, x, y, delta int) (tea.Cmd, bool) {
 	if !ok {
 		return nil, true
 	}
-	if hit.tree < 0 && a.width >= 85 {
-		return nil, true
-	}
+
 	left := max(24, min(42, a.width/3))
 	tree := a.width >= 85 && x <= left || a.width < 85 && !p.article && !p.links
 	if tree {
@@ -35,6 +33,8 @@ func (placeMemory) wheelAt(a *app, x, y, delta int) (tea.Cmd, bool) {
 		room = max(1, room)
 		p.top = max(0, min(p.top+delta, max(0, len(p.targets)-room)))
 		p.cursor = max(p.top, min(p.cursor, min(p.top+room-1, max(0, len(p.targets)-1))))
+	} else if !hit.article {
+		return nil, true
 	} else if p.links {
 		p.linkCursor = max(0, min(p.linkCursor+delta, len(p.pageLinks())-1))
 	} else {

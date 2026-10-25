@@ -61,6 +61,16 @@ func TestKnowledgeSidebarWheelScrollsWhileArticleIsOpen(t *testing.T) {
 
 func TestKnowledgeArticleWheelKeepsSidebarPosition(t *testing.T) {
 	a := knowledgeLongTreeApp(t)
+	path := filepath.Join(a.agent.(*knowledgeTestAgent).vault.Directory(), "knowledge", "vault.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw = []byte(strings.Replace(string(raw), "Uses SQLite.", "Uses SQLite. "+strings.Repeat("Durable storage survives restarts. ", 80), 1))
+	if err = os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	drive(t, a, key("ctrl+r"))
 	a.height = 18
 	before := placeFrameText(a)
 	if !strings.Contains(before, "Storage") {

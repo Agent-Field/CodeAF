@@ -142,7 +142,17 @@ func TestKnowledgeWheelMovesTheVisibleTree(t *testing.T) {
 	a := knowledgeLongTreeApp(t)
 	beforeRows, _, _, _ := a.placeDraw(placeMemory{}, a.width, a.height)
 	before := strings.Join(beforeRows, "\n")
-	drive(t, a, tea.MouseWheelMsg{X: 5, Y: 9, Button: tea.MouseWheelDown}, pointerMsg{})
+	y := 0
+	for i, line := range beforeRows {
+		if strings.Contains(ansi.Strip(line), "Topic 000") {
+			y = i
+			break
+		}
+	}
+	if y == 0 {
+		t.Fatal("visible tree row missing")
+	}
+	drive(t, a, tea.MouseWheelMsg{X: 5, Y: y, Button: tea.MouseWheelDown}, pointerMsg{})
 	afterRows, _, _, _ := a.placeDraw(placeMemory{}, a.width, a.height)
 	if after := strings.Join(afterRows, "\n"); after == before {
 		t.Fatal("wheel did not move knowledge selection")

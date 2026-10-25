@@ -132,3 +132,22 @@ Collapse all / Expand all are clickable, hoverable controls; Ctrl+Left /
 Ctrl+Right provide keyboard access. They clear search, preserve the current
 article, and fold nested folders consistently. Folding remains an explicit
 whole-tree operation. These interactions require no model requests.
+
+## Sidebar, sources and model settings
+
+Wide readers keep the Knowledge heading, page metadata, saved-memory switch,
+search and folder actions in a fixed left column. Article content begins at the
+top of the right column. Both memory views expose clickable, hoverable switches;
+Alt+U remains available. Source excerpts use the shared Markdown renderer without
+rewriting their original stored text. One source projection is cached per note,
+width and measured prose style; snapshots invalidate it. A synthetic 100-source
+warm-frame benchmark measured 5.36 ms / 4.07 MB before caching and 0.059 ms /
+42 KB after, excluding terminal and network delivery.
+
+Settings → Models → knowledge configures background compilation,
+separately from chat/task model choices. Only the OpenRouter catalog is offered.
+The default remains deepseek/deepseek-v4.1-flash; a saved change takes effect at
+the next compilation, including every compiler role, without changing existing
+notes. Provider receipts are checked against the chosen model, and caches are
+scoped by model. This iteration's tests use offline provider fixtures: additional
+model/API charges are $0, not a new production cost estimate.

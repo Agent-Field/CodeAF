@@ -35,6 +35,7 @@ type knowledgePlace struct {
 	footer              string
 	targets             []knowledgeTarget
 	hitRows             []placeHit
+	sourceRender        knowledgeSourceRender
 }
 
 type knowledgeTarget struct {
@@ -46,9 +47,10 @@ type knowledgeCellLink struct {
 	id         string
 }
 type knowledgeHit struct {
-	tree   int
-	links  []knowledgeCellLink
-	create bool
+	tree    int
+	article bool
+	links   []knowledgeCellLink
+	create  bool
 }
 
 // Wrapping carries canonical link spans into terminal cell coordinates, including
@@ -161,6 +163,7 @@ func (a *app) adoptKnowledge(msg knowledgeReadingMsg) {
 		p.footer = "Knowledge could not be read: " + msg.err.Error()
 	} else {
 		p.reading = msg.reading
+		p.sourceRender = knowledgeSourceRender{}
 		p.indexKnowledge()
 		p.footer = ""
 		p.rank()
@@ -463,9 +466,32 @@ func (p *knowledgePlace) pageLinks() []knowledge.Link {
 
 func (a *app) knowledgeBody(width, room int) []placeRow {
 	p := &a.kb
+	left := max(24, min(42, width/3))
+	narrow := width < 85
+	if narrow {
+		left = width - 2
+	}
 	var rows []placeRow
 	add := func(s string) { rows = append(rows, placeRow{text: " " + fit(s, max(1, width-2)), hit: -1}) }
-	add(a.pal.muted("Knowledge") + a.pal.dim(a.chords.say("  · alt+u Saved memory")))
+	add(a.pal.muted("Knowledge"))
+	if p.reading.Enabled {
+		stats := fmt.Sprintf("%d pages", len(p.reading.Pages))
+		if p.reading.Pending > 0 {
+			stats += fmt.Sprintf(" · %d queued", p.reading.Pending)
+		}
+		if p.reading.CostUSD > 0 {
+			stats += fmt.Sprintf(" · $%.4f", p.reading.CostUSD)
+		}
+		add(a.pal.dim(stats))
+	}
+	label := "Saved memory"
+	switchInk := taskLinkInk(a.pal, label)
+	if p.hoverLink == "@switch" {
+		switchInk = taskLinkHotInk(a.pal, label)
+	}
+	add(switchInk + a.pal.dim(a.chords.say(" · alt+u")))
+	rows[len(rows)-1].hit = knowledgeHit{tree: -1, links: []knowledgeCellLink{{1, 1 + ansi.StringWidth(label), "@switch"}}}
+	add("")
 	if p.vault == nil {
 		add("")
 		add("Knowledge is available in a local project conversation.")
@@ -488,9 +514,11 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 		}
 		return rows
 	}
-	add(a.pal.dim(fmt.Sprintf("%d pages · %d queued · new updates $%.4f", len(p.reading.Pages), p.reading.Pending, p.reading.CostUSD)))
 	if p.reading.LastError != "" {
-		add(a.pal.bad("Update paused: ") + p.reading.LastError)
+		add(a.pal.bad("Update paused"))
+		for _, line := range wrapText(p.reading.LastError, max(1, left)) {
+			add(a.pal.dim(line))
+		}
 	} else if p.reading.NeedsUpdate {
 		add(a.pal.dim("Updating knowledge…"))
 	}
@@ -501,6 +529,7 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 		return rows
 	}
 	add(a.pal.dim("Search: ") + p.filter.String())
+	rows[len(rows)-1].hit = knowledgeHit{tree: -1, links: []knowledgeCellLink{{1, max(2, width-2), "@search"}}}
 	controls := []struct{ label, id string }{{"Collapse all", "@collapse"}, {"Expand all", "@expand"}}
 	var controlText strings.Builder
 	var controlHits []knowledgeCellLink
@@ -519,15 +548,13 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 		controlHits = append(controlHits, knowledgeCellLink{controlWidth + 1, end + 1, control.id})
 		controlWidth = end
 	}
-	if width >= 62 {
-		controlText.WriteString(a.pal.dim(a.chords.say("  ctrl+left / ctrl+right")))
-	}
+
 	add(controlText.String())
 	rows[len(rows)-1].hit = knowledgeHit{tree: -1, links: controlHits}
-	left := max(24, min(42, width/3))
-	narrow := width < 85
-	if narrow {
-		left = width - 2
+	add("")
+	sidebar := rows
+	if !narrow {
+		rows = nil
 	}
 	article := []string{}
 	articleHits := map[int][]knowledgeCellLink{}
@@ -601,7 +628,7 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 				article = append(article, fit(text, max(1, rightWidth)))
 			}
 		}
-		if sources := knowledgeSources(n.Evidence); len(sources) > 0 && !p.links {
+		if len(n.Evidence) > 0 && !p.links {
 			if p.sources {
 				back := taskLinkInk(a.pal, "Return to article")
 				if p.hoverLink == "@sources" {
@@ -609,15 +636,10 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 				}
 				article = []string{a.pal.muted(n.Title), "", a.pal.muted("Sources"), back + a.pal.dim(a.chords.say(" · esc")), ""}
 				articleHits = map[int][]knowledgeCellLink{3: {{0, 17, "@sources"}}}
-				for _, e := range sources {
-					article = append(article, a.pal.data(knowledgeSourceLabel(e)))
-					for _, quote := range strings.Split(e.Quote, "\n\n") {
-						article = append(article, wrapText("“"+quote+"”", max(1, rightWidth))...)
-					}
-					article = append(article, "")
-				}
+				article = append(article, a.knowledgeSourceRows(n, rightWidth)...)
+
 			} else {
-				label := fmt.Sprintf("Sources · %d", len(sources))
+				label := fmt.Sprintf("Sources · %d", len(knowledgeSources(n.Evidence)))
 				article = append(article, "")
 				articleHits[len(article)] = []knowledgeCellLink{{0, ansi.StringWidth(label), "@sources"}}
 				painted := taskLinkInk(a.pal, label)
@@ -637,7 +659,7 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 			p.scroll = min(p.scroll, max(0, len(article)-bodyRoom))
 			for i, line := range article[min(p.scroll, len(article)):] {
 				add(line)
-				rows[len(rows)-1].hit = knowledgeHit{tree: -1, links: knowledgeShift(articleHits[p.scroll+i], 1)}
+				rows[len(rows)-1].hit = knowledgeHit{tree: -1, article: true, links: knowledgeShift(articleHits[p.scroll+i], 1)}
 			}
 		} else {
 			p.top = placeTop(p.top, p.cursor, len(p.targets), bodyRoom)
@@ -651,23 +673,39 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 			}
 		}
 	} else {
+		treeRoom := max(1, bodyRoom-len(sidebar))
 		p.scroll = min(p.scroll, max(0, len(article)-bodyRoom))
-		p.top = placeTop(p.top, p.cursor, len(p.targets), bodyRoom)
+		p.top = placeTop(p.top, p.cursor, len(p.targets), treeRoom)
 		for i := 0; i < bodyRoom; i++ {
 			l, r := "", ""
-			if j := p.top + i; j < len(p.targets) {
+			hit := knowledgeHit{tree: -1}
+			if i < len(sidebar) {
+				l = strings.TrimPrefix(sidebar[i].text, " ")
+				if h, ok := sidebar[i].hit.(knowledgeHit); ok {
+					hit.links = append(hit.links, h.links...)
+					for j := range hit.links {
+						hit.links[j].end = min(hit.links[j].end, left+1)
+					}
+				}
+			} else if j := p.top + i - len(sidebar); j < len(p.targets) {
 				l = p.treeLine(j)
 				if j == p.cursor {
 					l = knowledgeTreeSelection(l, left, a.pal)
 				}
+				hit.tree = j
+			} else {
+				hit.tree = p.top + i - len(sidebar)
 			}
 			if j := p.scroll + i; j < len(article) {
 				r = article[j]
+				hit.article = true
 			}
+			hit.links = append(hit.links, knowledgeShift(articleHits[p.scroll+i], left+4)...)
 			add(taskPanePad(fit(l, left), left) + a.pal.dim(" │ ") + r)
-			rows[len(rows)-1].hit = knowledgeHit{tree: p.top + i, links: knowledgeShift(articleHits[p.scroll+i], left+4)}
+			rows[len(rows)-1].hit = hit
 		}
 	}
+
 	if len(rows) > room {
 		rows = rows[:room]
 	}
@@ -685,6 +723,9 @@ func knowledgeShift(links []knowledgeCellLink, by int) []knowledgeCellLink {
 
 func (placeMemory) pressAt(a *app, x, y int) (tea.Cmd, bool) {
 	if !a.kb.open {
+		if cmd, ok := a.savedKnowledgeSwitchAt(x, y); ok {
+			return cmd, true
+		}
 		return placeMemory{}.press(a, y)
 	}
 	p := &a.kb
@@ -693,12 +734,16 @@ func (placeMemory) pressAt(a *app, x, y int) (tea.Cmd, bool) {
 		return nil, true
 	}
 	if hit, ok := hits[y].(knowledgeHit); ok {
-		if hit.create && !p.reading.Enabled {
+		if hit.create && !p.reading.Enabled && x >= 1 && x < 1+ansi.StringWidth("› Create knowledge base") {
 			return a.knowledgeRead(true), true
 		}
 		for _, link := range hit.links {
 			if x >= link.start && x < link.end {
-				if link.id == "@collapse" {
+				if link.id == "@switch" {
+					return a.knowledgeOwnsSwitch(), true
+				} else if link.id == "@search" {
+					a.bar.on = false
+				} else if link.id == "@collapse" {
 					p.foldAll(true)
 				} else if link.id == "@expand" {
 					p.foldAll(false)
@@ -727,7 +772,7 @@ func (a *app) knowledgeOwnsEnter() tea.Cmd {
 // Pointer affordances use the same cell map as clicks, including wrapped links.
 func (placeMemory) hoverAt(a *app, x, y int) bool {
 	if !a.kb.open {
-		return placeMemory{}.hover(a, y)
+		return a.savedKnowledgeHoverAt(x, y)
 	}
 	hits := a.kb.hitRows
 	moved := false
@@ -782,4 +827,9 @@ func (placeMemory) rememberHits(a *app, hits []placeHit) {
 	if a.kb.open {
 		a.kb.hitRows = hits
 	}
+}
+
+func (a *app) knowledgeOwnsSwitch() tea.Cmd {
+	cmd, _ := a.knowledgeOwns(tea.KeyPressMsg{Code: 'u', Mod: tea.ModAlt})
+	return cmd
 }

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
 )
 
@@ -412,4 +413,51 @@ func TestKnowledgeBackgroundRetriesCompositionWithNoPendingSources(t *testing.T)
 		time.Sleep(30 * time.Millisecond)
 	}
 	t.Fatal("background scheduler left composition-only recovery pending")
+}
+
+func TestKnowledgeSavedTurnsUseThePersistedCompilerModel(t *testing.T) {
+	profile := t.TempDir()
+	agent, _ := newTestAgent(t, &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("Durable queues retain work."), nil
+		},
+	}}, func(c *Config) {
+		c.usageLedger = filepath.Join(t.TempDir(), "usage.jsonl")
+		c.ProfileDir = profile
+		c.SessionFile = filepath.Join(t.TempDir(), "chat.jsonl")
+	})
+	registry := config.NewSettings(config.SettingsOptions{ProfileDir: profile})
+	row, ok := registry.Row("knowledge.model")
+	if !ok {
+		t.Fatal("Settings has no knowledge model choice")
+	}
+	if err := row.Apply("example/knowledge-model"); err != nil {
+		t.Fatal(err)
+	}
+	vault := agent.Knowledge()
+	if err := vault.Create(); err != nil {
+		t.Fatal(err)
+	}
+	collect(t, mustSubmit(t, agent, "Explain durable queues"))
+	if err := agent.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened := knowledge.Open(profile, agent.config.Workspace)
+	status, err := reopened.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Pending != 2 || status.Model != "example/knowledge-model" {
+		t.Fatalf("saved chat did not use persisted knowledge model: %+v", status)
+	}
+	if err := row.Apply("example/updated-model"); err != nil {
+		t.Fatal(err)
+	}
+	status, err = reopened.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Model != "example/updated-model" {
+		t.Fatalf("existing vault kept stale model: %q", status.Model)
+	}
 }

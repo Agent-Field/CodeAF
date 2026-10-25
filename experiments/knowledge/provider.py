@@ -1,4 +1,4 @@
-"""One pinned OpenRouter model for extraction, organization, research and recall."""
+"""One explicitly selected OpenRouter model for all knowledge compiler roles."""
 import json
 import os
 from pathlib import Path
@@ -378,7 +378,10 @@ one-off instructions. Do not reward elegant prose that the evidence does not sup
 
 
 class OpenRouter:
-    def __init__(self, directory, *, reasoning_effort=None, max_tokens=32000):
+    def __init__(self, directory, *, model=MODEL, reasoning_effort=None, max_tokens=32000):
+        if not isinstance(model, str) or not model.strip():
+            raise ValueError("Knowledge model must be an explicit model id")
+        self.model = model.strip()
         if reasoning_effort not in (None, "none", "low"):
             raise ValueError("Experiment reasoning effort must be none or low")
         if not isinstance(max_tokens,int) or not 512 <= max_tokens <= 32000:
@@ -415,7 +418,7 @@ class OpenRouter:
         reasoning = {"effort": "none"} if role in no_reasoning else {"effort": "low"}
         if self.reasoning_effort is not None:
             reasoning = {"effort": self.reasoning_effort}
-        request_id = identity([MODEL, PROMPT_VERSION, PROMPTS[role], payload])
+        request_id = identity([self.model, PROMPT_VERSION, PROMPTS[role], payload])
         if role in no_reasoning or self.reasoning_effort is not None:
             request_id = identity([request_id, reasoning])
         if self.max_tokens != 32000:
@@ -423,7 +426,7 @@ class OpenRouter:
         cached = self.directory / (request_id + ".json")
         if cached.exists():
             record = json.loads(cached.read_text())
-            if record["model"] != MODEL:
+            if record["model"] != self.model:
                 raise ValueError("Cached model does not match required model")
             return record["result"]
         key = os.environ.get("OPENROUTER_API_KEY")
@@ -541,7 +544,7 @@ class OpenRouter:
                 "relations": {"type": "array", "items": edge, "maxItems": len(payload["claims"])}},
                 "required": ["notes", "relations"], "additionalProperties": False}
             response_format = {"type": "json_schema", "json_schema": {"name": "knowledge_organization", "strict": True, "schema": schema}}
-        body = {"model": MODEL, "messages": [
+        body = {"model": self.model, "messages": [
             {"role": "system", "content": PROMPTS[role]},
             {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
             "temperature": 0, "max_tokens": self.max_tokens,
@@ -579,8 +582,8 @@ class OpenRouter:
                 print(f"{role}: transient connection failure; retrying same model after {delay}s", flush=True)
                 time.sleep(delay)
                 backoff_seconds += delay
-        if data.get("model") != MODEL:
-            raise ValueError(f"Required {MODEL}, provider recorded {data.get('model')}; rejecting result")
+        if data.get("model") != self.model:
+            raise ValueError(f"Required {self.model}, provider recorded {data.get('model')}; rejecting result")
         choice = data["choices"][0]
         if choice.get("finish_reason") != "stop":
             (self.directory / (request_id + ".failure.json")).write_text(json.dumps({
@@ -602,5 +605,5 @@ class OpenRouter:
             tmp.replace(cached)
             with (self.directory / "calls.jsonl").open("a") as f:
                 f.write(json.dumps({k: v for k, v in record.items() if k != "result"}) + "\n")
-        print(f"{role}: {request_id} · {record['seconds']}s · verified {MODEL}", flush=True)
+        print(f"{role}: {request_id} · {record['seconds']}s · verified {self.model}", flush=True)
         return result

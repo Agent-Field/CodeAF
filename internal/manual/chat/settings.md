@@ -153,3 +153,16 @@ receipts replace estimates only for the token components they actually report.
 
 There is no practice limit any more: codeaf no longer practises on its own, and
 `/budget practice` answers with exactly that.
+
+## Knowledge model for background learning
+
+Settings → Models has a **knowledge** model choice (`knowledge.model`).
+It controls the OpenRouter model used to extract, organize and review project
+knowledge, separately from your conversation and task models. The default is
+`deepseek/deepseek-v4.1-flash`. Clearing the choice restores that default.
+
+A saved change applies to the next compilation without restarting your chats.
+A compilation already running finishes with its original model. The compiler
+verifies the model reported by the provider and rejects substitutions; it never
+falls back to a different model. Existing notes stay intact when you change this
+setting. Knowledge capture must still be enabled from Memory for each project.

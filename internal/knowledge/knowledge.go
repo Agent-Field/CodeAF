@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	assets "github.com/Agent-Field/codeaf/experiments/knowledge"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/sqliteuri"
 	"io/fs"
 	_ "modernc.org/sqlite"
@@ -23,7 +24,7 @@ import (
 	"time"
 )
 
-const Model = "deepseek/deepseek-v4.1-flash"
+const Model = config.DefaultKnowledgeModel
 
 var ErrDisabled = errors.New("knowledge is not enabled for this project")
 var locks sync.Map
@@ -134,7 +135,7 @@ func (v *Vault) Create() error {
 	if err := os.MkdirAll(filepath.Join(v.root, "queue"), 0700); err != nil {
 		return err
 	}
-	return writeJSON(filepath.Join(v.root, "config.json"), map[string]any{"enabled": true, "project": v.project, "schema": 1, "model": Model, "created_at": time.Now().UTC().Format(time.RFC3339Nano)})
+	return writeJSON(filepath.Join(v.root, "config.json"), map[string]any{"enabled": true, "project": v.project, "schema": 1, "model": config.KnowledgeModelAt(v.profile), "created_at": time.Now().UTC().Format(time.RFC3339Nano)})
 }
 func writeJSON(path string, value any) error {
 	b, e := json.MarshalIndent(value, "", "  ")
@@ -226,7 +227,7 @@ func (v *Vault) Capture(s Source) error {
 
 // Status returns pending capture and compiler metadata without loading articles.
 func (v *Vault) Status() (Snapshot, error) {
-	s := Snapshot{Enabled: v.Enabled(), Model: Model}
+	s := Snapshot{Enabled: v.Enabled(), Model: config.KnowledgeModelAt(v.profile)}
 	if !s.Enabled {
 		return s, nil
 	}
@@ -541,7 +542,7 @@ func (v *Vault) Flush(ctx context.Context, key string, force bool) error {
 	if e != nil {
 		return e
 	}
-	args := []string{filepath.Join(root, "bridge.py"), "--root", v.root, "--project", v.project}
+	args := []string{filepath.Join(root, "bridge.py"), "--root", v.root, "--project", v.project, "--model", config.KnowledgeModelAt(v.profile)}
 	if force {
 		args = append(args, "--force")
 	}

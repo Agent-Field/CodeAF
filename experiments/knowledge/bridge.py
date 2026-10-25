@@ -1,7 +1,7 @@
 """Embedded binary bridge: local capture import and one bounded incremental pass.
 
 No global curiosity/maintenance/reconciliation model pass runs on each chat turn.
-Provider model is pinned in provider.py. All source text remains untrusted data.
+The selected provider model is used consistently for every compiler role. All source text remains untrusted data.
 """
 import argparse
 import fcntl
@@ -16,7 +16,7 @@ from topics import reconcile, publish
 from storage import save, viewer, write_json
 
 
-def compile_workspace(root, project, *, force=False, model=None):
+def compile_workspace(root, project, *, force=False, model=None, model_id=MODEL):
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True, mode=0o700)
     with (root / '.bridge.lock').open('a') as lock:
@@ -35,7 +35,7 @@ def compile_workspace(root, project, *, force=False, model=None):
                 data = json.loads(receipt.read_text())
                 cost += (data.get('usage') or {}).get('cost', 0) or 0
             result = {'pending': pending, 'cost_usd': cost,
-                      'model': MODEL, 'last_error': error, 'needs_update': needs_update}
+                      'model': model_id, 'last_error': error, 'needs_update': needs_update}
             write_json(status_file, result)
             return result
         try:
@@ -56,7 +56,7 @@ def compile_workspace(root, project, *, force=False, model=None):
                 else:
                     path.replace(archived)
             status()
-            selected_model = model or OpenRouter(root / 'calls', reasoning_effort='none', max_tokens=8000)
+            selected_model = model or OpenRouter(root / 'calls', model=model_id, reasoning_effort='none', max_tokens=8000)
             result = work.flush(selected_model, force=force)
             vault = result['vault']
             projection_file = root / 'projection.json'
@@ -93,9 +93,10 @@ def main():
     parser.add_argument('--root', required=True)
     parser.add_argument('--project', required=True)
     parser.add_argument('--force', action='store_true')
+    parser.add_argument('--model', default=MODEL)
     args = parser.parse_args()
     try:
-        print(json.dumps(compile_workspace(args.root, args.project, force=args.force)))
+        print(json.dumps(compile_workspace(args.root, args.project, force=args.force, model_id=args.model)))
     except Exception as error:
         # Provider exceptions may contain untrusted response content. Keep CLI errors bounded.
         raise SystemExit(type(error).__name__ + ': knowledge compilation failed; inspect private status and receipts')

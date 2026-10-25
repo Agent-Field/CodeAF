@@ -21,6 +21,12 @@ press **ctrl+l** to select linked pages and backlinks. **Left** or **Escape**
 returns; **Page Up/Page Down** reads longer articles. **alt+u** returns to saved
 memory. Narrow terminals switch between tree and article views.
 
+Settings → Models → **knowledge** chooses the OpenRouter model for native
+background compilation (`knowledge.model` in the profile). Its default is
+`deepseek/deepseek-v4.1-flash`. Changes apply to the next batch; every compiler
+role uses that exact selection, and cached responses are isolated by model.
+Clearing the choice restores the default. Chat and task models stay separate.
+
 Completed future local chat turns queue durably. Background extraction combines
 eligible updates after 30 seconds quiet or 120 seconds maximum age, subject to
 the bounded context limits. Agents search and read cited pages without a second
