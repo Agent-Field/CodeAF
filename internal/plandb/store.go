@@ -12,6 +12,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -3316,14 +3317,17 @@ func cloneTask(task *Task) *Task {
 		return nil
 	}
 	copyTask := *task
-	copyTask.Dependencies = append([]Dependency(nil), task.Dependencies...)
-	copyTask.Capabilities = append([]string(nil), task.Capabilities...)
-	copyTask.Resources = append([]ResourceClaim(nil), task.Resources...)
-	copyTask.ContextInputs = append([]string(nil), task.ContextInputs...)
-	copyTask.Deliverables = append([]string(nil), task.Deliverables...)
-	copyTask.EvidenceRequirements = append([]string(nil), task.EvidenceRequirements...)
-	copyTask.Artifacts = append([]string(nil), task.Artifacts...)
-	copyTask.Evidence = append([]string(nil), task.Evidence...)
+	copyTask.Dependencies = slices.Clip(slices.Clone(task.Dependencies))
+	copyTask.Capabilities = slices.Clip(slices.Clone(task.Capabilities))
+	copyTask.Resources = slices.Clip(slices.Clone(task.Resources))
+	copyTask.ContextInputs = slices.Clip(slices.Clone(task.ContextInputs))
+	copyTask.Deliverables = slices.Clip(slices.Clone(task.Deliverables))
+	copyTask.EvidenceRequirements = slices.Clip(slices.Clone(task.EvidenceRequirements))
+	copyTask.Checks = slices.Clip(slices.Clone(task.Checks))
+	copyTask.Artifacts = slices.Clip(slices.Clone(task.Artifacts))
+	copyTask.Evidence = slices.Clip(slices.Clone(task.Evidence))
+	copyTask.VerdictBasis.Runs = slices.Clip(slices.Clone(task.VerdictBasis.Runs))
+	copyTask.VerdictBasis.Unobserved = slices.Clip(slices.Clone(task.VerdictBasis.Unobserved))
 	return &copyTask
 }
 
