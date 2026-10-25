@@ -170,7 +170,11 @@ func TestQueuedCrewStartLeasesItsNewManager(t *testing.T) {
 
 func TestQueuedCrewDecisionRejectsForeignAndMissingPackets(t *testing.T) {
 	for _, agent := range []string{otherChat, ""} {
-		t.Run(agent, func(t *testing.T) {
+		name := "foreign"
+		if agent == "" {
+			name = "missing"
+		}
+		t.Run(name, func(t *testing.T) {
 			g := newRig(t)
 			if agent != "" {
 				g.e.asks = []appwire.Ask{{ID: "crew:packet", Agent: agent, Subject: &appwire.AskSubject{Kind: appwire.SubjectCrewDecision, Ref: "packet"}}}
