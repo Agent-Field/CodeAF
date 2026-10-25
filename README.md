@@ -286,7 +286,8 @@ Sixteen of ours fit in half a gigabyte; claude's fourth tab alone needs more.
 
 - `codeaf manual`, or `alt+.` for the key map. The manual ships in the binary and the chat reads it too.
 - [Guide](docs/GUIDE.md): every flag, key, slash command and exit code.
-- [docs/](docs/README.md): architecture, headless, remote, limits.
+- [Documentation map](docs/README.md): product manuals, developer architecture, contracts and history.
+- [Contributing](CONTRIBUTING.md): setup, validation and pull requests.
 
 ## Telemetry
 

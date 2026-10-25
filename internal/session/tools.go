@@ -256,6 +256,7 @@ func (a *Agent) belt() []bare.Tool {
 	// program plans around that ability for the rest of the conversation.
 	tools = append(tools, a.subharnessTools()...)
 	tools = append(tools, a.memoryTools()...)
+	tools = append(tools, a.knowledgeTools()...)
 	// An owned conversation has no project until the person names one. The
 	// anchoring hand exists only in that state; after it succeeds the rebuilt
 	// belt omits it, because a capability whose job is already done is absent.

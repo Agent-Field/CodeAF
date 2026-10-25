@@ -74,8 +74,14 @@ func (a *Agent) AnchorWorkspace(path string) (string, error) {
 	// The config is the source every future worker copies. Rebuild the hands as
 	// well as the words: bare tools close over their workspace when the belt is
 	// assembled, so changing only Config would leave their cwd behind.
+	if a.file != nil && !a.file.writeLine(sessionEntry{Type: "knowledge_scope", KnowledgeProject: resolved, KnowledgePreviousProject: a.config.Workspace, Timestamp: stamp()}) {
+		return "", fmt.Errorf("could not persist knowledge project scope; workspace anchor must be retried")
+	}
 	a.config.Workspace = resolved
 	a.config.Place = place
+	if a.Knowledge() != nil {
+		a.rebindKnowledgeLocked(resolved)
+	}
 	// AND THE PROJECT KEY FOLLOWS THE WORKSPACE, exactly as [v3PointAt] states
 	// it: the key IS the workspace's provable identity, so an anchor that moved
 	// the workspace and left the key behind would scope every later project write

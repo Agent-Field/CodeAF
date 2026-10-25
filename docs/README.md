@@ -1,38 +1,51 @@
-# codeaf — the documentation
+# Documentation map
 
-One page that says where everything is. Start here.
+Choose the kind of knowledge you need. Product instructions, developer design,
+contributor rules and historical records serve different readers.
 
-## If you want to…
+## Product knowledge
 
-| …then read | |
+| Need | Read |
 | --- | --- |
-| **Drive it from a script, CI, or a benchmark** | [HEADLESS.md](HEADLESS.md) — `codeaf do` and `codeaf exec`, exit codes, the `--json` objects, environment, and the rules for measuring it |
-| **Know what it can do, feature by feature** | [FEATURES.md](FEATURES.md) — the master catalog, one entry per capability |
-| **Understand how it is built** | [ARCHITECTURE.md](ARCHITECTURE.md) — the store, the event log, the permanent spine, the resident role |
-| **Know what it may spend** | [LIMITS.md](LIMITS.md) — every money rail, its default, what fires when it is reached, and where `0` means no limit |
-| **Keep it fast** | [../PERF.md](../PERF.md) — the size ratchet, the allocation laws, the launch-path pins, and why none of them is a stopwatch |
+| Install and start using codeaf | [Guide](GUIDE.md) |
+| Find the exact behavior codeaf explains about itself | [Shipped manual map](../internal/manual/README.md) — separate chat and resident corpora |
+| Learn the current chat's features | [Chat manual](../internal/manual/chat/what-i-can-do.md), [getting started](../internal/manual/chat/getting-started.md) |
+| Understand Memory and project knowledge | [Memory](../internal/manual/chat/what-i-remember.md), [project knowledge](../internal/manual/chat/places.md#project-knowledge-inside-memory) |
 
-## The subsystems
+The manual is product knowledge compiled into the binary. Repository development
+notes and users' learned project knowledge are separate; see [documentation ownership](DOCUMENTATION.md).
 
-| Doc | What it covers |
+## Developer knowledge
+
+Start with the [current architecture map](ARCHITECTURE.md). It identifies the
+chat and resident surfaces, entry points, implementation owners and storage roles.
+The [workspace storage and relay reference](architecture/workspaces-storage-relay.md)
+explains task folders, cooperating layouts, multi-root transfer, and result application.
+
+| Category | References |
 | --- | --- |
-| [STANDING.md](STANDING.md) | Standing goals — history: the v1 machinery is removed; see automations |
-| [JOBS.md](JOBS.md) | Background jobs — two primitives, turn-boundary reporting, nothing outlives its leaf |
-| [SERVICES.md](SERVICES.md) | Services — long-running processes the user meant to keep; promotion is consent |
-| [MULTIMODAL.md](MULTIMODAL.md) | Voice, images, documents, media generation — capability for the graph, presence for the chat |
-| [THREAD-UX.md](THREAD-UX.md) | The thread and the cards — one conversation, many living jobs |
-| [SUBHARNESS.md](SUBHARNESS.md) | Node harnesses — one task graph, many workers: ours, claude, codex |
+| Current interface contracts | [Headless](HEADLESS.md), [remote architecture](REMOTE.md), [subharness execution](SUBHARNESS-CONTRACT.md), [pairing](ux-pairing-contract.md) |
+| Spending and reporting | [Limits](LIMITS.md), [model usage accounting](model-usage-accounting.md), [telemetry disclosure](TELEMETRY.md) |
+| Operation and verification | [Run a relay](relay.md), [test moving chats](testing-anywhere.md), [remote session test notes](remote-access-testing.md) — check the historical warning |
+| Design rationale | [Visual design language](DESIGN-LANGUAGE.md), [home layout](HOME-BRIDGE.md), [thread UX](THREAD-UX.md), [background jobs](JOBS.md), [services](SERVICES.md), [multimodal](MULTIMODAL.md), [stored subharness design](SUBHARNESS.md) |
+| Performance | [Performance rules and size budget](../PERF.md) |
 
-## Two rules about these files
+A contract describes an interface that other code relies on. Design rationale
+explains a decision and may include proposals or earlier revisions. Check scope
+and implementation before treating design prose as a current feature list.
 
-**The runtime source of truth is `internal/manual`, not `docs/`.** These pages
-are design documents: written to persuade, on disk, stale the moment a build
-lands. What codeaf *says about itself* comes from the user-voice pages embedded
-in the binary and searched by the `manual` tool. Where they disagree, the
-manual wins. Add a feature, add its manual paragraph; update these afterwards
-if you like, but never instead.
+## Contributing
 
-**Where a doc and the binary disagree about behaviour, the binary wins and the
-doc is a bug.** [HEADLESS.md](HEADLESS.md) in particular is a contract other
-programs are written against — its exit codes and JSON field meanings are
-promises, and changing them is a breaking change to every harness.
+| Need | Read |
+| --- | --- |
+| Make a first contribution | [Contributor guide](../CONTRIBUTING.md) |
+| Give a coding agent repository instructions | [AGENTS.md](../AGENTS.md), then [architecture](ARCHITECTURE.md) and recent [changes](changes/README.md) |
+| Choose where documentation belongs | [Documentation ownership](DOCUMENTATION.md), [manual authoring](../internal/manual/README.md) |
+| Follow contribution and release policy | [Rules index](rules/README.md): branches, CI, change entries and promotion |
+
+## History
+
+[Historical designs](history/README.md) preserve superseded decisions without
+presenting them as the current product. [Unreleased change entries](changes/README.md)
+explain recent changes; [CHANGELOG.md](../CHANGELOG.md) records releases. Neither
+replaces an up-to-date manual or interface reference.

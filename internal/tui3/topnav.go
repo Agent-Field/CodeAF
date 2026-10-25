@@ -88,6 +88,9 @@ const (
 
 // navLabel changes presentation only; page words remain stable navigation identities.
 func navLabel(id page) string {
+	if labelled, ok := placeFor(id).(interface{ navWord() string }); ok {
+		return labelled.navWord()
+	}
 	word := id.word()
 	if word == "" {
 		return word

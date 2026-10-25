@@ -1728,6 +1728,7 @@ type app struct {
 	// mem is the Memories tab's state: the snapshot it is drawing, the groups
 	// that are open, and the filter (place_memories.go).
 	mem memoryPlace
+	kb  knowledgePlace
 	// memory is the store the tab reads and changes. It is optional because a
 	// session whose memory store could not be opened has no capability behind
 	// the tab.
@@ -4431,7 +4432,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// fell through from one of them would scroll a transcript nobody can see,
 		// which is what a person turning it over the standing list actually got.
 		if delta := placeWheelDelta(msg.Mouse().Button); delta != 0 {
-			if cmd, took := a.placeBodyWheel(delta); took {
+			if cmd, took := a.placeBodyWheel(msg.Mouse().X, msg.Mouse().Y, delta); took {
 				return a, cmd
 			}
 		}
@@ -4707,7 +4708,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// through to the conversation underneath would open a tool call
 			// nobody can see. A press on one of their rows is `enter` on it
 			// (pages.go's [app.placeBodyPress]).
-			if cmd, took := a.placeBodyPress(msg.Mouse().Y); took {
+			if cmd, took := a.placeBodyPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
 			// And a background job's page at the same rung and for the same
@@ -5201,7 +5202,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// The other list pages share home's single selection: pointer motion
 		// selects the row that keyboard actions use.
-		if a.placeBodyHover(msg.Mouse().Y) {
+		if a.placeBodyHover(msg.Mouse().X, msg.Mouse().Y) {
 			return a, nil
 		}
 		if a.rewSheet.open {
@@ -5663,6 +5664,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case memoryPlaceDoneMsg:
 		a.adoptMemoryPlaceDone(msg)
+		return a, nil
+	case knowledgeReadingMsg:
+		a.adoptKnowledge(msg)
 		return a, nil
 
 	case memoryOriginMsg:
@@ -9454,6 +9458,16 @@ func (a *app) paste(text string) tea.Cmd {
 	// at the door — CRLF first, then bare CR.
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	text = strings.ReplaceAll(text, "\r", "\n")
+	// A place editor owns paste just as it owns keys, before any hidden draft.
+	if pl := a.showing(); pl != nil {
+		if target, ok := pl.(interface {
+			paste(*app, string) (tea.Cmd, bool)
+		}); ok {
+			if cmd, took := target.paste(a, text); took {
+				return cmd
+			}
+		}
+	}
 	// Creation and the grid own their clipboard input just as they own keys.
 	// A paste must never spill into the conversation draft behind them.
 	if a.tmembers.on {

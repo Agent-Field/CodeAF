@@ -3,8 +3,8 @@
 This implementation separates working-root identity, private task placement,
 explicit result application, and encrypted transfer. A working root is a
 selected folder, not necessarily a repository or everything a chat works on.
-One chat may use several roots. The resident-graph design in
-[ARCHITECTURE](../ARCHITECTURE.md) is separate from this chat storage schema.
+One chat may use several roots. The [architecture map](../ARCHITECTURE.md) distinguishes this chat storage
+from the separate resident surface.
 
 ## Folders, ownership, and cooperation
 
@@ -78,7 +78,7 @@ Use `/task review <task number> <root slot>` after the task and its cooperating
 writers/checkers finish. The terminal shows the private copy, receiver-local
 application destination, exact snapshot identity, and diff. Large previews show
 a command for inspecting the complete immutable diff. Review does not change
-the original project or the retained private working copy.
+the original project working files or the retained private working copy.
 
 `/task apply <task number> <root slot>` applies that reviewed snapshot only.
 Changes arriving in the private copy after review are retained there and do not

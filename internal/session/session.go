@@ -23,6 +23,7 @@ import (
 	"context"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
+	"github.com/Agent-Field/codeaf/internal/knowledge"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -1226,6 +1227,9 @@ type TaskLanding struct {
 }
 
 type Config struct {
+	// knowledgeReadVault lends the parent project knowledge to task worktrees, read-only.
+	knowledgeReadVault *knowledge.Vault
+
 	// WaitForBeltSteps is for the run worker that enforces its limits and
 	// delivers notes from tool-end events. Its sole event reader must close
 	// Event.BeltStepHandled after processing each such event. Other agents
@@ -2398,6 +2402,11 @@ type Config struct {
 // events — every Submit streams, whether it started the turn or steered it.
 // The methods live in agent.go; the loop they drive lives in loop.go.
 type Agent struct {
+	knowledgeMu      sync.RWMutex
+	knowledgeRetired []*knowledgeJournal
+	knowledgeVault   *knowledge.Vault
+	knowledgeJournal *knowledgeJournal
+
 	chatStarts map[string]bool
 	// jailNotice keeps a host limit from becoming noise on every tool call.
 	jailNotice sync.Once

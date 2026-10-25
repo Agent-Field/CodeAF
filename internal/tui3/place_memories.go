@@ -651,11 +651,18 @@ type placeMemory struct{ placeBase }
 
 func init() { registerPlace(placeMemory{}) }
 
-func (placeMemory) id() page      { return pageMemory }
-func (placeMemory) word() string  { return "memories" }
-func (placeMemory) counted() bool { return true }
+func (placeMemory) id() page        { return pageMemory }
+func (placeMemory) word() string    { return "memories" }
+func (placeMemory) navWord() string { return "Memory" }
+func (placeMemory) counted() bool   { return true }
 
-func (placeMemory) open(a *app) tea.Cmd { return a.openMemory() }
+func (placeMemory) open(a *app) tea.Cmd {
+	cmd := a.openMemory()
+	if a.kb.open {
+		return tea.Batch(cmd, a.knowledgeRead(false))
+	}
+	return cmd
+}
 
 func (placeMemory) close(a *app) {
 	a.leavePage(pageMemory)
@@ -664,12 +671,30 @@ func (placeMemory) close(a *app) {
 
 func (placeMemory) tick(a *app, now time.Time) (bool, tea.Cmd) {
 	a.refreshMemory()
+	if a.kb.open {
+		return true, a.knowledgeRead(false)
+	}
 	return true, nil
 }
 
 // body is the groups and their lines — with the cursor row's pane beside them
 // on a frame wide enough for one — or the one line whose card is open.
 func (placeMemory) body(a *app, width, room int) []placeRow {
+	if a.kb.open {
+		return a.knowledgeBody(width, room)
+	}
+	if room < 1 {
+		return nil
+	}
+	header := savedMemorySwitchRow(a, width)
+	rows := []placeRow{header}
+	if room > 1 {
+		rows = append(rows, placeRow{text: "", hit: -1})
+	}
+	return append(rows, savedMemoryBody(a, width, max(0, room-savedMemoryHeadRows))...)
+}
+
+func savedMemoryBody(a *app, width, room int) []placeRow {
 	p := &a.mem
 	if p.expanded != "" {
 		p.top = 0
@@ -757,6 +782,28 @@ func (a *app) memoryListRows(width, room int) []placeRow {
 // that box is one of the rows just built: the filter row, the new line being
 // written on the add row, or a line being reworded in its own row.
 func (placeMemory) caretRow(a *app, width int, rows []placeRow) (int, int, bool) {
+	if a.kb.open {
+		if edit := a.kb.edit; edit != nil {
+			if edit.deleting || edit.busy {
+				return -1, 0, true
+			}
+			return edit.caretRow, edit.caretCol, true
+		}
+		for i, row := range rows {
+			if hit, ok := row.hit.(knowledgeHit); ok {
+				for _, link := range hit.links {
+					if link.id == "@search" {
+						plain := ansi.Strip(row.text)
+						if at := strings.Index(plain, "Search: "); at >= 0 {
+							column := ansi.StringWidth(plain[:at]+"Search: ") + ansi.StringWidth(string(a.kb.filter.value[:a.kb.filter.cursor]))
+							return i, min(column, max(0, link.end-1)), true
+						}
+					}
+				}
+			}
+		}
+		return -1, 0, true
+	}
 	p := &a.mem
 	if p.expanded != "" || p.reading.bare() {
 		return 0, 0, false
@@ -992,15 +1039,32 @@ func (a *app) adoptMemoryOrigin(msg memoryOriginMsg) {
 	a.touch()
 }
 
-func (placeMemory) stops(a *app) []int { return a.mem.stops() }
+func (placeMemory) stops(a *app) []int {
+	if a.kb.open {
+		out := make([]int, len(a.kb.targets))
+		for i := range out {
+			out[i] = i
+		}
+		return out
+	}
+	return a.mem.stops()
+}
 
-func (placeMemory) cursorAt(a *app) int { return a.mem.cursor }
+func (placeMemory) cursorAt(a *app) int {
+	if a.kb.open {
+		return a.kb.cursor
+	}
+	return a.mem.cursor
+}
 func (placeMemory) cursorRow(a *app, rows []placeRow) int {
 	return placeRowAtLine(rows, a.mem.cursor)
 }
 
 // rowID is the line, the shelf or the add row under the cursor.
 func (placeMemory) rowID(a *app) string {
+	if a.kb.open {
+		return "knowledge\x00" + a.kb.selected
+	}
 	p := &a.mem
 	if p.onAdd() {
 		return "add"
@@ -1082,6 +1146,9 @@ func (a *app) memorySourceRow(memory store.Memory) (string, bool) {
 // cursor, or to the one whose card is open. Every letter on it is a verb only
 // while the strip is drawn, so the filter keeps every letter of the alphabet.
 func (placeMemory) verbs(a *app) []verb {
+	if a.kb.open {
+		return nil
+	}
 	p := &a.mem
 	memory, ok := p.choice()
 	if !ok {
@@ -1160,6 +1227,12 @@ func (placeMemory) alt(a *app, letter rune) bool { return false }
 
 // box is the filter, or the words being written while the editor is open.
 func (placeMemory) box(a *app) *editor {
+	if a.kb.open {
+		if a.kb.edit != nil {
+			return &a.kb.edit.text
+		}
+		return &a.kb.filter
+	}
 	if a.mem.edit != nil {
 		return a.mem.edit
 	}
@@ -1168,6 +1241,9 @@ func (placeMemory) box(a *app) *editor {
 
 // note is the receipt line.
 func (placeMemory) note(a *app, width int) []string {
+	if a.kb.open {
+		return []string{" " + a.pal.dim(fit(a.kb.footer, width-2))}
+	}
 	if a.mem.footer == "" {
 		return nil
 	}
@@ -1178,6 +1254,15 @@ func (placeMemory) about() string { return "what codeaf remembers" }
 
 // hint is WHAT THE ROW UNDER THE CURSOR CAN BE ASKED FOR.
 func (placeMemory) hint(a *app) string {
+	if a.kb.open {
+		if edit := a.kb.edit; edit != nil {
+			if edit.deleting {
+				return "enter cancel · ctrl+d delete · esc cancel"
+			}
+			return "ctrl+s save · esc cancel · enter newline"
+		}
+		return "↑↓ select · enter open · ctrl+l links · ctrl+o sources · pgup/pgdn read · esc back · alt+u saved memory"
+	}
 	p := &a.mem
 	switch {
 	case p.edit != nil && p.editID == memoryAddID:
@@ -1225,7 +1310,7 @@ func (placeMemory) press(a *app, y int) (tea.Cmd, bool) {
 	if p.expanded != "" || p.edit != nil {
 		return nil, true
 	}
-	at, ok := placeBodyLine(y, p.top, p.shown)
+	at, ok := placeBodyLine(y-savedMemoryHeadRows, p.top, p.shown)
 	if !ok {
 		return nil, true
 	}
@@ -1243,8 +1328,11 @@ func (placeMemory) press(a *app, y int) (tea.Cmd, bool) {
 }
 
 func (placeMemory) hover(a *app, y int) bool {
+	if a.kb.open {
+		return false
+	}
 	next := -1
-	if at, ok := placeBodyLine(y, a.mem.top, a.mem.shown); ok && a.mem.expanded == "" {
+	if at, ok := placeBodyLine(y-savedMemoryHeadRows, a.mem.top, a.mem.shown); ok && a.mem.expanded == "" {
 		if _, stop := a.mem.reading.at(at); stop {
 			next = at
 		}
@@ -1253,6 +1341,19 @@ func (placeMemory) hover(a *app, y int) bool {
 }
 
 func (placeMemory) wheel(a *app, delta int) (tea.Cmd, bool) {
+	if a.kb.open {
+		p := &a.kb
+		switch {
+		case p.links:
+			p.linkCursor = max(0, min(p.linkCursor+delta, len(p.pageLinks())-1))
+		case p.article:
+			p.scroll = max(0, p.scroll+delta)
+		default:
+			p.cursor = max(0, min(p.cursor+delta, len(p.targets)-1))
+		}
+		a.touch()
+		return nil, true
+	}
 	a.mem.move(delta)
 	a.touch()
 	return a.memoryFollow(), true
@@ -1262,12 +1363,18 @@ func (placeMemory) wheel(a *app, delta int) (tea.Cmd, bool) {
 // may have moved the cursor onto a line whose provenance the pane has not
 // read yet, so each one asks ([app.memoryFollow]).
 func (placeMemory) key(a *app, msg tea.KeyPressMsg) tea.Cmd {
+	if a.kb.open {
+		return nil
+	}
 	return tea.Batch(a.memoryKey(msg), a.memoryFollow())
 }
 
 // owns is the editor: a whole-keyboard surface inside [placeMemory.key], so the
 // place router never walks the place out from under somebody mid-sentence.
 func (placeMemory) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	if cmd, took := a.knowledgeOwns(msg); took {
+		return cmd, true
+	}
 	if a.mem.edit == nil {
 		return nil, false
 	}
