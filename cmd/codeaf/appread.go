@@ -1,5 +1,7 @@
 package main
 
+import "sync"
+
 // readAgent pins a conversation for the whole caller's read, including its
 // disk reads and the final owner overlay. Opening and pinning share admission's
 // gate, so release cannot fit between them.
@@ -27,18 +29,21 @@ func (b *appBackend) pinReader(a *appAgent) func() {
 		}
 		a.readers++
 	})
+	var once sync.Once
 	return func() {
-		rest := false
-		b.locked(func() {
-			a.readers--
-			if a.readers == 0 {
-				close(a.readersDone)
-				rest = a.restRead
+		once.Do(func() {
+			rest := false
+			b.locked(func() {
+				a.readers--
+				if a.readers == 0 {
+					close(a.readersDone)
+					rest = a.restRead
+				}
+			})
+			if rest {
+				b.letRestingGo(a)
 			}
 		})
-		if rest {
-			b.letRestingGo(a)
-		}
 	}
 }
 

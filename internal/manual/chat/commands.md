@@ -1037,6 +1037,13 @@ build — go modules and build outputs, npm, pip, cargo — shared across sessio
 module is downloaded once instead of per task. It can quietly grow to hundreds of
 megabytes; that growth is this cache, not your conversations.
 
+The desktop engine also keeps rebuildable task-list answers in
+`~/.codeaf/cache/app-tasks`, capped at 96 MiB total and 256 files. Oldest files
+are evicted first. The engine prunes entries for missing or deleted conversations
+on its first inventory scan and once per minute while running; deleting a
+conversation in the app drops its entry immediately. Cleaning this cache makes
+the next task listing rebuild its answer.
+
 With nothing in it, `/cache` answers `the cache is empty · ~/.codeaf/cache`.
 
 **The cache is not your conversations.** Conversation history, tasks, settings and

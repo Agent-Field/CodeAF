@@ -3817,7 +3817,11 @@ func (b *appBackend) listTasksHeld(a *appAgent, id string) ([]appwire.Task, erro
 			add(appwire.Task{Result: result, ID: appIndexTaskID(id, row.ID), Agent: id, Parent: parent, Title: title, State: state, UpdatedAt: at, YourCall: state == appwire.TaskUnverified})
 		}
 	}
-	for taskID, task := range b.heldTaskViews(a) {
+	owner, err := b.heldTaskViews(a)
+	if err != nil {
+		return nil, err
+	}
+	for taskID, task := range owner {
 		if quickIDs[taskID] {
 			continue
 		}
@@ -3998,6 +4002,7 @@ func (b *appBackend) sweep() {
 // runs or a question waits for the person, whatever the clock says.
 func (b *appBackend) sweepOnce() {
 	now := b.now()
+	appRestDisk.maintain(now)
 	var idle []*appAgent
 	b.locked(func() {
 		for _, a := range b.agents {

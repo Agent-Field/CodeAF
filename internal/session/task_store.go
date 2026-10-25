@@ -66,6 +66,7 @@ package session
 // model reads one grammar for one kind of news.
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -965,6 +966,12 @@ func (s *taskStore) writeLocked(document taskDocument) error {
 	if err != nil {
 		return err
 	}
+	encoded = append(encoded, '\n')
+	// Settled recovery must preserve the identity readers validated before open.
+	// Compare the encoded disk form, including sealed paths and deletions.
+	if previous, err := os.ReadFile(s.path); err == nil && bytes.Equal(previous, encoded) {
+		return nil
+	}
 	if directory := filepath.Dir(s.path); directory != "" && directory != "." {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			return err
@@ -985,7 +992,7 @@ func (s *taskStore) writeLocked(document taskDocument) error {
 		file.Close()
 		return err
 	}
-	_, writeErr := file.Write(append(encoded, '\n'))
+	_, writeErr := file.Write(encoded)
 	closeErr := file.Close()
 	if err := errors.Join(writeErr, closeErr); err != nil {
 		return err

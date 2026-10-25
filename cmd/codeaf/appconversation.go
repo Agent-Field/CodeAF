@@ -146,5 +146,7 @@ func (b *appBackend) DeleteAgent(id string) error {
 	}
 	b.release(a)
 	b.locked(func() { delete(b.agents, id) })
+	b.restMemo.forget(id)
+	appRestDisk.forget(id)
 	return nil
 }

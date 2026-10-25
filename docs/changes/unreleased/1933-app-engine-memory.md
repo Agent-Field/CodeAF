@@ -5,6 +5,7 @@ pr: 1933
 surface: [engine]
 invalidates:
   - "A member of an open crew stayed held in memory for as long as its crew was open, and listing tasks, asks or processes opened every member. Now a member with nothing in flight is read from its files, held only for one read to build its task list, and let go after the idle time like any other conversation."
+  - "A settled checkpoint used to be replaced on every open, preventing task-list cache admission for conversations with saved tasks. Byte-identical checkpoint writes are now skipped; historical memory measurements did not record cache coverage and need a fresh run."
   - "The journal record cache kept up to 32 records until the app quit. It now keeps at most 8 and drops one that nobody has read for 30 seconds."
 ---
 
@@ -25,3 +26,13 @@ account includes retained Go structures and their referenced data. Index evictio
 clears discarded references, and record expiration targets the earliest deadline.
 The performance note now distinguishes the app's actual GC defaults from the
 terminal's settings and identifies the missing historical environment record.
+
+Reader completion is one-shot and deferred, including when a read panics. Owner
+read errors propagate instead of certifying a disk-only task list. Opening a
+settled task checkpoint preserves its file identity when its encoded bytes are
+unchanged, so real conversations with saved tasks can populate both caches.
+Record, rest and project-index caches share the same modification/change-time
+settling guard. Disk task-list storage is capped at 96 MiB and 256 files, with
+the oldest files evicted first. A first-use scan and minute-spaced idle sweeps
+prune entries for missing or deleted agents; ordinary writes reuse the inventory.
+Deleting an agent in the app also drops its memory and disk task-list entries.

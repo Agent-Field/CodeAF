@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -289,8 +290,23 @@ func TestAppRestDiskReadWaitsForAdmission(t *testing.T) {
 }
 
 func TestAppRestRealIdleOpenKeepsTheMemoryWin(t *testing.T) {
+	testAppRestRealIdleOpen(t, false)
+}
+
+func TestAppRestRealSettledTasksFillBothCaches(t *testing.T) {
+	testAppRestRealIdleOpen(t, true)
+}
+
+func testAppRestRealIdleOpen(t *testing.T, savedTasks bool) {
+	t.Helper()
 	t.Setenv(home.EnvVar, t.TempDir())
 	path := filepath.Join(t.TempDir(), "transcript.jsonl")
+	if savedTasks {
+		checkpoint := `{"type":"tasks","version":1,"seq":1,"nodes":[{"id":1,"title":"Saved settled task","brief":"Already finished","acceptance":"Task finished","state":"done","report":"Finished","noted":true}]}`
+		if err := os.WriteFile(filepath.Join(filepath.Dir(path), "tasks.json"), []byte(checkpoint), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	var opens atomic.Int32
 	b := newFakeBackend(newAppRecorder(), func(ask appOpenAsk) (*appConn, error) {
 		engine, err := session.New(session.Config{Workspace: ask.Workspace, SessionFile: path, Model: "test/model", APIKey: "test-key", BaseURL: "http://127.0.0.1:1"})
@@ -316,19 +332,25 @@ func TestAppRestRealIdleOpenKeepsTheMemoryWin(t *testing.T) {
 	b.locked(func() { b.crewRun = &appCrewRun{held: map[string][]string{view.ID: {"crew"}}} })
 	before := opens.Load()
 	stamp := b.restStamp(a)
-	if _, err := b.ListTasks(view.ID); err != nil {
-		t.Fatal(err)
+	for pass := range 3 {
+		got, err := b.ListTasks(view.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if savedTasks && (len(got) != 1 || got[0].Title != "Saved settled task" || got[0].State != appwire.TaskDone) {
+			t.Fatalf("saved task missing: %+v", got)
+		}
+		if b.liveOf(a) != nil {
+			t.Fatal("real idle session remained held")
+		}
+		if n := opens.Load() - before; n != 1 {
+			t.Fatalf("pass %d opened real session %d times, want 1; snapshot stable=%v", pass+1, n, stamp == b.restStamp(a))
+		}
+		if pass == 1 {
+			b.restMemo = appRestMemo{}
+		}
 	}
-	if b.liveOf(a) != nil {
-		t.Fatal("real idle session remained held")
-	}
-	b.restMemo = appRestMemo{}
-	if _, err := b.ListTasks(view.ID); err != nil {
-		t.Fatal(err)
-	}
-	if n := opens.Load() - before; n != 1 {
-		t.Fatalf("real session opened %d times across relaunch, want 1; snapshot stable=%v", n, stamp == b.restStamp(a))
-	}
+
 }
 
 func TestAppRestDiskDecodeBoundsCompactRows(t *testing.T) {
@@ -399,6 +421,13 @@ func TestAppRestOwnerReadFailureKeepsConversation(t *testing.T) {
 	if b.liveOf(a) == nil {
 		t.Fatal("failed live-work revalidation was treated as idle")
 	}
+	if _, ok := b.restMemo.get(a.view.ID, b.restStamp(a)); ok {
+		t.Error("failed revalidation entered memory cache")
+	}
+	if _, err := os.Stat(appRestPath(a.view.ID)); !os.IsNotExist(err) {
+		t.Error("failed revalidation entered disk cache")
+	}
+
 }
 
 func TestAppRestCellStampIncludesRootPlanAndChildRecords(t *testing.T) {
@@ -441,5 +470,92 @@ func TestAppRestCellReadsPresenceFromSessionRoot(t *testing.T) {
 	}
 	if b.memberRests(a) {
 		t.Fatal("cell member with working root presence was admitted as resting")
+	}
+}
+
+func TestAppRestPanickingReaderReturnsReference(t *testing.T) {
+	c := &restConversation{}
+	b, a := restBackend(t, c)
+	var calls int
+	c.readTasks = func() ([]session.AppTaskView, error) {
+		calls++
+		if calls == 1 {
+			panic("reader failed")
+		}
+		return nil, nil
+	}
+	func() {
+		defer func() {
+			if recover() != "reader failed" {
+				t.Error("listing did not propagate reader panic")
+			}
+		}()
+		_, _ = b.ListTasks(a.view.ID)
+	}()
+	var readers int
+	b.locked(func() {
+		readers = a.readers
+		// Repair a leaked reference so a red test can still close its fixture.
+		if readers > 0 {
+			a.readers = 0
+			close(a.readersDone)
+		}
+	})
+	if readers != 0 {
+		t.Fatalf("panicking listing leaked %d reader references", readers)
+	}
+	b.letGo(a)
+	if b.liveOf(a) != nil {
+		t.Fatal("explicit close did not release the conversation")
+	}
+}
+
+func TestAppReaderCompletionIsOneShot(t *testing.T) {
+	b, a := restBackend(t, &restConversation{})
+	_, _, endRead, err := b.borrowLive(a.view.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer endRead()
+	endRead()
+	endRead()
+	b.locked(func() {
+		if a.readers != 0 {
+			t.Errorf("completion returned one reference more than once: readers=%d", a.readers)
+		}
+	})
+}
+
+func TestAppRestOverlayFailureIsNeverCached(t *testing.T) {
+	c := &restConversation{}
+	b, a := restBackend(t, c)
+	checkpoint := `{"type":"tasks","version":1,"seq":1,"nodes":[{"id":1,"title":"Saved settled task","brief":"Already finished","acceptance":"Task finished","state":"done","noted":true}]}`
+	if err := os.WriteFile(filepath.Join(filepath.Dir(a.transcript), "tasks.json"), []byte(checkpoint), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	var reads int
+	c.readTasks = func() ([]session.AppTaskView, error) {
+		reads++
+		if reads == 1 {
+			return nil, os.ErrPermission
+		}
+		return []session.AppTaskView{{ID: "1", State: "done", Step: 7, Cap: 12}}, nil
+	}
+	if _, err := b.ListTasks(a.view.ID); !errors.Is(err, os.ErrPermission) {
+		t.Errorf("owner overlay failure was hidden: %v", err)
+	}
+	if _, ok := b.restMemo.get(a.view.ID, b.restStamp(a)); ok {
+		t.Error("failed owner overlay entered memory cache")
+	}
+	if _, err := os.Stat(appRestPath(a.view.ID)); !os.IsNotExist(err) {
+		t.Error("failed owner overlay entered disk cache")
+	}
+	for range 2 {
+		got, err := b.ListTasks(a.view.ID)
+		if err != nil || len(got) != 1 || got[0].Steps == nil || *got[0].Steps != 7 || got[0].BudgetUSD == nil || *got[0].BudgetUSD != 12 {
+			t.Fatalf("retry/relaunch lost owner fields: %+v %v", got, err)
+		}
+		b.restMemo = appRestMemo{}
 	}
 }

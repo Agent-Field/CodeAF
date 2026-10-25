@@ -18,6 +18,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/cachedir"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/filememo"
 	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -153,7 +154,7 @@ func appRestEntrySize(agent, stamp string, tasks []appwire.Task) int {
 
 // Two seconds covers coarse filesystem timestamp ticks. A recent or future
 // mtime is racy-clean even if both stat calls return the same stamp.
-const appRestSettle = 2 * time.Second
+const appRestSettle = filememo.TimestampSettle
 
 // appRestFiles includes the journal, checkpoints and plan stores used by the
 // owner-backed task view. Task and process directories include their contents:
@@ -232,7 +233,7 @@ func appRestStampPath(stamp *strings.Builder, path string, now time.Time) bool {
 		}
 		part := appInfoStamp(path, info)
 		_, _, ctime, _ := appFileIdentity(info)
-		if part == "" || now.Sub(info.ModTime()) < appRestSettle || now.Sub(time.Unix(0, ctime)) < appRestSettle {
+		if part == "" || !filememo.TimestampsSettled(now, info.ModTime(), time.Unix(0, ctime), appRestSettle) {
 			return os.ErrInvalid
 		}
 		stamp.WriteString(part)
@@ -268,6 +269,7 @@ func (b *appBackend) restingTasks(a *appAgent, id string) ([]appwire.Task, error
 		return nil, err
 	}
 	endRead := b.pinReader(a)
+	defer endRead()
 	b.locked(func() { a.restRead = true })
 	a.gate.Unlock()
 	tasks, err := b.listTasksHeld(a, id)
@@ -430,6 +432,12 @@ func appRestWrite(agent, stamp string, tasks []appwire.Task) {
 	if err != nil || len(raw) > appRestDiskBytes || os.MkdirAll(filepath.Dir(path), 0o700) != nil {
 		return
 	}
+	appRestDisk.mu.Lock()
+	defer appRestDisk.mu.Unlock()
+	appRestDisk.loadLocked(time.Now())
+	if appRestDisk.root != filepath.Dir(path) || appRestDisk.entries == nil {
+		return
+	}
 	temp, err := os.CreateTemp(filepath.Dir(path), agent+".*.tmp")
 	if err != nil {
 		return
@@ -437,6 +445,11 @@ func appRestWrite(agent, stamp string, tasks []appwire.Task) {
 	_, werr := temp.Write(raw)
 	if cerr := temp.Close(); werr != nil || cerr != nil || fsreplace.Rename(temp.Name(), path) != nil {
 		_ = os.Remove(temp.Name())
+		return
+	}
+	if info, err := os.Stat(path); err == nil {
+		appRestDisk.rememberLocked(filepath.Base(path), info)
+		appRestDisk.trimLocked()
 	}
 }
 

@@ -253,7 +253,16 @@ method and measurements are in [docs/perf/memory-2026-10-24.md](docs/perf/memory
   then keeps it under a stamp of the files it was built from: in memory up to
   `appRestMemoBytes` = 24 MiB (least recently read first; a list larger than
   that is not kept), and as `<home>/cache/app-tasks/<agent>.json` for the
-  next launch, valid for the same build and the same stamp only.
+  next launch, valid for the same build and the same stamp only. Disk storage
+  keeps at most `appRestDiskTotalBytes` = 96 MiB and `appRestDiskEntries` = 256
+  files, evicting oldest writes first. The inventory is scanned on first use and
+  every `appRestDiskScanEvery` = 1 minute by the idle sweep, which also prunes
+  missing or deleted agents; writes update the inventory without directory scans.
+  Agent deletion removes both entries immediately. Byte-identical settled task
+  checkpoints preserve their identity on open, so snapshot validation can admit
+  conversations with saved tasks. Owner-overlay failures propagate and are
+  never cached; reader completion is deferred and one-shot. Record, rest and
+  project-index admission share the two-second mtime/ctime settling guard.
   `TestAppReadingAnIdleCrewMemberDoesNotKeepItsConversation` and
   `TestAppReadsARestingMembersTasksFromTheCacheAfterARelaunch` pin the opens.
 - **A crew member with nothing in flight is let go after `appAgentIdle`** like any
