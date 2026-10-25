@@ -213,6 +213,7 @@ func (a *Agent) belt() []bare.Tool {
 	// (task_quick.go). The judge that decides between the two is written once, in
 	// its description.
 	tools = append(tools, a.quickTools()...)
+	tools = append(tools, a.startChatTools()...)
 	// use_skill rides on the same predicate as propose_task, plus a store to read
 	// the shelf from: a worker that may hand work out may also look up what this
 	// project already knows how to do (tools_skill.go). A floor node is handed no

@@ -2280,6 +2280,20 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		// including the one it is already carrying (standinglane.go).
 		sess.watchLane(s, laneTitle)
 		return nil, nil
+	case MethodClaimChatStart:
+		id, err := arg[string](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface{ ClaimChatStart(string) (bool, error) })
+		if !ok {
+			return nil, errors.New("engine: this session cannot claim new-chat requests")
+		}
+		claimed, err := door.ClaimChatStart(id)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(claimed)
 	case MethodQuestionResolve:
 		args, err := arg[QuestionArgs](call)
 		if err != nil {

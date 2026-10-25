@@ -2060,6 +2060,19 @@ func (a *Agent) ResolveConsentRemember(id uint64, allow bool, scope session.Cons
 // already gone. A question CAN be refused with something a person needs to read
 // — the work it was about finished, somebody else answered it first — and the
 // page draws exactly that sentence where its foot was.
+// ClaimChatStart keeps launch ownership on the engine shared by all windows.
+func (a *Agent) ClaimChatStart(id string) (bool, error) {
+	raw, err := a.c.call(nil, MethodClaimChatStart, id)
+	if err != nil {
+		return false, err
+	}
+	var claimed bool
+	if err := json.Unmarshal(raw, &claimed); err != nil {
+		return false, err
+	}
+	return claimed, nil
+}
+
 func (a *Agent) ResolveQuestion(answer session.Answer) error {
 	_, err := a.c.call(nil, MethodQuestionResolve, QuestionArgs{Answer: answer})
 	return err

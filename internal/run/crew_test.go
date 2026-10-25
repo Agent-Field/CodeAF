@@ -376,3 +376,25 @@ func TestCrewFactorySeatsTheChatDoorsCheckOnTheCrewsChecker(t *testing.T) {
 		}
 	}
 }
+
+func TestCrewFactoryHonorsAJoinedTasksOwnModel(t *testing.T) {
+	store := runOpenStore(t)
+	if _, err := store.AddMany([]plandb.TaskSpec{
+		{ID: "named", Title: "Read", ParentID: store.RootID(), Model: "moonshotai/kimi-k3"},
+		{ID: "child", Title: "Read part", ParentID: "named"},
+		{ID: "grandchild", Title: "Read detail", ParentID: "child"},
+		{ID: "check", Title: "Check", ParentID: "named", Role: plandb.RoleCheck},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	dir := crewProfile(t, map[string]string{config.KeyTierWorkerModel: "deepseek/deepseek-v4.1-flash"})
+	recorder := &recordingCompleter{}
+	factory := run.CrewFactory(store, t.TempDir(), dir, run.Seats{Work: "deepseek/deepseek-v4.1-flash", Plan: "vendor/planner", Check: "vendor/checker"}, "", false, recorder.forModel)
+	for _, test := range []struct{ id, want string }{{"named", "vendor/planner"}, {"child", "vendor/planner"}, {"grandchild", "moonshotai/kimi-k3"}, {"check", "vendor/checker"}} {
+		recorder.models = nil
+		factory(*store.Task(test.id))
+		if len(recorder.models) != 1 || recorder.models[0] != test.want {
+			t.Errorf("task %s models = %v, want %s", test.id, recorder.models, test.want)
+		}
+	}
+}
