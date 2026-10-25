@@ -21,7 +21,6 @@ import (
 )
 
 const workerPollLimit = 30 * time.Second
-const workerPollEvery = 100 * time.Millisecond
 
 type workerService struct {
 	st          *store.Store
@@ -302,15 +301,27 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 	if !h.workerReady(w) {
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), h.workers.wait)
-	defer cancel()
-	tick := time.NewTicker(workerPollEvery)
-	defer tick.Stop()
+	ctx := r.Context()
+	began := time.Now()
+	wait := time.NewTimer(h.workers.wait)
+	defer wait.Stop()
+	// Subscribe before looking for work so an enqueue during Pull is never
+	// lost between the empty answer and the wait. The root watch also sees
+	// writes from other processes and changes to consent or runner settings.
+	var changed chan string
+	if h.watch != nil {
+		changed = h.watch.hub.join()
+		defer h.watch.hub.leave(changed)
+	}
 	for {
 		if ctx.Err() != nil {
-			if r.Context().Err() == nil {
-				w.WriteHeader(http.StatusNoContent)
-			}
+			return
+		}
+		// The next request renews presence. Re-read a shortened policy on
+		// notification, but never extend the original request's heartbeat.
+		deadline := began.Add(min(h.workers.wait, h.runnerOfflineAfter()/2))
+		if !time.Now().Before(deadline) {
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		// THE SAVED TOGGLE WINS. Attach records what this process was willing
@@ -321,10 +332,8 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 		if h.failed(w, err) {
 			return
 		}
-		// A pull sits open for up to thirty seconds. That wait is the idle
-		// machine's heartbeat: the same sixty-second deadline as a busy runner.
-		h.workers.heard(worker.ID, h.workers.now())
-		h.machineEvents()
+		// Authorization recorded this request's heartbeat. Rewriting it on
+		// every notification would wake our own filesystem watch indefinitely.
 		h.workers.mu.RLock()
 		// Authorization captured the worker before this handler (and possibly
 		// before a long-poll wait). A saved lowering governs every new lease,
@@ -363,13 +372,14 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 			h.workerError(w, err)
 			return
 		}
+		wait.Reset(time.Until(deadline))
 		select {
 		case <-ctx.Done():
-			if r.Context().Err() == nil {
-				w.WriteHeader(http.StatusNoContent)
-			}
 			return
-		case <-tick.C:
+		case <-wait.C:
+			w.WriteHeader(http.StatusNoContent)
+			return
+		case <-changed:
 		}
 	}
 }

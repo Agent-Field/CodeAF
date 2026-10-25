@@ -12,6 +12,19 @@ Three things make one factory:
 
 A machine with no factory set up has none of this: the chat's factory tools are absent from its belt rather than present and failing.
 
+## idle runners — waiting for queued work
+
+An idle runner keeps its pull request open for up to 30 seconds, or half the
+saved runner timeout when that is shorter, so it renews presence before being
+counted offline. It wakes when
+the factory's files change, including work queued by another process, and asks
+again after the deadline. The service uses the same filesystem notifications
+as the live factory view; it does not repeatedly decode finished jobs while
+waiting. Filesystem changes are batched for 100 milliseconds. If filesystem
+notifications are unavailable, a fallback checks for changes every 500
+milliseconds. Ownership, consent and capacity are checked again
+before any job is handed out.
+
 ## codeaf factory serve — host a team factory, listen address and HTTPS
 
 `codeaf factory` (the same as `codeaf factory serve`) runs the service and prints the address to give people, plus one operator access link. It listens on `127.0.0.1:7420` unless `--listen host:port` says otherwise, or the `listen` key of `~/.codeaf/factory/config.yaml` does (`--config path` picks another file). It runs no job itself: Run queues a job, and a runner that has joined pulls it. With no runner attached a job stays queued.

@@ -26,6 +26,8 @@ type document struct {
 func (d *Desk) Path() string { return filepath.Join(d.store.Root(), "leases.json") }
 
 func (d *Desk) locked(change func(*document, time.Time) error) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	lock, err := os.OpenFile(filepath.Join(d.store.Root(), "leases.lock"), os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return err

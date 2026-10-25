@@ -21,7 +21,7 @@ const changeDebounce = 100 * time.Millisecond
 // changePoll is the fallback when the filesystem watch is missing or silent.
 // The poll asks the same question the watch does — did the root change —
 // and sends a tick only when the answer is yes.
-const changePoll = 2 * time.Second
+const changePoll = 500 * time.Millisecond
 
 // rootWatch tells subscribers when the factory root's files change.
 type rootWatch struct {
