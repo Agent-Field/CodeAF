@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,14 +17,18 @@ type appClientStream struct {
 	mu     sync.Mutex
 	chats  map[string]*appClientPartial
 	last   map[string]time.Time
+	now    func() time.Time
+	after  func(time.Duration, func()) func()
 	closed bool
 }
 
 type appClientPartial struct {
-	current appwire.Entry
-	visible appwire.Entry
-	at      time.Time
-	timer   *time.Timer
+	timerVersion uint64
+	current      appwire.Entry
+	visible      appwire.Entry
+	at           time.Time
+	cancel       func()
+	text         strings.Builder
 }
 
 func (s *appClientStream) delta(d appwire.TurnDelta, changed func()) {
@@ -38,6 +43,15 @@ func (s *appClientStream) delta(d appwire.TurnDelta, changed func()) {
 	if s.chats == nil {
 		s.chats = map[string]*appClientPartial{}
 		s.last = map[string]time.Time{}
+		if s.now == nil {
+			s.now = time.Now
+		}
+		if s.after == nil {
+			s.after = func(d time.Duration, fn func()) func() {
+				timer := time.AfterFunc(d, fn)
+				return func() { timer.Stop() }
+			}
+		}
 	}
 	p := s.chats[d.Agent]
 	if p == nil {
@@ -45,26 +59,37 @@ func (s *appClientStream) delta(d appwire.TurnDelta, changed func()) {
 		s.chats[d.Agent] = p
 	}
 	if p.current.Turn != d.Turn || p.current.Msg == nil || *p.current.Msg != d.Msg {
+		p.text.Reset()
 		msg := d.Msg
-		p.current = appwire.Entry{ID: fmt.Sprintf("live-%d-%d", d.Turn, d.Msg), Agent: d.Agent, Turn: d.Turn, Msg: &msg, Kind: appwire.EntryAnswer, At: time.Now()}
+		p.current = appwire.Entry{ID: fmt.Sprintf("live-%d-%d", d.Turn, d.Msg), Agent: d.Agent, Turn: d.Turn, Msg: &msg, Kind: appwire.EntryAnswer, At: s.now()}
 	}
-	p.current.Text += d.Text
+	p.text.WriteString(d.Text)
 	publish := func() {
+		p.current.Text = p.text.String()
 		p.visible = p.current
-		p.at = time.Now()
+		p.at = s.now()
 		s.last[d.Agent] = p.at
 		changed()
 	}
-	if wait := phonePartialInterval - time.Since(p.at); wait <= 0 {
+	if wait := phonePartialInterval - s.now().Sub(p.at); wait <= 0 {
+		// A token can obtain the lock before a delayed timer callback. Cancel
+		// that timer and invalidate callbacks already waiting for this lock.
+		if p.cancel != nil {
+			p.cancel()
+			p.cancel = nil
+			p.timerVersion++
+		}
 		publish()
-	} else if p.timer == nil {
-		p.timer = time.AfterFunc(wait, func() {
+	} else if p.cancel == nil {
+		p.timerVersion++
+		version := p.timerVersion
+		p.cancel = s.after(wait, func() {
 			s.mu.Lock()
 			defer s.mu.Unlock()
-			if s.closed || s.chats[d.Agent] != p {
+			if s.closed || s.chats[d.Agent] != p || p.timerVersion != version {
 				return
 			}
-			p.timer = nil
+			p.cancel = nil
 			publish()
 		})
 	}
@@ -82,8 +107,8 @@ func (s *appClientStream) entry(agent string) appwire.Entry {
 func (s *appClientStream) clear(agent string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if p := s.chats[agent]; p != nil && p.timer != nil {
-		p.timer.Stop()
+	if p := s.chats[agent]; p != nil && p.cancel != nil {
+		p.cancel()
 	}
 	delete(s.chats, agent)
 }
@@ -93,8 +118,8 @@ func (s *appClientStream) stop() {
 	defer s.mu.Unlock()
 	s.closed = true
 	for _, p := range s.chats {
-		if p.timer != nil {
-			p.timer.Stop()
+		if p.cancel != nil {
+			p.cancel()
 		}
 	}
 	s.chats = nil

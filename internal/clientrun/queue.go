@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/Agent-Field/codeaf/internal/session"
 	"io"
 	"path/filepath"
 	"slices"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/clientproto"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"golang.org/x/crypto/curve25519"
 	"golang.org/x/crypto/nacl/box"
 )
@@ -355,9 +355,11 @@ func (r *Runner) checkAsk(call Call, agent string) error {
 			return err
 		}
 		_, ask, _ := strings.Cut(id, "/")
-		p["id"] = mustJSON(ask)
+		// Inbox dispatch ignores asks-only fields such as batch_item. Check
+		// precisely the selected inbox ask, never a second ID smuggled in
+		// through parameters the inbox method itself does not read.
 		call.Method = "asks.answer"
-		call.Params = mustJSON(p)
+		call.Params = mustJSON(appwire.IDParams{ID: ask})
 	}
 	if call.Method != "asks.answer" {
 		return nil

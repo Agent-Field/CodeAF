@@ -117,7 +117,7 @@ func TestPhoneWritesPairAndRespectChatOwnership(t *testing.T) {
 			if method == "inbox.answer" {
 				id = otherChat + "/consent:1"
 			}
-			params, _ := json.Marshal(map[string]string{"id": id, "option": "allow"})
+			params, _ := json.Marshal(map[string]string{"id": id, "option": "allow", "batch_item": "safe"})
 			payload, _ := json.Marshal(clientrun.Call{Method: method, Params: params})
 			sealed, err := box.SealAnonymous(nil, payload, (*[32]byte)(grant.BoxKey), rand.Reader)
 			if err != nil {
@@ -142,14 +142,14 @@ func TestPhoneInboxAndTaskWritesRequireFaceIDForIrreversibleWork(t *testing.T) {
 		for _, faceID := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/%t", method, faceID), func(t *testing.T) {
 				g := newRig(t)
-				g.e.asks = []appwire.Ask{{ID: "consent:1", Agent: chat, Irreversible: true}}
+				g.e.asks = []appwire.Ask{{ID: "consent:1", Agent: chat, Irreversible: true}, {ID: "safe", Agent: chat}}
 				g.e.taskIrreversible = true
 				grant := g.pair(t, method)
 				id := chat + ":1"
 				if method == "inbox.answer" {
 					id = chat + "/consent:1"
 				}
-				params, _ := json.Marshal(map[string]string{"id": id, "option": "allow"})
+				params, _ := json.Marshal(map[string]string{"id": id, "option": "allow", "batch_item": "safe"})
 				payload, _ := json.Marshal(clientrun.Call{Method: method, Params: params, FaceID: faceID})
 				sealed, err := box.SealAnonymous(nil, payload, (*[32]byte)(grant.BoxKey), rand.Reader)
 				if err != nil {
