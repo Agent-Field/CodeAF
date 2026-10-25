@@ -45,10 +45,9 @@ func personalLeader(t *testing.T, r *memberRig, s *Sync) cs.LeadershipReceipt {
 // T1/T2/R6 run the existing directory contract against the REAL external
 // leader. The relay is only ingress, storage and A/B/C; P has its own core.
 func TestR6PersonalLeaderDirectoryConformance(t *testing.T) {
+	fresh := personalLeaderDirectories(t)
 	directorytest.RunConsensusRigs(t, func(t *testing.T) directorytest.Rig {
-		r := newMemberRig(t)
-		p := r.home(nil)
-		personalLeader(t, r, p)
+		r, p := fresh(t)
 		id := p.Identity
 		type apiDevice struct {
 			client directory.Client
