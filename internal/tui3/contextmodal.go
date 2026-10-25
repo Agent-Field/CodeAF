@@ -345,6 +345,9 @@ func (a *app) contextHeadRule(inner int, glyph contextGlyph) string {
 	if a.folder.forWorkspace {
 		title = "choose workspace"
 	}
+	if a.folder.chooseTitle != "" {
+		title = a.folder.chooseTitle
+	}
 	if a.folder.forTarget {
 		// THE SHEET HOME OPENED IS NOT ADDING CONTEXT TO ANYTHING. It is choosing
 		// where the next conversation opens (folderpick.go's [folderPick.forTarget]),

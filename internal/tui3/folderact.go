@@ -226,6 +226,16 @@ type folderAdded struct {
 // what it would do. It is one function because the key and the row must not be
 // able to drift into meaning two different things.
 func (a *app) folderConfirm() tea.Cmd {
+	if choose := a.folder.chooseFolder; choose != nil {
+		path, dir, ok := a.folder.hereKind()
+		if !ok || !dir {
+			a.note("choose an existing local folder")
+			return nil
+		}
+		a.folder.chooseFolder = nil
+		closed := a.closeFolderSheet()
+		return tea.Batch(closed, choose(path))
+	}
 	if a.folder.forWorkspace {
 		path, dir, ok := a.folder.hereKind()
 		if !ok || !dir {

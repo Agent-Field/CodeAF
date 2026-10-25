@@ -3609,6 +3609,15 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 // owns its process, is recorded like every other. A seat that could not log the
 // call did not run it, and says so as the tool's own error.
 func (a *Agent) executeRecorded(ctx context.Context, tool bare.Tool, args json.RawMessage) (text string, isError bool, err error) {
+	// File-only builtins have no arbitrary process/custom-tool execution road.
+	// Everything else must conservatively retain the workspace after restart.
+	switch tool.Name {
+	case "read", "write", "edit":
+	default:
+		if err := markTaskStorageUncertain(a.config.Workspace); err != nil {
+			return "", true, err
+		}
+	}
 	args, moved, mapErr := a.movedToolArguments(tool.Name, args)
 	if mapErr != nil {
 		return "", true, mapErr

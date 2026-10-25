@@ -146,6 +146,15 @@ func (t takeover) TakeSeen(ctx context.Context, id string, seen *directory.Lease
 	return surfaceTaken(got, elapsed), nil
 }
 
+func (t takeover) TakeSeenWithWorkspaceRoots(ctx context.Context, id string, seen *directory.LeaseExpectation, roots map[string]string) (tui3.Taken, error) {
+	began := time.Now()
+	got, err := t.c.TakeSeenWithWorkspaceRoots(ctx, id, seen, roots)
+	if err != nil {
+		return tui3.Taken{}, err
+	}
+	return surfaceTaken(got, time.Since(began)), nil
+}
+
 func (t takeover) OpenBranch(ctx context.Context, id string) (tui3.Taken, error) {
 	began := time.Now()
 	got, err := t.c.OpenBranch(ctx, id)

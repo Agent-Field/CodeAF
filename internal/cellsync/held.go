@@ -58,7 +58,9 @@ func (p *Publisher) holdings(ctx context.Context, frames []FrameFile) (map[strin
 			return nil, err
 		}
 		for i, h := range have {
-			held[rids[i]] = h
+			if h {
+				held[rids[i]] = true
+			}
 		}
 		rids = rids[n:]
 	}

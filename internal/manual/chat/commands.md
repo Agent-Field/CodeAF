@@ -1028,11 +1028,16 @@ The `$` is optional, and the amount can be a word — see the next section.
 
 ## /cache — the build cache, disk space, and why codeaf is using so much disk
 
-`/cache` prints one line: how big the shared build cache is and where it lives —
-`~/.codeaf/cache`. That directory holds the toolchain caches task workers fill as they
+`/cache` prints one line: how big the shared build cache is and where it lives.
+New caches live under `~/.codeaf/cache`. That directory holds the toolchain caches task workers fill as they
 build — go modules and build outputs, npm, pip, cargo — shared across sessions so the same
 module is downloaded once instead of per task. It can quietly grow to hundreds of
 megabytes; that growth is this cache, not your conversations.
+
+Project caches also live beneath this cache directory and are reused by tasks
+using the same working root. Older admitted cache locations remain in use;
+`/cache` includes them in its size and lists them before an explicit clean.
+Temporary files and saved work are outside the cache cleanup.
 
 With nothing in it, `/cache` answers `the cache is empty · ~/.codeaf/cache`.
 

@@ -16,7 +16,11 @@ import (
 // Carry is the mechanism: [Carry.Compose] on the seal side, [Carry.Restore] on
 // the take side. Compose needs nothing, so the zero value composes; Restore
 // needs the [Cutter] that makes copies.
-type Carry struct{ Cutter Cutter }
+type Carry struct {
+	Cutter Cutter
+	// Project supplies a plain mirror's source when preparing it before a seal.
+	Project string
+}
 
 // Compose writes what every live task copy of c holds beyond its last commit
 // into the cell's .cell/trees/. It is one of the things a seal composes before
@@ -24,17 +28,35 @@ type Carry struct{ Cutter Cutter }
 // finished and its folder was removed) leaves nothing behind, and a copy with no
 // ordinary edits leaves only its record. A clean file with mixed line endings
 // carries its raw bytes, because a checkout cannot reconstruct their layout.
-func (Carry) Compose(c cell.Cell) error {
+func (k Carry) Compose(c cell.Cell) error { return k.ComposeWorkspace(c, k.Project) }
+
+// ComposeWorkspace receives the engine's current project, including recovery.
+// A plain folder has no Git baseline on the receiving machine, so its private
+// mirror roots must carry their entire reachable HEAD, even when child refs
+// already contain the parent's commit before its first capture.
+func (k Carry) ComposeWorkspace(c cell.Cell, project string) error {
+	plan, digest, err := ReadWorkspacePlan(c)
+	if err != nil {
+		return err
+	}
+	if plan != nil {
+		return k.composeWorkspacePlan(c, *plan, digest)
+	}
+	cold, withheld, err := coldCopies(c)
+	if err != nil {
+		return err
+	}
 	live := liveCopies(liveRoot(c))
-	if err := dropCarriedExcept(carriedRoot(c), live); err != nil {
+	keep := append(append([]string(nil), live...), cold...)
+	if err := dropCarriedExcept(carriedRoot(c), keep); err != nil {
 		return err
 	}
 	for _, tree := range live {
-		if err := carry(tree, filepath.Join(carriedRoot(c), filepath.Base(tree))); err != nil {
+		if err := carryWithHistory(tree, filepath.Join(carriedRoot(c), filepath.Base(tree)), project != "" && !isRepository(project) && !isLinkedWorktree(tree)); err != nil {
 			return fmt.Errorf("carry task copy %s: %w", filepath.Base(tree), err)
 		}
 	}
-	return noteLeftOut(c, live)
+	return noteLeftOutWith(c, live, withheld)
 }
 
 // liveCopies is the folders under root that are git working trees, which is what
@@ -77,7 +99,13 @@ func dropCarriedExcept(root string, live []string) error {
 }
 
 // carry writes one copy's record and changed files into dest.
-func carry(tree, dest string) error {
+func carry(tree, dest string) error { return carryWithHistory(tree, dest, false) }
+
+func carryWithHistory(tree, dest string, full bool) error {
+	full = full || independentBaseline(tree)
+	if prior, err := readRecord(dest); err == nil && prior.FullHistory {
+		full = true
+	}
 	head, err := git(tree, "rev-parse", "HEAD")
 	if err != nil {
 		return err
@@ -96,22 +124,28 @@ func carry(tree, dest string) error {
 		return err
 	}
 	branch := branchOf(tree)
-	if err := carryCommits(tree, branch, strings.TrimSpace(head), dest); err != nil {
+	if err := carryCommits(tree, branch, strings.TrimSpace(head), dest, full); err != nil {
 		return err
 	}
-	return writeRecord(dest, record{Branch: branch, Head: strings.TrimSpace(head), Deleted: deleted, Linked: isLinkedWorktree(tree), Modes: portableModes(tree, dest), EOL: styles})
+	return writeRecord(dest, record{FullHistory: full, Branch: branch, Head: strings.TrimSpace(head), Deleted: deleted, Linked: isLinkedWorktree(tree), Modes: portableModes(tree, dest), EOL: styles})
 }
 
 // carryCommits keeps dest's bundle of the commits only this copy holds in step
 // with the copy's head. A head that has not moved since the last seal leaves the
 // bundle untouched, so an idle task adds nothing to what the seal uploads.
-func carryCommits(tree, branch, head, dest string) error {
-	if prior, err := readRecord(dest); err == nil && prior.Head == head {
+func carryCommits(tree, branch, head, dest string, full bool) error {
+	if prior, err := readRecord(dest); err == nil && prior.Head == head && (!full || prior.FullHistory) {
+		if full {
+			return screenFullHistory(filepath.Join(dest, bundleName))
+		}
 		return nil
 	}
 	path := filepath.Join(dest, bundleName)
 	if err := os.MkdirAll(dest, 0o700); err != nil {
 		return err
+	}
+	if full {
+		return writeScreenedFullHistory(tree, path)
 	}
 	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err

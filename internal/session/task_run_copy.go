@@ -21,6 +21,7 @@ package session
 // reader that ADOPTS what it names. The reader refuses rather than repairs.
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -34,6 +35,12 @@ import (
 // whose branch genuinely was never recorded and genuinely cannot be resumed.
 // [runCopyTree] says so out loud rather than guessing ([errNoRunCopy]).
 type TaskCopyRecord struct {
+	// URI is local workspace identity; paths remain the legacy fallback only when absent.
+	URI        string `json:"uri,omitempty"`
+	ChatURI    string `json:"chat_uri,omitempty"`
+	ProjectURI string `json:"project_uri,omitempty"`
+	GroundURI  string `json:"ground_uri,omitempty"`
+	RootURI    string `json:"root_uri,omitempty"`
 	// Dir is the directory the workers typed in and Branch is the branch their
 	// work is on. Dir alone is not enough: a directory whose branch is unknown
 	// can be read but not landed.
@@ -82,6 +89,7 @@ func runCopyOf(tree taskTree) *TaskCopyRecord {
 		return nil
 	}
 	return &TaskCopyRecord{
+		URI: tree.uri, ChatURI: tree.chatURI, ProjectURI: tree.projectURI, GroundURI: tree.groundURI, RootURI: tree.rootURI,
 		Dir:       tree.dir,
 		Branch:    tree.branch,
 		Root:      tree.root,
@@ -136,7 +144,7 @@ func runCannotContinue(record *TaskCopyRecord, program string) string {
 	if program = strings.TrimSpace(program); program != "" {
 		return programNotCarriedOn(program)
 	}
-	if record == nil || strings.TrimSpace(record.Dir) == "" {
+	if record == nil || (strings.TrimSpace(record.Dir) == "" && record.URI == "") {
 		return errNoRunCopy.Error()
 	}
 	return ""
@@ -154,10 +162,26 @@ func runCannotContinue(record *TaskCopyRecord, program string) string {
 // no longer on disk. A tree invented in either case would merge an empty branch
 // and call it done.
 func runCopyTree(record *TaskCopyRecord, place Place) (taskTree, error) {
-	if record == nil || strings.TrimSpace(record.Dir) == "" {
+	if record == nil || (strings.TrimSpace(record.Dir) == "" && record.URI == "") {
 		return taskTree{}, errNoRunCopy
 	}
 	dir := strings.TrimSpace(record.Dir)
+	if record.URI != "" {
+		var err error
+		dir, err = resolveOwnedWorkspace(record, place)
+		if err != nil {
+			return taskTree{}, fmt.Errorf("resolve its working copy identity: %w", err)
+		}
+	}
+
+	root, ground, err := runCopyLandingPaths(record)
+	if err != nil {
+		return taskTree{}, err
+	}
+
+	if err := ensureTaskStorage(context.Background(), place, dir); err != nil {
+		return taskTree{}, fmt.Errorf("restore its compact working copy: %w", err)
+	}
 	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 		// THE BRANCH IS NAMED EVEN THOUGH THE FOLDER IS GONE, because it is the
 		// one thing left that a person can act on: the work is on it.
@@ -167,13 +191,14 @@ func runCopyTree(record *TaskCopyRecord, place Place) (taskTree, error) {
 		return taskTree{}, fmt.Errorf("its working copy is gone from %s, so there is nothing left to carry on in", dir)
 	}
 	return taskTree{
+		uri: record.URI, chatURI: record.ChatURI, projectURI: record.ProjectURI, groundURI: record.GroundURI, rootURI: record.RootURI,
 		dir:       dir,
-		root:      record.Root,
+		root:      root,
 		branch:    record.Branch,
 		home:      record.Home,
 		homeSha:   record.HomeSha,
 		checkBase: record.CheckBase,
-		ground:    record.Ground,
+		ground:    ground,
 		mode:      record.Mode,
 		rung:      record.Rung,
 		seal:      record.Seal,
@@ -183,4 +208,38 @@ func runCopyTree(record *TaskCopyRecord, place Place) (taskTree, error) {
 		// where the copy is first made).
 		bashBelt: true,
 	}, nil
+}
+
+func runCopyLandingPaths(record *TaskCopyRecord) (string, string, error) {
+	root, ground := record.Root, record.Ground
+	if record.URI != "" {
+		if record.GroundURI != "" {
+			resolved, err := resolveOwnedGround(record.GroundURI, record)
+			if err != nil {
+				return "", "", fmt.Errorf("resolve its ground identity: %w", err)
+			}
+			ground = resolved
+		} else if record.ProjectURI != "" && ground != "" {
+			resolved, err := resolveOwnedProject(record.ProjectURI)
+			if err != nil {
+				return "", "", fmt.Errorf("resolve its project identity: %w", err)
+			}
+			ground = resolved
+		}
+		if record.RootURI != "" {
+			resolved, err := resolveOwnedGround(record.RootURI, record)
+			if err != nil {
+				return "", "", fmt.Errorf("resolve its landing identity: %w", err)
+			}
+			root = resolved
+		} else if record.ProjectURI != "" && root != "" {
+			resolved, err := resolveOwnedProject(record.ProjectURI)
+			if err != nil {
+				return "", "", fmt.Errorf("resolve its project identity: %w", err)
+			}
+			root = resolved
+		}
+	}
+
+	return root, ground, nil
 }

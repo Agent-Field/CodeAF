@@ -31,11 +31,13 @@ const (
 // through is written by whatever umask the machine has and a copy must come back
 // with the modes it left with.
 type record struct {
-	Branch  string                 `json:"branch,omitempty"`
-	Head    string                 `json:"head"`
-	Deleted []string               `json:"deleted,omitempty"`
-	Linked  bool                   `json:"linked,omitempty"`
-	Modes   map[string]fs.FileMode `json:"modes,omitempty"`
+	// FullHistory means HEAD has no prerequisite in the borrowed project.
+	FullHistory bool                   `json:"fullHistory,omitempty"`
+	Branch      string                 `json:"branch,omitempty"`
+	Head        string                 `json:"head"`
+	Deleted     []string               `json:"deleted,omitempty"`
+	Linked      bool                   `json:"linked,omitempty"`
+	Modes       map[string]fs.FileMode `json:"modes,omitempty"`
 	// EOL records actual working-tree endings rather than this machine's Git defaults.
 	EOL map[string]string `json:"eol,omitempty"`
 }

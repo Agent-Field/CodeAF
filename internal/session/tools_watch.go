@@ -653,6 +653,9 @@ func (r *jobRegistry) watchTick(ctx context.Context, watched *job, spec watchSpe
 // and the failure line is both part of that output (a command that starts
 // failing IS news) and the identity the failure streak counts.
 func (r *jobRegistry) runTick(ctx context.Context, spec watchSpec) (string, string) {
+	if err := markTaskStorageUncertain(r.workspace); err != nil {
+		return "", "(could not record watch writer uncertainty: " + err.Error() + ")"
+	}
 	// Two bounds, and the tighter one wins: never longer than the interval, so
 	// ticks cannot pile up on each other, and never longer than a minute, so a
 	// watch on an hourly timer cannot sit inside one hung run for an hour.

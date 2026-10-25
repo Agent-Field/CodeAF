@@ -41,6 +41,7 @@ type SealWatch struct {
 	Quiet   time.Duration
 	mu      sync.Mutex
 	idle    bool
+	started bool
 	tail    *time.Timer
 	cause   string
 	said    []string
@@ -93,11 +94,23 @@ func (w *SealWatch) say(sentence string) {
 	w.said = append(w.said, sentence)
 }
 
+// Waiting arms a newly constructed chat that is waiting for its first input.
+// It schedules nothing until a write arrives. Once a turn has started or ended,
+// calling it again cannot change that turn's state.
+func (w *SealWatch) Waiting() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if !w.started {
+		w.idle = true
+	}
+}
+
 // TurnStarted is the session's word that a turn began: the turn writes the
 // record itself and every call seals it, so no tail seal is owed.
 func (w *SealWatch) TurnStarted() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	w.started = true
 	w.idle = false
 	w.stopTail()
 }
@@ -145,6 +158,7 @@ func (w *SealWatch) sealTail() {
 // forwards, so a watch without a listener costs nothing.
 func (w *SealWatch) TurnEnded() {
 	w.mu.Lock()
+	w.started = true
 	w.idle = true
 	w.stopTail()
 	w.mu.Unlock()

@@ -206,6 +206,10 @@ type folderPick struct {
 	forTarget bool
 	// forWorkspace chooses the current conversation's one-shot project anchor.
 	forWorkspace bool
+	// chooseFolder makes the existing single-folder picker answer one local
+	// receiver mapping rather than change the conversation's workspace.
+	chooseFolder func(string) tea.Cmd
+	chooseTitle  string
 
 	// hidden reveals the dot-directories and the names the `@` walk prunes.
 	// It is off by default and it is a person's own act — alt+h, or a name
@@ -1403,6 +1407,11 @@ func (g folderGeom) actionAt() int { return g.action }
 // matters most here (folderact.go's header).
 func (f *folderPick) actionWord(path string, dir bool) string {
 	switch {
+	case f.chooseFolder != nil:
+		if dir {
+			return "use local folder · "
+		}
+		return "choose a folder · "
 	case f.forWorkspace:
 		if dir {
 			return "set workspace · "

@@ -1233,6 +1233,12 @@ type Config struct {
 	WaitForBeltSteps bool
 
 	Workspace string // tools root here; all relative paths resolve inside it
+	// WorkspaceURI selects a previously admitted owned run for worker scratch routing.
+	WorkspaceURI string
+	// WorkspaceSet carries identity-backed routes to a prototype task worker.
+	WorkspaceSet            *WorkspaceSet
+	workspaceWriteRoots     []string
+	workspaceProtectedRoots []string
 	// Seat is the executor this session owns: every tool call runs on it, so
 	// the class the workspace declared and the seal after each call follow the
 	// session and never a path. Nil is a session with no cell, whose calls run

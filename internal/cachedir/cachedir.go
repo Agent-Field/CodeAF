@@ -1,7 +1,8 @@
 // Package cachedir owns the one directory under codeaf's state root that holds
 // nothing but caches: ~/.codeaf/cache, where every task worker's toolchain
 // caches live (internal/exec's sweCacheRoot puts go-mod, go-build, cargo, npm
-// and pip under it).
+// and pip under it). The historical workspace-caches prefix remains part of
+// this same cache owner until those admitted bindings are no longer used.
 //
 // The package exists so that "delete the cache" is one verb with one blast
 // radius, written down once. Everything in this directory is re-downloadable by
@@ -16,6 +17,7 @@
 package cachedir
 
 import (
+	"encoding/hex"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -34,7 +36,42 @@ func Root() string { return home.Join("cache") }
 // unreadable entry is to promise less rather than fail the question.
 func Size() int64 {
 	var total int64
-	_ = filepath.WalkDir(Root(), func(_ string, entry fs.DirEntry, err error) error {
+	for _, root := range Locations() {
+		total += size(root)
+	}
+	return total
+}
+
+// Locations lists the exact derived-cache directories covered by Size and
+// explicit Clean. Runtime compatibility includes cache leaves only, never temp.
+func Locations() []string {
+	roots := []string{Root()}
+	legacy := home.Join("workspace-caches")
+	if _, err := os.Lstat(legacy); err == nil {
+		roots = append(roots, legacy)
+	}
+	runtime := home.Join("workspace-runtime")
+	info, err := os.Lstat(runtime)
+	if err != nil || !info.IsDir() {
+		return roots
+	}
+	entries, _ := os.ReadDir(runtime)
+	for _, entry := range entries {
+		decoded, err := hex.DecodeString(entry.Name())
+		if !entry.IsDir() || err != nil || len(decoded) != 32 {
+			continue
+		}
+		cache := filepath.Join(runtime, entry.Name(), "cache")
+		if _, err := os.Lstat(cache); err == nil {
+			roots = append(roots, cache)
+		}
+	}
+	return roots
+}
+
+func size(root string) int64 {
+	var total int64
+	_ = filepath.WalkDir(root, func(_ string, entry fs.DirEntry, err error) error {
 		if err != nil || entry.IsDir() {
 			return nil
 		}
@@ -46,7 +83,7 @@ func Size() int64 {
 	return total
 }
 
-// Clean deletes the cache directory whole and reports how many bytes that
+// Clean deletes the cache locations whole and reports how many bytes that
 // freed. A cache that is already absent is zero bytes freed and no error.
 //
 // The chmod walk first is not decoration: Go's module cache is written
@@ -56,8 +93,16 @@ func Size() int64 {
 // that fails is skipped rather than fatal, because the removal itself is about
 // to say definitively whether the tree could be taken down.
 func Clean() (int64, error) {
-	root := Root()
 	freed := Size()
+	for _, root := range Locations() {
+		if err := clean(root); err != nil {
+			return 0, err
+		}
+	}
+	return freed, nil
+}
+
+func clean(root string) error {
 	_ = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil || !entry.IsDir() {
 			return nil
@@ -67,10 +112,7 @@ func Clean() (int64, error) {
 		}
 		return nil
 	})
-	if err := os.RemoveAll(root); err != nil {
-		return 0, err
-	}
-	return freed, nil
+	return os.RemoveAll(root)
 }
 
 // Human is the byte figure as a person reads it: whole bytes under a kilobyte,

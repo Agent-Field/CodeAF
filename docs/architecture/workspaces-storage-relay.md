@@ -1,180 +1,192 @@
 # Workspace storage and relay architecture
 
-This page separates the shipped relay from the proposed workspace lifecycle.
-The source baseline is `dev` at `7f5da935c`. The multi-root extension has been
-exercised in a separate prototype; this documentation does not ship it or enable
-automatic compaction. The resident-graph design in [ARCHITECTURE](../ARCHITECTURE.md)
-is a separate design and is not the current chat storage schema.
+This implementation separates working-root identity, private task placement,
+explicit result application, and encrypted transfer. A working root is a
+selected folder, not necessarily a repository or everything a chat works on.
+One chat may use several roots. The resident-graph design in
+[ARCHITECTURE](../ARCHITECTURE.md) is separate from this chat storage schema.
 
-## Shipped relay: ownership and encrypted content
+## Folders, ownership, and cooperation
 
-The chat harness owns execution and the selected local folders. Furrow captures
-and materializes sealed chat state; `cellsync` transports encrypted objects;
-the relay stores those objects and the directory's published heads and leases.
-A lease elects a chat's holder. It is not permission to write an arbitrary local
-folder. Pairing and the encrypted vault have their existing separate policies.
+The harness chooses delegated task placement. A model names inputs and relative
+layout; its brief cannot grant permission to write an original project. An
+execution has one primary root and explicit read/write sibling roots. Root names
+are distinct portable directory names; overlapping or unsupported sources are
+refused rather than silently renamed.
+
+```text
+profile/
+  workspace-identities/       local opaque-URI bindings and ownership
+  workspace-runtime/<id>/     owned temporary storage
+  workspace-caches/<id>/      explicitly shared project cache
+chat/
+  .cell/                     portable chat truth and task carriers
+  trees/<run-id>/
+    app/                     private primary copy
+    library/                 private sibling copy
+  logs/                      chat-owned logs
+```
+
+Paths above describe roles, not portable absolute locations. The local registry
+maps identities to the actual device paths. Project caches are project-owned,
+so finishing one task does not authorize deleting a cache shared with another.
+Original folders and unrelated caches never become task cleanup targets.
+
+```mermaid
+flowchart TD
+    Chat[Chat identity] --> Layout[Declared execution layout]
+    Layout --> App[Primary private copy]
+    Layout --> Library[Sibling private copy]
+    App --> A[Working root A identity]
+    Library --> B[Working root B identity]
+    Layout --> Cooperation[Exact cooperating tasks share the layout]
+    Chat --> Independent[Independent work gets a separate layout]
+    Layout --> Runtime[Owned temporary storage and logs]
+```
+
+Cooperation reuses an already admitted layout; it does not broaden a read-only
+root or silently add a sibling. Independent conversations retain independent
+execution. Foreground commands keep the semantics of the project the person
+explicitly opened. Home/reference tasks keep scratch space rather than copying
+an entire home directory. Shell placement and environment variables are not an
+operating-system sandbox for detached writers or remote commands.
+
+Source seams: [placement](../../internal/session/workspace_ownership.go),
+[layout preparation](../../internal/session/workspace_set_prepare.go),
+[identity registry](../../internal/workspaceidentity), and
+[conversation storage](../../internal/session/workspace_chat.go).
+
+## Identity does not grant write permission
+
+| Resource | Contract |
+| --- | --- |
+| Working root | Opaque identity for one selected folder; each receiver association is explicit |
+| Chat | Own history and execution frontier; references several roots |
+| Execution layout | Primary copy plus explicit read/write sibling uses |
+| Copy | One physical copy with local ownership and placement |
+| Landing destination | Separate user permission; never inferred from a source identity |
+
+Equal folder names and Git remotes do not merge identities. URI records are
+local authority and are not copied between devices as a path database. Result
+application must be explicit for each writable root, with conflicts retained;
+receiving a root does not authorize applying changes to it.
+
+## Relay: fetch, map roots, acquire, restore
+
+Furrow owns byte capture, cryptographic verification and materialization.
+`cellsync` schedules transport. The relay stores encrypted objects and an
+authenticated directory of published heads and leases. The harness owns
+execution, local folder admission, and result application. A lease elects the
+chat holder; it does not authorize writing arbitrary folders.
 
 ```mermaid
 sequenceDiagram
     participant S as Source harness
-    participant F as Source Furrow
+    participant F as Furrow
     participant R as Relay
-    participant G as Receiver Furrow
     participant D as Receiver harness
-    S->>F: Capture chat and portable task data
+    participant U as User
+    S->>F: Capture portable chat and task state
     F-->>S: Sealed head and exportable objects
-    S->>R: Upload encrypted objects
-    S->>R: Publish head under ownership fence
-    D->>R: Confirm Take of displayed holder
-    R-->>D: Accepted lease and published head
-    D->>G: Want objects required by head
-    D->>R: Fetch required encrypted objects
-    R-->>G: Objects through receiver import
-    G-->>D: Materialized chat state
-    D->>D: Restore portable task copies and check readiness
+    S->>R: Upload objects before publishing head
+    D->>R: Fetch displayed head into private staging
+    D->>D: Verify carrier and required root closure
+    D->>U: Choose missing local root folders
+    U-->>D: Explicit per-root associations
+    D->>D: Validate staging and final destination
+    D->>R: Acquire against displayed holder and fence
+    D->>D: Stage and verify complete private layout
+    D->>D: Promote, bind identities, finalize checkpoint
+    D->>D: Permit execution only after readiness checks
 ```
 
-Publishing uploads objects before advancing the directory head. A stale fence
-cannot overwrite the new holder. Fetching may prime from advertised frames, but
-Furrow's `Want`/import loop establishes completeness before materialization;
-frame listings are hints, not completeness proofs.
+The receiver's existing folder picker asks for each missing root. Escape cancels
+without taking the lease. A retry retains the holder/fence the person saw, so a
+changed holder requires a fresh decision. Bindings overlapping private receiver
+storage are rejected before takeover. If staged admission fails, the original
+native timeline binding is restored so a valid retry remains possible.
 
-Task worktrees live outside the ordinary sealed chat tree. `taskcopy.Carry`
-composes portable commits and uncommitted changes under `.cell/trees` and restores
-them at receiver-local paths. Files omitted by the portable representation do
-not become transferable merely because a task used them. A successful chat Take
-is not a guarantee that every external command or dependency can resume.
+Publishing uploads before advancing the directory head; stale fences cannot
+overwrite the holder. Bounded existing-frame advertisements may prime fetching,
+but Furrow's authoritative `Want`/import loop proves completeness. Hints cannot
+substitute for verified objects.
 
-Source seams: [publisher](../../internal/cellsync/publish.go),
-[fetcher](../../internal/cellsync/fetch.go),
-[native sync adapter](../../internal/cellstore/syncops.go),
-[Take](../../internal/syncsetup/take.go),
-[portable task copies](../../internal/taskcopy/doc.go), and
-[chat file policy](../../internal/chatfiles/chatfiles.go).
+Source seams: [publish](../../internal/cellsync/publish.go),
+[fetch](../../internal/cellsync/fetch.go),
+[handoff](../../internal/handoff/handoff.go),
+[receiver orchestration](../../internal/syncsetup/take.go), and
+[task transfer](../../internal/session/workspace_transfer.go).
 
-## Multi-root extension: identity is not a path or permission
+## Reopen, restart, and fork
 
-The proposed unit is a **working root**, a dynamically selected folder. It need
-not be a Git repository, and it is not everything a conversation works on.
-One chat can reference several roots. Each execution declares a primary root
-and its explicit sibling uses. Every copy URI identifies exactly one physical
-copy; a layout groups several copies without combining their identities.
+Task workspaces are carried separately from ordinary sealed chat files.
+Portable commits, uncommitted changes, and explicit versioned directory metadata
+preserve supported state. Git alone cannot preserve empty directories and
+directory permissions. Missing metadata, invalid digest bindings, or an unknown
+recorded baseline refuse rather than guessing a replacement.
 
-| Resource | Contract |
-| --- | --- |
-| Working root | Stable opaque identity; receiver admits each association separately |
-| Chat | References many roots; has its own history and execution frontier |
-| Execution layout | Primary root plus declared read/write sibling uses |
-| Copy | One physical copy, owned by a chat/execution and bound locally |
-| Landing destination | Separate explicit permission; never inferred from a source URI |
+Restore uses private staging and full history when no verified Git base is
+available. It never unbundles into a borrowed original repository. A durable
+receipt spans promotion, registry admission and checkpoint finalization; retries
+recognize the same operation rather than creating a second copy. This recovery
+protocol spans several stores, not one atomic database transaction.
 
-The harness prepares private copies for delegated work by default. Cooperating
-tasks can share an identical admitted layout; independent work gets separate
-copies. Foreground edits retain the explicitly opened project's existing
-semantics. A model's brief, an absolute source path, matching names, and matching
-Git remotes cannot grant landing authority or merge two root identities.
+A fork retains completed results and portable history, with inherited active
+execution detached. It does not duplicate ongoing workers or spending. A later
+Take must preserve those results without reviving the original frontier.
+Successful chat transfer does not guarantee that arbitrary external commands or
+dependencies can resume on another device.
 
-```mermaid
-flowchart TD
-    Chat[Chat identity] --> Layout[Execution layout]
-    Layout --> A[Primary copy URI]
-    Layout --> B[Sibling copy URI]
-    A --> RootA[Working root A identity]
-    B --> RootB[Working root B identity]
-    A --> LocalA[Private local copy A]
-    B --> LocalB[Private local copy B]
-    Layout --> Shared[Cooperating tasks share this layout]
-    Layout --> Temp[Owned temporary files and logs]
-```
+## Local archives and storage safety
 
-The registry maps identity to local placement. It remains device-local; relay
-carries portable references and bytes, not another device's path authority.
-Reopen resolves the recorded identity and validates ownership. An unknown or
-incomplete binding refuses rather than silently using a historical path.
+The local lifecycle is `resident → retiring → cold → restoring → resident`.
+An eligible owned copy must be captured, independently verified and recorded
+durably before retirement. Restore verifies supported bytes and metadata before
+use. Deduplicated compressed chunks may serve several manifests without
+combining their ownership.
 
-## Receive and restart contract
+The archive implementation is a separate native dependency:
+[Furrow #13](https://github.com/Agent-Field/furrow/pull/13). Its local archive
+database is not a relay wire format. Release artifacts and the embedded pin must
+be updated before ordinary installation can claim archive support. A custom
+build used for acceptance is not equivalent to a released dependency.
 
-The extension must validate the entire required root closure before admission.
-Each root is associated independently with an accepted receiver destination.
-Reconstruction uses private staging and full history when the receiver lacks a
-verified Git base. It does not unbundle into a borrowed original repository.
-
-```mermaid
-flowchart LR
-    Fetch[Fetch verified sealed state] --> Validate[Validate roots and metadata]
-    Validate --> Stage[Stage complete private layout]
-    Stage --> Promote[Promote layout]
-    Promote --> Admit[Register local copy bindings]
-    Admit --> Finalize[Finalize checkpoint and clear source landing permission]
-    Finalize --> Ready[Allow execution]
-```
-
-A durable operation receipt spans promotion, registry admission and checkpoint
-finalization. This is recovery across several stores, not one atomic database
-transaction. Retries recognize the recorded operation and expected checkpoint;
-they must not duplicate copies or resume against a partly restored layout.
-
-Git does not represent empty directories or directory permissions. A portable
-root therefore needs an explicit versioned directory map in addition to file
-content, executable modes, deletions and line-ending metadata. Missing or
-unsupported metadata must refuse without discarding the original carrier.
-This is not a promise about every filesystem's ACLs, ownership or special files.
-
-A fork retains completed results and portable history while detaching inherited
-active execution authority. Unchanged inputs should not be duplicated as result
-artifacts. A later Take must retain that history without reviving old workers.
-
-## Storage lifecycle and safety
-
-The proposed lifecycle is `resident → retiring → cold → restoring → resident`.
-An owned archive is captured, verified and recorded durably before an eligible
-resident copy is removed. Restore verifies exact supported state before use.
-Shared content chunks may serve many manifests without merging ownership.
-
-Original projects, unrelated caches and uncertain writers are protected.
-Shell guards and temporary-directory settings are not an operating-system
-sandbox: detached writers and remote commands require separate ownership and
-quiescence evidence. Uncertain copies stay resident. Multi-root copies currently
-stay resident in the prototype; this design does not establish automatic
-normal-use reclamation or a long-term storage budget.
+Uncertain writers stay resident. Multi-root layout retirement remains excluded
+until whole-layout quiescence and recovery are verified. Unsupported ACLs,
+ownership, filesystem flags, special files, or other unverified metadata must
+retain the resident copy. No four-month automatic reclamation claim follows
+from the archive experiment.
 
 ## Compatibility and migration
 
-This documentation-only change performs **no migration**. A future implementation
-needs an explicit rollout before these contracts can become defaults:
-
 | Boundary | Required behavior |
 | --- | --- |
-| Legacy singleton checkpoint | Preserve its existing reader and restore behavior; no forced rewrite |
-| New multi-root checkpoint/carrier | Version schema, record all required roots, directory metadata and digest binding |
-| Early prototype with missing directory metadata | Refuse safely; recapture from intact source if available |
-| Missing recorded Git baseline | Preserve full history; refuse changed-output extraction instead of guessing HEAD |
-| Mixed or incomplete execution history | Refuse unsupported combinations without dropping records |
-| Receiver capabilities | Establish format support before mutation; older clients currently lack a guaranteed early refusal |
-| Local path bindings | Re-admit per device; never import remote absolute paths as authority |
+| Legacy conversations | Preserve existing placement and readers; no silent historical rewrite |
+| New owned conversations | Persist versioned placement policy so restart does not depend on a shell flag |
+| Multi-root carriers | Validate every required root, directory map and digest before execution |
+| Mixed or incomplete history | Refuse unsupported combinations without dropping records |
+| Receiver paths | Re-admit per device; remote paths never become write authority |
+| Older readers | Require supported readers; guaranteed early capability refusal is still unfinished |
 
-Both ends need supported readers during prototype testing. A capability handshake
-and restart/recovery tests are prerequisites to a general rollout. The original
-copy must survive a failed upgrade or restore; restoring an old binary is not a
-safe rollback if it cannot understand the new records. Do not compact away the
-last readable copy while compatibility is uncertain.
+Do not retire the last readable copy while compatibility is uncertain. Installing
+an older executable is not a sufficient rollback for records it cannot read.
+Fast routine key rewrapping, if introduced separately, cannot replace full
+compromise recovery or revoke content exposed by an old key.
 
-Fast routine key rewrapping, if introduced, must remain separate from full
-compromise recovery. Rewrapping an unchanged content key cannot revoke content
-already exposed by a compromised key; it cannot silently replace full rotation.
+## Validation and measurement limits
 
-## Measurements and remaining acceptance
+Separate experiments measured **43.34% lower allocated use** inside an isolated
+volume containing copies of a real-worktree corpus, and **55.17% lower warm
+materialization latency** in a matched transfer test. The transfer experiment
+reduced HTTP body bytes by **5.33%**. These are different experiments; latency
+reduction is not byte reduction, and isolated-volume reduction is not original
+host free-space reclamation. Multi-root normal usage has no matched savings
+percentage yet.
 
-Separate experiments measured **43.34% lower allocated use** on isolated copies
-of a real-worktree corpus and **55.17% lower warm materialization latency** in a
-matched relay experiment. The latter reduced HTTP body bytes by **5.33%**;
-latency reduction is not byte reduction. These are prototype measurements,
-not promised defaults, host-wide free-space reclamation, or four-month usage
-results. The new multi-root flow has no matched old/new savings percentage.
-
-An actual-model prototype sequence preserved supported bytes and metadata across
-engine restart, local Take, fork and a second Take. The completed task card still
-reported `incomplete`; a cross-machine receiver check was blocked by an offline
-receiver. Active cross-device plan recovery, the complete filesystem metadata
-matrix, and automatic multi-root compaction remain unverified. Green checks on
-this documentation PR do not close those implementation gates.
+Focused tests cover ordinary owned task admission, exact cooperation, directory
+metadata, root mapping, cancellation, stale holders, preflight refusal and retry.
+Final real-terminal actual-provider and cross-machine acceptance is still
+pending on this implementation candidate. The earlier terminal run used an
+incorrect record-card oracle and cannot establish either a full pass or a
+confirmed task-status defect. Draft status remains appropriate until the
+complete acceptance chain and dependency integration are verified.

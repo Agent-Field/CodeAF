@@ -610,6 +610,7 @@ const (
 	// [MethodPlanSpend]'s reason — an engine that does not know it answers
 	// "no such method", and the tab draws the absence sentence it already
 	// drew for an engine with no door.
+	MethodOpenPlanTaskWork  = "OpenPlanTaskWork"  // PlanTaskArgs → PlanTaskWorkResult; explicit storage reopen
 	MethodPlanTaskWork      = "PlanTaskWork"      // PlanTaskArgs → PlanTaskWorkResult
 	MethodPlanNote          = "PlanNote"          // PlanTextArgs → nothing
 	MethodPlanPause         = "PlanPause"         // PlanTaskArgs → nothing

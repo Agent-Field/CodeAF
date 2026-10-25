@@ -85,8 +85,20 @@ type Lease struct {
 	ReleasedAt int64 `json:"released_at,omitempty"`
 }
 
+// MaxFrameHints and FrameHintBudget bound optional warm-transfer metadata and
+// application reads. Each frame reserves one additional EOF probe byte.
+const MaxFrameHints = 2
+const FrameHintBudget int64 = 64 << 10
+
+// FrameHint describes an existing uploaded frame, never completeness authority.
+type FrameHint struct {
+	ID    string `json:"id"`
+	Bytes int64  `json:"bytes"`
+}
+
 // Cell is keyed by cell ULID. It exists only once it has a durable head.
 type Cell struct {
+	FrameHints  []FrameHint                  `json:"frame_hints,omitempty"`
 	V           uint16                       `json:"V"`
 	Head        string                       `json:"head"`       // last durable turn id (hex64)
 	DurableAt   int64                        `json:"durable_at"` // directory ms
@@ -117,6 +129,7 @@ type Listing struct {
 func withoutFrames(l Listing) Listing {
 	for id, c := range l.Cells {
 		c.Frames = nil
+		c.FrameHints = nil
 		l.Cells[id] = c
 	}
 	return l
@@ -130,6 +143,7 @@ type CellView struct {
 
 // CellInit creates a cell. The calling device holds the new lease at fence 1.
 type CellInit struct {
+	FrameHints  []FrameHint                  `json:"frame_hints,omitempty"`
 	Head        string                       `json:"head"`
 	Class       string                       `json:"class"`
 	Title       string                       `json:"title,omitempty"`
@@ -148,12 +162,41 @@ type Beat struct {
 
 // Publish moves a cell's durable head under a lease the caller holds.
 type Publish struct {
-	Fence   uint64   `json:"fence"`
-	OldHead string   `json:"old_head"`
-	Head    string   `json:"head"`
-	Size    uint64   `json:"size"`
-	Class   string   `json:"class"`
-	Title   string   `json:"title,omitempty"`  // empty keeps the current title
-	Pending uint32   `json:"pending"`          // turns still not durable after this one
-	Frames  []string `json:"frames,omitempty"` // empty or absent replaces the record's plan with none
+	FrameHints []FrameHint `json:"frame_hints,omitempty"`
+	Fence      uint64      `json:"fence"`
+	OldHead    string      `json:"old_head"`
+	Head       string      `json:"head"`
+	Size       uint64      `json:"size"`
+	Class      string      `json:"class"`
+	Title      string      `json:"title,omitempty"`  // empty keeps the current title
+	Pending    uint32      `json:"pending"`          // turns still not durable after this one
+	Frames     []string    `json:"frames,omitempty"` // empty or absent replaces the record's plan with none
+}
+
+// boundedFrameHints copies optional untrusted metadata. Invalid sets are omitted,
+// never a reason to accept a head without the authoritative object closure.
+func boundedFrameHints(in []FrameHint) []FrameHint {
+	if len(in) == 0 || len(in) > MaxFrameHints {
+		return nil
+	}
+	remaining := FrameHintBudget
+	out := make([]FrameHint, 0, len(in))
+	for _, h := range in {
+		if h.Bytes <= 0 || h.Bytes >= remaining || len(h.ID) != 64 {
+			return nil
+		}
+		for _, c := range h.ID {
+			if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+				return nil
+			}
+		}
+		for _, old := range out {
+			if old.ID == h.ID {
+				return nil
+			}
+		}
+		remaining -= h.Bytes + 1
+		out = append(out, h)
+	}
+	return out
 }

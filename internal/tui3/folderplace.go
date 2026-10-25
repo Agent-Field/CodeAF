@@ -290,7 +290,7 @@ func (a *app) openTargetContextPick(query string, files bool) tea.Cmd {
 // surface has a layer to undraw, routed through one door so none of the ways out
 // can leave the layer behind.
 func (a *app) closeFolderSheet() tea.Cmd {
-	home := a.folder.forTarget
+	home := a.folder.forTarget || a.folder.chooseFolder != nil
 	a.folder.close()
 	a.touch()
 	if home {
@@ -1181,6 +1181,7 @@ func (a *app) tookFolderStore(msg folderStoreMsg) tea.Cmd {
 	marks, pane := a.folder.marks, a.folder.pane
 	paneTop, paneLeft := a.folder.paneTop, a.folder.paneLeft
 	forTarget, forWorkspace := a.folder.forTarget, a.folder.forWorkspace
+	chooseFolder, chooseTitle := a.folder.chooseFolder, a.folder.chooseTitle
 	a.folder.start(a.folderCandidates(), a.tilde)
 	a.folder.filter, a.folder.facts = filter, facts
 	a.folder.kids, a.folder.asking, a.folder.hidden = kids, asking, hidden
@@ -1193,6 +1194,7 @@ func (a *app) tookFolderStore(msg folderStoreMsg) tea.Cmd {
 	// chosen on it went to the conversation BEHIND home. Its sheet holds nothing
 	// either, for the reason that function gives.
 	a.folder.forTarget, a.folder.forWorkspace = forTarget, forWorkspace
+	a.folder.chooseFolder, a.folder.chooseTitle = chooseFolder, chooseTitle
 	if !forTarget && !forWorkspace {
 		a.markFolderHeld()
 	}

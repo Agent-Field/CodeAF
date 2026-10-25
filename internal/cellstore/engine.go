@@ -11,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/taskcopy"
 )
 
 // dataDirEnv names where the engine keeps its store and catalog. One directory
@@ -82,6 +83,23 @@ func (cs Composers) Compose(c cell.Cell) error {
 	return nil
 }
 
+// ComposeWorkspace supplies the current source project to carriers that need
+// its baseline. Other carriers retain their ordinary Compose contract.
+func (cs Composers) ComposeWorkspace(c cell.Cell, workspace string) error {
+	for _, one := range cs {
+		var err error
+		if scoped, ok := one.(interface{ ComposeWorkspace(cell.Cell, string) error }); ok {
+			err = scoped.ComposeWorkspace(c, workspace)
+		} else {
+			err = one.Compose(c)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // LocalDir holds only this cell's private WAL, overlays and transport scratch.
 // An older engine store there stays in place for compatibility (D1).
 func (e Engine) LocalDir(c cell.Cell) string { return filepath.Join(e.Root(), c.ID) }
@@ -107,6 +125,11 @@ func (e Engine) Seal(ctx context.Context, c cell.Cell, info TurnInfo) (Sealed, e
 	if err != nil {
 		return Sealed{}, fmt.Errorf("seal: encode receipt: %w", err)
 	}
+	release, err := taskcopy.LockWorkspaceCheckpoint(ctx, c)
+	if err != nil {
+		return Sealed{}, fmt.Errorf("seal: workspace checkpoint: %w", err)
+	}
+	defer release()
 	if err := e.compose(c, raw, rid, info); err != nil {
 		return Sealed{}, fmt.Errorf("seal: compose: %w", err)
 	}

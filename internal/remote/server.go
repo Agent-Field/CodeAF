@@ -2957,6 +2957,18 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		page, found := door.PlanTaskPage(args.ID)
 		return json.Marshal(PlanTaskPageResult{Page: page, OK: found})
 
+	case MethodOpenPlanTaskWork:
+		args, err := arg[PlanTaskArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(session.PlanWorkOpener)
+		if !ok {
+			return json.Marshal(PlanTaskWorkResult{Work: session.PlanTaskWork{NoDoor: true}})
+		}
+		work, found := door.OpenPlanTaskWork(args.ID)
+		return json.Marshal(PlanTaskWorkResult{Work: work, OK: found})
+
 	case MethodPlanTaskWork:
 		args, err := arg[PlanTaskArgs](call)
 		if err != nil {

@@ -25,8 +25,10 @@ const ImportEvery = 4
 
 // Fetcher brings a head and everything it needs from the store onto this device.
 type Fetcher struct {
-	Engine Engine
-	Store  blobstore.Store
+	// WarmFrameHints opts into bounded latest-frame priming; off by default.
+	WarmFrameHints bool
+	Engine         Engine
+	Store          blobstore.Store
 	// Dir reads the cell's record for the plan (contract §22.2). Nil means no
 	// priming: the fetch is exactly the want loop (rotation uses it that way).
 	Dir        directory.Client
@@ -47,6 +49,9 @@ func (f *Fetcher) Fetch(ctx context.Context, c cell.Cell, head string) error {
 // device's store afterwards and the folder the person works in is not touched.
 // It is how a device holds a chat's objects without taking the chat over.
 func (f *Fetcher) Complete(ctx context.Context, c cell.Cell, head string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	inbox := f.Inbox(c)
 	if err := os.MkdirAll(inbox, 0o700); err != nil {
 		return err
@@ -126,15 +131,20 @@ func (f *Fetcher) prime(ctx context.Context, c cell.Cell, head, inbox string) er
 	if f.Dir == nil {
 		return nil // no directory, no plan: exactly today's want loop
 	}
-	if err := os.MkdirAll(inbox, 0o700); err != nil {
+	owned, err := ensureHintInbox(filepath.Dir(inbox))
+	if err != nil {
 		return err
 	}
+	inbox = owned
 	defer os.RemoveAll(inbox)
 	// A device that already exchanged objects with this relay holds most of the
 	// chat: the plan names its whole upload history, so priming it would
 	// download what it has to learn about a one-file change. The want loop
 	// fetches a warm take's delta by rid.
 	if f.Engine.Holds(c) {
+		if f.WarmFrameHints {
+			return f.primeWarm(ctx, c, head, inbox)
+		}
 		return nil
 	}
 	// A device that already holds the head wants nothing, and needs no frames.

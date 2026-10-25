@@ -154,6 +154,9 @@ func TestAFirstLaunchMintsAFolderThatNamesItself(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if meta.WorkspacePolicy == nil || *meta.WorkspacePolicy != *session.DefaultWorkspacePolicy() {
+		t.Fatalf("new conversation has no private task policy: %+v", meta.WorkspacePolicy)
+	}
 	if meta.ID != filepath.Base(found.Place.Dir) {
 		t.Fatalf("the folder is called %s and the session %s", filepath.Base(found.Place.Dir), meta.ID)
 	}

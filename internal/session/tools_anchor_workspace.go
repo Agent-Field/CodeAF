@@ -137,7 +137,7 @@ func (a *Agent) anchorMetaLocked(dir, workspace string) error {
 			meta = a.fillMetaLocked(meta)
 		}
 		meta.Workspace, meta.Owned = workspace, false
-		if err := SaveMeta(dir, meta); err != nil {
+		if err := saveMetaLocked(dir, meta); err != nil {
 			return fmt.Errorf("save conversation place: %w", err)
 		}
 		return nil

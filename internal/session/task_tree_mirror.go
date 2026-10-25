@@ -52,7 +52,11 @@ package session
 // own machinery where they live. Parts of such a parent go on sharing the
 // directory, which is what "here" means.
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/taskcopy"
+)
 
 // openFamilyTree makes a mirrored family tree into the repository its parts cut
 // their worktrees off, and hands the tree back either way.
@@ -141,6 +145,9 @@ func openFamilyRepository(dir string) string {
 		"commit", "--quiet", "--no-verify", "--allow-empty",
 		"-m", familyTreeCommitMessage)...); err != nil {
 		return familyTreeProblem(out, err)
+	}
+	if err := taskcopy.MarkIndependentBaseline(dir); err != nil {
+		return familyTreeProblem("", err)
 	}
 	return ""
 }

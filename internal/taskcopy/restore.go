@@ -1,6 +1,7 @@
 package taskcopy
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/mirror"
+	"github.com/Agent-Field/codeaf/internal/taskstorage"
 )
 
 // Cutter makes a task copy the way a task makes one. Restore asks it instead of
@@ -41,17 +43,37 @@ type Spec struct {
 // its files, in a plain folder at its path, so the edits are found where the
 // task worked; the error says why it is not a working tree.
 func (k Carry) Restore(c cell.Cell, project string) ([]string, error) {
+	return k.RestoreWithParents(c, project, nil)
+}
+
+// RestoreWithParents restores a validated carrier graph parent-first. A parent
+// is another tree ID in this cell, never a caller-supplied filesystem path.
+func (k Carry) RestoreWithParents(c cell.Cell, project string, parents map[string]string) ([]string, error) {
+	order, err := restorationOrder(Carried(c), parents)
+	if err != nil {
+		return nil, err
+	}
 	var errs []error
 	if isRepository(project) {
 		_, err := git(project, "worktree", "prune")
 		errs = append(errs, err)
 	}
 	var restored []string
-	for _, name := range Carried(c) {
-		if err := k.restoreOne(c, project, name); err != nil {
+	ready := make(map[string]bool, len(order))
+	for _, name := range order {
+		ground := project
+		if parent := parents[name]; parent != "" {
+			if !ready[parent] {
+				errs = append(errs, fmt.Errorf("task copy %s: parent %s was not restored", name, parent))
+				continue
+			}
+			ground = filepath.Join(liveRoot(c), parent)
+		}
+		if err := k.restoreOne(c, ground, name); err != nil {
 			errs = append(errs, fmt.Errorf("task copy %s: %w", name, err))
 			continue
 		}
+		ready[name] = true
 		restored = append(restored, name)
 	}
 	return restored, errors.Join(errs...)
@@ -64,6 +86,11 @@ func (k Carry) restoreOne(c cell.Cell, project, name string) error {
 		return err
 	}
 	dest := filepath.Join(liveRoot(c), name)
+	if manager, enabled := taskstorage.Prototype(liveRoot(c)); enabled {
+		if err := manager.Ensure(context.Background(), dest); err != nil {
+			return err
+		}
+	}
 	cutErr := k.cutAgain(project, dest, name, from, rec)
 	return errors.Join(cutErr, applyEOL(dest, rec.EOL), overlay(filepath.Join(from, filesDir), dest, rec), applyModes(dest, rec.Modes))
 }
@@ -103,6 +130,9 @@ func (k Carry) cutAgain(project, dest, name, from string, rec record) error {
 	}
 	if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
 		return err
+	}
+	if !isRepository(project) {
+		return restoreStandaloneCopy(project, dest, from, rec)
 	}
 	if err := unbundle(project, filepath.Join(from, bundleName)); err != nil {
 		return err

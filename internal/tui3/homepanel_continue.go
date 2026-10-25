@@ -65,6 +65,10 @@ type conditionalTaker interface {
 	TakeSeen(context.Context, string, *directory.LeaseExpectation) (Taken, error)
 }
 
+type workspaceRootTaker interface {
+	TakeSeenWithWorkspaceRoots(context.Context, string, *directory.LeaseExpectation, map[string]string) (Taken, error)
+}
+
 // BranchActions is what a branch row can do. A nil verb is not offered.
 type BranchActions struct {
 	Open    func(ctx context.Context, branch string) (Taken, error)
@@ -247,15 +251,24 @@ type homeTakenMsg struct {
 	row   chatlist.Row
 	taken Taken
 	err   error
+	roots map[string]string
 }
 
 // takeRemote asks the taker, off the update loop: a takeover fetches and waits
 // on the directory, and a keystroke may not wait on a network.
 func (a *app) takeRemote(row chatlist.Row) tea.Cmd {
+	return a.takeRemoteWithRoots(row, nil)
+}
+
+func (a *app) takeRemoteWithRoots(row chatlist.Row, roots map[string]string) tea.Cmd {
 	a.home.say(continuing, "")
 	taker, ctx := a.taker, a.ctx
 	return func() tea.Msg {
-		if conditional, ok := taker.(conditionalTaker); ok && row.DeviceID != "" {
+		if mapped, ok := taker.(workspaceRootTaker); ok && len(roots) > 0 {
+			taken, err := mapped.TakeSeenWithWorkspaceRoots(ctx, row.Cell, &directory.LeaseExpectation{Device: row.DeviceID, Fence: row.Fence}, roots)
+			return homeTakenMsg{row: row, taken: taken, err: err, roots: roots}
+		}
+		if conditional, ok := taker.(conditionalTaker); ok {
 			taken, err := conditional.TakeSeen(ctx, row.Cell, &directory.LeaseExpectation{Device: row.DeviceID, Fence: row.Fence})
 			return homeTakenMsg{row: row, taken: taken, err: err}
 		}
@@ -267,6 +280,12 @@ func (a *app) takeRemote(row chatlist.Row) tea.Cmd {
 // tookTakeover files the answer. A takeover that failed leaves the row where it
 // was, and one line says why; one that worked opens the chat.
 func (a *app) tookTakeover(msg homeTakenMsg) tea.Cmd {
+	var missing *session.WorkspaceBindingsRequired
+	if errors.As(msg.err, &missing) {
+		if _, ok := a.taker.(workspaceRootTaker); ok && len(missing.Roots) > 0 {
+			return a.chooseTakeRoots(msg.row, missing.Roots, msg.roots)
+		}
+	}
 	switch {
 	case errors.Is(msg.err, directory.ErrLeaseHeld):
 		return a.lostRace(msg.row)
@@ -283,6 +302,27 @@ func (a *app) tookTakeover(msg homeTakenMsg) tea.Cmd {
 	}
 	a.touch()
 	return nil
+}
+
+// chooseTakeRoots collects explicit folder choices, then retries against the
+// original card's holder. Escape drops the choices without another takeover.
+func (a *app) chooseTakeRoots(row chatlist.Row, missing []session.WorkspaceRootBinding, chosen map[string]string) tea.Cmd {
+	if len(missing) == 0 {
+		return a.takeRemoteWithRoots(row, chosen)
+	}
+	cmd := a.openContextPick("", false)
+	a.folder.forWorkspace = true
+	a.folder.held = nil
+	a.folder.chooseTitle = "local folder for " + missing[0].Label
+	a.folder.chooseFolder = func(path string) tea.Cmd {
+		roots := make(map[string]string, len(chosen)+1)
+		for uri, folder := range chosen {
+			roots[uri] = folder
+		}
+		roots[missing[0].URI] = path
+		return a.chooseTakeRoots(row, missing[1:], roots)
+	}
+	return cmd
 }
 
 // lostRace is another device winning the takeover. The row goes back to

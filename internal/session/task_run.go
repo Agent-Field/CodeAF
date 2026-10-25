@@ -278,6 +278,9 @@ const (
 // brief is assembled once at start (runFrontier's JIT assembly) from spec.brief
 // plus prerequisites' reports and is not the spec.
 type TaskNode struct {
+	// storageBlocked records a writer whose bounded shutdown has not finished.
+	storageBlocked bool
+
 	// Continuation choices preserve the completed attempt until work is reopened.
 	nextModel  string
 	nextEffort *string
@@ -367,6 +370,8 @@ type TaskNode struct {
 	// guarded by the graph's lock and written once.
 	Ground string
 	Mode   TaskMode
+	// These identities bind restored legacy and nested task worlds to their owners.
+	WorkspaceURI, ChatURI, ProjectURI, GroundURI, RootURI string
 	// Home is the branch the root checkout was on when this node's branch was
 	// cut. It is the fixed side of the moved-checkout question at landing time;
 	// absence is ordinary for a checkpoint written before this field existed.
@@ -2973,6 +2978,9 @@ func (n *TaskNode) leavings() (report string, changed []string, branch, merge st
 // the node's changes live in that directory, and pretending otherwise would
 // merge an empty branch and call it done.
 func (n *TaskNode) workingCopy(place Place, workspace string) (taskTree, error) {
+	if tree, known, err := n.ownedWorkingCopy(context.Background(), place, workspace); known {
+		return tree, err
+	}
 	n.graph.mu.Lock()
 	dir, branch, merge := n.worktree, n.branch, n.merge
 	n.graph.mu.Unlock()
@@ -3023,6 +3031,78 @@ func (n *TaskNode) workingCopy(place Place, workspace string) (taskTree, error) 
 	return n.ladderRecord(taskTree{dir: dir, root: root, branch: branch, place: place, ground: ground, mode: mode}), nil
 }
 
+// ownedWorkingCopy resolves recorded identities before touching cached paths.
+// Unknown identities fail closed; they never cause a replacement task copy.
+func (n *TaskNode) ownedWorkingCopy(ctx context.Context, place Place, workspace string) (taskTree, bool, error) {
+	n.graph.mu.Lock()
+	record := &TaskCopyRecord{URI: n.WorkspaceURI, ChatURI: n.ChatURI, ProjectURI: n.ProjectURI,
+		GroundURI: n.GroundURI,
+		RootURI:   n.RootURI, Dir: n.worktree, Branch: n.branch, Ground: n.Ground, Mode: n.Mode}
+	merge := n.merge
+	n.graph.mu.Unlock()
+	if record.URI == "" {
+		return taskTree{}, false, nil
+	}
+	dir, err := resolveOwnedWorkspace(record, place)
+	if err != nil {
+		return taskTree{}, true, fmt.Errorf("resolve its working copy identity: %w", err)
+	}
+	ground, root := record.Ground, ""
+	if record.GroundURI != "" {
+		ground, err = resolveOwnedGround(record.GroundURI, record)
+	} else if record.ProjectURI != "" {
+		ground, err = resolveOwnedProject(record.ProjectURI)
+	}
+	if err != nil {
+		return taskTree{}, true, fmt.Errorf("resolve its task ground: %w", err)
+	}
+	root, err = ownedTaskLandingRoot(record, ground, workspace)
+	if err != nil {
+		return taskTree{}, true, err
+	}
+	if err := ensureTaskStorage(ctx, place, dir); err != nil {
+		return taskTree{}, true, fmt.Errorf("restore its compact working copy: %w", err)
+	}
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		return taskTree{}, true, fmt.Errorf("its working copy is gone from %s", dir)
+	}
+	branch := record.Branch
+	if mark, released := rememberedRelease(dir); released && branch != "" && strings.TrimSpace(mark.Branch) != "" {
+		branch = mark.Branch
+	}
+	n.graph.mu.Lock()
+	n.worktree, n.Ground = dir, ground
+	n.graph.mu.Unlock()
+	return n.ladderRecord(taskTree{dir: dir, root: root, ground: ground, mode: record.Mode, branch: branch, merge: merge, place: place}), true, nil
+}
+
+func ownedTaskLandingRoot(record *TaskCopyRecord, ground, workspace string) (string, error) {
+	var root string
+	var err error
+	if record.RootURI != "" {
+		root, err = resolveOwnedGround(record.RootURI, record)
+		if err != nil {
+			return "", fmt.Errorf("resolve its landing root: %w", err)
+		}
+	} else if record.Branch != "" && record.Mode != TaskModeMirror {
+		var ok bool
+		root, ok = repositoryRoot(ground)
+		if !ok {
+			root, ok = repositoryRoot(workspace)
+		}
+		if !ok {
+			return "", fmt.Errorf("its recorded task ground is no longer a repository")
+		}
+	}
+	return root, nil
+}
+
+func registerPreparedTaskTree(tree *taskTree, err *error, place Place) {
+	if *err == nil {
+		*tree, *err = registerOwnedWorkspace(*tree, place)
+	}
+}
+
 // ladderRecord puts back what the ground ladder wrote down about a node's world
 // (groundladder.go), on a tree that was rebuilt from the record rather than
 // carved in this run.
@@ -3041,6 +3121,8 @@ func (n *TaskNode) ladderRecord(tree taskTree) taskTree {
 	tree.rung, tree.seal, tree.base, tree.universe = n.Rung, n.Seal, n.Base, n.Universe
 	tree.checkBase = n.CheckBase
 	tree.home, tree.homeSha = n.Home, n.HomeSha
+	tree.uri, tree.chatURI, tree.projectURI = n.WorkspaceURI, n.ChatURI, n.ProjectURI
+	tree.groundURI, tree.rootURI = n.GroundURI, n.RootURI
 	return tree
 }
 
@@ -3394,6 +3476,8 @@ func (n *TaskNode) addSpend(used Usage) {
 func (n *TaskNode) setTree(tree taskTree) {
 	n.graph.mu.Lock()
 	n.worktree = tree.dir
+	n.WorkspaceURI, n.ChatURI, n.ProjectURI = tree.uri, tree.chatURI, tree.projectURI
+	n.GroundURI, n.RootURI = tree.groundURI, tree.rootURI
 	n.branch = tree.branch
 	n.merge = tree.merge
 	// THE RECORD IS WHAT HAPPENED AND NOT WHAT WAS PLANNED. The ground and the
@@ -3730,11 +3814,16 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 		ID:       n.id,
 		Title:    n.spec.title,
 		// Reopened task pages need the contract even when no proposal card survives.
-		Brief:      n.spec.brief,
-		Summary:    n.spec.summary,
-		Acceptance: n.spec.acceptance,
-		Kind:       n.kind,
-		Where:      where,
+		Brief:        n.spec.brief,
+		Summary:      n.spec.summary,
+		Acceptance:   n.spec.acceptance,
+		Kind:         n.kind,
+		Where:        where,
+		WorkspaceURI: n.WorkspaceURI,
+		ChatURI:      n.ChatURI,
+		ProjectURI:   n.ProjectURI,
+		GroundURI:    n.GroundURI,
+		RootURI:      n.RootURI,
 		// AND WHICH PROJECT THAT DIRECTORY IS A COPY OF, on every update and not
 		// only on the proposal: a row drawn from a checkpoint, a roster replayed
 		// after a resize and a card watching work land all ask the same question,
@@ -5157,6 +5246,7 @@ func (a *Agent) runTaskNode(node *TaskNode) {
 	// road where it did not — and this is what answers the two bodies that are
 	// not a worker in a worktree.
 	node.graph.planStopLandedChildren(node.id)
+	a.parkTaskStorage(node, state, taskLog(listed))
 	node.graph.complete(node, state)
 	// AND WHATEVER IS LEFT WAITING ON A DECIDER WHO HAS GONE HOME.
 	// [TaskGraph.stopChildren] deliberately leaves settled children alone, and a
@@ -5367,10 +5457,18 @@ func (a *Agent) openTaskWorld(ctx context.Context, node *TaskNode, log io.Writer
 	// checkout this node's branch comes off, which for a part is its parent's
 	// worktree.
 	place := a.familyPlace(node)
-	tree, resumed := node.resumeTree(place, a.config.Workspace)
-	var err error
-	if !resumed {
-		tree, err = prepareTaskTreeForNode(ctx, place, a.config.Workspace, a.journalID(), node)
+	tree, known, err := node.ownedWorkingCopy(ctx, place, a.config.Workspace)
+	if !known {
+		if restoreErr := a.ensureNodeStorage(ctx, node); restoreErr != nil {
+			node.end(TaskEndingError)
+			node.finish("could not restore its compact working copy: "+restoreErr.Error(), nil, "", "")
+			return taskTree{}, false
+		}
+		var resumed bool
+		tree, resumed = node.resumeTree(place, a.config.Workspace)
+		if !resumed {
+			tree, err = prepareTaskTreeForNode(ctx, place, a.config.Workspace, a.journalID(), node)
+		}
 	}
 	if err != nil {
 		node.end(TaskEndingError)
@@ -5606,6 +5704,7 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 			return
 		}
 		_ = child.Close()
+		rememberTaskWriters(node, child)
 		a.foldTaskUsage(node, child)
 		// The fold moved this child's whole tally onto the node, so the bill
 		// stops naming it — a price read now comes off the frozen figure, and a
@@ -6219,6 +6318,9 @@ func (n *TaskNode) landingFacts(merge string) TaskFacts {
 // resumeTree reuses the durable working copy after a process interruption, and
 // after a person asked to continue a settled node ([Agent.ContinueTask]).
 func (n *TaskNode) resumeTree(place Place, workspace string) (taskTree, bool) {
+	if tree, known, err := n.ownedWorkingCopy(context.Background(), place, workspace); known {
+		return tree, err == nil
+	}
 	n.graph.mu.Lock()
 	dir, branch, merge, interrupted, continuing := n.worktree, n.branch, n.merge, n.interrupted, n.continuing
 	n.graph.mu.Unlock()
@@ -6367,6 +6469,9 @@ func (t taskTree) releaseKept() {
 // releaseKeptLocked is the same cleanup for a caller already holding the root
 // lock, which is the conflict arm inside [taskTree.comeHome].
 func (t taskTree) releaseKeptLocked() {
+	if retainTaskStorage(t) {
+		return
+	}
 	left := leftBehind(t.dir)
 	rememberLeftBehind(t.dir, left)
 	if t.ownRepository() {
@@ -6488,6 +6593,9 @@ func branchIsThere(repo, name string) bool {
 // and worktree repair binds that pointer to the retained directory. A failed
 // registration therefore cannot erase or partly relocate the user's leavings.
 func (t taskTree) reopenReleased() (taskTree, bool, string) {
+	if err := ensureTaskStorage(context.Background(), t.place, t.dir); err != nil {
+		return t, false, "its compact working copy could not be restored: " + err.Error()
+	}
 	mark, released := t.releaseIdentity()
 	if !released {
 		return t, false, ""
@@ -7583,7 +7691,8 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		workerSeat = effort.RoleWork
 	}
 
-	child, err := a.newChildAgent(Config{
+	workspaceURI, logOwnerURI := node.workspaceIdentity()
+	childConfig := Config{
 		// Search authority follows the work without enabling memory writes.
 		ConversationHistory: parent.conversationHistory(),
 		// AND THE CONVERSATION'S MEMORY, READ-ONLY. A worker has no brain of its
@@ -7630,6 +7739,7 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// answer is settled here, once, while the family's is in hand.
 		ownSpace:      standingInOwnSpace(family, dir),
 		Workspace:     dir,
+		WorkspaceURI:  workspaceURI,
 		Model:         model,
 		APIKey:        parent.APIKey,
 		BaseURL:       parent.BaseURL,
@@ -7829,11 +7939,33 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// asks the node it was armed on. This line is only the person's yes
 		// travelling with the work.
 		Divide: parent.Divide,
-	})
+	}
+	if childConfig.WorkspaceURI != "" {
+		if err := os.MkdirAll(filepath.Dir(journal), 0700); err != nil {
+			return nil, err
+		}
+	}
+	var logOwners []string
+	if logOwnerURI != "" {
+		logOwners = []string{logOwnerURI}
+	}
+	if err := configureOwnedWorker(&childConfig, filepath.Dir(journal), logOwners...); err != nil {
+		return nil, err
+	}
+	child, err := a.newChildAgent(childConfig)
 	if err != nil {
 		return nil, err
 	}
 	return child, nil
+}
+
+func (n *TaskNode) workspaceIdentity() (string, string) {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	if n.WorkspaceURI != "" {
+		return n.WorkspaceURI, n.ChatURI
+	}
+	return n.ProjectURI, n.ChatURI
 }
 
 // seatTaskModelLocked answers the model a task worker may actually start on,
@@ -8061,6 +8193,9 @@ func taskLog(listed *job) io.Writer {
 
 // taskTree is where one node works and how its work comes home.
 type taskTree struct {
+	workspaceSet *WorkspaceSet
+	// Stable local identity survives a path relocation; it grants no cleanup authority.
+	uri, chatURI, projectURI, groundURI, rootURI string
 	// dir is the node's workspace: a worktree, or the person's own directory
 	// when there is no repository.
 	dir string
@@ -8196,8 +8331,21 @@ func prepareTaskTree(place Place, workspace, session string, id uint64, title st
 // its parent froze the family tree at, which the ladder cuts from instead of
 // sealing a tree that has moved since (task_divide_wip.go). Empty for everything
 // that is not a part, which is almost every task.
-func prepareTaskTreeAt(ctx context.Context, place Place, workspace, session string, id uint64, title, where, frozen string) (taskTree, error) {
+func prepareTaskTreeAt(ctx context.Context, place Place, workspace, session string, id uint64, title, where, frozen string) (tree taskTree, err error) {
+	defer registerPreparedTaskTree(&tree, &err, place)
+	if err := ensureTaskStorage(ctx, place, workspace); err != nil {
+		return taskTree{}, err
+	}
 	where = strings.TrimSpace(where)
+	if WorkspaceOwnershipEnabled(place) {
+		ground, err := ownershipTaskGround(where, workspace)
+		if err != nil {
+			return taskTree{}, err
+		}
+		if root, ok := repositoryRoot(ground); !ok || !hasCommit(root) {
+			return prepareTaskTreeOn(ctx, place, workspace, session, id, title, taskStand{dir: ground, mode: ownershipPlainMode(ground)})
+		}
+	}
 	if root, ok := whereInsideRepository(where, workspace); where != "" && ok {
 		return cutTaskWorktree(ctx, place, root, session, id, title, frozen)
 	}
@@ -8391,8 +8539,22 @@ func cutWorktreeFrom(place Place, root, dir, branch string, mode os.FileMode, fr
 // that admits a node does not resolve one — a subharness run, a design, a graph
 // scripted by a test — and the tree they get is the tree they always got, with
 // its ground filled in from the repository it was actually cut from.
-func prepareTaskTreeOn(ctx context.Context, place Place, workspace, session string, id uint64, title string, stand taskStand) (taskTree, error) {
+func prepareTaskTreeOn(ctx context.Context, place Place, workspace, session string, id uint64, title string, stand taskStand) (tree taskTree, err error) {
+	if stand.workspaceSet != nil {
+		return prepareWorkspaceSet(ctx, place, id, title, *stand.workspaceSet)
+	}
+	return prepareSingletonTaskTreeOn(ctx, place, workspace, session, id, title, stand)
+}
+
+func prepareSingletonTaskTreeOn(ctx context.Context, place Place, workspace, session string, id uint64, title string, stand taskStand) (tree taskTree, err error) {
+	defer registerPreparedTaskTree(&tree, &err, place)
+	if err := ensureTaskStorage(ctx, place, stand.dir); err != nil {
+		return taskTree{}, err
+	}
 	ground := canonicalPath(strings.TrimSpace(stand.dir))
+	if WorkspaceOwnershipEnabled(place) && stand.mode == TaskModeFolder {
+		stand.mode = ownershipPlainMode(ground)
+	}
 	if ground == "" {
 		// A PART REACHES THIS ROAD AND ITS FREEZE HAS TO TRAVEL WITH IT. A part
 		// admitted by `divide_work` carries no ground of its own (task_divide.go
@@ -8422,6 +8584,9 @@ func prepareTaskTreeOn(ctx context.Context, place Place, workspace, session stri
 		// read. Copying the world in would be the opposite of what was asked.
 		return taskTree{dir: dir, merge: mergeInPlace, ground: ground, mode: stand.mode}, nil
 	case TaskModeMirror:
+		if err := ensureOwnedMirrorGround(place, ground); err != nil {
+			return taskTree{}, err
+		}
 		dir, mode := taskOwnFolder(place, workspace, session, id)
 		tree, err := carveGround(ctx, groundOrder{
 			place:   place,
@@ -8448,6 +8613,10 @@ func prepareTaskTreeOn(ctx context.Context, place Place, workspace, session stri
 	}
 	root, ok := repositoryRoot(ground)
 	if !ok || !hasCommit(root) {
+		if WorkspaceOwnershipEnabled(place) {
+			stand.mode = TaskModeMirror
+			return prepareTaskTreeOn(ctx, place, workspace, session, id, title, stand)
+		}
 		// The ground turned out to have no history to branch from between the
 		// proposal and this moment, or never had one. The honest answer is the one
 		// the old road gives: work in it and say so, rather than claim a branch
@@ -8471,7 +8640,7 @@ func mirrorGround(ground, dir string) string {
 	walk = func(relative string) string {
 		entries, err := os.ReadDir(filepath.Join(ground, filepath.FromSlash(relative)))
 		if err != nil {
-			return ""
+			return "this folder could not be copied for the task: " + err.Error()
 		}
 		for _, entry := range entries {
 			child := entry.Name()
@@ -8487,11 +8656,19 @@ func mirrorGround(ground, dir string) string {
 			source := filepath.Join(ground, filepath.FromSlash(child))
 			target := filepath.Join(dir, filepath.FromSlash(child))
 			if entry.IsDir() {
-				if err := os.MkdirAll(target, 0o755); err != nil {
+				info, err := entry.Info()
+				if err != nil {
+					return "this folder could not be copied for the task: " + err.Error()
+				}
+				if err := os.MkdirAll(target, 0o700); err != nil {
 					return "this folder could not be copied for the task: " + err.Error()
 				}
 				if problem := walk(child); problem != "" {
 					return problem
+				}
+				mode := info.Mode() & (os.ModePerm | os.ModeSetuid | os.ModeSetgid | os.ModeSticky)
+				if err := os.Chmod(target, mode); err != nil {
+					return "this folder could not be copied for the task: " + err.Error()
 				}
 				continue
 			}
@@ -9640,4 +9817,25 @@ func mergePaths(kept, added []string) []string {
 		kept = append(kept, path)
 	}
 	return kept
+}
+
+func ownershipTaskGround(where, workspace string) (string, error) {
+	if where == "" || strings.EqualFold(where, "in place") {
+		return workspace, nil
+	}
+	ground, err := resolveTaskWhere(where, workspace)
+	if err != nil {
+		return "", fmt.Errorf("task workspace: %w", err)
+	}
+	return ground, nil
+}
+
+func ensureOwnedMirrorGround(place Place, ground string) error {
+	if !WorkspaceOwnershipEnabled(place) {
+		return nil
+	}
+	if err := os.MkdirAll(ground, 0o755); err != nil {
+		return fmt.Errorf("task project: %w", err)
+	}
+	return nil
 }

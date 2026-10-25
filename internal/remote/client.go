@@ -2253,6 +2253,23 @@ func (a *Agent) PlanTaskWork(id string) (session.PlanTaskWork, bool) {
 	return result.Work, result.OK
 }
 
+// OpenPlanTaskWork is an explicit storage reopen, never a background query.
+// An older engine retains its original work tab through the read-only fallback.
+func (a *Agent) OpenPlanTaskWork(id string) (session.PlanTaskWork, bool) {
+	payload, err := a.c.call(nil, MethodOpenPlanTaskWork, PlanTaskArgs{ID: id})
+	if err != nil {
+		if strings.Contains(err.Error(), "no such method") {
+			return a.PlanTaskWork(id)
+		}
+		return session.PlanTaskWork{Error: err.Error()}, true
+	}
+	var result PlanTaskWorkResult
+	if err := json.Unmarshal(payload, &result); err != nil {
+		return session.PlanTaskWork{Error: "could not read the saved working copy response"}, true
+	}
+	return result.Work, result.OK
+}
+
 func (a *Agent) PlanNote(id, text string) error {
 	_, err := a.c.call(nil, MethodPlanNote, PlanTextArgs{ID: id, Text: text})
 	return err

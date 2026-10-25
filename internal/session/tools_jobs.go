@@ -188,6 +188,9 @@ func (a *Agent) backgroundBash(inner bare.Tool) bare.Tool {
 		Description: inner.Description + backgroundSentence + timeoutSentence(a.config.BashBackgroundAfterSeconds),
 		Schema:      schemaWithBackground(inner.Schema),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
+			if err := markTaskStorageUncertain(a.config.Workspace); err != nil {
+				return "could not record shell writer uncertainty: " + err.Error(), true, nil
+			}
 			var parsed struct {
 				Command    string `json:"command"`
 				Background bool   `json:"background"`

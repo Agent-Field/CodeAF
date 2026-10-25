@@ -140,6 +140,12 @@ func waitPlain(r *rig, within time.Duration, want ...string) (string, bool) {
 
 // startRelay runs the local sync service this repository ships and returns its address.
 func startRelay(t *testing.T) string {
+	return startRelayAt(t, filepath.Join(t.TempDir(), "store"))
+}
+
+// startRelayAt leaves the owned data directory visible to acceptance tests that
+// measure total storage across both computers and the transfer service.
+func startRelayAt(t *testing.T, store string) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "relay")
 	build := exec.Command("go", "build", "-o", bin, "./cmd/relay")
@@ -153,7 +159,7 @@ func startRelay(t *testing.T) string {
 	}
 	addr := ln.Addr().String()
 	_ = ln.Close()
-	cmd := guardedCommand(t, context.Background(), t.TempDir(), nil, bin, "--listen", addr, "--store", filepath.Join(t.TempDir(), "store"), "--quiet")
+	cmd := guardedCommand(t, context.Background(), t.TempDir(), nil, bin, "--listen", addr, "--store", store, "--quiet")
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}

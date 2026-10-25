@@ -3390,6 +3390,51 @@ and timelines. Old temporary conversations still follow the usual seven-day
 retention policy. Previously orphaned timelines are not automatically purged:
 a missing directory alone does not prove that its history is disposable.
 
+## Experimental compact task copies in an isolated profile
+
+Compact task storage is unfinished and off unless
+`CODEAF_PROTOTYPE_TASK_STORAGE=1`, an explicit `CODEAF_HOME`, and
+`CODEAF_PROTOTYPE_ARCHIVE_BINARY` select a separate profile and archive engine.
+Ordinary profiles keep their existing cleanup behavior.
+
+Only controlled file-tool-only cases are eligible. Verification uses isolated
+owned copies, trusted Git plumbing and no user hooks or external writers. File
+tool names do not prove that an arbitrary custom implementation is contained.
+Ordinary planned workers use bash, so their work does not qualify for automatic
+retirement. Explicitly certified offline test copies exercise packing and
+restoration separately; this is not an automatic normal-use lifecycle.
+
+Before an uncontained shell, check, automation or custom tool launches, the
+prototype durably marks the **whole profile** uncertain: host processes can name
+absolute paths outside their launch folder. Every task copy then stays resident.
+A clean retry, engine restart or vanished process group never clears this mark;
+a detached descendant might still write. There is no automatic expiry or purge.
+This prototype does not promise disk reclamation for normal shell workloads.
+
+For an eligible task, codeaf saves all file contents and supported metadata,
+verifies independent restoration and retires the expanded directory. A failure
+preserves recovery state and reports `compact storage could not be prepared`.
+The person's project and in-place folders are never retired by this mechanism.
+
+Verification covers file names and types, bytes, modes, owner and group,
+modification times, extended attributes and link relationships. Access and
+creation timestamps are not retained. Unsupported ACLs, filesystem flags,
+sparse files and special nodes keep the copy resident. Exact metadata survival
+after power loss has not been tested.
+
+Explicitly reading a saved task file restores its copy. An existing task room's
+`work` tab also restores it where that room is available. Ordinary completed
+tasks open a result card, which has no work tab; its record stays compact until
+an explicit file read. Listing, hovering and polling do not expand archives.
+Interrupted runs restore before their existing continuation; missing or corrupt
+archives refuse it. Existing cost-recovery checks can still block continuation.
+This does not enable continuing completed runs or programs.
+
+Linked Git copies retain their administration and index, with an owned lock and
+compact backup. Shared project Git objects remain required; user locks survive.
+Local archives retain ignored files. Relay keeps its screened transfer rules:
+dependencies and secrets do not start travelling because a task was compressed.
+
 ## Can bash tasks search the web and fetch pages?
 
 Yes. PlanDB run workers carry `web_search` and `web_fetch` as native tools,
