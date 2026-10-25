@@ -22,10 +22,9 @@ import (
 
 const workerPollLimit = 30 * time.Second
 
-// presenceSaveEvery is how long a heartbeat may live only in memory before
-// it has to reach the runner file. Writing the file on every request wakes
-// every pull that is waiting on that directory. The silence deadline is
-// longer than this, so a crash still looks live until the next save.
+// presenceSaveEvery limits heartbeat writes under ordinary settings. A
+// request saves sooner when its persisted beat reaches half the offline
+// timeout, so a restart cannot mistake recently heard runners for silence.
 const presenceSaveEvery = 15 * time.Second
 
 type workerService struct {
@@ -61,8 +60,11 @@ type registeredWorker struct {
 	Name      string
 	OS        string
 	Version   string
-	Last   time.Time
-	Worker lease.Worker
+	Last      time.Time
+	Worker    lease.Worker
+	// persistedLast is the heartbeat actually on disk, even if another row
+	// caused a more recent file write. It is restored from Last on load.
+	persistedLast time.Time
 }
 
 type workerKey struct{}
@@ -148,14 +150,27 @@ func (s *workerService) heard(id string, at time.Time) {
 		// to it. Last is what this process answers presence from, so it
 		// moves on every request. One write per interval records every
 		// row's heartbeat together.
-		if s.savedFile.IsZero() || !at.Before(s.savedFile.Add(presenceSaveEvery)) {
-			s.savedFile = at
+		if s.savedFile.IsZero() || !at.Before(s.savedFile.Add(presenceSaveEvery)) || !at.Before(row.persistedLast.Add(s.presenceSaveInterval())) {
 			if err := s.saveRegistry(); err != nil {
 				s.err = err
+			} else {
+				s.savedFile = at
 			}
 		}
 		return
 	}
+}
+
+// Persistence follows the configured silence window as well as the ordinary
+// write throttle, so a different slot's write cannot hide an old saved beat.
+func (s *workerService) presenceSaveInterval() time.Duration {
+	timeout := lease.OfflineAfter
+	if s.st != nil {
+		if settings, err := s.st.RunnerSettings(); err == nil {
+			timeout = time.Duration(settings.RunnerTimeoutSeconds) * time.Second
+		}
+	}
+	return min(presenceSaveEvery, timeout/2)
 }
 
 func requestWorker(r *http.Request) lease.Worker {

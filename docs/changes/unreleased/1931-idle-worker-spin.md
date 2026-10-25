@@ -22,7 +22,18 @@ already holds. One job-list read resolves the host GitHub token once.
 An ordinary request does not decode every job when nothing is due. It looks
 again when a job, a lease, or the repository list changes, or when a saved
 deadline arrives. A runner heartbeat does not force that look.
-A heartbeat is kept in memory. The runner file is rewritten at most every
-15 seconds, so an idle presence check does not wake every waiting pull.
+A heartbeat is kept in memory. The next heartbeat request saves the runner file after 15 seconds since the
+previous heartbeat save, or when that runner’s persisted heartbeat is half
+the configured offline timeout old. This bounds stale presence after a
+restart without writing on every request.
 Listing the jobs reuses the last decode while the job files are unchanged.
 A runner heartbeat does not count as a change to that list.
+
+Review corrections keep approvals-only POST requests from suppressing the
+next auto-merge sweep, and failed settlement attempts remain retryable.
+Cached listings own the stream and log data retention changes, so concurrent
+reads cannot trim another listing's logs. All document signatures include
+inode and change time on Linux and macOS, catching equal-size writes with
+preserved modification times. Watcher errors and closed notification streams
+restore the 500 ms stat fallback. A receipt naming this PID skips the HTTP
+probe only while this process owns the matching running server.

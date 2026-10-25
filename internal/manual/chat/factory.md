@@ -21,7 +21,7 @@ the factory's files change, including work queued by another process, and asks
 again after the deadline. The service uses the same filesystem notifications
 as the live factory view; it does not repeatedly decode finished jobs while
 waiting. Filesystem changes are batched for 100 milliseconds. If filesystem
-notifications are unavailable, a fallback checks for changes every 500
+notifications are unavailable or their stream fails or closes, a fallback checks for changes every 500
 milliseconds and reads each job file. While notifications are working, that
 fallback only checks whether the directory itself changed, so a quiet floor
 is not read file by file. Ownership, consent and capacity are checked again
@@ -33,7 +33,11 @@ looks again when a job, a lease, or the repository list changes, or when a
 saved deadline arrives. A runner heartbeat is kept in memory and is not
 rewritten to the runner file on every check, and that write is not
 announced as a job change, so it does not wake the other pulls. The file
-still updates within 15 seconds. Slots and sleep are read on the next pull.
+is saved on the next heartbeat request after 15 seconds since the previous
+heartbeat save, or when that runner’s last saved heartbeat is at least half
+the configured offline timeout old, whichever comes first. This is
+request-triggered; it does not run a separate save timer. Slots and sleep
+are read on the next pull.
 A job list that has not
 changed is not decoded again.
 

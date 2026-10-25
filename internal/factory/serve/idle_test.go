@@ -507,3 +507,46 @@ func TestWaitingWorkerFallsBackAfterWatchFailure(t *testing.T) {
 		})
 	}
 }
+
+func TestRestartKeepsRecentlyHeardRunnersOnline(t *testing.T) {
+	for _, timeout := range []int{10, 60} {
+		t.Run(strconv.Itoa(timeout), func(t *testing.T) {
+			f := peopleV2Setup(t, api.FactoryTeam)
+			if _, err := f.st.ChangeRunnerSettings(func(s *store.RunnerSettings) error { s.RunnerTimeoutSeconds = timeout; return nil }); err != nil {
+				t.Fatal(err)
+			}
+			start := f.now
+			var first, second api.RunnerAttached
+			f.request(t, "POST", "/v1/runners/attach", "operator-secret", api.RunnerAttach{Runner: "first", Name: "first", Owner: "owner"}, 201, &first)
+			f.request(t, "POST", "/v1/runners/attach", "operator-secret", api.RunnerAttach{Runner: "second", Name: "second", Owner: "owner"}, 201, &second)
+			beat := func(at int, worker api.RunnerAttached) {
+				f.now = start.Add(time.Duration(at) * time.Second)
+				f.request(t, "GET", "/v1/runner/self", worker.Credential, nil, 200, nil)
+			}
+			beat(1, first)
+			if timeout == 10 {
+				beat(6, first)
+				beat(10, second)
+				f.now = start.Add(11 * time.Second)
+			} else {
+				beat(16, first)
+				beat(30, second)
+				f.now = start.Add(61 * time.Second)
+			}
+			f.h.Close()
+			f.h = New(f.seam, f.cfg)
+			t.Cleanup(f.h.Close)
+			var runners api.Runners
+			f.request(t, "GET", "/v1/runners", "operator-secret", nil, 200, &runners)
+			for _, runner := range runners.Runners {
+				if runner.ID == "second" {
+					if runner.State != api.RunnerIdle {
+						t.Fatalf("recently heard runner restored as %s (last %s)", runner.State, runner.LastSeen)
+					}
+					return
+				}
+			}
+			t.Fatal("restored runner missing")
+		})
+	}
+}

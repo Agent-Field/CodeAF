@@ -250,7 +250,14 @@ func (s *workerService) saveRegistry() error {
 	if err = f.Close(); err != nil {
 		return err
 	}
-	return os.Rename(f.Name(), filepath.Join(s.st.Root(), "runners.json"))
+	if err := os.Rename(f.Name(), filepath.Join(s.st.Root(), "runners.json")); err != nil {
+		return err
+	}
+	for key, row := range s.credentials {
+		row.persistedLast = row.Last
+		s.credentials[key] = row
+	}
+	return nil
 }
 
 func (s *workerService) loadRegistry() error {
@@ -281,6 +288,7 @@ func (s *workerService) loadRegistry() error {
 		// them against the cap, so nothing running is cancelled.
 		row.Slots = grantedRunnerSlots(row.Slots)
 		row.Worker.Slots = row.Slots
+		row.persistedLast = row.Last
 		s.credentials[hash] = row
 	}
 	return nil
