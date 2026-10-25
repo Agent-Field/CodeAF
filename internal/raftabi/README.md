@@ -45,7 +45,7 @@ runtime; a new runtime discards all old completions.
 
 The JS guard stops the whole instance if linear memory exceeds 64 MiB or a call
 traps. This is a fail-closed guard, not a substitute for the host's preallocation
-admission/cache/eviction policy. `GOMEMLIMIT=48MiB`, `GOGC=50` and
+admission/cache/eviction policy. `GOMEMLIMIT=48MiB`, `GOGC=10` and
 `GOMAXPROCS=1` are the entire runtime environment. Empty args, unsupported fd/
 socket operations, runtime-only clock/entropy and discarded failure output are
 the other imports. Poll/yield throw; a build that uses them cannot pass the
@@ -210,3 +210,40 @@ JavaScript. Scope, router generation, connection and request token are checked
 before dispatching completion. Hosts use only provisioned anchor keys to route
 original signed commands, reads and member coordination. The reactor imports no
 network client, and application frames never enter the Raft peer message path.
+
+
+## Paged legacy application and projection
+
+Operation 40 receives a canonical proof header with a null body, followed by
+the original body as a separate binary blob, and returns a count and bounded
+command blobs. This avoids base64 copies of large bodies and never constructs
+an unused oversized command digest. A single command preserves the original fast path. The coordinator commits
+every returned command in order and replies only after the final applied result.
+
+Operation 41 begins a synchronous evaluation with command bytes, cluster,
+time/version/size/ceiling/index/term counters and configuration bytes. Its response
+starts with a cursor ID, followed by a page. A page has tag 0 and a requested
+namespace/key, or tag 1 and a more flag plus output bytes. Operation 42 supplies
+the requested record's presence flag and bytes to the cursor. Operation 43 reads
+the next output page. Operation 44 drops the cursor on every exit; dropping an
+already stopped cursor is safe. Operation 45 begins a paged typed projection.
+Each incoming record is bounded by the existing evaluation envelope; outgoing
+byte pages are at most one quarter of it. No pointer or cursor crosses an await.
+
+Completed evaluation bytes contain time/version, the retained result blob and
+writes with namespace/key, an explicit scratch-delete flag and data bytes.
+The host applies these writes in its existing atomic application transaction.
+Only temporary staging records are removed. Large retained result blobs use the
+same lossless tagged representation as large records. A projection prefixes its
+logical blob length while streaming, without duplicating the complete blob.
+Typed result projection preserves decimal uint64 values before JavaScript
+parses the result, using compact HTML spelling internally. Public legacy
+projection retains its established field order and HTML escaping.
+
+Operation 46 returns the fixed temporary request keys, per-record bounds and
+total extent from shared Go constants. Storage uses this accounting when checking
+retained capacity and portable snapshots.
+
+Dense retained metadata uses an earlier automatic collection target so temporary
+JSON trees do not accumulate across synchronous calls. Linear-memory and member
+admission budgets continue to govern the same shared reactor.

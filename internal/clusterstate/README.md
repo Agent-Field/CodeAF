@@ -90,3 +90,53 @@ time-aware view for worker learners; the older view fails closed for them. A new
 worker incarnation retires the old peer view; removal/re-enrollment uses a fresh
 node ID. Worker voters and promotion are refused. Rotation/removal cannot erase
 bytes already downloaded by a worker.
+
+
+## Large requests from older clients
+
+The legacy HTTP body limit remains 1 MiB. A translated request fitting the
+64 KiB command envelope keeps its ordinary representation. Larger requests
+retain their original certificate, URI, timestamp, signature and body hash in
+32 KiB body-page proposals. All pages use one replaceable staging header and
+32 fixed page keys per identity. Abandonment cannot allocate more keys or more
+than 1 MiB of body scratch. Replacing scratch never removes directory records.
+
+Each committed page rechecks the original signed hash against the current root,
+revocation and committed time. Pages change no directory row, visible version or
+logical time. The final proposal requires every ordered page and the complete
+body hash, decodes the closed legacy request again, and rechecks the original
+proof and ordinary mutation rules. Its directory writes and scratch removal
+commit in the same application transaction. A crash before this transaction
+leaves the previous directory; recovery after it retains the complete change.
+
+Large logical records and retained results use a tagged deterministic gzip
+representation with compact HTML escaping when smaller, preserving all fields
+inside the existing physical row envelope. Ordinary canonical wire bytes retain
+their established HTML escaping. Canonical command bytes never accept this representation. The
+shared decoder checks the complete compressed stream and bounds expansion by
+the legacy JSON escaping envelope. Snapshots retain the physical bytes and
+checksums; reads and public projections decode the original typed record.
+
+The reactor pages immutable records and result bytes synchronously within the
+member's application transaction. Each record page respects the 1 MiB evaluation
+envelope and each result byte page is at most one quarter of it. Ordinary
+commands retain their complete read-set cap. Staged final evaluation streams
+its body and dependency pages without putting them in one ABI frame. The host
+never yields or changes the applied view between these pages. The 64 KiB command,
+2 MiB ABI buffer, 1 MiB physical row and application capacity caps are unchanged.
+
+Temporary request pages occupy one fixed slot outside retained application
+capacity. Their extent is derived from the original HTTP body and command limits.
+Snapshots preserve these pages and account for retained records separately;
+abandoned requests cannot evict records or consume more slots.
+
+Intermediate JSON and compressed physical records leave opaque HTML characters
+unexpanded. Hashes and public canonical bytes keep their established escaping.
+Comparison and compression consume final bytes directly, avoiding simultaneous
+expanded copies of a legal request inside the bounded reactor.
+
+Large retained cell and result records decode directly into their typed shape,
+checking decimal counters and the complete canonical spelling before exposing
+the value. A single-cell update reuses its validated cell and typed write for
+visible-version comparison, preserving opaque metadata without repeatedly
+decoding the complete frame plan.

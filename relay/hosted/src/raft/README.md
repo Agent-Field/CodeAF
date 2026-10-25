@@ -239,3 +239,25 @@ Remote idle scheduling uses the same safe idle read, durable marker and final
 all-voter sleep acknowledgments as local leadership. Forwarding waits, voting
 delivery and retry hints retain active work. A final sleep clears maintenance
 only if no newer ingress has woken the coordinator.
+
+
+## Durable object replacement and large legacy requests
+
+The isolate may outlive an individual durable-object activation. A replacement
+constructor fences that object's previous volatile actor and releases its handle
+before recovering the same durable store as a follower. Pending continuations
+from the old activation cannot emit consensus effects. Other identities and
+members keep their handles. This lifecycle boundary never evicts a serving
+leader to satisfy memory pressure, and changes no admission or memory limit.
+
+Large legacy HTTP proofs use the shared Go staging representation. Body pages
+commit without changing directory rows or visible version. The complete proof
+and ordinary mutation rules are checked again at the final commit, whose writes
+and scratch removal share the existing SQL transaction. A cold object can resume
+from bounded intermediate pages without exposing partial metadata. All original
+frame hints and sealed key wraps survive the existing request limit.
+
+Authenticated forwarding replies preserve the current-term personal leader
+route when a cold follower temporarily forgets it. The hint supplies routing;
+publication and reads continue through their quorum barriers and exact durable
+results. A delayed older-term reply cannot replace a newer route.
