@@ -15,10 +15,11 @@ and ctime stamps. Admission requires mtime and ctime to be at least two seconds
 old; unsupported file identities bypass reuse. The cache keeps four paths, each
 at most 4 MiB on disk, and clears evicted references. Callers get separate row
 slices for ordering and deletion filtering, with deep copies of files, crew
-slices and maps, route prices, and verdict evidence. The cached rows remain
-immutable. Concurrent misses share one in-flight decoding per path and stamp;
-a changed stamp starts its own read. Unsettled and oversized files can share an
-in-flight read but are never admitted to the retained cache.
+slices and maps, route prices, and verdict evidence. Returned row slices have
+capacity equal to length, so reslicing cannot expose un-cloned cached fields
+after limiting, deduplication or tombstone filtering. The cached rows remain
+immutable. Concurrent misses decode independently; there is no in-flight read
+coordination. Unsettled and oversized files bypass the retained cache.
 
 Journal record caches now keep at most eight records, down from 32. Unleased
 records expire 30 seconds after their last read, with the timer targeting the
@@ -45,13 +46,14 @@ With these fixtures and ordinary `-count=1` tests, a source overlay of the
 | 40 readings of a 1,500-row index | 267,895,312 | 33,463,056 |
 
 Review regression gates additionally assert that mutating a returned row's
-nested fields leaves the next read unchanged, 16 concurrent readers of one stamp
-decode once, and a listing opens its live plan once and reads each trajectory
-once. A weak-reference gate checks that plan-only reads release each raw
+nested fields, including every row reachable by reslicing to capacity, leaves
+the next read unchanged, and a listing opens its live plan once and reads each
+trajectory once. A weak-reference gate checks that plan-only reads release each raw
 trajectory payload before reading the next task; the memo keeps only plan step
 counts and requested app facts. Before these corrections, the deterministic
-fixtures observed 16 decodings, two plan opens and two reads per matching
-trajectory. The allocation caps above remain unchanged.
+listing fixture observed two plan opens and two reads per matching trajectory.
+The former concurrent-decoding gate was removed with singleflight coordination;
+independent concurrent misses are intentional. The allocation caps above remain unchanged.
 
 The overlay substitutes base production files while keeping the allocation
 fixtures; its index fixture predates the injected cache clock. Test logs report
@@ -59,6 +61,6 @@ allocations so the candidate measurement can be repeated directly:
 
 ```sh
 make test-focus PKGS=./internal/plandb RUN='^Test(RepeatedReadsOfAnUnchangedPlanLoadItOnce|AReadSeesAnotherHandlesWriteAfterAnUnchangedRead)$$' TEST_FLAGS='-race -count=3'
-make test-focus PKGS=./internal/session RUN='^Test(AppTasksOpensThePlanOnceForAllTheRunRows|AnUnchangedTaskIndexIsDecodedOnce|TaskIndexEvictionClearsRetainedRows|TaskIndexRejectsUnsettledChangeTime|TaskIndexReadOwnsNestedFields|ConcurrentTaskIndexReadersDecodeOneStampOnce|TaskIndexChangedStampDoesNotJoinOlderRead|AppTaskListingRereadsChangedTrajectories|PlanTaskListingDoesNotRetainTrajectoryPayloads|AKeptRecordNobodyAsksForIsDroppedWhenItIdles|RecordExpirySchedulesTheEarliestRemainingDeadline)$$' TEST_FLAGS='-race -count=3'
+make test-focus PKGS=./internal/session RUN='^Test(AppTasksOpensThePlanOnceForAllTheRunRows|AnUnchangedTaskIndexIsDecodedOnce|TaskIndexEvictionClearsRetainedRows|TaskIndexRejectsUnsettledChangeTime|TaskIndexReadOwnsNestedFields|TaskIndexReadCapacityCannotReachCachedRows|AppTaskListingRereadsChangedTrajectories|PlanTaskListingDoesNotRetainTrajectoryPayloads|AKeptRecordNobodyAsksForIsDroppedWhenItIdles|RecordExpirySchedulesTheEarliestRemainingDeadline)$$' TEST_FLAGS='-race -count=3'
 make test-focus PKGS=./internal/filememo RUN='^TestTimestampsSettled$$' TEST_FLAGS='-race -count=3'
 ```

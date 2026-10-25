@@ -7,10 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
-	"sync"
-	"sync/atomic"
 	"testing"
-	"testing/synctest"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/crewroute"
@@ -165,82 +162,57 @@ func TestTaskIndexReadOwnsNestedFields(t *testing.T) {
 	}
 }
 
-func TestConcurrentTaskIndexReadersDecodeOneStampOnce(t *testing.T) {
-	path := filepath.Join(t.TempDir(), taskIndexName)
-	writeIndexRows(t, path, 0, 1)
-	settledNow := time.Now().Add(time.Hour)
-	synctest.Test(t, func(t *testing.T) {
-		release := make(chan struct{})
-		var decodes atomic.Int32
-		taskIndexParsed.now = func() time.Time { return settledNow }
-		taskIndexParsed.parse = func(path string) ([]TaskIndexEntry, bool) {
-			decodes.Add(1)
-			<-release
-			return parseTaskIndex(path)
-		}
-		t.Cleanup(func() { taskIndexParsed.now = nil; taskIndexParsed.parse = nil })
-		var readers sync.WaitGroup
-		for range 16 {
-			readers.Go(func() {
-				if rows := ReadTaskIndex(path); len(rows) != 1 || rows[0].Title != "task number 0, groomed" {
-					t.Errorf("concurrent read = %+v, want the indexed row", rows)
+func TestTaskIndexReadCapacityCannotReachCachedRows(t *testing.T) {
+	taskIndexParsed.now = func() time.Time { return time.Now().Add(time.Hour) }
+	t.Cleanup(func() { taskIndexParsed.now = nil })
+	for _, scenario := range []string{"unlimited", "limited", "repeated-node", "tombstones"} {
+		t.Run(scenario, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), taskIndexName)
+			for i := 1; i <= 3; i++ {
+				id := fmt.Sprint(i)
+				if scenario == "repeated-node" && i == 1 {
+					id = "2"
 				}
-			})
-		}
-		// All readers are blocked in decoding or waiting for the same decoding.
-		synctest.Wait()
-		if got := decodes.Load(); got != 1 {
-			t.Errorf("decoded one unchanged stamp %d times, want 1", got)
-		}
-		close(release)
-		readers.Wait()
-		if got := decodes.Load(); got != 1 {
-			t.Errorf("decoded one unchanged stamp %d times after completion, want 1", got)
-		}
-	})
-}
-
-func TestTaskIndexChangedStampDoesNotJoinOlderRead(t *testing.T) {
-	path := filepath.Join(t.TempDir(), taskIndexName)
-	writeIndexRows(t, path, 0, 1)
-	settledNow := time.Now().Add(time.Hour)
-	synctest.Test(t, func(t *testing.T) {
-		release := make(chan struct{})
-		var decodes atomic.Int32
-		taskIndexParsed.now = func() time.Time { return settledNow }
-		taskIndexParsed.parse = func(path string) ([]TaskIndexEntry, bool) {
-			first := decodes.Add(1) == 1
-			rows, ok := parseTaskIndex(path)
-			if first {
-				<-release
+				appendTaskIndex(path, TaskIndexEntry{ID: id, SessionID: "chat", Title: "Isolated result",
+					Files:        []string{"original.go"},
+					Crew:         &crewroute.Decision{Why: "original"},
+					VerdictBasis: &plandb.VerdictBasis{Kind: "run"},
+				})
 			}
-			return rows, ok
-		}
-		t.Cleanup(func() { taskIndexParsed.now = nil; taskIndexParsed.parse = nil })
-		old := make(chan []TaskIndexEntry, 1)
-		go func() { old <- ReadTaskIndex(path) }()
-		synctest.Wait()
-		writeIndexRows(t, path, 1, 2)
-		fresh := make(chan []TaskIndexEntry, 1)
-		go func() { fresh <- ReadTaskIndex(path) }()
-		synctest.Wait()
-		select {
-		case rows := <-fresh:
-			if len(rows) != 2 {
-				t.Errorf("new stamp returned %d rows, want 2", len(rows))
+			if scenario == "tombstones" {
+				dir := filepath.Join(filepath.Dir(path), "chat")
+				if err := os.MkdirAll(dir, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, taskDeletedFile), []byte(`{"1":true}`), 0o600); err != nil {
+					t.Fatal(err)
+				}
 			}
-		default:
-			t.Error("new stamp waited for the old decoding")
-		}
-		close(release)
-		if rows := <-old; len(rows) != 1 {
-			t.Errorf("old stamp returned %d rows, want 1", len(rows))
-		}
-		if rows := ReadTaskIndex(path); len(rows) != 2 {
-			t.Errorf("old completion replaced the new stamp: %+v", rows)
-		}
-		if got := decodes.Load(); got != 2 {
-			t.Errorf("decoded two stamps %d times, want 2", got)
-		}
-	})
+			want := ReadTaskIndex(path)
+			got := ReadTaskIndex(path)
+			if scenario == "limited" {
+				got = readTaskIndex(path, 1)
+			}
+			if len(got) == 0 {
+				t.Fatal("read no rows, want mutable results")
+			}
+			if cap(got) != len(got) {
+				t.Errorf("returned %d rows with capacity %d; reslicing can expose hidden rows", len(got), cap(got))
+			}
+			for _, row := range got[:cap(got)] {
+				if len(row.Files) > 0 {
+					row.Files[0] = "changed.go"
+				}
+				if row.Crew != nil {
+					row.Crew.Why = "changed"
+				}
+				if row.VerdictBasis != nil {
+					row.VerdictBasis.Kind = "reading"
+				}
+			}
+			if next := ReadTaskIndex(path); !reflect.DeepEqual(next, want) {
+				t.Fatal("mutating rows reachable through capacity contaminated the next ordinary read")
+			}
+		})
+	}
 }

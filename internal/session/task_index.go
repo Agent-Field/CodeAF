@@ -514,12 +514,12 @@ func readTaskIndexRows(path string, limit int, filter bool) []TaskIndexEntry {
 	}
 	sortTaskIndex(rows)
 	if limit > 0 && len(rows) > limit {
-		rows = rows[:limit]
+		rows = rows[:limit:limit]
 	}
 	for i := range rows {
 		rows[i] = cloneTaskIndexEntry(rows[i])
 	}
-	return rows
+	return rows[:len(rows):len(rows)]
 }
 
 // cloneTaskIndexEntry gives callers ownership of every mutable part of a row.
@@ -635,7 +635,7 @@ func (a *Agent) TaskIndex() []TaskIndexEntry {
 	rows := ReadTaskIndex(a.config.taskIndexFile())
 	live := a.liveTaskRows()
 	if len(live) == 0 {
-		return rows
+		return rows[:len(rows):len(rows)]
 	}
 	// A live row REPLACES the file's row for the same node: a node that landed
 	// and was recorded, and is somehow still in the graph, is described more
@@ -653,7 +653,7 @@ func (a *Agent) TaskIndex() []TaskIndexEntry {
 		merged = append(merged, entry)
 	}
 	sortTaskIndex(merged)
-	return merged
+	return merged[:len(merged):len(merged)]
 }
 
 // liveTaskRows is this session's graph as index rows. It reads the graph
@@ -677,7 +677,7 @@ func (a *Agent) liveTaskRows() []TaskIndexEntry {
 		}
 		rows = append(rows, node.indexEntryLocked(session))
 	}
-	return rows
+	return rows[:len(rows):len(rows)]
 }
 
 // recordTaskIndex writes one landed node into the project's index. It is called
@@ -1091,9 +1091,9 @@ func SearchTaskIndex(rows []TaskIndexEntry, query string, limit int) []TaskIndex
 	needle := strings.ToLower(strings.TrimSpace(query))
 	if needle == "" {
 		if len(rows) > limit {
-			return rows[:limit]
+			return rows[:limit:limit]
 		}
-		return rows
+		return rows[:len(rows):len(rows)]
 	}
 	type ranked struct {
 		entry TaskIndexEntry
@@ -1386,82 +1386,53 @@ type taskIndexKept struct {
 	rows  []TaskIndexEntry
 }
 
-type taskIndexReadKey struct {
-	path  string
-	stamp recordStamp
-}
-
-type taskIndexRead struct {
-	done chan struct{}
-	rows []TaskIndexEntry
-	ok   bool
-}
-
 type taskIndexCache struct {
-	parse   func(string) ([]TaskIndexEntry, bool)
-	now     func() time.Time
-	mu      sync.Mutex
-	kept    []taskIndexKept // most recently read last
-	reading map[taskIndexReadKey]*taskIndexRead
+	now  func() time.Time
+	mu   sync.Mutex
+	kept []taskIndexKept // most recently read last
 }
 
 var taskIndexParsed taskIndexCache
 
 func (c *taskIndexCache) read(path string) ([]TaskIndexEntry, bool) {
-	parse := c.parse
-	if parse == nil {
-		parse = parseTaskIndex
-	}
 	info, err := os.Stat(path)
 	if err != nil || !info.Mode().IsRegular() {
-		return parse(path)
-	}
-	stamp, stamped := recordStampOf(info)
-	if !stamped {
-		return parse(path)
+		return parseTaskIndex(path)
 	}
 	now := time.Now()
 	if c.now != nil {
 		now = c.now()
 	}
-	keep := info.Size() <= taskIndexKeptBytes && filememo.TimestampsSettled(now, info.ModTime(), time.Unix(0, stamp.ctime), recordCacheSettle)
-	key := taskIndexReadKey{path: path, stamp: stamp}
+	stamp, stamped := recordStampOf(info)
+	if !stamped || info.Size() > taskIndexKeptBytes || !filememo.TimestampsSettled(now, info.ModTime(), time.Unix(0, stamp.ctime), recordCacheSettle) {
+		return parseTaskIndex(path)
+	}
 	c.mu.Lock()
-	if keep {
-		for i, entry := range c.kept {
-			if entry.path == path && entry.stamp == stamp {
-				c.kept = append(append(c.kept[:i:i], c.kept[i+1:]...), entry)
-				c.mu.Unlock()
-				return entry.rows, true
-			}
+	for i, entry := range c.kept {
+		if entry.path == path && entry.stamp == stamp {
+			c.kept = append(append(c.kept[:i:i], c.kept[i+1:]...), entry)
+			c.mu.Unlock()
+			return entry.rows, true
 		}
 	}
-	if read := c.reading[key]; read != nil {
-		c.mu.Unlock()
-		<-read.done
-		return read.rows, read.ok
-	}
-	read := &taskIndexRead{done: make(chan struct{})}
-	if c.reading == nil {
-		c.reading = make(map[taskIndexReadKey]*taskIndexRead)
-	}
-	c.reading[key] = read
 	c.mu.Unlock()
-	rows, ok := parse(path)
+	rows, ok := parseTaskIndex(path)
+	if !ok {
+		return nil, false
+	}
+	// A FILE THAT CHANGED WHILE IT WAS READ IS NOT KEPT: the stamp taken
+	// before the reading must still be the file's after it.
+	if after, err := os.Stat(path); err != nil || !sameStamp(after, stamp) {
+		return rows, true
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	// A changed or unsettled file can serve its waiting readers, but is not kept.
-	if after, err := os.Stat(path); keep && ok && err == nil && sameStamp(after, stamp) {
-		c.kept = slices.DeleteFunc(c.kept, func(entry taskIndexKept) bool { return entry.path == path })
-		c.kept = append(c.kept, taskIndexKept{path: path, stamp: stamp, rows: rows})
-		if len(c.kept) > taskIndexKeptPaths {
-			discard := len(c.kept) - taskIndexKeptPaths
-			clear(c.kept[:discard])
-			c.kept = c.kept[discard:]
-		}
+	c.kept = slices.DeleteFunc(c.kept, func(entry taskIndexKept) bool { return entry.path == path })
+	c.kept = append(c.kept, taskIndexKept{path: path, stamp: stamp, rows: rows})
+	if len(c.kept) > taskIndexKeptPaths {
+		discard := len(c.kept) - taskIndexKeptPaths
+		clear(c.kept[:discard])
+		c.kept = c.kept[discard:]
 	}
-	read.rows, read.ok = rows, ok
-	delete(c.reading, key)
-	close(read.done)
-	return rows, ok
+	return rows, true
 }
