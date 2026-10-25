@@ -5,7 +5,7 @@ import { MemberActor, sharedRuntime } from './actor.js';
 import { MemberInbox, INBOX_BYTES } from './inbox.js';
 import { directoryEvaluator } from './directory.js';
 import { DEFAULT_ROWS_BYTES, MemberStorage, b64 } from './storage.js';
-import { HostCodec } from './abi.js';
+import { HostCodec,frame,response } from './abi.js';
 import { encodeCanonical, decodeCanonical } from './codec.js';
 import { dropTables } from '../erasure.js';
 import { committedRegistry, provisionedRegistry } from './membership.js';
@@ -110,6 +110,20 @@ export class RaftMemberDO extends DurableObject {
       return value&&value.index>BigInt(after)&&value.index<=this.actor.status.applied?value:null;
     });
   }
+  async hostPersonal(index,input){
+    await this.load();return this.actor.serial(()=>{
+      if(this.actor.stopped||this.actor.status.applied<BigInt(index))throw new Error('raft member: read barrier incomplete');
+      const app=this.actor.store.application(),rows=[];
+      const request={...input,cluster:this.config.cluster,applied:app.applied,now:Math.max(Date.now(),Number(app.now)),committed_now:Number(app.now),conf:app.conf,rows};
+      for(let n=0;n<coordinationPolicy(sharedRuntime()).max_member_records;n++){
+        const r=response(sharedRuntime().call(frame(36).blob(new TextEncoder().encode(encodeCanonical(request))).finish())),out=decodeCanonical(new TextDecoder().decode(r.blob()));r.end();
+        if(!out.need?.length)return out;
+        for(const k of out.need){const raw=this.actor.store.read(k.namespace,k.key);rows.push({namespace:k.namespace,key:k.key,data:raw?b64(raw):null});}
+      }
+      throw new Error('raft member: personal read-set capacity');
+    });
+  }
+  async hostCheckpoint() {await this.load();return this.actor.checkpoint();}
   async hostSnapshot(op,...args) {
     await this.load();
     if(op==='begin')return this.actor.begin(...args);
@@ -250,13 +264,21 @@ export class RaftMemberDO extends DurableObject {
     await this.load();
     return this.actor.serial(() => { const effects = this.recoveredEffects; this.recoveredEffects = null; return effects; });
   }
+  // Only durable application can change protocol authority. Reuse its exact
+  // view within that index, and invalidate it after every committed change.
+  committedPeers(){
+    const index=this.actor.store.application().applied;
+    if(this.registryIndex!==index){this.registryCache=this.actor.store.read('membership','registry')?committedRegistry(sharedRuntime(),this.actor.store):provisionedRegistry(sharedRuntime(),this.config);this.registryIndex=index;}
+    return this.registryCache;
+  }
   async peer(raw) {
     await this.load();
     const config = this.config;
     if (!this.actor.store.read('membership', 'registry') && !config.anchors) throw new Error('raft member: enrollment is absent');
-    this.inbox ??= new MemberInbox(config.scope, config.id, this.actor.codec, () => this.actor.store.read('membership', 'registry') ? committedRegistry(sharedRuntime(), this.actor.store) : provisionedRegistry(sharedRuntime(), config), fn => this.actor.serial(fn));
+    this.inbox ??= new MemberInbox(config.scope, config.id, this.actor.codec, () => this.committedPeers(), fn => this.actor.serial(fn));
     return this.inbox.receive(raw, async (envelope, payload) => {
       if (envelope.chunk) {
+        if(envelope.chunk.offset==='0'&&envelope.chunk.generation===envelope.chunk.hash)return this.actor.drive(2,payload);
         if (!this.actor.store.one('SELECT id FROM snapshots WHERE id=?', envelope.chunk.generation)) return { staged: false };
         await this.actor.store.putChunk(envelope.chunk.generation, Number(BigInt(envelope.chunk.offset)), payload, envelope.chunk.hash);
         return { staged: true };
@@ -282,8 +304,8 @@ export class RaftMemberDO extends DurableObject {
   async refreshEnrollment() {
     await this.load();
     return this.actor.serial(async () => {
-      const view = committedRegistry(sharedRuntime(), this.actor.store);
-      await this.ctx.storage.put('raft-registry', view); await this.ctx.storage.sync(); this.registry = view;
+      const view = this.committedPeers();
+      if(JSON.stringify(view)!==JSON.stringify(this.registry)){await this.ctx.storage.put('raft-registry',view);await this.ctx.storage.sync();this.registry=view;}
       return view;
     });
   }

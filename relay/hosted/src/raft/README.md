@@ -63,7 +63,7 @@ dependent effects for an internal router to deliver rather than silently
 dropping them.
 
 Run the bounded local proof with `sh relay/hosted/test/raft/actors-run.sh
-/tmp/codeaf-p08`. It exercises real workerd actors and native SQLite peers,
+/tmp/codeaf-actors`. It exercises real workerd actors and native SQLite peers,
 signed messages, ReadIndex/minority refusal, both snapshot directions,
 process death, full joint configuration restart and co-resident identities.
 Unit tests cover durability waits, queue bounds, all snapshot namespaces,
@@ -109,16 +109,16 @@ reports whether a signed settlement may be proposed. It never synthesizes that
 settlement signature or declares a join successful. `joinStatus(barrier)` additionally
 checks current authorization and the learner's own applied index.
 
-These are internal membership methods. Client enrollment, registry publication,
-quiet-mode guards, voter swaps and delegated worker certificates each need their
-own host door before a client can use them.
-Do not advertise a public leader/worker command from these internal methods.
+The identity coordinator exposes personal learner admission, committed registry
+routing and status through public authenticated doors. Voter swaps, personal
+leadership and delegated learner activation are not available here yet.
 
-Provisioned anchor keys receive a restricted committed authority that can only
-settle an existing intent or close their request session. They cannot enroll,
-remove, read directory content, mutate chats, pair or rotate. Thus a crashed
-requester need not return for an already authorized admission to finish. The
-settlement still requires the exact applied configuration and pending revision.
+Provisioned anchor keys receive restricted committed authority for membership
+maintenance and request-session closure. Personal enrollment or retirement still
+requires the original device admission proof, checked again by the replicated
+evaluator. Anchors cannot authorize directory reads, chat mutations, pairing or
+rotation. A crashed requester need not return for an already authorized admission
+to finish; settlement requires the exact applied configuration and pending revision.
 
 
 ## Committed holds, timers and wake
@@ -168,7 +168,31 @@ normalized before original-proof comparison, preserving replacement semantics.
 Public source serialization spans coordination, while external blob I/O leaves
 that queue and passes a new authority barrier afterward. Public watch sockets
 carry presence without the legacy socket-vouch promise; v1 clients keep ordinary
-beats. The hosted relay does not offer personal-member learners or leadership
-requests yet; its committed holds and idle maintenance follow the shared Go
-policy. Explicit retirement has its own retained
+beats. The hosted relay admits personal learners and serves their status, exchange
+and hibernating sockets. Leadership requests remain unavailable; its committed
+holds and idle maintenance follow the shared Go policy. Explicit retirement has its own retained
 all-replica erasure journal and never serves as pressure cleanup.
+
+
+## Public personal member routing
+
+`POST /v2/cluster/enroll` retains the original personal certificate and signed
+store token. Shared Go admission allocates from committed state; configuration
+is a separate resumable stage. Status uses a fresh quorum read and Go projection.
+An unsupported leadership request creates no intent. The application forwarding
+upgrade is authenticated and passive until hosted leadership is available.
+
+The router's durable generation advances before its volatile queues reopen.
+Peer and application sockets use the hibernation API with a separate tag and
+serialized attachment containing their signed connection proof. Coordinator
+eviction fences those old connections; the unchanged client refreshes the same
+store's grant and reconnects. Watch presence and broadcasts filter these sockets.
+Protocol queues use their own admission and reservations, outside public rates.
+
+ABI 36 supplies admission plans, enrollment bytes and control status from an
+immutable member view. ABI 37 checks native request/envelope signatures, cursors'
+scope, registered keys and permitted inner message kinds; ABI 38 supplies the
+transport limits and response encoding. Routing owns per-lane delivery cursors,
+acks and chunk credits. One outstanding chunk per target bounds catch-up, and
+only its signed durable applied evidence completes snapshot delivery. Public
+coordination never waits for a learner; peer frames bypass its public queue.

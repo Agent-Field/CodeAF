@@ -8,6 +8,7 @@ const check = v => { if (!v) throw new Error('raft inbox: peer authorization ref
 export const INBOX_BYTES = 1024 * 1024;
 const budgets = [INBOX_BYTES - 128 * 1024 - 384 * 1024, 128 * 1024, 384 * 1024];
 const slots = [4, 2, 2];
+const NORMAL_BYTES=64*1024;
 const shared = new Map();
 
 // Authentication is repeated at dispatch, after every async signature wait.
@@ -34,8 +35,9 @@ export class MemberInbox {
     const canonical = { ...unsigned, signature: e.signature }; check(JSON.stringify(canonical) === new TextDecoder().decode(raw));
     if (e.chunk !== null) {
       check(Object.keys(e.chunk).join(',') === 'generation,offset,hash' && hash(e.chunk.generation) && uint(e.chunk.offset, false) && e.chunk.hash === e.digest && payload.length > 0 && payload.length <= 256 * 1024);
+      if(e.chunk.generation===e.chunk.hash&&e.chunk.offset==='0'){const m=this.codec.inspect(4,payload);check(payload.length>NORMAL_BYTES&&m.type===3&&String(m.from)===e.from&&String(m.to)===e.to);}
     } else {
-      check(payload.length > 0 && payload.length <= 64 * 1024);
+      check(payload.length > 0 && payload.length <= NORMAL_BYTES);
       const m = this.codec.inspect(4, payload); check(String(m.from) === e.from && String(m.to) === e.to);
     }
     const key = await crypto.subtle.importKey('raw', unb64(from.key), 'Ed25519', false, ['verify']);

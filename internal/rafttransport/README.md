@@ -4,7 +4,7 @@ This is the authenticated peer bridge, separate from application ingress. The
 persistent native relay assembles its router from committed membership and serves
 personal admission, HTTP exchange and the outbound push socket on its ordinary
 listener. `relayserve.Config.Cluster` is the internal custom-host handler seam.
-The hosted relay's member/control doors remain absent, and a paired codeaf home runs its durable learner inside the terminal state-sync lifetime. No environment switch selects another writer.
+The hosted relay serves the same personal admission, member transport and control status doors. A paired codeaf home runs its durable learner inside the terminal state-sync lifetime. No environment switch selects another writer.
 
 ## Host ordering and authorization
 
@@ -185,7 +185,7 @@ cannot resurrect a retired peer: remove/re-enroll with a fresh node ID.
 The persistent native relay now owns its committed router and mounts enrollment,
 exchange and socket routes on its ordinary listener. `Config.Cluster` remains the
 internal custom-host assembly seam; the default native service installs its own
-router. Hosted member/control routes remain absent.
+router. The hosted relay serves these member and control routes through its identity coordinator.
 
 `POST /v2/cluster/enroll` uses the existing `reqsign` headers, original paired
 personal certificate and body `{"store":"<64 lowercase hex characters>","protocol":1}`.
@@ -227,7 +227,7 @@ wakes the ordinary quorum path.
 
 The codeaf client starts its personal learner only inside the existing terminal
 state-sync lifetime, or a scoped status activation, after current quiet guards.
-Open remains local. Hosted relays offer neither enrollment nor control. Worker
+Open remains local. Hosted relays offer enrollment and control status. Worker
 setup remains unavailable. Native personal leadership uses the separate application ingress below; hosted leadership remains unavailable.
 
 The native host advances its checksummed `transport-generation` file with atomic
@@ -295,3 +295,28 @@ new bytes under the same node/incarnation. No fsync per peer frame is needed.
 Final sleep also waits for the member's bounded sends to be admitted. After the
 all-voter marker, obsolete nonvoter append/heartbeat responses cannot wake the
 leader; actual work, read requests and higher-term messages still do.
+
+## Hosted personal learners
+
+The hosted coordinator publishes routing only from committed anchor records.
+Its generation is durably advanced before restoring expendable inboxes, so old
+cursors and socket proofs cannot survive coordinator memory loss. Hibernating
+peer and passive application sockets retain separate tags and attachments;
+watch presence, broadcasts and watcher admission never count them. A stale
+connection closes and the same durable home refreshes its enrollment grant.
+The relay never opens an outbound connection to a personal member.
+
+Admission and status use shared Go policy through the reactor. A committed
+admission survives a lost reply before configuration; activation or maintenance
+reconciles only pending intent. The original signed device request remains in
+the enrollment command. A fresh quorum status reports readiness only after the
+enrolled key signs durable application through its advertised join barrier.
+Leadership remains unavailable on the hosted relay, and application sockets
+stay passive. Peer ingress progresses independently of the public request queue.
+
+Snapshots send a manifest followed by chunks on their reserved transport lane.
+Each target has one outstanding chunk and advances only on signed delivery
+credit; core snapshot success still waits for durable target application.
+Learners never count toward quorum or hold back compaction. All-voter sleep
+clears expendable learner deliveries and partial transfers; returning learners
+catch up from the applied checkpoint and log.

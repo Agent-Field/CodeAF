@@ -3,6 +3,7 @@
 // none of its legacy directory methods are a production writer.
 import { DurableObject } from 'cloudflare:workers';
 import { LegacyAdmission } from './raft/legacy.js';
+import { peerPath,peerSocket,peerRefusal } from './raft/peers.js';
 import { HostedIdentity } from './raft/hosted.js';
 import { clusterIngress,clusterRequestLimit } from './raft/ingress.js';
 import { sharedRuntime } from './raft/actor.js';
@@ -54,19 +55,20 @@ export class IdentityDO extends DurableObject {
     return respond(() => this.#serve(request));
   }
 
-  /** webSocketMessage runs only for a client frame that is not `ping` (the platform answers that without waking us); such a frame is ignored (contract 21.3). */
-  webSocketMessage() {
+  /** Peer frames drive replication; the platform answers watch keepalives without waking this object. */
+  async webSocketMessage(ws,raw) {
+    if(peerSocket(ws)){try{const host=await this.#peerHost();await host.peers.frame(ws,raw);}catch{try{ws.close(1012,'reconnecting');}catch{}}return;}
     console.warn('watch: message');
   }
 
   /** webSocketClose completes the close handshake the client started, and notes when a device's last socket went. */
   async webSocketClose(ws, code) {
     finishClose(ws, code);
-    await this.#noteLeft(ws);
+    if(!peerSocket(ws))await this.#noteLeft(ws);
   }
 
   webSocketError(ws) {
-    return this.#noteLeft(ws);
+    if(!peerSocket(ws))return this.#noteLeft(ws);
   }
 
   /** #noteLeft records last_seen of a device that holds no socket now; the offline frame follows 15 s later, by alarm. */
@@ -78,6 +80,35 @@ export class IdentityDO extends DurableObject {
 
   async #serve(request) {
     const url = new URL(request.url);
+    if(peerPath(url.pathname)){
+      try{
+        if(url.search)return peerRefusal({peerCode:'invalid'});
+        const socket=url.pathname!=='/v2/cluster/exchange';
+        if(request.method!==(socket?'GET':'POST'))return new Response(null,{status:405});
+        const host=await this.#peerHost();
+        const raw=socket?fromBase64Url(request.headers.get('Codeaf-Cluster-Auth')):await readBody(request,host.peers.limits.Exchange,'too_large');
+        if(!raw)return peerRefusal({peerCode:'invalid'});
+        if(socket)return await host.peers.accept(request,raw,url.pathname.endsWith('/forward')?'forward':'peer');
+        const result=await host.peers.exchange(raw);if(result.rejected)return peerRefusal({peerCode:'busy'});
+        return new Response(result.raw,{headers:{'content-type':'application/json','cache-control':'no-store'}});
+      }catch(error){return peerRefusal(error);}
+    }
+    if(['/v2/cluster/control','/v2/cluster/enroll'].includes(url.pathname)){
+      const enrolling=url.pathname.endsWith('/enroll');
+      if(url.search||!(enrolling?request.method==='POST':['GET','POST'].includes(request.method)))return new Response(null,{status:404});
+      let who,body;
+      try{const caller=await checkCert(signedHeaders(request));body=await readBody(request,clusterRequestLimit(sharedRuntime()),'too_large');who=await checkRequest(caller,{method:request.method,uri:signedUri(this.env,url)},body,Date.now());}
+      catch{return new Response(enrolling?'this computer is not allowed to join this cluster':'this computer is not allowed to coordinate this cluster',{status:403});}
+      await this.#refuseGone();await this.#admitted.get(ipOf(request,this.env));
+      if(request.method==='GET'&&body.length)return new Response('unexpected request body',{status:400});
+      const tenant=this.#tenantOf(who.identity);this.#admit(tenant,who.device);
+      this.host??=new HostedIdentity(this.ctx,this.env,tenant,this.legacyAdmission,at=>this.#arm(at));
+      const reply=await this.host.serial(async()=>{
+        await this.host.ensure(fromBase64Url(request.headers.get('codeaf-identity')));
+        await this.host.wakeMaintenance();
+        return enrolling?this.host.enroll(this.host.proof(request,body)):this.host.control(request.method,who.device,request.headers.get('codeaf-cert'));
+      });this.watchers=this.host.watchers;reply.headers.set('cache-control','no-store');return reply;
+    }
     if(url.pathname==='/v2/cluster/api'){
       if(request.method!=='POST'||url.search)throw new Wire('bad_request',400);
       const raw=await readBody(request,clusterRequestLimit(sharedRuntime()),'too_large');
@@ -109,6 +140,19 @@ export class IdentityDO extends DurableObject {
     } finally {
       leave();
     }
+  }
+
+  // Peer ingress can restore an existing namespace, but cannot provision one.
+  // Check durable provenance before constructing a Tenant, which creates tables.
+  async #peerHost(){
+    await this.#refuseGone();
+    const provision=await this.ctx.storage.get('raft-provision'),identity=await this.ctx.storage.get('identity');
+    if(!provision||!identity)throw Object.assign(new Error('member authorization refused'),{peerCode:'unauthorized'});
+    if(!this.host?.ready){
+      const tenant=this.#tenantOf(identity);this.host??=new HostedIdentity(this.ctx,this.env,tenant,this.legacyAdmission,at=>this.#arm(at));
+      await this.host.serial(()=>this.host.ensure(unb64(provision.config.signing_key)));this.watchers=this.host.watchers;
+    }
+    return this.host;
   }
 
   /** #enterPut counts a put from its arrival, and turns away one more than the isolate can hold in memory. */
@@ -156,6 +200,7 @@ export class IdentityDO extends DurableObject {
     const erase=await this.host.serial(async()=>{
       await this.host.ensure(Uint8Array.from(atob(provision.config.signing_key),c=>c.charCodeAt(0)));
       this.watchers=this.host.watchers;this.watchers.expire();tenant.stats.flush();
+      await this.host.peers.deadlines(Date.now());
       await this.host.maintenance(Date.now());
       const at=this.host.retireAt;
       if(at && at<=Date.now())return true;

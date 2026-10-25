@@ -1,3 +1,4 @@
+import { PersonalPeers } from './peers.js';
 import { coordinationPolicy,CommittedHolds } from './liveness.js';
 import { clusterIngress } from './ingress.js';
 import { frame, response, HostCodec } from './abi.js';
@@ -100,7 +101,7 @@ export class HostedIdentity {
     if(!owned)await this.source.own(receipts);
     this.source.route(()=>true);
     this.watchers=new CommittedWatchers(this.ctx,this.tenant.limits.maxWatchers,this.tenant.watchers.ttlMs,at=>this.ctx.waitUntil(this.ctx.storage.setAlarm(at)));
-    this.tenant.watchers=this.watchers;this.ready=true;
+    this.tenant.watchers=this.watchers;
     this.effects=new RaftEffectsFacade(this,this.manifest.config.cluster);
     this.holds=new CommittedHolds(this,this.policy);
     this.holds.opened(Date.now(),this.watchers.holdEvidence(Date.now()).some(socket=>socket.holds.length));
@@ -111,23 +112,55 @@ export class HostedIdentity {
     }
     const root=await this.barrierRecord({namespace:'state',key:'identity'});
     this.retireAt=this.project('identity',root).rotation?.retire_at;
-    await this.wakeMaintenance();
+    const generation=await this.ctx.storage.get('raft-router-generation')??'0';
+    if(typeof generation!=='string'||!/^(0|[1-9][0-9]*)$/.test(generation)||BigInt(generation)>=(1n<<64n)-1n)throw unavailable();
+    const next=String(BigInt(generation)+1n);
+    await this.ctx.storage.put('raft-router-generation',next);await this.ctx.storage.sync();
+    this.peers=new PersonalPeers(this,next);
+    for(const ws of this.peers.sockets())this.peers.close(ws);
+    await this.peers.refresh();
+    await this.peers.recover();
+    this.membershipPending=!!(header.raw&&decodeCanonical(dec.decode(header.raw)).pending);
+    await this.reconcileMembership();
+    await this.wakeMaintenance();this.ready=true;
   }
   accept(id,e){if(!e)return;if(e.status)this.states.set(String(id),e.status);this.queue.push(...(e.send??[]).map(m=>({...m,from:String(id),to:String(m.to)})));this.reads.push(...(e.reads??[]).map(r=>({...r,node:String(id)})));}
   async input(id,tag,value){const result=await this.members.get(String(id)).hostInput(tag,value);this.accept(id,result);return result;}
+  // Reserve durable sequence ranges before emission. Concurrent public and
+  // peer turns share one allocator, and recovery skips every unused sequence.
+  async nextSequence(){
+    for(;;){
+      if(this.sequence!==undefined&&this.sequence<this.sequenceCeiling)return String(++this.sequence);
+      this.sequencePending??=(async()=>{
+        const range=await this.ctx.storage.transaction(async tx=>{
+          const saved=await tx.get('raft-transport-sequence')??'0',count=BigInt(this.policy.sequence_reservation);
+          if(typeof saved!=='string'||!/^(0|[1-9][0-9]*)$/.test(saved)||BigInt(saved)>(1n<<64n)-1n-count)throw unavailable();
+          const ceiling=BigInt(saved)+count;await tx.put('raft-transport-sequence',String(ceiling));return {start:saved,ceiling:String(ceiling)};
+        });await this.ctx.storage.sync();this.sequence=BigInt(range.start);this.sequenceCeiling=BigInt(range.ceiling);
+      })().finally(()=>{this.sequencePending=null;});
+      await this.sequencePending;
+    }
+  }
   async envelope(from,to,payload,chunk=null){
-    const next=BigInt(await this.ctx.storage.get('raft-transport-sequence')??'0')+1n;
-    await this.ctx.storage.put('raft-transport-sequence',String(next));await this.ctx.storage.sync();
-    const e={scope:this.config(from).scope,from,to,incarnation:'1',destination:'1',sequence:String(next),chunk,digest:Array.from(this.codec.hash(payload).digest,b=>b.toString(16).padStart(2,'0')).join(''),payload:b64(payload),signature:null};
+    const next=await this.nextSequence();
+    const e={scope:this.config(from).scope,from,to,incarnation:'1',destination:this.peers?.view[to]?.incarnation??'1',sequence:String(next),chunk,digest:Array.from(this.codec.hash(payload).digest,b=>b.toString(16).padStart(2,'0')).join(''),payload:b64(payload),signature:null};
     const rank=this.manifest.config.anchors.indexOf(from);
     const key=await crypto.subtle.importKey('pkcs8',unb64(this.provisioning.anchors[rank]),'Ed25519',false,['sign']);
     e.signature=b64(new Uint8Array(await crypto.subtle.sign('Ed25519',key,enc.encode('codeaf/raft/envelope/1\n'+JSON.stringify(e)))));
     return enc.encode(JSON.stringify(e));
   }
+  hash(raw){return Array.from(this.codec.hash(raw).digest,b=>b.toString(16).padStart(2,'0')).join('');}
   async pump(){
+    if(this.pumping){await this.pumping;if(this.queue.length)return this.pump();return;}
+    if(this.peers)this.peers.blocked=new Set();
+    this.pumping=this.pumpQueue();
+    try{await this.pumping;}finally{this.pumping=null;}
+    if(this.peers)await this.peers.push();
+  }
+  async pumpQueue(){
     for(let n=0;this.queue.length;n++){
       if(n>=2048){this.queue=[];throw unavailable();}
-      const m=this.queue.shift(),to=this.members.get(m.to);if(!to)continue;
+      const m=this.queue.shift(),to=this.members.get(m.to);if(!to){if(this.peers)await this.peers.send(m);continue;}
       const snapshot=this.codec.inspect(4,m.bytes).snapshot;
       try{
         if(snapshot.length){
@@ -144,7 +177,8 @@ export class HostedIdentity {
             await to.hostSnapshot('complete',id);
           }
         }
-        const result=await to.peer(await this.envelope(m.from,m.to,m.bytes));this.accept(m.to,result);
+        const hash=this.hash(m.bytes),chunk=m.bytes.length>this.policy.max_message_bytes?{generation:hash,offset:'0',hash}:null;
+        const result=await to.peer(await this.envelope(m.from,m.to,m.bytes,chunk));this.accept(m.to,result);
         if(snapshot.length)await this.input(m.from,12,{peer:m.to,snapshot:true,success:result.installed===true});
       }catch(error){
         if(snapshot.length)await this.input(m.from,12,{peer:m.to,snapshot:true,success:false});
@@ -168,6 +202,7 @@ export class HostedIdentity {
   async commit(raw){
     await this.elect();const id=this.leader(),proposal=await this.input(id,3,raw);await this.pump();
     const result=await this.members.get(id)?.hostResult(raw,proposal.proposalAfter);if(!result)throw unavailable();
+    if(this.peers)await this.peers.refresh();
     return {raw:result.raw,value:decodeCanonical(dec.decode(result.raw)),index:result.index};
   }
   async commitEffect(change,now=Date.now()){
@@ -210,6 +245,7 @@ export class HostedIdentity {
   async wakeMaintenance(){this.asleep=false;await this.armAlarm(Date.now()+this.policy.tick_every);}
   async maintenance(now=Date.now(),elapsed=Math.floor(performance.now())){
     if(this.asleep)return;
+    if(this.membershipPending)await this.reconcileMembership();
     this.elapsed=Math.max(this.elapsed,elapsed-this.started);
     // Alarm/recovery effects are retained until their exact batch is consumed.
     for(const [id,member]of this.members){
@@ -259,10 +295,53 @@ export class HostedIdentity {
         let sleeping=true;
         for(const [node,member]of this.members){const effects=await member.schedule(this.elapsed,now,false,acks);this.accept(node,effects);sleeping&&=effects.plan.sleeping;}
         await this.pump();this.asleep=sleeping;
+        if(sleeping&&this.peers){await this.peers.quiesce();await this.pump();}
       }catch{this.asleep=false;}
     }
     if(!this.asleep)await this.armAlarm(now+this.policy.tick_every);
     if(this.holds.next!==null)await this.armAlarm(this.holds.next);
+  }
+  async personal(action,{proof,actor='',certificate=''}={}){
+    const b=await this.barrier();
+    return this.members.get(b.node).hostPersonal(b.index,{action,identity:this.manifest.config.identity,epoch:this.manifest.config.generation,generation:this.peers.generation,leader:this.leader(),actor,certificate,
+      proof:proof??{method:'',uri:'',identity_key:null,certificate:'',at:'',signature:null,body:null},progress:[...this.peers.progress].map(([node,applied])=>({node,applied}))});
+  }
+
+  async reconcileMembership(){
+    if(!this.membershipPending)return;
+    for(let stage=0;stage<3;stage++){
+      const raw=await this.barrierRecord({namespace:'membership',key:'registry'}),h=decodeCanonical(dec.decode(raw));
+      if(!h.pending){this.membershipPending=false;await this.peers.refresh();return;}
+      const id=this.leader(),plan=await this.members.get(id).membership();this.accept(id,plan);await this.pump();
+      if(plan.settle){requireOK((await this.anchorCommand({settle_membership:{revision:h.revision,node:h.pending.node}},Date.now())).value.code);}
+    }
+    const h=decodeCanonical(dec.decode(await this.barrierRecord({namespace:'membership',key:'registry'})));this.membershipPending=!!h.pending;
+    await this.peers.refresh();
+  }
+  async enroll(proof){
+    await this.reconcileMembership();
+    for(let stage=0;stage<3;stage++){
+      const out=await this.personal('admission',{proof});
+      if(out.code!=='ok')return this.personalRefusal(out);
+      if(!out.plan.change){const grant=await this.personal('grant',{proof});return grant.code==='ok'?this.jsonBytes(unb64(grant.wire)):this.personalRefusal(grant);}
+      const result=await this.anchorCommand(out.plan.change,Date.now());
+      if(result.value.code!=='ok'){
+        return this.personalRefusal({code:result.value.code,message:undefined});
+      }
+      this.membershipPending=true;
+      // Registry admission and configuration are separate durable stages. A
+      // subsequent activation or maintenance owns completion after a lost reply.
+      if(out.plan.change.enroll_member){const grant=await this.personal('grant',{proof});return this.jsonBytes(unb64(grant.wire));}
+      await this.reconcileMembership();
+    }
+    throw unavailable();
+  }
+  personalRefusal(out){const r=response(this.runtime.call(frame(38).u32(2).str(out.code).finish())),message=r.str();r.end();return new Response(out.message||message||'this computer is not allowed to join this cluster',{status:out.code==='capacity'?429:out.code==='update_required'?409:403,headers:{'cache-control':'no-store'}});}
+  async control(method,actor,certificate){
+    await this.reconcileMembership();const out=await this.personal('status',{actor,certificate});
+    if(out.code!=='ok')return new Response('this computer is not allowed to coordinate this cluster',{status:403});
+    if(method==='POST')return new Response('this relay does not offer cluster leadership yet; your saved chats are still here',{status:404});
+    return this.jsonBytes(unb64(out.wire));
   }
   async api(raw,q,actor) {
     await this.ensure(unb64(q.identity_key));

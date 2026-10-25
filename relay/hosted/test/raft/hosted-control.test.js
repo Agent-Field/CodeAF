@@ -4,26 +4,26 @@ import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { hostedFixture } from './hosted-fixture.js';
 
-// R6/R9/R23/R30 keep hosted member and leadership doors absent until their
-// runtime can serve an external member. Refusing avoids an intent that
-// cannot finish. Restart runs the same bundle over the same persistent state.
-test('R6 R9 R23 R30 hosted member doors stay absent across a runtime restart',{timeout:30000},async()=>{
+// R9/R12/R23/R30 expose authenticated learner doors while leadership remains unavailable.
+test('R9 R12 R23 R30 hosted member doors and same-bundle restart',{timeout:30000},async()=>{
  const h=await hostedFixture({base:'/fabric'}),a=h.client();
  try{
   await h.start();
-  for(const path of ['/v2/cluster/control','/v2/cluster/enroll','/v2/cluster/exchange','/v2/cluster/socket']){
-   for(const method of ['GET','POST']){
-    const r=await h.request(a,method,path);
-    assert.equal(r.status,404,path);await r.text();
-   }
+  let r=await h.request(a,'GET','/v2/cluster/control');
+  assert.equal(r.status,200,await r.clone().text());
+  let status=await r.json();assert.equal(status.self,'0');assert.equal(status.leadership_unavailable,true);
+  assert.deepEqual(status.configuration.voters,['1','2','3']);
+  const enroll=async()=>{const r=await h.request(a,'POST','/v2/cluster/enroll',{store:'a'.repeat(64),protocol:1});assert.equal(r.status,200,await r.clone().text());return r.json();};
+  const first=await enroll(),second=await enroll();assert.equal(first.node,second.node);assert.notEqual(second.barrier,'0');
+  r=await h.request(a,'GET','/v2/cluster/control');status=await r.json();assert.equal(status.self,first.node);assert(status.configuration.learners.includes(first.node));assert(!status.ready?.includes(first.node));
+  r=await h.request(a,'POST','/v2/cluster/control');assert.equal(r.status,404);assert.equal((await r.text()).trim(),'this relay does not offer cluster leadership yet; your saved chats are still here');
+  for(const path of ['control','enroll','exchange','socket','forward']){
+   const r=await h.mf.dispatchFetch('http://local/fabric/v2/cluster/'+path,{method:path==='enroll'||path==='exchange'?'POST':'GET'});assert([400,403].includes(r.status),path+' '+r.status);await r.text();
   }
   const bundle=await stat(join(h.dir,'worker.js'));
   await h.start();
   const restarted=await stat(join(h.dir,'worker.js'));
   assert.equal(restarted.mtimeNs??restarted.mtimeMs,bundle.mtimeNs??bundle.mtimeMs,'restart rebuilt the program');
-  for(const path of ['/v2/cluster/control','/v2/cluster/enroll','/v2/cluster/exchange','/v2/cluster/socket']){
-   const r=await h.request(a,'GET',path);
-   assert.equal(r.status,404,path);await r.text();
-  }
+  const returned=await enroll();assert.equal(returned.node,first.node);assert(BigInt(returned.generation)>BigInt(first.generation));
  }finally{await h.close();}
 });

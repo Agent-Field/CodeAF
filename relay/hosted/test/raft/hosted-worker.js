@@ -7,7 +7,7 @@ import { RaftMemberDO as Member } from '../../src/raft/member.js';
 import { Directory } from '../../src/directory.js';
 import { unb64 } from '../../src/raft/storage.js';
 import { runtimeMetrics } from '../../src/raft/actor.js';
-const measurements={turns:0,wall:[]};
+const measurements={turns:0,wall:[],membership:0};
 async function measured(fn){const start=performance.now();measurements.turns++;try{return await fn();}finally{measurements.wall.push(performance.now()-start);}}
 import { policyOf } from '../../src/rules.js';
 
@@ -18,6 +18,23 @@ export class IdentityDO extends Source {
       const commit=this.host.commit.bind(this.host);this.host.commit=async raw=>{this.lastCommand=raw.slice();return commit(raw);};this.capturing=true;
     }
     return result;
+  }
+  async sequenceProof(){return this.host.serial(async()=>{
+    const from=this.host.manifest.config.anchors[0],to=this.host.manifest.config.anchors[1],term=Number(this.host.states.get(this.host.leader()).term);
+    const payload=Uint8Array.of(8,8,16,Number(to),24,Number(from),32,term);
+    const messages=await Promise.all(Array.from({length:16},()=>this.host.envelope(from,to,payload)));
+    return {sequences:messages.map(raw=>JSON.parse(new TextDecoder().decode(raw)).sequence),ceiling:await this.ctx.storage.get('raft-transport-sequence')};
+  });}
+  peerIdle(){return {sleeping:this.host.asleep,bytes:this.host.peers.used,snapshots:this.host.peers.snapshots.size};}
+  transportState(){return {keys:[...this.ctx.storage.kv.list()].map(([key])=>key),tables:this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'").toArray().map(r=>r.name)};}
+  async pausePublic(){
+    let began;const started=new Promise(resolve=>{began=resolve;});
+    this.ctx.waitUntil(this.host.serial(async()=>{began();await new Promise(resolve=>{this.releasePublic=resolve;});}));await started;
+  }
+  resumePublic(){this.releasePublic?.();}
+  async checkpointState(){
+    const id=this.host.leader();await this.host.members.get(id).hostCheckpoint();
+    return this.host.members.get(id).transportCheckpoint();
   }
   holdUpload(){
     const put=this.host.tenant.store.put.bind(this.host.tenant.store);
@@ -51,17 +68,17 @@ export class IdentityDO extends Source {
     });
   }
   async idleSchedule(){
-    // R26 allows eviction between the HTTP request and this fixture RPC.
+    // The object may hibernate between the HTTP request and this fixture RPC.
     // Restore through the production alarm before driving its virtual clock.
     if(!this.host)await super.alarm();
     return this.host.serial(async()=>{
-    const base=Date.now();
+    const base=Date.now(),membershipBefore=measurements.membership;
     for(let n=1;n<=20;n++)await this.host.maintenance(base+n*this.host.policy.tick_every,this.host.started+n*this.host.policy.tick_every);
     const id=this.host.leader(),before=this.host.states.get(id).applied;
     const sleeping=this.host.asleep;
     const turns=measurements.turns;
     for(let n=21;n<=140;n++)await this.host.maintenance(base+n*this.host.policy.tick_every,this.host.started+n*this.host.policy.tick_every);
-    return {sleeping,appliedBefore:String(before),appliedAfter:String(this.host.states.get(id).applied),recurringMemberCalls:measurements.turns-turns,idleMilliseconds:120*this.host.policy.tick_every};
+    return {sleeping,membershipCalls:measurements.membership-membershipBefore,appliedBefore:String(before),appliedAfter:String(this.host.states.get(id).applied),recurringMemberCalls:measurements.turns-turns,idleMilliseconds:120*this.host.policy.tick_every};
   });}
   inspect() {
     return {gate:this.ctx.storage.sql.exec('SELECT doc FROM legacy_gate WHERE one=1').toArray()[0]?.doc,
@@ -69,10 +86,12 @@ export class IdentityDO extends Source {
   }
 }
 export class RaftMemberDO extends Member {
+  membership(...args){measurements.membership++;return measured(()=>super.membership(...args));}
   hostInput(...args){return measured(()=>super.hostInput(...args));}
   peer(...args){return measured(()=>super.peer(...args));}
   hostView(...args){return measured(()=>super.hostView(...args));}
   hostResult(...args){return measured(()=>super.hostResult(...args));}
+  async transportCheckpoint(){await this.load();return this.actor.serial(()=>({applied:this.actor.store.application().applied,retained:this.actor.store.one('SELECT count(*) AS n FROM journal').n,snapshot:this.actor.codec.inspect(3,unb64(this.actor.store.get('snapshot'))).index.toString()}));}
   async seedTransportTail(){await this.load();await this.ctx.storage.put('raft-scheduled-part/interrupted/0',new Uint8Array([1,2,3]));await this.ctx.storage.sync();}
   async retainedControl(){return [...(await this.ctx.storage.list({prefix:'raft-'})).keys()].filter(key=>key!=='raft-erased');}
   async oldSnapshotAndCheckpoint(){
@@ -94,8 +113,14 @@ export default {
     const url=new URL(request.url);
     if(url.pathname==='/fixture'){
       const {op,identity,records,node,cluster}=await request.json();
+      if(op==='peer-idle')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).peerIdle());
+      if(op==='sequence-proof')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).sequenceProof());
+      if(op==='transport-state')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).transportState());
+      if(op==='pause-public'){await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).pausePublic();return Response.json(true);}
+      if(op==='resume-public'){await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).resumePublic();return Response.json(true);}
+      if(op==='checkpoint-state')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).checkpointState());
       if(op==='metrics')return Response.json({...runtimeMetrics(),...measurements});
-      if(op==='reset-metrics'){measurements.turns=0;measurements.wall=[];return Response.json(true);}
+      if(op==='reset-metrics'){measurements.turns=0;measurements.wall=[];measurements.membership=0;return Response.json(true);}
       if(op==='seed'){await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).seed(identity,records);return Response.json(true);}
       if(op==='hold-upload'){await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).holdUpload();return Response.json(true);}
       if(op==='release-upload'){await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).releaseHeldUpload();return Response.json(true);}
