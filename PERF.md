@@ -111,6 +111,7 @@ the feature and its measurements; keep `SIZE-BUDGET` explicit and reviewable.
 
 Every build links the Raft coordination core: the modified Raft copy, protobuf,
 the signed state machine and its SQLite snapshot host. The relay and devices
-always coordinate through it, so no build leaves it out. On linux/amd64 it added
-2,519,040 bytes to the stripped binary (75,268,361 to 77,787,401), and the cap
-moved by the same amount, from 75,811,848 to 78,330,888.
+always coordinate through it, so no build leaves it out. On linux/amd64 it adds
+3,260,416 bytes to the stripped binary (75,071,753 to 78,332,169 on the same dev
+base), and the cap moves by the same amount, from 75,811,848 to 79,072,264, so
+the 740,095 bytes of headroom the base had are kept.
