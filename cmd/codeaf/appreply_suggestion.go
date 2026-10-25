@@ -9,11 +9,11 @@ import (
 // Suggestions never open an unheld conversation, send a turn or invoke a tool.
 // Crew, factory and bare chats all use their actual agent's metered model door.
 func (b *appBackend) SuggestReply(ctx context.Context, p appwire.ReplySuggestionParams) (appwire.ReplySuggestion, error) {
-	a, err := b.find(p.Agent)
+	_, live, endRead, err := b.borrowExisting(p.Agent)
 	if err != nil {
 		return appwire.ReplySuggestion{}, err
 	}
-	live := b.liveOf(a)
+	defer endRead()
 	if live == nil {
 		return appwire.ReplySuggestion{}, nil
 	}

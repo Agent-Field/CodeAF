@@ -356,10 +356,11 @@ func (b *appBackend) RaiseCap(raise appwire.CapRaise) error {
 	now := b.now()
 	switch raise.Scope {
 	case appwire.CapAgent:
-		a, err := b.findCrewOwner(raise.ID)
+		a, endRead, err := b.findCrewOwner(raise.ID)
 		if err != nil {
 			return err
 		}
+		defer endRead()
 		if err := b.lentFence(a, "budget"); err != nil {
 			return err
 		}

@@ -12,10 +12,11 @@ func (b *appBackend) ApplicableMemory(ctx context.Context, id string) (session.M
 	if err := ctx.Err(); err != nil {
 		return session.MemoryScopeSnapshot{}, err
 	}
-	a, err := b.findCrewOwner(id)
+	a, endRead, err := b.findCrewOwner(id)
 	if err != nil {
 		return session.MemoryScopeSnapshot{}, err
 	}
+	defer endRead()
 	live := b.liveOf(a)
 	if live == nil {
 		return session.MemoryScopeSnapshot{}, appwire.Errorf(appwire.CodeEngine, "live memory scope is unknown until this conversation is open")

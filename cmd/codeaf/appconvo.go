@@ -154,10 +154,11 @@ func (b *appBackend) steer(agent, text, clientID string, shown *appSending) erro
 		return appEngineError(err)
 	}
 	b.resetCloseResumes(agent)
-	a, err := b.findCrewOwner(agent)
+	a, endRead, err := b.findCrewOwner(agent)
 	if err != nil {
 		return err
 	}
+	defer endRead()
 	if _, handled, err := b.tryFactoryStatus(a, text, clientID, shown); handled {
 		return err
 	}
@@ -305,10 +306,11 @@ func (b *appBackend) queue(agent, text, clientID string, shown *appSending) ([]a
 	if err := (session.Submission{ClientID: clientID}).Check(); err != nil {
 		return nil, appEngineError(err)
 	}
-	a, err := b.findCrewOwner(agent)
+	a, endRead, err := b.findCrewOwner(agent)
 	if err != nil {
 		return nil, err
 	}
+	defer endRead()
 	live := b.liveOf(a)
 	busy := false
 	if live != nil {
@@ -400,11 +402,12 @@ func (b *appBackend) EditQueuedMessage(agent, id string, message appwire.AgentMe
 	if err != nil {
 		return nil, err
 	}
-	a, err := b.find(agent)
+	_, live, endRead, err := b.borrowExisting(agent)
 	if err != nil {
 		return nil, err
 	}
-	if live := b.liveOf(a); live != nil && !appKeepsQueuedMarks(live.conn.Conv) {
+	defer endRead()
+	if live != nil && !appKeepsQueuedMarks(live.conn.Conv) {
 		return nil, appwire.Errorf(appwire.CodeUnknownMethod, "this conversation cannot keep a queued message's said or reads")
 	}
 	return b.changeQueue(agent, id, func(a *appAgent, at int) {
@@ -612,10 +615,11 @@ func (b *appBackend) AnswerAskWith(agent, id string, answer appwire.AskAnswer) e
 	if handled, err := b.answerCrewAsk(agent, id, answer.Option, answer.Text, answer.Why); handled {
 		return err
 	}
-	a, err := b.findCrewOwner(agent)
+	a, endRead, err := b.findCrewOwner(agent)
 	if err != nil {
 		return err
 	}
+	defer endRead()
 	live := b.liveOf(a)
 	if live == nil {
 		return b.AnswerAsk(agent, id, answer.Option, answer.Text)
@@ -641,6 +645,8 @@ func (b *appBackend) AnswerAskWith(agent, id string, answer appwire.AskAnswer) e
 	}
 	text := strings.TrimSpace(strings.TrimSpace(answer.Text) + "\n" + strings.TrimSpace(answer.Why))
 	if answer.YouDecide {
+		a.gate.Lock()
+		defer a.gate.Unlock()
 		if !open {
 			return appwire.Errorf(appwire.CodeNotFound, "the ask %s is not open", id)
 		}
@@ -711,10 +717,11 @@ const appDecideMark = "decide:"
 // HoldAsk stops an ask's clock. Only a proposed task has one: its hold is the
 // task's own.
 func (b *appBackend) HoldAsk(agent, id string) error {
-	a, err := b.findCrewOwner(agent)
+	a, endRead, err := b.findCrewOwner(agent)
 	if err != nil {
 		return err
 	}
+	defer endRead()
 	live := b.liveOf(a)
 	if live == nil {
 		return appwire.Errorf(appwire.CodeNotFound, "the ask %s is not open", id)
@@ -1455,10 +1462,11 @@ func (b *appBackend) RetryTask(id string) error {
 	if !ok {
 		return appwire.Errorf(appwire.CodeBadParams, "%s is not a task id", id)
 	}
-	_, live, err := b.heldLive(agent)
+	_, live, endLive, err := b.admitLive(agent)
 	if err != nil {
 		return err
 	}
+	defer endLive()
 	n, err := strconv.ParseUint(local, 10, 64)
 	if err != nil {
 		return appwire.Errorf(appwire.CodeBadParams, "%s is not a task id", id)
@@ -1484,10 +1492,11 @@ func (b *appBackend) NoteTask(id, text, clientID string) (appwire.Entry, error) 
 	if !ok {
 		return appwire.Entry{}, appwire.Errorf(appwire.CodeBadParams, "%s is not a task id", id)
 	}
-	_, live, err := b.heldLive(agent)
+	_, live, endLive, err := b.borrowLive(agent)
 	if err != nil {
 		return appwire.Entry{}, err
 	}
+	defer endLive()
 	// The same key the engine will keep, so the receipt, the event and the page
 	// never disagree about it.
 	clientID = session.AppNoteClientID(clientID)
@@ -1690,10 +1699,11 @@ func (b *appBackend) TaskEntries(id, before string, limit int) ([]appwire.Entry,
 	if !ok {
 		return nil, false, appwire.Errorf(appwire.CodeBadParams, "%s is not a task id", id)
 	}
-	a, live, err := b.heldLive(agent)
+	a, live, endLive, err := b.borrowLive(agent)
 	if err != nil {
 		return nil, false, err
 	}
+	defer endLive()
 	n, err := strconv.ParseUint(local, 10, 64)
 	if err != nil {
 		return nil, false, appwire.Errorf(appwire.CodeBadParams, "%s is not a task id", id)

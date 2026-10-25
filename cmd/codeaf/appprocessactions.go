@@ -82,10 +82,11 @@ func (b *appBackend) ProcessActions(ctx context.Context, id string) (*appwire.Pr
 	if err != nil {
 		return nil, err
 	}
-	a, err := b.findCrewOwner(agent)
+	a, endRead, err := b.findCrewOwner(agent)
 	if err != nil {
 		return nil, err
 	}
+	defer endRead()
 	res := &appwire.ProcessActionsResult{ID: id, Kind: appwire.ProcessKindJob}
 	var record session.JobNotice
 	unknown := ""
@@ -271,10 +272,11 @@ func (b *appBackend) StopAllProcesses(ctx context.Context, ask appwire.ProcessSt
 		return nil, err
 	}
 	agent := ask.Agent
-	a, err := b.findCrewOwner(agent)
+	a, endRead, err := b.findCrewOwner(agent)
 	if err != nil {
 		return nil, err
 	}
+	defer endRead()
 	admitted := false
 	b.locked(func() {
 		if b.stoppingAll == nil {

@@ -426,10 +426,11 @@ func (b *appBackend) LaterInbox(id string, later bool) error {
 	if service, err := b.laterServiceItem(id, askID, later); service {
 		return err
 	}
-	a, err := b.findCrewOwner(agent)
+	a, endRead, err := b.findCrewOwner(agent)
 	if err != nil {
 		return err
 	}
+	defer endRead()
 	live := b.liveOf(a)
 	if live == nil {
 		return appwire.Errorf(appwire.CodeNotFound, "the Inbox item %s is no longer waiting", id)

@@ -1,9 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -101,7 +101,7 @@ func (b *appBackend) needsLazyOpen(run *appCrewRun, read appCrewRead, row sessio
 	if recovered && !(presence.Fresh(b.now()) && session.InUse(row.Transcript)) {
 		return false
 	}
-	busy := presence.State == session.PresenceWorking || presence.NeedsPerson() || len(presence.RunningTasks) > 0 || len(presence.Jobs) > 0
+	busy := memberBusy(presence)
 	return busy || b.serviceKeeps(row.ID) || session.NeedsTaskRecovery(row.Transcript) || session.NeedsProcessRecovery(row.Transcript)
 }
 
@@ -165,7 +165,18 @@ func lazyStamp(path string) string {
 	if err != nil {
 		return "-"
 	}
-	return path + ":" + strconv.FormatInt(info.Size(), 10) + ":" + strconv.FormatInt(info.ModTime().UnixNano(), 10)
+	if stamp := appInfoStamp(path, info); stamp != "" {
+		return stamp
+	}
+	return fmt.Sprintf("%s:%d:%d;", path, info.Size(), info.ModTime().UnixNano())
+}
+
+func appInfoStamp(path string, info os.FileInfo) string {
+	dev, ino, ctime, ok := appFileIdentity(info)
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf("%s:%d:%d:%d:%d:%d;", path, dev, ino, info.Size(), info.ModTime().UnixNano(), ctime)
 }
 
 func crewTrafficEvent(event fsnotify.Event) bool {
@@ -204,13 +215,43 @@ func (b *appBackend) rememberLazyMember(id string) {
 
 // findCrewOwner restores the owner-backed answer an open crew had before its
 // idle members became light records. Other closed conversations stay closed.
-func (b *appBackend) findCrewOwner(id string) (*appAgent, error) {
-	a, err := b.find(id)
-	if err != nil {
-		return nil, err
+func (b *appBackend) findCrewOwner(id string) (*appAgent, func(), error) {
+	return b.readAgent(id, true)
+}
+
+// findCrewReader pins an existing owner and opens only a busy crew member.
+func (b *appBackend) findCrewReader(id string) (*appAgent, func(), error) {
+	return b.readAgent(id, false)
+}
+
+// memberRests is true for a member whose conversation is not held and has
+// nothing a held conversation would answer differently from its files: no
+// working turn, question, task or process in its presence, no kept service, no
+// lent stage. The crew beat opens it for new traffic; a person's view or send
+// opens it through [appBackend.ensure].
+func (b *appBackend) memberRests(a *appAgent) bool {
+	var held bool
+	b.locked(func() { held = a.live != nil })
+	return !held && b.memberQuiet(a)
+}
+
+// memberQuiet is true for a member, held or not, whose files and services show
+// nothing in flight, so letting its conversation go loses nothing the crew
+// would not open it again for.
+func (b *appBackend) memberQuiet(a *appAgent) bool {
+	var id, transcript string
+	b.locked(func() { id, transcript = a.view.ID, a.transcript })
+	if transcript == "" {
+		return false
 	}
-	if b.crewKeeps(id) {
-		_, _, err = b.heldLive(id)
+	if _, staged := liveStageFor(transcript); staged || b.serviceKeeps(id) {
+		return false
 	}
-	return a, err
+	presence, _ := session.ReadSessionPresenceAnyAge(session.DirOf(transcript))
+	return !memberBusy(presence)
+}
+
+// memberBusy is what a presence record says about work in flight.
+func memberBusy(presence session.SessionPresence) bool {
+	return presence.State == session.PresenceWorking || presence.NeedsPerson() || len(presence.RunningTasks) > 0 || len(presence.Jobs) > 0
 }

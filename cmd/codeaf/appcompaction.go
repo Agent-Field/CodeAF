@@ -217,10 +217,11 @@ func appReadPasses(stop <-chan struct{}, passes <-chan session.Event, take func(
 // compaction.ended; the pass's own events reach the page through the
 // connection's pass lane ([appBackend.watchPasses]), ahead of that answer.
 func (b *appBackend) CompactAgent(id string) error {
-	a, live, err := b.heldLive(id)
+	a, live, endLive, err := b.borrowLive(id)
 	if err != nil {
 		return err
 	}
+	defer endLive()
 	conv, ok := live.conn.Conv.(appCompactConv)
 	if !ok {
 		return appwire.Errorf(appwire.CodeUnknownMethod, "this conversation cannot be compacted from here")
@@ -240,7 +241,11 @@ func (b *appBackend) CompactAgent(id string) error {
 		b.locked(func() { live.compacting = false })
 		return appwire.Errorf(appwire.CodeBusy, "too many compactions are running; ask again in a moment")
 	}
+	a.gate.Lock()
+	endWorker := b.pinReader(a)
+	a.gate.Unlock()
 	guard.Go("app/compact", func() {
+		defer endWorker()
 		defer func() {
 			<-appCompactSlots
 			b.locked(func() { live.compacting = false })

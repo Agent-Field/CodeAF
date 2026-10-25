@@ -67,10 +67,11 @@ func (b *appBackend) PageProcesses(ctx context.Context, ask appwire.ProcessPageA
 	if err != nil {
 		return nil, err
 	}
-	a, err := b.findCrewOwner(ask.Agent)
+	a, endRead, err := b.findCrewOwner(ask.Agent)
 	if err != nil {
 		return nil, err
 	}
+	defer endRead()
 	var transcript string
 	b.locked(func() { transcript = a.transcript })
 	convDir := ""
@@ -464,10 +465,11 @@ func (b *appBackend) processRecord(ctx context.Context, id string, legacyList bo
 	if !ok {
 		return session.JobNotice{}, "", appwire.Errorf(appwire.CodeBadParams, "%s is not a process id", id)
 	}
-	a, err := b.findCrewOwner(agent)
+	a, endRead, err := b.findCrewOwner(agent)
 	if err != nil {
 		return session.JobNotice{}, "", err
 	}
+	defer endRead()
 	var transcript string
 	b.locked(func() { transcript = a.transcript })
 	convDir := ""

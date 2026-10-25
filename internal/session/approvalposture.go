@@ -252,7 +252,10 @@ func (a *Agent) guardianOn() bool {
 // stampApproval writes the posture down the moment it changes, for
 // [Agent.stampEffort]'s reason: a person who opens the gate and closes the
 // terminal before saying anything else must find it open when they come back.
-func (a *Agent) stampApproval() { a.stampMeta() }
+func (a *Agent) stampApproval() {
+	dir, snapshot := a.metaSnapshotAt()
+	a.updateMeta(dir, snapshot, func(meta *Meta) { meta.Approval = snapshot.Approval })
+}
 
 func knownPosture(word string) bool {
 	for _, known := range ApprovalPostures {

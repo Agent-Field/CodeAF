@@ -125,6 +125,7 @@ func runApp(args []string) error {
 	defer leaving()
 	defer leave.On(leaving, nil)()
 	guard.Go("app/parent", func() { watchAppParent(ctx, os.Getppid, appParentPoll, leaving) })
+	startHeapTrimmer(ctx)
 	// THE APP'S KEYS LIVE IN THIS PROCESS'S MEMORY, installed before anything
 	// can read a key, and no profile write may put one on disk while they are.
 	defer config.UseAppCredentials(config.NewAppCredentials())()
@@ -433,6 +434,14 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 
 // appBackend is the [appwire.Engine] over this process's conversations.
 type appBackend struct {
+	// restMemo is the task lists of members at rest, so reading them does not
+	// hold their conversations (apprestmemo.go).
+	restMemo  appRestMemo
+	restSlots chan struct{}
+	// waitReaders joins an explicit close's readers; nil waits on their signal.
+	// Tests replace the wait to observe the unlocked admission gate.
+	waitReaders func(<-chan struct{})
+
 	// organizeProposer supplies a naming door when the backend is embedded without held conversations.
 	organizeProposer session.TeamProposer
 
@@ -591,8 +600,12 @@ type appAgent struct {
 	// listening is when this light record began watching crew traffic.
 	listening time.Time
 
-	// gate serializes opening and letting go of this one agent, so two sends
-	// racing for a closed conversation open it once.
+	// readers keeps the held conversation alive until the last disk/owner read
+	// returns. These fields are guarded by b.mu; pinning also holds gate.
+	readers     int
+	readersDone chan struct{}
+	restRead    bool
+	// gate serializes opening, work admission and release for this agent.
 	gate       sync.Mutex
 	nameGate   sync.Mutex // serializes a rename RPC and its view update
 	view       appwire.Agent
@@ -818,6 +831,7 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 			return func() { t.Stop() }
 		},
 		agents:    map[string]*appAgent{},
+		restSlots: make(chan struct{}, appRestReads),
 		sweepStop: make(chan struct{}),
 		sweepDone: make(chan struct{}),
 		left:      make(chan struct{}),
@@ -2684,10 +2698,11 @@ func (b *appBackend) workEvent(id string, live *appLive, event session.Event) {
 // Stop interrupts the running turn. An agent with nothing held has nothing
 // running in this process, which is answered as done.
 func (b *appBackend) Stop(id string) error {
-	a, err := b.findCrewOwner(id)
+	a, endRead, err := b.findCrewOwner(id)
 	if err != nil {
 		return err
 	}
+	defer endRead()
 	if live := b.liveOf(a); live != nil {
 		b.locked(func() { live.stopping = live.running })
 		live.conn.Conv.Interrupt()
@@ -2719,7 +2734,7 @@ func (b *appBackend) CloseAgent(id string) error {
 
 // closeAgent lets a's conversation go and marks it closed.
 func (b *appBackend) closeAgent(a *appAgent) (view appwire.Agent) {
-	a.gate.Lock()
+	b.lockRelease(a)
 	defer a.gate.Unlock()
 	b.release(a)
 	b.locked(func() {
@@ -2733,7 +2748,12 @@ func (b *appBackend) closeAgent(a *appAgent) (view appwire.Agent) {
 // hold a.gate.
 func (b *appBackend) release(a *appAgent) {
 	var live *appLive
-	b.locked(func() { live, a.live = a.live, nil })
+	reading := false
+	b.locked(func() { reading = a.readers > 0 })
+	if reading {
+		return
+	}
+	b.locked(func() { live, a.live = a.live, nil; a.restRead = false })
 	if live == nil {
 		return
 	}
@@ -2783,10 +2803,13 @@ func (b *appBackend) finish(live *appLive) {
 // ListAsks answers the agent's open asks. An agent with no conversation held
 // has none this process can answer.
 func (b *appBackend) ListAsks(id string) ([]appwire.Ask, error) {
-	a, err := b.findCrewOwner(id)
+	// A member at rest has no question a held conversation would add: one
+	// waiting on the person says so in its presence and is not at rest.
+	a, endRead, err := b.findCrewReader(id)
 	if err != nil {
 		return nil, err
 	}
+	defer endRead()
 	var asks []appwire.Ask
 	b.locked(func() {
 		if a.live != nil {
@@ -2816,13 +2839,16 @@ func (b *appBackend) answerAskScope(id, askID, option, text, scope string) error
 	if handled, err := b.answerCrewAsk(id, askID, option, text, ""); handled {
 		return err
 	}
-	a, err := b.findCrewOwner(id)
+	a, endRead, err := b.findCrewOwner(id)
 	if err != nil {
 		return err
 	}
+	defer endRead()
 	if handled, err := b.answerMoney(a, askID, option, text); handled {
 		return err
 	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
 	var live *appLive
 	var q session.Question
 	var key string
@@ -3681,10 +3707,25 @@ func (b *appBackend) spendMoved(after func(appwire.Spend)) {
 // checkpoint does not name — and lays over them what a held conversation has
 // said since.
 func (b *appBackend) ListTasks(id string) ([]appwire.Task, error) {
-	a, err := b.findCrewOwner(id)
+	if a, err := b.find(id); err == nil && b.crewKeeps(id) && b.memberRests(a) {
+		return b.restingTasks(a, id)
+	}
+	return b.listTasksOf(id)
+}
+
+// listTasksOf is ListTasks for a conversation the crew keeps held when it is
+// busy, and the files' answer otherwise.
+func (b *appBackend) listTasksOf(id string) ([]appwire.Task, error) {
+	a, endRead, err := b.findCrewOwner(id)
 	if err != nil {
 		return nil, err
 	}
+	defer endRead()
+	return b.listTasksHeld(a, id)
+}
+
+// listTasksHeld reads disk and overlays the owner while the caller pins a.
+func (b *appBackend) listTasksHeld(a *appAgent, id string) ([]appwire.Task, error) {
 	var transcript string
 	var fallback time.Time
 	// A quick task is listed by AppQuickTasks, never as a task here (#1880).
@@ -3707,7 +3748,7 @@ func (b *appBackend) ListTasks(id string) ([]appwire.Task, error) {
 		tasks = append(tasks, task)
 	}
 	// Running is a live claim, not the checkpoint's permanent resting state.
-	presence, fresh := session.ReadSessionPresence(filepath.Dir(transcript), b.now())
+	presence, fresh := session.ReadSessionPresence(session.DirOf(transcript), b.now())
 	for _, notice := range session.ReadSessionTasks(transcript) {
 		if notice.State == session.TaskRunning && appTaskWasInterrupted(presence, fresh, strconv.FormatUint(notice.ID, 10), notice.StartedAt) {
 			notice.State = session.TaskInterrupted
@@ -3776,7 +3817,11 @@ func (b *appBackend) ListTasks(id string) ([]appwire.Task, error) {
 			add(appwire.Task{Result: result, ID: appIndexTaskID(id, row.ID), Agent: id, Parent: parent, Title: title, State: state, UpdatedAt: at, YourCall: state == appwire.TaskUnverified})
 		}
 	}
-	for taskID, task := range b.heldTaskViews(a) {
+	owner, err := b.heldTaskViews(a)
+	if err != nil {
+		return nil, err
+	}
+	for taskID, task := range owner {
 		if quickIDs[taskID] {
 			continue
 		}
@@ -3921,7 +3966,7 @@ func (b *appBackend) Close() error {
 
 // letGo gives a's conversation back under its gate.
 func (b *appBackend) letGo(a *appAgent) {
-	a.gate.Lock()
+	b.lockRelease(a)
 	defer a.gate.Unlock()
 	b.release(a)
 }
@@ -3957,6 +4002,7 @@ func (b *appBackend) sweep() {
 // runs or a question waits for the person, whatever the clock says.
 func (b *appBackend) sweepOnce() {
 	now := b.now()
+	appRestDisk.maintain(now)
 	var idle []*appAgent
 	b.locked(func() {
 		for _, a := range b.agents {
@@ -3981,12 +4027,15 @@ func (b *appBackend) sweepAgent(a *appAgent, now time.Time) {
 	keep := true
 	b.locked(func() {
 		live = a.live
-		keep = live == nil || live.running || now.Sub(live.lastUse) < appAgentIdle
+		keep = live == nil || live.running || a.readers > 0 || now.Sub(live.lastUse) < appAgentIdle
 	})
-	// A member of an open crew stays held while the crew is open.
-	if !keep && !b.liveNeedsYou(live) && !b.crewKeeps(a.view.ID) && !b.serviceKeeps(a.view.ID) {
+	// A member of an open crew stays held while it has work in flight or a
+	// reason the crew would open it again at once; one with nothing to do goes
+	// like any other, and the crew opens it when traffic comes (applazy.go).
+	if !keep && appLiveWorkSettled(live) && !b.liveNeedsYou(live) && !b.serviceKeeps(a.view.ID) && (!b.crewKeeps(a.view.ID) || b.memberQuiet(a)) {
 		// The state the app reads does not move: the conversation is as
 		// idle on disk as it was in memory.
+		b.locked(func() { a.crewHeld = false })
 		b.release(a)
 	}
 }

@@ -43,10 +43,11 @@ func (b *appBackend) ProgramReport(id, launch, name string) (appwire.ProgramRepo
 		return appwire.ProgramReportResult{}, err
 	}
 	defer release()
-	_, live, err := b.heldLive(agent)
+	_, live, endLive, err := b.borrowLive(agent)
 	if err != nil {
 		return appwire.ProgramReportResult{}, err
 	}
+	defer endLive()
 	reader, ok := live.conn.Conv.(appProgramReportReader)
 	if !ok {
 		return appwire.ProgramReportResult{}, appwire.Errorf(appwire.CodeUnknownMethod, "this engine does not serve tasks.program_report")

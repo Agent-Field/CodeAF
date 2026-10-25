@@ -135,10 +135,11 @@ func (b *appBackend) resumeOneWith(id string, reply bool, tasks []string, kind, 
 	if b.isClosing() {
 		return
 	}
-	a, live, err := b.heldLive(id)
+	a, live, endLive, err := b.admitLive(id)
 	if err != nil {
 		return
 	}
+	defer endLive()
 	if kind == appwire.FooterResumedAfterClose && !live.conn.Assembled {
 		return
 	}

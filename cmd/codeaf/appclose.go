@@ -822,7 +822,7 @@ func appTaskWasInterrupted(p session.SessionPresence, fresh bool, id string, sta
 
 // heldTaskViews reads after the disk so a start arriving during the listing
 // wins. Locally owned tasks come from the engine, even ahead of its event lane.
-func (b *appBackend) heldTaskViews(a *appAgent) map[string]appwire.Task {
+func (b *appBackend) heldTaskViews(a *appAgent) (map[string]appwire.Task, error) {
 	heard := map[string]appwire.Task{}
 	var live *appLive
 	var id string
@@ -835,15 +835,17 @@ func (b *appBackend) heldTaskViews(a *appAgent) map[string]appwire.Task {
 		}
 	})
 	if live != nil && live.conn.Assembled {
-		if tasks, err := live.conn.Conv.AppTasks(); err == nil {
-			for _, view := range tasks {
-				task := appTaskOfView(id, view)
-				task.UpdatedAt = heard[task.ID].UpdatedAt
-				heard[task.ID] = task
-			}
+		tasks, err := live.conn.Conv.AppTasks()
+		if err != nil {
+			return nil, err
+		}
+		for _, view := range tasks {
+			task := appTaskOfView(id, view)
+			task.UpdatedAt = heard[task.ID].UpdatedAt
+			heard[task.ID] = task
 		}
 	}
-	return heard
+	return heard, nil
 }
 
 // Deleted journals keep their directory for deliverables. Only their lifetime
