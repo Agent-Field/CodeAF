@@ -7,6 +7,7 @@ invalidates:
   - "The conversation's write observer discarded overwrites, and edit had no observer, so a successful mutation could leave Files empty or its content hash stale. Its own writes, appends and edits now record their exact authored bytes inside deliverable roots and retain the ID on rewrites."
   - "Automatic conversation recording accepted only named document and media extensions. Other file types are now recorded as files, while paths outside deliverable roots remain excluded."
   - "Chat /files limited raw rows before deduplicating paths, so repeated rewrites hid other files. Its 200-item limit now counts distinct paths from the recent index rows."
+  - "Keep and write recording used only a process-local mutex, allowing a desktop Keep to restore stale source metadata after another process recorded an overwrite. An OS file lock now coordinates their lookup-through-append transactions across processes."
 ---
 
 The desktop opener already carries the process-wide artifacts index and creates
@@ -22,11 +23,21 @@ authored bytes for MIME; a generic binary or text sniff retains a known MIME.
 When a path has both authored and independently shared identities, the authored
 identity wins even if the share is newer; the independent share stays unchanged.
 
-Keep and write recording now use one locked mutation path that reads the latest
-snapshot, merges only the caller's fields and appends before releasing the lock.
+Keep and write recording now use one mutation path that holds both the process
+mutex and an OS file lock on the index from lookup through append. A process
+mutex alone did not protect a desktop Keep from a separate conversation host.
+The mutation reads the latest snapshot, merges only the caller's fields and
+appends before releasing the locks.
 A Keep paused after copying old bytes cannot restore that source's old hash,
 descriptor, attribution or preview after an overwrite. Its copy metadata still
 identifies exactly the bytes it copied.
+
+The OS lock preserves complete snapshot records: the current reader, incremental
+path cache and existing clients all treat the latest update as a complete row.
+Partial field records would require a new reader contract for those clients.
+Old index files remain readable and the deliverables wire output is unchanged.
+Every process mutating an existing row must use the locking writer; older
+processes must be restarted with the update to participate in that coordination.
 
 An absent file used to choose a lexical mutation queue, so a symlinked directory
 and its target could write and record out of order. Resolving the parent directory

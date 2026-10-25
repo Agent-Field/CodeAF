@@ -104,6 +104,8 @@ such as text, source code and PDFs, are recorded as files too.
 If the same path has both an authored card and an independently shared card,
 rewrites update the authored card. Keeping a copy while the source is rewritten
 retains the copy's recorded bytes and the source's latest hash and preview.
+This also holds when the desktop keeps locally while another process hosts
+the conversation and records its writes.
 
 A desktop conversation has a deliverables index and a journal even when its
 folder is a home directory or another folder outside Git. These rules cover the
