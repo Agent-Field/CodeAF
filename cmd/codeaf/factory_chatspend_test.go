@@ -153,3 +153,69 @@ func TestEveryOwnedStageChatSharesBudgetWithoutManagerAuthority(t *testing.T) {
 		t.Fatal("stage views bypassed job budget")
 	}
 }
+
+// The budget is watched ten times a second, so a look at a job whose file has
+// not changed answers from the last read instead of decoding the document
+// again; a write by anyone else, the runner booking a round here, is the next
+// look's answer. The proof of the first half is a document blanked in place
+// with its size and time kept: a look that decoded it would say the budget
+// could not be read.
+func TestAJobsChatReadsItsBudgetAgainOnlyWhenTheJobChanges(t *testing.T) {
+	st, talk := chatSpendFloor(t)
+	it, err := st.Create(factory.Item{Repo: "acme/api", Title: "fix it", State: factory.StateNew, Cap: 1, Talk: talk})
+	if err != nil {
+		t.Fatal(err)
+	}
+	chat := jobChatDoorOf(st).Chat(talk)
+	if chat == nil {
+		t.Fatal("the job's own conversation was not found by its Talk")
+	}
+	if why := chat.Refusal(); why != "" {
+		t.Fatalf("an unspent job refused its chat: %q", why)
+	}
+
+	path := st.ItemPath(it.ID)
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rewriteInPlace := func(data []byte) {
+		t.Helper()
+		f, err := os.OpenFile(path, os.O_WRONLY, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.WriteAt(data, 0); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(path, info.ModTime(), info.ModTime()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	blank := make([]byte, len(kept))
+	for i := range blank {
+		blank[i] = ' '
+	}
+	rewriteInPlace(blank)
+	if why := chat.Refusal(); why != "" {
+		t.Fatalf("an unchanged job was decoded again: %q", why)
+	}
+	rewriteInPlace(kept)
+
+	if err := st.Annotate(it.ID, func(it *factory.Item) error {
+		it.ChatSpent = 1
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if want := fmt.Sprintf(factoryrun.ChatBudgetReached, "$1", "$1"); chat.Refusal() != want {
+		t.Fatalf("after the job was spent elsewhere the refusal was %q, want %q", chat.Refusal(), want)
+	}
+}
