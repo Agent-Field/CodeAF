@@ -438,7 +438,7 @@ func TestAppRestCellStampIncludesRootPlanAndChildRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 	b.locked(func() { a.transcript = filepath.Join(truth, "transcript.jsonl") })
-	for _, path := range []string{filepath.Join(root, "plandb.db"), filepath.Join(root, "presence.json"), filepath.Join(truth, "session.json"), filepath.Join(truth, "tasks", "node.jsonl")} {
+	for _, path := range []string{filepath.Join(root, "plandb.db"), filepath.Join(root, "presence.json"), filepath.Join(truth, ".deleted-tasks.json"), filepath.Join(truth, "tasks", "node.jsonl")} {
 		if err := os.WriteFile(path, []byte("old"), 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -557,5 +557,54 @@ func TestAppRestOverlayFailureIsNeverCached(t *testing.T) {
 			t.Fatalf("retry/relaunch lost owner fields: %+v %v", got, err)
 		}
 		b.restMemo = appRestMemo{}
+	}
+}
+
+func TestAppRestStampIgnoresNonTaskPersistence(t *testing.T) {
+	b, a := restBackend(t, &restConversation{})
+	dir := filepath.Dir(a.transcript)
+	for _, name := range []string{"meta.json", "session.json", "state.json", "told.json", "team.json", "processes/head.json"} {
+		t.Run(name, func(t *testing.T) {
+			before := b.restStamp(a)
+			if before == "" {
+				t.Fatal("fixture was not stampable")
+			}
+			path := filepath.Join(dir, name)
+			if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte("changed"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if got := b.restStamp(a); got != before {
+				t.Fatalf("non-task persistence %s invalidated snapshot", name)
+			}
+		})
+	}
+}
+
+func TestAppRestCellStampIncludesDeletionFilters(t *testing.T) {
+	b, a := restBackend(t, &restConversation{})
+	root := t.TempDir()
+	truth := filepath.Join(root, ".cell")
+	if err := os.Mkdir(truth, 0700); err != nil {
+		t.Fatal(err)
+	}
+	b.locked(func() { a.transcript = filepath.Join(truth, "transcript.jsonl") })
+	// Checkpoint deletion filters live beside the transcript. The project index
+	// also consults the canonical owner's root for task and conversation deletion.
+	for _, dir := range []string{root, truth} {
+		for _, name := range []string{".deleted-tasks.json", ".conversation-deleted"} {
+			before := b.restStamp(a)
+			if before == "" {
+				t.Fatal("fixture was not stampable")
+			}
+			if err := os.WriteFile(filepath.Join(dir, name), []byte(`{"1":true}`), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if got := b.restStamp(a); got == before {
+				t.Fatalf("deletion filter %s/%s did not invalidate snapshot", dir, name)
+			}
+		}
 	}
 }

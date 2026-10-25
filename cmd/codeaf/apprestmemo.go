@@ -156,12 +156,13 @@ func appRestEntrySize(agent, stamp string, tasks []appwire.Task) int {
 // mtime is racy-clean even if both stat calls return the same stamp.
 const appRestSettle = filememo.TimestampSettle
 
-// appRestFiles includes the journal, checkpoints and plan stores used by the
-// owner-backed task view. Task and process directories include their contents:
-// changing an existing child does not change the directory's own timestamp.
+// appRestFiles is the task view's durable input, including owner overlays:
+// checkpoints and deletion filters, presence, plans, and child task journals.
+// Metadata dials (meta/session), working beliefs (state), reading watermarks
+// (told/team), and background jobs (processes) do not define task rows.
 var appRestFiles = []string{
-	"presence.json", "tasks.json", "state.json", "meta.json", "session.json", "told.json", "team.json",
-	"plandb.db", "plandb.db-wal", "tasks", "processes",
+	"presence.json", "tasks.json", ".deleted-tasks.json", ".conversation-deleted",
+	"plandb.db", "plandb.db-wal", "tasks",
 }
 
 // restStamp changes whenever a file a member's task list is built from does:

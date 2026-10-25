@@ -66,7 +66,6 @@ package session
 // model reads one grammar for one kind of news.
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -962,46 +961,12 @@ func (s *taskStore) writeLocked(document taskDocument) error {
 	if codec, sealed := checkpointCodec(s.path); sealed {
 		document = document.mapPaths(codec.encode)
 	}
-	encoded, err := json.MarshalIndent(document, "", "  ")
-	if err != nil {
-		return err
-	}
-	encoded = append(encoded, '\n')
-	// Settled recovery must preserve the identity readers validated before open.
-	// Compare the encoded disk form, including sealed paths and deletions.
-	if previous, err := os.ReadFile(s.path); err == nil && bytes.Equal(previous, encoded) {
-		return nil
-	}
 	if directory := filepath.Dir(s.path); directory != "" && directory != "." {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			return err
 		}
 	}
-	temporary := s.path + ".tmp"
-	file, err := os.OpenFile(temporary, os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		return err
-	}
-	// A stale temporary file may predate private byte captures, so chmod comes
-	// before truncation or writing, rather than trusting its creation mode.
-	if err := file.Chmod(0o600); err != nil {
-		file.Close()
-		return err
-	}
-	if err := file.Truncate(0); err != nil {
-		file.Close()
-		return err
-	}
-	_, writeErr := file.Write(encoded)
-	closeErr := file.Close()
-	if err := errors.Join(writeErr, closeErr); err != nil {
-		return err
-	}
-	if err := os.Rename(temporary, s.path); err != nil {
-		_ = os.Remove(temporary)
-		return err
-	}
-	return nil
+	return writeJSONAtomic(s.path, document)
 }
 
 // errStoreClosed is a checkpoint asked for after the session's door shut.

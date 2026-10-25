@@ -5,7 +5,7 @@ pr: 1933
 surface: [engine]
 invalidates:
   - "A member of an open crew stayed held in memory for as long as its crew was open, and listing tasks, asks or processes opened every member. Now a member with nothing in flight is read from its files, held only for one read to build its task list, and let go after the idle time like any other conversation."
-  - "A settled checkpoint used to be replaced on every open, preventing task-list cache admission for conversations with saved tasks. Byte-identical checkpoint writes are now skipped; historical memory measurements did not record cache coverage and need a fresh run."
+  - "A settled checkpoint used to be replaced on every open, preventing task-list cache admission for conversations with saved tasks. Unchanged session persistence now shares byte comparison before atomic replacement, including checkpoints and metadata; historical memory measurements did not record cache coverage and need a fresh run."
   - "The journal record cache kept up to 32 records until the app quit. It now keeps at most 8 and drops one that nobody has read for 30 seconds."
 ---
 
@@ -36,3 +36,15 @@ settling guard. Disk task-list storage is capped at 96 MiB and 256 files, with
 the oldest files evicted first. A first-use scan and minute-spaced idle sweeps
 prune entries for missing or deleted agents; ordinary writes reuse the inventory.
 Deleting an agent in the app also drops its memory and disk task-list entries.
+
+Unchanged persistence shares one size-then-content comparison before the existing
+private temporary-file and rename write. Checkpoints use that same writer instead
+of their own skip. Restoring effort or approval patches only its own metadata
+field, preserving the other dial and model identity. The production opener is
+covered with saved dials and nonempty settled checkpoints in both folder layouts:
+three listings perform one open, including a disk-cache hit.
+
+Task-list stamps include task and conversation deletion markers, so a crash after
+tombstone commit cannot revive deleted tasks from either cache. Stamps exclude
+unrelated metadata, beliefs, reading watermarks and background-process records;
+docs/perf/memory-2026-10-24.md records the inputs and exclusions.

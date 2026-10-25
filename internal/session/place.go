@@ -16,6 +16,7 @@
 package session
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -489,18 +490,24 @@ func SaveMeta(dir string, meta Meta) error {
 	return nil
 }
 
-// writeJSONAtomic replaces path with v's JSON, temp-and-rename beside it.
+// writeJSONAtomic preserves file identity for identical JSON. It checks size
+// before comparing bytes; changed values still land whole through a private
+// temporary file and atomic rename.
 func writeJSONAtomic(path string, v any) error {
 	raw, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return err
+	}
+	raw = append(raw, '\n')
+	if sameFileBytes(path, raw) {
+		return nil
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".meta-*.json")
 	if err != nil {
 		return err
 	}
 	name := tmp.Name()
-	if _, err := tmp.Write(append(raw, '\n')); err != nil {
+	if _, err := tmp.Write(raw); err != nil {
 		tmp.Close()
 		os.Remove(name)
 		return err
@@ -514,6 +521,17 @@ func writeJSONAtomic(path string, v any) error {
 		return err
 	}
 	return nil
+}
+
+// sameFileBytes rejects nonregular files before reading; only equal sizes need
+// a content comparison. Read failures leave replacement to the atomic writer.
+func sameFileBytes(path string, raw []byte) bool {
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Size() != int64(len(raw)) {
+		return false
+	}
+	previous, err := os.ReadFile(path)
+	return err == nil && bytes.Equal(previous, raw)
 }
 
 // MovedCopyWord is how every surface marks a chat that works in its own copy

@@ -353,7 +353,10 @@ func (a *Agent) fillMetaLocked(meta Meta) Meta {
 //
 // EVERY FAILURE IS SILENCE, for this file's stated reason: the rung is a
 // convenience and the session is the record.
-func (a *Agent) stampEffort() { a.stampMeta() }
+func (a *Agent) stampEffort() {
+	dir, snapshot := a.metaSnapshotAt()
+	a.updateMeta(dir, snapshot, func(meta *Meta) { meta.Effort = snapshot.Effort })
+}
 
 // stampPlaces writes the folders this conversation is about down the moment the
 // set changes, for [Agent.stampEffort]'s reason: a person who names a place and
