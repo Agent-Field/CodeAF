@@ -109,9 +109,10 @@ func (a *app) openWallFor(openTabs bool) tea.Cmd {
 	a.wall.places = nil
 	a.wall.zoomAt = time.Time{}
 	a.wall.ptrIn, a.wall.rehover = false, false
-	if a.wall.marked == nil {
-		a.wall.marked = map[string]bool{}
-	}
+	// A PICK BELONGS TO THE WALL IT WAS MADE IN: this grid is a new one, and in
+	// the All scope it may not even hold the card that was picked, so a kept key
+	// would leave the grid in selection mode over cards nobody chose.
+	a.wall.marked = map[string]bool{}
 	tiles := a.wallShown(now)
 	a.wall.focus = 0
 	keys := make([]string, 0, len(tiles))
