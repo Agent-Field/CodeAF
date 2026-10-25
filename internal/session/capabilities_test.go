@@ -824,6 +824,8 @@ func TestTheCapabilityTableIsWellFormed(t *testing.T) {
 	// name nothing produces.
 	built := map[string]bool{}
 	wide := shelfAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Interactive = true
+		config.Place = Place{Dir: t.TempDir()}
 		config.Media = &scriptedMedia{}
 		config.MediaModel = allMediaModels()
 		config.Memory = openTestBrain(t)
@@ -868,6 +870,8 @@ func TestTheCapabilityTableIsWellFormed(t *testing.T) {
 // first and the parse is re-run here on the real answer.
 func TestALoadAnswersWithItsGroupsProseUnderAnUnchangedLoadedLine(t *testing.T) {
 	agent := shelfAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Interactive = true
+		config.Place = Place{Dir: t.TempDir()}
 		config.Media = &scriptedMedia{}
 		config.MediaModel = allMediaModels()
 		config.HarnessCards = true

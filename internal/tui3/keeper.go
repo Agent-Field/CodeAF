@@ -97,7 +97,8 @@ type kept struct {
 // since been closed finds nothing in the map and does nothing at all — the same
 // shape a stale generation has, needing no new rule.
 type behindStirMsg struct {
-	key string
+	key       string
+	chatStart *session.ChatStart
 	// quiet is a stir that is ONLY a redraw: the conversation said something
 	// that changes what it is CALLED and nothing about what it is doing. It is a
 	// separate bit rather than a second lane because the banner rules
@@ -615,6 +616,13 @@ func (w *behindWatch) run() {
 			// session's own arrangement: a wake is handed over between turns.
 			replaceTurn(stream, nil)
 		case ev, ok := <-turn:
+			if ok && ev.Kind == session.EventChatStart && ev.ChatStart != nil {
+				select {
+				case w.out <- behindStirMsg{key: w.key, chatStart: ev.ChatStart}:
+				case <-w.quit:
+					return
+				}
+			}
 			if ok && ev.Kind == session.EventNotice && ev.Unrecorded && ev.Text != "" {
 				w.holdTurnNotice(ev.Text)
 			}
@@ -683,8 +691,14 @@ func (a *app) stirLane() tea.Cmd {
 func (a *app) behindStir(note behindStirMsg) tea.Cmd {
 	next := waitStir(a.stirs)
 	held := a.behind[note.key]
+	if note.chatStart != nil && note.key == a.frontTabKey() {
+		return tea.Batch(next, a.startRequestedChat(note.chatStart, a.agent))
+	}
 	if held == nil {
 		return next
+	}
+	if note.chatStart != nil {
+		return tea.Batch(next, a.startRequestedChat(note.chatStart, held.conv.Agent))
 	}
 	a.keepHeldNotices(held)
 	// A CONVERSATION THAT HAS JUST NAMED ITSELF IS A REDRAW AND NOTHING ELSE.

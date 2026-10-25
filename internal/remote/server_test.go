@@ -761,7 +761,7 @@ func TestServeRefusesAnotherVersion(t *testing.T) {
 	if frame.Kind != "fatal" {
 		t.Fatalf("answer to a version mismatch was %q, want fatal", frame.Kind)
 	}
-	if !strings.Contains(frame.Error, "protocol") {
+	if !strings.Contains(frame.Error, "matching versions") {
 		t.Errorf("fatal said %q", frame.Error)
 	}
 	if err := l.end(); err == nil {

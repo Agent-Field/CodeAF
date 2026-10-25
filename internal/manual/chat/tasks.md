@@ -4379,6 +4379,13 @@ The day turns over at midnight on this machine's clock, and the spend starts aga
 
 ## Naming a model for one task
 
+The chat sets `model` on `propose_task` (or `quick_task` on the node task engine).
+That argument overrides `task.model` and the crew worker for this task only; it does
+not change a profile pin or the conversation model. Work descendants inherit the
+nearest named model if the task splits; planning and checking keep their crew seats.
+Ask for a model in the task request,
+not a global `/crew pin` workaround.
+
 You ask in words — "let opus do this one", "run that on gpt-5". There is no key, command or
 field for it: the model that grooms the work sets the model on the proposal. The word may
 be a whole catalog id (`anthropic/claude-opus-5`), the tail after the vendor

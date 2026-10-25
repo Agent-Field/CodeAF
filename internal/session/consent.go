@@ -659,7 +659,7 @@ func consentRule(call ai.ToolCall, decision approval.Decision) string {
 	if rule != "" && rule != "default" && rule != "default (unset)" {
 		return rule
 	}
-	if call.Function.Name == teamStartToolName {
+	if call.Function.Name == teamStartToolName || call.Function.Name == "start_chat" {
 		return teamStartCost
 	}
 	return rule

@@ -725,6 +725,8 @@ const (
 	EventConsentAllowed = EventCloseContinued + 1
 	// EventModelIdentity updates execution facts without adding a transcript note.
 	EventModelIdentity = EventConsentAllowed + 1
+	// EventChatStart asks the attached terminal to open an independent chat.
+	EventChatStart EventKind = iota
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -766,6 +768,7 @@ type TaskReplyTag struct {
 // today — sees all of it in order and needs no second rule; a caller that stops
 // at the terminal event stops at the terminal event of the FIRST turn.
 type Event struct {
+	ChatStart      *ChatStart     `json:",omitempty"`
 	ModelIdentity  *ModelIdentity `json:"ModelIdentity,omitempty"`
 	ModelSwitch    *ModelSwitch   `json:"ModelSwitch,omitempty"`
 	RunID          string         `json:"RunID,omitempty"`
@@ -2709,6 +2712,7 @@ type Agent struct {
 	// for a shell call's output as it arrives ([Agent.WantLiveToolOutput]),
 	// beside the window that opened it with [Config.LiveToolOutput].
 	liveOutputWanted atomic.Int32
+	chatStarts       map[string]bool
 	// jailNotice keeps a host limit from becoming noise on every tool call.
 	jailNotice sync.Once
 
