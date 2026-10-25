@@ -121,3 +121,14 @@ size, and dense links or long articles need separate measurements. These are
 layout measurements, not end-to-end SSH latency guarantees. Remote `--host`
 knowledge transport remains unsupported; ordinary SSH runs the vault reader on
 the machine where the binary executes.
+
+## Sidebar interaction follow-up
+
+The wheel uses its pointer coordinates: over the sidebar it advances the tree
+viewport immediately while retaining the article; over the article it scrolls
+only the article (or the connected-page list). Wheel handling reads cached frame
+hits, so it neither reloads the vault nor renders a frame to discover the pane.
+Collapse all / Expand all are clickable, hoverable controls; Ctrl+Left /
+Ctrl+Right provide keyboard access. They clear search, preserve the current
+article, and fold nested folders consistently. Folding remains an explicit
+whole-tree operation. These interactions require no model requests.

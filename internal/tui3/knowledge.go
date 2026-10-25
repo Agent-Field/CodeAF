@@ -232,6 +232,23 @@ func knowledgePageText(n knowledge.Page) string {
 	return out.String()
 }
 
+// Folding the whole tree includes folders currently hidden by a collapsed
+// parent. Opening that parent later therefore preserves its children's state.
+func (p *knowledgePlace) foldAll(collapsed bool) {
+	p.folded = map[string]bool{}
+	if collapsed {
+		for _, page := range p.reading.Pages {
+			for i := range page.Folder {
+				p.folded[strings.Join(page.Folder[:i+1], "/")] = true
+			}
+		}
+	}
+	p.filter.reset()
+	p.cursor, p.top = 0, 0
+	p.hoverLink = ""
+	p.rank()
+}
+
 func (p *knowledgePlace) page() (knowledge.Page, bool) {
 	return p.indexedPage(p.selected)
 }
@@ -279,6 +296,10 @@ func (a *app) knowledgeOwns(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	switch k {
+	case "ctrl+left":
+		p.foldAll(true)
+	case "ctrl+right":
+		p.foldAll(false)
 	case "esc":
 		switch {
 		case p.sources:
@@ -480,6 +501,29 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 		return rows
 	}
 	add(a.pal.dim("Search: ") + p.filter.String())
+	controls := []struct{ label, id string }{{"Collapse all", "@collapse"}, {"Expand all", "@expand"}}
+	var controlText strings.Builder
+	var controlHits []knowledgeCellLink
+	controlWidth := 0
+	for i, control := range controls {
+		if i > 0 {
+			controlText.WriteString(a.pal.dim("  "))
+			controlWidth += 2
+		}
+		painted := taskLinkInk(a.pal, control.label)
+		if p.hoverLink == control.id {
+			painted = taskLinkHotInk(a.pal, control.label)
+		}
+		controlText.WriteString(painted)
+		end := controlWidth + ansi.StringWidth(control.label)
+		controlHits = append(controlHits, knowledgeCellLink{controlWidth + 1, end + 1, control.id})
+		controlWidth = end
+	}
+	if width >= 62 {
+		controlText.WriteString(a.pal.dim(a.chords.say("  ctrl+left / ctrl+right")))
+	}
+	add(controlText.String())
+	rows[len(rows)-1].hit = knowledgeHit{tree: -1, links: controlHits}
 	left := max(24, min(42, width/3))
 	narrow := width < 85
 	if narrow {
@@ -654,7 +698,11 @@ func (placeMemory) pressAt(a *app, x, y int) (tea.Cmd, bool) {
 		}
 		for _, link := range hit.links {
 			if x >= link.start && x < link.end {
-				if link.id == "@sources" {
+				if link.id == "@collapse" {
+					p.foldAll(true)
+				} else if link.id == "@expand" {
+					p.foldAll(false)
+				} else if link.id == "@sources" {
 					p.toggleSources()
 				} else {
 					p.navigate(link.id)

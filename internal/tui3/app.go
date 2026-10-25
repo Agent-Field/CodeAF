@@ -4431,7 +4431,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// fell through from one of them would scroll a transcript nobody can see,
 		// which is what a person turning it over the standing list actually got.
 		if delta := placeWheelDelta(msg.Mouse().Button); delta != 0 {
-			if cmd, took := a.placeBodyWheel(delta); took {
+			if cmd, took := a.placeBodyWheel(msg.Mouse().X, msg.Mouse().Y, delta); took {
 				return a, cmd
 			}
 		}

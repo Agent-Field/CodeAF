@@ -2250,10 +2250,15 @@ func (a *app) placeBodyHover(x, y int) bool {
 // does with it (app.go's wheel ladder). A place whose window follows its cursor
 // has no offset of its own to move, so a scroll and a selection are one gesture
 // here — the bargain the task page and home both already struck.
-func (a *app) placeBodyWheel(delta int) (tea.Cmd, bool) {
+func (a *app) placeBodyWheel(x, y, delta int) (tea.Cmd, bool) {
 	pl := a.showing()
 	if pl == nil || a.composer.open {
 		return nil, false
+	}
+	if point, ok := pl.(interface {
+		wheelAt(*app, int, int, int) (tea.Cmd, bool)
+	}); ok {
+		return point.wheelAt(a, x, y, delta)
 	}
 	return pl.wheel(a, delta)
 }

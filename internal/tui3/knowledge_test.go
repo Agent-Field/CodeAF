@@ -139,7 +139,7 @@ func TestKnowledgeKeepsTheSharedNavigationBarUsable(t *testing.T) {
 }
 
 func TestKnowledgeWheelMovesTheVisibleTree(t *testing.T) {
-	a := knowledgeArticleApp(t)
+	a := knowledgeLongTreeApp(t)
 	beforeRows, _, _, _ := a.placeDraw(placeMemory{}, a.width, a.height)
 	before := strings.Join(beforeRows, "\n")
 	drive(t, a, tea.MouseWheelMsg{X: 5, Y: 9, Button: tea.MouseWheelDown}, pointerMsg{})

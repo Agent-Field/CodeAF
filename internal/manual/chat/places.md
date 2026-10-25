@@ -647,6 +647,11 @@ references open linked pages when clicked. `ctrl+l` lists connected pages; arrow
 choose one and Enter opens it. Left returns to the previous page. Hover highlights
 tree rows and brightens linked text; a click or Enter opens the selected page.
 
+Click **Collapse all** or press `ctrl+left` to fold the entire folder tree.
+Click **Expand all** or press `ctrl+right` to reveal every folder. Both actions
+clear the search filter and leave the current article open. Opening one parent
+after collapsing everything keeps its nested folders folded.
+
 Sources stay folded behind a clickable `Sources` row. Press `ctrl+o` to read the
 original quotations with speaker and readable date; repeated references to the
 same source are grouped. Click Return to article or press Escape to restore the reading
