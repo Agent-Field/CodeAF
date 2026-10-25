@@ -43,7 +43,7 @@ certificate. A client receives no cell key, dedup secret, identity private key o
 vault. It cannot read the directory or the blob store, change leases, pair another
 device or change its own permissions. Revocation stops that certificate across
 relay restarts. This is a relay protocol capability; the chat pairing commands do
-not yet create scoped clients. The hosted Worker does not yet support this protocol.
+not yet create scoped clients. The hosted Worker supports the same protocol.
 
 The HTTP contract is `docs/relay-clients.md` in the source tree. An empty method
 list allows offline reads only; adding methods requires a new paired key.
