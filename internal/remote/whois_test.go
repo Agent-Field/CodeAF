@@ -234,3 +234,19 @@ func TestCrossChannelMismatchNamesTheCallingProgram(t *testing.T) {
 		t.Fatalf("wrong update road: %v, want %s", err, want)
 	}
 }
+
+func TestOlderMismatchKeepsTheRemoteUpdateCommand(t *testing.T) {
+	surface, engine := net.Pipe()
+	defer surface.Close()
+	reason := "tower is on an older build (rev-old); run other-program update on tower, then finish work and close every window for this workspace before reopening — this connection needs matching versions"
+	go func() {
+		defer engine.Close()
+		var hello Frame
+		_ = json.NewDecoder(engine).Decode(&hello)
+		_ = json.NewEncoder(engine).Encode(Frame{Kind: "fatal", Error: reason})
+	}()
+	_, err := Dial(surface, "tower", Hello{})
+	if err == nil || err.Error() != reason {
+		t.Fatalf("remote update command was replaced: %v", err)
+	}
+}

@@ -7,23 +7,25 @@ import (
 	"strings"
 )
 
+const wireMismatchTail = "this connection needs matching versions"
+
 // Version mismatches leave the engine and its windows alone. The higher wire
 // identifies the end that needs no update; never claim that every host is old.
 func wireMismatchSentence(machine string, far, near int, build string) string {
 	binary, _ := os.Executable()
 	name := update.InstallName(binary)
 	if far > near {
-		return fmt.Sprintf("%s is on a newer build (%s); %s update to match — this connection needs matching versions", machine, build, name)
+		return fmt.Sprintf("%s is on a newer build (%s); %s update to match — %s", machine, build, name, wireMismatchTail)
 	}
-	return fmt.Sprintf("%s is on an older build (%s); run %s update on %s, then finish work and close every window for this workspace before reopening — this connection needs matching versions", machine, build, name, machine)
+	return fmt.Sprintf("%s is on an older build (%s); run %s update on %s, then finish work and close every window for this workspace before reopening — %s", machine, build, name, machine, wireMismatchTail)
 }
 
 // Only rewrite our version refusal. Arbitrary remote errors remain verbatim.
 // The engine may have a different executable name after fallback or handoff;
-// the update command displayed by this terminal belongs to this installation.
+// a newer-far refusal updates this installation. Older-far advice must keep
+// naming the executable that actually exists on the far machine.
 func callingProgramMismatch(reason string) string {
-	const suffix = "this connection needs matching versions"
-	if !strings.HasSuffix(reason, suffix) {
+	if !strings.HasSuffix(reason, wireMismatchTail) || !strings.Contains(reason, " update to match — ") {
 		return reason
 	}
 	start := strings.LastIndex(reason, "; ")
