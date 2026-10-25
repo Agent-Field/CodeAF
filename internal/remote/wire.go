@@ -540,6 +540,8 @@ const (
 	// which lane it belongs to. The per-lane frames above stay exactly as they
 	// are: they are what an older window on the other end of this wire sends, and
 	// this one is what a window that has the whole object sends.
+	// MethodClaimChatStart grants one terminal an issued chat launch.
+	MethodClaimChatStart  = "ClaimChatStart"  // string request ID → bool
 	MethodQuestionResolve = "ResolveQuestion" // QuestionArgs → nothing (or a refusal)
 	// MethodQuestionHold is the OTHER thing a key on a question can mean: stop
 	// the clock, do not answer. A question with a deadline takes the asker's own

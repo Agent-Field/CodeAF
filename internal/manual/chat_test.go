@@ -4596,6 +4596,38 @@ func TestTheCrossComputerQuestionsReachTheFactThatAnswersThem(t *testing.T) {
 	}
 }
 
+// These are the four original capability questions from #1378 and #1937.
+func TestSkillCapabilityQuestionsReachTheirAnswer(t *testing.T) {
+	for _, row := range []struct {
+		question, page, heading string
+		facts                   []string
+	}{
+		{"what is a skill", "skills-from-other-tools", "What is a skill", []string{"SKILL.md", "/skill"}},
+		{"can you use skills", "skills-from-other-tools", "Can you use skills", []string{"Yes", "SKILL.md", "/skill"}},
+		{"do you have skills", "skills-from-other-tools", "Can you use skills", []string{"Yes", "SKILL.md", "/skill"}},
+		{"why can't you use my skills", "use-skill", "Why can't you use my skills", []string{"memory.enabled", "SKILL.md", "/skill"}},
+	} {
+		t.Run(row.question, func(t *testing.T) {
+			found := Chat().Search(row.question, DefaultResults)
+			for index, section := range found {
+				if section.Page != row.page || !strings.HasPrefix(section.Title, row.heading) {
+					continue
+				}
+				if row.question == "what is a skill" && index != 0 {
+					t.Errorf("the definition is answer %d, want the first answer", index+1)
+				}
+				for _, fact := range row.facts {
+					if !strings.Contains(section.Body, fact) {
+						t.Errorf("answer does not explain %q", fact)
+					}
+				}
+				return
+			}
+			t.Fatalf("question did not reach its %q answer in %d results", row.heading, DefaultResults)
+		})
+	}
+}
+
 // N4 pins all shared refusals quoted by the Windows manual sections.
 func TestWindowsManualQuotesTheShellRefusal(t *testing.T) {
 	page, ok := Chat().Page("running-commands-on-windows")

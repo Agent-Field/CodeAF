@@ -349,7 +349,7 @@ func (c *Client) attach(conn io.ReadWriteCloser) (Welcome, error) {
 		// [spokenError] is for: the door prints the reason unchanged, and a
 		// redial that meets it stops trying rather than spending its whole
 		// window rediscovering the same no (redial.go).
-		return Welcome{}, spokenError{reason: strings.TrimSpace(frame.Error)}
+		return Welcome{}, spokenError{reason: callingProgramMismatch(strings.TrimSpace(frame.Error))}
 	default:
 		return Welcome{}, fmt.Errorf("%s answered with a %q where a welcome belongs", c.where(), frame.Kind)
 	}
@@ -362,7 +362,7 @@ func (c *Client) attach(conn io.ReadWriteCloser) (Welcome, error) {
 	// turns into a conversation, and the sentence names the fix — one machine
 	// has an older codeaf on it, and the person knows which machine is which.
 	if welcome.Version != Version {
-		return Welcome{}, spokenError{reason: fmt.Sprintf("%s runs a different version of codeaf than this machine does — update the older one so both ends speak the same protocol", c.where())}
+		return Welcome{}, spokenError{reason: wireMismatchSentence(c.where(), welcome.Version, Version, welcome.Build)}
 	}
 	if welcome.Encoding != "" && welcome.Encoding != frameEncodingGzip {
 		return Welcome{}, spokenError{reason: fmt.Sprintf("%s selected a frame encoding this build cannot read", c.where())}
@@ -2247,6 +2247,19 @@ func (a *Agent) ResolveConsentRemember(id uint64, allow bool, scope session.Cons
 // already gone. A question CAN be refused with something a person needs to read
 // — the work it was about finished, somebody else answered it first — and the
 // page draws exactly that sentence where its foot was.
+// ClaimChatStart keeps launch ownership on the engine shared by all windows.
+func (a *Agent) ClaimChatStart(id string) (bool, error) {
+	raw, err := a.c.call(nil, MethodClaimChatStart, id)
+	if err != nil {
+		return false, err
+	}
+	var claimed bool
+	if err := json.Unmarshal(raw, &claimed); err != nil {
+		return false, err
+	}
+	return claimed, nil
+}
+
 func (a *Agent) ResolveQuestion(answer session.Answer) error {
 	_, err := a.c.call(nil, MethodQuestionResolve, QuestionArgs{Answer: answer})
 	return err

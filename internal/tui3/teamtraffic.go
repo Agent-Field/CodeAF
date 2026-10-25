@@ -504,6 +504,10 @@ func (a *app) trafficStart(t team, e teamstore.Entry) tea.Cmd {
 			}
 		}
 		conv, err := start(where)
+		// Seat the conversation before membership can wake its first turn.
+		if err == nil && conv.Agent != nil && e.Model != "" {
+			conv.Agent.SetModel(e.Model)
+		}
 		// The session owns both the gate and its persisted posture. Apply it
 		// off the UI loop, before membership can wake the first turn.
 		if err == nil && conv.Agent != nil && posture != "" {

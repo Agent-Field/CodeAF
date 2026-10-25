@@ -2493,6 +2493,7 @@ func (s *Store) changeTask(id string, change func(*state, *Task, time.Time) erro
 }
 
 func normalizeSpec(spec TaskSpec, rootID string) TaskSpec {
+	spec.Model = strings.TrimSpace(spec.Model)
 	spec.ID = strings.TrimSpace(strings.TrimPrefix(spec.ID, "t-"))
 	spec.Title = strings.TrimSpace(spec.Title)
 	spec.ParentID = strings.TrimSpace(strings.TrimPrefix(spec.ParentID, "t-"))

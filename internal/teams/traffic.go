@@ -124,6 +124,8 @@ type Entry struct {
 	// omitted when empty, so an entry nobody stamped serialises byte for byte
 	// as it did before they existed.
 	Provenance
+	// Model is the resolved model requested for this new conversation.
+	Model string `json:"model,omitempty"`
 }
 
 // Provenance says which turn of which conversation caused an entry. EACH FIELD

@@ -1396,7 +1396,7 @@ func (a *app) tabPress(x, y int) (tea.Cmd, bool) {
 			a.closeWall()
 			return nil, true
 		}
-		return a.openWall(), true
+		return a.openTabsWall(), true
 	case tabClose:
 		return a.tabDismiss(hit.tab), true
 	case tabHere:

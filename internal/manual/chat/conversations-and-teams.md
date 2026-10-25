@@ -35,34 +35,32 @@ returns to ordinary Chats. Narrow strips keep their scroll arrows and a fixed `�
 
 ## The conversations view (the wall): how do I see all my conversations at once?
 
-The **conversations view** on Chats shows every saved, non-deleted conversation, including
-conversations whose tabs are dismissed and older archived conversations. It reads the same
-conversation catalog as `alt+k`, without the switcher's visible-row limit. It is independent
-of teams: choosing an overlay does not filter the grid. Browsing and selecting saved cards
-never starts work or opens their tabs. Live held conversations update; other cards show saved
-previews. Over a hosted connection, saved previews are unavailable unless already cached.
+The **conversations view**, opened with `/wall` or `alt+v`, shows every saved, non-deleted conversation,
+including dismissed tabs and older archived conversations. It reads the same catalog
+as `alt+k`, without the switcher's visible-row limit. Browsing saved cards never
+starts work or opens their tabs. Live held conversations update; other cards show
+saved previews. Over a hosted connection, saved previews may be unavailable.
 
-Open the grid with:
+## All — the tabs in this view
 
-- `alt+v` (or `√`, composed by `option+v` on some Mac keyboards)
-- `/wall`
-- `▦ All` at the permanently right-aligned end of the Chats tab strip, including when tabs overflow
-- `▦ All` on the dock under the message box, drawn once a second conversation is open
+The permanently right-aligned **`▦ All`** button opens a grid of the conversation
+tabs in the current strip, including tabs hidden by horizontal overflow. It does
+not add older saved chats, dismissed normal tabs or chats open only in another
+window. With a team selected, it shows that team's tab row, including its manager;
+without a team, it shows the normal open conversation tabs. Work-room tabs and
+an untouched new-chat placeholder are not conversation cards.
 
-The strip belongs to Chats; from a place use `alt+v` or `/wall`. On strips narrower than the
-12-column header floor it is absent. The title reads `Conversations · all saved conversations`.
-Membership dots on tiles are context; they do not filter the grid or edit teams.
-Hovering a conversation tab also highlights `▦ All`, revealing the alternate grid view.
-The toolbar offers `+ New team s`, `Filter /`, `Columns − +`, `Help ?` and `Back`.
+The dock's `▦ All` opens the same view. Its heading says `Conversations · open tabs`, followed by the selected
+team's name when applicable. The hover hint is
+`The grid of tabs in this view`. Use `/wall` or `alt+v` (also `√` on some Mac
+keyboards) to browse the full saved library instead.
 
-Cancel with `alt+v`, `esc`, `Back`, or the strip's `▦ All`. Cancelling restores the original
-team overlay, conversation and draft. Opening any tile enters ordinary Chats with no overlay,
-even when it is the current conversation. You can select an overlay afterward with the Teams dropdown. Closing an open card's tab removes that tab; its conversation stays in the grid and work keeps running.
-A saved card without a tab offers no Close action.
-
-The grid also offers team creation from selected cards. Membership editing, manager assignment,
-settings and organization live on Teams. The grid has no team filter. Its hover hint reads
-`The grid of all your conversations · alt+v`.
+Cancel with `esc`, `Back`, or `▦ All` to restore the conversation and draft.
+Opening a card in All keeps the selected team; opening a card from the full Chats
+library enters ordinary Chats. Closing a normal tab removes its card from All;
+it remains saved in the full library, and running work continues. Team tab membership follows
+the selected team's strip. The toolbar offers `+ New team s`, `Filter /`,
+`Columns − +`, `Help ?` and `Back`.
 
 ## The tabs dock under the message box
 
@@ -75,11 +73,11 @@ while it is idle. Amber is only for waiting on you. One open conversation draws 
 Rest the pointer on a square and that square takes the hover ground. The hint line says
 `Go to Shipping the parser · running · click`, with `waiting on you` or `idle` in the
 middle. On the square in front it says `Shipping the parser · you are here`. On `▦ All`
-it says `The grid of all your conversations · alt+v`, as the strip's `▦ All` does,
+it says `The grid of tabs in this view`, as the strip's `▦ All` does,
 and the hover ground covers the glyph and the word together: they are one button.
 
 A press on a square goes to that conversation and does not open this view. A press
-anywhere on `▦ All` opens the conversations view, the same as `alt+v`. A press on the
+anywhere on `▦ All` opens the current strip's grid. A press on the
 square in front does nothing. On a narrow row the word `All` is the first thing to
 go, leaving `▦`. The squares stay, then fewer of them with a `+N`, then the dock is not drawn.
 
@@ -136,7 +134,7 @@ selection controls, including cards waiting for an answer.
 
 A **team** is a named group of conversations, such as `harbor`. A conversation can belong
 to several teams. The Chats overlay shows all the selected team's members, manager first;
-the `▦ All` grid always shows all saved conversations regardless of team.
+the `▦ All` grid shows the conversation tabs in that selected team's strip.
 
 Create a team with **+ New team** below the Teams sidebar list. **+ Add subteam** beside
 Add chat creates one under the selected team. A dedicated dialog over Teams offers Name,
@@ -240,8 +238,8 @@ The chip's x restores ordinary Chats and selects All teams in Teams. With no ove
 the keyboard starts on the first available team; none of the radio marks is selected.
 `↑` and `↓` move, `enter` chooses, and `esc` or a press
 outside cancels. Long pickers scroll with the arrows or wheel, keeping the selected row visible. On very narrow strips the dropdown gives way to the current tab and
-the fixed right-edge `▦ All` button. The grid button opens all saved conversations;
-it does not select an overlay.
+the fixed right-edge `▦ All` button. The grid button shows the current strip's conversation tabs;
+it keeps the selected overlay.
 
 ## A team's manager
 
@@ -430,3 +428,22 @@ cleanup is omitted from the saved conversation grid and membership pickers.
 No. Deleting a conversation removes its transcript, task records and team memberships. Memories
 already saved for a user, project or machine remain available, with their source identity.
 Use the Memories tab to forget a saved memory separately. Deleting a team also preserves those memories.
+
+
+## Ask the chat to start another chat on a different model
+
+Ask “start another chat on kimi-k3 to read the README.” Load the `chats` capability group if needed. The `start_chat` tool takes
+`brief`, the complete first message, and `model`, a catalog ID or unique model name.
+Omitting `model` uses the requesting chat's current model. An unknown or ambiguous
+name is refused before any chat opens. The new chat opens behind the current one,
+with its model and approval posture set before its first message. Your focus stays
+in the original chat. Its receipt confirms the request; the terminal reports whether
+it actually opened. This needs an attached interactive terminal that can open chats; app-only sessions do not offer this tool.
+Only one attached window can claim each request, so delivery to several windows or
+replay does not open copies. A failed launcher is not retried automatically; ask again
+to issue a new request. A new independent chat does not report its answer back here automatically; use a task
+when that is the desired handoff.
+
+For a teammate, the manager's `team_start` also takes `model`, including for a new
+sub-team's manager. Omitting it keeps the profile default. Neither tool rewrites the
+profile or changes the requesting chat's model.

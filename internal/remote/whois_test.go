@@ -11,6 +11,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"io"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -159,14 +161,8 @@ func TestTheMismatchRefusalNamesTheOlderBuildStillRunningHere(t *testing.T) {
 		Host: func(WhoIs) HostSelf { return HostSelf{} },
 	})
 	reason := helloRefusal(t, conn, Hello{Version: Version + 1})
-	if !strings.Contains(reason, "still running the older one") {
-		t.Fatalf("the refusal from a host said %q", reason)
-	}
-	if !strings.Contains(reason, "codeaf engine --stop") {
-		t.Fatalf("the refusal named no way out: %q", reason)
-	}
-	if !strings.Contains(reason, "the two halves have to be the same build") {
-		t.Fatalf("the refusal lost the fact it always stated: %q", reason)
+	if !strings.Contains(reason, "older build") || !strings.Contains(reason, " update") || strings.Contains(reason, "--stop") {
+		t.Fatalf("the refusal gives no safe update road: %q", reason)
 	}
 }
 
@@ -212,4 +208,45 @@ func helloRefusal(t *testing.T, conn net.Conn, hello Hello) string {
 		t.Fatalf("the far end answered with a %q where a refusal belongs", frame.Kind)
 	}
 	return frame.Error
+}
+
+func TestWireMismatchDoesNotRecommendStoppingAttachedWindows(t *testing.T) {
+	conn := answered(t, AttachOptions{Open: func(Hello) (*Session, error) { t.Fatal("mismatch opened session"); return nil, nil }, Host: func(WhoIs) HostSelf { return HostSelf{Busy: true} }})
+	reason := helloRefusal(t, conn, Hello{Version: Version - 1})
+	if strings.Contains(reason, "--stop") || !strings.Contains(reason, " update") || !strings.Contains(reason, "newer build") {
+		t.Fatalf("unhelpful refusal: %s", reason)
+	}
+}
+
+func TestCrossChannelMismatchNamesTheCallingProgram(t *testing.T) {
+	surface, engine := net.Pipe()
+	defer surface.Close()
+	go func() {
+		defer engine.Close()
+		var hello Frame
+		_ = json.NewDecoder(engine).Decode(&hello)
+		_ = json.NewEncoder(engine).Encode(Frame{Kind: "fatal", Error: "tower is on a newer build (rev-new); other-program update to match — this connection needs matching versions"})
+	}()
+	_, err := Dial(surface, "tower", Hello{})
+	self, _ := os.Executable()
+	want := filepath.Base(self) + " update"
+	if err == nil || !strings.Contains(err.Error(), want) || strings.Contains(err.Error(), "other-program update") {
+		t.Fatalf("wrong update road: %v, want %s", err, want)
+	}
+}
+
+func TestOlderMismatchKeepsTheRemoteUpdateCommand(t *testing.T) {
+	surface, engine := net.Pipe()
+	defer surface.Close()
+	reason := "tower is on an older build (rev-old); run other-program update on tower, then finish work and close every window for this workspace before reopening — this connection needs matching versions"
+	go func() {
+		defer engine.Close()
+		var hello Frame
+		_ = json.NewDecoder(engine).Decode(&hello)
+		_ = json.NewEncoder(engine).Encode(Frame{Kind: "fatal", Error: reason})
+	}()
+	_, err := Dial(surface, "tower", Hello{})
+	if err == nil || err.Error() != reason {
+		t.Fatalf("remote update command was replaced: %v", err)
+	}
 }
