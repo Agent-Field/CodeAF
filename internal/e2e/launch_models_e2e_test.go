@@ -70,11 +70,16 @@ func TestChatLaunchModels(t *testing.T) {
 				raw, _ := os.ReadFile(filepath.Join(home, "logs", "calls.jsonl"))
 				for _, line := range strings.Split(string(raw), "\n") {
 					var row map[string]any
-					if json.Unmarshal([]byte(line), &row) == nil && row["model"] == other && row["phase"] != "start" {
+					if json.Unmarshal([]byte(line), &row) == nil && row["model"] == other && row["phase"] != "start" && row["status"] == float64(200) {
 						found = true
 					}
 				}
-				if found {
+				wantedTool := kind
+				if kind == "joined_task" {
+					wantedTool = "propose_task"
+				}
+				_, reported, _ := launchJournalEvidence(home, wantedTool, other)
+				if found && reported {
 					break
 				}
 				time.Sleep(pollEvery)
@@ -84,48 +89,12 @@ func TestChatLaunchModels(t *testing.T) {
 			if kind == "joined_task" {
 				wantedTool = "propose_task"
 			}
-			matchingCalls := 0
-			reported := false
-			joined := false
-			_ = filepath.WalkDir(home, func(path string, entry os.DirEntry, err error) error {
-				if err != nil || entry.IsDir() || !strings.HasSuffix(path, ".jsonl") {
-					return nil
-				}
-				raw, _ := os.ReadFile(path)
-				for _, line := range strings.Split(string(raw), "\n") {
-					if strings.Contains(line, "It joined the work already underway") {
-						joined = true
-					}
-					var row struct {
-						Role      string `json:"role"`
-						Content   string `json:"content"`
-						ToolCalls []struct {
-							Function struct {
-								Name      string `json:"name"`
-								Arguments string `json:"arguments"`
-							} `json:"function"`
-						} `json:"toolCalls"`
-					}
-					if json.Unmarshal([]byte(line), &row) != nil {
-						continue
-					}
-					for _, call := range row.ToolCalls {
-						var params struct {
-							Model string `json:"model"`
-						}
-						_ = json.Unmarshal([]byte(call.Function.Arguments), &params)
-						if call.Function.Name == wantedTool && params.Model == other {
-							matchingCalls++
-						}
-					}
-					if row.Role == "assistant" && strings.Contains(row.Content, "LAUNCH_MODEL_VERIFIED") && len(row.ToolCalls) == 0 {
-						reported = true
-					}
-				}
-				return nil
-			})
+			matchingCalls, reported, joined := launchJournalEvidence(home, wantedTool, other)
 			if kind == "joined_task" && !joined {
 				t.Error("second proposal did not join the first run")
+			}
+			if !reported {
+				t.Error("requested-model child did not complete its answer")
 			}
 			if matchingCalls == 0 {
 				t.Errorf("no %s call explicitly selected %s", wantedTool, other)
@@ -169,4 +138,56 @@ func TestChatLaunchModels(t *testing.T) {
 			}
 		})
 	}
+}
+
+// launchJournalEvidence distinguishes the child model from a parent quoting its
+// instructions. For a new chat, the target model must occur in another journal.
+func launchJournalEvidence(home, tool, model string) (matching int, reported, joined bool) {
+	_ = filepath.WalkDir(home, func(path string, entry os.DirEntry, err error) error {
+		if err != nil || entry.IsDir() || !strings.HasSuffix(path, ".jsonl") {
+			return nil
+		}
+		raw, _ := os.ReadFile(path)
+		currentModel := ""
+		for _, line := range strings.Split(string(raw), "\n") {
+			var row struct {
+				Type      string `json:"type"`
+				Model     string `json:"model"`
+				Role      string `json:"role"`
+				Content   string `json:"content"`
+				ToolCalls []struct {
+					Function struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					} `json:"function"`
+				} `json:"toolCalls"`
+			}
+			if json.Unmarshal([]byte(line), &row) != nil {
+				continue
+			}
+			if row.Model != "" && (row.Type == "session" || row.Type == "model") {
+				currentModel = row.Model
+			}
+			if strings.Contains(row.Content, "It joined the work already underway") {
+				joined = true
+			}
+			for _, call := range row.ToolCalls {
+				var params struct {
+					Model string `json:"model"`
+				}
+				_ = json.Unmarshal([]byte(call.Function.Arguments), &params)
+				if call.Function.Name == tool && params.Model == model {
+					matching++
+				}
+				if currentModel == model && call.Function.Name == "bash" && strings.Contains(call.Function.Arguments, "plandb done") && strings.Contains(call.Function.Arguments, "LAUNCH_MODEL_VERIFIED") {
+					reported = true
+				}
+			}
+			if currentModel == model && row.Role == "assistant" && strings.Contains(row.Content, "LAUNCH_MODEL_VERIFIED") && len(row.ToolCalls) == 0 {
+				reported = true
+			}
+		}
+		return nil
+	})
+	return
 }
