@@ -155,6 +155,7 @@ func launchJournalEvidence(home, tool, model string) (matching int, reported, jo
 		raw, _ := os.ReadFile(path)
 		currentModel := ""
 		childReported := false
+		pendingPosts := map[string]bool{}
 		for _, line := range strings.Split(string(raw), "\n") {
 			var row struct {
 				Type string `json:"type"`
@@ -162,10 +163,12 @@ func launchJournalEvidence(home, tool, model string) (matching int, reported, jo
 					Model string `json:"model"`
 					Role  string `json:"role"`
 				} `json:"call"`
-				Model     string `json:"model"`
-				Role      string `json:"role"`
-				Content   string `json:"content"`
-				ToolCalls []struct {
+				Model      string `json:"model"`
+				Role       string `json:"role"`
+				Content    string `json:"content"`
+				ToolCallID string `json:"toolCallId"`
+				ToolCalls  []struct {
+					ID       string `json:"id"`
 					Function struct {
 						Name      string `json:"name"`
 						Arguments string `json:"arguments"`
@@ -184,7 +187,13 @@ func launchJournalEvidence(home, tool, model string) (matching int, reported, jo
 			if strings.Contains(row.Content, "It joined the work already underway") {
 				joined = true
 			}
+			if row.Role == "tool" && pendingPosts[row.ToolCallID] && strings.HasPrefix(row.Content, "Posted to ") {
+				childReported = true
+			}
 			for _, call := range row.ToolCalls {
+				if currentModel == model && call.Function.Name == "team_post" && strings.Contains(call.Function.Arguments, "LAUNCH_MODEL_VERIFIED") {
+					pendingPosts[call.ID] = true
+				}
 				var params struct {
 					Model string `json:"model"`
 				}
