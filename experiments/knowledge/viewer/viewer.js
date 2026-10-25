@@ -301,7 +301,8 @@
     // note previews
     el.mainInner.appendChild(mk('h2', 'section-h', 'Explore notes'));
     var list = mk('div', 'preview-list');
-    var preview = ns.slice(0, 12);
+    var overview = ns.filter(function(n){return n.kind === 'subject';});
+    var preview = (overview.length ? overview : ns).slice(0, 12);
     for(var p=0;p<preview.length;p++){
       (function(note){
         var item = btn('preview-item', null);
@@ -373,14 +374,25 @@
     var cs = note.claims || [];
     if(note.sections){
       if(!note.sections.length) el.mainInner.appendChild(mk('p', 'detail-empty', 'This note needs an editorial pass. Its sources and history are available on the right.'));
+      var contents = note.sections.length >= 4 ? mk('nav', 'article-contents') : null;
+      if(contents){ contents.setAttribute('aria-label', 'On this page'); contents.appendChild(mk('h3', null, 'On this page')); el.mainInner.appendChild(contents); }
       note.sections.forEach(function(section){
-        if(section.heading) el.mainInner.appendChild(mk('h2', 'article-heading', section.heading));
+        if(section.heading){
+          var heading = mk('h2', 'article-heading', section.heading);
+          el.mainInner.appendChild(heading);
+          if(contents){
+            var jump = btn('text-btn', section.heading, 'Go to ' + section.heading);
+            jump.addEventListener('click', function(){ heading.scrollIntoView({block:'start'}); });
+            contents.appendChild(jump);
+          }
+        }
         (section.paragraphs || []).forEach(function(paragraph){
           var p = mk('p', 'article-paragraph', paragraph.text);
           var citation = btn('article-citation', 'Sources', 'Open supporting sources');
-          citation.addEventListener('click', function(){openParagraphSources(paragraph.claims || []);});
+          citation.addEventListener('click', function(){openParagraphSources(paragraph.claims || [], paragraph.evidence || []);});
           p.appendChild(document.createTextNode(' '));
           p.appendChild(citation);
+          if(paragraph.partial) p.appendChild(mk('span', 'backlink-reason', 'Partial evidence — this question remains open.'));
           el.mainInner.appendChild(p);
         });
       });
@@ -388,16 +400,28 @@
       el.mainInner.appendChild(mk('p', 'detail-empty', 'This note has no claims.'));
     }
     if(note.questions && note.questions.length){
-      el.mainInner.appendChild(mk('h2', 'article-heading', 'Questions to understand next'));
-      el.mainInner.appendChild(mk('p', 'detail-empty', 'Unresolved in the evidence inspected so far.'));
-      note.questions.forEach(function(question){
+      var pending = note.questions.filter(function(q){return q.state !== 'answered' && q.state !== 'retired_evidence';});
+      var focused = pending.filter(function(q){return q.state !== 'backlog';});
+      var parked = pending.filter(function(q){return q.state === 'backlog';});
+      function questionRow(question){
         var row = mk('p', 'article-paragraph', question.question);
         if(question.why) row.appendChild(mk('span', 'backlink-reason', question.why));
         var sourceButton = btn('article-citation', question.related_claims ? 'Possible answer in existing knowledge' : 'Why this question?', 'Open relevant evidence');
         sourceButton.addEventListener('click', function(){openParagraphSources((question.related_claims || []).concat(question.claims || []));});
         row.appendChild(sourceButton);
-        el.mainInner.appendChild(row);
-      });
+        return row;
+      }
+      if(focused.length){
+        el.mainInner.appendChild(mk('h2', 'article-heading', 'Questions to understand next'));
+        el.mainInner.appendChild(mk('p', 'detail-empty', 'These gaps remain unresolved in inspected evidence.'));
+        focused.forEach(function(q){el.mainInner.appendChild(questionRow(q));});
+      }
+      if(parked.length){
+        var backlog = mk('details', 'question-backlog');
+        backlog.appendChild(mk('summary', null, parked.length + ' questions awaiting prioritization'));
+        parked.forEach(function(q){backlog.appendChild(questionRow(q));});
+        el.mainInner.appendChild(backlog);
+      }
     }
     if(note.conflicts && note.conflicts.length){
       el.mainInner.appendChild(mk('h2', 'article-heading', 'Unresolved disagreements'));
@@ -684,7 +708,7 @@
     if(q){
       var lq = q.toLowerCase();
       for(var i=0;i<ns.length;i++){
-        var title = (ns[i].title || '').toLowerCase();
+        var title = ((ns[i].title || '') + ' ' + (ns[i].aliases || []).join(' ')).toLowerCase();
         var body = noteBodyText(ns[i]).toLowerCase();
         if(title.indexOf(lq) >= 0 || body.indexOf(lq) >= 0){
           results.push(ns[i]);
@@ -787,7 +811,7 @@
   }
 
   /* ---------- Source overlay ---------- */
-  function openParagraphSources(ids){
+  function openParagraphSources(ids, directEvidence){
     clear(el.overlayBody);
     el.overlayTitle.textContent = 'Supporting sources';
     ids.forEach(function(id){
@@ -800,6 +824,13 @@
         button.addEventListener('click', function(){openSource(evidence.source, evidence.quote);});
         el.overlayBody.appendChild(button);
       });
+    });
+    (directEvidence || []).forEach(function(evidence){
+      var source = sourceById(evidence.source);
+      el.overlayBody.appendChild(mk('blockquote', 'src-quote', evidence.quote));
+      var button = btn('evidence-btn', source ? 'Open ' + source.role + ' message · ' + source.ts : 'Open source');
+      button.addEventListener('click', function(){openSource(evidence.source, evidence.quote);});
+      el.overlayBody.appendChild(button);
     });
     el.overlay.hidden = false;
     el.overlayClose.focus();

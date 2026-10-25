@@ -1,6 +1,7 @@
 """Evidence-driven subject understanding and bounded curiosity, separate from source truth."""
 import copy
 import re
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 
 from knowledge import identity
@@ -54,6 +55,13 @@ def learn(vault, model, previous=None, *, workers=3):
         if not isinstance(title, str) or not title.strip() or not isinstance(scope, str) or not note_ids:
             continue
         subject_id = identity(['subject', scope.casefold(), title.casefold()])
+        # A unique unchanged membership is a conservative rename, not a semantic merge.
+        matches = [s for s in previous_subjects.values() if s['scope'].casefold() == scope.casefold()
+                   and set(s['notes']) == set(note_ids) and s['id'] not in seen]
+        aliases = list(raw.get('aliases', []))
+        if subject_id not in previous_subjects and len(matches) == 1:
+            subject_id = matches[0]['id']
+            aliases = list(dict.fromkeys(aliases + matches[0].get('aliases', []) + [matches[0]['title']]))
         if subject_id in seen:
             continue
         seen.add(subject_id)
@@ -73,7 +81,7 @@ def learn(vault, model, previous=None, *, workers=3):
             planned.append(copy.deepcopy(old))
         else:
             planned.append({'id': subject_id, 'title': title, 'scope': scope, 'notes': note_ids,
-                            'claims': ids, 'input_hash': digest, 'aliases': raw.get('aliases', []),
+                            'claims': ids, 'input_hash': digest, 'aliases': aliases,
                             '_evidence': evidence})
 
     def understand(subject):
@@ -167,16 +175,70 @@ def learn(vault, model, previous=None, *, workers=3):
 
 
 def project(vault, learning):
-    """Add derived subject pages while preserving the detailed notes and original claims."""
+    """Project subject maps and reviewed gap answers without changing source claims."""
     result = copy.deepcopy(vault)
-    known = {n['id'] for n in result['notes']}
+    original = {n['id']: n for n in result['notes']}
+    active = {c['id'] for c in vault['claims'] if c['status'] == 'active'}
+    memberships = {}
     for subject in learning['subjects']:
+        if subject['id'] in original:
+            raise ValueError('Project subjects from the original vault, not an earlier subject projection')
+        for note_id in subject['notes']:
+            memberships.setdefault(note_id, []).append(subject['id'])
+    for subject in learning['subjects']:
+        sections, stale = [], False
+        for section in subject.get('sections', []):
+            paragraphs = []
+            for paragraph in section['paragraphs']:
+                evidence = paragraph.get('evidence', [])
+                valid_claims = set(paragraph.get('claims', []) + paragraph.get('depends_on', [])) <= active
+                valid_sources = all(e['source'] in vault['sources'] and
+                    e['quote'] in vault['sources'][e['source']]['text'] and
+                    e.get('source_hash') == identity(vault['sources'][e['source']]['text']) for e in evidence)
+                has_support = bool(paragraph.get('claims')) or (
+                    paragraph.get('derivation') == 'subject_guide' and paragraph.get('review') and bool(evidence))
+                if valid_claims and valid_sources and has_support:
+                    paragraphs.append(copy.deepcopy(paragraph))
+            stale |= len(paragraphs) != len(section['paragraphs'])
+            if paragraphs:
+                sections.append({**section, 'paragraphs': paragraphs})
+        questions = copy.deepcopy(subject.get('questions', []))
+        answer_claims = []
+        for question in questions:
+            answer = question.get('answer')
+            if not answer:
+                continue
+            valid = set(question['claims']) <= active and set(answer['claims']) <= active and all(
+                e['source'] in vault['sources'] and e['quote'] in vault['sources'][e['source']]['text'] and
+                e['source_hash'] == identity(vault['sources'][e['source']]['text']) for e in answer['evidence'])
+            if not valid:
+                question.pop('answer', None)
+                question['state'] = 'needs_review'
+                stale = True
+                continue
+            if question.get('state') in ('answered', 'partially_answered'):
+                sections.append({'heading': answer['heading'], 'paragraphs': [
+                    {'text': answer['text'], 'claims': answer['claims'], 'evidence': answer['evidence'],
+                     'question': question['id'], 'partial': question['state'] == 'partially_answered',
+                     'derivation': 'gap_answer', 'review': answer['review'], 'depends_on': question['claims']}]})
+                answer_claims.extend(answer['claims'])
+        roots = Counter(original[i]['folder'][0] for i in subject['notes'] if i in original and original[i].get('folder'))
+        root = sorted(roots, key=lambda k: (-roots[k], k))[0] if roots else subject['scope']
+        links = [{'id': i, 'kind': 'explains', 'reason': 'Detailed evidence for this subject'} for i in subject['notes'] if i in original]
+        related = {}
+        for source in subject['notes']:
+            for edge in original.get(source, {}).get('links', []):
+                for target in memberships.get(edge['id'], []):
+                    if target != subject['id'] and edge.get('reason'):
+                        related.setdefault(target, {'id': target, 'kind': 'related', 'reason': edge['reason'],
+                                                    'via': [source, edge['id']]})
+        links.extend(list(related.values())[:3])
         result['notes'].append({
             'id': subject['id'], 'title': subject['title'], 'scope': subject['scope'],
-            'folder': [subject['scope']], 'claims': subject['claims'],
-            'sections': subject.get('sections', []), 'questions': subject.get('questions', []),
-            'conflicts': subject.get('conflicts', []), 'learning_state': subject['state'],
-            'links': [{'id': i, 'reason': 'Detailed evidence for this subject'} for i in subject['notes'] if i in known]})
+            'folder': [root], 'claims': list(dict.fromkeys(subject['claims'] + answer_claims)),
+            'sections': sections, 'questions': questions, 'aliases': subject.get('aliases', []),
+            'conflicts': subject.get('conflicts', []), 'learning_state': 'needs_review' if stale else subject['state'],
+            'kind': 'subject', 'links': links})
     return result
 
 

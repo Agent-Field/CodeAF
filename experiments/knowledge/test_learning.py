@@ -1,9 +1,48 @@
 """Subject understanding is tested at the agreed sourced-knowledge interface."""
 import unittest
-from learning import learn
+from learning import learn, project
 
 
 class LearningTests(unittest.TestCase):
+    def test_subject_navigation_preserves_real_connections_and_withholds_retired_prose(self):
+        vault = {'sources': {}, 'claims': [
+            {'id': 'c', 'text': 'Routing selects a worker.', 'status': 'active', 'kind': 'fact'},
+            {'id': 'd', 'text': 'Recovery requeues failed work.', 'status': 'active', 'kind': 'fact'},
+            {'id': 'e', 'text': 'Old retry behavior.', 'status': 'superseded', 'kind': 'fact'}],
+            'notes': [{'id': 'n', 'title': 'Routing', 'scope': 'Cedar', 'folder': ['Cedar','Routing'],
+                       'claims': ['c'], 'links': [{'id': 'm', 'reason': 'Recovery requeues work rejected by routing.'}]},
+                      {'id': 'm', 'title': 'Recovery', 'scope': 'Cedar', 'folder': ['Cedar','Recovery'],
+                       'claims': ['d','e'], 'links': []}]}
+        learning = {'subjects': [
+            {'id': 'a', 'title': 'Cedar routing', 'scope': 'Cedar', 'notes': ['n'], 'claims': ['c'],
+             'state': 'explained', 'sections': [], 'questions': [], 'conflicts': []},
+            {'id': 'b', 'title': 'Cedar recovery', 'scope': 'Cedar', 'notes': ['m'], 'claims': ['d','e'],
+             'state': 'explained', 'sections': [{'heading': 'Recovery', 'paragraphs': [
+                 {'text': 'Old retry behavior.', 'claims': ['e']}]}], 'questions': [], 'conflicts': []}]}
+        result = project(vault, learning)
+        a, b = result['notes'][-2:]
+        self.assertTrue(any(l['id']=='n' and l['kind']=='explains' for l in a['links']))
+        self.assertTrue(any(l['id']=='b' and l['kind']=='related' and 'requeues' in l['reason'] for l in a['links']))
+        self.assertEqual(b['sections'], [])
+        self.assertEqual(b['learning_state'], 'needs_review')
+
+    def test_a_subject_rename_keeps_its_identity_and_previous_name(self):
+        vault = {'sources': {}, 'claims': [{'id': 'c', 'text': 'Cedar routes jobs.', 'kind': 'fact',
+                 'status': 'active', 'scope': 'Cedar', 'evidence': []}],
+                 'notes': [{'id': 'n', 'title': 'Routing', 'scope': 'Cedar', 'claims': ['c'], 'links': []}]}
+        title = ['Cedar routing']
+        def model(role, payload):
+            if role == 'discover':
+                return {'subjects': [{'title': title[0], 'scope': 'Cedar', 'notes': ['n'], 'aliases': []}]}
+            return {'sections': [], 'questions': [], 'conflicts': [], 'checks': []}
+        first = learn(vault, model)
+        title[0] = 'Cedar delivery mechanism'
+        vault['notes'][0]['title'] = 'Routing mechanism'
+        second = learn(vault, model, previous=first)
+        self.assertEqual(second['subjects'][0]['id'], first['subjects'][0]['id'])
+        self.assertIn('Cedar routing', second['subjects'][0]['aliases'])
+        self.assertEqual(second['subjects'][0]['title'], 'Cedar delivery mechanism')
+
     def test_oversized_emergent_subject_is_reconsidered_instead_of_truncating_evidence(self):
         claims = [{'id': str(i), 'text': f'Record {i}', 'kind': 'fact', 'status': 'active',
                    'scope': 'Cedar', 'evidence': []} for i in range(180)]

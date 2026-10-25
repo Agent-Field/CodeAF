@@ -40,6 +40,16 @@ def _save(vault, directory):
             raise ValueError("Note contains an unknown claim")
         if any(l["id"] not in note_ids for l in note["links"]):
             raise ValueError("Note contains an unknown link target")
+    for note in vault["notes"]:
+        for section in note.get("sections", []):
+            for paragraph in section["paragraphs"]:
+                if any(i not in claim_ids for i in paragraph.get("claims", [])):
+                    raise ValueError("Article contains an unknown claim")
+                if any(e.get("source") not in vault["sources"] or not e.get("quote") or
+                       e["quote"] not in vault["sources"][e["source"]]["text"] or
+                       (e.get("source_hash") is not None and e["source_hash"] != identity(vault["sources"][e["source"]]["text"]))
+                       for e in paragraph.get("evidence", [])):
+                    raise ValueError("Article contains unsupported source evidence")
     for claim in vault["claims"]:
         if any(e["source"] not in vault["sources"] or e["quote"] not in vault["sources"][e["source"]]["text"]
                for e in claim["evidence"]):
@@ -149,6 +159,7 @@ def export_markdown(vault, directory):
         lines = ["---", "id: " + note["id"], "title: " + json.dumps(note["title"]),
                  "scope: " + json.dumps(note["scope"]), "folder: " + json.dumps(note["folder"]),
                  "---", "", "# " + note["title"], ""]
+        article_evidence = {}
         active = [claims[i] for i in note["claims"] if claims[i]["status"] == "active"]
         history = [claims[i] for i in note["claims"] if claims[i]["status"] != "active"]
         if note.get("sections"):
@@ -157,6 +168,10 @@ def export_markdown(vault, directory):
                     lines += ["## " + section["heading"], ""]
                 for paragraph in section["paragraphs"]:
                     refs = " ".join("[^" + i + "]" for i in paragraph["claims"])
+                    for evidence in paragraph.get("evidence", []):
+                        key = "source-" + identity([evidence["source"], evidence["quote"]])
+                        article_evidence[key] = evidence
+                        refs += " [^" + key + "]"
                     lines.append(paragraph["text"] + " " + refs + "\n")
         else:
             for claim in active:
@@ -184,6 +199,9 @@ def export_markdown(vault, directory):
             lines += ["", "## History", ""]
             lines += [f"- {c['status']}: {c['text']} [^{c['id']}]" for c in history]
         lines += ["", "## Sources", ""]
+        for key, evidence in article_evidence.items():
+            src = vault["sources"][evidence["source"]]
+            lines.append(f"[^{key}]: {src['id']} · {src['role']} · {src['ts']} — {json.dumps(evidence['quote'], ensure_ascii=False)}")
         for claim in active + history:
             sources = []
             for evidence in claim["evidence"]:

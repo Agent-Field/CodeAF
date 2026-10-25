@@ -11,6 +11,16 @@ from editor import compose_notes, review_articles
 
 
 class ReplayTests(unittest.TestCase):
+    def test_stale_raw_article_evidence_cannot_be_committed(self):
+        vault = {"schema": 1, "sources": {"s": {"id": "s", "role": "agent", "session": "s", "ts": "2026-10-25", "text": "A fact."}},
+                 "claims": [], "relations": [], "notes": [{"id": "n", "title": "Subject", "scope": "Scope",
+                 "folder": [], "claims": [], "links": [], "sections": [{"heading": "Evidence", "paragraphs": [
+                     {"text": "A fact.", "claims": [], "evidence": [{"source": "s", "quote": "A fact.", "source_hash": "wrong-version"}]}]}]}]}
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, "source evidence"):
+                save(vault, directory)
+            self.assertFalse((Path(directory) / "events.jsonl").exists())
+
     def test_incremental_update_keeps_articles_without_resending_their_full_text(self):
         message = {"id": "s:1", "session": "s", "role": "user", "ts": "2026-01-01",
                    "text": "Atlas uses SQLite."}

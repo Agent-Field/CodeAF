@@ -363,6 +363,26 @@ def recall(vault, question, model, scope=None, limit=16, retrieval="lexical"):
         selected_notes = set(plan.get("notes", [])) & {n["id"] for n in eligible_notes}
     candidates = [c for c in vault["claims"] if c["status"] == "active" and
                   visible(c["scope"])]
+    # Reviewed answer projections can supply evidence the first extractor omitted.
+    # They remain derived context rather than new canonical source claims.
+    derived_ids = defaultdict(list)
+    active_ids = {c["id"] for c in vault["claims"] if c["status"] == "active"}
+    for note in eligible_notes:
+        for section in note.get("sections", []):
+            for paragraph in section["paragraphs"]:
+                evidence = paragraph.get("evidence", [])
+                if paragraph.get("derivation") not in {"gap_answer", "subject_guide"} or not paragraph.get("review") or not evidence:
+                    continue
+                if not set(paragraph.get("depends_on", []) + paragraph.get("claims", [])) <= active_ids:
+                    continue
+                if any(e["source"] not in vault["sources"] or e["quote"] not in vault["sources"][e["source"]]["text"] or
+                       e["source_hash"] != identity(vault["sources"][e["source"]]["text"]) for e in evidence):
+                    continue
+                claim_id = "derived:" + identity([note["id"], paragraph["text"], evidence])
+                candidates.append({"id": claim_id, "text": paragraph["text"], "topic": section["heading"],
+                                   "scope": note["scope"], "status": "active", "kind": "reported",
+                                   "partial": paragraph.get("partial", False), "evidence": evidence})
+                derived_ids[note["id"]].append(claim_id)
     counts = {t: sum(t in words(c["text"]) for c in candidates) for t in terms}
     def score(claim):
         tokens = words(claim["text"] + " " + claim.get("topic", "") + " " + claim["scope"])
@@ -372,11 +392,11 @@ def recall(vault, question, model, scope=None, limit=16, retrieval="lexical"):
         notes_by_id = {n["id"]: n for n in eligible_notes}
         # Bounded one-hop diffusion. Scope filtering happens before any traversal.
         for note_id in selected_notes:
-            for claim_id in notes_by_id[note_id]["claims"]:
+            for claim_id in notes_by_id[note_id]["claims"] + derived_ids[note_id]:
                 boosts[claim_id] += 4
             for link in notes_by_id[note_id]["links"]:
                 if link["id"] in notes_by_id:
-                    for claim_id in notes_by_id[link["id"]]["claims"]:
+                    for claim_id in notes_by_id[link["id"]]["claims"] + derived_ids[link["id"]]:
                         boosts[claim_id] += 1
     ranked = sorted(((score(c) + boosts[c["id"]], c) for c in candidates), key=lambda x: (-x[0], x[1]["id"]))
     selected = [c for s, c in ranked[:limit] if s > 0]

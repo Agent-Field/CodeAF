@@ -138,3 +138,39 @@ answer is a source pointer awaiting review, not a newly accepted fact. This sear
 is bounded lexical retrieval, not proof that the full source history lacks an
 answer. Discovery gives oversized groups one chance to split by their conceptual
 structure; unsplit groups stay explicitly pending.
+
+## Close knowledge gaps from existing logs
+
+```sh
+python experiments/knowledge/maintenance.py \
+  --vault /absolute/private/path/reconciled/vault.json \
+  --learning /absolute/private/path/understanding/learning.json \
+  --out /absolute/private/path/maintenance \
+  --questions 8 --context 'The current task or learning goal'
+```
+
+Repeated unchanged runs reuse attempts; `--advance` explicitly selects another
+frontier. This searches existing sources and adds reviewed derived explanations,
+with original citations, while preserving canonical claims. Partial answers stay
+open. The model never runs external research or installs a schedule.
+
+[The full architecture and inspiration ledger](FULL-KNOWLEDGE-BASE.md) distinguishes
+implemented experiments from production work. [The optional working-agent delta
+contract](WORKING-AGENT-PROMPT.md) explains how ordinary responses could propose
+learning without a separate history-extraction completion. `proposals.collect`
+validates and stages that envelope locally; it does not accept knowledge or alter
+the installed binary's prompts/streaming.
+
+`learner.learn_subject(vault, subject, model, previous=None, goal='',
+max_steps=4, read_budget=18000)` offers a bounded read/search/write agent for a
+selected subject. Pass the same pinned `provider.OpenRouter` adapter. Its reviewed
+`sections` can replace that subject's sections before `learning.project`; retain
+the returned receipt as `previous` for zero-call reuse. All input must already be
+permitted by the host. Rich guides have section navigation in the inspector.
+Neither source-count confidence nor longer articles are quality measures.
+
+Bounded search can miss relevant lower-ranked evidence. `blocked_by_evidence`
+means no accepted answer in the inspected attempt, including review rejection;
+it is not proof the complete corpus lacks an answer. Guide caching rechecks read
+sources, not newly available unread sources. Proposal collection currently stages
+pending items only; production acceptance and bounded outbox retention are deferred.
