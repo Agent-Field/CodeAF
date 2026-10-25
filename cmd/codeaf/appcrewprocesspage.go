@@ -882,9 +882,11 @@ func (b *appBackend) crewOwnerPage(ctx context.Context, o crewOwner, n int) (*ap
 			a = candidate
 		}
 	})
-	if a != nil && b.crewKeeps(o.id) {
-		if _, _, err := b.heldLive(o.id); err != nil {
+	if a != nil {
+		if _, endLive, err := b.findCrewOwner(o.id); err != nil {
 			return nil, err
+		} else {
+			defer endLive()
 		}
 	}
 	var live *appLive

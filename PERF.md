@@ -267,8 +267,9 @@ method and measurements are in [docs/perf/memory-2026-10-24.md](docs/perf/memory
   `data_version` or the database/log stamp moved.
   `TestRepeatedReadsOfAnUnchangedPlanLoadItOnce` allows 3 MiB for 200 reads.
   `TestAppTasksOpensThePlanOnceForAllTheRunRows` allows 16 MiB to list 150 rows.
-- **The collector percent follows the live heap** (`memtrim.go`): the surface's
-  `GOGC=400` is kept for a small heap, and a larger one is given the percent that
+- **The collector percent follows the live heap** (`memtrim.go`): the app starts
+  at Go's default percent 100. The governor selects 400 for a small heap, and a
+  larger one is given the percent that
   lets about `heapHeadroom` = 32 MiB of garbage build up, never below
   `heapGCMin` = 10. An explicit `GOGC` decides instead. When more than 48 MiB
   and half of the live heap is held and unused, `debug.FreeOSMemory` runs, at most

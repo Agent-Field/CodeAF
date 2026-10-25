@@ -16,10 +16,11 @@ type appRewindConversation interface {
 }
 
 func (b *appBackend) ConversationPoints(id string) ([]appwire.ConversationPoint, error) {
-	_, live, err := b.heldLive(id)
+	_, live, endLive, err := b.borrowLive(id)
 	if err != nil {
 		return nil, err
 	}
+	defer endLive()
 	c, ok := live.conn.Conv.(appRewindConversation)
 	if !ok {
 		return nil, appwire.Errorf(appwire.CodeUnknownMethod, "this engine cannot rewind conversations")
@@ -50,10 +51,11 @@ func (b *appBackend) ConversationPoints(id string) ([]appwire.ConversationPoint,
 }
 
 func (b *appBackend) RewindConversation(id string, point int) (string, error) {
-	a, live, err := b.heldLive(id)
+	a, live, endLive, err := b.borrowLive(id)
 	if err != nil {
 		return "", err
 	}
+	defer endLive()
 	a.gate.Lock()
 	defer a.gate.Unlock()
 	c, ok := live.conn.Conv.(appRewindConversation)
@@ -68,10 +70,11 @@ func (b *appBackend) RewindConversation(id string, point int) (string, error) {
 }
 
 func (b *appBackend) UndoConversationRewind(id, token string) error {
-	a, live, err := b.heldLive(id)
+	a, live, endLive, err := b.borrowLive(id)
 	if err != nil {
 		return err
 	}
+	defer endLive()
 	a.gate.Lock()
 	defer a.gate.Unlock()
 	c, ok := live.conn.Conv.(appRewindConversation)
@@ -97,10 +100,11 @@ func (b *appBackend) resetConversationCount(a *appAgent, entries []session.Displ
 }
 
 func (b *appBackend) DebugAgent(id string) (appwire.ConversationDebug, error) {
-	_, live, err := b.heldLive(id)
+	_, live, endLive, err := b.borrowLive(id)
 	if err != nil {
 		return appwire.ConversationDebug{}, err
 	}
+	defer endLive()
 	c, ok := live.conn.Conv.(interface {
 		DebugConversation() (string, string, error)
 	})
@@ -117,12 +121,16 @@ func (b *appBackend) ManualAgent(id, question, clientID string) (uint64, error) 
 }
 
 func (b *appBackend) DeleteAgent(id string) error {
-	a, live, err := b.heldLive(id)
+	a, err := b.find(id)
 	if err != nil {
 		return err
 	}
-	a.gate.Lock()
+	b.lockRelease(a)
 	defer a.gate.Unlock()
+	_, live, err := b.heldLiveLocked(a)
+	if err != nil {
+		return err
+	}
 	c, ok := live.conn.Conv.(interface{ DeleteOwnConversation() error })
 	if !ok {
 		return appwire.Errorf(appwire.CodeUnknownMethod, "this engine does not offer permanent deletion")

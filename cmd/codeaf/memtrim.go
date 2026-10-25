@@ -14,9 +14,9 @@ import (
 
 // heapTrim* decide when a surface hands idle heap back to the system.
 //
-// The surface runs with the collector waiting for five times the live heap
-// (tuneForTheSurface), which is right for a busy turn and wrong for the minutes
-// after it: a burst of reads fills the heap with garbage, the collector runs
+// Terminal surfaces begin with a collector target of five times the live heap
+// (tuneForTheSurface). The app begins at Go's default and its governor below
+// selects a target from the live heap. After a burst of reads the collector runs
 // once, and the runtime then returns the freed pages only a little at a time.
 // The process sits at several times its live heap for as long as nothing
 // allocates. The trimmer closes that gap with one forced collection and a full

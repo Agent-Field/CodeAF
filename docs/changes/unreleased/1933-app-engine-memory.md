@@ -15,3 +15,13 @@ under `<home>/cache/app-tasks` for the next launch (same build only). Plan reads
 the project task index and the run-row listing no longer repeat their reads for
 each row, and the collector percent follows the live heap. No protocol field
 changed. See docs/perf/memory-2026-10-24.md.
+
+Idle release now shares task admission's gate and waits for every active reader.
+It checks current background work rather than trusting a prior listing. Cache
+entries require matching file identities and timestamps before and after their
+read; files inside a two-second timestamp tick are not retained. Both cache
+paths share read admission, disk decoding is size-bounded, and the 24 MiB memory
+account includes retained Go structures and their referenced data. Index eviction
+clears discarded references, and record expiration targets the earliest deadline.
+The performance note now distinguishes the app's actual GC defaults from the
+terminal's settings and identifies the missing historical environment record.

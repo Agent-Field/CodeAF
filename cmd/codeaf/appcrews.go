@@ -794,11 +794,12 @@ func (b *appBackend) crewStart(t teamstore.Team, manager teamstore.Member, e tea
 		b.crewNote(manager, "could not start @"+handle+": "+err.Error())
 		return
 	}
-	a, live, err := b.heldLive(agent.ID)
+	a, live, endLive, err := b.borrowLive(agent.ID)
 	if err != nil {
 		b.crewNote(manager, "could not start @"+handle+": "+err.Error())
 		return
 	}
+	defer endLive()
 	// A STARTED MEMBER IS NAMED BY ITS BRIEF, the way a conversation a person
 	// opens is named by its first message: the brief is its first message. The
 	// conversation names its own record the same way when its turn reads the
@@ -816,7 +817,8 @@ func (b *appBackend) crewStart(t teamstore.Team, manager teamstore.Member, e tea
 	}
 	posture := strings.TrimSpace(e.Approval)
 	if posture == "" {
-		if _, mlive, err := b.heldLive(appMemberAgent(manager)); err == nil {
+		if _, mlive, endManager, err := b.borrowLive(appMemberAgent(manager)); err == nil {
+			defer endManager()
 			if door, ok := mlive.conn.Conv.(appPostureDoor); ok {
 				posture = door.ResolvedApprovalPosture()
 			}

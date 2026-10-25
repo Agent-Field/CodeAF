@@ -32,16 +32,17 @@ type appAutonomyDoor interface {
 
 // autonomyDoor resolves the conversation's own handle so host edits reach the
 // same project and safety floors as typing the terminal command there.
-func (b *appBackend) autonomyDoor(agent string) (appAutonomyDoor, error) {
-	_, live, err := b.heldLive(agent)
+func (b *appBackend) autonomyDoor(agent string) (appAutonomyDoor, func(), error) {
+	_, live, endLive, err := b.borrowLive(agent)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	door, ok := live.conn.Conv.(appAutonomyDoor)
 	if !ok {
-		return nil, appwire.Errorf(appwire.CodeUnknownMethod, "this conversation keeps no question rules")
+		endLive()
+		return nil, nil, appwire.Errorf(appwire.CodeUnknownMethod, "this conversation keeps no question rules")
 	}
-	return door, nil
+	return door, endLive, nil
 }
 func appAutonomyRows(agent string, door appAutonomyDoor) (appwire.AutonomyResult, error) {
 	rules := door.Autonomy()
@@ -65,10 +66,11 @@ func appAutonomyRows(agent string, door appAutonomyDoor) (appwire.AutonomyResult
 	return out, nil
 }
 func (b *appBackend) GetAutonomy(agent string) (appwire.AutonomyResult, error) {
-	door, err := b.autonomyDoor(agent)
+	door, endLive, err := b.autonomyDoor(agent)
 	if err != nil {
 		return appwire.AutonomyResult{}, err
 	}
+	defer endLive()
 	return appAutonomyRows(agent, door)
 }
 func (b *appBackend) SetAutonomy(p appwire.AutonomySetParams) (appwire.AutonomyResult, error) {
@@ -76,10 +78,11 @@ func (b *appBackend) SetAutonomy(p appwire.AutonomySetParams) (appwire.AutonomyR
 	if refused != "" {
 		return appwire.AutonomyResult{}, appwire.Errorf(appwire.CodeBadParams, "%s", refused)
 	}
-	door, err := b.autonomyDoor(p.Agent)
+	door, endLive, err := b.autonomyDoor(p.Agent)
 	if err != nil {
 		return appwire.AutonomyResult{}, err
 	}
+	defer endLive()
 	if err := door.SetAutonomy(kind, policy); err != nil {
 		return appwire.AutonomyResult{}, appwire.Errorf(appwire.CodeBadParams, "%s", err)
 	}

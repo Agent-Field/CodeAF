@@ -1,9 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -165,7 +165,18 @@ func lazyStamp(path string) string {
 	if err != nil {
 		return "-"
 	}
-	return path + ":" + strconv.FormatInt(info.Size(), 10) + ":" + strconv.FormatInt(info.ModTime().UnixNano(), 10)
+	if stamp := appInfoStamp(path, info); stamp != "" {
+		return stamp
+	}
+	return fmt.Sprintf("%s:%d:%d;", path, info.Size(), info.ModTime().UnixNano())
+}
+
+func appInfoStamp(path string, info os.FileInfo) string {
+	dev, ino, ctime, ok := appFileIdentity(info)
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf("%s:%d:%d:%d:%d:%d;", path, dev, ino, info.Size(), info.ModTime().UnixNano(), ctime)
 }
 
 func crewTrafficEvent(event fsnotify.Event) bool {
@@ -204,28 +215,13 @@ func (b *appBackend) rememberLazyMember(id string) {
 
 // findCrewOwner restores the owner-backed answer an open crew had before its
 // idle members became light records. Other closed conversations stay closed.
-func (b *appBackend) findCrewOwner(id string) (*appAgent, error) {
-	a, err := b.find(id)
-	if err != nil {
-		return nil, err
-	}
-	if b.crewKeeps(id) {
-		_, _, err = b.heldLive(id)
-	}
-	return a, err
+func (b *appBackend) findCrewOwner(id string) (*appAgent, func(), error) {
+	return b.readAgent(id, true)
 }
 
-// findCrewReader is findCrewOwner for a read that a member at rest answers from
-// its files: the conversation is held only when the member is doing something.
-func (b *appBackend) findCrewReader(id string) (*appAgent, error) {
-	a, err := b.find(id)
-	if err != nil {
-		return nil, err
-	}
-	if b.crewKeeps(id) && !b.memberRests(a) {
-		_, _, err = b.heldLive(id)
-	}
-	return a, err
+// findCrewReader pins an existing owner and opens only a busy crew member.
+func (b *appBackend) findCrewReader(id string) (*appAgent, func(), error) {
+	return b.readAgent(id, false)
 }
 
 // memberRests is true for a member whose conversation is not held and has
@@ -251,7 +247,7 @@ func (b *appBackend) memberQuiet(a *appAgent) bool {
 	if _, staged := liveStageFor(transcript); staged || b.serviceKeeps(id) {
 		return false
 	}
-	presence, _ := session.ReadSessionPresenceAnyAge(filepath.Dir(transcript))
+	presence, _ := session.ReadSessionPresenceAnyAge(session.DirOf(transcript))
 	return !memberBusy(presence)
 }
 

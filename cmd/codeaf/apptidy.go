@@ -216,10 +216,11 @@ func (b *appBackend) unmarkTidy(id string) {
 
 // Rename gives an agent the name the person typed, in its conversation.
 func (b *appBackend) Rename(id, title string) (appwire.Agent, error) {
-	a, live, err := b.heldLive(id)
+	a, live, endLive, err := b.borrowLive(id)
 	if err != nil {
 		return appwire.Agent{}, err
 	}
+	defer endLive()
 	a.nameGate.Lock()
 	defer a.nameGate.Unlock()
 	door, ok := live.conn.Conv.(appRenamer)

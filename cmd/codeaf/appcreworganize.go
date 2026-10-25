@@ -39,10 +39,12 @@ func (b *appBackend) CrewsOrganize(ctx context.Context, ask appwire.OrganizeAsk)
 		if len(loose) == 0 {
 			return out, ctx.Err()
 		}
-		proposer, err = b.organizeNamingDoor(loose[0])
+		var endRead func()
+		proposer, endRead, err = b.organizeNamingDoor(loose[0])
 		if err != nil {
 			return nil, appOrganizeError(err)
 		}
+		defer endRead()
 	}
 	rows, res, err := session.OrganizeModel(ctx, proposer, convs, teams)
 	if err != nil {
@@ -114,46 +116,37 @@ func (b *appBackend) organizeFolders(ctx context.Context, out *appwire.OrganizeR
 
 // organizeNamingDoor discovers ownership before interpreting the local profile.
 // Joining an existing engine never boots a conversation merely to name teams.
-func (b *appBackend) organizeNamingDoor(c session.OrganizeConversation) (session.TeamProposer, error) {
-	a, err := b.find(c.Key)
+func (b *appBackend) organizeNamingDoor(c session.OrganizeConversation) (session.TeamProposer, func(), error) {
+	a, live, endRead, err := b.borrowExisting(c.Key)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	if live := b.liveOf(a); live != nil {
+	if live != nil {
 		proposer, _ := live.conn.Conv.(session.TeamProposer)
-		return proposer, nil
+		return proposer, endRead, nil
 	}
+	endRead()
 	conn, err := appJoinExisting(appOpenAsk{Workspace: c.Folder, Transcript: a.transcript}, nil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if conn != nil {
-		return &appOrganizeJoined{conn: conn}, nil
+		proposer, _ := conn.Conv.(session.TeamProposer)
+		return proposer, conn.Release, nil
 	}
 	source, err := v3RolesSource(c.Folder, b.crewProfile())
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	resolved, err := roles.Resolve(source, roles.RoleTitle, "")
 	if err != nil {
-		return nil, session.ErrNoNamingModel
+		return nil, nil, session.ErrNoNamingModel
 	}
 	proc, err := openAppEngineProcess()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	settings := proc.Settings
-	return session.NewTeamProposer(session.TeamProposerConfig{Model: resolved, APIKey: settings.APIKey, BaseURL: settings.BaseURL, Sources: settings.Sources, ProfileDir: settings.ProfileDir, RolesSource: source})
-}
-
-// appOrganizeJoined releases the temporary view when its single ask completes.
-type appOrganizeJoined struct{ conn *appConn }
-
-func (p *appOrganizeJoined) ProposeTeams(ctx context.Context, in session.TeamProposalInput) (session.TeamProposal, error) {
-	defer p.conn.Release()
-	proposer, ok := p.conn.Conv.(session.TeamProposer)
-	if !ok {
-		return session.TeamProposal{}, session.ErrNoNamingModel
-	}
-	return proposer.ProposeTeams(ctx, in)
+	proposer, err := session.NewTeamProposer(session.TeamProposerConfig{Model: resolved, APIKey: settings.APIKey, BaseURL: settings.BaseURL, Sources: settings.Sources, ProfileDir: settings.ProfileDir, RolesSource: source})
+	return proposer, func() {}, err
 }

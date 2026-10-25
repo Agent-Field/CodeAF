@@ -20,7 +20,15 @@ func crewHeldIdleMember(t *testing.T) (*appBackend, *appAgent, *int) {
 	conv := &fakeConversation{}
 	var mu sync.Mutex
 	var opens, releases int
-	backend := newFakeBackend(newAppRecorder(), fakeOpener(conv, &opens, &releases, &mu))
+	open := fakeOpener(conv, &opens, &releases, &mu)
+	backend := newFakeBackend(newAppRecorder(), func(ask appOpenAsk) (*appConn, error) {
+		conn, err := open(ask)
+		if conn != nil && ask.Transcript != "" {
+			conn.Transcript = ask.Transcript
+		}
+		return conn, err
+	})
+	backend.now = func() time.Time { return time.Now().Add(time.Hour) }
 	t.Cleanup(func() {
 		backend.locked(func() { backend.crewRun = nil })
 		backend.Close()
@@ -51,8 +59,7 @@ func TestAppReadingAnIdleCrewMemberDoesNotKeepItsConversation(t *testing.T) {
 	backend, a, opens := crewHeldIdleMember(t)
 	dir := t.TempDir()
 	var id string
-	// The fake opener answers with its own transcript, so the folder is put
-	// back before each read the way a real conversation would keep it.
+	// Every open keeps the requested transcript, as a real conversation does.
 	place := func() {
 		backend.locked(func() { a.transcript, id = filepath.Join(dir, "transcript.jsonl"), a.view.ID })
 	}

@@ -170,8 +170,10 @@ func (b *appBackend) memberStart(t teamstore.Team, ask appwire.MemberAsk) (strin
 	if err != nil {
 		return "", err
 	}
-	if _, _, err := b.heldLive(agent.ID); err != nil {
+	if _, _, endLive, err := b.borrowLive(agent.ID); err != nil {
 		return "", err
+	} else {
+		defer endLive()
 	}
 	m, err := b.agentMember(agent.ID)
 	if err != nil {
@@ -484,10 +486,11 @@ type appSideAsker interface {
 // One ask runs per agent at a time: a second press while the first is out is
 // answered by the first's card.
 func (b *appBackend) CrewPropose(agent string) error {
-	a, live, err := b.heldLive(agent)
+	a, live, endLive, err := b.borrowLive(agent)
 	if err != nil {
 		return err
 	}
+	defer endLive()
 	asker, ok := live.conn.Conv.(appSideAsker)
 	if !ok {
 		return appwire.Errorf(appwire.CodeEngine, "this agent cannot be asked for helpers outside its chat; update codeaf")
@@ -529,7 +532,11 @@ func (b *appBackend) CrewPropose(agent string) error {
 	if !first {
 		return nil
 	}
+	a.gate.Lock()
+	endWorker := b.pinReader(a)
+	a.gate.Unlock()
 	guard.Go("app/crew-propose", func() {
+		defer endWorker()
 		// The press is free again the moment the model has answered, before
 		// the card is drawn, so a press made after the card is a new ask; the
 		// deferred call is for a road that never reaches that moment.
