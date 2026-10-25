@@ -3,7 +3,8 @@
 The relay of `internal/relayserve` as a Cloudflare Worker.
 The Go client holds both implementations to `internal/relayconf`; run the local matrix below
 before claiming conformance for a build.
-The relay sees only ciphertext and keeps no account table: an identity is the hash of its key.
+Chat content, names and credentials stay encrypted. The relay also reads routing,
+ownership and coordination metadata and keeps no account table: an identity is the hash of its key.
 
 ## How it is built
 
@@ -61,7 +62,7 @@ caller itself 400 `self_revoke`; twice is fine). A revoked device is `401 revoke
 a device record cannot set or clear its own flag.
 
 Directory watch is `GET /v1/dir/watch`, a signed WebSocket upgrade on the same object
-(`src/watch.js`). It replaces the home screen's polling: the object keeps a durable version of the
+(`src/watch.js`). It supplies compatibility version and presence hints: the object keeps a durable version of the
 directory (the replicated application version), bumps it on every change a person could see (a heartbeat that only
 moves a lease's expiry is not one), and sends `{"v":N}` to every socket. It accepts with the hibernation
 API and answers the client's `ping` with the platform's auto-response, so an open, quiet socket wakes
@@ -87,11 +88,17 @@ the object to be evicted does not reset them.
 Link pairing (`src/link/`, `docs/ux-pairing-contract.md`) is the sibling for a new device that asks a paired
 device to approve it: `LinkGate` holds the per-IP decisions and allocates the 8-character code, one
 `LinkRequest` object per code holds the record and moves it once (pending, then approved or denied), and the
-signed approve and deny routes under `/v1/dir/requests/` are served by the identity's own object, which
-writes the device in one synchronous turn. The relay stores the grant and the sealed name as opaque bytes.
+signed approve and deny routes under `/v1/dir/requests/` enter through the identity coordinator.
+The shared Go state machine commits device authorization, metadata and the sealed decision together.
+A retained outbox delivers that decision to the request object afterward and repairs interrupted
+delivery. The grant and sealed name remain opaque bytes.
 
-The frozen Go code is not compiled into the Worker. The three pure parts (frame decode, request
-verify, lease rules) are ported to JavaScript and pinned to Go by vectors that Go generates.
+The pinned modified Go Raft core and directory state machine compile into the Worker's WASI reactor.
+JavaScript owns authentication, storage, transport and encrypted blobs; it does not decide lease or
+membership policy. Original v1 bodies keep their 1 MiB HTTP limit. Large signed requests use bounded
+body pages and an atomic final application, preserving all metadata without exposing partial changes.
+Frame decoding and request verification still have JavaScript ports pinned by Go vectors; the old
+JavaScript directory rules serve only source conversion and legacy fixtures.
 
 ## Run it locally
 

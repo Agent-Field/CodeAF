@@ -1,84 +1,156 @@
 # Running your own relay
 
-The relay is the service your computers sync and pair through. It stores ciphertext and
-sees the short list of metadata in the manual page "What the relay stores and what it can
-see". This page is for the person who runs one.
+The relay is the service your computers pair and sync through. It stores encrypted
+chat content and coordinates which computer holds each chat. Chat titles, computer
+names, messages, files and keys stay encrypted. Routing ids, ownership, sizes,
+times, platform capabilities and coordination progress remain readable metadata.
 
-## Run
+## Run and connect
 
-```
+```sh
 codeaf relay --listen :8787 --store /var/lib/codeaf
 ```
 
-`relay --listen :8787 --store /var/lib/codeaf` (the separate `relay` binary) is the same program.
+The separate `relay` binary accepts the same flags.
 
 | Flag | Meaning |
 |---|---|
-| `--listen` | address to listen on, default `:8787` |
-| `--store <dir>` | where the directory and the chunks live. Empty runs the blind pipe and pairing only: no chats are kept |
-| `--quiet` | no log lines |
-| `--status=false` | do not answer `GET /status` |
-| `--trust-proxy` | count the first `X-Forwarded-For` address as the caller's network in the pairing limits. Only behind a proxy that sets it |
+| `--listen` | Listen address; default `:8787`. |
+| `--store <dir>` | Persistent coordination and encrypted chunks. Without it, only the blind transport and pairing mailbox run; chat sync needs storage. |
+| `--quiet` | Suppress arrival, departure and request logs. |
+| `--status=false` | Disable `GET /status`. |
+| `--trust-proxy` | Use the first `X-Forwarded-For` address for pairing limits, only behind a proxy that sets it. |
 
-Point each computer at it with `CODEAF_SYNC_URL=https://relay.example.com`, or pass
-`--relay` to `codeaf pair`.
+Set `CODEAF_SYNC_URL=https://relay.example.com` on each computer, or use
+`codeaf pair --via https://relay.example.com`. Pair the computers with the same
+identity and relay. `CODEAF_SYNC_URL=off` stops sync, including existing clients.
 
-The relay has no TLS and no allow-list. Put a TLS-terminating proxy in front of it, and keep
-it on a private network or behind a proxy that checks who calls: any valid signature may make
-an identity and store on it. Coordination rows have an 8 MiB default admission ceiling;
-a larger imported identity keeps its measured ceiling. Reaching that ceiling refuses
-growth without deleting saved records. Sealed blobs still need operator disk capacity.
+The relay supplies no TLS or list of allowed people. Use a TLS proxy and a private
+network or a proxy that checks callers: any valid signature can create an identity.
+Logs contain a short identity id, route pattern, status and byte counts, never a body.
+The native relay serves at the root of its host; give it a host of its own, or have
+your proxy preserve the client's signed request path.
 
-It logs the first 8 characters of an identity id, the kind of request, the status and two
-byte counts. Never a body.
+## Three anchors, joined computers and leadership
 
-## Back up
+Each identity has three local persistent voters, called anchors. A directory change
+commits on a majority before success; an authority read needs a fresh majority
+response. One unavailable member is tolerated. All three anchors on this installation
+share its host and disk: losing that host stops service. This command does not
+configure independent anchor hosts. Encrypted content storage and the relay transport
+must also remain reachable; an election does not replace them.
+
+An open paired laptop or desktop with sync on joins as a durable learner: it receives
+coordination metadata without adding a vote. Pairing two computers does not require
+either to stay awake. From a joined computer using this relay:
+
+```sh
+codeaf cluster status
+codeaf cluster lead
+```
+
+Status shows this computer, the leader, voters and learners when known, after a fresh
+majority read. Lead catches up this computer, replaces the third anchor's vote through
+a joint membership change, finishes that change with the anchor still learning, then
+transfers leadership. Success prints `computer <node> is coordinating` followed by its
+term, revision and read barrier. A pending request is not success; retrying lead reuses
+the saved signed request. Keep codeaf open: without an open terminal the member runs
+only for that command. Leadership does not transfer chat ownership or fetch content.
+
+When that personal leader sleeps, exits or turns sync off, the two remaining anchors
+can elect a leader and restore the third anchor. Healthy fallback targets about
+65 seconds; delays and partitions can take longer. Returning computers remain learners
+until explicitly asked to lead again. Losing the personal leader and either voting
+anchor leaves no majority. The refusal is `this cluster cannot coordinate right now; reconnect enough of its voting computers and try again; your saved chats are still here`.
+Saved local chats remain. There is no phone app yet, so a phone cannot lead yet.
+
+## Storage layout and capacity
 
 Everything is under `--store`:
 
-- `raft/<identity id>/{1,2,3}.db`: three independent FULL-synchronous WAL stores for coordination;
-- `raft/<identity id>/provision.json`: the immutable cluster ID and private protocol keys;
-- `directory/<identity id>.db`: the preserved frozen source and migration ownership receipt;
-- `blobs/<identity id>/`: that identity's chunks and the pointers that find an object inside one.
+- `raft/<identity id>/{1,2,3}.db`: separate FULL-synchronous SQLite WAL coordination stores.
+- `raft/<identity id>/provision.json`: immutable cluster id and private protocol keys.
+- `raft/<identity id>/transport-generation`: durable transport generation.
+- `directory/<identity id>.db`: frozen original source and migration ownership receipt.
+- `blobs/<identity id>/`: encrypted chunks and their object pointers.
 
-Stop the relay (SIGTERM; requests under way finish) and copy the whole folder, or copy a
-filesystem snapshot. Copying the `.db` files while the relay runs can give a torn copy.
-Restart using the same complete store. Never replace a surviving member with a fresh
-import under its old ID. Two actual surviving anchor stores can coordinate; fewer than
-two refuse service. Keep damaged or unavailable stores for diagnosis and recovery.
+Keep associated WAL files and the rest of the store together. Coordination records
+have an 8 MiB default allowance per identity; a larger imported identity keeps its
+measured allowance. Capacity refuses growth instead of deleting existing records.
+Snapshots compact redundant coordination history, never saved chats, branches, vaults
+or encrypted chunks. Allow disk space for three copies, snapshots and SQLite overhead,
+as well as the separate encrypted content store.
 
-A stale backup is not an ordinary restart. Do not start it beside a live cluster or
-reactivate its frozen source. Disaster recovery needs a new epoch and exclusion of the
-old cluster; automatic stale-backup recovery is not offered by this relay.
+## Back up and recover
 
-The relay cannot decrypt what it keeps, so its backup is ciphertext too. It holds no key that
-could recover a lost identity. Protocol keys cannot decrypt chats, but keep the store
-private and back up its provisioning file together with its databases.
+Stop the relay with SIGTERM or ctrl+c and wait for in-flight requests to finish, then
+copy the whole store. A consistent filesystem snapshot is another option. Copying
+individual live database files can produce a torn backup. Restart with the same
+complete store; keep its provisioning keys private even though they cannot decrypt chats.
+The relay has no key that could recover a lost personal identity.
 
-## Upgrade
+Two actual surviving anchor stores can coordinate in the normal three-anchor topology;
+fewer than two refuse. Preserve damaged stores for recovery. Never replace one with a
+fresh import under its old node id or reopen the frozen source as a writer. A stale
+backup is not an ordinary restart: do not start it beside a live cluster. Automatic
+recovery from a stale backup into a new writable cluster is not offered.
 
-Stop it, replace the `codeaf` binary, start it with the same `--store`. Back up
-first. There is no migration command or feature switch. First use freezes an
-existing identity, imports the same rows into three local anchors, checks a
-fresh majority and publishes one durable owner. Interrupted imports resume with
-the same UUID, keys and ceiling; they never reopen the legacy writer. The
-original source stays as a backup until the identity is retired.
+## Upgrade and older builds
 
-All directory, rotation and blob authority requests use consensus. Three local voters
-still share one host and disk: losing that host loses service. This setup does not
-claim independent host failure tolerance. The current v1 adapter bounds encoded
-commands at 64 KiB; a legal older request with a very large frame plan can still be
-refused before proposal. Larger v1 requests are not supported yet.
-A client newer than the relay by a pairing change sees `that relay is too old for pairing`.
+Back up, stop the relay, replace the binary and restart with the same store. There is
+no migration command or feature switch. First use freezes the old identity directory,
+imports its rows into three anchors, checks a fresh majority and publishes one owner.
+An interrupted import resumes the same cluster, keys and capacity allowance; the source
+is retained and a damaged import refuses requests instead of truncating records.
 
-## The hosted relay
+This upgrade is one-way. After the cluster acknowledges changes, an older relay binary
+cannot resume the frozen writer. A code rollback must preserve the migration gate and
+consensus routing. Encrypted chunks stay in their existing store.
 
-`relay/hosted/` is the same relay as a Cloudflare Worker with Durable Objects and R2, with
-per-identity limits (5 GiB, rate limits, a daily cap on new identities per network, set in `relay/hosted/src/limits.js`). Its own
-README says how to deploy it to an account. Nothing in this repository deploys it.
+Older clients keep pairing, listing, saving, publishing and releasing. Blindly forcing
+a live chat without its observed holder and ownership number is refused with
+`another device continued this chat first`. Quit on the holder or update the other
+computer. Released or expired chats can still be taken. Safe conditional takes keep
+their existing behavior.
+
+Both relays preserve the original 1 MiB HTTP body limit for legal older directory
+requests, including large signed metadata and frame hints. Bounded body staging makes
+the final change atomic, rechecks the complete original proof and current authority,
+and recovers interrupted requests without exposing partial changes. Sealed names, key
+wraps and all frame hints remain intact. Over 1 MiB is refused, and retained storage
+capacity still applies. A pairing protocol newer than the relay can still say
+`that relay is too old for pairing`.
+
+## Workers and idle traffic
+
+A delegated worker uses its own expiring certificate and sealed grants for selected
+chats. It cannot approve pairing, rotate the identity, read its vault, enroll devices
+or become leader. Availability alone starts no tools: an assignment needs a committed
+conditional claim. Interrupted work keeps its records and is never automatically
+replayed. Worker setup and execution are not terminal commands yet. A scoped API worker
+does not receive the full coordination log; explicit learner consent exposes
+identity-wide routing metadata, with content and names still encrypted. The production
+client does not activate delegated learners yet.
+
+Caught-up idle homes with no work or held chats send zero HTTP requests, peer or
+forwarding frames, or client attempts, including under personal leadership and after
+fallback. All voters first apply the same idle barrier. Fresh input wakes coordination
+and requires a majority response. Compatibility presence viewers still ping; only a
+viewer causes presence sweeps, and presence alone never renews chat ownership.
+
+## Hosted relay
+
+The hosted relay in `relay/hosted` uses the same Go coordination core with three
+separately addressed Durable Object anchors per identity and encrypted chunks in R2.
+Those anchors share their provider and relay path, so they do not survive a
+provider-wide outage. Joined computers can lead through the same commands. First use
+upgrades an existing identity with the same one-way rule; per-identity and shared
+storage and request limits still apply. Hosting account operations are separate from
+running the native relay described here.
 
 codeaf's own deployment is called the fabric and is served at `https://codeaf.agentfield.ai/fabric`,
-the address every computer syncs through when nobody names another. It sees only ciphertext, the
-time and size of each request, and the network address of each computer; it keeps no request log.
-The address has a path, and every client keeps it. `codeaf relay` (this page) always serves from
-the root of its host; behind your own proxy, pass the path through unchanged.
+the address every computer syncs through when nobody names another. It stores encrypted chat
+content and the readable coordination metadata described at the top of this page, sees the time
+and size of each request and the network address of each computer, and keeps no request log. The
+address has a path, and every client keeps it. `codeaf relay` (this page) always serves from the
+root of its host; behind your own proxy, pass the path through unchanged.

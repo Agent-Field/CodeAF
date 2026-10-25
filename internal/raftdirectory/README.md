@@ -147,8 +147,10 @@ adapter checks current root/device authority inside that callback. Missing
 request proof is refused; no in-process `For` call can bypass authentication.
 
 The host supplies watches, personal-member lifecycle, worker/v2 HTTP ingress
-and the wake/outbox coordinator around this translation adapter. Encoded
-commands remain bounded at 64 KiB, so large legacy HTTP bodies need a supported
-representation before full legacy compatibility can be claimed. Persistent
-namespace assembly must route the real HTTP doors through consensus, with one
-writer and an unchanged quorum.
+and the wake/outbox coordinator around this translation adapter. Individual
+commands remain bounded at 64 KiB. Legal original v1 bodies up to the 1 MiB HTTP
+limit use bounded staged body pages; only the final application changes directory
+rows, after rechecking the full original proof and current authority. Interrupted
+staging can resume without exposing partial metadata. Both production relays use
+this representation and the same consensus path. Capacity refuses retained growth
+without removing records or increasing the quorum.
