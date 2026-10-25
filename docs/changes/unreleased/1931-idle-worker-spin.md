@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Idle factory runners wait for changes without repeatedly decoding finished jobs
-pr: 0
+pr: 1931
 surface: [engine]
 invalidates:
   - "An idle worker rechecked the full job store every 100 milliseconds. It now waits for the existing filesystem notifications or the pull deadline, and unchanged pulls reuse decoded items after checking file metadata. A runner in the same process as the service does not re-read the job list to find that service, and one job-list read asks once whether this machine has a GitHub token. An ordinary request does not decode every job when nothing is due. While filesystem notifications are working, the fallback does not reread every job file on a quiet floor."
