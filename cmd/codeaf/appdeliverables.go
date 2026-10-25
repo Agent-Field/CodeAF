@@ -185,7 +185,8 @@ func (e *appDeliverEnv) wireOf(row session.DeliverableRow) (appwire.Deliverable,
 			out.PreviewUnavailable = "source_gone"
 			break
 		}
-		// The media source is the BASE row's; an update restates it.
+		// State updates restate a source; writes can publish a fresh source
+		// while retaining the deliverable's identity.
 		bare := row.Artifact
 		bare.Deliver = nil
 		if media, ok := session.MediaSourceOf(bare); ok {
@@ -628,25 +629,28 @@ func appDeliverError(err error) error {
 	return appMediaError(err)
 }
 
-// artifactCreated says deliverable.changed (created) for one creation row the
+// artifactCreated says deliverable.changed (created) for an authored row the
 // session reported after a successful append. The agent is the conversation
 // whose own stream carried it, so ownership is the engine's and not a join the
-// app makes. The same append arriving twice is said once.
+// app makes. The same tool call arriving twice is said once, while later calls
+// updating the same deliverable invalidate its card again.
 func (b *appBackend) artifactCreated(agent string, live *appLive, change session.ArtifactChange) {
-	if live == nil || change.ID == "" || len(change.ID) > 128 {
+	if live == nil || change.ID == "" || len(change.ID) > 128 || len(change.Run) > 1024 || len(change.Call) > 1024 {
 		return
 	}
 	id := strings.Clone(change.ID)
+	sum := sha256.Sum256([]byte(change.Run + "\x00" + change.Call))
+	key := id + ":" + hex.EncodeToString(sum[:])
 	fresh := false
 	b.locked(func() {
 		if live.artifactSeen == nil {
 			live.artifactSeen = map[string]bool{}
 		}
-		if live.artifactSeen[id] {
+		if live.artifactSeen[key] {
 			return
 		}
-		live.artifactSeen[id] = true
-		live.artifactRecent = append(live.artifactRecent, id)
+		live.artifactSeen[key] = true
+		live.artifactRecent = append(live.artifactRecent, key)
 		fresh = true
 		if len(live.artifactRecent) > appMediaRecentMax {
 			delete(live.artifactSeen, live.artifactRecent[0])

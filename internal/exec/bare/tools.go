@@ -869,8 +869,12 @@ func newEditTool(cwd string) Tool {
 				}
 
 				finalContent := bom + restoreLineEndings(result.newContent, originalEnding)
-				if err := os.WriteFile(absPath, []byte(finalContent), 0644); err != nil {
+				written, err := writeFileObserved(absPath, []byte(finalContent))
+				if err != nil {
 					return fmt.Sprintf("Could not process edit: %s. %s", path, err.Error()), true, nil
+				}
+				if observe := writeObserverFrom(ctx); observe != nil {
+					observe(written)
 				}
 				if ctx.Err() != nil {
 					return "Operation aborted", true, nil
@@ -994,7 +998,7 @@ func newWriteTool(cwd string) Tool {
 	}
 }
 
-// WriteEvent is what one successful write tool call did to the disk, observed
+// WriteEvent is what one successful write or edit tool call did to the disk, observed
 // inside the file's mutation queue by the writer itself.
 //
 // Created is true ONLY when this call made the file: the path was absent when
@@ -1012,7 +1016,7 @@ type WriteEvent struct {
 
 type writeObserverKey struct{}
 
-// WithWriteObserver returns a context whose write tool calls report each
+// WithWriteObserver returns a context whose write and edit tool calls report each
 // successful write to observe, inside the file mutation queue. It is generic:
 // the tool neither knows nor cares what the observer is for.
 func WithWriteObserver(ctx context.Context, observe func(WriteEvent)) context.Context {
@@ -1125,9 +1129,8 @@ func releaseMutationQueue(key string, ch chan struct{}) {
 	}
 }
 
-// mutationQueueKey mirrors pi's getMutationQueueKey: resolve the path, then
-// realpath it; if the file does not exist yet, fall back to the resolved
-// path.
+// mutationQueueKey resolves aliases before mutation, including dangling leaf
+// symlinks and absent files whose parent directory is reached through a symlink.
 func mutationQueueKey(filePath string) string {
 	resolved := filepath.Clean(filePath)
 	abs, err := filepath.Abs(resolved)
@@ -1137,7 +1140,48 @@ func mutationQueueKey(filePath string) string {
 	if real, err := filepath.EvalSymlinks(abs); err == nil {
 		return real
 	}
-	return abs
+	return mutationDanglingKey(abs)
+}
+
+// mutationDanglingKey walks components even past an absent target. A symlink's
+// parent is resolved before its relative target, and target components stay
+// uncleaned so dir/.. follows dir's real parent rather than its lexical parent.
+func mutationDanglingKey(abs string) string {
+	const maxSymlinkHops = 40
+	volume := filepath.VolumeName(abs)
+	resolved := volume + string(filepath.Separator)
+	pending := strings.Split(filepath.ToSlash(strings.TrimPrefix(abs, volume)), "/")
+	hops := 0
+	for len(pending) > 0 {
+		part := pending[0]
+		pending = pending[1:]
+		switch part {
+		case "", ".":
+			continue
+		case "..":
+			resolved = filepath.Dir(resolved)
+			continue
+		}
+		next := filepath.Join(resolved, part)
+		target, err := os.Readlink(next)
+		if err != nil {
+			resolved = next
+			continue
+		}
+		// The file operation will refuse loops and excessive chains. Bound
+		// queue-key traversal too, so those paths cannot strand the caller.
+		if hops == maxSymlinkHops {
+			return abs
+		}
+		hops++
+		if filepath.IsAbs(target) {
+			volume = filepath.VolumeName(target)
+			resolved = volume + string(filepath.Separator)
+			target = strings.TrimPrefix(target, volume)
+		}
+		pending = append(strings.Split(filepath.ToSlash(target), "/"), pending...)
+	}
+	return resolved
 }
 
 // ── bash output accumulator ────────────────────────────────────────────────

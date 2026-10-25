@@ -139,6 +139,50 @@ bounded chunk/partial-line memory as media.get; no permanent path cache, directo
 walk or new worker is created. `media_resolve_test.go` pins late-history, ownership,
 shared capacity, canceled waiter/holder separation and truthful refusal laws.
 
+## Deliverable write recording
+
+Conversation write and edit recording hashes the exact bytes already held by
+the mutation tool and uses its descriptor metadata; it does not reread or
+discover files. MIME sniffing reads at most 512 of those authored bytes. An absent
+file's mutation queue resolves its parent directory before writing, so directory
+aliases share the same queue. Canonical-path identity selection and append share
+the ledger lock. Task/worker recording and settlement retain their base behavior.
+
+The path lookup index is built once per retained ledger tracker, then catches up
+from its last byte offset, including external appends. It holds one offset and
+length per session/deliverable identity, grouped by recorded canonical path;
+rewrites replace that identity's offset rather than retain snapshots or update
+history. Memory grows with distinct recorded paths and identities. It shares the
+existing 64-tracker LRU registry; eviction, file replacement or truncation rebuilds
+it on the next lookup. Parsing uses 256 KiB chunks and at most one additional 256 KiB pending
+line head process-wide under the ledger lock; idle path indexes drop that head. One catch-up attempt reads at most 64 MiB or runs for 2 seconds,
+advancing at least one chunk. Expired attempts retain their progress and retry
+synchronously: a slow lookup records late and never drops a successful write's
+record because of a deadline. Registry admission also waits instead of losing
+recording. Real filesystem errors retain the existing best-effort behavior.
+
+The desktop's existing bounded notification window deduplicates by deliverable
+and producing tool call, retaining at most 193 bytes per key (128-byte ID, a
+separator and a 64-byte digest). Run and call inputs remain capped at 1024 bytes
+each. A later write to the same ID can therefore refresh its card.
+
+`TestFirstWritesReadHistoryOnce` creates 20 distinct files after 2001 unrelated
+rows and caps total lookup reads at twice the final index size.
+`TestExpiredWrittenLookupStillRecords` forces expired attempts under a 127-byte
+budget and asserts that the write still records. Race regressions use hooks and
+channels; alias coverage uses a symlinked temporary directory.
+
+`BenchmarkDeliverableOverwrite` and `BenchmarkDeliverableFirstWrites` measure 50
+mutations after seeding 0 or 2001 unrelated rows and warming the index, using Go
+1.26.5 on linux/arm64. Run them with
+`make test-focus PKGS=./internal/session RUN='^$' TEST_FLAGS='-bench BenchmarkDeliverable -benchtime=50x -benchmem'`.
+Before the path index, first writes used 613–615 allocations and about 55/291 KiB
+per operation for short/long history. With it, first writes use 126 allocations
+and about 10–11 KiB regardless of that history size. Overwrites use 143 allocations
+and about 12 KiB, versus 121–122 allocations and about 27/261 KiB before.
+Both append approximately 650–670 index bytes per mutation. Timing is diagnostic;
+the regression gates count bytes read, identities and exact authored hashes.
+
 ## Deliverable Keep admission
 
 Keep retains at most 64 total holders and waiters process-wide, including callers

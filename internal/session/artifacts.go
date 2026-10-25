@@ -17,7 +17,6 @@ import (
 	"errors"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -56,8 +55,8 @@ type Artifact struct {
 	Deliver *DeliverableFact `json:"deliver,omitempty"`
 }
 
-// artifactsMu serializes this process's appends; two processes are serialized
-// by O_APPEND, which is what makes an append-only file the right shape.
+// artifactsMu serializes this process's index transactions. appendArtifactIndex
+// also takes the OS lock before looking up or appending a row.
 var artifactsMu sync.Mutex
 
 // RecordArtifact writes one row. Every failure is silence, for
@@ -73,15 +72,34 @@ func RecordArtifact(path string, artifact Artifact) bool {
 
 // recordArtifactRow is [RecordArtifact] that answers the row as it was written.
 func recordArtifactRow(path string, artifact Artifact) (Artifact, bool) {
-	if strings.TrimSpace(path) == "" {
+	return prepareArtifactRow(path, func() (Artifact, error) { return artifact, nil })
+}
+
+// prepareArtifactRow prepares and encodes an ordinary row inside the funnel's
+// transaction. Unlike shares, creations may fall back to an untyped citation.
+func prepareArtifactRow(path string, prepare func() (Artifact, error)) (Artifact, bool) {
+	var artifact Artifact
+	err := appendArtifactIndex(path, func() ([]byte, error) {
+		var err error
+		artifact, err = prepare()
+		if err != nil {
+			return nil, err
+		}
+		return artifactRowLine(&artifact)
+	}, false)
+	if err != nil {
 		return Artifact{}, false
 	}
+	return artifact, true
+}
+
+func artifactRowLine(artifact *Artifact) ([]byte, error) {
 	if strings.TrimSpace(artifact.Path) == "" || strings.TrimSpace(artifact.Title) == "" {
-		return Artifact{}, false
+		return nil, fs.ErrInvalid
 	}
 	line, err := json.Marshal(artifact)
 	if err != nil {
-		return Artifact{}, false
+		return nil, err
 	}
 	if artifact.Deliver != nil && (!deliverRowFits(line) || !ValidDeliverableID(artifact.Deliver.ID)) {
 		// A deliverable row past the bound, or under an id the readers refuse,
@@ -90,28 +108,14 @@ func recordArtifactRow(path string, artifact Artifact) (Artifact, bool) {
 		// written as the plain row it would have been, whose provenance is then
 		// honestly unknown.
 		if artifact.Deliver.Update {
-			return Artifact{}, false
+			return nil, fs.ErrInvalid
 		}
 		artifact.Deliver = nil
 		if line, err = json.Marshal(artifact); err != nil {
-			return Artifact{}, false
+			return nil, err
 		}
 	}
-	artifactsMu.Lock()
-	defer artifactsMu.Unlock()
-	if directory := filepath.Dir(path); directory != "" && directory != "." {
-		if err := os.MkdirAll(directory, 0o700); err != nil {
-			return Artifact{}, false
-		}
-	}
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-	if err != nil {
-		return Artifact{}, false
-	}
-	defer file.Close()
-	// ONE write, so O_APPEND's atomic offset covers the whole row.
-	_, err = file.Write(append(line, '\n'))
-	return artifact, err == nil
+	return append(line, '\n'), nil
 }
 
 // ReadArtifacts reads the rows at path, NEWEST FIRST, and tolerates
