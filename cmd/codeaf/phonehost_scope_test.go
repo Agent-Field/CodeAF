@@ -59,8 +59,8 @@ func TestPhonePairDefaultScopeAndExplicitOverrides(t *testing.T) {
 				t.Fatal(err)
 			}
 			got := <-received
-			reads := []string{"agents.entries", "asks.list", "agents.list", "inbox.list", "tasks.list", "spend.today"}
-			methods := []string{"agents.create", "agents.send", "agents.stop", "asks.answer", "inbox.answer", "tasks.start"}
+			reads := []string{"agents.entries", "asks.list", "agents.list", "inbox.list", "tasks.list", "spend.today", "crews.list", "crews.get", "crews.items", "crews.log"}
+			methods := []string{"agents.create", "agents.send", "agents.stop", "asks.answer", "inbox.answer", "tasks.start", "crews.create", "crews.message", "crews.decide"}
 			if explicit {
 				reads = []string{"asks.list"}
 				methods = []string{"asks.answer"}

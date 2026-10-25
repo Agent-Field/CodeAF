@@ -32,9 +32,12 @@ var fabricDevice = regexp.MustCompile(`^dev_[0-9a-f]{32}$`)
 // fabric serializes client registration, data mutations and directory writes.
 // A store belongs to one relay process, like the directory's revocation feed.
 type fabric struct {
-	ns   *namespaces
-	auth wireauth.Authenticate
-	mu   sync.Mutex
+	ns          *namespaces
+	auth        wireauth.Authenticate
+	mu          sync.Mutex
+	slotWaiters map[string]*slotWaiters
+	waiting     int
+	stop        <-chan struct{}
 }
 
 type fabricError struct {
@@ -175,6 +178,7 @@ func (f *fabric) handler() http.Handler {
 	f.mountQueue(mux)
 	mux.HandleFunc("PUT /v1/clients/{device}", f.serve(registerClient))
 	mux.HandleFunc("PUT /v1/clients/{device}/slots/{name}", f.serve(putSlot))
+	mux.HandleFunc("GET /v1/clients/{device}/slots", f.watchSlots)
 	mux.HandleFunc("GET /v1/clients/{device}/slots/{name}", f.serve(getSlot))
 	return mux
 }

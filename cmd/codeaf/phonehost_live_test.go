@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -256,6 +257,21 @@ func TestRealModelPhoneCreateSendAndEntries(t *testing.T) {
 		}
 		return rows, true
 	}
+	var version uint64
+	waitChanges := func() {
+		body, status := signedGET(t, relayTap.URL, client, fmt.Sprintf("/v1/clients/%s/slots?since=%d&wait=25", dev.ID(), version))
+		if status == 204 {
+			return
+		}
+		var changed struct {
+			Version uint64
+			Slots   []string
+		}
+		if status != 200 || json.Unmarshal(body, &changed) != nil || changed.Version <= version {
+			t.Fatalf("long-poll: status=%d body=%s", status, body)
+		}
+		version = changed.Version
+	}
 	deadline := time.Now().Add(2 * time.Minute)
 	agent := ""
 	for time.Now().Before(deadline) {
@@ -264,7 +280,7 @@ func TestRealModelPhoneCreateSendAndEntries(t *testing.T) {
 			agent = rows[0].Agent
 			break
 		}
-		time.Sleep(100 * time.Millisecond)
+		waitChanges()
 	}
 	if agent == "" {
 		t.Fatalf("queued creation never published its leased chat\n%s", logs.String())
@@ -284,11 +300,80 @@ func TestRealModelPhoneCreateSendAndEntries(t *testing.T) {
 		if reply != "" {
 			break
 		}
-		time.Sleep(50 * time.Millisecond)
+		waitChanges()
 	}
 	if reply == "" {
 		t.Fatalf("assistant pong absent from entries slots\n%s", logs.String())
 	}
+
+	queue(3, "crews.create", "any", appwire.CrewCreate{Name: "phone live crew", Agents: []string{agent}, Manager: agent})
+	readSnapshot := func(method string, out any) bool {
+		body, status := signedGET(t, relayTap.URL, client, "/v1/clients/"+dev.ID()+"/slots/"+clientrun.SlotName(method, grant.Writer))
+		if status != 200 {
+			return false
+		}
+		var slot struct{ Sealed []byte }
+		if json.Unmarshal(body, &slot) != nil {
+			t.Fatal("malformed slot")
+		}
+		plain, ok := box.OpenAnonymous(nil, slot.Sealed, pub, priv)
+		if !ok {
+			t.Fatal("cannot open crew snapshot")
+		}
+		if err := json.Unmarshal(plain, out); err != nil {
+			t.Fatal(err)
+		}
+		return true
+	}
+	crewID := ""
+	deadline = time.Now().Add(2 * time.Minute)
+	for time.Now().Before(deadline) {
+		var rows []struct{ Result appwire.CrewsResult }
+		if readSnapshot("crews.list", &rows) {
+			for _, row := range rows {
+				for _, crew := range row.Result.Crews {
+					if crew.Name == "phone live crew" {
+						crewID = crew.ID
+					}
+				}
+			}
+		}
+		if crewID != "" {
+			break
+		}
+		waitChanges()
+	}
+	if crewID == "" {
+		t.Fatal("queued crew creation never reached its snapshot")
+	}
+	queue(4, "crews.message", grant.Writer, appwire.CrewMessage{Crew: crewID, Text: "Use team_post to post the exact text crew-pong to the room, then reply with crew-pong. Do not create helpers or do other work."})
+	crewLogSeen := false
+	deadline = time.Now().Add(2 * time.Minute)
+	for time.Now().Before(deadline) {
+		waitChanges()
+		var rows []struct {
+			Crew   string
+			Result appwire.LinesCursorResult
+		}
+		if readSnapshot("crews.log", &rows) {
+			for _, row := range rows {
+				if row.Crew == crewID {
+					for _, line := range row.Result.Lines {
+						if strings.Contains(line.Text, "crew-pong") {
+							crewLogSeen = true
+						}
+					}
+				}
+			}
+		}
+		if crewLogSeen {
+			break
+		}
+	}
+	if !crewLogSeen {
+		t.Fatalf("crew log did not update through long-poll\n%s", logs.String())
+	}
+	t.Logf("REAL_CREW crew=%s message=queued log_update=long-poll model=%s", crewID, phoneLiveModel)
 	mu.Lock()
 	defer mu.Unlock()
 	if len(problems) > 0 || len(requests) != 1 || requests[phoneLiveModel] == 0 || len(replies) != 1 || replies[phoneLiveModel] == 0 {

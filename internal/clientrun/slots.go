@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -24,6 +25,7 @@ type Envelope struct {
 	Writer string    `json:"writer"`
 	At     time.Time `json:"at"`
 	Agent  string    `json:"agent,omitempty"`
+	Crew   string    `json:"crew,omitempty"`
 	Result any       `json:"result"`
 }
 
@@ -77,7 +79,7 @@ func (r *Runner) publishMethod(ctx context.Context, c Client, l directory.Listin
 	}
 	envelopes := make([]Envelope, 0, len(results))
 	for _, result := range results {
-		envelopes = append(envelopes, Envelope{r.cfg.Signer.Cert().DeviceID(), at, result.Agent, result.Result})
+		envelopes = append(envelopes, Envelope{Writer: r.cfg.Signer.Cert().DeviceID(), At: at, Agent: result.Agent, Crew: result.Crew, Result: result.Result})
 	}
 	plain, err := json.Marshal(envelopes)
 	if err != nil {
@@ -112,6 +114,9 @@ func (r *Runner) held(l directory.Listing) []string {
 }
 
 func (r *Runner) snapshots(method string, held []string) ([]Envelope, error) {
+	if strings.HasPrefix(method, "crews.") {
+		return r.crewSnapshots(method, held)
+	}
 	if method == "spend.today" {
 		result, err := appwire.Call(r.cfg.Engine, method, nil)
 		return []Envelope{{Result: result}}, err

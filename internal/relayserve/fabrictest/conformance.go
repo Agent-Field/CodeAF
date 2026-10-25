@@ -322,6 +322,8 @@ func Run(t *testing.T, makeRig func(*testing.T) *Rig) {
 	t.Run("AuthorizationAndBodies", func(t *testing.T) { testFabricAuthorizationAndBodies(t, makeRig(t)) })
 	t.Run("Revocation", func(t *testing.T) { testFabricRevocation(t, makeRig(t)) })
 	t.Run("ClientScope", func(t *testing.T) { testFabricClientScope(t, makeRig(t)) })
+	t.Run("SlotWaitCancellation", func(t *testing.T) { testSlotWaitCancellation(t, makeRig(t)) })
+	t.Run("SlotChanges", func(t *testing.T) { testSlotChanges(t, makeRig(t)) })
 	t.Run("Slots", func(t *testing.T) { testFabricSlots(t, makeRig(t)) })
 	t.Run("SlotCapacityAndClientIsolation", func(t *testing.T) { testFabricSlotCapacityAndClientIsolation(t, makeRig(t)) })
 	t.Run("QueueClaimsAndProof", func(t *testing.T) { testFabricQueueClaimsAndProof(t, makeRig(t)) })

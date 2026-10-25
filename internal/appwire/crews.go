@@ -375,6 +375,11 @@ type CrewCreate struct {
 	Attachments          []AttachSource `json:"attachments,omitempty"`
 	Workspace            string         `json:"workspace,omitempty"`
 	Model                string         `json:"model,omitempty"`
+
+	// BeforeMint and BeforeStart let a scoped executor keep and lease the new
+	// manager before its first turn, just as agents.create does.
+	BeforeMint  func(string) error `json:"-"`
+	BeforeStart func(Agent) error  `json:"-"`
 }
 
 // CrewUpdate is crews.update's params; a nil field is left alone.

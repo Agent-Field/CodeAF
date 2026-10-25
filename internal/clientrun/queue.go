@@ -97,7 +97,7 @@ func (r *Runner) execute(ctx context.Context, c Client, e Queued) error {
 		return err
 	}
 	if !known || receipt.Status == "claiming" {
-		if err := r.checkAsk(call, agent); err != nil {
+		if err := r.checkAsk(ctx, call, agent); err != nil {
 			refusal := Receipt{Client: c.ID, Number: e.Number, Agent: agent, Method: call.Method, At: r.cfg.Now().UTC().Format(time.RFC3339Nano), Status: "refused", Reason: err.Error()}
 			return errors.Join(err, r.log(refusal))
 		}
@@ -121,7 +121,7 @@ func (r *Runner) execute(ctx context.Context, c Client, e Queued) error {
 		if err := r.admit(ctx, c, e, agent); err != nil {
 			return err
 		}
-		if err := r.checkAsk(call, agent); err != nil {
+		if err := r.checkAsk(ctx, call, agent); err != nil {
 			return err
 		}
 		receipt, err = r.dispatch(ctx, c, e, call, agent, receipt)
@@ -156,6 +156,9 @@ func (r *Runner) prepare(ctx context.Context, c Client, e Queued) (Call, string,
 		return Call{}, "", errors.New("queued method is outside its pairing")
 	}
 	agent, err := callAgent(call)
+	if strings.HasPrefix(call.Method, "crews.") {
+		agent, err = r.crewRoute(ctx, call)
+	}
 	if err != nil {
 		return Call{}, "", err
 	}
@@ -185,8 +188,8 @@ func (r *Runner) dispatch(ctx context.Context, c Client, e Queued, call Call, ag
 		leased = true
 		return nil
 	}
-	if call.Method == "agents.create" {
-		engine = creationRecorder{Engine: engine, reserve: func(transcript string) error {
+	if call.Method == "agents.create" || call.Method == "crews.create" {
+		recorder := creationRecorder{Engine: engine, reserve: func(transcript string) error {
 			folder, ok := session.FolderOf(transcript)
 			if !ok {
 				return errors.New("created chat has no transcript folder")
@@ -204,6 +207,11 @@ func (r *Runner) dispatch(ctx context.Context, c Client, e Queued, call Call, ag
 			}
 			return lease(agent)
 		}}
+		if call.Method == "agents.create" {
+			engine = recorder
+		} else if crews, ok := engine.(appwire.Crewer); ok {
+			engine = crewCreationRecorder{creationRecorder: recorder, Crewer: crews, starter: engine}
+		}
 	}
 	result, callErr := appwire.Call(engine, call.Method, call.Params)
 	receipt.Status = "done"
@@ -225,6 +233,15 @@ func (r *Runner) dispatch(ctx context.Context, c Client, e Queued, call Call, ag
 			receipt.Status = "failed"
 			receipt.Reason = err.Error()
 		}
+	}
+	if call.Method == "crews.create" && callErr == nil {
+		var created struct {
+			Crew appwire.Crew `json:"crew"`
+		}
+		if err := json.Unmarshal(mustJSON(result), &created); err != nil {
+			return receipt, err
+		}
+		receipt.Agent = created.Crew.Manager
 	}
 	return receipt, r.keep(receipt)
 }
@@ -328,7 +345,27 @@ func (r *Runner) admit(ctx context.Context, c Client, e Queued, agent string) er
 	return nil
 }
 
-func (r *Runner) checkAsk(call Call, agent string) error {
+func (r *Runner) checkAsk(ctx context.Context, call Call, agent string) error {
+	if strings.HasPrefix(call.Method, "crews.") {
+		current, err := r.crewRoute(ctx, call)
+		if err != nil {
+			return err
+		}
+		if current != agent {
+			return errors.New("queued crew ownership changed")
+		}
+		if call.Method != "crews.decide" {
+			return nil
+		}
+		var p struct {
+			Packet string `json:"packet"`
+		}
+		if err = json.Unmarshal(call.Params, &p); err != nil {
+			return err
+		}
+		call.Method = "asks.answer"
+		call.Params = mustJSON(appwire.IDParams{ID: "crew:" + p.Packet})
+	}
 	if call.Method == "tasks.start" {
 		var p appwire.IDParams
 		if err := json.Unmarshal(call.Params, &p); err != nil {

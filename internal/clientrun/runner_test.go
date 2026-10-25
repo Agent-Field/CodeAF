@@ -30,6 +30,7 @@ func (s signer) Cert() identity.Cert            { return s.dev.Cert }
 func (s signer) Sign(p []byte) []byte           { return s.dev.Sign(p) }
 
 type engine struct {
+	appwire.Crewer
 	appwire.Inboxer
 	appwire.Worker
 	inboxAnswers     int

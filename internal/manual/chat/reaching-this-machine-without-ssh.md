@@ -180,9 +180,8 @@ with the same host name are two entries.
 connection to the relay. What that means for the conversation on the far machine is the
 same as for any other connection; nothing about `--at` changes it.
 
-**A phone or a tablet cannot do this yet.** There is no browser client and no phone app;
-`--at` is a terminal command, so a phone reaches a machine only if you have a terminal on
-it that can run codeaf.
+`--at` is a terminal command. The scoped phone connection described below uses
+`codeaf phone pair` with a running `codeaf app` instead.
 
 ## What a paired device is allowed to do
 
@@ -488,3 +487,40 @@ Every request must be signed by one of that person's devices, each person's data
 apart from everyone else's, and a restart keeps who holds each chat. Its log lists the
 first characters of an identity id, the kind of request, the status and the byte counts,
 never what was sent. Stop it with SIGTERM and requests already under way finish first.
+
+
+## Phone pairing, crew snapshots and queued crew messages
+
+Run `codeaf phone pair` while `codeaf app` is running to issue a scoped phone grant.
+The default grant reads chat entries, asks, agents, inbox, tasks, today's spend and
+crews. It permits queued chat creation, sending and stopping; ask and inbox answers;
+task starts; and crew creation, messages and decisions. Explicit `methods` and `reads`
+in the pairing input replace those defaults. Existing grants keep their original scope;
+pair a new key to add permissions.
+
+Crew snapshots use `crews.list`, `crews.get`, `crews.items` and `crews.log`, with the
+ordinary appwire result shapes. A box holds a crew when it leases its manager chat.
+Per-crew envelopes identify it with `crew`; chat envelopes use `agent`. Crew logs
+contain the newest 40 whole lines, oldest first. Sealed slots are limited to 64 KiB.
+A snapshot exceeding that limit is refused rather than split.
+
+Queued crew writes are signed and sealed. The desktop checks actual ownership of the
+manager, selected members, parent and decision ask before dispatch. A newly started
+crew's manager is leased before its first turn. An irreversible decision requires
+the phone's signed Face ID assertion, just like an irreversible ask answer. Queued
+work waits for an eligible desktop to wake; a queued receipt does not mean it ran.
+
+## Phone relay push and long-poll slot changes
+
+The phone can hold one foreground request to
+`GET /v1/clients/{id}/slots?since=<version>&wait=25`. Each successful slot PUT
+increments that client's durable version, including replacements of the same slot.
+A newer version returns `{"version":<number>,"slots":[<changed names>]}` immediately.
+Fetch those sealed slots and keep the returned version for the next request.
+Slot names include the writer's device id. The relay sees ciphertext only.
+
+`wait` is seconds, from 0 through 25; fractional seconds are accepted. With no change,
+the request returns 204 at timeout. Disconnecting cancels the wait. The relay admits
+at most two concurrent waits per client and 1,024 overall; excess waits return 429.
+Versions survive relay restarts. A change notification lists currently retained slots;
+slots expire after 24 hours. An expired slot's absence does not mean its old data is fresh.

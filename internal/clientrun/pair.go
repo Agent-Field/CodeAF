@@ -90,16 +90,16 @@ func (r *Runner) checkPairing(p Pairing) error {
 	if _, err := curve25519.X25519(probe[:], p.BoxKey); err != nil {
 		return errors.New("client encryption key cannot receive sealed data")
 	}
-	if len(p.Reads) == 0 || len(p.Reads) > 8 {
-		return errors.New("choose one to eight snapshot methods")
+	if len(p.Reads) == 0 || len(p.Reads) > len(PhoneReads()) {
+		return errors.New("choose one to ten snapshot methods")
 	}
 	for _, name := range p.Reads {
-		if !slices.Contains([]string{"agents.entries", "agents.list", "asks.list", "tasks.list", "inbox.list", "spend.today"}, name) {
+		if !slices.Contains(PhoneReads(), name) {
 			return errors.New("unsupported snapshot method: " + name)
 		}
 	}
 	for _, name := range p.Methods {
-		if !slices.Contains([]string{"asks.answer", "agents.send", "agents.stop", "agents.create", "inbox.answer", "tasks.start"}, name) {
+		if !slices.Contains(PhoneMethods(), name) {
 			return errors.New("unsupported queued method: " + name)
 		}
 	}
@@ -148,4 +148,14 @@ func (r *Runner) registered(ctx context.Context, p Pairing) (bool, error) {
 		return false, errors.New("client permissions differ; pair a new key to change scope")
 	}
 	return true, nil
+}
+
+// PhoneReads is the default phone snapshot grant. Each call returns its own slice.
+func PhoneReads() []string {
+	return []string{"agents.entries", "asks.list", "agents.list", "inbox.list", "tasks.list", "spend.today", "crews.list", "crews.get", "crews.items", "crews.log"}
+}
+
+// PhoneMethods is the default phone queued-call grant.
+func PhoneMethods() []string {
+	return []string{"agents.create", "agents.send", "agents.stop", "asks.answer", "inbox.answer", "tasks.start", "crews.create", "crews.message", "crews.decide"}
 }

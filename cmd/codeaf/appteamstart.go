@@ -111,7 +111,7 @@ func (b *appBackend) CrewStart(ask appwire.CrewCreate) (appwire.CrewStartResult,
 		members = append(members, m)
 	}
 	words := prep.text != "" || len(prep.kept) > 0
-	transcript, err := b.mint(workspace)
+	transcript, err := b.mint(workspace, ask.BeforeMint)
 	if err != nil {
 		return appwire.CrewStartResult{}, appEngineError(err)
 	}
@@ -177,6 +177,11 @@ func (b *appBackend) CrewStart(ask appwire.CrewCreate) (appwire.CrewStartResult,
 		// The claim may say committed here, and a repeat then says unknown;
 		// this answer knows better, because launch was never called.
 		return b.startNotSent(claims, claim, prep, transcript, appStartedWords(err))
+	}
+	if ask.BeforeStart != nil {
+		if err := ask.BeforeStart(agent); err != nil {
+			return b.startNotSent(claims, claim, prep, transcript, appStartedWords(err))
+		}
 	}
 	b.crewReceipt(agent.ID, claim.Crew, ask.Name)
 	launch()

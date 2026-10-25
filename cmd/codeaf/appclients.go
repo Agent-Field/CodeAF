@@ -52,7 +52,9 @@ func (e appClientEmitter) Emit(name string, data any) {
 	switch name {
 	case appwire.EventEntryAdded, appwire.EventTurnDone, appwire.EventTurnRetrying,
 		appwire.EventAskOpened, appwire.EventAskClosed, appwire.EventTaskChanged,
-		appwire.EventAgentChanged, appwire.EventSpendChanged:
+		appwire.EventAgentChanged, appwire.EventSpendChanged,
+		appwire.EventCrewChanged, appwire.EventCrewLog, appwire.EventDecisionOpened,
+		appwire.EventDecisionChanged, appwire.EventMemberChanged:
 		r.Changed()
 	}
 }

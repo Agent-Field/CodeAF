@@ -18,6 +18,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/clientrun"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -437,10 +438,10 @@ func runPhone(args []string) error {
 		return fmt.Errorf("codeaf phone pair: read the client's public keys on stdin: %w", err)
 	}
 	if len(in.Methods) == 0 {
-		in.Methods = []string{"agents.create", "agents.send", "agents.stop", "asks.answer", "inbox.answer", "tasks.start"}
+		in.Methods = clientrun.PhoneMethods()
 	}
 	if len(in.Reads) == 0 {
-		in.Reads = []string{"agents.entries", "asks.list", "agents.list", "inbox.list", "tasks.list", "spend.today"}
+		in.Reads = clientrun.PhoneReads()
 	}
 	if strings.TrimSpace(in.Name) == "" {
 		in.Name = "phone"

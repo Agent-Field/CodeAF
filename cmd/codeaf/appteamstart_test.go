@@ -973,3 +973,22 @@ func TestStartCrewGoalStatesTheNewCrew(t *testing.T) {
 		t.Fatalf("the goal was handed as %+v, want the crew %s", submissions, got.Crew.ID)
 	}
 }
+
+func TestStartCrewKeepsManagerBeforeLaunchingItsGoal(t *testing.T) {
+	h := newStartHarness(t)
+	var kept string
+	got, err := h.b.CrewStart(appwire.CrewCreate{Name: "phone", StartManager: true, ManagerStartsMembers: true, RequestID: "phone-start", Goal: "hello", BeforeStart: func(a appwire.Agent) error {
+		kept = a.ID
+		if conv := h.conv(a.ID); conv != nil && len(sentTexts(conv)) != 0 {
+			t.Error("goal ran before manager was kept")
+		}
+		return nil
+	}})
+	if err != nil || kept == "" || kept != got.Crew.Manager {
+		t.Fatalf("manager handoff: kept=%q result=%+v err=%v", kept, got, err)
+	}
+	h.rec.waitFor(t, 5*time.Second, appTurnDone)
+	if sent := sentTexts(h.conv(kept)); len(sent) != 1 || sent[0] != "hello" {
+		t.Fatalf("goal: %v", sent)
+	}
+}

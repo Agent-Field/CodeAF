@@ -119,7 +119,8 @@ func New(cfg Config) *Service {
 	svc.ns.after = cfg.After
 	svc.ns.links = links
 	auth := noting(turningRevokedAway(reqsign.AuthenticateAt(now), svc.ns.revoked))
-	fabric := &fabric{ns: svc.ns, auth: auth}
+	svc.stop = make(chan struct{})
+	fabric := &fabric{ns: svc.ns, auth: auth, stop: svc.stop}
 	svc.fabric = fabric
 	fullAuth := fabric.fullAuth
 	dirs := logged(cfg.Logf, fabric.directoryHandler(directory.Handler(fullAuth, svc.ns.directory)))
@@ -129,7 +130,6 @@ func New(cfg Config) *Service {
 	mux.Handle("/v1/identity/", dirs)
 	mux.Handle(directory.LinkPath+"/", logged(cfg.Logf, directory.LinkHandler(links, peerOf(cfg))))
 	mux.Handle("/v1/store/", logged(cfg.Logf, blobstore.HandlerAt(now, fullAuth, svc.ns.blobs)))
-	svc.stop = make(chan struct{})
 	svc.swept.Add(1)
 	go svc.sweepLoop(sweepInterval(cfg.SweepEvery), cfg.Logf)
 	return svc

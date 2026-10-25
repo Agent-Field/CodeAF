@@ -22,14 +22,16 @@ const (
 )
 
 type fabricSlot struct {
-	Sealed []byte `json:"sealed"`
-	Writer string `json:"writer"`
-	At     int64  `json:"at"`
+	Sealed  []byte `json:"sealed"`
+	Writer  string `json:"writer"`
+	At      int64  `json:"at"`
+	Version uint64 `json:"version"`
 }
 
 // clientState is replaced durably as one file; readers never see half a write.
 // Slots and queue share the same lifetime and revocation boundary.
 type clientState struct {
+	Version    uint64                `json:"version"`
 	Slots      map[string]fabricSlot `json:"slots"`
 	Queue      []queueEntry          `json:"queue"`
 	LastNumber int64                 `json:"last_number"`
@@ -132,8 +134,13 @@ func putSlot(c fabricCall) (any, error) {
 	if _, exists := s.Slots[name]; !exists && len(s.Slots) >= MaxClientSlots {
 		return nil, badFabric(429, "full")
 	}
-	s.Slots[name] = fabricSlot{Sealed: in.Sealed, Writer: c.dev, At: c.f.ns.now().UnixMilli()}
-	return nil, c.save(s)
+	s.Version++
+	s.Slots[name] = fabricSlot{Sealed: in.Sealed, Writer: c.dev, At: c.f.ns.now().UnixMilli(), Version: s.Version}
+	if err := c.save(s); err != nil {
+		return nil, err
+	}
+	c.f.wakeSlots(c.statePath())
+	return nil, nil
 }
 
 func getSlot(c fabricCall) (any, error) {
@@ -164,6 +171,7 @@ func revokeClient(c fabricCall) (any, error) {
 	if err := c.dir.For(c.dev).Revoke(c.r.Context(), c.r.PathValue("device")); err != nil {
 		return nil, err
 	}
+	c.f.wakeSlots(c.statePath())
 	err := os.Remove(c.statePath())
 	if errors.Is(err, os.ErrNotExist) {
 		err = nil
