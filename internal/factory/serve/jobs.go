@@ -21,6 +21,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/run"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
 // jobVerbs keeps canvas actions additive to the existing /v1 doors.
@@ -940,7 +941,7 @@ func (h *Handler) floorSignature() string {
 		if err != nil {
 			return ""
 		}
-		fmt.Fprintf(&b, "%s %d %d\n", name, info.Size(), info.ModTime().UnixNano())
+		fmt.Fprintf(&b, "%s %s\n", name, store.FileStamp(info))
 	}
 	return b.String()
 }

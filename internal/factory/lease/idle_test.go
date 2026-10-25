@@ -1,7 +1,10 @@
 package lease_test
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
+	"os"
 	"sync"
 	"testing"
 
@@ -82,4 +85,45 @@ func TestConcurrentIdlePullsShareADesk(t *testing.T) {
 	}
 	close(start)
 	group.Wait()
+}
+
+func TestIdlePullSeesPreservedMtimeEnqueue(t *testing.T) {
+	for _, replace := range []bool{false, true} {
+		t.Run(fmt.Sprintf("replace=%t", replace), func(t *testing.T) {
+			f := setup(t)
+			it := f.add(t, factory.Item{Title: "done", State: factory.StateLanded, Assignee: "sam"})
+			if _, err := f.desk.Pull(worker("idle", "sam")); !errors.Is(err, lease.ErrNoJob) {
+				t.Fatal(err)
+			}
+			path := f.store.ItemPath(it.ID)
+			info, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			data = bytes.ReplaceAll(data, []byte(`"landed"`), []byte(`"queued"`))
+			target := path
+			if replace {
+				target += ".tmp"
+			}
+			if err := os.WriteFile(target, data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chtimes(target, info.ModTime(), info.ModTime()); err != nil {
+				t.Fatal(err)
+			}
+			if replace {
+				if err := os.Rename(target, path); err != nil {
+					t.Fatal(err)
+				}
+			}
+			held, err := f.desk.Pull(worker("idle", "sam"))
+			if err != nil || held.Job != it.ID {
+				t.Fatalf("preserved-mtime enqueue missed: job %d, %v", held.Job, err)
+			}
+		})
+	}
 }

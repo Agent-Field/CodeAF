@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
 // pullItems avoids decoding finished history on an unchanged pull. Writers
@@ -42,7 +43,7 @@ func (d *Desk) pullItems() ([]factory.Item, error) {
 		}
 		files[entry.Name()] = info
 		old := d.files[entry.Name()]
-		if old == nil || !os.SameFile(old, info) || old.Size() != info.Size() || !old.ModTime().Equal(info.ModTime()) {
+		if old == nil || !os.SameFile(old, info) || store.FileStamp(old) != store.FileStamp(info) {
 			changed = true
 		}
 	}

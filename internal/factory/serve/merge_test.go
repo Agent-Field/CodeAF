@@ -1,8 +1,10 @@
 package serve
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -265,19 +267,55 @@ func TestApprovingTheProofPinsTheMergePolicy(t *testing.T) {
 func TestPostDoesNotSuppressTheNextAutoMergeSweep(t *testing.T) {
 	f, it := mergeFixture(t, &factory.MergePolicy{Auto: true})
 	f.request(t, "POST", "/v1/about", "operator-secret", nil, 405, nil)
-	saved, err := f.st.Get(it.ID)
-	if err != nil {
-		t.Fatal(err)
+	var job api.Job
+	f.request(t, "GET", fmt.Sprintf("/v1/jobs/%d", it.ID), "operator-secret", nil, 200, &job)
+	if job.Merge == nil || job.Merge.Run == nil || job.Merge.Run.State != factory.MergeQueued {
+		t.Fatalf("GET after POST skipped auto-merge: %+v", job.Merge)
 	}
-	if saved.Merging != nil {
-		t.Fatal("POST unexpectedly swept auto-merges")
-	}
-	f.request(t, "GET", fmt.Sprintf("/v1/jobs/%d", it.ID), "operator-secret", nil, 200, nil)
-	saved, err = f.st.Get(it.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if saved.Merging == nil || saved.Merging.State != factory.MergeQueued {
-		t.Fatalf("GET after POST skipped auto-merge: %+v", saved.Merging)
+}
+
+func TestAutoMergeSeesPreservedMtimeChecks(t *testing.T) {
+	for _, replace := range []bool{false, true} {
+		t.Run(fmt.Sprintf("replace=%t", replace), func(t *testing.T) {
+			f, it := mergeFixture(t, &factory.MergePolicy{Auto: true})
+			if err := f.st.Update(it.ID, func(it *factory.Item) error { it.PullRequest.Checks.Pending = 1; return nil }); err != nil {
+				t.Fatal(err)
+			}
+			path := fmt.Sprintf("/v1/jobs/%d", it.ID)
+			f.request(t, "GET", path, "operator-secret", nil, 200, nil)
+			file := f.st.ItemPath(it.ID)
+			info, err := os.Stat(file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			data, err := os.ReadFile(file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			next := bytes.ReplaceAll(data, []byte(`"Pending": 1`), []byte(`"Pending": 0`))
+			if bytes.Equal(data, next) {
+				t.Fatal("fixture did not change pending checks")
+			}
+			target := file
+			if replace {
+				target += ".tmp"
+			}
+			if err := os.WriteFile(target, next, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chtimes(target, info.ModTime(), info.ModTime()); err != nil {
+				t.Fatal(err)
+			}
+			if replace {
+				if err := os.Rename(target, file); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var job api.Job
+			f.request(t, "GET", path, "operator-secret", nil, 200, &job)
+			if job.Merge == nil || job.Merge.Run == nil || job.Merge.Run.State != factory.MergeQueued {
+				t.Fatalf("checks passed but sweep stayed idle: %+v", job.Merge)
+			}
+		})
 	}
 }

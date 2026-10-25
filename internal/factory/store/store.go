@@ -367,9 +367,7 @@ func (st *Store) itemSignature() (string, bool) {
 		}
 		b.WriteString(name)
 		b.WriteByte(' ')
-		b.WriteString(strconv.FormatInt(info.Size(), 10))
-		b.WriteByte(' ')
-		b.WriteString(strconv.FormatInt(info.ModTime().UnixNano(), 10))
+		b.WriteString(FileStamp(info).String())
 		b.WriteByte('\n')
 	}
 	return b.String(), true
