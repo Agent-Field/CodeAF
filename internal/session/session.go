@@ -4028,9 +4028,6 @@ type Agent struct {
 	// once before New returns and never again, which lets task_run.go copy
 	// the whole config without a lock.
 	approvalPolicy *approval.Policy
-	// approvalVersion invalidates older settings reads when a refresh starts
-	// or a surface publishes a policy or posture. It is guarded by mu.
-	approvalVersion uint64
 	// approvalPosture is the posture THIS conversation was set to
 	// (approvalposture.go), kept in the session folder's meta.json so it
 	// survives a restart the way the rung below does. "" is nobody has set one.

@@ -4,10 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"sync"
-	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/approval"
@@ -69,116 +66,163 @@ func TestApprovalRefreshRetainsPolicyAfterProfileError(t *testing.T) {
 	}
 }
 
-type pausedApprovalGate struct {
+// controlledApprovalGate holds each settings snapshot until the test releases
+// its Build. Channels order the callers and completions without sleeps.
+type controlledApprovalGate struct {
 	ApprovalGate
-	entered, release chan struct{}
-	once             sync.Once
+	entered chan chan struct{}
 }
 
-// interleavedApprovalGate holds an old settings read while a newer refresh
-// publishes its policy. Only the first build waits, so refreshes can overlap.
-type interleavedApprovalGate struct {
-	ApprovalGate
-	entered, release chan struct{}
-	builds           atomic.Int32
-}
-
-func (g *interleavedApprovalGate) Build(posture string) (*approval.Policy, bool, error) {
+func (g *controlledApprovalGate) Build(posture string) (*approval.Policy, bool, error) {
 	policy, guardian, err := g.ApprovalGate.Build(posture)
-	if g.builds.Add(1) == 1 {
-		close(g.entered)
-		<-g.release
-	}
+	release := make(chan struct{})
+	g.entered <- release
+	<-release
 	return policy, guardian, err
 }
 
-func TestApprovalRefreshDoesNotPublishOlderSettings(t *testing.T) {
-	profile := t.TempDir()
-	row, _ := preferences.NewSettings(preferences.SettingsOptions{ProfileDir: profile}).Row(preferences.KeyToolApprovalMode)
-	if err := row.Apply("allow"); err != nil {
-		t.Fatal(err)
+func (g *controlledApprovalGate) waitForBuild(t *testing.T, agent *Agent) chan struct{} {
+	t.Helper()
+	release := <-g.entered
+	// These bare agents have no other lock users. This assertion makes a build
+	// outside the publication lock fail regardless of contender scheduling.
+	if agent.mu.TryLock() {
+		agent.mu.Unlock()
+		t.Error("approval Build must hold the publication mutex")
 	}
-	gate := &interleavedApprovalGate{
-		ApprovalGate: settingsApprovalGate{profile: profile},
-		entered:      make(chan struct{}), release: make(chan struct{}),
-	}
-	completer := &scriptedCompleter{steps: []step{
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return toolResponse("command", "bash", `{"command":"printf refresh"}`), nil
-		},
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return textResponse("done"), nil
-		},
-	}}
-	agent, _ := newTestAgent(t, completer, func(config *Config) {
-		config.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}
-		config.ApprovalGate = gate
-		config.AskConsent = true
-	})
-	events := mustSubmit(t, agent, "run the command")
-	<-gate.entered
-	if err := row.Apply("prompt"); err != nil {
-		t.Fatal(err)
-	}
-	err := agent.RebuildApprovalGate()
-	close(gate.release)
-	if err != nil {
-		t.Fatal(err)
-	}
-	collected := drainAnswering(t, events, func(event Event) { agent.ResolveConsent(event.ID, true) })
-	if countKind(collected, EventConsentRequest) != 1 {
-		t.Fatal("an older allow refresh bypassed the newer prompt policy")
-	}
+	return release
 }
 
-func (g *pausedApprovalGate) Build(posture string) (*approval.Policy, bool, error) {
-	policy, guardian, err := g.ApprovalGate.Build(posture)
-	if posture == "" {
-		g.once.Do(func() {
-			close(g.entered)
-			<-g.release
+func TestApprovalRefreshKeepsPromptWhileReplacementBuilds(t *testing.T) {
+	for _, toolFirst := range []bool{true, false} {
+		name := "rebuild_finishes_first"
+		if toolFirst {
+			name = "tool_finishes_first"
+		}
+		t.Run(name, func(t *testing.T) {
+			profile := t.TempDir()
+			row, _ := preferences.NewSettings(preferences.SettingsOptions{ProfileDir: profile}).Row(preferences.KeyToolApprovalMode)
+			initial := "allow"
+			if toolFirst {
+				initial = "prompt"
+			}
+			if err := row.Apply(initial); err != nil {
+				t.Fatal(err)
+			}
+			gate := &controlledApprovalGate{
+				ApprovalGate: settingsApprovalGate{profile: profile},
+				entered:      make(chan chan struct{}),
+			}
+			agent := &Agent{config: Config{
+				ApprovalGate:   gate,
+				ApprovalPolicy: &approval.Policy{Default: approval.ActionAllow},
+			}}
+			decision := make(chan approval.Decision, 1)
+			rebuilt := make(chan error, 1)
+			tool := func() {
+				got, _ := agent.decide(gateCall("edit", `{"path":"x"}`))
+				decision <- got
+			}
+			rebuild := func() { rebuilt <- agent.RebuildApprovalGate() }
+			first, second := tool, rebuild
+			if !toolFirst {
+				first, second = rebuild, tool
+			}
+			go first()
+			releaseFirst := gate.waitForBuild(t, agent)
+			if !toolFirst {
+				if err := row.Apply("prompt"); err != nil {
+					close(releaseFirst)
+					<-rebuilt
+					t.Fatal(err)
+				}
+			}
+			requested := make(chan struct{})
+			go func() {
+				close(requested)
+				second()
+			}()
+			<-requested
+			close(releaseFirst)
+			releaseSecond := gate.waitForBuild(t, agent)
+			if toolFirst {
+				// A must return its prompt snapshot while B remains in Build.
+				got := <-decision
+				close(releaseSecond)
+				if err := <-rebuilt; err != nil {
+					t.Fatal(err)
+				}
+				if got.Action != approval.ActionPrompt {
+					t.Fatalf("tool decision = %s while replacement still builds; want prompt", got)
+				}
+			} else {
+				// B completes while A remains in Build; A must also ask.
+				err := <-rebuilt
+				close(releaseSecond)
+				got := <-decision
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got.Action != approval.ActionPrompt {
+					t.Fatalf("tool decision = %s after replacement finished; want prompt", got)
+				}
+			}
 		})
 	}
-	return policy, guardian, err
 }
 
 func TestApprovalRefreshDoesNotUndoANewerConversationPosture(t *testing.T) {
-	profile := t.TempDir()
-	row, _ := preferences.NewSettings(preferences.SettingsOptions{ProfileDir: profile}).Row(preferences.KeyToolApprovalMode)
-	if err := row.Apply("prompt"); err != nil {
-		t.Fatal(err)
-	}
-	gate := &pausedApprovalGate{
-		ApprovalGate: settingsApprovalGate{profile: profile},
-		entered:      make(chan struct{}),
-		release:      make(chan struct{}),
-	}
-	completer := &scriptedCompleter{steps: []step{
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return toolResponse("command", "bash", `{"command":"printf posture"}`), nil
-		},
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return textResponse("done"), nil
-		},
-	}}
-	agent, _ := newTestAgent(t, completer, func(config *Config) {
-		config.ApprovalPolicy = promptAll()
-		config.ApprovalGate = gate
-		config.AskConsent = true
-	})
-	events := mustSubmit(t, agent, "run the command")
-	select {
-	case <-gate.entered:
-	case <-time.After(2 * time.Second):
-		t.Fatal("approval refresh did not reach settings")
-	}
-	if err := agent.SetApprovalPosture(PostureAllow); err != nil {
-		t.Fatal(err)
-	}
-	close(gate.release)
-	collected := drainAnswering(t, events, func(event Event) { agent.ResolveConsent(event.ID, true) })
-	if countKind(collected, EventConsentRequest) != 0 {
-		t.Fatal("an older settings refresh undid the conversation's new allow posture")
+	for _, postureFirst := range []bool{false, true} {
+		name := "refresh_first"
+		if postureFirst {
+			name = "posture_first"
+		}
+		t.Run(name, func(t *testing.T) {
+			profile := t.TempDir()
+			row, _ := preferences.NewSettings(preferences.SettingsOptions{ProfileDir: profile}).Row(preferences.KeyToolApprovalMode)
+			if err := row.Apply("prompt"); err != nil {
+				t.Fatal(err)
+			}
+			gate := &controlledApprovalGate{
+				ApprovalGate: settingsApprovalGate{profile: profile},
+				entered:      make(chan chan struct{}),
+			}
+			agent := &Agent{config: Config{ApprovalGate: gate, ApprovalPolicy: promptAll()}}
+			first := agent.RebuildApprovalGate
+			second := func() error { return agent.SetApprovalPosture(PostureAllow) }
+			if postureFirst {
+				first, second = second, first
+			}
+			firstDone, secondDone := make(chan error, 1), make(chan error, 1)
+			go func() { firstDone <- first() }()
+			releaseFirst := gate.waitForBuild(t, agent)
+			requested := make(chan struct{})
+			go func() {
+				close(requested)
+				secondDone <- second()
+			}()
+			<-requested
+			close(releaseFirst)
+			releaseSecond := gate.waitForBuild(t, agent)
+			close(releaseSecond)
+			for _, done := range []chan error{firstDone, secondDone} {
+				if err := <-done; err != nil {
+					t.Fatal(err)
+				}
+			}
+			decision := make(chan approval.Decision, 1)
+			go func() {
+				got, _ := agent.decide(gateCall("edit", `{"path":"x"}`))
+				decision <- got
+			}()
+			close(gate.waitForBuild(t, agent))
+			if got := <-decision; got.Action != approval.ActionAllow {
+				t.Fatalf("tool decision = %s; want the conversation's allow override", got)
+			}
+			if got := agent.ApprovalPosture(); got != PostureAllow {
+				t.Fatalf("conversation posture = %q; want allow", got)
+			}
+		})
 	}
 }
 

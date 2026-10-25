@@ -167,16 +167,17 @@ func (a *Agent) SetApprovalPosture(posture string) error {
 	if build == PostureAuto {
 		build = ""
 	}
+	a.mu.Lock()
 	policy, guardian, err := gate.Build(build)
 	if err != nil {
+		a.mu.Unlock()
 		return err
 	}
 	if policy == nil {
+		a.mu.Unlock()
 		return errors.New("the rules could not be rebuilt")
 	}
-	a.mu.Lock()
 	a.approvalPolicy = policy
-	a.approvalVersion++
 	a.approvalPosture = word
 	a.guardianOverride = &guardian
 	a.mu.Unlock()
@@ -205,10 +206,10 @@ func (a *Agent) refreshApprovalGate() (*approval.Policy, error) {
 		return nil, errNoApprovalDial
 	}
 	a.mu.Lock()
+	defer a.mu.Unlock()
+	// Serialize the settings read through publication and snapshot selection.
+	// A tool must not fall back to an older policy while another build waits.
 	stored := a.approvalPosture
-	a.approvalVersion++
-	version := a.approvalVersion
-	a.mu.Unlock()
 	build := stored
 	switch {
 	case stored == "":
@@ -220,11 +221,7 @@ func (a *Agent) refreshApprovalGate() (*approval.Policy, error) {
 	if err == nil && policy == nil {
 		err = errors.New("the rules could not be rebuilt")
 	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	// A newer refresh or explicit push owns the gate, even if its posture
-	// has the same spelling. Copy the validated snapshot before unlocking.
-	if err == nil && a.approvalVersion == version {
+	if err == nil {
 		a.approvalPolicy = policy
 		if stored != "" {
 			a.guardianOverride = &guardian

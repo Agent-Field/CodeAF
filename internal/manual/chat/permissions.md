@@ -595,6 +595,8 @@ it from `prompt` to `allow` stops asking. This includes commands later in a turn
 that is already running and Settings changes made in the desktop app or another
 window. No relaunch is needed. The next tool decision reads current settings,
 including tool exceptions and shell command rules.
+Concurrent refreshes wait their turn; each decision uses the policy built from
+the settings it read.
 
 A question already waiting for your answer keeps waiting. Project rules,
 conversation postures, `--yolo` and dangerous-command floors keep their

@@ -18,8 +18,12 @@ dangerous-command floors retain their precedence. A decision already waiting
 for approval keeps its existing question.
 
 Concurrent refreshes previously checked only the conversation posture, so an
-older settings read could reopen a newer prompt gate. Refresh versions now
-reject stale publication and select the decision snapshot under the same lock.
+older settings read could reopen a newer prompt gate. Versioned publication
+still let a tool that read prompt fall back to an old allow policy when a
+replacement refresh had started but not finished. One mutex now serializes
+each settings build through publication and decision snapshot selection;
+conversation posture changes and explicit policy pushes use the same mutex.
+Unchanged settings still reuse the content-keyed policy cache.
 Profile read and JSON errors now reach the gate builder instead of becoming
 absent settings, so a failed refresh retains the previous policy.
 Factory stages reuse their fixed allow policy instead of compiling it for every

@@ -16,10 +16,11 @@ package session
 // no watcher or polling loop belongs to a session.
 //
 // THE POINTER IS GUARDED AND THE POLICY IS NOT. approval.Policy is read-only
-// once built, so the lock here covers a pointer copy and nothing else: a call
-// already inside Policy.Check can never see a rule set change underneath it, and
-// a decision taken a moment before a push is still a decision about a rule set
-// that really was in force. This is the same bargain the belt makes under armMu
+// once built. The lock serializes builds and publication, then copies the
+// snapshot for the decision: a call already inside Policy.Check can never see
+// a rule set change underneath it, and a decision taken a moment before a push
+// is still a decision about a rule set that really was in force. This is the
+// same bargain the belt makes under armMu
 // (session.go) — swap the header, never edit what a reader is walking.
 
 import "github.com/Agent-Field/codeaf/internal/approval"
@@ -47,7 +48,6 @@ func (a *Agent) SetApprovalPolicy(policy *approval.Policy) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.approvalPolicy = policy
-	a.approvalVersion++
 }
 
 // approvalGate is the policy as it stands right now: the pushed one if there is
@@ -80,8 +80,8 @@ func (a *Agent) baseApprovalGate() *approval.Policy {
 	return a.approvalPolicyLocked()
 }
 
-// approvalPolicyLocked copies the decision snapshot while mu still protects
-// the version check and publication that selected it.
+// approvalPolicyLocked returns the immutable decision snapshot while mu still
+// protects the build and publication that selected it.
 func (a *Agent) approvalPolicyLocked() *approval.Policy {
 	if a.approvalPolicy != nil {
 		return a.approvalPolicy
