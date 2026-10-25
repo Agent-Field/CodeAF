@@ -40,6 +40,7 @@
 
   function byId(arr, id){ for(var i=0;i<arr.length;i++){ if(arr[i].id===id) return arr[i]; } return null; }
   function noteById(id){ return byId(notes(), id); }
+  function isNoteRoute(id){ return noteById(id) || (vault().topic_registry && vault().topic_registry.redirects && vault().topic_registry.redirects[id]); }
   function claimById(id){ return byId(claims(), id); }
   function sourceById(id){ return sources()[id] || null; }
 
@@ -301,7 +302,7 @@
     // note previews
     el.mainInner.appendChild(mk('h2', 'section-h', 'Explore notes'));
     var list = mk('div', 'preview-list');
-    var overview = ns.filter(function(n){return n.kind === 'subject';});
+    var overview = ns.filter(function(n){return n.kind === 'map';}).concat(ns.filter(function(n){return n.kind === 'subject';}));
     var preview = (overview.length ? overview : ns).slice(0, 12);
     for(var p=0;p<preview.length;p++){
       (function(note){
@@ -344,6 +345,21 @@
     clear(el.mainInner);
     var note = noteById(state.noteId);
     if(!note){
+      var redirects = vault().topic_registry ? vault().topic_registry.redirects || {} : {};
+      var targets = [], queue = [state.noteId], visited = {};
+      while(queue.length){
+        var candidate = queue.shift();
+        if(visited[candidate]) continue;
+        visited[candidate] = true;
+        if(noteById(candidate)) targets.push(candidate);
+        else (redirects[candidate] || []).forEach(function(t){queue.push(t);});
+      }
+      if(targets.length === 1){ openNote(targets[0]); return; }
+      if(targets.length){
+        el.mainInner.appendChild(mk('h1','note-title','This topic was reorganized'));
+        targets.forEach(function(t){ var choice = btn('chip',noteById(t).title); choice.addEventListener('click',function(){openNote(t);}); el.mainInner.appendChild(choice); });
+        renderDetailsEmpty(); return;
+      }
       el.mainInner.appendChild(mk('h1', 'note-title', 'Note not found'));
       el.mainInner.appendChild(mk('p', null, 'This note is not present in the ' + state.exp + ' experiment.'));
       renderDetailsEmpty();
@@ -373,7 +389,8 @@
 
     var cs = note.claims || [];
     if(note.sections){
-      if(!note.sections.length) el.mainInner.appendChild(mk('p', 'detail-empty', 'This note needs an editorial pass. Its sources and history are available on the right.'));
+      if(note.kind === 'map') el.mainInner.appendChild(mk('p','detail-empty','Browse subjects in this collection. These links organize reading; they do not assert factual relationships.'));
+      if(!note.sections.length && note.kind !== 'map') el.mainInner.appendChild(mk('p', 'detail-empty', 'This note needs an editorial pass. Its sources and history are available on the right.'));
       var contents = note.sections.length >= 4 ? mk('nav', 'article-contents') : null;
       if(contents){ contents.setAttribute('aria-label', 'On this page'); contents.appendChild(mk('h3', null, 'On this page')); el.mainInner.appendChild(contents); }
       note.sections.forEach(function(section){
@@ -401,7 +418,7 @@
               (roles.length === 1 && roles[0] === 'agent' ? 'Reported · not independently checked' : ''));
             if(label){
               var badge = mk('span', 'backlink-reason evidence-basis', label);
-              badge.title = 'Source roles: ' + (roles.join(', ') || 'unknown') + '. A citation or model review does not independently verify a statement.';
+              badge.title = 'Source roles: ' + (roles.join(', ') || 'unknown') + '. Source kinds: ' + ((basis.source_kinds || []).join(', ') || 'unknown') + '. Observed: ' + (basis.observed_from || 'unknown') + ' to ' + (basis.observed_to || 'unknown') + '. A citation or model review does not independently verify a statement.';
               p.appendChild(document.createTextNode(' ')); p.appendChild(badge);
             }
           }
@@ -414,8 +431,8 @@
     }
     if(note.questions && note.questions.length){
       var pending = note.questions.filter(function(q){return q.state !== 'answered' && q.state !== 'retired_evidence';});
-      var focused = pending.filter(function(q){return q.state !== 'backlog';});
-      var parked = pending.filter(function(q){return q.state === 'backlog';});
+      var focused = pending.filter(function(q){return q.curiosity ? q.curiosity.state === 'active' : q.state !== 'backlog';});
+      var parked = pending.filter(function(q){return q.curiosity ? q.curiosity.state !== 'active' : q.state === 'backlog';});
       function questionRow(question){
         var row = mk('p', 'article-paragraph', question.question);
         if(question.why) row.appendChild(mk('span', 'backlink-reason', question.why));
@@ -455,7 +472,7 @@
     // linked notes
     if(note.links && note.links.length){
       var ls = mk('div', 'links-section');
-      ls.appendChild(mk('h2', null, 'Linked notes'));
+      ls.appendChild(mk('h2', null, note.kind === 'map' ? 'Topics in this collection' : 'Linked notes'));
       var chips = mk('div', 'chips');
       for(var l=0;l<note.links.length;l++){
         (function(link){
@@ -955,7 +972,7 @@
     // hash routing
     window.addEventListener('hashchange', function(){
       var id = location.hash.replace(/^#/, '');
-      if(id && noteById(id)){
+      if(id && isNoteRoute(id)){
         state.noteId = id;
         state.view = 'note';
         render();
@@ -967,7 +984,7 @@
   function init(){
     bindEvents();
     var id = location.hash.replace(/^#/, '');
-    if(id && noteById(id)){
+    if(id && isNoteRoute(id)){
       state.noteId = id;
       state.view = 'note';
     }

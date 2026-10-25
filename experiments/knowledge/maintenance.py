@@ -6,7 +6,7 @@ import sqlite3
 
 from knowledge import identity
 
-POLICY = 'maintenance-2'
+POLICY = 'maintenance-3'
 
 
 def words(text):
@@ -34,7 +34,7 @@ def maintain(vault, learning, model, previous=None, *, budget=8, context='', adv
             question['id'] = qid
             old = old_questions.get(qid)
             if old:
-                for key in ('answer', 'attempt_hash', 'history', 'state', 'search', 'priority_reason'):
+                for key in ('answer', 'attempt_hash', 'history', 'state', 'search', 'priority_reason', 'processed_wakes'):
                     if key in old:
                         question[key] = copy.deepcopy(old[key])
             question.setdefault('state', 'backlog')
@@ -50,8 +50,12 @@ def maintain(vault, learning, model, previous=None, *, budget=8, context='', adv
                 question.pop('attempt_hash', None)
                 question['state'] = 'needs_review'
             question_map[qid] = question
+            if question.get('curiosity', {}).get('state') == 'parked' and not question.get('wake_sources'):
+                continue
             candidates.append({'id': qid, 'subject_id': subject['id'], 'subject': subject['title'],
                                'question': question['question'], 'why': question.get('why', ''),
+                               'wake_sources': question.get('wake_sources', [])[:2],
+                               'waking_source_count':len(question.get('wake_sources', [])),
                                'kinds': sorted({active[i]['kind'] for i in question['claims']})})
     # Prioritize meaning rather than launching a researcher for every proposed question.
     catalog_hash = identity([POLICY, candidates, context, budget])
@@ -64,7 +68,7 @@ def maintain(vault, learning, model, previous=None, *, budget=8, context='', adv
     else:
         # A bounded, diverse shortlist keeps the planning context from growing unbounded.
         by_subject = {}
-        for item in candidates:
+        for item in sorted(candidates, key=lambda q: (not bool(q.get('wake_sources')), q['subject_id'], q['id'])):
             by_subject.setdefault(item['subject_id'], []).append(item)
         shortlist = []
         for level in range(5):
@@ -120,8 +124,24 @@ def maintain(vault, learning, model, previous=None, *, budget=8, context='', adv
                 quote = body[start:start+1200]
                 source_candidates.append({'id': identity([key, start, quote]), 'source': key, 'quote': quote, 'role': sources[key]['role'],
                                           'ts': sources[key]['ts'], 'source_hash': identity(body)})
+        # Explicit matching new evidence must not disappear below the ordinary top-k.
+        waking = []
+        for sid in question.get('wake_sources', [])[:2]:
+            if sid not in sources:
+                continue
+            body = sources[sid]['text']
+            positions = [body.casefold().find(t) for t in terms if t in body.casefold()]
+            start = max(0, (min(positions) if positions else 0)-300)
+            quote = body[start:start+1200]
+            waking.append({'id':identity([sid,start,quote]),'source':sid,'quote':quote,
+                           'role':sources[sid]['role'],'ts':sources[sid]['ts'],'source_hash':identity(body)})
+        if waking:
+            ids = {s['source'] for s in waking}
+            source_candidates = (waking+[s for s in source_candidates if s['source'] not in ids])[:3]
         attempt_hash = identity([POLICY, question['question'], claim_candidates, source_candidates])
         if question.get('attempt_hash') == attempt_hash:
+            question['processed_wakes'] = sorted(set(question.get('processed_wakes',[])+[s['source'] for s in waking]))
+            question.pop('wake_sources', None)
             reused += 1
             if question.get('answer'):
                 question['state'] = 'answered' if question['answer'].get('complete') else 'partially_answered'
@@ -146,6 +166,8 @@ def maintain(vault, learning, model, previous=None, *, budget=8, context='', adv
         question['state'] = 'blocked_by_evidence'
         question['search'] = {'claims': item['claims'], 'sources': item['sources'],
                               'method': 'bounded FTS search over active claims and original messages'}
+        question['processed_wakes'] = sorted(set(question.get('processed_wakes',[])+[s['source'] for s in waking]))
+        question.pop('wake_sources', None)
         question_spans[qid] = source_candidates
         investigations.append(item)
         evidence_claims, evidence_sources = proposed_claims, proposed_sources

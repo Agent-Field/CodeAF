@@ -59,52 +59,114 @@ def operational_envelope(message):
     return isinstance(arguments, dict) and set(arguments) <= allowed[match[1]]
 
 
-def update_once(messages, previous, model):
+def _model_source(source):
+    public = {k:v for k,v in source.items() if k != 'provenance'}
+    if source.get('provenance'):
+        public['provenance'] = {k:v for k,v in source['provenance'].items() if k != 'partition'}
+    return public
+
+
+def update_once(messages, previous, model, *, revisit=(), windows=None):
     """One normal completion for a mixed-chat context, followed by deterministic validation."""
     previous = copy.deepcopy(previous) if previous else None
     known_sources = previous["sources"] if previous else {}
-    fresh = [m for m in messages if m["id"] not in known_sources]
+    revisit = set(revisit)
+    if not revisit <= {m['id'] for m in messages}:
+        raise ValueError('Revisited IDs must be supplied as original immutable sources')
+    for message in messages:
+        if message['id'] in known_sources and known_sources[message['id']] != message:
+            raise ValueError('Source changed under an existing immutable ID')
+    fresh = [m for m in messages if m["id"] not in known_sources or m['id'] in revisit]
     if not fresh:
         for message in messages:
             if known_sources[message["id"]] != message:
                 raise ValueError("Source changed under an existing immutable ID")
         return previous or {"schema": 1, "strategy": "reconciled", "sources": {}, "claims": [],
                             "notes": [], "relations": [], "rejected": [], "scope_aliases": []}
-    new_source_count = len(fresh)
+    new_source_count = sum(m['id'] not in known_sources for m in fresh)
+    windows = windows or {}
+    if not set(windows) <= revisit:
+        raise ValueError("Source windows require explicit revisited source IDs")
     fresh = [m for m in fresh if not operational_envelope(m)]
     if not fresh:
         vault = build(messages, model, strategy="reconciled", previous=previous, workers=1)
         vault["update_receipt"] = {"new_sources": new_source_count, "provider_calls": 0,
                                    "semantic_audit": "no conversational assertions"}
         return vault
-    if sum(len(m["text"]) for m in fresh) > 24000:
+    model_messages = []
+    for source in fresh:
+        public = _model_source(source)
+        if source['id'] in windows:
+            window = windows[source['id']]
+            start,length = window['start'],window['length']
+            if not isinstance(start,int) or not isinstance(length,int) or start<0 or not 1<=length<=24000 or start+length>len(source['text']):
+                raise ValueError('Invalid exact source window')
+            public['text'] = source['text'][start:start+length]
+            public['source_window'] = {'start':start,'length':length,'original_characters':len(source['text'])}
+        model_messages.append(public)
+    if sum(len(m["text"]) for m in model_messages) > 24000:
         raise ValueError("Update context exceeds 24,000 characters; split the pending updates")
-    terms = set(re.findall(r"\w+", " ".join(m["text"] for m in fresh).casefold()))
-    old_claims = previous["claims"] if previous else []
-    ranked = sorted(old_claims, key=lambda c: (-len(terms & set(re.findall(r"\w+", c["text"].casefold()))), c["id"]))
-    candidates = ranked[:48]
-    candidate_ids = {c["id"] for c in candidates}
-    old_notes = previous["notes"] if previous else []
-    affected = [n for n in old_notes if candidate_ids & set(n["claims"])][:12]
-    # Articles and repeated quote bodies are projections, not reconciliation input.
-    compact_claims = [{**{k: c[k] for k in ("id", "text", "scope", "key", "kind", "status") if k in c},
-                       "source_context": [{"role": known_sources[e["source"]]["role"],
-                                           "ts": known_sources[e["source"]]["ts"]}
-                                          for e in c.get("evidence", []) if e["source"] in known_sources]}
-                      for c in candidates]
-    compact_notes = [{k: n[k] for k in ("id", "title", "scope", "folder", "claims") if k in n}
-                     for n in affected]
-    result = model("update", {"messages": fresh, "existing_claims": compact_claims, "existing_notes": compact_notes,
-                              "aliases": previous.get("scope_aliases", []) if previous else []})
-    additions = result.get("claims", [])
+    stop = {'the','and','for','with','that','this','from','are','was','were','has','have','not','only','into','then','than','its','you','your','our','use','uses','used','agent','reported'}
+    def tokens(text):
+        return set(re.findall(r"[\w.-]+",text.casefold()))-stop
+    terms = tokens(' '.join(m['text']for m in model_messages))
+    old_claims = previous['claims']if previous else []
+    token_sets = {c['id']:tokens(c['text'])for c in old_claims}
+    frequencies = {t:sum(t in value for value in token_sets.values())for t in terms}
+    sessions = {m['session']for m in fresh}
+    def rank(c):
+        same_chat = any(known_sources.get(e['source'],{}).get('session')in sessions for e in c.get('evidence',[]))
+        score = sum(math.log(1+(len(old_claims)+1)/(frequencies[t]+1))for t in terms & token_sets[c['id']])
+        return same_chat,score
+    ranked = sorted((c for c in old_claims if c['status']=='active' and any(rank(c))),
+                    key=lambda c:(-int(rank(c)[0]),-rank(c)[1],c['id']))
+    compact_claims, candidates = [], []
+    for c in ranked:
+        contexts = [{'role':known_sources[e['source']]['role'],'ts':known_sources[e['source']]['ts']}
+                    for e in c.get('evidence',[])if e['source']in known_sources]
+        summary=[]
+        for role in sorted({x['role']for x in contexts}):
+            ordered=sorted((x for x in contexts if x['role']==role),key=lambda x:instant(x['ts']))
+            summary.extend([ordered[0]] if len(ordered)==1 else [ordered[0],ordered[-1]])
+        item={**{k:c[k]for k in ('id','text','scope','key','kind','status')if k in c},'source_context':summary}
+        if len(compact_claims)<24 and len(json.dumps(compact_claims+[item]))<=8000:
+            compact_claims.append(item)
+            candidates.append(c)
+    candidate_ids = {c['id']for c in candidates}
+    old_notes = previous['notes']if previous else []
+    compact_notes=[]
+    for n in old_notes:
+        if not candidate_ids & set(n['claims']):continue
+        item={**{k:n[k]for k in ('id','title','scope','folder')if k in n},
+              'claims':[cid for cid in n['claims']if cid in candidate_ids],
+              'claim_count':len(n['claims']),'membership_patch':'append; host retains all existing members'}
+        if len(compact_notes)<8 and len(json.dumps(compact_notes+[item]))<=4000:compact_notes.append(item)
+    compact_aliases=[]
+    scopes={c['scope']for c in candidates}
+    for alias in previous.get('scope_aliases',[])if previous else []:
+        if alias.get('from')not in scopes and alias.get('to')not in scopes:continue
+        item={k:alias[k]for k in ('from','to')}
+        if len(json.dumps(compact_aliases+[item]))<=1500:compact_aliases.append(item)
+    result = model("update", {"messages": model_messages, "existing_claims": compact_claims, "existing_notes": compact_notes,
+                              "aliases": compact_aliases})
+    shown = {m['id']:m['text'] for m in model_messages}
+    additions, context_rejections = [], []
+    for raw in result.get('claims', []):
+        evidence = raw.get('evidence', [])
+        if evidence and all(isinstance(e.get('source'),str) and e['source'] in shown and
+                            isinstance(e.get('quote'),str) and e['quote'] and e['quote'] in shown[e['source']] for e in evidence):
+            additions.append(raw)
+        else:
+            context_rejections.append({'claim':raw,'reason':'Quote outside supplied compiler source context'})
     references = {"new:" + str(c.get("local_id")): identity([c.get("text"), c.get("evidence", [])])
                   for c in additions}
     def resolve(ref):
         return references.get(ref, ref)
+    old_memberships = {(n['scope'],n['title']):n['claims']for n in old_notes}
     proposed_notes = []
     for note in result.get("notes", []):
         note = dict(note)
-        note["claims"] = [resolve(ref) for ref in note.get("claims", [])]
+        note["claims"] = list(dict.fromkeys(old_memberships.get((note.get("scope"),note.get("title")),[]) + [resolve(ref) for ref in note.get("claims", [])]))
         proposed_notes.append(note)
     patched = {(n["scope"], n["title"]) for n in proposed_notes if n.get("scope") and n.get("title")}
     notes = proposed_notes + [n for n in old_notes if (n["scope"], n["title"]) not in patched]
@@ -118,9 +180,14 @@ def update_once(messages, previous, model):
         scope = payload["claims"][0]["scope"]
         return {"notes": [n for n in notes if n.get("scope") == scope], "relations": relations,
                 "_native_references": True}
-    vault = build(messages, response, strategy="reconciled", previous=previous, workers=1)
-    vault["update_receipt"] = {"new_sources": new_source_count, "candidate_claims": len(candidates),
-                               "candidate_notes": len(affected), "provider_calls": 1,
+    compilation_previous = copy.deepcopy(previous) if previous else None
+    if compilation_previous:
+        for sid in revisit:
+            compilation_previous['sources'].pop(sid, None)
+    vault = build(messages, response, strategy="reconciled", previous=compilation_previous, workers=1)
+    vault["rejected"].extend(context_rejections)
+    vault["update_receipt"] = {"new_sources": new_source_count, "revisited_sources":len(revisit), "context_rejections":len(context_rejections), "candidate_claims": len(candidates),
+                               "candidate_notes": len(compact_notes), "provider_calls": 1,
                                "semantic_audit": "not run; new claims have only structural/quote validation"}
     return vault
 
@@ -157,10 +224,13 @@ def build(messages, model, strategy="direct", previous=None, workers=4):
     if batch:
         batches.append(batch)
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        results = list(pool.map(lambda chunk: model("extract", {"messages": chunk}), batches))
+        results = list(pool.map(lambda chunk: model("extract", {"messages": [_model_source(s) for s in chunk]}), batches))
     claims = previous["claims"] if previous else []
     rejected = previous["rejected"] if previous else []
-    exact = {(c["scope"], c["kind"], c["text"].casefold()): c for c in claims}
+    exact = {(c["scope"], c["kind"], c["text"].casefold()): c for c in claims if c['status']=='active'}
+    history = defaultdict(list)
+    for c in claims:
+        if c['status']!='active':history[(c['scope'],c['kind'],c['text'].casefold())].append(c)
     for raw in [c for result in results for c in result.get("claims", [])]:
         if not all(isinstance(raw.get(k), str) and raw[k].strip() for k in ("text", "scope", "topic", "kind")):
             rejected.append({"claim": raw, "reason": "invalid claim schema"})
@@ -184,6 +254,9 @@ def build(messages, model, strategy="direct", previous=None, workers=4):
             if not claim["text"].startswith("The agent reported"):
                 claim["text"] = "The agent reported: " + claim["text"]
         key = (claim["scope"], claim["kind"], claim["text"].casefold())
+        observed = {(e['source'],e['quote'])for e in claim['evidence']}
+        if key not in exact and any(observed <= {(e['source'],e['quote'])for e in c['evidence']} for c in history[key]):
+            continue  # Re-reading retired evidence does not revive it.
         if key in exact:
             saved = exact[key]
             saved["evidence"] += [e for e in evidence if e not in saved["evidence"]]
@@ -416,7 +489,9 @@ def recall(vault, question, model, scope=None, limit=16, retrieval="lexical"):
             covered.update(words(best[1]["text"]) & terms)
     if not selected:
         return {"answer": "I could not find supported knowledge for that question.", "citations": [], "claims": []}
-    answer = model("recall", {"question": question, "claims": selected})
+    from evidence import basis
+    review_context = [{**c, 'evidence_basis':{**c.get('evidence_basis',{}), **basis(vault.get('sources',{}),c.get('evidence',[]))}} for c in selected]
+    answer = model("recall", {"question": question, "claims": review_context})
     known = {c["id"]: c for c in selected}
     refs = answer.get("citations", [])
     if any(i not in known for i in refs) or (answer.get("answer") and not refs and not answer.get("abstain")):

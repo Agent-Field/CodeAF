@@ -11,6 +11,45 @@ from editor import compose_notes, review_articles
 
 
 class ReplayTests(unittest.TestCase):
+    def test_a_later_human_reversion_creates_a_new_active_version_without_reviving_history(self):
+        vault=None
+        for i,value in enumerate(['Redis','SQLite','Redis']):
+            sid='change'+str(i)
+            message={'id':sid,'session':'chat','role':'user','ts':'2026-10-2'+str(i+1)+'T10:00:00Z',
+                     'text':'Correction: Atlas uses '+value+' now.'}
+            old=next((c['id']for c in (vault or {}).get('claims',[])if c['status']=='active'),None)
+            def model(role,payload):
+                return {'claims':[{'local_id':'x','text':'Atlas uses '+value+'.','topic':'Storage','scope':'Atlas',
+                        'key':'storage','kind':'decision','evidence':[{'source':sid,'quote':message['text']}]}],
+                        'notes':[],'aliases':[],'relations':[{'from':'new:x','to':old,'kind':'supersedes'}]if old else []}
+            vault=update_once([message],vault,model)
+        self.assertEqual([c['text']for c in vault['claims']if c['status']=='active'],['Atlas uses Redis.'])
+        self.assertEqual(len(vault['claims']),3)
+        self.assertEqual(vault['claims'][0]['status'],'superseded')
+
+    def test_a_large_existing_note_is_patched_without_resending_or_losing_its_memberships(self):
+        import json
+        from knowledge import identity
+        from test_maintenance import fixture
+        vault,_=fixture()
+        source=vault['sources']['s1']
+        source['text']=' '.join('Cedar mode '+str(i)+' is enabled.' for i in range(1000))
+        vault['claims']=[{'id':identity(['mode',i]),'text':'Cedar mode '+str(i)+' is enabled.','kind':'fact',
+                         'topic':'Routing','scope':'Cedar','status':'active',
+                         'evidence':[{'source':'s1','quote':'Cedar mode '+str(i)+' is enabled.'}]}for i in range(1000)]
+        note=vault['notes'][0]
+        note['claims']=[c['id']for c in vault['claims']]
+        new={'id':'new','session':'work','role':'user','ts':'2026-10-25T10:00:00Z','text':'Cedar now uses seven-day retention.'}
+        def model(role,payload):
+            self.assertLess(len(json.dumps(payload)),16000)
+            return {'claims':[{'local_id':'new','text':new['text'],'topic':'Routing','scope':'Cedar','kind':'fact',
+                    'evidence':[{'source':'new','quote':new['text']}]}],
+                    'notes':[{'title':note['title'],'scope':'Cedar','folder':note['folder'],'claims':['new:new']}],
+                    'relations':[],'aliases':[]}
+        result=update_once([new],vault,model)
+        published=next(n for n in result['notes']if n['id']==note['id'])
+        self.assertEqual(len(published['claims']),1001)
+
     def test_stale_raw_article_evidence_cannot_be_committed(self):
         vault = {"schema": 1, "sources": {"s": {"id": "s", "role": "agent", "session": "s", "ts": "2026-10-25", "text": "A fact."}},
                  "claims": [], "relations": [], "notes": [{"id": "n", "title": "Subject", "scope": "Scope",

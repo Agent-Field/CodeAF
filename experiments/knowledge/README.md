@@ -177,3 +177,15 @@ pending items only; production acceptance and bounded outbox retention are defer
 
 [The critical review](CRITICAL-REVIEW.md) records current weaknesses, changes and
 the next measurable experiments. Source-basis labels do not certify truth.
+
+[The approved working baseline](WORKING-BASELINE.md) is preserved by a permanent
+Git tag. [The next-iteration workflow](NEXT-ITERATION.md) documents runnable source
+intake, stable topic maps, selective curiosity, queue timing, omission repair,
+held-out checks and cost accounting. Run all experiment checks with:
+
+```sh
+python -m unittest discover -s experiments/knowledge -p 'test_*.py'
+```
+
+[Validation and recorded costs](VALIDATION.md) distinguish measured results from
+production claims; private source material and evidence are not committed.

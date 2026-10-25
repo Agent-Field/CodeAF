@@ -5,6 +5,7 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 
 from knowledge import identity
+from evidence import basis
 
 VERSION = 'learning-1'
 
@@ -174,7 +175,7 @@ def learn(vault, model, previous=None, *, workers=3):
                          'notes_without_subject': sorted(set(notes) - assigned)}}
 
 
-def project(vault, learning):
+def project(vault, learning, *, as_of=None, stale_after_seconds=None):
     """Project subject maps and reviewed gap answers without changing source claims."""
     result = copy.deepcopy(vault)
     original = {n['id']: n for n in result['notes']}
@@ -234,7 +235,7 @@ def project(vault, learning):
                 paragraph['evidence_basis'] = {
                     'source_roles': roles, 'claim_kinds': sorted({c['kind'] for c in supporting}),
                     'unresolved_conflict': bool(set(paragraph.get('claims', [])) & conflict_claims),
-                    'independently_verified': False}
+                    **basis(vault['sources'], evidence, as_of=as_of, stale_after_seconds=stale_after_seconds)}
         roots = Counter(original[i]['folder'][0] for i in subject['notes'] if i in original and original[i].get('folder'))
         root = sorted(roots, key=lambda k: (-roots[k], k))[0] if roots else subject['scope']
         links = [{'id': i, 'kind': 'explains', 'reason': 'Detailed evidence for this subject'} for i in subject['notes'] if i in original]
