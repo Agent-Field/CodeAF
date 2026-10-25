@@ -880,8 +880,9 @@ func TestNewerHolderHandoffCannotLoopOrUseAMissingExecutable(t *testing.T) {
 		name  string
 		mode  os.FileMode
 		guard bool
+		value string
 	}{
-		{"missing", 0, false}, {"not-executable", 0600, false}, {"guarded", 0700, true},
+		{"missing", 0, false, ""}, {"not-executable", 0600, false, ""}, {"guarded", 0700, true, "1"}, {"empty-guard", 0700, true, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			shortEngineHome(t)
@@ -893,7 +894,7 @@ func TestNewerHolderHandoffCannotLoopOrUseAMissingExecutable(t *testing.T) {
 				}
 			}
 			if tc.guard {
-				t.Setenv(engineHandoffEnv, "1")
+				t.Setenv(engineHandoffEnv, tc.value)
 			}
 			standIn(t, workspace, remote.HostSelf{Version: remote.Version + 1, Build: "newer", BuiltAt: later, Binary: target, Busy: true}, false)
 			_, err := clearStaleEngineHostAs(workspace, window("older", earlier))

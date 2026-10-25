@@ -339,7 +339,7 @@ func clearStaleEngineHostAs(workspace string, me engineBuild) (string, error) {
 		if host.Version == remote.Version {
 			return settleCellsMode(workspace, host, me)
 		}
-		if env.Get(engineHandoffEnv) == "" && host.BuiltAt.After(me.BuiltAt) {
+		if _, handedOff := env.Lookup(engineHandoffEnv); !handedOff && host.BuiltAt.After(me.BuiltAt) {
 			if info, err := os.Stat(host.Binary); err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0111 != 0 {
 				environment := append(os.Environ(), engineHandoffEnv+"=1")
 				if err := execEngineHolder(host.Binary, os.Args, environment); err != nil {
