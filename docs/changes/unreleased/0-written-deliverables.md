@@ -34,6 +34,10 @@ Every index append now goes through one funnel that holds both the process mutex
 and an OS file lock. Keep and write recording prepare their updates inside that
 funnel, holding the same locks from lookup through append without double locking.
 Media, task, share and plain artifact appends participate in the same exclusion.
+The structural guard checks append-flag references throughout each source file,
+including package-level constants and variables, so moving flags out of a
+function cannot hide an unlocked writer. Negative fixture packages cover
+literal, constant and variable flags; the real locked funnel remains accepted.
 The existing cross-platform lock uses flock on Unix and LockFileEx on Windows.
 It coordinates processes sharing one local index; separate hosts with separate
 index files are out of scope. A process
