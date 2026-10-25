@@ -62,3 +62,9 @@ the address every computer syncs through when nobody names another. It sees only
 time and size of each request, and the network address of each computer; it keeps no request log.
 The address has a path, and every client keeps it. `codeaf relay` (this page) always serves from
 the root of its host; behind your own proxy, pass the path through unchanged.
+
+## Architecture and workspace boundaries
+
+See [workspace storage and relay architecture](architecture/workspaces-storage-relay.md)
+for the shipped transport, the proposed multi-root contract, and the compatibility
+requirements. The proposed lifecycle is not enabled by this documentation.

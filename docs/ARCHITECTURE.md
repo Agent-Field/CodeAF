@@ -1,5 +1,9 @@
 # codeaf as a resident agent — the finalized architecture
 
+For the current chat relay and the separate multi-root storage proposal, see
+[workspace storage and relay architecture](architecture/workspaces-storage-relay.md).
+The resident design below is not the current chat storage schema.
+
 This document settles the long-running architecture: one permanent graph, one
 lease-elected resident role, and any number of surfaces attached to it. It is
 written as a set of decisions, each with the alternative that was rejected and
