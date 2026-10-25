@@ -3,6 +3,8 @@ package store
 import (
 	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -43,5 +45,47 @@ func TestRunnerSettingsPersistAtomicallyAndTrimOldestLogs(t *testing.T) {
 	raw, _ := os.ReadFile(st.ItemPath(item.ID))
 	if strings.Contains(string(raw), "expired") || strings.Contains(string(raw), strings.Repeat("a", 32)) {
 		t.Fatal("trimmed logs reached disk")
+	}
+}
+
+func TestConcurrentListsRetainLogsIndependently(t *testing.T) {
+	st := open(t)
+	var clock atomic.Int64
+	start := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+	clock.Store(start.UnixNano())
+	st.clock = func() time.Time { return time.Unix(0, clock.Load()) }
+	st.SetOutputPolicy(func() (int, int) { return 1, 1 << 20 })
+	log := make([]factory.LogLine, 10000)
+	for i := range log {
+		log[i] = factory.LogLine{At: start.Add(-23 * time.Hour), Text: "old"}
+	}
+	log = append(log, factory.LogLine{At: start, Text: "recent"})
+	if _, err := st.Create(factory.Item{Title: "logs", Stream: &factory.Stream{Log: log}}); err != nil {
+		t.Fatal(err)
+	}
+	first, err := st.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock.Store(start.Add(2 * time.Hour).UnixNano())
+	var group sync.WaitGroup
+	for range 2 {
+		group.Go(func() {
+			for range 20 {
+				items, err := st.List()
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				if len(items[0].Stream.Log) != 1 || items[0].Stream.Log[0].Text != "recent" {
+					t.Error("retention lost the recent line")
+					return
+				}
+			}
+		})
+	}
+	group.Wait()
+	if len(first[0].Stream.Log) != 10001 {
+		t.Fatalf("another List mutated an earlier result: %d lines", len(first[0].Stream.Log))
 	}
 }

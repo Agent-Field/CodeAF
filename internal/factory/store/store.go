@@ -328,7 +328,17 @@ func cloneItems(items []factory.Item) []factory.Item {
 	if items == nil {
 		return nil
 	}
-	return append([]factory.Item(nil), items...)
+	out := append([]factory.Item(nil), items...)
+	for i := range out {
+		if items[i].Stream != nil {
+			// Retention replaces Log on every read, so neither the stream nor its
+			// log storage may belong to the cache or another caller.
+			stream := *items[i].Stream
+			stream.Log = append([]factory.LogLine(nil), stream.Log...)
+			out[i].Stream = &stream
+		}
+	}
+	return out
 }
 
 // itemSignature names the JSON documents List's answer comes from. A
