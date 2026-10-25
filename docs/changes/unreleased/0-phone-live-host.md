@@ -23,3 +23,9 @@ Crew changes wake the scoped snapshot publisher.
 version and changed slot names after every successful PUT, or 204 at timeout.
 Waits release mutation locks, cancel on disconnect, and are bounded to two per
 client and 1,024 overall. Versions survive restarts; slots still expire after 24 hours.
+
+The first streamed partial of each message or turn now publishes immediately,
+as does the first partial after a quiet gap of at least 250 ms. Later partials
+coalesce every 250 ms with trailing delivery. This replaces the former 500 ms
+per-chat throttle that also delayed first tokens after a preceding message.
+Final entries still replace partials immediately.

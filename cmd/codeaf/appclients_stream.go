@@ -9,14 +9,14 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 )
 
-const phonePartialInterval = 500 * time.Millisecond
+const phonePartialInterval = 250 * time.Millisecond
 
 // appClientStream exposes only the latest published partial per chat. A
-// trailing timer makes even a lone token visible without waiting for another.
+// leading publication shows each new message immediately; a trailing timer
+// delivers the latest text when a burst ends.
 type appClientStream struct {
 	mu     sync.Mutex
 	chats  map[string]*appClientPartial
-	last   map[string]time.Time
 	now    func() time.Time
 	after  func(time.Duration, func()) func()
 	closed bool
@@ -42,7 +42,6 @@ func (s *appClientStream) delta(d appwire.TurnDelta, changed func()) {
 	}
 	if s.chats == nil {
 		s.chats = map[string]*appClientPartial{}
-		s.last = map[string]time.Time{}
 		if s.now == nil {
 			s.now = time.Now
 		}
@@ -55,10 +54,11 @@ func (s *appClientStream) delta(d appwire.TurnDelta, changed func()) {
 	}
 	p := s.chats[d.Agent]
 	if p == nil {
-		p = &appClientPartial{at: s.last[d.Agent]}
+		p = &appClientPartial{}
 		s.chats[d.Agent] = p
 	}
-	if p.current.Turn != d.Turn || p.current.Msg == nil || *p.current.Msg != d.Msg {
+	first := p.current.Turn != d.Turn || p.current.Msg == nil || *p.current.Msg != d.Msg
+	if first {
 		p.text.Reset()
 		msg := d.Msg
 		p.current = appwire.Entry{ID: fmt.Sprintf("live-%d-%d", d.Turn, d.Msg), Agent: d.Agent, Turn: d.Turn, Msg: &msg, Kind: appwire.EntryAnswer, At: s.now()}
@@ -68,10 +68,9 @@ func (s *appClientStream) delta(d appwire.TurnDelta, changed func()) {
 		p.current.Text = p.text.String()
 		p.visible = p.current
 		p.at = s.now()
-		s.last[d.Agent] = p.at
 		changed()
 	}
-	if wait := phonePartialInterval - s.now().Sub(p.at); wait <= 0 {
+	if wait := phonePartialInterval - s.now().Sub(p.at); first || wait <= 0 {
 		// A token can obtain the lock before a delayed timer callback. Cancel
 		// that timer and invalidate callbacks already waiting for this lock.
 		if p.cancel != nil {
@@ -123,7 +122,6 @@ func (s *appClientStream) stop() {
 		}
 	}
 	s.chats = nil
-	s.last = nil
 }
 
 // appClientEngine keeps the ordinary appwire types while including the

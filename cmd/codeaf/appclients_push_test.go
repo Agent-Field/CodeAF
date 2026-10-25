@@ -96,15 +96,22 @@ func TestPhoneTokenToLongPollLatency(t *testing.T) {
 	path := "/v1/clients/" + clientDev.ID() + "/slots"
 	clientWire(t, srv.URL, client, "GET", path+"?since=0&wait=0", nil, &changed)
 	version = changed.Version
-	samples := make([]time.Duration, 0, 20)
+	var firstToken, steadyStream []time.Duration
 	var tokenToPut, putToReturn []time.Duration
-	for i := range 20 {
-		text := strings.Repeat("x", i+1)
+	for i := range 40 {
+		if i%2 == 0 {
+			h.b.clientStream.clear(agent.ID)
+		}
+		text := strings.Repeat("x", i%2+1)
 		started := time.Now()
-		h.b.emit.Emit(appwire.EventTurnDelta, appwire.TurnDelta{Agent: agent.ID, Turn: 1, Kind: appwire.DeltaText, Text: "x"})
+		h.b.emit.Emit(appwire.EventTurnDelta, appwire.TurnDelta{Agent: agent.ID, Turn: uint64(i/2 + 1), Kind: appwire.DeltaText, Text: "x"})
 		clientWire(t, srv.URL, client, "GET", fmt.Sprintf("%s?since=%d&wait=25", path, version), nil, &changed)
 		returned := time.Now()
-		samples = append(samples, returned.Sub(started))
+		if i%2 == 0 {
+			firstToken = append(firstToken, returned.Sub(started))
+		} else {
+			steadyStream = append(steadyStream, returned.Sub(started))
+		}
 		put := time.Unix(0, putAt.Load())
 		tokenToPut = append(tokenToPut, put.Sub(started))
 		putToReturn = append(putToReturn, returned.Sub(put))
@@ -131,9 +138,12 @@ func TestPhoneTokenToLongPollLatency(t *testing.T) {
 			t.Fatalf("token %d missing from notified snapshot: %s", i, plain)
 		}
 	}
-	sort.Slice(samples, func(i, j int) bool { return samples[i] < samples[j] })
-	sort.Slice(tokenToPut, func(i, j int) bool { return tokenToPut[i] < tokenToPut[j] })
-	sort.Slice(putToReturn, func(i, j int) bool { return putToReturn[i] < putToReturn[j] })
-	t.Logf("TOKEN_TO_PUT n=20 p50=%s p95=%s; PUT_TO_LONG_POLL p50=%s p95=%s", tokenToPut[9], tokenToPut[18], putToReturn[9], putToReturn[18])
-	t.Logf("TOKEN_TO_LONG_POLL n=20 p50=%s p95=%s min=%s max=%s", samples[9], samples[18], samples[0], samples[19])
+	for _, group := range []struct {
+		name    string
+		samples []time.Duration
+	}{{"FIRST_TOKEN_TO_LONG_POLL", firstToken}, {"STEADY_STREAM_TO_LONG_POLL", steadyStream}, {"TOKEN_TO_PUT", tokenToPut}, {"PUT_TO_LONG_POLL", putToReturn}} {
+		sort.Slice(group.samples, func(i, j int) bool { return group.samples[i] < group.samples[j] })
+		n := len(group.samples)
+		t.Logf("%s n=%d p50=%s p95=%s min=%s max=%s", group.name, n, group.samples[(n-1)/2], group.samples[(n*95-1)/100], group.samples[0], group.samples[n-1])
+	}
 }

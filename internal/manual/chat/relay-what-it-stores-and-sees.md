@@ -85,8 +85,10 @@ key. Snapshots say which computer wrote them and when. Empty chat lists retain
 their chat identity so they can replace older results.
 
 Entry, ask, agent and task changes schedule a refresh. Streamed answer text is
-published at most twice per second per chat, including a trailing partial when
-no further token arrives. `agents.entries` keeps the newest 40 entries per chat,
+published immediately for the first partial of each message or turn and after
+a quiet gap of at least 250 ms. During a message, later partials coalesce at
+most every 250 ms (four per second), including a trailing partial when no further
+token arrives. Final entries replace partials immediately. `agents.entries` keeps the newest 40 entries per chat,
 newest last. Oldest whole entries are dropped until the complete sealed slot
 fits 64 KiB; `more` reports omitted history. An entry is never split.
 `tasks.list` requires an agent and returns per-agent rows, so the desktop reads
