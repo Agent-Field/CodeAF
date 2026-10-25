@@ -142,7 +142,7 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	cfg.JobChat = nil
 	budget := &stageBudget{floor: m.floor, item: spec.Item}
 	cfg.JobBudget = budget
-	gate := stageApprovalGate{rows: v3ApprovalGate{workspace: where, profileDir: m.profileDir, headless: true}, posture: factoryStagePosture()}
+	gate := stageApprovalGate{rows: &v3ApprovalGate{workspace: where, profileDir: m.profileDir, headless: true}, posture: factoryStagePosture()}
 	cfg.ApprovalGate = gate
 	cfg.ApprovalPosture = gate.posture
 	if cfg.ApprovalPolicy, cfg.Guardian, err = gate.Build(cfg.ApprovalPosture); err != nil {
@@ -259,7 +259,7 @@ func factoryStagePosture() string {
 // person's preference. A person who wants a stage narrower says so with
 // [factoryPostureEnv].
 type stageApprovalGate struct {
-	rows    v3ApprovalGate
+	rows    *v3ApprovalGate
 	posture string
 }
 
@@ -268,12 +268,15 @@ func (g stageApprovalGate) Build(posture string) (*approval.Policy, bool, error)
 	if posture != session.PostureAllow {
 		return g.rows.Build(posture)
 	}
-	policy, err := approval.Load(map[string]any{"default": string(approval.ActionAllow), "tools": v3BuiltinApprovals()})
-	if err != nil {
-		return nil, false, err
-	}
-	return &policy, false, nil
+	policy, err := stageAllowPolicy()
+	return policy, false, err
 }
+
+// Every stage's allow policy has the same inputs and is immutable after build.
+var stageAllowPolicy = sync.OnceValues(func() (*approval.Policy, error) {
+	policy, err := approval.Load(map[string]any{"default": string(approval.ActionAllow), "tools": v3BuiltinApprovals()})
+	return &policy, err
+})
 
 // Standing is the posture the stage stands at.
 func (g stageApprovalGate) Standing() string { return g.posture }

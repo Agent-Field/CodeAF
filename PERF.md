@@ -38,6 +38,39 @@ migration flag skips that check. `BenchmarkOpenSettledSessions` measures the
 whole public open/close operation. `TestSettledStoreTerminalStartup` separates
 fixture construction from the first interactive frame of the running terminal.
 
+## Live tool approval settings
+
+Tool decisions refresh through the existing approval gate. The config readers
+reuse parsed files until metadata or the settings generation changes; the gate
+holds one compiled policy and reuses it while its three resolved rows match.
+There is no watcher, polling loop or per-call policy compilation for unchanged
+settings. Clarification conversations follow their parent's gate; ordinary task
+workers use a fixed allow policy. A dedicated approval mutex serializes settings
+builds, publication, policy pushes and conversation posture changes. Each decision's
+immutable snapshot is selected under that lock before another build can start.
+The general agent mutex only protects state reads and writes, so filesystem
+work inside a gate build cannot block interruption, stopping or consent answers.
+
+Factory stages also reuse their fixed allow policy. `TestStageAllowPolicyReuse`
+checks policy identity and zero allocations per unchanged build (100 builds per
+measurement), down from 10 allocations before caching, on Go 1.26.5,
+linux/arm64. Reproduce with:
+
+```sh
+make test-focus PKGS=./cmd/codeaf RUN='^TestStageAllowPolicyReuse$'
+```
+
+`BenchmarkApprovalGateUnchangedSettings` uses a 101-byte profile containing a
+mode, tool exception and shell rule, with no project file. On Go 1.26.5,
+linux/arm64, three runs measured 8,264 bytes and 72 allocations per build before
+reuse, versus 2,720–2,736 bytes and 29 allocations afterwards. Timing was
+17.7–20.2 microseconds before and 8.4–10.0 microseconds afterwards; it is
+diagnostic, not a gate. Reproduce with:
+
+```sh
+make test-focus PKGS=./cmd/codeaf RUN='^$' TEST_FLAGS='-bench BenchmarkApprovalGateUnchangedSettings -benchmem -count=3'
+```
+
 ## What the gates check
 
 `make test-quick` checks compilation, vet, formatting, packed manuals, change

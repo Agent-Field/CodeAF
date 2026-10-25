@@ -338,7 +338,7 @@ func TestAStagesAllowIsNotNarrowedByThePersonsRows(t *testing.T) {
 	}
 	workspace := t.TempDir()
 	plain := v3ApprovalGate{workspace: workspace, profileDir: profile, headless: true}
-	gate := stageApprovalGate{rows: plain, posture: session.PostureAllow}
+	gate := stageApprovalGate{rows: &plain, posture: session.PostureAllow}
 	write := json.RawMessage(`{"path":"x.go","content":"package x"}`)
 
 	narrowed, _, err := plain.Build(session.PostureAllow)
@@ -367,6 +367,26 @@ func TestAStagesAllowIsNotNarrowedByThePersonsRows(t *testing.T) {
 	}
 	if d := policy.Check("stage_result", json.RawMessage(`{}`)); d.Action != approval.ActionAllow {
 		t.Errorf("stage_result = %+v", d)
+	}
+}
+
+func TestStageAllowPolicyReuse(t *testing.T) {
+	gate := stageApprovalGate{posture: session.PostureAllow}
+	first, _, err := gate.Build(session.PostureAllow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, _, err := gate.Build(session.PostureAllow)
+	if err != nil || first != again {
+		t.Errorf("unchanged factory allow rebuilt its policy: %v", err)
+	}
+	allocs := testing.AllocsPerRun(100, func() {
+		if _, _, err := gate.Build(session.PostureAllow); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if allocs != 0 {
+		t.Errorf("unchanged factory allow allocated %.0f times per decision, want 0", allocs)
 	}
 }
 

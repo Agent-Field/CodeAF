@@ -584,12 +584,26 @@ says, under the list:
 saved · from the next session
 ```
 
-and this conversation keeps the gate it has, badge included: the badge follows
-the gate in force, never the file. That is the answer on a plain launch, where
-this machine's engine holds the conversation and there is no take-back door to
-its gate — the same answer `/permissions` gives when it drops a rule.
-`--no-host` lands the change at once; over `--host` the gate is the far
-machine's.
+This receipt reports that the panel could not push a gate immediately. An
+engine reading the same settings still picks up the saved rules before its
+next tool decision. Over `--host`, the gate follows the engine machine's rows.
+
+## Changing Permissions in a running session — the next tool call follows current settings
+
+Changing `tools.approvalMode` from `allow` to `prompt` starts asking; changing
+it from `prompt` to `allow` stops asking. This includes commands later in a turn
+that is already running and Settings changes made in the desktop app or another
+window. No relaunch is needed. The next tool decision reads current settings,
+including tool exceptions and shell command rules.
+Concurrent refreshes wait their turn; each decision uses the policy built from
+the settings it read. A stalled settings read does not block interrupting or
+stopping work, answering an existing consent question, or closing the session.
+
+A question already waiting for your answer keeps waiting. Project rules,
+conversation postures, `--yolo` and dangerous-command floors keep their
+precedence. An unreadable rule set leaves the last working gate in force until
+the settings can be read again. Over `--host`, change the engine machine's
+settings; a local profile cannot replace a remote machine's rules.
 
 ## Default YOLO in interactive conversations and headless runs
 
@@ -626,7 +640,8 @@ at a time.
 
 Editing the row in the panel takes the same road as the mode above it: the rules
 are rebuilt for the conversation you are in on the keystroke, or the panel says
-`saved · from the next session` and this session keeps the gate it has.
+`saved · from the next session`. A running engine reading these settings still
+picks up the saved rules before its next tool decision.
 
 A rule about a tool beats the default for that tool.
 
@@ -1169,10 +1184,11 @@ re-read and the cursor holds its place, not its row.
 
 The receipt in the transcript is `dropped · <name>`.
 
-Under `--no-host`, a drop is live on the very next call. On a plain launch
-through this machine's engine there is no take-back door to the running gate,
-so the receipt is `dropped · <name> · from the next session`. The panel never
-claims an effect it did not deliver.
+Under `--no-host`, a drop is live on the very next call. A plain launch through
+this machine's engine also reads the changed rules before its next tool
+decision. Its receipt can still be `dropped · <name> · from the next session`
+when the panel could not push the gate immediately. Project and conversation
+overrides retain their precedence.
 
 `/new` and `/resume` open on the rules as they stand right now, not the ones the
 session launched with.
