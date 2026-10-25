@@ -849,7 +849,8 @@ named on a door or in the profile:
   `/crew pin`, then the worker the crew picks for this task; a `/task` in a
   conversation takes the worker its crew picked for it, unless the chat names a model
   in `propose_task`: that model overrides `task.model` and the crew worker for this
-  task only. No `/crew pin` is needed. A root is born a leaf, so its first
+  task and its work descendants only. Planning and checking keep their crew seats.
+  No `/crew pin` is needed. A root is born a leaf, so its first
   launch rides this seat, and so does every task the plan adds under it.
 - **`--plan-model` is the plan seat** — the model the root and every task that
   has children run their coordinating turns on. `codeaf do` resolves it the same

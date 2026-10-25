@@ -15,6 +15,7 @@ Unknown or ambiguous model names are refused before a chat opens. The start rece
 confirms the request; the terminal reports whether the new chat actually opened.
 
 Named task workers survive plan-store persistence, including tasks sharing one run.
+Work descendants inherit the nearest named model when a task splits.
 Planning and checking keep their crew seats. The one-model launch option continues
 to force every task seat onto the conversation model.
 

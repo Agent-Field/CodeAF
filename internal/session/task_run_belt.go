@@ -1025,9 +1025,7 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 	if run.delegate != nil && workSeat == "" {
 		workSeat = programCrew.Hands
 	}
-	if run.worker != "" {
-		workSeat = run.worker
-	}
+	workSeat = firstNonEmptyString(run.worker, workSeat)
 	checkSeat := ""
 	// A ROUTED RUN IS SEATED ON ITS OWN CREW, all three seats, and the check
 	// seat is the checker the router picked for this task — never the plan
