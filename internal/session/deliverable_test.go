@@ -452,6 +452,12 @@ func TestWrittenDeliverableIdentitySurvivesLongHistoryAndLegacyRows(t *testing.T
 		t.Fatal("legacy row not recorded")
 	}
 	first := listDeliverables(t, index, DeliverableQuery{}, 10)[0]
+	writeNewFile(t, agent, "notes.md", "# authored\n")
+	created := listDeliverables(t, index, DeliverableQuery{Sessions: map[string]bool{session: true}}, 10)
+	if len(created) != 2 || created[0].ID == first.ID || !created[0].Fact.Authored {
+		t.Fatalf("legacy row was adopted instead of creating an authored identity: %+v", created)
+	}
+	authored := created[0]
 	for i := 0; i < artifactRows+1; i++ {
 		if !RecordArtifact(index, Artifact{Path: "/work/other.md", Session: "another-session", Title: "other.md", Kind: DeliverableMarkdown, Created: time.Now()}) {
 			t.Fatal("history row not recorded")
@@ -460,8 +466,15 @@ func TestWrittenDeliverableIdentitySurvivesLongHistoryAndLegacyRows(t *testing.T
 	forgetTracker(index)
 	writeNewFile(t, agent, "notes.md", "# revised\n")
 	rows := listDeliverables(t, index, DeliverableQuery{Sessions: map[string]bool{session: true}}, 10)
-	if len(rows) != 1 || rows[0].ID != first.ID || !rows[0].Recorded || !rows[0].Fact.Authored {
-		t.Fatalf("legacy identity lost beyond recent history: %+v", rows)
+	if len(rows) != 2 || rows[0].ID != authored.ID || !rows[0].Recorded || !rows[0].Fact.Authored {
+		t.Fatalf("authored identity lost beyond recent history: %+v", rows)
+	}
+	if rows[1].ID != first.ID || rows[1].Recorded || rows[1].Fact.Authored || rows[1].Artifact.Deliver != nil {
+		t.Fatalf("write changed legacy provenance: %+v", rows[1])
+	}
+	want := fmt.Sprintf("%x", sha256.Sum256([]byte("# revised\n")))
+	if rows[0].Fact.File.SHA256 != want || !rows[0].Artifact.Created.Equal(authored.Artifact.Created) {
+		t.Fatalf("long-history refresh lost authored bytes or creation time: %+v", rows[0])
 	}
 }
 

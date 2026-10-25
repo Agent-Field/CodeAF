@@ -128,17 +128,11 @@ func (p *writtenPaths) latest(file *os.File, artifact Artifact) (Artifact, error
 		if err != nil {
 			return Artifact{}, err
 		}
-		if row.Fact.Task != "" {
+		if row.Fact.Task != "" || !row.Fact.Authored {
 			continue
 		}
-		if found.Deliver != nil {
-			// A later share is an independent identity, not the authored file.
-			if found.Deliver.Authored && !row.Fact.Authored {
-				continue
-			}
-			if found.Deliver.Authored == row.Fact.Authored && at.off <= newest {
-				continue
-			}
+		if at.off <= newest {
+			continue
 		}
 		found, newest = row.Artifact, at.off
 		found.Deliver = &row.Fact

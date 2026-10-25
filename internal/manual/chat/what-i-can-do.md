@@ -102,7 +102,10 @@ with the new content hash; it does not add another card. Files of other types,
 such as text, source code and PDFs, are recorded as files too.
 
 If the same path has both an authored card and an independently shared card,
-rewrites update the authored card. Keeping a copy while the source is rewritten
+rewrites update the authored card. If it has only a shared card, a write or edit
+creates a separate authored card; the shared identity and version stay unchanged
+so an interrupted share can still be retried. Legacy cards with unknown authorship
+also stay unchanged. Keeping a copy while the source is rewritten
 retains the copy's recorded bytes and the source's latest hash and preview.
 This also holds when the desktop keeps locally while another process hosts
 the conversation and records its writes.

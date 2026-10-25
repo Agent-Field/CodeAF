@@ -12,12 +12,12 @@ var writtenBeforeRecord = func() {}
 var writtenRead = func(n int) {}
 var writtenDeadline = func() time.Time { return time.Now().Add(2 * time.Second) }
 
-// recordWrittenArtifact merges authored fields into this session's existing
-// path identity, after the mutation queue has serialized writes through aliases.
+// recordWrittenArtifact refreshes only authored identities. A shared-only path
+// gets a new authored identity so an unsettled share can still reconcile its plan.
 func recordWrittenArtifact(index string, artifact Artifact) (Artifact, bool) {
 	writtenBeforeRecord()
 	return mutateDeliverable(index, DeliverableRow{Artifact: artifact}, func(latest *Artifact) {
-		if latest.Deliver == nil {
+		if latest.Deliver == nil || !latest.Deliver.Authored {
 			*latest = artifact
 			return
 		}

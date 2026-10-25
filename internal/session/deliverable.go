@@ -45,8 +45,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/Agent-Field/codeaf/internal/filelock"
 )
 
 // The kinds a deliverable has. "export" and "document" are legacy rows only;
@@ -842,43 +840,15 @@ var deliverableAfterLookup = func() {}
 // from lookup through append. Full snapshots remain readable by older clients,
 // while a Keep in another process cannot restore stale source metadata.
 func mutateDeliverable(index string, identity DeliverableRow, change func(*Artifact)) (Artifact, bool) {
-	artifactsMu.Lock()
-	defer artifactsMu.Unlock()
-	gate, err := lockDeliverableIndex(index)
-	if err != nil {
-		return Artifact{}, false
-	}
-	defer func() {
-		_ = filelock.Unlock(gate)
-		_ = gate.Close()
-	}()
-	latest, err := currentDeliverable(index, identity)
-	if err != nil {
-		return Artifact{}, false
-	}
-	deliverableAfterLookup()
-	change(&latest)
-	return recordArtifactRowLocked(index, latest)
-}
-
-// lockDeliverableIndex locks the index inode itself, so path aliases meet on
-// the same gate. Failure refuses the mutation rather than appending unlocked.
-func lockDeliverableIndex(index string) (*os.File, error) {
-	if strings.TrimSpace(index) == "" {
-		return nil, fs.ErrInvalid
-	}
-	if err := os.MkdirAll(filepath.Dir(index), 0o700); err != nil {
-		return nil, err
-	}
-	file, err := os.OpenFile(index, os.O_CREATE|os.O_RDWR, 0o600)
-	if err != nil {
-		return nil, err
-	}
-	if err := filelock.Lock(file, true, false); err != nil {
-		_ = file.Close()
-		return nil, err
-	}
-	return file, nil
+	return prepareArtifactRow(index, func() (Artifact, error) {
+		latest, err := currentDeliverable(index, identity)
+		if err != nil {
+			return Artifact{}, err
+		}
+		deliverableAfterLookup()
+		change(&latest)
+		return latest, nil
+	})
 }
 
 func currentDeliverable(index string, identity DeliverableRow) (Artifact, error) {

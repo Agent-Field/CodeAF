@@ -199,28 +199,40 @@ func TestWrittenGenericFilesSniffMIMEAndPreserveKnownTypes(t *testing.T) {
 			w := newShareWorld(t)
 			var id string
 			if test.shared {
-				w.file(t, "report.pdf", []byte("%PDF-1.7\noriginal\n%%EOF\n"))
+				writeNewFile(t, w.agent, "report.pdf", "%PDF-1.7\noriginal\n%%EOF\n")
+				id = listDeliverables(t, w.index, DeliverableQuery{}, 10)[0].ID
 				result, bad := w.share(t, w.shareCall(t, "share-pdf"), "share-pdf", "report.pdf")
 				if bad || len(result.RecordedIDs) != 1 {
 					t.Fatalf("share PDF: %+v", result)
 				}
-				id = result.RecordedIDs[0]
 			}
 			writeNewFile(t, w.agent, "report.pdf", test.content)
 			rows := listDeliverables(t, w.index, DeliverableQuery{}, 10)
-			if len(rows) != 1 || (id != "" && rows[0].ID != id) {
+			wantRows := 1
+			if test.shared {
+				wantRows = 2
+			}
+			if len(rows) != wantRows {
 				t.Fatalf("PDF rewrite changed identity: %+v", rows)
+			}
+			row := rows[0]
+			if id != "" {
+				var err error
+				row, err = FindDeliverable(w.index, w.session, id, time.Time{})
+				if err != nil {
+					t.Fatal(err)
+				}
 			}
 			wantMIME := test.want
 			if wantMIME == "" {
 				wantMIME = "application/pdf"
 			}
-			if rows[0].Kind != shareKindFile || rows[0].Fact.File.MIME != wantMIME {
-				t.Fatalf("PDF MIME lost: kind %s, MIME %q", rows[0].Kind, rows[0].Fact.File.MIME)
+			if row.Kind != shareKindFile || row.Fact.File.MIME != wantMIME {
+				t.Fatalf("PDF MIME lost: kind %s, MIME %q", row.Kind, row.Fact.File.MIME)
 			}
 			want := fmt.Sprintf("%x", sha256.Sum256([]byte(test.content)))
-			if rows[0].Fact.File.SHA256 != want {
-				t.Fatalf("MIME preservation restored old bytes: %+v", rows[0].Fact.File)
+			if row.Fact.File.SHA256 != want {
+				t.Fatalf("MIME preservation restored old bytes: %+v", row.Fact.File)
 			}
 		})
 	}

@@ -8,6 +8,8 @@ invalidates:
   - "Automatic conversation recording accepted only named document and media extensions. Other file types are now recorded as files, while paths outside deliverable roots remain excluded."
   - "Chat /files limited raw rows before deduplicating paths, so repeated rewrites hid other files. Its 200-item limit now counts distinct paths from the recent index rows."
   - "Keep and write recording used only a process-local mutex, allowing a desktop Keep to restore stale source metadata after another process recorded an overwrite. An OS file lock now coordinates their lookup-through-append transactions across processes."
+  - "A write or edit could adopt a shared-only identity and prevent an interrupted share from reconciling. It now creates a separate authored identity and leaves the shared origin and version untouched."
+  - "Media, task, share and plain artifact appends could bypass the OS lock held by a deliverable mutation. Every index appender now uses one locked append funnel."
 ---
 
 The desktop opener already carries the process-wide artifacts index and creates
@@ -22,9 +24,19 @@ Media rewrites publish a current preview source. Generic files sniff at most 512
 authored bytes for MIME; a generic binary or text sniff retains a known MIME.
 When a path has both authored and independently shared identities, the authored
 identity wins even if the share is newer; the independent share stays unchanged.
+When only a shared identity exists, the first conversation write or edit creates
+an authored identity rather than converting the shared one. A share retry can
+still find its original planned identity, origin and version after that mutation.
+Legacy rows with unknown authorship also remain unchanged; only an authored
+identity is eligible for write/edit refresh.
 
-Keep and write recording now use one mutation path that holds both the process
-mutex and an OS file lock on the index from lookup through append. A process
+Every index append now goes through one funnel that holds both the process mutex
+and an OS file lock. Keep and write recording prepare their updates inside that
+funnel, holding the same locks from lookup through append without double locking.
+Media, task, share and plain artifact appends participate in the same exclusion.
+The existing cross-platform lock uses flock on Unix and LockFileEx on Windows.
+It coordinates processes sharing one local index; separate hosts with separate
+index files are out of scope. A process
 mutex alone did not protect a desktop Keep from a separate conversation host.
 The mutation reads the latest snapshot, merges only the caller's fields and
 appends before releasing the locks.

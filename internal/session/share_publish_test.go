@@ -276,6 +276,46 @@ func TestShareRetryAfterAnUnsettledAppendReconcilesExactly(t *testing.T) {
 	}
 }
 
+func TestShareRetryAfterUnsettledAppendAndAuthoredMutation(t *testing.T) {
+	for _, tool := range []string{"write", "edit"} {
+		t.Run(tool, func(t *testing.T) {
+			w := newShareWorld(t)
+			w.file(t, "plan.md", []byte("original shared bytes"))
+			target, planned := w.planCrashed(t, "op-unsettled-write", "plan.md")
+			shared := *planned.Planned[0].Row
+			if err := appendShareRow(target.index, shared); err != nil {
+				t.Fatal(err)
+			}
+			args := map[string]string{"path": "plan.md", "content": "new authored bytes"}
+			if tool == "edit" {
+				args = map[string]string{"path": "plan.md", "oldText": "original shared bytes", "newText": "new authored bytes"}
+			}
+			raw, _ := json.Marshal(args)
+			out, bad, err := beltTool(t, w.agent, tool).Execute(w.shareCall(t, "author-plan"), raw)
+			if err != nil || bad {
+				t.Fatalf("%s failed: %s, %v", tool, out, err)
+			}
+			retry, bad := w.share(t, w.shareCall(t, "call-retry"), "op-unsettled-write", "plan.md")
+			if bad || retry.Status != ShareOpAccepted || !reflect.DeepEqual(retry.RecordedIDs, []string{shared.Deliver.ID}) {
+				t.Fatalf("authored mutation prevented share reconciliation: %+v", retry)
+			}
+			after, err := FindDeliverable(w.index, w.session, shared.Deliver.ID, time.Time{})
+			if err != nil || !reflect.DeepEqual(after.Fact, *shared.Deliver) {
+				t.Fatalf("authored mutation changed shared identity: %+v, %v", after.Fact, err)
+			}
+			rows := listDeliverables(t, w.index, DeliverableQuery{}, 10)
+			if len(rows) != 2 || indexLines(t, w.index) != 2 {
+				t.Fatalf("want separate shared and authored rows: %+v", rows)
+			}
+			for _, row := range rows {
+				if row.ID != shared.Deliver.ID && (!row.Fact.Authored || row.Fact.Origin != DeliverOriginAgent || row.Fact.Version == shared.Deliver.Version) {
+					t.Fatalf("new authored identity missing: %+v", row.Fact)
+				}
+			}
+		})
+	}
+}
+
 // TestShareNeverAppendsOnASearchThatCouldNotFinish: a reconcile whose read did
 // not finish is not absence. Nothing is appended and the answer is unknown.
 func TestShareNeverAppendsOnASearchThatCouldNotFinish(t *testing.T) {
