@@ -109,7 +109,9 @@ func appTasksSize(tasks []appwire.Task) int {
 }
 
 // appRestFiles are the files of a conversation's folder a task list is built
-// from. A name here that does not exist reads as absent, which is a stamp too.
+// from. The two folders are stamped by their own entries: only a list of
+// settled tasks is remembered, and a settled task's records are not written
+// again, so a new or removed entry is the only change that can matter. A name here that does not exist reads as absent, which is a stamp too.
 var appRestFiles = []string{
 	"transcript.jsonl", "tasks.json", "state.json", "meta.json", "told.json", "team.json",
 	"plandb.db", "plandb.db-wal", "tasks", "processes",
@@ -164,6 +166,9 @@ func (b *appBackend) restingTasks(a *appAgent, id string) ([]appwire.Task, error
 		return nil, err
 	}
 	if b.letRestingGo(a, tasks) {
+		// The stamp is taken after the release because opening and letting go
+		// write the folder; a write by someone else in this short window is
+		// seen as soon as the list changes again, never later than that.
 		stamp = b.restStamp(a)
 		b.restMemo.put(id, stamp, tasks)
 		appRestWrite(id, stamp, tasks)
