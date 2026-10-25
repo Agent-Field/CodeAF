@@ -1,13 +1,20 @@
 package session
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/crewroute"
+	"github.com/Agent-Field/codeaf/internal/plandb"
 )
 
 func writeIndexRows(t *testing.T, path string, from, to int) {
@@ -118,4 +125,122 @@ func TestTaskIndexRejectsUnsettledChangeTime(t *testing.T) {
 	if len(cache.kept) != 1 {
 		t.Fatal("settled index did not enter cache")
 	}
+}
+
+func TestTaskIndexReadOwnsNestedFields(t *testing.T) {
+	taskIndexParsed.now = func() time.Time { return time.Now().Add(time.Hour) }
+	t.Cleanup(func() { taskIndexParsed.now = nil })
+	path := filepath.Join(t.TempDir(), taskIndexName)
+	entry := TaskIndexEntry{ID: "1", Title: "Isolated result", Files: []string{"original.go"},
+		Crew: &crewroute.Decision{Why: "original", Crew: []crewroute.Pick{{Model: "original", Price: &crewroute.RoutePrice{Prompt: 1}}},
+			Retried: []crewroute.Retry{{Why: "original"}}, Rungs: []crewroute.Retry{{Why: "original"}}, Warnings: []crewroute.SeatWarning{{Model: "original"}}},
+		VerdictBasis: &plandb.VerdictBasis{Kind: "run", Runs: []plandb.VerdictRun{{Command: "go test", ExitCode: 0}}, Unobserved: []string{"original"}},
+	}
+	data, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(data, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Admission and subsequent hits must both return independently owned fields.
+	for range 2 {
+		got := ReadTaskIndex(path)
+		if len(got) != 1 {
+			t.Fatalf("read %d rows, want one", len(got))
+		}
+		got[0].Files[0] = "changed.go"
+		got[0].Crew.Why = "changed"
+		got[0].Crew.Crew[0].Model = "changed"
+		got[0].Crew.Crew[0].Price.Prompt = 2
+		got[0].Crew.Retried[0].Why = "changed"
+		got[0].Crew.Rungs[0].Why = "changed"
+		got[0].Crew.Warnings[0].Model = "changed"
+		got[0].VerdictBasis.Kind = "reading"
+		got[0].VerdictBasis.Runs[0].ExitCode = 1
+		got[0].VerdictBasis.Unobserved[0] = "changed"
+		if next := ReadTaskIndex(path); !reflect.DeepEqual(next, []TaskIndexEntry{entry}) {
+			t.Fatalf("nested mutation contaminated the next read: %+v", next)
+		}
+	}
+}
+
+func TestConcurrentTaskIndexReadersDecodeOneStampOnce(t *testing.T) {
+	path := filepath.Join(t.TempDir(), taskIndexName)
+	writeIndexRows(t, path, 0, 1)
+	settledNow := time.Now().Add(time.Hour)
+	synctest.Test(t, func(t *testing.T) {
+		release := make(chan struct{})
+		var decodes atomic.Int32
+		taskIndexParsed.now = func() time.Time { return settledNow }
+		taskIndexParsed.parse = func(path string) ([]TaskIndexEntry, bool) {
+			decodes.Add(1)
+			<-release
+			return parseTaskIndex(path)
+		}
+		t.Cleanup(func() { taskIndexParsed.now = nil; taskIndexParsed.parse = nil })
+		var readers sync.WaitGroup
+		for range 16 {
+			readers.Go(func() {
+				if rows := ReadTaskIndex(path); len(rows) != 1 || rows[0].Title != "task number 0, groomed" {
+					t.Errorf("concurrent read = %+v, want the indexed row", rows)
+				}
+			})
+		}
+		// All readers are blocked in decoding or waiting for the same decoding.
+		synctest.Wait()
+		if got := decodes.Load(); got != 1 {
+			t.Errorf("decoded one unchanged stamp %d times, want 1", got)
+		}
+		close(release)
+		readers.Wait()
+		if got := decodes.Load(); got != 1 {
+			t.Errorf("decoded one unchanged stamp %d times after completion, want 1", got)
+		}
+	})
+}
+
+func TestTaskIndexChangedStampDoesNotJoinOlderRead(t *testing.T) {
+	path := filepath.Join(t.TempDir(), taskIndexName)
+	writeIndexRows(t, path, 0, 1)
+	settledNow := time.Now().Add(time.Hour)
+	synctest.Test(t, func(t *testing.T) {
+		release := make(chan struct{})
+		var decodes atomic.Int32
+		taskIndexParsed.now = func() time.Time { return settledNow }
+		taskIndexParsed.parse = func(path string) ([]TaskIndexEntry, bool) {
+			first := decodes.Add(1) == 1
+			rows, ok := parseTaskIndex(path)
+			if first {
+				<-release
+			}
+			return rows, ok
+		}
+		t.Cleanup(func() { taskIndexParsed.now = nil; taskIndexParsed.parse = nil })
+		old := make(chan []TaskIndexEntry, 1)
+		go func() { old <- ReadTaskIndex(path) }()
+		synctest.Wait()
+		writeIndexRows(t, path, 1, 2)
+		fresh := make(chan []TaskIndexEntry, 1)
+		go func() { fresh <- ReadTaskIndex(path) }()
+		synctest.Wait()
+		select {
+		case rows := <-fresh:
+			if len(rows) != 2 {
+				t.Errorf("new stamp returned %d rows, want 2", len(rows))
+			}
+		default:
+			t.Error("new stamp waited for the old decoding")
+		}
+		close(release)
+		if rows := <-old; len(rows) != 1 {
+			t.Errorf("old stamp returned %d rows, want 1", len(rows))
+		}
+		if rows := ReadTaskIndex(path); len(rows) != 2 {
+			t.Errorf("old completion replaced the new stamp: %+v", rows)
+		}
+		if got := decodes.Load(); got != 2 {
+			t.Errorf("decoded two stamps %d times, want 2", got)
+		}
+	})
 }

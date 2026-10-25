@@ -40,6 +40,7 @@ package session
 import (
 	"bufio"
 	"encoding/json"
+	"io"
 	"os"
 	"sort"
 	"strconv"
@@ -489,14 +490,18 @@ func appStepOfEntry(item DisplayEntry, at int) AppTaskStep {
 // command — so a run's page lost which tool had been used, whether the step ran
 // at all, and what it exited with, on every read.
 func appTrajectorySteps(path string, limit int) ([]AppTaskStep, map[string]int) {
-	reads := map[string]int{}
-	file, err := os.Open(path)
+	file, err := openPlanTrajectoryFile(path)
 	if err != nil {
-		return nil, reads
+		return nil, map[string]int{}
 	}
 	defer file.Close()
+	return parseAppTrajectorySteps(file, limit)
+}
+
+func parseAppTrajectorySteps(reader io.Reader, limit int) ([]AppTaskStep, map[string]int) {
+	reads := map[string]int{}
 	var steps []AppTaskStep
-	scanner := bufio.NewScanner(file)
+	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 	for scanner.Scan() {
 		var line struct {

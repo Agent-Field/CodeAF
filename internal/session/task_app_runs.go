@@ -100,14 +100,14 @@ func (a *Agent) appRunRow(id uint64) (TaskNotice, bool) {
 
 // appRunView is one run row as the app's task, opening the plan for itself.
 func (a *Agent) appRunView(row TaskNotice, cap float64) AppTaskView {
-	stores, _, closeStores := a.openPlanReadHandles()
+	stores, plan, closeStores := a.openPlanReadHandles()
 	defer closeStores()
-	return a.appRunViewIn(row, cap, stores)
+	return a.appRunViewIn(row, cap, &planTaskRead{stores: stores, plan: plan})
 }
 
 // appRunViewIn is one run row as the app's task, read from stores a listing
 // has already opened.
-func (a *Agent) appRunViewIn(row TaskNotice, cap float64, stores []*plandb.Store) AppTaskView {
+func (a *Agent) appRunViewIn(row TaskNotice, cap float64, read *planTaskRead) AppTaskView {
 	if _, held := a.appHeldRuns.Load(row.ID); held && !row.State.settled() {
 		row.Paused = true
 	}
@@ -125,7 +125,7 @@ func (a *Agent) appRunViewIn(row TaskNotice, cap float64, stores []*plandb.Store
 	for _, id := range row.DependsOn {
 		view.Waits = append(view.Waits, strconv.FormatUint(id, 10))
 	}
-	a.appRunDetail(&view, appRunRowKey(row), stores)
+	a.appRunDetail(&view, appRunRowKey(row), read)
 	switch {
 	case row.park != nil || a.taskRouting.isParked(row.ID):
 		view.RoutingState = TaskRoutingBlocked
@@ -146,14 +146,15 @@ func (a *Agent) appRunViewIn(row TaskNotice, cap float64, stores []*plandb.Store
 //
 // The stores are the plan's read handles, opened once for the whole listing:
 // opening one reads the whole plan, and a listing draws a row for every run.
-func (a *Agent) appRunDetail(view *AppTaskView, key string, stores []*plandb.Store) {
-	for _, store := range stores {
+func (a *Agent) appRunDetail(view *AppTaskView, key string, read *planTaskRead) {
+	for _, store := range read.stores {
 		task := store.Task(key)
 		if task == nil {
 			continue
 		}
 		dir := filepath.Dir(store.Path())
-		steps, reads := appTrajectorySteps(filepath.Join(plandb.TaskDir(dir, key), planTrajectoryFile), appTaskStepsMax)
+		trajectory := read.trajectory(planTrajectoryPath(dir, key), true)
+		steps, reads := trajectory.app, trajectory.reads
 		view.Steps = steps
 		view.WorkLog = appTrajectoryLines(steps)
 		if len(steps) > 0 {

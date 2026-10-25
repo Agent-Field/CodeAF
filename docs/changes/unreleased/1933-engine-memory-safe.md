@@ -8,10 +8,13 @@ invalidates:
   - Journal caches previously kept up to 32 records without idle expiry; they now keep at most eight and expire unleased records after 30 seconds without a read.
 ---
 
-Conversation task listings share plan handles across run rows and avoid copying
-the run history per plan task. Project task indexes reuse decoded rows for up to
+Conversation task listings share plan handles across run and plan projections,
+read each trajectory file once per listing, and avoid copying the run history
+per plan task. Project task indexes reuse decoded rows for up to
 four files of at most 4 MiB each, with replacement-sensitive stamps and a shared
-mtime/ctime settling guard. Eviction clears retained rows; journal expiry targets
+mtime/ctime settling guard. Concurrent readers coalesce decoding per path and
+stamp, and returned rows own their nested files, crew and verdict evidence.
+Eviction clears retained rows; journal expiry targets
 the earliest unleased deadline. See `docs/perf/engine-memory-safe.md` for gates.
 
 Only the low-risk engine subset of the original memory work ships here. Idle

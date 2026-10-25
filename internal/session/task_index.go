@@ -516,7 +516,43 @@ func readTaskIndexRows(path string, limit int, filter bool) []TaskIndexEntry {
 	if limit > 0 && len(rows) > limit {
 		rows = rows[:limit]
 	}
+	for i := range rows {
+		rows[i] = cloneTaskIndexEntry(rows[i])
+	}
 	return rows
+}
+
+// cloneTaskIndexEntry gives callers ownership of every mutable part of a row.
+func cloneTaskIndexEntry(row TaskIndexEntry) TaskIndexEntry {
+	row.Files = slices.Clone(row.Files)
+	if row.Crew != nil {
+		crew := *row.Crew
+		clonePicks := func(picks []crewroute.Pick) []crewroute.Pick {
+			picks = slices.Clone(picks)
+			for i := range picks {
+				picks[i].Price = clonePrice(picks[i].Price)
+			}
+			return picks
+		}
+		crew.Crew = clonePicks(crew.Crew)
+		if crew.Ladder != nil {
+			crew.Ladder = make(map[crewroute.Seat][]crewroute.Pick, len(row.Crew.Ladder))
+			for seat, picks := range row.Crew.Ladder {
+				crew.Ladder[seat] = clonePicks(picks)
+			}
+		}
+		crew.Retried = slices.Clone(crew.Retried)
+		crew.Rungs = slices.Clone(crew.Rungs)
+		crew.Warnings = slices.Clone(crew.Warnings)
+		row.Crew = &crew
+	}
+	if row.VerdictBasis != nil {
+		basis := *row.VerdictBasis
+		basis.Runs = slices.Clone(basis.Runs)
+		basis.Unobserved = slices.Clone(basis.Unobserved)
+		row.VerdictBasis = &basis
+	}
+	return row
 }
 
 // lastPerNode keeps ONE row per node: the last thing the file says about it.
@@ -1350,53 +1386,82 @@ type taskIndexKept struct {
 	rows  []TaskIndexEntry
 }
 
+type taskIndexReadKey struct {
+	path  string
+	stamp recordStamp
+}
+
+type taskIndexRead struct {
+	done chan struct{}
+	rows []TaskIndexEntry
+	ok   bool
+}
+
 type taskIndexCache struct {
-	now  func() time.Time
-	mu   sync.Mutex
-	kept []taskIndexKept // most recently read last
+	parse   func(string) ([]TaskIndexEntry, bool)
+	now     func() time.Time
+	mu      sync.Mutex
+	kept    []taskIndexKept // most recently read last
+	reading map[taskIndexReadKey]*taskIndexRead
 }
 
 var taskIndexParsed taskIndexCache
 
 func (c *taskIndexCache) read(path string) ([]TaskIndexEntry, bool) {
+	parse := c.parse
+	if parse == nil {
+		parse = parseTaskIndex
+	}
 	info, err := os.Stat(path)
 	if err != nil || !info.Mode().IsRegular() {
-		return parseTaskIndex(path)
+		return parse(path)
+	}
+	stamp, stamped := recordStampOf(info)
+	if !stamped {
+		return parse(path)
 	}
 	now := time.Now()
 	if c.now != nil {
 		now = c.now()
 	}
-	stamp, stamped := recordStampOf(info)
-	if !stamped || info.Size() > taskIndexKeptBytes || !filememo.TimestampsSettled(now, info.ModTime(), time.Unix(0, stamp.ctime), recordCacheSettle) {
-		return parseTaskIndex(path)
-	}
+	keep := info.Size() <= taskIndexKeptBytes && filememo.TimestampsSettled(now, info.ModTime(), time.Unix(0, stamp.ctime), recordCacheSettle)
+	key := taskIndexReadKey{path: path, stamp: stamp}
 	c.mu.Lock()
-	for i, entry := range c.kept {
-		if entry.path == path && entry.stamp == stamp {
-			c.kept = append(append(c.kept[:i:i], c.kept[i+1:]...), entry)
-			c.mu.Unlock()
-			return entry.rows, true
+	if keep {
+		for i, entry := range c.kept {
+			if entry.path == path && entry.stamp == stamp {
+				c.kept = append(append(c.kept[:i:i], c.kept[i+1:]...), entry)
+				c.mu.Unlock()
+				return entry.rows, true
+			}
 		}
 	}
+	if read := c.reading[key]; read != nil {
+		c.mu.Unlock()
+		<-read.done
+		return read.rows, read.ok
+	}
+	read := &taskIndexRead{done: make(chan struct{})}
+	if c.reading == nil {
+		c.reading = make(map[taskIndexReadKey]*taskIndexRead)
+	}
+	c.reading[key] = read
 	c.mu.Unlock()
-	rows, ok := parseTaskIndex(path)
-	if !ok {
-		return nil, false
-	}
-	// A FILE THAT CHANGED WHILE IT WAS READ IS NOT KEPT: the stamp taken
-	// before the reading must still be the file's after it.
-	if after, err := os.Stat(path); err != nil || !sameStamp(after, stamp) {
-		return rows, true
-	}
+	rows, ok := parse(path)
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.kept = slices.DeleteFunc(c.kept, func(entry taskIndexKept) bool { return entry.path == path })
-	c.kept = append(c.kept, taskIndexKept{path: path, stamp: stamp, rows: rows})
-	if len(c.kept) > taskIndexKeptPaths {
-		discard := len(c.kept) - taskIndexKeptPaths
-		clear(c.kept[:discard])
-		c.kept = c.kept[discard:]
+	// A changed or unsettled file can serve its waiting readers, but is not kept.
+	if after, err := os.Stat(path); keep && ok && err == nil && sameStamp(after, stamp) {
+		c.kept = slices.DeleteFunc(c.kept, func(entry taskIndexKept) bool { return entry.path == path })
+		c.kept = append(c.kept, taskIndexKept{path: path, stamp: stamp, rows: rows})
+		if len(c.kept) > taskIndexKeptPaths {
+			discard := len(c.kept) - taskIndexKeptPaths
+			clear(c.kept[:discard])
+			c.kept = c.kept[discard:]
+		}
 	}
-	return rows, true
+	read.rows, read.ok = rows, ok
+	delete(c.reading, key)
+	close(read.done)
+	return rows, ok
 }

@@ -13,7 +13,6 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
-	"github.com/Agent-Field/codeaf/internal/plandb"
 )
 
 // AppTaskView is an engine read, independent of the app's JSON contract.
@@ -263,25 +262,20 @@ func (a *Agent) AppTasks() ([]AppTaskView, error) {
 	cap, _ := config.CrewTaskSpendCap(a.config.ProfileDir)
 	graphIDs := map[string]bool{}
 	out = a.appGraphTasks(out, cap, graphIDs)
-	// A HANDED-OVER TASK is a run's row, not a node (task_app_runs.go).
-	// The plan is opened once for every run row and closed before the plan's
-	// own rows below open it again: the handles hold the plan's gate.
+	// Both projections share the plan gate and each trajectory for this listing.
 	rows := a.appRunRows()
-	var stores []*plandb.Store
-	closeStores := func() {}
-	if len(rows) > 0 {
-		stores, _, closeStores = a.openPlanReadHandles()
-	}
+	stores, plan, closeStores := a.openPlanReadHandles()
+	defer closeStores()
+	read := &planTaskRead{stores: stores, plan: plan}
 	for _, row := range rows {
 		id := strconv.FormatUint(row.ID, 10)
 		if graphIDs[id] {
 			continue
 		}
 		graphIDs[id] = true
-		out = append(out, a.appRunViewIn(row, cap, stores))
+		out = append(out, a.appRunViewIn(row, cap, read))
 	}
-	closeStores()
-	for _, row := range a.PlanTasks() {
+	for _, row := range a.planTasksIn(read) {
 		if graphIDs[row.ID] {
 			continue
 		}
