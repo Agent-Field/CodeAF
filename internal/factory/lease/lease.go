@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"context"
@@ -101,12 +101,19 @@ type Options struct {
 // Desk uses the store's root so every server opening the same factory shares
 // the same flock, rather than trusting a mutex in one server process.
 type Desk struct {
+	// mu synchronizes the decoded cache between goroutines. The file lock
+	// still arbitrates ownership with other desks and other processes.
+	mu     sync.Mutex
 	store  *store.Store
 	ttl    time.Duration
 	now    func() time.Time
 	record *record.Record
 	// persist is the atomic lease-file writer; nil uses writeAtomic.
 	persist func(string, []byte) error
+	// Pull's snapshot is private to the desk and used only under its flock.
+	// Every pull checks the numbered files before trusting these decoded items.
+	items []factory.Item
+	files map[string]os.FileInfo
 }
 
 // Open holds no handles. Reading is deferred to each operation so a desk
@@ -213,21 +220,10 @@ func (d *Desk) Pull(worker Worker) (Lease, error) {
 		if worker.Slots > 0 && occupied >= worker.Slots {
 			return false, ErrWorkerBusy
 		}
-		items, err := d.store.List()
+		items, err := d.pullItems()
 		if err != nil {
 			return false, err
 		}
-		sort.Slice(items, func(i, j int) bool {
-			if items[i].Marked != items[j].Marked {
-				return items[i].Marked
-			}
-			// Priority is a view mark. Execution remains oldest first unless a
-			// person explicitly moved queued work to the top (Marked above).
-			if items[i].Created.Equal(items[j].Created) {
-				return items[i].ID < items[j].ID
-			}
-			return items[i].Created.Before(items[j].Created)
-		})
 		for _, it := range items {
 			if !eligible(it, worker) || find(doc, it.ID) != nil {
 				continue

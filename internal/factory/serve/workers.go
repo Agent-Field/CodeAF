@@ -21,7 +21,11 @@ import (
 )
 
 const workerPollLimit = 30 * time.Second
-const workerPollEvery = 100 * time.Millisecond
+
+// presenceSaveEvery limits heartbeat writes under ordinary settings. A
+// request saves sooner when its persisted beat reaches half the offline
+// timeout, so a restart cannot mistake recently heard runners for silence.
+const presenceSaveEvery = 15 * time.Second
 
 type workerService struct {
 	st          *store.Store
@@ -31,6 +35,9 @@ type workerService struct {
 	wait        time.Duration
 	mu          sync.RWMutex
 	credentials map[[32]byte]registeredWorker
+	// savedFile is when the runner file last took a heartbeat. One stamp
+	// covers every row, so a burst of idle pulls writes the file once.
+	savedFile time.Time
 }
 
 // registeredWorker retains the machine beside its identity without putting
@@ -55,6 +62,9 @@ type registeredWorker struct {
 	Version   string
 	Last      time.Time
 	Worker    lease.Worker
+	// persistedLast is the heartbeat actually on disk, even if another row
+	// caused a more recent file write. It is restored from Last on load.
+	persistedLast time.Time
 }
 
 type workerKey struct{}
@@ -136,11 +146,31 @@ func (s *workerService) heard(id string, at time.Time) {
 		}
 		row.Last = at
 		s.credentials[key] = row
-		if err := s.saveRegistry(); err != nil {
-			s.err = err
+		// THE FILE WAKES EVERY WAITER when the watch is paying attention
+		// to it. Last is what this process answers presence from, so it
+		// moves on every request. One write per interval records every
+		// row's heartbeat together.
+		if s.savedFile.IsZero() || !at.Before(s.savedFile.Add(presenceSaveEvery)) || !at.Before(row.persistedLast.Add(s.presenceSaveInterval())) {
+			if err := s.saveRegistry(); err != nil {
+				s.err = err
+			} else {
+				s.savedFile = at
+			}
 		}
 		return
 	}
+}
+
+// Persistence follows the configured silence window as well as the ordinary
+// write throttle, so a different slot's write cannot hide an old saved beat.
+func (s *workerService) presenceSaveInterval() time.Duration {
+	timeout := lease.OfflineAfter
+	if s.st != nil {
+		if settings, err := s.st.RunnerSettings(); err == nil {
+			timeout = time.Duration(settings.RunnerTimeoutSeconds) * time.Second
+		}
+	}
+	return min(presenceSaveEvery, timeout/2)
 }
 
 func requestWorker(r *http.Request) lease.Worker {
@@ -302,15 +332,27 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 	if !h.workerReady(w) {
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), h.workers.wait)
-	defer cancel()
-	tick := time.NewTicker(workerPollEvery)
-	defer tick.Stop()
+	ctx := r.Context()
+	began := time.Now()
+	wait := time.NewTimer(h.workers.wait)
+	defer wait.Stop()
+	// Subscribe before looking for work so an enqueue during Pull is never
+	// lost between the empty answer and the wait. The root watch also sees
+	// writes from other processes and changes to consent or runner settings.
+	var changed chan string
+	if h.watch != nil {
+		changed = h.watch.hub.join()
+		defer h.watch.hub.leave(changed)
+	}
 	for {
 		if ctx.Err() != nil {
-			if r.Context().Err() == nil {
-				w.WriteHeader(http.StatusNoContent)
-			}
+			return
+		}
+		// The next request renews presence. Re-read a shortened policy on
+		// notification, but never extend the original request's heartbeat.
+		deadline := began.Add(min(h.workers.wait, h.runnerOfflineAfter()/2))
+		if !time.Now().Before(deadline) {
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		// THE SAVED TOGGLE WINS. Attach records what this process was willing
@@ -321,10 +363,8 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 		if h.failed(w, err) {
 			return
 		}
-		// A pull sits open for up to thirty seconds. That wait is the idle
-		// machine's heartbeat: the same sixty-second deadline as a busy runner.
-		h.workers.heard(worker.ID, h.workers.now())
-		h.machineEvents()
+		// Authorization recorded this request's heartbeat. Rewriting it on
+		// every notification would wake our own filesystem watch indefinitely.
 		h.workers.mu.RLock()
 		// Authorization captured the worker before this handler (and possibly
 		// before a long-poll wait). A saved lowering governs every new lease,
@@ -363,13 +403,14 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 			h.workerError(w, err)
 			return
 		}
+		wait.Reset(time.Until(deadline))
 		select {
 		case <-ctx.Done():
-			if r.Context().Err() == nil {
-				w.WriteHeader(http.StatusNoContent)
-			}
 			return
-		case <-tick.C:
+		case <-wait.C:
+			w.WriteHeader(http.StatusNoContent)
+			return
+		case <-changed:
 		}
 	}
 }

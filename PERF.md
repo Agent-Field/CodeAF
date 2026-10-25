@@ -112,6 +112,14 @@ repair, which competes for the same finite capacity; returning to monitoring
 releases it. The capacity, queue projection and monitoring-lease regressions in
 `internal/factory/serve`, `lease` and `worker` defend this separation.
 
+## Unchanged factory listing
+
+`TestListDoesNotDecodeAnUnchangedFloor` permits at most **100 allocations**
+for a cached one-item listing. It allows stat metadata, including inode and
+change time, while rejecting another JSON decode. Chmod changes ctime and
+must invalidate the cache, so changing permissions cannot simulate an
+unchanged document.
+
 ## Tool process identity in history
 
 `DisplayEntry` is bounded at **328 bytes** on a 64-bit machine. The process

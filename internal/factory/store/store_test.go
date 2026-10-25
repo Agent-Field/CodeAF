@@ -1,8 +1,10 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"sync"
 	"testing"
@@ -10,6 +12,42 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
+
+// TestListDoesNotDecodeAnUnchangedFloor is the idle-engine read. Triage,
+// intake and a poll each ask for every job on their own clocks. Asking
+// again while the files are the same must not open them again. An edit
+// still shows up on the next ask.
+func TestListDoesNotDecodeAnUnchangedFloor(t *testing.T) {
+	st := open(t)
+	created, err := st.Create(factory.Item{Title: "finished", State: factory.StateShipped})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := st.List()
+	if err != nil || len(first) != 1 || first[0].Title != "finished" {
+		t.Fatalf("first list: %+v %v", first, err)
+	}
+	allocs := testing.AllocsPerRun(3, func() {
+		second, err := st.List()
+		if err != nil || len(second) != 1 || second[0].Title != "finished" {
+			t.Fatalf("unchanged list: %+v %v", second, err)
+		}
+	})
+	// Metadata reads are allowed; decoding a full item again exceeds this budget.
+	if allocs > 100 {
+		t.Fatalf("unchanged list allocated %.0f objects, want at most 100", allocs)
+	}
+	if err := st.Update(created.ID, func(it *factory.Item) error {
+		it.Title = "edited"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	third, err := st.List()
+	if err != nil || len(third) != 1 || third[0].Title != "edited" {
+		t.Fatalf("edited list: %+v %v", third, err)
+	}
+}
 
 func open(t *testing.T) *Store {
 	t.Helper()
@@ -160,5 +198,49 @@ func TestAddFillsTheChatDefaults(t *testing.T) {
 	var none *Store
 	if _, err := none.Add(context.Background(), factory.Item{Title: "x"}); err == nil {
 		t.Fatal("a nil store added an item")
+	}
+}
+
+func TestListSeesPreservedMtimeWrites(t *testing.T) {
+	for _, replace := range []bool{false, true} {
+		t.Run(fmt.Sprintf("replace=%t", replace), func(t *testing.T) {
+			st := open(t)
+			it, err := st.Create(factory.Item{Title: "before"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := st.List(); err != nil {
+				t.Fatal(err)
+			}
+			path := st.ItemPath(it.ID)
+			info, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			data = bytes.ReplaceAll(data, []byte("before"), []byte("after!"))
+			target := path
+			if replace {
+				target = path + ".tmp"
+			}
+			if err := os.WriteFile(target, data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chtimes(target, info.ModTime(), info.ModTime()); err != nil {
+				t.Fatal(err)
+			}
+			if replace {
+				if err := os.Rename(target, path); err != nil {
+					t.Fatal(err)
+				}
+			}
+			items, err := st.List()
+			if err != nil || len(items) != 1 || items[0].Title != "after!" {
+				t.Fatalf("preserved-mtime write hidden: %+v, %v", items, err)
+			}
+		})
 	}
 }

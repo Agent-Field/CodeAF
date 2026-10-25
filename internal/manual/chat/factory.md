@@ -12,6 +12,35 @@ Three things make one factory:
 
 A machine with no factory set up has none of this: the chat's factory tools are absent from its belt rather than present and failing.
 
+## idle runners — waiting for queued work
+
+An idle runner keeps its pull request open for up to 30 seconds, or half the
+saved runner timeout when that is shorter, so it renews presence before being
+counted offline. It wakes when
+the factory's files change, including work queued by another process, and asks
+again after the deadline. The service uses the same filesystem notifications
+as the live factory view; it does not repeatedly decode finished jobs while
+waiting. Filesystem changes are batched for 100 milliseconds. If filesystem
+notifications are unavailable or their stream fails or closes, a fallback checks for changes every 500
+milliseconds and reads each job file. While notifications are working, that
+fallback only checks whether the directory itself changed, so a quiet floor
+is not read file by file. Ownership, consent and capacity are checked again
+before any job is handed out. A runner in the same process as the service
+does not re-read the job list just to find that service. Reading the job
+list asks once whether this machine has a GitHub token, not once per job.
+A request does not decode every job just to see that nothing is due. It
+looks again when a job, a lease, or the repository list changes, or when a
+saved deadline arrives. A runner heartbeat is kept in memory and is not
+rewritten to the runner file on every check, and that write is not
+announced as a job change, so it does not wake the other pulls. The file
+is saved on the next heartbeat request after 15 seconds since the previous
+heartbeat save, or when that runner’s last saved heartbeat is at least half
+the configured offline timeout old, whichever comes first. This is
+request-triggered; it does not run a separate save timer. Slots and sleep
+are read on the next pull.
+A job list that has not
+changed is not decoded again.
+
 ## codeaf factory serve — host a team factory, listen address and HTTPS
 
 `codeaf factory` (the same as `codeaf factory serve`) runs the service and prints the address to give people, plus one operator access link. It listens on `127.0.0.1:7420` unless `--listen host:port` says otherwise, or the `listen` key of `~/.codeaf/factory/config.yaml` does (`--config path` picks another file). It runs no job itself: Run queues a job, and a runner that has joined pulls it. With no runner attached a job stays queued.
