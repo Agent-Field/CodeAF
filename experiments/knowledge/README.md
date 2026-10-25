@@ -99,3 +99,42 @@ assistant saying it finished something.
 
 See [the architecture and scheduling design](ARCHITECTURE.md) for the proposed
 incremental system, cost model and designer opportunities.
+
+## Understanding and cost experiments
+
+See [the emergent learning workflow](LEARNING-WORKFLOW.md) for the repository
+research, proposed checkpoint-based maintenance, generic understanding pass,
+explicit unknowns and contradiction checks. Subjects are inferred from evidence;
+no project or company name is hard-coded. `learning.learn` returns a separate
+subject projection and reuses unchanged subject inputs.
+
+A paired extraction experiment can be reproduced with an existing matching
+historical corpus and provider cache. Keep its output private:
+
+```sh
+python experiments/knowledge/cost_probe.py \
+  --corpus /absolute/private/path/corpus.json \
+  --baseline-calls /absolute/private/path/calls \
+  --out /absolute/private/path/cost-paired
+```
+
+The sample's cheaper extraction lost material coverage, so it has not replaced
+the default. Cost reports no longer extrapolate development replay charges by
+human-message count. Incremental updates send compact claim and note records,
+without resending existing article bodies or original quote bodies. Narrowly
+recognized operational read/skill envelopes remain archived without extraction;
+tool writes, shell commands and unknown envelope shapes remain eligible.
+
+```sh
+python experiments/knowledge/learning.py \
+  --vault /absolute/private/path/reconciled/vault.json \
+  --out /absolute/private/path/understanding
+```
+
+This adds derived subject pages alongside the existing detailed notes and exports
+an offline viewer. Repeat with the same input to reuse unchanged understanding. Discovery reruns when its bounded catalog changes; only unchanged per-subject explanations are reused.
+Questions search other active extracted claims before remaining open; a candidate
+answer is a source pointer awaiting review, not a newly accepted fact. This search
+is bounded lexical retrieval, not proof that the full source history lacks an
+answer. Discovery gives oversized groups one chance to split by their conceptual
+structure; unsplit groups stay explicitly pending.

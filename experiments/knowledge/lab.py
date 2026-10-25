@@ -89,11 +89,9 @@ def cost_report(directory, messages):
         roles[role] = {"calls": len(group),
                        "input_tokens": sum(r["usage"].get("prompt_tokens", 0) for r in group),
                        "output_tokens_including_reasoning": sum(r["usage"].get("completion_tokens", 0) for r in group),
+                       "reasoning_tokens": sum((r["usage"].get("completion_tokens_details") or {}).get("reasoning_tokens", 0) for r in group),
                        "usd": round(sum(r["usage"].get("cost", 0) or 0 for r in group), 6),
                        "median_seconds": round(statistics.median(r["seconds"] for r in group), 2)}
-    extraction = roles.get("extract", {})
-    turns = sum(m["role"] == "user" for m in messages)
-    unit = extraction.get("usd", 0) / max(1, turns)
     failures = [json.loads(p.read_text()) for p in directory.glob("*.failure.json")]
     failed_usd = sum(f.get("usage", {}).get("cost", 0) or 0 for f in failures)
     successful_usd = sum(x["usd"] for x in roles.values())
@@ -103,9 +101,8 @@ def cost_report(directory, messages):
             "accounted_minimum_usd": round(successful_usd + failed_usd, 6),
             "billing_limitation": "Early failed attempts and errors without usage may be billable but are not measurable from this record. This is a lower bound, not a billing reconciliation.",
             "failed_calls_included": False,
-            "projection_assumptions": "Extraction cost divided by eligible human messages in this replay. Excludes failed attempts, reconciliation, auditing, recall, storage and hosting; historical batching differs from live scheduling. Not a quote or production forecast.",
-            "extraction_only_scenarios": [{"new_human_turns_per_day": n, "daily_usd": round(unit*n, 4),
-                                            "monthly_30_days_usd": round(unit*n*30, 3)} for n in ((100, 1000, 10000) if extraction and turns else ())]}
+            "projection_assumptions": "No production unit projection: this development cache mixes experiments and retries, assistant work per human turn varies, and replay differs from incremental scheduling. Use paired run receipts and measured token budgets.",
+            "extraction_only_scenarios": []}
 
 
 def main():

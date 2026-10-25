@@ -387,6 +387,28 @@
     } else if(!cs.length){
       el.mainInner.appendChild(mk('p', 'detail-empty', 'This note has no claims.'));
     }
+    if(note.questions && note.questions.length){
+      el.mainInner.appendChild(mk('h2', 'article-heading', 'Questions to understand next'));
+      el.mainInner.appendChild(mk('p', 'detail-empty', 'Unresolved in the evidence inspected so far.'));
+      note.questions.forEach(function(question){
+        var row = mk('p', 'article-paragraph', question.question);
+        if(question.why) row.appendChild(mk('span', 'backlink-reason', question.why));
+        var sourceButton = btn('article-citation', question.related_claims ? 'Possible answer in existing knowledge' : 'Why this question?', 'Open relevant evidence');
+        sourceButton.addEventListener('click', function(){openParagraphSources((question.related_claims || []).concat(question.claims || []));});
+        row.appendChild(sourceButton);
+        el.mainInner.appendChild(row);
+      });
+    }
+    if(note.conflicts && note.conflicts.length){
+      el.mainInner.appendChild(mk('h2', 'article-heading', 'Unresolved disagreements'));
+      note.conflicts.forEach(function(conflict){
+        var row = mk('p', 'article-paragraph', conflict.reason);
+        var evidenceButton = btn('article-citation', 'Both sources', 'Inspect both sides of the disagreement');
+        evidenceButton.addEventListener('click', function(){openParagraphSources(conflict.claims || []);});
+        row.appendChild(evidenceButton);
+        el.mainInner.appendChild(row);
+      });
+    }
     for(var i=0;!note.sections && i<cs.length;i++){
       var c = claimById(cs[i]);
       if(!c || c.status !== 'active') continue;

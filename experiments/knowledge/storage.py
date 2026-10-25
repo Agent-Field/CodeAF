@@ -164,6 +164,18 @@ def export_markdown(vault, directory):
                 if claim["kind"] == "proposal":
                     prefix += "Proposed: "
                 lines.append(prefix + claim["text"] + " [^" + claim["id"] + "]\n")
+        if note.get("questions"):
+            lines += ["## Questions to understand next", "", "Unresolved in inspected evidence, or awaiting an evidence review.", ""]
+            for question in note["questions"]:
+                refs = " ".join("[^" + i + "]" for i in question["claims"])
+                lines.append("- " + question["question"] + " " + refs)
+                if question.get("why"):
+                    lines.append("  " + question["why"])
+        if note.get("conflicts"):
+            lines += ["", "## Unresolved disagreements", ""]
+            for conflict in note["conflicts"]:
+                refs = " ".join("[^" + i + "]" for i in conflict["claims"])
+                lines.append("- " + conflict["reason"] + " " + refs)
         if note["links"]:
             lines += ["## Related notes", ""]
             for link in note["links"]:

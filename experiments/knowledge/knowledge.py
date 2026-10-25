@@ -43,6 +43,22 @@ def organize_hierarchy(vault, model):
     return vault
 
 
+def operational_envelope(message):
+    """Only known read/skill request shapes are noise; writes can contain knowledge."""
+    if message["role"] != "agent":
+        return False
+    match = re.fullmatch(r"\[tool call: (read_file|read|use_skill|ls|view_image)\((.*)\)\]", message["text"], re.DOTALL)
+    if not match:
+        return False
+    try:
+        arguments = json.loads(match[2])
+    except (ValueError, TypeError):
+        return False
+    allowed = {"read_file": {"path", "offset", "limit"}, "read": {"path", "offset", "limit"},
+               "use_skill": {"mode", "name"}, "ls": {"path"}, "view_image": {"path"}}
+    return isinstance(arguments, dict) and set(arguments) <= allowed[match[1]]
+
+
 def update_once(messages, previous, model):
     """One normal completion for a mixed-chat context, followed by deterministic validation."""
     previous = copy.deepcopy(previous) if previous else None
@@ -54,6 +70,13 @@ def update_once(messages, previous, model):
                 raise ValueError("Source changed under an existing immutable ID")
         return previous or {"schema": 1, "strategy": "reconciled", "sources": {}, "claims": [],
                             "notes": [], "relations": [], "rejected": [], "scope_aliases": []}
+    new_source_count = len(fresh)
+    fresh = [m for m in fresh if not operational_envelope(m)]
+    if not fresh:
+        vault = build(messages, model, strategy="reconciled", previous=previous, workers=1)
+        vault["update_receipt"] = {"new_sources": new_source_count, "provider_calls": 0,
+                                   "semantic_audit": "no conversational assertions"}
+        return vault
     if sum(len(m["text"]) for m in fresh) > 24000:
         raise ValueError("Update context exceeds 24,000 characters; split the pending updates")
     terms = set(re.findall(r"\w+", " ".join(m["text"] for m in fresh).casefold()))
@@ -63,7 +86,15 @@ def update_once(messages, previous, model):
     candidate_ids = {c["id"] for c in candidates}
     old_notes = previous["notes"] if previous else []
     affected = [n for n in old_notes if candidate_ids & set(n["claims"])][:12]
-    result = model("update", {"messages": fresh, "existing_claims": candidates, "existing_notes": affected,
+    # Articles and repeated quote bodies are projections, not reconciliation input.
+    compact_claims = [{**{k: c[k] for k in ("id", "text", "scope", "key", "kind", "status") if k in c},
+                       "source_context": [{"role": known_sources[e["source"]]["role"],
+                                           "ts": known_sources[e["source"]]["ts"]}
+                                          for e in c.get("evidence", []) if e["source"] in known_sources]}
+                      for c in candidates]
+    compact_notes = [{k: n[k] for k in ("id", "title", "scope", "folder", "claims") if k in n}
+                     for n in affected]
+    result = model("update", {"messages": fresh, "existing_claims": compact_claims, "existing_notes": compact_notes,
                               "aliases": previous.get("scope_aliases", []) if previous else []})
     additions = result.get("claims", [])
     references = {"new:" + str(c.get("local_id")): identity([c.get("text"), c.get("evidence", [])])
@@ -88,7 +119,7 @@ def update_once(messages, previous, model):
         return {"notes": [n for n in notes if n.get("scope") == scope], "relations": relations,
                 "_native_references": True}
     vault = build(messages, response, strategy="reconciled", previous=previous, workers=1)
-    vault["update_receipt"] = {"new_sources": len(fresh), "candidate_claims": len(candidates),
+    vault["update_receipt"] = {"new_sources": new_source_count, "candidate_claims": len(candidates),
                                "candidate_notes": len(affected), "provider_calls": 1,
                                "semantic_audit": "not run; new claims have only structural/quote validation"}
     return vault
@@ -109,6 +140,11 @@ def build(messages, model, strategy="direct", previous=None, workers=4):
             sources[message["id"]] = message
             fresh.append(message)
     if previous and not fresh and previous["strategy"] == strategy:
+        return previous
+    # Read/skill request envelopes remain sources without spending extraction tokens.
+    fresh = [m for m in fresh if not operational_envelope(m)]
+    if previous and not fresh and previous["strategy"] == strategy:
+        previous["sources"] = sources
         return previous
     batches, batch, size, session = [], [], 0, None
     for message in fresh:

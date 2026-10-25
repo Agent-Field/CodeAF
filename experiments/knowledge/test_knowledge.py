@@ -11,6 +11,47 @@ from editor import compose_notes, review_articles
 
 
 class ReplayTests(unittest.TestCase):
+    def test_incremental_update_keeps_articles_without_resending_their_full_text(self):
+        message = {"id": "s:1", "session": "s", "role": "user", "ts": "2026-01-01",
+                   "text": "Atlas uses SQLite."}
+        def extract(role, payload):
+            return {"claims": [{"text": message["text"], "scope": "Atlas", "topic": "Storage", "kind": "fact",
+                                "evidence": [{"source": "s:1", "quote": message["text"]}]}]}
+        previous = build([message], extract)
+        previous["strategy"] = "reconciled"
+        previous["notes"][0]["sections"] = [{"heading": "Database", "paragraphs": [
+            {"text": "SQLite. " * 10000, "claims": [previous["claims"][0]["id"]]}]}]
+        captured = []
+        def update(role, payload):
+            import json
+            captured.append(len(json.dumps(payload)))
+            return {"claims": [], "notes": [], "relations": []}
+        result = update_once([{**message, "id": "s:2", "text": "SQLite remains our database."}], previous, update)
+        self.assertEqual(result["notes"][0]["sections"], previous["notes"][0]["sections"])
+        self.assertEqual(len(captured), 1)
+        self.assertLess(captured[0], 5000)
+
+    def test_live_tool_only_updates_preserve_knowledge_without_model_work(self):
+        previous = {"schema": 1, "strategy": "reconciled", "sources": {}, "claims": [],
+                    "notes": [], "relations": [], "rejected": [], "scope_aliases": []}
+        message = {"id": "s:tool", "session": "s", "role": "agent", "ts": "2026-01-01",
+                   "text": '[tool call: read_file({"path":"README.md"})]'}
+        def model(role, payload):
+            self.fail("Tool-only live updates should not spend tokens")
+        result = update_once([message], previous, model)
+        self.assertIn("s:tool", result["sources"])
+        self.assertEqual(result["update_receipt"]["provider_calls"], 0)
+
+    def test_tool_call_envelopes_are_archived_without_a_model_call(self):
+        message = {"id": "s:tool", "session": "s", "role": "agent", "ts": "2026-01-01",
+                   "text": '[tool call: read_file({"path":"README.md"})]'}
+        def model(role, payload):
+            self.fail("A tool-call envelope contains no conversational knowledge to extract")
+        vault = build([message], model, strategy="reconciled")
+        self.assertEqual(vault["sources"]["s:tool"], message)
+        self.assertEqual(vault["claims"], [])
+        self.assertEqual(vault["notes"], [])
+
     def test_correction_order_uses_instants_across_timezone_offsets(self):
         messages = [{"id": "s:1", "session": "s", "role": "user", "ts": "2026-01-01T10:00:00+02:00", "text": "Use Redis."},
                     {"id": "s:2", "session": "s", "role": "user", "ts": "2026-01-01T09:30:00+00:00", "text": "Correction: use SQLite."}]
