@@ -1,5 +1,11 @@
 # Choosing a folder
 
+## How do I change directory?
+
+Use `/folder`, `/place` or `/dir` to choose the folder this conversation is about.
+They open the add-context sheet. Browsing attaches nothing; choose a folder with
+`alt+m` or its action row. Over `--host`, `/folder` refuses because a folder cannot travel.
+
 ## /folder — choose a folder, pick a directory, say which project you mean
 
 `/folder` opens the **add context** sheet — a framed window over the middle of the screen,

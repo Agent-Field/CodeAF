@@ -46,7 +46,7 @@ function watching(c) {
   const { searchParams } = new URL(c.request.url);
   const holds = parseHolds(searchParams.getAll('hold'), c.tenant.limits.maxHolds);
   const beat = parseBeat(searchParams.getAll('beat'));
-  return c.tenant.watch(c.device, { holds, beat, events: searchParams.get('events') === '1' });
+  return c.tenant.watch(c.device, { holds, beat, events: searchParams.get('events') === '1', receipts: searchParams.get('receipts') === '1' });
 }
 
 // The directory's version rides on a presence answer as on a list.

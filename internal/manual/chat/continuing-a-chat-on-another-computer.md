@@ -119,6 +119,10 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 A chat arriving here for the first time works in its own copy. It is filed under the folder it came from, apart from conversations in this computer's own folder of the same name. Home and the keys-row label say `proj-a (copy from another machine)`. This remains a copy even if a folder with the original path happens to exist on this computer. Taking back a chat that already works in your own project restores that project in place. An unknown origin is left unnamed.
 
+## Reopen a kept copy after another computer takes the chat
+
+When unsent turns were kept as a separate copy, reopening that copy checks who holds the copy itself. Another computer may still hold the original chat. The previous window finishes saving and stops syncing before the reopened copy starts its own sync, so a late save cannot change which copy it opens. Taking that copy elsewhere still stops new tool work in its older window.
+
 ## Continue here did nothing — another device continued first or the sync service is unreachable
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
@@ -137,7 +141,7 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 A chat has one holder at a time. To take a chat back from the computer that took it, continue it there the same way: press enter on its row on that computer and choose `continue here`. Nothing has to be returned or switched off first. A computer with the chat open when another takes it says `<device> continued this chat; this window now only shows it`, stops taking new turns, and keeps what it had not yet sent as a branch (`<K> turns from <device>: open separately / discard`). A tool call the model tries there answers with that same line. Taking the chat back leaves a `node_modules` or other install folder that computer already has alone.
 
-The choice covers the holder and turn of ownership shown on the card. If another computer continues the chat before you confirm or while the copy is arriving, your choice cannot take it from that new holder. The slower one sees `another device continued this chat first`, its local copy is not replaced, and its row goes back to `running on <device>`. Older clients that do not send this condition keep their earlier behavior. No turn is lost on either side: whatever the earlier holder had not sent is kept for you as the branch above. This build offers discard, which archives a branch, and opening the branch as a separate chat; merging it into the original chat is unavailable. Pressing `2` (`leave it there`) on the question, or `esc`, changes nothing and leaves the chat where it is.
+The choice covers the holder and turn of ownership shown on the card. If another computer continues the chat before you confirm or while the copy is arriving, your choice cannot take it from that new holder. The slower one sees `another device continued this chat first`, its local copy is not replaced, and its row goes back to `running on <device>`. No turn is lost on either side: whatever the earlier holder had not sent is kept for you as the branch above. This build offers discard, which archives a branch, and opening the branch as a separate chat; merging it into the original chat is unavailable. Pressing `2` (`leave it there`) on the question, or `esc`, changes nothing and leaves the chat where it is.
 
 ## I reopened an old local chat after the other computer let go — where are the newer turns
 
@@ -240,3 +244,40 @@ A running chat on the other computer never moves automatically. Neither does a n
 ## Why an older chat could not be copied
 
 An older chat whose folder is a symbolic link, or whose saved conversation state contains symbolic links, is left untouched. codeaf refuses to copy those links because writing through one could change the original. The original still opens with an older codeaf.
+
+## A save has not reached the other computer yet — upload failed or another device continued first
+
+A saved chat reaches your other computers only after its encrypted objects have
+been uploaded and its new saved head has been accepted. If an upload fails, the
+other computer keeps seeing the previous saved head. Retry when the connection
+returns. If the final save fails during quit, the work stays local and that computer does not announce a clean release; another computer does not automatically open that incomplete save. Uploaded objects are kept for reuse if another device continued the
+chat first; this does not discard the work saved on your computer.
+
+## Which computer coordinates: cluster status and cluster lead
+
+On the hosted service, or a self-hosted service with persistent storage, an open paired home joins as a learner. Three persistent voters keep coordination available when your laptops sleep. `codeaf cluster status` shows this computer after joining. Continue chats through the ordinary continue door. See the coordination and workers page for command refusals and setup details.
+
+## Can a worker access all my chats or approve pairing?
+
+A delegated worker can access only its selected chats. It cannot approve pairing, rotate your identity, read your key vault or request leadership. Worker setup is not available as a terminal command yet. Personal computers keep their shared trust model.
+
+## Worker restarts, draining and learner metadata visibility
+
+A restarted worker uses a newer process number; delayed requests from its previous process cannot save work. Draining prevents new claims, while already held work can finish saving. Joining the full coordination log requires explicit consent and exposes identity-wide routing metadata, with chat contents and names still encrypted.
+
+## How does a delegated worker claim an assignment or run parallel tasks?
+
+An assignment names the selected chat and target worker. The worker downloads the saved chat, conditionally claims its observed ownership, then downloads the accepted saved head before opening it. Registration alone never starts work. Parallel tasks use separate child chats. Worker setup and execution are not available as a terminal command yet.
+
+## Will an interrupted worker replay tools after a crash or reassignment?
+
+No. The worker saves its claim and an execution intent before invoking tools. A lost reply retries the same coordination request. Once execution may have started, reopening reports `this work may be incomplete; its saved records have been kept` and keeps the records. It never runs that attempt again automatically. Reassignment and cancellation cannot undo an already running command.
+
+## Why can an older computer list chats but not continue a chat that is still running?
+
+Older builds can still list, save, publish and release chats through a compatible service. A service using quorum-backed coordination refuses an older request that tries to take a live chat without naming its observed holder and ownership number. It uses the existing refusal, `another device continued this chat first`; an old build does not necessarily show an extra update hint. Quit on the computer holding the chat before continuing it elsewhere, or update codeaf on the computer trying to continue. A released or expired chat can still be taken. A conditional choice never silently changes to a newer holder.
+
+
+## Can an older build save a chat with large encrypted metadata?
+
+Yes. Directory requests from older builds keep the existing 1 MiB request limit, including large encrypted metadata and frame hints. The service receives the complete signed request before making the change visible. A failed or interrupted save never exposes only part of that metadata. Reconnect and check the latest save before retrying. Encrypted names, key wraps and frame hints are preserved. The identity's storage capacity still applies.

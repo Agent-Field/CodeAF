@@ -22,6 +22,8 @@ There is no account on the relay. No email, no password, no name. Your identity 
 - for each chunk: its size, and the ids of the parts inside it;
 - when you connect, how often, and how much you send;
 - the network address each request came from.
+- coordination metadata: cluster and member ids, roles, term and log position, learner progress, request sequence and digest;
+- worker routing: opaque assignment id and revision, selected chat and worker ids, process number, ownership number, status and times.
 
 A relay you run yourself logs only the first 8 characters of the identity id, the kind of request, the status and two byte counts. It never logs a body. An operator of a relay you do not run can do more than that; you cannot check it.
 

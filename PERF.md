@@ -83,6 +83,18 @@ migration flag skips that check. `BenchmarkOpenSettledSessions` measures the
 whole public open/close operation. `TestSettledStoreTerminalStartup` separates
 fixture construction from the first interactive frame of the running terminal.
 
+Native peer acknowledgements reuse the validated routing view only for the same
+store and durably applied index. Every applied change, including revocation,
+invalidates that view. `TestR11R27UnchangedPeerAcknowledgementWork` exercises the
+real transport and caps an unchanged acknowledgement at 1,000 allocations with
+no application append; the measured cost fell from 3,273 allocations to 192.
+
+An authenticated native directory read with already durable ingress time uses a
+fresh quorum view and the normal state evaluator before omitting an identical
+append. New time and changed records still commit before inspection.
+`TestR4R26R27ReadCommitsOnlyChangedTime` counts applied entries for unchanged,
+advanced and repeated time, and requires invalid original authority to fail.
+
 ## What the gates check
 
 `make test-quick` checks compilation, vet, formatting, packed manuals, change
@@ -108,3 +120,10 @@ artifact. The reference target is darwin/amd64 with its own pinned artifact stag
 other platforms can have different absolute sizes. Reduce unnecessary code, data
 or dependencies first. A justified cap adjustment belongs in the same change as
 the feature and its measurements; keep `SIZE-BUDGET` explicit and reviewable.
+
+Every build links the Raft coordination core: the modified Raft copy, protobuf,
+the signed state machine and its SQLite snapshot host. The relay and devices
+always coordinate through it, so no build leaves it out. On linux/amd64 it adds
+3,379,200 bytes to the stripped binary (75,755,785 to 79,134,985 on the same dev
+base), and the cap moves by the same amount, from 75,811,848 to 79,191,048, so
+the 56,063 bytes of headroom the base had are kept.

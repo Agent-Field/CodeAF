@@ -18,7 +18,7 @@ It depends on the relay.
 
 A chunk the relay already holds costs nothing again, so a computer that sends it twice is never refused for that.
 
-**A relay you run yourself has no limit of its own on an identity.** It stops only when its disk is full.
+**Coordination storage has a separate limit on both relays.** Each identity starts with an 8 MiB allowance for directory and coordination records. A larger imported identity keeps its measured allowance. New growth beyond it is refused; existing records and saved chats are retained. A relay you run yourself also needs enough disk for encrypted chunks and all three coordination copies. Older directory requests keep their 1 MiB HTTP limit; staging a large request does not bypass retained storage capacity.
 
 ## Too many new identities from one network
 
