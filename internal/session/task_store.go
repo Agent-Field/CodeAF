@@ -1800,6 +1800,7 @@ func (a *Agent) recoverTasks() {
 	// one already on the column — and would write its journal into that run's
 	// folder (orchestrate.go's orchestrateJournalPath).
 	a.reserveRunNames(document.Runs)
+	a.restoreWorkerHistoryModels(&document)
 
 	graph := a.graph()
 	recovery := graph.rehydrate(document, a.config.Workspace, a.settlePolicy())

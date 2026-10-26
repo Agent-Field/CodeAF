@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/home"
 )
@@ -271,6 +272,53 @@ func TestPlanBackedHistoryRefusesRedirectedTaskAndWorker(t *testing.T) {
 					t.Fatalf("redirected worker indexed: %q", row.TranscriptURI)
 				}
 			}
+		})
+	}
+}
+
+// A taken chat may retain its completed task and journal without a plan store.
+// Its ordinary task room reads the replayed notice, not a PlanTaskPage or index.
+func TestTakenWorkerRosterCarriesRecordedModelWithoutPlanStore(t *testing.T) {
+	for _, saved := range []string{"", "recorded/prior-model"} {
+		t.Run(saved, func(t *testing.T) {
+			want := saved
+			if want == "" {
+				want = "deepseek/deepseek-v4.1-flash"
+			}
+			place := newPlace(t, false)
+			writeCheckpoint(t, place.Tasks(), taskDocument{Type: taskDocumentType, Version: taskFileVersion, Seq: 2, Runs: []runRecord{{ID: 2, Title: "Extend two-root formatting helpers", State: TaskDone, PlanTask: "t-2", Report: "finished", Model: saved}}})
+			dir := filepath.Join(place.NodeJournals(), "2")
+			if err := os.MkdirAll(dir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			journal := filepath.Join(dir, "20261026-000305.763019_worker.jsonl")
+			if err := os.WriteFile(journal, []byte(`{"type":"session","version":1,"id":"worker","model":"deepseek/deepseek-v4.1-flash"}`+"\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			agent := journalAgent(t, place)
+			if _, found := agent.PlanTaskPage("t-2"); found {
+				t.Fatal("fixture unexpectedly has a plan page; it must use the generic task room")
+			}
+			if got := agent.TaskJournal(2); got != journal {
+				t.Fatalf("worker journal=%q, want %q", got, journal)
+			}
+			events, stop := agent.WatchTaskUpdates()
+			defer stop()
+			deadline := time.After(3 * time.Second)
+			for {
+				select {
+				case event := <-events:
+					if event.Task != nil && event.Task.ID == 2 {
+						if event.Task.Model != want {
+							t.Fatalf("generic task room receives model %q instead of recorded worker model", event.Task.Model)
+						}
+						return
+					}
+				case <-deadline:
+					t.Fatal("completed worker missing from replayed roster")
+				}
+			}
+
 		})
 	}
 }

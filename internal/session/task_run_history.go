@@ -89,3 +89,18 @@ func (a *Agent) planWorkerRecordedModel(taskID string) string {
 	a.mu.Unlock()
 	return findWorkerHistory(taskJournalDir(place, session), id).model
 }
+
+// Resolve missing recorded models once before graph recovery takes its lock.
+// Roster watchers then replay ordinary notices without filesystem reads.
+func (a *Agent) restoreWorkerHistoryModels(document *taskDocument) {
+	a.mu.Lock()
+	place, session := a.familyPlace(nil), a.sessionID()
+	a.mu.Unlock()
+	base := taskJournalDir(place, session)
+	for i := range document.Runs {
+		record := &document.Runs[i]
+		if record.Model == "" && record.Kind == "" && record.ID != 0 {
+			record.Model = findWorkerHistory(base, record.ID).model
+		}
+	}
+}
