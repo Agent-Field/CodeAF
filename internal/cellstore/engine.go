@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -191,12 +192,45 @@ func (e Engine) tree(c cell.Cell) string {
 }
 
 // workspace is the folder the tools of c work in, "" when c's own folder is
-// what is sealed.
+// what is sealed. A folder that holds the home folder is never sealed (see
+// [holdsHome]): its chat seals its own folder, so the conversation is kept and
+// the folder's files are not.
 func (e Engine) workspace(c cell.Cell) string {
+	w := e.Workspace
 	if e.WorkspaceOf != nil {
-		return e.WorkspaceOf(c)
+		w = e.WorkspaceOf(c)
 	}
-	return e.Workspace
+	if w != "" && holdsHome(w) {
+		return ""
+	}
+	return w
+}
+
+// holdsHome reports whether dir is the home folder, a folder above it, or a
+// filesystem root: the places a person opens a general chat, which are not a
+// project and whose files are everything they own.
+//
+// IT IS DECIDED BY WHERE THE FOLDER IS, NEVER BY WHAT IS IN IT. Counting files
+// or bytes to find a folder too big to save is itself the walk this rule
+// exists to avoid, and a cap would draw its line through somebody's real
+// project. A folder that holds the home folder needs no look inside: a home of
+// 2.5 GB took a capture that never finished inside SealWithin, and every try
+// left its whole plan on disk. Every caller that seals, rewinds or takes a chat
+// goes through [Engine.workspace], so all of them agree on the tree.
+func holdsHome(dir string) bool {
+	tree := canonicalTree(dir)
+	if filepath.Dir(tree) == tree {
+		return true
+	}
+	house, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(house) == "" {
+		return false
+	}
+	rel, err := filepath.Rel(tree, canonicalTree(house))
+	if err != nil || filepath.IsAbs(rel) {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // policyDir is where the harness keeps its exclusions: the cell's directory
