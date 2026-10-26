@@ -557,6 +557,9 @@ func cloneFile(f File) File {
 	out.Start.AskFirst = append([]string(nil), f.Start.AskFirst...)
 	out.Fixed = append([]string(nil), f.Fixed...)
 	out.Rules = append([]string(nil), f.Rules...)
+	out.House.Rules = append([]string(nil), f.House.Rules...)
+	out.House.AskFirst = append([]string(nil), f.House.AskFirst...)
+	out.House.Never = append([]string(nil), f.House.Never...)
 	out.Problems = append([]Problem(nil), f.Problems...)
 	out.Pipeline = map[factory.Kind][]string{}
 	for kind, names := range f.Pipeline {

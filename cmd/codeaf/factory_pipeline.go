@@ -74,7 +74,8 @@ func factoryIntake(st *store.Store) *intake.Intake {
 			return ctx.Err()
 		},
 		Load: func(repo string) (pipeline.File, error) {
-			return factoryRules().Load(context.Background(), repo, st.CheckoutDir(repo), home.Join("factory.yaml"))
+			f, err := factoryRules().Load(context.Background(), repo, st.CheckoutDir(repo), home.Join("factory.yaml"))
+			return withFactoryHouseRules(st, f, err)
 		},
 		Launch: func(id int) error {
 			seam := factory.LocalSeam(st, time.Now(), factoryRunnerDoors(st), factoryPipelineOption(), factory.WithRepoDirs(st.CheckoutDir))
@@ -130,4 +131,24 @@ func factoryRules() *factorygithub.PipelineLoader {
 	})
 	factoryRuleCaches.profiles[profile] = loader
 	return loader
+}
+
+// withFactoryHouseRules adds the factory's own rules (the store's, see
+// [factory.HouseRules]) to one repository's read, for every reader that
+// decides or shows what a job runs under: intake's start decision and the
+// factory's pipeline answers. A store that cannot read its rules makes the
+// read fail rather than quietly decide without them, so nothing starts on
+// its own that a house rule would have held.
+func withFactoryHouseRules(st *store.Store, f pipeline.File, err error) (pipeline.File, error) {
+	if st == nil {
+		return f, err
+	}
+	house, herr := st.HouseRules()
+	if herr != nil {
+		if err == nil {
+			err = herr
+		}
+		return f, err
+	}
+	return pipeline.WithHouseRules(f, house), err
 }

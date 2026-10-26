@@ -84,6 +84,10 @@ type File struct {
 	Text         string
 	PersonalText string
 	Personal     bool
+	// House is the factory's own rules when [WithHouseRules] added them to this
+	// read, so a client can say which lines came from the factory rather than
+	// the repository. The repository's Text never holds them.
+	House factory.HouseRules
 	// Problems are lines that did not load. The rest of the file did.
 	Problems []Problem
 

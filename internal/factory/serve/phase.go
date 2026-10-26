@@ -17,6 +17,10 @@ func markPreMutation(r *http.Request) bool {
 	case http.MethodPost:
 		return r.URL.Path == "/v1/access/links" || r.URL.Path == "/v1/access/revoke-sessions"
 	case http.MethodPut:
+		// The factory's own rules: exactly /v1/rules.
+		if r.URL.Path == "/v1/rules" {
+			return true
+		}
 		// One runner's settings: exactly /v1/runners/{runner}.
 		if rest, ok := strings.CutPrefix(r.URL.Path, "/v1/runners/"); ok {
 			return rest != "" && !strings.Contains(rest, "/")

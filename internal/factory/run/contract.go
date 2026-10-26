@@ -75,6 +75,10 @@ type Job struct {
 	Last *factory.StageResult
 	// Dir is the repository's checkout on this machine, "" when unknown.
 	Dir string
+	// Rules are the sentences every step must follow: the repository's own
+	// `rules` and the factory's (the job's [factory.Item.House]), in that
+	// order, each once. A chat step's brief quotes them; nil says nothing.
+	Rules []string
 	// Steer delivers the person's words while the round runs; a chat stage
 	// hands them to its conversation, a check ignores them.
 	Steer <-chan string

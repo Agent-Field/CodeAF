@@ -370,10 +370,13 @@ type Job struct {
 	Gate             string     `json:"gate"`
 	WaitingSince     *time.Time `json:"waiting_since,omitempty"`
 	AskedFirstReason string     `json:"asked_first_reason,omitempty"`
-	AssignedTo       string     `json:"assigned_to,omitempty"`
-	Step             *StepAt    `json:"step,omitempty"`
-	Steps            []Step     `json:"steps"`
-	Claims           []Claim    `json:"claims,omitempty"`
+	// HouseRules are the factory's own rules the job was queued under
+	// (factory.HouseRules); absent before it was first queued.
+	HouseRules *factory.HouseRules `json:"house_rules,omitempty"`
+	AssignedTo string              `json:"assigned_to,omitempty"`
+	Step       *StepAt             `json:"step,omitempty"`
+	Steps      []Step              `json:"steps"`
+	Claims     []Claim             `json:"claims,omitempty"`
 	// PlannedFiles are the paths the current plan's explicit Files declaration
 	// named, so the brief can say how many it planned against how many the
 	// change touched. Unknown is omitted: no declaration, an ambiguous one, or

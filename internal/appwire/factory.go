@@ -110,6 +110,11 @@ type FactoryCapabilities struct {
 	// [FactoryRunnerAdmin]; whether THIS factory and THIS computer can take the
 	// change is read from factory.runners (slots_policy, live_capacity).
 	RunnerManage bool `json:"runner_manage"`
+	// Rules: factory.rules and factory.rules_set are served (feature
+	// factory.rules). True only for an engine that implements
+	// [FactoryRulesKeeper]; whether THIS caller may change them is the
+	// operator's answer, read from factory.me.
+	Rules bool `json:"rules"`
 	// PipelinePR: factory.pipeline_pr is served (feature factory.pipeline_pr).
 	// True only for an engine that implements [FactoryPipelineOpener]; whether
 	// THIS caller holds a sign-in and GitHub access is answered by the call.

@@ -79,7 +79,7 @@ func NewPostExecutorWith(o PostOptions) Executor {
 			return factory.StageResult{}, fmt.Errorf("%s is not on a source codeaf can post to", it.Ref())
 		}
 		if policy != nil {
-			if ok, why := PolicyAllows(policy(it.Repo), it, action, job.Prior); !ok {
+			if ok, why := PolicyAllows(withHouse(policy(it.Repo), it), it, action, job.Prior); !ok {
 				return factory.StageResult{
 					Output: "post refused: " + why,
 					Claims: []factory.Claim{{Text: verb + " refused by policy", OK: false, Evidence: why, Medium: "policy"}},

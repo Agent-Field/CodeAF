@@ -521,6 +521,11 @@ type Item struct {
 	QKind string
 	// AskedFirstReason keeps the matched rule visible after the question is answered.
 	AskedFirstReason string `json:",omitempty"`
+	// House is the factory's own rules ([HouseRules]) as they stood when the
+	// job was last queued. They travel WITH THE JOB, so a runner on another
+	// machine follows the rules of the factory that handed it the work, not
+	// whatever its own machine keeps. Nil before a job is first queued.
+	House *HouseRules `json:",omitempty"`
 	// Ask is the person's own words when the job did not start from a GitHub
 	// issue. A GitHub issue keeps that on the wire and leaves Ask empty.
 	Ask *JobAsk `json:",omitempty"`

@@ -1405,6 +1405,7 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 		PriorNames:      priorNames,
 		Last:            last,
 		Dir:             dir,
+		Rules:           JobRules(lp.r.opts.Recipe, it),
 		dirErr:          dirErr,
 		Steer:           c.steer,
 		ModelSelections: c.modelSelections,
