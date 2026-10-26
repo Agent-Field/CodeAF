@@ -13,6 +13,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/clusterstate"
 )
 
+const legacyWriteRefusal = "codeaf: directory upgraded; use a current relay build"
+
 // LegacyGate is irrevocable. A failed inventory keeps the source frozen, and
 // ownership publication never makes the backup writable again.
 type LegacyGate struct {
@@ -49,6 +51,20 @@ func keepGate(tx *sql.Tx, g LegacyGate) error {
 	_, e = tx.Exec(`INSERT OR REPLACE INTO legacy_gate VALUES(1,?)`, string(b))
 	return e
 }
+
+// Database guards also stop relay builds that do not know about the gate.
+// They share its transaction so a failed freeze leaves the old writer usable.
+func freezeLegacyWrites(tx *sql.Tx) error {
+	for _, table := range []string{"identity", "devices", "cells", "version"} {
+		for _, operation := range []string{"INSERT", "UPDATE", "DELETE"} {
+			if _, err := tx.Exec(`CREATE TRIGGER IF NOT EXISTS legacy_frozen_` + table + `_` + operation + ` BEFORE ` + operation + ` ON ` + table + ` BEGIN SELECT RAISE(ABORT, '` + legacyWriteRefusal + `'); END`); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (s *SQLite) migrationTx(ctx context.Context, fn func(*sql.Tx) error) error {
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
@@ -100,7 +116,7 @@ func (s *SQLite) freezeLegacy(ctx context.Context, c clusterstate.LegacyConfig) 
 			if !bytes.Equal(a, b) {
 				return clusterstate.ErrMigration
 			}
-			return nil
+			return freezeLegacyWrites(tx)
 		}
 		// The source rows are retained byte-for-byte. Only sampled renewal evidence
 		// enters this separate migration table and the future committed genesis.
@@ -134,6 +150,9 @@ func (s *SQLite) freezeLegacy(ctx context.Context, c clusterstate.LegacyConfig) 
 		}
 		if re != nil {
 			return re
+		}
+		if e := freezeLegacyWrites(tx); e != nil {
+			return e
 		}
 		if e := keepGate(tx, LegacyGate{Stage: "frozen", Config: c}); e != nil {
 			return e

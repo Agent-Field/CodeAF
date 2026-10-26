@@ -169,6 +169,13 @@ namespace. A deployment's own configuration must carry the `RAFT_MEMBERS` bindin
 `wrangler.toml` declares; the first authenticated use of an existing identity then upgrades it in place, and that upgrade cannot
 be rolled back to the single-object writer.
 
+The frozen source refuses writes even from older Worker code. Its directory
+requests return HTTP 500 `internal`, with the storage error
+`codeaf: directory upgraded; use a current relay build` in the Worker log.
+Running an older relay after the upgrade is not supported. Restore current code
+with the same complete storage to resume; the original directory and encrypted
+frames remain retained.
+
 ## Base path
 
 A deployment can share a hostname by using a path prefix, such as

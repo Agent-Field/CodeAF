@@ -18,6 +18,7 @@ invalidates:
   - "Reopening retained work could compare its branch fence with the original chat and falsely refuse tools. Ownership checks stay with the record each window opened, and replacing a displaced drive settles its previous writer before starting another. A failed final save remains failed for every close caller."
   - "Deferred local durability could resolve a fallback daemon against a different current home. Both engine routes now retain the home and engine selected at capture."
   - "A single directory database was formerly the live source. First use now freezes and imports it into the three anchors while retaining the source, and the one-way upgrade cannot return to that writer after cluster changes are acknowledged."
+  - "The migration gate alone did not stop older relay code from writing the retained source. Both relays now install durable database write guards with the freeze, so an older relay refuses directory startup or writes with codeaf: directory upgraded; use a current relay build. Running an older relay after the upgrade is not supported."
   - "Self-hosted identities were described as limited only by disk space. Directory content now has an 8 MiB default allowance, with larger imports retaining their measured allowance and bounded bookkeeping having separate room; capacity refuses content growth without deleting saved data."
 ---
 

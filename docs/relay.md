@@ -105,9 +105,11 @@ imports its rows into three anchors, checks a fresh majority and publishes one o
 An interrupted import resumes the same cluster, keys and capacity allowance; the source
 is retained and a damaged import refuses requests instead of truncating records.
 
-This upgrade is one-way. After the cluster acknowledges changes, an older relay binary
-cannot resume the frozen writer. A code rollback must preserve the migration gate and
-consensus routing. Encrypted chunks stay in their existing store.
+This upgrade is one-way. Once the source is frozen, an older relay started against
+that store refuses to change it. Its directory requests return HTTP 500 `internal`;
+the underlying storage error is `codeaf: directory upgraded; use a current relay build`.
+Running an older relay after the upgrade is not supported. Restart a current relay
+with the complete store to resume. Encrypted chunks stay in their existing store.
 
 Older clients keep pairing, listing, saving, publishing and releasing. Blindly forcing
 a live chat without its observed holder and ownership number is refused with

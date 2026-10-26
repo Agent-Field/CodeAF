@@ -57,6 +57,7 @@ func TestR30CoordinationQuotesMatchProductStrings(t *testing.T) {
 		{"../syncsetup/cluster.go", "LeadCluster", "this computer must join"},
 		{"../syncsetup/member.go", "errMemberWaiting", "this computer is still joining"},
 		{"../syncsetup/worker.go", "ErrWorkerIncomplete", "this work may be incomplete"},
+		{"../directory/export.go", "legacyWriteRefusal", "codeaf: directory upgraded"},
 	} {
 		found := false
 		for _, text := range clusterDeclarationStrings(t, source.path, source.declaration) {

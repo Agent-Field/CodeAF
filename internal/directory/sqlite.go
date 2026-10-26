@@ -94,12 +94,23 @@ func (s *SQLite) init() error {
 
 // seed creates what is missing in tx and answers the Status the file holds.
 func seed(tx *sql.Tx) (Status, error) {
+	if _, err := tx.Exec(schema); err != nil {
+		return Status{}, err
+	}
+	g, err := gateIn(tx)
+	if err != nil {
+		return Status{}, err
+	}
+	// A frozen source remains readable for import and recovery without issuing
+	// the seed writes that its durable guards refuse from older relay builds.
+	if g != nil {
+		return statusIn(tx)
+	}
 	start, _ := json.Marshal(IdentityRec{V: 1})
 	for _, q := range []struct {
 		sql  string
 		args []any
 	}{
-		{schema, nil},
 		{`INSERT OR IGNORE INTO identity (id, rec) VALUES (1, ?)`, []any{string(start)}},
 		{`INSERT OR IGNORE INTO version (id, n) VALUES (1, 0)`, nil},
 	} {

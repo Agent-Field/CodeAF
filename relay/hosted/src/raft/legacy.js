@@ -11,6 +11,14 @@ const xor = (a,b) => { for(let i=0;i<32;i++) a[i]^=b[i]; };
 const importKey = 'legacy-import';
 const reserve = 4096;
 
+// Guards persist with the gate, including across a rollback to older code that
+// writes these tables without checking whether the directory was upgraded.
+function freezeWrites(sql) {
+  for(const table of ['dir','dirver'])for(const operation of ['INSERT','UPDATE','DELETE']) {
+    sql.exec(`CREATE TRIGGER IF NOT EXISTS legacy_frozen_${table}_${operation} BEFORE ${operation} ON ${table} BEGIN SELECT RAISE(ABORT, 'codeaf: directory upgraded; use a current relay build'); END`);
+  }
+}
+
 // Original JSON bytes go to the shared Go conversion function, including every
 // numeric fence and sealed field. JavaScript never evaluates a lease rule.
 export function convertLegacy(runtime, config, kind, id, raw, until=0) {
@@ -53,7 +61,8 @@ export class LegacySource {
     // Go validates the binding before the source acquires an irreversible gate.
     convertLegacy(this.runtime,config,'identity','',JSON.stringify({V:1,identity:config.identity}));
     this.storage.transactionSync(()=>{
-      const old=this.gate();if(old){check(encodeCanonical(old.config)===encodeCanonical(config));return;}
+      const old=this.gate();if(old)check(encodeCanonical(old.config)===encodeCanonical(config));
+      freezeWrites(this.sql);if(old)return;
       for(const {id,doc} of this.sql.exec("SELECT id,doc FROM dir WHERE kind='cells' ORDER BY id")) {
         let c;try{c=JSON.parse(doc);}catch{continue;}
         if(!c.lease)continue;

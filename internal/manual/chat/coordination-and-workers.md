@@ -125,6 +125,15 @@ frame hints, sealed names and key wraps are preserved; over 1 MiB is refused. Th
 identity’s storage capacity still applies, and existing records are never removed
 to make room.
 
+## Older relay binaries after a directory upgrade
+
+Running an older relay after the upgrade is not supported. An older relay started
+against an upgraded store cannot change its frozen directory. Its directory requests
+return HTTP 500 `internal`; the storage error is
+`codeaf: directory upgraded; use a current relay build`. Restart a current relay with
+the same complete store to resume. The hosted relay also refuses writes from older
+server code.
+
 ## Hosted relay directory capacity, upgrades and older clients
 
 The hosted relay records directory changes on three persistent members. Two must

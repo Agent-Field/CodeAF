@@ -28,7 +28,8 @@ export class Directory {
     sql.exec('CREATE TABLE IF NOT EXISTS legacy_gate (one INTEGER PRIMARY KEY CHECK(one=1), doc TEXT NOT NULL)');
     sql.exec('CREATE TABLE IF NOT EXISTS dir (kind TEXT NOT NULL, id TEXT NOT NULL, doc TEXT NOT NULL, PRIMARY KEY (kind, id)) WITHOUT ROWID');
     sql.exec('CREATE TABLE IF NOT EXISTS dirver (one INTEGER PRIMARY KEY CHECK (one = 1), n INTEGER NOT NULL)');
-    sql.exec('INSERT OR IGNORE INTO dirver VALUES (1, 0)');
+    // Frozen sources reopen for inventory without attempting a guarded seed.
+    if(!sql.exec('SELECT doc FROM legacy_gate WHERE one=1').toArray().length) sql.exec('INSERT OR IGNORE INTO dirver VALUES (1, 0)');
     this.version = sql.exec('SELECT n FROM dirver').one().n;
   }
 
