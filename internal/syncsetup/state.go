@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/vaultsync"
 )
@@ -14,6 +15,9 @@ var stateMu sync.Mutex
 // SyncState completes one encrypted home-state round even when no chat is
 // open. The quiet gate is checked before any capture or request (C30.4).
 func (s *Sync) SyncState(ctx context.Context) error {
+	if s.isRemoved() {
+		return directory.ErrRevoked
+	}
 	if Quiet(s.Home) {
 		return nil
 	}
@@ -86,6 +90,10 @@ func (s *Sync) stateRound(ctx context.Context) (*Sync, error) {
 		next = s
 	} else {
 		s.stopMember()
+	}
+	if next.isRemoved() {
+		next.stopMember()
+		return next, directory.ErrRevoked
 	}
 	next.memberRound(ctx)
 	return next, next.SyncState(ctx)

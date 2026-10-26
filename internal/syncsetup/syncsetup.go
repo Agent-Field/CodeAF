@@ -53,6 +53,7 @@ var ErrNoIdentity = errors.New(chatlist.NoIdentity)
 
 // Sync is everything that talks to the relay, bound to this device.
 type Sync struct {
+	removed           atomic.Bool
 	memberRetries     uint64
 	clock             func() time.Time
 	relayAttempts     atomic.Uint64
@@ -236,11 +237,14 @@ func (s *Sync) RowsAt(ctx context.Context) ([]chatlist.Row, uint64, error) {
 // nil when the directory client cannot open a watch socket, which is a screen
 // that polls alone.
 func (s *Sync) Follow() dirwatch.Follower {
+	if current, err := s.currentDisplaySync(); err == nil && current != s {
+		return current.Follow()
+	}
 	w, ok := s.Dir.(directory.Watcher)
 	if !ok {
 		return nil
 	}
-	return dirwatch.Follow(s.Ledger+"#home:"+s.Home, func(ctx context.Context) (dirwatch.Stream, error) {
+	return dirwatch.Follow(s.Ledger+"#home:"+s.Home+":"+s.Device.ID(), func(ctx context.Context) (dirwatch.Stream, error) {
 		if Quiet(s.Home) {
 			return nil, ErrQuiet
 		}
@@ -260,13 +264,13 @@ func (s *Sync) Follow() dirwatch.Follower {
 		if err != nil {
 			return nil, err
 		}
-		return quietStream{Stream: stream, home: s.Home}, nil
+		return quietStream{Stream: stream, home: current.Home, owner: current}, nil
 	})
 }
 
 // holdKey keeps the holding socket's feed apart from the home screen's, which
 // is keyed by the ledger alone: the home socket names no holds.
-func (s *Sync) holdKey() string { return s.Ledger + "#holding" }
+func (s *Sync) holdKey() string { return s.Ledger + "#holding:" + s.Device.ID() }
 
 // Liveness is the process's holding socket for this identity, which lets the
 // chats it holds stop heartbeating while committed hold receipts cover them. It answers
@@ -285,7 +289,7 @@ func (s *Sync) Liveness() cellsync.Liveness {
 		if err != nil {
 			return nil, err
 		}
-		return quietStream{Stream: stream, home: s.Home}, nil
+		return quietStream{Stream: stream, home: s.Home, owner: s}, nil
 	})}
 }
 

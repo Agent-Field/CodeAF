@@ -94,12 +94,13 @@ func (s *Sync) memberPath() string {
 // memberAllowed fences delayed work as well as new dials. A re-pair can leave
 // the old handle paired but bound to a different identity or relay.
 func (s *Sync) memberAllowed() bool {
-	if !MayTalk(s.Home) {
+	if !MayTalk(s.Home) || s.isRemoved() {
 		return false
 	}
 	id, err := identity.Load(s.Home)
+	dev, deviceErr := identity.LoadDevice(s.Home)
 	base, e := relayBase(Resolve(s.Home).URL)
-	return err == nil && e == nil && id.ID() == s.Identity.ID() && base == s.Relay
+	return err == nil && deviceErr == nil && e == nil && id.ID() == s.Identity.ID() && dev.ID() == s.Device.ID() && base == s.Relay
 }
 
 func (s *Sync) enrollMember(ctx context.Context, token string) (raftdirectory.PersonalEnrollment, error) {
@@ -696,6 +697,7 @@ func (s *Sync) memberRound(ctx context.Context) error {
 		}
 	}
 	if err != nil {
+		err = s.clusterRefusal(ctx, err)
 		if errors.Is(err, clusterctl.ErrUnsupported) {
 			s.memberUnsupported = true
 		}

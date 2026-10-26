@@ -212,3 +212,9 @@ been saved. If the reply is interrupted, retrying the same approval keeps the
 same decision. A different answer cannot replace a decision already made. If
 the link has run out, ask the new computer for a fresh one. Removing a device
 blocks its later requests; it cannot take back bytes the device already received.
+
+## Does a removed computer keep syncing while its window is open
+
+Once codeaf learns that this computer was removed, it stops asking the relay for chats, sending heartbeats and reconnecting its watches or coordination. That refusal is remembered across windows and restarts. Your window stays usable for local chats.
+
+Run `codeaf pair` to add the computer again. Pairing can still contact the relay and installs a new device key. An already open Home can then show your other computers again.

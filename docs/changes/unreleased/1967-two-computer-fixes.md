@@ -8,6 +8,7 @@ invalidates:
   - "When a computer leading coordination quit cleanly, its closing chat release was refused and the chat stayed held offline for about 90 seconds while the anchors elected a new leader. A clean quit now finishes those releases and hands coordination to an anchor first, adding at most 5 seconds; sleep, crashes and lost connections still use fallback."
   - "On a removed computer, codeaf cluster status and codeaf cluster lead said the cluster could not coordinate. They now say this device was removed, in the same words as codeaf devices."
   - "Taking a chat back into a displaced window could report already shared turns as kept edits and add a branch row. Only real local work is kept now, and an empty new chat on another computer no longer shows as an untitled row on Home."
+  - "A removed computer kept polling and heartbeating while its window stayed open. Once removal is known, sync now stays stopped across windows and restarts until that computer pairs again; local chats remain usable."
   - "codeaf --version, help and manual requests adopted the former state folder and removed old timers before doing anything else. Those informational requests now change nothing on the machine."
 ---
 After continue here from a send, the held words are left in the arrived chat's box for the person to send.
