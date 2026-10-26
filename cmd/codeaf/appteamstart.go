@@ -482,7 +482,7 @@ func appConversationHere(t teamstore.Team, key string) (bool, error) {
 	var dirs []string
 	for _, path := range []string{m.File, m.Key} {
 		if filepath.IsAbs(path) {
-			dirs = append(dirs, filepath.Dir(path))
+			dirs = append(dirs, session.DirOf(path))
 		}
 	}
 	for _, dir := range dirs {
@@ -539,7 +539,7 @@ func (b *appBackend) takeBack(transcript string) {
 // under root and hold nothing but the lookup file mint wrote. A folder with
 // anything else in it is somebody's, and stays.
 func appUnmint(root, transcript string) {
-	dir := filepath.Dir(filepath.Clean(transcript))
+	dir := session.DirOf(filepath.Clean(transcript))
 	rel, err := filepath.Rel(root, dir)
 	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return

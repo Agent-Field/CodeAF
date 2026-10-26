@@ -311,7 +311,7 @@ func (b *appBackend) refreshElsewhereWith(a *appAgent, watch bool) {
 	var dir string
 	b.locked(func() {
 		if a.live == nil && a.transcript != "" {
-			dir = filepath.Dir(a.transcript)
+			dir = session.DirOf(a.transcript)
 		}
 	})
 	if dir == "" {
@@ -616,7 +616,7 @@ func appCloseOwnershipConflict(err error) bool {
 func (b *appBackend) abandonCloseToHolder(a *appAgent) bool {
 	var transcript string
 	b.locked(func() { transcript = a.transcript })
-	p, fresh := session.ReadSessionPresence(filepath.Dir(transcript), b.now())
+	p, fresh := session.ReadSessionPresence(session.DirOf(transcript), b.now())
 	if !fresh || p.PID == os.Getpid() {
 		return false
 	}
@@ -637,7 +637,7 @@ func (b *appBackend) abandonCloseToHolder(a *appAgent) bool {
 	if changed {
 		b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	}
-	b.watchCloseClaim(filepath.Dir(transcript))
+	b.watchCloseClaim(session.DirOf(transcript))
 	return true
 }
 
@@ -683,7 +683,7 @@ func (b *appBackend) resetCloseAfterPerson(a *appAgent) (bool, error) {
 	if last.IsZero() {
 		return false, nil
 	}
-	meta, err := session.LoadMeta(filepath.Dir(transcript))
+	meta, err := session.LoadMeta(session.DirOf(transcript))
 	if err != nil {
 		return false, err
 	}

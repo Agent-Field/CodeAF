@@ -137,7 +137,7 @@ func (b *appBackend) reapBlank(a *appAgent) bool {
 		return false
 	}
 	transcript = filepath.Clean(transcript)
-	dir := filepath.Dir(transcript)
+	dir := session.DirOf(transcript)
 	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 		return false
 	}

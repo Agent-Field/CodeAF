@@ -132,7 +132,7 @@ func (b *appBackend) ProcessActions(ctx context.Context, id string) (*appwire.Pr
 		var transcript string
 		b.locked(func() { transcript = a.transcript })
 		if transcript != "" {
-			convDir = filepath.Dir(transcript)
+			convDir = session.DirOf(transcript)
 		}
 	}
 	res.State = appProcessBase(agent, record).State
