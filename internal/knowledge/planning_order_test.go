@@ -17,7 +17,7 @@ func TestKnowledgePlansAllBoundedBatchesBeforeInitialWriting(t *testing.T) {
 		state  string
 	}{
 		{"merged batches", 33, 1, "explained"},
-		{"oversized merged concept", 161, 0, "needs_partition"},
+		{"large merged concept", 161, 2, "explained"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			v := knowledge.Open(t.TempDir())

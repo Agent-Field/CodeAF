@@ -728,7 +728,12 @@ in the database; the next running codeaf process resumes unfinished work.
 
 The initial build processes a fixed collection of admitted history before
 organizing it. Independent page drafts and refreshes can run two at a time;
-source updates and publication remain ordered. Later updates combine saved turns into
+source updates and publication remain ordered. Large concepts stay on one page;
+writing processes their evidence in sequential parts, with at most 160 claims
+per initial part. Refresh parts use at most 80 claims and target 14,000 serialized
+claim characters; a single larger claim remains complete. Each refresh part has
+its own step and source-reading budget, so total work grows with the evidence.
+Later updates combine saved turns into
 normal model requests, without OpenRouter's Batch API. A batch becomes eligible
 after 30 seconds without new sources, when its oldest source reaches 120 seconds,
 or when its context limit is reached. These thresholds do not include provider

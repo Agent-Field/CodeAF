@@ -193,7 +193,6 @@ func validateCompilerReferences(role string, payload, response document) error {
 				return errors.New("knowledge consolidation returned duplicate canonical headings")
 			}
 			identities[key] = true
-			claims := 0
 			for _, id := range members {
 				member := catalog[id]
 				if member == nil || seen[id] {
@@ -203,10 +202,6 @@ func validateCompilerReferences(role string, payload, response document) error {
 					return errors.New("knowledge consolidation cannot merge distinct scopes")
 				}
 				seen[id] = true
-				claims += int(number(member["claim_count"]))
-			}
-			if claims > 160 && len(members) > 1 {
-				return errors.New("knowledge consolidation cannot merge drafts beyond the subject claim limit")
 			}
 		}
 		if len(seen) != len(catalog) {
@@ -229,6 +224,20 @@ func validateCompilerReferences(role string, payload, response document) error {
 		for _, id := range stringsValue(subject["notes"]) {
 			if notes[id] == nil {
 				return errors.New("knowledge organization referenced an uninspected evidence note")
+			}
+		}
+	}
+	if role == "organize_subjects" {
+		before, after := []string{}, []string{}
+		for _, subject := range items(payload["proposed_subjects"]) {
+			before = append(before, stringsValue(subject["notes"])...)
+		}
+		for _, subject := range items(response["subjects"]) {
+			after = append(after, stringsValue(subject["notes"])...)
+		}
+		for _, id := range sortedUnique(before) {
+			if !contains(after, id) {
+				return fmt.Errorf("knowledge organization review must preserve planned evidence coverage (planned=%d reviewed=%d)", len(sortedUnique(before)), len(sortedUnique(after)))
 			}
 		}
 	}

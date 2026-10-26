@@ -42,8 +42,8 @@ func (m compilerModel) call(role string, payload document) (document, error) {
 	}
 	reasoning := document{"effort": "none"}
 	requestVersion := "knowledge-3"
-	if role == "discover" || role == "organize_subjects" {
-		requestVersion = "knowledge-4"
+	if role == "discover" || role == "organize_subjects" || role == "consolidate_subjects" {
+		requestVersion = "knowledge-5"
 	}
 	requestID := identity([]any{m.model, requestVersion, prompt, payload})
 	requestID = identity([]any{requestID, reasoning})

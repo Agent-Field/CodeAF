@@ -80,8 +80,11 @@ in windows of at most 128 before new pages are proposed, with exact IDs retained
 for reuse. Concise concept headings and two-level folders come from the evidence,
 not a fixed project taxonomy. Independent subject drafts and editorial refreshes
 run with at most two provider jobs; claim updates and publication remain ordered.
-Oversized
-subjects retain a partition-needed state rather than truncating claims.
+Large concepts remain one canonical page. Initial writing uses sequential parts
+of at most 160 claims; refresh parts use at most 80 claims and target 14,000
+serialized seed characters, retaining a complete oversized singleton. Step and
+source-read budgets apply per part. Full cached parts keep their memberships
+when evidence is appended; changed or retired dependencies invalidate them.
 
 The UI performs database work through asynchronous commands. Search uses FTS,
 late filter results are discarded, and unchanged publication revisions reuse

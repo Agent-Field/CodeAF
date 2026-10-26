@@ -56,7 +56,13 @@ type Section struct {
 	Heading    string      `json:"heading"`
 	Paragraphs []Paragraph `json:"paragraphs"`
 }
+type Conflict struct {
+	Claims []string `json:"claims"`
+	Reason string   `json:"reason"`
+	State  string   `json:"state"`
+}
 type Page struct {
+	Conflicts            []Conflict `json:"conflicts,omitempty"`
 	OriginalEvidence     []Evidence `json:"original_evidence,omitempty"`
 	Revision             string     `json:"revision,omitempty"`
 	HumanEditedAt        string     `json:"human_edited_at,omitempty"`

@@ -88,7 +88,109 @@ func paragraphDependencies(paragraph document, sourceClaims map[string]sourceCla
 	return sortedUnique(refs)
 }
 
+func learnerSeedClaim(claim, sources document) document {
+	item := choose(claim, "id", "text", "kind", "scope")
+	roles := []string{}
+	for _, evidence := range items(claim["evidence"]) {
+		source := object(sources[textValue(evidence["source"])])
+		if len(source) > 0 {
+			roles = append(roles, textValue(source["role"]))
+		}
+	}
+	item["source_roles"] = sortedUnique(roles)
+	return item
+}
+
 func learnSubject(vault, subject, previous document, model compilerModel, goal string, maxSteps, readBudget int) (document, error) {
+	if maxSteps < 1 || maxSteps > 8 || readBudget < 1000 || readBudget > 40000 {
+		return nil, fmt.Errorf("learner bounds: 1–8 steps and 1,000–40,000 source characters per evidence part")
+	}
+	subject = clone(subject)
+	subject["conflicts"] = activeSubjectConflicts(vault, subject)
+	sources := object(vault["sources"])
+	active := activeClaims(vault)
+	previousParts := object(previous["parts"])
+	groups := [][]string{}
+	covered := map[string]bool{}
+	for _, key := range stringsValue(previous["part_order"]) {
+		ids := stringsValue(object(previousParts[key])["claim_ids"])
+		if len(ids) != 80 {
+			continue
+		}
+		valid := true
+		for _, id := range ids {
+			if active[id] == nil || covered[id] || !contains(stringsValue(subject["claims"]), id) {
+				valid = false
+			}
+		}
+		if valid {
+			groups = append(groups, ids)
+			for _, id := range ids {
+				covered[id] = true
+			}
+		}
+	}
+	current := []string{}
+	size := 2
+	for _, claim := range items(vault["claims"]) {
+		id := textValue(claim["id"])
+		if textValue(claim["status"]) != "active" || covered[id] || !contains(stringsValue(subject["claims"]), id) {
+			continue
+		}
+		length := asciiJSONLength(learnerSeedClaim(claim, sources)) + 1
+		if len(current) > 0 && (len(current) == 80 || size+length > 14000) {
+			groups = append(groups, current)
+			current, size = []string{}, 2
+		}
+		current = append(current, id)
+		size += length
+	}
+	if len(current) > 0 || len(groups) == 0 {
+		groups = append(groups, current)
+	}
+	parts := document{}
+	partOrder := []string{}
+	sections, blocks, trace := []document{}, []document{}, []document{}
+	gaps := []string{}
+	fingerprints := []any{}
+	steps, characters := 0, 0
+	for _, ids := range groups {
+		part := clone(subject)
+		part["claims"] = ids
+		part["conflicts"] = conflictsForClaims(items(subject["conflicts"]), ids)
+		part["section_context"] = "This is one evidence segment of the same canonical guide. Write only useful sections supported by this segment; omit repeated introductions."
+		partGoal := goal + " Write only sections supported by this evidence segment; other segments of this guide are processed separately."
+		key := identity(ids)
+		prior := object(previousParts[key])
+		if len(previousParts) == 0 && len(groups) == 1 {
+			prior = previous
+		}
+		guide, err := learnSubjectPart(vault, part, prior, model, partGoal, maxSteps, readBudget)
+		if err != nil {
+			return nil, err
+		}
+		guide["claim_ids"] = ids
+		parts[key] = guide
+		partOrder = append(partOrder, key)
+		fingerprints = append(fingerprints, []any{key, guide["input_hash"]})
+		sections = append(sections, items(guide["sections"])...)
+		blocks = unionDocuments(blocks, items(guide["blocks"]))
+		for _, entry := range items(guide["trace"]) {
+			trace = append(trace, merge(entry, document{"part": key}))
+		}
+		gaps = unique(append(gaps, stringsValue(guide["gaps"])...))
+		steps += int(number(guide["steps"]))
+		characters += int(number(guide["source_characters"]))
+	}
+	sections = mergeSubjectSections(sections)
+	state := "insufficient_evidence"
+	if len(sections) > 0 {
+		state = "reviewed"
+	}
+	return document{"subject": subject["id"], "input_hash": identity([]any{"learner-parts-1", fingerprints}), "state": state, "sections": sections, "blocks": blocks, "trace": trace, "gaps": gaps[:min(5, len(gaps))], "source_characters": characters, "steps": steps, "parts": parts, "part_order": partOrder, "part_count": len(groups), "max_steps_per_part": maxSteps, "source_character_budget_per_part": readBudget, "limitation": "Read-only evidence parts; each part has its own step and source-read budget. Aggregate work scales with parts; same-model support review is not independent verification."}, nil
+}
+
+func learnSubjectPart(vault, subject, previous document, model compilerModel, goal string, maxSteps, readBudget int) (document, error) {
 	if maxSteps < 1 || maxSteps > 8 || readBudget < 1000 || readBudget > 40000 {
 		return nil, fmt.Errorf("learner bounds: 1–8 steps and 1,000–40,000 source characters")
 	}
@@ -137,18 +239,7 @@ func learnSubject(vault, subject, previous document, model compilerModel, goal s
 	}
 	seed := []document{}
 	for _, c := range orderedClaims {
-		item := choose(c, "id", "text", "kind", "scope")
-		roles := []string{}
-		for _, ev := range items(c["evidence"]) {
-			s := object(sources[textValue(ev["source"])])
-			if len(s) > 0 {
-				roles = append(roles, textValue(s["role"]))
-			}
-		}
-		item["source_roles"] = sortedUnique(roles)
-		if asciiJSONLength(append(seed, item)) <= 14000 {
-			seed = append(seed, item)
-		}
+		seed = append(seed, learnerSeedClaim(c, sources))
 	}
 	shown := index(seed)
 	idx, e := newEvidenceIndex(nil, sources)
@@ -199,7 +290,7 @@ func learnSubject(vault, subject, previous document, model compilerModel, goal s
 		}
 	}
 	for step := 0; step < maxSteps; step++ {
-		response, err := model.call("learner_step", document{"subject": document{"id": subject["id"], "title": subject["title"], "scope": subject["scope"], "questions": questions, "conflicts": items(subject["conflicts"])}, "goal": goal, "claims": seed, "omitted_claims": len(claims) - len(seed), "source_catalog": catalog, "notes": notes, "blocks": blockOrder, "trace": trace, "remaining_steps": maxSteps - step, "remaining_source_characters": readBudget - used})
+		response, err := model.call("learner_step", document{"subject": document{"id": subject["id"], "title": subject["title"], "scope": subject["scope"], "questions": questions, "conflicts": items(subject["conflicts"]), "section_context": subject["section_context"]}, "goal": goal, "claims": seed, "omitted_claims": len(claims) - len(seed), "source_catalog": catalog, "notes": notes, "blocks": blockOrder, "trace": trace, "remaining_steps": maxSteps - step, "remaining_source_characters": readBudget - used})
 		if err != nil {
 			return nil, err
 		}

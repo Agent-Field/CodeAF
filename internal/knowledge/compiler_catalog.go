@@ -29,17 +29,17 @@ func discoverSubjects(catalog, subjects []document, model compilerModel) (docume
 	if len(existing) <= discoveryCatalogLimit {
 		return reviewSubjectPlan(catalog, existing, false, model)
 	}
-	remaining := append([]document{}, catalog...)
 	assignments := []document{}
-	for start := 0; start < len(existing) && len(remaining) > 0; start += discoveryCatalogLimit {
+	bySubject := map[string]document{}
+	assigned := map[string]bool{}
+	for start := 0; start < len(existing); start += discoveryCatalogLimit {
 		batch := existing[start:min(start+discoveryCatalogLimit, len(existing))]
-		response, err := model.call("discover", document{"catalog": remaining, "existing_subjects": batch, "reuse_only": true})
+		response, err := model.call("discover", document{"catalog": catalog, "existing_subjects": batch, "reuse_only": true})
 		if err != nil {
 			return nil, err
 		}
 		normalizeSubjectReferences(response)
-		allowed, notes := index(batch), index(remaining)
-		assigned := map[string]bool{}
+		allowed, notes := index(batch), index(catalog)
 		for _, raw := range items(response["subjects"]) {
 			if allowed[textValue(raw["id"])] == nil {
 				return nil, errors.New("knowledge reuse-only discovery must reference an inspected existing subject")
@@ -50,15 +50,22 @@ func discoverSubjects(catalog, subjects []document, model compilerModel) (docume
 				}
 				assigned[id] = true
 			}
-			assignments = append(assignments, raw)
-		}
-		unmatched := []document{}
-		for _, n := range remaining {
-			if !assigned[textValue(n["id"])] {
-				unmatched = append(unmatched, n)
+			id := textValue(raw["id"])
+			if prior := bySubject[id]; prior != nil {
+				prior["notes"] = sortedUnique(append(stringsValue(prior["notes"]), stringsValue(raw["notes"])...))
+			} else {
+				entry := clone(raw)
+				entry["notes"] = sortedUnique(stringsValue(raw["notes"]))
+				bySubject[id] = entry
+				assignments = append(assignments, entry)
 			}
 		}
-		remaining = unmatched
+	}
+	remaining := []document{}
+	for _, note := range catalog {
+		if !assigned[textValue(note["id"])] {
+			remaining = append(remaining, note)
+		}
 	}
 	if len(remaining) > 0 {
 		response, err := reviewSubjectPlan(remaining, nil, true, model)
@@ -92,22 +99,6 @@ func reviewSubjectPlan(catalog, existing []document, searched bool, model compil
 		return nil, err
 	}
 	normalizeSubjectReferences(reviewed)
-	before, after := []string{}, []string{}
-	allowed := index(catalog)
-	for _, subject := range items(proposal["subjects"]) {
-		before = append(before, stringsValue(subject["notes"])...)
-	}
-	for _, subject := range items(reviewed["subjects"]) {
-		for _, id := range stringsValue(subject["notes"]) {
-			if allowed[id] == nil {
-				return nil, errors.New("knowledge organization plan referenced an uninspected note")
-			}
-			after = append(after, id)
-		}
-	}
-	if identity(sortedUnique(before)) != identity(sortedUnique(after)) {
-		return nil, errors.New("knowledge organization review must preserve planned evidence coverage")
-	}
 	return reviewed, nil
 }
 

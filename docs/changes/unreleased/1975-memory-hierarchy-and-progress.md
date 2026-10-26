@@ -29,5 +29,5 @@ Incomplete provider results and invalid organization references preserve pending
 work. Failed plans are not cached as valid results. Generated prose must pass
 both evidence support and lasting-usefulness checks. Existing published page
 identities are retained; this does not automatically merge older published
-concepts or rewrite human edits. Oversized concepts retain an explicit state
-rather than silently truncating their evidence.
+concepts or rewrite human edits. Large concepts stay on one canonical page while sequential evidence parts keep
+each provider request bounded. New evidence continues refreshing these guides.
