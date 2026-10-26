@@ -798,12 +798,12 @@ func TestVagueIntentGetsOneSecondNameFromFinishedReply(t *testing.T) {
 		return intentAnswer{title: "Maya release review"}
 	})
 	a, path := intentAgent(t, c, nil)
-	submitMessage(t, a, Submission{Text: "help me"})
+	submitMessage(t, a, Submission{Text: "release help"})
 	settleNaming(a)
 	if c.asks() != 2 {
 		t.Fatalf("naming calls = %d, want exactly 2", c.asks())
 	}
-	if !strings.Contains(c.ask(1).request(), "the assistant's own answer") || !strings.Contains(c.ask(1).request(), "help me") {
+	if !strings.Contains(c.ask(1).request(), "the assistant's own answer") || !strings.Contains(c.ask(1).request(), "release help") {
 		t.Fatal("second name lacks the opening exchange")
 	}
 	if a.Title() != "Maya release review" {
@@ -978,7 +978,7 @@ func TestIntentFailedShorterRepairKeepsPlaceholder(t *testing.T) {
 }
 
 func TestVagueGreetingKeepsPlaceholderAfterOneSecondChance(t *testing.T) {
-	for _, second := range []string{"KEEP_NAME", "General chat"} {
+	for _, second := range []string{"KEEP_NAME", "General chat", "Nothing to continue", "Continue with no context"} {
 		t.Run(second, func(t *testing.T) {
 			c := intentFixture(4, func(n int) intentAnswer {
 				if n == 0 {
@@ -1237,5 +1237,130 @@ func TestPersonsRenameDuringConcreteCheckWins(t *testing.T) {
 	settleNaming(a)
 	if c.asks() != 2 || a.Title() != "hi" {
 		t.Fatalf("person's in-flight rename lost: calls=%d title=%q", c.asks(), a.Title())
+	}
+}
+
+func TestVagueOpenerEchoKeepsExactPlaceholderUntilConcreteExchange(t *testing.T) {
+	for _, answer := range []string{"Look at this", `"LOOK   AT THIS."`, "Title: Look at this."} {
+		t.Run(answer, func(t *testing.T) {
+			c := intentFixture(2, func(n int) intentAnswer {
+				if n < 2 {
+					return intentAnswer{title: answer}
+				}
+				return intentAnswer{title: "Mira CI review"}
+			})
+			a, _ := intentAgent(t, c, nil)
+			submitMessage(t, a, Submission{Text: "look at this"})
+			settleNaming(a)
+			if c.asks() != 2 || a.Title() != "look at this" {
+				t.Fatalf("echo replaced placeholder: calls=%d title=%q", c.asks(), a.Title())
+			}
+			submitMessage(t, a, Submission{Text: "Mira needs a CI review"})
+			settleNaming(a)
+			if c.asks() != 3 || a.Title() != "Mira CI review" {
+				t.Fatalf("echo consumed concrete opportunity: calls=%d title=%q", c.asks(), a.Title())
+			}
+		})
+	}
+}
+
+func TestIntentPromptRequestsSentenceCaseAndKeepsProperNouns(t *testing.T) {
+	c := intentSays(1, "Mira CI review")
+	a, _ := intentAgent(t, c, nil)
+	submitMessage(t, a, Submission{Text: "Review the CI checks with Mira"})
+	settleNaming(a)
+	body := c.ask(0).request()
+	for _, want := range []string{"sentence case", "proper nouns", "Release review", "Why is CI slow?"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("prompt missing %q: %s", want, body)
+		}
+	}
+	if a.Title() != "Mira CI review" {
+		t.Fatalf("proper nouns changed: %q", a.Title())
+	}
+}
+
+func TestSpecificShortOpenerCanKeepItsModelName(t *testing.T) {
+	c := intentSays(1, "Release review")
+	a, _ := intentAgent(t, c, nil)
+	submitMessage(t, a, Submission{Text: "release review"})
+	settleNaming(a)
+	if a.Title() != "Release review" {
+		t.Fatalf("specific short topic was rejected as an echo: %q", a.Title())
+	}
+}
+
+func TestVagueCurrentEchoDoesNotConsumeConcreteRename(t *testing.T) {
+	c := intentFixture(3, func(n int) intentAnswer {
+		switch n {
+		case 0, 1:
+			return intentAnswer{title: "KEEP_NAME"}
+		case 2:
+			return intentAnswer{title: "Continue"}
+		default:
+			return intentAnswer{title: "Mira CI review"}
+		}
+	})
+	a, _ := intentAgent(t, c, nil)
+	submitMessage(t, a, Submission{Text: "hi"})
+	settleNaming(a)
+	submitMessage(t, a, Submission{Text: "continue"})
+	settleNaming(a)
+	if c.asks() != 3 || a.Title() != "hi" {
+		t.Fatalf("current vague echo consumed rename: calls=%d title=%q", c.asks(), a.Title())
+	}
+	submitMessage(t, a, Submission{Text: "Mira needs a CI review"})
+	settleNaming(a)
+	if c.asks() != 4 || a.Title() != "Mira CI review" {
+		t.Fatalf("concrete third exchange lost: calls=%d title=%q", c.asks(), a.Title())
+	}
+}
+
+func TestEmptyAuthoredIntentRejectsArbitraryModelTopics(t *testing.T) {
+	for _, answer := range []string{"Missing attachment", "Continue with no thread", "Invented picnic"} {
+		t.Run(answer, func(t *testing.T) {
+			c := intentFixture(3, func(n int) intentAnswer {
+				if n < 3 {
+					return intentAnswer{title: answer}
+				}
+				return intentAnswer{title: "Sourdough apple smell"}
+			})
+			a, _ := intentAgent(t, c, nil)
+			submitMessage(t, a, Submission{Text: "look at this"})
+			settleNaming(a)
+			if c.asks() != 2 || a.Title() != "look at this" {
+				t.Fatalf("invented topic replaced empty opener: calls=%d title=%q", c.asks(), a.Title())
+			}
+			submitMessage(t, a, Submission{Text: "continue"})
+			settleNaming(a)
+			if c.asks() != 3 || a.Title() != "look at this" {
+				t.Fatalf("empty current message consumed name: calls=%d title=%q", c.asks(), a.Title())
+			}
+			submitMessage(t, a, Submission{Text: "my sourdough smells like apples"})
+			settleNaming(a)
+			if c.asks() != 4 || a.Title() != "Sourdough apple smell" {
+				t.Fatalf("authored topic did not name: calls=%d title=%q", c.asks(), a.Title())
+			}
+		})
+	}
+}
+
+func TestEmptyOpenerCanNameALaterAttachedFile(t *testing.T) {
+	c := intentFixture(2, func(n int) intentAnswer {
+		if n < 2 {
+			return intentAnswer{title: "KEEP_NAME"}
+		}
+		return intentAnswer{title: "Mira release brief"}
+	})
+	a, _ := intentAgent(t, c, nil)
+	submitMessage(t, a, Submission{Text: "hi"})
+	settleNaming(a)
+	submitMessage(t, a, Submission{Text: "look at this", Attachments: []MessageAttachment{fileAttachment("brief", "/private/work/Mira-release-brief.pdf")}})
+	settleNaming(a)
+	if c.asks() != 3 || a.Title() != "Mira release brief" {
+		t.Fatalf("attached topic did not name: calls=%d title=%q", c.asks(), a.Title())
+	}
+	if body := c.ask(2).request(); !strings.Contains(body, "Mira-release-brief.pdf") || strings.Contains(body, "/private/work") {
+		t.Fatalf("namer lacks safe attachment name: %s", body)
 	}
 }

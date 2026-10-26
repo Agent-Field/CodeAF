@@ -231,8 +231,10 @@ the selected row.
 ## Desktop conversation names, short tab names, vague first messages and personal renames
 
 The desktop asks the configured `title` model for a name in 2–4 words and at most
-24 characters. It asks for the distinguishing word first, using your own words
-and names, and supplies up to 20 other open conversation names to avoid repeats.
+24 characters. It asks for sentence case with proper nouns kept, as in
+"Release review" and "Why is CI slow?". It puts the distinguishing word first,
+using your own words and names, and supplies up to 20 other open conversation
+names to avoid repeats.
 Your first message, or attached file names when you type nothing, supplies the
 placeholder while naming runs. The placeholder can use up to 40 characters.
 
@@ -240,8 +242,12 @@ If your first message has fewer than four words, or the model gives a generic
 name, the engine looks for a concrete topic in the first three finished
 exchanges. Each check uses your opening message, that exchange's message and
 the opening 400 characters of its reply. A vague exchange keeps the current
-name. The first concrete topic earns one final model name. If all three stay
-vague, the opening name stays and later messages do not restart naming.
+name. Echoing a vague opening, such as "Look at this", keeps the original
+placeholder exactly as written. A greeting or empty request needs a topic or
+file from you before the model can replace that placeholder. The first concrete
+topic earns one final model
+name. If all three stay vague, the opening name stays and later messages do not
+restart naming.
 
 The remaining exchange budget and the final naming decision survive reopening
 the conversation. A name you choose yourself stops this process, even while a

@@ -115,30 +115,9 @@ func TestLiveIntentNamesNineConversations(t *testing.T) {
 		if err := agent.Close(); err != nil {
 			t.Fatal(err)
 		}
-		if title == "" || utf8.RuneCountInString(title) > 40 || (title != OpeningName(words, nil) && (utf8.RuneCountInString(title) > 24 || strings.HasSuffix(title, "…"))) {
-			t.Fatalf("model name = %q", title)
-		}
-		if len(exchange) > 1 && title == OpeningName(words, nil) {
-			t.Fatalf("concrete follow-up kept placeholder %q", title)
-		}
-		for _, previous := range names {
-			if title == previous {
-				t.Fatalf("duplicate name %q", title)
-			}
-		}
-		names = append(names, title)
 		recorder.mu.Lock()
 		calls := append([]liveIntentCall(nil), recorder.calls...)
 		recorder.mu.Unlock()
-		for _, call := range calls {
-			if call.Model != model {
-				t.Fatalf("unexpected model %q", call.Model)
-			}
-			if call.Error != "" {
-				t.Logf("failed request messages=%v", call.Messages)
-				t.Fatal(call.Error)
-			}
-		}
 		evidence, err := json.MarshalIndent(struct {
 			Opener  string           `json:"opener"`
 			Name    string           `json:"name"`
@@ -152,11 +131,40 @@ func TestLiveIntentNamesNineConversations(t *testing.T) {
 			if err := os.MkdirAll(out, 0700); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(filepath.Join(out, fmt.Sprintf("%02d.json", len(names))), evidence, 0600); err != nil {
+			if err := os.WriteFile(filepath.Join(out, fmt.Sprintf("%02d.json", len(names)+1)), evidence, 0600); err != nil {
 				t.Fatal(err)
 			}
 		}
 		t.Logf("evidence=%s", evidence)
+		for _, call := range calls {
+			if call.Model != model {
+				t.Fatalf("unexpected model %q", call.Model)
+			}
+			if call.Error != "" {
+				t.Logf("failed request messages=%v", call.Messages)
+				t.Fatal(call.Error)
+			}
+		}
+		if title == "" || utf8.RuneCountInString(title) > 40 || (title != OpeningName(words, nil) && (utf8.RuneCountInString(title) > 24 || strings.HasSuffix(title, "…"))) {
+			t.Fatalf("model name = %q", title)
+		}
+		if len(exchange) == 1 {
+			switch words {
+			case "hi", "look at this", "can you help", "continue":
+				if title != words {
+					t.Fatalf("vague opener changed from %q to %q", words, title)
+				}
+			}
+		}
+		if len(exchange) > 1 && title == OpeningName(words, nil) {
+			t.Fatalf("concrete follow-up kept placeholder %q", title)
+		}
+		for _, previous := range names {
+			if title == previous {
+				t.Fatalf("duplicate name %q", title)
+			}
+		}
+		names = append(names, title)
 		t.Logf("opener=%q name=%q elapsed=%s title_events=%q reply_chars=%d", strings.Join(exchange, " → "), title, elapsed, heard, utf8.RuneCountInString(reply.String()))
 	}
 }

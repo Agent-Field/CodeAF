@@ -37,7 +37,7 @@ const (
 // intentPrompt is the instruction, and it goes LAST in the request for the
 // reason [titlePrompt] does. It asks for the intent and not a summary of the
 // message: "what is this conversation for" is the question a tab answers.
-const intentPrompt = "Name this conversation in 2–4 words, at most 24 characters. Put the distinguishing word first; the tab cuts the end. Use plain words and the person's own words and names. Name only a concrete topic in their opening, attached file names or current exchange. Do not invent topics or borrow topics from other open names. If no concrete topic is given, answer KEEP_NAME. No quotes, full stop or ellipsis. Differ from the other open names above. Answer with the name only."
+const intentPrompt = "Name this conversation in 2–4 plain words, at most 24 characters. Use sentence case; preserve proper nouns and the person's own words and names. Put the distinguishing word first; tabs cut the end. Use only a concrete topic from the opening, files or current exchange. Do not invent topics or borrow other open names. No topic: KEEP_NAME. No quotes, full stop or ellipsis. Differ from the open names above. Examples: \"Release review\", \"Why is CI slow?\". Answer only the name."
 
 // titleIntent carries the opening words and attachments, the sibling names to
 // distinguish them from, and the reply context for a second attempt.
@@ -255,7 +255,7 @@ func (a *Agent) startIntentNameLocked(user userMessage) {
 		return
 	}
 	a.title, a.titleProvisional, a.titleLiteral = fallback, fallback, true
-	a.intentName = &intentNameState{Said: clipRunes(intent.said, intentWordsClip), Files: boundedIntentFiles(intent.files), Pending: true, Vague: len(strings.Fields(intent.said)) < 4}
+	a.intentName = &intentNameState{Said: clipRunes(intent.said, intentWordsClip), Files: boundedIntentFiles(intent.files), Pending: true, Vague: len(strings.Fields(intent.said)) < 4 || emptyIntentOpener(intent.said)}
 	a.file.appendNamedTitleWithIntent(fallback, true, a.intentNameSnapshotLocked())
 	a.intentNaming = true
 	a.titleJobs.Add(1)
@@ -316,7 +316,7 @@ func (a *Agent) finishIntentExchangeLocked(user userMessage, completed bool) {
 		return
 	}
 	current := intentOf(user)
-	intent := titleIntent{said: state.Said, files: state.Files, current: clipRunes(current.said, intentWordsClip), reply: reply, siblings: append([]string(nil), a.config.IntentSiblingNames...)}
+	intent := titleIntent{said: state.Said, files: boundedIntentFiles(append(append([]string(nil), state.Files...), current.files...)), current: clipRunes(current.said, intentWordsClip), reply: reply, siblings: append([]string(nil), a.config.IntentSiblingNames...)}
 	state.Checked++
 	a.intentExchanges = append(a.intentExchanges, intent)
 	a.saveIntentNameLocked()
@@ -385,7 +385,7 @@ func (a *Agent) nameIntent(ctx context.Context, intent titleIntent, fallback str
 				textMessage("system", titleSystem),
 				textMessage("user", ask),
 			}, func(response *ai.Response, named string) bool {
-				if cleanConversationTitle(response.Text()).full != "" || genericIntentName(response.Text()) {
+				if intent.noAuthoredTopic() || cleanConversationTitle(response.Text()).full != "" || genericIntentName(response.Text()) {
 					return true
 				}
 				a.addDetachedUsageAs(response, named, 1, auxRoleTitle)
@@ -395,6 +395,12 @@ func (a *Agent) nameIntent(ctx context.Context, intent titleIntent, fallback str
 			return ""
 		}
 		a.addDetachedUsageAs(response, named, 1, auxRoleTitle)
+		if intent.noAuthoredTopic() {
+			return "KEEP_NAME"
+		}
+		if vagueIntentEcho(intent.said, response.Text()) || vagueIntentEcho(intent.current, response.Text()) {
+			return "KEEP_NAME"
+		}
 		if genericIntentName(response.Text()) {
 			return response.Text()
 		}
@@ -410,6 +416,28 @@ func (a *Agent) nameIntent(ctx context.Context, intent titleIntent, fallback str
 		return title
 	}
 	return ""
+}
+
+// Model replies cannot supply a topic before the person supplies one.
+func (i titleIntent) noAuthoredTopic() bool {
+	return len(i.files) == 0 && emptyIntentOpener(i.said) && (strings.TrimSpace(i.current) == "" || emptyIntentOpener(i.current))
+}
+
+func emptyIntentOpener(words string) bool {
+	switch strings.Join(normalizedWords(words), " ") {
+	case "hi", "hello", "hey", "help", "help me", "please help", "help please", "can you help", "can you help me", "look at this", "continue":
+		return true
+	}
+	return false
+}
+
+// Only known empty openers are echoes. A short concrete topic may keep its name.
+func vagueIntentEcho(words, answer string) bool {
+	if !emptyIntentOpener(words) {
+		return false
+	}
+	name := cleanConversationTitle(answer).full
+	return strings.Join(normalizedWords(name), " ") == strings.Join(normalizedWords(words), " ")
 }
 
 func genericIntentName(name string) bool {
