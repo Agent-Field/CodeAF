@@ -149,12 +149,14 @@ func learnSubject(vault, subject, previous document, model compilerModel, goal s
 		groups = append(groups, current)
 	}
 	parts := document{}
+	considered := []string{}
 	partOrder := []string{}
 	sections, blocks, trace := []document{}, []document{}, []document{}
 	gaps := []string{}
 	fingerprints := []any{}
 	steps, characters := 0, 0
 	for _, ids := range groups {
+		considered = append(considered, ids...)
 		part := clone(subject)
 		part["claims"] = ids
 		part["conflicts"] = conflictsForClaims(items(subject["conflicts"]), ids)
@@ -187,7 +189,7 @@ func learnSubject(vault, subject, previous document, model compilerModel, goal s
 	if len(sections) > 0 {
 		state = "reviewed"
 	}
-	return document{"subject": subject["id"], "input_hash": identity([]any{"learner-parts-1", fingerprints}), "state": state, "sections": sections, "blocks": blocks, "trace": trace, "gaps": gaps[:min(5, len(gaps))], "source_characters": characters, "steps": steps, "parts": parts, "part_order": partOrder, "part_count": len(groups), "max_steps_per_part": maxSteps, "source_character_budget_per_part": readBudget, "limitation": "Read-only evidence parts; each part has its own step and source-read budget. Aggregate work scales with parts; same-model support review is not independent verification."}, nil
+	return document{"subject": subject["id"], "input_hash": identity([]any{"learner-parts-1", fingerprints}), "state": state, "sections": sections, "considered_claims": sortedUnique(considered), "blocks": blocks, "trace": trace, "gaps": gaps[:min(5, len(gaps))], "source_characters": characters, "steps": steps, "parts": parts, "part_order": partOrder, "part_count": len(groups), "max_steps_per_part": maxSteps, "source_character_budget_per_part": readBudget, "limitation": "Read-only evidence parts; each part has its own step and source-read budget. Aggregate work scales with parts; same-model support review is not independent verification."}, nil
 }
 
 func learnSubjectPart(vault, subject, previous document, model compilerModel, goal string, maxSteps, readBudget int) (document, error) {

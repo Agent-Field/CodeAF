@@ -423,27 +423,10 @@ func projectSubjects(vault, learning document) (document, error) {
 			}
 		}
 		pending := []string{}
-		represented := map[string]bool{}
-		for _, s := range sections {
-			for _, p := range items(s["paragraphs"]) {
-				for _, id := range stringsValue(p["claims"]) {
-					represented[id] = true
-				}
-			}
-		}
-		recent := []document{}
 		for _, id := range sortedUnique(stringsValue(subject["editorial_pending_claims"])) {
-			c := active[id]
-			if c == nil {
-				continue
+			if active[id] != nil {
+				pending = append(pending, id)
 			}
-			pending = append(pending, id)
-			if !represented[id] {
-				recent = append(recent, document{"text": "[" + textValue(c["kind"]) + "] " + textValue(c["text"]), "claims": []string{id}, "evidence": items(c["evidence"]), "derivation": "recent_captured_claim"})
-			}
-		}
-		if len(recent) > 0 {
-			sections = append(sections, document{"heading": "Recent knowledge", "paragraphs": recent})
 		}
 		conflictIDs := map[string]bool{}
 		for _, c := range items(subject["conflicts"]) {

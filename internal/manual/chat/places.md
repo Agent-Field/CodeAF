@@ -733,6 +733,9 @@ writing processes their evidence in sequential parts, with at most 160 claims
 per initial part. Refresh parts use at most 80 claims and target 14,000 serialized
 claim characters; a single larger claim remains complete. Each refresh part has
 its own step and source-reading budget, so total work grows with the evidence.
+A final pass keeps the core overview concise by selecting reviewed paragraphs;
+the complete source detail stays in linked evidence rather than expanding the
+overview after every update.
 Later updates combine saved turns into
 normal model requests, without OpenRouter's Batch API. A batch becomes eligible
 after 30 seconds without new sources, when its oldest source reaches 120 seconds,

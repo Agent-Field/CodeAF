@@ -45,6 +45,9 @@ func (m compilerModel) call(role string, payload document) (document, error) {
 	if role == "discover" || role == "organize_subjects" || role == "consolidate_subjects" {
 		requestVersion = "knowledge-5"
 	}
+	if role == "discover" || role == "organize_subjects" {
+		requestVersion = "knowledge-6"
+	}
 	requestID := identity([]any{m.model, requestVersion, prompt, payload})
 	requestID = identity([]any{requestID, reasoning})
 	requestID = identity([]any{requestID, document{"max_tokens": 8000}})
@@ -72,6 +75,10 @@ func (m compilerModel) call(role string, payload document) (document, error) {
 	if m.key == "" {
 		return nil, errors.New("knowledge compilation requires an OpenRouter API key")
 	}
+	wire, err := newCompilerReferenceWire(role, payload)
+	if err != nil {
+		return nil, err
+	}
 	sources := modelsource.Set{}.OrDefault(m.key, config.DefaultBaseURL)
 	settings := config.ClientConfigFor(sources, m.model)
 	settings.Timeout = 240 * time.Second
@@ -91,7 +98,7 @@ func (m compilerModel) call(role string, payload document) (document, error) {
 	ctx = provider.WithServedEndpoint(ctx, served)
 	ctx = provider.WithCallTag(ctx, "memory")
 	ctx = provider.WithRequiredReasoningEffort(ctx, provider.Effort("none"))
-	messages := []ai.Message{{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: prompt}}}, {Role: "user", Content: []ai.ContentPart{{Type: "text", Text: mustJSON(payload)}}}}
+	messages := []ai.Message{{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: prompt}}}, {Role: "user", Content: []ai.ContentPart{{Type: "text", Text: mustJSON(wire.payload)}}}}
 	started := time.Now()
 	response, err := client.CompleteWithMessages(ctx, messages, ai.WithTemperature(0), ai.WithMaxTokens(8000), ai.WithJSONMode())
 	if err != nil {
@@ -131,6 +138,9 @@ func (m compilerModel) call(role string, payload document) (document, error) {
 		return nil, errors.New("knowledge provider returned invalid result JSON")
 	}
 	if err = validateCompilerResponse(role, result); err != nil {
+		return nil, err
+	}
+	if err = wire.decode(result); err != nil {
 		return nil, err
 	}
 	if err = validateCompilerReferences(role, payload, result); err != nil {

@@ -217,3 +217,16 @@ func TestKnowledgeEditedArticlePointsNewEvidenceToSources(t *testing.T) {
 		t.Fatal("edited article points at an absent generated section: " + got)
 	}
 }
+
+func TestKnowledgeGeneratedArticlePointsPendingEvidenceToSources(t *testing.T) {
+	a := knowledgeArticleApp(t)
+	for i := range a.kb.reading.Pages {
+		if a.kb.reading.Pages[i].ID == a.kb.selected {
+			a.kb.reading.Pages[i].NeedsEditorialUpdate = true
+		}
+	}
+	got := placeFrameText(a)
+	if !strings.Contains(got, "New evidence is available in Sources") || strings.Contains(got, "Recent knowledge; guide integration") {
+		t.Fatal("generated guide points outside detailed evidence: " + got)
+	}
+}

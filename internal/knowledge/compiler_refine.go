@@ -93,10 +93,13 @@ func refineLearning(vault, learning, previous document, model compilerModel) (do
 		subject := subjects[id]
 		guide := job.guide
 		guides[id] = guide
+		represented := map[string]bool{}
+		for _, cid := range stringsValue(guide["considered_claims"]) {
+			represented[cid] = true
+		}
 		if len(items(guide["sections"])) > 0 {
 			subject["sections"] = items(guide["sections"])
 			subject["state"] = "explained"
-			represented := map[string]bool{}
 			for _, section := range items(subject["sections"]) {
 				for _, p := range items(section["paragraphs"]) {
 					for _, cid := range stringsValue(p["claims"]) {
@@ -104,15 +107,15 @@ func refineLearning(vault, learning, previous document, model compilerModel) (do
 					}
 				}
 			}
-			pending := []string{}
-			for _, cid := range stringsValue(subject["editorial_pending_claims"]) {
-				if !represented[cid] {
-					pending = append(pending, cid)
-				}
-			}
-			subject["editorial_pending_claims"] = pending
-			subject["needs_editorial_update"] = len(pending) > 0
 		}
+		pending := []string{}
+		for _, cid := range stringsValue(subject["editorial_pending_claims"]) {
+			if !represented[cid] {
+				pending = append(pending, cid)
+			}
+		}
+		subject["editorial_pending_claims"] = pending
+		subject["needs_editorial_update"] = len(pending) > 0
 		subject["refinement_attempt_hash"] = refinementSubjectHash(subject)
 	}
 	result["guides"] = guides

@@ -32,3 +32,6 @@ both evidence support and lasting-usefulness checks. Existing published page
 identities are retained; this does not automatically merge older published
 concepts or rewrite human edits. Large concepts stay on one canonical page while sequential evidence parts keep
 each provider request bounded. New evidence continues refreshing these guides.
+A final selection pass keeps the overview concise without rewriting reviewed
+paragraphs or dropping its underlying evidence. Reuse can supply only an
+existing page identity and evidence; its saved heading and scope remain authoritative.

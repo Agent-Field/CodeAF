@@ -132,6 +132,10 @@ func (v *Vault) compile(ctx context.Context, key string, force bool) (err error)
 	if err != nil {
 		return err
 	}
+	published, err = curatePublishedGuides(published, model)
+	if err != nil {
+		return err
+	}
 	return v.commitPublication(published, learning, registry, digest)
 }
 func (v *Vault) compilerStatus(db *sql.DB, model, message string, needsUpdate bool) error {

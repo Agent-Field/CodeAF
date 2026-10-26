@@ -78,6 +78,14 @@ func validateCompilerResponse(role string, result document) error {
 			}
 		}{}
 		required = "groups"
+	case "curate_guide":
+		target = &struct {
+			Sections []struct {
+				Heading    string
+				Paragraphs []string
+			}
+		}{}
+		required = "sections"
 	case "understand":
 		target = &struct {
 			Sections  []modelSection
@@ -179,6 +187,9 @@ func validateCompilerResponse(role string, result document) error {
 }
 
 func validateCompilerReferences(role string, payload, response document) error {
+	if role == "curate_guide" {
+		return validateGuideSelection(payload, response)
+	}
 	if role == "consolidate_subjects" {
 		catalog := index(items(payload["consolidation_catalog"]))
 		seen, identities := map[string]bool{}, map[string]bool{}

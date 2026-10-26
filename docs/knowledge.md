@@ -85,6 +85,11 @@ of at most 160 claims; refresh parts use at most 80 claims and target 14,000
 serialized seed characters, retaining a complete oversized singleton. Step and
 source-read budgets apply per part. Full cached parts keep their memberships
 when evidence is appended; changed or retired dependencies invalidate them.
+A final overview pass selects unchanged, reviewed paragraphs into at most eight
+sections, twelve paragraphs and 900 words. Larger candidate sets are reduced in
+sequential windows of at most 48 paragraphs, targeting 24,000 characters per
+request. This selects prose rather than rewriting facts; all source memberships
+and citations remain available in the detailed evidence.
 
 The UI performs database work through asynchronous commands. Search uses FTS,
 late filter results are discarded, and unchanged publication revisions reuse

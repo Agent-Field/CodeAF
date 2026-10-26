@@ -355,9 +355,6 @@ func planLearningSubjects(vault, previous document, model compilerModel) (docume
 				refs = append(refs, id)
 			}
 		}
-		if strings.TrimSpace(title) == "" || scope == "" || len(refs) == 0 {
-			continue
-		}
 		id := identity([]any{"subject", strings.ToLower(scope), strings.ToLower(title)})
 		if reuse := textValue(raw["id"]); reuse != "" {
 			if old[reuse] == nil {
@@ -365,6 +362,9 @@ func planLearningSubjects(vault, previous document, model compilerModel) (docume
 			}
 			id = reuse
 			title, scope = textValue(old[id]["title"]), textValue(old[id]["scope"])
+		}
+		if strings.TrimSpace(title) == "" || scope == "" || len(refs) == 0 {
+			continue
 		}
 		aliases := stringsValue(raw["aliases"])
 		if old[id] == nil {
