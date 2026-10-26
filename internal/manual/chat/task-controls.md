@@ -238,7 +238,7 @@ and read its changes, private copy and locally mapped apply destination. For an 
 the slot is `work`; a multi-root task uses its declared slots.
 
 After reviewing, `/task apply <task number> <root slot>` applies only that root
-through the existing conflict checks. The apply uses exactly the reviewed snapshot;
+through conflict checks against the recorded original bytes and metadata. The apply uses exactly the reviewed snapshot;
 edits made in the original private copy after review stay there. Review again to
 select a newer snapshot. Read roots cannot be applied. A known live run, checker
 or cooperator blocks apply until it is idle.
@@ -247,3 +247,29 @@ private copy and its identity remain available after a successful apply too.
 Uncertain writers continue to prevent destructive retirement of that copy. Applying one root
 does not authorize another root or give later tasks automatic landing permission.
 A received root stays private until this explicit local action.
+
+The portable apply contract preserves raw file bytes and line endings, file
+permissions, empty directories and directory permissions. Changed paths with
+unsupported ownership, hardlinks, extended attributes, native flags or access
+control metadata are refused before writing the original. Timestamps are outside
+this portable contract. Older copies without a historical metadata baseline stay
+readable, but this apply door cannot infer their original metadata safely.
+
+If an apply reports that its outcome could not be saved, retry `/task apply` for
+the same root. The retained receipt records work that already arrived, so recovery
+does not apply it twice. Recover that pending operation before requesting a new
+review of the root.
+
+New owned plain-folder task copies retain their actual runtime inputs, including
+ignored files. Bash task cooperators share that admitted private copy. Files
+screened as secrets stay readable there but are excluded from its initial history
+and portable payload. Changed or new screened outputs refuse review. A tracked
+secret already in Git history refuses portable capture rather than rewriting
+history. Receiving a task cannot restore inputs that were deliberately withheld.
+The legacy family initializer and its separate child-copy behavior are unchanged.
+
+Portable task carriers preserve tracked, changed and new symlink targets and
+supported link permissions using typed metadata. Both sending and receiving CodeAF versions must support this format;
+workspace receivers without its required capability refuse before promotion.
+Older standalone receivers do not provide this capability check and must be
+updated before taking these carriers.

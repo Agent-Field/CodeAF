@@ -161,7 +161,11 @@ func (k Carry) composeWorkspacePlan(c cell.Cell, plan WorkspacePlan, digest stri
 		if err != nil {
 			return fmt.Errorf("carry workspace directories %s: %w", e.Layout, err)
 		}
-		portable := workspaceRoot{Entry: e, Token: token, Head: rec.Head, DirectoryVersion: 1, Directories: directories}
+		directoryVersion := 1
+		if rec.Symlinks != nil {
+			directoryVersion = 2
+		}
+		portable := workspaceRoot{Entry: e, Token: token, Head: rec.Head, DirectoryVersion: directoryVersion, Directories: directories}
 		if _, err = validateWorkspaceDirectories(portable, rec); err != nil {
 			return err
 		}
@@ -312,11 +316,19 @@ func prepareWorkspaceCapture(c cell.Cell, previous workspaceManifest) (string, e
 // captureWorkspaceDirectories carries only the visible working tree. Git names
 // ignored subtrees once, so large caches are not walked just to omit their dirs.
 func captureWorkspaceDirectories(tree string) (map[string]fs.FileMode, error) {
-	ignored, err := git(tree, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z")
+	return captureWorkspaceDirectoriesScope(tree, tree, independentBaseline(tree))
+}
+
+func captureWorkspaceDirectoriesWithIndex(tree, indexRoot string) (map[string]fs.FileMode, error) {
+	return captureWorkspaceDirectoriesScope(tree, indexRoot, false)
+}
+
+func captureWorkspaceDirectoriesScope(tree, indexRoot string, wholeFamily bool) (map[string]fs.FileMode, error) {
+	ignored, err := portableInspectionGit(indexRoot, "--work-tree="+tree, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z")
 	if err != nil {
 		return nil, err
 	}
-	tracked, err := git(tree, "ls-files", "--cached", "-z")
+	tracked, err := portableInspectionGit(indexRoot, "ls-files", "--cached", "-z")
 	if err != nil {
 		return nil, err
 	}
@@ -365,7 +377,7 @@ func captureWorkspaceDirectories(tree string) (map[string]fs.FileMode, error) {
 				break
 			}
 		}
-		if ignored && !trackedParents[rel] {
+		if ignored && !trackedParents[rel] && !wholeFamily {
 			return filepath.SkipDir
 		}
 		finding, err := scanner.Reader(rel, strings.NewReader(""))

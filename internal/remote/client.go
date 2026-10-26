@@ -78,7 +78,8 @@ var fallbackClientID atomic.Uint64
 // surface asks Model() on frames it repaints, so a measurement there would have
 // doubled the cost of drawing a status line.
 
-// callDeadline is how long any one call waits for its result. See the law above.
+// callDeadline bounds ordinary calls. Compact and taskWorkspaceCall are
+// explicit bounded exceptions for off-reader work that outlives this window.
 const callDeadline = 10 * time.Second
 
 // Client is one connection to one engine. It is safe for concurrent use, which

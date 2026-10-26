@@ -8193,7 +8193,8 @@ func taskLog(listed *job) io.Writer {
 
 // taskTree is where one node works and how its work comes home.
 type taskTree struct {
-	workspaceSet *WorkspaceSet
+	portableBaselineDigest string
+	workspaceSet           *WorkspaceSet
 	// Stable local identity survives a path relocation; it grants no cleanup authority.
 	uri, chatURI, projectURI, groundURI, rootURI string
 	// dir is the node's workspace: a worktree, or the person's own directory
@@ -9634,7 +9635,8 @@ func gitWith(dir string, environment []string, args ...string) (string, error) {
 // gitContext is [gitWith] under a context, for a command somebody may have to
 // stop before git answers ([worktreeDirtIn]'s watch). The refusal of an empty
 // directory and the pinned environment live here, so there is one copy of
-// each; every other spelling of a git call in this package is a wrapper of it.
+// each; the usual git helpers wrap it. The workspace transaction protocol runner
+// separates bounded stdout from stderr so Git warnings cannot become object IDs.
 func gitContext(ctx context.Context, dir string, environment []string, args ...string) (string, error) {
 	// A COMMAND WITH NO DIRECTORY RUNS WHEREVER THE PROCESS HAPPENS TO BE.
 	//

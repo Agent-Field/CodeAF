@@ -72,3 +72,23 @@ func TestHistoricalOutputSelectionCannotLeaveItsFolder(t *testing.T) {
 		}
 	}
 }
+
+func TestCompletedResultsPreserveLiteralDanglingSymlinks(t *testing.T) {
+	m := newMachine(t)
+	tree := m.task("1")
+	if err := os.Symlink("missing-result-target", filepath.Join(tree, "result-link")); err != nil {
+		t.Fatal(err)
+	}
+	m.seal()
+	to := newMachineNoRepo(t)
+	m.moveTo(to)
+	dest := filepath.Join(to.cell.Root, ".cell", "fork-history", "fork", "results")
+	results, err := RestoreCompletedResults(to.cell, to.project, dest, []ResultSelection{{ID: "1", Paths: []string{"result-link"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.Readlink(filepath.Join(results["1"], "result-link"))
+	if err != nil || got != "missing-result-target" {
+		t.Fatalf("retained link=%q: %v", got, err)
+	}
+}

@@ -12,6 +12,11 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
+// Portable filesystem transactions can outlive the getter window: a measured
+// 1,000-file apply takes more than ten seconds. These off-reader operations keep
+// bounded patience; the independent cancellation lane stays short.
+const taskWorkspacePatience = 2 * time.Minute
+
 type taskWorkspaceDoor interface {
 	ReviewTaskWorkspaceRoot(context.Context, uint64, string) (session.TaskWorkspaceReview, error)
 	ApplyTaskWorkspaceRoot(context.Context, uint64, string) (string, error)
@@ -52,15 +57,15 @@ func (a *Agent) taskWorkspaceCall(ctx context.Context, method string, id uint64,
 	if !welcome.TaskWorkspace {
 		return result, errors.New("reviewing and applying task roots needs a newer engine; update the engine and reconnect")
 	}
-	deadline := time.Now().Add(callDeadline)
+	deadline := time.Now().Add(taskWorkspacePatience)
 	if bounded, ok := ctx.Deadline(); ok && bounded.Before(deadline) {
 		deadline = bounded
 	}
 	args := taskWorkspaceArgs{ID: id, Slot: slot, Session: welcome.SessionFile, Token: rand.Text(), Deadline: deadline}
-	payload, answered, err := a.c.callAnswered(ctx, method, args, callDeadline)
+	payload, answered, err := a.c.callAnswered(ctx, method, args, taskWorkspacePatience)
 	if !answered {
 		// Cancellation travels independently of the operation and its ordered UI
-		// gesture. Once atomic landing is admitted, its actual receipt still wins.
+		// gesture. After durable commit, the engine finishes recording its actual receipt.
 		go func() {
 			cancelCtx, cancel := context.WithTimeout(context.Background(), callDeadline)
 			defer cancel()
@@ -79,9 +84,9 @@ func (a *Agent) taskWorkspaceCall(ctx context.Context, method string, id uint64,
 
 // A cancel can reach the independent lane before its operation goroutine. A
 // short-lived cancelled entry remembers that order; entries always expire.
-func (s *server) taskWorkspacePending(args taskWorkspaceArgs) *taskWorkspacePending {
+func (s *server) taskWorkspacePending(args taskWorkspaceArgs, patience time.Duration) *taskWorkspacePending {
 	deadline := args.Deadline
-	limit := time.Now().Add(callDeadline)
+	limit := time.Now().Add(patience)
 	if deadline.IsZero() || deadline.After(limit) {
 		deadline = limit
 	}
@@ -92,14 +97,18 @@ func (s *server) taskWorkspacePending(args taskWorkspaceArgs) *taskWorkspacePend
 		cancel()
 		return actual.(*taskWorkspacePending)
 	}
-	time.AfterFunc(callDeadline, func() { s.workspaceCalls.CompareAndDelete(args.Token, pending); cancel() })
+	time.AfterFunc(patience, func() { s.workspaceCalls.CompareAndDelete(args.Token, pending); cancel() })
 	return pending
 }
 func (s *server) taskWorkspaceInvoke(method string, args taskWorkspaceArgs) ([]byte, error) {
 	if args.Token == "" || len(args.Token) > 128 {
 		return nil, errors.New("invalid task workspace request token")
 	}
-	pending := s.taskWorkspacePending(args)
+	patience := taskWorkspacePatience
+	if method == MethodTaskWorkspaceCancel {
+		patience = callDeadline
+	}
+	pending := s.taskWorkspacePending(args, patience)
 	if method == MethodTaskWorkspaceCancel {
 		pending.cancel()
 		return nil, nil

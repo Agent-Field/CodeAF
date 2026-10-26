@@ -70,6 +70,11 @@ func recordForkArtifacts(c cell.Cell, place session.Place, outputs map[string]st
 			if entry.IsDir() {
 				return nil
 			}
+			// Literal links remain in the historical result and complete carrier.
+			// The deliverables picker cites regular files, never a link's target.
+			if entry.Type()&os.ModeSymlink != 0 {
+				return nil
+			}
 			if !entry.Type().IsRegular() {
 				return errors.New("historical artifact is not a regular output file")
 			}

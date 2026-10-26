@@ -5,15 +5,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/Agent-Field/codeaf/internal/home"
-	"github.com/Agent-Field/codeaf/internal/taskcopy"
-	"github.com/Agent-Field/codeaf/internal/workspaceidentity"
 	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/taskcopy"
+	"github.com/Agent-Field/codeaf/internal/workspaceidentity"
 )
 
 func validateWorkspaceSetRequest(request *WorkspaceSetRequest) error {
@@ -138,13 +139,23 @@ func prepareWorkspaceSet(ctx context.Context, place Place, id uint64, title stri
 		if root, ok := repositoryRoot(use.Source); ok && canonicalPath(root) == canonicalPath(use.Source) && hasCommit(root) {
 			order = worktreeOrder(place, root, dir, 0700, taskBranchName(title+"-"+use.Slot), title, "")
 		}
+		inputBaseline, err := taskcopy.InspectPortableState(use.Source)
+		if order.promise == TaskModeMirror {
+			inputBaseline, err = taskcopy.InspectPortableFamilyInput(use.Source)
+		}
+		if err != nil {
+			return primary, fmt.Errorf("inspect workspace root %s source metadata: %w", use.Slot, err)
+		}
 		tree, err := carveGround(ctx, order)
 		if err != nil {
 			return taskTree{}, fmt.Errorf("prepare workspace root %s: %w", use.Slot, err)
 		}
 		if order.promise == TaskModeMirror {
 			rememberGroundBaseline(tree.dir)
-			tree = openFamilyTree(tree)
+			tree, err = openPortableWorkspaceFamilyTree(tree, inputBaseline)
+			if err != nil {
+				return primary, preserveFailedWorkspaceCreation(tree, err)
+			}
 			// The native mirror is opened as Git only here, after the carve. Record
 			// its immutable admission commit before any worker can change this copy.
 			baseline, baseErr := git(tree.dir, "rev-parse", "--verify", "HEAD")
@@ -156,6 +167,10 @@ func prepareWorkspaceSet(ctx context.Context, place Place, id uint64, title stri
 		tree, err = registerOwnedWorkspace(tree, place)
 		if err != nil {
 			return taskTree{}, err
+		}
+		tree, err = finishWorkspaceRootInput(use.Source, tree, inputBaseline)
+		if err != nil {
+			return primary, preserveFailedWorkspaceCreation(tree, err)
 		}
 		tree.bashBelt = true
 		landingURI := ""

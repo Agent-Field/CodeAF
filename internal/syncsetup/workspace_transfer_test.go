@@ -1,6 +1,7 @@
 package syncsetup
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -23,6 +24,14 @@ import (
 // This protocol fixture intentionally seeds mock structured metadata. The live
 // acceptance test separately requires the real model/task door to create it.
 func TestPublicTakeRestoresEveryWorkspaceSetRoot(t *testing.T) {
+	testPublicWorkspaceTakeAndFork(t, false)
+}
+
+func TestPublicForkKeepsLiteralLinksWithoutCitingTheirTargets(t *testing.T) {
+	testPublicWorkspaceTakeAndFork(t, true)
+}
+
+func testPublicWorkspaceTakeAndFork(t *testing.T, literalLinks bool) {
 	h := newTwoHomes(t)
 	t.Setenv("CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP", "1")
 	t.Setenv(home.EnvVar, h.homeA)
@@ -51,6 +60,13 @@ func TestPublicTakeRestoresEveryWorkspaceSetRoot(t *testing.T) {
 	plan := &taskcopy.WorkspacePlan{Version: 2, ChatURI: owner.URI}
 	group := taskcopy.WorkspaceGroup{TaskID: 1, Primary: "app"}
 	receiverBindings := map[string]string{}
+	outside := filepath.Join(t.TempDir(), "outside.txt")
+	if literalLinks {
+		if err := os.WriteFile(outside, []byte("mock outside bytes must not become a deliverable\n"), 0000); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	for _, slot := range []string{"app", "library"} {
 		source := t.TempDir()
 		project, err := registry.Register(workspaceidentity.Project, source)
@@ -80,6 +96,13 @@ func TestPublicTakeRestoresEveryWorkspaceSetRoot(t *testing.T) {
 		group.Entries = append(group.Entries, taskcopy.WorkspaceEntry{CopyURI: run.URI, ChatURI: owner.URI, ProjectURI: project.URI, RootURI: project.URI, GroundURI: project.URI, Layout: "1/" + slot, Access: "write"})
 		if err := os.WriteFile(filepath.Join(dir, "result.txt"), []byte("private output "+slot+"\n"), 0750); err != nil {
 			t.Fatal(err)
+		}
+		if literalLinks {
+			for name, target := range map[string]string{"dangling-link": "../missing-fixture-target", "outside-link": outside} {
+				if err := os.Symlink(target, filepath.Join(dir, name)); err != nil {
+					t.Fatal(err)
+				}
+			}
 		}
 		receiverBindings[project.URI] = t.TempDir()
 	}
@@ -196,5 +219,32 @@ func TestPublicTakeRestoresEveryWorkspaceSetRoot(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(history, "results", "1", slot, "baseline.txt")); !os.IsNotExist(err) {
 			t.Fatalf("fork copied unchanged input as output: %v", err)
 		}
+		if literalLinks {
+			for name, want := range map[string]string{"dangling-link": "../missing-fixture-target", "outside-link": outside} {
+				got, err := os.Readlink(filepath.Join(history, "results", "1", slot, name))
+				if err != nil || got != want {
+					t.Fatalf("fork lost literal result %s: %q %v", name, got, err)
+				}
+			}
+		}
 	}
+	if literalLinks {
+		ledger, err := os.ReadFile((session.Place{Dir: fork.Taken.Cell.Root}).ArtifactLedger())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Contains(ledger, []byte("dangling-link")) || bytes.Contains(ledger, []byte("outside-link")) {
+			t.Fatal("literal link was registered as a regular document citation")
+		}
+		for _, artifact := range session.SealedArtifacts(fork.Taken.Cell.Root) {
+			info, err := os.Lstat(artifact.Path)
+			if err != nil || !info.Mode().IsRegular() {
+				t.Fatal("artifact registry exposed a link target")
+			}
+		}
+		if info, err := os.Stat(filepath.Join(history, filepath.Base(taskcopy.WorkspaceCarrierPath))); err != nil || !info.IsDir() {
+			t.Fatal("fork did not retain its complete historical carrier")
+		}
+	}
+
 }

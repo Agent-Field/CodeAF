@@ -110,6 +110,11 @@ func copySelectedResult(checkout, from, output, relative string, record record) 
 			return nil
 		}
 	}
+	if record.Symlinks != nil {
+		if entry, ok := record.Symlinks.Entries[filepath.ToSlash(relative)]; ok {
+			return restorePortableLinks(output, &PortableState{Version: 1, Entries: map[string]PortableEntry{filepath.ToSlash(relative): entry}})
+		}
+	}
 	source := filepath.Join(from, filesDir, relative)
 	if _, err := os.Lstat(source); errors.Is(err, fs.ErrNotExist) {
 		source = filepath.Join(checkout, relative)
@@ -122,6 +127,16 @@ func copySelectedResult(checkout, from, output, relative string, record record) 
 	}
 	if err != nil {
 		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		if _, err := workspacePath(checkout, filepath.Dir(relative)); err != nil {
+			return err
+		}
+		entry, err := inspectPortableEntry(source, info)
+		if err != nil {
+			return err
+		}
+		return restorePortableLinks(output, &PortableState{Version: 1, Entries: map[string]PortableEntry{filepath.ToSlash(relative): entry}})
 	}
 	if !info.Mode().IsRegular() {
 		return fmt.Errorf("historical output %q is not a regular file; its archive is preserved", relative)

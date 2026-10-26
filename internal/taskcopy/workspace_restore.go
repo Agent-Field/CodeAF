@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"golang.org/x/text/cases"
-	"golang.org/x/text/unicode/norm"
 	"io"
 	"io/fs"
 	"os"
@@ -17,6 +15,9 @@ import (
 	"sort"
 	"strings"
 	"unicode/utf8"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/unicode/norm"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 )
@@ -176,6 +177,9 @@ func (Carry) PrepareWorkspace(c cell.Cell, plan WorkspacePlan) (*WorkspaceRestor
 		if err = applyModes(destination, rec.Modes); err != nil {
 			return nil, err
 		}
+		if err = restorePortableBaseline(destination, rec); err != nil {
+			return nil, err
+		}
 		if err = finishWorkspaceDirectories(destination, root.Directories); err != nil {
 			return nil, err
 		}
@@ -325,6 +329,9 @@ func (r *WorkspaceRestore) validateRoot(destination string, root workspaceRoot) 
 	if err != nil {
 		return err
 	}
+	if err = verifyRestoredPortableBaseline(destination, rec); err != nil {
+		return err
+	}
 	if err = validateWorkspaceOverlay(destination, from, rec); err != nil {
 		return err
 	}
@@ -454,6 +461,14 @@ func validateWorkspaceCarrier(c cell.Cell, plan WorkspacePlan, digest string) (w
 	return manifest, nil
 }
 func validateWorkspaceRecord(from string, rec record) error {
+	if err := validatePortableLinks(rec.Symlinks); err != nil {
+		return err
+	}
+	if len(rec.PortableBaseline) > 0 {
+		if _, _, err := decodePortableBaseline(rec.PortableBaseline); err != nil {
+			return err
+		}
+	}
 	if _, err := hex.DecodeString(rec.Head); err != nil || len(rec.Head) != 40 && len(rec.Head) != 64 {
 		return errors.New("workspace commit identity is malformed")
 	}
@@ -462,7 +477,7 @@ func validateWorkspaceRecord(from string, rec record) error {
 			return errors.New("workspace branch identity is invalid")
 		}
 	}
-	if len(rec.Deleted)+len(rec.Modes)+len(rec.EOL) > workspacePathLimit {
+	if len(rec.Deleted)+len(rec.Modes)+len(rec.EOL)+portableLinkCount(rec) > workspacePathLimit {
 		return errors.New("workspace path metadata exceeds its bound")
 	}
 	check := func(rel string) error {
@@ -559,21 +574,7 @@ func validateWorkspaceOverlay(destination, from string, rec record) error {
 // are excluded; the recorded HEAD is checked independently.
 func workspaceTreeDigest(root string) (string, error) {
 	hash := sha256.New()
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		if rel == ".git" || cell.IsTaskDropping(filepath.ToSlash(rel)) {
-			return skipEntry(d)
-		}
-		info, err := os.Lstat(path)
-		if err != nil {
-			return err
-		}
+	err := walkWorkspaceTree(root, func(path, rel string, info fs.FileInfo) error {
 		fmt.Fprintf(hash, "%d:%s:%o:%d:", len(rel), filepath.ToSlash(rel), info.Mode(), info.Size())
 		if info.Mode()&os.ModeSymlink != 0 {
 			link, err := os.Readlink(path)
@@ -604,6 +605,26 @@ func workspaceTreeDigest(root string) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+func walkWorkspaceTree(root string, visit func(string, string, fs.FileInfo) error) error {
+	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		if rel == ".git" || cell.IsTaskDropping(filepath.ToSlash(rel)) {
+			return skipEntry(d)
+		}
+		info, err := os.Lstat(path)
+		if err != nil {
+			return err
+		}
+		return visit(path, rel, info)
+	})
 }
 
 func readWorkspaceRecord(from string) (record, error) {
@@ -866,7 +887,7 @@ func RestoreCompletedWorkspaceResults(c cell.Cell, plan WorkspacePlan, destinati
 		}
 		sort.Strings(ordered)
 		for _, path := range ordered {
-			if _, err = workspacePath(checkout, path); err != nil {
+			if _, err = workspacePath(checkout, filepath.Dir(path)); err != nil {
 				return nil, err
 			}
 			if _, err = os.Lstat(filepath.Join(checkout, path)); errors.Is(err, os.ErrNotExist) {
@@ -1021,10 +1042,14 @@ func validWorkspaceResultStage(name string) bool {
 }
 
 func validateWorkspaceDirectories(root workspaceRoot, rec record) (int, error) {
-	if root.DirectoryVersion != 1 || root.Directories == nil {
+	expectedVersion := 1
+	if rec.Symlinks != nil {
+		expectedVersion = 2
+	}
+	if root.DirectoryVersion != expectedVersion || root.Directories == nil {
 		return 0, errors.New("workspace carrier lacks supported directory metadata; preserve it and recapture with the current prototype")
 	}
-	if len(root.Directories)+len(rec.Modes)+len(rec.EOL)+len(rec.Deleted) > workspacePathLimit {
+	if len(root.Directories)+len(rec.Modes)+len(rec.EOL)+len(rec.Deleted)+portableLinkCount(rec) > workspacePathLimit {
 		return 0, errors.New("workspace path metadata exceeds its bound")
 	}
 	bytes := 0
@@ -1252,4 +1277,11 @@ func workspaceOutputDirectories(checkout, base string, directories map[string]fs
 		}
 	}
 	return out, nil
+}
+
+func portableLinkCount(rec record) int {
+	if rec.Symlinks == nil {
+		return 0
+	}
+	return len(rec.Symlinks.Entries)
 }

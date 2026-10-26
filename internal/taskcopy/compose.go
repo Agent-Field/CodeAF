@@ -119,6 +119,14 @@ func carryWithHistory(tree, dest string, full bool) error {
 		return err
 	}
 	changed = append(changed, mixed...)
+	tracked, err := portableInspectionGit(tree, "ls-files", "--cached", "-z")
+	if err != nil {
+		return err
+	}
+	links, err := capturePortableLinks(tree, append(append([]string(nil), changed...), strings.Split(tracked, "\x00")...))
+	if err != nil {
+		return err
+	}
 	present, deleted := partition(tree, withoutSecrets(tree, changed))
 	if _, err := mirror.Sync(tree, filepath.Join(dest, filesDir), present); err != nil {
 		return err
@@ -127,7 +135,20 @@ func carryWithHistory(tree, dest string, full bool) error {
 	if err := carryCommits(tree, branch, strings.TrimSpace(head), dest, full); err != nil {
 		return err
 	}
-	return writeRecord(dest, record{FullHistory: full, Branch: branch, Head: strings.TrimSpace(head), Deleted: deleted, Linked: isLinkedWorktree(tree), Modes: portableModes(tree, dest), EOL: styles})
+	baseline, err := readWorkspaceFile(filepath.Join(tree, PortableBaselinePath), WorkspaceCheckpointLimit)
+	if errors.Is(err, os.ErrNotExist) {
+		baseline = nil
+		err = nil
+	}
+	if err != nil {
+		return err
+	}
+	if len(baseline) > 0 {
+		if _, _, err = decodePortableBaseline(baseline); err != nil {
+			return err
+		}
+	}
+	return writeRecord(dest, record{Symlinks: links, PortableBaseline: baseline, FullHistory: full, Branch: branch, Head: strings.TrimSpace(head), Deleted: deleted, Linked: isLinkedWorktree(tree), Modes: portableModes(tree, dest), EOL: styles})
 }
 
 // carryCommits keeps dest's bundle of the commits only this copy holds in step
@@ -246,4 +267,43 @@ func skipEntry(d fs.DirEntry) error {
 		return filepath.SkipDir
 	}
 	return nil
+}
+
+func capturePortableLinks(root string, paths []string) (*PortableState, error) {
+	state := PortableState{Version: 1, Entries: map[string]PortableEntry{}}
+	for _, path := range paths {
+		if path == "" {
+			continue
+		}
+		info, err := os.Lstat(filepath.Join(root, path))
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if info.Mode()&os.ModeSymlink == 0 {
+			continue
+		}
+		entry, err := inspectPortableEntry(filepath.Join(root, path), info)
+		if err != nil {
+			return nil, err
+		}
+		scanner := keys.Scanner{}
+		finding, err := scanner.Reader(path, strings.NewReader(entry.Link))
+		if err != nil {
+			return nil, err
+		}
+		if finding.Rule != "" {
+			return nil, fmt.Errorf("withheld symlink %q cannot be carried", path)
+		}
+		state.Entries[filepath.ToSlash(path)] = entry
+	}
+	if len(state.Entries) == 0 {
+		return nil, nil
+	}
+	if _, err := state.Digest(); err != nil {
+		return nil, err
+	}
+	return &state, nil
 }

@@ -112,6 +112,10 @@ func familyTreeIsOpen(dir string) bool {
 // so everything this stages is already inside that cap and no second bound is
 // needed here.
 func openFamilyRepository(dir string) string {
+	return openFamilyRepositoryWithPolicy(dir, nil)
+}
+
+func openFamilyRepositoryWithPolicy(dir string, withheld []string) string {
 	if out, err := git(dir, "init", "--quiet"); err != nil {
 		return familyTreeProblem(out, err)
 	}
@@ -122,7 +126,11 @@ func openFamilyRepository(dir string) string {
 	// belong to machinery rather than to anybody's world — a task's private
 	// metadata and furrow's bookkeeping — exactly as [sealGroundWork] keeps them
 	// out of the world it hands a child.
-	addArgs := []string{"add", "--all", "--force", "--", "."}
+	addArgs := []string{"add", "--all", "--force"}
+	addArgs = append(addArgs, "--", ".")
+	for _, name := range withheld {
+		addArgs = append(addArgs, ":(exclude,literal)"+name)
+	}
 	for _, dropping := range taskDroppingNames() {
 		addArgs = append(addArgs, ":(exclude)"+dropping)
 	}

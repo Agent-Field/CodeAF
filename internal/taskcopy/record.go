@@ -31,6 +31,8 @@ const (
 // through is written by whatever umask the machine has and a copy must come back
 // with the modes it left with.
 type record struct {
+	Symlinks         *PortableState  `json:"symlinks,omitempty"`
+	PortableBaseline json.RawMessage `json:"portableBaseline,omitempty"`
 	// FullHistory means HEAD has no prerequisite in the borrowed project.
 	FullHistory bool                   `json:"fullHistory,omitempty"`
 	Branch      string                 `json:"branch,omitempty"`

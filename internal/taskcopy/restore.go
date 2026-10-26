@@ -92,7 +92,7 @@ func (k Carry) restoreOne(c cell.Cell, project, name string) error {
 		}
 	}
 	cutErr := k.cutAgain(project, dest, name, from, rec)
-	return errors.Join(cutErr, applyEOL(dest, rec.EOL), overlay(filepath.Join(from, filesDir), dest, rec), applyModes(dest, rec.Modes))
+	return errors.Join(cutErr, applyEOL(dest, rec.EOL), overlay(filepath.Join(from, filesDir), dest, rec), applyModes(dest, rec.Modes), restorePortableBaseline(dest, rec))
 }
 
 // applyModes gives each file of the copy the bits it left with, including the
@@ -219,7 +219,10 @@ func overlay(files, dest string, rec record) error {
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
-	return removeAll(dest, rec.Deleted)
+	if err := removeAll(dest, rec.Deleted); err != nil {
+		return err
+	}
+	return restorePortableLinks(dest, rec.Symlinks)
 }
 
 func removeAll(dest string, rels []string) error {
@@ -228,6 +231,56 @@ func removeAll(dest string, rels []string) error {
 			return fmt.Errorf("carried path %q leaves the task copy", rel)
 		}
 		if err := os.Remove(filepath.Join(dest, rel)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
+}
+
+func validatePortableLinks(state *PortableState) error {
+	if state == nil {
+		return nil
+	}
+	if _, err := state.Digest(); err != nil {
+		return err
+	}
+	if len(state.Withheld) > 0 {
+		return errors.New("carried symlink metadata has unsupported disposition")
+	}
+	for _, entry := range state.Entries {
+		if entry.Kind != "symlink" {
+			return errors.New("carried symlink metadata contains another kind")
+		}
+	}
+	return nil
+}
+func restorePortableLinks(dest string, state *PortableState) error {
+	if err := validatePortableLinks(state); err != nil {
+		return err
+	}
+	if state == nil {
+		return nil
+	}
+	root, err := os.OpenRoot(dest)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	for path, entry := range state.Entries {
+		parent := filepath.Dir(filepath.FromSlash(path))
+		if _, err = workspacePath(dest, parent); err != nil {
+			return err
+		}
+		if err = root.MkdirAll(parent, 0700); err != nil {
+			return err
+		}
+		if err = root.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		if err = root.Symlink(entry.Link, path); err != nil {
+			return err
+		}
+		if err = setPortableSymlinkMode(root, path, entry.Mode); err != nil {
 			return err
 		}
 	}

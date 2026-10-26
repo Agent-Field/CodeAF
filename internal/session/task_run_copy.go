@@ -35,6 +35,8 @@ import (
 // whose branch genuinely was never recorded and genuinely cannot be resumed.
 // [runCopyTree] says so out loud rather than guessing ([errNoRunCopy]).
 type TaskCopyRecord struct {
+	// PortableBaselineDigest binds historical input metadata; it grants no landing permission.
+	PortableBaselineDigest string `json:"portable_baseline_sha256,omitempty"`
 	// URI is local workspace identity; paths remain the legacy fallback only when absent.
 	URI        string `json:"uri,omitempty"`
 	ChatURI    string `json:"chat_uri,omitempty"`
@@ -89,7 +91,8 @@ func runCopyOf(tree taskTree) *TaskCopyRecord {
 		return nil
 	}
 	return &TaskCopyRecord{
-		URI: tree.uri, ChatURI: tree.chatURI, ProjectURI: tree.projectURI, GroundURI: tree.groundURI, RootURI: tree.rootURI,
+		PortableBaselineDigest: tree.portableBaselineDigest,
+		URI:                    tree.uri, ChatURI: tree.chatURI, ProjectURI: tree.projectURI, GroundURI: tree.groundURI, RootURI: tree.rootURI,
 		Dir:       tree.dir,
 		Branch:    tree.branch,
 		Root:      tree.root,
@@ -191,7 +194,8 @@ func runCopyTree(record *TaskCopyRecord, place Place) (taskTree, error) {
 		return taskTree{}, fmt.Errorf("its working copy is gone from %s, so there is nothing left to carry on in", dir)
 	}
 	return taskTree{
-		uri: record.URI, chatURI: record.ChatURI, projectURI: record.ProjectURI, groundURI: record.GroundURI, rootURI: record.RootURI,
+		portableBaselineDigest: record.PortableBaselineDigest,
+		uri:                    record.URI, chatURI: record.ChatURI, projectURI: record.ProjectURI, groundURI: record.GroundURI, rootURI: record.RootURI,
 		dir:       dir,
 		root:      root,
 		branch:    record.Branch,

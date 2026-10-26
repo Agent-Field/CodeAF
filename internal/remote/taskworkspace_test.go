@@ -113,3 +113,56 @@ func TestTaskWorkspaceUnsupportedAndWatchingEnginesRefuse(t *testing.T) {
 		t.Fatal("watch-only connection applied work")
 	}
 }
+
+type slowWorkspaceFar struct {
+	*workspaceFar
+	delay    time.Duration
+	deadline chan time.Time
+}
+
+func (f *slowWorkspaceFar) ApplyTaskWorkspaceRoot(ctx context.Context, id uint64, slot string) (string, error) {
+	if deadline, ok := ctx.Deadline(); ok && f.deadline != nil {
+		f.deadline <- deadline
+	}
+	timer := time.NewTimer(f.delay)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return "selected snapshot applied", nil
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+}
+func TestTaskWorkspaceApplyCanCompleteAfterGetterDeadline(t *testing.T) {
+	far := &slowWorkspaceFar{workspaceFar: &workspaceFar{fakeAgent: &fakeAgent{}}, delay: 11 * time.Second, deadline: make(chan time.Time, 1)}
+	loop := workspaceLoop(t, far, false)
+	started := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	receipt, err := loop.Client.Agent().ApplyTaskWorkspaceRoot(ctx, 7, "work")
+	if err != nil || receipt != "selected snapshot applied" {
+		t.Fatalf("durable operation lost its delayed receipt: %q %v", receipt, err)
+	}
+	select {
+	case deadline := <-far.deadline:
+		if deadline.Sub(started) <= 10*time.Second || deadline.Sub(started) > 121*time.Second {
+			t.Fatalf("resident operation deadline is not bounded to longer task patience: %s", deadline.Sub(started))
+		}
+	default:
+		t.Fatal("resident operation had no bounded deadline")
+	}
+}
+func TestTaskWorkspaceEarlierCallerDeadlineStopsResidentOperation(t *testing.T) {
+	far := &workspaceFar{fakeAgent: &fakeAgent{}, entered: make(chan struct{}), cancelled: make(chan struct{})}
+	loop := workspaceLoop(t, far, false)
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := loop.Client.Agent().ApplyTaskWorkspaceRoot(ctx, 7, "work"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("earlier caller deadline lost: %v", err)
+	}
+	select {
+	case <-far.cancelled:
+	case <-time.After(time.Second):
+		t.Fatal("resident operation outlived earlier caller deadline")
+	}
+}
