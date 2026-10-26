@@ -165,6 +165,25 @@ func lockAttach(root string) func() {
 	return lock.Unlock
 }
 
+// detectLocks is attachLocks for the question instead of the act: one lock per
+// root, never removed, for the reason attachLocks gives.
+var (
+	detectMu    sync.Mutex
+	detectLocks = map[string]*sync.Mutex{}
+)
+
+func lockDetect(root string) func() {
+	detectMu.Lock()
+	lock, ok := detectLocks[root]
+	if !ok {
+		lock = &sync.Mutex{}
+		detectLocks[root] = lock
+	}
+	detectMu.Unlock()
+	lock.Lock()
+	return lock.Unlock
+}
+
 // Forget drops the cached answer for every workspace. It exists for tests,
 // which change what is on PATH between cases and would otherwise read a
 // neighbour's answer, and for a caller that has just watched the person attach
@@ -199,8 +218,30 @@ func Detect(ctx context.Context, root string) Presence {
 	}
 	presenceMu.Unlock()
 
+	// ONE ASKER PER FOLDER AT A TIME. Every session on a workspace starts its
+	// own background refresh ([Peek] is the door that reads without asking), so
+	// a window that opens several chats at once would otherwise run the same two
+	// execs once per chat. The second caller waits behind the first and reads
+	// the answer the first left in the cache.
+	release := lockDetect(root)
+	defer release()
+	presenceMu.Lock()
+	if cached, ok := presenceCache[root]; ok && time.Since(cached.asked) < detectTTL {
+		presenceMu.Unlock()
+		return cached.presence
+	}
+	presenceMu.Unlock()
+
 	presence := detect(ctx, root)
 
+	// AN ANSWER A CANCELLATION WROTE IS NOT FURROW'S. A caller that was cut
+	// mid-question (a session closing while its background refresh was still
+	// in `furrow status`) got "not attached" because the exec was killed, not
+	// because the folder is unwatched, and leaving that in the cache would tell
+	// every other session on the folder the same untruth for half a minute.
+	if ctx.Err() != nil {
+		return presence
+	}
 	presenceMu.Lock()
 	presenceCache[root] = cachedPresence{presence: presence, asked: time.Now()}
 	presenceMu.Unlock()

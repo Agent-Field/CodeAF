@@ -30,17 +30,77 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/furrow"
+	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
-// workspaceTools is the family, or nothing.
+// workspaceTools is the family, or nothing, from what is ALREADY KNOWN.
 //
-// THE DETECTION IS PAID HERE AND NOT ON THE DRAW PATH. This runs once per belt
-// assembly — a turn, not a frame — and internal/furrow keeps its own answer for
-// a while behind that, so the cost is one short-lived subprocess per workspace
-// per half-minute rather than one per question the screen asks. A seam that
-// shelled out while a terminal was repainting would be the surface stopping to
-// ask another program a question, which is the mistake internal/tui3's
-// hostlink.go documents for its own seam.
+// IT NEVER WAITS FOR FURROW. The first version of this asked furrow on the spot,
+// and the belt is assembled while the engine answers a window's hello, so a
+// cold launch held its first frame behind `furrow --version` and then
+// `furrow status` — two to three seconds on a folder furrow was never pointed
+// at, because even that answer opens furrow's global store. Nothing the first
+// frame draws depends on these four verbs, so this reads the remembered answer
+// ([furrow.PeekTools]) and, when there is none or it has gone stale, asks
+// furrow from a goroutine this session owns ([Agent.askFurrow]) and hands over
+// whatever it already knew.
+//
+// THE COST OF THAT IS ONE BELT, AND IT IS BOUNDED. A session that is asked for
+// its belt before the first answer lands has no workspace verbs on it; the
+// belt is rebuilt per turn, so the next one has them if the folder is
+// attached. The refresh starts when the session is built (see [newAgent]), a
+// person has to read the screen and type before the first turn, and an
+// unattached folder — the common case — never changes at all. The model is
+// never told about a verb on a guess: the absence law holds with a cold cache
+// exactly as it does with a missing binary.
 func (a *Agent) workspaceTools() []bare.Tool {
-	return furrow.Tools(context.Background(), a.config.Workspace)
+	tools, fresh, _ := furrow.PeekTools(a.config.Workspace)
+	if !fresh {
+		a.askFurrow()
+	}
+	return tools
+}
+
+// askFurrow refreshes the remembered answer about this session's folder from a
+// goroutine, once at a time, and returns at once.
+//
+// THE GOROUTINE IS THE SESSION'S AND CLOSE JOINS IT ([Agent.stopFurrow]).
+// Cancelling the context kills a `furrow status` that is still running, and the
+// join is what keeps a half-finished exec from outliving the state directory a
+// caller is about to remove. A session already closing starts nothing: the
+// flag and the group are touched under one lock, so the join cannot miss a
+// refresh that begins after it.
+func (a *Agent) askFurrow() {
+	a.furrowMu.Lock()
+	defer a.furrowMu.Unlock()
+	if a.furrowStopped || a.furrowAsking {
+		return
+	}
+	if a.furrowCtx == nil {
+		a.furrowCtx, a.furrowStop = context.WithCancel(context.Background())
+	}
+	a.furrowAsking = true
+	a.furrowJobs.Add(1)
+	ctx, root := a.furrowCtx, a.config.Workspace
+	guard.Go("session/furrow-detect", func() {
+		defer a.furrowJobs.Done()
+		defer func() {
+			a.furrowMu.Lock()
+			a.furrowAsking = false
+			a.furrowMu.Unlock()
+		}()
+		furrow.Detect(ctx, root)
+	})
+}
+
+// stopFurrow ends the refresh and waits for it, on [Agent.stopLaneBeat]'s terms.
+func (a *Agent) stopFurrow() {
+	a.furrowMu.Lock()
+	a.furrowStopped = true
+	stop := a.furrowStop
+	a.furrowMu.Unlock()
+	if stop != nil {
+		stop()
+	}
+	a.furrowJobs.Wait()
 }

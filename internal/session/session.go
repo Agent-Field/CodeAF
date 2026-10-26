@@ -2665,6 +2665,17 @@ type Agent struct {
 	// have a lane context, and "did a beat start" is the question the gate is
 	// about (agent.go's [Agent.startLaneBeat]).
 	laneBeating bool
+	// furrowCtx, furrowStop and furrowJobs are the background question to furrow
+	// about this session's folder (tools_workspace.go). furrowAsking keeps it to
+	// one at a time and furrowStopped is Close's word that no more may begin;
+	// all of it is guarded by furrowMu, which is taken by nothing else and held
+	// across nothing, so it is safe to reach from the belt under any other lock.
+	furrowMu      sync.Mutex
+	furrowCtx     context.Context
+	furrowStop    context.CancelFunc
+	furrowJobs    sync.WaitGroup
+	furrowAsking  bool
+	furrowStopped bool
 
 	// turnLane is what THIS agent's own last request was served by, and it is
 	// the only honest source there is for the lane half of a usage row

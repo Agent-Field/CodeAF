@@ -431,6 +431,10 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// is why it is the thing most carefully gated: see [Agent.startLaneBeat] for
 	// the three sessions that run no beat at all.
 	agent.startLaneBeat()
+	// AND FURROW IS ASKED ABOUT THIS FOLDER, from the background. Opening the
+	// conversation must not wait on a subprocess, so the answer is started here
+	// and read later by the belt (tools_workspace.go).
+	agent.askFurrow()
 	// AND ONLY NOW MAY IT SPEAK UNPROMPTED. Recovery turns the frontier, and a
 	// cascade over the dependents of an interrupted node settles them right here,
 	// inside New — before the caller holds the agent, before any surface has
@@ -2509,6 +2513,7 @@ func (a *Agent) Close() error {
 	// its fetch and join any cache write before the state directory can be
 	// handed back to the caller.
 	a.stopLaneBeat()
+	a.stopFurrow()
 	// AND THE BELT RUN, on the adaptive runs' own terms above: it holds a context
 	// of its own precisely because the turn that proposed it ended, so this is
 	// the only thing that can reach it. A RUN'S LIFE IS THE CONVERSATION'S. Until
