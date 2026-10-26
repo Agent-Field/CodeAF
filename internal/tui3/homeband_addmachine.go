@@ -145,13 +145,13 @@ func drawAddMachineBand(a *app, ctx bandContext) []string {
 		return nil
 	}
 	m := a.addMachine
-	heading := ctx.pal.ink(fit(addMachineHeading, ctx.width))
+	heading := ctx.pal.bold(ctx.pal.muted(fit(addMachineHeading, ctx.width)))
 	if m.hovered {
-		heading = ctx.pal.cursor(ctx.pal.accent(fit(addMachineHeading, ctx.width)), ansi.StringWidth(fit(addMachineHeading, ctx.width)))
+		heading = ctx.pal.underline(heading)
 	}
 	rows := []string{heading}
 	for _, line := range wrap(addMachinePitch, ctx.width) {
-		rows = append(rows, ctx.pal.muted(fit(line, ctx.width)))
+		rows = append(rows, ctx.pal.dim(fit(line, ctx.width)))
 	}
 	if m.open {
 		rows = append(rows, "")
@@ -171,7 +171,7 @@ func (a *app) addMachineHow(ctx bandContext) []string {
 	for _, line := range []string{addMachineStepRun, addMachineStepPut} {
 		for _, wrapped := range wrap(line, ctx.width) {
 			text := ctx.pal.muted(fit(wrapped, ctx.width))
-			text = strings.ReplaceAll(text, "codeaf pair", ctx.pal.bold(ctx.pal.ink("codeaf pair")))
+			text = strings.ReplaceAll(text, "codeaf pair", ctx.pal.bold(ctx.pal.data("codeaf pair")))
 			rows = append(rows, text)
 		}
 	}

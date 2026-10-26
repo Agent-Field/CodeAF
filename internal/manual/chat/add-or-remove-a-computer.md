@@ -16,7 +16,7 @@ Pick up your work anywhere, exactly where you left it.
 alt+d how
 ```
 
-Click `+ Add another device` or press `alt+d` to open the steps. Click the heading or press `alt+d` again to close them. The heading highlights while the pointer is over it; the description and empty space do not act as buttons. The command `codeaf pair` stands out from the instructions:
+Click `+ Add another device` or press `alt+d` to open the steps. Click the heading or press `alt+d` again to close them. The heading underlines while the pointer is over it; the description and empty space do not act as buttons. The command `codeaf pair` stands out from the instructions:
 
 ```
 1. On the new device, install and run: codeaf pair
