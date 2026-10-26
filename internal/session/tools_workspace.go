@@ -77,12 +77,20 @@ func (a *Agent) askFurrow() {
 }
 
 // armFurrowVerbs puts the verbs on the belt once furrow has said the folder is
-// attached. The belt of a model with no tools stays empty, as it was built.
-func (a *Agent) armFurrowVerbs() {
-	if a.config.promptProfile().chat() {
+// attached. It runs on the refresher's goroutine, so it reads the session's
+// configuration under the session lock like any other background reader, and it
+// arms nothing if the session has since been anchored to another folder (the
+// answer was about the old one) or belongs to a model with no tools, whose belt
+// was built empty.
+func (a *Agent) armFurrowVerbs(root string) {
+	a.mu.Lock()
+	chat := a.config.promptProfile().chat()
+	same := a.config.Workspace == root
+	a.mu.Unlock()
+	if chat || !same {
 		return
 	}
-	if tools := a.workspaceTools(); len(tools) > 0 {
+	if tools, _ := furrow.PeekTools(root); len(tools) > 0 {
 		_, _ = a.armFamily(tools)
 	}
 }
@@ -111,7 +119,7 @@ type furrowRefresher struct {
 	settled bool
 }
 
-func (r *furrowRefresher) ask(root string, landed func()) {
+func (r *furrowRefresher) ask(root string, landed func(root string)) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.stopped || r.running != nil {
@@ -137,7 +145,7 @@ func (r *furrowRefresher) ask(root string, landed func()) {
 		// caller released by it sees them on the belt. A cancelled question
 		// answered nothing and arms nothing.
 		if ctx.Err() == nil {
-			landed()
+			landed(root)
 		}
 	})
 }
