@@ -1,12 +1,17 @@
+//go:build unix
+
 package session
 
 // THE BELT NEVER WAITS FOR FURROW (tools_workspace.go).
 //
 // A cold launch used to hold its first frame behind `furrow --version` and
 // `furrow status`, two to three seconds on a folder furrow was never pointed at.
-// The tests here pin the property and not the seconds: they hold furrow's answer
-// back with a gate the test owns, so a session that waits for it cannot get past
-// the first assertion, and they count the launches rather than time them.
+// The tests here pin the property and not the seconds. Furrow is a script whose
+// `status` call announces that it has started on one named pipe and then parks
+// on another until the test lets it go, so "the session did not wait" is the
+// observable fact that the build, or a Close, came back while that process was
+// still alive. Nothing here measures how long anything took; the timeouts are
+// safety nets that turn a hang into a loud failure.
 import (
 	"fmt"
 	"os"
@@ -19,22 +24,38 @@ import (
 	"github.com/Agent-Field/codeaf/internal/furrow"
 )
 
+// safety is how long a test waits for something that must happen before it
+// gives up and fails. It is never an assertion about speed.
+const furrowTestSafety = 60 * time.Second
+
+type gatedFurrow struct {
+	launches, pidfile, ready, gate string
+}
+
 // installGatedFurrow is a furrow that answers `--version` at once and answers
-// `status` with an attached folder only once the test creates the gate file.
-// Every launch is appended to the launch log, and the status call's process id
-// is written beside it, so the test can count launches and prove one is gone.
-func installGatedFurrow(t *testing.T) (launches, gate, pidfile string) {
+// `status` with an attached folder only once the test releases the gate. Every
+// launch is appended to the launch log.
+func installGatedFurrow(t *testing.T) *gatedFurrow {
 	t.Helper()
 	dir := t.TempDir()
-	launches = filepath.Join(dir, "launches")
-	gate = filepath.Join(dir, "gate")
-	pidfile = filepath.Join(dir, "pid")
+	g := &gatedFurrow{
+		launches: filepath.Join(dir, "launches"),
+		pidfile:  filepath.Join(dir, "pid"),
+		ready:    filepath.Join(dir, "ready"),
+		gate:     filepath.Join(dir, "gate"),
+	}
+	for _, fifo := range []string{g.ready, g.gate} {
+		if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+			t.Fatalf("make the pipe %s: %v", fifo, err)
+		}
+	}
 	script := filepath.Join(dir, "furrow")
 	writeFile(t, script, `#!/bin/sh
-echo "$*" >> "`+launches+`"
+echo "$*" >> "`+g.launches+`"
 if [ "$1" = "--version" ]; then echo "furrow 0.1.0"; exit 0; fi
-echo $$ > "`+pidfile+`"
-while [ ! -e "`+gate+`" ]; do sleep 0.02; done
+echo $$ > "`+g.pidfile+`"
+echo started > "`+g.ready+`"
+cat "`+g.gate+`" > /dev/null
 echo '{"workspace":"'"$2"'","head":"aaaabbbbcccc0001","watcher_running":true}'
 `)
 	if err := os.Chmod(script, 0o755); err != nil {
@@ -43,12 +64,58 @@ echo '{"workspace":"'"$2"'","head":"aaaabbbbcccc0001","watcher_running":true}'
 	t.Setenv(furrow.BinaryEnvVar, script)
 	furrow.Forget()
 	t.Cleanup(furrow.Forget)
-	return launches, gate, pidfile
+	// A test that fails with furrow parked must not leave a process behind: a
+	// non-blocking open succeeds only if the script is already reading.
+	t.Cleanup(func() {
+		if f, err := os.OpenFile(g.gate, os.O_WRONLY|syscall.O_NONBLOCK, 0); err == nil {
+			_ = f.Close()
+		}
+	})
+	return g
 }
 
-func launchCount(t *testing.T, launches string) int {
+// started blocks until furrow's status call is running and answers its pid.
+func (g *gatedFurrow) started(t *testing.T) int {
 	t.Helper()
-	raw, err := os.ReadFile(launches)
+	done := make(chan struct{})
+	go func() {
+		_, _ = os.ReadFile(g.ready)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(furrowTestSafety):
+		t.Fatal("furrow's status call never started")
+	}
+	raw, err := os.ReadFile(g.pidfile)
+	if err != nil {
+		t.Fatalf("read furrow's pid: %v", err)
+	}
+	var pid int
+	if _, err := fmt.Sscan(string(raw), &pid); err != nil {
+		t.Fatalf("furrow's pid %q: %v", raw, err)
+	}
+	return pid
+}
+
+// release lets the parked status call answer.
+func (g *gatedFurrow) release(t *testing.T) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		_ = os.WriteFile(g.gate, nil, 0o600)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(furrowTestSafety):
+		t.Fatal("furrow was not waiting at the gate")
+	}
+}
+
+func (g *gatedFurrow) launchCount(t *testing.T) int {
+	t.Helper()
+	raw, err := os.ReadFile(g.launches)
 	if os.IsNotExist(err) {
 		return 0
 	}
@@ -58,98 +125,114 @@ func launchCount(t *testing.T, launches string) int {
 	return strings.Count(string(raw), "\n")
 }
 
-func workspaceVerbs(a *Agent) []string {
-	var names []string
-	for _, tool := range a.belt() {
-		if strings.HasPrefix(tool.Name, "workspace_") {
-			names = append(names, tool.Name)
+func processAlive(pid int) bool { return syscall.Kill(pid, 0) == nil }
+
+func workspaceVerbs(tools []string) []string {
+	var verbs []string
+	for _, name := range tools {
+		if strings.HasPrefix(name, "workspace_") {
+			verbs = append(verbs, name)
 		}
+	}
+	return verbs
+}
+
+// carried is what the model is actually shown: the belt as the turn reads it.
+func carried(a *Agent) []string {
+	var names []string
+	for _, tool := range a.beltTools() {
+		names = append(names, tool.Name)
 	}
 	return names
 }
 
-// untilFurrow polls a condition. The deadline only turns a hang into a failure; no
-// test asserts how long anything took.
-func untilFurrow(t *testing.T, what string, ok func() bool) {
+func furrowSession(t *testing.T, workspace string) *Agent {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for !ok() {
-		if time.Now().After(deadline) {
-			t.Fatalf("never happened: %s", what)
-		}
-		time.Sleep(10 * time.Millisecond)
+	agent, err := newAgent(Config{Workspace: workspace, Model: "test/model", System: "SYSTEM"}, &scriptedCompleter{})
+	if err != nil {
+		t.Fatalf("newAgent: %v", err)
 	}
+	t.Cleanup(func() { _ = agent.Close() })
+	return agent
 }
 
-// While furrow has not answered, building the session and assembling its belt
-// both return, and the belt carries no workspace verb. The status call is parked
-// on the gate and stays parked, so a session that asks furrow itself cannot
-// return before furrow's own five-second bound ends the wait; the detector below
-// is shorter than that bound and exists only to turn "waited" into a failure.
+// While furrow has not answered, building the session returns, and the belt
+// carries no workspace verb. The status call is parked on the gate for the whole
+// test, so a session that asked furrow itself could only come back after furrow
+// was killed; here it comes back while furrow is still alive.
 func TestBuildingASessionDoesNotWaitForFurrow(t *testing.T) {
-	launches, gate, _ := installGatedFurrow(t)
-	t.Cleanup(func() { _ = os.WriteFile(gate, nil, 0o644) })
-
-	type built struct {
-		agent *Agent
-		verbs []string
-		err   error
-	}
-	done := make(chan built, 1)
+	g := installGatedFurrow(t)
+	built := make(chan *Agent, 1)
 	go func() {
 		agent, err := newAgent(Config{Workspace: t.TempDir(), Model: "test/model", System: "SYSTEM"}, &scriptedCompleter{})
 		if err != nil {
-			done <- built{err: err}
-			return
+			t.Errorf("newAgent: %v", err)
 		}
-		done <- built{agent: agent, verbs: workspaceVerbs(agent)}
+		built <- agent
 	}()
+	var agent *Agent
 	select {
-	case got := <-done:
-		if got.err != nil {
-			t.Fatalf("newAgent: %v", got.err)
-		}
-		t.Cleanup(func() { _ = got.agent.Close() })
-		if len(got.verbs) != 0 {
-			t.Fatalf("the belt carried %v before furrow had answered; want none", got.verbs)
-		}
-	case <-time.After(2 * time.Second):
+	case agent = <-built:
+	case <-time.After(furrowTestSafety):
 		t.Fatal("building the session waited on furrow")
 	}
-	untilFurrow(t, "furrow being asked", func() bool { return launchCount(t, launches) >= 2 })
+	if agent == nil {
+		return
+	}
+	t.Cleanup(func() { _ = agent.Close() })
+	pid := g.started(t)
+	if !processAlive(pid) {
+		t.Fatal("furrow's status call was already over when the session came back; it should still be parked")
+	}
+	if verbs := workspaceVerbs(carried(agent)); len(verbs) != 0 {
+		t.Fatalf("the belt carried %v before furrow had answered; want none", verbs)
+	}
+	g.release(t)
 }
 
-// On a folder furrow reports as watched, the four verbs do reach the belt, with
-// the description and schema the model is shown.
-func TestWatchedFolderVerbsReachTheBelt(t *testing.T) {
-	_, gate, _ := installGatedFurrow(t)
-	if err := os.WriteFile(gate, nil, 0o644); err != nil {
-		t.Fatalf("open the gate: %v", err)
-	}
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
-	untilFurrow(t, "the belt carrying the workspace verbs", func() bool {
-		return len(workspaceVerbs(agent)) == len(furrow.Names())
-	})
-	for _, tool := range agent.belt() {
+// On a folder furrow reports as watched, the four verbs reach the belt THE MODEL
+// READS, even though the session was built before furrow answered.
+func TestWatchedFolderVerbsReachTheModel(t *testing.T) {
+	g := installGatedFurrow(t)
+	agent := furrowSession(t, t.TempDir())
+	g.started(t)
+	g.release(t)
+	waitForVerbs(t, agent, len(furrow.Names()))
+	for _, tool := range agent.beltTools() {
 		if strings.HasPrefix(tool.Name, "workspace_") && (tool.Description == "" || len(tool.Schema) == 0 || tool.Execute == nil) {
 			t.Errorf("%s reached the belt without a description, schema or hand", tool.Name)
 		}
+	}
+	// The request's definitions travel with the tools, one for one.
+	if len(agent.beltDefinitions()) != len(agent.beltTools()) {
+		t.Fatalf("the request carries %d definitions for %d tools", len(agent.beltDefinitions()), len(agent.beltTools()))
+	}
+}
+
+// waitForVerbs waits for the background answer to land on the belt.
+func waitForVerbs(t *testing.T, a *Agent, want int) {
+	t.Helper()
+	deadline := time.Now().Add(furrowTestSafety)
+	for len(workspaceVerbs(carried(a))) < want {
+		if time.Now().After(deadline) {
+			t.Fatalf("the belt never carried the workspace verbs; has %v", workspaceVerbs(carried(a)))
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 
 // One session, however many belts it assembles, asks furrow its two questions
 // once.
 func TestFurrowIsAskedOncePerSession(t *testing.T) {
-	launches, gate, _ := installGatedFurrow(t)
-	if err := os.WriteFile(gate, nil, 0o644); err != nil {
-		t.Fatalf("open the gate: %v", err)
-	}
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
-	untilFurrow(t, "the belt carrying the workspace verbs", func() bool { return len(workspaceVerbs(agent)) > 0 })
+	g := installGatedFurrow(t)
+	agent := furrowSession(t, t.TempDir())
+	g.started(t)
+	g.release(t)
+	waitForVerbs(t, agent, len(furrow.Names()))
 	for i := 0; i < 5; i++ {
 		_ = agent.belt()
 	}
-	if got := launchCount(t, launches); got != 2 {
+	if got := g.launchCount(t); got != 2 {
 		t.Fatalf("furrow was launched %d times for one session; want 2 (--version, status)", got)
 	}
 }
@@ -157,21 +240,38 @@ func TestFurrowIsAskedOncePerSession(t *testing.T) {
 // Close cuts a question furrow is still answering and waits for it: when Close
 // returns the process is gone.
 func TestClosingJoinsAFurrowThatIsStillAnswering(t *testing.T) {
-	_, _, pidfile := installGatedFurrow(t)
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
-	var pid int
-	untilFurrow(t, "furrow's status call starting", func() bool {
-		raw, err := os.ReadFile(pidfile)
-		if err != nil {
-			return false
-		}
-		_, err = fmt.Sscan(string(raw), &pid)
-		return err == nil && pid > 0
-	})
+	g := installGatedFurrow(t)
+	agent := furrowSession(t, t.TempDir())
+	pid := g.started(t)
 	if err := agent.Close(); err != nil {
 		t.Fatalf("close: %v", err)
 	}
-	if err := syscall.Kill(pid, 0); err == nil {
+	if processAlive(pid) {
 		t.Fatalf("Close returned with furrow's process %d still alive", pid)
 	}
+}
+
+// Two sessions on one folder share one question. The second one closing must not
+// wait behind the first one's furrow: it is not the one asking.
+func TestClosingOneSessionDoesNotWaitBehindAnothersFurrow(t *testing.T) {
+	g := installGatedFurrow(t)
+	workspace := t.TempDir()
+	first := furrowSession(t, workspace)
+	pid := g.started(t)
+	second := furrowSession(t, workspace)
+	closed := make(chan error, 1)
+	go func() { closed <- second.Close() }()
+	select {
+	case err := <-closed:
+		if err != nil {
+			t.Fatalf("close: %v", err)
+		}
+	case <-time.After(furrowTestSafety):
+		t.Fatal("closing the second session waited on the first session's furrow")
+	}
+	if !processAlive(pid) {
+		t.Fatal("the first session's furrow was cut by the second session closing")
+	}
+	g.release(t)
+	waitForVerbs(t, first, len(furrow.Names()))
 }
