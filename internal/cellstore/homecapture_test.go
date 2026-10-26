@@ -239,4 +239,13 @@ func TestAHomeChatNeverCapturesTheSendersHomeOnAnotherMachine(t *testing.T) {
 	if got := there.tree(c); got != canonicalTree(c.Root) {
 		t.Fatalf("the receiver restores into %s, want the chat's own folder %s", got, c.Root)
 	}
+	// A work/ of the chat's own is still the chat's, and on the sender, where the
+	// path is home, the path stays the chat's working folder.
+	if ForeignFolder(c.Root, filepath.Join(c.Root, "work")) {
+		t.Fatal("the chat's own work/ is called foreign")
+	}
+	useHome(t, sender)
+	if ForeignFolder(c.Root, sender) {
+		t.Fatal("the sender's own home is called foreign on the sender")
+	}
 }
