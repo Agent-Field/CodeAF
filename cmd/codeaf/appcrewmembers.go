@@ -778,6 +778,19 @@ func (b *appBackend) createFromProposal(ask appwire.CrewCreate) (appwire.Crew, e
 			p.EndsAt = e.EndsAt
 		}
 	}
+	reserved := map[string]bool{}
+	for _, helper := range p.Helpers {
+		if err := teamstore.ValidHandle(helper.Handle); err != nil {
+			return appwire.Crew{}, appwire.Errorf(appwire.CodeBadParams, "invalid helper handle %q: %s", helper.Handle, err)
+		}
+		if reserved[helper.Handle] {
+			return appwire.Crew{}, appwire.Errorf(appwire.CodeBadParams, "helper @%s is proposed more than once", helper.Handle)
+		}
+		if strings.TrimSpace(helper.Brief) == "" {
+			return appwire.Crew{}, appwire.Errorf(appwire.CodeBadParams, "helper @%s needs an assignment", helper.Handle)
+		}
+		reserved[helper.Handle] = true
+	}
 	manager, err := b.agentMember(p.Agent)
 	if err != nil {
 		return appwire.Crew{}, err
@@ -790,6 +803,22 @@ func (b *appBackend) createFromProposal(ask appwire.CrewCreate) (appwire.Crew, e
 		}
 		members = append(members, m)
 	}
+	reservedTeam := teamstore.Team{}
+	for _, helper := range p.Helpers {
+		reservedTeam.Members = append(reservedTeam.Members, teamstore.Member{Key: "proposal:" + helper.Handle, Handle: helper.Handle})
+	}
+	for i := range members {
+		member := &members[i]
+		member.Handle = teamstore.DeriveHandle(member.Word)
+		if member.Handle == "" || reserved[member.Handle] {
+			reservedTeam.Name = member.Word
+			member.Handle = teamstore.FallbackHandle(reservedTeam, member.Key)
+		}
+		member.HandleBy = teamstore.HandleByWords
+		reserved[member.Handle] = true
+		reservedTeam.Members = append(reservedTeam.Members, *member)
+	}
+	manager = members[0]
 	hue, err := b.askedHue(p.Hue, "")
 	if err != nil {
 		return appwire.Crew{}, err
@@ -831,17 +860,24 @@ func (b *appBackend) createFromProposal(ask appwire.CrewCreate) (appwire.Crew, e
 	if err != nil {
 		return appwire.Crew{}, appEngineError(err)
 	}
-	// The watch performs these starts as it performs any manager's: it is told
-	// to read this new crew's log from its first line.
 	run := b.crews()
 	run.locked(func() { run.cursors[id] = appTrafficStart })
-	for _, h := range p.Helpers {
-		if err := teamstore.AppendTraffic(b.crewProfile(), id, teamstore.Entry{
-			Kind: teamstore.KindStart, From: teamstore.FromManager, FromKey: manager.Key, To: h.Handle, Text: redact.Secrets(h.Brief),
-		}); err != nil {
+	for _, helper := range p.Helpers {
+		entry := teamstore.Entry{Kind: teamstore.KindStart, From: teamstore.FromManager, FromKey: manager.Key, To: helper.Handle, Text: redact.Secrets(helper.Brief), At: b.now()}
+		start, err := teamstore.AppendClaimedStart(b.crewProfile(), id, entry)
+		if err != nil {
+			return appwire.Crew{}, appEngineError(err)
+		}
+		entry.ID = start
+		team, _, err := b.crewTeam(id)
+		if err != nil {
+			return appwire.Crew{}, err
+		}
+		if err := b.crewStart(team, manager, entry); err != nil {
 			return appwire.Crew{}, appEngineError(err)
 		}
 	}
+
 	b.crewReceipt(p.Agent, id, p.Name)
 	b.dropProposal(p.ID, appwire.ProposalCreate)
 	b.crewTick(run, false)

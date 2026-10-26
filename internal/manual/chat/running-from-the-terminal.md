@@ -2001,5 +2001,8 @@ keeps those helpers and says "Stopped after 2 helpers", with the actual count.
 An answer with no usable helpers leaves one quiet notice.
 
 Accepting a proposal keeps this conversation as manager and creates one flat
-crew. Proposed reporting handles are recorded on members. Team groups do not
+crew. All helpers are seated under their approved handles before creation returns.
+Duplicate helper handles are refused before a crew is made. An automatic manager
+handle that clashes with a helper gets a free handle; the manager remains the same
+conversation. Proposed reporting handles are recorded on members. Team groups do not
 create nested crews yet.

@@ -27,3 +27,11 @@ optional low-effort hint could be omitted when the catalog did not recognize the
 model, leaving it to deliberate at its own default. Chat and ordinary side-ask
 reasoning settings are unchanged. A flat shape with zero explicit team groups is
 accepted and emitted immediately, rather than dropped before the name line.
+
+Proposal acceptance now returns only after the original manager and every helper
+are seated. Start traffic is claimed under the same lock that appends it, so the
+watch and another window cannot create the same helper again. Approved helper
+handles take priority over automatically derived manager or existing-member
+handles. Invalid or duplicate edited helpers are refused before creation. A
+membership handle failure is returned rather than silently accepting a renamed
+helper. This fixes the partial setup and conflicting names reported in Q03.
