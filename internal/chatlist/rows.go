@@ -37,6 +37,8 @@ type Row struct {
 	// Mine says this device was the chat's last holder, so a lapsed lease is
 	// this device's own to pick up and not another device's work gone quiet.
 	Mine bool
+	// Empty marks an ownership record with no saved turn to open elsewhere.
+	Empty bool
 	// Released distinguishes a real release from a revoked or offline holder.
 	Released    bool
 	ReleasedAgo time.Duration
@@ -122,6 +124,7 @@ func rowOf(id string, c directory.Cell, l directory.Listing, self string, open O
 		Parent:      c.ParentCell,
 		Status:      heldStatus(c, l, self),
 		Mine:        c.Lease.Device == self,
+		Empty:       c.Head == "",
 		Released:    c.Lease.Expires == 0 && c.Lease.ReleasedAt > 0 && !l.Devices[c.Lease.Device].Revoked,
 		ReleasedAgo: time.Duration(l.Now-c.Lease.ReleasedAt) * time.Millisecond,
 		DurableAgo:  time.Duration(l.Now-c.DurableAt) * time.Millisecond,

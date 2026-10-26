@@ -2716,3 +2716,7 @@ from a previous visit cannot replace the current visit's selection or draft.
 After a clean quit lets a paired computer's chat go, bare `codeaf` on another paired computer continues that chat automatically within 24 hours. You arrive with the `Moved from` banner and the usual `not brought along:` facts; `esc` goes Home.
 
 If the laptop only slept or lost its connection, Home offers its latest chat and `alt+c` continues immediately. When local unsaved edits need to be kept as a branch, the continuation card asks first. Nothing moves automatically while the other computer is running that chat, for a named chat or `--host`/`--at`/`--session`, when another local window holds a chat, or when local unsaved edits need a choice. If the move fails, Home stays open and says why.
+
+## Empty chats on another computer — untitled rows before the first saved turn
+
+An empty new chat on another computer stays off Home until it has a saved turn. Opening a window there does not add an `untitled` row here. Once that chat has its first saved turn, it appears with the other chats you can continue.

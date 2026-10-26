@@ -77,7 +77,7 @@ func (s *Sync) Continuer(eng cellstore.Engine, opt TakeOptions) *Continuer {
 // taker is the Taker for chat id. It is built per takeover because the store
 // it fetches through is counted under the chat it serves, and so is the branch
 // that keeps this machine's unsent edits: both are the cost of taking this chat.
-func (c *Continuer) taker(sc *Scope) handoff.Taker {
+func (c *Continuer) taker(ctx context.Context, sc *Scope) handoff.Taker {
 	s := c.sync
 	sync := c.eng.Sync(cellstore.SyncKeys{CellKey: s.Identity.CellKey(), Dedup: s.Identity.DedupSecret()}, s.Ledger)
 	engine := landing{Engine: sync}
@@ -91,7 +91,7 @@ func (c *Continuer) taker(sc *Scope) handoff.Taker {
 	return handoff.Taker{
 		Dir:     s.Dir,
 		Fetch:   &cellsync.Fetcher{Engine: engine, Store: sc.Store, Dir: s.Dir, Inbox: sync.Inbox},
-		Local:   engineLocal{c.eng},
+		Local:   engineLocal{eng: c.eng, ctx: ctx},
 		Branch:  c.branch(brancher),
 		RootFor: c.opt.RootFor,
 		InPlace: func(c cell.Cell) bool { return borrowsProject(c.Root) },
@@ -151,7 +151,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	c.retireHolder(ctx, id)
 	sc := c.sync.scope(id)
 	defer sc.Settle()
-	taker := c.taker(sc)
+	taker := c.taker(ctx, sc)
 	if view.Cell.ParentCell != "" {
 		// The branch's snapshot was sealed before it had its own id. Rebind
 		// its journal before rebuilding the row, so two chats never share an id.
@@ -304,10 +304,23 @@ func (l landing) Want(ctx context.Context, c cell.Cell, head string) ([]string, 
 
 // engineLocal is the Taker's view of a copy of the chat this machine has: what
 // the engine says differs from the newest turn, and a seal of it.
-type engineLocal struct{ eng cellstore.Engine }
+type engineLocal struct {
+	eng cellstore.Engine
+	ctx context.Context
+}
 
 func (l engineLocal) Unpublished(c cell.Cell, remoteHead string) (string, uint32, error) {
-	return cellstore.Unpublished(c, remoteHead)
+	head, turns, err := cellstore.Unpublished(c, remoteHead)
+	if err != nil || head == "" {
+		return head, turns, err
+	}
+	// A retired session can seal unchanged bookkeeping after losing its
+	// hold. Only work beyond the shared snapshot belongs in a kept branch.
+	work, err := l.eng.LocalWork(l.ctx, c)
+	if err != nil || !work {
+		return "", 0, err
+	}
+	return head, turns, nil
 }
 
 func (l engineLocal) Dirty(ctx context.Context, c cell.Cell) (bool, error) {

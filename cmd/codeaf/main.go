@@ -45,11 +45,12 @@ import (
 )
 
 func main() {
-	home.Adopt(log.Printf)
-	// CODEAF SCHEDULES NOTHING ON THE MACHINE. The timers the feature that
-	// automations replaced installed are taken off this login on every start,
-	// whoever installed them (internal/automation's legacy.go).
-	automation.RemoveOldTimers()
+	if startupMaintenanceNeeded(os.Args[1:]) {
+		home.Adopt(log.Printf)
+		// CODEAF SCHEDULES NOTHING ON THE MACHINE. Real starts remove the
+		// timers installed by the feature that automations replaced.
+		automation.RemoveOldTimers()
+	}
 	registerRunningCLI()
 	os.Exit(execute())
 }

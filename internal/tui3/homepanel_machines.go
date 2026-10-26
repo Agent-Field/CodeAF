@@ -151,7 +151,7 @@ func (m machineReading) lines(in *homeGridInput, own []homeLine) []homeLine {
 // held here is never drawn twice; a chat listed here is drawn again only while
 // another machine holds it, live or gone quiet.
 func drawnAsRemote(row chatlist.Row, listedHere bool) bool {
-	if row.Status == chatlist.Here {
+	if row.Empty || row.Status == chatlist.Here {
 		return false
 	}
 	return !listedHere || heldElsewhere(row)

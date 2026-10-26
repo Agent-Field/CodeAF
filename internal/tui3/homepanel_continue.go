@@ -3,6 +3,7 @@ package tui3
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -346,6 +347,13 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 		a.home.say(joinSaid(moved, kept), "")
 		return a.askMachines()
 	}
+	var draft *composerState
+	if a.file != "" && filepath.Base(session.DirOf(a.file)) == msg.row.Cell {
+		// Replacing a displaced session must carry its unsent message into
+		// the arriving chat, where another enter still decides whether to send.
+		composer := a.liveComposer()
+		draft = &composer
+	}
 	a.homeTakenSaid = func() tea.Cmd {
 		// A local session of this same chat was retired before replacement.
 		// Its old handle cannot remain a selectable copy behind the new one.
@@ -359,6 +367,9 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 		}
 		a.note(joinSaid(moved, kept))
 		if a.file == line.row.Transcript {
+			if draft != nil {
+				a.putComposer(*draft)
+			}
 			a.offerSetup(msg.taken.Resume)
 		}
 		return nil
