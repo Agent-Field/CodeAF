@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Continuing on another computer sends at once, and a leading computer's clean quit hands back
-pr: 0
+pr: 1967
 surface: [chat, remote, docs]
 invalidates:
   - "After bare codeaf continued another computer's released chat, the first message opened Continue this chat here? and continue here released this computer's own hold. The window now follows the chat it took, a send decides that card from a fresh ownership read, and continuing a chat this computer already holds keeps it as it is."
