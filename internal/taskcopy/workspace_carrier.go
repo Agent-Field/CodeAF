@@ -324,6 +324,9 @@ func captureWorkspaceDirectoriesWithIndex(tree, indexRoot string) (map[string]fs
 }
 
 func captureWorkspaceDirectoriesScope(tree, indexRoot string, wholeFamily bool) (map[string]fs.FileMode, error) {
+	if err := portableNativeMetadataDirectory(tree); err != nil {
+		return nil, err
+	}
 	ignored, err := portableInspectionGit(indexRoot, "--work-tree="+tree, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z")
 	if err != nil {
 		return nil, err
@@ -367,7 +370,7 @@ func captureWorkspaceDirectoriesScope(tree, indexRoot string, wholeFamily bool) 
 		if !d.IsDir() {
 			return nil
 		}
-		if d.Name() == ".git" || cell.IsTaskDropping(d.Name()) {
+		if d.Name() == ".git" || cell.IsTaskDropping(d.Name()) || portableNativeMetadataPath(rel) {
 			return filepath.SkipDir
 		}
 		ignored := false

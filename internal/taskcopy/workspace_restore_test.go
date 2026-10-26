@@ -62,7 +62,7 @@ func TestWorkspaceRestoreReopensSameWholeLayout(t *testing.T) {
 	}
 }
 func TestWorkspaceRestoreRejectsDamagedClosureBeforeMutations(t *testing.T) {
-	for _, kind := range []string{"missing-root", "wrong-checkpoint", "traversal-record", "symlink-carrier", "occupied-destination"} {
+	for _, kind := range []string{"missing-root", "wrong-checkpoint", "traversal-record", "native-deletion", "native-mode", "native-mode-alias", "native-deletion-alias", "native-overlay", "symlink-carrier", "occupied-destination"} {
 		t.Run(kind, func(t *testing.T) {
 			c, plan := workspaceFixture(t)
 			if err := (Carry{}).Compose(c); err != nil {
@@ -87,6 +87,26 @@ func TestWorkspaceRestoreRejectsDamagedClosureBeforeMutations(t *testing.T) {
 					t.Fatal(err)
 				}
 				rec.Deleted = []string{"../../outside"}
+				if err = writeRecord(from, rec); err != nil {
+					t.Fatal(err)
+				}
+			case "native-deletion", "native-mode", "native-mode-alias", "native-deletion-alias", "native-overlay":
+				rec, err := readRecord(from)
+				if err != nil {
+					t.Fatal(err)
+				}
+				switch kind {
+				case "native-deletion":
+					rec.Deleted = []string{".furrow/workspace-id"}
+				case "native-mode-alias":
+					rec.Modes = map[string]os.FileMode{"./.furrow/workspace-id": 0600}
+				case "native-deletion-alias":
+					rec.Deleted = []string{"x/../.furrow/workspace-id"}
+				case "native-mode":
+					rec.Modes = map[string]os.FileMode{".furrow/workspace-id": 0600}
+				case "native-overlay":
+					write(t, filepath.Join(from, filesDir, ".furrow", "workspace-id"), "forged native identity\n")
+				}
 				if err = writeRecord(from, rec); err != nil {
 					t.Fatal(err)
 				}
@@ -482,7 +502,7 @@ func TestWorkspaceSecondRootFailurePreservesStageAndStartsNothing(t *testing.T) 
 // Directory metadata refusals are exercised through public carrier preparation.
 
 func TestWorkspaceDirectoryMetadataRefusesBeforePreparation(t *testing.T) {
-	for _, kind := range []string{"legacy", "nil-map", "traversal", "git-private", "special-mode", "owner-permission", "missing-parent", "file-parent", "case-alias", "unicode-alias"} {
+	for _, kind := range []string{"legacy", "nil-map", "traversal", "git-private", "native-private", "special-mode", "owner-permission", "missing-parent", "file-parent", "case-alias", "unicode-alias"} {
 		t.Run(kind, func(t *testing.T) {
 			c, plan := workspaceFixture(t)
 			if err := (Carry{}).Compose(c); err != nil {
@@ -504,6 +524,8 @@ func TestWorkspaceDirectoryMetadataRefusesBeforePreparation(t *testing.T) {
 				root.Directories = map[string]os.FileMode{"../outside": 0750}
 			case "git-private":
 				root.Directories = map[string]os.FileMode{".git": 0700}
+			case "native-private":
+				root.Directories = map[string]os.FileMode{".furrow": 0700}
 			case "special-mode":
 				root.Directories = map[string]os.FileMode{"unsafe": os.ModeSymlink | 0750}
 			case "owner-permission":

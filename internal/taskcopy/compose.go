@@ -198,7 +198,7 @@ func changedPaths(tree string) ([]string, error) {
 	var paths []string
 	for _, entry := range strings.Split(out, "\x00") {
 		// An entry is two status letters, a space and the path.
-		if len(entry) > 3 && !cell.IsTaskDropping(entry[3:]) {
+		if len(entry) > 3 && !cell.IsTaskDropping(entry[3:]) && !portableNativeMetadataPath(entry[3:]) {
 			paths = append(paths, entry[3:])
 		}
 	}
@@ -272,7 +272,7 @@ func skipEntry(d fs.DirEntry) error {
 func capturePortableLinks(root string, paths []string) (*PortableState, error) {
 	state := PortableState{Version: 1, Entries: map[string]PortableEntry{}}
 	for _, path := range paths {
-		if path == "" {
+		if path == "" || portableNativeMetadataPath(path) {
 			continue
 		}
 		info, err := os.Lstat(filepath.Join(root, path))

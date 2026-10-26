@@ -79,6 +79,9 @@ func inspectPortableState(root string, wholeFamily bool) (PortableState, error) 
 		return PortableState{}, err
 	}
 	root = canonical
+	if err := portableNativeMetadataDirectory(root); err != nil {
+		return PortableState{}, err
+	}
 	indexRoot, cleanup, err := portableInspectionIndex(root)
 	if err != nil {
 		return PortableState{}, err
@@ -405,7 +408,7 @@ func MaterializePortableInput(source, destination string, baseline PortableState
 		}
 	}
 	for path := range selected {
-		if path == "" || cell.IsTaskDropping(path) {
+		if path == "" || cell.IsTaskDropping(path) || portableNativeMetadataPath(path) {
 			continue
 		}
 		entry, present := baseline.Entries[path]
@@ -566,6 +569,9 @@ func validatePortableEntries(entries map[string]PortableEntry) error {
 		return errors.New("portable path count exceeds its bound")
 	}
 	for path, entry := range entries {
+		if portableNativeMetadataPath(path) {
+			return errors.New("portable entry names native control metadata")
+		}
 		if !filepath.IsLocal(filepath.FromSlash(path)) || path == "." || len(path) > 4096 || strings.Contains(path, "\\") || filepath.ToSlash(filepath.Clean(filepath.FromSlash(path))) != path {
 			return errors.New("portable entry path is unsafe")
 		}
@@ -613,9 +619,12 @@ func InspectPortablePaths(root string, paths []string) (PortableState, error) {
 		return PortableState{}, err
 	}
 	root = canonical
+	if err := portableNativeMetadataDirectory(root); err != nil {
+		return PortableState{}, err
+	}
 	state := PortableState{Version: 1, Entries: map[string]PortableEntry{}}
 	for _, rel := range paths {
-		if rel == "" || rel == "." || cell.IsTaskDropping(rel) {
+		if rel == "" || rel == "." || cell.IsTaskDropping(rel) || portableNativeMetadataPath(rel) {
 			continue
 		}
 		if _, ok := state.Entries[rel]; ok {
@@ -837,4 +846,23 @@ func setPortableSymlinkMode(root *os.Root, path string, mode fs.FileMode) error 
 	}
 	defer parent.Close()
 	return SetPortableSymlinkModeAt(int(parent.Fd()), filepath.Base(filepath.FromSlash(path)), mode)
+}
+
+// The native engine reserves this top-level directory for its workspace IDs.
+// Nested directories with the same spelling remain ordinary project inputs.
+func portableNativeMetadataPath(path string) bool {
+	return path == ".furrow" || strings.HasPrefix(path, ".furrow/")
+}
+func portableNativeMetadataDirectory(root string) error {
+	info, err := os.Lstat(filepath.Join(root, ".furrow"))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return errors.New("native workspace metadata is not a directory; preserve this private copy")
+	}
+	return nil
 }

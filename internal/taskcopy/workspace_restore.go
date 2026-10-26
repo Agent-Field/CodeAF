@@ -481,7 +481,7 @@ func validateWorkspaceRecord(from string, rec record) error {
 		return errors.New("workspace path metadata exceeds its bound")
 	}
 	check := func(rel string) error {
-		if !filepath.IsLocal(filepath.FromSlash(rel)) || len(rel) > 4096 || strings.Contains(rel, "\\") || rel == ".git" || strings.HasPrefix(rel, ".git/") {
+		if rel == "." || filepath.ToSlash(filepath.Clean(filepath.FromSlash(rel))) != rel || portableNativeMetadataPath(rel) || !filepath.IsLocal(filepath.FromSlash(rel)) || len(rel) > 4096 || strings.Contains(rel, "\\") || rel == ".git" || strings.HasPrefix(rel, ".git/") {
 			return errors.New("workspace record path is unsafe")
 		}
 		return nil
@@ -1067,7 +1067,7 @@ func validateWorkspaceDirectories(root workspaceRoot, rec record) (int, error) {
 		}
 		folded[alias] = true
 
-		if !utf8.ValidString(path) || path == "." || !filepath.IsLocal(filepath.FromSlash(path)) || filepath.ToSlash(filepath.Clean(filepath.FromSlash(path))) != path || strings.Contains(path, "\\") || len(path) > 4096 {
+		if portableNativeMetadataPath(path) || !utf8.ValidString(path) || path == "." || !filepath.IsLocal(filepath.FromSlash(path)) || filepath.ToSlash(filepath.Clean(filepath.FromSlash(path))) != path || strings.Contains(path, "\\") || len(path) > 4096 {
 			return 0, errors.New("workspace directory path is unsafe")
 		}
 		for _, part := range strings.Split(path, "/") {
@@ -1135,6 +1135,9 @@ func prepareWorkspaceDirectories(destination string, directories map[string]fs.F
 	return nil
 }
 func finishWorkspaceDirectories(destination string, directories map[string]fs.FileMode) error {
+	if err := portableNativeMetadataDirectory(destination); err != nil {
+		return err
+	}
 	var absent []string
 	err := filepath.WalkDir(destination, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -1150,7 +1153,7 @@ func finishWorkspaceDirectories(destination string, directories map[string]fs.Fi
 		if rel == "." {
 			return nil
 		}
-		if d.Name() == ".git" || cell.IsTaskDropping(d.Name()) {
+		if d.Name() == ".git" || cell.IsTaskDropping(d.Name()) || portableNativeMetadataPath(filepath.ToSlash(rel)) {
 			return filepath.SkipDir
 		}
 		rel = filepath.ToSlash(rel)
@@ -1202,7 +1205,7 @@ func verifyWorkspaceDirectories(destination string, directories map[string]fs.Fi
 		if rel == "." {
 			return nil
 		}
-		if d.Name() == ".git" || cell.IsTaskDropping(d.Name()) {
+		if d.Name() == ".git" || cell.IsTaskDropping(d.Name()) || portableNativeMetadataPath(filepath.ToSlash(rel)) {
 			return filepath.SkipDir
 		}
 		if _, ok := directories[filepath.ToSlash(rel)]; !ok {

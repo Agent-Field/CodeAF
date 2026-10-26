@@ -394,3 +394,74 @@ func TestWorkspaceCarrierImportsLinuxLinkFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestMaterializePortableInputKeepsNativeMetadataOutsideUserState(t *testing.T) {
+	for _, repository := range []bool{false, true} {
+		t.Run(map[bool]string{false: "plain", true: "git"}[repository], func(t *testing.T) {
+			source := t.TempDir()
+			write(t, filepath.Join(source, "input.txt"), "raw input\r\n")
+			write(t, filepath.Join(source, "docs", ".furrow", "user.txt"), "nested user input\n")
+			if err := os.Mkdir(filepath.Join(source, "empty"), 0750); err != nil {
+				t.Fatal(err)
+			}
+			if repository {
+				run(t, source, "git", "init", "-q")
+				run(t, source, "git", "add", ".")
+				run(t, source, "git", "commit", "-qm", "input")
+			}
+			var baseline PortableState
+			var err error
+			if repository {
+				baseline, err = InspectPortableState(source)
+			} else {
+				baseline, err = InspectPortableFamilyInput(source)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			write(t, filepath.Join(source, ".furrow", "workspace-id"), "source native identity\n")
+			destination := t.TempDir()
+			write(t, filepath.Join(destination, "input.txt"), "normalized input\n")
+			write(t, filepath.Join(destination, "docs", ".furrow", "user.txt"), "nested user input\n")
+			write(t, filepath.Join(destination, ".furrow", "workspace-id"), "private native identity\n")
+			run(t, destination, "git", "init", "-q")
+			run(t, destination, "git", "add", "--all", "--force", "--", ".", ":(exclude,literal).furrow")
+			run(t, destination, "git", "commit", "-qm", "private input")
+			if err = MaterializePortableInput(source, destination, baseline); err != nil {
+				t.Fatal(err)
+			}
+			for path, want := range map[string]string{"input.txt": "raw input\r\n", "docs/.furrow/user.txt": "nested user input\n", ".furrow/workspace-id": "private native identity\n"} {
+				raw, err := os.ReadFile(filepath.Join(destination, path))
+				if err != nil || string(raw) != want {
+					t.Fatalf("input/control %s changed: %v", path, err)
+				}
+			}
+			state, err := InspectPortableFamilyInput(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := state.Entries[".furrow/workspace-id"]; ok {
+				t.Fatal("native control metadata entered project state")
+			}
+			if state.Entries["docs/.furrow/user.txt"].Kind != "file" {
+				t.Fatal("nested user directory excluded")
+			}
+		})
+	}
+}
+
+func TestPortableCaptureRefusesRedirectedNativeMetadata(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	write(t, filepath.Join(outside, "user.txt"), "outside user input\n")
+	if err := os.Symlink(outside, filepath.Join(root, ".furrow")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := InspectPortableFamilyInput(root); err == nil {
+		t.Fatal("redirected native metadata accepted")
+	}
+	raw, err := os.ReadFile(filepath.Join(outside, "user.txt"))
+	if err != nil || string(raw) != "outside user input\n" {
+		t.Fatal("outside file changed")
+	}
+}
