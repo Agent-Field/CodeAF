@@ -228,6 +228,39 @@ change what Enter opens. Without color both markers remain visible; ASCII mode u
 straight corners and a plain dot. Short windows give up inner vertical space before
 the selected row.
 
+## Desktop conversation names, short tab names, vague first messages and personal renames
+
+The desktop asks the configured `title` model for a name in 2–4 words and at most
+24 characters. It asks for sentence case with proper nouns kept, as in
+"Release review" and "Why is CI slow?". It puts the distinguishing word first,
+using your own words and names, and reads up to 20 other currently open conversation
+names at each naming call to avoid repeats. Renamed, closed and archived tabs
+are reflected in the next call.
+Your first message, or attached file names when you type nothing, supplies the
+placeholder while naming runs. The placeholder can use up to 40 characters.
+
+If your first message has fewer than four words, or the model gives a generic
+name, the engine looks for a concrete topic in the first three finished
+exchanges. Each check uses your opening message, that exchange's message and
+the opening 400 characters of its reply. A vague exchange keeps the current
+name. Echoing a vague opening, such as "Look at this", keeps the original
+placeholder exactly as written. A greeting or empty request needs a topic or
+file from you before the model can replace that placeholder. The first concrete
+topic earns one final model
+name. If all three stay vague, the opening name stays and later messages do not
+restart naming.
+
+Only a handled naming answer advances the check cursor. Each check reads the
+first unchecked finished exchange from the conversation history, among the
+first three. Cancelling leaves that exchange eligible after reopening, so you
+can say "continue" without repeating its topic. The remaining cursor and final
+naming decision survive reopening the conversation. A name you choose yourself stops this process, even while a
+model answer is on its way.
+
+A model name longer than 24 characters ends at the last whole word that fits,
+without an ellipsis. If no word fits, the model gets one request to answer
+shorter. An unusable shorter answer leaves the current name in place.
+
 ## What is my chat called before it has a name — unnamed tab, when does a chat get its name, how do I rename this conversation, why it no longer says Untitled
 
 **Naming starts when your first message is accepted.** The small model on the `title`

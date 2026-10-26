@@ -1553,8 +1553,8 @@ func TestAppARealAgentIsNamedOnceFromItsIntent(t *testing.T) {
 		backend.Close()
 		t.Fatalf("create = %v", err)
 	}
-	opening := session.OpeningName(words, []session.MessageAttachment{{Kind: "file", Path: "plan.md"}})
-	if agent.Title != opening || utf8.RuneCountInString(agent.Title) > session.AppNameLimit || strings.Contains(agent.Title, "plan.md") {
+	const opening = "say done and then tell me about the…"
+	if agent.Title != opening || utf8.RuneCountInString(agent.Title) > session.OpeningNameLimit || strings.Contains(agent.Title, "plan.md") {
 		backend.Close()
 		t.Fatalf("title = %q, want the opening name %q", agent.Title, opening)
 	}

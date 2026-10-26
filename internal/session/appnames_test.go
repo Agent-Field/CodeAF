@@ -25,8 +25,8 @@ func TestFirstMessageName(t *testing.T) {
 		if got != c.want {
 			t.Errorf("FirstMessageName(%q) = %q, want %q", c.in, got, c.want)
 		}
-		if n := utf8.RuneCountInString(got); n > AppNameLimit {
-			t.Errorf("FirstMessageName(%q) is %d characters, the limit is %d", c.in, n, AppNameLimit)
+		if n := utf8.RuneCountInString(got); n > OpeningNameLimit {
+			t.Errorf("FirstMessageName(%q) is %d characters, the limit is %d", c.in, n, OpeningNameLimit)
 		}
 	}
 }

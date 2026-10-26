@@ -289,8 +289,9 @@ type sessionEntry struct {
 	Title string `json:"title,omitempty"`
 	// LiteralName says the title is a rule's or a person's exact words rather
 	// than a generated label, so the replay keeps it verbatim (appnames.go).
-	LiteralName bool   `json:"literalName,omitempty"`
-	ShortTitle  string `json:"shortTitle,omitempty"` // Deprecated: accepted for old records; never used as a name.
+	LiteralName bool             `json:"literalName,omitempty"`
+	IntentName  *intentNameState `json:"intentName,omitempty"`
+	ShortTitle  string           `json:"shortTitle,omitempty"` // Deprecated: accepted for old records; never used as a name.
 
 	// Usage is what one COMPLETED turn — or one auxiliary call beside it — cost,
 	// and it is on its own line rather than on the assistant message that ended
@@ -1892,6 +1893,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 		earlierRows int
 		title       string
 		shortTitle  string
+		intentName  *intentNameState
 		id          string
 		lines       int
 		scanned     int
@@ -2285,7 +2287,10 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			// transcript — the brief the turn carried on with, the line the
 			// person read — and replaying it would put machinery into somebody's
 			// conversation.
+		case "intent_name":
+			intentName = entry.IntentName
 		case "title":
+			intentName = entry.IntentName
 			// LAST one wins. A name written twice is a name that was changed,
 			// and the file's order is the order it was changed in. A name that
 			// is the namer's own instruction is read as NO name ([healedTitle],
@@ -2325,6 +2330,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 		overlap:        overlap,
 		passes:         passes,
 		title:          title,
+		intentName:     intentName,
 		modelSwitches:  modelSwitches,
 		shortTitle:     shortTitle,
 		id:             id,
@@ -2519,6 +2525,7 @@ type replayedSession struct {
 	// once and keeps its summary; a resume keeps neither.
 	passes     []CompactionFact
 	title      string
+	intentName *intentNameState
 	shortTitle string
 	// id is the header's session id, empty for a file that has no header yet.
 	id string
@@ -3120,6 +3127,10 @@ func (s *sessionFile) appendTitle(title, _ string) {
 // appendNamedTitle is [sessionFile.appendTitle] with the literal mark: a name
 // the replay must keep exactly as written rather than heal like a label.
 func (s *sessionFile) appendNamedTitle(title string, literal bool) {
+	s.appendNamedTitleWithIntent(title, literal, nil)
+}
+
+func (s *sessionFile) appendNamedTitleWithIntent(title string, literal bool, intent *intentNameState) {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return
@@ -3127,7 +3138,7 @@ func (s *sessionFile) appendNamedTitle(title string, literal bool) {
 	s.mu.Lock()
 	s.title, s.shortTitle = title, ""
 	s.mu.Unlock()
-	s.writeLine(sessionEntry{Type: "title", Title: title, LiteralName: literal, Timestamp: stamp()})
+	s.writeLine(sessionEntry{Type: "title", Title: title, LiteralName: literal, IntentName: intent, Timestamp: stamp()})
 }
 
 // appendUsage journals what one seal cost: the turn's own figures, or one

@@ -308,6 +308,16 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// about the conversation in the file, and re-deriving it from the same
 		// opening exchange would pay for an answer we already have.
 		agent.title = file.Title()
+		if replayed.intentName != nil {
+			agent.intentName = replayed.intentName
+			agent.titleTried = true
+			agent.titleLiteral = replayed.intentName.Literal
+			if agent.intentName.Pending && agent.intentName.Checked < intentExchangeLimit && agent.intentName.Claim != "" && agent.intentName.Claim == agent.title {
+				agent.titleProvisional = agent.intentName.Claim
+			} else {
+				agent.intentName.Pending = false
+			}
+		}
 		// And it keeps its cache lineage for the same reason, which matters
 		// more: a session resumed tomorrow re-sends the transcript it built
 		// today, and a key that changed with the process would ask the router
@@ -511,6 +521,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	if agent.file != nil {
 		rememberLiveJournal(config.SessionFile, agent)
 	}
+	agent.mu.Lock()
+	agent.startPendingIntentNamesLocked()
+	agent.mu.Unlock()
 	return agent, nil
 }
 
@@ -2119,6 +2132,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// anything, so a leftover is inert either way; stopping it here is
 			// what keeps the timer's life the turn's life (steer_grace.go).
 			a.stopSteerGraceLocked()
+			a.finishIntentExchangeLocked(user, completed)
 			a.running = false
 			// THE REDIRECT TURN HAS SAID ITS PIECE. Later turns plan and name
 			// as they always have; an interrupted turn that never received
