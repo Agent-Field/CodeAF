@@ -519,7 +519,7 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 			stats += a.pal.dim(" · ") + a.pal.data(fmt.Sprint(p.reading.Pending)) + a.pal.dim(" queued")
 		}
 		if p.reading.CostUSD > 0 {
-			stats += a.pal.dim(" · ") + a.pal.data(fmt.Sprintf("$%.4f", p.reading.CostUSD))
+			stats += a.pal.dim(" · ") + a.pal.money(fmt.Sprintf("$%.4f", p.reading.CostUSD))
 		}
 		add(stats)
 	}
@@ -546,7 +546,7 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 		add("")
 		build := a.pal.bold(a.pal.ink(knowledgeBuildLabel))
 		if p.hoverLink == "@build" {
-			build = a.pal.cursor(a.pal.accent(knowledgeBuildLabel), ansi.StringWidth(knowledgeBuildLabel))
+			build = a.pal.cursor(a.pal.bold(a.pal.accent(knowledgeBuildLabel)), ansi.StringWidth(knowledgeBuildLabel))
 		}
 		add(build)
 		rows[len(rows)-1].hit = knowledgeHit{tree: -1, create: true}
@@ -579,7 +579,9 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 				add(line)
 			}
 			if p.reading.Pending == 0 {
-				add(a.pal.ink("Organizing knowledge pages…"))
+				for _, line := range wrap(a.pal.ink("Organizing knowledge pages…"), progressWidth) {
+					add(line)
+				}
 			}
 		}
 	} else if p.reading.Build.Phase == knowledge.BuildFailed || p.reading.Build.Phase == knowledge.BuildPartial {
