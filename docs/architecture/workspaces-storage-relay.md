@@ -33,6 +33,15 @@ maps identities to the actual device paths. Project caches are project-owned,
 so finishing one task does not authorize deleting a cache shared with another.
 Original folders and unrelated caches never become task cleanup targets.
 
+Plain-folder family history preserves the bounded nonsecret inputs needed to
+reconstruct a child's complete working world, including ignored runtime inputs.
+Ignore rules do not silently remove those family inputs to claim space savings.
+Git-backed sources retain their existing copy eligibility. Credentials withheld
+by the existing secret policy remain local inputs; their values do not enter new
+transferable family history. Their explicit disposition is bound to the creation
+metadata. New or changed withheld outputs refuse review, and existing history
+containing tracked secrets refuses full export instead of being rewritten.
+
 ```mermaid
 flowchart TD
     Chat[Chat identity] --> Layout[Declared execution layout]
@@ -77,7 +86,8 @@ receiving a root does not authorize applying changes to it.
 Use `/task review <task number> <root slot>` after the task and its cooperating
 writers/checkers finish. The terminal shows the private copy, receiver-local
 application destination, exact snapshot identity, and diff. Large previews show
-a command for inspecting the complete immutable diff. Review does not change
+a command for inspecting the complete immutable Git/file diff; that command
+does not describe all directory or permission metadata. Review does not change
 the original project working files or the retained private working copy.
 
 `/task apply <task number> <root slot>` applies that reviewed snapshot only.
@@ -93,6 +103,45 @@ staging after the new receipt is durable. Invalid ownership, destination,
 baseline, or snapshot bindings refuse before application. Uncertain writers still
 prevent destructive retirement; they do not authorize deleting the retained
 original during a snapshot application.
+
+Private task creation records eligible raw bytes, file kinds, symlink targets,
+permission bits, and empty directories before Git can normalize them. That
+immutable baseline travels with the task carrier; it grants no destination
+write authority. Existing tasks without a verified metadata baseline retain
+their readable results, but application refuses instead of inventing history.
+
+Application uses a journaled destination transaction. Independently copied
+preimages and verified raw postimages remain available until the final task
+checkpoint is durable. Built-in Git text conversion produces canonical history
+while working files retain their exact reviewed bytes. External clean filters
+and unsupported working-tree encodings refuse before publication. Affected
+paths with pre-existing staged or unstaged changes refuse; unrelated changes
+remain untouched. Ignored or withheld content never becomes an inferred deletion.
+
+```mermaid
+flowchart LR
+  Review[Immutable review] --> Compare[Check affected paths and ancestors]
+  Compare --> Prepare[Journal and independent preimages]
+  Prepare --> Publish[Publish raw files and Git candidate]
+  Publish --> Verify[Verify resulting state]
+  Verify --> Commit[Durable application receipt]
+  Commit --> Checkpoint[Persist task outcome]
+  Checkpoint --> Release[Release transaction staging]
+  Publish --> Recovery[Interrupted operation retains recovery data]
+```
+
+The portable contract covers raw bytes, supported file and symlink kinds,
+POSIX permissions, and eligible directories. It excludes timestamps. Affected
+ownership, hardlink, xattr, native ACL, filesystem-flag, and special-file state
+that cannot be represented must refuse before mutation. Split indexes and
+unsupported Git reference-storage formats also refuse before mutation until
+independent recovery is supported. The original project
+root's permissions are preserved. This transaction does not give unrelated
+readers atomic visibility across all files and Git metadata, or fence unmanaged
+external writers. Outside changes that prevent safe recovery retain the
+preimages and produce an actionable error. Cancellation before the durable
+application receipt rolls back when safe; after that boundary the task outcome
+is finalized. Hardware power-cut validation has not been performed.
 
 The terminal enters these operations through the resident engine, with the
 conversation's driver/session binding and cancellable operation deadline. An
@@ -175,10 +224,11 @@ use. Deduplicated compressed chunks may serve several manifests without
 combining their ownership.
 
 The archive implementation is a separate native dependency:
-[Furrow #13](https://github.com/Agent-Field/furrow/pull/13). Its local archive
-database is not a relay wire format. Release artifacts and the embedded pin must
-be updated before ordinary installation can claim archive support. A custom
-build used for acceptance is not equivalent to a released dependency.
+[Furrow v0.3.1](https://github.com/Agent-Field/furrow/releases/tag/v0.3.1).
+Its local archive database is not a relay wire format. Ordinary builds use the
+published release with six platform checksums recorded in the embedded pin;
+acceptance does not depend on an unpublished local native artifact. Windows
+builds do not expose the Unix archive command.
 
 Uncertain writers stay resident. Multi-root layout retirement remains excluded
 until whole-layout quiescence and recovery are verified. Unsupported ACLs,
@@ -193,6 +243,7 @@ from the archive experiment.
 | Legacy conversations | Preserve existing placement and readers; no silent historical rewrite |
 | New owned conversations | Persist versioned placement policy so restart does not depend on a shell flag |
 | Multi-root carriers | Validate every required root, directory map and digest before execution |
+| Creation metadata | Preserve verified baseline bytes and digest through relay; missing legacy metadata refuses Apply while retaining readable results |
 | Mixed or incomplete history | Refuse unsupported combinations without dropping records |
 | Receiver paths | Re-admit per device; remote paths never become write authority |
 | Older readers | Require supported readers; guaranteed early capability refusal is still unfinished |
@@ -214,8 +265,9 @@ percentage yet.
 
 Focused tests cover ordinary owned task admission, exact cooperation, directory
 metadata, root mapping, cancellation, stale holders, preflight refusal and retry.
-Final real-terminal actual-provider and cross-machine acceptance is still
-pending on this implementation candidate. The earlier terminal run used an
-incorrect record-card oracle and cannot establish either a full pass or a
-confirmed task-status defect. Draft status remains appropriate until the
-complete acceptance chain and dependency integration are verified.
+The scripted actual-terminal chain passes with the published native dependency:
+private tasks, restart, receiver root selection, Take, completed results, public
+fork, and a second Take. This verifies the application flow with scripted
+responses. Actual-provider and cross-machine acceptance of the final portable
+application candidate remains pending; draft status remains appropriate until
+that complete chain is verified.
