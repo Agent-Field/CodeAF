@@ -110,6 +110,11 @@ immutable baseline travels with the task carrier; it grants no destination
 write authority. Existing tasks without a verified metadata baseline retain
 their readable results, but application refuses instead of inventing history.
 
+Native control metadata at the workspace root is owned by the local engine,
+separate from project inputs. Capture and restore agree on that boundary;
+incoming records cannot overwrite it. Nested project folders with the same name
+remain ordinary user content. This distinction does not expand cleanup authority.
+
 Application uses a journaled destination transaction. Independently copied
 preimages and verified raw postimages remain available until the final task
 checkpoint is durable. Built-in Git text conversion produces canonical history
