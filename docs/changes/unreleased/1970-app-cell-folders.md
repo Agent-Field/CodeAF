@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Desktop app helpers use each cell chat's own folder
-pr: 0
+pr: 1970
 surface: [engine, docs]
 invalidates:
   - Desktop helpers treated a cell journal's .cell directory as its conversation folder; they now resolve the owning chat folder while preserving legacy and flat-file paths.
