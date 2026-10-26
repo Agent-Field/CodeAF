@@ -33,6 +33,8 @@ type VaultFile interface {
 	PutAt(id string, e keys.Entry, at time.Time) error
 	Delete(id string) error
 	Deleted(id string) (bool, error)
+	// Removed lists the tombstoned slot ids under a prefix, in one read.
+	Removed(prefix string) ([]string, error)
 }
 
 // ErrTampered reports a vault object whose bytes do not hash to its id.
