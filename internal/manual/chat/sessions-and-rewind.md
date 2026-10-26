@@ -977,3 +977,11 @@ with the error, so your message is not lost or sent to the old chat.
 
 Returning to an already open chat keeps its last displayed text visible while
 its current history refreshes. The refreshed history replaces that preview.
+
+## Switching to a team chat that is not open yet
+
+A team tab can name a manager or worker that this window has not opened yet.
+In windows that can keep several chats open, its connection opens in the
+background, with an opening notice on the current chat. You can select another tab or cancel with Escape while the engine is
+busy. A canceled opening does not replace the selected chat when it finishes.
+Chats already open in this window switch directly.

@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"errors"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -1221,6 +1222,28 @@ func (a *app) hopStart(row hopRow) tea.Cmd {
 	if !homeFolderThere(row.where) {
 		a.hopSay(WorkspaceGoneWord + " · " + row.where)
 		return nil
+	}
+	if !a.shared && a.open != nil {
+		if cmd, ours := a.bringForward(row.file); ours {
+			return a.hopLand(cmd)
+		}
+		// A team's visible tab may not have a connection in this window yet.
+		// Opening it can wait on the engine; keep later clicks and typing live.
+		// Shared handles retain their existing swap contract because cancelling
+		// a swap cannot safely release the returned handle independently.
+		open := a.open
+		return a.conversationLater(func() (Conversation, error) {
+			return open(row.where, row.file)
+		}, a.hopSay, func(conv Conversation) tea.Cmd {
+			return a.hopLand(a.takeBeside(conv))
+		}, func(err error) tea.Cmd {
+			if errors.Is(err, session.ErrSessionLocked) {
+				a.hopSay(sessionBusyWord)
+			} else {
+				a.hopSay(err.Error())
+			}
+			return nil
+		})
 	}
 	cmd, refusal := a.openBeside(row.where, row.file)
 	if refusal != "" {
