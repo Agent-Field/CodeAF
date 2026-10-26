@@ -33,6 +33,8 @@ const (
 
 // Available is the release comparison shown at launch or by --check.
 type Available struct {
+	// Name is the executable whose update was checked, independent of channel.
+	Name             string
 	Latest           string
 	Running          string
 	LatestPublished  time.Time
@@ -88,7 +90,16 @@ func (a Available) Notice() string {
 	if curl == "" {
 		curl = CurlCommand
 	}
-	return "codeaf " + a.Latest + " is out · you have " + a.Running + " · /update installs it for the next launch · or: " + curl
+	return a.ProgramName() + " " + a.Latest + " is out · you have " + a.Running + " · /update installs it for the next launch · or: " + curl
+}
+
+// ProgramName names this installation; older callers without a name keep the
+// stable product name.
+func (a Available) ProgramName() string {
+	if strings.TrimSpace(a.Name) == "" {
+		return "codeaf"
+	}
+	return a.Name
 }
 
 type checkCache struct {
@@ -162,6 +173,7 @@ func CheckLaunch(ctx context.Context, options CheckOptions) (Available, bool) {
 	// Every answer leaves through here, so a newer release always arrives with
 	// the pin that decides what a launch may do about it.
 	finish := func(answer Available) (Available, bool) {
+		answer.Name = InstallName(options.Executable)
 		newer := answer.Newer()
 		if newer {
 			answer.Pinned = PinnedRelease(options.Executable)

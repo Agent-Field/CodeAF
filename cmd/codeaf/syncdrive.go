@@ -46,8 +46,19 @@ func (b *driveBook) driveOf(c cell.Cell, engine cellstore.Engine, report func(er
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if d := b.drive[c.ID]; d != nil && !d.superseded() {
-		return d
+	if d := b.drive[c.ID]; d != nil {
+		if !d.superseded() {
+			return d
+		}
+		// Settle the displaced writer before the replacement reads its branch map
+		// or acquires a lease, so late uploads cannot change the new drive's target.
+		ctx, cancel := context.WithTimeout(context.Background(), driveCloseWithin)
+		err := d.Close(ctx)
+		cancel()
+		if err != nil {
+			report(err)
+			return d
+		}
 	}
 	// A drive side that no longer holds the chat's lease (another machine took it, or it was moved
 	// back here) never drives again: the chat opened here needs a drive side of its own, or every

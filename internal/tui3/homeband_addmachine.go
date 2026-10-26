@@ -17,10 +17,10 @@ package tui3
 //
 // THIS MACHINE MAKES NO LINK. The NEW machine makes it (`codeaf pair`), so a
 // machine that is already paired has none to hand out. The opened card is two
-// numbered steps and a paste target: the link pasted here goes to the approve
+// numbered steps and an editable link field: Enter opens the approve
 // screen, and its toast ends the card's job.
 //
-// ONE CHORD OPENS IT. Every word is the vocabulary law's: devices, and never
+// A CLICK OR THE CHORD OPENS IT. Every word is the vocabulary law's: devices, and never
 // the names of the machinery behind them.
 
 import (
@@ -62,6 +62,15 @@ func init() {
 		standing: true, draw: drawAddMachineBand})
 }
 
+// addMachineTarget distinguishes the two actions drawn in the card.
+type addMachineTarget uint8
+
+const (
+	addMachineNone addMachineTarget = iota
+	addMachineToggle
+	addMachineInput
+)
+
 // addMachine is the card's whole state.
 type addMachine struct {
 	// size is the fleet's size once known, and asking says an ask is out.
@@ -71,6 +80,10 @@ type addMachine struct {
 	// open says the steps are showing.
 	open    bool
 	hovered bool
+	targets []addMachineTarget
+	focused bool
+	box     editor
+	error   string
 }
 
 // wanted says the card is on: a door that can approve, and a fleet known to be one.
@@ -122,6 +135,8 @@ func (a *app) toggleAddMachine() tea.Cmd {
 		return nil
 	}
 	m.open = !m.open
+	m.hovered = false
+	m.focused = m.open
 	a.touch()
 	return nil
 }
@@ -134,6 +149,7 @@ func (a *app) pasteLink(text string) (tea.Cmd, bool) {
 		return nil, false
 	}
 	a.addMachine.open = false
+	a.addMachine.focused = false
 	return a.openApprove(strings.TrimSpace(text)), true
 }
 
@@ -159,7 +175,10 @@ func drawAddMachineBand(a *app, ctx bandContext) []string {
 	}
 	key := addMachineShow
 	if m.open {
-		key = addMachineHide
+		key = addMachineHide + " · enter continue · esc message box"
+		if m.error != "" {
+			key = m.error + " · " + key
+		}
 	}
 	keys := func(s string) string { return paintHint(s, ctx.pal, ctx.pal.dim) }
 	return append(rows, bandClauses(ctx.width, 0, keys, a.chords.say(key))...)
@@ -175,7 +194,115 @@ func (a *app) addMachineHow(ctx bandContext) []string {
 			rows = append(rows, fit(wrapped, ctx.width))
 		}
 	}
-	return append(rows, ctx.pal.accent(fit(addMachineField, ctx.width)))
+	line, _ := a.addMachineLine(ctx.width, ctx.pal)
+	return append(rows, line)
+}
+
+// addMachinePress reads the targets kept by the rendered frame, including its clamp.
+func (a *app) addMachinePress(x, y, width int) (tea.Cmd, bool) {
+	m := &a.addMachine
+	if x < homeGridMargin || x >= width || y < 0 || y >= len(m.targets) || m.targets[y] == addMachineNone {
+		return nil, false
+	}
+	if m.targets[y] == addMachineInput {
+		m.focused = true
+		_, start := a.addMachineWindow(width - homeGridMargin)
+		m.box.cursor = start
+		column := homeGridMargin + ansi.StringWidth(addMachineField)
+		for m.box.cursor < len(m.box.value) && column+cells(m.box.value[m.box.cursor]) <= x {
+			column += cells(m.box.value[m.box.cursor])
+			m.box.cursor++
+		}
+		m.box.dropPick()
+		a.touch()
+		return nil, true
+	}
+	if !a.addMachineAt(x, y, a.home.painted.lines) {
+		return nil, false
+	}
+	return a.toggleAddMachine(), true
+}
+
+// The single-line window keeps the caret visible while a long pairing link is edited.
+func (a *app) addMachineWindow(width int) (string, int) {
+	b := &a.addMachine.box
+	room := max(1, width-ansi.StringWidth(addMachineField))
+	start := 0
+	before := ansi.StringWidth(string(b.value[:b.cursor]))
+	for start < b.cursor && before >= room {
+		before -= cells(b.value[start])
+		start++
+	}
+	return fit(string(b.value[start:]), room), start
+}
+
+func (a *app) addMachineLine(width int, pal palette) (string, int) {
+	shown, start := a.addMachineWindow(width)
+	b := &a.addMachine.box
+	column := ansi.StringWidth(addMachineField) + ansi.StringWidth(string(b.value[start:b.cursor]))
+	if b.empty() {
+		shown = "Paste pairing link"
+	}
+	ink := pal.ink
+	if b.empty() {
+		ink = pal.dim
+	}
+	line := pal.accent(addMachineField) + ink(fit(shown, max(0, width-ansi.StringWidth(addMachineField))))
+	if a.addMachine.focused {
+		line = pal.cursor(line, width)
+	}
+
+	return line, column
+}
+
+func (a *app) addMachineInputKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	m := &a.addMachine
+	if !a.addMachineWanted() || !m.open || !m.focused {
+		return nil, false
+	}
+	a.touch()
+	m.error = ""
+	b := &m.box
+	k := msg.String()
+	if editorMotion(b, k) || editorWordKill(b, k) || editorUndo(b, k) || editorPick(b, k) {
+		return nil, true
+	}
+	switch k {
+	case "esc", "tab", "shift+tab":
+		m.focused = false
+	case "enter":
+		link := strings.TrimSpace(b.String())
+		if !isPairLink(link) {
+			m.error = "Enter a pairing link"
+			return nil, true
+		}
+		m.open, m.focused = false, false
+		b.reset()
+		return a.openApprove(link), true
+	case "backspace":
+		b.deleteBackward()
+	case "delete", "ctrl+d":
+		b.deleteForward()
+	case "left":
+		b.left()
+	case "right":
+		b.right()
+	case "home", "ctrl+a":
+		b.home()
+	case "end", "ctrl+e":
+		b.end()
+	case "ctrl+w":
+		b.deleteWord()
+	case "ctrl+u":
+		b.killToStart()
+	case "ctrl+k":
+		b.killToEnd()
+	default:
+		if msg.Text != "" {
+			b.insert(strings.ReplaceAll(msg.Text, "\n", " "))
+		}
+	}
+	return nil, true
 }
 
 // addMachineAt resolves only the heading's painted cells, so description text

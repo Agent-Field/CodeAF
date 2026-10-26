@@ -187,6 +187,8 @@ const (
 	// it, in the same words [EnvPromptProfile] takes.
 	KeyPromptProfile = "prompt.profile"
 
+	KeyKnowledgeModel = "knowledge.model"
+
 	KeyTierLowModel  = "models.tiers.low"
 	KeyTierHighModel = "models.tiers.high"
 	// KeyTierWorkerModel is the seat that does the work — the worker of every
@@ -1050,6 +1052,8 @@ var OperatorEnvPins = []string{
 	// of asking its long-lived daemon (internal/cellstore). It is an escape
 	// hatch that changes speed and never results, so it is plumbing.
 	"CODEAF_ENGINE_DAEMON",
+	// Marks the one permitted executable handoff so a bridge cannot exec in a loop.
+	"CODEAF_ENGINE_HANDOFF",
 	// CODEAF_BASH names the bash native Windows runs commands in when Git for
 	// Windows is not where codeaf looks (internal/shell). A path to a program
 	// is plumbing for the same reason CODEAF_FURROW is.
@@ -2445,6 +2449,15 @@ func (s *Settings) build() []Setting {
 				"`:high` to ask it to think that hard: `moonshotai/kimi-k3:high`.",
 			read:  func() string { return crewSeatRow(dir, crewroute.Planner) },
 			write: func(raw string) error { return SetCrewPin(dir, crewroute.Planner, raw) },
+		},
+		Setting{
+			Key: KeyKnowledgeModel, Category: CategoryModels, Kind: SettingText,
+			Label: "knowledge", EmptyLabel: DefaultKnowledgeModel,
+			Hint: "the OpenRouter model that learns and organizes project knowledge in the background. Changes apply to the next compilation; your conversation model stays separate. Blank restores the default.",
+			read: func() string { return KnowledgeModelAt(dir) },
+			write: func(raw string) error {
+				return writeText(dir, KeyKnowledgeModel, strings.TrimSpace(raw))
+			},
 		},
 		Setting{
 			Key: KeyModelRoles, Category: CategoryModels, Kind: SettingText,

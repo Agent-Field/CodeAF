@@ -29,6 +29,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/knowledge"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -402,6 +403,7 @@ func localDoors(options *tui3.Options, welcome remote.Welcome, settings config.C
 		profileDir = settings.ProfileDir
 	}
 	options.ProfileDir = profileDir
+	options.Knowledge = knowledge.Open(config.ProfilePath(profileDir, ""))
 	// Home decides its greeting once, before the first frame. This engine's
 	// files are here, so its still-unknown wire cache must not turn fifty saved
 	// chats into an empty conversation for the rest of the window's lifetime.

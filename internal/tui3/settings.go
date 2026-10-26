@@ -354,6 +354,10 @@ var settingUI = map[string]settingMeta{
 		tab: tabProviders, label: "planner", widget: widgetText,
 		about: "plans runs and designs harnesses — add :low, :medium or :high. Empty is auto: routed per task",
 	},
+	config.KeyKnowledgeModel: {
+		tab: tabProviders, label: "knowledge", widget: widgetSelect,
+		about: "learns and organizes project knowledge in the background through OpenRouter. Applies to the next compilation; separate from your chat model.",
+	},
 	config.KeyModelRoles: {
 		tab: tabProviders, label: "pinned roles", widget: widgetText,
 		about: "exceptions to the five rows above, one per role: title:openai/gpt-5-mini.",
@@ -769,7 +773,7 @@ func modelsSectionOrder() []string {
 	for _, tier := range roles.Tiers {
 		order = append(order, tierSettingKey(tier))
 	}
-	return append(order, config.KeyModelRoles)
+	return append(order, config.KeyKnowledgeModel, config.KeyModelRoles)
 }
 
 // tierSettingKey is the registry row one tier is set by. It is total over
@@ -2568,7 +2572,13 @@ func (a *app) activate() tea.Cmd {
 		// chat list narrowed afterwards ([app.modelsFor]). The predicate is
 		// handed to the picker as well because that is the door every slot comes
 		// through, and a second application of the same filter is a no-op.
-		sel.pick.startFor(a.modelsFor(sel.keep), item.row.Value(), sel.keep)
+		var models []Model
+		if item.row.Key == config.KeyKnowledgeModel {
+			models = a.knowledgeModelChoices()
+		} else {
+			models = a.modelsFor(sel.keep)
+		}
+		sel.pick.startFor(models, item.row.Value(), sel.keep)
 		// AND THIS IS THE SAME LIST /model OPENS, machines and all. A row that
 		// has a lane row behind it (lanes.go's [laneSlotForRow]) folds, shows
 		// the speed column, takes the lane grammar in its filter and pins on

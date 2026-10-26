@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/clusterstate"
+
 	_ "modernc.org/sqlite" // the one SQLite driver the repo uses
 )
 
@@ -16,6 +18,9 @@ import (
 // migration. The identity table has at most one row: a SQLite file is one
 // identity's directory.
 const schema = `
+CREATE TABLE IF NOT EXISTS legacy_gate (id INTEGER PRIMARY KEY CHECK (id=1), rec TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS legacy_rows (namespace TEXT NOT NULL, key TEXT NOT NULL, data BLOB NOT NULL, PRIMARY KEY(namespace,key));
+CREATE TABLE IF NOT EXISTS legacy_holds (id TEXT PRIMARY KEY, until_ms INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS identity (id INTEGER PRIMARY KEY CHECK (id = 1), rec TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS devices  (id TEXT PRIMARY KEY, rec TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS cells    (id TEXT PRIMARY KEY, rec TEXT NOT NULL);
@@ -28,8 +33,10 @@ CREATE TABLE IF NOT EXISTS version  (id INTEGER PRIMARY KEY CHECK (id = 1), n IN
 // connections to the same file agree on a single winner.
 type SQLite struct {
 	pairing
-	db    *sql.DB
-	clock func() time.Time
+	migrationCut func(string)
+	migrationMu  sync.RWMutex
+	db           *sql.DB
+	clock        func() time.Time
 
 	// feed is the Status as last committed: the revoked devices a relay turns
 	// away and the rotation the blob wire asks on every frame put, both without
@@ -56,6 +63,12 @@ func OpenSQLite(path string, clock func() time.Time) (*SQLite, error) {
 		db.Close()
 		return nil, err
 	}
+	if g, e := s.LegacyGate(context.Background()); e != nil {
+		db.Close()
+		return nil, e
+	} else if g != nil {
+		s.feed.Close()
+	}
 	wireFeed(s.feed, &s.pairing, s.seen)
 	return s, nil
 }
@@ -81,12 +94,23 @@ func (s *SQLite) init() error {
 
 // seed creates what is missing in tx and answers the Status the file holds.
 func seed(tx *sql.Tx) (Status, error) {
+	if _, err := tx.Exec(schema); err != nil {
+		return Status{}, err
+	}
+	g, err := gateIn(tx)
+	if err != nil {
+		return Status{}, err
+	}
+	// A frozen source remains readable for import and recovery without issuing
+	// the seed writes that its durable guards refuse from older relay builds.
+	if g != nil {
+		return statusIn(tx)
+	}
 	start, _ := json.Marshal(IdentityRec{V: 1})
 	for _, q := range []struct {
 		sql  string
 		args []any
 	}{
-		{schema, nil},
 		{`INSERT OR IGNORE INTO identity (id, rec) VALUES (1, ?)`, []any{string(start)}},
 		{`INSERT OR IGNORE INTO version (id, n) VALUES (1, 0)`, nil},
 	} {
@@ -209,6 +233,14 @@ func (s *SQLite) inTx(ctx context.Context, fn func(*sql.Tx) error) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
+	}
+	g, err := gateIn(tx)
+	if err != nil || g != nil {
+		tx.Rollback()
+		if err != nil {
+			return err
+		}
+		return clusterstate.ErrMigration
 	}
 	st, err := s.run(tx, fn)
 	if err != nil {
@@ -415,6 +447,11 @@ func (s *SQLite) store(tx *sql.Tx, id string, d Device) (Device, error) {
 }
 
 func (c *sqliteClient) ApproveRequest(ctx context.Context, code string, a Approval) error {
+	c.s.migrationMu.RLock()
+	defer c.s.migrationMu.RUnlock()
+	if err := c.txw(ctx, func(*sql.Tx) error { return nil }); err != nil {
+		return err
+	}
 	return c.approve(code, a, func(r Request) (d Device, err error) {
 		err = c.txw(ctx, func(tx *sql.Tx) (err error) {
 			d, err = c.s.store(tx, r.Device, a.Device)
@@ -425,6 +462,11 @@ func (c *sqliteClient) ApproveRequest(ctx context.Context, code string, a Approv
 }
 
 func (c *sqliteClient) DenyRequest(ctx context.Context, code string) error {
+	c.s.migrationMu.RLock()
+	defer c.s.migrationMu.RUnlock()
+	if err := c.txw(ctx, func(*sql.Tx) error { return nil }); err != nil {
+		return err
+	}
 	return c.deny(code, func() error { return c.txw(ctx, func(*sql.Tx) error { return nil }) })
 }
 

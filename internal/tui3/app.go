@@ -23,6 +23,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/connect"
 	"github.com/Agent-Field/codeaf/internal/credits"
 	internalenv "github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/knowledge"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -889,6 +890,7 @@ type app struct {
 	conversationRequest uint64
 	conversationOpening bool
 	conversationPreview *conversationPreview
+	openingHomeDraft    composerState
 	homeReading         homeReading
 	homeReadingPending  bool
 	hostReplayLoading   bool
@@ -1727,7 +1729,9 @@ type app struct {
 	waits []preflight
 	// mem is the Memories tab's state: the snapshot it is drawing, the groups
 	// that are open, and the filter (place_memories.go).
-	mem memoryPlace
+	mem              memoryPlace
+	kb               knowledgePlace
+	knowledgeProfile *knowledge.Vault
 	// memory is the store the tab reads and changes. It is optional because a
 	// session whose memory store could not be opened has no capability behind
 	// the tab.
@@ -2953,7 +2957,8 @@ type app struct {
 	startGen  int
 	// roster is the resume picker: the same conversations the box lists, opened
 	// on purpose and filterable (resume.go).
-	roster roster
+	roster         roster
+	resumeAtLaunch tea.Cmd
 	// shelf is the deliverables picker /files opens over the global index of
 	// what has been made (deliverables.go). It reads the same index /export
 	// writes: the artifacts field above, resolved by [app.artifactsIndex].
@@ -3038,6 +3043,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		shown = movedName
 	}
 	a := &app{
+		knowledgeProfile:    opts.Knowledge,
 		machines:            opts.Machines,
 		taker:               opts.Takeover,
 		pairing:             opts.Pairing,
@@ -3376,7 +3382,7 @@ func newApp(ctx context.Context, opts Options) *app {
 	// machine with no conversations yet gets the empty state as a notice rather
 	// than a list with nothing in it (resume.go).
 	if opts.PickSession {
-		a.openResume()
+		a.resumeAtLaunch = a.openResume()
 	}
 	// AND HOME IS DECIDED AFTER BOTH, for the picker's own reason and one more.
 	// It reads the surface it opens over — which conversation this window is in,
@@ -3552,7 +3558,7 @@ func (a *app) Init() tea.Cmd {
 	// legend needs before it may name the switcher (hop.go), and it is asked off
 	// the loop for the reason every other reading on this list is: the walk opens
 	// every project's index, and the paint path may never pay for one.
-	standing := []tea.Cmd{a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(),
+	standing := []tea.Cmd{a.resumeAtLaunch, a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(),
 		a.watchRuns(), a.watchQuestions(), a.loadTasks(), a.stirLane(), a.askHeld(), a.watchDriving(), a.watchFollowing(),
 		a.linkPingTick(), a.prefetchReplayedPictures(), a.countConversations(), tea.RequestBackgroundColor,
 		// AND WHAT AUTOMATIONS HAVE BEEN DOING, read off their store on a beat of
@@ -3903,8 +3909,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// A repeated enter keeps the pending conversation; ctrl+enter does
 		// the same only on the start page, where it is another enter spelling.
-		// Any other key cancels the transition before editing or navigating.
+		// Draft edits stay with the pending chat; navigation cancels the transition.
 		if a.conversationOpening {
+			if a.openingDraftKey(msg) {
+				return a, nil
+			}
 			if msg.String() == "enter" || (a.startingChat() && msg.String() == "ctrl+enter") {
 				return a, nil
 			}
@@ -4059,14 +4068,26 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.dropSettled()
 
 	case tea.PasteStartMsg:
+		if a.conversationOpening && a.conversationPreview != nil {
+			view := a.conversationPreview.view
+			view.pasting, view.pasted, view.pasteAt = true, view.pasted[:0], a.now()
+			return a, nil
+		}
 		// The terminal said a paste is starting. Everything until the close is
 		// text, whatever shape it arrives in.
 		a.pasting, a.pasted, a.pasteAt = true, a.pasted[:0], a.now()
 		return a, nil
 
 	case tea.PasteMsg:
-		if a.conversationOpening {
-			a.cancelConversationOpening()
+		if a.conversationOpening && a.conversationPreview != nil {
+			view := a.conversationPreview.view
+			if view.pasting {
+				view.pasted = append(view.pasted, []rune(msg.Content)...)
+			} else {
+				view.paste(msg.Content)
+			}
+			a.touch()
+			return a, nil
 		}
 		a.stirred()
 		// Bracketed paste, whole, in one message — the parser coalesced the keys
@@ -4088,6 +4109,16 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.paste(msg.Content)
 
 	case tea.PasteEndMsg:
+		if a.conversationOpening && a.conversationPreview != nil {
+			view := a.conversationPreview.view
+			if view.pasting {
+				view.pasting = false
+				view.paste(string(view.pasted))
+				view.pasted = view.pasted[:0]
+				a.touch()
+			}
+			return a, nil
+		}
 		// The bracket closes, and everything inside it goes in as ONE edit: one
 		// insert, one list sync, one debounce — the same door the coalesced form
 		// goes through, so a terminal that leaks keys and a terminal that does
@@ -4431,7 +4462,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// fell through from one of them would scroll a transcript nobody can see,
 		// which is what a person turning it over the standing list actually got.
 		if delta := placeWheelDelta(msg.Mouse().Button); delta != 0 {
-			if cmd, took := a.placeBodyWheel(delta); took {
+			if cmd, took := a.placeBodyWheel(msg.Mouse().X, msg.Mouse().Y, delta); took {
 				return a, cmd
 			}
 		}
@@ -4560,10 +4591,36 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if a.conversationOpening {
 			previewing := a.conversationPreview != nil
-			a.cancelConversationOpening()
-			// The preview has a different layout from the page beneath it. The
-			// cancelling click must not activate that page's old hit targets.
 			if previewing {
+				mouse := msg.Mouse()
+				// Body clicks do not withdraw the message already submitted.
+				// The real header remains available for explicit navigation.
+				if mouse.Button != tea.MouseLeft || (!a.navAt(mouse.Y) && mouse.Y != tabStripRow) {
+					return a, nil
+				}
+			}
+			a.cancelConversationOpening()
+			if previewing {
+				// Home is rebuilt on navigation; keep its cancelled submission
+				// separately from the conversation we are about to select.
+				if a.at(pageHome) {
+					draft := composerState{box: a.home.box, chips: a.home.chips}
+					defer func() {
+						if !a.at(pageHome) {
+							a.openingHomeDraft = draft
+						}
+					}()
+				}
+				mouse := msg.Mouse()
+				if cmd, took := a.navPress(mouse.X, mouse.Y); took {
+					return a, cmd
+				}
+				if hit, ok := a.tabAt(mouse.X, mouse.Y); ok && mouse.Y == tabStripRow && (hit.kind == tabHere || hit.kind == tabOther) {
+					a.closeHome()
+				}
+				if cmd, took := a.tabPress(mouse.X, mouse.Y); took {
+					return a, cmd
+				}
 				return a, nil
 			}
 		}
@@ -4681,6 +4738,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// the box whichever room somebody is standing in. It is the ordinary
 			// text-field gesture the conversation already answers
 			// (placemouse.go's [app.placeBoxPress], draftclick.go).
+			if a.at(pageHome) {
+				a.addMachine.focused = false
+			}
 			if a.placeBoxPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
@@ -4707,7 +4767,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// through to the conversation underneath would open a tool call
 			// nobody can see. A press on one of their rows is `enter` on it
 			// (pages.go's [app.placeBodyPress]).
-			if cmd, took := a.placeBodyPress(msg.Mouse().Y); took {
+			if cmd, took := a.placeBodyPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
 			// And a background job's page at the same rung and for the same
@@ -5202,7 +5262,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// The other list pages share home's single selection: pointer motion
 		// selects the row that keyboard actions use.
-		if a.placeBodyHover(msg.Mouse().Y) {
+		if a.placeBodyHover(msg.Mouse().X, msg.Mouse().Y) {
 			return a, nil
 		}
 		if a.rewSheet.open {
@@ -5665,6 +5725,16 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case memoryPlaceDoneMsg:
 		a.adoptMemoryPlaceDone(msg)
 		return a, nil
+	case knowledgeReadingMsg:
+		previous := a.kb.reading.Revision
+		a.adoptKnowledge(msg)
+		if previous != a.kb.reading.Revision && !a.kb.filter.empty() {
+			return a, a.knowledgeSearch()
+		}
+		return a, nil
+	case knowledgeSearchMsg:
+		a.adoptKnowledgeSearch(msg)
+		return a, nil
 
 	case memoryOriginMsg:
 		a.adoptMemoryOrigin(msg)
@@ -6031,7 +6101,7 @@ func (a *app) paint() tea.Cmd {
 	// same expression without it, and so does `waitLive || otherLive`. The forming-task
 	// wait therefore keeps the full cadence, which is what it does today.
 	waitLive := a.state == stateWorking
-	otherLive := a.welcome.animating() || a.tasksAnimating() ||
+	otherLive := (a.conversationOpening && a.conversationPreview != nil) || a.welcome.animating() || a.tasksAnimating() ||
 		// The question block's own clocks, on the same terms: a policy line
 		// counting down and a reading clock running out are the two things on
 		// that block that change without a key being pressed (question.go).
@@ -8453,8 +8523,7 @@ func (a *app) slash(line string) tea.Cmd {
 		// wrote and lives in a file named after a timestamp; neither is a thing
 		// anybody types, so the only honest way to ask for one is to be shown
 		// them (resume.go).
-		a.openResume()
-		return nil
+		return a.openResume()
 
 	case "debug":
 		// The third door onto one switch — the other two are --debug and
@@ -9437,10 +9506,6 @@ func (a *app) paste(text string) tea.Cmd {
 	if a.copy.on {
 		return nil
 	}
-	// A LINK PASTED ON THE OPEN ADD-MACHINE CARD is the card's, not the draft's.
-	if cmd, took := a.pasteLink(text); took {
-		return cmd
-	}
 	// A PASTE IS SOMEBODY STARTING WORK, so it dismisses the welcome box on the
 	// same terms every other input does (welcome.go): everything puts the box
 	// away except the two keys that walk its list, and a paste is not one of
@@ -9455,6 +9520,16 @@ func (a *app) paste(text string) tea.Cmd {
 	// at the door — CRLF first, then bare CR.
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	text = strings.ReplaceAll(text, "\r", "\n")
+	// A place editor owns paste just as it owns keys, before any hidden draft.
+	if pl := a.showing(); pl != nil {
+		if target, ok := pl.(interface {
+			paste(*app, string) (tea.Cmd, bool)
+		}); ok {
+			if cmd, took := target.paste(a, text); took {
+				return cmd
+			}
+		}
+	}
 	// Creation and the grid own their clipboard input just as they own keys.
 	// A paste must never spill into the conversation draft behind them.
 	if a.tmembers.on {
@@ -9558,6 +9633,15 @@ func (a *app) paste(text string) tea.Cmd {
 		}
 		a.touch()
 		return nil
+	}
+	if a.at(pageHome) && a.addMachineWanted() && a.addMachine.open && a.addMachine.focused && !a.pair.open {
+		a.addMachine.box.insert(strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(text, "\r", ""), "\n", " ")))
+		a.touch()
+		return nil
+	}
+	// A LINK PASTED ON THE OPEN ADD-MACHINE CARD is the card's, not the draft's.
+	if cmd, took := a.pasteLink(text); took {
+		return cmd
 	}
 	// THE HOME SCREEN IS FULLSCREEN, so while it is up the chat's own draft is
 	// not on the page at all — and this is where a paste used to go anyway,

@@ -42,7 +42,7 @@ func TestTheNarrowNavStillSaysWhereElseYouCanGo(t *testing.T) {
 		}
 		// AND THE AIR IS HELD: two blank cells between two words, whatever the
 		// width, because what a narrow row gives up is words and never air.
-		if width >= 120 && !strings.Contains(bar, "Home  Chats  AI teams  Activity  Memories  Automations  Spend  Settings") {
+		if width >= 120 && !strings.Contains(bar, "Home  Chats  AI teams  Activity  Memory  Automations  Spend  Settings") {
 			t.Fatalf("at %d columns the nav drew\n\t%q\nand should carry the eight places two cells apart", width, bar)
 		}
 		if strings.Contains(bar, "   ") {

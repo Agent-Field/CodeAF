@@ -1424,7 +1424,7 @@ func TestTheFrameDrawsThePageThatWasOpenedLast(t *testing.T) {
 	// two vocabularies staying apart, so a place may never be renamed to a word
 	// the settings panel already spells (pages.go).
 	for _, id := range barPages(a.page, false) {
-		if !strings.Contains(strings.ToLower(plain(spend)), strings.ToLower(id.word())) {
+		if !strings.Contains(strings.ToLower(plain(spend)), strings.ToLower(navLabel(id))) {
 			t.Fatalf("the tab bar does not name the %s place:\n%s", id.word(), spend)
 		}
 	}

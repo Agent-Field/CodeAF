@@ -61,6 +61,7 @@ type ownershipReadMsg struct {
 	chips       []chip
 	reading     homeMachinesMsg
 	resume      func() tea.Cmd
+	first       *composerState
 }
 
 // checkBeforeSend closes the interval between another device's acquire and
@@ -80,16 +81,61 @@ func (a *app) needsOwnershipRead() bool {
 func (a *app) checkBeforeSendWith(resume func() tea.Cmd) tea.Cmd {
 	src, file, draft := a.machines, a.file, a.input.String()
 	chips := slices.Clone(a.chips)
+	var first *composerState
+	if a.conversationPreview != nil && !a.conversationOpening {
+		a.conversationPreview.ownershipPending = true
+		composer := a.liveComposer()
+		first = &composer
+	}
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), machinesAskTimeout)
 		defer cancel()
 		rows, version, err := chatlist.RowsAt(ctx, src)
-		return ownershipReadMsg{file: file, draft: draft, chips: chips, resume: resume, reading: homeMachinesMsg{rows: rows, version: version, err: err}}
+		return ownershipReadMsg{file: file, draft: draft, chips: chips, resume: resume, first: first, reading: homeMachinesMsg{rows: rows, version: version, err: err}}
 	}
 }
 
 func (a *app) afterOwnershipRead(msg ownershipReadMsg) tea.Cmd {
-	if a.file != msg.file || a.input.String() != msg.draft || !slices.Equal(a.chips, msg.chips) {
+	if a.file != msg.file {
+		if msg.first != nil {
+			// Switching cancels this send, but its accepted words still belong
+			// to that conversation alongside the follow-up parked with it.
+			if held := a.behind[a.convKey(msg.file)]; held != nil {
+				if held.side == nil {
+					held.side = &aside{}
+				}
+				side := held.side
+				first := &app{input: msg.first.box, pastes: msg.first.pastes}
+				next := &app{input: side.mainBox(), pastes: side.pastes}
+				side.draft = first.pastesUnfolded(first.input.String())
+				if !next.input.empty() {
+					side.draft += "\n" + next.pastesUnfolded(next.input.String())
+				}
+				side.chips = append(slices.Clone(msg.first.chips), side.chips...)
+				side.pastes, side.draftCursor = nil, nil
+			}
+		}
+		return nil
+	}
+	if msg.first != nil {
+		// Opening accepted the first send. The box now belongs to the next
+		// draft, which must not invalidate that send while ownership is read.
+		next := a.liveComposer()
+		a.putComposer(*msg.first)
+		reading := a.tookMachines(msg.reading)
+		cmd := msg.resume()
+		if a.liveComposer().empty() {
+			a.putComposer(next)
+		} else {
+			a.chips = append(a.chips, next.chips...)
+			if !next.box.empty() {
+				draft := &app{input: next.box, pastes: next.pastes}
+				a.input.setText(a.input.String() + "\n" + draft.pastesUnfolded(next.box.String()))
+			}
+		}
+		return tea.Batch(reading, cmd)
+	}
+	if a.input.String() != msg.draft || !slices.Equal(a.chips, msg.chips) {
 		return nil
 	}
 	reading := a.tookMachines(msg.reading)

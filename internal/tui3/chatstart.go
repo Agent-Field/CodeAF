@@ -449,8 +449,7 @@ func (a *app) startChatEnter() tea.Cmd {
 		a.putComposer(page)
 		return a.enterLine()
 	})
-	a.previewConversation(page.box.String())
-	return cmd
+	return tea.Batch(cmd, a.previewConversation(page.box.String()))
 }
 
 // startChatKey is the page's claim on the keyboard, and it is four keys wide.

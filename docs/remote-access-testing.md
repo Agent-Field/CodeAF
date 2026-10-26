@@ -1,3 +1,8 @@
+> **Historical remote-session acceptance notes.** Run results, deployment state
+> and known failures below describe an earlier snapshot, not current acceptance.
+> Use [remote architecture](REMOTE.md) and [current moving-chat tests](testing-anywhere.md);
+> check the [manual](../internal/manual/chat/use-this-on-another-computer.md) for current support.
+
 # Remote access — how to try it, and what is not finished
 
 Self-contained. Everything a person (or an agent) needs to exercise this wave by hand,
@@ -27,7 +32,7 @@ Add `bin/codeaf` to the PATH of **both** machines you test with. The two halves 
 the same protocol version: that version is checked at the door and a mismatch is refused with
 
 ```
-<dest> runs a different version of codeaf than this machine does — update the older one so both ends speak the same protocol
+<dest> is on a newer build (<build>); <program> update to match — this connection needs matching versions
 ```
 
 ---

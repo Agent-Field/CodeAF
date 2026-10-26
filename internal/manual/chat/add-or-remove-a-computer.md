@@ -21,11 +21,11 @@ Click `+ Add another device` or press `alt+d` to open the steps. Click the headi
 ```
 1. On the new device, install and run: codeaf pair
 2. It shows a link. Paste it here:
->
+> Paste pairing link
 ```
 
 1. On the new device, install codeaf and run `codeaf pair`. It makes a link and waits.
-2. On this device, paste that link into the card, or paste it anywhere on home, or type it as your message (on home, on the start page of a new chat, or in any chat) and press enter. The link is never sent to the model. The approve screen opens (see "Approve a new device" below). Text that is not a pair link stays in the box as before.
+2. On this device, click the card’s link field, type or paste the link, and press Enter. Opening the card also focuses its field. You can edit the link before submitting it; clicking inside the field places the caret there. Esc or Tab returns typing to the normal message box, and clicking the message box does the same. Your chat draft stays separate. You can also paste it anywhere on home when the card’s field is not focused, or type it as your message and press Enter. The link opens the approve screen and is never sent to the model (see "Approve a new device" below).
 
 The card goes away once you have two devices. It is not drawn when this chat cannot pair at all, for example a chat that runs over `--host` or `--at`.
 
@@ -164,6 +164,10 @@ desk was removed — it can no longer reach your chats.
 
 The list is in a fixed order: this device first, then devices that are online, then the rest, each by name. Two devices with the same name show a short tail, such as `tower #a1b2`, so you can tell them apart. Your own computer has no `r`: it cannot remove itself, and if you press `r` there the list says `this device cannot remove itself — choose another row.` A computer that is already removed does nothing when you press `r`. A removed computer can only come back as a new request that you approve. If you remove a computer from another of your devices while this list is open, its row changes to `removed` here too, without closing the list. Removing a computer does not undo what it already holds: for a lost computer read the page *Locking out a lost computer for good*.
 
+## A device was removed but refreshing the list failed
+
+After a successful removal, its confirmation stays visible even if refreshing the device list fails. The card shows the refresh error too, then clears that error when a later refresh succeeds. A failed refresh does not restore the removed computer's access. If the removal itself fails, the card shows that error and does not confirm a removal.
+
 ## I was told this device was removed — how to bring it back
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
@@ -200,3 +204,11 @@ Too many requests from one network are refused too: at most 10 new links in an h
 After a clean quit and final durable save, bare `codeaf` on another paired computer within 24 hours opens the released chat automatically. A sleeping or disconnected laptop still needs `alt+c` on Home. Local unsaved edits, another open local window, a named chat, `--host`, `--at` or `--session` prevent automatic continuation. A running chat never moves by itself. The arrival retains its `Moved from` banner and `not brought along:` facts; `esc` goes Home.
 
 Personal memory and stored model, display, approval and limit defaults follow the paired computers too. Limits are shared as values; spending counted against them stays per computer. Automations and machine-specific paths and settings stay local.
+
+## An approval was interrupted — retrying the same pairing decision
+
+A new computer receives its sealed pairing grant only after its approval has
+been saved. If the reply is interrupted, retrying the same approval keeps the
+same decision. A different answer cannot replace a decision already made. If
+the link has run out, ask the new computer for a fresh one. Removing a device
+blocks its later requests; it cannot take back bytes the device already received.

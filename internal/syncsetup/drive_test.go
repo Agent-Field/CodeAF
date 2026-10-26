@@ -12,7 +12,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -23,6 +22,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/directory/directorytest"
 	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/furrow"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -32,23 +32,41 @@ import (
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
-// skewedClock is the relay's clock: the wall clock plus an offset a test moves
-// to let a lease run out without waiting for it. The offset stays well inside
-// the five minutes a signed request may be off by.
-type skewedClock struct{ offsetMs atomic.Int64 }
+// driveClock keeps lease expiry and maintenance on the same explicit timeline.
+// Starting near wall time keeps ordinary client signatures within clock skew.
+type driveClock struct{ *directorytest.FakeClock }
 
-func (c *skewedClock) Now() time.Time {
-	return time.Now().Add(time.Duration(c.offsetMs.Load()) * time.Millisecond)
+func (c *driveClock) advance(d time.Duration) { c.Advance(d) }
+
+// C7 allows another computer to acquire exactly when the relay's lease expires.
+func TestC7LeaseExpiresAtRelayDeadline(t *testing.T) {
+	r := newDriveRig(t)
+	ctx := t.Context()
+	created, err := r.a.Dir.Create(ctx, r.cell.ID, directory.CellInit{Head: head})
+	mustNil(t, err)
+	r.clock.advance(directory.LeaseTTL - time.Millisecond)
+	before, err := r.b.Dir.Cell(ctx, r.cell.ID)
+	mustNil(t, err)
+	if before.Now != created.Now+directory.LeaseTTL.Milliseconds()-1 {
+		t.Fatalf("relay time before expiry = %d, want %d", before.Now, created.Now+directory.LeaseTTL.Milliseconds()-1)
+	}
+	if _, err := r.b.Dir.Acquire(ctx, r.cell.ID, directory.AcquireOpts{}); !errors.Is(err, directory.ErrLeaseHeld) {
+		t.Fatalf("acquire before expiry = %v, want lease held", err)
+	}
+	r.clock.advance(time.Millisecond)
+	taken, err := r.b.Dir.Acquire(ctx, r.cell.ID, directory.AcquireOpts{})
+	mustNil(t, err)
+	if taken.Now != created.Cell.Lease.Expires || taken.Cell.Lease.Fence != created.Cell.Lease.Fence+1 || taken.Cell.Lease.Device != r.b.Device.ID() {
+		t.Fatalf("acquire at expiry = %+v, original lease %+v", taken, created.Cell.Lease)
+	}
 }
-
-func (c *skewedClock) advance(d time.Duration) { c.offsetMs.Add(d.Milliseconds()) }
 
 // driveRig is one identity on two machines and a real relay with a store, in
 // this process. Machine A is the one that chats.
 type driveRig struct {
 	t      *testing.T
 	bin    string
-	clock  *skewedClock
+	clock  *driveClock
 	store  string // the relay's --store directory
 	svc    *relayserve.Service
 	url    string // where the relay answers
@@ -67,9 +85,10 @@ func newDriveRig(t *testing.T, wrap ...func(http.Handler) http.Handler) *driveRi
 	if err != nil {
 		t.Skipf("no engine binary: %v", err)
 	}
-	clock := &skewedClock{}
+	clock := &driveClock{directorytest.NewFakeClock()}
+	clock.Advance(time.Since(clock.Now()))
 	storeDir := t.TempDir()
-	svc := relayserve.New(relayserve.Config{Store: storeDir, Now: clock.Now, Grace: directory.GraceBounds{Min: time.Second, Max: time.Hour, Default: 10 * time.Second}})
+	svc := relayserve.New(relayserve.Config{Store: storeDir, Now: clock.Now, After: clock.After, Grace: directory.GraceBounds{Min: time.Second, Max: time.Hour, Default: 10 * time.Second}})
 	t.Cleanup(func() { _ = svc.Close() })
 	handler := svc.Handler
 	for _, one := range wrap {

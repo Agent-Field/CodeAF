@@ -155,7 +155,7 @@ func TestH9HostMissingCommandNamesTheCurrentInstallation(t *testing.T) {
 		}
 	}
 	got := missingHostCommand("devbox").Error()
-	for _, want := range []string{"called codeaf now", "before 2026-09-14", "installed on devbox under that name"} {
+	for _, want := range []string{"not installed on devbox", "https://agentfield.ai/get/", "non-login ssh"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("host remedy %q does not contain %q", got, want)
 		}

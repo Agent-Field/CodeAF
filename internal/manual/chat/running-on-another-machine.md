@@ -1,6 +1,6 @@
 # Running on another machine
 
-## Can I run it on another computer — what --host is, running this on my dev box over ssh
+## Can I run it on another computer?
 
 `--host` runs the chat surface on the machine you are sitting at, and runs the
 conversation on another machine, over ssh.
@@ -9,6 +9,8 @@ Everything about the conversation happens over there: the workspace, the files, 
 it runs, the model key, the session file. Your terminal keeps the screen, the keyboard and
 your draft. The two halves talk to each other with a small line-based protocol over the
 ssh pipes; you never see it.
+
+## What --host is, running this on my dev box over ssh
 
 ```
 codeaf chat --host devbox
@@ -112,42 +114,26 @@ in a moment`, and pressing enter again once it is back sends it.
 
 The failed dial says what it found, rather than guessing:
 
-- codeaf missing over there: the message says the program is called codeaf now,
-  gives its former name and date, and asks you to install it under the current name:
-  `the program is called codeaf now (it was … before 2026-09-14) and must be installed on <dest> under that name — put it on the PATH that a non-login ssh command sees`
+- program missing over there: the message names the program you ran and its install
+  command. Run that command on the far machine and put the file on the PATH that
+  a non-login ssh command sees.
 - ssh could not get a session at all: `ssh could not open a session on <dest>`. ssh has
   already printed its own reason on the line above.
 - no ssh on this machine: `this machine has no ssh on its path, and --host is ssh`, or
   `could not start ssh: <err>`.
 
-If the two machines run different builds, the connection is refused at the door and this
-side says:
+Different builds can connect when they speak the same version. If their versions
+are incompatible, the connection stops cleanly before opening a conversation.
+For a newer far build, the line names its build and your update command, for example:
 
 ```
-<dest> runs a different version of codeaf than this machine does — update the older one so both ends speak the same protocol
+tower is on a newer build (<build>); devaf update to match — this connection needs matching versions
 ```
 
-When the **far** machine is the older one it refuses first, and what you see is its own
-sentence rather than that one:
-
-```
-error: engine: this build speaks protocol <n> and the surface speaks <m> — the two halves have to be the same build
-```
-
-The two numbers are the two builds' own protocol versions. They change with releases; what
-matters is only that they differ.
-
-If something on that machine is still holding a conversation from the older build, that
-same sentence gains a clause naming it, because then the machine — not the binary — is
-what is behind:
-
-```
-error: engine: this build speaks protocol <n> and the surface speaks <m> — the two halves have to be the same build, and this machine is still running the older one — run codeaf engine --stop here to retire it
-```
-
-Either way the fix is one command: update codeaf on the machine that is behind. Nothing is
-negotiated down — two builds that might disagree about a frame must not find that out three
-turns into a conversation.
+Update the older machine. If the older engine still has windows attached, finish
+work, close every window for that workspace, and reopen. Stopping it while another
+window remains open makes that window restart it. This launch does not automatically
+update either machine or move the terminal interface to the far machine.
 
 ## I rebuilt codeaf on my dev box and --host still refuses — updated codeaf but the versions differ
 
@@ -172,32 +158,35 @@ as another build. Four things can be true:
   old process keeps what it was holding and steps aside at its first quiet moment; a host
   built before this ask ignores the note, so for one of those the line says the work is kept
   and **your next safe launch once the work is done and every window has left** opens from
-  the new build. An attached idle window counts as holding work. After turns and tasks finish, close every window for that workspace and reopen. Restarting just one window keeps joining the old engine while another window remains. The startup note names the machine and an explicit stop command using its installed executable; that command interrupts active turns and tasks, so use it only when ready.
+  the new build. An attached idle window counts as holding work. After turns and tasks finish, close every window for that workspace and reopen. Restarting just one window keeps joining the old engine while another window remains. The startup note names the machine and asks you to finish work and close every window for that workspace before reopening.
 - **It is an older build, holding nothing.** It hands the workspace over at once and the
   window says `replaced the older engine on tower (pid <n>, <build>, <binary>) — this build
   holds the workspace now`.
-- **It is a newer build.** Your window joins it. If its wire is one this binary cannot
-  speak, the connection is refused, naming this binary as the older one and
-  `codeaf engine --status` as the way to see which is newer.
+- **It is a newer build.** Your window joins it. If the bridge speaks an older version, on Unix it hands over to the newer engine's executable, keeping the same arguments and connection. It tries once. If that file is missing, not executable, or still incompatible, the refusal names the file and the update command.
 
-## The older engine refusal — stop it with the exact --workspace
+## Which program runs on the far machine — devaf, codeaf, and custom names
 
-An older engine on another wire, or one too old to be asked at all, is refused, in these
-words:
+`devaf chat --host tower` starts `devaf engine` on tower. A program installed under
+another name uses that name; `codeaf` starts `codeaf`. Selection and startup happen
+in one ssh connection, with the workspace quoted. Reconnecting uses the same rule.
+
+If that name is absent, the launch tries tower's `codeaf` and says one line:
 
 ```
-engine: tower is still holding this conversation on an older codeaf — run codeaf engine --stop --workspace /home/you/project on tower
+tower has no devaf; using its codeaf (<build>)
 ```
 
-**The `--workspace` in that line is not decoration — type it.** `codeaf engine --stop`
-with no `--workspace` stops whatever is holding your **home directory**, not the folder the
-sentence is about. Without the flag you stop a healthy engine, leave the one being
-complained about running, and read the same line again the next time you open codeaf. The
-sentence spells the workspace out so the command you copy is the command that works.
+If neither program is available, the refusal names the install command for your
+program. A program that exists but cannot start does not trigger a silent fallback.
+All names share one engine per workspace. A compatible newer engine keeps its
+conversations; an older busy engine keeps work until every window and task is gone.
 
-One nobody connects to again lets itself go on its own: it notices that the file it was
-started from has been removed or rebuilt, and retires the next time it is holding nothing.
-`codeaf engine --stop` is on the *Staying on that machine* page.
+## An old engine speaks an incompatible version
+
+An older idle engine hands over automatically. A busy incompatible engine is left
+alone: finish work and close every window for the named workspace before reopening.
+An engine too old to answer which build it is gets the same safe advice. No version
+refusal recommends stopping an engine while its windows remain open.
 
 ## What runs on the far machine, and what stays local
 
@@ -949,3 +938,9 @@ opener are on that server. The original-file action explains how to use the loca
 not launch a viewer on a machine you are not sitting at. The optional cell preview
 still scrolls as ordinary terminal text; it cannot display screenshot text at full
 resolution. This distinction applies inside tmux too.
+
+## Executable handoff on Windows
+
+Windows cannot replace the running bridge in place. When a newer engine needs a
+different version, this launch stops cleanly and names the installed program’s
+update command. It leaves the existing conversation and its windows running.

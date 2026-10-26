@@ -105,6 +105,10 @@ type sessionHeader struct {
 }
 
 type sessionEntry struct {
+	// KnowledgeProject scopes subsequent original messages after a workspace anchor.
+	KnowledgeProject         string `json:"knowledgeProject,omitempty"`
+	KnowledgePreviousProject string `json:"knowledgePreviousProject,omitempty"`
+
 	// Presentation is the source-authored audience of this occurrence, never a
 	// rule inferred from its words. Older entries omit it and use conservative
 	// compatibility handling only for complete reserved bookkeeping records.

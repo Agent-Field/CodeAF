@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
@@ -31,7 +32,7 @@ import (
 // ── `codeaf chat --host devbox` ─────────────────────────────────────────────
 //
 // The surface runs here and the session runs there. This file is the door: it
-// parses the destination, starts `ssh <dest> codeaf engine`, completes the
+// parses the destination, starts the matching program over ssh, completes the
 // handshake, and hands the connection to the same surface a local launch opens.
 //
 // THE PROMPT LAW, and it is the reason this whole path is shaped the way it is:
@@ -177,10 +178,8 @@ func (l *engineLink) spawn() (io.ReadWriteCloser, error) {
 	// The remote command, as the far machine's login shell will read it. The
 	// workspace is quoted because a path with a space in it is a path, and an
 	// unquoted one would arrive at `codeaf engine` as two arguments.
-	remoteCommand := "codeaf engine"
-	if l.workspace != "" {
-		remoteCommand += " --workspace " + shellQuote(l.workspace)
-	}
+	remoteCommand := hostEngineCommand(programName(), l.dest, l.workspace)
+
 	// -T because there is nothing interactive on the far end: the engine reads
 	// frames on stdin and writes them on stdout, and a pseudo-terminal in the
 	// middle would turn a newline into a carriage return and a frame into
@@ -208,6 +207,25 @@ func (l *engineLink) spawn() (io.ReadWriteCloser, error) {
 	}
 	l.hold(process, tail)
 	return pipePair{r: stdout, w: stdin}, nil
+}
+
+// programName follows the executable file, including custom installation names.
+func programName() string { return codeupdate.InstallName(enginehost.ThisBinary()) }
+
+// hostEngineCommand selects on the far machine in the same ssh hop. An engine
+// failure never triggers a fallback: only absence of the requested file does.
+func hostEngineCommand(name, dest, workspace string) string {
+	args := " engine"
+	if workspace != "" {
+		args += " --workspace " + shellQuote(workspace)
+	}
+	primary := "exec " + shellQuote(name) + args
+	if name == "codeaf" {
+		return primary
+	}
+	notice := "printf '%s has no %s; using its codeaf (%s)\\n' " + shellQuote(dest) + " " + shellQuote(name) + " \"$(codeaf version)\" >&2"
+	return "if command -v " + shellQuote(name) + " >/dev/null 2>&1; then " + primary +
+		"; elif command -v codeaf >/dev/null 2>&1; then " + notice + "; exec codeaf" + args + "; else " + primary + "; fi"
 }
 
 // stderrWriter keeps the launch-time prompts visible but keeps redial output
@@ -389,10 +407,8 @@ func (l *engineLink) diagnose(dest string, cause error) error {
 	}
 }
 
-const missingHostCommandText = "the program is called codeaf now (it was aforge before 2026-09-14) and must be installed on %s under that name — put it on the PATH that a non-login ssh command sees" // legacy-name
-
 func missingHostCommand(dest string) error {
-	return fmt.Errorf(missingHostCommandText, dest)
+	return fmt.Errorf("%s is not installed on %s — run %s on %s; put it on the PATH that a non-login ssh command sees", programName(), dest, codeupdate.CurlLine(enginehost.ThisBinary(), codeupdate.FollowedChannel(buildinfo.String())), dest)
 }
 
 // mentionsMissingCommand reads the far shell's own wording. The three spellings

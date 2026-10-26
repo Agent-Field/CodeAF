@@ -246,7 +246,7 @@ func TestEveryPlaceWhisperWrapsLikeHomesAndIsNeverCut(t *testing.T) {
 			for i, line := range lines {
 				rows[i] = strings.TrimRight(plain(line), " ")
 			}
-			said := whisperRowsUnder(rows, placeHeadRows)
+			said := whisperRowsUnder(rows, emptyPlaceHeadingRow(t, lab.id, rows))
 			if len(said) == 0 || len(said) > 3 {
 				t.Fatalf("the empty %s place at %d cells whispers on %d rows:\n%s",
 					lab.id.word(), width, len(said), strings.Join(rows, "\n"))

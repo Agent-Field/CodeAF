@@ -88,6 +88,7 @@ func New(config Config) (*Agent, error) {
 // parent's account-keyed pool and resolve their own model before their first
 // request, rather than inheriting whichever adapter the parent last used.
 func (a *Agent) newChildAgent(config Config) (*Agent, error) {
+	config.knowledgeReadVault = a.Knowledge()
 	client, account, pool, managed, err := a.childClient(config)
 	if err != nil {
 		return nil, err
@@ -209,6 +210,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// connect tools are on it only when there is something behind them, so the
 	// hub has to exist before the tools are assembled (connect.go).
 	agent.connect = newConnectHub(config)
+	agent.initKnowledge()
 	agent.tools = agent.belt()
 	definitions, err := toolDefinitions(agent.tools)
 	if err != nil {
@@ -429,6 +431,10 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// is why it is the thing most carefully gated: see [Agent.startLaneBeat] for
 	// the three sessions that run no beat at all.
 	agent.startLaneBeat()
+	// AND FURROW IS ASKED ABOUT THIS FOLDER, from the background. Opening the
+	// conversation must not wait on a subprocess, so the answer is started here
+	// and read later by the belt (tools_workspace.go).
+	agent.askFurrow()
 	// AND ONLY NOW MAY IT SPEAK UNPROMPTED. Recovery turns the frontier, and a
 	// cascade over the dependents of an interrupted node settles them right here,
 	// inside New — before the caller holds the agent, before any surface has
@@ -446,6 +452,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// AND A CONVERSATION A TEAM'S MANAGER STARTED TAKES ITS FIRST TURN ON ITS
 	// OWN, once the interface has made it a member (team_wake.go).
 	agent.watchTeamStart()
+	agent.startKnowledge()
 	return agent, nil
 }
 
@@ -2454,6 +2461,7 @@ func (a *Agent) Close() error {
 	// road out of this function goes through it, which is the reason it is a
 	// defer and not a line at the end.
 	defer close(a.closeDone)
+	defer a.stopKnowledge()
 	// No memory pass outlives the session. The cancel is what stops one waiting
 	// on a provider; the wait below is what lets one that is already writing
 	// reach the store (memory.go).
@@ -2505,6 +2513,7 @@ func (a *Agent) Close() error {
 	// its fetch and join any cache write before the state directory can be
 	// handed back to the caller.
 	a.stopLaneBeat()
+	a.furrow.close()
 	// AND THE BELT RUN, on the adaptive runs' own terms above: it holds a context
 	// of its own precisely because the turn that proposed it ended, so this is
 	// the only thing that can reach it. A RUN'S LIFE IS THE CONVERSATION'S. Until

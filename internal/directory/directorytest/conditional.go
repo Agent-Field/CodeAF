@@ -19,7 +19,7 @@ func RunConditionalTakes(t *testing.T, factory RigFactory) {
 
 // conditionalForcedTakeOneWins proves C7: two people who saw A's live lease
 // cannot both win, even if the loser asks by force after the winner finishes.
-func conditionalForcedTakeOneWins(t *testing.T, e env) {
+func conditionalForcedTakeRace(t *testing.T, e env) {
 	v := start(t, e)
 	seen := &directory.LeaseExpectation{Device: v.Cell.Lease.Device, Fence: v.Cell.Lease.Fence}
 	win, err := e.as(devB).Acquire(ctx, cell, directory.AcquireOpts{Force: true, Expect: seen})
@@ -29,9 +29,36 @@ func conditionalForcedTakeOneWins(t *testing.T, e env) {
 	if now := get(t, e); now.Lease != win.Cell.Lease {
 		t.Fatalf("the losing continuation changed the winner's lease: %+v", now.Lease)
 	}
-	// An older client that omits the expectation keeps its original behavior.
-	_, err = e.as(devA).Acquire(ctx, cell, directory.AcquireOpts{Force: true})
+}
+
+// Legacy stores retain blind-force behavior until migration freezes them.
+// The consensus suite below proves safe normalization of old requests.
+func conditionalForcedTakeOneWins(t *testing.T, e env) {
+	conditionalForcedTakeRace(t, e)
+	_, err := e.as(devA).Acquire(ctx, cell, directory.AcquireOpts{Force: true})
 	must(t, err)
+}
+
+// RunConsensus uses every existing verb case, with the compatibility
+// rule at the one place where blind legacy force deliberately changes.
+func RunConsensus(t *testing.T, factory Factory) {
+	RunConsensusRigs(t, func(t *testing.T) Rig { clock := NewFakeClock(); return Rig{Clock: clock, Devices: factory(t, clock)} })
+}
+
+// RunConsensusRigs retains every wire case while refusing blind force on a live lease.
+func RunConsensusRigs(t *testing.T, factory RigFactory) {
+	for name, fn := range cases {
+		t.Run(name, func(t *testing.T) {
+			e := envOf(factory(t))
+			if name == "C7ConditionalForcedTakeOneWins" {
+				conditionalForcedTakeRace(t, e)
+				_, err := e.as(devA).Acquire(ctx, cell, directory.AcquireOpts{Force: true})
+				wantErr(t, err, directory.ErrLeaseHeld)
+			} else {
+				fn(t, e)
+			}
+		})
+	}
 }
 
 // conditionalTakeChecksHolderAndFence proves C7: neither a matching holder

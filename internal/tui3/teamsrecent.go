@@ -41,9 +41,11 @@ func (a *app) teamsRecentTimes() map[string]time.Time {
 	own := map[string]time.Time{}
 	for _, t := range a.wall.teams {
 		children[t.Parent] = append(children[t.Parent], t.ID)
-		for _, m := range append(append([]teamMember{}, t.Members...), t.FormerMembers...) {
-			if at := a.teamsConversationAt(m); at.After(own[t.ID]) {
-				own[t.ID] = at
+		for _, members := range [][]teamMember{t.Members, t.FormerMembers} {
+			for _, m := range members {
+				if at := a.teamsConversationAt(m); at.After(own[t.ID]) {
+					own[t.ID] = at
+				}
 			}
 		}
 	}
