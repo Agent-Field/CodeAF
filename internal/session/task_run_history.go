@@ -41,6 +41,10 @@ func findWorkerHistory(base string, id uint64) localWorkerHistory {
 			return localWorkerHistory{journal: filepath.Join(base, relative, name), model: header.Model}
 		}
 	}
+	worker := filepath.Join(relative, "worker.jsonl")
+	if header, ok := readWorkerHeader(base, worker); ok {
+		return localWorkerHistory{journal: filepath.Join(base, worker), model: header.Model}
+	}
 	return localWorkerHistory{}
 }
 

@@ -236,12 +236,14 @@ started.
 
 ## Can I still read a task from an earlier run?
 
-Yes. Every run this conversation has made stays on the rail, oldest first. You
-can open any task from an earlier run and read its description, notes, steps and
-spend. An ended run is there to read, not to steer: a note, pause, resume, cancel,
+Yes. Open Tasks to find earlier runs. The sidebar keeps active work and unresolved
+decisions; completed runs remain in activity history. You can open an earlier
+task to read its saved result and local worker transcript. Description, notes,
+steps and spend remain available when the run's plan database is present.
+An ended run is there to read, not to steer: a note, pause, resume, cancel,
 amend or priority on one of its tasks answers `that task's run has ended` and changes
 nothing. Only the run that is underway takes those. A run that has finished is ended
-from that moment, even while it is still the newest run on the rail and nothing has
+from that moment, even while it is still the newest run and nothing has
 started after it: steering one of its tasks answers the same sentence.
 
 ## Does a new task pick up a run that did not finish? A new /task starts fresh
