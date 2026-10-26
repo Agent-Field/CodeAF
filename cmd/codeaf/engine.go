@@ -1190,6 +1190,7 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 	// with ([session.Config.IntentNames]); the legacy deterministic flag remains a separate no-model policy.
 	if hello.Launch != nil {
 		cfg.IntentNames = hello.Launch.IntentNames
+		cfg.IntentSiblingNames = hello.Launch.IntentSiblingNames
 		cfg.DeterministicNames = hello.Launch.DeterministicNames
 		cfg.HandOverOnAsk = hello.Launch.HandOverOnAsk
 		cfg.TeamListeningSince = hello.Launch.TeamListeningSince

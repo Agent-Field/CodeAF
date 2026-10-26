@@ -228,6 +228,21 @@ change what Enter opens. Without color both markers remain visible; ASCII mode u
 straight corners and a plain dot. Short windows give up inner vertical space before
 the selected row.
 
+## Desktop conversation names, short tab names, vague first messages and personal renames
+
+The desktop asks the configured `title` model for a name in 2–4 words and at most
+24 characters. It asks for the distinguishing word first, using your own words
+and names, and supplies up to 20 other open conversation names to avoid repeats.
+Your first message, or attached file names when you type nothing, supplies the
+placeholder while naming runs. The placeholder can use up to 40 characters.
+
+If your first message has fewer than four words, or the model gives a generic
+name, the engine asks once more after the first reply finishes. This second ask
+uses your first message and the opening 400 characters of the reply. It never
+asks a third time, including after reopening the conversation. A name you choose
+yourself always wins, even while a model answer is on its way. A failed naming
+ask leaves the current name in place.
+
 ## What is my chat called before it has a name — unnamed tab, when does a chat get its name, how do I rename this conversation, why it no longer says Untitled
 
 **Naming starts when your first message is accepted.** The small model on the `title`
