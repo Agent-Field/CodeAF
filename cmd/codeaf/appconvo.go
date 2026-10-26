@@ -158,6 +158,26 @@ func (b *appBackend) steer(agent, text, clientID string, shown *appSending) erro
 	if err != nil {
 		return err
 	}
+	// A STEER WHILE THE AGENT IS STARTING IS KEPT FOR ITS FIRST TURN, which is
+	// on its way and is what the person is correcting; it is given to that
+	// turn the moment it runs ([appBackend.bootSettle]). After a stop there is
+	// no turn to give it to, and it is refused as any steer with nothing
+	// running is.
+	kept := false
+	b.locked(func() {
+		if a.starting && !a.stopAsked {
+			var copied *appSending
+			if shown != nil {
+				c := *shown
+				copied = &c
+			}
+			a.early = append(a.early, appEarlySteer{text: text, clientID: clientID, shown: copied})
+			kept = true
+		}
+	})
+	if kept {
+		return nil
+	}
 	if _, handled, err := b.tryFactoryStatus(a, text, clientID, shown); handled {
 		return err
 	}
@@ -310,9 +330,23 @@ func (b *appBackend) queue(agent, text, clientID string, shown *appSending) ([]a
 		return nil, err
 	}
 	live := b.liveOf(a)
-	busy := false
+	busy, starting := false, false
+	b.locked(func() { starting = a.starting && !a.stopAsked })
 	if live != nil {
 		b.locked(func() { busy = live.running || live.adopting > 0 })
+	}
+	// An agent still starting has its first turn on its way: a message
+	// queued now waits for that turn's end, like any other, rather than
+	// queueing on the open's gate to be refused as busy.
+	if starting {
+		var queued []appwire.Queued
+		b.locked(func() {
+			a.queueN++
+			a.queue = append(a.queue, appQueued{id: "q" + strconv.Itoa(a.queueN), text: text, clientID: clientID, shown: shown})
+			queued = appQueuedOf(a.queue)
+		})
+		b.emit.Emit(appwire.EventQueueChanged, appwire.QueueChanged{Agent: agent, Queued: queued})
+		return queued, nil
 	}
 	if !busy {
 		if _, err := b.send(agent, text, clientID, shown); err != nil {

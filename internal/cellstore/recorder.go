@@ -46,9 +46,16 @@ type Recorder struct {
 	errorMu   sync.Mutex
 	lastError error
 
-	mu         sync.Mutex // serialises seals; guards pending and incomplete
-	pending    []Executed
-	models     []ModelCall // model calls since the last seal
+	mu      sync.Mutex // serialises seals; guards pending and models
+	pending []Executed
+	models  []ModelCall // model calls since the last seal
+
+	// incMu guards incomplete alone. A seal holds mu for the whole capture,
+	// which on a fresh home is a screen of every file in the workspace, and
+	// the list of calls a crash left unfinished is read while a conversation
+	// opens: under mu, an open waited for the first capture to end (seconds
+	// on a large folder) only to read a list no seal touches.
+	incMu      sync.Mutex
 	incomplete []Intent
 }
 
@@ -136,15 +143,15 @@ func (r *Recorder) NoteModelCall(m executor.ModelCall) {
 
 // Incomplete lists the calls that were started and never finished, oldest first.
 func (r *Recorder) Incomplete() []Intent {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.incMu.Lock()
+	defer r.incMu.Unlock()
 	return append([]Intent(nil), r.incomplete...)
 }
 
 // Resolve closes an incomplete call after it has been surfaced and dealt with.
 func (r *Recorder) Resolve(i Intent) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.incMu.Lock()
+	defer r.incMu.Unlock()
 	if err := r.wal.Resolve(i); err != nil {
 		return err
 	}

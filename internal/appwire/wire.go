@@ -80,7 +80,14 @@ const (
 
 // The states an agent can be in, as the app draws them.
 const (
-	StateIdle     = "idle"
+	StateIdle = "idle"
+	// StateStarting is an agent whose first message has been taken and whose
+	// conversation is still being opened: no turn has started yet. It ends in
+	// working when the turn starts, or in stopped when a stop came first or
+	// the open failed. A stop or a steer sent while it lasts is honoured (the
+	// steer reaches the first turn). It is additive: an app that does not know
+	// the word can draw it as working.
+	StateStarting = "starting"
 	StateWorking  = "working"
 	StateNeedsYou = "needs_you"
 	StateStopped  = "stopped"
@@ -167,7 +174,7 @@ type Agent struct {
 	// Effort is the conversation override: low, medium, high, xhigh or max.
 	// It is omitted when unset (auto); other effort scopes can still apply.
 	Effort    string    `json:"effort,omitempty"`
-	State     string    `json:"state" enum:"idle,working,needs_you,stopped,closed,archived"`
+	State     string    `json:"state" enum:"idle,starting,working,needs_you,stopped,closed,archived"`
 	UpdatedAt time.Time `json:"updated_at,omitzero"`
 	// Crews are the crews this agent is a member of, open ones only.
 	Crews []string `json:"crews,omitempty"`

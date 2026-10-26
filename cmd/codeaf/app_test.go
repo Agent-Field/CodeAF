@@ -1642,7 +1642,7 @@ func TestAppCreateAnswersBeforeTheConversationIsOpen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if took > 50*time.Millisecond || agent.State != appwire.StateWorking || agent.Title != "fix the parser" || agent.ID != "5e55a0f1" {
+	if took > 50*time.Millisecond || agent.State != appwire.StateStarting || agent.Title != "fix the parser" || agent.ID != "5e55a0f1" {
 		t.Fatalf("create took %v and answered %+v", took, agent)
 	}
 	if listed, _ := backend.ListAgents(""); len(listed) != 1 || listed[0].ID != agent.ID {
