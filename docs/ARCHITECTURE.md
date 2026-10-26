@@ -34,6 +34,10 @@ specific action rather than reading either large package from beginning to end.
 | Remote sessions and movable chats | [remote](../internal/remote/), [enginehost](../internal/enginehost/), [cell](../internal/cell/) | [Remote architecture](REMOTE.md), [remote testing](testing-anywhere.md) |
 | Relay coordination across computers and workers | [relay server](../internal/relayserve/), [committed directory](../internal/raftdirectory/), [consensus core](../internal/raftcore/), [hosted relay](../relay/hosted/), [cluster command](../cmd/codeaf/cluster.go) | [Run a relay](relay.md), [coordination and workers](../internal/manual/chat/coordination-and-workers.md) |
 
+Before delegating across folders, cooperating on private copies, receiving a chat,
+applying results or cleaning task storage, read the
+[task workspace and relay agent contract](architecture/workspaces-storage-relay.md).
+
 ## Find the right storage and knowledge owner
 
 There is no single Markdown file that acts as every kind of memory. Keep these

@@ -9,7 +9,9 @@ package session
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/home"
 )
@@ -184,5 +186,139 @@ func TestNodeJournalNamesSortIntoMintingOrder(t *testing.T) {
 			t.Fatalf("round %d minted %q after %q, which sorts no later", round, name, last)
 		}
 		last = name
+	}
+}
+
+func TestPlanBackedTaskReopensItsNestedWorkerHistory(t *testing.T) {
+	agent, id, place, _, _ := completedWorkspaceApplyFixture(t, false)
+	dir := filepath.Join(place.NodeJournals(), itoa64(id))
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(dir, "20261026-000305.763019_worker.jsonl")
+	journal := `{"type":"session","version":1,"id":"worker","model":"deepseek/deepseek-v4.1-flash"}` + "\n" + `{"type":"message","role":"assistant","content":"the actual worker history"}` + "\n"
+	for name, body := range map[string]string{want: journal, filepath.Join(dir, "20261025-000305.763019_worker.jsonl"): journal, filepath.Join(dir, "20261027-000305.763019_worker.jsonl"): strings.Repeat("x", 65536), filepath.Join(dir, "20261026-000400.000000_helper.jsonl"): `{"type":"session","version":1,"id":"helper"}` + "\n"} {
+		if err := os.WriteFile(name, []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	other := filepath.Join(place.NodeJournals(), itoa64(id+1))
+	if err := os.MkdirAll(other, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(other, "20261026-010000.000000_worker.jsonl"), []byte(journal), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Run("journal", func(t *testing.T) {
+		if got := agent.TaskJournal(id + 1); got != "" {
+			t.Fatalf("unknown task exposed foreign worker: %q", got)
+		}
+		if got := agent.TaskJournal(id); got != want {
+			t.Fatalf("plan-backed TaskJournal(%d)=%q, want its worker %q", id, got, want)
+		}
+		if report, ok := PeekReport(want); !ok || report != "the actual worker history" {
+			t.Fatalf("resolved worker history is unreadable: %q", report)
+		}
+	})
+	t.Run("task-page", func(t *testing.T) {
+		page, ok := agent.PlanTaskPage("t-" + itoa64(id))
+		if !ok || page.Row.Model != "deepseek/deepseek-v4.1-flash" {
+			t.Fatalf("worker page lacks its recorded model: found=%v model=%q", ok, page.Row.Model)
+		}
+	})
+	t.Run("rebuilt-index", func(t *testing.T) {
+		for _, row := range RebuiltTaskRows(place.Dir) {
+			if row.ID == itoa64(id) {
+				if row.TranscriptURI != taskURI(want) || row.Model != "deepseek/deepseek-v4.1-flash" {
+					t.Fatalf("reopened task has wrong history/model: transcript=%q model=%q", row.TranscriptURI, row.Model)
+				}
+				return
+			}
+		}
+		t.Fatal("completed plan-backed task missing from rebuilt index")
+	})
+}
+
+func TestPlanBackedHistoryRefusesRedirectedTaskAndWorker(t *testing.T) {
+	for _, redirectDirectory := range []bool{false, true} {
+		t.Run(map[bool]string{false: "worker", true: "task-directory"}[redirectDirectory], func(t *testing.T) {
+			agent, id, place, _, _ := completedWorkspaceApplyFixture(t, false)
+			outside := t.TempDir()
+			name := "20261026-000305.763019_worker.jsonl"
+			if err := os.WriteFile(filepath.Join(outside, name), []byte(`{"type":"session","version":1,"id":"foreign"}`+"\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			dir := filepath.Join(place.NodeJournals(), itoa64(id))
+			if err := os.MkdirAll(filepath.Dir(dir), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if redirectDirectory {
+				if err := os.Symlink(outside, dir); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if err := os.MkdirAll(dir, 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(filepath.Join(outside, name), filepath.Join(dir, name)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if got := agent.TaskJournal(id); got != "" {
+				t.Fatalf("redirected worker was exposed: %q", got)
+			}
+			for _, row := range RebuiltTaskRows(place.Dir) {
+				if row.ID == itoa64(id) && row.TranscriptURI != "" {
+					t.Fatalf("redirected worker indexed: %q", row.TranscriptURI)
+				}
+			}
+		})
+	}
+}
+
+// A taken chat may retain its completed task and journal without a plan store.
+// Its ordinary task room reads the replayed notice, not a PlanTaskPage or index.
+func TestTakenWorkerRosterCarriesRecordedModelWithoutPlanStore(t *testing.T) {
+	for _, saved := range []string{"", "recorded/prior-model"} {
+		t.Run(saved, func(t *testing.T) {
+			want := saved
+			if want == "" {
+				want = "deepseek/deepseek-v4.1-flash"
+			}
+			place := newPlace(t, false)
+			writeCheckpoint(t, place.Tasks(), taskDocument{Type: taskDocumentType, Version: taskFileVersion, Seq: 2, Runs: []runRecord{{ID: 2, Title: "Extend two-root formatting helpers", State: TaskDone, PlanTask: "t-2", Report: "finished", Model: saved}}})
+			dir := filepath.Join(place.NodeJournals(), "2")
+			if err := os.MkdirAll(dir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			journal := filepath.Join(dir, "20261026-000305.763019_worker.jsonl")
+			if err := os.WriteFile(journal, []byte(`{"type":"session","version":1,"id":"worker","model":"deepseek/deepseek-v4.1-flash"}`+"\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			agent := journalAgent(t, place)
+			if _, found := agent.PlanTaskPage("t-2"); found {
+				t.Fatal("fixture unexpectedly has a plan page; it must use the generic task room")
+			}
+			if got := agent.TaskJournal(2); got != journal {
+				t.Fatalf("worker journal=%q, want %q", got, journal)
+			}
+			events, stop := agent.WatchTaskUpdates()
+			defer stop()
+			deadline := time.After(3 * time.Second)
+			for {
+				select {
+				case event := <-events:
+					if event.Task != nil && event.Task.ID == 2 {
+						if event.Task.Model != want {
+							t.Fatalf("generic task room receives model %q instead of recorded worker model", event.Task.Model)
+						}
+						return
+					}
+				case <-deadline:
+					t.Fatal("completed worker missing from replayed roster")
+				}
+			}
+
+		})
 	}
 }

@@ -70,6 +70,10 @@ type conditionalTaker interface {
 	TakeSeen(context.Context, string, *directory.LeaseExpectation) (Taken, error)
 }
 
+type workspaceRootTaker interface {
+	TakeSeenWithWorkspaceRoots(context.Context, string, *directory.LeaseExpectation, map[string]string) (Taken, error)
+}
+
 // BranchActions is what a branch row can do. A nil verb is not offered.
 type BranchActions struct {
 	Open    func(ctx context.Context, branch string) (Taken, error)
@@ -85,9 +89,12 @@ const (
 	lostRaceWord  = chatlist.LostRace
 	continuing    = "continuing here…"
 	continueFails = "could not continue this chat here"
-	branchAsk     = "What should happen to these turns?"
-	branchLeave   = "leave them"
-	branchFails   = "could not change those turns"
+	// continueUnreachable names what did not happen, not only why, because
+	// the box still holds words the person meant to send in the moved chat.
+	continueUnreachable = continueFails + " because other machines are unreachable; your words are still in the box"
+	branchAsk           = "What should happen to these turns?"
+	branchLeave         = "leave them"
+	branchFails         = "could not change those turns"
 )
 
 // homeContinueKind and homeBranchKind are the lanes the two questions travel
@@ -260,41 +267,56 @@ type homeTakenMsg struct {
 	row   chatlist.Row
 	taken Taken
 	err   error
+	roots map[string]string
 	draft *composerState
 	send  func() tea.Cmd
 }
 
-// takeRemote asks the taker, off the update loop: a takeover fetches and waits
-// on the directory, and a keystroke may not wait on a network.
+// takeRemote asks for the chat off the update loop because a move waits on the network.
 func (a *app) takeRemote(row chatlist.Row) tea.Cmd {
+	return a.takeRemoteWithRoots(row, nil)
+}
+
+func (a *app) takeRemoteWithRoots(row chatlist.Row, roots map[string]string) tea.Cmd {
+	return a.takeRemoteState(homeTakenMsg{row: row, roots: roots})
+}
+
+func (a *app) takeRemoteState(msg homeTakenMsg) tea.Cmd {
 	if a.machineRead.computerRemoved {
+		a.restoreTakeDraft(msg)
 		a.home.say(chatlist.Removed, "")
 		return nil
 	}
 	a.home.say(continuing, "")
 	taker, ctx := a.taker, a.ctx
-	var draft *composerState
-	if a.file != "" && filepath.Base(session.DirOf(a.file)) == row.Cell {
-		// Retirement can replace the displaced session while the move is in
-		// flight. Its unsent message belongs to the chat that is arriving.
+	if msg.draft == nil && a.file != "" && filepath.Base(session.DirOf(a.file)) == msg.row.Cell {
+		// The displaced session may retire during the move, so its unsent words travel with the answer.
 		composer := a.mainComposer()
 		if !composer.empty() {
-			draft = &composer
+			msg.draft = &composer
 		}
 	}
 	return func() tea.Msg {
-		if conditional, ok := taker.(conditionalTaker); ok {
-			taken, err := conditional.TakeSeen(ctx, row.Cell, &directory.LeaseExpectation{Device: row.DeviceID, Fence: row.Fence})
-			return homeTakenMsg{row: row, taken: taken, err: err, draft: draft}
+		seen := &directory.LeaseExpectation{Device: msg.row.DeviceID, Fence: msg.row.Fence}
+		if mapped, ok := taker.(workspaceRootTaker); ok && len(msg.roots) > 0 {
+			msg.taken, msg.err = mapped.TakeSeenWithWorkspaceRoots(ctx, msg.row.Cell, seen, msg.roots)
+		} else if conditional, ok := taker.(conditionalTaker); ok {
+			msg.taken, msg.err = conditional.TakeSeen(ctx, msg.row.Cell, seen)
+		} else {
+			msg.taken, msg.err = taker.Take(ctx, msg.row.Cell)
 		}
-		taken, err := taker.Take(ctx, row.Cell)
-		return homeTakenMsg{row: row, taken: taken, err: err, draft: draft}
+		return msg
 	}
 }
 
-// tookTakeover files the answer. A takeover that failed leaves the row where it
-// was, and one line says why; one that worked opens the chat.
+// tookTakeover restores unsent words on failure and opens the arrived chat on success.
 func (a *app) tookTakeover(msg homeTakenMsg) tea.Cmd {
+	var missing *session.WorkspaceBindingsRequired
+	if errors.As(msg.err, &missing) {
+		if _, ok := a.taker.(workspaceRootTaker); ok && len(missing.Roots) > 0 {
+			return a.chooseTakeRoots(msg, missing.Roots)
+		}
+	}
 	var failure string
 	if msg.err != nil {
 		failure = a.failedTake(msg)
@@ -305,8 +327,10 @@ func (a *app) tookTakeover(msg homeTakenMsg) tea.Cmd {
 	case errors.Is(msg.err, directory.ErrLeaseHeld):
 		return a.lostRace(msg.row)
 	case errors.Is(msg.err, directory.ErrUnreachable):
+		// Home is where the failed move lands, so it carries the whole sentence:
+		// the reason alone does not say the chat stayed and the words were kept.
 		a.machineRead.down = true
-		a.home.say(chatlist.Unreachable, "")
+		a.home.say(failure, "")
 	case errors.Is(msg.err, directory.ErrConditionalTake):
 		a.home.say(directory.ErrConditionalTake.Error(), "")
 	case msg.err != nil:
@@ -316,6 +340,28 @@ func (a *app) tookTakeover(msg homeTakenMsg) tea.Cmd {
 	}
 	a.touch()
 	return nil
+}
+
+// chooseTakeRoots keeps the original holder and unsent words while collecting local folders.
+func (a *app) chooseTakeRoots(msg homeTakenMsg, missing []session.WorkspaceRootBinding) tea.Cmd {
+	if len(missing) == 0 {
+		return a.takeRemoteState(msg)
+	}
+	cmd := a.openContextPick("", false)
+	a.folder.forWorkspace = true
+	a.folder.held = nil
+	a.folder.chooseTitle = "local folder for " + missing[0].Label
+	a.folder.cancelChoose = func() { a.restoreTakeDraft(msg) }
+	a.folder.chooseFolder = func(path string) tea.Cmd {
+		roots := make(map[string]string, len(msg.roots)+1)
+		for uri, folder := range msg.roots {
+			roots[uri] = folder
+		}
+		roots[missing[0].URI] = path
+		msg.roots = roots
+		return a.chooseTakeRoots(msg, missing[1:])
+	}
+	return cmd
 }
 
 // lostRace is another device winning the takeover. The row goes back to

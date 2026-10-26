@@ -854,6 +854,9 @@ func (r *jobRegistry) settled(one *job, code int) bool {
 // answering the person. The job's lifetime is the session's, and Close is the
 // only thing that ends it early.
 func (r *jobRegistry) start(command string) (*job, error) {
+	if err := markTaskStorageUncertain(r.workspace); err != nil {
+		return nil, err
+	}
 	program, shellArgs, shellErr := bare.StreamingShell(command)
 	if shellErr != nil {
 		return nil, shellErr

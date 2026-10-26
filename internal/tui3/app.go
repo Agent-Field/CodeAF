@@ -9586,6 +9586,16 @@ func (a *app) paste(text string) tea.Cmd {
 		a.touch()
 		return nil
 	}
+	// The folder sheet owns its path box and suspends the conversation draft.
+	if a.folder.open {
+		a.folder.filter.insert(strings.ReplaceAll(text, "\n", " "))
+		a.folder.rank()
+		if a.folder.browsing {
+			a.folder.browseSync(a.resolvePath)
+		}
+		a.touch()
+		return a.folderWork()
+	}
 	// A KEY BOX IS THE PASTE THIS SURFACE MOST EXPECTS, and it reads first. A
 	// key is a thing nobody types — it comes out of a clipboard — so the two
 	// boxes that collect one take the clipboard before anything else does: the

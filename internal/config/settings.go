@@ -1041,6 +1041,15 @@ var OperatorEnvPins = []string{
 	// for the plainest reason there is: it decides which store the sheet
 	// itself is being read out of.
 	"CODEAF_HOME",
+	// The harness supplies the admitted working-root identity to each execution.
+	// This runtime association is not an editable placement preference.
+	"CODEAF_WORKSPACE_URI",
+	// These switches select unfinished ownership and archive lifecycles in an
+	// explicit prototype profile; they are not persisted settings. The archive
+	// executable path is operator plumbing, like CODEAF_FURROW below.
+	"CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP",
+	"CODEAF_PROTOTYPE_TASK_STORAGE",
+	"CODEAF_PROTOTYPE_ARCHIVE_BINARY",
 	// CODEAF_RELAY points a headless peer at the relay this host pairs through
 	// (internal/pair). It is an address, so it is plumbing for the same reason
 	// CODEAF_BASE_URL is.

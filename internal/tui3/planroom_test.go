@@ -496,3 +496,32 @@ func TestTheWorkTabDrawsNoControlBytesFromTheDifference(t *testing.T) {
 		}
 	}
 }
+
+type planWorkOpenFake struct {
+	*planWorkFake
+	opens int
+}
+
+func (f *planWorkOpenFake) OpenPlanTaskWork(id string) (session.PlanTaskWork, bool) {
+	f.opens++
+	return f.work, true
+}
+
+func TestExplicitWorkTabOpensStorageButPollingOnlyReads(t *testing.T) {
+	row := session.PlanTaskRow{ID: "t-6", Title: "saved result", Status: "running"}
+	a, plan := planAppWith(t, []session.PlanTaskRow{row}, map[string]session.PlanTaskPage{row.ID: {Row: row, Description: "b"}})
+	fake := &planWorkOpenFake{planWorkFake: &planWorkFake{planFake: plan, work: session.PlanTaskWork{Dir: "/work/copy", Read: true}}}
+	a.agent = fake
+	openPlanRoomNow(t, a, row.ID)
+	if fake.opens != 0 {
+		t.Fatal("opening the transcript expanded task storage")
+	}
+	drive(t, a, tea.KeyPressMsg{Code: tea.KeyTab})
+	if fake.opens != 1 || fake.reads != 0 {
+		t.Fatalf("explicit work tab: opens=%d reads=%d", fake.opens, fake.reads)
+	}
+	drive(t, a, runInline(a.planRoomWorkRead(false)))
+	if fake.opens != 1 || fake.reads != 1 {
+		t.Fatalf("background work poll expanded storage: opens=%d reads=%d", fake.opens, fake.reads)
+	}
+}

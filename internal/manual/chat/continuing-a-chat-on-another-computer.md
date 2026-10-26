@@ -142,6 +142,7 @@ If nothing happens when you press `Continue here`, the cause is one of these:
 - `another device continued this chat first`: another device was faster. The row goes back to `running on <device>`. Nothing changed.
 - `other machines unreachable`: this device cannot reach the service. Nothing can be moved until it can.
 - `could not continue this chat here`: the move failed. The row stays where it was; try again.
+- `could not continue this chat here because other machines are unreachable; your words are still in the box`: the service went away during the move. Nothing was sent and the chat stays where it was; send again once the other machines are reachable.
 - A sentence starting `the sync service must be updated before chats can move` means the service is too old to move chats safely. The operators update the hosted service; for your own service, follow the update command in that sentence on the terminal. Pairing, listing and viewing still work. Reopen codeaf after the service is updated.
 - With no way to continue set up, an off row has no `continue here`: enter says why.
 

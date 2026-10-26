@@ -487,16 +487,22 @@ func v3MintSessionAs(class cell.Class, bucket, workspace, launchDir string, owne
 		return session.Place{}, err
 	}
 	place := v3PlaceFor(dir, workspace, owned)
-	// The write is not checked for the reason place.go gives: meta.json is a
-	// citation and not the record, and a session that would not open because a
-	// lookup file could not be written would be the wrong trade twice over.
-	_ = session.SaveMeta(dir, session.Meta{
-		ID:        id,
-		Workspace: place.Workspace,
-		LaunchDir: launchDir,
-		Owned:     owned,
-		Created:   time.Now(),
-	})
+	var policy *session.WorkspacePolicy
+	if session.WorkspaceOwnershipPrototypeEnabled() {
+		policy = session.DefaultWorkspacePolicy()
+	}
+	// Placement policy is durable conversation truth, so a failed creation
+	// write must not silently open the conversation with legacy task placement.
+	if err := session.SaveMeta(dir, session.Meta{
+		ID:              id,
+		Workspace:       place.Workspace,
+		LaunchDir:       launchDir,
+		Owned:           owned,
+		Created:         time.Now(),
+		WorkspacePolicy: policy,
+	}); err != nil {
+		return session.Place{}, fmt.Errorf("save new conversation policy: %w", err)
+	}
 	return place, nil
 }
 
@@ -830,6 +836,10 @@ func v3SeatWith(place session.Place, say func(string), drives *driveBook) (execu
 	seat, err := cellstore.SeatOver(class, c, place.Workspace, observerOf(machine), watch.Report, driveStore(drive), cellstore.WithNotices(watch.Note), cellstore.WithPipeline(), cellstore.WithWarmCapture())
 	failed(watch, err)
 	watch.OnTail = func() { sealTail(seat, drive) }
+	// A fresh seat has no foreground turn in flight. Background tasks may be
+	// the first input; their journal writes need a tail seal even before chat.
+	// Window attachment reuses the engine's seat rather than constructing one.
+	watch.Waiting()
 	return executor.Gated(seat, driveGate(drive)), machine, watch
 }
 

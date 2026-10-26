@@ -274,6 +274,9 @@ func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
 		if meta.ID == "" {
 			meta.ID, meta.Owned = snapshot.ID, snapshot.Owned
 		}
+		if meta.ChatURI == "" {
+			meta.ChatURI = snapshot.ChatURI
+		}
 		if meta.Workspace == "" {
 			meta.Workspace = snapshot.Workspace
 		}
@@ -290,7 +293,7 @@ func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
 			meta.Trees = snapshot.Trees
 		}
 		patch(&meta)
-		return SaveMeta(dir, meta)
+		return saveMetaLocked(dir, meta)
 	})
 }
 
@@ -299,6 +302,9 @@ func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
 // comes back whole rather than half-filled. The agent lock is held for the
 // model, which /model moves.
 func (a *Agent) fillMetaLocked(meta Meta) Meta {
+	if !a.config.InTask && a.config.WorkspaceURI != "" {
+		meta.ChatURI = a.config.WorkspaceURI
+	}
 	if strings.TrimSpace(meta.ID) == "" {
 		meta.ID = a.config.Place.ID()
 	}

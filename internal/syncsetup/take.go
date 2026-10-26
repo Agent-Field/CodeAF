@@ -28,6 +28,11 @@ import (
 
 // TakeOptions is what the surface tells the take side about this machine.
 type TakeOptions struct {
+	// WorkspaceRoots explicitly associates incoming working-root identities with
+	// chosen local folders in the ownership prototype. It grants no landing
+	// permission; task work is restored into private copies. Nil reuses only
+	// associations already admitted in this device's registry.
+	WorkspaceRoots map[string]string
 	// DeviceName is this machine's name: the kept-edits sentence names it.
 	DeviceName string
 	// RootFor is where this machine keeps the chat with an id: the folder it
@@ -111,6 +116,20 @@ func (c *Continuer) TakeSeen(ctx context.Context, id string, seen *directory.Lea
 	return c.take(ctx, id, seen, false)
 }
 
+// TakeSeenWithWorkspaceRoots applies only this person's selected receiver
+// bindings to one takeover, retaining the holder expectation they approved.
+func (c *Continuer) TakeSeenWithWorkspaceRoots(ctx context.Context, id string, seen *directory.LeaseExpectation, roots map[string]string) (Continued, error) {
+	copy := *c
+	copy.opt.WorkspaceRoots = make(map[string]string, len(c.opt.WorkspaceRoots)+len(roots))
+	for uri, path := range c.opt.WorkspaceRoots {
+		copy.opt.WorkspaceRoots[uri] = path
+	}
+	for uri, path := range roots {
+		copy.opt.WorkspaceRoots[uri] = path
+	}
+	return copy.take(ctx, id, seen, false)
+}
+
 // OpenBranch opens kept turns through the continuation door, under the
 // branch's own id and folder. It never takes or restores the main chat.
 func (c *Continuer) OpenBranch(ctx context.Context, id string) (Continued, error) {
@@ -141,6 +160,12 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		if err != nil {
 			return Continued{}, err
 		}
+		// This computer held the chat before the take began, possibly for a session
+		// that is running now, so a failed record keeps that hold rather than
+		// releasing a lease this call never acquired.
+		if err := c.sync.recordSendLease(opened.ID, sendLease{Cell: id, Fence: lease.Fence}); err != nil {
+			return Continued{}, err
+		}
 		return Continued{AlreadyHere: true, Device: c.opt.DeviceName, Taken: handoff.Taken{
 			Cell: opened, Driving: cellsync.Driving{Cell: opened, Fence: lease.Fence, Head: view.Cell.Head, Frames: view.Cell.Frames},
 		}}, nil
@@ -155,7 +180,27 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	c.retireHolder(ctx, id)
 	sc := c.sync.scope(id)
 	defer sc.Settle()
+	intendedPrimary := session.Place{Dir: root, Owned: true}.Work()
+	if project, here := projectOf(root); here {
+		intendedPrimary = project
+	}
 	taker := c.taker(ctx, sc)
+	taker.Preflight = func(_ context.Context, staged cell.Cell) error {
+		place := session.Place{Dir: staged.Root, Workspace: intendedPrimary}
+		plan, err := session.TaskWorkspaceTransferPlan(place)
+		if err != nil || plan == nil {
+			return err
+		}
+		// Independent branches extract settled results in branchIdentity; they
+		// never inherit the original chat's executable roots or source authority.
+		if view.Cell.ParentCell != "" {
+			return nil
+		}
+		if !session.WorkspaceOwnershipEnabled(place) {
+			return errors.New("this chat needs supported private task placement on the receiving device")
+		}
+		return session.ValidateTaskWorkspaceSetBindingsForDestination(place, root, c.opt.WorkspaceRoots)
+	}
 	if view.Cell.ParentCell != "" {
 		// The branch's snapshot was sealed before it had its own id. Rebind
 		// its journal before rebuilding the row, so two chats never share an id.
@@ -178,6 +223,23 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	if err != nil {
 		return Continued{}, err
 	}
+	place := session.Place{Dir: taken.Cell.Root, Workspace: intendedPrimary}
+	workspacePlan, err := session.TaskWorkspaceTransferPlan(place)
+	if err != nil {
+		return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
+	}
+	if workspacePlan != nil {
+		if !session.WorkspaceOwnershipEnabled(place) {
+			err = errors.New("this chat needs supported private task placement on the receiving device")
+		} else {
+			err = session.ValidateTaskWorkspaceSetBindings(place, c.opt.WorkspaceRoots)
+		}
+	} else {
+		err = session.ValidateTaskRestoreRoots(place, intendedPrimary)
+	}
+	if err != nil {
+		return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
+	}
 	if err := cellstore.AdoptedFrom(taken.Cell, from); err != nil {
 		return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
 	}
@@ -194,10 +256,22 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
 	}
 	taken.Driving.Cell = taken.Cell
+	var taskCopies []string
+	if workspacePlan != nil {
+		taskCopies, err = session.RestoreTaskWorkspaceSets(ctx, session.Place{Dir: taken.Cell.Root, Workspace: workspaceOf(taken.Cell.Root)}, c.opt.WorkspaceRoots)
+		if err != nil {
+			return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
+		}
+	} else {
+		if err := session.AdoptChatWorkspaceIdentity(session.Place{Dir: taken.Cell.Root}); err != nil {
+			return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
+		}
+		taskCopies = c.restoreCopies(taken.Cell)
+	}
 	if err := c.sync.recordSendLease(taken.Cell.ID, sendLease{Cell: id, Fence: taken.Driving.Fence}); err != nil {
 		return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
 	}
-	out := Continued{Taken: taken, Device: c.opt.DeviceName, TaskCopies: c.restoreCopies(taken.Cell), Resume: c.arrive(taken.Cell, from)}
+	out := Continued{Taken: taken, Device: c.opt.DeviceName, TaskCopies: taskCopies, Resume: c.arrive(taken.Cell, from)}
 	if taken.Kept != "" {
 		out.KeptTurns = c.orphanTurns(ctx, taken.Kept)
 	}
@@ -259,9 +333,19 @@ func (c *Continuer) arrive(at cell.Cell, from string) preflight.Resume {
 // still has its files in place, so the takeover carries on and says so on the
 // same desk as the vault's sentence.
 func (c *Continuer) restoreCopies(at cell.Cell) []string {
-	restored, err := taskcopy.Carry{Cutter: session.TaskCopyCutter{Place: session.Place{Dir: at.Root}}}.Restore(at, workspaceOf(at.Root))
+	parents, planErr := session.TaskCopyRestoreParents(session.Place{Dir: at.Root})
+	if planErr != nil {
+		if c.opt.Notify != nil {
+			c.opt.Notify("task working copies were preserved but could not be rebound here: " + planErr.Error())
+		}
+		return nil
+	}
+	restored, err := taskcopy.Carry{Cutter: session.TaskCopyCutter{Place: session.Place{Dir: at.Root}}}.RestoreWithParents(at, workspaceOf(at.Root), parents)
 	if err != nil && c.opt.Notify != nil {
 		c.opt.Notify("a task's working copy could not be set up again here: " + err.Error())
+	}
+	if adoptionErr := session.AdoptTaskWorkspaceIdentities(session.Place{Dir: at.Root}, workspaceOf(at.Root), restored); adoptionErr != nil && c.opt.Notify != nil {
+		c.opt.Notify("a restored task's workspace identity could not be rebound here: " + adoptionErr.Error())
 	}
 	return restored
 }

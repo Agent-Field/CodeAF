@@ -78,7 +78,8 @@ var fallbackClientID atomic.Uint64
 // surface asks Model() on frames it repaints, so a measurement there would have
 // doubled the cost of drawing a status line.
 
-// callDeadline is how long any one call waits for its result. See the law above.
+// callDeadline bounds ordinary calls. Compact and taskWorkspaceCall are
+// explicit bounded exceptions for off-reader work that outlives this window.
 const callDeadline = 10 * time.Second
 
 // Client is one connection to one engine. It is safe for concurrent use, which
@@ -2259,6 +2260,23 @@ func (a *Agent) PlanTaskWork(id string) (session.PlanTaskWork, bool) {
 	var result PlanTaskWorkResult
 	if json.Unmarshal(payload, &result) != nil {
 		return session.PlanTaskWork{}, false
+	}
+	return result.Work, result.OK
+}
+
+// OpenPlanTaskWork is an explicit storage reopen, never a background query.
+// An older engine retains its original work tab through the read-only fallback.
+func (a *Agent) OpenPlanTaskWork(id string) (session.PlanTaskWork, bool) {
+	payload, err := a.c.call(nil, MethodOpenPlanTaskWork, PlanTaskArgs{ID: id})
+	if err != nil {
+		if strings.Contains(err.Error(), "no such method") {
+			return a.PlanTaskWork(id)
+		}
+		return session.PlanTaskWork{Error: err.Error()}, true
+	}
+	var result PlanTaskWorkResult
+	if err := json.Unmarshal(payload, &result); err != nil {
+		return session.PlanTaskWork{Error: "could not read the saved working copy response"}, true
 	}
 	return result.Work, result.OK
 }

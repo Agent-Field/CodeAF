@@ -115,6 +115,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	if client == nil {
 		return nil, errors.New("session: completer is required")
 	}
+	if err := configureOwnedChat(&config); err != nil {
+		return nil, fmt.Errorf("prepare conversation storage: %w", err)
+	}
 	if config.newerBuild == nil {
 		config.newerBuild = buildinfo.StaleNotice
 	}
@@ -132,6 +135,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	system, own := config.System, false
 	if strings.TrimSpace(system) == "" {
 		system, own = renderSystem(config), true
+	}
+	if config.WorkspaceURI != "" {
+		system += "\n\nWORKSPACE STORAGE\nUse mktemp or $TMPDIR for temporary files and $XDG_CACHE_HOME for ordinary caches. These locations are outside the files that a task lands. Keep task deliverables in the assigned working directory. The directory is an assignment, not a shell sandbox; external and remote writes still need an explicit purpose."
 	}
 	agent := &Agent{
 		config: config,

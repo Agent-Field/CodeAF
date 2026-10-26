@@ -9,6 +9,49 @@ import (
 	"github.com/Agent-Field/codeaf/internal/directory"
 )
 
+// TestRemovedComputerStillSendsOnItsOwnChats proves that removal ends syncing,
+// not local work: a chat held here, or never shared, still sends, while a chat
+// another computer took keeps the words and says why.
+func TestRemovedComputerStillSendsOnItsOwnChats(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		row  chatlist.Row
+		mine bool
+		want bool
+	}{
+		{name: "held here", row: leftOffRow(heldCell, "tower", chatlist.Running, time.Minute), mine: true, want: true},
+		{name: "never shared", row: leftOffRow("0000000000000009", "tower", chatlist.Running, time.Minute), want: true},
+		{name: "taken elsewhere", row: leftOffRow(heldCell, "tower", chatlist.Running, time.Minute), want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			src := &continuationListing{row: tc.row}
+			if tc.mine {
+				src.row.Mine, src.row.Status, src.row.Fence = true, chatlist.Here, 3
+			}
+			a, agent := heldLab(t, src, &fakeTaker{})
+			a.closeHome()
+			src.err = directory.ErrRevoked
+			typeText(t, a, "keep working here")
+			drive(t, a, key("enter"))
+			if !a.machineRead.computerRemoved {
+				t.Fatal("the fresh reading did not mark this computer removed")
+			}
+			if tc.want {
+				if len(agent.sent) != 1 {
+					t.Fatalf("removed computer refused its own chat: sent=%v draft=%q", agent.sent, a.input.String())
+				}
+				return
+			}
+			if len(agent.sent) != 0 || a.input.String() != "keep working here" {
+				t.Fatalf("removed computer sent on a chat it does not hold: sent=%v draft=%q", agent.sent, a.input.String())
+			}
+			if notes := strings.Join(noteTexts(a), "\n"); !strings.Contains(notes, "this device was removed") {
+				t.Errorf("refusal did not say why: %q", notes)
+			}
+		})
+	}
+}
+
 func TestRemovedComputerOffersNoContinuation(t *testing.T) {
 	for _, notice := range []bool{false, true} {
 		a := continueHome(t, &fakeTaker{}, chatlist.Static{leftOffRow("away", "other", chatlist.Off, time.Minute)}, 200)

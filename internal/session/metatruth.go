@@ -26,24 +26,28 @@ import (
 // .cell/session.json holds it. Every path in it is spelled against a named
 // base (pathcodec.go), never absolute.
 type SessionTruth struct {
-	V             uint16          `json:"V"`
-	LaunchDir     string          `json:"launch_dir,omitempty"`
-	Owned         bool            `json:"owned,omitempty"`
-	Effort        string          `json:"effort,omitempty"`
-	Approval      string          `json:"approval,omitempty"`
-	Places        []PlaceRef      `json:"places,omitempty"`
-	Trees         []StandingTree  `json:"trees,omitempty"`
-	Archived      bool            `json:"archived,omitempty"`
-	ArchivedTasks map[string]bool `json:"archived_tasks,omitempty"`
+	V               uint16           `json:"V"`
+	ChatURI         string           `json:"chat_uri,omitempty"`
+	WorkspacePolicy *WorkspacePolicy `json:"workspace_policy,omitempty"`
+	LaunchDir       string           `json:"launch_dir,omitempty"`
+	Owned           bool             `json:"owned,omitempty"`
+	Effort          string           `json:"effort,omitempty"`
+	Approval        string           `json:"approval,omitempty"`
+	Places          []PlaceRef       `json:"places,omitempty"`
+	Trees           []StandingTree   `json:"trees,omitempty"`
+	Archived        bool             `json:"archived,omitempty"`
+	ArchivedTasks   map[string]bool  `json:"archived_tasks,omitempty"`
 }
 
 const truthVersion = 1
 
 func (m Meta) truth() SessionTruth {
-	return SessionTruth{truthVersion, m.LaunchDir, m.Owned, m.Effort, m.Approval, m.Places, m.Trees, m.Archived, m.ArchivedTasks}
+	return SessionTruth{V: truthVersion, ChatURI: m.ChatURI, WorkspacePolicy: m.WorkspacePolicy, LaunchDir: m.LaunchDir, Owned: m.Owned, Effort: m.Effort, Approval: m.Approval, Places: m.Places, Trees: m.Trees, Archived: m.Archived, ArchivedTasks: m.ArchivedTasks}
 }
 
 func (m *Meta) setTruth(t SessionTruth) {
+	m.ChatURI = t.ChatURI
+	m.WorkspacePolicy = t.WorkspacePolicy
 	m.LaunchDir, m.Owned, m.Effort, m.Approval = t.LaunchDir, t.Owned, t.Effort, t.Approval
 	m.Places, m.Trees, m.Archived, m.ArchivedTasks = t.Places, t.Trees, t.Archived, t.ArchivedTasks
 }

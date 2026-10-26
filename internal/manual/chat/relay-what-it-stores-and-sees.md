@@ -36,3 +36,16 @@ No. Turns, tool output and files are sealed on your computer before they are sen
 Your saved keys are sealed too, as said above.
 
 Continuing a chat on another computer brings its saved workspace files with its conversation, tool output and task journals. Rebuildable install folders and withheld files are listed on the arrival card. Secret files travel separately in the sealed vault between paired devices. See *Continuing a chat that one of your machines holds* and "What comes with a continued chat" on *Home*. It does not keep two arbitrary project folders mirrored while you edit them.
+
+## Optional warm-transfer frame hints and relay compatibility
+
+The warm-transfer prototype can attach up to two encrypted chunk ids and their
+encoded byte sizes to a saved chat head. The total, including one extra read byte
+per chunk, is at most 64 KiB. These are readable transfer hints, never proof that
+all content arrived. Invalid hints are ignored; saving the chat still succeeds.
+They appear on a single-chat read and stay off Home's listing. Each publish
+replaces them, and a publish without hints clears the previous hints.
+
+The prototype is off by default. Every member of the relay cluster must run a
+build that understands these fields before any computer sends them. Older members
+refuse unknown fields; existing requests omit the fields and keep their encoding.

@@ -75,6 +75,9 @@ func taskSessionOf(file string) string {
 	if file = strings.TrimSpace(file); file == "" {
 		return ""
 	}
+	if dir, ok := session.FolderOf(file); ok {
+		return filepath.Base(dir)
+	}
 	return filepath.Base(filepath.Dir(file))
 }
 

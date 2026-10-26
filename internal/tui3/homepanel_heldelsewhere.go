@@ -168,14 +168,21 @@ func (a *app) afterOwnershipRead(msg ownershipReadMsg) tea.Cmd {
 // resumeOwnedSend spends only the submitted gesture after its fresh ownership
 // reading. A free chat can resume silently only from the same saved turn.
 func (a *app) resumeOwnedSend(msg ownershipReadMsg) tea.Cmd {
-	if a.machineRead.computerRemoved {
-		a.note(chatlist.Removed)
-		return nil
-	}
 	id := filepath.Base(session.DirOf(msg.file))
 	remote := id
 	if msg.leaseCell != "" {
 		remote = msg.leaseCell
+	}
+	if a.machineRead.computerRemoved {
+		// A REMOVED COMPUTER KEEPS WORKING ON ITS OWN CHATS. It can no longer
+		// sync, so a chat this window held, or one that was never shared, goes on
+		// here only. A chat another computer took stays as this window last saw
+		// it, because this computer can never take it back.
+		if a.offlineSendHeld(id, remote, msg) {
+			return msg.resume()
+		}
+		a.note(chatlist.Removed)
+		return nil
 	}
 	if msg.reading.err != nil {
 		// AN UNREACHABLE SERVICE DOES NOT TAKE A HELD CHAT AWAY. The window
@@ -289,7 +296,7 @@ func (a *app) failedTake(msg homeTakenMsg) string {
 	case errors.Is(msg.err, directory.ErrLeaseHeld):
 		return lostRaceWord
 	case errors.Is(msg.err, directory.ErrUnreachable):
-		return chatlist.Unreachable
+		return continueUnreachable
 	case errors.Is(msg.err, directory.ErrConditionalTake):
 		return directory.ErrConditionalTake.Error()
 	case errors.Is(msg.err, directory.ErrRevoked):

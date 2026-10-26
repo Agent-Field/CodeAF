@@ -950,6 +950,7 @@ func applyMutation(c Command, now int64, identity IdentityRec, rows map[RecordKe
 // Visible versions follow the existing projection: renewed expiry within the
 // same held state and advisory last-seen timestamps do not repaint Home.
 func visibleCellChange(a, b Cell, now int64) bool {
+	a.FrameHints, b.FrameHints = nil, nil
 	if a.Lease.Expires > now {
 		a.Lease.Expires = 1
 	} else {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/taskcopy"
 )
 
 // Capture snapshots the cell's folder as it stands and answers the snapshot
@@ -18,6 +19,13 @@ func (e Engine) Capture(ctx context.Context, c cell.Cell) (string, error) {
 	if err := e.recoverCompleted(ctx, c); err != nil {
 		return "", err
 	}
+	// Recovery can seal independently; acquire after it to avoid nesting this
+	// process lock while still fencing composition through the native snapshot.
+	release, err := taskcopy.LockWorkspaceCheckpoint(ctx, c)
+	if err != nil {
+		return "", err
+	}
+	defer release()
 	if err := e.composeExtra(c); err != nil {
 		return "", err
 	}

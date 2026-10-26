@@ -117,6 +117,9 @@ func (a *app) runTaskCommand(arg string) tea.Cmd {
 	// The word was typed, bare or with a brief (notice.go).
 	a.noticeEvent(eventTaskTyped)
 	arg = strings.TrimSpace(arg)
+	if cmd, handled := a.runTaskWorkspaceCommand(arg); handled {
+		return cmd
+	}
 	if arg == "" {
 		// A BARE /task IS THE ROSTER AND NOT A USAGE LINE. The margin's `+ /task`
 		// row types this command into the draft (margin.go), so the word arrives in

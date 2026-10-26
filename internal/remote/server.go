@@ -1268,9 +1268,10 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		TeamAsk: teamAskKnown(sess.agent),
 		// This revision checks it in the handler, for every engine behind it
 		// ([Session.agentOf]), so the answer is about the wire and not the agent.
-		SteerOwner: true,
-		TaskSetup:  taskSetupKnown(sess.agent),
-		TaskRetry:  taskRetryKnown(sess.agent),
+		SteerOwner:    true,
+		TaskSetup:     taskSetupKnown(sess.agent),
+		TaskRetry:     taskRetryKnown(sess.agent),
+		TaskWorkspace: taskWorkspaceKnown(sess.agent),
 		// Whether this engine has a dial on the conversation's own thinking,
 		// asked of the agent it has open — for [Welcome.Effort]'s stated reason:
 		// neither a type assertion at the far end nor the rung itself can tell an
@@ -1714,8 +1715,9 @@ type server struct {
 	// running does not write into a session that has already been closed.
 	side sync.WaitGroup
 	// Observers leave with the view, independently of the durable turn pump.
-	observersMu sync.Mutex
-	observers   map[uint64]*taskFeed
+	workspaceCalls sync.Map
+	observersMu    sync.Mutex
+	observers      map[uint64]*taskFeed
 
 	// leaving records how this connection ends, and it is the whole of version
 	// 2's three-roads-out. detached is [MethodDetach] — the surface is going and
@@ -2101,13 +2103,19 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	// in the room: a watcher is a person watching their own work, not a guest.
 	switch call.Method {
 	case MethodSubmitBash, MethodSubmitSetup, MethodSubmit, MethodFollowUp, MethodUnqueueFollowUp, MethodSteer, MethodQuestionReplace, MethodSubmitImage, MethodSubmitFiles,
-		MethodTaskSteer, MethodTaskStop, MethodTaskRetry:
+		MethodTaskSteer, MethodTaskStop, MethodTaskRetry, MethodTaskWorkspaceReview, MethodTaskWorkspaceApply:
 		if err := s.mayDrive(); err != nil {
 			return nil, err
 		}
 	}
 
 	switch call.Method {
+	case MethodTaskWorkspaceReview, MethodTaskWorkspaceApply, MethodTaskWorkspaceCancel:
+		args, err := arg[taskWorkspaceArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		return s.taskWorkspaceInvoke(call.Method, args)
 	case MethodTaskRetry:
 		args, err := arg[TaskSetupArgs](call)
 		if err != nil {
@@ -2978,6 +2986,18 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		}
 		page, found := door.PlanTaskPage(args.ID)
 		return json.Marshal(PlanTaskPageResult{Page: page, OK: found})
+
+	case MethodOpenPlanTaskWork:
+		args, err := arg[PlanTaskArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(session.PlanWorkOpener)
+		if !ok {
+			return json.Marshal(PlanTaskWorkResult{Work: session.PlanTaskWork{NoDoor: true}})
+		}
+		work, found := door.OpenPlanTaskWork(args.ID)
+		return json.Marshal(PlanTaskWorkResult{Work: work, OK: found})
 
 	case MethodPlanTaskWork:
 		args, err := arg[PlanTaskArgs](call)

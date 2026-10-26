@@ -72,7 +72,8 @@ func hostedProjectionBytes(d *decoder) ([]byte, error) {
 		return nil, err
 	}
 	if kind == "list_cell" {
-		value.(*cs.Cell).Frames = nil
+		cell := value.(*cs.Cell)
+		cell.Frames, cell.FrameHints = nil, nil
 	}
 	if kind == "view" {
 		value = value.(*cs.Result).View

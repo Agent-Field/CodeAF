@@ -41,6 +41,11 @@ type IdentityRec = clusterstate.IdentityRec
 type Caps = clusterstate.Caps
 type Device = clusterstate.Device
 type Lease = clusterstate.Lease
+type FrameHint = clusterstate.FrameHint
+
+const MaxFrameHints = clusterstate.MaxFrameHints
+const FrameHintBudget = clusterstate.FrameHintBudget
+
 type Cell = clusterstate.Cell
 type Listing = clusterstate.Listing
 type CellView = clusterstate.CellView
@@ -53,6 +58,7 @@ type Publish = clusterstate.Publish
 func withoutFrames(l Listing) Listing {
 	for id, c := range l.Cells {
 		c.Frames = nil
+		c.FrameHints = nil
 		l.Cells[id] = c
 	}
 	return l

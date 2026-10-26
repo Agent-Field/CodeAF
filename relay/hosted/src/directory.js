@@ -199,7 +199,7 @@ export class Directory {
         const rec = kind === 'cells' ? this.#lift(id, JSON.parse(doc)) : JSON.parse(doc);
         // The list is the home screen's hot read: frame plans are for takers, and they
         // read them off the cell answer, so the list never carries them.
-        if (kind === 'cells') delete rec.frames;
+        if (kind === 'cells') { delete rec.frames; delete rec.frame_hints; }
         out[kind][id] = rec;
       }
     }

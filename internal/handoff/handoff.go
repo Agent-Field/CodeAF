@@ -66,6 +66,9 @@ type Taker struct {
 	// After hooks run in order once the tree is on disk, for example
 	// vaultsync.Inject. Each may refuse the takeover.
 	After []func(ctx context.Context, c cell.Cell) error
+	// Preflight validates the authenticated staged tree before acquiring a lease
+	// or replacing local files. It runs again if the acquired head moved.
+	Preflight func(context.Context, cell.Cell) error
 }
 
 // Taken is a chat this device now drives.
@@ -177,6 +180,12 @@ func (t Taker) claim(ctx context.Context, c cell.Cell, head string, how director
 		}
 	}
 	if err != nil {
+		// Staged admission may have moved the engine's timeline binding even
+		// though local files stayed in place. A retry must inspect that original
+		// root rather than the staging folder we are about to remove.
+		if t.Preflight != nil && exists(c.Root) && exists(stage.Root) {
+			err = errors.Join(err, t.Local.Follow(ctx, stage, c))
+		}
 		return "", 0, nil, errors.Join(err, os.RemoveAll(stage.Root))
 	}
 	return head, fence, plan, nil
@@ -188,21 +197,26 @@ func (t Taker) claim(ctx context.Context, c cell.Cell, head string, how director
 // at from, so the fetch writes only the paths the new head changed; with
 // nothing at from it starts empty. A chat in the person's own folder is only
 // completed in the store: it is restored where it stands once the lease is
-// ours, so a staged restore would be a second whole-tree restore that is made
-// and thrown away. It answers the plan of the record the device actually
+// ours, except when Preflight needs the staged files to validate admission
+// before any local replacement. It answers the plan of the record the device actually
 // acquired: another device may have published while the fetch ran, and the
 // next publish replaces the record's plan wholesale, so seeding from the
 // record read before the claim would carry the stale one (contract §22.2).
 func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, from, head string, how directory.AcquireOpts) (string, uint64, []string, error) {
 	inPlace := t.InPlace != nil && t.InPlace(cell.Cell{ID: stage.ID, Root: from})
-	if !inPlace {
+	if !inPlace || t.Preflight != nil {
 		if err := freshDir(stage.Root); err != nil {
 			return "", 0, nil, fmt.Errorf("handoff: prepare %s: %w", stage.ID, err)
 		}
 		seedFrom(from, stage.Root)
 	}
-	if err := t.bring(ctx, stage, inPlace, head); err != nil {
+	if err := t.bring(ctx, stage, inPlace && t.Preflight == nil, head); err != nil {
 		return "", 0, nil, fmt.Errorf("handoff: fetch %s: %w", short(head), err)
+	}
+	if t.Preflight != nil {
+		if err := t.Preflight(ctx, stage); err != nil {
+			return "", 0, nil, err
+		}
 	}
 	got, err := t.Dir.Acquire(ctx, stage.ID, how)
 	if err != nil {
@@ -210,8 +224,13 @@ func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, from, head 
 	}
 	if got.Cell.Head != head {
 		head = got.Cell.Head
-		if err := t.bring(ctx, stage, inPlace, head); err != nil {
+		if err := t.bring(ctx, stage, inPlace && t.Preflight == nil, head); err != nil {
 			return "", 0, nil, t.giveBack(ctx, stage.ID, got.Cell.Lease.Fence, fmt.Errorf("handoff: fetch %s: %w", short(head), err))
+		}
+		if t.Preflight != nil {
+			if err := t.Preflight(ctx, stage); err != nil {
+				return "", 0, nil, t.giveBack(ctx, stage.ID, got.Cell.Lease.Fence, err)
+			}
 		}
 	}
 	return head, got.Cell.Lease.Fence, got.Cell.Frames, nil

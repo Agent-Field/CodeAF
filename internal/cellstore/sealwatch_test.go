@@ -168,3 +168,31 @@ func TestWithNoticesSendsTheGuardsLineToTheSurface(t *testing.T) {
 		t.Fatalf("guard notice went elsewhere: %q", said)
 	}
 }
+
+func TestWaitingArmsOnlyTheInitialIdleChat(t *testing.T) {
+	tails := make(chan struct{}, 2)
+	ends := 0
+	watch := &SealWatch{Quiet: 10 * time.Millisecond, OnTail: func() { tails <- struct{}{} }, OnTurnEnd: func() { ends++ }}
+	watch.Waiting()
+	if ends != 0 {
+		t.Fatal("initial waiting pretended a foreground turn ended")
+	}
+	watch.Wrote()
+	select {
+	case <-tails:
+	case <-time.After(time.Second):
+		t.Fatal("initial idle write was not sealed")
+	}
+	watch.TurnStarted()
+	watch.Waiting() // Startup notification cannot rearm a running foreground turn.
+	watch.Wrote()
+	select {
+	case <-tails:
+		t.Fatal("waiting rearmed an active turn")
+	case <-time.After(50 * time.Millisecond):
+	}
+	watch.TurnEnded()
+	if ends != 1 {
+		t.Fatal("actual turn end was lost")
+	}
+}

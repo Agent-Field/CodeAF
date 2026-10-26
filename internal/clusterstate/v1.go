@@ -383,19 +383,26 @@ func (p V1Request) route() (string, error) {
 
 // V1MutationEqual keeps route and actor binding while treating absent, null
 // and empty frame plans as the same instruction to clear the previous hint.
+// Invalid optional hints are omitted before canonical encoding so saving still succeeds.
 func V1MutationEqual(a, b Mutation) bool {
 	return reflect.DeepEqual(normalizeV1Mutation(a), normalizeV1Mutation(b))
 }
 
 func normalizeV1Mutation(m Mutation) Mutation {
-	if m.Create != nil && m.Create.Init.Frames != nil && len(m.Create.Init.Frames) == 0 {
+	if m.Create != nil && (m.Create.Init.FrameHints != nil || m.Create.Init.Frames != nil && len(m.Create.Init.Frames) == 0) {
 		v := *m.Create
-		v.Init.Frames = nil
+		if len(v.Init.Frames) == 0 {
+			v.Init.Frames = nil
+		}
+		v.Init.FrameHints = boundedFrameHints(v.Init.FrameHints)
 		m.Create = &v
 	}
-	if m.Publish != nil && m.Publish.Publish.Frames != nil && len(m.Publish.Publish.Frames) == 0 {
+	if m.Publish != nil && (m.Publish.Publish.FrameHints != nil || m.Publish.Publish.Frames != nil && len(m.Publish.Publish.Frames) == 0) {
 		v := *m.Publish
-		v.Publish.Frames = nil
+		if len(v.Publish.Frames) == 0 {
+			v.Publish.Frames = nil
+		}
+		v.Publish.FrameHints = boundedFrameHints(v.Publish.FrameHints)
 		m.Publish = &v
 	}
 	return m

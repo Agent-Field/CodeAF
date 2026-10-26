@@ -62,6 +62,7 @@ func PublishTo(c Cell, device string, p Publish, now int64) (Cell, error) {
 	// the list wholesale: an empty or absent list is a true statement ("the
 	// publisher did not say"), a stale one is not kept.
 	c.Frames = p.Frames
+	c.FrameHints = boundedFrameHints(p.FrameHints)
 	c.Lease.Pending, c.DurableAt = p.Pending, now
 	c.Lease.Expires = now + ttlMs
 	c.Title = keepIfEmpty(p.Title, c.Title)
@@ -87,8 +88,8 @@ func Created(in CellInit, device string, now int64) Cell {
 	return Cell{
 		V: 1, Head: in.Head, DurableAt: now, Class: in.Class, Size: in.Size,
 		ParentCell: in.ParentCell, Title: in.Title, Keys: in.Keys, OrphanTurns: in.OrphanTurns,
-		Frames: in.Frames,
-		Lease:  Lease{Device: device, Fence: 1, Expires: now + ttlMs},
+		Frames: in.Frames, FrameHints: boundedFrameHints(in.FrameHints),
+		Lease: Lease{Device: device, Fence: 1, Expires: now + ttlMs},
 	}
 }
 
@@ -140,4 +141,32 @@ func PlatformOf(p string) string {
 	default:
 		return "other"
 	}
+}
+
+// boundedFrameHints copies optional untrusted metadata. Invalid sets are omitted,
+// never a reason to accept a head without the authoritative object closure.
+func boundedFrameHints(in []FrameHint) []FrameHint {
+	if len(in) == 0 || len(in) > MaxFrameHints {
+		return nil
+	}
+	remaining := FrameHintBudget
+	out := make([]FrameHint, 0, len(in))
+	for _, h := range in {
+		if h.Bytes <= 0 || h.Bytes >= remaining || len(h.ID) != 64 {
+			return nil
+		}
+		for _, c := range h.ID {
+			if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+				return nil
+			}
+		}
+		for _, old := range out {
+			if old.ID == h.ID {
+				return nil
+			}
+		}
+		remaining -= h.Bytes + 1
+		out = append(out, h)
+	}
+	return out
 }

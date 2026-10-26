@@ -1,5 +1,58 @@
 # The worker harness
 
+## Private task workspaces and saved workspace identities
+
+This section applies only to chats opted into the experimental private-task
+switch, `CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP=1` with an absolute `CODEAF_HOME`,
+on Linux and macOS. A saved private-task policy travels with the chat and remains
+active there even after the switch is off. Windows is not supported.
+
+Ordinary chats keep their existing automatic task landing. New chats record the
+private-task policy only with this opt-in; an identity alone does not enable it.
+
+Foreground chat editing still uses the project you opened. Delegated tasks get
+private copies, and cooperating tasks share the execution's declared layout.
+A place mode you explicitly selected still applies. Naming a project does not
+grant permission to land changes there: review and apply the retained results
+explicitly. Concurrent changes in your own folder must be preserved.
+
+Saved runs carry a private workspace identity separate from their local path.
+Reopening a known identity uses its recorded local location. An unknown identity
+stops with an explanation rather than guessing a replacement folder.
+Standard temporary files stay outside the deliverable copy; foreground chat
+scratch has its own location too. Runs and chats on the same project share its
+cache, so each task does not create another copy of that cache.
+Your home and account configuration stay where they are. These locations are
+not a shell sandbox: commands can still use external paths and other caches.
+The experiment does not promise automatic removal of those files.
+
+## Experimental private task history and folder mapping on Take
+
+This section applies only to chats opted into the experimental private-task
+switch, `CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP=1` with an absolute `CODEAF_HOME`,
+on Linux and macOS. A saved private-task policy travels with the chat and remains
+active there even after the switch is off. Windows is not supported.
+
+A plain folder's private mirror needs its complete recorded Git history to
+reopen on another device. Before transfer, the prototype screens that entire
+portable history, including deleted historical files and metadata, using the
+same secret rules as ordinary capture. If it finds secret material or cannot
+complete screening, it refuses the new seal. Your local work and private archive
+remain available; it does not strip files or silently send an incomplete copy.
+A previous published snapshot can still be available, so a successful takeover
+of that older snapshot does not mean the refused work has transferred. Keep
+working locally and resolve the reported secret-screening refusal before trying
+to move the latest work. There is no bypass that sends the unscreened history.
+
+The older singleton task-copy route supports one resolved working root for
+takeover and chat forks. Several distinct roots on that route refuse before
+unbundling task work or detaching the fork's task history. Known authenticated
+aliases for the same recorded local root can resolve together. Structured
+`workspace_set` tasks use separate per-root receiving associations instead; see
+“Private tasks across several working roots” below. When continuing a remote
+conversation, choose a local folder for each missing source association in the
+folder picker. Mapping those folders grants no permission to apply results.
+
 ## What happens when I type /task
 
 On this shipped default road, `/task <brief>` starts a **run** rather than a
@@ -183,12 +236,14 @@ started.
 
 ## Can I still read a task from an earlier run?
 
-Yes. Every run this conversation has made stays on the rail, oldest first. You
-can open any task from an earlier run and read its description, notes, steps and
-spend. An ended run is there to read, not to steer: a note, pause, resume, cancel,
+Yes. Open Tasks to find earlier runs. The sidebar keeps active work and unresolved
+decisions; completed runs remain in activity history. You can open an earlier
+task to read its saved result and local worker transcript. Description, notes,
+steps and spend remain available when the run's plan database is present.
+An ended run is there to read, not to steer: a note, pause, resume, cancel,
 amend or priority on one of its tasks answers `that task's run has ended` and changes
 nothing. Only the run that is underway takes those. A run that has finished is ended
-from that moment, even while it is still the newest run on the rail and nothing has
+from that moment, even while it is still the newest run and nothing has
 started after it: steering one of its tasks answers the same sentence.
 
 ## Does a new task pick up a run that did not finish? A new /task starts fresh
@@ -1043,3 +1098,58 @@ conversation with nowhere to keep a plan, answers the older road — so a conver
 the run road cannot serve at all gets exactly the door it always had. A run road
 that was there and failed does NOT fall back: the task answers `task N did not
 start: <the reason>` and nothing is started on the older engine in its place.
+
+## Private tasks across several working roots
+
+This section applies only to chats opted into the experimental private-task
+switch, `CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP=1` with an absolute `CODEAF_HOME`,
+on Linux and macOS. A saved private-task policy travels with the chat and remains
+active there even after the switch is off. Windows is not supported.
+
+In a conversation using private-task policy, a `propose_task` request may
+declare a `workspace_set` of 1–64 roots: its primary slot and explicit source
+folders, slots and `read`/`write` uses. The harness makes private sibling copies
+and gives every delegated worker those routes and each root's scoped instructions. A model cannot
+authorize landing into the source folders. These routes are not an operating
+system sandbox; unrestricted commands can still reach other paths.
+Named shell writes can target every admitted writable copy; read-only copies and
+source folders remain protected. A refusal names the writable copies available.
+
+Restart requires every recorded execution root and its sibling layout. Missing,
+relocated or incompletely admitted roots block the whole execution. Failed
+preparation keeps its completed copies and ownership receipt; it does not retry
+the missing work automatically.
+
+## Experimental multi-root relay and retained copies
+
+This section applies only to chats opted into the experimental private-task
+switch, `CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP=1` with an absolute `CODEAF_HOME`,
+on Linux and macOS. A saved private-task policy travels with the chat and remains
+active there even after the switch is off. Windows is not supported.
+
+Relay requires compatible workspace-aware builds at both ends. Each source root needs
+its own explicitly admitted receiving association. Complete screened histories
+and edits are staged privately before execution can reopen; source landing
+permission does not travel. Independent branches keep settled changed outputs
+and original history, while inherited active tasks gain no runnable authority.
+Visible empty folders and ordinary folder permissions travel in versioned
+metadata. Unsafe or incomplete metadata and unsupported permissions refuse;
+older prototype V2 snapshots need a new capture before transfer.
+Folders must let their owner read, write and enter them. Special permission bits
+are unsupported; the prototype refuses them rather than changing permissions.
+
+Every receiving computer needs a build that understands private-task checkpoints;
+an older build can take the chat and drop its tasks. Seal cost grows with retained
+private roots because their complete histories are captured and screened again.
+
+This remains a prototype. Mixed older singleton copies and workspace sets refuse
+transfer, and active cross-device plan recovery is not established by restoring
+files alone. Workspace sets stay resident rather than being partially compacted.
+Ordinary profiles retain their existing task behavior.
+
+## Saving tasks and the checkpoint fence
+
+Workspace captures and checkpoint writes take a private conversation lock in
+every profile, including legacy profiles, so policy activation cannot bypass
+the checkpoint fence. This creates local control files during capture and
+checkpoint writes; it does not change legacy task placement or rewrite history.

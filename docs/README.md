@@ -19,6 +19,8 @@ notes and users' learned chat knowledge are separate; see [documentation ownersh
 
 Start with the [current architecture map](ARCHITECTURE.md). It identifies the
 chat and resident surfaces, entry points, implementation owners and storage roles.
+The [workspace storage and relay reference](architecture/workspaces-storage-relay.md)
+explains task folders, cooperating layouts, multi-root transfer, and result application.
 
 | Category | References |
 | --- | --- |

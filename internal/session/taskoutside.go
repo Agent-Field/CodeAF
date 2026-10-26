@@ -126,10 +126,10 @@ func (g taskGroundGuard) PreAction(_ context.Context, _ *episode, _ *eventHub, c
 			return call, toolResult{}, true
 		}
 		path, shown, ok := g.agent.mutatingPath(call)
-		if !ok || insideGround(ground, path) {
+		if !ok || g.agent.taskMayWrite(path) {
 			return call, toolResult{}, true
 		}
-		return call, toolResult{text: outsideGroundRefusal(shown, ground), isError: true}, false
+		return call, toolResult{text: g.agent.taskOutsideRefusal(shown), isError: true}, false
 	}
 	var parsed struct {
 		Command string `json:"command"`
@@ -158,8 +158,8 @@ func (g taskGroundGuard) PreAction(_ context.Context, _ *episode, _ *eventHub, c
 	if ground == "" {
 		return call, toolResult{}, true
 	}
-	if why := refusedOutsideGround(ground, parsed.Command); why != "" {
-		return call, toolResult{text: why, isError: true}, false
+	if aim := outsideScopeAim(ground, parsed.Command, g.agent.taskMayWrite); aim != "" {
+		return call, toolResult{text: g.agent.taskOutsideRefusal(aim), isError: true}, false
 	}
 	return call, toolResult{}, true
 }
@@ -463,14 +463,27 @@ const taskCredentialInstead = "Say in your report what needed it; anything that 
 // check that read the segments independently would have seen a `git checkout -b`
 // with no path in it at all.
 func refusedOutsideGround(ground, command string) string {
+	aim := outsideScopeAim(ground, command, func(path string) bool { return insideGround(ground, path) })
+	if aim == "" {
+		return ""
+	}
+	return outsideGroundRefusal(aim, ground)
+}
+
+func outsideScopeAim(ground, command string, allowed func(string) bool) string {
 	cwd := ground
 	for _, segment := range taskSegments(command) {
 		words, assignments := taskSegmentHead(stripRedirections(segment))
+		for index, word := range segment {
+			if index+1 < len(segment) && fileWriteRedirection(word, segment[index+1]) {
+				target := resolvePath(cwd, segment[index+1])
+				if !allowed(target) {
+					return "writing to " + target
+				}
+			}
+		}
 		if len(words) == 0 {
 			continue
-		}
-		if target := redirectTarget(cwd, segment); target != "" && !insideGround(ground, target) {
-			return outsideGroundRefusal("writing to "+target, ground)
 		}
 		program := filepath.Base(words[0])
 		rest := words[1:]
@@ -479,13 +492,13 @@ func refusedOutsideGround(ground, command string) string {
 			cwd = resolveCd(cwd, rest)
 		case program == "git":
 			dir, verb, after := gitAim(cwd, assignments, rest)
-			if verb == "" || insideGround(ground, dir) || gitOnlyReads(verb, after) {
+			if verb == "" || allowed(dir) || gitOnlyReads(verb, after) {
 				continue
 			}
-			return outsideGroundRefusal("git "+verb+" in "+dir, ground)
+			return "git " + verb + " in " + dir
 		default:
-			if aimed := writeAimedOutside(ground, cwd, program, rest); aimed != "" {
-				return outsideGroundRefusal(aimed, ground)
+			if aimed := writeAimedOutsideScope(cwd, program, rest, allowed); aimed != "" {
+				return aimed
 			}
 		}
 	}
@@ -678,10 +691,14 @@ var writesItsLastOperand = map[string]bool{
 // target from the diff it is fed and writes relative to the directory it is in,
 // so a patch run after a `cd` is aimed by the `cd` alone.
 func writeAimedOutside(ground, cwd, program string, rest []string) string {
+	return writeAimedOutsideScope(cwd, program, rest, func(path string) bool { return insideGround(ground, path) })
+}
+
+func writeAimedOutsideScope(cwd, program string, rest []string, allowed func(string) bool) string {
 	operands := commandOperands(rest)
 	switch {
 	case program == "patch":
-		if !insideGround(ground, cwd) {
+		if !allowed(cwd) {
 			return "patching in " + cwd
 		}
 	case program == "sed" || program == "perl":
@@ -697,7 +714,7 @@ func writeAimedOutside(ground, cwd, program string, rest []string) string {
 	}
 	for _, operand := range operands {
 		path := resolvePath(cwd, operand)
-		if !insideGround(ground, path) {
+		if !allowed(path) {
 			return path
 		}
 	}
@@ -739,7 +756,7 @@ func stripRedirections(segment []string) []string {
 	out := make([]string, 0, len(segment))
 	for index := 0; index < len(segment); index++ {
 		word := segment[index]
-		if word != "<" && !strings.HasPrefix(word, ">") {
+		if word != "<" && word != "<>" && !strings.HasPrefix(word, ">") {
 			out = append(out, word)
 			continue
 		}
@@ -997,17 +1014,11 @@ func taskSegments(command string) [][]string {
 				continue
 			}
 			word.WriteRune(letter)
-		case '>':
+		case '>', '<':
 			flushWord()
-			operator := ">"
-			for index+1 < len(runes) && (runes[index+1] == '>' || runes[index+1] == '&') {
-				index++
-				operator += string(runes[index])
-			}
+			operator, last := taskRedirectOperator(runes, index)
+			index = last
 			words = append(words, operator)
-		case '<':
-			flushWord()
-			words = append(words, "<")
 		default:
 			word.WriteRune(letter)
 		}
@@ -1050,4 +1061,31 @@ func environmentAssignment(word string) (string, string, bool) {
 		}
 	}
 	return word[:at], word[at+1:], true
+}
+
+// Numeric descriptor duplication/closure does not open a filesystem target.
+// A combined stream redirection also accepts a filename; a numeric target duplicates a descriptor.
+func fileWriteRedirection(operator, target string) bool {
+	switch operator {
+	case ">", ">>", ">|", "<>":
+		return true
+	case ">&":
+		return target != "-" && !isDigits(strings.TrimSuffix(target, "-"))
+	}
+	return false
+}
+
+func taskRedirectOperator(runes []rune, index int) (string, int) {
+	operator := string(runes[index])
+	if operator == "<" {
+		if index+1 < len(runes) && runes[index+1] == '>' {
+			return "<>", index + 1
+		}
+		return operator, index
+	}
+	for index+1 < len(runes) && strings.ContainsRune(">&|", runes[index+1]) {
+		index++
+		operator += string(runes[index])
+	}
+	return operator, index
 }

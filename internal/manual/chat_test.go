@@ -33,6 +33,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		question string
 		page     string
 	}{
+		{"why didn't my task's changes show up in my folder", "how-tasks-run"},
 		// R6/R7/R8/R15/R30 keep leadership, fallback and worker limits reachable.
 		{"can my phone lead", "coordination-and-workers"},
 		{"can my phone be the leader", "coordination-and-workers"},

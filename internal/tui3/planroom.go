@@ -474,9 +474,9 @@ func (a *app) planRoomWorkRead(now bool) tea.Cmd {
 		return nil
 	}
 	id, gen := plan.id, a.room.gen
+	opener, canOpen := a.agent.(session.PlanWorkOpener)
 	plan.working = true
-	return a.besideLine(func() func(bool) tea.Cmd {
-		work, found := door.PlanTaskWork(id)
+	apply := func(work session.PlanTaskWork, found bool) func(bool) tea.Cmd {
 		return func(bool) tea.Cmd {
 			if a.room == nil || a.room.gen != gen || a.room.plan == nil {
 				return nil
@@ -491,6 +491,19 @@ func (a *app) planRoomWorkRead(now bool) tea.Cmd {
 			a.roomTouched()
 			return nil
 		}
+	}
+	if now && canOpen {
+		// Restoring a working copy is a gesture: preserve its order relative to
+		// the person's next action. Only the unchanged background read may pass
+		// beside the ordered line.
+		return a.offLoop(func() func(bool) tea.Cmd {
+			work, found := opener.OpenPlanTaskWork(id)
+			return apply(work, found)
+		})
+	}
+	return a.besideLine(func() func(bool) tea.Cmd {
+		work, found := door.PlanTaskWork(id)
+		return apply(work, found)
 	})
 }
 
@@ -527,6 +540,9 @@ func (a *app) roomWorkRows(width int) []row {
 			return []row{dim(planWorkNoDoorWord)}
 		}
 		work := plan.work
+		if work.Error != "" {
+			return []row{dim(work.Error)}
+		}
 		if !work.Read {
 			return []row{dim(planWorkGoneWord)}
 		}
