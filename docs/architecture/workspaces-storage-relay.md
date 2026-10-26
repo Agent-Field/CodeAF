@@ -234,7 +234,7 @@ use. Deduplicated compressed chunks may serve several manifests without
 combining their ownership.
 
 The archive implementation is a separate native dependency:
-[Furrow v0.3.1](https://github.com/Agent-Field/furrow/releases/tag/v0.3.1).
+[Furrow v0.3.2](https://github.com/Agent-Field/furrow/releases/tag/v0.3.2).
 Its local archive database is not a relay wire format. Ordinary builds use the
 published release with six platform checksums recorded in the embedded pin;
 acceptance does not depend on an unpublished local native artifact. Windows
@@ -262,6 +262,8 @@ Do not retire the last readable copy while compatibility is uncertain. Installin
 an older executable is not a sufficient rollback for records it cannot read.
 Fast routine key rewrapping, if introduced separately, cannot replace full
 compromise recovery or revoke content exposed by an old key.
+
+SQLite backup capture stages verified database and journal bytes privately before opening them through SQLite. It does not SQLite-open original working roots, avoiding source WAL/shared-memory mutations. Writers must remain quiescent during capture; sequential file capture is not an atomic live-database snapshot.
 
 ## Validation and measurement limits
 
