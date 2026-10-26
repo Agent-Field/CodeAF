@@ -39,10 +39,18 @@ func TestRemovedHomeStopsTrafficUntilPairedAgain(t *testing.T) {
 	device.Store(h.a.Device.ID())
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	// The accelerated sleeper represents repeated heartbeat intervals.
+	// The accelerated sleeper represents repeated heartbeat intervals. Until
+	// the removal is known it keeps an ordinary pace, so heartbeats do not
+	// queue up commits ahead of the member's first catch-up; afterwards it
+	// runs fast, so the observation below spans many heartbeat intervals.
+	var fast atomic.Bool
 	options := DriveOptions{Sleep: func(ctx context.Context, _ time.Duration) error {
+		wait := 250 * time.Millisecond
+		if fast.Load() {
+			wait = 10 * time.Millisecond
+		}
 		select {
-		case <-time.After(10 * time.Millisecond):
+		case <-time.After(wait):
 			return nil
 		case <-ctx.Done():
 			return ctx.Err()
@@ -86,9 +94,11 @@ func TestRemovedHomeStopsTrafficUntilPairedAgain(t *testing.T) {
 	if _, err := h.a.Dir.List(ctx); !errors.Is(err, directory.ErrRevoked) {
 		t.Fatalf("removal was not learned: %v", err)
 	}
-	// Let requests already in flight finish, then sample many accelerated
-	// poll, state and heartbeat intervals while the window remains open.
-	time.Sleep(30 * time.Millisecond)
+	// Let requests already in flight finish and the heartbeat reach its fast
+	// pace, then sample many accelerated poll, state and heartbeat intervals
+	// while the window remains open.
+	fast.Store(true)
+	time.Sleep(300 * time.Millisecond)
 	before := requests.Load()
 	time.Sleep(250 * time.Millisecond)
 	if extra := requests.Load() - before; extra != 0 {
