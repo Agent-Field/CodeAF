@@ -97,6 +97,11 @@ roots cannot be applied. Conflicts preserve both versions. Successful applicatio
 records its outcome and prevents a duplicate apply. The original private copy
 and its URI remain available after restart.
 
+Explicit reviewed Apply can update the chosen branch, including `main`.
+Automatic task landing retains its protected-branch refusal. Both paths retain
+checkout-movement checks; reviewed Apply also retains its ref/index transaction
+and affected-path conflict checks.
+
 Reviewed staging and its receipt are local profile assets, separate from the
 portable conversation. A replacement review retires only its verified previous
 staging after the new receipt is durable. Invalid ownership, destination,
