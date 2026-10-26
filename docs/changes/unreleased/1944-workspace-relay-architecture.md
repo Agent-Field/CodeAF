@@ -11,6 +11,8 @@ exact cooperating work. Carry multiple working roots with stable identities,
 versioned directory metadata, restart receipts and independent fork history.
 Ask for receiver-local folders before acquiring the source lease; cancellation
 and invalid mappings preserve the existing holder and allow a valid retry.
+Typed folder targets survive asynchronous listings; confirmation waits for the
+listing instead of choosing an unloaded parent or the first sibling.
 
 Review and apply each writable root explicitly through the terminal. Application
 uses the exact reviewed snapshot and retains the original private copy; edits

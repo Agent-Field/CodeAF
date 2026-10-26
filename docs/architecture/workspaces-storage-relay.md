@@ -265,6 +265,8 @@ compromise recovery or revoke content exposed by an old key.
 
 SQLite backup capture stages verified database and journal bytes privately before opening them through SQLite. It does not SQLite-open original working roots, avoiding source WAL/shared-memory mutations. Writers must remain quiescent during capture; sequential file capture is not an atomic live-database snapshot.
 
+The receiver folder picker keeps the typed destination through asynchronous directory reads. An unfinished listing cannot authorize the parent as an empty folder. The current directory's answer reselects the typed leaf; unrelated results preserve navigation and stale picker generations are rejected. Completed empty directories remain valid choices. Listing work stays outside the UI event loop.
+
 ## Validation and measurement limits
 
 Separate experiments measured **43.34% lower allocated use** inside an isolated
