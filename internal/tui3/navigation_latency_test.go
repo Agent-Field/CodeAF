@@ -96,9 +96,9 @@ func TestHomeReadsInTheBackgroundAndDropsAnEarlierVisitsAnswer(t *testing.T) {
 	}
 }
 
-// A cancelling pointer press belongs to the preview the person saw, never the
-// old Home hit map that happens to remain underneath it.
-func TestCancellingTheOpeningPreviewDoesNotClickThroughToAnotherPage(t *testing.T) {
+// The opening preview uses the real header, so its visible navigation acts
+// on the first press while preserving the cancelled first message.
+func TestOpeningPreviewNavigationUsesItsVisibleHeader(t *testing.T) {
 	a := openingLab(t)
 	a.width, a.height = 180, 42
 	release := make(chan struct{})
@@ -112,7 +112,7 @@ func TestCancellingTheOpeningPreviewDoesNotClickThroughToAnotherPage(t *testing.
 		t.Fatal("the preview has no settings navigation target")
 	}
 	a.Update(tea.MouseClickMsg{X: x, Y: 0, Button: tea.MouseLeft})
-	if a.conversationOpening || !a.at(pageHome) || a.home.box.String() != "A pending first message" {
-		t.Fatal("the cancelling press activated the underlying page or lost its draft")
+	if a.conversationOpening || !a.at(pageSettings) || a.openingHomeDraft.box.String() != "A pending first message" {
+		t.Fatal("the visible navigation did not open settings or lost its draft")
 	}
 }

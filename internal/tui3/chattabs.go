@@ -1362,7 +1362,9 @@ func (a *app) tabHoverAt(x, y int) (hoverAt, bool) {
 // through to whatever the next rung would have made of it.
 func (a *app) tabPress(x, y int) (tea.Cmd, bool) {
 	width, _ := a.size()
-	if y < 0 || y >= a.tabsHeight(width) {
+	// A pending opening can draw the strip above Home. Its recorded targets
+	// still answer the navigation click that just cancelled that opening.
+	if y < 0 || (y >= a.tabsHeight(width) && (y != tabStripRow || len(a.chatTabHits) == 0)) {
 		return nil, false
 	}
 	if y != tabStripRow {

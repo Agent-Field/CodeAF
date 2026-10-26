@@ -9,6 +9,7 @@ import (
 )
 
 const conversationOpeningWord = "opening conversation… · esc cancels"
+const conversationOpeningState = "opening chat"
 
 // A first message gets its own screen before the engine has opened its journal.
 // The old conversation and both composers remain intact until opening succeeds.
@@ -30,7 +31,8 @@ func (a *app) previewConversation(text string) tea.Cmd {
 		chords: a.chords, linear: a.linear, clock: a.clock,
 		welcome: welcome{spent: true}, stick: true, sel: -1, echoAt: -1,
 		state: stateWorking, turnBegan: a.now(), railAway: a.railAway,
-		feed: feed{live: -1, think: -1, entries: []entry{{kind: entryUser, text: text, pending: true}}},
+		conversationOpening: true,
+		feed:                feed{live: -1, think: -1, entries: []entry{{kind: entryUser, text: text, pending: true}}},
 	}
 	a.conversationPreview = &conversationPreview{view: view}
 	a.touch()
@@ -41,7 +43,10 @@ func (a *app) conversationPreviewFrame(width, height int) (string, int, int) {
 	view := a.conversationPreview.view
 	view.width, view.height, view.paints = width, height, a.paints
 	rows, x, y := view.chatFrameLines(width, height)
-	a.tabRow = view.tabRow
+	// Navigation belongs to the real window, including its existing tabs and
+	// the hit targets that will answer a click while opening is pending.
+	head := a.headRows(width, a.tabsRow(width), a.pal)
+	copy(rows, head)
 	a.caret = true
 	return strings.Join(rows, "\n"), x, y
 }
