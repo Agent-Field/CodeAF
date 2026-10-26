@@ -33,10 +33,7 @@ const TaskWorkspaceUnavailable = "review and apply are for private task copies; 
 // ReviewTaskWorkspaceRoot reads actual committed and uncommitted changes. This
 // person-facing door is intentionally absent from model tools.
 func (a *Agent) ReviewTaskWorkspaceRoot(ctx context.Context, id uint64, slot string) (TaskWorkspaceReview, error) {
-	if !WorkspaceOwnershipEnabled(a.config.Place) {
-		return TaskWorkspaceReview{}, errors.New(TaskWorkspaceUnavailable)
-	}
-	if err := taskWorkspaceOperationEnvironment(ctx); err != nil {
+	if err := a.taskWorkspaceDoor(ctx); err != nil {
 		return TaskWorkspaceReview{}, err
 	}
 	a.lockBeltStart()
@@ -196,13 +193,31 @@ func reviewTaskWorkspaceRoot(ctx context.Context, use WorkspaceRootUse, tree tas
 	return review, nil
 }
 
+// taskWorkspaceDoor admits Review and Apply only in a chat that has private task
+// copies, and only where the person's environment lets the operation run safely.
+func (a *Agent) taskWorkspaceDoor(ctx context.Context) error {
+	if !WorkspaceOwnershipEnabled(a.config.Place) {
+		return errors.New(TaskWorkspaceUnavailable)
+	}
+	return taskWorkspaceOperationEnvironment(ctx)
+}
+
+// taskWorkspaceApplicable refuses a root whose Apply would write nothing new: a
+// read root, or one already applied with no newer review waiting.
+func taskWorkspaceApplicable(id uint64, use WorkspaceRootUse) error {
+	if use.Access != WorkspaceWrite {
+		return errors.New("a read root cannot be applied")
+	}
+	if (use.Outcome == mergeMerged || use.Outcome == mergeInPlace) && !taskWorkspaceReviewPending(id, use) {
+		return errors.New("this root was already applied; no work was repeated")
+	}
+	return nil
+}
+
 // ApplyTaskWorkspaceRoot grants permission only for this selected operation.
 // It never records Landing, starts a worker, or broadens another root's access.
 func (a *Agent) ApplyTaskWorkspaceRoot(ctx context.Context, id uint64, slot string) (string, error) {
-	if !WorkspaceOwnershipEnabled(a.config.Place) {
-		return "", errors.New(TaskWorkspaceUnavailable)
-	}
-	if err := taskWorkspaceOperationEnvironment(ctx); err != nil {
+	if err := a.taskWorkspaceDoor(ctx); err != nil {
 		return "", err
 	}
 	epoch, err := a.beltAdmissionEpoch()
@@ -215,11 +230,8 @@ func (a *Agent) ApplyTaskWorkspaceRoot(ctx context.Context, id uint64, slot stri
 	if err != nil {
 		return "", err
 	}
-	if use.Access != WorkspaceWrite {
-		return "", errors.New("a read root cannot be applied")
-	}
-	if (use.Outcome == mergeMerged || use.Outcome == mergeInPlace) && !taskWorkspaceReviewPending(id, use) {
-		return "", errors.New("this root was already applied; no work was repeated")
+	if err := taskWorkspaceApplicable(id, use); err != nil {
+		return "", err
 	}
 	if err := a.taskWorkspaceApplyIdle(g, kept, tree); err != nil {
 		return "", err

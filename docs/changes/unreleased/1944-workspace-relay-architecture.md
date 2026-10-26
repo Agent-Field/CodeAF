@@ -1,6 +1,6 @@
 ---
 kind: added
-title: Private task copies and multi-root workspaces behind an experiment switch, and a removed computer keeps working on its own chats
+title: Private task copies behind an experiment switch, and removed computers keep working locally
 pr: 1944
 surface: [chat, engine, remote, docs]
 invalidates:
