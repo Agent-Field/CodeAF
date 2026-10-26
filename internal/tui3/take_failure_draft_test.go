@@ -3,6 +3,7 @@ package tui3
 import (
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -41,6 +42,12 @@ func TestEveryFailedTakeReturnsTheCapturedComposer(t *testing.T) {
 			}
 			if len(old.sent) != 0 {
 				t.Errorf("failure sent words: %v", old.sent)
+			}
+			if failure.err == directory.ErrUnreachable {
+				notes := strings.Join(noteTexts(a), "\n")
+				if !strings.Contains(notes, "could not continue this chat here") || !strings.Contains(notes, "your words are still in the box") {
+					t.Errorf("an unreachable move did not say the chat stayed and the words were kept: %q", notes)
+				}
 			}
 			if a.at(pageHome) {
 				a.closeHome()

@@ -1,38 +1,42 @@
 ---
 kind: added
-title: owned task layouts and explicit multi-root relay mapping
+title: Private task copies and multi-root workspaces behind an experiment switch, and a removed computer keeps working on its own chats
 pr: 1944
 surface: [chat, engine, remote, docs]
-invalidates: []
+invalidates:
+  - "A delegated task could only work in, and land into, the project the chat opened. With CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP=1 and an absolute CODEAF_HOME on Linux or macOS, a new chat's tasks work in private copies, may span several admitted folders, and come home only through /task review and /task apply. Without the switch, and always on Windows, tasks land exactly as before."
+  - "/task had no review or apply step. /task review <number> <root> and /task apply <number> <root> now exist; in a chat without private task copies they say so in one sentence and change nothing."
+  - "The Raft relay refused a publish whose signed body carried frame_hints. It now carries them as bounded, optional metadata; no shipped client sends them yet."
+  - "Since #1967 a window that learned its computer had been removed refused every send, even in a new chat. A removed computer now keeps working on chats it held or never shared; only a chat another computer took stays read-only there."
+  - "A move that failed because the other machines could not be reached said only other machines unreachable. It now says the chat could not be continued here and that the words are still in the box."
 ---
 
-Give supported delegated tasks private layouts and reuse the admitted layout for
-exact cooperating work. Carry multiple working roots with stable identities,
-versioned directory metadata, restart receipts and independent fork history.
-Ask for receiver-local folders before acquiring the source lease; cancellation
-and invalid mappings preserve the existing holder and allow a valid retry.
-Typed folder targets survive asynchronous listings; confirmation waits for the
-listing instead of choosing an unloaded parent or the first sibling.
+Private task copies, multi-root workspaces and explicit Review/Apply exist behind
+`CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP=1` with an absolute `CODEAF_HOME` on Linux and
+macOS. Without the switch, a new chat persists no workspace policy, its tasks land
+as before, and its task checkpoint and carrier keep the formats older builds read.
+A saved private-task policy travels with its chat and needs no switch on a
+compatible receiving computer. Windows has no private-task Apply, so it never
+enables ownership, even for a saved policy.
 
-Review and apply each writable root explicitly through the terminal. Application
-uses the exact reviewed snapshot and retains the original private copy; edits
-after review do not land. Conflicts preserve both versions. Completed plan workers
-reopen their owned transcripts after restart or relay; local index rebuilding
-recovers their recorded model without retaining another computer's file paths.
+The experiment's limits:
+- every computer a private-task chat moves to needs a build that understands its
+  checkpoint and carrier, because an older build can take it and drop its tasks;
+- seal cost grows with retained private roots, because complete histories are
+  captured and screened again;
+- workspace sets keep their private copies, so there is no automatic storage
+  reclamation yet;
+- for Git projects, the profile and the destination's Git index must be on the
+  same disk; Apply refuses before writing anything otherwise.
 
-Local archive recovery requires the separately reviewed native dependency.
-Uncertain writers and multi-root reclamation remain excluded. Existing
-conversations require compatibility safeguards; this change does not silently
-rewrite legacy task histories or promise long-term storage savings.
+Apply uses the exact reviewed snapshot, preserves conflicts and unrelated staged or
+dirty work, and keeps the private copy.
 
-Document the agent contract for declaring tool roots, checking admitted worker
-routes, mapping received roots, reviewing results and cleaning owned fixtures.
-Current acceptance evidence is maintained in the pull request rather than as a
-pending status in the architecture reference.
+For every chat, task cards recover their worker transcript and recorded model after
+a restart or a move. Typed folder targets survive asynchronous listings, and a
+failed move keeps the typed words and never sends them.
 
-Optional warm-transfer frame hints now travel through the shared Raft rules.
-Invalid hints are omitted without blocking a saved head; Home listings omit them.
-The prototype remains off by default, and every cluster member must understand
-these fields before a device sends them. Receiving multiple task roots preserves
-the captured draft and pending send through folder selection, records the acquired
-send fence, and keeps cancellation and failed moves from sending on an older copy.
+Warm-transfer frame hints ride the Raft relay and stay off by default:
+- an invalid set is dropped rather than refusing the publish;
+- Home listings omit them;
+- every cluster member must understand them before a device sends them.

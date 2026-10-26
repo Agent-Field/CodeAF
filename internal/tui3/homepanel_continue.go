@@ -89,9 +89,12 @@ const (
 	lostRaceWord  = chatlist.LostRace
 	continuing    = "continuing here…"
 	continueFails = "could not continue this chat here"
-	branchAsk     = "What should happen to these turns?"
-	branchLeave   = "leave them"
-	branchFails   = "could not change those turns"
+	// continueUnreachable names what did not happen, not only why, because
+	// the box still holds words the person meant to send in the moved chat.
+	continueUnreachable = continueFails + " because other machines are unreachable; your words are still in the box"
+	branchAsk           = "What should happen to these turns?"
+	branchLeave         = "leave them"
+	branchFails         = "could not change those turns"
 )
 
 // homeContinueKind and homeBranchKind are the lanes the two questions travel
