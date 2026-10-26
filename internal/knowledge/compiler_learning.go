@@ -247,31 +247,44 @@ func consolidateInitialSubjects(subjects []document, model compilerModel) ([]doc
 	if len(overrides) > 0 || len(object(topics["concepts"])) > 0 {
 		return subjects, nil
 	}
-	catalog := []document{}
+	byScope := map[string][]document{}
 	for _, subject := range subjects {
 		entry := choose(subject, "id", "title", "scope", "purpose", "folder")
 		entry["claim_count"] = len(stringsValue(subject["claims"]))
-		catalog = append(catalog, entry)
+		scope := textValue(subject["scope"])
+		byScope[scope] = append(byScope[scope], entry)
 	}
-	response, err := model.call("consolidate_subjects", document{"consolidation_catalog": catalog})
-	if err != nil {
-		return nil, err
+	scopes := []string{}
+	for scope := range byScope {
+		scopes = append(scopes, scope)
 	}
+	sort.Strings(scopes)
 	byID := index(subjects)
 	result := []document{}
-	for _, group := range items(response["groups"]) {
-		title, scope := strings.TrimSpace(textValue(group["title"])), textValue(group["scope"])
-		notes, claims, aliases := []string{}, []string{}, []string{}
-		for _, id := range stringsValue(group["members"]) {
-			member := byID[id]
-			notes = append(notes, stringsValue(member["notes"])...)
-			claims = append(claims, stringsValue(member["claims"])...)
-			aliases = append(aliases, stringsValue(member["aliases"])...)
-			if textValue(member["title"]) != title {
-				aliases = append(aliases, textValue(member["title"]))
-			}
+	for _, scope := range scopes {
+		catalog := byScope[scope]
+		if len(catalog) == 1 {
+			result = append(result, byID[textValue(catalog[0]["id"])])
+			continue
 		}
-		result = append(result, document{"id": identity([]any{"subject", strings.ToLower(scope), strings.ToLower(title)}), "title": title, "scope": scope, "purpose": group["purpose"], "folder": stringsValue(group["folder"]), "notes": sortedUnique(notes), "claims": sortedUnique(claims), "aliases": sortedUnique(aliases), "state": "pending_synthesis", "sections": []document{}, "questions": []document{}, "conflicts": []document{}})
+		response, err := model.call("consolidate_subjects", document{"consolidation_catalog": catalog})
+		if err != nil {
+			return nil, err
+		}
+		for _, group := range items(response["groups"]) {
+			title, scope := strings.TrimSpace(textValue(group["title"])), textValue(group["scope"])
+			notes, claims, aliases := []string{}, []string{}, []string{}
+			for _, id := range stringsValue(group["members"]) {
+				member := byID[id]
+				notes = append(notes, stringsValue(member["notes"])...)
+				claims = append(claims, stringsValue(member["claims"])...)
+				aliases = append(aliases, stringsValue(member["aliases"])...)
+				if textValue(member["title"]) != title {
+					aliases = append(aliases, textValue(member["title"]))
+				}
+			}
+			result = append(result, document{"id": identity([]any{"subject", strings.ToLower(scope), strings.ToLower(title)}), "title": title, "scope": scope, "purpose": group["purpose"], "folder": stringsValue(group["folder"]), "notes": sortedUnique(notes), "claims": sortedUnique(claims), "aliases": sortedUnique(aliases), "state": "pending_synthesis", "sections": []document{}, "questions": []document{}, "conflicts": []document{}})
+		}
 	}
 	return result, nil
 }

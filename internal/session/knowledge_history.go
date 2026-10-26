@@ -417,11 +417,14 @@ func (h knowledgeHistory) Read(ctx context.Context, journal knowledge.Journal, c
 			if entry.Note || strings.TrimSpace(entry.Content) == "" || (entry.Role != "user" && entry.Role != "assistant") {
 				continue
 			}
+			if entryRows(textMessage(entry.Role, entry.Content)) == 0 {
+				continue
+			}
 			if entry.Role == "assistant" {
 				if len(entry.ToolCalls) > 0 || (mark != nil && mark.Audience != "human" && (!task || entry.Presentation == nil || mark.Interrupted || mark.RoutineCompletion || mark.Attention)) {
 					continue
 				}
-			} else if task && (mark == nil || (mark.Audience != "human" && mark.Audience != "person")) {
+			} else if (task && mark == nil) || (mark != nil && mark.Audience != "human" && mark.Audience != "person") {
 				// Task prompts contain copied context and instructions from the parent,
 				// so only explicitly person-authored input is admitted as a user fact.
 				continue

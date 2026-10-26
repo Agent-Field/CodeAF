@@ -114,7 +114,7 @@ func TestKnowledgeConsolidatesWholeInitialTreeBeforeWriting(t *testing.T) {
 }
 
 func TestKnowledgeRejectsIncompleteOrUnsafeConsolidationBeforeWriting(t *testing.T) {
-	for _, mistake := range []string{"missing draft", "repeated draft", "unknown draft", "mixed scopes"} {
+	for _, mistake := range []string{"missing draft", "repeated draft", "unknown draft", "mixed scopes", "duplicate title"} {
 		t.Run(mistake, func(t *testing.T) {
 			v := knowledge.Open(t.TempDir())
 			if err := v.StartBuild(); err != nil {
@@ -128,7 +128,7 @@ func TestKnowledgeRejectsIncompleteOrUnsafeConsolidationBeforeWriting(t *testing
 					for _, raw := range messages {
 						s := raw.(map[string]any)
 						scope := strings.Fields(s["text"].(string))[0]
-						claims = append(claims, map[string]any{"local_id": s["id"], "text": s["text"], "scope": scope, "topic": "Operations", "kind": "fact", "evidence": []any{map[string]any{"source": s["id"], "quote": s["text"]}}})
+						claims = append(claims, map[string]any{"local_id": s["id"], "text": s["text"], "scope": "Cedar", "topic": scope, "kind": "fact", "evidence": []any{map[string]any{"source": s["id"], "quote": s["text"]}}})
 					}
 					return map[string]any{"claims": claims}
 				}
@@ -136,7 +136,7 @@ func TestKnowledgeRejectsIncompleteOrUnsafeConsolidationBeforeWriting(t *testing
 					subjects := []any{}
 					for _, raw := range catalog {
 						n := raw.(map[string]any)
-						subjects = append(subjects, map[string]any{"title": n["scope"].(string) + " operations", "scope": n["scope"], "notes": []any{n["id"]}})
+						subjects = append(subjects, map[string]any{"title": n["title"].(string) + " guide", "scope": n["scope"], "notes": []any{n["id"]}})
 					}
 					return map[string]any{"subjects": subjects}
 				}
@@ -162,13 +162,14 @@ func TestKnowledgeRejectsIncompleteOrUnsafeConsolidationBeforeWriting(t *testing
 					case "unknown draft":
 						first["members"] = []any{"uninspected-draft"}
 					case "mixed scopes":
-						first["members"] = []any{catalog[0].(map[string]any)["id"], catalog[1].(map[string]any)["id"]}
-						groups = groups[:1]
+						first["scope"] = "Other"
+					case "duplicate title":
+						groups[1].(map[string]any)["title"] = first["title"]
 					}
 				}
 				return map[string]any{"groups": groups}
 			})
-			captureRefinementRound(t, v, "baseline", []string{"Cedar", "Maple"})
+			captureRefinementRound(t, v, "baseline", []string{"Cedar-queues", "Cedar-retries"})
 			if err := v.Flush(context.Background(), "fixture", true); err == nil {
 				t.Fatal("unsafe consolidation was accepted")
 			}
@@ -181,7 +182,7 @@ func TestKnowledgeRejectsIncompleteOrUnsafeConsolidationBeforeWriting(t *testing
 				t.Fatalf("safe retry lost retained source progress: %v", err)
 			}
 			if writes.Load() != 2 {
-				t.Fatalf("retry did not write both protected scopes: %d", writes.Load())
+				t.Fatalf("retry did not write both protected drafts: %d", writes.Load())
 			}
 		})
 	}

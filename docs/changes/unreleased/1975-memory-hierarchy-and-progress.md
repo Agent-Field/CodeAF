@@ -16,7 +16,8 @@ are measured items rather than elapsed-time or overall-completion estimates.
 
 The first build drains a fixed admitted history boundary before organization.
 Catalog-aware routing reuses existing page identities. The initial concept tree
-receives a whole-collection review before independent guides are written.
+receives a complete review within each source scope before independent guides are
+written. Separate collections cannot be merged by that planning call.
 Short titles and two-level folders follow the actual subjects rather than fixed
 project categories. Topic maps stay with their pages.
 

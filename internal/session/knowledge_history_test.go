@@ -455,3 +455,20 @@ func TestKnowledgeSealedHistoryPublishesBeforeDamagedLaterRecords(t *testing.T) 
 		t.Fatalf("damaged later record prevented earlier knowledge: %+v %v", hits, err)
 	}
 }
+
+func TestKnowledgeHistoryExcludesReservedContinuationContext(t *testing.T) {
+	root := t.TempDir()
+	writeKnowledgeChat(t, root, "project", "chat", knowledgeMessage("[carry on] Please continue my work."), knowledgeMessage(checkpointCarryOnLead+"Internal checkpoint detail."), knowledgeMessage(legacyCheckpointCarryOnLead+"Older internal detail."), knowledgeMessage(volatileNoteOpening+"Transient control context"), map[string]any{"type": "message", "role": "assistant", "content": NoChangeReply}, map[string]any{"type": "message", "role": "user", "content": "Internal control", "presentation": map[string]any{"audience": "operational"}}, knowledgeMessage("Cedar uses bounded queues."))
+	h := KnowledgeHistory(root)
+	js, err := h.Inventory(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := h.Read(context.Background(), js[0], knowledge.JournalCursor{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b.Sources) != 2 || b.Sources[0].Text != "[carry on] Please continue my work." || b.Sources[1].Text != "Cedar uses bounded queues." {
+		t.Fatalf("internal controls entered knowledge or person text was dropped: %+v", b.Sources)
+	}
+}

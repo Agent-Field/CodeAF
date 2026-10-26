@@ -74,7 +74,7 @@ Extraction admits at most 64 spans and 24,000 source characters per call. A
 journal read handles at most 256 records or 64 eligible sources, with a 16 MiB
 record bound. Discovery plans at most 32 evidence notes per request. All planning completes
 before initial prose synthesis. Draft plans preserve evidence-note coverage; a
-whole-tree review then consolidates new concepts without changing previously
+review of each complete collection tree then consolidates new concepts without changing previously
 published identities or protected human pages. Existing concepts are inspected
 in windows of at most 128 before new pages are proposed, with exact IDs retained
 for reuse. Concise concept headings and two-level folders come from the evidence,
