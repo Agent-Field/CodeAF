@@ -62,10 +62,13 @@ type Watchable interface {
 type Feed struct {
 	cur atomic.Pointer[Status]
 
-	mu     sync.Mutex
-	cap    int
-	subs   map[*Sub]struct{}
-	closed chan struct{}
+	mu        sync.Mutex
+	cap       int
+	subs      map[*Sub]struct{}
+	closed    chan struct{}
+	renewMu   sync.Mutex
+	renewAt   int64
+	renewPage []holdSample
 
 	// clock is the directory's own clock, so a sign of life and a lease expiry
 	// are read on one timeline (a test's fake clock moves both).
@@ -176,8 +179,10 @@ func (f *Feed) SubscribeCommitted(device string, holds []Hold, beat time.Duratio
 	if err != nil {
 		return nil, err
 	}
+	f.mu.Lock()
 	s.committed = true
 	s.renew = renew
+	f.mu.Unlock()
 	if err = s.PingCommitted(); err != nil {
 		s.leave()
 		return nil, err
@@ -312,20 +317,16 @@ func (s *Sub) Ping() { _ = s.PingCommitted() }
 // PingCommitted withholds a pong when a consensus renewal cannot commit.
 func (s *Sub) PingCommitted() error {
 	at := s.f.clock().UnixMilli()
-	if s.evidence != nil || s.renew != nil {
+	if s.renew != nil {
+		if err := s.f.renewCommitted(s, at); err != nil {
+			return err
+		}
+	} else if s.evidence != nil {
 		holds := make([]Hold, len(s.keys))
 		for i, k := range s.keys {
 			holds[i] = Hold{Cell: k.cell, Fence: k.fence}
 		}
-		if s.renew != nil {
-			receipts, err := s.renew(s.device, holds, at)
-			if err != nil {
-				return err
-			}
-			s.receiptMu.Lock()
-			s.receipts = receipts
-			s.receiptMu.Unlock()
-		} else if err := s.evidence(s.device, holds, at); err != nil {
+		if err := s.evidence(s.device, holds, at); err != nil {
 			return err
 		}
 	}

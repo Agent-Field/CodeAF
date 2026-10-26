@@ -70,7 +70,7 @@ With its three anchors voting, or with a joined computer leading, a hosted group
 
 A compatibility events viewer pings every 10 seconds. The platform answers without running coordination. While somebody watches presence, the relay checks at the next 25-second silence deadline so a stopped computer appears offline within 30 seconds. With two viewers pinging together, the simulated ten-minute measurement uses 29 short sweeps; those sweeps make no member calls or data writes. With no events viewer, no presence sweep recurs. Home follows the local learner once joined, so its ordinary display needs no remote presence viewer.
 
-A connection naming held chats still renews through committed changes every 30 seconds while fresh hold evidence is available. Presence alone never renews a chat.
+Connections naming held chats share a renewal cycle every 30 seconds on both relays while fresh hold evidence is available. Each cycle uses bounded batches; the 10-second presence pings between cycles do not commit another renewal. Presence alone never renews a chat.
 
 ## Hosted relay memory capacity and retry
 
