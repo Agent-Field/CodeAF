@@ -923,6 +923,11 @@ func (a *app) tookFolderKids(msg folderKidsMsg) tea.Cmd {
 	if !a.folder.took(msg.path, msg.read) {
 		return nil
 	}
+	// A typed leaf can arrive after the parent listing was requested. Walking
+	// clears the filter, so explicit navigation keeps its own cursor.
+	if a.folder.browsing && msg.path == a.folder.cols.dir {
+		a.folder.browseSync(a.resolvePath)
+	}
 	a.touch()
 	// A LEVEL ARRIVING CAN MAKE THE NEXT ONE WORTH ASKING FOR — the parent of
 	// the level that just landed is not known until the level is, and neither is

@@ -943,3 +943,38 @@ func TestFolderPickerOwnsPastedPathsWithoutChangingTheDraft(t *testing.T) {
 		})
 	}
 }
+
+func TestFolderPickerWaitsForTheTypedDirectoryBeforeConfirming(t *testing.T) {
+	for _, immediate := range []bool{false, true} {
+		t.Run(map[bool]string{false: "listing-arrives", true: "enter-before-listing"}[immediate], func(t *testing.T) {
+			parent := t.TempDir()
+			for _, name := range []string{"app", "library"} {
+				if err := os.Mkdir(filepath.Join(parent, name), 0755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			target := filepath.Join(parent, "library")
+			var anchored string
+			a := newApp(t.Context(), Options{Agent: &fakeAgent{model: "m"}, Workspace: t.TempDir(), ProfileDir: t.TempDir(), UsageLedger: labLedger(), Env: envOf(map[string]string{"TERM": "xterm-256color"}), AnchorWorkspace: func(path string) (string, error) { anchored = path; return path, nil }})
+			drive(t, a, tea.WindowSizeMsg{Width: 200, Height: 46}, tea.PasteMsg{Content: "/workspace"}, key("enter"))
+			_, pending := a.Update(tea.PasteMsg{Content: target})
+			if !strings.Contains(plain(a.View().Content), "library") {
+				t.Fatal("typed destination was not visible")
+			}
+			if immediate {
+				a.Update(key("enter"))
+				if anchored != "" {
+					t.Fatalf("pending folder query admitted %q before its directory listing arrived", anchored)
+				}
+			}
+			if pending == nil {
+				t.Fatal("new directory query did not request its listing")
+			}
+			spend(t, a, pending)
+			drive(t, a, key("enter"))
+			if anchored != target {
+				t.Fatalf("typed destination %q anchored %q", target, anchored)
+			}
+		})
+	}
+}

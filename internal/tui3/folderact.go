@@ -150,6 +150,10 @@ func (f *folderPick) hereKind() (string, bool, bool) {
 		}
 		return f.all[f.hits[f.cursor]].path, true, true
 	}
+	// A pending read is not an empty directory and cannot authorize its parent.
+	if !f.cols.here.done {
+		return "", false, false
+	}
 	at := f.cols.cursor
 	if at >= 0 && at < f.cols.here.rows() {
 		return filepath.Join(f.cols.dir, f.cols.here.rowName(at)), f.cols.here.isDir(at), true

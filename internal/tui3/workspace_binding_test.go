@@ -67,8 +67,10 @@ func TestTakeRootPickerCollectsExplicitFoldersThroughKeys(t *testing.T) {
 				for _, char := range name {
 					msgs = append(msgs, key(string(char)))
 				}
-				msgs = append(msgs, key("enter"))
+				// A typed path requests directory rows asynchronously. Confirm only
+				// after the choice is visible; pending Enter is tested separately.
 				drive(t, a, msgs...)
+				drive(t, a, key("enter"))
 			}
 			choose(app + string(filepath.Separator))
 			if got := plain(a.View().Content); !strings.Contains(got, "local folder for 1/library") {
