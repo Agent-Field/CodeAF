@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/clusterctl"
@@ -29,6 +30,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/rafttransport"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
 	"github.com/coder/websocket"
+	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
 )
@@ -51,6 +53,8 @@ type memberRecord struct {
 }
 
 type personalMember struct {
+	// A learner's quit must never wait behind ongoing replication work.
+	coordinating   atomic.Bool
 	chunkWaiting   map[uint64]uint64
 	sleeping       bool
 	outSnapshots   map[uint64]*memberSnapshot
@@ -283,6 +287,7 @@ func (m *personalMember) step(ctx context.Context, input raftcore.Input) error {
 			return err
 		}
 		m.status = effects.Status
+		m.coordinating.Store(m.status.Role == raft.StateLeader)
 		if proposal, ok := input.(raftcore.Propose); ok && effects.Persist != nil {
 			for id, work := range m.forwardPending {
 				if work.Action == "submit" && work.Barrier == 0 && bytes.Equal(work.Command, proposal.Command) {
@@ -602,6 +607,7 @@ func (m *personalMember) start(ctx context.Context) error {
 }
 
 func (m *personalMember) close() {
+	m.coordinating.Store(false)
 	m.withdrawDisplay()
 	m.mu.Lock()
 	if !m.closed {

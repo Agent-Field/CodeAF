@@ -1386,11 +1386,18 @@ func (a *app) leaveEverything() {
 		delete(a.behind, key)
 	}
 	a.prev = nil
+	waitRelease := a.waitForRelease != nil && a.waitForRelease()
 	var wg sync.WaitGroup
 	for _, agent := range agents {
 		wg.Add(1)
 		go func(agent Agent) {
 			defer wg.Done()
+			if waitRelease {
+				if hosted, ok := agent.(interface{ DetachAndWait() error }); ok {
+					_ = hosted.DetachAndWait()
+					return
+				}
+			}
 			leaveAgent(agent)
 		}(agent)
 	}

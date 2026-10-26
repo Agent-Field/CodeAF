@@ -2,7 +2,7 @@
 
 To continue on this machine, select the chat on home and choose `continue here`. When your paired computer is offline or has let go of its latest chat, home can ask `Continue tower's latest chat here?`: `alt+c` continues immediately when there is no local choice to make, and `alt+x` dismisses the offer. Moving chats is available by default on Linux, macOS and native Windows with a compatible engine. Older chats become movable through independent copies after pairing.
 
-## Why can't I type in this chat — my message did not send and home opened with a question
+## Continue on another computer — why can't I type in this chat, my message did not send and home opened with a question
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -240,6 +240,8 @@ The original older chat is untouched. A turn typed into the original by an older
 ## I quit on my laptop and opened my desktop — do I need alt+c
 
 A clean quit lets go after the last save is durable. Opening bare `codeaf` on your other paired computer within 24 hours continues the released chat automatically, with the usual `Moved from` banner and `not brought along:` lines. `esc` goes Home. A sleeping laptop has not let go: Home offers the chat and `alt+c` continues it, asking only if local work needs a choice.
+
+If this computer is also coordinating, a clean terminal quit releases its idle chats and returns coordination to an anchor before stopping. With the anchors reachable, the other computer can continue immediately. Sleep, a crash or a lost connection still use the fallback described on the coordination and workers page.
 
 Once the chat arrives, you can send your next message immediately. The window keeps following changes, including renamed computers and a later move to another computer.
 

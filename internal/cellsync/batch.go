@@ -9,6 +9,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 const (
@@ -18,6 +19,9 @@ const (
 	DefaultInterval = 5 * time.Second
 	// MaxBackoff caps the wait between flushes after failures.
 	MaxBackoff = 60 * time.Second
+	// ReleaseRetryEvery absorbs a brief coordinator change inside the close
+	// deadline without delaying a successful release or a definitive refusal.
+	ReleaseRetryEvery = 50 * time.Millisecond
 )
 
 // Publishing wraps the Stage 0 store: seal exactly as before, then note the
@@ -374,11 +378,24 @@ func (b *Batcher) release(ctx context.Context) error {
 	if d.Fence == 0 || stale {
 		return nil
 	}
-	err := b.Publisher.Dir.Release(ctx, d.ID(), d.Fence)
-	if errors.Is(err, directory.ErrFenceStale) {
-		return nil
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		err := b.Publisher.Dir.Release(ctx, d.ID(), d.Fence)
+		if errors.Is(err, directory.ErrFenceStale) {
+			return nil
+		}
+		if !errors.Is(err, directory.ErrUnreachable) && !errors.Is(err, wireauth.ErrUnavailable) {
+			return err
+		}
+		if _, bounded := ctx.Deadline(); !bounded {
+			return err
+		}
+		if err := b.sleeper()(ctx, ReleaseRetryEvery); err != nil {
+			return err
+		}
 	}
-	return err
 }
 
 // flush publishes the newest noted turn and says how long to rest before the

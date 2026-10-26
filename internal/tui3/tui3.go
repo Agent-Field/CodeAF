@@ -430,6 +430,9 @@ type CodexFlow interface {
 type Options struct {
 	// Knowledge is the native vault on this machine. Hosted windows leave it nil.
 	Knowledge *knowledge.Vault
+	// WaitForRelease is a local lifecycle hint. A coordinating terminal must
+	// join its idle chat releases before its coordination member can stop.
+	WaitForRelease func() bool
 	// CellsUnavailable is resolved before the surface starts, so paint never
 	// probes an engine and unsupported capabilities have no live doors.
 	CellsUnavailable string

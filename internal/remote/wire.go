@@ -846,6 +846,12 @@ func (l *LaunchShape) Same(other *LaunchShape) bool {
 	return mine == theirs
 }
 
+// DetachArgs lets a coordinating terminal join its idle chat releases before
+// stopping its member. Ordinary windows retain their asynchronous departure.
+type DetachArgs struct {
+	WaitRelease bool `json:"wait_release,omitempty"`
+}
+
 // Hello is the client's first frame ("hello"). Workspace is the path AS TYPED
 // after the colon — empty means the engine's own home — and the engine answers
 // with the path it resolved.

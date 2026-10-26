@@ -886,6 +886,7 @@ type (
 )
 
 type app struct {
+	waitForRelease      func() bool
 	chatStarts          map[string]bool
 	conversationRequest uint64
 	conversationOpening bool
@@ -3047,6 +3048,7 @@ func newApp(ctx context.Context, opts Options) *app {
 	}
 	a := &app{
 		knowledgeProfile:    opts.Knowledge,
+		waitForRelease:      opts.WaitForRelease,
 		machines:            opts.Machines,
 		taker:               opts.Takeover,
 		pairing:             opts.Pairing,
