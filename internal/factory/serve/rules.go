@@ -13,6 +13,9 @@ type houseRulesBody struct {
 	Rules    *[]string `json:"rules"`
 	AskFirst *[]string `json:"ask_first"`
 	Never    *[]string `json:"never"`
+	// Adapt is optional: omitted keeps the factory's word as it is, and ""
+	// says the factory has none.
+	Adapt *factory.AdaptMode `json:"adapt"`
 }
 
 // houseRules answers and replaces the factory's own rules
@@ -46,14 +49,21 @@ func (h *Handler) houseRules(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusUnprocessableEntity, "rules, ask_first and never are all required; send [] for an empty list")
 		return
 	}
-	next, err := factory.HouseRules{Rules: *body.Rules, AskFirst: *body.AskFirst, Never: *body.Never}.Clean()
-	if err != nil {
+	next := factory.HouseRules{Rules: *body.Rules, AskFirst: *body.AskFirst, Never: *body.Never}
+	if body.Adapt != nil {
+		next.Adapt = *body.Adapt
+	}
+	if _, err := next.Clean(); err != nil {
 		h.fail(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
 	clearPhase(w)
 	saved, err := h.config.Store.ChangeHouseRules(func(cur *factory.HouseRules) error {
+		adapt := cur.Adapt
 		*cur = next
+		if body.Adapt == nil {
+			cur.Adapt = adapt
+		}
 		return nil
 	})
 	if h.failed(w, err) {

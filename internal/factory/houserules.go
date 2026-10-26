@@ -29,6 +29,12 @@ type HouseRules struct {
 	Rules    []string `json:"rules"`
 	AskFirst []string `json:"ask_first"`
 	Never    []string `json:"never"`
+	// Adapt is how much a job's plan may reshape its steps on every
+	// repository ([AdaptMode]): "" says nothing (each repository's own word
+	// stands), ask makes a person ratify every reshaped plan, fixed lets
+	// only a person change the steps. Like the rest it only tightens: a
+	// repository that says fixed stays fixed.
+	Adapt AdaptMode `json:"adapt,omitempty"`
 }
 
 // HouseRulesMost is how many lines one list may hold, and HouseRuleLongest how
@@ -42,7 +48,7 @@ const (
 
 // Empty says the factory has no rules of its own.
 func (h HouseRules) Empty() bool {
-	return len(h.Rules) == 0 && len(h.AskFirst) == 0 && len(h.Never) == 0
+	return len(h.Rules) == 0 && len(h.AskFirst) == 0 && len(h.Never) == 0 && h.Adapt == ""
 }
 
 // Clean is h with every line trimmed, blank and repeated lines (ignoring case)
@@ -60,6 +66,11 @@ func (h HouseRules) Clean() (HouseRules, error) {
 	}
 	if h.Never, err = cleanRuleList("never", h.Never); err != nil {
 		return HouseRules{}, err
+	}
+	switch h.Adapt {
+	case "", AdaptFree, AdaptAsk, AdaptFixed:
+	default:
+		return HouseRules{}, fmt.Errorf("adapt is adapt, ask or fixed")
 	}
 	return h, nil
 }

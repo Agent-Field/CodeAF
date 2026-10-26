@@ -22,10 +22,14 @@ func WithHouseRules(f File, house factory.HouseRules) File {
 	out.Rules = unionFold(out.Rules, house.Rules)
 	out.Start.AskFirst = unionFold(out.Start.AskFirst, house.AskFirst)
 	out.Start.Never = unionExact(out.Start.Never, house.Never)
+	if house.Adapt != "" {
+		out.Adapt, _ = factory.StricterAdapt(out.Adapt, house.Adapt)
+	}
 	out.House = factory.HouseRules{
 		Rules:    append([]string{}, house.Rules...),
 		AskFirst: append([]string{}, house.AskFirst...),
 		Never:    append([]string{}, house.Never...),
+		Adapt:    house.Adapt,
 	}
 	return out
 }

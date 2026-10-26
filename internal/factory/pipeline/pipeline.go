@@ -71,6 +71,12 @@ type File struct {
 	Steps         map[string]Step
 	Fixed         []string
 	Rules         []string
+	// Adapt is the `adapt:` key: how much a job's plan may reshape the steps
+	// it runs, for every pipeline in the file ([factory.AdaptMode]): adapt
+	// (within the bounds, the default), ask (and a person ratifies before
+	// anything after plan runs) or fixed (the steps as written). Empty when
+	// the file says nothing, which is adapt.
+	Adapt factory.AdaptMode
 	// Merge is the `merge:` key. AUTO-MERGE IS OFF unless a file turns it on;
 	// a personal file may only turn it off ([Merge]).
 	Merge factory.MergePolicy
@@ -235,6 +241,7 @@ type presence struct {
 	pipeline      map[factory.Kind]bool
 	fixed         bool
 	rules         bool
+	adapt         bool
 	mergeAuto     bool
 	mergeMethod   bool
 }
@@ -360,7 +367,7 @@ func (f File) Recipe() factory.Recipe {
 		Source:        f.Source,
 		DefaultBudget: f.DefaultBudget,
 
-		Adapt:  copyAdapt(f.markdownAdapt),
+		Adapt:  f.adaptByKind(),
 		Policy: append([]string(nil), f.Rules...),
 		ByKind: map[factory.Kind][]factory.Stage{},
 		Merge:  f.Merge,
@@ -505,6 +512,20 @@ func (f File) RecipeProblems() []factory.Problem {
 	out := make([]factory.Problem, len(f.Problems))
 	for i, p := range f.Problems {
 		out[i] = factory.Problem{Line: p.Line, Text: p.Where, Why: p.Why}
+	}
+	return out
+}
+
+// adaptByKind is the recipe's adapt word per kind: the file's `adapt:` for the
+// issue pipeline and every pipeline the file lists, else the Markdown recipe's
+// words carried over, else none (the default, adapt).
+func (f File) adaptByKind() map[factory.Kind]factory.AdaptMode {
+	if f.Adapt == "" {
+		return copyAdapt(f.markdownAdapt)
+	}
+	out := map[factory.Kind]factory.AdaptMode{factory.KindIssue: f.Adapt}
+	for kind := range f.Pipeline {
+		out[kind] = f.Adapt
 	}
 	return out
 }

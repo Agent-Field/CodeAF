@@ -117,6 +117,16 @@ They hold three lists:
 
 The factory's rules only ever ADD to a repository's: they can never remove or loosen anything its file says. A job carries the rules that stood when it was queued, so a runner on another machine follows the factory's rules, not its own machine's. A rules file the factory cannot read refuses to start jobs rather than starting them without the rules.
 
+## let the plan reshape the steps — adapt, ask, fixed, a pipeline tailored to each issue
+
+A job's plan step may change the steps the rest of the job runs, within bounds codeaf holds in code: it may add a step, switch one on or skip one, but never skip proof, a fixed step or a step a rule names, and never touch a step that already ran. How much freedom it has is one word:
+
+- **adapt** (the default): the plan reshapes the steps for this issue, and the run goes on.
+- **ask**: the plan may reshape them, and a person approves before anything after the plan runs.
+- **fixed**: the steps run as the pipeline wrote them; only you can change them.
+
+A repository says it with `adapt:` in its `.codeaf/factory.yaml` (one word for every pipeline in the file). The factory can say it for every repository in its own rules (Settings → Factory), and like every factory rule it only tightens: a repository that says fixed stays fixed, and the factory's ask makes an adapt repository ask. A personal `~/.codeaf/factory.yaml` may tighten it too, never loosen it. The word travels with the job, so a runner on another machine holds the same one. Your own changes to a job's steps are never bound by it.
+
 ## issues only — pull requests are outcomes, old PR jobs removed
 
 Issues are the factory's only work items, including briefs handed over from chat. GitHub imports issues only; pull requests never become queue rows or review jobs. New jobs cannot select a PR or standalone CI pipeline.

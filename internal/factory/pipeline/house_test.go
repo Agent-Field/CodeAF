@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -62,5 +63,34 @@ func TestAPlanThatTouchesAGuardedPathIsHeld(t *testing.T) {
 	f := WithHouseRules(Defaults(), factory.HouseRules{AskFirst: []string{"touch auth/"}})
 	if got := StartRulesOf(f); !reflect.DeepEqual(got.AskFirst, []string{"touch auth/"}) || got.Never == nil {
 		t.Errorf("start rules %#v", got)
+	}
+}
+
+// THE ADAPT WORD: a file's `adapt:` reaches every pipeline's recipe and is
+// written back by the encoder, a personal file or the factory may tighten it
+// and never loosen it, and a word that is not one is a problem, not a default.
+func TestTheAdaptWordIsReadWrittenAndOnlyTightened(t *testing.T) {
+	f, err := Parse("adapt: ask\npipeline:\n  issue: [plan, approve, write, test, review, proof]\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Adapt != factory.AdaptAsk || f.Recipe().AdaptFor(factory.KindIssue) != factory.AdaptAsk {
+		t.Fatalf("adapt %q, recipe %q, problems %v", f.Adapt, f.Recipe().AdaptFor(factory.KindIssue), f.Problems)
+	}
+	data, err := Encode(f)
+	if err != nil || !strings.Contains(string(data), "adapt: ask") {
+		t.Fatalf("encoded %q, %v", data, err)
+	}
+	if bad, _ := Parse("adapt: sometimes\n"); len(bad.Problems) == 0 || bad.Adapt != "" {
+		t.Fatalf("a bad word read as %q with %v", bad.Adapt, bad.Problems)
+	}
+	if got := WithHouseRules(f, factory.HouseRules{Adapt: factory.AdaptFixed}); got.Adapt != factory.AdaptFixed {
+		t.Fatalf("the factory could not tighten to fixed: %q", got.Adapt)
+	}
+	if got := WithHouseRules(f, factory.HouseRules{Adapt: factory.AdaptFree}); got.Adapt != factory.AdaptAsk {
+		t.Fatalf("the factory loosened ask to %q", got.Adapt)
+	}
+	if got := WithHouseRules(Defaults(), factory.HouseRules{Adapt: factory.AdaptAsk}); got.Recipe().AdaptFor(factory.KindIssue) != factory.AdaptAsk {
+		t.Fatalf("a repository with no file did not take the factory's ask: %q", got.Recipe().AdaptFor(factory.KindIssue))
 	}
 }

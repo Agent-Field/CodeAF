@@ -305,6 +305,13 @@ func Merge(repo, personal File) (File, []Problem) {
 	for name, step := range personal.Steps {
 		probs = tightenStep(&out, repo, name, step, probs)
 	}
+	if personal.set.adapt {
+		if next, ok := factory.StricterAdapt(repo.Adapt, personal.Adapt); ok {
+			out.Adapt = next
+		} else {
+			probs = append(probs, Problem{Where: "adapt", Why: "ignored; a personal file cannot let the plan reshape more than the repository allows"})
+		}
+	}
 	if personal.set.mergeAuto {
 		if personal.Merge.Auto && !repo.Merge.Auto {
 			probs = append(probs, Problem{Where: "merge.auto", Why: "ignored; a personal file cannot turn auto-merge on"})

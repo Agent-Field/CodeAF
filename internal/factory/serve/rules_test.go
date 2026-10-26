@@ -50,3 +50,31 @@ func rulesBody(t *testing.T, body any) string {
 	}
 	return string(data)
 }
+
+// THE ADAPT WORD IS OPTIONAL ON A PUT: given, it is saved; omitted, the word
+// the factory keeps stays; "" clears it; a word that is not one is refused.
+func TestFactoryRulesRouteKeepsTheAdaptWordUnlessItIsSent(t *testing.T) {
+	f := peopleV2Setup(t, "team")
+	lists := func(more map[string]any) map[string]any {
+		body := map[string]any{"rules": []string{}, "ask_first": []string{}, "never": []string{}}
+		for k, v := range more {
+			body[k] = v
+		}
+		return body
+	}
+	var got factory.HouseRules
+	f.request(t, "PUT", "/v1/rules", "operator-secret", lists(map[string]any{"adapt": "ask"}), 200, &got)
+	if got.Adapt != factory.AdaptAsk {
+		t.Fatalf("saved adapt %q", got.Adapt)
+	}
+	f.request(t, "PUT", "/v1/rules", "operator-secret", lists(map[string]any{"rules": []string{"x"}}), 200, &got)
+	if got.Adapt != factory.AdaptAsk || len(got.Rules) != 1 {
+		t.Fatalf("an omitted adapt changed the word: %#v", got)
+	}
+	got = factory.HouseRules{}
+	f.request(t, "PUT", "/v1/rules", "operator-secret", lists(map[string]any{"adapt": ""}), 200, &got)
+	if got.Adapt != "" {
+		t.Fatalf("an empty adapt kept %q", got.Adapt)
+	}
+	f.request(t, "PUT", "/v1/rules", "operator-secret", lists(map[string]any{"adapt": "sometimes"}), 422, nil)
+}

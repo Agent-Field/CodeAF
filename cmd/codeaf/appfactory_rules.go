@@ -60,7 +60,15 @@ func (b *appBackend) FactoryRulesSet(ctx context.Context, p appwire.FactoryRules
 	if !h.callerIs(p.Factory, who.token) {
 		return none, appwire.Errorf(appwire.CodeConflict, "the sign-in changed while this was loading; try again")
 	}
-	r, err := h.linkDo(ctx, who, http.MethodPut, appFactoryRulesRoute, clean, appFactorySmall)
+	// THE ADAPT WORD IS SENT ONLY WHEN IT WAS ASKED, "" included: omitted, the
+	// factory keeps its word as it is.
+	body := struct {
+		Rules    []string `json:"rules"`
+		AskFirst []string `json:"ask_first"`
+		Never    []string `json:"never"`
+		Adapt    *string  `json:"adapt,omitempty"`
+	}{clean.Rules, clean.AskFirst, clean.Never, p.Adapt}
+	r, err := h.linkDo(ctx, who, http.MethodPut, appFactoryRulesRoute, body, appFactorySmall)
 	switch {
 	case err == errLinkNotSent:
 		return none, appwire.Errorf(appwire.CodeUnreachable, "the factory is not answering; nothing was changed")

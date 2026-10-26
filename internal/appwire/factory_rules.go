@@ -45,6 +45,9 @@ type FactoryRulesSetParams struct {
 	Rules    *[]string `json:"rules"`
 	AskFirst *[]string `json:"ask_first"`
 	Never    *[]string `json:"never"`
+	// Adapt is how much a job's plan may reshape its steps on every
+	// repository: "", adapt, ask or fixed. Omitted keeps the factory's word.
+	Adapt *string `json:"adapt,omitempty" enum:",adapt,ask,fixed"`
 }
 
 // FactoryRulesKeeper is the engine's half of factory.rules and
@@ -74,7 +77,11 @@ func CheckRulesSet(p FactoryRulesSetParams) (FactoryRulesSetParams, factory.Hous
 	if p.Rules == nil || p.AskFirst == nil || p.Never == nil {
 		return p, factory.HouseRules{}, Errorf(CodeBadParams, "rules, ask_first and never are all required; send [] for an empty list")
 	}
-	clean, err := factory.HouseRules{Rules: *p.Rules, AskFirst: *p.AskFirst, Never: *p.Never}.Clean()
+	rules := factory.HouseRules{Rules: *p.Rules, AskFirst: *p.AskFirst, Never: *p.Never}
+	if p.Adapt != nil {
+		rules.Adapt = factory.AdaptMode(*p.Adapt)
+	}
+	clean, err := rules.Clean()
 	if err != nil {
 		return p, factory.HouseRules{}, Errorf(CodeBadParams, "%s", err.Error())
 	}

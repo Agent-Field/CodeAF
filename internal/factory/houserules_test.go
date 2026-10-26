@@ -40,3 +40,24 @@ func TestHouseRulesAreCleanedAndBounded(t *testing.T) {
 		}
 	}
 }
+
+// THE FACTORY'S ADAPT WORD TIGHTENS A RUN'S EDIT ON ANY MACHINE: a job stamped
+// with fixed refuses the plan's reshaping though its repository allows it, and
+// a person's own edit is never bound by it.
+func TestTheJobsHouseAdaptBindsThePlanButNotThePerson(t *testing.T) {
+	it := Item{Kind: KindIssue, State: StateRunning, Stages: DefaultRecipe().Stages, House: &HouseRules{Adapt: AdaptFixed}}
+	edit := RunEdit{By: ByPlan, Skip: []string{"review"}}
+	if _, _, err := Edit(it, edit, DefaultRecipe(), EditInRun); err == nil {
+		t.Fatal("the plan reshaped a job the factory fixed")
+	}
+	edit.By = ByYou
+	if _, _, err := Edit(it, edit, DefaultRecipe(), EditInRun); err != nil {
+		t.Fatalf("the person's own edit was refused: %v", err)
+	}
+	if _, ok := StricterAdapt(AdaptAsk, AdaptFree); ok {
+		t.Fatal("ask was loosened to adapt")
+	}
+	if _, err := (HouseRules{Adapt: "sometimes"}).Clean(); err == nil {
+		t.Fatal("a bad adapt word was kept")
+	}
+}

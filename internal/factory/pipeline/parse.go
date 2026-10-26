@@ -96,6 +96,7 @@ type draft struct {
 	steps    map[string]Step
 	fixed    []string
 	rules    []string
+	adapt    factory.AdaptMode
 	merge    factory.MergePolicy
 }
 
@@ -136,6 +137,15 @@ func readDoc(root *yaml.Node) draft {
 			}
 		case "merge":
 			d.readMerge(p.val)
+		case "adapt":
+			s, ok := scalar(p.val)
+			word, good := stepWord(s, factory.AdaptWords)
+			if !ok || !good {
+				d.problems = append(d.problems, Problem{Line: p.line, Where: "adapt", Why: "adapt is adapt, ask or fixed"})
+				continue
+			}
+			d.adapt = factory.AdaptMode(word)
+			d.set.adapt = true
 		case "rules":
 			rules, ps, ok := stringList(p.val)
 			d.problems = append(d.problems, tag("rules", ps)...)
@@ -513,6 +523,9 @@ func (d draft) file(defaults bool) File {
 	}
 	if d.set.rules {
 		f.Rules = append([]string(nil), d.rules...)
+	}
+	if d.set.adapt {
+		f.Adapt = d.adapt
 	}
 	if d.set.mergeAuto {
 		f.Merge.Auto = d.merge.Auto
