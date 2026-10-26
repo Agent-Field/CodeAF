@@ -158,3 +158,9 @@ content and the readable coordination metadata described at the top of this page
 and size of each request and the network address of each computer, and keeps no request log. The
 address has a path, and every client keeps it. `codeaf relay` (this page) always serves from the
 root of its host; behind your own proxy, pass the path through unchanged.
+
+A hosted relay can instead set `BASE_PATH` to any path prefix, including several
+segments such as `/a/relay`. Use that complete address when pairing. Signatures cover
+the prefix, and directory operations and computer enrollment keep working there
+when a joined computer leads. Requests outside the configured prefix return
+HTTP 404 `not_found`.

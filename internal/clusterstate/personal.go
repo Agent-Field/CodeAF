@@ -5,7 +5,6 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"strconv"
-	"strings"
 )
 
 const PersonalAdmissionPath = "/v2/cluster/enroll"
@@ -22,7 +21,8 @@ type PersonalAdmission struct {
 // for this certificate under the currently committed identity root.
 func VerifyPersonalAdmission(p V1Request, identity IdentityRec, now int64) (PersonalAdmission, Authority, string, error) {
 	var request PersonalAdmission
-	if p.Method != "POST" || strings.TrimPrefix(p.URI, "/fabric") != PersonalAdmissionPath || !bytes.Equal(p.IdentityKey, identity.SigningKey) || legacyBody(p.Body, &request, false) != nil {
+	path, routeErr := p.route()
+	if routeErr != nil || p.Method != "POST" || path != PersonalAdmissionPath || !bytes.Equal(p.IdentityKey, identity.SigningKey) || legacyBody(p.Body, &request, false) != nil {
 		return request, Authority{}, "", ErrCodec
 	}
 	token, err := hex.DecodeString(request.Store)

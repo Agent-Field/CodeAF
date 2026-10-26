@@ -19,6 +19,7 @@ import (
 type V1Request struct {
 	Method      string `json:"method"`
 	URI         string `json:"uri"`
+	BasePath    string `json:"base_path,omitempty"`
 	IdentityKey []byte `json:"identity_key"`
 	Certificate string `json:"certificate"`
 	At          string `json:"at"`
@@ -83,7 +84,7 @@ func V1AuthorityAt(c Command, identity IdentityRec, committedNow int64) (Authori
 	h := sha256.Sum256(c.V1.Body)
 	auth, ok := v1ProofAuthority(c, identity, committedNow, hex.EncodeToString(h[:]))
 	m, err := c.V1.Mutation()
-	if !ok || err != nil || !reflect.DeepEqual(m, c.Change) || m.PutDevice != nil && m.PutDevice.ID != c.Actor {
+	if !ok || err != nil || !V1MutationEqual(m, c.Change) || m.PutDevice != nil && m.PutDevice.ID != c.Actor {
 		return Authority{}, false
 	}
 	return auth, true
@@ -232,8 +233,8 @@ func legacyJSONKeys(raw []byte) error {
 // original bytes and precision; v2's decimal-string codec never parses them.
 func (p V1Request) Mutation() (Mutation, error) {
 	bad := func() (Mutation, error) { return Mutation{}, ErrCodec }
-	path := strings.TrimPrefix(p.URI, "/fabric")
-	if strings.ContainsAny(path, "?#") || !strings.HasPrefix(path, "/v1/") {
+	path, err := p.route()
+	if err != nil || !strings.HasPrefix(path, "/v1/") {
 		return bad()
 	}
 	if p.Method == "GET" && (path == "/v1/dir/list" || path == "/v1/dir/presence" || path == "/v1/identity/rotation" || strings.HasPrefix(path, "/v1/dir/cells/") && len(strings.Split(strings.TrimPrefix(path, "/v1/dir/cells/"), "/")) == 1) {
@@ -320,12 +321,7 @@ func (p V1Request) Mutation() (Mutation, error) {
 		if !decode(&v, false) {
 			return bad()
 		}
-		// Empty and absent frame plans both replace the previous hint. Normalize
-		// before signing so canonical omitempty survives original-proof replay.
-		if len(v.Frames) == 0 {
-			v.Frames = nil
-		}
-		return Mutation{Create: &CreateCell{Cell: id, Init: v, V1: true}}, nil
+		return normalizeV1Mutation(Mutation{Create: &CreateCell{Cell: id, Init: v, V1: true}}), nil
 	case "acquire":
 		var v struct {
 			Force  bool              `json:"force,omitempty"`
@@ -353,10 +349,7 @@ func (p V1Request) Mutation() (Mutation, error) {
 		if !decode(&v, false) || v.Fence > MaxSafeInteger {
 			return bad()
 		}
-		if len(v.Frames) == 0 {
-			v.Frames = nil
-		}
-		return Mutation{Publish: &PublishCell{Cell: id, Publish: v, V1: true}}, nil
+		return normalizeV1Mutation(Mutation{Publish: &PublishCell{Cell: id, Publish: v, V1: true}}), nil
 	case "release":
 		var v struct {
 			Quiet bool   `json:"quiet,omitempty"`
@@ -373,6 +366,39 @@ func (p V1Request) Mutation() (Mutation, error) {
 		return Mutation{Archive: &CellID{Cell: id}}, nil
 	}
 	return bad()
+}
+
+// The configured prefix travels with the proof so every member routes the
+// original signed URI identically, without consulting its own host settings.
+func (p V1Request) route() (string, error) {
+	if p.BasePath != "" && (!strings.HasPrefix(p.BasePath, "/") || strings.HasSuffix(p.BasePath, "/")) {
+		return "", ErrCodec
+	}
+	path, ok := strings.CutPrefix(p.URI, p.BasePath)
+	if !ok || strings.ContainsAny(p.URI, "?#") {
+		return "", ErrCodec
+	}
+	return path, nil
+}
+
+// V1MutationEqual keeps route and actor binding while treating absent, null
+// and empty frame plans as the same instruction to clear the previous hint.
+func V1MutationEqual(a, b Mutation) bool {
+	return reflect.DeepEqual(normalizeV1Mutation(a), normalizeV1Mutation(b))
+}
+
+func normalizeV1Mutation(m Mutation) Mutation {
+	if m.Create != nil && m.Create.Init.Frames != nil && len(m.Create.Init.Frames) == 0 {
+		v := *m.Create
+		v.Init.Frames = nil
+		m.Create = &v
+	}
+	if m.Publish != nil && m.Publish.Publish.Frames != nil && len(m.Publish.Publish.Frames) == 0 {
+		v := *m.Publish
+		v.Publish.Frames = nil
+		m.Publish = &v
+	}
+	return m
 }
 
 func v1Segment(s string) (string, error) {

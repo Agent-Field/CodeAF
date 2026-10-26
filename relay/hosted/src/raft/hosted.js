@@ -11,7 +11,7 @@ import { v1Command } from './v1.js';
 import { projectRecord } from './directory.js';
 import { RaftEffectsFacade } from './effects.js';
 import { Wire, empty, json, unwrap } from '../wire.js';
-import { signedUri } from '../base.js';
+import { prefixOf, signedUri } from '../base.js';
 import { fromBase64Url } from '../codec.js';
 import { presenceOf, parseBeat } from '../presence.js';
 import { parseHolds } from '../vouch.js';
@@ -362,7 +362,7 @@ export class HostedIdentity {
     return '{"now":'+app.now+',"identity":'+identity+',"devices":{'+devices.join(',')+'},"cells":{'+cells.join(',')+'}}';
   }
   jsonBytes(raw){return new Response(raw,{headers:{'content-type':'application/json'}});}
-  proof(request,body){return {method:request.method,uri:signedUri(this.env,new URL(request.url)),identity_key:b64(fromBase64Url(request.headers.get('codeaf-identity'))),certificate:request.headers.get('codeaf-cert'),at:request.headers.get('codeaf-time'),signature:b64(fromBase64Url(request.headers.get('codeaf-sig'))),body:b64(body)};}
+  proof(request,body){const base=prefixOf(this.env);return {...(base?{base_path:base}:{}),method:request.method,uri:signedUri(this.env,new URL(request.url)),identity_key:b64(fromBase64Url(request.headers.get('codeaf-identity'))),certificate:request.headers.get('codeaf-cert'),at:request.headers.get('codeaf-time'),signature:b64(fromBase64Url(request.headers.get('codeaf-sig'))),body:b64(body)};}
   configuration(raw){const r=response(this.runtime.call(frame(35).blob(unb64(raw)).finish())),conf=decodeCanonical(dec.decode(r.blob()));r.end();return conf;}
   async anchorCommand(change,now){
     const id=this.manifest.config.anchors[0],actor='anchor/'+id;

@@ -183,7 +183,11 @@ func evaluateV1Stage(c Command, meta ApplicationMeta, read ReadRecord) (Evaluati
 			return out, nil
 		}
 	}
-	if identity.Rotation != nil && !(c.V1.Method == "POST" && strings.TrimPrefix(c.V1.URI, "/fabric") == "/v1/identity/rotation") {
+	path, err := c.V1.route()
+	if err != nil || !strings.HasPrefix(path, "/v1/") {
+		return out, nil
+	}
+	if identity.Rotation != nil && !(c.V1.Method == "POST" && path == "/v1/identity/rotation") {
 		out.Result.Code = Rotated
 		return out, nil
 	}

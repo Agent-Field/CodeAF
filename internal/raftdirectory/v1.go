@@ -3,7 +3,6 @@ package raftdirectory
 import (
 	"context"
 	"net/http"
-	"reflect"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/clusterstate"
@@ -78,7 +77,7 @@ func (b *v1Backend) Change(ctx context.Context, actor string, m clusterstate.Mut
 	if b.err != nil {
 		return clusterstate.Result{}, b.err
 	}
-	if b.owner.Host == nil || actor != b.actor || !reflect.DeepEqual(m, b.command.Change) {
+	if b.owner.Host == nil || actor != b.actor || !clusterstate.V1MutationEqual(m, b.command.Change) {
 		return clusterstate.Result{}, directory.ErrUnauthorized
 	}
 	r, err := b.owner.Host.CommitV1(ctx, b.command)

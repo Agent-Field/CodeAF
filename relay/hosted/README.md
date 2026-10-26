@@ -181,7 +181,8 @@ frames remain retained.
 A deployment can share a hostname by using a path prefix, such as
 `https://relay.example.com/fabric`. `BASE_PATH = "/fabric"` makes the Worker serve every route
 (store, directory, the `/v1/dir/watch` upgrade, pairing, link requests, rotation) beneath that prefix.
-`src/base.js` holds the whole mechanism: the Worker strips the prefix once, before dispatch, and a
+Prefixes may have several segments, such as `/my-relay` or `/a/relay`.
+`src/base.js` normalizes the configured prefix and strips it once before dispatch; a
 request outside it is the usual 404.
 
 The request signature covers the path the client sent (`internal/reqsign` signs `RequestURI()`), so a
@@ -189,6 +190,8 @@ client signs `/fabric/v1/...` and the identity object checks the signature again
 (`signedUri`), not against the stripped path. A client that signed the bare path is `401`. Every Go
 client joins its routes to the relay address in one helper, `wireauth.Endpoint`, so an address with a
 path (`https://host/fabric`, with or without the last slash) works for all of them.
+The committed request retains both the original signed URI and the configured prefix,
+so every member interprets the same operation even when a joined computer leads.
 
 The Go relay (`internal/relayserve`) stays at the root of its host: it has no base path. A self-hoster
 who wants one puts their own proxy in front, and the proxy must pass the path on unchanged (the client

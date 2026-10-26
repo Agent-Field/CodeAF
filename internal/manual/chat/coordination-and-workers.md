@@ -33,6 +33,14 @@ Three voters tolerate one unavailable member. Losing a majority pauses coordinat
 
 The hosted relay keeps serving directory requests, watches, pairing decisions and worker assignments while this computer leads. It routes signed coordination requests through the computer’s outbound connection and waits for its own durable copy before replying. `codeaf cluster status` on either joined home reports the elected computer and the same three voters.
 
+## Hosted relay address with a path prefix
+
+A hosted relay can serve beneath a path such as `https://relay.example.com/my-relay` or `https://relay.example.com/a/relay`. Pair using the complete address. The configured path applies to chat lists, saves, continuation, releases and joining computers, including while a joined computer leads. Request signatures include that path; requests outside it return HTTP 404 `not_found`. The native `codeaf relay` serves at the root of its host.
+
+## Empty frame plans from older clients
+
+Older clients may send an empty frame plan as an omitted field, `null` or `[]`. Both relays accept these spellings for a chat create or publish; an empty plan clears the previous frame hint.
+
 ## Pending leadership request, retry and refusal
 
 A lost reply or restarted home keeps the original signed leadership request. Retry `codeaf cluster lead` to resume it; a pending request cannot choose a different computer. A completed refusal says `the leadership request could not complete; refresh cluster status and try again` and is acknowledged before another request is saved. Only one configuration change can run at a time. A different personal coordinator cannot directly replace an active personal coordinator; let the anchors resume, then request leadership again.
