@@ -1,6 +1,6 @@
 ---
 kind: added
-title: A factory on your own machine can start labelled issues on its own, when you turn it on
+title: Pick up issues — a factory on your own machine can start labelled issues by itself, when you turn it on
 pr: 0
 surface: [engine]
 invalidates:
