@@ -521,6 +521,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	if agent.file != nil {
 		rememberLiveJournal(config.SessionFile, agent)
 	}
+	agent.mu.Lock()
+	agent.startPendingIntentNamesLocked()
+	agent.mu.Unlock()
 	return agent, nil
 }
 

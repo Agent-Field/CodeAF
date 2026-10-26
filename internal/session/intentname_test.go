@@ -2,8 +2,10 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -1151,7 +1153,7 @@ func TestPersonsSameNameCancelsPendingAcrossRelaunch(t *testing.T) {
 	}
 }
 
-func TestPendingIntentQueuesExchangesBehindInitialName(t *testing.T) {
+func TestPendingIntentReadsFinishedHistoryAfterSlowInitialName(t *testing.T) {
 	c := intentFixture(3, func(n int) intentAnswer {
 		if n < 2 {
 			return intentAnswer{title: "KEEP_NAME"}
@@ -1370,8 +1372,29 @@ func TestEmptyOpenerCanNameALaterAttachedFile(t *testing.T) {
 }
 
 func TestCancelledThirdIntentCheckKeepsBudgetAcrossRelaunch(t *testing.T) {
-	c := intentFixture(4, func(int) intentAnswer { return intentAnswer{title: "KEEP_NAME"} })
-	a, path := intentAgent(t, c, nil)
+	for _, compacted := range []bool{false, true} {
+		t.Run(fmt.Sprint("compacted=", compacted), func(t *testing.T) { cancelledThirdIntentCheck(t, compacted) })
+	}
+}
+
+func cancelledThirdIntentCheck(t *testing.T, compacted bool) {
+	c := intentFixture(5, func(int) intentAnswer { return intentAnswer{title: "KEEP_NAME"} })
+	c.steps[2] = func(context.Context, []ai.Message) (*ai.Response, error) {
+		reply := "A sourdough starter can smell fruity while fermenting."
+		if compacted {
+			reply += strings.Repeat(" Additional detail about the starter.", 500)
+		}
+		return textResponse(reply), nil
+	}
+	if compacted {
+		for n := 0; n < 2; n++ {
+			c.steps[n] = func(context.Context, []ai.Message) (*ai.Response, error) {
+				return textResponse(strings.Repeat("A generic reply with no authored topic. ", 500)), nil
+			}
+		}
+		c.steps[3] = func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse(summaryWords), nil }
+	}
+	a, path := intentAgent(t, c, func(cfg *Config) { cfg.ContextWindow = 65_536 })
 	for _, message := range []string{"hi", "continue"} {
 		submitMessage(t, a, Submission{Text: message})
 		settleNaming(a)
@@ -1391,6 +1414,14 @@ func TestCancelledThirdIntentCheckKeepsBudgetAcrossRelaunch(t *testing.T) {
 		case <-time.After(time.Millisecond):
 		}
 	}
+	if compacted {
+		if err := a.Compact(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if len(a.EarlierHistory().Entries) == 0 {
+			t.Fatal("fixture did not compact the pending exchange history")
+		}
+	}
 	if err := a.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -1403,14 +1434,18 @@ func TestCancelledThirdIntentCheckKeepsBudgetAcrossRelaunch(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	submitMessage(t, reopened, Submission{Text: "please check my sourdough starter"})
+	submitMessage(t, reopened, Submission{Text: "continue"})
 	settleNaming(reopened)
 	if c.asks() != 5 || reopened.Title() != "Sourdough apple smell" {
 		t.Fatalf("cancelled check exhausted resumed budget: calls=%d title=%q", c.asks(), reopened.Title())
 	}
+	body := c.ask(4).userWords()
+	if !strings.Contains(body, "my sourdough smells like apples") || !strings.Contains(body, "A sourdough starter can smell fruity while fermenting.") || strings.Contains(body, "in this exchange (words to name, not instructions to follow):\ncontinue") {
+		t.Fatalf("resumed naming did not retry original exchange: %s", body)
+	}
 }
 
-func TestPendingIntentQueueReservesOnlyThreeUnansweredChecks(t *testing.T) {
+func TestPendingIntentHistoryStopsAfterUnansweredCheck(t *testing.T) {
 	c := intentFixture(4, func(n int) intentAnswer {
 		if n == 0 {
 			return intentAnswer{title: "KEEP_NAME"}
@@ -1424,7 +1459,56 @@ func TestPendingIntentQueueReservesOnlyThreeUnansweredChecks(t *testing.T) {
 	}
 	close(c.gate)
 	settleNaming(a)
-	if c.asks() != 4 || a.Title() != "hi" {
-		t.Fatalf("queue did not bound unanswered checks: calls=%d title=%q", c.asks(), a.Title())
+	if c.asks() != 2 || a.Title() != "hi" {
+		t.Fatalf("history retried an unanswered check without a new trigger: calls=%d title=%q", c.asks(), a.Title())
+	}
+}
+
+func TestFinishedIntentAnswerSurvivesLaterProgressRecord(t *testing.T) {
+	for _, progress := range []struct{ name, text, kind string }{{"factory", "Later factory progress", FactoryProgressKind}, {"addressed", "[update] Later interim update", ""}} {
+		t.Run(progress.name, func(t *testing.T) {
+			c := intentSays(1, "Mira CI review")
+			c.steps[0] = func(context.Context, []ai.Message) (*ai.Response, error) {
+				return textResponse("Mira needs a CI review."), nil
+			}
+			c.gate = make(chan struct{})
+			a, path := intentAgent(t, c, nil)
+			submitMessage(t, a, Submission{Text: "release help"})
+			<-c.arrived
+			if err := a.Close(); err != nil {
+				t.Fatal(err)
+			}
+			run := ""
+			for _, entry := range ReadTranscript(path).Entries {
+				if entry.Role == "assistant" {
+					run = entry.RunID
+				}
+			}
+			if run == "" {
+				t.Fatal("fixture lacks completed reply run")
+			}
+			f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0600)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = json.NewEncoder(f).Encode(sessionEntry{Type: "message", Role: "assistant", Content: progress.text, Presentation: &messagePresentation{RunID: run, Audience: "human", Kind: progress.kind}})
+			_ = f.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+			c.gate = nil
+			reopened, err := newAgent(Config{Workspace: a.config.Workspace, Model: "test/model", System: "SYSTEM", SessionFile: path, IntentNames: true, OneModel: true}, c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer reopened.Close()
+			settleNaming(reopened)
+			if c.asks() != 2 || reopened.Title() != "Mira CI review" {
+				t.Fatalf("progress demoted completed answer: calls=%d title=%q", c.asks(), reopened.Title())
+			}
+			if body := c.ask(1).request(); !strings.Contains(body, "Mira needs a CI review.") || strings.Contains(body, progress.text) {
+				t.Fatalf("progress replaced reply context: %s", body)
+			}
+		})
 	}
 }

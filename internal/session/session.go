@@ -4006,8 +4006,6 @@ type Agent struct {
 	titleLiteral     bool
 	intentName       *intentNameState
 	intentNaming     bool
-	intentExchanges  []titleIntent
-	intentReserved   int
 	// Serializes current-name metadata snapshots and writes, outside a.mu.
 	titleStampMu sync.Mutex
 

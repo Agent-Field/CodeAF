@@ -57,7 +57,6 @@ func (a *Agent) RenameByPerson(title string) error {
 	a.title, a.titleProvisional, a.titleLiteral = title, "", true
 	if a.intentName != nil {
 		a.intentName.Pending = false
-		a.intentExchanges = nil
 	}
 	// THE LINE IS WRITTEN UNDER THE LOCK, so a name a model earned in the same
 	// moment cannot follow this one into the file: an answer reaches the journal

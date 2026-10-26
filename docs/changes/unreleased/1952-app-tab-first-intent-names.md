@@ -33,6 +33,8 @@ Greetings and empty requests keep their placeholder while the person supplies
 no topic or file, even if a model proposes a different generic label. A later
 concrete message or attachment can still earn the final name within the budget.
 
-Only handled naming answers consume the persisted check budget. Cancelling a
-check, including the third one, leaves that slot available after relaunch.
-Queued and in-flight checks use bounded in-memory reservations.
+Only handled naming answers advance the persisted history cursor. Each check
+reads the first unchecked finished exchange among the conversation's first
+three, including after relaunch. Cancelling the concrete third check leaves
+that same exchange eligible, so a resumed "continue" can earn its name without
+repeating the topic. Pending exchange text is not cached in memory.

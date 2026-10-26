@@ -250,10 +250,11 @@ topic earns one final model
 name. If all three stay vague, the opening name stays and later messages do not
 restart naming.
 
-Only a handled naming answer consumes a check. Cancelling a check leaves its
-slot available, including after reopening, so the next finished exchange can
-still supply a name. The remaining budget and final naming decision survive
-reopening the conversation. A name you choose yourself stops this process, even while a
+Only a handled naming answer advances the check cursor. Each check reads the
+first unchecked finished exchange from the conversation history, among the
+first three. Cancelling leaves that exchange eligible after reopening, so you
+can say "continue" without repeating its topic. The remaining cursor and final
+naming decision survive reopening the conversation. A name you choose yourself stops this process, even while a
 model answer is on its way.
 
 A model name longer than 24 characters ends at the last whole word that fits,

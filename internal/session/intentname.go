@@ -51,13 +51,11 @@ type titleIntent struct {
 
 // intentNameState is the journalled ownership and remaining second-chance budget.
 type intentNameState struct {
-	Vague   bool     `json:"vague"`
-	Said    string   `json:"said"`
-	Files   []string `json:"files,omitempty"`
-	Checked int      `json:"checked"`
-	Pending bool     `json:"pending"`
-	Claim   string   `json:"claim,omitempty"`
-	Literal bool     `json:"literal,omitempty"`
+	Vague   bool   `json:"vague"`
+	Checked int    `json:"checked"`
+	Pending bool   `json:"pending"`
+	Claim   string `json:"claim,omitempty"`
+	Literal bool   `json:"literal,omitempty"`
 }
 
 func boundedIntentFiles(files []string) []string {
@@ -254,7 +252,7 @@ func (a *Agent) startIntentNameLocked(user userMessage) {
 		return
 	}
 	a.title, a.titleProvisional, a.titleLiteral = fallback, fallback, true
-	a.intentName = &intentNameState{Said: clipRunes(intent.said, intentWordsClip), Files: boundedIntentFiles(intent.files), Pending: true, Vague: len(strings.Fields(intent.said)) < 4 || emptyIntentOpener(intent.said)}
+	a.intentName = &intentNameState{Pending: true, Vague: len(strings.Fields(intent.said)) < 4 || emptyIntentOpener(intent.said)}
 	a.file.appendNamedTitleWithIntent(fallback, true, a.intentNameSnapshotLocked())
 	a.intentNaming = true
 	a.titleJobs.Add(1)
@@ -293,32 +291,15 @@ func (a *Agent) saveIntentNameLocked() {
 	}
 }
 
-// Finished exchanges reserve bounded queue slots in memory. Only handled
-// naming answers consume the persisted budget, so cancellation keeps a slot.
 func (a *Agent) finishIntentExchangeLocked(user userMessage, completed bool) {
+	if completed && intentPersonMessage(user) {
+		a.startPendingIntentNamesLocked()
+	}
+}
+
+func (a *Agent) startPendingIntentNamesLocked() {
 	state := a.intentName
-	if !a.config.IntentNames || a.config.DeterministicNames || a.config.InTask {
-		return
-	}
-	if !completed || !intentPersonMessage(user) || state == nil || !state.Pending || a.closed || a.titleProvisional == "" || state.Checked+a.intentReserved >= intentExchangeLimit {
-		return
-	}
-	reply := ""
-	for n := len(a.messages) - 1; n >= 0; n-- {
-		message := a.messages[n]
-		if message.Role == "assistant" && len(message.ToolCalls) == 0 {
-			reply = clipRunes(messageContentText(message), intentReplyClip)
-			break
-		}
-	}
-	if strings.TrimSpace(reply) == "" {
-		return
-	}
-	current := intentOf(user)
-	intent := titleIntent{said: state.Said, files: boundedIntentFiles(append(append([]string(nil), state.Files...), current.files...)), current: clipRunes(current.said, intentWordsClip), reply: reply}
-	a.intentReserved++
-	a.intentExchanges = append(a.intentExchanges, intent)
-	if a.intentNaming {
+	if !a.config.IntentNames || a.config.DeterministicNames || a.config.InTask || a.closed || a.intentNaming || state == nil || !state.Pending || a.titleProvisional == "" || state.Checked >= intentExchangeLimit {
 		return
 	}
 	a.intentNaming = true
@@ -326,36 +307,117 @@ func (a *Agent) finishIntentExchangeLocked(user userMessage, completed bool) {
 	go func() { defer a.titleJobs.Done(); a.drainIntentExchanges() }()
 }
 
+// The journal retains original exchanges across compaction. The cursor advances
+// only after an answer is handled, so cancellation retries the same exchange.
+func nextIntentExchange(record Record, checked int, active string) (titleIntent, bool) {
+	if record.Unreadable != "" {
+		return titleIntent{}, false
+	}
+	entries := append(record.Earlier, record.Entries[record.Floor:]...)
+	var opening, current titleIntent
+	var exchanges []titleIntent
+	run, ready, haveOpening, candidate := "", false, false, false
+	keep := func() {
+		if ready && run != active && len(exchanges) < intentExchangeLimit {
+			exchanges = append(exchanges, current)
+		}
+	}
+	for _, entry := range entries {
+		if entry.Role == "user" && entry.Steer == nil {
+			keep()
+			if len(exchanges) == intentExchangeLimit {
+				break
+			}
+			var files []string
+			if entry.Person != nil {
+				files = attachedFileNames(entry.Person.Attachments)
+			}
+			if !haveOpening {
+				opening = titleIntent{said: clipRunes(entry.Text, intentWordsClip), files: boundedIntentFiles(files)}
+				haveOpening = true
+			}
+			current = titleIntent{said: opening.said, files: boundedIntentFiles(append(append([]string(nil), opening.files...), files...)), current: clipRunes(entry.Text, intentWordsClip)}
+			run, ready, candidate = entry.RunID, false, true
+			continue
+		}
+		if entry.ForModel && run == "" {
+			candidate = false
+		}
+		if entry.Addressed || entry.RoutineCompletion || entry.FactoryProgress {
+			continue
+		}
+		if entry.Role == "assistant" && candidate {
+			if run == "" {
+				run = entry.RunID
+			}
+			if entry.RunID != run {
+				continue
+			}
+			if entry.Interrupted {
+				ready, candidate = false, false
+				continue
+			}
+			ready = entry.Answer
+			current.reply = clipRunes(entry.Text, intentReplyClip)
+		}
+	}
+	if len(exchanges) < intentExchangeLimit {
+		keep()
+	}
+	if checked >= len(exchanges) {
+		return titleIntent{}, false
+	}
+	return exchanges[checked], true
+}
+
 func (a *Agent) drainIntentExchanges() {
 	for {
 		a.mu.Lock()
 		state := a.intentName
-		if a.closed || state == nil || !state.Pending || a.titleProvisional == "" {
-			a.intentExchanges = nil
-			a.intentReserved = 0
+		if a.closed || state == nil || !state.Pending || a.titleProvisional == "" || a.file == nil {
 			a.intentNaming = false
 			a.mu.Unlock()
 			return
 		}
-		if len(a.intentExchanges) == 0 {
+		claim, checked := a.titleProvisional, state.Checked
+		seq, running := a.turnSeq, a.running
+		active := ""
+		if running && a.hub != nil {
+			active = a.hub.runID
+		}
+		path := a.file.journalName()
+		a.mu.Unlock()
+		record := ReadTranscript(path)
+		intent, found := nextIntentExchange(record, checked, active)
+		a.mu.Lock()
+		if a.closed || a.intentName != state || !state.Pending || a.titleProvisional != claim {
 			a.intentNaming = false
 			a.mu.Unlock()
 			return
 		}
-		intent, claim := a.intentExchanges[0], a.titleProvisional
-		a.intentExchanges = a.intentExchanges[1:]
+		if state.Checked != checked || a.turnSeq != seq || a.running != running {
+			a.mu.Unlock()
+			continue
+		}
+		if !found {
+			a.intentNaming = false
+			a.mu.Unlock()
+			return
+		}
 		a.mu.Unlock()
 		_, handled := a.nameIntent(a.titleCtx, intent, claim, true)
 		a.mu.Lock()
-		a.intentReserved--
-		if handled {
-			state.Checked++
-			if state.Checked >= intentExchangeLimit {
-				state.Pending = false
-				a.titleProvisional = ""
-			}
-			a.saveIntentNameLocked()
+		if !handled {
+			a.intentNaming = false
+			a.mu.Unlock()
+			return
 		}
+		state.Checked++
+		if state.Checked >= intentExchangeLimit {
+			state.Pending = false
+			a.titleProvisional = ""
+		}
+		a.saveIntentNameLocked()
 		a.mu.Unlock()
 	}
 }
