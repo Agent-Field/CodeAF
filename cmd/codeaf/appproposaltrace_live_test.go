@@ -17,9 +17,11 @@ import (
 )
 
 type proposalLineTiming struct {
-	Kind       string  `json:"kind"`
-	ProviderMS float64 `json:"provider_ms"`
-	AppMS      float64 `json:"app_ms"`
+	Line       json.RawMessage `json:"line"`
+	Rejection  string          `json:"rejection,omitempty"`
+	Kind       string          `json:"kind"`
+	ProviderMS float64         `json:"provider_ms"`
+	AppMS      float64         `json:"app_ms"`
 }
 
 type proposalTiming struct {
@@ -231,8 +233,9 @@ func (p *proposalTrace) snapshot() proposalTiming {
 	result.FirstContentMS = ms(p.firstContent)
 	result.DoneMS = ms(p.done)
 	result.AskMS = ms(p.ask)
+	validator := &appProposalStream{}
 	for i, kind := range p.kinds {
-		line := proposalLineTiming{Kind: kind, ProviderMS: ms(p.providerLines[i]), AppMS: -1}
+		line := proposalLineTiming{Line: json.RawMessage(p.keys[i]), Rejection: validator.line(p.keys[i]), Kind: kind, ProviderMS: ms(p.providerLines[i]), AppMS: -1}
 		if at, ok := p.appTimes[p.keys[i]]; ok {
 			line.AppMS = ms(at)
 		}
