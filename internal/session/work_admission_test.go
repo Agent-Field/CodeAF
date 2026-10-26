@@ -459,9 +459,15 @@ func TestC1SessionViewerAcceptsAnswersDuringTheFinalRequest(t *testing.T) {
 				},
 			}}
 			if kind == "ask-back" {
-				script.steps = append([]step{func(context.Context, []ai.Message) (*ai.Response, error) {
-					return toolResponse("question", "ask", askNotWaiting), nil
-				}}, script.steps...)
+				// The conversation shelves ask until its capability is loaded.
+				script.steps = append([]step{
+					func(context.Context, []ai.Message) (*ai.Response, error) {
+						return toolResponse("load-questions", loadCapabilityToolName, `{"group":"`+questionsGroup+`"}`), nil
+					},
+					func(context.Context, []ai.Message) (*ai.Response, error) {
+						return toolResponse("question", "ask", askNotWaiting), nil
+					},
+				}, script.steps...)
 			}
 			agent, _ := newTestAgent(t, script, func(cfg *Config) {
 				cfg.SessionFile = journal
@@ -473,7 +479,7 @@ func TestC1SessionViewerAcceptsAnswersDuringTheFinalRequest(t *testing.T) {
 					return nil
 				})
 			})
-			_, stopQuestions := agent.WatchQuestions()
+			questions, stopQuestions := agent.WatchQuestions()
 			defer stopQuestions()
 			wakes, stopWakes := agent.WatchWakes()
 			defer stopWakes()
@@ -487,7 +493,12 @@ func TestC1SessionViewerAcceptsAnswersDuringTheFinalRequest(t *testing.T) {
 			const words = "what does the second option mean?"
 			want := []string{handOverLead, title, "settle it yourself with tasks id 1"}
 			if kind == "ask-back" {
-				q := waitForOneQuestion(t, agent)
+				q := discussionWait(t, questions, func(ev Event) bool {
+					return ev.Kind == EventQuestion && ev.Question != nil && ev.Question.Kind == QuestionAsk
+				}).Question
+				if q.Blocking.Turn || !q.Later {
+					t.Fatalf("expected a standing nonblocking question: %+v", q)
+				}
 				if err := agent.ResolveQuestion(Answer{Kind: q.Kind, ID: q.ID, AskedBack: []Exchange{{Asked: words}}}); err != nil {
 					t.Fatal(err)
 				}
