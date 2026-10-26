@@ -270,7 +270,19 @@ func publishTopics(vault, learning, registry document) (document, error) {
 			links = append(links, document{"id": member["id"], "kind": "contains", "reason": "Subject in this reading collection; not a factual relationship"})
 			member["links"] = append(items(member["links"]), document{"id": id, "kind": "index", "reason": "Browse the wider topic collection"})
 		}
-		notes = append(notes, document{"id": id, "kind": "map", "title": scope + " — topic map", "scope": scope, "folder": []string{scope}, "claims": []string{}, "sections": []document{}, "links": links})
+		folder := append([]string{}, stringsValue(members[0]["folder"])...)
+		for _, member := range members[1:] {
+			path := stringsValue(member["folder"])
+			common := 0
+			for common < len(folder) && common < len(path) && folder[common] == path[common] {
+				common++
+			}
+			folder = folder[:common]
+		}
+		if len(folder) == 0 {
+			folder = []string{scope}
+		}
+		notes = append(notes, document{"id": id, "kind": "map", "title": scope + " — topic map", "scope": scope, "folder": folder, "claims": []string{}, "sections": []document{}, "links": links})
 	}
 	result["notes"] = notes
 	result["topic_registry"] = clone(registry)

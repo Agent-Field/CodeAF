@@ -190,7 +190,7 @@ func materializePages(vault document) ([]Page, error) {
 			}
 			paragraphs = append(paragraphs, Paragraph{Text: "[" + c.Kind + "] " + c.Text, Claims: []string{c.ID}, Evidence: c.Evidence})
 		}
-		if len(p.Sections) == 0 && len(paragraphs) > 0 {
+		if p.Kind != "subject" && len(p.Sections) == 0 && len(paragraphs) > 0 {
 			p.Sections = []Section{{Heading: "Recorded knowledge", Paragraphs: paragraphs}}
 		}
 	}

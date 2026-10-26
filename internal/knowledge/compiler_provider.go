@@ -41,7 +41,11 @@ func (m compilerModel) call(role string, payload document) (document, error) {
 		return nil, fmt.Errorf("unknown knowledge role %q", role)
 	}
 	reasoning := document{"effort": "none"}
-	requestID := identity([]any{m.model, "knowledge-3", prompt, payload})
+	requestVersion := "knowledge-3"
+	if role == "discover" || role == "organize_subjects" {
+		requestVersion = "knowledge-4"
+	}
+	requestID := identity([]any{m.model, requestVersion, prompt, payload})
 	requestID = identity([]any{requestID, reasoning})
 	requestID = identity([]any{requestID, document{"max_tokens": 8000}})
 	var cached string

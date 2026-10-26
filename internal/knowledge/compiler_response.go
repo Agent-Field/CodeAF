@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // Provider wire types stay at this boundary. Invalid primitive/reference types
@@ -40,8 +41,8 @@ type modelConflict struct {
 	Reason string
 }
 type modelCheck struct {
-	ID, Reason          string
-	Supported, Grounded bool
+	ID, Reason                  string
+	Supported, Useful, Grounded bool
 }
 
 func validateCompilerResponse(role string, result document) error {
@@ -69,6 +70,14 @@ func validateCompilerResponse(role string, result document) error {
 			}
 		}{}
 		required = "subjects"
+	case "consolidate_subjects":
+		target = &struct {
+			Groups []struct {
+				Members, Folder       []string
+				Title, Scope, Purpose string
+			}
+		}{}
+		required = "groups"
 	case "understand":
 		target = &struct {
 			Sections  []modelSection
@@ -170,6 +179,41 @@ func validateCompilerResponse(role string, result document) error {
 }
 
 func validateCompilerReferences(role string, payload, response document) error {
+	if role == "consolidate_subjects" {
+		catalog := index(items(payload["consolidation_catalog"]))
+		seen, identities := map[string]bool{}, map[string]bool{}
+		for _, group := range items(response["groups"]) {
+			title, scope := strings.TrimSpace(textValue(group["title"])), textValue(group["scope"])
+			members := stringsValue(group["members"])
+			if title == "" || scope == "" || len(members) == 0 || len(stringsValue(group["folder"])) > 2 {
+				return errors.New("knowledge consolidation requires a titled scoped group with members and at most two folder levels")
+			}
+			key := identity([]any{"subject", strings.ToLower(scope), strings.ToLower(title)})
+			if identities[key] {
+				return errors.New("knowledge consolidation returned duplicate canonical headings")
+			}
+			identities[key] = true
+			claims := 0
+			for _, id := range members {
+				member := catalog[id]
+				if member == nil || seen[id] {
+					return errors.New("knowledge consolidation must assign each inspected draft exactly once")
+				}
+				if textValue(member["scope"]) != scope {
+					return errors.New("knowledge consolidation cannot merge distinct scopes")
+				}
+				seen[id] = true
+				claims += int(number(member["claim_count"]))
+			}
+			if claims > 160 && len(members) > 1 {
+				return errors.New("knowledge consolidation cannot merge drafts beyond the subject claim limit")
+			}
+		}
+		if len(seen) != len(catalog) {
+			return errors.New("knowledge consolidation must preserve the complete draft catalog")
+		}
+		return nil
+	}
 	if role != "discover" && role != "organize_subjects" {
 		return nil
 	}

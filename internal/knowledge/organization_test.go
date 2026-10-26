@@ -244,7 +244,7 @@ func TestKnowledgeReviewsConceptPlanBeforeWritingPages(t *testing.T) {
 			return map[string]any{"subjects": subjects}
 		}
 		if p["paragraphs"] != nil {
-			return map[string]any{"checks": []any{map[string]any{"id": "P0", "supported": true}}}
+			return map[string]any{"checks": []any{map[string]any{"id": "P0", "supported": true, "useful": true}}}
 		}
 		return map[string]any{"sections": []any{map[string]any{"heading": "Reliability", "paragraphs": []any{map[string]any{"text": "Cedar retries and recovers queued work.", "claims": p["subject"].(map[string]any)["claims"]}}}}}
 	})

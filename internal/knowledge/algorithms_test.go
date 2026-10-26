@@ -23,7 +23,7 @@ func withKnowledgeModel(t *testing.T, respond func(map[string]any) map[string]an
 	})
 }
 
-func withConcurrentKnowledgeModel(t *testing.T, respond func(map[string]any) map[string]any) {
+func withConcurrentKnowledgeModel(t *testing.T, respond func(map[string]any) map[string]any, consolidate ...func(map[string]any) map[string]any) {
 	t.Helper()
 	original := http.DefaultTransport
 	t.Cleanup(func() { http.DefaultTransport = original })
@@ -39,7 +39,21 @@ func withConcurrentKnowledgeModel(t *testing.T, respond func(map[string]any) map
 		if err := json.Unmarshal([]byte(body.Messages[1].Content), &payload); err != nil {
 			return nil, err
 		}
-		content, _ := json.Marshal(respond(payload))
+		var result map[string]any
+		if catalog, ok := payload["consolidation_catalog"].([]any); ok {
+			groups := []any{}
+			for _, raw := range catalog {
+				draft := raw.(map[string]any)
+				groups = append(groups, map[string]any{"members": []any{draft["id"]}, "title": draft["title"], "scope": draft["scope"], "purpose": draft["purpose"], "folder": draft["folder"]})
+			}
+			result = map[string]any{"groups": groups}
+			if len(consolidate) > 0 {
+				result = consolidate[0](payload)
+			}
+		} else {
+			result = respond(payload)
+		}
+		content, _ := json.Marshal(result)
 		raw, _ := json.Marshal(map[string]any{"model": body.Model, "choices": []any{map[string]any{"finish_reason": "stop", "message": map[string]any{"content": string(content)}}}})
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(raw)), Header: make(http.Header)}, nil
 	})
@@ -150,7 +164,7 @@ func TestKnowledgeWithholdsExplanationRejectedByReview(t *testing.T) {
 			claim := payload["claims"].([]any)[0].(map[string]any)
 			return map[string]any{"sections": []any{map[string]any{"heading": "Status", "paragraphs": []any{map[string]any{"text": "Cedar is deployed.", "claims": []any{claim["id"]}}}}}, "questions": []any{}, "conflicts": []any{}}
 		}
-		return map[string]any{"checks": []any{map[string]any{"id": "P0", "supported": false, "reason": "A proposal is not deployment."}}}
+		return map[string]any{"checks": []any{map[string]any{"id": "P0", "supported": false, "useful": true, "reason": "A proposal is not deployment."}}}
 	})
 	if err := v.Capture(knowledge.Source{ID: "s", Session: "chat", Role: "user", TS: "2026-10-25T12:00:00Z", Text: "Cedar is proposed."}); err != nil {
 		t.Fatal(err)

@@ -569,7 +569,7 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 			add(line)
 		}
 		if p.reading.Build.Chats > 0 {
-			for _, line := range wrap(knowledgeProgress("Chats imported", p.reading.Build.Imported, p.reading.Build.Chats, a.pal), progressWidth) {
+			for _, line := range wrap(knowledgeProgress("History imported", p.reading.Build.Imported, p.reading.Build.Chats, a.pal), progressWidth) {
 				add(line)
 			}
 		}

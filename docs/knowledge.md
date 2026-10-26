@@ -58,7 +58,7 @@ question resolution, topic reconciliation, and canonical mention links.
 
 Provider results enter through typed role-response checks. Claims and paragraphs
 must reference admitted sources or known claims; quotes must occur in the supplied
-context. Separate review gates generated explanations. Model receipts record the
+context. Separate support and lasting-usefulness review gates generated explanations. Model receipts record the
 actual returned model ID and reject substitutions. The configured knowledge model
 applies to every role; credentials never enter receipts or visible errors.
 
@@ -73,8 +73,9 @@ transaction as visible page content.
 Extraction admits at most 64 spans and 24,000 source characters per call. A
 journal read handles at most 256 records or 64 eligible sources, with a 16 MiB
 record bound. Discovery plans at most 32 evidence notes per request. All planning completes
-before initial prose synthesis; a separate concept-plan review consolidates draft
-pages while requiring the same evidence-note coverage. Existing concepts are inspected
+before initial prose synthesis. Draft plans preserve evidence-note coverage; a
+whole-tree review then consolidates new concepts without changing previously
+published identities or protected human pages. Existing concepts are inspected
 in windows of at most 128 before new pages are proposed, with exact IDs retained
 for reuse. Concise concept headings and two-level folders come from the evidence,
 not a fixed project taxonomy. Independent subject drafts and editorial refreshes

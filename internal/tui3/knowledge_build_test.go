@@ -95,7 +95,7 @@ func TestKnowledgeBuildShowsStageProgressWithoutClaimingCompletion(t *testing.T)
 	a.kb.reading.Pending = 7929
 	a.touch()
 	got := placeFrameText(a)
-	for _, want := range []string{"Chats imported: 303 of 303", "Sources processed: 220 of 8149", "2%"} {
+	for _, want := range []string{"History imported: 303 of 303", "Sources processed: 220 of 8149", "2%"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("missing %q:\n%s", want, got)
 		}

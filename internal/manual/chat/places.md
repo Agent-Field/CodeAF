@@ -657,9 +657,10 @@ can continue arriving while that initial collection is built.
 
 ## Knowledge build progress and concurrency
 
-Build progress separates **Chats imported** from **Sources processed**. Each
+Build progress separates **History imported** from **Sources processed**. Each
 shows completed items, its current total, and a percentage for that stage.
-Importing every chat does not mean all its sources have been processed. Totals
+Importing all saved chats and task reports does not mean their sources have all
+been processed. Totals
 can grow as more chats arrive; these percentages are counts, not estimates of
 elapsed time or overall completion. **Organizing knowledge pages…** means the
 sources have been processed and page organization is still finishing.
@@ -698,7 +699,9 @@ moving to the next main place.
 Click **Edit** on an article, or press `ctrl+e`, to edit its Markdown and
 `[[Topic]]` links. `ctrl+s` saves; Escape cancels. Saved edits are marked
 **Edited by you** and remain separate from machine-written updates. Original
-sources describe the article's background and do not verify your additions.
+sources describe the article's background and do not verify your additions. New
+evidence flags the edited page for review without replacing your words. Saving
+the reviewed page acknowledges that evidence.
 
 Click **Delete**, or press `ctrl+d`, to review a named deletion confirmation.
 Enter or Escape cancels by default. Click **Delete page** or press `ctrl+d`

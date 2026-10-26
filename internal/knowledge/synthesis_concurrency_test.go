@@ -36,7 +36,7 @@ func synthesisFixture(t *testing.T, understand func(map[string]any) map[string]a
 			return map[string]any{"subjects": subjects}
 		}
 		if p["paragraphs"] != nil {
-			return map[string]any{"checks": []any{map[string]any{"id": "P0", "supported": true}}}
+			return map[string]any{"checks": []any{map[string]any{"id": "P0", "supported": true, "useful": true}}}
 		}
 		return understand(p)
 	})

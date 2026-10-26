@@ -150,6 +150,13 @@ func extendLearning(vault, previous document, model compilerModel) (document, er
 			}
 		}
 	}
+	if len(items(previous["subjects"])) == 0 && len(subjects) > 1 {
+		var err error
+		subjects, err = consolidateInitialSubjects(subjects, model)
+		if err != nil {
+			return nil, err
+		}
+	}
 	pending := []int{}
 	for i, subject := range subjects {
 		if len(stringsValue(subject["claims"])) > 160 {
@@ -175,6 +182,48 @@ func extendLearning(vault, previous document, model compilerModel) (document, er
 	result["incremental_discovery"] = document{"new_notes": len(notes), "dirty_existing_subjects": dirty, "limitation": "Changed known subjects keep sourced prose and are marked for bounded later editing; not rewritten automatically."}
 	return result, nil
 }
+
+func consolidateInitialSubjects(subjects []document, model compilerModel) ([]document, error) {
+	overrides, err := readOverrides(model.db)
+	if err != nil {
+		return nil, err
+	}
+	topics, err := stateDocument(model.db, "topics")
+	if err != nil {
+		return nil, err
+	}
+	if len(overrides) > 0 || len(object(topics["concepts"])) > 0 {
+		return subjects, nil
+	}
+	catalog := []document{}
+	for _, subject := range subjects {
+		entry := choose(subject, "id", "title", "scope", "purpose", "folder")
+		entry["claim_count"] = len(stringsValue(subject["claims"]))
+		catalog = append(catalog, entry)
+	}
+	response, err := model.call("consolidate_subjects", document{"consolidation_catalog": catalog})
+	if err != nil {
+		return nil, err
+	}
+	byID := index(subjects)
+	result := []document{}
+	for _, group := range items(response["groups"]) {
+		title, scope := strings.TrimSpace(textValue(group["title"])), textValue(group["scope"])
+		notes, claims, aliases := []string{}, []string{}, []string{}
+		for _, id := range stringsValue(group["members"]) {
+			member := byID[id]
+			notes = append(notes, stringsValue(member["notes"])...)
+			claims = append(claims, stringsValue(member["claims"])...)
+			aliases = append(aliases, stringsValue(member["aliases"])...)
+			if textValue(member["title"]) != title {
+				aliases = append(aliases, textValue(member["title"]))
+			}
+		}
+		result = append(result, document{"id": identity([]any{"subject", strings.ToLower(scope), strings.ToLower(title)}), "title": title, "scope": scope, "purpose": group["purpose"], "folder": stringsValue(group["folder"]), "notes": sortedUnique(notes), "claims": sortedUnique(claims), "aliases": sortedUnique(aliases), "state": "pending_synthesis", "sections": []document{}, "questions": []document{}, "conflicts": []document{}})
+	}
+	return result, nil
+}
+
 func planLearningSubjects(vault, previous document, model compilerModel) (document, error) {
 	claims := activeClaims(vault)
 	byNote := index(items(vault["notes"]))
@@ -413,7 +462,7 @@ func understandSubject(subject document, claims map[string]document, sources doc
 		for i, c := range conflicts {
 			cIDs = append(cIDs, merge(c, document{"id": fmt.Sprintf("X%d", i)}))
 		}
-		review, err = model.call("review_understanding", document{"claims": evidence, "paragraphs": paragraphs, "questions": qIDs, "conflicts": cIDs})
+		review, err = model.call("review_understanding", document{"subject": choose(subject, "id", "title", "scope"), "claims": evidence, "paragraphs": paragraphs, "questions": qIDs, "conflicts": cIDs})
 		if err != nil {
 			return nil, err
 		}
@@ -424,7 +473,8 @@ func understandSubject(subject document, claims map[string]document, sources doc
 	for _, s := range sections {
 		kept := []document{}
 		for _, p := range items(s["paragraphs"]) {
-			if flag(checks[fmt.Sprintf("P%d", ordinal)]["supported"]) {
+			check := checks[fmt.Sprintf("P%d", ordinal)]
+			if flag(check["supported"]) && flag(check["useful"]) {
 				kept = append(kept, p)
 			}
 			ordinal++
