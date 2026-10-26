@@ -1362,7 +1362,9 @@ func (a *app) tabHoverAt(x, y int) (hoverAt, bool) {
 // through to whatever the next rung would have made of it.
 func (a *app) tabPress(x, y int) (tea.Cmd, bool) {
 	width, _ := a.size()
-	if y < 0 || y >= a.tabsHeight(width) {
+	// A pending opening can draw the strip above Home. Its recorded targets
+	// still answer the navigation click that just cancelled that opening.
+	if y < 0 || (y >= a.tabsHeight(width) && (y != tabStripRow || len(a.chatTabHits) == 0)) {
 		return nil, false
 	}
 	if y != tabStripRow {
@@ -1422,8 +1424,8 @@ func (a *app) tabPress(x, y int) (tea.Cmd, bool) {
 // "that folder is gone" is two features to keep in step.
 func (a *app) tabGo(tab chatTab) (cmd tea.Cmd) {
 	defer func() {
-		if t, ok := a.teamActive(); ok && !a.wall.on && !a.teamOverlayHolds(t, a.frontTabKey()) {
-			a.teamViewSet("")
+		if !a.conversationOpening {
+			a.tabSettleTeam()
 		}
 	}()
 	if tab.work {
@@ -1452,6 +1454,14 @@ func (a *app) tabGo(tab chatTab) (cmd tea.Cmd) {
 		return cmd
 	}
 	return a.hopStart(hopRow{file: tab.file, where: tab.where, title: tab.word})
+}
+
+// tabSettleTeam validates the overlay against the conversation actually selected,
+// after an immediate switch or after an asynchronous opening has settled.
+func (a *app) tabSettleTeam() {
+	if t, ok := a.teamActive(); ok && !a.wall.on && !a.teamOverlayHolds(t, a.frontTabKey()) {
+		a.teamViewSet("")
+	}
 }
 
 // ── DISMISSING A TAB ────────────────────────────────────────────────────────

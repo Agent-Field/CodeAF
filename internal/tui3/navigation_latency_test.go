@@ -2,12 +2,50 @@ package tui3
 
 import (
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
+
+func TestResumeListReadDoesNotBlockInput(t *testing.T) {
+	a, _ := rosterApp(t, &fakeAgent{model: "m"}, rosterSessions())
+	entered, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	unblock := func() { once.Do(func() { close(release) }) }
+	a.recentSessions = func() []Session { close(entered); <-release; return rosterSessions() }
+	t.Cleanup(unblock)
+	a.input.setText("/resume")
+	returned := make(chan tea.Cmd, 1)
+	go func() { _, cmd := a.Update(key("enter")); returned <- cmd }()
+	var cmd tea.Cmd
+	select {
+	case cmd = <-returned:
+	case <-time.After(time.Second):
+		unblock()
+		<-returned
+		t.Fatal("opening /resume blocked the input loop on its history read")
+	}
+	if !a.roster.open || !strings.Contains(plain(mustFrame(a)), "reading saved conversations") {
+		t.Fatal("resume offered no immediate loading state")
+	}
+	done := make(chan tea.Msg, 1)
+	go func() { done <- cmd() }()
+	<-entered
+	a.Update(key("b"))
+	if a.roster.filter.String() != "b" {
+		t.Fatal("filter could not be edited while history was loading")
+	}
+	a.Update(key("esc"))
+	unblock()
+	msg := <-done
+	a.Update(msg)
+	if a.roster.open {
+		t.Fatal("a late history read reopened the cancelled picker")
+	}
+}
 
 func TestFirstMessageHasItsOwnScreenBeforeTheConversationOpens(t *testing.T) {
 	for _, fromHome := range []bool{true, false} {
@@ -29,7 +67,7 @@ func TestFirstMessageHasItsOwnScreenBeforeTheConversationOpens(t *testing.T) {
 				a.startChatEnter()
 			}
 			frame := plain(mustFrame(a))
-			if a.navLit() != pageChats || !strings.Contains(frame, "\nnew chat\n") || !strings.Contains(frame, text) || !strings.Contains(frame, conversationOpeningWord) {
+			if a.navLit() != pageChats || !strings.Contains(frame, text) || strings.Contains(frame, conversationOpeningWord) || strings.Contains(frame, "\nnew chat\n") || !strings.Contains(frame, "esc") {
 				t.Fatalf("first message has no immediate screen: %s", frame)
 			}
 			if len(a.agent.(*fakeAgent).sent) != 0 {
@@ -96,9 +134,9 @@ func TestHomeReadsInTheBackgroundAndDropsAnEarlierVisitsAnswer(t *testing.T) {
 	}
 }
 
-// A cancelling pointer press belongs to the preview the person saw, never the
-// old Home hit map that happens to remain underneath it.
-func TestCancellingTheOpeningPreviewDoesNotClickThroughToAnotherPage(t *testing.T) {
+// The opening preview uses the real header, so its visible navigation acts
+// on the first press while preserving the cancelled first message.
+func TestOpeningPreviewNavigationUsesItsVisibleHeader(t *testing.T) {
 	a := openingLab(t)
 	a.width, a.height = 180, 42
 	release := make(chan struct{})
@@ -112,7 +150,7 @@ func TestCancellingTheOpeningPreviewDoesNotClickThroughToAnotherPage(t *testing.
 		t.Fatal("the preview has no settings navigation target")
 	}
 	a.Update(tea.MouseClickMsg{X: x, Y: 0, Button: tea.MouseLeft})
-	if a.conversationOpening || !a.at(pageHome) || a.home.box.String() != "A pending first message" {
-		t.Fatal("the cancelling press activated the underlying page or lost its draft")
+	if a.conversationOpening || !a.at(pageSettings) || a.openingHomeDraft.box.String() != "A pending first message" {
+		t.Fatal("the visible navigation did not open settings or lost its draft")
 	}
 }

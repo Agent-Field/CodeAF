@@ -889,6 +889,7 @@ type app struct {
 	conversationRequest uint64
 	conversationOpening bool
 	conversationPreview *conversationPreview
+	openingHomeDraft    composerState
 	homeReading         homeReading
 	homeReadingPending  bool
 	hostReplayLoading   bool
@@ -2954,7 +2955,8 @@ type app struct {
 	startGen  int
 	// roster is the resume picker: the same conversations the box lists, opened
 	// on purpose and filterable (resume.go).
-	roster roster
+	roster         roster
+	resumeAtLaunch tea.Cmd
 	// shelf is the deliverables picker /files opens over the global index of
 	// what has been made (deliverables.go). It reads the same index /export
 	// writes: the artifacts field above, resolved by [app.artifactsIndex].
@@ -3377,7 +3379,7 @@ func newApp(ctx context.Context, opts Options) *app {
 	// machine with no conversations yet gets the empty state as a notice rather
 	// than a list with nothing in it (resume.go).
 	if opts.PickSession {
-		a.openResume()
+		a.resumeAtLaunch = a.openResume()
 	}
 	// AND HOME IS DECIDED AFTER BOTH, for the picker's own reason and one more.
 	// It reads the surface it opens over — which conversation this window is in,
@@ -3553,7 +3555,7 @@ func (a *app) Init() tea.Cmd {
 	// legend needs before it may name the switcher (hop.go), and it is asked off
 	// the loop for the reason every other reading on this list is: the walk opens
 	// every project's index, and the paint path may never pay for one.
-	standing := []tea.Cmd{a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(),
+	standing := []tea.Cmd{a.resumeAtLaunch, a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(),
 		a.watchRuns(), a.watchQuestions(), a.loadTasks(), a.stirLane(), a.askHeld(), a.watchDriving(), a.watchFollowing(),
 		a.linkPingTick(), a.prefetchReplayedPictures(), a.countConversations(), tea.RequestBackgroundColor,
 		// AND WHAT AUTOMATIONS HAVE BEEN DOING, read off their store on a beat of
@@ -3904,8 +3906,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// A repeated enter keeps the pending conversation; ctrl+enter does
 		// the same only on the start page, where it is another enter spelling.
-		// Any other key cancels the transition before editing or navigating.
+		// Draft edits stay with the pending chat; navigation cancels the transition.
 		if a.conversationOpening {
+			if a.openingDraftKey(msg) {
+				return a, nil
+			}
 			if msg.String() == "enter" || (a.startingChat() && msg.String() == "ctrl+enter") {
 				return a, nil
 			}
@@ -4060,14 +4065,26 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.dropSettled()
 
 	case tea.PasteStartMsg:
+		if a.conversationOpening && a.conversationPreview != nil {
+			view := a.conversationPreview.view
+			view.pasting, view.pasted, view.pasteAt = true, view.pasted[:0], a.now()
+			return a, nil
+		}
 		// The terminal said a paste is starting. Everything until the close is
 		// text, whatever shape it arrives in.
 		a.pasting, a.pasted, a.pasteAt = true, a.pasted[:0], a.now()
 		return a, nil
 
 	case tea.PasteMsg:
-		if a.conversationOpening {
-			a.cancelConversationOpening()
+		if a.conversationOpening && a.conversationPreview != nil {
+			view := a.conversationPreview.view
+			if view.pasting {
+				view.pasted = append(view.pasted, []rune(msg.Content)...)
+			} else {
+				view.paste(msg.Content)
+			}
+			a.touch()
+			return a, nil
 		}
 		a.stirred()
 		// Bracketed paste, whole, in one message — the parser coalesced the keys
@@ -4089,6 +4106,16 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.paste(msg.Content)
 
 	case tea.PasteEndMsg:
+		if a.conversationOpening && a.conversationPreview != nil {
+			view := a.conversationPreview.view
+			if view.pasting {
+				view.pasting = false
+				view.paste(string(view.pasted))
+				view.pasted = view.pasted[:0]
+				a.touch()
+			}
+			return a, nil
+		}
 		// The bracket closes, and everything inside it goes in as ONE edit: one
 		// insert, one list sync, one debounce — the same door the coalesced form
 		// goes through, so a terminal that leaks keys and a terminal that does
@@ -4561,10 +4588,36 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if a.conversationOpening {
 			previewing := a.conversationPreview != nil
-			a.cancelConversationOpening()
-			// The preview has a different layout from the page beneath it. The
-			// cancelling click must not activate that page's old hit targets.
 			if previewing {
+				mouse := msg.Mouse()
+				// Body clicks do not withdraw the message already submitted.
+				// The real header remains available for explicit navigation.
+				if mouse.Button != tea.MouseLeft || (!a.navAt(mouse.Y) && mouse.Y != tabStripRow) {
+					return a, nil
+				}
+			}
+			a.cancelConversationOpening()
+			if previewing {
+				// Home is rebuilt on navigation; keep its cancelled submission
+				// separately from the conversation we are about to select.
+				if a.at(pageHome) {
+					draft := composerState{box: a.home.box, chips: a.home.chips}
+					defer func() {
+						if !a.at(pageHome) {
+							a.openingHomeDraft = draft
+						}
+					}()
+				}
+				mouse := msg.Mouse()
+				if cmd, took := a.navPress(mouse.X, mouse.Y); took {
+					return a, cmd
+				}
+				if hit, ok := a.tabAt(mouse.X, mouse.Y); ok && mouse.Y == tabStripRow && (hit.kind == tabHere || hit.kind == tabOther) {
+					a.closeHome()
+				}
+				if cmd, took := a.tabPress(mouse.X, mouse.Y); took {
+					return a, cmd
+				}
 				return a, nil
 			}
 		}
@@ -6034,7 +6087,7 @@ func (a *app) paint() tea.Cmd {
 	// same expression without it, and so does `waitLive || otherLive`. The forming-task
 	// wait therefore keeps the full cadence, which is what it does today.
 	waitLive := a.state == stateWorking
-	otherLive := a.welcome.animating() || a.tasksAnimating() ||
+	otherLive := (a.conversationOpening && a.conversationPreview != nil) || a.welcome.animating() || a.tasksAnimating() ||
 		// The question block's own clocks, on the same terms: a policy line
 		// counting down and a reading clock running out are the two things on
 		// that block that change without a key being pressed (question.go).
@@ -8456,8 +8509,7 @@ func (a *app) slash(line string) tea.Cmd {
 		// wrote and lives in a file named after a timestamp; neither is a thing
 		// anybody types, so the only honest way to ask for one is to be shown
 		// them (resume.go).
-		a.openResume()
-		return nil
+		return a.openResume()
 
 	case "debug":
 		// The third door onto one switch — the other two are --debug and

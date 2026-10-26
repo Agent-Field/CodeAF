@@ -1233,7 +1233,10 @@ func (a *app) dropHome() {
 // way. So there is one constructor, and a field added to the view is a field
 // both roads get.
 func (a *app) newHomeView(world session.World, known bool) homeView {
+	draft := a.openingHomeDraft
+	a.openingHomeDraft = composerState{}
 	return homeView{
+		box: draft.box, chips: draft.chips, carrying: len(draft.chips) > 0,
 		msg:        a.homeAccountNotice,
 		tabs:       a.tabList,
 		holding:    a.holding,

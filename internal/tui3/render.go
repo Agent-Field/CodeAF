@@ -305,7 +305,11 @@ func (a *app) layout(width int) []row {
 		if !ok {
 			line, ok = a.ellipsis()
 			if ok && !a.workFoldOpen(a.conversation(), a.turn) && !a.unfolded[a.turn] {
-				line = a.activityLine("  " + a.shimmer("Working"))
+				word := "Working"
+				if a.conversationOpening {
+					word = conversationOpeningState
+				}
+				line = a.activityLine("  " + a.shimmer(word))
 			}
 		}
 	}
@@ -3287,6 +3291,9 @@ func (a *app) warmSegmentShort() string {
 // it is waiting for them. "your call" rather than "your answer" because it is
 // shorter and because it is what it is.
 func (a *app) stateWord() (string, string) {
+	if a.conversationOpening {
+		return conversationOpeningState, a.pal.accent(conversationOpeningState)
+	}
 	// COPY OUTRANKS EVERYTHING, because it is the only state on this line that is
 	// about the KEYBOARD rather than about the turn. While the viewport is frozen
 	// the keys do something else entirely (copymode.go), and a status line that

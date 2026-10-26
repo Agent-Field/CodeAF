@@ -160,6 +160,10 @@ func (a *app) teamsOverviewGrid(d *teamsDraw, teams []team, width, x, y int, com
 	}
 	out := make([]string, 0, height)
 	for row := 0; row < height; row++ {
+		if !d.visible(y+row, 1) {
+			out = append(out, "")
+			continue
+		}
 		var parts []string
 		for _, stack := range stacks {
 			line := ""
@@ -280,13 +284,18 @@ func (a *app) teamsOverviewCard(d *teamsDraw, t team, width, x, y int, compact b
 			}
 		}
 	}
-	card := wallCardBuild(a.pal, "", lines, x, y, width, 1, 0)
+	// Offscreen cards still contribute their height and keyboard stops. Their
+	// borders and row padding are painted only when the viewport reaches them.
+	rows := make([]string, len(lines)+2)
+	if d.visible(y, len(rows)) {
+		rows = wallCardBuild(a.pal, "", lines, x, y, width, 1, 0).rows
+	}
 	// Background and frame clicks use the team's door, after every narrower
 	// alias and descendant target. The border itself never changes emphasis.
-	for row := range card.rows {
+	for row := range rows {
 		target := selectTarget
 		target.x0, target.x1, target.y = x, x+width, y+row
 		d.targets = append(d.targets, target)
 	}
-	return card.rows
+	return rows
 }
