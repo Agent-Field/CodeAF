@@ -10,8 +10,10 @@ invalidates:
 
 The title model is asked for two to four plain words in sentence case, keeping
 proper nouns, with the distinguishing word first and the person's own words and
-names. Up to twenty other open app
-conversation names are supplied to help it choose a different name.
+names. Up to twenty current open app
+conversation names are read for each naming call, including shorter repairs,
+to help it choose a different name. Renames, closures, archives and new tabs
+are reflected without reopening the engine.
 
 The second chance uses the opening message, the current exchange's message,
 and the first 400 characters of its reply. It checks at most three finished
@@ -30,3 +32,7 @@ remaining exchange budget available for a concrete topic.
 Greetings and empty requests keep their placeholder while the person supplies
 no topic or file, even if a model proposes a different generic label. A later
 concrete message or attachment can still earn the final name within the budget.
+
+Only handled naming answers consume the persisted check budget. Cancelling a
+check, including the third one, leaves that slot available after relaunch.
+Queued and in-flight checks use bounded in-memory reservations.

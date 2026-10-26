@@ -1421,8 +1421,9 @@ type Config struct {
 	// It replaces the rule that named a conversation from its first words.
 	IntentNames bool
 
-	// IntentSiblingNames lists other open conversations to distinguish this name from.
-	IntentSiblingNames []string
+	// IntentSiblingNames reads the current other open names for each naming call.
+	// The callback must be safe to call while the app changes its conversations.
+	IntentSiblingNames func() []string
 
 	// HandOverOnAsk is the desktop app's: a running reply is never moved to a
 	// task by the checkpoints on their own; it moves only when the person asks
@@ -4006,6 +4007,7 @@ type Agent struct {
 	intentName       *intentNameState
 	intentNaming     bool
 	intentExchanges  []titleIntent
+	intentReserved   int
 	// Serializes current-name metadata snapshots and writes, outside a.mu.
 	titleStampMu sync.Mutex
 

@@ -243,7 +243,7 @@ type appConversation interface {
 // new one in a workspace. Minted is a folder this process minted a moment ago
 // for agents.create: nobody else can be holding it, so it is never joined.
 type appOpenAsk struct {
-	IntentSiblingNames []string
+	IntentSiblingNames func() []string
 	Models             *session.ConversationModels
 	AutomaticModels    *bool
 	TeamListeningSince time.Time
@@ -296,7 +296,7 @@ const appHostDialTimeout = 500 * time.Millisecond
 // journal. Everything else is built in this process.
 func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 	clock := ask.ClockS
-	launch := &remote.LaunchShape{TeamListeningSince: ask.TeamListeningSince, Interactive: true, IntentNames: true, IntentSiblingNames: ask.IntentSiblingNames, HandOverOnAsk: true, ProposalClockS: &clock, ChoiceClockS: clock, QuitGraceS: appQuitGraceS, LiveToolOutput: true, StandingOrders: true, QuickTasks: true}
+	launch := &remote.LaunchShape{TeamListeningSince: ask.TeamListeningSince, Interactive: true, IntentNames: true, HandOverOnAsk: true, ProposalClockS: &clock, ChoiceClockS: clock, QuitGraceS: appQuitGraceS, LiveToolOutput: true, StandingOrders: true, QuickTasks: true}
 	if conn, err := appJoinExisting(ask, launch); conn != nil || err != nil {
 		if err == nil {
 			err = enableAppConversationModels(conn.Conv)
@@ -329,7 +329,7 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 			if _, err := openAppEngineProcess(); err != nil {
 				return nil, err
 			}
-			eng, err := assembleEngine(h, workspace, transcript, workspace)
+			eng, err := assembleEngine(h, workspace, transcript, workspace, ask.IntentSiblingNames)
 			if err == nil {
 				err = enableAppConversationModels(eng.Agent, ask.Models)
 			}
@@ -1377,22 +1377,26 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 	// A stored conversation carries its model even before another turn.
 	// Opening without it would replace the saved choice with the profile default.
 	ask := appOpenAsk{Workspace: workspace, Transcript: transcript, Model: view.Model, ClockS: appProposedClockS}
-	b.locked(func() {
-		ask.TeamListeningSince = a.listening
-		var ids []string
-		for id, other := range b.agents {
-			if other != a && other.view.State != appwire.StateClosed && other.view.State != appwire.StateArchived && strings.TrimSpace(other.view.Title) != "" {
-				ids = append(ids, id)
+	b.locked(func() { ask.TeamListeningSince = a.listening })
+	ask.IntentSiblingNames = func() []string {
+		var names []string
+		b.locked(func() {
+			var ids []string
+			for id, other := range b.agents {
+				if other != a && other.view.State != appwire.StateClosed && other.view.State != appwire.StateArchived && strings.TrimSpace(other.view.Title) != "" {
+					ids = append(ids, id)
+				}
 			}
-		}
-		sort.Strings(ids)
-		for _, id := range ids {
-			if len(ask.IntentSiblingNames) == session.IntentSiblingNameLimit {
-				break
+			sort.Strings(ids)
+			for _, id := range ids {
+				if len(names) == session.IntentSiblingNameLimit {
+					break
+				}
+				names = append(names, b.agents[id].view.Title)
 			}
-			ask.IntentSiblingNames = append(ask.IntentSiblingNames, b.agents[id].view.Title)
-		}
-	})
+		})
+		return names
+	}
 	_ = b.state.read(func(f *appStateFile) { ask.ClockS = f.clock() })
 	if boot != nil {
 		ask.Model, ask.Minted = boot.model, true

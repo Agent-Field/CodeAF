@@ -1038,7 +1038,7 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	if err := os.Chdir(workspace); err != nil {
 		return nil, fmt.Errorf("open %s: %w", workspace, err)
 	}
-	return assembleEngine(hello, workspace, sessionFlag, "")
+	return assembleEngine(hello, workspace, sessionFlag, "", nil)
 }
 
 // assembleEngine is [bootEngine] after the chdir: the conversation built for a
@@ -1046,7 +1046,7 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 // because it holds conversations in several workspaces in one process and so
 // cannot move the process into any one of them; it names the launch directory a
 // new conversation records, which is otherwise the process's own.
-func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string) (*remote.Engine, error) {
+func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string, siblingNames func() []string) (*remote.Engine, error) {
 	// ONE PROCESS, ONE WORKSPACE — and, when this process is a host, SEVERAL
 	// CONVERSATIONS IN IT. The process half of a launch is opened once and
 	// shared ([openEngineProcess]): the profile, the model catalog, the harness
@@ -1190,7 +1190,7 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 	// with ([session.Config.IntentNames]); the legacy deterministic flag remains a separate no-model policy.
 	if hello.Launch != nil {
 		cfg.IntentNames = hello.Launch.IntentNames
-		cfg.IntentSiblingNames = hello.Launch.IntentSiblingNames
+		cfg.IntentSiblingNames = siblingNames
 		cfg.DeterministicNames = hello.Launch.DeterministicNames
 		cfg.HandOverOnAsk = hello.Launch.HandOverOnAsk
 		cfg.TeamListeningSince = hello.Launch.TeamListeningSince

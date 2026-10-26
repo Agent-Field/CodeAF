@@ -233,8 +233,9 @@ the selected row.
 The desktop asks the configured `title` model for a name in 2–4 words and at most
 24 characters. It asks for sentence case with proper nouns kept, as in
 "Release review" and "Why is CI slow?". It puts the distinguishing word first,
-using your own words and names, and supplies up to 20 other open conversation
-names to avoid repeats.
+using your own words and names, and reads up to 20 other currently open conversation
+names at each naming call to avoid repeats. Renamed, closed and archived tabs
+are reflected in the next call.
 Your first message, or attached file names when you type nothing, supplies the
 placeholder while naming runs. The placeholder can use up to 40 characters.
 
@@ -249,8 +250,10 @@ topic earns one final model
 name. If all three stay vague, the opening name stays and later messages do not
 restart naming.
 
-The remaining exchange budget and the final naming decision survive reopening
-the conversation. A name you choose yourself stops this process, even while a
+Only a handled naming answer consumes a check. Cancelling a check leaves its
+slot available, including after reopening, so the next finished exchange can
+still supply a name. The remaining budget and final naming decision survive
+reopening the conversation. A name you choose yourself stops this process, even while a
 model answer is on its way.
 
 A model name longer than 24 characters ends at the last whole word that fits,

@@ -778,8 +778,12 @@ func TestAComposedMessageIsNamedFromItsWordsAndAPictureAloneIsNotNamed(t *testin
 func TestIntentNamesIncludeAtMostTwentySiblingNames(t *testing.T) {
 	c := intentSays(1, "Release review")
 	a, _ := intentAgent(t, c, func(cfg *Config) {
-		for n := 0; n < 21; n++ {
-			cfg.IntentSiblingNames = append(cfg.IntentSiblingNames, fmt.Sprintf("Sibling %02d", n))
+		cfg.IntentSiblingNames = func() []string {
+			var names []string
+			for n := 0; n < 21; n++ {
+				names = append(names, fmt.Sprintf("Sibling %02d", n))
+			}
+			return names
 		}
 	})
 	submitMessage(t, a, Submission{Text: "Review the release with Maya"})
@@ -1362,5 +1366,65 @@ func TestEmptyOpenerCanNameALaterAttachedFile(t *testing.T) {
 	}
 	if body := c.ask(2).request(); !strings.Contains(body, "Mira-release-brief.pdf") || strings.Contains(body, "/private/work") {
 		t.Fatalf("namer lacks safe attachment name: %s", body)
+	}
+}
+
+func TestCancelledThirdIntentCheckKeepsBudgetAcrossRelaunch(t *testing.T) {
+	c := intentFixture(4, func(int) intentAnswer { return intentAnswer{title: "KEEP_NAME"} })
+	a, path := intentAgent(t, c, nil)
+	for _, message := range []string{"hi", "continue"} {
+		submitMessage(t, a, Submission{Text: message})
+		settleNaming(a)
+	}
+	if c.asks() != 3 {
+		t.Fatalf("calls after two checks=%d", c.asks())
+	}
+	c.mu.Lock()
+	c.gate = make(chan struct{})
+	c.mu.Unlock()
+	submitMessage(t, a, Submission{Text: "my sourdough smells like apples"})
+	deadline := time.After(2 * time.Second)
+	for c.asks() != 4 {
+		select {
+		case <-deadline:
+			t.Fatal("third naming check did not start")
+		case <-time.After(time.Millisecond):
+		}
+	}
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
+	c.mu.Lock()
+	c.gate = nil
+	c.answer = func(int) intentAnswer { return intentAnswer{title: "Sourdough apple smell"} }
+	c.mu.Unlock()
+	reopened, err := newAgent(Config{Workspace: a.config.Workspace, Model: "test/model", System: "SYSTEM", SessionFile: path, IntentNames: true, OneModel: true}, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	submitMessage(t, reopened, Submission{Text: "please check my sourdough starter"})
+	settleNaming(reopened)
+	if c.asks() != 5 || reopened.Title() != "Sourdough apple smell" {
+		t.Fatalf("cancelled check exhausted resumed budget: calls=%d title=%q", c.asks(), reopened.Title())
+	}
+}
+
+func TestPendingIntentQueueReservesOnlyThreeUnansweredChecks(t *testing.T) {
+	c := intentFixture(4, func(n int) intentAnswer {
+		if n == 0 {
+			return intentAnswer{title: "KEEP_NAME"}
+		}
+		return intentAnswer{err: errors.New("provider unavailable")}
+	})
+	c.gate = make(chan struct{})
+	a, _ := intentAgent(t, c, nil)
+	for _, message := range []string{"hi", "continue", "hello", "hey"} {
+		submitMessage(t, a, Submission{Text: message})
+	}
+	close(c.gate)
+	settleNaming(a)
+	if c.asks() != 4 || a.Title() != "hi" {
+		t.Fatalf("queue did not bound unanswered checks: calls=%d title=%q", c.asks(), a.Title())
 	}
 }

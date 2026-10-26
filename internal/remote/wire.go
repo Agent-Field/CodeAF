@@ -15,7 +15,6 @@ package remote
 import (
 	"encoding/json"
 	"errors"
-	"reflect"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -843,8 +842,6 @@ type LaunchShape struct {
 	// they configured for titles ([session.Config.IntentNames]); the desktop app
 	// sets it.
 	IntentNames bool `json:"intentNames,omitempty"`
-	// IntentSiblingNames are the other open app titles the namer distinguishes.
-	IntentSiblingNames []string `json:"intentSiblingNames,omitempty"`
 	// DeterministicNames retains legacy first-word naming without a model call.
 	// It is independent of IntentNames, including when old and new clients share a host.
 	DeterministicNames bool `json:"deterministicNames,omitempty"`
@@ -895,9 +892,7 @@ func (l *LaunchShape) Same(other *LaunchShape) bool {
 	if other != nil {
 		theirs = *other
 	}
-	// Sibling titles guide a naming ask, not the identity of the conversation.
-	mine.IntentSiblingNames, theirs.IntentSiblingNames = nil, nil
-	return reflect.DeepEqual(mine, theirs)
+	return mine == theirs
 }
 
 // Hello is the client's first frame ("hello"). Workspace is the path AS TYPED

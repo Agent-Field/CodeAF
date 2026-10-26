@@ -82,7 +82,7 @@ func TestLiveIntentNamesNineConversations(t *testing.T) {
 			APIKey: key, BaseURL: "https://openrouter.ai/api/v1", Model: model,
 			System:      "Answer the person briefly in plain words. Do not invent a topic for a vague message. Ask what they need. Do not use tools.",
 			completer:   recorder,
-			IntentNames: true, IntentSiblingNames: append([]string(nil), names...),
+			IntentNames: true, IntentSiblingNames: func() []string { return append([]string(nil), names...) },
 			RolesSource: func(string) (string, bool) { return model, true },
 		})
 		if err != nil {
