@@ -164,7 +164,7 @@ func build(home, base string, id identity.Identity, dev identity.Dev, interval t
 	sign := reqsign.SignFor(deviceSigner{id, dev}, time.Now)
 	hc := gated(home, &http.Client{Timeout: requestTimeout})
 	return &Sync{
-		Dir:        directory.NewHTTP(base, sign, hc),
+		Dir:        &deviceDirectory{HTTP: directory.NewHTTP(base, sign, hc), home: home, self: dev.ID()},
 		Store:      blobstore.NewHTTP(base, sign, gated(home, &http.Client{})),
 		Device:     dev,
 		Identity:   id,
