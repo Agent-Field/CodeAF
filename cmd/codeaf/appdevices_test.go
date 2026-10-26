@@ -338,8 +338,9 @@ func TestAppDevicesV1V2V3PairedHomes(t *testing.T) {
 		t.Fatalf("paired list: %+v", view)
 	}
 	// V3 amendment: the engine's target-specific explanation is available
-	// before removal, and only on a row this computer may remove.
-	if view.Devices[0].RemoveLine != "" || view.Devices[1].RemoveLine != pair.ChatsRevokedLine("laptop") {
+	// before removal, and only on a row this computer may remove. It says what
+	// removing will do; the receipt says it was done.
+	if view.Devices[0].RemoveLine != "" || view.Devices[1].RemoveLine != pair.ChatsRemoveLine("laptop") || view.Devices[1].RemoveLine == pair.ChatsRevokedLine("laptop") {
 		t.Fatalf("removal confirmation copy: %+v", view.Devices)
 	}
 	for _, params := range []map[string]any{{"name": ""}, {"name": strings.Repeat("x", devname.Most+1)}, {"name": "a\nb"}, {"name": "other", "id": sb.Device.ID()}} {
@@ -352,7 +353,7 @@ func TestAppDevicesV1V2V3PairedHomes(t *testing.T) {
 		t.Fatalf("rename receipt: %+v", renamed)
 	}
 	appDeviceEvent(t, rec, func(v appwire.Devices) bool {
-		return len(v.Devices) == 2 && v.Devices[0].Name == "studio" && v.Devices[0].RemoveLine == "" && v.Devices[1].RemoveLine == pair.ChatsRevokedLine("laptop")
+		return len(v.Devices) == 2 && v.Devices[0].Name == "studio" && v.Devices[0].RemoveLine == "" && v.Devices[1].RemoveLine == pair.ChatsRemoveLine("laptop")
 	})
 	other := appDeviceList(t, wb)
 	if len(other.Devices) != 2 || other.Devices[0].ID != sb.Device.ID() || other.Devices[1].Name != "studio" {
