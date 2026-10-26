@@ -845,6 +845,9 @@ func appMint(workspace string) (string, error) {
 
 // appAgentID is a conversation's id from its transcript: the folder's name.
 func appAgentID(transcript string) string {
+	if dir, ok := session.FolderOf(filepath.Clean(transcript)); ok {
+		return (session.Place{Dir: dir}).ID()
+	}
 	return filepath.Base(filepath.Dir(filepath.Clean(transcript)))
 }
 
