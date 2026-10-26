@@ -105,45 +105,56 @@ func (a *Agent) armFurrowVerbs(root string, built Config) {
 // first time. Every later request reads the belt as it stands.
 func (a *Agent) settleFurrow() { a.furrow.settle(firstBeltWait) }
 
-// furrowRefresher owns the one background question a session asks furrow, on the
+// furrowRefresher owns the background questions a session asks furrow, on the
 // terms of [Agent.startLaneBeat]: the goroutine is the session's, Close cancels
 // it and joins it, and a session that has begun closing starts nothing.
 //
 // Its mutex guards the flags and the group together, and IS held across
 // guard.Go and the group's Add — both are non-blocking — so that the join in
-// [furrowRefresher.close] cannot miss a refresh that begins after it. It is taken
-// by nothing else and no caller holds another lock into it, so it is safe to
-// reach from the belt or the request path under any other lock.
+// [furrowRefresher.close] cannot miss a refresh that begins after it. It is the
+// LAST lock in any order: nothing is taken while it is held, so it is safe to
+// reach from the belt, the request path or an anchor under the session lock.
 type furrowRefresher struct {
 	mu      sync.Mutex
 	ctx     context.Context
 	cancel  context.CancelFunc
 	jobs    sync.WaitGroup
-	running chan struct{}
+	asking  map[string]bool
+	busy    chan struct{}
 	stopped bool
 	settled bool
 }
 
+// ask starts a question about root unless one about that folder is already in
+// flight. A question about ANOTHER folder runs beside it: an owned conversation
+// anchored to a project after it was built asks about the project while the
+// scratch folder's question may still be running ([Agent.AnchorWorkspace]).
 func (r *furrowRefresher) ask(root string, landed func(root string)) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.stopped || r.running != nil {
+	if r.stopped || r.asking[root] {
 		return
 	}
 	if r.ctx == nil {
 		r.ctx, r.cancel = context.WithCancel(context.Background())
+		r.asking = map[string]bool{}
 	}
-	running := make(chan struct{})
-	r.running = running
+	if len(r.asking) == 0 {
+		r.busy = make(chan struct{})
+	}
+	r.asking[root] = true
+	busy := r.busy
 	r.jobs.Add(1)
 	ctx := r.ctx
 	guard.Go("session/furrow-detect", func() {
 		defer r.jobs.Done()
 		defer func() {
 			r.mu.Lock()
-			r.running = nil
+			delete(r.asking, root)
+			if len(r.asking) == 0 {
+				close(busy)
+			}
 			r.mu.Unlock()
-			close(running)
 		}()
 		furrow.Detect(ctx, root)
 		// The verbs are armed BEFORE the question is reported finished, so a
@@ -155,38 +166,38 @@ func (r *furrowRefresher) ask(root string, landed func(root string)) {
 	})
 }
 
-// idle is closed when no question is running: the channel of the one in flight,
-// or an already-closed one.
+// idle is closed when no question is running: the channel of the batch in
+// flight, or an already-closed one.
 func (r *furrowRefresher) idle() <-chan struct{} {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.running == nil {
+	if len(r.asking) == 0 {
 		done := make(chan struct{})
 		close(done)
 		return done
 	}
-	return r.running
+	return r.busy
 }
 
-// settle waits up to max for the question in flight, once per session.
+// settle waits up to max for the questions in flight, once per session.
 func (r *furrowRefresher) settle(max time.Duration) {
 	r.mu.Lock()
-	if r.settled || r.running == nil {
+	if r.settled || len(r.asking) == 0 {
 		r.mu.Unlock()
 		return
 	}
 	r.settled = true
-	running := r.running
+	busy := r.busy
 	r.mu.Unlock()
 	timer := time.NewTimer(max)
 	defer timer.Stop()
 	select {
-	case <-running:
+	case <-busy:
 	case <-timer.C:
 	}
 }
 
-// close cancels the question and waits for it.
+// close cancels the questions and waits for them.
 func (r *furrowRefresher) close() {
 	r.mu.Lock()
 	r.stopped = true
