@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Desktop chats keep independent identities and transcripts with cell storage
-pr: 0
+pr: 1965
 surface: [engine]
 invalidates: []
 ---
