@@ -1,0 +1,85 @@
+
+Running 6 tests using 1 worker
+
+  ✘  1 [chromium] › tests/e2e/login.spec.ts:3:7 › login › rejects a wrong password (5ms)
+  ✓  2 [chromium] › tests/e2e/login.spec.ts:4:7 › login › accepts the right password (5ms)
+  ✘  3 [chromium] › tests/e2e/login.spec.ts:6:5 › shows the footer (5ms)
+  ✘  4 [firefox] › tests/e2e/login.spec.ts:3:7 › login › rejects a wrong password (5ms)
+  ✓  5 [firefox] › tests/e2e/login.spec.ts:4:7 › login › accepts the right password (5ms)
+  ✘  6 [firefox] › tests/e2e/login.spec.ts:6:5 › shows the footer (5ms)
+
+
+  1) [chromium] › tests/e2e/login.spec.ts:3:7 › login › rejects a wrong password ───────────────────
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 2
+    Received: 1
+
+      1 | import { test, expect } from '@playwright/test';
+      2 | test.describe('login', () => {
+    > 3 |   test('rejects a wrong password', async () => { expect(1).toBe(2); });
+        |                                                            ^
+      4 |   test('accepts the right password', async () => { expect(1).toBe(1); });
+      5 | });
+      6 | test('shows the footer', async () => { expect('a').toBe('b'); });
+        at /private/work/app/tests/e2e/login.spec.ts:3:60
+
+    Error Context: test-results/e2e-login-login-rejects-a-wrong-password-chromium/error-context.md
+
+  2) [chromium] › tests/e2e/login.spec.ts:6:5 › shows the footer ───────────────────────────────────
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: "b"
+    Received: "a"
+
+      4 |   test('accepts the right password', async () => { expect(1).toBe(1); });
+      5 | });
+    > 6 | test('shows the footer', async () => { expect('a').toBe('b'); });
+        |                                                    ^
+      7 |
+        at /private/work/app/tests/e2e/login.spec.ts:6:52
+
+    Error Context: test-results/e2e-login-shows-the-footer-chromium/error-context.md
+
+  3) [firefox] › tests/e2e/login.spec.ts:3:7 › login › rejects a wrong password ────────────────────
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 2
+    Received: 1
+
+      1 | import { test, expect } from '@playwright/test';
+      2 | test.describe('login', () => {
+    > 3 |   test('rejects a wrong password', async () => { expect(1).toBe(2); });
+        |                                                            ^
+      4 |   test('accepts the right password', async () => { expect(1).toBe(1); });
+      5 | });
+      6 | test('shows the footer', async () => { expect('a').toBe('b'); });
+        at /private/work/app/tests/e2e/login.spec.ts:3:60
+
+    Error Context: test-results/e2e-login-login-rejects-a-wrong-password-firefox/error-context.md
+
+  4) [firefox] › tests/e2e/login.spec.ts:6:5 › shows the footer ────────────────────────────────────
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: "b"
+    Received: "a"
+
+      4 |   test('accepts the right password', async () => { expect(1).toBe(1); });
+      5 | });
+    > 6 | test('shows the footer', async () => { expect('a').toBe('b'); });
+        |                                                    ^
+      7 |
+        at /private/work/app/tests/e2e/login.spec.ts:6:52
+
+    Error Context: test-results/e2e-login-shows-the-footer-firefox/error-context.md
+
+  4 failed
+    [chromium] › tests/e2e/login.spec.ts:3:7 › login › rejects a wrong password ────────────────────
+    [chromium] › tests/e2e/login.spec.ts:6:5 › shows the footer ────────────────────────────────────
+    [firefox] › tests/e2e/login.spec.ts:3:7 › login › rejects a wrong password ─────────────────────
+    [firefox] › tests/e2e/login.spec.ts:6:5 › shows the footer ─────────────────────────────────────
+  2 passed (5ms)
