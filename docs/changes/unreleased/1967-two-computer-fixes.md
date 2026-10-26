@@ -13,5 +13,7 @@ invalidates:
   - "A failed move could leave a free chat sending on an older copy and lose the captured draft. Sending now requires this window's current hold, every failed move restores the whole draft, and an idle computer can return silently only from the current saved turn."
   - "Background repository reads could refresh the index and interrupt a move into the project folder. Every automatic Git reading now disables optional index locks."
   - "A removed computer could keep offering to continue a chat. Home now withdraws the offer, chord and row action while keeping the removal explanation visible."
+  - "The window that took a chat could name its own computer in a displacement notice after its drive established a newer hold. It now follows its drive's publishing receipt and announces displacement only when another computer holds the chat."
+  - "Taking a chat from Home could restore another chat's draft from the same project or miss the arrived chat's saved words. Arrival now restores only that chat's own draft, while other chats keep their words."
 ---
 After continue here from a send, the held words are left in the arrived chat's box for the person to send.

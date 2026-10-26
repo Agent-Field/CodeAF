@@ -278,7 +278,9 @@ func (a *app) takeRemote(row chatlist.Row) tea.Cmd {
 		// Retirement can replace the displaced session while the move is in
 		// flight. Its unsent message belongs to the chat that is arriving.
 		composer := a.mainComposer()
-		draft = &composer
+		if !composer.empty() {
+			draft = &composer
+		}
 	}
 	return func() tea.Msg {
 		if conditional, ok := taker.(conditionalTaker); ok {
@@ -399,6 +401,10 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 		a.note(joinSaid(moved, kept))
 		if msg.draft != nil {
 			a.putComposer(*msg.draft)
+		} else if !msg.taken.AlreadyHere {
+			// A take from Home restores the arrived chat's saved words. The
+			// conversation being left keeps its own composer in its own draft.
+			a.layKeptDrafts(false)
 		}
 		if a.file == line.row.Transcript {
 			a.offerSetup(msg.taken.Resume)

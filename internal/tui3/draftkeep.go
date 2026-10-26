@@ -1124,7 +1124,12 @@ func (a *app) stowDrafts(conv Conversation, side *aside) {
 // THE BOX IS EMPTY; falling through to the plain file there is how a sentence
 // that was sent came back, because the export is written after the record and a
 // crash between the two leaves it holding the words the record has just spent.
-func (a *app) layKeptDrafts() {
+// Taking a named chat restores only its own saved composers; an unowned plain
+// draft can be adopted only during an ordinary window opening.
+func (a *app) layKeptDrafts(allowUnowned bool) {
+	if a.draftFile == "" {
+		return
+	}
 	states := map[recipient]composerState{}
 	a.keptFrom, a.keptElsewhere = a.draftFile, nil
 
@@ -1134,10 +1139,9 @@ func (a *app) layKeptDrafts() {
 	if keep, how := readDraftKeep(draftKeepPath(a.draftFile)); how == draftKeepFound {
 		a.keptElsewhere, _ = a.takeKeptSlots(keep, states)
 		settled = a.speaksFor(keep)
-		// A shared connection reuses this window's store across selections.
-		// Its plain export belongs to the record's owner; falling back to it
-		// would put the outgoing chat's unsent text into an empty incoming chat.
-		if a.shared && namedConversation(keep.Owner) {
+		// The plain export belongs to the record's named chat. A new chat
+		// cannot adopt it just because the draft store or project matches.
+		if namedConversation(keep.Owner) {
 			settled = true
 		}
 	}
@@ -1148,7 +1152,7 @@ func (a *app) layKeptDrafts() {
 
 	// Only then the plain file, which is all an older build or a stranger's
 	// orphan can offer ([app.legacyDraftText]).
-	if _, held := states[mainRecipient]; !held && !settled {
+	if _, held := states[mainRecipient]; !held && !settled && allowUnowned {
 		if text := a.legacyDraftText(); text != "" {
 			runes := []rune(text)
 			states[mainRecipient] = composerState{box: editor{value: runes, cursor: len(runes)}}

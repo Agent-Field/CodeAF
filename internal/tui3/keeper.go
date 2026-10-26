@@ -1205,7 +1205,7 @@ func (a *app) takeBeside(conv Conversation) tea.Cmd {
 		}
 	}
 	cmd := tea.Batch(parked, a.attachConversation(conv, nil))
-	if a.shared {
+	if a.shared && a.homeTakenSaid == nil {
 		a.restoreDraft()
 	}
 	if key := a.convKey(conv.SessionFile); key != "" {

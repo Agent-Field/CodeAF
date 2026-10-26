@@ -300,10 +300,7 @@ func draftFirstHere(own, workspace string) bool {
 // record — an older build's leftovers, or an orphan adopted from a dead window on
 // this directory — and [app.legacyDraftText] is where it is read.
 func (a *app) restoreDraft() {
-	if a.draftFile == "" {
-		return
-	}
-	a.layKeptDrafts()
+	a.layKeptDrafts(true)
 }
 
 // adoptDraft takes over the newest draft on this directory whose window is gone,
@@ -350,6 +347,11 @@ func adoptDraft(own, workspace string) string {
 	)
 	for _, path := range candidates {
 		if path == own || draftWindowAlive(path) {
+			continue
+		}
+		// A saved record names the chat these words belong to. Its plain
+		// export must stay with that chat until its own composer is restored.
+		if keep, how := readDraftKeep(draftKeepPath(path)); how == draftKeepFound && namedConversation(keep.Owner) {
 			continue
 		}
 		info, err := os.Stat(path)

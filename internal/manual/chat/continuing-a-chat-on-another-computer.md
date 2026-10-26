@@ -31,6 +31,8 @@ Before showing this question for a send, codeaf checks which computer holds the 
 
 After `continue here` succeeds, those same words, pasted text and attachments are in the arrived chat's box. Press enter again when you want to send them. Choosing `leave it there` or a move that fails also keeps the whole draft.
 
+Taking a chat from Home restores that chat's own saved draft, or leaves its box empty. Words typed for a different chat stay with that chat, even when both work in one place on disk. A draft held behind a send's continuation card stays with the chat that raised it.
+
 ## What does leave it there do
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
