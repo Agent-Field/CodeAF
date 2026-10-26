@@ -3,6 +3,7 @@ package knowledge_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"testing"
@@ -35,6 +36,22 @@ func TestKnowledgeConcurrentBuildWaitsAndCanBeCancelled(t *testing.T) {
 	case <-entered:
 	case <-time.After(3 * time.Second):
 		t.Fatal("first build never reached provider")
+	}
+	statusDone := make(chan error, 1)
+	go func() {
+		state, err := v.Status()
+		if err == nil && (state.Pending != 1 || state.Build.Sources != 1) {
+			err = fmt.Errorf("progress while provider is blocked: %+v", state)
+		}
+		statusDone <- err
+	}()
+	select {
+	case err := <-statusDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("progress read blocked behind the model request")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()

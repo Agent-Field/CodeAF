@@ -88,3 +88,21 @@ func TestKnowledgeLocalEngineReadsInjectedProfileVault(t *testing.T) {
 		t.Fatal("hosted conversation read local profile knowledge")
 	}
 }
+
+func TestKnowledgeBuildShowsStageProgressWithoutClaimingCompletion(t *testing.T) {
+	a := knowledgeArticleApp(t)
+	a.kb.reading.Build = knowledge.BuildStatus{Phase: knowledge.BuildRunning, Chats: 303, Imported: 303, Sources: 8149}
+	a.kb.reading.Pending = 7929
+	a.touch()
+	got := placeFrameText(a)
+	for _, want := range []string{"Chats imported: 303 of 303", "Sources processed: 220 of 8149", "2%"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %q:\n%s", want, got)
+		}
+	}
+	a.kb.reading.Pending = 0
+	a.touch()
+	if got = placeFrameText(a); !strings.Contains(got, "Organizing knowledge pages") {
+		t.Fatalf("finished sources hid remaining organization:\n%s", got)
+	}
+}

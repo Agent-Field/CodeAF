@@ -10,14 +10,14 @@ const savedMemoryHeadRows = 2
 func savedMemorySwitchRow(a *app, width int) placeRow {
 	const label = "Knowledge"
 	prefix := " Saved memory  "
-	text := prefix + a.pal.muted(label)
+	text := " " + a.pal.bold(a.pal.muted("Saved memory")) + "  " + a.pal.muted(label)
 	hit := knowledgeHit{tree: -1}
 	if a.mem.edit == nil {
-		painted := taskLinkInk(a.pal, label)
+		painted := a.pal.muted(label)
 		if a.kb.hoverLink == "@switch" {
-			painted = taskLinkHotInk(a.pal, label)
+			painted = a.pal.underline(painted)
 		}
-		text = prefix + painted
+		text = " " + a.pal.bold(a.pal.muted("Saved memory")) + "  " + painted
 		start := ansi.StringWidth(prefix)
 		hit.links = []knowledgeCellLink{{start, start + ansi.StringWidth(label), "@switch"}}
 	}

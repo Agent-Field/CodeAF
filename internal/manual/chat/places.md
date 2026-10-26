@@ -644,6 +644,8 @@ command any more, and *Automations* has the whole of what replaced them.
 
 Open Memory and click **Knowledge** or press `alt+u` to switch from saved
 preferences to your knowledge base. Click **Saved memory** to return.
+These view switches underline while hovered. Build and Search controls highlight
+under the pointer; the surrounding description stays passive.
 
 If saved chats already exist, click **Build knowledge base** or press Enter.
 The first build uses saved chats across all projects, including archived chats.
@@ -651,9 +653,26 @@ The first build uses saved chats across all projects, including archived chats.
 in the background. You can leave Memory, change chats, and return later; pages
 appear as completed batches are published.
 
+## Knowledge build progress and concurrency
+
+Build progress separates **Chats imported** from **Sources processed**. Each
+shows completed items, its current total, and a percentage for that stage.
+Importing every chat does not mean all its sources have been processed. Totals
+can grow as more chats arrive; these percentages are counts, not estimates of
+elapsed time or overall completion. **Organizing knowledge pages…** means the
+sources have been processed and page organization is still finishing.
+
+The build runs in the background, so reading Memory and changing chats remain
+available while it waits for a model response. One compiler owns each profile
+at a time: ordered batches use earlier claims to resolve later corrections,
+and completed publications are saved together. Opening another window does not
+start a duplicate compiler for the same profile.
+
 If there is no chat history, the reader says **Knowledge will populate as you
 chat.** Future saved chats populate it automatically, without a separate build
 step. A profile has one knowledge base; changing project does not change vaults.
+
+## Reading knowledge pages, links and sources
 
 The native Go compiler stores sources, progress, pages, search, and human changes
 in SQLite. Python and developer tools are not required.
