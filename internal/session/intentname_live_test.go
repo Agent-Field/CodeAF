@@ -2,15 +2,54 @@ package session
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 	"unicode/utf8"
+
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
-func TestLiveIntentNamesSixConversations(t *testing.T) {
+type liveIntentCall struct {
+	Model    string       `json:"model"`
+	Messages []ai.Message `json:"messages"`
+	Answer   string       `json:"answer"`
+	Error    string       `json:"error,omitempty"`
+}
+
+type liveIntentRecorder struct {
+	Completer
+	mu     sync.Mutex
+	calls  []liveIntentCall
+	secret string
+}
+
+func (r *liveIntentRecorder) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	var request ai.Request
+	for _, option := range options {
+		_ = option(&request)
+	}
+	response, err := r.Completer.CompleteWithMessages(ctx, messages, options...)
+	call := liveIntentCall{Model: request.Model, Messages: messages}
+	if response != nil {
+		call.Answer = response.Text()
+	}
+	if err != nil {
+		call.Error = strings.ReplaceAll(err.Error(), r.secret, "<REDACTED>")
+	}
+	r.mu.Lock()
+	r.calls = append(r.calls, call)
+	r.mu.Unlock()
+	return response, err
+}
+
+func TestLiveIntentNamesEightConversations(t *testing.T) {
 	if os.Getenv("CODEAF_LIVE_INTENT_NAMES") != "1" {
 		t.Skip("set CODEAF_LIVE_INTENT_NAMES=1 to use the real naming model")
 	}
@@ -27,12 +66,20 @@ func TestLiveIntentNamesSixConversations(t *testing.T) {
 		"Explain why my sourdough starter smells like apples",
 		"hi",
 		"look at this",
+		"can you help",
+		"continue",
 	} {
 		dir := t.TempDir()
+		client, err := provider.NewClient(provider.Config{APIKey: key, BaseURL: "https://openrouter.ai/api/v1", Model: model})
+		if err != nil {
+			t.Fatal(err)
+		}
+		recorder := &liveIntentRecorder{Completer: client, secret: key}
 		agent, err := New(Config{
 			Workspace: dir, SessionFile: filepath.Join(dir, "conversation.jsonl"),
 			APIKey: key, BaseURL: "https://openrouter.ai/api/v1", Model: model,
-			System:      "Answer the person briefly in plain words. For a vague greeting, offer help planning a neighborhood picnic. Do not use tools.",
+			System:      "Answer the person briefly in plain words. Do not invent a topic for a vague message. Ask what they need. Do not use tools.",
+			completer:   recorder,
 			IntentNames: true, IntentSiblingNames: append([]string(nil), names...),
 			RolesSource: func(string) (string, bool) { return model, true },
 		})
@@ -64,7 +111,7 @@ func TestLiveIntentNamesSixConversations(t *testing.T) {
 		if err := agent.Close(); err != nil {
 			t.Fatal(err)
 		}
-		if title == "" || utf8.RuneCountInString(title) > 24 || title == OpeningName(words, nil) {
+		if title == "" || utf8.RuneCountInString(title) > 40 || (title != OpeningName(words, nil) && (utf8.RuneCountInString(title) > 24 || strings.HasSuffix(title, "…"))) {
 			t.Fatalf("model name = %q", title)
 		}
 		for _, previous := range names {
@@ -73,6 +120,36 @@ func TestLiveIntentNamesSixConversations(t *testing.T) {
 			}
 		}
 		names = append(names, title)
+		recorder.mu.Lock()
+		calls := append([]liveIntentCall(nil), recorder.calls...)
+		recorder.mu.Unlock()
+		for _, call := range calls {
+			if call.Model != model {
+				t.Fatalf("unexpected model %q", call.Model)
+			}
+			if call.Error != "" {
+				t.Logf("failed request messages=%v", call.Messages)
+				t.Fatal(call.Error)
+			}
+		}
+		evidence, err := json.MarshalIndent(struct {
+			Opener  string           `json:"opener"`
+			Name    string           `json:"name"`
+			Latency string           `json:"latency"`
+			Calls   []liveIntentCall `json:"calls"`
+		}{words, title, elapsed.String(), calls}, "", "  ")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if out := os.Getenv("CODEAF_LIVE_INTENT_EVIDENCE"); out != "" {
+			if err := os.MkdirAll(out, 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(out, fmt.Sprintf("%02d.json", len(names))), evidence, 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		t.Logf("evidence=%s", evidence)
 		t.Logf("opener=%q name=%q elapsed=%s title_events=%q reply_chars=%d", words, title, elapsed, heard, utf8.RuneCountInString(reply.String()))
 	}
 }

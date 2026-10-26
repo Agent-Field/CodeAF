@@ -6,7 +6,8 @@ import (
 )
 
 // AppNameLimit is how many characters a conversation's name may hold on the
-// desktop model output, including a clipping ellipsis. A character is a Unicode
+// desktop model output. Model names keep whole words without an ellipsis.
+// A character is a Unicode
 // code point.
 const AppNameLimit = 24
 

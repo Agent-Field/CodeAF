@@ -239,9 +239,14 @@ placeholder while naming runs. The placeholder can use up to 40 characters.
 If your first message has fewer than four words, or the model gives a generic
 name, the engine asks once more after the first reply finishes. This second ask
 uses your first message and the opening 400 characters of the reply. It never
-asks a third time, including after reopening the conversation. A name you choose
-yourself always wins, even while a model answer is on its way. A failed naming
-ask leaves the current name in place.
+starts another naming opportunity, including after reopening the conversation.
+If the opening and reply give no concrete topic, it keeps the first-message
+placeholder. It never invents a topic or tries on a later turn.
+
+A model name longer than 24 characters ends at the last whole word that fits,
+without an ellipsis. If no word fits, the model gets one request to answer
+shorter. An unusable shorter answer leaves the current name in place. A name
+you choose yourself always wins, even while a model answer is on its way.
 
 ## What is my chat called before it has a name — unnamed tab, when does a chat get its name, how do I rename this conversation, why it no longer says Untitled
 

@@ -16,3 +16,8 @@ The second ask uses the first message and the first 400 characters of the reply.
 A person's rename wins over either model answer. Naming never runs a third time
 or starts again on reopening a named conversation. A failed ask keeps the current
 name. The second attempt is recorded before it is dispatched.
+
+Model names end at whole words without an ellipsis. If the answer has no word
+that fits, one shorter-answer request is allowed for that naming opportunity.
+A vague opening with a vague reply keeps its placeholder; the title prompt
+uses only topics supported by the person's message or reply.

@@ -538,8 +538,8 @@ func TestAFailedNameIsNotRetriedAndLeavesTheFallback(t *testing.T) {
 	}
 }
 
-// THE MODEL NAME IS AT MOST TWENTY-FOUR CHARACTERS, THE ELLIPSIS INCLUDED, WHATEVER THE
-// MODEL ANSWERS — and the request is bounded however much was typed.
+// Model names fit the tab in whole words. Unrepairable answers leave the
+// bounded placeholder, and requests stay bounded however much was typed.
 func TestTheNameAndTheRequestAreBounded(t *testing.T) {
 	long := "Refactoring the entire authentication middleware so that sessions survive restarts and tokens rotate"
 	for _, answer := range []string{long, strings.Repeat("字", 80), strings.Repeat("a", 90)} {
@@ -548,8 +548,12 @@ func TestTheNameAndTheRequestAreBounded(t *testing.T) {
 		submitMessage(t, agent, Submission{Text: strings.Repeat("a long, rambling opening sentence. ", 400)})
 		settleNaming(agent)
 		got := agent.Title()
-		if n := utf8.RuneCountInString(got); n == 0 || n > AppNameLimit {
-			t.Fatalf("a name of %d characters: %q", n, got)
+		if strings.Contains(answer, " ") {
+			if n := utf8.RuneCountInString(got); n == 0 || n > AppNameLimit || strings.Contains(got, "…") {
+				t.Fatalf("a model name of %d characters: %q", n, got)
+			}
+		} else if got != OpeningName(strings.Repeat("a long, rambling opening sentence. ", 400), nil) || completer.asks() != 2 {
+			t.Fatalf("unrepairable answer did not preserve placeholder after two calls: %q (%d calls)", got, completer.asks())
 		}
 		if body := completer.ask(0).request(); utf8.RuneCountInString(body) > 1200 {
 			t.Fatalf("the request was %d characters for a message of %d", utf8.RuneCountInString(body), 400*35)
@@ -918,5 +922,131 @@ func TestAbandonedOpeningDoesNotNameFromALaterReply(t *testing.T) {
 	settleNaming(a)
 	if c.asks() != 1 {
 		t.Fatalf("later reply bought an opening rename: %d calls", c.asks())
+	}
+}
+
+func TestIntentModelNameKeepsWholeWordsWithoutEllipsis(t *testing.T) {
+	c := intentSays(1, "International release review")
+	a, _ := intentAgent(t, c, nil)
+	submitMessage(t, a, Submission{Text: "Review the international release with Maya"})
+	settleNaming(a)
+	if got := a.Title(); got != "International release" {
+		t.Fatalf("Title() = %q, want whole words without ellipsis", got)
+	}
+	if c.asks() != 1 {
+		t.Fatalf("whole-word trimming bought another call: %d", c.asks())
+	}
+}
+
+func TestIntentOversizedSingleWordGetsOneShorterRepair(t *testing.T) {
+	for _, long := range []string{strings.Repeat("a", 25), strings.Repeat("字", 25)} {
+		t.Run(long, func(t *testing.T) {
+			c := intentFixture(1, func(n int) intentAnswer {
+				if n == 0 {
+					return intentAnswer{title: long}
+				}
+				return intentAnswer{title: "Maya release review"}
+			})
+			a, _ := intentAgent(t, c, nil)
+			submitMessage(t, a, Submission{Text: "Review Maya's release with the team"})
+			settleNaming(a)
+			if c.asks() != 2 {
+				t.Fatalf("calls = %d, want original and one repair", c.asks())
+			}
+			if !strings.Contains(c.ask(1).request(), long) || !strings.Contains(strings.ToLower(c.ask(1).request()), "shorter") {
+				t.Fatal("repair did not ask for a shorter name")
+			}
+			if got := a.Title(); got != "Maya release review" {
+				t.Fatalf("Title() = %q", got)
+			}
+		})
+	}
+}
+
+func TestIntentFailedShorterRepairKeepsPlaceholder(t *testing.T) {
+	c := intentSays(1, strings.Repeat("字", 25))
+	a, _ := intentAgent(t, c, nil)
+	opening := "Review Maya's release with the team"
+	submitMessage(t, a, Submission{Text: opening})
+	settleNaming(a)
+	if c.asks() != 2 {
+		t.Fatalf("calls = %d, want exactly one repair", c.asks())
+	}
+	if got := a.Title(); got != opening {
+		t.Fatalf("Title() = %q, want placeholder %q", got, opening)
+	}
+}
+
+func TestVagueGreetingKeepsPlaceholderAfterOneSecondChance(t *testing.T) {
+	for _, second := range []string{"KEEP_NAME", "General chat"} {
+		t.Run(second, func(t *testing.T) {
+			c := intentFixture(2, func(n int) intentAnswer {
+				if n == 0 {
+					return intentAnswer{title: "General chat"}
+				}
+				return intentAnswer{title: second}
+			})
+			c.steps[0] = func(context.Context, []ai.Message) (*ai.Response, error) {
+				return textResponse("Hello! How can I help?"), nil
+			}
+			a, _ := intentAgent(t, c, nil)
+			submitMessage(t, a, Submission{Text: "hi"})
+			settleNaming(a)
+			if c.asks() != 2 || a.Title() != "hi" {
+				t.Fatalf("calls = %d, Title() = %q, want 2 calls and hi", c.asks(), a.Title())
+			}
+			for n := 0; n < 2; n++ {
+				if !strings.Contains(c.ask(n).request(), "KEEP_NAME") || !strings.Contains(c.ask(n).request(), "Do not invent") {
+					t.Fatal("namer lacks grounded-name instruction")
+				}
+			}
+			submitMessage(t, a, Submission{Text: "continue"})
+			settleNaming(a)
+			if c.asks() != 2 || a.Title() != "hi" {
+				t.Fatalf("later turn renamed greeting: calls=%d, Title()=%q", c.asks(), a.Title())
+			}
+
+		})
+	}
+}
+
+func TestIntentShorterRepairFailureLeavesPlaceholder(t *testing.T) {
+	c := intentFixture(1, func(n int) intentAnswer {
+		if n == 0 {
+			return intentAnswer{title: strings.Repeat("x", 25)}
+		}
+		return intentAnswer{err: errors.New("provider unavailable")}
+	})
+	a, _ := intentAgent(t, c, nil)
+	opening := "Review Maya's release with the team"
+	submitMessage(t, a, Submission{Text: opening})
+	settleNaming(a)
+	if c.asks() != 2 || a.Title() != opening {
+		t.Fatalf("calls = %d, Title() = %q", c.asks(), a.Title())
+	}
+}
+
+func TestVagueIntentCanRepairEachNamingOpportunityOnlyOnce(t *testing.T) {
+	c := intentFixture(2, func(n int) intentAnswer {
+		if n%2 == 0 {
+			return intentAnswer{title: strings.Repeat("字", 25)}
+		}
+		return intentAnswer{title: "Release review"}
+	})
+	a, _ := intentAgent(t, c, nil)
+	submitMessage(t, a, Submission{Text: "release review"})
+	settleNaming(a)
+	if c.asks() != 4 || a.Title() != "Release review" {
+		t.Fatalf("calls = %d, Title() = %q", c.asks(), a.Title())
+	}
+	for _, at := range []int{1, 3} {
+		if !strings.Contains(c.ask(at).request(), "shorter") {
+			t.Fatalf("request %d lacks shorter instruction", at)
+		}
+	}
+	submitMessage(t, a, Submission{Text: "continue"})
+	settleNaming(a)
+	if c.asks() != 4 {
+		t.Fatalf("third opportunity made calls = %d", c.asks())
 	}
 }
