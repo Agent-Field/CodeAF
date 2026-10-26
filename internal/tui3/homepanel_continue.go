@@ -327,8 +327,10 @@ func (a *app) tookTakeover(msg homeTakenMsg) tea.Cmd {
 	case errors.Is(msg.err, directory.ErrLeaseHeld):
 		return a.lostRace(msg.row)
 	case errors.Is(msg.err, directory.ErrUnreachable):
+		// Home is where the failed move lands, so it carries the whole sentence:
+		// the reason alone does not say the chat stayed and the words were kept.
 		a.machineRead.down = true
-		a.home.say(chatlist.Unreachable, "")
+		a.home.say(failure, "")
 	case errors.Is(msg.err, directory.ErrConditionalTake):
 		a.home.say(directory.ErrConditionalTake.Error(), "")
 	case msg.err != nil:

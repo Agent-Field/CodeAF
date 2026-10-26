@@ -45,8 +45,11 @@ func TestEveryFailedTakeReturnsTheCapturedComposer(t *testing.T) {
 			}
 			if failure.err == directory.ErrUnreachable {
 				notes := strings.Join(noteTexts(a), "\n")
-				if !strings.Contains(notes, "could not continue this chat here") || !strings.Contains(notes, "your words are still in the box") {
+				if !strings.Contains(notes, continueUnreachable) {
 					t.Errorf("an unreachable move did not say the chat stayed and the words were kept: %q", notes)
+				}
+				if !a.at(pageHome) || !strings.Contains(homeText(a), "your words are still in the box") {
+					t.Errorf("Home, where the failed move lands, gave only the reason:\n%s", homeText(a))
 				}
 			}
 			if a.at(pageHome) {
