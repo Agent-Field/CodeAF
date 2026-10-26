@@ -215,6 +215,6 @@ blocks its later requests; it cannot take back bytes the device already received
 
 ## Does a removed computer keep syncing while its window is open
 
-Once codeaf learns that this computer was removed, it stops asking the relay for chats, sending heartbeats and reconnecting its watches or coordination. That refusal is remembered across windows and restarts. Your window stays usable for local chats.
+Once codeaf learns that this computer was removed, it stops asking your other computers for chats and stops sending updates. That refusal is remembered across windows and restarts. Your window stays usable for local chats. Home removes its offer to continue another computer's chat, its continue chord and the continue action on chat rows. The removal explanation stays visible.
 
-Run `codeaf pair` to add the computer again. Pairing can still contact the relay and installs a new device key. An already open Home can then show your other computers again.
+Run `codeaf pair` to add the computer again. Pairing can still reach the service and gives this computer a new device key. An already open Home can then show your other computers again.
