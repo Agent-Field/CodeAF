@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"github.com/Agent-Field/codeaf/internal/knowledgefixture"
 	"os"
 	"path/filepath"
 	"strings"
@@ -41,7 +42,7 @@ func TestKnowledgeCapturesSavedTurnsOnlyAfterOptIn(t *testing.T) {
 	if snapshot.Enabled || snapshot.Pending != 0 {
 		t.Fatalf("capture before opt-in: %+v", snapshot)
 	}
-	if err := vault.Create(); err != nil {
+	if err := vault.StartBuild(); err != nil {
 		t.Fatal(err)
 	}
 	collect(t, mustSubmit(t, agent, "Explain our durable queue architecture"))
@@ -85,7 +86,7 @@ func TestKnowledgeRecoversJournalWithoutReplayingCompactionOrNotes(t *testing.T)
 		c.SessionFile = journal
 	})
 	vault := agent.Knowledge()
-	if err := vault.Create(); err != nil {
+	if err := vault.StartBuild(); err != nil {
 		t.Fatal(err)
 	}
 	collect(t, mustSubmit(t, agent, "Explain journal recovery"))
@@ -175,7 +176,7 @@ func TestKnowledgeRecallToolsReturnCitedProjectPagesToTheConversation(t *testing
 		c.SessionFile = journal
 	})
 	vault := agent.Knowledge()
-	if err := vault.Create(); err != nil {
+	if err := vault.StartBuild(); err != nil {
 		t.Fatal(err)
 	}
 	dir := filepath.Join(vault.Directory(), "knowledge")
@@ -183,7 +184,7 @@ func TestKnowledgeRecallToolsReturnCitedProjectPagesToTheConversation(t *testing
 		t.Fatal(err)
 	}
 	fixture := `{"sources":{"s1":{"role":"user","ts":"2026-10-25T12:00:00Z","text":"Cedar queues jobs."}},"claims":[{"id":"c1","text":"Cedar queues jobs.","kind":"fact","status":"active","evidence":[{"source":"s1","quote":"Cedar queues jobs."}]}],"notes":[{"id":"routing","title":"Routing","claims":["c1"]}]}`
-	if err := os.WriteFile(filepath.Join(dir, "vault.json"), []byte(fixture), 0600); err != nil {
+	if err := knowledgefixture.Write(filepath.Join(filepath.Dir(dir), "knowledge.sqlite"), []byte(fixture), 0600); err != nil {
 		t.Fatal(err)
 	}
 	collect(t, mustSubmit(t, agent, "How are Cedar jobs queued?"))
@@ -253,7 +254,7 @@ func TestKnowledgeRecallIsBoundedAndLongPagesCanBeContinued(t *testing.T) {
 		c.SessionFile = filepath.Join(t.TempDir(), "chat.jsonl")
 	})
 	vault := agent.Knowledge()
-	if e := vault.Create(); e != nil {
+	if e := vault.StartBuild(); e != nil {
 		t.Fatal(e)
 	}
 	dir := filepath.Join(vault.Directory(), "knowledge")
@@ -265,13 +266,13 @@ func TestKnowledgeRecallIsBoundedAndLongPagesCanBeContinued(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e = os.WriteFile(filepath.Join(dir, "vault.json"), b, 0600); e != nil {
+	if e = knowledgefixture.Write(filepath.Join(filepath.Dir(dir), "knowledge.sqlite"), b, 0600); e != nil {
 		t.Fatal(e)
 	}
 	collect(t, mustSubmit(t, agent, "Explain Cedar from the knowledge base"))
 }
 
-func TestKnowledgeFollowsWorkspaceAnchorWithoutImportingScratchConversation(t *testing.T) {
+func TestKnowledgeRemainsSharedAcrossWorkspaceAnchor(t *testing.T) {
 	profile := t.TempDir()
 	scratch := t.TempDir()
 	project := t.TempDir()
@@ -279,8 +280,8 @@ func TestKnowledgeFollowsWorkspaceAnchorWithoutImportingScratchConversation(t *t
 	if err := os.MkdirAll(filepath.Dir(journal), 0700); err != nil {
 		t.Fatal(err)
 	}
-	target := knowledge.Open(profile, project)
-	if err := target.Create(); err != nil {
+	target := knowledge.Open(profile)
+	if err := target.StartBuild(); err != nil {
 		t.Fatal(err)
 	}
 	agent, _ := newTestAgent(t, &scriptedCompleter{steps: []step{
@@ -299,7 +300,7 @@ func TestKnowledgeFollowsWorkspaceAnchorWithoutImportingScratchConversation(t *t
 		c.Place = Place{Owned: true, Workspace: scratch}
 	})
 	initial := agent.Knowledge()
-	if err := initial.Create(); err != nil {
+	if err := initial.StartBuild(); err != nil {
 		t.Fatal(err)
 	}
 	collect(t, mustSubmit(t, agent, "Scratch discussion must stay in scratch"))
@@ -317,8 +318,8 @@ func TestKnowledgeFollowsWorkspaceAnchorWithoutImportingScratchConversation(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.Pending != 2 {
-		t.Fatalf("project captured scratch conversation: %+v", snapshot)
+	if snapshot.Pending != 4 {
+		t.Fatalf("shared vault missed cross-project conversation: %+v", snapshot)
 	}
 	resumed, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
 		c.usageLedger = filepath.Join(t.TempDir(), "usage.jsonl")
@@ -333,8 +334,8 @@ func TestKnowledgeFollowsWorkspaceAnchorWithoutImportingScratchConversation(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.Pending != 2 {
-		t.Fatalf("reopen leaked scratch conversation: %+v", snapshot)
+	if snapshot.Pending != 4 {
+		t.Fatalf("reopen duplicated cross-project conversation: %+v", snapshot)
 	}
 }
 
@@ -370,7 +371,7 @@ func TestKnowledgeCapturesCellJournalWithSealedWorkspaceHeader(t *testing.T) {
 		t.Fatal("fixture must use sealed cell header")
 	}
 	vault := agent.Knowledge()
-	if err := vault.Create(); err != nil {
+	if err := vault.StartBuild(); err != nil {
 		t.Fatal(err)
 	}
 	collect(t, mustSubmit(t, agent, "Cell conversation"))
@@ -384,35 +385,6 @@ func TestKnowledgeCapturesCellJournalWithSealedWorkspaceHeader(t *testing.T) {
 	if snapshot.Pending != 2 {
 		t.Fatalf("sealed cell journal did not capture: %+v", snapshot)
 	}
-}
-
-func TestKnowledgeBackgroundRetriesCompositionWithNoPendingSources(t *testing.T) {
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
-		c.usageLedger = filepath.Join(t.TempDir(), "usage.jsonl")
-		c.ProfileDir = t.TempDir()
-		c.SessionFile = filepath.Join(t.TempDir(), "chat.jsonl")
-	})
-	vault := agent.Knowledge()
-	if err := vault.Create(); err != nil {
-		t.Fatal(err)
-	}
-	// Extraction can commit all sources before article projection fails. This
-	// public persisted status requests a projection-only, model-free empty retry.
-	if err := os.WriteFile(filepath.Join(vault.Directory(), "status.json"), []byte(`{"pending":0,"needs_update":true}`), 0600); err != nil {
-		t.Fatal(err)
-	}
-	deadline := time.Now().Add(8 * time.Second)
-	for time.Now().Before(deadline) {
-		status, err := vault.Status()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !status.NeedsUpdate {
-			return
-		}
-		time.Sleep(30 * time.Millisecond)
-	}
-	t.Fatal("background scheduler left composition-only recovery pending")
 }
 
 func TestKnowledgeSavedTurnsUseThePersistedCompilerModel(t *testing.T) {
@@ -435,14 +407,14 @@ func TestKnowledgeSavedTurnsUseThePersistedCompilerModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	vault := agent.Knowledge()
-	if err := vault.Create(); err != nil {
+	if err := vault.StartBuild(); err != nil {
 		t.Fatal(err)
 	}
 	collect(t, mustSubmit(t, agent, "Explain durable queues"))
 	if err := agent.Close(); err != nil {
 		t.Fatal(err)
 	}
-	reopened := knowledge.Open(profile, agent.config.Workspace)
+	reopened := knowledge.Open(profile)
 	status, err := reopened.Status()
 	if err != nil {
 		t.Fatal(err)
@@ -494,7 +466,7 @@ func TestKnowledgeRecallLabelsHumanEditsWithoutOldCitations(t *testing.T) {
 		c.usageLedger = filepath.Join(t.TempDir(), "usage.jsonl")
 	})
 	vault := agent.Knowledge()
-	if err := vault.Create(); err != nil {
+	if err := vault.StartBuild(); err != nil {
 		t.Fatal(err)
 	}
 	dir := filepath.Join(vault.Directory(), "knowledge")
@@ -502,7 +474,7 @@ func TestKnowledgeRecallLabelsHumanEditsWithoutOldCitations(t *testing.T) {
 		t.Fatal(err)
 	}
 	fixture := `{"sources":{"s1":{"role":"user","ts":"2026-10-25T12:00:00Z"}},"claims":[{"id":"c1","kind":"fact","text":"Old routing","status":"active","evidence":[{"source":"s1","quote":"Old routing"}]}],"notes":[{"id":"routing","title":"Routing","claims":["c1"]}]}`
-	if err := os.WriteFile(filepath.Join(dir, "vault.json"), []byte(fixture), 0600); err != nil {
+	if err := knowledgefixture.Write(filepath.Join(filepath.Dir(dir), "knowledge.sqlite"), []byte(fixture), 0600); err != nil {
 		t.Fatal(err)
 	}
 	page, err := vault.Read("routing")

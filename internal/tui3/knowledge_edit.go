@@ -1,7 +1,6 @@
 package tui3
 
 import (
-	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -128,7 +127,6 @@ func (a *app) knowledgeWrite(deleting bool) tea.Cmd {
 			err = v.EditPage(id, revision, markdown)
 		}
 		msg := knowledgeReadingMsg{vault: v, err: err, editID: id, mutation: "save"}
-		msg.mutationApplied = errors.Is(err, knowledge.ErrPageChangeApplied)
 		if deleting {
 			msg.mutation = "delete"
 		}

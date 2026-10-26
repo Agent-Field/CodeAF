@@ -39,12 +39,12 @@ func TestMemoryKnowledgeSwitchIsClickableBothWays(t *testing.T) {
 
 func TestSavedMemoryKnowledgeSwitchDoesNotEnableCapture(t *testing.T) {
 	a := placeApp(t)
-	v := knowledge.Open(t.TempDir(), a.workspace)
+	v := knowledge.Open(t.TempDir())
 	a.agent = &knowledgeTestAgent{fakeAgent: &fakeAgent{model: "m"}, vault: v}
 	drive(t, a, key(placeChord(pageMemory)))
 	placeFrameText(a)
 	clickMemoryLabel(t, a, "Knowledge")
-	if got := placeFrameText(a); !strings.Contains(got, "Create knowledge base") {
+	if got := placeFrameText(a); !strings.Contains(got, "Build knowledge base") {
 		t.Fatal("switch did not open create view: " + got)
 	}
 	if v.Enabled() {

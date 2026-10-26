@@ -14,9 +14,9 @@ contributor rules and history.
 
 A mechanism shared by both surfaces needs an explanation in each corpus's own
 vocabulary. Do not merge the corpora or insert repository contribution rules into
-product answers. Runtime project knowledge learned from user chats is a separate
+product answers. Runtime knowledge learned from saved chats is a separate
 system; its behavior is explained in [Memory](chat/what-i-remember.md) and
-[project knowledge](chat/places.md#project-knowledge-inside-memory).
+[knowledge from saved chats](chat/places.md#knowledge-from-saved-chats-inside-memory).
 
 ## Write for lookup and for people
 
