@@ -57,6 +57,11 @@ that is a different program and nothing here talks to it.
 
 ## Starting it — how do I start codeaf
 
+Opening a chat lets you read and draft while its first local save finishes.
+The next tool call and a move to another device still wait for saving; opening
+the screen does not mean the chat is ready to move. A saving failure is reported
+instead of silently discarding the pending work.
+
 | What you type | What you get |
 | --- | --- |
 | `codeaf` | the home screen, over this directory's most recent conversation |

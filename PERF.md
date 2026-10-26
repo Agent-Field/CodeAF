@@ -31,6 +31,51 @@ memberships; the batch trades temporary indexed storage for repeated scans.
 `TestTeamsDisbandScaleTerminalLatency` measures confirmation through the visible
 saved result, including persistence and redraw work.
 
+The All teams overview retains offscreen card heights and keyboard targets,
+but skips their border composition and grid padding. Latest-message ordering
+walks current and former memberships without copying their records.
+`TestTeamsOverviewPaintAllocationBudget` measures five complete frames at 200
+teams and 40,000 memberships against an 8 MiB per-frame allocation limit.
+`TestTeamsOverviewViewportMatchesFullCards` compares scrolled narrow and wide
+viewports with the complete rendering; hierarchy and fold tests preserve
+keyboard and pointer reachability.
+
+## Startup and interaction audit
+
+Build the baseline and candidate through `make build` with the same Go version,
+platform and pinned engine. Keep distinct executable files, and run the same
+test binary and fixture against each. Prepare platform-specific embedded engine
+artifacts serially: the staging step replaces the prior platform's artifact.
+An absent engine is a failed measurement, not a faster startup.
+
+```sh
+CODEAF_E2E_MODEL=deepseek/deepseek-v4.1-flash go test -tags=e2e ./internal/e2e \
+  -run '^(TestStartupWhileStorageCaptureIsPending|TestTabAndEngineAttachmentLatency)$' \
+  -count=3 -v -timeout=5m
+```
+
+The capture test uses real movable chats and a real storage daemon behind a
+transparent proxy. It withholds capture-plan requests, checks that history and
+the composer appear and accept typing, then verifies saving completes after
+release. Both in-process and newly hosted launches run. Tools and movement keep
+their capture barriers; recorder regressions check those independently.
+
+The tab test measures fresh-engine startup, attachment to an existing engine,
+opening another saved chat, twelve alternating tab selections and typed drafts
+with 2,001 message records in each chat. It pauses only its own identified engine
+for 1,200 ms while opening the resume picker, then measures picker and filter
+response separately from the engine's response. No model request belongs in
+these measurements; the fixture rejects and counts any that occurs.
+
+Start clocks before input delivery. A process ID, terminal-mode change, existing
+tab title or old frame cannot satisfy readiness: require destination-only
+history and a composer, followed by an echoed unique draft. Observation includes
+5 ms polling plus terminal command overhead. Keep every sample and timeout,
+report sample counts and maxima, and separate first process launches from later
+ones. Fresh profiles and engines do not imply cold operating-system caches.
+Report live-provider completion and recorded model identities separately; a
+scripted provider cannot establish live model acceptance.
+
 Store reopening probes distinct nonempty session IDs through the existing
 message index before checking for missing session rows. It still scans message
 IDs, and still discovers older writers' missing rows on a later open; no cached
