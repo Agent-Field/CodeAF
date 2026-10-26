@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: Desktop conversation names fit tabs and vague openers get one second chance
-pr: 0
+pr: 1952
 surface: [engine, remote, docs]
 invalidates:
   - "Desktop model names could use forty characters. They now use at most twenty-four characters, while the first-message placeholder keeps its forty-character limit."
