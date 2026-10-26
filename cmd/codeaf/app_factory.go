@@ -289,7 +289,15 @@ func (h *appFactoryHost) intakeFor(st *store.Store) *intake.Intake {
 	if h.newIntake != nil {
 		return h.newIntake(st)
 	}
-	return factoryIntake(st)
+	// THE PERSON THIS FACTORY KNOWS IS ITS OPERATOR: a job a start rule
+	// starts here is theirs.
+	return factoryIntakeOwned(st, func(ctx context.Context) string {
+		h.mu.Lock()
+		seam := h.seam
+		h.mu.Unlock()
+		handle, _ := seam.PersonHandle(ctx)
+		return handle
+	})
 }
 
 // waitForPollSource is [waitForFactoryGitHub] over the test seam.

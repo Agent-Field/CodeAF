@@ -96,12 +96,23 @@ func askFirstPath(rule string) string {
 
 // underDir reads a pattern that ends in a slash as everything under that
 // folder (`auth/` is `auth/**`), which is what a person writing "touch auth/"
-// means of a plan's files. A start reads the words of an issue, where the
-// folder itself is the word, and keeps the pattern as written.
+// means, of a plan's files and of the paths an issue names alike. A start
+// still matches the pattern as written too, so an issue that names the folder
+// itself asks as before.
 func underDir(glob string) string {
 	glob = strings.TrimSpace(glob)
 	if strings.HasSuffix(glob, "/") {
 		return glob + "**"
 	}
 	return glob
+}
+
+// underDirs is [underDir] of every pattern, so a folder a never line names
+// covers what is under it at a start as it does in a plan.
+func underDirs(globs []string) []string {
+	out := make([]string, 0, len(globs))
+	for _, g := range globs {
+		out = append(out, underDir(g))
+	}
+	return out
 }

@@ -45,12 +45,16 @@ var factoryTriage sync.Once
 // it until this process ends, so two processes on one machine (two windows, or
 // a window and its engine) never pay twice for one item: the one that lost
 // looks again every [factoryWatchEvery] and takes over when the holder exits.
-func startFactoryTriage(ctx context.Context, st *store.Store) {
+func startFactoryTriage(ctx context.Context, st *store.Store, newIntake ...func(*store.Store) *intake.Intake) {
 	if st == nil {
 		return
 	}
+	build := factoryIntake
+	if len(newIntake) > 0 && newIntake[0] != nil {
+		build = newIntake[0]
+	}
 	factoryTriage.Do(func() {
-		guard.Go("factory/triage", func() { runFactoryTriage(ctx, st, factoryIntake) })
+		guard.Go("factory/triage", func() { runFactoryTriage(ctx, st, build) })
 	})
 }
 

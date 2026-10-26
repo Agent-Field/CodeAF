@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/factory/tokens"
 	"github.com/Agent-Field/codeaf/internal/home"
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 )
@@ -59,8 +60,15 @@ func runFactoryConvert(args []string, out, warnings io.Writer) error {
 // factoryIntake reuses the same runner door as a person's Run action: the
 // lease's, which queues the job for whichever worker pulls it.
 func factoryIntake(st *store.Store) *intake.Intake {
+	return factoryIntakeOwned(st, factoryProfileOwner)
+}
+
+// factoryIntakeOwned is [factoryIntake] whose rule-started jobs belong to
+// owner: the factory's operator, as the host that runs the intake knows them.
+func factoryIntakeOwned(st *store.Store, owner func(context.Context) string) *intake.Intake {
 	history, _ := record.Open(st, record.Options{})
 	return intake.New(st, intake.Options{
+		Owner:  owner,
 		Record: history,
 		Refresh: func(ctx context.Context) error {
 			repos, err := st.Repos()
@@ -151,4 +159,31 @@ func withFactoryHouseRules(st *store.Store, f pipeline.File, err error) (pipelin
 		return f, err
 	}
 	return pipeline.WithHouseRules(f, house), err
+}
+
+// factoryProfileOwner is the forge login of this machine's GitHub connection:
+// on a factory a person serves from their own machine, they are its operator.
+// "" when there is no connection or GitHub cannot say.
+func factoryProfileOwner(ctx context.Context) string {
+	token, _ := factorygithub.TokenAt(ctx, factoryProfile(""))
+	if token == "" {
+		return ""
+	}
+	login, err := forge.NewClient(token).Me(ctx)
+	if err != nil {
+		return ""
+	}
+	return login
+}
+
+// factoryOperatorOwner is a team server's operator, from its persisted claim
+// beside the tokens file; "" before anyone has claimed it.
+func factoryOperatorOwner(tokensPath string) func(context.Context) string {
+	return func(context.Context) string {
+		claim, err := tokens.LoadOperator(tokensPath)
+		if err != nil {
+			return ""
+		}
+		return claim.Login
+	}
 }

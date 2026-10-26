@@ -28,7 +28,7 @@ func (f File) DecideJob(it factory.Item, paths []string) Decision {
 	if budget > f.Start.MaxCost {
 		reasons = append(reasons, "job budget "+money(budget)+" is over "+money(f.Start.MaxCost))
 	}
-	if why := neverWhy(f.Start.Never, paths); why != "" {
+	if why := neverWhy(underDirs(f.Start.Never), paths); why != "" {
 		reasons = append(reasons, why)
 	}
 	for _, rule := range f.Start.AskFirst {
@@ -45,7 +45,7 @@ func (f File) DecideJob(it factory.Item, paths []string) Decision {
 			continue
 		}
 		for _, path := range paths {
-			if touches(glob, path) {
+			if touches(glob, path) || touches(underDir(glob), path) {
 				reasons = append(reasons, "ask first · "+rule+" · "+path)
 				break
 			}

@@ -19,6 +19,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/intake"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
@@ -162,7 +163,9 @@ func serveFactory(ctx context.Context, configPath, listen string, out io.Writer,
 	// THE SERVER HAS NO CONVERSATION, so its launch supplies the model pin
 	// on the same parent the desk's worker uses. Triage reads it for every request.
 	setFactoryModelPin(model, oneModel)
-	startFactoryTriage(ctx, st)
+	// A JOB A START RULE STARTS ON A TEAM SERVER IS ITS OPERATOR'S.
+	operator := factoryOperatorOwner(factoryTokensPath(configPath))
+	startFactoryTriage(ctx, st, func(st *store.Store) *intake.Intake { return factoryIntakeOwned(st, operator) })
 	startFactoryServerPoll(ctx, st, factoryTokensPath(configPath))
 	server, done := service.server, service.done
 	if _, err := fmt.Fprintln(out, service.public); err != nil {
