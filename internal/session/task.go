@@ -1329,6 +1329,9 @@ type taskQuestion struct {
 // as [Agent.ResolveConsent] ignores a late answer. The answer is simply late,
 // and the surface has already seen the node start or the turn end.
 func (a *Agent) ResolveTask(id uint64, answer TaskAnswer) {
+	if a.CheckWork() != nil {
+		return
+	}
 	a.mu.Lock()
 	question, waiting := a.taskAnswers[id]
 	if waiting {

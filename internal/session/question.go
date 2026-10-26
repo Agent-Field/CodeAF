@@ -1970,6 +1970,9 @@ var (
 // on a question no surface in this program could draw, let alone answer. They
 // are on this door now, so a surface has one thing to call.
 func (a *Agent) ResolveQuestion(answer Answer) error {
+	if err := a.CheckWork(); err != nil {
+		return err
+	}
 	if child, original, ok := a.discussionAnswer(answer); ok {
 		return child.ResolveQuestion(original)
 	}

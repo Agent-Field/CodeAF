@@ -1054,6 +1054,10 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
 	return a.submitText(ctx, text, nil)
 }
 
+// CheckWork reuses the seat's ownership gate for every user-work door. It is
+// checked before journaling and again when a queued message starts its turn.
+func (a *Agent) CheckWork() error { return procexec.CheckWork(a.config.Seat) }
+
 // submitText is Submit's body with the PERSON'S MARK beside the words: what a
 // door that knows more than the words said about the message
 // ([Agent.SubmitMessage]), nil for every other door. The mark rides the message
@@ -1111,6 +1115,9 @@ func (a *Agent) submitText(ctx context.Context, text string, person *messagePres
 // steering rules and the rail are laws about a turn starting, and two functions
 // applying them separately is two chances for one of them to stop.
 func (a *Agent) submitUser(ctx context.Context, user userMessage) (<-chan Event, error) {
+	if err := a.CheckWork(); err != nil {
+		return nil, err
+	}
 	a.owedResumeNews(user)
 	a.mu.Lock()
 	if a.closed {
@@ -1920,6 +1927,15 @@ func (u userMessage) journaled() ai.Message {
 // it is about is already on the steering queue, and the loop's first drain
 // writes it (see [Agent.wakeLocked]).
 func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *eventStream, extra ...*eventStream) <-chan Event {
+	if err := a.CheckWork(); err != nil {
+		for _, stream := range extra {
+			refuseOn(stream, err)
+		}
+		if watcher != nil {
+			return refuseOn(watcher, err)
+		}
+		return refusedStream(err)
+	}
 	// A new turn depends on the shortened conversation and ends its undo.
 	a.rewindUndo = nil
 	if a.debugRun == "" {
@@ -2259,6 +2275,9 @@ func (a *Agent) followUpMarked(text string, person *messagePresentation, mustCal
 	if text == "" {
 		return nil, errors.New("session: empty message")
 	}
+	if err := a.CheckWork(); err != nil {
+		return nil, err
+	}
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -2308,6 +2327,13 @@ func (a *Agent) nextFollowUpLocked(completed bool) (followUp, bool) {
 	}
 	if !completed || a.closed {
 		a.dropFollowUpsLocked()
+		return followUp{}, false
+	}
+	if err := a.CheckWork(); err != nil {
+		for _, queued := range a.followups {
+			refuseOn(queued.stream, err)
+		}
+		a.followups = nil
 		return followUp{}, false
 	}
 	if err := a.railBlockLocked(); err != nil {
@@ -4050,6 +4076,9 @@ func (a *Agent) steeringHeld() bool {
 // enqueueNote is the queue itself, and it reports whether the note was taken:
 // false is a closed agent, whose queue nothing will ever drain again.
 func (a *Agent) enqueueNote(note userMessage) bool {
+	if err := a.CheckWork(); err != nil {
+		return false
+	}
 	text := strings.TrimSpace(note.text())
 	if text == "" {
 		return false
@@ -4420,6 +4449,9 @@ func (a *Agent) wakeLocked() bool { return a.wakeAnsweringLocked(false, "") }
 // whether what it just drained was a line THE PERSON TYPED: the woken turn's
 // opening then says so ([userMessage.answersPerson]).
 func (a *Agent) wakeAnsweringLocked(answersPerson bool, answersMessage string) bool {
+	if err := a.CheckWork(); err != nil {
+		return false
+	}
 	// A WALL THAT HAS PASSED BUYS NO TURN NOBODY ASKED FOR. This is arithmetic
 	// on the Steward's own clock rather than a stopped flag: a stopped flag is a
 	// different decision in [Steward.Decide], while the wall's budget ending is

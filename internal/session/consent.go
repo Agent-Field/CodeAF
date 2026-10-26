@@ -112,6 +112,9 @@ func (a *Agent) ResolveConsent(id uint64, allow bool) {
 // the call that happened to prompt it, so an interrupt racing the click must
 // not quietly turn "always" into "once".
 func (a *Agent) ResolveConsentRemember(id uint64, allow bool, scope ConsentScope) {
+	if a.CheckWork() != nil {
+		return
+	}
 	switch scope {
 	case ConsentToolSession, ConsentRule:
 	default:

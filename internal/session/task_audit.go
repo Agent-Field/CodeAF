@@ -2643,6 +2643,9 @@ func settledAlready(id uint64, state TaskState) error {
 // because a surface pressing this on work that somebody else has already
 // decided needs the same sentence either way.
 func (a *Agent) HandUnverifiedToModel(id uint64) error {
+	if err := a.CheckWork(); err != nil {
+		return err
+	}
 	node := a.taskNode(id)
 	if node == nil {
 		return fmt.Errorf("no task %d in this session", id)

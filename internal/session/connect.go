@@ -314,6 +314,9 @@ type connectAnswer struct {
 // as [Agent.ResolveConsent] ignores a late answer: the answer is simply late,
 // and the surface has already seen the attempt end.
 func (a *Agent) ResolveConnect(id string, approve bool) {
+	if a.CheckWork() != nil {
+		return
+	}
 	ask, waiting := a.claimConnect(id)
 	if !waiting {
 		return
@@ -338,6 +341,9 @@ func (a *Agent) ResolveConnect(id string, approve bool) {
 // ignored: there is nothing to do with it, and connecting on the strength of it
 // would connect an account by a route nobody asked about.
 func (a *Agent) ResolveConnectKey(id string, key string) {
+	if a.CheckWork() != nil {
+		return
+	}
 	ask, waiting := a.claimConnect(id)
 	if !waiting {
 		return

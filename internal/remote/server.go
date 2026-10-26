@@ -67,6 +67,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
@@ -185,7 +186,8 @@ type Engine struct {
 	// Note is the one sentence worth showing once: "session open elsewhere —
 	// started a new one" travels here, the same words the local door puts on
 	// the surface's entry notice.
-	Note string
+	Note        string
+	Interrupted []string
 	// Launch is the shape this conversation was built with, echoed on every
 	// welcome so a surface can tell the conversation it asked for from the one
 	// it joined ([LaunchShape]). Nil is the engine's own defaults.
@@ -1283,7 +1285,9 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		count := counter.UserMessageCount()
 		users = &count
 	}
+	_, workAdmission := sess.agent.(interface{ CheckWork() error })
 	return Welcome{
+		WorkAdmission:              workAdmission,
 		UserMessages:               users,
 		MessageMarks:               messageMarksKnown(sess.agent),
 		ComposedMessages:           composedKnown(sess.agent),
@@ -1301,6 +1305,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		Build:                      buildinfo.String(),
 		Title:                      sess.agent.Title(),
 		Note:                       note,
+		Interrupted:                append([]string(nil), sess.engine.Interrupted...),
 		ApprovalMode:               sess.engine.ApprovalMode,
 		BashBackgroundAfterSeconds: sess.engine.BashBackgroundAfterSeconds,
 		ProfileDir:                 sess.engine.ProfileDir,
@@ -1689,6 +1694,7 @@ func (sess *Session) swap(asked *server, build func() (WrappedAgent, string, boo
 	// The note belonged to the launch and to nothing after it: a swap the
 	// person asked for is not a session that moved under them.
 	sess.engine.Note = ""
+	sess.engine.Interrupted = nil
 	welcome := sess.welcomeLocked(asked)
 	welcome.Attached = len(sess.surfaces) - 1
 	if welcome.Attached < 0 {
@@ -2131,6 +2137,10 @@ func (s *server) dispatch(call Frame) {
 	result := Frame{Kind: "result", ID: call.ID, Payload: payload}
 	if err != nil {
 		result.Payload, result.Error = nil, err.Error()
+		var refusal *executor.WorkRefusal
+		if errors.As(err, &refusal) {
+			result.WorkRefusal = refusal
+		}
 	}
 	_ = s.send(result)
 	// And only now does a turn opened by that call begin to speak.
@@ -2202,6 +2212,17 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 
 	if out, handled, err := invokeConversation(sess.engine, agent, call.Method, call.Payload); handled {
 		return out, err
+	}
+	// These older answer doors return no error from the producer. Ask the same
+	// session gate before an answer can release a model or admit a task.
+	switch call.Method {
+	case MethodConsent, MethodConsentRemember, MethodHarness, MethodConnect, MethodConnectKey,
+		MethodSubharnessResolve, MethodTaskResolve:
+		if door, ok := agent.(interface{ CheckWork() error }); ok {
+			if err := door.CheckWork(); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	switch call.Method {
@@ -2652,6 +2673,11 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	case MethodPing:
 		// The empty answer is the point: elapsed time belongs to the surface's
 		// clock, so the engine contributes no timestamp and no machine-clock skew.
+		return nil, nil
+	case MethodCheckWork:
+		if door, ok := agent.(interface{ CheckWork() error }); ok {
+			return nil, door.CheckWork()
+		}
 		return nil, nil
 
 	case MethodTyping:

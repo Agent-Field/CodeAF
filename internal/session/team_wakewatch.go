@@ -578,6 +578,9 @@ func (a *Agent) teamWakeManager(profile string, roles []teamRole, batch map[stri
 // reports whether a turn was started (or one was already running, which takes
 // the note at its next boundary), and why not when neither.
 func (a *Agent) teamWakeWith(text string) (bool, string) {
+	if err := a.CheckWork(); err != nil {
+		return false, err.Error()
+	}
 	note := userMessage{message: textMessage("user", strings.TrimSpace(text)), wake: true, authored: true}
 	a.mu.Lock()
 	defer a.mu.Unlock()

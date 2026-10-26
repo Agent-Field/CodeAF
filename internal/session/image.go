@@ -97,6 +97,9 @@ var imageMediaTypes = map[string]string{
 // No images is exactly Submit, so a surface with an empty attachment tray can
 // call one method for both.
 func (a *Agent) SubmitImage(ctx context.Context, text string, images []Image) (<-chan Event, error) {
+	if err := a.CheckWork(); err != nil {
+		return nil, err
+	}
 	text = strings.TrimSpace(text)
 	if len(images) == 0 {
 		return a.Submit(ctx, text)
@@ -135,6 +138,9 @@ func (a *Agent) SubmitImage(ctx context.Context, text string, images []Image) (<
 // that is a law about a turn starting, shared with [Agent.SubmitComposed] so the
 // two cannot drift. queued says the message joined a running turn.
 func (a *Agent) admitImageMessage(ctx context.Context, user userMessage) (events <-chan Event, queued bool, err error) {
+	if err := a.CheckWork(); err != nil {
+		return nil, false, err
+	}
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
@@ -417,6 +423,9 @@ func visionUserMessage(text string, refs []journalPart) userMessage {
 // not the same function today. If a third kind of turn ever appears, the shared
 // half is this function and it should move to agent.go beside the original.
 func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, live ai.Message, seer string) <-chan Event {
+	if err := a.CheckWork(); err != nil {
+		return refusedStream(err)
+	}
 	a.running = true
 	hub := a.newReplayHubLocked()
 	a.hub = hub

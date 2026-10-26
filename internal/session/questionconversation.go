@@ -29,6 +29,9 @@ type questionDiscussion struct {
 // ReplaceQuestion stops the pending turn before submitting the revised request.
 // No answer is recorded and no permission is granted by this operation.
 func (a *Agent) ReplaceQuestion(ctx context.Context, answer Answer) (<-chan Event, error) {
+	if err := a.CheckWork(); err != nil {
+		return nil, err
+	}
 	owner, original := a, answer
 	if child, given, nested := a.discussionAnswer(answer); nested {
 		owner, original = child, given

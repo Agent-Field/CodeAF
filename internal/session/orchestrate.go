@@ -123,6 +123,9 @@ const DefaultRunCapUSD = 100.00
 // is dollars, and zero is a run nobody bounded — legal, and never what a turn
 // asks for.
 func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDollars float64) (string, error) {
+	if err := a.CheckWork(); err != nil {
+		return "", err
+	}
 	if goal = strings.TrimSpace(goal); goal == "" {
 		return "", errors.New("an adaptive run needs a goal")
 	}
@@ -366,6 +369,9 @@ func (a *Agent) ResolveOrchestrate(id, answer string) (string, error) {
 	// exactly the same sentence (cancel.go).
 	if answer == orchestrate.GateStop {
 		return a.Cancel(CancelRun + ":" + strings.TrimSpace(id))
+	}
+	if err := a.CheckWork(); err != nil {
+		return "", err
 	}
 	live, known := a.orchestration(id)
 	if !known {

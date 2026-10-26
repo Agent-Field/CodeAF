@@ -515,6 +515,9 @@ func (n *TaskNode) releaseResolving(gen uint64) {
 // has nothing to resolve IN, and a node whose round is already running must not
 // be given a second worker in the same directory as the first.
 func (a *Agent) ResolveConflict(id uint64) error {
+	if err := a.CheckWork(); err != nil {
+		return err
+	}
 	node := a.taskNode(id)
 	if node == nil {
 		return fmt.Errorf("no task %d in this session", id)

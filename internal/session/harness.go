@@ -57,6 +57,9 @@ import (
 // same matcher the offer's own word went through, so the two cannot disagree
 // about what "opus" means.
 func (a *Agent) ResolveHarness(id uint64, run bool, model string) {
+	if a.CheckWork() != nil {
+		return
+	}
 	a.mu.Lock()
 	ask, waiting := a.harnessAsks[id]
 	if waiting {
@@ -363,6 +366,9 @@ func (a *Agent) RunHarnessRequest(ctx context.Context, name, text, model string)
 // RunHarnessRequestWithClientID is the same picked-harness turn with the
 // caller's correlation id kept on its accepted message, as SubmitMessage does.
 func (a *Agent) RunHarnessRequestWithClientID(ctx context.Context, name, text, model, clientID string) (<-chan Event, error) {
+	if err := a.CheckWork(); err != nil {
+		return nil, err
+	}
 	person, err := (Submission{ClientID: clientID}).mark()
 	if err != nil {
 		return nil, err
