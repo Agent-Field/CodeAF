@@ -3,12 +3,12 @@ package syncsetup
 import (
 	"context"
 	"errors"
-	"github.com/Agent-Field/codeaf/internal/identity"
 	"sort"
 	"sync"
 
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
+	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/raftdirectory"
 )
 
@@ -67,125 +67,106 @@ func (s *Sync) displayListing(ctx context.Context) (directory.Listing, bool, err
 	return l, true, err
 }
 
-var errMemberDisplayChanged = errors.New("the local directory follower changed")
-
-// switchingDisplay ends the old advisory socket at its next use once the
-// terminal's learner is available. Its replacement is entirely local.
-type switchingDisplay struct {
-	dirwatch.Stream
-	owner *Sync
-}
-
-func (s switchingDisplay) Ping(ctx context.Context) error {
-	if !s.owner.memberAllowed() {
-		s.Stream.Close()
-		return ErrQuiet
-	}
-	if s.owner.memberAllowed() && s.owner.displayMember() != nil {
-		s.Stream.Close()
-		return errMemberDisplayChanged
-	}
-	s.owner.clusterFrames.Add(1)
-	return s.Stream.Ping(ctx)
-}
-
+// followStream keeps advisory presence on the relay watch even while Home's
+// directory reads use the local learner. A held lease cannot show that its
+// computer is connected; only the relay's watch sockets supply that evidence.
 func (s *Sync) followStream(ctx context.Context, w directory.Watcher) (dirwatch.Stream, error) {
 	if !s.memberAllowed() {
 		return nil, ErrQuiet
-	}
-	if m := s.displayMember(); m != nil {
-		m.mu.Lock()
-		valid := !m.closed && m.failure == nil
-		m.mu.Unlock()
-		if valid {
-			return &localDisplayStream{owner: s, member: m, pong: make(chan struct{}, 1), closed: make(chan struct{}), devices: map[string]directory.Device{}, online: map[string]bool{}}, nil
-		}
 	}
 	stream, err := w.Watch(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return switchingDisplay{Stream: stream, owner: s}, nil
+	ctx, cancel := context.WithCancel(ctx)
+	display := &memberDisplayStream{
+		Stream: stream, owner: s, cancel: cancel, closed: ctx.Done(), replies: make(chan displayReply),
+	}
+	// Capture the initial roster before returning, so a device committed after
+	// this open is still announced even if the first read happens later.
+	if _, _, err := display.refresh(ctx); err != nil {
+		display.Close()
+		return nil, err
+	}
+	go display.readRelay(ctx)
+	return quietStream{Stream: display, home: s.Home, owner: s}, nil
 }
 
-type localDisplayStream struct {
+var errMemberDisplayChanged = errors.New("the local directory follower changed")
+
+type displayReply struct {
+	frame dirwatch.Frame
+	err   error
+}
+
+// memberDisplayStream combines committed learner changes with the relay's
+// presence and pongs. Local state never supplies online evidence or a pong.
+type memberDisplayStream struct {
+	dirwatch.Stream
 	owner       *Sync
-	member      *personalMember
-	mu          sync.Mutex
-	pong        chan struct{}
-	closed      chan struct{}
+	cancel      context.CancelFunc
+	closed      <-chan struct{}
 	once        sync.Once
-	initialized bool
+	replies     chan displayReply
+	member      *personalMember
 	applied     uint64
-	cached      directory.Listing
+	initialized bool
 	version     uint64
 	devices     map[string]directory.Device
-	online      map[string]bool
 	frames      []dirwatch.Frame
 }
 
-func (s *localDisplayStream) Vouching() bool { return false }
-func (s *localDisplayStream) Close()         { s.once.Do(func() { close(s.closed) }) }
-func (s *localDisplayStream) Ping(context.Context) error {
-	if !s.owner.memberAllowed() {
-		s.Close()
-		return ErrQuiet
-	}
-	select {
-	case s.pong <- struct{}{}:
-	default:
-	}
-	return nil
+func (s *memberDisplayStream) Close() {
+	s.once.Do(func() {
+		s.cancel()
+		s.Stream.Close()
+	})
 }
-func (s *localDisplayStream) Next(ctx context.Context) (dirwatch.Frame, error) {
+
+func (s *memberDisplayStream) readRelay(ctx context.Context) {
 	for {
-		if !s.owner.memberAllowed() {
-			s.Close()
-			return dirwatch.Frame{}, ErrQuiet
+		frame, err := s.Stream.Next(ctx)
+		select {
+		case s.replies <- displayReply{frame: frame, err: err}:
+		case <-ctx.Done():
+			return
 		}
-		m := s.member
-		m.mu.Lock()
-		changed := m.changed
-		applied := m.status.Applied
-		closed, failed := m.closed, m.failure
-		m.mu.Unlock()
-		if closed || failed != nil {
-			return dirwatch.Frame{}, errMemberDisplayChanged
+		if err != nil {
+			return
 		}
-		listing, local, err := s.cached, true, error(nil)
-		if s.applied != applied || !s.initialized {
-			listing, local, err = s.owner.displayListing(ctx)
-			if err == nil && local {
-				s.cached = listing
-				s.applied = applied
-			}
-		}
-		listing.Now = max(listing.Now, s.owner.now().UnixMilli())
+	}
+}
+
+func (s *memberDisplayStream) Next(ctx context.Context) (dirwatch.Frame, error) {
+	for {
+		changed, local, err := s.refresh(ctx)
 		if err != nil {
 			return dirwatch.Frame{}, err
 		}
-		if !local {
-			return dirwatch.Frame{}, errMemberDisplayChanged
-		}
-		if listing.Identity.Rotation != nil {
-			return dirwatch.Frame{}, dirwatch.ErrRotated
-		}
-		if listing.Devices[s.owner.Device.ID()].Revoked {
-			return dirwatch.Frame{}, dirwatch.ErrRevoked
-		}
-		s.mu.Lock()
-		s.project(listing)
 		if len(s.frames) > 0 {
 			frame := s.frames[0]
+			s.frames[0] = dirwatch.Frame{}
 			s.frames = s.frames[1:]
-			s.mu.Unlock()
 			return frame, nil
 		}
-		s.mu.Unlock()
 		select {
+		case reply := <-s.replies:
+			if reply.err != nil {
+				return dirwatch.Frame{}, reply.err
+			}
+			frame := reply.frame
+			if local {
+				// The learner supplies versions and committed device news once
+				// available, avoiding duplicate join announcements from the relay.
+				if frame.Event == nil && !frame.Pong && frame.Holds == nil {
+					continue
+				}
+				if frame.Event != nil && (frame.Event.T == dirwatch.EventJoined || frame.Event.T == dirwatch.EventRevoked) {
+					continue
+				}
+			}
+			return frame, nil
 		case <-changed:
-		case <-s.pong:
-			return dirwatch.Frame{Pong: true}, nil
 		case <-s.closed:
 			return dirwatch.Frame{}, context.Canceled
 		case <-ctx.Done():
@@ -194,10 +175,55 @@ func (s *localDisplayStream) Next(ctx context.Context) (dirwatch.Frame, error) {
 	}
 }
 
-// project produces only display hints and committed joined/revoked news. A
-// quiet neighbour's presence ages normally; a live unexpired held chat is
-// also recent evidence. Neither hint can suppress an ownership heartbeat.
-func (s *localDisplayStream) project(l directory.Listing) {
+// refresh follows the terminal-owned learner, including one admitted after
+// Home opened. Its notification is captured before the view to avoid lost news.
+func (s *memberDisplayStream) refresh(ctx context.Context) (<-chan struct{}, bool, error) {
+	if !s.owner.memberAllowed() {
+		return nil, false, ErrQuiet
+	}
+	m := s.owner.displayMember()
+	if m == nil {
+		if s.member != nil {
+			return nil, false, errMemberDisplayChanged
+		}
+		return nil, false, nil
+	}
+	m.mu.Lock()
+	changed, applied := m.changed, m.status.Applied
+	valid := !m.closed && m.failure == nil
+	m.mu.Unlock()
+	if !valid {
+		if s.member != nil {
+			return nil, false, errMemberDisplayChanged
+		}
+		return nil, false, nil
+	}
+	if s.member != m {
+		s.member, s.initialized = m, false
+	}
+	if !s.initialized || s.applied != applied {
+		listing, local, err := s.owner.displayListing(ctx)
+		if err != nil {
+			return nil, false, err
+		}
+		if !local {
+			return nil, false, errMemberDisplayChanged
+		}
+		if listing.Identity.Rotation != nil {
+			return nil, false, dirwatch.ErrRotated
+		}
+		if listing.Devices[s.owner.Device.ID()].Revoked {
+			return nil, false, dirwatch.ErrRevoked
+		}
+		s.project(listing)
+		s.applied = applied
+	}
+	return changed, true, nil
+}
+
+// project retains committed display versions and joined/revoked news. Neither
+// leases nor device last-seen records can announce a computer online.
+func (s *memberDisplayStream) project(l directory.Listing) {
 	if !s.initialized || l.Version != s.version {
 		s.frames = append(s.frames, dirwatch.Frame{Version: l.Version})
 	}
@@ -206,19 +232,8 @@ func (s *localDisplayStream) project(l directory.Listing) {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
-	online := map[string]bool{s.owner.Device.ID(): true}
-	for _, cell := range l.Cells {
-		if cell.Lease.Expires > l.Now {
-			online[cell.Lease.Device] = true
-		}
-	}
 	for _, id := range ids {
 		d := l.Devices[id]
-		active := !d.Revoked && (online[id] || d.LastSeen != 0 && l.Now-d.LastSeen < dirwatch.DeadAfter.Milliseconds())
-		if active != s.online[id] {
-			e := dirwatch.PresenceEvent(id, active, l.Now)
-			s.frames = append(s.frames, dirwatch.Frame{Event: &e})
-		}
 		old, existed := s.devices[id]
 		if s.initialized && !existed && !d.Revoked && id != s.owner.Device.ID() {
 			e := dirwatch.JoinedEvent(id, d.Name, d.Platform, d.Created)
@@ -228,12 +243,8 @@ func (s *localDisplayStream) project(l directory.Listing) {
 			e := dirwatch.RevokedEvent(id, l.Now)
 			s.frames = append(s.frames, dirwatch.Frame{Event: &e})
 		}
-		online[id] = active
 	}
-	s.initialized = true
-	s.version = l.Version
-	s.devices = l.Devices
-	s.online = online
+	s.initialized, s.version, s.devices = true, l.Version, l.Devices
 }
 
 // currentDisplaySync follows a pairing or relay adoption made while Home is

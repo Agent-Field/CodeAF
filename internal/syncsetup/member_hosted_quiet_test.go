@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,6 +19,41 @@ import (
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
+
+// presenceCountDirectory counts the actual Home watch writes and reads, including
+// platform auto-responses that never enter the Worker's application callbacks.
+type presenceCountDirectory struct {
+	directory.Client
+	frames *atomic.Uint64
+}
+
+func (d presenceCountDirectory) Watch(ctx context.Context) (dirwatch.Stream, error) {
+	stream, err := d.Client.(directory.Watcher).Watch(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return presenceCountStream{Stream: stream, frames: d.frames}, nil
+}
+
+type presenceCountStream struct {
+	dirwatch.Stream
+	frames *atomic.Uint64
+}
+
+func (s presenceCountStream) Ping(ctx context.Context) error {
+	err := s.Stream.Ping(ctx)
+	if err == nil {
+		s.frames.Add(1)
+	}
+	return err
+}
+func (s presenceCountStream) Next(ctx context.Context) (dirwatch.Frame, error) {
+	frame, err := s.Stream.Next(ctx)
+	if err == nil {
+		s.frames.Add(1)
+	}
+	return frame, err
+}
 
 func hostedQuietControl(t *testing.T, endpoint, identity, op string) map[string]json.RawMessage {
 	t.Helper()
@@ -142,6 +178,7 @@ func TestR23R26R27C30HostedOpenHomesIdleEvictionAndWake(t *testing.T) {
 		hostedSettled(t, a)
 		hostedSettled(t, b)
 	}
+	var watchFrames atomic.Uint64
 	screens := []*Sync{}
 	follows := []dirwatch.Follower{}
 	streams := []dirwatch.Stream{}
@@ -152,11 +189,12 @@ func TestR23R26R27C30HostedOpenHomesIdleEvictionAndWake(t *testing.T) {
 		if !ok {
 			t.Fatal("screen open")
 		}
+		screen.Dir = presenceCountDirectory{Client: screen.Dir, frames: &watchFrames}
 		screens = append(screens, screen)
 		follow := screen.Follow()
 		defer follow.Close()
-		// The local observer and the compatibility watch both remain open. Only
-		// the latter uses platform auto-response for advisory presence.
+		// Home and the compatibility watch both retain advisory presence through
+		// platform auto-response without waking coordination.
 		stream, e := screen.followStream(t.Context(), screen.Dir.(directory.Watcher))
 		mustNil(t, e)
 		defer stream.Close()
@@ -166,6 +204,9 @@ func TestR23R26R27C30HostedOpenHomesIdleEvictionAndWake(t *testing.T) {
 		defer watch.Close()
 		watches = append(watches, watch)
 		follows = append(follows, follow)
+	}
+	for _, follow := range follows {
+		c31AwaitFeed(t, follow, requestTimeout, func(st dirwatch.State) bool { return st.Up })
 	}
 	idle := hostedQuietControl(t, endpoint, a.Identity.ID(), "idle-schedule")
 	if string(idle["sleeping"]) != "true" || hostedNumber(t, idle, "recurringMemberCalls") != 0 {
@@ -202,7 +243,10 @@ func TestR23R26R27C30HostedOpenHomesIdleEvictionAndWake(t *testing.T) {
 	if len(alarms) != 3 || string(before["maintenance"]) != "false" {
 		t.Fatalf("R26 sleeping group retained maintenance: %s", before)
 	}
-	if !maps.Equal(hostedSocketCounts(t, before), map[string]int{"peer": 2, "forward": 2, "watch": 2}) {
+	// Advisory presence retains exactly six watches: a Home follower, a direct
+	// Home stream and a compatibility watch per computer. C31 take-back after
+	// a computer closes its lid depends on these advisory Home connections.
+	if !maps.Equal(hostedSocketCounts(t, before), map[string]int{"peer": 2, "forward": 2, "watch": 6}) {
 		t.Fatalf("R26 missing retained sockets: %s", before)
 	}
 	generation := recordOf(t, a).Grant.Generation
@@ -212,17 +256,22 @@ func TestR23R26R27C30HostedOpenHomesIdleEvictionAndWake(t *testing.T) {
 	}
 	hostedQuietControl(t, endpoint, a.Identity.ID(), "reset-metrics")
 	attempts := count()
+	watchBefore := watchFrames.Load()
 	pongs := 0
 	for n := 0; n < 120; n++ {
 		tickA()
 		tickB()
-		for _, follow := range follows {
-			follow.Probe()
+		if time.Duration(n+1)*DefaultInterval%dirwatch.KeepEvery == 0 {
+			for _, follow := range follows {
+				follow.Probe()
+			}
 		}
 		for i, screen := range screens {
-			ping(streams[i])
-			ping(watches[i])
-			pongs++
+			if time.Duration(n+1)*DefaultInterval%dirwatch.KeepEvery == 0 {
+				ping(streams[i])
+				ping(watches[i])
+				pongs += 2
+			}
 			_, _, e := screen.RowsAt(t.Context())
 			mustNil(t, e)
 			_, e = screen.Roster(t.Context())
@@ -242,6 +291,16 @@ func TestR23R26R27C30HostedOpenHomesIdleEvictionAndWake(t *testing.T) {
 	t.Logf("R23 R27 hosted ten-minute idle: Worker HTTP=%d peer/forward frames=%d client attempts=%d platform presence ping/pongs=%d sweeps=%d", httpCount, frames, clientAttempts, pongs, hostedNumber(t, schedule, "sweeps"))
 	if httpCount != 0 || frames != 0 || clientAttempts != 0 || hostedNumber(t, metrics, "writes") != 0 || hostedNumber(t, metrics, "turns") != 0 {
 		t.Fatalf("R27 idle activity: %s", metrics)
+	}
+	// Advisory presence permits 732 watch frames in ten minutes: six sockets
+	// times two frames per KeepEvery, plus two initial snapshot frames each.
+	// C31 take-back after a computer closes its lid depends on these advisory
+	// sockets, whose platform pongs must leave coordination asleep.
+	const watchBudget = 6 * (2*(10*time.Minute/dirwatch.KeepEvery) + 2)
+	measuredWatchFrames := watchFrames.Load() - watchBefore
+	t.Logf("Home watch frames=%d, ten-minute bound=%d", measuredWatchFrames, watchBudget)
+	if measuredWatchFrames > uint64(watchBudget) {
+		t.Fatal("Home presence exceeded the ten-minute watch frame budget")
 	}
 	// R26/R27 retain real hibernating sockets across two complete presence
 	// windows. Auto-response timestamps, rather than a mocked renewal, age them.

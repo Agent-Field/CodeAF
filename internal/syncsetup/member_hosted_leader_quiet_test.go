@@ -145,7 +145,10 @@ func hostedLeadingHomesQuiet(t *testing.T, fallback bool) {
 	if len(alarms) != 3 || string(before["maintenance"]) != "false" {
 		t.Fatalf("R26 sleeping group retained maintenance: %s", before)
 	}
-	if !maps.Equal(hostedSocketCounts(t, before), map[string]int{"peer": len(live), "forward": len(live), "watch": len(live)}) {
+	// Presence is advisory; C31's take-back after a computer closes its lid
+	// depends on it. Each Home retains its follower and direct watch alongside
+	// the compatibility watch, so the inventory is exactly three per computer.
+	if !maps.Equal(hostedSocketCounts(t, before), map[string]int{"peer": len(live), "forward": len(live), "watch": 3 * len(live)}) {
 		t.Fatalf("R26 missing retained sockets: %s", before)
 	}
 	generation := recordOf(t, a).Grant.Generation
@@ -218,6 +221,12 @@ func hostedLeadingHomesQuiet(t *testing.T, fallback bool) {
 		t.Fatal("R26 cold presence lost a retained socket")
 	}
 	t.Logf("R26 R27 real-time presence: duration=%s sweeps=%d member calls=0 writes=0 peer frames=0", time.Since(started), hostedNumber(t, real, "sweeps"))
+	for _, follow := range follows {
+		follow.Close()
+	}
+	for _, stream := range streams {
+		stream.Close()
+	}
 	for _, watch := range watches {
 		watch.Close()
 	}

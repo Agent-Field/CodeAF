@@ -90,24 +90,29 @@ func (s *Sync) ClusterHTTP(client *http.Client) *http.Client {
 // decision cannot retain a second transport path around quietWire.
 type quietStream struct {
 	dirwatch.Stream
-	home string
+	home  string
+	owner *Sync
+}
+
+func (s quietStream) allowed() bool {
+	return !Quiet(s.home) && (s.owner == nil || s.owner.memberAllowed())
 }
 
 func (s quietStream) Next(ctx context.Context) (dirwatch.Frame, error) {
-	if Quiet(s.home) {
+	if !s.allowed() {
 		s.Stream.Close()
 		return dirwatch.Frame{}, ErrQuiet
 	}
 	return s.Stream.Next(ctx)
 }
 func (s quietStream) Ping(ctx context.Context) error {
-	if Quiet(s.home) {
+	if !s.allowed() {
 		s.Stream.Close()
 		return ErrQuiet
 	}
 	return s.Stream.Ping(ctx)
 }
-func (s quietStream) Vouching() bool { return !Quiet(s.home) && s.Stream.Vouching() }
+func (s quietStream) Vouching() bool { return s.allowed() && s.Stream.Vouching() }
 
 // relayCountingWire counts actual relay attempts inside the quiet gate.
 // Frame attempts are counted at their separate guarded socket write boundary.

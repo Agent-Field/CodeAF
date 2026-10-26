@@ -115,17 +115,18 @@ func (w peerCountWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 }
 
 type memberRig struct {
-	departures    chan struct{}
-	parkExchanges atomic.Bool
-	storage       string
-	t             *testing.T
-	clock         *directorytest.FakeClock
-	svc           *relayserve.Service
-	server        *httptest.Server
-	requests      atomic.Uint64
-	in, out       peerFrameCounter
-	homes         []*Sync
-	interrupt     atomic.Bool
+	departures        chan struct{}
+	parkExchanges     atomic.Bool
+	storage           string
+	t                 *testing.T
+	clock             *directorytest.FakeClock
+	svc               *relayserve.Service
+	server            *httptest.Server
+	requests          atomic.Uint64
+	in, out           peerFrameCounter
+	watchIn, watchOut peerFrameCounter
+	homes             []*Sync
+	interrupt         atomic.Bool
 }
 
 func newMemberRig(t *testing.T) *memberRig {
@@ -170,7 +171,11 @@ func newMemberRig(t *testing.T) *memberRig {
 			return
 		}
 		if strings.EqualFold(q.Header.Get("Upgrade"), "websocket") {
-			r.svc.Handler.ServeHTTP(peerCountWriter{w, &r.in, &r.out}, q)
+			in, out := &r.in, &r.out
+			if q.URL.Path == "/v1/dir/watch" {
+				in, out = &r.watchIn, &r.watchOut
+			}
+			r.svc.Handler.ServeHTTP(peerCountWriter{w, in, out}, q)
 		} else {
 			r.svc.Handler.ServeHTTP(w, q)
 		}
@@ -446,11 +451,6 @@ func TestR26R27C30OpenLearnerIdleAndStateWake(t *testing.T) {
 		settle(a)
 		settle(b)
 	}
-	for tick := 0; tick < 20; tick++ {
-		r.clock.Advance(DefaultInterval)
-		settle(a)
-		settle(b)
-	}
 	// Exercise the same owner used by the real terminal during the entire
 	// measured window. Host ticks advance explicitly; no wall sleeps are used.
 	tickHome := func(s *Sync) func() {
@@ -493,22 +493,34 @@ func TestR26R27C30OpenLearnerIdleAndStateWake(t *testing.T) {
 		defer stream.Close()
 		streams = append(streams, stream)
 	}
+	c31AwaitFeed(t, followA, requestTimeout, func(st dirwatch.State) bool { return st.Up })
+	c31AwaitFeed(t, followB, requestTimeout, func(st dirwatch.State) bool { return st.Up })
 	countAttempts := func() uint64 {
 		return a.relayAttempts.Load() + a.clusterFrames.Load() + b.relayAttempts.Load() + b.clusterFrames.Load() + screenA.relayAttempts.Load() + screenA.clusterFrames.Load() + screenB.relayAttempts.Load() + screenB.clusterFrames.Load()
 	}
+	// Settle socket admission before measuring idle, and service the real
+	// presence sockets at their advertised cadence as the relay clock advances.
+	for tick := 0; tick < 20; tick++ {
+		r.clock.Advance(DefaultInterval)
+		if time.Duration(tick+1)*DefaultInterval%dirwatch.KeepEvery == 0 {
+			for _, stream := range streams {
+				pingHomeStream(t, stream)
+			}
+			followA.Probe()
+			followB.Probe()
+		}
+		settle(a)
+		settle(b)
+	}
+	watchBefore := r.watchIn.count.Load() + r.watchOut.count.Load()
 	requests, frames, attempts := r.requests.Load(), r.in.count.Load()+r.out.count.Load(), countAttempts()
 	for tick := 0; tick < 120; tick++ {
 		r.clock.Advance(DefaultInterval)
 		tickA()
 		tickB()
 		for i, screen := range []*Sync{screenA, screenB} {
-			mustNil(t, streams[i].Ping(t.Context()))
-			for {
-				frame, err := streams[i].Next(t.Context())
-				mustNil(t, err)
-				if frame.Pong {
-					break
-				}
+			if time.Duration(tick+1)*DefaultInterval%dirwatch.KeepEvery == 0 {
+				pingHomeStream(t, streams[i])
 			}
 			_, _, err := screen.RowsAt(t.Context())
 			mustNil(t, err)
@@ -517,14 +529,27 @@ func TestR26R27C30OpenLearnerIdleAndStateWake(t *testing.T) {
 			_, err = screen.FleetSize(t.Context())
 			mustNil(t, err)
 		}
-		followA.Probe()
-		followB.Probe()
+		if time.Duration(tick+1)*DefaultInterval%dirwatch.KeepEvery == 0 {
+			followA.Probe()
+			followB.Probe()
+		}
 	}
 	gotHTTP, gotFrames := r.requests.Load()-requests, r.in.count.Load()+r.out.count.Load()-frames
 	gotAttempts := countAttempts() - attempts
 	t.Logf("R27 native ten-minute idle: relay HTTP=%d socket frames=%d client attempts=%d", gotHTTP, gotFrames, gotAttempts)
 	if gotHTTP != 0 || gotFrames != 0 || gotAttempts != 0 {
 		t.Fatal("R27 idle home generated traffic")
+	}
+	// Advisory presence permits at most 488 watch frames in ten minutes: four
+	// sockets times two frames times (ten minutes / KeepEvery), plus two initial
+	// snapshot frames per socket. C31 take-back after a computer closes its lid
+	// depends on keeping this advisory socket alive.
+	const watchSockets = 4
+	const watchBudget = watchSockets * (2*(10*time.Minute/dirwatch.KeepEvery) + 2)
+	watchFrames := r.watchIn.count.Load() + r.watchOut.count.Load() - watchBefore
+	t.Logf("Home watch frames=%d, ten-minute bound=%d", watchFrames, watchBudget)
+	if watchFrames > uint64(watchBudget) {
+		t.Fatal("Home presence exceeded the ten-minute watch frame budget")
 	}
 	// The first public read after idle and the next state write retain ordinary
 	// ReadIndex/proposal authority. Local learner state is only a change signal.
@@ -916,5 +941,17 @@ func TestR9R23LocalHomeFollowerSharesTheOwnedLearner(t *testing.T) {
 	}
 	if r.requests.Load() != before {
 		t.Fatal("R23 local follower sent after off")
+	}
+}
+
+func pingHomeStream(t *testing.T, stream dirwatch.Stream) {
+	t.Helper()
+	mustNil(t, stream.Ping(t.Context()))
+	for {
+		frame, err := stream.Next(t.Context())
+		mustNil(t, err)
+		if frame.Pong {
+			return
+		}
 	}
 }

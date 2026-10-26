@@ -308,6 +308,9 @@ func TestR6R7R23R26PersonalLeaderWholeHomeIdle(t *testing.T) {
 				streams = append(streams, stream)
 				defer stream.Close()
 			}
+			for _, follower := range followers {
+				c31AwaitFeed(t, follower, requestTimeout, func(st dirwatch.State) bool { return st.Up })
+			}
 			round := func() {
 				for _, tick := range ticks {
 					tick()
@@ -318,6 +321,14 @@ func TestR6R7R23R26PersonalLeaderWholeHomeIdle(t *testing.T) {
 			}
 			for tick := 0; tick < 24; tick++ {
 				r.clock.Advance(DefaultInterval)
+				if time.Duration(tick+1)*DefaultInterval%dirwatch.KeepEvery == 0 {
+					for _, stream := range streams {
+						pingHomeStream(t, stream)
+					}
+					for _, follower := range followers {
+						follower.Probe()
+					}
+				}
 				round()
 			}
 			attempts := func() uint64 {
@@ -327,18 +338,14 @@ func TestR6R7R23R26PersonalLeaderWholeHomeIdle(t *testing.T) {
 				}
 				return n
 			}
+			watchBefore := r.watchIn.count.Load() + r.watchOut.count.Load()
 			httpBefore, framesBefore, attemptBefore := r.requests.Load(), r.in.count.Load()+r.out.count.Load(), attempts()
 			for tick := 0; tick < 120; tick++ {
 				r.clock.Advance(DefaultInterval)
 				round()
 				for i, screen := range screens {
-					mustNil(t, streams[i].Ping(t.Context()))
-					for {
-						frame, err := streams[i].Next(t.Context())
-						mustNil(t, err)
-						if frame.Pong {
-							break
-						}
+					if time.Duration(tick+1)*DefaultInterval%dirwatch.KeepEvery == 0 {
+						pingHomeStream(t, streams[i])
 					}
 					_, _, err := screen.RowsAt(t.Context())
 					mustNil(t, err)
@@ -346,13 +353,25 @@ func TestR6R7R23R26PersonalLeaderWholeHomeIdle(t *testing.T) {
 					mustNil(t, err)
 					_, err = screen.FleetSize(t.Context())
 					mustNil(t, err)
-					followers[i].Probe()
+					if time.Duration(tick+1)*DefaultInterval%dirwatch.KeepEvery == 0 {
+						followers[i].Probe()
+					}
 				}
 			}
 			gotHTTP, gotFrames, gotAttempts := r.requests.Load()-httpBefore, r.in.count.Load()+r.out.count.Load()-framesBefore, attempts()-attemptBefore
 			t.Logf("R23/R26 %s ten-minute idle: relay HTTP=%d socket frames=%d client attempts=%d", mode, gotHTTP, gotFrames, gotAttempts)
 			if gotHTTP != 0 || gotFrames != 0 || gotAttempts != 0 {
 				t.Fatal("R23/R26 whole idle Home generated traffic")
+			}
+			// Advisory presence permits 488 watch frames with two Homes or 244 with
+			// one: two sockets per Home times two frames per KeepEvery in ten minutes,
+			// plus two initial snapshot frames per socket. C31 take-back after a
+			// computer closes its lid depends on this advisory connection.
+			watchBudget := uint64(2*len(live)) * uint64(2*(10*time.Minute/dirwatch.KeepEvery)+2)
+			watchFrames := r.watchIn.count.Load() + r.watchOut.count.Load() - watchBefore
+			t.Logf("Home watch frames=%d, ten-minute bound=%d", watchFrames, watchBudget)
+			if watchFrames > watchBudget {
+				t.Fatal("Home presence exceeded the ten-minute watch frame budget")
 			}
 			_, err := b.Dir.List(t.Context())
 			mustNil(t, err)
