@@ -214,9 +214,16 @@ func Attach(workspace string, spawn func() error) (net.Conn, error) {
 		if err := spawn(); err != nil {
 			return nil, err
 		}
+	} else if attachWaiting != nil {
+		attachWaiting()
 	}
 	return waitForHost(workspace, spawnWait)
 }
+
+// attachWaiting is told when [Attach] found the lock busy and is about to wait
+// on whoever holds it. Nothing in the product writes it; a test sets it to know
+// the launch has looked before the holder lets go.
+var attachWaiting func()
 
 func waitForHost(workspace string, within time.Duration) (net.Conn, error) {
 	deadline := time.Now().Add(within)
