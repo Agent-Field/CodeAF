@@ -2,7 +2,7 @@
 
 ## Relay directory upgrade pauses and saved chats
 
-A relay directory upgrade can briefly pause pairing and chat moves. Retry after the relay is ready. The upgrade refusal is `codeaf: directory upgrade is incomplete; retry shortly; saved chats are still here`. It does not delete saved chats, files, branches or the encrypted vault. The relay keeps the old directory as a backup and never makes it a second writer after the new directory takes over. A row that cannot be copied safely leaves the upgrade paused for the operator; it is never truncated to make it fit.
+A relay directory upgrade can briefly pause pairing and chat moves. Retry after the relay is ready. The upgrade refusal is `codeaf: directory upgrade is incomplete; retry shortly; saved chats are still here`. It does not delete saved chats, files, branches or the encrypted vault. The relay keeps the old directory as a backup and never makes it a second writer after the new directory takes over. Legal older requests keep all saved fields even when the old relay added enough fields to exceed its request size. A row that cannot be copied safely leaves the upgrade paused for the operator; it is never truncated to make it fit.
 
 
 ## Can my phone lead, be the leader or coordinate my computers?
@@ -121,7 +121,7 @@ frame hints, sealed names and key wraps are preserved; over 1 MiB is refused. Th
 identity’s storage capacity still applies, and existing records are never removed
 to make room.
 
-## Hosted relay directory upgrade and older clients
+## Hosted relay directory capacity, upgrades and older clients
 
 The hosted relay records directory changes on three persistent members. Two must
 agree before a take, publish or fresh listing succeeds. Pairing one or two
@@ -130,7 +130,11 @@ still depend on the same hosting provider and relay connection.
 
 An existing identity upgrades on first authenticated use. An interrupted upgrade
 can briefly ask you to retry; it keeps the saved directory and encrypted frames.
-The old directory never becomes a second writer. Older clients keep pairing,
+The old directory never becomes a second writer. Directory content has an 8 MiB
+default allowance; a larger imported directory keeps its measured allowance.
+Initialization and bounded retry records have separate room, so reaching the
+content limit still permits reads, releases and unchanged-size updates and
+returns the existing capacity refusal for growth. Older clients keep pairing,
 listing, publishing, releasing and continuing a chat they observed. A very old
 client that blindly forces a live chat receives `another device continued this chat first`.
 Quit on the holder first, or update that client before continuing a live chat.

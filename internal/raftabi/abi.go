@@ -169,6 +169,22 @@ func (r *Runtime) Call(b []byte) (out []byte) {
 func (r *Runtime) call(op uint32, d *decoder) ([]byte, error) {
 	e := encoder{}
 	switch op {
+	case 48:
+		present := d.u32()
+		raw := d.blob()
+		if present > 1 || present == 0 && len(raw) != 0 || d.end() != nil {
+			return nil, errFrame
+		}
+		if present == 0 {
+			raw = nil
+		}
+		reserved, err := cs.ApplicationBookkeeping(raw)
+		if err != nil {
+			return nil, err
+		}
+		e.u64(cs.CoordinationReserveBytes)
+		e.u64(reserved)
+		return e.b, nil
 	case 46:
 		if d.end() != nil {
 			return nil, errFrame

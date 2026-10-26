@@ -123,7 +123,10 @@ envelope and each result byte page is at most one quarter of it. Ordinary
 commands retain their complete read-set cap. Staged final evaluation streams
 its body and dependency pages without putting them in one ABI frame. The host
 never yields or changes the applied view between these pages. The 64 KiB command,
-2 MiB ABI buffer, 1 MiB physical row and application capacity caps are unchanged.
+2 MiB ABI buffer, 1 MiB physical row and content capacity caps are unchanged.
+Imported source rows include the old relay's bounded added fields; rows above
+the physical envelope use the same lossless compressed representation. Impossible
+source rows still refuse migration without changing their originals.
 
 Temporary request pages occupy one fixed slot outside retained application
 capacity. Their extent is derived from the original HTTP body and command limits.
@@ -140,3 +143,15 @@ checking decimal counters and the complete canonical spelling before exposing
 the value. A single-cell update reuses its validated cell and typed write for
 visible-version comparison, preserving opaque metadata without repeatedly
 decoding the complete frame plan.
+
+## Capacity and retry bookkeeping
+
+The content ceiling remains 8 MiB by default or the larger measured import.
+Long retry keys hash both actor and session, so caller-selected names cannot
+enlarge retained headers. Ordinary short retry keys keep their existing spelling. At most 512 bytes per retained session and its count row use
+`CoordinationReserveBytes`; response bytes beyond that count against content.
+One existing evaluation envelope also covers membership initialization. The live
+and retained session limits and membership admission limits remain unchanged.
+A capacity refusal saves its exact result and permits the next entry to apply.
+The persisted accounting travels with snapshots; hosted storage obtains both its
+charge and maximum from the same Go function used by native application.

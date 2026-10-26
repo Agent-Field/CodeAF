@@ -26,10 +26,13 @@ evaluator is synchronous with an immutable applied view and bounded 1 MiB
 read/write sets. It must implement committed policy, declared dependencies and
 request/session semantics; storage supplies atomicity, not that policy. Rows
 cover state, sessions, membership, enrollment, tombstones and outboxes. The
-persisted application ceiling defaults to 8 MiB, including framed keys/values;
-an explicit larger imported ceiling is preserved. Pressure refuses growth, never
-deletes application rows. The migration host inventories and grandfathers
-imported rows.
+persisted content ceiling defaults to 8 MiB, including framed keys/values;
+an explicit larger imported ceiling is preserved. Go supplies a separate bounded
+allowance for bounded retry headers and membership initialization. Apply and
+snapshot installation subtract only the persisted bookkeeping charge from content
+usage. Large response payloads still count as content. Pressure refuses content
+growth and never deletes application rows. The migration host inventories and
+grandfathers imported rows.
 
 Snapshots use `internal/raftsnapshot` format 1 without a second JS schema.
 Rows stream in SQL binary order into 256 KiB chunks. The shared Go codec

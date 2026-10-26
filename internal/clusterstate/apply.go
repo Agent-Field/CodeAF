@@ -42,7 +42,13 @@ func DeviceKey(id string) RecordKey    { return RecordKey{"state", "device/" + s
 func CellKey(id string) RecordKey      { return RecordKey{"state", "cell/" + segment(id)} }
 func AuthorityKey(id string) RecordKey { return RecordKey{"enrollment", "actor/" + segment(id)} }
 func SessionKey(actor, session string) RecordKey {
-	return RecordKey{"sessions", segment(actor) + "/" + segment(session)}
+	key := segment(actor) + "/" + segment(session)
+	// Long names cannot consume the allowance needed to retain a refusal.
+	if len(key) > sessionBookkeepingBytes/4 {
+		digest := sha256.Sum256([]byte(key))
+		key = hex.EncodeToString(digest[:])
+	}
+	return RecordKey{"sessions", key}
 }
 func SessionsKey() RecordKey        { return RecordKey{"sessions", "counts"} }
 func JoinKey(code string) RecordKey { return RecordKey{"outbox", "join/" + segment(code)} }
@@ -65,8 +71,10 @@ type session struct {
 	Result   Result `json:"result"`
 }
 type sessionCounts struct {
-	Live     uint32 `json:"live"`
-	Retained uint32 `json:"retained"`
+	Bookkeeping    uint64 `json:"bookkeeping,omitempty"`
+	Initialization uint64 `json:"initialization,omitempty"`
+	Live           uint32 `json:"live"`
+	Retained       uint32 `json:"retained"`
 }
 
 // JoinRequest is a committed dependency from a reserved public request.
@@ -423,6 +431,11 @@ func evaluateCommand(c Command, meta ApplicationMeta, read ReadRecord, paged boo
 	if decode(SessionKey(c.Actor, c.Session), &last) != nil || decode(SessionsKey(), &counts) != nil {
 		return out, ErrDependency
 	}
+	originalCounts := counts
+	originalBookkeeping, err := ApplicationBookkeeping(rows[SessionsKey()])
+	if err != nil {
+		return out, err
+	}
 	known := c.V1 == nil && rows[SessionKey(c.Actor, c.Session)] != nil
 	refuse := func(code Code) (Evaluation, error) { out.Result.Code = code; return out, nil }
 	if known && (last.Closed || c.Sequence < last.Sequence || c.Sequence == last.Sequence && c.RequestDigest != last.Digest) {
@@ -549,12 +562,30 @@ func evaluateCommand(c Command, meta ApplicationMeta, read ReadRecord, paged boo
 	if c.Change.CloseSession != nil {
 		counts.Live--
 	}
+	if c.Change.InitMembership != nil && code == OK {
+		for k, b := range writes {
+			counts.Initialization += RecordBytes(k, b)
+			if old := rows[k]; old != nil {
+				counts.Initialization -= RecordBytes(k, old)
+			}
+		}
+	}
 	save := func() {
 		if service || c.V1 != nil {
 			return
 		}
 		put(SessionKey(c.Actor, c.Session), session{Sequence: c.Sequence, Digest: c.RequestDigest, Closed: c.Change.CloseSession != nil, Result: out.Result})
-		put(SessionsKey(), counts)
+		sessionKey := SessionKey(c.Actor, c.Session)
+		oldCredit := bookkeepingCost(sessionKey, rows[sessionKey]) + bookkeepingCost(SessionsKey(), rows[SessionsKey()])
+		base := originalCounts.Bookkeeping - min(originalCounts.Bookkeeping, oldCredit) + bookkeepingCost(sessionKey, writes[sessionKey])
+		for range 8 {
+			put(SessionsKey(), counts)
+			next := base + bookkeepingCost(SessionsKey(), writes[SessionsKey()])
+			if next == counts.Bookkeeping {
+				break
+			}
+			counts.Bookkeeping = next
+		}
 	}
 	save()
 
@@ -580,7 +611,14 @@ func evaluateCommand(c Command, meta ApplicationMeta, read ReadRecord, paged boo
 		if budget > MaxEvaluationBytes {
 			return false, nil
 		}
-		if size <= ceiling || size <= meta.Bytes {
+		reserved := counts.Bookkeeping + counts.Initialization
+		if reserved > CoordinationReserveBytes {
+			return false, nil
+		}
+		if reserved > size || originalBookkeeping > meta.Bytes {
+			return false, ErrDependency
+		}
+		if size-reserved <= ceiling || size-reserved <= meta.Bytes-originalBookkeeping {
 			return true, nil
 		}
 		if paged {
@@ -593,7 +631,10 @@ func evaluateCommand(c Command, meta ApplicationMeta, read ReadRecord, paged boo
 		if scratch > meta.Bytes {
 			return false, ErrDependency
 		}
-		return size-scratch <= ceiling, nil
+		if scratch > size-reserved {
+			return false, ErrDependency
+		}
+		return size-reserved-scratch <= ceiling, nil
 	}
 	if ok, err := fits(); err != nil {
 		return out, err
@@ -601,6 +642,7 @@ func evaluateCommand(c Command, meta ApplicationMeta, read ReadRecord, paged boo
 		writes = map[RecordKey][]byte{}
 		out.Version = meta.Version
 		out.Result = Result{Schema: SchemaVersion, Code: Capacity, Now: out.Now, Version: meta.Version}
+		counts.Initialization = originalCounts.Initialization
 		save()
 		if ok, err := fits(); err != nil {
 			return out, err

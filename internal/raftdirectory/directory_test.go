@@ -67,6 +67,7 @@ type group struct {
 	absent  map[uint64]bool
 	blocked bool
 	readID  uint64
+	ceiling uint64
 }
 
 func newGroup(t *testing.T, clock func() time.Time, extra ...raftstore.Write) *group {
@@ -134,7 +135,11 @@ func (g *group) drive(i int, in raftcore.Input) {
 			if app.Applied == 0 {
 				must(g.t, g.stores[i].Apply(ctx, *e.Apply, raftstore.Update{ExpectedApplied: 0, Writes: g.genesis}))
 			} else {
-				r, err := raftdirectory.Apply(ctx, g.stores[i], *e.Apply, cluster, clusterstate.DefaultApplicationBytes)
+				ceiling := g.ceiling
+				if ceiling == 0 {
+					ceiling = clusterstate.DefaultApplicationBytes
+				}
+				r, err := raftdirectory.Apply(ctx, g.stores[i], *e.Apply, cluster, ceiling)
 				must(g.t, err)
 				g.results[i] = append(g.results[i], r...)
 			}

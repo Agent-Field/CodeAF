@@ -74,9 +74,11 @@ Everything is under `--store`:
 - `directory/<identity id>.db`: frozen original source and migration ownership receipt.
 - `blobs/<identity id>/`: encrypted chunks and their object pointers.
 
-Keep associated WAL files and the rest of the store together. Coordination records
-have an 8 MiB default allowance per identity; a larger imported identity keeps its
-measured allowance. Capacity refuses growth instead of deleting existing records.
+Keep associated WAL files and the rest of the store together. Retained directory content
+has an 8 MiB default allowance per identity; a larger imported identity keeps its
+measured allowance. Bounded retry headers and membership initialization have a
+separate allowance, so a full identity can record refusals and finish upgrading.
+Capacity refuses content growth instead of deleting existing records.
 Snapshots compact redundant coordination history, never saved chats, branches, vaults
 or encrypted chunks. Allow disk space for three copies, snapshots and SQLite overhead,
 as well as the separate encrypted content store.

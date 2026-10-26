@@ -3,6 +3,7 @@ package clusterstate
 import (
 	"bytes"
 	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -105,11 +106,16 @@ func (m LegacyManifest) Validate() error {
 // Its exact encoded size is charged to the grandfathered inventory.
 const LegacyManifestReserve uint64 = 4096
 
+// LegacySourceRowBytes includes create-only fields, a retained title and the
+// replaceable publish fields, each bounded by an original request body. JSON
+// escaping and relay-owned record/lease fields can expand the stored row.
+const LegacySourceRowBytes = 3*maxJSONExpansion*MaxV1BodyBytes + len(`{"V":1,"head":"","class":"","size":0,"keys":null,"durable_at":,"lease":{"device":"","fence":,"expires":,"pending":,"released_at":},"archived":true}`) + len("dev_") + sha256.Size + 5*20
+
 // LegacyRow converts the ORIGINAL v1 JSON bytes, never a JavaScript number
 // roundtrip. Unknown fields refuse migration instead of silently dropping data.
 // HoldUntil is sampled once while the source is frozen and recorded durably.
 func LegacyRow(c LegacyConfig, kind, id string, raw []byte, holdUntil int64) (RecordWrite, error) {
-	if c.Validate() != nil || len(raw) > MaxEvaluationBytes {
+	if c.Validate() != nil || len(raw) > LegacySourceRowBytes {
 		return RecordWrite{}, ErrMigration
 	}
 	var key RecordKey
@@ -134,7 +140,7 @@ func LegacyRow(c LegacyConfig, kind, id string, raw []byte, holdUntil int64) (Re
 		value = v
 	case "cells":
 		var v Cell
-		if id == "" || legacyDecode(raw, &v) != nil || v.V != 1 || v.Lease.Fence > MaxSafeInteger {
+		if id == "" || legacyDecode(raw, &v) != nil || v.V != 1 || v.Lease.Fence > MaxSafeInteger || len(v.Title)+len(`{"title":""}`) > MaxV1BodyBytes {
 			return RecordWrite{}, ErrMigration
 		}
 		if v.Lease.Expires != 0 {
@@ -146,6 +152,9 @@ func LegacyRow(c LegacyConfig, kind, id string, raw []byte, holdUntil int64) (Re
 		return RecordWrite{}, ErrMigration
 	}
 	data, e := Encode(value)
+	if e == nil && len(data)+len(key.Key) > MaxEvaluationBytes {
+		data, e = encodeRecord(value)
+	}
 	if e != nil || len(data)+len(key.Key) > MaxEvaluationBytes {
 		return RecordWrite{}, ErrMigration
 	}

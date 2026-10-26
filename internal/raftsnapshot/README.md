@@ -58,8 +58,8 @@ by its eight-byte unsigned big-endian length. An application row's parts are
 native application's missing-row detector; the ordered stream digest separately
 binds the exact complete portable representation.
 
-Hosts inventory and admit a transfer against their identity's application byte
-ceiling before staging; the format does not silently impose an 8 MiB ceiling on
+Hosts inventory and admit a transfer against their identity's content ceiling
+and bounded bookkeeping allowances before staging; the format does not silently impose an 8 MiB ceiling on
 grandfathered legacy data. Only one incomplete generation may stage. Verify a
 new complete generation before retiring redundant consensus bytes. Keep two
 complete generations, including the installed one while another awaits install.

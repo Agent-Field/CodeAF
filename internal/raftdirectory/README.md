@@ -58,7 +58,7 @@ delivery. Provision a separate `Authority{Effects:true}` protocol key; it must
 not be personal. It can only record upload evidence, reserve a join dependency,
 or complete a delivery. These commands are idempotent by immutable effect keys
 and do not consume client sessions. All effect rows count against the identity's
-application ceiling; capacity refuses further growth without removing receipts,
+content ceiling; capacity refuses further growth without removing receipts,
 decisions or blobs.
 
 Before issuing a receipt, call `Effects.Upload` with the local head ID, its
@@ -152,5 +152,5 @@ commands remain bounded at 64 KiB. Legal original v1 bodies up to the 1 MiB HTTP
 limit use bounded staged body pages; only the final application changes directory
 rows, after rechecking the full original proof and current authority. Interrupted
 staging can resume without exposing partial metadata. Both production relays use
-this representation and the same consensus path. Capacity refuses retained growth
+this representation and the same consensus path. Capacity refuses retained content growth
 without removing records or increasing the quorum.

@@ -76,6 +76,7 @@ a mutated core blindly.
 | 4 lease feasibility probe | command blob, optional one-row blob | next canonical row blob |
 | 5 row representation probe | canonical row blob | same canonical row blob |
 | 6 snapshot maintenance query | handle | present flag, then index/term uint64 when present |
+| 48 application bookkeeping | present flag, session-count row blob | maximum allowance and retained charge, both uint64 |
 
 Step tags: 0 Poll, 1 Tick, 2 PeerMessage blob, 3 Propose blob, 4 Read string,
 5 Persisted batch ID, 6 Applied batch ID, 7 Transfer target, 8 Configure blob,
@@ -98,8 +99,8 @@ the opaque checkpoint fixture alone does not establish that interoperability.
 
 ## Oversized legacy representation decision
 
-Keep each existing canonical row in host storage and pass only one immutable row
-(at most the existing 1 MiB legacy envelope) to Go. Inventory/import and
+Keep each physical row in host storage and pass only one immutable row
+(at most the existing 1 MiB physical envelope) to Go. Inventory/import and
 snapshot creation enumerate sorted rows at a fixed applied index, with no
 whole-identity listing or JSON string in wasm. Persist the imported byte ceiling
 `max(8 MiB, imported application bytes)` outside the reactor alongside the
@@ -114,8 +115,13 @@ with wasm and verifies every stored byte on reread, then evaluates a real
 release over the large row. Six production handles remain resident while the
 engine is sampled through its loopback inspector. This establishes
 representation/runtime feasibility; it does not establish migration, snapshots,
-complete policy or production admission. A legacy row over 1 MiB remains a
-migration refusal; a streaming row extension is not part of this build.
+complete policy or production admission. The shared converter accepts the bounded
+source expansion from an old 1 MiB request and the relay-added fields. When
+necessary it uses the existing lossless compressed representation within the
+physical row envelope. Unsupported source rows still refuse migration without
+changing their originals. Bounded retry headers and membership initialization
+use a separate allowance; operation 48 supplies its maximum and persisted charge
+from Go for hosted application and snapshot checks.
 
 
 ## Local runtime measurements

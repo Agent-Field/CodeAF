@@ -97,8 +97,8 @@ consensus bytes. A completed transfer awaiting installation keeps that slot.
 `CompleteSnapshot(id)` validates all chunks, ordering, stream digest, count and
 application hash and returns the portable protobuf pointer. This publishes a
 complete transfer, not application authority. The active pointer remains old.
-The host must enforce the imported/application byte ceiling and transport quota
-before staging; this adapter does not choose application/import admission policy.
+The host must enforce the imported content ceiling, bounded bookkeeping
+allowance and transport quota before staging; this adapter does not choose application/import admission policy.
 
 Only `Persist` of the real incoming Ready atomically replaces application rows,
 header/ConfState, active snapshot pointer, log prefix and hard state. Successful
@@ -177,7 +177,10 @@ before checkpoint completion resumes it without replaying imported rows over
 later cluster work. Conflicting manifests or nonempty unimported stores refuse.
 The `membership/legacy-import` row retains provenance and the byte ceiling
 `max(8 MiB, imported rows plus exact provenance bytes)` through compaction.
-`raftdirectory.Apply` reads that persisted ceiling rather than a caller override.
+`raftdirectory.Apply` reads that persisted content ceiling rather than a caller
+override. Bounded retry headers and membership initialization use a separate Go
+allowance; they cannot consume the saved content allowance or prevent recording
+a capacity refusal. Their accounting survives snapshots with the session counts.
 
 `OwnLegacy` accepts host-internal readback receipts for the same manifest from
 at least two distinct configured anchors; the host obtains them through a fresh

@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { generateKeyPairSync, createHash, createPrivateKey, createPublicKey, sign } from 'node:crypto';
 
 const sha=b=>createHash('sha256').update(b).digest('hex');
-export async function hostedFixture({fixture=false,base='',go=false,rootLabel,now}={}) {
+export async function hostedFixture({fixture=false,base='',go=false,rootLabel,now,entryPoint}={}) {
   const prefix=prefixOf({BASE_PATH:base});
   const out=process.env.CODEAF_RAFT_PROOF_DIR;assert(out,'build the native/WASI proof first');
   const dir=await mkdtemp(join(tmpdir(),'p17b-'));
@@ -41,7 +41,7 @@ export async function hostedFixture({fixture=false,base='',go=false,rootLabel,no
       let text=await readFile(args.path,'utf8');const needle=cut.needle;assert.equal(text.split(needle).length,2,'cut must identify exactly one boundary');
       text=text.replace(needle,needle+(cut.after??"throw new Error('H2 injected crash after durable boundary');"));return {contents:text,loader:'js'};
     });}});
-    await build({entryPoints:[fixture?'test/raft/hosted-worker.js':'src/raft-worker.js'],bundle:true,format:'esm',target:'es2022',external:['cloudflare:*'],banner:now===undefined?undefined:{js:`const realNow=Date.now;Date.now=()=>{const value=realNow();if(value===0)return ${now};globalThis.fixtureClockOffset??=${now}-value;return value+globalThis.fixtureClockOffset;};`},plugins,outfile:join(dir,'worker.js')});
+    await build({entryPoints:[entryPoint??(fixture?'test/raft/hosted-worker.js':'src/raft-worker.js')],bundle:true,format:'esm',target:'es2022',external:['cloudflare:*'],banner:now===undefined?undefined:{js:`const realNow=Date.now;Date.now=()=>{const value=realNow();if(value===0)return ${now};globalThis.fixtureClockOffset??=${now}-value;return value+globalThis.fixtureClockOffset;};`},plugins,outfile:join(dir,'worker.js')});
     const saved=join(dir,'bundle-'+bundles.size+'.js');
     await copyFile(join(dir,'worker.js'),saved);bundles.set(variant,saved);compiledCut=variant;
   };
