@@ -463,19 +463,17 @@ func TestAppFolderDeliverableChanges(t *testing.T) {
 
 // F1/F5 keep task records and tombstones at their existing truth paths. F6
 // rechecks them before landing, changes only the planned checkout, and keeps
-// every file in the owning chat intact. These are real temporary git repos.
+// every file in the owning chat intact. These are real temporary git repos;
+// ownership checks still run when the machine's git filters prevent a land.
 func TestAppFolderBranchLandFiles(t *testing.T) {
-	// A land refuses a repository whose git config runs a filter program, and
-	// the runner's global config carries one. The land strips GIT_* from its
-	// git, so only a home of the test's own keeps that config out.
+	// Isolate the person's global config. The land strips GIT_* overrides,
+	// so the machine's system config still applies to its own git commands.
 	gitHome := t.TempDir()
 	if err := os.WriteFile(filepath.Join(gitHome, ".gitconfig"), []byte("[user]\n\tname = t\n\temail = t@t\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", gitHome)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(gitHome, ".config"))
-	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
-	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	eachAppFolder(t, func(t *testing.T, f appFolderFixture) {
 		landGit(t, f.workspace, "init", "-q", "-b", "main")
 		if err := os.WriteFile(filepath.Join(f.workspace, "a.txt"), []byte("base\n"), 0o600); err != nil {
@@ -499,48 +497,74 @@ func TestAppFolderBranchLandFiles(t *testing.T) {
 		if err := os.WriteFile(old, []byte(doc), 0o600); err != nil {
 			t.Fatal(err)
 		}
+		before := appFolderSnapshot(t, f.dir)
 		branches, err := f.b.TaskBranches(appwire.BranchesQuery{Agent: f.id})
 		if err != nil || len(branches.Branches) != 1 || branches.Branches[0].Name != "task/paint-abc123" {
 			t.Fatalf("saved task branches = %+v, %v", branches, err)
 		}
 		head := landGit(t, f.workspace, "rev-parse", "HEAD")
 		plan, err := f.b.PlanBranchLand(appwire.BranchLandPlanQuery{Agent: f.id, Branch: "task/paint-abc123"})
+		filterRefused := false
 		if err != nil {
-			t.Fatal(err)
+			wire, ok := err.(*appwire.Error)
+			if !ok || wire.Code != appwire.CodeConflict {
+				t.Fatal(err)
+			}
+			refusal, ok := wire.Detail.(appwire.BranchLandRefusal)
+			if !ok || refusal.Reason != session.LandFilter {
+				t.Fatal(err)
+			}
+			filterRefused = true
+		} else if plan.Plan == "" || plan.Revision == "" || plan.Task != "1" || plan.Title != "Paint" || plan.Branch != "task/paint-abc123" || plan.Head != head {
+			t.Fatalf("saved task plan = %+v", plan)
+		}
+		if after := appFolderSnapshot(t, f.dir); !reflect.DeepEqual(after, before) || landGit(t, f.workspace, "rev-parse", "HEAD") != head {
+			t.Fatal("listing or planning changed the chat or checkout")
 		}
 		deleted := filepath.Join(filepath.Dir(f.transcript), ".deleted-tasks.json")
 		writeCloseJSON(t, deleted, map[string]bool{"1": true})
-		before := appFolderSnapshot(t, f.dir)
+		before = appFolderSnapshot(t, f.dir)
 		branches, err = f.b.TaskBranches(appwire.BranchesQuery{Agent: f.id})
 		if err != nil || len(branches.Branches) != 0 {
 			t.Fatalf("deleted task branches = %+v, %v", branches, err)
 		}
-		if _, err := f.b.LandBranch(appwire.BranchLandQuery{Agent: f.id, Plan: plan.Plan, Revision: plan.Revision}); !hasCode(err, appwire.CodeConflict) {
-			t.Fatalf("landing a deleted task was not refused: %v", err)
+		if _, err := f.b.PlanBranchLand(appwire.BranchLandPlanQuery{Agent: f.id, Branch: "task/paint-abc123"}); !hasCode(err, appwire.CodeNotFound) {
+			t.Fatalf("planning a deleted task was not refused: %v", err)
 		}
 		if after := appFolderSnapshot(t, f.dir); !reflect.DeepEqual(after, before) || landGit(t, f.workspace, "rev-parse", "HEAD") != head {
-			t.Fatal("refused land changed the chat or checkout")
+			t.Fatal("refused plan changed the chat or checkout")
 		}
-		if err := os.Remove(deleted); err != nil {
-			t.Fatal(err)
-		}
-		before = appFolderSnapshot(t, f.dir)
-		plan, err = f.b.PlanBranchLand(appwire.BranchLandPlanQuery{Agent: f.id, Branch: "task/paint-abc123"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		landed, err := f.b.LandBranch(appwire.BranchLandQuery{Agent: f.id, Plan: plan.Plan, Revision: plan.Revision})
-		if err != nil || landed.HeadBefore != head || landed.HeadAfter != plan.BranchHead || landGit(t, f.workspace, "rev-parse", "HEAD") != plan.BranchHead {
-			t.Fatalf("landed branch = %+v, %v", landed, err)
-		}
-		for name, want := range map[string]string{"a.txt": "base\n", "b.txt": "task\n"} {
-			if raw, err := os.ReadFile(filepath.Join(f.workspace, name)); err != nil || string(raw) != want {
-				t.Fatalf("checkout file %s = %q, %v", name, raw, err)
+		t.Run("land", func(t *testing.T) {
+			if filterRefused {
+				t.Skip("the land's own git environment reports a filter program; task records, tombstones and planning were checked above")
 			}
-		}
-		if after := appFolderSnapshot(t, f.dir); !reflect.DeepEqual(after, before) {
-			t.Fatal("landing changed files in the chat folder")
-		}
+			if _, err := f.b.LandBranch(appwire.BranchLandQuery{Agent: f.id, Plan: plan.Plan, Revision: plan.Revision}); !hasCode(err, appwire.CodeConflict) {
+				t.Fatalf("landing a deleted task was not refused: %v", err)
+			}
+			if after := appFolderSnapshot(t, f.dir); !reflect.DeepEqual(after, before) || landGit(t, f.workspace, "rev-parse", "HEAD") != head {
+				t.Fatal("refused land changed the chat or checkout")
+			}
+			if err := os.Remove(deleted); err != nil {
+				t.Fatal(err)
+			}
+			before = appFolderSnapshot(t, f.dir)
+			plan, err = f.b.PlanBranchLand(appwire.BranchLandPlanQuery{Agent: f.id, Branch: "task/paint-abc123"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			landed, err := f.b.LandBranch(appwire.BranchLandQuery{Agent: f.id, Plan: plan.Plan, Revision: plan.Revision})
+			if err != nil || landed.HeadBefore != head || landed.HeadAfter != plan.BranchHead || landGit(t, f.workspace, "rev-parse", "HEAD") != plan.BranchHead {
+				t.Fatalf("landed branch = %+v, %v", landed, err)
+			}
+			for name, want := range map[string]string{"a.txt": "base\n", "b.txt": "task\n"} {
+				if raw, err := os.ReadFile(filepath.Join(f.workspace, name)); err != nil || string(raw) != want {
+					t.Fatalf("checkout file %s = %q, %v", name, raw, err)
+				}
+			}
+			if after := appFolderSnapshot(t, f.dir); !reflect.DeepEqual(after, before) {
+				t.Fatal("landing changed files in the chat folder")
+			}
+		})
 	})
 }
 
