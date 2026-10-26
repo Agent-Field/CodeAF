@@ -28,6 +28,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 )
 
@@ -96,3 +98,9 @@ func appLeaveNow() {
 	fmt.Fprintf(os.Stderr, "codeaf app: still leaving after %s; ending now\n", appLeaveWait)
 	os.Exit(1)
 }
+
+// ignoreBrokenPipes makes a write to a pipe whose reader has gone fail with
+// EPIPE instead of ending the process. Go ends a program that writes to a
+// broken stdout or stderr unless SIGPIPE is ignored; the app's pipes are both,
+// and the engine outlives the app on every quit (appleave.go).
+func ignoreBrokenPipes() { signal.Ignore(syscall.SIGPIPE) }
