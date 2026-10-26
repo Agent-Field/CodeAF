@@ -7,13 +7,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/Agent-Field/agentfield/sdk/go/ai"
-	"github.com/Agent-Field/codeaf/internal/config"
-	lanes "github.com/Agent-Field/codeaf/internal/lane"
-	"github.com/Agent-Field/codeaf/internal/provider"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/config"
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 //go:embed compiler_prompts.json
@@ -63,19 +65,24 @@ func (m compilerModel) call(role string, payload document) (document, error) {
 	if m.key == "" {
 		return nil, errors.New("knowledge compilation requires an OpenRouter API key")
 	}
-	client, err := provider.NewClient(provider.Config{APIKey: m.key, BaseURL: config.DefaultBaseURL, Model: m.model, Timeout: 240 * time.Second, HTTPClient: http.DefaultClient, RouteGate: func(ctx context.Context, model, tag string) error {
+	sources := modelsource.Set{}.OrDefault(m.key, config.DefaultBaseURL)
+	settings := config.ClientConfigFor(sources, m.model)
+	settings.Timeout = 240 * time.Second
+	settings.HTTPClient = http.DefaultClient
+	settings.RouteGate = func(ctx context.Context, model, tag string) error {
 		if model != m.model {
 			return fmt.Errorf("knowledge requested model %q; refusing fallback %q", m.model, model)
 		}
 		return nil
-	}})
+	}
+	client, err := provider.NewClient(settings)
 	if err != nil {
 		return nil, err
 	}
 	served := &provider.ServedEndpoint{}
 	ctx := provider.WithRole(m.ctx, lanes.RoleMemory)
 	ctx = provider.WithServedEndpoint(ctx, served)
-	ctx = provider.WithCallTag(ctx, "knowledge."+role)
+	ctx = provider.WithCallTag(ctx, "memory")
 	ctx = provider.WithRequiredReasoningEffort(ctx, provider.Effort("none"))
 	messages := []ai.Message{{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: prompt}}}, {Role: "user", Content: []ai.ContentPart{{Type: "text", Text: mustJSON(payload)}}}}
 	started := time.Now()
