@@ -16,6 +16,10 @@ type houseRulesBody struct {
 	// Adapt is optional: omitted keeps the factory's word as it is, and ""
 	// says the factory has none.
 	Adapt *factory.AdaptMode `json:"adapt"`
+	// StartOnItsOwn and StartLabels are optional too: omitted keeps what the
+	// factory has.
+	StartOnItsOwn *bool     `json:"start_on_its_own"`
+	StartLabels   *[]string `json:"start_labels"`
 }
 
 // houseRules answers and replaces the factory's own rules
@@ -53,16 +57,28 @@ func (h *Handler) houseRules(w http.ResponseWriter, r *http.Request) {
 	if body.Adapt != nil {
 		next.Adapt = *body.Adapt
 	}
+	if body.StartOnItsOwn != nil {
+		next.StartOnItsOwn = *body.StartOnItsOwn
+	}
+	if body.StartLabels != nil {
+		next.StartLabels = *body.StartLabels
+	}
 	if _, err := next.Clean(); err != nil {
 		h.fail(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
 	clearPhase(w)
 	saved, err := h.config.Store.ChangeHouseRules(func(cur *factory.HouseRules) error {
-		adapt := cur.Adapt
+		was := *cur
 		*cur = next
 		if body.Adapt == nil {
-			cur.Adapt = adapt
+			cur.Adapt = was.Adapt
+		}
+		if body.StartOnItsOwn == nil {
+			cur.StartOnItsOwn = was.StartOnItsOwn
+		}
+		if body.StartLabels == nil {
+			cur.StartLabels = was.StartLabels
 		}
 		return nil
 	})

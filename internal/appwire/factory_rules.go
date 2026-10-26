@@ -48,6 +48,11 @@ type FactoryRulesSetParams struct {
 	// Adapt is how much a job's plan may reshape its steps on every
 	// repository: "", adapt, ask or fixed. Omitted keeps the factory's word.
 	Adapt *string `json:"adapt,omitempty" enum:",adapt,ask,fixed"`
+	// StartOnItsOwn turns the factory's own starts on or off, and
+	// StartLabels are the labels that let an issue start by itself. Each
+	// omitted keeps the factory's setting.
+	StartOnItsOwn *bool     `json:"start_on_its_own,omitempty"`
+	StartLabels   *[]string `json:"start_labels,omitempty"`
 }
 
 // FactoryRulesKeeper is the engine's half of factory.rules and
@@ -80,6 +85,12 @@ func CheckRulesSet(p FactoryRulesSetParams) (FactoryRulesSetParams, factory.Hous
 	rules := factory.HouseRules{Rules: *p.Rules, AskFirst: *p.AskFirst, Never: *p.Never}
 	if p.Adapt != nil {
 		rules.Adapt = factory.AdaptMode(*p.Adapt)
+	}
+	if p.StartOnItsOwn != nil {
+		rules.StartOnItsOwn = *p.StartOnItsOwn
+	}
+	if p.StartLabels != nil {
+		rules.StartLabels = *p.StartLabels
 	}
 	clean, err := rules.Clean()
 	if err != nil {

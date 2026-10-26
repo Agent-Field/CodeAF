@@ -35,6 +35,19 @@ type HouseRules struct {
 	// only a person change the steps. Like the rest it only tightens: a
 	// repository that says fixed stays fixed.
 	Adapt AdaptMode `json:"adapt,omitempty"`
+	// StartOnItsOwn is a SETTING, not a rule: the factory starts an issue
+	// by itself when it carries one of StartLabels (or its repository's own
+	// `start.labels`) and clears every rule; anything a rule flags waits for
+	// a person ("Approval needed: start · …"). Off unless a person turned it
+	// on. A factory that runs on a person's own machine runs no start rules
+	// at all while it is off; a team server runs its repositories' own start
+	// labels either way, and adds StartLabels only while it is on.
+	StartOnItsOwn bool `json:"start_on_its_own,omitempty"`
+	// StartLabels are the labels that let an issue start on its own, for
+	// every repository, beside each repository's own. They count only while
+	// StartOnItsOwn is on, and they are the one thing here that lets more
+	// work start rather than less: turning the switch on is that consent.
+	StartLabels []string `json:"start_labels,omitempty"`
 }
 
 // HouseRulesMost is how many lines one list may hold, and HouseRuleLongest how
@@ -48,7 +61,7 @@ const (
 
 // Empty says the factory has no rules of its own.
 func (h HouseRules) Empty() bool {
-	return len(h.Rules) == 0 && len(h.AskFirst) == 0 && len(h.Never) == 0 && h.Adapt == ""
+	return len(h.Rules) == 0 && len(h.AskFirst) == 0 && len(h.Never) == 0 && h.Adapt == "" && !h.StartOnItsOwn && len(h.StartLabels) == 0
 }
 
 // Clean is h with every line trimmed, blank and repeated lines (ignoring case)
@@ -66,6 +79,14 @@ func (h HouseRules) Clean() (HouseRules, error) {
 	}
 	if h.Never, err = cleanRuleList("never", h.Never); err != nil {
 		return HouseRules{}, err
+	}
+	labels, err := cleanRuleList("start label", h.StartLabels)
+	if err != nil {
+		return HouseRules{}, err
+	}
+	h.StartLabels = nil
+	if len(labels) > 0 {
+		h.StartLabels = labels
 	}
 	switch h.Adapt {
 	case "", AdaptFree, AdaptAsk, AdaptFixed:

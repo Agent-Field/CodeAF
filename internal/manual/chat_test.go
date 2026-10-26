@@ -3450,6 +3450,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"make the factory ask before it touches auth", "factory"},
 		{"why did Auto stop at the plan saying a rule asks first", "factory"},
 		{"stop the plan from changing the pipeline steps", "factory"},
+		{"make the factory start issues by itself", "factory"},
 		{"does dropping a factory job delete its branch", "factory"},
 		{"drop a factory job that has uncommitted changes", "factory"},
 		{"the factory says my issue was closed on GitHub so it wasn't started", "factory"},

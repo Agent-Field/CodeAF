@@ -242,11 +242,13 @@ func (h *appFactoryHost) readLoops() {
 	})
 }
 
-// pollLoop starts the GitHub poll alone, for this Mac's own factory: issues
-// filed after setup reach Backlog, and nothing rides on the poll. No intake
-// applies start rules after it and no triage reads what it brought, so it
-// starts no job and asks no model. It shares [readLoops]' once-per-host guard,
-// and closing the host stops it.
+// pollLoop starts the GitHub poll, for this Mac's own factory: issues filed
+// after setup reach Backlog. No triage reads what it brought, so it asks no
+// model. Start rules ride on it ONLY WHILE THE PERSON HAS TURNED "START ON ITS
+// OWN" ON in the factory's own rules ([appFactoryHost.startOnItsOwn]): then an
+// issue that carries a start label and clears every rule starts by itself, and
+// one a rule flags waits for the person. Off, it starts no job. It shares
+// [readLoops]' once-per-host guard, and closing the host stops it.
 func (h *appFactoryHost) pollLoop() {
 	h.loopMu.Lock()
 	defer h.loopMu.Unlock()
@@ -265,9 +267,21 @@ func (h *appFactoryHost) pollLoop() {
 			source = waitForFactoryGitHub(h.ctx, h.floor, token, factoryWatchEvery)
 		}
 		if source != nil {
-			factorygithub.Poll(h.ctx, source, h.floor, factoryPollEvery, nil)
+			factorygithub.Poll(h.ctx, source, h.floor, factoryPollEvery, nil, h.startOnItsOwn)
 		}
 	})
+}
+
+// startOnItsOwn runs the factory's start rules after a poll, and only while
+// the person's "Start on its own" is on. The setting is read again every time,
+// so turning it off stops the next start without a restart, and a rules file
+// that cannot be read starts nothing.
+func (h *appFactoryHost) startOnItsOwn(ctx context.Context) error {
+	house, err := h.floor.HouseRules()
+	if err != nil || !house.StartOnItsOwn {
+		return nil
+	}
+	return h.intakeFor(h.floor).Once(ctx)
 }
 
 // intakeFor is the intake over st: the factory's own, or the test seam.

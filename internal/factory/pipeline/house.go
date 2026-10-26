@@ -25,11 +25,21 @@ func WithHouseRules(f File, house factory.HouseRules) File {
 	if house.Adapt != "" {
 		out.Adapt, _ = factory.StricterAdapt(out.Adapt, house.Adapt)
 	}
+	// THE ONE ADDITION THAT LETS MORE START: the factory's start labels, and
+	// only while a person has turned Start on its own on. Every limit and
+	// ask-first line still applies to what they let in.
+	if house.StartOnItsOwn {
+		out.Start.Labels = unionFold(out.Start.Labels, house.StartLabels)
+	}
 	out.House = factory.HouseRules{
 		Rules:    append([]string{}, house.Rules...),
 		AskFirst: append([]string{}, house.AskFirst...),
 		Never:    append([]string{}, house.Never...),
 		Adapt:    house.Adapt,
+		// The switch and its labels are the factory's settings, recorded so a
+		// client can say where a start label came from.
+		StartOnItsOwn: house.StartOnItsOwn,
+		StartLabels:   append([]string(nil), house.StartLabels...),
 	}
 	return out
 }

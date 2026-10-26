@@ -94,3 +94,18 @@ func TestTheAdaptWordIsReadWrittenAndOnlyTightened(t *testing.T) {
 		t.Fatalf("a repository with no file did not take the factory's ask: %q", got.Recipe().AdaptFor(factory.KindIssue))
 	}
 }
+
+// THE FACTORY'S START LABELS COUNT ONLY WHILE START ON ITS OWN IS ON: on, they
+// join the repository's own; off, they let nothing more start.
+func TestTheFactorysStartLabelsCountOnlyWhileItsSwitchIsOn(t *testing.T) {
+	repo := Defaults()
+	repo.Start.Labels = []string{"agent-ready"}
+	off := WithHouseRules(repo, factory.HouseRules{StartLabels: []string{"codeaf"}})
+	if !reflect.DeepEqual(off.Start.Labels, []string{"agent-ready"}) {
+		t.Fatalf("labels with the switch off: %q", off.Start.Labels)
+	}
+	on := WithHouseRules(repo, factory.HouseRules{StartOnItsOwn: true, StartLabels: []string{"codeaf", "Agent-Ready"}})
+	if !reflect.DeepEqual(on.Start.Labels, []string{"agent-ready", "codeaf"}) {
+		t.Fatalf("labels with the switch on: %q", on.Start.Labels)
+	}
+}

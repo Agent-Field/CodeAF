@@ -1043,6 +1043,9 @@ func cloneHouse(h *factory.HouseRules) *factory.HouseRules {
 		AskFirst: append([]string{}, h.AskFirst...),
 		Never:    append([]string{}, h.Never...),
 		Adapt:    h.Adapt,
+
+		StartOnItsOwn: h.StartOnItsOwn,
+		StartLabels:   append([]string(nil), h.StartLabels...),
 	}
 }
 

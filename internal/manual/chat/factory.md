@@ -115,6 +115,8 @@ They hold three lists:
 
 **A plan that touches what a rule guards is your call.** When a job starts, the ask-first paths and never paths it starts under (the repository's and the factory's) go with it. When its plan names a file one of them covers (`touch auth/` covers everything under `auth/`), the approval after the plan is never routine, even in Auto: the job waits and says "A rule asks first:" with the rule and the file. Answering it clears the hold.
 
+**Start on its own** (Settings → Factory, off until you turn it on): the factory starts an issue by itself when it carries one of the start labels you list there, or its repository's own `start.labels`, and clears every rule (size, cost, ask first, never). An issue a rule flags waits with "Approval needed: start ·" and the rule. While it is off, a factory on your own machine starts nothing a person did not start; a team server always runs its repositories' own start labels, and adds the factory's only while it is on. Turning it off stops the next start at once.
+
 The factory's rules only ever ADD to a repository's: they can never remove or loosen anything its file says. A job carries the rules that stood when it was queued, so a runner on another machine follows the factory's rules, not its own machine's. A rules file the factory cannot read refuses to start jobs rather than starting them without the rules.
 
 ## let the plan reshape the steps — adapt, ask, fixed, a pipeline tailored to each issue

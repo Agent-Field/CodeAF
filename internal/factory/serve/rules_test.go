@@ -78,3 +78,26 @@ func TestFactoryRulesRouteKeepsTheAdaptWordUnlessItIsSent(t *testing.T) {
 	}
 	f.request(t, "PUT", "/v1/rules", "operator-secret", lists(map[string]any{"adapt": "sometimes"}), 422, nil)
 }
+
+// START ON ITS OWN AND ITS LABELS ARE KEPT UNLESS SENT, like the adapt word.
+func TestFactoryRulesRouteKeepsStartOnItsOwnUnlessItIsSent(t *testing.T) {
+	f := peopleV2Setup(t, "team")
+	base := map[string]any{"rules": []string{}, "ask_first": []string{}, "never": []string{}}
+	on := map[string]any{"rules": []string{}, "ask_first": []string{}, "never": []string{}, "start_on_its_own": true, "start_labels": []string{" codeaf ", "Codeaf"}}
+	var got factory.HouseRules
+	f.request(t, "PUT", "/v1/rules", "operator-secret", on, 200, &got)
+	if !got.StartOnItsOwn || !reflect.DeepEqual(got.StartLabels, []string{"codeaf"}) {
+		t.Fatalf("saved %#v", got)
+	}
+	got = factory.HouseRules{}
+	f.request(t, "PUT", "/v1/rules", "operator-secret", base, 200, &got)
+	if !got.StartOnItsOwn || len(got.StartLabels) != 1 {
+		t.Fatalf("an omitted switch changed it: %#v", got)
+	}
+	got = factory.HouseRules{}
+	off := map[string]any{"rules": []string{}, "ask_first": []string{}, "never": []string{}, "start_on_its_own": false, "start_labels": []string{}}
+	f.request(t, "PUT", "/v1/rules", "operator-secret", off, 200, &got)
+	if got.StartOnItsOwn || len(got.StartLabels) != 0 {
+		t.Fatalf("turning it off kept %#v", got)
+	}
+}
