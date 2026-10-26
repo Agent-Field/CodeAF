@@ -3,7 +3,7 @@ package tui3
 import (
 	"encoding/json"
 	"fmt"
-	"os"
+	"github.com/Agent-Field/codeaf/internal/knowledgefixture"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,8 +13,8 @@ import (
 
 func TestKnowledgeRefreshUpdatesLinksAcrossLargeVault(t *testing.T) {
 	a := knowledgeArticleApp(t)
-	path := filepath.Join(a.agent.(*knowledgeTestAgent).vault.Directory(), "knowledge", "vault.json")
-	raw, err := os.ReadFile(path)
+	path := filepath.Join(a.agent.(*knowledgeTestAgent).vault.Directory(), "knowledge.sqlite")
+	raw, err := knowledgefixture.Read(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +35,7 @@ func TestKnowledgeRefreshUpdatesLinksAcrossLargeVault(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(path, b, 0600); err != nil {
+		if err := knowledgefixture.Write(path, b, 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -68,7 +68,7 @@ func BenchmarkKnowledgeVaultFrame(b *testing.B) {
 			a := benchApp(0)
 			a.width, a.height = 120, 40
 			a.kb.open = true
-			a.kb.vault = knowledge.Open(b.TempDir(), "/benchmark")
+			a.kb.vault = knowledge.Open(b.TempDir())
 			pages := make([]knowledge.Page, count)
 			for i := range pages {
 				pages[i] = knowledge.Page{ID: fmt.Sprintf("page-%d", i), Title: fmt.Sprintf("Topic %05d", i), Kind: "subject", Folder: []string{"Topics"}, Sections: []knowledge.Section{{Heading: "Overview", Paragraphs: []knowledge.Paragraph{{Text: "A concise linked article for terminal reading."}}}}}

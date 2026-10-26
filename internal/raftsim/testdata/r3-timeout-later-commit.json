@@ -1,0 +1,37 @@
+{
+  "History": [
+    {
+      "ID": 0,
+      "Call": 1,
+      "Return": 2,
+      "Input": {
+        "Kind": "create",
+        "Actor": "a",
+        "Cell": "c",
+        "Head": "h"
+      },
+      "Output": {},
+      "Unknown": true
+    },
+    {
+      "ID": 1,
+      "Call": 3,
+      "Return": 4,
+      "Input": {
+        "Kind": "read",
+        "Actor": "a",
+        "Cell": "c"
+      },
+      "Output": {
+        "Code": "ok",
+        "Cell": {
+          "Holder": "a",
+          "Fence": 1,
+          "Head": "h",
+          "Until": 90000
+        }
+      }
+    }
+  ],
+  "Expected": "Ok"
+}

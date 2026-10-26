@@ -9,7 +9,7 @@ import (
 func BenchmarkKnowledgeHumanMarkdownWarmFrame(b *testing.B) {
 	a := benchApp(0)
 	a.width, a.height = 120, 40
-	v := knowledge.Open(b.TempDir(), "/benchmark")
+	v := knowledge.Open(b.TempDir())
 	body := strings.Repeat("A **human-written** paragraph with `code` and a linked concept.\n\n", 2200)
 	a.kb.open = true
 	a.kb.vault = v

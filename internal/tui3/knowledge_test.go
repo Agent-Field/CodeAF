@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
+	"github.com/Agent-Field/codeaf/internal/knowledgefixture"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	"github.com/charmbracelet/x/ansi"
 	"os"
@@ -21,13 +22,13 @@ func TestMemoryOffersKnowledgeWithoutStartingCapture(t *testing.T) {
 	}
 	drive(t, a, key("alt+u"))
 	got := placeFrameText(a)
-	for _, want := range []string{"Knowledge", "Create knowledge base", "future chats"} {
+	for _, want := range []string{"Knowledge", "Build knowledge base", "saved chats"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("Knowledge screen missing %q: %s", want, got)
 		}
 	}
 	drive(t, a, key("esc"))
-	if got := placeFrameText(a); strings.Contains(got, "Create knowledge base") {
+	if got := placeFrameText(a); strings.Contains(got, "Build knowledge base") {
 		t.Fatal("escape should return to Saved memory")
 	}
 }
@@ -43,7 +44,7 @@ func (a *knowledgeTestAgent) KnowledgeCaptureError() string { return a.captureEr
 
 func TestMemoryCreatesProjectKnowledgeOnlyOnEnter(t *testing.T) {
 	a := placeApp(t)
-	v := knowledge.Open(t.TempDir(), a.workspace)
+	v := knowledge.Open(t.TempDir())
 	a.agent = &knowledgeTestAgent{fakeAgent: &fakeAgent{model: "m"}, vault: v}
 	drive(t, a, key(placeChord(pageMemory)), key("alt+u"))
 	if v.Enabled() {
@@ -51,13 +52,13 @@ func TestMemoryCreatesProjectKnowledgeOnlyOnEnter(t *testing.T) {
 	}
 	drive(t, a, key("enter"))
 	if !v.Enabled() {
-		t.Fatal("Create knowledge base did not persist consent")
+		t.Fatal("Build knowledge base did not persist consent")
 	}
-	if got := placeFrameText(a); !strings.Contains(got, "Your knowledge base is ready") {
+	if got := placeFrameText(a); !strings.Contains(got, "Building knowledge base") {
 		t.Fatal(got)
 	}
 	drive(t, a, key("esc"), key("alt+u"))
-	if got := placeFrameText(a); strings.Contains(got, "Create knowledge base") {
+	if got := placeFrameText(a); strings.Contains(got, "Build knowledge base") {
 		t.Fatal("created vault was lost after navigation")
 	}
 }
@@ -65,8 +66,8 @@ func TestMemoryCreatesProjectKnowledgeOnlyOnEnter(t *testing.T) {
 func knowledgeArticleApp(t *testing.T) *app {
 	t.Helper()
 	a := placeApp(t)
-	v := knowledge.Open(t.TempDir(), a.workspace)
-	if err := v.Create(); err != nil {
+	v := knowledge.Open(t.TempDir())
+	if err := v.StartBuild(); err != nil {
 		t.Fatal(err)
 	}
 	dir := filepath.Join(v.Directory(), "knowledge")
@@ -74,7 +75,7 @@ func knowledgeArticleApp(t *testing.T) *app {
 		t.Fatal(err)
 	}
 	fixture := `{"sources":{"s1":{"role":"user","ts":"2026-10-25T12:00:00Z","text":"Durable records use SQLite."}},"claims":[{"id":"c1","text":"Durable records use SQLite.","kind":"fact","status":"active","evidence":[{"source":"s1","quote":"Durable records use SQLite."}]}],"notes":[{"id":"architecture","title":"Architecture","kind":"subject","folder":["Project"],"claims":["c1"],"sections":[{"heading":"Storage","paragraphs":[{"text":"Uses SQLite.","claims":["c1"],"inline_links":[{"start":5,"end":11,"id":"sqlite"}]}]}],"links":[{"id":"sqlite","kind":"mention"}]},{"id":"sqlite","title":"SQLite","kind":"subject","folder":["Project"],"claims":["c1"],"sections":[{"heading":"Durability","paragraphs":[{"text":"Durable records use SQLite.","claims":["c1"]}]}],"links":[]}]}`
-	if err := os.WriteFile(filepath.Join(dir, "vault.json"), []byte(fixture), 0600); err != nil {
+	if err := knowledgefixture.Write(filepath.Join(filepath.Dir(dir), "knowledge.sqlite"), []byte(fixture), 0600); err != nil {
 		t.Fatal(err)
 	}
 	a.agent = &knowledgeTestAgent{fakeAgent: &fakeAgent{model: "m"}, vault: v}
@@ -119,7 +120,7 @@ func TestMemoryInlineKnowledgeLinkRespondsToMouse(t *testing.T) {
 
 func TestMemoryBlankSpaceDoesNotCreateKnowledge(t *testing.T) {
 	a := placeApp(t)
-	v := knowledge.Open(t.TempDir(), a.workspace)
+	v := knowledge.Open(t.TempDir())
 	a.agent = &knowledgeTestAgent{fakeAgent: &fakeAgent{model: "m"}, vault: v}
 	drive(t, a, key(placeChord(pageMemory)), key("alt+u"))
 	placeFrameText(a)
@@ -163,10 +164,10 @@ func TestKnowledgeReopeningUsesTheCurrentConversationProject(t *testing.T) {
 	a := knowledgeArticleApp(t)
 	placeFrameText(a)
 	drive(t, a, key(placeChord(pageHome)))
-	a.agent = &knowledgeTestAgent{fakeAgent: &fakeAgent{model: "m"}, vault: knowledge.Open(t.TempDir(), "/another-project")}
+	a.agent = &knowledgeTestAgent{fakeAgent: &fakeAgent{model: "m"}, vault: knowledge.Open(t.TempDir())}
 	drive(t, a, key(placeChord(pageMemory)))
 	got := placeFrameText(a)
-	if strings.Contains(got, "[[SQLite]]") || !strings.Contains(got, "Create knowledge base") {
+	if strings.Contains(got, "[[SQLite]]") || !strings.Contains(got, "Build knowledge base") {
 		t.Fatal("previous project's article remained visible: " + got)
 	}
 }
@@ -205,8 +206,8 @@ func TestKnowledgeShowsCaptureFailures(t *testing.T) {
 func TestKnowledgeKeepsSelectedConnectionVisible(t *testing.T) {
 	a := knowledgeArticleApp(t)
 	v := a.agent.(*knowledgeTestAgent).vault
-	path := filepath.Join(v.Directory(), "knowledge", "vault.json")
-	raw, err := os.ReadFile(path)
+	path := filepath.Join(v.Directory(), "knowledge.sqlite")
+	raw, err := knowledgefixture.Read(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +229,7 @@ func TestKnowledgeKeepsSelectedConnectionVisible(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = os.WriteFile(path, raw, 0600); err != nil {
+	if err = knowledgefixture.Write(path, raw, 0600); err != nil {
 		t.Fatal(err)
 	}
 	drive(t, a, key("alt+u"), key("alt+u"), key("ctrl+l"))
@@ -303,7 +304,7 @@ func TestKnowledgeHostedConversationNeverShowsLocalVault(t *testing.T) {
 	a.host = "remote-box"
 	drive(t, a, key(placeChord(pageMemory)))
 	got := placeFrameText(a)
-	if strings.Contains(got, "Architecture") || strings.Contains(got, "SQLite") || strings.Contains(got, "Create knowledge base") || !strings.Contains(got, "local project conversation") {
+	if strings.Contains(got, "Architecture") || strings.Contains(got, "SQLite") || strings.Contains(got, "Build knowledge base") || !strings.Contains(got, "local project conversation") {
 		t.Fatal("hosted conversation exposed a local knowledge vault: " + got)
 	}
 }
@@ -342,8 +343,8 @@ func TestKnowledgeHoverRepaintsVisibleControls(t *testing.T) {
 
 func TestKnowledgeLinkedPagePickerHoverSelectsEnterTarget(t *testing.T) {
 	a := knowledgeArticleApp(t)
-	path := filepath.Join(a.agent.(*knowledgeTestAgent).vault.Directory(), "knowledge", "vault.json")
-	raw, err := os.ReadFile(path)
+	path := filepath.Join(a.agent.(*knowledgeTestAgent).vault.Directory(), "knowledge.sqlite")
+	raw, err := knowledgefixture.Read(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -359,7 +360,7 @@ func TestKnowledgeLinkedPagePickerHoverSelectsEnterTarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = os.WriteFile(path, raw, 0600); err != nil {
+	if err = knowledgefixture.Write(path, raw, 0600); err != nil {
 		t.Fatal(err)
 	}
 	drive(t, a, key("ctrl+r"), key("ctrl+l"))

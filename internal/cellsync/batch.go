@@ -9,6 +9,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 const (
@@ -18,6 +19,9 @@ const (
 	DefaultInterval = 5 * time.Second
 	// MaxBackoff caps the wait between flushes after failures.
 	MaxBackoff = 60 * time.Second
+	// ReleaseRetryEvery absorbs a brief coordinator change inside the close
+	// deadline without delaying a successful release or a definitive refusal.
+	ReleaseRetryEvery = 50 * time.Millisecond
 )
 
 // Publishing wraps the Stage 0 store: seal exactly as before, then note the
@@ -38,8 +42,10 @@ type Batcher struct {
 	Info         func() PublishInfo
 	OnFlush      func(Flush)      // telemetry hook
 	OnSuperseded func(Superseded) // the chat becomes a viewer (L7)
-	OnError      func(error)      // a refusal (see RefusalOf) the person should hear of, once per episode
-	Now          func() time.Time // default time.Now; tests inject a fake clock
+	// OnLost refuses new work before keeping pending work can fail.
+	OnLost  func()
+	OnError func(error)      // a refusal (see RefusalOf) the person should hear of, once per episode
+	Now     func() time.Time // default time.Now; tests inject a fake clock
 	// Liveness, when set, is a watch socket that can vouch for the lease, so
 	// the heartbeat is sent only while it cannot. Nil beats every tick.
 	Liveness Liveness
@@ -374,11 +380,24 @@ func (b *Batcher) release(ctx context.Context) error {
 	if d.Fence == 0 || stale {
 		return nil
 	}
-	err := b.Publisher.Dir.Release(ctx, d.ID(), d.Fence)
-	if errors.Is(err, directory.ErrFenceStale) {
-		return nil
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		err := b.Publisher.Dir.Release(ctx, d.ID(), d.Fence)
+		if errors.Is(err, directory.ErrFenceStale) {
+			return nil
+		}
+		if !errors.Is(err, directory.ErrUnreachable) && !errors.Is(err, wireauth.ErrUnavailable) {
+			return err
+		}
+		if _, bounded := ctx.Deadline(); !bounded {
+			return err
+		}
+		if err := b.sleeper()(ctx, ReleaseRetryEvery); err != nil {
+			return err
+		}
 	}
-	return err
 }
 
 // flush publishes the newest noted turn and says how long to rest before the
@@ -430,6 +449,9 @@ func (b *Batcher) publish(ctx context.Context, head string) error {
 	ex, err := b.Publisher.publish(ctx, &d, head, b.info())
 	if errors.Is(err, ErrSuperseded) {
 		b.setStale()
+		if b.OnLost != nil {
+			b.OnLost()
+		}
 		return b.resolve(ctx)
 	}
 	if err != nil {
@@ -472,6 +494,9 @@ func (b *Batcher) lost(ctx context.Context, seen Driving) {
 		return
 	}
 	b.setStale()
+	if b.OnLost != nil {
+		b.OnLost()
+	}
 	_ = b.resolve(ctx)
 }
 
@@ -480,6 +505,21 @@ func (b *Batcher) lost(ctx context.Context, seen Driving) {
 func (b *Batcher) resolve(ctx context.Context) error {
 	head, n := b.newest()
 	by := b.holder(ctx)
+	if local, ok := b.Publisher.Engine.(interface {
+		LocalWork(context.Context, cell.Cell) (bool, error)
+	}); ok && n > 0 {
+		driving, _, _ := b.view()
+		work, err := local.LocalWork(ctx, driving.Cell)
+		if err != nil {
+			return err
+		}
+		if !work {
+			// Retirement can seal late accounting after the shared reply.
+			// Forget that pending save without creating a kept-work branch.
+			b.durable(head)
+			n = 0
+		}
+	}
 	if n == 0 {
 		b.superseded(Superseded{By: by})
 		return nil

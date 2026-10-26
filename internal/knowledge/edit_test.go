@@ -1,8 +1,8 @@
 package knowledge_test
 
 import (
-	"context"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/knowledgefixture"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,8 +13,8 @@ import (
 
 func editableVault(t *testing.T) *knowledge.Vault {
 	t.Helper()
-	v := knowledge.Open(t.TempDir(), "/project/a")
-	if err := v.Create(); err != nil {
+	v := knowledge.Open(t.TempDir())
+	if err := v.StartBuild(); err != nil {
 		t.Fatal(err)
 	}
 	dir := filepath.Join(v.Directory(), "knowledge")
@@ -22,7 +22,7 @@ func editableVault(t *testing.T) *knowledge.Vault {
 		t.Fatal(err)
 	}
 	fixture := `{"relations":[],"sources":{"s":{"id":"s","session":"chat","text":"Original generated knowledge","role":"user","ts":"2026-10-25T12:00:00Z"}},"claims":[{"id":"c","scope":"Project","text":"Original generated knowledge","kind":"fact","status":"active","evidence":[{"source":"s","quote":"Original"}]}],"notes":[{"id":"page","title":"Architecture","scope":"Project","folder":["Project"],"claims":["c"],"links":[{"id":"other","kind":"related","reason":"Related reading"}]},{"id":"other","title":"Other","scope":"Project","folder":["Project"],"claims":[],"sections":[{"heading":"Related","paragraphs":[{"text":"Architecture","claims":[],"evidence":[],"inline_links":[{"start":0,"end":12,"id":"page"}]}]}],"links":[{"id":"page","kind":"mention","reason":"Mentioned"}]}]}`
-	if err := os.WriteFile(filepath.Join(dir, "vault.json"), []byte(fixture), 0600); err != nil {
+	if err := knowledgefixture.Write(filepath.Join(filepath.Dir(dir), "knowledge.sqlite"), []byte(fixture), 0600); err != nil {
 		t.Fatal(err)
 	}
 	return v
@@ -86,50 +86,8 @@ func TestDeletedKnowledgePageDisappearsFromRecallAndGraph(t *testing.T) {
 	if len(other.Links) != 0 || len(other.Sections[0].Paragraphs[0].InlineLinks) != 0 {
 		t.Fatal("deleted destination still linked")
 	}
-	if _, err = os.Stat(filepath.Join(v.Directory(), "knowledge", "vault.json")); err != nil {
+	if _, err = os.Stat(filepath.Join(v.Directory(), "knowledge.sqlite")); err != nil {
 		t.Fatal("deletion removed original generated evidence")
-	}
-}
-
-func TestHumanKnowledgeChangesRefreshCompiledExportsWithoutModelCalls(t *testing.T) {
-	v := editableVault(t)
-	path := filepath.Join(v.Directory(), "knowledge", "vault.json")
-	generated, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = v.Flush(context.Background(), "", true); err != nil {
-		t.Fatal(err)
-	}
-	if err = os.WriteFile(path, generated, 0600); err != nil {
-		t.Fatal(err)
-	}
-	page, err := v.Read("page")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = v.EditPage(page.ID, page.Revision, "A human corrected the architecture."); err != nil {
-		t.Fatal(err)
-	}
-	markdown, err := os.ReadFile(filepath.Join(v.Directory(), "knowledge", "markdown", "page.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(markdown), "A human corrected the architecture.") || !strings.Contains(string(markdown), "not been verified") {
-		t.Fatal("compiled Markdown lost human correction/origin")
-	}
-	updated, err := v.Read(page.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = v.DeletePage(page.ID, updated.Revision); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = os.Stat(filepath.Join(v.Directory(), "knowledge", "markdown", "page.md")); !os.IsNotExist(err) {
-		t.Fatalf("deleted Markdown projection remains: %v", err)
-	}
-	if _, err = v.Read(page.ID); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("published deletion resurrected: %v", err)
 	}
 }
 
@@ -163,45 +121,5 @@ func TestHumanKnowledgeClearsOldLinksAndKeepsCodeExamplesLiteral(t *testing.T) {
 	}
 	if len(other.Backlinks) != 0 {
 		t.Fatal("removed manual reference left a stale backlink")
-	}
-}
-
-func TestHumanKnowledgeReportsSavedChangeWhenExportRefreshFails(t *testing.T) {
-	v := editableVault(t)
-	path := filepath.Join(v.Directory(), "knowledge", "vault.json")
-	generated, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = v.Flush(context.Background(), "", true); err != nil {
-		t.Fatal(err)
-	}
-	if err = os.WriteFile(path, generated, 0600); err != nil {
-		t.Fatal(err)
-	}
-	page, err := v.Read("page")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", t.TempDir())
-	err = v.EditPage(page.ID, page.Revision, "Correction saved while Python is unavailable.")
-	if !errors.Is(err, knowledge.ErrPageChangeApplied) {
-		t.Fatalf("committed edit reported as unapplied: %v", err)
-	}
-	updated, readErr := v.Read(page.ID)
-	if readErr != nil {
-		t.Fatal(readErr)
-	}
-	if knowledge.PageMarkdown(updated) != "Correction saved while Python is unavailable." {
-		t.Fatal("applied-error lost committed edit")
-	}
-	if retryErr := v.EditPage(page.ID, page.Revision, "stale retry"); !errors.Is(retryErr, knowledge.ErrPageChanged) {
-		t.Fatalf("stale retry was accepted: %v", retryErr)
-	}
-	if err = v.DeletePage(page.ID, updated.Revision); !errors.Is(err, knowledge.ErrPageChangeApplied) {
-		t.Fatalf("committed deletion reported as unapplied: %v", err)
-	}
-	if _, err = v.Read(page.ID); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("committed deletion was not honored: %v", err)
 	}
 }

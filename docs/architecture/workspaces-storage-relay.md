@@ -141,7 +141,7 @@ capture; this is not an atomic live-database snapshot.
 
 Preserve originals and uncertain worktrees. Multi-root layouts remain resident;
 this contract does not promise automatic long-term reclamation. Archive support
-uses the pinned published [Furrow v0.3.2](https://github.com/Agent-Field/furrow/releases/tag/v0.3.2),
+uses the pinned published [Furrow v0.3.4](https://github.com/Agent-Field/furrow/releases/tag/v0.3.4),
 with platform-specific capability limits.
 
 For test cleanup, stop owned workers, daemons and tunnels first. Remove only the

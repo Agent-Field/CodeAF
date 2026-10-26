@@ -167,11 +167,13 @@ func TestTakeoverScreenOpensTheChatAndSaysWhatWasKept(t *testing.T) {
 	a := lab.app(mine)
 	a.width, a.height = 200, 70
 	drain(t, a, a.openHome())
-	a.machines = continueRows
+	src := &continuationListing{row: continueRows[0]}
+	a.machines = src
 	a.taker = &fakeTaker{
 		taken: Taken{Kept: "c-kept", KeptTurns: 2, Device: "desk", Elapsed: 3200 * time.Millisecond},
 		on: func(cell string) {
 			lab.session("project", cell, "Port the picker", workspace, time.Now())
+			src.change(func(row *chatlist.Row) { row.Mine, row.Status = true, chatlist.Here })
 		},
 	}
 	drain(t, a, a.askMachines())
@@ -199,12 +201,17 @@ func (w *winnerTakes) Rows(context.Context) ([]chatlist.Row, error) {
 	return rows, nil
 }
 
+// R25 keeps the old client's actual visible refusal, independently of the
+// internal directory error's diagnostic spelling.
 func TestTakeoverScreenLostRace(t *testing.T) {
 	taker := &fakeTaker{err: fmt.Errorf("take: %w", directory.ErrLeaseHeld)}
 	a := continueHome(t, taker, &winnerTakes{}, 200)
 	standOn(t, a, "c-off")
 	confirm(t, a)
 	text := homeText(a)
+	if !strings.Contains(text, "another device continued this chat first") {
+		t.Fatalf("R25 visible refusal changed:\n%s", text)
+	}
 	if !strings.Contains(text, "Port the picker  running on desk") || !strings.Contains(text, lostRaceWord) {
 		t.Fatalf("the row did not come back as running on the winner, with one line saying so:\n%s", text)
 	}

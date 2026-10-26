@@ -1965,6 +1965,16 @@ func (a *Agent) Detach() error {
 	return a.Close()
 }
 
+// DetachAndWait joins an idle chat's closing release before acknowledging
+// departure, so its terminal can safely stop coordinating afterwards.
+func (a *Agent) DetachAndWait() error {
+	if !a.WorkOutlivesExit() {
+		return a.Detach()
+	}
+	_, err := a.c.call(nil, MethodDetach, DetachArgs{WaitRelease: true})
+	return err
+}
+
 // Model is the model the next request will use.
 //
 // IT IS A MEMORY READ. The engine states this at the door and again whenever it

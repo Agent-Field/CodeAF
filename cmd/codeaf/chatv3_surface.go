@@ -62,6 +62,10 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 	options.CellsUnavailable = cell.UnavailableReason()
 	if options.CellsUnavailable == "" {
 		wireSync(&options)
+		options.WaitForRelease = func() bool {
+			s, err := syncOf()
+			return err == nil && s.Coordinating()
+		}
 		stateCtx, stopState := context.WithCancel(ctx)
 		stateDone := make(chan struct{})
 		guard.Go("sync/home-state", func() {
@@ -72,7 +76,14 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 		})
 		copiesDone := make(chan struct{})
 		guard.Go("sync/older-chats", func() { defer close(copiesDone); runOlderChats(stateCtx) })
-		defer func() { stopState(); <-stateDone; <-copiesDone }()
+		defer func() {
+			if s, err := syncOf(); err == nil {
+				_ = s.HandBack(ctx)
+			}
+			stopState()
+			<-stateDone
+			<-copiesDone
+		}()
 		options.Pairing = chatPairDoor{}
 		options.Approvals = newApprovalsDoor(home.Dir())
 	}

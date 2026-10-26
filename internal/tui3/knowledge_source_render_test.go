@@ -1,8 +1,8 @@
 package tui3
 
 import (
+	"github.com/Agent-Field/codeaf/internal/knowledgefixture"
 	"github.com/charmbracelet/x/ansi"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,13 +14,13 @@ func TestKnowledgeSourceMarkdownRefreshesAndResizes(t *testing.T) {
 	if got := placeFrameText(a); !strings.Contains(got, "Durable records use SQLite.") {
 		t.Fatal("source missing: " + got)
 	}
-	path := filepath.Join(a.agent.(*knowledgeTestAgent).vault.Directory(), "knowledge", "vault.json")
-	raw, err := os.ReadFile(path)
+	path := filepath.Join(a.agent.(*knowledgeTestAgent).vault.Directory(), "knowledge.sqlite")
+	raw, err := knowledgefixture.Read(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	raw = []byte(strings.ReplaceAll(string(raw), "Durable records use SQLite.", "**Updated** durable records use SQLite."))
-	if err = os.WriteFile(path, raw, 0600); err != nil {
+	if err = knowledgefixture.Write(path, raw, 0600); err != nil {
 		t.Fatal(err)
 	}
 	drive(t, a, key("ctrl+r"))

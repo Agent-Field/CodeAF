@@ -236,7 +236,7 @@ func (a *app) folderConfirm() tea.Cmd {
 			a.note("choose an existing local folder")
 			return nil
 		}
-		a.folder.chooseFolder = nil
+		a.folder.chooseFolder, a.folder.cancelChoose = nil, nil
 		closed := a.closeFolderSheet()
 		return tea.Batch(closed, choose(path))
 	}

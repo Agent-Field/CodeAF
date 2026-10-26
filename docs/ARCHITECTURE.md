@@ -32,6 +32,7 @@ specific action rather than reading either large package from beginning to end.
 | Turns, tools and task execution | [session/session.go](../internal/session/session.go), [session/task_run.go](../internal/session/task_run.go), [exec](../internal/exec/) | [Subharness contract](SUBHARNESS-CONTRACT.md) |
 | Provider calls and model configuration | [provider](../internal/provider/), [config](../internal/config/) | [Usage accounting](model-usage-accounting.md), [limits](LIMITS.md) |
 | Remote sessions and movable chats | [remote](../internal/remote/), [enginehost](../internal/enginehost/), [cell](../internal/cell/) | [Remote architecture](REMOTE.md), [remote testing](testing-anywhere.md) |
+| Relay coordination across computers and workers | [relay server](../internal/relayserve/), [committed directory](../internal/raftdirectory/), [consensus core](../internal/raftcore/), [hosted relay](../relay/hosted/), [cluster command](../cmd/codeaf/cluster.go) | [Run a relay](relay.md), [coordination and workers](../internal/manual/chat/coordination-and-workers.md) |
 
 Before delegating across folders, cooperating on private copies, receiving a chat,
 applying results or cleaning task storage, read the
@@ -45,7 +46,7 @@ concepts separate when implementing a feature or writing an agent's brief.
 | Kind of knowledge | Owner | How it is maintained |
 | --- | --- | --- |
 | What codeaf knows about its product | [manual](../internal/manual/) | Maintained Markdown embedded in the binary, with separate chat and resident corpora |
-| Project knowledge learned from chats | [knowledge](../internal/knowledge/), [session integration](../internal/session/knowledge.go) | Project/profile vault with source records and human-edited articles; see [Memory behavior](../internal/manual/chat/places.md#project-knowledge-inside-memory) |
+| Profile knowledge learned from saved chats | [knowledge](../internal/knowledge/), [session integration](../internal/session/knowledge.go) | Native SQLite vault, background compiler, and human edits; see [knowledge architecture](knowledge.md) and [Memory behavior](../internal/manual/chat/places.md#knowledge-from-saved-chats-inside-memory) |
 | Graph and memory storage mechanisms | [store](../internal/store/) | Read the relevant caller and tests before changing schema or replay behavior |
 | What contributors know about this codebase | This page and [engineering references](README.md#developer-knowledge) | Reviewed documentation committed beside the code |
 

@@ -2,7 +2,7 @@ package tui3
 
 import (
 	"encoding/json"
-	"os"
+	"github.com/Agent-Field/codeaf/internal/knowledgefixture"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,8 +12,8 @@ import (
 
 func TestKnowledgeSourcesRenderMarkdownWithoutChangingOriginal(t *testing.T) {
 	a := knowledgeArticleApp(t)
-	path := filepath.Join(a.agent.(*knowledgeTestAgent).vault.Directory(), "knowledge", "vault.json")
-	raw, err := os.ReadFile(path)
+	path := filepath.Join(a.agent.(*knowledgeTestAgent).vault.Directory(), "knowledge.sqlite")
+	raw, err := knowledgefixture.Read(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -23,7 +23,7 @@ func TestKnowledgeSourcesRenderMarkdownWithoutChangingOriginal(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw = []byte(strings.ReplaceAll(string(raw), `"Durable records use SQLite."`, string(encoded)))
-	if err := os.WriteFile(path, raw, 0600); err != nil {
+	if err := knowledgefixture.Write(path, raw, 0600); err != nil {
 		t.Fatal(err)
 	}
 	a.height = 60
@@ -39,7 +39,7 @@ func TestKnowledgeSourcesRenderMarkdownWithoutChangingOriginal(t *testing.T) {
 			t.Errorf("rendered source lost %q: %s", want, frame)
 		}
 	}
-	after, err := os.ReadFile(path)
+	after, err := knowledgefixture.Read(path)
 	if err != nil {
 		t.Fatal(err)
 	}

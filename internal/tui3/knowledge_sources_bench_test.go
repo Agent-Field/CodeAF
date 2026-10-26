@@ -12,7 +12,7 @@ func BenchmarkKnowledgeSourceFrame(b *testing.B) {
 		b.Run(fmt.Sprintf("sources=%d", count), func(b *testing.B) {
 			a := benchApp(0)
 			a.width, a.height = 120, 40
-			v := knowledge.Open(b.TempDir(), "/benchmark")
+			v := knowledge.Open(b.TempDir())
 			evidence := make([]knowledge.Evidence, count)
 			for i := range evidence {
 				evidence[i] = knowledge.Evidence{Source: fmt.Sprintf("s%d", i), Role: "assistant", TS: "2026-10-25T12:00:00Z", Quote: "## Storage\n\n**Durability** matters.\n\n- Keep data\n- Verify recovery\n\n" + strings.Repeat("A source paragraph with `code` and **emphasis**. ", 10)}

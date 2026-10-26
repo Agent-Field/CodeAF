@@ -155,6 +155,9 @@ type Export struct {
 // each on the cell's own device-local store.
 type SyncEngine struct {
 	Transport Transport
+	// Work distinguishes unpublished work from a displaced session's
+	// accounting-only seals before sync preserves an orphaned head.
+	Work func(context.Context, cell.Cell) (bool, error)
 	// BeforeExport joins local records and the engine group before frames can
 	// leave this computer. Bare independent clients can use the transport alone.
 	BeforeExport func(context.Context, cell.Cell) error
@@ -173,6 +176,15 @@ type SyncEngine struct {
 	// MaterializeWith screens the folder before the engine's automatic undo
 	// snapshot; nil keeps the bare transport seam used by independent clients.
 	MaterializeWith func(context.Context, cell.Cell, Op) ([]byte, error)
+}
+
+// LocalWork reports work beyond the shared boundary. Standalone sync engines
+// without a local journal retain every orphan rather than assume it is empty.
+func (e SyncEngine) LocalWork(ctx context.Context, c cell.Cell) (bool, error) {
+	if e.Work == nil {
+		return true, nil
+	}
+	return e.Work(ctx, c)
 }
 
 // Export implements the sync seam.
@@ -315,6 +327,7 @@ func (e SyncEngine) ask(ctx context.Context, c cell.Cell, op Op, out any) error 
 // wrote. The inbox is device-local scratch beside the cell's store.
 func (e Engine) Sync(keys SyncKeys, ledger string) SyncEngine {
 	return SyncEngine{
+		Work:      e.LocalWork,
 		Transport: e.transport(),
 		BeforeExport: func(ctx context.Context, c cell.Cell) error {
 			if err := Await(ctx, c); err != nil {

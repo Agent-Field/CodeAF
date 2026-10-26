@@ -150,11 +150,18 @@ func (f Fallback) Do(ctx context.Context, t Target, op Op) ([]byte, error) {
 // caller supplies its own Runner (which is a promise to see every spawn).
 func transportFor(binary string, run Runner) Transport {
 	direct := Spawn{Binary: binary, Run: run}
-	if run != nil || env.Get(daemonEnv) == "0" {
+	if run != nil {
 		return direct
 	}
-	// With no engine to name, the daemon cannot start and the spawn reports the
-	// missing engine in its own words.
-	bin, _ := Spawn{Binary: binary}.program()
-	return Fallback{Primary: Daemon{Socket: socketFor(bin), Binary: bin}, Secondary: direct}
+	// Deferred durability retains the same daemon address on both transports;
+	// a fallback must never resolve a different home's address at flush time.
+	bin, _ := direct.program()
+	if bin != "" {
+		direct.Binary = bin
+	}
+	direct.Socket = socketFor(bin)
+	if env.Get(daemonEnv) == "0" {
+		return direct
+	}
+	return Fallback{Primary: Daemon{Socket: direct.Socket, Binary: bin}, Secondary: direct}
 }

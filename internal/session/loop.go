@@ -2065,6 +2065,9 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		attemptCtx = provider.WithContextBudget(attemptCtx, provider.ContextBudget{
 			Window: a.window(), Reserve: ctxbudget.CompletionReserve(), PromptFloor: promptFloor,
 		})
+		// THE FIRST REQUEST LOOKS ONCE AT FURROW'S QUESTION, and only here: the
+		// session was built without waiting for it (tools_workspace.go).
+		a.settleFurrow()
 		attemptCtx, generation := a.beginGeneration(attemptCtx, reached)
 		response, err := a.completeWithModel(attemptCtx, purpose, messages, model,
 			ai.WithTools(a.beltDefinitions()))

@@ -1,0 +1,99 @@
+package main
+
+import (
+	"context"
+	"crypto/ed25519"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"fmt"
+	old "github.com/Agent-Field/codeaf/internal/archiveprobe/directory"
+	cs "github.com/Agent-Field/codeaf/internal/clusterstate"
+	"github.com/Agent-Field/codeaf/internal/identity"
+	"github.com/Agent-Field/codeaf/internal/reqsign"
+	"net/http"
+	"os"
+	"time"
+)
+
+func key(label string) ed25519.PrivateKey {
+	seed := sha256.Sum256([]byte(label))
+	return ed25519.NewKeyFromSeed(seed[:])
+}
+
+type signer struct {
+	label string
+	cert  identity.Cert
+}
+
+func (s signer) IdentityKey() ed25519.PublicKey { return key("root").Public().(ed25519.PublicKey) }
+func (s signer) Cert() identity.Cert            { return s.cert }
+func (s signer) Sign(b []byte) []byte           { return ed25519.Sign(key(s.label), b) }
+func check(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
+func main() {
+	raw, err := os.ReadFile(os.Args[2])
+	check(err)
+	var f struct {
+		Now   int64
+		Cases []struct {
+			Name, Method, URI, Body string
+			Headers                 map[string]string
+		}
+	}
+	check(json.Unmarshal(raw, &f))
+	clock := func() time.Time { return time.UnixMilli(f.Now) }
+	client := func(label, which string) *old.HTTP {
+		for _, c := range f.Cases {
+			if c.Name == which {
+				raw, err := base64.RawURLEncoding.DecodeString(c.Headers["Codeaf-Cert"])
+				check(err)
+				var cert identity.Cert
+				check(json.Unmarshal(raw, &cert))
+				return old.NewHTTP(os.Args[1], reqsign.SignFor(signer{label, cert}, clock), http.DefaultClient)
+			}
+		}
+		panic("missing archived certificate")
+	}
+	a, b := client("p17-a", "put-a"), client("p17-b", "put-b")
+	ctx := context.Background()
+	for _, item := range []struct {
+		c     *old.HTTP
+		label string
+	}{{a, "p17-a"}, {b, "p17-b"}} {
+		check(item.c.PutDevice(ctx, cs.DeviceIDOfKey(key(item.label).Public().(ed25519.PublicKey)), old.Device{V: 1, Name: "c2VhbGVk"}))
+	}
+	_, err = a.Create(ctx, "archived-client", old.CellInit{Head: "saved", Class: "work", Keys: map[string]map[string]string{}})
+	check(err)
+	_, err = b.Acquire(ctx, "archived-client", old.AcquireOpts{Force: true})
+	if !errors.Is(err, old.ErrLeaseHeld) {
+		panic(fmt.Sprintf("blind force: %v", err))
+	}
+	check(a.Release(ctx, "archived-client", 1))
+	taken, err := b.Acquire(ctx, "archived-client", old.AcquireOpts{Force: true})
+	check(err)
+	if taken.Cell.Lease.Fence != 2 {
+		panic("wrong fence")
+	}
+	_, err = b.Publish(ctx, "archived-client", old.Publish{Fence: 2, OldHead: "saved", Head: "published", Class: "work", Frames: []string{"frame"}})
+	check(err)
+	check(b.Release(ctx, "archived-client", 2))
+	check(a.Revoke(ctx, cs.DeviceIDOfKey(key("p17-b").Public().(ed25519.PublicKey))))
+	_, err = b.List(ctx)
+	if !errors.Is(err, old.ErrRevoked) {
+		panic(fmt.Sprintf("revocation: %v", err))
+	}
+	large, err := os.ReadFile(os.Args[3])
+	check(err)
+	check(json.Unmarshal(large, &f))
+	for _, one := range f.Cases {
+		var init old.CellInit
+		check(json.Unmarshal([]byte(one.Body), &init))
+		_, err = a.Create(ctx, one.Name, init)
+		check(err)
+	}
+}

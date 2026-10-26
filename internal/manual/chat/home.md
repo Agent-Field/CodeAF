@@ -315,14 +315,20 @@ what the row offers, described in the next two sections.
 
 ## How fast do chats on other machines update — live changes and polling
 
-When the relay offers a live connection, home keeps one open and a change made on
-another machine shows on home within a second or two. The list is also fetched once a
-minute as a safety net, and at once when you open home or come back to the window. When the
-relay does not offer a live connection (an older relay), or the connection is
-down, home asks for the list instead. It asks only while home is on screen and the terminal
-has your attention (its focus, or a key pressed in the last ten minutes). It asks every few
-seconds while the list is changing and about once a minute while it is not. Each row's age is
-counted from its last saved turn, so it keeps growing between fetches.
+On a native relay with persistent storage, an open paired home joins as a learner.
+Home follows its local copy of the committed directory, and its list, roster and safety
+refresh read that same local hint. A caught-up idle home sends no recurring directory
+requests or peer keepalives. A committed change wakes delivery; a change made on another
+machine normally shows within a second or two. Continuing a chat and every ownership
+decision still require fresh majority reads.
+
+On the hosted relay, home keeps a live connection when one is offered. While the follower
+is healthy, the list has a five-minute safety refresh; opening home or returning to the
+window refreshes at once. Without a live connection, home asks for the list only while it
+is on screen and the terminal has your attention (its focus, or a key pressed in the last
+ten minutes). It asks every few seconds while the list is changing and about once a minute
+while it is not. Each row's age is counted from its last saved turn, so it keeps growing
+between refreshes.
 
 If the other machines cannot be reached, the last list stays on screen and the line
 `other machines unreachable` stands under it. With no connection set up at all (sync off, see "Sync your chats between machines" in running-from-the-terminal), nothing
@@ -2710,3 +2716,7 @@ from a previous visit cannot replace the current visit's selection or draft.
 After a clean quit lets a paired computer's chat go, bare `codeaf` on another paired computer continues that chat automatically within 24 hours. You arrive with the `Moved from` banner and the usual `not brought along:` facts; `esc` goes Home.
 
 If the laptop only slept or lost its connection, Home offers its latest chat and `alt+c` continues immediately. When local unsaved edits need to be kept as a branch, the continuation card asks first. Nothing moves automatically while the other computer is running that chat, for a named chat or `--host`/`--at`/`--session`, when another local window holds a chat, or when local unsaved edits need a choice. If the move fails, Home stays open and says why.
+
+## Empty untitled chats from your other devices — rows before the first saved turn
+
+An empty new chat on one of your other devices stays off Home until it has a saved turn. Opening a window there does not add an `untitled` row here, even while that window remains open and running. Its startup save alone does not make it a conversation you can continue. Once that chat has its first saved turn, it appears with the other chats you can continue.

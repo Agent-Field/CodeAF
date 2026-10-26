@@ -2671,6 +2671,10 @@ type Agent struct {
 	// have a lane context, and "did a beat start" is the question the gate is
 	// about (agent.go's [Agent.startLaneBeat]).
 	laneBeating bool
+	// furrow is the background question to furrow about this session's folder
+	// (tools_workspace.go): started at construction, settled once by the first
+	// request, cancelled and joined by Close.
+	furrow furrowRefresher
 
 	// turnLane is what THIS agent's own last request was served by, and it is
 	// the only honest source there is for the lane half of a usage row

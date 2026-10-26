@@ -1171,6 +1171,10 @@ that has moved on. There is nothing to press; it is automatic.
 - CR and CRLF in a restored draft are normalised to LF.
 - No draft is kept at all if codeaf was started without a draft file.
 
+## Continue here keeps my typed message, pasted text and attachments
+
+If sending from an older window opens `Continue this chat here?`, choosing `continue here` puts your exact draft in the arrived chat's message box, including spaces, newlines, pasted text and attachments. This also works when the chat reopens in a different folder. It stays unsent until you press enter again. Choosing `leave it there`, or a move that fails, keeps the draft too.
+
 ## What a crash does to your draft — what is saved, what comes back, what it will not send
 
 Everything the box is holding is written to one record per conversation, and the plain

@@ -405,6 +405,7 @@ type Session struct {
 	// stream finishes. A new attached window cancels that departure (C31.1).
 	releaseOnIdle bool
 	instance      string
+	closeDone     chan struct{}
 
 	// generation counts the session swaps. Every pump remembers the generation
 	// it was born in and goes quiet the moment it is not the current one — see
@@ -530,6 +531,7 @@ func NewSession(engine *Engine, persistent bool) *Session {
 		agent:      engine.Agent,
 		persistent: persistent,
 		instance:   rand.Text(),
+		closeDone:  make(chan struct{}),
 		rings:      map[uint64]*ring{},
 		follows:    map[uint64]followQueued{},
 		held:       newHeldSet(),
@@ -790,6 +792,17 @@ func (sess *Session) RetireIfIdle(olderThan time.Duration) bool {
 // shutDown is what ending a conversation does once the caller has won the
 // closed flag: every lane left, the turn interrupted, the journal flushed.
 func (sess *Session) shutDown(agent WrappedAgent, already bool, door session.StopDoor, name string) error {
+	if already {
+		// A concurrent final stream may already be releasing this chat. Its
+		// closed flag cannot acknowledge a departure before that release ends.
+		if sess.closeDone != nil {
+			<-sess.closeDone
+		}
+		return nil
+	}
+	if sess.closeDone != nil {
+		defer close(sess.closeDone)
+	}
 	// The rails are left BEFORE the agent is, so no lane is still delivering off
 	// a conversation that is being flushed and shut (tasklane.go), and version
 	// 11's subscription goes the same way (standinglane.go).
@@ -805,7 +818,7 @@ func (sess *Session) shutDown(agent WrappedAgent, already bool, door session.Sto
 	// is what decides whether a stalled pinned lane is asked about or quietly
 	// borrowed against (news.go).
 	sess.dropNews()
-	if agent == nil || already {
+	if agent == nil {
 		return nil
 	}
 	// THE DOOR IS THE ONE THIS ENDING CAME THROUGH, not a single sentence
@@ -1719,6 +1732,7 @@ type server struct {
 	// happens after the lane has drained.
 	detached atomic.Bool
 	goodbye  atomic.Bool
+	left     atomic.Bool
 
 	// window releases the automations presence this connection holds on this
 	// machine because its hello said it is a window ([Hello.Window]), and nil
@@ -1853,6 +1867,9 @@ func (s *server) serve(in io.Reader) (err error) {
 //     turn stops where it is and keeps its partial reply — exactly what ctrl+c
 //     does locally — and then the agent is closed, which flushes the file.
 func (s *server) leave() {
+	if s.left.Swap(true) {
+		return
+	}
 	sess := s.session
 	if sess == nil {
 		return
@@ -2721,11 +2738,16 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		return nil, sess.closeLeaving()
 
 	case MethodDetach:
-		// THE ONE METHOD WHOSE VALUE IS THE DIFFERENCE BETWEEN IT AND SILENCE.
-		// Nothing is interrupted and nothing is closed; the reader loop sees
-		// this flag on its next pass and ends the connection, leaving the turn
-		// to finish (wire.go's MethodDetach states the whole case).
+		args, err := arg[DetachArgs](call)
+		if err != nil {
+			return nil, err
+		}
 		s.detached.Store(true)
+		if args.WaitRelease {
+			// A coordinating terminal must finish closing its idle chats
+			// before handing leadership back and stopping its member.
+			s.leave()
+		}
 		return nil, nil
 
 	case MethodHeldQuestions:

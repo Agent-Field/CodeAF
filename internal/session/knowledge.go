@@ -1,24 +1,18 @@
 package session
 
 import (
-	"bufio"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log"
-	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
-	"github.com/Agent-Field/codeaf/internal/modelsource"
 )
 
-// Knowledge is the same project/profile vault the conversation's tools read.
+// Knowledge is the profile-wide vault the conversation's tools read.
 // Capture is opt-in and only persisted, human-facing conversations write it.
 func (a *Agent) Knowledge() *knowledge.Vault {
 	a.knowledgeMu.RLock()
@@ -60,7 +54,7 @@ func (a *Agent) initKnowledge() {
 	if strings.TrimSpace(a.config.transcriptPath()) == "" || a.config.InTask || a.config.taskID != 0 {
 		return
 	}
-	a.knowledgeVault = knowledge.Open(config.ProfilePath(a.config.ProfileDir, ""), a.config.Workspace)
+	a.knowledgeVault = knowledge.Open(config.ProfilePath(a.config.ProfileDir, ""))
 }
 func (a *Agent) startKnowledge() {
 	vault := a.Knowledge()
@@ -79,45 +73,27 @@ func (a *Agent) startKnowledge() {
 	sessionID := a.id
 	go func() {
 		defer close(j.done)
-		lastCompile := time.Now()
-		retryDelay := 5 * time.Second
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ctx.Done():
-				a.scanKnowledge(j, path, sessionID)
+				// A bounded final copy helps small chats close immediately. The
+				// process worker recovers the remaining durable journal later.
+				finalCtx, finish := context.WithTimeout(context.Background(), time.Second)
+				a.scanKnowledge(finalCtx, j, path, sessionID)
+				finish()
 				return
 			case <-ticker.C:
-				if err := a.scanKnowledge(j, path, sessionID); err != nil {
-					continue
-				}
-				// Runtime batches across conversations using its durable queue and lock.
-				// Credential resolution alone takes a.mu; compilation never does.
-				if vault.Enabled() && time.Since(lastCompile) >= retryDelay {
-					lastCompile = time.Now()
-					snapshot, err := vault.Status()
-					if err != nil || (snapshot.Pending == 0 && !snapshot.NeedsUpdate) {
-						continue
-					}
-					if err := vault.Flush(ctx, a.knowledgeKey(), false); err != nil && ctx.Err() == nil {
-						log.Printf("knowledge: compilation pending: %v", err)
-						retryDelay *= 2
-						if retryDelay > 120*time.Second {
-							retryDelay = 120 * time.Second
-						}
-					} else {
-						retryDelay = 5 * time.Second
-					}
-				}
+				a.scanKnowledge(ctx, j, path, sessionID)
 			}
 		}
 	}()
 }
 
-// rebindKnowledgeLocked follows the persisted journal scope marker. Previous
-// workers retain their old vault; their final scan stops matching at the marker.
-// Caller holds a.mu. Cancellation never joins a network request under that lock.
+// rebindKnowledgeLocked restarts capture after a persisted project scope change.
+// Caller holds a.mu. The retired scanner can finish without holding that lock;
+// stable source IDs make overlapping scans safe.
 func (a *Agent) rebindKnowledgeLocked(project string) {
 	a.knowledgeMu.Lock()
 	old := a.knowledgeJournal
@@ -125,7 +101,7 @@ func (a *Agent) rebindKnowledgeLocked(project string) {
 		old.cancel()
 		a.knowledgeRetired = append(a.knowledgeRetired, old)
 	}
-	a.knowledgeVault = knowledge.Open(config.ProfilePath(a.config.ProfileDir, ""), project)
+	a.knowledgeVault = knowledge.Open(config.ProfilePath(a.config.ProfileDir, ""))
 	a.knowledgeJournal = nil
 	a.knowledgeMu.Unlock()
 	a.startKnowledge()
@@ -152,30 +128,10 @@ func (a *Agent) stopKnowledge() {
 	}
 }
 
-func (a *Agent) knowledgeKey() string {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	service, ok := a.config.Sources.OrDefault(a.config.APIKey, a.config.BaseURL).ByID(modelsource.DefaultID)
-	if !ok {
-		return ""
-	}
-	address := service.Address
-	if address == "" {
-		address = service.Source.Address
-	}
-	if address != "" {
-		parsed, err := url.Parse(address)
-		if err != nil || !strings.EqualFold(parsed.Hostname(), "openrouter.ai") {
-			return ""
-		}
-	}
-	return service.Key
-}
-
 // scanKnowledge reads complete journal lines by byte offset. Re-journaled
 // compaction windows are skipped, so stubs and summaries never become new
 // claims. IDs survive reopen/retry and do not conflate equal human messages.
-func (a *Agent) scanKnowledge(j *knowledgeJournal, path, sessionID string) (err error) {
+func (a *Agent) scanKnowledge(ctx context.Context, j *knowledgeJournal, path, sessionID string) (err error) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	defer func() {
@@ -193,95 +149,35 @@ func (a *Agent) scanKnowledge(j *knowledgeJournal, path, sessionID string) (err 
 	if since.IsZero() {
 		return fmt.Errorf("knowledge: missing opt-in timestamp")
 	}
-	file, err := os.Open(path)
-	if err != nil {
-		return err
+	cursor := knowledge.JournalCursor{Offset: j.offset, Skip: j.skip, Scope: j.scope}
+	if cursor.Scope == "" {
+		cursor.Scope = j.project
 	}
-	defer file.Close()
-	// Sealed cell headers omit cwd. With no anchor, this session's workspace
-	// scopes its original messages. After anchoring, the first marker records
-	// the previous scope, so a resume never attributes scratch text to a project.
-	if j.offset == 0 {
-		j.scope = j.project
-		probe := bufio.NewReader(file)
-		for {
-			line, readErr := probe.ReadBytes('\n')
-			if readErr != nil {
-				break
+	history := knowledgeHistory{}
+	journal := knowledge.Journal{ID: path, Session: sessionID, Project: j.project}
+	{
+		batch, e := history.Read(ctx, journal, cursor)
+		if e != nil {
+			return e
+		}
+		for _, source := range batch.Sources {
+			if e = ctx.Err(); e != nil {
+				return e
 			}
-			var entry sessionEntry
-			if json.Unmarshal(line, &entry) != nil {
+			stamp, e := time.Parse(time.RFC3339Nano, source.TS)
+			if e != nil {
+				return e
+			}
+			if stamp.Before(since) {
 				continue
 			}
-			if entry.Type == "knowledge_scope" {
-				if entry.KnowledgePreviousProject != "" {
-					j.scope = entry.KnowledgePreviousProject
-				} else if entry.KnowledgeProject != "" {
-					j.scope = entry.KnowledgeProject
-				}
-				break
+			if e = j.vault.Capture(source); e != nil {
+				return e
 			}
 		}
+		j.offset = batch.Cursor.Offset
+		j.skip = batch.Cursor.Skip
+		j.scope = batch.Cursor.Scope
 	}
-	if _, err = file.Seek(j.offset, io.SeekStart); err != nil {
-		return err
-	}
-	reader := bufio.NewReader(file)
-	for {
-		line, readErr := reader.ReadBytes('\n')
-		if readErr == io.EOF {
-			return nil
-		} // partial last line is retried next time
-		if readErr != nil {
-			return readErr
-		}
-		next := j.offset + int64(len(line))
-		var entry sessionEntry
-		if err = json.Unmarshal(line, &entry); err != nil {
-			return fmt.Errorf("journal offset %d: %w", j.offset, err)
-		}
-		if entry.Type == "session" {
-			var header sessionHeader
-			if err = json.Unmarshal(line, &header); err != nil {
-				return err
-			}
-			if header.Cwd != "" {
-				j.scope = header.Cwd
-			}
-			j.offset = next
-			continue
-		}
-		if entry.Type == "knowledge_scope" {
-			j.scope = entry.KnowledgeProject
-			j.offset = next
-			continue
-		}
-		if entry.Type == "compaction" {
-			j.skip = entry.Window
-			j.offset = next
-			continue
-		}
-		if entry.Type != "message" {
-			j.offset = next
-			continue
-		}
-		if j.skip > 0 {
-			j.skip--
-			j.offset = next
-			continue
-		}
-		ts, e := time.Parse(time.RFC3339Nano, entry.Timestamp)
-		eligible := j.scope == j.project && e == nil && !ts.Before(since) && !entry.Note && (entry.Role == "user" || entry.Role == "assistant") && strings.TrimSpace(entry.Content) != ""
-		// Tool-bearing narration and operational harness prose are not articles.
-		if entry.Role == "assistant" && (len(entry.ToolCalls) > 0 || (entry.Presentation != nil && entry.Presentation.Audience != "human")) {
-			eligible = false
-		}
-		if eligible {
-			source := knowledge.Source{ID: fmt.Sprintf("%s:journal:%d", sessionID, j.offset), Session: sessionID, Role: entry.Role, TS: entry.Timestamp, Text: entry.Content}
-			if err = j.vault.Capture(source); err != nil {
-				return err
-			}
-		}
-		j.offset = next
-	}
+	return nil
 }

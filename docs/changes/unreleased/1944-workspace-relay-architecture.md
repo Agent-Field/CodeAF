@@ -29,3 +29,10 @@ Document the agent contract for declaring tool roots, checking admitted worker
 routes, mapping received roots, reviewing results and cleaning owned fixtures.
 Current acceptance evidence is maintained in the pull request rather than as a
 pending status in the architecture reference.
+
+Optional warm-transfer frame hints now travel through the shared Raft rules.
+Invalid hints are omitted without blocking a saved head; Home listings omit them.
+The prototype remains off by default, and every cluster member must understand
+these fields before a device sends them. Receiving multiple task roots preserves
+the captured draft and pending send through folder selection, records the acquired
+send fence, and keeps cancellation and failed moves from sending on an older copy.

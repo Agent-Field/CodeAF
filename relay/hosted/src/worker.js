@@ -16,3 +16,5 @@ export { Mailbox } from './pair/mailbox.js';
 export default {
   fetch: (request, env) => respond(() => dispatch(request, env)),
 };
+
+export { RaftMemberDO } from './raft/member.js';

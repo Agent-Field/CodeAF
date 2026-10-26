@@ -12,11 +12,11 @@ While you have only one device, home shows a card at the foot:
 
 ```
 + Add another device
-Add another device — pick up your work anywhere, exactly where you left it.
+Pick up your work anywhere, exactly where you left it.
 alt+d how
 ```
 
-Click **+ Add another device** to open the steps, or press `alt+d`. Click the heading or press `alt+d` again to close them:
+Click `+ Add another device` or press `alt+d` to open the steps. Click the heading or press `alt+d` again to close them. The heading underlines while the pointer is over it; the description and empty space do not act as buttons. The command `codeaf pair` stands out from the instructions, and the link field is shaded while it holds the keyboard:
 
 ```
 1. On the new device, install and run: codeaf pair
@@ -164,6 +164,10 @@ desk was removed — it can no longer reach your chats.
 
 The list is in a fixed order: this device first, then devices that are online, then the rest, each by name. Two devices with the same name show a short tail, such as `tower #a1b2`, so you can tell them apart. Your own computer has no `r`: it cannot remove itself, and if you press `r` there the list says `this device cannot remove itself — choose another row.` A computer that is already removed does nothing when you press `r`. A removed computer can only come back as a new request that you approve. If you remove a computer from another of your devices while this list is open, its row changes to `removed` here too, without closing the list. Removing a computer does not undo what it already holds: for a lost computer read the page *Locking out a lost computer for good*.
 
+## A device was removed but refreshing the list failed
+
+After a successful removal, its confirmation stays visible even if refreshing the device list fails. The card shows the refresh error too, then clears that error when a later refresh succeeds. A failed refresh does not restore the removed computer's access. If the removal itself fails, the card shows that error and does not confirm a removal.
+
 ## I was told this device was removed — how to bring it back
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
@@ -200,3 +204,17 @@ Too many requests from one network are refused too: at most 10 new links in an h
 After a clean quit and final durable save, bare `codeaf` on another paired computer within 24 hours opens the released chat automatically. A sleeping or disconnected laptop still needs `alt+c` on Home. Local unsaved edits, another open local window, a named chat, `--host`, `--at` or `--session` prevent automatic continuation. A running chat never moves by itself. The arrival retains its `Moved from` banner and `not brought along:` facts; `esc` goes Home.
 
 Personal memory and stored model, display, approval and limit defaults follow the paired computers too. Limits are shared as values; spending counted against them stays per computer. Automations and machine-specific paths and settings stay local.
+
+## An approval was interrupted — retrying the same pairing decision
+
+A new computer receives its sealed pairing grant only after its approval has
+been saved. If the reply is interrupted, retrying the same approval keeps the
+same decision. A different answer cannot replace a decision already made. If
+the link has run out, ask the new computer for a fresh one. Removing a device
+blocks its later requests; it cannot take back bytes the device already received.
+
+## After removal — does this machine keep syncing while its window is open
+
+Once codeaf learns that this machine was removed, it stops asking for chats and stops sending updates. That refusal is remembered across windows and restarts. Your window stays usable for local chats. Home removes its offer to continue a chat from your other devices, its continue chord and the continue action on chat rows. The removal explanation stays visible.
+
+Run `codeaf pair` to pair it again. Pairing can still reach the service and gives this machine a new device key. An already open Home then shows your other devices again.

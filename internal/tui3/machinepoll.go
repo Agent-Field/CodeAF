@@ -126,6 +126,6 @@ func (a *app) fileMachines(msg homeMachinesMsg) {
 	changed := msg.err == nil && !chatlist.Same(a.machineRead.rows, msg.rows)
 	a.machinePoll.landed(now, changed, a.socketUp() && msg.err == nil)
 	if msg.err == nil {
-		a.machineRead = machineReading{rows: msg.rows, at: now, version: msg.version}
+		a.machineRead = machineReading{rows: msg.rows, at: now, version: msg.version, sendHolds: a.machineRead.sendHolds, computerRemoved: a.machineRead.computerRemoved}
 	}
 }

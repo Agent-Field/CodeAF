@@ -342,7 +342,7 @@ room's head says the task is working, how long it has run and what it has cost, 
 task room's head does. When the command ends the store clears the live step and the next
 read draws it as an ordinary call, with what came back behind it.
 
-## A program's task page is the actions it took, not steps — a delegate's page: open it, leave it, no tab of its own, no note box, what the box says
+## What does the delegate's task page show — a program's actions, open it, leave it, no tab of its own, no note box, what the box says
 
 A task handed to a program codeaf carries (`/<name> <brief>`, such as `/senior-dev`)
 opens **inside the conversation's own tab**, as any task does: from its row on the side

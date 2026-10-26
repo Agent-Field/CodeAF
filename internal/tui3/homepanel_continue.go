@@ -3,6 +3,7 @@ package tui3
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -37,9 +38,13 @@ import (
 // holds edits made here which the takeover set aside before it fetched, with
 // how many turns it holds and the name of this machine.
 type Taken struct {
-	Kept      string
-	KeptTurns uint32
-	Device    string
+	Fence uint64
+	Head  string
+	// AlreadyHere preserves the attached session when this device already holds it.
+	AlreadyHere bool
+	Kept        string
+	KeptTurns   uint32
+	Device      string
 	// TaskCopies names the tasks whose working copies came along with the chat.
 	TaskCopies []string
 	// Resume is what the chat left behind on the other machine that this one
@@ -153,6 +158,10 @@ var remoteOffers = map[chatlist.OfferKind]func(*app, chatlist.Row, chatlist.Offe
 
 // homeMachineEnter is enter on a chat from another machine.
 func (a *app) homeMachineEnter(line homeLine) tea.Cmd {
+	if a.machineRead.computerRemoved {
+		a.home.say(chatlist.Removed, "")
+		return nil
+	}
 	row := *line.remote
 	offer := chatlist.OfferFor(row)
 	run, ok := remoteOffers[offer.Kind]
@@ -197,6 +206,10 @@ func (a *app) askContinue(row chatlist.Row) tea.Cmd {
 }
 
 func (a *app) raiseContinue(row chatlist.Row, at int) tea.Cmd {
+	if a.machineRead.computerRemoved {
+		a.home.say(chatlist.Removed, "")
+		return nil
+	}
 	if a.sayCellsUnavailable() {
 		return nil
 	}
@@ -252,39 +265,60 @@ type homeTakenMsg struct {
 	taken Taken
 	err   error
 	roots map[string]string
+	draft *composerState
+	send  func() tea.Cmd
 }
 
-// takeRemote asks the taker, off the update loop: a takeover fetches and waits
-// on the directory, and a keystroke may not wait on a network.
+// takeRemote asks for the chat off the update loop because a move waits on the network.
 func (a *app) takeRemote(row chatlist.Row) tea.Cmd {
 	return a.takeRemoteWithRoots(row, nil)
 }
 
 func (a *app) takeRemoteWithRoots(row chatlist.Row, roots map[string]string) tea.Cmd {
+	return a.takeRemoteState(homeTakenMsg{row: row, roots: roots})
+}
+
+func (a *app) takeRemoteState(msg homeTakenMsg) tea.Cmd {
+	if a.machineRead.computerRemoved {
+		a.restoreTakeDraft(msg)
+		a.home.say(chatlist.Removed, "")
+		return nil
+	}
 	a.home.say(continuing, "")
 	taker, ctx := a.taker, a.ctx
+	if msg.draft == nil && a.file != "" && filepath.Base(session.DirOf(a.file)) == msg.row.Cell {
+		// The displaced session may retire during the move, so its unsent words travel with the answer.
+		composer := a.mainComposer()
+		if !composer.empty() {
+			msg.draft = &composer
+		}
+	}
 	return func() tea.Msg {
-		if mapped, ok := taker.(workspaceRootTaker); ok && len(roots) > 0 {
-			taken, err := mapped.TakeSeenWithWorkspaceRoots(ctx, row.Cell, &directory.LeaseExpectation{Device: row.DeviceID, Fence: row.Fence}, roots)
-			return homeTakenMsg{row: row, taken: taken, err: err, roots: roots}
+		seen := &directory.LeaseExpectation{Device: msg.row.DeviceID, Fence: msg.row.Fence}
+		if mapped, ok := taker.(workspaceRootTaker); ok && len(msg.roots) > 0 {
+			msg.taken, msg.err = mapped.TakeSeenWithWorkspaceRoots(ctx, msg.row.Cell, seen, msg.roots)
+		} else if conditional, ok := taker.(conditionalTaker); ok {
+			msg.taken, msg.err = conditional.TakeSeen(ctx, msg.row.Cell, seen)
+		} else {
+			msg.taken, msg.err = taker.Take(ctx, msg.row.Cell)
 		}
-		if conditional, ok := taker.(conditionalTaker); ok {
-			taken, err := conditional.TakeSeen(ctx, row.Cell, &directory.LeaseExpectation{Device: row.DeviceID, Fence: row.Fence})
-			return homeTakenMsg{row: row, taken: taken, err: err}
-		}
-		taken, err := taker.Take(ctx, row.Cell)
-		return homeTakenMsg{row: row, taken: taken, err: err}
+		return msg
 	}
 }
 
-// tookTakeover files the answer. A takeover that failed leaves the row where it
-// was, and one line says why; one that worked opens the chat.
+// tookTakeover restores unsent words on failure and opens the arrived chat on success.
 func (a *app) tookTakeover(msg homeTakenMsg) tea.Cmd {
 	var missing *session.WorkspaceBindingsRequired
 	if errors.As(msg.err, &missing) {
 		if _, ok := a.taker.(workspaceRootTaker); ok && len(missing.Roots) > 0 {
-			return a.chooseTakeRoots(msg.row, missing.Roots, msg.roots)
+			return a.chooseTakeRoots(msg, missing.Roots)
 		}
+	}
+	var failure string
+	if msg.err != nil {
+		failure = a.failedTake(msg)
+		a.restoreTakeDraft(msg)
+		a.note(failure)
 	}
 	switch {
 	case errors.Is(msg.err, directory.ErrLeaseHeld):
@@ -295,8 +329,7 @@ func (a *app) tookTakeover(msg homeTakenMsg) tea.Cmd {
 	case errors.Is(msg.err, directory.ErrConditionalTake):
 		a.home.say(directory.ErrConditionalTake.Error(), "")
 	case msg.err != nil:
-		// Say why: the bare sentence left a failing takeover undiagnosable.
-		a.home.say(continueFails+" · "+firstLine(msg.err.Error()), "")
+		a.home.say(failure, "")
 	default:
 		return a.openTaken(msg)
 	}
@@ -304,23 +337,24 @@ func (a *app) tookTakeover(msg homeTakenMsg) tea.Cmd {
 	return nil
 }
 
-// chooseTakeRoots collects explicit folder choices, then retries against the
-// original card's holder. Escape drops the choices without another takeover.
-func (a *app) chooseTakeRoots(row chatlist.Row, missing []session.WorkspaceRootBinding, chosen map[string]string) tea.Cmd {
+// chooseTakeRoots keeps the original holder and unsent words while collecting local folders.
+func (a *app) chooseTakeRoots(msg homeTakenMsg, missing []session.WorkspaceRootBinding) tea.Cmd {
 	if len(missing) == 0 {
-		return a.takeRemoteWithRoots(row, chosen)
+		return a.takeRemoteState(msg)
 	}
 	cmd := a.openContextPick("", false)
 	a.folder.forWorkspace = true
 	a.folder.held = nil
 	a.folder.chooseTitle = "local folder for " + missing[0].Label
+	a.folder.cancelChoose = func() { a.restoreTakeDraft(msg) }
 	a.folder.chooseFolder = func(path string) tea.Cmd {
-		roots := make(map[string]string, len(chosen)+1)
-		for uri, folder := range chosen {
+		roots := make(map[string]string, len(msg.roots)+1)
+		for uri, folder := range msg.roots {
 			roots[uri] = folder
 		}
 		roots[missing[0].URI] = path
-		return a.chooseTakeRoots(row, missing[1:], roots)
+		msg.roots = roots
+		return a.chooseTakeRoots(msg, missing[1:])
 	}
 	return cmd
 }
@@ -363,11 +397,34 @@ func (a *app) rebuildMachines() {
 // the one they are arriving in. A shared window opens in place, and the ride
 // is spent here rather than at the landing.
 func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
+	if a.machineRead.sendHolds == nil {
+		a.machineRead.sendHolds = map[string]sendHold{}
+	}
+	previous := a.machineRead.sendHolds[msg.row.Cell]
+	if previous.failed || (previous.fence != 0 && previous.fence != msg.taken.Fence) {
+		msg.taken.AlreadyHere = false
+	}
+	a.machineRead.sendHolds[msg.row.Cell] = sendHold{fence: msg.taken.Fence}
+	rows := append([]chatlist.Row(nil), a.machineRead.rows...)
+	for i := range rows {
+		if rows[i].Cell == msg.row.Cell {
+			rows[i].Mine, rows[i].Status, rows[i].Released = true, chatlist.Here, false
+			rows[i].Device, rows[i].DeviceID, rows[i].Fence = msg.taken.Device, "", msg.taken.Fence
+			rows[i].Head = msg.taken.Head
+		}
+	}
+	a.machineRead.rows = rows
+	a.machinesRetaken = a.machinesAsking
+	a.considerResume()
 	a.refreshHome()
 	kept := takenSaid(msg.taken)
 	moved := movedSaid(msg.taken)
+	if msg.taken.AlreadyHere {
+		moved = ""
+	}
 	line, ok := a.takenLine(msg)
 	if !ok {
+		a.restoreTakeDraft(msg)
 		a.home.say(joinSaid(moved, kept), "")
 		return a.askMachines()
 	}
@@ -375,7 +432,7 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 		// A local session of this same chat was retired before replacement.
 		// Its old handle cannot remain a selectable copy behind the new one.
 		key := a.convKey(line.row.Transcript)
-		if held := a.behind[key]; held != nil {
+		if held := a.behind[key]; held != nil && !msg.taken.AlreadyHere {
 			if held.watch != nil {
 				held.watch.stop()
 			}
@@ -383,21 +440,35 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 			a.forget(key)
 		}
 		a.note(joinSaid(moved, kept))
+		if msg.draft != nil {
+			a.putComposer(*msg.draft)
+		} else if !msg.taken.AlreadyHere {
+			// A take from Home restores the arrived chat's saved words. The
+			// conversation being left keeps its own composer in its own draft.
+			a.layKeptDrafts(false)
+		}
 		if a.file == line.row.Transcript {
 			a.offerSetup(msg.taken.Resume)
+		}
+		if msg.send != nil {
+			return msg.send()
 		}
 		return nil
 	}
 	var cmd tea.Cmd
-	if msg.taken.Transcript != "" && a.holding(line.row.Transcript) {
+	if !msg.taken.AlreadyHere && msg.taken.Transcript != "" && a.holding(line.row.Transcript) {
 		// The transcript was replaced by the handoff. Reattach through the
 		// real door instead of bringing the superseded in-memory session back.
 		cmd = a.homeOpenLater(line, false)
 	} else {
 		cmd = a.homeOpenLine(line)
 	}
+	if a.conversationOpening {
+		return tea.Batch(cmd, a.askMachines())
+	}
 	switch {
 	case cmd == nil && a.at(pageHome):
+		a.restoreTakeDraft(msg)
 		// THE OPEN REFUSED and home still stands: the sentence has no
 		// conversation to arrive in, so home itself says the takeover
 		// happened, the way it says every row's refusal.
@@ -413,6 +484,17 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 		return tea.Batch(cmd, said(), a.askMachines())
 	}
 	return tea.Batch(cmd, a.askMachines())
+}
+
+func (a *app) restoreTakeDraft(msg homeTakenMsg) {
+	if msg.draft == nil {
+		return
+	}
+	if a.composerOwner == mainRecipient {
+		a.putComposer(*msg.draft)
+	} else {
+		a.keepComposer(mainRecipient, *msg.draft)
+	}
 }
 
 // takenLine is the line of the chat a takeover just materialized: the one home

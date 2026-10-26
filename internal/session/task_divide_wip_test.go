@@ -490,7 +490,11 @@ func TestAFamilyWorkingInThePersonsOwnRepositoryIsNeverCommittedInto(t *testing.
 	dirty := gitOut(t, repo, "status", "--porcelain")
 
 	nest := newDivideNest(t, wideBrief, 0)
+	// Under the session lock: the furrow question started at construction reads
+	// this field from its own goroutine.
+	nest.node.mu.Lock()
 	nest.node.config.Workspace = repo
+	nest.node.mu.Unlock()
 	nest.parent.setTree(taskTree{dir: repo, ground: repo, merge: mergeInPlace,
 		mode: TaskModeInPlace, rung: GroundRungHere})
 	nest.parent.noteWrote("repro.txt")

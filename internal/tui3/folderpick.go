@@ -210,6 +210,8 @@ type folderPick struct {
 	// receiver mapping rather than change the conversation's workspace.
 	chooseFolder func(string) tea.Cmd
 	chooseTitle  string
+	// cancelChoose restores the waiting draft when a folder choice is abandoned.
+	cancelChoose func()
 
 	// hidden reveals the dot-directories and the names the `@` walk prunes.
 	// It is off by default and it is a person's own act — alt+h, or a name

@@ -235,8 +235,21 @@ func runPairJourney(t *testing.T, key, mode string, online bool) {
 	// it also ends the fresh-install probe's.
 	testRoot := filepath.Dir(filepath.Dir(homeA))
 	t.Cleanup(func() {
-		for _, pid := range engineDaemonsUnder(testRoot) {
+		// C28: signaling an owned engine does not wait for its last filesystem
+		// operation to finish. Wait for exit before TempDir cleanup,
+		// or a successful journey races a daemon recreating its shared store.
+		pids := engineDaemonsUnder(testRoot)
+		for _, pid := range pids {
 			_ = syscall.Kill(pid, syscall.SIGKILL)
+		}
+		deadline := time.Now().Add(10 * time.Second)
+		for _, pid := range pids {
+			for !terminalProcessExited(pid) && time.Now().Before(deadline) {
+				time.Sleep(20 * time.Millisecond)
+			}
+			if !terminalProcessExited(pid) {
+				t.Errorf("the journey engine process %d did not exit before home cleanup", pid)
+			}
 		}
 	})
 	if err := os.WriteFile(filepath.Join(wsB, "Makefile"), []byte("test:\n\t@echo 3 passed\n"), 0o644); err != nil {

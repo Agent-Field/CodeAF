@@ -14,7 +14,7 @@ import (
 // cannot be put back.
 func git(dir string, args ...string) (string, error) {
 	var stderr strings.Builder
-	cmd := exec.Command("git", args...)
+	cmd := exec.Command("git", append([]string{"--no-optional-locks"}, args...)...)
 	cmd.Dir = dir
 	// A cold capture must not be invalidated by an optional index refresh in
 	// a read-only Git query while its portable relay artifact is prepared.

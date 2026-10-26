@@ -290,7 +290,7 @@ truly enormous amounts before it was kept as a job, the log begins where codeaf'
 rolling tail begins — the last few hundred kilobytes — rather than at the very
 first line.
 
-## Does codeaf poll a background job, or does it get told — how does it know a job finished?
+## Does codeaf poll a background job with repeated sleep and tail commands, or get told when it finishes?
 
 **It gets told, and it never has to poll.** Two things arrive without anybody
 asking for them.

@@ -68,10 +68,15 @@ func collectComponents(root string, environment []string) ([]component, error) {
 		if err != nil {
 			return nil, fmt.Errorf("read licences for %s: %w", module.Path, err)
 		}
+		description := ""
+		if module.Path == "go.etcd.io/raft/v3" {
+			description = "The Apache-2.0 Raft source is a modified copy in `third_party/raft`: codeaf injects per-node election randomness for deterministic replay. The pinned upstream version, patch and licence are retained there."
+		}
 		components = append(components, component{
-			Identifier: module.Path,
-			Version:    module.Version,
-			Licences:   licences,
+			Description: description,
+			Identifier:  module.Path,
+			Version:     module.Version,
+			Licences:    licences,
 		})
 	}
 
@@ -123,7 +128,7 @@ func collectComponents(root string, environment []string) ([]component, error) {
 
 func listCompiledModules(root string, environment []string) ([]moduleVersion, error) {
 	const format = `{{if and (not .Standard) .Module}}{{if not .Module.Main}}{{.Module.Path}} {{.Module.Version}}{{end}}{{end}}`
-	out, err := runGo(root, environment, "list", "-deps", "-f", format, "./cmd/codeaf")
+	out, err := runGo(root, environment, "list", "-p=1", "-deps", "-f", format, "./cmd/codeaf")
 	if err != nil {
 		return nil, fmt.Errorf("list modules compiled into cmd/codeaf: %w", err)
 	}

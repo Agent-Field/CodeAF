@@ -33,6 +33,22 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		question string
 		page     string
 	}{
+		// R6/R7/R8/R15/R30 keep leadership, fallback and worker limits reachable.
+		{"can my phone lead", "coordination-and-workers"},
+		{"can my phone be the leader", "coordination-and-workers"},
+		{"can my phone coordinate my computers", "coordination-and-workers"},
+		{"what is cluster lead", "coordination-and-workers"},
+		{"what does codeaf cluster lead do", "coordination-and-workers"},
+		{"make this computer the leader", "coordination-and-workers"},
+		{"what happens if my leader goes away", "coordination-and-workers"},
+		{"my leading laptop went to sleep", "coordination-and-workers"},
+		{"the leader computer was turned off", "coordination-and-workers"},
+		{"what can a worker do", "coordination-and-workers"},
+		{"can a worker approve pairing", "coordination-and-workers"},
+		{"can a worker read all my chats", "coordination-and-workers"},
+		// R25/R29 keep older-client refusals and failed quit saves reachable.
+		{"why can an older computer list chats but not continue a chat that is still running", "continuing-a-chat-on-another-computer"},
+		{"what happens if the final save fails during quit", "continuing-a-chat-on-another-computer"},
 		// C29.4/C30.2/C31.5 must be reachable in the person's own words.
 		{"can I rewind an old chat on my new laptop", "continuing-a-chat-on-another-computer"},
 		{"I quit on my laptop and opened my desktop", "continuing-a-chat-on-another-computer"},
@@ -3212,6 +3228,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"a folder was left out of the move because it could not be read", "home"},
 		{"how do I take a chat back from my other computer", "continuing-a-chat-on-another-computer"},
 		{"what happens if two computers continue the same chat at once", "continuing-a-chat-on-another-computer"},
+		{"which computer coordinates cluster status cluster lead", "continuing-a-chat-on-another-computer"},
+		{"how does a delegated worker claim an assignment or run parallel tasks", "continuing-a-chat-on-another-computer"},
+		{"will an interrupted worker replay tools after a crash or reassignment", "continuing-a-chat-on-another-computer"},
+		{"can a worker access all my chats or approve pairing", "continuing-a-chat-on-another-computer"},
+		{"worker restarts draining and learner metadata visibility", "continuing-a-chat-on-another-computer"},
 		{"why does it say this chat is arriving", "continuing-a-chat-on-another-computer"},
 		{"does /remember work on my other computer", "what-i-remember"},
 		{"are my memories shared across computers", "what-i-remember"},

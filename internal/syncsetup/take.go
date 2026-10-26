@@ -48,6 +48,8 @@ type TakeOptions struct {
 // Continued is a takeover that worked, with what the surface says about it.
 type Continued struct {
 	Taken handoff.Taken
+	// AlreadyHere keeps an active local session attached when no move was needed.
+	AlreadyHere bool
 	// KeptTurns is how many turns the kept branch holds, 0 when nothing was kept.
 	KeptTurns uint32
 	// Device is this machine's name.
@@ -80,7 +82,7 @@ func (s *Sync) Continuer(eng cellstore.Engine, opt TakeOptions) *Continuer {
 // taker is the Taker for chat id. It is built per takeover because the store
 // it fetches through is counted under the chat it serves, and so is the branch
 // that keeps this machine's unsent edits: both are the cost of taking this chat.
-func (c *Continuer) taker(sc *Scope) handoff.Taker {
+func (c *Continuer) taker(ctx context.Context, sc *Scope) handoff.Taker {
 	s := c.sync
 	sync := c.eng.Sync(cellstore.SyncKeys{CellKey: s.Identity.CellKey(), Dedup: s.Identity.DedupSecret()}, s.Ledger)
 	engine := landing{Engine: sync}
@@ -94,7 +96,7 @@ func (c *Continuer) taker(sc *Scope) handoff.Taker {
 	return handoff.Taker{
 		Dir:     s.Dir,
 		Fetch:   &cellsync.Fetcher{Engine: engine, Store: sc.Store, Dir: s.Dir, Inbox: sync.Inbox},
-		Local:   engineLocal{c.eng},
+		Local:   engineLocal{eng: c.eng, ctx: ctx},
 		Branch:  c.branch(brancher),
 		RootFor: c.opt.RootFor,
 		InPlace: func(c cell.Cell) bool { return borrowsProject(c.Root) },
@@ -147,7 +149,34 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	if branchOnly && (view.Cell.ParentCell == "" || view.Cell.Archived) {
 		return Continued{}, errors.New("these turns are no longer available to open separately")
 	}
-	from := c.holderName(ctx, id)
+	lease := view.Cell.Lease
+	// Kept turns may name this device before their separate copy exists here.
+	known, err := cellstore.KnowsHead(cell.Cell{ID: id, Root: root}, view.Cell.Head)
+	if err != nil {
+		return Continued{}, err
+	}
+	if !branchOnly && known && view.Cell.ParentCell == "" && lease.Device == c.sync.Device.ID() && lease.Expires > view.Now {
+		opened, err := cell.OpenAt(root, id)
+		if err != nil {
+			return Continued{}, err
+		}
+		// This computer held the chat before the take began, possibly for a session
+		// that is running now, so a failed record keeps that hold rather than
+		// releasing a lease this call never acquired.
+		if err := c.sync.recordSendLease(opened.ID, sendLease{Cell: id, Fence: lease.Fence}); err != nil {
+			return Continued{}, err
+		}
+		return Continued{AlreadyHere: true, Device: c.opt.DeviceName, Taken: handoff.Taken{
+			Cell: opened, Driving: cellsync.Driving{Cell: opened, Fence: lease.Fence, Head: view.Cell.Head, Frames: view.Cell.Frames},
+		}}, nil
+	}
+	if seen != nil && (lease.Device != seen.Device || lease.Fence != seen.Fence) {
+		return Continued{}, directory.ErrLeaseHeld
+	}
+	if seen == nil {
+		seen = &directory.LeaseExpectation{Device: lease.Device, Fence: lease.Fence}
+	}
+	from := c.sync.deviceName(lease.Device)
 	c.retireHolder(ctx, id)
 	sc := c.sync.scope(id)
 	defer sc.Settle()
@@ -155,7 +184,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	if project, here := projectOf(root); here {
 		intendedPrimary = project
 	}
-	taker := c.taker(sc)
+	taker := c.taker(ctx, sc)
 	taker.Preflight = func(_ context.Context, staged cell.Cell) error {
 		place := session.Place{Dir: staged.Root, Workspace: intendedPrimary}
 		plan, err := session.TaskWorkspaceTransferPlan(place)
@@ -212,10 +241,10 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
 	}
 	if err := cellstore.AdoptedFrom(taken.Cell, from); err != nil {
-		return Continued{}, err
+		return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
 	}
 	if err := cellstore.NotePublished(taken.Cell, taken.Driving.Head); err != nil {
-		return Continued{}, err
+		return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
 	}
 	var filed func()
 	defer func() {
@@ -238,6 +267,9 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
 		}
 		taskCopies = c.restoreCopies(taken.Cell)
+	}
+	if err := c.sync.recordSendLease(taken.Cell.ID, sendLease{Cell: id, Fence: taken.Driving.Fence}); err != nil {
+		return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
 	}
 	out := Continued{Taken: taken, Device: c.opt.DeviceName, TaskCopies: taskCopies, Resume: c.arrive(taken.Cell, from)}
 	if taken.Kept != "" {
@@ -363,14 +395,33 @@ func (l landing) Want(ctx context.Context, c cell.Cell, head string) ([]string, 
 
 // engineLocal is the Taker's view of a copy of the chat this machine has: what
 // the engine says differs from the newest turn, and a seal of it.
-type engineLocal struct{ eng cellstore.Engine }
+type engineLocal struct {
+	eng cellstore.Engine
+	ctx context.Context
+}
 
 func (l engineLocal) Unpublished(c cell.Cell, remoteHead string) (string, uint32, error) {
-	return cellstore.Unpublished(c, remoteHead)
+	head, turns, err := cellstore.Unpublished(c, remoteHead)
+	if err != nil || head == "" {
+		return head, turns, err
+	}
+	// A retired session can seal unchanged bookkeeping after losing its
+	// hold. Only work beyond the shared snapshot belongs in a kept branch.
+	work, err := l.eng.LocalWork(l.ctx, c)
+	if err != nil || !work {
+		return "", 0, err
+	}
+	return head, turns, nil
 }
 
 func (l engineLocal) Dirty(ctx context.Context, c cell.Cell) (bool, error) {
-	return l.eng.Dirty(ctx, c)
+	dirty, err := l.eng.Dirty(ctx, c)
+	if err != nil || !dirty {
+		return dirty, err
+	}
+	// A displaced session can append accounting as it retires. The same
+	// shared-work check applies whether that tail has been sealed yet or not.
+	return l.eng.LocalWork(ctx, c)
 }
 
 func (l engineLocal) Follow(ctx context.Context, from, to cell.Cell) error {
@@ -400,10 +451,12 @@ func workspaceOf(root string) string {
 }
 
 // projectOf is the project folder the chat at root works in, when it works in
-// one of the person's folders and that folder is here.
+// one of the person's folders and that folder is here. A chat that carries
+// only its own folder has no project in a folder that is somebody's elsewhere
+// (cellstore.ForeignFolder): it is never taken in place there.
 func projectOf(root string) (string, bool) {
 	m, err := session.LoadMeta(root)
-	return m.Workspace, err == nil && !m.Owned && dirExists(m.Workspace)
+	return m.Workspace, err == nil && !m.Owned && dirExists(m.Workspace) && !cellstore.ForeignFolder(root, m.Workspace)
 }
 
 func borrowsProject(root string) bool {
@@ -621,7 +674,7 @@ func (s *Sync) Driving(ctx context.Context, c cell.Cell) (*cellsync.Driving, err
 	if err != nil {
 		return nil, err
 	}
-	if v.Cell.Lease.Device == s.Device.ID() {
+	if v.Cell.Lease.Expires > v.Now && v.Cell.Lease.Device == s.Device.ID() {
 		d.Fence, d.Head = v.Cell.Lease.Fence, v.Cell.Head
 	}
 	return d, nil

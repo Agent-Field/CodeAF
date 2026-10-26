@@ -198,9 +198,9 @@ func Run(workspace string, opts Options) error {
 	}
 
 	// THE LOCK IS THE HOST'S LIFE AND NOT A MOMENT OF IT. It is taken before
-	// the socket exists and released only when this process ends, so "is there
-	// a host" is a question the operating system answers rather than a file
-	// somebody has to remember to delete.
+	// the socket exists and released only when this host stops serving, so "is
+	// there a host" is a question the operating system answers rather than a
+	// file somebody has to remember to delete.
 	lock, err := takeLock(filepath.Join(dir, lockName))
 	if err != nil {
 		return ErrHostRunning
@@ -795,8 +795,27 @@ func (h *Host) stopped() bool {
 	return h.closed
 }
 
-// shutdown is the exit: every conversation is closed, which flushes every
-// journal, and the socket and the lock go last.
+// shutdown is the exit: the workspace is handed over, and then every
+// conversation is closed, which flushes every journal.
+//
+// THE SOCKET AND THE LOCK GO FIRST, BEFORE ANY CONVERSATION IS SAVED. Closing a
+// conversation waits for its last save, and in a large folder that save can
+// take the whole of its bound. A host holding the lock through it left the next
+// launch nothing to do but wait for a socket nobody was going to open, and then
+// fall back to a conversation in its own process. The lock says who serves this
+// workspace, and from here on that is nobody; each conversation still holds its
+// own journal lock until its save is done, so the next host cannot open a
+// conversation that is still being written.
+//
+// The socket is removed while the lock is still held, so the path removed is
+// always this host's own and never a successor's.
+//
+// THE SAVES ARE STILL VISIBLE. The saving lock is taken before the workspace
+// lock is let go and released after the last conversation is closed, so a
+// caller that asked this host to go can wait a moment for the journals it is
+// about to reopen ([waitForSaves]) while a launch that only needs the slot does
+// not wait at all. A second host already saving holds it too; this one then
+// saves without it.
 func (h *Host) shutdown() {
 	h.mu.Lock()
 	h.closed = true
@@ -806,13 +825,15 @@ func (h *Host) shutdown() {
 		delete(h.sessions, key)
 	}
 	h.mu.Unlock()
-	for _, sess := range sessions {
-		_ = sess.Close()
-	}
+	saving, _ := takeLock(filepath.Join(h.dir, savingName))
 	socket := filepath.Join(h.dir, socketName)
 	_ = h.listener.Close()
 	_ = os.Remove(socket)
 	_ = releaseLock(h.lock)
+	for _, sess := range sessions {
+		_ = sess.Close()
+	}
+	_ = releaseLock(saving)
 }
 
 // note appends one line to the host's log. It is best-effort by construction:

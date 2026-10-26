@@ -117,6 +117,11 @@ func (a *Agent) AnchorWorkspace(path string) (string, error) {
 		a.jobs.place = place
 		a.jobs.mu.Unlock()
 	}
+	// AND FURROW IS ASKED ABOUT THE NEW FOLDER, from the background and never
+	// waited for: the belt rebuilt above read only what was already remembered,
+	// and the verbs arrive at the tail when furrow answers
+	// (tools_workspace.go's [Agent.askFurrow]).
+	a.askFurrow()
 	a.rerenderSystemLocked(time.Now())
 	return resolved, nil
 }

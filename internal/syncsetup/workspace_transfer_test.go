@@ -162,7 +162,7 @@ func testPublicWorkspaceTakeAndFork(t *testing.T, literalLinks bool) {
 	}
 	receiverRoot := filepath.Join(h.rootsB, h.cell.ID)
 	scope := h.b.scope(h.cell.ID)
-	if err := unmapped.taker(scope).Fetch.Fetch(context.Background(), cell.Cell{ID: h.cell.ID, Root: receiverRoot}, before.Cell.Head); err != nil {
+	if err := unmapped.taker(context.Background(), scope).Fetch.Fetch(context.Background(), cell.Cell{ID: h.cell.ID, Root: receiverRoot}, before.Cell.Head); err != nil {
 		t.Fatal(err)
 	}
 	scope.Settle()
@@ -185,6 +185,10 @@ func testPublicWorkspaceTakeAndFork(t *testing.T, literalLinks bool) {
 	got, err := unmapped.TakeSeenWithWorkspaceRoots(context.Background(), h.cell.ID, seen, receiverBindings)
 	if err != nil {
 		t.Fatalf("public Take lost a declared working root: %v", err)
+	}
+	leaseCell, fence, err := h.b.SendLease(got.Taken.Cell.ID)
+	if err != nil || leaseCell != h.cell.ID || fence != got.Taken.Driving.Fence {
+		t.Fatalf("workspace take did not admit sending at its fence: %s %d %v", leaseCell, fence, err)
 	}
 	for _, slot := range []string{"app", "library"} {
 		file := filepath.Join(got.Taken.Cell.Root, cell.TreesDir, "1", slot, "result.txt")

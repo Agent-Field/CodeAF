@@ -47,7 +47,7 @@ const (
 	fleetAskTimeout = 5 * time.Second
 
 	addMachineHeading = "+ Add another device"
-	addMachinePitch   = "Add another device — pick up your work anywhere, exactly where you left it."
+	addMachinePitch   = "Pick up your work anywhere, exactly where you left it."
 	addMachineStepRun = "1. On the new device, install and run: codeaf pair"
 	addMachineStepPut = "2. It shows a link. Paste it here:"
 	addMachineField   = "> "
@@ -79,6 +79,7 @@ type addMachine struct {
 	asking bool
 	// open says the steps are showing.
 	open    bool
+	hovered bool
 	targets []addMachineTarget
 	focused bool
 	box     editor
@@ -134,6 +135,7 @@ func (a *app) toggleAddMachine() tea.Cmd {
 		return nil
 	}
 	m.open = !m.open
+	m.hovered = false
 	m.focused = m.open
 	a.touch()
 	return nil
@@ -159,11 +161,16 @@ func drawAddMachineBand(a *app, ctx bandContext) []string {
 		return nil
 	}
 	m := a.addMachine
-	rows := []string{ctx.pal.muted(fit(addMachineHeading, ctx.width))}
+	heading := ctx.pal.bold(ctx.pal.muted(fit(addMachineHeading, ctx.width)))
+	if m.hovered {
+		heading = ctx.pal.underline(heading)
+	}
+	rows := []string{heading}
 	for _, line := range wrap(addMachinePitch, ctx.width) {
 		rows = append(rows, ctx.pal.dim(fit(line, ctx.width)))
 	}
 	if m.open {
+		rows = append(rows, "")
 		rows = append(rows, a.addMachineHow(ctx)...)
 	}
 	key := addMachineShow
@@ -181,8 +188,10 @@ func drawAddMachineBand(a *app, ctx bandContext) []string {
 func (a *app) addMachineHow(ctx bandContext) []string {
 	var rows []string
 	for _, line := range []string{addMachineStepRun, addMachineStepPut} {
-		for _, wrapped := range wrap(line, ctx.width) {
-			rows = append(rows, ctx.pal.ink(fit(wrapped, ctx.width)))
+		text := ctx.pal.muted(line)
+		text = strings.ReplaceAll(text, "codeaf pair", ctx.pal.bold(ctx.pal.data("codeaf pair")))
+		for _, wrapped := range wrap(text, ctx.width) {
+			rows = append(rows, fit(wrapped, ctx.width))
 		}
 	}
 	line, _ := a.addMachineLine(ctx.width, ctx.pal)
@@ -208,6 +217,9 @@ func (a *app) addMachinePress(x, y, width int) (tea.Cmd, bool) {
 		a.touch()
 		return nil, true
 	}
+	if !a.addMachineAt(x, y, a.home.painted.lines) {
+		return nil, false
+	}
 	return a.toggleAddMachine(), true
 }
 
@@ -231,7 +243,14 @@ func (a *app) addMachineLine(width int, pal palette) (string, int) {
 	if b.empty() {
 		shown = "Paste pairing link"
 	}
-	line := pal.accent(addMachineField) + pal.ink(fit(shown, max(0, width-ansi.StringWidth(addMachineField))))
+	ink := pal.ink
+	if b.empty() {
+		ink = pal.dim
+	}
+	line := pal.accent(addMachineField) + ink(fit(shown, max(0, width-ansi.StringWidth(addMachineField))))
+	if a.addMachine.focused {
+		line = pal.selected(line, width)
+	}
 
 	return line, column
 }
@@ -284,4 +303,27 @@ func (a *app) addMachineInputKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		}
 	}
 	return nil, true
+}
+
+// addMachineAt resolves only the heading's painted cells, so description text
+// and blank space never promise to open the instructions.
+func (a *app) addMachineAt(x, y int, lines []string) bool {
+	if !a.at(pageHome) || !a.addMachineWanted() || y < 0 || y >= len(lines) {
+		return false
+	}
+	line := ansi.Strip(lines[y])
+	at := strings.Index(line, addMachineHeading)
+	if at < 0 {
+		return false
+	}
+	from := ansi.StringWidth(line[:at])
+	return x >= from && x < from+ansi.StringWidth(addMachineHeading)
+}
+
+func (a *app) hoverAddMachine(x, y int) {
+	next := a.addMachineAt(x, y, a.home.painted.lines)
+	if next != a.addMachine.hovered {
+		a.addMachine.hovered = next
+		a.touch()
+	}
 }

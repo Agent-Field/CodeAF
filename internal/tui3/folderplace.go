@@ -291,7 +291,11 @@ func (a *app) openTargetContextPick(query string, files bool) tea.Cmd {
 // can leave the layer behind.
 func (a *app) closeFolderSheet() tea.Cmd {
 	home := a.folder.forTarget || a.folder.chooseFolder != nil
+	cancelChoose := a.folder.cancelChoose
 	a.folder.close()
+	if cancelChoose != nil {
+		cancelChoose()
+	}
 	a.touch()
 	if home {
 		return tea.Batch(tea.ClearScreen, a.openHome())
@@ -1187,6 +1191,7 @@ func (a *app) tookFolderStore(msg folderStoreMsg) tea.Cmd {
 	paneTop, paneLeft := a.folder.paneTop, a.folder.paneLeft
 	forTarget, forWorkspace := a.folder.forTarget, a.folder.forWorkspace
 	chooseFolder, chooseTitle := a.folder.chooseFolder, a.folder.chooseTitle
+	cancelChoose := a.folder.cancelChoose
 	a.folder.start(a.folderCandidates(), a.tilde)
 	a.folder.filter, a.folder.facts = filter, facts
 	a.folder.kids, a.folder.asking, a.folder.hidden = kids, asking, hidden
@@ -1200,6 +1205,7 @@ func (a *app) tookFolderStore(msg folderStoreMsg) tea.Cmd {
 	// either, for the reason that function gives.
 	a.folder.forTarget, a.folder.forWorkspace = forTarget, forWorkspace
 	a.folder.chooseFolder, a.folder.chooseTitle = chooseFolder, chooseTitle
+	a.folder.cancelChoose = cancelChoose
 	if !forTarget && !forWorkspace {
 		a.markFolderHeld()
 	}
