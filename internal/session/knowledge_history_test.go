@@ -95,6 +95,145 @@ func writeKnowledgeChat(t *testing.T, root, bucket, id string, entries ...map[st
 func knowledgeMessage(text string) map[string]any {
 	return map[string]any{"type": "message", "role": "user", "content": text, "timestamp": "2026-10-25T12:00:00Z"}
 }
+
+func TestKnowledgeHistoryIncludesTaskReportsWithoutInjectedBriefs(t *testing.T) {
+	root := t.TempDir()
+	chat := writeKnowledgeChat(t, root, "archive", "parent", knowledgeMessage("Original question."))
+	place := Place{Dir: filepath.Dir(chat)}
+	for _, name := range []string{"20261025-120000.000000_1.jsonl", "20261025-120001.000000_1.jsonl", "20261025-120002.000000_1-audit-check.jsonl"} {
+		path := touchJournal(t, place, name)
+		file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, entry := range []map[string]any{
+			knowledgeMessage("Injected brief says the task is complete."),
+			{"type": "message", "role": "assistant", "content": "Cedar retains completed task findings.", "presentation": map[string]any{"audience": "operational"}},
+			{"type": "message", "role": "assistant", "content": "Interrupted narration", "presentation": map[string]any{"audience": "operational", "interrupted": true}},
+			{"type": "message", "role": "assistant", "content": "Synthetic note", "note": true},
+			{"type": "message", "role": "tool", "content": "Tool transport"},
+			{"type": "compaction", "window": 1},
+			{"type": "message", "role": "assistant", "content": "Replay copy"},
+		} {
+			if err = json.NewEncoder(file).Encode(entry); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err = file.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	history := KnowledgeHistory(root)
+	journals, err := history.Inventory(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(journals) != 4 {
+		t.Fatalf("saved task runs missing: got %d journals, want 4", len(journals))
+	}
+	seen := map[string]bool{}
+	for _, journal := range journals {
+		batch, err := history.Read(context.Background(), journal, knowledge.JournalCursor{})
+		if err != nil || len(batch.Sources) != 1 {
+			t.Fatalf("task eligibility lost reports or imported injected context: sources=%d error=%v", len(batch.Sources), err)
+		}
+		source := batch.Sources[0]
+		if journal.ID != chat && (source.Role != "assistant" || source.Text != "Cedar retains completed task findings.") {
+			t.Fatalf("task report did not remain assistant evidence: %+v", source)
+		}
+		if seen[source.ID] {
+			t.Fatal("task runs share source identity")
+		}
+		seen[source.ID] = true
+		replay, err := history.Read(context.Background(), journal, batch.Cursor)
+		if err != nil || len(replay.Sources) != 0 {
+			t.Fatalf("completed cursor replayed sources: %d %v", len(replay.Sources), err)
+		}
+	}
+}
+
+func TestKnowledgeHistoryIncludesLooseAndAdaptiveReportsAndHonorsTombstones(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	root := PlacesRoot()
+	chat := writeKnowledgeChat(t, root, "project", "parent", knowledgeMessage("Original question."))
+	deletedChat := writeKnowledgeChat(t, root, "archive", "deleted", knowledgeMessage("Deleted question."))
+	if err := os.WriteFile(filepath.Join(filepath.Dir(deletedChat), conversationDeletedFile), []byte("deleted"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filepath.Dir(chat), taskDeletedFile), []byte(`{"2":true}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	deletedNode := filepath.Join(RunsRoot(), "parent", "run-example", "node-b.jsonl")
+	cleanup, err := json.Marshal(map[string]taskCleanup{"2": {IDs: map[string]bool{"2": true}, Rows: []TaskIndexEntry{{ID: "2", SessionID: "parent", TranscriptURI: taskURI(deletedNode)}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(filepath.Dir(chat), taskCleanupFile), cleanup, 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{
+		filepath.Join(LooseTasksRoot(), "parent", "20261025-120000.000000_1.jsonl"),
+		filepath.Join(LooseTasksRoot(), "parent", "20261025-120000.000000_2.jsonl"),
+		filepath.Join(LooseTasksRoot(), "deleted", "20261025-120000.000000_1.jsonl"),
+		filepath.Join(RunsRoot(), "parent", "run-example", "node-a.jsonl"),
+		deletedNode,
+		filepath.Join(RunsRoot(), "deleted", "run-example", "node-a.jsonl"),
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("{\"type\":\"session\",\"version\":1,\"id\":\"shared-header\"}\n{\"type\":\"message\",\"role\":\"assistant\",\"content\":\"Cedar reports durable task work.\"}\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	history := KnowledgeHistory(root)
+	journals, err := history.Inventory(context.Background())
+	if err != nil || len(journals) != 3 {
+		t.Fatalf("loose/adaptive reports or tombstones incorrect: journals=%d error=%v", len(journals), err)
+	}
+	seen := map[string]bool{}
+	for _, journal := range journals {
+		batch, err := history.Read(context.Background(), journal, knowledge.JournalCursor{})
+		if err != nil || len(batch.Sources) != 1 {
+			t.Fatalf("durable report missing: sources=%d error=%v", len(batch.Sources), err)
+		}
+		if seen[batch.Sources[0].ID] {
+			t.Fatal("loose and adaptive journals share source identity")
+		}
+		seen[batch.Sources[0].ID] = true
+	}
+}
+
+func TestKnowledgeBuildPublishesSavedTaskReportAsAssistantEvidence(t *testing.T) {
+	root := t.TempDir()
+	chat := writeKnowledgeChat(t, root, "archive", "parent")
+	path := touchJournal(t, Place{Dir: filepath.Dir(chat)}, "20261025-120000.000000_1.jsonl")
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = json.NewEncoder(file).Encode(map[string]any{"type": "message", "role": "assistant", "content": "Cedar retains durable queue findings.", "timestamp": "2026-10-25T12:00:00Z"})
+	file.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := knowledge.Open(t.TempDir())
+	knowledgeProviderFixture(t, nil, nil)
+	if err = v.StartBuild(); err != nil {
+		t.Fatal(err)
+	}
+	runKnowledgeWorker(t, v, root)
+	state := waitKnowledgeState(t, v, func(s knowledge.Snapshot) bool {
+		return s.Build.Phase == knowledge.BuildReady && len(s.Pages) > 0
+	})
+	if state.Build.Sources != 1 {
+		t.Fatalf("saved task report was not imported: %+v", state.Build)
+	}
+	hits, err := v.Search("durable", 3)
+	if err != nil || len(hits) != 1 || len(hits[0].Page.Evidence) != 1 || hits[0].Page.Evidence[0].Role != "assistant" {
+		t.Fatalf("task report lost its citation or assistant attribution: hits=%d error=%v", len(hits), err)
+	}
+}
 func waitKnowledgeState(t *testing.T, v *knowledge.Vault, condition func(knowledge.Snapshot) bool) knowledge.Snapshot {
 	t.Helper()
 	deadline := time.Now().Add(8 * time.Second)

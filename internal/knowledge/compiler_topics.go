@@ -224,7 +224,7 @@ func publishTopics(vault, learning, registry document) (document, error) {
 			}
 		}
 		state := parts[0]["state"]
-		if len(sections) == 0 {
+		if len(sections) == 0 && state != "needs_partition" {
 			state = "needs_evidence"
 		}
 		projected = append(projected, merge(clone(parts[0]), document{"id": id, "title": c["title"], "scope": c["scope"], "aliases": stringsValue(c["aliases"]), "notes": notes, "claims": unique(claims), "sections": sections, "questions": questions, "conflicts": conflicts, "state": state, "editorial_pending_claims": sortedUnique(pending)}))
@@ -492,8 +492,15 @@ func projectSubjects(vault, learning document) (document, error) {
 		if stale {
 			state = "needs_review"
 		}
-		notes = append(notes, document{"id": subject["id"], "title": subject["title"], "scope": subject["scope"], "folder": []string{root}, "claims": unique(append(stringsValue(subject["claims"]), answerClaims...)), "sections": sections, "questions": questions, "aliases": stringsValue(subject["aliases"]), "conflicts": items(subject["conflicts"]), "learning_state": state, "kind": "subject", "links": links, "needs_editorial_update": len(pending) > 0})
+		notes = append(notes, document{"id": subject["id"], "title": subject["title"], "scope": subject["scope"], "folder": subjectFolder(subject, root), "claims": unique(append(stringsValue(subject["claims"]), answerClaims...)), "sections": sections, "questions": questions, "aliases": stringsValue(subject["aliases"]), "conflicts": items(subject["conflicts"]), "learning_state": state, "kind": "subject", "links": links, "needs_editorial_update": len(pending) > 0})
 	}
 	result["notes"] = notes
 	return result, nil
+}
+
+func subjectFolder(subject document, fallback string) []string {
+	if folder := stringsValue(subject["folder"]); len(folder) > 0 {
+		return folder
+	}
+	return []string{fallback}
 }

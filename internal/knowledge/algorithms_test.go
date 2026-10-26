@@ -7,12 +7,23 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/knowledge"
 )
 
 func withKnowledgeModel(t *testing.T, respond func(map[string]any) map[string]any) {
+	t.Helper()
+	var mu sync.Mutex
+	withConcurrentKnowledgeModel(t, func(payload map[string]any) map[string]any {
+		mu.Lock()
+		defer mu.Unlock()
+		return respond(payload)
+	})
+}
+
+func withConcurrentKnowledgeModel(t *testing.T, respond func(map[string]any) map[string]any) {
 	t.Helper()
 	original := http.DefaultTransport
 	t.Cleanup(func() { http.DefaultTransport = original })

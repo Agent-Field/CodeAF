@@ -60,11 +60,12 @@ func validateCompilerResponse(role string, result document) error {
 			Aliases   []modelAlias
 		}{}
 		required = "claims"
-	case "discover":
+	case "discover", "organize_subjects":
 		target = &struct {
 			Subjects []struct {
-				Title, Scope   string
-				Aliases, Notes []string
+				Title, Scope, Purpose, CreationReason string
+				ExistingSubjectID                     string `json:"existing_subject_id"`
+				Aliases, Notes, Folder                []string
 			}
 		}{}
 		required = "subjects"
@@ -163,6 +164,28 @@ func validateCompilerResponse(role string, result document) error {
 		value, ok := result[required]
 		if !ok || value == nil {
 			return errors.New("knowledge provider result is missing its required collection")
+		}
+	}
+	return nil
+}
+
+func validateCompilerReferences(role string, payload, response document) error {
+	if role != "discover" && role != "organize_subjects" {
+		return nil
+	}
+	existing, notes := index(items(payload["existing_subjects"])), index(items(payload["catalog"]))
+	for _, subject := range items(response["subjects"]) {
+		target := textValue(subject["existing_subject_id"])
+		if target != "" && existing[target] == nil {
+			return errors.New("knowledge organization referenced an uninspected existing page")
+		}
+		if flag(payload["reuse_only"]) && target == "" {
+			return errors.New("knowledge reuse-only organization proposed a new page")
+		}
+		for _, id := range stringsValue(subject["notes"]) {
+			if notes[id] == nil {
+				return errors.New("knowledge organization referenced an uninspected evidence note")
+			}
 		}
 	}
 	return nil

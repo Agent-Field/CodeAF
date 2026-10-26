@@ -1,8 +1,11 @@
 package knowledge
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"strings"
+	"sync"
 )
 
 // refineLearning spends bounded local-evidence work only after inputs change.
@@ -44,15 +47,51 @@ func refineLearning(vault, learning, previous document, model compilerModel) (do
 	digest := identity([]any{vault["sources"], vault["claims"]})
 	result := clone(learning)
 	guides := object(result["guides"])
+	type refinementJob struct {
+		subject, previous, guide document
+		err                      error
+	}
+	jobs := []refinementJob{}
 	for _, subject := range items(result["subjects"]) {
 		if !flag(subject["needs_editorial_update"]) || subject["refinement_attempt_hash"] == refinementSubjectHash(subject) {
 			continue
 		}
-		id := textValue(subject["id"])
-		guide, err := learnSubject(vault, subject, object(guides[id]), model, "Refresh this subject using the changed local evidence.", 4, 18000)
-		if err != nil {
-			return nil, err
+		jobs = append(jobs, refinementJob{subject: clone(subject), previous: clone(object(guides[textValue(subject["id"])]))})
+		if len(jobs) == subjectConcurrency {
+			break
 		}
+	}
+	ctx, cancel := context.WithCancel(model.ctx)
+	defer cancel()
+	var workers sync.WaitGroup
+	for i := range jobs {
+		workers.Add(1)
+		go func(i int) {
+			defer workers.Done()
+			workerModel := model
+			workerModel.ctx = ctx
+			job := &jobs[i]
+			job.guide, job.err = learnSubject(vault, job.subject, job.previous, workerModel, "Refresh this subject using the changed local evidence.", 4, 18000)
+			if job.err != nil {
+				cancel()
+			}
+		}(i)
+	}
+	workers.Wait()
+	for _, job := range jobs {
+		if job.err != nil && !errors.Is(job.err, context.Canceled) {
+			return nil, job.err
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	// Workers own isolated drafts; only the coordinator changes learning state.
+	subjects := index(items(result["subjects"]))
+	for _, job := range jobs {
+		id := textValue(job.subject["id"])
+		subject := subjects[id]
+		guide := job.guide
 		guides[id] = guide
 		if len(items(guide["sections"])) > 0 {
 			subject["sections"] = items(guide["sections"])
@@ -75,8 +114,6 @@ func refineLearning(vault, learning, previous document, model compilerModel) (do
 			subject["needs_editorial_update"] = len(pending) > 0
 		}
 		subject["refinement_attempt_hash"] = refinementSubjectHash(subject)
-		// One subject per pass; each unattempted subject remains eligible next pass.
-		break
 	}
 	result["guides"] = guides
 	if result["refinement_evidence_hash"] != digest || len(wakeups) > 0 {

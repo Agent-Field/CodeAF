@@ -619,7 +619,11 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 			article = append(article, a.pal.dim("Edited by you · additions are not source-verified"), "")
 		}
 		if n.NeedsEditorialUpdate {
-			article = append(article, a.pal.dim("New evidence appears under Recent knowledge; guide integration is pending."), "")
+			message := "New evidence appears under Recent knowledge; guide integration is pending."
+			if n.HumanEdited {
+				message = "New evidence is available in Sources; your edited article is preserved."
+			}
+			article = append(article, a.pal.dim(message), "")
 		}
 		rightWidth := width - left - 5
 		if narrow {

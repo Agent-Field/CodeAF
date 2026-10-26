@@ -15,10 +15,19 @@ var ErrPageChanged = errors.New("knowledge page changed; reopen it before saving
 // Human overrides are separate database records. Publishing generated pages
 // always overlays the latest committed edits and tombstones in its transaction.
 type pageOverride struct {
-	ID        string `json:"id"`
-	Deleted   bool   `json:"deleted,omitempty"`
-	Markdown  string `json:"markdown,omitempty"`
-	UpdatedAt string `json:"updated_at"`
+	ID                   string `json:"id"`
+	Deleted              bool   `json:"deleted,omitempty"`
+	Markdown             string `json:"markdown,omitempty"`
+	UpdatedAt            string `json:"updated_at"`
+	EvidenceBaselineHash string `json:"evidence_baseline_hash,omitempty"`
+}
+
+func evidenceFingerprint(evidence []Evidence) string {
+	keys := []string{}
+	for _, item := range evidence {
+		keys = append(keys, identity([]any{item.Source, item.Quote, item.TS, item.Role}))
+	}
+	return identity(sortedUnique(keys))
 }
 
 // PageMarkdown returns the editable article body; source citations stay outside
@@ -95,6 +104,7 @@ func (v *Vault) changePage(id, revision string, override pageOverride) error {
 	if override.Deleted {
 		override.Markdown = PageMarkdown(page)
 	}
+	override.EvidenceBaselineHash = evidenceFingerprint(page.Evidence)
 	override.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	payload, err := json.Marshal(override)
 	if err != nil {
@@ -147,7 +157,7 @@ func applyPageOverrides(pages []Page, overrides map[string]pageOverride) ([]Page
 			page.Markdown = override.Markdown
 			page.Sections = manualSections(override.Markdown)
 			page.Claims = nil
-			page.NeedsEditorialUpdate = false
+			page.NeedsEditorialUpdate = override.EvidenceBaselineHash == "" || override.EvidenceBaselineHash != evidenceFingerprint(page.Evidence)
 			page.LearningState = "human_edited"
 		}
 		visible[page.ID] = true

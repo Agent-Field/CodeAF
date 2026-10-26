@@ -58,6 +58,9 @@ func (m compilerModel) call(role string, payload document) (document, error) {
 		if err := validateCompilerResponse(role, result); err != nil {
 			return nil, err
 		}
+		if err := validateCompilerReferences(role, payload, result); err != nil {
+			return nil, err
+		}
 		return result, nil
 	} else if cacheErr != sql.ErrNoRows {
 		return nil, cacheErr
@@ -113,7 +116,11 @@ func (m compilerModel) call(role string, payload document) (document, error) {
 	}
 	choices := items(data["choices"])
 	if len(choices) != 1 || textValue(choices[0]["finish_reason"]) != "stop" {
-		return nil, errors.New("knowledge provider response incomplete; cached progress retained")
+		reason := "missing choice"
+		if len(choices) == 1 {
+			reason = textValue(choices[0]["finish_reason"])
+		}
+		return nil, fmt.Errorf("knowledge %s response incomplete (%s); cached progress retained", role, reason)
 	}
 	var result document
 	if err = json.Unmarshal([]byte(textValue(object(choices[0]["message"])["content"])), &result); err != nil || result == nil {
@@ -122,7 +129,10 @@ func (m compilerModel) call(role string, payload document) (document, error) {
 	if err = validateCompilerResponse(role, result); err != nil {
 		return nil, err
 	}
-	receipt := document{"model": m.model, "role": role, "request_id": requestID, "provider": data["provider"], "reasoning_requested": reasoning, "max_tokens": 8000, "generation_id": data["id"], "usage": data["usage"], "transport": "provider_funnel", "seconds": time.Since(started).Seconds(), "result": result}
+	if err = validateCompilerReferences(role, payload, result); err != nil {
+		return nil, err
+	}
+	receipt := document{"started_at": started.UTC().Format(time.RFC3339Nano), "completed_at": time.Now().UTC().Format(time.RFC3339Nano), "model": m.model, "role": role, "request_id": requestID, "provider": data["provider"], "reasoning_requested": reasoning, "max_tokens": 8000, "generation_id": data["id"], "usage": data["usage"], "transport": "provider_funnel", "seconds": time.Since(started).Seconds(), "result": result}
 	if _, err = m.db.Exec("INSERT OR IGNORE INTO receipts(id,model,role,cost,payload) VALUES(?,?,?,?,?)", requestID, m.model, role, number(object(data["usage"])["cost"]), mustJSON(receipt)); err != nil {
 		return nil, err
 	}

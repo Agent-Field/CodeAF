@@ -36,13 +36,16 @@ SQLite transactions end before network work begins.
 A successful empty inventory arms future capture and shows the waiting state.
 Existing history waits for **Build knowledge base**. The action records durable
 intent and returns; it does not run models on the UI loop. Initial history drains
-in bounded batches. Future turns use the quiet/max-wait policy. Cancellation
+in bounded extraction batches to a durable source boundary before organization.
+Newly arriving sources wait beyond that boundary, so ongoing chats cannot prevent
+the initial collection from publishing. Future turns use the quiet/max-wait policy. Cancellation
 leaves admitted sources and completed stages available for the next process.
 
 `internal/session.KnowledgeHistory` owns saved-journal discovery and parsing.
 It visits all project buckets without a recent-chat limit, includes archives and
 legacy flat journals, resolves sealed layouts through `Place.Transcript`, and
-excludes deleted conversations and task journals. Only complete records advance
+includes saved task reports from conversation-owned, loose and adaptive journals,
+and excludes deleted conversations/tasks and injected task briefs. Only complete records advance
 cursors. Original messages use stable session/byte-offset IDs. Admission and
 cursor advancement commit together; retries compare immutable source content.
 
@@ -50,7 +53,7 @@ cursor advancement commit together; retries compare immutable source content.
 
 The compiler preserves the original extraction, exact-quote validation,
 claim deduplication, qualified assistant reports, human-only newer corrections,
-contradictions, stable note identity, subject discovery, reviewed explanations,
+contradictions, stable note identity, catalog-aware subject discovery, reviewed explanations,
 question resolution, topic reconciliation, and canonical mention links.
 
 Provider results enter through typed role-response checks. Claims and paragraphs
@@ -69,7 +72,14 @@ transaction as visible page content.
 
 Extraction admits at most 64 spans and 24,000 source characters per call. A
 journal read handles at most 256 records or 64 eligible sources, with a 16 MiB
-record bound. Discovery processes at most 256 notes per group, and oversized
+record bound. Discovery plans at most 32 evidence notes per request. All planning completes
+before initial prose synthesis; a separate concept-plan review consolidates draft
+pages while requiring the same evidence-note coverage. Existing concepts are inspected
+in windows of at most 128 before new pages are proposed, with exact IDs retained
+for reuse. Concise concept headings and two-level folders come from the evidence,
+not a fixed project taxonomy. Independent subject drafts and editorial refreshes
+run with at most two provider jobs; claim updates and publication remain ordered.
+Oversized
 subjects retain a partition-needed state rather than truncating claims.
 
 The UI performs database work through asynchronous commands. Search uses FTS,
