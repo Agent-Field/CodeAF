@@ -63,6 +63,11 @@ func TestTaskWorkspaceExplicitReviewAndApply(t *testing.T) {
 			if !taskStorageHasUncertainWriter() {
 				t.Fatal("ordinary shell did not retain writer uncertainty")
 			}
+			// The shipped policy must work without the retired prototype override.
+			if err := SaveMeta(place.Dir, Meta{ID: place.ID(), Workspace: source, WorkspacePolicy: DefaultWorkspacePolicy()}); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP", "")
 			review, err := agent.ReviewTaskWorkspaceRoot(context.Background(), id, "work")
 			if err != nil {
 				t.Fatal(err)
@@ -152,7 +157,7 @@ func completedWorkspaceApplyFixture(t *testing.T, repository bool) (*Agent, uint
 func completedWorkspaceApplyFixtureWithInput(t *testing.T, repository bool, setup func(string)) (*Agent, uint64, Place, string, string) {
 	t.Helper()
 	t.Setenv("CODEAF_HOME", t.TempDir())
-	t.Setenv("CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP", "1")
+	t.Setenv("CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP", "")
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	t.Setenv("CODEAF_FURROW", filepath.Join(t.TempDir(), "unavailable-native-engine"))
 	source := t.TempDir()
@@ -165,6 +170,9 @@ func completedWorkspaceApplyFixtureWithInput(t *testing.T, repository bool, setu
 		setup(source)
 	}
 	place := Place{Dir: t.TempDir(), Workspace: source}
+	if err := SaveMeta(place.Dir, Meta{ID: place.ID(), Workspace: source, WorkspacePolicy: DefaultWorkspacePolicy()}); err != nil {
+		t.Fatal(err)
+	}
 	engine := newBeltRunDouble("done")
 	engine.real = true
 	registerBeltRunEngine(t, engine)
@@ -210,6 +218,9 @@ func TestTaskWorkspaceApplyRejectsAlteredStageReceipt(t *testing.T) {
 				foreign := newTestRepo(t)
 				// A second authentic review can be transplanted without inventing any URI.
 				otherPlace := Place{Dir: t.TempDir(), Workspace: foreign}
+				if err := SaveMeta(otherPlace.Dir, Meta{ID: otherPlace.ID(), Workspace: foreign, WorkspacePolicy: DefaultWorkspacePolicy()}); err != nil {
+					t.Fatal(err)
+				}
 				engine := newBeltRunDouble("done")
 				engine.real = true
 				registerBeltRunEngine(t, engine)

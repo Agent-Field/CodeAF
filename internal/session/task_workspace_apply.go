@@ -338,7 +338,7 @@ func stageTaskWorkspaceReview(ctx context.Context, id uint64, use WorkspaceRootU
 		return fail(err)
 	}
 	place := Place{Dir: owned, Workspace: original.ground}
-	if err := SaveMeta(owned, Meta{WorkspacePolicy: DefaultWorkspacePolicy(), Workspace: original.ground}); err != nil {
+	if err := SaveMeta(owned, Meta{ID: place.ID(), WorkspacePolicy: DefaultWorkspacePolicy(), Workspace: original.ground}); err != nil {
 		_ = os.RemoveAll(owned)
 		return fail(err)
 	}
