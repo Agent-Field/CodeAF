@@ -171,5 +171,11 @@ HTTP 404 `not_found`.
 ## Architecture and workspace boundaries
 
 See [workspace storage and relay architecture](architecture/workspaces-storage-relay.md)
-for the shipped transport, the proposed multi-root contract, and the compatibility
-requirements. The proposed lifecycle is not enabled by this documentation.
+for the shipped transport and the implemented, opt-in private-task and multi-root
+contract. Private task copies and Review/Apply require
+`CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP=1` with an absolute `CODEAF_HOME` on Linux or
+macOS when creating the chat. Saved policies travel with compatible builds;
+ordinary chats keep automatic task landing. Windows cannot enable this policy.
+Every receiving computer needs a build that understands the private-task format:
+an older build can take the chat and drop its tasks. Seal cost grows with retained
+private roots. Warm-transfer frame hints use the Raft relay and stay off by default.

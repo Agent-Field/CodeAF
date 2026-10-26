@@ -8,7 +8,7 @@ import (
 )
 
 // ObserveEngine times native operations without changing the completeness gate.
-// Native materialization is not proof of an application's G1/G2 UI readiness.
+// Native materialization does not prove that the application's interface is ready.
 func ObserveEngine(inner Engine, observer Observer) Engine {
 	if observer == nil {
 		return inner

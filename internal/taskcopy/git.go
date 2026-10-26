@@ -17,7 +17,7 @@ func git(dir string, args ...string) (string, error) {
 	cmd := exec.Command("git", append([]string{"--no-optional-locks"}, args...)...)
 	cmd.Dir = dir
 	// A cold capture must not be invalidated by an optional index refresh in
-	// a read-only Git query while its portable relay artifact is prepared.
+	// a read-only repository query while its portable relay artifact is prepared.
 	if env.Get("CODEAF_PROTOTYPE_TASK_STORAGE") == "1" {
 		cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
 	}

@@ -4,7 +4,7 @@ Read this contract when delegating work across folders, cooperating on a task,
 receiving a chat, applying task results, or cleaning task storage. Use the
 [shipped worker manual](../../internal/manual/chat/worker-harness.md) for the
 complete user-facing command reference. Current acceptance evidence and limits
-belong in [PR #1944](https://github.com/Agent-Field/CodeAF/pull/1944).
+belong in [PR #1944](https://github.com/Agent-Field/codeaf/pull/1944).
 
 ## Choose the execution roots before delegating
 
@@ -13,9 +13,12 @@ folder. A chat can reference several roots; a root is not the whole chat or a
 user's entire product. Registry records named `Project` identify local roots.
 Matching folder names or Git remotes do not combine their identities.
 
-New managed conversations persist their private-task placement policy. Supported
-Bash tasks receive private copies by default; legacy conversations keep their
-recorded placement and existing readers. An explicit user-selected in-place mode
+Private task copies, multi-root workspaces and Review/Apply are implemented behind
+`CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP=1` with an absolute `CODEAF_HOME` on Linux and
+macOS. Only opted-in new conversations persist their private-task placement policy.
+Ordinary conversations keep automatic task landing and version-1 checkpoints.
+A saved policy travels with the chat and remains enabled on Linux and macOS even
+without the switch. Windows cannot enable ownership, including for a saved policy. An explicit user-selected in-place mode
 keeps its existing meaning. A model's brief or proposed folder does not grant
 in-place write permission. Home/reference work uses scratch space rather than
 copying the person's home directory. Foreground commands retain the semantics of
@@ -79,6 +82,9 @@ Retain their private copies while completion or writer ownership is uncertain.
 3. Read the recorded outcome before continuing. Repeat review and Apply separately
    for every writable root; a read-only root cannot be applied.
 
+For Git projects, Apply requires the profile and destination Git index on the
+same disk and refuses before destination writes if they differ.
+
 Explicit reviewed Apply permits the chosen branch, including `main`. Automatic
 landing remains blocked on protected branches. Changed checkouts, affected-path
 conflicts and unsupported state refuse rather than overwrite work. Unrelated
@@ -93,6 +99,13 @@ an update and reconnect to the updated engine; restarting a window alone may
 leave its existing engine running.
 
 ## Receive and reopen a chat
+
+Every computer receiving a private-task chat needs a build that understands its
+checkpoint and carrier format; older builds can take it and drop its tasks.
+Sealing captures and screens complete histories again, so cost grows with retained
+private roots. Ordinary chats without a workspace plan use the existing transfer
+route and remain unowned on the receiver. Optional frame hints ride the Raft relay
+and stay off by default.
 
 Use a managed profile and compatible workspace-aware builds at both ends. Fetch
 and Take use the harness's private staging and identity registry. Do not restore

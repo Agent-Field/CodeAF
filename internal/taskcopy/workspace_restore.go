@@ -570,7 +570,7 @@ func validateWorkspaceOverlay(destination, from string, rec record) error {
 }
 
 // workspaceTreeDigest seals the prepared working files, including clean files
-// that an overlay comparison cannot judge. Git's mutable administrative files
+// that an overlay comparison cannot judge. Mutable repository administration files
 // are excluded; the recorded HEAD is checked independently.
 func workspaceTreeDigest(root string) (string, error) {
 	hash := sha256.New()
@@ -767,7 +767,7 @@ type WorkspaceResultSelection struct {
 	BaseCommit string `json:"base_commit"`
 }
 
-// RestoreCompletedWorkspaceResults retains changed outputs without runnable Git
+// RestoreCompletedWorkspaceResults retains changed outputs without runnable repository
 // copies. Full history remains in the independent portable carrier namespace.
 func RestoreCompletedWorkspaceResults(c cell.Cell, plan WorkspacePlan, destination string, selections []WorkspaceResultSelection) (map[string]string, error) {
 	manifest, err := readWorkspaceManifest(c)
@@ -1233,7 +1233,7 @@ func verifyWorkspaceDirectories(destination string, directories map[string]fs.Fi
 }
 
 // workspaceOutputDirectories retains output parents and empty directories not
-// represented by the Git baseline. Git does not record directory permissions,
+// represented by the repository baseline. History does not record directory permissions,
 // so mode-only changes to an otherwise unchanged input directory remain in the
 // full carrier rather than being attributed to this changed-output subset.
 func workspaceOutputDirectories(checkout, base string, directories map[string]fs.FileMode, files []string) (map[string]fs.FileMode, error) {

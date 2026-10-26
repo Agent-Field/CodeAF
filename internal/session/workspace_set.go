@@ -28,7 +28,7 @@ const (
 // Slots preserve supported ASCII spelling; case-fold aliases, Unicode and
 // reserved filesystem names refuse rather than being renamed.
 // Landing is empty to retain work privately, or the explicitly admitted source
-// folder. Matching names or Git remotes never supply landing permission.
+// folder. Matching names or repository remotes never supply landing permission.
 type WorkspaceRootRequest struct {
 	// SourceURI is authoritative once admitted; Source is a local path hint.
 	SourceURI  string          `json:"source_uri,omitempty"`

@@ -1034,7 +1034,8 @@ build — go modules and build outputs, npm, pip, cargo — shared across sessio
 module is downloaded once instead of per task. It can quietly grow to hundreds of
 megabytes; that growth is this cache, not your conversations.
 
-Project caches also live beneath this cache directory and are reused by tasks
+With the experimental private-task switch on Linux and macOS, project caches
+also live beneath this cache directory and are reused by tasks
 using the same working root. Older admitted cache locations remain in use;
 `/cache` includes them in its size and lists them before an explicit clean.
 Temporary files and saved work are outside the cache cleanup.

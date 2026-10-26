@@ -87,7 +87,7 @@ func taskIndexDigest(admin string) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
-// pinTaskGit keeps Git's external administration alive while a linked working
+// pinTaskGit keeps external repository administration alive while a linked working
 // directory is cold. Its compact backup preserves the index if normal pruning
 // or an administrative repair removes it; shared repository objects stay shared.
 func pinTaskGit(ctx context.Context, manager taskstorage.Manager, place Place, path string) (retErr error) {
@@ -202,7 +202,7 @@ func restoreTaskGit(ctx context.Context, manager taskstorage.Manager, path strin
 		return errors.New("invalid task Git administration receipt")
 	}
 	// A local task archive depends on the shared repository's objects. Missing
-	// repositories are refused rather than replaced by a different project's Git.
+	// repositories are refused rather than replaced by another project's objects.
 	if info, e := os.Stat(filepath.Join(pin.Root, "objects")); e != nil || !info.IsDir() {
 		return errors.New("the shared Git repository needed by this task is unavailable")
 	}

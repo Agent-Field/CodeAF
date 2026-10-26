@@ -31,7 +31,7 @@ type Carry struct {
 func (k Carry) Compose(c cell.Cell) error { return k.ComposeWorkspace(c, k.Project) }
 
 // ComposeWorkspace receives the engine's current project, including recovery.
-// A plain folder has no Git baseline on the receiving machine, so its private
+// A plain folder has no repository baseline on the receiving machine, so its private
 // mirror roots must carry their entire reachable HEAD, even when child refs
 // already contain the parent's commit before its first capture.
 func (k Carry) ComposeWorkspace(c cell.Cell, project string) error {

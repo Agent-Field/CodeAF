@@ -85,8 +85,8 @@ import (
 )
 
 const (
-	// taskFileVersion is the schema of <journal>.tasks.json. A file carrying any
-	// unsupported version is IGNORED rather than migrated, for state.go's reason: the
+	// taskFileVersion names the checkpoint schema. Unsupported versions are
+	// ignored rather than migrated because the
 	// graph is a record of work that has already happened, and guessing at an
 	// older shape risks rehydrating a report into a field that no longer means
 	// what it meant — which here would mean briefing a dependent with it.

@@ -156,7 +156,7 @@ func prepareWorkspaceSet(ctx context.Context, place Place, id uint64, title stri
 			if err != nil {
 				return primary, preserveFailedWorkspaceCreation(tree, err)
 			}
-			// The native mirror is opened as Git only here, after the carve. Record
+			// The native mirror receives its repository only after the carve. Record
 			// its immutable admission commit before any worker can change this copy.
 			baseline, baseErr := git(tree.dir, "rev-parse", "--verify", "HEAD")
 			if baseErr != nil {

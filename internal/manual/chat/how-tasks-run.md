@@ -475,7 +475,11 @@ You will see one exact reason:
 - `its branch task/x was kept: your checkout is not on a branch — inspect the retained task branch without changing this checkout`
 - `its branch task/… was kept: feat/x has moved on since the work was cut — inspect the retained task branch before choosing a destination`
 
-## How do I take the work — why did the work not land in my checkout, why didn't my task merge, I committed, amended, rebased or reset my branch while it ran, my checkout is on main or dev, tasks do not merge into a protected branch automatically
+## How do I take the work — why didn't my task's changes show up in my folder, why did the work not land in my checkout, why didn't my task merge, I committed, amended, rebased or reset my branch while it ran, my checkout is on main or dev, tasks do not merge into a protected branch automatically
+
+Ordinary chats use the automatic landing described here. Experimental private-task
+chats on Linux and macOS instead keep results for `/task review` and `/task apply`;
+see “Review and apply an owned task root” in Task controls.
 
 An ordinary task keeps its work on its own branch when your checkout is protected,
 detached, on a different branch or on a commit you moved after the task started.

@@ -1375,7 +1375,7 @@ func workspaceApplicationGitInput(ctx context.Context, dir string, environment [
 	if dir == "" {
 		return "", errors.New("Git application command has no working directory")
 	}
-	//codeaf:plumbing the transaction uses bounded local Git protocol streams.
+	//codeaf:plumbing the transaction uses bounded local revision protocol streams.
 	command := exec.CommandContext(ctx, "git", args...)
 	command.Dir = dir
 	command.Env = append(os.Environ(), "GIT_PAGER=cat", "GIT_EDITOR=true", "GIT_TERMINAL_PROMPT=0")

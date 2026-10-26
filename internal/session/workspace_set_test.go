@@ -683,7 +683,7 @@ func TestWorkspaceSetUnchangedRootCompletesWithoutLandingFailure(t *testing.T) {
 	}
 }
 
-// The live path creates its mirror's Git repository after the native carve.
+// The live path creates its mirror's repository after the native carve.
 // Baselines must come from that admission, not from fixture-seeded task rows.
 func TestPlainWorkspaceSetPersistsItsPreWorkerGitBaselines(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())

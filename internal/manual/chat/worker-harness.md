@@ -2,11 +2,13 @@
 
 ## Private task workspaces and saved workspace identities
 
-New conversations record a versioned private-task policy when they are created.
-Existing conversations without that policy keep their previous placement and
-history. Earlier private-workspace conversations retain their saved identity
-and reopen without requiring the old experiment flag. The explicit
-`CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP=1` switch remains a compatibility opt-in.
+This section applies only to chats opted into the experimental private-task
+switch, `CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP=1` with an absolute `CODEAF_HOME`,
+on Linux and macOS. A saved private-task policy travels with the chat and remains
+active there even after the switch is off. Windows is not supported.
+
+Ordinary chats keep their existing automatic task landing. New chats record the
+private-task policy only with this opt-in; an identity alone does not enable it.
 
 Foreground chat editing still uses the project you opened. Delegated tasks get
 private copies, and cooperating tasks share the execution's declared layout.
@@ -23,6 +25,13 @@ cache, so each task does not create another copy of that cache.
 Your home and account configuration stay where they are. These locations are
 not a shell sandbox: commands can still use external paths and other caches.
 The experiment does not promise automatic removal of those files.
+
+## Experimental private task history and folder mapping on Take
+
+This section applies only to chats opted into the experimental private-task
+switch, `CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP=1` with an absolute `CODEAF_HOME`,
+on Linux and macOS. A saved private-task policy travels with the chat and remains
+active there even after the switch is off. Windows is not supported.
 
 A plain folder's private mirror needs its complete recorded Git history to
 reopen on another device. Before transfer, the prototype screens that entire
@@ -1090,6 +1099,11 @@ start: <the reason>` and nothing is started on the older engine in its place.
 
 ## Private tasks across several working roots
 
+This section applies only to chats opted into the experimental private-task
+switch, `CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP=1` with an absolute `CODEAF_HOME`,
+on Linux and macOS. A saved private-task policy travels with the chat and remains
+active there even after the switch is off. Windows is not supported.
+
 In a conversation using private-task policy, a `propose_task` request may
 declare a `workspace_set` of 1–64 roots: its primary slot and explicit source
 folders, slots and `read`/`write` uses. The harness makes private sibling copies
@@ -1104,6 +1118,13 @@ relocated or incompletely admitted roots block the whole execution. Failed
 preparation keeps its completed copies and ownership receipt; it does not retry
 the missing work automatically.
 
+## Experimental multi-root relay and retained copies
+
+This section applies only to chats opted into the experimental private-task
+switch, `CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP=1` with an absolute `CODEAF_HOME`,
+on Linux and macOS. A saved private-task policy travels with the chat and remains
+active there even after the switch is off. Windows is not supported.
+
 Relay requires compatible workspace-aware builds at both ends. Each source root needs
 its own explicitly admitted receiving association. Complete screened histories
 and edits are staged privately before execution can reopen; source landing
@@ -1115,10 +1136,16 @@ older prototype V2 snapshots need a new capture before transfer.
 Folders must let their owner read, write and enter them. Special permission bits
 are unsupported; the prototype refuses them rather than changing permissions.
 
+Every receiving computer needs a build that understands private-task checkpoints;
+an older build can take the chat and drop its tasks. Seal cost grows with retained
+private roots because their complete histories are captured and screened again.
+
 This remains a prototype. Mixed older singleton copies and workspace sets refuse
 transfer, and active cross-device plan recovery is not established by restoring
 files alone. Workspace sets stay resident rather than being partially compacted.
 Ordinary profiles retain their existing task behavior.
+
+## Saving tasks and the checkpoint fence
 
 Workspace captures and checkpoint writes take a private conversation lock in
 every profile, including legacy profiles, so policy activation cannot bypass

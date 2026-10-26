@@ -9,7 +9,7 @@ import (
 const independentBaselineFile = "codeaf-independent-baseline"
 
 // MarkIndependentBaseline records the harness-created baseline of an owned
-// mirror. Its original plain folder cannot supply Git prerequisites on relay.
+// mirror. Its original plain folder cannot supply history prerequisites on relay.
 // Callers use this only while creating their private mirror repository.
 func MarkIndependentBaseline(tree string) error {
 	info, err := os.Lstat(filepath.Join(tree, ".git"))

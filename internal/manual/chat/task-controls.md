@@ -229,6 +229,11 @@ actual commit and which record could not be saved. Inspect that outcome before r
 
 ## Review and apply an owned task root
 
+This section applies only to chats opted into the experimental private-task
+switch, `CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP=1` with an absolute `CODEAF_HOME`,
+on Linux and macOS. A saved private-task policy travels with the chat and remains
+active there even after the switch is off. Windows is not supported.
+
 Completed tasks keep their output in their private working copies. Starting a
 copy, sharing it or mapping a received copy to a local folder does not give it
 permission to write the original folder.
@@ -247,6 +252,21 @@ private copy and its identity remain available after a successful apply too.
 Uncertain writers continue to prevent destructive retirement of that copy. Applying one root
 does not authorize another root or give later tasks automatic landing permission.
 A received root stays private until this explicit local action.
+
+For Git projects, the codeaf profile and the destination Git index must be on
+the same disk. Otherwise Apply refuses before writing the destination:
+`the codeaf profile and this project are on different disks; Apply needs them on the same disk`.
+
+On a chat without private task copies, `/task review` and `/task apply` reply:
+`review and apply are for private task copies; this chat doesn't have them`.
+
+## Experimental Apply metadata and recovery
+
+This section applies only to chats opted into the experimental private-task
+switch, `CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP=1` with an absolute `CODEAF_HOME`,
+on Linux and macOS. A saved private-task policy travels with the chat and remains
+active there even after the switch is off. Windows is not supported.
+
 Explicit reviewed apply may update the chosen branch, including `main`. Automatic
 task landing still refuses protected branches. Checkout movement, conflicts and
 ref/index checks continue to protect the destination.
@@ -263,6 +283,13 @@ the same root. The retained receipt records work that already arrived, so recove
 does not apply it twice. Recover that pending operation before requesting a new
 review of the root.
 
+## Experimental private task inputs and portable carriers
+
+This section applies only to chats opted into the experimental private-task
+switch, `CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP=1` with an absolute `CODEAF_HOME`,
+on Linux and macOS. A saved private-task policy travels with the chat and remains
+active there even after the switch is off. Windows is not supported.
+
 New owned plain-folder task copies retain their actual runtime inputs, including
 ignored files. Bash task cooperators share that admitted private copy. Files
 screened as secrets stay readable there but are excluded from its initial history
@@ -272,7 +299,7 @@ history. Receiving a task cannot restore inputs that were deliberately withheld.
 The legacy family initializer and its separate child-copy behavior are unchanged.
 
 Portable task carriers preserve tracked, changed and new symlink targets and
-supported link permissions using typed metadata. Both sending and receiving CodeAF versions must support this format;
+supported link permissions using typed metadata. Both sending and receiving codeaf versions must support this format;
 workspace receivers without its required capability refuse before promotion.
 Older standalone receivers do not provide this capability check and must be
 updated before taking these carriers.

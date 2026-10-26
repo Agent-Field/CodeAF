@@ -79,7 +79,7 @@ type fullBundleHeader struct {
 }
 
 // The full-history producer writes exactly HEAD, with no prerequisites or
-// arbitrary references. Parse that original wire contract before any Git import:
+// arbitrary references. Parse that original wire contract before any history import:
 // cloning can silently discard references and is not a container validator.
 func readFullBundleHeader(file *os.File) (fullBundleHeader, error) {
 	input := bufio.NewReaderSize(file, 256)
@@ -142,7 +142,7 @@ func fullBundleHead(reference, format string) (string, error) {
 
 // index-pack validates and stores the original pack. It accepts trailing input
 // but echoes it after its digest line, so require exactly that bounded line and
-// EOF. Never capture or echo those extra bytes or Git's diagnostic text.
+// EOF. Never capture or echo those extra bytes or the process's diagnostic text.
 func importFullBundlePack(file *os.File, repository string, header fullBundleHeader) error {
 	if _, err := file.Seek(header.offset, io.SeekStart); err != nil {
 		return errFullHistoryContainer
@@ -180,9 +180,9 @@ func validPackReceipt(line []byte, hexSize int) bool {
 	return err == nil
 }
 
-// Inspection must stay in its owned object store even when the caller has Git
-// routing/configuration variables for another checkout. PATH remains available
-// for the installed executable and the public process/failure regression tests.
+// Inspection stays in its owned object store even when inherited routing or
+// configuration variables name another checkout. Executable lookup remains
+// available for the installed process and failure regression tests.
 func historyGitCommand(repository string, args ...string) *exec.Cmd {
 	cmd := exec.Command("git", append([]string{"-C", repository}, args...)...)
 	for _, entry := range os.Environ() {

@@ -795,7 +795,7 @@ func lifecycleInjectRealCopy(t *testing.T, corpus, destination string) (map[stri
 	for _, entry := range entries {
 		if entry.Name() == ".git" {
 			continue
-		} // Copied original Git metadata remains outside the test workspace.
+		} // Copied original repository metadata remains outside the test workspace.
 		cmd := exec.Command("cp", "-a", "--reflink=auto", "--", filepath.Join(corpus, entry.Name()), destination)
 		if err := cmd.Run(); err != nil {
 			t.Fatalf("copy owned real workspace entry: %v", err)
@@ -1022,7 +1022,7 @@ func lifecycleHome(t *testing.T, model string) string {
 func lifecycleDaemonCleanup(t *testing.T, home, archive string) {
 	t.Helper()
 	// Register before engine/window cleanup so those writers finish before the
-	// private Furrow daemon flushes and releases this fixture's store handles.
+	// private storage process flushes and releases this fixture's store handles.
 	t.Cleanup(func() {
 		socket := filepath.Join(home, "v3", "engine-"+strings.TrimPrefix(filepath.Base(archive), "furrow-")+".sock")
 		if len(socket) >= 100 {

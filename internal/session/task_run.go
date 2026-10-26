@@ -9632,11 +9632,9 @@ func gitWith(dir string, environment []string, args ...string) (string, error) {
 	return gitContext(context.Background(), dir, environment, args...)
 }
 
-// gitContext is [gitWith] under a context, for a command somebody may have to
-// stop before git answers ([worktreeDirtIn]'s watch). The refusal of an empty
-// directory and the pinned environment live here, so there is one copy of
-// each; the usual git helpers wrap it. The workspace transaction protocol runner
-// separates bounded stdout from stderr so Git warnings cannot become object IDs.
+// gitContext keeps cancellation, directory admission and the pinned environment
+// together. Bounded standard output is separate from diagnostics so warnings
+// cannot become object identities.
 func gitContext(ctx context.Context, dir string, environment []string, args ...string) (string, error) {
 	// A COMMAND WITH NO DIRECTORY RUNS WHEREVER THE PROCESS HAPPENS TO BE.
 	//

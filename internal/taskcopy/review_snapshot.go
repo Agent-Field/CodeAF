@@ -20,7 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 )
 
-// PortableEntry records the supported working representation, independently of Git filters.
+// PortableEntry records the supported working representation independently of repository filters.
 type PortableEntry struct {
 	Kind   string      `json:"kind"`
 	Mode   fs.FileMode `json:"mode"`
@@ -362,7 +362,7 @@ func CheckPortableMutationMetadataContext(ctx context.Context, root string, path
 }
 
 // MaterializePortableInput restores source representation into a newly owned
-// private Git copy before any worker can use it.
+// private repository copy before any worker can use it.
 func MaterializePortableInput(source, destination string, baseline PortableState) error {
 	var err error
 	source, err = canonicalPortableRoot(source)
@@ -659,7 +659,7 @@ func InspectPortablePaths(root string, paths []string) (PortableState, error) {
 }
 
 // Resolve the caller-supplied anchor once. Descendant symlinks still refuse in
-// workspacePath; a platform alias such as Darwin /var is not a child redirect.
+// workspacePath; a platform root alias is not a child redirect.
 func canonicalPortableRoot(root string) (string, error) {
 	if !filepath.IsAbs(root) {
 		return "", errors.New("portable root must be absolute")

@@ -313,7 +313,7 @@ func prepareWorkspaceCapture(c cell.Cell, previous workspaceManifest) (string, e
 	return stage, nil
 }
 
-// captureWorkspaceDirectories carries only the visible working tree. Git names
+// captureWorkspaceDirectories carries only the visible working tree. The index names
 // ignored subtrees once, so large caches are not walked just to omit their dirs.
 func captureWorkspaceDirectories(tree string) (map[string]fs.FileMode, error) {
 	return captureWorkspaceDirectoriesScope(tree, tree, independentBaseline(tree))

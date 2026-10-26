@@ -20,7 +20,7 @@ type ResultSelection struct {
 }
 
 // RestoreCompletedResults opens recorded outputs as ordinary historical files,
-// never working copies. The caller selects only settled tasks. Git reconstruction
+// never working copies. The caller selects only settled tasks. Repository reconstruction
 // is temporary; unchanged project inputs and execution metadata are not retained.
 func RestoreCompletedResults(c cell.Cell, project, destination string, selections []ResultSelection) (map[string]string, error) {
 	return RestoreCompletedResultsWithParents(c, project, destination, selections, nil)

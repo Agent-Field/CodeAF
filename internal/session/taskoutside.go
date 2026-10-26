@@ -1064,7 +1064,7 @@ func environmentAssignment(word string) (string, string, bool) {
 }
 
 // Numeric descriptor duplication/closure does not open a filesystem target.
-// Bash's >& also accepts a filename, unlike its numeric 2>&1 spelling.
+// A combined stream redirection also accepts a filename; a numeric target duplicates a descriptor.
 func fileWriteRedirection(operator, target string) bool {
 	switch operator {
 	case ">", ">>", ">|", "<>":
