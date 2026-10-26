@@ -14,7 +14,6 @@ package main
 // every conversation's words are indexed in for messages.
 
 import (
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -146,7 +145,7 @@ func (b *appBackend) Archive(ids []string) error {
 			var transcript string
 			b.locked(func() { transcript = a.transcript })
 			if transcript != "" {
-				if err := session.SetArchived(filepath.Dir(transcript), true); err != nil {
+				if err := session.SetArchived(session.DirOf(transcript), true); err != nil {
 					return appEngineError(err)
 				}
 			}
@@ -183,7 +182,7 @@ func (b *appBackend) Reopen(id string) (appwire.Agent, error) {
 		archived = archived || marked
 	})
 	if archived && transcript != "" {
-		if err := session.SetArchived(filepath.Dir(transcript), false); err != nil {
+		if err := session.SetArchived(session.DirOf(transcript), false); err != nil {
 			return appwire.Agent{}, appEngineError(err)
 		}
 	}

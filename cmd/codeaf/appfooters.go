@@ -35,7 +35,33 @@ func (b *appBackend) readAppFooters(transcript string) ([]appKeptFooter, error) 
 }
 
 func appReadFooters(transcript string) ([]appKeptFooter, error) {
-	raw, err := os.ReadFile(filepath.Join(filepath.Dir(transcript), appFootersName))
+	dir := session.DirOf(transcript)
+	kept, err := appReadFootersAt(filepath.Join(dir, appFootersName))
+	if err != nil || dir == filepath.Dir(transcript) {
+		return kept, err
+	}
+	// Earlier app builds saved cell receipts beside the journal. Read both
+	// files so the next write carries them forward without removing the old one.
+	old, err := appReadFootersAt(filepath.Join(filepath.Dir(transcript), appFootersName))
+	if err != nil {
+		return nil, err
+	}
+	merged := make([]appKeptFooter, 0, len(old)+len(kept))
+	positions := make(map[string]int, len(old)+len(kept))
+	for _, f := range append(old, kept...) {
+		if at, ok := positions[f.Entry.ID]; ok {
+			// The corrected file wins when both copies name the same receipt.
+			merged[at] = f
+		} else {
+			positions[f.Entry.ID] = len(merged)
+			merged = append(merged, f)
+		}
+	}
+	return merged, nil
+}
+
+func appReadFootersAt(path string) ([]appKeptFooter, error) {
+	raw, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
@@ -73,16 +99,14 @@ func (b *appBackend) keepAppEntries(a *appAgent, entries []appwire.Entry, afterC
 		return err
 	}
 	pending := make([]appwire.Entry, 0, len(entries))
+	seen := make(map[string]bool, len(kept)+len(entries))
+	for _, f := range kept {
+		seen[f.Entry.ID] = true
+	}
 	for _, entry := range entries {
-		exists := false
-		for _, f := range kept {
-			if f.Entry.ID == entry.ID {
-				exists = true
-				break
-			}
-		}
-		if !exists {
+		if !seen[entry.ID] {
 			pending = append(pending, entry)
+			seen[entry.ID] = true
 		}
 	}
 	if len(pending) == 0 {
@@ -110,7 +134,7 @@ func (b *appBackend) keepAppEntries(a *appAgent, entries []appwire.Entry, afterC
 	if err != nil {
 		return err
 	}
-	path := filepath.Join(filepath.Dir(transcript), appFootersName)
+	path := filepath.Join(session.DirOf(transcript), appFootersName)
 	temp, err := os.CreateTemp(filepath.Dir(path), appFootersName+".*.new")
 	if err != nil {
 		return err

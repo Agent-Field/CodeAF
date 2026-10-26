@@ -3736,7 +3736,7 @@ func (b *appBackend) ListTasks(id string) ([]appwire.Task, error) {
 		tasks = append(tasks, task)
 	}
 	// Running is a live claim, not the checkpoint's permanent resting state.
-	presence, fresh := session.ReadSessionPresence(filepath.Dir(transcript), b.now())
+	presence, fresh := session.ReadSessionPresence(session.DirOf(transcript), b.now())
 	for _, notice := range session.ReadSessionTasks(transcript) {
 		if notice.State == session.TaskRunning && appTaskWasInterrupted(presence, fresh, strconv.FormatUint(notice.ID, 10), notice.StartedAt) {
 			notice.State = session.TaskInterrupted
