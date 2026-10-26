@@ -114,7 +114,7 @@ class Group {
     this.queue.push(...e.send.map(m=>({...m,from:id})));this.reads.push(...e.reads.map(r=>({...r,node:id})));
     if(e.persist){
       const p=e.persist;if(p.hard.length)n.d.hard=p.hard;
-      assert.equal(p.snapshot.length,0,'P05 snapshot lifecycle remains outside P03');
+      assert.equal(p.snapshot.length,0,'this smoke run installs no snapshot');
       if(p.entries.length){const first=entryIndex(p.entries[0]);n.d.entries=n.d.entries.filter(b=>entryIndex(b)<first).concat(p.entries);}
       await this.save(n);
       await this.accept(id,await this.call(id,5,p.id),depth+1);

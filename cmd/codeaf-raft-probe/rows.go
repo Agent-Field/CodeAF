@@ -143,5 +143,5 @@ func rowProof(origin string, result io.Writer) error {
 	if decoded.Cell.Lease.Expires != 0 || decoded.Cell.Title != strings.Repeat("A", 768<<10) {
 		return errors.New("R28 large row release lost state")
 	}
-	return json.NewEncoder(result).Encode(map[string]any{"rows": rowCount, "bytes": total, "ceiling": max(8<<20, total), "maxRowBytes": maxRow, "digest": hex.EncodeToString(digest), "representation": "paged immutable single rows; host inventory; grandfathered ceiling; streamed snapshots remain P05"})
+	return json.NewEncoder(result).Encode(map[string]any{"rows": rowCount, "bytes": total, "ceiling": max(8<<20, total), "maxRowBytes": maxRow, "digest": hex.EncodeToString(digest), "representation": "paged immutable single rows; host inventory; grandfathered ceiling; snapshots streamed separately"})
 }
