@@ -13,11 +13,20 @@ import (
 )
 
 func TestAppCrewProposalSeatsSixHelpersBeforeReturning(t *testing.T) {
+	testAppCrewProposalSeatsSixHelpers(t, "scout", "scout")
+}
+
+func TestAppCrewProposalReservedManagerHandle(t *testing.T) {
+	testAppCrewProposalSeatsSixHelpers(t, "system", "system2")
+}
+
+func testAppCrewProposalSeatsSixHelpers(t *testing.T, title, firstHandle string) {
+	t.Helper()
 	helperRoot := t.TempDir()
 	var minted atomic.Int64
 	conv := &proposingConversation{fakeConversation: &fakeConversation{}, answer: helpersProposal}
 	backend, rec, manager := proposingBackend(t, conv)
-	if _, err := backend.Rename(manager.ID, "scout"); err != nil {
+	if _, err := backend.Rename(manager.ID, title); err != nil {
 		t.Fatal(err)
 	}
 	if err := backend.CrewPropose(manager.ID); err != nil {
@@ -34,7 +43,7 @@ func TestAppCrewProposalSeatsSixHelpersBeforeReturning(t *testing.T) {
 		return &appConn{Conv: &fakeConversation{}, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
 	}
 	var helpers []appwire.ProposalHelper
-	for _, handle := range []string{"scout", "arch", "scribe", "tabul", "fact", "polish"} {
+	for _, handle := range []string{firstHandle, "arch", "scribe", "tabul", "fact", "polish"} {
 		helpers = append(helpers, appwire.ProposalHelper{Handle: handle, Brief: "Own the " + handle + " assignment", ReportsTo: "manager"})
 	}
 	crew, err := backend.CrewCreate(appwire.CrewCreate{From: "proposal", Proposal: proposal, Edits: &appwire.Proposal{Helpers: helpers}})

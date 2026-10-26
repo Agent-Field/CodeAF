@@ -810,7 +810,7 @@ func (b *appBackend) createFromProposal(ask appwire.CrewCreate) (appwire.Crew, e
 	for i := range members {
 		member := &members[i]
 		member.Handle = teamstore.DeriveHandle(member.Word)
-		if member.Handle == "" || reserved[member.Handle] {
+		if teamstore.ValidHandle(member.Handle) != nil || reserved[member.Handle] {
 			reservedTeam.Name = member.Word
 			member.Handle = teamstore.FallbackHandle(reservedTeam, member.Key)
 		}
