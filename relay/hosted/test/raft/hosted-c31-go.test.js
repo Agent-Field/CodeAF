@@ -14,10 +14,13 @@ async function run(args, env = {}) {
  return {code, output};
 }
 
+// Linking the client tests can leave a disk backlog, so it finishes before
+// the Worker starts and cannot spend the proof's own time limit.
+const binary = join(process.env.CODEAF_RAFT_PROOF_DIR, 'hosted-c31.test');
+const compiled = await run(['go', 'test', '-c', '-p=1', '-o', binary, './internal/syncsetup']);
+assert.equal(compiled.code, 0, compiled.output);
+
 test('C31 Home offers a chat after its holder is killed without goodbye', {timeout: 180000}, async () => {
- const binary = join(process.env.CODEAF_RAFT_PROOF_DIR, 'hosted-c31.test');
- const compiled = await run(['go', 'test', '-c', '-p=1', '-o', binary, './internal/syncsetup']);
- assert.equal(compiled.code, 0, compiled.output);
  const relay = await hostedFixture({fixture: true});
  try {
   await relay.start();
