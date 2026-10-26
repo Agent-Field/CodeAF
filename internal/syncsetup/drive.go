@@ -43,10 +43,14 @@ type Drive struct {
 	opt     DriveOptions
 	batcher *cellsync.Batcher
 	scope   *Scope // what this chat's publishes are counted under
+	// Ownership stays on the record this window opened. Preserving displaced
+	// work in a branch does not transfer this window's permission to run tools.
+	directoryID string
 
-	cancel context.CancelFunc
-	done   chan struct{}
-	once   sync.Once
+	cancel   context.CancelFunc
+	done     chan struct{}
+	once     sync.Once
+	closeErr error
 
 	sent string // fingerprint of the vault as last sent; touched by the flush loop and Close only
 
@@ -80,6 +84,7 @@ func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt
 		close(d.done)
 		return d, nil
 	}
+	d.directoryID = drv.ID()
 	if d.batcher, err = s.batcher(eng, c, drv, d); err != nil {
 		return nil, err
 	}
@@ -355,11 +360,12 @@ func (d *Drive) HoldsLease(ctx context.Context) bool {
 	if _, viewer := d.Viewer(); viewer || d.batcher == nil {
 		return false
 	}
-	v, err := d.sync.Dir.Cell(ctx, d.cell.ID)
+	v, err := d.sync.Dir.Cell(ctx, d.directoryID)
 	if err != nil {
 		return true
 	}
 	lease := v.Cell.Lease
+	// The first publish may establish the fence while the read is in flight.
 	return lease.Device == d.sync.Device.ID() && lease.Fence == d.batcher.Fence()
 }
 
@@ -372,7 +378,7 @@ func (d *Drive) CheckLease(ctx context.Context) error {
 	if _, viewer := d.Viewer(); viewer || d.batcher == nil {
 		return nil
 	}
-	v, err := d.sync.Dir.Cell(ctx, d.cell.ID)
+	v, err := d.sync.Dir.Cell(ctx, d.directoryID)
 	if err == nil && (v.Cell.Lease.Device != d.sync.Device.ID() || v.Cell.Lease.Fence != d.batcher.Fence()) {
 		d.becomeViewer(cellsync.Superseded{By: v.Cell.Lease.Device})
 	}
@@ -433,13 +439,13 @@ func (s stamping) Seal(ctx context.Context, c cell.Cell, info cellstore.TurnInfo
 
 // Close ends the drive side: what is sealed is published, and the lease is
 // given back so another device can take the chat at once. It is safe to call
-// on every exit path, and more than once.
+// on every exit path, and more than once. A failed closing boundary stays
+// failed for every caller, so reopening cannot mistake it for a clean release.
 func (d *Drive) Close(ctx context.Context) error {
-	var err error
 	d.once.Do(func() {
 		pending := cellstore.Await(ctx, d.cell)
 		if d.batcher == nil {
-			err = pending
+			d.closeErr = pending
 			return
 		}
 		d.cancel()
@@ -448,12 +454,12 @@ func (d *Drive) Close(ctx context.Context) error {
 		// available for recovery; it is never uploaded as a successful close.
 		if pending != nil {
 			d.scope.Settle()
-			err = pending
+			d.closeErr = pending
 			return
 		}
 		d.syncVault(ctx)
-		err = d.batcher.Close(ctx)
+		d.closeErr = d.batcher.Close(ctx)
 		d.scope.Settle() // a publish that failed after the last flush line still counts
 	})
-	return err
+	return d.closeErr
 }

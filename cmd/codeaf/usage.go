@@ -450,6 +450,10 @@ func askedForHelp(args []string) bool {
 
 // commandHelp answers that gesture for a door with no flag set of its own.
 func commandHelp(name string) error {
+	if name == "cluster" {
+		fmt.Fprint(usageOut, clusterHelp)
+		return exitHelped
+	}
 	writeCommandUsage(usageOut, commandFlags(name))
 	return exitHelped
 }
@@ -519,7 +523,7 @@ func commandWords() []string {
 // programs this build carries are joined to it where it is read
 // ([commandWords]).
 var knownCommands = []string{
-	"chat", "resume", "pair", "serve", "devices", "do", "plan", "revise", "run", "exec",
+	"chat", "resume", "pair", "serve", "devices", "cluster", "do", "plan", "revise", "run", "exec",
 	"show", "models", "pool", "notebook", "collections", "competence", "services", "patch",
 	"doc", "web", "image",
 	"doctor",

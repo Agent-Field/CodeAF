@@ -315,14 +315,20 @@ what the row offers, described in the next two sections.
 
 ## How fast do chats on other machines update — live changes and polling
 
-When the relay offers a live connection, home keeps one open and a change made on
-another machine shows on home within a second or two. The list is also fetched once a
-minute as a safety net, and at once when you open home or come back to the window. When the
-relay does not offer a live connection (an older relay), or the connection is
-down, home asks for the list instead. It asks only while home is on screen and the terminal
-has your attention (its focus, or a key pressed in the last ten minutes). It asks every few
-seconds while the list is changing and about once a minute while it is not. Each row's age is
-counted from its last saved turn, so it keeps growing between fetches.
+On a native relay with persistent storage, an open paired home joins as a learner.
+Home follows its local copy of the committed directory, and its list, roster and safety
+refresh read that same local hint. A caught-up idle home sends no recurring directory
+requests or peer keepalives. A committed change wakes delivery; a change made on another
+machine normally shows within a second or two. Continuing a chat and every ownership
+decision still require fresh majority reads.
+
+On the hosted relay, home keeps a live connection when one is offered. While the follower
+is healthy, the list has a five-minute safety refresh; opening home or returning to the
+window refreshes at once. Without a live connection, home asks for the list only while it
+is on screen and the terminal has your attention (its focus, or a key pressed in the last
+ten minutes). It asks every few seconds while the list is changing and about once a minute
+while it is not. Each row's age is counted from its last saved turn, so it keeps growing
+between refreshes.
 
 If the other machines cannot be reached, the last list stays on screen and the line
 `other machines unreachable` stands under it. With no connection set up at all (sync off, see "Sync your chats between machines" in running-from-the-terminal), nothing

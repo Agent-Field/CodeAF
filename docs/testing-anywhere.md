@@ -224,7 +224,7 @@ already has your work, B is the new one. This is what each step should look like
    "Add another device", with the pitch "pick up your work anywhere".
 2. **Pair B.** On B run `codeaf pair`. B prints a link ending `codeaf.agentfield.ai/p/<code>`
    (staging prints its own host), a "Check number", and "Waiting for approval".
-3. **Approve on A.** Open the card, choose to add a machine, and paste the link. A shows
+3. **Approve on A.** Click **+ Add another device**, click its link field, paste the link, and press Enter. A shows
    "wants to pair" with the device's name, its platform, how long ago it asked and
    the same Check number B shows. If the numbers differ, deny. Press `a` to approve.
 4. **Both sides confirm.** B prints "Paired - N workspaces available". A shows a news line,

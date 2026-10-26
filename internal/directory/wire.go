@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/Agent-Field/codeaf/internal/clusterstate"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
@@ -18,6 +19,10 @@ type wireError struct {
 // wireErrors is the single place a sentinel and its code meet, so the handler
 // and the client cannot drift apart. Order matters only for errors.Is chains.
 var wireErrors = []wireError{
+	{ErrUnreachable, "unreachable", http.StatusServiceUnavailable},
+	{wireauth.ErrUnavailable, "unreachable", http.StatusServiceUnavailable},
+	{clusterstate.ErrMigration, "unreachable", http.StatusServiceUnavailable},
+	{errFeedClosed, "unreachable", http.StatusServiceUnavailable},
 	{ErrNotFound, "not_found", http.StatusNotFound},
 	{ErrExists, "exists", http.StatusConflict},
 	{ErrLeaseHeld, "lease_held", http.StatusConflict},

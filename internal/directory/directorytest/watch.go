@@ -16,6 +16,9 @@ import (
 // act as a stranger, and to know how many sockets the relay lets one identity
 // hold.
 type WatchRig struct {
+	// Committed selects the receipt protocol for a consensus backend. Legacy
+	// in-process directory fixtures retain their original socket-vouch contract.
+	Committed bool
 	Rig
 	// Base is the relay's base URL, without a trailing slash.
 	Base string

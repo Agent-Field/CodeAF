@@ -2,8 +2,8 @@
 
 ## Is there a newer version — update a dev build — keep a dev build up to date — latest dev — /update — why does it say this every time I start
 
-Every launch of a release build checks the newest release of the channel it
-follows, and what happens next depends on the build:
+Every launch of a release build checks whether there is a newer version: the
+newest release of the channel it follows. What happens next depends on the build:
 
 - A released codeaf — a stable tag, in a file named `codeaf` — with `automatic
   updates` on (the default) installs the newest stable release BEFORE the chat
