@@ -203,3 +203,40 @@ func TestStartupInALargeHomeWalksNoHome(t *testing.T) {
 		t.Fatalf("startup wrote %d bytes of capture plans for a home of %d files", planBytes, dirs*files)
 	}
 }
+
+// A CHAT THAT LEFT ITS FOLDER'S FILES UNSAVED ARRIVES THAT WAY. A chat sealed in
+// its sender's home folder carries only its own folder. On a machine whose home
+// is elsewhere, the sender's home path may be an ordinary folder that exists
+// (somebody else's files, or the same path by coincidence). The receiver must
+// still seal and restore only the chat's own folder, never that path.
+func TestAHomeChatNeverCapturesTheSendersHomeOnAnotherMachine(t *testing.T) {
+	base := canonicalTree(t.TempDir())
+	sender, receiver := filepath.Join(base, "sender"), filepath.Join(base, "receiver")
+	for _, dir := range []string{sender, receiver} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c := newCell(t)
+	useHome(t, sender)
+	e := EngineFor(sender)
+	e.DataRoot, e.Transport = t.TempDir(), fakePlans()
+	if _, err := e.Seal(t.Context(), c, TurnInfo{}); err != nil {
+		t.Fatal(err)
+	}
+	// The same chat, its .cell/ as it arrived, on a machine whose home is not
+	// the sender's: the session record still names the sender's path.
+	useHome(t, receiver)
+	ledger := &planLedger{}
+	there := EngineFor(sender)
+	there.DataRoot, there.Transport = t.TempDir(), ledger.over(fakePlans())
+	if _, err := there.Seal(t.Context(), c, TurnInfo{}); err != nil {
+		t.Fatal(err)
+	}
+	if n := ledger.asked(sender); n != 0 {
+		t.Fatalf("the receiver planned the sender's home path %d times (asked for %v)", n, ledger.trees)
+	}
+	if got := there.tree(c); got != canonicalTree(c.Root) {
+		t.Fatalf("the receiver restores into %s, want the chat's own folder %s", got, c.Root)
+	}
+}
