@@ -113,6 +113,8 @@ They hold three lists:
 - **ask first**: things a job asks about before it starts on its own, like `start.ask_first` (`touch auth/` matches a path).
 - **never**: paths a job never starts on by itself, like `start.never`.
 
+**A plan that touches what a rule guards is your call.** When a job starts, the ask-first paths and never paths it starts under (the repository's and the factory's) go with it. When its plan names a file one of them covers (`touch auth/` covers everything under `auth/`), the approval after the plan is never routine, even in Auto: the job waits and says "A rule asks first:" with the rule and the file. Answering it clears the hold.
+
 The factory's rules only ever ADD to a repository's: they can never remove or loosen anything its file says. A job carries the rules that stood when it was queued, so a runner on another machine follows the factory's rules, not its own machine's. A rules file the factory cannot read refuses to start jobs rather than starting them without the rules.
 
 ## issues only — pull requests are outcomes, old PR jobs removed

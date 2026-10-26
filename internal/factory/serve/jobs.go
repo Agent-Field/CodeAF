@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/run"
 )
@@ -99,10 +100,24 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 		if h.failed(w, err) {
 			return
 		}
-		if mark || queued || budget > 0 || also != nil || (cur.Starter == "" && who != "") {
+		// THE RULES A JOB STARTS UNDER GO WITH IT: the repository's ask-first
+		// and never lines with the factory's own, so the approval after its
+		// plan is checked against them on whichever machine runs it.
+		var rules *factory.StartRules
+		if h.config.Pipeline != nil && !queued {
+			f, err := h.config.Pipeline(r.Context(), itemRepo(cur), "")
+			if h.failed(w, err) {
+				return
+			}
+			rules = pipeline.StartRulesOf(f)
+		}
+		if mark || queued || budget > 0 || also != nil || rules != nil || (cur.Starter == "" && who != "") {
 			err := st.Update(it.ID, func(cur *factory.Item) error {
 				if also != nil {
 					also(cur)
+				}
+				if rules != nil {
+					cur.StartRules, cur.RuleHold = rules, ""
 				}
 				if queued {
 					if cur.State != factory.StateQueued {
@@ -370,6 +385,7 @@ func forgetRun(it *factory.Item, recipe factory.Recipe) {
 	it.MergePolicy, it.Merging = nil, nil
 	it.Notes = nil
 	it.Stages, it.Adapted = factory.CopyStages(recipe.For(it.Kind)), nil
+	it.StartRules, it.RuleHold = nil, ""
 }
 
 // forgetChats takes every link to a conversation off the job: its agent's

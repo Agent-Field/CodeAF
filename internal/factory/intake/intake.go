@@ -103,6 +103,7 @@ func (in *Intake) decide(ctx context.Context, it factory.Item) error {
 				return err
 			}
 			cur.Stages = factory.CopyStages(f.Recipe().For(cur.Kind))
+			cur.StartRules, cur.RuleHold = pipeline.StartRulesOf(f), ""
 			if cur.Cap <= 0 {
 				cur.Cap = f.DefaultBudget
 			}
@@ -119,6 +120,7 @@ func (in *Intake) decide(ctx context.Context, it factory.Item) error {
 				return err
 			}
 			cur.Stages = factory.CopyStages(f.Recipe().For(cur.Kind))
+			cur.StartRules, cur.RuleHold = pipeline.StartRulesOf(f), ""
 			if cur.Cap <= 0 {
 				cur.Cap = f.DefaultBudget
 			}

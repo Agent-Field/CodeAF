@@ -1,6 +1,10 @@
 package pipeline
 
-import "github.com/Agent-Field/codeaf/internal/factory"
+import (
+	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/factory"
+)
 
 // WithHouseRules adds the factory's own rules ([factory.HouseRules]) to one
 // repository's read, the way a personal file tightens it: its rules join the
@@ -24,4 +28,66 @@ func WithHouseRules(f File, house factory.HouseRules) File {
 		Never:    append([]string{}, house.Never...),
 	}
 	return out
+}
+
+// StartRulesOf is f's ask-first and never lines as a job is stamped with them
+// when it starts ([factory.Item.StartRules]): copies, never nil lists.
+func StartRulesOf(f File) *factory.StartRules {
+	return &factory.StartRules{
+		AskFirst: append([]string{}, f.Start.AskFirst...),
+		Never:    append([]string{}, f.Start.Never...),
+	}
+}
+
+// PlanHold is why a finished plan must be approved by a person: the first
+// ask-first path rule (`touch auth/`, `touches auth/`, `path: auth/`) or never
+// path a planned file matches, by the same matcher a start uses, or "" when
+// none does. A sentence rule that names no path is judged before a start, not
+// here: a plan's files can only answer a question about paths.
+func PlanHold(rules *factory.StartRules, files []string) string {
+	if rules == nil || len(files) == 0 {
+		return ""
+	}
+	for _, rule := range rules.AskFirst {
+		glob := underDir(askFirstPath(rule))
+		if glob == "" {
+			continue
+		}
+		for _, path := range files {
+			if touches(glob, path) {
+				return "ask first · " + strings.TrimSpace(rule) + " · " + path
+			}
+		}
+	}
+	never := make([]string, 0, len(rules.Never))
+	for _, glob := range rules.Never {
+		never = append(never, underDir(glob))
+	}
+	if why := neverWhy(never, files); why != "" {
+		return "never starts on its own · " + why
+	}
+	return ""
+}
+
+// askFirstPath is the path an ask-first rule names, or "" for a sentence.
+func askFirstPath(rule string) string {
+	words := strings.ToLower(strings.TrimSpace(rule))
+	for _, prefix := range []string{"touches ", "touch ", "path:"} {
+		if rest, ok := strings.CutPrefix(words, prefix); ok {
+			return strings.TrimSpace(rest)
+		}
+	}
+	return ""
+}
+
+// underDir reads a pattern that ends in a slash as everything under that
+// folder (`auth/` is `auth/**`), which is what a person writing "touch auth/"
+// means of a plan's files. A start reads the words of an issue, where the
+// folder itself is the word, and keeps the pattern as written.
+func underDir(glob string) string {
+	glob = strings.TrimSpace(glob)
+	if strings.HasSuffix(glob, "/") {
+		return glob + "**"
+	}
+	return glob
 }

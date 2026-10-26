@@ -3448,6 +3448,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"bring back a dropped factory job", "factory"},
 		{"rules for every repository in the factory", "factory"},
 		{"make the factory ask before it touches auth", "factory"},
+		{"why did Auto stop at the plan saying a rule asks first", "factory"},
 		{"does dropping a factory job delete its branch", "factory"},
 		{"drop a factory job that has uncommitted changes", "factory"},
 		{"the factory says my issue was closed on GitHub so it wasn't started", "factory"},

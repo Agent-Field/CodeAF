@@ -373,6 +373,11 @@ type Job struct {
 	// HouseRules are the factory's own rules the job was queued under
 	// (factory.HouseRules); absent before it was first queued.
 	HouseRules *factory.HouseRules `json:"house_rules,omitempty"`
+	// StartRules are the ask-first and never lines the job was started under
+	// (factory.StartRules); RuleHold is the rule its plan matched, which makes
+	// the approval after the plan a person's (factory.Item.RuleHold).
+	StartRules *factory.StartRules `json:"start_rules,omitempty"`
+	RuleHold   string              `json:"rule_hold,omitempty"`
 	AssignedTo string              `json:"assigned_to,omitempty"`
 	Step       *StepAt             `json:"step,omitempty"`
 	Steps      []Step              `json:"steps"`

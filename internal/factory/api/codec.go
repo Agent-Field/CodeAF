@@ -134,6 +134,8 @@ func FromItem(it factory.Item) Job {
 		AssignedTo: it.Person(), Assignee: it.Person(),
 		AskedFirstReason: it.AskedFirstReason,
 		HouseRules:       cloneHouse(it.House),
+		StartRules:       cloneStartRules(it.StartRules),
+		RuleHold:         it.RuleHold,
 		Steps:            steps(it),
 		Claims:           mapList(it.Proof, fromClaim),
 		PlannedFiles:     factory.PlanFilesOf(it),
@@ -430,6 +432,8 @@ func ToItem(j Job) factory.Item {
 	}
 	it.AskedFirstReason = j.AskedFirstReason
 	it.House = cloneHouse(j.HouseRules)
+	it.StartRules = cloneStartRules(j.StartRules)
+	it.RuleHold = j.RuleHold
 	it.PublishError = j.PublishError
 	if a := j.Ask; a != nil && a.Issue == nil {
 		it.Ask = &factory.JobAsk{Text: a.Text, By: a.By, Source: a.Source, FromRef: a.FromRef}
@@ -1039,4 +1043,12 @@ func cloneHouse(h *factory.HouseRules) *factory.HouseRules {
 		AskFirst: append([]string{}, h.AskFirst...),
 		Never:    append([]string{}, h.Never...),
 	}
+}
+
+// cloneStartRules copies a job's start rules; nil stays nil.
+func cloneStartRules(r *factory.StartRules) *factory.StartRules {
+	if r == nil {
+		return nil
+	}
+	return &factory.StartRules{AskFirst: append([]string{}, r.AskFirst...), Never: append([]string{}, r.Never...)}
 }

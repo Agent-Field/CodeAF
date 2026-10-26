@@ -41,3 +41,26 @@ func TestHouseRulesAddToARepositoryAndDropNothing(t *testing.T) {
 		t.Fatalf("no house rules changed the read: %#v", empty)
 	}
 }
+
+// A PLAN'S FILES ARE CHECKED AGAINST THE RULES A JOB STARTED UNDER: a path an
+// ask-first rule or a never line names holds the approval, a sentence rule
+// says nothing here, and no rules or no files hold nothing.
+func TestAPlanThatTouchesAGuardedPathIsHeld(t *testing.T) {
+	rules := &factory.StartRules{AskFirst: []string{"don't touch auth without checking with me", "touch auth/"}, Never: []string{"infra/"}}
+	if got := PlanHold(rules, []string{"cmd/main.go", "internal/auth/login.go"}); got != "ask first · touch auth/ · internal/auth/login.go" {
+		t.Errorf("auth plan held as %q", got)
+	}
+	if got := PlanHold(rules, []string{"infra/deploy.yaml"}); got != "never starts on its own · touches infra/deploy.yaml (infra/**)" {
+		t.Errorf("infra plan held as %q", got)
+	}
+	if got := PlanHold(rules, []string{"cmd/main.go"}); got != "" {
+		t.Errorf("an unguarded plan was held: %q", got)
+	}
+	if PlanHold(nil, []string{"internal/auth/login.go"}) != "" || PlanHold(rules, nil) != "" {
+		t.Error("a job with no rules or a plan with no files was held")
+	}
+	f := WithHouseRules(Defaults(), factory.HouseRules{AskFirst: []string{"touch auth/"}})
+	if got := StartRulesOf(f); !reflect.DeepEqual(got.AskFirst, []string{"touch auth/"}) || got.Never == nil {
+		t.Errorf("start rules %#v", got)
+	}
+}
