@@ -15,6 +15,67 @@ import (
 	"github.com/Agent-Field/codeaf/internal/taskcopy"
 )
 
+func TestTaskWorkspaceApplyRefusesDifferentDisksBeforeDestinationWrites(t *testing.T) {
+	agent, id, _, source, copyDir := completedWorkspaceApplyFixture(t, true)
+	_, _, use, tree, err := agent.taskWorkspaceRoot(id, "work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticket, _, err := loadTaskWorkspaceReview(id, use, tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseline, err := taskWorkspaceHistoricalBaseline(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeHead := gitOut(t, source, "rev-parse", "HEAD")
+	beforeStatus := gitOut(t, source, "status", "--porcelain=v1", "--untracked-files=all")
+	beforeContents := readFile(t, filepath.Join(source, "shared.txt"))
+	indexPath := strings.TrimSpace(gitOut(t, source, "rev-parse", "--path-format=absolute", "--git-path", "index"))
+	indexBefore, err := os.ReadFile(indexPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lookups := 0
+	device := func(path string) (uint64, error) {
+		lookups++
+		if path == filepath.Dir(indexPath) {
+			return 2, nil
+		}
+		return 1, nil
+	}
+	_, err = applyReviewedWorkspaceOnDevice(context.Background(), tree, filepath.Join(ticket.Place, "portable"), baseline, ticket.Portable, ticket.Snapshot, []string{"shared.txt"}, device)
+	if err == nil || err.Error() != "the codeaf profile and this project are on different disks; Apply needs them on the same disk" {
+		t.Fatalf("cross-device refusal: %v", err)
+	}
+	if lookups != 2 {
+		t.Fatalf("different devices were not checked: %d lookups", lookups)
+	}
+	if after := gitOut(t, source, "rev-parse", "HEAD"); after != beforeHead {
+		t.Fatalf("destination history changed: %s", after)
+	}
+	if after := gitOut(t, source, "status", "--porcelain=v1", "--untracked-files=all"); after != beforeStatus {
+		t.Fatalf("destination status changed: %s", after)
+	}
+	if after := readFile(t, filepath.Join(source, "shared.txt")); after != beforeContents {
+		t.Fatalf("destination contents changed: %q", after)
+	}
+	if after, err := os.ReadFile(indexPath); err != nil || string(after) != string(indexBefore) {
+		t.Fatalf("destination index changed: %v", err)
+	}
+	if _, err := os.Stat(indexPath + ".lock"); !os.IsNotExist(err) {
+		t.Fatalf("destination index lock created: %v", err)
+	}
+	staging, err := filepath.Glob(filepath.Join(filepath.Dir(source), ".codeaf-applying-*"))
+	if err != nil || len(staging) != 0 {
+		t.Fatalf("destination staging created: %v, %v", staging, err)
+	}
+	if got := readFile(t, filepath.Join(copyDir, "shared.txt")); got != "private result\n" {
+		t.Fatalf("private copy changed: %q", got)
+	}
+}
+
 func TestTaskWorkspaceTransactionRejectsChangedPermissions(t *testing.T) {
 	agent, id, _, source, copyDir := completedWorkspaceApplyFixture(t, false)
 	path := filepath.Join(source, "shared.txt")

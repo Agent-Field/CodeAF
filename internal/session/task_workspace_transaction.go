@@ -43,9 +43,13 @@ type workspaceApplicationJournal struct {
 	Receipt                               taskWorkspaceApplyReceipt
 }
 
-// One transaction owns raw filesystem publication, Git publication, and retained
+// One transaction owns raw filesystem publication, revision publication, and retained
 // preimages. A committed receipt is replayed until its task checkpoint is durable.
 func applyReviewedWorkspace(ctx context.Context, original taskTree, reviewedDir string, baseline, reviewed taskcopy.PortableState, identity string, wrote []string) (taskWorkspaceApplyReceipt, error) {
+	return applyReviewedWorkspaceOnDevice(ctx, original, reviewedDir, baseline, reviewed, identity, wrote, workspaceApplicationDevice)
+}
+
+func applyReviewedWorkspaceOnDevice(ctx context.Context, original taskTree, reviewedDir string, baseline, reviewed taskcopy.PortableState, identity string, wrote []string, device func(string) (uint64, error)) (taskWorkspaceApplyReceipt, error) {
 	destination := original.ground
 	if original.mode != TaskModeMirror {
 		destination = original.root
@@ -56,6 +60,11 @@ func applyReviewedWorkspace(ctx context.Context, original taskTree, reviewedDir 
 	root, err := workspaceApplicationDirectory(identity, destination)
 	if err != nil {
 		return taskWorkspaceApplyReceipt{}, err
+	}
+	if original.mode != TaskModeMirror {
+		if err := workspaceApplicationProfileDevice(ctx, root, destination, device); err != nil {
+			return taskWorkspaceApplyReceipt{}, err
+		}
 	}
 	unlock, err := lockWorkspaceApplication(root, destination)
 	defer unlock()
@@ -79,6 +88,25 @@ func applyReviewedWorkspace(ctx context.Context, original taskTree, reviewedDir 
 		}
 	}
 	return startWorkspaceApplication(ctx, root, original, reviewedDir, baseline, reviewed, identity, expected)
+}
+
+func workspaceApplicationProfileDevice(ctx context.Context, root, destination string, device func(string) (uint64, error)) error {
+	index, err := gitContext(ctx, destination, nil, "rev-parse", "--path-format=absolute", "--git-path", "index")
+	if err != nil {
+		return err
+	}
+	profileDevice, err := device(root)
+	if err != nil {
+		return err
+	}
+	projectDevice, err := device(filepath.Dir(strings.TrimSpace(index)))
+	if err != nil {
+		return err
+	}
+	if profileDevice != projectDevice {
+		return errors.New("the codeaf profile and this project are on different disks; Apply needs them on the same disk")
+	}
+	return nil
 }
 
 func startWorkspaceApplication(ctx context.Context, root string, original taskTree, reviewedDir string, baseline, reviewed taskcopy.PortableState, identity string, expected []workspaceApplicationEntry) (taskWorkspaceApplyReceipt, error) {
