@@ -140,13 +140,17 @@ func (d *Doors) Pause(id int) error {
 }
 
 // Hold says on (pause) or off (go on). An ask already true changes nothing.
-// A paused job nobody holds is queued again, and its worker resumes it.
+// A paused job nobody holds is queued again, and its worker resumes it. A
+// queued job nobody holds yet is held where it is: no worker takes it until a
+// person lets it go on.
 func (d *Doors) Hold(id int, on bool) error {
 	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
 		paused := run.StoredPaused(*it)
 		switch {
 		case paused == on:
 			return false, nil
+		case held == nil && on && it.State == factory.StateQueued:
+			return false, run.HoldQueued(it, now)
 		case held == nil && on:
 			return false, fmt.Errorf("%s is not running", it.Ref())
 		case held == nil:

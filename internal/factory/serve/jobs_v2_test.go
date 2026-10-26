@@ -128,7 +128,7 @@ func newV2Jobs(t *testing.T) *v2Jobs {
 			return factory.Snapshot{Items: items}, err
 		},
 		GitHub: func(context.Context) (factory.GitHubLink, error) { return factory.GitHubLink{Login: f.person}, nil },
-		Launch: doors.Launch, Stop: doors.Stop, Answer: doors.Answer, SignOff: doors.SignOff,
+		Launch: doors.Launch, Stop: doors.Stop, Hold: doors.Hold, Answer: doors.Answer, SignOff: doors.SignOff,
 	}
 	f.cfg = serve.Config{Mode: api.FactoryTeam, Address: config.Address, Version: config.Version, Store: f.st, Record: f.rec, Now: clock, LeaseOptions: lease.Options{Now: clock, Record: f.rec},
 		Pipeline: func(context.Context, string, string) (pipeline.File, error) {
@@ -1083,5 +1083,53 @@ func TestV2BudgetChangePreservesManualDecisionAndNudgesObservation(t *testing.T)
 				t.Fatal("budget edit erased a separate user decision")
 			}
 		})
+	}
+}
+
+// START NOW ON A QUEUED JOB IS ONE SLOT ABOVE JOBS AT ONCE and launches
+// nothing, while a start from Backlog waits its turn; Hold keeps a queued job
+// from starting until Resume, and each is a person's recorded decision.
+func TestV2StartNowPassesTheLimitOnceAndHoldWaitsForResume(t *testing.T) {
+	f := newV2Jobs(t)
+	backlog := f.create(t, factory.Item{State: factory.StateNew, Assignee: "sam"})
+	f.post(t, backlog, "start_now", "", 200)
+	if cur, _ := f.st.Get(backlog.ID); cur.OverLimit || cur.State != factory.StateQueued {
+		t.Fatalf("a start from backlog passed the limit %+v", cur)
+	}
+	f.post(t, backlog, "start_now", "", 200)
+	if j := f.read(t, backlog); !j.OverLimit || j.Can.StartNow || j.StatePresentation.Title != "Starting now" {
+		t.Fatalf("started-now job reads %+v", j)
+	}
+
+	queued := f.create(t, factory.Item{State: factory.StateNew, Assignee: "sam"})
+	f.post(t, queued, "run", "", 200)
+	j := f.read(t, queued)
+	if j.OverLimit || !j.Can.StartNow || !j.Can.Hold || j.Can.Resume {
+		t.Fatalf("queued job reads %+v", j)
+	}
+	f.post(t, queued, "pause", "", 200)
+	if j := f.read(t, queued); !j.Held || j.Can.Hold || !j.Can.Resume || j.StatePresentation.Title != "Held" {
+		t.Fatalf("held job reads %+v", j)
+	}
+	f.post(t, queued, "resume", "", 200)
+	if j := f.read(t, queued); j.Held || !j.Can.Hold || j.State != "queued" {
+		t.Fatalf("resumed job reads %+v", j)
+	}
+	f.post(t, queued, "pause", "", 200)
+	f.post(t, queued, "start_now", "", 200)
+	cur, _ := f.st.Get(queued.ID)
+	if !cur.OverLimit || cur.State != factory.StateQueued || cur.Stream == nil || cur.Stream.Paused {
+		t.Fatalf("start now on a held queued job %+v", cur)
+	}
+	events, _ := f.rec.Since(context.Background(), time.Time{})
+	var kinds []string
+	for _, e := range events {
+		if e.Job == queued.ID {
+			kinds = append(kinds, e.Kind+":"+e.Detail)
+		}
+	}
+	want := []string{"started:", "held:", "resumed:", "held:", "started:above Jobs at once"}
+	if strings.Join(kinds, ",") != strings.Join(want, ",") {
+		t.Fatalf("recorded %v, want %v", kinds, want)
 	}
 }

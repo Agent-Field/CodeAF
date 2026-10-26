@@ -61,7 +61,9 @@ func (d *factoryWorkerDial) dial(slot int) *client.WorkerClient {
 // credential, never a person's token. Slot 0 always runs, so it is the one
 // credential a live worker is sure to hold. Anything short of a clear answer
 // (not attached yet, an older factory, no factory) is "unknown" so the worker
-// keeps the capacity it has.
+// keeps the capacity it has. Each queued job a person said to start now adds
+// one slot until a worker takes it; the factory, not this count, keeps every
+// other job inside the owner's number.
 func (d *factoryWorkerDial) desiredSlots(ctx context.Context) (int, bool) {
 	w := d.dial(0)
 	if w == nil || w.Credential() == "" {
@@ -71,7 +73,7 @@ func (d *factoryWorkerDial) desiredSlots(ctx context.Context) (int, bool) {
 	if err != nil || self.Slots < 1 {
 		return 0, false
 	}
-	return min(self.Slots, api.MaxRunnerSlots), true
+	return min(self.Slots+max(self.OverLimit, 0), api.MaxRunnerSlots), true
 }
 
 // creds is the credentials cached for base, one per slot.

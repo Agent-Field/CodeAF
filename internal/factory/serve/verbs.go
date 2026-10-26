@@ -210,9 +210,23 @@ func (h *Handler) idVerb(door func(int) error) jobAction {
 	}
 }
 
+// holdVerb is pause (on) and resume. A hold of a queued job, or the end of
+// one, is a decision on the queue that only the job's person makes, and it is
+// recorded with who made it.
 func (h *Handler) holdVerb(on bool) jobAction {
 	return func(w http.ResponseWriter, r *http.Request, it factory.Item) {
-		h.finish(w, h.seam.Hold(it.ID, on))
+		if it.State != factory.StateQueued {
+			h.finish(w, h.seam.Hold(it.ID, on))
+			return
+		}
+		if !h.owns(w, r, it) {
+			return
+		}
+		kind := record.Held
+		if !on {
+			kind = record.Resumed
+		}
+		h.finish(w, h.recordAction(r, it, kind, "", func() error { return h.seam.Hold(it.ID, on) }))
 	}
 }
 
