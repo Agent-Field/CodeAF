@@ -289,8 +289,9 @@ type sessionEntry struct {
 	Title string `json:"title,omitempty"`
 	// LiteralName says the title is a rule's or a person's exact words rather
 	// than a generated label, so the replay keeps it verbatim (appnames.go).
-	LiteralName bool   `json:"literalName,omitempty"`
-	ShortTitle  string `json:"shortTitle,omitempty"` // Deprecated: accepted for old records; never used as a name.
+	LiteralName        bool   `json:"literalName,omitempty"`
+	IntentNameAttempts int    `json:"intentNameAttempts,omitempty"`
+	ShortTitle         string `json:"shortTitle,omitempty"` // Deprecated: accepted for old records; never used as a name.
 
 	// Usage is what one COMPLETED turn — or one auxiliary call beside it — cost,
 	// and it is on its own line rather than on the assistant message that ended

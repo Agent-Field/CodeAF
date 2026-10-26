@@ -19,7 +19,7 @@ func TestOptionalIntentNameRequiresConfiguredRoute(t *testing.T) {
 			settleNaming(agent)
 			want := 0
 			if one {
-				want = 1
+				want = 2
 			}
 			if got := completer.asks(); got != want {
 				t.Fatalf("title calls=%d, want %d", got, want)

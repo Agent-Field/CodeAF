@@ -538,7 +538,7 @@ func TestAFailedNameIsNotRetriedAndLeavesTheFallback(t *testing.T) {
 	}
 }
 
-// THE NAME IS AT MOST FORTY CHARACTERS, THE ELLIPSIS INCLUDED, WHATEVER THE
+// THE MODEL NAME IS AT MOST TWENTY-FOUR CHARACTERS, THE ELLIPSIS INCLUDED, WHATEVER THE
 // MODEL ANSWERS — and the request is bounded however much was typed.
 func TestTheNameAndTheRequestAreBounded(t *testing.T) {
 	long := "Refactoring the entire authentication middleware so that sessions survive restarts and tokens rotate"
@@ -710,7 +710,7 @@ func TestOpeningNameFromRecords(t *testing.T) {
 		if got := OpeningName(row.said, row.attachments); got != row.want {
 			t.Errorf("%s: OpeningName = %q, want %q", row.name, got, row.want)
 		}
-		if n := utf8.RuneCountInString(OpeningName(row.said, row.attachments)); n > AppNameLimit {
+		if n := utf8.RuneCountInString(OpeningName(row.said, row.attachments)); n > OpeningNameLimit {
 			t.Errorf("%s: %d characters", row.name, n)
 		}
 	}
@@ -768,5 +768,155 @@ func TestAComposedMessageIsNamedFromItsWordsAndAPictureAloneIsNotNamed(t *testin
 	settleNaming(quiet)
 	if silent.asks() != 0 || quiet.Title() != "" {
 		t.Fatalf("a picture alone bought a name: asks = %d, title = %q", silent.asks(), quiet.Title())
+	}
+}
+
+func TestIntentNamesIncludeAtMostTwentySiblingNames(t *testing.T) {
+	c := intentSays(1, "Release review")
+	a, _ := intentAgent(t, c, func(cfg *Config) {
+		for n := 0; n < 21; n++ {
+			cfg.IntentSiblingNames = append(cfg.IntentSiblingNames, fmt.Sprintf("Sibling %02d", n))
+		}
+	})
+	submitMessage(t, a, Submission{Text: "Review the release with Maya"})
+	settleNaming(a)
+	body := c.ask(0).request()
+	if !strings.Contains(body, "Sibling 00") || !strings.Contains(body, "Sibling 19") || strings.Contains(body, "Sibling 20") {
+		t.Fatalf("sibling names not bounded in prompt: %s", body)
+	}
+}
+
+func TestVagueIntentGetsOneSecondNameFromFinishedReply(t *testing.T) {
+	c := intentFixture(2, func(n int) intentAnswer {
+		if n == 0 {
+			return intentAnswer{title: "Quick conversation"}
+		}
+		return intentAnswer{title: "Maya release review"}
+	})
+	a, path := intentAgent(t, c, nil)
+	submitMessage(t, a, Submission{Text: "help me"})
+	settleNaming(a)
+	if c.asks() != 2 {
+		t.Fatalf("naming calls = %d, want exactly 2", c.asks())
+	}
+	if !strings.Contains(c.ask(1).request(), "the assistant's own answer") || !strings.Contains(c.ask(1).request(), "help me") {
+		t.Fatal("second name lacks the opening exchange")
+	}
+	if a.Title() != "Maya release review" {
+		t.Fatalf("Title() = %q", a.Title())
+	}
+	submitMessage(t, a, Submission{Text: "keep going"})
+	settleNaming(a)
+	if c.asks() != 2 {
+		t.Fatalf("later turn renamed again: %d calls", c.asks())
+	}
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := newAgent(Config{Workspace: a.config.Workspace, Model: "test/model", System: "SYSTEM", SessionFile: path, IntentNames: true}, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	c.steps = append(c.steps, func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("continued"), nil })
+	submitMessage(t, reopened, Submission{Text: "continue"})
+	settleNaming(reopened)
+	if c.asks() != 2 {
+		t.Fatalf("relaunch renamed again: %d calls", c.asks())
+	}
+}
+
+func TestPersonsRenamePreventsSecondIntentName(t *testing.T) {
+	c := intentSays(1, "Quick conversation")
+	gate := make(chan struct{})
+	c.steps[0] = func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+		select {
+		case <-gate:
+			return textResponse("Maya needs a release review"), nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	a, _ := intentAgent(t, c, nil)
+	finished := make(chan struct{})
+	go func() { defer close(finished); submitMessage(t, a, Submission{Text: "help me"}) }()
+	<-c.arrived
+	if err := a.RenameByPerson("My chosen name"); err != nil {
+		t.Fatal(err)
+	}
+	close(gate)
+	<-finished
+	settleNaming(a)
+	if c.asks() != 1 || a.Title() != "My chosen name" {
+		t.Fatalf("calls = %d, Title() = %q", c.asks(), a.Title())
+	}
+}
+
+func TestGenericIntentWaitsForFirstReplyBeforeSecondName(t *testing.T) {
+	for _, first := range []string{"Quick conversation", "Untitled", `"Untitled"`, "Untitled.", "Title: Untitled"} {
+		t.Run(first, func(t *testing.T) {
+			c := intentFixture(1, func(n int) intentAnswer {
+				if n == 0 {
+					return intentAnswer{title: first}
+				}
+				return intentAnswer{title: "Maya release review"}
+			})
+			reply := make(chan struct{})
+			c.steps[0] = func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+				select {
+				case <-reply:
+					return textResponse("Maya needs a release review. " + strings.Repeat("x", 500)), nil
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			}
+			a, path := intentAgent(t, c, nil)
+			finished := make(chan struct{})
+			go func() { defer close(finished); submitMessage(t, a, Submission{Text: "Can you help me please"}) }()
+			<-c.arrived
+			if c.asks() != 1 {
+				t.Fatalf("second name before reply: %d calls", c.asks())
+			}
+			close(reply)
+			<-finished
+			settleNaming(a)
+			if c.asks() != 2 || a.Title() != "Maya release review" {
+				t.Fatalf("calls = %d, Title() = %q", c.asks(), a.Title())
+			}
+			if strings.Contains(c.ask(1).request(), strings.Repeat("x", 400)) {
+				t.Fatal("reply context was not clipped to 400 characters")
+			}
+			if !strings.Contains(strings.Join(readLines(t, path), "\n"), `"intentNameAttempts":2`) {
+				t.Fatal("second naming attempt was not persisted")
+			}
+		})
+	}
+}
+
+func TestAbandonedOpeningDoesNotNameFromALaterReply(t *testing.T) {
+	c := intentSays(2, "Opening conversation")
+	entered, release := make(chan struct{}), make(chan struct{})
+	c.steps[0] = func(context.Context, []ai.Message) (*ai.Response, error) {
+		close(entered)
+		<-release
+		return textResponse("abandoned reply"), nil
+	}
+	a, _ := intentAgent(t, c, nil)
+	events, err := a.SubmitMessage(watchedContext(a), Submission{Text: "help me"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-entered
+	<-c.arrived
+	a.Interrupt()
+	if _, ok := a.Abandon(AbandonStopTimeout); !ok {
+		t.Fatal("opening turn was not abandoned")
+	}
+	submitMessage(t, a, Submission{Text: "Review Maya's release instead"})
+	close(release)
+	collect(t, events)
+	settleNaming(a)
+	if c.asks() != 1 {
+		t.Fatalf("later reply bought an opening rename: %d calls", c.asks())
 	}
 }

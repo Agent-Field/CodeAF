@@ -1415,10 +1415,13 @@ type Config struct {
 
 	// IntentNames is the desktop app's naming: the conversation is named from
 	// what the person opened it with — their own words and the names of the
-	// files they attached — by the model they configured for titles, once, with
-	// those words as the name until it answers (intentname.go). It replaces the
-	// rule that used to name the conversation from its first words.
+	// files they attached — by the model they configured for titles, with
+	// one second chance after the reply for vague openers (intentname.go).
+	// It replaces the rule that named a conversation from its first words.
 	IntentNames bool
+
+	// IntentSiblingNames lists other open conversations to distinguish this name from.
+	IntentSiblingNames []string
 
 	// HandOverOnAsk is the desktop app's: a running reply is never moved to a
 	// task by the checkpoints on their own; it moves only when the person asks
@@ -3994,7 +3997,7 @@ type Agent struct {
 	title      string
 	titleTried bool
 	// titleProvisional is the name this session wrote at acceptance and has not
-	// yet been replaced or claimed: the one name a model's answer may replace
+	// yet been claimed by the person: the current name a model may replace
 	// (intentname.go). Empty in every session that is not named by intent, and
 	// in every one whose name has been claimed by the person.
 	titleProvisional string

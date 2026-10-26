@@ -6,16 +6,19 @@ import (
 )
 
 // AppNameLimit is how many characters a conversation's name may hold on the
-// desktop, the ellipsis a cut one ends with INCLUDED. A character is a Unicode
+// desktop model output, including a clipping ellipsis. A character is a Unicode
 // code point.
-const AppNameLimit = 40
+const AppNameLimit = 24
+
+// OpeningNameLimit preserves the desktop optimistic placeholder width.
+const OpeningNameLimit = 40
 
 // FirstMessageName is a message's words as a name: whitespace folded and the
-// result held to [AppNameLimit] characters by [ClipName]. A conversation named
+// result held to [OpeningNameLimit] characters. A conversation named
 // by intent does not use it for a person's message ([OpeningName] carries the
 // attached files' names too); it stays the name of a team member started by a
 // brief.
-func FirstMessageName(text string) string { return ClipName(text) }
+func FirstMessageName(text string) string { return clipName(text, OpeningNameLimit) }
 
 // savedTitle is the name a journal's title line carries: a literal name kept
 // exactly, a generated label healed ([healedTitle]).
