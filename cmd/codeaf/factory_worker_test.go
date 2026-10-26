@@ -413,3 +413,26 @@ func TestDesiredSlotsReadsWithTheWorkersOwnCredential(t *testing.T) {
 		}
 	}
 }
+
+// A machine's own factory listens on a new port at each start: saving a
+// credential for it forgets the dead loopback addresses, never a factory
+// elsewhere.
+func TestWorkerCredentialsForgetDeadLoopbackFactories(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	dial := newFactoryWorkerDial(st, nil)
+	for _, base := range []string{"http://127.0.0.1:50001", "http://localhost:50002", "http://[::1]:50003", "https://factory.example.com"} {
+		dial.keep(0, client.Open(base, "").Worker("old-"+base))
+	}
+	dial.keep(0, client.Open("http://127.0.0.1:50004", "").Worker("now"))
+	all := dial.readCreds()
+	if len(all) != 2 || all["http://127.0.0.1:50004"][0] != "now" || all["https://factory.example.com"][0] != "old-https://factory.example.com" {
+		t.Fatalf("kept %v, want the live loopback factory and the remote one", all)
+	}
+	dial.keep(1, client.Open("https://factory.example.com", "").Worker("remote-1"))
+	if all := dial.readCreds(); len(all) != 2 || all["http://127.0.0.1:50004"][0] != "now" {
+		t.Fatalf("a remote attach forgot the local factory: %v", all)
+	}
+}

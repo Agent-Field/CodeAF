@@ -47,6 +47,12 @@ Two overrides act on one queued job, and only its person may use them:
 
 Both are recorded in the factory's activity with who made them.
 
+A computer attaches once per slot each time its factory moves to a new
+address; the factory inside the app takes a new port on every start. When the
+same person's same computer attaches again, the factory forgets its older
+registrations that have been silent past the runner timeout and hold no job,
+so the list of registrations does not grow without end.
+
 Idle Follow PR monitoring uses the factory's background GitHub poll, with no
 execution slot or model turn. New actionable review feedback, failing CI or a
 conflict queues a bounded maintenance pass. Only the worker executing that pass

@@ -83,7 +83,11 @@ func (d *factoryWorkerDial) creds(base string) []string {
 	return d.readCreds()[base]
 }
 
-// keep caches slot's credential for w's factory; "" forgets it.
+// keep caches slot's credential for w's factory; "" forgets it. THIS
+// MACHINE'S OWN FACTORY LISTENS ON A NEW PORT AT EACH START, so saving a
+// credential for a loopback factory forgets every other loopback address: those
+// factories are gone, and their credentials would otherwise pile up forever.
+// A factory elsewhere is never touched.
 func (d *factoryWorkerDial) keep(slot int, w *client.WorkerClient) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -94,6 +98,13 @@ func (d *factoryWorkerDial) keep(slot int, w *client.WorkerClient) {
 		return
 	}
 	all := d.readCreds()
+	if factoryLoopback(w.Base()) {
+		for base := range all {
+			if base != w.Base() && factoryLoopback(base) {
+				delete(all, base)
+			}
+		}
+	}
 	creds := all[w.Base()]
 	for len(creds) <= slot {
 		creds = append(creds, "")
