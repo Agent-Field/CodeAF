@@ -37,9 +37,11 @@ import (
 // holds edits made here which the takeover set aside before it fetched, with
 // how many turns it holds and the name of this machine.
 type Taken struct {
-	Kept      string
-	KeptTurns uint32
-	Device    string
+	// AlreadyHere preserves the attached session when this device already holds it.
+	AlreadyHere bool
+	Kept        string
+	KeptTurns   uint32
+	Device      string
 	// TaskCopies names the tasks whose working copies came along with the chat.
 	TaskCopies []string
 	// Resume is what the chat left behind on the other machine that this one
@@ -323,9 +325,22 @@ func (a *app) rebuildMachines() {
 // the one they are arriving in. A shared window opens in place, and the ride
 // is spent here rather than at the landing.
 func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
+	rows := append([]chatlist.Row(nil), a.machineRead.rows...)
+	for i := range rows {
+		if rows[i].Cell == msg.row.Cell {
+			rows[i].Mine, rows[i].Status, rows[i].Released = true, chatlist.Here, false
+			rows[i].Device, rows[i].DeviceID, rows[i].Fence = msg.taken.Device, "", 0
+		}
+	}
+	a.machineRead.rows = rows
+	a.machinesRetaken = a.machinesAsking
+	a.considerResume()
 	a.refreshHome()
 	kept := takenSaid(msg.taken)
 	moved := movedSaid(msg.taken)
+	if msg.taken.AlreadyHere {
+		moved = ""
+	}
 	line, ok := a.takenLine(msg)
 	if !ok {
 		a.home.say(joinSaid(moved, kept), "")
@@ -335,7 +350,7 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 		// A local session of this same chat was retired before replacement.
 		// Its old handle cannot remain a selectable copy behind the new one.
 		key := a.convKey(line.row.Transcript)
-		if held := a.behind[key]; held != nil {
+		if held := a.behind[key]; held != nil && !msg.taken.AlreadyHere {
 			if held.watch != nil {
 				held.watch.stop()
 			}
@@ -349,7 +364,7 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 		return nil
 	}
 	var cmd tea.Cmd
-	if msg.taken.Transcript != "" && a.holding(line.row.Transcript) {
+	if !msg.taken.AlreadyHere && msg.taken.Transcript != "" && a.holding(line.row.Transcript) {
 		// The transcript was replaced by the handoff. Reattach through the
 		// real door instead of bringing the superseded in-memory session back.
 		cmd = a.homeOpenLater(line, false)

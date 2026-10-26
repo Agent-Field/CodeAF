@@ -19,9 +19,9 @@ import (
 // instead: home, with the chat's row from that machine under the cursor and the
 // `Continue here` card up. The words stay in the box.
 //
-// The cached reading catches a known move immediately. A submitted message
-// also asks once off the loop, because its ownership-change frame may still be
-// on the way; the draft stays intact until that answer arrives.
+// A submitted message asks once off the loop before choosing the door, because
+// the cached holder may have changed. The draft stays intact until the answer
+// arrives; an unreachable reading keeps the existing local availability rules.
 
 // heldElsewhere is the row of the chat on screen when another machine holds it.
 func (a *app) heldElsewhere() (chatlist.Row, bool) {
@@ -122,7 +122,7 @@ func (a *app) afterOwnershipRead(msg ownershipReadMsg) tea.Cmd {
 		// draft, which must not invalidate that send while ownership is read.
 		next := a.liveComposer()
 		a.putComposer(*msg.first)
-		reading := a.tookMachines(msg.reading)
+		reading := a.recordMachines(msg.reading)
 		cmd := msg.resume()
 		if a.liveComposer().empty() {
 			a.putComposer(next)
@@ -138,6 +138,6 @@ func (a *app) afterOwnershipRead(msg ownershipReadMsg) tea.Cmd {
 	if a.input.String() != msg.draft || !slices.Equal(a.chips, msg.chips) {
 		return nil
 	}
-	reading := a.tookMachines(msg.reading)
+	reading := a.recordMachines(msg.reading)
 	return tea.Batch(reading, msg.resume())
 }

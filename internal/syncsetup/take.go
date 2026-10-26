@@ -43,6 +43,8 @@ type TakeOptions struct {
 // Continued is a takeover that worked, with what the surface says about it.
 type Continued struct {
 	Taken handoff.Taken
+	// AlreadyHere keeps an active local session attached when no move was needed.
+	AlreadyHere bool
 	// KeptTurns is how many turns the kept branch holds, 0 when nothing was kept.
 	KeptTurns uint32
 	// Device is this machine's name.
@@ -128,7 +130,24 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	if branchOnly && (view.Cell.ParentCell == "" || view.Cell.Archived) {
 		return Continued{}, errors.New("these turns are no longer available to open separately")
 	}
-	from := c.holderName(ctx, id)
+	lease := view.Cell.Lease
+	// Kept turns may name this device before their separate copy exists here.
+	if !branchOnly && view.Cell.ParentCell == "" && lease.Device == c.sync.Device.ID() && lease.Expires > view.Now {
+		opened, err := cell.OpenAt(root, id)
+		if err != nil {
+			return Continued{}, err
+		}
+		return Continued{AlreadyHere: true, Device: c.opt.DeviceName, Taken: handoff.Taken{
+			Cell: opened, Driving: cellsync.Driving{Cell: opened, Fence: lease.Fence, Head: view.Cell.Head, Frames: view.Cell.Frames},
+		}}, nil
+	}
+	if seen != nil && (lease.Device != seen.Device || lease.Fence != seen.Fence) {
+		return Continued{}, directory.ErrLeaseHeld
+	}
+	if seen == nil {
+		seen = &directory.LeaseExpectation{Device: lease.Device, Fence: lease.Fence}
+	}
+	from := c.sync.deviceName(lease.Device)
 	c.retireHolder(ctx, id)
 	sc := c.sync.scope(id)
 	defer sc.Settle()

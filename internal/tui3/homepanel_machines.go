@@ -84,8 +84,18 @@ func (a *app) askChats() tea.Cmd {
 // tookMachines files the answer. An error keeps the last rows and only marks
 // them stale.
 func (a *app) tookMachines(msg homeMachinesMsg) tea.Cmd {
-	before, wasElsewhere := a.heldElsewhere()
 	a.machinesAsking = false
+	if a.machinesRetaken {
+		a.machinesRetaken = false
+		return a.askMachines()
+	}
+	return a.recordMachines(msg)
+}
+
+// recordMachines also accepts a send's independent read without ending an
+// outstanding listing request that still owes its own answer.
+func (a *app) recordMachines(msg homeMachinesMsg) tea.Cmd {
+	before, wasElsewhere := a.heldElsewhere()
 	a.fileMachines(msg)
 	if row, elsewhere := a.heldElsewhere(); msg.err == nil && elsewhere && (!wasElsewhere || before.DeviceID != row.DeviceID || before.Device != row.Device) {
 		a.note(chatlist.Superseded(row.Device))
@@ -95,7 +105,11 @@ func (a *app) tookMachines(msg homeMachinesMsg) tea.Cmd {
 	a.machineRead.separate = a.branches.Open != nil
 	a.considerResume()
 	a.rebuildMachines()
-	return tea.Batch(a.readOwedByFrames(msg.err == nil), a.finishBring(), a.continueAfterQuit(msg.err))
+	var owed tea.Cmd
+	if !a.machinesAsking {
+		owed = a.readOwedByFrames(msg.err == nil)
+	}
+	return tea.Batch(owed, a.finishBring(), a.continueAfterQuit(msg.err))
 }
 
 // into merges the other machines' chats into the panel's own lines, newest

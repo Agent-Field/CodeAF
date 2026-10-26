@@ -21,6 +21,8 @@ Your words stay in the box. Nothing was sent, and no branch nobody asked for was
 
 An attended window keeps following your other devices while the chat is open, so a move is shown without returning to home first. Slash commands such as `/help` always work.
 
+Before showing this question for a send, codeaf checks which computer holds the chat now. An older listing alone cannot raise it. If the check cannot reach your other devices and this window already knows the chat moved away, your words stay in the box and nothing is sent. Continuing a chat this computer already holds keeps its open conversation and your typed words.
+
 If you continue it, the other device's window stops taking new turns and says `<device> continued this chat; this window now only shows it`. The page *Home* has the rest of that card.
 
 ## What does leave it there do
@@ -238,6 +240,8 @@ The original older chat is untouched. A turn typed into the original by an older
 ## I quit on my laptop and opened my desktop — do I need alt+c
 
 A clean quit lets go after the last save is durable. Opening bare `codeaf` on your other paired computer within 24 hours continues the released chat automatically, with the usual `Moved from` banner and `not brought along:` lines. `esc` goes Home. A sleeping laptop has not let go: Home offers the chat and `alt+c` continues it, asking only if local work needs a choice.
+
+Once the chat arrives, you can send your next message immediately. The window keeps following changes, including renamed computers and a later move to another computer.
 
 A running chat on the other computer never moves automatically. Neither does a named chat, `--host`, `--at` or `--session`, a chat with unsaved local edits, or a launch while another local window already has a chat open. If the service cannot be reached or another device got there first, Home says `other machines unreachable` or `another device continued this chat first` and keeps the local chat as it was.
 

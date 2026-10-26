@@ -252,17 +252,19 @@ func (a *app) continuationReady(msg continuationChecked) tea.Cmd {
 		}
 	}
 
+	var opened tea.Cmd
 	if msg.automatic && !a.at(pageHome) {
-		_ = a.openHome()
+		// Home starts reads and a clock even when the chat opens immediately.
+		opened = a.openHome()
 	}
 	if msg.err != nil {
-		return a.tookTakeover(homeTakenMsg{row: msg.row, err: msg.err})
+		return tea.Batch(opened, a.tookTakeover(homeTakenMsg{row: msg.row, err: msg.err}))
 	}
 	if !msg.clean {
 		if msg.automatic {
-			return nil
+			return opened
 		}
 		return a.raiseContinue(msg.row, continueYesAt)
 	}
-	return a.takeRemote(msg.row)
+	return tea.Batch(opened, a.takeRemote(msg.row))
 }

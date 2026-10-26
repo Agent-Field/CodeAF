@@ -156,7 +156,7 @@ func (t takeover) OpenBranch(ctx context.Context, id string) (tui3.Taken, error)
 }
 
 func surfaceTaken(got syncsetup.Continued, elapsed time.Duration) tui3.Taken {
-	return tui3.Taken{Kept: got.Taken.Kept, KeptTurns: got.KeptTurns, Device: got.Device, TaskCopies: got.TaskCopies, Resume: got.Resume, Transcript: filepath.Join(got.Taken.Cell.Root, cell.TranscriptPath), Elapsed: elapsed}
+	return tui3.Taken{AlreadyHere: got.AlreadyHere, Kept: got.Taken.Kept, KeptTurns: got.KeptTurns, Device: got.Device, TaskCopies: got.TaskCopies, Resume: got.Resume, Transcript: filepath.Join(got.Taken.Cell.Root, cell.TranscriptPath), Elapsed: elapsed}
 }
 
 // takeRootFor is where this machine keeps the chat with an id: the folder it

@@ -2314,7 +2314,10 @@ type app struct {
 	branches       BranchActions
 	machineRead    machineReading
 	machinesAsking bool
-	machinePoll    machinePoll
+	// machinesRetaken replaces a listing begun before a completed take, so
+	// its late answer cannot put the previous holder back on screen.
+	machinesRetaken bool
+	machinePoll     machinePoll
 	// fleet counts this person's devices and addMachine is the home card that
 	// uses the count (homeband_addmachine.go).
 	fleet      Fleet
