@@ -249,7 +249,7 @@ func (a *app) addMachineLine(width int, pal palette) (string, int) {
 	}
 	line := pal.accent(addMachineField) + ink(fit(shown, max(0, width-ansi.StringWidth(addMachineField))))
 	if a.addMachine.focused {
-		line = pal.cursor(line, width)
+		line = pal.selected(line, width)
 	}
 
 	return line, column
