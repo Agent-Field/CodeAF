@@ -63,7 +63,7 @@ func (d *appDevices) snapshot() (appwire.Devices, error) {
 		return appwire.Devices{}, err
 	}
 	view := appwire.Devices{Mode: appwire.DevicesOn}
-	known := d.watch.Snapshot()
+	known := d.watch.Snapshot(id, self)
 	switch {
 	case !syncsetup.Resolve(d.home).On():
 		view.Mode, view.Line = appwire.DevicesOff, chatlist.SyncOff
@@ -90,6 +90,9 @@ func (d *appDevices) snapshot() (appwire.Devices, error) {
 	view.Devices = make([]appwire.Device, 0, len(known.Devices)+1)
 	for deviceID, rec := range known.Devices {
 		row := appwire.Device{ID: deviceID, Name: chatlist.DeviceName(known.Devices, deviceID, open), Platform: rec.Platform, Self: deviceID == self.ID(), Removed: rec.Revoked}
+		if view.Mode == appwire.DevicesOn && !row.Self && !row.Removed {
+			row.RemoveLine = pair.ChatsRevokedLine(row.Name)
+		}
 		if rec.LastSeen > 0 {
 			row.LastSeen = time.UnixMilli(rec.LastSeen).UTC()
 		}

@@ -70,3 +70,25 @@ func TestDevicesV1V5WireShapes(t *testing.T) {
 		}
 	}
 }
+
+// V3 and the amendment: removal copy is optional on both roster envelopes.
+func TestDevicesV3RemovalExplanationSchemaAndWire(t *testing.T) {
+	line := "laptop stops syncing; its saved chats and keys stay there."
+	device := Device{ID: "other", Name: "laptop", RemoveLine: line}
+	raw, err := json.Marshal(DevicesResult{Devices: Devices{Devices: []Device{device}, Mode: DevicesOn}})
+	want := `{"devices":{"devices":[{"id":"other","name":"laptop","self":false,"removed":false,"remove_line":"laptop stops syncing; its saved chats and keys stay there."}],"mode":"on"}}`
+	if err != nil || string(raw) != want {
+		t.Fatalf("removal explanation = %s, %v; want %s", raw, err, want)
+	}
+	if EventShape(EventDevicesChanged) != reflect.TypeFor[DevicesResult]() {
+		t.Fatal("devices.changed lost the roster's removal explanation")
+	}
+	def := Schema()["$defs"].(map[string]any)["Device"].(map[string]any)
+	props := def["properties"].(map[string]any)
+	if !reflect.DeepEqual(props["remove_line"], map[string]any{"type": "string"}) {
+		t.Fatalf("remove_line schema = %#v", props["remove_line"])
+	}
+	if slices.Contains(def["required"].([]string), "remove_line") {
+		t.Fatal("remove_line must be optional for self and removed rows")
+	}
+}

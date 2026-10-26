@@ -97,6 +97,115 @@ func appDeviceEvent(t *testing.T, rec *appRecorder, match func(appwire.Devices) 
 	})
 }
 
+// Hold one completed signed list response at the HTTP boundary. Other requests
+// still reach the real directory, including the list and revoke of a removal.
+type appDeviceDelayedList struct {
+	armed   atomic.Bool
+	ready   chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (d *appDeviceDelayedList) wrap(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/dir/list" || !d.armed.CompareAndSwap(true, false) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		reply := httptest.NewRecorder()
+		next.ServeHTTP(reply, r)
+		close(d.ready)
+		select {
+		case <-d.release:
+		case <-r.Context().Done():
+			return
+		}
+		for key, values := range reply.Header() {
+			w.Header()[key] = slices.Clone(values)
+		}
+		w.WriteHeader(reply.Code)
+		_, _ = w.Write(reply.Body.Bytes())
+	})
+}
+
+func (d *appDeviceDelayedList) resume() { d.once.Do(func() { close(d.release) }) }
+
+func (d *appDeviceDelayedList) wait(t *testing.T) {
+	t.Helper()
+	select {
+	case <-d.ready:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the signed roster response was not captured")
+	}
+}
+
+// V1, V3 amendment: a completed removal survives an older concurrent roster
+// response from another sync client, even when the next refresh fails.
+func TestAppDevicesV1V3OlderRosterCannotUndoRemoval(t *testing.T) {
+	celltest.Available(t)
+	delay := &appDeviceDelayedList{ready: make(chan struct{}), release: make(chan struct{})}
+	_, _, down := appDevicesRelay(t, delay.wrap)
+	t.Cleanup(delay.resume)
+	a, b := t.TempDir(), t.TempDir()
+	id, err := identity.Ensure(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := identity.Adopt(b, id, false); err != nil {
+		t.Fatal(err)
+	}
+	sa, sb := appDeviceSync(t, a), appDeviceSync(t, b)
+	for _, s := range []*syncsetup.Sync{sa, sb} {
+		if err := s.Rename(context.Background(), "computer"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, rec, w := appDeviceBackend(t, a)
+	if view := appDeviceList(t, w); len(view.Devices) != 2 || view.Devices[1].Removed {
+		t.Fatalf("initial roster: %+v", view)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	type response struct {
+		listing directory.Listing
+		err     error
+	}
+	done := make(chan response, 1)
+	delay.armed.Store(true)
+	go func() {
+		listing, err := sa.Dir.List(ctx)
+		done <- response{listing, err}
+	}()
+	delay.wait(t)
+	removed := machineCall[appwire.DeviceRemoveResult](t, w, "devices.remove", appwire.DeviceRemoveParams{ID: sb.Device.ID()})
+	if removed.ID != sb.Device.ID() || removed.Line != pair.ChatsRevokedLine("computer") {
+		t.Fatalf("removal receipt: %+v", removed)
+	}
+	appDeviceEvent(t, rec, func(v appwire.Devices) bool { return len(v.Devices) == 2 && v.Devices[1].Removed })
+	down.Store(true)
+	delay.resume()
+	select {
+	case stale := <-done:
+		if stale.err != nil || stale.listing.Version == 0 || stale.listing.Devices[sb.Device.ID()].Revoked {
+			t.Fatalf("the delayed response was not the older active roster: %+v, %v", stale.listing, stale.err)
+		}
+	case <-ctx.Done():
+		t.Fatal("the delayed roster response did not finish")
+	}
+	if _, err := w.call("devices.list", struct{}{}); err == nil || err.Code != appwire.CodeUnreachable {
+		t.Fatalf("follow-up refresh must fail: %v", err)
+	}
+	// An offline rename publishes the retained roster through the real app
+	// event door, without a successful relay read to repair a resurrection.
+	renamed := machineCall[appwire.DeviceRenameResult](t, w, "devices.rename", appwire.DeviceRenameParams{Name: "offline desk"})
+	if renamed.Line != pair.RenamedHereLine("offline desk") {
+		t.Fatalf("offline rename receipt: %+v", renamed)
+	}
+	appDeviceEvent(t, rec, func(v appwire.Devices) bool {
+		return len(v.Devices) == 2 && v.Devices[0].Name == "offline desk" && v.Devices[1].Removed && v.Devices[1].RemoveLine == "" && v.Devices[1].Online == nil
+	})
+}
+
 // V1, V5: real watch traffic updates presence without any roster/presence read.
 func TestAppDevicesV1V5ExistingWatchSuppliesPresence(t *testing.T) {
 	celltest.Available(t)
@@ -221,6 +330,11 @@ func TestAppDevicesV1V2V3PairedHomes(t *testing.T) {
 	if view.Mode != appwire.DevicesOn || len(view.Devices) != 2 || view.Devices[0].ID != sa.Device.ID() || !view.Devices[0].Self || view.Devices[0].Name != "desk" || view.Devices[1].Name != "laptop" || view.Devices[1].Self || view.Devices[1].Platform != runtime.GOOS || view.Devices[1].Removed {
 		t.Fatalf("paired list: %+v", view)
 	}
+	// V3 amendment: the engine's target-specific explanation is available
+	// before removal, and only on a row this computer may remove.
+	if view.Devices[0].RemoveLine != "" || view.Devices[1].RemoveLine != pair.ChatsRevokedLine("laptop") {
+		t.Fatalf("removal confirmation copy: %+v", view.Devices)
+	}
 	for _, params := range []map[string]any{{"name": ""}, {"name": strings.Repeat("x", devname.Most+1)}, {"name": "a\nb"}, {"name": "other", "id": sb.Device.ID()}} {
 		if _, err := wa.call("devices.rename", params); err == nil || err.Code != appwire.CodeBadParams {
 			t.Fatalf("rename %v: %v", params, err)
@@ -230,7 +344,9 @@ func TestAppDevicesV1V2V3PairedHomes(t *testing.T) {
 	if renamed.Device.ID != sa.Device.ID() || renamed.Device.Name != "studio" || renamed.Line != pair.RenamedLine("studio") {
 		t.Fatalf("rename receipt: %+v", renamed)
 	}
-	appDeviceEvent(t, rec, func(v appwire.Devices) bool { return v.Devices[0].Name == "studio" })
+	appDeviceEvent(t, rec, func(v appwire.Devices) bool {
+		return len(v.Devices) == 2 && v.Devices[0].Name == "studio" && v.Devices[0].RemoveLine == "" && v.Devices[1].RemoveLine == pair.ChatsRevokedLine("laptop")
+	})
 	other := appDeviceList(t, wb)
 	if len(other.Devices) != 2 || other.Devices[0].ID != sb.Device.ID() || other.Devices[1].Name != "studio" {
 		t.Fatalf("the other home sees: %+v", other)
@@ -256,7 +372,7 @@ func TestAppDevicesV1V2V3PairedHomes(t *testing.T) {
 	}
 	appDeviceEvent(t, rec, func(v appwire.Devices) bool { return len(v.Devices) == 2 && v.Devices[1].Removed })
 	view = appDeviceList(t, wa)
-	if len(view.Devices) != 2 || !view.Devices[1].Removed {
+	if len(view.Devices) != 2 || !view.Devices[1].Removed || view.Devices[1].RemoveLine != "" {
 		t.Fatalf("removed device disappeared: %+v", view)
 	}
 	if _, err := wb.call("devices.list", struct{}{}); err == nil || err.Code != appwire.CodeEngine || err.Message != chatlist.Removed {
@@ -302,7 +418,7 @@ func TestAppDevicesV4V5LocalModesMakeNoRelayRequests(t *testing.T) {
 			}
 			backend, rec, w := appDeviceBackend(t, dir)
 			view := appDeviceList(t, w)
-			if view.Mode != mode || len(view.Devices) != 1 || !view.Devices[0].Self || view.Devices[0].Online != nil || !view.Devices[0].LastSeen.IsZero() || view.Line == "" {
+			if view.Mode != mode || len(view.Devices) != 1 || !view.Devices[0].Self || view.Devices[0].Online != nil || !view.Devices[0].LastSeen.IsZero() || view.Devices[0].RemoveLine != "" || view.Line == "" {
 				t.Fatalf("local list: %+v", view)
 			}
 			if mode == appwire.DevicesQuiet && (view.Line != chatlist.DevicesQuiet || !strings.Contains(view.Line, "codeaf pair") || !identity.Solo(dir)) {

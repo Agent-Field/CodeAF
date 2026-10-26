@@ -164,6 +164,24 @@ desk was removed — it can no longer reach your chats.
 
 The list is in a fixed order: this device first, then devices that are online, then the rest, each by name. Two devices with the same name show a short tail, such as `tower #a1b2`, so you can tell them apart. Your own computer has no `r`: it cannot remove itself, and if you press `r` there the list says `this device cannot remove itself — choose another row.` A computer that is already removed does nothing when you press `r`. A removed computer can only come back as a new request that you approve. If you remove a computer from another of your devices while this list is open, its row changes to `removed` here too, without closing the list. Removing a computer does not undo what it already holds: for a lost computer read the page *Locking out a lost computer for good*.
 
+## Devices in the desktop — removal warnings, refresh and re-pairing
+
+With an engine that supports device management, the desktop can list this
+computer first and the other computers paired to the same identity. The engine
+supplies its removal explanation for each active computer that this one may
+remove, so it can be shown before confirmation. This computer and already removed
+computers have no removal action. The result keeps the command line's full
+explanation, including the warning about chats and keys already held there.
+
+After a removal succeeds, an older pending roster response cannot restore the
+computer's active state. If a refresh fails, the completed removal is kept; only
+a roster at a newer directory version can change that state.
+
+After pairing again from a terminal, refresh Devices. The running app engine
+reads the new identity and device files and drops the previous pairing's list,
+presence and removal refusal. Restarting the engine is not required. Switching
+the sync address also drops facts learned from the previous service.
+
 ## I was told this device was removed — how to bring it back
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.

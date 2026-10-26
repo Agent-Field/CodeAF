@@ -1,7 +1,6 @@
 package appwire
 
 import (
-	"encoding/json"
 	"time"
 )
 
@@ -16,13 +15,14 @@ const (
 
 // Device is a computer paired to this identity. Unknown presence is absent.
 type Device struct {
-	ID       string    `json:"id"`
-	Name     string    `json:"name"`
-	Platform string    `json:"platform,omitempty"`
-	Self     bool      `json:"self"`
-	Removed  bool      `json:"removed"`
-	LastSeen time.Time `json:"last_seen,omitzero"`
-	Online   *bool     `json:"online,omitempty"`
+	ID         string    `json:"id"`
+	Name       string    `json:"name"`
+	Platform   string    `json:"platform,omitempty"`
+	Self       bool      `json:"self"`
+	Removed    bool      `json:"removed"`
+	LastSeen   time.Time `json:"last_seen,omitzero"`
+	Online     *bool     `json:"online,omitempty"`
+	RemoveLine string    `json:"remove_line,omitempty"`
 }
 
 type Devices struct {
