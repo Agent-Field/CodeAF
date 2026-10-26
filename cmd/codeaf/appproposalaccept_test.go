@@ -13,14 +13,18 @@ import (
 )
 
 func TestAppCrewProposalSeatsSixHelpersBeforeReturning(t *testing.T) {
-	testAppCrewProposalSeatsSixHelpers(t, "scout", "scout")
+	testAppCrewProposalSeatsSixHelpers(t, "scout", "scout", "")
 }
 
 func TestAppCrewProposalReservedManagerHandle(t *testing.T) {
-	testAppCrewProposalSeatsSixHelpers(t, "system", "system2")
+	testAppCrewProposalSeatsSixHelpers(t, "system", "system2", "")
 }
 
-func testAppCrewProposalSeatsSixHelpers(t *testing.T, title, firstHandle string) {
+func TestAppCrewProposalSeatsCellHelpersBeforeReturning(t *testing.T) {
+	testAppCrewProposalSeatsSixHelpers(t, "scout", "scout", ".cell")
+}
+
+func testAppCrewProposalSeatsSixHelpers(t *testing.T, title, firstHandle, layout string) {
 	t.Helper()
 	helperRoot := t.TempDir()
 	var minted atomic.Int64
@@ -37,7 +41,7 @@ func testAppCrewProposalSeatsSixHelpers(t *testing.T, title, firstHandle string)
 	proposal := rec.data[at].(appwire.AskOpened).Ask.Proposal.ID
 	rec.mu.Unlock()
 	backend.mint = func(string) (string, error) {
-		return filepath.Join(helperRoot, fmt.Sprint(minted.Add(1)), "transcript.jsonl"), nil
+		return filepath.Join(helperRoot, fmt.Sprint(minted.Add(1)), layout, "transcript.jsonl"), nil
 	}
 	backend.open = func(ask appOpenAsk) (*appConn, error) {
 		return &appConn{Conv: &fakeConversation{}, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
@@ -54,7 +58,12 @@ func testAppCrewProposalSeatsSixHelpers(t *testing.T, title, firstHandle string)
 		t.Fatalf("Make the crew returned manager=%s members=%+v; want original manager and six seated helpers", crew.Manager, crew.Members)
 	}
 	byHandle := map[string]appwire.CrewMember{}
+	agents := map[string]bool{}
 	for _, member := range crew.Members {
+		if agents[member.Agent] {
+			t.Fatalf("Make the crew returned repeated agent %q; want one original manager and six distinct helpers", member.Agent)
+		}
+		agents[member.Agent] = true
 		byHandle[member.Handle] = member
 	}
 	for _, helper := range helpers {

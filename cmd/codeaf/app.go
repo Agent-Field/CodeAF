@@ -845,7 +845,7 @@ func appMint(workspace string) (string, error) {
 
 // appAgentID is a conversation's id from its transcript: the folder's name.
 func appAgentID(transcript string) string {
-	return filepath.Base(filepath.Dir(filepath.Clean(transcript)))
+	return filepath.Base(session.DirOf(filepath.Clean(transcript)))
 }
 
 // locked runs fn holding b.mu. Every critical section in this file goes
