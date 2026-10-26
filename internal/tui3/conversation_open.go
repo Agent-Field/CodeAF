@@ -152,6 +152,9 @@ func (a *app) conversationLater(ask func() (Conversation, error), say func(strin
 }
 
 func (a *app) cancelConversationOpening() {
+	if a.conversationPreview == nil {
+		defer a.tabSettleTeam()
+	}
 	a.restoreOpeningDraft(a.conversationPreview)
 	a.conversationOpening = false
 	a.conversationPreview = nil
