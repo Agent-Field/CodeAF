@@ -557,6 +557,22 @@ func (b *appBackend) memberView(read appCrewRead, t teamstore.Team, m teamstore.
 		}
 		view.ReportsTo = &appwire.CrewReportsTo{Crew: home.Team, Manager: manager, Distance: home.Distance}
 	}
+	if m.ReportsTo != "" {
+		manager := ""
+		for _, candidate := range t.Members {
+			if (m.ReportsTo == "manager" && candidate.Key == t.Manager) || candidate.Handle == m.ReportsTo {
+				manager = appMemberAgent(candidate)
+				break
+			}
+		}
+		if manager != "" {
+			distance := 1
+			if m.ReportsTo != "manager" {
+				distance = 2
+			}
+			view.ReportsTo = &appwire.CrewReportsTo{Crew: t.ID, Manager: manager, Distance: distance}
+		}
+	}
 	for _, other := range read.file.Teams {
 		if other.ID != t.ID && !other.Closed() && other.Holds(m.Key) {
 			view.AlsoIn = append(view.AlsoIn, other.ID)
@@ -837,6 +853,7 @@ func (b *appBackend) crewStart(t teamstore.Team, manager teamstore.Member, e tea
 	// would hide the brief from it (the session reads nothing older than a
 	// member's joining). The terminal's start writes none either.
 	member.Handle, member.JoinedAt, member.Started = handle, time.Time{}, true
+	member.ReportsTo = pending.ReportsTo
 	// THE MEMBERSHIP KEEPS THE ID OF THE LINE THAT MADE IT, so its brief is
 	// that line by identity and survives a rename or a handle reused later.
 	// Only a manager's start of this crew is recorded; the terminal's start
@@ -859,7 +876,7 @@ func (b *appBackend) crewStart(t teamstore.Team, manager teamstore.Member, e tea
 		b.crewNote(manager, "@"+handle+" opened but did not join "+t.Name+": "+err.Error())
 		return
 	}
-	if pending.Role != "" {
+	if pending.Role != "" || pending.ReportsTo != "" {
 		_ = b.crewLayer().write(func(f *appCrewLayerFile) error {
 			f.member(t.ID, agent.ID).Role = pending.Role
 			delete(f.Pending, appPendingKey(t.ID, handle))

@@ -56,8 +56,9 @@ type appMemberExtra struct {
 // appPendingStart is what a member started from a proposal is to be given
 // once it joins: its role and model.
 type appPendingStart struct {
-	Role  string `json:"role,omitempty"`
-	Model string `json:"model,omitempty"`
+	ReportsTo string `json:"reports_to,omitempty"`
+	Role      string `json:"role,omitempty"`
+	Model     string `json:"model,omitempty"`
 }
 
 // appCrewLayerFile is the whole layer.

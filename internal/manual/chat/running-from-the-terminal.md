@@ -1984,3 +1984,20 @@ command says `nothing is being kept running.`
 For the current chat's background commands, watches or renders, use `/processes`
 in that chat. Click a process to open its log. The sidebar shows only running
 processes; finished logs remain available on demand without an ended count.
+
+## Crew proposals in the desktop app stream beside the chat
+
+**Bring in helpers** asks the conversation's own model about the work without
+starting a turn or changing the chat's history or model context. The proposal
+arrives in complete lines, with its size and name before its helpers. The default
+is the smallest useful crew, usually one to three helpers. Separate teams are
+proposed only for separate streams of work that each need multiple people.
+
+The final **Bring in helpers** ask still offers **Make the crew**, **Edit**, and
+**Keep it one agent**. If the stream stops after at least one helper, the ask
+keeps those helpers and says "Stopped after 2 helpers", with the actual count.
+An answer with no usable helpers leaves one quiet notice.
+
+Accepting a proposal keeps this conversation as manager and creates one flat
+crew. Proposed reporting handles are recorded on members. Team groups do not
+create nested crews yet.

@@ -1,6 +1,7 @@
 package appwire
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 )
@@ -316,14 +317,31 @@ type Role struct {
 
 // ProposalHelper is one helper a proposal would start.
 type ProposalHelper struct {
-	Handle string `json:"handle"`
-	Role   string `json:"role,omitempty"`
-	Brief  string `json:"brief"`
-	Model  string `json:"model,omitempty"`
+	Team      string `json:"team,omitempty"`
+	ReportsTo string `json:"reports_to,omitempty"`
+	Handle    string `json:"handle"`
+	Role      string `json:"role,omitempty"`
+	Brief     string `json:"brief"`
+	Model     string `json:"model,omitempty"`
+}
+
+type ProposalTeam struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Lead string `json:"lead"`
+}
+
+// CrewProposalDelta is one validated NDJSON object, numbered from one per proposal.
+type CrewProposalDelta struct {
+	Agent string          `json:"agent"`
+	Seq   int             `json:"seq"`
+	Line  json.RawMessage `json:"line"`
 }
 
 // Proposal is an agent's proposal to become a crew (app layer).
 type Proposal struct {
+	Teams     []ProposalTeam   `json:"teams,omitempty"`
+	Note      string           `json:"note,omitempty"`
 	ID        string           `json:"id"`
 	Agent     string           `json:"agent"`
 	Name      string           `json:"name"`
