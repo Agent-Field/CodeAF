@@ -55,6 +55,7 @@ func runOlderChats(ctx context.Context) {
 		return
 	case <-ticker.C:
 	}
+	chats := olderChats{copy: copyOlderChat}
 	for {
 		if syncsetup.MayTalk(home.Dir()) {
 			dirs, _ := filepath.Glob(home.Join("v3", "projects", "*", "*"))
@@ -62,24 +63,8 @@ func runOlderChats(ctx context.Context) {
 				if ctx.Err() != nil {
 					return
 				}
-				copied := cell.Copied(dir)
-				if copied != dir && session.InUse(filepath.Join(copied, cell.TranscriptPath)) {
-					continue
-				}
-				if copied != dir {
-					if _, err := os.Stat(filepath.Join(copied, cell.CopyOfferedPath)); err == nil {
-						continue
-					}
-				}
-				if _, err := os.Stat(filepath.Join(dir, "transcript.jsonl")); err != nil {
-					continue
-				}
-				meta, _ := session.LoadMeta(dir)
-				if meta.LastUserAt.IsZero() || time.Since(meta.LastUserAt) > olderChatRecent || session.InUse(filepath.Join(dir, "transcript.jsonl")) {
-					continue
-				}
-				c, err := copyOlderChat(ctx, dir)
-				if err != nil {
+				c, meta, ok := chats.visit(ctx, dir)
+				if !ok {
 					continue
 				}
 				// A finished copy is uploaded and released as an ordinary chat. The
@@ -104,6 +89,38 @@ func runOlderChats(ctx context.Context) {
 		case <-ticker.C:
 		}
 	}
+}
+
+// olderChats is the background copier's view of the older chats: which one is
+// due for a copy, and the copy itself.
+type olderChats struct {
+	copy func(context.Context, string) (cell.Cell, error)
+}
+
+// visit copies the chat in dir when it is a recent older chat that nothing is
+// using and that has no copy yet. It answers the copy and the original's meta.
+func (o *olderChats) visit(ctx context.Context, dir string) (cell.Cell, session.Meta, bool) {
+	copied := cell.Copied(dir)
+	if copied != dir && session.InUse(filepath.Join(copied, cell.TranscriptPath)) {
+		return cell.Cell{}, session.Meta{}, false
+	}
+	if copied != dir {
+		if _, err := os.Stat(filepath.Join(copied, cell.CopyOfferedPath)); err == nil {
+			return cell.Cell{}, session.Meta{}, false
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "transcript.jsonl")); err != nil {
+		return cell.Cell{}, session.Meta{}, false
+	}
+	meta, _ := session.LoadMeta(dir)
+	if meta.LastUserAt.IsZero() || time.Since(meta.LastUserAt) > olderChatRecent || session.InUse(filepath.Join(dir, "transcript.jsonl")) {
+		return cell.Cell{}, session.Meta{}, false
+	}
+	c, err := o.copy(ctx, dir)
+	if err != nil {
+		return cell.Cell{}, session.Meta{}, false
+	}
+	return c, meta, true
 }
 
 // movablePlace resolves a completed copy or prepares one when the person opens
