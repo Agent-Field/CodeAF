@@ -3,7 +3,8 @@ kind: fixed
 title: Keep existing chats reachable while a new conversation opens
 pr: 1947
 surface: [chat, docs]
-invalidates: []
+invalidates:
+  - "Conversation setup previously appeared as working; it now displays opening chat until setup succeeds."
 ---
 
 Pending first messages keep the window's real tabs and navigation visible.
