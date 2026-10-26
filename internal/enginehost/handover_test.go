@@ -193,3 +193,46 @@ func TestALaunchStartsTheHostOnceAHolderOnItsWayOutLetsGo(t *testing.T) {
 		t.Fatalf("hosts started = %d, want exactly one", spawns)
 	}
 }
+
+// A CALLER THAT ASKED THE HOST TO GO WAITS FOR A SAVE THAT IS STILL RUNNING,
+// briefly. Retire is followed by a host of the current build reopening the
+// conversations the old one held, so an ordinary save must be over before it
+// returns; the launch path, which only needs the slot, never waits on this.
+func TestRetireWaitsForTheSaveOfTheHostItAskedToGo(t *testing.T) {
+	shortHome(t)
+	workspace := "/home/somebody/api"
+	agent := newSavingAgent()
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		_ = Run(workspace, Options{Boot: func(remote.Hello) (*remote.Engine, error) {
+			return &remote.Engine{Agent: agent, Workspace: workspace, SessionFile: workspace + "/j.jsonl"}, nil
+		}})
+	}()
+	waitForHostQuietly(t, workspace)
+	conn, err := Dial(workspace)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	if _, err := remote.Dial(conn, "", remote.Hello{Version: remote.Version}); err != nil {
+		t.Fatalf("handshake: %v", err)
+	}
+	_ = conn.Close()
+
+	retired := make(chan error, 1)
+	go func() { retired <- Retire(workspace, true) }()
+	<-agent.closing
+	if hostLockHeld(workspace) {
+		t.Fatal("the workspace lock is still held while the host saves")
+	}
+	select {
+	case err := <-retired:
+		t.Fatalf("Retire returned while the save was still running: %v", err)
+	default:
+	}
+	close(agent.release)
+	if err := <-retired; err != nil {
+		t.Fatalf("retire: %v", err)
+	}
+	<-stopped
+}

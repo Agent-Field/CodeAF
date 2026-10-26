@@ -809,6 +809,13 @@ func (h *Host) stopped() bool {
 //
 // The socket is removed while the lock is still held, so the path removed is
 // always this host's own and never a successor's.
+//
+// THE SAVES ARE STILL VISIBLE. The saving lock is taken before the workspace
+// lock is let go and released after the last conversation is closed, so a
+// caller that asked this host to go can wait a moment for the journals it is
+// about to reopen ([waitForSaves]) while a launch that only needs the slot does
+// not wait at all. A second host already saving holds it too; this one then
+// saves without it.
 func (h *Host) shutdown() {
 	h.mu.Lock()
 	h.closed = true
@@ -818,6 +825,7 @@ func (h *Host) shutdown() {
 		delete(h.sessions, key)
 	}
 	h.mu.Unlock()
+	saving, _ := takeLock(filepath.Join(h.dir, savingName))
 	socket := filepath.Join(h.dir, socketName)
 	_ = h.listener.Close()
 	_ = os.Remove(socket)
@@ -825,6 +833,7 @@ func (h *Host) shutdown() {
 	for _, sess := range sessions {
 		_ = sess.Close()
 	}
+	_ = releaseLock(saving)
 }
 
 // note appends one line to the host's log. It is best-effort by construction:

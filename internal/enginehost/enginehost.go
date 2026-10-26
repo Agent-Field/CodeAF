@@ -47,6 +47,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/remote"
 )
@@ -61,6 +62,9 @@ const (
 	// text, because the directory itself is named by a hash and a person
 	// looking at ~/.codeaf/v3/hosts deserves to be able to tell which is which.
 	placeName = "workspace"
+	// savingName is held by a host that has given the workspace up and is
+	// still saving its conversations ([Host.shutdown]).
+	savingName = "host.saving"
 )
 
 // SocketLimit is the most bytes a unix socket path may weigh.
@@ -411,12 +415,42 @@ func waitForGone(workspace string, within time.Duration) error {
 			_ = conn.Close()
 		} else if held, err := takeLock(filepath.Join(dir, lockName)); err == nil {
 			_ = releaseLock(held)
+			waitForSaves(dir, savesWait)
 			return nil
 		}
 		if time.Now().After(deadline) {
 			return errors.New("engine host: the host is still holding this workspace")
 		}
 		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// savesWait is how long a caller that asked a host to go also waits for that
+// host's conversations to finish saving, once the workspace itself is free.
+//
+// IT IS SHORT ON PURPOSE. The callers that retire a host go on to start the
+// current build and reopen the conversations it held; an ordinary save ends in
+// milliseconds and this lets those journals be reopened rather than found busy.
+// A save of a large folder can run for its whole bound, and no launch waits for
+// that: past this the new host starts anyway, and a conversation still being
+// written is found held, which is a landing every surface already has.
+const savesWait = time.Second
+
+// waitForSaves waits, at most within, for no host to be saving in this
+// workspace's directory. A host too old to say so never holds the lock, which
+// reads as nothing being saved.
+func waitForSaves(dir string, within time.Duration) {
+	deadline := time.Now().Add(within)
+	for {
+		held, err := takeLock(filepath.Join(dir, savingName))
+		if err == nil {
+			_ = releaseLock(held)
+			return
+		}
+		if !filelock.IsBusy(err) || time.Now().After(deadline) {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
