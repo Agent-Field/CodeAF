@@ -354,3 +354,68 @@ func TestC1SessionViewerAcceptsAnAnswerAfterTheAskingTurnEnds(t *testing.T) {
 		t.Fatal("an unrelated wake bypassed ownership after an answer")
 	}
 }
+
+// C1's answer amendment: asking back about a standing question reaches the
+// conversation's own model on a viewer without settling the decision or
+// allowing its tools to act here.
+func TestC1SessionViewerAcceptsAnAskBackAfterTheAskingTurnEnds(t *testing.T) {
+	var viewer atomic.Bool
+	refusal := &executor.WorkRefusal{Line: "laptop continued this chat"}
+	const words = "what does the second option mean?"
+	agent, dir := newTestAgent(t, &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("Ready."), nil },
+		func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			found := false
+			for _, message := range messages {
+				text := messageContentText(message)
+				found = found || (strings.Contains(text, askBackNoteLead) && strings.Contains(text, words))
+			}
+			if !found {
+				t.Error("the conversation's model did not receive the ask-back about its question")
+			}
+			return toolResponse("held", "write", `{"path":"held.txt","content":"held"}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("Here is the explanation."), nil
+		},
+	}}, func(cfg *Config) {
+		cfg.Interactive = true
+		cfg.Seat = executor.Gated(executor.Host, func() error {
+			if viewer.Load() {
+				return refusal
+			}
+			return nil
+		})
+	})
+	collect(t, mustSubmit(t, agent, "start here"))
+	_, stopQuestions := agent.WatchQuestions()
+	defer stopQuestions()
+	if _, failed, err := agent.executeAsk(context.Background(), json.RawMessage(askNotWaiting)); err != nil || failed {
+		t.Fatalf("ask = %v, %v", failed, err)
+	}
+	q := waitForOneQuestion(t, agent)
+	wakes, stopWakes := agent.WatchWakes()
+	defer stopWakes()
+	viewer.Store(true)
+	if err := agent.ResolveQuestion(Answer{Kind: q.Kind, ID: q.ID, AskedBack: []Exchange{{Asked: words}}}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case stream := <-wakes:
+		failed, ok := firstOfKind(collect(t, stream), EventToolFailed)
+		if !ok || !strings.Contains(failed.Output, refusal.Line) {
+			t.Fatalf("the ask-back's tool escaped ownership: %+v", failed)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the accepted ask-back never reached the conversation's model")
+	}
+	if open := agent.OpenQuestions(); len(open) != 1 || open[0].ID != q.ID {
+		t.Fatalf("the ask-back settled or replaced the standing question: %+v", open)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "held.txt")); !os.IsNotExist(err) {
+		t.Fatalf("the viewer's tool wrote a file: %v", err)
+	}
+	if agent.enqueueNote(wakeNote("unrelated new work")) {
+		t.Fatal("an unrelated wake bypassed ownership after an ask-back")
+	}
+}

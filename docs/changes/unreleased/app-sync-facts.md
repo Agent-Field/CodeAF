@@ -33,3 +33,5 @@ proposals, intake, clarification, replacement and You decide, remain accepted
 through every surface; their tools still meet the ownership gate. Crew brief
 revisions change crew state without opening the member's chat; their wakes are
 checked at the session boundary.
+Ask-backs about standing questions are addressed to that conversation's own
+model, keep the decision open and retain the same tool gate on a viewer.

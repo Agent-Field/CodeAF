@@ -400,8 +400,10 @@ func (a *Agent) answerAsk(answer Answer) error {
 			return nil
 		}
 		// They asked back about a question that is already standing on its own,
-		// so there is no call to come back. The words go to the model as words;
-		// the question is untouched.
+		// so there is no call to come back. This conversation's own model owes
+		// the explanation: the person just asked it, so there is nobody for the
+		// principal to find. Their words leave the decision open, including on
+		// a viewer; the answer mark does not grant permission for tools.
 		note := wakeNote(askBackNote(open.q, answer))
 		note.answer = true
 		a.enqueueNote(note)
