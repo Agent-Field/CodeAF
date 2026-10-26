@@ -41,3 +41,9 @@ setup keeps the same crew and seated members, re-drives claimed starts that neve
 seated, and returns the same crew after completion. Reserved manager titles are
 checked before handle assignment. Complete final JSON lines survive stream errors
 even without a trailing newline.
+
+Overlong proposed handles are repaired instead of losing the helper: cut at the
+last hyphen within 12 characters, otherwise the first 12 characters, and number
+clashes within that limit. Reporting references and team leads use the repaired
+handle in both deltas and the final proposal. The prompt repeats the 12-character
+limit explicitly.

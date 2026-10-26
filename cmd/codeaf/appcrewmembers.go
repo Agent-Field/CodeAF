@@ -453,14 +453,14 @@ var appProposalAsk = fmt.Sprintf("Propose a crew for the work in this conversati
 	"Choose the smallest crew that covers the work, with 1–3 helpers by default. "+
 	"Use teams (an org) only when the work splits into separate streams that each need more than one person. "+
 	"Use at most two levels below the manager: manager → team leads → members. "+
-	"Handles are unique short role words, %d–%d characters using only a–z, 0–9 and hyphens, starting with a letter or digit. Reserve manager, you, system, everyone and room. "+
+	"Handles are unique short role words, %d–%d characters using only a–z, 0–9 and hyphens, starting with a letter or digit. Never exceed %d characters. Reserve manager, you, system, everyone and room. "+
 	"Reply only with NDJSON, one complete JSON object per line, in this order:\n"+
 	`{"t":"shape","size":3,"teams":1,"why":"why this shape"}`+" (size counts helpers).\n"+
 	`{"t":"name","name":"the crew's name","goal":"one line"}`+"\n"+
 	`{"t":"team","id":"stream-id","name":"team name","lead":"lead-handle"}`+" (only for an org with 2+ teams).\n"+
 	`{"t":"member","handle":"role-word","role":"short role name","brief":"whole assignment","team":"stream-id","reports_to":"manager"}`+"\n"+
 	"Write members top-down, breadth first. reports_to is manager or an earlier team lead's handle; omit team for a single crew. "+
-	"Do not start anyone yet; the person decides.", teamstore.HandleMin, teamstore.HandleMax)
+	"Do not start anyone yet; the person decides.", teamstore.HandleMin, teamstore.HandleMax, teamstore.HandleMax)
 
 // appNoProposal is the quiet line a conversation carries when what came back
 // could not be read as a proposal, and appNoAnswer leads the line when nothing

@@ -35,7 +35,7 @@ func TestAppCrewProposalStreamsCompleteLines(t *testing.T) {
 		`{"t":"member","handle":"review","role":"Reviewer","brief":"Review the plan","reports_to":"manager"}`,
 		`{"t":"member","handle":"verify","brief":"Check the claims","reports_to":"review"}`,
 	}
-	rejected := `{"t":"member","handle":"attendee-lead","role":"Attendee Lead","brief":"Own the attendee plan: working headcount sized to the room, groups (regulars, first-timers, access needs, helpers), outreach routes, needs per group and realistic helper count.","reports_to":"manager"}`
+	rejected := `{"t":"member","handle":"Attendee-lead","role":"Attendee Lead","brief":"Own the attendee plan: working headcount sized to the room, groups (regulars, first-timers, access needs, helpers), outreach routes, needs per group and realistic helper count.","reports_to":"manager"}`
 	body := strings.Join(lines[:3], "\n") + "\n" + rejected + "\nnot json\n" + `{"t":"member","handle":"everyone","brief":"Reserved address"}` + "\n" + `{"t":"member","handle":"Bad","brief":"Invalid handle"}` + "\n" + `{"t":"member","handle":"review","brief":"Duplicate handle"}` + "\n" + lines[3] + "\n"
 	model, workspace := helpersEnvironment(t)
 	release := make(chan struct{})

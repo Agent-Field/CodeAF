@@ -1998,7 +1998,9 @@ proposed only for separate streams of work that each need multiple people.
 The final **Bring in helpers** ask still offers **Make the crew**, **Edit**, and
 **Keep it one agent**. If the stream stops after at least one helper, the ask
 keeps those helpers and says "Stopped after 2 helpers", with the actual count.
-An answer with no usable helpers leaves one quiet notice.
+An answer with no usable helpers leaves one quiet notice. Handles are limited to
+12 characters. Longer model-proposed handles are shortened at the last hyphen
+that fits, or to the first 12 characters, with numbering for clashes.
 
 Accepting a proposal keeps this conversation as manager and creates one flat
 crew. All helpers are seated under their approved handles before creation returns.

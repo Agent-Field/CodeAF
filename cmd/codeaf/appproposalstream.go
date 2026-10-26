@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -10,6 +11,7 @@ import (
 
 type appProposalStream struct {
 	proposal   appwire.Proposal
+	handles    map[string]string
 	pending    string
 	received   int
 	seq        int
@@ -69,7 +71,12 @@ func (s *appProposalStream) line(line string) string {
 		s.proposal.Name, s.proposal.Goal = strings.TrimSpace(name.Name), strings.TrimSpace(name.Goal)
 	case "team":
 		var team appwire.ProposalTeam
-		if json.Unmarshal([]byte(line), &team) != nil || strings.TrimSpace(team.ID) == "" || teamstore.ValidHandle(team.Lead) != nil || strings.TrimSpace(team.Name) == "" {
+		if json.Unmarshal([]byte(line), &team) != nil {
+			return "invalid team fields"
+		}
+		original := team.Lead
+		team.Lead = s.handle(team.Lead)
+		if strings.TrimSpace(team.ID) == "" || teamstore.ValidHandle(team.Lead) != nil || strings.TrimSpace(team.Name) == "" {
 			return "invalid team fields"
 		}
 		for _, old := range s.proposal.Teams {
@@ -77,12 +84,25 @@ func (s *appProposalStream) line(line string) string {
 				return "duplicate team ID"
 			}
 		}
+		if s.handles == nil {
+			s.handles = map[string]string{}
+		}
+		s.handles[original] = team.Lead
 		s.proposal.Teams = append(s.proposal.Teams, team)
+		if original != team.Lead {
+			var fields map[string]json.RawMessage
+			_ = json.Unmarshal([]byte(line), &fields)
+			fields["lead"], _ = json.Marshal(team.Lead)
+			normalized, _ := json.Marshal(fields)
+			line = string(normalized)
+		}
 	case "member":
 		var member appwire.ProposalHelper
 		if json.Unmarshal([]byte(line), &member) != nil {
 			return "invalid member fields"
 		}
+		original, reportsTo := member.Handle, member.ReportsTo
+		member.Handle = s.handle(member.Handle)
 		if err := teamstore.ValidHandle(member.Handle); err != nil {
 			return "invalid member handle: " + err.Error()
 		}
@@ -93,6 +113,9 @@ func (s *appProposalStream) line(line string) string {
 			if old.Handle == member.Handle {
 				return "duplicate member handle"
 			}
+		}
+		if repaired, ok := s.handles[member.ReportsTo]; ok {
+			member.ReportsTo = repaired
 		}
 		if member.ReportsTo == "" {
 			member.ReportsTo = "manager"
@@ -119,7 +142,19 @@ func (s *appProposalStream) line(line string) string {
 				return "team must name a declared team"
 			}
 		}
+		if s.handles == nil {
+			s.handles = map[string]string{}
+		}
+		s.handles[original] = member.Handle
 		s.proposal.Helpers = append(s.proposal.Helpers, member)
+		if original != member.Handle || reportsTo != "" && reportsTo != member.ReportsTo {
+			var fields map[string]json.RawMessage
+			_ = json.Unmarshal([]byte(line), &fields)
+			fields["handle"], _ = json.Marshal(member.Handle)
+			fields["reports_to"], _ = json.Marshal(member.ReportsTo)
+			normalized, _ := json.Marshal(fields)
+			line = string(normalized)
+		}
 	default:
 		return "unknown proposal line type"
 	}
@@ -128,4 +163,49 @@ func (s *appProposalStream) line(line string) string {
 		s.emit(s.seq, json.RawMessage(line))
 	}
 	return ""
+}
+
+func appProposalShortHandle(handle string) string {
+	if len(handle) <= teamstore.HandleMax {
+		return handle
+	}
+	for i, r := range handle {
+		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-' && i > 0) {
+			return handle
+		}
+	}
+	short := handle[:teamstore.HandleMax]
+	if at := strings.LastIndex(short, "-"); at >= teamstore.HandleMin {
+		return short[:at]
+	}
+	return strings.TrimRight(short, "-")
+}
+
+func (s *appProposalStream) handle(original string) string {
+	if chosen, ok := s.handles[original]; ok {
+		return chosen
+	}
+	base := appProposalShortHandle(original)
+	if teamstore.ValidHandle(base) != nil && base == original {
+		return original
+	}
+	candidate := base
+	for n := 2; ; n++ {
+		clash := false
+		for _, chosen := range s.handles {
+			if chosen == candidate {
+				clash = true
+				break
+			}
+		}
+		if !clash && teamstore.ValidHandle(candidate) == nil {
+			return candidate
+		}
+		suffix := strconv.Itoa(n)
+		head := base
+		if limit := teamstore.HandleMax - len(suffix); len(head) > limit {
+			head = head[:limit]
+		}
+		candidate = strings.TrimRight(head, "-") + suffix
+	}
 }
