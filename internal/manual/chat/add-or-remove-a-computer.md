@@ -12,11 +12,11 @@ While you have only one device, home shows a card at the foot:
 
 ```
 + Add another device
-Add another device — pick up your work anywhere, exactly where you left it.
+Pick up your work anywhere, exactly where you left it.
 alt+d how
 ```
 
-Click **+ Add another device** to open the steps, or press `alt+d`. Click the heading or press `alt+d` again to close them:
+Click `+ Add another device` or press `alt+d` to open the steps. Click the heading or press `alt+d` again to close them. The heading underlines while the pointer is over it; the description and empty space do not act as buttons. The command `codeaf pair` stands out from the instructions, and the link field is shaded while it holds the keyboard:
 
 ```
 1. On the new device, install and run: codeaf pair

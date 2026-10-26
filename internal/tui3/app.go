@@ -5238,6 +5238,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// mean the same thing on every page, so the button under the pointer
 		// takes its ground wherever a person is standing (topnav.go's
 		// [app.headHover]).
+		a.hoverAddMachine(msg.Mouse().X, msg.Mouse().Y)
 		a.hoverDraftSeam(msg.Mouse().X, msg.Mouse().Y)
 		if a.headHover(msg.Mouse().X, msg.Mouse().Y) {
 			// AND THE HEAD TAKES THE POINTER OFF HOME'S PROJECT NAMES, which
