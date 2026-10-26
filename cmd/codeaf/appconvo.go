@@ -382,7 +382,6 @@ func (b *appBackend) queue(agent, text, clientID string, shown *appSending) ([]a
 	if shown != nil && !shown.marksNothing(text) && !appKeepsQueuedMarks(live.conn.Conv) {
 		return nil, appwire.Errorf(appwire.CodeUnknownMethod, "this conversation cannot keep a queued message's said or reads; send it when the turn ends")
 	}
-	var queued []appwire.Queued
 	var refused error
 	b.locked(func() {
 		if refused = appLocationRefusal(a.view.Location); refused != nil {
