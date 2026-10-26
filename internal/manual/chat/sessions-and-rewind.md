@@ -964,12 +964,15 @@ file is not recreated silently; add a new conversation and choose it as manager 
 ## Starting a new chat without waiting for the first token
 
 Sending a first message from Home or the new-chat page (`+` or `ctrl+t`) shows
-the ordinary chat immediately, with your message, working indicator and composer.
+the ordinary chat immediately, with your message, an `opening chat` status and composer.
 The conversation opens in the background; the message reaches its new conversation
 only after opening succeeds. You can type a follow-up while it opens; that draft
 stays in the new chat's composer when opening finishes. The previous chat keeps
 its draft and attachments. Escape cancels the pending opening and restores your
-first message and any follow-up draft. An opening failure returns those words
+first message and any follow-up draft. Existing tabs and navigation remain
+available: selecting another conversation or page cancels opening and follows
+that selection on the first click. Clicking the message body does not cancel
+opening. An opening failure returns those words
 with the error, so your message is not lost or sent to the old chat.
 
 Returning to an already open chat keeps its last displayed text visible while
