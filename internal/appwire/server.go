@@ -39,6 +39,12 @@ type Server struct {
 	// the queue, so no frame is ever sent on a closed channel.
 	mu     sync.RWMutex
 	closed bool
+	// greeted is whether the hello has been queued. Until it has, every other
+	// frame waits in early: the app refuses a connection whose first line is
+	// not the hello, and the backend can emit before Serve has built it (a
+	// slow start's idle sweep, a crew opening its members).
+	greeted bool
+	early   []frame
 
 	wrote chan struct{}
 	err   error
@@ -116,17 +122,41 @@ func (s *Server) Emit(event string, data any) {
 
 func (s *Server) send(f frame) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if s.closed {
+	if s.greeted || s.closed {
+		defer s.mu.RUnlock()
+		if !s.closed {
+			s.frames <- f
+		}
 		return
 	}
-	s.frames <- f
+	s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	switch {
+	case s.closed:
+	case s.greeted:
+		s.frames <- f
+	case f.event == EventHello:
+		s.greeted = true
+		s.frames <- f
+		for _, held := range s.early {
+			s.frames <- held
+		}
+		s.early = nil
+	default:
+		s.early = append(s.early, f)
+	}
 }
 
 // finish closes the queue and waits for every queued line to be written.
 func (s *Server) finish() {
 	s.mu.Lock()
 	if !s.closed {
+		// A server that never said hello still writes what was emitted to it.
+		for _, held := range s.early {
+			s.frames <- held
+		}
+		s.early = nil
 		s.closed = true
 		close(s.frames)
 	}

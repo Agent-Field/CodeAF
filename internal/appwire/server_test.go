@@ -349,6 +349,42 @@ func TestSequenceNumbersAreConsecutiveAcrossGoroutines(t *testing.T) {
 	}
 }
 
+// The app refuses a connection whose first line is not the hello, so what the
+// backend emits before Serve has said it follows the hello, in order.
+func TestAnEventEmittedBeforeTheHelloFollowsIt(t *testing.T) {
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+	server := NewServer(outW)
+	server.Emit(EventSyncChanged, SyncChanged{Sync: Sync{Mode: SyncOff}})
+	server.Emit(EventLog, Log{Level: "info", Message: "early"})
+	served := make(chan error, 1)
+	go func() {
+		served <- server.Serve(context.Background(), inR, Hello{Version: "test"}, &fakeEngine{})
+		outW.Close()
+	}()
+	scanner := bufio.NewScanner(outR)
+	scanner.Buffer(make([]byte, 1<<20), 1<<20)
+	var got []eventLine
+	for len(got) < 3 && scanner.Scan() {
+		var line eventLine
+		if err := json.Unmarshal(scanner.Bytes(), &line); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, line)
+	}
+	inW.Close()
+	<-served
+	want := []string{EventHello, EventSyncChanged, EventLog}
+	if len(got) != len(want) {
+		t.Fatalf("read %d lines, want %d", len(got), len(want))
+	}
+	for i, line := range got {
+		if line.Event != want[i] || line.Seq != uint64(i+1) {
+			t.Fatalf("line %d = %s seq %d, want %s seq %d", i, line.Event, line.Seq, want[i], i+1)
+		}
+	}
+}
+
 // recorder is an Emitter that keeps what it was handed.
 type recorder struct {
 	mu     sync.Mutex
