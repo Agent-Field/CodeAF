@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: The app's first line is always its hello, and removal is confirmed in the future tense
-pr: 0
+pr: 1983
 surface: [engine]
 invalidates:
   - "An app engine could write sync.changed before its hello when startup was slow (the idle sweep reads sync status every 30 seconds). Events emitted before the hello now wait and follow it, in order."
