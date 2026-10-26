@@ -14,6 +14,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/keys"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/vaultsync"
 )
 
@@ -54,8 +55,9 @@ type Drive struct {
 
 	sent string // fingerprint of the vault as last sent; touched by the flush loop and Close only
 
-	mu   sync.Mutex
-	line string // the superseded line, empty while this device drives
+	mu     sync.Mutex
+	line   string // the superseded line, empty while this device drives
+	spoken bool
 }
 
 // Drive starts the drive side of c. The lease is acquired when the chat has a
@@ -113,7 +115,7 @@ func (d *Drive) catchUp(drv cellsync.Driving) {
 	if err != nil || head.Turn.ID == drv.Head || !known {
 		return
 	}
-	d.batcher.Note(head.Turn)
+	d.note(*head)
 }
 
 // CatchUp notes the newest startup seal once an asynchronous drive is ready.
@@ -123,7 +125,22 @@ func (d *Drive) CatchUp() {
 		return
 	}
 	if head, err := cellstore.Head(d.cell); err == nil && head != nil {
-		d.batcher.Note(head.Turn)
+		d.note(*head)
+	}
+}
+
+// note publishes only chats that have conversation work. A window's startup
+// head still saves its bookkeeping locally without creating an untitled chat
+// on every other computer. Once used, the chat keeps its ordinary save path.
+func (d *Drive) note(sealed cellstore.Sealed) {
+	d.mu.Lock()
+	if !d.spoken {
+		d.spoken, _ = session.ConversationIn(session.Place{Dir: d.cell.Root}.Transcript(), sealed.Receipt.Transcript.End)
+	}
+	spoken := d.spoken
+	d.mu.Unlock()
+	if spoken {
+		d.batcher.Note(sealed.Turn)
 	}
 }
 
@@ -417,8 +434,7 @@ func (d *Drive) Store(e cellstore.Engine) cellstore.Store {
 	if d.batcher == nil {
 		return e
 	}
-	stamped := stamping{engine: e, device: d.sync.Device.Cert.Device, fence: d.batcher.Fence}
-	return &cellsync.Publishing{Inner: stamped, Batcher: d.batcher}
+	return stamping{engine: e, device: d.sync.Device.Cert.Device, fence: d.batcher.Fence, note: d.note}
 }
 
 // stamping writes the device key and the current fence into each turn it seals.
@@ -426,6 +442,7 @@ type stamping struct {
 	engine cellstore.Engine
 	device string
 	fence  func() uint64
+	note   func(cellstore.Sealed)
 }
 
 var _ cellstore.Store = stamping{}
@@ -434,7 +451,11 @@ var _ cellstore.Store = stamping{}
 func (s stamping) Seal(ctx context.Context, c cell.Cell, info cellstore.TurnInfo) (cellstore.Sealed, error) {
 	e := s.engine
 	e.Identity = cellstore.Identity{Device: s.device, Fence: s.fence()}
-	return e.Seal(ctx, c, info)
+	sealed, err := e.Seal(ctx, c, info)
+	if err == nil {
+		s.note(sealed)
+	}
+	return sealed, err
 }
 
 // Close ends the drive side: what is sealed is published, and the lease is

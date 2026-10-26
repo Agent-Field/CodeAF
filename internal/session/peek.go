@@ -23,6 +23,7 @@ package session
 import (
 	"bufio"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -185,6 +186,19 @@ func Peek(path string) (Summary, bool) {
 // a schema this build has never seen — leaves sure false, and a caller that
 // destroys on silence must read that as "do not".
 func SpokeIn(path string) (spoken bool, sure bool) {
+	return spokeIn(path, false, -1)
+}
+
+// ConversationIn reports whether a journal contains a conversation message.
+// Startup headers and the session's own notes do not start a conversation.
+// Only bytes through end belong to the saved turn; later messages cannot
+// publish an earlier startup snapshot. The second result distinguishes an
+// empty journal from an unreadable one.
+func ConversationIn(path string, end int64) (spoken bool, sure bool) {
+	return spokeIn(path, true, end)
+}
+
+func spokeIn(path string, includeAnswers bool, end int64) (spoken bool, sure bool) {
 	file, err := os.Open(path)
 	if err != nil {
 		return false, os.IsNotExist(err)
@@ -192,7 +206,11 @@ func SpokeIn(path string) (spoken bool, sure bool) {
 	defer file.Close()
 
 	clean := true
-	scanner := bufio.NewScanner(file)
+	var reader io.Reader = file
+	if end >= 0 {
+		reader = io.LimitReader(file, end)
+	}
+	scanner := bufio.NewScanner(reader)
 	// The same buffer [Peek] takes, for the same reason: one enormous tool
 	// result would otherwise end the scan early — and here an early end is the
 	// difference between "nobody spoke" and "we stopped listening".
@@ -213,7 +231,8 @@ func SpokeIn(path string) (spoken bool, sure bool) {
 		}
 		// A MESSAGE WITH NO WORDS IN IT IS STILL A PERSON SPEAKING, exactly as
 		// [Peek] counts it: a picture and nothing else is an ordinary turn.
-		if entry.Type == "message" && entry.Role == "user" {
+		conversation := entry.Role == "user" || includeAnswers && entry.Role == "assistant"
+		if entry.Type == "message" && conversation && (!includeAnswers || !entry.Note) {
 			return true, true
 		}
 	}
