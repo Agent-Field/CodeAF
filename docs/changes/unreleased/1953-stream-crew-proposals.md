@@ -1,7 +1,8 @@
 ---
 kind: changed
 title: Crew proposals stream their shape and helpers beside the chat
-surface: [engine, remote, app, chat]
+pr: 1953
+surface: [engine, remote, chat]
 invalidates:
   - "Crew proposals previously waited for one complete JSON object. They now emit ephemeral crew.proposal.delta events for readable NDJSON objects before opening the final ask."
 ---
