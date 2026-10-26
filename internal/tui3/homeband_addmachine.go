@@ -169,10 +169,10 @@ func drawAddMachineBand(a *app, ctx bandContext) []string {
 func (a *app) addMachineHow(ctx bandContext) []string {
 	var rows []string
 	for _, line := range []string{addMachineStepRun, addMachineStepPut} {
-		for _, wrapped := range wrap(line, ctx.width) {
-			text := ctx.pal.muted(fit(wrapped, ctx.width))
-			text = strings.ReplaceAll(text, "codeaf pair", ctx.pal.bold(ctx.pal.data("codeaf pair")))
-			rows = append(rows, text)
+		text := ctx.pal.muted(line)
+		text = strings.ReplaceAll(text, "codeaf pair", ctx.pal.bold(ctx.pal.data("codeaf pair")))
+		for _, wrapped := range wrap(text, ctx.width) {
+			rows = append(rows, fit(wrapped, ctx.width))
 		}
 	}
 	return append(rows, ctx.pal.accent(fit(addMachineField, ctx.width)))
