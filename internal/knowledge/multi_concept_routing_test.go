@@ -13,7 +13,7 @@ func TestKnowledgeNewEvidenceUpdatesConceptsAcrossCatalogWindows(t *testing.T) {
 	if err := v.StartBuild(); err != nil {
 		t.Fatal(err)
 	}
-	updated := []string{}
+	updatedTitles := []string{}
 	withKnowledgeModel(t, func(p map[string]any) map[string]any {
 		if messages, ok := p["messages"].([]any); ok {
 			claims := []any{}
@@ -33,7 +33,7 @@ func TestKnowledgeNewEvidenceUpdatesConceptsAcrossCatalogWindows(t *testing.T) {
 			}
 			if catalog[0].(map[string]any)["title"] == "shared-evidence" && len(existing) > 0 {
 				subject := existing[0].(map[string]any)
-				updated = append(updated, subject["id"].(string))
+				updatedTitles = append(updatedTitles, subject["title"].(string))
 				assignment := map[string]any{"existing_subject_id": subject["id"], "title": subject["title"], "scope": subject["scope"], "notes": []any{catalog[0].(map[string]any)["id"]}}
 				// Repeated assignments must not duplicate citations or pages.
 				return map[string]any{"subjects": []any{assignment, assignment}}
@@ -64,10 +64,10 @@ func TestKnowledgeNewEvidenceUpdatesConceptsAcrossCatalogWindows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	original := map[string]bool{}
+	original := map[string]string{}
 	for _, page := range before.Pages {
 		if page.Kind == "subject" {
-			original[page.ID] = true
+			original[page.Title] = page.ID
 		}
 	}
 	if len(original) != 129 {
@@ -79,13 +79,21 @@ func TestKnowledgeNewEvidenceUpdatesConceptsAcrossCatalogWindows(t *testing.T) {
 	if err := v.Flush(context.Background(), "fixture", true); err != nil {
 		t.Fatal(err)
 	}
-	if len(updated) != 2 || updated[0] == updated[1] {
-		t.Fatalf("shared evidence must reach concepts in both catalog windows, got %v", updated)
+	if len(updatedTitles) != 2 || original[updatedTitles[0]] == original[updatedTitles[1]] {
+		t.Fatalf("shared evidence must reach distinct concepts in both catalog windows, got %v", updatedTitles)
 	}
-	for _, id := range updated {
+	for _, title := range updatedTitles {
+		id := original[title]
 		page, err := v.Read(id)
-		if err != nil || !original[id] || len(page.Evidence) != 2 {
+		if err != nil || id == "" || page.Title != title || len(page.Evidence) != 2 {
 			t.Fatalf("concept must retain its identity and both source citations: id=%s evidence=%d err=%v", id, len(page.Evidence), err)
+		}
+		shared := false
+		for _, evidence := range page.Evidence {
+			shared = shared || evidence.Source == "shared-evidence"
+		}
+		if !shared {
+			t.Fatalf("concept %s lost the shared source citation", id)
 		}
 	}
 	after, err := v.Snapshot()
