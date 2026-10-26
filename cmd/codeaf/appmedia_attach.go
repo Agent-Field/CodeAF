@@ -106,7 +106,7 @@ func (b *appBackend) attachReference(agent, source string, span appSpan, snapsho
 		return appwire.Attachment{}, appMediaError(err)
 	}
 	// Owned session storage, never the original's directory or the workspace.
-	destination := (session.Place{Dir: filepath.Dir(a.transcript), Owned: true}).Artifacts()
+	destination := (session.Place{Dir: session.DirOf(a.transcript), Owned: true}).Artifacts()
 	if err := os.MkdirAll(destination, 0o700); err != nil {
 		return appwire.Attachment{}, err
 	}

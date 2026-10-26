@@ -8,7 +8,6 @@ import (
 	"errors"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -77,7 +76,7 @@ func (e *appDeliverEnv) agent(id string) *appDeliverAgent {
 	if a, err := e.b.find(id); err == nil {
 		var workspace string
 		e.b.locked(func() { workspace = a.view.Workspace })
-		place := session.Place{Dir: filepath.Dir(a.transcript), Owned: true}
+		place := session.Place{Dir: session.DirOf(a.transcript), Owned: true}
 		out = &appDeliverAgent{
 			roots:     []string{workspace, place.Work(), place.Artifacts()},
 			folders:   []string{place.Work(), place.Artifacts()},

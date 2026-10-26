@@ -116,6 +116,11 @@ func runApp(args []string) error {
 	wire := os.Stdout
 	os.Stdout = os.Stderr
 	defer func() { os.Stdout = wire }()
+	// THE APP MAY GO BEFORE THIS ENGINE DOES. A quit does not wait for the
+	// wrap-up below, and a crash cannot: either way the pipes to the app close
+	// while the engine still writes things down. A write to a closed stdout or
+	// stderr must fail, not end the process mid-wrap-up (appleave.go).
+	surviveBrokenPipes()
 
 	// THE ONE ROAD OUT (internal/leave): a first SIGTERM, SIGINT or SIGHUP
 	// starts the quit's careful wrap-up, and a second ends the process at once.
@@ -844,8 +849,12 @@ func appMint(workspace string) (string, error) {
 }
 
 // appAgentID is a conversation's id from its transcript: the folder's name.
+// A cell keeps its transcript one level down (<id>/.cell/transcript.jsonl), so
+// the folder is session.DirOf's, never the transcript's parent: that parent is
+// ".cell" for every cell conversation, and one id for all of them would make
+// each new conversation answer for the others.
 func appAgentID(transcript string) string {
-	return filepath.Base(filepath.Dir(filepath.Clean(transcript)))
+	return filepath.Base(session.DirOf(filepath.Clean(transcript)))
 }
 
 // locked runs fn holding b.mu. Every critical section in this file goes
