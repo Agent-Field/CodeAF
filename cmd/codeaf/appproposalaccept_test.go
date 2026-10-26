@@ -243,3 +243,38 @@ func TestAppCrewProposalCanCorrectNameBeforeCrewExists(t *testing.T) {
 		t.Fatalf("corrected proposal = %+v, %v", crew, err)
 	}
 }
+
+func TestAppCrewProposalCanWaitInInboxAndComeBack(t *testing.T) {
+	backend, rec, manager := proposingBackend(t, &proposingConversation{fakeConversation: &fakeConversation{}, answer: helpersProposal})
+	if err := backend.CrewPropose(manager.ID); err != nil {
+		t.Fatal(err)
+	}
+	at := rec.waitFor(t, 5*time.Second, appAskEvent(appwire.EventAskOpened))
+	rec.mu.Lock()
+	ask := rec.data[at].(appwire.AskOpened).Ask
+	rec.mu.Unlock()
+	id := manager.ID + "/" + ask.ID
+	if err := backend.LaterInbox(id, true); err != nil {
+		t.Fatal(err)
+	}
+	items, counts, err := backend.ListInbox(appwire.InboxLater, "")
+	if err != nil || len(items) != 1 || counts.Later != 1 || !items[0].Ask.Later || items[0].Ask.Proposal.ID != ask.Proposal.ID {
+		t.Fatalf("deferred proposal = %+v, %+v, %v", items, counts, err)
+	}
+	backend.reopenProposals(backend.crews())
+	items, _, err = backend.ListInbox(appwire.InboxLater, "")
+	if err != nil || len(items) != 1 || !items[0].Ask.Later {
+		t.Fatalf("reopened deferred proposal = %+v, %v", items, err)
+	}
+	if err := backend.LaterInbox(id, false); err != nil {
+		t.Fatal(err)
+	}
+	items, counts, err = backend.ListInbox(appwire.InboxWaiting, "")
+	if err != nil || len(items) != 1 || counts.Later != 0 || items[0].Ask.Later || items[0].Ask.Proposal.ID != ask.Proposal.ID {
+		t.Fatalf("restored proposal = %+v, %+v, %v", items, counts, err)
+	}
+	crew, err := backend.CrewCreate(appwire.CrewCreate{From: "proposal", Proposal: ask.Proposal.ID, Edits: &appwire.Proposal{Helpers: []appwire.ProposalHelper{}}})
+	if err != nil || crew.Manager != manager.ID {
+		t.Fatalf("accepted restored proposal = %+v, %v", crew, err)
+	}
+}
