@@ -73,21 +73,26 @@ func (a *Agent) askFurrow() {
 	if _, fresh := furrow.PeekTools(a.config.Workspace); fresh {
 		return
 	}
-	a.furrow.ask(a.config.Workspace, a.armFurrowVerbs)
+	built := a.config
+	a.furrow.ask(built.Workspace, func(root string) { a.armFurrowVerbs(root, built) })
 }
 
 // armFurrowVerbs puts the verbs on the belt once furrow has said the folder is
-// attached. It runs on the refresher's goroutine, so it reads the session's
-// configuration under the session lock like any other background reader, and it
-// arms nothing if the session has since been anchored to another folder (the
-// answer was about the old one) or belongs to a model with no tools, whose belt
-// was built empty.
-func (a *Agent) armFurrowVerbs(root string) {
+// attached. It runs on the refresher's goroutine, so it touches the session's
+// configuration as little as a background reader can: the profile comes from the
+// copy taken when the session was built (whose live-profile pointer still follows
+// a change of model), and the one live field it reads, the folder, is read under
+// the session lock. It arms nothing if the session has since been anchored to
+// another folder (the answer was about the old one) or belongs to a model with no
+// tools, whose belt was built empty.
+func (a *Agent) armFurrowVerbs(root string, built Config) {
+	if built.promptProfile().chat() {
+		return
+	}
 	a.mu.Lock()
-	chat := a.config.promptProfile().chat()
 	same := a.config.Workspace == root
 	a.mu.Unlock()
-	if chat || !same {
+	if !same {
 		return
 	}
 	if tools, _ := furrow.PeekTools(root); len(tools) > 0 {
