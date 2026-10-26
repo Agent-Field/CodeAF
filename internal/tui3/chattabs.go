@@ -1424,8 +1424,8 @@ func (a *app) tabPress(x, y int) (tea.Cmd, bool) {
 // "that folder is gone" is two features to keep in step.
 func (a *app) tabGo(tab chatTab) (cmd tea.Cmd) {
 	defer func() {
-		if t, ok := a.teamActive(); ok && !a.wall.on && !a.teamOverlayHolds(t, a.frontTabKey()) {
-			a.teamViewSet("")
+		if !a.conversationOpening {
+			a.tabSettleTeam()
 		}
 	}()
 	if tab.work {
@@ -1454,6 +1454,14 @@ func (a *app) tabGo(tab chatTab) (cmd tea.Cmd) {
 		return cmd
 	}
 	return a.hopStart(hopRow{file: tab.file, where: tab.where, title: tab.word})
+}
+
+// tabSettleTeam validates the overlay against the conversation actually selected,
+// after an immediate switch or after an asynchronous opening has settled.
+func (a *app) tabSettleTeam() {
+	if t, ok := a.teamActive(); ok && !a.wall.on && !a.teamOverlayHolds(t, a.frontTabKey()) {
+		a.teamViewSet("")
+	}
 }
 
 // ── DISMISSING A TAB ────────────────────────────────────────────────────────

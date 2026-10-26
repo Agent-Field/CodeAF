@@ -1235,8 +1235,10 @@ func (a *app) hopStart(row hopRow) tea.Cmd {
 		return a.conversationLater(func() (Conversation, error) {
 			return open(row.where, row.file)
 		}, a.hopSay, func(conv Conversation) tea.Cmd {
+			defer a.tabSettleTeam()
 			return a.hopLand(a.takeBeside(conv))
 		}, func(err error) tea.Cmd {
+			defer a.tabSettleTeam()
 			if errors.Is(err, session.ErrSessionLocked) {
 				a.hopSay(sessionBusyWord)
 			} else {
