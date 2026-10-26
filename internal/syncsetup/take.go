@@ -324,7 +324,13 @@ func (l engineLocal) Unpublished(c cell.Cell, remoteHead string) (string, uint32
 }
 
 func (l engineLocal) Dirty(ctx context.Context, c cell.Cell) (bool, error) {
-	return l.eng.Dirty(ctx, c)
+	dirty, err := l.eng.Dirty(ctx, c)
+	if err != nil || !dirty {
+		return dirty, err
+	}
+	// A displaced session can append accounting as it retires. The same
+	// shared-work check applies whether that tail has been sealed yet or not.
+	return l.eng.LocalWork(ctx, c)
 }
 
 func (l engineLocal) Follow(ctx context.Context, from, to cell.Cell) error {

@@ -497,6 +497,21 @@ func (b *Batcher) lost(ctx context.Context, seen Driving) {
 func (b *Batcher) resolve(ctx context.Context) error {
 	head, n := b.newest()
 	by := b.holder(ctx)
+	if local, ok := b.Publisher.Engine.(interface {
+		LocalWork(context.Context, cell.Cell) (bool, error)
+	}); ok && n > 0 {
+		driving, _, _ := b.view()
+		work, err := local.LocalWork(ctx, driving.Cell)
+		if err != nil {
+			return err
+		}
+		if !work {
+			// Retirement can seal late accounting after the shared reply.
+			// Forget that pending save without creating a kept-work branch.
+			b.durable(head)
+			n = 0
+		}
+	}
 	if n == 0 {
 		b.superseded(Superseded{By: by})
 		return nil

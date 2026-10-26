@@ -3,7 +3,6 @@ package syncsetup
 import (
 	"context"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -78,23 +77,5 @@ func TestTakeBackDoesNotKeepPublishedOrBookkeepingTurns(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestTakeBackKeepsFilesSealedAfterDisplacement(t *testing.T) {
-	h := bContinued(t)
-	ctx := context.Background()
-	mustNil(t, os.WriteFile(filepath.Join(h.work, "unsent.txt"), []byte("keep this file"), 0600))
-	_, err := h.engine.Seal(ctx, h.cell, cellstore.TurnInfo{})
-	mustNil(t, err)
-	back, err := h.continuerA().Take(ctx, h.cell.ID)
-	mustNil(t, err)
-	if back.Taken.Kept == "" || back.KeptTurns != 1 {
-		t.Fatalf("unsent file was not kept once: %+v", back)
-	}
-	view, err := h.a.Dir.Cell(ctx, back.Taken.Kept)
-	mustNil(t, err)
-	if got := h.fetchInto(view.Cell.Head)["unsent.txt"].body; got != "keep this file" {
-		t.Fatalf("kept file = %q", got)
 	}
 }

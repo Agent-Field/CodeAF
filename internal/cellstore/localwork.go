@@ -1,9 +1,11 @@
 package cellstore
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"os"
 	"path"
@@ -14,7 +16,7 @@ import (
 
 // LocalWork says whether continuing a remote chat needs a local-work choice.
 // Startup can seal unchanged files with fresh bookkeeping, which is a local
-// save but not something a person needs to keep as a branch (C31.2). Compare
+// save but not something a person needs to keep as a branch. Compare
 // against the shared boundary as well as the current head, so an editor's work
 // captured by that startup save is never mistaken for mere bookkeeping.
 func (e Engine) LocalWork(ctx context.Context, c cell.Cell) (bool, error) {
@@ -37,9 +39,8 @@ func (e Engine) LocalWork(ctx context.Context, c cell.Cell) (bool, error) {
 	if err != nil || head == nil {
 		return head == nil, err
 	}
-	if sizeOf(rel(c, cell.TranscriptPath)) != head.Receipt.Transcript.End {
-		log.Printf("continuation needs a choice: conversation bytes %d, last saved %d", sizeOf(rel(c, cell.TranscriptPath)), head.Receipt.Transcript.End)
-		return true, nil
+	if work, err := transcriptWork(c, head.Receipt.Transcript.End, sizeOf(rel(c, cell.TranscriptPath))); err != nil || work {
+		return work, err
 	}
 	if head.Turn.ID != base {
 		work, err := unsharedCalls(c, base)
@@ -105,14 +106,58 @@ func unsharedCalls(c cell.Cell, base string) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		if len(receipt.Calls) > 0 || len(receipt.ModelCalls) > 0 || receipt.Transcript.Start != receipt.Transcript.End {
+		if len(receipt.Calls) > 0 || len(receipt.ModelCalls) > 0 {
 			return true, nil
+		}
+		if work, err := transcriptWork(c, receipt.Transcript.Start, receipt.Transcript.End); err != nil || work {
+			return work, err
 		}
 		if turn.Parent == base {
 			return false, nil
 		}
 	}
 	return true, nil
+}
+
+// transcriptWork distinguishes a conversation change from the timing and
+// auxiliary accounting appended after a reply's shared seal. Unknown records
+// and a shortened journal remain work, so a failed reading never loses edits.
+func transcriptWork(c cell.Cell, start, end int64) (bool, error) {
+	if start == end {
+		return false, nil
+	}
+	if end < start {
+		return true, nil
+	}
+	file, err := os.Open(rel(c, cell.TranscriptPath))
+	if err != nil {
+		return false, err
+	}
+	defer file.Close()
+	scan := bufio.NewScanner(io.NewSectionReader(file, start, end-start))
+	scan.Buffer(make([]byte, 4096), 8<<20)
+	for scan.Scan() {
+		var record struct {
+			Type  string `json:"type"`
+			Usage struct {
+				Aux bool `json:"aux"`
+			} `json:"usage"`
+			Call struct {
+				Role string `json:"role"`
+			} `json:"call"`
+		}
+		if json.Unmarshal(scan.Bytes(), &record) != nil {
+			return true, nil
+		}
+		switch {
+		case record.Type == "pace":
+		case record.Type == "usage" && record.Usage.Aux:
+		case record.Type == "call" && record.Call.Role != "":
+		default:
+			return true, nil
+		}
+	}
+	return false, scan.Err()
 }
 
 // localPlanWork ignores only reproducible capture bookkeeping. Conversation
