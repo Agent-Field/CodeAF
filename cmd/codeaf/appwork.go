@@ -1307,14 +1307,20 @@ func (b *appBackend) processRows(agent string) ([]session.JobNotice, *appLive, e
 	live := b.liveOf(a)
 	b.locked(func() { transcript = a.transcript })
 	if live != nil {
-		rows, err := live.conn.Conv.JobNotices()
-		if err != nil {
-			return nil, nil, appListError(err)
+		rows, answered, err := appLiveJobNotices(live.conn.Conv, appProcessListWait)
+		if answered {
+			if err != nil {
+				return nil, nil, appListError(err)
+			}
+			for i := range rows {
+				rows[i] = appRecoverJob(rows[i], live.replayJobs)
+			}
+			return rows, live, nil
 		}
-		for i := range rows {
-			rows[i] = appRecoverJob(rows[i], live.replayJobs)
-		}
-		return rows, live, nil
+		// THE ENGINE HOLDING IT IS BUSY (a long tool call, a seal of a large
+		// workspace, a quit's wrap-up): the record on disk answers instead,
+		// as it does for a conversation nobody holds, rather than the list
+		// waiting on that engine. An app asking at quit gets its answer.
 	}
 	rows, err := session.ReadProcessNotices(transcript)
 	if err != nil {
@@ -1756,4 +1762,34 @@ func (b *appBackend) factoryPower(asleep bool) error {
 		return nil
 	}
 	return host.power(context.Background(), asleep)
+}
+
+// appProcessListWait is how long processes.list waits for the engine holding a
+// conversation before it answers from the conversation's record instead. The
+// app asks with a two-second bound at quit, so this stays well under it.
+const appProcessListWait = time.Second
+
+// appLiveJobNotices asks conv for its processes and reports whether it
+// answered within wait. A late answer is dropped; the call itself is not
+// cancelled, because the door takes no context, and ends with its connection.
+func appLiveJobNotices(conv interface {
+	JobNotices() ([]session.JobNotice, error)
+}, wait time.Duration) ([]session.JobNotice, bool, error) {
+	type answer struct {
+		rows []session.JobNotice
+		err  error
+	}
+	done := make(chan answer, 1)
+	guard.Go("app/process-list", func() {
+		rows, err := conv.JobNotices()
+		done <- answer{rows, err}
+	})
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case got := <-done:
+		return got.rows, true, got.err
+	case <-timer.C:
+		return nil, false, nil
+	}
 }

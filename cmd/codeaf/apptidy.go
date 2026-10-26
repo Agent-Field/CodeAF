@@ -32,7 +32,7 @@ type appRenamer interface {
 func (b *appBackend) tidyMarks(view *appwire.Agent, archived bool) {
 	// A CONVERSATION AT WORK OR WAITING ON THE PERSON IS SAID AS SUCH, whatever
 	// mark it carries: a terminal may be working in an agent the app closed.
-	held := b.held(view.ID) || view.State == appwire.StateWorking || view.State == appwire.StateNeedsYou
+	held := b.held(view.ID) || view.State == appwire.StateStarting || view.State == appwire.StateWorking || view.State == appwire.StateNeedsYou
 	_ = b.state.read(func(f *appStateFile) {
 		if at, ok := f.Closed[view.ID]; ok && !held {
 			at := at

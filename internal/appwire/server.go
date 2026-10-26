@@ -347,12 +347,28 @@ var methods = map[string]method{
 		return &EntriesResult{nonNil(entries), more}, nil
 	}),
 	"agents.set_models": typed(func(e Engine, p struct {
-		ID       string `json:"id"`
-		Main     string `json:"main"`
-		Fallback string `json:"fallback"`
+		ID   string `json:"id"`
+		Main string `json:"main"`
+		// Fallback LEFT OUT KEEPS THE CONVERSATION'S CURRENT FALLBACK; an
+		// explicit "" is no fallback. A client that changes only the main
+		// model cannot wipe the fallback by not naming it.
+		Fallback *string `json:"fallback,omitempty"`
 	}) (*agentResult, error) {
 		if strings.TrimSpace(p.ID) == "" || strings.TrimSpace(p.Main) == "" {
 			return nil, Errorf(CodeBadParams, "choose a conversation and main model")
+		}
+		if p.Fallback == nil {
+			keeper, ok := e.(interface {
+				SetConversationMain(string, string) (Agent, error)
+			})
+			if !ok {
+				return nil, Errorf(CodeBadParams, "keeping the fallback requires a newer engine; send fallback")
+			}
+			agent, err := keeper.SetConversationMain(p.ID, p.Main)
+			if err != nil {
+				return nil, err
+			}
+			return &agentResult{agent}, nil
 		}
 		door, ok := e.(interface {
 			SetConversationModels(string, session.ConversationModels) (Agent, error)
@@ -360,7 +376,7 @@ var methods = map[string]method{
 		if !ok {
 			return nil, Errorf(CodeBadParams, "main/fallback selection requires a newer engine")
 		}
-		agent, err := door.SetConversationModels(p.ID, session.ConversationModels{Main: p.Main, Fallback: p.Fallback})
+		agent, err := door.SetConversationModels(p.ID, session.ConversationModels{Main: p.Main, Fallback: *p.Fallback})
 		if err != nil {
 			return nil, err
 		}

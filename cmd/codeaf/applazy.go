@@ -213,7 +213,11 @@ func (b *appBackend) findCrewOwner(id string) (*appAgent, error) {
 	if err != nil {
 		return nil, err
 	}
-	if b.crewKeeps(id) {
+	// A conversation already held, or being opened, is not opened again: the
+	// open holds the agent's gate for as long as it takes, and a caller that
+	// only reads or stops answers from what is there instead of queueing.
+	// At quit nothing is opened again either, and the gates are the wrap-up's.
+	if b.crewKeeps(id) && !b.held(id) && !b.isClosing() {
 		_, _, err = b.heldLive(id)
 	}
 	return a, err

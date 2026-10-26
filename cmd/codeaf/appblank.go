@@ -45,7 +45,7 @@ func (a *appAgent) saidLocked() bool {
 	if a.users > 0 || a.failed != "" || a.briefed {
 		return true
 	}
-	if a.view.State == appwire.StateWorking || a.view.State == appwire.StateNeedsYou {
+	if a.starting || a.view.State == appwire.StateWorking || a.view.State == appwire.StateNeedsYou {
 		return true
 	}
 	live := a.live

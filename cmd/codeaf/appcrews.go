@@ -478,7 +478,7 @@ func (b *appBackend) crewIdleSince(members []appwire.CrewMember) *time.Time {
 // stoppedLocked is when an agent last stopped running, and the zero time when
 // it runs, may run, or is not known. Callers hold b.mu.
 func (b *appBackend) stoppedLocked(a *appAgent) time.Time {
-	if a == nil || a.view.State == appwire.StateWorking {
+	if a == nil || a.view.State == appwire.StateWorking || a.view.State == appwire.StateStarting {
 		return time.Time{}
 	}
 	live := a.live
@@ -616,7 +616,7 @@ func (b *appBackend) memberLive(agent, title string) (state, model, name, line s
 			name = a.view.Title
 		}
 		switch {
-		case a.view.State == appwire.StateWorking:
+		case a.view.State == appwire.StateWorking || a.view.State == appwire.StateStarting:
 			state = teamstore.StateRunning
 		case a.view.State == appwire.StateNeedsYou:
 			state = teamstore.StateAsking
@@ -788,6 +788,30 @@ func (b *appBackend) isHeld(agent string) bool {
 	return held
 }
 
+// crewMemberOpen holds a started member's conversation and gives it the
+// approval posture its start named, or else its manager's.
+func (b *appBackend) crewMemberOpen(manager teamstore.Member, handle, agent, posture string) {
+	_, live, err := b.heldLive(agent)
+	if err != nil {
+		if !b.isClosing() {
+			b.crewNote(manager, "could not start @"+handle+": "+err.Error())
+		}
+		return
+	}
+	if posture == "" {
+		if _, mlive, err := b.heldLive(appMemberAgent(manager)); err == nil {
+			if door, ok := mlive.conn.Conv.(appPostureDoor); ok {
+				posture = door.ResolvedApprovalPosture()
+			}
+		}
+	}
+	if posture != "" {
+		if door, ok := live.conn.Conv.(appPostureDoor); ok {
+			_ = door.SetApprovalPosture(posture)
+		}
+	}
+}
+
 // appPostureDoor is a conversation whose approval posture can be read or set.
 type appPostureDoor interface {
 	ResolvedApprovalPosture() string
@@ -811,7 +835,7 @@ func (b *appBackend) crewStart(t teamstore.Team, manager teamstore.Member, e tea
 		b.crewNote(manager, "could not start @"+handle+": "+err.Error())
 		return err
 	}
-	a, live, err := b.heldLive(agent.ID)
+	a, err := b.find(agent.ID)
 	if err != nil {
 		b.crewNote(manager, "could not start @"+handle+": "+err.Error())
 		return err
@@ -831,19 +855,14 @@ func (b *appBackend) crewStart(t teamstore.Team, manager teamstore.Member, e tea
 	if name != "" {
 		b.sayAgent(a)
 	}
+	// THE START DOES NOT WAIT FOR THE MEMBER'S CONVERSATION TO OPEN. Opening
+	// one takes as long as its workspace takes to settle, many seconds on a
+	// large folder, and a crew made from a proposal starts every helper in
+	// turn while the app waits on crews.create. The membership needs only the
+	// conversation's file, which agents.create has already made; the open,
+	// and the manager's approval posture it inherits, follow in the background.
 	posture := strings.TrimSpace(e.Approval)
-	if posture == "" {
-		if _, mlive, err := b.heldLive(appMemberAgent(manager)); err == nil {
-			if door, ok := mlive.conn.Conv.(appPostureDoor); ok {
-				posture = door.ResolvedApprovalPosture()
-			}
-		}
-	}
-	if posture != "" {
-		if door, ok := live.conn.Conv.(appPostureDoor); ok {
-			_ = door.SetApprovalPosture(posture)
-		}
-	}
+	guard.Go("app/crew-member-open", func() { b.crewMemberOpen(manager, handle, agent.ID, posture) })
 	member, err := b.agentMember(agent.ID)
 	if err != nil {
 		b.crewNote(manager, "could not start @"+handle+": "+err.Error())

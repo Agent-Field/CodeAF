@@ -310,7 +310,9 @@ func (b *appBackend) refreshElsewhere(a *appAgent) {
 func (b *appBackend) refreshElsewhereWith(a *appAgent, watch bool) {
 	var dir string
 	b.locked(func() {
-		if a.live == nil && a.transcript != "" {
+		// AN AGENT THIS PROCESS IS OPENING IS ITS OWN WORD: the disk has not
+		// heard of its turn yet, and reading it there said idle mid-start.
+		if a.live == nil && a.transcript != "" && !a.opening && !a.starting {
 			dir = session.DirOf(a.transcript)
 		}
 	})

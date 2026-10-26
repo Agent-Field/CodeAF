@@ -158,6 +158,31 @@ func (b *appBackend) steer(agent, text, clientID string, shown *appSending) erro
 	if err != nil {
 		return err
 	}
+	// A STEER WHILE THE AGENT IS STARTING IS KEPT FOR ITS FIRST TURN, which is
+	// on its way and is what the person is correcting; it is given to that
+	// turn the moment it runs ([appBackend.bootSettle]), through this same
+	// door, so the full admission below applies then. It is checked before the
+	// gate, which the open holds for as long as it takes. A chat known to
+	// belong elsewhere is refused now. After a stop there is no turn to give
+	// it to, and it is refused as any steer with nothing running is.
+	if err := b.knownWorkRefusal(a); err != nil {
+		return err
+	}
+	kept := false
+	b.locked(func() {
+		if a.starting && !a.stopAsked {
+			var copied *appSending
+			if shown != nil {
+				c := *shown
+				copied = &c
+			}
+			a.early = append(a.early, appEarlySteer{text: text, clientID: clientID, shown: copied})
+			kept = true
+		}
+	})
+	if kept {
+		return nil
+	}
 	a.gate.Lock()
 	defer a.gate.Unlock()
 	if err := b.workAllowed(a); err != nil {
@@ -314,6 +339,27 @@ func (b *appBackend) queue(agent, text, clientID string, shown *appSending) ([]a
 	if err != nil {
 		return nil, err
 	}
+	// An agent still starting has its first turn on its way: a message
+	// queued now waits for that turn's end, like any other. It is queued
+	// before the gate, which the open holds for as long as it takes; the
+	// queue sends it through the ordinary door, admission and all, and a chat
+	// known to belong elsewhere is refused now.
+	if err := b.knownWorkRefusal(a); err != nil {
+		return nil, err
+	}
+	starting := false
+	var queued []appwire.Queued
+	b.locked(func() {
+		if starting = a.starting && !a.stopAsked; starting {
+			a.queueN++
+			a.queue = append(a.queue, appQueued{id: "q" + strconv.Itoa(a.queueN), text: text, clientID: clientID, shown: shown})
+			queued = appQueuedOf(a.queue)
+		}
+	})
+	if starting {
+		b.emit.Emit(appwire.EventQueueChanged, appwire.QueueChanged{Agent: agent, Queued: queued})
+		return queued, nil
+	}
 	a.gate.Lock()
 	defer a.gate.Unlock()
 	if err := b.workAllowed(a); err != nil {
@@ -336,7 +382,6 @@ func (b *appBackend) queue(agent, text, clientID string, shown *appSending) ([]a
 	if shown != nil && !shown.marksNothing(text) && !appKeepsQueuedMarks(live.conn.Conv) {
 		return nil, appwire.Errorf(appwire.CodeUnknownMethod, "this conversation cannot keep a queued message's said or reads; send it when the turn ends")
 	}
-	var queued []appwire.Queued
 	var refused error
 	b.locked(func() {
 		if refused = appLocationRefusal(a.view.Location); refused != nil {

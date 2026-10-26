@@ -639,6 +639,15 @@ type appAgent struct {
 	// by whichever road opens it first; opening says one is being assembled.
 	boot    *appBoot
 	opening bool
+	// starting says agents.create took a first message whose turn has not
+	// started yet: the conversation is still being opened (bootAgent). While
+	// it lasts the agent reads starting, and nothing waits on the gate the
+	// open holds. stopAsked is a stop that came in that time, and early the
+	// steers that did: the first turn is then never started, or the steers
+	// are given to it the moment it runs ([appBackend.bootSettle]).
+	starting  bool
+	stopAsked bool
+	early     []appEarlySteer
 	// minted says this process made the conversation's folder (agents.create),
 	// which is what lets it take a blank one away again at quit; briefed says
 	// a crew's brief is on its way to it, the first message of a member a
@@ -687,6 +696,13 @@ type appBoot struct {
 	automatic *bool
 	model     string
 	budget    *float64
+}
+
+// appEarlySteer is a steer that came while the agent was starting, kept for
+// its first turn.
+type appEarlySteer struct {
+	text, clientID string
+	shown          *appSending
 }
 
 // appFirst is a created agent's first message: the words the model is sent,
@@ -945,7 +961,9 @@ func (b *appBackend) remember(row session.SessionRow) (view appwire.Agent) {
 	disk.Location = a.view.Location
 	disk.Retryable = a.failed != "" && a.live == nil
 	busyElsewhere := a.live == nil && (disk.State == appwire.StateWorking || disk.State == appwire.StateNeedsYou)
-	if !busyElsewhere && (a.live != nil || a.view.State == appwire.StateClosed || a.view.State == appwire.StateStopped) {
+	// An agent this process is opening is its own word too: the disk has not
+	// heard of its first turn yet.
+	if a.opening || a.starting || (!busyElsewhere && (a.live != nil || a.view.State == appwire.StateClosed || a.view.State == appwire.StateStopped)) {
 		view := a.view
 		if view.Title == "" {
 			view.Title = row.Title
@@ -1251,8 +1269,11 @@ func (b *appBackend) createAgentHeld(prep appCreatePrep, minted string) (appwire
 		a.view.Model = model
 		a.view.State = appwire.StateIdle
 		if first.words != "" {
-			a.view.State = appwire.StateWorking
+			// STARTING, NOT WORKING: no turn runs until the conversation is open,
+			// which on a large workspace takes a while (bootAgent).
+			a.view.State = appwire.StateStarting
 			a.view.Retryable = false
+			a.starting, a.stopAsked, a.early = true, false, nil
 		}
 		a.view.UpdatedAt = b.now()
 		a.boot = &appBoot{model: model, budget: ask.BudgetUSD, automatic: ask.AutomaticModels, models: ask.Models}
@@ -1270,15 +1291,26 @@ func (b *appBackend) createAgentHeld(prep appCreatePrep, minted string) (appwire
 	return view, func() { guard.Go("app/create", func() { b.bootAgent(a, first) }) }, nil
 }
 
-// bootAgent opens a created agent's conversation and starts its first turn.
+// bootAgent opens a created agent's conversation and starts its first turn,
+// then settles what came for it while it was starting.
 func (b *appBackend) bootAgent(a *appAgent, first appFirst) {
+	started := b.bootOpen(a, first)
+	// Outside the gate: a kept steer takes the ordinary road, which may take
+	// the gate itself.
+	b.bootSettle(a, started)
+}
+
+// bootOpen is bootAgent's part under the gate, and reports whether the first
+// turn started.
+func (b *appBackend) bootOpen(a *appAgent, first appFirst) bool {
 	a.gate.Lock()
 	defer a.gate.Unlock()
 	view, opened, err := b.ensureLocked(a)
-	b.locked(func() { a.opening = false })
+	stopped := false
+	b.locked(func() { a.opening, stopped = false, a.stopAsked })
 	if err != nil {
 		b.bootFailed(a, first, err)
-		return
+		return false
 	}
 	if first.words == "" {
 		// Opened blank, it is said only once something was said in it in
@@ -1288,12 +1320,86 @@ func (b *appBackend) bootAgent(a *appAgent, first appFirst) {
 		if opened && said {
 			b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 		}
-		return
+		return false
 	}
-	// The agent already reads working; the turn's own start says the rest.
+	// A STOP THAT CAME WHILE IT WAS OPENING IS HONOURED: the first turn is
+	// never started, so nothing runs that the person asked not to run.
+	if stopped {
+		b.bootStopped(a, first)
+		return false
+	}
+	// The agent reads starting; the turn's own start says working.
 	if _, err := b.startLocked(a, first.words, first.clientID, first.shown); err != nil {
 		b.bootFailed(a, first, err)
+		return false
 	}
+	return true
+}
+
+// bootSettle ends a created agent's starting. A stop that came after the
+// check above and before the turn ran interrupts the turn at once; steers that
+// came while it was starting are given to the running turn, in order.
+func (b *appBackend) bootSettle(a *appAgent, started bool) {
+	var stop bool
+	var early []appEarlySteer
+	var live *appLive
+	var id string
+	b.locked(func() {
+		stop, early, live, id = a.stopAsked, a.early, a.live, a.view.ID
+		a.starting, a.stopAsked, a.early = false, false, nil
+	})
+	if !started || live == nil {
+		return
+	}
+	if stop {
+		b.locked(func() { live.stopping = live.running })
+		live.conn.Conv.Interrupt()
+		return
+	}
+	for _, s := range early {
+		if err := b.steer(id, s.text, s.clientID, s.shown); err != nil {
+			// The turn ended before its steer could reach it, or its engine
+			// refused one: the words are the next message instead, as a
+			// steer that falls through is.
+			b.queueEarly(a, live, s)
+		}
+	}
+}
+
+// queueEarly keeps a steer the first turn could not take as the next queued
+// message, and sends it now if the turn has already ended.
+func (b *appBackend) queueEarly(a *appAgent, live *appLive, s appEarlySteer) {
+	var queued []appwire.Queued
+	var id string
+	b.locked(func() {
+		a.queueN++
+		a.queue = append(a.queue, appQueued{id: "q" + strconv.Itoa(a.queueN), text: s.text, clientID: s.clientID, shown: s.shown})
+		queued, id = appQueuedOf(a.queue), a.view.ID
+	})
+	b.emit.Emit(appwire.EventQueueChanged, appwire.QueueChanged{Agent: id, Queued: queued})
+	b.sendQueued(a, live)
+}
+
+// appStoppedBeforeStart is what a first message stopped while its
+// conversation was opening says: it was never sent, and can be sent again.
+const appStoppedBeforeStart = "stopped before it started; the message was not sent"
+
+// bootStopped is a created agent stopped while it was starting: its first
+// message was never handed to the conversation, so it is kept for agents.retry,
+// the turn it would have been ends stopped, and the agent reads stopped.
+func (b *appBackend) bootStopped(a *appAgent, first appFirst) {
+	var view appwire.Agent
+	b.locked(func() {
+		a.failed, a.failedKind, a.failedShown, a.failedClient = first.words, appwire.ErrorStopped, first.shown, first.clientID
+		a.view.Retryable = true
+		a.boot = nil
+		a.view.State = appwire.StateStopped
+		a.view.UpdatedAt = b.now()
+		view = a.view
+	})
+	turn := b.turns.Add(1)
+	b.emit.Emit(appwire.EventTurnDone, appwire.TurnDone{Agent: view.ID, Turn: turn, OK: false, Error: appStoppedBeforeStart, ErrorKind: appwire.ErrorStopped})
+	b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 }
 
 // bootFailed is a created agent whose conversation could not be opened or
@@ -1326,6 +1432,8 @@ func (b *appBackend) bootFailed(a *appAgent, first appFirst, err error) {
 		a.boot = nil
 		if a.live == nil {
 			a.view.State = appwire.StateStopped
+		} else if a.view.State == appwire.StateStarting {
+			a.view.State = a.live.restingState()
 		}
 		view = a.view
 	})
@@ -1363,6 +1471,15 @@ func (b *appBackend) OpenAgent(id string) (appwire.Agent, error) {
 	a, err := b.find(id)
 	if err != nil {
 		return appwire.Agent{}, err
+	}
+	// AN AGENT BEING OPENED IS ANSWERED AS IT STANDS, never after the open:
+	// the open holds the gate for as long as it takes, which on a large
+	// workspace is many seconds, and its own agent.changed says the rest.
+	var view appwire.Agent
+	busy := false
+	b.locked(func() { view, busy = a.view, a.live == nil && (a.opening || a.starting) })
+	if busy {
+		return view, nil
 	}
 	view, opened, err := b.ensure(a)
 	if err != nil {
@@ -1438,7 +1555,13 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 		ask.AutomaticModels = boot.automatic
 		ask.Models = boot.models
 	}
+	// OPENING IS SAID WHILE IT LASTS, so a caller that only reads or stops
+	// (agents.open, agents.stop, processes.list) does not queue on the gate
+	// behind it ([appBackend.findCrewOwner]).
+	wasOpening := false
+	b.locked(func() { wasOpening, a.opening = a.opening, true })
 	conn, err := b.open(ask)
+	b.locked(func() { a.opening = wasOpening })
 	if err != nil {
 		// Loopback errors may have crossed a codec and lost their Go type.
 		// The journal lock still proves an ownership conflict in that case.
@@ -1524,7 +1647,11 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 		if model != "" {
 			a.view.Model = model
 		}
-		a.view.State = live.restingState()
+		// An agent whose first turn is on its way still reads starting: open
+		// is not the same as running, and idle here would say it gave up.
+		if !a.starting {
+			a.view.State = live.restingState()
+		}
 		a.view.Context = appContextOf(conn.Conv)
 		if a.view.UpdatedAt.IsZero() {
 			a.view.UpdatedAt = b.now()
@@ -2763,11 +2890,23 @@ func (b *appBackend) workEvent(id string, live *appLive, event session.Event) {
 }
 
 // Stop interrupts the running turn. An agent with nothing held has nothing
-// running in this process, which is answered as done.
+// running in this process, which is answered as done. An agent still starting
+// is stopped before its first turn: the stop is kept, and the turn is never
+// started, or is interrupted the moment it is ([appBackend.bootSettle]). No
+// stop waits on the gate an open holds.
 func (b *appBackend) Stop(id string) error {
 	a, err := b.findCrewOwner(id)
 	if err != nil {
 		return err
+	}
+	kept := false
+	b.locked(func() {
+		if a.starting {
+			a.stopAsked, kept = true, true
+		}
+	})
+	if kept {
+		return nil
 	}
 	if live := b.liveOf(a); live != nil {
 		b.locked(func() { live.stopping = live.running })
