@@ -86,16 +86,16 @@ func (a *Agent) askFurrow() {
 // another folder (the answer was about the old one) or belongs to a model with no
 // tools, whose belt was built empty.
 func (a *Agent) armFurrowVerbs(root string, built Config) {
-	if built.promptProfile().chat() {
+	// Nothing to arm is the common answer, and it is decided before the session's
+	// configuration is touched at all.
+	tools, _ := furrow.PeekTools(root)
+	if len(tools) == 0 || built.promptProfile().chat() {
 		return
 	}
 	a.mu.Lock()
 	same := a.config.Workspace == root
 	a.mu.Unlock()
-	if !same {
-		return
-	}
-	if tools, _ := furrow.PeekTools(root); len(tools) > 0 {
+	if same {
 		_, _ = a.armFamily(tools)
 	}
 }
