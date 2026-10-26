@@ -267,6 +267,8 @@ SQLite backup capture stages verified database and journal bytes privately befor
 
 The receiver folder picker keeps the typed destination through asynchronous directory reads. An unfinished listing cannot authorize the parent as an empty folder. The current directory's answer reselects the typed leaf; unrelated results preserve navigation and stale picker generations are rejected. Completed empty directories remain valid choices. Listing work stays outside the UI event loop.
 
+A received task's transcript references are rebuilt from its owned local journals. Plan-backed workers and legacy graph tasks keep their respective layouts; history readers accept the current worker journal and bounded recorded metadata rather than another computer's absolute index paths. Incoming carrier validation binds immutable provenance before adoption. Local reopening uses the admitted restore receipt and current URI bindings: receiver-local checkpoint paths can change without rewriting that incoming provenance.
+
 ## Validation and measurement limits
 
 Separate experiments measured **43.34% lower allocated use** inside an isolated

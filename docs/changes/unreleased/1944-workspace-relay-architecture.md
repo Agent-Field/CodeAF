@@ -16,7 +16,9 @@ listing instead of choosing an unloaded parent or the first sibling.
 
 Review and apply each writable root explicitly through the terminal. Application
 uses the exact reviewed snapshot and retains the original private copy; edits
-after review do not land. Conflicts preserve both versions.
+after review do not land. Conflicts preserve both versions. Completed plan workers
+reopen their owned transcripts after restart or relay; local index rebuilding
+recovers their recorded model without retaining another computer's file paths.
 
 Local archive recovery requires the separately reviewed native dependency.
 Uncertain writers and multi-root reclamation remain excluded. Existing
