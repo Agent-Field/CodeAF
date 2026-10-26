@@ -465,8 +465,15 @@ func TestAppFolderDeliverableChanges(t *testing.T) {
 // rechecks them before landing, changes only the planned checkout, and keeps
 // every file in the owning chat intact. These are real temporary git repos.
 func TestAppFolderBranchLandFiles(t *testing.T) {
-	// A land refuses a repository whose git config runs a filter program; the
-	// runner's global config can carry one, so this repository sees none.
+	// A land refuses a repository whose git config runs a filter program, and
+	// the runner's global config carries one. The land strips GIT_* from its
+	// git, so only a home of the test's own keeps that config out.
+	gitHome := t.TempDir()
+	if err := os.WriteFile(filepath.Join(gitHome, ".gitconfig"), []byte("[user]\n\tname = t\n\temail = t@t\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", gitHome)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(gitHome, ".config"))
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	eachAppFolder(t, func(t *testing.T, f appFolderFixture) {
