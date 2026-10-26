@@ -56,7 +56,13 @@ type Section struct {
 	Heading    string      `json:"heading"`
 	Paragraphs []Paragraph `json:"paragraphs"`
 }
+type Conflict struct {
+	Claims []string `json:"claims"`
+	Reason string   `json:"reason"`
+	State  string   `json:"state"`
+}
 type Page struct {
+	Conflicts            []Conflict `json:"conflicts,omitempty"`
 	OriginalEvidence     []Evidence `json:"original_evidence,omitempty"`
 	Revision             string     `json:"revision,omitempty"`
 	HumanEditedAt        string     `json:"human_edited_at,omitempty"`
@@ -190,7 +196,7 @@ func materializePages(vault document) ([]Page, error) {
 			}
 			paragraphs = append(paragraphs, Paragraph{Text: "[" + c.Kind + "] " + c.Text, Claims: []string{c.ID}, Evidence: c.Evidence})
 		}
-		if len(p.Sections) == 0 && len(paragraphs) > 0 {
+		if p.Kind != "subject" && len(p.Sections) == 0 && len(paragraphs) > 0 {
 			p.Sections = []Section{{Heading: "Recorded knowledge", Paragraphs: paragraphs}}
 		}
 	}

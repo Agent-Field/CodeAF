@@ -224,7 +224,7 @@ func publishTopics(vault, learning, registry document) (document, error) {
 			}
 		}
 		state := parts[0]["state"]
-		if len(sections) == 0 {
+		if len(sections) == 0 && state != "needs_partition" {
 			state = "needs_evidence"
 		}
 		projected = append(projected, merge(clone(parts[0]), document{"id": id, "title": c["title"], "scope": c["scope"], "aliases": stringsValue(c["aliases"]), "notes": notes, "claims": unique(claims), "sections": sections, "questions": questions, "conflicts": conflicts, "state": state, "editorial_pending_claims": sortedUnique(pending)}))
@@ -270,7 +270,19 @@ func publishTopics(vault, learning, registry document) (document, error) {
 			links = append(links, document{"id": member["id"], "kind": "contains", "reason": "Subject in this reading collection; not a factual relationship"})
 			member["links"] = append(items(member["links"]), document{"id": id, "kind": "index", "reason": "Browse the wider topic collection"})
 		}
-		notes = append(notes, document{"id": id, "kind": "map", "title": scope + " — topic map", "scope": scope, "folder": []string{scope}, "claims": []string{}, "sections": []document{}, "links": links})
+		folder := append([]string{}, stringsValue(members[0]["folder"])...)
+		for _, member := range members[1:] {
+			path := stringsValue(member["folder"])
+			common := 0
+			for common < len(folder) && common < len(path) && folder[common] == path[common] {
+				common++
+			}
+			folder = folder[:common]
+		}
+		if len(folder) == 0 {
+			folder = []string{scope}
+		}
+		notes = append(notes, document{"id": id, "kind": "map", "title": scope + " — topic map", "scope": scope, "folder": folder, "claims": []string{}, "sections": []document{}, "links": links})
 	}
 	result["notes"] = notes
 	result["topic_registry"] = clone(registry)
@@ -411,27 +423,10 @@ func projectSubjects(vault, learning document) (document, error) {
 			}
 		}
 		pending := []string{}
-		represented := map[string]bool{}
-		for _, s := range sections {
-			for _, p := range items(s["paragraphs"]) {
-				for _, id := range stringsValue(p["claims"]) {
-					represented[id] = true
-				}
-			}
-		}
-		recent := []document{}
 		for _, id := range sortedUnique(stringsValue(subject["editorial_pending_claims"])) {
-			c := active[id]
-			if c == nil {
-				continue
+			if active[id] != nil {
+				pending = append(pending, id)
 			}
-			pending = append(pending, id)
-			if !represented[id] {
-				recent = append(recent, document{"text": "[" + textValue(c["kind"]) + "] " + textValue(c["text"]), "claims": []string{id}, "evidence": items(c["evidence"]), "derivation": "recent_captured_claim"})
-			}
-		}
-		if len(recent) > 0 {
-			sections = append(sections, document{"heading": "Recent knowledge", "paragraphs": recent})
 		}
 		conflictIDs := map[string]bool{}
 		for _, c := range items(subject["conflicts"]) {
@@ -492,8 +487,15 @@ func projectSubjects(vault, learning document) (document, error) {
 		if stale {
 			state = "needs_review"
 		}
-		notes = append(notes, document{"id": subject["id"], "title": subject["title"], "scope": subject["scope"], "folder": []string{root}, "claims": unique(append(stringsValue(subject["claims"]), answerClaims...)), "sections": sections, "questions": questions, "aliases": stringsValue(subject["aliases"]), "conflicts": items(subject["conflicts"]), "learning_state": state, "kind": "subject", "links": links, "needs_editorial_update": len(pending) > 0})
+		notes = append(notes, document{"id": subject["id"], "title": subject["title"], "scope": subject["scope"], "folder": subjectFolder(subject, root), "claims": unique(append(stringsValue(subject["claims"]), answerClaims...)), "sections": sections, "questions": questions, "aliases": stringsValue(subject["aliases"]), "conflicts": items(subject["conflicts"]), "learning_state": state, "kind": "subject", "links": links, "needs_editorial_update": len(pending) > 0})
 	}
 	result["notes"] = notes
 	return result, nil
+}
+
+func subjectFolder(subject document, fallback string) []string {
+	if folder := stringsValue(subject["folder"]); len(folder) > 0 {
+		return folder
+	}
+	return []string{fallback}
 }

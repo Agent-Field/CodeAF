@@ -310,11 +310,19 @@ func TestKnowledgeHostedConversationNeverShowsLocalVault(t *testing.T) {
 }
 
 func TestKnowledgeHoverRepaintsVisibleControls(t *testing.T) {
-	for _, name := range []string{"tree", "related", "return"} {
+	for _, name := range []string{"tree", "related", "return", "build"} {
 		t.Run(name, func(t *testing.T) {
 			a := knowledgeArticleApp(t)
+			if name == "build" {
+				a = placeApp(t)
+				a.agent = &knowledgeTestAgent{fakeAgent: &fakeAgent{model: "m"}, vault: knowledge.Open(t.TempDir())}
+				drive(t, a, key(placeChord(pageMemory)), key("alt+u"))
+			}
 			a.pal = newPalette(tokens.TrueColor, false)
 			label := "Architecture"
+			if name == "build" {
+				label = "Build knowledge base"
+			}
 			if name == "related" {
 				label = "1. SQLite"
 			}

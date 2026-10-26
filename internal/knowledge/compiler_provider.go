@@ -41,7 +41,14 @@ func (m compilerModel) call(role string, payload document) (document, error) {
 		return nil, fmt.Errorf("unknown knowledge role %q", role)
 	}
 	reasoning := document{"effort": "none"}
-	requestID := identity([]any{m.model, "knowledge-3", prompt, payload})
+	requestVersion := "knowledge-3"
+	if role == "discover" || role == "organize_subjects" || role == "consolidate_subjects" {
+		requestVersion = "knowledge-5"
+	}
+	if role == "discover" || role == "organize_subjects" {
+		requestVersion = "knowledge-6"
+	}
+	requestID := identity([]any{m.model, requestVersion, prompt, payload})
 	requestID = identity([]any{requestID, reasoning})
 	requestID = identity([]any{requestID, document{"max_tokens": 8000}})
 	var cached string
@@ -58,12 +65,19 @@ func (m compilerModel) call(role string, payload document) (document, error) {
 		if err := validateCompilerResponse(role, result); err != nil {
 			return nil, err
 		}
+		if err := validateCompilerReferences(role, payload, result); err != nil {
+			return nil, err
+		}
 		return result, nil
 	} else if cacheErr != sql.ErrNoRows {
 		return nil, cacheErr
 	}
 	if m.key == "" {
 		return nil, errors.New("knowledge compilation requires an OpenRouter API key")
+	}
+	wire, err := newCompilerReferenceWire(role, payload)
+	if err != nil {
+		return nil, err
 	}
 	sources := modelsource.Set{}.OrDefault(m.key, config.DefaultBaseURL)
 	settings := config.ClientConfigFor(sources, m.model)
@@ -84,7 +98,7 @@ func (m compilerModel) call(role string, payload document) (document, error) {
 	ctx = provider.WithServedEndpoint(ctx, served)
 	ctx = provider.WithCallTag(ctx, "memory")
 	ctx = provider.WithRequiredReasoningEffort(ctx, provider.Effort("none"))
-	messages := []ai.Message{{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: prompt}}}, {Role: "user", Content: []ai.ContentPart{{Type: "text", Text: mustJSON(payload)}}}}
+	messages := []ai.Message{{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: prompt}}}, {Role: "user", Content: []ai.ContentPart{{Type: "text", Text: mustJSON(wire.payload)}}}}
 	started := time.Now()
 	response, err := client.CompleteWithMessages(ctx, messages, ai.WithTemperature(0), ai.WithMaxTokens(8000), ai.WithJSONMode())
 	if err != nil {
@@ -113,7 +127,11 @@ func (m compilerModel) call(role string, payload document) (document, error) {
 	}
 	choices := items(data["choices"])
 	if len(choices) != 1 || textValue(choices[0]["finish_reason"]) != "stop" {
-		return nil, errors.New("knowledge provider response incomplete; cached progress retained")
+		reason := "missing choice"
+		if len(choices) == 1 {
+			reason = textValue(choices[0]["finish_reason"])
+		}
+		return nil, fmt.Errorf("knowledge %s response incomplete (%s); cached progress retained", role, reason)
 	}
 	var result document
 	if err = json.Unmarshal([]byte(textValue(object(choices[0]["message"])["content"])), &result); err != nil || result == nil {
@@ -122,7 +140,13 @@ func (m compilerModel) call(role string, payload document) (document, error) {
 	if err = validateCompilerResponse(role, result); err != nil {
 		return nil, err
 	}
-	receipt := document{"model": m.model, "role": role, "request_id": requestID, "provider": data["provider"], "reasoning_requested": reasoning, "max_tokens": 8000, "generation_id": data["id"], "usage": data["usage"], "transport": "provider_funnel", "seconds": time.Since(started).Seconds(), "result": result}
+	if err = wire.decode(result); err != nil {
+		return nil, err
+	}
+	if err = validateCompilerReferences(role, payload, result); err != nil {
+		return nil, err
+	}
+	receipt := document{"started_at": started.UTC().Format(time.RFC3339Nano), "completed_at": time.Now().UTC().Format(time.RFC3339Nano), "model": m.model, "role": role, "request_id": requestID, "provider": data["provider"], "reasoning_requested": reasoning, "max_tokens": 8000, "generation_id": data["id"], "usage": data["usage"], "transport": "provider_funnel", "seconds": time.Since(started).Seconds(), "result": result}
 	if _, err = m.db.Exec("INSERT OR IGNORE INTO receipts(id,model,role,cost,payload) VALUES(?,?,?,?,?)", requestID, m.model, role, number(object(data["usage"])["cost"]), mustJSON(receipt)); err != nil {
 		return nil, err
 	}

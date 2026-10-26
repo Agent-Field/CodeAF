@@ -1,14 +1,20 @@
 package knowledge
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 )
 
-const learningVersion = "learning-1"
+const learningVersion = "learning-2"
+
+const subjectConcurrency = 2
+
+const discoveryNoteBatchLimit = 32
 
 var conversationNarration = regexp.MustCompile(`(?i)\b(the user|the agent|the owner|user|agent|owner) (said|reported|asked|requested|wants|instructed|corrected|specified)\b`)
 
@@ -32,14 +38,85 @@ func memberClaims(notes []string, byNote, claims map[string]document) []string {
 	}
 	return unique(ids)
 }
+
+func activeSubjectConflicts(vault, subject document) []document {
+	active := activeClaims(vault)
+	allowed := map[string]bool{}
+	for _, id := range stringsValue(subject["claims"]) {
+		if claim := active[id]; claim != nil && textValue(claim["scope"]) == textValue(subject["scope"]) {
+			allowed[id] = true
+		}
+	}
+	byPair := map[string]document{}
+	keep := func(conflict document) {
+		ids := sortedUnique(stringsValue(conflict["claims"]))
+		if len(ids) != 2 || !allowed[ids[0]] || !allowed[ids[1]] {
+			return
+		}
+		byPair[identity(ids)] = merge(clone(conflict), document{"claims": ids, "state": "unresolved"})
+	}
+	for _, conflict := range items(subject["conflicts"]) {
+		keep(conflict)
+	}
+	for _, relation := range items(vault["relations"]) {
+		if textValue(relation["kind"]) == "contradicts" {
+			keep(document{"claims": []string{textValue(relation["from"]), textValue(relation["to"])}, "reason": relation["reason"], "origin": "captured_relation"})
+		}
+	}
+	keys := []string{}
+	for key := range byPair {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	result := []document{}
+	for _, key := range keys {
+		result = append(result, byPair[key])
+	}
+	return result
+}
+
+func conflictsForClaims(conflicts []document, claims []string) []document {
+	result := []document{}
+	for _, conflict := range conflicts {
+		for _, id := range stringsValue(conflict["claims"]) {
+			if contains(claims, id) {
+				result = append(result, clone(conflict))
+				break
+			}
+		}
+	}
+	return result
+}
+
 func extendLearning(vault, previous document, model compilerModel) (document, error) {
 	result := clone(previous)
 	subjects := items(result["subjects"])
 	active := activeClaims(vault)
+	sourceClaims := sourceClaimDependencies(vault)
 	byNote := index(items(vault["notes"]))
 	assigned := map[string]bool{}
 	dirty := []string{}
 	for _, s := range subjects {
+		sections := []document{}
+		invalidated := false
+		for _, section := range items(s["sections"]) {
+			paragraphs := []document{}
+			for _, paragraph := range items(section["paragraphs"]) {
+				if subset(paragraphDependencies(paragraph, sourceClaims), active) {
+					paragraphs = append(paragraphs, paragraph)
+				} else {
+					invalidated = true
+				}
+			}
+			if len(paragraphs) > 0 {
+				sections = append(sections, merge(section, document{"paragraphs": paragraphs}))
+			}
+		}
+		if invalidated {
+			s["sections"] = sections
+			s["needs_editorial_update"] = true
+			delete(s, "refinement_attempt_hash")
+		}
 		for _, id := range stringsValue(s["notes"]) {
 			assigned[id] = true
 		}
@@ -50,10 +127,16 @@ func extendLearning(vault, previous document, model compilerModel) (document, er
 				added = append(added, id)
 			}
 		}
-		if len(added) > 0 {
-			s["claims"] = sortedUnique(append(stringsValue(s["claims"]), added...))
+		if identity(sortedUnique(stringsValue(s["claims"]))) != identity(sortedUnique(members)) {
+			s["claims"] = sortedUnique(members)
 			s["needs_editorial_update"] = true
-			s["editorial_pending_claims"] = sortedUnique(append(stringsValue(s["editorial_pending_claims"]), added...))
+			pending := []string{}
+			for _, id := range sortedUnique(append(stringsValue(s["editorial_pending_claims"]), added...)) {
+				if contains(members, id) {
+					pending = append(pending, id)
+				}
+			}
+			s["editorial_pending_claims"] = pending
 			dirty = append(dirty, textValue(s["id"]))
 		}
 	}
@@ -75,8 +158,8 @@ func extendLearning(vault, previous document, model compilerModel) (document, er
 			}
 		}
 	}
-	for start := 0; start < len(notes); start += 256 {
-		batch := notes[start:min(len(notes), start+256)]
+	for start := 0; start < len(notes); start += discoveryNoteBatchLimit {
+		batch := notes[start:min(len(notes), start+discoveryNoteBatchLimit)]
 		ids := map[string]bool{}
 		for _, n := range batch {
 			inputs := []document{}
@@ -92,7 +175,7 @@ func extendLearning(vault, previous document, model compilerModel) (document, er
 				selected = append(selected, c)
 			}
 		}
-		discovered, err := learnSubjects(merge(vault, document{"notes": batch, "claims": selected}), document{}, model)
+		discovered, err := planLearningSubjects(merge(vault, document{"notes": batch, "claims": selected}), document{"subjects": subjects}, model)
 		if err != nil {
 			return nil, err
 		}
@@ -106,22 +189,107 @@ func extendLearning(vault, previous document, model compilerModel) (document, er
 						added = append(added, id)
 					}
 				}
-				prior["editorial_pending_claims"] = sortedUnique(append(stringsValue(prior["editorial_pending_claims"]), added...))
 				prior["claims"] = sortedUnique(append(stringsValue(prior["claims"]), added...))
-				prior["sections"] = append(items(prior["sections"]), items(s["sections"])...)
-				prior["needs_editorial_update"] = true
+				if textValue(prior["state"]) != "pending_synthesis" {
+					prior["editorial_pending_claims"] = sortedUnique(append(stringsValue(prior["editorial_pending_claims"]), added...))
+					prior["needs_editorial_update"] = true
+				}
 			} else {
 				subjects = append(subjects, s)
 				old[textValue(s["id"])] = s
 			}
 		}
 	}
+	if len(items(previous["subjects"])) == 0 && len(subjects) > 1 {
+		var err error
+		subjects, err = consolidateInitialSubjects(subjects, model)
+		if err != nil {
+			return nil, err
+		}
+	}
+	pending := []int{}
+	for i, subject := range subjects {
+		conflicts := activeSubjectConflicts(vault, subject)
+		priorConflicts := items(subject["conflicts"])
+		if (len(conflicts) > 0 || len(priorConflicts) > 0) && identity(conflicts) != identity(priorConflicts) && textValue(subject["state"]) != "pending_synthesis" {
+			subject["needs_editorial_update"] = true
+		}
+		subject["conflicts"] = conflicts
+		if textValue(subject["state"]) == "needs_partition" {
+			subject["state"] = "pending_synthesis"
+		}
+		if textValue(subject["state"]) != "pending_synthesis" {
+			continue
+		}
+		pending = append(pending, i)
+	}
+	if err := synthesizeSubjects(vault, subjects, pending, model); err != nil {
+		return nil, err
+	}
+	if err := resolveLearningQuestions(subjects, active, model); err != nil {
+		return nil, err
+	}
 	result["discovery_inputs"] = discoveryInputs
 	result["subjects"] = subjects
 	result["incremental_discovery"] = document{"new_notes": len(notes), "dirty_existing_subjects": dirty, "limitation": "Changed known subjects keep sourced prose and are marked for bounded later editing; not rewritten automatically."}
 	return result, nil
 }
-func learnSubjects(vault, previous document, model compilerModel) (document, error) {
+
+func consolidateInitialSubjects(subjects []document, model compilerModel) ([]document, error) {
+	overrides, err := readOverrides(model.db)
+	if err != nil {
+		return nil, err
+	}
+	topics, err := stateDocument(model.db, "topics")
+	if err != nil {
+		return nil, err
+	}
+	if len(overrides) > 0 || len(object(topics["concepts"])) > 0 {
+		return subjects, nil
+	}
+	byScope := map[string][]document{}
+	for _, subject := range subjects {
+		entry := choose(subject, "id", "title", "scope", "purpose", "folder")
+		entry["claim_count"] = len(stringsValue(subject["claims"]))
+		scope := textValue(subject["scope"])
+		byScope[scope] = append(byScope[scope], entry)
+	}
+	scopes := []string{}
+	for scope := range byScope {
+		scopes = append(scopes, scope)
+	}
+	sort.Strings(scopes)
+	byID := index(subjects)
+	result := []document{}
+	for _, scope := range scopes {
+		catalog := byScope[scope]
+		if len(catalog) == 1 {
+			result = append(result, byID[textValue(catalog[0]["id"])])
+			continue
+		}
+		response, err := model.call("consolidate_subjects", document{"consolidation_catalog": catalog})
+		if err != nil {
+			return nil, err
+		}
+		for _, group := range items(response["groups"]) {
+			title, scope := strings.TrimSpace(textValue(group["title"])), textValue(group["scope"])
+			notes, claims, aliases := []string{}, []string{}, []string{}
+			for _, id := range stringsValue(group["members"]) {
+				member := byID[id]
+				notes = append(notes, stringsValue(member["notes"])...)
+				claims = append(claims, stringsValue(member["claims"])...)
+				aliases = append(aliases, stringsValue(member["aliases"])...)
+				if textValue(member["title"]) != title {
+					aliases = append(aliases, textValue(member["title"]))
+				}
+			}
+			result = append(result, document{"id": identity([]any{"subject", strings.ToLower(scope), strings.ToLower(title)}), "title": title, "scope": scope, "purpose": group["purpose"], "folder": stringsValue(group["folder"]), "notes": sortedUnique(notes), "claims": sortedUnique(claims), "aliases": sortedUnique(aliases), "state": "pending_synthesis", "sections": []document{}, "questions": []document{}, "conflicts": []document{}})
+		}
+	}
+	return result, nil
+}
+
+func planLearningSubjects(vault, previous document, model compilerModel) (document, error) {
 	claims := activeClaims(vault)
 	byNote := index(items(vault["notes"]))
 	notes := []document{}
@@ -146,55 +314,36 @@ func learnSubjects(vault, previous document, model compilerModel) (document, err
 		}
 		catalog = append(catalog, document{"id": n["id"], "title": n["title"], "scope": n["scope"], "claim_count": count, "gist": gist})
 	}
-	if len(catalog) > 256 {
-		return nil, errors.New("knowledge discovery exceeds 256 notes; partition the collection before learning")
+	if len(catalog) > discoveryNoteBatchLimit {
+		return nil, errors.New("knowledge discovery exceeds its note batch limit")
 	}
 	digest := identity([]any{learningVersion, catalog})
 	discovery := items(previous["discovery"])
 	if len(catalog) > 0 && textValue(previous["catalog_hash"]) != digest {
-		response, err := model.call("discover", document{"catalog": catalog})
+		response, err := discoverSubjects(catalog, items(previous["subjects"]), model)
 		if err != nil {
 			return nil, err
 		}
 		discovery = items(response["subjects"])
 	}
-	refined := []document{}
+	grouped := []document{}
+	bySubject := map[string]document{}
 	for _, raw := range discovery {
-		refs := []string{}
-		for _, id := range stringsValue(raw["notes"]) {
-			if byNote[id] != nil {
-				refs = append(refs, id)
-			}
+		key := textValue(raw["id"])
+		if key == "" {
+			key = identity([]any{"subject", strings.ToLower(textValue(raw["scope"])), strings.ToLower(textValue(raw["title"]))})
 		}
-		if len(memberClaims(refs, byNote, claims)) > 160 && len(refs) > 1 {
-			selected := []document{}
-			for _, n := range catalog {
-				if contains(refs, textValue(n["id"])) {
-					selected = append(selected, n)
-				}
-			}
-			response, err := model.call("discover", document{"catalog": selected, "partition_parent": raw["title"], "constraint": "Split this oversized group into coherent subjects with at most 160 claims each."})
-			if err != nil {
-				return nil, err
-			}
-			partition := items(response["subjects"])
-			all := []string{}
-			valid := len(partition) > 0
-			for _, child := range partition {
-				for _, id := range stringsValue(child["notes"]) {
-					if !contains(refs, id) {
-						valid = false
-					}
-					all = append(all, id)
-				}
-			}
-			if valid && identity(sortedUnique(all)) == identity(sortedUnique(refs)) {
-				refined = append(refined, partition...)
-				continue
-			}
+		if prior := bySubject[key]; prior != nil {
+			prior["notes"] = sortedUnique(append(stringsValue(prior["notes"]), stringsValue(raw["notes"])...))
+			prior["aliases"] = sortedUnique(append(stringsValue(prior["aliases"]), stringsValue(raw["aliases"])...))
+			continue
 		}
-		refined = append(refined, raw)
+		entry := clone(raw)
+		bySubject[key] = entry
+		grouped = append(grouped, entry)
 	}
+	discovery = grouped
+	refined := discovery
 	old := index(items(previous["subjects"]))
 	seen := map[string]bool{}
 	subjects := []document{}
@@ -206,10 +355,17 @@ func learnSubjects(vault, previous document, model compilerModel) (document, err
 				refs = append(refs, id)
 			}
 		}
+		id := identity([]any{"subject", strings.ToLower(scope), strings.ToLower(title)})
+		if reuse := textValue(raw["id"]); reuse != "" {
+			if old[reuse] == nil {
+				return nil, errors.New("knowledge discovery referenced an unknown existing subject")
+			}
+			id = reuse
+			title, scope = textValue(old[id]["title"]), textValue(old[id]["scope"])
+		}
 		if strings.TrimSpace(title) == "" || scope == "" || len(refs) == 0 {
 			continue
 		}
-		id := identity([]any{"subject", strings.ToLower(scope), strings.ToLower(title)})
 		aliases := stringsValue(raw["aliases"])
 		if old[id] == nil {
 			matches := []document{}
@@ -228,130 +384,24 @@ func learnSubjects(vault, previous document, model compilerModel) (document, err
 		}
 		seen[id] = true
 		ids := memberClaims(refs, byNote, claims)
-		subject := document{"id": id, "title": title, "scope": scope, "notes": refs, "claims": ids, "aliases": aliases, "sections": []document{}, "questions": []document{}, "conflicts": []document{}}
-		if len(ids) > 160 {
-			subject["state"] = "needs_partition"
-			subject["reason"] = "More than 160 claims; split this subject before synthesis"
+		subject := document{"id": id, "title": title, "scope": scope, "notes": refs, "claims": ids, "aliases": aliases, "folder": stringsValue(raw["folder"]), "purpose": raw["purpose"], "sections": []document{}, "questions": []document{}, "conflicts": []document{}}
+		if len(stringsValue(subject["folder"])) > 2 {
+			return nil, errors.New("knowledge subject folders exceed two levels")
+		}
+		if prior := old[id]; prior != nil {
+			subject = clone(prior)
+			subject["notes"] = sortedUnique(append(stringsValue(subject["notes"]), refs...))
+			subject["claims"] = sortedUnique(append(stringsValue(subject["claims"]), ids...))
+			if textValue(subject["state"]) != "pending_synthesis" {
+				subject["needs_editorial_update"] = true
+				subject["editorial_pending_claims"] = sortedUnique(append(stringsValue(subject["editorial_pending_claims"]), ids...))
+			}
 			subjects = append(subjects, subject)
 			continue
 		}
-		evidence := []document{}
-		sources := object(vault["sources"])
-		for _, cid := range ids {
-			c := claims[cid]
-			contexts := []document{}
-			for _, e := range items(c["evidence"]) {
-				if s, ok := sources[textValue(e["source"])]; ok {
-					contexts = append(contexts, choose(object(s), "role", "ts"))
-				}
-			}
-			evidence = append(evidence, merge(c, document{"source_context": contexts}))
-		}
-		inputHash := identity([]any{learningVersion, title, scope, refs, evidence})
-		subject["input_hash"] = inputHash
-		if prior := old[id]; prior != nil && textValue(prior["input_hash"]) == inputHash {
-			subjects = append(subjects, clone(prior))
-			continue
-		}
-		response, err := model.call("understand", document{"subject": choose(subject, "id", "title", "scope", "notes", "claims", "aliases"), "claims": evidence})
-		if err != nil {
-			return nil, err
-		}
-		allowed := map[string]document{}
-		for _, cid := range ids {
-			allowed[cid] = claims[cid]
-		}
-		sections := []document{}
-		paragraphs := []document{}
-		for _, s := range items(response["sections"]) {
-			kept := []document{}
-			for _, p := range items(s["paragraphs"]) {
-				text := textValue(p["text"])
-				refs := stringsValue(p["claims"])
-				if text != "" && !conversationNarration.MatchString(text) && len(refs) > 0 && subset(refs, allowed) {
-					p = document{"text": text, "claims": unique(refs)}
-					kept = append(kept, p)
-					paragraphs = append(paragraphs, merge(p, document{"id": fmt.Sprintf("P%d", len(paragraphs))}))
-				}
-			}
-			if len(kept) > 0 {
-				sections = append(sections, document{"heading": textValue(s["heading"]), "paragraphs": kept})
-			}
-		}
-		questions := []document{}
-		for _, q := range items(response["questions"]) {
-			if len(questions) >= 5 {
-				break
-			}
-			refs := stringsValue(q["claims"])
-			if textValue(q["question"]) != "" && len(refs) > 0 && subset(refs, allowed) {
-				terms := stringsValue(q["search_terms"])
-				q = merge(choose(q, "question", "why"), document{"claims": unique(refs), "search_terms": terms[:min(8, len(terms))], "state": "unresolved_in_inspected_evidence"})
-				questions = append(questions, q)
-			}
-		}
-		conflicts := []document{}
-		for _, c := range items(response["conflicts"]) {
-			refs := unique(stringsValue(c["claims"]))
-			if len(refs) == 2 && subset(refs, allowed) {
-				conflicts = append(conflicts, c)
-			}
-		}
-		review := document{}
-		if len(paragraphs)+len(questions)+len(conflicts) > 0 {
-			qIDs, cIDs := []document{}, []document{}
-			for i, q := range questions {
-				qIDs = append(qIDs, merge(q, document{"id": fmt.Sprintf("Q%d", i)}))
-			}
-			for i, c := range conflicts {
-				cIDs = append(cIDs, merge(c, document{"id": fmt.Sprintf("X%d", i)}))
-			}
-			review, err = model.call("review_understanding", document{"claims": evidence, "paragraphs": paragraphs, "questions": qIDs, "conflicts": cIDs})
-			if err != nil {
-				return nil, err
-			}
-		}
-		checks := index(items(review["checks"]))
-		finalSections := []document{}
-		ordinal := 0
-		for _, s := range sections {
-			kept := []document{}
-			for _, p := range items(s["paragraphs"]) {
-				if flag(checks[fmt.Sprintf("P%d", ordinal)]["supported"]) {
-					kept = append(kept, p)
-				}
-				ordinal++
-			}
-			if len(kept) > 0 {
-				finalSections = append(finalSections, merge(s, document{"paragraphs": kept}))
-			}
-		}
-		qChecks := index(items(review["questions"]))
-		keptQuestions := []document{}
-		for i, q := range questions {
-			if flag(qChecks[fmt.Sprintf("Q%d", i)]["grounded"]) {
-				keptQuestions = append(keptQuestions, q)
-			}
-		}
-		cChecks := index(items(review["conflicts"]))
-		keptConflicts := []document{}
-		for i, c := range conflicts {
-			if flag(cChecks[fmt.Sprintf("X%d", i)]["supported"]) {
-				keptConflicts = append(keptConflicts, merge(c, document{"state": "unresolved"}))
-			}
-		}
-		subject["sections"] = finalSections
-		subject["questions"] = keptQuestions
-		subject["conflicts"] = keptConflicts
-		subject["review"] = review
-		subject["state"] = "needs_evidence"
-		if len(finalSections) > 0 {
-			subject["state"] = "explained"
-		}
+
+		subject["state"] = "pending_synthesis"
 		subjects = append(subjects, subject)
-	}
-	if err := resolveLearningQuestions(subjects, claims, model); err != nil {
-		return nil, err
 	}
 	assigned := []string{}
 	for _, s := range subjects {
@@ -365,6 +415,248 @@ func learnSubjects(vault, previous document, model compilerModel) (document, err
 	}
 	return document{"version": learningVersion, "catalog_hash": digest, "discovery": refined, "subjects": subjects, "coverage": document{"eligible_notes": len(notes), "assigned_notes": len(unique(assigned)), "notes_without_subject": unassigned}}, nil
 }
+func mergeSubjectSections(sections []document) []document {
+	result := []document{}
+	byHeading := map[string]document{}
+	for _, section := range sections {
+		key := strings.ToLower(strings.TrimSpace(textValue(section["heading"])))
+		target := byHeading[key]
+		if target == nil {
+			target = merge(clone(section), document{"paragraphs": []document{}})
+			byHeading[key] = target
+			result = append(result, target)
+		}
+		paragraphs := items(target["paragraphs"])
+		for _, paragraph := range items(section["paragraphs"]) {
+			var existing document
+			for _, prior := range paragraphs {
+				if strings.TrimSpace(textValue(prior["text"])) == strings.TrimSpace(textValue(paragraph["text"])) {
+					existing = prior
+					break
+				}
+			}
+			if existing == nil {
+				paragraphs = append(paragraphs, clone(paragraph))
+				continue
+			}
+			existing["claims"] = sortedUnique(append(stringsValue(existing["claims"]), stringsValue(paragraph["claims"])...))
+			existing["depends_on"] = sortedUnique(append(stringsValue(existing["depends_on"]), stringsValue(paragraph["depends_on"])...))
+			existing["evidence"] = unionDocuments(items(existing["evidence"]), items(paragraph["evidence"]))
+		}
+		target["paragraphs"] = paragraphs
+	}
+	return result
+}
+
+func understandSubject(subject document, claims map[string]document, sources document, model compilerModel) (document, error) {
+	ids := stringsValue(subject["claims"])
+	if len(ids) <= 160 {
+		return understandSubjectPart(subject, claims, sources, model)
+	}
+	result := clone(subject)
+	sections, questions, reviews := []document{}, []document{}, []document{}
+	conflicts := items(clone(subject)["conflicts"])
+	context := "Write only useful sections supported by this evidence segment of one guide. Omit a repeated introduction; other evidence segments are written separately."
+	for start := 0; start < len(ids); start += 160 {
+		part := clone(subject)
+		part["claims"] = ids[start:min(start+160, len(ids))]
+		part["conflicts"] = conflictsForClaims(items(subject["conflicts"]), stringsValue(part["claims"]))
+		part["section_context"] = context
+		written, err := understandSubjectPart(part, claims, sources, model)
+		if err != nil {
+			return nil, err
+		}
+		sections = append(sections, items(written["sections"])...)
+		questions = unionDocuments(questions, items(written["questions"]))
+		conflicts = unionDocuments(conflicts, items(written["conflicts"]))
+		reviews = append(reviews, object(written["review"]))
+	}
+	result["sections"] = mergeSubjectSections(sections)
+	result["questions"] = questions[:min(5, len(questions))]
+	result["conflicts"] = conflicts
+	result["review"] = document{"parts": reviews}
+	result["input_hash"] = identity([]any{learningVersion, subject, reviews})
+	result["state"] = "needs_evidence"
+	if len(items(result["sections"])) > 0 {
+		result["state"] = "explained"
+	}
+	delete(result, "reason")
+	delete(result, "editorial_pending_claims")
+	delete(result, "needs_editorial_update")
+	return result, nil
+}
+
+func understandSubjectPart(subject document, claims map[string]document, sources document, model compilerModel) (document, error) {
+	subject = clone(subject)
+	ids := stringsValue(subject["claims"])
+	title, scope := textValue(subject["title"]), textValue(subject["scope"])
+	refs := stringsValue(subject["notes"])
+	evidence := []document{}
+	for _, cid := range ids {
+		c := claims[cid]
+		contexts := []document{}
+		for _, e := range items(c["evidence"]) {
+			if s, ok := sources[textValue(e["source"])]; ok {
+				contexts = append(contexts, choose(object(s), "role", "ts"))
+			}
+		}
+		evidence = append(evidence, merge(c, document{"source_context": contexts}))
+	}
+	inputHash := identity([]any{learningVersion, title, scope, refs, evidence})
+	subject["input_hash"] = inputHash
+	response, err := model.call("understand", document{"subject": choose(subject, "id", "title", "scope", "notes", "claims", "aliases", "conflicts", "section_context"), "claims": evidence})
+	if err != nil {
+		return nil, err
+	}
+	allowed := map[string]document{}
+	for _, cid := range ids {
+		allowed[cid] = claims[cid]
+	}
+	sections := []document{}
+	paragraphs := []document{}
+	for _, s := range items(response["sections"]) {
+		kept := []document{}
+		for _, p := range items(s["paragraphs"]) {
+			text := textValue(p["text"])
+			refs := stringsValue(p["claims"])
+			if text != "" && !conversationNarration.MatchString(text) && len(refs) > 0 && subset(refs, allowed) {
+				p = document{"text": text, "claims": unique(refs)}
+				kept = append(kept, p)
+				paragraphs = append(paragraphs, merge(p, document{"id": fmt.Sprintf("P%d", len(paragraphs))}))
+			}
+		}
+		if len(kept) > 0 {
+			sections = append(sections, document{"heading": textValue(s["heading"]), "paragraphs": kept})
+		}
+	}
+	questions := []document{}
+	for _, q := range items(response["questions"]) {
+		if len(questions) >= 5 {
+			break
+		}
+		refs := stringsValue(q["claims"])
+		if textValue(q["question"]) != "" && len(refs) > 0 && subset(refs, allowed) {
+			terms := stringsValue(q["search_terms"])
+			q = merge(choose(q, "question", "why"), document{"claims": unique(refs), "search_terms": terms[:min(8, len(terms))], "state": "unresolved_in_inspected_evidence"})
+			questions = append(questions, q)
+		}
+	}
+	conflicts := []document{}
+	for _, c := range items(response["conflicts"]) {
+		refs := unique(stringsValue(c["claims"]))
+		if len(refs) == 2 && subset(refs, allowed) {
+			conflicts = append(conflicts, c)
+		}
+	}
+	review := document{}
+	if len(paragraphs)+len(questions)+len(conflicts) > 0 {
+		qIDs, cIDs := []document{}, []document{}
+		for i, q := range questions {
+			qIDs = append(qIDs, merge(q, document{"id": fmt.Sprintf("Q%d", i)}))
+		}
+		for i, c := range conflicts {
+			cIDs = append(cIDs, merge(c, document{"id": fmt.Sprintf("X%d", i)}))
+		}
+		for i, conflict := range items(subject["conflicts"]) {
+			cIDs = append(cIDs, merge(conflict, document{"id": fmt.Sprintf("K%d", i)}))
+		}
+		review, err = model.call("review_understanding", document{"subject": choose(subject, "id", "title", "scope"), "claims": evidence, "paragraphs": paragraphs, "questions": qIDs, "conflicts": cIDs})
+		if err != nil {
+			return nil, err
+		}
+	}
+	checks := index(items(review["checks"]))
+	finalSections := []document{}
+	ordinal := 0
+	for _, s := range sections {
+		kept := []document{}
+		for _, p := range items(s["paragraphs"]) {
+			check := checks[fmt.Sprintf("P%d", ordinal)]
+			if flag(check["supported"]) && flag(check["useful"]) {
+				kept = append(kept, p)
+			}
+			ordinal++
+		}
+		if len(kept) > 0 {
+			finalSections = append(finalSections, merge(s, document{"paragraphs": kept}))
+		}
+	}
+	qChecks := index(items(review["questions"]))
+	keptQuestions := []document{}
+	for i, q := range questions {
+		if flag(qChecks[fmt.Sprintf("Q%d", i)]["grounded"]) {
+			keptQuestions = append(keptQuestions, q)
+		}
+	}
+	cChecks := index(items(review["conflicts"]))
+	keptConflicts := []document{}
+	for i, c := range conflicts {
+		if flag(cChecks[fmt.Sprintf("X%d", i)]["supported"]) {
+			keptConflicts = append(keptConflicts, merge(c, document{"state": "unresolved"}))
+		}
+	}
+	subject["sections"] = finalSections
+	subject["questions"] = keptQuestions
+	subject["conflicts"] = unionDocuments(items(subject["conflicts"]), keptConflicts)
+	subject["review"] = review
+	subject["state"] = "needs_evidence"
+	if len(finalSections) > 0 {
+		subject["state"] = "explained"
+	}
+	delete(subject, "editorial_pending_claims")
+	delete(subject, "needs_editorial_update")
+	return subject, nil
+}
+
+func synthesizeSubjects(vault document, subjects []document, pending []int, model compilerModel) error {
+	ctx, cancel := context.WithCancel(model.ctx)
+	defer cancel()
+	type synthesisResult struct {
+		subject document
+		err     error
+	}
+	results := make([]synthesisResult, len(pending))
+	claims := activeClaims(vault)
+	sources := object(vault["sources"])
+	jobs := make(chan int, len(pending))
+	for i := range pending {
+		jobs <- i
+	}
+	close(jobs)
+	var workers sync.WaitGroup
+	for worker := 0; worker < min(subjectConcurrency, len(pending)); worker++ {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			workerModel := model
+			workerModel.ctx = ctx
+			for i := range jobs {
+				if ctx.Err() != nil {
+					return
+				}
+				results[i].subject, results[i].err = understandSubject(subjects[pending[i]], claims, sources, workerModel)
+				if results[i].err != nil {
+					cancel()
+					return
+				}
+			}
+		}()
+	}
+	workers.Wait()
+	for _, result := range results {
+		if result.err != nil && !errors.Is(result.err, context.Canceled) {
+			return result.err
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	for i, result := range results {
+		subjects[pending[i]] = result.subject
+	}
+	return nil
+}
+
 func resolveLearningQuestions(subjects []document, claims map[string]document, model compilerModel) error {
 	claimIDs := []string{}
 	for id := range claims {

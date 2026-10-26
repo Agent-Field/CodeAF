@@ -1,90 +1,100 @@
 # Native knowledge architecture
 
-This reference describes the chat application's native knowledge module. The
-user workflow lives in the [Memory manual](../internal/manual/chat/places.md#knowledge-from-saved-chats-inside-memory).
+This contributor reference describes the chat application's profile knowledge
+module. Product behavior belongs in the [Memory manual](../internal/manual/chat/places.md#knowledge-from-saved-chats-inside-memory).
 
-## One profile database
+## Ownership and entry points
 
-`internal/knowledge.Vault` owns the database at `knowledge/knowledge.sqlite`
-beneath the resolved profile. `Open(profile)` returns a lightweight handle;
-operations open bounded SQLite connections. WAL permits readers while the
-compiler makes short transactions. Write transactions begin immediately so
-concurrent source admission cannot fail while upgrading a read lock.
+| Responsibility | Implementation owner |
+| --- | --- |
+| Start, resume, and stop background work | `cmd/codeaf/chatv3_knowledge.go`, `internal/knowledge/build.go` |
+| Discover and read saved history | `internal/session/knowledge_history.go` |
+| Admit immutable sources and publish readable pages | `internal/knowledge/store.go` |
+| Compile evidence into maintained concept guides | `internal/knowledge/compiler.go` |
+| Preserve edits and deletion intent | `internal/knowledge/edit.go` |
+| Agent knowledge tools and local recall | `internal/session/knowledge_tools.go`, `internal/knowledge/compiler_recall.go` |
+| Memory rendering, navigation, and editor | `internal/tui3/knowledge*.go` |
+
+`knowledge.Open(profile)` returns a lightweight `Vault` handle. The vault owns
+`knowledge/knowledge.sqlite` beneath the resolved profile. Callers use vault
+operations rather than reading compiler state or writing database tables directly.
+The chat and resident surfaces have separate lifecycles.
+
+## Data flow
+
+```text
+saved history and new conversation events
+  → immutable source admission
+  → evidence extraction and concept organization
+  → reviewed guides
+  → atomic publication
+  → Memory, indexed search, and agent recall
+```
+
+The initial build organizes a finite admitted history snapshot. Later evidence
+updates affected guides or creates distinct concepts. Source eligibility and
+concept organization are separate responsibilities. Saved task reports can supply
+evidence; internal control traffic and deleted history remain excluded.
+
+## Storage authority
 
 | Stored data | Authority |
 | --- | --- |
-| Immutable source events and journal cursors | Original admitted text, provenance, pending work, and exactly where import resumes |
-| Compiler publications and checkpoints | Extraction, learning, topic registry, validated model receipts, and recovery after interrupted composition |
-| Effective pages and FTS | Reader, indexed search, citations, links, and one committed publication revision |
-| Human overrides | Revision-checked Markdown edits and durable deletion tombstones, separate from generated prose |
-| Build state and history errors | First-build intent, background progress, partial imports, retries, and recorded cost |
+| Source events and import cursors | Admitted text, provenance, and resumable intake |
+| Compiler checkpoints and validated receipts | Recoverable background compilation |
+| Effective pages and full-text index | One published view for readers and search |
+| Human overrides | Revision-checked edits and durable deletion intent |
+| Build state | Background intent, stage progress, and recorded usage |
 
-Compiler documents retain optional claim and learning metadata inside SQLite.
-Per-page records and full-text indexes serve readers; a page lookup does not
-load the compiler document. JSON files and experimental exports are not read
-paths. Publication overlays the latest human changes, replaces effective pages
-and search entries, and commits the visible revision in one transaction.
+Generated prose does not replace source evidence. Page identity is independent of
+its current title. Concept guides, detailed evidence notes, and topic maps have
+different reader roles. A visible guide count and the total stored page count need
+not be equal.
 
-## Background ownership
+## Public module contracts
 
-`v3Process` starts and joins `Vault.Run` under its process context. A worker lock
-admits one process per profile; another running process waits and takes ownership
-when the OS releases that lock. A separate compiler lock prevents overlapping
-manual flushes. These OS locks retain worker ownership during provider requests;
-SQLite transactions end before network work begins.
+`Capture` admits local source text without a model call. `StartBuild` records
+background intent. The process owns and joins `Run` through its context. `Flush`
+runs compilation outside the UI loop. `Snapshot`, `Read`, and `Search` expose
+published content. `EditPage` and `DeletePage` require the expected page revision.
+`Revisit` operates on explicitly named immutable sources. Use the owning APIs for
+optional intake rather than bypassing their concurrency checks.
 
-A successful empty inventory arms future capture and shows the waiting state.
-Existing history waits for **Build knowledge base**. The action records durable
-intent and returns; it does not run models on the UI loop. Initial history drains
-in bounded batches. Future turns use the quiet/max-wait policy. Cancellation
-leaves admitted sources and completed stages available for the next process.
+Memory and agent recall consume the same effective pages. An edit must remain
+human-authored across future builds. A deletion must remain suppressed. An older
+editor revision must not overwrite a newer change. Generated additions to an
+edited guide remain reviewable through its source evidence.
 
-`internal/session.KnowledgeHistory` owns saved-journal discovery and parsing.
-It visits all project buckets without a recent-chat limit, includes archives and
-legacy flat journals, resolves sealed layouts through `Place.Transcript`, and
-excludes deleted conversations and task journals. Only complete records advance
-cursors. Original messages use stable session/byte-offset IDs. Admission and
-cursor advancement commit together; retries compare immutable source content.
+## Concurrency and failure boundaries
 
-## Compiler and evidence
+The worker and compiler have separate per-profile ownership locks. Provider work
+runs outside SQLite write transactions. Independent guide work can run
+concurrently; shared extraction decisions and visible publication remain ordered.
+A publication transaction replaces pages, search entries, and the visible revision
+together, after overlaying the latest human changes.
 
-The compiler preserves the original extraction, exact-quote validation,
-claim deduplication, qualified assistant reports, human-only newer corrections,
-contradictions, stable note identity, subject discovery, reviewed explanations,
-question resolution, topic reconciliation, and canonical mention links.
+Interrupted work retains admitted sources and completed checkpoints. Invalid
+provider output cannot become a valid cached result or a partial visible
+publication. Every role uses the selected knowledge model; a fallback is refused.
+Keep credentials and source content out of visible errors.
 
-Provider results enter through typed role-response checks. Claims and paragraphs
-must reference admitted sources or known claims; quotes must occur in the supplied
-context. Separate review gates generated explanations. Model receipts record the
-actual returned model ID and reject substitutions. The configured knowledge model
-applies to every role; credentials never enter receipts or visible errors.
+## Reader responsiveness
 
-The reader and editor share the same effective pages used by agent recall.
-Edited prose is explicitly human-authored, with original source history kept
-separate. Tombstones suppress generated pages across rebuilds. Stale editor
-revisions cannot overwrite later edits. Search entries change in the same
-transaction as visible page content.
+The UI performs database work through asynchronous commands. Search uses the
+published full-text index. Late filter results are discarded. Unchanged publication
+revisions reuse reader content. Rendering, browsing, and local search do not call a
+model. Import and source-processing progress describe their own completed items,
+not an overall completion estimate.
 
-## Responsiveness and bounds
+## Change and verify the owning boundary
 
-Extraction admits at most 64 spans and 24,000 source characters per call. A
-journal read handles at most 256 records or 64 eligible sources, with a 16 MiB
-record bound. Discovery processes at most 256 notes per group, and oversized
-subjects retain a partition-needed state rather than truncating claims.
+Keep database representation, compiler checkpoints, and prompt composition inside
+`internal/knowledge`. History eligibility changes belong with the session history
+reader. User-facing changes also update the shipped Memory manual. Test through
+capture, compilation, published pages, edit conflicts, and the actual terminal UI.
 
-The UI performs database work through asynchronous commands. Search uses FTS,
-late filter results are discarded, and unchanged publication revisions reuse
-cached reader content. Rendering and navigation do not call the provider.
-Provider responses and timeouts are bounded; retries use the same selected model.
-
-## Verification
-
-Tests cross saved-journal-to-readable/searchable-page, human-edit/rebuild, and
-Knowledge-screen seams. They cover history from multiple projects, first-chat
-population, notes/compaction exclusion, source support, correction authority,
-review rejection, duplicate replay, and navigation while a build is requested.
-
-`TestKnowledgeLiveNativeCompiler` is opt-in through `CODEAF_KNOWLEDGE_LIVE=1`.
-It uses the existing OpenRouter credential, removes Python from the executable
-search path, and checks the actual model recorded for every call. Ordinary tests
-use a provider fixture and require no credential.
+Ordinary tests use a provider fixture and require no credential. The opt-in
+`TestKnowledgeLiveNativeCompiler` checks the actual recorded model through the live
+provider. Run the repository's required checks before merging. Recheck cancellation,
+source citations, human edits, deletion intent, and search consistency when changing
+publication or concurrency.

@@ -644,16 +644,38 @@ command any more, and *Automations* has the whole of what replaced them.
 
 Open Memory and click **Knowledge** or press `alt+u` to switch from saved
 preferences to your knowledge base. Click **Saved memory** to return.
+These view switches underline while hovered. Build and Search controls highlight
+under the pointer; the surrounding description stays passive.
 
 If saved chats already exist, click **Build knowledge base** or press Enter.
-The first build uses saved chats across all projects, including archived chats.
+The first build uses saved chats across all projects, including archived chats
+and saved task reports.
 **Building knowledge base… You can keep chatting.** shows that work continues
 in the background. You can leave Memory, change chats, and return later; pages
-appear as completed batches are published.
+appear after the initial history has been processed and organized. New chats
+can continue arriving while that initial collection is built.
+
+## Knowledge build progress and concurrency
+
+Build progress separates **History imported** from **Sources processed**. Each
+shows completed items, its current total, and a percentage for that stage.
+Importing all saved chats and task reports does not mean their sources have all
+been processed. Totals
+can grow as more chats arrive; these percentages are counts, not estimates of
+elapsed time or overall completion. **Organizing knowledge pages…** means the
+sources have been processed and page organization is still finishing.
+
+The build runs in the background, so reading Memory and changing chats remain
+available while it waits for a model response. One compiler owns each profile
+at a time: ordered batches use earlier claims to resolve later corrections,
+and completed publications are saved together. Opening another window does not
+start a duplicate compiler for the same profile.
 
 If there is no chat history, the reader says **Knowledge will populate as you
 chat.** Future saved chats populate it automatically, without a separate build
 step. A profile has one knowledge base; changing project does not change vaults.
+
+## Reading knowledge pages, links and sources
 
 The native Go compiler stores sources, progress, pages, search, and human changes
 in SQLite. Python and developer tools are not required.
@@ -677,7 +699,9 @@ moving to the next main place.
 Click **Edit** on an article, or press `ctrl+e`, to edit its Markdown and
 `[[Topic]]` links. `ctrl+s` saves; Escape cancels. Saved edits are marked
 **Edited by you** and remain separate from machine-written updates. Original
-sources describe the article's background and do not verify your additions.
+sources describe the article's background and do not verify your additions. New
+evidence flags the edited page for review without replacing your words. Saving
+the reviewed page acknowledges that evidence.
 
 Click **Delete**, or press `ctrl+d`, to review a named deletion confirmation.
 Enter or Escape cancels by default. Click **Delete page** or press `ctrl+d`
@@ -685,17 +709,34 @@ again to confirm. Deletion removes the knowledge page; original chats remain.
 
 ## Automatic knowledge capture and background updates
 
-New saved user messages and human-facing assistant replies across projects feed
-the profile's knowledge base. Tool calls, internal notes, operational replies,
-and replayed compaction windows are excluded. Original text and source identity
-stay available for citations. Unsaved chats and task-agent journals are not
-imported.
+New saved user messages, human-facing assistant replies, and substantive saved
+task reports across projects feed the profile's knowledge base. Tool transport,
+internal control notes, injected task briefs, and replayed compaction windows
+are excluded. Deleted chats and tasks are excluded. Original text and source
+identity stay available for citations. Task reports remain attributed reports,
+not independent proof. Unsaved chats are not imported.
+
+Pages organize lasting concepts under short headings in a two-level folder tree.
+New material first considers existing pages and sections; related evidence
+updates the same page, while a distinct concept can receive a new page. Issue
+and work-session details remain linked evidence. Organization follows the actual
+subjects in your chats, without fixed project categories.
 
 The application process owns the background worker. Closing Memory or changing
 chats does not stop it. When codeaf stops, captured sources and checkpoints stay
 in the database; the next running codeaf process resumes unfinished work.
 
-The initial build drains bounded batches. Later updates combine saved turns into
+The initial build processes a fixed collection of admitted history before
+organizing it. Independent page drafts and refreshes can run two at a time;
+source updates and publication remain ordered. Large concepts stay on one page;
+writing processes their evidence in sequential parts, with at most 160 claims
+per initial part. Refresh parts use at most 80 claims and target 14,000 serialized
+claim characters; a single larger claim remains complete. Each refresh part has
+its own step and source-reading budget, so total work grows with the evidence.
+A final pass keeps the core overview concise by selecting reviewed paragraphs;
+the complete source detail stays in linked evidence rather than expanding the
+overview after every update.
+Later updates combine saved turns into
 normal model requests, without OpenRouter's Batch API. A batch becomes eligible
 after 30 seconds without new sources, when its oldest source reaches 120 seconds,
 or when its context limit is reached. These thresholds do not include provider

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // Provider wire types stay at this boundary. Invalid primitive/reference types
@@ -40,8 +41,8 @@ type modelConflict struct {
 	Reason string
 }
 type modelCheck struct {
-	ID, Reason          string
-	Supported, Grounded bool
+	ID, Reason                  string
+	Supported, Useful, Grounded bool
 }
 
 func validateCompilerResponse(role string, result document) error {
@@ -60,14 +61,31 @@ func validateCompilerResponse(role string, result document) error {
 			Aliases   []modelAlias
 		}{}
 		required = "claims"
-	case "discover":
+	case "discover", "organize_subjects":
 		target = &struct {
 			Subjects []struct {
-				Title, Scope   string
-				Aliases, Notes []string
+				Title, Scope, Purpose, CreationReason string
+				ExistingSubjectID                     string `json:"existing_subject_id"`
+				Aliases, Notes, Folder                []string
 			}
 		}{}
 		required = "subjects"
+	case "consolidate_subjects":
+		target = &struct {
+			Groups []struct {
+				Members, Folder       []string
+				Title, Scope, Purpose string
+			}
+		}{}
+		required = "groups"
+	case "curate_guide":
+		target = &struct {
+			Sections []struct {
+				Heading    string
+				Paragraphs []string
+			}
+		}{}
+		required = "sections"
 	case "understand":
 		target = &struct {
 			Sections  []modelSection
@@ -163,6 +181,75 @@ func validateCompilerResponse(role string, result document) error {
 		value, ok := result[required]
 		if !ok || value == nil {
 			return errors.New("knowledge provider result is missing its required collection")
+		}
+	}
+	return nil
+}
+
+func validateCompilerReferences(role string, payload, response document) error {
+	if role == "curate_guide" {
+		return validateGuideSelection(payload, response)
+	}
+	if role == "consolidate_subjects" {
+		catalog := index(items(payload["consolidation_catalog"]))
+		seen, identities := map[string]bool{}, map[string]bool{}
+		for _, group := range items(response["groups"]) {
+			title, scope := strings.TrimSpace(textValue(group["title"])), textValue(group["scope"])
+			members := stringsValue(group["members"])
+			if title == "" || scope == "" || len(members) == 0 || len(stringsValue(group["folder"])) > 2 {
+				return errors.New("knowledge consolidation requires a titled scoped group with members and at most two folder levels")
+			}
+			key := identity([]any{"subject", strings.ToLower(scope), strings.ToLower(title)})
+			if identities[key] {
+				return errors.New("knowledge consolidation returned duplicate canonical headings")
+			}
+			identities[key] = true
+			for _, id := range members {
+				member := catalog[id]
+				if member == nil || seen[id] {
+					return errors.New("knowledge consolidation must assign each inspected draft exactly once")
+				}
+				if textValue(member["scope"]) != scope {
+					return errors.New("knowledge consolidation cannot merge distinct scopes")
+				}
+				seen[id] = true
+			}
+		}
+		if len(seen) != len(catalog) {
+			return errors.New("knowledge consolidation must preserve the complete draft catalog")
+		}
+		return nil
+	}
+	if role != "discover" && role != "organize_subjects" {
+		return nil
+	}
+	existing, notes := index(items(payload["existing_subjects"])), index(items(payload["catalog"]))
+	for _, subject := range items(response["subjects"]) {
+		target := textValue(subject["existing_subject_id"])
+		if target != "" && existing[target] == nil {
+			return errors.New("knowledge organization referenced an uninspected existing page")
+		}
+		if flag(payload["reuse_only"]) && target == "" {
+			return errors.New("knowledge reuse-only organization proposed a new page")
+		}
+		for _, id := range stringsValue(subject["notes"]) {
+			if notes[id] == nil {
+				return errors.New("knowledge organization referenced an uninspected evidence note")
+			}
+		}
+	}
+	if role == "organize_subjects" {
+		before, after := []string{}, []string{}
+		for _, subject := range items(payload["proposed_subjects"]) {
+			before = append(before, stringsValue(subject["notes"])...)
+		}
+		for _, subject := range items(response["subjects"]) {
+			after = append(after, stringsValue(subject["notes"])...)
+		}
+		for _, id := range sortedUnique(before) {
+			if !contains(after, id) {
+				return fmt.Errorf("knowledge organization review must preserve planned evidence coverage (planned=%d reviewed=%d)", len(sortedUnique(before)), len(sortedUnique(after)))
+			}
 		}
 	}
 	return nil

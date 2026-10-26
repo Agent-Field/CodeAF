@@ -188,7 +188,7 @@ func TestStatusChecksPendingWithoutReadingArticleProjection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !status.Enabled || status.Pending != 1 || status.Pages != nil {
+	if !status.Enabled || status.Pending != 1 || status.Build.Sources != 1 || status.Pages != nil {
 		t.Fatalf("incorrect metadata status: %+v", status)
 	}
 	if _, err := v.Snapshot(); err == nil {

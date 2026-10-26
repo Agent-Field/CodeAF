@@ -6,11 +6,199 @@ import (
 	"strings"
 )
 
+type quoteSpan struct{ start, end int }
+
+type sourceClaimSpan struct {
+	claim string
+	quoteSpan
+}
+
+type sourceClaimSpans struct {
+	text   string
+	claims []sourceClaimSpan
+}
+
+// Every exact occurrence is retained because a repeated quote does not prove
+// which occurrence originally supported a claim.
+func exactQuoteSpans(body, quote string) []quoteSpan {
+	spans := []quoteSpan{}
+	if quote == "" {
+		return spans
+	}
+	for offset := 0; offset <= len(body)-len(quote); {
+		found := strings.Index(body[offset:], quote)
+		if found < 0 {
+			break
+		}
+		position := offset + found
+		start := runeLength(body[:position])
+		spans = append(spans, quoteSpan{start: start, end: start + runeLength(quote)})
+		offset = position + 1
+	}
+	return spans
+}
+
+// Dependencies describe overlapping evidence, not extra facts asserted by prose.
+func sourceClaimDependencies(vault document) map[string]sourceClaimSpans {
+	result := map[string]sourceClaimSpans{}
+	sources := object(vault["sources"])
+	for _, claim := range items(vault["claims"]) {
+		for _, evidence := range items(claim["evidence"]) {
+			source := textValue(evidence["source"])
+			entry := result[source]
+			entry.text = textValue(object(sources[source])["text"])
+			for _, span := range exactQuoteSpans(entry.text, textValue(evidence["quote"])) {
+				entry.claims = append(entry.claims, sourceClaimSpan{claim: textValue(claim["id"]), quoteSpan: span})
+			}
+			result[source] = entry
+		}
+	}
+	return result
+}
+
+func paragraphDependencies(paragraph document, sourceClaims map[string]sourceClaimSpans) []string {
+	refs := append([]string{}, stringsValue(paragraph["claims"])...)
+	if textValue(paragraph["derivation"]) == "subject_guide" {
+		// Recompute derived dependencies so older source-wide metadata cannot
+		// invalidate a disjoint cited span.
+		for _, evidence := range items(paragraph["evidence"]) {
+			source := sourceClaims[textValue(evidence["source"])]
+			quote := textValue(evidence["quote"])
+			spans := exactQuoteSpans(source.text, quote)
+			start, hasStart := evidence["span_start"]
+			end, hasEnd := evidence["span_end"]
+			if hasStart && hasEnd {
+				span := quoteSpan{start: int(number(start)), end: int(number(end))}
+				if span.start >= 0 && span.end > span.start && textSpan(source.text, span.start, span.end-span.start) == quote {
+					spans = []quoteSpan{span}
+				}
+			}
+			for _, claim := range source.claims {
+				for _, span := range spans {
+					if claim.start < span.end && span.start < claim.end {
+						refs = append(refs, claim.claim)
+						break
+					}
+				}
+			}
+		}
+	} else {
+		refs = append(refs, stringsValue(paragraph["depends_on"])...)
+	}
+	return sortedUnique(refs)
+}
+
+func learnerSeedClaim(claim, sources document) document {
+	item := choose(claim, "id", "text", "kind", "scope")
+	roles := []string{}
+	for _, evidence := range items(claim["evidence"]) {
+		source := object(sources[textValue(evidence["source"])])
+		if len(source) > 0 {
+			roles = append(roles, textValue(source["role"]))
+		}
+	}
+	item["source_roles"] = sortedUnique(roles)
+	return item
+}
+
 func learnSubject(vault, subject, previous document, model compilerModel, goal string, maxSteps, readBudget int) (document, error) {
+	if maxSteps < 1 || maxSteps > 8 || readBudget < 1000 || readBudget > 40000 {
+		return nil, fmt.Errorf("learner bounds: 1–8 steps and 1,000–40,000 source characters per evidence part")
+	}
+	subject = clone(subject)
+	subject["conflicts"] = activeSubjectConflicts(vault, subject)
+	sources := object(vault["sources"])
+	active := activeClaims(vault)
+	previousParts := object(previous["parts"])
+	groups := [][]string{}
+	covered := map[string]bool{}
+	for _, key := range stringsValue(previous["part_order"]) {
+		ids := stringsValue(object(previousParts[key])["claim_ids"])
+		if len(ids) != 80 {
+			continue
+		}
+		valid := true
+		for _, id := range ids {
+			if active[id] == nil || covered[id] || !contains(stringsValue(subject["claims"]), id) {
+				valid = false
+			}
+		}
+		if valid {
+			groups = append(groups, ids)
+			for _, id := range ids {
+				covered[id] = true
+			}
+		}
+	}
+	current := []string{}
+	size := 2
+	for _, claim := range items(vault["claims"]) {
+		id := textValue(claim["id"])
+		if textValue(claim["status"]) != "active" || covered[id] || !contains(stringsValue(subject["claims"]), id) {
+			continue
+		}
+		length := asciiJSONLength(learnerSeedClaim(claim, sources)) + 1
+		if len(current) > 0 && (len(current) == 80 || size+length > 14000) {
+			groups = append(groups, current)
+			current, size = []string{}, 2
+		}
+		current = append(current, id)
+		size += length
+	}
+	if len(current) > 0 || len(groups) == 0 {
+		groups = append(groups, current)
+	}
+	parts := document{}
+	considered := []string{}
+	partOrder := []string{}
+	sections, blocks, trace := []document{}, []document{}, []document{}
+	gaps := []string{}
+	fingerprints := []any{}
+	steps, characters := 0, 0
+	for _, ids := range groups {
+		considered = append(considered, ids...)
+		part := clone(subject)
+		part["claims"] = ids
+		part["conflicts"] = conflictsForClaims(items(subject["conflicts"]), ids)
+		part["section_context"] = "This is one evidence segment of the same canonical guide. Write only useful sections supported by this segment; omit repeated introductions."
+		partGoal := goal + " Write only sections supported by this evidence segment; other segments of this guide are processed separately."
+		key := identity(ids)
+		prior := object(previousParts[key])
+		if len(previousParts) == 0 && len(groups) == 1 {
+			prior = previous
+		}
+		guide, err := learnSubjectPart(vault, part, prior, model, partGoal, maxSteps, readBudget)
+		if err != nil {
+			return nil, err
+		}
+		guide["claim_ids"] = ids
+		parts[key] = guide
+		partOrder = append(partOrder, key)
+		fingerprints = append(fingerprints, []any{key, guide["input_hash"]})
+		sections = append(sections, items(guide["sections"])...)
+		blocks = unionDocuments(blocks, items(guide["blocks"]))
+		for _, entry := range items(guide["trace"]) {
+			trace = append(trace, merge(entry, document{"part": key}))
+		}
+		gaps = unique(append(gaps, stringsValue(guide["gaps"])...))
+		steps += int(number(guide["steps"]))
+		characters += int(number(guide["source_characters"]))
+	}
+	sections = mergeSubjectSections(sections)
+	state := "insufficient_evidence"
+	if len(sections) > 0 {
+		state = "reviewed"
+	}
+	return document{"subject": subject["id"], "input_hash": identity([]any{"learner-parts-1", fingerprints}), "state": state, "sections": sections, "considered_claims": sortedUnique(considered), "blocks": blocks, "trace": trace, "gaps": gaps[:min(5, len(gaps))], "source_characters": characters, "steps": steps, "parts": parts, "part_order": partOrder, "part_count": len(groups), "max_steps_per_part": maxSteps, "source_character_budget_per_part": readBudget, "limitation": "Read-only evidence parts; each part has its own step and source-read budget. Aggregate work scales with parts; same-model support review is not independent verification."}, nil
+}
+
+func learnSubjectPart(vault, subject, previous document, model compilerModel, goal string, maxSteps, readBudget int) (document, error) {
 	if maxSteps < 1 || maxSteps > 8 || readBudget < 1000 || readBudget > 40000 {
 		return nil, fmt.Errorf("learner bounds: 1–8 steps and 1,000–40,000 source characters")
 	}
 	sources := object(vault["sources"])
+	active := activeClaims(vault)
+	sourceClaims := sourceClaimDependencies(vault)
 	claims := map[string]document{}
 	orderedClaims := []document{}
 	seedIDs := []string{}
@@ -33,7 +221,7 @@ func learnSubject(vault, subject, previous document, model compilerModel, goal s
 		s := object(sources[id])
 		fingerprints = append(fingerprints, []any{id, identity(s["text"]), s["role"], s["ts"]})
 	}
-	digest := identity([]any{"learner-3", subject["id"], subject["title"], orderedClaims, goal, maxSteps, readBudget, fingerprints, items(subject["conflicts"])})
+	digest := identity([]any{"learner-5", subject["id"], subject["title"], orderedClaims, goal, maxSteps, readBudget, fingerprints, items(subject["conflicts"])})
 	cacheValid := previous["input_hash"] == digest
 	for _, b := range items(previous["blocks"]) {
 		s := object(sources[textValue(b["source"])])
@@ -41,23 +229,19 @@ func learnSubject(vault, subject, previous document, model compilerModel, goal s
 			cacheValid = false
 		}
 	}
+	for _, section := range items(previous["sections"]) {
+		for _, paragraph := range items(section["paragraphs"]) {
+			if !subset(paragraphDependencies(paragraph, sourceClaims), active) {
+				cacheValid = false
+			}
+		}
+	}
 	if cacheValid {
 		return clone(previous), nil
 	}
 	seed := []document{}
 	for _, c := range orderedClaims {
-		item := choose(c, "id", "text", "kind", "scope")
-		roles := []string{}
-		for _, ev := range items(c["evidence"]) {
-			s := object(sources[textValue(ev["source"])])
-			if len(s) > 0 {
-				roles = append(roles, textValue(s["role"]))
-			}
-		}
-		item["source_roles"] = sortedUnique(roles)
-		if asciiJSONLength(append(seed, item)) <= 14000 {
-			seed = append(seed, item)
-		}
+		seed = append(seed, learnerSeedClaim(c, sources))
 	}
 	shown := index(seed)
 	idx, e := newEvidenceIndex(nil, sources)
@@ -108,7 +292,7 @@ func learnSubject(vault, subject, previous document, model compilerModel, goal s
 		}
 	}
 	for step := 0; step < maxSteps; step++ {
-		response, err := model.call("learner_step", document{"subject": document{"id": subject["id"], "title": subject["title"], "scope": subject["scope"], "questions": questions, "conflicts": items(subject["conflicts"])}, "goal": goal, "claims": seed, "omitted_claims": len(claims) - len(seed), "source_catalog": catalog, "notes": notes, "blocks": blockOrder, "trace": trace, "remaining_steps": maxSteps - step, "remaining_source_characters": readBudget - used})
+		response, err := model.call("learner_step", document{"subject": document{"id": subject["id"], "title": subject["title"], "scope": subject["scope"], "questions": questions, "conflicts": items(subject["conflicts"]), "section_context": subject["section_context"]}, "goal": goal, "claims": seed, "omitted_claims": len(claims) - len(seed), "source_catalog": catalog, "notes": notes, "blocks": blockOrder, "trace": trace, "remaining_steps": maxSteps - step, "remaining_source_characters": readBudget - used})
 		if err != nil {
 			return nil, err
 		}
@@ -229,7 +413,10 @@ func learnSubject(vault, subject, previous document, model compilerModel, goal s
 				if flag(check["supported"]) && flag(check["useful"]) {
 					p["derivation"] = "subject_guide"
 					p["review"] = "separate same-model support and reference-usefulness checks"
-					p["depends_on"] = p["claims"]
+					p["depends_on"] = paragraphDependencies(p, sourceClaims)
+					if !subset(stringsValue(p["depends_on"]), active) {
+						continue
+					}
 					kept = append(kept, p)
 				}
 			}

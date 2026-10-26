@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -51,12 +52,13 @@ func TestKnowledgeRecallUsesCurrentCitationsAndHumanEdits(t *testing.T) {
 	}
 }
 
-func TestKnowledgeRefinesNextDirtySubjectOnLaterPass(t *testing.T) {
+func TestKnowledgeRefinesTwoDirtySubjectsWithoutUnchangedRetries(t *testing.T) {
 	v := knowledge.Open(t.TempDir())
 	if err := v.StartBuild(); err != nil {
 		t.Fatal(err)
 	}
 	guides := map[string]int{}
+	var guidesMu sync.Mutex
 	withKnowledgeModel(t, func(p map[string]any) map[string]any {
 		if messages, ok := p["messages"].([]any); ok {
 			claims := []any{}
@@ -78,7 +80,9 @@ func TestKnowledgeRefinesNextDirtySubjectOnLaterPass(t *testing.T) {
 		if p["remaining_steps"] != nil {
 			s := p["subject"].(map[string]any)
 			scope := s["scope"].(string)
+			guidesMu.Lock()
 			guides[scope]++
+			guidesMu.Unlock()
 			refs := []any{}
 			for _, raw := range p["claims"].([]any) {
 				refs = append(refs, raw.(map[string]any)["id"])
@@ -100,14 +104,8 @@ func TestKnowledgeRefinesNextDirtySubjectOnLaterPass(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if len(guides) != 1 {
-		t.Fatalf("expected one bounded guide job, got %v", guides)
-	}
-	if err := v.Flush(context.Background(), "fixture", true); err != nil {
-		t.Fatal(err)
-	}
 	if len(guides) != 2 {
-		t.Fatalf("second dirty subject was stranded: %v", guides)
+		t.Fatalf("expected two bounded guide jobs, got %v", guides)
 	}
 	if err := v.Flush(context.Background(), "fixture", true); err != nil {
 		t.Fatal(err)

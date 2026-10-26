@@ -72,9 +72,31 @@ func (v *Vault) compile(ctx context.Context, key string, force bool) (err error)
 	if err = v.compilerStatus(db, model.model, "", true); err != nil {
 		return err
 	}
-	vault, err := v.compilePending(db, "profile", model, force)
+	boundary, err := stateDocument(db, "organization_boundary")
 	if err != nil {
 		return err
+	}
+	through := int64(number(boundary["through"]))
+	if through == 0 {
+		if err = db.QueryRow("SELECT coalesce(max(rowid),0) FROM events WHERE partition='profile'").Scan(&through); err != nil {
+			return err
+		}
+		if err = saveState(db, "organization_boundary", document{"through": through}); err != nil {
+			return err
+		}
+	}
+	vault, err := v.compilePending(db, "profile", model, force, through)
+	if err != nil {
+		return err
+	}
+	// First-build organization needs the complete admitted history, rather than
+	// a tree whose page boundaries reflect extraction batches.
+	var pending int
+	if err = db.QueryRow("SELECT count(*) FROM events WHERE partition='profile' AND rowid<=? AND status IN ('pending','revisit')", through).Scan(&pending); err != nil {
+		return err
+	}
+	if pending > 0 {
+		return nil
 	}
 	projection, err := stateDocument(db, "projection")
 	if err != nil {
@@ -86,7 +108,8 @@ func (v *Vault) compile(ctx context.Context, key string, force bool) (err error)
 		return err
 	}
 	if textValue(projection["input_hash"]) == digest && !hasPendingRefinement(learning) {
-		return nil
+		_, err = db.Exec("DELETE FROM state WHERE key='organization_boundary'")
+		return err
 	}
 	previousLearning := clone(learning)
 	learning, err = extendLearning(vault, learning, model)
@@ -109,6 +132,10 @@ func (v *Vault) compile(ctx context.Context, key string, force bool) (err error)
 	if err != nil {
 		return err
 	}
+	published, err = curatePublishedGuides(published, model)
+	if err != nil {
+		return err
+	}
 	return v.commitPublication(published, learning, registry, digest)
 }
 func (v *Vault) compilerStatus(db *sql.DB, model, message string, needsUpdate bool) error {
@@ -118,7 +145,7 @@ func (v *Vault) compilerStatus(db *sql.DB, model, message string, needsUpdate bo
 	}
 	return saveState(db, "status", document{"model": model, "last_error": message, "needs_update": needsUpdate, "cost_usd": cost})
 }
-func (v *Vault) compilePending(db *sql.DB, partition string, model compilerModel, force bool) (document, error) {
+func (v *Vault) compilePending(db *sql.DB, partition string, model compilerModel, force bool, through int64) (document, error) {
 	previous := emptyCompilation()
 	revision := 0
 	var raw string
@@ -130,7 +157,14 @@ func (v *Vault) compilePending(db *sql.DB, partition string, model compilerModel
 	} else if err != sql.ErrNoRows {
 		return nil, err
 	}
-	rows, err := db.Query("SELECT e.id,e.payload,e.arrived,e.status,coalesce(w.length,0) FROM events e LEFT JOIN source_windows w ON w.partition=e.partition AND w.id=e.id WHERE e.partition=? AND e.status IN ('pending','revisit') ORDER BY e.arrived,e.id LIMIT 64", partition)
+	if repaired, changed := repairNoteIdentities(previous); changed {
+		if _, err = db.Exec("UPDATE publications SET payload=?,revision=revision+1 WHERE partition=?", mustJSON(repaired), partition); err != nil {
+			return nil, err
+		}
+		previous = repaired
+		revision++
+	}
+	rows, err := db.Query("SELECT e.id,e.payload,e.arrived,e.status,coalesce(w.length,0) FROM events e LEFT JOIN source_windows w ON w.partition=e.partition AND w.id=e.id WHERE e.partition=? AND e.rowid<=? AND e.status IN ('pending','revisit') ORDER BY e.arrived,e.id LIMIT 64", partition, through)
 	if err != nil {
 		return nil, err
 	}
