@@ -872,7 +872,17 @@ func (a *Agent) WatchTaskRoom(id uint64) (<-chan Event, func(), error) {
 func (a *Agent) TaskJournal(id uint64) string {
 	node := a.taskNode(id)
 	if node == nil {
-		return ""
+		graph := a.tasker()
+		if graph == nil {
+			return ""
+		}
+		if _, known := runRowOf(graph, id); !known {
+			return ""
+		}
+		a.mu.Lock()
+		place, session := a.familyPlace(nil), a.sessionID()
+		a.mu.Unlock()
+		return findWorkerHistory(taskJournalDir(place, session), id).journal
 	}
 	if path := node.journalPath(); path != "" {
 		return path
