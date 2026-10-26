@@ -45,6 +45,7 @@ var eventShapes = map[string]reflect.Type{
 	EventOrderAsking:       reflect.TypeFor[OrderFired](),
 	EventSettingsChanged:   reflect.TypeFor[SettingsChanged](),
 	EventProviderChanged:   reflect.TypeFor[ProviderChanged](),
+	EventDevicesChanged:    reflect.TypeFor[DevicesResult](),
 	EventLog:               reflect.TypeFor[Log](),
 
 	EventCollectionChanged: reflect.TypeFor[CollectionChanged](),
