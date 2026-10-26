@@ -1,5 +1,10 @@
 package clusterstate
 
+import (
+	"crypto/sha256"
+	"encoding/hex"
+)
+
 // Assignment routing is public; instructions, credentials and task descriptors
 // stay inside SealedPayload. A target is always selected by an authorized client.
 type Assign struct {
@@ -37,10 +42,29 @@ type CancelAssignment struct {
 }
 
 type Assignment struct {
-	Spec   Assign `json:"spec"`
-	Status string `json:"status"`
-	Fence  uint64 `json:"fence"`
-	Head   string `json:"head"`
+	Spec   Assign                  `json:"spec"`
+	Status string                  `json:"status"`
+	Fence  uint64                  `json:"fence"`
+	Head   string                  `json:"head"`
+	Claim  *AssignmentClaimReceipt `json:"claim,omitempty"`
+}
+
+// AssignmentClaimReceipt preserves a completed claim's reply without retaining
+// a live session or duplicating the assignment's immutable specification.
+type AssignmentClaimReceipt struct {
+	Digest  string   `json:"digest"`
+	View    CellView `json:"view"`
+	Now     int64    `json:"now"`
+	Version uint64   `json:"version"`
+}
+
+func (a Assignment) claimResult() Result {
+	r := a.Claim
+	a.Claim = nil
+	a.Status = "claimed"
+	a.Fence = r.View.Cell.Lease.Fence
+	a.Head = r.View.Cell.Head
+	return Result{Schema: SchemaVersion, Code: OK, Now: r.Now, Version: r.Version, View: &r.View, Assignment: &a}
 }
 
 func (a Assignment) Ref() AssignmentRef {
@@ -60,6 +84,29 @@ type WorkerHold struct {
 }
 
 func AssignmentKey(id string) RecordKey { return RecordKey{"state", "assignment/" + segment(id)} }
+
+// WorkerAssignmentSession binds a saved request to one assignment attempt.
+func WorkerAssignmentSession(kind string, ref AssignmentRef) string {
+	b, _ := Encode(ref)
+	h := sha256.Sum256(b)
+	return "worker-" + kind + "-" + hex.EncodeToString(h[:])
+}
+
+// Assignment-owned retry rows let replacement and cancellation release the
+// previous claimant without discovering its process or session name.
+func assignmentSessionKey(id string) RecordKey {
+	return RecordKey{"sessions", "assignment/" + segment(id)}
+}
+
+func workerAssignmentSession(c Command) bool {
+	kind := "claim"
+	if c.Change.FinishAssignment != nil {
+		kind = "finish"
+	} else if c.Change.ClaimAssignment == nil {
+		return false
+	}
+	return c.Session == WorkerAssignmentSession(kind, assignmentRef(c.Change))
+}
 func AssignmentSlotKey(cell string) RecordKey {
 	return RecordKey{"state", "assignment-slot/" + segment(cell)}
 }
@@ -91,7 +138,7 @@ func assignmentDependencies(c Command) []RecordKey {
 	var keys []RecordKey
 	if assignmentMutation(c.Change) {
 		r := assignmentRef(c.Change)
-		keys = append(keys, AssignmentKey(r.ID), AssignmentSlotKey(r.Cell), CellKey(r.Cell), WorkerKey(r.Target), AuthorityKey(r.Target), DeviceKey(r.Target), WorkerHoldKey(r.Target, r.Cell))
+		keys = append(keys, AssignmentKey(r.ID), AssignmentSlotKey(r.Cell), CellKey(r.Cell), WorkerKey(r.Target), AuthorityKey(r.Target), DeviceKey(r.Target), WorkerHoldKey(r.Target, r.Cell), assignmentSessionKey(r.ID))
 		v := c.Change.Assign
 		if v == nil {
 			v = c.Change.Reassign
@@ -234,6 +281,11 @@ func applyAssignment(c Command, now int64, identity IdentityRec, rows map[Record
 		v := m.FinishAssignment
 		if c.Actor != r.Target || c.WorkerIncarnation != r.Incarnation {
 			return Unauthorized
+		}
+		// Completion is retained on the assignment after its retry row is freed.
+		if workerAssignmentSession(c) && a.Status == "finished" && a.Fence == v.Fence && a.Head == v.Head {
+			result.Assignment = &a
+			return OK
 		}
 		if a.Status != "claimed" || !slot.Active {
 			return Conflict

@@ -54,8 +54,8 @@ test('R18 R19 R21 assignment claims, delayed decisions and uploaded heads match 
   const r=directoryEvaluator(runtime,cluster,8*1024*1024)(raw,(ns,key)=>base.find(r=>r.namespace===ns&&r.key===key)?.data??read(ns,key),{...app,size:app.size+(base.length?initialSize:0)});
   results[i].push(decodeCanonical(dec.decode(r.result)));return {...r,writes:[...base,...r.writes]};
  };
- const command=(change,{signer='owner',inc=0n,now=1000}={})=>{
-  const actor=signer==='worker'?worker:signer, session='req-'+(++serial), sequence='1';
+ const command=(change,{signer='owner',inc=0n,now=1000,session='req-'+(++serial)}={})=>{
+  const actor=signer==='worker'?worker:signer, sequence='1';
   const fields={cluster,actor,session,sequence,change,...(inc?{worker_incarnation:String(inc)}:{})};
   const c={schema:1,...fields,request_digest:sha(bytes(fields)),now,signature:null};
   c.signature=sign(null,Buffer.concat([Buffer.from('codeaf.directory.command.v1\0'),bytes(c)]),keys[signer].privateKey).toString('base64');return bytes(c);
@@ -103,8 +103,25 @@ test('R18 R19 R21 assignment claims, delayed decisions and uploaded heads match 
   await send({finish_assignment:{ref:ref(first),fence:'2',head:'result'}},{signer:'worker',inc:1n});
   const parent=actors[leader()].store.read('state','cell/'+segment('parent'));
   const p=decodeCanonical(dec.decode(parent));assert.equal(p.head,'parent-head');assert.equal(p.lease.fence,'2');
+  // r3.5
+  const released={...spec('child-two'),id:'released-run'};
+  await send({assign:released});
+  const counts=a=>decodeCanonical(dec.decode(a.store.read('sessions','counts')));
+  const beforeRelease=counts(actors[leader()]);
+  const scoped=(kind,change)=>command(change,{signer:'worker',inc:1n,session:'worker-'+kind+'-'+sha(bytes(ref(released)))});
+  const releasedClaim=scoped('claim',{claim_assignment:{ref:ref(released),expect:released.expect}});
+  const releaseClaimed=await submit(releasedClaim);assert.equal(releaseClaimed.code,'ok');
+  assert.deepEqual(await submit(releasedClaim),releaseClaimed);
+  const releasedFinish=scoped('finish',{finish_assignment:{ref:ref(released),fence:releaseClaimed.view.cell.lease.fence,head:releaseClaimed.view.cell.head}});
+  assert.equal((await submit(releasedFinish)).code,'ok');
+  assert.equal((await submit(releasedFinish)).code,'ok');
+  const releasedCell=actors[leader()].store.read('state','cell/'+segment(released.cell));
+  assert.deepEqual(await submit(releasedClaim),releaseClaimed);
+  assert.deepEqual(actors[leader()].store.read('state','cell/'+segment(released.cell)),releasedCell);
+  for(const a of actors)assert.deepEqual(counts(a),beforeRelease);
   for(const a of actors)await a.checkpoint();
   const reopened=(leader()+1)%3;await actors[reopened].close();actors[reopened]=new MemberActor(hosts[reopened],runtime,evaluator(reopened));accept(await actors[reopened].init(configs[reopened]));await pump();
+  assert.deepEqual(counts(actors[reopened]),beforeRelease);
   assert.deepEqual(await submit(claim),claimed);
   assert.equal((await readRun()).assignment.status,'finished');
   await send({revoke:{device:worker}});assert.equal((await readRun()).code,'revoked');

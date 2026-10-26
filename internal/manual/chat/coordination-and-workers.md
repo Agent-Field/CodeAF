@@ -101,6 +101,8 @@ Worker setup and assignment execution are not available as a terminal command ye
 
 No. The worker saves its claim request before sending it and records an execution intent before invoking tools. A lost coordination reply can retry that same request, retaining its original fence. Once execution may have started, reopening keeps the records and reports `this work may be incomplete; its saved records have been kept`. It never invokes that attempt again automatically. A recorded finish can retry its coordination acknowledgment without running tools.
 
+Finished, cancelled and reassigned worker attempts free their retry space for later work and your own leadership requests. Retrying an old assignment cannot start that work again.
+
 Reassignment changes the run revision and requires a new conditional claim. The replacement can recover saved records, but the scripted adapter refuses automatic execution of a reassigned run. Missing or incomplete calls are not instructions to execute them. Cancellation prevents future claims; stopping a claimed assignment does not cancel an already running shell process. Another take changes the fence and blocks the displaced holder from publishing. Already downloaded bytes and uploaded frames stay retained.
 
 ## Why can an older computer list chats but not continue a chat that is still running?

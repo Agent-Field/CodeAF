@@ -186,9 +186,7 @@ func (w WorkerAdapter) Run(ctx context.Context, a cs.Assignment, execute func(co
 	return errors.Join(saveWorkerAttempt(path, attempt), saveWorkerAttempt(cellPath, attempt))
 }
 func (w WorkerAdapter) command(kind string, ref cs.AssignmentRef, m cs.Mutation) (cs.Command, error) {
-	b, _ := cs.Encode(ref)
-	h := sha256.Sum256(b)
-	c := cs.Command{Schema: cs.SchemaVersion, Cluster: w.Credential.Certificate.Cluster, Actor: w.Credential.ID(), WorkerIncarnation: w.Incarnation, Session: "worker-" + kind + "-" + hex.EncodeToString(h[:]), Sequence: 1, Now: w.Now(), Change: m}
+	c := cs.Command{Schema: cs.SchemaVersion, Cluster: w.Credential.Certificate.Cluster, Actor: w.Credential.ID(), WorkerIncarnation: w.Incarnation, Session: cs.WorkerAssignmentSession(kind, ref), Sequence: 1, Now: w.Now(), Change: m}
 	var err error
 	c.RequestDigest, err = cs.Digest(c)
 	if err != nil {

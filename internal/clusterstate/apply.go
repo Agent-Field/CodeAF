@@ -428,7 +428,25 @@ func evaluateCommand(c Command, meta ApplicationMeta, read ReadRecord, paged boo
 	}
 	var last session
 	var counts sessionCounts
-	if decode(SessionKey(c.Actor, c.Session), &last) != nil || decode(SessionsKey(), &counts) != nil {
+	sessionKey := SessionKey(c.Actor, c.Session)
+	scopedRetry := auth.Worker != nil && workerAssignmentSession(c)
+	persistRetry := true
+	if scopedRetry {
+		// Only a live claim needs a retry session. Completed assignments keep
+		// their claim receipt and acknowledge matching finishes themselves.
+		var a Assignment
+		r := assignmentRef(c.Change)
+		matching := rows[AssignmentKey(r.ID)] != nil && Decode(rows[AssignmentKey(r.ID)], &a) == nil && a.Ref() == r
+		if matching && c.Change.ClaimAssignment != nil && a.Status == "finished" && a.Claim != nil && a.Claim.Digest == c.RequestDigest {
+			out.Result = a.claimResult()
+			return out, nil
+		}
+		persistRetry = c.Change.ClaimAssignment != nil && matching && (a.Status == "pending" || a.Status == "claimed")
+		if c.Change.ClaimAssignment != nil {
+			sessionKey = assignmentSessionKey(r.ID)
+		}
+	}
+	if decode(sessionKey, &last) != nil || decode(SessionsKey(), &counts) != nil {
 		return out, ErrDependency
 	}
 	originalCounts := counts
@@ -436,7 +454,7 @@ func evaluateCommand(c Command, meta ApplicationMeta, read ReadRecord, paged boo
 	if err != nil {
 		return out, err
 	}
-	known := c.V1 == nil && rows[SessionKey(c.Actor, c.Session)] != nil
+	known := c.V1 == nil && rows[sessionKey] != nil
 	refuse := func(code Code) (Evaluation, error) { out.Result.Code = code; return out, nil }
 	if known && (last.Closed || c.Sequence < last.Sequence || c.Sequence == last.Sequence && c.RequestDigest != last.Digest) {
 		return refuse(Conflict)
@@ -448,7 +466,7 @@ func evaluateCommand(c Command, meta ApplicationMeta, read ReadRecord, paged boo
 	if !service && c.V1 == nil && (!known && (c.Sequence != 1 || c.Ack != 0) || known && (last.Sequence == ^uint64(0) || c.Sequence != last.Sequence+1 || c.Ack != last.Sequence)) {
 		return refuse(Conflict)
 	}
-	if !service && c.V1 == nil && !known && (counts.Live >= MaxLiveSessions || counts.Retained >= MaxRetainedSessions) {
+	if !service && c.V1 == nil && persistRetry && !known && (counts.Live >= MaxLiveSessions || counts.Retained >= MaxRetainedSessions) {
 		return refuse(Capacity)
 	}
 	if c.Now < 0 || c.Now > int64(MaxSafeInteger)-LeaseTTLMillis {
@@ -555,13 +573,6 @@ func evaluateCommand(c Command, meta ApplicationMeta, read ReadRecord, paged boo
 	if rows[QuiescenceKey()] != nil && c.Change.PrepareQuiescence == nil {
 		put(QuiescenceKey(), Quiescence{})
 	}
-	if !known {
-		counts.Live++
-		counts.Retained++
-	}
-	if c.Change.CloseSession != nil {
-		counts.Live--
-	}
 	if c.Change.InitMembership != nil && code == OK {
 		for k, b := range writes {
 			counts.Initialization += RecordBytes(k, b)
@@ -570,14 +581,55 @@ func evaluateCommand(c Command, meta ApplicationMeta, read ReadRecord, paged boo
 			}
 		}
 	}
+	initialization := counts.Initialization
 	save := func() {
 		if service || c.V1 != nil {
 			return
 		}
-		put(SessionKey(c.Actor, c.Session), session{Sequence: c.Sequence, Digest: c.RequestDigest, Closed: c.Change.CloseSession != nil, Result: out.Result})
-		sessionKey := SessionKey(c.Actor, c.Session)
-		oldCredit := bookkeepingCost(sessionKey, rows[sessionKey]) + bookkeepingCost(SessionsKey(), rows[SessionsKey()])
-		base := originalCounts.Bookkeeping - min(originalCounts.Bookkeeping, oldCredit) + bookkeepingCost(sessionKey, writes[sessionKey])
+		counts = originalCounts
+		counts.Initialization = initialization
+		if persistRetry {
+			put(sessionKey, session{Sequence: c.Sequence, Digest: c.RequestDigest, Closed: c.Change.CloseSession != nil, Result: out.Result})
+		}
+		if out.Result.Code == OK && (c.Change.FinishAssignment != nil || c.Change.CancelAssignment != nil || c.Change.Reassign != nil) {
+			k := assignmentSessionKey(assignmentRef(c.Change).ID)
+			if rows[k] != nil {
+				if c.Change.FinishAssignment != nil {
+					var claim session
+					var a Assignment
+					_ = Decode(rows[k], &claim)
+					_ = Decode(writes[AssignmentKey(assignmentRef(c.Change).ID)], &a)
+					if claim.Result.Code == OK && claim.Result.View != nil {
+						a.Claim = &AssignmentClaimReceipt{Digest: claim.Digest, View: *claim.Result.View, Now: claim.Result.Now, Version: claim.Result.Version}
+						put(AssignmentKey(a.Spec.ID), a)
+					}
+				}
+				writes[k] = nil
+			}
+		}
+		base := originalCounts.Bookkeeping - min(originalCounts.Bookkeeping, bookkeepingCost(SessionsKey(), rows[SessionsKey()]))
+		for k, b := range writes {
+			if k.Namespace != "sessions" || k == SessionsKey() {
+				continue
+			}
+			var old, next session
+			if rows[k] != nil {
+				_ = Decode(rows[k], &old)
+				counts.Retained--
+				if !old.Closed {
+					counts.Live--
+				}
+			}
+			if b != nil {
+				_ = Decode(b, &next)
+				counts.Retained++
+				if !next.Closed {
+					counts.Live++
+				}
+			}
+			base -= min(base, bookkeepingCost(k, rows[k]))
+			base += bookkeepingCost(k, b)
+		}
 		for range 8 {
 			put(SessionsKey(), counts)
 			next := base + bookkeepingCost(SessionsKey(), writes[SessionsKey()])
@@ -593,8 +645,11 @@ func evaluateCommand(c Command, meta ApplicationMeta, read ReadRecord, paged boo
 		size := meta.Bytes
 		budget := 0
 		for k, b := range writes {
-			cost := RecordBytes(k, b)
-			budget += int(cost)
+			cost := uint64(0)
+			if b != nil {
+				cost = RecordBytes(k, b)
+			}
+			budget += int(RecordBytes(k, b))
 			if old := rows[k]; old != nil {
 				oldSize := RecordBytes(k, old)
 				if oldSize > size {
@@ -642,7 +697,7 @@ func evaluateCommand(c Command, meta ApplicationMeta, read ReadRecord, paged boo
 		writes = map[RecordKey][]byte{}
 		out.Version = meta.Version
 		out.Result = Result{Schema: SchemaVersion, Code: Capacity, Now: out.Now, Version: meta.Version}
-		counts.Initialization = originalCounts.Initialization
+		initialization = originalCounts.Initialization
 		save()
 		if ok, err := fits(); err != nil {
 			return out, err
@@ -651,7 +706,7 @@ func evaluateCommand(c Command, meta ApplicationMeta, read ReadRecord, paged boo
 		}
 	}
 	for k, b := range writes {
-		out.Writes = append(out.Writes, RecordWrite{RecordKey: k, Data: b})
+		out.Writes = append(out.Writes, RecordWrite{RecordKey: k, Data: b, Delete: b == nil})
 	}
 	sort.Slice(out.Writes, func(i, j int) bool {
 		a, b := out.Writes[i].RecordKey, out.Writes[j].RecordKey
