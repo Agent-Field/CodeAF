@@ -218,7 +218,8 @@ func (v *Vault) Status() (Snapshot, error) {
 func (v *Vault) status(db *sql.DB) (Snapshot, error) {
 	snapshot := Snapshot{Model: Model}
 	var configRaw, statusRaw, jobRaw, revisionRaw string
-	err := db.QueryRow(`SELECT coalesce((SELECT payload FROM state WHERE key='config'),'{}'),coalesce((SELECT payload FROM state WHERE key='status'),'{}'),coalesce((SELECT payload FROM state WHERE key='job'),'{}'),coalesce((SELECT payload FROM state WHERE key='revision'),'{}'),(SELECT count(*) FROM events WHERE partition='profile' AND status IN ('pending','revisit'))`).Scan(&configRaw, &statusRaw, &jobRaw, &revisionRaw, &snapshot.Pending)
+	var totalSources int
+	err := db.QueryRow(`SELECT coalesce((SELECT payload FROM state WHERE key='config'),'{}'),coalesce((SELECT payload FROM state WHERE key='status'),'{}'),coalesce((SELECT payload FROM state WHERE key='job'),'{}'),coalesce((SELECT payload FROM state WHERE key='revision'),'{}'),(SELECT count(*) FROM events WHERE partition='profile' AND status IN ('pending','revisit')),(SELECT count(*) FROM events WHERE partition='profile')`).Scan(&configRaw, &statusRaw, &jobRaw, &revisionRaw, &snapshot.Pending, &totalSources)
 	if err != nil {
 		return snapshot, err
 	}
@@ -242,7 +243,7 @@ func (v *Vault) status(db *sql.DB) (Snapshot, error) {
 	snapshot.NeedsUpdate = flag(status["needs_update"])
 	snapshot.CostUSD = number(status["cost_usd"])
 	snapshot.Model = knowledgeModel(v.profile)
-	snapshot.Build = BuildStatus{Phase: BuildPhase(textValue(job["phase"])), Chats: int(number(job["chats"])), Imported: int(number(job["imported"])), Sources: int(number(job["sources"])), Problems: int(number(job["problems"])), Error: textValue(job["error"])}
+	snapshot.Build = BuildStatus{Phase: BuildPhase(textValue(job["phase"])), Chats: int(number(job["chats"])), Imported: int(number(job["imported"])), Sources: totalSources, Problems: int(number(job["problems"])), Error: textValue(job["error"])}
 	return snapshot, nil
 }
 func readPages(db *sql.DB) ([]Page, error) {

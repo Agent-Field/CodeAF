@@ -14,6 +14,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+const knowledgeBuildLabel = "› Build knowledge base"
+
 // Knowledge keeps the existing saved-memory controls intact. The runtime owns
 // consent and compilation; this place only holds a reading and navigation state.
 type knowledgePlace struct {
@@ -510,21 +512,21 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 	}
 	var rows []placeRow
 	add := func(s string) { rows = append(rows, placeRow{text: " " + fit(s, max(1, width-2)), hit: -1}) }
-	add(a.pal.muted("Knowledge"))
+	add(a.pal.bold(a.pal.muted("Knowledge")))
 	if p.reading.Enabled {
-		stats := fmt.Sprintf("%d pages", len(p.reading.Pages))
+		stats := a.pal.data(fmt.Sprint(len(p.reading.Pages))) + a.pal.dim(" pages")
 		if p.reading.Pending > 0 {
-			stats += fmt.Sprintf(" · %d queued", p.reading.Pending)
+			stats += a.pal.dim(" · ") + a.pal.data(fmt.Sprint(p.reading.Pending)) + a.pal.dim(" queued")
 		}
 		if p.reading.CostUSD > 0 {
-			stats += fmt.Sprintf(" · $%.4f", p.reading.CostUSD)
+			stats += a.pal.dim(" · ") + a.pal.money(fmt.Sprintf("$%.4f", p.reading.CostUSD))
 		}
-		add(a.pal.dim(stats))
+		add(stats)
 	}
 	label := "Saved memory"
-	switchInk := taskLinkInk(a.pal, label)
+	switchInk := a.pal.muted(label)
 	if p.hoverLink == "@switch" {
-		switchInk = taskLinkHotInk(a.pal, label)
+		switchInk = a.pal.underline(switchInk)
 	}
 	add(switchInk + a.pal.dim(a.chords.say(" · alt+u")))
 	rows[len(rows)-1].hit = knowledgeHit{tree: -1, links: []knowledgeCellLink{{1, 1 + ansi.StringWidth(label), "@switch"}}}
@@ -542,7 +544,11 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 			add(a.pal.bad(p.reading.Build.Error))
 		}
 		add("")
-		add(a.pal.accent("› Build knowledge base"))
+		build := a.pal.bold(a.pal.ink(knowledgeBuildLabel))
+		if p.hoverLink == "@build" {
+			build = a.pal.cursor(a.pal.bold(a.pal.accent(knowledgeBuildLabel)), ansi.StringWidth(knowledgeBuildLabel))
+		}
+		add(build)
 		rows[len(rows)-1].hit = knowledgeHit{tree: -1, create: true}
 		add("")
 		for _, line := range wrapText("Build knowledge from all saved chats across projects. This runs in the background; you can keep chatting. Saved memory holds your preferences and rules.", max(1, width-4)) {
@@ -554,10 +560,29 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 		}
 		return rows
 	}
+	progressWidth := max(1, width-2)
+	if !narrow && len(p.reading.Pages) > 0 {
+		progressWidth = left
+	}
 	if p.reading.Build.Phase == knowledge.BuildRunning {
-		add(a.pal.dim("Building knowledge base… You can keep chatting."))
+		for _, line := range wrap(a.pal.ink("Building knowledge base…")+a.pal.dim(" You can keep chatting."), progressWidth) {
+			add(line)
+		}
 		if p.reading.Build.Chats > 0 {
-			add(a.pal.dim(fmt.Sprintf("%d of %d chats imported · %d sources pending", p.reading.Build.Imported, p.reading.Build.Chats, p.reading.Pending)))
+			for _, line := range wrap(knowledgeProgress("Chats imported", p.reading.Build.Imported, p.reading.Build.Chats, a.pal), progressWidth) {
+				add(line)
+			}
+		}
+		if p.reading.Build.Sources > 0 {
+			processed := p.reading.Build.Sources - p.reading.Pending
+			for _, line := range wrap(knowledgeProgress("Sources processed", processed, p.reading.Build.Sources, a.pal), progressWidth) {
+				add(line)
+			}
+			if p.reading.Pending == 0 {
+				for _, line := range wrap(a.pal.ink("Organizing knowledge pages…"), progressWidth) {
+					add(line)
+				}
+			}
 		}
 	} else if p.reading.Build.Phase == knowledge.BuildFailed || p.reading.Build.Phase == knowledge.BuildPartial {
 		add(a.pal.bad("Knowledge build paused"))
@@ -579,7 +604,11 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 		add("New completed chats will appear here after a background update.")
 		return rows
 	}
-	add(a.pal.dim("Search: ") + p.filter.String())
+	search := a.pal.dim("Search: ") + p.filter.String()
+	if p.hoverLink == "@search" {
+		search = a.pal.cursor(search, left)
+	}
+	add(search)
 	rows[len(rows)-1].hit = knowledgeHit{tree: -1, links: []knowledgeCellLink{{1, max(2, width-2), "@search"}}}
 	controls := []struct{ label, id string }{{"Collapse all", "@collapse"}, {"Expand all", "@expand"}}
 	var controlText strings.Builder
@@ -790,6 +819,13 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 	return rows
 }
 
+// Stage percentages count completed items, not elapsed time or overall build work.
+func knowledgeProgress(label string, done, total int, pal palette) string {
+	done = max(0, min(done, total))
+	return pal.dim(label+": ") + pal.data(fmt.Sprint(done)) + pal.dim(" of ") +
+		pal.data(fmt.Sprint(total)) + pal.dim(" · ") + pal.data(fmt.Sprintf("%d%%", done*100/total))
+}
+
 func knowledgeShift(links []knowledgeCellLink, by int) []knowledgeCellLink {
 	out := append([]knowledgeCellLink(nil), links...)
 	for i := range out {
@@ -812,7 +848,7 @@ func (placeMemory) pressAt(a *app, x, y int) (tea.Cmd, bool) {
 		return nil, true
 	}
 	if hit, ok := hits[y].(knowledgeHit); ok {
-		if hit.create && !p.reading.Enabled && x >= 1 && x < 1+ansi.StringWidth("› Build knowledge base") {
+		if hit.create && !p.reading.Enabled && x >= 1 && x < 1+ansi.StringWidth(knowledgeBuildLabel) {
 			return a.knowledgeRead(true), true
 		}
 		for _, link := range hit.links {
@@ -864,6 +900,9 @@ func (placeMemory) hoverAt(a *app, x, y int) bool {
 	next := ""
 	if y >= 0 && y < len(hits) {
 		if hit, ok := hits[y].(knowledgeHit); ok {
+			if hit.create && x >= 1 && x < 1+ansi.StringWidth(knowledgeBuildLabel) {
+				next = "@build"
+			}
 			left := max(24, min(42, a.width/3))
 			if (a.width < 85 || x <= left) && hit.tree >= 0 && hit.tree < len(a.kb.targets) {
 				moved = a.selectPlaceRow(&a.kb.cursor, hit.tree)
