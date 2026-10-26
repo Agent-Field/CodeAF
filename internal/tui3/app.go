@@ -889,6 +889,7 @@ type app struct {
 	conversationRequest uint64
 	conversationOpening bool
 	conversationPreview *conversationPreview
+	openingHomeDraft    composerState
 	homeReading         homeReading
 	homeReadingPending  bool
 	hostReplayLoading   bool
@@ -4587,10 +4588,36 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if a.conversationOpening {
 			previewing := a.conversationPreview != nil
-			a.cancelConversationOpening()
-			// The preview has a different layout from the page beneath it. The
-			// cancelling click must not activate that page's old hit targets.
 			if previewing {
+				mouse := msg.Mouse()
+				// Body clicks do not withdraw the message already submitted.
+				// The real header remains available for explicit navigation.
+				if mouse.Button != tea.MouseLeft || (!a.navAt(mouse.Y) && mouse.Y != tabStripRow) {
+					return a, nil
+				}
+			}
+			a.cancelConversationOpening()
+			if previewing {
+				// Home is rebuilt on navigation; keep its cancelled submission
+				// separately from the conversation we are about to select.
+				if a.at(pageHome) {
+					draft := composerState{box: a.home.box, chips: a.home.chips}
+					defer func() {
+						if !a.at(pageHome) {
+							a.openingHomeDraft = draft
+						}
+					}()
+				}
+				mouse := msg.Mouse()
+				if cmd, took := a.navPress(mouse.X, mouse.Y); took {
+					return a, cmd
+				}
+				if hit, ok := a.tabAt(mouse.X, mouse.Y); ok && mouse.Y == tabStripRow && (hit.kind == tabHere || hit.kind == tabOther) {
+					a.closeHome()
+				}
+				if cmd, took := a.tabPress(mouse.X, mouse.Y); took {
+					return a, cmd
+				}
 				return a, nil
 			}
 		}
