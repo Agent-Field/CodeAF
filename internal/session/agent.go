@@ -3986,6 +3986,8 @@ func (a *Agent) enqueueSteering(text string) {
 func (a *Agent) enqueueSettleSteering(text string, ceiling int) {
 	note := wakeNote(text)
 	note.answer = true
+	// Keep the answer mark through the turn's final drain.
+	note.batch = false
 	note.settle, note.settleCeiling = true, ceiling
 	a.enqueueNote(note)
 }

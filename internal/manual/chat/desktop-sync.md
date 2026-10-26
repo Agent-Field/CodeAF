@@ -28,8 +28,10 @@ terminal: permissions, choices, proposals, intake forms, clarifications,
 replacement answers and `You decide`. The turn can continue on your answer;
 its tools still refuse to act here after the chat moved. A new message or retry
 still refuses. Asking back about an open choice reaches that chat's model and
-leaves the choice open. Changing a crew member's brief updates crew state without
-opening its chat; any resulting wake meets the session's ownership check.
+leaves the choice open. An ask-back or `You decide` accepted while the final
+reply is arriving still reaches the model after that reply finishes.
+Changing a crew member's brief updates crew state without opening its chat;
+any resulting wake meets the session's ownership check.
 
 Admission reads the location and viewer facts already known here. It does not
 start or wait for sync startup, saving files or a relay read, and does not open

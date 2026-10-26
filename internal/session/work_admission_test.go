@@ -419,3 +419,115 @@ func TestC1SessionViewerAcceptsAnAskBackAfterTheAskingTurnEnds(t *testing.T) {
 		t.Fatal("an unrelated wake bypassed ownership after an ask-back")
 	}
 }
+
+// C1's answer amendment: an ask-back or hand-decision accepted during the
+// final request must reach a later model request even if the chat moved.
+// Ordinary wakes and messages remain new work before and after that answer.
+func TestC1SessionViewerAcceptsAnswersDuringTheFinalRequest(t *testing.T) {
+	for _, kind := range []string{"ask-back", "hand-decision"} {
+		t.Run(kind, func(t *testing.T) {
+			journal := filepath.Join(t.TempDir(), "session.jsonl")
+			const title = "Parser port"
+			if kind == "hand-decision" {
+				// Recover a real pending decision from disk without running a task.
+				writeCheckpoint(t, taskCheckpointPath(journal), taskDocument{
+					Type: taskDocumentType, Version: taskFileVersion, Seq: 1,
+					Nodes: []taskRecord{{
+						ID: 1, Title: title, Brief: "port it", Acceptance: "it parses",
+						State: TaskUnverified, Merge: mergeInPlace, Noted: true,
+						Report: "the checker could not verify the parser",
+					}},
+				})
+			}
+			var viewer atomic.Bool
+			refusal := &executor.WorkRefusal{Line: "laptop continued this chat"}
+			entered, release := make(chan struct{}), make(chan struct{})
+			received := make(chan string, 1)
+			script := &scriptedCompleter{steps: []step{
+				func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+					close(entered)
+					select {
+					case <-release:
+						return textResponse("Ready."), nil
+					case <-ctx.Done():
+						return nil, ctx.Err()
+					}
+				},
+				func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+					received <- userTextIn(messages)
+					return textResponse("Answer received."), nil
+				},
+			}}
+			if kind == "ask-back" {
+				script.steps = append([]step{func(context.Context, []ai.Message) (*ai.Response, error) {
+					return toolResponse("question", "ask", askNotWaiting), nil
+				}}, script.steps...)
+			}
+			agent, _ := newTestAgent(t, script, func(cfg *Config) {
+				cfg.SessionFile = journal
+				cfg.Interactive, cfg.AskConsent = true, true
+				cfg.Seat = executor.Gated(executor.Host, func() error {
+					if viewer.Load() {
+						return refusal
+					}
+					return nil
+				})
+			})
+			_, stopQuestions := agent.WatchQuestions()
+			defer stopQuestions()
+			wakes, stopWakes := agent.WatchWakes()
+			defer stopWakes()
+			opening := mustSubmit(t, agent, "start here")
+			select {
+			case <-entered:
+			case <-time.After(10 * time.Second):
+				t.Fatal("the final request did not reach the model")
+			}
+			viewer.Store(true)
+			const words = "what does the second option mean?"
+			want := []string{handOverLead, title, "settle it yourself with tasks id 1"}
+			if kind == "ask-back" {
+				q := waitForOneQuestion(t, agent)
+				if err := agent.ResolveQuestion(Answer{Kind: q.Kind, ID: q.ID, AskedBack: []Exchange{{Asked: words}}}); err != nil {
+					t.Fatal(err)
+				}
+				want = []string{askBackNoteLead, words}
+			} else if err := agent.HandUnverifiedToModel(1); err != nil {
+				t.Fatal(err)
+			}
+			refuseNewWork := func() {
+				t.Helper()
+				before := agent.UserMessageCount()
+				if agent.enqueueNote(wakeNote("unrelated new wake")) {
+					t.Fatal("an unrelated wake bypassed ownership")
+				}
+				if _, err := agent.Submit(context.Background(), "unrelated new message"); !errors.Is(err, refusal) {
+					t.Fatalf("a new message escaped ownership: %v", err)
+				}
+				if agent.UserMessageCount() != before {
+					t.Fatal("refused work wrote a user entry")
+				}
+			}
+			refuseNewWork()
+			close(release)
+			collect(t, opening)
+			select {
+			case stream := <-wakes:
+				collect(t, stream)
+			case <-time.After(10 * time.Second):
+				t.Fatal("the accepted answer never woke a turn after the final request")
+			}
+			select {
+			case text := <-received:
+				for _, part := range want {
+					if !strings.Contains(text, part) {
+						t.Fatalf("the subsequent model request did not receive %q:\n%s", part, text)
+					}
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("the continued turn never sent the answer to the model")
+			}
+			refuseNewWork()
+		})
+	}
+}

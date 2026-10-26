@@ -406,6 +406,8 @@ func (a *Agent) answerAsk(answer Answer) error {
 		// a viewer; the answer mark does not grant permission for tools.
 		note := wakeNote(askBackNote(open.q, answer))
 		note.answer = true
+		// Keep the answer mark through the turn's final drain.
+		note.batch = false
 		a.enqueueNote(note)
 		return nil
 	}

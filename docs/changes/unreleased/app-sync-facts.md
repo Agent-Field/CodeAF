@@ -35,3 +35,7 @@ revisions change crew state without opening the member's chat; their wakes are
 checked at the session boundary.
 Ask-backs about standing questions are addressed to that conversation's own
 model, keep the decision open and retain the same tool gate on a viewer.
+Ask-backs and handed-over decisions accepted during the final model request
+keep their answer exemption through the drain and reach a subsequent request;
+background batching no longer drops that exemption. Ordinary wakes and new
+messages still refuse on a viewer.
