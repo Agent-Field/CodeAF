@@ -296,19 +296,42 @@ func TestAppCrewProposalLaterCannotReopenAnsweredAsk(t *testing.T) {
 	ask := rec.data[at].(appwire.AskOpened).Ask
 	rec.mu.Unlock()
 	blocked, release := make(chan struct{}), make(chan struct{})
+	released := false
+	defer func() {
+		if !released {
+			close(release)
+		}
+	}()
 	original := backend.emit
 	backend.emit = intentTitleEmitter(func(event string, data any) {
 		if opened, ok := data.(appwire.AskOpened); ok && opened.Ask.ID == ask.ID && opened.Ask.Later {
 			close(blocked)
-			<-release
+			select {
+			case <-release:
+			case <-time.After(5 * time.Second):
+				t.Error("timed out waiting to release proposal publication")
+			}
 		}
 		original.Emit(event, data)
 	})
 	laterDone := make(chan error, 1)
 	go func() { laterDone <- backend.LaterInbox(manager.ID+"/"+ask.ID, true) }()
-	<-blocked
+	select {
+	case <-blocked:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Later did not reach proposal publication")
+	}
 	answerDone := make(chan error, 1)
-	go func() { answerDone <- backend.AnswerAsk(manager.ID, ask.ID, appwire.ProposalKeep, "") }()
+	answerStarted := make(chan struct{})
+	go func() {
+		close(answerStarted)
+		answerDone <- backend.AnswerAsk(manager.ID, ask.ID, appwire.ProposalKeep, "")
+	}()
+	select {
+	case <-answerStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("proposal answer did not start")
+	}
 	var answerErr error
 	answered := false
 	select {
@@ -317,11 +340,21 @@ func TestAppCrewProposalLaterCannotReopenAnsweredAsk(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 	}
 	close(release)
-	if err := <-laterDone; err != nil {
-		t.Fatal(err)
+	released = true
+	select {
+	case err := <-laterDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Later did not finish after publication was released")
 	}
 	if !answered {
-		answerErr = <-answerDone
+		select {
+		case answerErr = <-answerDone:
+		case <-time.After(5 * time.Second):
+			t.Fatal("proposal answer did not finish after publication was released")
+		}
 	}
 	if answerErr != nil {
 		t.Fatal(answerErr)
