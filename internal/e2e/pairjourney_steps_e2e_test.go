@@ -54,9 +54,19 @@ func journeyRun(j *journey, env []string, homeA, homeB, wsA, wsB string, online 
 	})
 
 	j.step("3a A: paste the link into the card", true, func() {
-		a.keys("M-d")
+		clickText := func(text string) {
+			for y, line := range strings.Split(plain(a), "\n") {
+				if x := strings.Index(line, text); x >= 0 {
+					a.mouseClick(x+1, y+1)
+					return
+				}
+			}
+			j.require(false, "no visible target: %s", text)
+		}
+		clickText("+ Add another device")
 		_, ok := waitPlain(a, 5*time.Second, "Paste it here")
 		j.check(ok, "the card did not open its steps")
+		clickText("Paste pairing link")
 		a.paste(link)
 		a.keys("Enter")
 		screen, ok := waitPlain(a, 6*time.Second, "wants to pair")
