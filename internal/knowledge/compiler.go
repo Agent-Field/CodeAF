@@ -157,6 +157,13 @@ func (v *Vault) compilePending(db *sql.DB, partition string, model compilerModel
 	} else if err != sql.ErrNoRows {
 		return nil, err
 	}
+	if repaired, changed := repairNoteIdentities(previous); changed {
+		if _, err = db.Exec("UPDATE publications SET payload=?,revision=revision+1 WHERE partition=?", mustJSON(repaired), partition); err != nil {
+			return nil, err
+		}
+		previous = repaired
+		revision++
+	}
 	rows, err := db.Query("SELECT e.id,e.payload,e.arrived,e.status,coalesce(w.length,0) FROM events e LEFT JOIN source_windows w ON w.partition=e.partition AND w.id=e.id WHERE e.partition=? AND e.rowid<=? AND e.status IN ('pending','revisit') ORDER BY e.arrived,e.id LIMIT 64", partition, through)
 	if err != nil {
 		return nil, err

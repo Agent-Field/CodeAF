@@ -481,7 +481,8 @@ func updateCompilation(messages []document, previous document, revisited []strin
 	used := map[string]bool{}
 	remapped := map[string]string{}
 	oldNotes := items(previous["notes"])
-	for _, n := range merged {
+	matched := map[int]bool{}
+	for i, n := range merged {
 		var best document
 		bestOverlap := 0
 		for _, old := range oldNotes {
@@ -503,6 +504,17 @@ func updateCompilation(messages []document, previous document, revisited []strin
 			remapped[textValue(n["id"])] = textValue(best["id"])
 			n["id"] = best["id"]
 			used[textValue(best["id"])] = true
+			matched[i] = true
+		}
+	}
+	for i, n := range merged {
+		if matched[i] {
+			continue
+		}
+		before := textValue(n["id"])
+		n["id"] = reserveNoteIdentity(n, used)
+		if before != textValue(n["id"]) {
+			remapped[before] = textValue(n["id"])
 		}
 	}
 	priorClaims := index(items(previous["claims"]))
@@ -660,4 +672,44 @@ func compilerProposalHints(model compilerModel, messages []document) ([]document
 	receipt["omitted"] = count - len(hints)
 	receipt["lookup_capped"] = count == 128
 	return hints, receipt, nil
+}
+
+// reserveNoteIdentity keeps semantic notes separate when a renamed note has
+// already claimed their title-derived identity.
+func reserveNoteIdentity(note document, used map[string]bool) string {
+	id := textValue(note["id"])
+	if !used[id] {
+		used[id] = true
+		return id
+	}
+	id = identity([]any{note["scope"], note["title"]})
+	for salt := 0; used[id]; salt++ {
+		id = identity([]any{"note", note["scope"], note["title"], salt})
+	}
+	used[id] = true
+	return id
+}
+
+// repairNoteIdentities retains the last occurrence, matching index(notes), and
+// changes only colliding IDs. Claim memberships and generated prose stay intact.
+func repairNoteIdentities(vault document) (document, bool) {
+	notes := items(vault["notes"])
+	used := map[string]bool{}
+	duplicates := []int{}
+	for i := len(notes) - 1; i >= 0; i-- {
+		id := textValue(notes[i]["id"])
+		if used[id] {
+			duplicates = append(duplicates, i)
+		}
+		used[id] = true
+	}
+	if len(duplicates) == 0 {
+		return vault, false
+	}
+	repaired := clone(vault)
+	notes = items(repaired["notes"])
+	for _, i := range duplicates {
+		notes[i]["id"] = reserveNoteIdentity(notes[i], used)
+	}
+	return repaired, true
 }
