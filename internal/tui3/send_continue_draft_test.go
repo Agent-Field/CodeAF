@@ -2,12 +2,14 @@ package tui3
 
 import (
 	"errors"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 func TestSendContinuationKeepsTheWholeComposer(t *testing.T) {
@@ -66,5 +68,42 @@ func TestSendContinuationKeepsTheWholeComposer(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestSendContinuationCarriesTheDraftAcrossSessionRetirement(t *testing.T) {
+	src := &continuationListing{row: leftOffRow(heldCell, "other", chatlist.Running, time.Minute)}
+	taker := &fakeTaker{}
+	a, old := heldLab(t, src, taker)
+	a.closeHome()
+	arrivedFile := filepath.Join(t.TempDir(), heldCell, ".cell", "transcript.jsonl")
+	arrived := &fakeAgent{model: "m"}
+	a.open = func(workspace, file string) (Conversation, error) {
+		return Conversation{Agent: arrived, Workspace: workspace, SessionFile: file}, nil
+	}
+	taker.taken = Taken{Transcript: arrivedFile}
+	a.input.setText("  keep every word " + pasteToken(1, 3) + "\nincluding this line  ")
+	a.input.cursor = 9
+	a.chips = []chip{{path: "/tmp/picture.png"}, {path: "/tmp/notes.txt", file: true}}
+	a.pastes = []pasteChip{{n: 1, text: "pasted\ndocument\nbody"}}
+	want := a.liveComposer()
+	drive(t, a, key("enter"))
+	if _, card := a.homeAsking(); !card {
+		t.Fatal("send did not raise the continuation card")
+	}
+	taker.on = func(string) {
+		// The engine releases its session before the arriving journal replaces it.
+		spend(t, a, a.taskEvent(session.Event{Kind: session.EventTakeover, Text: session.TakeoverWord}))
+		src.change(func(row *chatlist.Row) { row.Mine, row.Status = true, chatlist.Here })
+	}
+	confirm(t, a)
+	if a.file != arrivedFile || a.agent != arrived || a.at(pageHome) {
+		t.Fatalf("continuation did not open the arrived chat: file=%q", a.file)
+	}
+	if got := a.mainComposer(); !reflect.DeepEqual(got, want) {
+		t.Errorf("arrived composer = %+v, want %+v", got, want)
+	}
+	if len(old.sent) != 0 || len(arrived.sent) != 0 {
+		t.Fatal("continuation sent the draft without another enter")
 	}
 }

@@ -250,6 +250,7 @@ type homeTakenMsg struct {
 	row   chatlist.Row
 	taken Taken
 	err   error
+	draft *composerState
 }
 
 // takeRemote asks the taker, off the update loop: a takeover fetches and waits
@@ -257,13 +258,20 @@ type homeTakenMsg struct {
 func (a *app) takeRemote(row chatlist.Row) tea.Cmd {
 	a.home.say(continuing, "")
 	taker, ctx := a.taker, a.ctx
+	var draft *composerState
+	if a.file != "" && filepath.Base(session.DirOf(a.file)) == row.Cell {
+		// Retirement can replace the displaced session while the move is in
+		// flight. Its unsent message belongs to the chat that is arriving.
+		composer := a.mainComposer()
+		draft = &composer
+	}
 	return func() tea.Msg {
 		if conditional, ok := taker.(conditionalTaker); ok && row.DeviceID != "" {
 			taken, err := conditional.TakeSeen(ctx, row.Cell, &directory.LeaseExpectation{Device: row.DeviceID, Fence: row.Fence})
-			return homeTakenMsg{row: row, taken: taken, err: err}
+			return homeTakenMsg{row: row, taken: taken, err: err, draft: draft}
 		}
 		taken, err := taker.Take(ctx, row.Cell)
-		return homeTakenMsg{row: row, taken: taken, err: err}
+		return homeTakenMsg{row: row, taken: taken, err: err, draft: draft}
 	}
 }
 
@@ -347,13 +355,6 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 		a.home.say(joinSaid(moved, kept), "")
 		return a.askMachines()
 	}
-	var draft *composerState
-	if a.file != "" && filepath.Base(session.DirOf(a.file)) == msg.row.Cell {
-		// Replacing a displaced session must carry its unsent message into
-		// the arriving chat, where another enter still decides whether to send.
-		composer := a.liveComposer()
-		draft = &composer
-	}
 	a.homeTakenSaid = func() tea.Cmd {
 		// A local session of this same chat was retired before replacement.
 		// Its old handle cannot remain a selectable copy behind the new one.
@@ -366,10 +367,10 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 			a.forget(key)
 		}
 		a.note(joinSaid(moved, kept))
+		if msg.draft != nil {
+			a.putComposer(*msg.draft)
+		}
 		if a.file == line.row.Transcript {
-			if draft != nil {
-				a.putComposer(*draft)
-			}
 			a.offerSetup(msg.taken.Resume)
 		}
 		return nil
