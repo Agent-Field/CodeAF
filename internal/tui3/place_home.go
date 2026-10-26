@@ -382,7 +382,7 @@ func (placeHome) body(a *app, width, room int) []placeRow {
 	// moving is a rebuild, and the lines are made again only when one moved.
 	_, stacked := a.homeStacked()
 	var strip []placeRow
-	if !a.home.searching() && !a.home.phone && !stacked {
+	if (!a.home.searching() || a.addMachine.open) && !a.home.phone && !stacked {
 		strip = a.standingStrip(width, room)
 	}
 	room -= len(strip)
@@ -396,7 +396,6 @@ func (placeHome) body(a *app, width, room int) []placeRow {
 	if a.home.gridOn() && !stacked {
 		return append(a.homeGridRows(width, room, a.pal), strip...)
 	}
-	room += len(strip)
 	left, right := homeColumns(width)
 	// THE HEIGHT REACHES THE READING HERE AND NOWHERE ELSE. It is the same law
 	// the width is settled under one layer up (home.go's [app.homeFrame]: the
@@ -417,7 +416,7 @@ func (placeHome) body(a *app, width, room int) []placeRow {
 			hit:  homeMark{line: drawn.hit, pane: drawn.pane},
 		})
 	}
-	return rows
+	return append(rows, strip...)
 }
 
 // ownFrame is home's own, for two reasons and not one. Below sixty columns this
@@ -599,6 +598,9 @@ func (placeHome) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if msg.String() == addMachineKey && (a.addMachineWanted() || a.cellsUnavailable != "") {
 		return a.toggleAddMachine(), true
 	}
+	if cmd, took := a.addMachineInputKey(msg); took {
+		return cmd, true
+	}
 	if cmd, took := a.resumeKeyHandler(msg.String()); took {
 		return cmd, true
 	}
@@ -620,4 +622,17 @@ func (placeHome) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	a.sweepExchanges()
 	a.touch()
 	return cmd, true
+}
+
+func (placeHome) caretRow(a *app, width int, rows []placeRow) (int, int, bool) {
+	if !a.addMachineWanted() || !a.addMachine.open || !a.addMachine.focused {
+		return -1, 0, false
+	}
+	for i, row := range rows {
+		if mark, ok := row.hit.(homeMark); ok && mark.addMachine == addMachineInput {
+			_, column := a.addMachineLine(width-homeGridMargin, a.pal)
+			return i, homeGridMargin + column, true
+		}
+	}
+	return -1, 0, true
 }

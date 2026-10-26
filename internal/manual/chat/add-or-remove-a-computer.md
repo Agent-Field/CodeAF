@@ -16,16 +16,16 @@ Add another device — pick up your work anywhere, exactly where you left it.
 alt+d how
 ```
 
-Press `alt+d` to open the steps, and `alt+d` again to close them:
+Click **+ Add another device** to open the steps, or press `alt+d`. Click the heading or press `alt+d` again to close them:
 
 ```
 1. On the new device, install and run: codeaf pair
 2. It shows a link. Paste it here:
->
+> Paste pairing link
 ```
 
 1. On the new device, install codeaf and run `codeaf pair`. It makes a link and waits.
-2. On this device, paste that link into the card, or paste it anywhere on home, or type it as your message (on home, on the start page of a new chat, or in any chat) and press enter. The link is never sent to the model. The approve screen opens (see "Approve a new device" below). Text that is not a pair link stays in the box as before.
+2. On this device, click the card’s link field, type or paste the link, and press Enter. Opening the card also focuses its field. You can edit the link before submitting it; clicking inside the field places the caret there. Esc or Tab returns typing to the normal message box, and clicking the message box does the same. Your chat draft stays separate. You can also paste it anywhere on home when the card’s field is not focused, or type it as your message and press Enter. The link opens the approve screen and is never sent to the model (see "Approve a new device" below).
 
 The card goes away once you have two devices. It is not drawn when this chat cannot pair at all, for example a chat that runs over `--host` or `--at`.
 
