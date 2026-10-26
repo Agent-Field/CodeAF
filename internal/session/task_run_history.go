@@ -76,3 +76,16 @@ func withLocalWorkerHistory(entry TaskIndexEntry, place Place) TaskIndexEntry {
 	}
 	return entry
 }
+
+// A plan page prefers its usage ledger. Older runs without usage rows may
+// still name their worker model in the locally retained journal header.
+func (a *Agent) planWorkerRecordedModel(taskID string) string {
+	id, err := strconv.ParseUint(taskID, 10, 64)
+	if err != nil || id == 0 {
+		return ""
+	}
+	a.mu.Lock()
+	place, session := a.familyPlace(nil), a.sessionID()
+	a.mu.Unlock()
+	return findWorkerHistory(taskJournalDir(place, session), id).model
+}

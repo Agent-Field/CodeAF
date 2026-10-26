@@ -411,6 +411,9 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 	if usage, ok := planUsageByTask(store.Path())[task.ID]; ok {
 		pageRow.Model, pageRow.Tokens = usage.model, usage.tokens
 	}
+	if pageRow.Model == "" {
+		pageRow.Model = a.planWorkerRecordedModel(task.ID)
+	}
 	return PlanTaskPage{
 		Row:         pageRow,
 		Models:      a.planTaskModels(store.RootID()),

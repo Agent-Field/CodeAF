@@ -219,6 +219,12 @@ func TestPlanBackedTaskReopensItsNestedWorkerHistory(t *testing.T) {
 			t.Fatalf("resolved worker history is unreadable: %q", report)
 		}
 	})
+	t.Run("task-page", func(t *testing.T) {
+		page, ok := agent.PlanTaskPage("t-" + itoa64(id))
+		if !ok || page.Row.Model != "deepseek/deepseek-v4.1-flash" {
+			t.Fatalf("worker page lacks its recorded model: found=%v model=%q", ok, page.Row.Model)
+		}
+	})
 	t.Run("rebuilt-index", func(t *testing.T) {
 		for _, row := range RebuiltTaskRows(place.Dir) {
 			if row.ID == itoa64(id) {
