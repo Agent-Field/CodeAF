@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Show the first frame without waiting on furrow detection
-pr: 1952
+pr: 1954
 surface: [chat, engine, docs]
 invalidates:
   - Building a session ran furrow to find out whether the folder is watched; it now starts that question in the background and the session never waits for it.
