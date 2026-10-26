@@ -164,3 +164,34 @@ func TestKnowledgeHumanChangesSurviveNativeRebuilds(t *testing.T) {
 		t.Fatalf("deleted content leaked into search: %+v %v", hits, err)
 	}
 }
+
+func TestKnowledgeCompilationKeepsExplicitGenerationControls(t *testing.T) {
+	v := knowledge.Open(t.TempDir())
+	if err := v.StartBuild(); err != nil {
+		t.Fatal(err)
+	}
+	original := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = original })
+	http.DefaultTransport = knowledgeTransport(func(r *http.Request) (*http.Response, error) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		reasoning, ok := body["reasoning"].(map[string]any)
+		if !ok || reasoning["effort"] != "none" || body["max_tokens"] != float64(8000) || body["temperature"] != float64(0) {
+			t.Fatalf("knowledge generation controls changed: reasoning=%v max_tokens=%v temperature=%v", body["reasoning"], body["max_tokens"], body["temperature"])
+		}
+		format, ok := body["response_format"].(map[string]any)
+		if !ok || format["type"] != "json_object" {
+			t.Fatalf("structured response mode missing: %+v", body["response_format"])
+		}
+		raw, _ := json.Marshal(map[string]any{"model": body["model"], "choices": []any{map[string]any{"finish_reason": "stop", "message": map[string]any{"content": `{"claims":[]}`}}}})
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(bytes.NewReader(raw))}, nil
+	})
+	if err := v.Capture(knowledge.Source{ID: "s", Session: "chat", Role: "user", TS: "2026-10-25T12:00:00Z", Text: "Cedar queues jobs."}); err != nil {
+		t.Fatal(err)
+	}
+	if err := v.Flush(context.Background(), "fixture", true); err != nil {
+		t.Fatal(err)
+	}
+}

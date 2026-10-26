@@ -4,6 +4,7 @@ import (
 	"errors"
 	"sort"
 	"strings"
+	"time"
 )
 
 func reconcileTopics(learning, previous document, decisions []document) (document, error) {
@@ -291,6 +292,16 @@ func validSourceEvidence(evidence []document, sources document, requireHash bool
 	return true
 }
 func evidenceBasis(sources document, evidence []document) document {
+	basis, _ := evidenceBasisWithFreshness(sources, evidence, nil, nil)
+	return basis
+}
+
+// Freshness is an optional host policy, never a truth score or a reason to
+// rewrite claims. Supplying only one policy value leaves age unclassified.
+func evidenceBasisWithFreshness(sources document, evidence []document, asOf *time.Time, staleAfter *time.Duration) (document, error) {
+	if asOf != nil && staleAfter != nil && *staleAfter < 0 {
+		return nil, errors.New("nonnegative freshness horizon required")
+	}
 	ids := []string{}
 	for _, e := range evidence {
 		if sources[textValue(e["source"])] != nil {
@@ -319,13 +330,32 @@ func evidenceBasis(sources document, evidence []document) document {
 		}
 		observed = append(observed, ts)
 	}
-	sort.Strings(observed)
-	var first, last any
+	// Admission validates source timestamps. Compare their instants while
+	// retaining the exact recorded spellings in the resulting metadata.
+	stamps := make(map[string]time.Time, len(observed))
+	for _, ts := range observed {
+		stamp, err := time.Parse(time.RFC3339Nano, ts)
+		if err != nil {
+			return nil, errors.New("knowledge evidence has an invalid observation timestamp")
+		}
+		stamps[ts] = stamp
+	}
+	sort.SliceStable(observed, func(i, j int) bool { return stamps[observed[i]].Before(stamps[observed[j]]) })
+	var first, last, stale any
 	if len(observed) > 0 {
 		first = observed[0]
 		last = observed[len(observed)-1]
 	}
-	return document{"source_kinds": sortedUnique(kinds), "source_roles": sortedUnique(roles), "primary_artifact_sources": primary, "observed_from": first, "observed_to": last, "age_exceeds_policy": nil, "independently_verified": false}
+	if asOf != nil && staleAfter != nil {
+		stale = false
+		for _, ts := range observed {
+			if asOf.After(stamps[ts].Add(*staleAfter)) {
+				stale = true
+				break
+			}
+		}
+	}
+	return document{"source_kinds": sortedUnique(kinds), "source_roles": sortedUnique(roles), "primary_artifact_sources": primary, "observed_from": first, "observed_to": last, "age_exceeds_policy": stale, "independently_verified": false}, nil
 }
 func projectSubjects(vault, learning document) (document, error) {
 	result := clone(vault)

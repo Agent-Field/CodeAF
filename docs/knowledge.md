@@ -30,7 +30,8 @@ and search entries, and commits the visible revision in one transaction.
 `v3Process` starts and joins `Vault.Run` under its process context. A worker lock
 admits one process per profile; another running process waits and takes ownership
 when the OS releases that lock. A separate compiler lock prevents overlapping
-manual flushes. No lock or database transaction spans a provider request.
+manual flushes. These OS locks retain worker ownership during provider requests;
+SQLite transactions end before network work begins.
 
 A successful empty inventory arms future capture and shows the waiting state.
 Existing history waits for **Build knowledge base**. The action records durable

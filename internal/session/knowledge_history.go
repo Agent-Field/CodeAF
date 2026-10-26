@@ -132,7 +132,8 @@ func (h knowledgeHistory) Inventory(ctx context.Context) ([]knowledge.Journal, e
 		dir := filepath.Join(h.root, bucket.Name())
 		entries, err := os.ReadDir(dir)
 		if err != nil {
-			return nil, err
+			journals = append(journals, knowledge.Journal{ID: dir, Error: err.Error()})
+			continue
 		}
 		for _, entry := range entries {
 			if err = ctx.Err(); err != nil {

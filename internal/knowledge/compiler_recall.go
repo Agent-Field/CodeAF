@@ -16,6 +16,7 @@ type Citation struct {
 	Evidence
 }
 type Answer struct {
+	Abstain   bool       `json:"abstain"`
 	Answer    string     `json:"answer"`
 	Citations []Citation `json:"citations"`
 	Claims    []string   `json:"claims"`
@@ -239,7 +240,7 @@ func recallCompilation(vault document, question, scope string, limit int, retrie
 		}
 	}
 	if len(selected) == 0 {
-		return document{"answer": "I could not find supported knowledge for that question.", "citations": []document{}, "claims": []string{}}, nil
+		return document{"answer": "I could not find supported knowledge for that question.", "citations": []document{}, "claims": []string{}, "abstain": true}, nil
 	}
 	reviewContext := []document{}
 	for _, c := range selected {
@@ -254,6 +255,9 @@ func recallCompilation(vault document, question, scope string, limit int, retrie
 	if !referencesAllowed(response["citations"], known) || (textValue(response["answer"]) != "" && len(refs) == 0 && !flag(response["abstain"])) {
 		return nil, errors.New("answer contains an unsupported citation or lacks citations")
 	}
+	if flag(response["abstain"]) {
+		refs = []string{}
+	}
 	citations := []document{}
 	for _, id := range unique(refs) {
 		for _, ev := range items(known[id]["evidence"]) {
@@ -265,7 +269,7 @@ func recallCompilation(vault document, question, scope string, limit int, retrie
 	for _, c := range selected {
 		ids = append(ids, textValue(c["id"]))
 	}
-	return document{"answer": textValue(response["answer"]), "citations": citations, "claims": ids}, nil
+	return document{"answer": textValue(response["answer"]), "citations": citations, "claims": ids, "abstain": flag(response["abstain"])}, nil
 }
 
 //go:embed testdata/support_contracts.json

@@ -77,6 +77,27 @@ func TestKnowledgeLiveNativeCompiler(t *testing.T) {
 	if !cited {
 		t.Fatal("live pages lost original source citations")
 	}
+	writeKnowledgeChat(t, root, "operations", "later-chat", knowledgeMessage("Cedar records each job's retry count in SQLite. Operators can inspect the retry count while chatting; job processing must never hold the chat UI open. This extends the Cedar design requirements."))
+	for {
+		state, err = v.Snapshot()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if state.Build.Phase == knowledge.BuildFailed {
+			t.Fatalf("live automatic update failed: %+v", state.Build)
+		}
+		if state.Build.Phase == knowledge.BuildReady && state.Build.Sources == 3 && state.Pending == 0 && !state.NeedsUpdate {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal("live automatic update deadline")
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+	if hits, err = v.Search("retry count", 10); err != nil || len(hits) == 0 {
+		t.Fatalf("live automatic update not searchable: %v", err)
+	}
 	uri := sqliteuri.File(filepath.Join(v.Directory(), "knowledge.sqlite"))
 	db, err := sql.Open("sqlite", uri.String())
 	if err != nil {

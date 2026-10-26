@@ -229,6 +229,51 @@ func TestKnowledgeBuildContinuesPastUnreadableChat(t *testing.T) {
 	}
 }
 
+func TestKnowledgeBuildIsolatesUnreadableProjectAndRetries(t *testing.T) {
+	root := t.TempDir()
+	writeKnowledgeChat(t, root, "project-a", "healthy-a", knowledgeMessage("Cedar keeps earlier healthy history searchable."))
+	writeKnowledgeChat(t, root, "project-b", "recoverable", knowledgeMessage("Cedar recovers restored project history."))
+	writeKnowledgeChat(t, root, "project-c", "healthy-c", knowledgeMessage("Cedar keeps later healthy history searchable."))
+	blocked := filepath.Join(root, "project-b")
+	if err := os.Chmod(blocked, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chmod(blocked, 0700); err != nil {
+			t.Error(err)
+		}
+	})
+	if _, err := os.ReadDir(blocked); !os.IsPermission(err) {
+		t.Skip("environment cannot simulate an unreadable project directory")
+	}
+	v := knowledge.Open(t.TempDir())
+	knowledgeProviderFixture(t, nil, nil)
+	if err := v.StartBuild(); err != nil {
+		t.Fatal(err)
+	}
+	runKnowledgeWorker(t, v, root)
+	state := waitKnowledgeState(t, v, func(s knowledge.Snapshot) bool {
+		return s.Build.Phase == knowledge.BuildPartial && len(s.Pages) > 0
+	})
+	if state.Build.Problems != 1 || state.Build.Sources != 2 {
+		t.Fatalf("unreadable project prevented healthy history or lost its warning: %+v", state.Build)
+	}
+	hits, err := v.Search("healthy history", 5)
+	if err != nil || len(hits) != 1 || len(hits[0].Page.Evidence) != 2 {
+		t.Fatalf("healthy history on both sides of unreadable project missing: %+v %v", hits, err)
+	}
+	if err = os.Chmod(blocked, 0700); err != nil {
+		t.Fatal(err)
+	}
+	waitKnowledgeState(t, v, func(s knowledge.Snapshot) bool {
+		return s.Build.Phase == knowledge.BuildReady && s.Build.Sources == 3
+	})
+	hits, err = v.Search("restored", 5)
+	if err != nil || len(hits) != 1 {
+		t.Fatalf("restored project was not retried: %+v %v", hits, err)
+	}
+}
+
 func TestKnowledgeSealedHistoryPublishesBeforeDamagedLaterRecords(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "project", "sealed")

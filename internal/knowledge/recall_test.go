@@ -151,3 +151,30 @@ func TestKnowledgeFrozenReplayReportsFailedSourceContracts(t *testing.T) {
 		t.Fatalf("incomplete or mutated frozen manifest: %+v", report)
 	}
 }
+
+func TestKnowledgeRecallAbstentionPublishesNoSupportingCitations(t *testing.T) {
+	v := knowledge.Open(t.TempDir())
+	if err := v.StartBuild(); err != nil {
+		t.Fatal(err)
+	}
+	withKnowledgeModel(t, func(p map[string]any) map[string]any {
+		if p["messages"] != nil {
+			return map[string]any{"claims": []any{map[string]any{"local_id": "c", "text": "Kestrel stores credentials locally.", "scope": "Kestrel", "topic": "Storage", "kind": "fact", "evidence": []any{map[string]any{"source": "s", "quote": "Kestrel stores credentials locally."}}}}}
+		}
+		if p["question"] != nil {
+			c := p["claims"].([]any)[0].(map[string]any)
+			return map[string]any{"answer": "No supported answer: these claims do not address annual subscription pricing.", "abstain": true, "citations": []any{c["id"]}}
+		}
+		return map[string]any{"subjects": []any{}}
+	})
+	if err := v.Capture(knowledge.Source{ID: "s", Session: "chat", Role: "user", TS: "2026-10-25T12:00:00Z", Text: "Kestrel stores credentials locally."}); err != nil {
+		t.Fatal(err)
+	}
+	if err := v.Flush(context.Background(), "fixture", true); err != nil {
+		t.Fatal(err)
+	}
+	answer, err := v.Recall(context.Background(), "fixture", "What is Kestrel's annual subscription price?", "Kestrel")
+	if err != nil || len(answer.Citations) != 0 || !strings.Contains(answer.Answer, "No supported answer") {
+		t.Fatalf("abstention presented irrelevant evidence as answer support: %+v %v", answer, err)
+	}
+}

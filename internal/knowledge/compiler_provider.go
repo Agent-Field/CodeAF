@@ -1,15 +1,18 @@
 package knowledge
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/config"
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/provider"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -60,63 +63,43 @@ func (m compilerModel) call(role string, payload document) (document, error) {
 	if m.key == "" {
 		return nil, errors.New("knowledge compilation requires an OpenRouter API key")
 	}
-	body, err := json.Marshal(document{"model": m.model, "messages": []document{{"role": "system", "content": prompt}, {"role": "user", "content": mustJSON(payload)}}, "temperature": 0, "max_tokens": 8000, "reasoning": reasoning, "response_format": document{"type": "json_object"}, "provider": document{"allow_fallbacks": true}})
+	client, err := provider.NewClient(provider.Config{APIKey: m.key, BaseURL: config.DefaultBaseURL, Model: m.model, Timeout: 240 * time.Second, HTTPClient: http.DefaultClient, RouteGate: func(ctx context.Context, model, tag string) error {
+		if model != m.model {
+			return fmt.Errorf("knowledge requested model %q; refusing fallback %q", m.model, model)
+		}
+		return nil
+	}})
 	if err != nil {
 		return nil, err
 	}
+	served := &provider.ServedEndpoint{}
+	ctx := provider.WithRole(m.ctx, lanes.RoleMemory)
+	ctx = provider.WithServedEndpoint(ctx, served)
+	ctx = provider.WithCallTag(ctx, "knowledge."+role)
+	ctx = provider.WithRequiredReasoningEffort(ctx, provider.Effort("none"))
+	messages := []ai.Message{{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: prompt}}}, {Role: "user", Content: []ai.ContentPart{{Type: "text", Text: mustJSON(payload)}}}}
 	started := time.Now()
+	response, err := client.CompleteWithMessages(ctx, messages, ai.WithTemperature(0), ai.WithMaxTokens(8000), ai.WithJSONMode())
+	if err != nil {
+		return nil, err
+	}
+	encoded, err := json.Marshal(response)
+	if err != nil {
+		return nil, err
+	}
 	var data document
-	var attempt int
-	for attempt = 0; attempt < 5; attempt++ {
-		if err = m.ctx.Err(); err != nil {
-			return nil, err
-		}
-		requestCtx, cancel := context.WithTimeout(m.ctx, 240*time.Second)
-		request, e := http.NewRequestWithContext(requestCtx, http.MethodPost, "https://openrouter.ai/api/v1/chat/completions", bytes.NewReader(body))
-		if e != nil {
-			cancel()
-			return nil, e
-		}
-		request.Header.Set("Authorization", "Bearer "+m.key)
-		request.Header.Set("Content-Type", "application/json")
-		response, e := http.DefaultClient.Do(request)
-		retry := false
-		if e != nil {
-			err = errors.New("knowledge provider connection failed; pending sources retained")
-			retry = true
-		} else {
-			raw, readErr := io.ReadAll(io.LimitReader(response.Body, 8*1024*1024+1))
-			response.Body.Close()
-			if readErr != nil {
-				err = errors.New("knowledge provider response interrupted")
-				retry = true
-			} else if response.StatusCode != http.StatusOK {
-				err = fmt.Errorf("knowledge provider returned HTTP %d; no model fallback used", response.StatusCode)
-				retry = response.StatusCode == 429 || response.StatusCode == 502 || response.StatusCode == 503 || response.StatusCode == 504
-			} else if len(raw) > 8*1024*1024 {
-				err = errors.New("knowledge provider response exceeds 8 MiB")
-			} else {
-				err = json.Unmarshal(raw, &data)
-				if err != nil {
-					err = errors.New("knowledge provider returned invalid JSON")
-				}
+	if err = json.Unmarshal(encoded, &data); err != nil {
+		return nil, err
+	}
+	data["provider"] = served.Name()
+	if len(response.Choices) == 1 {
+		var content strings.Builder
+		for _, part := range response.Choices[0].Message.Content {
+			if part.Type == "text" {
+				content.WriteString(part.Text)
 			}
 		}
-		cancel()
-		if err == nil {
-			break
-		}
-		if !retry || attempt == 4 {
-			return nil, err
-		}
-		delay := min(40, 10<<attempt)
-		timer := time.NewTimer(time.Duration(delay) * time.Second)
-		select {
-		case <-m.ctx.Done():
-			timer.Stop()
-			return nil, m.ctx.Err()
-		case <-timer.C:
-		}
+		object(items(data["choices"])[0]["message"])["content"] = content.String()
 	}
 	if textValue(data["model"]) != m.model {
 		return nil, fmt.Errorf("knowledge provider recorded model %q; required %q; result rejected", textValue(data["model"]), m.model)
@@ -132,7 +115,7 @@ func (m compilerModel) call(role string, payload document) (document, error) {
 	if err = validateCompilerResponse(role, result); err != nil {
 		return nil, err
 	}
-	receipt := document{"model": m.model, "role": role, "request_id": requestID, "provider": data["provider"], "reasoning_requested": reasoning, "max_tokens": 8000, "generation_id": data["id"], "usage": data["usage"], "attempts": attempt + 1, "seconds": time.Since(started).Seconds(), "result": result}
+	receipt := document{"model": m.model, "role": role, "request_id": requestID, "provider": data["provider"], "reasoning_requested": reasoning, "max_tokens": 8000, "generation_id": data["id"], "usage": data["usage"], "transport": "provider_funnel", "seconds": time.Since(started).Seconds(), "result": result}
 	if _, err = m.db.Exec("INSERT OR IGNORE INTO receipts(id,model,role,cost,payload) VALUES(?,?,?,?,?)", requestID, m.model, role, number(object(data["usage"])["cost"]), mustJSON(receipt)); err != nil {
 		return nil, err
 	}
