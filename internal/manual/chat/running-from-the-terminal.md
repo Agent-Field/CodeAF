@@ -618,8 +618,6 @@ other call.
 
 ## What codeaf --help prints — the six groups, and where the environment table went
 
-Version requests (`version`, `--version`, `-v`), help requests and `codeaf manual` do not move a state folder, create a compatibility link or remove old scheduled timers. Those startup steps wait for a real command that uses codeaf.
-
 `codeaf help`, `--help` and `-h` all print the same thing: every command under six
 headings, in this order — **Talk to it**, **Hand it work**, **Hand it a whole task**,
 **Look at what happened**, **Housekeeping** and **Plan work by hand** — then five worked

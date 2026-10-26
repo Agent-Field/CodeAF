@@ -45,7 +45,7 @@ Older clients may send an empty frame plan as an omitted field, `null` or `[]`. 
 
 A lost reply or restarted home keeps the original signed leadership request. Retry `codeaf cluster lead` to resume it; a pending request cannot choose a different computer. A completed refusal says `the leadership request could not complete; refresh cluster status and try again` and is acknowledged before another request is saved. Only one configuration change can run at a time. A different personal coordinator cannot directly replace an active personal coordinator; let the anchors resume, then request leadership again.
 
-## Clean quit on the leader — can another computer continue immediately?
+## Clean quit on the leader — quitting the coordinating laptop, do the anchors take over at once
 
 On the hosted relay and a self-hosted relay with storage, a clean terminal quit finishes releasing its idle chats, then hands coordination to an anchor before stopping. Another paired computer can continue those chats immediately, without waiting for an election or a lease to expire. Work that is still running keeps going and releases its chat when it finishes. Returning coordination adds at most 5 seconds to quit; a computer that is not coordinating adds no requests or wait. If the anchors cannot take over within that bound, ordinary fallback applies.
 
