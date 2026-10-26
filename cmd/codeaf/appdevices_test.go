@@ -144,7 +144,7 @@ func (d *appDeviceDelayedList) wait(t *testing.T) {
 func TestAppDevicesV1V3OlderRosterCannotUndoRemoval(t *testing.T) {
 	celltest.Available(t)
 	delay := &appDeviceDelayedList{ready: make(chan struct{}), release: make(chan struct{})}
-	_, _, down := appDevicesRelay(t, delay.wrap)
+	srv, _, down := appDevicesRelay(t, delay.wrap)
 	t.Cleanup(delay.resume)
 	a, b := t.TempDir(), t.TempDir()
 	id, err := identity.Ensure(a)
@@ -192,7 +192,9 @@ func TestAppDevicesV1V3OlderRosterCannotUndoRemoval(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("the delayed roster response did not finish")
 	}
-	if _, err := w.call("devices.list", struct{}{}); err == nil || err.Code != appwire.CodeUnreachable {
+	// A 503 is a relay response; closing it makes the refresh unreachable.
+	srv.Close()
+	if _, err := w.call("devices.list", struct{}{}); err == nil || err.Code != appwire.CodeUnreachable || err.Message != chatlist.Unreachable {
 		t.Fatalf("follow-up refresh must fail: %v", err)
 	}
 	// An offline rename publishes the retained roster through the real app
@@ -236,7 +238,7 @@ func TestAppDevicesV1V5ExistingWatchSuppliesPresence(t *testing.T) {
 		t.Fatal("the real directory has no follower")
 	}
 	t.Cleanup(follow.Close)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), directory.OfflineDebounce+10*time.Second)
 	defer cancel()
 	for !follow.State().Up {
 		select {
@@ -254,7 +256,12 @@ func TestAppDevicesV1V5ExistingWatchSuppliesPresence(t *testing.T) {
 		return len(v.Devices) == 2 && v.Devices[1].Online != nil && *v.Devices[1].Online
 	})
 	remote.Close()
-	appDeviceEvent(t, rec, func(v appwire.Devices) bool {
+	// The real relay announces offline only after its reconnect debounce.
+	rec.waitFor(t, directory.OfflineDebounce+5*time.Second, func(event string, data any) bool {
+		if event != appwire.EventDevicesChanged {
+			return false
+		}
+		v := data.(appwire.DevicesResult).Devices
 		return len(v.Devices) == 2 && v.Devices[1].Online != nil && !*v.Devices[1].Online && !v.Devices[1].LastSeen.IsZero()
 	})
 	rec.mu.Lock()
