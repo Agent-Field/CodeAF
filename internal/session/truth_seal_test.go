@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
@@ -101,7 +102,25 @@ func sealAndMaterialize(t *testing.T, bin, dir string, c cell.Cell, from, to sea
 	t.Helper()
 	workspace := from.workspace
 	putFile(t, filepath.Join(workspace, "main.go"), "package main\n")
-	e := cellstore.Engine{Binary: bin, DataRoot: t.TempDir(), Workspace: workspace}
+	freshDir = filepath.Join(t.TempDir(), c.ID)
+	dataRoot := t.TempDir()
+	// A short owned socket path also fits macOS AF_UNIX's path limit.
+	socketDir, err := os.MkdirTemp("", "seal-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(socketDir) })
+	daemon := cellstore.Daemon{Binary: bin, Socket: filepath.Join(socketDir, "engine.sock")}
+	// This helper owns the native store and daemon. Join its final flush before
+	// TempDir removes the store; package-wide shutdown happens after test cleanup.
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := daemon.Stop(ctx); err != nil {
+			t.Errorf("stop owned sealing daemon: %v", err)
+		}
+	})
+	e := cellstore.Engine{Binary: bin, DataRoot: dataRoot, Workspace: workspace, Transport: daemon}
 	sealed, err := e.Seal(context.Background(), c, cellstore.TurnInfo{})
 	if err != nil {
 		t.Fatal(err)
@@ -110,7 +129,6 @@ func sealAndMaterialize(t *testing.T, bin, dir string, c cell.Cell, from, to sea
 	// A fresh machine: an empty workspace and an empty cell, attached to the
 	// same store, then restored to the sealed turn.
 	freshWorkspace = to.workspace
-	freshDir = filepath.Join(t.TempDir(), c.ID)
 	if err := os.MkdirAll(filepath.Join(freshDir, cellStateDir), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +138,7 @@ func sealAndMaterialize(t *testing.T, bin, dir string, c cell.Cell, from, to sea
 	if err != nil {
 		t.Fatal(err)
 	}
-	there := cellstore.Engine{Binary: bin, DataRoot: e.DataRoot, Workspace: freshWorkspace}
+	there := cellstore.Engine{Binary: bin, DataRoot: e.DataRoot, Workspace: freshWorkspace, Transport: daemon}
 	if _, err := there.Seal(context.Background(), target, cellstore.TurnInfo{}); err != nil {
 		t.Fatal(err)
 	}
