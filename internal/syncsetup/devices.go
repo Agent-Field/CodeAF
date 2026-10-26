@@ -6,11 +6,13 @@ import (
 	"maps"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
+	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
 )
 
@@ -20,17 +22,34 @@ const DeviceRequestWithin = 20 * time.Second
 // DeviceSnapshot contains only facts already read by this process. A missing
 // Online entry means unknown, including after a presence socket goes away.
 type DeviceSnapshot struct {
-	Devices map[string]directory.Device
-	Online  map[string]bool
-	Version uint64
-	Refused error
+	Devices  map[string]directory.Device
+	Online   map[string]bool
+	Version  uint64
+	Refused  error
+	mutation uint64
 }
+
+// A removal's sequence orders it against reads from every client in this
+// process, including sync work outside the app's device-operation mutex.
+var deviceMutations atomic.Uint64
 
 // DeviceObserver listens locally. It never opens a client, socket or timer.
 type DeviceObserver struct {
 	home    string
+	binding deviceBinding
 	state   DeviceSnapshot
 	changes chan struct{}
+}
+
+type deviceBinding struct {
+	relay, identity, self string
+}
+
+func deviceBindingFor(relay string, id identity.Identity, dev identity.Dev) deviceBinding {
+	if base, err := relayBase(relay); err == nil {
+		relay = base
+	}
+	return deviceBinding{relay: relay, identity: id.ID(), self: dev.ID()}
 }
 
 var deviceObservers = struct {
@@ -40,6 +59,11 @@ var deviceObservers = struct {
 
 func ObserveDevices(home string) *DeviceObserver {
 	o := &DeviceObserver{home: home, changes: make(chan struct{}, 1)}
+	if id, err := identity.Load(home); err == nil {
+		if dev, err := identity.Device(home); err == nil {
+			o.binding = deviceBindingFor(Resolve(home).URL, id, dev)
+		}
+	}
 	deviceObservers.Lock()
 	deviceObservers.all[o] = struct{}{}
 	deviceObservers.Unlock()
@@ -48,9 +72,15 @@ func ObserveDevices(home string) *DeviceObserver {
 
 func (o *DeviceObserver) Changes() <-chan struct{} { return o.changes }
 
-func (o *DeviceObserver) Snapshot() DeviceSnapshot {
+// Snapshot scopes remembered facts to the pairing files the caller just read.
+// Clients of a previous pairing cannot restore its roster or refusal later.
+func (o *DeviceObserver) Snapshot(id identity.Identity, dev identity.Dev) DeviceSnapshot {
+	binding := deviceBindingFor(Resolve(o.home).URL, id, dev)
 	deviceObservers.Lock()
 	defer deviceObservers.Unlock()
+	if o.binding != binding {
+		o.binding, o.state = binding, DeviceSnapshot{}
+	}
 	s := o.state
 	s.Devices, s.Online = maps.Clone(s.Devices), maps.Clone(s.Online)
 	return s
@@ -65,11 +95,11 @@ func (o *DeviceObserver) Close() {
 	}
 }
 
-func rememberDevices(home string, edit func(*DeviceSnapshot)) {
+func rememberDevices(home string, binding deviceBinding, edit func(*DeviceSnapshot)) {
 	deviceObservers.Lock()
 	defer deviceObservers.Unlock()
 	for o := range deviceObservers.all {
-		if o.home != home {
+		if o.home != home || o.binding != binding {
 			continue
 		}
 		next := o.state
@@ -93,18 +123,38 @@ func rememberDevices(home string, edit func(*DeviceSnapshot)) {
 // Embedding the HTTP client preserves its holding and conditional-take doors.
 type deviceDirectory struct {
 	*directory.HTTP
-	home, self string
+	home    string
+	binding deviceBinding
 }
 
 func (d *deviceDirectory) List(ctx context.Context) (directory.Listing, error) {
+	read := deviceMutations.Load()
 	l, err := d.HTTP.List(ctx)
 	d.refusal(err)
 	if err == nil {
-		rememberDevices(d.home, func(s *DeviceSnapshot) {
-			if l.Version != 0 && l.Version < s.Version {
+		rememberDevices(d.home, d.binding, func(s *DeviceSnapshot) {
+			if read < s.mutation || l.Version != 0 && l.Version < s.Version {
 				return
 			}
-			s.Devices, s.Version = maps.Clone(l.Devices), l.Version
+			devices := maps.Clone(l.Devices)
+			if devices == nil {
+				devices = map[string]directory.Device{}
+			}
+			// Equal or unversioned reads cannot retract a removal. A read
+			// begun before a completed removal cannot replace any facts.
+			if l.Version == 0 || l.Version == s.Version {
+				for id, old := range s.Devices {
+					if old.Revoked {
+						rec, ok := devices[id]
+						if !ok {
+							rec = old
+						}
+						rec.Revoked = true
+						devices[id] = rec
+					}
+				}
+			}
+			s.Devices, s.Version = devices, max(s.Version, l.Version)
 		})
 	}
 	return l, err
@@ -114,7 +164,7 @@ func (d *deviceDirectory) PutDevice(ctx context.Context, id string, rec director
 	err := d.HTTP.PutDevice(ctx, id, rec)
 	d.refusal(err)
 	if err == nil {
-		rememberDevices(d.home, func(s *DeviceSnapshot) {
+		rememberDevices(d.home, d.binding, func(s *DeviceSnapshot) {
 			old := s.Devices[id]
 			rec.Revoked, rec.Created, rec.LastSeen = old.Revoked, old.Created, old.LastSeen
 			s.Devices[id] = rec
@@ -127,7 +177,9 @@ func (d *deviceDirectory) Revoke(ctx context.Context, id string) error {
 	err := d.HTTP.Revoke(ctx, id)
 	d.refusal(err)
 	if err == nil {
-		rememberDevices(d.home, func(s *DeviceSnapshot) {
+		mutation := deviceMutations.Add(1)
+		rememberDevices(d.home, d.binding, func(s *DeviceSnapshot) {
+			s.mutation = max(s.mutation, mutation)
 			rec := s.Devices[id]
 			rec.Revoked = true
 			s.Devices[id] = rec
@@ -140,7 +192,7 @@ func (d *deviceDirectory) Revoke(ctx context.Context, id string) error {
 func (d *deviceDirectory) Presence(ctx context.Context) (directory.PresenceView, error) {
 	p, err := d.HTTP.Presence(ctx)
 	d.refusal(err)
-	rememberDevices(d.home, func(s *DeviceSnapshot) {
+	rememberDevices(d.home, d.binding, func(s *DeviceSnapshot) {
 		s.Online = nil
 		if err != nil {
 			return
@@ -169,12 +221,12 @@ func (d *deviceDirectory) refusal(err error) {
 	default:
 		return
 	}
-	rememberDevices(d.home, func(s *DeviceSnapshot) {
+	rememberDevices(d.home, d.binding, func(s *DeviceSnapshot) {
 		s.Refused, s.Online = refused, nil
 		if errors.Is(refused, dirwatch.ErrRevoked) {
-			rec := s.Devices[d.self]
+			rec := s.Devices[d.binding.self]
 			rec.Revoked = true
-			s.Devices[d.self] = rec
+			s.Devices[d.binding.self] = rec
 		}
 	})
 }
@@ -208,19 +260,19 @@ func (s *deviceStream) Next(ctx context.Context) (dirwatch.Frame, error) {
 	if f.Pong && err == nil {
 		return f, err
 	}
-	rememberDevices(s.dir.home, func(v *DeviceSnapshot) {
+	rememberDevices(s.dir.home, s.dir.binding, func(v *DeviceSnapshot) {
 		switch {
 		case err != nil:
-			delete(v.Online, s.dir.self)
+			delete(v.Online, s.dir.binding.self)
 			if s.presence {
 				v.Online = nil
 			}
 			if errors.Is(err, dirwatch.ErrRevoked) || errors.Is(err, dirwatch.ErrRotated) {
 				v.Refused = err
 				if errors.Is(err, dirwatch.ErrRevoked) {
-					rec := v.Devices[s.dir.self]
+					rec := v.Devices[s.dir.binding.self]
 					rec.Revoked = true
-					v.Devices[s.dir.self] = rec
+					v.Devices[s.dir.binding.self] = rec
 				}
 			}
 		case f.Event != nil:
@@ -251,7 +303,7 @@ func (s *deviceStream) Next(ctx context.Context) (dirwatch.Frame, error) {
 			if v.Online == nil {
 				v.Online = map[string]bool{}
 			}
-			v.Online[s.dir.self] = true
+			v.Online[s.dir.binding.self] = true
 		}
 	})
 	return f, err
