@@ -844,8 +844,12 @@ func appMint(workspace string) (string, error) {
 }
 
 // appAgentID is a conversation's id from its transcript: the folder's name.
+// A cell keeps its transcript one level down (<id>/.cell/transcript.jsonl), so
+// the folder is session.DirOf's, never the transcript's parent: that parent is
+// ".cell" for every cell conversation, and one id for all of them would make
+// each new conversation answer for the others.
 func appAgentID(transcript string) string {
-	return filepath.Base(filepath.Dir(filepath.Clean(transcript)))
+	return filepath.Base(session.DirOf(filepath.Clean(transcript)))
 }
 
 // locked runs fn holding b.mu. Every critical section in this file goes
