@@ -21,17 +21,39 @@ func (a *app) standingStrip(width, room int) []placeRow {
 	}
 	ctx := bandContext{width: inner, pal: a.pal, now: a.now()}
 	var lines []string
+	var targets []addMachineTarget
 	for _, band := range standingBands() {
 		card := band.draw(a, ctx)
 		if len(card) == 0 {
 			continue
 		}
-		if len(lines)+len(card)+2 > room/2 {
+		limit := room / 2
+		// An opened form needs its input on screen even in a short terminal.
+		if band.name == "addmachine" && a.addMachine.open {
+			limit = room
+		}
+		if len(lines)+len(card)+2 > limit {
 			break
+		}
+		for i := range card {
+			target := addMachineNone
+			if band.name == "addmachine" {
+				target = addMachineToggle
+				if a.addMachine.open && i == len(card)-2 {
+					target = addMachineInput
+				}
+			}
+			targets = append(targets, target)
 		}
 		lines = append(lines, card...)
 	}
-	return standingRows(lines)
+	rows := standingRows(lines)
+	for i, target := range targets {
+		mark := rows[i+1].hit.(homeMark)
+		mark.addMachine = target
+		rows[i+1].hit = mark
+	}
+	return rows
 }
 
 func standingRows(lines []string) []placeRow {

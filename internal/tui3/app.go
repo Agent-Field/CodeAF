@@ -4735,6 +4735,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// the box whichever room somebody is standing in. It is the ordinary
 			// text-field gesture the conversation already answers
 			// (placemouse.go's [app.placeBoxPress], draftclick.go).
+			if a.at(pageHome) {
+				a.addMachine.focused = false
+			}
 			if a.placeBoxPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
@@ -9492,10 +9495,6 @@ func (a *app) paste(text string) tea.Cmd {
 	if a.copy.on {
 		return nil
 	}
-	// A LINK PASTED ON THE OPEN ADD-MACHINE CARD is the card's, not the draft's.
-	if cmd, took := a.pasteLink(text); took {
-		return cmd
-	}
 	// A PASTE IS SOMEBODY STARTING WORK, so it dismisses the welcome box on the
 	// same terms every other input does (welcome.go): everything puts the box
 	// away except the two keys that walk its list, and a paste is not one of
@@ -9623,6 +9622,15 @@ func (a *app) paste(text string) tea.Cmd {
 		}
 		a.touch()
 		return nil
+	}
+	if a.at(pageHome) && a.addMachineWanted() && a.addMachine.open && a.addMachine.focused && !a.pair.open {
+		a.addMachine.box.insert(strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(text, "\r", ""), "\n", " ")))
+		a.touch()
+		return nil
+	}
+	// A LINK PASTED ON THE OPEN ADD-MACHINE CARD is the card's, not the draft's.
+	if cmd, took := a.pasteLink(text); took {
+		return cmd
 	}
 	// THE HOME SCREEN IS FULLSCREEN, so while it is up the chat's own draft is
 	// not on the page at all — and this is where a paste used to go anyway,

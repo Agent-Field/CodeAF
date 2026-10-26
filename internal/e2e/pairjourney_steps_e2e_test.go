@@ -58,6 +58,7 @@ func journeyRun(j *journey, env []string, homeA, homeB, wsA, wsB string, online 
 		_, ok := waitPlain(a, 5*time.Second, "Paste it here")
 		j.check(ok, "the card did not open its steps")
 		a.paste(link)
+		a.keys("Enter")
 		screen, ok := waitPlain(a, 6*time.Second, "wants to pair")
 		j.check(ok, "pasting the link into the card showed no approve screen")
 		j.see(a)
