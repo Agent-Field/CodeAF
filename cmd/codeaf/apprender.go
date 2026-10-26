@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"path/filepath"
 	"reflect"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -62,7 +61,7 @@ func (b *appBackend) renderDir(a *appAgent) string {
 	if transcript == "" {
 		return ""
 	}
-	return filepath.Dir(transcript)
+	return session.DirOf(transcript)
 }
 
 // ListRenders pages the conversation's whole render history, newest first.

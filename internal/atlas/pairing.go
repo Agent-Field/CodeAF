@@ -79,7 +79,8 @@ var Pairing = &Map{
 			Summary: "`codeaf devices` and /devices list devices and show which are online. You can revoke or rename one. The relay refuses a revoked device, and the other devices hear about it through the directory watch.",
 			Files: []FileRef{
 				{Path: "cmd/codeaf/devices.go", Symbols: []string{"runDevices", "listDevices", "stopDevice"}},
-				{Path: "cmd/codeaf/devrename.go", Symbols: []string{"renameThisDevice", "tellFleet"}},
+				{Path: "cmd/codeaf/devrename.go", Symbols: []string{"renameThisDevice"}},
+				{Path: "internal/syncsetup/devices.go", Symbols: []string{"RenameDevice", "ObserveDevices"}},
 				{Path: "internal/directory/presence.go"},
 			}},
 		{ID: "sync", Label: "sync", Short: "syncsetup", Kind: KindGo, X: 0.55, Y: 0.38,

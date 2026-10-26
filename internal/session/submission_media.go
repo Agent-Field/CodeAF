@@ -627,6 +627,9 @@ func imageDataURL(mediaType string, data []byte) string {
 // A message with neither pictures nor annotation is a plain message that still
 // gets an id.
 func (a *Agent) SubmitComposed(ctx context.Context, message Submission) (SubmissionReceipt, <-chan Event, error) {
+	if err := a.CheckWork(); err != nil {
+		return SubmissionReceipt{}, nil, err
+	}
 	if err := ctx.Err(); err != nil {
 		return SubmissionReceipt{}, nil, err
 	}

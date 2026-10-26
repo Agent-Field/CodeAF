@@ -892,7 +892,7 @@ func (b *appBackend) crewOwnerPage(ctx context.Context, o crewOwner, n int) (*ap
 	b.locked(func() {
 		if a := b.agents[o.id]; a != nil && a.live != nil && a.transcript != "" && a.transcript == o.file {
 			live = a.live
-			convDir = filepath.Dir(a.transcript)
+			convDir = session.DirOf(a.transcript)
 		}
 	})
 	src := appProcessOwner{agent: o.id, live: live, convDir: convDir}

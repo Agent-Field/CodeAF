@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/vaultsync"
@@ -29,6 +30,12 @@ type DriveOptions struct {
 	Title func() string
 	// OnNotice hears a person-facing line: the superseded line, the skew line.
 	OnNotice func(string)
+	// OnViewer carries the same sentence with the device that continued it.
+	// It runs as soon as new work is refused, before pending saves settle.
+	OnViewer func(Viewer)
+	// OnDriving says startup acquired a writable conversation, before its
+	// background loop can announce a later move.
+	OnDriving func()
 	// Sleep replaces real time between flushes; tests inject a fake.
 	Sleep func(ctx context.Context, d time.Duration) error
 }
@@ -50,8 +57,15 @@ type Drive struct {
 
 	sent string // fingerprint of the vault as last sent; touched by the flush loop and Close only
 
-	mu   sync.Mutex
-	line string // the superseded line, empty while this device drives
+	mu     sync.Mutex
+	viewer Viewer // the superseded sentence and device, empty while this device drives
+}
+
+// Viewer names the computer that continued a chat and the engine's sentence.
+type Viewer struct {
+	ID   string
+	Name string
+	Line string
 }
 
 // Drive starts the drive side of c. The lease is acquired when the chat has a
@@ -84,6 +98,9 @@ func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt
 		return nil, err
 	}
 	d.catchUp(drv)
+	if opt.OnDriving != nil {
+		opt.OnDriving()
+	}
 	run, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	d.cancel = cancel
 	go func() {
@@ -290,10 +307,15 @@ func (d *Drive) info() cellsync.PublishInfo {
 // becomeViewer is the Batcher's word that another device took the chat over:
 // from now on this window only shows it, and says who has it.
 func (d *Drive) becomeViewer(s cellsync.Superseded) {
-	line := chatlist.Superseded(d.sync.deviceName(s.By))
+	name := d.sync.deviceName(s.By)
+	line := chatlist.Superseded(name)
+	viewer := Viewer{ID: s.By, Name: name, Line: line}
 	d.mu.Lock()
-	d.line = line
+	d.viewer = viewer
 	d.mu.Unlock()
+	if d.opt.OnViewer != nil {
+		d.opt.OnViewer(viewer)
+	}
 	// Refuse new work immediately, then preserve the pending save before
 	// announcing displacement. A routine ownership check does no fsync (C28).
 	ctx, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin)
@@ -342,7 +364,7 @@ func (s *Sync) deviceName(id string) string {
 func (d *Drive) Viewer() (string, bool) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	return d.line, d.line != ""
+	return d.viewer.Line, d.viewer.Line != ""
 }
 
 // HoldsLease says whether this drive side still drives the chat: it is not a
@@ -382,8 +404,11 @@ func (d *Drive) CheckLease(ctx context.Context) error {
 // Gate refuses with the superseded line once the chat is a viewer, and answers
 // nil while this device drives it. It is what a viewer's tool calls meet.
 func (d *Drive) Gate() error {
-	if line, viewer := d.Viewer(); viewer {
-		return errors.New(line)
+	d.mu.Lock()
+	viewer := d.viewer
+	d.mu.Unlock()
+	if viewer.Line != "" {
+		return &executor.WorkRefusal{Line: viewer.Line, HolderID: viewer.ID, HolderName: viewer.Name}
 	}
 	return nil
 }

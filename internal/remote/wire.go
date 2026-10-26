@@ -17,6 +17,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -450,6 +451,8 @@ type Frame struct {
 	// Error is a call that failed, on "result" frames, and the reason on
 	// "fatal" frames.
 	Error string `json:"error,omitempty"`
+	// WorkRefusal preserves ownership facts beside the unchanged error sentence.
+	WorkRefusal *executor.WorkRefusal `json:"workRefusal,omitempty"`
 
 	// Seq is this event's position in its stream, counting from 1, on "event"
 	// and "closed" frames only.
@@ -724,6 +727,8 @@ const (
 	// machines would mix clocks that need not agree and would not measure the
 	// path the person is actually waiting on.
 	MethodPing = "Ping" // nothing → nothing
+	// MethodCheckWork reads the existing ownership gate before an app claims an action.
+	MethodCheckWork = "CheckWork" // nothing → nothing (or the viewer refusal)
 
 	// MethodPlacesTask is ONE ROW of that record, read deeper than the walk
 	// reads it: the last thing that piece of work said, out of the journal it
@@ -1074,6 +1079,8 @@ type StreamCursor struct {
 // Welcome is the server's answer ("welcome"): the facts a surface needs before
 // its first frame, which are the same facts newApp reads off a local agent.
 type Welcome struct {
+	// WorkAdmission says this engine exposes the session's ownership gate.
+	WorkAdmission bool `json:"workAdmission,omitempty"`
 	// UserMessages is counted from the engine's replay, so an attaching app
 	// need not parse the journal again just to allocate visible message IDs.
 	UserMessages *int `json:"userMessages,omitempty"`
@@ -1123,6 +1130,9 @@ type Welcome struct {
 	// Note is a sentence worth showing once — "session open elsewhere, started
 	// a new one" travels here.
 	Note string `json:"note,omitempty"`
+	// Interrupted keeps the per-command opening warnings typed. They also
+	// remain in Note for terminal surfaces that predate this field.
+	Interrupted []string `json:"interrupted,omitempty"`
 	// ApprovalMode is the engine machine's own answer to "does a tool run
 	// without asking" (internal/config's ToolApprovalModeAt) — "allow" or
 	// empty. A REMOTE YOLO BADGE MUST NAME THE ENGINE'S POSTURE, NOT THIS

@@ -926,7 +926,12 @@ func (c *Client) deliver(frame Frame) {
 		return
 	}
 	if frame.Error != "" {
-		waiting <- result{err: errors.New(frame.Error), answered: true}
+		var err error = errors.New(frame.Error)
+		if frame.WorkRefusal != nil {
+			frame.WorkRefusal.Line = frame.Error
+			err = frame.WorkRefusal
+		}
+		waiting <- result{err: err, answered: true}
 		return
 	}
 	waiting <- result{payload: frame.Payload, answered: true}
@@ -1479,6 +1484,15 @@ func (c *Client) swap(method string, args any) (Welcome, error) {
 // whichever session the engine currently has open, which is why /new and
 // /resume keep using the same one.
 type Agent struct{ c *Client }
+
+// CheckWork reads the session's own gate. An older engine has no new call.
+func (a *Agent) CheckWork() error {
+	if !a.c.Welcome().WorkAdmission {
+		return nil
+	}
+	_, err := a.c.call(context.Background(), MethodCheckWork, nil)
+	return err
+}
 
 // TaskRoom reads the bounded tail of a node whose record URI may not exist yet.
 func (a *Agent) TaskRoom(id uint64, tail int) (session.TaskRecord, error) {

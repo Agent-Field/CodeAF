@@ -106,6 +106,9 @@ func (a *Agent) SideAskStream(ctx context.Context, question string, onText func(
 }
 
 func (a *Agent) sideAsk(ctx context.Context, question string, onText func(string)) (string, error) {
+	if err := a.CheckWork(); err != nil {
+		return "", err
+	}
 	question = strings.TrimSpace(question)
 	if question == "" {
 		return "", errSideAskQuestion

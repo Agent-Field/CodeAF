@@ -416,12 +416,32 @@ func (a *Agent) AppTaskAction(intent AppTaskIntent) error {
 // appTaskAct is the one dispatch both doors take. The receipt is the node's or
 // the store's own answer for a note or a brief, and empty for every other verb.
 func (a *Agent) appTaskAct(intent AppTaskIntent) (SteerReceipt, error) {
+	id, numeric := strconv.ParseUint(intent.ID, 10, 64)
+	// Starting an already offered proposal answers its pending question.
+	if numeric == nil && intent.Action == "start" {
+		if handled, err := a.appProposalAction(id, intent); handled {
+			return SteerReceipt{}, err
+		}
+	}
+	// Answers, stopping, hiding and holding work remain available on a viewer.
+	switch intent.Action {
+	case "cancel", "stop", "hold", "typing", "decline", AppActionDismiss, AppActionRestore:
+	case "decide":
+		if intent.Verb == "not_right" || intent.Verb == "tell" {
+			if err := a.CheckWork(); err != nil {
+				return SteerReceipt{}, err
+			}
+		}
+	default:
+		if err := a.CheckWork(); err != nil {
+			return SteerReceipt{}, err
+		}
+	}
 	// DISMISS AND RESTORE ARE ONE GENERIC FACT FOR EVERY ROAD, so they are settled
 	// before the road is chosen (task_dismiss.go).
 	if intent.Action == AppActionDismiss || intent.Action == AppActionRestore {
 		return SteerReceipt{}, a.appDismissAction(intent)
 	}
-	id, numeric := strconv.ParseUint(intent.ID, 10, 64)
 	if handled, said, err := a.appBeforeTheList(id, numeric, intent); handled {
 		return said, err
 	}
@@ -737,6 +757,11 @@ func (a *Agent) AppQuickTasks() ([]AppQuickTaskView, error) {
 }
 
 func (a *Agent) AppQuickTaskAction(intent AppTaskIntent) ([]string, []string, error) {
+	if intent.Action != "cancel" {
+		if err := a.CheckWork(); err != nil {
+			return nil, nil, err
+		}
+	}
 	id, err := strconv.ParseUint(intent.ID, 10, 64)
 	if err != nil {
 		return nil, nil, errors.New("no such quick task")

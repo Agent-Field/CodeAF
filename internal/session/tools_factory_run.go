@@ -312,6 +312,9 @@ func (a *Agent) runDoorForTurn() RunDoor {
 // the caller waits ([Agent.WaitIdle]) and asks again. The thinking is the
 // conversation's own, the person's setting; this road does not change it.
 func (a *Agent) SubmitRunnerNoteThrough(ctx context.Context, text string, door RunDoor) (<-chan Event, error) {
+	if err := a.CheckWork(); err != nil {
+		return nil, err
+	}
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil, errors.New("session: empty message")

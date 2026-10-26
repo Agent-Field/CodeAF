@@ -19,6 +19,11 @@ const (
 	SyncOff      = "sync is off: set CODEAF_SYNC_URL to your sync address"
 	Unreachable  = "other machines unreachable"
 	ClockOff     = "this computer's clock is off by more than 5 minutes"
+
+	DevicesQuiet  = "Only this computer is here. Add another computer by pairing from a terminal with `codeaf pair`."
+	RemoveSelf    = "that is this device — remove it from another of your devices instead"
+	DeviceMissing = "that device is not in your list any more — `codeaf devices` shows the ones there are"
+
 	// What the relay's refusals say (one sentence each, in the order the
 	// cellsync table lists them). None names a code or a number of requests:
 	// each says what is true for the person and what, if anything, to do.

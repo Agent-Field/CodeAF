@@ -73,7 +73,7 @@ func (b *appBackend) neededMembers(run *appCrewRun, read appCrewRead, first bool
 			needed[id] = run.held[id]
 			continue
 		}
-		stamp := b.lazyWorkStamp(row.Dir, run.held[id])
+		stamp := b.lazyWorkStamp(row.Transcript, run.held[id])
 		// A failed open remains due even when its input files did not change.
 		retry := false
 		run.locked(func() { retry = run.unheld[id] != nil })
@@ -147,11 +147,15 @@ func (b *appBackend) lazyCandidates(run *appCrewRun, read appCrewRead, first boo
 	return candidates
 }
 
-func (b *appBackend) lazyWorkStamp(dir string, crews []string) string {
+func (b *appBackend) lazyWorkStamp(transcript string, crews []string) string {
 	profile := b.crewProfile()
 	stamp := teamstore.Stamp(profile) + lazyStamp(config.BudgetConfigPath(profile))
-	for _, name := range []string{"presence.json", "tasks.json", "team.json", "processes", "processes/head.json", "processes.json"} {
-		stamp += lazyStamp(filepath.Join(dir, name))
+	stamp += lazyStamp(filepath.Join(session.DirOf(transcript), "presence.json"))
+	// Presence belongs to the folder; task and process records stay beside
+	// the journal, including inside .cell/.
+	truth := filepath.Dir(transcript)
+	for _, name := range []string{"tasks.json", "team.json", "processes", "processes/head.json", "processes.json"} {
+		stamp += lazyStamp(filepath.Join(truth, name))
 	}
 	for _, crew := range crews {
 		stamp += teamstore.TrafficStamp(profile, crew)
