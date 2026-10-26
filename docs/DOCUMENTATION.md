@@ -14,7 +14,7 @@ copying a second specification that can drift.
 
 The root README introduces the product; [GUIDE.md](GUIDE.md) helps a person start.
 Neither should duplicate the complete command reference or developer architecture.
-Users' learned project knowledge belongs in their project/profile vault, not in
+Users' learned chat knowledge belongs in their profile database, not in
 this repository's manual or contributor docs.
 
 Public docs should describe reproducible behavior and public interfaces. Keep

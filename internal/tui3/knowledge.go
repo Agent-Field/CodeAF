@@ -33,6 +33,7 @@ type knowledgePlace struct {
 	article             bool
 	linkCursor          int
 	footer              string
+	matches             map[string]bool
 	targets             []knowledgeTarget
 	hitRows             []placeHit
 	sourceRender        knowledgeSourceRender
@@ -110,6 +111,9 @@ type knowledgeReadingMsg struct {
 }
 
 func (a *app) knowledgeVault() *knowledge.Vault {
+	if a.knowledgeProfile != nil && !a.hosted() {
+		return a.knowledgeProfile
+	}
 	if host, ok := a.agent.(interface{ Knowledge() *knowledge.Vault }); ok {
 		return host.Knowledge()
 	}
@@ -120,7 +124,7 @@ func (a *app) knowledgeVault() *knowledge.Vault {
 	if root := strings.TrimSpace(a.homeRoot); root != "" {
 		profile = root
 	}
-	return knowledge.Open(filepath.Clean(profile), a.workspace)
+	return knowledge.Open(filepath.Clean(profile))
 }
 
 func (a *app) knowledgeRead(create bool) tea.Cmd {
@@ -141,13 +145,21 @@ func (a *app) knowledgeRead(create bool) tea.Cmd {
 	}
 	p.loading = true
 	agent := a.agent
+	cached := p.reading
 	return func() tea.Msg {
 		if create {
-			if err := v.Create(); err != nil {
+			if err := v.StartBuild(); err != nil {
 				return knowledgeReadingMsg{vault: v, err: err}
 			}
 		}
-		r, err := v.Snapshot()
+		r, err := v.Status()
+		if err == nil {
+			if r.Revision == cached.Revision {
+				r.Pages = cached.Pages
+			} else {
+				r, err = v.Snapshot()
+			}
+		}
 		if capture, ok := agent.(interface{ KnowledgeCaptureError() string }); ok {
 			if problem := capture.KnowledgeCaptureError(); problem != "" {
 				if r.LastError != "" {
@@ -170,7 +182,12 @@ func (a *app) adoptKnowledge(msg knowledgeReadingMsg) {
 	if msg.err != nil {
 		p.footer = "Knowledge could not be read: " + msg.err.Error()
 	} else {
+		changed := p.reading.Revision != msg.reading.Revision || p.reading.Enabled != msg.reading.Enabled
 		p.reading = msg.reading
+		if !changed {
+			a.touch()
+			return
+		}
 		p.sourceRender = knowledgeSourceRender{}
 		p.markdownRender = knowledgeMarkdownRender{}
 		p.indexKnowledge()
@@ -199,7 +216,7 @@ func (p *knowledgePlace) rank() {
 		if pretty && n.Kind != "subject" && n.Kind != "map" {
 			continue
 		}
-		if q != "" && !strings.Contains(strings.ToLower(n.Title+" "+strings.Join(n.Folder, " ")+" "+knowledgePageText(n)), q) {
+		if q != "" && !p.matches[n.ID] {
 			continue
 		}
 		blocked := false
@@ -411,7 +428,8 @@ func (a *app) knowledgeOwns(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		if msg.Key().Text != "" || k == "backspace" || k == "delete" {
 			listNavigate(msg, &p.filter, func(int) {}, func() {}, memoryPlaceRows)
 			p.cursor = 0
-			p.rank()
+			a.touch()
+			return a.knowledgeSearch(), true
 		} else {
 			return nil, false
 		}
@@ -520,11 +538,14 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 		add(a.pal.dim("Reading knowledge…"))
 	}
 	if !p.reading.Enabled {
+		if p.reading.Build.Error != "" {
+			add(a.pal.bad(p.reading.Build.Error))
+		}
 		add("")
-		add(a.pal.accent("› Create knowledge base"))
+		add(a.pal.accent("› Build knowledge base"))
 		rows[len(rows)-1].hit = knowledgeHit{tree: -1, create: true}
 		add("")
-		for _, line := range wrapText("Start learning from future chats in this project. Existing conversations are not imported automatically. Saved memory continues to hold your preferences and rules.", max(1, width-4)) {
+		for _, line := range wrapText("Build knowledge from all saved chats across projects. This runs in the background; you can keep chatting. Saved memory holds your preferences and rules.", max(1, width-4)) {
 			add(line)
 		}
 		if p.footer != "" {
@@ -533,7 +554,15 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 		}
 		return rows
 	}
-	if p.reading.LastError != "" {
+	if p.reading.Build.Phase == knowledge.BuildRunning {
+		add(a.pal.dim("Building knowledge base… You can keep chatting."))
+		if p.reading.Build.Chats > 0 {
+			add(a.pal.dim(fmt.Sprintf("%d of %d chats imported · %d sources pending", p.reading.Build.Imported, p.reading.Build.Chats, p.reading.Pending)))
+		}
+	} else if p.reading.Build.Phase == knowledge.BuildFailed || p.reading.Build.Phase == knowledge.BuildPartial {
+		add(a.pal.bad("Knowledge build paused"))
+		add(a.pal.dim(p.reading.Build.Error))
+	} else if p.reading.LastError != "" {
 		add(a.pal.bad("Update paused"))
 		for _, line := range wrapText(p.reading.LastError, max(1, left)) {
 			add(a.pal.dim(line))
@@ -543,7 +572,10 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 	}
 	if len(p.reading.Pages) == 0 {
 		add("")
-		add("Your knowledge base is ready.")
+		if p.reading.Build.Phase == knowledge.BuildRunning || p.reading.Build.Phase == knowledge.BuildFailed || p.reading.Build.Phase == knowledge.BuildPartial {
+			return rows
+		}
+		add("Knowledge will populate as you chat.")
 		add("New completed chats will appear here after a background update.")
 		return rows
 	}
@@ -776,7 +808,7 @@ func (placeMemory) pressAt(a *app, x, y int) (tea.Cmd, bool) {
 		return nil, true
 	}
 	if hit, ok := hits[y].(knowledgeHit); ok {
-		if hit.create && !p.reading.Enabled && x >= 1 && x < 1+ansi.StringWidth("› Create knowledge base") {
+		if hit.create && !p.reading.Enabled && x >= 1 && x < 1+ansi.StringWidth("› Build knowledge base") {
 			return a.knowledgeRead(true), true
 		}
 		for _, link := range hit.links {
@@ -881,4 +913,48 @@ func (placeMemory) rememberHits(a *app, hits []placeHit) {
 func (a *app) knowledgeOwnsSwitch() tea.Cmd {
 	cmd, _ := a.knowledgeOwns(tea.KeyPressMsg{Code: 'u', Mod: tea.ModAlt})
 	return cmd
+}
+
+// Search runs outside the update/render loop and queries SQLite's FTS index.
+// A result for an older filter never replaces the current result set.
+type knowledgeSearchMsg struct {
+	vault *knowledge.Vault
+	query string
+	hits  []knowledge.Result
+	err   error
+}
+
+func (a *app) knowledgeSearch() tea.Cmd {
+	p := &a.kb
+	query := strings.TrimSpace(p.filter.String())
+	if query == "" {
+		p.matches = nil
+		p.rank()
+		return nil
+	}
+	v := p.vault
+	if v == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		hits, err := v.Search(query, 100)
+		return knowledgeSearchMsg{vault: v, query: query, hits: hits, err: err}
+	}
+}
+func (a *app) adoptKnowledgeSearch(msg knowledgeSearchMsg) {
+	p := &a.kb
+	if p.vault != msg.vault || strings.TrimSpace(p.filter.String()) != msg.query {
+		return
+	}
+	if msg.err != nil {
+		p.footer = "Knowledge search could not complete: " + msg.err.Error()
+		a.touch()
+		return
+	}
+	p.matches = make(map[string]bool, len(msg.hits))
+	for _, hit := range msg.hits {
+		p.matches[hit.Page.ID] = true
+	}
+	p.rank()
+	a.touch()
 }

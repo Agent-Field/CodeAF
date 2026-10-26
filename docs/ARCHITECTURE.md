@@ -42,7 +42,7 @@ concepts separate when implementing a feature or writing an agent's brief.
 | Kind of knowledge | Owner | How it is maintained |
 | --- | --- | --- |
 | What codeaf knows about its product | [manual](../internal/manual/) | Maintained Markdown embedded in the binary, with separate chat and resident corpora |
-| Project knowledge learned from chats | [knowledge](../internal/knowledge/), [session integration](../internal/session/knowledge.go) | Project/profile vault with source records and human-edited articles; see [Memory behavior](../internal/manual/chat/places.md#project-knowledge-inside-memory) |
+| Profile knowledge learned from saved chats | [knowledge](../internal/knowledge/), [session integration](../internal/session/knowledge.go) | Native SQLite vault, background compiler, and human edits; see [knowledge architecture](knowledge.md) and [Memory behavior](../internal/manual/chat/places.md#knowledge-from-saved-chats-inside-memory) |
 | Graph and memory storage mechanisms | [store](../internal/store/) | Read the relevant caller and tests before changing schema or replay behavior |
 | What contributors know about this codebase | This page and [engineering references](README.md#developer-knowledge) | Reviewed documentation committed beside the code |
 

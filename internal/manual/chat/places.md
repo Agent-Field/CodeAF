@@ -640,13 +640,23 @@ saved the place is its heading over
 It has the slot the standing orders page had: standing orders are gone, `/standing` is not a
 command any more, and *Automations* has the whole of what replaced them.
 
-## Project knowledge inside Memory
+## Knowledge from saved chats inside Memory
 
 Open Memory and click **Knowledge** or press `alt+u` to switch from saved
-preferences to project knowledge. Click **Saved memory** to return. Choose
-**Create knowledge base** once for this project and profile. Learning then starts
-from future eligible messages, including continuations of already-open chats;
-existing conversation history is not imported automatically.
+preferences to your knowledge base. Click **Saved memory** to return.
+
+If saved chats already exist, click **Build knowledge base** or press Enter.
+The first build uses saved chats across all projects, including archived chats.
+**Building knowledge base… You can keep chatting.** shows that work continues
+in the background. You can leave Memory, change chats, and return later; pages
+appear as completed batches are published.
+
+If there is no chat history, the reader says **Knowledge will populate as you
+chat.** Future saved chats populate it automatically, without a separate build
+step. A profile has one knowledge base; changing project does not change vaults.
+
+The native Go compiler stores sources, progress, pages, search, and human changes
+in SQLite. Python and developer tools are not required.
 
 The knowledge reader has a folder tree and articles. Underlined `[[Topic]]`
 references open linked pages when clicked. `ctrl+l` lists connected pages; arrows
@@ -673,26 +683,29 @@ Click **Delete**, or press `ctrl+d`, to review a named deletion confirmation.
 Enter or Escape cancels by default. Click **Delete page** or press `ctrl+d`
 again to confirm. Deletion removes the knowledge page; original chats remain.
 
-## Automatic project knowledge capture and updates
+## Automatic knowledge capture and background updates
 
-After creation, saved local chats in the same project directory and profile
-contribute to one shared knowledge base automatically. Other projects and
-profiles have separate vaults. Eligible saved user messages and human-facing
-assistant replies are captured; tool calls, harness notes and compaction replays
-are excluded. No manual save is needed after each conversation.
+New saved user messages and human-facing assistant replies across projects feed
+the profile's knowledge base. Tool calls, internal notes, operational replies,
+and replayed compaction windows are excluded. Original text and source identity
+stay available for citations. Unsaved chats and task-agent journals are not
+imported.
 
-Keep at least one saved local chat session in that project running for
-background compilation. If those sessions stop, pending sources stay on disk;
-processing resumes when a saved chat in that project runs again. There is no
-separate knowledge scheduler, and the Knowledge view over `--host` is not yet
-supported.
+The application process owns the background worker. Closing Memory or changing
+chats does not stop it. When codeaf stops, captured sources and checkpoints stay
+in the database; the next running codeaf process resumes unfinished work.
 
-Updates from multiple chats are combined into bounded normal model requests,
-without OpenRouter's Batch API. A batch becomes eligible after 30 seconds with
-no new captures or when its oldest pending source reaches 120 seconds, whichever
-comes first; reaching the context limit can trigger it earlier. These are
-scheduling thresholds, not a promise that articles appear within 120 seconds:
-compilation time, queued work and retries also count.
+The initial build drains bounded batches. Later updates combine saved turns into
+normal model requests, without OpenRouter's Batch API. A batch becomes eligible
+after 30 seconds without new sources, when its oldest source reaches 120 seconds,
+or when its context limit is reached. These thresholds do not include provider
+time or retries. Each extraction uses at most 64 source spans and 24,000 source
+characters.
+
+Search runs against the database index. Failed requests retain pending work and
+retry with backoff up to 120 seconds. Unreadable chats do not prevent other chats
+from being processed; their incomplete status remains visible. The Knowledge
+view over `--host` is not supported.
 
 Settings → Models → **knowledge** (`knowledge.model`) selects the OpenRouter
 model for the next compilation. The default is `deepseek/deepseek-v4.1-flash`.

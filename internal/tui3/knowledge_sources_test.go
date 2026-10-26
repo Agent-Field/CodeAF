@@ -1,7 +1,7 @@
 package tui3
 
 import (
-	"os"
+	"github.com/Agent-Field/codeaf/internal/knowledgefixture"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -55,13 +55,13 @@ func TestKnowledgeSourceDisclosureRestoresReadingPosition(t *testing.T) {
 	// Extend the persisted guide so the reader genuinely scrolls before opening
 	// sources. All subsequent observations go through Memory actions and frames.
 	v := a.agent.(*knowledgeTestAgent).vault
-	path := filepath.Join(v.Directory(), "knowledge", "vault.json")
-	content, err := os.ReadFile(path)
+	path := filepath.Join(v.Directory(), "knowledge.sqlite")
+	content, err := knowledgefixture.Read(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	content = []byte(strings.Replace(string(content), "Uses SQLite.", "Uses SQLite. "+strings.Repeat("Storage remains durable across restarts. ", 120), 1))
-	if err := os.WriteFile(path, content, 0600); err != nil {
+	if err := knowledgefixture.Write(path, content, 0600); err != nil {
 		t.Fatal(err)
 	}
 	drive(t, a, key("ctrl+r"), key("pgdown"))

@@ -3,7 +3,7 @@ package tui3
 import (
 	"encoding/json"
 	"fmt"
-	"os"
+	"github.com/Agent-Field/codeaf/internal/knowledgefixture"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,8 +15,8 @@ import (
 func knowledgeLongTreeApp(t *testing.T) *app {
 	t.Helper()
 	a := knowledgeArticleApp(t)
-	path := filepath.Join(a.agent.(*knowledgeTestAgent).vault.Directory(), "knowledge", "vault.json")
-	raw, err := os.ReadFile(path)
+	path := filepath.Join(a.agent.(*knowledgeTestAgent).vault.Directory(), "knowledge.sqlite")
+	raw, err := knowledgefixture.Read(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +33,7 @@ func knowledgeLongTreeApp(t *testing.T) *app {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = os.WriteFile(path, raw, 0600); err != nil {
+	if err = knowledgefixture.Write(path, raw, 0600); err != nil {
 		t.Fatal(err)
 	}
 	drive(t, a, key("ctrl+r"), key("down"), key("enter"))
@@ -62,13 +62,13 @@ func TestKnowledgeSidebarWheelScrollsWhileArticleIsOpen(t *testing.T) {
 
 func TestKnowledgeArticleWheelKeepsSidebarPosition(t *testing.T) {
 	a := knowledgeLongTreeApp(t)
-	path := filepath.Join(a.agent.(*knowledgeTestAgent).vault.Directory(), "knowledge", "vault.json")
-	raw, err := os.ReadFile(path)
+	path := filepath.Join(a.agent.(*knowledgeTestAgent).vault.Directory(), "knowledge.sqlite")
+	raw, err := knowledgefixture.Read(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	raw = []byte(strings.Replace(string(raw), "Uses SQLite.", "Uses SQLite. "+strings.Repeat("Durable storage survives restarts. ", 80), 1))
-	if err = os.WriteFile(path, raw, 0600); err != nil {
+	if err = knowledgefixture.Write(path, raw, 0600); err != nil {
 		t.Fatal(err)
 	}
 	drive(t, a, key("ctrl+r"))

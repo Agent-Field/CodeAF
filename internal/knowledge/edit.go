@@ -1,31 +1,19 @@
 package knowledge
 
 import (
-	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
-
-	"github.com/Agent-Field/codeaf/internal/filelock"
 )
 
 var ErrPageChanged = errors.New("knowledge page changed; reopen it before saving or deleting")
 
-// ErrPageChangeApplied means the durable human override was committed, but its
-// disposable exports could not be refreshed. Callers must not retry the write
-// with its old revision; they should reload the already changed page instead.
-var ErrPageChangeApplied = errors.New("knowledge page change saved; export refresh failed")
-
-func pageChangeApplied(err error) error { return fmt.Errorf("%w: %w", ErrPageChangeApplied, err) }
-
-// Human changes are separate from disposable compiler output. The compiler and
-// editor share the publication lock, while atomic overlay files make reads safe.
+// Human overrides are separate database records. Publishing generated pages
+// always overlays the latest committed edits and tombstones in its transaction.
 type pageOverride struct {
 	ID        string `json:"id"`
 	Deleted   bool   `json:"deleted,omitempty"`
@@ -78,114 +66,73 @@ func (v *Vault) DeletePage(id, expectedRevision string) error {
 	return v.changePage(id, expectedRevision, pageOverride{ID: id, Deleted: true})
 }
 func (v *Vault) changePage(id, revision string, override pageOverride) error {
-	if err := v.persistPageOverride(id, revision, override); err != nil {
-		return err
-	}
-	// A generated vault has all compiler projections. Refresh them without a
-	// provider call; a seed not yet compiled has only the Go reader/export.
-	if _, err := os.Stat(filepath.Join(v.root, "knowledge", "vault.sqlite")); os.IsNotExist(err) {
-		return nil
-	} else if err != nil {
-		return pageChangeApplied(err)
-	}
-	root, err := runtime(v.profile)
-	if err != nil {
-		return pageChangeApplied(err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "python3", filepath.Join(root, "bridge.py"), "--root", v.root, "--project", v.project, "--publish-overrides")
-	cmd.Env = append(os.Environ(), "PYTHONDONTWRITEBYTECODE=1")
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return pageChangeApplied(fmt.Errorf("knowledge exports could not be refreshed: %w: %s", err, strings.TrimSpace(string(out))))
-	}
-	return nil
-}
-func (v *Vault) persistPageOverride(id, revision string, override pageOverride) error {
 	if !v.Enabled() {
 		return ErrDisabled
 	}
-	directory := filepath.Join(v.root, "knowledge")
-	if err := os.MkdirAll(directory, 0700); err != nil {
-		return err
-	}
-	lock, err := os.OpenFile(filepath.Join(directory, ".writer.lock"), os.O_CREATE|os.O_RDWR, 0600)
+	db, err := v.database()
 	if err != nil {
 		return err
 	}
-	defer lock.Close()
-	if err = filelock.Lock(lock, true, false); err != nil {
+	defer db.Close()
+	tx, err := db.Begin()
+	if err != nil {
 		return err
 	}
-	defer filelock.Unlock(lock)
-	page, err := v.Read(id)
-	if err != nil {
+	defer tx.Rollback()
+	var raw string
+	if err = tx.QueryRow("SELECT payload FROM pages WHERE id=?", id).Scan(&raw); err == sql.ErrNoRows {
+		return os.ErrNotExist
+	} else if err != nil {
+		return err
+	}
+	var page Page
+	if err = json.Unmarshal([]byte(raw), &page); err != nil {
 		return err
 	}
 	if revision == "" || page.Revision != revision {
 		return ErrPageChanged
 	}
-	overlays := filepath.Join(v.root, "overrides")
-	if err = os.MkdirAll(overlays, 0700); err != nil {
-		return err
-	}
 	if override.Deleted {
 		override.Markdown = PageMarkdown(page)
 	}
 	override.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-	if err = writeJSON(filepath.Join(overlays, hash(id)+".json"), override); err != nil {
+	payload, err := json.Marshal(override)
+	if err != nil {
 		return err
 	}
-	// Export is disposable. Its lock is shared with Python's publisher so a
-	// compilation already in flight cannot put stale Markdown back afterwards.
-	if err := v.exportChangedPage(id, override); err != nil {
-		return pageChangeApplied(err)
+	if _, err = tx.Exec("INSERT INTO overrides(id,payload) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload", id, string(payload)); err != nil {
+		return err
 	}
-	return nil
+	generated, err := stateDocument(tx, "generated")
+	if err != nil {
+		return err
+	}
+	overrides, err := readOverrides(tx)
+	if err != nil {
+		return err
+	}
+	effective := applyNativeOverrides(generated, overrides)
+	linkCompilation(effective)
+	pages, err := materializePages(effective)
+	if err != nil {
+		return err
+	}
+	pages, err = applyPageOverrides(pages, overrides)
+	if err != nil {
+		return err
+	}
+	if err = storePages(tx, pages); err != nil {
+		return err
+	}
+	if err = saveState(tx, "revision", document{"value": identity(effective)}); err != nil {
+		return err
+	}
+	if err = saveState(tx, "published", effective); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
-func (v *Vault) exportChangedPage(id string, override pageOverride) error {
-	if filepath.Base(id) != id || id == "." || id == ".." {
-		return nil
-	}
-	dir := filepath.Join(v.root, "knowledge", "markdown")
-	if override.Deleted {
-		err := os.Remove(filepath.Join(dir, id+".md"))
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return err
-	}
-	page, err := v.Read(id)
-	if err != nil {
-		return err
-	}
-	body := "# " + page.Title + "\n\n> Edited by you. This text has not been verified against the original sources.\n\n" + override.Markdown + "\n"
-	f, err := os.CreateTemp(dir, ".knowledge-*")
-	if err != nil {
-		return err
-	}
-	name := f.Name()
-	defer os.Remove(name)
-	if _, err = f.WriteString(body); err == nil {
-		err = f.Sync()
-	}
-	closeErr := f.Close()
-	if err != nil {
-		return err
-	}
-	if closeErr != nil {
-		return closeErr
-	}
-	return os.Rename(name, filepath.Join(dir, id+".md"))
-}
-func (v *Vault) applyOverrides(pages []Page) ([]Page, error) {
-	overrides, err := v.pageOverrides()
-	if err != nil {
-		return nil, err
-	}
+func applyPageOverrides(pages []Page, overrides map[string]pageOverride) ([]Page, error) {
 	kept := make([]Page, 0, len(pages))
 	visible := map[string]bool{}
 	for _, page := range pages {
@@ -357,32 +304,27 @@ func manualSections(markdown string) []Section {
 	return sections
 }
 
-func (v *Vault) pageOverrides() (map[string]pageOverride, error) {
-	result := map[string]pageOverride{}
-	dir := filepath.Join(v.root, "overrides")
-	entries, err := os.ReadDir(dir)
-	if os.IsNotExist(err) {
-		return result, nil
-	}
+type overrideReader interface {
+	Query(string, ...any) (*sql.Rows, error)
+}
+
+func readOverrides(db overrideReader) (map[string]pageOverride, error) {
+	rows, err := db.Query("SELECT payload FROM overrides ORDER BY id")
 	if err != nil {
 		return nil, err
 	}
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
-			continue
-		}
-		raw, err := os.ReadFile(filepath.Join(dir, entry.Name()))
-		if err != nil {
+	defer rows.Close()
+	result := map[string]pageOverride{}
+	for rows.Next() {
+		var raw string
+		if err = rows.Scan(&raw); err != nil {
 			return nil, err
 		}
 		var override pageOverride
-		if err = json.Unmarshal(raw, &override); err != nil {
-			return nil, fmt.Errorf("knowledge page override: %w", err)
-		}
-		if override.ID == "" || entry.Name() != hash(override.ID)+".json" {
-			return nil, errors.New("knowledge page override identity mismatch")
+		if err = json.Unmarshal([]byte(raw), &override); err != nil {
+			return nil, err
 		}
 		result[override.ID] = override
 	}
-	return result, nil
+	return result, rows.Err()
 }

@@ -10,10 +10,10 @@ contributor rules and historical records serve different readers.
 | Install and start using codeaf | [Guide](GUIDE.md) |
 | Find the exact behavior codeaf explains about itself | [Shipped manual map](../internal/manual/README.md) — separate chat and resident corpora |
 | Learn the current chat's features | [Chat manual](../internal/manual/chat/what-i-can-do.md), [getting started](../internal/manual/chat/getting-started.md) |
-| Understand Memory and project knowledge | [Memory](../internal/manual/chat/what-i-remember.md), [project knowledge](../internal/manual/chat/places.md#project-knowledge-inside-memory) |
+| Understand Memory and knowledge from saved chats | [Memory](../internal/manual/chat/what-i-remember.md), [knowledge from saved chats](../internal/manual/chat/places.md#knowledge-from-saved-chats-inside-memory) |
 
 The manual is product knowledge compiled into the binary. Repository development
-notes and users' learned project knowledge are separate; see [documentation ownership](DOCUMENTATION.md).
+notes and users' learned chat knowledge are separate; see [documentation ownership](DOCUMENTATION.md).
 
 ## Developer knowledge
 

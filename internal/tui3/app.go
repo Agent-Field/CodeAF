@@ -23,6 +23,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/connect"
 	"github.com/Agent-Field/codeaf/internal/credits"
 	internalenv "github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/knowledge"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -1728,8 +1729,9 @@ type app struct {
 	waits []preflight
 	// mem is the Memories tab's state: the snapshot it is drawing, the groups
 	// that are open, and the filter (place_memories.go).
-	mem memoryPlace
-	kb  knowledgePlace
+	mem              memoryPlace
+	kb               knowledgePlace
+	knowledgeProfile *knowledge.Vault
 	// memory is the store the tab reads and changes. It is optional because a
 	// session whose memory store could not be opened has no capability behind
 	// the tab.
@@ -3041,6 +3043,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		shown = movedName
 	}
 	a := &app{
+		knowledgeProfile:    opts.Knowledge,
 		machines:            opts.Machines,
 		taker:               opts.Takeover,
 		pairing:             opts.Pairing,
@@ -5722,7 +5725,14 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.adoptMemoryPlaceDone(msg)
 		return a, nil
 	case knowledgeReadingMsg:
+		previous := a.kb.reading.Revision
 		a.adoptKnowledge(msg)
+		if previous != a.kb.reading.Revision && !a.kb.filter.empty() {
+			return a, a.knowledgeSearch()
+		}
+		return a, nil
+	case knowledgeSearchMsg:
+		a.adoptKnowledgeSearch(msg)
 		return a, nil
 
 	case memoryOriginMsg:
