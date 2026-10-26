@@ -74,7 +74,7 @@ func applyReviewedWorkspace(ctx context.Context, original taskTree, reviewedDir 
 		return receipt, err
 	}
 	if original.mode != TaskModeMirror && original.landsInThePersonsRepository() {
-		if reason := original.keptLandingSentence(); reason != "" {
+		if reason := original.landingSafetySentence(false); reason != "" {
 			return taskWorkspaceApplyReceipt{}, errors.New(reason)
 		}
 	}

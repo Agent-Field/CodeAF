@@ -247,6 +247,9 @@ private copy and its identity remain available after a successful apply too.
 Uncertain writers continue to prevent destructive retirement of that copy. Applying one root
 does not authorize another root or give later tasks automatic landing permission.
 A received root stays private until this explicit local action.
+Explicit reviewed apply may update the chosen branch, including `main`. Automatic
+task landing still refuses protected branches. Checkout movement, conflicts and
+ref/index checks continue to protect the destination.
 
 The portable apply contract preserves raw file bytes and line endings, file
 permissions, empty directories and directory permissions. Changed paths with

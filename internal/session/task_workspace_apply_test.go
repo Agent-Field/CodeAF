@@ -635,3 +635,24 @@ func TestTaskWorkspaceFamilyRetainsIgnoredRuntimeInputs(t *testing.T) {
 		t.Fatal("ignored original input changed")
 	}
 }
+
+func TestTaskWorkspaceExplicitApplyToMain(t *testing.T) {
+	agent, id, _, source, copyDir := completedWorkspaceApplyFixtureWithInput(t, true, func(source string) {
+		mustGit(t, source, "branch", "-m", "main")
+	})
+	if _, err := agent.ReviewTaskWorkspaceRoot(t.Context(), id, "work"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := agent.ApplyTaskWorkspaceRoot(t.Context(), id, "work"); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, filepath.Join(source, "shared.txt")); got != "private result\n" {
+		t.Fatalf("explicit main apply did not publish reviewed bytes: %q", got)
+	}
+	if got := gitOut(t, source, "branch", "--show-current"); strings.TrimSpace(got) != "main" {
+		t.Fatalf("explicit apply changed the chosen branch: %q", got)
+	}
+	if got := readFile(t, filepath.Join(copyDir, "shared.txt")); got != "private result\n" {
+		t.Fatalf("explicit apply did not retain private result: %q", got)
+	}
+}
