@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: Relay coordination uses three voters and joined computers can lead
-pr: 0
+pr: 1950
 surface: [chat, remote, build, docs]
 invalidates:
   - "One relay directory writer previously decided each identity's changes. The hosted relay and codeaf relay --store now use a three-voter Raft group per identity, with majority commitment and fresh authority reads."
