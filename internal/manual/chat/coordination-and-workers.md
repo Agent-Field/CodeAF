@@ -64,6 +64,10 @@ A compatibility events viewer pings every 10 seconds. The platform answers witho
 
 A connection naming held chats still renews through committed changes every 30 seconds while fresh hold evidence is available. Presence alone never renews a chat.
 
+## Hosted relay memory capacity and retry
+
+After every voter has completed the group's idle barrier, the hosted relay frees its working memory for other households and keeps the saved directory in persistent storage. The next request reloads those copies and obtains a fresh majority response. Busy groups keep their memory. When busy groups fill the relay's memory allowance, another activation receives HTTP 503 with retry guidance; retrying after a group sleeps can succeed.
+
 ## What can a worker do — can a worker read all my chats or approve pairing?
 
 A delegated worker uses its own key and an expiring certificate naming selected chats. It receives only sealed grants for those chats, rather than the full exported identity. It cannot approve pairing, rotate the identity, read the identity vault, enroll other devices or request leadership. Richer capabilities, worker labels and execution credentials stay encrypted; only the existing platform and sandbox capability shape is readable by the relay.

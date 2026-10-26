@@ -10,6 +10,7 @@ import {encodeCanonical} from '../../src/raft/codec.js';
 import {CORE_MEMORY_BUDGET} from '../../src/raft/abi.js';
 import { runtimeMetrics,sharedRuntime } from '../../src/raft/actor.js';
 import {coordinationPolicy} from '../../src/raft/liveness.js';
+const recoveryHistory=new Map();
 const measurements={turns:0,wall:[],membership:0,campaigns:0,http:0,peerIn:0,peerOut:0,sweeps:0,writes:0};
 async function measured(fn){const start=performance.now();measurements.turns++;try{return await fn();}finally{measurements.wall.push(performance.now()-start);}}
 import { policyOf } from '../../src/rules.js';
@@ -31,6 +32,11 @@ export class IdentityDO extends Source {
     if(old){old.ready=false;old.members.clear();old.states.clear();old.queue=[];old.reads=[];old.peers=null;old.holds=null;}
     this.current.host=null;this.host=null;this.capturing=false;
     this.rebuilt=new Source(this.ctx,this.env);return this.quietState();
+  }
+  async retentionState(op){
+    const config=await this.ctx.storage.get('raft-provision'),states={};
+    for(const node of config.config.anchors)states[node]=await this.env.RAFT_MEMBERS.get(this.env.RAFT_MEMBERS.idFromName(config.config.cluster+'/'+node)).retentionState(op);
+    return states;
   }
   async quietState(){
     const config=await this.ctx.storage.get('raft-provision'),alarms={};
@@ -164,7 +170,18 @@ export class IdentityDO extends Source {
   }
 }
 export class RaftMemberDO extends Member {
- constructor(ctx,env){Date.now();if(globalThis.fixtureClockOffset){const setAlarm=ctx.storage.setAlarm.bind(ctx.storage);ctx.storage.setAlarm=at=>setAlarm(Number(at)-globalThis.fixtureClockOffset);}super(ctx,env);}
+ constructor(ctx,env){
+   Date.now();if(globalThis.fixtureClockOffset){const setAlarm=ctx.storage.setAlarm.bind(ctx.storage);ctx.storage.setAlarm=at=>setAlarm(Number(at)-globalThis.fixtureClockOffset);}super(ctx,env);
+   // Recovery observations survive object replacement and sample publication
+   // before a queued input can change the new follower's role.
+   const id=ctx.id.toString(),history=recoveryHistory.get(id)??{roles:[]};recoveryHistory.set(id,history);this.recoveryHistory=history;this.recoveryRoles=history.roles;
+   let actor=this.actor;
+   Object.defineProperty(this,'actor',{get:()=>actor,set:next=>{
+     if(next&&next!==actor)this.recoveryRoles.push(next.status.role);
+     if(!next&&actor)history.released={applied:String(actor.status.applied),term:String(actor.status.term)};
+     actor=next;
+   }});
+ }
  async staging(){await this.load();return this.actor.serial(()=>({rows:this.ctx.storage.sql.exec("SELECT count(*) AS n, coalesce(sum(length(data)),0) AS bytes FROM records WHERE namespace='outbox' AND key LIKE 'v1-stage/%'").toArray()[0],app:this.actor.store.application()}));}
   async replaceActivation(){
     await this.load();const old=this.actor,before=old.store.application().applied;
@@ -172,6 +189,18 @@ export class RaftMemberDO extends Member {
     let refused=false;try{await old.input(1);}catch{refused=true;}
     for(const key of ['actor','config','registry','results','resultBytes','recoveredEffects'])this[key]=restored[key];
     return {before,after:this.actor.store.application().applied,refused,oldHandle:old.handle,active:runtimeMetrics().active};
+  }
+  async retentionState(op){
+    if(op==='remember')this.remembered=this.actor;
+    const actor=this.actor;
+    if(op==='stale'){
+      const old=this.remembered,refused=[];
+      for(const call of [()=>old.input(0),()=>old.sleepAck(old.status.applied,old.status.term),()=>old.joinStatus(old.status.applied)]){
+        try{await call();refused.push(false);}catch{refused.push(true);}
+      }
+      return {refused,handle:old.handle,stopped:old.stopped};
+    }
+    return {active:!!actor?.handle,stopped:actor?.stopped??false,applied:String(actor?.status?.applied??this.recoveryHistory.released?.applied??0),term:String(actor?.status?.term??this.recoveryHistory.released?.term??0),recoveries:this.recoveryRoles??[]};
   }
   alarmState(){return this.ctx.storage.getAlarm();}
   alarm(...args){return measured(()=>super.alarm(...args));}
@@ -218,6 +247,7 @@ export default {
       if(op==='diagnostic'){console.warn('local runtime warning capture');console.error('local runtime error capture');return Response.json(true);}
       if(op==='evict-minority')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).evictMinority());
       if(op==='presence-schedule')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).presenceSchedule());
+      if(op==='retention-state')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).retentionState(records));
       if(op==='quiet-state')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).quietState());
       if(op==='evict-idle')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).evictIdle());
       if(op==='presence-turn')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).presenceTurn()??true);

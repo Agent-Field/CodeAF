@@ -22,7 +22,7 @@ const enc=new TextEncoder(),dec=new TextDecoder('utf-8',{fatal:true});
 const segment=s=>Array.from(enc.encode(s),b=>b.toString(16).padStart(2,'0')).join('');
 const unsegment=s=>dec.decode(Uint8Array.from(s.match(/../g)??[],h=>parseInt(h,16)));
 const data=v=>enc.encode(encodeCanonical(v));
-const MIGRATION_PAGE=64,COORDINATOR_QUEUE=64;
+const MIGRATION_PAGE=64,COORDINATOR_QUEUE=64,MIN_MEMBERS=2;
 const unavailable=()=>new Wire('unreachable',503,1);
 const status={not_found:404,unauthorized:401,revoked:401,rotated:410,bad_request:400,bad_grace:400,self_revoke:400,capacity:507,full:507};
 function requireOK(code){if(code!=='ok')throw new Wire(code,status[code]??409);}
@@ -40,7 +40,7 @@ export class HostedIdentity {
     this.armAlarm=arm??(async at=>{if(at===null){await ctx.storage.deleteAlarm();return;}const old=await ctx.storage.getAlarm();if(old===null||at<old)await ctx.storage.setAlarm(at)});
     this.policy=coordinationPolicy(sharedRuntime());this.started=Math.floor(performance.now());this.elapsed=0;this.asleep=false;this.wakeVersion=0;this.alarmTail=Promise.resolve();
     this.ctx=ctx;this.env=env;this.tenant=tenant;this.runtime=sharedRuntime();this.codec=new HostCodec(this.runtime);
-    this.source=tenant.migration(ctx.storage,this.runtime);this.tail=Promise.resolve();this.pending=0;this.operationTail=Promise.resolve();this.operations=0;this.waiters=new Set();this.progressVersion=0;this.forwarding=new PersonalForward(this);this.members=new Map();this.states=new Map();this.queue=[];this.reads=[];
+    this.source=tenant.migration(ctx.storage,this.runtime);this.tail=Promise.resolve();this.pending=0;this.operationTail=Promise.resolve();this.operations=0;this.waiters=new Set();this.progressVersion=0;this.forwarding=new PersonalForward(this);this.members=new Map();this.states=new Map();this.inactiveMembers=new Set();this.queue=[];this.reads=[];
   }
   serial(fn){
     if(this.pending>=COORDINATOR_QUEUE)return Promise.reject(unavailable());this.pending++;
@@ -48,7 +48,7 @@ export class HostedIdentity {
   }
   operation(fn){
     if(this.operations>=COORDINATOR_QUEUE)return Promise.reject(unavailable());this.operations++;
-    const task=this.operationTail.then(fn);this.operationTail=task.catch(()=>{});return task.finally(()=>this.operations--);
+    const task=this.operationTail.then(fn).catch(error=>{if(error.isolateCapacity)throw unavailable();throw error;});this.operationTail=task.catch(()=>{});return task.finally(()=>this.operations--);
   }
   signal(){this.progressVersion++;for(const resolve of this.waiters)resolve();this.waiters.clear();}
   async progress(deadline,version=this.progressVersion){
@@ -67,7 +67,7 @@ export class HostedIdentity {
     // forwarding reply preserves routing, while every operation still requires
     // its ordinary quorum barrier and exact durable result.
     const hint=String(reply?.status?.Leader??'0'),term=BigInt(reply?.status?.Term??0);
-    const known=[...this.states.values()].reduce((max,state)=>state.term>max?state.term:max,this.routeTerm??0n);
+    const known=[...(this.states?.values()??[])].reduce((max,state)=>state.term>max?state.term:max,this.routeTerm??0n);
     if(hint!=='0'&&term>=known){this.routeHint=hint;this.routeTerm=term;}
     if(!reply||reply.error)throw Object.assign(unavailable(),{forwardID:token.id});
     return reply;
@@ -107,6 +107,17 @@ export class HostedIdentity {
     await this.ctx.storage.put('raft-provision',p);await this.ctx.storage.sync();return p;
   }
   async ensure(identityKey){
+    // Recover inactive members without replacing live routing or sockets.
+    if(this.ready&&this.inactiveMembers.size){
+      for(const id of [...this.inactiveMembers]){
+        try{
+          const member=this.member(id);if(!await member.importReceipt(this.manifest))continue;
+          const initialized=await member.initialize(this.config(id));if(initialized.capacity)continue;
+          this.members.set(id,member);this.accept(id,initialized);this.accept(id,await member.drainRecovery());
+        }catch{this.members.delete(id);this.states.delete(id);}
+      }
+      if([...this.members.keys()].filter(id=>!this.inactiveMembers.has(id)).length<MIN_MEMBERS)throw unavailable();
+    }
     if(this.ready)return;
     if(this.initialized)return this.completeEnsure();
     this.provisioning=await this.provision(identityKey);
@@ -141,11 +152,15 @@ export class HostedIdentity {
       try{
         const receipt=await this.member(id).importReceipt(this.manifest);if(!receipt)continue;
         const member=this.member(id);this.members.set(id,member);receipts.push(receipt);
-        const initialized=await member.initialize(this.config(id));this.accept(id,initialized);this.elapsed=Math.max(this.elapsed,initialized.elapsed??0);
+        const initialized=await member.initialize(this.config(id));
+        // Durable import receipts cover all anchors; serving needs a live
+        // majority even when admission pressure delays the remaining copy.
+        if(initialized.capacity){this.inactiveMembers.add(id);this.members.delete(id);this.states.delete(id);continue;}
+        this.accept(id,initialized);this.elapsed=Math.max(this.elapsed,initialized.elapsed??0);
         this.accept(id,await member.drainRecovery());
       }catch(error){this.members.delete(id);this.states.delete(id);if(!owned)throw error;}
     }
-    if(this.members.size<2)throw unavailable();
+    if(this.members.size<MIN_MEMBERS)throw unavailable();
     if(owned){await this.pump();await this.restorePeers();}
     else{await this.pump();await this.elect();await this.barrier();}
     if(!owned)await this.source.own(receipts);
@@ -199,7 +214,7 @@ export class HostedIdentity {
     await this.peers.refresh();
     await this.peers.recover();
   }
-  accept(id,e){if(!e)return;if(e.status)this.states.set(String(id),e.status);this.queue.push(...(e.send??[]).map(m=>({...m,from:String(id),to:String(m.to)})));this.reads.push(...(e.reads??[]).map(r=>({...r,node:String(id)})));this.signal();}
+  accept(id,e){if(!e)return;if(e.status){this.inactiveMembers?.delete(String(id));this.states.set(String(id),e.status);}this.queue.push(...(e.send??[]).map(m=>({...m,from:String(id),to:String(m.to)})));this.reads.push(...(e.reads??[]).map(r=>({...r,node:String(id)})));this.signal();}
   async input(id,tag,value){const result=await this.members.get(String(id)).hostInput(tag,value);this.accept(id,result);return result;}
   // Reserve durable sequence ranges before emission. Concurrent public and
   // peer turns share one allocator, and recovery skips every unused sequence.
@@ -479,7 +494,22 @@ export class HostedIdentity {
           let sleeping=remote?(await schedule(acks)).sleeping:true;
           for(const [node,member]of this.members){const effects=await member.schedule(this.elapsed,now,busy,acks);this.accept(node,effects);sleeping&&=effects.plan.sleeping;}
           await this.pump();this.asleep=sleeping&&!this.coordinationBusy()&&wakeVersion===this.wakeVersion;
-          if(this.asleep){await this.peers.quiesce();await this.pump();await this.sleepMaintenance(wakeVersion);}
+          if(this.asleep){
+            // Every sleeping replica exposes the same committed peer view.
+            const replica=this.replica();this.peers.viewApplied=replica+'/'+this.states.get(replica).applied;
+            await this.peers.quiesce();await this.pump();await this.sleepMaintenance(wakeVersion);
+            for(const [node,member]of this.members){
+              if(!this.asleep||wakeVersion!==this.wakeVersion)break;
+              const state=this.states.get(node),hint=this.leaderID();
+              await member.releaseSleeping(this.elapsed,now,acks);
+              // Durable progress still authenticates peers, but grants no authority.
+              if(!this.states.has(node)||this.states.get(node)===state){
+                this.inactiveMembers.add(node);
+                if(state)this.states.set(node,{...state,role:0,leader:0n});
+              }
+              if(state&&(this.routeTerm??0n)<=state.term){this.routeHint=hint;this.routeTerm=state.term;}
+            }
+          }
         }catch{this.asleep=false;}
       }
     }finally{

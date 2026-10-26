@@ -162,7 +162,9 @@ export class RaftMemberDO extends DurableObject {
       return this.loading;
     }
     this.loadingConfig = JSON.stringify(config);
-    this.loading = this.activate(config).then(effects=>({...effects,elapsed:this.actor.elapsed??0}));
+    this.loading = this.activate(config).then(effects=>({...effects,elapsed:this.actor.elapsed??0})).catch(error=>{
+      if(error.isolateCapacity)return {capacity:true};throw error;
+    });
     try { return await this.loading; } finally { this.loading = null; this.loadingConfig = null; }
   }
   async activate(config) {
@@ -256,6 +258,16 @@ export class RaftMemberDO extends DurableObject {
   }
   async schedule(elapsed, ingressNow, busy, acks=[]) { await this.load(); return this.actor.schedule(elapsed, ingressNow, busy, acks); }
   async sleepAck(index,term) { await this.load(); return this.actor.sleepAck(index,term); }
+  // Release runs in this object's storage context after the router completes
+  // all-voter sleep. The next input follows ordinary durable follower recovery.
+  async releaseSleeping(elapsed, now, acks) {
+    if(!this.actor)return;
+    const actor=this.actor;
+    if(this.recoveredEffects?.send?.length||await this.ctx.storage.get('raft-scheduled'))throw new Error('raft member: scheduled work prevents release');
+    await this.ctx.storage.deleteAlarm();
+    await actor.releaseSleeping(elapsed,now,acks);
+    this.actor=null;this.inbox=null;this.registryCache=null;this.registryIndex=null;this.results.clear();this.resultBytes=0;this.recoveredEffects=null;
+  }
   async leadershipEvidence(revision,barrier) { await this.load(); return this.actor.leadershipEvidence(revision,barrier); }
   async leadership(evidence) { await this.load(); return this.actor.leadership(evidence); }
   async leadershipReceipt() { await this.load(); return this.actor.leadershipReceipt(); }

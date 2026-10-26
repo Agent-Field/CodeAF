@@ -36,12 +36,12 @@ export class MemberActor {
   serial(fn) {
     if (this.pending >= QUEUED_INPUTS) return Promise.reject(new Error('raft member: capacity; retry with backoff'));
     this.pending++;
-    const p = this.tail.then(fn); this.tail = p.catch(() => {});
+    const p = this.tail.then(() => { if(this.stopped||this.store.stopped)throw new Error('raft member: stopped; recover from durable storage');return fn(); }); this.tail = p.catch(() => {});
     return p.finally(() => { this.pending--; });
   }
   init(config) { config = structuredClone(config); return this.serial(async () => {
     if (this.handle) throw new Error('raft member: already active');
-    if (active.size * RESERVATION + RESERVATION + this.reactor.memory > CORE_MEMORY_BUDGET) throw new Error('raft member: isolate capacity; retry with backoff');
+    if (active.size * RESERVATION + RESERVATION + this.reactor.memory > CORE_MEMORY_BUDGET) throw Object.assign(new Error('raft member: isolate capacity; retry with backoff'),{isolateCapacity:true});
     active.add(this);
     try {
       const recovered = await this.store.open({ cluster: config.cluster, id: String(config.id), protocol: 1 }, config.ceiling ?? DEFAULT_ROWS_BYTES);
@@ -180,6 +180,15 @@ export class MemberActor {
   begin(data) { data = data.slice(); return this.serial(() => this.store.beginSnapshot(data)); }
   chunk(id, offset, data, hash) { data = data.slice(); return this.serial(() => this.store.putChunk(id, offset, data, hash)); }
   complete(id) { return this.serial(() => this.store.completeSnapshot(id)); }
+  // All voters must have applied the idle barrier before a sleeping leader
+  // can relinquish its handle. A checkpoint precedes fencing every old caller.
+  releaseSleeping(now, ingressNow, acks) { acks=structuredClone(acks);return this.serial(async()=>{
+    const effects=await this.scheduleInQueue(now,ingressNow,false,acks);
+    if(!effects.plan.sleeping||effects.send.length||effects.reads.length)throw new Error('raft member: active member cannot be evicted');
+    await this.store.checkpoint();
+    if(this.pending>1)throw new Error('raft member: active member cannot be evicted');
+    this.replaced();
+  }); }
   // An exclusive object replacement cannot resume its former volatile actor.
   // Fence pending continuations before recovering the same durable identity.
   replaced() {
