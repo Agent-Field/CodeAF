@@ -297,6 +297,9 @@ func TestR9R27HostedLearnerMaximumCommand(t *testing.T) {
 		reqsign.Sign(req, body, deviceSigner{a.Identity, a.Device}, a.now())
 		proof, e := reqsign.Capture(req, body)
 		mustNil(t, e)
+		// The hosted relay commits its configured prefix beside the signed URI,
+		// so the boundary is measured on the command the relay itself commits.
+		proof.BasePath = strings.TrimSuffix(req.URL.Path, "/v1/dir/devices/"+a.Device.ID())
 		command, e := cs.V1Command(status.Cluster, a.now().UnixMilli(), proof)
 		mustNil(t, e)
 		raw, e := cs.EncodeCommand(command)
