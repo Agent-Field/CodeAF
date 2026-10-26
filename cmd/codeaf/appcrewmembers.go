@@ -708,14 +708,16 @@ func (b *appBackend) answerProposal(agent, id, option string) error {
 
 // dropProposal forgets a proposal and closes its ask.
 func (b *appBackend) dropProposal(id, option string) {
-	_ = b.crewLayer().write(func(f *appCrewLayerFile) error {
-		delete(f.Proposals, id)
-		return nil
-	})
 	run := b.crews()
 	if run == nil {
 		return
 	}
+	run.proposal.Lock()
+	defer run.proposal.Unlock()
+	_ = b.crewLayer().write(func(f *appCrewLayerFile) error {
+		delete(f.Proposals, id)
+		return nil
+	})
 	var ask appwire.Ask
 	run.locked(func() {
 		ask = run.asks[appProposalAskPrefix+id]

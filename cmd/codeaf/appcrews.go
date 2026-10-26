@@ -94,6 +94,9 @@ type appCrewRun struct {
 	// ready publishes the initial subscription and check to concurrent callers.
 	ready chan struct{}
 
+	// proposal keeps durable proposal changes and ask events in the same order.
+	proposal sync.Mutex
+
 	formation  sync.Mutex
 	tick       sync.Mutex
 	watcher    *fsnotify.Watcher

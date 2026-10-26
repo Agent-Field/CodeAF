@@ -427,6 +427,9 @@ func (b *appBackend) LaterInbox(id string, later bool) error {
 		return err
 	}
 	if strings.HasPrefix(askID, appProposalAskPrefix) {
+		run := b.crews()
+		run.proposal.Lock()
+		defer run.proposal.Unlock()
 		var ask appwire.Ask
 		if err := b.crewLayer().write(func(f *appCrewLayerFile) error {
 			p := f.Proposals[strings.TrimPrefix(askID, appProposalAskPrefix)]
@@ -439,7 +442,6 @@ func (b *appBackend) LaterInbox(id string, later bool) error {
 		}); err != nil {
 			return err
 		}
-		run := b.crews()
 		run.locked(func() { run.asks[askID] = ask })
 		b.emit.Emit(appwire.EventAskOpened, appwire.AskOpened{Ask: ask})
 		return nil

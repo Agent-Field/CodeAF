@@ -261,11 +261,18 @@ func TestAppCrewProposalCanWaitInInboxAndComeBack(t *testing.T) {
 	if err != nil || len(items) != 1 || counts.Later != 1 || !items[0].Ask.Later || items[0].Ask.Proposal.ID != ask.Proposal.ID {
 		t.Fatalf("deferred proposal = %+v, %+v, %v", items, counts, err)
 	}
-	backend.reopenProposals(backend.crews())
-	items, _, err = backend.ListInbox(appwire.InboxLater, "")
+	reloaded := newFakeBackend(newAppRecorder(), func(ask appOpenAsk) (*appConn, error) {
+		return &appConn{Conv: &fakeConversation{}, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
+	})
+	t.Cleanup(func() { reloaded.Close() })
+	reloaded.state = &appState{path: backend.state.where()}
+	reloaded.profileDir = backend.profileDir
+	reloaded.crews()
+	items, _, err = reloaded.ListInbox(appwire.InboxLater, "")
 	if err != nil || len(items) != 1 || !items[0].Ask.Later {
-		t.Fatalf("reopened deferred proposal = %+v, %v", items, err)
+		t.Fatalf("reloaded deferred proposal = %+v, %v", items, err)
 	}
+	reloaded.Close()
 	if err := backend.LaterInbox(id, false); err != nil {
 		t.Fatal(err)
 	}
@@ -276,5 +283,51 @@ func TestAppCrewProposalCanWaitInInboxAndComeBack(t *testing.T) {
 	crew, err := backend.CrewCreate(appwire.CrewCreate{From: "proposal", Proposal: ask.Proposal.ID, Edits: &appwire.Proposal{Helpers: []appwire.ProposalHelper{}}})
 	if err != nil || crew.Manager != manager.ID {
 		t.Fatalf("accepted restored proposal = %+v, %v", crew, err)
+	}
+}
+
+func TestAppCrewProposalLaterCannotReopenAnsweredAsk(t *testing.T) {
+	backend, rec, manager := proposingBackend(t, &proposingConversation{fakeConversation: &fakeConversation{}, answer: helpersProposal})
+	if err := backend.CrewPropose(manager.ID); err != nil {
+		t.Fatal(err)
+	}
+	at := rec.waitFor(t, 5*time.Second, appAskEvent(appwire.EventAskOpened))
+	rec.mu.Lock()
+	ask := rec.data[at].(appwire.AskOpened).Ask
+	rec.mu.Unlock()
+	blocked, release := make(chan struct{}), make(chan struct{})
+	original := backend.emit
+	backend.emit = intentTitleEmitter(func(event string, data any) {
+		if opened, ok := data.(appwire.AskOpened); ok && opened.Ask.ID == ask.ID && opened.Ask.Later {
+			close(blocked)
+			<-release
+		}
+		original.Emit(event, data)
+	})
+	laterDone := make(chan error, 1)
+	go func() { laterDone <- backend.LaterInbox(manager.ID+"/"+ask.ID, true) }()
+	<-blocked
+	answerDone := make(chan error, 1)
+	go func() { answerDone <- backend.AnswerAsk(manager.ID, ask.ID, appwire.ProposalKeep, "") }()
+	var answerErr error
+	answered := false
+	select {
+	case answerErr = <-answerDone:
+		answered = true
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(release)
+	if err := <-laterDone; err != nil {
+		t.Fatal(err)
+	}
+	if !answered {
+		answerErr = <-answerDone
+	}
+	if answerErr != nil {
+		t.Fatal(answerErr)
+	}
+	items, _, err := backend.ListInbox(appwire.InboxLater, "")
+	if err != nil || len(items) != 0 {
+		t.Fatalf("answered proposal resurrected in Later: count=%d, error=%v", len(items), err)
 	}
 }
